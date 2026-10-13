@@ -45,6 +45,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +71,40 @@ use Inertia\Inertia;
  */
 class MlbAnuncioController extends Controller
 {
+    /**
+     * `listing_type_id` real → o tipo que a tela de Publicações mostra
+     * (LIST-20). É o INVERSO do mapa fechado que
+     * `AcervoTriagemService::filtros()` usa para o filtro de tipo; as duas
+     * chaves de saída vêm das constantes PÚBLICAS daquele serviço, para que o
+     * nome do tipo exista num lugar só.
+     *
+     * ⚠️ `listing_type_id` fora destes dois (`free`, `silver`, `bronze`, nulo)
+     * não pertence a tipo nenhum e o item sai com `tipo => null`. Não cai no
+     * Clássico "porque é o mais comum" — é a mesma recusa que o serviço faz na
+     * ida. O gate que liga os dois lados é o caso de teste que filtra
+     * `tipo=premium` e confere que TODO item devolvido tem `tipo === 'premium'`:
+     * se este mapa divergir do de lá, ele reprova.
+     */
+    private const TIPO_POR_LISTING_TYPE = [
+        'gold_special' => AcervoTriagemService::TIPO_CLASSICO,
+        'gold_pro'     => AcervoTriagemService::TIPO_PREMIUM,
+    ];
+
+    /**
+     * O nome do grupo das publicações que NÃO têm produto no Publicador —
+     * as "Legado" (LIST-09/EXMP-01).
+     *
+     * ⚠️ Ele DIZ o que é, em vez de inventar um nome de produto ou de mostrar
+     * "—". O selo de origem da própria tela já descreve o caso como *"Anúncio
+     * do cliente, fora deste módulo"* (`MeusAnuncios.jsx:111`) — este rótulo é a
+     * versão de cabeçalho de grupo daquela mesma verdade.
+     *
+     * ⚠️ Isto é o nome do GRUPO, não a palavra "Legado" da linha: a linha
+     * continua recebendo as chaves de metodologia como `null` e quem desenha o
+     * selo é a tela.
+     */
+    public const GRUPO_SEM_PRODUTO = 'Sem produto no Publicador';
+
     public function __construct(
         private MlCatalogoMetaService $meta,
         private MlPublicacaoService $publicacao,
@@ -670,6 +705,26 @@ class MlbAnuncioController extends Controller
             ->paginate(50)
             ->withQueryString();
 
+        // ═══ A metodologia da linha (LIST-11/LIST-13/LIST-20) ════════════════
+        //
+        // De onde o anúncio veio: produto, fase, kit, autor e quando foi
+        // publicado. ⚠️ Resolvido AQUI, UMA vez, com os ≤50 `ml_item_id` da
+        // página — e o mapa é fechado dentro do `through()` abaixo. Chamar o
+        // serviço DENTRO do `through()` seria um N+1 de 50 consultas por
+        // request, e há gate que trava o número de consultas justamente para
+        // que mover esta linha para lá reprove.
+        //
+        // ⚠️ `ml_item_id` AUSENTE do mapa é a resposta para "Legado": o anúncio
+        // não nasceu neste módulo. As chaves vão `null` e quem desenha a palavra
+        // é a tela — a mesma disciplina do `null` × `0` da Fase 179, e evita que
+        // o rótulo exista em dois lugares.
+        $idsDaPagina = $anuncios->getCollection()
+            ->pluck('ml_item_id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+
+        $metodologia = $publicacoes->metodologiaPorMlItemId($company, $idsDaPagina);
+
         $anuncios->through(fn (MlAcervoItem $item) => [
             'ml_item_id'          => $item->ml_item_id,
             'titulo'              => (string) $item->title,
@@ -710,6 +765,43 @@ class MlbAnuncioController extends Controller
             'performance_level'      => $item->performance_level,
             'performance_acoes'      => $item->performance_acoes ?? [], // title já redigido em pt-BR pelo ML — nunca reescrito
             'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
+
+            // ─── Fase 180, plano 04: chaves ADITIVAS, nenhuma removida ───────
+            //
+            // ⚠️ `health_ml`, `performance_*`, `buybox_*`, `motivos` e
+            // `severidade` acima CONTINUAM: LIST-24 diz que eles MIGRAM para o
+            // painel de inspeção (Fase 181) e para os chips, não que são
+            // apagados. Remover a chave agora quebraria o `ModalDetalheAnuncio`
+            // e os testes de `MeusAnunciosTest`.
+            //
+            // ⚠️⚠️ `margem`, `lucro`, `repasse` e `tarifa` NÃO EXISTEM AQUI, e
+            // isso é LIST-12, não esquecimento: a tarifa do Mercado Livre não
+            // está no banco. A margem é carregada de forma ASSÍNCRONA depois da
+            // lista, pelo endpoint que já existe em produção
+            // (`MlbAlavancasController::analise` + `AnaliseAlavancasService`,
+            // ligado na Fase 181), e até ela chegar a célula "Preço" mostra
+            // **"—"**. ⚠️ NUNCA calcular margem aqui, nunca mandar `0`, nunca
+            // estimar a tarifa por percentual: zero é um número, e "não
+            // medimos" não é zero (EXMP-01). Há asserção NEGATIVA, com o item
+            // preenchido, provando que estas quatro chaves não existem.
+            'produto_id'     => $metodologia[(string) $item->ml_item_id]['produto_id'] ?? null,
+            'produto_nome'   => $metodologia[(string) $item->ml_item_id]['produto_nome'] ?? null,
+            'produto_sku'    => $metodologia[(string) $item->ml_item_id]['produto_sku'] ?? null,
+            'fase'           => $metodologia[(string) $item->ml_item_id]['fase'] ?? null,
+            'quantidade_kit' => $metodologia[(string) $item->ml_item_id]['quantidade_kit'] ?? null,
+            'autor_nome'     => $metodologia[(string) $item->ml_item_id]['autor_nome'] ?? null,
+            'autor_tipo'     => $metodologia[(string) $item->ml_item_id]['autor_tipo'] ?? null,
+            'publicada_em'   => $metodologia[(string) $item->ml_item_id]['publicada_em'] ?? null,
+
+            // Clássico/Premium do `listing_type_id` real. ⚠️ Qualquer outro
+            // valor (`free`, `silver`, `bronze`, nulo) é `null` — LIST-20: nada
+            // inferido do título, e nada caindo no Clássico "porque é o mais
+            // comum". `listing_tier` acima continua mandando o valor CRU, para
+            // quem precisa dele.
+            'tipo'           => is_string($item->listing_type_id)
+                ? (self::TIPO_POR_LISTING_TYPE[$item->listing_type_id] ?? null)
+                : null,
+            'catalogo'       => (bool) $item->catalog_listing,
         ]);
 
         // ─── Triagem (D-09) e defasagem (D-08) — extraídas para
@@ -804,6 +896,96 @@ class MlbAnuncioController extends Controller
             ['chave' => 'rascunhos',                           'rotulo' => 'Rascunhos',  'total' => $contagens['rascunhos'],  'comDot' => false],
         ];
 
+        // ═══ A visão "Por produto" (LIST-09/LIST-16) ══════════════════════════
+        //
+        // ⚠️ Os grupos saem do MESMO conjunto PAGINADO, nunca de outra consulta:
+        // se viessem de um recorte diferente, o rodapé ("N de M publicações")
+        // mentiria sobre o que a tela está mostrando.
+        //
+        // ⚠️ `cobertura` e `total_no_produto` vêm de `coberturaPorProduto()`, que
+        // conta TODAS as publicações do produto (não só as da página) — é isso
+        // que produz o "x de N" quando há filtro.
+        $linhasDaPagina = $anuncios->getCollection();
+
+        $produtoIdsDaPagina = $linhasDaPagina
+            ->pluck('produto_id')
+            ->filter(fn ($id) => is_int($id))
+            ->unique()
+            ->values()
+            ->all();
+
+        // UMA consulta para todos os produtos da página. Lista vazia não
+        // consulta (o serviço devolve `[]` sem tocar o banco).
+        $cobertura = $publicacoes->coberturaPorProduto($company, $produtoIdsDaPagina);
+
+        $grupos = $visao === 'grupo'
+            ? $this->gruposPorProduto($linhasDaPagina, $cobertura, $alvo)
+            : []; // visão "Lista": a tela usa `anuncios.data` direto
+
+        // ─── O rodapé (LIST-16) ──────────────────────────────────────────────
+        //
+        // ⚠️ `total` é o do paginator — a contagem que o `paginate(50)` JÁ fez,
+        // de graça. Contar de novo seria pagar duas vezes pelo mesmo número.
+        // ⚠️ `produtos` é a contagem DISTINTA de `produto_id` da página; as
+        // publicações sem produto (Legado) não entram, porque não há produto que
+        // contar. O grupo delas existe e aparece na tela do mesmo jeito.
+        $rodape = [
+            'visiveis' => $anuncios->count(),
+            'total'    => $anuncios->total(),
+            'produtos' => count($produtoIdsDaPagina),
+        ];
+
+        // ─── "● Sincronizado há X" do cabeçalho (LIST-01) ────────────────────
+        //
+        // ⚠️ Derivado do `$defasagem` que esta action JÁ calculou — repetir a
+        // consulta seria pagar duas vezes pelo mesmo número, exatamente o que o
+        // comentário da prop `cabecalho` avisa.
+        //
+        // ⚠️ O `rotulo` chega PRONTO em pt-BR porque o componente não monta data:
+        // `CabecalhoDePublicacoes.jsx` não tem `new Date()` nenhum, de propósito
+        // (`Invalid Date` e o deslocamento de fuso de data-only em BRT já
+        // morderam este projeto), e ele RECUSA rótulo com cara de data crua.
+        //
+        // ⚠️ "nunca medimos" ≠ "medimos e é zero": sem coleta o `rotulo` é
+        // `null`, `nunca_coletado` é `true`, e o bloco inteiro desaparece da
+        // tela — nunca aparece "Sincronizado há —". Quem resolve é o botão
+        // "Atualizar", que continua.
+        $sincronizacao = [
+            'coletado_em'    => $defasagem['coletado_em'],
+            'horas'          => $defasagem['horas'],
+            'defasado'       => $defasagem['defasado'],
+            'nunca_coletado' => $defasagem['nunca_coletado'],
+            'rotulo'         => $this->rotuloDeSincronizacao($defasagem),
+        ];
+
+        // ─── A faixa verde de sucesso (LIST-02) ──────────────────────────────
+        //
+        // ⚠️⚠️ `null` SEMPRE, e isso é MEDIDO, não preguiça. Três razões
+        // independentes, e qualquer uma basta:
+        //   1. ninguém grava um resumo de publicação em sessão — zero
+        //      `session()->put(`/`->flash(` de publicação em `app/`, inclusive em
+        //      `PublicacaoService` e `PublicarRascunhoJob`;
+        //   2. mesmo que gravasse, a chave morreria no caminho: a lista BRANCA de
+        //      `flash` de `HandleInertiaRequests` (`:64-98`) tem 10 chaves e
+        //      nenhuma de publicação — defeito que já aconteceu duas vezes neste
+        //      projeto, documentado nos comentários de `nps_link_existente` e
+        //      `portal_codigo_enviado`;
+        //   3. a publicação é ASSÍNCRONA (`MlbPublicadorController::publicar()`
+        //      devolve 202 e enfileira), então quando o usuário volta para a
+        //      lista o job pode nem ter rodado — "N publicações criadas agora"
+        //      não é um fato disponível no retorno.
+        //
+        // ⚠️ O que isso NÃO autoriza é fabricar o resumo. O protótipo traz
+        // "2 publicações criadas agora · Poltrona Beny" e aquilo é dado MOCK
+        // (EXMP-01). O componente devolve `null` e a faixa não aparece.
+        //
+        // O caminho nomeado para quem for ligar a fonte (plano futuro, não este):
+        // `pub_publicacoes.concluida_em` + `pub_publicacao_itens` já têm tudo;
+        // falta (a) uma chave de flash NOVA declarada no `HandleInertiaRequests`
+        // e (b) decidir o que a tela mostra quando a fila ainda não concluiu —
+        // que é decisão de produto, não de código.
+        $faixaSucesso = null;
+
         // ─── RIE-04 (quick 261010-rie): o vazio da busca explica, não mente ──
         //
         // POR QUE EXISTE: a busca passou a cobrir SKU, mas a coluna `skus` só é
@@ -883,6 +1065,10 @@ class MlbAnuncioController extends Controller
             // Fase 180, plano 04 — props NOVAS, nenhuma substituição.
             'abas'              => $abas,
             'contagens'         => $contagens,
+            'grupos'            => $grupos,
+            'rodape'            => $rodape,
+            'sincronizacao'     => $sincronizacao,
+            'faixaSucesso'      => $faixaSucesso,
             'skuNaoColetado'    => $skuNaoColetado,
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
@@ -1008,6 +1194,259 @@ class MlbAnuncioController extends Controller
         }
 
         return array_keys($ids);
+    }
+
+    /**
+     * A visão "Por produto" (LIST-09): as linhas da página agrupadas pelo
+     * produto que as originou.
+     *
+     * ⚠️ **ORDEM DOS GRUPOS = ordem de APARIÇÃO na lista já ordenada por
+     * gravidade (D-12).** É o que preserva o critério 13 (a ordenação por
+     * gravidade continua valendo) E agrupa ao mesmo tempo. Não reordenar por
+     * nome — o protótipo também não reordena (`order.push(p.prod)` na ordem em
+     * que a linha aparece, `Publicacoes v2.dc.html:564`).
+     *
+     * ⚠️ **ORDEM DAS LINHAS DENTRO DO GRUPO**, conferida no protótipo
+     * (`:566`): `fase DESC`, Premium antes de Clássico, depois data DESC.
+     * ⚠️ DIVERGÊNCIA MEDIDA: no protótipo o terceiro termo é INALCANÇÁVEL por
+     * construção — o comparador é
+     * `b.ph - a.ph || (a.t === 'premium' ? -1 : 1) || b.d.localeCompare(a.d)`, e
+     * o termo do meio devolve `-1` ou `1`, **nunca `0`**, então o desempate por
+     * data nunca roda (e o comparador é inconsistente: para dois clássicos ele
+     * devolve `1` nas duas direções). Replicar o defeito daria ordem instável
+     * entre requests. Aqui o comparador é consistente e a INTENÇÃO do protótipo
+     * é respeitada inteira: fase DESC → Premium antes → data DESC →
+     * `ml_item_id` ASC como tie-break estável (a mesma disciplina do D-12).
+     *
+     * ⚠️ As publicações SEM produto (Legado) formam **um grupo próprio, no
+     * FIM**, com `produto_id` nulo e o nome que DIZ o que é
+     * (`self::GRUPO_SEM_PRODUTO`) — nunca um nome inventado, nunca "—"
+     * (EXMP-01).
+     *
+     * ⚠️ `ver_produto_url` e `criar_combo_url` só existem quando há destino
+     * REAL; `null` faz a tela não desenhar o link. **Nenhum botão sem destino**
+     * (EXMP-01) — e nenhum `href="#"`.
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $linhas  as linhas da página, já pelo `through()`
+     * @param  array<int, array{f1_classico:bool, f1_premium:bool, f2_classico:bool, f2_premium:bool, total:int}>  $cobertura
+     * @param  array<string, mixed>|null  $alvo  o alvo do `ProgramasPublicadorService` (dá a chave da conta)
+     * @return array<int, array<string, mixed>>
+     */
+    private function gruposPorProduto($linhas, array $cobertura, ?array $alvo): array
+    {
+        $porProduto = [];
+        $legado     = [];
+
+        foreach ($linhas as $linha) {
+            $produtoId = $linha['produto_id'] ?? null;
+
+            if (! is_int($produtoId)) {
+                $legado[] = $linha;
+
+                continue;
+            }
+
+            $porProduto[$produtoId][] = $linha;
+        }
+
+        $chaveDaConta = is_array($alvo) && isset($alvo['chave']) && is_string($alvo['chave'])
+            ? $alvo['chave']
+            : null;
+
+        $grupos = [];
+
+        foreach ($porProduto as $produtoId => $doProduto) {
+            $ordenadas = $this->ordemDentroDoGrupo($doProduto);
+
+            $celulas = $cobertura[$produtoId] ?? [
+                'f1_classico' => false, 'f1_premium' => false,
+                'f2_classico' => false, 'f2_premium' => false, 'total' => 0,
+            ];
+
+            // ⚠️ `sem_fase2` sai das CÉLULAS de F2, que é o que a tela desenha.
+            // Limitação registrada: uma publicação de fase 2 cujo
+            // `listing_type_id` não seja `gold_special` nem `gold_pro` conta no
+            // `total` do serviço e não acende célula nenhuma, então não limpa
+            // esta flag. Corrigir exige contagem POR FASE em
+            // `PublicacoesDaListaService` — território do plano 180-02.
+            $semFase2 = $celulas['f2_classico'] !== true && $celulas['f2_premium'] !== true;
+
+            $totalNoProduto = max((int) $celulas['total'], count($ordenadas));
+
+            $grupos[] = [
+                'produto_id'       => (int) $produtoId,
+                'produto_nome'     => $ordenadas[0]['produto_nome'] ?? null,
+                'produto_sku'      => $ordenadas[0]['produto_sku'] ?? null,
+                // ⚠️ O estoque vem do ACERVO (`available_quantity`, já na
+                // linha), e não de `pub_produtos.estoque_calculado`, que é
+                // BOOLEANO — era a pendência nomeada do plano 180-02. Pode ser
+                // `null`, e então a tela mostra "Estoque —", que é honesto;
+                // nunca um zero inventado.
+                'estoque'          => $ordenadas[0]['estoque'] ?? null,
+                'cobertura'        => [
+                    'f1_classico' => (bool) $celulas['f1_classico'],
+                    'f1_premium'  => (bool) $celulas['f1_premium'],
+                    'f2_classico' => (bool) $celulas['f2_classico'],
+                    'f2_premium'  => (bool) $celulas['f2_premium'],
+                ],
+                'total_no_produto' => $totalNoProduto,
+                'total_visivel'    => count($ordenadas),
+                'sem_fase2'        => $semFase2,
+                'ver_produto_url'  => route('mlb.anuncios.publicador.editor', ['produto' => (int) $produtoId]),
+                // ⚠️ MEDIDO: não existe rota GET que crie o combo DE UM PRODUTO
+                // específico. O destino real — e é o MESMO que a linha
+                // "Prontos para a Fase 2" da Visão Geral já usa
+                // (`PainelVisaoGeralService::linhaDeProdutos()`, `:624`) — é a
+                // tela de Produtos filtrada por quem ainda pode ganhar fase.
+                // Ela NÃO pré-seleciona o produto: `Produtos.jsx` lê `?filtro=`
+                // e `?fase=` da URL, mas a busca é estado local (`:463`), então
+                // não há como mandar o produto na querystring. Sem conta
+                // resolvida e sem fase 2 faltando, é `null` e o link não
+                // aparece — nunca um `href="#"`.
+                'criar_combo_url'  => $semFase2 && $chaveDaConta !== null
+                    ? route('mlb.anuncios.publicador.produtos', [
+                        'conta'  => $chaveDaConta,
+                        'filtro' => 'publicados',
+                        'fase'   => 'so_base',
+                    ])
+                    : null,
+                'ml_item_ids'      => array_values(array_map(
+                    fn (array $l) => (string) ($l['ml_item_id'] ?? ''),
+                    $ordenadas,
+                )),
+            ];
+        }
+
+        if ($legado !== []) {
+            $ordenadas = $this->ordemDentroDoGrupo($legado);
+
+            $grupos[] = [
+                'produto_id'       => null,
+                'produto_nome'     => self::GRUPO_SEM_PRODUTO,
+                'produto_sku'      => null,
+                'estoque'          => $ordenadas[0]['estoque'] ?? null,
+                // Sem produto não há fase nem tipo que cobrir: as 4 células
+                // ficam apagadas, que é a verdade medida, não "não sabemos".
+                'cobertura'        => [
+                    'f1_classico' => false, 'f1_premium' => false,
+                    'f2_classico' => false, 'f2_premium' => false,
+                ],
+                // `total_no_produto === total_visivel` de propósito: não existe
+                // um "total do produto" para quem não tem produto, então a tela
+                // não desenha o "x de N" aqui.
+                'total_no_produto' => count($ordenadas),
+                'total_visivel'    => count($ordenadas),
+                // Não há produto para ganhar uma fase 2 — a flag não se aplica,
+                // e `false` é o que impede a tela de oferecer o atalho.
+                'sem_fase2'        => false,
+                'ver_produto_url'  => null,
+                'criar_combo_url'  => null,
+                'ml_item_ids'      => array_values(array_map(
+                    fn (array $l) => (string) ($l['ml_item_id'] ?? ''),
+                    $ordenadas,
+                )),
+            ];
+        }
+
+        return $grupos;
+    }
+
+    /**
+     * A ordem das linhas DENTRO de um grupo — ver o docblock de
+     * `gruposPorProduto()` para a conferência no protótipo e a divergência.
+     *
+     * @param  array<int, array<string, mixed>>  $linhas
+     * @return array<int, array<string, mixed>>
+     */
+    private function ordemDentroDoGrupo(array $linhas): array
+    {
+        usort($linhas, static function (array $a, array $b) {
+            // 1. Fase DESC. Fase ausente (Legado) vai para o fim do grupo.
+            $faseA = is_int($a['fase'] ?? null) ? $a['fase'] : 0;
+            $faseB = is_int($b['fase'] ?? null) ? $b['fase'] : 0;
+            if ($faseA !== $faseB) {
+                return $faseB <=> $faseA;
+            }
+
+            // 2. Premium antes de Clássico. Tipo desconhecido (`null`) vai
+            //    depois dos dois — não é promovido a Clássico.
+            $peso = static fn (?string $tipo) => match ($tipo) {
+                AcervoTriagemService::TIPO_PREMIUM => 0,
+                AcervoTriagemService::TIPO_CLASSICO => 1,
+                default => 2,
+            };
+            $pesoA = $peso(is_string($a['tipo'] ?? null) ? $a['tipo'] : null);
+            $pesoB = $peso(is_string($b['tipo'] ?? null) ? $b['tipo'] : null);
+            if ($pesoA !== $pesoB) {
+                return $pesoA <=> $pesoB;
+            }
+
+            // 3. Data DESC. ⚠️ Comparação de STRING ISO 8601, nunca `new
+            //    DateTime`: a data chega pronta do serviço e ISO 8601 ordena
+            //    lexicograficamente. Data ausente (`''`) vai para o fim.
+            $dataA = is_string($a['publicada_em'] ?? null) ? $a['publicada_em'] : '';
+            $dataB = is_string($b['publicada_em'] ?? null) ? $b['publicada_em'] : '';
+            if ($dataA !== $dataB) {
+                return strcmp($dataB, $dataA);
+            }
+
+            // 4. Tie-break estável entre requests, como o D-12 da listagem.
+            return strcmp(
+                (string) ($a['ml_item_id'] ?? ''),
+                (string) ($b['ml_item_id'] ?? ''),
+            );
+        });
+
+        return array_values($linhas);
+    }
+
+    /**
+     * "há 25 min" / "agora" / "há 3 h" / "há 2 dias" — o rótulo PRONTO do
+     * "● Sincronizado X" do cabeçalho (LIST-01).
+     *
+     * ⚠️ Montado no SERVIDOR porque `CabecalhoDePublicacoes.jsx` não tem (e não
+     * pode ter) `new Date()`: `Invalid Date` e o deslocamento de fuso de
+     * data-only em BRT já morderam este projeto duas vezes.
+     *
+     * ⚠️ NUNCA devolve carimbo cru: o componente RECUSA rótulo que casa com
+     * `/\d{4}-\d{2}-\d{2}/`, e com razão — "Sincronizado 2026-10-13T12:00:00Z"
+     * é jargão de máquina, que a regra permanente do projeto proíbe.
+     *
+     * ⚠️ Acervo nunca coletado devolve `null`, e então o bloco inteiro
+     * desaparece da tela. "nunca medimos" ≠ "medimos e é zero": não existe
+     * "Sincronizado há —" nem "Sincronizado nunca".
+     *
+     * @param  array{coletado_em:?string, horas:?int, defasado:bool, nunca_coletado:bool, motivo:?string}  $defasagem
+     */
+    private function rotuloDeSincronizacao(array $defasagem): ?string
+    {
+        if (($defasagem['nunca_coletado'] ?? true) === true) {
+            return null;
+        }
+
+        $coletadoEm = $defasagem['coletado_em'] ?? null;
+        if (! is_string($coletadoEm) || $coletadoEm === '') {
+            return null;
+        }
+
+        $minutos = (int) Carbon::parse($coletadoEm)->diffInMinutes(now());
+
+        if ($minutos < 1) {
+            return 'agora';
+        }
+
+        if ($minutos < 60) {
+            return 'há '.$minutos.' min';
+        }
+
+        $horas = intdiv($minutos, 60);
+        if ($horas < 48) {
+            return 'há '.$horas.' h';
+        }
+
+        $dias = intdiv($horas, 24);
+
+        return 'há '.$dias.' dias';
     }
 
     /**
