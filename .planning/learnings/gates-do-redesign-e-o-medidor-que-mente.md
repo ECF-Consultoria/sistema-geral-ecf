@@ -78,9 +78,9 @@ de presença. Ler o corpo da regra é obrigatório — e o medidor erra de seis 
 
 ---
 
-## 4. A família das asserções que casam sempre — nove casos medidos
+## 4. A família das asserções que casam sempre — DEZ casos medidos
 
-Este projeto já foi mordido nove vezes pela mesma classe de erro: asserção que passa
+Este projeto já foi mordido dez vezes pela mesma classe de erro: asserção que passa
 **independentemente do código**.
 
 1. `assert.match(tag, /disabled/)` casa com a classe `disabled:opacity-40` → use `/disabled=/`.
@@ -106,7 +106,20 @@ Este projeto já foi mordido nove vezes pela mesma classe de erro: asserção qu
    `resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx` (**dentro** de `header/`).
    Escrever `Components/Mlb/Publicador/Mesa` ou o header fora de `header/` dá diff vazio e "prova"
    território intocado — foram o 3º e o 4º caminho fantasma da milestone.
-9. ⚠️ **Asserção de ausência rodada com dado VAZIO é vazia por construção.** Se você assertar que
+   ⚠️ **5º (13/10/2026):** `Pages/Mlb/Publicador/AnunciosHistorico.jsx` **não existe** — o real
+   é **`resources/js/Pages/Mlb/AnunciosHistorico.jsx`**, FORA de `Publicador/`, ao lado de
+   `anuncioHistoricoUtils.js`. Cinco caminhos fantasma em quatro fases: **`test -e` não é zelo,
+   é obrigatório.**
+9. ⚠️⚠️ **CÓDIGO ANSI COME O VEREDICTO DO TESTE — e o log diz que deu tudo certo.**
+   Medido em 13/10/2026 (plano 180-03): a campanha de mutação filtrava o resultado do `artisan test`
+   por `grep` numa linha fixa, e as sequências de cor comeram **todas as 12 linhas de resultado**.
+   O log saiu com "RESTAURADA sha256 OK" nas 12 e **zero evidência de reprovação** — a campanha
+   inteira parecia verde sem ter provado nada.
+   ➡️ **Em qualquer gate que LEIA saída de `artisan test` ou `npm`, tire o ANSI antes de filtrar**
+   (um `sed` removendo `ESC[` seguido de dígitos/`;` e a letra final). ⚠️ **É a armadilha mais
+   insidiosa da lista, porque o modo de falhar é silêncio com aparência de sucesso** — todas as
+   outras fazem um gate passar; esta faz a **prova inteira** passar.
+10. ⚠️ **Asserção de ausência rodada com dado VAZIO é vazia por construção.** Se você assertar que
    um bloco não aparece, rode **com as props preenchidas**.
 
 ➡️ **A pergunta que desmascara todos:** *"o que precisaria estar errado no código para este gate
