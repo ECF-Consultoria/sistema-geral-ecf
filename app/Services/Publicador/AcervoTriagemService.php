@@ -35,8 +35,40 @@ class AcervoTriagemService
      * A busca cobre TRÊS campos desde 10/10/2026 (quick 261010-rie): o nome
      * do anúncio (`title`), o código MLB (`ml_item_id`) e o SKU (`skus`) —
      * os três identificadores que o usuário tem na mão.
+     *
+     * ─── 13/10/2026: a busca passa a cobrir QUATRO identificadores (LIST-03) ──
+     *
+     * POR QUÊ: queixa literal do usuário no teste real da tela de Publicações —
+     * *"a busca não achava o anúncio pelo nome do produto"*. O nome do PRODUTO
+     * não vive no acervo: `ml_acervo_itens.title` é o TÍTULO DO ANÚNCIO, que a
+     * IA reescreve e que raramente é igual ao nome com que o produto foi
+     * cadastrado. Quem sabe ligar um `ml_item_id` ao produto que o originou é
+     * `PublicacoesDaListaService::mlItemIdsPorProduto()` (plano 180-02), que
+     * começa em `pub_produtos` (lado pequeno) e desce pelas FKs.
+     *
+     * É EMENDA ADITIVA, igual às de 10/08 e 10/10: `title`, `ml_item_id` e
+     * `skus` continuam achando exatamente o que achavam. O 4º braço só
+     * ACRESCENTA — e o `$lista` é OPCIONAL justamente para que todo chamador
+     * existente (`CockpitDaContaService::resumoDePublicacoes()`,
+     * `CabecalhoPublicadorService`, `MlbAnuncioController::meus()`) siga com o
+     * comportamento de hoje, byte a byte, sem edição.
+     *
+     * ⚠️ NÃO "simplificar" o braço novo para um `LIKE` em `pub_produtos.nome`
+     * dentro desta consulta: `ml_acervo_itens` tinha 1.080.206 linhas / 1.776 MB
+     * na última medição, e um join a partir dele é o lado dirigente errado. Os
+     * ids chegam prontos, já escopados por empresa e com teto de
+     * `PublicacoesDaListaService::TETO_IDS_POR_BUSCA`.
+     *
+     * ⚠️ INJEÇÃO POR PARÂMETRO, nunca `app()`: este serviço não tem (e não deve
+     * ganhar) dependência de construtor — ver o docblock da classe. O
+     * `PublicacoesDaListaService` chega de quem já o tem na mão.
+     *
+     * IMPACTO NOS CHIPS (D-09) e NA ORDENAÇÃO (D-12): nenhum por si. O braço
+     * novo só pode AUMENTAR o conjunto da busca; `triagem()` conta sobre o
+     * mesmo escopo, então o universo dos chips acompanha a busca — era o que já
+     * acontecia com os três braços antigos.
      */
-    public function escopo(Company $company, string $busca, string $statusFiltro): Builder
+    public function escopo(Company $company, string $busca, string $statusFiltro, ?PublicacoesDaListaService $lista = null): Builder
     {
         // 'acionaveis' (default) cobre TRÊS status — é o universo sobre o qual
         // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
@@ -108,17 +140,34 @@ class AcervoTriagemService
         $buscaCabeNoJson = $busca !== '' && ! preg_match('/["\[\]]/', $busca);
 
         return MlAcervoItem::where('company_id', $company->id)
-            ->when($busca !== '', function ($q) use ($busca, $buscaCabeNoJson) {
-                // Os três identificadores que o usuário tem na mão: nome do
-                // anúncio, código MLB e SKU (quick 261010-rie). O AGRUPAMENTO
-                // é o que preserva o escopo por empresa — um orWhere solto
-                // sobe ao topo do WHERE e anula o company_id (T-134-01).
-                $q->where(function ($s) use ($busca, $buscaCabeNoJson) {
+            ->when($busca !== '', function ($q) use ($company, $busca, $buscaCabeNoJson, $lista) {
+                // O 4º identificador (LIST-03, 13/10/2026): os `ml_item_id` cujo
+                // PRODUTO casa com o termo. Resolvido FORA do acervo, antes do
+                // grupo, por quem sabe o caminho `pub_publicacao_itens ->
+                // pub_publicacoes -> pub_rascunhos -> pub_produtos`. Lista
+                // pequena (teto de PublicacoesDaListaService::TETO_IDS_POR_BUSCA)
+                // e já escopada por empresa na origem — dupla trava com o
+                // `company_id` desta consulta (T-180-03-I).
+                $idsDeProduto = $lista !== null ? $lista->mlItemIdsPorProduto($company, $busca) : [];
+
+                // Os quatro identificadores que o usuário tem na mão: nome do
+                // anúncio, código MLB, SKU (quick 261010-rie) e nome/SKU do
+                // PRODUTO (LIST-03). O AGRUPAMENTO é o que preserva o escopo
+                // por empresa — um orWhere solto sobe ao topo do WHERE e anula
+                // o company_id (T-134-01).
+                $q->where(function ($s) use ($busca, $buscaCabeNoJson, $idsDeProduto) {
                     $s->where('title', 'like', "%{$busca}%")
                       ->orWhere('ml_item_id', 'like', "%{$busca}%");
 
                     if ($buscaCabeNoJson) {
                         $s->orWhere('skus', 'like', "%{$busca}%");
+                    }
+
+                    // Lista vazia NÃO acrescenta braço: `orWhereIn(col, [])`
+                    // gera `0 = 1` e dentro de um OR é inofensivo, mas não
+                    // acrescentar é mais barato e mais legível.
+                    if ($idsDeProduto !== []) {
+                        $s->orWhereIn('ml_item_id', $idsDeProduto);
                     }
                 });
             })
