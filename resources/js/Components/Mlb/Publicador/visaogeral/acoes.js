@@ -229,7 +229,9 @@ export function destinoHref(destino) {
     const url = urlSegura(destino.url);
     if (url !== null) return url;
 
-    const rota = textoUtil(destino.rota);
+    // ⚠️ `rota` tem de ser STRING: `textoUtil(7)` devolve `'7'`, e
+    // `route('7')` produziria um destino inventado (o gate pegou).
+    const rota = typeof destino.rota === 'string' ? textoUtil(destino.rota) : null;
     if (rota === null) return null;
 
     const params = objeto(destino.params) ? destino.params : {};
@@ -290,10 +292,15 @@ export function normalizarAcoes(bruta) {
  * muda é o adiamento otimista: a ação já saiu da tela, então sai da contagem
  * também, senão o segmented prometeria uma linha que não existe mais.
  *
+ * ⚠️ `ativa` sai daqui e NÃO de uma comparação dentro do `.map()` do JSX:
+ * `aba.chave === filtro` leria `filtro`, que é variável de escopo do componente
+ * — exatamente a forma que o Rollup elimina (REND-04). O gate pegou.
+ *
  * @param {object} contagens   `{todas, critico, atencao, oportunidade}` já normalizado
  * @param {Array<{severidade: string}>} escondidas  as adiadas só no cliente
+ * @param {string} filtro      a severidade selecionada
  */
-export function abasComContagem(contagens, escondidas = []) {
+export function abasComContagem(contagens, escondidas = [], filtro = 'todas') {
     const base = objeto(contagens) ? contagens : {};
     const fora = lista(escondidas).filter((acao) => objeto(acao));
 
@@ -307,6 +314,7 @@ export function abasComContagem(contagens, escondidas = []) {
             chave: aba.chave,
             rotulo: aba.rotulo,
             tem_dot: aba.tem_dot,
+            ativa: aba.chave === filtro,
             total: Math.max(bruto - descontadas, 0),
         };
     });
@@ -329,7 +337,9 @@ export function acoesParaTela(dados, filtro = 'todas', expandidas = {}, escondid
     const base = objeto(dados) ? dados : { acoes: [] };
     const abertas = objeto(expandidas) ? expandidas : {};
     const fora = objeto(escondidas) ? escondidas : {};
-    const conta = textoUtil(contaChave);
+    // ⚠️ `urlSegura` e não `textoUtil`: conta `7` viraria `conta=7` na URL do
+    // POST — parâmetro inventado. Mesma lição do D-8 do 179-06.
+    const conta = urlSegura(contaChave);
 
     return lista(base.acoes)
         .filter((acao) => acao.chave === null || fora[acao.chave] !== true)
@@ -417,7 +427,9 @@ export const ERP_NAO_INFORMADO = 'Não informado';
  * isto: o dado não existe. Antes de mexer, leia a 177-03-SUMMARY.
  */
 export function metaDoErp(declarado) {
-    const nome = textoUtil(declarado);
+    // ⚠️ STRING apenas: `declarado` é nome de ERP. `textoUtil(7)` devolveria
+    // `'7'` e a tela diria "Declarado: 7" — nome de ERP inventado.
+    const nome = typeof declarado === 'string' ? textoUtil(declarado) : null;
 
     return nome === null ? ERP_NAO_INFORMADO : `Declarado: ${nome}`;
 }

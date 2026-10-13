@@ -173,11 +173,25 @@ function IconeDaSeveridade({ severidade }) {
  * @param {object} props
  * @param {unknown} props.acoes              o payload de `AcoesDaContaService::acoes()`
  * @param {string|null} [props.contaChave]   escopo da conta (parâmetro da rota de adiar)
+ * @param {object} [props.expandidasIniciais]  quais chaves nascem com a gaveta aberta.
+ *   ⚠️ O padrão é `{}` — TUDO fechado, como o protótipo (`:390`, `open: {}`).
+ *   A prop existe porque "aberta" é a única coisa deste bloco que só um CLIQUE
+ *   produz: sem ela nenhum gate alcançaria uma medida da sub-lista, e a
+ *   asserção negativa "ação sem item não abre gaveta" ficaria **vazia por
+ *   construção** (tudo fechado reprova nada). É a lacuna que a mutação M22 do
+ *   plano 179-06 expôs. Padrão `defaultOpen` do React; o 179-09 não a passa.
+ * @param {string} [props.filtroInicial]  severidade pré-selecionada; o padrão é
+ *   `'todas'` (`:390`, `sev: 'all'`). Mesmo motivo: o filtro só muda por clique.
  */
-export default function OQueFazerAgora({ acoes, contaChave = null }) {
+export default function OQueFazerAgora({
+    acoes,
+    contaChave = null,
+    expandidasIniciais = {},
+    filtroInicial = 'todas',
+}) {
     const dados = normalizarAcoes(acoes);
-    const [filtro, setFiltro] = useState('todas');
-    const [expandidas, setExpandidas] = useState({});
+    const [filtro, setFiltro] = useState(filtroInicial);
+    const [expandidas, setExpandidas] = useState(expandidasIniciais);
     // O esconder OTIMISTA: a ação sai da tela na hora, e o servidor (que é a
     // fonte da verdade) devolve as props sem ela no `preserveState: false`.
     const [escondidas, setEscondidas] = useState({});
@@ -201,14 +215,14 @@ export default function OQueFazerAgora({ acoes, contaChave = null }) {
 
                 {/* ─── Trilho do segmented (:170) ─── */}
                 <div className="flex items-center gap-[2px] rounded-pub-sub border border-pub-line-subtle bg-pub-hover-2 p-[3px]">
-                    {abasComContagem(dados.contagens, fora).map((aba) => (
+                    {abasComContagem(dados.contagens, fora, filtro).map((aba) => (
                         <button
                             key={aba.chave}
                             type="button"
                             onClick={() => setFiltro(aba.chave)}
                             className={cn(
                                 'flex h-[28px] cursor-pointer items-center gap-[6px] whitespace-nowrap rounded-pub-control-sm border-none px-[10px] text-[12.5px] font-medium',
-                                aba.chave === filtro
+                                aba.ativa
                                     ? 'bg-pub-seg text-pub-txt shadow-pub-seg-ativo'
                                     : 'bg-transparent text-pub-txt-2',
                             )}

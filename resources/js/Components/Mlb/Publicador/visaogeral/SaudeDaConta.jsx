@@ -92,10 +92,16 @@ const TILE_DA_LINHA = {
  *
  * @param {object} props
  * @param {unknown} props.saude  o payload de `CockpitDaContaService::saude()`
+ * @param {boolean} [props.atualizandoInicialmente]  liga o spinner no primeiro
+ *   render. ⚠️ O padrão é `false` (`:390`, `syncing: false`). A prop existe
+ *   porque o spinner só nasce de um CLIQUE, e sem ela as suas cinco medidas
+ *   (11×11, borda 1,5, topo amarelo, `spin .7s`) e o rótulo "Atualizando"
+ *   ficariam **inalcançáveis** pelo gate. O plano previu esta saída; o 179-09
+ *   não passa a prop.
  */
-export default function SaudeDaConta({ saude }) {
+export default function SaudeDaConta({ saude, atualizandoInicialmente = false }) {
     const dados = linhasDaSaude(saude);
-    const [atualizando, setAtualizando] = useState(false);
+    const [atualizando, setAtualizando] = useState(atualizandoInicialmente);
 
     return (
         <section className="overflow-hidden rounded-pub-card border border-pub-line bg-pub-surface">
