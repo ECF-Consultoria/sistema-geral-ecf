@@ -30,6 +30,8 @@ import { lerSemComentarios } from './_fonte.js';
 const DIR = 'resources/js/Components/Mlb/Publicador/identidade';
 const DIR_HEADER = 'resources/js/Components/Mlb/Publicador/header';
 const DIR_VG = 'resources/js/Components/Mlb/Publicador/visaogeral';
+// Fase 180 — o diretório da tela de Publicações, aberto pelo plano 180-05.
+const DIR_PUB = 'resources/js/Components/Mlb/Publicador/publicacoes';
 
 const ARQUIVOS_NOVOS = [
     `${DIR}/identidade.js`,
@@ -83,6 +85,17 @@ const ARQUIVOS_NOVOS = [
     `${DIR_VG}/AtividadeRecente.jsx`,
     // Plano 179-09 — a composição:
     `${DIR_VG}/CockpitDaConta.jsx`,
+    // ─── Fase 180 — a tela de Publicações (`publicacoes/`) ───
+    //
+    // ⚠️ A CONTAGEM desta fase está no sub-teste "os N arquivos da Fase 180
+    // estão na lista", logo abaixo, e hoje ela é 2 — os deste plano (180-05),
+    // que é quem ABRE o diretório. Os planos 180-06 em diante ELEVAM o número
+    // explicitamente ao acrescentar os seus, e o `deepEqual` de
+    // `DIRETORIOS_FECHADOS` é o que impede arquivo novo de entrar calado.
+    //
+    // Plano 180-05 — o cabeçalho da página e a faixa de sucesso pós-publicação:
+    `${DIR_PUB}/CabecalhoDePublicacoes.jsx`,
+    `${DIR_PUB}/FaixaDeSucesso.jsx`,
 ];
 
 /**
@@ -151,10 +164,14 @@ const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentari
  * ⚠️ `header/` fica FORA desta checagem de propósito: aquele diretório tem
  * arquivos que NÃO são desta milestone, e varrê-lo inteiro reprovaria trabalho
  * de outra fase.
+ *
+ * ⚠️ Fase 180, plano 05 — `publicacoes/` entra aqui, e é ADIÇÃO: o diretório
+ * nasceu nesta fase e é 100% dela, como `identidade/` e `visaogeral/` foram das
+ * suas. Nada saiu da lista.
  */
-const DIRETORIOS_FECHADOS = [DIR, DIR_VG];
+const DIRETORIOS_FECHADOS = [DIR, DIR_VG, DIR_PUB];
 
-test('GATE-03 — nenhum arquivo de `identidade/` ou `visaogeral/` fica FORA de ARQUIVOS_NOVOS', async (contexto) => {
+test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes/` fica FORA de ARQUIVOS_NOVOS', async (contexto) => {
     for (const diretorio of DIRETORIOS_FECHADOS) {
         await contexto.test(`${diretorio} — a lista cobre exatamente os .js/.jsx da pasta`, () => {
             const noDisco = readdirSync(resolve(import.meta.dirname, '../..', diretorio))
@@ -178,6 +195,19 @@ test('GATE-03 — nenhum arquivo de `identidade/` ou `visaogeral/` fica FORA de 
             ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_VG}/`)).length,
             12,
             'a Fase 179 criou 12 arquivos em `visaogeral/` (11 nas waves 1-2 + CockpitDaConta)',
+        );
+    });
+
+    await contexto.test('os 2 arquivos da Fase 180 estão na lista', () => {
+        // ⚠️ Número DESTE plano (180-05), que abre o diretório. Os planos
+        // seguintes da fase ELEVAM este valor junto com os arquivos deles —
+        // deixar o número parado é o jeito de descobrir que alguém esqueceu de
+        // declarar o arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem
+        // conferência contra `text-sm`, `ecf-*`, hex e breakpoint).
+        assert.equal(
+            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`)).length,
+            2,
+            'o plano 180-05 criou 2 arquivos em `publicacoes/` (CabecalhoDePublicacoes + FaixaDeSucesso)',
         );
     });
 });
