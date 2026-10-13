@@ -26,14 +26,14 @@ use Illuminate\Support\Carbon;
  * **Está errado, e isso está medido no código:** `ml_acervo_itens.rascunho_id`
  * aponta para `ml_anuncio_rascunhos`, o assistente ANTIGO. Duas provas:
  *
- *  · `database/migrations/2026_08_11_090000_create_ml_acervo_itens_table.php:54-61`
+ *  · `database/migrations/2026_08_11_090000_create_ml_acervo_itens_table.php:55-61`
  *    — o comentário da própria coluna diz que uma FK ali "criaria dependência de
  *    ordem de drop entre **ml_anuncio_rascunhos** e esta tabela";
- *  · `app/Services/Mlb/Acervo/MlAcervoService::mapaRascunhos()` monta o mapa
- *    `ml_item_id → rascunho_id` a partir de `MlAnuncioRascunho`, não de
- *    `PubRascunho` (chamado em `:205` e `:350`).
+ *  · `app/Services/Mlb/Acervo/MlAcervoService::mapaRascunhos()` (`:522`) monta o
+ *    mapa `ml_item_id → rascunho_id` a partir de `MlAnuncioRascunho::where()`
+ *    (`:526`), não de `PubRascunho`.
  *
- * O caminho REAL, o MESMO que `MlbAnuncioController::historico()` (`:306-317`)
+ * O caminho REAL, o MESMO que `MlbAnuncioController::historico()` (`:305-311`)
  * já percorre, é a ponte por `pub_publicacao_itens.ml_item_id`:
  *
  *   pub_publicacao_itens
