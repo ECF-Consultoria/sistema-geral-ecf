@@ -80,6 +80,11 @@ class PublicacoesDaListaService
 
     private const AUTOR_DESCONHECIDO = 'desconhecido';
 
+    /** Os dois tipos de anúncio do Mercado Livre que o mapa de cobertura distingue. */
+    private const TIPO_CLASSICO = 'classico';
+
+    private const TIPO_PREMIUM = 'premium';
+
     /**
      * Metodologia de cada `ml_item_id`: de qual produto a publicação é, em que
      * fase/kit, e quem a publicou. UMA consulta.
@@ -172,7 +177,185 @@ class PublicacoesDaListaService
         return $mapa;
     }
 
+    /**
+     * A BUSCA, no servidor (LIST-03/LIST-21): dado um termo, quais `ml_item_id`
+     * pertencem a um produto cujo nome ou SKU casa com ele. UMA consulta.
+     *
+     * Quem consome é o plano 180-03, que injeta a lista como
+     * `orWhereIn('ml_item_id', $ids)` DENTRO do grupo da busca do acervo — o
+     * acervo continua sendo varrido UMA vez, pelo `company_id` que já varria.
+     *
+     * ⚠️ Começa em `pub_produtos` (lado PEQUENO: dezenas a poucas centenas de
+     * linhas por empresa, por `pubprod_company_ix`). Nunca pelo acervo.
+     *
+     * ⚠️ `normalizar()` NÃO entra aqui, e isso é decisão medida: "ignora acento e
+     * caixa" é responsabilidade do COLLATION do banco de produção
+     * (MySQL 8 `utf8mb4_0900_ai_ci` / MariaDB `utf8mb4_general_ci` são `_ai_ci`),
+     * o mesmo que já faz a busca por `title` do acervo ignorar caixa. Normalizar em
+     * PHP e comparar com a coluna CRUA daria MENOS resultados, não mais: "luminaria"
+     * normalizado jamais casaria com "Luminária" gravado. O SQLite dos testes é mais
+     * pobre (`LIKE` só dobra ASCII, não dobra acento) — ver
+     * `test_busca_ignora_caixa_e_o_acento_depende_do_collation`.
+     *
+     * ⚠️ O termo é BIND (T-180-02-T): `->where(col, 'like', "%{$termo}%")` é bind
+     * posicional do Eloquent. Nenhum `whereRaw`/`selectRaw` recebe entrada do
+     * usuário aqui.
+     *
+     * @return list<string>
+     */
+    public function mlItemIdsPorProduto(Company $company, string $termo): array
+    {
+        $termo = trim($termo);
+
+        // Termo vazio ou só espaços: `[]` SEM consultar. Um `LIKE '%%'` devolveria
+        // a empresa inteira como se fosse resultado de busca.
+        if ($termo === '') {
+            return [];
+        }
+
+        $ids = $this->comNomeDeExibicao($this->base($company))
+            ->whereNotNull('pub_publicacao_itens.ml_item_id')
+            ->where(function ($termos) use ($termo) {
+                // ⚠️ O GRUPO é obrigatório, mesma razão de `base()`: um `orWhere`
+                // solto aqui subiria ao topo do WHERE e anularia o escopo por
+                // empresa E o filtro de status.
+                $termos->where('pub_produtos.nome', 'like', "%{$termo}%")
+                    ->orWhere('pub_produtos.sku', 'like', "%{$termo}%")
+                    // As colunas de EXIBIÇÃO também, senão a busca não acha o que a
+                    // tela mostra: em produto de origem `portal`, `nomeExibido()`
+                    // devolve o nome VIVO da oferta/grupo, não o snapshot da coluna.
+                    ->orWhere('estrutura_ofertas.nome', 'like', "%{$termo}%")
+                    ->orWhere('estrutura_ofertas.sku', 'like', "%{$termo}%")
+                    ->orWhere('estrutura_produtos.nome', 'like', "%{$termo}%")
+                    ->orWhere('estrutura_produtos.codigo', 'like', "%{$termo}%");
+            })
+            ->distinct()
+            ->limit(self::TETO_IDS_POR_BUSCA)
+            ->pluck('pub_publicacao_itens.ml_item_id');
+
+        return array_values(array_unique(array_map('strval', $ids->all())));
+    }
+
+    /**
+     * O mapa F1/F2 × Clássico/Premium da linha de grupo (LIST-09). UMA consulta
+     * agregada sobre a MESMA cadeia de joins.
+     *
+     * As 4 chaves são EXATAMENTE as que `MapaDeCobertura.jsx` consome
+     * (`resources/js/Components/Mlb/Publicador/identidade/MapaDeCobertura.jsx:24-28`,
+     * conferido no componente): chave com nome diferente faria o mapa desenhar 4
+     * células tracejadas em silêncio.
+     *
+     * ⚠️ `listing_type_id` fora de `gold_special`/`gold_pro` **não vira nenhum dos
+     * dois** — não cai no Clássico "porque é o mais comum". Conta no `total` e em
+     * nenhuma das 4 células. `pub_produtos.fase` fora de {1,2} (dado antigo) idem.
+     *
+     * ⚠️ TODO id pedido recebe entrada, mesmo sem publicação nenhuma — `total => 0`
+     * com as 4 células `false` é a verdade MEDIDA daquele produto, e evita que o
+     * consumidor tenha de distinguir "chave ausente" de "nada publicado". Id de
+     * outra empresa cai no mesmo caso (o escopo tirou as linhas dele), então o mapa
+     * não confirma nem nega a existência de produto alheio.
+     *
+     * @param  array<int, mixed>  $produtoIds
+     * @return array<int, array{f1_classico:bool, f1_premium:bool, f2_classico:bool, f2_premium:bool, total:int}>
+     */
+    public function coberturaPorProduto(Company $company, array $produtoIds): array
+    {
+        $ids = $this->produtoIdsLimpos($produtoIds);
+        if ($ids === []) {
+            return [];
+        }
+
+        $mapa = [];
+        foreach ($ids as $id) {
+            $mapa[$id] = [
+                'f1_classico' => false,
+                'f1_premium' => false,
+                'f2_classico' => false,
+                'f2_premium' => false,
+                'total' => 0,
+            ];
+        }
+
+        $linhas = $this->base($company)
+            ->whereIn('pub_produtos.id', $ids)
+            ->groupBy('pub_produtos.id', 'pub_produtos.fase', 'pub_publicacao_itens.listing_type_id')
+            ->select([
+                'pub_produtos.id as produto_id',
+                // QUALIFICADO — ver o aviso de colisão em `metodologiaPorMlItemId()`.
+                'pub_produtos.fase as produto_fase',
+                'pub_publicacao_itens.listing_type_id',
+            ])
+            // Agregado sem entrada de usuário: nenhum termo chega a este selectRaw.
+            ->selectRaw('COUNT(*) as quantidade')
+            ->get();
+
+        foreach ($linhas as $linha) {
+            $produtoId = (int) $linha->produto_id;
+            if (! array_key_exists($produtoId, $mapa)) {
+                continue;
+            }
+
+            $mapa[$produtoId]['total'] += (int) $linha->quantidade;
+
+            $celula = $this->celulaDeCobertura((int) $linha->produto_fase, (string) $linha->listing_type_id);
+            if ($celula !== null) {
+                $mapa[$produtoId][$celula] = true;
+            }
+        }
+
+        return $mapa;
+    }
+
     // ═══ Internos ═══════════════════════════════════════════════════════════
+
+    /**
+     * Qual das 4 células de `MapaDeCobertura.jsx` esta combinação acende — ou
+     * `null`, que é resposta legítima: tipo de anúncio desconhecido e fase fora de
+     * {1,2} contam no total e não acendem nada.
+     *
+     * Os literais dos tipos são o RAW do Mercado Livre, os mesmos que
+     * `historico()` já devolve como `listing_tier`.
+     */
+    private function celulaDeCobertura(int $fase, string $listingTypeId): ?string
+    {
+        $tipo = match ($listingTypeId) {
+            'gold_special' => self::TIPO_CLASSICO,
+            'gold_pro' => self::TIPO_PREMIUM,
+            default => null,
+        };
+
+        return match (true) {
+            $fase === 1 && $tipo === self::TIPO_CLASSICO => 'f1_classico',
+            $fase === 1 && $tipo === self::TIPO_PREMIUM => 'f1_premium',
+            $fase === 2 && $tipo === self::TIPO_CLASSICO => 'f2_classico',
+            $fase === 2 && $tipo === self::TIPO_PREMIUM => 'f2_premium',
+            default => null,
+        };
+    }
+
+    /**
+     * Só inteiro positivo entra como id de produto — mesma razão de
+     * `idsDeAnuncioLimpos()`. `'abc'`, `null` e `0` não podem virar bind.
+     *
+     * @param  array<int, mixed>  $produtoIds
+     * @return list<int>
+     */
+    private function produtoIdsLimpos(array $produtoIds): array
+    {
+        $limpos = [];
+        foreach ($produtoIds as $id) {
+            if (! is_int($id) && ! (is_string($id) && ctype_digit($id))) {
+                continue;
+            }
+            $id = (int) $id;
+            if ($id > 0) {
+                $limpos[] = $id;
+            }
+        }
+
+        return array_values(array_unique($limpos));
+    }
+
 
     /**
      * A cadeia de joins e, principalmente, O ESCOPO — a única coisa que separa a

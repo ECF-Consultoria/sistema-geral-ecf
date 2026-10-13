@@ -487,4 +487,413 @@ class PublicacoesDaListaTest extends TestCase
         $this->assertSame('OFT-NOVO', $mapa['MLB001']['produto_sku']);
         $this->assertNotSame('Nome do snapshot velho', $mapa['MLB001']['produto_nome'], 'a tela de Publicações não pode discordar da de Produtos');
     }
+
+    // ═══ Task 2 — a busca por nome de produto e o mapa de cobertura ═════════
+
+    /**
+     * @group phase180
+     */
+    public function test_busca_acha_pelo_nome_do_produto(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        $poltrona = $this->produto($company, $empresa, 'POL-OSLO', 'Poltrona Oslo');
+        $this->publicada($poltrona, 'MLB-POLTRONA-1', 'gold_special', '2026-10-01 10:00:00');
+        $this->publicada($poltrona, 'MLB-POLTRONA-2', 'gold_pro', '2026-10-02 10:00:00');
+
+        $mesa = $this->produto($company, $empresa, 'MES-NORD', 'Mesa Nórdica');
+        $this->publicada($mesa, 'MLB-MESA', 'gold_special', '2026-10-03 10:00:00');
+
+        // Outra empresa, com produto que casa O MESMO termo (T-180-02-I)
+        [$outraCompany, $outraEmpresa] = $this->conta('Polo rival');
+        $outraPoltrona = $this->produto($outraCompany, $outraEmpresa, 'POL-RIVAL', 'Poltrona do rival');
+        $this->publicada($outraPoltrona, 'MLB-RIVAL', 'gold_special', '2026-10-04 10:00:00');
+
+        [$ids, $log] = $this->medindo(fn () => $this->servico()->mlItemIdsPorProduto($company, 'Poltrona'));
+
+        $this->assertCount(1, $log, 'a busca tem de ser UMA consulta');
+        $this->assertStringNotContainsString('ml_acervo_itens', $log[0]['query'], 'a busca começa em pub_produtos, nunca no acervo');
+
+        sort($ids);
+        $this->assertSame(['MLB-POLTRONA-1', 'MLB-POLTRONA-2'], $ids, 'os dois anúncios daquele produto, e só eles');
+        $this->assertNotContains('MLB-MESA', $ids, 'produto que não casa o termo não entra');
+        $this->assertNotContains('MLB-RIVAL', $ids, 'produto de OUTRA empresa não pode vazar na busca da empresa A (T-180-02-I)');
+
+        // O termo é BIND, nunca interpolação (T-180-02-T)
+        $this->assertContains('%Poltrona%', $log[0]['bindings'], 'o termo tem de ser bind posicional');
+
+        // SKU também acha, e com a caixa trocada (ASCII — vale em SQLite e em MySQL)
+        $this->assertSame(['MLB-MESA'], $this->servico()->mlItemIdsPorProduto($company, 'mes-nord'));
+    }
+
+    /**
+     * Caixa e acento: o que é REAL em todo banco e o que depende do collation.
+     *
+     * ⚠️ Medido, não presumido: o `LIKE` do SQLite dobra só ASCII — `'luminaria'`
+     * NÃO casa `'Luminária'` lá. Em produção (MySQL 8 `utf8mb4_0900_ai_ci`,
+     * MariaDB `utf8mb4_general_ci`) casa, e é por isso que o serviço NÃO normaliza
+     * em PHP: normalizar e comparar com a coluna crua daria MENOS resultados.
+     * Este teste cobra o comportamento de cada driver em vez de fingir que são iguais.
+     *
+     * @group phase180
+     */
+    public function test_busca_ignora_caixa_e_o_acento_depende_do_collation(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        $poltrona = $this->produto($company, $empresa, 'POL-OSLO', 'Poltrona Oslo');
+        $this->publicada($poltrona, 'MLB-POLTRONA', 'gold_special', '2026-10-01 10:00:00');
+
+        $luminaria = $this->produto($company, $empresa, 'LUM-ARCO-BR', 'Luminária de Arco');
+        $this->publicada($luminaria, 'MLB-LUMINARIA', 'gold_special', '2026-10-02 10:00:00');
+
+        $busca = fn (string $termo) => $this->servico()->mlItemIdsPorProduto($company, $termo);
+
+        // Caixa, em termo ASCII puro: vale em QUALQUER banco
+        $this->assertSame(['MLB-POLTRONA'], $busca('poltrona'), 'minúscula tem de achar');
+        $this->assertSame(['MLB-POLTRONA'], $busca('POLTRONA'), 'MAIÚSCULA tem de achar');
+        $this->assertSame(['MLB-POLTRONA'], $busca('oslo'), 'parte do nome tem de achar');
+        $this->assertSame(['MLB-LUMINARIA'], $busca('LUM-ARCO-BR'), 'o SKU do produto tem de achar');
+
+        // Termo COM o acento: casa em qualquer banco (bytes iguais)
+        $this->assertSame(['MLB-LUMINARIA'], $busca('Luminária'), 'o termo acentuado tem de achar o nome acentuado');
+
+        // Termo SEM o acento: é o collation que decide
+        $semAcento = $busca('luminaria');
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $this->assertSame(
+                [],
+                $semAcento,
+                'MEDIDO: o LIKE do SQLite não dobra acento. Em produção o collation _ai_ci dobra — '
+                .'e é exatamente por isso que o serviço não normaliza em PHP.',
+            );
+        } else {
+            $this->assertSame(['MLB-LUMINARIA'], $semAcento, 'collation _ai_ci: termo sem acento tem de achar o nome acentuado');
+        }
+    }
+
+    /**
+     * Termo vazio / só espaços: `[]` e ZERO consulta.
+     *
+     * @group phase180
+     */
+    public function test_busca_com_termo_vazio_nao_consulta(): void
+    {
+        [$company, $empresa] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'POL-OSLO', 'Poltrona Oslo');
+        $this->publicada($produto, 'MLB-POLTRONA');
+
+        foreach (['', '   ', "\t", "\n "] as $termo) {
+            [$ids, $log] = $this->medindo(fn () => $this->servico()->mlItemIdsPorProduto($company, $termo));
+            $this->assertSame([], $ids, 'termo vazio não pode devolver a empresa inteira');
+            $this->assertCount(0, $log, 'termo vazio não pode consultar o banco (um LIKE %% varreria tudo)');
+        }
+
+        // E o cenário PRODUZ resultado com termo de verdade — senão o vazio acima
+        // seria vazio por construção.
+        $this->assertSame(['MLB-POLTRONA'], $this->servico()->mlItemIdsPorProduto($company, 'Poltrona'));
+    }
+
+    /**
+     * Item que não é CREATED não entra NEM na busca (o par do caso de metodologia).
+     *
+     * @group phase180
+     */
+    public function test_busca_ignora_status_que_nao_e_created(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        $ok = $this->produto($company, $empresa, 'POL-OK', 'Poltrona publicada');
+        $this->publicada($ok, 'MLB-OK', 'gold_special', '2026-10-01 10:00:00');
+
+        foreach ([PubPublicacaoItem::PENDING, PubPublicacaoItem::SENT, PubPublicacaoItem::FAILED, PubPublicacaoItem::UNKNOWN] as $i => $status) {
+            $p = $this->produto($company, $empresa, 'POL-'.$status, 'Poltrona '.$status);
+            $this->publicada($p, 'MLB-'.$status, 'gold_special', '2026-10-0'.($i + 2).' 10:00:00', null, $status);
+        }
+
+        $this->assertSame(['MLB-OK'], $this->servico()->mlItemIdsPorProduto($company, 'Poltrona'), 'só CREATED entra na busca');
+    }
+
+    /**
+     * O teto de 2000: termo de 1 caractere numa empresa com 2001 anúncios casáveis.
+     *
+     * @group phase180
+     */
+    public function test_busca_respeita_o_teto_de_dois_mil_ids(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        // Um produto só, com 2001 itens CREATED na MESMA publicação — o teto é de
+        // `ml_item_id`, não de produto.
+        $produto = $this->produto($company, $empresa, 'POL-OSLO', 'Poltrona Oslo');
+        $publicacao = $this->publicada($produto, 'MLB-0', 'gold_special', '2026-10-01 10:00:00');
+
+        $linhas = [];
+        for ($n = 1; $n < 2001; $n++) {
+            $linhas[] = [
+                'publicacao_id' => $publicacao->id,
+                'indice' => $n,
+                'listing_type_id' => 'gold_special',
+                'variante_chave' => ChaveCanonica::UNICA.'-'.$n,
+                'status' => PubPublicacaoItem::CREATED,
+                'ml_item_id' => 'MLB-'.$n,
+            ];
+        }
+        foreach (array_chunk($linhas, 500) as $lote) {
+            DB::table('pub_publicacao_itens')->insert($lote);
+        }
+
+        $this->assertSame(
+            2001,
+            PubPublicacaoItem::where('publicacao_id', $publicacao->id)->count(),
+            'o cenário precisa dos 2001 casáveis, senão o teto não é exercitado',
+        );
+
+        $ids = $this->servico()->mlItemIdsPorProduto($company, 'o');
+
+        $this->assertCount(
+            PublicacoesDaListaService::TETO_IDS_POR_BUSCA,
+            $ids,
+            'sem teto a lista viraria um IN (...) de 2001 valores dentro da consulta do acervo',
+        );
+        $this->assertSame(2000, PublicacoesDaListaService::TETO_IDS_POR_BUSCA, 'o teto declarado é 2000 — ~40 páginas de 50');
+    }
+
+    /**
+     * A cobertura F1/F2 × Clássico/Premium — as 4 chaves que `MapaDeCobertura.jsx`
+     * consome, e o que NÃO acende nenhuma célula.
+     *
+     * @group phase180
+     */
+    public function test_cobertura_por_produto_acende_so_as_celulas_reais(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        // F1 Clássico + F2 Premium (o cenário do critério de aceite)
+        $f1c = $this->produto($company, $empresa, 'SKU-F1C', 'Produto F1 Clássico');
+        $this->publicada($f1c, 'MLB-F1C', 'gold_special', '2026-10-01 10:00:00');
+
+        $f2p = $this->produto($company, $empresa, 'SKU-F2P', 'Produto F2 Premium', ['fase' => 2, 'quantidade_kit' => 2]);
+        $this->publicada($f2p, 'MLB-F2P', 'gold_pro', '2026-10-02 10:00:00');
+
+        // Tipo DESCONHECIDO: conta no total, não acende célula nenhuma
+        $desconhecido = $this->produto($company, $empresa, 'SKU-DESC', 'Produto de tipo desconhecido');
+        $this->publicada($desconhecido, 'MLB-DESC', 'gold_premium', '2026-10-03 10:00:00');
+
+        // Fase FORA de {1,2} (dado antigo): conta no total, não acende célula
+        $fase7 = $this->produto($company, $empresa, 'SKU-F7', 'Produto da fase 7', ['fase' => 7, 'quantidade_kit' => 7]);
+        $this->publicada($fase7, 'MLB-F7', 'gold_special', '2026-10-04 10:00:00');
+
+        // Produto sem publicação nenhuma: entrada presente, tudo false, total 0
+        $semNada = $this->produto($company, $empresa, 'SKU-ZERO', 'Produto sem publicação');
+
+        // Produto de OUTRA empresa pedido junto (T-180-02-I)
+        [$outraCompany, $outraEmpresa] = $this->conta('Polo rival');
+        $rival = $this->produto($outraCompany, $outraEmpresa, 'SKU-RIVAL', 'Produto do rival');
+        $this->publicada($rival, 'MLB-RIVAL', 'gold_special', '2026-10-05 10:00:00');
+
+        $pedidos = [$f1c->id, $f2p->id, $desconhecido->id, $fase7->id, $semNada->id, $rival->id, 999999];
+        [$cobertura, $log] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, $pedidos));
+
+        $this->assertCount(1, $log, 'coberturaPorProduto tem de ser UMA consulta agregada');
+        $this->assertSame($pedidos, array_keys($cobertura), 'todo id pedido recebe entrada, na ordem do pedido');
+        foreach ($cobertura as $pid => $celulas) {
+            $this->assertSame(
+                ['f1_classico', 'f1_premium', 'f2_classico', 'f2_premium', 'total'],
+                array_keys($celulas),
+                "as chaves do produto {$pid} têm de ser EXATAMENTE as de MapaDeCobertura.jsx",
+            );
+        }
+
+        $this->assertSame(['f1_classico' => true, 'f1_premium' => false, 'f2_classico' => false, 'f2_premium' => false, 'total' => 1], $cobertura[$f1c->id]);
+        $this->assertSame(['f1_classico' => false, 'f1_premium' => false, 'f2_classico' => false, 'f2_premium' => true, 'total' => 1], $cobertura[$f2p->id]);
+
+        // `gold_premium` NÃO existe no ML: conta no total e não cai no Clássico
+        // "porque é o mais comum".
+        $this->assertSame(['f1_classico' => false, 'f1_premium' => false, 'f2_classico' => false, 'f2_premium' => false, 'total' => 1], $cobertura[$desconhecido->id]);
+        $this->assertSame(['f1_classico' => false, 'f1_premium' => false, 'f2_classico' => false, 'f2_premium' => false, 'total' => 1], $cobertura[$fase7->id]);
+
+        // Nada publicado = tudo false com total 0 (medido, não "não sabemos")
+        $this->assertSame(['f1_classico' => false, 'f1_premium' => false, 'f2_classico' => false, 'f2_premium' => false, 'total' => 0], $cobertura[$semNada->id]);
+        // Produto de outra empresa: o escopo tirou as linhas dele — igual a id inexistente
+        $this->assertSame($cobertura[$semNada->id], $cobertura[$rival->id], 'produto de outra empresa não pode trazer cobertura');
+        $this->assertSame($cobertura[$semNada->id], $cobertura[999999]);
+
+        $this->assertSoEscalares($cobertura, 'coberturaPorProduto');
+    }
+
+    /**
+     * Um produto com as QUATRO células e o total somando os quatro itens — e a
+     * contagem de consulta não muda com o número de produtos pedidos.
+     *
+     * @group phase180
+     */
+    public function test_cobertura_soma_o_total_e_custa_uma_consulta_so(): void
+    {
+        [$company, $empresa] = $this->conta();
+
+        $base = $this->produto($company, $empresa, 'SKU-BASE', 'Produto base');
+        $this->publicada($base, 'MLB-B-C', 'gold_special', '2026-10-01 10:00:00');
+        $this->publicada($base, 'MLB-B-P', 'gold_pro', '2026-10-02 10:00:00');
+
+        $kit = $this->produto($company, $empresa, 'SKU-KIT', 'Produto kit', ['fase' => 2, 'quantidade_kit' => 2, 'produto_base_id' => $base->id]);
+        $this->publicada($kit, 'MLB-K-C', 'gold_special', '2026-10-03 10:00:00');
+        $this->publicada($kit, 'MLB-K-P', 'gold_pro', '2026-10-04 10:00:00');
+
+        [$doisProdutos, $logDois] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, [$base->id, $kit->id]));
+
+        $this->assertCount(1, $logDois);
+        $this->assertSame(['f1_classico' => true, 'f1_premium' => true, 'f2_classico' => false, 'f2_premium' => false, 'total' => 2], $doisProdutos[$base->id]);
+        $this->assertSame(['f1_classico' => false, 'f1_premium' => false, 'f2_classico' => true, 'f2_premium' => true, 'total' => 2], $doisProdutos[$kit->id]);
+
+        // 9 produtos (o resto sem publicação): continua UMA consulta — o custo é do
+        // agregado, não do número de produtos.
+        $ids = [$base->id, $kit->id];
+        for ($n = 3; $n <= 9; $n++) {
+            $ids[] = $this->produto($company, $empresa, 'SKU-'.$n, 'Produto '.$n)->id;
+        }
+        [$noveProdutos, $logNove] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, $ids));
+        // E DE NOVO: cache de serviço vivo entre chamadas já fez 12 custarem menos que 6 (Fase 178)
+        [, $logRepetido] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, $ids));
+
+        $this->assertCount(1, $logNove, '9 produtos não podem custar consulta a mais que 2');
+        $this->assertCount(1, $logRepetido, 'a segunda chamada custa o mesmo — teto, não cache');
+        $this->assertCount(9, $noveProdutos);
+        $this->assertSame($doisProdutos[$base->id], $noveProdutos[$base->id], 'pedir mais produtos não muda a cobertura de um deles');
+    }
+
+    /**
+     * `$produtoIds` vazio ou todo inválido: `[]` sem consultar, e sem lançar.
+     *
+     * @group phase180
+     */
+    public function test_cobertura_com_entrada_suja_nao_lanca(): void
+    {
+        [$company, $empresa] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'SKU-OK', 'Produto ok');
+        $this->publicada($produto, 'MLB-OK');
+
+        [$sujo, $logSujo] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, [null, 'abc']));
+        $this->assertSame([], $sujo, 'id inválido não pode virar bind');
+        $this->assertCount(0, $logSujo);
+
+        [$vazio, $logVazio] = $this->medindo(fn () => $this->servico()->coberturaPorProduto($company, []));
+        $this->assertSame([], $vazio);
+        $this->assertCount(0, $logVazio);
+
+        // Mistura: só o id válido sobrevive — e o cenário produz cobertura de verdade
+        $misturado = $this->servico()->coberturaPorProduto($company, [null, 'abc', ['x'], 0, -3, $produto->id]);
+        $this->assertSame([$produto->id], array_keys($misturado));
+        $this->assertSame(1, $misturado[$produto->id]['total']);
+    }
+
+    // ═══ Escopo por empresa — os dois sentidos (T-180-02-I) ═════════════════
+
+    /**
+     * O caso que a mutação de desagrupamento (`where` -> `orWhere` solto) tem de
+     * reprovar: o MESMO `ml_item_id` existe em `pub_publicacao_itens` de duas
+     * empresas, e a empresa A só pode receber a metodologia DELA.
+     *
+     * @group phase180
+     */
+    public function test_escopo_por_empresa_nao_vaza(): void
+    {
+        [$companyA, $empresaA] = $this->conta('Polo A');
+        [$companyB, $empresaB] = $this->conta('Polo B');
+
+        $produtoA = $this->produto($companyA, $empresaA, 'SKU-A', 'Produto da empresa A');
+        $this->publicada($produtoA, 'MLB-DE-A', 'gold_special', '2026-10-01 10:00:00', ['equipe' => true, 'id' => 7, 'nome' => 'Dono do A']);
+
+        // ⚠️ O MESMO ml_item_id na empresa B, mais RECENTE: se o escopo vazar, ele
+        // ganha a ordenação e a empresa A passa a ver o produto da B.
+        $produtoB = $this->produto($companyB, $empresaB, 'SKU-B', 'Produto da empresa B');
+        $this->publicada($produtoB, 'MLB-DE-A', 'gold_special', '2026-12-01 10:00:00', ['equipe' => true, 'id' => 8, 'nome' => 'Dono do B']);
+        $this->publicada($produtoB, 'MLB-SO-DE-B', 'gold_special', '2026-12-02 10:00:00');
+
+        $mapa = $this->servico()->metodologiaPorMlItemId($companyA, ['MLB-DE-A', 'MLB-SO-DE-B']);
+
+        $this->assertSame(['MLB-DE-A'], array_keys($mapa), 'o anúncio que só existe na empresa B não pode aparecer para a A');
+        $this->assertSame($produtoA->id, $mapa['MLB-DE-A']['produto_id'], 'a metodologia é a do produto DA EMPRESA A');
+        $this->assertSame('Produto da empresa A', $mapa['MLB-DE-A']['produto_nome']);
+        $this->assertSame('Dono do A', $mapa['MLB-DE-A']['autor_nome'], 'autor da empresa B não pode vazar');
+
+        // Busca, o sentido inverso
+        $this->assertSame([], $this->servico()->mlItemIdsPorProduto($companyA, 'empresa B'), 'produto da B não pode ser achado pela busca da A');
+        $this->assertSame(['MLB-DE-A'], $this->servico()->mlItemIdsPorProduto($companyA, 'empresa A'));
+
+        // Cobertura
+        $cobertura = $this->servico()->coberturaPorProduto($companyA, [$produtoA->id, $produtoB->id]);
+        $this->assertSame(1, $cobertura[$produtoA->id]['total']);
+        $this->assertSame(0, $cobertura[$produtoB->id]['total'], 'produto da B não pode trazer cobertura na conta da A');
+    }
+
+    /**
+     * Empresa SEM `MlbEmpresa` nenhuma: o braço da âncora não casa nada e o
+     * resultado é o do `company_id` — nada a mais, nada a menos.
+     *
+     * @group phase180
+     */
+    public function test_empresa_sem_ancora_mlb_resolve_pelo_company_id(): void
+    {
+        $company = Company::factory()->create(['name' => 'Empresa sem MlbEmpresa']);
+        $this->assertSame(0, MlbEmpresa::where('company_id', $company->id)->count(), 'a premissa do caso: nenhuma âncora');
+
+        $produto = $this->produto($company, null, 'SKU-SO-COMPANY', 'Produto só com company');
+        $this->publicada($produto, 'MLB-SO-COMPANY');
+
+        // Produto ancorado SÓ numa MlbEmpresa de OUTRA empresa: não pode entrar
+        [$outraCompany, $outraEmpresa] = $this->conta('Polo com âncora');
+        $daAncoraAlheia = $this->produto(null, $outraEmpresa, 'SKU-ANCORA', 'Produto da âncora alheia');
+        $this->publicada($daAncoraAlheia, 'MLB-ANCORA');
+
+        [$mapa, $log] = $this->medindo(
+            fn () => $this->servico()->metodologiaPorMlItemId($company, ['MLB-SO-COMPANY', 'MLB-ANCORA']),
+        );
+
+        $this->assertCount(1, $log, 'resolver a âncora não pode custar uma segunda consulta');
+        $this->assertSame(['MLB-SO-COMPANY'], array_keys($mapa));
+        $this->assertSame($produto->id, $mapa['MLB-SO-COMPANY']['produto_id']);
+
+        // E a âncora, quando existe, continua valendo: produto ancorado só na
+        // MlbEmpresa da PRÓPRIA empresa entra.
+        $soAncora = $this->produto(null, $outraEmpresa, 'SKU-SO-ANCORA', 'Produto só pela âncora');
+        $this->publicada($soAncora, 'MLB-PELA-ANCORA');
+        $this->assertSame(
+            ['MLB-PELA-ANCORA'],
+            array_keys($this->servico()->metodologiaPorMlItemId($outraCompany, ['MLB-PELA-ANCORA'])),
+            'o braço da âncora tem de continuar achando o produto sem company_id',
+        );
+    }
+
+    /**
+     * ⚠️ O gate que a prescrição do plano teria quebrado: o nome do CLIENTE está
+     * gravado em `pub_publicacoes.ator` e não pode sair do servidor (T-173-09).
+     *
+     * @group phase180
+     */
+    public function test_nome_de_cliente_nunca_sai_no_payload(): void
+    {
+        [$company, $empresa] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'SKU-CLI', 'Produto publicado pelo cliente');
+        $this->publicada($produto, 'MLB-CLI', 'gold_special', '2026-10-01 10:00:00', [
+            'equipe' => false, 'id' => 404, 'nome' => 'Cliente Confidencial Ltda',
+        ]);
+
+        // A premissa: o nome ESTÁ no banco (senão a negativa é vazia por construção)
+        $this->assertStringContainsString(
+            'Cliente Confidencial Ltda',
+            (string) DB::table('pub_publicacoes')->value('ator'),
+            'o cenário precisa do nome do cliente GRAVADO para a negativa valer',
+        );
+
+        $mapa = $this->servico()->metodologiaPorMlItemId($company, ['MLB-CLI']);
+
+        $this->assertSame(PainelVisaoGeralService::QUEM_CLIENTE, $mapa['MLB-CLI']['autor_nome']);
+        $this->assertStringNotContainsString(
+            'Cliente Confidencial Ltda',
+            json_encode($mapa, JSON_UNESCAPED_UNICODE),
+            'nome de cliente não sai do servidor (T-173-09)',
+        );
+        $this->assertStringNotContainsString('404', (string) $mapa['MLB-CLI']['autor_nome'], 'id de cliente não sai do servidor');
+    }
 }
