@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\Company;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
+use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -52,11 +53,21 @@ use Illuminate\Support\Carbon;
  * | 3 | "Acervo de imagens … Abrir →" | os dois números, **sem link** | não existe tela de acervo POR CONTA — ver `acervoDeImagens()` |
  * | 4 | KPIs "Vendas", "Visitas" e "Conversão" | **não nascem** | sem fonte: `sold_quantity` é acumulado da vida do anúncio, `visitas` é NULL em 1.374.527 linhas e não existe tabela de pedidos — ver `desempenho()` |
  * | 5 | a faixa inteira é `<a>` para a tela Desempenho | `url: null`, e a faixa é `<section>` | **a tela Desempenho não existe** (é a Fase 182) — ver `desempenho()` |
+ * | 6 | chip "Sistema" na Atividade | 4 chips, sem o "Sistema" | não existe fonte de EVENTO de sincronização, só um carimbo — ver `atividade()` |
+ * | 7 | badge NOVA nas "duas mais recentes" | `nova` = últimas 24 horas | posição na lista não é informação sobre o mundo — ver `recentes()` |
  */
 class CockpitDaContaService
 {
     /** A janela da faixa de Desempenho, em dias. A janela anterior tem o mesmo tamanho. */
     public const DIAS = 30;
+
+    /**
+     * Teto de publicações recentes. É o MESMO 5 de
+     * `PainelVisaoGeralService::ultimasPublicacoes()`, repetido aqui de propósito:
+     * se um dia a fonte subir o limite, este card não vira uma lista de 30 linhas
+     * em silêncio. `recentes()` é função pura e pode receber qualquer lista.
+     */
+    public const RECENTES = 5;
 
     /**
      * As quatro faixas da barra empilhada, NESTA ORDEM: `chave` da faixa =>
@@ -391,7 +402,298 @@ class CockpitDaContaService
         ];
     }
 
+    // ═══ Publicações recentes (VG-16) ════════════════════════════════════════
+
+    /**
+     * As 5 publicações mais recentes, reformatadas e enriquecidas — **zero
+     * consulta**.
+     *
+     * As publicações já vieram de `PainelVisaoGeralService::ultimasPublicacoes()`
+     * (fonte única) e a `capa` sai de um índice montado UMA vez sobre
+     * `$produtos`, por `produto_id`. ⚠️ Uma consulta de imagem por publicação
+     * recente seria pagar duas vezes pelo mesmo dado — é por isso que a `capa`
+     * **não** vem da fonte (decisão registrada no docblock dela, plano 179-02).
+     *
+     * ⚠️ **Nenhuma chave nova inventada e nada recalculado:** `titulo`, `tipo`,
+     * `situacao`, `vendas`, `quem`, `fase` e `rotulo_fase` vêm como vieram. Este
+     * método **reformata e enriquece**, nunca recalcula.
+     *
+     * ⚠️ `quem` continua sendo `{tipo, nome}` — a única estrutura do item. Ela
+     * **já atravessa hoje** em produção e o cliente a lê campo a campo
+     * (`quem.nome ?? quem.tipo`); achatá-la em duas chaves novas contrariaria o
+     * "vem como veio" e quebraria a tela que já existe.
+     *
+     * `nova` = `quando` parseável **e** dentro das últimas 24 horas. ⚠️
+     * Divergência declarada: o protótipo marca "as duas mais recentes" por mock —
+     * posição na lista não é informação sobre o mundo. 24 horas é o critério real
+     * mais próximo e é mensurável.
+     *
+     * @return array{disponivel: bool, itens: list<array>}
+     */
+    public function recentes(array $ultimasPublicacoes, array $produtos): array
+    {
+        if (($ultimasPublicacoes['disponivel'] ?? false) !== true) {
+            return ['disponivel' => false, 'itens' => []];
+        }
+
+        $capaPorProduto = [];
+        foreach ($produtos as $produto) {
+            if (is_array($produto) && isset($produto['id'])) {
+                $capaPorProduto[(int) $produto['id']] = $produto['capa'] ?? null;
+            }
+        }
+
+        $itens = [];
+        foreach (array_slice($this->listaDe($ultimasPublicacoes, 'itens'), 0, self::RECENTES) as $item) {
+            $produtoId = isset($item['produto_id']) ? (int) $item['produto_id'] : null;
+            $itens[] = [
+                'produto_id' => $produtoId,
+                'produto_nome' => $item['produto_nome'] ?? null,
+                'titulo' => $item['titulo'] ?? null,
+                // Produto fora da lista (fora do escopo, ou apagado) fica sem foto
+                // — nunca com a foto de outro produto.
+                'capa' => $produtoId === null ? null : ($capaPorProduto[$produtoId] ?? null),
+                'fase' => $item['fase'] ?? null,
+                'rotulo_fase' => $item['rotulo_fase'] ?? null,
+                // `tipo` nulo é listing desconhecido: não vira "Clássico" por
+                // default. O cliente sabe desenhar a ausência.
+                'tipo' => $item['tipo'] ?? null,
+                'ml_item_id' => $item['ml_item_id'] ?? null,
+                'situacao' => $item['situacao'] ?? null,
+                'vendas' => $item['vendas'] ?? null,
+                'quando' => $item['quando'] ?? null,
+                'quem' => $item['quem'] ?? null,
+                'nova' => $this->ehNova($item['quando'] ?? null),
+            ];
+        }
+
+        return ['disponivel' => true, 'itens' => $itens];
+    }
+
+    // ═══ Atividade recente (VG-17 / VG-20) ═══════════════════════════════════
+
+    /**
+     * A linha do tempo agrupada por dia.
+     *
+     * ⚠️ **As TRÊS fontes reais de `PainelVisaoGeralService::atividadeDaEquipe()`
+     * chegam INTACTAS** (`publicou`, `criativos`, `conferiu`, desde 10/10/2026 a
+     * pedido do usuário) — nenhuma é reimplementada aqui. VG-20: nenhum bloco que
+     * hoje é real pode regredir a exemplo.
+     *
+     * A **4ª fonte** é nova e também real: produtos recebidos nos últimos 30 dias.
+     * ⚠️ **Por que ela existe:** VG-17 pede o chip **Produtos** e, sem ela, o chip
+     * nasceria **sempre vazio** — filtro que nunca pode ter conteúdo é enfeite
+     * (EXMP-01).
+     *
+     * ⚠️ **O chip "Sistema" do protótipo NÃO nasce.** Não existe fonte de EVENTO
+     * de sincronização: o que existe é um **carimbo** (`defasagem.coletado_em`),
+     * que já é a linha de Sincronização da Saúde da conta. Carimbo não é linha do
+     * tempo. Divergência declarada — os chips que nascem são
+     * Tudo / Publicações / Criativos / Produtos, e o FILTRO é do cliente (o
+     * servidor manda todos os eventos, como no protótipo).
+     *
+     * ⚠️ `chave` e `data_iso` saem daqui; `HOJE`, `ONTEM` e o formato `8 OUT` são
+     * do cliente (plano 179-08).
+     *
+     * @param  array  $atividadeEquipe  saída de `atividadeDaEquipe()`
+     * @return array{disponivel: bool, grupos: list<array{chave: string, data_iso: ?string, eventos: list<array>}>}
+     */
+    public function atividade(array $alvo, array $atividadeEquipe, int $limite = 12): array
+    {
+        $eventos = $this->listaDe($atividadeEquipe, 'itens');
+        foreach ($this->produtosRecebidos($alvo, $limite) as $evento) {
+            $eventos[] = $evento;
+        }
+
+        // Data desc, evento SEM data para o FIM — a mesma `usort` de três guardas
+        // de `atividadeDaEquipe()`, espelhada de propósito (nunca uma segunda
+        // lógica de ordenação da mesma linha do tempo). Sem a 2ª guarda, a
+        // comparação trata a ausência como a MENOR string e o evento sem data sobe
+        // ao topo, acima do que aconteceu hoje.
+        usort($eventos, function (array $a, array $b) {
+            $x = $a['quando_iso'] ?? null;
+            $y = $b['quando_iso'] ?? null;
+            if ($x === $y) {
+                return 0;
+            }
+            if ($x === null) {
+                return 1;
+            }
+            if ($y === null) {
+                return -1;
+            }
+
+            return strcmp($y, $x);
+        });
+
+        $grupos = $this->agrupar(array_slice($eventos, 0, max(0, $limite)));
+
+        return ['disponivel' => $grupos !== [], 'grupos' => $grupos];
+    }
+
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Produtos recebidos nos últimos 30 dias — a 4ª fonte da Atividade. UMA
+     * consulta, escopo de dupla-âncora.
+     *
+     * ⚠️ `quem` **nunca** é um nome inventado, e reusa as constantes que já
+     * existem em `PainelVisaoGeralService`: produto do Portal é `QUEM_CLIENTE`
+     * (T-173-09 — nome e id de cliente **não saem** do servidor); produto nascido
+     * no Publicador é `QUEM_EQUIPE_SEM_NOME`, porque `pub_produtos` **não tem
+     * coluna de autor** e o que se sabe é que foi a equipe (a tela é interna, com
+     * gate `role:admin`); qualquer outra origem é `QUEM_ORIGEM_ANTIGA`.
+     *
+     * ⚠️ `detalhe` é o **SKU**, não a frase de origem. O `<action>` do plano
+     * mandou selecionar `id, nome, origem, created_at`; `sku` foi acrescentado à
+     * MESMA consulta porque a frase de origem ("Recebido do Portal do Cliente"…)
+     * já existe literal em DOIS lugares (`NovaPublicacaoService::notaDeSemPublicacao()`
+     * e `JornadaDosProdutosService::notaDeSemPublicacao()`, as duas privadas) e uma
+     * terceira cópia não acrescentaria informação nenhuma: a origem **já está em
+     * `quem`**. O SKU é o identificador que o usuário tem na mão e é o que o
+     * protótipo mostra como meta de produto.
+     *
+     * @return list<array{tipo: string, quem: string, quando_iso: ?string, titulo: ?string, detalhe: ?string}>
+     */
+    private function produtosRecebidos(array $alvo, int $limite): array
+    {
+        [$mlbEmpresaId, $companyId] = $this->ancoras($alvo);
+        if (($mlbEmpresaId === null && $companyId === null) || $limite <= 0) {
+            return [];
+        }
+
+        return PubProduto::query()
+            ->where($this->daConta($mlbEmpresaId, $companyId, 'mlb_empresa_id', 'company_id'))
+            ->where('created_at', '>=', now()->subDays(self::DIAS))
+            ->orderByDesc('created_at')
+            ->limit($limite)
+            ->get(['id', 'nome', 'sku', 'origem', 'created_at'])
+            ->map(fn (PubProduto $linha) => [
+                'tipo' => 'produto_recebido',
+                'quem' => match ($linha->origem) {
+                    PubProduto::ORIGEM_PORTAL => PainelVisaoGeralService::QUEM_CLIENTE,
+                    PubProduto::ORIGEM_PUBLICADOR => PainelVisaoGeralService::QUEM_EQUIPE_SEM_NOME,
+                    default => PainelVisaoGeralService::QUEM_ORIGEM_ANTIGA,
+                },
+                'quando_iso' => $this->isoOuNulo($linha->created_at),
+                'titulo' => $this->textoOuNulo($linha->nome),
+                'detalhe' => $this->textoOuNulo($linha->sku),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Agrupa a linha do tempo por DIA, na ordem em que os eventos chegam (já
+     * ordenados desc, com os sem data no fim) — o grupo `sem_data` cai
+     * naturalmente no último lugar, sem uma segunda ordenação.
+     *
+     * ⚠️ Uma `usort` sobre os GRUPOS deixaria a ordenação dos eventos sem efeito
+     * visível na ordem dos dias e tornaria o gate do "evento sem data vai para o
+     * fim" vazio por construção: ele passaria mesmo com a `usort` dos eventos
+     * quebrada.
+     *
+     * @return list<array{chave: string, data_iso: ?string, eventos: list<array>}>
+     */
+    private function agrupar(array $eventos): array
+    {
+        $hoje = Carbon::today()->toDateString();
+        $ontem = Carbon::today()->subDay()->toDateString();
+
+        $grupos = [];
+        foreach ($eventos as $evento) {
+            $data = $this->dataDe($evento['quando_iso'] ?? null);
+            if ($data === null) {
+                $chave = 'sem_data';
+            } elseif ($data === $hoje) {
+                $chave = 'hoje';
+            } elseif ($data === $ontem) {
+                $chave = 'ontem';
+            } else {
+                $chave = $data;
+            }
+
+            if (! isset($grupos[$chave])) {
+                $grupos[$chave] = ['chave' => $chave, 'data_iso' => $data, 'eventos' => []];
+            }
+            $grupos[$chave]['eventos'][] = $evento;
+        }
+
+        return array_values($grupos);
+    }
+
+    /** "Nova" = publicada nas últimas 24 horas. Data ausente ou ilegível NÃO é nova. */
+    private function ehNova(mixed $quando): bool
+    {
+        $data = $this->carbonOuNulo($quando);
+
+        return $data !== null
+            && $data->greaterThanOrEqualTo(now()->subDay())
+            && $data->lessThanOrEqualTo(now());
+    }
+
+    /** A data (Y-m-d) de um `quando_iso`, ou null quando ausente/ilegível. */
+    private function dataDe(mixed $iso): ?string
+    {
+        return $this->carbonOuNulo($iso)?->toDateString();
+    }
+
+    /**
+     * Data crua → Carbon, ou null. ⚠️ `Carbon::parse()` LANÇA em texto que não é
+     * data, e aqui a entrada vem de payload montado em outro serviço: um
+     * `InvalidFormatException` derrubaria a página inteira por causa de uma linha.
+     */
+    private function carbonOuNulo(mixed $valor): ?Carbon
+    {
+        if ($valor instanceof \DateTimeInterface) {
+            return Carbon::instance($valor);
+        }
+        if (! is_string($valor) || trim($valor) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($valor);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** ISO 8601 ou null — nunca string vazia, nunca objeto. */
+    private function isoOuNulo(mixed $valor): ?string
+    {
+        return $this->carbonOuNulo($valor)?->toIso8601String();
+    }
+
+    /**
+     * Texto não vazio ou null — `''` daria um campo mudo na frase da tela (produto
+     * sem nome existe, de importação antiga do Portal).
+     *
+     * ⚠️ Mesma regra de `PainelVisaoGeralService::textoOuNulo()`, que é `private`
+     * naquele serviço (dono nesta fase: o plano 179-02). São três linhas de
+     * formatação, não uma regra de negócio: a cópia não cria duas verdades, ao
+     * contrário do que acontecia com "no ar" antes do plano 179-02B.
+     */
+    private function textoOuNulo(mixed $valor): ?string
+    {
+        if (! is_string($valor) && ! is_numeric($valor)) {
+            return null;
+        }
+        $texto = trim((string) $valor);
+
+        return $texto === '' ? null : $texto;
+    }
+
+    /** Uma lista de arrays de dentro de um payload montado em outro serviço. */
+    private function listaDe(array $payload, string $chave): array
+    {
+        $bruto = $payload[$chave] ?? [];
+        if (! is_array($bruto)) {
+            return [];
+        }
+
+        return array_values(array_filter($bruto, 'is_array'));
+    }
 
     /**
      * A base das publicações concluídas da conta: o MESMO desenho de escopo de

@@ -1204,8 +1204,8 @@ class CockpitDaContaTest extends TestCase
         ]);
         PubImagemAtribuicao::create([
             'imagem_id' => $imagem->id,
-            'grupo_chave' => ResolvedorGruposImagem::GERAL,
-            'grupo_hash' => ChaveCanonica::hash(ResolvedorGruposImagem::GERAL),
+            'grupo_chave' => 'GENERAL',
+            'grupo_hash' => ChaveCanonica::hash('GENERAL'),
             'posicao' => 0,
         ]);
 
@@ -1437,7 +1437,15 @@ class CockpitDaContaTest extends TestCase
 
         $this->assertNotSame([], $eventos, 'o cenário tem de produzir eventos, senão a varredura é vazia por construção');
         $semNome = array_values(array_filter($eventos, fn (array $ev) => $ev['titulo'] === null));
-        $this->assertCount(1, $semNome, 'o produto sem nome vira titulo null');
+        // DOIS eventos sem alvo, os dois honestos: o produto sem nome (4ª fonte) e
+        // o kit de criativo sem `pub_rascunho_id`, que não tem produto para nomear
+        // (leftJoin de `atividadeDaEquipe()`). Nos dois o campo é null, nunca `''`.
+        $this->assertCount(2, $semNome, 'o produto sem nome e o kit sem rascunho viram titulo null');
+        $this->assertSame(
+            ['produto_recebido', 'criativos'],
+            array_column($semNome, 'tipo'),
+            'os dois casos de alvo ausente são estes — nenhum outro tipo perdeu o título pelo caminho',
+        );
         foreach ($eventos as $evento) {
             foreach ($evento as $campo => $valor) {
                 $this->assertFalse(is_array($valor), "`{$campo}` não pode ser array num evento");
@@ -1500,7 +1508,20 @@ class CockpitDaContaTest extends TestCase
             'atividade' => $servico->atividade($alvo, $this->painel()->atividadeDaEquipe($alvo)),
         ];
 
-        $this->assertNotNull($cockpit['banner'], 'a conta sem Company deste cenário está sem token');
+        // ⚠️ Sem Company a conta pode estar PERFEITAMENTE conectada (o token mora
+        // na própria `MlbEmpresa` nas 535 de 539 contas sem Company): o banner é
+        // nulo porque o token está ativo, não porque falta Company. D23 não é
+        // sinônimo de problema de integração.
+        $this->assertNull($cockpit['banner']);
+        // ⚠️ O `geral` fica em `atencao` pela SINCRONIZAÇÃO, não pelo ML: sem
+        // Company não existe acervo para coletar, e a linha diz `nunca_coletado`
+        // com `atualizar_url` nulo — exatamente o que o contrato do header já faz
+        // para as contas sem Company (a tela aplica ali o literal "disponível só
+        // para empresas cadastradas"). É a MESMA regra do caso medido, sem exceção
+        // escondida para D23.
+        $this->assertSame('atencao', $cockpit['saude']['geral']);
+        $this->assertTrue($cockpit['saude']['linhas'][2]['nunca_coletado']);
+        $this->assertFalse($cockpit['saude']['linhas'][0]['problema'], 'o ML está conectado neste cenário');
         $this->assertFalse($cockpit['publicacoes_ml']['disponivel']);
         $this->assertFalse($cockpit['recentes']['disponivel']);
         $this->assertFalse($cockpit['atividade']['disponivel']);
