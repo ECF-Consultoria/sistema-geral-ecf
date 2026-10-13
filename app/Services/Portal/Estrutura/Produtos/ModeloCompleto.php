@@ -130,6 +130,9 @@ class ModeloCompleto
         'categoria' => 'O tipo do produto, por escrito (ex.: Poltronas).',
     ];
 
+    /** O aviso, na faixa do último volume aberto, de que há mais volumes recolhidos ao lado. */
+    private const COMO_ABRIR_OS_VOLUMES = 'Mais de uma caixa? Abra os outros volumes no + acima destas colunas.';
+
     private const EXPLICACAO_DO_GRUPO = 'O código do produto: junta as linhas que são variações (cores, tamanhos) do mesmo produto. Produto sem variação também precisa do seu.';
 
     /** O que nunca vai para uma célula ou nota: qualquer termo que conte para onde o cadastro vai. */
@@ -498,6 +501,9 @@ class ModeloCompleto
         $mapa = [];
         $guia = [];
         $salto = self::PRIMEIRA_LINHA - 1;   // quantas linhas há acima do primeiro produto
+        // Quantos volumes o produto com mais caixas de uma aba usa: são os que ficam abertos nela.
+        $maisVolumes = fn (array $linhas) => array_reduce($linhas,
+            fn (int $m, array $l) => max($m, count(VolumesTexto::interpretar($l['produto']['volumes_texto'] ?? '')['volumes'])), 0);
 
         foreach ($categorias as $c) {
             $nomeDaAba = PlanilhaDasFichasTecnicas::nomeDeAba($c['nome'], $usados);
@@ -521,7 +527,9 @@ class ModeloCompleto
                 }
             }
             $colunas = $this->colunasDaAba($doProduto, $c['campos']);
-            self::apresentar($aba, $colunas);
+            $abertos = max(1, $maisVolumes($c['linhas']));
+            self::apresentar($aba, $colunas, $abertos);
+            self::recolherVolumes($aba, $doProduto, $abertos);
             $guia[] = [$nomeDaAba, array_slice($colunas, count($doProduto))];
 
             $abas[] = ['id' => $c['id'], 'nome' => $c['nome'], 'aba' => $nomeDaAba, 'campos' => count($c['campos'])];
@@ -536,7 +544,9 @@ class ModeloCompleto
             foreach ($semCategoria as $n => $linha) {
                 self::linhaDoProduto($aba, $comCategoria, $n + self::PRIMEIRA_LINHA, $linha['produto']);
             }
-            self::apresentar($aba, $this->colunasDaAba($comCategoria, []));
+            $abertos = max(1, $maisVolumes($semCategoria));
+            self::apresentar($aba, $this->colunasDaAba($comCategoria, []), $abertos);
+            self::recolherVolumes($aba, $comCategoria, $abertos);
             $abas[] = ['id' => null, 'nome' => self::ABA_SEM_CATEGORIA, 'aba' => self::ABA_SEM_CATEGORIA, 'campos' => 0];
             $mapa[] = [self::ABA_SEM_CATEGORIA, self::SEM_CODIGO, '', ''];
         }
@@ -616,8 +626,11 @@ class ModeloCompleto
      *
      * @param  list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>  $colunas
      */
-    private static function apresentar(Worksheet $aba, array $colunas): void
+    private static function apresentar(Worksheet $aba, array $colunas, int $volumesAbertos = self::MAX_VOLUMES): void
     {
+        // Há volume recolhido depois do último aberto? A faixa desse último avisa como abrir os outros.
+        $ultimoAberto = 'Volume '.$volumesAbertos;
+        $haRecolhidos = in_array('Volume '.($volumesAbertos + 1), array_column($colunas, 'grupo'), true);
         $letra = fn (int $i) => Coordinate::stringFromColumnIndex($i + 1);
         $faixa = self::LINHA_DA_FAIXA;
         $cabecalho = self::LINHA_DO_CABECALHO;
@@ -642,7 +655,8 @@ class ModeloCompleto
             }
             $primeiroDoBloco = $inicio === 0 || $colunas[$inicio - 1]['bloco'] !== $c['bloco'];
             $titulo = match (true) {
-                $c['bloco'] === 'embalado' => $bloco['titulo'].' · '.$c['grupo'].($c['grupo'] === 'Volume 1' ? ': a caixa com o produto dentro' : ': só se for em mais de uma caixa'),
+                $c['bloco'] === 'embalado' => $bloco['titulo'].' · '.$c['grupo'].($c['grupo'] === 'Volume 1' ? ': a caixa com o produto dentro.' : ': só se for em mais de uma caixa.')
+                    .($haRecolhidos && $c['grupo'] === $ultimoAberto ? ' '.self::COMO_ABRIR_OS_VOLUMES : ''),
                 $c['grupo'] !== ''          => mb_strtoupper($bloco['curto']).' · '.$c['grupo'],
                 $inicio < self::COLUNAS_FIXAS => mb_strtoupper($bloco['curto']),
                 $primeiroDoBloco || $inicio === self::COLUNAS_FIXAS => $bloco['titulo'],
@@ -689,6 +703,35 @@ class ModeloCompleto
         $aba->getRowDimension($cabecalho)->setRowHeight(34);
         $aba->getRowDimension($ajuda)->setRowHeight(82);
         $aba->freezePane(Coordinate::stringFromColumnIndex(self::COLUNAS_FIXAS + 1).self::PRIMEIRA_LINHA);
+    }
+
+    /**
+     * Deixa à vista só os primeiros volumes e recolhe o resto num grupo de colunas (13/10/2026, "em
+     * produto embalado, deixa apenas um volume; o resto deixa minimizado"). A maioria dos produtos vai
+     * numa caixa só, e doze colunas de medida abertas empurravam a ficha técnica para longe. Quem tem
+     * mais caixas abre o grupo no botão "+" que fica acima das colunas, colado no último volume aberto.
+     *
+     * No "meus produtos" ficam abertos quantos volumes o produto com mais caixas daquela aba usa: medida
+     * já preenchida nunca nasce escondida. Recolher não muda a importação — ela lê as colunas do mesmo jeito.
+     *
+     * @param  list<array{chave: string}>  $colunas  as colunas do produto, na ordem
+     */
+    private static function recolherVolumes(Worksheet $aba, array $colunas, int $abertos): void
+    {
+        $primeira = null;
+        foreach ($colunas as $i => $c) {
+            if (! str_starts_with($c['chave'], 'vol:') || (int) explode(':', $c['chave'])[1] <= max(1, $abertos)) {
+                continue;
+            }
+            $primeira ??= $i;
+            $aba->getColumnDimension(Coordinate::stringFromColumnIndex($i + 1))->setOutlineLevel(1)->setVisible(false);
+        }
+        if ($primeira === null) {
+            return;
+        }
+        // O botão de abrir fica à ESQUERDA do grupo, na última coluna do volume aberto (e não lá no Custo).
+        $aba->setShowSummaryRight(false);
+        $aba->getColumnDimension(Coordinate::stringFromColumnIndex($primeira))->setCollapsed(true);
     }
 
     /**
@@ -766,7 +809,7 @@ class ModeloCompleto
             'Uma linha por variação do produto (cada cor ou tamanho é uma linha). Produto sem variação ocupa uma linha só.',
             'Produto (grupo)*: o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as linhas dele.',
             'Ref*: o código de cada variação. Não pode repetir.',
-            'PRODUTO EMBALADO (os Volumes): as medidas e o peso de cada CAIXA com o produto dentro. É por elas que o frete é calculado. Cada caixa tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Se o produto vai em mais de uma caixa, preencha o Volume 2, o Volume 3… Deixe em branco os que não usar.',
+            'PRODUTO EMBALADO (os Volumes): as medidas e o peso de cada CAIXA com o produto dentro. É por elas que o frete é calculado. Cada caixa tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Os volumes que não estão em uso vêm recolhidos: se o produto vai em mais de uma caixa, abra o Volume 2, o Volume 3… no botão + que fica acima das colunas, ao lado do último volume aberto, e preencha. Deixe em branco os que não usar.',
             'MEDIDAS DO PRODUTO FORA DA CAIXA: o produto montado, sem a embalagem. São diferentes das medidas do volume, que é a caixa.',
             'FICHA TÉCNICA: as características do produto. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',
             'Onde houver lista, escolha uma opção pela seta da célula; em algumas listas você também pode escrever o seu valor. Para marcar mais de uma opção num campo, separe com | .',

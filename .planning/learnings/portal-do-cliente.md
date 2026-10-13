@@ -1735,6 +1735,12 @@ Não se aplica, mas não mostra as opções"; e o erro "Quantidade de lugares - 
   é guardada por id do atributo): Largura = "Largura x Altura"; Profundidade de poltrona = "…da mesa". As seis
   (`LENGTH`, `WIDTH`, `HEIGHT`, `DEPTH`, `DIAMETER`, `WEIGHT`) ganharam texto fixo em `publicador_glossario.atributos`,
   que vence o guardado — vale também para a ficha na tela e para o editor interno.
+- **Volumes recolhidos** ("em produto embalado, deixa apenas um volume; o resto deixa minimizado"): os volumes que
+  não estão em uso vão num grupo de colunas recolhido (`recolherVolumes`). No modelo fica aberto só o Volume 1; no
+  "meus produtos", quantos o produto com mais caixas DAQUELA aba usa — medida preenchida nunca nasce escondida. O
+  botão "+" fica à esquerda do grupo (`setShowSummaryRight(false)` + `collapsed` na última coluna aberta), senão ele
+  aparece lá no "Custo", longe do Volume 1; a faixa do último volume aberto avisa onde clicar. A importação lê coluna
+  recolhida como qualquer outra. Para conferir pelo Excel: lá `OutlineLevel` conta a partir de 1 (2 = agrupada).
 - **Para ver a planilha sem Excel licenciado:** o Excel desta máquina está sem ativação e rejeita `CopyPicture` por
   COM (`RPC_E_CALL_REJECTED`), deixando um processo oculto para trás — encerrar SÓ o de `MainWindowHandle` 0 e
   `StartTime` de agora, nunca todos (o usuário costuma estar com a planilha aberta). O que funciona:

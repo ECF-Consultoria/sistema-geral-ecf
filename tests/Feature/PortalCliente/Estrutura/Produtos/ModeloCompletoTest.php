@@ -285,9 +285,9 @@ class ModeloCompletoTest extends TestCase
         // As duas colunas fixas na tela têm o pedaço delas: nenhuma mescla atravessa o limite do que fica fixo.
         $this->assertSame(['PRODUTO', 'PRODUTO'], [$this->faixa($aba, 'Produto (grupo)*'), $this->faixa($aba, 'Ref*')]);
         $this->assertStringStartsWith('PRODUTO · uma linha por variação', $this->faixa($aba, 'Nome do produto*'));
-        $this->assertSame('PRODUTO EMBALADO · Volume 1: a caixa com o produto dentro', $this->faixa($aba, 'Volume 1: comprimento (cm)'));
-        $this->assertSame('PRODUTO EMBALADO · Volume 1: a caixa com o produto dentro', $this->faixa($aba, 'Volume 1: peso (kg)'));
-        $this->assertSame('PRODUTO EMBALADO · Volume 2: só se for em mais de uma caixa', $this->faixa($aba, 'Volume 2: largura (cm)'));
+        $this->assertStringStartsWith('PRODUTO EMBALADO · Volume 1: a caixa com o produto dentro.', $this->faixa($aba, 'Volume 1: comprimento (cm)'));
+        $this->assertSame($this->faixa($aba, 'Volume 1: comprimento (cm)'), $this->faixa($aba, 'Volume 1: peso (kg)'));
+        $this->assertSame('PRODUTO EMBALADO · Volume 2: só se for em mais de uma caixa.', $this->faixa($aba, 'Volume 2: largura (cm)'));
         $this->assertSame('CUSTO, ESTOQUE E DESCRIÇÃO', $this->faixa($aba, 'Custo (R$)'));
         $this->assertStringStartsWith('FICHA TÉCNICA', $this->faixa($aba, 'Marca*'));
         $this->assertStringStartsWith('FICHA TÉCNICA', $this->faixa($aba, 'Quantidade de lugares'), 'o título se repete: continua à vista ao rolar para o lado');
@@ -330,6 +330,45 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame(['Cadeiras', 'Medidas do produto fora da caixa', 'Largura (cm)', 'Não'], array_slice($guia['Largura (cm)'], 0, 4));
         $this->assertSame('Sim · Não · Não se aplica', $guia['Com gaveta'][6]);
         $this->assertStringEndsWith('Não se aplica', (string) $guia['Material do estofamento'][6]);
+    }
+
+    /**
+     * 13/10/2026: "em produto embalado, deixa apenas um volume; o resto deixa minimizado". Os volumes que não
+     * estão em uso vêm recolhidos num grupo de colunas, com o botão de abrir colado no último volume aberto;
+     * o que já tem medida nunca nasce escondido, e o que está recolhido continua sendo lido na importação.
+     */
+    public function test_so_o_primeiro_volume_vem_aberto_e_os_outros_recolhidos(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        // [à vista?, nível do grupo] da coluna.
+        $estado = fn (Worksheet $a, string $cabecalho) => [$a->getColumnDimension($this->coluna($a, $cabecalho))->getVisible(), $a->getColumnDimension($this->coluna($a, $cabecalho))->getOutlineLevel()];
+        $aberto = [true, 0];
+        $recolhido = [false, 1];
+        $aviso = 'Mais de uma caixa? Abra os outros volumes no + acima destas colunas.';
+
+        // O modelo vazio: só o Volume 1.
+        $aba = $this->baixar($empresa, ['MLB1'])->getSheetByName('Cadeiras');
+        $this->assertSame([$aberto, $aberto], [$estado($aba, 'Volume 1: comprimento (cm)'), $estado($aba, 'Volume 1: peso (kg)')]);
+        $this->assertSame([$recolhido, $recolhido, $recolhido], [$estado($aba, 'Volume 2: comprimento (cm)'), $estado($aba, 'Volume 2: peso (kg)'), $estado($aba, 'Volume 3: peso (kg)')]);
+        $this->assertSame([$aberto, $aberto], [$estado($aba, 'Ambiente(s)'), $estado($aba, 'Custo (R$)')], 'só os volumes são recolhidos');
+        // O botão de abrir fica à esquerda do grupo, na última coluna do volume aberto.
+        $this->assertFalse($aba->getShowSummaryRight());
+        $this->assertTrue($aba->getColumnDimension($this->coluna($aba, 'Volume 1: peso (kg)'))->getCollapsed());
+        $this->assertStringEndsWith($aviso, $this->faixa($aba, 'Volume 1: peso (kg)'));
+
+        // "Meus produtos": a cadeira ALFA-PT usa dois volumes (ver `preenchida`, que os escreve no Volume 2
+        // RECOLHIDO do modelo — e eles entram). Na aba dela ficam abertos os dois; o terceiro, recolhido.
+        app(ImportadorModeloCompleto::class)->aplicar($empresa, $this->preenchida($empresa), $this->atorCliente($empresa));
+        $planilha = app(ModeloCompleto::class)->exportar($empresa)['planilha'];
+        $cadeiras = $planilha->getSheetByName('Cadeiras');
+        $this->assertSame('30', (string) $cadeiras->getCell($this->coluna($cadeiras, 'Volume 2: comprimento (cm)').self::L1)->getValue());
+        $this->assertSame([$aberto, $aberto, $recolhido], [$estado($cadeiras, 'Volume 1: peso (kg)'), $estado($cadeiras, 'Volume 2: peso (kg)'), $estado($cadeiras, 'Volume 3: comprimento (cm)')]);
+        $this->assertTrue($cadeiras->getColumnDimension($this->coluna($cadeiras, 'Volume 2: peso (kg)'))->getCollapsed());
+        $this->assertStringEndsWith($aviso, $this->faixa($cadeiras, 'Volume 2: peso (kg)'));
+        $this->assertStringNotContainsString($aviso, $this->faixa($cadeiras, 'Volume 1: peso (kg)'));
+        // A mesa não tem volume nenhum: na aba dela, só o Volume 1 aberto.
+        $mesas = $planilha->getSheetByName('Mesas de Jantar');
+        $this->assertSame([$aberto, $recolhido], [$estado($mesas, 'Volume 1: peso (kg)'), $estado($mesas, 'Volume 2: comprimento (cm)')]);
     }
 
     /**
