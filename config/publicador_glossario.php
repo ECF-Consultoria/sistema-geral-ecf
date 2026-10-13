@@ -62,6 +62,17 @@ return [
         'PACKAGE_DATA_SOURCE' => 'De onde vieram as medidas da embalagem de fábrica. Informação interna, preenchida automaticamente.',
         'HAZMAT_TRANSPORTABILITY' => 'Indica se o produto é perigoso para transporte (inflamável, corrosivo, com bateria de lítio). Preenchido automaticamente.',
 
+        // ─── Medidas do produto (montado, fora da caixa) ───
+        // 13/10/2026: sem estas, o texto vinha do catálogo e valia para QUALQUER categoria — a Largura dizia
+        // "Largura x Altura" e a Profundidade de uma poltrona falava "da mesa". São as medidas do produto
+        // sozinho; as da caixa são os volumes (e o pacote de envio, acima).
+        'LENGTH' => 'Comprimento do produto montado, fora da caixa: a maior medida dele de ponta a ponta. Não é a medida da embalagem.',
+        'WIDTH' => 'Largura do produto montado, fora da caixa: de um lado ao outro, visto de frente. Não é a medida da embalagem.',
+        'HEIGHT' => 'Altura do produto montado, fora da caixa: do chão até o ponto mais alto. Não é a medida da embalagem.',
+        'DEPTH' => 'Profundidade do produto montado, fora da caixa: da frente até o fundo. Não é a medida da embalagem.',
+        'DIAMETER' => 'Diâmetro do produto montado, fora da caixa: a medida de um lado ao outro passando pelo centro. Não é a medida da embalagem.',
+        'WEIGHT' => 'Peso do produto sozinho, sem caixa nem embalagem. O peso da caixa com o produto dentro vai no volume.',
+
         // ─── Cor e tamanho ───
         'COLOR' => 'O nome da cor como você quer que apareça (pode ser um nome próprio, como Azul-petróleo). O tom básico para os filtros vai em "Cor principal".',
         'MAIN_COLOR' => 'O tom básico da cor (preto, azul, vermelho…), escolhido da lista. Serve para o filtro de cor; o nome da cor que o comprador vê vai em "Cor".',

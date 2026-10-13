@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
+use App\Services\Publicador\ExplicacaoDeAtributos;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -14,6 +15,7 @@ use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
@@ -38,7 +40,10 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  * em COLUNAS SEPARADAS: comprimento, largura, altura e peso; pedido do usuário, "vir separado por
  * coluna", no lugar do texto "120×80×10 · 25,0") e, depois, uma coluna por campo
  * da ficha da categoria, com as mesmas listas, "*" e unidades da planilha da ficha
- * ({@see PlanilhaDasFichasTecnicas::colunasDaFicha()}). Mais "Instruções" e duas ocultas: "Listas" (as
+ * ({@see PlanilhaDasFichasTecnicas::colunasDaFicha()}). Acima do cabeçalho, uma faixa diz de que é cada
+ * bloco de colunas (o produto, o produto EMBALADO, a ficha, as medidas FORA DA CAIXA) e, abaixo dele, uma
+ * linha diz como preencher cada coluna ({@see self::apresentar()}). Mais "Instruções", "Guia dos campos"
+ * (o que é cada coluna e as opções de cada lista) e duas ocultas: "Listas" (as
  * opções) e "Categorias" (qual categoria é cada aba). No exportado, o produto que ainda não tem categoria
  * vai para a aba "Sem categoria": só as colunas do produto, mais a "Categoria" por escrito.
  *
@@ -80,6 +85,56 @@ class ModeloCompleto
     public const VOLUMES_NO_MODELO = 3;
     public const MAX_VOLUMES = 8;
 
+    /**
+     * As linhas de cada aba de produtos (13/10/2026): a faixa que diz de que é cada bloco de colunas, o
+     * cabeçalho, a ajuda ("como preencher") e, a partir da 4, os produtos. A importação acha o cabeçalho
+     * pela coluna "Produto (grupo)" e pula a ajuda pelo começo dela, então o arquivo antigo (cabeçalho na
+     * linha 1) continua valendo.
+     */
+    public const LINHA_DA_FAIXA = 1;
+    public const LINHA_DO_CABECALHO = 2;
+    public const LINHA_DA_AJUDA = 3;
+    public const PRIMEIRA_LINHA = 4;
+
+    /** Quantas colunas ficam fixas ao rolar para o lado: o grupo e o código da variação. */
+    private const COLUNAS_FIXAS = 2;
+
+    /**
+     * Os blocos de colunas: o título na faixa, o nome curto (no guia), a cor da faixa — que é também a
+     * do cabeçalho OBRIGATÓRIO — e a clara, do cabeçalho opcional.
+     */
+    private const BLOCOS = [
+        'produto'  => ['titulo' => 'PRODUTO · uma linha por variação (cada cor ou tamanho)', 'curto' => 'Produto', 'cor' => '1F2430', 'clara' => 'E5E7EB'],
+        'embalado' => ['titulo' => 'PRODUTO EMBALADO', 'curto' => 'Produto embalado', 'cor' => '14532D', 'clara' => 'DCFCE7'],
+        'venda'    => ['titulo' => 'CUSTO, ESTOQUE E DESCRIÇÃO', 'curto' => 'Custo, estoque e descrição', 'cor' => '374151', 'clara' => 'E5E7EB'],
+        'ficha'    => ['titulo' => 'FICHA TÉCNICA · na 1ª linha de cada produto', 'curto' => 'Ficha técnica', 'cor' => '312E81', 'clara' => 'E0E7FF'],
+        'fora'     => ['titulo' => 'MEDIDAS DO PRODUTO FORA DA CAIXA · montado, sem a embalagem', 'curto' => 'Medidas do produto fora da caixa', 'cor' => '7C2D12', 'clara' => 'FFEDD5'],
+        'detalhes' => ['titulo' => 'MAIS DETALHES · opcionais', 'curto' => 'Mais detalhes', 'cor' => '4B5563', 'clara' => 'F3F4F6'],
+    ];
+
+    /**
+     * O "como preencher" das colunas do produto (a linha de ajuda). O do grupo COMEÇA pela marca
+     * {@see PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA}: é por ela que a importação pula esta linha.
+     */
+    private const AJUDA_DO_PRODUTO = [
+        'grupo'     => PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA.' ↓  Obrigatório. O código que junta as variações do mesmo produto: repita em todas as linhas dele.',
+        'codigo'    => 'Obrigatório. O código de cada variação. Não pode repetir.',
+        'eixo'      => 'Opcional. Por onde o produto varia. Escolha da lista; em branco se não varia.',
+        'variacao'  => 'A variação desta linha (ex.: Preto). Em branco se o produto não varia.',
+        'nome'      => 'Obrigatório. O nome do produto, igual em todas as linhas dele.',
+        'familia'   => 'Opcional. A linha ou coleção do produto.',
+        'ambientes' => 'Opcional. Onde o produto é usado. Mais de um: separe com /.',
+        'custo'     => 'Opcional. Quanto custa uma unidade, em reais. Só o número.',
+        'estoque'   => 'Opcional. Quantas unidades você tem. Só o número.',
+        'descricao' => 'Opcional. Texto livre sobre o produto.',
+        'categoria' => 'O tipo do produto, por escrito (ex.: Poltronas).',
+    ];
+
+    private const EXPLICACAO_DO_GRUPO = 'O código do produto: junta as linhas que são variações (cores, tamanhos) do mesmo produto. Produto sem variação também precisa do seu.';
+
+    /** O que nunca vai para uma célula ou nota: qualquer termo que conte para onde o cadastro vai. */
+    private const NAO_VAI = '/mercado|an[uú]nci|publica|\bmlb|\bml\b/iu';
+
     private const LARGURAS = ['grupo' => 18, 'codigo' => 14, 'eixo' => 17, 'variacao' => 18, 'nome' => 32, 'familia' => 24, 'ambientes' => 28,
         'custo' => 13, 'estoque' => 13, 'descricao' => 50, 'categoria' => 28];
 
@@ -88,6 +143,7 @@ class ModeloCompleto
         private CategoriaSugestaoService $categorias,
         private PlanilhaDasFichasTecnicas $fichas,
         private PlanilhaDosProdutos $produtos,
+        private ExplicacaoDeAtributos $explicacoes,
     ) {}
 
     /** "Volume 2: largura (cm)" — o cabeçalho de uma medida de um volume. */
@@ -288,16 +344,127 @@ class ModeloCompleto
 
     // ═══ Montagem ═══════════════════════════════════════════════════════════
 
-    /** @return list<array<string, mixed>>  os campos da ficha da categoria; vazio quando ela não respondeu */
+    /**
+     * Os campos da ficha da categoria, na ordem da tela, cada um com o `bloco` em que entra na faixa
+     * (`ficha`, `fora` = medidas do produto fora da caixa, `detalhes`), o `grupo` e a `explicacao` (o
+     * mesmo "o que é isto?" da tela). Vazio quando a categoria não respondeu.
+     *
+     * @return list<array<string, mixed>>
+     */
     private function camposDa(string $id): array
     {
         try {
-            return array_values(FichaTecnicaDaCategoria::camposPorId($this->definicao->definicao($id)));
+            $campos = [];
+            foreach ($this->definicao->definicaoComExplicacoes($id) as $grupo) {
+                $bloco = match (true) {
+                    (bool) ($grupo['medidas_do_produto'] ?? false) => 'fora',
+                    ($grupo['grupo'] ?? '') === FichaTecnicaDaCategoria::GRUPO_MAIS_DETALHES => 'detalhes',
+                    default => 'ficha',
+                };
+                foreach ($grupo['campos'] as $campo) {
+                    $campos[$campo['id']] = ['bloco' => $bloco, 'grupo' => (string) ($grupo['grupo'] ?? '')] + $campo;
+                }
+            }
+
+            return array_values($campos);
         } catch (\Throwable $e) {
             Log::warning("[Estrutura Produtos] ficha da categoria {$id} indisponível para o modelo completo", ['erro' => $e->getMessage()]);
 
             return [];
         }
+    }
+
+    /** O bloco de uma coluna do produto: o produto em si, o produto embalado (volumes) ou custo/estoque/descrição. */
+    private static function blocoDoProduto(string $chave): string
+    {
+        return str_starts_with($chave, 'vol:') ? 'embalado' : (in_array($chave, self::CAMPOS_ANTES, true) ? 'produto' : 'venda');
+    }
+
+    /** O "como preencher" curto de uma coluna do produto (a linha de ajuda). */
+    private static function ajudaDoProduto(string $chave): string
+    {
+        if (str_starts_with($chave, 'vol:')) {
+            [, $n, $medida] = explode(':', $chave);
+            $caixa = (int) $n === 1 ? 'da caixa com o produto dentro' : "da caixa {$n} (só se o produto for em mais de uma caixa)";
+
+            return match ($medida) {
+                'kg'    => "Peso {$caixa}. Só o número, em kg.",
+                'c'     => "Comprimento {$caixa}. Só o número, em cm.",
+                'l'     => "Largura {$caixa}. Só o número, em cm.",
+                default => "Altura {$caixa}. Só o número, em cm.",
+            };
+        }
+
+        return self::AJUDA_DO_PRODUTO[$chave] ?? '';
+    }
+
+    /** A chave do glossário do Portal (`publicador_glossario.portal_campos`) que explica uma coluna do produto. */
+    private static function chaveDoGlossario(string $chave): ?string
+    {
+        if (str_starts_with($chave, 'vol:')) {
+            return ['c' => 'comprimento', 'l' => 'largura', 'a' => 'altura', 'kg' => 'peso'][explode(':', $chave)[2]] ?? null;
+        }
+
+        return ['codigo' => 'ref', 'eixo' => 'eixo', 'variacao' => 'valor', 'nome' => 'nome', 'familia' => 'familia', 'ambientes' => 'ambientes',
+            'custo' => 'custo', 'estoque' => 'estoque', 'descricao' => 'descricao', 'categoria' => 'categoria'][$chave] ?? null;
+    }
+
+    /** O texto pode ir para a planilha do cliente? (nada que conte para onde o cadastro vai.) */
+    private static function podeIr(?string $texto): bool
+    {
+        $texto = trim((string) $texto);
+
+        return $texto !== '' && preg_match(self::NAO_VAI, $texto) !== 1 && ! ExplicacaoDeAtributos::revelaDestino($texto);
+    }
+
+    /**
+     * As colunas de uma aba, já com tudo o que a apresentação precisa: de que bloco é, o título, a
+     * ajuda curta ("como preencher"), a explicação longa ("o que é") e as opções.
+     *
+     * @param  list<array{chave: string, titulo: string, largura: int}>  $doProduto
+     * @param  list<array<string, mixed>>  $campos
+     * @return list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>
+     */
+    private function colunasDaAba(array $doProduto, array $campos): array
+    {
+        $glossario = $this->explicacoes->camposDoPortal();
+        $saida = [];
+
+        foreach ($doProduto as $c) {
+            $chave = self::chaveDoGlossario($c['chave']);
+            $explicacao = $c['chave'] === 'grupo' ? self::EXPLICACAO_DO_GRUPO : (string) ($glossario[$chave] ?? '');
+            $saida[] = [
+                'bloco'       => self::blocoDoProduto($c['chave']),
+                'grupo'       => str_starts_with($c['chave'], 'vol:') ? 'Volume '.explode(':', $c['chave'])[1] : '',
+                'titulo'      => $c['titulo'],
+                'obrigatorio' => str_contains($c['titulo'], '*'),
+                'ajuda'       => self::ajudaDoProduto($c['chave']),
+                'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
+                'opcoes'      => $c['chave'] === 'eixo' ? implode(' · ', array_values(EstruturaProdutoVariacao::EIXOS)) : '',
+            ];
+        }
+
+        foreach ($campos as $campo) {
+            $opcoes = array_column($campo['valores'] ?? [], 'nome');
+            if ($campo['tipo'] === FichaTecnicaDaCategoria::TIPO_SIM_NAO) {
+                $opcoes = ['Sim', 'Não'];
+            }
+            if ($opcoes !== [] && ($campo['nao_se_aplica'] ?? false)) {
+                $opcoes[] = PlanilhaDasFichasTecnicas::NAO_SE_APLICA;
+            }
+            $explicacao = (string) ($campo['explicacao'] ?? '');
+            $saida[] = [
+                'bloco'       => (string) $campo['bloco'],
+                'grupo'       => in_array($campo['grupo'], ['', 'Outros', FichaTecnicaDaCategoria::GRUPO_PADRAO, FichaTecnicaDaCategoria::GRUPO_MAIS_DETALHES, FichaTecnicaDaCategoria::GRUPO_MEDIDAS_DO_PRODUTO], true) ? '' : (string) $campo['grupo'],
+                'titulo'      => PlanilhaDasFichasTecnicas::cabecalho($campo),
+                'obrigatorio' => (bool) $campo['obrigatorio'],
+                'ajuda'       => PlanilhaDasFichasTecnicas::comoPreencher($campo, $campo['bloco'] === 'fora'),
+                'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
+                'opcoes'      => Str::limit(implode(' · ', $opcoes), 900, ' …'),
+            ];
+        }
+
+        return $saida;
     }
 
     /**
@@ -326,32 +493,36 @@ class ModeloCompleto
 
         $listas = new Worksheet($planilha, PlanilhaDasFichasTecnicas::ABA_LISTAS);
         $colunaDaLista = 0;
-        $usados = [self::ABA_SEM_CATEGORIA];
+        $usados = [self::ABA_SEM_CATEGORIA, PlanilhaDasFichasTecnicas::ABA_GUIA];
         $abas = [];
         $mapa = [];
+        $guia = [];
+        $salto = self::PRIMEIRA_LINHA - 1;   // quantas linhas há acima do primeiro produto
 
         foreach ($categorias as $c) {
             $nomeDaAba = PlanilhaDasFichasTecnicas::nomeDeAba($c['nome'], $usados);
             $usados[] = $nomeDaAba;
             $aba = new Worksheet($planilha, $nomeDaAba);
             $planilha->addSheet($aba);
-            $fim = max(LeitorPlanilhaProdutos::MAX_LINHAS + 1, count($c['linhas']) + 1);
+            $fim = max(LeitorPlanilhaProdutos::MAX_LINHAS + 1, count($c['linhas']) + $salto);
 
             $this->colunasDoProduto($aba, $doProduto, $fim);
             $primeiraDaFicha = count($doProduto) + 1;
             if ($c['campos'] !== []) {
-                $this->fichas->colunasDaFicha($aba, $c['campos'], $primeiraDaFicha, $fim, $listas, $colunaDaLista);
+                $this->fichas->colunasDaFicha($aba, $c['campos'], $primeiraDaFicha, $fim, $listas, $colunaDaLista, self::LINHA_DO_CABECALHO, self::PRIMEIRA_LINHA);
             }
             foreach ($c['linhas'] as $n => $linha) {
-                self::linhaDoProduto($aba, $doProduto, $n + 2, $linha['produto']);
+                self::linhaDoProduto($aba, $doProduto, $n + self::PRIMEIRA_LINHA, $linha['produto']);
                 foreach ($c['campos'] as $i => $campo) {
                     $texto = (string) ($linha['ficha'][$campo['id']] ?? '');
                     if ($texto !== '') {
-                        self::texto($aba, Coordinate::stringFromColumnIndex($primeiraDaFicha + $i).($n + 2), $texto);
+                        PlanilhaDasFichasTecnicas::escreverValor($aba, Coordinate::stringFromColumnIndex($primeiraDaFicha + $i).($n + self::PRIMEIRA_LINHA), $campo, $texto);
                     }
                 }
             }
-            self::cabecalho($aba, count($doProduto), count($c['campos']));
+            $colunas = $this->colunasDaAba($doProduto, $c['campos']);
+            self::apresentar($aba, $colunas);
+            $guia[] = [$nomeDaAba, array_slice($colunas, count($doProduto))];
 
             $abas[] = ['id' => $c['id'], 'nome' => $c['nome'], 'aba' => $nomeDaAba, 'campos' => count($c['campos'])];
             $mapa[] = [$nomeDaAba, substr($c['id'], strlen(self::PREFIXO)), $c['nome'], $c['caminho']];
@@ -361,11 +532,11 @@ class ModeloCompleto
             $comCategoria = self::colunas($volumes, true);
             $aba = new Worksheet($planilha, self::ABA_SEM_CATEGORIA);
             $planilha->addSheet($aba);
-            $this->colunasDoProduto($aba, $comCategoria, max(LeitorPlanilhaProdutos::MAX_LINHAS + 1, count($semCategoria) + 1));
+            $this->colunasDoProduto($aba, $comCategoria, max(LeitorPlanilhaProdutos::MAX_LINHAS + 1, count($semCategoria) + $salto));
             foreach ($semCategoria as $n => $linha) {
-                self::linhaDoProduto($aba, $comCategoria, $n + 2, $linha['produto']);
+                self::linhaDoProduto($aba, $comCategoria, $n + self::PRIMEIRA_LINHA, $linha['produto']);
             }
-            self::cabecalho($aba, count($comCategoria), 0);
+            self::apresentar($aba, $this->colunasDaAba($comCategoria, []));
             $abas[] = ['id' => null, 'nome' => self::ABA_SEM_CATEGORIA, 'aba' => self::ABA_SEM_CATEGORIA, 'campos' => 0];
             $mapa[] = [self::ABA_SEM_CATEGORIA, self::SEM_CODIGO, '', ''];
         }
@@ -373,6 +544,10 @@ class ModeloCompleto
         $instrucoes = new Worksheet($planilha, self::ABA_INSTRUCOES);
         $planilha->addSheet($instrucoes);
         self::preencherInstrucoes($instrucoes, count($categorias), $preenchido, $semCategoria !== []);
+
+        $doGuia = new Worksheet($planilha, PlanilhaDasFichasTecnicas::ABA_GUIA);
+        $planilha->addSheet($doGuia);
+        self::preencherGuia($doGuia, $this->colunasDaAba(self::colunas($volumes, $semCategoria !== []), []), $guia);
 
         $listas->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
         $planilha->addSheet($listas);
@@ -395,15 +570,16 @@ class ModeloCompleto
     /** Os cabeçalhos, larguras e formatos das colunas do produto, e a lista do "Tipo de variação". */
     private function colunasDoProduto(Worksheet $aba, array $colunas, int $fim): void
     {
+        $de = self::PRIMEIRA_LINHA;
         foreach ($colunas as $i => $c) {
             $coluna = Coordinate::stringFromColumnIndex($i + 1);
-            self::texto($aba, $coluna.'1', $c['titulo']);
+            self::texto($aba, $coluna.self::LINHA_DO_CABECALHO, $c['titulo']);
             $aba->getColumnDimension($coluna)->setWidth($c['largura']);
             if (in_array($c['chave'], ['grupo', 'codigo', 'variacao'], true)) {
-                $aba->getStyle("{$coluna}2:{$coluna}{$fim}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+                $aba->getStyle("{$coluna}{$de}:{$coluna}{$fim}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
             }
             if ($c['chave'] === 'eixo') {
-                $aba->setDataValidation("{$coluna}2:{$coluna}{$fim}", self::listaDeTipos());
+                $aba->setDataValidation("{$coluna}{$de}:{$coluna}{$fim}", self::listaDeTipos());
             }
         }
     }
@@ -426,20 +602,140 @@ class ModeloCompleto
         }
     }
 
-    /** Dois tons no cabeçalho: os dados do produto e, mais claro, a ficha técnica da categoria. */
-    private static function cabecalho(Worksheet $aba, int $doProduto, int $daFicha): void
+    /**
+     * A apresentação da aba (13/10/2026, "tem muitas dimensões que pedem para preencher mas não é
+     * especificado o que é: produto fora da caixa, embalado"):
+     *
+     *  - linha 1, a FAIXA: de que é cada bloco de colunas (o produto, o produto EMBALADO, a ficha técnica,
+     *    as medidas FORA DA CAIXA, os detalhes opcionais), cada bloco numa cor. O título se repete a cada
+     *    4 colunas para continuar à vista quando a pessoa rola para o lado;
+     *  - linha 2, o cabeçalho: escuro e com "*" no obrigatório, claro no opcional — o campo que não vale
+     *    para o produto (a medida do colchão numa poltrona) deixa de parecer cobrança;
+     *  - linha 3, a AJUDA: como preencher cada coluna, e onde dá para responder "Não se aplica";
+     *  - a explicação longa ("o que é") vai de nota no cabeçalho e na aba "Guia dos campos".
+     *
+     * @param  list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>  $colunas
+     */
+    private static function apresentar(Worksheet $aba, array $colunas): void
     {
-        $estilo = fn (string $cor) => [
-            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $cor]],
-            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-        ];
-        $aba->getStyle('A1:'.Coordinate::stringFromColumnIndex($doProduto).'1')->applyFromArray($estilo('1F2430'));
-        if ($daFicha > 0) {
-            $aba->getStyle(Coordinate::stringFromColumnIndex($doProduto + 1).'1:'.Coordinate::stringFromColumnIndex($doProduto + $daFicha).'1')->applyFromArray($estilo('3B4257'));
+        $letra = fn (int $i) => Coordinate::stringFromColumnIndex($i + 1);
+        $faixa = self::LINHA_DA_FAIXA;
+        $cabecalho = self::LINHA_DO_CABECALHO;
+        $ajuda = self::LINHA_DA_AJUDA;
+
+        // A faixa: pedaços de até 4 colunas do mesmo bloco (e do mesmo grupo), cada um com o título.
+        $inicio = 0;
+        $total = count($colunas);
+        while ($inicio < $total) {
+            $c = $colunas[$inicio];
+            $bloco = self::BLOCOS[$c['bloco']];
+            // As duas primeiras colunas ficam fixas na tela: nenhuma mescla atravessa esse limite (há programa
+            // de planilha que não fixa coluna cortando célula mesclada). Depois delas, o bloco do produto é um só.
+            $teto = match (true) {
+                $inicio < self::COLUNAS_FIXAS => self::COLUNAS_FIXAS - $inicio,
+                $c['bloco'] === 'produto'      => $total,
+                default                         => 4,
+            };
+            $fim = $inicio;
+            while ($fim + 1 < $total && $fim + 1 - $inicio < $teto && $colunas[$fim + 1]['bloco'] === $c['bloco'] && $colunas[$fim + 1]['grupo'] === $c['grupo']) {
+                $fim++;
+            }
+            $primeiroDoBloco = $inicio === 0 || $colunas[$inicio - 1]['bloco'] !== $c['bloco'];
+            $titulo = match (true) {
+                $c['bloco'] === 'embalado' => $bloco['titulo'].' · '.$c['grupo'].($c['grupo'] === 'Volume 1' ? ': a caixa com o produto dentro' : ': só se for em mais de uma caixa'),
+                $c['grupo'] !== ''          => mb_strtoupper($bloco['curto']).' · '.$c['grupo'],
+                $inicio < self::COLUNAS_FIXAS => mb_strtoupper($bloco['curto']),
+                $primeiroDoBloco || $inicio === self::COLUNAS_FIXAS => $bloco['titulo'],
+                default                     => mb_strtoupper($bloco['curto']).' · continua',
+            };
+            $area = $letra($inicio).$faixa.':'.$letra($fim).$faixa;
+            self::texto($aba, $letra($inicio).$faixa, $titulo);
+            if ($fim > $inicio) {
+                $aba->mergeCells($area);
+            }
+            $aba->getStyle($area)->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bloco['cor']]],
+                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'horizontal' => Alignment::HORIZONTAL_LEFT, 'wrapText' => true],
+            ]);
+            $inicio = $fim + 1;
         }
-        $aba->getRowDimension(1)->setRowHeight(32);
-        $aba->freezePane('C2');
+
+        foreach ($colunas as $i => $c) {
+            $bloco = self::BLOCOS[$c['bloco']];
+            $aba->getStyle($letra($i).$cabecalho)->applyFromArray([
+                'font'      => ['bold' => true, 'color' => ['rgb' => $c['obrigatorio'] ? 'FFFFFF' : '1F2937']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $c['obrigatorio'] ? $bloco['cor'] : $bloco['clara']]],
+                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            ]);
+            if ($c['ajuda'] !== '') {
+                self::texto($aba, $letra($i).$ajuda, $c['ajuda']);
+            }
+            if ($c['explicacao'] !== '') {
+                $nota = $aba->getComment($letra($i).$cabecalho);
+                $nota->setAuthor('ECF')->setWidth('280pt')->setHeight('110pt');
+                $nota->getText()->createTextRun($c['explicacao']);
+            }
+        }
+
+        $ultima = $letra($total - 1);
+        $aba->getStyle("A{$ajuda}:{$ultima}{$ajuda}")->applyFromArray([
+            'font'      => ['size' => 9, 'color' => ['rgb' => '374151']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F9FAFB']],
+            'alignment' => ['vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true],
+            'borders'   => ['bottom' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => '9CA3AF']]],
+        ]);
+        $aba->getRowDimension($faixa)->setRowHeight(34);
+        $aba->getRowDimension($cabecalho)->setRowHeight(34);
+        $aba->getRowDimension($ajuda)->setRowHeight(82);
+        $aba->freezePane(Coordinate::stringFromColumnIndex(self::COLUNAS_FIXAS + 1).self::PRIMEIRA_LINHA);
+    }
+
+    /**
+     * A aba "Guia dos campos": uma linha por coluna das outras abas, dizendo o que é, como preencher e
+     * quais são as opções da lista. As colunas do produto vêm uma vez (valem para todas as abas).
+     *
+     * @param  list<array<string, mixed>>  $doProduto
+     * @param  list<array{0: string, 1: list<array<string, mixed>>}>  $porAba  nome da aba e as colunas da ficha dela
+     */
+    private static function preencherGuia(Worksheet $aba, array $doProduto, array $porAba): void
+    {
+        $titulos = ['Aba', 'Bloco', 'Coluna', 'Obrigatório', 'O que é', 'Como preencher', 'Opções da lista'];
+        foreach ($titulos as $i => $titulo) {
+            self::texto($aba, Coordinate::stringFromColumnIndex($i + 1).'1', $titulo);
+        }
+        foreach ([18, 34, 34, 13, 70, 60, 80] as $i => $largura) {
+            $aba->getColumnDimension(Coordinate::stringFromColumnIndex($i + 1))->setWidth($largura);
+        }
+
+        $linha = 2;
+        $escrever = function (string $nomeDaAba, array $c) use ($aba, &$linha) {
+            // No guia a ajuda vai sem a marca que abre a linha de ajuda da aba (ela só serve lá).
+            $comoPreencher = trim((string) preg_replace('/^'.preg_quote(PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA, '/').'\s*↓\s*/u', '', $c['ajuda']));
+            $valores = [$nomeDaAba, self::BLOCOS[$c['bloco']]['curto'].($c['grupo'] !== '' ? ' · '.$c['grupo'] : ''), $c['titulo'],
+                $c['obrigatorio'] ? 'Sim' : 'Não', $c['explicacao'], $comoPreencher, $c['opcoes']];
+            foreach ($valores as $i => $valor) {
+                if ($valor !== '') {
+                    self::texto($aba, Coordinate::stringFromColumnIndex($i + 1).$linha, $valor);
+                }
+            }
+            $linha++;
+        };
+        foreach ($doProduto as $c) {
+            $escrever('Todas', $c);
+        }
+        foreach ($porAba as [$nomeDaAba, $colunas]) {
+            foreach ($colunas as $c) {
+                $escrever($nomeDaAba, $c);
+            }
+        }
+
+        $aba->getStyle('A1:G1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F2430']],
+        ]);
+        $aba->getStyle('A2:G'.max(2, $linha - 1))->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
+        $aba->freezePane('A2');
     }
 
     private static function listaDeTipos(): DataValidation
@@ -465,15 +761,19 @@ class ModeloCompleto
                 : ($categorias === 1
                     ? 'A primeira aba é a categoria que você escolheu. Todos os produtos dela vão nessa aba.'
                     : 'Cada aba é uma das categorias que você escolheu. Ponha cada produto na aba da categoria dele.'),
+            'Em cada aba: a linha 1 diz de que é cada bloco de colunas, a linha 2 é o nome de cada coluna e a linha 3 diz como preencher. Os produtos começam na linha '.self::PRIMEIRA_LINHA.'.',
+            'Cabeçalho escuro e com * é obrigatório. Cabeçalho claro é opcional: preencha o que souber.',
             'Uma linha por variação do produto (cada cor ou tamanho é uma linha). Produto sem variação ocupa uma linha só.',
             'Produto (grupo)*: o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as linhas dele.',
             'Ref*: o código de cada variação. Não pode repetir.',
-            'Volumes: cada caixa do produto embalado tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Se o produto vai em mais de uma caixa, preencha o Volume 2, o Volume 3… Deixe em branco os que não usar.',
-            'As colunas de cabeçalho mais claro são a ficha técnica da categoria. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',
-            'Coluna com * é obrigatória. Onde houver lista, escolha uma opção; em algumas listas você também pode escrever o seu valor.',
-            'Para marcar mais de uma opção num campo, separe com | . Para dizer que o campo não vale para o produto, escreva: Não se aplica.',
+            'PRODUTO EMBALADO (os Volumes): as medidas e o peso de cada CAIXA com o produto dentro. É por elas que o frete é calculado. Cada caixa tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Se o produto vai em mais de uma caixa, preencha o Volume 2, o Volume 3… Deixe em branco os que não usar.',
+            'MEDIDAS DO PRODUTO FORA DA CAIXA: o produto montado, sem a embalagem. São diferentes das medidas do volume, que é a caixa.',
+            'FICHA TÉCNICA: as características do produto. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',
+            'Onde houver lista, escolha uma opção pela seta da célula; em algumas listas você também pode escrever o seu valor. Para marcar mais de uma opção num campo, separe com | .',
+            'Não se aplica: quando o produto não tem o que a coluna pede (por exemplo, a medida do colchão numa poltrona que não vira cama), escreva Não se aplica na célula. A linha 3 diz em quais colunas isso vale. Em branco quer dizer que você não informou.',
+            'A aba "'.PlanilhaDasFichasTecnicas::ABA_GUIA.'" explica cada coluna: o que é, como preencher e as opções de cada lista. A mesma explicação aparece ao passar o mouse no nome da coluna.',
             'Célula em branco não apaga nada do que já está cadastrado. Enviar de novo atualiza pelo código da variação.',
-            'Não mude o nome das abas nem dos cabeçalhos. As fotos entram depois, em "Enviar fotos em lote".',
+            'Não mude o nome das abas nem dos cabeçalhos, e não apague as três primeiras linhas. As fotos entram depois, em "Enviar fotos em lote".',
             ...($temSemCategoria ? ['A aba "Sem categoria" traz os produtos que ainda não têm categoria: sem ela não há ficha técnica. Escolha a categoria de cada um na tela e baixe de novo para ver a ficha.'] : []),
             ...($preenchido ? ['Para cadastrar produto de uma categoria que ainda não está aqui, use "Baixar modelo" e escolha a categoria.'] : []),
         ];

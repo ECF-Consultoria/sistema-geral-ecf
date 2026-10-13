@@ -37,6 +37,15 @@ class PlanilhaDasFichasTecnicas
     public const ABA_INSTRUCOES = 'Instruções';
     public const ABA_LISTAS = 'Listas';
 
+    /** A aba que explica cada coluna do modelo completo (o que é, como preencher, as opções). */
+    public const ABA_GUIA = 'Guia dos campos';
+
+    /**
+     * Como começa, na coluna do grupo, a linha de ajuda que o modelo completo põe logo abaixo do
+     * cabeçalho. É por este começo que a importação sabe que a linha não é um produto.
+     */
+    public const MARCA_DA_AJUDA = 'Como preencher';
+
     public const COLUNA_GRUPO = 'Produto (grupo)*';
     public const COLUNA_NOME = 'Nome do produto';
 
@@ -62,6 +71,57 @@ class PlanilhaDasFichasTecnicas
         }
 
         return $texto;
+    }
+
+    /**
+     * O "como preencher" de um campo, curto, para a linha de ajuda do modelo completo (13/10/2026: "tem
+     * muitas dimensões que pedem para preencher mas não é especificado o que é" e "tem colunas que
+     * preciso marcar Não se aplica, mas não mostra as opções"). Diz se é obrigatório, o que escrever
+     * e, onde vale, que dá para responder "Não se aplica". `$foraDaCaixa` marca as medidas do
+     * produto montado, para não se confundirem com as da embalagem.
+     */
+    public static function comoPreencher(array $campo, bool $foraDaCaixa = false): string
+    {
+        $partes = [$campo['obrigatorio'] ? 'Obrigatório.' : 'Opcional.'];
+        if ($foraDaCaixa) {
+            $partes[] = 'Produto montado, fora da caixa.';
+        }
+
+        $unidade = $campo['unidade_padrao'] ?? null;
+        $partes[] = match (true) {
+            $campo['tipo'] === FichaTecnicaDaCategoria::TIPO_LISTA && $campo['valores'] !== [] => (($campo['aceita_outro'] ?? false) ? 'Escolha da lista ou escreva o seu.' : 'Escolha da lista.')
+                .(($campo['multivalor'] ?? false) ? ' Mais de uma: separe com |.' : ''),
+            $campo['tipo'] === FichaTecnicaDaCategoria::TIPO_SIM_NAO => 'Sim ou Não.',
+            $campo['tipo'] === FichaTecnicaDaCategoria::TIPO_NUMERO => 'Só o número.',
+            $campo['tipo'] === FichaTecnicaDaCategoria::TIPO_NUMERO_UNIDADE => $unidade ? "Só o número, em {$unidade}." : 'Só o número.',
+            default => ($campo['max'] ?? null) ? "Texto, até {$campo['max']} letras." : 'Texto.',
+        };
+        if ($campo['nao_se_aplica'] ?? false) {
+            $partes[] = 'Se o produto não tem isto, escreva: '.self::NAO_SE_APLICA.'.';
+        }
+
+        return implode(' ', $partes);
+    }
+
+    /** A opção é só um número inteiro ("1", "12")? Essas vão para a lista como NÚMERO — ver `opcaoNaLista`. */
+    public static function eInteiro(string $texto): bool
+    {
+        return preg_match('/^(0|[1-9]\d{0,8})$/D', trim($texto)) === 1;
+    }
+
+    /**
+     * Escreve o valor de um campo na célula do produto. Na lista cuja opção é um número ("Quantidade de
+     * lugares": 1, 2, 3…) o valor vai como NÚMERO, igual à opção na aba de listas: a validação da
+     * planilha compara número com número, e texto "1" contra a opção 1 seria recusado.
+     */
+    public static function escreverValor(Worksheet $aba, string $celula, array $campo, string $texto): void
+    {
+        if ($campo['tipo'] === FichaTecnicaDaCategoria::TIPO_LISTA && self::eInteiro($texto) && self::opcaoPorTexto($campo, $texto) !== null) {
+            $aba->setCellValueExplicit($celula, (int) trim($texto), DataType::TYPE_NUMERIC);
+
+            return;
+        }
+        self::texto($aba, $celula, $texto);
     }
 
     /** Forma de comparar NOMES (de campo, de opção): sem caixa, acento nem espaço sobrando. */
@@ -261,7 +321,7 @@ class PlanilhaDasFichasTecnicas
             foreach ($campos as $i => $campo) {
                 $texto = self::textoDaCelula($campo, $salvos[(int) $produto->id][$campo['id']] ?? null);
                 if ($texto !== '') {
-                    self::texto($aba, Coordinate::stringFromColumnIndex($i + 3).$linha, $texto);
+                    self::escreverValor($aba, Coordinate::stringFromColumnIndex($i + 3).$linha, $campo, $texto);
                 }
             }
         }
@@ -294,20 +354,38 @@ class PlanilhaDasFichasTecnicas
      * ({@see ModeloCompleto}, 13/10/2026) põe a ficha ao lado dos dados do produto com isto; a aba
      * desta planilha segue montada por `preencherAba`, com as duas colunas fixas dela.
      *
+     * `$linhaDoCabecalho` e `$primeiraLinha` existem porque o modelo completo tem uma faixa acima do
+     * cabeçalho e uma linha de ajuda abaixo dele: lá o cabeçalho é a linha 2 e os produtos começam na 4.
+     *
      * @param  list<array<string, mixed>>  $campos  campos da definição da categoria, na ordem da tela
      */
-    public function colunasDaFicha(Worksheet $aba, array $campos, int $primeira, int $fim, Worksheet $listas, int &$colunaDaLista): void
+    public function colunasDaFicha(Worksheet $aba, array $campos, int $primeira, int $fim, Worksheet $listas, int &$colunaDaLista, int $linhaDoCabecalho = 1, int $primeiraLinha = 2): void
     {
         foreach (array_values($campos) as $i => $campo) {
             $coluna = Coordinate::stringFromColumnIndex($primeira + $i);
             $titulo = self::cabecalho($campo);
-            self::texto($aba, $coluna.'1', $titulo);
-            $aba->getColumnDimension($coluna)->setWidth(max(14, min(40, mb_strlen($titulo) + 4)));
+            self::texto($aba, $coluna.$linhaDoCabecalho, $titulo);
+            $aba->getColumnDimension($coluna)->setWidth(max($linhaDoCabecalho > 1 ? 22 : 14, min(40, mb_strlen($titulo) + 4)));
             $validacao = $this->validacaoDoCampo($aba, $campo, $listas, $colunaDaLista);
             if ($validacao) {
-                $aba->setDataValidation("{$coluna}2:{$coluna}{$fim}", $validacao);
+                $aba->setDataValidation("{$coluna}{$primeiraLinha}:{$coluna}{$fim}", $validacao);
             }
         }
+    }
+
+    /**
+     * Uma opção na aba de listas. A que é só um número inteiro vai como NÚMERO (13/10/2026): quem
+     * digita 1 na célula digita um número, e a validação em lista compara pelo tipo — com a opção
+     * gravada como texto, o 1 digitado era recusado ("Quantidade de lugares - Escolha da lista").
+     */
+    private static function opcaoNaLista(Worksheet $listas, string $celula, string $nome): void
+    {
+        if (self::eInteiro($nome)) {
+            $listas->setCellValueExplicit($celula, (int) trim($nome), DataType::TYPE_NUMERIC);
+
+            return;
+        }
+        self::texto($listas, $celula, $nome);
     }
 
     /** A validação da coluna: lista (as opções na aba oculta), Sim/Não, ou só a dica do que vai ali. */
@@ -328,7 +406,7 @@ class PlanilhaDasFichasTecnicas
             $col = Coordinate::stringFromColumnIndex($colunaDaLista);
             self::texto($listas, "{$col}1", mb_substr($aba->getTitle().' · '.$campo['nome'], 0, 200));
             foreach ($nomes as $n => $nome) {
-                self::texto($listas, $col.($n + 2), $nome);
+                self::opcaoNaLista($listas, $col.($n + 2), $nome);
             }
             $v->setType(DataValidation::TYPE_LIST);
             $v->setFormula1("'".self::ABA_LISTAS."'!\${$col}\$2:\${$col}\$".(count($nomes) + 1));
@@ -341,7 +419,11 @@ class PlanilhaDasFichasTecnicas
             $v->setErrorStyle(DataValidation::STYLE_STOP);
             $v->setErrorTitle(mb_substr($campo['nome'], 0, 32));
             $v->setError('Escolha uma das opções da lista.');
-            $v->setPrompt(($aceitaOutro ? 'Escolha da lista ou escreva o seu.' : 'Escolha da lista.').($multivalor ? ' Pode mais de uma: separe com |.' : ''));
+            // Há programas de planilha que mostram ESTE texto quando recusam o que foi digitado: ele precisa
+            // dizer o que fazer sozinho.
+            $v->setPrompt(($aceitaOutro ? 'Escolha uma opção da lista (a seta da célula) ou escreva o seu valor.' : 'Escolha uma das opções da lista (a seta da célula). O que não está na lista não é aceito.')
+                .($multivalor ? ' Pode mais de uma: separe com |.' : '')
+                .($naoSeAplica ? ' Se o produto não tem isto: '.self::NAO_SE_APLICA.'.' : ''));
 
             return $v;
         }
@@ -352,8 +434,8 @@ class PlanilhaDasFichasTecnicas
             $v->setShowDropDown(true);
             $v->setShowErrorMessage(true);
             $v->setErrorStyle(DataValidation::STYLE_STOP);
-            $v->setError('Escolha Sim ou Não.');
-            $v->setPrompt('Sim ou Não.');
+            $v->setError($naoSeAplica ? 'Escolha Sim, Não ou '.self::NAO_SE_APLICA.'.' : 'Escolha Sim ou Não.');
+            $v->setPrompt($naoSeAplica ? 'Escolha Sim, Não ou '.self::NAO_SE_APLICA.' (a seta da célula).' : 'Escolha Sim ou Não (a seta da célula).');
 
             return $v;
         }
