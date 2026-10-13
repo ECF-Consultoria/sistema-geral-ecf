@@ -444,7 +444,12 @@ test('A1 — o banner de integração: as medidas e a árvore exata (:28-:36)', 
     await contexto.test('o CTA é <a href>, nunca <button> (EXMP-03)', () => {
         const raiz = raizDe(html);
         assert.equal(raiz.filhos[2].nome, 'a');
-        assert.match(raiz.filhos[2].bruto, /href="\/reconectar"/);
+        // ⚠️ `/href="…"/` sem o espaço é VAZIA POR CONSTRUÇÃO: `data-href="…"`
+        // casa com ela, e a mutação M04 (`href` → `data-href`) SOBREVIVEU na
+        // primeira rodada da campanha. Substring casa com SUFIXO de atributo
+        // também, não só com prefixo de classe.
+        assert.match(raiz.filhos[2].bruto, /\shref="\/reconectar"/, 'o CTA perdeu o atributo href');
+        assert.doesNotMatch(raiz.filhos[2].bruto, /data-href/, 'o destino virou atributo decorativo');
         assert.equal(descendentes(raiz, 'button').length, 0, 'o banner não tem <button>');
     });
 
@@ -890,7 +895,8 @@ test('C2 — os literais e o vazio de "Publicações recentes" (:333-:336)', asy
         // Contra-prova: COM url elas voltam a ser `<a href>`.
         const comUrl = renderPubs({ recentes: RECENTES(), urlPublicacoes: '/p', agora: AGORA });
         assert.equal(linhasDeRecentes(comUrl)[0].nome, 'a');
-        assert.equal((comUrl.match(/href="\/p"/g) ?? []).length, 6, 'o link do cabeçalho + as 5 linhas');
+        // ⚠️ Com o `\s`: sem ele `data-href="/p"` casaria (lição da M04).
+        assert.equal((comUrl.match(/\shref="\/p"/g) ?? []).length, 6, 'o link do cabeçalho + as 5 linhas');
     });
 });
 
