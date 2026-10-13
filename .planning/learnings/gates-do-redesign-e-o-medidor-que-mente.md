@@ -106,6 +106,14 @@ Este projeto já foi mordido dez vezes pela mesma classe de erro: asserção que
 4. `html.includes('classe')` quando vários elementos compartilham a classe. **Substring casa com
    prefixo:** `font-pub` dentro de `font-pub-mono`, `text-[11px]` dentro de `text-[11.5px]`,
    `z-3` dentro de `z-30`, `bg-pub-raised` dentro de `bg-pub-raised-0`.
+4b. ⚠️ **Terceira variante do substring, medida em 13/10/2026 (plano 180-07): a classe casa pelo
+   FIM do nome de OUTRA classe.** `w-[` casa dentro de `shadow-[0_16px_40px_…]`. Já eram prefixo de
+   classe e sufixo de atributo; agora também o fim de outro nome. **Trave por borda nos dois lados.**
+4c. ⚠️ **O helper `seletorDe()` das fases 180-05/06 NÃO escapava PARÊNTESES:**
+   `shadow-[0_16px_40px_rgba(0,0,0,0.6)]` saía AUSENTE com a regra **presente e correta**.
+   ⚠️ **Qualquer valor arbitrário com `rgba(…)`, `calc(…)` ou `var(…)` cai no mesmo buraco.**
+   É a mesma família do item 7 da §3 — escapar "a barra" não basta: escape **todos** os
+   metacaracteres, parênteses incluídos.
 5. **`/href="…"/` sem o `\s`** casa com **`data-href="…"`**. Substring casa com **sufixo de
    atributo**, não só com prefixo de classe.
 6. ⚠️ **`new RegExp(`\b${x}\b`)` com TEMPLATE LITERAL** — ali `\b` é **backspace (U+0008)**, não
@@ -211,7 +219,13 @@ A prova por mutação é o que pegou os furos reais — mas ela erra de três fo
 - ⚠️ **`JSON.stringify` mente na mensagem de asserção:** `NaN` e `Infinity` viram `'null'`.
   ⚠️ **E `String(valor)` LANÇA** quando o valor é `{toString: null}` — um dos casos do próprio
   render adverso. No plano 180-05 isso matou **5 blocos** de teste **dentro da mensagem de
-  asserção**, não no código testado. ➡️ Monte a mensagem com algo que não possa lançar (tipo +
+  asserção**, não no código testado.
+  ⚠️⚠️ **E `Object.prototype.hasOwnProperty.call(obj, chave)` LANÇA**
+  `TypeError: Cannot convert object to primitive value` quando a chave é `{toString: null}` — a busca
+  de chave **coage para string**, igual ao `String()`. Medido em 13/10/2026 (plano 180-07):
+  derrubava a **página inteira** em dois componentes, e **só o render adverso pegou**. ➡️ Guarda de
+  tipo **antes** do `hasOwnProperty`, sempre que a chave vier do servidor.
+  ➡️ Monte a mensagem com algo que não possa lançar (tipo +
   descrição fixa), nunca com `String()` nem `JSON.stringify()` do valor adverso.
 - ⚠️ **`lerSemComentarios()` mastiga o glob do `tailwind.config.js`** (`/*` seguido de `*/`). Leia cru.
 - ⚠️ **Data por REGEX, nunca `new Date()`** — `Invalid Date` e o deslocamento de fuso de data-only em BRT.
