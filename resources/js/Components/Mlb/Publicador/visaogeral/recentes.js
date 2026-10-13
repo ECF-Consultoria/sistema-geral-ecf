@@ -1,6 +1,7 @@
 import { textoSeguro, textoUtil } from '../BarraDaConta';
 import { numeroSeguro, urlSegura } from './acoes';
 import { haQuanto } from '../tempo';
+import { normalizar } from '../identidade/identidade';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 179, plano 08 — os literais e os view models dos QUATRO blocos que
@@ -327,6 +328,17 @@ export function recentesParaTela(recentes, urlPublicacoes, agora = Date.now()) {
                 quando: haQuanto(typeof item.quando === 'string' ? item.quando : null, agora),
                 autor,
                 nova: item.nova === true,
+                // ⚠️ O peso 600 do tipo é a informação (`typeWeight`, `:572`), e
+                // a comparação sai daqui: `normalizar(item.tipo) === 'premium'`
+                // dentro do `.map()` do componente serviria, mas `premium` no
+                // view model deixa o callback lendo só o próprio parâmetro
+                // (REND-04). `normalizar` é a de `identidade.js` — a mesma que
+                // o `SeloDoTipo` usa, nunca uma cópia (IDENT-08).
+                premium: normalizar(item.tipo) === 'premium',
+                // O destino é o MESMO para todas as linhas (a lista completa),
+                // mas viaja no item para o `.map()` não ler variável de escopo
+                // do componente — a forma que o Rollup elimina aqui.
+                href,
             });
         }
     }

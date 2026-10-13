@@ -68,9 +68,20 @@ function FormaDoStatus({ chave }) {
  * @param {object} props
  * @param {'ativa'|'pausada'|'com_erro'|'em_revisao'|string|null} props.status
  * @param {string|null} [props.motivo]  por que não está ativa
+ * @param {string|null} [props.corpo]   classe de corpo de texto da linha do
+ *   status, quando a tela mede outro valor. ⚠️ ADIÇÃO PURA da Fase 179, plano
+ *   08, no molde da prop `letra` do `TileDoProduto` (Fase 178): ausente, nula
+ *   ou vazia = `text-[13px]`, o comportamento de hoje **byte a byte**.
+ *
+ *   Por que existe: a coluna de status das "Publicações recentes" da Visão
+ *   Geral mede **12,5px** (`new_layout_publicador/Visao Geral.dc.html`:328,
+ *   `font-size:12.5px;font-weight:500;gap:7px`), e a escada deste componente
+ *   foi medida na tabela de Publicações (`Publicacoes v2.dc.html`:246-253),
+ *   onde são 13px. Os dois estão certos — FID-03 proíbe arredondar meio pixel,
+ *   e mexer no padrão mudaria em silêncio a tela já conferida.
  * @param {string} [props.className]
  */
-export default function SeloDeStatusDaPublicacao({ status, motivo = null, className }) {
+export default function SeloDeStatusDaPublicacao({ status, motivo = null, corpo = null, className }) {
     const chave = typeof status === 'string' ? status : '';
     const conhecido = STATUS[chave] ?? null;
 
@@ -84,9 +95,13 @@ export default function SeloDeStatusDaPublicacao({ status, motivo = null, classN
     // com "não tem motivo".
     const temMotivo = (typeof motivo === 'string' || typeof motivo === 'number') && String(motivo).trim() !== '';
 
+    // `corpo` só vale como CLASSE: número, objeto e string vazia caem nos 13px
+    // da escada — a mesma disciplina da prop `letra` do `TileDoProduto`.
+    const tamanhoDoTexto = typeof corpo === 'string' && corpo.trim() !== '' ? corpo : 'text-[13px]';
+
     return (
         <span className={cn('inline-flex min-w-0 flex-col gap-[2px]', className)}>
-            <span className={cn('flex items-center gap-[7px] text-[13px] font-medium', conhecido ? conhecido.texto : 'text-pub-neutral-txt')}>
+            <span className={cn('flex items-center gap-[7px]', tamanhoDoTexto, 'font-medium', conhecido ? conhecido.texto : 'text-pub-neutral-txt')}>
                 <FormaDoStatus chave={chave} />
                 {rotulo}
             </span>

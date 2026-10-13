@@ -56,6 +56,29 @@ const TAMANHOS = {
         frente: 'left-[5px] top-[3px]',
         fundoAtras: 'bg-pub-sunken',
     },
+    // ─── Fase 179, plano 08 — o tamanho `recentes` (ADIÇÃO PURA) ───
+    //
+    // A linha de "Publicações recentes" da Visão Geral desenha o glyph com
+    // OUTRA geometria, medida em `new_layout_publicador/Visao Geral.dc.html`:
+    //   Fase 2 (`:324`) → caixa `width:14px;height:13px`, dois retângulos
+    //     `8×10` de `border-radius:2px` e `border:1.3px solid #D4D4D8`, o de
+    //     trás em `left:0;top:0` com fundo `#111111` e o da frente em
+    //     `left:5px;top:3px` com fundo `#FACC15`;
+    //   Fase 1 (`:325`) → UM retângulo `8×10` igual, com `margin:0 3px` — que é
+    //     exatamente o que a caixa de 14px centrando um retângulo de 8px dá.
+    //
+    // O tamanho `lista` tem caixa 18×18, retângulo 10×13, raio 2,5 e borda 1,5
+    // (medido em `Publicacoes v2.dc.html`:225-231). Os dois estão certos: cada
+    // um foi medido onde foi medido, e FID-03 proíbe arredondar meio pixel.
+    // Acrescentar a entrada não muda uma linha das 4 telas já conferidas.
+    recentes: {
+        caixa: 'h-[13px] w-[14px]',
+        retangulo: 'h-[10px] w-[8px] rounded-[2px] border-[1.3px]',
+        borda: 'border-pub-fase1',
+        atras: 'left-0 top-0',
+        frente: 'left-[5px] top-[3px]',
+        fundoAtras: 'bg-pub-surface',
+    },
 };
 
 /**
@@ -82,7 +105,7 @@ export function chaveDaFase(fase) {
 /**
  * @param {object} props
  * @param {1|2|'legado'|string|number|null} props.fase
- * @param {'lista'|'marca'|'rodape'} [props.tamanho]
+ * @param {'lista'|'marca'|'rodape'|'recentes'} [props.tamanho]
  * @param {string|null} [props.fundo]  classe de fundo do retângulo de trás na
  *   Fase 2 — só precisa trocar quando o glyph se apoia numa superfície que não
  *   é a padrão do tamanho (ex.: linha selecionada da tabela, `bg-pub-row-sel`).
