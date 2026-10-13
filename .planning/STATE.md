@@ -860,6 +860,90 @@ leitura de produção segue bloqueada nesta sessão.**
 
 ---
 
+### 2026-10-13 — v26.0 (Redesign do Publicador) · Fase 179 · plano 07 de 10 CONCLUÍDO — **WAVE 2**
+
+Os **três blocos do meio do cockpit**: "O que fazer agora" (segmented por severidade, gaveta,
+"Adiar até amanhã" que posta no servidor), "Saúde da conta" (status geral + 3 linhas + "Atualizar"
+com spinner) e "Publicações no Mercado Livre" (total de 30px, barra de 4 faixas, legenda clicável e
+o bloco do acervo). **4 arquivos novos** (`acoes.js` puro + 3 `.jsx`) e **1 gate** de 214 testes.
+Commits `3ff3cbe0`, `6a958c13`, `69d4d412`, `f98b6832`. **Nenhuma migration, nenhum pacote, nenhuma
+linha de PHP.**
+
+**Medição:** JS **3175 → 3389** testes (1 falha, a pré-existente `estrutura-grade-glide.test.js:122`,
+**não corrigida de propósito** — mesma causa e mesmo nome antes e depois). `npm run build` verde
+(2 min 1 s). **42 mutações aplicadas, 42 reprovaram, 0 sobreviveram** (1 recusada por ter comentário
+no alvo e reescrita); `sha256` dos 4 arquivos idêntico ao pristino no fim das duas rodadas.
+**114 classes conferidas pelo VALOR no CSS construído, com 13 iscas ausentes.** Território: diff
+**vazio** nos dois ranges (`898d68c2..HEAD` para o de ninguém, `8611eece..HEAD` para o de outro
+plano), com isca de 3.637 inserções nos meus caminhos e `test -e` nos 19 caminhos. **0 asserções
+removidas** (isca: 420 acrescentadas).
+
+⚠️ **AS TRÊS DIVERGÊNCIAS QUE O USUÁRIO VAI VER NA TELA, cada uma com a restrição medida:**
+(1) **o ERP nunca diz "Conectado"** — ele é DECLARADO, não integrado (177-03 travou com asserção
+negativa no servidor), então a linha diz `Declarado: X` / `Não informado`, **não tem dot, não tem
+pílula, não move o status geral e não gera CTA**; (2) **nenhuma faixa "Com erro"** — `MlAcervoItem.
+status` só assume `active|paused|under_review|closed`, e o terceiro sinal real é **"Pedem ação"**
+(`severidade > 0`, o mesmo número do dot da aba Publicações); (3) **o acervo sai sem `Abrir →`** —
+não existe tela de acervo por conta (ela vive dentro do editor, território de outro dev). As três
+estão no comentário de topo dos arquivos, com a fase que as mediu citada.
+
+⚠️ **O PROTÓTIPO VENCEU A TABELA FID-01 DO PLANO EM 16 MEDIDAS** (10 referências de linha deslocadas,
+**2 valores errados**, 7 medidas omitidas, 3 que o plano mandou medir). Os dois valores errados:
+o **dot do segmented** usa a cor CLARA do texto (`SEV[k][1]`, `:520`), não a tinta sólida; e o **dot
+do status geral da Saúde** também (`healthColor` nos dois, `:238`). ⚠️ **E isso NÃO se uniformiza com
+a pílula da linha da Saúde** (`:250`), que usa clara no texto e **sólida** no dot — são **três**
+regras de dot/texto no mesmo cockpit, cada uma medida onde está, com teste travando a
+não-uniformização. Soma com os 31 do 179-06: **o placar da fase é 47 a 0 a favor do protótipo.**
+
+⚠️ **O GATE ACHOU UMA VIOLAÇÃO REAL DE REND-04 E TRÊS GUARDAS AUSENTES.** `aba.chave === filtro`
+dentro do `.map()` lia variável de escopo do componente — a forma exata que o Rollup elimina neste
+projeto; virou `aba.ativa`, decidido na função pura `abasComContagem(contagens, escondidas, filtro)`.
+E as três guardas são a mesma lição do D-8 do 179-06 (`textoUtil(7)` devolve `'7'`): `destino.rota`,
+`contaChave` e `declarado` passaram a exigir **string**, senão a tela inventava, respectivamente, um
+`href`, um **parâmetro de URL do POST** (`…/empresas/7/acoes/adiar`) e um **nome de ERP**
+("Declarado: 7").
+
+⚠️ **TRÊS ERROS DE MEDIDOR NOVOS, todos da mesma família dos quatro do 179-06:** (1) **o CSS escapa
+o seletor com barra invertida** (`.text-\[8\.5px\]`, `.hover\:bg-pub-hover`) — a sonda acusou **54
+falsas faltas**, todas as classes de valor arbitrário; (2) **o modificador de opacidade compila para
+HEX DE 8 DÍGITOS**, não `rgb(R G B / .13)`: `bg-pub-danger/[0.13]` → `#ef444421`, e o byte final **É**
+a opacidade (0.13→0x21, 0.12→0x1f, 0.07→0x12) — o que faz a sonda **provar** que as três tintas não
+são iguais; (3) **`html.indexOf(tagDeAbertura)` mede o elemento ERRADO** quando dois irmãos têm a
+MESMA string de classes (as duas ações não recomendadas; as linhas do ERP e da Sincronização sem
+tint) — o `indexOf` devolve sempre o primeiro, e com isso quatro gates do ERP **mediam a linha do
+ML**. Conserto: índice ABSOLUTO de `tagsDe`. ⚠️ **E eu errei as referências de linha da aritmética do
+protótipo uma primeira vez** por contá-las de uma saída de `sed` deslocada; só `grep -n` as fixou
+(commit `f98b6832`, **só comentário e título de teste**, provado por diff sem nenhuma linha
+executável).
+
+⚠️ **LACUNA DE GATE DA FAMÍLIA M22 (179-06), fechada ANTES da campanha:** a asserção *"ação sem
+sub-item não abre gaveta"* seria **VAZIA POR CONSTRUÇÃO** — com tudo fechado (o padrão do protótipo),
+`Abrir →` está ausente de qualquer jeito. Duas props de **estado inicial**
+(`expandidasIniciais`, `atualizandoInicialmente`, padrão `defaultOpen` do React) tornam a asserção e
+as 5 medidas do spinner reais. ⚠️ **O 179-09 não passa nenhuma das duas.**
+
+⚠️ **RECADO OBRIGATÓRIO PARA O 179-09:** `tests/js/publicador-vocabulario-novo.test.js` precisa
+receber em `ARQUIVOS_NOVOS` os **4** arquivos deste plano (`visaogeral/acoes.js`,
+`OQueFazerAgora.jsx`, `SaudeDaConta.jsx`, `PublicacoesNoMercadoLivre.jsx`) **mais os 2 do 179-06** —
+**SEIS** nomes — **e o `8.5` em `TAMANHOS_PERMITIDOS` no MESMO commit**. Esquecer faz o gate passar
+por **OMISSÃO**. E **`urlPublicacoes` não existe no payload das 23 props**: quem compõe a página tem
+de montá-la, senão o "Ver todas →" não nasce (a legenda continua navegando, porque cada faixa traz a
+sua própria `url` do servidor).
+
+**Duas decisões devolvidas ao usuário:** (1) a ação "Ofertas novas no Portal" fica **sem botão**,
+porque o botão real (`BotaoSincronizarPortal`) carrega `ecf-yellow`/`border-white/[0.10]`/`h-10`,
+vetados por FID-03/FID-04 no layout novo — levá-lo para a camada `pub-*` é trabalho de um plano que
+possa tocar aquele arquivo, que serve 3 outras telas; (2) a linha do ERP mostra o nome declarado no
+título **e** `Declarado: {nome}` na meta (as duas prescrições do plano) — tirar a repetição é uma
+linha.
+
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada — não há navegador
+aqui e o banco local não tem empresa com `ml_token`. A validação visual é do usuário, em produção, na
+conta 459. A suíte PHP não foi rodada porque NADA de PHP mudou (diff vazio em `app/`, `routes/` e
+`database/` nos dois ranges).**
+
+---
+
 
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
@@ -3936,3 +4020,13 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 179]: 179-06: divisoria da linha do painel e `#1A1A1A` (`pub-hover-3`), medido em `:489` — nao `#1C1C1C`/`pub-line-subtle-2` como a tabela do plano prescreveu
 - [Phase 179]: 179-06: guarda de DESTINO tem de ser mais estrita que guarda de TEXTO — `textoUtil(7)` devolve `'7'`, que e um nome de produto plausivel mas e `href="7"` (destino morto) e `src="7"` (request inutil). `urlSegura()` exige string
 - [Phase 179]: 179-06: `tests/js/publicador-vocabulario-novo.test.js` PRECISA receber `visaogeral/jornada.js` e `visaogeral/JornadaDosProdutos.jsx` em `ARQUIVOS_NOVOS` **e** o `8.5` em `TAMANHOS_PERMITIDOS` no MESMO commit (o prototipo usa `font-size:8.5px` nas iniciais do avatar, `:104`). Acrescentar os arquivos sem o 8.5 reprova o gate; esquecer os dois faz o gate passar por OMISSAO. Dono do arquivo: plano 179-09
+- [Phase 179]: 179-07: ⚠️ SONDA DE CSS — o seletor no CSS construido vem com BARRA INVERTIDA nos caracteres especiais (`.text-\[8\.5px\]`, `.bg-pub-danger\/\[0\.13\]`, `.hover\:bg-pub-hover`). Regex que so escape para o motor de expressao regular acusa falsa falta em TODA classe de valor arbitrario (54 numa rodada). O construtor do seletor tem de emitir `\\?` antes de cada especial
+- [Phase 179]: 179-07: ⚠️ o modificador de opacidade do Tailwind compila para HEX DE 8 DIGITOS, nao `rgb(R G B / .13)` — `bg-pub-danger/[0.13]` sai `background-color:#ef444421`. E isso e MELHOR de conferir: o byte final E a opacidade (0.13→0x21, 0.12→0x1f, 0.07→0x12, 0.14→0x24), entao a sonda PROVA a opacidade em vez de so achar a cor
+- [Phase 179]: 179-07: ⚠️ `html.indexOf(tagDeAbertura)` mede o elemento ERRADO quando dois irmaos tem a MESMA string de classes — devolve sempre o primeiro. Dois gates deste plano mediam a linha do ML acreditando medir a do ERP, e um reprovava por motivo errado. Localizador tem de usar o indice ABSOLUTO que a varredura de tags ja devolve
+- [Phase 179]: 179-07: ⚠️ ESTADO QUE SO NASCE DE CLIQUE torna a asserção negativa VAZIA POR CONSTRUCAO (familia da mutacao M22 do 179-06). "Acao sem sub-item nao abre gaveta" nao prova nada se tudo nasce fechado. Conserto: prop de ESTADO INICIAL (padrao `defaultOpen` do React), que o compositor da pagina nao passa — e um gate travando que o padrao e o do prototipo
+- [Phase 179]: 179-07: a varredura de REND-04 PEGOU uma violacao real — `aba.chave === filtro` dentro do `.map()` le variavel de escopo do componente, a forma exata que o Rollup elimina. Flag de render tem de nascer em FUNCAO PURA e chegar pelo view model (`aba.ativa`)
+- [Phase 179]: 179-07: a licao do `textoUtil(7)` vale para TRES tipos de campo, nao so destino: `rota`, PARAMETRO DE URL (`contaChave` virava `…/empresas/7/acoes/adiar`) e NOME (`declarado: 7` dizia "Declarado: 7"). Campo que vira identificador ou nome exige `typeof === 'string'`, nao `textoUtil`
+- [Phase 179]: 179-07: no cockpit da Visao geral existem TRES regras diferentes de cor dot × texto, e elas NAO se uniformizam: o dot do segmented usa a cor CLARA (`SEV[k][1]`, `:520`), o dot do status geral da Saude tambem (`healthColor` nos dois, `:238`), e a pilula da LINHA usa clara no texto com SOLIDA no dot (`:250`). A tabela FID-01 do plano prescreveu solida nos dois primeiros e errou os dois
+- [Phase 179]: 179-07: os icones de severidade sao desenhados A MAO com o `path` do prototipo (`:179-:181`) — o Lucide so da o triangulo e o circulo em CONTORNO, e `fill` + `currentColor` escuro produz uma borda de 2,7 num icone de 17px (metade da peca). Quando o prototipo desenha svg proprio, o Lucide nao e substituto
+- [Phase 179]: 179-07: contar linha de arquivo a partir de saida de `sed -n 'A,Bp'` DESLOCA a referencia (eu errei 10 refs da aritmetica do prototipo assim, e o 179-06 errou 29 por outro motivo). Referencia de linha em comentario e em SUMMARY sai de `grep -n`, nunca de contagem manual
+- [Phase 179]: 179-07: ⚠️ o 179-09 precisa acrescentar SEIS arquivos a `ARQUIVOS_NOVOS` (os 2 do 179-06 + os 4 deste: `visaogeral/acoes.js`, `OQueFazerAgora.jsx`, `SaudeDaConta.jsx`, `PublicacoesNoMercadoLivre.jsx`) com o `8.5` no MESMO commit; e `urlPublicacoes` NAO existe nas 23 props — quem compoe a pagina tem de montar
