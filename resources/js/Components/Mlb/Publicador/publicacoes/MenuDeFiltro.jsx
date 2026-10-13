@@ -146,8 +146,14 @@ export default function MenuDeFiltro({
     // destino — o usuário abre e não há nada para escolher.
     if (filhos === null) return null;
 
+    // ⚠️ `Number.isInteger` ANTES do `hasOwnProperty`: a busca de chave COAGE o
+    // valor para string, e `{toString: null}` faz essa coerção LANÇAR
+    // ("Cannot convert object to primitive value") — a mesma família do
+    // `String(valor)` que já matou 5 blocos no plano 180-05, num lugar novo.
+    // Medido pelo render adverso deste plano, não presumido.
     const classeDaLargura =
-        Object.prototype.hasOwnProperty.call(CLASSE_DA_LARGURA, largura)
+        Number.isInteger(largura)
+        && Object.prototype.hasOwnProperty.call(CLASSE_DA_LARGURA, largura)
             ? CLASSE_DA_LARGURA[largura]
             : CLASSE_DA_LARGURA[LARGURA_RESPONSAVEL];
 

@@ -88,10 +88,11 @@ const ARQUIVOS_NOVOS = [
     // ─── Fase 180 — a tela de Publicações (`publicacoes/`) ───
     //
     // ⚠️ A CONTAGEM desta fase está no sub-teste "os N arquivos da Fase 180
-    // estão na lista", logo abaixo, e hoje ela é 5 — os 2 do plano 180-05, que
-    // é quem ABRE o diretório, mais os 3 do plano 180-06. Os planos seguintes
-    // ELEVAM o número explicitamente ao acrescentar os seus, e o `deepEqual` de
-    // `DIRETORIOS_FECHADOS` é o que impede arquivo novo de entrar calado.
+    // estão na lista", logo abaixo, e hoje ela é 8 — os 2 do plano 180-05, que
+    // é quem ABRE o diretório, mais os 3 do plano 180-06 e os 3 do plano
+    // 180-07. Os planos seguintes ELEVAM o número explicitamente ao acrescentar
+    // os seus, e o `deepEqual` de `DIRETORIOS_FECHADOS` é o que impede arquivo
+    // novo de entrar calado.
     //
     // Plano 180-05 — o cabeçalho da página e a faixa de sucesso pós-publicação:
     `${DIR_PUB}/CabecalhoDePublicacoes.jsx`,
@@ -104,6 +105,12 @@ const ARQUIVOS_NOVOS = [
     `${DIR_PUB}/BuscaDePublicacoes.jsx`,
     `${DIR_PUB}/AbasDeStatus.jsx`,
     `${DIR_PUB}/LinhaDeControles.jsx`,
+    // Plano 180-07 — a linha de chips de FILTRO (as 6 famílias do protótipo +
+    // "Limpar filtros"), a casca dos dois popovers e o bloco de TRIAGEM
+    // (LIST-22) traduzido para o vocabulário novo.
+    `${DIR_PUB}/MenuDeFiltro.jsx`,
+    `${DIR_PUB}/ChipsDeFiltro.jsx`,
+    `${DIR_PUB}/ChipsDeTriagem.jsx`,
 ];
 
 /**
@@ -206,18 +213,19 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
         );
     });
 
-    await contexto.test('os 5 arquivos da Fase 180 estão na lista', () => {
-        // ⚠️ Número ELEVADO pelo plano 180-06: 2 do 180-05, que abre o
-        // diretório, + 3 deste. Os planos seguintes da fase ELEVAM este valor
-        // junto com os arquivos deles — deixar o número parado é o jeito de
-        // descobrir que alguém esqueceu de declarar o arquivo em
-        // `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência contra `text-sm`,
-        // `ecf-*`, hex e breakpoint), e o gate passaria POR OMISSÃO.
+    await contexto.test('os 8 arquivos da Fase 180 estão na lista', () => {
+        // ⚠️ Número ELEVADO pelo plano 180-07: 2 do 180-05, que abre o
+        // diretório, + 3 do 180-06 + 3 deste. Os planos seguintes da fase
+        // ELEVAM este valor junto com os arquivos deles — deixar o número
+        // parado é o jeito de descobrir que alguém esqueceu de declarar o
+        // arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência contra
+        // `text-sm`, `ecf-*`, hex e breakpoint), e o gate passaria POR OMISSÃO.
         assert.equal(
             ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`)).length,
-            5,
-            'a Fase 180 tem 5 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso)'
-            + ' e 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles)',
+            8,
+            'a Fase 180 tem 8 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
+            + ' 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles)'
+            + ' e 3 do 180-07 (MenuDeFiltro + ChipsDeFiltro + ChipsDeTriagem)',
         );
     });
 });

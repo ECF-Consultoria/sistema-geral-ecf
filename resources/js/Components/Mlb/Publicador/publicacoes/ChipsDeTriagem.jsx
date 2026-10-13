@@ -135,6 +135,19 @@ function soTexto(valor) {
 }
 
 /**
+ * A cor conhecida, ou a de fallback.
+ *
+ * ⚠️ O `typeof` vem ANTES da busca de chave: `hasOwnProperty.call(obj, chave)`
+ * COAGE a chave para string, e um objeto `{toString: null}` faz essa coerção
+ * LANÇAR. Sem este guarda o componente derruba a página inteira.
+ */
+function corConhecida(bruto) {
+    const nome = soTexto(bruto);
+    if (nome === null) return COR_PADRAO;
+    return Object.prototype.hasOwnProperty.call(CORES_DO_MOTIVO, nome) ? nome : COR_PADRAO;
+}
+
+/**
  * O número medido, ou `null`.
  *
  * ⚠️ `0` PASSA (é "medido e é zero"). `NaN`/`Infinity`/`'5'`/`2.5`/negativo
@@ -173,7 +186,12 @@ export function montarChips(chips, motivoAtivo, onFiltrarMotivo) {
             chave,
             label,
             count: numeroMedido(chip.count),
-            cor: Object.prototype.hasOwnProperty.call(CORES_DO_MOTIVO, chip.cor) ? chip.cor : COR_PADRAO,
+            // ⚠️ `soTexto` ANTES do `hasOwnProperty`: a busca de chave COAGE o
+            // valor para string, e `cor: {toString: null}` faz essa coerção
+            // LANÇAR ("Cannot convert object to primitive value") — a mesma
+            // família do `String(valor)`, num lugar novo. Medido pelo render
+            // adverso deste plano, não presumido.
+            cor: corConhecida(chip.cor),
             ativo: chave === ativo,
             onClick: filtrar === null ? null : () => filtrar(chave),
         });
