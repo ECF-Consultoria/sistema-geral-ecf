@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "produto": {
+        "id": 16864567778
+      },
+      "saldoFisicoTotal": 42,
+      "saldoVirtualTotal": 40,
+      "depositos": [
+        {
+          "id": 101,
+          "saldoFisico": 30,
+          "saldoVirtual": 28
+        },
+        {
+          "id": 102,
+          "saldoFisico": 12,
+          "saldoVirtual": 12
+        }
+      ]
+    },
+    {
+      "produto": {
+        "id": 16864590101
+      },
+      "saldoFisicoTotal": -3,
+      "saldoVirtualTotal": -3,
+      "depositos": [
+        {
+          "id": 101,
+          "saldoFisico": -3,
+          "saldoVirtual": -3
+        }
+      ]
+    }
+  ]
+}

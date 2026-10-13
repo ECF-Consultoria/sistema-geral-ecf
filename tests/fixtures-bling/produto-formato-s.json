@@ -1,0 +1,29 @@
+{
+  "id": 16864567778,
+  "nome": "Cabo HDMI 2.0 4K 2 metros",
+  "codigo": "CABO-HDMI-2M",
+  "preco": 39.9,
+  "tipo": "P",
+  "situacao": "Ativo",
+  "formato": "S",
+  "descricaoCurta": "<p>Cabo <strong>HDMI 2.0</strong> com <br>suporte a 4K.</p>",
+  "descricaoComplementar": "<p>Texto complementar que o tradutor ignora.</p>",
+  "gtin": "7891234567890",
+  "marca": "Generico",
+  "categoria": {
+    "id": 9999001
+  },
+  "linhaProduto": "Acessorios",
+  "fornecedor": {
+    "precoCusto": 18.5
+  },
+  "dimensoes": {
+    "largura": 12,
+    "altura": 3,
+    "profundidade": 20,
+    "unidadeMedida": 1
+  },
+  "pesoBruto": 0.18,
+  "pesoLiquido": 0.15,
+  "volumes": 1
+}

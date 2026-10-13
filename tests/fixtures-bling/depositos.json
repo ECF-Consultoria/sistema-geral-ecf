@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "id": 101,
+      "descricao": "Deposito Padrao",
+      "padrao": true,
+      "desconsiderarSaldo": false
+    },
+    {
+      "id": 102,
+      "descricao": "Deposito Avariados",
+      "padrao": false,
+      "desconsiderarSaldo": true
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": 16864590001,
+  "nome": "Camiseta Basica Algodao",
+  "codigo": "CAM-BAS",
+  "preco": 59.9,
+  "tipo": "P",
+  "situacao": "Ativo",
+  "formato": "V",
+  "descricaoCurta": "<p>Camiseta <strong>100% algodao</strong>.</p>",
+  "descricaoComplementar": "<p>Texto complementar que o tradutor ignora.</p>",
+  "gtin": null,
+  "marca": "Generico",
+  "categoria": {
+    "id": 9999002
+  },
+  "linhaProduto": "Vestuario",
+  "fornecedor": {
+    "precoCusto": null
+  },
+  "variacoes": [
+    {
+      "id": 16864590101,
+      "codigo": "CAM-BAS-AZ",
+      "nome": "Camiseta Basica Algodao - Azul",
+      "preco": 59.9,
+      "variacao": {
+        "nome": "Cor:Azul",
+        "ordem": 1
+      }
+    },
+    {
+      "id": 16864590102,
+      "codigo": "CAM-BAS-VD",
+      "nome": "Camiseta Basica Algodao - Verde",
+      "preco": 59.9,
+      "variacao": {
+        "nome": "Cor:Verde",
+        "ordem": 2
+      }
+    },
+    {
+      "id": 16864590103,
+      "codigo": "CAM-BAS-PT-M",
+      "nome": "Camiseta Basica Algodao - Preto M",
+      "preco": 59.9,
+      "variacao": {
+        "nome": "Cor:Preto;Tamanho:M",
+        "ordem": 3
+      }
+    }
+  ]
+}

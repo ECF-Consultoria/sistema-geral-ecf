@@ -1,0 +1,9 @@
+{
+  "error": {
+    "type": "TOO_MANY_REQUESTS",
+    "message": "Voce excedeu o limite de requisicoes.",
+    "description": "Voce excedeu o limite de requisicoes.",
+    "limit": 3,
+    "period": "1 segundo"
+  }
+}

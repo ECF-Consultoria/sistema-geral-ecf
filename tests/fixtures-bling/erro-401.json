@@ -1,0 +1,7 @@
+{
+  "error": {
+    "type": "UNAUTHORIZED_ERROR",
+    "message": "Token invalido ou expirado.",
+    "description": "Token invalido ou expirado."
+  }
+}
