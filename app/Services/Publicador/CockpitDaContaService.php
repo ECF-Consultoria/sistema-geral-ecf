@@ -4,6 +4,10 @@ namespace App\Services\Publicador;
 
 use App\Models\Company;
 use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
+use App\Models\PubPublicacao;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * O CONTRATO DO SERVIDOR dos blocos do cockpit da Visão geral que não são a
@@ -46,9 +50,14 @@ use App\Models\MlAnuncioCriativo;
  * | 1 | "ERP Bling desconectado" (linha âmbar, banner e CTA "Reconectar ERP") | a linha do ERP só com `declarado` | **o ERP não é integração neste sistema** — ver `banner()` e `saude()` |
  * | 2 | barra `Ativas / Pausadas / Com erro` | 4 faixas + a legenda "pedem ação" | **não existe status de erro** em `MlAcervoItem` — ver `resumoDePublicacoes()` |
  * | 3 | "Acervo de imagens … Abrir →" | os dois números, **sem link** | não existe tela de acervo POR CONTA — ver `acervoDeImagens()` |
+ * | 4 | KPIs "Vendas", "Visitas" e "Conversão" | **não nascem** | sem fonte: `sold_quantity` é acumulado da vida do anúncio, `visitas` é NULL em 1.374.527 linhas e não existe tabela de pedidos — ver `desempenho()` |
+ * | 5 | a faixa inteira é `<a>` para a tela Desempenho | `url: null`, e a faixa é `<section>` | **a tela Desempenho não existe** (é a Fase 182) — ver `desempenho()` |
  */
 class CockpitDaContaService
 {
+    /** A janela da faixa de Desempenho, em dias. A janela anterior tem o mesmo tamanho. */
+    public const DIAS = 30;
+
     /**
      * As quatro faixas da barra empilhada, NESTA ORDEM: `chave` da faixa =>
      * [coluna `status` de `MlAcervoItem`, valor de `status` que a action
@@ -307,7 +316,190 @@ class CockpitDaContaService
         ];
     }
 
+    // ═══ A faixa de Desempenho (VG-15) ═══════════════════════════════════════
+
+    /**
+     * Os TRÊS KPIs da faixa de 30 dias — todos REAIS, nenhum número inventado.
+     *
+     * | `chave` | `valor` | `delta` | `serie` | fonte |
+     * |---|---|---|---|---|
+     * | `publicacoes_criadas` | publicações concluídas nos últimos 30 dias | contra os 30 anteriores | 30 pontos diários | `pub_publicacoes.concluida_em` |
+     * | `criativos_ia` | kits criados nos últimos 30 dias | idem | idem | `ml_anuncio_criativo_kits.created_at` |
+     * | `publicacoes_com_venda` | `$indicadores['com_venda']` | **null** | **null** | acervo |
+     *
+     * ⚠️ **VENDAS, VISITAS E CONVERSÃO NÃO ENTRAM, em nenhuma forma.** Medido
+     * (DESEMP-05): `sold_quantity` é o acumulado da **vida inteira** do anúncio e
+     * não a venda do dia; a série de `ml_acervo_metricas_diarias` é esparsa (média
+     * de 1,3 dias por anúncio); `visitas` é NULL em **100% de 1.374.527 linhas**;
+     * e não existe tabela de pedidos. Qualquer um dos três seria número inventado
+     * (EXMP-01). O teste tem asserção **negativa** contra as três chaves, rodada
+     * sobre um cenário que TEM o dado que as produziria.
+     *
+     * ⚠️ **`url: null` é divergência DECLARADA de VG-15** ("o bloco inteiro é link
+     * para a tela Desempenho"): a tela Desempenho **não existe** e a aba dela
+     * **não aparece** — é a Fase 182 (decisão do usuário de 11/10/2026, registrada
+     * em `REQUIREMENTS-v26.md`). Link para tela inexistente é botão sem destino
+     * (EXMP-03). No dia em que a 182 existir, isto é **uma linha**: a `url` passa
+     * a sair de `route()`.
+     *
+     * ✅ **A forma desta faixa — "os 3 KPIs reais, sem link" — foi CONFIRMADA PELO
+     * USUÁRIO em 12/10/2026**, com as alternativas na mesa. Não é escolha de
+     * planejador à espera de validação: é decisão tomada.
+     *
+     * ⚠️ **Aqui `dia sem linha` É zero medido — e isso NÃO contradiz o
+     * `nunca_coletado` do acervo, que convive na mesma tela.** A janela é fechada e
+     * a fonte é escrita por NÓS: se não há publicação no dia 7, nós sabemos que
+     * nada foi publicado. É o oposto do acervo, que é COLETADO de terceiro — lá
+     * "dia sem linha" pode ser falha de coleta, e é a armadilha
+     * *"dia sem linha ≠ venda zero"* dos learnings deste projeto (Shopee). A
+     * distinção é de ORIGEM do dado, não de gosto.
+     *
+     * ⚠️ **`criativos_ia` NÃO substitui `criativos_packs`**: o indicador do bloco
+     * do acervo é a contagem **de sempre**; este KPI é a janela de 30 dias, que é
+     * o que a faixa promete. Dois números com nomes diferentes, de propósito, e o
+     * gate cobra os dois no mesmo retorno.
+     *
+     * @return array{kpis: list<array{chave: string, valor: ?int, de: ?int, delta: ?int, serie: ?list<int>}>, dias: int, url: ?string}
+     */
+    public function desempenho(array $alvo, array $indicadores): array
+    {
+        $comVenda = $indicadores['com_venda'] ?? null;
+        $noAr = $indicadores['no_ar'] ?? null;
+
+        $publicacoes = $this->janela($this->baseDePublicacoes($alvo), 'pub_publicacoes.concluida_em');
+        $criativos = $this->janela($this->baseDeKits($alvo), 'ml_anuncio_criativo_kits.created_at');
+
+        return [
+            'kpis' => [
+                $this->kpiDeJanela('publicacoes_criadas', $publicacoes),
+                $this->kpiDeJanela('criativos_ia', $criativos),
+                [
+                    'chave' => 'publicacoes_com_venda',
+                    // ⚠️ `null` ATRAVESSA: acervo nunca coletado não vira 0 (VG-18).
+                    'valor' => $comVenda === null ? null : (int) $comVenda,
+                    'de' => $noAr === null ? null : (int) $noAr,
+                    // Sem delta e sem série de propósito: o acervo guarda o ESTADO
+                    // de hoje, não uma linha do tempo de "com venda" por dia.
+                    // Inventar uma seria série sintética (EXMP-01).
+                    'delta' => null,
+                    'serie' => null,
+                ],
+            ],
+            'dias' => self::DIAS,
+            // Ver o docblock: a tela Desempenho é a Fase 182.
+            'url' => null,
+        ];
+    }
+
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
+
+    /**
+     * A base das publicações concluídas da conta: o MESMO desenho de escopo de
+     * `PainelVisaoGeralService::baseQuery()` (join `pub_publicacoes` →
+     * `pub_rascunhos` → `pub_produtos`, `orWhere` agrupados, `1 = 0` sem âncora).
+     *
+     * ⚠️ Registrado de propósito: são DOIS lugares que precisam concordar.
+     * `baseQuery()` é `private` e o dono daquele arquivo nesta fase é o plano
+     * 179-02 — não é chamável daqui, e copiar a cláusula "de cabeça" é exatamente
+     * como as quatro cópias de "no ar" divergiram. O espelho é o método nomeado
+     * acima.
+     *
+     * ⚠️ Aqui a linha é a PUBLICAÇÃO, não o item: `baseQuery()` parte de
+     * `pub_publicacao_itens` e uma publicação de kit com variantes contaria o
+     * mesmo evento N vezes. Os dois joins são N→1, então não há fan-out.
+     */
+    private function baseDePublicacoes(array $alvo): Builder
+    {
+        [$mlbEmpresaId, $companyId] = $this->ancoras($alvo);
+
+        return PubPublicacao::query()
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_publicacoes.rascunho_id')
+            ->join('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            ->whereNotNull('pub_publicacoes.concluida_em')
+            ->where($this->daConta($mlbEmpresaId, $companyId, 'pub_produtos.mlb_empresa_id', 'pub_produtos.company_id'));
+    }
+
+    /**
+     * A base dos kits de criativo da conta — mesmo escopo de dupla-âncora de
+     * `PainelVisaoGeralService::criativosPacks()`, com as colunas QUALIFICADAS
+     * (o `selectRaw` da janela usa o nome completo).
+     */
+    private function baseDeKits(array $alvo): Builder
+    {
+        [$mlbEmpresaId, $companyId] = $this->ancoras($alvo);
+
+        return MlAnuncioCriativoKit::query()
+            ->where($this->daConta(
+                $mlbEmpresaId,
+                $companyId,
+                'ml_anuncio_criativo_kits.mlb_empresa_id',
+                'ml_anuncio_criativo_kits.company_id',
+            ));
+    }
+
+    /**
+     * As duas janelas de 30 dias e a série diária, de UMA consulta agrupada por
+     * dia cobrindo os 60 dias de uma vez.
+     *
+     * O calendário é preenchido em PHP: **nunca** se confia no banco devolver o
+     * dia vazio, e é esse preenchimento que faz o dia sem linha valer `0` (zero
+     * MEDIDO — ver o docblock de `desempenho()`). Linha fora das duas janelas é
+     * ignorada por construção, porque a soma percorre o CALENDÁRIO e não as
+     * linhas devolvidas.
+     *
+     * ⚠️ `$coluna` entra em `selectRaw`/`groupByRaw` e por isso é SEMPRE literal
+     * deste arquivo — nunca vem de request. `DATE()` existe nos três bancos deste
+     * projeto (MySQL 8 em produção, MariaDB 10.4 no dev local, SQLite nos testes).
+     *
+     * ⚠️ O `pluck()` depois do `selectRaw()` é seguro porque as colunas já estão
+     * definidas: `onceWithColumns()` só as substitui quando `$this->columns` é
+     * nulo. Sem o `selectRaw` antes, o `pluck` trocaria a projeção e o
+     * `group by` cairia sozinho.
+     *
+     * @return array{valor: int, anterior: int, serie: list<int>}
+     */
+    private function janela(Builder $query, string $coluna): array
+    {
+        $porDia = $query
+            ->where($coluna, '>=', Carbon::today()->subDays(self::DIAS * 2 - 1)->startOfDay())
+            ->where($coluna, '<=', Carbon::today()->endOfDay())
+            ->selectRaw("DATE({$coluna}) as dia, count(*) as total")
+            ->groupByRaw("DATE({$coluna})")
+            ->pluck('total', 'dia')
+            ->all();
+
+        $serie = [];
+        for ($i = self::DIAS - 1; $i >= 0; $i--) {
+            $serie[] = (int) ($porDia[Carbon::today()->subDays($i)->toDateString()] ?? 0);
+        }
+
+        $anterior = 0;
+        for ($i = self::DIAS * 2 - 1; $i >= self::DIAS; $i--) {
+            $anterior += (int) ($porDia[Carbon::today()->subDays($i)->toDateString()] ?? 0);
+        }
+
+        return ['valor' => array_sum($serie), 'anterior' => $anterior, 'serie' => $serie];
+    }
+
+    /**
+     * Um KPI de janela. `delta` é a SUBTRAÇÃO das duas janelas — nunca o valor da
+     * atual: janela anterior vazia dá `delta = valor`, e as duas iguais dão `0`,
+     * que é informação ("sem variação") e não ausência de medida.
+     *
+     * @param  array{valor: int, anterior: int, serie: list<int>}  $janela
+     */
+    private function kpiDeJanela(string $chave, array $janela): array
+    {
+        return [
+            'chave' => $chave,
+            'valor' => $janela['valor'],
+            // `de` só tem valor no KPI do acervo; a chave fica para a ORDEM do
+            // contrato ser a mesma nos três (o cliente lê os três pelo mesmo mapa).
+            'de' => null,
+            'delta' => $janela['valor'] - $janela['anterior'],
+            'serie' => $janela['serie'],
+        ];
+    }
 
     /**
      * Quantas imagens de IA a conta tem no acervo. UMA consulta; o mesmo recorte
