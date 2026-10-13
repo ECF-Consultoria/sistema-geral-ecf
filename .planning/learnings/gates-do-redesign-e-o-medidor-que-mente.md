@@ -71,6 +71,15 @@ de presença. Ler o corpo da regra é obrigatório — e o medidor erra de seis 
    ➡️ **Escape TODOS os metacaracteres de regex** (use `RegExp.escape` ou equivalente), não só a
    barra. (5ª mentira da sonda na milestone, no plano 180-01.)
 
+⚠️ **LIMITAÇÃO ESTRUTURAL, medida em 13/10/2026 (plano 180-05): a sonda de CSS NÃO protege a
+fidelidade de UM arquivo.** Duas razões: o CSS conferido é o do **último build**, e a mesma classe
+pode ter **outro dono** no repositório — tirar `flex-none` de um componente não faz a regra
+desaparecer do CSS se outro arquivo a usa. Naquele plano, duas mutações foram pegas pelo gate de
+**HTML** (igualdade de conjunto de classes do elemento), **não** pelo de CSS.
+➡️ **Os dois gates são necessários e não se substituem:** o de CSS prova que a classe EXISTE com o
+valor certo; o de HTML prova que o ELEMENTO a tem. Gate de CSS sozinho deixa passar classe removida
+do arquivo errado.
+
 ➡️ **Toda sonda carrega ISCA**, e a isca tem de ser **classe inexistente no projeto inteiro** —
 `w-[13px]` parecia inventada e saiu presente.
 ➡️ **Regex em ARQUIVO escrito por ferramenta.** Nunca `node -e` (o escape do shell mastiga) e
@@ -131,6 +140,11 @@ gate PRÓPRIO vazio por construção com essa pergunta.**
 - **"Asserções removidas = ZERO"** por `git diff | grep '^-' | grep assert` **acusa remoção onde não
   houve**: reapontar `assertSame(1,…)` para `assertSame(2,…)` produz uma linha `-assert` por
   construção. ➡️ Exija o par `-`/`+` **no mesmo teste** e `+assert > -assert`, enumerando cada um.
+- ⚠️ **O gate por range da FASE também acusa o ORQUESTRADOR.** Em três planos seguidos da Fase 180
+  ele apontou `ROADMAP.md` como violação: foi eu, editando o Coverage Map e registrando a Fase 183
+  **durante** a fase. ➡️ `ROADMAP.md`, `REQUIREMENTS-v26.md` e `STATE.md` **não** pertencem a
+  nenhum plano — tire-os da lista de "território de ninguém" ou espere o falso positivo e confira o
+  autor do commit antes de acusar.
 - **Gate de território por range da FASE** acusa o trabalho legítimo do plano dono. ➡️ Use **dois
   ranges**: o que ninguém pode tocar mede do início da fase; o que outro plano possui mede do fim
   do plano anterior.
@@ -188,6 +202,10 @@ A prova por mutação é o que pegou os furos reais — mas ela erra de três fo
   devolve `'7'`** — que montava rota inválida três vezes nesta fase. **Campo que vai para URL ou
   para frase exige STRING de forma fechada.**
 - ⚠️ **`JSON.stringify` mente na mensagem de asserção:** `NaN` e `Infinity` viram `'null'`.
+  ⚠️ **E `String(valor)` LANÇA** quando o valor é `{toString: null}` — um dos casos do próprio
+  render adverso. No plano 180-05 isso matou **5 blocos** de teste **dentro da mensagem de
+  asserção**, não no código testado. ➡️ Monte a mensagem com algo que não possa lançar (tipo +
+  descrição fixa), nunca com `String()` nem `JSON.stringify()` do valor adverso.
 - ⚠️ **`lerSemComentarios()` mastiga o glob do `tailwind.config.js`** (`/*` seguido de `*/`). Leia cru.
 - ⚠️ **Data por REGEX, nunca `new Date()`** — `Invalid Date` e o deslocamento de fuso de data-only em BRT.
 - ⚠️ **Teste dependente de `now()`** reprova por horário: um caso com `subHours(9)` falhava entre
