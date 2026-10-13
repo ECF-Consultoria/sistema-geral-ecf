@@ -3877,6 +3877,76 @@ pedidos, não trabalho de UI.
  └── 182 (Desempenho) ── BLOQUEADA por decisão do usuário sobre coletar pedidos do ML
 ```
 
+### Phase 183: Histórico de publicações — o LOTE publicado, no layout novo
+
+**Goal**: o que o Publicador publicou volta a ser alcançável no layout novo. A Fase 180 tirou o
+atalho "No ar | Histórico" da tela de Publicações **por decisão informada do usuário em 13/10/2026**
+— ele recebeu tres opcoes, com o aviso literal de que a rota ficaria **sem nenhum link vivo** ate a
+fase que a reconstruisse, e escolheu "sai agora, Historico vira fase propria". ⚠️ **Nada foi
+apagado:** a rota `mlb.anuncios.historico`, o `MlbAnuncioController::historico()`, a pagina
+`AnunciosHistorico.jsx`, o util `anuncioHistoricoUtils.js` e os testes continuam no repositorio,
+com gate de diff vazio na Fase 180 provando isso. Esta fase decide **onde** aquilo reaparece e o
+veste com os tokens novos.
+
+**Depends on**: Fase 180 (a tela de Publicacoes no layout novo) e Fase 181 (o painel de inspecao,
+que pode ser o lugar natural do lote).
+
+**Requirements**: a definir no planejamento — nenhum REQ-ID da v26.0 cobre esta fase, porque ela
+nasceu de uma decisao tomada DENTRO da Fase 180.
+
+**O inventario do que SO existe nesta fonte** (medido no planejamento da Fase 180; tudo em
+`app/Http/Controllers/MlbAnuncioController.php::historico()`, `:287-441`, salvo indicacao):
+
+  1. **O agrupamento por LOTE, reconstruido em PHP.** `$chaveLote = categoria + dia de conclusao`
+     (`:372-373`, `groupBy` em `:376`, o `map` do grupo em `:377-412`). ⚠️ **Nao existe coluna de
+     lote no banco** — a publicacao em massa cria N itens sem vinculo, e a chave e remontada em
+     memoria. Qualquer tentativa de ler "lote" do banco falha.
+  2. **A fonte: o que o Publicador publicou**, nao o snapshot da conta ML. 4-join
+     `pub_publicacao_itens → pub_publicacoes → pub_rascunhos → pub_produtos` (`:306-317`), com
+     `status = PubPublicacaoItem::CREATED` (`app/Models/PubPublicacaoItem.php:22`) — ⚠️
+     `SENT`/`PENDING`/`FAILED`/`UNKNOWN` **nao** sao "publicado" — e escopo de dupla ancora
+     (`pub_produtos.company_id` OR `mlb_empresa_id`).
+  3. **O payload ENVIADO ao ML** — titulo e preco **do momento da publicacao**, que o acervo nunca
+     teve: `data_get($i->payload,'family_name')` (`:393`) e `payload['price']` (`:394`).
+  4. **A foto da publicacao.** O payload so guarda o `ml_picture_id`; a URL exibivel mora em
+     `pub_imagens.ml_url` (`:346-348`, `:354-357` em lote, `:359-368` com o fallback para a primeira
+     foto do rascunho quando o id nao casa — dado legado). ⚠️ **Nunca inventa URL.**
+  5. **`sku_origem` por `PubProduto::skuExibido()`** (`:346`, `:396`) — a convencao de SKU de tela do
+     modulo, nao a coluna crua.
+  6. **`pode_duplicar`**, hoje `false` em **todo** item (`:280-283`, `:407`), porque **nao existe
+     rotina de clonar um `PubRascunho`** — so existe para `MlAnuncioRascunho`
+     (`duplicarComoTemplate` `:1099`, `duplicarLoteComoTemplate` `:1136`). ⚠️ A tela **desabilita,
+     nunca esconde**. Construir o equivalente para o editor novo e **recurso novo**, nao troca de
+     fonte, e e candidato natural de escopo desta fase.
+  7. **`listing_tier` cru do ML** (`gold_special`/`gold_pro`), indexado pelo `rotuloTier()` do front
+     (`:398-401`, `resources/js/Pages/Mlb/anuncioHistoricoUtils.js`) — **nao** pelo rotulo interno.
+  8. **A busca propria:** `payload->family_name` e `pub_produtos.sku`, agrupada para o `orWhere` nao
+     anular o escopo (`:321-326`).
+  9. **`total_lotes`** no resumo (`:437-438`) — sem equivalente em `meus()`.
+  10. **A paginacao por GRUPO, 12 por pagina**, via `LengthAwarePaginator` montado a mao sobre a
+      colecao agrupada (`:414-424`) — ⚠️ **outra** paginacao, nao a de 50 por anuncio.
+  11. **A categoria resolvida por nome** (`$this->nomeCategoria()`, `:384`, metodo em `:3319`).
+
+**O que esta fase precisa DECIDIR** (a Fase 180 nao decide):
+
+  - **Onde** o lote publicado reaparece: um terceiro modo de visao **dentro** de Publicacoes (ao lado
+    de "Por produto" e "Lista"), um bloco no painel de inspecao da Fase 181, ou tela propria no
+    layout novo.
+  - Se **`pode_duplicar`** sai do `false` permanente — o que exige clonagem de `PubRascunho`, recurso
+    novo.
+  - ⚠️ **NAO reabrir sem decisao nova do usuario** a troca de fonte de 2026 (`:271-279`): o
+    assistente antigo tinha **ZERO publicacoes** em toda conta de teste e as publicacoes reais nao
+    apareciam em lugar nenhum. Foi por isso que o Historico passou a ler a fonte do Publicador.
+
+**O que ela HERDA sem reescrever**: `AnunciosHistorico.jsx` (375 linhas), `anuncioHistoricoUtils.js`,
+a rota em `routes/mlb_anuncios.php:430`, `tests/Feature/Phase86/HistoricoAnunciosTest.php` e
+`tests/js/estrutura-anuncios-historico.test.js`. E `SeletorEmpresaBusca.jsx:45` ja trata
+`rotaAtual === 'mlb.anuncios.historico'`, entao o seletor de empresa continua funcionando la — sem
+trabalho.
+
+**Plans**: TBD
+**UI hint**: yes
+
 #### Coverage Map — Milestone v26.0 (REQ-ID × fase)
 
 | Requirement | Phase | Status |
