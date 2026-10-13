@@ -1177,6 +1177,32 @@ test('FID-01/VG-05 — os quatro cartões de estágio (:91-:118)', async (contex
         }
     });
 
+    await contexto.test('⚠️ VG-06 — badge NÃO aparece sobre estágio VAZIO, mesmo sendo o `proximo_passo`', () => {
+        // ⚠️ LACUNA DE COBERTURA REAL, achada por mutação: tirar o
+        // `&& cnt[k] > 0` de `:476` sobrevivia porque em toda fixture o estágio
+        // do `proximo_passo` tinha produto. "Comece por aqui" sobre um card de
+        // ZERO produtos é CTA sem destino (EXMP-01).
+        const cheia = jornadaCheia();
+        cheia.proximo_passo = 'draft';
+        cheia.estagios[1].total = 0;
+        cheia.estagios[1].itens = [];
+        const html2 = renderizar({ jornada: cheia, urlProdutos: '/produtos' });
+
+        assert.doesNotMatch(html2, /PRÓXIMO PASSO/, 'estágio vazio não leva badge');
+        const botoes2 = botoesDeEstagio(html2);
+        assert.equal(botoes2.length, 4, 'os 4 cartões continuam lá');
+        // e nenhum CTA fica amarelo: o `ehProximoPasso` é o mesmo gatilho
+        for (const botao of botoes2) {
+            assert.ok(!classesDe(botao.abertura).includes('text-pub-accent'));
+        }
+        assert.equal([...html2.matchAll(/text-pub-accent/g)].length > 0, true, 'o CTA do painel do ready segue amarelo');
+
+        // E com produto, o badge volta — contra-prova do mesmo gatilho.
+        const comProduto = jornadaCheia();
+        comProduto.proximo_passo = 'draft';
+        assert.match(renderizar({ jornada: comProduto, urlProdutos: '/produtos' }), /PRÓXIMO PASSO/);
+    });
+
     await contexto.test('26/27 — número de 32px e % de 12px, alinhados por baseline', () => {
         botoes.forEach((botao, indice) => {
             const chave = J.ORDEM_ESTAGIOS[indice];
@@ -1375,6 +1401,20 @@ test('VG-08 — "Prontos para Fase 2" nasce aberto, e a seleção derruba os out
         assert.equal([...html.matchAll(/opacity:0\.35/g)].length, 3);
         // os dois valores convivem no MESMO documento: uniformizar reprova aqui
         assert.ok(/opacity:0\.3(?!5)/.test(html) && /opacity:0\.35/.test(html));
+    });
+
+    await contexto.test('⚠️ o guard de "só abre quem tem produto" existe no derivado, não só no estado inicial', () => {
+        // ⚠️ LACUNA DE COBERTURA REAL, achada por mutação: trocar
+        // `estagioAberto && contagens[estagioAberto] > 0 ? estagioAberto : null`
+        // por `estagioAberto` SOBREVIVEU a todos os renders, porque o estado
+        // inicial já nasce nulo quando `ready` está vazio — o guard só vale
+        // DEPOIS de um clique, e clique não existe sem navegador. Então o guard
+        // é cobrado na fonte, com a condição inteira.
+        assert.match(
+            FONTE_CARTAO,
+            /const selecionado = estagioAberto && dados\.contagens\[estagioAberto\] > 0 \? estagioAberto : null;/,
+            'sem este guard, clicar num estágio de total 0 abriria um painel vazio',
+        );
     });
 
     await contexto.test('o `onClick` do cartão ALTERNA (clicar de novo fecha) — por leitura de fonte', () => {
