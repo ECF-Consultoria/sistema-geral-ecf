@@ -59,8 +59,15 @@ de presença. Ler o corpo da regra é obrigatório — e o medidor erra de seis 
 1. **Token sólido NÃO compila para hex** — sai `rgb(38 38 38 / var(--tw-bg-opacity, 1))`, decimal.
    Esperar hex deu **25 falsas faltas**.
 2. **`stroke`/`fill` sólidos, ao contrário, SAEM EM HEX LITERAL.** (2 falsas faltas.)
-3. **O modificador de opacidade compila para hex de 8 dígitos**, e o byte do alfa **prova** a
-   opacidade — é o único jeito de distinguir `0.13` de `0.12`. E `0.10` arredonda para `0x1a`.
+3. ⚠️ **O modificador de opacidade muda de FORMA conforme a PROPRIEDADE.** Medido em 13/10/2026
+   (plano 180-06), corrigindo o que esta linha dizia antes:
+   - em `border-color`/`background-color` sai **hex de 8 dígitos**, e o byte do alfa **prova** a
+     opacidade — é o único jeito de distinguir `0.13` de `0.12`; `0.10` arredonda para `0x1a`;
+   - em **`--tw-ring-color`** sai `rgb(250 204 21 / .18)` — **decimal**, e com o zero da frente
+     comido pelo cssnano.
+   ➡️ **Leia a forma REAL no CSS construído antes de escrever a regex.** Prescrever "hex de 8
+   dígitos" às cegas foi a 8ª mentira do medidor nesta milestone — e veio da prescrição, não do
+   executor.
 4. **O cssnano tira o zero da frente, inclusive depois do sinal de menos:** `-0.03em` → `-.03em`.
 5. **O CSS escapa o seletor com barra invertida** (`.text-\[13\.5px\]`) — 54 falsas faltas.
 6. **Na variante, o prefixo faz parte do nome da classe:** `.hover\:bg-pub-hover-0:hover`.
