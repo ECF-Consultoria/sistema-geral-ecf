@@ -11,7 +11,7 @@ import { ATUALIZANDO, ATUALIZAR, TITULO_SAUDE, linhasDaSaude } from './acoes';
 //   · linha           → :240  (tile :241, coluna :242, nome :243, meta :244)
 //   · "Atualizar"     → :246  (spinner :247)
 //   · pílula da linha → :250
-//   · a aritmética    → :528-:540 (`health`, `okRow`, `healthIssue`)
+//   · a aritmética    → :523-:532 (`health`, `okRow`, `healthIssue`)
 //
 // ⚠️ O ERP **NÃO é integração neste sistema**. Ele é DECLARADO (ficha de
 // onboarding ou sync da planilha de Polos), e a Fase 177, plano 03, mediu e
@@ -19,13 +19,13 @@ import { ATUALIZANDO, ATUALIZAR, TITULO_SAUDE, linhasDaSaude } from './acoes';
 // 'conectado', $erp)`); o 179-03 repetiu (`problema` é sempre `false` na linha
 // do ERP, mutações M04/M05). Por isso, nesta tela, a linha do ERP:
 //   · diz `Declarado: X` ou `Não informado`, e **NUNCA `Conectado`**;
-//   · **não** ganha dot nem pílula de status (o protótipo dá os dois, `:529`);
+//   · **não** ganha dot nem pílula de status (o protótipo dá os dois, `:527`);
 //   · **não** move o `geral` do card;
 //   · **não** gera CTA "Reconectar ERP" — seria botão sem destino (EXMP-03).
 // Quem for "consertar" isto: o dado não existe. Leia a 177-03-SUMMARY antes.
 //
 // ⚠️ A meta do ML **não inventa prazo**. O protótipo escreve *"Conta ECFDEV02 ·
-// token renova em 4 h"* (`:528`); o contrato expõe só `estado`, e a 177-03
+// token renova em 4 h"* (`:524`); o contrato expõe só `estado`, e a 177-03
 // travou a AUSÊNCIA de `renova_em`.
 //
 // ⚠️ "Atualizar" **nunca coleta no request**: a rota (`mlb.anuncios.meus.
@@ -40,7 +40,7 @@ import { ATUALIZANDO, ATUALIZAR, TITULO_SAUDE, linhasDaSaude } from './acoes';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Cor do rótulo E do dot do status geral (`:238`, `:540`).
+ * Cor do rótulo E do dot do status geral (`:238`, `:532`).
  *
  * ⚠️ MEDIDO: o protótipo usa `{{ healthColor }}` nos DOIS (texto e dot), e
  * `healthColor` é a cor CLARA (`#4ADE80`/`#FBBF24`/`#F87171`). O `<action>` do
@@ -63,7 +63,7 @@ const DOT_DO_GERAL = {
     requer_acao: 'bg-pub-danger-txt',
 };
 
-/** Pílula de status da linha do ML (`:250`, `:528`): texto claro, dot sólido. */
+/** Pílula de status da linha do ML (`:250`, `:525`): texto claro, dot sólido. */
 const COR_DO_ESTADO = {
     ativo: 'text-pub-ok-txt',
     expirado: 'text-pub-danger-txt',
@@ -78,7 +78,7 @@ const DOT_DO_ESTADO = {
 
 /**
  * Tile da linha (`:241`). O do ML é amarelo sólido com texto escuro; os outros
- * são a divisória com o texto da Fase 1 (`:528-:529`).
+ * são a divisória com o texto da Fase 1 (`:524-:529`).
  */
 const TILE_DA_LINHA = {
     mercado_livre: 'bg-pub-accent text-pub-page',

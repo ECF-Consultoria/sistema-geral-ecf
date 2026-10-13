@@ -38,7 +38,7 @@ import {
 //                                     meta :204, motivo :206, "Abrir →" :207)
 //   · "Adiar até amanhã"     → :209 (contêiner) / :210 (botão)
 //   · vazio                  → :216  (tile :217, check :218, textos :219)
-//   · a aritmética           → :423 (`SEV`) · :516-:526
+//   · a aritmética           → :425 (`SEV`) · :512-:520
 //
 // ⚠️ TODA classe do Tailwind deste bloco mora NESTE arquivo, e não em
 // `acoes.js`: o `content` do `tailwind.config.js:12` varre
@@ -65,7 +65,7 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Tinta do tile do ícone e do badge de severidade (`:423`).
+ * Tinta do tile do ícone e do badge de severidade (`:425`).
  *
  * ⚠️ São TRÊS números: **0.13 / 0.13 / 0.12**. O protótipo escreve
  * `rgba(239,68,68,0.13)`, `rgba(245,158,11,0.13)` e `rgba(250,204,21,0.12)`.
@@ -77,7 +77,7 @@ const TINTA_DA_SEVERIDADE = {
     oportunidade: 'bg-pub-accent/[0.12]',
 };
 
-/** Cor do texto do badge e do motivo do sub-item (`s[1]`, `:423`). */
+/** Cor do texto do badge e do motivo do sub-item (`s[1]`, `:425`). */
 const TEXTO_DA_SEVERIDADE = {
     critico: 'text-pub-danger-txt',
     atencao: 'text-pub-warn-txt',
@@ -85,7 +85,7 @@ const TEXTO_DA_SEVERIDADE = {
 };
 
 /**
- * Cor do dot da opção do segmented (`:525`).
+ * Cor do dot da opção do segmented (`:520`).
  *
  * ⚠️ MEDIDO: `dot: this.SEV[k][1]` — o dot usa a cor do TEXTO (`#F87171`,
  * `#FBBF24`, `#FACC15`), **não** a tinta sólida (`#EF4444`, `#F59E0B`) que o
@@ -320,7 +320,7 @@ export default function OQueFazerAgora({
                             ))}
                         </span>
 
-                        {/* CTA (`:193`). ⚠️ `stopPropagation` é do protótipo (`:519`,
+                        {/* CTA (`:193`). ⚠️ `stopPropagation` é do protótipo (`:515`,
                             `onCta: (e) => e.stopPropagation()`): sem ele o clique no
                             CTA também abriria a gaveta. ⚠️ Sem `href` o CTA NÃO
                             nasce — botão sem destino é proibido (EXMP-01). */}
@@ -342,7 +342,7 @@ export default function OQueFazerAgora({
                         )}
 
                         {/* Chevron (`:194`/`:195`). `disabled` quando não há sub-item:
-                            `open && a.items.length > 0` (`:520`) — chevron não abre
+                            `open && a.items.length > 0` (`:516`) — chevron não abre
                             gaveta vazia, e um botão que não faz nada é mudo. */}
                         <button
                             type="button"

@@ -21,10 +21,10 @@ import {
 //   · barra         → :261  (faixa :262)
 //   · legenda       → :263 (contêiner) / :265 (linha) / :266 (swatch + número)
 //   · acervo        → :268  (mosaico :269-:271, textos :272)
-//   · a aritmética  → :542-:544 e :606-:607
+//   · a aritmética  → :534-:536 e :606-:607
 //
 // ⚠️ **"Com erro" NÃO EXISTE e não vai ser inventada.** O protótipo desenha
-// `Ativas / Pausadas / Com erro` (`:544`), mas `MlAcervoItem.status` só assume
+// `Ativas / Pausadas / Com erro` (`:536`), mas `MlAcervoItem.status` só assume
 // `active|paused|under_review|closed` — MEDIDO na Fase 177, plano 03. O terceiro
 // sinal real é **"Pedem ação"** (`severidade > 0`), que é o MESMO número do dot
 // da aba Publicações. As 4 faixas desta barra SOMAM o total do header; o resíduo
@@ -45,7 +45,7 @@ import {
 // ⚠️ REND-04: os três `.map()` leem só o próprio parâmetro e os mapas de módulo.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Cor da faixa da barra e do swatch da legenda (`:544`, mais as 2 reais). */
+/** Cor da faixa da barra e do swatch da legenda (`:536`, mais as 2 reais). */
 const COR_DA_FAIXA = {
     ativas: 'bg-pub-ok',
     pausadas: 'bg-pub-warn',

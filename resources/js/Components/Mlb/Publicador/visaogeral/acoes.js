@@ -17,8 +17,8 @@ import { textoSeguro, textoUtil } from '../BarraDaConta';
 //   · Saúde da conta            → :235  (linha :240, botão :246, spinner :247)
 //   · Publicações no ML         → :256  (total :260, barra :261, legenda :265)
 //   · acervo de imagens         → :268  (mosaico :269-:271)
-//   · a aritmética              → :423 (`SEV`) · :516-:526 (ações e abas) ·
-//                                 :528-:540 (saúde) · :542-:544 e :603-:607
+//   · a aritmética              → :425 (`SEV`) · :512-:520 (ações e abas) ·
+//                                 :523-:532 (saúde) · :534-:536 e :603-:607
 //
 // ⚠️ ESTE ARQUIVO NÃO PODE CONTER UMA ÚNICA CLASSE DO TAILWIND.
 // O `content` do `tailwind.config.js:12` varre `./resources/js/**/*.jsx` e
@@ -35,15 +35,15 @@ import { textoSeguro, textoUtil } from '../BarraDaConta';
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. "O que fazer agora" — literais (`:165-:219`, `:423`, `:519-:526`, `:603`)
+// 1. "O que fazer agora" — literais (`:165-:219`, `:425`, `:512-:520`, `:603`)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const TITULO = 'O que fazer agora';
 
 /**
  * O rótulo do badge de severidade. O protótipo guarda `['Crítico', …]` em `SEV`
- * (`:423`) e aplica `.toUpperCase()` só no badge (`:519`, `sevLabel`), enquanto
- * a aba do segmented usa o rótulo em caixa de título (`:525`). São DOIS rótulos
+ * (`:425`) e aplica `.toUpperCase()` só no badge (`:515`, `sevLabel`), enquanto
+ * a aba do segmented usa o rótulo em caixa de título (`:520`). São DOIS rótulos
  * para a mesma severidade, de propósito — por isso `ABAS_SEVERIDADE` abaixo não
  * reusa este.
  *
@@ -66,7 +66,7 @@ export const SEVERIDADES = {
 export const SEVERIDADE_PADRAO = 'atencao';
 
 /**
- * As 4 opções do segmented (`:525`). ⚠️ `Todas` NÃO tem dot — o protótipo faz
+ * As 4 opções do segmented (`:520`). ⚠️ `Todas` NÃO tem dot — o protótipo faz
  * `hasDot: k !== 'all'`, então são 3 dots, não 4.
  */
 export const ABAS_SEVERIDADE = [
@@ -288,7 +288,7 @@ export function normalizarAcoes(bruta) {
  * As 4 opções do segmented com a contagem.
  *
  * ⚠️ A contagem sai da PROP `contagens`, não do número de linhas visíveis — o
- * protótipo conta a lista inteira (`:520`) e filtrar não muda contagem. O que
+ * protótipo conta a lista inteira (`:516`) e filtrar não muda contagem. O que
  * muda é o adiamento otimista: a ação já saiu da tela, então sai da contagem
  * também, senão o segmented prometeria uma linha que não existe mais.
  *
@@ -327,7 +327,7 @@ export function abasComContagem(contagens, escondidas = [], filtro = 'todas') {
  * `feedback_rollup_map_scope_bug.md`).
  *
  * ⚠️ `recomendada` vem do servidor e NÃO se recalcula sob filtro (VG-10): o
- * protótipo decide `isTop` sobre a lista completa (`:518`).
+ * protótipo decide `isTop` sobre a lista completa (`:514`).
  * ⚠️ `aberta` exige sub-item (`:520`: `open && a.items.length > 0`) — chevron
  * não abre gaveta vazia.
  * ⚠️ `pode_adiar` exige `contaChave`: sem conta não há rota, e botão sem destino
@@ -375,12 +375,12 @@ export function escondidasDaLista(dados, escondidas = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. "Saúde da conta" — literais e view model (`:235-:254`, `:528-:540`)
+// 4. "Saúde da conta" — literais e view model (`:235-:254`, `:523-:532`)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const TITULO_SAUDE = 'Saúde da conta';
 
-/** `saude.geral` → rótulo (`:540`, `healthIssue`). */
+/** `saude.geral` → rótulo (`:532`, `healthIssue`). */
 export const GERAL = {
     tudo_conectado: 'Tudo conectado',
     atencao: 'Atenção',
@@ -388,9 +388,9 @@ export const GERAL = {
 };
 
 /**
- * Nome e tile de cada linha (`:528-:530`).
+ * Nome e tile de cada linha (`:524-:530`).
  *
- * ⚠️ O tile da Sincronização é o caractere `⟳` — MEDIDO em `:539`
+ * ⚠️ O tile da Sincronização é o caractere `⟳` — MEDIDO em `:531`
  * (`health[2].tile = '⟳'`), não um ícone do Lucide.
  */
 export const LINHAS = {
@@ -423,7 +423,7 @@ export const ERP_NAO_INFORMADO = 'Não informado';
  *   · **não** move o `geral` do card;
  *   · **não** gera CTA "Reconectar ERP" — seria botão sem destino (EXMP-03).
  *
- * O protótipo desenha o contrário (`:368`, `:519`, `:529`). Quem for "consertar"
+ * O protótipo desenha o contrário (`:368`, `:515`, `:527`). Quem for "consertar"
  * isto: o dado não existe. Antes de mexer, leia a 177-03-SUMMARY.
  */
 export function metaDoErp(declarado) {
@@ -436,7 +436,7 @@ export function metaDoErp(declarado) {
 
 /**
  * Meta da linha de Sincronização. O protótipo escreve `'Última coleta ' + S.synced`
- * (`:529`), com `synced = 'há 25 min'`; o contrato do 179-03 expõe `horas` (int)
+ * (`:527`), com `synced = 'há 25 min'`; o contrato do 179-03 expõe `horas` (int)
  * e `nunca_coletado`.
  *
  * ⚠️ "há 0 h" seria mentira quando nunca houve coleta — e `nunca_coletado` tem
@@ -456,7 +456,7 @@ export function metaDaSincronizacao(linha) {
  * Meta da linha do Mercado Livre.
  *
  * ⚠️ **Nenhum prazo inventado.** O protótipo escreve *"Conta ECFDEV02 · token
- * renova em 4 h"* (`:528`); o contrato expõe só `estado`, e a 177-03 travou a
+ * renova em 4 h"* (`:524`); o contrato expõe só `estado`, e a 177-03 travou a
  * AUSÊNCIA de `renova_em`. A meta é a identidade da conta; o estado vai na
  * pílula, que é onde o protótipo o põe (`:250`).
  */
@@ -511,7 +511,7 @@ export function linhasDaSaude(bruta) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. "Publicações no Mercado Livre" (`:256-:274`, `:542-:544`, `:606-:607`)
+// 5. "Publicações no Mercado Livre" (`:256-:274`, `:534-:536`, `:606-:607`)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const TITULO_PUBS = 'Publicações no Mercado Livre';
@@ -522,7 +522,7 @@ export const OFERTAS = 'ofertas';
  * As 4 faixas reais da barra (`publicacoesMl.faixas[].chave` do 179-03).
  *
  * ⚠️ **"Com erro" NÃO EXISTE e não vai ser inventada.** O protótipo desenha
- * `Ativas / Pausadas / Com erro` (`:544`), mas `MlAcervoItem.status` só assume
+ * `Ativas / Pausadas / Com erro` (`:536`), mas `MlAcervoItem.status` só assume
  * `active|paused|under_review|closed` — medido na Fase 177, plano 03. O terceiro
  * sinal REAL é "Pedem ação" (`severidade > 0`), que é o MESMO número do dot da
  * aba Publicações.

@@ -33,7 +33,7 @@ import { lerSemComentarios } from './_fonte.js';
 //                              total :260, barra :261, faixa :262,
 //                              legenda :263/:265/:266, acervo :268,
 //                              mosaico :269-:271, textos :272)
-//   · a aritmética    → :423 (`SEV`) · :516-:526 · :528-:540 · :542-:544 ·
+//   · a aritmética    → :425 (`SEV`) · :512-:520 · :523-:532 · :534-:536 ·
 //                       :603-:607
 //
 // ⚠️ REND-03: TODOS os bundles são montados aqui no topo, ANTES do primeiro
@@ -379,26 +379,26 @@ test('⚠️ acoes.js é módulo PURO: nem React, nem JSX, nem CLASSE DO TAILWIN
 // B. Os literais, byte a byte (TODOS são do cliente — 179-02/179-03)
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('os literais de severidade e de aba (:423, :519, :525)', async (contexto) => {
+test('os literais de severidade e de aba (:425, :515, :520)', async (contexto) => {
     await contexto.test('as 3 severidades, na ordem do servidor', () => {
         assert.deepEqual(Object.keys(A.SEVERIDADES), ['critico', 'atencao', 'oportunidade']);
         assert.deepEqual(Object.values(A.SEVERIDADES).map((s) => s.ordem), [0, 1, 2]);
     });
 
-    await contexto.test('⚠️ o badge é MAIÚSCULO (`s[0].toUpperCase()`, :519)', () => {
+    await contexto.test('⚠️ o badge é MAIÚSCULO (`s[0].toUpperCase()`, :515)', () => {
         assert.equal(A.SEVERIDADES.critico.rotulo, 'CRÍTICO');
         assert.equal(A.SEVERIDADES.atencao.rotulo, 'ATENÇÃO');
         assert.equal(A.SEVERIDADES.oportunidade.rotulo, 'OPORTUNIDADE');
     });
 
-    await contexto.test('⚠️ a ABA é caixa de título — DOIS rótulos para a mesma severidade (:525)', () => {
+    await contexto.test('⚠️ a ABA é caixa de título — DOIS rótulos para a mesma severidade (:520)', () => {
         assert.deepEqual(A.ABAS_SEVERIDADE.map((a) => a.chave), ['todas', 'critico', 'atencao', 'oportunidade']);
         assert.deepEqual(A.ABAS_SEVERIDADE.map((a) => a.rotulo), ['Todas', 'Crítico', 'Atenção', 'Oportunidade']);
         // e o da aba NÃO é o do badge
         assert.notEqual(A.ABAS_SEVERIDADE[1].rotulo, A.SEVERIDADES.critico.rotulo);
     });
 
-    await contexto.test('⚠️ "Todas" NÃO tem dot (`hasDot: k !== "all"`, :525) — 3 dots, nunca 4', () => {
+    await contexto.test('⚠️ "Todas" NÃO tem dot (`hasDot: k !== "all"`, :520) — 3 dots, nunca 4', () => {
         assert.deepEqual(A.ABAS_SEVERIDADE.map((a) => a.tem_dot), [false, true, true, true]);
     });
 });
@@ -473,7 +473,7 @@ test('os literais de tela do card de ações (:186, :207, :210, :217-:219, :603)
     });
 });
 
-test('os literais da Saúde e de Publicações (:528-:540, :542-:544, :606-:607)', async (contexto) => {
+test('os literais da Saúde e de Publicações (:523-:532, :534-:536, :606-:607)', async (contexto) => {
     await contexto.test('Saúde — string INTEIRA', () => {
         assert.equal(A.TITULO_SAUDE, 'Saúde da conta');
         assert.deepEqual(A.GERAL, {
@@ -496,7 +496,7 @@ test('os literais da Saúde e de Publicações (:528-:540, :542-:544, :606-:607)
         assert.equal(A.ERP_NAO_INFORMADO, 'Não informado');
     });
 
-    await contexto.test('⚠️ o tile da Sincronização é o CARACTERE `⟳` (:539), não um ícone', () => {
+    await contexto.test('⚠️ o tile da Sincronização é o CARACTERE `⟳` (:531), não um ícone', () => {
         assert.equal(A.LINHAS.sincronizacao.tile, '⟳');
         const html = renderSaude({ saude: SAUDE_CHEIA() });
         const { bloco } = linhaDaSaude(html, 'Sincronização');
@@ -634,7 +634,7 @@ test('normalizarAcoes — a fronteira (T-179-30)', async (contexto) => {
     });
 });
 
-test('abasComContagem — a contagem sai da PROP, não das linhas visíveis (:520)', async (contexto) => {
+test('abasComContagem — a contagem sai da PROP, não das linhas visíveis (:512)', async (contexto) => {
     await contexto.test('as 4 abas, com a contagem do payload', () => {
         const abas = A.abasComContagem({ todas: 11, critico: 2, atencao: 5, oportunidade: 4 });
         assert.deepEqual(abas.map((a) => a.chave), ['todas', 'critico', 'atencao', 'oportunidade']);
@@ -748,7 +748,7 @@ test('linhasDaSaude — as 3 linhas, sempre, e o ERP sem conexão', async (conte
         assert.equal(dados.rotulo_geral, 'Tudo conectado');
     });
 
-    await contexto.test('⚠️ a meta do ML NÃO inventa prazo ("token renova em 4 h", :528)', () => {
+    await contexto.test('⚠️ a meta do ML NÃO inventa prazo ("token renova em 4 h", :525)', () => {
         const dados = A.linhasDaSaude(SAUDE_CHEIA());
         assert.ok(!dados.linhas[0].meta.includes('renova'), 'prazo inventado');
         assert.doesNotMatch(FONTE_SAUDE, /renova/);
@@ -1014,7 +1014,7 @@ test('FID-01 — 9/10/11: a linha da ação, o grid e o tile do ícone (:176-:17
         }
     });
 
-    await contexto.test('⚠️ as TRÊS tintas são 0.13 / 0.13 / 0.12 — não se uniformizam (:423)', () => {
+    await contexto.test('⚠️ as TRÊS tintas são 0.13 / 0.13 / 0.12 — não se uniformizam (:425)', () => {
         assert.match(FONTE_CARD, /bg-pub-danger\/\[0\.13\]/);
         assert.match(FONTE_CARD, /bg-pub-warn\/\[0\.13\]/);
         assert.match(FONTE_CARD, /bg-pub-accent\/\[0\.12\]/);
@@ -1105,7 +1105,7 @@ test('FID-01 — 15/16/17/18: título, badges e descrição (:182-:188)', async 
         ], 'o badge OPORTUNIDADE');
     });
 
-    await contexto.test('⚠️ 17 — UM badge RECOMENDADO AGORA, nunca dois (:518, `acts[0].id`)', () => {
+    await contexto.test('⚠️ 17 — UM badge RECOMENDADO AGORA, nunca dois (:514, `acts[0].id`)', () => {
         const badges = [...html.matchAll(/RECOMENDADO AGORA/g)];
         assert.equal(badges.length, 1);
         conferirClasses(tagComTexto(html, 'span', 'RECOMENDADO AGORA'), [
@@ -1170,7 +1170,7 @@ test('FID-01 — 19/20/21: a pilha, o CTA e o chevron (:189-:195)', async (conte
         ], 'o CTA das outras');
     });
 
-    await contexto.test('⚠️ o CTA chama stopPropagation (:519) — senão o clique abriria a gaveta', () => {
+    await contexto.test('⚠️ o CTA chama stopPropagation (:518) — senão o clique abriria a gaveta', () => {
         assert.match(FONTE_CARD, /onClick=\{\(evento\) => evento\.stopPropagation\(\)\}/);
     });
 
@@ -1281,7 +1281,7 @@ test('FID-01 — 22: a sub-lista aberta (:198-:210)', async (contexto) => {
     });
 });
 
-test('⚠️ ação com `itens: []` NÃO abre gaveta, nem quando o estado diz aberto (:520)', async (contexto) => {
+test('⚠️ ação com `itens: []` NÃO abre gaveta, nem quando o estado diz aberto (:516)', async (contexto) => {
     // ⚠️ Esta é a asserção que seria VAZIA POR CONSTRUÇÃO sem a prop de estado
     // inicial: com tudo fechado, "Abrir →" está ausente de qualquer jeito.
     const html = renderAcoes({
@@ -1418,7 +1418,7 @@ test('FID-01 Saúde — o card, o cabeçalho e o status geral (:235-:238)', asyn
         conferirClasses(`<span class="${pilula[2]}">`, ['h-[7px]', 'w-[7px]', 'rounded-full', 'bg-pub-ok-txt'], 'o dot do geral');
     });
 
-    await contexto.test('⚠️ as 3 cores do geral, e o dot é a CLARA nos três (:540)', () => {
+    await contexto.test('⚠️ as 3 cores do geral, e o dot é a CLARA nos três (:532)', () => {
         const esperado = {
             tudo_conectado: ['text-pub-ok-txt', 'bg-pub-ok-txt', 'Tudo conectado'],
             atencao: ['text-pub-warn-txt', 'bg-pub-warn-txt', 'Atenção'],
