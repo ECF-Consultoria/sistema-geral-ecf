@@ -20,9 +20,24 @@ import { textoUtil } from '@/Components/Mlb/Publicador/BarraDaConta';
 //   · ícone de refresh     → :44  (`14×14 viewBox 0 0 16 16 stroke-width:1.6`)
 //   · rótulos do botão     → :619 (`S.syncing ? 'Atualizando…' : 'Atualizar'`)
 //
-// ⚠️ O container do `<main>` (`:30`, `padding:28px 36px 110px;max-width:1600px;
-// margin:0 auto;gap:18px`) NÃO mora aqui: compor a página é do plano 180-10.
-// A medida está registrada na 180-05-SUMMARY para ele.
+// ⚠️ O container do `<main>` (`:30`, `padding:28px 36px 110px;min-width:0;
+// max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:18px`)
+// NÃO mora aqui: compor a página é do plano 180-10. A medida está registrada na
+// 180-05-SUMMARY para ele — inclusive o `min-width:0`, que a tabela do plano
+// omitiu.
+//
+// ⚠️ ZERO `flex-none` neste arquivo, de propósito: varri `:30`-`:66` e
+// `flex:none` aparece UMA vez só no protótipo, no círculo do check da faixa
+// (`:54`). O primeiro rascunho deste componente tinha posto `flex-none` no dot,
+// no spinner, no ícone e no botão "por segurança" — e isso é exatamente a
+// adaptação que o usuário recusou. Não é necessário: o `<header>` é
+// `space-between` e a coluna do título não tem `flex:1`, logo não há pressão de
+// encolhimento sobre a direita.
+//
+// ⚠️ `cursor-pointer` ESTÁ aqui porque o protótipo o declara (`:39`,
+// `cursor:pointer`) — a tabela FID-01 do plano o omitiu nos três botões. O
+// protótipo ganha. (É a mesma falta que ficou registrada como débito em
+// `SeletorDeEmpresaDoHeader.jsx:171`.)
 //
 // ⚠️ "nunca medimos" ≠ "medimos e é zero": sem coleta não existe "Sincronizado
 // há —" nem "Sincronizado nunca" — o bloco inteiro NÃO aparece, e quem resolve
@@ -98,7 +113,7 @@ function IconeDeRefresh() {
             strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="flex-none fill-none stroke-current"
+            className="fill-none stroke-current"
         >
             <path d="M13.5 8A5.5 5.5 0 1 1 11.8 4" />
             <path d="M13.5 2.5V5H11" />
@@ -135,14 +150,14 @@ export function BotaoAtualizarDoCabecalho({ atualizando = false, cooldown = fals
             onClick={onClick}
             disabled={bloqueado}
             className={cn(
-                'flex h-[36px] flex-none items-center gap-[7px] rounded-pub-control border border-pub-line-strong bg-pub-surface px-[14px] text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2',
+                'flex h-[36px] items-center gap-[7px] rounded-pub-control border border-pub-line-strong bg-pub-surface px-[14px] text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2',
                 bloqueado ? 'cursor-wait' : 'cursor-pointer',
             )}
         >
             {girando ? (
                 <span
                     aria-hidden="true"
-                    className="h-[13px] w-[13px] flex-none animate-pub-spin rounded-full border-[1.6px] border-pub-line-off border-t-pub-accent"
+                    className="h-[13px] w-[13px] animate-pub-spin rounded-full border-[1.6px] border-pub-line-off border-t-pub-accent"
                 />
             ) : (
                 <IconeDeRefresh />
@@ -178,7 +193,7 @@ export default function CabecalhoDePublicacoes({ sincronizacao = null, acaoAtual
             <div className="flex items-center gap-[10px]">
                 {rotulo !== null && (
                     <span className="flex items-center gap-[6px] pr-[4px] text-[12.5px] text-pub-neutral-txt">
-                        <span aria-hidden="true" className="h-[6px] w-[6px] flex-none rounded-full bg-pub-ok" />
+                        <span aria-hidden="true" className="h-[6px] w-[6px] rounded-full bg-pub-ok" />
                         {`${PREFIXO_SINCRONIZADO} ${rotulo}`}
                     </span>
                 )}

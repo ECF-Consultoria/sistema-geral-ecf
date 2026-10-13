@@ -400,7 +400,7 @@ test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contex
         const dot = tagEm(HTML_CAB_CHEIO, primeiraTagApos(HTML_CAB_CHEIO, iSinc, 'span'));
         assertClasses(
             dot,
-            ['h-[6px]', 'w-[6px]', 'flex-none', 'rounded-full', 'bg-pub-ok'],
+            ['h-[6px]', 'w-[6px]', 'rounded-full', 'bg-pub-ok'],
             'dot verde :38',
         );
         assert.equal(atributo(dot, 'aria-hidden'), 'true', 'o dot é decorativo');
@@ -411,7 +411,7 @@ test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contex
         assertClasses(
             botao,
             [
-                'flex', 'h-[36px]', 'flex-none', 'items-center', 'gap-[7px]', 'rounded-pub-control',
+                'flex', 'h-[36px]', 'items-center', 'gap-[7px]', 'rounded-pub-control',
                 'border', 'border-pub-line-strong', 'bg-pub-surface', 'px-[14px]', 'text-[13px]',
                 'font-medium', 'text-pub-txt', 'hover:bg-pub-hover-2', 'cursor-pointer',
             ],
@@ -435,7 +435,7 @@ test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contex
         assertClasses(
             spinner,
             [
-                'h-[13px]', 'w-[13px]', 'flex-none', 'animate-pub-spin', 'rounded-full',
+                'h-[13px]', 'w-[13px]', 'animate-pub-spin', 'rounded-full',
                 'border-[1.6px]', 'border-pub-line-off', 'border-t-pub-accent',
             ],
             'spinner :41',
@@ -453,6 +453,28 @@ test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contex
         assert.equal(atributo(svg, 'width'), '14');
         assert.equal(atributo(svg, 'height'), '14');
         assert.equal(atributo(svg, 'aria-hidden'), 'true');
+        // `fill:none;stroke:currentColor` do protótipo.
+        assertClasses(svg, ['fill-none', 'stroke-current'], 'ícone de refresh :44');
+    });
+
+    await contexto.test('⚠️ `flex:none` aparece UMA vez em todo o bloco do protótipo — e UMA vez no código', () => {
+        // O que precisaria estar errado: alguém "proteger" o dot, o spinner, o
+        // ícone ou os botões com `flex-none` por hábito. O protótipo declara
+        // `flex:none` SÓ no círculo do check da faixa (`:54`) — medido com
+        // `grep -n` em `:30`-`:66`. Acrescentar é adaptação, e foi o que o
+        // primeiro rascunho deste plano fez (pego por esta asserção).
+        const total = (FONTE_CABECALHO.match(/\bflex-none\b/g) ?? []).length
+            + (FONTE_FAIXA.match(/\bflex-none\b/g) ?? []).length;
+        assert.equal(total, 1, 'o número de `flex-none` divergiu da única declaração do protótipo');
+        assert.equal((FONTE_CABECALHO.match(/\bflex-none\b/g) ?? []).length, 0, 'o cabeçalho não tem flex:none no protótipo');
+    });
+
+    await contexto.test('⚠️ `cursor-pointer` nos 3 botões — o protótipo o declara e a tabela do plano o omitiu', () => {
+        // O que precisaria estar errado: alguém seguir a tabela FID-01 em vez
+        // do protótipo e tirar o `cursor:pointer` de `:39`/`:61`/`:62`. É a
+        // mesma falta que virou débito em `SeletorDeEmpresaDoHeader.jsx:171`.
+        assert.ok(classesDa(tagEm(HTML_CAB_CHEIO, indiceDaTag(HTML_CAB_CHEIO, 'button'))).includes('cursor-pointer'));
+        assert.equal((FONTE_FAIXA.match(/\bcursor-pointer\b/g) ?? []).length, 2, 'os dois botões da faixa');
     });
 });
 
@@ -512,7 +534,7 @@ test('FID-01 — a geometria da faixa de sucesso bate com o protótipo', async (
         assertClasses(
             botao,
             [
-                'h-[32px]', 'flex-none', 'cursor-pointer', 'rounded-[8px]', 'bg-pub-accent',
+                'h-[32px]', 'cursor-pointer', 'rounded-[8px]', 'bg-pub-accent',
                 'px-[14px]', 'text-[12.5px]', 'font-medium', 'text-pub-page',
             ],
             '"Localizar na lista" :61',
@@ -531,7 +553,7 @@ test('FID-01 — a geometria da faixa de sucesso bate com o protótipo', async (
         assertClasses(
             botao,
             [
-                'grid', 'h-[32px]', 'w-[32px]', 'flex-none', 'cursor-pointer', 'place-items-center',
+                'grid', 'h-[32px]', 'w-[32px]', 'cursor-pointer', 'place-items-center',
                 'rounded-[8px]', 'text-pub-txt-3', 'hover:bg-pub-hover-toast',
             ],
             'o "×" :62',

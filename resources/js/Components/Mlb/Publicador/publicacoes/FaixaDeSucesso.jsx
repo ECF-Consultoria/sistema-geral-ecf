@@ -21,6 +21,18 @@ import { textoUtil } from '@/Components/Mlb/Publicador/BarraDaConta';
 //                                hover `#26220F`, `title="Dispensar"`)
 //   · ícone do "×"       → :63 (`14×14 viewBox 16;stroke-width:1.7`)
 //
+// ⚠️ `flex-none` SÓ no círculo do check: varri `:30`-`:66` e `flex:none`
+// aparece UMA vez em todo o bloco, em `:54`. O primeiro rascunho desta faixa
+// tinha posto `flex-none` nos dois botões também — adaptação, e desnecessária,
+// porque a coluna do texto é `flex:1;min-width:0` e é ela que absorve a sobra.
+//
+// ⚠️ `cursor-pointer` nos dois botões porque o protótipo o declara (`:61`,
+// `:62`) — a tabela FID-01 do plano o omitiu. O protótipo ganha.
+//
+// ⚠️ SEM `truncate` na linha 2: o protótipo não declara `text-overflow` em
+// nenhuma das duas linhas (só `min-width:0` na coluna, `:57`). Acrescentar
+// elipse seria melhoria não pedida numa fase de fidelidade.
+//
 // ⚠️ `rounded-[8px]` literal, e NÃO `rounded-pub-control-sm` (7px) nem
 // `rounded-pub-sub` (10px): o protótipo diz 8 e não existe token de 8px.
 // Medida avulsa vai literal (FID-03). Arredondar para o token mais perto é
@@ -209,7 +221,7 @@ export default function FaixaDeSucesso({ resumo = null, onLocalizar = null, onDi
                 <button
                     type="button"
                     onClick={() => onLocalizar(frase.busca, frase.item)}
-                    className="h-[32px] flex-none cursor-pointer rounded-[8px] bg-pub-accent px-[14px] text-[12.5px] font-medium text-pub-page"
+                    className="h-[32px] cursor-pointer rounded-[8px] bg-pub-accent px-[14px] text-[12.5px] font-medium text-pub-page"
                 >
                     {LOCALIZAR}
                 </button>
@@ -221,7 +233,7 @@ export default function FaixaDeSucesso({ resumo = null, onLocalizar = null, onDi
                     title={DISPENSAR}
                     aria-label={DISPENSAR}
                     onClick={onDispensar}
-                    className="grid h-[32px] w-[32px] flex-none cursor-pointer place-items-center rounded-[8px] text-pub-txt-3 hover:bg-pub-hover-toast"
+                    className="grid h-[32px] w-[32px] cursor-pointer place-items-center rounded-[8px] text-pub-txt-3 hover:bg-pub-hover-toast"
                 >
                     <IconeDeFechar />
                 </button>
