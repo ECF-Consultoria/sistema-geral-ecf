@@ -105,9 +105,32 @@ const ARQUIVOS_NOVOS = [
  *
  * Três declarações no protótipo, três usos no código. Nenhum valor foi
  * REMOVIDO desta lista.
+ *
+ * ⚠️ Fase 180, plano 01 — `15.5` entrou, e também é AMPLIAÇÃO, não
+ * endurecimento. A medida, escrita ao lado no mesmo formato do `8.5`:
+ *
+ *   · `new_layout_publicador/Publicacoes v2.dc.html` declara `font-size:15.5px`
+ *     **1 vez só** — o `<input>` da busca central de 54px (`:70`). Medido com
+ *     varredura de `font-size:` sobre o arquivo, não presumido.
+ *   · Ainda não há nenhum uso de `text-[15.5px]` no código: este plano só
+ *     LIBERA o valor, e o 180-06 é o primeiro que o escreve. Sem a liberação
+ *     aqui, aquele plano teria de arredondar para `text-base` (16px) e mudar o
+ *     layout — exatamente o que FID-03 proíbe.
+ *
+ * ⚠️ `18px` NÃO entrou, de propósito: as 3 declarações dele
+ * (`Publicacoes v2.dc.html:374`-`:376`, os números de Vendas/Visitas/Conversão)
+ * estão DENTRO do `<aside>` de 460px (`:310`-`:402`), que é a Fase 181. Quem
+ * desenhar o painel acrescenta o 18 com a medida dele.
+ *
+ * ⚠️ `11px` segue na lista e NÃO tem uso no protótipo de Publicações — nada é
+ * removido desta lista por falta de uso numa tela.
+ *
+ * Varredura completa de `font-size:` em `Publicacoes v2.dc.html` (13/10/2026):
+ * 10, 10.5, 11.5, 12, 12.5, 13, 13.5, 14, 15, 15.5, 17, 18, 20, 28. Só `15.5` e
+ * `18` faltavam na lista; só `15.5` é desta fase.
  */
 const TAMANHOS_PERMITIDOS = new Set([
-    8.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 17, 20, 24, 28, 30, 32, 34,
+    8.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 24, 28, 30, 32, 34,
 ]);
 
 const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentarios(caminho)]));

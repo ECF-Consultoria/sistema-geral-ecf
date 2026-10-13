@@ -110,6 +110,9 @@ const PUB_ESPERADOS = {
     hover: '#141414',
     'hover-2': '#161616',
     'hover-3': '#1A1A1A',
+    // Plano 180-01 — único `hover-*` AMARELADO: `style-hover` do "×" da faixa
+    // de sucesso de Publicações (`Publicacoes v2.dc.html:62`).
+    'hover-toast': '#26220F',
     seg: '#262626',
     'seg-ring': '#333333',
     // Bordas (TOK-05)
@@ -118,6 +121,9 @@ const PUB_ESPERADOS = {
     'line-subtle': '#1F1F1F',
     'line-subtle-2': '#1C1C1C',
     'line-off': '#3F3F46',
+    // Plano 180-01 — borda OFF dos chips de filtro (`Publicacoes v2.dc.html:608`).
+    // NÃO é `line-strong`: 4 pontos de diferença e outro uso (FID-02).
+    'line-off-2': '#2A2A2A',
     // Texto (TOK-05)
     txt: '#F4F4F5',
     'txt-2': '#A1A1AA',
@@ -127,7 +133,16 @@ const PUB_ESPERADOS = {
     // Accent (TOK-06)
     accent: '#FACC15',
     'accent-hover': '#EAB308',
+    // Plano 180-01 — os CINCO fundos de linha da tabela de Publicações, na
+    // ordem do ternário de `Publicacoes v2.dc.html:553`:
+    //   isSel → row-sel · isFocus → row-focus · checked → row-checked ·
+    //   isNew → row-new · senão surface
     'row-sel': '#221D07',
+    // `row-focus` repete o hex de `line-subtle-2` DE PROPÓSITO: lá o valor é
+    // BORDA (`:357`-`:359`, `:603`), aqui é FUNDO de linha. É o mesmo caso já
+    // declarado de `neutral-dot`/`txt-4`.
+    'row-focus': '#1C1C1C',
+    'row-checked': '#18160C',
     'row-new': '#14120A',
     'accent-sunken': '#1F1B08',
     // Fase 1 (TOK-07)
@@ -144,6 +159,10 @@ const PUB_ESPERADOS = {
     // `neutral-dot` repete o hex de `txt-4` de propósito: usos diferentes
     // (label discreto × dot de "Em revisão"), descritos separados no README.
     'neutral-dot': '#71717A',
+    // Plano 180-01 — anel aberto de "Em revisão" na célula Status
+    // (`Publicacoes v2.dc.html:250`). Mais escuro que `neutral-dot` de
+    // propósito: o anel não pode competir com o rótulo ao lado dele.
+    'neutral-ring': '#5F5F68',
     'neutral-txt': '#A1A1AA',
 };
 
@@ -255,6 +274,70 @@ const HEX_DO_PROTOTIPO = {
     '#1F1B08': 588,   // ícone do evento de publicação na Atividade → pub-accent-sunken
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// A VARREDURA DE HEX ÓRFÃO DE **PUBLICAÇÕES** (plano 180-01)
+//
+// Mesmo contrato do bloco acima, para o segundo protótipo. O que ela prova: que
+// nenhum hex de `Publicacoes v2.dc.html` ficou sem nome na camada — para que os
+// quatro planos de JSX desta fase (as waves 2 a 9) nunca precisem escolher entre
+// escrever hex literal na tela (TOK-15) e "usar o token parecido que já existe"
+// (justificativa vetada por FID-02).
+//
+// MEDIÇÃO PRÓPRIA de 13/10/2026, com varredura de arquivo linha a linha
+// (`RE_HEX6`, primeira ocorrência por hex): **34 hex distintos**, 30 já tinham
+// nome, **4 eram órfãos** — e o plano 180-01 deu nome aos 4 (`row-checked`,
+// `line-off-2`, `neutral-ring`, `hover-toast`), mais um 5º token que é órfão de
+// SEMÂNTICA e não de hex (`row-focus`, ver `PUB_ESPERADOS`).
+//
+// ⚠️ A tabela é LITERAL pelo mesmo motivo do bloco da Visão Geral:
+// `new_layout_publicador/` NÃO é versionado (`git status` o mostra como `??`) e
+// este projeto é editado por mais de um dev em máquinas diferentes. A tabela
+// morde SEMPRE; a conferência contra o arquivo cru só roda quando o arquivo
+// está no disco, e quando não está o teste é marcado `skip` com a razão — nunca
+// passa calado.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PROTOTIPO_PUBLICACOES = 'new_layout_publicador/Publicacoes v2.dc.html';
+
+// hex → linha da PRIMEIRA ocorrência em `Publicacoes v2.dc.html`, em ordem de
+// linha. Linhas medidas com varredura própria, não copiadas do plano.
+const HEX_DO_PROTOTIPO_PUBLICACOES = {
+    '#0A0A0A': 15,
+    '#F4F4F5': 15,
+    '#FACC15': 17,
+    '#71717A': 18,
+    '#A1A1AA': 34,
+    '#22C55E': 38,
+    '#2E2E2E': 40,
+    '#111111': 40,
+    '#161616': 40,
+    '#3F3F46': 42,
+    '#14120A': 53,
+    '#8A8A90': 62,
+    '#26220F': 62,    // style-hover do "×" da faixa de sucesso → pub-hover-toast
+    '#262626': 74,
+    '#0D0D0D': 74,
+    '#151515': 173,
+    '#1A1A1A': 173,
+    '#1F1F1F': 202,
+    '#4ADE80': 215,
+    '#52525B': 219,
+    '#D4D4D8': 225,
+    '#F59E0B': 248,
+    '#EF4444': 249,
+    '#5F5F68': 250,   // anel aberto de "Em revisão" na célula Status → pub-neutral-ring
+    '#1C1C1C': 357,   // 1ª ocorrência é BORDA (divisória do painel); como FUNDO de linha é :553 → pub-row-focus
+    '#FCA5A5': 366,
+    '#333333': 405,
+    '#FBBF24': 458,
+    '#F87171': 458,
+    '#221D07': 553,
+    '#18160C': 553,   // fundo da linha MARCADA, 3º dos cinco fundos → pub-row-checked
+    '#141414': 554,
+    '#E4E4E7': 569,
+    '#2A2A2A': 608,   // borda OFF dos chips de filtro, na função on(b) → pub-line-off-2
+};
+
 // O hex-ISCA: um valor que se SABE ausente da camada. Sem ele não se distingue
 // "o código está errado" de "o medidor está quebrado" — e a sonda de CSS desta
 // milestone já mentiu duas vezes, as duas por erro do medidor.
@@ -287,6 +370,24 @@ const orfaos = (hexes) => {
     const nomes = hexComNome();
     return hexes.filter((h) => !nomes.has(h.toUpperCase()));
 };
+
+/**
+ * hex (maiúsculo) → linha (1-based) da PRIMEIRA ocorrência, varrendo o arquivo
+ * LINHA A LINHA com `RE_HEX6` (plano 180-01).
+ * ⚠️ Nem `indexOf` nem `includes`: `includes('#18160C')` casaria DENTRO de um
+ * hex de 8 dígitos (substring casa com prefixo) e `indexOf` devolve
+ * deslocamento de caractere, não número de linha. O índice vem do `forEach`.
+ */
+function primeiraLinhaPorHex(cru) {
+    const mapa = new Map();
+    cru.split(/\r?\n/).forEach((linha, i) => {
+        for (const m of linha.matchAll(new RegExp(RE_HEX6, 'g'))) {
+            const hex = m[0].toUpperCase();
+            if (!mapa.has(hex)) mapa.set(hex, i + 1);
+        }
+    });
+    return mapa;
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -513,4 +614,130 @@ test('a tabela de hex do protótipo não envelheceu', () => {
     // Prova de que a leitura achou algo: um arquivo vazio passaria nas duas
     // asserções de "nenhum hex curto" acima pelo motivo errado.
     assert.ok(cru.length > 60000, `${PROTOTIPO_VISAO_GERAL} veio com ${cru.length} bytes — leitura truncada?`);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Plano 180-01 — os 5 tokens novos e a varredura do protótipo de PUBLICAÇÕES.
+// ───────────────────────────────────────────────────────────────────────────
+
+test('todo hex do protótipo de Publicações tem nome na camada (TOK-15)', () => {
+    const doProtótipo = Object.keys(HEX_DO_PROTOTIPO_PUBLICACOES);
+    assert.equal(doProtótipo.length, 34, 'a tabela de Publicações deveria ter 34 hex distintos');
+
+    const sem = orfaos(doProtótipo);
+    assert.deepEqual(
+        sem,
+        [],
+        `hex de ${PROTOTIPO_PUBLICACOES} sem nome na camada pub-*: ${sem.join(' ')} — `
+        + 'enquanto houver órfão, as telas das waves 2 a 9 têm de escrever hex literal e violar TOK-15',
+    );
+
+    // A varredura de órfão acima passaria com QUALQUER nome, inclusive um
+    // reaproveitado do vizinho — o que é exatamente o erro que FID-02 proíbe.
+    // Estas quatro asserções travam o hex no NOME certo. Os quatro hex são
+    // únicos na camada, então `hexComNome()` é determinístico para eles.
+    const nomes = hexComNome();
+    assert.equal(nomes.get('#18160C'), 'pub-row-checked');
+    assert.equal(nomes.get('#2A2A2A'), 'pub-line-off-2');
+    assert.equal(nomes.get('#5F5F68'), 'pub-neutral-ring');
+    assert.equal(nomes.get('#26220F'), 'pub-hover-toast');
+
+    // ⚠️ `row-focus` NÃO entra no bloco acima: `#1C1C1C` tem DOIS nomes na
+    // camada (`line-subtle-2` para a borda, `row-focus` para o fundo de linha) e
+    // `hexComNome()` devolve o primeiro na ordem de declaração — pedir
+    // `pub-row-focus` ali reprovaria por motivo errado. O valor dele é conferido
+    // por `PUB_ESPERADOS`; o que falta provar é que os CINCO fundos de linha do
+    // ternário de `:553` existem e são CINCO VALORES DISTINTOS.
+    const pub = EXT.colors?.pub ?? {};
+    const cincoFundos = ['row-sel', 'row-focus', 'row-checked', 'row-new', 'surface'];
+    const valores = cincoFundos.map((n) => pub[n]);
+    assert.deepEqual(
+        valores,
+        ['#221D07', '#1C1C1C', '#18160C', '#14120A', '#111111'],
+        'os cinco fundos de linha de `Publicacoes v2.dc.html:553` divergiram do protótipo',
+    );
+    assert.equal(
+        new Set(valores).size,
+        5,
+        'os cinco fundos de linha colapsaram em menos de 5 valores — o protótipo pinta os cinco distintos',
+    );
+});
+
+test('a varredura de Publicações acusa o hex-isca — senão quem está quebrado é o medidor', () => {
+    // ⚠️ Sem esta isca a varredura acima não se distingue de uma decorativa: um
+    // `hexComNome()` que devolvesse tudo "com nome" (ou um `orfaos()` que sempre
+    // devolvesse `[]`) passaria no caso de 0 órfãos pelo motivo errado.
+    assert.deepEqual(
+        orfaos([HEX_ISCA]),
+        [HEX_ISCA],
+        `a varredura não reportou o hex-isca ${HEX_ISCA} como órfão — quem está `
+        + 'quebrado é o medidor, não o config',
+    );
+    assert.ok(
+        !hexComNome().has(HEX_ISCA),
+        `${HEX_ISCA} virou token da camada — troque a isca por um hex ausente`,
+    );
+});
+
+test('a tabela de hex de Publicações não envelheceu', (contexto) => {
+    let cru;
+    try {
+        cru = readFileSync(resolve(RAIZ, PROTOTIPO_PUBLICACOES), 'utf8');
+    } catch (erro) {
+        if (erro.code !== 'ENOENT') throw erro;
+        // O protótipo não é versionado (ver o bloco de comentário da varredura).
+        // O caso de 0 órfãos JÁ rodou contra a tabela literal; o que não roda sem
+        // o arquivo é só o detector de desatualização da tabela. `skip` com a
+        // razão escrita, nunca um `assert.ok(true)` calado.
+        contexto.skip(
+            `${PROTOTIPO_PUBLICACOES} ausente nesta máquina (material de design, não versionado) — `
+            + 'o detector de desatualização da tabela não rodou; a tabela literal continua mordendo',
+        );
+        return;
+    }
+
+    // Leitura do arquivo CRU de propósito: queremos TODOS os hex, inclusive os de
+    // dentro da classe `Component` em JS, e o protótipo não tem comentário em
+    // pt-BR citando hex.
+    const achados = [...new Set(
+        [...cru.matchAll(new RegExp(RE_HEX6, 'g'))].map((m) => m[0].toUpperCase()),
+    )].sort();
+
+    assert.deepEqual(
+        achados,
+        Object.keys(HEX_DO_PROTOTIPO_PUBLICACOES).sort(),
+        `o conjunto de hex de ${PROTOTIPO_PUBLICACOES} mudou em relação à medição de `
+        + '13/10/2026 — remeça e atualize HEX_DO_PROTOTIPO_PUBLICACOES *e* a camada',
+    );
+
+    // A linha registrada é a primeira ocorrência de verdade — é o que permite
+    // auditar a tabela contra o protótipo sem refazer a varredura à mão.
+    const porLinha = primeiraLinhaPorHex(cru);
+    for (const [hex, linha] of Object.entries(HEX_DO_PROTOTIPO_PUBLICACOES)) {
+        assert.equal(
+            porLinha.get(hex),
+            linha,
+            `${hex} aparece primeiro na linha ${porLinha.get(hex)}, não na ${linha}`,
+        );
+    }
+
+    // ⚠️ A varredura só conhece `#RRGGBB`. Se o protótipo passasse a usar a forma
+    // curta ou a de 8 dígitos, ela deixaria de ver esses hex EM SILÊNCIO.
+    assert.deepEqual(
+        [...new Set([...cru.matchAll(/#[0-9A-Fa-f]{3}(?![0-9A-Fa-f])/g)].map((m) => m[0]))],
+        [],
+        'o protótipo de Publicações passou a usar hex de 3 dígitos — a varredura não os vê',
+    );
+    assert.deepEqual(
+        [...new Set([...cru.matchAll(/#[0-9A-Fa-f]{8}(?![0-9A-Fa-f])/g)].map((m) => m[0]))],
+        [],
+        'o protótipo de Publicações passou a usar hex de 8 dígitos (com alfa) — a varredura não os vê',
+    );
+
+    // Prova de que a leitura achou algo: um arquivo vazio passaria nas duas
+    // asserções de "nenhum hex curto" acima pelo motivo errado.
+    assert.ok(
+        cru.length > 60000,
+        `${PROTOTIPO_PUBLICACOES} veio com ${cru.length} bytes — leitura truncada?`,
+    );
 });
