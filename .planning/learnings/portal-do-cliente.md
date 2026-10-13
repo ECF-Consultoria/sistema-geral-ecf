@@ -1698,3 +1698,35 @@ separado por coluna":**
 - **Armadilha:** a importação da ficha avisa "coluna que não é da ficha" para todo cabeçalho que não reconhece. As
   colunas do produto e dos volumes precisam estar na lista de `ModeloCompleto::chavesDosCabecalhos()`, senão cada
   planilha importada vem com uma dúzia de avisos falsos.
+
+## 49. O menu do Portal mostra só o Mapeamento Estrutural (13/10/2026)
+
+Pedido do usuário: "no portal do cliente, ocultar tudo e deixar apenas mapeamento estrutural".
+
+- **O que mudou:** sem configuração, o menu tem só o Mapeamento Estrutural, para cliente E equipe (a mesma régua dos
+  submódulos, `VisibilidadeDoMapeamento`: quem confere o portal pela porta da equipe precisa ver o que o cliente vê).
+  Início, Onboarding, Calculadora de Custo e PPA ficam escondidos. Quem decide é `VisibilidadeDosModulos`.
+- **Esconder não remove.** Rotas, allowlist e controllers continuam; `/onboarding`, `/ppa` e `/calculadora` abrem por
+  link direto, com o item no menu marcado `oculto` enquanto a pessoa está nele. **A exceção é o Início:** o login, a
+  porta da equipe e o link aberto mandam para `/inicio` (5 lugares), então, escondido, ele redireciona para o primeiro
+  módulo do menu (`ModulosPortal::entrada`). Sem isso todo mundo cairia numa tela que não está no menu.
+- **Como devolver um módulo, sem deploy** (linhas em `configuracoes`, lista separada por vírgula com `inicio`,
+  `onboarding`, `calculadora`, `ppa`, `estrutura`):
+  - `portal_modulos_cliente` = lista padrão de todos; `todos` devolve os cinco;
+  - `portal_modulos_empresa_{id}` = lista EXATA daquela empresa (vence a padrão); `todos` também vale.
+  Lista só com lixo vale como ausente (o portal nunca fica sem menu).
+- **Por que foi seguro fazer para todos, medido em produção no dia:** 2 usuários de cliente ativos no Portal, ligados
+  a 1 empresa só; nenhum plano de PPA nela. Ou seja, nenhum cliente real perdeu tela. **O que muda de verdade é para a
+  equipe:** as portas do Portal ficam no painel do Onboarding (`Onboarding/Detalhe`, aba Onboarding de `/companies`), e
+  quem entra por ali agora cai no Mapeamento Estrutural, não no Onboarding. Havia 5 onboardings em andamento e 14 em
+  rascunho. Se a operação do onboarding pelo Portal voltar, é `portal_modulos_empresa_{id} = onboarding,estrutura`
+  (ou a lista padrão), não código.
+- **Antes de dizer a um cliente "está no portal"** (PPA, onboarding), confira o menu dele: o docblock de
+  `ModulosPortal` explica por que módulo que some sem aviso é o pior comportamento, e isso voltou a valer.
+- **`portal_tickets_equipe` não é histórico de uso:** `emitir()` apaga os vencidos a cada passagem nova. Contar linhas
+  ali para saber "quanto a equipe usa o Portal" dá sempre 1 ou 2.
+- **Testes:** 19 testes de login, sessão e Início dependiam de `/inicio` responder 200 e do menu inteiro. Eles não são
+  sobre o menu, então as 8 classes ganharam a trait `Tests\Concerns\PortalComTodosOsModulos`, que grava
+  `portal_modulos_cliente = todos` (o Laravel chama `setUp{NomeDaTrait}` sozinho, depois de recriar o banco). Teste
+  novo de página do Portal que precise do Início ou de outro módulo no menu usa a mesma trait; o regime padrão está em
+  `VisibilidadeDosModulosTest`.

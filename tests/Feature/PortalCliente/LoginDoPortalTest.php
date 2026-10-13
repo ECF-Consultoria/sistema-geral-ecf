@@ -10,6 +10,7 @@ use App\Notifications\PortalCodigoDeAcesso;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ use Tests\TestCase;
  */
 class LoginDoPortalTest extends TestCase
 {
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private function empresa(string $nome = 'Empresa'): Company

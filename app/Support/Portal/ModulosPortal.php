@@ -29,6 +29,13 @@ use App\Models\Company;
  * existe para o dia em que um módulo for de fato contratual (visível só para
  * quem contratou aquele serviço), e aí a ausência será a resposta certa.
  *
+ * ### 13/10/2026: o menu mostra só o Mapeamento Estrutural
+ * Decisão do usuário ("ocultar tudo e deixar apenas mapeamento estrutural"). Os outros
+ * quatro continuam existindo e abrem por link direto; quem aparece no menu decide
+ * {@see VisibilidadeDosModulos}, e `configuracoes` devolve qualquer um deles sem deploy.
+ * O parágrafo acima segue valendo como alerta: antes de dizer a um cliente "está no
+ * portal", confira se o módulo está no menu dele.
+ *
  * ### `icone` é string, não componente
  * O nome viaja como string e o JSX o resolve num mapa explícito
  * (`PortalClienteLayout`). Ícone é decisão de apresentação; mandar o
@@ -143,6 +150,7 @@ class ModulosPortal
     {
         [$ativo, $subAtivo] = array_pad(explode('.', $ativo, 2), 2, null);
         $modulos = [];
+        $visiveis = VisibilidadeDosModulos::visiveis($company, $ator, array_keys(self::DEFINICOES));
 
         foreach (self::DEFINICOES as $chave => $def) {
             if (! self::disponivel($chave, $company)) {
@@ -151,6 +159,13 @@ class ModulosPortal
 
             // Módulo sem rota por token não existe no portal legado.
             if ($token !== null && $def['rota'] === null) {
+                continue;
+            }
+
+            // Escondido não some da página em que a pessoa está (abriu por link direto): o ativo
+            // continua no menu, marcado `oculto`, para o título e a trilha dizerem onde ela está.
+            $oculto = $visiveis !== null && ! in_array($chave, $visiveis, true);
+            if ($oculto && $chave !== $ativo) {
                 continue;
             }
 
@@ -165,6 +180,7 @@ class ModulosPortal
                     ? route($def['rota_auth'])
                     : route($def['rota'], $token),
                 'ativo'     => $chave === $ativo,
+                'oculto'    => $oculto,
                 'badge'     => $badge > 0 ? (int) $badge : null,
                 'submodulos' => self::submodulos(
                     $chave,
@@ -223,6 +239,35 @@ class ModulosPortal
         $visiveis = VisibilidadeDoMapeamento::visiveis($company, $ator, $existentes);
 
         return $visiveis === null || in_array($chave, $visiveis, true);
+    }
+
+    /**
+     * O módulo aparece no menu desta pessoa? Mesma régua do menu ({@see VisibilidadeDosModulos}).
+     */
+    public static function moduloVisivel(Company $company, ?AtorDoPortal $ator, string $chave): bool
+    {
+        if (! isset(self::DEFINICOES[$chave]) || ! self::disponivel($chave, $company)) {
+            return false;
+        }
+        $visiveis = VisibilidadeDosModulos::visiveis($company, $ator, array_keys(self::DEFINICOES));
+
+        return $visiveis === null || in_array($chave, $visiveis, true);
+    }
+
+    /**
+     * A rota do primeiro módulo do menu desta pessoa, na ordem de {@see self::DEFINICOES}: é para
+     * onde vai quem chega ao Início quando ele está escondido (o login e a porta da equipe
+     * mandam para lá). Sem nenhum visível, o Mapeamento Estrutural.
+     */
+    public static function entrada(Company $company, ?AtorDoPortal $ator): string
+    {
+        foreach (self::DEFINICOES as $chave => $def) {
+            if (self::moduloVisivel($company, $ator, $chave)) {
+                return $def['rota_auth'];
+            }
+        }
+
+        return self::DEFINICOES[self::ESTRUTURA]['rota_auth'];
     }
 
     /**
