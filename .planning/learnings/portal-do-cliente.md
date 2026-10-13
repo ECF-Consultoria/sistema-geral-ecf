@@ -1704,6 +1704,43 @@ separado por coluna":**
   colunas do produto e dos volumes precisam estar na lista de `ModeloCompleto::chavesDosCabecalhos()`, senão cada
   planilha importada vem com uma dúzia de avisos falsos.
 
+**Mesmo dia, terceira volta — o usuário preenchendo a planilha de verdade:** "tem muitas dimensões que pedem para
+preencher mas não é especificado o que é, como produto por fora da caixa, embalado"; "uma medida de colchão que pedem
+de uma poltrona não deve ser aplicada, mas mostra como se eu tivesse que preencher"; "tem colunas que preciso marcar
+Não se aplica, mas não mostra as opções"; e o erro "Quantidade de lugares - Escolha da lista".
+
+- **O erro era número contra texto.** "Quantidade de lugares" é uma LISTA cujas opções são "1", "2", "3"… A planilha
+  gravava as opções como texto; quem digita 1 na célula digita um NÚMERO, e a validação em lista compara pelo tipo:
+  recusava o 1. Agora a opção que é só um inteiro vai para a aba "Listas" como número
+  (`PlanilhaDasFichasTecnicas::opcaoNaLista`), e o valor já salvo também (`escreverValor`). Na volta o número vira "1"
+  e casa com a opção pelo nome, como sempre.
+- **A mensagem que a pessoa vê depende do programa.** O texto que o usuário colou ("Ocorreu um erro / Quantidade de
+  lugares - Escolha da lista.") é o `promptTitle` + o `prompt` da validação — a DICA, não o `error`. Há programa de
+  planilha que mostra a dica quando recusa. Por isso a dica agora diz sozinha o que fazer ("Escolha uma das opções da
+  lista (a seta da célula)…"), e não se pode contar com a dica aparecer ao clicar na célula: o que precisa ser lido
+  vai em CÉLULA.
+- **Três linhas acima dos produtos** (`ModeloCompleto::apresentar`): a 1 é a FAIXA dos blocos (Produto / Produto
+  EMBALADO · Volume N / Custo, estoque e descrição / Ficha técnica / Medidas do produto FORA DA CAIXA / Mais detalhes),
+  repetida a cada 4 colunas para não sumir ao rolar; a 2 é o cabeçalho, escuro no obrigatório e claro no opcional; a 3
+  é a AJUDA ("Opcional. Só o número, em cm. Se o produto não tem isto, escreva: Não se aplica."). Os produtos começam
+  na 4. A explicação longa (o mesmo "o que é isto?" da tela) vai de nota no cabeçalho e na aba "Guia dos campos".
+- **"Não se aplica" em coluna de número não tem lista**, e não deve ter: uma lista de uma opção marcaria todo número
+  digitado como inválido em quem trata lista como aviso. O caminho é a linha de ajuda dizer, coluna por coluna, onde
+  ele vale. A importação já aceitava o texto "Não se aplica" em qualquer coluna que aceita.
+- **A importação não ganhou versão.** `ImportadorFichasTecnicas::abaDaMatriz` acha o cabeçalho pela coluna "Produto
+  (grupo)" entre as 3 primeiras linhas e pula a linha cuja célula do grupo começa com "Como preencher". O arquivo de
+  antes (cabeçalho na linha 1) entra igual, e apagar a faixa não quebra nada. A aba "Guia dos campos" é pulada pelo
+  NOME: ela lista "Produto (grupo)*" numa célula e seria tomada por aba de produtos.
+- **As medidas do produto tinham explicação errada vinda do catálogo**, e valia para qualquer categoria (a explicação
+  é guardada por id do atributo): Largura = "Largura x Altura"; Profundidade de poltrona = "…da mesa". As seis
+  (`LENGTH`, `WIDTH`, `HEIGHT`, `DEPTH`, `DIAMETER`, `WEIGHT`) ganharam texto fixo em `publicador_glossario.atributos`,
+  que vence o guardado — vale também para a ficha na tela e para o editor interno.
+- **Para ver a planilha sem Excel licenciado:** o Excel desta máquina está sem ativação e rejeita `CopyPicture` por
+  COM (`RPC_E_CALL_REJECTED`), deixando um processo oculto para trás — encerrar SÓ o de `MainWindowHandle` 0 e
+  `StartTime` de agora, nunca todos (o usuário costuma estar com a planilha aberta). O que funciona:
+  `Writer\Html` do PhpSpreadsheet sobre as primeiras linhas + Puppeteer. Abrir por COM ainda serve para provar que o
+  arquivo abre sem reparo (nome sem "[Reparado]", contagem de abas e de notas).
+
 ## 49. O menu do Portal mostra só o Mapeamento Estrutural (13/10/2026)
 
 Pedido do usuário: "no portal do cliente, ocultar tudo e deixar apenas mapeamento estrutural".

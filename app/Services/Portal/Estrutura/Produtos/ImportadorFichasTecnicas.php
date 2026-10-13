@@ -440,7 +440,8 @@ class ImportadorFichasTecnicas
             $abas = [];
             foreach ($planilha->getAllSheets() as $folha) {
                 $nome = $folha->getTitle();
-                if (in_array(mb_strtolower($nome), [mb_strtolower(PlanilhaDasFichasTecnicas::ABA_INSTRUCOES), mb_strtolower(PlanilhaDasFichasTecnicas::ABA_LISTAS)], true)) {
+                // As abas de apoio (instruções, listas e o guia dos campos do modelo completo) não têm produto.
+                if (in_array(mb_strtolower($nome), array_map('mb_strtolower', [PlanilhaDasFichasTecnicas::ABA_INSTRUCOES, PlanilhaDasFichasTecnicas::ABA_LISTAS, PlanilhaDasFichasTecnicas::ABA_GUIA]), true)) {
                     continue;
                 }
                 $matriz = [];
@@ -474,36 +475,56 @@ class ImportadorFichasTecnicas
         return $abas === [] ? $falha(self::MSG_ILEGIVEL) : ['erro_geral' => null, 'abas' => $abas];
     }
 
-    /** Cabeçalho na linha 1; aba sem a coluna "Produto (grupo)" não é aba de ficha. */
+    /** Até que linha o cabeçalho pode estar (o modelo completo tem uma faixa acima dele). */
+    private const LINHAS_DE_CABECALHO = 3;
+
+    /**
+     * O cabeçalho é a primeira das 3 primeiras linhas que tem a coluna "Produto (grupo)": a linha 1 nas
+     * planilhas de sempre, a 2 no modelo completo desde 13/10/2026 (a 1 virou a faixa que diz de que é
+     * cada bloco de colunas). O que vem antes dele não é lido; a linha de ajuda ("Como preencher…",
+     * logo abaixo) também não. Aba sem a coluna "Produto (grupo)" não é aba de ficha.
+     */
     private static function abaDaMatriz(string $nome, array $matriz): ?array
     {
+        $linhaDoCabecalho = null;
         $cabecalhos = [];
-        foreach ($matriz[1] ?? [] as $coluna => $titulo) {
-            $titulo = trim((string) $titulo);
-            if ($titulo !== '') {
-                $cabecalhos[$coluna] = $titulo;
-            }
-        }
-        ksort($cabecalhos);
-
         $colunaGrupo = null;
         $colunaNome = null;
-        foreach ($cabecalhos as $coluna => $titulo) {
-            $t = PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo));
-            if ($colunaGrupo === null && (str_starts_with($t, 'produto (grupo)') || $t === 'grupo' || $t === 'ref')) {
-                $colunaGrupo = $coluna;
-            } elseif ($colunaNome === null && $t === PlanilhaDasFichasTecnicas::chave(PlanilhaDasFichasTecnicas::COLUNA_NOME)) {
-                $colunaNome = $coluna;
+
+        for ($n = 1; $n <= self::LINHAS_DE_CABECALHO && $colunaGrupo === null; $n++) {
+            $cabecalhos = [];
+            $colunaNome = null;
+            foreach ($matriz[$n] ?? [] as $coluna => $titulo) {
+                $titulo = trim((string) $titulo);
+                if ($titulo !== '') {
+                    $cabecalhos[$coluna] = $titulo;
+                }
+            }
+            ksort($cabecalhos);
+
+            foreach ($cabecalhos as $coluna => $titulo) {
+                $t = PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo));
+                if ($colunaGrupo === null && (str_starts_with($t, 'produto (grupo)') || $t === 'grupo' || $t === 'ref')) {
+                    $colunaGrupo = $coluna;
+                    $linhaDoCabecalho = $n;
+                } elseif ($colunaNome === null && $t === PlanilhaDasFichasTecnicas::chave(PlanilhaDasFichasTecnicas::COLUNA_NOME)) {
+                    $colunaNome = $coluna;
+                }
             }
         }
         if ($colunaGrupo === null) {
             return null;
         }
 
+        $ajuda = PlanilhaDasFichasTecnicas::chave(PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA);
         ksort($matriz);
         $linhas = [];
         foreach ($matriz as $numero => $celulas) {
-            if ($numero === 1) {
+            if ($numero <= $linhaDoCabecalho) {
+                continue;
+            }
+            // A linha de ajuda do modelo completo: explica as colunas, não é um produto.
+            if (str_starts_with(PlanilhaDasFichasTecnicas::chave((string) ($celulas[$colunaGrupo] ?? '')), $ajuda)) {
                 continue;
             }
             $linhas[] = ['__linha' => $numero] + $celulas;
