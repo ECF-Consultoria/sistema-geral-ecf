@@ -147,11 +147,18 @@ silencioso. A coluna da direita diz **onde** cada uma é cobrada.
 | `bling` ausente nas props **não** derruba a tela | `cabecalho: null` numa recarga parcial do Inertia já derrubou esta mesma página | 184-10-T3, 184-12-T2 |
 | `sem_company`/`nao_configurado` renderizam **zero** `<button>` | Botão onde não há ação leva a um 422 inútil e confunde a equipe | 184-12-T2 |
 | Nenhuma `Company` é criada quando a conta não tem uma | "Nunca inventar Company" (CONTEXT §4.3) | 184-11-T1, 184-11-T2 |
+| A chave `erp` **não** ganha `conectado` — o estado da conexão nasce numa chave irmã `bling` | A Fase 177-03 travou por asserção negativa que o ERP **não é integração** neste sistema, em 3 lugares (`CabecalhoDoPublicadorTest.php:340-345`, `CockpitDaContaTest.php:605-612`, `publicador-visao-geral-acoes.test.js:1523-1570`). Conferido em 13/10: com a chave irmã, os três **continuam verdes**. Reprovar ali = o bloco `bling` vazou para `erp` ou para a saúde → consertar o vazamento, **nunca** a asserção | 184-11-T1, 184-12-T3 |
+| Nenhuma classe Tailwind em arquivo `.js` | `tailwind.config.js` varre `*.jsx` e **não** `*.js`: classe num `.js` não gera CSS e não existe para a tela, **com os testes de render passando** (`.planning/learnings/gates-do-redesign-e-o-medidor-que-mente.md`) | 184-12-T1 |
 
 ⚠️ **Regra de gate herdada** (`.planning/learnings/`, *gate vazio por construção*): todo gate desta
 fase tem de responder *"o que precisaria estar errado para este gate falhar?"*.
 `git diff --stat -- <dir>` depois de commitar compara a **árvore** e sai vazio sempre — usar
 `<inicial>..HEAD`.
+⚠️ **E o ANSI do `artisan test` come o veredicto** — uma campanha inteira de mutação já passou em
+silêncio com aparência de sucesso neste projeto. Ler o **código de saída**, nunca a aparência da saída.
+⚠️ **Asserções removidas nesta fase = ZERO.** Nenhum plano apaga ou enfraquece asserção existente; os
+três gates do ERP da v26.0 têm de terminar a fase verdes **e intocados** (`git diff` dos três arquivos
+sai vazio).
 Por isso **cada `assertNothingPushed`/`assertNothingSent` desta fase tem um par positivo** na mesma
 suíte (184-03-T2 e 184-08-T3 explicitamente): sem o par, o gate passaria com a fila desligada por
 outro motivo.
