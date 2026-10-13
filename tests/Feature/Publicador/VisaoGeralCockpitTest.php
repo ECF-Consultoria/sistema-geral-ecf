@@ -111,6 +111,11 @@ class VisaoGeralCockpitTest extends TestCase
      * As chaves de topo de cada prop nova, na ORDEM do contrato das waves 1 e 2.
      * `banner` fica fora: ele é `?array` e vale `null` com token ativo (tem teste
      * próprio).
+     *
+     * ⚠️ São o PREFIXO obrigatório, não a lista completa: `publicacoesMl` ganha
+     * `pedem_acao` **quando, e só quando, o número foi medido** (D-9 da wave 1 —
+     * chave ausente ≠ chave nula). A única chave opcional do contrato está em
+     * `OPCIONAIS_DAS_NOVAS`.
      */
     private const TOPO_DAS_NOVAS = [
         'jornada' => ['total', 'publicados', 'pct', 'tem_produtos', 'proximo_passo', 'estagios'],
@@ -122,6 +127,12 @@ class VisaoGeralCockpitTest extends TestCase
         'recentes' => ['disponivel', 'itens'],
         'atividade' => ['disponivel', 'grupos'],
     ];
+
+    /**
+     * As ÚNICAS chaves de topo que o contrato permite além do prefixo acima.
+     * Lista fechada: chave nova aqui tem de ser decisão, não acidente.
+     */
+    private const OPCIONAIS_DAS_NOVAS = ['publicacoesMl' => ['pedem_acao']];
 
     /**
      * ⚠️ **Inventário REG-01: bloco de hoje → onde ele mora depois desta fase.**
@@ -146,18 +157,37 @@ class VisaoGeralCockpitTest extends TestCase
     ];
 
     /**
-     * O acréscimo MÁXIMO de consultas entre a conta de 3 produtos e a de 12.
+     * O acréscimo MÁXIMO de consultas entre a conta de 3 produtos e a de 12,
+     * **com o número de publicações FIXO**.
      *
-     * ⚠️ **Medido nesta execução: 3 produtos/3 anúncios = 48 consultas; 12
-     * produtos/12 anúncios = 48 consultas — acréscimo real ZERO.** A folga de 4
-     * existe para não transformar uma consulta a mais, legítima, em reprovação;
-     * o que o gate guarda é a ORDEM DE GRANDEZA: com N+1 por produto o acréscimo
-     * seria 9 ou mais. (O teto medido na Fase 177-03 era 50.)
+     * ⚠️ **MEDIDO nesta execução (SQLite, 2ª visita): 3 produtos = 65 consultas,
+     * 12 produtos = 65 — acréscimo real ZERO.** A folga de 4 existe para não
+     * transformar uma consulta legítima a mais em reprovação; o que o gate guarda
+     * é a ORDEM DE GRANDEZA: com N+1 por produto o acréscimo seria 9 ou mais.
      */
     private const ACRESCIMO_MAXIMO = 4;
 
-    /** O teto absoluto da página — folgado DE PROPÓSITO, o alvo é pegar N+1. */
+    /**
+     * O teto absoluto da página com publicações FIXAS. Medido: **65**. (O teto
+     * medido na Fase 177-03, em outra tela, era 50.)
+     */
     private const TETO_DE_CONSULTAS = 80;
+
+    /**
+     * O teto da MESMA página quando o que cresce são as **publicações**.
+     *
+     * ⚠️ **Medido: 3 produtos/2 publicações = 65; 12 produtos/12 publicações =
+     * 91.** O crescimento é por PUBLICAÇÃO, não por produto, e a causa é
+     * **pré-existente a esta fase**: `PainelVisaoGeralService::resolverAtor()`
+     * (`app/Services/Publicador/PainelVisaoGeralService.php:136`) faz um
+     * `User::find()` **por linha**, e ele é chamado por `publicadosRecentes()` e
+     * por `ultimasPublicacoes()` — as duas existem desde a Fase 173 e são
+     * chamadas **uma vez cada** antes e depois deste plano. O cockpit **não**
+     * acrescentou nenhuma: `recentes()` e `atividade()` recebem os arrays já
+     * calculados. Fora do escopo deste plano (o arquivo é do plano 179-02 e está
+     * commitado); registrado em `deferred-items.md`.
+     */
+    private const TETO_COM_PUBLICACOES = 120;
 
     protected function setUp(): void
     {
@@ -414,8 +444,34 @@ class VisaoGeralCockpitTest extends TestCase
         }
 
         foreach (self::TOPO_DAS_NOVAS as $prop => $topo) {
-            $this->assertSame($topo, array_keys($props[$prop]), "a prop '{$prop}' mudou as chaves de topo do contrato");
+            $chaves = array_keys($props[$prop]);
+            $this->assertSame(
+                $topo,
+                array_slice($chaves, 0, count($topo)),
+                "a prop '{$prop}' mudou as chaves de topo do contrato"
+            );
+            $this->assertSame(
+                [],
+                array_values(array_diff(array_slice($chaves, count($topo)), self::OPCIONAIS_DAS_NOVAS[$prop] ?? [])),
+                "a prop '{$prop}' ganhou chave de topo fora do contrato"
+            );
         }
+
+        // Com acervo coletado, a legenda "Pedem ação" FOI medida e tem de existir —
+        // o par com o caso D23 (chave ausente) é o que prova a disciplina.
+        $this->assertArrayHasKey('pedem_acao', $props['publicacoesMl']);
+
+        // Fonte única: o total da barra é o contador do header, e a coleta da Saúde
+        // é a coleta do header. Duas fontes para o mesmo número discordariam.
+        $this->assertSame($props['cabecalho']['contadores']['publicacoes'], $props['publicacoesMl']['total']);
+        $this->assertSame(
+            $props['cabecalho']['integracoes']['coleta']['nunca_coletado'],
+            $props['saude']['linhas'][2]['nunca_coletado']
+        );
+        $this->assertSame(
+            $props['cabecalho']['integracoes']['coleta']['coletado_em'],
+            $props['saude']['linhas'][2]['coletado_em']
+        );
 
         // `banner` é `?array` e com token ativo vale null — é o caso alcançável
         // mais comum, e `null` aqui é informação, não ausência.
@@ -509,12 +565,22 @@ class VisaoGeralCockpitTest extends TestCase
         $this->partialMock(ProgramasPublicadorService::class, function ($mock) {
             $mock->shouldReceive('produtosParaTela')->once()->passthru();
         });
-        // E o cabeçalho é montado uma vez e reusado pela prop `publicacoesMl`
-        // (que precisa de `cabecalho.contadores`) — remontá-lo dentro do
-        // `Inertia::render` pagaria duas vezes pelos contadores do header.
-        $this->partialMock(CabecalhoPublicadorService::class, function ($mock) {
-            $mock->shouldReceive('para')->once()->passthru();
-        });
+        // E o cabeçalho é montado uma vez e reusado pelas props `publicacoesMl` e
+        // `saude` — remontá-lo dentro do `Inertia::render` pagaria duas vezes pelos
+        // contadores do header.
+        //
+        // ⚠️ Aqui NÃO serve `partialMock()` nem `passthru()`:
+        // `CabecalhoPublicadorService` tem dois serviços PROMOVIDOS no construtor, e
+        // o `passthru()` do Mockery chama o método na subclasse do mock — cujas
+        // propriedades tipadas nunca foram inicializadas, porque o mock parcial não
+        // roda construtor. O erro é "Typed property … must not be accessed before
+        // initialization", e vale também para o mock proxiado. A delegação
+        // EXPLÍCITA para a instância real do container é o único caminho que conta
+        // a chamada sem perder o comportamento.
+        $real = app(CabecalhoPublicadorService::class);
+        $espiao = \Mockery::mock(CabecalhoPublicadorService::class);
+        $espiao->shouldReceive('para')->once()->andReturnUsing(fn (...$args) => $real->para(...$args));
+        $this->instance(CabecalhoPublicadorService::class, $espiao);
 
         $props = $this->props('empresa-'.$e->id);
 
@@ -526,17 +592,26 @@ class VisaoGeralCockpitTest extends TestCase
     {
         $admin = $this->admin();
 
+        // ⚠️ As PUBLICAÇÕES ficam FIXAS em 2 nas duas contas, e isto é desenho do
+        // gate, não conveniência: a página tem um N+1 **por publicação** que é
+        // pré-existente a esta fase (ver `TETO_COM_PUBLICACOES`). Variar as duas
+        // coisas juntas misturaria a dívida alheia com a minha e o gate não diria
+        // de quem é a culpa. Aqui varia só o que ESTE plano ligou: os produtos.
         [$pequena, $cp] = $this->conta(true, 'Conta de tres');
         for ($i = 1; $i <= 3; $i++) {
             $p = $this->produto($pequena, $cp, 'P3-'.$i);
-            $this->publicada($p);
+            if ($i <= 2) {
+                $this->publicada($p);
+            }
             $this->acervo($cp, 'MLB30000000'.$i);
         }
 
         [$grande, $cg] = $this->conta(true, 'Conta de doze');
         for ($i = 1; $i <= 12; $i++) {
             $p = $this->produto($grande, $cg, 'P12-'.$i);
-            $this->publicada($p);
+            if ($i <= 2) {
+                $this->publicada($p);
+            }
             $this->acervo($cg, 'MLB1200000'.str_pad((string) $i, 2, '0', STR_PAD_LEFT));
         }
 
@@ -550,12 +625,55 @@ class VisaoGeralCockpitTest extends TestCase
         $this->assertLessThan(self::TETO_DE_CONSULTAS, $comTres, "3 produtos custaram {$comTres} consultas");
         $this->assertLessThan(self::TETO_DE_CONSULTAS, $comDoze, "12 produtos custaram {$comDoze} consultas");
 
-        // O gate que REALMENTE pega N+1: quadruplicar os produtos não pode
-        // quadruplicar as consultas.
+        // O gate que REALMENTE pega N+1 do que este plano ligou: quadruplicar os
+        // produtos não pode acrescentar consulta.
         $this->assertLessThanOrEqual(
             $comTres + self::ACRESCIMO_MAXIMO,
             $comDoze,
-            "N+1: 3 produtos = {$comTres} consultas, 12 produtos = {$comDoze}. O acréscimo máximo tolerado é ".self::ACRESCIMO_MAXIMO
+            "N+1 por PRODUTO: 3 produtos = {$comTres} consultas, 12 produtos = {$comDoze}. "
+            .'O acréscimo máximo tolerado é '.self::ACRESCIMO_MAXIMO
+        );
+    }
+
+    public function test_a_pagina_ainda_cresce_com_as_publicacoes_e_isso_e_divida_pre_existente(): void
+    {
+        $admin = $this->admin();
+
+        // ⚠️ Este gate NÃO é uma meta, é um MARCADOR: ele trava a dívida no
+        // tamanho em que ela está hoje e aponta a causa. `resolverAtor()`
+        // (`PainelVisaoGeralService.php:136`) faz um `User::find()` por linha, e
+        // `publicadosRecentes()` varre TODAS as publicações da conta. Se uma fase
+        // futura resolver isso, este teto cai junto — e se alguém piorar, reprova
+        // aqui com o endereço na mensagem.
+        [$e, $c] = $this->conta(true, 'Conta com doze publicacoes');
+        for ($i = 1; $i <= 12; $i++) {
+            $this->publicada($this->produto($e, $c, 'PUB-'.$i));
+        }
+
+        $consultas = $this->consultasDaVisaoGeral($admin, 'empresa-'.$e->id);
+
+        $this->assertGreaterThan(0, $consultas, 'o medidor não contou nada');
+        $this->assertLessThan(
+            self::TETO_COM_PUBLICACOES,
+            $consultas,
+            "12 publicações custaram {$consultas} consultas. O crescimento é por PUBLICAÇÃO e vem do "
+            .'`User::find()` por linha de `PainelVisaoGeralService::resolverAtor()` (:136), anterior a esta '
+            .'fase. Se este número passou de '.self::TETO_COM_PUBLICACOES.', alguém acrescentou consulta por linha.'
+        );
+        // E a prova de que é por publicação, não por produto: o mesmo cenário com
+        // 2 publicações custa MENOS. Sem este par, "cresce por publicação" seria
+        // afirmação sem medida.
+        [$e2, $c2] = $this->conta(true, 'Conta com duas publicacoes');
+        for ($i = 1; $i <= 12; $i++) {
+            $p = $this->produto($e2, $c2, 'POUCO-'.$i);
+            if ($i <= 2) {
+                $this->publicada($p);
+            }
+        }
+        $this->assertGreaterThan(
+            $this->consultasDaVisaoGeral($admin, 'empresa-'.$e2->id),
+            $consultas,
+            'a MESMA quantidade de produtos com menos publicações tem de custar menos'
         );
     }
 
@@ -586,7 +704,17 @@ class VisaoGeralCockpitTest extends TestCase
         $this->assertCount(3, $props['saude']['linhas']);
         $this->assertSame(['mercado_livre', 'erp', 'sincronizacao'], array_column($props['saude']['linhas'], 'chave'));
         $this->assertNull($props['saude']['linhas'][2]['atualizar_url'], 'sem Company não há rota de coleta para oferecer');
-        $this->assertTrue($props['saude']['linhas'][2]['nunca_coletado']);
+        // ⚠️ A coleta da Saúde é a MESMA do cabeçalho — é o que impede o chrome
+        // dizer "nunca coletado" e a Saúde dizer "tudo conectado" sobre a MESMA
+        // conta. Ler o `$defasagem` cru da action daria `nunca_coletado: false`
+        // (stub pré-existente, que `indicadores()` também lê e que este plano NÃO
+        // mexe). Ver o comentário na action.
+        $this->assertTrue($props['saude']['linhas'][2]['nunca_coletado'], 'sem Company a ausência de coleta é EXPLÍCITA');
+        $this->assertSame(
+            $props['cabecalho']['integracoes']['coleta']['nunca_coletado'],
+            $props['saude']['linhas'][2]['nunca_coletado'],
+            'a Saúde e o header não podem discordar sobre a coleta da mesma conta'
+        );
         $this->assertSame('atencao', $props['saude']['geral'], 'sem Company a coleta nunca aconteceu — âmbar, e sem exceção escondida para D23');
 
         // O KPI de venda vem do acervo: sem Company ele é null nos dois campos.
@@ -745,9 +873,19 @@ class VisaoGeralCockpitTest extends TestCase
         // caminhos de recusa diferentes de propósito, e os dois são cobrados.
         $this->actingAs($admin)->post($this->urlAdiar($conta), ['chave' => ''])->assertSessionHasErrors('chave');
 
-        foreach (['acao_inventada', 'sem_publicacao ', 'SEM_PUBLICACAO', 'reconectar;'] as $invalida) {
+        foreach (['acao_inventada', 'SEM_PUBLICACAO', 'reconectar;', 'sem_publicacao.'] as $invalida) {
             $this->actingAs($admin)->post($this->urlAdiar($conta), ['chave' => $invalida])->assertStatus(422);
         }
+
+        // ⚠️ MEDIDO nesta execução: `'sem_publicacao '` (com espaço à direita) é
+        // **aceita**, e está certo — o middleware global `TrimStrings` apara a
+        // entrada antes de ela chegar à action, então é literalmente a MESMA chave.
+        // Documentado porque a intuição diz o contrário: não é furo da lista
+        // fechada, é normalização de borda do framework, a mesma que vale para
+        // todo formulário do sistema.
+        $this->actingAs($admin)->post($this->urlAdiar($conta), ['chave' => 'sem_publicacao '])->assertRedirect();
+        // E `' '` (só espaço) vira `''` pelo mesmo caminho e cai no `required`.
+        $this->actingAs($admin)->post($this->urlAdiar($conta), ['chave' => '  '])->assertSessionHasErrors('chave');
     }
 
     public function test_conta_fora_do_padrao_morre_na_rota_antes_do_controller(): void

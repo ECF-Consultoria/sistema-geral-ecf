@@ -10,9 +10,13 @@ use App\Models\PubTarefa;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\AcoesDaContaService;
+use App\Services\Publicador\AdiamentoDeAcoes;
 use App\Services\Publicador\CabecalhoPublicadorService;
+use App\Services\Publicador\CockpitDaContaService;
 use App\Services\Publicador\ExcluirProdutoService;
 use App\Services\Publicador\Fila\FilaPublicacaoService;
+use App\Services\Publicador\JornadaDosProdutosService;
 use App\Services\Publicador\NovaPublicacaoService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -467,8 +471,39 @@ class MlbPublicadorEntradaController extends Controller
      * fazer agora", situação dos produtos, últimas publicações, integrações, resumo
      * de identidade e quem publicou. ZERO chamada ao Mercado Livre neste request —
      * só leitura do que já está gravado (design_handoff_publicador/ETAPA-2-visao-geral.md).
+     *
+     * ─── Fase 179, Plano 05 — o cockpit (VG-01, VG-18..VG-20) ───────────────
+     *
+     * As NOVE props novas (`jornada`, `acoes`, `banner`, `saude`, `publicacoesMl`,
+     * `acervoImagens`, `desempenho`, `recentes`, `atividade`) são **ADITIVAS**: as
+     * 14 de antes continuam todas, com o mesmo nome e o mesmo valor.
+     *
+     * ⚠️ **`produtosPorFase` e `quemPublicou` FICAM, de propósito.** Em
+     * 12/10/2026 o usuário decidiu, informado, que os blocos "Produtos por fase" e
+     * "Quem publicou" **saem da tela** (plano 179-09). A decisão é de **TELA**, e
+     * o payload não é a tela: quem perde o consumidor é o **render**, não o
+     * contrato. Três motivos medidos para não "limpar" isto:
+     *   1. as duas custam **ZERO** consulta — `produtosPorFase()` é passthrough
+     *      sobre o `$contagemProdutos` já calculado e `quemPublicou` reusa o
+     *      `$publicados` que os `indicadores` já pedem;
+     *   2. tirá-las exigiria cirurgia em **14 asserções** de
+     *      `ListaPorFaseTest`/`VisaoGeralTest`, uma delas o
+     *      `test_visao_geral_entrega_produtos_por_fase_sem_perder_nenhuma_prop`,
+     *      cujo propósito inteiro é provar que o contrato não perde prop;
+     *   3. `PainelVisaoGeral.jsx` fica no disco e é renderizado por 2 gates de JS.
+     *
+     * ⚠️ **As cinco saídas reusadas sobem para variável** (`$indicadores`,
+     * `$linhas`, `$ultimasPublicacoes`, `$atividadeEquipe`, `$integracoes`) junto
+     * com `$cabecalho`: cada uma alimenta uma prop antiga **e** uma nova, e
+     * chamá-las duas vezes pagaria duas vezes pelas consultas mais caras da tela
+     * (T-179-19). Mesma mudança que a Fase 177-03 fez ao extrair `$empresa`:
+     * mesmo valor, nenhuma mudança de comportamento.
+     *
+     * ⚠️ Do `Request` só se lê `$request->user()` — o escopo do adiamento. A Visão
+     * geral **não aceita parâmetro de entrada** (REG-06, mesma disciplina de
+     * `empresasDoHeader()`).
      */
-    public function visaoGeral(string $conta, AcervoTriagemService $acervoTriagem, PainelVisaoGeralService $painel, CabecalhoPublicadorService $cabecalhos)
+    public function visaoGeral(Request $request, string $conta, AcervoTriagemService $acervoTriagem, PainelVisaoGeralService $painel, CabecalhoPublicadorService $cabecalhos, JornadaDosProdutosService $jornadas, AcoesDaContaService $acoesDaConta, CockpitDaContaService $cockpit)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -489,13 +524,36 @@ class MlbPublicadorEntradaController extends Controller
         $situacaoPortal = $this->programas->situacaoPortal($company);
         $publicados = $painel->publicadosRecentes($alvo);
 
+        // Fase 179-05: as saídas que o cockpit REUSA — cada uma serve uma prop
+        // antiga E uma nova. Ver o docblock: chamar duas vezes é o que o gate de
+        // N+1 pega.
+        // Quick 261009-t02: `$produtos` entra para o `no_ar_por_fase` — é a
+        // MESMA lista que a tela já carrega, nenhuma consulta nova.
+        $indicadores = $painel->indicadores($alvo, $contagemProdutos, $produtos);
+        $linhas = $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos);
+        $ultimasPublicacoes = $painel->ultimasPublicacoes($alvo);
+        // Quick 261010-hdr: a "Atividade da equipe" era MOCKADA e o usuário
+        // apontou isso em 10/10 — agora é a linha do tempo real das três
+        // fontes já gravadas (publicou / gerou criativos / conferiu).
+        $atividadeEquipe = $painel->atividadeDaEquipe($alvo);
+        $integracoes = $painel->integracoes($alvo, $empresa);
+        // Fase 177-03: prop ADITIVA do header global. `$defasagem` vai como 4º argumento —
+        // esta action JÁ o calculou acima, e repetir a consulta seria pagar duas vezes pelo
+        // mesmo número. ⚠️ Fase 179-05: subiu para variável porque a prop
+        // `publicacoesMl` precisa de `$cabecalho['contadores']` — montar um segundo
+        // cabeçalho dentro do `Inertia::render` pagaria duas vezes pelos contadores.
+        $cabecalho = $cabecalhos->para($alvo, $empresa, 'visao-geral', $company !== null ? $defasagem : null);
+
+        // A Jornada (o anel) e as Ações, nesta ordem: a saída da Jornada é entrada
+        // das Ações — é de lá que nasce a ação `sem_publicacao` (VG-19).
+        $jornada = $jornadas->jornada($alvo, $produtos);
+        $acoes = $acoesDaConta->acoes($alvo, $linhas, $jornada, $produtos, $request->user()?->id);
+
         return Inertia::render('Mlb/Publicador/VisaoGeral', [
             'empresa' => $empresa,
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $company)),
-            // Quick 261009-t02: `$produtos` entra para o `no_ar_por_fase` — é a
-            // MESMA lista que a tela já carrega, nenhuma consulta nova.
-            'indicadores' => $painel->indicadores($alvo, $contagemProdutos, $produtos),
-            'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos),
+            'indicadores' => $indicadores,
+            'oQueFazerAgora' => $linhas,
             // Quick 261009-t02: os "Alertas" da coluna lateral são a triagem que
             // já está carregada acima — reformatada, nunca recalculada.
             'alertas' => $painel->alertas($alvo, $triagem),
@@ -505,12 +563,9 @@ class MlbPublicadorEntradaController extends Controller
             // `produtosPorFase()`). Mesma fonte de contagem, logo os números batem
             // com a lista de Produtos por construção.
             'produtosPorFase' => $painel->produtosPorFase($contagemProdutos),
-            'ultimasPublicacoes' => $painel->ultimasPublicacoes($alvo),
-            // Quick 261010-hdr: a "Atividade da equipe" era MOCKADA e o usuário
-            // apontou isso em 10/10 — agora é a linha do tempo real das três
-            // fontes já gravadas (publicou / gerou criativos / conferiu).
-            'atividadeEquipe' => $painel->atividadeDaEquipe($alvo),
-            'integracoes' => $painel->integracoes($alvo, $empresa),
+            'ultimasPublicacoes' => $ultimasPublicacoes,
+            'atividadeEquipe' => $atividadeEquipe,
+            'integracoes' => $integracoes,
             'identidadeResumo' => $painel->identidadeResumo($alvo),
             'quemPublicou' => [
                 'equipe' => $publicados['equipe'],
@@ -522,11 +577,76 @@ class MlbPublicadorEntradaController extends Controller
                 // 09/10/2026 — contagem da aba Alavancas (tarefas pós-publicação abertas da conta).
                 'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $company),
             ],
-            // Fase 177-03: prop ADITIVA do header global. `$defasagem` vai como 4º argumento —
-            // esta action JÁ o calculou acima, e repetir a consulta seria pagar duas vezes pelo
-            // mesmo número.
-            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'visao-geral', $company !== null ? $defasagem : null),
+            'cabecalho' => $cabecalho,
+
+            // ─── Fase 179-05: as NOVE props do cockpit, todas ADITIVAS ───────
+            'jornada' => $jornada,
+            'acoes' => $acoes,
+            'banner' => $cockpit->banner($empresa),
+            // ⚠️ A coleta vem do CABEÇALHO, não do `$defasagem` cru desta action, e
+            // isso é correção deliberada (Rule 2): sem Company o stub local diz
+            // `nunca_coletado: false` (pré-existente, e é o que `indicadores()` lê),
+            // enquanto o header diz `true` — `CabecalhoPublicadorService::para()`
+            // carimba a ausência explicitamente para D23. Ler o cru aqui faria o
+            // chrome dizer "nunca coletado" e a Saúde dizer "tudo conectado" sobre a
+            // MESMA conta, na MESMA tela. Fonte única: o header.
+            'saude' => $cockpit->saude($empresa, $integracoes, $cabecalho['integracoes']['coleta'], $company?->id),
+            'publicacoesMl' => $cockpit->resumoDePublicacoes($company, $cabecalho['contadores']),
+            'acervoImagens' => $cockpit->acervoDeImagens($alvo, $indicadores),
+            'desempenho' => $cockpit->desempenho($alvo, $indicadores),
+            'recentes' => $cockpit->recentes($ultimasPublicacoes, $produtos),
+            'atividade' => $cockpit->atividade($alvo, $atividadeEquipe),
         ]);
+    }
+
+    /**
+     * Fase 179, Plano 05 (VG-11) — adiar uma ação de "O que fazer agora" até
+     * amanhã às 8h, só para QUEM adiou e só nesta conta.
+     *
+     * ⚠️ **A trava que importa é a lista FECHADA de chaves**, conferida ANTES de
+     * qualquer escrita (T-179-16). `AdiamentoDeAcoes::adiar()` também se recusa a
+     * gravar chave fora do mapa, mas isso é **defesa em profundidade**: ele falha
+     * em **silêncio**, e um request com chave inválida tem de receber **422**, não
+     * 200 com nada acontecido. A conferência é por `array_key_exists` sobre a
+     * constante `AcoesDaContaService::SEVERIDADE` — nunca um `in_array` num array
+     * literal reescrito aqui, que divergiria da lista do serviço na primeira
+     * chave nova.
+     *
+     * ⚠️ Grava-se `$alvo['chave']` (a **canônica**), não o `{conta}` do request:
+     * `empresa-7` e `company-3` podem ser a MESMA conta, e duas grafias gravariam
+     * dois sacos de cache. Mesma lição da Fase 178-01.
+     *
+     * ⚠️ **Sem redirect de normalização de chave** (como as outras actions de
+     * escrita — ver o docblock de `novaPublicacao()`): `back()` devolve o usuário
+     * para onde ele estava, e a recarga do Inertia já traz `acoes` sem a ação.
+     * O servidor continua sendo a fonte da verdade — o cliente não "esconde" nada.
+     *
+     * ⚠️ **Sem flash e sem `Log::`**: o adiamento é silencioso por desenho (o
+     * protótipo só esconde a linha) e é ação de rotina, por tela — logá-lo
+     * encheria o log sem informação.
+     *
+     * ⚠️ **Nenhuma migration:** o adiamento vive no cache, por decisão da wave 1.
+     * Perder um só faz a ação **reaparecer** — o lado benigno da falha.
+     */
+    public function adiarAcao(Request $request, string $conta, AdiamentoDeAcoes $adiamento)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $dados = $request->validate(['chave' => ['required', 'string', 'max:60']]);
+
+        abort_unless(
+            array_key_exists($dados['chave'], AcoesDaContaService::SEVERIDADE),
+            422,
+            'Ação desconhecida.'
+        );
+
+        $userId = $request->user()?->id;
+        abort_if($userId === null, 403);
+
+        $adiamento->adiar((int) $userId, (string) $alvo['chave'], $dados['chave']);
+
+        return back();
     }
 
     /**

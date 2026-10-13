@@ -286,6 +286,25 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('publicador/empresas/{conta}/configuracoes', [MlbPublicadorEntradaController::class, 'configuracoes'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.configuracoes');
 
+        // 179-05 (VG-11): adiar uma ação do bloco "O que fazer agora" até amanhã às
+        // 8h, para QUEM adiou nesta conta. Fica ao lado da `visao-geral` porque é a
+        // única tela que a dispara — mesmo grupo, mesmo padrão das vizinhas.
+        //
+        // `acoes/adiar` NÃO colide com nenhuma rota do módulo: `publicador/empresas/
+        // {conta}/produtos/{produto}` tem `produtos` literal e `{produto}` numérico,
+        // `publicador/empresas/{conta}/sincronizar/{pedido}` tem `sincronizar` literal
+        // e `{pedido}` UUID, e `publicador/empresas/{conta}` (a tela B) só casa a URI
+        // sem segmento extra. Nenhuma rota existente mudou de nome, verbo, URI ou
+        // ordem (REG-05).
+        //
+        // ⚠️ O `where` da conta é a MESMA trava das vizinhas: `{conta}` fora do padrão
+        // morre na ROTA, antes do controller (T-179-17). Throttle NOMEADO: 60/min
+        // porque adiar é clique de rotina (uma por ação, até 12 por conta), bem acima
+        // do `20,1` do Sincronizar, que faz trabalho de verdade.
+        Route::post('publicador/empresas/{conta}/acoes/adiar', [MlbPublicadorEntradaController::class, 'adiarAcao'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.acoes.adiar')->name('publicador.acoes.adiar');
+
         // ─── Fase 175, Plano 04 (§3 da ETAPA-3) — a tela do Produto ───
         // Nome `publicador.produto` (SINGULAR): `publicador.produtos` já é a lista da
         // tela B e `publicador.editor` já é o editor por produto — sem colisão no Ziggy.
