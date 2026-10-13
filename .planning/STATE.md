@@ -603,6 +603,67 @@ confirma **1** ocorrência da conjunção em `app/` — a própria fonte. **0 mi
 nesta sessão. O usuário escolheu a opção 1 informado de que esse número não existia.
 **Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 179 · plano 03 de 10 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado**. `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos**.
+
+**179-03** entregou `app/Services/Publicador/CockpitDaContaService.php` — o contrato de servidor dos
+blocos do cockpit que não são a Jornada nem as Ações: `banner()`, `saude()`,
+`resumoDePublicacoes()`, `acervoDeImagens()`, `desempenho()`, `recentes()` e `atividade()`.
+**50 testes / 2394 asserções**, **15 mutações, 15 reprovaram**, **5 consultas** no total (o MESMO
+número com 12 e com 24 produtos). Suíte `tests/{Unit,Feature}/Publicador`: **1981 / 14702 / 0 falhas**
+(baseline medida ANTES de editar: 1931 / 12308 / 0). Nenhuma migration, nenhum pacote, `resources/js`
+e `routes` com diff vazio.
+
+⚠️ **DEZ divergências declaradas, cada uma com restrição concreta** (tabela completa em
+`179-03-SUMMARY.md`). As que mudam o que a tela pode prometer:
+
+1. **O ERP não é integração neste sistema** — a linha diz só `declarado`, `problema` é SEMPRE falso,
+   não existe banner de ERP e ele **nunca** puxa o status geral. ⚠️ O **cenário "ERP desconectado" de
+   VG-19 não existe**: a fase entrega **5 de 6** cenários, e isso está aceito.
+2. **O caso âmbar da Saúde é a DEFASAGEM DA COLETA**, não o ERP (o protótipo usa o ERP). Defasagem é
+   estado medido; ERP não é medido em lugar nenhum.
+3. **Não existe status de erro no acervo** — a barra tem 4 faixas (`ativas/pausadas/em_revisao/
+   encerradas`) que somam o total do header, mais o resíduo **`outras`** e a legenda **`pedem_acao`**
+   (`severidade > 0`, o MESMO número do dot da aba Publicações).
+4. **Vendas, visitas e conversão NÃO nascem** (DESEMP-05): `sold_quantity` é acumulado da vida do
+   anúncio, `visitas` é NULL em 100% de 1.374.527 linhas, não existe tabela de pedidos. Asserção
+   NEGATIVA rodada sobre cenário que produziria os três.
+5. **`desempenho.url` é `null`** — a tela Desempenho é a Fase 182. ✅ A forma "3 KPIs reais, sem link"
+   foi **confirmada pelo usuário em 12/10/2026**, não presumida.
+6. **Sem link no acervo de imagens** (não existe tela de acervo por conta) e **sem chip "Sistema"** na
+   Atividade (não existe fonte de EVENTO de sincronização — o que existe é um carimbo, que já é a
+   linha de Sincronização).
+
+⚠️ **Para o 179-07/179-08 (quem desenha):**
+- **`pedem_acao` pode NÃO EXISTIR no objeto** (não é `null`: a chave não vem). Ler com `?.`.
+- **`outras` NÃO é uma faixa** — é o resíduo que faz a soma fechar com o header; não jogar dentro de
+  "Encerradas".
+- **`ativas_pct` null tem DOIS significados** (`total` null = não medimos; `total` 0 = medimos e não
+  há anúncio) e pedem texto diferente.
+- **`serie` tem 30 posições, a última é HOJE, dia vazio é `0` MEDIDO**; `serie` null (KPI do acervo)
+  ⇒ **nenhum svg**, e isso é correto.
+- **`quem` das recentes é o único objeto do contrato** (`{tipo, nome}`): `quem.nome ?? quem.tipo`.
+
+⚠️ **ARMADILHA DE GATE PARA O 179-10, medida nesta execução:** o range `898d68c2..HEAD` da
+`<verification>` dos planos é o commit de partida da **FASE**, não de cada plano. Rodado como escrito,
+o gate "não toquei `PainelVisaoGeralService`" acusa **86 inserções** que são do **plano 179-02**, dono
+legítimo do arquivo — **falso-positivo por construção a partir da wave 02**. O correto é o range do
+próprio plano (aqui `8b88f530..HEAD`), em que todos os caminhos proibidos dão vazio e a isca
+(`-- app tests`) devolve exatamente os 2 arquivos novos. **O gate de território desta fase precisa ser
+por PLANO, não por fase.**
+
+⚠️ **Distinção que vale para toda a milestone:** `zero medido` × `não medido` é decidido pela **ORIGEM
+do dado**. Fonte escrita por nós em janela fechada (`pub_publicacoes`, `ml_anuncio_criativo_kits`) ⇒
+dia sem linha é **`0`**. Fonte **coletada de terceiro** (acervo ML) ⇒ ausência é **`null`** — é a
+armadilha *"dia sem linha ≠ venda zero"* dos learnings da Shopee. Os dois convivem nesta mesma tela.
+
+Deprecations 52 → **53** (o `@group phase179` do doc-comment da classe de teste nova, a convenção que
+75 arquivos deste projeto já usam).
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
+
+
 
 
 ---
