@@ -166,7 +166,14 @@ class ImportadorFichasTecnicas
         $vistos = [];
         $indiceDoVisto = [];   // modelo completo: chave do produto => posição em $itens (as variações completam a 1ª linha)
 
+        // Os cabeçalhos das colunas do PRODUTO no modelo completo (as medidas de cada volume entre eles).
+        $doProdutoNoModelo = $abasDoModelo === [] ? [] : ModeloCompleto::chavesDosCabecalhos();
+
         foreach ($lido['abas'] as $aba) {
+            // Aba do modelo completo SEM categoria (produtos que ainda não têm uma): não há ficha a ler ali.
+            if (array_key_exists($aba['nome'], $abasDoModelo) && $abasDoModelo[$aba['nome']] === null) {
+                continue;
+            }
             $ignoradas = [];
             $categoriaDaAba = isset($abasDoModelo[$aba['nome']]) ? (string) $abasDoModelo[$aba['nome']] : null;
             foreach ($aba['linhas'] as $linha) {
@@ -226,7 +233,7 @@ class ImportadorFichasTecnicas
                     }
                     if ($campo === null) {
                         // No modelo completo as colunas do produto moram na mesma aba: não são "coluna estranha".
-                        if ($categoriaDaAba === null || LeitorPlanilhaProdutos::campoDoCabecalho($titulo) === null) {
+                        if ($categoriaDaAba === null || ! isset($doProdutoNoModelo[PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo))])) {
                             $ignoradas[$titulo] = true;
                         }
                         continue;

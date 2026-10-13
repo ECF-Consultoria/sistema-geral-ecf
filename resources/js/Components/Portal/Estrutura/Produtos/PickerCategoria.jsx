@@ -24,7 +24,7 @@ const MAXIMO_ITENS = 8;
 const MINIMO_BUSCA = 2;
 const MAXIMO_BUSCA = 120;
 
-export default function PickerCategoria({ row, textoInicial, onCommit, onClose }) {
+export default function PickerCategoria({ row, textoInicial, onCommit, onClose, largo = false }) {
     const [busca, setBusca] = useState(() => String(textoInicial ?? row?.nome ?? '').slice(0, MAXIMO_BUSCA));
     const [itens, setItens] = useState([]);
     const [estado, setEstado] = useState('buscando');     // buscando | pronto | curta | recusada | indisponivel
@@ -83,7 +83,8 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
     };
 
     return (
-        <div className="w-[420px] max-w-[92vw] rounded-xl border border-white/[0.08] bg-ecf-card p-2 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className={cn('rounded-xl border border-white/[0.08] bg-ecf-card p-2', largo ? 'w-full' : 'w-[420px] max-w-[92vw] shadow-xl')} data-largo={largo ? 'sim' : undefined}
+            onMouseDown={(e) => e.stopPropagation()}>
             <div className="mb-2 flex gap-1" role="tablist" aria-label="Como achar a categoria">
                 {MODOS.map(([chave, rotulo]) => (
                     <button key={chave} type="button" role="tab" aria-selected={modo === chave} onClick={() => setModo(chave)} data-modo={chave}
@@ -94,7 +95,8 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
             </div>
 
             {modo === 'navegar' && (
-                <NavegadorDeCategorias buscarNivel={buscarNivel} inicio={row?.categoria_ml_id ?? null} selecionada={row?.categoria_ml_id ?? null} onEscolher={escolher} />
+                <NavegadorDeCategorias buscarNivel={buscarNivel} inicio={row?.categoria_ml_id ?? null} selecionada={row?.categoria_ml_id ?? null} onEscolher={escolher}
+                    alturaDaLista={largo ? 'max-h-[46vh]' : 'max-h-72'} />
             )}
 
             {modo === 'buscar' && (<>
@@ -140,7 +142,7 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
             )}
 
             {estado === 'pronto' && itens.length > 0 && (
-                <ul role="listbox" className="mt-2 max-h-72 overflow-y-auto">
+                <ul role="listbox" className={cn('mt-2 overflow-y-auto', largo ? 'max-h-[46vh]' : 'max-h-72')}>
                     {itens.map((item, n) => {
                         const folha = item.folha !== false;
 

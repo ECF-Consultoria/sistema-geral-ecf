@@ -19,6 +19,13 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
  * Para o passo 1, as colunas do produto de cada aba viram um arquivo de passagem no formato do modelo de
  * Produtos, com as linhas NOS MESMOS NÚMEROS do arquivo enviado — o "linha 7" da prévia é a linha 7 da aba.
  * Com mais de uma aba, cada item e cada aviso diz de qual aba é.
+ *
+ * As medidas chegam em colunas separadas (comprimento, largura, altura e peso de cada volume) e viram aqui
+ * o texto de volumes que a importação de Produtos já entende. Volume pela metade não é enviado: a linha
+ * segue sem mexer nas medidas, com o aviso de qual volume completar.
+ *
+ * A aba "Sem categoria" (só no arquivo exportado) é a exceção: os produtos dela seguem com a categoria por
+ * escrito, a confirmar como na planilha de Produtos, e não têm ficha.
  */
 class ImportadorModeloCompleto
 {
@@ -45,7 +52,7 @@ class ImportadorModeloCompleto
             'totais' => ['novos' => 0, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0],
             'grupos' => ['novos' => [], 'atualizados' => [], 'sem_mudanca' => [], 'erros' => []],
             'criar_listas' => ['familias' => [], 'ambientes' => []], 'avisos' => [],
-            // A categoria vem da aba: não há o que confirmar.
+            // A categoria vem da aba: só há o que confirmar para os produtos da aba "Sem categoria".
             'categorias_a_confirmar' => ['nomes' => [], 'total_nomes' => 0, 'total_produtos' => 0],
             'modelo_completo' => true, 'ficha' => null,
         ];
@@ -76,6 +83,9 @@ class ImportadorModeloCompleto
             foreach ($r['avisos'] as $aviso) {
                 $saida['avisos'][] = $variasAbas ? "{$aba['nome']}: {$aviso}" : $aviso;
             }
+            if ($aba['categoria']['id'] === null) {
+                $saida['categorias_a_confirmar'] = $r['categorias_a_confirmar'];
+            }
         }
 
         $ficha = $this->fichas->previa($empresa, $caminho, $plano['categoria_da_aba']);
@@ -91,9 +101,10 @@ class ImportadorModeloCompleto
     /**
      * Grava: primeiro os produtos de cada aba (com a categoria dela), depois a ficha de todos.
      *
+     * @param  list<array{texto?: mixed, id?: mixed}>  $confirmadas  as categorias que a pessoa confirmou na prévia (só valem para a aba "Sem categoria")
      * @return array<string, mixed>  os totais da importação de Produtos somados, mais `ficha`
      */
-    public function aplicar(Company $empresa, string $caminho, AtorDoPortal $ator): array
+    public function aplicar(Company $empresa, string $caminho, AtorDoPortal $ator, array $confirmadas = []): array
     {
         $plano = $this->abasComProdutos($caminho);
         if ($plano['erro_geral'] !== null) {
@@ -105,8 +116,8 @@ class ImportadorModeloCompleto
         $variasAbas = count($plano['abas']) > 1;
 
         foreach ($plano['abas'] as $aba) {
-            $confirmada = [['texto' => $aba['categoria']['nome'], 'id' => $aba['categoria']['id']]];
-            $r = $this->comArquivoDeProdutos($aba['linhas'], fn (string $tmp) => $this->produtos->aplicar($empresa, $tmp, $ator, $confirmada));
+            $daAba = $aba['categoria']['id'] === null ? $confirmadas : [['texto' => $aba['categoria']['nome'], 'id' => $aba['categoria']['id']]];
+            $r = $this->comArquivoDeProdutos($aba['linhas'], fn (string $tmp) => $this->produtos->aplicar($empresa, $tmp, $ator, $daAba));
             if (isset($r['erro_geral'])) {
                 $saida['avisos'][] = "{$aba['nome']}: {$r['erro_geral']}";
                 continue;
@@ -126,10 +137,10 @@ class ImportadorModeloCompleto
     }
 
     /**
-     * As abas do arquivo que são categorias do modelo e têm algum produto preenchido, com as linhas do
-     * produto por número de linha. Aba que não é do modelo é ignorada com aviso.
+     * As abas do arquivo que são do modelo e têm algum produto preenchido, com as linhas do produto por
+     * número de linha. Aba que não é do modelo é ignorada com aviso.
      *
-     * @return array{erro_geral: ?string, abas: list<array{nome: string, categoria: array{id: string, nome: string}, linhas: array<int, array<string, string>>}>, categoria_da_aba: array<string, string>, avisos: list<string>}
+     * @return array{erro_geral: ?string, abas: list<array{nome: string, categoria: array{id: ?string, nome: string}, linhas: array<int, array<string, string>>}>, categoria_da_aba: array<string, ?string>, avisos: list<string>}
      */
     private function abasComProdutos(string $caminho): array
     {
@@ -144,15 +155,11 @@ class ImportadorModeloCompleto
             return $vazio($lido['erro_geral']);
         }
 
-        // Cabeçalho do produto => campo, pelo texto exato do modelo (sem caixa, acento nem "*").
-        $campoDoCabecalho = [];
-        foreach (ModeloCompleto::cabecalhosDoProduto() as $i => $titulo) {
-            $campoDoCabecalho[PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo))] = ModeloCompleto::CAMPOS_DO_PRODUTO[$i];
-        }
-
+        $chaveDoCabecalho = ModeloCompleto::chavesDosCabecalhos();
         $abas = [];
         $avisos = [];
         $categoriaDaAba = [];
+
         foreach ($lido['abas'] as $aba) {
             $categoria = $categorias[$aba['nome']] ?? null;
             if ($categoria === null) {
@@ -163,23 +170,38 @@ class ImportadorModeloCompleto
 
             $colunas = [];
             foreach ($aba['cabecalhos'] as $coluna => $titulo) {
-                $campo = $campoDoCabecalho[PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo))] ?? null;
-                if ($campo !== null) {
-                    $colunas[$coluna] = $campo;
+                $chave = $chaveDoCabecalho[PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $titulo))] ?? null;
+                // A "Categoria" por escrito só vale na aba sem categoria; nas outras, a aba É a categoria.
+                if ($chave !== null && ($chave !== 'categoria' || $categoria['id'] === null)) {
+                    $colunas[$coluna] = $chave;
                 }
             }
 
             $linhas = [];
             foreach ($aba['linhas'] as $linha) {
                 $campos = [];
-                foreach ($colunas as $coluna => $campo) {
+                $volumes = [];
+                foreach ($colunas as $coluna => $chave) {
                     $texto = self::comoTexto($linha[$coluna] ?? null);
-                    if ($texto !== '') {
-                        $campos[$campo] = $texto;
+                    if ($texto === '') {
+                        continue;
+                    }
+                    if (str_starts_with($chave, 'vol:')) {
+                        [, $n, $medida] = explode(':', $chave);
+                        $volumes[(int) $n][$medida] = $texto;
+                    } else {
+                        $campos[$chave] = $texto;
                     }
                 }
+                [$texto, $incompletos] = self::volumesEmTexto($volumes);
+                foreach ($incompletos as $n) {
+                    $avisos[] = "{$aba['nome']}, linha {$linha['__linha']}: o Volume {$n} está incompleto (preencha comprimento, largura, altura e peso). As medidas desta linha não foram alteradas.";
+                }
+                if ($texto !== '') {
+                    $campos['volumes_texto'] = $texto;
+                }
                 if ($campos !== []) {
-                    $linhas[(int) $linha['__linha']] = $campos + ['categoria' => $categoria['nome']];
+                    $linhas[(int) $linha['__linha']] = $categoria['id'] === null ? $campos : $campos + ['categoria' => $categoria['nome']];
                 }
             }
             if ($linhas !== []) {
@@ -192,6 +214,30 @@ class ImportadorModeloCompleto
         }
 
         return ['erro_geral' => null, 'abas' => $abas, 'categoria_da_aba' => $categoriaDaAba, 'avisos' => $avisos];
+    }
+
+    /**
+     * As medidas em colunas → o texto de volumes da importação de Produtos ("60×50×40 · 8,5 | …"), na
+     * ordem dos volumes. Com algum volume pela metade, não devolve texto nenhum (a linha não mexe nas
+     * medidas) e diz quais são.
+     *
+     * @param  array<int, array<string, string>>  $volumes  número do volume => medida => texto
+     * @return array{0: string, 1: list<int>}
+     */
+    private static function volumesEmTexto(array $volumes): array
+    {
+        ksort($volumes);
+        $partes = [];
+        $incompletos = [];
+        foreach ($volumes as $n => $v) {
+            if (count(array_intersect_key($v, ModeloCompleto::MEDIDAS)) < count(ModeloCompleto::MEDIDAS)) {
+                $incompletos[] = $n;
+                continue;
+            }
+            $partes[] = "{$v['c']}\u{00D7}{$v['l']}\u{00D7}{$v['a']} \u{00B7} {$v['kg']}";
+        }
+
+        return $incompletos !== [] ? ['', $incompletos] : [implode(' | ', $partes), []];
     }
 
     /**

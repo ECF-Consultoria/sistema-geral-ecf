@@ -228,6 +228,8 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // 13/10/2026 — o modelo completo: escolhe a categoria e baixa a planilha com os dados do produto e a ficha dela.
     Route::get('/estrutura/produtos/modelo-completo', [PortalEstruturaProdutosController::class, 'modeloCompleto'])
         ->middleware('throttle:30,1,estrutura.produtos.modelo_completo')->name('portal.auth.estrutura.produtos.modelo_completo');
+    Route::get('/estrutura/produtos/exportar-completo', [PortalEstruturaProdutosController::class, 'exportarCompleto'])
+        ->middleware('throttle:30,1,estrutura.produtos.exportar_completo')->name('portal.auth.estrutura.produtos.exportar_completo');
     Route::post('/estrutura/produtos/importacao', [PortalEstruturaProdutosController::class, 'aplicarImportacao'])
         ->middleware('throttle:6,1,estrutura.produtos.importacao')->name('portal.auth.estrutura.produtos.importacao');
     Route::post('/estrutura/produtos/familias', [PortalEstruturaProdutosController::class, 'criarFamilia'])

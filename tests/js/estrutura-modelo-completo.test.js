@@ -94,24 +94,48 @@ test('pendências da ficha: o campo recusado e o obrigatório em branco, com a a
 
 // ─── A tela ──────────────────────────────────────────────────────────────────
 
-test('a janela de importação oferece o modelo completo e mostra a ficha na prévia', () => {
+// "Em baixar modelo deveria vir já, e todos têm que vir tudo completo, não ter opção de baixar apenas
+// modelo. Deveria ter uma visão maior ali." (usuário, 13/10/2026)
+test('"Baixar modelo" é sempre o completo: abre a escolha da categoria numa janela própria, e o modelo só de produtos saiu das telas', () => {
+    const barra = lerSemComentarios(`${DIR}/BarraAcoesProdutos.jsx`);
     const janela = lerSemComentarios(`${DIR}/JanelaImportacao.jsx`);
-    assert.match(janela, /data-acao="abrir-modelo-completo"/);
-    assert.match(janela, /Baixar o modelo completo \(com a ficha técnica\)/);
-    assert.match(janela, /\{modeloCompleto && <ModeloCompletoEscolha onFechar=\{\(\) => setModeloCompleto\(false\)\} \/>\}/);
+    const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+
+    // Os três lugares que ofereciam o modelo agora abrem a mesma janela.
+    assert.match(barra, /<button type="button" onClick=\{onBaixarModelo\} data-acao="baixar-modelo"/);
+    assert.match(janela, /<button type="button" onClick=\{onBaixarModelo\} data-acao="abrir-modelo-completo"/);
+    assert.match(pagina, /<button type="button" onClick=\{\(\) => setBaixandoModelo\(true\)\} data-acao="baixar-planilha-modelo"/);
+    assert.match(pagina, /<JanelaBaixarModelo aberta=\{baixandoModelo\} onFechar=\{\(\) => setBaixandoModelo\(false\)\} \/>/);
+    assert.match(pagina, /onBaixarModelo=\{\(\) => \{ setImportando\(false\); setBaixandoModelo\(true\); \}\}/, 'da importação, fecha uma janela e abre a outra');
+
+    // Nenhuma tela baixa mais o modelo só de produtos nem o "meus produtos" sem a ficha.
+    for (const [nome, fonte] of [['barra', barra], ['janela', janela], ['página', pagina]]) {
+        assert.ok(! fonte.includes("route('portal.auth.estrutura.produtos.modelo')"), `${nome}: modelo só de produtos`);
+        assert.ok(! fonte.includes("route('portal.auth.estrutura.produtos.exportar')"), `${nome}: exportação sem a ficha`);
+    }
+    assert.ok(barra.includes("route('portal.auth.estrutura.produtos.exportar_completo')"));
+    assert.ok(janela.includes("route('portal.auth.estrutura.produtos.exportar_completo')"));
+});
+
+test('a janela de importação mostra a ficha na prévia e diz de qual aba é cada linha', () => {
+    const janela = lerSemComentarios(`${DIR}/JanelaImportacao.jsx`);
     assert.match(janela, /\{! previa\.erro_geral && previa\.ficha && <FichaDaPrevia ficha=\{previa\.ficha\} \/>\}/);
     assert.match(janela, /item\.aba \? `\$\{item\.aba\}, linha \$\{item\.linha\}`/, 'com uma aba por categoria, a linha diz de qual aba é');
     // O envio continua o de sempre: o servidor reconhece o modelo completo pelo próprio arquivo.
     assert.match(janela, /route\('portal\.auth\.estrutura\.produtos\.importacao\.previa'\)/);
-    assert.ok(janela.includes("route('portal.auth.estrutura.produtos.modelo')"), 'o modelo simples continua disponível');
 });
 
-test('a escolha usa o mesmo seletor de categoria da ficha e baixa pelo servidor', () => {
+test('a escolha usa o mesmo seletor de categoria da ficha, em modo largo, e baixa pelo servidor', () => {
     const escolha = lerSemComentarios(`${DIR}/ModeloCompletoEscolha.jsx`);
-    assert.match(escolha, /<PickerCategoria textoInicial="" onCommit=\{somar\}/);
+    assert.match(escolha, /<PickerCategoria largo textoInicial="" onCommit=\{somar\}/);
+    assert.match(escolha, /<Janela aberta=\{aberta\} onFechar=\{onFechar\} largura="max-w-5xl" titulo="Baixar modelo"/, 'a "visão maior"');
     assert.match(escolha, /route\('portal\.auth\.estrutura\.produtos\.modelo_completo'\), \{ params: parametrosDoModelo\(categorias\), responseType: 'blob' \}/);
     assert.match(escolha, /erroDoDownload\(corpo\)/);
     assert.match(escolha, /disabled=\{categorias\.length === 0 \|\| baixando\}/);
+
+    const picker = lerSemComentarios(`${DIR}/PickerCategoria.jsx`);
+    assert.match(picker, /largo \? 'w-full' : 'w-\[420px\] max-w-\[92vw\] shadow-xl'/, 'no modo largo o seletor ocupa a janela');
+    assert.match(picker, /alturaDaLista=\{largo \? 'max-h-\[46vh\]' : 'max-h-72'\}/);
 });
 
 // Sigilo do Portal: nada (nem comentário) nos arquivos novos fala da plataforma.
@@ -124,7 +148,7 @@ test('os arquivos novos do modelo completo não falam da plataforma (nem nos com
     }
 });
 
-test('ModeloCompletoEscolha abre pedindo a categoria e só libera o download com uma escolhida', async () => {
+test("a escolha abre pedindo a categoria, em duas colunas, e só libera o download com uma escolhida", async () => {
     global.route = (nome) => `/${nome}`;
     const resultado = await esbuild.build({
         entryPoints: [path.resolve(RAIZ, `${DIR}/ModeloCompletoEscolha.jsx`)],
@@ -141,11 +165,16 @@ test('ModeloCompletoEscolha abre pedindo a categoria e só libera o download com
         fs.rmSync(outfile, { force: true });
     }
 
-    const html = renderToStaticMarkup(React.createElement(modulo.default, { onFechar: () => {} }));
-    assert.match(html, /Modelo completo: produto e ficha técnica na mesma planilha/);
-    assert.match(html, /uma aba para cada uma, já com todos os campos dela/);
+    const html = renderToStaticMarkup(React.createElement(modulo.EscolhaDeCategorias));
+    assert.match(html, /1\. Ache a categoria do produto/);
+    assert.match(html, /2\. Categorias da planilha/);
+    assert.match(html, /Cada categoria vira uma aba, com as colunas do produto e todos os campos da ficha técnica dela\./);
     assert.match(html, /aria-label="Buscar categoria"/, 'o seletor de categoria já vem aberto');
+    assert.match(html, /data-largo="sim"/, 'e largo: ocupa a coluna inteira da janela');
     assert.match(html, /data-modo="navegar"/, 'com a opção de navegar pelas categorias');
+    assert.match(html, /data-nenhuma-categoria/);
     assert.match(html, /<button[^>]*disabled=""[^>]*data-acao="baixar-modelo-completo"[^>]*>[\s\S]*Escolha a categoria para baixar/);
     assert.doesNotMatch(html, /data-categorias-escolhidas/);
+    // Duas colunas no computador: achar a categoria à esquerda, o que foi escolhido à direita.
+    assert.match(html, /lg:grid-cols-\[minmax\(0,1\.35fr\)_minmax\(0,1fr\)\]/);
 });

@@ -84,7 +84,9 @@ test('lista: abre a ficha por URL (D-27), sem painel, folha nem decisão de larg
 test('cabeçalho e estado vazio: ações com o nome do que fazem (D-24)', () => {
     assert.ok(barra.includes('Famílias e ambientes'));
     assert.ok(barra.includes('data-acao="importar-planilha"') && barra.includes('Importar planilha'));
-    assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download data-acao="baixar-modelo"/);
+    // 13/10/2026: o modelo é sempre o completo, e a ficha depende da categoria: o botão abre a escolha em vez de baixar direto.
+    assert.match(barra, /<button type="button" onClick=\{onBaixarModelo\} data-acao="baixar-modelo"/);
+    assert.ok(! barra.includes("route('portal.auth.estrutura.produtos.modelo')"), 'não há mais o download do modelo só de produtos');
     assert.ok(barra.includes('Baixar modelo'));
     assert.ok(barra.includes('Adicionar produto'));
     assert.ok(pagina.includes('Cadastre seus produtos uma vez'));

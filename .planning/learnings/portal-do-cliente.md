@@ -1679,3 +1679,22 @@ que fazer que nem na Amazon." Aprovado: "ok, faça modo Amazon".
 - Os dois modelos antigos (Produtos; Ficha técnica) continuam iguais. Rota nova = linha nova na allowlist do Portal e
   +1 nas duas contagens do `AcessoAosProdutosTest`.
 - **Fora do escopo:** fotos (seguem em "Enviar fotos em lote") e combos/kits (são ofertas, não produtos).
+
+**Mesmo dia, segunda volta — "todos têm que vir tudo completo, não ter opção de baixar apenas modelo" e "volumes vir
+separado por coluna":**
+
+- **Nenhuma tela baixa mais o modelo só de produtos.** "Baixar modelo" (barra, estado vazio e janela de importação)
+  abre a escolha da categoria (`JanelaBaixarModelo`, larga, duas colunas: achar a categoria / as escolhidas). As rotas
+  antigas (`produtos.modelo`, `produtos.exportar`) seguem existindo e a importação continua aceitando os arquivos
+  antigos — quem já tinha uma planilha preenchida não perde o trabalho. Só os botões saíram.
+- **"Baixar meus produtos" também é o completo** (`ModeloCompleto::exportar`, rota `produtos.exportar_completo`): uma
+  aba por categoria confirmada, com a ficha já salva na 1ª linha de cada produto. Produto sem categoria confirmada vai
+  para a aba **"Sem categoria"**, que mantém a coluna "Categoria" e não tem ficha; na aba oculta ela aparece com `-` no
+  lugar do código, e a importação da ficha pula essa aba (`$abasDoModelo[aba] = null`).
+- **Volumes em colunas:** "Volume N: comprimento (cm) / largura (cm) / altura (cm) / peso (kg)". O modelo vazio traz 3
+  volumes; o exportado, quantos o maior produto tiver (teto 8). Na leitura as quatro colunas viram o MESMO texto de
+  antes (`186×43×12 · 27,8 | …`) e seguem pela regra que já existia — volume com medida faltando é aviso, não erro
+  mudo. A planilha antiga, com tudo numa célula, continua sendo lida.
+- **Armadilha:** a importação da ficha avisa "coluna que não é da ficha" para todo cabeçalho que não reconhece. As
+  colunas do produto e dos volumes precisam estar na lista de `ModeloCompleto::chavesDosCabecalhos()`, senão cada
+  planilha importada vem com uma dúzia de avisos falsos.

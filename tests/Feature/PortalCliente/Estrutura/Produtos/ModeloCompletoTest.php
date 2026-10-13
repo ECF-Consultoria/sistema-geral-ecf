@@ -151,11 +151,15 @@ class ModeloCompletoTest extends TestCase
         $cadeiras = $planilha->getSheetByName('Cadeiras');
         // Cadeira Alfa: duas cores; a ficha vai na 1ª linha e a 2ª completa o que ficou em branco.
         $this->linha($cadeiras, 2, ['Produto (grupo)*' => 'ALFA', 'Ref*' => 'ALFA-PT', 'Tipo de variação' => 'Cor', 'Variação' => 'Preto',
-            'Nome do produto*' => 'Cadeira Alfa', "Volumes (C\u{00D7}L\u{00D7}A cm \u{00B7} kg)" => "60\u{00D7}50\u{00D7}40 \u{00B7} 8,5",
+            'Nome do produto*' => 'Cadeira Alfa',
+            'Volume 1: comprimento (cm)' => 60, 'Volume 1: largura (cm)' => 50, 'Volume 1: altura (cm)' => 40, 'Volume 1: peso (kg)' => 8.5,
+            'Volume 2: comprimento (cm)' => '30', 'Volume 2: largura (cm)' => '20', 'Volume 2: altura (cm)' => '10', 'Volume 2: peso (kg)' => '1,25',
             'Custo (R$)' => 120.5, 'Estoque (un.)' => 10,
             'Marca*' => 'Bela Casa', 'Material*' => 'metal', 'Altura do assento (cm)' => '450 mm', 'Material do estofamento' => 'Bouclé texturizado']);
         $this->linha($cadeiras, 3, ['Produto (grupo)*' => 'ALFA', 'Ref*' => 'ALFA-BR', 'Tipo de variação' => 'Cor', 'Variação' => 'Branco',
-            'Nome do produto*' => 'Cadeira Alfa', "Volumes (C\u{00D7}L\u{00D7}A cm \u{00B7} kg)" => "60\u{00D7}50\u{00D7}40 \u{00B7} 8,5", 'Com gaveta' => 'Sim']);
+            'Nome do produto*' => 'Cadeira Alfa',
+            // Volume pela metade: a linha entra, as medidas dela não, e a prévia diz qual volume completar.
+            'Volume 1: comprimento (cm)' => 60, 'Volume 1: largura (cm)' => 50, 'Com gaveta' => 'Sim']);
         // Cadeira Beta: Material fora das opções (lista fechada) e sem a Marca obrigatória.
         $this->linha($cadeiras, 5, ['Produto (grupo)*' => 'BETA', 'Ref*' => 'BETA-1', 'Nome do produto*' => 'Cadeira Beta', 'Material*' => 'Plástico']);
 
@@ -178,17 +182,25 @@ class ModeloCompletoTest extends TestCase
 
         $cadeiras = $planilha->getSheetByName('Cadeiras');
         $cabecalhos = [];
-        for ($c = 1; $c <= 30; $c++) {
+        for ($c = 1; $c <= 40; $c++) {
             $titulo = (string) $cadeiras->getCell([$c, 1])->getValue();
             if ($titulo !== '') {
                 $cabecalhos[] = $titulo;
             }
         }
         // As colunas do produto (sem "Categoria": a aba já é a categoria), com o grupo na frente; depois, a ficha.
-        $this->assertSame(ModeloCompleto::cabecalhosDoProduto(), array_slice($cabecalhos, 0, 13));
+        $doProduto = ModeloCompleto::cabecalhosDoProduto();
+        $this->assertSame($doProduto, array_slice($cabecalhos, 0, count($doProduto)));
         $this->assertSame('Produto (grupo)*', $cabecalhos[0]);
         $this->assertNotContains('Categoria', $cabecalhos);
-        $this->assertSame(['Marca*', 'Material*', 'Altura do assento (cm)', 'Material do estofamento', 'Com gaveta'], array_slice($cabecalhos, 13));
+        // As medidas vêm em colunas separadas, quatro por volume, e não mais no texto "C×L×A · kg".
+        $this->assertSame(['Volume 1: comprimento (cm)', 'Volume 1: largura (cm)', 'Volume 1: altura (cm)', 'Volume 1: peso (kg)', 'Volume 2: comprimento (cm)'], array_slice($cabecalhos, 7, 5));
+        $this->assertSame(7 + 4 * ModeloCompleto::VOLUMES_NO_MODELO + 3, count($doProduto));
+        foreach ($cabecalhos as $titulo) {
+            $this->assertStringNotContainsString("\u{00D7}", $titulo, 'nenhum cabeçalho pede medidas juntas numa célula');
+        }
+        $this->assertNotContains('Nº volumes', $cabecalhos);
+        $this->assertSame(['Marca*', 'Material*', 'Altura do assento (cm)', 'Material do estofamento', 'Com gaveta'], array_slice($cabecalhos, count($doProduto)));
         $this->assertNotContains('Aparece no Mercado Livre', $cabecalhos, 'campo que cita a plataforma nunca vira coluna');
 
         // As listas da ficha valem como validação; a fechada é estrita, a que aceita valor próprio só sugere.
@@ -264,6 +276,7 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame(['Marca', 'Material'], $ficha['BETA']['faltam']);
         $this->assertSame(1, $ficha['MESA']['campos']);
         $this->assertSame([], $r->json('ficha.avisos'), 'as colunas do produto não são "coluna estranha" e a 2ª variação não gera aviso');
+        $this->assertContains('Cadeiras, linha 3: o Volume 1 está incompleto (preencha comprimento, largura, altura e peso). As medidas desta linha não foram alteradas.', $r->json('avisos'));
 
         $this->assertSame(0, EstruturaProduto::count(), 'a prévia não grava nada');
         $json = preg_replace_callback('/\\\\u([0-9a-f]{4})/i', fn ($m) => mb_chr(hexdec($m[1]), 'UTF-8'), $r->getContent());
@@ -290,6 +303,11 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame('MLB2', $mesa->categoria_ml_id);
         $this->assertSame(['ALFA-PT', 'ALFA-BR'], EstruturaProdutoVariacao::where('produto_id', $alfa->id)->orderBy('ordem')->pluck('codigo')->all());
         $this->assertEquals(120.5, (float) EstruturaProdutoVariacao::where('codigo', 'ALFA-PT')->value('custo'), 'número digitado como número chega certo');
+        // As medidas em colunas viraram os dois volumes da variação, na ordem; a linha com volume pela metade ficou sem medidas.
+        $volumes = fn (string $ref) => EstruturaProdutoVariacao::where('codigo', $ref)->firstOrFail()->volumes()->orderBy('ordem')->get()
+            ->map(fn ($v) => [(float) $v->comprimento, (float) $v->largura, (float) $v->altura, (float) $v->peso])->all();
+        $this->assertSame([[60.0, 50.0, 40.0, 8.5], [30.0, 20.0, 10.0, 1.25]], $volumes('ALFA-PT'));
+        $this->assertSame([], $volumes('ALFA-BR'));
 
         // A ficha do produto, de uma vez: opção pelo nome, unidade ao lado do número, valor próprio onde o campo aceita.
         $this->assertSame(['Bela Casa', null, null], $this->valor($alfa, 'BRAND'));
@@ -324,6 +342,76 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame(['O produto MESA já está em outra categoria; a ficha técnica desta aba não vale para ele.'], $doItem['erros'] ?: [$doItem['motivo'] ?? null]);
         $this->assertSame('MLB2', $mesa->fresh()->categoria_ml_id, 'a categoria escolhida antes não é trocada');
         $this->assertNull($this->valor($mesa, 'BRAND'));
+    }
+
+    // ═══ "Baixar meus produtos": também completo ═════════════════════════════
+
+    /**
+     * "Todos têm que vir tudo completo, não ter opção de baixar apenas modelo" (usuário, 13/10/2026). O
+     * arquivo dos produtos que a empresa JÁ tem sai no mesmo formato: cada produto na aba da categoria dele,
+     * com as medidas em colunas e a ficha salva; o que ainda não tem categoria vai para "Sem categoria".
+     * E volta pela importação sem mudar nada.
+     */
+    public function test_meus_produtos_sai_completo_por_categoria_e_volta_sem_mudar_nada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        app(ImportadorModeloCompleto::class)->aplicar($empresa, $this->preenchida($empresa), $ator);
+        // Um produto sem categoria, e um com QUATRO volumes (mais que os três do modelo vazio).
+        app(\App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService::class)->gravarLinhas($empresa, [
+            ['grupo' => 'SOLTO', 'codigo' => 'SOLTO-1', 'nome' => 'Produto Solto', 'categoria' => 'Aparador', 'volumes' => [['c' => 10, 'l' => 10, 'a' => 10, 'kg' => 1]]],
+        ], $ator);
+        // Categoria só por escrito (a confirmar): é o produto que fica na aba "Sem categoria".
+        EstruturaProduto::where('company_id', $empresa->id)->where('nome', 'Produto Solto')->update(['categoria_ml_nome' => 'Aparador', 'categoria_ml_id' => null]);
+        $mesa = EstruturaProduto::where('company_id', $empresa->id)->where('nome', 'Mesa Gama')->firstOrFail();
+        $variacaoDaMesa = EstruturaProdutoVariacao::where('produto_id', $mesa->id)->firstOrFail();
+        foreach (range(1, 4) as $n) {
+            $variacaoDaMesa->volumes()->create(['company_id' => $empresa->id, 'ordem' => $n, 'comprimento' => 100 + $n, 'largura' => 50, 'altura' => 10, 'peso' => 12.5]);
+        }
+
+        $r = $this->entrarNoPortal($empresa)->get(route('portal.auth.estrutura.produtos.exportar_completo'))->assertOk()->assertDownload('meus-produtos.xlsx');
+        $caminho = tempnam(sys_get_temp_dir(), 'mp').'.xlsx';
+        $this->temporarios[] = $caminho;
+        file_put_contents($caminho, $r->streamedContent());
+        $planilha = IOFactory::load($caminho);
+
+        $this->assertSame(['Cadeiras', 'Mesas de Jantar', 'Sem categoria', 'Instruções', 'Listas', 'Categorias'], $planilha->getSheetNames());
+
+        // A cadeira: as duas variações, as medidas em colunas e a ficha na 1ª linha.
+        $cadeiras = $planilha->getSheetByName('Cadeiras');
+        $celula = fn (Worksheet $aba, string $cabecalho, int $linha) => (string) $aba->getCell($this->coluna($aba, $cabecalho).$linha)->getValue();
+        $this->assertSame(['ALFA', 'ALFA-PT', 'Cor', 'Preto'], [$celula($cadeiras, 'Produto (grupo)*', 2), $celula($cadeiras, 'Ref*', 2), $celula($cadeiras, 'Tipo de variação', 2), $celula($cadeiras, 'Variação', 2)]);
+        $this->assertSame(['60', '50', '40', '8,5', '30', '1,25'], [$celula($cadeiras, 'Volume 1: comprimento (cm)', 2), $celula($cadeiras, 'Volume 1: largura (cm)', 2),
+            $celula($cadeiras, 'Volume 1: altura (cm)', 2), $celula($cadeiras, 'Volume 1: peso (kg)', 2), $celula($cadeiras, 'Volume 2: comprimento (cm)', 2), $celula($cadeiras, 'Volume 2: peso (kg)', 2)]);
+        $this->assertSame(['Bela Casa', 'Metal', '450 mm', 'Bouclé texturizado', 'Sim'], [$celula($cadeiras, 'Marca*', 2), $celula($cadeiras, 'Material*', 2),
+            $celula($cadeiras, 'Altura do assento (cm)', 2), $celula($cadeiras, 'Material do estofamento', 2), $celula($cadeiras, 'Com gaveta', 2)]);
+        $this->assertSame(['ALFA-BR', ''], [$celula($cadeiras, 'Ref*', 3), $celula($cadeiras, 'Marca*', 3)], 'a ficha é do produto: só na 1ª linha dele');
+
+        // A mesa tem quatro volumes: o arquivo abre o quarto grupo de colunas.
+        $mesas = $planilha->getSheetByName('Mesas de Jantar');
+        $this->assertSame(['104', '12,5', 'Redonda'], [$celula($mesas, 'Volume 4: comprimento (cm)', 2), $celula($mesas, 'Volume 4: peso (kg)', 2), $celula($mesas, 'Forma*', 2)]);
+
+        // Sem categoria: as colunas do produto e a categoria por escrito, sem ficha.
+        $sem = $planilha->getSheetByName('Sem categoria');
+        $this->assertSame(['SOLTO-1', 'Aparador'], [$celula($sem, 'Ref*', 2), $celula($sem, 'Categoria', 2)]);
+
+        // E volta: nada muda, nada é criado, a ficha não regrava.
+        $this->assertTrue(ImportadorModeloCompleto::reconhece($caminho));
+        $previa = app(ImportadorModeloCompleto::class)->previa($empresa, $caminho);
+        $this->assertNull($previa['erro_geral']);
+        $this->assertSame(['novos' => 0, 'atualizados' => 0, 'erros' => 0], array_intersect_key($previa['totais'], array_flip(['novos', 'atualizados', 'erros'])));
+        $this->assertSame(5, $previa['totais']['sem_mudanca'], 'ALFA-PT, ALFA-BR, BETA-1, MESA-1 e SOLTO-1');
+        $this->assertSame(1, $previa['categorias_a_confirmar']['total_nomes'], 'o produto sem categoria continua pedindo a dele');
+        $antes = EstruturaProdutoAtributo::count();
+        $de_novo = app(ImportadorModeloCompleto::class)->aplicar($empresa, $caminho, $ator);
+        $this->assertSame([0, 0, 0], [$de_novo['novos'], $de_novo['atualizados'], $de_novo['ficha']['campos']]);
+        $this->assertSame($antes, EstruturaProdutoAtributo::count());
+    }
+
+    public function test_meus_produtos_sem_nenhum_produto_responde_404_e_exige_sessao(): void
+    {
+        $this->get('/portal/estrutura/produtos/exportar-completo')->assertRedirect();
+        $this->entrarNoPortal($this->empresaDoGabarito())->get(route('portal.auth.estrutura.produtos.exportar_completo'))->assertNotFound();
     }
 
     public function test_os_dois_modelos_antigos_continuam_valendo(): void

@@ -323,6 +323,19 @@ class PortalEstruturaProdutosController extends Controller
         return $this->baixarPlanilha($r['planilha'], 'modelo-completo.xlsx');
     }
 
+    /**
+     * "Baixar meus produtos na planilha", completo (13/10/2026, "todos têm que vir tudo completo"): os
+     * produtos da empresa da SESSÃO, cada um na aba da categoria dele, com as variações, as medidas em
+     * colunas e a ficha técnica salva. Volta pela importação de sempre.
+     */
+    public function exportarCompleto(ModeloCompleto $modelo)
+    {
+        $r = $modelo->exportar(PortalContexto::empresa());
+        abort_if($r['planilha'] === null, 404);
+
+        return $this->baixarPlanilha($r['planilha'], 'meus-produtos.xlsx');
+    }
+
     /** Lê o arquivo e mostra o que mudaria — nada é gravado. O modelo completo traz também a prévia da ficha. */
     public function previaImportacao(Request $request, ImportadorModeloCompleto $completo)
     {
@@ -360,7 +373,7 @@ class PortalEstruturaProdutosController extends Controller
         // O modelo completo traz a categoria na aba e a ficha na linha: produtos primeiro, ficha depois.
         $doModeloCompleto = ImportadorModeloCompleto::reconhece($caminho);
         $r = $doModeloCompleto
-            ? $completo->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator())
+            ? $completo->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? [])
             : $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? []);
 
         if (isset($r['erro_geral'])) {

@@ -122,9 +122,10 @@ test('JanelaImportacao: o erro de uma linha mostra o motivo que o servidor manda
 });
 
 test('Baixar meus produtos na planilha: link de download (não axios), só com produtos, na barra e na janela', () => {
-    assert.match(barra, /\{temProdutos && \(\s*<a href=\{route\('portal\.auth\.estrutura\.produtos\.exportar'\)\} download data-acao="baixar-meus-produtos"/);
+    // 13/10/2026: "meus produtos" também sai completo (cada produto na aba da categoria dele, com a ficha).
+    assert.match(barra, /\{temProdutos && \(\s*<a href=\{route\('portal\.auth\.estrutura\.produtos\.exportar_completo'\)\} download data-acao="baixar-meus-produtos"/);
     assert.ok(barra.includes('Baixar meus produtos na planilha'));
-    assert.match(janela, /\{temProdutos && \(\s*<a href=\{route\('portal\.auth\.estrutura\.produtos\.exportar'\)\} download/);
+    assert.match(janela, /\{temProdutos && \(\s*<a href=\{route\('portal\.auth\.estrutura\.produtos\.exportar_completo'\)\} download/);
     assert.ok(janela.includes('Baixar meus produtos na planilha'));
     assert.match(pagina, /<JanelaImportacao aberta=\{importando\}[^\n]*temProdutos=\{temProdutos\}[^\n]*\/>/);
     assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.exportar'/.test(pagina + janela + barra));

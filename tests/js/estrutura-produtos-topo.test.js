@@ -29,7 +29,9 @@ test('barra de ações: seis ações na ordem, a sexta só com produtos, modelo 
     const ordem = ['adicionar-produto', 'familias-ambientes', 'importar-planilha', 'baixar-modelo', 'sugerir-categorias', 'sugestoes-de-ofertas']
         .map((a) => barra.indexOf(`data-acao="${a}"`));
     ordem.forEach((i, k) => assert.ok(i >= 0 && (k === 0 || i > ordem[k - 1]), 'ordem das ações'));
-    assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download data-acao="baixar-modelo"/);
+    // 13/10/2026: o modelo é sempre o completo, e a ficha depende da categoria: o botão abre a escolha em vez de baixar direto.
+    assert.match(barra, /<button type="button" onClick=\{onBaixarModelo\} data-acao="baixar-modelo"/);
+    assert.ok(! barra.includes("route('portal.auth.estrutura.produtos.modelo')"), 'não há mais o download do modelo só de produtos');
     assert.ok(barra.includes('Baixar modelo') && ! barra.includes('Baixar modelo (.xlsx)'));
     assert.ok(barra.includes('Sugerir categorias') && barra.includes('Buscando sugestões…'));
     assert.ok(barra.includes('data-busca') && barra.includes('Buscar código ou nome…') && barra.includes('lg:ml-auto'));

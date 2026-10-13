@@ -6,7 +6,6 @@ import { Botao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import CategoriasAConfirmar from '@/Components/Portal/Estrutura/Produtos/CategoriasAConfirmar';
 import ImportacaoDaFichaTecnica from '@/Components/Portal/Estrutura/Produtos/ImportacaoDaFichaTecnica';
-import ModeloCompletoEscolha from '@/Components/Portal/Estrutura/Produtos/ModeloCompletoEscolha';
 import { buscarSugestoesEmLotes, confirmadasParaEnvio, nomesParaSugerir } from '@/lib/categoriasDaImportacao';
 import { pendenciasDaFicha, resumoDaFicha } from '@/lib/modeloCompleto';
 import { cn } from '@/lib/utils';
@@ -128,7 +127,7 @@ function Previa({ previa }) {
     );
 }
 
-export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada }) {
+export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada, onBaixarModelo }) {
     // Duas planilhas: a dos produtos e, com produtos, a da ficha técnica (o 2º arquivo).
     const [aba, setAba] = useState('produtos');
     const [arquivo, setArquivo] = useState(null);
@@ -142,8 +141,6 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
     const [escolhas, setEscolhas] = useState({});
     const [escolhendo, setEscolhendo] = useState(null);
     const [semSugestoes, setSemSugestoes] = useState(false);
-    // O modelo completo (produto + ficha técnica): a escolha da categoria antes de baixar.
-    const [modeloCompleto, setModeloCompleto] = useState(false);
     const entrada = useRef(null);
     // Cada prévia tem a sua rodada de sugestões; fechar, voltar ou outra prévia encerram a anterior.
     const rodada = useRef(0);
@@ -160,7 +157,7 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
     };
 
     useEffect(() => {
-        if (aberta) { setAba('produtos'); setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); setModeloCompleto(false); }
+        if (aberta) { setAba('produtos'); setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
         limparCategorias();
     }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -273,20 +270,17 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
                                 onChange={(e) => escolher(e.target.files?.[0])} />
                         </div>
                         <div className="flex flex-wrap gap-x-5 gap-y-1">
-                            <a href={route('portal.auth.estrutura.produtos.modelo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline">
-                                Baixar o modelo
-                            </a>
-                            <button type="button" onClick={() => setModeloCompleto(true)} data-acao="abrir-modelo-completo"
+                            {/* O modelo é sempre o completo (13/10/2026): a escolha da categoria abre numa janela própria, maior. */}
+                            <button type="button" onClick={onBaixarModelo} data-acao="abrir-modelo-completo"
                                 className="inline-block text-[12px] text-ecf-yellow hover:underline">
-                                Baixar o modelo completo (com a ficha técnica)
+                                Baixar o modelo
                             </button>
                             {temProdutos && (
-                                <a href={route('portal.auth.estrutura.produtos.exportar')} download className="inline-block text-[12px] text-ecf-yellow hover:underline" data-acao="baixar-meus-produtos-janela">
+                                <a href={route('portal.auth.estrutura.produtos.exportar_completo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline" data-acao="baixar-meus-produtos-janela">
                                     Baixar meus produtos na planilha
                                 </a>
                             )}
                         </div>
-                        {modeloCompleto && <ModeloCompletoEscolha onFechar={() => setModeloCompleto(false)} />}
                     </>
                 )}
                 {erro && <p role="alert" className="text-[13px] text-red-300" data-erro-arquivo>{erro}</p>}
