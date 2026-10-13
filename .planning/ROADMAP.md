@@ -4099,10 +4099,29 @@ seed, com as decisões da §9 respondidas em 13/10/2026 (abaixo).
 Bling virando ofertas do Planejamento, releitura de saldo ao publicar, painel `/bling-oauth` no Admin
 e qualquer **escrita** no Bling.
 
-**Plans:** 0 plans
+**Requirements:** BLING-01..BLING-32 (família criada no planejamento de 13/10/2026 — a lista completa,
+com o requisito de cada plano, está no campo `requirements` de cada PLAN.md e no mapa por tarefa de
+`184-VALIDATION.md`).
+
+**Plans:** 13 plans em 8 ondas
 
 Plans:
-- [ ] TBD (rodar `/gsd-plan-phase 184` para quebrar em planos)
+- [ ] 184-01-PLAN.md — tabelas `bling_conexoes` e `bling_vinculos`, models com token cifrado, `config/services.php` e degradação sem credenciais (onda 1)
+- [ ] 184-02-PLAN.md — fixtures dos payloads do Bling e o tradutor puro (formatos S e V) (onda 1)
+- [ ] 184-03-PLAN.md — ator do sistema (`origem = 'bling'`, sem causer) e escrita sem agendar o preparo pela IA (onda 1)
+- [ ] 184-04-PLAN.md — `BlingOAuthService` (state único, troca do code, renovação travada, revogação) e keep-alive espalhado (onda 2)
+- [ ] 184-05-PLAN.md — tradutor: eixo composto, unidade de medida, multivolume, e `SaldoDoBling` (onda 2)
+- [ ] 184-06-PLAN.md — `BlingClient` só de leitura, com limitador por conta e global por IP, 401/429 (onda 3)
+- [ ] 184-07-PLAN.md — link assinado de 7 dias, landing pública amigável e callback com conferência de CNPJ (onda 4)
+- [ ] 184-08-PLAN.md — importador do Bling (prévia e aplicar) e Job de leitura em fatias por `release()` (onda 4)
+- [ ] 184-09-PLAN.md — estoque do Bling: gravação só da coluna, varredura em blocos e comando `bling:estoque` (onda 5)
+- [ ] 184-10-PLAN.md — estoque só-leitura e Ref travada na variação vinculada (regra no serviço + ficha) (onda 6)
+- [ ] 184-11-PLAN.md — estado da conexão como fonte única e as 7 ações da tela, admin-only (onda 6)
+- [ ] 184-12-PLAN.md — o bloco do Bling nas Configurações da loja, com os 7 estados (onda 7)
+- [ ] 184-13-PLAN.md — checkpoint humano: app no Bling, `.env`, autorização real e as 8 medições (onda 8)
+
+**Ondas:** 1 → {01, 02, 03} · 2 → {04, 05} · 3 → {06} · 4 → {07, 08} · 5 → {09} · 6 → {10, 11} ·
+7 → {12} · 8 → {13}
 
 ---
 
