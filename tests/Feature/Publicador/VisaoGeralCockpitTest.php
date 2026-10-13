@@ -800,14 +800,30 @@ class VisaoGeralCockpitTest extends TestCase
         $this->produto($e, $c, 'CAD-01');
         $conta = 'empresa-'.$e->id;
 
-        $umAdmin = $this->admin();
-        $outroAdmin = $this->admin();
+        // ⚠️ A ORDEM destes dois importa, e foi uma mutação sobrevivente que
+        // mostrou: quem adia é o SEGUNDO usuário criado. Com `$quemAdia` sendo o
+        // primeiro, trocar `$request->user()?->id` por um `1` fixo passaria —
+        // o id coincidiria com o do adiador e o teste não notaria nada. Não era
+        // equivalência, era coincidência de id.
+        $espectador = $this->admin();
+        $quemAdia = $this->admin();
+        $this->assertNotSame($espectador->id, $quemAdia->id);
 
-        $this->actingAs($umAdmin)->post($this->urlAdiar($conta), ['chave' => 'sem_publicacao'])->assertRedirect();
+        $this->actingAs($quemAdia)->post($this->urlAdiar($conta), ['chave' => 'sem_publicacao'])->assertRedirect();
 
-        $this->assertNull($this->acao($this->props($conta, $umAdmin), 'sem_publicacao'));
+        $this->assertSame(
+            ['sem_publicacao'],
+            app(AdiamentoDeAcoes::class)->adiadas($quemAdia->id, $conta),
+            'o adiamento tem de ficar no saco de QUEM adiou'
+        );
+        $this->assertSame(
+            [],
+            app(AdiamentoDeAcoes::class)->adiadas($espectador->id, $conta),
+            'e em mais nenhum'
+        );
+        $this->assertNull($this->acao($this->props($conta, $quemAdia), 'sem_publicacao'));
         $this->assertNotNull(
-            $this->acao($this->props($conta, $outroAdmin), 'sem_publicacao'),
+            $this->acao($this->props($conta, $espectador), 'sem_publicacao'),
             'o adiamento é por usuário: esconder para o outro admin seria decidir pela agenda dele'
         );
     }
