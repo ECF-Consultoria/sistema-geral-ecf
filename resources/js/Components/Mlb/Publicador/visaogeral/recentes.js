@@ -50,6 +50,28 @@ function objetoUtil(valor) {
     return (valor !== null && typeof valor === 'object' && !Array.isArray(valor)) ? valor : null;
 }
 
+/**
+ * Tira `NaN` e `Infinity` do caminho ANTES do `textoSeguro`/`textoUtil`.
+ *
+ * ⚠️ Achado pelo gate deste plano (Rule 2 — validação ausente):
+ * `textoSeguro(NaN)` devolve a STRING `'NaN'`, porque `typeof NaN === 'number'`
+ * e `String(NaN)` é `'NaN'`. Com isso um `titulo: NaN` do servidor escreveria
+ * **"NaN"** na linha da publicação, e um `quem: NaN` escreveria "NaN publicou
+ * …" — número inventado na cara do usuário (VG-18). É a mesma armadilha que o
+ * `idUtil` de `AbasDoHeader.jsx` barra, e `Infinity` tem o mesmo problema.
+ *
+ * Aqui a guarda PRÉ-FILTRA em vez de reimplementar `textoSeguro` (IDENT-08).
+ */
+function finito(valor) {
+    return (typeof valor === 'number' && !Number.isFinite(valor)) ? null : valor;
+}
+
+/** `textoSeguro` com a guarda de `NaN`/`Infinity`. */
+const textoDeTela = (valor, fallback = '—') => textoSeguro(finito(valor), fallback);
+
+/** `textoUtil` com a guarda de `NaN`/`Infinity`. */
+const textoDeTelaUtil = (valor) => textoUtil(finito(valor));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. A sparkline — a aritmética do `spark()` do protótipo (`:443-:448`)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,7 +167,7 @@ export function bannerParaTela(banner) {
     const dados = objetoUtil(banner);
     if (dados === null) return null;
 
-    const conteudo = doMapa(BANNERS, textoUtil(dados.chave), null);
+    const conteudo = doMapa(BANNERS, textoDeTelaUtil(dados.chave), null);
     if (conteudo === null) return null;
 
     return { ...conteudo, href: urlSegura(dados.link_reconexao) };
@@ -236,7 +258,7 @@ export function kpisParaTela(desempenho) {
         const kpi = objetoUtil(bruto);
         if (kpi === null) continue;
 
-        const chave = textoUtil(kpi.chave);
+        const chave = textoDeTelaUtil(kpi.chave);
         const definicao = doMapa(KPIS, chave, KPI_PADRAO);
         const valor = numeroSeguro(kpi.valor);
         const de = numeroSeguro(kpi.de);
@@ -312,18 +334,18 @@ export function recentesParaTela(recentes, urlPublicacoes, agora = Date.now()) {
 
             const quem = objetoUtil(item.quem);
             const autor = quem === null
-                ? textoUtil(item.quem)
-                : (textoUtil(quem.nome) ?? textoUtil(quem.tipo));
+                ? textoDeTelaUtil(item.quem)
+                : (textoDeTelaUtil(quem.nome) ?? textoDeTelaUtil(quem.tipo));
 
             itens.push({
-                produto_id: (typeof item.produto_id === 'number' || typeof item.produto_id === 'string') ? item.produto_id : null,
-                produto_nome: textoUtil(item.produto_nome),
+                produto_id: (typeof item.produto_id === 'string' || (typeof item.produto_id === 'number' && Number.isFinite(item.produto_id))) ? item.produto_id : null,
+                produto_nome: textoDeTelaUtil(item.produto_nome),
                 capa: typeof item.capa === 'string' ? item.capa : null,
-                titulo: textoSeguro(item.titulo),
-                fase: (typeof item.fase === 'number' || typeof item.fase === 'string') ? item.fase : null,
-                rotulo_fase: textoSeguro(item.rotulo_fase),
-                tipo: textoSeguro(item.tipo),
-                mlb: textoSeguro(item.ml_item_id),
+                titulo: textoDeTela(item.titulo),
+                fase: (typeof item.fase === 'string' || (typeof item.fase === 'number' && Number.isFinite(item.fase))) ? item.fase : null,
+                rotulo_fase: textoDeTela(item.rotulo_fase),
+                tipo: textoDeTela(item.tipo),
+                mlb: textoDeTela(item.ml_item_id),
                 situacao: typeof item.situacao === 'string' ? item.situacao : null,
                 quando: haQuanto(typeof item.quando === 'string' ? item.quando : null, agora),
                 autor,
@@ -415,7 +437,7 @@ export const ROTULOS_FIXOS_DO_GRUPO = { hoje: 'HOJE', ontem: 'ONTEM', sem_data: 
  */
 export function rotuloDoGrupo(grupo) {
     const dados = objetoUtil(grupo);
-    const chave = dados === null ? null : textoUtil(dados.chave);
+    const chave = dados === null ? null : textoDeTelaUtil(dados.chave);
     if (chave === null) return ROTULOS_FIXOS_DO_GRUPO.sem_data;
 
     if (chave === 'hoje') return ROTULOS_FIXOS_DO_GRUPO.hoje;
@@ -452,7 +474,7 @@ export function horaDoEvento(iso) {
 
 /** Os tipos de evento de um chip; `null` = todos. Chip desconhecido = todos. */
 export function tiposDoChip(chave) {
-    const atual = textoUtil(chave);
+    const atual = textoDeTelaUtil(chave);
     const chip = CHIPS_ATIVIDADE.find((c) => c.chave === atual);
     return chip === undefined ? null : chip.tipos;
 }
@@ -464,7 +486,7 @@ export function tiposDoChip(chave) {
  * achada pelo gate do 179-07.
  */
 export function chipsParaTela(chipAtivo) {
-    const atual = textoUtil(chipAtivo) ?? CHIPS_ATIVIDADE[0].chave;
+    const atual = textoDeTelaUtil(chipAtivo) ?? CHIPS_ATIVIDADE[0].chave;
     return CHIPS_ATIVIDADE.map((chip) => ({
         chave: chip.chave,
         rotulo: chip.rotulo,
@@ -506,15 +528,15 @@ export function gruposParaTela(atividade, chipAtivo) {
             const evento = objetoUtil(cru);
             if (evento === null) continue;
 
-            const tipo = textoUtil(evento.tipo) ?? '';
+            const tipo = textoDeTelaUtil(evento.tipo) ?? '';
             if (tipos !== null && !tipos.includes(tipo)) continue;
 
             eventos.push({
                 tipo,
                 verbo: doMapa(VERBOS, tipo, VERBO_PADRAO),
-                ator: textoSeguro(evento.quem),
-                alvo: textoUtil(evento.titulo),
-                detalhe: textoUtil(evento.detalhe),
+                ator: textoDeTela(evento.quem),
+                alvo: textoDeTelaUtil(evento.titulo),
+                detalhe: textoDeTelaUtil(evento.detalhe),
                 hora: horaDoEvento(evento.quando_iso),
                 tem_fio: false,
             });
