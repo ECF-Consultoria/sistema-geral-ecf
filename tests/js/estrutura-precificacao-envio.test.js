@@ -6,8 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { avisoSemSugestao, resumoDoEnvio, textoDoEstouro, textoDoPacote } from '../../resources/js/lib/precificacaoEnvio.js';
-import { linhasDaFamilia } from '../../resources/js/lib/precificacaoPorFamilia.js';
+import { avisoSemSugestao, resumoDoEnvio, seloDoEnvio, textoDoEstouro, textoDoPacote } from '../../resources/js/lib/precificacaoEnvio.js';
+import { cartoesDaFamilia } from '../../resources/js/lib/precificacaoPorFamilia.js';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -95,21 +95,41 @@ test('o combo que aparece sem o produto dele (busca, "Precificar agora") diz do 
     const principal = { id: 1, sku: 'NINA', fase: 'simples', componentes: [] };
     const familia = (produto) => ({ chave: 'f', produtos: [produto], conjuntos: [] });
 
-    // A busca pelo código do combo tira o produto da página.
-    const sozinho = linhasDaFamilia(familia({ chave: 'p', principal: null, combos: [combo], tambemEm: [] }), { filtrando: true });
-    assert.deepEqual(sozinho.map((l) => [l.oferta.sku, l.itens.map((i) => `${i.quantidade}× ${i.sku}`)]), [['NINA-CB2', ['2× NINA']]]);
+    // A busca pelo código do combo tira o produto da página: o cartão fica só com o combo.
+    const [sozinho] = cartoesDaFamilia(familia({ chave: 'p', principal: null, combos: [combo], tambemEm: [] }));
+    assert.deepEqual(sozinho.linhas.map((l) => [l.oferta.sku, l.filho, l.itens.map((i) => `${i.quantidade}× ${i.sku}`)]), [['NINA-CB2', false, ['2× NINA']]]);
 
-    // Com o produto logo acima, repetir a composição seria ruído.
-    const junto = linhasDaFamilia(familia({ chave: 'p', principal, combos: [combo], tambemEm: [] }), { filtrando: true });
-    assert.deepEqual(junto.map((l) => l.itens.length), [0, 0]);
-    const aberto = linhasDaFamilia(familia({ chave: 'p', principal, combos: [combo], tambemEm: [] }));
-    assert.deepEqual(aberto.map((l) => [l.filho, l.itens.length]), [[false, 0], [true, 0]]);
+    // Com o produto no mesmo cartão, logo acima, repetir a composição seria ruído.
+    const [junto] = cartoesDaFamilia(familia({ chave: 'p', principal, combos: [combo], tambemEm: [] }));
+    assert.deepEqual(junto.linhas.map((l) => [l.filho, l.itens.length]), [[false, 0], [true, 0]]);
+});
+
+// 13/10/2026, "linhas enxutas": o texto do envio saiu da linha; ao lado do código fica uma etiqueta.
+test('a etiqueta do envio diz em uma palavra o que a linha precisa, e guarda o texto inteiro no balão', () => {
+    assert.deepEqual(seloDoEnvio(UNIDADE), { chave: 'me2_full', texto: 'Full', tom: 'ok', dica: 'Mercado Envios · cabe no Full · Pacote: 53 × 60 × 80 cm · 8 kg' });
+    assert.equal(seloDoEnvio({ ...UNIDADE, chave: 'me2' }).texto, 'Mercado Envios');
+
+    const combo = seloDoEnvio(COMBO_2);
+    assert.deepEqual([combo.texto, combo.tom], ['ME1', 'alerta']);
+    assert.equal(combo.dica, 'Fora do Mercado Envios (ME1) · Pacote somado (2 caixas): 53 × 60 × 160 cm · 16 kg · passa do limite: maior lado 160 cm (máx. 100) · soma dos lados 273 cm (máx. 200)');
+
+    const semMedida = seloDoEnvio({ chave: 'pendente', pacote: null, sem_medida: ['CAD'] });
+    assert.deepEqual([semMedida.texto, semMedida.tom], ['Faltam medidas', 'alerta']);
+    assert.equal(seloDoEnvio({ ...UNIDADE, declarada: 'combinar' }).texto, 'A combinar');
+    assert.equal(seloDoEnvio({ ...UNIDADE, declarada: 'transportadora_me1' }).texto, 'Transportadora');
+    assert.equal(seloDoEnvio(null), null);
+    assert.equal(seloDoEnvio({ chave: null, pacote: null }), null);
 });
 
 // ─── As telas ────────────────────────────────────────────────────────────────
 
-test('Precificação: a linha mostra o envio sob o nome e avisa sob cada frete em branco', () => {
+test('Precificação: a linha leva a etiqueta do envio; o detalhe o diz por extenso e avisa sob cada frete em branco', () => {
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaPrecificacao.jsx');
+    assert.match(pagina, /import\s*\{[^}]*\bseloDoEnvio\b[^}]*\}\s*from\s*'@\/lib\/precificacaoEnvio'/s);
+    assert.match(pagina, /<SeloDoEnvio envio=\{calculo\.envio\} \/>/, 'na linha, ao lado do código');
+    assert.match(pagina, /title=\{s\.dica\} data-selo-envio=\{s\.chave\}/, 'a etiqueta guarda o texto inteiro no balão');
+    // O campo único da linha também diz por que está em branco ("sem tabela: digite").
+    assert.match(pagina, /avisoSemSugestao\(calculo\.envio, calculo\.classico\) \?\? avisoSemSugestao\(calculo\.envio, calculo\.premium\)/);
     assert.match(pagina, /<EnvioDaOferta envio=\{calculo\.envio\} \/>/);
     assert.match(pagina, /<SemSugestaoDeFrete envio=\{calculo\.envio\} tipo=\{calculo\.classico\} \/>/);
     assert.match(pagina, /<SemSugestaoDeFrete envio=\{calculo\.envio\} tipo=\{calculo\.premium\} \/>/);

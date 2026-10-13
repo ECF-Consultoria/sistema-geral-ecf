@@ -85,6 +85,23 @@ export function resumoDoEnvio(envio) {
     };
 }
 
+const SELO = { me2_full: 'Full', me2: 'Mercado Envios', me1: 'ME1', pendente: 'Faltam medidas' };
+
+/**
+ * O envio em uma etiqueta, ao lado do código (13/10/2026, "linhas enxutas"): "Full", "ME1", "Faltam medidas".
+ * O texto inteiro — pacote, limites estourados — deixou de ocupar a linha e vai no detalhe; aqui ele fica no
+ * balão (`dica`). `{ chave, texto, tom, dica }`, ou null sem o que dizer.
+ */
+export function seloDoEnvio(envio) {
+    const r = resumoDoEnvio(envio);
+    if (! r) return null;
+
+    const texto = r.chave === 'declarada' ? (envio.declarada === 'combinar' ? 'A combinar' : 'Transportadora') : (SELO[r.chave] ?? r.rotulo);
+    const dica = [r.rotulo, r.pacote, r.motivo && r.tom === 'alerta' ? r.motivo : null].filter(Boolean).join(' · ');
+
+    return { chave: r.chave, texto, tom: r.tom, dica };
+}
+
 /**
  * A frase sob o campo de frete que está em branco SEM nada a mostrar (nem digitado, nem sugerido, nem
  * o do outro tipo): diz por que não há valor ali. Com qualquer valor em uso, quem fala é a origem dele.

@@ -1778,3 +1778,39 @@ Pedido do usuário: "no portal do cliente, ocultar tudo e deixar apenas mapeamen
   `portal_modulos_cliente = todos` (o Laravel chama `setUp{NomeDaTrait}` sozinho, depois de recriar o banco). Teste
   novo de página do Portal que precise do Início ou de outro módulo no menu usa a mesma trait; o regime padrão está em
   `VisibilidadeDosModulosTest`.
+
+## 50. Precificação em "linhas enxutas": um cartão por produto, o detalhe sob demanda (13/10/2026)
+
+O usuário, dois dias depois de aprovar a tabela por família (§44): "está muito ruim e confuso… o jeito que ficou em
+famílias ficou muito ruim". Pediu propostas em artefato; entre quatro (linhas enxutas, cartões com abas, lista +
+ficha, tabela por quantidade) escolheu a primeira: "traz o anúncio simples, o combo e etc juntos para precificar no
+mesmo card".
+
+**O que não é dedutível do código:**
+- **O agrupamento do §44 não mudou; o desenho, sim.** Família, "Conjuntos desta família" e "Também entra em" seguem
+  valendo, e quem agrupa continua sendo o servidor. O que o usuário reprovou foi a TABELA: seis linhas de letra miúda
+  por oferta, quatro preços com o mesmo peso e o motivo do ME1 repetido em todo combo. A família virou um título
+  leve; a unidade é o cartão (`cartoesDaFamilia`), com a unidade e os combos dela dentro.
+- **O que saiu da linha foi para o detalhe, não para o lixo:** envio por extenso, um frete por tipo com a origem de
+  cada um, os quatro preços com botão de copiar, "Feito de", "Também entra em" e "Ajustar percentuais". Na linha ficam
+  a etiqueta do envio ("Full", "ME1" — `seloDoEnvio`, texto inteiro no balão) e a frase sob o frete em branco ("sem
+  tabela: digite"). O medo de 11/10 ("nem sei se é ME1", §47) continua atendido por esses dois.
+- **A comissão é da empresa: foi para o cabeçalho da coluna.** Produto com percentual próprio leva o selo "Ajustado".
+- **Um campo de frete na linha, e ele grava nos DOIS tipos.** Vale quando os dois valem o mesmo: digitados iguais, os
+  dois em branco, ou um em branco HERDANDO o outro (`frete_origem === 'outro_tipo'`, o "mesmo do Clássico" de quem
+  digitou só um). Com Clássico digitado e Premium em branco com sugestão PRÓPRIA não é um frete só: a linha mostra os
+  dois campos (`freteUnico`). Quem decide entre um campo e dois é o que o SERVIDOR tem gravado, não o que se digita
+  agora — decidir pelo estado da digitação troca o campo de forma no meio dela e o cursor se perde.
+- **O preço da PROMOÇÃO é o número grande; o de anunciar vai embaixo.** É o que o comprador paga e o que fecha a
+  conta. Clicar em qualquer um copia (o ícone aparece ao passar o mouse, FORA da coluna, para o número continuar
+  alinhado à direita entre os cartões). Sem o frete o preço aparece apagado e sem copiar: ainda não é o preço.
+- **O cabeçalho das colunas e cada linha usam a MESMA grade** (`COLUNAS`). Cada cartão é uma grade própria; com
+  larguras diferentes os números desalinham de um cartão para o outro. A prova mede a borda direita do preço em
+  todas as linhas e cobra um valor só.
+- **A linha acesa pelo atalho fica dentro de um cartão com `overflow-hidden`.** O contorno do `[data-aceso]` é para
+  fora e sumiria nas pontas: há uma regra em `app.css` que o põe para dentro só em `[data-linha-preco]`.
+- **Ficou de fora:** o filtro "Só pendentes" das propostas. Pendência é calculada no PHP por oferta e a página é
+  paginada por bloco: filtrar só o que a página trouxe daria o erro do §25. Precisa ser filtro do servidor.
+- **Prova sem servidor:** `scratchpad/prova_linhas.mjs <pasta>` desenha a página no Puppeteer com o CSS do build e os
+  números do print do usuário, abre o detalhe, usa o atalho, recolhe, edita os parâmetros, digita no frete único e
+  confere o PUT que sairia (os dois tipos), e fotografa em 1440 e em 900 px.

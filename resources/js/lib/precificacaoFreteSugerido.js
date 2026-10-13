@@ -51,6 +51,55 @@ export function rotuloDoFrete(calculo, outroTipo, fmt) {
 /** O campo em branco mostra, apagado, o frete que a conta usa (o sugerido ou o do outro tipo). */
 export const freteEmBranco = (calculo) => calculo?.frete_origem === 'sugerido' || calculo?.frete_origem === 'outro_tipo';
 
+// ─── Um campo de frete só na linha (13/10/2026, "linhas enxutas") ───
+//
+// A linha mostra UM campo quando o frete do Clássico e o do Premium valem o mesmo; os dois campos, cada um com a
+// origem dele, ficam no detalhe. Digitar no campo único grava nos dois tipos. Nada aqui calcula frete: só decide
+// o que a linha desenha a partir do que foi digitado e do que o servidor mandou.
+
+/** "200", "200,00" e " 200,0 " são o mesmo frete; vazio é vazio. */
+const mesmoTexto = (texto) => {
+    const t = String(texto ?? '').trim().replace(/\s|R\$/g, '');
+    if (t === '') return '';
+    const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+
+    return Number.isFinite(n) ? String(n) : t;
+};
+
+/**
+ * Os dois tipos cabem num campo só? Sim quando o digitado é igual nos dois (inclusive os dois em branco) ou quando
+ * um está em branco HERDANDO o do outro ("mesmo do Clássico" — o caso de quem digitou só um).
+ *
+ * @param {string} freteC  o que está no campo do Clássico
+ * @param {string} freteP  o que está no campo do Premium
+ * @param {object} calculo  `por_oferta[id]` do servidor
+ * @returns {{unico: boolean, valor: string}}  `valor` = o que o campo único mostra
+ */
+export function freteUnico(freteC, freteP, calculo) {
+    const c = mesmoTexto(freteC);
+    const p = mesmoTexto(freteP);
+    if (p === '' && calculo?.premium?.frete_origem === 'outro_tipo') return { unico: true, valor: freteC ?? '' };
+    if (c === '' && calculo?.classico?.frete_origem === 'outro_tipo') return { unico: true, valor: freteP ?? '' };
+
+    return { unico: c === p, valor: freteC ?? '' };
+}
+
+/**
+ * O texto pequeno sob o campo único: a origem do frete de um dos tipos (a que não é "mesmo do outro") ou, sem
+ * sugestão nenhuma para comparar, "digitado". Null = nada a dizer (quem fala é o aviso de "sem tabela").
+ *
+ * @returns {{texto: string, tipo: string, fonte?: string}|null}
+ */
+export function legendaDoFreteUnico(calculo, fmt) {
+    const proprio = [rotuloDoFrete(calculo?.classico, 'Premium', fmt), rotuloDoFrete(calculo?.premium, 'Clássico', fmt)]
+        .find((r) => r && r.tipo !== 'herdado');
+    if (proprio) return proprio;
+
+    const digitado = calculo?.classico?.frete_origem === 'digitado' || calculo?.premium?.frete_origem === 'digitado';
+
+    return digitado ? { texto: 'digitado', tipo: 'digitado' } : null;
+}
+
 /**
  * A frase depois do "Cotar agora", a partir do resumo `cotacao` do servidor.
  *
