@@ -4107,7 +4107,7 @@ com o requisito de cada plano, está no campo `requirements` de cada PLAN.md e n
 
 Plans:
 - [x] 184-01-PLAN.md — tabelas `bling_conexoes` e `bling_vinculos`, models com token cifrado, `config/services.php` e degradação sem credenciais (onda 1)
-- [ ] 184-02-PLAN.md — fixtures dos payloads do Bling e o tradutor puro (formatos S e V) (onda 1)
+- [x] 184-02-PLAN.md — fixtures dos payloads do Bling e o tradutor puro (formatos S e V) (onda 1)
 - [ ] 184-03-PLAN.md — ator do sistema (`origem = 'bling'`, sem causer) e escrita sem agendar o preparo pela IA (onda 1)
 - [ ] 184-04-PLAN.md — `BlingOAuthService` (state único, troca do code, renovação travada, revogação) e keep-alive espalhado (onda 2)
 - [ ] 184-05-PLAN.md — tradutor: eixo composto, unidade de medida, multivolume, e `SaldoDoBling` (onda 2)
