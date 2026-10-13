@@ -3,6 +3,7 @@
 namespace App\Services\Bling;
 
 use App\Services\Portal\Estrutura\Produtos\NormalizadorDeLinha;
+use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 
 /**
  * Traduz o produto do Bling (`GET /produtos/{id}`) para linhas no contrato de entrada do
@@ -37,6 +38,10 @@ final class TradutorBlingParaPortal
 
         return match ($formato) {
             'S' => self::traduzirSimples($produto),
+            'V' => self::traduzirComVariacoes($produto),
+            // Kit do Bling é fora de escopo declarado (§3 do CONTEXT, Fase 185). Recusar com
+            // motivo, nunca descartar em silêncio — silêncio esconderia produto do cliente.
+            'E' => self::recusarProdutoInteiro($produto, 'Kit do Bling não entra nesta fase.'),
             default => self::recusarProdutoInteiro($produto, self::motivoFormato($formato)),
         };
     }
@@ -125,6 +130,170 @@ final class TradutorBlingParaPortal
                 'gtin'             => self::textoOuNull($produto['gtin'] ?? null),
             ]],
         ];
+    }
+
+    /**
+     * `formato === 'V'`: 1 produto do Bling com `variacoes[]` vira 1 linha por variação, todas no
+     * mesmo `grupo`. Uma variação ruim (código vazio ou repetido) não derruba as outras — ela sai
+     * em `recusadas` e o resto segue.
+     */
+    private static function traduzirComVariacoes(array $produto): array
+    {
+        $blingPaiId      = self::idComoTexto($produto['id'] ?? null);
+        $variacoesBrutas = $produto['variacoes'] ?? [];
+
+        if (! is_array($variacoesBrutas) || $variacoesBrutas === []) {
+            return self::recusarProdutoInteiro($produto, 'Produto com variações sem nenhuma variação no Bling.');
+        }
+
+        // Grupo = código do pai; pai sem código usa a Ref da 1ª variação que tiver código
+        // (learnings portal §39). Nenhuma variação com código → recusa o produto inteiro.
+        $grupo = trim((string) ($produto['codigo'] ?? ''));
+        if ($grupo === '') {
+            foreach ($variacoesBrutas as $variacaoBruta) {
+                $candidato = trim((string) ($variacaoBruta['codigo'] ?? ''));
+                if ($candidato !== '') {
+                    $grupo = $candidato;
+                    break;
+                }
+            }
+        }
+        if ($grupo === '') {
+            return self::recusarProdutoInteiro($produto, 'Produto com variações sem nenhum código no Bling.');
+        }
+
+        [$nomePai, $avisoNomePai] = self::nomeCortado($produto['nome'] ?? '');
+        $avisos = $avisoNomePai !== null ? [$avisoNomePai] : [];
+
+        [$descricao, $avisoDescricao] = self::descricaoSemHtml($produto['descricaoCurta'] ?? null);
+        if ($avisoDescricao !== null) {
+            $avisos[] = $avisoDescricao;
+        }
+
+        $custo = self::custoDoProduto($produto);
+
+        // custo/descrição/volumes vêm do PAI e vão para todas as linhas — mesma regra do ramo S.
+        [$volumes, $avisoVolumes] = self::volumesDoProduto($produto);
+        if ($avisoVolumes !== null) {
+            $avisos[] = $avisoVolumes;
+        }
+
+        $linhas        = [];
+        $recusadas     = [];
+        $vinculos      = [];
+        $codigosVistos = [];
+
+        foreach ($variacoesBrutas as $variacaoBruta) {
+            $idVariacao  = self::idComoTexto($variacaoBruta['id'] ?? null);
+            $codigoVar   = trim((string) ($variacaoBruta['codigo'] ?? ''));
+
+            if ($codigoVar === '') {
+                $recusadas[] = [
+                    'bling_produto_id' => $idVariacao,
+                    'codigo'           => null,
+                    'motivo'           => 'Variação sem código no Bling — o código (Ref) é obrigatório.',
+                ];
+                continue;
+            }
+
+            // Mesma régua de comparação do cadastro: minúsculas, sem acento, sem espaço nas
+            // pontas. Chamar o método estático do serviço, não reimplementar (acceptance criteria).
+            $chave = ProdutoCadastroService::chaveCodigo($codigoVar);
+            if (isset($codigosVistos[$chave])) {
+                $recusadas[] = [
+                    'bling_produto_id' => $idVariacao,
+                    'codigo'           => $codigoVar,
+                    'motivo'           => 'Código repetido entre variações do mesmo produto no Bling.',
+                ];
+                continue;
+            }
+            $codigosVistos[$chave] = true;
+
+            [$eixo, $valor, $avisoEixo] = self::eixoEValorDaVariacao($variacaoBruta['variacao']['nome'] ?? null, $codigoVar);
+            if ($avisoEixo !== null) {
+                $avisos[] = $avisoEixo;
+            }
+
+            $linha = [
+                'codigo' => $codigoVar,
+                // A 1ª linha redefine o produto no ProdutoCadastroService; usar o nome do PAI
+                // em todas (produto existente mantém o nome atual do Portal).
+                'nome'   => $nomePai,
+                'grupo'  => $grupo,
+            ];
+
+            $ordemBruta = $variacaoBruta['variacao']['ordem'] ?? null;
+            if (is_numeric($ordemBruta)) {
+                $linha['ordem'] = (int) $ordemBruta;
+            }
+
+            if ($eixo !== null) {
+                $linha['eixo'] = $eixo;
+            }
+            if ($valor !== null) {
+                $linha['valor'] = $valor;
+            }
+            if ($descricao !== null) {
+                $linha['descricao'] = $descricao;
+            }
+            if ($custo !== null) {
+                $linha['custo'] = $custo;
+            }
+            if ($volumes !== null) {
+                $linha['volumes'] = $volumes;
+            }
+
+            $linhas[] = $linha;
+            $vinculos[] = [
+                'bling_produto_id' => $idVariacao,
+                'bling_pai_id'     => $blingPaiId,
+                'codigo_bling'     => $codigoVar,
+                'formato'          => 'V',
+                'gtin'             => self::textoOuNull($variacaoBruta['gtin'] ?? $produto['gtin'] ?? null),
+            ];
+        }
+
+        return [
+            'linhas'    => $linhas,
+            'recusadas' => $recusadas,
+            'avisos'    => $avisos,
+            'vinculos'  => $vinculos,
+        ];
+    }
+
+    /**
+     * `variacao.nome` chega como `"Eixo:Valor"` (`"Cor:Azul"`) ou, por vezes, com dois atributos
+     * separados por `;` (`"Cor:Preto;Tamanho:M"`). O Portal tem só 1 eixo por variação.
+     *
+     * TODO(184-05): dois ou mais pares ainda não têm tratamento definitivo — por ora o primeiro
+     * par vence, sem o aviso de "dois atributos" (isso é tarefa do plano 05, não desta).
+     *
+     * @return array{0: ?string, 1: ?string, 2: ?string} [eixo, valor, aviso ou null]
+     */
+    private static function eixoEValorDaVariacao(mixed $nomeVariacaoBruto, string $codigoVariacao): array
+    {
+        $nome = trim((string) $nomeVariacaoBruto);
+        if ($nome === '' || ! str_contains($nome, ':')) {
+            return [null, null, null];
+        }
+
+        $pares = array_values(array_filter(array_map('trim', explode(';', $nome)), fn (string $p) => $p !== ''));
+        if ($pares === []) {
+            return [null, null, null];
+        }
+
+        // TODO(184-05): usar só $pares[0] enquanto o plano 05 não resolve 2+ atributos.
+        [$rotulo, $valor] = array_pad(array_map('trim', explode(':', $pares[0], 2)), 2, null);
+        if ($rotulo === null || $valor === null || $valor === '') {
+            return [null, null, null];
+        }
+
+        $eixo = NormalizadorDeLinha::eixo($rotulo);
+        if ($eixo === null) {
+            return ['outro', $valor, "Variação do código \"{$codigoVariacao}\": o tipo \"{$rotulo}\" não está na lista, usamos \"Outro\"."];
+        }
+
+        return [$eixo, $valor, null];
     }
 
     /** @return array{0: string, 1: ?string} [nome cortado, aviso ou null] */

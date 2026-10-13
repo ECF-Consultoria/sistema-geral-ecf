@@ -95,4 +95,112 @@ final class TradutorBlingParaPortalTest extends TestCase
         $this->assertCount(1, $r['recusadas']);
         $this->assertNotSame('', $r['recusadas'][0]['motivo']);
     }
+
+    // ─── Task 3: formato V (produto com variações) ───
+
+    public function test_produto_com_variacoes_vira_uma_linha_por_variacao(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+
+        $r = TradutorBlingParaPortal::paraLinhas($produto);
+
+        $this->assertCount(3, $r['linhas']);
+        $this->assertCount(0, $r['recusadas']);
+    }
+
+    public function test_as_tres_linhas_compartilham_o_mesmo_grupo_igual_ao_codigo_do_pai(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+
+        $linhas = TradutorBlingParaPortal::paraLinhas($produto)['linhas'];
+
+        foreach ($linhas as $linha) {
+            $this->assertSame($produto['codigo'], $linha['grupo']);
+        }
+    }
+
+    public function test_pai_sem_codigo_usa_a_ref_da_primeira_variacao_como_grupo(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+        $produto['codigo'] = '';
+
+        $r = TradutorBlingParaPortal::paraLinhas($produto);
+
+        $this->assertCount(0, $r['recusadas']);
+        foreach ($r['linhas'] as $linha) {
+            $this->assertSame($produto['variacoes'][0]['codigo'], $linha['grupo']);
+        }
+    }
+
+    public function test_variacao_cor_azul_vira_eixo_cor_e_valor_azul(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+
+        $linhas = TradutorBlingParaPortal::paraLinhas($produto)['linhas'];
+        $azul = current(array_filter($linhas, fn (array $l) => $l['codigo'] === 'CAM-BAS-AZ'));
+
+        $this->assertNotFalse($azul);
+        $this->assertSame('cor', $azul['eixo']);
+        $this->assertSame('Azul', $azul['valor']);
+    }
+
+    public function test_variacao_com_codigo_vazio_e_recusada_e_as_outras_duas_seguem(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+        $produto['variacoes'][1]['codigo'] = '';
+
+        $r = TradutorBlingParaPortal::paraLinhas($produto);
+
+        $this->assertCount(2, $r['linhas']);
+        $this->assertCount(1, $r['recusadas']);
+    }
+
+    public function test_codigo_repetido_entre_variacoes_recusa_a_segunda_ocorrencia(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+        $produto['variacoes'][1]['codigo'] = $produto['variacoes'][0]['codigo'];
+
+        $r = TradutorBlingParaPortal::paraLinhas($produto);
+
+        $this->assertCount(2, $r['linhas']);
+        $this->assertCount(1, $r['recusadas']);
+        $this->assertSame($produto['variacoes'][1]['id'], (int) $r['recusadas'][0]['bling_produto_id']);
+    }
+
+    public function test_vinculos_tem_um_item_por_variacao_com_o_pai_correto(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+
+        $vinculos = TradutorBlingParaPortal::paraLinhas($produto)['vinculos'];
+
+        $this->assertCount(3, $vinculos);
+        foreach ($vinculos as $i => $vinculo) {
+            $this->assertSame((string) $produto['id'], $vinculo['bling_pai_id']);
+            $this->assertSame((string) $produto['variacoes'][$i]['id'], $vinculo['bling_produto_id']);
+        }
+    }
+
+    public function test_sem_dimensoes_no_pai_nenhuma_linha_tem_volumes_ou_estoque(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+        $this->assertArrayNotHasKey('dimensoes', $produto);
+
+        $linhas = TradutorBlingParaPortal::paraLinhas($produto)['linhas'];
+
+        foreach ($linhas as $linha) {
+            $this->assertArrayNotHasKey('volumes', $linha);
+            $this->assertArrayNotHasKey('estoque', $linha);
+        }
+    }
+
+    public function test_formato_kit_e_recusado_com_motivo_e_nao_gera_linha(): void
+    {
+        $produto = BlingFixtures::ler('produto-formato-v');
+        $produto['formato'] = 'E';
+
+        $r = TradutorBlingParaPortal::paraLinhas($produto);
+
+        $this->assertCount(0, $r['linhas']);
+        $this->assertNotEmpty($r['recusadas']);
+    }
 }
