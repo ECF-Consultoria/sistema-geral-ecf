@@ -59,6 +59,18 @@ return [
         'redirect'      => env('ML_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/mercadolivre/callback'),
     ],
 
+    // Fase 184 (D-02) — app PÚBLICO do Bling (Central de Extensões > Área do
+    // Integrador). SEM valor padrão de propósito: as credenciais só existem
+    // no `.env` (nunca versionadas) e `BlingConexao::estaConfigurado()` lê
+    // exatamente estas três chaves para degradar sem estourar 500 quando
+    // faltam. ⚠️ Há UM callback por app no Bling — o app de desenvolvimento
+    // é outro cadastro, com outro BLING_REDIRECT_URI.
+    'bling' => [
+        'client_id'     => env('BLING_CLIENT_ID'),
+        'client_secret' => env('BLING_CLIENT_SECRET'),
+        'redirect'      => env('BLING_REDIRECT_URI'),
+    ],
+
     // Shopee Open Platform (API v2). Diferente do ML: NÃO usa PKCE nem scope na
     // URL — toda request é assinada com HMAC-SHA256 (partner_key é a chave HMAC,
     // nunca vai na request). partner_id/partner_key/host são 1 por app (não por
