@@ -1072,6 +1072,76 @@ class PublicacoesDaTelaTest extends TestCase
         $this->assertSame(['MLB-CATALOGO'], $this->idsDaLista($this->props($admin, $company, ['status' => 'todos', 'comVenda' => '1'])));
     }
 
+    /**
+     * O 4º argumento de `escopo()` está LIGADO: a busca acha o anúncio pelo
+     * NOME DO PRODUTO (LIST-03, plano 180-03).
+     *
+     * ⚠️ Sem este caso, tirar `$publicacoes` da chamada a `escopo()` passaria
+     * por todos os outros gates — o trabalho do plano 180-03 ficaria
+     * inacessível pela tela e nada acusaria.
+     *
+     * @group phase180
+     */
+    public function test_busca_por_nome_de_produto_chega_a_tela(): void
+    {
+        [$company, $empresa, $admin] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'SKU-OSLO', 'Poltrona Oslo', ['fase' => 1]);
+
+        // ⚠️⚠️ NENHUM dos outros três identificadores pode conter o termo —
+        // nem o título, nem o SKU, nem **o próprio `ml_item_id`**. A primeira
+        // versão deste caso usava `ml_item_id = 'MLB-OSLO'` e era VAZIA POR
+        // CONSTRUÇÃO: o braço `ml_item_id like '%Oslo%'` casava sozinho e o caso
+        // passava mesmo com o 4º argumento REMOVIDO. Quem acusou foi a mutação
+        // (j), que sobreviveu na primeira rodada.
+        $this->acervo($company, 'MLB7000000001', ['title' => 'Assento decorativo veludo cinza', 'skus' => ['XYZ-1']]);
+        $this->acervo($company, 'MLB7000000002', ['title' => 'Mesa de centro', 'skus' => ['XYZ-2']]);
+        $this->publicada($produto, 'MLB7000000001');
+
+        $props = $this->props($admin, $company, ['status' => 'todos', 'busca' => 'Oslo']);
+
+        $this->assertSame(
+            ['MLB7000000001'],
+            $this->idsDaLista($props),
+            'a busca tem de achar o anúncio pelo NOME DO PRODUTO — é o 4º identificador do `escopo()`, e ele só existe quando o controller passa o `PublicacoesDaListaService` como 4º argumento',
+        );
+    }
+
+    /**
+     * Os chips contam o MESMO universo da lista (LIST-22).
+     *
+     * ⚠️ `com_vendas` é a ÚNICA exceção, e ela é antiga e testada: a decisão da
+     * Fase 173-02 (`MeusAnunciosTest::com_venda_filtra_a_listagem_sem_mudar_a_triagem`)
+     * é que `comVenda=1` não mexe nos chips. Os filtros NOVOS, sim.
+     *
+     * @group phase180
+     */
+    public function test_chips_contam_o_mesmo_universo_da_lista(): void
+    {
+        [$company, , $admin] = $this->conta();
+        $this->acervo($company, 'MLB-CLASSICO-PAUSADO', [
+            'status' => 'paused', 'listing_type_id' => 'gold_special',
+            'motivos' => [MlAcervoItem::MOTIVO_PAUSADO], 'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+        ]);
+        $this->acervo($company, 'MLB-PREMIUM-PAUSADO', [
+            'status' => 'paused', 'listing_type_id' => 'gold_pro',
+            'motivos' => [MlAcervoItem::MOTIVO_PAUSADO], 'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+        ]);
+
+        $semFiltro = $this->props($admin, $company)['triagem'];
+        $this->assertSame(2, $semFiltro['total'], 'a premissa do caso');
+
+        $comTipo = $this->props($admin, $company, ['tipo' => 'premium']);
+        $this->assertCount(1, $comTipo['anuncios']['data']);
+        $this->assertSame(
+            1,
+            $comTipo['triagem']['total'],
+            'com `tipo=premium` a lista mostra 1 e os chips tinham de dizer 1 — chips contando um universo MAIOR que a lista é o defeito que o plano 180-03 consertou ao dar `$filtros` à `triagem()`',
+        );
+
+        $chips = collect($comTipo['triagem']['chips'])->keyBy('chave');
+        $this->assertSame(1, $chips[MlAcervoItem::MOTIVO_PAUSADO]['count']);
+    }
+
     // ═══ "● Sincronizado X" e a faixa de sucesso ═════════════════════════════
 
     /** @group phase180 */
