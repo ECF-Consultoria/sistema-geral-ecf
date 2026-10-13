@@ -668,6 +668,79 @@ Deprecations 52 → **53** (o `@group phase179` do doc-comment da classe de test
 
 ---
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 179 · plano 04 de 10 CONCLUÍDO — **WAVE 1 FECHADA**
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado**. `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos**.
+
+**179-04** fechou a wave 1 dando nome aos **3 últimos hex** da Visão Geral e à **hachura**, por adição
+pura em `tailwind.config.js` (**21 linhas, 0 removidas**). `colors.pub` 35 → **38**:
+
+| classe | valor | para quê |
+|---|---|---|
+| `bg-pub-hover-0` | `#121212` | hover da linha de produto no painel de estágio |
+| `bg-pub-raised-0` | `#131313` | fundo da **primeira** ação (a recomendada) de "O que fazer agora" |
+| `bg-pub-accent-sunken` | `#1F1B08` | fundo do ícone do evento de **publicação** na Atividade |
+| `bg-pub-hachura` | `repeating-linear-gradient(135deg,#3F3F46 0 3px,#262626 3px 6px)` | segmento **"Sem publicação"** da barra (VG-07) |
+
+**Varredura: 31 hex no protótipo, 28 já tinham nome, 3 ganharam, 0 órfãos.** Isca `#ABCDEF` reportada
+como órfã. **9 mutações, 9 reprovaram** (restauração por sha256 `b0c17a41…`, contagem travada antes,
+linha alterada conferida). `npm run test:js` **3023 / 3022 pass / 1 fail** — o pré-existente
+`estrutura-grade-glide:123`, baseline 3019/1 idêntica. `npm run build` verde, manifest 480 entradas.
+
+⚠️ **CLASSE QUE NÃO GERA CSS NÃO EXISTE PARA A TELA — e o bundle não podia provar isso aqui.** O JIT do
+Tailwind só emite a classe que acha em `resources/js/**/*.jsx`, e **nenhuma tela usa os 4 tokens
+ainda**. As 4 classes novas aparecem **0 vezes** no `app-*.css` construído, enquanto `.bg-pub-hover`
+aparece com o valor certo (o grep não é vazio por construção). A prova veio de rodar o **Tailwind de
+verdade via postcss sobre conteúdo sintético** e ler o CORPO da regra: `rgb(18 18 18 …)`,
+`rgb(19 19 19 …)`, `rgb(31 27 8 …)` e o gradiente inteiro. **Receita para as waves 2/3 e para o
+180/181:** medir token novo pelo MOTOR, não pelo bundle, até existir JSX que o use.
+
+⚠️ **PROVA DE INÉRCIA — o padrão para toda mudança em camada global:** o Tailwind rodado sobre o
+conteúdo **real** do projeto produz CSS **byte-idêntico** com e sem os 4 tokens (`sha256
+1198cc36516d1b17`, 249.601 bytes). **Controle obrigatório:** trocar `pub-surface` (token que as telas
+usam) **muda** o sha — sem esse controle a igualdade seria vazia por construção.
+
+⚠️ **A SONDA DE CSS precisa de 3 normalizações, medidas:** cor sai em `rgb(R G B / var(…))`
+**decimal**, não em hex; alfa pode sair em hex de 8 dígitos; o seletor sai escapado. E **regex em
+arquivo, nunca em heredoc** — o heredoc desta sessão **colapsou `\\` em `\`** e matou a primeira versão
+da sonda, a mesma classe de falha do `node -e`.
+
+⚠️ **O PROTÓTIPO NÃO É VERSIONADO** (`new_layout_publicador/` é `??` e **não** está no `.gitignore`), e
+nenhum gate do projeto lia dele do disco antes deste. Um gate que dependesse só do arquivo **não mediria
+nada na máquina do outro dev**. Padrão adotado: **tabela literal dos 31 hex** (morde sempre) + teste
+separado que, quando o arquivo existe, prova que a tabela não envelheceu (conjunto **e** linha da
+primeira ocorrência). **Quem for escrever gate sobre `new_layout_publicador/` nas Fases 180/181 use o
+mesmo molde.**
+
+⚠️ **AS 5 REFERÊNCIAS DE LINHA DO PLANO ESTAVAM ERRADAS** (a semântica conferiu em todas): `#121212` é
+`:137` (plano dizia `:135`), `#131313` é `:516` (`:512`), `#1F1B08` é `:588` (`:353` — lá há um label
+`#71717A`), e a hachura é **`:479`, ocorrência única** (`:111` é um `<sc-if>`; `:504` é a ação de
+prejuízo, sem gradiente). O plano também diz **"33 entradas"** em `colors.pub` duas vezes — eram **35**.
+**Terceira fase seguida em que quem foi medir no protótipo acertou e a tabela derivada errou** (21 erros
+na 177, 3 na 178, 5 aqui).
+
+⚠️ **A armadilha de range do 179-03 se confirmou, agora nos itens 4 e 6 da `<verification>`.** Rodados
+como escritos (`898d68c2..HEAD`), acusam **2 asserções removidas** e `app`/`resources/js` mexidos — tudo
+de `NovaPublicacaoDoHeaderTest.php` e dos serviços, pelos commits dos planos **179-02B/179-03**, donos
+legítimos. No range deste plano (`180f7748..HEAD`): **0** removidas e os três caminhos vazios.
+**O gate de território desta fase tem de ser por PLANO, não por fase** — segunda confirmação
+independente. Vale uma nota no **179-10**.
+
+⚠️ **Regra 2 aplicada (4 acréscimos aditivos ao gate), o principal:** `PUB_ESPERADOS` só itera sobre si
+mesma, então **token acrescentado ao config e esquecido na tabela ficava sem conferência de valor
+nenhuma** — o plano nomeia isso (T-179-23) sem fechar. Entrou **igualdade de conjunto** em `colors.pub`
+e em `backgroundImage`, provada pela mutação 8. **Consequência:** daqui em diante token novo em
+`colors.pub` **exige** a entrada na tabela — é o contrato que o cabeçalho do gate já declarava.
+
+**PHP não foi tocado** — provado por `git diff --numstat 180f7748..HEAD -- app tests/Unit tests/Feature`
+vazio (controle: o mesmo comando no range da fase devolve 13 arquivos dos irmãos), em vez de pagar os
+19 minutos da suíte. Baseline PHP segue **1981 / 14702 / 0**. Deprecations inalteradas em **53**.
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
+
+---
+
+
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
 ### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
