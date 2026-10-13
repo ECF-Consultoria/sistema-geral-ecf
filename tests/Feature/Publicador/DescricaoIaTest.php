@@ -306,6 +306,23 @@ class DescricaoIaTest extends TestCase
         $this->assertStringNotContainsString('https://', $valor);
     }
 
+    /** 13/10/2026: a IA devolveu descrição com emoji e o Mercado Livre recusa (`item.description.type.invalid`). */
+    public function test_saida_da_ia_sai_sem_emoji(): void
+    {
+        $this->mock(AnaliseAnuncioService::class, function ($m) {
+            $m->shouldReceive('analise')->andReturn(['dados' => [], 'meta' => []]);
+            $m->shouldReceive('descricao')->andReturn(['dados' => "Olá! 👋 Bem-vindo à Polo IA 🛒\n\n✨✨✨\n\n"
+                ."Cadeira firme 💪 e confortável.\n\n✅ Encosto em tela\n✅ Base giratória\n1️⃣ Monte em 10 minutos\n\nAté logo! 🚀", 'meta' => []]);
+        });
+
+        $this->servico()->executar($this->r, 'p-1');
+
+        $this->assertSame(
+            "Olá! Bem-vindo à Polo IA\n\nCadeira firme e confortável.\n\nEncosto em tela\nBase giratória\n1 Monte em 10 minutos\n\nAté logo!",
+            Cache::get(DescricaoIaService::chave($this->r->id))['valor'],
+        );
+    }
+
     public function test_corte_no_limite_mantem_o_delimitador_de_fechamento(): void
     {
         $this->descricaoCliente = str_repeat('b', 20000);

@@ -264,6 +264,8 @@ class AnaliseAnuncioService
         3. Não invente especificação, medida, material, garantia nem brinde que não esteja
            na descrição acima.
         4. Não prometa desconto, frete grátis nem prazo de entrega.
+        5. SEM EMOJIS: o Mercado Livre recusa a descrição que tenha emoji. Não use emojis, ícones
+           nem símbolos decorativos, mesmo que a descrição acima os tenha.
 
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}
@@ -662,6 +664,9 @@ class AnaliseAnuncioService
         - Parágrafo 3 (Oferta): chamada para ação clara e direta.
         - Lista de 3 a 5 especificações técnicas mais importantes, limpa e direta.
         - Despedida cordial.
+
+        SEM EMOJIS: o Mercado Livre recusa a descrição que tenha emoji. Não use emojis, ícones nem
+        símbolos decorativos em parte alguma do texto — nem na saudação, nem na lista.
 
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}

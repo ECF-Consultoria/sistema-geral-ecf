@@ -299,6 +299,17 @@ class SugestaoKitIaTest extends TestCase
         $this->assertStringStartsWith($frase, $meio);
     }
 
+    /** 13/10/2026: o ML recusa descrição com emoji; o modelo os põe ou os copia da descrição do base. */
+    public function test_descricao_do_kit_sai_sem_emoji(): void
+    {
+        $frase = 'Este kit contém 2 unidades de Cadeira Escritório.';
+
+        $this->assertSame(
+            "{$frase}\n\nLeve 2 e economize!\nEncosto em tela",
+            SugestaoKitIaService::ajustarDescricaoDoKit("🎁 {$frase} 🎁\n\nLeve 2 e economize! 🚀\n✅ Encosto em tela", 'Cadeira Escritório', 2),
+        );
+    }
+
     public function test_sem_categoria_no_base_o_limite_cai_no_padrao_de_60(): void
     {
         $r = $this->rascunhoDoBase(categoria: null);

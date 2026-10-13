@@ -2,6 +2,7 @@
 
 namespace App\Support\Publicador\Payload;
 
+use App\Support\Publicador\Emojis;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\SchemaClassificado;
@@ -30,13 +31,18 @@ final class MontadorDePlano
         return new PayloadPlan(self::UP, PayloadBuilderUserProducts::montar($r, $schema, $fotosMl), self::descricao($r->descricao));
     }
 
-    /** Texto puro (RN-72): sem HTML, quebras normalizadas. Vai depois do item criado, em cada item (RN-73). */
-    private static function descricao(?string $texto): ?string
+    /**
+     * Texto puro (RN-72): sem HTML, sem emoji, quebras normalizadas. Vai depois do item criado, em cada item (RN-73)
+     * — por isso o emoji sai AQUI (13/10/2026): o ML recusa a descrição que o tem (`item.description.type.invalid`)
+     * e o anúncio já criado ficaria sem ela. Pega o digitado, o colado e o que a IA gravou antes da limpeza dela.
+     * Pública: é a MESMA que o `PublicacaoService` usa na hora de enviar.
+     */
+    public static function descricao(?string $texto): ?string
     {
         if ($texto === null) {
             return null;
         }
-        $limpo = trim(preg_replace("/\r\n?/", "\n", strip_tags($texto)));
+        $limpo = trim(Emojis::tirar((string) preg_replace("/\r\n?/", "\n", strip_tags($texto))));
 
         return $limpo === '' ? null : $limpo;
     }

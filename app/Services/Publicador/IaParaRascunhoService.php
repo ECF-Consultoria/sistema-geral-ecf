@@ -6,6 +6,7 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Support\Publicador\Emojis;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
@@ -651,11 +652,11 @@ class IaParaRascunhoService
             || isset($valor['value_number']));
     }
 
-    /** A IA escreve em HTML simples; o rascunho guarda texto puro. */
+    /** A IA escreve em HTML simples e com emoji; o rascunho guarda texto puro, e emoji o ML recusa (13/10/2026). */
     private function limparDescricao(?string $html): string
     {
         $texto = preg_replace('~</(p|li|h[1-6]|div)>|<br\s*/?>~i', "\n", (string) $html);
-        $texto = html_entity_decode(strip_tags((string) $texto), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $texto = Emojis::tirar(html_entity_decode(strip_tags((string) $texto), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 
         return trim((string) preg_replace("/\n{3,}/", "\n\n", str_replace("\r", '', $texto)));
     }
