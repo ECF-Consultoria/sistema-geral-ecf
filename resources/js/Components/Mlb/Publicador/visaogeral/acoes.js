@@ -555,8 +555,21 @@ export function METADO_ACERVO(imagens, packs) {
  * de `identidade.js`, a ÚNICA casa onde `oklch(` pode aparecer (IDENT-08). A 5ª
  * célula é amarela no protótipo e por isso sai como classe de token, não como
  * tom calculado.
+ *
+ * ⚠️ Os números NÃO são arbitrários: cada um foi escolhido para que o
+ * `hueDoProduto()` de `identidade.js` caia no hue que o protótipo escreveu à
+ * mão — 250, 70, 330, 160 e 30 (`:270-:271`). Sementes CONSECUTIVAS dão hues
+ * consecutivos (o hash é `soma * 31 + código`), e seis tons vizinhos viram um
+ * quadrado de UMA cor na tela.
  */
-export const SEMENTES_DO_MOSAICO = ['acervo-1', 'acervo-2', 'acervo-3', 'acervo-4', null, 'acervo-6'];
+export const SEMENTES_DO_MOSAICO = [
+    'acervo-63',   // hue 250
+    'acervo-399',  // hue  70
+    'acervo-227',  // hue 330
+    'acervo-36',   // hue 160
+    null,          // a quinta célula é `bg-pub-accent` (`:271`)
+    'acervo-245',  // hue  30
+];
 
 /** A posição (base 1) da célula amarela do mosaico (`:271`). */
 export const CELULA_AMARELA = 5;
