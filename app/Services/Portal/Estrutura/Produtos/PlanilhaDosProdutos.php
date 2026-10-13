@@ -48,6 +48,17 @@ class PlanilhaDosProdutos
      */
     public function linhas(Company $empresa): array
     {
+        return array_merge([], ...array_column($this->porProduto($empresa), 'linhas'));
+    }
+
+    /**
+     * As mesmas linhas, agrupadas pelo produto de cada uma — o modelo completo ({@see ModeloCompleto},
+     * 13/10/2026) precisa do produto para pôr cada um na aba da categoria dele e ao lado da ficha.
+     *
+     * @return list<array{produto: EstruturaProduto, linhas: list<array<string, string>>}>
+     */
+    public function porProduto(Company $empresa): array
+    {
         $produtos = EstruturaProduto::query()
             ->where('company_id', $empresa->id)
             ->with([
@@ -59,12 +70,13 @@ class PlanilhaDosProdutos
             ->orderBy('id')
             ->get();
 
-        $linhas = [];
+        $saida = [];
         foreach ($produtos as $produto) {
             $variacoes = $produto->variacoes;
             if ($variacoes->isEmpty()) {
                 continue;
             }
+            $linhas = [];
 
             $grupo = trim((string) $produto->codigo) !== '' ? (string) $produto->codigo : (string) $variacoes->first()->codigo;
             $ambientes = $produto->ambientes->pluck('nome')->sort(SORT_NATURAL | SORT_FLAG_CASE)->implode(' / ');
@@ -84,9 +96,10 @@ class PlanilhaDosProdutos
                     ...self::daVariacao($variacao),
                 ];
             }
+            $saida[] = ['produto' => $produto, 'linhas' => $linhas];
         }
 
-        return $linhas;
+        return $saida;
     }
 
     /** @return array{n_volumes: string, volumes_texto: string, peso_total: string, custo: string, estoque: string} */

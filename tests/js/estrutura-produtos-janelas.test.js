@@ -57,8 +57,11 @@ test('JanelaImportacao: cores dos grupos, erros abertos e sem caixa-alta', () =>
     assert.ok(! importacao.includes('dangerouslySetInnerHTML'));
 });
 
-test('Página: modelo é link de download (não axios) e importar é botão, sem menu Planilha', () => {
-    assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download/);
+// 13/10/2026: o modelo passou a ser sempre o completo (produto + ficha técnica), e a ficha depende da
+// categoria: "Baixar modelo" deixou de ser um link direto e abre a escolha da categoria.
+test('Página: "Baixar modelo" abre a escolha da categoria e importar é botão, sem menu Planilha', () => {
+    assert.match(barra, /<button type="button" onClick=\{onBaixarModelo\} data-acao="baixar-modelo"/);
+    assert.ok(! barra.includes("route('portal.auth.estrutura.produtos.modelo')"));
     assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.modelo'/.test(pagina));
     assert.ok(barra.includes('Baixar modelo') && ! barra.includes('Baixar modelo (.xlsx)'));
     assert.ok(barra.includes('Importar planilha'));

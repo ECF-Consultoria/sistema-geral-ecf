@@ -11,6 +11,7 @@ use App\Services\Portal\PortalClienteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\EntraNoPortal;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -35,6 +36,7 @@ use Tests\TestCase;
 class PortalClienteTest extends TestCase
 {
     use EntraNoPortal;
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private function empresa(string $nome = 'Cliente Portal'): Company

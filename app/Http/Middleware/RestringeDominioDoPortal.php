@@ -125,6 +125,9 @@ class RestringeDominioDoPortal
         // do Str::is atravessa `/` e abriria rota que não existe aqui.
         'portal/estrutura/produtos',
         'portal/estrutura/produtos/modelo',
+        // 13/10/2026 — o modelo completo (produto + ficha técnica por categoria).
+        'portal/estrutura/produtos/modelo-completo',
+        'portal/estrutura/produtos/exportar-completo',
         // 167-19 (D-27): a ficha de produto novo. O id numérico (`/{id}`) NÃO entra aqui: vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/novo',
         'portal/estrutura/produtos/linhas',

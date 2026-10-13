@@ -101,3 +101,29 @@ ME2 é zero; leitura falhou, a tabela pelas dimensões do anúncio, avisada.
   mais cotações do que a vida real; teste de lote/cache deve responder a própria tabela.
 - O `ClienteMlPublicador` refaz 5xx com `sleep` (1, 2, 4 s): para simular "leitura falhou" sem deixar o
   teste lento, responda 4xx.
+
+## 8. ME1 nas contas dos clientes: quem tem, e o que acontece com quem não tem (12/10/2026)
+
+Medido em 63 contas (só GET, sem renovar token; `scratchpad/e2e/me1_leitura.php`), 1.160 anúncios — os 20 mais novos
+de cada conta. Confirma a hipótese do usuário sobre a conta de teste.
+
+- **ME1 é liberado por conta:** `GET /users/{id}/shipping_preferences` traz `me1` em `modes` e um bloco
+  `logistics[mode=me1]`. **16 de 63 têm** — todas com `custom_calculator: "Axado"` (a calculadora de frete do ML, onde
+  o vendedor cadastra as transportadoras e tabelas dele); nas contas sem ME1, `custom_calculator` é `false`. A #459 não
+  tem: `modes = custom, not_specified, me2`.
+- **Com ME1, o anúncio grande É ME1:** 170 dos 1.160 anúncios, em 13 das 16 contas (em seis delas, quase todos os
+  novos). Vários trazem a tag `lost_me2_by_dimensions` — é o próprio ML tirando o anúncio do ME2 pelo tamanho, a
+  mesma conta que o Portal faz.
+- **Sem ME1, o anúncio que não cabe cai em "a combinar"** (`not_specified`): 13 anúncios em 8 contas, 6 delas sem ME1.
+  É o que aconteceu na #459 (aviso 4057, §25 do publicador-ml).
+- **O frete do ME1 não é tabela do ML: é a do vendedor, por destino.** Para um anúncio ME1 que existe,
+  `GET /items/{id}/shipping_options?zip_code=` devolve o valor (para a Av. Paulista: R$ 77,00, 139,21, 189,90, 299,90,
+  434,17 em cinco contas). Para um pacote que ainda não é anúncio, `GET /users/{id}/shipping_options?zip_code&dimensions`
+  responde para pacote pequeno (R$ 31,10) e dá 404 "sla coverage not found" para o pacote do Combo 2 (53×60×160, 16 kg),
+  com ou sem `mode=me1`. Não achamos como cotar ME1 de pacote hipotético.
+- **`shipping_options/free` devolve custo até para pacote que não cabe no ME2** (R$ 147,85, faturando 84,8 kg de
+  cubado, para o mesmo pacote, em todas as contas). É conta teórica: não é frete de ME1 e não deve ser mostrado como tal.
+- **Despacho padrão do ME2 nas 63:** Agências (`xd_drop_off`) 31, Coleta (`cross_docking`) 29, Correios (`drop_off`) 2.
+  A #459 é uma das duas em Correios — os limites mais estreitos (100 / 200 cm). Nas contas dos clientes vale 200 / 300.
+- **Polos não foi conferido:** nenhum dos 44 tokens de Polos estava válido na hora (ver publicador-ml §32, janela das
+  08h às 14h). As 63 lidas são da carteira de Performance, muitas de móveis.

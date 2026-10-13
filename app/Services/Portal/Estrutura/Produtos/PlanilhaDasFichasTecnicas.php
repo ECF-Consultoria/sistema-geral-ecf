@@ -288,6 +288,28 @@ class PlanilhaDasFichasTecnicas
         }
     }
 
+    /**
+     * As colunas da ficha de uma categoria numa aba QUALQUER, a partir da coluna `$primeira` (1 = A):
+     * cabeçalho, largura e a validação de cada campo até a linha `$fim`. O modelo completo
+     * ({@see ModeloCompleto}, 13/10/2026) põe a ficha ao lado dos dados do produto com isto; a aba
+     * desta planilha segue montada por `preencherAba`, com as duas colunas fixas dela.
+     *
+     * @param  list<array<string, mixed>>  $campos  campos da definição da categoria, na ordem da tela
+     */
+    public function colunasDaFicha(Worksheet $aba, array $campos, int $primeira, int $fim, Worksheet $listas, int &$colunaDaLista): void
+    {
+        foreach (array_values($campos) as $i => $campo) {
+            $coluna = Coordinate::stringFromColumnIndex($primeira + $i);
+            $titulo = self::cabecalho($campo);
+            self::texto($aba, $coluna.'1', $titulo);
+            $aba->getColumnDimension($coluna)->setWidth(max(14, min(40, mb_strlen($titulo) + 4)));
+            $validacao = $this->validacaoDoCampo($aba, $campo, $listas, $colunaDaLista);
+            if ($validacao) {
+                $aba->setDataValidation("{$coluna}2:{$coluna}{$fim}", $validacao);
+            }
+        }
+    }
+
     /** A validação da coluna: lista (as opções na aba oculta), Sim/Não, ou só a dica do que vai ali. */
     private function validacaoDoCampo(Worksheet $aba, array $campo, Worksheet $listas, int &$colunaDaLista): ?DataValidation
     {

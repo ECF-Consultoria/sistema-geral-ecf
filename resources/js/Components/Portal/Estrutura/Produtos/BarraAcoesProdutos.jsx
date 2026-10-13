@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 const ACAO = 'inline-flex h-12 items-center gap-3 rounded-[10px] px-5 text-[15px] transition-colors disabled:pointer-events-none disabled:opacity-40';
 const SECUNDARIA = 'border border-white/[0.10] bg-white/[0.03] font-medium text-white/85 hover:bg-white/[0.07] hover:text-white';
 
-export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdicionar, onListas, onImportar, onFotosEmLote, onSugerir, sugerindo = false, podeSugerir = false }) {
+export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdicionar, onListas, onImportar, onBaixarModelo, onFotosEmLote, onSugerir, sugerindo = false, podeSugerir = false }) {
     return (
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center" data-barra-acoes>
             <div className="flex flex-wrap items-center gap-4">
@@ -29,13 +29,14 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                     title="Para cadastrar muitos produtos de uma vez, preencha o modelo e importe aqui.">
                     <Upload size={18} /> Importar planilha
                 </button>
-                <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-modelo" className={cn(ACAO, SECUNDARIA)}
-                    title="Planilha-modelo em .xlsx">
+                {/* 13/10/2026: o modelo é sempre o completo (produto + ficha técnica), e a ficha depende da categoria — por isso abre a escolha. */}
+                <button type="button" onClick={onBaixarModelo} data-acao="baixar-modelo" className={cn(ACAO, SECUNDARIA)}
+                    title="Escolha a categoria e baixe a planilha com os dados do produto e a ficha técnica dela.">
                     <Download size={18} /> Baixar modelo
-                </a>
+                </button>
                 {temProdutos && (
-                    <a href={route('portal.auth.estrutura.produtos.exportar')} download data-acao="baixar-meus-produtos" className={cn(ACAO, SECUNDARIA)}
-                        title="Seus produtos no modelo .xlsx, para editar e enviar de novo pelo Importar planilha.">
+                    <a href={route('portal.auth.estrutura.produtos.exportar_completo')} download data-acao="baixar-meus-produtos" className={cn(ACAO, SECUNDARIA)}
+                        title="Seus produtos na planilha, com as variações, as medidas e a ficha técnica, para editar e enviar de novo pelo Importar planilha.">
                         <FileSpreadsheet size={18} /> Baixar meus produtos na planilha
                     </a>
                 )}

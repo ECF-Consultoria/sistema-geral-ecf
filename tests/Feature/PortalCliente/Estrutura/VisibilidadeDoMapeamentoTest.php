@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\CatalogoSinteticoDeSugestoes;
 use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ class VisibilidadeDoMapeamentoTest extends TestCase
 {
     use CatalogoSinteticoDeSugestoes;
     use GabaritoDaPlanilhaEstrutural;
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private const TODOS = ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'];

@@ -8,6 +8,7 @@ use App\Services\Portal\Estrutura\Geracao\ChaveDeComposicao;
 use App\Services\Portal\Estrutura\Geracao\DecisoesDasSugestoes;
 use App\Services\Portal\Estrutura\Geracao\ListaDeSugestoes;
 use App\Services\Portal\Estrutura\Geracao\MontagemManualDeOferta;
+use App\Services\Portal\Estrutura\Geracao\OfertasCriadas;
 use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
@@ -46,7 +47,9 @@ use Inertia\Inertia;
  */
 class PortalEstruturaSugestoesController extends Controller
 {
-    private const ABAS = ['sugestoes', 'sem_tipo', 'descartadas'];
+    /** `criadas` (13/10/2026) não é uma lista de sugestões: são as ofertas compostas que já existem ({@see OfertasCriadas}). */
+    private const ABA_CRIADAS = 'criadas';
+    private const ABAS = ['sugestoes', 'sem_tipo', 'descartadas', self::ABA_CRIADAS];
     private const FASES = ['combo', 'kit', 'combit'];
 
     public function __construct(
@@ -54,6 +57,7 @@ class PortalEstruturaSugestoesController extends Controller
         private ListaDeSugestoes $lista,
         private DecisoesDasSugestoes $decisoes,
         private MontagemManualDeOferta $montagem,
+        private OfertasCriadas $criadas,
     ) {
     }
 
@@ -70,10 +74,20 @@ class PortalEstruturaSugestoesController extends Controller
     {
         $empresa = PortalContexto::empresa();
         $filtros = $this->filtros($request);
+        $naAbaCriadas = $filtros['aba'] === self::ABA_CRIADAS;
+
+        // Na aba Criadas o painel (contagens, famílias, tipos) continua o das sugestões; só a lista é outra.
+        $sugestoes = $this->lista->listar($empresa, $naAbaCriadas ? ['aba' => 'sugestoes'] + $filtros : $filtros, (int) $request->query('pagina', 1));
+        $sugestoes['contagens'][self::ABA_CRIADAS] = $this->criadas->contar($empresa);
+        if ($naAbaCriadas) {
+            $sugestoes['aba'] = self::ABA_CRIADAS;
+        }
 
         return Inertia::render('Portal/EstruturaSugestoes', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.sugestoes', PortalContexto::ator()),
-            'sugestoes'    => $this->lista->listar($empresa, $filtros, (int) $request->query('pagina', 1)),
+            'sugestoes'    => $sugestoes,
+            // Os combos, kits e combits que já existem; só quando a aba está aberta.
+            'criadas'      => $naAbaCriadas ? $this->criadas->listar($empresa) : null,
             'filtros'      => $filtros,
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => [

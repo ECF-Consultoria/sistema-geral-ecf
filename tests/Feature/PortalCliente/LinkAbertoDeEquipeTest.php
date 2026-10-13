@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ use Tests\TestCase;
  */
 class LinkAbertoDeEquipeTest extends TestCase
 {
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private function admin(): User

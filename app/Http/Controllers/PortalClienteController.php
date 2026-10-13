@@ -79,6 +79,12 @@ class PortalClienteController extends Controller
         $empresa = PortalContexto::empresa();
         $ator = PortalContexto::ator();
 
+        // Início escondido (13/10/2026): o login e a porta da equipe mandam para cá, então quem
+        // chega segue para o primeiro módulo que está no menu, em vez de cair numa tela sem item.
+        if (! ModulosPortal::moduloVisivel($empresa, $ator, ModulosPortal::INICIO)) {
+            return redirect()->route(ModulosPortal::entrada($empresa, $ator));
+        }
+
         $ppas = $this->ppaService->ppasDaEmpresa($empresa);
 
         return Inertia::render('Portal/Inicio', [

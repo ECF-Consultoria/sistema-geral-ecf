@@ -11,6 +11,7 @@ use App\Support\Portal\PortalContexto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -29,6 +30,7 @@ use Tests\TestCase;
  */
 class EquipeNoPortalTest extends TestCase
 {
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private function admin(): User

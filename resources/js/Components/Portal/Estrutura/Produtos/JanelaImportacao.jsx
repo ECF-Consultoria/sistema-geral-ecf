@@ -7,6 +7,7 @@ import Janela from '@/Components/Portal/Estrutura/Janela';
 import CategoriasAConfirmar from '@/Components/Portal/Estrutura/Produtos/CategoriasAConfirmar';
 import ImportacaoDaFichaTecnica from '@/Components/Portal/Estrutura/Produtos/ImportacaoDaFichaTecnica';
 import { buscarSugestoesEmLotes, confirmadasParaEnvio, nomesParaSugerir } from '@/lib/categoriasDaImportacao';
+import { pendenciasDaFicha, resumoDaFicha } from '@/lib/modeloCompleto';
 import { cn } from '@/lib/utils';
 
 // ─── Importar planilha de Produtos (D-13/D-14) ──────────────────────────────
@@ -31,21 +32,51 @@ const GRUPOS = [
 
 const ORIENTACAO_ERRO = 'Confira se é o modelo .xlsx de Produtos (até 2 MB) e envie de novo.';
 
+/** "linha 7" ou, no modelo completo (uma aba por categoria), "Cadeiras, linha 7". */
+const ondeEsta = (item) => (item.aba ? `${item.aba}, linha ${item.linha}` : `linha ${item.linha}`);
+
 function ItemPrevia({ grupo, item }) {
     if (grupo === 'erros') {
         return (
             <li className="text-[12px]">
-                <span className="text-white/40">linha {item.linha}:</span> <span className="text-red-300">{item.motivo ?? item.mensagem}</span>
+                <span className="text-white/40">{ondeEsta(item)}:</span> <span className="text-red-300">{item.motivo ?? item.mensagem}</span>
             </li>
         );
     }
 
     return (
         <li className="flex flex-wrap gap-x-2 text-[12px] text-white/70">
-            <span className="text-white/35">linha {item.linha}</span>
+            <span className="text-white/35">{ondeEsta(item)}</span>
             <span className="font-mono">{item.codigo}</span>
             {item.nome && <span>{item.nome}</span>}
         </li>
+    );
+}
+
+/**
+ * A ficha técnica do modelo completo, na prévia: quantos campos entram e o que pede atenção em cada
+ * produto (campo recusado não entra; obrigatório em branco fica para completar depois).
+ */
+function FichaDaPrevia({ ficha }) {
+    const pendencias = pendenciasDaFicha(ficha);
+
+    return (
+        <div className="border-t border-white/[0.08] pt-2" data-previa-ficha>
+            <p className="text-[13px] text-white/80">{resumoDaFicha(ficha)}</p>
+            {pendencias.length > 0 && (
+                <ul className="mt-1 max-h-44 space-y-0.5 overflow-y-auto">
+                    {pendencias.slice(0, 100).map((p, i) => (
+                        <li key={i} className="text-[12px]" data-pendencia-ficha={p.tom}>
+                            <span className="font-mono text-white/70">{p.grupo}</span>
+                            {p.onde && <span className="text-white/35"> ({p.onde})</span>}
+                            <span className="text-white/35">: </span>
+                            <span className={p.tom === 'erro' ? 'text-red-300' : 'text-amber-300'}>{p.texto}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {(ficha.avisos ?? []).map((a, i) => <p key={i} className="text-[12px] text-amber-300">{a}</p>)}
+        </div>
     );
 }
 
@@ -91,11 +122,12 @@ function Previa({ previa }) {
             {! previa.erro_geral && (previa.avisos ?? []).map((a, i) => (
                 <p key={i} className="text-[12px] text-amber-300" data-aviso-previa>{a}</p>
             ))}
+            {! previa.erro_geral && previa.ficha && <FichaDaPrevia ficha={previa.ficha} />}
         </div>
     );
 }
 
-export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada }) {
+export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada, onBaixarModelo }) {
     // Duas planilhas: a dos produtos e, com produtos, a da ficha técnica (o 2º arquivo).
     const [aba, setAba] = useState('produtos');
     const [arquivo, setArquivo] = useState(null);
@@ -238,11 +270,13 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
                                 onChange={(e) => escolher(e.target.files?.[0])} />
                         </div>
                         <div className="flex flex-wrap gap-x-5 gap-y-1">
-                            <a href={route('portal.auth.estrutura.produtos.modelo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline">
+                            {/* O modelo é sempre o completo (13/10/2026): a escolha da categoria abre numa janela própria, maior. */}
+                            <button type="button" onClick={onBaixarModelo} data-acao="abrir-modelo-completo"
+                                className="inline-block text-[12px] text-ecf-yellow hover:underline">
                                 Baixar o modelo
-                            </a>
+                            </button>
                             {temProdutos && (
-                                <a href={route('portal.auth.estrutura.produtos.exportar')} download className="inline-block text-[12px] text-ecf-yellow hover:underline" data-acao="baixar-meus-produtos-janela">
+                                <a href={route('portal.auth.estrutura.produtos.exportar_completo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline" data-acao="baixar-meus-produtos-janela">
                                     Baixar meus produtos na planilha
                                 </a>
                             )}

@@ -8,6 +8,7 @@ import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
+import JanelaBaixarModelo from '@/Components/Portal/Estrutura/Produtos/ModeloCompletoEscolha';
 import JanelaFotosEmLote from '@/Components/Portal/Estrutura/Produtos/JanelaFotosEmLote';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
@@ -64,6 +65,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
+    const [baixandoModelo, setBaixandoModelo] = useState(false);   // janela "Baixar modelo": a escolha da categoria
     const [enviandoFotos, setEnviandoFotos] = useState(false);   // janela das fotos em lote pelo nome do arquivo
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
     const [voltouDe, setVoltouDe] = useState(null);        // D-32: produto de onde a pessoa acabou de voltar
@@ -295,7 +297,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
                 <div className="mt-8">
                     <BarraAcoesProdutos temProdutos={temProdutos} busca={busca} onBusca={setBusca}
-                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)} onFotosEmLote={() => setEnviandoFotos(true)}
+                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)} onBaixarModelo={() => setBaixandoModelo(true)} onFotosEmLote={() => setEnviandoFotos(true)}
                         onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} />
                 </div>
 
@@ -333,9 +335,9 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                             <Botao variante="primario" onClick={() => abrirFicha(null)} data-acao="primeiro-produto">
                                 <Plus size={14} /> Cadastrar o primeiro produto
                             </Botao>
-                            <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-planilha-modelo" className={LINK_SECUNDARIO}>
+                            <button type="button" onClick={() => setBaixandoModelo(true)} data-acao="baixar-planilha-modelo" className={LINK_SECUNDARIO}>
                                 Baixar planilha-modelo
-                            </a>
+                            </button>
                             <Botao variante="secundario" onClick={() => setImportando(true)} data-acao="importar-planilha-vazio">Importar planilha</Botao>
                         </div>
                     </section>
@@ -364,7 +366,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             </div>
 
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
-            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} onFichaGravada={recarregarProdutos} />
+            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} onFichaGravada={recarregarProdutos} onBaixarModelo={() => { setImportando(false); setBaixandoModelo(true); }} />
+            <JanelaBaixarModelo aberta={baixandoModelo} onFechar={() => setBaixandoModelo(false)} />
             <JanelaFotosEmLote aberta={enviandoFotos} onFechar={() => setEnviandoFotos(false)} onConcluir={recarregarProdutos} />
             <JanelaExcluirProdutos aberta={!! excluindo} ids={excluindo ?? []} onFechar={() => setExcluindo(null)} onExcluidos={aoExcluidos} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}

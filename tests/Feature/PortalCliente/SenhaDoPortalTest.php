@@ -9,6 +9,7 @@ use App\Services\Portal\PortalLoginService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -27,6 +28,7 @@ use Tests\TestCase;
  */
 class SenhaDoPortalTest extends TestCase
 {
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private function empresa(): Company

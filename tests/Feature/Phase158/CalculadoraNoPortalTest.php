@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Tests\Concerns\EntraNoPortal;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ use Tests\TestCase;
 class CalculadoraNoPortalTest extends TestCase
 {
     use EntraNoPortal;
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private static int $seq = 0;
@@ -111,12 +113,14 @@ class CalculadoraNoPortalTest extends TestCase
         $icone = collect($this->props($this->empresa())['modulos'])
             ->firstWhere('chave', ModulosPortal::CALCULADORA)['icone'];
 
-        $layout = file_get_contents(resource_path('js/Layouts/PortalClienteLayout.jsx'));
+        // O mapa saiu do layout em 02/10/2026, junto com o menu em trilho: mora em `TrilhoDock`, e o
+        // layout o importa de lá. Este teste ficou apontando para o arquivo antigo até 13/10.
+        $mapa = file_get_contents(resource_path('js/Components/Portal/TrilhoDock.jsx'));
 
         $this->assertMatchesRegularExpression(
             "/'".preg_quote($icone, '/')."':\s*\w+/",
-            $layout,
-            "o ícone \"{$icone}\" não está no mapa ICONES de PortalClienteLayout.jsx"
+            $mapa,
+            "o ícone \"{$icone}\" não está no mapa ICONES de TrilhoDock.jsx"
         );
     }
 

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\EntraNoPortal;
+use Tests\Concerns\PortalComTodosOsModulos;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
 class DominioDoPortalTest extends TestCase
 {
     use EntraNoPortal;
+    use PortalComTodosOsModulos;
     use RefreshDatabase;
 
     private const DOMINIO = 'cliente.ecfconsultoria.com.br';

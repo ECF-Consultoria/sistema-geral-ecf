@@ -13,7 +13,11 @@ const ABAS = [
     { chave: 'sugestoes', rotulo: 'Pendentes' },
     { chave: 'sem_tipo', rotulo: 'Sem tipo' },
     { chave: 'descartadas', rotulo: 'Descartadas' },
+    // 13/10/2026 — o que já foi aceito ou montado: os combos, kits e combits que existem.
+    { chave: 'criadas', rotulo: 'Criadas' },
 ];
+/** Abas que não têm seleção em lote (nada para marcar). */
+const SEM_SELECAO = ['sem_tipo', 'criadas'];
 const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40';
 const SECUNDARIO = 'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-medium text-white/85 hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-40';
 const LINK_TEXTO = 'min-h-[44px] text-[13px] text-white/75 underline-offset-2 hover:text-white hover:underline lg:min-h-0';
@@ -39,7 +43,7 @@ export default function AbasDasSugestoes({
     return (
         <div>
             <div className="flex items-end justify-between gap-4 border-b border-white/[0.08]">
-                <nav aria-label="Seções" className="grid min-w-0 flex-1 grid-cols-3 lg:flex lg:flex-none lg:gap-6">
+                <nav aria-label="Seções" className="grid min-w-0 flex-1 grid-cols-4 lg:flex lg:flex-none lg:gap-6">
                     {ABAS.map(({ chave, rotulo }) => {
                         const ativa = aba === chave;
 
@@ -57,7 +61,7 @@ export default function AbasDasSugestoes({
                     })}
                 </nav>
 
-                {aba !== 'sem_tipo' && (
+                {! SEM_SELECAO.includes(aba) && (
                     <div data-selecao-topo className="hidden items-center gap-3 pb-1.5 lg:flex">
                         {aba === 'sugestoes' && (
                             <>
@@ -94,7 +98,7 @@ export default function AbasDasSugestoes({
                 )}
             </div>
 
-            {aba !== 'sem_tipo' && (
+            {! SEM_SELECAO.includes(aba) && (
                 <div data-selecao-celular className="flex flex-wrap items-center gap-x-4 lg:hidden">
                     {caixaPagina}
                     {marcaFiltro && marcarFiltro}
