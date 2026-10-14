@@ -2,6 +2,8 @@
 
 namespace App\Services\Portal\Estrutura\Produtos;
 
+use App\Models\BlingConexao;
+use App\Models\BlingVinculo;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
@@ -73,6 +75,16 @@ use Illuminate\Validation\ValidationException;
  * ### Categoria (D-06)
  * Só folha do ML vira categoria confirmada; texto colado fica "a confirmar" e
  * nunca vira id sozinho; ML fora do ar grava o id como "não validada".
+ *
+ * ### Dono do dado na variação vinculada ao Bling (184-10, CONTEXT §4.1)
+ * `estoque` e `codigo` (Ref) são do Bling, nunca da linha, quando a variação está
+ * vinculada: `gravarLinha` tira os dois de `$presentes` — e só os dois, porque é
+ * a mesma trava que a grade, a ficha e a importação de planilha compartilham (as
+ * três passam por aqui). O Bling escreve estoque pelo `estoque` (SKU, código de
+ * produto no Bling) casa o produto com o anúncio: trocá-lo no Portal quebraria o
+ * casamento em silêncio. `gravarEstoqueDoBling()` (plano 09, BLING-25) é o ÚNICO
+ * caminho que o Bling usa para escrever estoque e NÃO passa por `gravarLinha` —
+ * por isso ele é imune a esta trava, de propósito: ele É o Bling escrevendo.
  *
  * Auditoria (D-02): UM `produtos_gravados` por lote, com origem cliente/interno.
  */
@@ -469,6 +481,7 @@ class ProdutoCadastroService
             'definidos'         => [],   // produto_id => campos pedidos pela 1ª linha
             'categorias'        => [],   // id MLB => detalhe|null (memo do lote)
             'listas'            => [ListasDaEmpresaService::FAMILIA => null, ListasDaEmpresaService::AMBIENTE => null], // chave => item, carregado 1x por lote
+            'bling'             => [],   // variacao_id => ['estoque_travado'=>bool,'sku_travado'=>bool] (184-10)
         ];
 
         foreach ($produtos as $p) {
@@ -481,6 +494,20 @@ class ProdutoCadastroService
         foreach ($variacoes as $v) {
             $estado['variacoes'][$v->id] = $v;
             $estado['variacoes_codigo'][self::chaveCodigo($v->codigo)] = $v->id;
+        }
+
+        // ─── Travas do Bling (184-10, CONTEXT §4.1) — UMA consulta por lote, nunca por linha ───
+        // Empresa sem nenhuma conexão com o Bling nem chega a consultar `bling_vinculos`: o
+        // mapa fica vazio e `gravarLinha` não encontra nada para travar.
+        $conexaoBling = BlingConexao::query()->where('company_id', $empresa->id)->first();
+        if ($conexaoBling) {
+            foreach (BlingVinculo::query()
+                ->where('company_id', $empresa->id)
+                ->where('situacao', BlingVinculo::SITUACAO_VINCULADO)
+                ->whereNotNull('variacao_id')
+                ->get(['variacao_id', 'situacao']) as $vinculo) {
+                $estado['bling'][(int) $vinculo->variacao_id] = BlingVinculo::travas($conexaoBling, $vinculo);
+            }
         }
 
         return $estado;
@@ -600,6 +627,37 @@ class ProdutoCadastroService
         $avisos = [];
         $criadas = ['familias' => [], 'ambientes' => []];
         $categorias = $estado['categorias'];
+
+        // ─── Trava do dono do dado (184-10, CONTEXT §4.1): variação vinculada ao Bling ───
+        // 'codigo' não está no vocabulário de $presentes do NormalizadorDeLinha (é sempre
+        // obrigatório na linha); aqui ele entra como "sempre presente" para a variação
+        // vinculada poder recusar a troca pelo MESMO mecanismo que já tira 'estoque' de
+        // $presentes — sem um `if` solto dentro da gravação, e cobrindo grade, ficha e
+        // planilha de uma vez, porque as três passam por este método.
+        // `gravarEstoqueDoBling` (plano 09, BLING-25) é o ÚNICO caminho que o Bling usa para
+        // escrever estoque e NÃO passa por aqui — por isso ele é imune a esta trava.
+        // Variação NOVA nunca está no mapa (`$variacao === null` aqui): correto, uma
+        // variação recém-criada na ficha nunca foi vinculada no Bling.
+        if (! in_array('codigo', $presentes, true)) {
+            $presentes[] = 'codigo';
+        }
+        $travasBling = $variacao !== null ? ($estado['bling'][$variacao->id] ?? null) : null;
+        if ($travasBling !== null) {
+            $ignorados = [];
+            if ($travasBling['estoque_travado'] && in_array('estoque', $presentes, true)) {
+                $presentes = array_values(array_diff($presentes, ['estoque']));
+                $ignorados[] = 'o estoque';
+            }
+            if ($travasBling['sku_travado']) {
+                $presentes = array_values(array_diff($presentes, ['codigo']));
+                $ignorados[] = 'a Ref';
+            }
+            if ($ignorados !== []) {
+                $verboPlural = count($ignorados) > 1;
+                $avisos[] = "{$codigo}: ".implode(' e ', $ignorados).($verboPlural ? ' não mudaram' : ' não mudou')
+                    .', porque '.($verboPlural ? 'vêm' : 'vem').' do Bling.';
+            }
+        }
 
         // ─── Campos do produto: só a 1ª linha de cada produto define ───
         $dadosProduto = [];
@@ -722,10 +780,14 @@ class ProdutoCadastroService
             }
             $mudouVariacao = true;
         } else {
-            $novo = ['codigo' => $codigo];
-            foreach (['eixo', 'valor', 'ordem', 'custo', 'estoque'] as $c) {
+            // 'codigo' entra no mesmo laço dos outros (em vez de sempre atribuído) porque
+            // agora ele também é regido por $presentes: a trava do Bling, acima, o remove na
+            // variação vinculada. Sem a trava, 'codigo' está sempre em $presentes (garantido
+            // acima) e o comportamento de antes — sempre grava — continua idêntico.
+            $novo = [];
+            foreach (['codigo', 'eixo', 'valor', 'ordem', 'custo', 'estoque'] as $c) {
                 if (in_array($c, $presentes, true)) {
-                    $novo[$c] = $campos[$c];
+                    $novo[$c] = $c === 'codigo' ? $codigo : $campos[$c];
                 }
             }
             $tocados[] = $variacao;
