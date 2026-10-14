@@ -1,0 +1,40 @@
+{
+    "origem": "sintetica-fase-186-plano-07",
+    "por_que_existe": "O regime `sale_fee_details.fixed_fee != 0` NAO tem captura real do Brasil nas fixtures deste repositorio: das 17 ocorrencias de `sale_fee_details` medidas em 14/10/2026, 16 tem `fixed_fee: 0` (zero MEDIDO, porque o preco sondado esta acima do limiar do ML) e a unica com valor diferente de zero e documentacao ARGENTINA (tests/fixtures-ml/alavancas/doc/analise/listing_prices.json, origem doc-oficial, currency_id ARS, site MLA, fixed_fee 200 / percentage_fee 36). Presumir que o campo e sempre zero cegaria o teste do split da tarifa, entao esta fixture existe para exercitar o OUTRO regime.",
+    "o_que_e_real": "A FORMA (chaves, aninhamento e tipos) e copiada byte a byte da captura real de 2026-10-01 em listing_prices_gold_special.json desta mesma categoria, inclusive o listing_fee_details zerado da tarifa de ANUNCIO. O percentage_fee 11 tambem e o valor REAL medido para MLB189007 + gold_special.",
+    "o_que_e_sintetico": "O price (60) e o sale_fee_details.fixed_fee (5) sao ESCOLHIDOS, nao capturados. Nao ha afirmacao de que o Mercado Livre cobre 5 reais a este preco: o unico compromisso e a identidade sale_fee_amount == sale_fee_details.gross_amount == price * percentage_fee/100 + fixed_fee, conferida aqui como 60 * 11/100 + 5 = 11.60.",
+    "nao_use_para": "Afirmar valor de tarifa do Mercado Livre. Esta fixture prova COMPORTAMENTO do codigo (duas linhas separadas, a fixa com valor), nunca numero de mercado.",
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/sites/MLB/listing_prices",
+        "query": {
+            "price": 60,
+            "category_id": "MLB189007",
+            "listing_type_id": "gold_special",
+            "currency_id": "BRL"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "currency_id": "BRL",
+        "free_relist": false,
+        "listing_exposure": "highest",
+        "listing_fee_amount": 0,
+        "listing_fee_details": {
+            "fixed_fee": 0,
+            "gross_amount": 0
+        },
+        "listing_type_id": "gold_special",
+        "listing_type_name": "Clássico",
+        "requires_picture": true,
+        "sale_fee_amount": 11.6,
+        "sale_fee_details": {
+            "fixed_fee": 5,
+            "gross_amount": 11.6,
+            "percentage_fee": 11
+        },
+        "stop_time": "2046-09-26T00:00:00.000-04:00"
+    },
+    "capturado_em": null
+}

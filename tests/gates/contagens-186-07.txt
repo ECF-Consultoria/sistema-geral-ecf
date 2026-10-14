@@ -39,5 +39,34 @@
 #    contagem cair porque o diretório sumiu, isso é ACHADO e não "ajuste".
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ⚠️⚠️ POR QUE O GATE `composicao` DO PLANO VIROU **12 ids** (desvio declarado):
+#    o `<verify>` da Task 2 pedia `07 composicao`, um filtro só com os **29
+#    métodos** do `ComposicaoContraOPrototipoTest`. **MEDIDO nesta máquina:** uma
+#    alternância desse tamanho equivale ao filtro de CLASSE e **passa dos 120 s do
+#    shell deste ambiente** (a execução foi parar em background). A própria
+#    `<regra_dos_gates>` do plano proíbe o filtro de classe por esse motivo, então
+#    partir em ids curtos é o que o plano exige, não um afrouxamento: **nenhum
+#    método ficou de fora** e a bijeção prova isso por script, nos dois sentidos.
+#
+# ⚠️ O par `tabelado-o1-a-o5` (174 asserções) e `tabelado-o6-a-o10` (175) difere
+#    em UMA asserção **de propósito**: o estado `o4` do protótipo tem `freight:
+#    null` e sai pelo ramo curto (propagação de `null`), que afirma menos coisas
+#    que o ramo das invariantes. Contagens iguais ali seriam o sinal de que o
+#    `o4` parou de ser o caso do frete ausente.
+
 # ─── Task 1: a config nova e os dois value objects ───────────────────────────
 value-objects  php  test_(linha_nula_com_fonte_que_diz_ter_respondido_e_pendente_por_construcao|zero_medido_e_confirmado_mostrando_zero_e_nunca_pendente|linha_exige_nota_que_nomeia_a_fonte|estimada_e_informativa_tem_as_origens_e_o_papel_declarados|as_sete_linhas_na_ordem_do_prototipo_e_o_total_sem_a_informativa|frete_ausente_anula_resultado_margem_total_equilibrio_e_preco_alvo_sem_nenhum_zero|equilibrio_e_preco_alvo_sao_teto_pela_formula_do_prototipo|a_nota_da_margem_tem_as_quatro_frases_e_o_numero_vem_do_minimo_resolvido|a_excecao_da_embalagem_mantem_o_resultado_e_marca_estimado_por_baixo|outros_custos_nasce_zero_confirmado_e_nunca_pendente|preco_por_variante_manda_o_pior_caso_e_a_nota_nomeia_quantas_variantes|a_composicao_leva_o_minimo_e_de_qual_lado_do_fallback_ele_veio|comissao_ou_imposto_pendente_nao_produz_equilibrio_com_percentual_zero)  ::  tests=13 assertions=104
+
+# ─── Task 2: a composicao contra o `fin()` do prototipo ──────────────────────
+split-da-tarifa  php  test_(o_split_sao_duas_linhas_e_o_gross_amount_nao_entra_como_terceira_parcela|fixed_fee_diferente_de_zero_tem_as_duas_linhas_com_valor|percentage_fee_e_ponto_percentual_e_nao_fracao|percentage_fee_variavel_por_categoria_o_servico_usa_o_que_chegou)  ::  tests=4 assertions=40
+listing-fee-ignorado  php  test_listing_fee_details_e_ignorado_mesmo_valendo_999  ::  tests=1 assertions=7
+tarifa-pendente  php  test_resposta_sem_sale_fee_details_deixa_as_duas_linhas_pendentes_e_a_composicao_incompleta  ::  tests=1 assertions=14
+sete-linhas  php  test_(as_sete_linhas_vem_das_fontes_reais_com_origem_e_nota_que_nomeia_cada_uma|combo_multiplica_o_custo_pelas_unidades_com_a_nota_literal_de_fin_14|o_frete_informado_a_mao_vence_e_a_composicao_o_usa)  ::  tests=3 assertions=47
+excecao-e-regra  php  test_embalagem_sem_fonte_nao_anula_mas_frete_ausente_anula_no_mesmo_cenario  ::  tests=1 assertions=17
+margem-minima  php  test_(os_quatro_casos_da_margem_minima_mudam_o_preco_alvo_e_a_nota_de_forma_observavel|o_resolvedor_mora_em_um_lugar_so_e_os_dois_metodos_concordam|a_composicao_seleciona_as_chaves_dos_parametros_e_nao_repassa_o_array)  ::  tests=3 assertions=31
+simulacao-e-congelamento  php  test_(simular_nao_persiste_nada_e_a_isca_prova_que_a_contagem_sabe_subir|congelar_grava_o_minimo_da_epoca_e_de_qual_lado_do_fallback_veio)  ::  tests=2 assertions=18
+irma-e-card  php  test_(comparacao_com_a_irma_devolve_a_outra_modalidade_e_null_quando_nao_existe|fin_04_o_painel_nao_discorda_do_card_do_editor_pela_parte_comum)  ::  tests=2 assertions=18
+preco-de-variante  php  test_(preco_por_variante_manda_o_menor_ativo_e_a_tela_nomeia_a_variante|a_composicao_usa_o_preco_salvo_e_nao_o_antigo_do_aviso_de_alteracao)  ::  tests=2 assertions=13
+tabelado-o1-a-o5  php  test_estado_o(1|2|3|4|5)_do_prototipo_(fecha_na_estrutura_e_nas_invariantes|tem_frete_nulo_e_nao_devolve_zero_em_nenhum_campo)  ::  tests=5 assertions=174
+tabelado-o6-a-o10  php  test_estado_o(6|7|8|9|10)_do_prototipo_fecha_na_estrutura_e_nas_invariantes  ::  tests=5 assertions=175
+zero-rede  php  test_nenhuma_chamada_deste_plano_sai_para_a_rede_e_a_isca_prova_a_trava  ::  tests=1 assertions=4
