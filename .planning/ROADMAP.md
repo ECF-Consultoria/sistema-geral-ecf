@@ -3780,7 +3780,7 @@ filtrada" da Visão Geral apontam para os filtros desta tela).
   15. A **Nota ECF continua aparecendo como "de 86"**, nunca renormalizada para 100 (LIST-24, D-22)
   16. O plano traz a tabela de conferência item a item contra `Publicacoes v2.dc.html` (FID-01)
 
-**Plans**: TBD
+**Plans**: 14 planos em 9 waves (180-01 tokens, 180-02 PublicacoesDaListaService, 180-03 escopo+busca por produto+aba "Com erro", 180-04 controller, 180-04B as 3 props que faltavam, 180-05 cabecalho+faixa, 180-06 busca+abas+toggle, 180-07 chips+popovers, 180-08 tabela+7 celulas, 180-09 linha de grupo+rodape+vazios, 180-10 composicao+cirurgia, 180-10B as 2 decisoes do usuario, 180-11 atalhos+URL, 180-12 fechamento medido) — executados em 13-14/10/2026. Fechamento em `180-FECHAMENTO.md`: 126 mutacoes/126 pegas, FID-01 com 173 medidas e 44 divergencias (43 a favor do prototipo, 1 em que ele perdeu), 16/16 criterios.
 **UI hint**: yes
 
 ### Phase 181: Publicações — painel de inspeção, rentabilidade por venda e ações em lote
@@ -3961,7 +3961,7 @@ trabalho.
 | NOVA-01..NOVA-10 (10) | Phase 178 | **Entregue** (em producao 12/10, conferido e aprovado pelo usuario) |
 | VG-01..VG-20 (20) | Phase 179 | **Entregue** (15 plenos; VG-14/15/17/19 parciais por falta de DADO, causa declarada na 179-10) |
 | EXMP-01..EXMP-04 (4) | Phase 179 | **Entregue** (nenhum bloco nasceu de exemplo: tudo real) |
-| LIST-01..LIST-25 (25) | Phase 180 | Pending |
+| LIST-01..LIST-25 (25) | Phase 180 | **Entregue** (25/25 com veredicto; LIST-23 com desvio declarado em 1 de 8 itens, por decisao do usuario em 13/10/2026) |
 | INSP-01..INSP-12 (12) | Phase 181 | Pending |
 | DESEMP-01..DESEMP-08 (8) | Phase 182 | **Deferred** (bloqueio de dado + decisão do usuário) |
 

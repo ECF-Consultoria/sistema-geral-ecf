@@ -519,9 +519,18 @@ tarifa persistida por anúncio. Logo:
   primeiro resultado.
 - **LIST-19** — Filtros, busca e a publicação selecionada são refletidos na **URL** (recarregar a
   página devolve o mesmo estado).
-- **LIST-20** — A **metodologia** da linha vem do dado real: `ml_acervo_itens.rascunho_id` →
-  `pub_rascunhos.produto_id` → `pub_produtos` (`fase`, `quantidade_kit`, `produto_base_id`); sem
-  rascunho = **Legado**. O **tipo** vem de `listing_type_id` (`gold_special` = Clássico, `gold_pro` =
+- **LIST-20** — A **metodologia** da linha vem do dado real. ⚠️ **O caminho que este requisito
+  descrevia estava ERRADO, e isso foi MEDIDO DUAS VEZES na Fase 180** (planos 02 e 12):
+  `ml_acervo_itens.rascunho_id` aponta para **`ml_anuncio_rascunhos`** — o assistente **antigo** —,
+  **nao** para `pub_rascunhos`. Provas: o comentario da propria coluna em
+  `database/migrations/2026_08_11_090000_create_ml_acervo_itens_table.php:55-61` e
+  `MlAcervoService::mapaRascunhos()`, que le `MlAnuncioRascunho`.
+  ➡️ **O caminho REAL, que `MlbAnuncioController::historico()` ja percorria:**
+  `ml_acervo_itens.ml_item_id` ↔ `pub_publicacao_itens.ml_item_id` → `pub_publicacoes.rascunho_id`
+  → `pub_rascunhos.produto_id` → `pub_produtos` (`fase`, `quantidade_kit`). As cinco arestas ja sao
+  indexadas; **nenhuma migration foi necessaria**. Implementado em
+  `PublicacoesDaListaService::metodologiaPorMlItemId()`, numa consulta so, **com o acervo FORA da
+  juncao** (ele tinha 1.080.206 linhas). Sem rascunho = **Legado**, pela AUSENCIA de entrada no mapa. O **tipo** vem de `listing_type_id` (`gold_special` = Clássico, `gold_pro` =
   Premium) e **Catálogo** de `catalog_listing`. Nenhum desses campos é inferido do título.
 - **LIST-21** — A busca por **SKU / nome / MLB** e o filtro **"Em revisão"** que acabaram de entrar
   em `AcervoTriagemService` continuam valendo e são a base das abas de status e da busca — `escopo()`
