@@ -209,6 +209,27 @@ class PubAprovacaoOferta extends Model
 
     protected $guarded = ['id'];
 
+    /**
+     * ⚠️⚠️ OS DEFAULTS DO MODELO TÊM DE SER OS MESMOS DA COLUNA — e isto é correção de um defeito
+     * REAL medido em 14/10/2026, não zelo.
+     *
+     * O Eloquent **não lê o default do banco**. Sem este bloco, `PubAprovacaoOferta::create([...])`
+     * sem `andamento` devolve um objeto com `andamento` **null** em memória, enquanto a linha no
+     * banco nasce `'preparando'`. A primeira transição então lia origem `''` e era recusada como
+     * ilegal — "a oferta nasce em preparando" só era verdade **depois de um `fresh()`**, e ninguém
+     * que chamasse `create()` adivinharia isso.
+     *
+     * ⚠️ Repetir o default em dois lugares é um risco conhecido (os dois podem divergir), e por
+     * isso ele tem gate: um teste lê o default de CADA coluna do schema vivo e exige que seja o
+     * mesmo daqui, com isca. Divergir reprova.
+     */
+    protected $attributes = [
+        'andamento' => self::PREPARANDO,
+        'origem' => self::ORIGEM_AUTO,
+        'versao' => 1,
+        'tocado' => false,
+    ];
+
     protected $casts = [
         'preco_alterado' => 'array',
         'entrou_na_fila_em' => 'datetime',

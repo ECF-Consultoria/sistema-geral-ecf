@@ -2,9 +2,17 @@
 
 namespace Tests\Unit\Publicador\Aprovacao;
 
+use App\Models\Company;
 use App\Models\PubAprovacaoOferta;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\PubRascunhoAlvo;
+use App\Models\User;
+use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
+use App\Support\Publicador\RegraViolada;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -47,8 +55,76 @@ use Tests\TestCase;
  */
 class AndamentoDaOfertaServiceTest extends TestCase
 {
+    use RefreshDatabase;
+
     /** O módulo de vocabulário do plano 186-02 — SOMENTE LEITURA para este plano. */
     private const MODULO_JS = 'resources/js/Components/Mlb/Publicador/aprovacao/andamentoDoPortao.jsx';
+
+    /** Clássico e Premium — `EstruturaPublicacao::LISTING_TYPES`. */
+    private const CLASSICO = 'gold_special';
+
+    private const PREMIUM = 'gold_pro';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // ⚠️ AND-08 ancorado: "maior espera primeiro" só é mensurável com o agora parado.
+        Carbon::setTestNow('2026-10-15 09:00:00');
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // Fixture: o grafo REAL — produto -> rascunho -> 2 alvos -> 2 ofertas do portão.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    /** @return array{0: PubAprovacaoOferta, 1: PubAprovacaoOferta} [Clássico, Premium] */
+    private function asDuasOfertas(string $sku = 'CAD-01', ?Company $empresa = null): array
+    {
+        $empresa ??= Company::factory()->create();
+
+        $produto = PubProduto::create([
+            'company_id' => $empresa->id,
+            'sku' => $sku,
+            'nome' => 'Cadeira ' . $sku,
+            'origem' => PubProduto::ORIGEM_PUBLICADOR,
+        ]);
+
+        $rascunho = PubRascunho::create(['produto_id' => $produto->id]);
+
+        $ofertas = [];
+        foreach ([self::CLASSICO, self::PREMIUM] as $i => $tipo) {
+            $alvo = PubRascunhoAlvo::create(['rascunho_id' => $rascunho->id, 'listing_type_id' => $tipo, 'posicao' => $i]);
+
+            $ofertas[] = PubAprovacaoOferta::create([
+                'alvo_id' => $alvo->id,
+                'rascunho_id' => $rascunho->id,
+                'produto_id' => $produto->id,
+                'company_id' => $empresa->id,
+            ]);
+        }
+
+        return $ofertas;
+    }
+
+    private function servico(): AndamentoDaOfertaService
+    {
+        return app(AndamentoDaOfertaService::class);
+    }
+
+    /** Leva a oferta até um andamento por transições LEGAIS, uma a uma. */
+    private function levarAte(PubAprovacaoOferta $oferta, array $caminho): PubAprovacaoOferta
+    {
+        foreach ($caminho as $passo) {
+            $oferta = $this->servico()->mover($oferta, $passo);
+        }
+
+        return $oferta;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // A sonda do módulo JS, e a isca dela.
@@ -476,6 +552,354 @@ class AndamentoDaOfertaServiceTest extends TestCase
         // ⚠️ E o ponto de extensão que FICA: `aoAprovar()` é o gancho da Fase 193 — a prova de
         // que a ausência acima é decisão, e não esquecimento.
         $this->assertTrue(method_exists(PubAprovacaoOferta::class, 'aoAprovar') || method_exists(\App\Services\Publicador\Aprovacao\AndamentoDaOfertaService::class, 'aoAprovar'), 'o ponto de extensão `aoAprovar()` da Fase 193 desapareceu');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // Task 3 — `AndamentoDaOfertaService`: A ÚNICA PORTA DE TRANSIÇÃO
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public function test_mover_grava_a_transicao_e_devolve_a_oferta_nova(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $this->assertSame(PubAprovacaoOferta::PREPARANDO, $classico->andamento, 'a oferta nasce em `preparando` (o default da coluna)');
+
+        $devolvida = $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO, $quem, 'preparo concluído');
+
+        // GRAVOU: a verdade é a RECONSULTA ao banco, nunca o objeto em memória.
+        $this->assertSame(PubAprovacaoOferta::AGUARDANDO_APROVACAO, $classico->fresh()->andamento);
+
+        // E DEVOLVEU a oferta nova, já com o estado novo — quem chama não precisa de `fresh()`.
+        $this->assertInstanceOf(PubAprovacaoOferta::class, $devolvida);
+        $this->assertSame(PubAprovacaoOferta::AGUARDANDO_APROVACAO, $devolvida->andamento);
+        $this->assertSame($classico->id, $devolvida->id);
+
+        // `entrou_na_fila_em` é a BASE DO TEMPO DE ESPERA (FILA-13) e é carimbada na entrada na
+        // fila — sem ela o "há X" da tela não tem de onde sair.
+        $this->assertEquals(Carbon::parse('2026-10-15 09:00:00'), $devolvida->entrou_na_fila_em);
+    }
+
+    public function test_transicao_fora_de_transicoes_lanca_regra_violada_e_nao_grava_nada(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+
+        $antes = $classico->fresh()->toArray();
+
+        try {
+            // ⚠️ `preparando -> aprovado` pula a conferência inteira. Como aprovar JÁ PUBLICA e
+            // não há desfazer, isto é elevação de privilégio (T-186-11).
+            $this->servico()->mover($classico, PubAprovacaoOferta::APROVADO);
+            $this->fail('a transição ilegal `preparando -> aprovado` foi ACEITA');
+        } catch (RegraViolada $e) {
+            $this->assertSame(AndamentoDaOfertaService::REGRA_TRANSICAO_ILEGAL, $e->regra, 'a regra violada tem de ter código próprio, para a tela saber o que dizer');
+            $this->assertStringContainsString('preparando', $e->getMessage());
+            $this->assertStringContainsString('aprovado', $e->getMessage());
+        }
+
+        // NÃO GRAVOU NADA: nem o andamento, nem `aprovado_*`, nem `updated_at`.
+        $depois = $classico->fresh()->toArray();
+        $this->assertSame($antes, $depois, 'a transição recusada mexeu na linha — recusa tem de ser um no-op completo');
+        $this->assertNull($classico->fresh()->aprovado_em);
+        $this->assertNull($classico->fresh()->versao_aprovada);
+
+        // ISCA: a transição LEGAL do mesmo ponto de partida passa. Sem isto, um `mover()` que
+        // lançasse sempre passaria neste teste.
+        $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $this->assertSame(PubAprovacaoOferta::AGUARDANDO_APROVACAO, $classico->fresh()->andamento, 'ISCA CEGA: o serviço recusa até a transição legal.');
+    }
+
+    public function test_publicado_sem_ml_item_id_e_recusado_e_o_toast_nao_sai_deste_servico(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $oferta = $this->levarAte($classico, [
+            PubAprovacaoOferta::AGUARDANDO_APROVACAO,
+        ]);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::APROVADO, $quem);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICANDO);
+
+        try {
+            $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICADO);
+            $this->fail('chegou a `publicado` SEM `ml_item_id` — a tela diria "Publicado e confirmado no Mercado Livre" sem anúncio nenhum');
+        } catch (RegraViolada $e) {
+            $this->assertSame(AndamentoDaOfertaService::REGRA_SEM_MLB, $e->regra);
+        }
+
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $oferta->fresh()->andamento, 'a recusa deixou a oferta em outro estado');
+
+        // ISCA: COM o MLB confirmado pelo ML, a mesma transição passa.
+        $oferta->update(['ml_item_id' => 'MLB1234567890']);
+        $this->servico()->mover($oferta->fresh(), PubAprovacaoOferta::PUBLICADO);
+        $this->assertSame(PubAprovacaoOferta::PUBLICADO, $oferta->fresh()->andamento, 'ISCA CEGA: nem com MLB confirmado a transição passa.');
+
+        // ⚠️ O TOAST "Publicado e confirmado" **não é disparado por este serviço**: quem avisa a
+        // tela é a camada de apresentação, e o serviço não conhece toast. Lido do CÓDIGO sem
+        // comentários, senão a própria frase deste parágrafo reprovaria o gate.
+        $codigo = $this->semComentarios(file_get_contents(base_path('app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php')));
+        $this->assertStringNotContainsString('Publicado e confirmado', $codigo);
+        $this->assertStringNotContainsString('toast', strtolower($codigo));
+    }
+
+    public function test_falha_preserva_versao_aprovada_aprovado_por_e_aprovado_em(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $oferta = $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::APROVADO, $quem);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICANDO);
+
+        $aprovadoPor = $oferta->fresh()->aprovado_por;
+        $aprovadoEm = $oferta->fresh()->aprovado_em;
+        $versaoAprovada = $oferta->fresh()->versao_aprovada;
+
+        $this->assertSame($quem->id, $aprovadoPor);
+        $this->assertNotNull($aprovadoEm);
+        $this->assertSame(1, $versaoAprovada);
+
+        Carbon::setTestNow('2026-10-15 11:30:00');
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::FALHA, null, 'item.price: invalid price');
+
+        // ⚠️ BLOQ-11 — a REVISÃO É PRESERVADA. Sem isto, quem clicar "Tentar de novo" teria de
+        // reaprovar tudo, e a conferência que já foi feita viraria trabalho jogado fora.
+        $viva = $oferta->fresh();
+        $this->assertSame($aprovadoPor, $viva->aprovado_por, '`falha` apagou quem aprovou');
+        $this->assertEquals($aprovadoEm, $viva->aprovado_em, '`falha` apagou quando foi aprovado');
+        $this->assertSame($versaoAprovada, $viva->versao_aprovada, '`falha` apagou a versão aprovada — a aprovação passaria a parecer reaberta');
+        $this->assertFalse($viva->aprovacaoReaberta(), '`falha` não reabre a aprovação');
+
+        // E o erro REAL do ML fica gravado (PUB-05), não um "algo deu errado".
+        $this->assertSame('item.price: invalid price', $viva->erro_publicacao);
+    }
+
+    public function test_falha_para_publicando_zera_erro_publicacao_e_nao_mexe_na_versao(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $oferta = $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::APROVADO, $quem);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICANDO);
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::FALHA, null, 'item.price: invalid price');
+
+        $versaoAntes = $oferta->fresh()->versao;
+        $this->assertNotNull($oferta->fresh()->erro_publicacao);
+
+        // "Tentar de novo" (AND-10).
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICANDO);
+
+        $viva = $oferta->fresh();
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $viva->andamento);
+        $this->assertNull($viva->erro_publicacao, 'o erro anterior ficou na tela de uma tentativa que já passou');
+
+        // ⚠️ NÃO MEXE NA VERSÃO: "Tentar de novo" não é mudança relevante, e incrementar aqui
+        // REABRIRIA uma aprovação que ninguém mexeu (`versao_aprovada < versao`).
+        $this->assertSame($versaoAntes, $viva->versao, '"Tentar de novo" incrementou a versão e reabriu a aprovação sozinho');
+        $this->assertFalse($viva->aprovacaoReaberta());
+        $this->assertSame(1, $viva->versao_aprovada);
+    }
+
+    public function test_publicando_marca_a_oferta_como_nao_editavel(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $oferta = $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $this->assertTrue($oferta->podeEditar(), 'em `aguardando_aprovacao` a oferta É editável');
+
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::APROVADO, $quem);
+        $this->assertFalse($oferta->podeEditar(), 'em `aprovado` a oferta já não é editável');
+
+        $oferta = $this->servico()->mover($oferta, PubAprovacaoOferta::PUBLICANDO);
+
+        // ⚠️ PUB-04 — editar enquanto sobe ao ML mandaria ao Mercado Livre uma coisa e gravaria
+        // outra aqui.
+        $this->assertFalse($oferta->podeEditar());
+        $this->assertFalse($oferta->fresh()->podeEditar());
+        $this->assertFalse($oferta->abreRevisao());
+    }
+
+    public function test_ordenar_fila_por_ordem_e_dentro_do_grupo_maior_espera_primeiro(): void
+    {
+        [$a] = $this->asDuasOfertas('A');
+        [$b] = $this->asDuasOfertas('B');
+        [$c] = $this->asDuasOfertas('C');
+        [$d] = $this->asDuasOfertas('D');
+
+        // Dois no MESMO degrau de urgência (ORDEM 1), com esperas diferentes.
+        $a->update(['andamento' => PubAprovacaoOferta::AGUARDANDO_APROVACAO, 'entrou_na_fila_em' => '2026-10-15 08:00:00']);
+        $b->update(['andamento' => PubAprovacaoOferta::EM_REVISAO_ECF, 'entrou_na_fila_em' => '2026-10-13 08:00:00']);
+        // Um na frente de todos (ORDEM 0) e um no fim (ORDEM 6).
+        $c->update(['andamento' => PubAprovacaoOferta::FALHA, 'entrou_na_fila_em' => '2026-10-15 08:59:00']);
+        $d->update(['andamento' => PubAprovacaoOferta::PREPARANDO, 'entrou_na_fila_em' => '2026-10-01 08:00:00']);
+
+        $ordenada = $this->servico()->ordenarFila(PubAprovacaoOferta::whereIn('id', [$a->id, $b->id, $c->id, $d->id])->get());
+
+        $this->assertSame(
+            [$c->id, $b->id, $a->id, $d->id],
+            $ordenada->pluck('id')->all(),
+            'a fila não ordenou por ORDEM e, dentro do grupo, pela maior espera'
+        );
+
+        // ⚠️ O EMPATE IMPORTA: `b` (em_revisao_ecf) vem antes de `a` (aguardando_aprovacao) NÃO
+        // por estado, mas porque espera 2 dias contra 1 hora. Os dois estão no degrau 1.
+        $this->assertSame(PubAprovacaoOferta::ORDEM[$a->andamento], PubAprovacaoOferta::ORDEM[$b->andamento], 'ISCA: os dois deveriam estar no MESMO degrau');
+
+        // ⚠️ E `d` (preparando, esperando desde 01/10 — a MAIOR espera de todas) vem por ÚLTIMO:
+        // a espera só desempata DENTRO do degrau, nunca atravessa degraus.
+        $this->assertSame($d->id, $ordenada->last()->id);
+
+        // Oferta sem `entrou_na_fila_em` vai para o fim DO SEU degrau (espera desconhecida não
+        // vira espera infinita).
+        $e = $this->asDuasOfertas('E')[0];
+        $e->update(['andamento' => PubAprovacaoOferta::AGUARDANDO_APROVACAO, 'entrou_na_fila_em' => null]);
+        $comNulo = $this->servico()->ordenarFila(PubAprovacaoOferta::whereIn('id', [$a->id, $e->id])->get());
+        $this->assertSame([$a->id, $e->id], $comNulo->pluck('id')->all());
+    }
+
+    public function test_faixa_de_andamento_tem_nove_recortes_e_o_ultimo_e_recorte_do_dia(): void
+    {
+        $empresa = Company::factory()->create();
+
+        [$hoje] = $this->asDuasOfertas('HOJE', $empresa);
+        [$ontem] = $this->asDuasOfertas('ONTEM', $empresa);
+        [$esperando] = $this->asDuasOfertas('ESP', $empresa);
+
+        $hoje->update(['andamento' => PubAprovacaoOferta::PUBLICADO, 'updated_at' => '2026-10-15 07:10:00']);
+        $ontem->update(['andamento' => PubAprovacaoOferta::PUBLICADO, 'updated_at' => '2026-10-14 23:59:00']);
+        $esperando->update(['andamento' => PubAprovacaoOferta::AGUARDANDO_APROVACAO]);
+
+        $faixa = $this->servico()->faixaDeAndamento($this->servico()->filaDaConta($empresa->id));
+
+        // AND-09 — **9** recortes: Todas + as 7 etapas internas + "Publicado hoje".
+        $this->assertCount(9, $faixa);
+        $this->assertSame(
+            ['todas', 'preparando', 'aguardando_aprovacao', 'em_revisao_ecf', 'ajustes_solicitados', 'aprovado', 'publicando', 'falha', 'publicado'],
+            array_column($faixa, 'chave')
+        );
+
+        // ⚠️ O ÚLTIMO RÓTULO É "Publicado hoje", e **não** "Publicado": trocar pelo rótulo do
+        // estado faria a faixa PROMETER o histórico completo e ENTREGAR o do dia.
+        $this->assertSame('Publicado hoje', $faixa[8]['rotulo']);
+        $this->assertNotSame(PubAprovacaoOferta::ANDAMENTOS[PubAprovacaoOferta::PUBLICADO], $faixa[8]['rotulo']);
+
+        $porChave = array_column($faixa, 'total', 'chave');
+
+        // ⚠️ O RECORTE É **DO DIA**: a publicada ONTEM não conta, a de HOJE conta. Esta é a
+        // asserção que distingue "recorte do dia" de "estado inteiro" — sem a de ontem
+        // PREENCHIDA, as duas leituras dariam o mesmo número e o gate seria vazio.
+        $this->assertSame(1, $porChave['publicado'], '"Publicado hoje" contou a de ontem — virou o estado inteiro');
+        $this->assertSame(1, $porChave['aguardando_aprovacao']);
+
+        // As 3 ofertas PREMIUM nunca foram movidas e seguem no default da coluna.
+        $this->assertSame(3, $porChave['preparando']);
+
+        // "Todas" é SEM FILTRO: as 6 ofertas da empresa (3 produtos × Clássico e Premium). Ela é
+        // MAIOR que a soma dos 8 recortes de estado (3 + 1 + 1 = 5) exatamente porque o último é
+        // recorte DO DIA e deixa a publicada de ontem fora — e é essa diferença que prova que o
+        // recorte não é o estado inteiro.
+        $this->assertSame(6, $porChave['todas']);
+        $this->assertSame(5, array_sum(array_diff_key($porChave, ['todas' => null])));
+    }
+
+    public function test_aprovar_grava_os_tres_campos_de_aprovacao_na_mesma_transacao(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $quem = User::factory()->create();
+
+        $oferta = $this->servico()->mover($classico, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $oferta->update(['versao' => 4]);
+
+        $oferta = $this->servico()->mover($oferta->fresh(), PubAprovacaoOferta::APROVADO, $quem);
+
+        // ⚠️ BLOQ-05 — os três juntos. Aprovação sem versão rastreável é repúdio (T-186-13): não
+        // se sabe O QUE foi aprovado.
+        $viva = $oferta->fresh();
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $viva->andamento);
+        $this->assertSame($quem->id, $viva->aprovado_por);
+        $this->assertEquals(Carbon::parse('2026-10-15 09:00:00'), $viva->aprovado_em);
+        $this->assertSame(4, $viva->versao_aprovada, '`versao_aprovada` tem de ser a versão VIGENTE no momento do clique');
+        $this->assertFalse($viva->aprovacaoReaberta());
+
+        // E a versão em si não muda ao aprovar (aprovar não é mudança relevante).
+        $this->assertSame(4, $viva->versao);
+
+        // ⚠️ UMA transação só, e isso é estrutural: como **não há desfazer**, falhar no meio
+        // deixaria oferta aprovada sem prova do que foi aprovado. Lido do CÓDIGO sem
+        // comentários, para o gate não casar com a frase que explica a regra.
+        $codigo = $this->semComentarios(file_get_contents(base_path('app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php')));
+        $this->assertSame(1, substr_count($codigo, 'DB::transaction('), 'a transição tem de acontecer dentro de UMA `DB::transaction` só');
+    }
+
+    public function test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados(): void
+    {
+        $caminho = base_path('app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php');
+        $this->assertFileExists($caminho);
+
+        // Os dois pontos de extensão NOMEADOS, para ninguém achar que o histórico e a Fase 193
+        // ficaram de fora.
+        $this->assertTrue(method_exists(AndamentoDaOfertaService::class, 'registrar'), 'o ponto de extensão do histórico (plano 186-05) desapareceu');
+        $this->assertTrue(method_exists(AndamentoDaOfertaService::class, 'aoAprovar'), 'o ponto de extensão da Fase 193 desapareceu');
+
+        $codigo = $this->semComentarios(file_get_contents($caminho));
+
+        // O prefixo de módulo do log (convenção do projeto) e o rastreio por id + nome.
+        $this->assertStringContainsString('[Publicador Aprovação]', file_get_contents($caminho), 'o log perdeu o prefixo de módulo');
+
+        // ⚠️ `RegraViolada` é USADA, nunca alterada (TERR-03 proíbe mexer em
+        // `App\Support\Publicador`), e o código da regra mora em constante DESTE serviço.
+        $this->assertStringContainsString('App\\Support\\Publicador\\RegraViolada', $codigo);
+        $this->assertNotSame('', AndamentoDaOfertaService::REGRA_TRANSICAO_ILEGAL);
+        $this->assertNotSame('', AndamentoDaOfertaService::REGRA_SEM_MLB);
+        $this->assertNotSame(AndamentoDaOfertaService::REGRA_TRANSICAO_ILEGAL, AndamentoDaOfertaService::REGRA_SEM_MLB, 'os dois códigos de regra são iguais — a tela não distinguiria os dois casos');
+
+        // ⚠️ E O INVARIANTE DA ÚNICA PORTA, medido aqui no que é MEU: o único lugar que escreve
+        // `andamento` é este serviço. O gate amplo (com isca) é do plano 186-09; esta é a parte
+        // que já pode ser medida.
+        //
+        // ⚠️⚠️ A SONDA É AMPLA DE PROPÓSITO (`'andamento' =>` **ou** `->andamento =`), e NÃO foi
+        // afrouxada quando reprovou. Ela reprovou de verdade em 14/10/2026 e por um motivo
+        // legítimo: o conserto do default em memória acrescentou `'andamento' => self::PREPARANDO`
+        // no `$attributes` do modelo — que é DECLARAÇÃO DE DEFAULT, não escrita de estado. Estreitar
+        // a sonda para `->update([...])` seria pior: o serviço monta as mudanças numa VARIÁVEL
+        // (`$mudancas`), então a forma estreita não casaria nem a escrita de verdade e o gate
+        // ficaria vazio por construção. ➡️ A sonda ficou ampla e o que entrou foi um CONTRATO
+        // EXATO: o modelo tem direito a UMA ocorrência, e ela tem de estar DENTRO do
+        // `$attributes`.
+        $escrevem = [];
+        $arquivos = array_merge(
+            glob(base_path('app/Services/Publicador/Aprovacao/*.php')) ?: [],
+            glob(base_path('app/Models/PubAprovacaoOferta.php')) ?: [],
+        );
+        foreach ($arquivos as $arquivo) {
+            $texto = $this->semComentarios(file_get_contents($arquivo));
+            if (preg_match("/'andamento'\s*=>|->andamento\s*=[^=]/", $texto)) {
+                $escrevem[] = basename($arquivo);
+            }
+        }
+        sort($escrevem);
+        $this->assertSame(['AndamentoDaOfertaService.php', 'PubAprovacaoOferta.php'], $escrevem, 'alguém além do serviço e do default do modelo escreve `andamento` — a porta deixou de ser única');
+
+        // ISCA da sonda de escrita: o padrão que ela procura EXISTE no serviço (senão a lista
+        // acima estaria vazia por construção e a asserção passaria sem medir).
+        $this->assertSame(1, preg_match_all("/'andamento'\s*=>/", $codigo), 'ISCA CEGA: a sonda não acha a escrita nem no serviço que a faz — ou o serviço escreve `andamento` em mais de um lugar.');
+
+        // ⚠️ O CONTRATO EXATO DO MODELO: UMA ocorrência, e DENTRO do `$attributes`.
+        $codigoModelo = $this->semComentarios(file_get_contents(base_path('app/Models/PubAprovacaoOferta.php')));
+        $this->assertSame(1, preg_match_all("/'andamento'\s*=>/", $codigoModelo), 'o modelo passou a mencionar `andamento` como chave em mais de um lugar');
+        $this->assertSame(0, preg_match_all('/->andamento\s*=[^=]/', $codigoModelo), 'o modelo atribui `andamento` — só o serviço move estado');
+
+        $inicio = strpos($codigoModelo, 'protected $attributes = [');
+        $this->assertNotFalse($inicio, 'ISCA CEGA: não achei o bloco `$attributes` no modelo.');
+        $bloco = substr($codigoModelo, $inicio, strpos($codigoModelo, '];', $inicio) - $inicio);
+        $this->assertStringContainsString("'andamento' => self::PREPARANDO", $bloco, 'a única ocorrência de `andamento` no modelo tem de ser o default do `$attributes`');
+
+        // ISCA do recorte: FORA do bloco não sobra ocorrência nenhuma. Sem esta asserção, o
+        // recorte poderia estar pegando o arquivo inteiro e "dentro do bloco" não significaria
+        // nada.
+        $this->assertSame(0, preg_match_all("/'andamento'\s*=>/", str_replace($bloco, '', $codigoModelo)), 'ISCA CEGA: há ocorrência de `andamento` FORA do `$attributes` — ou o recorte do bloco está pegando o arquivo todo.');
     }
 
     /**

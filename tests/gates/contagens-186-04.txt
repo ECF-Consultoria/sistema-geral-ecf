@@ -38,6 +38,25 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ───────────────────────────────────────────────────────────────────────────────
+# OS DOIS IDS QUE O PLANO 186-04 DECLARA NOS `<verify>` DAS TAREFAS
+# ───────────────────────────────────────────────────────────────────────────────
+#
+# `transicoes` (Task 2) está abaixo, no bloco do modelo, com um método só.
+#
+# `oferta-do-portao` (Task 3) é o id do plano, e ele roda os **TRÊS** métodos que
+# o `<done>` da tarefa nomeia — DADO-03 com isca, o diff por RANGE do gate D-11
+# e a única porta. Um método só não cobriria o `<done>`, e o helper roda UM
+# filtro por id; a forma certa é um filtro por alternância, que continua
+# começando com `test_` (o helper RECUSA filtro de classe, e com razão: classe
+# inteira passa dos 120 s do shell).
+#
+# ⚠️ Os três métodos TAMBÉM têm id individual mais abaixo, e isso é deliberado:
+# é a granularidade que diz QUAL dos três caiu quando este gate composto reprova.
+# Nenhum método do plano fica sem id próprio (ver o aviso do topo).
+# 3 / 39 MEDIDO em 14/10/2026.
+oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=39
+
+# ───────────────────────────────────────────────────────────────────────────────
 # Task 2 — O MODELO: os 8 estados, as transições, LIVE, ORDEM e cta
 # Arquivo: tests/Unit/Publicador/Aprovacao/AndamentoDaOfertaServiceTest.php
 # ───────────────────────────────────────────────────────────────────────────────
@@ -131,3 +150,245 @@ chave-adversa  php  test_chave_adversa_em_qualquer_acessor_nao_lanca_e_devolve_n
 # provaria metade do invariante.
 # 1 / 29 MEDIDO em 14/10/2026.
 dois-eixos  php  test_o_andamento_interno_nao_se_mistura_com_o_estado_de_publicacao_nem_com_o_de_upload  ::  tests=1 assertions=29
+
+# A decisão do usuário de 14/10 que NÃO deixa rastro de "desfazer": nenhum
+# estado, coluna, método ou aviso de "confirmar publicação", "desfazer",
+# "segundo passo" ou "cancelar aprovação" — lido do CÓDIGO pelo tokenizador do
+# PHP, porque o docblock EXPLICA a ausência e um gate que conte a palavra no
+# arquivo inteiro reprovaria pelo próprio conserto. Com isca do tokenizador nos
+# dois sentidos, e com a prova de que o ponto de extensão `aoAprovar()` FICA.
+# O que precisaria estar errado: alguém pôr um segundo clique entre "Aprovar
+# para publicação" e a publicação — exatamente o que o usuário recusou.
+# 1 / 14 MEDIDO em 14/10/2026.
+sem-desfazer  php  test_nao_existe_estado_nem_metodo_de_desfazer_confirmar_ou_cancelar_aprovacao  ::  tests=1 assertions=14
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — `AndamentoDaOfertaService`: A ÚNICA PORTA DE TRANSIÇÃO
+# Arquivo: tests/Unit/Publicador/Aprovacao/AndamentoDaOfertaServiceTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# `mover()` grava a transição E devolve a oferta nova (sem obrigar `fresh()`), e
+# carimba `entrou_na_fila_em` — a base do "há X" (FILA-13).
+# O que precisaria estar errado: `mover()` devolver o objeto velho e quem chama
+# renderizar o estado ANTERIOR, com o banco já mudado.
+# 1 / 6 MEDIDO em 14/10/2026.
+mover-grava-e-devolve  php  test_mover_grava_a_transicao_e_devolve_a_oferta_nova  ::  tests=1 assertions=6
+
+# Transição ilegal lança `RegraViolada` com código próprio e **não grava nada** —
+# a linha inteira é comparada antes e depois (inclusive `updated_at`), com isca
+# de que a transição LEGAL do mesmo ponto de partida passa.
+# O que precisaria estar errado: `preparando -> aprovado` ser aceita. Como
+# aprovar JÁ PUBLICA e não há desfazer, é elevação de privilégio (T-186-11).
+# 1 / 7 MEDIDO em 14/10/2026.
+transicao-ilegal-nao-grava  php  test_transicao_fora_de_transicoes_lanca_regra_violada_e_nao_grava_nada  ::  tests=1 assertions=7
+
+# AND-04 no SERVIÇO: `publicado` sem `ml_item_id` é recusado com código próprio,
+# a oferta fica onde estava, e o toast "Publicado e confirmado" **não sai deste
+# serviço** (lido do código sem comentários). Com isca: COM o MLB a transição
+# passa.
+# O que precisaria estar errado: a tela anunciar anúncio no ar que não existe
+# (T-186-12).
+# 1 / 5 MEDIDO em 14/10/2026.
+publicado-sem-mlb  php  test_publicado_sem_ml_item_id_e_recusado_e_o_toast_nao_sai_deste_servico  ::  tests=1 assertions=5
+
+# BLOQ-11 — `falha` PRESERVA `versao_aprovada`, `aprovado_por` e `aprovado_em`, e
+# grava o erro REAL do ML (PUB-05).
+# O que precisaria estar errado: quem clicasse "Tentar de novo" ter de reaprovar
+# tudo — a conferência já feita viraria trabalho jogado fora, e a aprovação
+# pareceria reaberta sem ninguém ter mexido em nada.
+# 1 / 8 MEDIDO em 14/10/2026.
+falha-preserva  php  test_falha_preserva_versao_aprovada_aprovado_por_e_aprovado_em  ::  tests=1 assertions=8
+
+# `falha -> publicando` ("Tentar de novo") zera `erro_publicacao` e **não mexe na
+# versão**.
+# O que precisaria estar errado: incrementar a versão ali. Isso REABRIRIA uma
+# aprovação em que ninguém mexeu, e a oferta voltaria para a fila sozinha.
+# 1 / 6 MEDIDO em 14/10/2026.
+tentar-de-novo  php  test_falha_para_publicando_zera_erro_publicacao_e_nao_mexe_na_versao  ::  tests=1 assertions=6
+
+# PUB-04 — `publicando` deixa a oferta NÃO editável, conferido em memória e por
+# reconsulta, com a asserção positiva em `aguardando_aprovacao` do lado.
+# O que precisaria estar errado: editar enquanto sobe ao ML — mandaria ao Mercado
+# Livre uma coisa e gravaria outra aqui.
+# 1 / 5 MEDIDO em 14/10/2026.
+publicando-nao-editavel  php  test_publicando_marca_a_oferta_como_nao_editavel  ::  tests=1 assertions=5
+
+# AND-08 — a fila ordena por `ORDEM` e, DENTRO do degrau, maior espera primeiro
+# (ancorado com `Carbon::setTestNow`). Prova também que a espera NÃO atravessa
+# degraus (a de maior espera de todas, em `preparando`, fica por último) e que
+# `entrou_na_fila_em` nulo vai para o fim do próprio degrau.
+# O que precisaria estar errado: a fila ordenar por estado só, e quem espera há
+# dois dias ficar atrás de quem chegou agora no mesmo degrau.
+# 1 / 4 MEDIDO em 14/10/2026.
+ordenar-fila  php  test_ordenar_fila_por_ordem_e_dentro_do_grupo_maior_espera_primeiro  ::  tests=1 assertions=4
+
+# AND-09 — **9** recortes, e o último é "Publicado hoje", recorte DO DIA. Com a
+# publicada de ONTEM **PREENCHIDA**: sem ela, "estado inteiro" e "recorte do dia"
+# dariam o mesmo número e o gate seria vazio por construção.
+# O que precisaria estar errado: a faixa prometer o histórico completo e entregar
+# o do dia (ou o contrário).
+# 1 / 9 MEDIDO em 14/10/2026.
+faixa-nove-recortes  php  test_faixa_de_andamento_tem_nove_recortes_e_o_ultimo_e_recorte_do_dia  ::  tests=1 assertions=9
+
+# BLOQ-05 — aprovar grava `aprovado_por` + `aprovado_em` + `versao_aprovada` (a
+# versão VIGENTE no clique) e tudo dentro de UMA `DB::transaction` (contada no
+# código sem comentários).
+# O que precisaria estar errado: aprovação sem versão rastreável (T-186-13) — não
+# se saberia O QUE foi aprovado —, ou falhar no meio e deixar oferta aprovada sem
+# a prova, o que importa porque **não há desfazer**.
+# 1 / 7 MEDIDO em 14/10/2026.
+aprovar-na-transacao  php  test_aprovar_grava_os_tres_campos_de_aprovacao_na_mesma_transacao  ::  tests=1 assertions=7
+
+# O serviço é a ÚNICA PORTA (ninguém mais escreve `andamento`), usa
+# `RegraViolada` do Support sem alterá-lo (TERR-03), tem o prefixo de log
+# `[Publicador Aprovação]` e expõe os dois pontos de extensão NOMEADOS
+# (`registrar()` do plano 186-05 e `aoAprovar()` da Fase 193).
+# ⚠️ ESTE GATE REPROVOU DE VERDADE em 14/10/2026, e pelo motivo legítimo: o
+#    conserto do default em memória acrescentou a chave `andamento` no
+#    `$attributes` do modelo — DECLARAÇÃO DE DEFAULT, não escrita de estado. A
+#    sonda **não foi afrouxada**: estreitá-la para a forma `update([...])`
+#    deixaria de casar a escrita de verdade (o serviço monta as mudanças numa
+#    VARIÁVEL) e o gate ficaria vazio por construção. O que entrou foi um
+#    CONTRATO EXATO — o modelo tem direito a UMA ocorrência, dentro do
+#    `$attributes`, com isca que prova que FORA do bloco não sobra nenhuma.
+# O que precisaria estar errado: uma escrita direta de `andamento` para
+# `aprovado` em qualquer controller — publicaria um anúncio que ninguém conferiu
+# (T-186-11).
+# 1 / 15 MEDIDO em 14/10/2026.
+unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=15
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — A OFERTA NO GRAFO REAL e a disciplina da migration
+# Arquivo: tests/Feature/Publicador/Aprovacao/OfertaDoPortaoTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# A granularidade vista do grafo: a oferta é extensão 1:1 do ALVO, as DUAS do
+# mesmo rascunho têm andamento INDEPENDENTE, e `alvo_id` é UNIQUE no schema vivo.
+# O que precisaria estar errado: o andamento virar por PRODUTO — mover o Clássico
+# moveria o Premium, e aprovar um publicaria o outro sem conferência.
+# 1 / 7 MEDIDO em 14/10/2026.
+andamento-independente  php  test_as_duas_ofertas_do_rascunho_tem_andamento_independente  ::  tests=1 assertions=7
+
+# ⚠️ ESTE GATE NASCEU DE UM DEFEITO REAL, achado no GREEN da Task 3: o Eloquent
+# NÃO lê o default do banco, então criar a oferta sem `andamento` devolvia um
+# objeto com `andamento` **null** em memória enquanto a linha nascia
+# `preparando`. A primeira transição lia origem vazia e era RECUSADA como ilegal
+# — "a oferta nasce em preparando" só era verdade depois de uma reconsulta, e
+# ninguém que criasse a oferta adivinharia isso. O conserto repete o default em
+# dois lugares (coluna e `$attributes`), e por isso o gate compara o
+# `$attributes` contra o default lido do SCHEMA VIVO, nunca contra outra
+# constante do PHP (comparar PHP com PHP não acusaria divergência nenhuma).
+# O que precisaria estar errado: alguém mudar o default de um lado só.
+# 1 / 13 MEDIDO em 14/10/2026.
+default-do-modelo  php  test_o_default_do_modelo_e_o_default_da_coluna_sao_o_mesmo_com_isca  ::  tests=1 assertions=13
+
+# DADO-14 — a fila de uma conta NÃO alcança oferta de outra empresa, nas DUAS
+# direções, e a faixa de andamento herda o mesmo recorte.
+# ⚠️ A oferta da outra empresa está **PREENCHIDA** e no MESMO andamento
+# consultado: asserção de ausência com fixture vazio é vazia por construção
+# (GATE-13), e foi a classe de falha que a wave 1 mediu quatro vezes.
+# O que precisaria estar errado: leitura cruzando empresas (T-186-14).
+# 1 / 8 MEDIDO em 14/10/2026.
+recorte-por-conta  php  test_a_fila_da_conta_nao_alcanca_oferta_de_outra_empresa_preenchida  ::  tests=1 assertions=8
+
+# DADO-03 — as **4 COLUNAS** de conferência da fila (`validacao_id`,
+# `plano_hash`, `revisao`, `ciente`) NÃO estão em `pub_aprovacao_ofertas`, com
+# DUAS iscas: `versao`/`fila_item_id` EXISTEM aqui, e as 4 EXISTEM na fila (senão
+# "não está aqui" significaria "não está em lugar nenhum"). E o apontamento
+# funciona: as duas ofertas do produto leem o MESMO item de fila.
+# O que precisaria estar errado: duas verdades sobre a MESMA conferência, livres
+# para divergir (T-186-15).
+# 1 / 14 MEDIDO em 14/10/2026.
+quatro-colunas-da-fila  php  test_as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca  ::  tests=1 assertions=14
+
+# ⚠️⚠️ `precisa_revisar` segue sendo VALOR do `status` da fila — e a asserção que
+# este gate **NÃO** faz é a negativa de coluna: aquela coluna nunca existiu em
+# tabela nenhuma, então a negativa é verdadeira por ausência e **VAZIA POR
+# CONSTRUÇÃO**. A prova que vale são três: (1) o valor guardado no `status` da
+# fila, (2) **nenhuma** das colunas do portão o guarda — medido sobre TODAS as
+# colunas da tabela, não sobre lista escrita à mão —, e (3) o literal não aparece
+# no CÓDIGO do modelo nem do serviço. **Isca em `ciente`**, que É coluna de
+# verdade, mais a isca do docblock.
+# O que precisaria estar errado: alguém transformar em coluna o que é valor.
+# 1 / 56 MEDIDO em 14/10/2026.
+precisa-revisar-e-status  php  test_precisa_revisar_segue_sendo_valor_do_status_da_fila_com_isca_em_ciente  ::  tests=1 assertions=56
+
+# Achado S2 — `conjunto_id` NÃO existe na oferta (ela vê TODOS os conjuntos do
+# rascunho) e NENHUMA tabela do portão tem o par `(oferta_id, imagem_id)`.
+# ⚠️ Esta negativa **não** é vazia por construção: a tabela é criada POR ESTE
+# PLANO. A isca (`versao` existe) prova que a sonda enxerga, e a isca da
+# varredura prova que ela achou as 6 tabelas do portão (5 do 186-03 + esta).
+# O que precisaria estar errado: com uma FK só, as fotos dos outros grupos e as
+# GERAIS sairiam do bloqueio e a oferta seria aprovável com foto que ninguém
+# olhou — e **aprovar já publica, sem desfazer**.
+# 1 / 10 MEDIDO em 14/10/2026.
+sem-conjunto-id  php  test_a_oferta_nao_tem_conjunto_id_e_nenhuma_tabela_do_portao_tem_oferta_id_com_imagem_id  ::  tests=1 assertions=10
+
+# TERR-07 — este plano NÃO toca e NÃO afrouxa o gate D-11/D-22 de Meus Anúncios.
+# ⚠️ O diff usa **RANGE** (`<partida>..HEAD`): sem range, o diff por caminho
+# depois de commitar compara a ÁRVORE e sai **vazio sempre**
+# (`feedback_gate_vazio_por_construcao`). ⚠️ E tem **ISCA DO DIFF**: o MESMO
+# comando, na migration que este plano criou, tem de sair NÃO vazio — senão um
+# `git` que falhasse em silêncio devolveria string vazia para tudo e o gate seria
+# verde permanente. Mais a conferência por SEMÂNTICA de que as asserções do D-11
+# e do D-22 seguem no arquivo.
+# O que precisaria estar errado: apagar ou afrouxar gate alheio. O D-11 vale para
+# a LISTA; a FILA escreve.
+# 1 / 10 MEDIDO em 14/10/2026.
+terr-07-d11-intocado  php  test_terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano  ::  tests=1 assertions=10
+
+# ⚠️ OS QUATRO GATES ABAIXO EXISTEM PORQUE `MigrationDoPortaoGuardaTest` (plano
+# 186-03) declara SÓ as duas migrations DAQUELE plano — conferido na constante
+# `MIGRATIONS` dele. A migration deste plano fica FORA do guarda dele; sem guarda
+# próprio, a disciplina estaria "coberta" por um gate que nunca a lê, que é a
+# definição de passar por omissão.
+
+# MIG-02 — nenhum nome DECLARADO no texto (13: 7 índices + 6 FKs) passa de 64, e
+# os nomes **PADRÃO DO LARAVEL** também não, calculados por `strlen` e nunca por
+# número copiado à mão (o 186-03 mediu o plano dele errando em 1 num número
+# destes). O MAIOR de cada grupo está TRAVADO (26 declarado, 44 padrão), então
+# mudar o schema sem reconferir o docblock reprova. Mais a proibição de
+# `->constrained()`, que é quem gera nome sem ninguém ver.
+# O que precisaria estar errado: erro **1059** no MariaDB, que deixa a migration
+# `Pending` com a tabela JÁ criada — o pior estado possível. O SQLite aceita.
+# 1 / 57 MEDIDO em 14/10/2026.
+guarda-nomes-64  php  test_guarda_nenhum_nome_de_indice_ou_fk_passa_de_64_medido_por_strlen_com_isca  ::  tests=1 assertions=57
+
+# MIG-03 — as 4 FKs `nullOnDelete()` têm coluna `nullable()` EXPLÍCITO, e as 2
+# CASCADE são NOT NULL de propósito. Pareamento pela SEMÂNTICA do nome da coluna
+# (aqui coluna e FK são statements SEPARADOS), conferido também no schema vivo.
+# ⚠️ ISCA DO REGEX NOS DOIS SENTIDOS, porque a armadilha é conhecida: na wave 1 o
+# regex de FK casava um prefixo errado e **não** a chamada `foreign(`, e a sonda
+# não achava a coluna de FK nenhuma. Aqui o regex é testado contra um caso que
+# DEVE casar e um que NÃO deve.
+# O que precisaria estar errado: erro **1830** no MariaDB, invisível no SQLite.
+# 1 / 18 MEDIDO em 14/10/2026.
+guarda-nullable  php  test_guarda_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca  ::  tests=1 assertions=18
+
+# MIG-04/05/07/09 — sem `enum`, sem `try/catch` em volta de DDL, `up()`
+# idempotente por `hasTable`, docblock com a DECISÃO DE SCHEMA **antes** do
+# código, e nenhum `change`/`renameColumn`/`dropColumn`/`delete`/`truncate`.
+# ⚠️ Lê o CÓDIGO pelo tokenizador do PHP, com ISCA nos dois sentidos: o docblock
+# desta migration EXPLICA que não usa `enum` nem `try/catch`, e um gate que conte
+# a palavra no arquivo inteiro reprovaria pelo PRÓPRIO CONSERTO
+# (`feedback_gate_que_reprova_pelo_proprio_conserto`). Há também a isca inversa —
+# as palavras TÊM de estar no docblock, senão "não achei no código" seria verdade
+# pelo motivo errado (o arquivo não falar do assunto).
+# O que precisaria estar errado: o CHECK do `enum` enforçado no SQLite cegaria a
+# suíte inteira; e neste projeto um 1553 ficou engolido 2 meses dentro de um
+# catch.
+# 1 / 20 MEDIDO em 14/10/2026.
+guarda-sem-enum-sem-try  php  test_guarda_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente  ::  tests=1 assertions=20
+
+# 1553 / o `down()` de uma migration de `create`.
+# ⚠️⚠️ A SONDA de ordem `dropForeign` antes de `dropIndex` roda sobre **ZERO
+# casos** aqui (o `dropIfExists` da tabela inteira subsume o par, que é a receita
+# ADITIVA), e **gate que roda sobre zero casos não prova nada**. Então ela fica
+# COM ISCA — num texto sintético aditivo a sonda TEM de achar os dois e ver a
+# ordem — e o invariante que VALE para `create` tem asserção própria: o `down()`
+# derruba a TABELA por `dropIfExists`, não derruba coluna, e não derruba nenhuma
+# das 5 tabelas-MÃES (que são de outros planos e EXISTEM, conferido).
+# O que precisaria estar errado: um `dropIndex` aparecer no `down()` sem o par
+# (erro 1553), ou o `down()` derrubar tabela alheia.
+# 1 / 21 MEDIDO em 14/10/2026.
+guarda-down-create  php  test_guarda_o_down_derruba_a_tabela_e_a_sonda_de_dropforeign_rodaria_sobre_zero_casos  ::  tests=1 assertions=21
