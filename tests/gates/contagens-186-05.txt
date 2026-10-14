@@ -1,0 +1,157 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-05 (ajustes com escopo, histórico de
+# eventos e a exceção autorizada — 1 migration / 3 tabelas `pub_aprovacao_ajustes`,
+# `pub_aprovacao_eventos`, `pub_aprovacao_excecoes`).
+#
+# Lido por `tests/gates/verificar-testes.sh 05 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate — e mexer no gate
+#     durante a mutação invalidaria a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por método, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **CADA TESTE DOS DOIS ARQUIVOS DESTE PLANO TEM id AQUI, E ISSO FOI
+#    CONFERIDO POR SCRIPT (bijeção nos dois sentidos).** Teste que existe no
+#    arquivo e não tem id no manifesto **NUNCA RODA** em gate nenhum — foi
+#    exatamente o sobrevivente da campanha de mutação do plano 186-03, e era
+#    lacuna real. É a forma nova de "passar por omissão", e a conferência está na
+#    186-05-SUMMARY.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────────────────────
+# OS DOIS IDS QUE O PLANO 186-05 DECLARA NOS `<verify>` DAS TAREFAS
+# ───────────────────────────────────────────────────────────────────────────────
+#
+# `excecao` (Task 2) roda os **CINCO** métodos que o `<done>` da tarefa nomeia:
+# as contagens 3/8/2 (3 escopos, 8 tipos, 2 liberados), o mínimo de 10 e o autor
+# "Sistema" quando `autor_id` é nulo. Um método só não cobriria o `<done>`, e o
+# helper roda UM filtro por id; a forma certa é um filtro por alternância, que
+# continua começando com `test_`.
+#
+# `ajustes-e-historico` (Task 3) está no bloco da Task 3, mais abaixo.
+#
+# ⚠️ Os métodos TAMBÉM têm id individual, e isso é deliberado: é a granularidade
+# que diz QUAL deles caiu quando o gate composto reprova. Nenhum método do plano
+# fica sem id próprio (ver o aviso do topo).
+# 5 / 152 MEDIDO em 15/10/2026.
+excecao  php  test_(os_oito_tipos_de_evento_tem_icone_e_rotulo_pt_br_e_espelham_o_hk_do_prototipo|escopo_valido_recusa_escopo_desconhecido_e_ancora_errada|libera_e_fechada_em_resultado_negativo_e_margem_e_espelha_o_modulo_js|minimo_justificativa_e_dez_e_justificativa_curta_e_recusada|registrar_sem_autor_grava_ator_sistema_e_o_autor_exibido_e_sistema)  ::  tests=5 assertions=152
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 2 — OS 3 MODELOS E O HISTÓRICO
+# Arquivo: tests/Feature/Publicador/Aprovacao/ExcecaoAutorizadaTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# DADO-10 / VOC-05 — são **8** tipos, cada um com ícone **E rótulo pt-BR**, e os
+# 8 são ESPELHO do `HK` do protótipo (`Aprovacao.dc.html:1386`) lido do ARQUIVO,
+# nas duas direções (tipo só no PHP e tipo só no protótipo), com isca de regex
+# nos dois sentidos e isca do glifo `§` de `HK.exc`.
+# O que precisaria estar errado: um tipo só com cor/ícone. `error` e `adjust`
+# dividem o glifo `!`, e `save` e `sys` dividem o `•` — o glifo SOZINHO não
+# distingue "falha na publicação" de "ajuste solicitado", e o histórico é a ÚNICA
+# prova da auditoria-depois (BLOQ-09).
+# 1 / 58 MEDIDO em 15/10/2026.
+oito-tipos-de-evento  php  test_os_oito_tipos_de_evento_tem_icone_e_rotulo_pt_br_e_espelham_o_hk_do_prototipo  ::  tests=1 assertions=58
+
+# COL-05 — `autor_id` NULL grava `ator_sistema = true` e o autor exibido é
+# **"Sistema"**, com **ISCA de autor humano** (senão um `autorExibido()` que
+# devolvesse sempre "Sistema" passaria) e com `ocorrido_em` conferido como data do
+# SERVIDOR.
+# O que precisaria estar errado: nome VAZIO na linha do tempo, ou um usuário de
+# banco chamado "Sistema" (apareceria em listas de gente, poderia logar, e alguém
+# acabaria atribuindo a ele uma aprovação de verdade).
+# 1 / 8 MEDIDO em 15/10/2026.
+autor-sistema  php  test_registrar_sem_autor_grava_ator_sistema_e_o_autor_exibido_e_sistema  ::  tests=1 assertions=8
+
+# DADO-10 — tipo fora dos 8 **lança** e **não grava**, com a contagem conferida
+# ANTES e DEPOIS, e isca do tipo válido que grava.
+# O que precisaria estar errado: `tipo` livre. O filtro por tipo passaria a
+# mentir, e um evento de exceção poderia entrar como `ok` — escondendo no
+# histórico exatamente o ato que BLOQ-09 manda registrar.
+# 1 / 4 MEDIDO em 15/10/2026.
+tipo-fora-dos-oito  php  test_registrar_com_tipo_fora_dos_oito_lanca_e_nao_grava  ::  tests=1 assertions=4
+
+# COL-06 — a linha do tempo vem em ordem por `ocorrido_em` (gravados FORA DE
+# ORDEM de propósito: o terceiro escrito é o mais antigo) e **nenhum campo
+# devolvido é objeto de data** — a varredura é sobre TODOS os campos de TODOS os
+# itens, não sobre lista escrita à mão. Com isca de outra oferta PREENCHIDA
+# (GATE-13): sem ela, "a linha tem 3" e "a consulta não filtra por oferta" dariam
+# o mesmo número.
+# O que precisaria estar errado: data crua para o cliente. `new Date()` no
+# navegador já produziu `Invalid Date` e deslocamento de fuso de data-only em BRT
+# neste projeto. E ordenar por `id` em vez de `ocorrido_em` contaria a história na
+# ordem errada depois de qualquer backfill.
+# 1 / 60 MEDIDO em 15/10/2026.
+linha-do-tempo-em-ordem  php  test_linha_do_tempo_vem_em_ordem_e_com_a_data_formatada_pelo_servidor  ::  tests=1 assertions=60
+
+# DADO-09 — os **3** escopos, o `prod` do protótipo RECUSADO ao lado de
+# `product`, 10 chaves adversas que não lançam (REND-03), a âncora coerente de
+# cada escopo (com **isca da linha coerente**, senão um `ancoraValida()` que
+# devolvesse sempre `false` passaria em todas as negativas) e VOC-06 (a chave
+# nunca chega ao destino legível).
+# O que precisaria estar errado: um `||` aceitando `prod` e `product` — o bug dos
+# dois idiomas com outra roupa. Ou ajuste com âncora errada: ele **não entra na
+# consulta de bloqueio** e a oferta fica **aprovável com ajuste em aberto** — e
+# aprovar já publica, sem desfazer.
+# 1 / 28 MEDIDO em 15/10/2026.
+escopo-e-ancora  php  test_escopo_valido_recusa_escopo_desconhecido_e_ancora_errada  ::  tests=1 assertions=28
+
+# BLOQ-09 / MOD-02 — `MINIMO_JUSTIFICATIVA = 10`, **a fronteira nos DOIS lados**
+# (9 recusa, 10 aceita), `trim()` antes de contar ("só espaço" não é motivo
+# escrito) e o número conferido CONTRA O PROTÓTIPO (`.length < 10`, `:1203`).
+# O que precisaria estar errado: exceção sem motivo escrito (T-186-16, repúdio) —
+# e a fronteira já tirou o bônus de alguém neste projeto SEM mudança de código.
+# 1 / 15 MEDIDO em 15/10/2026.
+minimo-justificativa  php  test_minimo_justificativa_e_dez_e_justificativa_curta_e_recusada  ::  tests=1 assertions=15
+
+# ⚠️⚠️ BLOQ-08 — `LIBERA` é lista fechada nos **2** bloqueios, ESPELHADA do
+# `BLOQUEIO_DO_PROTOTIPO` do módulo do plano 186-02 **lido do arquivo**.
+# ⚠️ O negativo roda sobre os **outros 9 bloqueios pt-BR**, que são do MESMO
+# namespace — e NÃO sobre as chaves inglesas, que seriam `false` **por
+# construção** (não existem no nosso namespace, logo seriam recusadas pelo motivo
+# errado: gate vazio). E há asserção SEPARADA de que as 11 chaves INGLESAS também
+# são recusadas, provando que **não existe `||` aceitando as duas formas**.
+# O que precisaria estar errado: a exceção liberando fotos, frete, alteração,
+# ajuste ou título (T-186-17, elevação de privilégio). Aprovar já publica: exceção
+# larga demais põe no ar um anúncio que ninguém conferiu.
+# 1 / 43 MEDIDO em 15/10/2026.
+libera-so-dois  php  test_libera_e_fechada_em_resultado_negativo_e_margem_e_espelha_o_modulo_js  ::  tests=1 assertions=43
+
+# DADO-11 — a frase de exibição é a FORMA do protótipo (`:1142`) com o glifo `§`
+# de `HK.exc`, conferida contra o literal do arquivo; e com `liberada_por` nulo
+# (usuário apagado pelo SET NULL) ela **não quebra e não mente**.
+# O que precisaria estar errado: "Exceção autorizada por " seguido de NADA. Nome
+# em branco no registro que prova a auditoria-depois é pior que nenhum registro,
+# porque parece completo.
+# 1 / 7 MEDIDO em 15/10/2026.
+frase-da-excecao  php  test_a_frase_de_exibicao_da_excecao_e_o_literal_do_prototipo  ::  tests=1 assertions=7
+
+# ⚠️ O DEFEITO REAL DO PLANO 186-04, REAPLICADO AQUI: o Eloquent **não lê o
+# default do banco**. A exceção nasce VALENDO e o ajuste nasce ABERTO **em
+# memória**, e o default do modelo é comparado com o default lido do **SCHEMA
+# VIVO** — nunca com outra constante do PHP (comparar PHP com PHP não acusa
+# divergência nenhuma). Com isca de coluna que EXISTE e **não** tem default.
+# O que precisaria estar errado: a exceção nasceria com `ativa` null e o bloqueio
+# continuaria de pé para quem acabou de liberá-lo; o ajuste nasceria "não aberto"
+# e **não contaria como bloqueio**. Os dois são visíveis em produção, porque
+# aprovar já publica.
+# 1 / 8 MEDIDO em 15/10/2026.
+default-nasce-valendo  php  test_a_excecao_nasce_valendo_e_o_default_do_modelo_e_o_do_schema_vivo  ::  tests=1 assertions=8
