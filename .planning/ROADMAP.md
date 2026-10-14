@@ -4117,7 +4117,7 @@ Plans:
 - [x] 184-09-PLAN.md — estoque do Bling: gravação só da coluna, varredura em blocos e comando `bling:estoque` (onda 5)
 - [x] 184-10-PLAN.md — estoque só-leitura e Ref travada na variação vinculada (regra no serviço + ficha) (onda 6)
 - [x] 184-11-PLAN.md — estado da conexão como fonte única e as 7 ações da tela, admin-only (onda 6)
-- [ ] 184-12-PLAN.md — o bloco do Bling nas Configurações da loja, com os 7 estados (onda 7)
+- [x] 184-12-PLAN.md — o bloco do Bling nas Configurações da loja, com os 7 estados (onda 7)
 - [ ] 184-13-PLAN.md — checkpoint humano: app no Bling, `.env`, autorização real e as 8 medições (onda 8)
 
 **Ondas:** 1 → {01, 02, 03} · 2 → {04, 05} · 3 → {06} · 4 → {07, 08} · 5 → {09} · 6 → {10, 11} ·
