@@ -4109,7 +4109,7 @@ Plans:
 - [x] 184-01-PLAN.md — tabelas `bling_conexoes` e `bling_vinculos`, models com token cifrado, `config/services.php` e degradação sem credenciais (onda 1)
 - [x] 184-02-PLAN.md — fixtures dos payloads do Bling e o tradutor puro (formatos S e V) (onda 1)
 - [x] 184-03-PLAN.md — ator do sistema (`origem = 'bling'`, sem causer) e escrita sem agendar o preparo pela IA (onda 1)
-- [ ] 184-04-PLAN.md — `BlingOAuthService` (state único, troca do code, renovação travada, revogação) e keep-alive espalhado (onda 2)
+- [x] 184-04-PLAN.md — `BlingOAuthService` (state único, troca do code, renovação travada, revogação) e keep-alive espalhado (onda 2)
 - [ ] 184-05-PLAN.md — tradutor: eixo composto, unidade de medida, multivolume, e `SaldoDoBling` (onda 2)
 - [ ] 184-06-PLAN.md — `BlingClient` só de leitura, com limitador por conta e global por IP, 401/429 (onda 3)
 - [ ] 184-07-PLAN.md — link assinado de 7 dias, landing pública amigável e callback com conferência de CNPJ (onda 4)
