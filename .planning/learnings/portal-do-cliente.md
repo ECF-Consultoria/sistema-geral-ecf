@@ -1350,6 +1350,11 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
     A escolha na tela (`vinculos` no `useFichaProduto`) vence o derivado; marcada, trava C/L/A e acompanha as mudanças do
     produto (`seguirMedidasDoProduto`, puro). O peso do volume continua obrigatório e editável: marcar copia o peso do
     produto se houver; depois só acompanha enquanto ele ainda for a cópia. Recarregar a página volta ao derivado.
+  - **REMOVIDA em 14/10/2026, a pedido do usuário** ("remove isso: Usar as mesmas medidas do produto fora da caixa"):
+    a caixa, o vínculo (`vinculos`), a regra de acompanhar (`seguirMedidasDoProduto` e as conversões de unidade da
+    `lib/medidasDoProduto.js`) e a explicação `mesmas_medidas` do glossário. As medidas do volume voltaram a ser
+    sempre digitadas, e mudar as do produto não mexe nelas. Não trazer de volta sem pedido: o bloco "Medidas do
+    produto (fora da caixa)" continua, só a ligação com o volume saiu.
 
 ## 39. Planilha de produtos v2: o modelo, a planilha baixada e as categorias em lote (09/10/2026)
 
@@ -1735,6 +1740,12 @@ Não se aplica, mas não mostra as opções"; e o erro "Quantidade de lugares - 
   é guardada por id do atributo): Largura = "Largura x Altura"; Profundidade de poltrona = "…da mesa". As seis
   (`LENGTH`, `WIDTH`, `HEIGHT`, `DEPTH`, `DIAMETER`, `WEIGHT`) ganharam texto fixo em `publicador_glossario.atributos`,
   que vence o guardado — vale também para a ficha na tela e para o editor interno.
+- **Volumes recolhidos** ("em produto embalado, deixa apenas um volume; o resto deixa minimizado"): os volumes que
+  não estão em uso vão num grupo de colunas recolhido (`recolherVolumes`). No modelo fica aberto só o Volume 1; no
+  "meus produtos", quantos o produto com mais caixas DAQUELA aba usa — medida preenchida nunca nasce escondida. O
+  botão "+" fica à esquerda do grupo (`setShowSummaryRight(false)` + `collapsed` na última coluna aberta), senão ele
+  aparece lá no "Custo", longe do Volume 1; a faixa do último volume aberto avisa onde clicar. A importação lê coluna
+  recolhida como qualquer outra. Para conferir pelo Excel: lá `OutlineLevel` conta a partir de 1 (2 = agrupada).
 - **Para ver a planilha sem Excel licenciado:** o Excel desta máquina está sem ativação e rejeita `CopyPicture` por
   COM (`RPC_E_CALL_REJECTED`), deixando um processo oculto para trás — encerrar SÓ o de `MainWindowHandle` 0 e
   `StartTime` de agora, nunca todos (o usuário costuma estar com a planilha aberta). O que funciona:
@@ -1772,3 +1783,39 @@ Pedido do usuário: "no portal do cliente, ocultar tudo e deixar apenas mapeamen
   `portal_modulos_cliente = todos` (o Laravel chama `setUp{NomeDaTrait}` sozinho, depois de recriar o banco). Teste
   novo de página do Portal que precise do Início ou de outro módulo no menu usa a mesma trait; o regime padrão está em
   `VisibilidadeDosModulosTest`.
+
+## 50. Precificação em "linhas enxutas": um cartão por produto, o detalhe sob demanda (13/10/2026)
+
+O usuário, dois dias depois de aprovar a tabela por família (§44): "está muito ruim e confuso… o jeito que ficou em
+famílias ficou muito ruim". Pediu propostas em artefato; entre quatro (linhas enxutas, cartões com abas, lista +
+ficha, tabela por quantidade) escolheu a primeira: "traz o anúncio simples, o combo e etc juntos para precificar no
+mesmo card".
+
+**O que não é dedutível do código:**
+- **O agrupamento do §44 não mudou; o desenho, sim.** Família, "Conjuntos desta família" e "Também entra em" seguem
+  valendo, e quem agrupa continua sendo o servidor. O que o usuário reprovou foi a TABELA: seis linhas de letra miúda
+  por oferta, quatro preços com o mesmo peso e o motivo do ME1 repetido em todo combo. A família virou um título
+  leve; a unidade é o cartão (`cartoesDaFamilia`), com a unidade e os combos dela dentro.
+- **O que saiu da linha foi para o detalhe, não para o lixo:** envio por extenso, um frete por tipo com a origem de
+  cada um, os quatro preços com botão de copiar, "Feito de", "Também entra em" e "Ajustar percentuais". Na linha ficam
+  a etiqueta do envio ("Full", "ME1" — `seloDoEnvio`, texto inteiro no balão) e a frase sob o frete em branco ("sem
+  tabela: digite"). O medo de 11/10 ("nem sei se é ME1", §47) continua atendido por esses dois.
+- **A comissão é da empresa: foi para o cabeçalho da coluna.** Produto com percentual próprio leva o selo "Ajustado".
+- **Um campo de frete na linha, e ele grava nos DOIS tipos.** Vale quando os dois valem o mesmo: digitados iguais, os
+  dois em branco, ou um em branco HERDANDO o outro (`frete_origem === 'outro_tipo'`, o "mesmo do Clássico" de quem
+  digitou só um). Com Clássico digitado e Premium em branco com sugestão PRÓPRIA não é um frete só: a linha mostra os
+  dois campos (`freteUnico`). Quem decide entre um campo e dois é o que o SERVIDOR tem gravado, não o que se digita
+  agora — decidir pelo estado da digitação troca o campo de forma no meio dela e o cursor se perde.
+- **O preço da PROMOÇÃO é o número grande; o de anunciar vai embaixo.** É o que o comprador paga e o que fecha a
+  conta. Clicar em qualquer um copia (o ícone aparece ao passar o mouse, FORA da coluna, para o número continuar
+  alinhado à direita entre os cartões). Sem o frete o preço aparece apagado e sem copiar: ainda não é o preço.
+- **O cabeçalho das colunas e cada linha usam a MESMA grade** (`COLUNAS`). Cada cartão é uma grade própria; com
+  larguras diferentes os números desalinham de um cartão para o outro. A prova mede a borda direita do preço em
+  todas as linhas e cobra um valor só.
+- **A linha acesa pelo atalho fica dentro de um cartão com `overflow-hidden`.** O contorno do `[data-aceso]` é para
+  fora e sumiria nas pontas: há uma regra em `app.css` que o põe para dentro só em `[data-linha-preco]`.
+- **Ficou de fora:** o filtro "Só pendentes" das propostas. Pendência é calculada no PHP por oferta e a página é
+  paginada por bloco: filtrar só o que a página trouxe daria o erro do §25. Precisa ser filtro do servidor.
+- **Prova sem servidor:** `scratchpad/prova_linhas.mjs <pasta>` desenha a página no Puppeteer com o CSS do build e os
+  números do print do usuário, abre o detalhe, usa o atalho, recolhe, edita os parâmetros, digita no frete único e
+  confere o PUT que sairia (os dois tipos), e fotografa em 1440 e em 900 px.

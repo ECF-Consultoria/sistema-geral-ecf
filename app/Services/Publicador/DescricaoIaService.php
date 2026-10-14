@@ -6,6 +6,7 @@ use App\Jobs\Publicador\GerarDescricaoIaJob;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Support\Publicador\Emojis;
 use App\Support\Publicador\TermosVetados;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -113,7 +114,7 @@ class DescricaoIaService
 
         $analise = $ia->analise($nome, $loja, $specs)['dados'];
         // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
-        // Sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
+        // Sem emoji, sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
         $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados'])));
         if ($texto === '') {
             throw new \RuntimeException(self::ERRO_VAZIA);
@@ -236,11 +237,14 @@ class DescricaoIaService
         return $saida;
     }
 
-    /** A IA escreve em HTML simples; a descrição do anúncio é texto puro (mesma regra do IaParaRascunhoService). */
+    /**
+     * A IA escreve em HTML simples e põe emoji por conta própria; a descrição do anúncio é texto puro e o ML recusa
+     * emoji (13/10/2026). Mesma regra do IaParaRascunhoService.
+     */
     private function limparDescricao(?string $html): string
     {
         $texto = preg_replace('~</(p|li|h[1-6]|div)>|<br\s*/?>~i', "\n", (string) $html);
-        $texto = html_entity_decode(strip_tags((string) $texto), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $texto = Emojis::tirar(html_entity_decode(strip_tags((string) $texto), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 
         return trim((string) preg_replace("/\n{3,}/", "\n\n", str_replace("\r", '', $texto)));
     }

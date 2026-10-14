@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
-import { avisoSemSugestao, resumoDoEnvio } from '@/lib/precificacaoEnvio';
-import { deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
-import { filtrosDeTipo, linhasDaFamilia, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia } from '@/lib/precificacaoPorFamilia';
+import { avisoSemSugestao, resumoDoEnvio, seloDoEnvio } from '@/lib/precificacaoEnvio';
+import { deveCotarDeNovo, freteEmBranco, freteUnico, legendaDoFreteUnico, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
+import { cartoesDaFamilia, filtrosDeTipo, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia, rotuloDaFase } from '@/lib/precificacaoPorFamilia';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 //
 // ### O que o cliente digita
 // - Os parâmetros da EMPRESA (uma vez): comissão de cada tipo, imposto, MC,
-//   LL e acréscimo — com exceção por produto, no "Ajustar".
+//   LL e acréscimo — com exceção por produto, no "Ajustar percentuais".
 // - Por produto: custo e os dois fretes. Combo, kit e combit já chegam com o
 //   custo SOMADO dos componentes (CB4 = 4 × o da CAD-01) — dá para corrigir.
 // Tudo salva ao sair do campo, como nas outras abas.
@@ -34,29 +34,44 @@ import { cn } from '@/lib/utils';
 // cima vence. "Cotar agora" pede a cotação real das ofertas desta página.
 //
 // ### Por família (11/10/2026)
-// A lista era corrida — "uma lista inteira sem saber o que é". Agora vem em grupos
-// por família (a do cadastro de Produtos): cada produto uma vez, com os combos dele
-// pendurados embaixo; kit e combit em "Conjuntos desta família", também uma vez
-// só, e o produto que entra neles diz "Também entra em". O que não tem família
-// fica no grupo "Sem família". Quem agrupa e ordena é o servidor, antes de
-// paginar; aqui é só desenho (`lib/precificacaoPorFamilia.js`).
-
-const FASE_CURTA = { simples: 'Simples', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
+// A lista vem em grupos por família (a do cadastro de Produtos): cada produto uma
+// vez, com os combos dele; kit e combit em "Conjuntos desta família", também uma vez
+// só, e o produto que entra neles diz "Também entra em". O que não tem família fica
+// em "Sem família". Quem agrupa e ordena é o servidor, antes de paginar; aqui é só
+// desenho (`lib/precificacaoPorFamilia.js`).
+//
+// ### Linhas enxutas (13/10/2026)
+// A tabela por família ficou "muito ruim e confusa": seis linhas de letra miúda por
+// oferta, quatro preços com o mesmo peso e o motivo do envio repetido em todo combo.
+// O usuário escolheu, entre quatro propostas, a que põe a unidade e os combos dela no
+// MESMO cartão, uma linha por oferta. O que mudou no desenho:
+// - a linha mostra só o essencial: código, custo, UM campo de frete (quando os dois
+//   tipos valem o mesmo — `freteUnico`), o preço da promoção em destaque com o de
+//   anunciar embaixo, e a situação;
+// - a comissão saiu de cada linha e foi para o cabeçalho da coluna (é a da empresa);
+//   o produto com percentuais próprios leva o selo "Ajustado";
+// - o envio virou etiqueta ("Full", "ME1"); pacote, limites, os dois fretes com a
+//   origem de cada um, os quatro preços para copiar e o "Ajustar percentuais" abrem
+//   no detalhe da linha;
+// - os parâmetros da empresa ficam numa linha, com "Editar".
+// Nenhuma conta mudou e nada novo vem do servidor.
 
 const PARAMETROS = [
-    ['comissao_classico', 'Comissão Clássico'],
-    ['comissao_premium', 'Comissão Premium'],
-    ['imposto', 'Imposto'],
-    ['margem_contribuicao', 'Margem de contribuição'],
-    ['lucro_liquido', 'Lucro líquido'],
-    ['acrescimo', 'Acréscimo'],
+    ['comissao_classico', 'Comissão Clássico', 'Comissão Clássico'],
+    ['comissao_premium', 'Comissão Premium', 'Comissão Premium'],
+    ['imposto', 'Imposto', 'Imposto'],
+    ['margem_contribuicao', 'Margem de contribuição', 'MC'],
+    ['lucro_liquido', 'Lucro líquido', 'LL'],
+    ['acrescimo', 'Acréscimo', 'Acréscimo'],
 ];
 
 const PENDENCIA = {
-    sem_custo:  { rotulo: 'Sem custo', classe: 'text-white/40' },
-    sem_frete:  { rotulo: 'Sem frete', classe: 'bg-amber-500/10 text-amber-300' },
-    impossivel: { rotulo: 'Conta impossível', classe: 'bg-red-500/10 text-red-300' },
+    sem_custo:  { rotulo: 'Sem custo', classe: 'bg-white/[0.07] text-white/65' },
+    sem_frete:  { rotulo: 'Sem frete', classe: 'bg-amber-500/[0.14] text-amber-300' },
+    impossivel: { rotulo: 'Conta impossível', classe: 'bg-red-500/[0.14] text-red-300' },
 };
+
+const TIPOS_DE_ANUNCIO = [['classico', 'Clássico'], ['premium', 'Premium']];
 
 // O cliente digita "12,50" — o servidor recebe 12.50. Vazio é "não informado".
 const paraNumero = (texto) => {
@@ -74,7 +89,15 @@ const dataBr = (iso) => {
     return `${d}/${m}/${a}`;
 };
 
-const CELULA = 'w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 text-right text-[13px] tabular-nums text-white placeholder:text-white/30 hover:border-white/[0.14] focus:border-ecf-yellow/40 focus:bg-white/[0.04] focus:outline-none focus:ring-0';
+const CELULA = 'w-full rounded-lg border border-white/[0.10] bg-white/[0.03] px-2 py-1.5 text-right text-[13px] tabular-nums text-white placeholder:text-white/40 hover:border-white/[0.18] focus:border-ecf-yellow/40 focus:bg-white/[0.05] focus:outline-none focus:ring-0';
+const CELULA_ALERTA = 'border-amber-400/50 bg-amber-500/[0.06] placeholder:text-amber-200/60';
+const SELO = 'shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold';
+const LEGENDA = 'mt-0.5 block text-right text-[11px]';
+const ROTULO = 'text-[10.5px] font-semibold uppercase tracking-wider text-white/45';
+
+// As colunas da lista: oferta, custo, frete, Clássico, Premium, situação e o botão do detalhe. O cabeçalho e
+// cada linha usam a MESMA grade, senão os números desalinham entre um cartão e outro.
+const COLUNAS = 'grid grid-cols-[minmax(0,1fr)_128px_144px_160px_160px_124px_32px] items-center gap-x-4 px-4';
 
 // Regra do onboarding de Polos (`ImplementacaoPublica.jsx`, updateCfg): mexer na
 // comissão do Clássico leva a do Premium junto, 5 pontos acima. O Premium segue
@@ -90,11 +113,15 @@ const comPremiumAcompanhando = (valores, chave, texto) => {
     return novo;
 };
 
-/** O conjunto da empresa: seis percentuais, salvos juntos. */
+/**
+ * O conjunto da empresa: seis percentuais, salvos juntos. Fechado, é uma linha com os valores; "Editar" abre os
+ * campos. Eles mudam raramente e ocupavam a primeira dobra inteira da tela (13/10/2026).
+ */
 function ParametrosEmpresa({ parametros, padroes }) {
     const [valores, setValores] = useState(() => Object.fromEntries(PARAMETROS.map(([k]) => [k, paraTexto(parametros[k])])));
     const [erros, setErros] = useState({});
     const [enviando, setEnviando] = useState(false);
+    const [editando, setEditando] = useState(false);
 
     // Pela assinatura dos valores, não pela identidade do objeto: salvar uma
     // linha recarrega a página e não pode apagar o que se digita aqui.
@@ -110,38 +137,65 @@ function ParametrosEmpresa({ parametros, padroes }) {
             preserveScroll: true, preserveState: true,
             onStart: () => { setEnviando(true); setErros({}); },
             onFinish: () => setEnviando(false),
+            onSuccess: () => setEditando(false),
             onError: setErros,
         });
 
+    const cancelar = () => {
+        setValores(Object.fromEntries(PARAMETROS.map(([k]) => [k, paraTexto(parametros[k])])));
+        setErros({});
+        setEditando(false);
+    };
+
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card p-4 sm:p-5" data-parametros-empresa>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
+        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-3 sm:px-5" data-parametros-empresa data-editando={editando ? 'sim' : 'nao'}>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1.5">
                     <h2 className="flex items-center gap-2 text-[13.5px] font-semibold text-white"><Percent size={15} className="text-ecf-yellow" /> Parâmetros da empresa</h2>
-                    <p className="text-[12px] text-white/45">Valem para todos os produtos. Um produto diferente se ajusta no "Ajustar" da linha dele.</p>
+                    {! editando && PARAMETROS.map(([k, , curto]) => (
+                        <span key={k} className="whitespace-nowrap text-[12.5px] text-white/55" data-parametro-resumo={k}>
+                            {curto} <strong className="font-semibold tabular-nums text-white">{fmtPct(parametros[k])}</strong>
+                        </span>
+                    ))}
                 </div>
-                <Botao variante="primario" onClick={salvar} disabled={! mudou || enviando} data-acao="salvar-parametros">
-                    {enviando && <Loader2 size={14} className="animate-spin" />} Salvar parâmetros
-                </Botao>
+                {editando ? (
+                    <div className="flex items-center gap-2">
+                        <Botao variante="fantasma" onClick={cancelar} disabled={enviando}>Cancelar</Botao>
+                        <Botao variante="primario" onClick={salvar} disabled={! mudou || enviando} data-acao="salvar-parametros">
+                            {enviando && <Loader2 size={14} className="animate-spin" />} Salvar parâmetros
+                        </Botao>
+                    </div>
+                ) : (
+                    <Botao onClick={() => setEditando(true)} data-acao="editar-parametros"><SlidersHorizontal size={14} /> Editar</Botao>
+                )}
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {PARAMETROS.map(([k, rotulo]) => (
-                    <Campo key={k} rotulo={rotulo} erro={erros[k]}
-                        dica={k === 'acrescimo' ? `o desconto da promoção · padrão ${fmtPct(padroes[k])}` : `padrão ${fmtPct(padroes[k])}`}>
-                        <div className="relative">
-                            <input value={valores[k]} onChange={(e) => setValores(comPremiumAcompanhando(valores, k, e.target.value))} inputMode="decimal"
-                                className={cn(CLASSE_INPUT, 'pr-7 text-right tabular-nums')} data-parametro={k} />
-                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-white/35">%</span>
-                        </div>
-                    </Campo>
-                ))}
-            </div>
+            {editando && (
+                <>
+                    <p className="mt-1 text-[12px] text-white/50">Valem para todos os produtos. Um produto diferente se ajusta no detalhe da linha dele.</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                        {PARAMETROS.map(([k, rotulo]) => (
+                            <Campo key={k} rotulo={rotulo} erro={erros[k]}
+                                dica={k === 'acrescimo' ? `o desconto da promoção · padrão ${fmtPct(padroes[k])}` : `padrão ${fmtPct(padroes[k])}`}>
+                                <div className="relative">
+                                    <input value={valores[k]} onChange={(e) => setValores(comPremiumAcompanhando(valores, k, e.target.value))} inputMode="decimal"
+                                        className={cn(CLASSE_INPUT, 'pr-7 text-right tabular-nums')} data-parametro={k} />
+                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-white/35">%</span>
+                                </div>
+                            </Campo>
+                        ))}
+                    </div>
+                </>
+            )}
         </section>
     );
 }
 
-/** Copia o valor no formato que o Mercado Livre aceita ("131.22"). */
-function Copiar({ valor, rotulo }) {
+/**
+ * Copia o valor no formato que o Mercado Livre aceita ("131.22"). Sozinho, é o ícone ao lado do valor; com
+ * `children`, o próprio valor é o botão e o ícone aparece ao passar o mouse, fora da coluna — o número
+ * continua alinhado à direita com os das outras linhas.
+ */
+function Copiar({ valor, rotulo, children = null, className, ...props }) {
     const [copiado, setCopiado] = useState(false);
     const copiar = () => {
         try {
@@ -150,60 +204,124 @@ function Copiar({ valor, rotulo }) {
             setTimeout(() => setCopiado(false), 1500);
         } catch { /* sem clipboard: o valor segue visível ao lado */ }
     };
+    const Icone = copiado ? Check : Copy;
+
+    if (children === null) {
+        return (
+            <button type="button" onClick={copiar} title={`Copiar ${rotulo}`} aria-label={`Copiar ${rotulo}`}
+                className={cn('shrink-0 rounded p-1 text-white/40 transition hover:bg-white/[0.06] hover:text-white', className)} {...props}>
+                <Icone size={13} className={copiado ? 'text-emerald-400' : undefined} />
+            </button>
+        );
+    }
 
     return (
-        <button type="button" onClick={copiar} title={`Copiar ${rotulo}`} aria-label={`Copiar ${rotulo}`}
-            className="shrink-0 text-white/25 transition hover:text-white">
-            {copiado ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+        <button type="button" onClick={copiar} title={`Copiar ${rotulo}`}
+            className={cn('group/copiar relative inline-flex items-center rounded transition hover:text-ecf-yellow focus-visible:text-ecf-yellow', className)} {...props}>
+            {children}
+            <Icone size={11} aria-hidden="true"
+                className={cn('absolute left-full top-1/2 ml-1 -translate-y-1/2', copiado
+                    ? 'text-emerald-400'
+                    : 'text-white/50 opacity-0 group-hover/copiar:opacity-100 group-focus-visible/copiar:opacity-100')} />
         </button>
     );
 }
 
 /**
- * Preço de um tipo, como no link do Publicador do onboarding: o preço de
- * ANUNCIAR (com o acréscimo) e o preço na PROMOÇÃO (sem ele). O acréscimo é o
- * desconto que se dá na Central de Promoções do ML — o "sem acréscimo" não é
- * um mínimo abstrato, é o preço que o comprador paga na promoção.
+ * Os dois preços de um tipo, na linha: o da PROMOÇÃO em destaque — é o que o comprador paga e o que fecha a
+ * conta — e o de ANUNCIAR (com o acréscimo) embaixo. Clicar em qualquer um copia. Sem o frete o preço aparece
+ * apagado e não se copia: ainda não é o preço.
  */
-function Preco({ calculo, tipo }) {
-    if (calculo.minimo === null) return <span className="text-[12.5px] text-white/25">—</span>;
+function PrecoDaLinha({ calculo, tipo, nome, semFrete }) {
+    if (calculo.minimo === null) return <span className="block text-right text-[13px] text-white/30">—</span>;
+
+    if (semFrete) {
+        return (
+            <span className="block text-right" data-preco={tipo} data-incompleto>
+                <span className="block text-[15px] font-bold tabular-nums text-white/45">{fmtReais(calculo.minimo)}</span>
+                <span className="block text-[11.5px] text-amber-200/75">ainda sem o frete</span>
+            </span>
+        );
+    }
 
     return (
-        <span className="block space-y-0.5 text-right" data-preco={tipo}>
-            <span className="flex items-center justify-end gap-1.5" title="Preço para publicar o anúncio no Mercado Livre">
-                <span className="text-[9.5px] font-semibold uppercase tracking-wider text-amber-300/60">Anunciar</span>
-                <span className="text-[13.5px] font-bold tabular-nums text-amber-300" data-anunciar>{fmtReais(calculo.anunciado)}</span>
-                <Copiar valor={calculo.anunciado} rotulo="o preço de anunciar" />
+        <span className="block text-right" data-preco={tipo}>
+            <Copiar valor={calculo.minimo} rotulo={`o preço da promoção do ${nome}`} className="text-[15px] font-bold tabular-nums text-white" data-promocao>
+                {fmtReais(calculo.minimo)}
+            </Copiar>
+            <span className="flex items-center justify-end gap-1 text-[11.5px] text-white/50">
+                anunciar
+                <Copiar valor={calculo.anunciado} rotulo={`o preço de anunciar do ${nome}`} className="tabular-nums text-white/75" data-anunciar>
+                    {fmtReais(calculo.anunciado)}
+                </Copiar>
             </span>
-            <span className="flex items-center justify-end gap-1.5" title="Preço com o desconto da Central de Promoções: paga custo, frete, comissão, imposto, MC e LL">
-                <span className="text-[9.5px] font-semibold uppercase tracking-wider text-emerald-300/60">Promoção</span>
-                <span className="text-[13.5px] font-bold tabular-nums text-emerald-300" data-promocao>{fmtReais(calculo.minimo)}</span>
-                <Copiar valor={calculo.minimo} rotulo="o preço da promoção" />
-            </span>
-            <span className="block text-[10.5px] tabular-nums text-white/30">comissão {fmtPct(calculo.comissao)}</span>
         </span>
     );
 }
 
-/** Como publicar com esses dois preços — o mesmo passo a passo do link do Publicador. */
-function ComoPublicar({ acrescimo }) {
+/** Os quatro preços no detalhe, cada um com o botão de copiar e a comissão do tipo (a do produto, se ajustada). */
+function PrecosParaCopiar({ calculo }) {
+    return (
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-[13px]" data-precos-para-copiar>
+            <span />
+            <span className="text-right text-[11.5px] text-white/50">Anunciar</span>
+            <span className="text-right text-[11.5px] text-white/50">Promoção</span>
+            {TIPOS_DE_ANUNCIO.map(([chave, nome]) => {
+                const c = calculo[chave];
+
+                return (
+                    <Fragment key={chave}>
+                        <span className="text-white/70">
+                            {nome}
+                            <span className="block text-[11px] tabular-nums text-white/45">comissão {fmtPct(c.comissao)}</span>
+                        </span>
+                        {c.minimo === null ? (
+                            <>
+                                <span className="text-right text-white/30">—</span>
+                                <span className="text-right text-white/30">—</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="flex items-center justify-end gap-1 tabular-nums text-white/80">
+                                    {fmtReais(c.anunciado)} <Copiar valor={c.anunciado} rotulo={`o preço de anunciar do ${nome}`} />
+                                </span>
+                                <span className="flex items-center justify-end gap-1 font-bold tabular-nums text-white">
+                                    {fmtReais(c.minimo)} <Copiar valor={c.minimo} rotulo={`o preço da promoção do ${nome}`} />
+                                </span>
+                            </>
+                        )}
+                    </Fragment>
+                );
+            })}
+        </div>
+    );
+}
+
+/** Como publicar com esses dois preços — o mesmo passo a passo do link do Publicador — e o que é o frete sugerido. */
+function ComoPublicar({ acrescimo, mlConectado, freteTabela }) {
     return (
         <section className="rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-3.5 sm:px-5" data-como-publicar>
             <p className="text-[13px] font-semibold text-white">Como usar os dois preços</p>
             <ol className="mt-1.5 space-y-1 text-[12.5px] leading-relaxed text-white/60">
                 <li>
                     <span className="font-semibold text-white/80">1.</span> Publique o anúncio no Mercado Livre pelo preço{' '}
-                    <span className="font-semibold text-amber-300">Anunciar</span> — ele já tem os {fmtPct(acrescimo)} de acréscimo.
+                    <span className="font-semibold text-white">Anunciar</span> — ele já tem os {fmtPct(acrescimo)} de acréscimo.
                 </li>
                 <li>
                     <span className="font-semibold text-white/80">2.</span> Na <span className="font-semibold text-white/80">Central de Promoções</span>, crie o desconto
-                    até o preço <span className="font-semibold text-emerald-300">Promoção</span>, que é o valor sem os {fmtPct(acrescimo)}.
+                    até o preço da <span className="font-semibold text-white">Promoção</span> (o número grande da linha), que é o valor sem os {fmtPct(acrescimo)}.
                 </li>
                 <li>
                     <span className="font-semibold text-white/80">3.</span> O comprador vê o produto com desconto, e o preço da promoção ainda paga custo, frete, comissão,
-                    imposto e as margens dos parâmetros. Não desça abaixo dele.
+                    imposto e as margens dos parâmetros. Não desça abaixo dele. Clique em um preço da linha para copiá-lo no formato do Mercado Livre.
                 </li>
             </ol>
+            <p className="mt-2.5 border-t border-white/[0.06] pt-2.5 text-[12.5px] leading-relaxed text-white/55" data-explica-frete>
+                Frete em branco vem sugerido para cada tipo, no preço dele: <span className="text-white/75">sugerido pela sua conta</span> quando
+                já cotado no Mercado Livre{mlConectado ? '' : ' (conecte a sua conta para cotar)'}, ou <span className="text-white/75">estimado pela tabela</span> de
+                custos do Mercado Livre{freteTabela?.vigente_desde ? ` vigente desde ${dataBr(freteTabela.vigente_desde)}` : ''}. Digite por cima se o seu frete for outro:
+                o campo da linha vale para os dois tipos, e no detalhe dá para pôr um frete em cada um.
+            </p>
         </section>
     );
 }
@@ -227,29 +345,38 @@ function OrigemDoFrete({ calculo, de, freteTabela }) {
             : `Tabela de custos de envio do Mercado Livre${vigencia}${reputacao}.`;
 
     return (
-        <span className="mt-0.5 block text-right text-[10.5px] text-white/35" title={dica}
+        <span className={cn(LEGENDA, 'text-white/45')} title={dica}
             data-frete-origem={r.tipo} data-frete-fonte={r.fonte ?? ''}>
             {r.texto}
         </span>
     );
 }
 
-const TOM_DO_ENVIO = { ok: 'text-white/55', neutro: 'text-white/60', alerta: 'text-amber-300' };
+const TOM_DO_ENVIO = { ok: 'text-white/80', neutro: 'text-white/80', alerta: 'text-amber-300' };
+const TOM_DO_SELO = { ok: 'bg-white/[0.07] text-white/70', neutro: 'bg-white/[0.07] text-white/70', alerta: 'bg-amber-500/[0.14] text-amber-300' };
+
+/** O envio em uma etiqueta ao lado do código; o texto inteiro fica no balão e no detalhe da linha. */
+function SeloDoEnvio({ envio }) {
+    const s = seloDoEnvio(envio);
+    if (! s) return null;
+
+    return <span className={cn(SELO, TOM_DO_SELO[s.tom])} title={s.dica} data-selo-envio={s.chave}>{s.texto}</span>;
+}
 
 /**
- * O envio da oferta, sob o nome: o que ela é (Mercado Envios, fora dele, faltam medidas), o pacote —
- * o SOMADO, quando é combo ou kit — e, fora do Mercado Envios, por quê. Sem isto a oferta sem frete
- * sugerido ficava com o campo em branco e nenhuma explicação (11/10/2026).
+ * O envio da oferta por extenso, no detalhe: o que ela é (Mercado Envios, fora dele, faltam medidas), o pacote —
+ * o SOMADO, quando é combo ou kit — e, fora do Mercado Envios, por quê. Sem isto a oferta sem frete sugerido
+ * ficava com o campo em branco e nenhuma explicação (11/10/2026).
  */
 function EnvioDaOferta({ envio }) {
     const r = resumoDoEnvio(envio);
     if (! r) return null;
 
     return (
-        <span className="mt-1 block text-[10.5px] leading-snug text-white/40" data-envio={r.chave} title={r.dica ?? undefined}>
-            <span className={cn('font-semibold', TOM_DO_ENVIO[r.tom])}>{r.rotulo}</span>
+        <span className="block text-[12.5px] leading-snug text-white/55" data-envio={r.chave} title={r.dica ?? undefined}>
+            <span className={cn('block font-semibold', TOM_DO_ENVIO[r.tom])}>{r.rotulo}</span>
             {r.pacote && <span className="block" data-envio-pacote>{r.pacote}</span>}
-            {r.motivo && r.tom === 'alerta' && <span className="block text-amber-200/70" data-envio-motivo>{r.motivo}</span>}
+            {r.motivo && r.tom === 'alerta' && <span className="block text-amber-200/75" data-envio-motivo>{r.motivo}</span>}
         </span>
     );
 }
@@ -259,12 +386,22 @@ function SemSugestaoDeFrete({ envio, tipo }) {
     const texto = avisoSemSugestao(envio, tipo);
     if (! texto) return null;
 
-    return <span className="mt-0.5 block text-right text-[10.5px] text-amber-200/60" title={resumoDoEnvio(envio)?.dica ?? undefined} data-frete-sem-sugestao>{texto}</span>;
+    return <span className={cn(LEGENDA, 'text-amber-200/75')} title={resumoDoEnvio(envio)?.dica ?? undefined} data-frete-sem-sugestao>{texto}</span>;
+}
+
+/** Sob o campo ÚNICO de frete da linha: a origem do valor ou, sem nada a sugerir, por que está em branco. */
+function LegendaDoFreteUnico({ calculo }) {
+    const r = legendaDoFreteUnico(calculo, fmtReais);
+    if (r) return <span className={cn(LEGENDA, 'truncate text-white/45')} title={r.texto} data-frete-origem={r.tipo}>{r.texto}</span>;
+
+    const aviso = avisoSemSugestao(calculo.envio, calculo.classico) ?? avisoSemSugestao(calculo.envio, calculo.premium);
+
+    return aviso ? <span className={cn(LEGENDA, 'text-amber-200/75')} title={resumoDoEnvio(calculo.envio)?.dica ?? undefined} data-frete-sem-sugestao>{aviso}</span> : null;
 }
 
 /** Um atalho para outra oferta da lista. Fora desta página (ou do filtro) é só o texto. */
 function Atalho({ alvo, rotulo, onIrPara }) {
-    const classe = 'max-w-full truncate rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10.5px] text-white/60';
+    const classe = 'max-w-full truncate rounded-md border border-white/[0.10] bg-white/[0.03] px-2 py-0.5 text-[11.5px] text-white/70';
     const dica = alvo.nome ? `${alvo.nome} (${alvo.sku})` : alvo.sku;
     if (! onIrPara?.pode(alvo.id)) return <span className={classe} title={dica}>{rotulo}</span>;
 
@@ -276,51 +413,46 @@ function Atalho({ alvo, rotulo, onIrPara }) {
     );
 }
 
-/** O cabeçalho de uma família: abre e fecha o grupo e resume o que há nele. */
+/** O título de uma família: abre e fecha o grupo e resume o que há nele. Os cartões dos produtos vêm embaixo. */
 function CabecalhoDaFamilia({ familia, aberta, pendentes, fixa, onAlternar }) {
     const Seta = aberta ? ChevronDown : ChevronRight;
 
     return (
-        <tr className="border-t border-white/[0.08] bg-white/[0.03]" data-familia-cabecalho={familia.chave}>
-            <td colSpan={8} className="px-3 py-2">
-                <button type="button" onClick={onAlternar} disabled={fixa} aria-expanded={aberta} data-acao="alternar-familia"
-                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-left disabled:cursor-default">
-                    <Seta size={15} className={cn('shrink-0', fixa ? 'text-white/20' : 'text-white/50')} />
-                    <span className={cn('text-[13.5px] font-semibold', familia.semFamilia ? 'text-white/60' : 'text-white')}>{familia.nome}</span>
-                    <span className="text-[12px] text-white/45">{resumoDaFamilia(familia)}</span>
-                    {familia.semFamilia && <span className="text-[12px] text-white/35">Defina a família na ficha do produto para agrupar.</span>}
-                    <span className="flex-1" />
-                    {pendentes > 0 && (
-                        <span className="whitespace-nowrap rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300" data-pendentes={pendentes}>
-                            {pendentes} {pendentes === 1 ? 'pendente' : 'pendentes'}
-                        </span>
-                    )}
-                </button>
-            </td>
-        </tr>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-2" data-familia-cabecalho={familia.chave}>
+            <button type="button" onClick={onAlternar} disabled={fixa} aria-expanded={aberta} data-acao="alternar-familia"
+                className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1 text-left disabled:cursor-default">
+                <Seta size={15} className={cn('shrink-0 self-center', fixa ? 'text-white/20' : 'text-white/50')} />
+                <span className={cn('font-display text-[15px] font-bold', familia.semFamilia ? 'text-white/65' : 'text-white')}>{familia.nome}</span>
+                <span className="text-[12px] text-white/50">{resumoDaFamilia(familia)}</span>
+                {familia.semFamilia && <span className="text-[12px] text-white/40">Defina a família na ficha do produto para agrupar.</span>}
+            </button>
+            <span className="flex-1" />
+            {pendentes > 0 && (
+                <span className={cn(SELO, 'bg-amber-500/[0.14] text-amber-300')} data-pendentes={pendentes}>
+                    {pendentes} {pendentes === 1 ? 'pendente' : 'pendentes'}
+                </span>
+            )}
+        </div>
     );
 }
 
 /** Onde começam os kits e combits da família. */
 function TituloConjuntos() {
     return (
-        <tr className="border-t border-white/[0.06]" data-titulo-conjuntos>
-            <td colSpan={8} className="px-3 pb-1 pt-3">
-                <span className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[11.5px] font-semibold text-white/65">Conjuntos desta família</span>
-                    <span className="text-[11px] text-white/35">kits e combits, que juntam mais de um produto</span>
-                </span>
-            </td>
-        </tr>
+        <p className="flex flex-wrap items-baseline gap-x-2 px-1 pt-1" data-titulo-conjuntos>
+            <span className="text-[12px] font-semibold text-white/70">Conjuntos desta família</span>
+            <span className="text-[11.5px] text-white/40">kits e combits, que juntam mais de um produto</span>
+        </p>
     );
 }
 
 /**
- * Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços.
- * `filho` = combo pendurado no produto; `alternar` = o produto abre/fecha os combos dele; `tambemEm` e
- * `itens` são os atalhos (em que conjuntos o produto entra / do que o conjunto é feito).
+ * Uma oferta em uma linha: código, custo (digitado ou dos componentes), frete, os dois preços e a situação. O
+ * detalhe — envio por extenso, um frete por tipo, os quatro preços para copiar, do que é feita e o "Ajustar
+ * percentuais" — abre embaixo. `filho` = combo no cartão do produto dele; `tambemEm` e `itens` são os atalhos
+ * (em que conjuntos o produto entra / do que o conjunto é feito).
  */
-function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, alternar = null, aberto = false, tambemEm = [], itens = [], onIrPara = null }) {
+function LinhaOferta({ oferta, calculo, onAjustar, freteTabela, filho = false, tambemEm = [], itens = [], onIrPara = null }) {
     // D-10: na oferta que veio do Produtos o custo mora no produto (167-08); a
     // tela mostra o valor e não manda custo no salvar (o servidor o recusaria).
     const doProduto = calculo.do_produto === true;
@@ -329,6 +461,7 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, al
     const [freteP, setFreteP] = useState(paraTexto(calculo.frete_premium));
     const [erro, setErro] = useState(null);
     const [salvando, setSalvando] = useState(false);
+    const [aberto, setAberto] = useState(false);
 
     // Relê só quando o que ESTA linha gravou mudou: salvar outra linha recarrega
     // a página, e isso não pode apagar o que se está digitando aqui.
@@ -356,98 +489,167 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, al
     const enter = (e) => e.key === 'Enter' && e.currentTarget.blur();
     const temComponentes = oferta.componentes.length > 0;
     const pendencia = PENDENCIA[calculo.pendencia];
+    const semFrete = calculo.pendencia === 'sem_frete';
     const ajustado = Object.values(calculo.excecoes).some((v) => v !== null);
 
+    // Um campo de frete ou dois? Quem decide é o que o SERVIDOR tem gravado, não o que se digita agora: senão o
+    // campo trocaria de forma no meio da digitação e o cursor se perderia.
+    const sugeridoC = placeholderFrete(calculo.classico);
+    const sugeridoP = placeholderFrete(calculo.premium);
+    const sugeridoUnico = sugeridoC === sugeridoP ? sugeridoC : (sugeridoC !== 'R$' && sugeridoP !== 'R$' ? `${sugeridoC} · ${sugeridoP}` : null);
+    const gravado = freteUnico(paraTexto(calculo.frete_classico), paraTexto(calculo.frete_premium), calculo);
+    const umCampo = gravado.unico && (gravado.valor !== '' || sugeridoUnico !== null);
+    const digitarNosDois = (e) => { setFreteC(e.target.value); setFreteP(e.target.value); };
+
+    const custoDaOrigem = calculo.custo.origem === 'componentes' ? 'soma dos componentes'
+        : calculo.custo.origem === 'digitado' ? (calculo.custo.calculado !== null ? `componentes: ${fmtReais(calculo.custo.calculado)}` : 'digitado')
+            : 'falta o custo de um componente';
+
     return (
-        <tr id={`oferta-${oferta.id}`} className={cn('scroll-mt-24 border-t border-white/[0.06] align-top', filho && 'bg-white/[0.015]')}
+        <div id={`oferta-${oferta.id}`} className={cn('scroll-mt-24 border-white/[0.06] [&:not(:first-child)]:border-t', filho && 'bg-white/[0.018]')}
             data-linha-preco={oferta.id} data-pendencia={calculo.pendencia ?? 'ok'} data-nivel={filho ? 'combo' : 'produto'}>
-            <td className="px-3 py-2.5">
-                <span className={cn('flex items-start gap-1.5', filho && 'pl-4')}>
-                    {/* O combo pende do produto dele: um "L" liga os dois. */}
-                    {filho && <span aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 rounded-bl border-b border-l border-white/25" data-ligacao />}
-                    {alternar ? (
-                        <button type="button" onClick={alternar} aria-expanded={aberto} data-acao="alternar-combos"
-                            aria-label={`${aberto ? 'Esconder' : 'Mostrar'} os combos de ${oferta.sku}`}
-                            className="mt-px shrink-0 rounded p-0.5 text-white/45 hover:bg-white/[0.06] hover:text-white">
-                            {aberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        </button>
-                    ) : (! filho && <span aria-hidden="true" className="w-[18px] shrink-0" />)}
-                    <span className="min-w-0 flex-1">
-                        {/* O código nunca é cortado (é por ele que se acha o produto): quebra de linha. O nome mostra até duas. */}
-                        <span className="flex items-baseline gap-2">
-                            <span className="min-w-0 break-words font-mono text-[12.5px] font-semibold text-white">{oferta.sku}</span>
-                            <span className="shrink-0 text-[10.5px] text-white/35">{FASE_CURTA[oferta.fase]}</span>
-                        </span>
-                        <span className="line-clamp-2 text-[11.5px] text-white/40" title={oferta.nome ?? ''}>{oferta.nome}</span>
-                        {itens.length > 0 && (
-                            <span className="mt-1 flex flex-wrap gap-1" data-composicao>
-                                {itens.map((c) => <Atalho key={c.id} alvo={c} rotulo={`${c.quantidade}× ${c.nome ?? c.sku}`} onIrPara={onIrPara} />)}
+            <div className={cn(COLUNAS, 'py-3')}>
+                <div className={cn('min-w-0', filho && 'pl-4')}>
+                    {/* O código nunca é cortado (é por ele que se acha o produto): quebra de linha. */}
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        {oferta.fase !== 'simples' && <span className={cn(SELO, 'bg-white/[0.07] text-white/75')} data-fase={oferta.fase}>{rotuloDaFase(oferta)}</span>}
+                        <span className={cn('min-w-0 break-words font-mono text-[13px] text-white', ! filho && 'font-semibold')} title={filho ? (oferta.nome ?? undefined) : undefined}>{oferta.sku}</span>
+                        <SeloDoEnvio envio={calculo.envio} />
+                    </span>
+                    {! filho && <span className="mt-0.5 block truncate text-[12.5px] text-white/55" title={oferta.nome ?? ''}>{oferta.nome}</span>}
+                </div>
+
+                <div>
+                    {doProduto ? (
+                        <span className="block text-right" data-custo-do-produto>
+                            <span className="block text-[13px] tabular-nums text-white">
+                                {calculo.custo.valor !== null && calculo.custo.valor !== undefined ? fmtReais(calculo.custo.valor) : 'sem custo'}
                             </span>
-                        )}
-                        <EnvioDaOferta envio={calculo.envio} />
-                        {tambemEm.length > 0 && (
-                            <span className="mt-1 flex flex-wrap items-center gap-1" data-tambem-em>
-                                <span className="text-[10.5px] text-white/35">Também entra em</span>
-                                {/* Tipo + código: o nome do conjunto é comprido demais para caber aqui (vai na dica). */}
-                                {tambemEm.map((k) => <Atalho key={k.id} alvo={k} rotulo={`${FASE_CURTA[k.fase] ?? ''} ${k.sku}`.trim()} onIrPara={onIrPara} />)}
-                            </span>
-                        )}
-                    </span>
-                </span>
-            </td>
-            <td className="px-1.5 py-1.5">
-                {doProduto ? (
-                    <span className="block text-right" data-custo-do-produto>
-                        <span className="block text-[13px] tabular-nums text-white/80">
-                            {calculo.custo.valor !== null && calculo.custo.valor !== undefined ? fmtReais(calculo.custo.valor) : 'sem custo'}
+                            <a href={route('portal.auth.estrutura.produtos', { q: oferta.sku })} title="Alterar no Produtos" data-acao="alterar-no-produtos"
+                                className="text-[11px] text-white/45 underline-offset-2 hover:text-ecf-yellow hover:underline">
+                                vem do produto
+                            </a>
                         </span>
-                        <span className="mt-0.5 block text-[12px] text-white/40">vem do produto</span>
-                        <a href={route('portal.auth.estrutura.produtos', { q: oferta.sku })} className="text-[12px] text-ecf-yellow hover:underline" data-acao="alterar-no-produtos">
-                            Alterar no Produtos
-                        </a>
-                    </span>
-                ) : (
-                    <input value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                        placeholder={temComponentes && calculo.custo.calculado !== null ? paraTexto(calculo.custo.calculado) : 'R$'}
-                        className={CELULA} aria-label={`Custo de ${oferta.sku}`} data-celula="custo" />
-                )}
-                {! doProduto && temComponentes && (
-                    <span className="mt-0.5 block text-right text-[10.5px] text-white/35" data-custo-origem={calculo.custo.origem ?? ''}>
-                        {calculo.custo.origem === 'componentes' ? 'soma dos componentes'
-                            : calculo.custo.origem === 'digitado' ? (calculo.custo.calculado !== null ? `componentes: ${fmtReais(calculo.custo.calculado)}` : 'digitado')
-                            : 'falta o custo de um componente'}
-                    </span>
-                )}
-                {erro && <span className="mt-0.5 block text-right text-[11px] text-red-300">{erro}</span>}
-            </td>
-            <td className="px-1.5 py-1.5">
-                <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                    placeholder={placeholderFrete(calculo.classico)} className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
-                <OrigemDoFrete calculo={calculo.classico} de="Premium" freteTabela={freteTabela} />
-                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.classico} />
-            </td>
-            <td className="px-1.5 py-1.5">
-                <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                    placeholder={placeholderFrete(calculo.premium)} className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
-                <OrigemDoFrete calculo={calculo.premium} de="Clássico" freteTabela={freteTabela} />
-                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.premium} />
-            </td>
-            <td className="px-3 py-2"><Preco calculo={calculo.classico} tipo="classico" /></td>
-            <td className="px-3 py-2"><Preco calculo={calculo.premium} tipo="premium" /></td>
-            <td className="px-3 py-2.5">
-                {salvando
-                    ? <Loader2 size={14} className="animate-spin text-white/40" />
-                    : pendencia
-                        ? <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', pendencia.classe)}>{pendencia.rotulo}</span>
-                        : <span className="whitespace-nowrap rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">Precificado</span>}
-            </td>
-            <td className="px-2 py-2 text-right">
-                <button type="button" onClick={() => onAjustar(oferta, calculo)} title="Percentuais só deste produto" data-acao="ajustar-preco"
-                    className={cn('inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] hover:bg-white/[0.06]', ajustado ? 'text-ecf-yellow' : 'text-white/40 hover:text-white')}>
-                    <SlidersHorizontal size={13} /> {ajustado ? 'Ajustado' : 'Ajustar'}
+                    ) : (
+                        <input value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                            placeholder={temComponentes && calculo.custo.calculado !== null ? paraTexto(calculo.custo.calculado) : 'R$'}
+                            className={cn(CELULA, calculo.pendencia === 'sem_custo' && CELULA_ALERTA)} aria-label={`Custo de ${oferta.sku}`} data-celula="custo" />
+                    )}
+                    {! doProduto && temComponentes && (
+                        <span className={cn(LEGENDA, 'truncate text-white/45')} title={custoDaOrigem} data-custo-origem={calculo.custo.origem ?? ''}>{custoDaOrigem}</span>
+                    )}
+                </div>
+
+                <div data-frete-da-linha={umCampo ? 'unico' : 'por-tipo'}>
+                    {umCampo ? (
+                        <>
+                            <input value={freteC !== '' ? freteC : freteP} onChange={digitarNosDois} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                                placeholder={sugeridoUnico ?? 'R$'} className={cn(CELULA, semFrete && CELULA_ALERTA)}
+                                aria-label={`Frete de ${oferta.sku}, no Clássico e no Premium`} data-celula="frete" />
+                            <LegendaDoFreteUnico calculo={calculo} />
+                        </>
+                    ) : (
+                        <>
+                            <span className="grid grid-cols-2 gap-1.5">
+                                {[['C', 'Clássico', freteC, setFreteC, sugeridoC], ['P', 'Premium', freteP, setFreteP, sugeridoP]].map(([letra, nome, valor, mudar, sugerido]) => (
+                                    <span key={letra} className="relative block">
+                                        <span aria-hidden="true" className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-white/45">{letra}</span>
+                                        <input value={valor} onChange={(e) => mudar(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                                            placeholder={sugerido} className={cn(CELULA, 'pl-4 pr-1.5 text-[12.5px]', semFrete && CELULA_ALERTA)}
+                                            aria-label={`Frete do ${nome} de ${oferta.sku}`} data-celula={`frete-${letra === 'C' ? 'classico' : 'premium'}`} />
+                                    </span>
+                                ))}
+                            </span>
+                            <span className={cn(LEGENDA, 'text-white/45')}>um frete por tipo</span>
+                        </>
+                    )}
+                </div>
+
+                <PrecoDaLinha calculo={calculo.classico} tipo="classico" nome="Clássico" semFrete={semFrete} />
+                <PrecoDaLinha calculo={calculo.premium} tipo="premium" nome="Premium" semFrete={semFrete} />
+
+                <div className="flex flex-col items-start gap-1">
+                    {salvando
+                        ? <Loader2 size={14} className="animate-spin text-white/40" />
+                        : pendencia
+                            ? <span className={cn(SELO, pendencia.classe)}>{pendencia.rotulo}</span>
+                            : <span className={cn(SELO, 'bg-emerald-500/10 text-emerald-300')}>Precificado</span>}
+                    {ajustado && <span className={cn(SELO, 'border border-ecf-yellow/40 text-ecf-yellow')} title="Este produto tem percentuais próprios" data-ajustado>Ajustado</span>}
+                </div>
+
+                <button type="button" onClick={() => setAberto((a) => ! a)} aria-expanded={aberto} data-acao="alternar-detalhe"
+                    aria-label={`${aberto ? 'Fechar' : 'Abrir'} o detalhe de ${oferta.sku}`} title={aberto ? 'Fechar o detalhe' : 'Envio, um frete por tipo e preços para copiar'}
+                    className={cn('flex h-8 w-8 items-center justify-center rounded-lg transition', aberto ? 'bg-ecf-yellow/10 text-ecf-yellow' : 'text-white/45 hover:bg-white/[0.06] hover:text-white')}>
+                    <ChevronDown size={16} className={cn('transition-transform', aberto && 'rotate-180')} />
                 </button>
-            </td>
-        </tr>
+            </div>
+
+            {erro && <p className="px-4 pb-2 text-right text-[11.5px] text-red-300">{erro}</p>}
+
+            {aberto && (
+                <div className={cn('grid gap-x-8 gap-y-5 border-t border-white/[0.06] bg-white/[0.025] px-4 pb-5 pt-4 md:grid-cols-3', filho && 'pl-8')} data-detalhe={oferta.id}>
+                    <div className="space-y-3">
+                        <div>
+                            <p className={ROTULO}>Envio</p>
+                            <div className="mt-1.5">
+                                {resumoDoEnvio(calculo.envio)
+                                    ? <EnvioDaOferta envio={calculo.envio} />
+                                    : <span className="text-[12.5px] text-white/45">Sem medidas para dizer o envio.</span>}
+                            </div>
+                        </div>
+                        {filho && oferta.nome && <p className="text-[12.5px] text-white/55">{oferta.nome}</p>}
+                        {itens.length > 0 && (
+                            <div data-composicao>
+                                <p className={ROTULO}>Feito de</p>
+                                <span className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {itens.map((c) => <Atalho key={c.id} alvo={c} rotulo={`${c.quantidade}× ${c.nome ?? c.sku}`} onIrPara={onIrPara} />)}
+                                </span>
+                            </div>
+                        )}
+                        {tambemEm.length > 0 && (
+                            <div data-tambem-em>
+                                <p className={ROTULO}>Também entra em</p>
+                                <span className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {/* Tipo + código: o nome do conjunto é comprido demais para caber aqui (vai na dica). */}
+                                    {tambemEm.map((k) => <Atalho key={k.id} alvo={k} rotulo={`${rotuloDaFase(k)} ${k.sku}`.trim()} onIrPara={onIrPara} />)}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <p className={ROTULO}>Frete que você paga</p>
+                        <div className="mt-1.5 grid grid-cols-2 gap-3">
+                            <label className="block">
+                                <span className="mb-1 block text-[11.5px] text-white/55">Clássico</span>
+                                <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                                    placeholder={sugeridoC} className={CELULA} data-celula="frete-classico" />
+                                <OrigemDoFrete calculo={calculo.classico} de="Premium" freteTabela={freteTabela} />
+                                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.classico} />
+                            </label>
+                            <label className="block">
+                                <span className="mb-1 block text-[11.5px] text-white/55">Premium</span>
+                                <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                                    placeholder={sugeridoP} className={CELULA} data-celula="frete-premium" />
+                                <OrigemDoFrete calculo={calculo.premium} de="Clássico" freteTabela={freteTabela} />
+                                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.premium} />
+                            </label>
+                        </div>
+                        <p className="mt-2 text-[11.5px] leading-snug text-white/45">Em branco vale o sugerido. Com valores diferentes aqui, a linha passa a mostrar um campo por tipo.</p>
+                    </div>
+
+                    <div>
+                        <p className={ROTULO}>Preços para copiar</p>
+                        <div className="mt-1.5"><PrecosParaCopiar calculo={calculo} /></div>
+                        <button type="button" onClick={() => onAjustar(oferta, calculo)} title="Percentuais só deste produto" data-acao="ajustar-preco"
+                            className={cn('mt-3 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] transition',
+                                ajustado ? 'border-ecf-yellow/40 text-ecf-yellow hover:bg-ecf-yellow/10' : 'border-white/[0.10] text-white/75 hover:bg-white/[0.06] hover:text-white')}>
+                            <SlidersHorizontal size={13} /> {ajustado ? 'Percentuais ajustados' : 'Ajustar percentuais'}
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -494,12 +696,24 @@ function AjustarProduto({ alvo, parametros, onFechar }) {
     );
 }
 
-function Numero({ valor, rotulo, classe }) {
+/** O andamento em uma linha: quantas ofertas já têm preço e, só quando há, o que falta em cada tipo de pendência. */
+function Resumo({ resumo }) {
+    const faltas = [
+        [resumo.sem_custo, 'sem custo', 'text-white/70'],
+        [resumo.sem_frete, 'sem frete', 'text-amber-300'],
+        [resumo.impossivel, 'conta impossível', 'text-red-300'],
+    ].filter(([n]) => n > 0);
+
     return (
-        <div>
-            <span className={cn('block font-display text-[22px] font-bold leading-none', classe)}>{valor.toLocaleString('pt-BR')}</span>
-            <span className="mt-1 block text-[12px] text-white/50">{rotulo}</span>
-        </div>
+        <section className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-1 text-[13px] text-white/55" data-resumo-precificacao>
+            <span>
+                <strong className="font-display text-[18px] font-bold tabular-nums text-emerald-300">{resumo.precificadas.toLocaleString('pt-BR')}</strong>{' '}
+                de {resumo.total.toLocaleString('pt-BR')} com preço
+            </span>
+            {faltas.map(([n, rotulo, classe]) => (
+                <span key={rotulo}><strong className={cn('font-display text-[15px] font-bold tabular-nums', classe)}>{n.toLocaleString('pt-BR')}</strong> {rotulo}</span>
+            ))}
+        </section>
     );
 }
 
@@ -538,11 +752,11 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const listaVisivel = submoduloVisivel(modulos, 'lista');
     const [ajustar, setAjustar] = useState(null);   // { oferta, calculo }
     const [aula, setAula] = useState(false);
+    const [ajuda, setAjuda] = useState(false);       // "Como usar os dois preços"
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [cotando, setCotando] = useState(false);
     const [avisoCotacao, setAvisoCotacao] = useState(null);
     const [fechadas, setFechadas] = useState({});     // família → fechada
-    const [recolhidos, setRecolhidos] = useState({}); // produto → combos escondidos
 
     const { painel, blocos, paginacao } = estrutura;
     const { parametros, padroes, resumo, por_oferta: porOferta } = precificacao;
@@ -550,18 +764,17 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const familias = montarFamilias(blocos, (id) => !! porOferta[id]);
     const onde = ondeEstaCadaOferta(familias);
     const nOfertas = Object.keys(onde).length;
-    // Com busca ou tipo escolhido a lista fica rasa e toda aberta: o que casou aparece direto.
+    // Com busca ou tipo escolhido as famílias ficam todas abertas: o que casou aparece direto.
     const filtrando = !! (filtros.q || tipo);
     const todasFechadas = familias.length > 0 && familias.every((f) => fechadas[f.chave]);
 
-    // O atalho de "Também entra em" e da composição: abre o que estiver fechado, rola e acende a linha.
+    // O atalho de "Também entra em" e do "Feito de": abre a família que estiver fechada, rola e acende a linha.
     const irParaOferta = {
         pode: (id) => !! onde[id],
         ir: (id) => {
             const lugar = onde[id];
             if (! lugar) return;
             setFechadas((f) => ({ ...f, [lugar.familia]: false }));
-            if (lugar.produto !== null) setRecolhidos((r) => ({ ...r, [lugar.produto]: false }));
             setTimeout(() => {
                 const linha = document.getElementById(`oferta-${id}`);
                 if (! linha) return;
@@ -623,14 +836,15 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                     <EstadoVazio listaVisivel={listaVisivel} />
                 ) : (
                     <>
-                        <section className="grid grid-cols-2 gap-4 rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-4 sm:grid-cols-4 sm:px-5" data-resumo-precificacao>
-                            <Numero valor={resumo.precificadas} rotulo={`de ${resumo.total} com preço`} classe="text-emerald-300" />
-                            <Numero valor={resumo.sem_custo} rotulo="sem custo" classe="text-white/60" />
-                            <Numero valor={resumo.sem_frete} rotulo="sem frete" classe="text-amber-300" />
-                            <Numero valor={resumo.impossivel} rotulo="conta impossível" classe="text-red-300" />
-                        </section>
+                        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                            <Resumo resumo={resumo} />
+                            <button type="button" onClick={() => setAjuda((a) => ! a)} aria-expanded={ajuda} data-acao="como-usar-os-precos"
+                                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] text-white/60 hover:bg-white/[0.05] hover:text-white">
+                                Como usar os dois preços <ChevronDown size={14} className={cn('transition-transform', ajuda && 'rotate-180')} />
+                            </button>
+                        </div>
 
-                        <ComoPublicar acrescimo={parametros.acrescimo} />
+                        {ajuda && <ComoPublicar acrescimo={parametros.acrescimo} mlConectado={ml_conectado} freteTabela={frete_tabela} />}
 
                         {resumo.impossivel > 0 && (
                             <p className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-[13px] text-red-200">
@@ -640,57 +854,52 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                         )}
 
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="relative w-full max-w-md">
-                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar SKU ou nome…"
-                                    className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] py-2 pl-8 pr-8 text-[13px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
-                                    data-busca />
-                                {busca && (
-                                    <button type="button" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/35 hover:text-white" aria-label="Limpar busca">
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
-                            {ml_conectado && (
-                                <Botao onClick={cotarAgora} disabled={cotando} data-acao="cotar-fretes"
-                                    title="Pergunta ao Mercado Livre, pela sua conta, o frete dos produtos desta página que estão sem frete digitado">
-                                    {cotando ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                                    {cotando ? 'Cotando…' : 'Cotar agora'}
-                                </Botao>
-                            )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3" data-filtros-de-tipo>
-                            <div className="flex flex-wrap gap-1.5">
-                                {filtrosDeTipo(painel, tipo).map((t) => (
-                                    <button key={t.chave ?? 'todos'} type="button" onClick={() => visitar({ q: busca || undefined, tipo: t.chave || undefined })}
-                                        aria-pressed={t.ativo} disabled={t.quantos === 0 && ! t.ativo} data-tipo={t.chave ?? 'todos'}
-                                        className={cn('rounded-full border px-3 py-1 text-[12px] disabled:opacity-40',
-                                            t.ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'border-white/[0.10] text-white/60 hover:border-white/25 hover:text-white')}>
-                                        {t.rotulo} <span className="tabular-nums opacity-70">{t.quantos}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            {familias.length > 0 && (
-                                <div className="flex items-center gap-3 text-[12px] text-white/45">
-                                    <span data-resumo-da-pagina>
-                                        {nOfertas} {nOfertas === 1 ? 'oferta' : 'ofertas'} · {familias.length} {familias.length === 1 ? 'grupo' : 'grupos'}{paginacao.paginas > 1 ? ' nesta página' : ''}
-                                    </span>
-                                    {! filtrando && (
-                                        <button type="button" data-acao="recolher-tudo" className="text-white/60 underline-offset-4 hover:text-white hover:underline"
-                                            onClick={() => setFechadas(todasFechadas ? {} : Object.fromEntries(familias.map((f) => [f.chave, true])))}>
-                                            {todasFechadas ? 'Abrir tudo' : 'Recolher tudo'}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative w-64 max-w-full">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+                                    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar SKU ou nome…" aria-label="Buscar SKU ou nome"
+                                        className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] py-2 pl-8 pr-8 text-[13px] text-white placeholder:text-white/35 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
+                                        data-busca />
+                                    {busca && (
+                                        <button type="button" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white" aria-label="Limpar busca">
+                                            <X size={14} />
                                         </button>
                                     )}
                                 </div>
-                            )}
+                                <div className="flex flex-wrap gap-1.5" data-filtros-de-tipo>
+                                    {filtrosDeTipo(painel, tipo).map((t) => (
+                                        <button key={t.chave ?? 'todos'} type="button" onClick={() => visitar({ q: busca || undefined, tipo: t.chave || undefined })}
+                                            aria-pressed={t.ativo} disabled={t.quantos === 0 && ! t.ativo} data-tipo={t.chave ?? 'todos'}
+                                            className={cn('rounded-full border px-3 py-1.5 text-[12px] disabled:opacity-40',
+                                                t.ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'border-white/[0.10] text-white/65 hover:border-white/25 hover:text-white')}>
+                                            {t.rotulo} <span className="tabular-nums opacity-70">{t.quantos}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                {familias.length > 0 && (
+                                    <div className="flex items-center gap-3 text-[12px] text-white/50">
+                                        <span data-resumo-da-pagina>
+                                            {nOfertas} {nOfertas === 1 ? 'oferta' : 'ofertas'} · {familias.length} {familias.length === 1 ? 'grupo' : 'grupos'}{paginacao.paginas > 1 ? ' nesta página' : ''}
+                                        </span>
+                                        {! filtrando && (
+                                            <button type="button" data-acao="recolher-tudo" className="text-white/65 underline-offset-4 hover:text-white hover:underline"
+                                                onClick={() => setFechadas(todasFechadas ? {} : Object.fromEntries(familias.map((f) => [f.chave, true])))}>
+                                                {todasFechadas ? 'Abrir tudo' : 'Recolher tudo'}
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                                {ml_conectado && (
+                                    <Botao onClick={cotarAgora} disabled={cotando} data-acao="cotar-fretes"
+                                        title="Pergunta ao Mercado Livre, pela sua conta, o frete dos produtos desta página que estão sem frete digitado">
+                                        {cotando ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                        {cotando ? 'Cotando…' : 'Cotar agora'}
+                                    </Botao>
+                                )}
+                            </div>
                         </div>
-
-                        <p className="text-[12px] leading-relaxed text-white/45" data-explica-frete>
-                            Frete em branco vem sugerido para cada tipo, no preço dele: <span className="text-white/65">sugerido pela sua conta</span> quando
-                            já cotado no Mercado Livre{ml_conectado ? '' : ' (conecte a sua conta para cotar)'}, ou <span className="text-white/65">estimado pela tabela</span> de
-                            custos do Mercado Livre{frete_tabela?.vigente_desde ? ` vigente desde ${dataBr(frete_tabela.vigente_desde)}` : ''}. Digite por cima se o seu frete for outro.
-                        </p>
 
                         {avisoCotacao && (
                             <div role="status" className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12.5px] text-white/65" data-aviso-cotacao>
@@ -699,44 +908,47 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                             </div>
                         )}
 
-                        <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-ecf-card">
-                            <table className="w-full min-w-[1140px] table-fixed border-collapse text-left" data-tabela-precos>
-                                <colgroup>
-                                    <col /><col className="w-[140px]" /><col className="w-[120px]" /><col className="w-[120px]" />
-                                    <col className="w-[200px]" /><col className="w-[200px]" /><col className="w-[140px]" /><col className="w-[104px]" />
-                                </colgroup>
-                                <thead>
-                                    <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-white/40">
-                                        <th className="px-3 py-2.5">Produto</th>
-                                        <th className="px-3 py-2.5 text-right">Custo</th>
-                                        <th className="px-3 py-2.5 text-right">Frete Clássico</th>
-                                        <th className="px-3 py-2.5 text-right">Frete Premium</th>
-                                        <th className="px-3 py-2.5 text-right">Preço Clássico</th>
-                                        <th className="px-3 py-2.5 text-right">Preço Premium</th>
-                                        <th className="px-3 py-2.5">Situação</th>
-                                        <th className="px-3 py-2.5" aria-label="Ajustes" />
-                                    </tr>
-                                </thead>
+                        <div className="overflow-x-auto pb-1">
+                            <div className="min-w-[1120px] space-y-2.5" data-lista-precos>
+                                <div className={cn(COLUNAS, ROTULO, 'pt-1')} data-colunas>
+                                    <span>Oferta</span>
+                                    <span className="text-right">Custo</span>
+                                    <span className="text-right">Frete</span>
+                                    {TIPOS_DE_ANUNCIO.map(([chave, nome]) => (
+                                        <span key={chave} className="text-right" title="O número grande é o preço da promoção; embaixo, o de anunciar">
+                                            {nome}
+                                            <span className="block text-[11px] font-normal normal-case tracking-normal text-white/40">promoção · comissão {fmtPct(parametros[`comissao_${chave}`])}</span>
+                                        </span>
+                                    ))}
+                                    <span>Situação</span>
+                                    <span />
+                                </div>
+
                                 {familias.map((f) => {
                                     const aberta = filtrando || ! fechadas[f.chave];
 
                                     return (
-                                        <tbody key={f.chave} data-familia={f.chave} data-aberta={aberta ? 'sim' : 'nao'}>
+                                        <section key={f.chave} className="space-y-2.5" data-familia={f.chave} data-aberta={aberta ? 'sim' : 'nao'}>
                                             <CabecalhoDaFamilia familia={f} aberta={aberta} fixa={filtrando} pendentes={pendentesDaFamilia(f, porOferta)}
                                                 onAlternar={() => setFechadas((x) => ({ ...x, [f.chave]: ! x[f.chave] }))} />
-                                            {aberta && linhasDaFamilia(f, { recolhidos, filtrando }).map((l, i) => (l.tipo === 'titulo'
+                                            {aberta && cartoesDaFamilia(f).map((c, i) => (c.tipo === 'titulo'
                                                 ? <TituloConjuntos key={`titulo-${i}`} />
                                                 : (
-                                                    <LinhaPreco key={l.oferta.id} oferta={l.oferta} calculo={porOferta[l.oferta.id]} freteTabela={frete_tabela}
-                                                        filho={l.filho} aberto={l.aberto} tambemEm={l.tambemEm} itens={l.itens} onIrPara={irParaOferta}
-                                                        alternar={l.alternar !== null ? () => setRecolhidos((r) => ({ ...r, [l.alternar]: ! r[l.alternar] })) : null}
-                                                        onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
+                                                    <div key={c.chave} className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card" data-cartao={c.chave}>
+                                                        {c.linhas.map((l) => (
+                                                            <LinhaOferta key={l.oferta.id} oferta={l.oferta} calculo={porOferta[l.oferta.id]} freteTabela={frete_tabela}
+                                                                filho={l.filho} tambemEm={l.tambemEm} itens={l.itens} onIrPara={irParaOferta}
+                                                                onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
+                                                        ))}
+                                                    </div>
                                                 )))}
-                                        </tbody>
+                                        </section>
                                     );
                                 })}
-                            </table>
-                            {familias.length === 0 && <p className="py-10 text-center text-[13px] text-white/45">Nenhuma oferta com esse filtro.</p>}
+                            </div>
+                            {familias.length === 0 && (
+                                <p className="rounded-2xl border border-white/[0.08] bg-ecf-card py-10 text-center text-[13px] text-white/50">Nenhuma oferta com esse filtro.</p>
+                            )}
                         </div>
 
                         {paginacao.paginas > 1 && (

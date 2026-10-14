@@ -39,6 +39,12 @@ class PalavrasChaveService
     /** Quantos termos vão para a IA: a lista cheia do ML tem 50. */
     private const TERMOS_PARA_IA = 50;
 
+    /**
+     * Abaixo disto a lista da TELA é completada com a do nível de cima da categoria
+     * (Poltronas teve UM termo em 14/10/2026; Cadeiras, Sofás e Banquetas, 50).
+     */
+    public const MINIMO_DA_CATEGORIA = 10;
+
     private const TTL_PEDIDO = 1800;
 
     /**
@@ -58,16 +64,45 @@ class PalavrasChaveService
      * Os termos da categoria do rascunho, com a pista `relacionado` (o termo
      * tem palavra do nome do produto que não está no caminho da categoria).
      *
+     * Categoria com menos de {@see MINIMO_DA_CATEGORIA} termos (folha de nicho, ou
+     * sem lista nenhuma) ganha DEPOIS dos dela os do nível de cima, sem repetir,
+     * com `origem: 'acima'` e `relacionado` medido pelo caminho DAQUELE nível — lá
+     * "poltrona" volta a distinguir o produto. Só a tela recebe o complemento: a IA
+     * do Modelo e do título segue com a lista da categoria ({@see termosParaIa}).
+     *
      * @throws RegraViolada sem categoria
      * @throws \RuntimeException quando o ML não responde
      */
     public function termos(PubRascunho $r): array
     {
         [$categoria, $caminho] = $this->categoria($r);
+        $produto = $r->produto->nomeExibido();
+        $daCategoria = $this->trends->termos($categoria, $produto, $caminho);
+        $termos = array_map(fn ($t) => [...$t, 'origem' => 'categoria'], $daCategoria['termos']);
+
+        $acima = null;
+        $nivel = $daCategoria['total'] < self::MINIMO_DA_CATEGORIA ? $this->schemas->obter($categoria)->nivelAcima() : null;
+        if ($nivel !== null) {
+            try {
+                $deCima = $this->trends->termos($nivel['id'], $produto, $nivel['caminho']);
+                $comparar = fn (string $termo) => Str::lower(Str::ascii(trim($termo)));
+                $ja = array_flip(array_map(fn ($t) => $comparar($t['termo']), $termos));
+                foreach ($deCima['termos'] as $t) {
+                    if (! isset($ja[$comparar($t['termo'])])) {
+                        $termos[] = [...$t, 'origem' => 'acima'];
+                    }
+                }
+                $acima = ['id' => $nivel['id'], 'nome' => (string) end($nivel['caminho']), 'total' => $deCima['total']];
+            } catch (\RuntimeException) {
+                // O nível de cima é complemento: com o ML falhando nele, a tela fica com o da categoria.
+            }
+        }
 
         return [
             'categoria' => ['id' => $categoria, 'caminho' => $caminho],
-            ...$this->trends->termos($categoria, $r->produto->nomeExibido(), $caminho),
+            ...$daCategoria,
+            'termos' => $termos,
+            'acima' => $acima,
         ];
     }
 

@@ -61,6 +61,23 @@ final class CategorySchema
         return array_values(array_map(fn ($n) => (string) ($n['name'] ?? ''), (array) ($this->categoria['path_from_root'] ?? [])));
     }
 
+    /**
+     * O nível logo acima desta categoria no `path_from_root`: o id dele e os nomes da raiz até
+     * ele. Nulo na raiz.
+     *
+     * @return array{id: string, caminho: list<string>}|null
+     */
+    public function nivelAcima(): ?array
+    {
+        $acima = array_slice(array_values((array) ($this->categoria['path_from_root'] ?? [])), 0, -1);
+        $id = $acima === [] ? '' : (string) ($acima[count($acima) - 1]['id'] ?? '');
+        if ($id === '') {
+            return null;
+        }
+
+        return ['id' => $id, 'caminho' => array_map(fn ($n) => (string) ($n['name'] ?? ''), $acima)];
+    }
+
     public function folha(): bool
     {
         return empty($this->categoria['children_categories']);

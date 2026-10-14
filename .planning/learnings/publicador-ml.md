@@ -1529,3 +1529,44 @@ lembro de ter pensado nisso." Levantamento só de leitura (código, dados da #45
   calcula `retrato['existentes']` e não manda para a tela.
 - **O único kit misto real da #459** (combit 4 cadeiras + 1 mesa, de 03/10) está publicado com 19 campos digitados
   pela equipe, na categoria de Cadeiras para Escritório: nada veio dos componentes (eles não tinham produto).
+
+## 34. Emoji na descrição: o ML recusa, e a descrição vai DEPOIS do item criado (13/10/2026)
+
+Relato do usuário: num teste a IA gerou a descrição com emoji, e o Mercado Livre não aceita.
+
+- **A regra do ML**, pela documentação ("Descrição de produtos"): a descrição é `plain_text`; com HTML, emoji ou
+  "caracteres especiais" o `POST /items/{id}/description` devolve 400 `item.description.type.invalid`, e o campo
+  `references` do erro aponta a posição do caractere. **Não foi medido na API**: ninguém publicou um anúncio com emoji
+  de propósito. É o que a documentação diz.
+- **Por que é grave aqui:** a descrição vai depois do item criado (RN-72/73). Recusada, o anúncio já está no ar, sem
+  descrição.
+- **A IA põe emoji sozinha.** O prompt MAG T8 pede "saudação amigável" e uma lista; nunca pediu emoji. Agora os dois
+  prompts de descrição (`promptDescricao` e o do kit) proíbem — sem emoji de exemplo no texto, por precaução.
+  O modelo esquece regra, então a garantia não é o prompt: é o `App\Support\Publicador\Emojis`.
+- **Três pontas, como nos termos vetados (§21), com uma diferença:**
+  - saída da IA: `DescricaoIaService::limparDescricao` (tela e preparo pelo Portal),
+    `IaParaRascunhoService::limparDescricao` ("Anunciar por IA", inclusive análise guardada antes da regra) e
+    `SugestaoKitIaService::ajustarDescricaoDoKit`;
+  - o que vai ao ML: `MontadorDePlano::descricao`, a última porta. Pega o digitado, o colado, a
+    `PreviaDaFaseService::descricaoSugerida` do kit (que copia a descrição do base) e o rascunho gravado antes de 13/10.
+    **Armadilha:** o texto que o `PublicacaoService` envia NÃO vinha do plano — `textoDaDescricao` era uma cópia da
+    mesma normalização. Limpar só o plano deixava a conferência mostrando o texto limpo e o POST levando o emoji.
+    Agora o envio chama `MontadorDePlano::descricao` (o `PublicacaoTest` cobra o corpo do POST);
+  - a conferência AVISA (V-DES-06) e **não trava**. Tirar emoji é mecânico, como o HTML do V-DES-01; o termo vetado
+    trava (V-DES-05) porque trocar a palavra pede escolha de gente.
+- **O rascunho gravado com emoji antes de 13/10 continua com emoji na tela.** Só o que vai ao ML sai limpo. Gerar a
+  descrição de novo limpa o texto guardado.
+- **Texto sem emoji sai de `Emojis::tirar` idêntico, byte a byte.** A descrição entra no hash do plano
+  (`PayloadPlan::hash`), que a conferência grava: só vence a conferência do rascunho que tinha emoji.
+- **As faixas são escritas à mão, e não `\p{Extended_Pictographic}`.** A propriedade depende da versão do PCRE2 do
+  servidor (o local é 10.40; a VPS não foi medida). Onde ela não existe a expressão não compila, o `preg_replace`
+  devolve null e um `(string)` em volta apagaria a descrição inteira, calado. Pelo mesmo motivo os quantificadores
+  são possessivos (uma fileira longa de emoji não pode estourar o `pcre.backtrack_limit`) e todo passo cai no texto
+  anterior quando o PCRE devolve null.
+- **O que sai e o que fica.** Sai: U+1F000–1FAFF, U+2600–27BF (símbolos e dingbats — leva "✓", "✔", "★" e "➜", que
+  não são emoji mas são enfeite), U+2B00–2BFF, os relógios e teclas do bloco técnico, a moldura de tecla ("1️⃣" vira
+  "1"), a junção de largura zero e os seletores de variação. Fica: "•", "→", "■", "①", "°", "²", "®" e "™". Não
+  sabemos quais "caracteres especiais" além de emoji o ML recusa: o que aparecer num erro real entra em
+  `Emojis::PICTOGRAMAS`.
+- **Título:** o da IA nunca teve como levar emoji (`RegrasDoTitulo::limpar` troca por espaço tudo que não é letra ou
+  número). O digitado não passa por limpeza nenhuma.

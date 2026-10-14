@@ -382,6 +382,17 @@ class ValidadorRascunhoTest extends TestCase
         $this->assertContains('V-DES-01', self::regras(self::validar($html), Problema::AVISO));
     }
 
+    /** V-DES-06 (13/10/2026): emoji o ML recusa. Avisa e não trava — quem tira é o `MontadorDePlano`. */
+    public function test_descricao_com_emoji_avisa_e_nao_bloqueia(): void
+    {
+        $emoji = self::validar(self::completo(['descricao' => "Cadeira executiva giratória. 🚀\n✅ Encosto alto"]));
+        $this->assertContains('V-DES-06', self::regras($emoji, Problema::AVISO));
+        $this->assertNotContains('V-DES-06', self::regras($emoji, Problema::BLOQUEIO));
+
+        $limpa = self::validar(self::completo(['descricao' => 'Cadeira giratória — 60 × 110 cm, 90°. • Marca® → aço']));
+        $this->assertNotContains('V-DES-06', self::regras($limpa, Problema::AVISO));
+    }
+
     public function test_tc42_plausibilidade_e_aviso(): void
     {
         $r = self::completo(['atributos' => [...self::completo()->atributos, 'BACKREST_HEIGHT' => ['value_name' => '23 cm'], 'MAX_CHAIR_HEIGHT' => ['value_name' => '22 cm']]]);

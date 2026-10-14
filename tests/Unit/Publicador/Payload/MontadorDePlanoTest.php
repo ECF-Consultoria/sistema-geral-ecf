@@ -117,6 +117,24 @@ class MontadorDePlanoTest extends TestCase
         $this->assertSnapshotJson('up_cadeira_simples_classico', $item->payload);
     }
 
+    /**
+     * 13/10/2026: o ML recusa a descrição com emoji (`item.description.type.invalid`) e ela vai DEPOIS do item
+     * criado — o anúncio ficaria no ar sem descrição. O plano é a última porta: sai sem, venha de onde vier.
+     */
+    public function test_descricao_vai_ao_ml_sem_emoji_e_a_limpa_nao_muda(): void
+    {
+        $alvos = [new Alvo('gold_special', self::TITULO_CLASSICO)];
+
+        $comEmoji = $this->montar(self::rascunhoSimples($alvos, ['descricao' => "Olá! 👋\r\n✅ Cadeira <b>executiva</b> giratória 🚀\r\n⭐⭐⭐\r\nInclui manual."]));
+        $this->assertSame("Olá!\nCadeira executiva giratória\nInclui manual.", $comEmoji->descricao);
+
+        // Sem emoji o texto é o mesmo de antes, byte a byte: o hash das conferências já gravadas não muda.
+        $limpa = "Cadeira  executiva — 60 × 110 cm.\n\n\n  • Aço → 90°";
+        $this->assertSame($limpa, $this->montar(self::rascunhoSimples($alvos, ['descricao' => $limpa]))->descricao);
+
+        $this->assertNull($this->montar(self::rascunhoSimples($alvos, ['descricao' => ' 🚀 ✨ ']))->descricao, 'só emoji = sem descrição');
+    }
+
     public function test_formato_de_cada_atributo_no_payload(): void
     {
         $a = self::attrs($this->montar(self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO)]))->itens[0]->payload);

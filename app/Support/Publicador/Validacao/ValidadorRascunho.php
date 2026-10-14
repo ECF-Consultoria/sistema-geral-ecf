@@ -2,6 +2,7 @@
 
 namespace App\Support\Publicador\Validacao;
 
+use App\Support\Publicador\Emojis;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Payload\Alvo;
@@ -510,6 +511,11 @@ final class ValidadorRascunho
         }
         if ($texto !== $r->descricao) {
             $this->p[] = Problema::aviso('V-DES-01', 'A descrição tem formatação (HTML), que o Mercado Livre não aceita: vai como texto simples.', $onde, 'L1');
+        }
+        // V-DES-06 (13/10/2026): emoji o ML recusa. Aviso e não trava, como o HTML: quem tira é o `MontadorDePlano`,
+        // e a IA já escreve sem (`Emojis::tirar`) — cai aqui o digitado, o colado e o gravado antes da regra.
+        if (Emojis::tem($texto)) {
+            $this->p[] = Problema::aviso('V-DES-06', 'A descrição tem emoji, que o Mercado Livre não aceita: vai sem eles.', $onde, 'L1');
         }
         if ($vetado = self::termoVetadoNaDescricao($r->descricao)) {
             $this->p[] = $vetado;

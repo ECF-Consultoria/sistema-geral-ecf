@@ -6,8 +6,9 @@ import Explicacao from '@/Components/Explicacao';
 // O produto sozinho, sem caixa: as medidas que a categoria tem (comprimento,
 // largura, altura, profundidade, diâmetro, peso…), cada uma com a sua unidade.
 // São campos da ficha técnica (mesmo estado, mesmo "Salvar produto"); só moram
-// aqui, perto das Variações, porque o volume de cada variação pode usar as
-// mesmas medidas (caixa no cartão do volume). Sem categoria, ou se ela não tem
+// aqui, perto das Variações, para ficarem ao lado das medidas da caixa (o volume
+// de cada variação) — que são outras e digitadas à parte (14/10/2026: a caixa
+// "Usar as mesmas medidas…" do volume saiu). Sem categoria, ou se ela não tem
 // nenhuma dessas medidas, o bloco não aparece.
 
 export default function MedidasDoProduto({ ficha }) {
@@ -28,7 +29,7 @@ export default function MedidasDoProduto({ ficha }) {
                 <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                     {campos.map((campo) => (
                         <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
-                            erro={tecnica.erros[campo.id]} onMudar={ficha.mudarMedidaDoProduto} explicacao={campo.explicacao} />
+                            erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
                     ))}
                 </div>
             </fieldset>

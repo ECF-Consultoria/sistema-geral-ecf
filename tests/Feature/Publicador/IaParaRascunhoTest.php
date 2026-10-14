@@ -255,6 +255,17 @@ class IaParaRascunhoTest extends TestCase
         $this->afirmarSemRedeSemWizardAntigo();
     }
 
+    /** 13/10/2026: análise gerada antes da regra pode ter emoji guardado; o rascunho recebe a descrição sem eles. */
+    public function test_descricao_da_ia_chega_ao_rascunho_sem_emoji(): void
+    {
+        $this->rodar($this->analise($this->fichaCadeira(), false, [
+            'descricao' => '<p>Olá! 👋 Cadeira <strong>executiva</strong> giratória 🚀</p><ul><li>✅ Encosto alto</li><li>⭐ Base cromada</li></ul>',
+        ]));
+
+        $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
+        $this->assertSame("Olá! Cadeira executiva giratória\nEncosto alto\nBase cromada", $r->descricao);
+    }
+
     public function test_rodar_de_novo_nao_reaplica(): void
     {
         $a = $this->rodar($this->analise($this->fichaCadeira()));

@@ -12,10 +12,16 @@ import { cn } from '@/lib/utils';
 // padrão aparecem só os que têm palavra do nome do produto (`relacionado`,
 // calculado no servidor); "ver todos" mostra o resto. Clicar num termo
 // acrescenta ao título do tipo escolhido as palavras que ele ainda não tem.
+//
+// Categoria de nicho vem com poucos termos (Poltronas: um só, em 14/10/2026):
+// o servidor completa com os do nível de cima (`origem: 'acima'`), que aparecem
+// num bloco à parte, com o nome daquela categoria.
 
 const GRUPO = { crescimento: 'Em alta na semana', desejado: 'Mais desejado', popular: 'Mais popular' };
 
 const semAcento = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+const quantosTermos = (n) => (n === 0 ? 'nenhum termo' : `só ${n} ${n === 1 ? 'termo' : 'termos'}`);
 
 export default function TermosMaisBuscados({ m, alvos, destino, onDestino, onUsar }) {
     const categoria = m.estado.rascunho?.categoria_id ?? null;
@@ -38,6 +44,28 @@ export default function TermosMaisBuscados({ m, alvos, destino, onDestino, onUsa
     }, [lista, verTodos, filtro]);
     const tituloDestino = alvos.find((a) => a.listing_type_id === destino);
     const textoDestino = tituloDestino ? (tituloDestino.titulo || tituloDestino.titulo_efetivo || '') : '';
+    const acima = dados?.acima ?? null;
+    const daCategoria = visiveis.filter((t) => t.origem !== 'acima');
+    const deCima = visiveis.filter((t) => t.origem === 'acima');
+    const nomeCategoria = dados?.categoria?.caminho?.at(-1) ?? 'Esta categoria';
+
+    const chip = (t) => {
+        const usado = termoNoTitulo(textoDestino, t.termo);
+        const onde = t.origem === 'acima' ? `#${t.posicao} em ${acima?.nome ?? 'categoria acima'}` : `#${t.posicao} na semana`;
+
+        return (
+            <li key={`${t.origem}-${t.posicao}`}>
+                <button type="button" disabled={m.disabled || ! tituloDestino?.ativo} onClick={() => onUsar(t.termo)} data-termo={t.termo} data-origem={t.origem}
+                    title={[t.grupo ? GRUPO[t.grupo] : null, onde].filter(Boolean).join(' · ')}
+                    className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:opacity-50',
+                        usado ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+                            : (t.relacionado ? 'border-white/[0.16] bg-white/[0.06] text-white hover:border-ecf-yellow/40' : 'border-white/[0.08] text-white/55 hover:text-white'))}>
+                    {usado ? <Check size={12} /> : <Plus size={12} />}
+                    <span className="tabular-nums text-white/40">{t.posicao}</span> {t.termo}
+                </button>
+            </li>
+        );
+    };
 
     return (
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4" data-termos-mais-buscados={lista.length}>
@@ -85,24 +113,16 @@ export default function TermosMaisBuscados({ m, alvos, destino, onDestino, onUsa
                             </label>
                         )}
                     </div>
-                    <ul className="mt-3 flex flex-wrap gap-2" data-lista-termos>
-                        {visiveis.map((t) => {
-                            const usado = termoNoTitulo(textoDestino, t.termo);
-
-                            return (
-                                <li key={t.posicao}>
-                                    <button type="button" disabled={m.disabled || ! tituloDestino?.ativo} onClick={() => onUsar(t.termo)} data-termo={t.termo}
-                                        title={[t.grupo ? GRUPO[t.grupo] : null, `#${t.posicao} na semana`].filter(Boolean).join(' · ')}
-                                        className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:opacity-50',
-                                            usado ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
-                                                : (t.relacionado ? 'border-white/[0.16] bg-white/[0.06] text-white hover:border-ecf-yellow/40' : 'border-white/[0.08] text-white/55 hover:text-white'))}>
-                                        {usado ? <Check size={12} /> : <Plus size={12} />}
-                                        <span className="tabular-nums text-white/40">{t.posicao}</span> {t.termo}
-                                    </button>
-                                </li>
-                            );
-                        })}
-                    </ul>
+                    {daCategoria.length > 0 && (
+                        <ul className="mt-3 flex flex-wrap gap-2" data-lista-termos>{daCategoria.map(chip)}</ul>
+                    )}
+                    {acima && deCima.length > 0 && (
+                        <div className="mt-4 border-t border-white/[0.06] pt-3" data-termos-de-cima={acima.id}>
+                            <p className="text-[13px] font-bold text-white/80">Da categoria acima · {acima.nome}</p>
+                            <p className="mt-0.5 text-[11px] text-white/40">{nomeCategoria} tem {quantosTermos(dados.total)} na semana; estes vêm da categoria que a contém.</p>
+                            <ul className="mt-2 flex flex-wrap gap-2" data-lista-termos-de-cima>{deCima.map(chip)}</ul>
+                        </div>
+                    )}
                     {visiveis.length === 0 && <p className="mt-3 text-[13px] text-white/55">Nenhum termo com esse filtro.</p>}
                     <p className="mt-3 text-[11px] text-white/40">Lista da semana no Mercado Livre, por posição. Confira se o termo descreve este produto antes de usar — vem com marca de concorrente e produto parecido.</p>
                 </>

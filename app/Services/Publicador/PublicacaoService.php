@@ -22,6 +22,7 @@ use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Payload\ItemPlano;
+use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
@@ -571,10 +572,9 @@ class PublicacaoService
 
     private function textoDaDescricao(PubRascunho $r): ?string
     {
-        // A mesma normalização do plano (RN-72): texto puro.
-        $limpo = trim(preg_replace("/\r\n?/", "\n", strip_tags((string) $r->descricao)));
-
-        return $limpo === '' ? null : $limpo;
+        // A normalização É a do plano (RN-72), não uma cópia: texto puro e sem emoji — o que a conferência mostrou
+        // é o que vai. Com cópia, o emoji tirado só no plano continuaria chegando ao ML (13/10/2026).
+        return MontadorDePlano::descricao($r->descricao);
     }
 
     // ═══ Fim ═════════════════════════════════════════════════════════════════

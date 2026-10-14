@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    ORIGEM_DO_SUGERIDO, VOLTAS_DA_COTACAO, deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao,
+    ORIGEM_DO_SUGERIDO, VOLTAS_DA_COTACAO, deveCotarDeNovo, freteEmBranco, freteUnico, legendaDoFreteUnico, rotuloDoFrete, textoDaCotacao,
 } from '../../resources/js/lib/precificacaoFreteSugerido.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -68,6 +68,40 @@ test('repete a visita só com pendência, sem falha, até o teto do clique', () 
     assert.equal(deveCotarDeNovo(null, 1), false);
 });
 
+// ─── Um campo de frete só na linha (13/10/2026, "linhas enxutas") ───
+
+const tipo = (origem, frete = null, fonte = null) => ({ frete_origem: origem, frete, frete_sugerido: fonte ? sugestao(fonte, frete ?? 14.45) : null });
+
+test('um campo só quando os dois tipos valem o mesmo: iguais, os dois em branco, ou um herdando o outro', () => {
+    const sugeridos = { classico: tipo('sugerido', 111.65, 'tabela'), premium: tipo('sugerido', 111.65, 'tabela') };
+    assert.deepEqual(freteUnico('', '', sugeridos), { unico: true, valor: '' });
+    assert.deepEqual(freteUnico('200', '200,00', { classico: tipo('digitado', 200), premium: tipo('digitado', 200) }), { unico: true, valor: '200' }, '"200" e "200,00" são o mesmo frete');
+    assert.deepEqual(freteUnico('1.200,5', '1200.5', {}), { unico: true, valor: '1.200,5' });
+
+    // Quem digitou só o Clássico (o Premium diz "mesmo do Clássico"): continua sendo um frete só.
+    assert.deepEqual(freteUnico('200', '', { classico: tipo('digitado', 200), premium: tipo('outro_tipo', 200) }), { unico: true, valor: '200' });
+    assert.deepEqual(freteUnico('', '180', { classico: tipo('outro_tipo', 180), premium: tipo('digitado', 180) }), { unico: true, valor: '180' });
+});
+
+test('dois campos quando os fretes são diferentes de verdade', () => {
+    assert.equal(freteUnico('200', '215', { classico: tipo('digitado', 200), premium: tipo('digitado', 215) }).unico, false);
+    // Clássico digitado e Premium em branco COM sugestão própria: o Premium não herda, vale o sugerido dele.
+    assert.equal(freteUnico('200', '', { classico: tipo('digitado', 200), premium: tipo('sugerido', 118.2, 'tabela') }).unico, false);
+    assert.equal(freteUnico('200', '', {}).unico, false, 'sem o cálculo do servidor não se presume herança');
+});
+
+test('a legenda do campo único: a origem do valor, nunca "mesmo do outro tipo"', () => {
+    assert.equal(legendaDoFreteUnico({ classico: tipo('sugerido', 111.65, 'tabela'), premium: tipo('sugerido', 111.65, 'tabela') }, fmt).texto, 'estimado pela tabela');
+    assert.equal(legendaDoFreteUnico({ classico: tipo('sugerido', 14.45, 'conta'), premium: tipo('sugerido', 14.45, 'conta') }, fmt).texto, 'sugerido pela sua conta');
+    // Digitado por cima de uma sugestão diferente: a sugestão fica à vista, para comparar.
+    assert.equal(legendaDoFreteUnico({ classico: { frete_origem: 'digitado', frete: 20, frete_sugerido: sugestao('conta', 8.45) }, premium: tipo('digitado', 20) }, fmt).texto, 'sugerido pela sua conta: R$ 8,45');
+    // ME1 (sem sugestão): o Clássico digitado e o Premium herdando dizem só "digitado".
+    assert.deepEqual(legendaDoFreteUnico({ classico: tipo('digitado', 200), premium: tipo('outro_tipo', 200) }, fmt), { texto: 'digitado', tipo: 'digitado' });
+    // Em branco e sem nada a sugerir: quem fala é o aviso de "sem tabela", não esta legenda.
+    assert.equal(legendaDoFreteUnico({ classico: tipo(null), premium: tipo(null) }, fmt), null);
+    assert.equal(legendaDoFreteUnico(undefined, fmt), null);
+});
+
 // ─── A fiação na página (o build não pega identificador solto) ───
 
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaPrecificacao.jsx');
@@ -78,6 +112,13 @@ test('a página usa o módulo do frete sugerido e não faz conta de frete', () =
     assert.match(pagina, /import\s*\{[^}]*\bRefreshCw\b[^}]*\}\s*from\s*'lucide-react'/);
     assert.match(pagina, /function OrigemDoFrete\(/);
     assert.equal((pagina.match(/<OrigemDoFrete\b/g) ?? []).length, 2, 'um rótulo por tipo');
+    assert.match(pagina, /import\s*\{[^}]*\bfreteUnico\b[^}]*\}\s*from\s*'@\/lib\/precificacaoFreteSugerido'/s);
+    assert.match(pagina, /import\s*\{[^}]*\blegendaDoFreteUnico\b[^}]*\}\s*from\s*'@\/lib\/precificacaoFreteSugerido'/s);
+    // O campo único grava nos DOIS tipos, e quem decide entre um campo e dois é o que o servidor tem gravado
+    // (não o que se digita agora: o campo trocaria de forma no meio da digitação).
+    assert.match(pagina, /const digitarNosDois = \(e\) => \{ setFreteC\(e\.target\.value\); setFreteP\(e\.target\.value\); \}/);
+    assert.match(pagina, /freteUnico\(paraTexto\(calculo\.frete_classico\), paraTexto\(calculo\.frete_premium\), calculo\)/);
+    assert.match(pagina, /onChange=\{digitarNosDois\} onBlur=\{salvar\}/);
     assert.doesNotMatch(pagina, /\bFreteHerdado\b/);
     // Nenhum limite nem tabela do ML no JS: o servidor manda o frete pronto.
     assert.doesNotMatch(pagina, /\b(79|6000)\b/);

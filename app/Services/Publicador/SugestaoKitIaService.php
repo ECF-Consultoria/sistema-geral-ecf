@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Jobs\Publicador\GerarSugestaoKitIaJob;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Support\Publicador\Emojis;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -158,10 +159,12 @@ class SugestaoKitIaService
      * Quando o modelo escreveu a frase no meio do texto, ela sai de lá e volta
      * para a primeira linha: prepender sem remover duplicaria a frase, e deixar
      * como veio deixaria a contagem perdida no meio do parágrafo.
+     *
+     * Sem emoji (13/10/2026): o ML recusa a descrição que os tem, e o modelo os põe ou os copia da descrição do base.
      */
     public static function ajustarDescricaoDoKit(string $bruto, string $nomeBase, int $n): string
     {
-        $texto = trim($bruto);
+        $texto = trim(Emojis::tirar($bruto));
         if ($texto === '') {
             return '';
         }

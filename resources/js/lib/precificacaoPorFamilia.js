@@ -14,6 +14,11 @@
 // O servidor já manda os blocos na ordem (família, produtos antes de conjuntos)
 // e com `familia` em cada um; aqui só se monta o que a tela desenha. Nenhuma
 // conta de preço passa por este arquivo.
+//
+// 13/10/2026 — "linhas enxutas": o agrupamento é o mesmo, o desenho mudou. O
+// usuário achou a tabela por família "muito ruim e confusa" e escolheu, entre
+// quatro propostas, a que põe a unidade e os combos dela no MESMO cartão, uma
+// linha por oferta. `cartoesDaFamilia` entrega esses cartões.
 
 export const SEM_FAMILIA = 'sem-familia';
 export const TIPOS = [['simples', 'Simples'], ['combo', 'Combo'], ['kit', 'Kit'], ['combit', 'Combit']];
@@ -83,49 +88,46 @@ export function resumoDaFamilia(familia) {
 export const pendentesDaFamilia = (familia, porOferta) => ofertasDaFamilia(familia)
     .filter((o) => porOferta?.[o.id]?.pendencia).length;
 
+/** "Combo 2", "Kit", "Combit", "Simples": o tipo como a linha o mostra (o combo diz quantas unidades). */
+export function rotuloDaFase(oferta) {
+    const [, nome] = TIPOS.find(([chave]) => chave === oferta?.fase) ?? [];
+    if (oferta?.fase !== 'combo') return nome ?? '';
+    const unidades = lista(oferta.componentes).reduce((t, c) => t + (Number(c?.quantidade) || 0), 0);
+
+    return unidades > 0 ? `Combo ${unidades}` : 'Combo';
+}
+
 /**
- * O que a tabela desenha dentro de uma família, linha a linha:
- * `{ tipo: 'oferta', oferta, filho, alternar, aberto, tambemEm, itens }` ou `{ tipo: 'titulo' }`.
+ * O que a lista desenha dentro de uma família: um CARTÃO por produto — a unidade e os combos dela juntos, para
+ * precificar no mesmo lugar — e, depois do título, um cartão por conjunto (kit ou combit).
+ * `[{ tipo: 'cartao', chave, linhas: [{ oferta, filho, tambemEm, itens }] } | { tipo: 'titulo' }]`.
  *
- * `recolhidos[chave do produto]` esconde os combos dele. Com `filtrando` (busca ou tipo escolhido) a lista
- * fica rasa: sem recuo, sem abrir/fechar e sem "também entra em" — o que casou aparece direto.
+ * `filho` = combo logo abaixo do produto dele. Sem o produto no cartão (a busca ou o filtro por tipo o tiraram), o
+ * combo vem sem recuo e diz do que é feito (`itens`). O conjunto sempre diz do que é feito.
  */
-export function linhasDaFamilia(familia, { recolhidos = {}, filtrando = false } = {}) {
-    const linhas = [];
-    const oferta = (o, mais = {}) => ({ tipo: 'oferta', oferta: o, filho: false, alternar: null, aberto: false, tambemEm: [], itens: [], ...mais });
+export function cartoesDaFamilia(familia) {
+    const cartoes = [];
+    const linha = (o, mais = {}) => ({ oferta: o, filho: false, tambemEm: [], itens: [], ...mais });
 
     for (const p of familia.produtos) {
-        if (filtrando || ! p.principal) {
-            if (p.principal) linhas.push(oferta(p.principal));
-            // Sem o produto logo acima (busca pelo código do combo, filtro por tipo), o combo diz do que é feito.
-            p.combos.forEach((c) => linhas.push(oferta(c, { itens: p.principal ? [] : lista(c.componentes) })));
-            continue;
-        }
-
-        const temCombos = p.combos.length > 0;
-        const aberto = temCombos && ! recolhidos[p.chave];
-        linhas.push(oferta(p.principal, { alternar: temCombos ? p.chave : null, aberto, tambemEm: p.tambemEm }));
-        if (aberto) p.combos.forEach((c) => linhas.push(oferta(c, { filho: true })));
+        const linhas = p.principal
+            ? [linha(p.principal, { tambemEm: p.tambemEm }), ...p.combos.map((c) => linha(c, { filho: true }))]
+            : p.combos.map((c) => linha(c, { itens: lista(c.componentes) }));
+        if (linhas.length > 0) cartoes.push({ tipo: 'cartao', chave: `p-${p.chave}`, linhas });
     }
 
     if (familia.conjuntos.length > 0) {
-        linhas.push({ tipo: 'titulo' });
-        familia.conjuntos.forEach((k) => linhas.push(oferta(k, { itens: lista(k.componentes) })));
+        cartoes.push({ tipo: 'titulo' });
+        familia.conjuntos.forEach((k) => cartoes.push({ tipo: 'cartao', chave: `k-${k.id}`, linhas: [linha(k, { itens: lista(k.componentes) })] }));
     }
 
-    return linhas;
+    return cartoes;
 }
 
-/** Onde está cada oferta da página: `{ [id]: { familia, produto } }` — para o atalho abrir o que estiver fechado. */
+/** Em que família está cada oferta da página: `{ [id]: { familia } }` — para o atalho abrir a que estiver fechada. */
 export function ondeEstaCadaOferta(familias) {
     const onde = {};
-    for (const f of familias) {
-        for (const p of f.produtos) {
-            if (p.principal) onde[p.principal.id] = { familia: f.chave, produto: null };
-            p.combos.forEach((c) => { onde[c.id] = { familia: f.chave, produto: p.chave }; });
-        }
-        f.conjuntos.forEach((k) => { onde[k.id] = { familia: f.chave, produto: null }; });
-    }
+    for (const f of familias) ofertasDaFamilia(f).forEach((o) => { onde[o.id] = { familia: f.chave }; });
 
     return onde;
 }

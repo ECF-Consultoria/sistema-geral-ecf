@@ -147,6 +147,13 @@ select option {
 @media (prefers-reduced-motion: reduce) {
     [data-aceso] { animation: none; }
 }
+/* Precificação do Portal (13/10/2026): a linha acesa pelo atalho vive dentro de um cartão que corta o que passa
+   da borda dele. O contorno e o brilho vão para DENTRO da linha, senão sumiriam nas pontas. */
+[data-linha-preco][data-aceso] {
+    outline-offset: -2px !important;
+    box-shadow: inset 0 0 0 6px rgba(255, 230, 0, 0.10);
+    animation: none;
+}
 
 /* ECF Gradient line utility */
 .ecf-gradient-line {

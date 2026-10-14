@@ -921,12 +921,13 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('atributos.HEIGHT');
     }
 
-    public function test_a_explicacao_do_bloco_e_da_caixa_do_volume_sao_neutras(): void
+    public function test_a_explicacao_do_bloco_e_neutra_e_a_da_caixa_do_volume_saiu(): void
     {
         $textos = app(ExplicacaoDeAtributos::class)->camposDoPortal();
 
         $this->assertArrayHasKey('medidas_produto', $textos);
-        $this->assertArrayHasKey('mesmas_medidas', $textos);
-        $this->assertSemOrigem(json_encode([$textos['medidas_produto'], $textos['mesmas_medidas']], JSON_UNESCAPED_UNICODE), 'explicações das medidas');
+        $this->assertSemOrigem(json_encode([$textos['medidas_produto']], JSON_UNESCAPED_UNICODE), 'explicação das medidas');
+        // 14/10/2026: a caixa "Usar as mesmas medidas do produto fora da caixa" saiu do volume, e a explicação com ela.
+        $this->assertArrayNotHasKey('mesmas_medidas', $textos);
     }
 }

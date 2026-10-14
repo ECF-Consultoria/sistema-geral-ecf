@@ -322,6 +322,25 @@ class PublicacaoTest extends TestCase
         $this->assertSame(1, $this->postsDeItem(), 'o item não é recriado');
     }
 
+    /**
+     * 13/10/2026: o ML recusa descrição com emoji (`item.description.type.invalid`) e, como no TC-91, o anúncio já
+     * criado ficaria sem ela. O que sai no POST é o texto do plano, sem emoji — o rascunho fica como a pessoa deixou.
+     */
+    public function test_descricao_com_emoji_vai_ao_ml_sem_eles_e_a_conferencia_avisa(): void
+    {
+        $this->r->update(['descricao' => "Olá! 👋\n✅ Cadeira executiva giratória 🚀"]);
+
+        $v = app(ConferenciaService::class)->conferir($this->r->fresh());
+        $this->assertSame(ConferenciaService::AVISOS, $v->resultado);
+        $this->assertContains('V-DES-06', array_column((array) $v->issues, 'regra'));
+
+        $item = $this->publicar()->itens()->sole();
+
+        $this->assertSame('OK', $item->descricao_status);
+        $this->assertSame(['plain_text' => "Olá!\nCadeira executiva giratória"], collect(Http::recorded(fn (Request $q) => str_ends_with($q->url(), '/description')))->first()[0]->data());
+        $this->assertSame("Olá! 👋\n✅ Cadeira executiva giratória 🚀", $this->r->fresh()->descricao, 'publicar não reescreve o rascunho');
+    }
+
     // ═══ Falha parcial e retentativa (RN-94) ═════════════════════════════════
 
     private function tresCores(): void
