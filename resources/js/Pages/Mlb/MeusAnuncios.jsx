@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { router, Link } from '@inertiajs/react';
 import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,13 @@ import LinhaDeGrupoDeProduto from '@/Components/Mlb/Publicador/publicacoes/Linha
 import RodapeDaTabela from '@/Components/Mlb/Publicador/publicacoes/RodapeDaTabela';
 import VaziosDaLista from '@/Components/Mlb/Publicador/publicacoes/VaziosDaLista';
 import { hojeEmSaoPaulo } from '@/Components/Mlb/Publicador/publicacoes/CelulasDaLinha';
+import {
+    ACOES,
+    idsNaOrdemVisual,
+    interpretarTecla,
+    interpretarTeclaDaBusca,
+    proximoIndice,
+} from '@/Components/Mlb/Publicador/publicacoes/atalhosDaLista';
 import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
 import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 
@@ -93,6 +100,35 @@ const CHAVES_DE_SUB = SUBABAS.map((aba) => aba.chave);
 // "o recorte não devolveu nada" — são textos diferentes (LIST-17).
 const STATUS_DEFAULT = 'acionaveis';
 
+/**
+ * Os 7 filtros no DEFAULT, numa casa só.
+ *
+ * ⚠️ Três lugares desligam "todos os filtros" (o "Limpar tudo" do vazio, o
+ * "Limpar filtros" da linha de chips e o "Localizar na lista" da faixa de
+ * sucesso) e os três têm de desligar os MESMOS 7. Com a lista repetida, um
+ * filtro novo entraria em dois lugares e ficaria preso no terceiro — e o
+ * usuário veria "nenhum filtro ativo" com a lista ainda recortada.
+ *
+ * ⚠️ `motivo` NÃO entra aqui, de propósito: o chip de triagem é outro controle
+ * (LIST-22) e o "Limpar filtros" da linha de chips NUNCA o desligou — pôr
+ * `motivo` nesta constante mudaria em silêncio o que aquele botão faz. Quem
+ * precisa de `motivo: null` o escreve junto, e são só dois (o "Limpar tudo" do
+ * vazio e o "Localizar na lista"). `status`, `sub`, `visao`, `busca` e `page`
+ * também ficam fora: cada chamador decide.
+ *
+ * ⚠️ `false`/`[]` e não `null` em `catalogo`/`comVenda`/`responsavel`: é o que
+ * o servidor espera para "desligado" (`MlbAnuncioController::meus()`), e é o
+ * que a tela já mandava antes desta constante existir.
+ */
+const FILTROS_NO_DEFAULT = Object.freeze({
+    fase: null,
+    tipo: null,
+    catalogo: false,
+    comVenda: false,
+    responsavel: [],
+    periodo: null,
+});
+
 // ─── Leitura segura das props do servidor ─────────────────────────────────
 //
 // ⚠️ A TELA PRETA DE 07/10/2026: um campo do presenter que chegou como OBJETO
@@ -160,6 +196,88 @@ export function grupoAberto(buscaAtiva, colapsados, chave) {
     if (chave === null) return true;
 
     return !listaSegura(colapsados).includes(chave);
+}
+
+/**
+ * A CLASSE-GANCHO da linha ativa (a com foco do teclado, ou a selecionada).
+ *
+ * ⚠️ NÃO É CLASSE DO TAILWIND e não deve gerar CSS nenhum: ela existe só para
+ * o `querySelector` do `scrollIntoView` achar a linha depois que o React a
+ * desenhou. O prefixo `js-` é o aviso disso. A APARÊNCIA da linha ativa é
+ * decidida por `fundoDaLinha()` em `LinhaDePublicacao.jsx` (`bg-pub-row-sel` e
+ * `bg-pub-row-focus`, os hex travados no plano 180-08) — aqui não há nem cor
+ * nem tamanho.
+ *
+ * ⚠️ Por que uma classe e não um `ref` por linha: `LinhaDePublicacao` já aceita
+ * `className` no contrato dela (plano 180-08) e NÃO aceita `ref`. Dar-lhe um
+ * `ref` exigiria editar o componente, que é território de outro plano.
+ */
+export const CLASSE_DA_LINHA_ATIVA = 'js-pub-linha-ativa';
+
+/**
+ * Os BLOCOS que a tabela desenha, na ORDEM VISUAL — uma casa só (LIST-09/10).
+ *
+ * ⚠️⚠️ POR QUE ESTA FUNÇÃO NASCEU NO PLANO 180-11, se o render já funcionava:
+ * os atalhos de teclado precisam da lista de chaves **na ordem em que as linhas
+ * aparecem na tela**, e não na ordem de `anuncios.data`. Na visão "Por produto"
+ * as duas DIVERGEM: as linhas são reordenadas por grupo e as de grupo recolhido
+ * **não existem na tela**. Montar essa lista por um segundo caminho faria `↓`
+ * pular para uma linha que o usuário não vê — por isso o teclado e o render
+ * leem o MESMO retorno desta função. (É o mesmo motivo de `grupoAberto()`, e o
+ * protótipo faz exatamente isso: ele empilha `ids.push(p.id)` DENTRO do
+ * `mkRow`, que só roda para as linhas que entram na tela.)
+ *
+ * Cada bloco é `{grupo, chave, aberto, primeiro, itens}`. `grupo === null` é o
+ * bloco plano (visão "Lista", ou visão por produto sem grupo nenhum do
+ * servidor), que não desenha linha de grupo.
+ *
+ * @param {object} entrada
+ * @param {unknown} entrada.itens       `anuncios.data`
+ * @param {unknown} entrada.grupos      `grupos` do servidor
+ * @param {unknown} entrada.porGrupo    só `true` agrupa
+ * @param {unknown} entrada.buscaAtiva  há termo em vigor no servidor
+ * @param {unknown} entrada.colapsados  as chaves que o usuário recolheu
+ */
+export function blocosDaLista({ itens, grupos, porGrupo, buscaAtiva, colapsados } = {}) {
+    const lista = listaSegura(itens);
+    const listaDeGrupos = listaSegura(grupos);
+
+    // ⚠️ O segundo caso (`length === 0`) cobre a visão "Por produto" sem grupo
+    // nenhum vindo do servidor: sem ele a tela esconderia linhas que o rodapé
+    // está contando.
+    if (porGrupo !== true || listaDeGrupos.length === 0) {
+        return [{ grupo: null, chave: null, aberto: true, primeiro: true, itens: lista }];
+    }
+
+    return listaDeGrupos.map((bruto, indice) => {
+        // REND-04: todas as flags nascem aqui dentro, no callback.
+        const grupo = objetoSeguro(bruto);
+        const chave = chaveSegura(grupo.produto_id);
+        const aberto = grupoAberto(buscaAtiva, colapsados, chave);
+        const idsDoGrupo = listaSegura(grupo.ml_item_ids);
+
+        return {
+            grupo,
+            chave,
+            aberto,
+            primeiro: indice === 0,
+            itens: !aberto ? [] : lista.filter((item) => {
+                const chaveDaLinha = chaveSegura(objetoSeguro(item).ml_item_id);
+                return chaveDaLinha !== null && idsDoGrupo.includes(chaveDaLinha);
+            }),
+        };
+    });
+}
+
+/**
+ * A chave comparável de UM item da lista — a mesma que `linhaDePublicacao` usa
+ * na `key` do React e que vai para a URL em `sel`.
+ *
+ * Existe como função para `idsNaOrdemVisual()` receber exatamente a regra do
+ * render, em vez de uma cópia dela.
+ */
+export function chaveDoItem(bruto) {
+    return chaveSegura(objetoSeguro(bruto).ml_item_id);
 }
 
 // ─── SKU na linha do anúncio (quick 261010-rie) ───────────────────────────
@@ -289,6 +407,29 @@ export default function MeusAnuncios({
     const [marcadas, setMarcadas] = useState([]);
     const [copiada, setCopiada] = useState(null);
     const [faixaDispensada, setFaixaDispensada] = useState(false);
+    // ⚠️ O FOCO do teclado é estado EFÊMERO e NÃO vai para a URL (LIST-18/19):
+    // ele muda a cada seta, e escrevê-lo na querystring seria uma ida ao
+    // servidor por tecla. Quem sobrevive à recarga é a SELEÇÃO (`filtros.sel`).
+    const [foco, setFoco] = useState(null);
+
+    // ─── Os três `ref` do teclado ─────────────────────────────────────────
+    //
+    // ⚠️ `refDoInput` é o gancho do atalho `/` (`BuscaDePublicacoes` já o
+    // repassa ao `<input>`, plano 180-06). Ele pode ser `null` — na primeira
+    // renderização, na fonte Rascunhos (lá a busca não é desenhada) e no caso
+    // `nunca_coletado`. O `?.` não é opcional.
+    const refDoInput = useRef(null);
+    // ⚠️ `refDoCorpo` delimita ONDE o teclado olha: o `querySelector` do
+    // `scrollIntoView` e a sonda de menu aberto precisam ficar DENTRO do corpo
+    // da tela. Com `document.querySelector` eles pegariam o `PublicadorHeader`,
+    // que é irmão deste container e tem popover próprio.
+    const refDoCorpo = useRef(null);
+    // ⚠️ `refDoTeclado` é o que o ouvinte LÊ. O ouvinte é registrado UMA vez
+    // (dependências `[]`) e, sem a `ref`, leria um closure velho: a lista de
+    // ids e o `foco` da PRIMEIRA renderização, para sempre. É o bug clássico de
+    // `useEffect` com `[]`, e o `atalhosDoHeader.js` da Fase 177 resolve do
+    // mesmo jeito.
+    const refDoTeclado = useRef({});
 
     // ─── Round-trip único: toda troca de aba/filtro/busca/página vai ao
     // servidor — nunca useState local decidindo o que aparece na tabela (D-05).
@@ -342,10 +483,53 @@ export default function MeusAnuncios({
     }
 
     function limparBuscaEFiltros() {
-        setBusca('');
+        digitarBusca('');
+        navegar({ busca: undefined, motivo: null, ...FILTROS_NO_DEFAULT });
+    }
+
+    /**
+     * "Localizar na lista" da faixa verde de sucesso (LIST-02, critério 2).
+     *
+     * ⚠️ UM round-trip só, com TUDO no mesmo `navegar()`: o termo sugerido, os
+     * filtros todos no default, a visão "Por produto", a publicação nova
+     * selecionada e a página 1. Dois `navegar()` seguidos fariam o segundo
+     * sobrescrever o primeiro (ambos leem `f.*`, que só muda depois da resposta
+     * do servidor) — e o usuário veria o recorte antigo.
+     *
+     * ⚠️ `status: 'todos'` é MEDIDO no `onLocate` do protótipo (`status: 'all'`)
+     * e a tabela do plano o OMITIU. Não é detalhe: o default da tela é
+     * `acionaveis`, e uma publicação recém-criada que chegue em
+     * `under_review`/`closed` não apareceria no recorte — o botão "localizar"
+     * localizaria o vazio.
+     *
+     * ⚠️ `sub: 'publicados'` é ACRÉSCIMO declarado: o protótipo não tem sub-aba.
+     * `sel` é um `MLB…` do acervo, que não existe no universo dos rascunhos —
+     * sem isto, clicar em "Localizar" estando em Rascunhos não mostraria nada.
+     *
+     * ⚠️ EXMP-01: `faixaSucesso` é `null` SEMPRE hoje (medido por três caminhos
+     * no plano 180-04), então a faixa não aparece e este handler não roda. A
+     * ligação é real e NENHUM resumo de exemplo é fabricado.
+     *
+     * ⚠️ Defensivo mesmo com o componente já filtrando (plano 180-05): valor
+     * que não é string vira "sem termo"/"sem seleção", nunca `[object Object]`
+     * na querystring.
+     */
+    function onLocalizar(termo, item) {
+        const texto = textoSeguro(termo).trim();
+        const chave = textoSeguro(item).trim();
+
+        digitarBusca(texto);
+        setFaixaDispensada(true);
+
         navegar({
-            busca: undefined, motivo: null, fase: null, tipo: null,
-            catalogo: false, comVenda: false, responsavel: [], periodo: null,
+            busca: texto === '' ? undefined : texto,
+            status: 'todos',
+            sub: 'publicados',
+            motivo: null,
+            ...FILTROS_NO_DEFAULT,
+            visao: 'grupo',
+            sel: chave === '' ? null : chave,
+            page: 1,
         });
     }
 
@@ -366,12 +550,23 @@ export default function MeusAnuncios({
     // ⚠️ `navigator.clipboard` não existe em contexto inseguro nem no render de
     // servidor: a cópia é tentada de forma guardada e o selo visual acende de
     // qualquer jeito só depois da tentativa.
+    //
+    // ⚠️ O `try/catch` NÃO é redundante com os `typeof` acima dele: em contexto
+    // não seguro o `writeText` existe e LANÇA DE FORMA SÍNCRONA
+    // (`NotAllowedError`), antes de devolver promessa nenhuma — o `.catch()` do
+    // `Promise.resolve` nunca veria isso e o clique derrubaria o handler. O
+    // protótipo também o envolve em `try` (`onCopy` do `mkRow`).
     function copiarMlb(chave) {
         if (chave === null) return;
 
-        const area = typeof navigator === 'undefined' ? null : objetoSeguro(navigator).clipboard;
-        if (area !== null && area !== undefined && typeof area.writeText === 'function') {
-            Promise.resolve(area.writeText(chave)).catch(() => {});
+        try {
+            const area = typeof navigator === 'undefined' ? null : objetoSeguro(navigator).clipboard;
+            if (area !== null && area !== undefined && typeof area.writeText === 'function') {
+                Promise.resolve(area.writeText(chave)).catch(() => {});
+            }
+        } catch {
+            // Sem área de transferência o selo "copiado" ainda acende: ele
+            // relata a TENTATIVA, e o MLB continua visível para seleção manual.
         }
 
         setCopiada(chave);
@@ -386,6 +581,46 @@ export default function MeusAnuncios({
     function abrirDetalhe(chave) {
         if (chave === null) return;
         setDetalheAberto(chave);
+    }
+
+    // ─── A SELEÇÃO (LIST-19, critério 12) ─────────────────────────────────
+    //
+    // ⚠️ `sel` vai para a URL SÓ AQUI — no clique na linha e no `Enter`. As
+    // setas ↑/↓/j/k mexem apenas no `foco`, que é estado da página. O motivo é
+    // medido, não de gosto: `sel` é param de SERVIDOR (validado por
+    // `/^MLB\d+$/` no plano 180-04) e escrevê-lo a cada seta seria um
+    // `router.get` por tecla sobre um acervo de dezenas de milhares de linhas.
+    // ➡️ Recarregar depois de CLICAR devolve a seleção, que é o que o critério
+    // 12 pede. Navegar com as setas e recarregar NÃO devolve o foco — e isso
+    // está declarado na SUMMARY, não maquiado.
+    //
+    // ⚠️ UM MECANISMO SÓ: nenhum `history.pushState`/`replaceState` à mão. É o
+    // mesmo `navegar()` que todo o resto da tela usa.
+    //
+    // ⚠️⚠️ `page: paginaAtual` E NÃO `page: 1`: `navegar()` zera a página de
+    // propósito (qualquer mudança de RECORTE volta ao começo), mas selecionar
+    // uma linha não é mudar o recorte. Sem isto, clicar numa linha da página 7
+    // jogaria o usuário na página 1 — e a linha que ele acabou de selecionar
+    // sumiria da tela.
+    function selecionar(chave) {
+        if (chave === null) return;
+
+        setFoco(chave);
+        navegar({ sel: chave, page: paginaAtual });
+
+        // ⚠️ EXMP-01 — "Enter abre" tem de ABRIR ALGO HOJE. O destino real
+        // desta fase é o Modal de Detalhe do Anúncio, que é o MESMO destino do
+        // clique na linha (e a casa da Nota ECF detalhada, da saúde do ML e da
+        // série de 90 dias). O painel de inspeção de 460px é a Fase 181, e ela
+        // vai ler o MESMO `sel` da URL — é o contrato entre as duas fases.
+        // Nenhuma tecla desta tela é muda.
+        abrirDetalhe(chave);
+    }
+
+    /** Tira a seleção da URL, preservando a página. */
+    function limparSelecao() {
+        if (textoSeguro(f.sel) === '') return;
+        navegar({ sel: null, page: paginaAtual });
     }
 
     // "Atualizar agora" — cooldown de 30s só depois de SUCESSO no enqueue;
@@ -446,7 +681,6 @@ export default function MeusAnuncios({
     // ─── O que a tela mostra, resolvido UMA vez ───────────────────────────
 
     const itens = listaSegura(pag.data);
-    const listaDeGrupos = listaSegura(grupos);
     const ehRascunhos = sub === CHAVE_DA_FONTE;
     const nuncaColetado = def.nunca_coletado === true;
 
@@ -506,6 +740,214 @@ export default function MeusAnuncios({
         .filter((chave) => chave !== null);
     const todasMarcadas = idsVisiveis.length > 0 && idsVisiveis.every((chave) => marcadas.includes(chave));
 
+    // ─── A SELEÇÃO, O FOCO E A ORDEM VISUAL (LIST-18/19) ──────────────────
+
+    // A página em que o usuário está, para `sel` não a perder (ver `selecionar`).
+    const paginaAtual = numeroSeguro(pag.current_page) === null ? 1 : Math.max(1, Math.floor(pag.current_page));
+
+    // ⚠️ A SELEÇÃO vem do SERVIDOR, nunca de estado local: `filtros.sel` já
+    // passou pela validação de forma (`/^MLB\d+$/`, plano 180-04). O cliente não
+    // confia no que leu da URL — ele lê o que o servidor ecoou (T-180-11-T).
+    const selDoServidor = textoSeguro(f.sel) === '' ? null : textoSeguro(f.sel);
+
+    // Os blocos que a tabela desenha — e a MESMA lista que o teclado percorre.
+    const blocos = blocosDaLista({
+        itens,
+        grupos,
+        porGrupo: visaoAtual === 'grupo',
+        buscaAtiva,
+        colapsados,
+    });
+
+    const idsVisuais = idsNaOrdemVisual(blocos, chaveDoItem);
+
+    // ⚠️ O foco é DESCARTADO quando a linha sai da tela (troca de página, de
+    // filtro, de aba, ou grupo recolhido). Sem isto, `Enter` abriria uma
+    // publicação que não está mais à vista — e o fundo `bg-pub-row-focus` não
+    // apareceria em lugar nenhum, deixando o `Enter` "aleatório" para o usuário.
+    const focoAtual = foco !== null && idsVisuais.includes(foco) ? foco : null;
+
+    // ⚠️ O OUVINTE LÊ DAQUI, e esta linha roda em TODO render. Com dependências
+    // `[]` no efeito, qualquer valor capturado no closure ficaria congelado na
+    // primeira renderização.
+    refDoTeclado.current = {
+        ids: idsVisuais,
+        sel: selDoServidor,
+        foco: focoAtual,
+        // ⚠️ Com o Modal de Detalhe aberto o teclado é DELE: o Radix já fecha o
+        // diálogo no `Escape`, e deixar as setas mexerem na lista por baixo do
+        // modal moveria um foco que o usuário não vê.
+        modalAberto: detalheAberto !== null,
+        selecionar,
+        limparSelecao,
+        definirFoco: setFoco,
+    };
+
+    /**
+     * Há um menu de filtro aberto? (a 1ª rung da cascata do `Escape`)
+     *
+     * ⚠️ POR CONTRATO DE ARIA, e não por classe do Tailwind: o chip que tem
+     * popover declara `aria-expanded` (`ChipsDeFiltro.jsx`), e esse é o sinal
+     * acessível — não um detalhe de aparência que a próxima fase pode mudar.
+     *
+     * ⚠️ POR QUE A PÁGINA PRECISA PERGUNTAR AO DOM: o estado "qual menu está
+     * aberto" é LOCAL do `ChipsDeFiltro` (`useState` dele) e o próprio
+     * `MenuDeFiltro` já fecha no `Escape` com ouvinte próprio em `document`.
+     * Então a 1ª rung não existe para FECHAR o menu — ela existe para a cascata
+     * PARAR ali: sem ela, o mesmo `Escape` que fecha o menu também limparia a
+     * seleção da linha, e é exatamente isso que o critério 11 proíbe ("fecha só
+     * o menu"). Ler o estado do componente exigiria editar `ChipsDeFiltro`, que
+     * é território de outro plano.
+     *
+     * ⚠️ Escopado em `refDoCorpo`: com `document.querySelector` isto pegaria os
+     * popovers do `PublicadorHeader`, que é irmão deste container.
+     */
+    function temMenuDeFiltroAberto() {
+        const corpo = refDoCorpo.current;
+        if (corpo === null || typeof corpo !== 'object' || typeof corpo.querySelector !== 'function') return false;
+
+        try {
+            return corpo.querySelector('[aria-expanded="true"]') !== null;
+        } catch {
+            return false;
+        }
+    }
+
+    // ─── O OUVINTE DE TECLADO (LIST-18) ──────────────────────────────────
+    //
+    // ⚠️ `removeEventListener` no cleanup é OBRIGATÓRIO (T-180-11-D): esta
+    // página é montada e desmontada a cada navegação do Inertia dentro do
+    // módulo, e um ouvinte deixado para trás empilharia um atalho por
+    // navegação — cada `↓` passaria a descer N linhas.
+    //
+    // ⚠️ Dependências `[]` DE PROPÓSITO, com tudo lido de `refDoTeclado`: com
+    // as dependências "corretas" o ouvinte seria removido e registrado de novo
+    // a cada tecla digitada na busca.
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+
+        function aoTeclar(evento) {
+            const atual = refDoTeclado.current;
+            if (atual.modalAberto === true) return;
+
+            const acao = interpretarTecla(evento, {
+                menuAberto: temMenuDeFiltroAberto(),
+                // ⚠️ SÓ `sel` conta como seleção, não o foco — é a cascata do
+                // protótipo (`if (this.state.selId)`), e é o que faz `Escape`
+                // com foco de teclado e sem clique não fazer nada.
+                temSelecao: atual.sel !== null,
+                temFoco: atual.foco !== null,
+            });
+
+            if (acao.preventDefault === true && typeof evento?.preventDefault === 'function') {
+                evento.preventDefault();
+            }
+
+            if (acao.tipo === ACOES.FOCAR_BUSCA) {
+                // ⚠️ `?.` obrigatório: na fonte Rascunhos e no caso
+                // `nunca_coletado` a busca nem é desenhada.
+                refDoInput.current?.focus?.();
+                return;
+            }
+
+            if (acao.tipo === ACOES.FECHAR_MENU) {
+                // A cascata PARA aqui: o `MenuDeFiltro` já se fecha sozinho no
+                // `Escape`, e o que esta rung preserva é a SELEÇÃO da linha.
+                return;
+            }
+
+            if (acao.tipo === ACOES.SAIR_DA_BUSCA) {
+                const alvo = evento?.target;
+                if (alvo !== null && typeof alvo === 'object' && typeof alvo.blur === 'function') alvo.blur();
+                return;
+            }
+
+            if (acao.tipo === ACOES.LIMPAR_SELECAO) {
+                atual.limparSelecao?.();
+                return;
+            }
+
+            if (acao.tipo === ACOES.MOVER) {
+                // ⚠️⚠️ `foco ?? sel` E NÃO `sel || foco` COMO O PROTÓTIPO, e a
+                // razão é consequência da decisão de não escrever `sel` na URL
+                // a cada seta. Lá, `move()` arrasta `selId` JUNTO com
+                // `focusId`, então partir de `selId` avança. Aqui `sel` fica
+                // PARADO: partir dele prenderia o foco na linha de baixo da
+                // selecionada para sempre — `↓↓↓` não sairia do lugar.
+                const partida = atual.foco !== null ? atual.foco : atual.sel;
+                const indice = proximoIndice(atual.ids, partida, acao.direcao);
+                if (indice === null) return;
+                atual.definirFoco?.(atual.ids[indice]);
+                return;
+            }
+
+            if (acao.tipo === ACOES.SELECIONAR_FOCO) {
+                atual.selecionar?.(atual.foco);
+            }
+        }
+
+        window.addEventListener('keydown', aoTeclar);
+        return () => window.removeEventListener('keydown', aoTeclar);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /**
+     * `↓` e `Enter` DENTRO da busca vão ao primeiro resultado (LIST-18).
+     *
+     * ⚠️ Handler separado, no `onKeyDown` do `<input>`, porque o ouvinte global
+     * recusa tudo que vem de campo de digitação — e tem de recusar, senão
+     * digitar "jaqueta" navegaria a lista.
+     */
+    function aoTeclarNaBusca(evento) {
+        const atual = refDoTeclado.current;
+        const ids = listaSegura(atual.ids);
+        const acao = interpretarTeclaDaBusca(evento, ids.length > 0);
+        if (acao.tipo === ACOES.NADA) return;
+
+        if (acao.preventDefault === true && typeof evento?.preventDefault === 'function') evento.preventDefault();
+
+        // O protótipo tira o foco do campo nas DUAS ações (`e.target.blur()`):
+        // sem isso a próxima seta voltaria a ser digitação.
+        const alvo = evento?.target;
+        if (alvo !== null && typeof alvo === 'object' && typeof alvo.blur === 'function') alvo.blur();
+
+        const primeiro = ids.length === 0 ? null : ids[0];
+        if (acao.tipo === ACOES.SELECIONAR_PRIMEIRO) selecionar(primeiro);
+        else setFoco(primeiro);
+    }
+
+    /**
+     * Digitar na busca LIMPA o foco do teclado.
+     *
+     * ⚠️ Medido no `onQuery` do protótipo (`{ query: …, focusId: null }`) e
+     * OMITIDO pela tabela FID-01 do plano. Faz sentido: o resultado vai mudar
+     * debaixo do foco, e manter o foco apontando para uma linha que a busca
+     * acabou de descartar faria o `Enter` abrir outra publicação.
+     */
+    function digitarBusca(texto) {
+        setBusca(texto);
+        setFoco(null);
+    }
+
+    // ─── Rolar até a linha ativa ─────────────────────────────────────────
+    //
+    // ⚠️ Dentro de `useEffect` e com guarda de `document`: o render de servidor
+    // dos testes não tem DOM. `block: 'nearest'` para a página não pular quando
+    // a linha JÁ está visível — é o que `scrollIntoView()` sem opção faria.
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+
+        const corpo = refDoCorpo.current;
+        if (corpo === null || typeof corpo !== 'object' || typeof corpo.querySelector !== 'function') return undefined;
+
+        const linha = corpo.querySelector(`.${CLASSE_DA_LINHA_ATIVA}`);
+        if (linha !== null && typeof linha.scrollIntoView === 'function') {
+            linha.scrollIntoView({ block: 'nearest' });
+        }
+
+        return undefined;
+    }, [selDoServidor, focoAtual]);
+
     function alternarTodas() {
         setMarcadas((atual) => (idsVisiveis.every((chave) => atual.includes(chave))
             ? atual.filter((chave) => !idsVisiveis.includes(chave))
@@ -542,23 +984,30 @@ export default function MeusAnuncios({
         const item = objetoSeguro(bruto);
         const chave = chaveSegura(item.ml_item_id);
         const temRascunho = item.origem === 'ecf' && item.rascunho_id != null && empresaId !== null;
+        const selecionada = chave !== null && selDoServidor === chave;
+        const comFoco = chave !== null && focoAtual === chave;
+        // ⚠️ A linha ATIVA é a do foco do teclado, e na falta dele a
+        // selecionada — é ela que o `scrollIntoView` procura. Uma só por render:
+        // `foco` e `sel` apontando para linhas diferentes rolaria para as duas.
+        const ativa = comFoco || (selecionada && focoAtual === null);
 
         return (
             <LinhaDePublicacao
                 key={chave === null ? `sem-id-${indice}` : chave}
                 item={item}
                 agrupada={agrupada}
-                selecionada={chave !== null && textoSeguro(f.sel) === chave}
-                comFoco={false}
+                selecionada={selecionada}
+                comFoco={comFoco}
                 marcada={chave !== null && marcadas.includes(chave)}
                 compacta={false}
                 copiada={chave !== null && copiada === chave}
                 hoje={hoje}
                 rotulosDeMotivo={rotulosDeMotivo}
+                className={ativa ? CLASSE_DA_LINHA_ATIVA : undefined}
                 urlDoRascunho={temRascunho
                     ? route('mlb.anuncios.wizard', { company: empresaId, rascunho: item.rascunho_id })
                     : null}
-                onAbrir={() => abrirDetalhe(chave)}
+                onAbrir={() => selecionar(chave)}
                 onMarcar={() => alternarMarcada(chave)}
                 onCopiar={() => copiarMlb(chave)}
             />
@@ -637,7 +1086,15 @@ export default function MeusAnuncios({
                 `min-width:1240px` na raiz (`:24`) — desktop-first em 1440, com
                 scroll horizontal abaixo de 1240 em vez de reflow (FID-05). */}
             <div className="-mx-6 -mb-6">
-                <div className="mx-auto flex min-w-[1240px] max-w-[1600px] flex-col gap-[18px] px-[36px] pb-[110px] pt-[28px]">
+                {/* ⚠️ `ref` SEM nenhuma classe nova: ele delimita onde o
+                    teclado olha (o `scrollIntoView` da linha ativa e a sonda de
+                    `aria-expanded` da cascata do `Escape`). Com `document` no
+                    lugar dele, os dois pegariam os popovers do
+                    `PublicadorHeader`, que é irmão deste container. */}
+                <div
+                    ref={refDoCorpo}
+                    className="mx-auto flex min-w-[1240px] max-w-[1600px] flex-col gap-[18px] px-[36px] pb-[110px] pt-[28px]"
+                >
 
                     {/* ⚠️ Aqui ficava `<SubAbasDePublicacoes atual="meus" …>`, o
                         segmentado "No ar | Histórico". Ele SAIU em 13/10/2026
@@ -695,10 +1152,7 @@ export default function MeusAnuncios({
                         fabricado, e o componente devolve `null`. */}
                     <FaixaDeSucesso
                         resumo={faixaDispensada ? null : (faixaSucesso ?? null)}
-                        onLocalizar={(termo, item) => {
-                            setBusca(textoSeguro(termo));
-                            navegar({ busca: termo, sel: item, visao: 'grupo' });
-                        }}
+                        onLocalizar={onLocalizar}
                         onDispensar={() => setFaixaDispensada(true)}
                     />
 
@@ -740,8 +1194,10 @@ export default function MeusAnuncios({
                             {!ehRascunhos && (
                                 <BuscaDePublicacoes
                                     valor={busca}
-                                    onMudar={(evento) => setBusca(objetoSeguro(evento).target?.value ?? '')}
-                                    onLimpar={() => { setBusca(''); navegar({ busca: undefined }); }}
+                                    refDoInput={refDoInput}
+                                    onTecla={aoTeclarNaBusca}
+                                    onMudar={(evento) => digitarBusca(objetoSeguro(evento).target?.value ?? '')}
+                                    onLimpar={() => { digitarBusca(''); navegar({ busca: undefined }); }}
                                     resumo={null}
                                 />
                             )}
@@ -808,10 +1264,7 @@ export default function MeusAnuncios({
                                                 onTrocar: (valor) => navegar({ periodo: valor === 'qualquer' ? null : valor }),
                                             }}
                                             algumAtivo={algumFiltroAtivo}
-                                            onLimparFiltros={() => navegar({
-                                                fase: null, tipo: null, catalogo: false,
-                                                comVenda: false, responsavel: [], periodo: null,
-                                            })}
+                                            onLimparFiltros={() => navegar({ ...FILTROS_NO_DEFAULT })}
                                         />
                                     </>
                                 )}
@@ -851,44 +1304,49 @@ export default function MeusAnuncios({
                                         onMarcarTodas={idsVisiveis.length === 0 ? null : alternarTodas}
                                     />
 
-                                    {visaoAtual === 'grupo' && listaDeGrupos.length > 0 && listaDeGrupos.map((bruto, indice) => {
+                                    {/* ⚠️⚠️ A TABELA E O TECLADO LEEM O MESMO
+                                        `blocos` (plano 180-11). Antes a
+                                        travessia por grupo vivia aqui dentro;
+                                        ela subiu para `blocosDaLista()` porque
+                                        `↑`/`↓`/`j`/`k` precisam das chaves na
+                                        ORDEM VISUAL — que na visão "Por produto"
+                                        NÃO é a ordem de `anuncios.data`, e onde
+                                        grupo recolhido não contribui com linha
+                                        nenhuma. Duas travessias divergiriam e o
+                                        `↓` pularia para uma linha invisível.
+
+                                        ⚠️ `bloco.grupo === null` é o bloco
+                                        plano: visão "Lista" (LIST-10) OU visão
+                                        por produto sem nenhum grupo do
+                                        servidor. O segundo caso existe para a
+                                        tela não esconder linhas que o rodapé
+                                        está contando.
+
+                                        ⚠️ A busca ativa FORÇA os grupos
+                                        abertos (LIST-09) — a regra continua em
+                                        `grupoAberto()`, numa casa só, e chega
+                                        aqui já RESOLVIDA em `bloco.aberto`. */}
+                                    {blocos.map((bloco, indice) => {
                                         // REND-04: TODAS as flags nascem aqui
                                         // dentro, no callback.
-                                        const grupo = objetoSeguro(bruto);
-                                        const chaveDoProduto = chaveSegura(grupo.produto_id);
-                                        // ⚠️ A busca ativa FORÇA os grupos
-                                        // abertos (LIST-09), e a regra mora em
-                                        // `grupoAberto()`, logo acima: a linha
-                                        // de grupo recebe `aberto` RESOLVIDO e
-                                        // não lê a busca.
-                                        const aberto = grupoAberto(buscaAtiva, colapsados, chaveDoProduto);
-                                        const idsDoGrupo = listaSegura(grupo.ml_item_ids);
-                                        const linhas = !aberto ? [] : itens.filter((item) => {
-                                            const chave = chaveSegura(objetoSeguro(item).ml_item_id);
-                                            return chave !== null && idsDoGrupo.includes(chave);
-                                        });
+                                        const grupo = bloco.grupo;
+                                        const chaveDoProduto = bloco.chave;
+                                        const agrupada = grupo !== null;
 
                                         return (
-                                            <Fragment key={chaveDoProduto === null ? `grupo-${indice}` : chaveDoProduto}>
-                                                <LinhaDeGrupoDeProduto
-                                                    grupo={grupo}
-                                                    aberto={aberto}
-                                                    primeiro={indice === 0}
-                                                    onAlternar={() => alternarGrupo(chaveDoProduto)}
-                                                />
-                                                {linhas.map((item, posicao) => linhaDePublicacao(item, posicao, true))}
+                                            <Fragment key={chaveDoProduto === null ? `bloco-${indice}` : chaveDoProduto}>
+                                                {agrupada && (
+                                                    <LinhaDeGrupoDeProduto
+                                                        grupo={grupo}
+                                                        aberto={bloco.aberto}
+                                                        primeiro={bloco.primeiro}
+                                                        onAlternar={() => alternarGrupo(chaveDoProduto)}
+                                                    />
+                                                )}
+                                                {bloco.itens.map((item, posicao) => linhaDePublicacao(item, posicao, agrupada))}
                                             </Fragment>
                                         );
                                     })}
-
-                                    {/* Visão "Lista" (LIST-10) — linhas planas,
-                                        com tile e o nome do produto no meta.
-                                        ⚠️ E o MESMO caminho cobre a visão "Por
-                                        produto" sem grupo nenhum vindo do
-                                        servidor: sem isto a tela esconderia
-                                        linhas que o rodapé está contando. */}
-                                    {(visaoAtual === 'lista' || listaDeGrupos.length === 0)
-                                        && itens.map((item, indice) => linhaDePublicacao(item, indice, false))}
 
                                     {/* Os vazios honestos, DENTRO do card e
                                         antes do rodapé — a ordem do protótipo

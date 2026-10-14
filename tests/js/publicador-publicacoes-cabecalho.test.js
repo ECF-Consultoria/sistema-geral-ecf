@@ -964,9 +964,44 @@ test('TAILWIND — nenhum .js de publicacoes/ carrega classe (o content só varr
 
     const jsDoDiretorio = fs.readdirSync(abs).filter((nome) => nome.endsWith('.js'));
 
-    await contexto.test(`os ${jsDoDiretorio.length} módulo(s) .js do diretório estão limpos`, () => {
+    // ⚠️⚠️ CIRURGIA 4 (plano 180-11) — A LEITURA PASSOU A SER SEM COMENTÁRIO, e
+    // o motivo é que este gate REPROVOU O CÓDIGO CERTO.
+    //
+    // Era `fs.readFileSync` (fonte CRUA). O `atalhosDaLista.js` do plano 180-11
+    // é o PRIMEIRO `.js` deste diretório e ele traz, no cabeçalho, a explicação
+    // de por que não tem classe nenhuma — e essa frase contém a palavra
+    // `className`. Resultado: o arquivo que OBEDECE a regra era o único a
+    // reprovar por ela. É a família registrada no learnings deste projeto ("o
+    // comentário que explica 'não uso X' casa com o gate que conta X").
+    //
+    // ⚠️ A regra NÃO foi afrouxada, foi corrigida: comentário não vira CSS e não
+    // vira classe no HTML. O que o gate tem de medir é o que o RUNTIME enxerga,
+    // e `lerSemComentarios()` existe neste projeto exatamente para isso.
+    // ⚠️ `-assert` = 0 nesta cirurgia: nenhuma asserção saiu, só a FONTE da
+    // leitura mudou, e entraram 4 asserções NOVAS de isca provando que a
+    // leitura nova ainda morde o código de verdade.
+    await contexto.test('⚠️ ISCA da LEITURA: sem comentário, o gate ainda pega classe no CÓDIGO', () => {
+        // O que precisaria estar errado para esta isca falhar: a troca para
+        // `lerSemComentarios` ter cegado o gate (comendo o arquivo inteiro, ou
+        // engolindo a linha de código junto com o comentário dela).
         for (const nome of jsDoDiretorio) {
-            const fonte = fs.readFileSync(path.join(abs, nome), 'utf8');
+            const limpo = lerSemComentarios(`${DIR_PUB}/${nome}`);
+            assert.ok(limpo.trim().length > 0, `${nome}: a leitura sem comentário veio VAZIA — gate cego`);
+            assert.match(limpo, /\bexport\b/, `${nome}: a leitura sem comentário perdeu o código`);
+        }
+
+        // E a isca positiva, sem escrever nada no repo: uma fonte com classe
+        // FORA de comentário continua acusada depois do mesmo tratamento.
+        const comClasseNoCodigo = "export const C = 'text-[13.5px]'; // sem classe aqui\n";
+        assert.ok(acusaClasse(comClasseNoCodigo.replace(/(^|[^:])\/\/.*$/gm, '$1')));
+        const soNoComentario = '// aqui NÃO há className nem text-[13px]\nexport const C = 1;\n';
+        assert.ok(!acusaClasse(soNoComentario.replace(/(^|[^:])\/\/.*$/gm, '$1')));
+    });
+
+    await contexto.test(`os ${jsDoDiretorio.length} módulo(s) .js do diretório estão limpos`, () => {
+        // ⚠️ `lerSemComentarios` e não `readFileSync`: ver a CIRURGIA 4 acima.
+        for (const nome of jsDoDiretorio) {
+            const fonte = lerSemComentarios(`${DIR_PUB}/${nome}`);
             assert.ok(
                 !acusaClasse(fonte),
                 `${DIR_PUB}/${nome}: classe do Tailwind num .js — o content não varre .js, a classe NÃO gera CSS`,
