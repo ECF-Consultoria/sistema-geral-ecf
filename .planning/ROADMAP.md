@@ -4212,3 +4212,860 @@ medido: `sold_quantity` é acumulado da vida do anúncio, a série de `ml_acervo
 esparsa (1,3 dias por anúncio em média), `visitas` é NULL em 100% das 1.374.527 linhas e não existe
 tabela de pedidos — com a decisão do usuário "nada nasce decorativo" (D6), a fase espera a decisão de
 produto sobre coletar pedidos pela API do ML, não trabalho de UI.*
+
+---
+
+## Milestone v27.0 — Aprovação humana antes de publicar (Fases 186-194)
+
+**Plano canônico:** `design_handoff_publicador/README-v2.md` (327 linhas) + `Aprovacao.dc.html`
+(1.432 linhas, a classe `Component` é a especificação de comportamento) + `Publicacoes v2.dc.html`
+(referência da seção A) · **Requirements:** `.planning/REQUIREMENTS-v27.md` (**229 REQ-IDs**) ·
+**Base:** Fases 177-180 da v26.0, **no ar e aprovadas** (tokens + header, modal "Nova publicação",
+Visão Geral e a tela de Publicações).
+
+**Goal:** o sistema passa a publicar de forma **autônoma** com um **portão de aprovação humana antes
+de ir ao ar** — uma fila onde cada oferta é conferida foto por foto e preço por preço, com bloqueios
+calculados no servidor, e onde **nada vai ao Mercado Livre sem alguém aprovar**.
+
+> *"uma das coisas de maior interesse é que o sistema funcione de forma autônoma para publicar mas
+> que tenha uma aprovação antes de ir para ar"* — usuário, registrando a decisão da gestão da ECF na
+> reunião de **14/10/2026**
+
+⚠️ **O usuário decidiu em 14/10 PAUSAR a v26.0.** A **Fase 181** (painel de inspeção) e a **Fase 183**
+(Histórico) ficam para depois, porque **a aprovação destrava a automação e vale mais que o
+acabamento**. Nada foi apagado: as duas seguem registradas neste roadmap.
+
+### ⚠️ O VALOR da milestone: a automação que a gestão pediu JÁ EXISTE, pronta e DESLIGADA
+
+`app/Services/Publicador/Criativos/CriativosAutomaticosService.php` (10/10/2026) tem a cadeia
+completa — produto chega do Portal com ficha e fotos → título → Modelo → descrição → **criativos
+automáticos** — com **sete** condições de segurança, travada em `publicador.criativos_auto.ativo`
+(`config/publicador.php:217`, env `PUBLICADOR_CRIATIVOS_AUTO_ATIVO`, padrão `false`). O docblock diz
+textualmente que ela espera *"depois que o dono do Creative Engine ajustar o lado dele"*.
+
+➡️ **O portão de aprovação é o que torna seguro ligar aquela chave.** Hoje, ligar significaria imagem
+de IA ao ar sem conferência humana; com a fila, significa imagem de IA entrando numa fila onde alguém
+aprova foto por foto antes de publicar. **São peças da mesma decisão** — e é por isso que a **Fase
+194 (ligar a automação) é o destino da milestone, não um apêndice**.
+
+### Decisões travadas (D1..D14 do `REQUIREMENTS-v27.md` — NÃO reabrir)
+
+**D1** reproduzir, não adaptar (o protótipo ganha: placar de ~146 divergências nas Fases 177-180, e
+em UMA só o protótipo errou) · **D2** dois eixos nunca misturados — o andamento interno nunca aparece
+na lista de Publicadas e o status do ML nunca aparece na fila · **D3** "Em revisão" nunca sem
+qualificar · **D4** nada nasce decorativo, custo ou frete ausente **nunca** vira zero · **D5** reusar
+o Creative Engine, nunca reescrever · **D6** "Resultado estimado por venda", **nunca** "lucro
+líquido" · **D7** cor nunca é o único sinal, e sem jargão na tela · **D8** as taxas do README são
+fictícias e **não** entram como literal nem como config (a fonte real é melhor e já existe) ·
+**D9** fatia vertical, servidor antes do render, **fechamento medido como plano próprio** · **D10**
+esta milestone **TEM migrations** · **D11** o D-11 vale para a **LISTA**; a **FILA escreve** ·
+**D12** a seção A é dividida de propósito (rename antes, abas com a rota) · **D13** editor, Mesa,
+Creative Engine, Bling e `MlPublicacaoService` **não são tocados** · **D14** o usuário pode querer
+parar no meio, e nenhuma fase deixa botão sem destino na sua fronteira.
+
+### Os sete achados medidos que moldam a divisão em fases
+
+1. **A automação existe e está desligada** (acima). A milestone é o portão que a destrava.
+2. **O modal "Gerar novamente com IA" é COMPOSIÇÃO do que já existe, não serviço novo.** Medido em
+   14/10: `GeminiImageProvider::gerarImagem`,
+   `CreativePromptBuilder::paraSlot(…, $regeneracao, $ajusteOperador)`,
+   `CreativePermissao::podeRegenerar(User)` e
+   `ReferenciaEfemeraService::guardar(MlAnuncioCriativo, array $arquivos)` — todos em
+   `app/Services/Creative/`. **CHAMAR, nunca reimplementar** (TERR-01).
+3. **A ponte Publicador → Creative Engine já existe e é indexada.**
+   `ml_anuncio_criativos.pub_imagem_id` → `pub_imagens.id` (nullable, `nullOnDelete`, índice
+   `ml_criativos_pubimg_idx`), criada pela migration da Fase 165 e preenchida por
+   `PublicadorCriativoAprovacaoService:117`. ➡️ **Nenhuma coluna nova para alcançar o criativo a
+   partir da imagem revisada** (IA-05).
+4. ⚠️ **A original de referência é DURÁVEL, mas o VÍNCULO com ela morre em 48 h.**
+   `ml_anuncio_criativos.referencias` é o único lugar onde ele está gravado, e é apagado na aprovação
+   **e** pela varredura `creative:limpar-referencias`
+   (`app/Console/Commands/LimparReferenciasCriativos.php`,
+   `services.creative.retencao_referencias_horas`). A original em si é **uma linha de `pub_imagens`
+   do próprio rascunho**. ➡️ O vínculo durável é **dado novo NOSSO** (**DADO-15**, na Fase 186), e
+   **a retenção alheia NÃO é tocada** (**TERR-11**) — se parecer necessário, **para e pergunta**.
+   ⚠️ **Consequência declarada:** na estreia **nenhuma** imagem antiga terá original de referência, e
+   a comparação lado a lado mostra o estado **"original de referência não disponível"**
+   (**IMG-13**) — nunca painel vazio, nunca a imagem de IA repetida no lugar da original.
+5. **São 12 estruturas de dado novas ⇒ esta é a primeira milestone com migration desde a v26.0**,
+   que declarou nenhuma. ⚠️ `pub_rascunhos` tem **6** estados e eles são de **PUBLICAÇÃO**
+   (`DRAFT`, `VALIDATED`, `PUBLISHING`, `PUBLISHED`, `PARTIALLY_PUBLISHED`, `FAILED`) — eixo
+   diferente dos 8 de **andamento interno**; e `PubImagem.status` é de **UPLOAD**
+   (`pending`/`uploaded`/`failed`), não de revisão.
+6. ⚠️ **As taxas do README são fictícias, e neste sistema a fonte real é MELHOR do que config.**
+   Comissão e tarifa fixa vêm da **API do Mercado Livre** (`GET /sites/MLB/listing_prices`, via
+   `SimuladorVoceRecebe`, em `AnaliseAlavancasService:212` e `EditorRascunhoService:412`); o imposto
+   vem de `EstruturaPrecificacaoParametros::daEmpresa()['imposto']` com a **exceção da oferta
+   vencendo** (`DadosEfetivosService:216-232`); o custo, de
+   `DadosEfetivosService::custosDoProduto()`. ➡️ **Nenhum dos números do README entra como literal**
+   (FIN-02). ⚠️ **A única exceção é a margem mínima (12%): `grep -rn "margem_minima"` em `app/` e
+   `config/` voltou VAZIO — é configuração nova** (FIN-09).
+7. ⚠️ **A granularidade do desenho não é a da fila de publicação de hoje.** O desenho trabalha por
+   **OFERTA** (Clássico e Premium com andamento, preço, resultado e versão **separados**), enquanto
+   `pub_fila_publicacao_itens` trabalha por **PRODUTO** (Clássico + Premium, todas as cores, numa
+   publicação só) — e **já guarda um conceito de conferência**: `validacao_id`, `plano_hash`,
+   `revisao`, `ciente`, `precisa_revisar`. ➡️ **DADO-03 e PUB-02 obrigam o planejamento a resolver
+   isso explicitamente e a NÃO duplicar aqueles campos.**
+
+### ⚠️ A ordem da seção A — a dependência que podia inverter a fase 1
+
+A seção A (abas no cabeçalho de Publicações + renomear o status do ML) **parece** a fase 1 óbvia.
+**Não é — e foi dividida de propósito (D12):**
+
+- **A2, o rename, vem PRIMEIRO (Fase 186, primeiro plano).** É independente e seguro: muda **rótulo**,
+  nunca **chave de dado** (`em_revisao`/`pending` continuam iguais, então URL, filtro salvo e teste de
+  comportamento continuam funcionando — TERR-08). E **tem de vir antes**: esta milestone introduz o
+  estado interno **"Em revisão pela ECF"**, e o README é taxativo — *"Nunca use 'Em revisão' sem
+  qualificar"*. Renomear depois criaria uma janela em que **dois "Em revisão" diferentes convivem na
+  tela**, e toda asserção negativa escrita nesse meio-tempo seria ambígua (⚠️ "Em revisão" é
+  **substring** de "Em revisão pela ECF" — a armadilha da asserção negativa cega). **Valor imediato:**
+  se o usuário parar depois da 186, ele já ganhou a desambiguação que pediu.
+- **A1, as abas, vem com a FASE QUE CRIA A ROTA (Fase 187).** O contador da aba "Aguardando
+  aprovação" vem dos **estados internos** (`awaiting` + `ecf_review` + `changes`) e o clique **navega
+  para a rota nova**. Sem a área existir, **a aba aponta para o vazio** — exatamente o que a régua
+  "nada nasce decorativo" proíbe, e o usuário **já exerceu essa régua três vezes** na milestone
+  anterior.
+  **Alternativa considerada e recusada:** entregar a aba na 186 desabilitada ou com tooltip. Recusada
+  porque uma aba com contador **real** que não leva a lugar nenhum é a definição de enfeite — pior
+  que ausência, porque promete.
+
+### ⚠️ A fronteira do D-11, declarada para o primeiro executor não ler contradição
+
+`tests/js/estrutura-meus-anuncios.test.js` (≈ `:250`, `:256`, `:285` — **identificar por SEMÂNTICA**,
+nunca por número de linha) prova duas coisas **intocáveis**: **a LISTA de Publicações nunca escreve
+no Mercado Livre** (D-11) e **a Nota ECF é "de 86"** (D-22).
+
+⚠️ **Esta milestone ESCREVE** — aprovar, regenerar imagem, publicar. **Não é contradição:** o D-11 é
+um gate **sobre os arquivos da lista**. A área nova vive em `aprovacao/` e ganha **gate de escrita
+próprio** (trava de conta, registro **antes** do HTTP, `5xx`/rede tratados como **incerto**, sem
+reenvio por conta própria, `UNKNOWN` nunca reenviado sem reconciliar pelo SKU — **RN-93**).
+➡️ **O D-11 não é estendido à área nova e não é afrouxado na lista** (D11, PUB-07).
+
+### Camadas, portal e o que não se mexe
+
+⚠️ O header é **`z-30`** e a ordem travada é **filtros 10 < header 30 < menu lateral e painel 40**
+(`tests/js/publicador-header-zindex-ordem.test.js`). O painel de **1140px** e o lightbox desta
+milestone **respeitam isso e não alteram o header**. ⚠️ O `backdrop-filter` do header **cria
+containing block para `position:fixed`** (medido na Fase 178) ⇒ overlay por **portal**; e ⚠️ **o
+renderizador de servidor do React NÃO renderiza portal** — as peças internas saem como **named
+exports** para poderem ser conferidas, e **conteúdo portado não herda a fonte** (REND-05).
+
+⚠️ **Território intocado:** `app/Services/Creative/`, os endpoints `criativo*` do
+`MlbAnuncioController`, `AnunciarML.jsx`, `PainelCriativosIa.jsx`, `KitCriativosGrade.jsx`,
+`app/Services/Publicador/Criativos/PublicadorCriativoAprovacaoService.php` (⚠️ **o caminho real NÃO é
+`app/Services/Creative/`** — o aviso de coordenação dizia isso e estava errado), o editor
+(`Pages/Mlb/Publicador/Editor.jsx`, `Components/Publicador/Mesa/` — **SEM** o `Mlb` no meio),
+`App\Support\Publicador`, `app/Services/Mlb/Publicacao/MlPublicacaoService.php`, `AppLayout.jsx`,
+`app/Models/Bling*`, `app/Services/Bling/`, `app/Services/Portal/` (sessão paralela, Fases 184/185),
+a Visão Geral (179) e o corpo de Publicações (180) além da seção A.
+
+### Fases desta milestone, e o que cada uma entrega de VALOR
+
+| Fase | Entrega de valor ao usuário | Migration |
+|---|---|---|
+| **186** | "Em revisão" deixa de ser ambíguo na tela; e o portão passa a **existir no servidor**, com bloqueios e composição financeira conferíveis por teste | ⚠️ **SIM — a espinha (12 estruturas)** |
+| **187** | **A fila existe e é alcançável:** a aba leva a ela, dá para ver o que está esperando aprovação, filtrar e aprovar em lote | não |
+| **188** | **APROVAR DE VERDADE** — conferir fotos e preço e liberar a oferta. É o coração do pedido da gestão | não |
+| **189** | Conferir a foto **de perto**, com zoom e marcadores, e agir dali | não |
+| **190** | Comparar a imagem de IA **lado a lado com a original**, com checklist de fidelidade e defeitos | não |
+| **191** | Conferir **preço, conteúdo do anúncio e o histórico** na mesma página, com a prévia do que vai ser enviado | não |
+| **192** | **Corrigir a foto errada sem sair da revisão** — regenerar só aquela imagem, com problemas, instrução e referências | não |
+| **193** | **O portão fecha o ciclo:** aprovar faz publicar, e falha preserva a revisão com "Tentar de novo" | provável (1 coluna de ligação) |
+| **194** | **A automação ligada atrás do portão** — a decisão da gestão de 14/10 entregue | não |
+
+### Phase 186: O portão no servidor — vocabulário, os 8 estados, bloqueios e composição financeira
+
+**Goal**: o portão de aprovação passa a **existir como dado e como regra** — os 8 estados de
+andamento interno, a versão da oferta, o conjunto de fotos compartilhado, o estado de aprovação por
+imagem, o checklist, os defeitos, os ajustes com escopo, o histórico, a exceção autorizada, o frete
+informado, a origem por linha financeira, as verificações automáticas com coordenadas e o vínculo
+durável com a original de referência —, com os **8 bloqueios** e o **cálculo financeiro** conferidos
+contra `info()` e `fin()` do protótipo; e, na tela que já está no ar, **"Em revisão" deixa de ser
+ambíguo**: o status do Mercado Livre passa a se chamar "Em análise pelo Mercado Livre".
+
+**Depends on**: Fases 177-180 (no ar). Nada mais.
+
+**Requirements**: VOC-01..08, ABA-03, ABA-04, AND-01..10, DADO-01..15, BLOQ-01..12, FIN-01..14,
+MIG-01..09 — e os transversais **FID-01..08, GATE-01..14, REND-01..08, TERR-01..11**, que nascem
+aqui e **valem e são conferidos em TODAS as fases** da milestone.
+
+⚠️ **MIGRATION — a maior da série.** O planejamento quebra a espinha em migrations **por assunto**
+(oferta + versão · conjunto + imagem + verificações automáticas · checklist + defeitos · ajustes +
+histórico + exceção · frete + origem financeira · vínculo durável de referência), **nunca uma
+migration monolítica**, e cada uma com a **tabela de decisão de schema no docblock antes do código**
+(MIG-07).
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Na tela de Publicações **que já está no ar**, o status do ML aparece como **"Em análise pelo
+     Mercado Livre"** e, na aba de filtro, **"Em análise pelo ML"** — em
+     `identidade/SeloDeStatusDaPublicacao.jsx` e `publicacoes/AbasDeStatus.jsx`. ⚠️ **A chave de dado
+     não mudou** (`em_revisao`/`pending`): URL com filtro, filtro salvo e os testes de comportamento
+     continuam passando (ABA-03, TERR-08)
+  2. **"Em revisão" não aparece em nenhum lugar sem qualificar**, provado por gate de ausência
+     **recortado ao corpo** e com **isca** — ⚠️ a negativa cega quebraria a tela certa, porque
+     "Em revisão" é **substring** de "Em revisão pela ECF" (VOC-01, GATE-13)
+  3. Os **8 estados de andamento interno** existem com transições declaradas, e **os dois eixos nunca
+     se misturam**: gate provando que nenhum rótulo interno aparece nos componentes de `publicacoes/`
+     e que nenhum status do ML aparece nos de `aprovacao/` (AND-01, AND-02, D2)
+  4. Os **8 bloqueios** de `info()` são calculados **no servidor, por oferta**, cada um com texto e
+     ação de correção; ⚠️ a cadeia `freight → loss → margin` é **exclusiva e nesta ordem**: faltando
+     dado **não existe** bloqueio de prejuízo nem de margem, porque **não há resultado**
+     (BLOQ-01, BLOQ-02)
+  5. **Custo ou frete ausente NUNCA vira zero:** o resultado estimado é `null` e a tela diz
+     **"Incompleto"**; equilíbrio e preço-alvo **só existem quando todos os dados existem**
+     (FIN-05, FIN-06, D4)
+  6. ⚠️ **Nenhuma taxa do README entrou como literal nem como config:** comissão e tarifa fixa vêm da
+     API do ML via `SimuladorVoceRecebe`, o imposto de
+     `EstruturaPrecificacaoParametros::daEmpresa()` com a exceção da oferta vencendo, o custo de
+     `DadosEfetivosService::custosDoProduto()` — e há **gate de ausência** de `0.12`, `0.17` e `6.75`
+     nos arquivos novos. **A margem mínima é a ÚNICA configuração nova** (FIN-02, FIN-03, FIN-09)
+  7. A **composição financeira** fecha com a de `fin()` para os 10 estados de exemplo do protótipo
+     (seção F do README), e **cada linha carrega origem `Confirmado`/`Estimado`/`Pendente` + nota de
+     fonte real** — ⚠️ a nota nomeia a fonte, não é texto decorativo (FIN-01, DADO-13, VOC-04)
+  8. ⚠️ **Antes de declarar o frete do vendedor "Pendente", está PROVADO que não há fonte** — existem
+     `FreteParaAPrecificacaoService`, `FreteDoPublicadoService`, `ConferenciaDeFrete` e
+     `TabelaFreteEcf`; havendo fonte, a linha nasce `Confirmado`/`Estimado` com a nota real (FIN-07)
+  9. **A versão manda na aprovação:** aprovar grava `approvedBy`/`approvedAt`/`approvedVersion`, e as
+     **7 mudanças relevantes** (reprovar, substituir, regenerar, adicionar, reordenar, trocar a
+     principal, salvar preço, confirmar frete) incrementam a versão e **reabrem** a aprovação com
+     registro no histórico — ⚠️ mudança de foto reabre **todas as ofertas do conjunto**
+     (BLOQ-05, BLOQ-06)
+  10. **O conjunto de fotos é compartilhado de verdade:** aprovar uma foto no Clássico vale para o
+      Premium do mesmo produto e formato, provado por teste (DADO-04)
+  11. ⚠️ **O vínculo durável imagem gerada → `pub_imagens` de referência existe** (DADO-15), é
+      **nosso**, **não** se apoia em `ml_anuncio_criativos.referencias` (efêmero, 48 h) e
+      **`app/Services/Creative/` tem diff vazio**, com a retenção alheia intocada (TERR-11)
+  12. ⚠️ **A granularidade está RESOLVIDA e REGISTRADA:** o docblock diz se a oferta é tabela nova ou
+      projeção de `pub_rascunhos` × `listing_type_id`, e como ela se liga a `pub_fila_publicacao_itens`
+      **sem duplicar** `validacao_id`/`plano_hash`/`revisao`/`ciente`/`precisa_revisar` (DADO-03)
+  13. Toda migration obedece MIG-01..09: índice de nome **curto** (erro 1059), `nullOnDelete` com
+      `->nullable()` (erro 1830), **sem `enum`** (CHECK do SQLite), `up()` idempotente, **sem
+      try/catch em volta de DDL**, e **migrate → rollback → migrate provado no local**
+  14. Os gates desta milestone nascem com a régua medida: **dois gates por elemento** (CSS **e**
+      HTML), isca em toda sonda, **ANSI removido antes de filtrar** saída de teste, **contagem de
+      testes comparada** (não só "0 fail"), range `<inicial>..HEAD` e `test -e` em cada alvo
+      (GATE-02..GATE-14)
+  15. `tests/js/publicador-vocabulario-novo.test.js` foi **estendido**: o diretório `aprovacao/` entra
+      na lista do GATE-03 daquele arquivo (`:230`) e **todos** os arquivos novos entram em
+      `ARQUIVOS_NOVOS` (`:36`) — ⚠️ **a constante é de propósito, e arquivo fora dela faz o gate
+      passar por omissão** (VOC-07)
+  16. Baselines respeitadas (PHP Publicador **2103 / 16.034 / 0**; JS **4482 / 4481 pass / 1 fail**
+      pré-existente em `estrutura-grade-glide.test.js:122`, ⚠️ **não corrigir**), `npm run build`
+      verde e manifest conferido **pelo JSON** (GATE-14)
+  17. O plano traz a tabela FID-01 da seção A contra `Publicacoes v2.dc.html` e **declara se mediu por
+      SCRIPT ou por LEITURA** (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 187: A fila "Aguardando aprovação" — e a aba que leva a ela
+
+**Goal**: existe uma fila onde se vê **o que está esperando aprovação**: a faixa de 9 colunas de
+andamento, "PRÓXIMO A REVISAR", os filtros com popovers e a tabela agrupada em três níveis (produto →
+conjunto de fotos → oferta), com seleção em lote — e a tela de Publicações ganha **as duas abas**, com
+o contador real levando até aqui.
+
+**Depends on**: Fase 186 (os estados, os bloqueios e a composição financeira que a tabela exibe).
+
+**Requirements**: ABA-01, ABA-02, ABA-05, ABA-06, FILA-01..16, MOD-11, MOD-12
+
+**Migration**: não.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. No cabeçalho de Publicações, **o subtítulo saiu** e entraram **duas abas** alinhadas à base
+     (`gap:20px`, `margin-bottom:-1px`, altura 40px, 14px), com o `<header>` ganhando
+     `border-bottom: 1px solid #1F1F1F` e a coluna do H1 passando a `gap:14px` (ABA-01)
+  2. **"Aguardando aprovação"** mostra o contador em **pill amarela** (`#FACC15`, texto `#0A0A0A`,
+     11.5px/700, altura 20px, `min-width` 22px) com o número **real** de ofertas em `awaiting` +
+     `ecf_review` + `changes`, **vindo do servidor** — nunca somado no cliente — e **navega para a
+     rota nova** (ABA-02, ABA-05)
+  3. ⚠️ **A aba não aponta para o vazio em nenhum momento:** a rota existe nesta mesma fase, e
+     clicá-la abre a fila com dado real (D4)
+  4. A **lista de Publicações continua mostrando só ofertas que existem no Mercado Livre**: oferta em
+     preparação ou em aprovação aparece **apenas** na área nova; e busca, filtros, agrupamento,
+     painel, lote, atalhos e header **não mudaram** (ABA-06, TERR-05)
+  5. A **faixa de andamento** é um grid de **9 colunas** (`repeat(9,minmax(0,1fr))`, `gap:6px`) com
+     dot, rótulo 11.5px e número 22px/600; clicar filtra; o ativo tem `#181818` e borda `#3F3F46`;
+     ⚠️ **as contagens são calculadas sobre os DEMAIS filtros**, não sobre o recorte já filtrado por
+     etapa (FILA-03)
+  6. **"PRÓXIMO A REVISAR"** mostra a oferta certa pela regra literal do protótipo — a `awaiting`
+     **não tocada** com maior espera, senão a primeira `live` não tocada, senão a primeira `live` — em
+     faixa `#14120A` / borda `rgba(250,204,21,0.35)`, com "Pronto para aprovar" ou "N pendências" e o
+     botão amarelo "Revisar agora" (FILA-04)
+  7. Busca (produto, título, SKU, **ignorando acento e caixa, no servidor**), segmentados de
+     Modalidade e Formato, e os **popovers** de Responsável e Motivo de bloqueio com **contagem**,
+     ficando com tint amarelo quando ativos; "Limpar filtros" e "N de M ofertas" à direita
+     (FILA-05, FILA-06)
+  8. A tabela usa o **grid literal**
+     `32px 24px minmax(170px,1fr) 104px 118px 92px 108px 76px 112px 164px 96px`, com a **linha de
+     produto** de 52px (`#151515`, tag PRODUTO, "N ofertas"), a **sub-linha de conjunto** de 38px
+     (`#0F0F0F`, recuo 62px, mini-quadrados de 10px, "x/y aprovadas", o pill **"Mesmas fotos em
+     Clássico e Premium · aprovação compartilhada"** e "Revisar fotos do conjunto") e a **linha da
+     oferta** com altura **mínima** de 64px (FILA-07..FILA-09)
+  9. Cada célula da oferta bate com o protótipo: anel de progresso nos 4 estados com `title` próprio,
+     título em **peso 600 quando não analisada**, meta em uma linha com ellipsis (SKU · ⚡/✎ · vN ·
+     EXCEÇÃO), ◆ no Premium, "N fotos · N IA" com quadrados de 12px e resumo colorido,
+     **"Incompleto"** em âmbar quando falta dado, margem com barra 0–40% e o traço do mínimo a 30%,
+     responsável **em âmbar acima de 24 h**, pill de andamento com a sub-linha do primeiro bloqueio
+     ("Bloqueado: frete pendente +1") e a ação certa por estado (FILA-10..FILA-13, AND-10)
+  10. A **ordenação** é a literal de `ORD` (falha → aguardando/em revisão → ajustes → aprovado →
+      publicando → publicado → preparando; dentro de cada grupo, **maior espera primeiro**) (AND-08)
+  11. Marcar linhas mostra a barra flutuante "N selecionadas · Aprovar K para publicação · ×", o
+      checkbox do cabeçalho marca **todas as visíveis**, e o **modal de lote** lista **todas** as
+      selecionadas com ✓/× **e o motivo**, aprovando **só as aptas, cada uma na versão indicada**
+      (FILA-15, MOD-11, BLOQ-10)
+  12. Os **toasts** ficam no topo central, somem em ~3,8 s e usam os literais do README; ⚠️ "Publicado
+      e confirmado no Mercado Livre · MLB…" **só** aparece com MLB confirmado (MOD-12, VOC-08, AND-04)
+  13. ⚠️ **Nada de `localStorage`** (é artefato do protótipo) e **nenhum "Restaurar dados de
+      exemplo"**; os filtros e a seleção estão na **URL** (COL-02, COL-03)
+  14. Render adverso de **todo** campo novo (objeto, nulo, ausente; coleção nula/string/número; prop
+      inteira nula), sem `[object Object]`/`NaN`/`undefined`/`Invalid Date`, e ⚠️ **nenhuma flag fora
+      do callback do `.map()`** (REND-01..04)
+  15. O plano traz a tabela FID-01 da fila contra `Aprovacao.dc.html` e **declara como mediu**
+      (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 188: Revisão simples — o painel de 1140px onde a aprovação acontece
+
+**Goal**: clicar em "Revisar" abre o painel amplo com **fotos e preço no mesmo peso**, as pendências
+com botão de correção em cada uma, e o rodapé onde se **aprova para publicação** — mais os quatro
+modais que o painel precisa (solicitar ajustes, solicitar exceção, informar frete, reprovar imagem).
+**É aqui que o portão passa a ser usável.**
+
+**Depends on**: Fases 186 (bloqueios, versão, composição) e 187 (a fila que o painel navega).
+
+**Requirements**: REVS-01..14, MOD-01..05, IMG-01..06, COL-01..06
+
+**Migration**: não.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O painel tem `width: min(1140px, 100vw − 100px)`, fundo `#0D0D0D`, borda esquerda `#2E2E2E`,
+     sombra `-24px 0 64px rgba(0,0,0,0.6)` e backdrop `rgba(0,0,0,0.55)`; ⚠️ **por PORTAL** (o
+     `backdrop-filter` do header cria containing block) e **acima do header sem alterá-lo**, com o
+     teste de z-index existente intacto (REVS-01, TERR-06)
+  2. Esc e clique fora fecham; **↑/↓ navegam pela fila** (pulando `preparando`) e **←/→ trocam a
+     foto**; o topo de 54px traz "REVISÃO SIMPLES", "x de N na fila", ↑ ↓, "Abrir revisão detalhada ↗"
+     e × (REVS-02, REVS-03)
+  3. As **duas colunas têm o mesmo peso** — é decisão de desenho declarada no README (dar o mesmo
+     destaque a fotos e preço) e **não é reequilibrada** (REVS-06)
+  4. A coluna de fotos mostra "x de y aprovadas", a imagem **1:1** com posição #n, ★ PRINCIPAL,
+     ✦ "Gerada por IA"/"Original", estado e os **marcadores numerados nas coordenadas x/y reais**, a
+     grade de **6 colunas** com borda por estado e o bloco da imagem selecionada com as verificações
+     automáticas rotuladas **"VERIFICAÇÃO AUTOMÁTICA · APOIO"** (REVS-07..REVS-10)
+  5. ⚠️ **"Aprovar N sem alerta" aprova SÓ as pendentes SEM alerta automático** — foto com alerta
+     continua para conferência individual, e o toast diz isso (IMG-05)
+  6. A coluna de preço traz os 3 KPIs (**"Resultado estimado por venda"**, nunca "lucro líquido"), o
+     aviso de alteração não conferida, a **composição completa com selo de origem por linha**,
+     "Informar frete confirmado" quando faltar, a **simulação com o selo "SIMULAÇÃO · NÃO SALVA"** e a
+     comparação clicável com a oferta irmã (REVS-11, FIN-11, FIN-13, VOC-03)
+  7. A simulação **nunca é persistida nem enviada ao ML**, só pode ser salva quando a oferta é `live`,
+     e salvar **incrementa a versão**, limpa o aviso de alteração e registra no histórico
+     (FIN-11, FIN-12)
+  8. **"Aprovar para publicação" fica `disabled=` enquanto houver bloqueio** — gate com `/disabled=/`,
+     ⚠️ **nunca** `/disabled/`, que casa com `disabled:opacity-40` — e só funciona com **zero
+     bloqueios e andamento `live`** (BLOQ-04, GATE-05)
+  9. **Cada pendência tem o seu botão de correção**, e ele leva ao lugar certo: fotos abre **a primeira
+     com alerta ou a primeira pendente**, frete abre o modal de frete, prejuízo/margem abrem a
+     exceção, alteração de preço **confere sem alterar o preço**, ajuste e título abrem a revisão
+     detalhada na aba certa (REVS-12, BLOQ-07)
+  10. Sem bloqueio, o rodapé mostra o literal verde **"Fotos, preço e conteúdo conferidos"**; com
+      bloqueio, o motivo em vermelho com o primeiro abreviado (BLOQ-12)
+  11. **Exceção autorizada libera SÓ `loss` e `margin`** — nunca fotos, frete, alteração, ajuste ou
+      título — e exige responsável + justificativa de **pelo menos 10 caracteres**, ficando no
+      histórico como "§ Exceção autorizada por X · data · justificativa" (BLOQ-08, MOD-02, DADO-11)
+  12. **Pedir ajuste move as ofertas afetadas para `changes`** conforme o **escopo** (`offer` / `set`
+      / `product`), com a caixa "Encaminhar para" mostrando o destino; **resolver o último ajuste
+      aberto devolve a oferta para `awaiting`** (MOD-01, AND-07, DADO-09)
+  13. **Reprovar imagem exige motivo**, tira a foto do conjunto final **na hora**, manda para "Fora da
+      publicação", **promove a próxima a principal se era a principal** e **reabre a aprovação de
+      todas as ofertas do conjunto** (MOD-04, IMG-01, IMG-06)
+  14. **Confirmar frete** grava valor + origem (cotação / tabela do cliente / simulador), mostra a
+      **prévia do resultado e da margem antes de confirmar** e **incrementa a versão** (MOD-03,
+      DADO-12)
+  15. Os modais têm a casca comum (**560px**, topo **96px**, backdrop `rgba(0,0,0,0.65)`,
+      `max-height: calc(100vh - 140px)`, raio 16px) e ⚠️ **declaram a fonte do módulo por conta
+      própria** — conteúdo portado não herda fonte (MOD-05, REND-05)
+  16. **A revisão parcial fica salva no SERVIDOR** e outra pessoa continua de onde a primeira parou;
+      salvar move `awaiting → ecf_review` com o registro "Salvou revisão · x de y fotos aprovadas"
+      (COL-01, AND-06)
+  17. ⚠️ **Concorrência tratada:** se a `version` mudar enquanto alguém revisa, a tela **avisa e reabre
+      as verificações afetadas** — nunca sobrescreve em silêncio (COL-04)
+  18. ⚠️ **O painel nunca mostra status do Mercado Livre e nunca escreve no ML nesta fase** (AND-02,
+      REVS-14)
+  19. Render adverso de todo campo novo, incluindo ⚠️ **chave vinda do servidor com guarda de tipo
+      ANTES de qualquer `obj[chave]`/`hasOwnProperty`** — os dois **lançam** com `{toString:null}` e
+      derrubam a página inteira (REND-03)
+  20. O plano traz a tabela FID-01 do painel e dos 4 modais contra `Aprovacao.dc.html`, declarando
+      como mediu (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 189: Imagem ampliada — o lightbox com zoom de 2,5× que segue o cursor
+
+**Goal**: dá para olhar a foto **de perto**: tela cheia, imagem 1:1 de até 78vh, zoom de 2,5× seguindo
+o cursor, marcadores numerados batendo com as verificações automáticas, miniaturas, e a lateral de
+320px com metadados, original de referência, verificações e as ações de aprovar/reprovar/regenerar.
+
+**Depends on**: Fase 188 (o painel que abre o lightbox e as ações de imagem que ele repete).
+
+**Requirements**: AMPL-01..07
+
+**Migration**: não.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Tela cheia com fundo `rgba(5,5,5,0.94)` e grid `minmax(0,1fr) 320px`, **acima do painel** na
+     ordem de camadas e **por portal**, sem alterar o header (AMPL-01, TERR-06)
+  2. A imagem é **1:1 com até 78vh**, o zoom é **2,5× seguindo o cursor**, e os **marcadores
+     numerados** coincidem com os pontos listados na lateral (AMPL-02, AMPL-06)
+  3. ⚠️ **O zoom NÃO usa `duration-[Nms]`, `delay-[…]` nem `ease-[…]`** — essas classes **não
+     compilam neste projeto** (`tailwindcss-animate` as torna ambíguas) e a transição não acontece com
+     todos os testes de render passando. A duração vai por `style={{ transitionDuration }}` ou token,
+     com gate provando ausência do arbitrário e **`duration-200` como controle** (AMPL-03, GATE-09)
+  4. A lateral de 320px traz metadados (origem, posição, variação, estado), a **original de
+     referência** com "Comparar lado a lado na revisão detalhada" levando à aba Fotos **na mesma
+     imagem**, as verificações automáticas e os botões de ação (AMPL-04..AMPL-07)
+  5. ⚠️ **Sem original disponível, a lateral mostra o estado declarado "original de referência não
+     disponível"** — nunca quadro vazio, nunca a imagem de IA repetida (IMG-13)
+  6. As travas de estado são as mesmas da revisão simples: só `live` edita, e imagem em
+     `regenerating` **não aceita ação** (AMPL-07, IMG-09)
+  7. ←/→ trocam a foto e Esc fecha devolvendo o foco ao painel, na mesma imagem
+  8. O plano traz a tabela FID-01 do lightbox, declarando como mediu (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 190: Revisão detalhada — a página, e a aba Fotos com a comparação lado a lado
+
+**Goal**: existe uma página própria de revisão, com a barra fixa que volta **para a mesma posição da
+fila com os filtros mantidos**, o seletor Clássico | Premium, as quatro abas com badge e o resumo de
+aprovação — e a **aba Fotos** completa: galeria arrastável, "Fora da publicação" e "Originais
+disponíveis", a comparação **"Gerada por IA" × "Original de referência" com zoom 1×–4×
+sincronizado**, o checklist de fidelidade, os defeitos e as quatro ações de imagem.
+
+**Depends on**: Fases 186 (checklist, defeitos, vínculo durável de referência), 188 (as ações de
+imagem e o rodapé) e 189 (o lightbox, que esta página também abre).
+
+**Requirements**: REVD-01..09, IMG-07..13, MOD-06
+
+**Migration**: não — o dado é o da Fase 186 (DADO-07, DADO-08, DADO-15).
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. A barra fica **fixa abaixo do header**, com "← Fila de aprovação" voltando **para a mesma posição
+     e com os filtros mantidos**, "Posição x de N · filtros mantidos", ↑ ↓ entre ofertas e
+     "REVISÃO DETALHADA" (REVD-01)
+  2. O seletor **Clássico | Premium** mostra **preço e resultado de cada um**, e a aba aberta está na
+     **URL** (`…/aprovacao/:offerId/:aba`) (REVD-02, REVD-03, COL-03)
+  3. Cada aba tem **badge de estado** e o **resumo de aprovação** à direita lista Fotos x/y · Preço ·
+     Conteúdo · Ajustes · Validações técnicas, cada item com ✓ ou ! **e texto** (REVD-03, REVD-04,
+     VOC-05)
+  4. O **rodapé fixo é o mesmo da revisão simples, SEM "Próximo"** (REVD-05)
+  5. A aba Fotos usa o grid `290px | 1fr | 330px`; a galeria tem linhas arrastáveis com ⋮⋮, #pos,
+     miniatura de 46px, rótulo, "✦ IA"/"Original", estado, selo **NOVA** e as ações ✦ / ★ / ▲▼
+     (REVD-06)
+  6. **"FORA DA PUBLICAÇÃO"** mostra reprovadas e substituídas com **hachura vermelha**, e **original
+     pode ser recolocada** (voltando a `pending` e saindo de fora); **"ORIGINAIS DISPONÍVEIS"** tem
+     "+ Adicionar" (REVD-07, IMG-08)
+  7. A comparação lado a lado tem **zoom 1×–4× SINCRONIZADO pelo cursor** nas duas imagens, com
+     alternância para imagem única, e o **"Conjunto final"** diz "N fotos vão para a publicação · N
+     ainda precisam de aprovação" (REVD-08)
+  8. ⚠️⚠️ **Sem original de referência, o painel da esquerda mostra o estado declarado "original de
+     referência não disponível", com ícone e texto — nunca quadro vazio, nunca a imagem de IA
+     duplicada no lugar da original, nunca zero. E isso vale para TODO o acervo de hoje: na estreia,
+     NENHUMA imagem antiga terá original**, porque o vínculo só passa a ser gravado na geração
+     (DADO-15 escrito nas Fases 192 e 194) e **o dado antigo foi apagado pela retenção de 48 h — não
+     há backfill possível** (IMG-13, §4b do REQUIREMENTS)
+  9. **"FIDELIDADE À ORIGINAL"** traz os 7 critérios (⚠️ "Quantidade do kit" **só em combos**) com
+     ✓ Confere / × Diverge e o contador "x de y conferidos"; **"DEFEITOS ENCONTRADOS"** traz os 6
+     chips (REVD-09, DADO-07, DADO-08)
+  10. **"Reprovar com motivo" vem PRÉ-PREENCHIDO com os critérios divergentes e os defeitos
+      marcados** (REVD-09)
+  11. **"Substituir por original"**: grade de originais do produto com as que já estão na galeria em
+      `disabled=`; a original entra **na mesma posição**, **mantém a aprovação se já estava aprovada**
+      e, se não, entra `pending` (MOD-06, IMG-03)
+  12. Reordenar e trocar a principal mantêm a galeria consistente (a principal é sempre a primeira), e
+      **toda** ação que muda o conjunto final **reabre a aprovação de todas as ofertas do conjunto**
+      (IMG-07, IMG-06)
+  13. Imagem em `regenerating` **não aceita** aprovar, reprovar, substituir nem regenerar (IMG-09)
+  14. **Galeria vazia é bloqueio (`nophoto`)**, não tela vazia silenciosa (IMG-12)
+  15. Render adverso de toda a aba, com a prop inteira nula e com grupo nulo — ⚠️ **na Fase 178 grupo
+      nulo derrubava o painel inteiro e só o render adverso pegou** (REND-01..03)
+  16. O plano traz a tabela FID-01 da página e da aba Fotos, declarando como mediu (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 191: Revisão detalhada — Preço e custos, Conteúdo do anúncio, Pendências e histórico
+
+**Goal**: as outras três abas da revisão detalhada: os **dois cards Clássico × Premium** com a tabela
+"Composição | Origem e atualização | Valor", a **tabela de campos do anúncio** com contador /60 e
+"Comentar" em cada campo mais a **prévia do que será enviado**, e os **ajustes + a linha do tempo de
+versões**.
+
+**Depends on**: Fase 190 (a casca da página e as abas) e Fase 188 (o modal de ajuste, reusado por
+cada campo).
+
+**Requirements**: REVD-10..18
+
+**Migration**: não.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. **Preço e custos** mostra **dois cards lado a lado**, Clássico e Premium, com **o card em revisão
+     destacado**, cada um com KPIs e **bloqueios financeiros com botão de correção** (REVD-10,
+     REVD-11)
+  2. A tabela **"Composição | Origem e atualização | Valor"** fecha em **"Resultado estimado por venda
+     · margem de contribuição"**, e o **frete pago pelo comprador aparece como "não entra"** — nunca
+     somado (REVD-12, FIN-08)
+  3. Valor ausente aparece como **"Pendente"** em vermelho, **nunca `R$ 0,00`**, e o total diz
+     **"Incompleto"** (VOC-04, FIN-05)
+  4. A nota de composição do combo é literal ("N un. × R$ x = R$ y"), e a **exceção registrada**
+     aparece quando houver (REVD-13, FIN-14)
+  5. **Conteúdo do anúncio** traz a tabela de campos: título com contador **/60** em verde ou
+     vermelho, descrição, categoria, atributos obrigatórios com ✓, variações, SKU, estoque (⚠️ em
+     combos, também **"N kits disponíveis"**) e composição do kit (REVD-14)
+  6. ⚠️ **Cada campo tem "Comentar", que abre o modal de ajuste JÁ COM O ITEM selecionado** — nenhum
+     botão que abre o modal vazio (REVD-14, MOD-01)
+  7. A **prévia fixa** mostra o que será enviado — foto principal, miniaturas **na ordem final**,
+     título, preço, modalidade, formato e disponibilidade — ⚠️ refletindo o **conjunto final**, não a
+     galeria original (REVD-15)
+  8. **Pendências e histórico** traz os ajustes como cards com **item → destino** (⚠️ em **âmbar**
+     quando vai para o cadastro do produto), texto, autor/data, estado e **"Marcar como resolvido"**,
+     mais "+ Solicitar ajuste" (REVD-16)
+  9. A **linha do tempo** mostra os **8 tipos de evento** com ícone próprio, em ordem, com quem e
+     quando (REVD-17, DADO-10)
+  10. Oferta `approved` mostra a caixa verde literal "Aprovado na versão N por X. **Qualquer alteração
+      em fotos, preço ou conteúdo reabre a aprovação.**" — **e ela de fato reabre** (REVD-18,
+      BLOQ-06)
+  11. ⚠️ **Data nunca por `new Date()` no cliente** — `Invalid Date` e o deslocamento de fuso de
+      data-only em BRT já morderam este projeto (COL-06)
+  12. Render adverso das três abas, e ⚠️ **teste que depende de `now()` ancorado com
+      `Carbon::setTestNow()`** — o "aguardando há X" reprovaria por horário (REND-01, REND-08)
+  13. O plano traz a tabela FID-01 das três abas, declarando como mediu (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 192: "Gerar novamente com IA" — corrigir a foto errada sem sair da revisão
+
+**Goal**: quando a imagem de IA sai errada, dá para **regenerar só aquela imagem** de dentro da
+revisão: chips de problema, instrução livre, referências originais já marcadas e **envio de até 6
+fotos na hora** — chamando o Creative Engine que **já existe**, nunca reimplementando.
+
+**Depends on**: Fases 188 (o painel e as ações de imagem), 190 (a aba Fotos, de onde também se
+regenera) e 186 (o vínculo durável de referência, que esta fase passa a **escrever**).
+
+⚠️ **BLOQUEADA por duas respostas do outro dev** (ver "Decisões em aberto"): como os **chips
+estruturados** se encontram com o `$ajusteOperador` de **texto livre** (IA-03), e se ele pretende
+mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos endpoints de criativo nas
+próximas semanas. ⚠️ **A segunda pergunta antiga — se o criativo é alcançável a partir da imagem
+revisada — já está RESPONDIDA por medição: SIM**, por `ml_anuncio_criativos.pub_imagem_id`.
+
+**Requirements**: IA-01..10, MOD-07..10
+
+**Migration**: não — escreve o DADO-15 criado na Fase 186.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. ⚠️ **Nada foi reimplementado:** a regeneração **chama** `GeminiImageProvider::gerarImagem`,
+     `CreativePromptBuilder::paraSlot(…, $regeneracao, $ajusteOperador)`,
+     `CreativePermissao::podeRegenerar(User)` e `ReferenciaEfemeraService::guardar(…)`, e
+     **`app/Services/Creative/`, os endpoints `criativo*` e o `PublicadorCriativoAprovacaoService`
+     têm diff VAZIO**, provado **commit por commit** (não por range — há sessão paralela) e com
+     `test -e` em cada alvo (IA-01, TERR-01, GATE-07)
+  2. O modal regenera **SÓ ESTA IMAGEM**, e o pedido inclui **a imagem atual e a posição**, os
+     **problemas marcados**, a **instrução livre** e as **referências** (originais + fotos enviadas)
+     (IA-02)
+  3. Os **8 chips de problema** são os literais do README, e **a decisão sobre estruturado × texto na
+     nossa borda está registrada** em `.planning/coordenacao/` antes de uma linha de código (IA-03)
+  4. As **originais do produto são selecionáveis com a referência daquela imagem JÁ MARCADA**, e o
+     **envio de fotos** aceita clique ou arrastar, **até 6**, só `image/*`, com prévia e remover
+     (IA-04, MOD-08, MOD-09)
+  5. O criativo é alcançado a partir da imagem revisada por `pub_imagem_id` (indexado), e **imagem
+     vinda de upload, que não tem criativo, é tratada como caso válido** — não como erro (IA-05)
+  6. **"Gerar nova versão" só habilita com um problema marcado OU instrução com mais de 5
+     caracteres** (IA-06)
+  7. Durante a geração a imagem mostra **"Gerando nova versão…"** (estado `regenerating`, com ícone e
+     texto) e **nenhuma ação é aceita** naquela imagem (IA-07, IMG-09)
+  8. Ao terminar, a nova versão entra **na MESMA POSIÇÃO como NOVA e `pending`**, a anterior vai para
+     "Fora da publicação" como `replaced`, **a nova vira principal se a anterior era**, a aprovação do
+     conjunto **reabre**, e o histórico ganha "Nova versão gerada: … · aguardando revisão" (IA-08,
+     IMG-02, IMG-06)
+  9. ⚠️ **A regeneração é assíncrona de verdade** — fila do projeto, **nunca HTTP síncrono na
+     requisição**, e **nunca `setTimeout` simulando conclusão** (artefato do protótipo); ⚠️ **job
+     interativo vai para a fila `high`**, porque a `default` de produção é congestionada e já segurou
+     webhook por horas (IA-09)
+  10. ⚠️ **O vínculo durável imagem gerada → `pub_imagens` de referência é GRAVADO aqui** (DADO-15), e
+      a comparação lado a lado da Fase 190 passa a ter original **para as imagens geradas daqui para
+      frente** — o acervo antigo segue em IMG-13, por falta de dado, **não** por falta de tela
+  11. Quem não passa em `CreativePermissao::podeRegenerar` **não vê a ação habilitada**, com
+      `disabled=` e explicação — nunca um clique que falha calado (IA-10, GATE-05)
+  12. O plano traz a tabela FID-01 do modal, declarando como mediu (FID-01, FID-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 193: Do aprovado ao ar — o portão fecha o ciclo
+
+**Goal**: aprovar deixa de ser um carimbo e passa a **publicar**: a oferta aprovada vira publicação de
+verdade pela fila que já existe, `publicando` bloqueia edição, `publicado` só com **MLB confirmado**,
+e a falha **preserva a revisão aprovada** com "Tentar de novo".
+
+**Depends on**: Fases 186 (versão e `approvedVersion`), 187 (a fila e o lote) e 188 (o botão que
+aprova).
+
+⚠️ **BLOQUEADA por uma decisão do usuário:** aprovar **enfileira automaticamente**, ou a pessoa ainda
+aperta "publicar"? O requisito PUB-09 é verificável nos dois desenhos, mas a fase **não começa** sem a
+resposta.
+
+**Requirements**: PUB-01..10
+
+**Migration**: ⚠️ **provável, e pequena** — a coluna de ligação entre a oferta aprovada e a fila de
+publicação (`pub_fila_publicacao_itens` / `pub_publicacao_itens`). **Nada além disso**, e sob a mesma
+disciplina MIG-01..09. O planejamento decide se a ligação é coluna nova ou derivável.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. **Nada vai ao Mercado Livre sem passar pelo portão:** oferta publicada por este caminho tem
+     `approvedBy` e `approvedVersion` registrados, e isso aparece no histórico (PUB-01, PUB-08)
+  2. ⚠️ **A publicação REUSA a fila que existe** (`FilaPublicacaoService`, `AgendadorDaFila`,
+     `publicador:fila-publicacao` de minuto em minuto) e **a diferença de granularidade oferta ×
+     produto está resolvida e registrada**, sem duplicar
+     `validacao_id`/`plano_hash`/`revisao`/`ciente`/`precisa_revisar` (PUB-02, DADO-03)
+  3. ⚠️ **`app/Services/Mlb/Publicacao/MlPublicacaoService.php` tem diff VAZIO** e o **gate de conta
+     travada do módulo continua valendo** (PUB-03, TERR-03)
+  4. `publicando` **bloqueia edição**; `publicado` **só com MLB confirmado** (sem MLB o estado não
+     avança e o toast de "Publicado e confirmado" **não dispara**); `falha` **preserva
+     `approvedVersion` e toda a revisão**, e "Tentar de novo" muda direto para `publishing`
+     (PUB-04, AND-04, BLOQ-11)
+  5. O erro exibido é o **erro real** registrado, e a frase "Nenhuma oferta foi criada; a revisão foi
+     preservada" aparece **só quando é verdade** (PUB-05)
+  6. ⚠️ **A escrita obedece a disciplina do módulo:** trava de conta, **registro ANTES do HTTP**,
+     `5xx`/rede tratados como **incerto** (`UNKNOWN`), **sem reenvio por conta própria**, e `UNKNOWN`
+     nunca reenviado sem reconciliar pelo SKU (**RN-93**) (PUB-06)
+  7. ⚠️ **A fronteira do D-11 está provada:** o gate D-11 de `tests/js/estrutura-meus-anuncios.test.js`
+     continua **intacto** (a lista não escreve), **não foi estendido** à área nova, e a área nova tem
+     **gate de escrita próprio** (PUB-07, D11)
+  8. A decisão do usuário sobre enfileirar automaticamente está **registrada** e o código faz o que
+     ela diz — nunca os dois caminhos ao mesmo tempo (PUB-09)
+  9. **Nenhuma rota, botão ou coluna sem destino** nesta fase (PUB-10, D4)
+  10. O fechamento mede o caminho completo numa oferta real, **em produção, por checkpoint humano na
+      conta 459** — ⚠️ **nenhum executor afirma ter visto a tela**: o banco local não tem empresa com
+      `ml_token` e `ml_acervo_itens` está vazia (GATE-14)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 194: A automação ligada atrás do portão — e o fechamento da milestone
+
+**Goal**: a decisão da gestão de 14/10 entregue: `publicador.criativos_auto.ativo` é **ligado**, com
+as sete condições de segurança intactas, **uma empresa por vez** — e a imagem automática entra na
+**fila de aprovação** em vez de ir ao ar.
+
+**Depends on**: Fases 186-193 — a fila, a revisão, a regeneração e o caminho da publicação.
+
+⚠️ **BLOQUEADA por uma resposta do outro dev:** o que falta do lado dele para destravar
+(`AUTO-07`). A fase **não liga nada** sem a resposta registrada em `.planning/coordenacao/`.
+
+**Requirements**: AUTO-01..08
+
+**Migration**: não.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Oferta criada automaticamente entra na fila em **`preparando`**, com a frase **real** do que
+     falta (ex.: "calculando frete e composição de preço"), e **não abre revisão** até estar pronta
+     (AUTO-01, AND-03)
+  2. Quando o preparo termina, a oferta vira **"Aguardando aprovação"** — ⚠️ **nunca `aprovado`,
+     nunca publicada direto** (AUTO-02)
+  3. A origem aparece na meta da linha como **⚡ Automática** ou **✎ Manual** (AUTO-03, FILA-11)
+  4. ⚠️ **As sete condições de segurança do `CriativosAutomaticosService` seguem INTACTAS** —
+     inclusive `publicador_criativos_auto_companies`, `publicador_criativos_auto_usuario` e o hash de
+     fotos + ficha que impede repedir o mesmo produto. **Nenhuma foi removida nem afrouxada**
+     (AUTO-04)
+  5. A chave é **desligável sem deploy**, e o roteiro de desligamento está escrito no fechamento
+     (AUTO-05)
+  6. ⚠️ **A ativação é por EMPRESA, começando por UMA**, com roteiro de conferência humana em
+     produção antes de ampliar (AUTO-06)
+  7. A resposta do outro dev está **registrada** em `.planning/coordenacao/` antes de a chave virar
+     (AUTO-07)
+  8. **O fechamento da milestone MEDE o portão funcionando:** quantas ofertas automáticas entraram na
+     fila, quantas foram aprovadas, quantas foram reprovadas e **por quê** — é o número que prova que
+     a automação está segura (AUTO-08)
+  9. O fechamento repete, para a milestone inteira, o que fez a v26.0 funcionar: **campanha de
+     mutação** com contagem travada e restauração por sha256 (⚠️ **sobrevivente é INVESTIGADA**), a
+     conferência das baselines **re-medidas na sessão** (não copiadas), o manifest **pelo JSON** e o
+     inventário de **não-regressão** (GATE-10, GATE-14)
+
+**Plans**: TBD
+**UI hint**: yes
+
+#### Dependências — Milestone v27.0 (Fases 186-194)
+
+```
+186 (vocabulário + espinha de dados: 8 estados, bloqueios, financeiro, 12 estruturas) ⚠️ MIGRATION
+ └── 187 (fila "Aguardando aprovação" + as abas da seção A)
+       └── 188 (revisão simples: painel 1140px + 4 modais)  ← o portão passa a ser USÁVEL
+             ├── 189 (lightbox com zoom 2,5×)
+             │     └── 190 (revisão detalhada: casca + aba Fotos + comparação lado a lado)
+             │           ├── 191 (abas Preço e custos · Conteúdo · Pendências e histórico)
+             │           └── 192 (Gerar novamente com IA) ── BLOQUEADA: 2 respostas do outro dev
+             └── 193 (do aprovado ao ar) ── BLOQUEADA: 1 decisão do usuário (enfileirar automático?)
+                   └── 194 (ligar a automação + fechamento) ── BLOQUEADA: 1 resposta do outro dev
+```
+
+**Onde se pode parar sem deixar nada pela metade:** depois da **188** (dá para aprovar de verdade,
+com a fila e o painel), depois da **191** (a revisão completa) e depois da **193** (o ciclo fechado).
+Parar na **189** ou na **192** também é íntegro — são acréscimos à revisão que já funciona.
+
+#### Coverage Map — Milestone v27.0 (REQ-ID × fase)
+
+| Requirement | Phase | Status |
+|---|---|---|
+| VOC-01..VOC-08 (8) | Phase 186 | Pending |
+| ABA-03, ABA-04 (2) | Phase 186 | Pending |
+| AND-01..AND-10 (10) | Phase 186 | Pending |
+| DADO-01..DADO-15 (15) | Phase 186 | Pending |
+| BLOQ-01..BLOQ-12 (12) | Phase 186 | Pending |
+| FIN-01..FIN-14 (14) | Phase 186 | Pending |
+| MIG-01..MIG-09 (9) | Phase 186 | Pending |
+| FID-01..FID-08 (8) | Phase 186 (**transversal**) | Pending |
+| GATE-01..GATE-14 (14) | Phase 186 (**transversal**) | Pending |
+| REND-01..REND-08 (8) | Phase 186 (**transversal**) | Pending |
+| TERR-01..TERR-11 (11) | Phase 186 (**transversal**) | Pending |
+| ABA-01, ABA-02, ABA-05, ABA-06 (4) | Phase 187 | Pending |
+| FILA-01..FILA-16 (16) | Phase 187 | Pending |
+| MOD-11, MOD-12 (2) | Phase 187 | Pending |
+| REVS-01..REVS-14 (14) | Phase 188 | Pending |
+| MOD-01..MOD-05 (5) | Phase 188 | Pending |
+| IMG-01..IMG-06 (6) | Phase 188 | Pending |
+| COL-01..COL-06 (6) | Phase 188 | Pending |
+| AMPL-01..AMPL-07 (7) | Phase 189 | Pending |
+| REVD-01..REVD-09 (9) | Phase 190 | Pending |
+| IMG-07..IMG-13 (7) | Phase 190 | Pending |
+| MOD-06 (1) | Phase 190 | Pending |
+| REVD-10..REVD-18 (9) | Phase 191 | Pending |
+| IA-01..IA-10 (10) | Phase 192 | Pending |
+| MOD-07..MOD-10 (4) | Phase 192 | Pending |
+| PUB-01..PUB-10 (10) | Phase 193 | Pending |
+| AUTO-01..AUTO-08 (8) | Phase 194 | Pending |
+
+**Cobertura:** **229/229 REQ-IDs** do `REQUIREMENTS-v27.md` mapeados — FID(8) VOC(8) ABA(6) AND(10)
+DADO(15) BLOQ(12) FIN(14) FILA(16) REVS(14) AMPL(7) REVD(18) MOD(12) IMG(13) IA(10) PUB(10) AUTO(8)
+COL(6) MIG(9) TERR(11) GATE(14) REND(8). **Nenhum órfão, nenhuma duplicata.**
+
+⚠️ **FID, GATE, REND e TERR são transversais:** estão mapeados na **Fase 186** porque é onde nascem,
+mas **valem e são conferidos em todas as fases** — cada fase repete a tabela de conferência (FID-01),
+o render adverso (REND-01) e a prova de território (TERR-01..11).
+
+#### Coverage Map — item do handoff × fase
+
+| Item do `README-v2.md` / `Aprovacao.dc.html` | Fase |
+|---|---|
+| A1 · abas no cabeçalho de Publicações | **187** (ABA-01, ABA-02, ABA-05) |
+| A2 · renomear "Em revisão" → "Em análise pelo Mercado Livre" | **186** (VOC-01, ABA-03) |
+| A3 · o que não muda | 187 (ABA-06) |
+| B · modelo de dados (oferta, conjunto, revisão de imagem, checklist, ajuste, histórico, composição) | **186** (DADO-01..15) |
+| C · andamento interno × status do ML | **186** (AND-01..10) |
+| D · bloqueios, aprovação, imagens, exceção, ajustes, lote | **186** (BLOQ-01..12) + 188 (IMG-01..06) + 187 (BLOQ-10) |
+| D · cálculo financeiro, simulação, equilíbrio, preço-alvo | **186** (FIN-01..14) |
+| E1 · fila (cabeçalho, faixa de 9, próximo a revisar, filtros, tabela em 3 níveis, lote, rodapé) | **187** (FILA-01..16) |
+| E2 · revisão simples (painel 1140px, 2 colunas, pendências, rodapé) | **188** (REVS-01..14) |
+| E3 · imagem ampliada (lightbox, zoom 2,5×, lateral 320px) | **189** (AMPL-01..07) |
+| E4 · revisão detalhada — barra, abas, resumo, aba Fotos | **190** (REVD-01..09) |
+| E4 · abas Preço e custos · Conteúdo · Pendências e histórico | **191** (REVD-10..18) |
+| E5 · modais Solicitar ajustes · exceção · frete · reprovar imagem · casca comum | **188** (MOD-01..05) |
+| E5 · modal Substituir por foto original | **190** (MOD-06) |
+| E5 · modal Gerar novamente com IA (chips, instrução, referências, envio de fotos) | **192** (MOD-07..10, IA-01..10) |
+| E5 · modal Aprovar em lote · Toasts | **187** (MOD-11, MOD-12) |
+| F · os 10 estados de exemplo | **186** (conferência de `fin()`/`info()`) + 187 (render da fila) |
+| G · persistência e colaboração (revisão parcial, URL, concorrência) | **188** (COL-01..06) |
+| — · do aprovado ao ar (publicando, publicado com MLB, falha, tentar de novo) | **193** (PUB-01..10) |
+| — · ligar `publicador.criativos_auto.ativo` atrás do portão | **194** (AUTO-01..08) |
+
+**Explicitamente FORA de escopo, com motivo:**
+
+| Item | Motivo |
+|---|---|
+| `support.js`, `image-slot.js` | O README diz: runtime só do protótipo. **Não foram lidos.** |
+| `localStorage` (`KEY='ecf-aprovacao-v1'`), "Restaurar dados de exemplo", o `setTimeout` de conclusão da geração | Artefatos de protótipo (COL-02, IA-09). |
+| As taxas 12% / 17% / 6,75 / 6% como literal ou config | A fonte real é melhor e já existe (FIN-02, FIN-03). **Gate de ausência** dos três números. |
+| Os dados mock (Poltrona Beny, Mesa Tora, Cadeira Oslo, os 10 `OFF`, as pessoas de `EMP`) | Viram dado real; o que não tem fonte vira **Pendente/indisponível**, **nunca zero** (D4). |
+| Backfill do vínculo com a original de referência para o acervo antigo | **Impossível:** o dado foi apagado pela retenção de 48 h. O passado fica em **IMG-13** (estado declarado). |
+| Mudar a retenção de 48 h ou o `creative:limpar-referencias` | **TERR-11** — território do outro dev, janela por decisão de custo/privacidade da v24.0 (D-02). **Para e pergunta.** |
+| **Fase 181** (painel de inspeção) e **Fase 183** (Histórico) da v26.0 | **Pausadas pelo usuário em 14/10/2026.** Seguem registradas, nada apagado. |
+| Alterar `MlPublicacaoService`, `App\Support\Publicador`, `AppLayout` ou o gate de conta travada | TERR-03, PUB-03. |
+| Alterar `app/Services/Creative/`, os endpoints `criativo*` ou o `PublicadorCriativoAprovacaoService` | TERR-01 — outro dev **ativo**. |
+| Redesenhar o corpo de Produtos, Produto, Alavancas, Tarefas, Em massa, Configurações | Fora do pacote de design. |
+| Corrigir `tests/js/estrutura-grade-glide.test.js:122` | Falha pré-existente e intencional. |
+| Deploy e push | Não autorizados nesta sessão. |
+
+**⚠️ Decisões em aberto — quem bloqueia o quê:**
+
+| # | Decisão | De quem | Bloqueia |
+|---|---|---|---|
+| 1 | Os **chips de problema** estruturados viram texto na nossa borda, ou o problema é guardado estruturado do lado do Creative Engine (serve ao `CreativeJuiz`)? (IA-03) | **outro dev** | Fase **192** |
+| 2 | Ele pretende mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos endpoints de criativo nas próximas semanas? Se sim, combinar a ordem | **outro dev** | Fase **192** |
+| 3 | **Aprovar enfileira automaticamente**, ou a pessoa ainda aperta "publicar"? (PUB-09) | **usuário** | Fase **193** |
+| 4 | O que falta do lado do Creative Engine para ligar `publicador.criativos_auto.ativo`? (AUTO-07) | **outro dev** | Fase **194** |
+| 5 | **Quem autoriza a exceção** de prejuízo/margem: basta registrar o gestor responsável (como no protótipo) ou é preciso aprovação em dois passos? (BLOQ-09) | **usuário** | detalhe da Fase **188**, não a fase |
+| 6 | Vale oferecer **"recolocar a original manualmente"** para o acervo antigo, que nunca terá o vínculo? (IMG-13) | **usuário** | nada — melhoria futura |
+
+**⚠️ RESPONDIDAS por medição em 14/10/2026, não reabrir:**
+
+- ~~"A regeneração de UMA imagem com instrução e referências enviadas existe?"~~ → **existe**, nas
+  quatro peças (achado 2).
+- ~~"O `MlAnuncioCriativo` é alcançável a partir da imagem que a fila revisa?"~~ → **sim**, por
+  `ml_anuncio_criativos.pub_imagem_id`, indexado (achado 3). **Nenhuma coluna nova.**
+- ~~"O vínculo imagem de IA → original de referência está gravado?"~~ → **está, mas é EFÊMERO (48 h)**
+  (achado 4). Virou **DADO-15** (vínculo durável, nosso), **IMG-13** (estado declarado para todo o
+  acervo de hoje) e **TERR-11** (não mexer na retenção alheia).
+
+---
+
+*Roadmap atualizado: 2026-10-14 — **Milestone v27.0 (Aprovação humana antes de publicar)** anexada:
+**9 fases (186-194)** cobrindo os **229 REQ-IDs** do `REQUIREMENTS-v27.md`, derivados de
+`design_handoff_publicador/README-v2.md` + `Aprovacao.dc.html` e da **decisão da gestão da ECF de
+14/10/2026**. **Numeração contínua a partir de 186** (maior fase existente: **185**, conferida por
+`grep "^### Phase" .planning/ROADMAP.md | tail` — ⚠️ o `phase.add` do GSD numera pelo DIRETÓRIO e já
+colidiu duas vezes neste projeto); `phases.clear` **NÃO** foi executado e **nada** anterior foi
+tocado — Fases 1-185 preservadas integralmente, incluindo a **181** e a **183**, **pausadas pelo
+usuário em 14/10** e **não apagadas**, e o trabalho em aberto da sessão paralela (184/185). O
+`STATE.md` **não foi alterado** de propósito (o `state.advance-plan` já corrompeu o STATE deste
+projeto **seis** vezes). **O que esta milestone tem de diferente:** ela não é acabamento, é
+**destravamento** — a automação que a gestão pediu **já existe, pronta e desligada** em
+`CriativosAutomaticosService`, e o portão de aprovação é o que torna seguro ligar aquela chave, o que
+faz a **Fase 194 ser o destino da milestone e não um apêndice**. **É também a primeira milestone com
+migration desde a v26.0** (que declarou nenhuma): são **12 estruturas novas**, concentradas na Fase
+186 e quebradas **por assunto**, nunca numa migration monolítica — ⚠️ `pub_rascunhos` tem 6 estados e
+eles são de **PUBLICAÇÃO**, não de aprovação, e `PubImagem.status` é de **UPLOAD**, não de revisão:
+são eixos diferentes e **não se reusam**. **A seção A foi dividida de propósito:** o **rename** vem na
+Fase 186, isolado, porque esta milestone introduz "Em revisão pela ECF" e renomear depois criaria uma
+janela com dois "Em revisão" na tela (e "Em revisão" é **substring** de "Em revisão pela ECF" —
+asserção negativa cega quebraria a tela certa); as **abas** vêm na Fase 187, com a rota que elas
+abrem, porque uma aba com contador real que não leva a lugar nenhum é a definição de enfeite — régua
+que o usuário **já exerceu três vezes** na milestone anterior. **Tensões declaradas, não escondidas:**
+(a) **esta milestone ESCREVE** (aprovar, regenerar, publicar) enquanto o gate **D-11** prova que a
+lista **não** escreve — a fronteira está declarada (o D-11 vale para a LISTA; a FILA escreve, com gate
+de escrita próprio) para o primeiro executor não ler contradição; (b) as taxas do README são
+**fictícias** e neste sistema a fonte real é **melhor que config** — comissão e tarifa fixa vêm da API
+do ML (`/sites/MLB/listing_prices` via `SimuladorVoceRecebe`), o imposto de
+`EstruturaPrecificacaoParametros` com a exceção da oferta vencendo, o custo de
+`DadosEfetivosService::custosDoProduto()`, e **a margem mínima é a única config nova** (`grep` de
+`margem_minima` voltou vazio); (c) a granularidade do desenho é por **OFERTA** e a da fila de
+publicação de hoje é por **PRODUTO**, que já guarda `revisao`/`ciente`/`validacao_id` — resolver isso
+**sem duplicar** é requisito explícito (DADO-03, PUB-02); (d) ⚠️ **o vínculo com a original de
+referência é efêmero e morre em 48 h**, então na estreia **nenhuma** imagem antiga terá original para
+comparar, e isso aparece como **estado declarado** ("original de referência não disponível"), nunca
+como painel vazio — **sem backfill possível**, e **sem tocar a retenção do outro dev**. **Quatro
+decisões seguem em aberto e bloqueiam fases nomeadas** (chips estruturados e a ordem com o outro dev →
+192; enfileirar automaticamente → 193; o que falta para ligar a chave → 194), e **três perguntas
+antigas foram RESPONDIDAS por medição** em 14/10 — a regeneração de uma imagem existe, o criativo é
+alcançável por `pub_imagem_id` (nenhuma coluna nova) e o vínculo com a original existe mas é efêmero.*
