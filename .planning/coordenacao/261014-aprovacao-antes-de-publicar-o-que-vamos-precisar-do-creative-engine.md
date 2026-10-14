@@ -69,8 +69,30 @@ serviço novo.** Vamos **chamar**, nunca reimplementar.
 ### 3. A foto ORIGINAL de referência de cada imagem de IA
 A revisão detalhada compara **lado a lado** "gerada por IA" × "original de referência", com zoom
 sincronizado. Precisamos saber **qual original** gerou cada imagem.
-⚠️ Se esse vínculo não está gravado hoje, é dado novo — e é melhor vir do seu lado, que é quem o
-conhece no momento da geração.
+
+✅ **MEDIDO EM 14/10, TAMBÉM DEPOIS DE ESCREVER ESTE AVISO — e isto também é um recuo meu:**
+eu havia escrito que "é melhor vir do seu lado". **Não é: é nosso, e você não precisa fazer nada.**
+
+| o que eu perguntava | o que eu medi |
+|---|---|
+| a ponte entre a nossa imagem e o seu criativo existe? | **existe e é indexada** — `ml_anuncio_criativos.pub_imagem_id` → `pub_imagens.id`, criada pela Fase 165 (migration `2026_10_04_120000_...`, bloco (e), índice `ml_criativos_pubimg_idx`), preenchida por `PublicadorCriativoAprovacaoService:117` |
+| a original de referência é sua? | **é nossa** — é uma linha de `pub_imagens` do próprio rascunho. O docblock do `PublicadorCriativoReferenciaService` (L19-32) é textual: *"As fotos do rascunho são do cliente e continuam do rascunho — nada aqui move nem apaga `pub_imagens`. A CÓPIA em `creative-referencias/{token}/` é efêmera."* |
+| o vínculo "esta imagem nasceu desta original" está gravado? | **só de forma EFÊMERA** — veja abaixo |
+
+⚠️ **O único ponto de atenção, e ele é NOSSO de resolver:** o vínculo vive em
+`ml_anuncio_criativos.referencias`, que é apagado **duas vezes** — na aprovação
+(`MlbAnuncioController::criativoAprovar()`) e pela varredura diária `creative:limpar-referencias`,
+janela padrão de **48h** (`services.creative.retencao_referencias_horas`), carimbada em
+`referencias_apagadas_em`.
+➡️ **Então nós vamos gravar o vínculo duravelmente do nosso lado**, no momento da geração, a partir
+dos ids que `selecionarFotos()` já recebe. **Não mexemos em `referencias`, não mexemos na retenção de
+48h e não mexemos no `creative:limpar-referencias`** — a janela é decisão sua (D-02 da v24), com o
+incidente do ECF Drive citado no seu próprio docblock como razão do desenho. Se algum dia parecer que
+precisamos mudar isso, **paramos e perguntamos**.
+⚠️ **Consequência que assumimos, e que declaramos na nossa tela:** todo criativo gerado **antes** desse
+vínculo existir fica **sem original para comparar**, e a comparação mostra *"original de referência não
+disponível"* em vez de painel vazio ou da imagem de IA repetida. Na estreia, isso vale para **todo o
+acervo atual**.
 
 ### 4. O que NÃO vamos tocar
 ⚠️ `app/Services/Creative/`, os endpoints `criativo*` do `MlbAnuncioController`, `AnunciarML.jsx`,
@@ -106,7 +128,8 @@ Para você saber onde a fronteira cai. Nada disto existe hoje, e é o que a mile
    enviadas EXISTE** — ver a seção 2 acima. No lugar dela, as duas perguntas novas: os chips de
    problema viram texto na nossa borda ou estruturado no seu lado, e se o `MlAnuncioCriativo` é
    sempre alcançável a partir da imagem que a fila revisa.
-2. **O vínculo imagem de IA → original de referência está gravado?**
+2. ✅ **RESPONDIDA POR MEDIÇÃO (14/10): o vínculo é NOSSO de gravar, e a ponte já existe** — ver a
+   seção 3 acima. **Não precisamos de nada seu aqui**, e não vamos encostar na retenção de 48h.
 3. **Você pretende mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos
    endpoints de criativo nas próximas semanas?** Se sim, combinamos a ordem.
 4. ⚠️ **Sobre ligar o `publicador.criativos_auto.ativo`:** o que falta do seu lado? Agora há um motivo
