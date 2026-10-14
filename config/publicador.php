@@ -240,6 +240,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | O portão de aprovação (Fase 186) — A ÚNICA configuração nova da milestone
+    |--------------------------------------------------------------------------
+    |
+    | `margem_minima_percentual` é o **FALLBACK** da margem mínima exigida de
+    | toda oferta, em ponto percentual. O valor que MANDA é o
+    | `margem_contribuicao` dos parâmetros de preço da empresa
+    | (`EstruturaPrecificacaoParametros::daEmpresa()`) **quando ele é > 0**;
+    | sendo 0, negativo, não numérico, ou não havendo linha da empresa, vale
+    | este padrão. O resolvedor mora num lugar só:
+    | `ComposicaoFinanceiraService::margemMinimaComOrigem()`.
+    |
+    | ⚠️ O FALLBACK É DELIBERADO — decisão do usuário de 14/10/2026. O
+    | `PADROES` daquele modelo tem `margem_contribuicao => 0.0`, então usar só
+    | o parâmetro DESLIGARIA o bloqueio de margem em toda empresa que nunca
+    | salvou a Calculadora de Custo; e usar só este padrão IGNORARIA quem
+    | configurou a própria exigência. As duas simplificações falham em
+    | silêncio, e por isso existem os dois lados. ⚠️ **O zero do parâmetro NÃO
+    | desliga o bloqueio** — ele cai aqui.
+    |
+    | ⚠️ O 12 vem do protótipo do desenho (`Aprovacao.dc.html:914`, `MIN = 12`)
+    | e é o DEFAULT da tela, não uma taxa do Mercado Livre: comissão, tarifa
+    | fixa e imposto NUNCA moram em config (FIN-02) — eles vêm da API do ML e
+    | dos parâmetros da empresa. A frase da tela é montada com o valor
+    | resolvido: *"Margem mínima: 12% · Toda oferta precisa de aprovação humana
+    | antes de publicar"* (FIN-09).
+    |
+    */
+    'aprovacao' => [
+        'margem_minima_percentual' => (float) env('PUBLICADOR_APROVACAO_MARGEM_MINIMA', 12.0),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Conferência de frete (11/10/2026)
     |--------------------------------------------------------------------------
     |

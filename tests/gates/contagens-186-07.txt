@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-07 — A COMPOSIÇÃO FINANCEIRA: as 7
+# linhas com fonte real, a origem por linha, o resultado que nunca vira zero,
+# equilíbrio e preço-alvo, e a ÚNICA configuração nova da milestone.
+#
+# Lido por `tests/gates/verificar-testes.sh 07 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por gate, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **TODO MÉTODO DOS TRÊS ARQUIVOS DESTE PLANO TEM id AQUI, E A BIJEÇÃO É
+#    PROVADA POR SCRIPT** — pelo gate `bijecao-manifesto`, que falha nos DOIS
+#    sentidos: método sem id (ele NUNCA RODA — foi o sobrevivente da mutação do
+#    plano 186-03) e id órfão (gate sobre ZERO casos).
+#
+# ⚠️ O teste tabelado contra o protótipo degrada para `skip` EXPLÍCITO quando
+#    `design_handoff_publicador/` não está no disco (o diretório NÃO é
+#    versionado). O `skip` do PHPUnit NÃO muda a contagem de `Tests:` nem a de
+#    asserções deste manifesto quando o diretório existe; se algum dia a
+#    contagem cair porque o diretório sumiu, isso é ACHADO e não "ajuste".
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Task 1: a config nova e os dois value objects ───────────────────────────
+value-objects  php  test_(linha_nula_com_fonte_que_diz_ter_respondido_e_pendente_por_construcao|zero_medido_e_confirmado_mostrando_zero_e_nunca_pendente|linha_exige_nota_que_nomeia_a_fonte|estimada_e_informativa_tem_as_origens_e_o_papel_declarados|as_sete_linhas_na_ordem_do_prototipo_e_o_total_sem_a_informativa|frete_ausente_anula_resultado_margem_total_equilibrio_e_preco_alvo_sem_nenhum_zero|equilibrio_e_preco_alvo_sao_teto_pela_formula_do_prototipo|a_nota_da_margem_tem_as_quatro_frases_e_o_numero_vem_do_minimo_resolvido|a_excecao_da_embalagem_mantem_o_resultado_e_marca_estimado_por_baixo|outros_custos_nasce_zero_confirmado_e_nunca_pendente|preco_por_variante_manda_o_pior_caso_e_a_nota_nomeia_quantas_variantes|a_composicao_leva_o_minimo_e_de_qual_lado_do_fallback_ele_veio|comissao_ou_imposto_pendente_nao_produz_equilibrio_com_percentual_zero)  ::  tests=13 assertions=104
