@@ -5,6 +5,7 @@ import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import { CampoIdentidade } from '@/Components/Publicador/Mesa/IdentidadeDaConta';
 import useIdentidadeDaContaPorConta from '@/Components/Mlb/Publicador/useIdentidadeDaContaPorConta';
+import { formatarDataHora } from '@/lib/dataHora';
 
 // ─── Configurações da conta (Fase 173, plano 07) ────────────────────────────
 //
@@ -23,17 +24,6 @@ import useIdentidadeDaContaPorConta from '@/Components/Mlb/Publicador/useIdentid
 //
 // ERP é apenas DECLARADO no onboarding (decisão 8 do handoff) — nunca mostrar
 // como "conectado"; sem valor, "Não informado".
-
-/** Formata uma data ISO para "dd/mm/aaaa às HH:mm"; nulo ou inválida não mostra nada. */
-function formatarDataHora(iso) {
-    if (typeof iso !== 'string' || iso.trim() === '') return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const data = d.toLocaleDateString('pt-BR');
-    const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-    return `${data} às ${hora}`;
-}
 
 /** Uma linha rótulo/valor só leitura — nunca um botão de editar aqui dentro. */
 function LinhaSoLeitura({ rotulo, children }) {
