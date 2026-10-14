@@ -168,6 +168,9 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     assert.match(painel, /t\.relacionado/);
     assert.match(painel, /m\.carregarTermos\(\)/);
     assert.match(painel, /Ver também os que não citam o produto/);
+    // Categoria de nicho: os termos do nível de cima vêm num bloco à parte, com o nome dela (14/10/2026).
+    assert.match(painel, /t\.origem === 'acima'/);
+    assert.match(painel, /Da categoria acima · \{acima\.nome\}/);
 });
 
 test('§4 — Variações: "Adicionar variação" à vista (Detalhes) e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {

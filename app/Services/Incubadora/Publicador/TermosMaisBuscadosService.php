@@ -16,8 +16,11 @@ use Illuminate\Support\Str;
  *   - até 50 termos, atualizados SEMANALMENTE, sem volume — só a posição;
  *   - com a lista cheia: 1–10 = maior crescimento, 11–30 = mais desejados
  *     (maior volume na semana), 31–50 = mais populares;
- *   - folha de nicho devolve menos (Cadeiras Gamer: 15) e aí a doc não diz
- *     como a lista se divide — por isso `grupo` só vem com a lista cheia;
+ *   - folha de nicho devolve menos (Cadeiras Gamer: 15; Poltronas, em 14/10/2026,
+ *     UM termo) e aí a doc não diz como a lista se divide — por isso `grupo` só
+ *     vem com a lista cheia;
+ *   - categoria sem lista nenhuma responde 404 "Not found public trends"
+ *     (Cadeiras de Balanço, 14/10/2026): é resposta, não falha — vale lista vazia;
  *   - vem cheio de marca de concorrente (husky, pichau, nike): é o operador
  *     quem decide, a tela não filtra nada.
  *
@@ -101,6 +104,12 @@ class TermosMaisBuscadosService
             ->timeout(15)
             ->get(self::API_BASE."/trends/MLB/{$categoriaId}");
 
+        if ($resp->status() === 404) {
+            // Categoria sem lista pública na semana: guarda o vazio como resposta boa.
+            Cache::put($chave, [], self::TTL);
+
+            return [];
+        }
         if (! $resp->successful()) {
             throw new \RuntimeException("[Publicador Incubadora] trends da categoria {$categoriaId} indisponível: HTTP {$resp->status()}");
         }

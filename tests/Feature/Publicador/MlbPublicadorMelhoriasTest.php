@@ -42,6 +42,17 @@ class MlbPublicadorMelhoriasTest extends TestCase
     /** O que a IA simulada responde (conteúdo da mensagem). */
     private string $respostaIa = '{"modelo":"x"}';
 
+    /** O nível acima de Cadeiras para Escritório no `path_from_root`: Cadeiras, Sofás e Banquetas. */
+    private const ACIMA_DA_CADEIRA = 'MLB436389';
+
+    /**
+     * Trends simulados por categoria: lista de termos ou status HTTP. Categoria fora do mapa
+     * recebe a lista padrão de três termos.
+     *
+     * @var array<string, list<string>|int>
+     */
+    private array $trends = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -69,11 +80,18 @@ class MlbPublicadorMelhoriasTest extends TestCase
             '*/shipping_preferences*' => Http::response($fixture('conta/shipping_preferences')),
             '*/attributes/conditional*' => Http::response(['required_attributes' => [], 'callbacks' => [], 'status' => 200]),
             '*/oauth/token' => Http::response(['access_token' => 'app-token', 'expires_in' => 21600]),
-            '*/trends/MLB/*' => Http::response([
-                ['keyword' => 'cadeira gamer', 'url' => 'https://lista.mercadolivre.com.br/cadeira-gamer'],
-                ['keyword' => 'cadeira escritorio giratoria', 'url' => null],
-                ['keyword' => 'poltrona husky', 'url' => null],
-            ]),
+            '*/trends/MLB/*' => function (Request $q) {
+                $resposta = $this->trends[basename((string) parse_url($q->url(), PHP_URL_PATH))] ?? null;
+                if (is_int($resposta)) {
+                    return Http::response(['message' => 'Not found public trends.', 'error' => 'not_found', 'status' => $resposta], $resposta);
+                }
+
+                return Http::response($resposta === null ? [
+                    ['keyword' => 'cadeira gamer', 'url' => 'https://lista.mercadolivre.com.br/cadeira-gamer'],
+                    ['keyword' => 'cadeira escritorio giratoria', 'url' => null],
+                    ['keyword' => 'poltrona husky', 'url' => null],
+                ] : array_map(fn ($t) => ['keyword' => $t, 'url' => null], $resposta));
+            },
             // As respostas reais da sondagem: abaixo da faixa o ML banca (`free_shipping_by_meli`); a partir dela é do vendedor.
             '*/shipping_options/free*' => function (Request $q) use ($fixture) {
                 parse_str((string) parse_url($q->url(), PHP_URL_QUERY), $query);
@@ -136,6 +154,93 @@ class MlbPublicadorMelhoriasTest extends TestCase
         ]);
 
         $this->mesa()->getJson($this->rota('termos'))->assertStatus(502)->assertJsonStructure(['message']);
+    }
+
+    // ═══ Categoria com poucos termos: o nível de cima completa a TELA (14/10/2026) ═══
+
+    public function test_categoria_com_poucos_termos_ganha_os_do_nivel_de_cima_sem_repetir_e_com_a_regua_daquele_nivel(): void
+    {
+        $this->comCategoria();
+        $this->renomearProduto('Cadeira Escritório Ergonômica');
+        // Caso real de 14/10/2026: Poltronas veio com UM termo ("espuma soft"); o nível de cima, com 50.
+        $this->trends = [
+            self::CADEIRA => ['cadeira escritorio giratoria'],
+            self::ACIMA_DA_CADEIRA => ['cadeira gamer', 'Cadeira Escritório Giratória', 'cadeira escritorio preta'],
+        ];
+
+        $r = $this->mesa()->getJson($this->rota('termos'))->assertOk()->json();
+
+        $this->assertSame(1, $r['total'], 'o total segue sendo o da categoria');
+        $this->assertSame(['id' => self::ACIMA_DA_CADEIRA, 'nome' => 'Cadeiras, Sofás e Banquetas', 'total' => 3], $r['acima']);
+        $this->assertSame(
+            [['cadeira escritorio giratoria', 'categoria', 1], ['cadeira gamer', 'acima', 1], ['cadeira escritorio preta', 'acima', 3]],
+            array_map(fn ($t) => [$t['termo'], $t['origem'], $t['posicao']], $r['termos']),
+            'os da categoria primeiro; os de cima depois, sem o repetido (acento e caixa não contam), com a posição de lá',
+        );
+        // "escritório" está no caminho da categoria (Cadeiras para Escritório) e lá não distingue
+        // o produto; um nível acima, distingue.
+        [$daCategoria, , $deCima] = $r['termos'];
+        $this->assertFalse($daCategoria['relacionado']);
+        $this->assertTrue($deCima['relacionado']);
+        $this->assertSame(['escritorio'], $deCima['em_comum']);
+    }
+
+    public function test_categoria_sem_lista_publica_404_mostra_os_do_nivel_de_cima_em_vez_de_erro(): void
+    {
+        $this->comCategoria();
+        $this->trends = [self::CADEIRA => 404, self::ACIMA_DA_CADEIRA => ['cadeira gamer']];
+
+        $r = $this->mesa()->getJson($this->rota('termos'))->assertOk()->json();
+
+        $this->assertSame(0, $r['total']);
+        $this->assertSame([['cadeira gamer', 'acima']], array_map(fn ($t) => [$t['termo'], $t['origem']], $r['termos']));
+    }
+
+    public function test_categoria_com_lista_suficiente_nao_consulta_o_nivel_de_cima(): void
+    {
+        $this->comCategoria();
+        $this->trends = [self::CADEIRA => array_map(fn ($i) => "cadeira modelo {$i}", range(1, PalavrasChaveService::MINIMO_DA_CATEGORIA))];
+
+        $r = $this->mesa()->getJson($this->rota('termos'))->assertOk()->json();
+
+        $this->assertNull($r['acima']);
+        $this->assertSame(['categoria'], array_values(array_unique(array_column($r['termos'], 'origem'))));
+        Http::assertNotSent(fn (Request $q) => str_contains($q->url(), '/trends/MLB/'.self::ACIMA_DA_CADEIRA));
+    }
+
+    public function test_nivel_de_cima_fora_do_ar_deixa_a_tela_com_os_da_categoria(): void
+    {
+        $this->comCategoria();
+        $this->trends = [self::CADEIRA => ['cadeira gamer'], self::ACIMA_DA_CADEIRA => 500];
+
+        $r = $this->mesa()->getJson($this->rota('termos'))->assertOk()->json();
+
+        $this->assertNull($r['acima']);
+        $this->assertSame(['cadeira gamer'], array_column($r['termos'], 'termo'));
+    }
+
+    public function test_ia_do_titulo_segue_so_com_os_termos_da_categoria(): void
+    {
+        $r = $this->comCategoria();
+        $this->trends = [self::CADEIRA => ['cadeira escritorio giratoria'], self::ACIMA_DA_CADEIRA => ['poltrona do papai reclinavel']];
+        // A tela mostra o complemento…
+        $this->assertContains('poltrona do papai reclinavel', array_column($this->mesa()->getJson($this->rota('termos'))->json('termos'), 'termo'));
+
+        // …e a IA do título não o recebe: o preenchimento pela IA não mudou.
+        $pedido = $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'titulo_gold_special'])->assertStatus(202)->json('pedido');
+        $this->respostaIa = json_encode(['titulo' => 'Cadeira Escritório Giratória (Ergonômica) - Home Office Presidente Reclinável Executiva']);
+        (new GerarPalavrasChaveIaJob($r->id, 'titulo_gold_special', $pedido))->handle(app(PalavrasChaveService::class));
+
+        $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
+        $this->assertStringContainsString('cadeira escritorio giratoria', $prompt);
+        $this->assertStringNotContainsString('poltrona do papai', $prompt);
+    }
+
+    private function renomearProduto(string $nome): void
+    {
+        $p = $this->produto();
+        ($p->estruturaProduto ?? $p->oferta)->update(['nome' => $nome]);
+        $this->assertSame($nome, $this->produto()->nomeExibido());
     }
 
     // ═══ IA do Modelo e do título ════════════════════════════════════════════
