@@ -9,6 +9,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
@@ -98,6 +99,63 @@ class BlingOAuthService
         Cache::forget($chave);
 
         return is_array($dados) ? $dados : null;
+    }
+
+    // ═══ Fase 184-07 (BLING-17, BLING-18, BLING-29) — link assinado da landing ═
+
+    /**
+     * Gera (ou regera) o link assinado de 7 dias que a equipe manda ao
+     * cliente. Mora AQUI, não no controller, porque o plano 11 cria
+     * `MlbPublicadorBlingController`, que também precisa gerar o link — os
+     * dois controllers chamam este método único em vez de um chamar o outro.
+     *
+     * Regerar o link para uma empresa já `ativa` NÃO apaga o token: a ação de
+     * socorro ("manda outro link, o cliente perdeu o antigo") não pode
+     * custar a conexão viva. Só quando ainda não há token a linha nasce/some
+     * para `aguardando_cliente`.
+     *
+     * @return array{url: string, gerado_em: string, expira_em: string}
+     *
+     * @throws \RuntimeException quando as credenciais do app não estão no `.env`
+     */
+    public function gerarLinkDeAutorizacao(Company $company, ?int $porUsuarioId): array
+    {
+        if (! BlingConexao::estaConfigurado()) {
+            throw new \RuntimeException(
+                '[Bling] Credenciais não configuradas — preencha BLING_CLIENT_ID, BLING_CLIENT_SECRET e BLING_REDIRECT_URI no .env.'
+            );
+        }
+
+        $expiraEm = now()->addDays(7);
+        $url = URL::temporarySignedRoute('bling.connect.landing', $expiraEm, ['company' => $company->id]);
+
+        $conexaoAtual = BlingConexao::where('company_id', $company->id)->first();
+        $jaAtiva = $conexaoAtual && $conexaoAtual->status === BlingConexao::STATUS_ATIVA && $conexaoAtual->access_token;
+
+        $dados = [
+            'link_url' => $url,
+            'link_gerado_em' => now(),
+            'conectado_por' => $porUsuarioId,
+        ];
+
+        // Só muda o status para "aguardando o cliente" quando ainda não há
+        // token ativo — regerar o link de uma conexão já conectada é socorro,
+        // não reinício do fluxo.
+        if (! $jaAtiva) {
+            $dados['status'] = BlingConexao::STATUS_AGUARDANDO_CLIENTE;
+        }
+
+        if (! $company->cnpj) {
+            $dados['last_error'] = 'A empresa não tem CNPJ cadastrado; a conferência da conta no retorno vai acusar divergência.';
+        }
+
+        BlingConexao::updateOrCreate(['company_id' => $company->id], $dados);
+
+        return [
+            'url' => $url,
+            'gerado_em' => now()->toISOString(),
+            'expira_em' => $expiraEm->toISOString(),
+        ];
     }
 
     // ═══ OAuth: troca do code ═════════════════════════════════════════════════

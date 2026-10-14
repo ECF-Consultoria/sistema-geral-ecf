@@ -40,6 +40,7 @@ use App\Http\Controllers\AgendaController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\MercadoLivreOAuthController;
 use App\Http\Controllers\ShopeeOAuthController;
+use App\Http\Controllers\BlingOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
@@ -556,6 +557,17 @@ Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
     ->name('shopee.oauth.callback');
 Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCallback'])
     ->name('shopee.oauth.ads.callback');
+
+// Bling OAuth — landing guiada (link único assinado que a equipe manda ao
+// cliente) + callback público. Molde copiado do bloco Shopee acima (D-01 do
+// CONTEXT da fase 184: o cliente autoriza, nenhuma senha de ERP passa pela
+// equipe). Os dois `throttle` têm prefixo PRÓPRIO (`bling.landing`,
+// `bling.callback`): rota pública sem throttle é porta aberta, e um prefixo
+// compartilhado faria um cliente consumir a cota do outro.
+Route::get('/bling/conectar/{company}', [BlingOAuthController::class, 'landing'])
+    ->name('bling.connect.landing')->middleware(['signed', 'throttle:30,1,bling.landing']);
+Route::get('/oauth/bling/callback', [BlingOAuthController::class, 'callback'])
+    ->name('bling.oauth.callback')->middleware('throttle:30,1,bling.callback');
 
 // Google OAuth — conectar e voltar, os dois autenticados (ver callback abaixo)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
