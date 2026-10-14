@@ -178,29 +178,41 @@ resolve. **Não é bloqueio para criar o app agora.**
 
 ## 8. Logo
 
-Criei três arquivos, a partir da identidade que já está travada no sistema (`Phase 32, D-01 LOCKED`):
+⚠️ **O Bling informou em 14/10/2026 a regra de tamanho: o SVG tem no máximo 500 px e no mínimo 250 px
+de CADA lado.** A primeira versão destes arquivos foi refeita por causa dela — o ícone era 512×512
+(estourava o teto) e os lockups eram 240×52 (furavam o piso nos dois lados).
 
-| Arquivo | Quando usar |
-|---|---|
-| `public/images/icone-ecf.svg` | **O que eu recomendo mandar ao Bling.** Quadrado 512×512, fundo escuro, funciona em qualquer vitrine |
-| `public/images/logo-ecf-claro.svg` | Lockup horizontal para **fundo claro** |
-| `public/images/logo-ecf-escuro.svg` | Lockup horizontal para fundo escuro (é a spec LOCKED, sem desvio) |
+| Arquivo | Tamanho | Quando usar |
+|---|---|---|
+| `public/images/icone-ecf.svg` + `.png` | **500×500** | **O que eu recomendo mandar ao Bling.** Carrega o próprio fundo, funciona em qualquer vitrine |
+| `public/images/logo-ecf-bling.svg` + `.png` | **500×250** | Alternativa, se você preferir o lockup horizontal. Fundo transparente e texto escuro — bom sobre o branco do Bling, **some sobre fundo escuro** |
+| `public/images/logo-ecf-claro.svg` | 240×52 | **Não serve para o Bling** (abaixo do piso de 250). É para e-mail e página, onde 500×250 só acrescentaria vazio |
+| `public/images/logo-ecf-escuro.svg` | 240×52 | Idem — e é a spec LOCKED, sem desvio |
 
-**Duas coisas que você precisa saber antes de usar:**
+**Três coisas que você precisa saber:**
 
-1. ⚠️ **A logo travada do sistema é BRANCA**, feita para fundo escuro — e o formulário do Bling é
-   branco. Por isso criei a variante de fundo claro, onde **só a cor do texto muda** (`#ffffff` →
-   `#0f1116`). Proporções, gradiente e pesos seguem iguais. O próprio comentário do arquivo original
-   já previa isto: *"quando surgir uso real em fundo claro, ajustar aqui"*.
-2. ⚠️ **A fonte Montserrat não está embutida no SVG** — o repositório não tem arquivo de fonte, ela vem
-   do Google Fonts em runtime. Onde Montserrat não estiver instalada, o texto cai para
-   Helvetica/Arial. No ícone isso **não quebra a composição** (usei `text-anchor="middle"`), mas a
-   letra fica diferente. **Para fidelidade garantida, exportar do arquivo original com o texto
-   convertido em contornos** — se você tiver o `.ai`/`.fig` da marca, esse é o caminho certo.
+1. ⚠️ **Os PNG não têm o problema da fonte; os SVG ainda têm.** Os PNG foram renderizados num
+   navegador real com a Montserrat carregada do Google Fonts e **conferida antes da captura**
+   (`document.fonts.check` deu SIM). Já o SVG não embute a fonte — o repositório não tem arquivo de
+   fonte — então onde Montserrat não estiver instalada o texto cai para Helvetica/Arial. ➡️ **Se o
+   Bling aceitar PNG, prefira o PNG.** Para o SVG sair fiel em qualquer lugar, exportar do arquivo
+   original da marca com o texto convertido em contornos.
+2. ⚠️ **A logo travada do sistema é BRANCA**, feita para fundo escuro — e o formulário do Bling é
+   branco. Por isso as variantes claras, onde **só a cor do texto muda** (`#ffffff` → `#0f1116`).
+   Proporções, gradiente e pesos seguem iguais. O comentário do arquivo original já previa este
+   momento: *"quando surgir uso real em fundo claro, ajustar aqui"*.
+3. ⚠️ **No ícone fiz duas adaptações declaradas**: o subtítulo "Consultoria & Assessoria" saiu (em
+   tamanho de ícone vira borrão — prática padrão) e a barra do gradiente ficou horizontal, com a mesma
+   ordem de cores.
 
-⚠️ No ícone quadrado fiz **duas adaptações declaradas**: o subtítulo "Consultoria & Assessoria" saiu
-(a 32 px vira borrão — é prática padrão de app icon) e a barra do gradiente ficou horizontal, com a
-mesma ordem de cores. Se você preferir o lockup completo mesmo no ícone, me diga que eu refaço.
+**Ressalva de legibilidade, ainda em aberto:** no ícone a barra do gradiente tem 14 px numa arte de
+500. Quando o Bling exibir o ícone a 64 px, ela fica com menos de 2 px e praticamente some — sobra um
+"ECF" branco sem a cor da marca. Engrossar a barra e alargá-la até a largura do "ECF" resolve; é um
+ajuste rápido, mas **não fiz porque é mudança de desenho e ninguém pediu**.
+
+**Se a validação do Bling for estrita** no "menor que 500" em vez de "até 500", é só reduzir
+`viewBox`/`width`/`height` para 480 e reescalar as coordenadas na mesma proporção — está anotado
+dentro do próprio arquivo.
 
 ---
 

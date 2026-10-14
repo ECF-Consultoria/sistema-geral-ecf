@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Lockup horizontal da ECF, em 500x250 — a ALTERNATIVA ao ícone quadrado para o
+  cadastro do app no Bling (Fase 184).
+
+  ⚠️ Por que este arquivo existe em vez de usar `logo-ecf-claro.svg` direto: o
+  Bling exige (informado em 14/10/2026) no máximo 500 px e no mínimo 250 px de
+  CADA lado. O lockup natural é 240x52 — fura o piso de 250 nos dois lados e
+  seria recusado. Aqui ele vai centrado numa área de 500x250, com margem.
+  Os arquivos `logo-ecf-claro.svg` e `logo-ecf-escuro.svg` seguem no tamanho
+  natural de propósito: eles servem a e-mail e página, onde 500x250 só
+  acrescentaria vazio.
+
+  Texto em #0f1116 e FUNDO TRANSPARENTE: funciona sobre o branco e os cinzas
+  claros da interface do Bling. ⚠️ Sobre fundo escuro ele some — nesse caso use
+  `icone-ecf.svg`, que carrega o próprio fundo.
+
+  Proporções, gradiente e pesos são os da spec Phase 32 / D-01 LOCKED; só a cor
+  do texto muda em relação à versão travada (que é branca, para fundo escuro).
+
+  ⚠️ Montserrat NÃO está embutida — onde ela não estiver instalada o texto cai
+  para Helvetica/Arial. O PNG irmão JÁ sai com a Montserrat de verdade.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 250" width="500" height="250" role="img" aria-label="ECF Consultoria &amp; Assessoria">
+  <title>ECF Consultoria &amp; Assessoria</title>
+  <defs>
+    <linearGradient id="barraEcfBling" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#1e5ef3"/>
+      <stop offset="40%" stop-color="#e84393"/>
+      <stop offset="70%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#facc15"/>
+    </linearGradient>
+  </defs>
+
+  <!-- O lockup de 240x52 ampliado 1,8333x (= 440 de largura) e centrado nos 500x250. -->
+  <g transform="translate(30 77.33) scale(1.83333)">
+    <text x="96" y="40" text-anchor="end"
+          font-family="Montserrat, Helvetica, Arial, sans-serif"
+          font-weight="700" font-size="42" letter-spacing="-0.84" fill="#0f1116">ECF</text>
+
+    <rect x="106" y="10" width="4" height="32" fill="url(#barraEcfBling)"/>
+
+    <text x="120" y="22"
+          font-family="Montserrat, Helvetica, Arial, sans-serif"
+          font-weight="300" font-size="12" letter-spacing="1.44" fill="#0f1116">CONSULTORIA</text>
+    <text x="120" y="38"
+          font-family="Montserrat, Helvetica, Arial, sans-serif"
+          font-weight="300" font-size="12" letter-spacing="1.44" fill="#0f1116">&amp; ASSESSORIA</text>
+  </g>
+</svg>

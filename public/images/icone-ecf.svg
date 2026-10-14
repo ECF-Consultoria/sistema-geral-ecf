@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Ícone quadrado da ECF — o formato que marketplaces de app costumam pedir
-  (card/vitrine). Criado para o cadastro do app no Bling (Fase 184).
+  Ícone quadrado da ECF — o formato que marketplaces de app costumam pedir.
+  Criado para o cadastro do app no Bling (Fase 184).
+
+  ⚠️ 500x500 POR EXIGÊNCIA DO BLING (informada por ele em 14/10/2026): o SVG
+  precisa ter no máximo 500 px e no mínimo 250 px de cada lado. A primeira
+  versão deste arquivo era 512x512 e seria recusada. Se alguma validação do
+  Bling for estrita no "menor que 500" em vez de "até 500", reduzir o
+  `viewBox`/`width`/`height` para 480 e reescalar as coordenadas na mesma
+  proporção — nada mais muda.
 
   Deriva da spec Phase 32 / D-01 LOCKED, com DUAS adaptações declaradas, próprias
   do formato ícone:
-    1. O subtítulo "Consultoria & Assessoria" SAI — a 32 px de altura ele vira
+    1. O subtítulo "Consultoria & Assessoria" SAI — em tamanho de ícone ele vira
        borrão. É prática padrão de app icon, não perda de identidade.
     2. A barra do gradiente vira HORIZONTAL (era vertical, 4x32). O gradiente
        mantém a mesma ordem de cores, lida da esquerda para a direita:
@@ -15,9 +22,10 @@
   "ECF" usa text-anchor="middle": se Montserrat não estiver instalada e a fonte
   cair para Helvetica/Arial, o texto continua CENTRADO e a composição não quebra.
   Para fidelidade tipográfica garantida, exportar do arquivo original com o texto
-  convertido em contornos.
+  convertido em contornos. O PNG irmão (`icone-ecf.png`) JÁ sai com a Montserrat
+  de verdade — ele é renderizado com a fonte carregada e conferida.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="ECF">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" role="img" aria-label="ECF">
   <title>ECF Consultoria &amp; Assessoria</title>
   <defs>
     <linearGradient id="barraIconeEcf" x1="0" y1="0" x2="1" y2="0">
@@ -28,11 +36,11 @@
     </linearGradient>
   </defs>
 
-  <rect width="512" height="512" rx="96" fill="#050507"/>
+  <rect width="500" height="500" rx="94" fill="#050507"/>
 
-  <text x="256" y="290" text-anchor="middle"
+  <text x="250" y="283" text-anchor="middle"
         font-family="Montserrat, Helvetica, Arial, sans-serif"
-        font-weight="700" font-size="170" letter-spacing="-3.4" fill="#ffffff">ECF</text>
+        font-weight="700" font-size="166" letter-spacing="-3.3" fill="#ffffff">ECF</text>
 
-  <rect x="176" y="327" width="160" height="14" rx="2" fill="url(#barraIconeEcf)"/>
+  <rect x="168" y="319" width="164" height="14" rx="2" fill="url(#barraIconeEcf)"/>
 </svg>
