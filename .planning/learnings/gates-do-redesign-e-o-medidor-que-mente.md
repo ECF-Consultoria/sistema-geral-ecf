@@ -116,10 +116,84 @@ do arquivo errado.
 
 ---
 
-## 4. A família das asserções que casam sempre — ONZE casos medidos
+## 4. A família das asserções que casam sempre — TREZE casos medidos
 
-Este projeto já foi mordido onze vezes pela mesma classe de erro: asserção que passa
+Este projeto já foi mordido treze vezes pela mesma classe de erro: asserção que passa
 **independentemente do código**.
+
+⚠️⚠️ **OS CASOS 12 E 13 SÃO OS MAIS CAROS DA LISTA, porque não estão no SEU gate: estão no jeito
+PADRÃO de rodar teste neste projeto.** Medidos em 14/10/2026, na verificação dos 9 planos da Fase
+186: **18 dos 26 gates automatizados da fase** estavam quebrados pelos dois, **em direções
+opostas**. Os dois estão em planos e SUMMARYs antigos — trate como suspeito tudo que use as formas
+abaixo.
+
+### ⚠️ Caso 12 — `node --test | grep "^# tests"` **NUNCA PASSA** (depende da VERSÃO do Node)
+
+No **Node v24.14.0** o reporter padrão é o `spec`, que emite **`ℹ tests 344`** (U+2139, bytes
+`E2 84 B9`), **não `# tests 344`**. Logo `grep -E "^# (tests|pass|fail)"` **não casa nada**; e como
+o `grep` é o último da pipeline, **ela sai 1 SEMPRE — inclusive com 344 de 344 verdes**.
+
+```
+node --test <arquivo> 2>&1 | cat -A | tail -8     # M-bM-^DM-9 tests 344  <= e o ℹ, nao o #
+node --test <arquivo> 2>&1 | grep -cE "^# "       # 0
+```
+
+⚠️ **O dano NÃO é o vermelho — é o conserto.** O executor seguinte vê vermelho com os testes
+verdes, conclui que o gate está errado, e **o conserto barato é tirar o `grep`** — perdendo a
+comparação de contagem, que era o único motivo de o gate existir. É o padrão de
+`feedback_gate_que_reprova_pelo_proprio_conserto`, e aqui ele vem de graça.
+
+✅ **A forma que FUNCIONA** (medida nos 3 casos, 14/10/2026):
+```
+node --test --test-reporter=tap <arquivo> > OUT 2>&1
+grep -qE '^# fail 0$' OUT && grep -qE "^# tests <N>$" OUT
+```
+| saída | veredicto |
+|---|---|
+| `# tests 344` + `# fail 0`, N=344 | **PASSOU** |
+| `# tests 344` + `# fail 1` | **REPROVOU** |
+| `# tests 3` + `# fail 0`, N=344 (arquivo não carregou) | **REPROVOU** |
+
+⚠️ **Sem o `<N>` você troca um gate vazio por outro**: `# fail 0` sozinho é satisfeito por arquivo
+que não carregou.
+
+### ⚠️ Caso 13 — `artisan test | grep -E "Tests:|OK"` **PASSA COM TESTE FALHANDO**
+
+O Collision imprime a linha `Tests:` **em sucesso E em falha**, então o `grep` casa as duas. Medido:
+```
+echo "  Tests:    1 passed (22 assertions)"          | grep -E "Tests:|OK"  # EXIT 0
+echo "  Tests:    2 failed, 1 passed (9 assertions)" | grep -E "Tests:|OK"  # EXIT 0  <= PASSA FALHANDO
+```
+**Só reprova quando NENHUM teste roda** (`No tests found.`). ➔ Ou seja: o gate prova apenas *"o
+filtro casou alguma coisa"*, nunca *"passou"*. E como ele fica **verde**, ninguém desconfia — é a
+metade silenciosa do par.
+
+✅ **A forma que FUNCIONA** (medida nos 5 casos, 14/10/2026):
+```
+! grep -qE 'Tests:.*(failed|error)' OUT && grep -qE "Tests:[[:space:]]+<N> passed \(<A> assertions\)" OUT
+```
+| saída (N=1, A=22 esperados) | veredicto |
+|---|---|
+| `Tests: 1 passed (22 assertions)` | **PASSOU** |
+| `Tests: 2 failed, 1 passed (9 assertions)` | **REPROVOU** |
+| `Tests: 1 error, 1 passed (3 assertions)` | **REPROVOU** |
+| `Tests: 1 passed (5 assertions)` | **REPROVOU** (asserções a menos) |
+| `No tests found.` | **REPROVOU** |
+
+⚠️ **O `error` é parte obrigatória do filtro:** teste que lança exceção imprime `1 error`, não
+`1 failed`, e um gate que só procure `failed` **passa com o teste explodindo**.
+
+### ⚠️ A lição que vale mais que as duas formas
+
+**A contagem esperada tem de morar em arquivo versionado, não dentro do comando.** Na Fase 186 ela
+foi para `tests/gates/contagens-186-NN.txt`, um manifesto por plano, por três razões medidas:
+mudar um número fica **diff visível** em vez de `grep` apagado em silêncio; **manifesto incompleto
+ABORTA** (sem id, sem `tests=`, ou `tests=0`), então não dá para "deixar o número para depois"; e o
+mesmo arquivo guarda os **dois regimes** de contagem do §4-caso-11 (pristino e mutado), para a
+campanha de mutação não precisar mexer no gate.
+
+⚠️ **E todo harness de gate precisa de `--autoteste`**: um modo que alimenta saída sintética e
+**exige que as formas REPROVEM**. Sem isso o próprio conserto vira o próximo caso desta lista.
 
 1. `assert.match(tag, /disabled/)` casa com a classe `disabled:opacity-40` → use `/disabled=/`.
 2. `doesNotMatch(html, /0%/)` casa com os dois últimos caracteres de `100%`.
