@@ -1,0 +1,33 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-02 (o vocabulário do portão).
+# Lido por `tests/gates/verificar-testes.sh <plano> <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os **dois regimes** de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate — e mexer no gate
+#     durante a mutação invalida a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ TODOS os números abaixo foram MEDIDOS nesta máquina em 14/10/2026, com
+# `node --test --test-reporter=tap`. Nenhum é estimativa, e nenhum entrou aqui
+# antes de ter sido medido — id sem medição não é escrito "para depois".
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Task 1 — os dois módulos de vocabulário ──
+# 113 MEDIDO em 14/10/2026 com os dois módulos (`andamentoDoPortao.jsx` e
+# `vocabularioDoPortao.jsx`) no lugar. A medição do regime RED está registrada na
+# SUMMARY: sem os módulos o arquivo sai `# tests 1 / # fail 1`, porque a guarda
+# de `test -e` do topo lança antes de registrar teste nenhum.
+#
+# ⚠️ ESTE NÚMERO SOBE na Task 2, quando o bloco de render do
+# `SeloDeAndamentoInterno` entrar no MESMO arquivo — e a elevação fica escrita
+# aqui, porque deixar o número parado é como se descobre que alguém esqueceu de
+# declarar um teste novo.
+vocabulario-modulos  js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=113
