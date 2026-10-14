@@ -1,0 +1,133 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-04 (a oferta do portão: granularidade
+# resolvida, os 8 estados de andamento interno, as transições, a versão e os
+# campos de aprovação — 1 migration / 1 tabela `pub_aprovacao_ofertas`).
+#
+# Lido por `tests/gates/verificar-testes.sh 04 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate — e mexer no gate
+#     durante a mutação invalidaria a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 14/10/2026,
+#    uma invocação por método, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **CADA TESTE DOS DOIS ARQUIVOS DESTE PLANO TEM id AQUI, E ISSO FOI
+#    CONFERIDO POR SCRIPT.** Teste que existe no arquivo e não tem id no
+#    manifesto **NUNCA RODA** em gate nenhum — foi exatamente o sobrevivente da
+#    campanha de mutação do plano 186-03 (o método que media o nome DECLARADO do
+#    índice existia e nenhum gate o invocava, e era lacuna real). É a forma nova
+#    de "passar por omissão", e a conferência está na 186-04-SUMMARY.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 2 — O MODELO: os 8 estados, as transições, LIVE, ORDEM e cta
+# Arquivo: tests/Unit/Publicador/Aprovacao/AndamentoDaOfertaServiceTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# A ISCA DA SONDA que lê o módulo `andamentoDoPortao.jsx` do plano 186-02. Ela
+# existe porque TODO gate de espelhamento depende dela: se a sonda não ler as 8
+# entradas do `.jsx`, os laços de comparação rodam sobre zero pares e ficam
+# verdes medindo nada (caminho fantasma — 5 casos em 4 fases deste projeto).
+# O que precisaria estar errado: o módulo sair do disco, mudar de forma, ou o
+# regex de `rotulo:`/`cta:` parar de casar.
+# 1 / 7 MEDIDO em 14/10/2026.
+isca-sonda-jsx  php  test_isca_a_sonda_do_modulo_js_acha_os_oito_estados_e_um_rotulo_conhecido  ::  tests=1 assertions=7
+
+# VOC-02 — são 8 estados, e os rótulos pt-BR são ESPELHO BYTE A BYTE do
+# `ANDAMENTOS` do `.jsx`, nas DUAS direções (estado só no PHP e estado só no JS).
+# O que precisaria estar errado: alguém editar o rótulo de um lado só. Chave de
+# dado num idioma com rótulo noutro são duas verdades para manter — o bug que o
+# plano 186-02 resolveu, e que renderizaria o selo VAZIO em produção com a suíte
+# inteira verde.
+# 1 / 30 MEDIDO em 14/10/2026.
+oito-estados  php  test_sao_exatamente_oito_andamentos_com_rotulo_espelhado_do_modulo_js  ::  tests=1 assertions=30
+
+# AND-02 — as 10 regras / **12 pares** aceitos e os 10 recusados, com a CONTAGEM
+# travada em 12 e isca que distingue par aceito de par recusado.
+# O que precisaria estar errado: alguém acrescentar `aprovado -> publicado`
+# (pulando `publicando`, onde o `ml_item_id` chega) ou `preparando -> aprovado`.
+# Como **aprovar JÁ PUBLICA e não há desfazer**, transição a mais aqui é elevação
+# de privilégio: publica sem ninguém ter conferido (T-186-11).
+# 1 / 27 MEDIDO em 14/10/2026.
+transicoes  php  test_as_transicoes_aceitas_e_as_recusadas_estao_declaradas  ::  tests=1 assertions=27
+
+# AND-05 — `LIVE` são os três ao vivo, `ehLive()` é o ÚNICO decisor, e
+# `abreRevisao()` É `ehLive()` nos 8 estados (regra num lugar só). Com a metade
+# do complemento (os 5 que NÃO são live), senão um `ehLive()` que devolvesse
+# sempre `true` passaria.
+# O que precisaria estar errado: a regra "é editável e aprovável" duplicada e as
+# duas cópias divergindo — a divergência liberaria edição de oferta já publicada.
+# 1 / 29 MEDIDO em 14/10/2026.
+live-unico-decisor  php  test_live_sao_os_tres_ao_vivo_e_ehlive_e_o_unico_decisor  ::  tests=1 assertions=29
+
+# AND-03 — `preparando` **não abre revisão**, e o `abreRevisao` dos 8 estados é
+# espelho do `.jsx`.
+# O que precisaria estar errado: `preparando` passar a abrir revisão e alguém
+# editar uma oferta que a automação ainda está montando.
+# 1 / 12 MEDIDO em 14/10/2026.
+abre-revisao  php  test_abre_revisao_e_falso_em_preparando_e_espelha_o_modulo_js  ::  tests=1 assertions=12
+
+# AND-08 — `ORDEM`: 8 chaves, **7 valores** (0 a 6), o empate de
+# `aguardando_aprovacao`/`em_revisao_ecf` em 1, `preparando` por último (6), e o
+# mapa inteiro espelhado do `ORDEM_DA_FILA` do `.jsx`.
+# O que precisaria estar errado: alguém "arrumar" o empate. A fila mudaria de
+# ordem **sem nenhum teste de render acusar** — e o servidor passaria a ordenar
+# diferente do navegador.
+# 1 / 10 MEDIDO em 14/10/2026.
+ordem-da-fila  php  test_ordem_tem_sete_valores_com_o_empate_em_um_e_preparando_por_ultimo  ::  tests=1 assertions=10
+
+# AND-10 — o `cta` de cada estado, espelhado do `.jsx`, com isca de contagem (os
+# 4 ctas distintos). Sem a isca, um `cta()` que devolvesse sempre 'Revisar'
+# passaria em 3 dos 8 e ninguém veria os outros 5.
+# O que precisaria estar errado: o botão da linha prometer a ação errada — "Ver"
+# onde cabe "Revisar", ou "Aguarde" numa oferta que já está pronta.
+# 1 / 20 MEDIDO em 14/10/2026.
+cta-por-estado  php  test_cta_por_estado_e_espelhado_do_modulo_js  ::  tests=1 assertions=20
+
+# AND-04 — `publicado` exige `ml_item_id` confirmado pelo ML, com isca do "só
+# espaço" e do estado errado.
+# O que precisaria estar errado: a tela dizer "Publicado e confirmado no Mercado
+# Livre · MLB…" sem anúncio nenhum (T-186-12) — o anúncio existiria só na nossa
+# cabeça.
+# 1 / 4 MEDIDO em 14/10/2026.
+exige-mlb  php  test_pode_ser_publicado_exige_ml_item_id  ::  tests=1 assertions=4
+
+# REND-03 no PHP, pelo motivo GÊMEO do JS — 13 chaves adversas em 3 acessores,
+# incluindo as chaves INGLESAS do protótipo (`awaiting`, `ecf_review`,
+# `changes`), que TÊM de cair no desconhecido. Com isca de chave conhecida nos
+# três (senão um acessor que devolvesse sempre `null` passaria em tudo).
+# O que precisaria estar errado: `$MAPA[$chave]` cru com chave vinda do banco (em
+# PHP, chave que não é string nem int **lança TypeError**), ou alguém aceitar "as
+# duas formas" num `||` — o bug dos dois idiomas com outra roupa, achado como
+# defeito grave na verificação da wave 1.
+# 1 / 47 MEDIDO em 14/10/2026.
+chave-adversa  php  test_chave_adversa_em_qualquer_acessor_nao_lanca_e_devolve_null  ::  tests=1 assertions=47
+
+# DADO-02 / critério 3 — OS DOIS EIXOS NÃO SE MISTURAM, nas DUAS direções, com a
+# disjunção provada por contagem (8 andamentos + 6 estados de PUBLICAÇÃO de
+# `pub_rascunhos` + 3 de UPLOAD de `pub_imagens` = 17 literais distintos) e isca
+# que acusa repetição de verdade.
+# O que precisaria estar errado: alguém reusar ou estender um dos outros dois
+# eixos. O README é explícito — *"o andamento interno nunca aparece na lista de
+# Publicadas, e o status do ML nunca aparece na fila"* —, e medir uma direção só
+# provaria metade do invariante.
+# 1 / 29 MEDIDO em 14/10/2026.
+dois-eixos  php  test_o_andamento_interno_nao_se_mistura_com_o_estado_de_publicacao_nem_com_o_de_upload  ::  tests=1 assertions=29
