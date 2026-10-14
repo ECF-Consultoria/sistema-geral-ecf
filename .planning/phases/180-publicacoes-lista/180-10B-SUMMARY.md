@@ -391,8 +391,8 @@ SKU saem de `item.skus` com guarda de tipo por item, e o `join` só vê strings 
 |---|---|
 | os 2 arquivos criados existem (`test -f`) | **2/2 FOUND** (`180-10B-PLAN.md`, `180-10B-SUMMARY.md`) |
 | os 6 arquivos modificados existem | **6/6 FOUND** |
-| os 3 commits existem (`git log --oneline --all`) | **3/3 FOUND** — `e481c7ce`, `72cc4823`, `0f3c9b49` |
-| deleções em cada commit (`--diff-filter=D`) | **0 nos três** |
+| os 4 commits existem (`git log --oneline --all`) | **4/4 FOUND** — `e481c7ce` (plano), `72cc4823` (botão), `0f3c9b49` (SKU), `c2140f5c` (SUMMARY + STATE) |
+| deleções em cada commit (`--diff-filter=D`) | **0 nos quatro** |
 | `+assert > -assert` nos 4 gates tocados | **10>0 · 12>0 · 6>0 · 65>3** |
 | as 3 linhas `-assert` enumeradas uma por uma | **sim** (§3), com o par `+` de cada |
 | D-11 (×2) e D-22 intocados | **sim**, identificados por SEMÂNTICA (`:250`, `:256`, `:285`) — as 3 referências do briefing estavam deslocadas |
@@ -401,5 +401,6 @@ SKU saem de `item.skus` com guarda de tipo por item, e o `join` só vê strings 
 | JS antes/depois | 4427/4426/1 → **4446/4445/1** (+19, aritmética fechada), mesma falha pré-existente |
 | `wc -l` dos arquivos tocados | `MeusAnuncios.jsx` **929** · `CelulasDaLinha.jsx` **1004** · `publicacoes-tabela.test.js` **2094** |
 | arquivo gerado/não rastreado deixado para trás | **nenhum** — os 5 scripts (campanha, controle, manifest, território, dump) vivem no scratchpad da sessão, fora do repo |
-| `STATE.md` aditivo | **+2 / −0** por `git diff --numstat` |
+| `STATE.md` aditivo | **+3 / −0** por `git diff --numstat` (os 2 blocos + a linha em branco de separação), conferido **no commit** (`c2140f5c~1..c2140f5c`), e com a prova de que o conteúdo anterior foi preservado **byte a byte** (`depois.startsWith(antes) === true`) |
+| o 4º commit (SUMMARY + STATE) | `c2140f5c` — **0 deleção**, **0 arquivo** em `app/`, `database/`, `routes/`, `resources/`, `tests/`, `ROADMAP.md` ou `REQUIREMENTS-v26.md` |
 | `ROADMAP.md` / `REQUIREMENTS-v26.md` | **não tocados**; `state.advance-plan` **não executado** |
