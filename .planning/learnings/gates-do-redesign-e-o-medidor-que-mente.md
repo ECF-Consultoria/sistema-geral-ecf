@@ -293,6 +293,102 @@ gate PRÓPRIO vazio por construção com essa pergunta.**
 
 ---
 
+## 4b. Os cinco achados da Fase 186 (14/10/2026) — e um deles NÃO é sobre gate
+
+A Fase 186 (o portão de aprovação, 9 planos, 12 tabelas) rendeu cinco coisas que **nenhuma
+leitura de código entregaria**. As quatro primeiras são família dos casos 1-13; a quinta é um
+**bug de runtime** que morde em silêncio.
+
+### ⚠️ 4b.1 — A asserção que é VAZIA quando escrita e vira FALSO POSITIVO depois
+
+O pior modo de falhar da lista, porque são **os dois** no mesmo texto, **sem ninguém mexer nela**.
+
+O plano 186-04 escreveu: *"nenhuma tabela do portão tem `oferta_id`"*. Quando foi escrita **não
+havia tabela-filha nenhuma** → a lista saía vazia sempre, e a asserção **passava sem medir nada**.
+No instante em que o 186-05 criou as filhas, ela **reprovou trabalho CORRETO**: medido no schema
+vivo, **cinco** tabelas têm `oferta_id` **legitimamente**, porque os requisitos de histórico e de
+ajuste **por oferta** as EXIGEM.
+
+O invariante de verdade era o **PAR** `(oferta_id, imagem_id)` — é ele que faria a aprovação da
+FOTO ser por oferta.
+
+➡️ **Pergunte de toda asserção negativa: "o desenho PROÍBE isso, ou eu só não vi acontecer
+ainda?"** Negativa escrita antes de o caso existir é suspeita por construção.
+➡️ **E a correção certa é reapontar com ISCA INVERTIDA:** aqui, a lista de filhas por oferta tem
+de estar **NÃO-vazia** — se vier vazia não é "tudo certo", é a varredura cega ou alguém apagou o
+histórico.
+
+### ⚠️ 4b.2 — Contagem que depende de QUANTOS ARQUIVOS (ou tabelas) EXISTEM
+
+**Dois gates da mesma fase caíram nisso**, e os dois reprovaram com **zero teste falhando**:
+- uma asserção **por arquivo** de `glob('database/migrations/*pub_aprovacao*.php')` → 5→6 quando a
+  3ª migration nasceu, e ia virar 7 e 8 nas waves seguintes;
+- uma asserção **por tabela** com `oferta_id` → subia a cada tabela-filha nova.
+
+⚠️ O dano é cumulativo e **social**: elevar a régua três ou quatro vezes **treina o executor
+seguinte a ajustar réguas quando elas incomodam**, e um dia ele ajusta uma que importava.
+➡️ **Colete os infratores e faça UMA asserção de contagem fixa.** Não se perde nada e se ganha: a
+mensagem **nomeia todos** em vez de parar no primeiro.
+➡️ E quando a régua **tem** de subir (contagem de arquivo varrido, por exemplo), **meça as duas
+pontas, suba MEDINDO, e remova o valor antigo** — mantê-lo aceito faz o gate passar se alguém
+**apagar** o que o fez subir.
+
+### ⚠️ 4b.3 — Sonda cujo silêncio depende de UMA LETRA é sorte, não ancoragem
+
+Eu prescrevi uma sonda de ausência pelo par `(aguardand|pendent|…)` × `(autoriza|gestor|aprovad)`.
+Medido pelo 186-05: o par casa **10 ocorrências LEGÍTIMAS** na área — *"Aguardando aprovação"* é
+vocabulário correto do domínio, e `AJUSTES_SOLICITADOS => APROVADO` é transição válida. A sonda
+**só ficava calada por acidente de grafia**: `aprovad` **não casa** a palavra `aprovação`.
+➡️ **O discriminador tem de ser o SUJEITO, não as palavras soltas** (a *exceção* esperando, não
+qualquer coisa aguardando aprovação). Em pt-BR, **conte com a cedilha e os acentos**, e **confira a
+sonda contra o que ELA DEVE casar**, nunca só contra o que deve ignorar.
+
+### ⚠️ 4b.4 — `migrate:rollback --step=1` destrói a migration da sessão PARALELA
+
+O banco local é **compartilhado**, e `--step` rola de volta **o último BATCH global**, decidido no
+instante em que roda. Dois planos da mesma wave provaram `migrate → rollback → migrate` ao mesmo
+tempo e **cada um derrubou a migration do outro** (uma delas duas vezes, com o batch saltando de 44
+para 46).
+➡️ A forma segura é **`migrate:rollback --batch=<N> --path=<o seu arquivo>`**. ⚠️ **`--path`
+sozinho NÃO basta** — ele filtra o último batch pelo caminho, imprime *"Migration not found"* para
+o alheio e **não rola a sua de volta**.
+⚠️ E **reaplicar a migration alheia é corretamente BLOQUEADO** pelo classificador
+(`[Modify Shared Resources]`): quem derrubou **avisa**, não conserta. Confira a tabela `migrations`
+por **reconsulta entre os passos**, nunca por stdout.
+
+### ⚠️⚠️ 4b.5 — Relação Eloquent com nome de propriedade do `Model`: erro CALADO, e o teste de fora PASSA
+
+**Não é sobre gate — é um bug de runtime, e foi MEDIDO duas vezes de forma independente.**
+Uma relação chamada `original()` colide com `protected $original` do `Model`
+(`vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasAttributes.php:63`):
+
+```
+de DENTRO da classe   $this->original()  => BelongsTo   (certo)
+de DENTRO da classe   $this->original    => array       <- os ATRIBUTOS CRUS, calado
+de FORA               $obj->original     => NULL / a relação
+```
+
+De **dentro** da classe o PHP enxerga a propriedade protegida e **não chama `__get()`**. O serviço
+devolvia linhas da tabela errada, e ⚠️ **um teste escrito DE FORA passava** enquanto o código de
+dentro estava errado — porque de fora o acessor funciona.
+➡️ **Ao criar relação ou acessor, confira o nome contra as ~60 propriedades do `Model`**
+(`$original`, `$attributes`, `$changes`, `$relations`, `$casts`, `$table`, `$connection`…). Vale um
+gate que varra as relações dos models novos contra essa lista, **com isca exigindo que `original`
+esteja nela**.
+
+### ⚠️ Dois extras medidos, para quem mexer em schema
+
+- **`decimal(p,s)` NÃO é legível no SQLite:** `Schema::getColumns` devolve `numeric` **sem
+  precisão**. Gate que confira precisão pelo **schema vivo** não tem o que medir na suíte — falha
+  sempre, ou vira *"se der para ler, confere"*, que **pula em silêncio**. Leia o **TEXTO da
+  migration** e **declare a limitação como asserção medida**.
+- **O Eloquent NÃO lê o default do banco:** criar a linha sem o campo grava o default **no banco**
+  e deixa **null em memória** — e a primeira transição foi recusada como ilegal por isso. Use
+  `$attributes` no model **e** gate comparando com o default lido do **schema vivo**, nunca com
+  outra constante do PHP (seriam duas cópias da mesma verdade).
+- **Nome de método de guarda genérico COLIDE** entre planos: `--filter` casa os homónimos de vários
+  arquivos e **soma as contagens**. Dê sufixo próprio aos seus.
+
 ## 5. Asserção negativa exige medir se o literal é EXCLUSIVO
 
 Ao proibir um texto na tela, confira que ele não é legítimo em outro lugar. Medido na Fase 179,
