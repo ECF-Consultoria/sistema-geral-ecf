@@ -43,10 +43,28 @@ O desenho tem um modal "Gerar novamente com IA" que regenera **só uma imagem** 
 - **imagens de referência**: as originais do produto (a referência daquela imagem já vem marcada)
   **e fotos enviadas pelo usuário na hora** (até 6).
 
-⚠️ **Hoje o Creative Engine gera KIT (2 imagens por pedido, ≈ US$ 0,20).** Regenerar **uma** imagem
-com problemas marcados e referências enviadas na hora **pode não existir** nessa forma.
-➡️ **Pergunta concreta: existe, ou precisa nascer?** Se precisar nascer, é do seu lado ou do nosso?
-O README do handoff manda sinalizar em vez de presumir: *"Se o serviço não existir, sinalize."*
+✅ **MEDIDO EM 14/10, DEPOIS DE ESCREVER ESTE AVISO: as quatro peças JÁ EXISTEM do seu lado.**
+Eu havia escrito aqui que isso "pode não existir" porque o Engine gera KIT (2 imagens, ≈ US$ 0,20).
+Fui medir e estava errado — **retiro a pergunta**:
+
+| peça do desenho | o que já existe |
+|---|---|
+| gerar **uma** imagem | `GeminiImageProvider::gerarImagem(CreativeGenerationRequest)` |
+| instrução livre do operador | `CreativePromptBuilder::paraSlot(..., int $regeneracao, ?string $ajusteOperador)` |
+| permissão de regenerar | `CreativePermissao::podeRegenerar(User)` |
+| **fotos enviadas pelo usuário** | `ReferenciaEfemeraService::guardar(MlAnuncioCriativo, array $arquivos)` |
+
+➡️ **Então o modal "Gerar novamente com IA" do desenho é COMPOSIÇÃO do que você já tem, não
+serviço novo.** Vamos **chamar**, nunca reimplementar.
+
+⚠️ **O que ainda pode faltar, e é pergunta de verdade:**
+1. os **chips de problema** do desenho (pés/base, cor, formato, material, peça duplicada ou ausente,
+   quantidade do kit, texto ilegível, fundo) são **estruturados**. Hoje o `$ajusteOperador` é **texto
+   livre**. Transformamos os chips em texto na nossa borda, ou vale guardar o problema de forma
+   estruturada do seu lado (serve ao seu `CreativeJuiz` também)?
+2. o `ReferenciaEfemeraService` indexa por **`MlAnuncioCriativo`**. A nossa fila trabalha em cima de
+   **oferta/conjunto de fotos** do Publicador novo. Precisamos conferir se o criativo é sempre
+   alcançável a partir da imagem que estamos revisando.
 
 ### 3. A foto ORIGINAL de referência de cada imagem de IA
 A revisão detalhada compara **lado a lado** "gerada por IA" × "original de referência", com zoom
@@ -84,8 +102,10 @@ Para você saber onde a fronteira cai. Nada disto existe hoje, e é o que a mile
 
 ## Perguntas, em ordem de urgência
 
-1. ⚠️ **A regeneração de UMA imagem com problemas marcados e referências enviadas existe?** É o único
-   item do desenho que depende de serviço que talvez não exista.
+1. ✅ **RESPONDIDA POR MEDIÇÃO (14/10): a regeneração de uma imagem com instrução e referências
+   enviadas EXISTE** — ver a seção 2 acima. No lugar dela, as duas perguntas novas: os chips de
+   problema viram texto na nossa borda ou estruturado no seu lado, e se o `MlAnuncioCriativo` é
+   sempre alcançável a partir da imagem que a fila revisa.
 2. **O vínculo imagem de IA → original de referência está gravado?**
 3. **Você pretende mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos
    endpoints de criativo nas próximas semanas?** Se sim, combinamos a ordem.
