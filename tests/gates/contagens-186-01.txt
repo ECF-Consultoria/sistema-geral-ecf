@@ -24,7 +24,18 @@
 # `skip` por `mtime`, então pristino e mutado dão o MESMO número. O segundo valor
 # está escrito de propósito: deixa explícito que a coincidência foi MEDIDA, e não
 # que o regime mutado ficou sem medir.
-gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=55,55
+# ⚠️ ATUALIZADO EM 14/10/2026, DEPOIS DO 186-02 — e o motivo importa mais que o numero.
+# Era `tests=55,55`. O 186-02 criou 3 arquivos em `aprovacao/`, e o bloco ABA-04 deste
+# gate tem UM SUBTESTE POR ARQUIVO VARRIDO — logo 55 -> 58, com `# fail 0`.
+# ⚠️ MEDIDO antes de mexer: o gate REPROVAVA (EXIT 1) com ZERO teste falhando, so pela
+# contagem. Isto e o padrao "numero que muda quando o trabalho certo e feito"
+# (`feedback_gate_que_reprova_pelo_proprio_conserto`): o conserto legitimo e elevar a
+# regua MEDINDO, nunca apagar a comparacao.
+# ⚠️ O 55 FOI REMOVIDO de proposito, nao esquecido: aceita-lo faria o gate passar se
+#    alguem APAGASSE `aprovacao/`, ou seja, aceitaria a regressao.
+# ⚠️ CONSEQUENCIA PARA OS PLANOS SEGUINTES: este numero cresce +1 por arquivo novo nos
+#    diretorios varridos. 186-04..09 vao mover de novo — RE-MEDIR, nunca calcular.
+gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=58
 
 # Os 7 arquivos de JS tocados por este plano: o gate novo + as 6 asserções
 # reapontadas. DOIS REGIMES, os dois MEDIDOS em 14/10/2026 depois do rename:
@@ -37,7 +48,17 @@ gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=55,
 # ⚠️ Travar só em 817 abortaria a 1ª mutação da campanha; não travar em nenhum
 #    dos dois marcaria a campanha inteira como "SOBREVIVEU" por um motivo que não
 #    é o código. Os dois números são MEDIDOS, nenhum é chute.
-rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=817,809
+rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=820
+# ⚠️ ATUALIZADO EM 14/10/2026, DEPOIS DO 186-02. Era `tests=817,809` (+3 pelo mesmo
+#    motivo do gate acima: 3 arquivos novos em `aprovacao/`).
+# ⚠️ E O SEGUNDO REGIME SAIU, porque eu NAO consegui reproduzi-lo — e nao se escreve
+#    numero que nao se mediu. Tentei: `npm run build` (CSS fresco) deu `# tests 820`;
+#    `touch` no `SeloDeStatusDaPublicacao.jsx` (componente mais novo que o CSS) deu
+#    `# tests 820` e `# skipped 0` TAMBEM — o `skip` por `mtime` que o 186-01 mediu
+#    (817/809, 8 subtestes) NAO disparou nesta medicao.
+#    ⚠️ Se o `skip` reaparecer numa campanha de mutacao, o gate ABORTA pela contagem
+#    — e esse e o modo de falhar CERTO: alto e visivel. Quem o encontrar deve MEDIR o
+#    numero do regime de skip e acrescenta-lo aqui, com a prova ao lado.
 
 # ABA-03 — o rótulo da aba vem do SERVIDOR, e a CHAVE `em_revisao` não muda.
 # ⚠️ O nome do método é `test_as_seis_abas_vem_na_ordem_do_servidor`
