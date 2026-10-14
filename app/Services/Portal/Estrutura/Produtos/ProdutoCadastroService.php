@@ -235,6 +235,73 @@ class ProdutoCadastroService
         ];
     }
 
+    // ═══ Estoque do Bling (Fase 184, BLING-25) ══════════════════════════════
+
+    /**
+     * Grava SÓ a coluna `estoque` das variações desta empresa — caminho dedicado, fora de
+     * `gravarLinhas`. Existe separado porque o estoque é o único dado que o Bling escreve
+     * SEMPRE na variação vinculada (seed `261010-integracao-bling-erp.md` §5), e o plano 10
+     * desta fase vai fazer o caminho da LINHA passar a ignorar `estoque`/`codigo` justamente
+     * nessas variações. Um método dedicado mantém o caminho único de escrita (D-02 do
+     * cabeçalho desta classe) imune a essa regra, em vez de criar uma segunda forma de
+     * gravar produto.
+     *
+     * `$estoquePorVariacao[$variacaoId] === null` significa "o Bling não informou": a
+     * variação NÃO é tocada — `NULL` não é zero (mesma régua de `SaldoDoBling::normalizar`).
+     * Id de variação de outra empresa, ou que não existe, é ignorado em silêncio — o filtro
+     * por `company_id` abaixo é a defesa.
+     *
+     * Nunca chama o agendamento do preparo pela IA nem o reconciliador de ofertas, e não
+     * despacha nenhum Job: é exatamente o caminho que a varredura periódica de estoque usa
+     * para não enfileirar uma cadeia inteira de preparo por produto a cada 30 minutos.
+     * Levar o produto ao Publicador, se um dia for preciso, é responsabilidade de quem
+     * chama este método — não implementado aqui.
+     *
+     * @param  array<int, ?int>  $estoquePorVariacao  id da variação => estoque já normalizado
+     *                                                 (ou `null` = o Bling não informou)
+     * @return array{gravadas: int, sem_mudanca: int, ignoradas: int}
+     */
+    public function gravarEstoqueDoBling(Company $empresa, array $estoquePorVariacao, AtorDoPortal $ator): array
+    {
+        return DB::transaction(function () use ($empresa, $estoquePorVariacao, $ator) {
+            $variacoes = EstruturaProdutoVariacao::query()
+                ->whereIn('id', array_keys($estoquePorVariacao))
+                ->where('company_id', $empresa->id)
+                ->get()
+                ->keyBy('id');
+
+            $totais = ['gravadas' => 0, 'sem_mudanca' => 0, 'ignoradas' => 0];
+
+            foreach ($estoquePorVariacao as $variacaoId => $estoque) {
+                $variacao = $variacoes->get($variacaoId);
+                if (! $variacao) {
+                    // Id inexistente, ou de outra empresa: não pertence a este lote.
+                    continue;
+                }
+
+                if ($estoque === null) {
+                    $totais['ignoradas']++;
+                    continue;
+                }
+
+                if ($variacao->estoque === $estoque) {
+                    $totais['sem_mudanca']++;
+                    continue;
+                }
+
+                // SÓ a coluna estoque — um fill()/update() largo sobrescreveria nome, código,
+                // custo e volumes que a equipe editou (nunca o faça nem no próximo ajuste).
+                $variacao->update(['estoque' => $estoque]);
+                $totais['gravadas']++;
+            }
+
+            RegistroEstrutura::registrar($ator, $empresa, null, 'estoque_do_bling',
+                "{$totais['gravadas']} estoque(s) atualizado(s) a partir do Bling", ['totais' => $totais]);
+
+            return $totais;
+        });
+    }
+
     // ═══ Oferta ligada à variação (D-08) ════════════════════════════════════
 
     /** Nome da oferta: "Produto — Valor", ou só o produto quando a variação não tem valor. Diferencia V1/V2 na Lista SKUs e no "Sincronizar do Portal". */
