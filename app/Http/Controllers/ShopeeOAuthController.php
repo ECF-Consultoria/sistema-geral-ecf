@@ -112,8 +112,18 @@ class ShopeeOAuthController extends Controller
      * Página que o cliente abre. Decide em que passo ele está (retomável):
      * já conectou ERP+Ads → concluído; só ERP → Passo 2 (Ads); nada → Passo 1 (ERP).
      */
-    public function connectLanding(Company $company)
+    public function connectLanding(Request $request, Company $company)
     {
+        // Assinatura conferida aqui (e não pelo middleware `signed`) para separar
+        // o link VENCIDO — o caso comum: o painel guarda o link e ele passa dos
+        // 7 dias — do link adulterado/incompleto, cada um com a sua instrução.
+        if (! URL::hasCorrectSignature($request)) {
+            return $this->erro('Link inválido ou incompleto. Copie o link inteiro que recebeu ou peça um novo ao administrador.', 403);
+        }
+        if (! URL::signatureHasNotExpired($request)) {
+            return $this->erro('Este link venceu (vale 7 dias). Peça um novo link ao administrador.', 403);
+        }
+
         $hasErp = $company->shopeeToken()->where('status', 'active')->exists();
         $hasAds = $company->shopeeAdsToken()->where('status', 'active')->exists();
         $ads    = ShopeeService::for('ads');
@@ -275,9 +285,9 @@ class ShopeeOAuthController extends Controller
     }
 
     /** Renderiza a página de erro do fluxo guiado. */
-    private function erro(string $message)
+    private function erro(string $message, int $status = 200)
     {
-        return view('oauth.shopee-connect', ['step' => 'error', 'message' => $message]);
+        return response()->view('oauth.shopee-connect', ['step' => 'error', 'message' => $message], $status);
     }
 
     /** Zera o link pendente da empresa (fluxo concluído). */

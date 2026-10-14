@@ -551,8 +551,12 @@ Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 
 
 // Shopee OAuth — landing guiada (link único assinado que o admin manda ao cliente:
 // Passo 1 ERP → Passo 2 Ads) + callbacks públicos dos dois apps.
+// ⚠️ SEM o middleware `signed`: a assinatura é conferida no próprio
+// `connectLanding`, que devolve 403 com página explicando "link vencido" ou
+// "link inválido" — o `signed` dava só um "403 Invalid signature" cru, e o
+// cliente que abria um link de mais de 7 dias não sabia o que fazer.
 Route::get('/shopee/conectar/{company}', [ShopeeOAuthController::class, 'connectLanding'])
-    ->name('shopee.connect.landing')->middleware('signed');
+    ->name('shopee.connect.landing');
 Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
     ->name('shopee.oauth.callback');
 Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCallback'])

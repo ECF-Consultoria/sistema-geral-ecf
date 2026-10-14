@@ -93,8 +93,10 @@ function CompanyRow({ company, adsConfigured, onDisconnect, onLinkGenerated }) {
     const falhas = [['Shopee', token], ['Ads', ads]]
         .filter(([, t]) => t?.com_problema)
         .map(([nome, t]) => `${nome}: ${t.last_error ?? `sem renovação ${tempoDesde(t.last_refreshed_at) ?? 'registrada'}`}`);
-    // URL disponível: prioriza sessão atual (mais fresca), cai para banco
-    const linkUrl = sessionUrl ?? company.shopee_link_url;
+    // URL disponível: prioriza sessão atual (mais fresca), cai para banco. Link
+    // do banco já vencido NÃO é oferecido: a assinatura não vale mais e o cliente
+    // levaria 403 — o caminho é "Regerar link".
+    const linkUrl = sessionUrl ?? (linkExpirado ? null : company.shopee_link_url);
 
     const gerarLink = async () => {
         setLoading(true);
@@ -216,7 +218,7 @@ function CompanyRow({ company, adsConfigured, onDisconnect, onLinkGenerated }) {
                                 ? <RefreshCw size={11} className="animate-spin" />
                                 : <Store size={11} />
                             }
-                            {linkUrl ? 'Regerar link' : 'Gerar link'}
+                            {linkUrl || linkExpirado ? 'Regerar link' : 'Gerar link'}
                         </button>
                     )}
                 </div>

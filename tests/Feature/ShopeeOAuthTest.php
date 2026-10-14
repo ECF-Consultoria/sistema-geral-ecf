@@ -74,7 +74,35 @@ class ShopeeOAuthTest extends TestCase
     {
         $company = Company::factory()->create();
 
-        $this->get("/shopee/conectar/{$company->id}")->assertStatus(403);
+        $this->get("/shopee/conectar/{$company->id}")
+            ->assertStatus(403)
+            ->assertSee('Link inválido', false);
+    }
+
+    public function test_landing_com_link_vencido_explica_que_venceu(): void
+    {
+        $company = Company::factory()->create();
+
+        $url = URL::temporarySignedRoute('shopee.connect.landing', now()->addDays(7), ['company' => $company->id]);
+        $this->travel(8)->days();
+
+        $this->get($url)
+            ->assertStatus(403)
+            ->assertSee('Este link venceu', false)
+            ->assertDontSee('/api/v2/shop/auth_partner', false);
+    }
+
+    public function test_landing_com_assinatura_adulterada_e_bloqueada(): void
+    {
+        $company = Company::factory()->create();
+        $outra   = Company::factory()->create();
+
+        $url = URL::temporarySignedRoute('shopee.connect.landing', now()->addDays(7), ['company' => $company->id]);
+        $adulterada = str_replace("/conectar/{$company->id}?", "/conectar/{$outra->id}?", $url);
+
+        $this->get($adulterada)
+            ->assertStatus(403)
+            ->assertSee('Link inválido', false);
     }
 
     public function test_build_auth_url_monta_link_assinado(): void
