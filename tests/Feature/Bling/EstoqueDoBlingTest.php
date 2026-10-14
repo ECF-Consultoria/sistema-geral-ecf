@@ -495,4 +495,120 @@ class EstoqueDoBlingTest extends TestCase
 
         $this->assertNull($conexao->refresh()->ultimo_estoque_em);
     }
+
+    // ═══ Task 3 — comando bling:estoque ══════════════════════════════════════
+
+    public function test_comando_varre_todas_as_conexoes_ativas_com_estoque_ligado(): void
+    {
+        $empresaA = $this->empresaDoGabarito();
+        $empresaB = $this->empresaDoGabarito();
+        $conexaoA = $this->conexaoAtiva($empresaA);
+        $conexaoB = $this->conexaoAtiva($empresaB);
+        $vA = $this->criarVariacao($empresaA, 'CMD-A');
+        $vB = $this->criarVariacao($empresaB, 'CMD-B');
+        $this->vincular($empresaA, $vA, '9001');
+        $this->vincular($empresaB, $vB, '9002');
+
+        $this->fakeBling(['9001' => 4, '9002' => 6]);
+
+        $this->artisan('bling:estoque')->assertExitCode(0);
+
+        $this->assertSame(4, $vA->refresh()->estoque);
+        $this->assertSame(6, $vB->refresh()->estoque);
+        $this->assertNotNull($conexaoA->refresh()->ultimo_estoque_em);
+        $this->assertNotNull($conexaoB->refresh()->ultimo_estoque_em);
+    }
+
+    public function test_comando_com_empresa_varre_so_aquela_empresa(): void
+    {
+        $empresaA = $this->empresaDoGabarito();
+        $empresaB = $this->empresaDoGabarito();
+        $this->conexaoAtiva($empresaA);
+        $this->conexaoAtiva($empresaB);
+        $vA = $this->criarVariacao($empresaA, 'SO-A');
+        $vB = $this->criarVariacao($empresaB, 'SO-B');
+        $this->vincular($empresaA, $vA, '9101');
+        $this->vincular($empresaB, $vB, '9102');
+
+        $this->fakeBling(['9101' => 11, '9102' => 22]);
+
+        $this->artisan('bling:estoque', ['--empresa' => $empresaA->id])->assertExitCode(0);
+
+        $this->assertSame(11, $vA->refresh()->estoque);
+        // Asserção negativa: a outra empresa não foi tocada por este comando.
+        $this->assertNull($vB->refresh()->estoque);
+    }
+
+    public function test_conexao_divergente_revogada_ou_erro_e_pulada_e_entra_no_resumo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $conexao = $this->conexaoAtiva($empresa, ['status' => BlingConexao::STATUS_DIVERGENTE]);
+        $variacao = $this->criarVariacao($empresa, 'PULADA-1');
+        $this->vincular($empresa, $variacao, '9201');
+
+        $this->fakeBling(['9201' => 99]);
+
+        // Via --empresa: a conexão é carregada mesmo não estando ativa, e é pulada dentro do laço.
+        $this->artisan('bling:estoque', ['--empresa' => $empresa->id])
+            ->expectsOutputToContain('pulada')
+            ->assertExitCode(0);
+
+        // Asserção negativa: nada foi gravado, porque a conexão nunca chegou a ser varrida.
+        $this->assertNull($variacao->refresh()->estoque);
+        Http::assertNothingSent();
+    }
+
+    public function test_uma_empresa_que_falha_nao_interrompe_as_demais(): void
+    {
+        $empresaFalha = $this->empresaDoGabarito();
+        $empresaOk = $this->empresaDoGabarito();
+        $this->conexaoAtiva($empresaFalha);
+        $this->conexaoAtiva($empresaOk);
+        $vFalha = $this->criarVariacao($empresaFalha, 'FALHA-1');
+        $vOk = $this->criarVariacao($empresaOk, 'OK-CMD-1');
+        $this->vincular($empresaFalha, $vFalha, '9301');
+        $this->vincular($empresaOk, $vOk, '9302');
+
+        // 429 na 1ª chamada a /estoques/saldos — qual das duas conexões bate nela primeiro
+        // depende da ordem por ultimo_estoque_em (ambas null); de qualquer forma, uma delas
+        // erra e a outra PRECISA continuar.
+        $this->fakeBling(['9301' => 1, '9302' => 1], erroNoBloco: 1);
+
+        $this->artisan('bling:estoque')->assertExitCode(0);
+
+        // Pelo menos uma das duas foi gravada (a que não bateu no 429) — nenhuma trava a outra.
+        $algumaGravada = $vFalha->refresh()->estoque !== null || $vOk->refresh()->estoque !== null;
+        $this->assertTrue($algumaGravada);
+    }
+
+    public function test_dry_run_nao_faz_nenhuma_requisicao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conexaoAtiva($empresa);
+        $variacao = $this->criarVariacao($empresa, 'DRY-1');
+        $this->vincular($empresa, $variacao, '9401');
+
+        Http::fake(); // nenhuma resposta configurada — qualquer requisição real falharia o teste
+
+        $this->artisan('bling:estoque', ['--dry-run' => true])->assertExitCode(0);
+
+        $this->assertNull($variacao->refresh()->estoque);
+        Http::assertNothingSent();
+    }
+
+    public function test_resumo_e_conferido_por_reconsulta_ao_banco_nao_por_stdout(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $conexao = $this->conexaoAtiva($empresa);
+        $variacao = $this->criarVariacao($empresa, 'RESUMO-1');
+        $this->vincular($empresa, $variacao, '9501');
+
+        $this->fakeBling(['9501' => 42]);
+
+        $this->artisan('bling:estoque')->assertExitCode(0);
+
+        // A prova é a RECONSULTA ao banco, nunca o texto impresso (armadilha conhecida do projeto).
+        $this->assertSame(42, $variacao->refresh()->estoque);
+        $this->assertNotNull($conexao->refresh()->ultimo_estoque_em);
+    }
 }

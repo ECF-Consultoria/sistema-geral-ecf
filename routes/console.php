@@ -599,3 +599,25 @@ Schedule::command('bling:renovar-tokens')
     ->onOneServer()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/bling.log'));
+
+// Fase 184 (BLING-25, BLING-26) — a varredura periódica do estoque do Bling. Os quatro
+// motivos de cada parte, para ninguém "simplificar" depois:
+// - 30 MIN porque não existe "alterado desde" no saldo do Bling: sem webhook (Fase 2), a
+//   varredura é o único caminho para o estoque chegar sozinho; custo medido de 8-16
+//   chamadas por varredura, para 500 produtos / 800 SKUs.
+// - withoutOverlapping(25) porque a rodada seguinte vem em 30 min: um mutex de 25 min
+//   expira ANTES dela, então um processo morto não deixa o estoque parado para sempre
+//   (mesma lição do withoutOverlapping(180) do polos:warm, acima).
+// - onOneServer() porque a varredura consome a cota DO CLIENTE, e duas máquinas rodando
+//   juntas a dobrariam.
+// - runInBackground() porque a fila default de produção vive congestionada (mesmo motivo
+//   do bling:renovar-tokens acima) e a fila que atende quem está esperando resposta na
+//   hora não é lugar para uma varredura de catálogo inteiro.
+Schedule::command('bling:estoque')
+    ->everyThirtyMinutes()
+    ->timezone('America/Sao_Paulo')
+    ->name('bling-estoque')
+    ->withoutOverlapping(25)
+    ->onOneServer()
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/bling.log'));
