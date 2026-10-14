@@ -4420,9 +4420,20 @@ migration monolítica**, e cada uma com a **tabela de decisão de schema no docb
      `EstruturaPrecificacaoParametros::daEmpresa()` com a exceção da oferta vencendo, o custo de
      `DadosEfetivosService::custosDoProduto()` — e há **gate de ausência** de `0.12`, `0.17` e `6.75`
      nos arquivos novos. **A margem mínima é a ÚNICA configuração nova** (FIN-02, FIN-03, FIN-09)
-  7. A **composição financeira** fecha com a de `fin()` para os 10 estados de exemplo do protótipo
-     (seção F do README), e **cada linha carrega origem `Confirmado`/`Estimado`/`Pendente` + nota de
+  7. A **composição financeira** fecha com a **ESTRUTURA e as INVARIANTES** de `fin()` — as 7 linhas
+     na ordem, os rótulos, a propagação de `null`, a composição de `fixedSum`, e
+     `equilibrio = fixedSum/(1−vr)` / `precoAlvo = fixedSum/(1−vr−minimo)` — com os **números vindos
+     das fontes reais**; e **cada linha carrega origem `Confirmado`/`Estimado`/`Pendente` + nota de
      fonte real** — ⚠️ a nota nomeia a fonte, não é texto decorativo (FIN-01, DADO-13, VOC-04)
+     ⚠️⚠️ **CORRIGIDO EM 14/10/2026 — a redação anterior ("fecha com a de `fin()` para os 10 estados")
+     CONTRADIZIA o critério 6 e era ARITMETICAMENTE IMPOSSÍVEL.** As taxas de `fin()` são **ENTRADA
+     fictícia**, e o próprio protótipo as rótula assim (`Aprovacao.dc.html:1064-1066`: *"taxa de
+     exemplo"*, *"exemplo"*, `src: 'est'`). Com as fontes reais o exemplo `o1` sai de +R$ 70,82 /
+     14,46% para +R$ 12,03 / 2,46% — **inverte de aprovável para bloqueado**. ➡️ **"O protótipo
+     ganha" vale para a FÓRMULA, os RÓTULOS e a ORDEM, NUNCA para os NÚMEROS** — obedecer os
+     números forçaria hardcodear 0.12/0.17/0.06/6.75, que o critério 6 proíbe.
+     ⚠️ E a seção F do README é **prosa**: só `info()` decide bloqueio (o `o3` que ela chama de
+     "margem baixa" dá **prejuízo** pela cadeia exclusiva). **Não misture as duas fontes.**
   8. ⚠️ **Antes de declarar o frete do vendedor "Pendente", está PROVADO que não há fonte** — existem
      `FreteParaAPrecificacaoService`, `FreteDoPublicadoService`, `ConferenciaDeFrete` e
      `TabelaFreteEcf`; havendo fonte, a linha nasce `Confirmado`/`Estimado` com a nota real (FIN-07)
@@ -4438,7 +4449,19 @@ migration monolítica**, e cada uma com a **tabela de decisão de schema no docb
       **`app/Services/Creative/` tem diff vazio**, com a retenção alheia intocada (TERR-11)
   12. ⚠️ **A granularidade está RESOLVIDA e REGISTRADA:** o docblock diz se a oferta é tabela nova ou
       projeção de `pub_rascunhos` × `listing_type_id`, e como ela se liga a `pub_fila_publicacao_itens`
-      **sem duplicar** `validacao_id`/`plano_hash`/`revisao`/`ciente`/`precisa_revisar` (DADO-03)
+      **sem duplicar** `validacao_id`/`plano_hash`/`revisao`/`ciente` (DADO-03).
+      ⚠️ **CORRIGIDO EM 14/10/2026:** são **4 colunas + 1 VALOR DE STATUS**, não 5 colunas —
+      `precisa_revisar` **não é coluna em lugar nenhum**: é um valor do `status` de
+      `pub_fila_publicacao_itens` (`2026_10_10_100000_...:45`, `status` string(20)). Um gate que
+      afirme `hasColumn('precisa_revisar') === false` é **vazio por construção** — a prova certa
+      é que aquele `status` segue sendo a única fonte do valor.
+      ⚠️ **E o eixo VARIANTE existe no schema e NÃO pode ser descartado:**
+      `ResolvedorGruposImagem::chaveDoGrupo()` dá **um grupo por valor de eixo que define foto,
+      mais `GENERAL`** (3 cores = 4 grupos), e `pub_publicacao_itens` é `listing_type_id` **+
+      `variante_chave``. **Decisão do usuário, 14/10/2026: o bloqueio de fotos considera TODOS os
+      grupos do rascunho** — a oferta só fica aprovável com as fotos de todas as variações **e** as
+      gerais conferidas. **Aprovação por cor foi oferecida e RECUSADA** (aprovar já publica e não há
+      desfazer, então foto não conferida não pode ir ao ar).
   13. Toda migration obedece MIG-01..09: índice de nome **curto** (erro 1059), `nullOnDelete` com
       `->nullable()` (erro 1830), **sem `enum`** (CHECK do SQLite), `up()` idempotente, **sem
       try/catch em volta de DDL**, e **migrate → rollback → migrate provado no local**
@@ -5027,6 +5050,10 @@ o render adverso (REND-01) e a prova de território (TERR-01..11).
 | 4 | O que falta do lado do Creative Engine para ligar `publicador.criativos_auto.ativo`? (AUTO-07) | **outro dev** | Fase **194** |
 | ~~5~~ | ✅ **RESPONDIDA em 14/10/2026 — basta REGISTRAR quem liberou**, como no protótipo: marca a exceção, escreve o motivo, e fica gravado quem foi e quando (BLOQ-09). Aprovação em dois passos foi oferecida e **recusada** — não travar a oferta esperando um segundo aprovador, e não criar aviso para isso | usuário | **nada** |
 | 6 | Vale oferecer **"recolocar a original manualmente"** para o acervo antigo, que nunca terá o vínculo? (IMG-13) | **usuário** | nada — melhoria futura |
+
+| ~~7~~ | ✅ **DECIDIDA 14/10 — "Embalagem" e "Outros custos" não têm fonte no repositório** (medido). "Outros custos" nasce **R$ 0,00 `Confirmado`** (é o que o próprio protótipo faz: `other: {v: 0, src: 'conf', note: 'Cadastro do produto'}`). "Embalagem" nasce **`Pendente` VISÍVEL e NÃO anula o resultado** — o resultado sai marcado como **estimado por baixo**. ⚠️ É **exceção DELIBERADA à regra "faltando qualquer item o resultado é null"**, e a única: sem ela o painel diria "Incompleto" em **100%** das ofertas e **nada poderia ser aprovado**. As outras duas opções foram oferecidas e recusadas: campo novo de custo de embalagem (trabalho a mais nesta fase) e as duas em zero (assumiria embalagem de graça, inflando a margem) | usuário | **nada** |
+| ~~8~~ | ✅ **DECIDIDA 14/10 — fotos de produto com variação: o bloqueio considera TODOS os grupos.** A oferta só fica aprovável com as fotos de **todas** as variações **e** as **gerais** conferidas. ⚠️ **Aprovação cor por cor foi oferecida e RECUSADA**, pela razão que amarra tudo: **aprovar já publica e não há desfazer**, então foto não conferida não pode ir ao ar. Isto resolve o eixo VARIANTE que o plano havia descartado (ver critério 12) | usuário | **nada** |
+| ~~9~~ | ✅ **DECIDIDA 14/10 — cada margem diz de onde vem.** O projeto tem **duas** margens de propósito: a do portão e do editor usa a **tarifa real do ML** (`sale_fee_amount`), a da visão rápida do lote usa o **parâmetro da Precificação** (`ResumoRapidoService:384-391`) — e o docblock do `EditorRascunhoService:370-372` diz **"diferente DE PROPÓSITO... não unificar"**. ⚠️ Então **a tela nomeia a fonte de cada número**: no portão *"com a tarifa real do Mercado Livre"*, no lote *"estimada pela sua Precificação"*. Deixar sem texto foi oferecido e recusado — sem isso a divergência chega como **bug de dado**, contra a regra-mestra de acertividade | usuário | **nada** |
 
 **⚠️ RESPONDIDAS por medição em 14/10/2026, não reabrir:**
 

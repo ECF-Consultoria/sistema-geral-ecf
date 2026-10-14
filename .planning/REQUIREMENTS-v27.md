@@ -72,7 +72,9 @@ Fase 194 (ligar a automação) é o destino da milestone, não um apêndice.
 - **D9 — Fatia vertical, servidor antes do render.** Foi o que fez as Fases 177-180 funcionarem.
   Cada fase entrega servidor **e** tela do mesmo pedaço, e o **fechamento medido é plano próprio** —
   foi no fechamento que apareceram as divergências que ninguém mais viu.
-- **D10 — Esta milestone TEM migrations.** São **11 estruturas novas** (a v26.0 declarou nenhuma).
+- **D10 — Esta milestone TEM migrations.** São **12 estruturas novas** (a v26.0 declarou nenhuma).
+  ⚠️ **Era 11 até 14/10/2026**; a 12ê é o **DADO-15** (vínculo durável com a original de referência),
+  que nasceu da medição do vínculo efêmero (§4b). São **12 tabelas em 6 migrations** (3+2+1+3+2+1).
   Toda migration obedece a disciplina MIG-01..09, medida em deploys quebrados deste projeto.
 - **D11 (fronteira do gate D-11) — o D-11 vale para a LISTA; a FILA escreve.**
   `tests/js/estrutura-meus-anuncios.test.js` (linhas ~`:250`, `:256`, `:285` — identificar por
@@ -485,7 +487,15 @@ tela renderizada** (GATE-14).
   e `TabelaFreteEcf`. Se houver fonte, a linha nasce `Confirmado`/`Estimado` com a nota real.
 - **FIN-08** — **O frete pago pelo COMPRADOR aparece como linha informativa "não entra"** — nunca
   somado.
-- **FIN-09** — **A margem mínima é CONFIGURAÇÃO nova** (não existe no repositório hoje), com valor
+- **FIN-09** — ⚠️ **EMENDADO EM 14/10/2026 por decisão do usuário — a redação abaixo ficou
+  INCOMPLETA.** A regra vigente é: **o parâmetro da empresa manda quando está preenchido** —
+  `EstruturaPrecificacaoParametros::daEmpresa()['margem_contribuicao']` **quando > 0**; **senão** a
+  configuração nova `publicador.aprovacao.margem_minima_percentual` (padrão 12,0).
+  ⚠️ **O fallback é o PONTO da decisão: o zero NÃO desliga o bloqueio.** O padrão daquele
+  parâmetro é `0.0`, então usá-lo sozinho desligaria a trava em toda empresa que nunca salvou a
+  Calculadora de Custo — e usar só a config ignoraria quem configurou a própria exigência.
+  **Nenhuma das duas simplificações é aceitável**, e as duas falham em silêncio.
+  **A configuração nova segue sendo a única desta milestone**, agora como piso, com valor
   padrão 12%, exibida na tela como "ⓘ Margem mínima: **12%** · Toda oferta precisa de aprovação
   humana antes de publicar" — e **o número da tela vem da config**, não de literal no JSX.
 - **FIN-10** — A barra de margem é escala **0 a 40%** com traço marcando o mínimo a **30% da barra**;
