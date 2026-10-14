@@ -111,6 +111,11 @@ const ARQUIVOS_NOVOS = [
     `${DIR_PUB}/MenuDeFiltro.jsx`,
     `${DIR_PUB}/ChipsDeFiltro.jsx`,
     `${DIR_PUB}/ChipsDeTriagem.jsx`,
+    // Plano 180-08 — a TABELA: o cabeçalho do grid das 9 colunas, a linha com
+    // os CINCO fundos distintos e as SETE células especiais.
+    `${DIR_PUB}/CabecalhoDaTabela.jsx`,
+    `${DIR_PUB}/LinhaDePublicacao.jsx`,
+    `${DIR_PUB}/CelulasDaLinha.jsx`,
 ];
 
 /**
@@ -213,19 +218,21 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
         );
     });
 
-    await contexto.test('os 8 arquivos da Fase 180 estão na lista', () => {
-        // ⚠️ Número ELEVADO pelo plano 180-07: 2 do 180-05, que abre o
-        // diretório, + 3 do 180-06 + 3 deste. Os planos seguintes da fase
-        // ELEVAM este valor junto com os arquivos deles — deixar o número
-        // parado é o jeito de descobrir que alguém esqueceu de declarar o
-        // arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência contra
-        // `text-sm`, `ecf-*`, hex e breakpoint), e o gate passaria POR OMISSÃO.
+    await contexto.test('os 11 arquivos da Fase 180 estão na lista', () => {
+        // ⚠️ Número ELEVADO pelo plano 180-08: 2 do 180-05, que abre o
+        // diretório, + 3 do 180-06 + 3 do 180-07 + 3 deste. Os planos seguintes
+        // da fase ELEVAM este valor junto com os arquivos deles — deixar o
+        // número parado é o jeito de descobrir que alguém esqueceu de declarar
+        // o arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência
+        // contra `text-sm`, `ecf-*`, hex e breakpoint), e o gate passaria POR
+        // OMISSÃO.
         assert.equal(
             ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`)).length,
-            8,
-            'a Fase 180 tem 8 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
-            + ' 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles)'
-            + ' e 3 do 180-07 (MenuDeFiltro + ChipsDeFiltro + ChipsDeTriagem)',
+            11,
+            'a Fase 180 tem 11 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
+            + ' 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles),'
+            + ' 3 do 180-07 (MenuDeFiltro + ChipsDeFiltro + ChipsDeTriagem)'
+            + ' e 3 do 180-08 (CabecalhoDaTabela + LinhaDePublicacao + CelulasDaLinha)',
         );
     });
 });
