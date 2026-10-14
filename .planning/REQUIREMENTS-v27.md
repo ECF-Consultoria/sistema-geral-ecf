@@ -444,9 +444,14 @@ tela renderizada** (GATE-14).
   "Conferiu a alteração de preço da versão N" (`checkChange`).
 - **BLOQ-08** — **Exceção autorizada libera só `loss` e `margin`** — nunca `photos`, `freight`,
   `change`, `adjust` nem `title`.
-- **BLOQ-09** — ⚠️ No protótipo a exceção é aplicada direto; **no produto ela passa pelo fluxo de
-  autorização do gestor**. O desenho de quem autoriza é **decisão do usuário** (ver "Decisões em
-  aberto").
+- **BLOQ-09** — ✅ **DECIDIDO pelo usuário em 14/10/2026: basta REGISTRAR quem liberou**, como no
+  protótipo. A exceção é aplicada **direto** por quem está revisando: marca, **escreve o motivo
+  (obrigatório)**, e fica gravado **quem foi e quando**. ⚠️ **Aprovação em dois passos foi oferecida
+  e RECUSADA** — não travar a oferta esperando um segundo aprovador, e **não criar aviso nem caixa
+  de pendência** para isso. O controle é **auditoria depois**, não barreira antes.
+  ⚠️ **Verificável:** a exceção sem motivo escrito é **recusada**; a exceção aplicada aparece no
+  histórico da oferta (DADO-10) com autor e carimbo de tempo; e nenhuma tela introduz um estado de
+  "exceção aguardando autorização" — ele **não existe** nesta milestone.
 - **BLOQ-10** — **Lote**: o modal lista **todas** as ofertas selecionadas, marca com ✓ as aptas e com
   × as que ficam de fora **com o motivo**, e aprova **só as aptas, cada uma na versão indicada**.
 - **BLOQ-11** — Uma **falha na publicação mantém `approvedVersion` e toda a revisão**; "Tentar de
@@ -784,9 +789,20 @@ tela renderizada** (GATE-14).
   a área nova ganha gate de escrita próprio.
 - **PUB-08** — Toda publicação disparada daqui registra **quem aprovou** e **em que versão**, e isso
   aparece no histórico e na lista de Publicadas (pelo que a lista já mostra).
-- **PUB-09** — ⚠️ **Decisão do usuário (em aberto 3):** aprovar **enfileira automaticamente** ou a
-  pessoa ainda aperta "publicar"? O requisito é verificável nos dois desenhos; a fase **não começa**
-  sem a resposta.
+- **PUB-09** — ✅ **DECIDIDO pelo usuário em 14/10/2026: aprovar JÁ PUBLICA.** A aprovação enfileira
+  na hora, **sem segundo clique**. ⚠️ **O rótulo do botão NÃO muda: continua o literal do protótipo,
+  "Aprovar para publicação"** — ele já diz que a oferta vai para publicação, e reescrever para
+  "Aprovar e publicar" seria adaptar o protótipo sem necessidade (FID-02). **A decisão mudou o
+  COMPORTAMENTO, não o texto.** Razão, nas palavras da gestão: *"o sistema funcione de
+  forma autônoma para publicar mas que tenha uma aprovação antes de ir para ar"* — **o portão É a
+  aprovação**. ⚠️ **Duas alternativas foram oferecidas e RECUSADAS:** publicar em dois atos
+  (criaria uma pilha de "aprovados que ninguém publicou") e publicar com janela para desfazer.
+  ⚠️ **NÃO reabrir, e NÃO acrescentar um segundo clique de confirmação "por segurança"** — quem
+  quiser mais trava, a trava certa é bloqueio (BLOQ-01..12) ou exceção registrada (BLOQ-09), nunca
+  um passo a mais depois do aprovado.
+  ⚠️ **Consequência verificável:** como não há desfazer, nenhuma peça desta milestone pode depender
+  de "dá para cancelar depois". A falha de publicação **preserva a revisão aprovada** (PUB-05), em
+  vez de devolver a oferta à fila.
 - **PUB-10** — Nenhuma linha desta fase cria rota, botão ou coluna sem destino (D4).
 
 ## AUTO — Ligar a automação atrás do portão
@@ -980,14 +996,18 @@ tela renderizada** (GATE-14).
 2. ✅ ~~O `MlAnuncioCriativo` é alcançável a partir da imagem que a fila revisa?~~ — **RESPONDIDA
    POR MEDIÇÃO em 14/10/2026: SIM**, por `ml_anuncio_criativos.pub_imagem_id` (indexado). Não é
    mais pergunta e **não bloqueia nada** (IA-05).
-3. **Aprovar enfileira automaticamente, ou a pessoa ainda aperta "publicar"?** (PUB-09) — decisão do
-   **usuário**. Bloqueia a Fase 193.
+3. ✅ ~~**Aprovar enfileira automaticamente, ou a pessoa ainda aperta "publicar"?**~~ (PUB-09) —
+   **DECIDIDA pelo usuário em 14/10/2026: aprovar JÁ PUBLICA**, sem segundo clique e **sem trocar o
+   rótulo do protótipo** ("Aprovar para publicação"). Dois
+   atos e janela de desfazer foram oferecidos e **recusados**. **Não bloqueia mais nada**, e alcança
+   a Fase 188 (onde o botão nasce), não só a 193.
 4. **O que falta do lado do Creative Engine para ligar `publicador.criativos_auto.ativo`?** (AUTO-07)
    — pergunta ao **outro dev**. Bloqueia a Fase 194.
-5. **Quem autoriza a exceção de prejuízo/margem?** (BLOQ-09) — no protótipo é direto; no produto o
-   README pede "fluxo de autorização do gestor". **Decisão do usuário:** basta registrar o gestor
-   responsável (como no protótipo) ou é preciso aprovação em dois passos? Bloqueia o detalhe da
-   Fase 188, não a fase inteira.
+5. ✅ ~~**Quem autoriza a exceção de prejuízo/margem?**~~ (BLOQ-09) — **DECIDIDA pelo usuário em
+   14/10/2026: basta REGISTRAR quem liberou**, direto, como no protótipo, com motivo obrigatório.
+   Aprovação em dois passos foi oferecida e **recusada**. ⚠️ Onde o README pede "fluxo de autorização
+   do gestor", **vale a decisão do usuário**: o controle é auditoria depois, não barreira antes.
+   **Não bloqueia mais nada.**
 6. ✅ ~~O vínculo imagem de IA → original de referência está gravado hoje?~~ — **RESPONDIDA POR
    MEDIÇÃO em 14/10/2026: está, mas é EFÊMERO (48 h)** (§4b). Virou requisito, não pergunta:
    **DADO-15** (vínculo durável, nosso, sem tocar o Creative Engine), **IMG-13** (o estado

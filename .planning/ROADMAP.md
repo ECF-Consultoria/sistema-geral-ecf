@@ -4821,9 +4821,19 @@ e a falha **preserva a revisão aprovada** com "Tentar de novo".
 **Depends on**: Fases 186 (versão e `approvedVersion`), 187 (a fila e o lote) e 188 (o botão que
 aprova).
 
-⚠️ **BLOQUEADA por uma decisão do usuário:** aprovar **enfileira automaticamente**, ou a pessoa ainda
-aperta "publicar"? O requisito PUB-09 é verificável nos dois desenhos, mas a fase **não começa** sem a
-resposta.
+✅ **DESBLOQUEADA — o usuário decidiu em 14/10/2026: aprovar JÁ PUBLICA.** A aprovação enfileira na
+hora, sem segundo clique. ⚠️ **O rótulo do botão NÃO muda: continua o literal do protótipo, "Aprovar
+para publicação"** (Fase 188, critério 8) — ele **já** diz que a oferta vai para publicação, e trocar
+para "Aprovar e publicar" seria adaptar o protótipo sem necessidade, o erro que fez o redesign
+anterior falhar. **A decisão do usuário muda o COMPORTAMENTO, não o texto.**
+A razão é a própria decisão da gestão: *"o sistema funcione de forma autônoma
+para publicar mas que tenha uma aprovação antes de ir para ar"* — **o portão É a aprovação**, e exigir
+um segundo ato criaria uma pilha de "aprovados que ninguém publicou", que dependeria de alguém
+lembrar. ⚠️ **As duas alternativas foram oferecidas e RECUSADAS:** publicar em dois atos, e publicar
+com janela para desfazer. **Não reabrir, e não introduzir o segundo clique "por segurança".**
+⚠️ **Consequência que esta fase TEM de honrar:** como não há desfazer, a reversibilidade mora toda
+**antes** do clique — por isso os bloqueios da 186 e a exceção registrada da 188 são o que impede
+publicar errado, e a falha de publicação **preserva a revisão aprovada** em vez de voltar à fila.
 
 **Requirements**: PUB-01..10
 
@@ -5013,9 +5023,9 @@ o render adverso (REND-01) e a prova de território (TERR-01..11).
 |---|---|---|---|
 | 1 | Os **chips de problema** estruturados viram texto na nossa borda, ou o problema é guardado estruturado do lado do Creative Engine (serve ao `CreativeJuiz`)? (IA-03) | **outro dev** | Fase **192** |
 | 2 | Ele pretende mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos endpoints de criativo nas próximas semanas? Se sim, combinar a ordem | **outro dev** | Fase **192** |
-| 3 | **Aprovar enfileira automaticamente**, ou a pessoa ainda aperta "publicar"? (PUB-09) | **usuário** | Fase **193** |
+| ~~3~~ | ✅ **RESPONDIDA em 14/10/2026 — aprovar JÁ PUBLICA**, sem segundo clique (PUB-09). ⚠️ O rótulo do botão **continua o do protótipo, "Aprovar para publicação"** — mudou o comportamento, não o texto. Dois atos e janela de desfazer foram oferecidos e **recusados** | usuário | **nada** |
 | 4 | O que falta do lado do Creative Engine para ligar `publicador.criativos_auto.ativo`? (AUTO-07) | **outro dev** | Fase **194** |
-| 5 | **Quem autoriza a exceção** de prejuízo/margem: basta registrar o gestor responsável (como no protótipo) ou é preciso aprovação em dois passos? (BLOQ-09) | **usuário** | detalhe da Fase **188**, não a fase |
+| ~~5~~ | ✅ **RESPONDIDA em 14/10/2026 — basta REGISTRAR quem liberou**, como no protótipo: marca a exceção, escreve o motivo, e fica gravado quem foi e quando (BLOQ-09). Aprovação em dois passos foi oferecida e **recusada** — não travar a oferta esperando um segundo aprovador, e não criar aviso para isso | usuário | **nada** |
 | 6 | Vale oferecer **"recolocar a original manualmente"** para o acervo antigo, que nunca terá o vínculo? (IMG-13) | **usuário** | nada — melhoria futura |
 
 **⚠️ RESPONDIDAS por medição em 14/10/2026, não reabrir:**
