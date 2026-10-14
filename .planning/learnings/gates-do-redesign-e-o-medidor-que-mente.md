@@ -163,11 +163,22 @@ gate PRÓPRIO vazio por construção com essa pergunta.**
 - **"Asserções removidas = ZERO"** por `git diff | grep '^-' | grep assert` **acusa remoção onde não
   houve**: reapontar `assertSame(1,…)` para `assertSame(2,…)` produz uma linha `-assert` por
   construção. ➡️ Exija o par `-`/`+` **no mesmo teste** e `+assert > -assert`, enumerando cada um.
-- ⚠️ **O gate por range da FASE também acusa o ORQUESTRADOR.** Em três planos seguidos da Fase 180
-  ele apontou `ROADMAP.md` como violação: foi eu, editando o Coverage Map e registrando a Fase 183
-  **durante** a fase. ➡️ `ROADMAP.md`, `REQUIREMENTS-v26.md` e `STATE.md` **não** pertencem a
-  nenhum plano — tire-os da lista de "território de ninguém" ou espere o falso positivo e confira o
-  autor do commit antes de acusar.
+- ⚠️ **O gate por range da FASE acusa o ORQUESTRADOR e as SESSÕES PARALELAS.** Em seis planos
+  seguidos da Fase 180 ele apontou violações que não eram do executor: `ROADMAP.md` (fui eu,
+  editando o Coverage Map e registrando a Fase 183 **durante** a fase) e, depois, **PHP e duas
+  migrations** da sessão paralela que fazia a Fase 184 **na mesma árvore**, com commits
+  **intercalados** entre os do plano em curso — e um arquivo dela deixado **staged no índice
+  compartilhado**.
+  ➡️ `ROADMAP.md`, `REQUIREMENTS-v26.md` e `STATE.md` **não** pertencem a nenhum plano.
+  ➡️ Quando houver sessão paralela, **a prova de "não toquei X" é COMMIT POR COMMIT**, não por
+  range — e **não rode a suíte da outra área**, que mediria o trabalho alheio.
+
+  ⚠️⚠️ **E NÃO CONFIRA O AUTOR: nesta árvore ele não discrimina nada.** Medido em 13/10/2026
+  (plano 180-04B): as duas sessões rodam com o **mesmo** `user.name` (`MB.ECF-100376`), então
+  `git log --format=%an` devolve um valor só para tudo. Os "conferi o autor" dos planos anteriores
+  estavam, na prática, conferindo o **assunto**. ➡️ **O discriminador real é o ESCOPO do assunto**
+  (`feat(180-…)` × `feat(184-…)`). Um gate comparando `%an` com um nome esperado é **vazio por
+  construção** aqui — e a orientação "confira o autor" foi erro meu, repetido em vários briefings.
 - **Gate de território por range da FASE** acusa o trabalho legítimo do plano dono. ➡️ Use **dois
   ranges**: o que ninguém pode tocar mede do início da fase; o que outro plano possui mede do fim
   do plano anterior.
