@@ -52,3 +52,32 @@
 #    não é o código. Os dois números são MEDIDOS, nenhum é chute.
 vocabulario-modulos  js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=180,169
 vocabulario-render   js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=180,169
+
+# ── Task 3 — VOC-07: `aprovacao/` entra no GATE-03, e o gate dos DOIS EIXOS ──
+#
+# ⚠️ ESTE É O GATE QUE FECHAVA POR OMISSÃO. Sem `DIR_APROV` em
+# `DIRETORIOS_FECHADOS`, a área nova inteira ficaria fora da conferência de
+# vocabulário e o gate passaria CALADO — nenhum número se moveria. A prova por
+# MUTAÇÃO está na 186-02-SUMMARY: com um arquivo forjado em `aprovacao/` e
+# `DIR_APROV` FORA da lista, o arquivo sai 399/399/0 (verde, e errado); com
+# `DIR_APROV` DENTRO, sai `# fail 2`.
+#
+# 399 MEDIDO em 14/10/2026. O número ANTES deste plano também foi MEDIDO (e não
+# deduzido): 344, rodando a versão do arquivo no commit de partida 28b45b40. Os
+# 55 testes novos, conferidos um por um:
+#   +18  o laço "vocabulário novo, arquivo por arquivo" (6 subtestes) sobre os
+#        3 arquivos novos de `aprovacao/`;
+#    +1  o sub-teste do 4º diretório no laço de `DIRETORIOS_FECHADOS`;
+#    +1  o sub-teste de CONTAGEM "os 3 arquivos da Fase 186 estão na lista";
+#    +6  o auto-teste da sonda dos eixos (5 casos + o `test()` que os agrupa);
+#    +5  "a leitura dos dois diretórios não é vazia por construção" (4 + 1);
+#   +10  o eixo INTERNO em `publicacoes/` (8 rótulos + controle positivo + 1);
+#    +7  o eixo do ML em `aprovacao/` (5 rótulos + controle positivo + 1);
+#    +7  o bloco de VOC-03 (lista não vazia + 3 arquivos + isca + auto-teste + 1).
+#   = 55, e 344 + 55 = 399.
+#
+# Este arquivo NÃO tem sonda com `skip` por `mtime`, então pristino e mutado dão
+# o MESMO número — o segundo valor está escrito de propósito, para deixar
+# explícito que a coincidência foi MEDIDA e não que o regime mutado ficou sem
+# medir.
+voc-07-gate-03  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=399,399

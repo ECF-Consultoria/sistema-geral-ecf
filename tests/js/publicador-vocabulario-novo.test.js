@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+// ⚠️ `existsSync`/`statSync` entraram na Fase 186, plano 02: o gate dos DOIS
+// EIXOS precisa distinguir "diretório varrido e limpo" de "diretório que não
+// existe" — o segundo vira `skip` NOMEADO, nunca silêncio.
+import { readdirSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -32,6 +35,12 @@ const DIR_HEADER = 'resources/js/Components/Mlb/Publicador/header';
 const DIR_VG = 'resources/js/Components/Mlb/Publicador/visaogeral';
 // Fase 180 — o diretório da tela de Publicações, aberto pelo plano 180-05.
 const DIR_PUB = 'resources/js/Components/Mlb/Publicador/publicacoes';
+// ⚠️⚠️ Fase 186, plano 02 — o diretório do PORTÃO de aprovação, aberto por este
+// plano. Ele entra em `DIRETORIOS_FECHADOS` NO PLANO QUE CRIA O PRIMEIRO
+// ARQUIVO DELE, e não no fechamento da fase: se esperasse, a área nova inteira
+// ficaria FORA da conferência de vocabulário e este gate passaria CALADO, sem
+// sinal nenhum. É a definição de gate que passa POR OMISSÃO (VOC-07).
+const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 
 const ARQUIVOS_NOVOS = [
     `${DIR}/identidade.js`,
@@ -152,6 +161,25 @@ const ARQUIVOS_NOVOS = [
     // outras fases (`AnunciosHistorico`, `AnunciarMassa`, `AnunciarML`…) e
     // varrer a pasta inteira reprovaria trabalho que não é desta milestone.
     'resources/js/Pages/Mlb/MeusAnuncios.jsx',
+    // ─── Fase 186, plano 02 — os 3 arquivos do PORTÃO de aprovação ───
+    //
+    // POR QUE ELES ENTRAM AGORA, e não no fim da fase: `aprovacao/` nasce neste
+    // plano, e `DIRETORIOS_FECHADOS` só fecha o que está declarado aqui. Um
+    // arquivo no disco fora desta lista passa SEM conferência contra `text-sm`,
+    // hex cru, `ecf-*`, `font-display` e breakpoint — e o gate não acusa nada.
+    //
+    // ⚠️ TODOS OS TRÊS SÃO `.jsx`, sem exceção, e não é preferência de estilo:
+    // `tailwind.config.js` varre `./resources/js/**/*.jsx` e **NÃO** `*.js`.
+    // Classe escrita num `.js` não gera CSS e NÃO EXISTE PARA A TELA, com todo
+    // teste de render passando. Os dois módulos de vocabulário carregam classe
+    // (as cores dos 8 estados e dos 3 selos de origem), então um `.js` aqui
+    // apagaria a cor da fila em silêncio.
+    //
+    // Plano 186-02 — os 8 estados de andamento interno, o resto do vocabulário
+    // do portão e a pill que os desenha:
+    `${DIR_APROV}/andamentoDoPortao.jsx`,
+    `${DIR_APROV}/vocabularioDoPortao.jsx`,
+    `${DIR_APROV}/SeloDeAndamentoInterno.jsx`,
 ];
 
 /**
@@ -224,10 +252,20 @@ const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentari
  * ⚠️ Fase 180, plano 05 — `publicacoes/` entra aqui, e é ADIÇÃO: o diretório
  * nasceu nesta fase e é 100% dela, como `identidade/` e `visaogeral/` foram das
  * suas. Nada saiu da lista.
+ *
+ * ⚠️⚠️ Fase 186, plano 02 — `aprovacao/` entra aqui, e TAMBÉM É ADIÇÃO PURA:
+ * NADA saiu da lista. O diretório nasceu naquele plano e é 100% da Fase 186.
+ *
+ * ⚠️ E ele entra NO PLANO QUE CRIA O PRIMEIRO ARQUIVO DELE, de propósito. Se a
+ * entrada esperasse o fechamento da fase, cada arquivo criado no meio ficaria
+ * FORA da conferência de vocabulário e este gate passaria CALADO — nenhum
+ * número se moveria, nenhuma asserção falharia. Resposta de GATE-01 (*o que
+ * precisaria estar errado para este gate falhar?*): **um arquivo novo em
+ * `aprovacao/` usar `text-sm`, hex cru ou `ecf-*` sem ninguém ver.**
  */
-const DIRETORIOS_FECHADOS = [DIR, DIR_VG, DIR_PUB];
+const DIRETORIOS_FECHADOS = [DIR, DIR_VG, DIR_PUB, DIR_APROV];
 
-test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes/` fica FORA de ARQUIVOS_NOVOS', async (contexto) => {
+test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/`, `publicacoes/` ou `aprovacao/` fica FORA de ARQUIVOS_NOVOS', async (contexto) => {
     for (const diretorio of DIRETORIOS_FECHADOS) {
         await contexto.test(`${diretorio} — a lista cobre exatamente os .js/.jsx da pasta`, () => {
             const noDisco = readdirSync(resolve(import.meta.dirname, '../..', diretorio))
@@ -320,6 +358,55 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
             16,
             'a Fase 180 contribui 16 arquivos: os 15 de `publicacoes/` (planos 05 a 09 e 11) mais a'
             + ' página `Pages/Mlb/MeusAnuncios.jsx` (plano 10), que é quem os compõe',
+        );
+    });
+
+    await contexto.test('os 3 arquivos da Fase 186 estão na lista', () => {
+        // ⚠️ O NÚMERO PARADO É O SINAL. É assim que se descobre que alguém
+        // esqueceu de declarar um arquivo novo em `ARQUIVOS_NOVOS` — e um
+        // arquivo fora da lista fica sem conferência contra `text-sm`, hex cru,
+        // `ecf-*`, `font-display` e breakpoint, com o gate passando POR
+        // OMISSÃO.
+        //
+        // ⚠️ OS PLANOS SEGUINTES DA FASE 186 **ELEVAM** ESTE VALOR junto com os
+        // arquivos deles. Hoje são 3, os do plano 186-02, que é quem ABRE o
+        // diretório: `andamentoDoPortao.jsx` (os 8 estados),
+        // `vocabularioDoPortao.jsx` (selos de origem, bloqueios, critérios,
+        // defeitos e toasts) e `SeloDeAndamentoInterno.jsx` (a pill).
+        const daFase186 = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`));
+        assert.equal(
+            daFase186.length,
+            3,
+            'a Fase 186 tem 3 arquivos em `aprovacao/` (plano 186-02: andamentoDoPortao +'
+            + ' vocabularioDoPortao + SeloDeAndamentoInterno)',
+        );
+
+        // ⚠️ E NENHUM deles é `.js`. O diretório é 100% `.jsx` de propósito,
+        // porque é só no `.jsx` que o `content` do Tailwind varre classe. Um
+        // `.js` aqui tem de ser decisão consciente e declarada, como o
+        // `atalhosDaLista.js` de `publicacoes/` foi.
+        assert.deepEqual(
+            daFase186.filter((c) => c.endsWith('.js')),
+            [],
+            'há um `.js` em `aprovacao/` — classe escrita nele NÃO GERA CSS e não existe para a tela',
+        );
+        assert.equal(daFase186.filter((c) => c.endsWith('.jsx')).length, 3);
+
+        // ⚠️ ISCA DA CONTAGEM: um arquivo forjado FORA da lista tem de ser
+        // detectado pela mesma comparação que o `deepEqual` acima usa. Sem esta
+        // asserção, a prova de que a lista "cobre" o diretório dependeria de
+        // ninguém nunca esquecer nada — que é exatamente a hipótese que o gate
+        // existe para não precisar fazer.
+        const FORJADO = `${DIR_APROV}/ArquivoQueNinguemDeclarou.jsx`;
+        assert.ok(
+            !ARQUIVOS_NOVOS.includes(FORJADO),
+            'a isca virou arquivo declarado de verdade — troque a isca',
+        );
+        const noDiscoForjado = [...daFase186, FORJADO].sort();
+        assert.notDeepEqual(
+            noDiscoForjado,
+            [...daFase186].sort(),
+            'a comparação do GATE-03 NÃO distingue um arquivo a mais no disco — ela está cega',
         );
     });
 });
@@ -666,4 +753,311 @@ test('HEAD-14 — as 6 páginas por conta montam o PublicadorHeader antes do con
             assert.doesNotMatch(fonte, /<PublicadorHeader\b/);
         });
     }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 186, plano 02 — D2 / AND-02 / critério 3: OS DOIS EIXOS SÃO SEPARADOS.
+//
+// README §C, literal: "São dois eixos separados. **O andamento interno nunca
+// aparece na lista de Publicadas, e o status do ML nunca aparece na fila.**"
+//
+// POR QUE ISSO PRECISA DE GATE: os dois eixos têm rótulos parecidos e usam as
+// mesmas cores. "Aprovado" (andamento interno) e "Ativa" (status no Mercado
+// Livre) são os dois verdes; "Publicado" e "Ativa" descrevem momentos
+// diferentes da mesma oferta. Misturá-los numa tela faz o usuário achar que
+// aprovou algo que o ML ainda não aceitou — e nenhum teste de render pega isso,
+// porque as duas telas renderizam perfeitamente com o rótulo errado.
+//
+// RESPOSTA DE GATE-01 (*o que precisaria estar errado para este gate falhar?*):
+// alguém escrever "Aguardando aprovação" numa célula de `publicacoes/` (a lista
+// de Publicadas), ou "Ativa"/"Pausada"/"Com erro" numa célula de `aprovacao/`
+// (a fila do portão) — as duas coisas sendo ERROS DE EIXO, não de digitação.
+//
+// ⚠️ "Em revisão pela ECF" CONTÉM "Em revisão": a sonda daqui procura o literal
+// COMPLETO, com borda nos dois lados. A negativa CURTA (o literal "Em revisão"
+// cru, aposentado pelo plano 186-01) é cuidada por
+// `publicador-rename-em-analise-ml.test.js`, que tem a lista de QUALIFICADOS e
+// o auto-teste dela. ⚠️ As duas regras NÃO são duplicadas numa sonda só: juntas
+// elas ficariam ambíguas, e nenhuma das duas diria por que reprovou.
+//
+// ⚠️ Leitura por `lerSemComentarios()`: a prosa pt-BR deste projeto cita os
+// próprios rótulos — este bloco de comentário é a prova viva, porque ele mesmo
+// escreve "Aguardando aprovação" e "Ativa". Um gate cru reprovaria o arquivo
+// pelo COMENTÁRIO que explica o gate. MEDIDO: as 6 ocorrências de
+// `Ativa`/`Com erro`/`Em análise pelo ML` em `publicacoes/` estão TODAS em
+// comentário (`AbasDeStatus.jsx`:16/:19/:25, `CelulasDaLinha.jsx`:383/:386/:736).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Os 8 rótulos do andamento INTERNO (VOC-02), medidos em `STM`
+ * (`design_handoff_publicador/Aprovacao.dc.html`:963-971).
+ */
+const ROTULOS_INTERNOS = [
+    'Preparando',
+    'Aguardando aprovação',
+    'Em revisão pela ECF',
+    'Ajustes solicitados',
+    'Aprovado',
+    'Publicando',
+    'Falha na publicação',
+    'Publicado',
+];
+
+/**
+ * Os rótulos de status no MERCADO LIVRE, medidos em
+ * `identidade/SeloDeStatusDaPublicacao.jsx` (as 4 primeiras) e em
+ * `MlbAnuncioController::meus()` (a 5ª, a forma curta da aba).
+ */
+const ROTULOS_DO_ML = [
+    'Ativa',
+    'Pausada',
+    'Com erro',
+    'Em análise pelo Mercado Livre',
+    'Em análise pelo ML',
+];
+
+/** Escapa TODOS os metacaracteres de regex, parênteses inclusive. */
+function escaparParaRegex(bruto) {
+    return bruto.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * A SONDA DOS EIXOS: conta as ocorrências do literal COMPLETO num corpo.
+ *
+ * ⚠️ Borda nos DOIS lados, e a borda é de LETRA/DÍGITO Unicode — não `\b`, que
+ * não entende acento. Sem isso:
+ *   · "Ativa" casaria dentro de `chaveAtiva`, `ehAtiva` e `estaAtiva`, que são
+ *     IDENTIFICADORES de `publicacoes/` e não rótulo nenhum (MEDIDO: as três
+ *     existem em `AbasDeStatus.jsx` e `ChipsDeFiltro.jsx`);
+ *   · "Publicado" casaria dentro de "Publicados" e "Publicadas".
+ *
+ * ⚠️ `String.raw` em todo padrão montado por string: `\b` dentro de template
+ * literal comum vira BACKSPACE, e isso já esvaziou 4 asserções deste projeto.
+ */
+function contarLiteralCompleto(corpo, literal) {
+    const padrao = new RegExp(
+        String.raw`(?<![\p{L}\p{N}_])` + escaparParaRegex(literal) + String.raw`(?![\p{L}\p{N}_])`,
+        'gu',
+    );
+    return (corpo.match(padrao) ?? []).length;
+}
+
+/** Lê os `.js`/`.jsx` de um diretório, ou devolve `null` quando ele não existe. */
+function corposDoDiretorio(diretorio) {
+    const absoluto = resolve(import.meta.dirname, '../..', diretorio);
+    if (!existsSync(absoluto) || !statSync(absoluto).isDirectory()) return null;
+    return readdirSync(absoluto)
+        .filter((nome) => nome.endsWith('.js') || nome.endsWith('.jsx'))
+        .map((nome) => ({ relativo: `${diretorio}/${nome}`, corpo: lerSemComentarios(`${diretorio}/${nome}`) }));
+}
+
+const CORPOS_DE_PUBLICACOES = corposDoDiretorio(DIR_PUB);
+const CORPOS_DE_APROVACAO = corposDoDiretorio(DIR_APROV);
+
+// ⚠️ ISCA DE CAMINHO: este diretório NÃO EXISTE e nunca vai existir. Ele prova
+// que `corposDoDiretorio` devolve `null` (e o gate vira `skip` NOMEADO) em vez
+// de uma lista vazia que pareceria "varrido e limpo". Este projeto acumulou
+// SETE caminhos fantasma em 5 fases.
+const DIR_ISCA = 'resources/js/Components/Mlb/Publicador/aprovacaoZZ9';
+const CORPOS_DA_ISCA = corposDoDiretorio(DIR_ISCA);
+
+test('AUTO-TESTE DA SONDA DOS EIXOS — ela conta o literal completo e nada mais', async (contexto) => {
+    await contexto.test('acha o literal inteiro', () => {
+        assert.equal(contarLiteralCompleto('o estado é Aprovado agora', 'Aprovado'), 1);
+        assert.equal(contarLiteralCompleto('Aprovado e Aprovado', 'Aprovado'), 2);
+    });
+
+    await contexto.test('⚠️ NÃO conta substring: "Ativa" dentro de `chaveAtiva`', () => {
+        assert.equal(contarLiteralCompleto('const chaveAtiva = 1; if (ehAtiva) {}', 'Ativa'), 0);
+        assert.equal(contarLiteralCompleto("rotulo: 'Ativa'", 'Ativa'), 1);
+    });
+
+    await contexto.test('⚠️ NÃO conta "Publicado" dentro de "Publicados"/"Publicadas"', () => {
+        assert.equal(contarLiteralCompleto('a lista de Publicados', 'Publicado'), 0);
+        assert.equal(contarLiteralCompleto('as Publicadas de hoje', 'Publicado'), 0);
+        assert.equal(contarLiteralCompleto("st: 'Publicado'", 'Publicado'), 1);
+    });
+
+    await contexto.test('⚠️ "Em revisão pela ECF" NÃO é achada pela busca de "Em revisão pelo Mercado Livre"', () => {
+        assert.equal(
+            contarLiteralCompleto('Em revisão pela ECF', 'Em revisão pelo Mercado Livre'),
+            0,
+        );
+        // E o contrário: o literal completo de cada um é achado só por ele mesmo.
+        assert.equal(contarLiteralCompleto('Em revisão pela ECF', 'Em revisão pela ECF'), 1);
+    });
+
+    await contexto.test('⚠️ literal com acento tem borda: "Falha na publicação" vs "...publicações"', () => {
+        assert.equal(contarLiteralCompleto('Falha na publicações', 'Falha na publicação'), 0);
+        assert.equal(contarLiteralCompleto('Falha na publicação.', 'Falha na publicação'), 1);
+    });
+});
+
+test('D2 — a leitura dos dois diretórios não é vazia por construção', async (contexto) => {
+    await contexto.test(`${DIR_PUB} existe e tem arquivos`, () => {
+        assert.notEqual(CORPOS_DE_PUBLICACOES, null, `${DIR_PUB} não existe — o gate mediria NADA`);
+        assert.ok(CORPOS_DE_PUBLICACOES.length >= 15, `varridos ${CORPOS_DE_PUBLICACOES.length}, esperava ao menos 15`);
+    });
+
+    await contexto.test(`${DIR_APROV} existe e tem arquivos`, () => {
+        assert.notEqual(CORPOS_DE_APROVACAO, null, `${DIR_APROV} não existe — o gate mediria NADA`);
+        assert.ok(CORPOS_DE_APROVACAO.length >= 3, `varridos ${CORPOS_DE_APROVACAO.length}, esperava ao menos 3`);
+    });
+
+    await contexto.test('⚠️ CONTROLE: a leitura de `publicacoes/` enxerga literal de verdade', () => {
+        // Sem isto, a negativa do bloco seguinte poderia estar passando porque
+        // `lerSemComentarios` devolveu vazio, e não porque os rótulos não estão
+        // lá. "Rascunhos" é da 6ª opção do trilho (LIST-25) e está no CORPO de
+        // `AbasDeStatus.jsx` (`ARIA_DA_FONTE`), fora de comentário.
+        const achados = CORPOS_DE_PUBLICACOES
+            .filter(({ corpo }) => contarLiteralCompleto(corpo, 'Rascunhos') > 0);
+        assert.ok(achados.length >= 1, 'a leitura de `publicacoes/` está cega: nem "Rascunhos" ela acha');
+    });
+
+    await contexto.test('⚠️ ISCA DE CAMINHO: diretório ausente vira `null`, nunca lista vazia', () => {
+        assert.equal(CORPOS_DA_ISCA, null, `a isca ${DIR_ISCA} passou a existir — troque a isca`);
+    });
+});
+
+test('D2 — NENHUM rótulo de andamento INTERNO aparece em `publicacoes/`', async (contexto) => {
+    if (CORPOS_DE_PUBLICACOES === null) {
+        contexto.skip(`${DIR_PUB} não existe — gate pulado com nome, não em silêncio`);
+        return;
+    }
+
+    for (const rotulo of ROTULOS_INTERNOS) {
+        await contexto.test(`"${rotulo}" não está em nenhum arquivo de publicacoes/`, () => {
+            for (const { relativo, corpo } of CORPOS_DE_PUBLICACOES) {
+                assert.equal(
+                    contarLiteralCompleto(corpo, rotulo),
+                    0,
+                    `${relativo} usa o rótulo de ANDAMENTO INTERNO "${rotulo}" — erro de EIXO:`
+                    + ' o andamento interno nunca aparece na lista de Publicadas (README §C)',
+                );
+            }
+        });
+    }
+
+    await contexto.test('⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 8 em `aprovacao/`', () => {
+        // Sem este controle a negativa acima seria vazia por construção: uma
+        // sonda quebrada reportaria 0 em tudo e o gate pareceria verde.
+        //
+        // ⚠️ O controle positivo da direção INTERNA tem de vir de `aprovacao/`,
+        // porque por definição não há rótulo interno em `publicacoes/`.
+        const corpoDoAndamento = lerSemComentarios(`${DIR_APROV}/andamentoDoPortao.jsx`);
+        for (const rotulo of ROTULOS_INTERNOS) {
+            assert.ok(
+                contarLiteralCompleto(corpoDoAndamento, rotulo) > 0,
+                `a sonda não acha "${rotulo}" nem em andamentoDoPortao.jsx — ela está cega`,
+            );
+        }
+    });
+});
+
+test('D2 — NENHUM rótulo de status do Mercado Livre aparece em `aprovacao/`', async (contexto) => {
+    if (CORPOS_DE_APROVACAO === null) {
+        contexto.skip(`${DIR_APROV} não existe — gate pulado com nome, não em silêncio`);
+        return;
+    }
+
+    for (const rotulo of ROTULOS_DO_ML) {
+        await contexto.test(`"${rotulo}" não está em nenhum arquivo de aprovacao/`, () => {
+            for (const { relativo, corpo } of CORPOS_DE_APROVACAO) {
+                assert.equal(
+                    contarLiteralCompleto(corpo, rotulo),
+                    0,
+                    `${relativo} usa o rótulo de STATUS DO MERCADO LIVRE "${rotulo}" — erro de EIXO:`
+                    + ' o status do ML nunca aparece na fila do portão (README §C)',
+                );
+            }
+        });
+    }
+
+    await contexto.test('⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 4 rótulos do ML onde eles moram', () => {
+        // ⚠️ O 5º ("Em análise pelo ML", a forma curta da aba) NÃO está aqui de
+        // propósito: ele vive no PHP (`MlbAnuncioController::meus()`), medido
+        // pelo plano 186-01. Afirmar que ele estaria no `.jsx` seria um controle
+        // que passa pelo motivo errado.
+        const corpoDoSelo = lerSemComentarios(`${DIR}/SeloDeStatusDaPublicacao.jsx`);
+        for (const rotulo of ['Ativa', 'Pausada', 'Com erro', 'Em análise pelo Mercado Livre']) {
+            assert.ok(
+                contarLiteralCompleto(corpoDoSelo, rotulo) > 0,
+                `a sonda não acha "${rotulo}" nem em SeloDeStatusDaPublicacao.jsx — ela está cega`,
+            );
+        }
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 186, plano 02 — VOC-03: "LUCRO LÍQUIDO" É PROIBIDO.
+//
+// POR QUE: o número que a tela mostra NÃO desconta imposto, taxa de cartão,
+// despesa fixa nem devolução. Chamá-lo de lucro líquido seria uma afirmação
+// FALSA sobre o dinheiro do cliente — e é o tipo de erro que ninguém reporta
+// como bug, porque a tela "funciona". O vocabulário travado é "Resultado
+// estimado por venda" ou "Margem de contribuição estimada".
+//
+// RESPOSTA DE GATE-01: alguém rotular a coluna de resultado como "Lucro
+// líquido" porque é o termo que o cliente usa na conversa.
+//
+// ⚠️⚠️ A SONDA É RECORTADA À LISTA CONSTANTE DOS 3 ARQUIVOS NOVOS, e isto é
+// MEDIÇÃO, não cautela: existe um campo REAL chamado `lucro_liquido` em
+// `EstruturaPrecificacaoParametros` — legítimo, do Portal, de outra fase. Uma
+// sonda que varresse `resources/` ou `app/` reprovaria aquele parâmetro antigo
+// e o executor seguinte "consertaria" renomeando coisa que não é dele.
+//
+// ⚠️ E ela pega AS DUAS FORMAS: `lucro líquido` (com acento e espaço, o rótulo
+// de tela) e `lucro_liquido` (sem acento, a forma de identificador). Procurar
+// só uma delas deixaria a outra passar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ARQUIVOS_DO_PORTAO = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`));
+
+/** As duas formas proibidas, insensíveis a maiúscula. */
+const FORMAS_DE_LUCRO = [/lucro\s+l[ií]quido/i, /lucro_l[ií]quido/i];
+
+test('VOC-03 — "lucro líquido" não existe em nenhum arquivo novo do portão', async (contexto) => {
+    await contexto.test('a lista varrida não está vazia (3 arquivos declarados)', () => {
+        assert.equal(ARQUIVOS_DO_PORTAO.length, 3, 'a lista do portão encolheu — a sonda mediria menos');
+    });
+
+    for (const caminho of ARQUIVOS_DO_PORTAO) {
+        await contexto.test(`${caminho} — nenhuma das duas formas de "lucro líquido"`, () => {
+            const fonte = FONTES.get(caminho);
+            assert.ok(fonte, `${caminho} não está em FONTES — não foi lido`);
+            for (const forma of FORMAS_DE_LUCRO) {
+                assert.doesNotMatch(fonte, forma, `${caminho} diz "lucro líquido" — VOC-03 proíbe`);
+            }
+        });
+    }
+
+    await contexto.test('⚠️ ISCA / CONTROLE POSITIVO: a MESMA sonda ACHA "Resultado estimado por venda"', () => {
+        // Negativa sozinha é metade do gate: sem este controle, um `FONTES.get`
+        // devolvendo vazio faria as 3 asserções acima passarem sem ler nada.
+        const vocabulario = FONTES.get(`${DIR_APROV}/vocabularioDoPortao.jsx`);
+        assert.ok(vocabulario, 'vocabularioDoPortao.jsx não foi lido');
+        assert.match(
+            vocabulario,
+            /Resultado estimado por venda/,
+            'o literal travado de VOC-03 não está no corpo — a sonda está lendo o arquivo errado',
+        );
+        assert.match(vocabulario, /Margem de contribuição estimada/);
+    });
+
+    await contexto.test('⚠️ e a sonda REPROVA as duas formas quando elas existem (auto-teste)', () => {
+        // Prova que as duas regexes não são decorativas, sem precisar sujar
+        // nenhum arquivo do repositório.
+        for (const forma of FORMAS_DE_LUCRO) {
+            const exemplos = ['o lucro líquido da oferta', 'campo lucro_liquido do parâmetro', 'LUCRO LIQUIDO'];
+            assert.ok(
+                exemplos.some((exemplo) => forma.test(exemplo)),
+                'uma das formas de "lucro líquido" não casa com nenhum exemplo — regex decorativa',
+            );
+        }
+        // E o controle negativo: o vocabulário travado NÃO casa com elas.
+        for (const forma of FORMAS_DE_LUCRO) {
+            assert.ok(!forma.test('Resultado estimado por venda'), 'a sonda reprovaria o vocabulário CERTO');
+            assert.ok(!forma.test('Margem de contribuição estimada'), 'a sonda reprovaria o vocabulário CERTO');
+        }
+    });
 });
