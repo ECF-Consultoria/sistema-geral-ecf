@@ -16,7 +16,7 @@ import { caminhoSeguro, textoDaTela } from './CelulasDaLinha';
 //   · chevron          → :174 (`14×14 viewBox "0 0 16 16"`, `flex:none;`
 //                              `fill:none;stroke:#8A8A90;stroke-width:1.8;`
 //                              `stroke-linecap:round;stroke-linejoin:round;`
-//                              `transform:{{g.chev}};transition:transform .18s`,
+//                              `transform:{{g.chev}};transition:transform .18s`
 //                              path `M6 4l4 4-4 4`)
 //   · tile             → :175 (`38×38`, `border-radius:9px`, `font-size:12px`,
 //                              `font-weight:600`, `flex:none`,
@@ -160,6 +160,22 @@ function SetaDoLink() {
  * ⚠️ `rotate-90` aberto / `rotate-0` fechado — e a classe é escrita INTEIRA nos
  * dois ramos, nunca montada por concatenação: o scanner do Tailwind não vê
  * classe construída por string.
+ *
+ * ⚠️⚠️ `transition .18s` VAI POR `style`, E ISSO É MEDIDO, NÃO PREFERÊNCIA:
+ * **`duration-[180ms]` NÃO COMPILA NESTE PROJETO.** O plugin `tailwindcss-animate`
+ * (`tailwind.config.js`, `plugins: [forms, animate]`) registra `duration`,
+ * `delay` e `ease` como utilitários de ANIMAÇÃO, e aí o Tailwind recusa o valor
+ * arbitrário com o aviso *"The class `duration-[180ms]` is ambiguous and matches
+ * multiple utilities"* — reproduzido com `postcss + tailwind + animate` em
+ * 13/10/2026. No CSS construído do projeto NÃO existe NENHUMA regra
+ * `.duration-\[...\]` (zero ocorrências de `duration-\[`), embora `duration-150`,
+ * `-200`, `-300`, `-500` e `-700` (a escala nomeada) existam.
+ * ⚠️ Escrever a classe deixaria a transição MORTA com todos os testes de render
+ * passando (a classe estaria no HTML) — é a mesma família do `*.js` que o
+ * `content` não varre. `transition-transform` (que compila) dá os 150ms do
+ * default; o `.18s` do protótipo vem do `style`.
+ * ⚠️ O conserto por TOKEN (`theme.extend.transitionDuration`) exige
+ * `tailwind.config.js`, que é território do plano 180-01. Registrado na SUMMARY.
  */
 function ChevronDoGrupo({ aberto }) {
     return (
@@ -172,8 +188,9 @@ function ChevronDoGrupo({ aberto }) {
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
+            style={{ transitionDuration: '180ms' }}
             className={cn(
-                'flex-none stroke-pub-txt-3 transition-transform duration-[180ms]',
+                'flex-none stroke-pub-txt-3 transition-transform',
                 aberto === true ? 'rotate-90' : 'rotate-0',
             )}
         >
