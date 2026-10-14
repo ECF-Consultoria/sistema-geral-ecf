@@ -9,18 +9,24 @@ use App\Models\User;
 use App\Services\Bling\BlingOAuthService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Tests\Support\BlingFixtures;
 use Tests\TestCase;
 
 /**
  * Fase 184-07 (BLING-17, BLING-18, BLING-19, BLING-29) — o caminho que o
- * cliente percorre para conectar o Bling: link assinado de 7 dias (Task 1).
- * O callback com conferência de CNPJ (Task 2) e a landing em blade com
- * quatro estados (Task 3) chegam nos próximos commits deste mesmo plano.
+ * cliente percorre para conectar o Bling: link assinado de 7 dias (Task 1) e
+ * callback com conferência de CNPJ (Task 2). A landing em blade com os
+ * quatro estados (Task 3) chega no próximo commit deste mesmo plano.
  */
 class BlingLinkEAutorizacaoTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** Regex de sigilo — nenhum texto que o cliente lê cita a plataforma de venda (CONTEXT §4.6). */
+    private const PROIBIDO = '/mercado\s*livre|mercadolivre|\bml\b|shopee|magalu|amazon/i';
 
     protected function setUp(): void
     {
@@ -46,6 +52,42 @@ class BlingLinkEAutorizacaoTest extends TestCase
     private function servico(): BlingOAuthService
     {
         return app(BlingOAuthService::class);
+    }
+
+    private function extrairState(string $urlDeAutorizacao): string
+    {
+        parse_str((string) parse_url($urlDeAutorizacao, PHP_URL_QUERY), $query);
+
+        return (string) $query['state'];
+    }
+
+    /** Monta o `Http::fake` da troca de code + leitura de dados básicos, com o CNPJ do Bling customizável. */
+    private function fakeOAuthCompleto(?string $cnpjBling): void
+    {
+        $basicos = BlingFixtures::ler('dados-basicos');
+        $basicos['data']['cnpj'] = $cnpjBling;
+
+        Http::fake([
+            'https://api.bling.com.br/Api/v3/oauth/token' => Http::response(BlingFixtures::ler('oauth-token'), 200),
+            'https://api.bling.com.br/Api/v3/empresas/me/dados-basicos' => Http::response($basicos, 200),
+        ]);
+    }
+
+    private function assertSemOrigem(string $texto, string $onde): void
+    {
+        $texto = preg_replace_callback('/\\\\u([0-9a-f]{4})/i', fn ($m) => mb_chr(hexdec($m[1]), 'UTF-8'), $texto);
+        $this->assertDoesNotMatchRegularExpression(self::PROIBIDO, $texto, "a origem vazou em {$onde}: {$texto}");
+    }
+
+    private function renderizarEstado(string $estado, array $extra = []): string
+    {
+        return view('oauth.bling-conectar', array_merge([
+            'estado' => $estado,
+            'empresa_nome' => 'Empresa Teste',
+            'button_url' => null,
+            'button_label' => 'Autorizar acesso',
+            'mensagem' => null,
+        ], $extra))->render();
     }
 
     // ═══ Task 1 — link assinado e rota pública da landing ═══════════════════
@@ -188,5 +230,159 @@ class BlingLinkEAutorizacaoTest extends TestCase
 
         $resposta->assertStatus(422);
         $this->assertStringContainsString('BLING_CLIENT_ID', (string) $resposta->json('message'));
+    }
+
+    // ═══ Task 2 — callback com conferência de CNPJ ═══════════════════════════
+
+    public function test_callback_com_cnpj_igual_grava_conexao_ativa(): void
+    {
+        $company = Company::factory()->create(['cnpj' => '12.345.678/0001-90']);
+        $this->fakeOAuthCompleto('12.345.678/0001-90');
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+
+        $resposta->assertStatus(200);
+        $resposta->assertSee('concluída');
+
+        $conexao = BlingConexao::where('company_id', $company->id)->first();
+        $this->assertSame(BlingConexao::STATUS_ATIVA, $conexao->status);
+        $this->assertNotNull($conexao->access_token);
+        $this->assertNotNull($conexao->refresh_token);
+        $this->assertSame('987654321', $conexao->bling_empresa_id);
+        $this->assertSame('12.345.678/0001-90', $conexao->bling_cnpj);
+        $this->assertNotNull($conexao->bling_nome);
+        $this->assertNotNull($conexao->connected_at);
+    }
+
+    public function test_callback_com_cnpj_diferente_fica_divergente_sem_token(): void
+    {
+        // Asserção NEGATIVA: é a falha exata do OAuth do ML nos Polos.
+        $company = Company::factory()->create(['cnpj' => '99.888.777/0001-10']);
+        $this->fakeOAuthCompleto('12.345.678/0001-90');
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+        $resposta->assertStatus(200);
+
+        $linhaCrua = DB::table('bling_conexoes')->where('company_id', $company->id)->first();
+        $this->assertSame(BlingConexao::STATUS_DIVERGENTE, $linhaCrua->status);
+        $this->assertNull($linhaCrua->access_token);
+        $this->assertNull($linhaCrua->refresh_token);
+    }
+
+    public function test_callback_matriz_filial_fica_divergente_sem_token(): void
+    {
+        // Mesma raiz de 8 dígitos (12345678), final diferente — matriz/filial.
+        $company = Company::factory()->create(['cnpj' => '12.345.678/0002-71']);
+        $this->fakeOAuthCompleto('12.345.678/0001-90');
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+        $resposta->assertStatus(200);
+        $resposta->assertSee('matriz/filial');
+
+        $linhaCrua = DB::table('bling_conexoes')->where('company_id', $company->id)->first();
+        $this->assertSame(BlingConexao::STATUS_DIVERGENTE, $linhaCrua->status);
+        $this->assertNull($linhaCrua->access_token);
+        $this->assertNull($linhaCrua->refresh_token);
+    }
+
+    public function test_callback_empresa_sem_cnpj_fica_divergente_sem_token(): void
+    {
+        $company = Company::factory()->create(['cnpj' => null]);
+        $this->fakeOAuthCompleto('12.345.678/0001-90');
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+        $resposta->assertStatus(200);
+
+        $linhaCrua = DB::table('bling_conexoes')->where('company_id', $company->id)->first();
+        $this->assertSame(BlingConexao::STATUS_DIVERGENTE, $linhaCrua->status);
+        $this->assertNull($linhaCrua->access_token);
+        $this->assertNull($linhaCrua->refresh_token);
+    }
+
+    public function test_callback_bling_sem_cnpj_fica_divergente_sem_token(): void
+    {
+        $company = Company::factory()->create(['cnpj' => '12.345.678/0001-90']);
+        $this->fakeOAuthCompleto(''); // Bling não informou CNPJ utilizável
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+        $resposta->assertStatus(200);
+
+        $linhaCrua = DB::table('bling_conexoes')->where('company_id', $company->id)->first();
+        $this->assertSame(BlingConexao::STATUS_DIVERGENTE, $linhaCrua->status);
+        $this->assertNull($linhaCrua->access_token);
+        $this->assertNull($linhaCrua->refresh_token);
+    }
+
+    public function test_state_ja_consumido_nao_chama_o_bling(): void
+    {
+        Http::fake(); // qualquer chamada feita quebra o assertNothingSent abaixo
+
+        $company = Company::factory()->create();
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        // Simula um callback anterior já processado (duplo clique, retry do navegador).
+        $this->servico()->consumirState($state);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-de-teste");
+
+        $resposta->assertStatus(200);
+        Http::assertNothingSent();
+    }
+
+    public function test_callback_sem_state_ou_code_nao_chama_o_bling(): void
+    {
+        Http::fake();
+
+        $this->get('/oauth/bling/callback')->assertStatus(200);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_falha_ao_trocar_code_cai_em_erro_amigavel_sem_500(): void
+    {
+        $company = Company::factory()->create();
+        Http::fake([
+            'https://api.bling.com.br/Api/v3/oauth/token' => Http::response(['error' => 'invalid_grant'], 400),
+        ]);
+
+        $url = $this->servico()->urlDeAutorizacao($company, null);
+        $state = $this->extrairState($url);
+
+        $resposta = $this->get("/oauth/bling/callback?state={$state}&code=codigo-secreto-de-teste");
+
+        $resposta->assertStatus(200);
+        $html = $resposta->getContent();
+        $this->assertStringNotContainsString('Exception', $html);
+        $this->assertStringNotContainsString('Stack trace', $html);
+        $this->assertStringNotContainsString('app/', $html);
+        $this->assertStringNotContainsString('codigo-secreto-de-teste', $html);
+    }
+
+    public function test_html_dos_quatro_estados_nao_cita_a_origem(): void
+    {
+        foreach (['convite', 'concluido', 'erro', 'nao_configurado'] as $estado) {
+            $html = $this->renderizarEstado($estado, [
+                'button_url' => 'https://www.bling.com.br/Api/v3/oauth/authorize?state=x',
+                'mensagem' => 'Mensagem de erro de teste.',
+            ]);
+
+            $this->assertSemOrigem($html, "estado {$estado}");
+        }
     }
 }
