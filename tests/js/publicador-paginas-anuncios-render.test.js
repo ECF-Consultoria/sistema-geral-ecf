@@ -154,6 +154,15 @@ const cabecalhoSujo = () => {
     };
 };
 
+// ⚠️ Fase 180, plano 10 — o fixture GANHOU as props novas do layout de
+// Publicações (`abas`, `contagens`, `grupos`, `rodape`, `sincronizacao`,
+// `faixaSucesso`) e as 7 chaves novas de `filtros`. NENHUMA prop de hoje saiu
+// daqui: é este objeto que prova o contrato do servidor com a tela, e tirar
+// uma chave faria o gate passar sem ela chegar.
+//
+// ⚠️ `faixaSucesso: null` é o valor REAL de produção, medido no plano 180-04
+// por três caminhos independentes — não é fixture preguiçoso. O caso com
+// resumo preenchido existe no §6, para provar que a ligação é de verdade.
 const propsMeus = (extras = {}) => ({
     empresa: { id: 459, nome: 'Dev 02 Testes API' },
     conta: { chave: 'company-459', nome: 'Dev 02 Testes API' },
@@ -162,7 +171,30 @@ const propsMeus = (extras = {}) => ({
     anuncios: { data: [], links: [] },
     rascunhos: { data: [], links: [] },
     triagem: { total: 0, chips: [] },
-    filtros: { busca: '', status: 'acionaveis', motivo: null },
+    filtros: {
+        busca: '', status: 'acionaveis', motivo: null,
+        com_venda: false, fase: null, tipo: null, catalogo: false,
+        responsavel: [], periodo: null, visao: 'grupo', sel: null,
+    },
+    abas: [
+        { chave: 'todos', rotulo: 'Todas', total: 3, comDot: false },
+        { chave: 'ativos', rotulo: 'Ativas', total: 2, comDot: false },
+        { chave: 'pausados', rotulo: 'Pausadas', total: 1, comDot: false },
+        { chave: 'com_erro', rotulo: 'Com erro', total: 0, comDot: false },
+        { chave: 'em_revisao', rotulo: 'Em revisão', total: 0, comDot: false },
+        { chave: 'rascunhos', rotulo: 'Rascunhos', total: 1, comDot: false },
+    ],
+    contagens: {
+        todos: 3, acionaveis: 3, ativos: 2, pausados: 1,
+        em_revisao: 0, encerrados: 0, com_erro: 0, rascunhos: 1,
+    },
+    grupos: [],
+    rodape: { visiveis: 0, total: 3, produtos: 0 },
+    sincronizacao: {
+        coletado_em: '2026-10-13T11:35:00Z', horas: 2, defasado: false,
+        nunca_coletado: false, rotulo: 'há 2 horas',
+    },
+    faixaSucesso: null,
     defasagem: { horas: 2, defasado: false, nunca_coletado: false, motivo: null },
     saudeMlDisponivel: true,
     rotacaoN: 16,
@@ -187,10 +219,49 @@ const propsMassa = (extras = {}) => ({
     ...extras,
 });
 
+// ⚠️ Fase 180, plano 10 — REAPONTE DE VALOR em duas colunas novas, e as duas
+// são ENDURECIMENTO, não afrouxamento:
+//
+// · `headers`: a contagem esperada de `<header>` na página. Era **1** para as
+//   três, implícita no `assert.equal(…, 1)` de dentro do laço. Em
+//   `MeusAnuncios` passou a ser **2**, porque o cabeçalho da PÁGINA (LIST-01:
+//   H1 "Publicações" + "● Sincronizado há X" + "Atualizar") é um `<header>`
+//   semântico, como no protótipo (`Publicacoes v2.dc.html:31`). ⚠️ Sem o valor
+//   por página, o laço reprovaria o código CERTO — e, pior, trocar o esperado
+//   para 2 nas três deixaria as outras duas perderem o header global em
+//   silêncio.
+// · `container`: o literal que localiza o container do corpo. Era um só
+//   (`mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8`) para as três.
+//   `MeusAnuncios` passou para o container do protótipo (1600px de conteúdo com
+//   36px de padding e `min-width:1240px`), que precisa do neutralizador do
+//   `p-6` do `<main>` em DOIS elementos — `-mx-6` e `mx-auto` disputam a mesma
+//   margem lateral. É o mesmo reaponte que o plano 179-09 fez na
+//   `VisaoGeral.jsx` do gate de vocabulário.
 const PAGINAS = [
-    { nome: 'MeusAnuncios', Componente: MEUS, props: propsMeus, titulo: 'Meus Anúncios' },
-    { nome: 'AnunciosHistorico', Componente: HISTORICO, props: propsHistorico, titulo: 'Histórico de anúncios' },
-    { nome: 'AnunciarMassa', Componente: MASSA, props: propsMassa, titulo: 'Anunciar em massa' },
+    {
+        nome: 'MeusAnuncios',
+        Componente: MEUS,
+        props: propsMeus,
+        titulo: 'Meus Anúncios',
+        headers: 2,
+        container: '<div class="-mx-6 -mb-6">',
+    },
+    {
+        nome: 'AnunciosHistorico',
+        Componente: HISTORICO,
+        props: propsHistorico,
+        titulo: 'Histórico de anúncios',
+        headers: 1,
+        container: '<div class="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8',
+    },
+    {
+        nome: 'AnunciarMassa',
+        Componente: MASSA,
+        props: propsMassa,
+        titulo: 'Anunciar em massa',
+        headers: 1,
+        container: '<div class="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8',
+    },
 ];
 
 // ─── Ferramentas de partição do HTML (nunca `includes` global) ─────────────
@@ -222,7 +293,7 @@ function corpoDaPagina(html) {
 
 // ═══ 1. Posição do header nas 3 páginas (HEAD-14) ══════════════════════════
 
-for (const { nome, Componente, props, titulo } of PAGINAS) {
+for (const { nome, Componente, props, titulo, headers, container } of PAGINAS) {
     test(`${nome} — o header é o PRIMEIRO filho do AppLayout, fora do container do corpo (HEAD-14)`, async (contexto) => {
         const html = render(Componente, props({ cabecalho: cabecalhoCompleto() }));
 
@@ -232,7 +303,22 @@ for (const { nome, Componente, props, titulo } of PAGINAS) {
                 /^<main data-titulo="[^"]*"><header /,
                 'algo entrou entre o <main> e o <header> — dentro do container do corpo o `-mx-6` brigaria com o `px-4` dele',
             );
-            assert.equal((html.match(/<header/g) ?? []).length, 1, 'esperado exatamente UM <header> na página');
+            // ⚠️ REAPONTE DE VALOR (Fase 180, plano 10): era `1` fixo para as
+            // três. Ver o comentário de `PAGINAS`. O valor por página é o que
+            // mantém a asserção capaz de reprovar nas outras duas.
+            assert.equal(
+                (html.match(/<header/g) ?? []).length,
+                headers,
+                `esperados exatamente ${headers} <header> em ${nome}`,
+            );
+        });
+
+        await contexto.test('o PRIMEIRO <header> é o GLOBAL (o que carrega o sticky e o -mx-6)', () => {
+            // ⚠️ O ENDURECIMENTO que o reaponte acima exige: com 2 headers
+            // permitidos em MeusAnuncios, "tem 2" não prova mais que o global
+            // é o de cima. Esta asserção prova.
+            assert.match(tagDoHeader(html), /sticky/,
+                'o primeiro <header> da página não é o global do Publicador');
         });
 
         await contexto.test('o título da página continua chegando ao AppLayout', () => {
@@ -252,10 +338,15 @@ for (const { nome, Componente, props, titulo } of PAGINAS) {
         });
 
         await contexto.test('o container do corpo vem IMEDIATAMENTE depois do </header>, com os breakpoints de hoje (HEAD-15)', () => {
-            assert.match(
-                html,
-                /<\/header><div class="mx-auto max-w-\[1600px\] px-4 py-6 sm:px-6 lg:px-8/,
-                'o container do corpo mudou de classe ou deixou de ser o irmão seguinte do header',
+            // ⚠️ REAPONTE DE VALOR (Fase 180, plano 10): o literal era único
+            // para as três páginas. O que a asserção garante continua sendo o
+            // MESMO — o container do corpo é o irmão SEGUINTE do header —, e o
+            // que mudou é o literal com que cada página é localizada. Ver o
+            // comentário de `PAGINAS`.
+            assert.ok(
+                html.includes(`</header>${container}`),
+                `o container do corpo de ${nome} mudou de classe ou deixou de ser o irmão seguinte do header.`
+                + ` Esperado logo depois de </header>: ${container}`,
             );
         });
     });
@@ -263,7 +354,7 @@ for (const { nome, Componente, props, titulo } of PAGINAS) {
 
 // ═══ 2. `cabecalho` nulo, ausente e sujo — as 3 páginas sobrevivem ═════════
 
-for (const { nome, Componente, props } of PAGINAS) {
+for (const { nome, Componente, props, headers } of PAGINAS) {
     test(`${nome} — sobrevive a cabecalho completo, NULO, AUSENTE e com campo OBJETO (tela preta de 07/10)`, async (contexto) => {
         const casos = [
             ['completo', props({ cabecalho: cabecalhoCompleto() })],
@@ -281,7 +372,15 @@ for (const { nome, Componente, props } of PAGINAS) {
                 assert.doesNotMatch(html, /NaN/, 'contador em formato inesperado não pode virar "NaN" na tela');
                 // O header tem de continuar lá: sem conta ele desabilita os
                 // botões e explica, nunca desaparece.
-                assert.equal((html.match(/<header/g) ?? []).length, 1, `o <header> sumiu com cabecalho ${rotulo}`);
+                // ⚠️ REAPONTE DE VALOR (Fase 180, plano 10): era `1` fixo —
+                // ver o comentário de `PAGINAS`. Em `MeusAnuncios` são 2 (o
+                // global + o cabeçalho da página, LIST-01), e o cabeçalho da
+                // página também não pode desaparecer com `cabecalho` sujo.
+                assert.equal(
+                    (html.match(/<header/g) ?? []).length,
+                    headers,
+                    `o <header> sumiu (ou sobrou) com cabecalho ${rotulo}: esperados ${headers} em ${nome}`,
+                );
             });
         }
     });
@@ -339,8 +438,21 @@ test('AnunciosHistorico — nenhum slot de ações (a página não tem ação de
 // o que "Histórico" alcança. Até lá, estas asserções são o que impede que a
 // capacidade seja perdida em silêncio junto com o `AbasDaConta`.
 
+// ⚠️⚠️ CIRURGIA DA FASE 180 (plano 10) — `MeusAnuncios` SAIU deste array.
+//
+// VALOR ANTIGO: as DUAS páginas estavam aqui, e cada uma rodava os 4
+// sub-testes abaixo (radiogroup no corpo, os 2 rótulos, a certa marcada, o
+// caso sem Company).
+// VALOR NOVO: só `AnunciosHistorico`, com os 4 sub-testes INTACTOS.
+// POR QUE: LIST-25. O segmentado "No ar | Histórico" saiu da tela de
+// Publicações em 13/10/2026, por decisão informada do usuário — entre TRÊS
+// opções e com o aviso literal de que a rota do Histórico ficaria ÓRFÃ, sem
+// nenhum link vivo, até a fase que a reconstruísse. Ele escolheu "sai agora,
+// Histórico vira fase própria".
+// ⚠️ NÃO RESTAURAR. E a ausência do atalho é cobrada por um teste PRÓPRIO,
+// logo abaixo — com as props CHEIAS, porque ausência provada com dado vazio é
+// vazia por construção.
 const COM_SUBABAS = [
-    { nome: 'MeusAnuncios', Componente: MEUS, props: propsMeus, marcada: 'No ar', outra: 'Histórico' },
     { nome: 'AnunciosHistorico', Componente: HISTORICO, props: propsHistorico, marcada: 'Histórico', outra: 'No ar' },
 ];
 
@@ -389,16 +501,130 @@ test('AnunciarMassa — não tem sub-abas de publicações (nunca teve)', () => 
     assert.doesNotMatch(html, /role="radiogroup"/);
 });
 
-// ═══ 5. O corpo de MeusAnuncios não perdeu nada (REG-02) ══════════════════
-
-test('MeusAnuncios — as sub-abas Publicados | Rascunhos (D-14) continuam no corpo, com os contadores', () => {
+test('180: MeusAnuncios NÃO tem mais o segmentado "No ar | Histórico" — remoção autorizada (LIST-25)', async (contexto) => {
+    // ⚠️ VALOR ANTIGO: `assert.match(corpo, /role="radiogroup"/)` e a contagem
+    // de radiogroups do HTML igual a **1**, com os dois rótulos num
+    // `role="radio"` cada. VALOR NOVO: **0**.
+    // POR QUE: LIST-25, decisão informada do usuário em 13/10/2026 (três
+    // opções, com o aviso de que a rota ficaria órfã).
+    // ⚠️ NÃO RESTAURAR sem uma decisão NOVA dele.
+    //
+    // ⚠️ As props vão CHEIAS (cabeçalho completo, `empresa.id` presente, abas,
+    // grupos, rodapé): asserção de ausência rodada com dado vazio é vazia por
+    // construção — foi o 10º modo de o medidor mentir nesta milestone.
     const html = render(MEUS, propsMeus({ cabecalho: cabecalhoCompleto() }));
     const corpo = corpoDaPagina(html);
 
-    // São OUTRAS sub-abas, dentro da própria página — não se confundem com as
-    // de No ar | Histórico e NÃO saem na Fase 180.
-    assert.match(corpo, /Publicados/);
-    assert.match(corpo, /Rascunhos/);
-    assert.match(corpo, /\(3\)/, 'o contador de Publicados (subTotais) sumiu');
-    assert.match(corpo, /\(1\)/, 'o contador de Rascunhos (subTotais) sumiu');
+    await contexto.test('zero radiogroup na página inteira, e zero no corpo', () => {
+        assert.equal(
+            (html.match(/role="radiogroup"/g) ?? []).length,
+            0,
+            'o segmentado "No ar | Histórico" voltou a MeusAnuncios. Ele foi removido DE PROPÓSITO em'
+            + ' 13/10/2026 (LIST-25) — a contagem esperada era 1 até a Fase 179 e hoje é 0',
+        );
+        assert.doesNotMatch(corpo, /role="radio"/,
+            'nenhum `role="radio"` sobrou no corpo: o trilho de status é `role="tablist"`/`role="tab"`');
+    });
+
+    await contexto.test('e os dois rótulos "No ar"/"Histórico" não aparecem mais na tela', () => {
+        // ⚠️ A negativa é pelo CORPO e pelos literais EXCLUSIVOS do segmentado:
+        // "Histórico" sozinho é palavra comum, mas aqui ele só existia naquele
+        // controle (o header global não o tem, medido no plano 180-10).
+        assert.doesNotMatch(corpo, />No ar</, 'o rótulo "No ar" voltou à tela');
+        assert.doesNotMatch(corpo, />Histórico</, 'o rótulo "Histórico" voltou à tela');
+    });
+
+    await contexto.test('mas a página do Histórico CONTINUA montando o dela — o conteúdo não foi apagado', () => {
+        // ⚠️ É o endurecimento que justifica a negativa: sem isto, apagar a
+        // rota e a página inteira passaria por este gate, e foi exatamente o
+        // que o usuário NÃO autorizou — ele tirou o ATALHO, não o conteúdo.
+        const doHistorico = render(HISTORICO, propsHistorico({ cabecalho: cabecalhoCompleto() }));
+        assert.equal((doHistorico.match(/role="radiogroup"/g) ?? []).length, 1,
+            'a página do Histórico perdeu o segmentado — ela é o único lugar onde ele ainda vive');
+        assert.match(doHistorico, /No ar/);
+        assert.match(doHistorico, /Histórico/);
+    });
+});
+
+// ═══ 5. O corpo de MeusAnuncios não perdeu nada (REG-02) ══════════════════
+
+test('180: "Rascunhos" continua no corpo COM contador — na forma nova, dentro do trilho de status (LIST-25)', async (contexto) => {
+    // ⚠️⚠️ CIRURGIA (Fase 180, plano 10) — REAPONTE DE FORMA, com veto.
+    //
+    // VALOR ANTIGO: o teste chamava-se "as sub-abas Publicados | Rascunhos
+    // (D-14) continuam no corpo, com os contadores" e exigia os literais
+    // `Publicados`, `Rascunhos`, `(3)` e `(1)` — o par era um segmentado
+    // PRÓPRIO, com o contador entre PARÊNTESES.
+    // VALOR NOVO:
+    //   · `Rascunhos` continua na tela, agora como a 6ª opção DO MESMO trilho
+    //     das abas de status, e o contador continua — na forma do protótipo,
+    //     SEM parênteses (`Publicacoes v2.dc.html:86` interpola `tab.count`
+    //     num `<span>` próprio);
+    //   · `Publicados` deixou de ser um RÓTULO na tela: o atalho virou o
+    //     próprio trilho de status. ⚠️ O DADO não saiu — `sub` segue na URL,
+    //     `trocarSubAba` segue indo ao servidor e o contador segue sendo o
+    //     MESMO `$totalDeRascunhos` do servidor (provado na fonte, em
+    //     `estrutura-meus-anuncios.test.js`).
+    // POR QUE: LIST-25, palavras literais do usuário em 11/10/2026 — *"ja o
+    // rascunho adicione integrado no mesmo grupo de botões que tem abaixo da
+    // barra de busca"*.
+    // ⚠️ A forma `(3)`/`(1)` está VETADA: ela é a do controle que saiu.
+    const html = render(MEUS, propsMeus({ cabecalho: cabecalhoCompleto() }));
+    const corpo = corpoDaPagina(html);
+
+    await contexto.test('"Rascunhos" está na tela, dentro do trilho (role="tablist"), com o contador', () => {
+        assert.match(corpo, /Rascunhos/, '"Rascunhos" saiu da tela — o atalho mudou de lugar, não desapareceu');
+
+        // ⚠️ Recorte à OPÇÃO, não ao HTML inteiro: "Rascunhos" solto passaria
+        // com o rótulo vindo de qualquer outro lugar da tela. E o recorte é
+        // por ELEMENTO (`role="tab"`), não por `indexOf` de classe — classe
+        // compartilhada pega o irmão errado (é o 7º modo de o medidor mentir).
+        assert.notEqual(corpo.indexOf('role="tablist"'), -1, 'o trilho de status (role="tablist") não está no corpo');
+
+        const opcoes = corpo.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) ?? [];
+        assert.ok(opcoes.length >= 6, `esperadas ao menos 6 opções no trilho, achei ${opcoes.length}`);
+
+        const deRascunhos = opcoes.filter((opcao) => opcao.includes('Rascunhos'));
+        assert.equal(deRascunhos.length, 1, '"Rascunhos" não é UMA opção do trilho de status (LIST-25)');
+        // O contador do fixture é 1 — e ele aparece no `<span>` da própria
+        // opção, do lado do rótulo.
+        assert.match(
+            deRascunhos[0],
+            /<span[^>]*>1<\/span>/,
+            'o contador de "Rascunhos" (abas[].total, o mesmo $totalDeRascunhos do servidor) sumiu da opção',
+        );
+    });
+
+    await contexto.test('a FORMA antiga do contador — "(3)" / "(1)" entre parênteses — está VETADA', () => {
+        assert.doesNotMatch(
+            corpo,
+            /\(3\)/,
+            'a forma antiga do contador voltou: o segmentado separado "Publicados | Rascunhos" usava parênteses'
+            + ' e saiu em 13/10/2026 (LIST-25). O protótipo não usa parênteses',
+        );
+        assert.doesNotMatch(corpo, /\(1\)/, 'idem para o contador de Rascunhos');
+    });
+
+    await contexto.test('e "Publicados" deixou de ser rótulo na tela — o DADO ficou, o atalho mudou de lugar', () => {
+        assert.doesNotMatch(
+            corpo,
+            />Publicados</,
+            'o rótulo "Publicados" voltou como controle: o segmentado separado saiu (LIST-25) e quem mostra o'
+            + ' acervo publicado agora é o próprio trilho de status',
+        );
+    });
+
+    await contexto.test('com sub=rascunhos é a opção "Rascunhos" que fica marcada (e não um status)', () => {
+        // ⚠️ Os dois sentidos: sem isto, "Rascunhos existe no trilho" passaria
+        // com a opção nunca marcável — e a tela mostraria a lista de rascunhos
+        // com "Ativas" marcada, que é mentira.
+        const comRascunhos = corpoDaPagina(render(MEUS, propsMeus({
+            cabecalho: cabecalhoCompleto(),
+            sub: 'rascunhos',
+            rascunhos: [],
+        })));
+        const marcada = comRascunhos.match(/<button[^>]*aria-selected="true"[^>]*>[\s\S]{0,200}?<\/button>/);
+        assert.ok(marcada, 'nenhuma opção do trilho está marcada com sub=rascunhos');
+        assert.match(marcada[0], /Rascunhos/, 'a opção marcada com sub=rascunhos não é "Rascunhos"');
+    });
 });

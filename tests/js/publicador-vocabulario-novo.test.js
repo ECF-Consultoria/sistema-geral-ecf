@@ -123,6 +123,22 @@ const ARQUIVOS_NOVOS = [
     `${DIR_PUB}/LinhaDeGrupoDeProduto.jsx`,
     `${DIR_PUB}/RodapeDaTabela.jsx`,
     `${DIR_PUB}/VaziosDaLista.jsx`,
+    // ⚠️⚠️ Plano 180-10 — A PÁGINA. Ela não é um componente de `publicacoes/`:
+    // é `resources/js/Pages/Mlb/MeusAnuncios.jsx`, a tela de Publicações, cujo
+    // CORPO passou a ser o layout novo. Entrar aqui é o REAPONTE que fecha a
+    // cirurgia do plano 180-10: o arquivo SAIU do
+    // `travaVocabularioVisual()` de `estrutura-meus-anuncios.test.js` (que
+    // EXIGIA `text-sm`/`text-base` e PROIBIA 10/12/13px e `font-medium` — o
+    // oposto do protótipo) e entrou neste gate, que é mais duro. Sem esta
+    // linha a página ficaria SEM conferência de vocabulário nos DOIS gates, e
+    // os dois passariam por omissão — há asserção em
+    // `estrutura-meus-anuncios.test.js` cobrando exatamente a presença deste
+    // caminho aqui.
+    //
+    // ⚠️ Ela NÃO entra em `DIRETORIOS_FECHADOS`: `Pages/Mlb/` tem página de
+    // outras fases (`AnunciosHistorico`, `AnunciarMassa`, `AnunciarML`…) e
+    // varrer a pasta inteira reprovaria trabalho que não é desta milestone.
+    'resources/js/Pages/Mlb/MeusAnuncios.jsx',
 ];
 
 /**
@@ -241,6 +257,30 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
             + ' 3 do 180-07 (MenuDeFiltro + ChipsDeFiltro + ChipsDeTriagem),'
             + ' 3 do 180-08 (CabecalhoDaTabela + LinhaDePublicacao + CelulasDaLinha)'
             + ' e 3 do 180-09 (LinhaDeGrupoDeProduto + RodapeDaTabela + VaziosDaLista)',
+        );
+    });
+
+    await contexto.test('e a PÁGINA de Publicações entrou na lista — a Fase 180 contribui 15 arquivos (plano 180-10)', () => {
+        // ⚠️ POR QUE O NÚMERO ACIMA CONTINUA 14, E ESTE É 15: o plano 180-10
+        // NÃO cria componente em `publicacoes/` — ele COMPÕE a página. Elevar
+        // o 14 seria mentir sobre o diretório (e o gate de território daquele
+        // plano prova diff VAZIO em `publicacoes/`). O que cresce é a lista
+        // INTEIRA da fase: os 14 componentes + a página.
+        //
+        // ⚠️ E este sub-teste é o que impede a entrada CALADA da página: sem
+        // ele, acrescentar o caminho em `ARQUIVOS_NOVOS` não mexeria em nenhum
+        // número, e tirá-lo de lá também não.
+        const PAGINA = 'resources/js/Pages/Mlb/MeusAnuncios.jsx';
+
+        assert.ok(
+            ARQUIVOS_NOVOS.includes(PAGINA),
+            `${PAGINA} saiu de ARQUIVOS_NOVOS: a tela de Publicações ficaria sem conferência de vocabulário`,
+        );
+        assert.equal(
+            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`) || c === PAGINA).length,
+            15,
+            'a Fase 180 contribui 15 arquivos: os 14 componentes de `publicacoes/` (planos 05 a 09) mais a'
+            + ' página `Pages/Mlb/MeusAnuncios.jsx` (plano 10), que é quem os compõe',
         );
     });
 });
