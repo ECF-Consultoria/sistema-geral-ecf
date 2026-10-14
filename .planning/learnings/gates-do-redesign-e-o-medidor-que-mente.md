@@ -49,6 +49,28 @@ gate acusar.
 ➡️ **Todo mapa de classe mora no `.jsx`. Ponha gate que proíba classe no módulo `.js`.**
 ➡️ Mesma família: **classe montada por concatenação de string o scanner não vê.**
 
+### ⚠️⚠️ 2b. `duration-[Nms]`, `delay-[Nms]` e `ease-[…]` NÃO COMPILAM NESTE PROJETO
+
+Medido em 13/10/2026 (plano 180-09), conferindo o CSS construído: **não existe NENHUMA regra
+`.duration-\[…\]`** no `public/build/assets/app-*.css` — zero ocorrências da string `duration-\[`.
+A escala NOMEADA existe (`duration-75/150/200/300/500/700`); o valor arbitrário, não.
+
+**A causa, reproduzida** com `postcss([tailwind({content:[{raw:'…duration-[180ms]…'}], plugins:[animate]})])`:
+o plugin **`tailwindcss-animate`** (`tailwind.config.js`, `plugins: [forms, animate]`) registra
+`duration`, `delay` e `ease` como utilitários de **animação**, e o Tailwind então recusa o valor
+arbitrário com o aviso *"The class `duration-[180ms]` is ambiguous and matches multiple utilities"*.
+Sem o plugin, a mesma classe compila.
+
+⚠️ **É a mesma família do `*.js` que o `content` não varre: a classe fica no HTML, todo teste de
+render passa, e a transição simplesmente não acontece na tela.** Havia **6 usos mortos** no
+repositório antes desta fase (`LinhaDeProduto.jsx:40` e cinco em `Pages/Performance/Index.jsx`) —
+registrados em `.planning/phases/180-publicacoes-lista/deferred-items.md`, não consertados.
+
+➡️ **Duração fora da escala vai por `style={{ transitionDuration: '180ms' }}` ou por TOKEN
+(`theme.extend.transitionDuration`) — nunca por `duration-[…]`.** E ponha gate que prove que a
+classe morta não voltou (`assert.equal(regraDe('duration-[180ms]'), null)` com `duration-200` como
+controle, senão o gate não distingue "o arbitrário não compila" de "a sonda está cega").
+
 ---
 
 ## 3. As seis armadilhas do CSS construído
@@ -134,6 +156,9 @@ Este projeto já foi mordido onze vezes pela mesma classe de erro: asserção qu
    é **`resources/js/Pages/Mlb/AnunciosHistorico.jsx`**, FORA de `Publicador/`, ao lado de
    `anuncioHistoricoUtils.js`. Cinco caminhos fantasma em quatro fases: **`test -e` não é zelo,
    é obrigatório.**
+   ⚠️ **6º (13/10/2026, plano 180-09):** `resources/js/Components/Mlb/SubAbasDePublicacoes.jsx`
+   **não existe** — o real é **`resources/js/Components/Mlb/Publicador/SubAbasDePublicacoes.jsx`**,
+   DENTRO de `Publicador/`. Pego pelo `test -e` antes de virar diff vazio.
 9. ⚠️⚠️ **CÓDIGO ANSI COME O VEREDICTO DO TESTE — e o log diz que deu tudo certo.**
    Medido em 13/10/2026 (plano 180-03): a campanha de mutação filtrava o resultado do `artisan test`
    por `grep` numa linha fixa, e as sequências de cor comeram **todas as 12 linhas de resultado**.
