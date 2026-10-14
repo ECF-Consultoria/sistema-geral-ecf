@@ -178,6 +178,15 @@ Este projeto já foi mordido onze vezes pela mesma classe de erro: asserção qu
    **o modo de falhar é silêncio com aparência de sucesso.**
    ➡️ **Compare sempre a CONTAGEM esperada, não só "0 fail".** Um arquivo que não carrega
    reporta zero falhas.
+   ⚠️⚠️ **MAS a contagem esperada pode ter DOIS REGIMES, e isso quebra a regra acima.**
+   Medido em 14/10/2026 (plano 180-10B): a sonda de CSS entra em `skip` por `mtime`, e **mutar o
+   arquivo o deixa mais novo** — então o mesmo gate reporta **119 testes com o arquivo pristino e
+   114 com ele mutado** (noutro, 130 × 118). Travar a campanha na contagem "normal" fez a 1ª
+   execução abortar com *"BASE com contagem inesperada"*; e **sem** a trava, a campanha **inteira**
+   marcaria "SOBREVIVEU" por um motivo que **não é o código**.
+   ➡️ **Meça as DUAS contagens antes da campanha** (pristino e mutado) e aceite as duas, ou
+   remova a dependência de `mtime` do gate. É a armadilha que se esconde **dentro** da defesa
+   contra as outras três silenciosas (ANSI, `after()` do `node --test`, `SyntaxError`).
 
 ➡️ **A pergunta que desmascara todos:** *"o que precisaria estar errado no código para este gate
 falhar?"* Sem resposta concreta, o gate é decorativo. **Cada uma das 11 waves da Fase 179 pegou um
