@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
+import { lerSemComentarios } from './_fonte.js';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -111,7 +112,11 @@ async function montar(relativo, rotulo) {
 }
 
 // ─── REND-03: tudo montado aqui, no topo do módulo ───
-const MEUS = (await montar('resources/js/Pages/Mlb/MeusAnuncios.jsx', 'pg-meus')).default;
+// ⚠️ O MÓDULO inteiro, e não só o default: o plano 180-10 exporta
+// `grupoAberto()` (a regra de LIST-09) para que ela tenha caso de teste — no
+// render de servidor `colapsados` é sempre `[]` e a regra não é observável.
+const MOD_MEUS = await montar('resources/js/Pages/Mlb/MeusAnuncios.jsx', 'pg-meus');
+const MEUS = MOD_MEUS.default;
 const HISTORICO = (await montar('resources/js/Pages/Mlb/AnunciosHistorico.jsx', 'pg-historico')).default;
 const MASSA = (await montar('resources/js/Pages/Mlb/AnunciarMassa.jsx', 'pg-massa')).default;
 
@@ -626,5 +631,716 @@ test('180: "Rascunhos" continua no corpo COM contador — na forma nova, dentro 
         const marcada = comRascunhos.match(/<button[^>]*aria-selected="true"[^>]*>[\s\S]{0,200}?<\/button>/);
         assert.ok(marcada, 'nenhuma opção do trilho está marcada com sub=rascunhos');
         assert.match(marcada[0], /Rascunhos/, 'a opção marcada com sub=rascunhos não é "Rascunhos"');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. FASE 180 (plano 10) — A TELA NOVA NÃO PERDEU NADA
+//
+// ⚠️ POR QUE ESTE BLOCO EXISTE: o corpo de `MeusAnuncios` foi trocado inteiro
+// pelo layout novo (14 componentes de `publicacoes/`). O critério 13 do
+// ROADMAP nomeia OITO coisas que a tela de hoje entrega e que não podem
+// desaparecer — e cada uma tem um caso de teste PRÓPRIO aqui, com render REAL
+// da página COMPLETA. Gate de fonte não serve: a composição é o que pode
+// quebrar, e a tela preta de 07/10/2026 só aparece renderizando.
+//
+// ⚠️ A ÚNICA exceção autorizada ao critério 13 é o segmentado
+// "No ar | Histórico", removido por decisão informada do usuário em
+// 13/10/2026 (LIST-25) — e a ausência dele tem teste próprio, acima. Desvio
+// num item NÃO afrouxa os outros sete.
+//
+// ⚠️ A PRESCRIÇÃO DO PLANO FOI CORRIGIDA EM UM PONTO: ela pedia, no caso 1,
+// *"'No ar'/'Histórico' presentes"*. Isso é anterior à decisão de 13/10 e é
+// hoje o OPOSTO do exigido — a asserção correta é a de AUSÊNCIA, que vive no
+// teste nominal acima. Registrado na 180-10-SUMMARY.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Props com DADO de verdade — o vazio esconderia metade da tela. */
+const propsMeusCheias = (extras = {}) => propsMeus({
+    cabecalho: cabecalhoCompleto(),
+    anuncios: {
+        data: [
+            {
+                ml_item_id: 'MLB111', titulo: 'Poltrona Beny Linho', produto_id: 7,
+                produto_nome: 'Poltrona Beny', produto_sku: 'PB-01', skus: ['PB-01'],
+                status: 'active', fase: 1, tipo: 'classico', catalogo: false, estoque: 4,
+                vendas: 12, visitas: 1340, nota_ecf: 71, nota_base: 86, motivos: ['sem_estoque'],
+                origem: 'ecf', rascunho_id: 55, permalink: 'https://ml/MLB111',
+                autor_nome: 'Maria', autor_tipo: 'equipe', publicada_em: '2026-10-12T10:00:00Z',
+                preco: '309.90', thumbnail: null,
+            },
+            {
+                ml_item_id: 'MLB222', titulo: 'Poltrona Beny Veludo', produto_id: 7,
+                produto_nome: 'Poltrona Beny', status: 'paused', fase: 2, quantidade_kit: 2,
+                tipo: 'premium', estoque: 0, vendas: 0, motivos: [], origem: 'legado',
+                permalink: 'https://ml/MLB222', publicada_em: null, preco: null,
+            },
+        ],
+        links: [
+            { url: null, label: '&laquo; Previous', active: false },
+            { url: '/meus?page=1', label: '1', active: true },
+            { url: '/meus?page=2', label: '2', active: false },
+            { url: '/meus?page=2', label: 'Next &raquo;', active: false },
+        ],
+        total: 248,
+    },
+    triagem: {
+        total: 2,
+        chips: [{ chave: 'sem_estoque', label: 'Sem estoque', count: 1, cor: 'red' }],
+        nao_avaliado: 3,
+    },
+    grupos: [{
+        produto_id: 7, produto_nome: 'Poltrona Beny', produto_sku: 'PB-01', estoque: 4,
+        cobertura: { f1_classico: true, f1_premium: false, f2_classico: false, f2_premium: false },
+        total_no_produto: 4, total_visivel: 2, sem_fase2: true,
+        ver_produto_url: '/editor/7', criar_combo_url: '/produtos',
+        ml_item_ids: ['MLB111', 'MLB222'],
+    }],
+    rodape: { visiveis: 2, total: 248, produtos: 1 },
+    ...extras,
+});
+
+/**
+ * O HTML sem os marcadores de fronteira de texto do React.
+ *
+ * ⚠️ MEDIDO, não presumido: o `renderToStaticMarkup` separa expressões de texto
+ * adjacentes com `<!-- -->`, então "Última coleta há {dias} dia(s)" sai como
+ * `Última coleta há <!-- -->2<!-- --> dia(s)`. Uma regex sobre a FRASE INTEIRA
+ * reprova o código CERTO sem isto — foi o primeiro furo deste bloco.
+ */
+const semMarcadores = (html) => html.replace(/<!-- -->/g, '');
+
+/** O card da tabela — recorte por ELEMENTO, nunca por classe compartilhada. */
+function cardDaTabela(html) {
+    const inicio = html.indexOf('<section class=');
+    assert.notEqual(inicio, -1, 'o card da tabela (<section>) não está na saída');
+    const fim = html.indexOf('</section>', inicio);
+    assert.notEqual(fim, -1, '<section> do card sem fechamento');
+    return html.slice(inicio, fim);
+}
+
+test('180: o critério 13 — as OITO coisas que a tela de hoje entrega continuam na tela', async (contexto) => {
+    await contexto.test('1. banner de defasagem: texto, tom ÂMBAR (nunca vermelho) e a lista CONTINUA abaixo dele', () => {
+        const html = render(MEUS, propsMeusCheias({
+            defasagem: { horas: 52, defasado: true, nunca_coletado: false, motivo: 'token expirado' },
+        }));
+        const corpo = corpoDaPagina(html);
+
+        // O nó do banner, recortado pelo TEXTO único dele (nunca por classe).
+        const inicio = corpo.indexOf('Última coleta há');
+        assert.notEqual(inicio, -1, 'o banner de defasagem (D-08) desapareceu da tela');
+        const abertura = corpo.lastIndexOf('<div class=', inicio);
+        const noDoBanner = corpo.slice(abertura, corpo.indexOf('</div>', inicio));
+
+        // ⚠️ 52 horas → "há 2 dia(s)": é a conta da página
+        // (`Math.max(1, Math.floor(horas / 24))`), e o `semMarcadores` existe
+        // porque o React corta a frase com `<!-- -->` entre as expressões.
+        assert.match(semMarcadores(corpo), /Última coleta há 2 dia\(s\), motivo: token expirado/,
+            'o texto do banner mudou — ele diz há quantos dias foi a última coleta e o motivo');
+        assert.match(corpo, /os dados abaixo podem estar desatualizados/);
+
+        // ⚠️ Tom ÂMBAR: não é erro do usuário. O vermelho é de ERRO.
+        assert.match(noDoBanner, /bg-pub-warn\/\[0\.05\]/, 'o banner perdeu o fundo âmbar');
+        assert.match(noDoBanner, /border-pub-warn\/\[0\.30\]/, 'o banner perdeu a borda âmbar');
+        assert.match(noDoBanner, /text-pub-warn-txt/, 'o banner perdeu o texto âmbar');
+        assert.doesNotMatch(noDoBanner, /pub-danger/,
+            'o banner virou VERMELHO — coleta velha não é erro do usuário (D-08)');
+
+        // ⚠️ E ele NUNCA esconde a lista: as duas linhas continuam logo abaixo.
+        const card = cardDaTabela(html);
+        assert.match(card, /MLB111/, 'o banner escondeu a lista — ele nunca pode');
+        assert.match(card, /MLB222/);
+
+        // O botão de coleta vai NO banner (é a ação que resolve).
+        assert.match(noDoBanner, /Atualizar agora/, 'o banner perdeu o "Atualizar agora"');
+    });
+
+    await contexto.test('2. "Ainda não coletamos os anúncios desta empresa." (nunca_coletado) SUBSTITUI a lista', () => {
+        const html = render(MEUS, propsMeusCheias({
+            defasagem: { horas: null, defasado: false, nunca_coletado: true, motivo: null },
+        }));
+        const corpo = corpoDaPagina(html);
+
+        assert.match(corpo, /Ainda não coletamos os anúncios desta empresa\./,
+            'o vazio honesto de "nunca coletado" desapareceu (EXMP-01: "nunca medimos" ≠ "medimos e é zero")');
+        assert.match(corpo, /A primeira coleta roda automaticamente até amanhã/);
+        assert.match(corpo, /Atualizar agora/, 'o caminho para resolver tem de estar junto do vazio');
+
+        // ⚠️ E NADA de contador zerado: desenhar as 6 abas com 0 afirmaria que
+        // medimos e deu zero. Nem trilho, nem busca, nem chips, nem tabela.
+        assert.doesNotMatch(corpo, /role="tablist"/, 'o trilho de status apareceu sem nenhuma coleta — os zeros mentiriam');
+        assert.doesNotMatch(corpo, /<input/, 'a busca apareceu sem nenhuma coleta — não há o que buscar');
+        assert.doesNotMatch(corpo, /<section/, 'a tabela apareceu sem nenhuma coleta');
+    });
+
+    await contexto.test('3. o aviso de SKU ainda não coletado, com o "Atualizar agora" que a frase MANDA clicar', () => {
+        const html = render(MEUS, propsMeusCheias({
+            anuncios: { data: [], links: [] },
+            grupos: [],
+            filtros: { ...propsMeus().filtros, busca: 'PB-01' },
+            skuNaoColetado: true,
+        }));
+        const corpo = corpoDaPagina(html);
+
+        assert.match(corpo, /O SKU dos anúncios desta empresa ainda não foi coletado/,
+            'o aviso de SKU não coletado (RIE-04) desapareceu — sem ele a tela mente por omissão');
+        assert.match(corpo, /mesmo que o anúncio exista/,
+            'é esta a frase que impede a tela de afirmar que o anúncio não existe');
+        assert.match(corpo, /Clique em Atualizar agora e busque de novo/);
+        // A frase manda clicar: o nó da ação não pode faltar.
+        const card = cardDaTabela(html);
+        assert.match(card, /Atualizar agora/, 'o aviso manda clicar num botão que não está na tela (EXMP-01)');
+        // E o termo buscado aparece, em vez de um "não achei" genérico.
+        assert.match(corpo, /Nada encontrado para “PB-01”\./);
+    });
+
+    await contexto.test('4. "Rascunhos" troca a LISTA (D-14): o painel entra e a tabela sai — e volta', () => {
+        const comRascunhos = corpoDaPagina(render(MEUS, propsMeusCheias({ sub: 'rascunhos', rascunhos: [] })));
+        assert.doesNotMatch(comRascunhos, /<section/, 'a tabela continuou na tela na fonte Rascunhos');
+        assert.match(comRascunhos, /Nenhum rascunho aqui ainda\./, 'o painel de rascunhos não entrou');
+        // ⚠️ O trilho FICA: é o caminho de volta. Sem ele a fonte Rascunhos
+        // seria um beco sem saída.
+        assert.match(comRascunhos, /role="tablist"/, 'sem o trilho não há como voltar da fonte Rascunhos');
+
+        const publicados = corpoDaPagina(render(MEUS, propsMeusCheias()));
+        assert.match(publicados, /<section/, 'a tabela não voltou na fonte Publicados');
+        assert.doesNotMatch(publicados, /Nenhum rascunho aqui ainda\./, 'o painel de rascunhos vazou para Publicados');
+    });
+
+    await contexto.test('5. a paginação de 50 — os links do paginator, com as entidades DECODIFICADAS', () => {
+        const rodape = render(MEUS, propsMeusCheias());
+        const nav = rodape.match(/<nav aria-label="Paginação"[\s\S]*?<\/nav>/);
+        assert.ok(nav, 'a paginação do servidor desapareceu do rodapé (critério 13)');
+
+        // Os 4 links do fixture, com « e » em TEXTO (nunca via
+        // dangerouslySetInnerHTML — T-134-20).
+        assert.match(nav[0], /«\s*Previous/, 'o rótulo "&laquo; Previous" não foi decodificado');
+        assert.match(nav[0], /Next\s*»/, 'o rótulo "Next &raquo;" não foi decodificado');
+        assert.doesNotMatch(nav[0], /&laquo;|&raquo;/, 'a entidade HTML foi para a tela crua');
+        // O link ativo é marcado, e o `url: null` NÃO virou âncora.
+        assert.equal((nav[0].match(/<a /g) ?? []).length, 3, 'esperadas 3 âncoras (o "Previous" do fixture é url: null)');
+        assert.match(nav[0], /border-pub-accent\/\[0\.55\]/, 'a página ativa deixou de ser destacada');
+    });
+
+    await contexto.test('6. a ordenação por gravidade (D-12) continua DITA na tela, e a tela não mente sobre ela', () => {
+        const corpo = corpoDaPagina(render(MEUS, propsMeusCheias()));
+        assert.match(corpo, /Mais graves primeiro/,
+            'o rótulo da ordenação desapareceu — o servidor ordena por severidade (D-12) e a tela tem de dizer');
+        // ⚠️ O protótipo escreve "Mais recentes primeiro" e MENTE sobre este
+        // sistema: a ordenação é por gravidade. Decisão do plano 180-06.
+        assert.doesNotMatch(corpo, /Mais recentes primeiro/,
+            'a tela passou a dizer "Mais recentes primeiro", que é o protótipo MENTINDO sobre a ordenação real');
+    });
+
+    await contexto.test('7. a Nota ECF continua "de 86" NA TELA — nunca renormalizada para 100 (D-22/critério 15)', () => {
+        const html = render(MEUS, propsMeusCheias());
+
+        // ⚠️ Recorte ao NÓ: `doesNotMatch(html, /100/)` seria vazio por
+        // construção (há 100 em rgba, em minmax e em classes).
+        const inicio = html.indexOf('Nota ECF');
+        assert.notEqual(inicio, -1, 'a Nota ECF desapareceu da tela (LIST-24 diz que ela MIGRA, não que é apagada)');
+        const noDaNota = html.slice(Math.max(0, inicio - 120), inicio + 120);
+
+        assert.match(noDaNota, /Nota ECF 71 de 86/, 'a nota deixou de aparecer como "de 86"');
+        assert.doesNotMatch(noDaNota, /de 100/, 'a nota foi renormalizada para 100 — D-22 proíbe');
+        assert.doesNotMatch(noDaNota, /82,6|82\.6/, 'a nota virou percentual (71/86) — D-22 proíbe');
+
+        // E a nota sem valor diz que NÃO foi avaliada, nunca "0 de 86".
+        assert.match(html, /Nota ECF ainda não avaliada/,
+            'a linha sem nota deixou de dizer que a nota não foi avaliada (EXMP-01)');
+    });
+
+    await contexto.test('8. D-11 — a tela nunca escreve no ML: UM router.post, zero put/delete/patch', () => {
+        // Pela FONTE sem comentários: o render não executa handler nenhum, e os
+        // comentários desta página citam `router.post` e `D-11` de propósito.
+        const fonte = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+
+        assert.equal((fonte.match(/router\.post\(/g) ?? []).length, 1,
+            'a contagem de router.post mudou — só pode haver UM, o "Atualizar agora", que ENFILEIRA');
+        assert.match(fonte, /router\.post\(route\('mlb\.anuncios\.meus\.atualizar'/);
+        for (const verbo of ['put', 'delete', 'patch']) {
+            assert.doesNotMatch(fonte, new RegExp(`router\\.${verbo}\\(`),
+                `a tela ganhou um router.${verbo} — ela NUNCA escreve no Mercado Livre (D-11)`);
+        }
+        // E nenhuma porta lateral: o <a> do permalink é link externo, não escrita.
+        const html = render(MEUS, propsMeusCheias());
+        assert.doesNotMatch(html, /<form/, 'a tela ganhou um formulário — a busca é round-trip por router.get');
+    });
+});
+
+test('180: as decisões de honestidade da tela (EXMP-01) — nenhum número inventado, nenhum botão sem destino', async (contexto) => {
+    await contexto.test('a faixa de sucesso NÃO aparece com o valor real do servidor (faixaSucesso: null)', () => {
+        // ⚠️ MEDIDO no plano 180-04 por três caminhos: ninguém grava resumo de
+        // publicação em sessão, a lista branca de `flash` não tem chave de
+        // publicação, e a publicação é assíncrona. O protótipo traz
+        // "2 publicações criadas agora · Poltrona Beny" e aquilo é MOCK.
+        const corpo = corpoDaPagina(render(MEUS, propsMeusCheias()));
+        assert.doesNotMatch(corpo, /criadas agora/, 'a faixa de sucesso apareceu com dado inventado (EXMP-01)');
+        assert.doesNotMatch(corpo, /Localizar na lista/, 'o botão da faixa apareceu sem faixa');
+    });
+
+    await contexto.test('mas a LIGAÇÃO é real: com resumo do servidor a faixa aparece e o botão tem destino', () => {
+        // ⚠️ Sem este caso, a asserção acima passaria também se a página
+        // simplesmente não montasse o componente — "não aparece" não distingue
+        // "não há dado" de "não está ligado".
+        // ⚠️ A FORMA do resumo é a do componente (plano 180-05), medida na
+        // fonte dele: `{total, produto_nome, fase_rotulo, tipos_rotulo,
+        // autor_rotulo, busca_sugerida, ml_item_id}`. Inventar os nomes faria
+        // a faixa não aparecer e o gate reprovar o código certo — foi o
+        // segundo furo deste bloco.
+        const corpo = corpoDaPagina(render(MEUS, propsMeusCheias({
+            faixaSucesso: {
+                total: 2,
+                produto_nome: 'Poltrona Beny',
+                fase_rotulo: 'Fase 2',
+                tipos_rotulo: 'Clássico e Premium',
+                autor_rotulo: 'publicadas por você',
+                busca_sugerida: 'Beny',
+                ml_item_id: 'MLB111',
+            },
+        })));
+        assert.match(corpo, /criadas agora/, 'a faixa de sucesso não está LIGADA — a prop do servidor não chega nela');
+        assert.match(corpo, /Localizar na lista/);
+    });
+
+    await contexto.test('o chip de "Responsável" NÃO é desenhado: a lista de responsáveis não existe como prop', () => {
+        // ⚠️ Lacuna MEDIDA no plano 180-07 (varridos o controller e
+        // `app/Services/Publicador/`). Inventar gente para o chip aparecer
+        // seria pior que a ausência (EXMP-01).
+        const corpo = corpoDaPagina(render(MEUS, propsMeusCheias()));
+        assert.doesNotMatch(corpo, /Responsável/,
+            'o chip de Responsável apareceu — a fonte dele não existe hoje e o conteúdo seria inventado');
+        // E os outros cinco chips continuam lá (a negativa acima não pode ser
+        // "nenhum chip é desenhado").
+        for (const rotulo of ['Fase', 'Tipo', 'Em catálogo', 'Com vendas', 'Publicada']) {
+            assert.ok(corpo.includes(rotulo), `o chip "${rotulo}" desapareceu da linha de filtros`);
+        }
+    });
+
+    await contexto.test('a coluna Preço mostra "—" quando o servidor não manda preço, nunca um zero', () => {
+        const card = cardDaTabela(render(MEUS, propsMeusCheias()));
+        assert.match(card, /R\$ 309,90/, 'o preço que CHEGA deixou de ser mostrado');
+        assert.match(card, /—/, 'a linha sem preço deixou de mostrar "—"');
+        assert.doesNotMatch(card, /R\$ 0,00/, 'preço ausente virou R$ 0,00 — número inventado em tela financeira');
+    });
+
+    await contexto.test('a visão "Por produto" é a que abre, e "Lista" mostra as linhas planas (LIST-09/LIST-10)', () => {
+        // Por produto (default do servidor): linha de grupo + recuo nas linhas.
+        const porProduto = cardDaTabela(render(MEUS, propsMeusCheias()));
+        assert.match(porProduto, /role="button"/, 'a linha de grupo da visão "Por produto" desapareceu');
+        assert.match(porProduto, /PRODUTO/, 'o selo do produto na linha de grupo desapareceu');
+        assert.match(porProduto, /pl-\[30px\]/, 'as linhas perderam o recuo de 30px da visão agrupada');
+
+        // Lista: sem linha de grupo, com tile e o nome do produto no meta.
+        const lista = cardDaTabela(render(MEUS, propsMeusCheias({
+            filtros: { ...propsMeus().filtros, visao: 'lista' },
+            grupos: [],
+        })));
+        assert.doesNotMatch(lista, /role="button"/, 'a visão Lista desenhou linha de grupo');
+        assert.doesNotMatch(lista, /pl-\[30px\]/, 'a visão Lista manteve o recuo da visão agrupada');
+        assert.match(lista, /Poltrona Beny/, 'a visão Lista perdeu o nome do produto no meta (LIST-10)');
+    });
+
+    await contexto.test('a busca ativa FORÇA os grupos abertos (LIST-09) — e a regra mora na página', () => {
+        const comBusca = cardDaTabela(render(MEUS, propsMeusCheias({
+            filtros: { ...propsMeus().filtros, busca: 'Beny' },
+        })));
+        assert.match(comBusca, /MLB111/, 'com busca ativa as linhas do grupo têm de estar visíveis (LIST-09)');
+        assert.match(comBusca, /MLB222/);
+    });
+
+    await contexto.test('⚠️ a regra de LIST-09 nas QUATRO combinações — o render sozinho NÃO a prova', () => {
+        // ⚠️ POR QUE ESTE CASO EXISTE: a prova por mutação deste plano inverteu
+        // a regra no JSX (`buscaAtiva` → `!buscaAtiva`) e a mutação
+        // SOBREVIVEU. Investigada em vez de presumida equivalente: no render de
+        // servidor `colapsados` é SEMPRE `[]` (estado inicial), então
+        // `!colapsados.includes(x)` é sempre verdadeiro e o `||` devolve `true`
+        // de qualquer jeito — a regra NÃO É OBSERVÁVEL em render estático.
+        // ➡️ Por isso ela virou a função pura `grupoAberto()`, exportada, e
+        // estas são as quatro combinações.
+        const { grupoAberto } = MOD_MEUS;
+        assert.equal(typeof grupoAberto, 'function', 'a regra de LIST-09 deixou de ser exportada');
+
+        assert.equal(grupoAberto(false, [], 'p7'), true, 'grupo não recolhido e sem busca tem de estar ABERTO');
+        assert.equal(grupoAberto(false, ['p7'], 'p7'), false, 'grupo RECOLHIDO sem busca tem de estar fechado');
+        assert.equal(grupoAberto(true, ['p7'], 'p7'), true,
+            'com busca ativa o grupo recolhido tem de ABRIR — senão o resultado da busca fica escondido (LIST-09)');
+        assert.equal(grupoAberto(false, ['outro'], 'p7'), true, 'recolher um grupo não pode fechar os outros');
+
+        // E os formatos adversos: a regra não lança nem fecha tudo.
+        assert.equal(grupoAberto(false, null, 'p7'), true, '`colapsados` nulo não pode fechar os grupos');
+        assert.equal(grupoAberto(false, [], null), true, 'o grupo sem chave (Legado) não tem o que recolher');
+        assert.equal(grupoAberto('sim', ['p7'], 'p7'), false, 'só o booleano `true` conta como busca ativa');
+    });
+
+    await contexto.test('a tela nunca esconde linha que o rodapé está contando (grupo nenhum do servidor)', () => {
+        // ⚠️ Visão "Por produto" com `grupos: []` e linhas na página: sem o
+        // caminho plano de reserva, a tabela sairia VAZIA dizendo "2 de 248".
+        const card = cardDaTabela(render(MEUS, propsMeusCheias({ grupos: [] })));
+        assert.match(card, /MLB111/, 'as linhas desapareceram com `grupos` vazio — a tela mentiria sobre o rodapé');
+        assert.match(card, /2 de 248 publicações/);
+    });
+});
+
+test('180: o vocabulário do corpo e as travas de segurança da composição', async (contexto) => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+
+    await contexto.test('o Select do shadcn SAIU e nenhum dangerouslySetInnerHTML entrou', () => {
+        assert.doesNotMatch(fonte, /@\/Components\/ui\/select/,
+            'o Select do shadcn voltou: o filtro de status virou o trilho de abas (plano 180-06)');
+        assert.doesNotMatch(fonte, /\bSelect(Trigger|Content|Item|Value)?\b/,
+            'sobrou uso do Select do shadcn na página');
+        assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/,
+            'o rótulo do paginator voltou a ser injetado como HTML (T-134-20)');
+        // E a função que existe para isso continua lá.
+        assert.match(fonte, /function decodificarRotuloPaginacao/,
+            'a decodificação segura dos rótulos do paginator desapareceu');
+    });
+
+    await contexto.test('a tabela antiga (Table do shadcn, 8 colunas) saiu — o corpo é o layout novo', () => {
+        assert.doesNotMatch(fonte, /@\/Components\/ui\/table/, 'a tabela antiga continua montada');
+        assert.match(fonte, /publicacoes\/LinhaDePublicacao/, 'a linha do layout novo não está importada');
+        assert.match(fonte, /publicacoes\/CabecalhoDaTabela/, 'o cabeçalho do grid novo não está importado');
+    });
+
+    await contexto.test('os 14 componentes de `publicacoes/` são IMPORTADOS, nenhum recriado', () => {
+        const DOZE_IMPORTS = [
+            'CabecalhoDePublicacoes', 'FaixaDeSucesso', 'BuscaDePublicacoes', 'AbasDeStatus',
+            'LinhaDeControles', 'ChipsDeFiltro', 'ChipsDeTriagem', 'CabecalhoDaTabela',
+            'LinhaDePublicacao', 'LinhaDeGrupoDeProduto', 'RodapeDaTabela', 'VaziosDaLista',
+        ];
+        for (const nome of DOZE_IMPORTS) {
+            assert.match(
+                fonte,
+                new RegExp(`from '@/Components/Mlb/Publicador/publicacoes/${nome}'`),
+                `${nome} não é importado de publicacoes/ — ou a página o recriou`,
+            );
+        }
+        // `MenuDeFiltro` e `CelulasDaLinha` são internos de `ChipsDeFiltro` e
+        // `LinhaDePublicacao`: a página NÃO os monta (e não deve). Dela sai só
+        // o `hojeEmSaoPaulo`, que é a data de hoje, uma vez por render.
+        assert.doesNotMatch(fonte, /from '@\/Components\/Mlb\/Publicador\/publicacoes\/MenuDeFiltro'/);
+        assert.match(fonte, /\{ hojeEmSaoPaulo \} from '@\/Components\/Mlb\/Publicador\/publicacoes\/CelulasDaLinha'/);
+    });
+
+    await contexto.test('o container do corpo tem as medidas do protótipo (FID-05)', () => {
+        const html = render(MEUS, propsMeusCheias());
+        // ⚠️ Recorte ANCORADO no `</header>` do header global e no
+        // neutralizador: `/<div class="mx-auto[^"]*"/` solto pegava o IRMÃO
+        // ERRADO — o container INTERNO DO HEADER, que também é
+        // `mx-auto max-w-[1600px] px-[36px]`. Foi o terceiro furo deste bloco,
+        // e é literalmente o 7º modo de o medidor mentir (indexOf/match de
+        // classe compartilhada pega o irmão errado).
+        const tag = html.match(/<\/header><div class="-mx-6 -mb-6"><div class="[^"]*"/);
+        assert.ok(tag, 'o container interno do corpo não é o filho do neutralizador logo depois do header');
+
+        for (const classe of ['mx-auto', 'flex', 'min-w-[1240px]', 'max-w-[1600px]', 'flex-col', 'gap-[18px]', 'px-[36px]', 'pb-[110px]', 'pt-[28px]']) {
+            // ⚠️ `\b` não serve: `max-w-[1600px]` é prefixo de nada, mas
+            // `flex` é prefixo de `flex-col` e `min-w-[` casa dentro de
+            // `shadow-[…]`. A classe tem de terminar em espaço ou aspas.
+            assert.match(
+                tag[0],
+                new RegExp(classe.replace(/[[\]/\\^$*+?.()|{}]/g, '\\$&') + '[\\s"]'),
+                `a classe ${classe} saiu do container do corpo`,
+            );
+        }
+    });
+
+    await contexto.test('as três ligações que quebrariam em silêncio estão feitas', () => {
+        // ⚠️ `nao_avaliado` (snake, do servidor) → `naoAvaliado` (camel, a
+        // prop): um `{...triagem}` perderia o selo SEM nenhum erro.
+        assert.match(fonte, /naoAvaliado=\{tri\.nao_avaliado\}/,
+            'o selo "Não avaliado" perdeu a ligação snake→camel — ele sumiria da tela em silêncio');
+        // ⚠️ `urlDoRascunho`: sem ela "Abrir rascunho" não é desenhado e
+        // LIST-23 quebra em silêncio.
+        assert.match(fonte, /urlDoRascunho=\{temRascunho/,
+            'a linha perdeu `urlDoRascunho` — "Abrir rascunho" deixaria de existir (LIST-23)');
+        assert.match(fonte, /rotulosDeMotivo=\{rotulosDeMotivo\}/,
+            'a linha perdeu `rotulosDeMotivo` — a 2ª linha da célula Status não apareceria');
+        assert.match(fonte, /hoje=\{hoje\}/, 'a linha perdeu `hoje` — a data cairia na forma absoluta');
+
+        // E o resultado NA TELA: as três acendem com dado real.
+        const html = render(MEUS, propsMeusCheias());
+
+        // ⚠️ Recorte ao NÓ do selo pelo texto único dele: "3" solto no HTML
+        // casaria com qualquer contador da tela.
+        const inicioDoSelo = html.indexOf('Não avaliado');
+        assert.notEqual(inicioDoSelo, -1, 'o selo "Não avaliado" não chegou à tela (ligação snake→camel)');
+        const noDoSelo = html.slice(Math.max(0, inicioDoSelo - 200), inicioDoSelo + 20);
+        assert.match(noDoSelo, />3</, 'o número do selo "Não avaliado" (triagem.nao_avaliado = 3) não chegou à tela');
+        assert.match(html, /Sem estoque/, 'o rótulo do motivo não chegou à célula Status');
+        assert.match(html, /Abrir rascunho/, 'o link "Abrir rascunho" não chegou à linha (LIST-23)');
+        assert.match(html, /Ontem, 10:00|Hoje, 10:00|\d{1,2} \w{3}/, 'a data relativa não chegou à célula Publicada');
+    });
+
+    await contexto.test('o selo "copiado" tem o temporizador de 1,3 s — e o `preserveState` do round-trip', () => {
+        // ⚠️ O QUE ESTE GATE NÃO PROVA, dito aqui em vez de maquiado: o
+        // `renderToStaticMarkup` não executa efeito nem timer, então a
+        // asserção é sobre o LITERAL na fonte, não sobre o comportamento. O
+        // comportamento (o check verde que volta sozinho) é da validação
+        // visual com o usuário.
+        assert.match(fonte, /setTimeout\(\(\) => setCopiada\(null\), 1300\)/,
+            'o temporizador de 1,3 s do selo "copiado" mudou de valor ou saiu da página');
+        assert.match(fonte, /clearTimeout\(timer\)/, 'o cleanup do temporizador saiu — timer vazado em componente desmontado');
+        assert.match(fonte, /\{ preserveState: true, replace: true \}/,
+            'o round-trip da navegação perdeu `preserveState`/`replace` — o scroll e o foco saltariam a cada filtro');
+    });
+});
+
+test('180: RENDER ADVERSO da página COMPLETA — a tela preta de 07/10 não volta por nenhuma prop', async (contexto) => {
+    // ⚠️ POR QUE ESTE BLOCO É O MAIS IMPORTANTE DO ARQUIVO: em 07/10/2026 um
+    // campo do presenter que chegou como OBJETO e foi renderizado como texto
+    // derrubou a página inteira. Na Fase 178 GRUPO NULO derrubou o painel, e
+    // só o render adverso pegou. No plano 180-07 a busca de chave com
+    // `{toString: null}` derrubou dois componentes. Esta página é a ÚNICA que
+    // renderiza a composição inteira — é aqui que a tela preta apareceria.
+    //
+    // ⚠️ A mensagem de asserção NUNCA usa `String(valor)` nem
+    // `JSON.stringify(valor)`: os dois LANÇAM (ou mentem) com os valores
+    // adversos — `String({toString: null})` é TypeError e `JSON.stringify(NaN)`
+    // devolve 'null'. A mensagem é montada com o nome da prop + um rótulo fixo.
+    const SUJO = { toString: null, valueOf: null };
+
+    const ADVERSOS = [
+        ['objeto hostil (toString e valueOf nulos)', SUJO],
+        ['nulo', null],
+        ['ausente', undefined],
+        ['string onde se espera objeto', 'nada disso'],
+        ['número', 42],
+        ['NaN', Number.NaN],
+        ['array vazio', []],
+        ['array com objeto hostil', [SUJO]],
+        ['objeto com chave desconhecida', { chaveQueNinguemEspera: SUJO }],
+    ];
+
+    const RE_SUJEIRA = /\[object Object\]|NaN|undefined|Invalid Date/;
+
+    await contexto.test('⚠️ ISCA: o detector de sujeira PEGA o que existe', () => {
+        // Sem isto, as 170+ asserções abaixo poderiam estar cegas.
+        assert.match('valor: [object Object]', RE_SUJEIRA);
+        assert.match('NaN publicações', RE_SUJEIRA);
+        assert.match('undefined', RE_SUJEIRA);
+        assert.match('Invalid Date', RE_SUJEIRA);
+        assert.doesNotMatch('2 de 248 publicações · 1 produto', RE_SUJEIRA);
+    });
+
+    const PROPS_DO_CONTRATO = Object.keys(propsMeusCheias());
+
+    await contexto.test('o contrato tem as 19 props de hoje — nenhuma entra nem sai calada', () => {
+        // ⚠️ É esta asserção que impede o laço abaixo de varrer menos props do
+        // que a página recebe: prop nova sem caso adverso é exatamente como a
+        // tela preta de 07/10 começou.
+        assert.deepEqual(PROPS_DO_CONTRATO.slice().sort(), [
+            'abas', 'anuncios', 'cabecalho', 'conta', 'contagens', 'defasagem', 'empresa',
+            'faixaSucesso', 'filtros', 'grupos', 'rascunhos', 'rodape', 'rotacaoN',
+            'saudeMlDisponivel', 'sincronizacao', 'skuNaoColetado', 'sub', 'subTotais', 'triagem',
+        ]);
+    });
+
+    for (const prop of PROPS_DO_CONTRATO) {
+        await contexto.test(`prop "${prop}" — objeto hostil, nula, ausente e em 6 outros formatos`, () => {
+            for (const [rotuloDoCaso, valor] of ADVERSOS) {
+                const entrada = propsMeusCheias();
+                if (valor === undefined) {
+                    delete entrada[prop];
+                } else {
+                    entrada[prop] = valor;
+                }
+
+                let html;
+                assert.doesNotThrow(
+                    () => { html = render(MEUS, entrada); },
+                    `a prop "${prop}" com ${rotuloDoCaso} DERRUBOU a página inteira`,
+                );
+                assert.doesNotMatch(
+                    html,
+                    RE_SUJEIRA,
+                    `a prop "${prop}" com ${rotuloDoCaso} imprimiu sujeira na tela`,
+                );
+                // O header global nunca desaparece: sem conta ele desabilita e
+                // explica.
+                assert.ok(
+                    (html.match(/<header/g) ?? []).length >= 1,
+                    `a prop "${prop}" com ${rotuloDoCaso} fez o header global desaparecer`,
+                );
+            }
+        });
+    }
+
+    await contexto.test('os formatos INTERNOS que já derrubaram tela neste projeto', () => {
+        const CASOS = [
+            ['anuncios sem `data`', { anuncios: { links: [] } }],
+            ['anuncios.data nula', { anuncios: { data: null, links: [] } }],
+            ['anuncios.data string', { anuncios: { data: 'MLB111', links: [] } }],
+            ['anuncios.data número', { anuncios: { data: 7, links: [] } }],
+            ['anuncios.data com item hostil', { anuncios: { data: [SUJO], links: [] } }],
+            ['anuncios.data com item nulo', { anuncios: { data: [null], links: [] } }],
+            ['anuncios.links nula', { anuncios: { data: [], links: null } }],
+            ['anuncios.links sem url', { anuncios: { data: [], links: [{}, {}, {}, {}] } }],
+            ['anuncios.links com url hostil', { anuncios: { data: [], links: [{ url: SUJO, label: SUJO }, {}, {}, {}] } }],
+            ['grupos com grupo NULO (o bug da Fase 178)', { grupos: [null] }],
+            ['grupos com grupo hostil', { grupos: [SUJO] }],
+            ['grupos com produto_id hostil', { grupos: [{ produto_id: SUJO, ml_item_ids: [SUJO] }] }],
+            ['grupos com ml_item_ids nulo', { grupos: [{ produto_id: 7, ml_item_ids: null }] }],
+            ['triagem.chips nula', { triagem: { total: 2, chips: null, nao_avaliado: 1 } }],
+            ['triagem.chips com chip hostil', { triagem: { total: 2, chips: [SUJO], nao_avaliado: 1 } }],
+            ['triagem.chips com chave hostil', { triagem: { total: 2, chips: [{ chave: SUJO, label: SUJO }], nao_avaliado: 1 } }],
+            ['triagem.total hostil', { triagem: { total: SUJO, chips: [], nao_avaliado: SUJO } }],
+            ['filtros com visao/status/sel hostis', { filtros: { busca: SUJO, status: SUJO, visao: SUJO, sel: SUJO, motivo: SUJO, responsavel: SUJO } }],
+            ['empresa sem id (o caso do destino inventado)', { empresa: {} }],
+            ['empresa.id string', { empresa: { id: '459' } }],
+            ['defasagem com horas/motivo hostis', { defasagem: { horas: SUJO, motivo: SUJO, defasado: true, nunca_coletado: false } }],
+            ['defasagem.horas NaN', { defasagem: { horas: Number.NaN, motivo: null, defasado: true, nunca_coletado: false } }],
+            ['rodape com valores hostis', { rodape: { visiveis: SUJO, total: SUJO, produtos: SUJO } }],
+            ['sincronizacao com rotulo hostil', { sincronizacao: { rotulo: SUJO, nunca_coletado: false } }],
+            ['abas com aba hostil', { abas: [SUJO, { chave: SUJO, rotulo: SUJO, total: SUJO }] }],
+            ['contagens hostis', { contagens: { rascunhos: SUJO, acionaveis: SUJO } }],
+            ['faixaSucesso com total hostil', { faixaSucesso: { total: SUJO, produto: SUJO } }],
+            ['item com nota_ecf hostil', { anuncios: { data: [{ ml_item_id: 'MLB1', nota_ecf: SUJO, preco: SUJO, vendas: SUJO, publicada_em: SUJO }], links: [] }, grupos: [] }],
+            ['item com datas inválidas', { anuncios: { data: [{ ml_item_id: 'MLB1', publicada_em: 'não é data' }], links: [] }, grupos: [] }],
+            ['sub desconhecido', { sub: 'inventado' }],
+        ];
+
+        for (const [rotuloDoCaso, extras] of CASOS) {
+            let html;
+            assert.doesNotThrow(
+                () => { html = render(MEUS, propsMeusCheias(extras)); },
+                `${rotuloDoCaso} DERRUBOU a página inteira`,
+            );
+            assert.doesNotMatch(html, RE_SUJEIRA, `${rotuloDoCaso} imprimiu sujeira na tela`);
+        }
+    });
+
+    await contexto.test('a página INTEIRA sem nenhuma prop, e com todas nulas', () => {
+        let semNada;
+        assert.doesNotThrow(() => { semNada = render(MEUS, {}); }, 'a página não sobrevive a props vazias');
+        assert.doesNotMatch(semNada, RE_SUJEIRA);
+
+        const todasNulas = {};
+        for (const prop of PROPS_DO_CONTRATO) todasNulas[prop] = null;
+        let comNulas;
+        assert.doesNotThrow(() => { comNulas = render(MEUS, todasNulas); }, 'a página não sobrevive a todas as props nulas');
+        assert.doesNotMatch(comNulas, RE_SUJEIRA);
+        assert.equal((comNulas.match(/<header/g) ?? []).length, 2, 'o cabeçalho da página desapareceu com tudo nulo');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. AS MEDIDAS DO CONTAINER GERAM CSS COM O VALOR CERTO
+//
+// ⚠️ Os DOIS gates são necessários e não se substituem (limitação ESTRUTURAL
+// medida no plano 180-05): o de HTML acima prova que o ELEMENTO tem as
+// classes; este prova que a CLASSE EXISTE no CSS construído com o valor certo.
+// Gate de CSS sozinho deixa passar classe removida do arquivo errado — a mesma
+// classe pode ter outro dono no repositório.
+//
+// ⚠️ AS ARMADILHAS DO MEDIDOR, APLICADAS: o seletor sai ESCAPADO com barra
+// invertida; escapar só a barra quebra em classe com colchete; e TODO
+// metacaractere de regex tem de ser escapado (parênteses incluídos).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Escapa TODOS os metacaracteres de regex. */
+function escapaRegex(texto) {
+    return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** O seletor que o Tailwind emite: `.` + o nome com os metacaracteres de CSS escapados. */
+function seletorDe(classe) {
+    return `.${classe.replace(/[[\]().:/%,]/g, (ch) => `\\${ch}`)}`;
+}
+
+function carregarCssConstruido() {
+    const manifestRel = 'public/build/manifest.json';
+    const manifestAbs = path.resolve(RAIZ, manifestRel);
+    if (!fs.existsSync(manifestAbs)) return { motivo: `${manifestRel} ausente — rode \`npm run build\`` };
+
+    // ⚠️ Manifest SEMPRE pelo JSON, nunca por grep: o hash sai com hífen.
+    const manifest = JSON.parse(fs.readFileSync(manifestAbs, 'utf8'));
+    const entrada = manifest['resources/js/app.jsx'];
+    if (!entrada || !Array.isArray(entrada.css) || entrada.css.length === 0) {
+        return { motivo: 'o manifest não aponta CSS para resources/js/app.jsx' };
+    }
+
+    const cssAbs = path.resolve(RAIZ, 'public/build', entrada.css[0]);
+    if (!fs.existsSync(cssAbs)) return { motivo: `${entrada.css[0]} ausente — rode \`npm run build\`` };
+
+    const mtimeCss = fs.statSync(cssAbs).mtimeMs;
+    const mtimePagina = fs.statSync(path.resolve(RAIZ, 'resources/js/Pages/Mlb/MeusAnuncios.jsx')).mtimeMs;
+    if (mtimeCss < mtimePagina) {
+        return { motivo: `o CSS construído (${entrada.css[0]}) é mais antigo que a página — rode \`npm run build\`` };
+    }
+
+    return { arquivo: entrada.css[0], css: fs.readFileSync(cssAbs, 'utf8'), manifest };
+}
+
+const CSS_DO_BUILD = carregarCssConstruido();
+
+test('180: as medidas do container e do banner GERAM CSS com o valor certo', async (contexto) => {
+    if (CSS_DO_BUILD.motivo) {
+        contexto.skip(CSS_DO_BUILD.motivo);
+        return;
+    }
+
+    const regraDe = (classe) => {
+        const re = new RegExp(`${escapaRegex(seletorDe(classe))}(?![\\w\\\\-])[^{}]*\\{([^}]*)\\}`);
+        const m = CSS_DO_BUILD.css.match(re);
+        return m ? m[1] : null;
+    };
+
+    await contexto.test('o CSS lido é o do manifest e tem tamanho de CSS de verdade', () => {
+        assert.ok(CSS_DO_BUILD.css.length > 100000, `CSS suspeito de truncado: ${CSS_DO_BUILD.css.length} bytes`);
+    });
+
+    await contexto.test('⚠️ ISCA: a sonda reporta AUSENTE o que não existe', () => {
+        // ⚠️ Iscas medidas como inexistentes no repositório inteiro. Sem elas a
+        // sonda poderia estar cega e "aprovar" qualquer classe.
+        for (const isca of ['min-w-[1241px]', 'max-w-[1601px]', 'bg-pub-isca-8h2', 'pt-[29px]']) {
+            assert.equal(regraDe(isca), null, `a isca ${isca} virou classe de verdade — troque a isca`);
+            assert.ok(!CSS_DO_BUILD.css.includes(isca), `a string ${isca} apareceu no CSS`);
+        }
+    });
+
+    await contexto.test('as medidas do container do corpo (FID-05: 1600px de conteúdo, min 1240px)', () => {
+        const ESPERADO = {
+            'min-w-[1240px]': /min-width:\s*1240px/,
+            'max-w-[1600px]': /max-width:\s*1600px/,
+            'gap-[18px]': /gap:\s*18px/,
+            'px-[36px]': /padding-left:\s*36px/,
+            'pt-[28px]': /padding-top:\s*28px/,
+            'pb-[110px]': /padding-bottom:\s*110px/,
+        };
+        for (const [classe, re] of Object.entries(ESPERADO)) {
+            const corpo = regraDe(classe);
+            assert.ok(corpo !== null, `a classe ${classe} não gerou CSS — ela não existe para a tela`);
+            assert.match(corpo, re, `${classe} compilou com o valor ERRADO: {${corpo}}`);
+        }
+    });
+
+    await contexto.test('o tom âmbar do banner de defasagem compila — e NÃO é o vermelho de erro', () => {
+        // ⚠️ O modificador de opacidade em `background-color`/`border-color`
+        // sai em HEX DE 8 DÍGITOS, e o byte do alfa é o que distingue 0,05 de
+        // 0,30 — é o único jeito de provar a tinta certa.
+        const fundo = regraDe('bg-pub-warn/[0.05]');
+        assert.ok(fundo !== null, 'o fundo âmbar do banner não gerou CSS');
+        assert.match(fundo, /#f59e0b0d/i, `o alfa do fundo âmbar mudou: {${fundo}}`);
+
+        const borda = regraDe('border-pub-warn/[0.30]');
+        assert.ok(borda !== null, 'a borda âmbar do banner não gerou CSS');
+        assert.match(borda, /#f59e0b4d/i, `o alfa da borda âmbar mudou: {${borda}}`);
+
+        // E o texto âmbar é o token de TEXTO (mais claro que o dot), sólido.
+        const texto = regraDe('text-pub-warn-txt');
+        assert.ok(texto !== null, 'o texto âmbar do banner não gerou CSS');
+        assert.match(texto, /251 191 36/, `o texto do banner deixou de ser o âmbar de texto: {${texto}}`);
+    });
+
+    await contexto.test('⚠️ a página de Publicações está no manifest — página fora dele SOME da aplicação', () => {
+        const chave = 'resources/js/Pages/Mlb/MeusAnuncios.jsx';
+        assert.ok(
+            Object.prototype.hasOwnProperty.call(CSS_DO_BUILD.manifest, chave),
+            `${chave} não está no manifest do Vite: a rota renderizaria página inexistente`,
+        );
+        assert.match(CSS_DO_BUILD.manifest[chave].file, /^assets\/MeusAnuncios-[\w-]+\.js$/,
+            'a entrada da página no manifest não aponta para um bundle com hash');
     });
 });

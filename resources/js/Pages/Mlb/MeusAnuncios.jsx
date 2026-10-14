@@ -55,21 +55,25 @@ import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 //    (que segue MONTADO na página do Histórico) nem os testes deles: o
 //    conteúdo é o insumo da fase futura do Histórico (Fase 183 do roadmap).
 //
-// 3. O que SÓ o Histórico alcança, medido no plano 180-10 (arquivo:linha):
-//    · `MlbAnuncioController::historico()` (`:287`-`:441`) lê
+// 3. O que SÓ o Histórico alcança — MEDIDO por `grep -n` em 13/10/2026, não
+//    copiado do plano (as linhas dele estavam deslocadas em ~36):
+//    · `MlbAnuncioController::historico()` (`:323`-`:478`) lê
 //      `pub_publicacao_itens` + `pub_publicacoes` + `pub_rascunhos` +
-//      `pub_produtos` (`:306`-`:317`) — outra fonte, não um recorte desta;
+//      `pub_produtos` (`:342`-`:344`) — outra fonte, não um recorte desta;
 //    · a unidade é o LOTE (`categoria + dia de conclusão`), reconstruído em
-//      PHP em `:372`-`:376`: não existe coluna de lote;
-//    · dados exclusivos: o payload ENVIADO ao ML (`family_name` `:393`,
-//      `price` `:394`), a foto de `pub_imagens.ml_url` (`:354`-`:368`),
-//      `sku_origem` por `PubProduto::skuExibido()` (`:396`),
-//      `pode_duplicar` (`:407`) e `total_lotes` (`:438`).
+//      PHP em `:408`-`:418`: não existe coluna de lote;
+//    · dados exclusivos: o payload ENVIADO ao ML (`family_name` `:429`,
+//      `price` `:430`), a foto de `pub_imagens.ml_url` (`:385`-`:404`),
+//      `sku_origem` por `PubProduto::skuExibido()` (`:432`),
+//      `pode_duplicar` (`:443`) e `total_lotes` (`:474`); e a busca é por
+//      `payload->family_name` / `pub_produtos.sku` (`:359`-`:360`).
 //    ➡️ O filtro de status desta tela NÃO alcança nada disso.
 //
 // A página do Histórico continua ABRINDO por URL direta
-// (`/mlb/anuncios/historico/{company}`), e `SeletorEmpresaBusca.jsx:45`
-// continua tratando aquela rota — de propósito.
+// (`/mlb/anuncios/historico/{company}`, declarada em
+// `routes/mlb_anuncios.php:430`), e
+// `Components/Mlb/Publicador/SeletorEmpresaBusca.jsx:45` continua tratando
+// aquela rota — de propósito, para o seletor de empresa funcionar lá.
 // ═══════════════════════════════════════════════════════════════════════
 
 // As DUAS sub-fontes da lista (D-14). ⚠️ O segmentado SEPARADO
@@ -127,6 +131,35 @@ function chaveSegura(valor) {
 /** O inteiro não negativo, ou `null` — para `horas` da defasagem. */
 function numeroSeguro(valor) {
     return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
+}
+
+/**
+ * O grupo de produto está ABERTO? (LIST-09)
+ *
+ * ⚠️ A REGRA MORA AQUI, numa casa só: a busca ativa FORÇA todos os grupos
+ * abertos, e fora da busca vale o que o usuário recolheu. `LinhaDeGrupoDeProduto`
+ * recebe `aberto` RESOLVIDO e não lê a busca — duas casas para a mesma regra
+ * divergiriam.
+ *
+ * ⚠️ POR QUE É UMA FUNÇÃO EXPORTADA, e não uma expressão dentro do `.map()`:
+ * a prova por mutação deste plano mediu que, no render de servidor,
+ * `colapsados` é SEMPRE `[]` (estado inicial), então `!colapsados.includes(x)`
+ * é sempre verdadeiro e o `||` devolve `true` de qualquer jeito — inverter a
+ * regra no JSX **não era observável em render nenhum**, e a mutação SOBREVIVEU.
+ * Com a regra numa função pura, as quatro combinações têm caso de teste.
+ *
+ * @param {boolean} buscaAtiva  há termo de busca em vigor no servidor
+ * @param {unknown} colapsados  as chaves de produto que o usuário recolheu
+ * @param {string|null} chave   a chave do produto deste grupo
+ */
+export function grupoAberto(buscaAtiva, colapsados, chave) {
+    // A busca ativa força aberto — sem isto o resultado da busca poderia ficar
+    // escondido dentro de um grupo que o usuário recolheu antes (LIST-09).
+    if (buscaAtiva === true) return true;
+    // Grupo sem chave (o Legado, `produto_id: null`) não tem o que recolher.
+    if (chave === null) return true;
+
+    return !listaSegura(colapsados).includes(chave);
 }
 
 // ─── SKU na linha do anúncio (quick 261010-rie) ───────────────────────────
@@ -797,12 +830,11 @@ export default function MeusAnuncios({
                                         const grupo = objetoSeguro(bruto);
                                         const chaveDoProduto = chaveSegura(grupo.produto_id);
                                         // ⚠️ A busca ativa FORÇA os grupos
-                                        // abertos (LIST-09), e a regra mora NESTE
-                                        // lugar só: a linha de grupo recebe
-                                        // `aberto` resolvido e não lê a busca.
-                                        const aberto = buscaAtiva
-                                            || chaveDoProduto === null
-                                            || !colapsados.includes(chaveDoProduto);
+                                        // abertos (LIST-09), e a regra mora em
+                                        // `grupoAberto()`, logo acima: a linha
+                                        // de grupo recebe `aberto` RESOLVIDO e
+                                        // não lê a busca.
+                                        const aberto = grupoAberto(buscaAtiva, colapsados, chaveDoProduto);
                                         const idsDoGrupo = listaSegura(grupo.ml_item_ids);
                                         const linhas = !aberto ? [] : itens.filter((item) => {
                                             const chave = chaveSegura(objetoSeguro(item).ml_item_id);
