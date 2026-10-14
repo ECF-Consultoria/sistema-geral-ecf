@@ -1,0 +1,411 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-06 (o frete do vendedor informado, a
+# composição congelada e o vínculo durável com a original de referência — 2
+# migrations / 3 tabelas: `pub_aprovacao_fretes`, `pub_aprovacao_composicoes` e
+# `pub_imagem_referencias`).
+#
+# Lido por `tests/gates/verificar-testes.sh 06 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate — e mexer no gate
+#     durante a mutação invalidaria a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por método, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **TODO MÉTODO DOS DOIS ARQUIVOS DESTE PLANO TEM id AQUI, E A BIJEÇÃO É
+#    PROVADA POR SCRIPT** — pelo próprio gate `bijecao-manifesto` abaixo, que
+#    reprova nas DUAS direções (método sem id **e** id que não casa método
+#    nenhum). Teste que existe no arquivo e não tem id no manifesto **NUNCA RODA**
+#    em gate nenhum: foi exatamente o sobrevivente da campanha de mutação do
+#    plano 186-03 (o método que media o nome DECLARADO do índice existia e nenhum
+#    gate o invocava, e era **lacuna real**). É a forma nova de "passar por
+#    omissão", e aqui ela tem gate próprio em vez de conferência manual.
+#
+# ⚠️ **NENHUM id DESTE PLANO USA NOME DE MÉTODO QUE EXISTA EM OUTRO ARQUIVO DE
+#    TESTE.** Medido em 15/10/2026: dois guardas deste plano nasceram com nome
+#    idêntico aos dos planos 186-03/186-04 (`test_guarda_nenhum_nome_de_indice...`
+#    e `test_guarda_toda_fk_nullondelete...`) e o `--filter` casava os TRÊS
+#    arquivos, somando as contagens. Foram renomeados para `*_financeiro_*`, e a
+#    varredura de colisão volta limpa. ⚠️ Gate cuja contagem dependa de quantos
+#    arquivos alheios casam o filtro é frágil por construção.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────────────────────
+# OS DOIS IDS QUE O PLANO 186-06 DECLARA NOS `<verify>` DAS TAREFAS
+# ───────────────────────────────────────────────────────────────────────────────
+#
+# As Tasks 1 e 2 verificam por `migrate → rollback → migrate` no MariaDB local
+# (não por teste), e a prova está na 186-06-SUMMARY. A Task 3 declara o id
+# `territorio-e-vinculo`, e ele roda os QUATRO métodos que o `<done>` dela nomeia:
+# o diff de território por RANGE, o estado declarado de IMG-13, FIN-07 nos casos
+# de origem de frete e o DADO-15 por ausência de escrita. Um método só não
+# cobriria o `<done>`, e o helper roda UM filtro por id — a forma certa é um
+# filtro por alternância, que continua começando com `test_`.
+#
+# ⚠️ Os quatro TAMBÉM têm id individual mais abaixo, e isso é deliberado: é a
+# granularidade que diz QUAL deles caiu quando este gate composto reprova.
+# 4 / 76 MEDIDO em 15/10/2026.
+territorio-e-vinculo  php  test_(terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range|originais_de_imagem_sem_vinculo_devolve_colecao_vazia_e_o_estado_declarado|fin_07_a_linha_de_frete_nasce_confirmado_ou_estimado_nas_origens_vivas_e_pendente_so_sem_fonte|dado_15_esta_fase_nao_escreve_o_vinculo_com_isca_de_dois_lados)  ::  tests=4 assertions=76
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — O FRETE DO VENDEDOR INFORMADO (DADO-12 / MOD-03)
+# Arquivo: tests/Feature/Publicador/Aprovacao/FreteInformadoTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# As 3 origens do modal, com rótulo pt-BR e a chave de dado que NUNCA chega à
+# tela (VOC-06). Com isca na chave mais perigosa (`cotacao_transportadora`, a que
+# mais parece texto) e isca de contagem.
+# O que precisaria estar errado: a chave virar rótulo, e a tela mostrar jargão; ou
+# aparecer uma quarta origem sem ninguém decidir qual é ela.
+# 1 / 10 MEDIDO em 15/10/2026.
+tres-origens  php  test_as_origens_do_frete_informado_sao_tres_com_rotulo_em_pt_br  ::  tests=1 assertions=10
+
+# DADO-12 / T-186-21 — informar de novo cria LINHA NOVA, deixa UMA só vigente e
+# INCREMENTA a versão (critério 9), com a linha antiga preservada com o valor dela.
+# O que precisaria estar errado: alguém trocar o `create` por `update`. Com
+# **aprovar JÁ PUBLICANDO e sem desfazer**, o frete que valia na aprovação seria
+# destruído exatamente no caso em que ele importa.
+# 1 / 13 MEDIDO em 15/10/2026.
+historico-nao-sobrescrita  php  test_informar_frete_de_novo_cria_linha_nova_e_deixa_uma_so_vigente  ::  tests=1 assertions=13
+
+# D4 / FIN-05 — `vigenteDe()` sem linha devolve `null`, **nunca 0**. Com isca nos
+# dois sentidos (com linha ACHA; com a vigente derrubada volta a ser null).
+# O que precisaria estar errado: devolver `0.0` para "não informado". Zero é um
+# número, e a tela o mostraria como verdade: "frete R$ 0,00" num kit de duas
+# poltronas.
+# ⚠️ A contagem desta linha nasceu ERRADA (4 em vez de 5) por erro de transcrição
+# do executor, e **o helper reprovou** na primeira rodada. Fica registrado porque é
+# a prova de que o manifesto não é decorativo: número errado aqui reprova o gate,
+# que é exatamente a trava contra "deixa o número para depois".
+# 1 / 5 MEDIDO em 15/10/2026.
+nulo-nunca-zero  php  test_vigente_de_oferta_sem_frete_devolve_null_nunca_zero  ::  tests=1 assertions=5
+
+# Origem fora das três é recusada com código próprio e **nada é gravado** — nem a
+# linha, nem o incremento da versão. Com isca: a origem legítima do mesmo ponto
+# de partida passa.
+# O que precisaria estar errado: a nota deixaria de nomear a fonte; ou a versão
+# subiria por um informe que não aconteceu, reabrindo a aprovação de graça.
+# 1 / 4 MEDIDO em 15/10/2026.
+origem-recusada  php  test_informar_recusa_origem_fora_das_tres_e_nao_grava_nada  ::  tests=1 assertions=4
+
+# ⚠️⚠️ FIN-07 — **HÁ FONTE DE FRETE**, e a linha NÃO nasce "Pendente". Roda os 4
+# casos exigidos (as 3 origens vivas + `valor = null`) **mais** o `outro_tipo`,
+# chamando `DadosEfetivosService::fretesDaLinha()` DE VERDADE — montar o array à
+# mão provaria só que o mapa concorda comigo mesmo. Com isca de contagem (3
+# estados distintos nos 5 casos; um mapa constante passaria em 2) e a prova de
+# que as frases saem de `ConferenciaDeFrete::ORIGENS`, LIDO sem alterar.
+# O que precisaria estar errado: alguém declarar "Pendente" sem conferir se há
+# fonte — e a verificação já mediu que há.
+# 1 / 21 MEDIDO em 15/10/2026.
+fin-07-origens-vivas  php  test_fin_07_a_linha_de_frete_nasce_confirmado_ou_estimado_nas_origens_vivas_e_pendente_so_sem_fonte  ::  tests=1 assertions=21
+
+# MOD-03 — o informado à mão **VENCE** o da Precificação e nasce `Confirmado`,
+# com a nota nomeando a origem do modal E a data. Com isca: as duas notas têm de
+# ser DIFERENTES, senão nada está sendo distinguido.
+# O que precisaria estar errado: o valor da Precificação sobrepor o que uma pessoa
+# confirmou — o resultado sairia calculado com frete que ninguém conferiu.
+# 1 / 7 MEDIDO em 15/10/2026.
+informado-vence  php  test_fin_07_o_frete_informado_a_mao_vence_a_precificacao_e_nasce_confirmado  ::  tests=1 assertions=7
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — A COMPOSIÇÃO CONGELADA (DADO-13)
+# ───────────────────────────────────────────────────────────────────────────────
+
+# FIN-05/D4 — `incompleto = true` ⇒ `total`/`resultado`/`margem` **nulos**, em
+# memória E por reconsulta, e o modelo RECUSA `incompleto` com `resultado`
+# preenchido. Com isca: a composição COMPLETA do mesmo ponto de partida passa.
+# O que precisaria estar errado: gravar `resultado = 0` quando falta item. A tela
+# diria "R$ 0,00 por venda" em vez de "Incompleto", e zero é uma afirmação.
+# 1 / 9 MEDIDO em 15/10/2026.
+incompleto-nulo  php  test_composicao_incompleta_tem_resultado_margem_e_total_nulos_e_recusa_resultado_preenchido  ::  tests=1 assertions=9
+
+# ⚠️⚠️ A ÚNICA EXCEÇÃO DELIBERADA à regra (decisão do usuário, 14/10/2026):
+# embalagem sem fonte **NÃO** anula o resultado — ele existe com
+# `estimado_por_baixo = true`. O gate exige a exceção **gravável** E escrita no
+# docblock **com DATA e RAZÃO**, e trava as 5 chaves de `ANULAM_O_RESULTADO`.
+# O que precisaria estar errado: alguém "uniformizar" a regra. Sem a exceção o
+# painel diria "Incompleto" em **100%** das ofertas (a embalagem raramente está
+# cadastrada) e a fase ficaria inerte. Sem a RAZÃO escrita, a exceção parece
+# descuido e o próximo executor a apaga.
+# 1 / 18 MEDIDO em 15/10/2026.
+excecao-da-embalagem  php  test_a_excecao_deliberada_da_embalagem_e_gravavel_e_esta_escrita_com_data_e_razao  ::  tests=1 assertions=18
+
+# A `margem_minima` é lida da LINHA CONGELADA, não de config na leitura, e a
+# ORIGEM do fallback é gravável nos dois lados. Com isca: os dois lados têm de
+# gravar valores DIFERENTES, senão a coluna não distingue nada. Mais o vocabulário
+# travado (VOC-03).
+# O que precisaria estar errado: reler `config()` na exibição. A config pode ter
+# mudado DEPOIS do ato, e a auditoria-depois reconstruiria a decisão ERRADA — e
+# sem `margem_minima_origem` ninguém saberia se o 12% da época veio do parâmetro
+# da empresa ou do padrão.
+# 1 / 7 MEDIDO em 15/10/2026.
+minimo-congelado  php  test_margem_minima_e_lida_da_linha_congelada_com_a_origem_do_fallback  ::  tests=1 assertions=7
+
+# T-186-22 — unique (`oferta_id`, `versao`, `momento`): um congelamento por ato e
+# por versão. Com isca: o OUTRO momento da MESMA versão passa (exceção é ato
+# diferente, não duplicata).
+# O que precisaria estar errado: duas linhas do MESMO ato contariam histórias
+# diferentes, e a auditoria-depois de BLOQ-09 não teria como escolher — e **não
+# existe desfazer**.
+# 1 / 4 MEDIDO em 15/10/2026.
+congelamento-unico  php  test_o_congelamento_e_unico_por_versao_e_momento  ::  tests=1 assertions=4
+
+# CASCADE das duas tabelas a partir da oferta, com a oferta VIZINHA **PREENCHIDA**
+# e intacta: asserção de ausência com fixture vazio é vazia por construção
+# (GATE-13), e foi a classe de falha que a wave 1 mediu quatro vezes.
+# O que precisaria estar errado: frete e composição órfãos apontando para oferta
+# que não existe mais; ou o CASCADE levar a oferta vizinha junto.
+# 1 / 4 MEDIDO em 15/10/2026.
+cascade-da-oferta  php  test_apagar_a_oferta_leva_o_frete_e_a_composicao_por_cascade  ::  tests=1 assertions=4
+
+# ⚠️⚠️ A FOLGA DA `margem`: `decimal(12,3)` e não `decimal(7,3)`, porque o teto de
+# ±9999,999 estoura e este projeto já mediu **+20738%**.
+# ⚠️ ESTE GATE MUDOU DE FORMA NO GREEN, por MEDIÇÃO: no SQLite dos testes
+# `Schema::getColumns()` devolve `numeric` **sem precisão nenhuma** (as três
+# colunas decimais), enquanto o MariaDB devolve `decimal(12,3)`. Um gate que
+# conferisse a precisão pelo SCHEMA VIVO não tinha o que medir — ou falharia
+# sempre, ou viraria um "se der para ler, confere" que **PULA EM SILÊNCIO**
+# justamente no ambiente em que roda. ➡️ A fonte de verdade é o TEXTO da
+# migration, e a limitação do SQLite virou **asserção MEDIDA** em vez de skip.
+# O que precisaria estar errado: alguém "economizar" a precisão. No MySQL 8.0.46
+# é **erro 1264** e a gravação cai; no SQLite **grava CALADO**, truncado — a suíte
+# fica verde e o deploy quebra.
+# 1 / 21 MEDIDO em 15/10/2026.
+margem-com-folga  php  test_a_margem_tem_folga_para_o_percentual_que_este_projeto_ja_mediu  ::  tests=1 assertions=21
+
+# ⚠️ O Eloquent **não lê o default do banco** — defeito REAL medido no plano
+# 186-04 (a linha nascia com o default no banco e **null em memória**). O gate
+# compara os 3 defaults do `$attributes` contra o default lido do **SCHEMA VIVO**,
+# nunca contra outra constante do PHP, com isca de contagem e isca inversa
+# (coluna SEM default continua sem default).
+# O que precisaria estar errado: alguém mudar o default de um lado só, e
+# `vigente`/`incompleto` nascerem `null` em memória.
+# 1 / 11 MEDIDO em 15/10/2026.
+defaults-em-memoria  php  test_os_defaults_do_modelo_e_os_defaults_das_colunas_sao_os_mesmos_com_isca  ::  tests=1 assertions=15
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 1 — A DISCIPLINA DA MIGRATION DO FINANCEIRO (MIG-01..09)
+#
+# ⚠️ Os guardas dos planos 186-03 e 186-04 declaram SÓ as migrations deles —
+# conferido nas constantes `MIGRATIONS`/`MIGRATION` de cada um. As duas migrations
+# deste plano ficam FORA dos dois; sem guarda próprio, a disciplina estaria
+# "coberta" por gates que nunca as leem, que é a definição de passar por omissão.
+# ───────────────────────────────────────────────────────────────────────────────
+
+# MIG-02 — nenhum nome DECLARADO (6: 3 índices + 3 FKs) passa de 64, e os nomes
+# **PADRÃO DO LARAVEL** também não, calculados por `strlen` e nunca por número
+# copiado à mão. O maior de cada grupo está TRAVADO (17 declarado, 43 padrão), e
+# o `information_schema`/schema vivo confirma que **nenhum índice caiu em nome
+# padrão**. Mais a proibição de `->constrained()`, que é quem gera nome sem
+# ninguém ver.
+# O que precisaria estar errado: erro **1059** no MariaDB, que deixa a migration
+# `Pending` com a tabela JÁ criada — o pior estado possível. O SQLite aceita.
+# 1 / 49 MEDIDO em 15/10/2026.
+guarda-fin-nomes-64  php  test_guarda_financeiro_nomes_de_indice_de_64_medidos_por_strlen_com_isca  ::  tests=1 assertions=49
+
+# MIG-03 — a única FK `nullOnDelete()` (`informado_por`) tem coluna `nullable()`
+# EXPLÍCITO, e as 2 CASCADE são NOT NULL de propósito. Conferido no texto E no
+# schema vivo. ⚠️ ISCA DO REGEX NOS DOIS SENTIDOS, porque a armadilha é conhecida:
+# na wave 1 o regex de FK casava `foreignI` e **não** a chamada `foreign(`, e a
+# sonda não achava coluna de FK nenhuma.
+# O que precisaria estar errado: erro **1830** no MariaDB, invisível no SQLite.
+# 1 / 12 MEDIDO em 15/10/2026.
+guarda-fin-nullable  php  test_guarda_financeiro_fk_nullondelete_tem_nullable_explicito_com_isca  ::  tests=1 assertions=12
+
+# MIG-04/05/07/09 — sem `enum`, sem `try/catch` em volta de DDL, `up()`
+# idempotente com **uma guarda por tabela** (deploy que morra ENTRE as duas
+# completa o resto), docblock com a DECISÃO DE SCHEMA **antes** do código, a
+# decisão de DADO-13 escrita ("DERIVADA da fonte viva" + o plano 186-07 nomeado +
+# a razão "não há desfazer"), e nenhum `change`/`renameColumn`/`dropColumn`/
+# `delete`/`truncate`.
+# ⚠️ Lê o CÓDIGO pelo tokenizador do PHP, com ISCA nos dois sentidos: o docblock
+# EXPLICA que não usa `enum` nem `try/catch`, e um gate que conte a palavra no
+# arquivo inteiro reprovaria pelo PRÓPRIO CONSERTO. Há também a isca inversa — as
+# palavras TÊM de estar no docblock, senão "não achei no código" seria verdade
+# pelo motivo errado (o arquivo não falar do assunto).
+# O que precisaria estar errado: o CHECK do `enum` enforçado no SQLite cegaria a
+# suíte; e neste projeto um 1553 ficou engolido 2 meses dentro de um catch.
+# 1 / 24 MEDIDO em 15/10/2026.
+guarda-fin-sem-enum  php  test_guarda_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente_por_tabela  ::  tests=1 assertions=24
+
+# 1553 / o `down()` de uma migration de `create`, com DUAS tabelas.
+# ⚠️⚠️ A SONDA de ordem `dropForeign` antes de `dropIndex` roda sobre **ZERO
+# casos** aqui (o `dropIfExists` da tabela inteira subsume o par, que é a receita
+# ADITIVA), e **gate que roda sobre zero casos não prova nada**. Então ela fica
+# COM ISCA — num texto sintético aditivo a sonda TEM de achar os dois e ver a
+# ordem — e o invariante que VALE tem asserção própria: o `down()` derruba as DUAS
+# tabelas por `dropIfExists`, não derruba coluna, e **não derruba nenhuma das 2
+# MÃES** (`pub_aprovacao_ofertas` e `users`, que são de outros planos e EXISTEM).
+# Mais a proibição de encostar em `ml_acervo_itens`.
+# O que precisaria estar errado: um `dropIndex` no `down()` sem o par (erro 1553),
+# ou o `down()` derrubando tabela alheia.
+# 1 / 19 MEDIDO em 15/10/2026.
+guarda-fin-down  php  test_guarda_o_down_derruba_as_duas_tabelas_filha_antes_de_mae  ::  tests=1 assertions=19
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — O VÍNCULO DURÁVEL COM A ORIGINAL (DADO-15 / IMG-13)
+# Arquivo: tests/Feature/Publicador/Aprovacao/VinculoDuravelDaOriginalTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# DADO-15 — N:N ("aceita MAIS DE UMA original por imagem gerada"), a ORDEM de
+# escolha preservada (`posicao`), as duas pontas em `pub_imagens` e o **par
+# repetido RECUSADO** pelo unique. Com isca: o par com a OUTRA imagem gerada passa
+# (o unique é do PAR, não da original).
+# O que precisaria estar errado: transformar a tabela em coluna. Com uma coluna o
+# painel mostraria UMA das originais como se fosse a única — afirmação falsa sobre
+# como a imagem nasceu.
+# 1 / 9 MEDIDO em 15/10/2026.
+vinculo-n-para-n  php  test_o_vinculo_aceita_duas_ou_mais_originais_e_recusa_o_par_repetido  ::  tests=1 assertions=9
+
+# ⚠️ IMG-13 — imagem sem vínculo devolve coleção vazia **E** o estado DECLARADO
+# `SEM_ORIGINAL`, com **ícone E texto** (VOC-05) e a frase que diz o MOTIVO. Com
+# isca: COM vínculo o estado desaparece (senão ele seria constante e não mediria
+# nada), e a própria imagem GERADA **nunca** volta como se fosse a original.
+# O que precisaria estar errado: painel vazio, zero, ou a imagem de IA repetida no
+# lugar da original. É o caso de **TODO o acervo atual na estreia**, e não há
+# backfill possível — o dado já foi apagado.
+# 1 / 11 MEDIDO em 15/10/2026.
+estado-sem-original  php  test_originais_de_imagem_sem_vinculo_devolve_colecao_vazia_e_o_estado_declarado  ::  tests=1 assertions=11
+
+# T-186-25 — apagar a imagem GERADA apaga o vínculo (CASCADE) e **NÃO** apaga a
+# original; com isca do outro lado (apagar a ORIGINAL também derruba o vínculo, e
+# a gerada sobrevive), e o estado declarado no caso resultante.
+# O que precisaria estar errado: vínculo órfão apontando para `pub_imagens` que
+# não existe mais; ou — pior — o CASCADE levar a ORIGINAL do cliente junto, e ela
+# é a coisa que **nada no Creative Engine move ou apaga**.
+# 1 / 7 MEDIDO em 15/10/2026.
+cascade-do-vinculo  php  test_apagar_a_imagem_gerada_apaga_o_vinculo_e_nao_apaga_a_original  ::  tests=1 assertions=7
+
+# ⚠️⚠️ ESTE GATE NASCEU DE UM DEFEITO REAL achado no GREEN deste plano: a relação
+# chamava-se `original()`, e `Eloquent\Model` tem a **propriedade protegida
+# `$original`** (conferido por `ReflectionClass`). De FORA da classe `$v->original`
+# passa por `__get()` e devolve a relação; **de DENTRO** o PHP enxerga a
+# propriedade e **não chama `__get()`** — `originaisDe()` devolvia as linhas de
+# `pub_imagem_referencias` **como array** em vez das `pub_imagens`. Renomeada para
+# `imagemOriginal()`.
+# ⚠️ O modo de falhar é o pior possível: **um teste escrito de fora PASSAVA**
+# enquanto o código de dentro estava errado. O gate varre as relações dos 3
+# modelos contra as propriedades do Eloquent, com isca nos dois sentidos
+# (`original` TEM de estar na lista; nome inventado não pode) e isca de varredura.
+# O que precisaria estar errado: alguém nomear relação de `original`, `attributes`,
+# `casts`, `changes`, `previous`, `relations`, `table`, `with`…
+# 1 / 9 MEDIDO em 15/10/2026.
+colisao-com-eloquent  php  test_nenhuma_relacao_destes_modelos_colide_com_propriedade_do_eloquent  ::  tests=1 assertions=9
+
+# ⚠️⚠️ DADO-15 — **ESTA FASE NÃO ESCREVE** `pub_imagem_referencias`; a escrita é
+# das **Fases 192 e 194**, NOMEADAS nos dois docblocks.
+# ⚠️ E a prova **NÃO é "a tabela tem 0 linhas"** (achado G5): com `RefreshDatabase`
+# a tabela **nasce vazia em todo teste**, então aquela asserção é **VAZIA POR
+# CONSTRUÇÃO** — passaria igual se o código escrevesse e o teste não exercitasse o
+# caminho. A prova é a **ausência de ESCRITA no código** de `app/` (7 formas de
+# escrita + `DB::table()->insert`), lida pelo tokenizador.
+# ⚠️ COM ISCA DE DOIS LADOS: (a) a mesma sonda, apontada para `PubProduto` e
+# `PubRascunho` — que o `app/` REALMENTE escreve, MEDIDO —, tem de **ACHAR**;
+# (b) `test -e` no modelo antes de acreditar em qualquer vazio; (c) isca do
+# tokenizador (a frase em comentário não casa, a chamada em código casa); (d) isca
+# da fase dona (a sonda NÃO aceita "Fase 999").
+# ⚠️ `PubAprovacaoEvento` — a isca que o plano sugeria — **não existia no disco**
+# no momento desta execução (o plano 186-05 roda em paralelo), e depender de
+# arquivo de outro plano faria o gate oscilar com o progresso dele. A isca usa
+# modelos cuja escrita foi MEDIDA nesta árvore.
+# O que precisaria estar errado: alguém começar a gravar aqui, e a Fase 192 gravar
+# outra vez — duas rotinas livres para divergir.
+# 1 / 14 MEDIDO em 15/10/2026.
+dado-15-sem-escrita  php  test_dado_15_esta_fase_nao_escreve_o_vinculo_com_isca_de_dois_lados  ::  tests=1 assertions=14
+
+# ⚠️⚠️ TERR-11 / TERR-01 — diff **VAZIO por RANGE** (`1c16d9e9..HEAD`) nas 5 peças
+# da retenção de 48 h e do Creative Engine, **mais** `app/Support/Publicador/`
+# (que é LIDO e nunca alterado, nem com subdiretório novo), com `test -e`/
+# `isDirectory` ANTES de acreditar no vazio e **ISCA DO DIFF** nas duas migrations
+# deste plano (que TÊM de sair não vazias). A retenção é conferida por VALOR (48),
+# com isca de chave de config inexistente.
+# ⚠️ ESTE GATE REPROVOU DE VERDADE em 15/10/2026, e pelo motivo legítimo: a
+# primeira redação exigia que **todo** commit do range tivesse escopo 186-06 —
+# asserção **ERRADA POR CONSTRUÇÃO** numa árvore compartilhada, porque o plano
+# **186-05 roda EM PARALELO** e commita no mesmo intervalo. O gate **não foi
+# afrouxado**: o que entrou foi o invariante que de fato vale e é imune à sessão
+# paralela — **todo commit que tocou UM DOS MEUS ARQUIVOS tem escopo 186-06** —,
+# com isca que EXIGE a presença de commit de escopo alheio no range (se a sessão
+# paralela parar, o fato tem de ser registrado, não o gate afrouxado).
+# O que precisaria estar errado: alguém esticar a retenção de 48 h para "resolver"
+# o vínculo efêmero. Resolveria o sintoma por algumas horas, continuaria perdendo
+# o vínculo depois, e carregaria num requisito de produto uma decisão de custo e
+# privacidade de OUTRA PESSOA (D-02 da v24.0, com o incidente do ECF Drive como
+# razão do desenho).
+# 1 / 30 MEDIDO em 15/10/2026.
+terr-11-por-range  php  test_terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range  ::  tests=1 assertions=30
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 2 — A DISCIPLINA DA MIGRATION DO VÍNCULO
+# ───────────────────────────────────────────────────────────────────────────────
+
+# MIG-02 com as **DUAS FKs PARA A MESMA TABELA**: os 5 nomes declarados, o maior
+# travado (20), os nomes PADRÃO do Laravel por `strlen` — e o maior deles
+# **MEDIDO em 51**, onde o plano escreveu "50 ou 51". É a segunda vez nesta fase
+# que um número de nome de índice vem do plano com margem de erro de 1, e é a
+# razão de nada ser contado à mão. Mais: as duas FKs apontam para `pub_imagens` e
+# são CASCADE, `criativo_id` é anulável e **SEM FK**, `ml_anuncio_criativos` não
+# aparece no CÓDIGO (só no docblock, com isca inversa), e nenhum índice VIVO caiu
+# em nome padrão.
+# O que precisaria estar errado: erro **1059**; ou DDL encostando na tabela do
+# outro dev (T-186-23).
+# 1 / 54 MEDIDO em 15/10/2026.
+guarda-vinc-nomes-e-fks  php  test_guarda_do_vinculo_nomes_de_64_e_as_duas_fks_para_a_mesma_tabela  ::  tests=1 assertions=54
+
+# MIG-04/05/07/09 do vínculo, mais os **TRÊS BLOCOS OBRIGATÓRIOS** do docblock:
+# (1) os 6 nomes MEDIDOS do vínculo efêmero, (2) "ESCRITA NAS FASES 192/194" em
+# maiúsculas, (3) TERR-11 com a RAZÃO (D-02, incidente do ECF Drive e o "PARAR e
+# devolver a pergunta"), mais o registro de que **nenhum backfill é possível** e
+# que na estreia isso vale para **TODO o acervo** (IMG-13).
+# ⚠️⚠️ A SONDA DO **1830** RODARIA SOBRE **ZERO CASOS** aqui (não há `nullOnDelete`
+# nesta migration: as duas FKs são CASCADE NOT NULL e `criativo_id` não tem FK), e
+# **gate que roda sobre zero casos não prova nada**. Então ela fica COM ISCA
+# SINTÉTICA e o invariante que VALE tem asserção própria (zero `nullOnDelete`, as
+# duas colunas de FK NOT NULL, `criativo_id` anulável).
+# O que precisaria estar errado: `enum` cegando a suíte pelo CHECK do SQLite; 1553
+# engolido num catch; ou o bloco (2) sumindo e alguém achando que a escrita faltou.
+# 1 / 46 MEDIDO em 15/10/2026.
+guarda-vinc-blocos  php  test_guarda_do_vinculo_sem_enum_sem_try_e_a_sonda_do_1830_que_rodaria_sobre_zero_casos  ::  tests=1 assertions=46
+
+# ───────────────────────────────────────────────────────────────────────────────
+# A BIJEÇÃO — o gate que fecha o buraco de "passar por omissão"
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ⚠️⚠️ Prova por SCRIPT, nas DUAS direções: (1) **todo método** dos dois arquivos
+# deste plano é coberto por pelo menos um filtro deste manifesto — teste sem id
+# **NUNCA RODA** em gate nenhum, e foi o sobrevivente da mutação do 186-03, onde
+# era **lacuna real**; (2) **todo id** casa pelo menos um método — id órfão é gate
+# rodando sobre ZERO casos. Com isca da sonda de métodos (ela tem de se achar a si
+# mesma) e **isca do casador nos dois sentidos** (entende alternância e NÃO casa
+# por prefixo — um casador frouxo diria "tudo coberto", um estrito diria "nada").
+# O que precisaria estar errado: alguém acrescentar método e esquecer o id, ou
+# apagar um método e deixar o id. As duas formas passam despercebidas sem este
+# gate, porque o helper só roda os ids que estão escritos aqui.
+# ⚠️ A contagem deste gate inclui **uma asserção por LINHA de gate deste
+# manifesto** (o laço confere que toda linha é do modo `php`), então ela sobe
+# junto quando um id novo entra. Isso é FRICÇÃO DELIBERADA e é diferente da
+# contagem frágil que esta fase já consertou: ali o número dependia de **quantos
+# arquivos alheios** casavam um glob; aqui ele depende só **dos meus próprios
+# métodos e dos meus próprios ids**, que é exatamente quando se QUER que o número
+# mude de forma visível. Acrescentar método sem atualizar os dois números reprova
+# — e é esse o ponto.
+# 1 / 38 MEDIDO em 15/10/2026, com este manifesto completo (27 linhas de gate).
+bijecao-manifesto  php  test_todo_metodo_deste_plano_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=38

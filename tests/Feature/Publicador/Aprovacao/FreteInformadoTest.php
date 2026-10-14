@@ -534,8 +534,16 @@ class FreteInformadoTest extends TestCase
         // é ASSIMÉTRICO: no MySQL 8.0.46 é **erro 1264** e a gravação cai; no SQLite dos testes
         // **grava CALADO**, truncado. A suíte ficaria verde e o deploy quebraria.
         //
-        // ⚠️ Por isso este gate NÃO tenta gravar e conferir (no SQLite isso passaria com 7,3
-        // também): ele lê a PRECISÃO DECLARADA — no texto da migration E no schema vivo.
+        // ⚠️⚠️ **MEDIDO EM 15/10/2026, E É O ACHADO QUE DEU A FORMA DESTE GATE:** no SQLite dos
+        // testes `Schema::getColumns()` devolve o tipo **`numeric`, SEM precisão nenhuma** (as três
+        // colunas decimais desta tabela vêm `type='numeric'`), enquanto o MariaDB local devolve
+        // `decimal(12,3)` e `decimal(5,2)`. ➡️ Um gate que conferisse a precisão pelo SCHEMA VIVO
+        // **não tem o que medir aqui**: ou falha sempre, ou — pior — vira um "se der para ler,
+        // confere", que **PULA EM SILÊNCIO** na suíte e deixa a asserção vazia por construção
+        // justamente no ambiente em que ela roda.
+        //
+        // ➡️ Então a fonte de verdade deste gate é o **TEXTO da migration** (que é legível nos dois
+        // bancos), e a limitação do SQLite virou **asserção MEDIDA** logo abaixo em vez de skip.
         $codigo = $this->semComentarios($this->textoDaMigration());
 
         $this->assertMatchesRegularExpression(
@@ -545,9 +553,9 @@ class FreteInformadoTest extends TestCase
         );
         $this->assertDoesNotMatchRegularExpression("/->decimal\('margem',\s*7,/", $codigo);
 
-        // E no SCHEMA VIVO: a precisão tem de ser suficiente para o número já medido.
-        [$precisao, $escala] = $this->precisaoDe('pub_aprovacao_composicoes', 'margem');
-        $this->assertGreaterThanOrEqual(3, $escala, 'a escala de `margem` caiu abaixo de 3 casas');
+        // A precisão DECLARADA no texto, lida por regex e conferida pela mesma régua do caso real.
+        [$precisao, $escala] = $this->precisaoDeclarada($codigo, 'margem');
+        $this->assertSame([12, 3], [$precisao, $escala]);
         $inteiras = $precisao - $escala;
         $this->assertGreaterThanOrEqual(9, $inteiras, "`margem` comporta só {$inteiras} dígitos inteiros — o +20738% já medido precisa de 5");
 
@@ -555,6 +563,26 @@ class FreteInformadoTest extends TestCase
         $jaMedido = 20738.0;
         $this->assertGreaterThan(10 ** (7 - 3) - 1, $jaMedido, 'ISCA CEGA: a régua não acusa que 7,3 estoura com o +20738% já medido.');
         $this->assertLessThan(10 ** $inteiras, $jaMedido, 'ISCA CEGA: a régua diria que nem 12,3 comporta o número medido — ela está errada.');
+
+        // ⚠️ ISCA DO LEITOR DE PRECISÃO: ele acha `12,3` no texto real e **acusa** um `7,3`
+        // sintético. Sem ela, um regex que não casasse nada devolveria "sem precisão" e o gate
+        // mediria o nada.
+        [$pFalso, $eFalso] = $this->precisaoDeclarada("<?php \$t->decimal('margem', 7, 3);", 'margem');
+        $this->assertSame([7, 3], [$pFalso, $eFalso], 'ISCA CEGA: o leitor de precisão não lê nem o caso sintético.');
+        $this->assertLessThan($jaMedido, 10 ** ($pFalso - $eFalso), 'ISCA CEGA: a régua não acusa que o 7,3 sintético estoura.');
+
+        // ⚠️⚠️ A ASSIMETRIA, MEDIDA E NÃO PRESUMIDA: neste ambiente de teste a precisão **não é
+        // legível do schema vivo**. É exatamente por isso que o SQLite "grava calado" e que o
+        // texto é a fonte de verdade. Se um dia esta asserção falhar, é BOA notícia (o driver
+        // passou a carregar a precisão) e o gate pode voltar a medir o schema.
+        $tipoVivo = $this->tipoVivo('pub_aprovacao_composicoes', 'margem');
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite') {
+            $this->assertSame('numeric', $tipoVivo, 'o SQLite passou a reportar a precisão do decimal — reavaliar este gate (seria possível medir o schema vivo)');
+            $this->assertDoesNotMatchRegularExpression('/\(\d+\s*,\s*\d+\)/', $tipoVivo, 'ISCA: o tipo vivo traz precisão no SQLite, ao contrário do medido em 15/10/2026');
+        } else {
+            // Nos bancos que carregam a precisão (MariaDB local, MySQL de produção) ela é medida.
+            $this->assertMatchesRegularExpression('/\(12\s*,\s*3\)/', $tipoVivo, "o schema VIVO diz `{$tipoVivo}` — a `margem` perdeu a folga");
+        }
 
         // E o modo de falhar está ESCRITO no docblock, com os dois bancos nomeados.
         $cru = $this->textoDaMigration();
@@ -564,21 +592,34 @@ class FreteInformadoTest extends TestCase
 
         // ⚠️ `margem_minima` é `decimal(5,2)` DE PROPÓSITO (é limite configurado por gente), e o
         // contraste com a `margem` é o que prova que a folga da outra não foi descuido.
-        [, $escalaMin] = $this->precisaoDe('pub_aprovacao_composicoes', 'margem_minima');
-        $this->assertSame(2, $escalaMin);
+        $this->assertSame([5, 2], $this->precisaoDeclarada($codigo, 'margem_minima'));
+        $this->assertSame([12, 2], $this->precisaoDeclarada($codigo, 'resultado'), 'dinheiro é 12,2 — o contraste com a `margem` (12,3) é o que mostra que a escala extra é da PORCENTAGEM');
     }
 
-    /** @return array{0: int, 1: int} [precisão, escala] da coluna no SCHEMA VIVO. */
-    private function precisaoDe(string $tabela, string $coluna): array
+    /**
+     * A precisão DECLARADA de uma coluna no texto da migration.
+     *
+     * ⚠️ Lê o TEXTO, não o schema vivo, porque o SQLite dos testes devolve `numeric` sem
+     * precisão (medido em 15/10/2026) — ver o comentário do gate acima.
+     *
+     * @return array{0: int, 1: int} [precisão, escala]
+     */
+    private function precisaoDeclarada(string $codigo, string $coluna): array
+    {
+        if (preg_match("/->decimal\(\s*'".preg_quote($coluna, '/')."'\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/", $codigo, $m)) {
+            return [(int) $m[1], (int) $m[2]];
+        }
+
+        $this->fail("não achei a declaração de `decimal('{$coluna}', p, s)` no texto da migration");
+    }
+
+    /** O tipo da coluna como o DRIVER ATUAL o reporta. */
+    private function tipoVivo(string $tabela, string $coluna): string
     {
         foreach (Schema::getColumns($tabela) as $c) {
-            if (($c['name'] ?? null) !== $coluna) {
-                continue;
+            if (($c['name'] ?? null) === $coluna) {
+                return (string) ($c['type'] ?? '');
             }
-            if (preg_match('/\((\d+)\s*,\s*(\d+)\)/', (string) ($c['type'] ?? ''), $m)) {
-                return [(int) $m[1], (int) $m[2]];
-            }
-            $this->fail("não consegui ler a precisão de `{$tabela}.{$coluna}` (tipo: ".($c['type'] ?? '?').')');
         }
 
         $this->fail("coluna `{$coluna}` não existe em `{$tabela}`");
@@ -595,11 +636,42 @@ class FreteInformadoTest extends TestCase
         // era verdade depois de um `fresh()`. O conserto repete o default em dois lugares, e por
         // isso este gate compara contra o default lido do **SCHEMA VIVO** — nunca contra outra
         // constante do PHP (comparar PHP com PHP não acusaria divergência nenhuma).
+        //
+        // ⚠️⚠️ ESTE GATE FOI CORRIGIDO PELA CAMPANHA DE MUTAÇÃO (15/10/2026), e o sobrevivente
+        // era LACUNA REAL: a primeira redação lia `vigente` de uma linha criada por
+        // `informar()` — que **passa `'vigente' => true` EXPLICITAMENTE** no `create()`. Logo a
+        // asserção passava pelo valor explícito e **nunca exercitava o default em memória**:
+        // apagar o `$attributes` do modelo não a fazia falhar (mutante M16 sobreviveu).
+        //
+        // ➡️ A leitura certa é num modelo construído **SEM o atributo**, que é exatamente o caso
+        // de quem fizer `PubAprovacaoFrete::create([...])` sem `vigente` (os planos 186-07 e
+        // 186-08 vão fazer isso). O gate **não foi afrouxado** — ele passou a medir o que
+        // afirmava medir.
         $oferta = $this->umaOferta();
 
-        $frete = PubAprovacaoFrete::informar($oferta, 42.90, PubAprovacaoFrete::SIMULADOR);
-        // EM MEMÓRIA, sem `fresh()` — é esta leitura que estava errada no 186-04.
-        $this->assertTrue($frete->vigente, '`vigente` nasceu null em memória — quem informasse o frete leria "não vigente" com a linha vigente no banco');
+        // ⚠️ SEM `vigente` no construtor: é aqui que o `$attributes` do modelo é a única fonte.
+        $semAtributo = new PubAprovacaoFrete();
+        $this->assertTrue($semAtributo->vigente, '`vigente` nasce null em memória — quem criar a linha sem o atributo leria "não vigente" com a linha vigente no banco (o Eloquent NÃO lê o default do banco)');
+
+        $criadoSemVigente = PubAprovacaoFrete::create([
+            'oferta_id' => $oferta->id,
+            'valor' => 42.90,
+            'origem' => PubAprovacaoFrete::SIMULADOR,
+            'nota' => PubAprovacaoFrete::nota(PubAprovacaoFrete::SIMULADOR),
+            'informado_em' => now(),
+            'versao' => 1,
+        ]);
+        $this->assertTrue($criadoSemVigente->vigente, '`create()` sem `vigente` devolveu objeto não-vigente em memória');
+        $this->assertTrue($criadoSemVigente->fresh()->vigente, 'e no banco a linha nasceu não-vigente — os dois defaults divergiram');
+
+        // ⚠️ ISCA DO MUTANTE M16: a linha criada sem o atributo É achada por `vigenteDe()`. Se o
+        // `$attributes` sumir, o objeto em memória vem com `vigente` null e as asserções acima
+        // caem — era isso que a redação anterior não media.
+        $this->assertNotNull(PubAprovacaoFrete::vigenteDe($oferta), 'ISCA CEGA: a linha criada sem `vigente` não é achada como vigente.');
+
+        // E pelo caminho de verdade (`informar()`, que passa o atributo explícito) também.
+        $frete = PubAprovacaoFrete::informar($oferta->fresh(), 55.00, PubAprovacaoFrete::TABELA_CLIENTE);
+        $this->assertTrue($frete->vigente);
 
         $comp = PubAprovacaoComposicao::create([
             'oferta_id' => $oferta->id, 'versao' => 1, 'momento' => PubAprovacaoComposicao::APROVACAO,
@@ -684,7 +756,7 @@ class FreteInformadoTest extends TestCase
         return file_get_contents($abs);
     }
 
-    public function test_guarda_nenhum_nome_de_indice_ou_fk_passa_de_64_medido_por_strlen_com_isca(): void
+    public function test_guarda_financeiro_nomes_de_indice_de_64_medidos_por_strlen_com_isca(): void
     {
         $texto = $this->textoDaMigration();
 
@@ -740,7 +812,7 @@ class FreteInformadoTest extends TestCase
         $this->assertGreaterThan(64, strlen(str_repeat('x', 65)), 'ISCA CEGA: a régua de 64 não acusa nem 65 caracteres.');
     }
 
-    public function test_guarda_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca(): void
+    public function test_guarda_financeiro_fk_nullondelete_tem_nullable_explicito_com_isca(): void
     {
         $codigo = $this->semComentarios($this->textoDaMigration());
 

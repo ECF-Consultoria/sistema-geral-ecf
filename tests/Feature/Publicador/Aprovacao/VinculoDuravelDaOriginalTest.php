@@ -145,7 +145,7 @@ class VinculoDuravelDaOriginalTest extends TestCase
         // ⚠️ E as duas pontas são `pub_imagens` — o vínculo é NOSSO, não do Creative Engine.
         $vinculo = PubImagemReferencia::where('imagem_id', $gerada->id)->orderBy('posicao')->first();
         $this->assertSame($gerada->id, $vinculo->imagem->id);
-        $this->assertSame($a->id, $vinculo->original->id);
+        $this->assertSame($a->id, $vinculo->imagemOriginal->id);
         $this->assertNull($vinculo->criativo_id, '`criativo_id` é opcional: imagem vinda de UPLOAD não tem criativo, e isso é correto');
 
         // ⚠️ O par repetido é ERRO, não duas referências: sem o unique o painel repetiria a foto.
@@ -230,6 +230,84 @@ class VinculoDuravelDaOriginalTest extends TestCase
 
         // E a tela do caso resultante é o estado declarado, nunca vazio silencioso.
         $this->assertSame(PubImagemReferencia::SEM_ORIGINAL, PubImagemReferencia::originaisDe($g2)['estado']);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ A COLISÃO DE NOME QUE SÓ MORDE DE DENTRO DA CLASSE — BUG REAL MEDIDO EM 15/10/2026
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public function test_nenhuma_relacao_destes_modelos_colide_com_propriedade_do_eloquent(): void
+    {
+        // ⚠️⚠️ ESTE GATE NASCEU DE UM DEFEITO REAL, achado no GREEN deste plano: a relação
+        // chamava-se `original()` e `Illuminate\Database\Eloquent\Model` tem uma **propriedade
+        // protegida `$original`** (os atributos originais do modelo).
+        //
+        //   · de FORA da classe, `$v->original` passa por `__get()` e devolve a RELAÇÃO;
+        //   · de DENTRO da classe, o PHP enxerga a PROPRIEDADE PROTEGIDA e **não chama `__get()`**.
+        //
+        // Resultado medido: `originaisDe()` — que faz o `map()` dentro do próprio modelo —
+        // devolvia as linhas de `pub_imagem_referencias` **como array** em vez das `pub_imagens`,
+        // e o painel de comparação mostraria a coisa errada.
+        //
+        // ⚠️ O MODO DE FALHAR É O PIOR POSSÍVEL: **um teste escrito de fora PASSAVA** (foi o que
+        // aconteceu) enquanto o código de dentro estava errado. O que precisaria estar errado no
+        // mundo para este gate falhar: alguém nomear uma relação com o nome de uma propriedade do
+        // Eloquent — `original`, `attributes`, `casts`, `changes`, `previous`, `relations`,
+        // `table`, `with`…
+        $propriedades = [];
+        foreach ((new \ReflectionClass(\Illuminate\Database\Eloquent\Model::class))->getProperties() as $p) {
+            $propriedades[] = $p->getName();
+        }
+
+        // ⚠️ ISCA DA SONDA, nos dois sentidos: `original` TEM de estar na lista (é a colisão que
+        // deu origem a este gate) e um nome inventado NÃO pode estar. Sem a primeira, a sonda
+        // poderia ler zero propriedades e o laço abaixo rodaria sobre nada.
+        $this->assertContains('original', $propriedades, 'ISCA CEGA: a sonda não acha a propriedade `$original` do Eloquent — ela é a colisão que este gate existe para pegar.');
+        $this->assertNotContains('propriedade_que_nao_existe_no_eloquent', $propriedades, 'ISCA CEGA: a sonda devolve `true` para nome inventado.');
+        $this->assertGreaterThan(40, count($propriedades), 'ISCA CEGA: a sonda leu poucas propriedades — o `ReflectionClass` mudou de comportamento.');
+
+        $modelos = [
+            \App\Models\PubImagemReferencia::class,
+            \App\Models\PubAprovacaoFrete::class,
+            \App\Models\PubAprovacaoComposicao::class,
+        ];
+
+        $colisoes = [];
+        $relacoesVistas = 0;
+        foreach ($modelos as $modelo) {
+            $reflexao = new \ReflectionClass($modelo);
+            foreach ($reflexao->getMethods(\ReflectionMethod::IS_PUBLIC) as $metodo) {
+                if ($metodo->getDeclaringClass()->getName() !== $modelo || $metodo->isStatic()) {
+                    continue;
+                }
+                $tipo = (string) ($metodo->getReturnType() ?? '');
+                if (! str_contains($tipo, 'BelongsTo') && ! str_contains($tipo, 'HasMany') && ! str_contains($tipo, 'HasOne')) {
+                    continue;
+                }
+                $relacoesVistas++;
+                if (in_array($metodo->getName(), $propriedades, true)) {
+                    $colisoes[] = $modelo.'::'.$metodo->getName().'()';
+                }
+            }
+        }
+
+        // ⚠️ ISCA DA VARREDURA: ela achou as relações de verdade (3 nos três modelos: `imagem`,
+        // `imagemOriginal`, `oferta`, `autor`, `oferta`). Zero vistas faria o gate ficar verde
+        // medindo NADA — a classe de falha que esta fase mediu cinco vezes.
+        $this->assertGreaterThanOrEqual(5, $relacoesVistas, 'ISCA CEGA: a varredura não achou as relações dos três modelos.');
+        $this->assertSame([], $colisoes, 'relação com nome de propriedade do Eloquent — de DENTRO da classe ela devolve o array cru de atributos, em silêncio: '.implode(', ', $colisoes));
+
+        // ⚠️ E A PROVA DIRETA, de DENTRO do modelo: `originaisDe()` faz o `map()` lá dentro, e o
+        // que ela devolve TEM de ser `PubImagem`, nunca o array da própria linha do vínculo.
+        [$gerada, $a] = $this->tresImagens();
+        PubImagemReferencia::create(['imagem_id' => $gerada->id, 'referencia_imagem_id' => $a->id, 'gravado_em' => now()]);
+
+        $lido = PubImagemReferencia::originaisDe($gerada);
+        $this->assertCount(1, $lido['originais']);
+        foreach ($lido['originais'] as $item) {
+            $this->assertInstanceOf(PubImagem::class, $item, 'a leitura de DENTRO do modelo devolveu ' . (is_object($item) ? get_class($item) : gettype($item)) . ' — é a colisão com `$original` de volta');
+            $this->assertSame($a->id, $item->id, 'a leitura devolveu a linha do VÍNCULO em vez da `pub_imagens` original');
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════
@@ -355,13 +433,46 @@ class VinculoDuravelDaOriginalTest extends TestCase
         $this->assertStringContainsString('creative:limpar-referencias', $comando, 'o nome do comando da varredura mudou — ele é território do outro dev');
         $this->assertStringContainsString('retencao_referencias_horas', $comando.file_get_contents(base_path('config/services.php')));
 
-        // ⚠️ NÃO conferir AUTOR de commit para distinguir sessões: as duas usam o MESMO
-        // `user.name`. O discriminador é o ESCOPO DO ASSUNTO (`feat(186-06): …`).
-        $meus = $this->gitLog();
-        $this->assertNotSame('', $meus, 'ISCA CEGA: o log por range não acha nem os commits deste plano.');
-        foreach (explode("\n", $meus) as $linha) {
-            $this->assertMatchesRegularExpression('/\(186-06\)/', $linha, "o commit `{$linha}` está no range deste plano e NÃO tem o escopo 186-06 — ou o range está errado, ou este plano commitou assunto alheio");
+        // ⚠️⚠️ NÃO conferir AUTOR de commit para distinguir sessões: as duas usam o MESMO
+        // `user.name`. O discriminador é o **ESCOPO DO ASSUNTO** (`feat(186-06): …`).
+        //
+        // ⚠️⚠️ E NÃO EXIGIR QUE **TODO** COMMIT DO RANGE SEJA MEU — essa asserção é **ERRADA POR
+        // CONSTRUÇÃO** numa árvore compartilhada, e falhou de verdade em 15/10/2026: o plano
+        // **186-05 roda EM PARALELO** nesta mesma árvore e commita no mesmo intervalo, então
+        // `1c16d9e9..HEAD` contém os commits dele também. Isso é **esperado**, e a resposta certa
+        // é REGISTRAR, nunca "ajustar".
+        //
+        // ➡️ O invariante que de fato vale e que é imune à sessão paralela: **todo commit que
+        // tocou UM DOS MEUS ARQUIVOS tem escopo 186-06**. É isto que prova que este plano não
+        // commitou assunto alheio nem teve os arquivos dele arrastados por outro commit.
+        $meusArquivos = [
+            self::MIGRATION,
+            'database/migrations/2026_10_15_100400_create_pub_aprovacao_financeiro_tables.php',
+            'app/Models/PubImagemReferencia.php',
+            'app/Models/PubAprovacaoFrete.php',
+            'app/Models/PubAprovacaoComposicao.php',
+            'tests/Feature/Publicador/Aprovacao/FreteInformadoTest.php',
+            'tests/Feature/Publicador/Aprovacao/VinculoDuravelDaOriginalTest.php',
+        ];
+
+        $assuntos = $this->gitLog($meusArquivos);
+        $this->assertNotSame('', $assuntos, 'ISCA CEGA: o log por range não acha nem os commits que criaram os arquivos deste plano.');
+        $linhas = array_filter(explode("\n", $assuntos));
+        $this->assertGreaterThanOrEqual(3, count($linhas), 'ISCA CEGA: o log achou menos commits do que este plano fez — o range ou o pathspec está errado.');
+        foreach ($linhas as $linha) {
+            $this->assertMatchesRegularExpression('/\(186-06\)/', trim($linha), "o commit `{$linha}` tocou um arquivo DESTE plano e NÃO tem o escopo 186-06 — ou este plano commitou assunto alheio, ou outro commit arrastou arquivo meu");
         }
+
+        // ⚠️ ISCA DO FILTRO POR CAMINHO: sem pathspec o MESMO range traz commits de OUTRO escopo
+        // (a sessão paralela). Se esta isca deixar de achar escopo alheio, o filtro acima passou a
+        // ser decorativo — ou a sessão paralela parou, e aí o fato tem de ser registrado.
+        $todos = $this->gitLog([]);
+        $this->assertNotSame('', $todos, 'ISCA CEGA: o log sem pathspec não acha commit nenhum no range.');
+        $alheios = array_filter(
+            array_map('trim', explode("\n", $todos)),
+            fn ($l) => $l !== '' && ! preg_match('/\(186-06\)/', $l)
+        );
+        $this->assertNotEmpty($alheios, 'ISCA: o range não tem commit de escopo alheio. Se a sessão paralela 186-05 parou de commitar, registrar o fato — não afrouxar o gate.');
 
         // ⚠️ `ROADMAP.md`, `REQUIREMENTS-v27.md` e `STATE.md` não pertencem a plano nenhum e ficam
         // FORA do gate de território — por isso não estão na lista acima. Esta asserção registra
@@ -384,13 +495,24 @@ class VinculoDuravelDaOriginalTest extends TestCase
         return trim((string) $saida);
     }
 
-    /** Os commits do range deste plano, um por linha (assunto só). */
-    private function gitLog(): string
+    /**
+     * Os commits do range, um ASSUNTO por linha. Com `$caminhos`, só os que tocaram aqueles
+     * arquivos — é esse recorte que torna o gate imune à sessão paralela.
+     *
+     * @param  list<string>  $caminhos
+     */
+    private function gitLog(array $caminhos): string
     {
+        $pathspec = '';
+        if ($caminhos !== []) {
+            $pathspec = ' -- '.implode(' ', array_map('escapeshellarg', $caminhos));
+        }
+
         $saida = shell_exec(sprintf(
-            'git -C %s log --format=%%s %s..HEAD 2>&1',
+            'git -C %s log --format=%%s %s..HEAD%s 2>&1',
             escapeshellarg(base_path()),
-            escapeshellarg(self::PARTIDA)
+            escapeshellarg(self::PARTIDA),
+            $pathspec
         ));
 
         return trim((string) $saida);
