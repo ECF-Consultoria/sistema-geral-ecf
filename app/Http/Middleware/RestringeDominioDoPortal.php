@@ -60,6 +60,18 @@ class RestringeDominioDoPortal
         // conta morre no meio, no domínio dele.
         'oauth/mercadolivre/callback',
 
+        // Conexão com o ERP do cliente (Bling). O cliente recebe um link
+        // assinado, abre a landing e, ao voltar do consentimento, cai no
+        // callback — os dois no endereço dele. Mesma razão da linha do
+        // Mercado Livre acima: sem elas o fluxo de conectar morre no meio,
+        // no domínio do cliente.
+        //
+        // ⚠️ A landing é assinada de forma RELATIVA (`signed:relative`) justamente
+        // porque ela nasce aqui e não no domínio do painel: assinatura absoluta
+        // cobre o host, e trocar o host depois invalidaria o link.
+        'bling/conectar/*',
+        'oauth/bling/callback',
+
         // A raiz, que apresenta o portal a quem digitou só o domínio.
         '/',
 

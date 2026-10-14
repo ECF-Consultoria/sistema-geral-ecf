@@ -565,7 +565,7 @@ Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCall
 // `bling.callback`): rota pública sem throttle é porta aberta, e um prefixo
 // compartilhado faria um cliente consumir a cota do outro.
 Route::get('/bling/conectar/{company}', [BlingOAuthController::class, 'landing'])
-    ->name('bling.connect.landing')->middleware(['signed', 'throttle:30,1,bling.landing']);
+    ->name('bling.connect.landing')->middleware(['signed:relative', 'throttle:30,1,bling.landing']);
 Route::get('/oauth/bling/callback', [BlingOAuthController::class, 'callback'])
     ->name('bling.oauth.callback')->middleware('throttle:30,1,bling.callback');
 

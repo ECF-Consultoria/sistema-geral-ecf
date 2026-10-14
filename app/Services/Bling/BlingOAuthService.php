@@ -4,6 +4,7 @@ namespace App\Services\Bling;
 
 use App\Models\BlingConexao;
 use App\Models\Company;
+use App\Support\Portal\UrlDoPortal;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -144,7 +145,22 @@ class BlingOAuthService
         }
 
         $expiraEm = now()->addDays(7);
-        $url = URL::temporarySignedRoute('bling.connect.landing', $expiraEm, ['company' => $company->id]);
+
+        // (!) RELATIVA, e so depois levada ao dominio do cliente. A assinatura de
+        // uma `temporarySignedRoute` ABSOLUTA cobre o HOST: gerar no dominio do
+        // painel e trocar o host depois invalidaria o link, e o cliente levaria
+        // 403 no endereco que acabou de receber. Relativa, a assinatura cobre so
+        // caminho e query -- e a rota valida com `signed:relative`.
+        //
+        // Sem `portal.dominio_cliente` (o ambiente local), `noDominioDoCliente()`
+        // devolve a URL intacta e tudo segue no host de sempre.
+        $relativa = URL::temporarySignedRoute(
+            'bling.connect.landing',
+            $expiraEm,
+            ['company' => $company->id],
+            absolute: false,
+        );
+        $url = UrlDoPortal::noDominioDoCliente(url($relativa));
 
         $conexaoAtual = BlingConexao::where('company_id', $company->id)->first();
         $jaAtiva = $conexaoAtual && $conexaoAtual->status === BlingConexao::STATUS_ATIVA && $conexaoAtual->access_token;
