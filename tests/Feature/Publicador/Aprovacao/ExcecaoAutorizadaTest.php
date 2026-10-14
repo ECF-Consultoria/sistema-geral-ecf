@@ -630,6 +630,11 @@ class ExcecaoAutorizadaTest extends TestCase
         $gestor = User::factory()->create(['name' => 'Ricardo Gomes']);
         $servico = app(AjustesDaOfertaService::class);
 
+        // ⚠️ ISCA (GATE-13) **PREENCHIDA ANTES**: um evento de OUTRO tipo na MESMA linha do tempo.
+        // Sem ele, "achei 1 do tipo `exc`" e "achei 1 evento" dariam o mesmo número, e o filtro
+        // por tipo não estaria sendo medido — asserção vazia por construção.
+        $this->historico()->registrar($classico, null, PubAprovacaoEvento::SISTEMA, 'Anúncio preparado automaticamente a partir do cadastro completo', 1);
+
         Carbon::setTestNow('2026-10-15 17:05:00');
         $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::MARGEM_ABAIXO_DO_MINIMO, 'Margem menor aceita pelo cliente nesta campanha de lançamento');
         Carbon::setTestNow('2026-10-15 14:30:00');
@@ -690,8 +695,8 @@ class ExcecaoAutorizadaTest extends TestCase
         // ─── CAMADA A — a ÁREA TODA, por glob, ancorada no SUJEITO `exceção` ─────────────────
         // É esta que vale para os arquivos que as Fases 187-194 ainda vão acrescentar.
         $formas = [
-            '/(exce[cç][aã]o|\bexc\b|excecoes).{0,40}(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar)/i',
-            '/(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar).{0,40}(exce[cç][aã]o|\bexc\b|excecoes)/i',
+            '/(exce[cç][aã]o|(?<![a-z])exc(?![a-z])|excecoes).{0,40}(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar)/i',
+            '/(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar).{0,40}(exce[cç][aã]o|(?<![a-z])exc(?![a-z])|excecoes)/i',
         ];
 
         // ⚠️ ISCA DO REGEX, nos dois sentidos: ele TEM de casar o que deveria e NÃO casar o que

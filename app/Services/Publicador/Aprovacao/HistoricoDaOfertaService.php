@@ -121,6 +121,62 @@ class HistoricoDaOfertaService
     }
 
     /**
+     * ⚠️⚠️ **A LIGAÇÃO COM A ÚNICA PORTA DE TRANSIÇÃO** (o gancho `registrar()` do
+     * `AndamentoDaOfertaService`, plano 186-04).
+     *
+     * **Por que o mapa de frases mora AQUI e não lá:** o plano 186-04 deixou o gancho nomeado
+     * para este plano, e o acordo é que o diff daquele arquivo seja **só a ligação** — docblock,
+     * construtor e uma linha de chamada. Pôr este `match` lá dentro faria o 186-05 reescrever a
+     * máquina de estado, que é exatamente o que o acordo evita. Além disso o assunto é
+     * **histórico**: quem decide como um fato é contado é quem guarda os fatos.
+     *
+     * ⚠️ O tipo de cada destino é escolha de VOCABULÁRIO, não detalhe: `falha` entra como `error`
+     * (é o erro REAL do ML, PUB-05) e `aprovado`/`publicado` entram como `ok` (houve conferência
+     * humana, ou confirmação do ML). Trocar isso faz o filtro por tipo da linha do tempo mentir.
+     *
+     * ⚠️⚠️ **E OS DEMAIS DESTINOS ENTRAM COMO `sys`, DELIBERADAMENTE — isto é conserto de um
+     * DEFEITO REAL medido em 15/10/2026.** A primeira redação mapeava
+     * `ajustes_solicitados => adjust` e `em_revisao_ecf => save`, e o resultado foi **DOIS eventos
+     * `adjust` por pedido de ajuste**: o do ato humano ("Solicitou ajuste em …", gravado por
+     * `AjustesDaOfertaService`) e o genérico da transição ("Andamento: … → …", gravado aqui).
+     * A linha do tempo contava o mesmo fato duas vezes, e o filtro por tipo passava a dobrar a
+     * contagem de ajustes.
+     * ➡️ A regra que ficou: **`adjust`, `reject` e `save` são atos de PESSOA e pertencem a quem
+     * narra o ato**; a transição de estado é fato de SISTEMA. Quem tem narração própria e mais
+     * rica (o pedido, a resolução, a reprovação de foto, o salvar revisão do plano 186-08) grava
+     * o seu evento no serviço que executa o ato, e aqui fica a linha de andamento como `sys`.
+     * O protótipo faz o mesmo: em `Aprovacao.dc.html:1198` o pedido de ajuste gera **um** evento
+     * `adjust`, e a mudança de `status` não gera evento separado.
+     *
+     * @param  string  $origem  o andamento de onde a oferta saiu
+     * @param  string  $destino  o andamento para onde ela foi
+     * @param  string|null  $motivo  em `falha`, **o erro REAL do ML**; nos ajustes, o item
+     */
+    public function registrarTransicao(PubAprovacaoOferta $oferta, string $origem, string $destino, ?User $quem, ?string $motivo = null): PubAprovacaoEvento
+    {
+        $tipo = match ($destino) {
+            PubAprovacaoOferta::APROVADO, PubAprovacaoOferta::PUBLICADO => PubAprovacaoEvento::APROVACAO,
+            PubAprovacaoOferta::FALHA => PubAprovacaoEvento::ERRO,
+            // ⚠️ `ajustes_solicitados` e `em_revisao_ecf` caem no `default` DE PROPÓSITO — ver o
+            // docblock: quem narra o ATO é quem o executa, e duplicar gerava 2 eventos `adjust`.
+            default => PubAprovacaoEvento::SISTEMA,
+        };
+
+        $rotuloDestino = PubAprovacaoOferta::rotuloDe($destino) ?? $destino;
+        $rotuloOrigem = PubAprovacaoOferta::rotuloDe($origem) ?? $origem;
+
+        $frase = match ($destino) {
+            PubAprovacaoOferta::APROVADO => sprintf('Aprovou para publicação (versão %d)', (int) $oferta->versao),
+            PubAprovacaoOferta::PUBLICANDO => 'Publicação iniciada no Mercado Livre',
+            PubAprovacaoOferta::PUBLICADO => sprintf('Publicado e confirmado pelo Mercado Livre · %s', (string) $oferta->ml_item_id),
+            PubAprovacaoOferta::FALHA => sprintf('Falha na publicação: %s', trim((string) $motivo) === '' ? 'o Mercado Livre não informou a causa' : (string) $motivo),
+            default => sprintf('Andamento: %s → %s', $rotuloOrigem, $rotuloDestino),
+        };
+
+        return $this->registrar($oferta, $quem, $tipo, $frase, (int) $oferta->versao);
+    }
+
+    /**
      * A linha do tempo de uma oferta, **em ordem do fato** e **pronta para a tela**.
      *
      * ⚠️ Ordena por `ocorrido_em` (o FATO), não por `id` (a linha) — um backfill separaria os dois

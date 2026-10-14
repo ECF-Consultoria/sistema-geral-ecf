@@ -376,12 +376,26 @@ class AjustesEHistoricoTest extends TestCase
         // ⚠️ NENHUMA escrita direta de `andamento` neste serviço. Escrita de estado espalhada é
         // elevação de privilégio aqui: aprovar JÁ PUBLICA e não há desfazer (T-186-11).
         $this->assertDoesNotMatchRegularExpression("/['\"]andamento['\"]\s*=>/", $codigo, 'T-186-11: escrita direta de `andamento` — a transição tem de passar pela única porta');
-        $this->assertStringNotContainsString('->andamento =', $codigo, 'T-186-11: atribuição direta de `andamento`');
+
+        // ⚠️⚠️ A ATRIBUIÇÃO DIRETA É MEDIDA POR **REGEX COM `(?!=)`**, e isto é conserto de um
+        // DEFEITO REAL da sonda, medido em 15/10/2026: a primeira redação usava
+        // `assertStringNotContainsString('->andamento =')`, e ela **reprovou uma COMPARAÇÃO
+        // legítima** (`$afetada->andamento === PubAprovacaoOferta::AJUSTES_SOLICITADOS` contém
+        // `->andamento =` como substring). Uma sonda que acusa `===` como se fosse `=` empurra o
+        // executor seguinte a reescrever código correto — ou a apagar o gate. ⚠️ **Não foi
+        // afrouxada:** a atribuição de verdade continua sendo pega, e há isca provando os dois
+        // lados.
+        $atribuicao = '/->andamento\s*=(?!=)/';
+        $this->assertDoesNotMatchRegularExpression($atribuicao, $codigo, 'T-186-11: atribuição direta de `andamento`');
 
         // ⚠️ ISCA DO REGEX nos dois sentidos — a armadilha de `->foreignId?\(` casando `foreignI` e
         // não `foreign(` deixou uma sonda CEGA na wave 1.
         $this->assertMatchesRegularExpression("/['\"]andamento['\"]\s*=>/", "<?php \$o->update(['andamento' => 'aprovado']);", 'ISCA CEGA: o regex não casa nem a escrita canônica.');
         $this->assertDoesNotMatchRegularExpression("/['\"]andamento['\"]\s*=>/", '<?php $o->andamentoRotulo();', 'ISCA: o regex casou algo que não é escrita.');
+        $this->assertMatchesRegularExpression($atribuicao, '<?php $o->andamento = "aprovado";', 'ISCA CEGA: o regex não casa nem a atribuição canônica — a sonda estaria cega.');
+        $this->assertMatchesRegularExpression($atribuicao, '<?php $o->andamento="aprovado";', 'ISCA CEGA: o regex não casa a atribuição sem espaço.');
+        $this->assertDoesNotMatchRegularExpression($atribuicao, '<?php if ($o->andamento === $x) {}', 'ISCA: o regex casou uma COMPARAÇÃO — foi exatamente o falso positivo medido em 15/10/2026.');
+        $this->assertDoesNotMatchRegularExpression($atribuicao, '<?php if ($o->andamento !== $x) {}', 'ISCA: o regex casou uma comparação de desigualdade.');
 
         // E a porta é USADA: o serviço de andamento é a única forma de mover.
         $this->assertStringContainsString('AndamentoDaOfertaService', $codigo, 'ISCA CEGA: o serviço nem referencia a única porta — "não escreve andamento" seria verdade por não mover nada');
@@ -438,7 +452,13 @@ class AjustesEHistoricoTest extends TestCase
     // nunca a lê: a definição de passar por omissão.
     // ═════════════════════════════════════════════════════════════════════════════════════════
 
-    public function test_guarda_nenhum_nome_de_indice_ou_fk_passa_de_64_medido_por_strlen_com_isca(): void
+    // ⚠⚠ OS QUATRO GUARDAS ABAIXO LEVAM `_guarda_05_` NO NOME, E ISSO NÃO É ESTILO: medido em
+    // 15/10/2026, os nomes genéricos COLIDIAM com os guardas homónimos de `OfertaDoPortaoTest`
+    // (plano 186-04) e de `FreteInformadoTest` (plano 186-06, rodando EM PARALELO). O helper de
+    // gate só aceita filtro por MÉTODO, então um nome compartilhado faz a contagem do manifesto
+    // deste plano **depender de quantos arquivos de OUTROS planos existem** — exatamente a classe
+    // de gate frágil por construção que esta fase já teve de consertar na raiz uma vez.
+    public function test_guarda_05_nenhum_nome_de_indice_ou_fk_passa_de_64_medido_por_strlen_com_isca(): void
     {
         $texto = $this->texto(self::MIGRATION);
 
@@ -484,7 +504,7 @@ class AjustesEHistoricoTest extends TestCase
         $this->assertStringNotContainsString('->constrained(', $this->semComentarios($texto), 'MIG-02: `->constrained()` gera nome de FK sem ninguém ver');
     }
 
-    public function test_guarda_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca(): void
+    public function test_guarda_05_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca(): void
     {
         $codigo = $this->semComentarios($this->texto(self::MIGRATION));
 
@@ -533,7 +553,7 @@ class AjustesEHistoricoTest extends TestCase
         $this->assertTrue($this->colunaEAnulavel('pub_aprovacao_ajustes', 'conjunto_id'));
     }
 
-    public function test_guarda_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente(): void
+    public function test_guarda_05_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente(): void
     {
         $cru = $this->texto(self::MIGRATION);
         $codigo = $this->semComentarios($cru);
@@ -574,7 +594,7 @@ class AjustesEHistoricoTest extends TestCase
         }
     }
 
-    public function test_guarda_o_down_derruba_as_tres_tabelas_na_ordem_inversa_da_criacao(): void
+    public function test_guarda_05_o_down_derruba_as_tres_tabelas_na_ordem_inversa_da_criacao(): void
     {
         $codigo = $this->semComentarios($this->texto(self::MIGRATION));
 
@@ -641,7 +661,8 @@ class AjustesEHistoricoTest extends TestCase
 
         // E o docblock declara o append-only (é a prova escrita da auditoria-depois).
         $this->assertStringContainsString('append-only', $this->texto(self::MIGRATION));
-        $this->assertStringContainsString('append-only', $this->texto('app/Models/PubAprovacaoEvento.php'));
+        $this->assertMatchesRegularExpression('/append-only/i', $this->texto('app/Models/PubAprovacaoEvento.php'),
+            'o modelo deixou de declarar o append-only');
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────

@@ -46,9 +46,12 @@ use Illuminate\Support\Facades\Log;
  *
  * ═══ OS PONTOS DE EXTENSÃO NOMEADOS (para ninguém achar que ficou de fora) ═════════════════════
  *
- * - **`registrar()`** — grava o evento em `pub_aprovacao_eventos`. A tabela e o conteúdo são do
- *   plano **186-05**; aqui o método existe, é chamado DENTRO da transação e é um no-op
- *   documentado. Ligar o histórico é trocar o corpo dele, sem tocar em `mover()`.
+ * - **`registrar()`** — grava o evento em `pub_aprovacao_eventos`. ⚠️ **LIGADO pelo plano
+ *   186-05 em 15/10/2026**, exatamente como combinado: o corpo do gancho passou a chamar
+ *   `HistoricoDaOfertaService::registrarTransicao()`, e **`mover()`, a lista fechada `TRANSICOES` e
+ *   a transação única ficaram INTACTOS**. O mapa de "qual tipo de evento e qual frase para cada
+ *   destino" mora no serviço de histórico, não aqui — pôr aquele `match` neste arquivo faria o
+ *   186-05 reescrever a máquina de estado, que é o que o acordo evita.
  * - **`aoAprovar()`** — o gancho da **Fase 193** (o que acontece no instante da aprovação, já que
  *   aprovar publica). Chamado DENTRO da mesma transação, e também no-op aqui.
  *
@@ -76,6 +79,9 @@ class AndamentoDaOfertaService
 
     /** O prefixo de módulo do log (convenção do projeto). */
     private const TAG = '[Publicador Aprovação]';
+
+    /** ⚠️ LIGAÇÃO DO PLANO 186-05 — a dependência do gancho `registrar()`. Ver aquele método. */
+    public function __construct(private HistoricoDaOfertaService $historico) {}
 
     /**
      * Move a oferta de andamento, gravando a transição, **e devolve a oferta nova**.
@@ -296,16 +302,20 @@ class AndamentoDaOfertaService
     /**
      * PONTO DE EXTENSÃO — o registro da transição no histórico (`pub_aprovacao_eventos`).
      *
-     * ⚠️ **É LIGADO PELO PLANO 186-05**, que cria a tabela e define o conteúdo do evento. Aqui o
-     * método existe, é chamado **dentro da transação** de `mover()` e é um no-op deliberado: assim
-     * o 186-05 troca só o corpo, sem tocar na máquina de estado nem na transação.
+     * ⚠️ **LIGADO PELO PLANO 186-05 em 15/10/2026.** O corpo deste gancho — e **somente ele**,
+     * mais o construtor que traz a dependência — é o diff deste arquivo na wave 3: `mover()`, a
+     * lista fechada `TRANSICOES` e a `DB::transaction` única ficaram **INTACTOS**, e o gancho
+     * segue sendo chamado **dentro** daquela transação.
      *
-     * Deixar o gancho vazio e DOCUMENTADO é melhor que não tê-lo: sem ele, o 186-05 teria de
-     * reabrir `mover()` e a transação única viraria duas.
+     * Ter deixado o gancho vazio e DOCUMENTADO foi o que permitiu isso: sem ele, o 186-05 teria
+     * de reabrir `mover()` e a transação única viraria duas.
      */
     protected function registrar(PubAprovacaoOferta $oferta, string $origem, string $destino, ?User $quem, ?string $motivo): void
     {
-        // Vazio de propósito — ver o docblock. O histórico chega no plano 186-05.
+        // ⚠️ DENTRO da transação de `mover()`: aprovar sem a prova do que foi aprovado é o que não
+        // pode acontecer, porque não há desfazer (T-186-13). O mapa de tipo/frase por destino mora
+        // no serviço de histórico — ver `registrarTransicao()`.
+        $this->historico->registrarTransicao($oferta, $origem, $destino, $quem, $motivo);
     }
 
     /**
