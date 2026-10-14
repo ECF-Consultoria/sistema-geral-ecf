@@ -322,7 +322,24 @@ precisa-revisar-e-status  php  test_precisa_revisar_segue_sendo_valor_do_status_
 # GERAIS sairiam do bloqueio e a oferta seria aprovável com foto que ninguém
 # olhou — e **aprovar já publica, sem desfazer**.
 # 1 / 10 MEDIDO em 14/10/2026.
-sem-conjunto-id  php  test_a_oferta_nao_tem_conjunto_id_e_nenhuma_tabela_do_portao_tem_oferta_id_com_imagem_id  ::  tests=1 assertions=10
+# ⚠️ assertions 10 -> 11 em 14/10/2026, PELO ORQUESTRADOR, e o motivo NÃO foi a régua
+#    subir: a asserção estava ERRADA e foi REAPONTADA.
+#    Ela cobrava que NENHUMA tabela do portão tivesse `oferta_id` — mas DADO-10
+#    (histórico por oferta) e DADO-11 (ajuste por oferta) EXIGEM tabelas-filhas por
+#    oferta, e o schema vivo tem CINCO legítimas (ajustes, eventos, excecoes, fretes,
+#    composicoes).
+#    ⚠️ O modo de falhar era DUPLO, e por isso vale de arquivo: quando foi escrita
+#    (186-04) não havia tabela-filha nenhuma, logo era VAZIA POR CONSTRUÇÃO; no
+#    instante em que o 186-05 criou as filhas, virou FALSO POSITIVO e reprovou
+#    trabalho correto. Vazia primeiro, falso positivo depois, pelo MESMO texto.
+#    O invariante de verdade é o PAR `(oferta_id, imagem_id)` — medido: nenhuma das 11
+#    tabelas o tem.
+#    Também saiu a fragilidade de contagem (havia 1 asserção POR tabela com
+#    `oferta_id`): agora são DUAS de contagem fixa — o par vazio, e uma ISCA
+#    INVERTIDA exigindo que a lista de filhas por oferta NÃO esteja vazia.
+#    PROVADO que não cegou: injetei `imagem_id` em `pub_aprovacao_eventos` (que tem
+#    `oferta_id`) e o teste REPROVOU nomeando a tabela. Restaurado por sha256 idêntico.
+sem-conjunto-id  php  test_a_oferta_nao_tem_conjunto_id_e_nenhuma_tabela_do_portao_tem_oferta_id_com_imagem_id  ::  tests=1 assertions=11
 
 # TERR-07 — este plano NÃO toca e NÃO afrouxa o gate D-11/D-22 de Meus Anúncios.
 # ⚠️ O diff usa **RANGE** (`<partida>..HEAD`): sem range, o diff por caminho

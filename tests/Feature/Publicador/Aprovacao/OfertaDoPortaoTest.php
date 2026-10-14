@@ -374,7 +374,30 @@ class OfertaDoPortaoTest extends TestCase
         // E nada de pivô N:N disfarçado: nenhuma tabela do portão declara o par
         // (oferta_id, imagem_id), que é o que tornaria o compartilhamento Clássico↔Premium uma
         // COMBINAÇÃO em vez de uma estrutura.
+        // ⚠️ REAPONTADO EM 14/10/2026 PELO ORQUESTRADOR — a asserção final era OVER-BROAD e
+        // proibia o que o desenho EXIGE. Ela cobrava `$comOferta === []`, isto é, que NENHUMA
+        // tabela do portão tivesse `oferta_id`. Mas DADO-10 (histórico por oferta) e DADO-11
+        // (ajuste por oferta) PEDEM tabelas-filhas por oferta, e o schema vivo já tem CINCO
+        // legítimas: ajustes, eventos, excecoes, fretes e composicoes.
+        //
+        // ⚠️ E o modo de falhar era duplo, o que a torna um caso de arquivo:
+        //   · quando foi escrita (186-04), NÃO havia tabela-filha nenhuma ⇒ era VAZIA POR
+        //     CONSTRUÇÃO, passava sem medir nada;
+        //   · no instante em que o 186-05 criou as filhas, virou FALSO POSITIVO e reprovou
+        //     trabalho correto.
+        // Vazia primeiro, falso positivo depois — pelo MESMO texto, sem ninguém mexer nela.
+        //
+        // O invariante de verdade é o PAR `(oferta_id, imagem_id)`: é ele que faria a aprovação
+        // da FOTO ser por oferta, deixando Clássico e Premium divergirem numa foto. Medido no
+        // schema vivo: nenhuma das 11 tabelas tem o par.
+        //
+        // ⚠️ A contagem também era frágil: havia uma asserção POR tabela com `oferta_id`, logo o
+        // número subia a cada filha nova (a mesma armadilha que o gate do glob em
+        // `ConjuntoCompartilhadoTest`). Agora os infratores são COLETADOS e as asserções são
+        // DUAS, de contagem fixa.
         $comOferta = [];
+        $comPar    = [];
+
         foreach (Schema::getTableListing() as $tabela) {
             $nome = str_contains($tabela, '.') ? substr($tabela, strrpos($tabela, '.') + 1) : $tabela;
             if (! str_starts_with($nome, 'pub_aprovacao')) {
@@ -383,7 +406,9 @@ class OfertaDoPortaoTest extends TestCase
             $colunas = Schema::getColumnListing($nome);
             if (in_array('oferta_id', $colunas, true)) {
                 $comOferta[] = $nome;
-                $this->assertNotContains('imagem_id', $colunas, "`{$nome}` tem o par (oferta_id, imagem_id): a aprovação da foto passou a ser por oferta");
+                if (in_array('imagem_id', $colunas, true)) {
+                    $comPar[] = $nome;
+                }
             }
         }
 
@@ -396,7 +421,26 @@ class OfertaDoPortaoTest extends TestCase
         $this->assertGreaterThanOrEqual(6, count($doPortao), 'ISCA CEGA: a varredura não achou as tabelas do portão (as 5 do plano 186-03 + a deste).');
         $this->assertContains('pub_aprovacao_ofertas', $doPortao);
         $this->assertContains('pub_aprovacao_conjuntos', $doPortao);
-        $this->assertSame([], $comOferta, 'apareceu tabela do portão com `oferta_id` — se for legítima, ela tem de ser reavaliada contra o achado S2');
+        // O INVARIANTE DE VERDADE: ninguém tem o par. Uma asserção, contagem fixa, e a mensagem
+        // nomeia TODOS os infratores de uma vez em vez de parar no primeiro.
+        $this->assertSame(
+            [],
+            $comPar,
+            'tabela(s) do portão com o par (oferta_id, imagem_id): ' . implode(', ', $comPar)
+            . '. A aprovação da FOTO passaria a ser por oferta, e Clássico e Premium poderiam '
+            . 'divergir numa foto — o compartilhamento deixaria de ser estrutural.'
+        );
+
+        // ⚠️ ISCA INVERTIDA, e ela é a parte que a asserção antiga tinha de cabeça para baixo:
+        // tabela-filha POR OFERTA é LEGÍTIMA e EXIGIDA (DADO-10 histórico, DADO-11 ajuste). Se
+        // esta lista vier vazia, não é "tudo certo": é a varredura cega, ou alguém apagou o
+        // histórico/ajuste por oferta. As legítimas medidas no schema vivo em 14/10/2026:
+        // ajustes, eventos, excecoes, fretes, composicoes.
+        $this->assertNotEmpty(
+            $comOferta,
+            'ISCA INVERTIDA: nenhuma tabela do portão tem `oferta_id`. Ou a varredura está cega, '
+            . 'ou o histórico/ajuste por oferta (DADO-10/DADO-11) desapareceu.'
+        );
 
         // A relação é 1:N e é por `rascunho_id` nos DOIS lados — é daí que o compartilhamento
         // Clássico↔Premium sai ESTRUTURAL: não existe coluna onde as duas ofertas divirjam.
