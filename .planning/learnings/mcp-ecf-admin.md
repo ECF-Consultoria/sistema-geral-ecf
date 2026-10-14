@@ -320,8 +320,11 @@ Código em `app/Mcp/Shopee/` (`LeitorShopee` = um método por dado;
 - **Comprador:** sai só apelido e id. Endereço, telefone e CPF não são pedidos
   à Shopee (`LeitorShopee::CAMPOS_PEDIDO`).
 - **`vendas` soma no máximo 3.000 pedidos ao vivo** (31 dias, cache de
-  30 min) — o mês de 18 das 19 lojas. Na GENUINEAUTOMOTIVE (~850/dia) só
-  cabem 3 dias. O faturamento do mês está no `resumo`, que lê
+  30 min). O teto conta TODOS os pedidos criados, não só os pagos do
+  `shopee_metrics`: a MPozenato tem ~2.800 pagos no mês e passou do teto.
+  Cabe o mês de 17 das 19 lojas. Medido após o paralelo: 1 dia da
+  GENUINEAUTOMOTIVE (967 pedidos) 23 s (eram 63 s); recusa de período
+  grande sai em 12–15 s; varredura de 2.000 anúncios, 9 s. O faturamento do mês está no `resumo`, que lê
   `shopee_metrics`. A varredura de produtos (`busca`/`ordenar`) vai até
   2.000 anúncios; a GENUINE tem 6.686.
 - **SQLite dos testes perde o último dia** em `whereBetween('reference_date',

@@ -38,9 +38,11 @@ class LeitorShopee
 
     /**
      * Pedidos que o `vendas` aceita somar ao vivo. Cada chamada à Shopee leva
-     * ~2 s; em paralelo (8 por vez), 3.000 pedidos ficam em ~30 s. Cobre o mês
-     * de 18 das 19 lojas conectadas em 14/10/2026 — a GENUINEAUTOMOTIVE
-     * (~850 pedidos/dia) só cabe em 3 dias.
+     * ~2 s; em paralelo (8 por vez), 3.000 pedidos ficam em ~30 s. Conta
+     * TODOS os pedidos criados (não pagos e cancelados inclusive), então cobre
+     * o mês de 17 das 19 lojas conectadas em 14/10/2026: a MPozenato (~2.800
+     * pagos/mês) passa do teto, e a GENUINEAUTOMOTIVE (~950 pedidos/dia) só
+     * cabe em 3 dias — 1 dia levou 23 s em produção.
      */
     public const MAX_PEDIDOS_VENDAS = 3000;
 
