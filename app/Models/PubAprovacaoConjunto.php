@@ -95,12 +95,18 @@ class PubAprovacaoConjunto extends Model
     }
 
     /**
-     * Quantas imagens deste conjunto têm verificação automática com severidade acima de `ok`.
-     * CONTA, não lê coluna.
+     * Quantas imagens deste conjunto **ainda pedem atenção**: verificação automática acima de
+     * `ok` numa imagem que ninguém decidiu ainda. CONTA, não lê coluna.
+     *
+     * ⚠️ O filtro por `PENDENTE` é parte da definição, não otimização: o MESMO alerta `high`
+     * numa imagem já APROVADA **não** conta. Quem olhou já decidiu com o alerta na tela, e
+     * manter o contador aceso depois disso faria o painel pedir para sempre uma revisão que já
+     * aconteceu. Alerta de imagem decidida continua GRAVADO (é histórico) — só deixa de contar.
      */
     public function comAlerta(): int
     {
         return $this->imagens()
+            ->where('estado', PubAprovacaoImagem::PENDENTE)
             ->whereHas('alertas', fn ($q) => $q->where('severidade', '!=', PubAprovacaoImagemAlerta::OK))
             ->count();
     }
