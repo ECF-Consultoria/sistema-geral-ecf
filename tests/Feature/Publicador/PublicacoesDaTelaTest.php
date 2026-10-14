@@ -1331,6 +1331,371 @@ class PublicacoesDaTelaTest extends TestCase
         );
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Fase 180, plano 04B — as TRÊS chaves que o plano 180-08 mediu faltando
+    //
+    // ⚠️ TODOS os casos abaixo são NOVOS. Nenhuma asserção dos 40 casos
+    // anteriores foi alterada — a mudança no controller é aditiva, e se um caso
+    // existente quebrasse isso seria a prova de que não é.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /** As 3 chaves que o plano 04B acrescenta ao item. */
+    private const CHAVES_DO_PLANO_04B = ['preco', 'nova', 'com_erro'];
+
+    /**
+     * ⚠️ Os TRÊS sub-status REAIS que ficam deliberadamente FORA de "Com erro",
+     * medidos nos fixtures de produção da Fase 134 (docblock de
+     * `AcervoTriagemService::SUB_STATUS_COM_ERRO`). Nenhum é recusa nem
+     * suspensão — e é por isso que servem de controle negativo HONESTO: são
+     * valores que o ML emite de verdade, não strings inventadas.
+     */
+    private const SUB_STATUS_QUE_NAO_SAO_ERRO = ['cart_eligible', 'paused_by_seller', 'invalid_kit'];
+
+    /**
+     * O PREÇO chega do acervo — e nulo continua nulo (LIST-12).
+     *
+     * O que precisaria estar errado para este caso falhar: `preco` ausente do
+     * item (a célula "Preço" inteira em `—`, que era o estado medido pelo plano
+     * 180-08); o cast perdendo as 2 casas; `null` virando `"0.00"` ou `0`; ou a
+     * margem aparecendo junto.
+     *
+     * @group phase180
+     */
+    public function test_preco_chega_do_acervo_e_nulo_continua_nulo(): void
+    {
+        [$company, $empresa, $admin] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'SKU-1', 'Produto Cheio', ['fase' => 1]);
+
+        // ⚠️ Item CHEIO, para que a negativa da margem não seja vazia por
+        // construção (o 10º caso de asserção que casa sempre).
+        $this->acervo($company, 'MLB1000000001', [
+            'price'              => 1099.9,
+            'sold_quantity'      => 61,
+            'available_quantity' => 24,
+            'visitas_30d'        => 2410,
+            'nota_ecf'           => 72,
+        ]);
+        $this->publicada($produto, 'MLB1000000001');
+
+        $item = $this->props($admin, $company)['anuncios']['data'][0];
+
+        $this->assertArrayHasKey('preco', $item, 'sem `preco` a célula Preço mostra `—` em TODAS as linhas (plano 180-08 §6a)');
+
+        // ⚠️ A FORMA, não o tipo: o cast `decimal:2` serializa STRING
+        // (`"1099.90"`), e `numeroMedido()` (`CelulasDaLinha.jsx:132`) aceita
+        // string numérica de forma fechada, com `RE_NUMERO = /^-?\d+(?:[.,]\d+)?$/`.
+        // Esta asserção é a MESMA régua do consumidor: se o valor deixar de
+        // casá-la, a tela volta para o `—` sem nenhum outro gate acusar.
+        $this->assertMatchesRegularExpression(
+            '/^-?\d+(?:\.\d+)?$/',
+            (string) $item['preco'],
+            'o `preco` tem de casar o `RE_NUMERO` de `CelulasDaLinha.jsx:117`, senão `numeroMedido()` devolve null e a célula volta para o `—`',
+        );
+        $this->assertSame(1099.9, (float) $item['preco'], 'o valor é o do acervo, sem arredondamento inventado');
+        $this->assertSame(61, $item['vendas'], 'a premissa: o item está CHEIO');
+
+        // ⚠️ A 2ª linha da célula continua SEM fonte: o plano 04B entrega o
+        // valor, não a margem (LIST-12 — a margem é a camada assíncrona da
+        // Fase 181 e até ela chegar a tela mostra `—`).
+        foreach (['margem', 'lucro', 'repasse', 'tarifa'] as $proibida) {
+            $this->assertArrayNotHasKey(
+                $proibida,
+                $item,
+                "`{$proibida}` apareceu no item. O plano 04B entrega o PREÇO, nunca a margem estimada — e NUNCA a tarifa por percentual",
+            );
+        }
+
+        // ── E o preço ausente ──
+        $this->acervo($company, 'MLB1000000002', ['price' => null]);
+        $semPreco = collect($this->props($admin, $company)['anuncios']['data'])
+            ->firstWhere('ml_item_id', 'MLB1000000002');
+
+        $this->assertNull(
+            $semPreco['preco'],
+            'preço ausente é `null` (a tela desenha `—`), nunca `"0.00"`: `decimal` está em `$primitiveCastTypes` e "nunca medimos" ≠ "medimos e é zero"',
+        );
+    }
+
+    /**
+     * Zero é MEDIDA, nulo é AUSÊNCIA — e os dois chegam diferentes (EXMP-01).
+     *
+     * O que precisaria estar errado: um `?? 0` no `preco`, um `(float)` que
+     * transformasse `null` em `0.0`, ou o inverso (zero virando nulo e a tela
+     * escrevendo `—` para um anúncio que realmente custa R$ 0,00).
+     *
+     * @group phase180
+     */
+    public function test_preco_zero_e_medida_e_nulo_e_ausencia(): void
+    {
+        [$company, , $admin] = $this->conta();
+        $this->acervo($company, 'MLB1000000001', ['price' => 0]);
+        $this->acervo($company, 'MLB1000000002', ['price' => null]);
+
+        $itens = collect($this->props($admin, $company)['anuncios']['data'])->keyBy('ml_item_id');
+
+        $this->assertNotNull($itens['MLB1000000001']['preco'], 'preço ZERO é medida: tem de chegar, para a tela escrever "R$ 0,00"');
+        $this->assertSame(0.0, (float) $itens['MLB1000000001']['preco']);
+        $this->assertNull($itens['MLB1000000002']['preco'], 'preço AUSENTE é nulo: a tela escreve `—`');
+        $this->assertNotSame(
+            $itens['MLB1000000001']['preco'],
+            $itens['MLB1000000002']['preco'],
+            'zero e nulo NÃO podem chegar iguais — é a distinção que LIST-12 inteira depende',
+        );
+    }
+
+    /**
+     * ⚠️ `nova` é "publicada HOJE", e NUNCA a data da coleta (LIST-11).
+     *
+     * A régua foi medida no protótipo (`Publicacoes v2.dc.html:433`/`:434`/
+     * `:491`): os dois únicos itens com `isNew: true` são exatamente os dois
+     * cujo `d` cai no dia que o mock trata como hoje, e `days(d) === 0` é a
+     * mesma função que escreve "Hoje, hh:mm".
+     *
+     * ⚠️ Ancorado com `Carbon::setTestNow()`: teste dependente de `now()` deste
+     * projeto já reprovou por HORÁRIO (learnings §7).
+     *
+     * O que precisaria estar errado: `nova` ausente (badge e fundo
+     * `bg-pub-row-new` inalcançáveis); a régua virando `created_at` do acervo (e
+     * aí uma publicação antiga recém-coletada apareceria como "nova"); a régua
+     * virando janela de 24 h (e aí ontem às 23:59 acenderia); o Legado ganhando
+     * badge; ou `nova` discordando do `publicada_em` que a mesma linha mostra.
+     *
+     * @group phase180
+     */
+    public function test_nova_e_publicada_hoje_e_nunca_a_data_da_coleta(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-13 09:05:00', 'America/Sao_Paulo'));
+
+        [$company, $empresa, $admin] = $this->conta();
+
+        $deHoje  = $this->produto($company, $empresa, 'SKU-HOJE', 'Produto de Hoje', ['fase' => 1]);
+        $deOntem = $this->produto($company, $empresa, 'SKU-ONTEM', 'Produto de Ontem', ['fase' => 1]);
+        $deTras  = $this->produto($company, $empresa, 'SKU-TRAS', 'Produto Antigo', ['fase' => 1]);
+
+        $this->acervo($company, 'MLB1000000001');
+        $this->publicada($deHoje, 'MLB1000000001', 'gold_special', Carbon::parse('2026-10-13 08:00:00', 'America/Sao_Paulo'));
+
+        // ⚠️ Ontem às 23:59 — 9 h e 6 min atrás. Uma janela de 24 h acenderia;
+        // o DIA CIVIL não.
+        $this->acervo($company, 'MLB1000000002');
+        $this->publicada($deOntem, 'MLB1000000002', 'gold_special', Carbon::parse('2026-10-12 23:59:00', 'America/Sao_Paulo'));
+
+        // ⚠️ A RÉGUA RECUSADA: publicada há 40 dias, mas COLETADA agora. Se
+        // `nova` saísse de `created_at`/`coletado_em` do acervo, esta linha
+        // ganharia o badge — a tela chamaria de "nova" uma publicação antiga.
+        $this->acervo($company, 'MLB1000000003', ['coletado_em' => now()]);
+        $this->publicada($deTras, 'MLB1000000003', 'gold_special', Carbon::parse('2026-09-03 10:00:00', 'America/Sao_Paulo'));
+
+        // Legado: sem publicação no Publicador.
+        $this->acervo($company, 'MLB1000000004');
+
+        $itens = collect($this->props($admin, $company)['anuncios']['data'])->keyBy('ml_item_id');
+
+        foreach (self::CHAVES_DO_PLANO_04B as $chave) {
+            $this->assertArrayHasKey($chave, $itens['MLB1000000001'], "a chave nova `{$chave}` não chegou no item");
+        }
+
+        $this->assertTrue($itens['MLB1000000001']['nova'], 'publicada HOJE é `nova` — é o `days(d) === 0` do protótipo');
+        $this->assertFalse(
+            $itens['MLB1000000002']['nova'],
+            'ontem 23:59 NÃO é `nova`: a régua é o DIA CIVIL em America/Sao_Paulo, não uma janela de 24 h',
+        );
+        $this->assertFalse(
+            $itens['MLB1000000003']['nova'],
+            '⚠️ publicada há 40 dias e COLETADA hoje NÃO é `nova` — `ml_acervo_itens.created_at`/`coletado_em` é quando a COLETA viu o anúncio, régua medida e RECUSADA',
+        );
+        $this->assertFalse(
+            $itens['MLB1000000004']['nova'],
+            'Legado (sem `publicada_em`) nunca é `nova`: ausência de dado não é novidade',
+        );
+
+        // ⚠️ `nova` e a coluna "Publicada" saem da MESMA fonte: a linha não pode
+        // dizer "NOVA" e a data dizer outro dia.
+        foreach ($itens as $mlItemId => $item) {
+            $this->assertSame(
+                is_string($item['publicada_em']) && Carbon::parse($item['publicada_em'])->isSameDay(now()),
+                $item['nova'],
+                "`nova` e `publicada_em` discordaram em {$mlItemId} — as duas saem do MESMO valor e isso não pode acontecer",
+            );
+        }
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * ⚠️⚠️ O CASO DE CONSISTÊNCIA: a lista fechada de `sub_status` da LINHA é a
+     * MESMA da ABA.
+     *
+     * Para cada um dos cinco valores de
+     * `AcervoTriagemService::SUB_STATUS_COM_ERRO`, o item chega com
+     * `com_erro === true` **e** aparece em `?status=com_erro`. Para os três
+     * sub-status REAIS que ficam de fora, as duas coisas são falsas.
+     *
+     * ⚠️ Com ISCA: o próprio caso prova que `?status=com_erro` NÃO devolve
+     * vazio por construção (asserção de que o item do erro está lá).
+     *
+     * O que precisaria estar errado: a função da linha com uma lista PRÓPRIA
+     * diferente da constante; um valor a mais ou a menos; o `array_intersect`
+     * virando `in_array` do array inteiro; ou o eixo da aba mudando sem a linha
+     * mudar. ➡️ É o gate que impede a LINHA e a ABA de discordarem — e dois
+     * números que discordam na mesma tela já custaram uma decisão do usuário.
+     *
+     * @group phase180
+     */
+    public function test_com_erro_da_linha_usa_a_mesma_lista_fechada_da_aba(): void
+    {
+        [$company, , $admin] = $this->conta();
+
+        $this->assertCount(5, AcervoTriagemService::SUB_STATUS_COM_ERRO, 'a premissa medida: a lista fechada tem CINCO valores');
+
+        $comErro = [];
+        foreach (AcervoTriagemService::SUB_STATUS_COM_ERRO as $i => $sub) {
+            $id           = 'MLB900000000'.$i;
+            $comErro[$id] = $sub;
+            $this->acervo($company, $id, ['sub_status' => [$sub]]);
+        }
+
+        $semErro = [];
+        foreach (self::SUB_STATUS_QUE_NAO_SAO_ERRO as $i => $sub) {
+            $id           = 'MLB800000000'.$i;
+            $semErro[$id] = $sub;
+            $this->acervo($company, $id, ['sub_status' => [$sub]]);
+        }
+
+        $itens  = collect($this->props($admin, $company, ['status' => 'todos'])['anuncios']['data'])->keyBy('ml_item_id');
+        $naAba  = $this->idsDaLista($this->props($admin, $company, ['status' => 'com_erro']));
+
+        $this->assertNotEmpty($naAba, 'ISCA: a aba "Com erro" não pode estar vazia neste fixture, senão as negativas abaixo são vazias por construção');
+
+        foreach ($comErro as $id => $sub) {
+            $this->assertTrue(
+                $itens[$id]['com_erro'],
+                "`sub_status = [{$sub}]` está em `AcervoTriagemService::SUB_STATUS_COM_ERRO` e a LINHA disse que não é erro — a linha usou uma lista diferente da aba",
+            );
+            $this->assertContains(
+                $id,
+                $naAba,
+                "`{$sub}` entra na ABA mas a linha não — os dois têm de sair da MESMA constante",
+            );
+        }
+
+        foreach ($semErro as $id => $sub) {
+            $this->assertFalse(
+                $itens[$id]['com_erro'],
+                "`{$sub}` é sub-status REAL do ML deliberadamente FORA de \"Com erro\" (elegibilidade de carrinho / vendedor pausando / kit inválido) e a linha o carimbou como erro",
+            );
+            $this->assertNotContains($id, $naAba, "`{$sub}` não pode entrar na aba \"Com erro\"");
+        }
+
+        // E o acervo sem sub-status nenhum (o default do fixture) também não.
+        $this->acervo($company, 'MLB7000000001', ['sub_status' => []]);
+        $limpo = collect($this->props($admin, $company, ['status' => 'todos'])['anuncios']['data'])
+            ->firstWhere('ml_item_id', 'MLB7000000001');
+        $this->assertFalse($limpo['com_erro'], '`sub_status = []` é "medido e está limpo", não erro');
+    }
+
+    /**
+     * ⚠️ "Com erro" NÃO vem de `severidade` nem de `motivos`.
+     *
+     * Derivar de `severidade` seria INFERIR: o docblock de
+     * `AcervoTriagemService::SUB_STATUS_COM_ERRO` proíbe em três linhas, e o
+     * plano 180-04 mediu que um anúncio MODERADO pode ter `severidade = 0`.
+     *
+     * O que precisaria estar errado: `com_erro` derivado de `severidade > 0`,
+     * de `motivos !== []`, de `status === 'under_review'` ou do título.
+     *
+     * @group phase180
+     */
+    public function test_com_erro_nao_vem_de_severidade_nem_de_motivos(): void
+    {
+        [$company, , $admin] = $this->conta();
+
+        // Gravíssimo pela régua ECF, LIMPO pelo eixo do ML.
+        $this->acervo($company, 'MLB1000000001', [
+            'status'     => 'under_review',
+            'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+            'motivos'    => [MlAcervoItem::MOTIVO_PAUSADO, MlAcervoItem::MOTIVO_SEM_ESTOQUE],
+            'sub_status' => [],
+            'nota_ecf'   => 10,
+            'title'      => 'Anúncio com erro grave reprovado forbidden held warning',
+        ]);
+
+        // ⚠️ O inverso: `severidade = 0` e moderado de verdade.
+        $this->acervo($company, 'MLB1000000002', [
+            'status'     => 'active',
+            'severidade' => MlAcervoItem::SEVERIDADE_SAUDAVEL,
+            'motivos'    => [],
+            'sub_status' => ['waiting_for_patch'],
+            'nota_ecf'   => 90,
+        ]);
+
+        $itens = collect($this->props($admin, $company, ['status' => 'todos'])['anuncios']['data'])->keyBy('ml_item_id');
+
+        $this->assertSame(MlAcervoItem::SEVERIDADE_CRITICA, $itens['MLB1000000001']['severidade'], 'a premissa: a severidade ECF está no máximo');
+        $this->assertNotEmpty($itens['MLB1000000001']['motivos'], 'a premissa: os motivos estão cheios');
+        $this->assertFalse(
+            $itens['MLB1000000001']['com_erro'],
+            '⚠️ severidade crítica + motivos cheios + `under_review` + o TÍTULO cheio dos termos NÃO é "Com erro": o eixo é `sub_status`, e "Pausado"/"Sem estoque" é outra coisa',
+        );
+
+        $this->assertSame(MlAcervoItem::SEVERIDADE_SAUDAVEL, $itens['MLB1000000002']['severidade'], 'a premissa: anúncio MODERADO com severidade 0 (medido pelo plano 180-04)');
+        $this->assertTrue(
+            $itens['MLB1000000002']['com_erro'],
+            'moderado com `severidade = 0` É "Com erro" — é exatamente o caso que prova que derivar de `severidade` perderia a informação',
+        );
+    }
+
+    /**
+     * As 3 chaves novas são ESCALARES, e nada mais vazou com elas.
+     *
+     * ⚠️ Nenhum campo do item pode ser objeto/array novo: é a herança da tela
+     * preta de 07/10/2026 (um campo que chegou como objeto e foi renderizado
+     * como texto derrubou a PÁGINA INTEIRA). É por isso que `sub_status` CRU
+     * (cast `'array'`) não é mandado — o que vai é o bool derivado.
+     *
+     * O que precisaria estar errado: `'com_erro' => $item->sub_status` (array);
+     * `preco` virando objeto por algum cast de value object; `sub_status`
+     * aparecendo como chave do item; ou segredo do `MlToken` no payload.
+     *
+     * @group phase180
+     */
+    public function test_tres_chaves_novas_sao_escalares_e_nao_vazam_segredo(): void
+    {
+        [$company, $empresa, $admin] = $this->conta();
+        $produto = $this->produto($company, $empresa, 'SKU-1', 'Produto', ['fase' => 2, 'quantidade_kit' => 2]);
+        $this->acervo($company, 'MLB1000000001', ['sub_status' => ['waiting_for_patch'], 'price' => 1099.9]);
+        $this->publicada($produto, 'MLB1000000001');
+
+        $props = $this->props($admin, $company);
+        $item  = $props['anuncios']['data'][0];
+
+        foreach (self::CHAVES_DO_PLANO_04B as $chave) {
+            $this->assertArrayHasKey($chave, $item, "a chave nova `{$chave}` não chegou");
+            $this->assertTrue(
+                $item[$chave] === null || is_scalar($item[$chave]),
+                "o campo `{$chave}` não é escalar nem nulo — campo objeto/array já derrubou esta tela inteira (07/10/2026)",
+            );
+        }
+
+        $this->assertIsBool($item['nova'], '`nova` é bool: o componente lê `item.nova === true`, e `1`/`"1"` não acenderiam o badge');
+        $this->assertIsBool($item['com_erro'], '`com_erro` é bool, nunca o array de `sub_status`');
+
+        $this->assertArrayNotHasKey(
+            'sub_status',
+            $item,
+            '`sub_status` CRU não vai no item: é cast `array`, hoje ninguém o consome, e mandá-lo empurraria a lista fechada para o JS (a linha passaria a poder discordar da aba)',
+        );
+
+        $json = json_encode($props, JSON_THROW_ON_ERROR);
+        foreach (['fake-access-token', 'fake-refresh-token', 'access_token', 'refresh_token'] as $segredo) {
+            $this->assertStringNotContainsString(
+                $segredo,
+                $json,
+                "`{$segredo}` vazou no payload — a empresa TEM `MlToken` neste fixture, então a negativa não é vazia por construção",
+            );
+        }
+    }
+
     // ═══ Auxiliares de fixture ═══════════════════════════════════════════════
 
     private function comUmItemDeCadaStatus(Company $c): void
