@@ -1,123 +1,132 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { router, Link } from '@inertiajs/react';
+import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-    Search, Clock, RefreshCw, Loader2, AlertTriangle, CheckCircle2,
-    ImageOff, ExternalLink, Pencil, Info, CircleDashed,
-} from 'lucide-react';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
-import SubAbasDePublicacoes from '@/Components/Mlb/Publicador/SubAbasDePublicacoes';
+import BotaoAtualizar from '@/Pages/Mlb/components/BotaoAtualizarAcervo';
+import CabecalhoDePublicacoes, { BotaoAtualizarDoCabecalho } from '@/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes';
+import FaixaDeSucesso from '@/Components/Mlb/Publicador/publicacoes/FaixaDeSucesso';
+import BuscaDePublicacoes from '@/Components/Mlb/Publicador/publicacoes/BuscaDePublicacoes';
+import LinhaDeControles from '@/Components/Mlb/Publicador/publicacoes/LinhaDeControles';
+import AbasDeStatus, { CHAVE_DA_FONTE } from '@/Components/Mlb/Publicador/publicacoes/AbasDeStatus';
+import ChipsDeFiltro from '@/Components/Mlb/Publicador/publicacoes/ChipsDeFiltro';
+import ChipsDeTriagem from '@/Components/Mlb/Publicador/publicacoes/ChipsDeTriagem';
+import CabecalhoDaTabela, { CLASSE_DO_CARD } from '@/Components/Mlb/Publicador/publicacoes/CabecalhoDaTabela';
+import LinhaDePublicacao from '@/Components/Mlb/Publicador/publicacoes/LinhaDePublicacao';
+import LinhaDeGrupoDeProduto from '@/Components/Mlb/Publicador/publicacoes/LinhaDeGrupoDeProduto';
+import RodapeDaTabela from '@/Components/Mlb/Publicador/publicacoes/RodapeDaTabela';
+import VaziosDaLista from '@/Components/Mlb/Publicador/publicacoes/VaziosDaLista';
+import { hojeEmSaoPaulo } from '@/Components/Mlb/Publicador/publicacoes/CelulasDaLinha';
 import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
 import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
-import { rotuloTier } from '@/Pages/Mlb/anuncioHistoricoUtils';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/Components/ui/select';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/Components/ui/table';
 
 // ═══════════════════════════════════════════════════════════════════════
-// "Meus Anúncios" (Fase 134) — acervo vivo da conta ML do cliente, com
-// saúde analítica do anúncio JÁ PUBLICADO. Aba INICIAL do módulo (D-13).
+// "Publicações" (Fase 180) — o acervo vivo da conta ML do cliente.
+// Era "Meus Anúncios" (Fase 134); desde 13/10/2026 o corpo é o layout novo
+// do Publicador, composto dos 14 componentes de
+// `Components/Mlb/Publicador/publicacoes/`.
 //
-// Tela SÓ LEITURA (D-11): filtrar, ordenar (fixo, por gravidade), abrir o
-// permalink no ML, abrir o rascunho no wizard e "Atualizar agora" (enfileira
-// coleta, nunca escreve no ML). Nenhum controle que altere o anúncio existe
-// aqui — nem desabilitado, nem rotulado como futuro.
+// Tela SÓ LEITURA (D-11): filtrar, buscar, ordenar (fixo, por gravidade),
+// abrir o permalink no ML, abrir o rascunho no wizard e "Atualizar agora"
+// (enfileira coleta, nunca escreve no ML). Nenhum controle que altere o
+// anúncio existe aqui — nem desabilitado, nem rotulado como futuro. Há
+// exatamente UM `router.post` nesta página, e ele vai para
+// `mlb.anuncios.meus.atualizar`.
 //
-// D-05: todo filtro/busca/troca de sub-aba é round-trip ao servidor
-// (router.get com preserveState+replace) — nunca filtragem no cliente, que
+// D-05: todo filtro/busca/troca de aba/paginação é round-trip ao servidor
+// (`router.get` com preserveState+replace) — nunca filtragem no cliente, que
 // mentiria sobre as outras dezenas de milhares de linhas do acervo.
+//
+// ═══════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ "No ar | Histórico" FOI REMOVIDO DE PROPÓSITO DESTA TELA
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 1. O segmentado "No ar | Histórico" (`<SubAbasDePublicacoes atual="meus">`)
+//    saiu daqui em 13/10/2026, por DECISÃO ESCRITA DO USUÁRIO (LIST-25),
+//    tomada entre TRÊS opções e com o aviso literal de que a rota do
+//    Histórico ficaria ÓRFÃ — sem nenhum link vivo — até a fase que a
+//    reconstruir. Ele escolheu "sai agora, Histórico vira fase própria".
+//
+// 2. NÃO RESTAURAR achando que foi perda acidental. E NÃO APAGAR a rota
+//    `mlb.anuncios.historico`, o `MlbAnuncioController::historico()`, o
+//    `resources/js/Pages/Mlb/AnunciosHistorico.jsx`, o
+//    `anuncioHistoricoUtils.js`, o componente `SubAbasDePublicacoes.jsx`
+//    (que segue MONTADO na página do Histórico) nem os testes deles: o
+//    conteúdo é o insumo da fase futura do Histórico (Fase 183 do roadmap).
+//
+// 3. O que SÓ o Histórico alcança, medido no plano 180-10 (arquivo:linha):
+//    · `MlbAnuncioController::historico()` (`:287`-`:441`) lê
+//      `pub_publicacao_itens` + `pub_publicacoes` + `pub_rascunhos` +
+//      `pub_produtos` (`:306`-`:317`) — outra fonte, não um recorte desta;
+//    · a unidade é o LOTE (`categoria + dia de conclusão`), reconstruído em
+//      PHP em `:372`-`:376`: não existe coluna de lote;
+//    · dados exclusivos: o payload ENVIADO ao ML (`family_name` `:393`,
+//      `price` `:394`), a foto de `pub_imagens.ml_url` (`:354`-`:368`),
+//      `sku_origem` por `PubProduto::skuExibido()` (`:396`),
+//      `pode_duplicar` (`:407`) e `total_lotes` (`:438`).
+//    ➡️ O filtro de status desta tela NÃO alcança nada disso.
+//
+// A página do Histórico continua ABRINDO por URL direta
+// (`/mlb/anuncios/historico/{company}`), e `SeletorEmpresaBusca.jsx:45`
+// continua tratando aquela rota — de propósito.
 // ═══════════════════════════════════════════════════════════════════════
 
+// As DUAS sub-fontes da lista (D-14). ⚠️ O segmentado SEPARADO
+// "Publicados | Rascunhos" saiu (LIST-25): "Rascunhos" passou a ser a 6ª
+// opção DO MESMO trilho das abas de status. O ATALHO mudou de lugar; o DADO
+// não saiu — `sub` segue na URL, `trocarSubAba` segue indo ao servidor e
+// `subTotais`/`contagens.rascunhos` seguem sendo o contador.
 const SUBABAS = [
     { chave: 'publicados', label: 'Publicados' },
     { chave: 'rascunhos',  label: 'Rascunhos' },
 ];
 
-// Default "acionaveis" = ativos + pausados + EM REVISÃO, por duas emendas ao
-// D-03: 2026-08-10 trouxe `paused` (sob "só ativos", o chip "Pausado" da
-// triagem nunca contava) e 2026-10-10 trouxe `under_review`, o status em que o
-// anúncio recém-publicado nasce (quick 261010-nke) — fora do default, ele não
-// aparecia na tela nem na busca.
+const CHAVES_DE_SUB = SUBABAS.map((aba) => aba.chave);
+
+// O status default do servidor (`MlbAnuncioController::meus()`): com ele e sem
+// busca/filtro, lista vazia significa "a empresa não tem anúncios", e não
+// "o recorte não devolveu nada" — são textos diferentes (LIST-17).
+const STATUS_DEFAULT = 'acionaveis';
+
+// ─── Leitura segura das props do servidor ─────────────────────────────────
 //
-// 6 opções, mesma whitelist fechada do backend (MlbAnuncioController::meus()):
-// `em_revisao` entrou em 10/10/2026 (quick 261010-rie) a pedido do usuário,
-// para ISOLAR o que o Mercado Livre está revisando. Rótulos em pt-BR —
-// `under_review` nunca aparece na tela.
-const STATUS_OPCOES = [
-    { valor: 'acionaveis', label: 'Acionáveis' },
-    { valor: 'ativos',     label: 'Ativos' },
-    { valor: 'pausados',   label: 'Pausados' },
-    { valor: 'em_revisao', label: 'Em revisão' },
-    { valor: 'encerrados', label: 'Encerrados' },
-    { valor: 'todos',      label: 'Todos' },
-];
+// ⚠️ A TELA PRETA DE 07/10/2026: um campo do presenter que chegou como OBJETO
+// e foi renderizado como texto derrubou a página inteira. Daí as três funções
+// abaixo, e a regra de nunca usar `String(valor)` / `objeto[chaveDeFora]` com
+// dado do servidor — `String({toString: null})` LANÇA, e a busca de chave
+// COAGE para string, que foi o crash de dois componentes no plano 180-07.
 
-// ─── Botão "Atualizar agora" (D-05, seção 6 do UI-SPEC) — reusado no banner
-// de defasagem, no estado vazio "nunca coletado" e na barra utilitária.
-// Só enfileira SyncMlAcervoCompanyJob; nunca coleta no processo do request. ───
-function BotaoAtualizar({ atualizando, cooldown, onClick }) {
-    const bloqueado = atualizando || cooldown;
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={bloqueado}
-            className={cn(
-                'inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1 text-sm font-semibold transition',
-                bloqueado
-                    ? 'cursor-wait border-white/[0.06] text-white/30'
-                    : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
-            )}
-        >
-            {atualizando
-                ? <><Loader2 size={14} className="animate-spin" /> Enfileirando…</>
-                : <><RefreshCw size={14} /> Atualizar agora</>}
-        </button>
-    );
+/** O objeto, ou `{}`. Array e `null` NÃO são objeto de leitura aqui. */
+function objetoSeguro(valor) {
+    return valor !== null && typeof valor === 'object' && !Array.isArray(valor) ? valor : {};
 }
 
-// ─── Selo "Não avaliado" (D-18, seção 11 do UI-SPEC) — estado de primeira
-// classe: nunca célula em branco, nunca status inventado. Reusado em
-// Visitas, Saúde do ML e no chip informativo da Triagem. ───
-function ChipNaoAvaliado({ title }) {
-    return (
-        <span
-            title={title}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 px-2 py-1 text-[11px] text-white/40"
-        >
-            <CircleDashed size={10} /> Não avaliado
-        </span>
-    );
+/** A lista, ou `[]`. */
+function listaSegura(valor) {
+    return Array.isArray(valor) ? valor : [];
 }
 
-// ─── Selo "Não se aplica" (D-21) — diferente de "Não avaliado": o ML não tem
-// ficha nenhuma para julgar este item (catálogo ou encerrado), não é uma
-// coleta pendente. Os dois dizem coisas diferentes de propósito. ───
-function ChipNaoSeAplica({ title }) {
-    return (
-        <span title={title} className="inline-flex items-center rounded-full border border-white/10 px-2 py-1 text-[11px] text-white/25">
-            não se aplica
-        </span>
-    );
+/** A string, ou `''` — nunca coage, nunca lança. */
+function textoSeguro(valor) {
+    return typeof valor === 'string' ? valor : '';
 }
 
-// ─── Selo de origem (D-04, seção 7) — mapa de classes LOCAL a esta página.
-// Não reusa o badge de fonte de métrica já existente em Components/ui: as
-// variantes dele estão travadas por outro ADR com significado diferente
-// (fonte de MÉTRICA, não origem de ANÚNCIO) — ver decisão A13 do UI-SPEC. ───
-const ORIGEM_BADGE = {
-    ecf:    { label: 'ECF',    className: 'border-ecf-yellow/40 bg-ecf-yellow/15 text-ecf-yellow', title: 'Este anúncio nasceu no módulo Anunciar Mercado Livre' },
-    time:   { label: 'Time',   className: 'border-blue-500/30 bg-blue-500/10 text-blue-400', title: 'Publicado pelo time e registrado em Publicações' },
-    legado: { label: 'Legado', className: 'border-white/15 bg-white/5 text-white/60', title: 'Anúncio do cliente, fora deste módulo' },
-};
+/**
+ * O identificador de uma publicação/produto como CHAVE comparável.
+ *
+ * ⚠️ String ou inteiro finito; qualquer outra coisa é `null`. `textoSeguro`
+ * não serve porque o `produto_id` do servidor é número, e `String(valor)`
+ * não serve porque lança com `{toString: null}`.
+ */
+function chaveSegura(valor) {
+    if (typeof valor === 'string') return valor;
+    return typeof valor === 'number' && Number.isFinite(valor) ? String(valor) : null;
+}
 
-function SeloOrigem({ origem }) {
-    const info = ORIGEM_BADGE[origem] ?? ORIGEM_BADGE.legado;
-    return (
-        <span title={info.title} className={cn('mt-1 inline-flex items-center gap-1 rounded-full border px-1 py-1 text-[11px] font-semibold uppercase tracking-wide', info.className)}>
-            {info.label}
-        </span>
-    );
+/** O inteiro não negativo, ou `null` — para `horas` da defasagem. */
+function numeroSeguro(valor) {
+    return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
 }
 
 // ─── SKU na linha do anúncio (quick 261010-rie) ───────────────────────────
@@ -129,6 +138,16 @@ function SeloOrigem({ origem }) {
 // O filtro é DEFENSIVO de propósito: a lista vem do servidor e pode chegar em
 // formato inesperado (nula, ausente, objeto, item numérico). Render de tela
 // nunca pode virar "[object Object]" nem derrubar a página.
+//
+// ⚠️ FASE 180 — ÓRFÃO DECLARADO, e o motivo escrito: a linha do layout novo é
+// `publicacoes/LinhaDePublicacao.jsx` e a célula Publicação dela mostra
+// título + MLB + nome do produto, SEM a lista de SKUs por variação. Acrescentar
+// o SKU lá exigiria editar `publicacoes/CelulasDaLinha.jsx`, que é território
+// do plano 180-08. O export FICA (12 casos de
+// `publicador-meus-anuncios-sku-render.test.js` o renderizam e a lista suja
+// continua tratada) e a perda do SKU por linha está NOMEADA na 180-10-SUMMARY,
+// com a pergunta levada ao usuário no checkpoint. Na visão "Por produto" o SKU
+// DO PRODUTO continua na linha de grupo (`produto_sku`).
 export function CelulaSku({ skus }) {
     const lista = (Array.isArray(skus) ? skus : [])
         .filter((s) => typeof s === 'string' && s.trim() !== '')
@@ -152,120 +171,43 @@ export function CelulaSku({ skus }) {
 
 // ─── Estado vazio da listagem (quick 261010-rie, RIE-04) ──────────────────
 //
-// SEM busca: o texto de sempre, literal — coleta existe, nada bate com o
-// filtro atual.
-//
-// COM busca: diz O QUE foi procurado e ONDE a busca procura, em vez de afirmar
-// que o anúncio não existe. E quando NENHUMA linha da empresa tem SKU coletado
-// ainda, acrescenta a ressalva: uma busca por SKU não acharia nada mesmo que o
-// anúncio exista. Sem essa linha a tela mentiria por omissão exatamente na
-// janela em que a varredura diária ainda não passou.
+// ⚠️ FASE 180 — ADAPTADOR, não cópia: os textos passaram a morar em
+// `publicacoes/VaziosDaLista.jsx` (plano 180-09), numa casa só. Este export
+// FICA porque `publicador-meus-anuncios-sku-render.test.js` o importa e o
+// renderiza, e porque o contrato dele é o que impede a tela de mentir por
+// omissão: SEM busca o texto é "a empresa não tem anúncios ativos"; COM busca
+// ele diz O QUE foi procurado e ONDE a busca procura, em vez de afirmar que o
+// anúncio não existe; e com `skuNaoColetado` acrescenta a ressalva de que uma
+// busca por SKU não acharia nada mesmo que o anúncio exista.
 export function VazioDaListagem({ busca, skuNaoColetado, acao }) {
-    const termo = typeof busca === 'string' ? busca.trim() : '';
-
-    if (termo === '') {
-        return (
-            <div className="card-ecf rounded-2xl p-10 text-center">
-                <p className="text-base font-semibold text-white">Esta empresa não tem anúncios ativos no Mercado Livre.</p>
-                <p className="mt-2 text-sm text-white/40">
-                    Publique um anúncio nas abas Individual ou Em massa, ou veja os pausados/encerrados no filtro de status.
-                </p>
-            </div>
-        );
-    }
+    const termo = textoSeguro(busca).trim();
 
     return (
-        <div className="card-ecf rounded-2xl p-10 text-center">
-            <p className="text-base font-semibold text-white">Nada encontrado para “{termo}”.</p>
-            <p className="mt-2 text-sm text-white/40">
-                A busca procura no título do anúncio, no código MLB e no SKU. Tente outro termo, ou troque o filtro de status.
-            </p>
-            {skuNaoColetado && (
-                <p className="mt-2 text-sm text-ecf-yellow/80">
-                    O SKU dos anúncios desta empresa ainda não foi coletado — por isso uma busca por SKU não acharia nada
-                    mesmo que o anúncio exista. Clique em Atualizar agora e busque de novo.
-                </p>
-            )}
-            {acao ? <div className="mt-4 flex justify-center">{acao}</div> : null}
-        </div>
-    );
-}
-
-// ─── Nota ECF (D-22, seção 8) — barra + número, base 86 LITERAL: nota_base
-// vem do backend (sempre igual a AnuncioSaudeService::BASE), mas o texto e o
-// denominador da proporção aqui são o literal 86 de propósito — a nota
-// NUNCA é renormalizada para 100, e essa fase trava a base como constante
-// de exibição, não como parâmetro que algum dia vira outra coisa. ───
-function BarraNotaEcf({ pontos }) {
-    if (pontos === null || pontos === undefined) {
-        return <ChipNaoAvaliado title="Nota ECF ainda não calculada — sem dados suficientes" />;
-    }
-    const cor = pontos >= 69 ? 'bg-emerald-400' : pontos >= 43 ? 'bg-amber-300' : 'bg-red-400';
-    const corTexto = pontos >= 69 ? 'text-emerald-400' : pontos >= 43 ? 'text-amber-300' : 'text-red-400';
-    return (
-        <div className="flex items-center gap-1">
-            <div className="h-1 w-12 overflow-hidden rounded-full bg-white/[0.08]">
-                <div className={cn('h-full rounded-full', cor)} style={{ width: `${Math.min(100, Math.round((pontos / 86) * 100))}%` }} />
-            </div>
-            <span className={cn('text-sm font-semibold tabular-nums', corTexto)}>
-                {pontos}<span className="text-[11px] font-normal text-white/30"> de 86</span>
-            </span>
-        </div>
-    );
-}
-
-// ─── Saúde do ML (D-21, Variante A — veredicto DISPONÍVEL) — DUAS medidas
-// do próprio ML, cada uma na sua escala PRÓPRIA, ao lado da Nota ECF:
-//   health_ml          0.00-1.00  camada barata (multiget, grátis)
-//   performance_score  0-100      camada cara, rotativa (D-23)
-// A tela NUNCA converte uma na outra nem preenche uma a partir da outra —
-// ausência vira "não se aplica" (catálogo/encerrado) ou "Não avaliado"
-// (rotação ainda não cobriu), nunca um número simulado.
-// performance_level (good|medium|low|incomplete) vem PRONTO do ML — só
-// colore o badge, não inventa um julgamento novo sobre o número. ───
-const PERFORMANCE_LEVEL_COR = {
-    good:       'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-    medium:     'border-amber-500/30 bg-amber-500/10 text-amber-300',
-    low:        'border-red-500/30 bg-red-500/10 text-red-300',
-    incomplete: 'border-white/15 bg-white/5 text-white/60',
-};
-
-function SaudeMl({ item, rotacaoN }) {
-    if (item.saude_ml_nao_se_aplica) {
-        return <ChipNaoSeAplica title="O Mercado Livre não pontua anúncio de catálogo nem encerrado" />;
-    }
-    const acoes = item.performance_acoes ?? [];
-    const tituloPerformance = acoes.length > 0
-        ? acoes.map((a) => a.title).filter(Boolean).join(' · ')
-        : 'Sem pendências sinalizadas pelo Mercado Livre';
-    const tituloRotacao = `Ainda não coletado pela rotação — cobertura completa em até ${rotacaoN} dias`;
-
-    return (
-        <div className="flex items-center gap-1">
-            {item.health_ml !== null
-                ? (
-                    <span title={`Ficha do Mercado Livre: ${Math.round(item.health_ml * 100)}%`} className="rounded border border-white/15 bg-white/5 px-1 py-1 text-[11px] text-white/70">
-                        Ficha {Math.round(item.health_ml * 100)}%
-                    </span>
-                )
-                : <ChipNaoAvaliado title={tituloRotacao} />}
-            {item.performance_score !== null
-                ? (
-                    <span title={tituloPerformance} className={cn('rounded border px-1 py-1 text-[11px]', PERFORMANCE_LEVEL_COR[item.performance_level] ?? 'border-white/15 bg-white/5 text-white/70')}>
-                        Perf {item.performance_score}
-                    </span>
-                )
-                : <ChipNaoAvaliado title={tituloRotacao} />}
-        </div>
+        <VaziosDaLista
+            caso={termo === '' ? 'sem_anuncios' : 'sem_resultado'}
+            busca={busca}
+            skuNaoColetado={skuNaoColetado}
+            acao={acao}
+        />
     );
 }
 
 // ─── Rótulo seguro dos links do paginator do Laravel (evita
 // dangerouslySetInnerHTML — T-134-20 do threat model). O paginator manda
 // entidades HTML num conjunto pequeno e fechado ("&laquo; Previous",
-// "Next &raquo;"); troca por texto puro, sem parser de HTML nenhum. ───
+// "Next &raquo;"); troca por texto puro, sem parser de HTML nenhum.
+//
+// ⚠️ FASE 180: a leitura deixou de ser `String(label ?? '')` — aquilo LANÇA
+// com `{toString: null}`, que é um dos casos do render adverso (a tela preta
+// de 07/10). O comportamento para os três casos reais do paginator é
+// idêntico; o que mudou é que formato inesperado agora vira `''` em vez de
+// derrubar a página. ───
 function decodificarRotuloPaginacao(label) {
-    return String(label ?? '')
+    const texto = typeof label === 'string'
+        ? label
+        : (typeof label === 'number' && Number.isFinite(label) ? String(label) : '');
+
+    return texto
         .replace(/&laquo;/g, '«')
         .replace(/&raquo;/g, '»')
         .replace(/&hellip;/g, '…');
@@ -274,9 +216,21 @@ function decodificarRotuloPaginacao(label) {
 export default function MeusAnuncios({
     // `conta` continua chegando do servidor (nada mudou no controller) e
     // continua na assinatura de propósito: ela era lida só pelo BarraDaConta,
-    // que saiu daqui, e a MESMA informação agora chega pelo `cabecalho`. A
-    // prop fica declarada para o contrato não mudar em silêncio.
-    empresa, conta, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
+    // que saiu daqui na Fase 177, e a MESMA informação agora chega pelo
+    // `cabecalho`. A prop fica declarada para o contrato não mudar em silêncio.
+    empresa = null, conta = null, sub = null, subTotais = null, anuncios = null,
+    rascunhos = null, triagem = null, filtros = null,
+    // Fase 180, plano 04 — as props NOVAS do layout de Publicações.
+    abas = null, contagens = null, grupos = null, rodape = null,
+    sincronizacao = null, faixaSucesso = null,
+    defasagem = null, saudeMlDisponivel = false,
+    // ⚠️ `rotacaoN` é ÓRFÃ DECLARADA desde a Fase 180: ela rotulava o selo
+    // "Não avaliado" das colunas Visitas e Saúde do ML, que saíram do grid
+    // (LIST-24 — os sinais de saúde migram para o painel de inspeção da Fase
+    // 181 e para os chips de triagem). A prop continua chegando e continua
+    // declarada para o contrato não mudar em silêncio — o mesmo tratamento que
+    // `produtosPorFase`/`quemPublicou` ganharam na Fase 179.
+    rotacaoN = null,
     skuNaoColetado = false,
     // `cabecalho` vem do CabecalhoPublicadorService (plano 177-03) e pode
     // chegar NULO: esta página abre para Company que não cai em nenhum programa
@@ -284,49 +238,131 @@ export default function MeusAnuncios({
     // explicação); o default aqui só cobre `undefined`.
     cabecalho = null,
 }) {
-    const [busca, setBusca] = useState(filtros.busca ?? '');
+    const emp = objetoSeguro(empresa);
+    const empresaId = numeroSeguro(emp.id);
+    const f = objetoSeguro(filtros);
+    const def = objetoSeguro(defasagem);
+    const pag = objetoSeguro(anuncios);
+    const tri = objetoSeguro(triagem);
+
+    const [busca, setBusca] = useState(textoSeguro(f.busca));
     const [atualizando, setAtualizando] = useState(false);
     const [cooldown, setCooldown] = useState(false);
     const [detalheAberto, setDetalheAberto] = useState(null);
+    // ⚠️ LISTAS, não objetos indexados: `colapsados[chave]` com
+    // `chave = {toString: null}` LANÇA (a busca de chave coage para string).
+    // `Array.prototype.includes` compara por SameValueZero — não coage nada.
+    const [colapsados, setColapsados] = useState([]);
+    const [marcadas, setMarcadas] = useState([]);
+    const [copiada, setCopiada] = useState(null);
+    const [faixaDispensada, setFaixaDispensada] = useState(false);
 
-    // ─── Round-trip único: toda troca de sub-aba/filtro/busca vai ao
-    // servidor — nunca useState local decidindo o que aparece na tabela. ───
+    // ─── Round-trip único: toda troca de aba/filtro/busca/página vai ao
+    // servidor — nunca useState local decidindo o que aparece na tabela (D-05).
+    //
+    // ⚠️ `page: 1` no corpo do objeto: qualquer mudança de recorte volta para a
+    // primeira página, senão a tela mostraria "página 4 de 1". Quem quer outra
+    // página sobrescreve — e os links do paginator são `<Link href>` do próprio
+    // servidor, que já carregam a querystring inteira (`withQueryString()`).
+    //
+    // ⚠️ `comVenda` (camelCase) é o nome do PARÂMETRO DE URL e `com_venda`
+    // (snake) é o nome da chave em `filtros` — os dois diferem de propósito
+    // (`MlbAnuncioController.php:573` × `:1065`).
     function navegar(params) {
-        router.get(route('mlb.anuncios.meus', { company: empresa.id }), {
-            sub, busca: filtros.busca, status: filtros.status, motivo: filtros.motivo, ...params,
+        if (empresaId === null) return;
+
+        router.get(route('mlb.anuncios.meus', { company: empresaId }), {
+            sub,
+            busca: f.busca,
+            status: f.status,
+            motivo: f.motivo,
+            comVenda: f.com_venda,
+            fase: f.fase,
+            tipo: f.tipo,
+            catalogo: f.catalogo,
+            responsavel: f.responsavel,
+            periodo: f.periodo,
+            visao: f.visao,
+            sel: f.sel,
+            page: 1,
+            ...params,
         }, { preserveState: true, replace: true });
     }
 
+    // A troca de sub-fonte da lista (D-14). ⚠️ Lista FECHADA, espelhando a
+    // whitelist do servidor: valor fora dela não vira querystring.
     function trocarSubAba(novaSub) {
-        if (novaSub === sub) return;
+        if (!CHAVES_DE_SUB.includes(novaSub) || novaSub === sub) return;
         navegar({ sub: novaSub, motivo: null });
     }
 
-    function buscar(e) {
-        e?.preventDefault();
-        navegar({ busca: busca.trim() || undefined });
+    function trocarStatus(chave) {
+        // "Rascunhos" é a 6ª opção do MESMO trilho (LIST-25), mas é outra
+        // FONTE: ela troca `sub`, não `status` — a query do servidor é a de
+        // hoje, sem nenhuma mudança.
+        if (chave === CHAVE_DA_FONTE) {
+            trocarSubAba(CHAVE_DA_FONTE);
+            return;
+        }
+
+        navegar({ status: chave, sub: 'publicados', motivo: null });
     }
 
-    function trocarStatus(novoStatus) {
-        navegar({ status: novoStatus, motivo: null });
+    function limparBuscaEFiltros() {
+        setBusca('');
+        navegar({
+            busca: undefined, motivo: null, fase: null, tipo: null,
+            catalogo: false, comVenda: false, responsavel: [], periodo: null,
+        });
     }
 
-    function aplicarFiltroMotivo(chave) {
-        navegar({ motivo: filtros.motivo === chave ? null : chave });
+    function alternarGrupo(chave) {
+        if (chave === null) return;
+        setColapsados((atual) => (atual.includes(chave)
+            ? atual.filter((item) => item !== chave)
+            : [...atual, chave]));
+    }
+
+    function alternarMarcada(chave) {
+        if (chave === null) return;
+        setMarcadas((atual) => (atual.includes(chave)
+            ? atual.filter((item) => item !== chave)
+            : [...atual, chave]));
+    }
+
+    // ⚠️ `navigator.clipboard` não existe em contexto inseguro nem no render de
+    // servidor: a cópia é tentada de forma guardada e o selo visual acende de
+    // qualquer jeito só depois da tentativa.
+    function copiarMlb(chave) {
+        if (chave === null) return;
+
+        const area = typeof navigator === 'undefined' ? null : objetoSeguro(navigator).clipboard;
+        if (area !== null && area !== undefined && typeof area.writeText === 'function') {
+            Promise.resolve(area.writeText(chave)).catch(() => {});
+        }
+
+        setCopiada(chave);
     }
 
     // Abre o Modal de Detalhe do Anúncio (série temporal + checklist de
-    // sinais) — decisão A9 do UI-SPEC: título, thumbnail e Nota ECF da
-    // linha compartilham o mesmo gatilho.
-    function abrirDetalhe(item) {
-        setDetalheAberto(item.ml_item_id);
+    // sinais). ⚠️ Na tela nova o gatilho é a LINHA INTEIRA (é o que o protótipo
+    // faz, `:200`), o que inclui o título e a célula Status que a decisão A9 do
+    // 134-UI-SPEC nomeava. O modal segue sendo a casa da Nota ECF detalhada, da
+    // saúde do ML, do `performance_score`, do buybox e da série de 90 dias até
+    // o painel de inspeção da Fase 181 (LIST-24).
+    function abrirDetalhe(chave) {
+        if (chave === null) return;
+        setDetalheAberto(chave);
     }
 
     // "Atualizar agora" — cooldown de 30s só depois de SUCESSO no enqueue;
     // falha reabilita o botão na hora (sem polling nem websocket, seção 6).
+    // ⚠️ É o ÚNICO router.post desta tela (D-11), e ele ENFILEIRA a coleta.
     function atualizarAgora() {
+        if (empresaId === null) return;
+
         setAtualizando(true);
-        router.post(route('mlb.anuncios.meus.atualizar', { company: empresa.id }), {}, {
+        router.post(route('mlb.anuncios.meus.atualizar', { company: empresaId }), {}, {
             preserveScroll: true,
             onSuccess: () => {
                 setCooldown(true);
@@ -336,28 +372,223 @@ export default function MeusAnuncios({
         });
     }
 
-    const itens = anuncios.data ?? [];
-    const diasDefasagem = defasagem.horas != null ? Math.max(1, Math.floor(defasagem.horas / 24)) : null;
+    // ─── O selo "copiado" volta sozinho em 1,3 s ──────────────────────────
+    //
+    // ⚠️ O temporizador é DA PÁGINA: `CelulaPublicacao` só desenha os dois
+    // ícones a partir de `copiada`, e há gate provando que `setTimeout` não
+    // existe nos arquivos da tabela. `clearTimeout` no cleanup para o
+    // componente desmontado não tentar pintar nada.
+    useEffect(() => {
+        if (copiada === null) return undefined;
+
+        const timer = setTimeout(() => setCopiada(null), 1300);
+        return () => clearTimeout(timer);
+    }, [copiada]);
+
+    // ─── A busca vai ao SERVIDOR, com fôlego de 400 ms ────────────────────
+    //
+    // ⚠️ D-05 intacto: o que chega à tabela continua vindo do servidor; o
+    // `setTimeout` só evita um request por tecla. A comparação é contra o termo
+    // que o servidor ECOOU (`filtros.busca`, já `trim()`ado lá —
+    // `MlbAnuncioController.php:514`), e é ela que impede o laço infinito.
+    //
+    // ⚠️ Isto substitui o `<form onSubmit>` de hoje, que exigia Enter. Nenhuma
+    // capacidade se perde: a busca por SKU/nome/MLB/produto continua indo ao
+    // servidor, agora sem a tecla. O atalho `/` e o Enter→primeiro resultado
+    // são do plano 180-11 (LIST-18).
+    const buscaDoServidor = textoSeguro(f.busca);
+
+    useEffect(() => {
+        const digitado = textoSeguro(busca).trim();
+        if (digitado === buscaDoServidor) return undefined;
+
+        const timer = setTimeout(() => {
+            navegar({ busca: digitado === '' ? undefined : digitado });
+        }, 400);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [busca, buscaDoServidor]);
+
+    // ─── O que a tela mostra, resolvido UMA vez ───────────────────────────
+
+    const itens = listaSegura(pag.data);
+    const listaDeGrupos = listaSegura(grupos);
+    const ehRascunhos = sub === CHAVE_DA_FONTE;
+    const nuncaColetado = def.nunca_coletado === true;
+
+    // A visão é lista FECHADA de duas, igual ao servidor: valor estranho cai
+    // em "Por produto", que é o default do `meus()`.
+    const visaoAtual = textoSeguro(f.visao) === 'lista' ? 'lista' : 'grupo';
+
+    // ⚠️ `algumFiltroAtivo` é DERIVADO AQUI porque o servidor NÃO manda
+    // `filtros_ativos`: `MlbAnuncioController.php:1052`-`:1065` monta `filtros`
+    // com 11 chaves e nenhuma delas diz "algum filtro está ligado" (medido no
+    // plano 180-07). ⚠️ ISTO É DÍVIDA, NÃO SOLUÇÃO: a regra fica no cliente e
+    // pode divergir do que o servidor aplica. O certo é o servidor mandar a
+    // flag, derivada do mesmo saneamento de `:596`-`:636`. Está na SUMMARY.
+    // ⚠️ `!= null` e não `!== null`: prop AUSENTE numa recarga parcial do
+    // Inertia chega `undefined`, e `undefined !== null` daria "filtro ligado"
+    // sem nenhum filtro.
+    const algumFiltroAtivo = f.fase != null
+        || f.tipo != null
+        || f.catalogo === true
+        || f.com_venda === true
+        || listaSegura(f.responsavel).length > 0
+        || f.periodo != null;
+
+    const buscaAtiva = buscaDoServidor.trim() !== '';
+    const statusAtual = textoSeguro(f.status) === '' ? STATUS_DEFAULT : textoSeguro(f.status);
+
+    // "O recorte não devolveu nada" × "a empresa não tem anúncios" são frases
+    // diferentes, e a segunda MENTE quando há busca, filtro, motivo ou um
+    // status que não é o default (LIST-17).
+    const recorteAtivo = buscaAtiva
+        || algumFiltroAtivo
+        || f.motivo != null
+        || statusAtual !== STATUS_DEFAULT;
+
+    // `{chave: label}` dos motivos, para a 2ª linha da célula Status. Sem ele a
+    // linha mostraria o SLUG do servidor (`sem_estoque`), que é jargão — e o
+    // componente, corretamente, prefere não desenhar nada.
+    // ⚠️ Montado por atribuição de chave STRING: `Object.fromEntries` com chave
+    // objeto coage para string e LANÇA.
+    const rotulosDeMotivo = {};
+    for (const bruto of listaSegura(tri.chips)) {
+        const chip = objetoSeguro(bruto);
+        if (typeof chip.chave === 'string' && typeof chip.label === 'string') {
+            rotulosDeMotivo[chip.chave] = chip.label;
+        }
+    }
+
+    // A data de HOJE em São Paulo, uma vez por render (nunca `new Date()` por
+    // linha): é ela que permite "Hoje, 09:05" em vez da data absoluta.
+    const hoje = hojeEmSaoPaulo();
+
+    const dias = numeroSeguro(def.horas) === null ? null : Math.max(1, Math.floor(def.horas / 24));
+    const motivoDaColeta = textoSeguro(def.motivo);
+
+    const idsVisiveis = itens
+        .map((item) => chaveSegura(objetoSeguro(item).ml_item_id))
+        .filter((chave) => chave !== null);
+    const todasMarcadas = idsVisiveis.length > 0 && idsVisiveis.every((chave) => marcadas.includes(chave));
+
+    function alternarTodas() {
+        setMarcadas((atual) => (idsVisiveis.every((chave) => atual.includes(chave))
+            ? atual.filter((chave) => !idsVisiveis.includes(chave))
+            : [...new Set([...atual, ...idsVisiveis])]));
+    }
+
+    // O botão "Atualizar agora" — o MESMO componente e o MESMO estado em todos
+    // os lugares onde a coleta é oferecida. ⚠️ O literal "Atualizar agora" é
+    // citado pelo aviso de SKU ("Clique em Atualizar agora e busque de novo"),
+    // então o rótulo do botão tem de ser esse.
+    const acaoDeColeta = (
+        <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
+    );
+
+    // O trilho de status, montado UMA vez e usado nos dois caminhos (com e sem
+    // a linha de controles). ⚠️ `ativa`: quando a fonte é Rascunhos é a opção
+    // DELA que fica marcada, não o `status` — senão o trilho marcaria "Ativas"
+    // com a lista de rascunhos na tela.
+    const trilhoDeStatus = (
+        <AbasDeStatus
+            abas={abas}
+            ativa={ehRascunhos ? CHAVE_DA_FONTE : statusAtual}
+            contagens={contagens}
+            onTrocar={trocarStatus}
+        />
+    );
+
+    /**
+     * UMA linha de publicação. Função, e não variável: todas as flags nascem
+     * aqui dentro (REND-04 — o Rollup elimina variável de escopo do componente
+     * usada dentro de um `.map()` e o erro só aparece no bundle de produção).
+     */
+    function linhaDePublicacao(bruto, indice, agrupada) {
+        const item = objetoSeguro(bruto);
+        const chave = chaveSegura(item.ml_item_id);
+        const temRascunho = item.origem === 'ecf' && item.rascunho_id != null && empresaId !== null;
+
+        return (
+            <LinhaDePublicacao
+                key={chave === null ? `sem-id-${indice}` : chave}
+                item={item}
+                agrupada={agrupada}
+                selecionada={chave !== null && textoSeguro(f.sel) === chave}
+                comFoco={false}
+                marcada={chave !== null && marcadas.includes(chave)}
+                compacta={false}
+                copiada={chave !== null && copiada === chave}
+                hoje={hoje}
+                rotulosDeMotivo={rotulosDeMotivo}
+                urlDoRascunho={temRascunho
+                    ? route('mlb.anuncios.wizard', { company: empresaId, rascunho: item.rascunho_id })
+                    : null}
+                onAbrir={() => abrirDetalhe(chave)}
+                onMarcar={() => alternarMarcada(chave)}
+                onCopiar={() => copiarMlb(chave)}
+            />
+        );
+    }
+
+    // A paginação de 50 por página, PRESERVADA (critério 13). O nó vai pronto
+    // para o rodapé. ⚠️ `decodificarRotuloPaginacao` existe para não haver
+    // `dangerouslySetInnerHTML` nenhum nesta tela (T-134-20).
+    const links = listaSegura(pag.links);
+    const paginacao = links.length > 3
+        ? (
+            <nav aria-label="Paginação" className="flex flex-wrap items-center gap-[4px]">
+                {links.map((cru, indice) => {
+                    // REND-04: tudo nasce aqui dentro.
+                    const link = objetoSeguro(cru);
+                    const url = textoSeguro(link.url) === '' ? null : textoSeguro(link.url);
+                    const ativo = link.active === true;
+                    const rotulo = decodificarRotuloPaginacao(link.label);
+
+                    if (url === null) {
+                        return (
+                            <span key={indice} className="px-[8px] py-[2px] text-[12px] text-pub-txt-off">
+                                {rotulo}
+                            </span>
+                        );
+                    }
+
+                    return (
+                        <Link
+                            key={indice}
+                            href={url}
+                            preserveState
+                            className={cn(
+                                'rounded-pub-badge border px-[8px] py-[2px] text-[12px]',
+                                ativo
+                                    ? 'border-pub-accent/[0.55] bg-pub-accent/[0.12] text-pub-txt'
+                                    : 'border-pub-line-off-2 text-pub-txt-3 hover:text-pub-txt',
+                            )}
+                        >
+                            {rotulo}
+                        </Link>
+                    );
+                })}
+            </nav>
+        )
+        : null;
 
     return (
         <AppLayout title="Meus Anúncios">
             {/* ═══ Header global do Publicador (Fase 177, plano 177-08) ═══
-                Toma o lugar de BarraDaConta + AbasDaConta, que montavam aqui
-                desde a Fase 172. É o PRIMEIRO filho do AppLayout, FORA do
-                container do corpo, porque é ele que carrega o `-mx-6 -mt-6` que
-                neutraliza o `p-6` do <main> (HEAD-14) — dentro do container do
-                corpo a margem negativa brigaria com o `px-4` dele.
+                É o PRIMEIRO filho do AppLayout, FORA do container do corpo,
+                porque é ele que carrega o `-mx-6 -mt-6` que neutraliza o `p-6`
+                do <main> (HEAD-14) — dentro do container do corpo a margem
+                negativa brigaria com o padding dele.
 
                 O botão "Atualizar agora" continua o MESMO componente, com o
-                MESMO atualizando/cooldown/atualizarAgora: só mudou de slot
-                (acoes do BarraDaConta → acoes do header). Nenhum router.post
-                novo — `atualizarAgora` segue sendo o ÚNICO desta tela (D-11).
-
-                ⚠️ O que SAIU: a trilha `Publicador › Programa › Nome` que o
-                BarraDaConta desenhava. Ela não existe no protótipo; a marca
-                "Publicador" + o seletor de empresa do header cumprem a mesma
-                função (onde estou, como troco de conta). É a única remoção de
-                elemento deste plano. */}
+                MESMO atualizando/cooldown/atualizarAgora: na Fase 180 ele só
+                mudou de ARQUIVO (`components/BotaoAtualizarAcervo.jsx`), sem
+                uma classe de diferença, porque esta página entrou no gate de
+                vocabulário novo e ele é, de propósito, vocabulário antigo.
+                Nenhum router.post novo — `atualizarAgora` segue sendo o ÚNICO
+                desta tela (D-11). */}
             <PublicadorHeader
                 aba="publicacoes"
                 cabecalho={cabecalho ?? null}
@@ -366,322 +597,270 @@ export default function MeusAnuncios({
                 )}
             />
 
-            <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+            {/* A neutralização do `p-6` do <main>, em DOIS elementos: `-mx-6` e
+                `mx-auto` disputam a mesma margem lateral, então não dá para
+                fundi-los. O protótipo mede `padding:28px 36px 110px`,
+                `max-width:1600px` e `gap:18px` no <main> (`:29`), e
+                `min-width:1240px` na raiz (`:24`) — desktop-first em 1440, com
+                scroll horizontal abaixo de 1240 em vez de reflow (FID-05). */}
+            <div className="-mx-6 -mb-6">
+                <div className="mx-auto flex min-w-[1240px] max-w-[1600px] flex-col gap-[18px] px-[36px] pb-[110px] pt-[28px]">
 
-                {/* Sub-abas No ar | Histórico — vinham do AbasDaConta, que saiu
-                    daqui. O header novo NÃO tem este par (não existe no
-                    protótipo), então ele desceu para o corpo com a aparência de
-                    hoje, em SubAbasDePublicacoes.jsx.
-                    ⚠️ A remoção delas é da Fase 180 (LIST-25), com a guarda de
-                    provar que o filtro de status alcança o que "Histórico"
-                    alcança. Nesta fase elas têm de continuar funcionando. */}
-                <SubAbasDePublicacoes atual="meus" companyId={empresa.id} />
+                    {/* ⚠️ Aqui ficava `<SubAbasDePublicacoes atual="meus" …>`, o
+                        segmentado "No ar | Histórico". Ele SAIU em 13/10/2026
+                        por decisão escrita do usuário (LIST-25), entre três
+                        opções e com o aviso de que a rota ficaria órfã. NÃO
+                        restaurar, e NÃO apagar a rota, o `historico()`, o
+                        `AnunciosHistorico.jsx` nem os testes deles — ver o
+                        cabeçalho deste arquivo. */}
 
-                {/* Sub-abas Publicados | Rascunhos (D-14) — round-trip ao servidor,
-                    nunca useState local: os dois estados exigem queries diferentes. */}
-                <div className="mb-4 mt-4 flex items-center gap-1 border-b border-white/[0.08]">
-                    {SUBABAS.map((tab) => {
-                        const ativa = sub === tab.chave;
-                        const total = subTotais[tab.chave] ?? 0;
-                        return (
-                            <button
-                                key={tab.chave}
-                                type="button"
-                                onClick={() => trocarSubAba(tab.chave)}
-                                className={cn(
-                                    '-mb-px border-b-2 px-3 py-2 text-sm transition',
-                                    ativa
-                                        ? 'border-ecf-yellow font-semibold text-white'
-                                        : 'border-transparent font-normal text-white/40 hover:text-white/70',
-                                )}
-                            >
-                                {tab.label}
-                                <span className="ml-1 text-[11px] tabular-nums text-white/30">({total})</span>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {sub === 'publicados' ? (
-                    <>
-                        {/* Banner de defasagem (D-08) — só quando a coleta está velha; nunca
-                            some a lista abaixo dele. Tom âmbar, nunca vermelho: não é erro
-                            do usuário. O caso "nunca coletado" vira o próprio estado vazio
-                            abaixo (não há lista nenhuma para manter visível). */}
-                        {defasagem.defasado && (
-                            <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
-                                <Clock size={14} className="shrink-0" />
-                                <span>
-                                    Última coleta há {diasDefasagem} dia(s){defasagem.motivo ? `, motivo: ${defasagem.motivo}` : ''} — os dados abaixo podem estar desatualizados.
-                                </span>
-                                <div className="ml-auto shrink-0">
-                                    <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
-                                </div>
-                            </div>
+                    <CabecalhoDePublicacoes
+                        sincronizacao={sincronizacao ?? null}
+                        acaoAtualizar={(
+                            <BotaoAtualizarDoCabecalho
+                                atualizando={atualizando}
+                                cooldown={cooldown}
+                                onClick={atualizarAgora}
+                            />
                         )}
+                    />
 
-                        {defasagem.nunca_coletado ? (
-                            // Estado vazio — nenhuma coleta rodou ainda (Copywriting Contract, literal).
-                            <div className="card-ecf rounded-2xl p-10 text-center">
-                                <p className="text-base font-semibold text-white">Ainda não coletamos os anúncios desta empresa.</p>
-                                <p className="mt-2 text-sm text-white/40">
-                                    A primeira coleta roda automaticamente até amanhã, ou clique em Atualizar agora para adiantar.
-                                </p>
-                                <div className="mt-4 flex justify-center">
-                                    <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
-                                </div>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Triagem acionável (D-09) — foco visual primário da sub-aba. O
-                                    total é SEMPRE triagem.total (backend), nunca soma dos chips no
-                                    cliente: um anúncio com 2 motivos conta 1× no total e 2× nos
-                                    chips — somar os counts duplicaria a conta (mesma disciplina do
-                                    card que não fechava em desempenho-bonificacao.md). */}
-                                <div className="mb-4 rounded-2xl border border-white/[0.08] bg-ecf-card p-4">
-                                    <div className="flex items-center gap-2">
-                                        {triagem.total > 0 ? (
-                                            <>
-                                                <AlertTriangle className="h-4 w-4 shrink-0 text-ecf-yellow" />
-                                                <h2 className="text-base font-semibold text-white">
-                                                    <b className="tabular-nums">{triagem.total}</b> anúncios precisam de você
-                                                </h2>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-                                                <h2 className="text-base font-semibold text-white">Nenhum anúncio precisa de atenção agora</h2>
-                                            </>
-                                        )}
-                                    </div>
-                                    {triagem.total > 0 && (
-                                        <p className="mt-1 text-[11px] text-white/30">(um anúncio pode aparecer em mais de um motivo)</p>
-                                    )}
-                                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                                        {triagem.chips.map((chip) => {
-                                            const ativo = filtros.motivo === chip.chave;
-                                            return (
-                                                <button
-                                                    key={chip.chave}
-                                                    type="button"
-                                                    onClick={() => aplicarFiltroMotivo(chip.chave)}
-                                                    aria-pressed={ativo}
-                                                    className={cn(
-                                                        'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition',
-                                                        chip.cor === 'red'
-                                                            ? (ativo ? 'border-red-500/50 bg-red-500/15 text-red-300' : 'border-red-500/30 bg-red-500/5 text-red-300/80 hover:bg-red-500/10')
-                                                            : (ativo ? 'border-amber-500/50 bg-amber-500/15 text-amber-300' : 'border-amber-500/30 bg-amber-500/5 text-amber-300/80 hover:bg-amber-500/10'),
-                                                    )}
-                                                >
-                                                    <b className="tabular-nums">{chip.count}</b> {chip.label}
-                                                </button>
-                                            );
-                                        })}
-                                        {triagem.nao_avaliado > 0 && (
-                                            <span className="ml-auto inline-flex items-center gap-1 rounded-xl border border-dashed border-white/20 px-3 py-2 text-sm text-white/40">
-                                                <b className="tabular-nums">{triagem.nao_avaliado}</b> Não avaliado
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+                    {/* A faixa verde de sucesso pós-publicação (LIST-02).
+                        ⚠️ `faixaSucesso` é `null` SEMPRE hoje, e isso foi
+                        MEDIDO por três caminhos independentes no plano 180-04
+                        (ninguém grava resumo de publicação em sessão; a lista
+                        branca de `flash` do HandleInertiaRequests não tem
+                        chave de publicação; e a publicação é assíncrona). A
+                        ligação fica real — nenhum resumo de exemplo é
+                        fabricado, e o componente devolve `null`. */}
+                    <FaixaDeSucesso
+                        resumo={faixaDispensada ? null : (faixaSucesso ?? null)}
+                        onLocalizar={(termo, item) => {
+                            setBusca(textoSeguro(termo));
+                            navegar({ busca: termo, sel: item, visao: 'grupo' });
+                        }}
+                        onDispensar={() => setFaixaDispensada(true)}
+                    />
 
-                                {/* Barra utilitária: busca + status + Atualizar agora. */}
-                                <div className="mb-4 flex flex-wrap items-center gap-2">
-                                    <form onSubmit={buscar} className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-white/[0.08] bg-ecf-bg px-3 py-2">
-                                        <Search className="h-4 w-4 text-white/30" />
-                                        <input
-                                            value={busca}
-                                            onChange={(e) => setBusca(e.target.value)}
-                                            placeholder="Buscar por SKU, título ou código MLB…"
-                                            className="w-full bg-transparent text-sm text-white placeholder-white/30 focus:outline-none"
-                                        />
-                                    </form>
+                    {/* Banner de defasagem (D-08) — só quando a coleta está
+                        velha; ele NUNCA esconde a lista abaixo dele. Tom âmbar,
+                        nunca vermelho: não é erro do usuário. O caso "nunca
+                        coletado" é outro (lá não há lista nenhuma a manter
+                        visível) e `defasado` é `false` nele, por construção
+                        (`AcervoTriagemService::defasagem()`: sem linha, `horas`
+                        é null). */}
+                    {def.defasado === true && (
+                        <div className="flex items-center gap-[8px] rounded-pub-panel border border-pub-warn/[0.30] bg-pub-warn/[0.05] px-[14px] py-[10px] text-[12.5px] text-pub-warn-txt">
+                            <Clock size={14} className="flex-none" />
+                            <span>
+                                Última coleta há {dias} dia(s){motivoDaColeta === '' ? '' : `, motivo: ${motivoDaColeta}`} — os dados abaixo podem estar desatualizados.
+                            </span>
+                            <span className="ml-auto flex-none">{acaoDeColeta}</span>
+                        </div>
+                    )}
 
-                                    <Select value={filtros.status} onValueChange={trocarStatus}>
-                                        <SelectTrigger className="w-40">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {STATUS_OPCOES.map((op) => (
-                                                <SelectItem key={op.valor} value={op.valor}>{op.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                    {nuncaColetado ? (
+                        /* ⚠️ "Nunca medimos" ≠ "medimos e é zero": sem nenhuma
+                           coleta, desenhar a busca, as 6 abas com 0 e os chips
+                           afirmaria que medimos e deu zero. A tela mostra o
+                           vazio honesto e o caminho para resolver, como já faz
+                           hoje. */
+                        <VaziosDaLista caso="nunca_coletado" acao={acaoDeColeta} />
+                    ) : (
+                        <>
+                            {/* A busca central de 54px (LIST-03). ⚠️ Ela não
+                                aparece na fonte Rascunhos: o servidor não
+                                filtra rascunho por termo, e campo que não
+                                filtra nada é controle sem destino (EXMP-01).
+                                ⚠️ `resumo={null}`: o servidor NÃO manda
+                                {'{publicacoes, produtos}'} para a busca (medido
+                                no plano 180-06) e contar no cliente é
+                                proibido (D-05) — com busca ativa aparece só o
+                                "Limpar", que é honesto. */}
+                            {!ehRascunhos && (
+                                <BuscaDePublicacoes
+                                    valor={busca}
+                                    onMudar={(evento) => setBusca(objetoSeguro(evento).target?.value ?? '')}
+                                    onLimpar={() => { setBusca(''); navegar({ busca: undefined }); }}
+                                    resumo={null}
+                                />
+                            )}
 
-                                    <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
-                                </div>
-
-                                {itens.length === 0 ? (
-                                    // Estado vazio — coleta existe, mas nada bate com o filtro/busca
-                                    // atual. Com busca o texto explica em vez de dizer que o anúncio
-                                    // não existe (quick 261010-rie, RIE-04).
-                                    <VazioDaListagem
-                                        busca={filtros.busca}
-                                        skuNaoColetado={skuNaoColetado}
-                                        acao={<BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />}
-                                    />
+                            {/* A coluna externa de `gap:12px` do protótipo
+                                (`:82`) envolve a linha de controles E a linha de
+                                chips. */}
+                            <div className="flex flex-col gap-[12px]">
+                                {ehRascunhos ? (
+                                    /* Na fonte Rascunhos o trilho vai SOZINHO: o
+                                       toggle de visão e o rótulo de ordenação
+                                       descrevem a TABELA, que não está na tela —
+                                       e o trilho é o caminho de volta. */
+                                    trilhoDeStatus
                                 ) : (
                                     <>
-                                        {/* Tabela de anúncios (D-01/D-04/D-12) — 8 colunas, ordenação
-                                            fixa por gravidade (sort por coluna é fora de escopo, A14). */}
-                                        <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card/40">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="border-white/[0.08] hover:bg-transparent">
-                                                        <TableHead className="px-2 py-2 text-left text-[11px] font-normal uppercase tracking-wide text-white/40">Anúncio</TableHead>
-                                                        <TableHead className="px-2 py-2 text-left text-[11px] font-normal uppercase tracking-wide text-white/40">Tier</TableHead>
-                                                        <TableHead className="px-2 py-2 text-right text-[11px] font-normal uppercase tracking-wide text-white/40">Estoque</TableHead>
-                                                        <TableHead className="px-2 py-2 text-right text-[11px] font-normal uppercase tracking-wide text-white/40">Vendas</TableHead>
-                                                        <TableHead className="px-2 py-2 text-right text-[11px] font-normal uppercase tracking-wide text-white/40">Visitas</TableHead>
-                                                        <TableHead className="px-2 py-2 text-left text-[11px] font-normal uppercase tracking-wide text-white/40">
-                                                            <span className="inline-flex items-center gap-1">
-                                                                Nota ECF
-                                                                {!saudeMlDisponivel && (
-                                                                    <Info size={12} className="text-white/30" title="O Mercado Livre não expõe mais um score de qualidade comparável para este item — mostramos só a Nota ECF." />
-                                                                )}
-                                                            </span>
-                                                        </TableHead>
-                                                        <TableHead className="px-2 py-2 text-left text-[11px] font-normal uppercase tracking-wide text-white/40">Motivos</TableHead>
-                                                        <TableHead className="px-2 py-2 text-right text-[11px] font-normal uppercase tracking-wide text-white/40">Ação</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {itens.map((item) => {
-                                                        const motivosLinha = item.motivos ?? [];
-                                                        return (
-                                                            <TableRow key={item.ml_item_id} className="border-white/[0.06] hover:bg-white/[0.02]">
-                                                                <TableCell className="px-2 py-2">
-                                                                    <button type="button" onClick={() => abrirDetalhe(item)} className="flex items-start gap-2 text-left">
-                                                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-white/[0.08] bg-ecf-bg">
-                                                                            {item.thumbnail
-                                                                                ? <img src={item.thumbnail} alt="" className="h-full w-full object-contain" loading="lazy" />
-                                                                                : <ImageOff className="h-4 w-4 text-white/15" />}
-                                                                        </span>
-                                                                        <span className="min-w-0">
-                                                                            <span className="line-clamp-2 block text-sm text-white" title={item.titulo}>{item.titulo}</span>
-                                                                            <CelulaSku skus={item.skus} />
-                                                                            <SeloOrigem origem={item.origem} />
-                                                                        </span>
-                                                                    </button>
-                                                                </TableCell>
-                                                                <TableCell className="px-2 py-2 text-sm text-white/70">{rotuloTier(item.listing_tier)}</TableCell>
-                                                                <TableCell className={cn('px-2 py-2 text-right text-sm tabular-nums', item.estoque === 0 ? 'font-semibold text-red-400' : 'text-white/80')}>
-                                                                    {item.estoque ?? '—'}
-                                                                </TableCell>
-                                                                <TableCell className="px-2 py-2 text-right text-sm tabular-nums text-white/60">{item.vendas ?? 0}</TableCell>
-                                                                <TableCell className="px-2 py-2 text-right">
-                                                                    {item.visitas === null ? (
-                                                                        <ChipNaoAvaliado title={`Ainda não coletado pela rotação — cobertura completa em até ${rotacaoN} dias`} />
-                                                                    ) : (
-                                                                        <span className="inline-flex items-center gap-1 text-sm tabular-nums text-white/70">
-                                                                            {item.visitas}
-                                                                            {item.visitas_dias > 0 && (
-                                                                                <span title={`Coletado há ${item.visitas_dias} dia(s)`} className="inline-flex items-center gap-1 text-[11px] text-white/30">
-                                                                                    <Clock size={9} /> há {item.visitas_dias}d
-                                                                                </span>
-                                                                            )}
-                                                                        </span>
-                                                                    )}
-                                                                </TableCell>
-                                                                <TableCell className="px-2 py-2">
-                                                                    <button type="button" onClick={() => abrirDetalhe(item)} className="flex flex-col items-start gap-1 text-left">
-                                                                        {saudeMlDisponivel && <SaudeMl item={item} rotacaoN={rotacaoN} />}
-                                                                        <BarraNotaEcf pontos={item.nota_ecf} />
-                                                                    </button>
-                                                                </TableCell>
-                                                                <TableCell className="px-2 py-2">
-                                                                    <div className="flex flex-wrap items-center gap-1">
-                                                                        {motivosLinha.slice(0, 2).map((chave) => {
-                                                                            const info = (triagem.chips ?? []).find((c) => c.chave === chave);
-                                                                            if (!info) return null;
-                                                                            return (
-                                                                                <span
-                                                                                    key={chave}
-                                                                                    className={cn(
-                                                                                        'inline-flex items-center rounded-lg border px-1 py-1 text-[11px]',
-                                                                                        info.cor === 'red' ? 'border-red-500/30 bg-red-500/5 text-red-300/80' : 'border-amber-500/30 bg-amber-500/5 text-amber-300/80',
-                                                                                    )}
-                                                                                >
-                                                                                    {info.label}
-                                                                                </span>
-                                                                            );
-                                                                        })}
-                                                                        {motivosLinha.length > 2 && (
-                                                                            <span className="text-[11px] text-white/30">+{motivosLinha.length - 2}</span>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="px-2 py-2 text-right">
-                                                                    <div className="flex items-center justify-end gap-1">
-                                                                        <a
-                                                                            href={item.permalink}
-                                                                            target="_blank"
-                                                                            rel="noreferrer"
-                                                                            aria-label="Abrir no Mercado Livre"
-                                                                            title="Abrir no Mercado Livre"
-                                                                            className="rounded-md border border-white/[0.1] bg-white/[0.03] p-1 text-white/50 hover:border-white/25 hover:text-white"
-                                                                        >
-                                                                            <ExternalLink className="h-3 w-3" />
-                                                                        </a>
-                                                                        {item.origem === 'ecf' && item.rascunho_id != null && (
-                                                                            <Link
-                                                                                href={route('mlb.anuncios.wizard', { company: empresa.id, rascunho: item.rascunho_id })}
-                                                                                aria-label="Abrir rascunho"
-                                                                                title="Abrir rascunho"
-                                                                                className="rounded-md border border-white/[0.1] bg-white/[0.03] p-1 text-white/50 hover:border-white/25 hover:text-white"
-                                                                            >
-                                                                                <Pencil className="h-3 w-3" />
-                                                                            </Link>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        );
-                                                    })}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
+                                        <LinhaDeControles
+                                            abas={trilhoDeStatus}
+                                            visao={visaoAtual}
+                                            onTrocarVisao={(chave) => navegar({ visao: chave })}
+                                            ordenacaoRotulo={null}
+                                        />
 
-                                        {/* Paginação server-side, 50/página — sem seletor de itens/página. */}
-                                        {(anuncios.links?.length ?? 0) > 3 && (
-                                            <div className="mt-4 flex flex-wrap items-center justify-center gap-1">
-                                                {anuncios.links.map((l, i) => (
-                                                    l.url ? (
-                                                        <Link
-                                                            key={i}
-                                                            href={l.url}
-                                                            preserveState
-                                                            className={cn(
-                                                                'rounded-md border px-2 py-1 text-[11px] transition',
-                                                                l.active
-                                                                    ? 'border-ecf-yellow bg-ecf-yellow/[0.08] text-white'
-                                                                    : 'border-white/[0.08] text-white/50 hover:border-white/25 hover:text-white',
-                                                            )}
-                                                        >
-                                                            {decodificarRotuloPaginacao(l.label)}
-                                                        </Link>
-                                                    ) : (
-                                                        <span key={i} className="px-2 py-1 text-[11px] text-white/20">
-                                                            {decodificarRotuloPaginacao(l.label)}
-                                                        </span>
-                                                    )
-                                                ))}
-                                            </div>
-                                        )}
+                                        {/* ⚠️ `responsavel.opcoes` fica `[]`: a
+                                            lista de responsáveis NÃO existe como
+                                            prop hoje (varrido o controller e
+                                            `app/Services/Publicador/` no plano
+                                            180-07) e com `[]` o chip não é
+                                            desenhado — honesto, e o contrário
+                                            seria inventar gente (EXMP-01). O
+                                            caminho é
+                                            `PainelVisaoGeralService::resolverAtor()`. */}
+                                        <ChipsDeFiltro
+                                            fase={{
+                                                valor: f.fase,
+                                                onTrocar: (valor) => navegar({ fase: valor === 'todas' ? null : valor }),
+                                            }}
+                                            tipo={{
+                                                valor: f.tipo,
+                                                onTrocar: (valor) => navegar({ tipo: valor === 'todos' ? null : valor }),
+                                            }}
+                                            catalogo={{
+                                                ligado: f.catalogo === true,
+                                                onAlternar: () => navegar({ catalogo: f.catalogo !== true }),
+                                            }}
+                                            comVendas={{
+                                                ligado: f.com_venda === true,
+                                                onAlternar: () => navegar({ comVenda: f.com_venda !== true }),
+                                            }}
+                                            responsavel={{
+                                                selecionados: f.responsavel,
+                                                opcoes: [],
+                                                onAlternar: (id) => {
+                                                    const atuais = listaSegura(f.responsavel);
+                                                    navegar({
+                                                        responsavel: atuais.includes(id)
+                                                            ? atuais.filter((item) => item !== id)
+                                                            : [...atuais, id],
+                                                    });
+                                                },
+                                            }}
+                                            periodo={{
+                                                valor: f.periodo,
+                                                onTrocar: (valor) => navegar({ periodo: valor === 'qualquer' ? null : valor }),
+                                            }}
+                                            algumAtivo={algumFiltroAtivo}
+                                            onLimparFiltros={() => navegar({
+                                                fase: null, tipo: null, catalogo: false,
+                                                comVenda: false, responsavel: [], periodo: null,
+                                            })}
+                                        />
                                     </>
                                 )}
-                            </>
-                        )}
-                    </>
-                ) : (
-                    // Sub-aba Rascunhos (D-14) — barra de lote + grid de cards clicáveis.
-                    <RascunhosPainel empresaId={empresa.id} rascunhos={rascunhos ?? []} />
-                )}
+                            </div>
+
+                            {/* O bloco de TRIAGEM (LIST-22) — os 5 motivos de
+                                `motivosDef()` + "Não avaliado". O total é SEMPRE
+                                `triagem.total` do servidor, nunca a soma dos
+                                chips: um anúncio com 2 motivos conta 1× no total
+                                e 2× nos chips.
+                                ⚠️ `naoAvaliado` é ligado EXPLICITAMENTE: o
+                                servidor manda `nao_avaliado` em snake_case e a
+                                prop é camelCase — um `{...triagem}` perderia o
+                                selo em SILÊNCIO.
+                                ⚠️ Ele não aparece na fonte Rascunhos: a triagem
+                                é do acervo publicado. */}
+                            {!ehRascunhos && (
+                                <ChipsDeTriagem
+                                    total={tri.total}
+                                    chips={tri.chips}
+                                    naoAvaliado={tri.nao_avaliado}
+                                    motivoAtivo={f.motivo}
+                                    onFiltrarMotivo={(chave) => navegar({
+                                        motivo: f.motivo === chave ? null : chave,
+                                    })}
+                                />
+                            )}
+
+                            {ehRascunhos ? (
+                                /* Fonte Rascunhos (D-14) — barra de lote + grid
+                                   de cards clicáveis, como hoje. */
+                                <RascunhosPainel empresaId={empresaId} rascunhos={listaSegura(rascunhos)} />
+                            ) : (
+                                <section className={CLASSE_DO_CARD}>
+                                    <CabecalhoDaTabela
+                                        todasMarcadas={todasMarcadas}
+                                        onMarcarTodas={idsVisiveis.length === 0 ? null : alternarTodas}
+                                    />
+
+                                    {visaoAtual === 'grupo' && listaDeGrupos.length > 0 && listaDeGrupos.map((bruto, indice) => {
+                                        // REND-04: TODAS as flags nascem aqui
+                                        // dentro, no callback.
+                                        const grupo = objetoSeguro(bruto);
+                                        const chaveDoProduto = chaveSegura(grupo.produto_id);
+                                        // ⚠️ A busca ativa FORÇA os grupos
+                                        // abertos (LIST-09), e a regra mora NESTE
+                                        // lugar só: a linha de grupo recebe
+                                        // `aberto` resolvido e não lê a busca.
+                                        const aberto = buscaAtiva
+                                            || chaveDoProduto === null
+                                            || !colapsados.includes(chaveDoProduto);
+                                        const idsDoGrupo = listaSegura(grupo.ml_item_ids);
+                                        const linhas = !aberto ? [] : itens.filter((item) => {
+                                            const chave = chaveSegura(objetoSeguro(item).ml_item_id);
+                                            return chave !== null && idsDoGrupo.includes(chave);
+                                        });
+
+                                        return (
+                                            <Fragment key={chaveDoProduto === null ? `grupo-${indice}` : chaveDoProduto}>
+                                                <LinhaDeGrupoDeProduto
+                                                    grupo={grupo}
+                                                    aberto={aberto}
+                                                    primeiro={indice === 0}
+                                                    onAlternar={() => alternarGrupo(chaveDoProduto)}
+                                                />
+                                                {linhas.map((item, posicao) => linhaDePublicacao(item, posicao, true))}
+                                            </Fragment>
+                                        );
+                                    })}
+
+                                    {/* Visão "Lista" (LIST-10) — linhas planas,
+                                        com tile e o nome do produto no meta.
+                                        ⚠️ E o MESMO caminho cobre a visão "Por
+                                        produto" sem grupo nenhum vindo do
+                                        servidor: sem isto a tela esconderia
+                                        linhas que o rodapé está contando. */}
+                                    {(visaoAtual === 'lista' || listaDeGrupos.length === 0)
+                                        && itens.map((item, indice) => linhaDePublicacao(item, indice, false))}
+
+                                    {/* Os vazios honestos, DENTRO do card e
+                                        antes do rodapé — a ordem do protótipo
+                                        (`:285` vem antes de `:293`). O aviso de
+                                        SKU manda clicar em "Atualizar agora", e
+                                        por isso o nó de ação não pode faltar. */}
+                                    {itens.length === 0 && (
+                                        <VaziosDaLista
+                                            caso={recorteAtivo ? 'sem_resultado' : 'sem_anuncios'}
+                                            busca={f.busca}
+                                            skuNaoColetado={skuNaoColetado}
+                                            acao={acaoDeColeta}
+                                            onLimparTudo={limparBuscaEFiltros}
+                                        />
+                                    )}
+
+                                    <RodapeDaTabela rodape={rodape ?? null} paginacao={paginacao} />
+                                </section>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
-            {/* Modal de Detalhe do Anúncio (134-10) — carregamento lazy por mlItemId */}
+            {/* Modal de Detalhe do Anúncio (134-10) — carregamento lazy por
+                mlItemId. FICA montado: é onde a Nota ECF detalhada, a saúde do
+                ML, o `performance_score`, o buybox e a série de 90 dias moram
+                até o painel de inspeção da Fase 181 (LIST-24 diz que eles
+                MIGRAM, não que são apagados). */}
             <ModalDetalheAnuncio
-                empresaId={empresa.id}
+                empresaId={empresaId}
                 mlItemId={detalheAberto}
                 saudeMlDisponivel={saudeMlDisponivel}
                 onClose={() => setDetalheAberto(null)}
