@@ -2,6 +2,8 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\BlingConexao;
+use App\Models\BlingVinculo;
 use App\Models\CreativeIdentidade;
 use App\Models\EstruturaPublicacao;
 use App\Models\MlAcervoItem;
@@ -709,8 +711,17 @@ class PainelVisaoGeralService
     }
 
     /**
-     * Mercado Livre, publicação/Alavancas liberadas, Portal e ERP declarado
-     * — bloco "Integrações" da coluna lateral e de Configurações da conta.
+     * Mercado Livre, publicação/Alavancas liberadas, Portal, ERP declarado e a
+     * conexão com o Bling — bloco "Integrações" da coluna lateral e de
+     * Configurações da conta.
+     *
+     * ⚠️ Fase 184, Plano 11: `erp` (declarado no onboarding) e `bling` (conexão
+     * de verdade, com token) são DOIS fatos diferentes, e nenhum sobrescreve o
+     * outro — uma empresa pode ter "Bling" declarado no onboarding e ainda
+     * assim nunca ter conectado, ou vice-versa. `bling` é a fonte ÚNICA do
+     * ESTADO da conexão (sete valores possíveis — ver `bling()`), do mesmo
+     * espírito da fonte única logo abaixo para o declarado: não duplicar esta
+     * leitura em outro lugar (mesmo erro já cometido aqui com o ERP).
      */
     public function integracoes(array $alvo, array $empresaParaTela): array
     {
@@ -729,7 +740,146 @@ class PainelVisaoGeralService
             'alavancas_liberada' => AlavancasLiberadas::libera($ancora),
             'portal' => $empresaParaTela['portal'],
             'erp' => ['valor' => $nomeErp, 'rotulo' => $nomeErp ?? 'Não informado'],
+            'bling' => $this->bling($alvo),
         ];
+    }
+
+    /**
+     * Fase 184, Plano 11 (BLING-20, BLING-27, BLING-31) — a FONTE ÚNICA do
+     * estado da conexão com o Bling, para a tela de Configurações e para
+     * `MlbPublicadorBlingController::estado()` (que só repassa este bloco,
+     * sem recalcular nada).
+     *
+     * Ordem das perguntas (importa, como em `Cnpj::comparar`):
+     * 1. sem `Company` → `sem_company`, sem botão nenhum — D23, CONTEXT §4.3:
+     *    nunca inventar uma Company só para a tela ter o que mostrar;
+     * 2. `.env` vazio → `nao_configurado` — D-02, nunca um 500;
+     * 3. sem linha em `bling_conexoes` → `a_conectar`;
+     * 4. com linha, o `estado` é o `status` da conexão, 1 para 1 (`revogada`
+     *    volta a `a_conectar`, com o motivo de que a autorização foi desfeita).
+     *
+     * `link_expira_em` é calculado AQUI (`link_gerado_em` + 7 dias) — nunca no
+     * front: a tela não pode ter uma segunda noção de validade, a mesma lição
+     * do `ShopeeOAuthController` que amarrou o contador do painel ao prazo
+     * real. `teto.conectadas` é o teto do APP (todas as empresas), não da loja.
+     *
+     * @return array{estado: string, disponivel: bool, motivo: ?string, link_url: ?string, link_gerado_em: ?string, link_expira_em: ?string, bling_nome: ?string, bling_cnpj: ?string, conectado_em: ?string, ultima_importacao_em: ?string, ultimo_estoque_em: ?string, estoque_ativo: bool, produtos_vinculados: int, ultimo_erro: ?string, ultimo_erro_em: ?string, teto: array{limite: int, conectadas: int}}
+     */
+    private function bling(array $alvo): array
+    {
+        $teto = [
+            'limite' => BlingConexao::TETO_CONTAS_SEM_HOMOLOGACAO,
+            // Conta o app inteiro (todas as empresas), não a loja desta conta — D-02 do CONTEXT.
+            'conectadas' => BlingConexao::where('status', BlingConexao::STATUS_ATIVA)->count(),
+        ];
+
+        $base = [
+            'estado' => 'erro',
+            'disponivel' => false,
+            'motivo' => null,
+            'link_url' => null,
+            'link_gerado_em' => null,
+            'link_expira_em' => null,
+            'bling_nome' => null,
+            'bling_cnpj' => null,
+            'conectado_em' => null,
+            'ultima_importacao_em' => null,
+            'ultimo_estoque_em' => null,
+            'estoque_ativo' => false,
+            'produtos_vinculados' => 0,
+            'ultimo_erro' => null,
+            'ultimo_erro_em' => null,
+            'teto' => $teto,
+        ];
+
+        $company = $alvo['company'] ?? null;
+
+        // 1. Sem Company não há o que conectar — nunca inventar uma (CONTEXT §4.3).
+        if ($company === null) {
+            return [
+                ...$base,
+                'estado' => 'sem_company',
+                'motivo' => 'Esta conta ainda não tem uma empresa cadastrada no sistema — a equipe precisa ligar uma antes de conectar o Bling.',
+            ];
+        }
+
+        // 2. `.env` vazio nunca pode virar 500 na tela (D-02 do CONTEXT).
+        if (! BlingConexao::estaConfigurado()) {
+            return [
+                ...$base,
+                'estado' => 'nao_configurado',
+                'motivo' => 'O Bling ainda não foi configurado neste ambiente — fale com o time de desenvolvimento.',
+            ];
+        }
+
+        $conexao = BlingConexao::where('company_id', $company->id)->first();
+
+        // 3. Sem linha de conexão: pronta para começar.
+        if ($conexao === null) {
+            return [...$base, 'estado' => 'a_conectar', 'disponivel' => true, 'motivo' => null];
+        }
+
+        $produtosVinculados = BlingVinculo::where('company_id', $company->id)
+            ->where('situacao', BlingVinculo::SITUACAO_VINCULADO)
+            ->count();
+
+        $comum = [
+            ...$base,
+            'ultima_importacao_em' => $conexao->ultima_importacao_em?->toISOString(),
+            'ultimo_estoque_em' => $conexao->ultimo_estoque_em?->toISOString(),
+            'estoque_ativo' => (bool) $conexao->estoque_ativo,
+            'produtos_vinculados' => $produtosVinculados,
+            'ultimo_erro' => $conexao->last_error,
+            'ultimo_erro_em' => $conexao->last_error_at?->toISOString(),
+        ];
+
+        // 4. Com linha, o `status` da conexão mapeia 1 para 1 para o `estado` da tela.
+        return match ($conexao->status) {
+            BlingConexao::STATUS_AGUARDANDO_CLIENTE => [
+                ...$comum,
+                'estado' => 'aguardando_cliente',
+                'disponivel' => true,
+                'link_url' => $conexao->link_url,
+                'link_gerado_em' => $conexao->link_gerado_em?->toISOString(),
+                // Calculado aqui, nunca no front (lição do ShopeeOAuthController).
+                'link_expira_em' => $conexao->link_gerado_em?->copy()->addDays(7)->toISOString(),
+            ],
+            BlingConexao::STATUS_ATIVA => [
+                ...$comum,
+                'estado' => 'conectado',
+                'disponivel' => true,
+                'bling_nome' => $conexao->bling_nome,
+                'bling_cnpj' => $conexao->bling_cnpj,
+                'conectado_em' => $conexao->connected_at?->toISOString(),
+            ],
+            BlingConexao::STATUS_DIVERGENTE => [
+                ...$comum,
+                'estado' => 'divergente',
+                'disponivel' => false,
+                'motivo' => $conexao->last_error,
+            ],
+            // A autorização foi desfeita (desconectar, ou revogada pelo próprio Bling no
+            // refresh): volta a ser um "a conectar", não um estado morto.
+            BlingConexao::STATUS_REVOGADA => [
+                ...$comum,
+                'estado' => 'a_conectar',
+                'disponivel' => true,
+                'motivo' => 'A autorização foi desfeita — gere um novo link para reconectar.',
+            ],
+            BlingConexao::STATUS_ERRO => [
+                ...$comum,
+                'estado' => 'erro',
+                'disponivel' => false,
+            ],
+            // Nunca um default silencioso: qualquer status fora dos seis conhecidos vira
+            // `erro` explícito, com motivo — nunca um estado que a tela não sabe desenhar.
+            default => [
+                ...$comum,
+                'estado' => 'erro',
+                'disponivel' => false,
+                'motivo' => "Estado de conexão desconhecido ({$conexao->status}).",
+            ],
+        };
     }
 
     /** 3 primeiras linhas não vazias do texto livre — sem registro/texto vazio vira `tem_identidade=false`. */
