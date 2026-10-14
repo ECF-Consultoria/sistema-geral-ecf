@@ -17,9 +17,9 @@ use Tests\TestCase;
 
 /**
  * Fase 184-07 (BLING-17, BLING-18, BLING-19, BLING-29) — o caminho que o
- * cliente percorre para conectar o Bling: link assinado de 7 dias (Task 1) e
- * callback com conferência de CNPJ (Task 2). A landing em blade com os
- * quatro estados (Task 3) chega no próximo commit deste mesmo plano.
+ * cliente percorre para conectar o Bling: link assinado de 7 dias (Task 1),
+ * callback com conferência de CNPJ (Task 2) e a landing em blade com quatro
+ * estados, amigável no sucesso e no erro (Task 3).
  */
 class BlingLinkEAutorizacaoTest extends TestCase
 {
@@ -383,6 +383,71 @@ class BlingLinkEAutorizacaoTest extends TestCase
             ]);
 
             $this->assertSemOrigem($html, "estado {$estado}");
+        }
+    }
+
+    // ═══ Task 3 — a blade da landing ══════════════════════════════════════
+
+    public function test_estado_convite_renderiza_nome_botao_e_explicacao(): void
+    {
+        $html = $this->renderizarEstado('convite', ['button_url' => 'https://bling.example.com/authorize']);
+
+        $this->assertStringContainsString('Empresa Teste', $html);
+        $this->assertStringContainsString('https://bling.example.com/authorize', $html);
+        $this->assertStringContainsString('Autorizar acesso', $html);
+    }
+
+    public function test_estado_concluido_nao_renderiza_botao(): void
+    {
+        $html = $this->renderizarEstado('concluido');
+
+        $this->assertStringContainsString('concluída', $html);
+        $this->assertStringNotContainsString('class="btn"', $html);
+    }
+
+    public function test_estado_erro_renderiza_mensagem_e_proximo_passo_sem_botao(): void
+    {
+        $html = $this->renderizarEstado('erro', ['mensagem' => 'Mensagem de teste para a tela de erro.']);
+
+        $this->assertStringContainsString('Mensagem de teste para a tela de erro.', $html);
+        $this->assertStringContainsString('tentar novamente', $html);
+        $this->assertStringNotContainsString('class="btn"', $html);
+    }
+
+    public function test_estado_nao_configurado_e_neutro_sem_detalhe_tecnico(): void
+    {
+        $html = $this->renderizarEstado('nao_configurado');
+
+        $this->assertStringNotContainsString('BLING_CLIENT', $html);
+        $this->assertStringNotContainsString('.env', $html);
+        $this->assertStringNotContainsString('class="btn"', $html);
+    }
+
+    public function test_nenhum_dos_quatro_estados_cita_plataforma_de_venda(): void
+    {
+        foreach (['convite', 'concluido', 'erro', 'nao_configurado'] as $estado) {
+            $html = $this->renderizarEstado($estado, [
+                'button_url' => 'https://bling.example.com/authorize',
+                'mensagem' => 'Mensagem de erro de teste.',
+            ]);
+
+            $this->assertSemOrigem($html, "estado {$estado} (Task 3)");
+        }
+    }
+
+    public function test_nenhum_dos_quatro_estados_vaza_detalhe_tecnico(): void
+    {
+        foreach (['convite', 'concluido', 'erro', 'nao_configurado'] as $estado) {
+            $html = $this->renderizarEstado($estado, [
+                'button_url' => 'https://bling.example.com/authorize',
+                'mensagem' => 'Mensagem de erro de teste.',
+            ]);
+
+            $this->assertStringNotContainsString('Exception', $html);
+            $this->assertStringNotContainsString('Stack trace', $html);
+            $this->assertStringNotContainsString('vendor/', $html);
+            $this->assertStringNotContainsString('app/', $html);
+            $this->assertStringNotContainsString('BLING_CLIENT', $html);
         }
     }
 }
