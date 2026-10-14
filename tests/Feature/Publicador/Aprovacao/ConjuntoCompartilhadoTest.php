@@ -269,13 +269,34 @@ class ConjuntoCompartilhadoTest extends TestCase
         $arquivos = glob(base_path('database/migrations/*pub_aprovacao*.php'));
         $this->assertNotEmpty($arquivos, 'Nenhuma migration do portão encontrada — a sonda rodaria sobre nada.');
 
+        // ⚠️ A CONTAGEM DE ASSERÇÕES NÃO PODE DEPENDER DE QUANTOS ARQUIVOS EXISTEM.
+        // Antes era uma asserção POR arquivo do glob, e isso fez o gate
+        // `sem-par-oferta-imagem` REPROVAR duas vezes por CONTAGEM, com zero teste
+        // falhando: 5→6 quando o 186-04 criou a 3ª migration do portão, e ia virar
+        // 7 e 8 nas waves 3 e 4 (as migrations de ajustes e de financeiro casam o
+        // mesmo glob). Número que muda quando o trabalho CERTO é feito é a armadilha
+        // `feedback_gate_que_reprova_pelo_proprio_conserto`: ela treina o executor
+        // seguinte a ajustar a régua, e um dia ele ajusta uma que importava.
+        // ➡️ Agora os infratores são COLETADOS e a asserção é UMA, de contagem fixa.
+        // Não se perde nada e se ganha: a mensagem nomeia TODOS os infratores de uma
+        // vez, em vez de parar no primeiro. O `assertNotEmpty` acima segue sendo a
+        // trava contra a sonda rodar sobre nada.
+        $infratores = [];
+
         foreach ($arquivos as $caminho) {
-            $this->assertFalse(
-                $sonda(file_get_contents($caminho)),
-                basename($caminho) . ' declara uma tabela com o par (oferta_id, imagem_id): a aprovação '
-                . 'passaria a ser por oferta e o compartilhamento Clássico↔Premium deixaria de ser estrutural.'
-            );
+            if ($sonda(file_get_contents($caminho))) {
+                $infratores[] = basename($caminho);
+            }
         }
+
+        $this->assertSame(
+            [],
+            $infratores,
+            'Estas migrations declaram uma tabela com o par (oferta_id, imagem_id): '
+            . implode(', ', $infratores) . '. A aprovação passaria a ser por oferta e o '
+            . 'compartilhamento Clássico↔Premium deixaria de ser estrutural. '
+            . '(' . count($arquivos) . ' migration(s) do portão varrida(s).)'
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────

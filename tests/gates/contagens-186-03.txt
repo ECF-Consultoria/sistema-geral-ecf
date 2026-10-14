@@ -50,8 +50,18 @@ conjunto-compartilhado  php  test_aprovar_a_foto_uma_vez_vale_para_classico_e_pr
 # ⚠️ A 1ª isca pegou a sonda CEGA de verdade: a primeira redação casava o fim do
 #    bloco por indentação (12 espaços antes do `});`) e nunca casava nada.
 # 1 / 5 MEDIDO em 14/10/2026.
-sem-par-oferta-imagem  php  test_estrutural_nenhuma_tabela_do_portao_tem_o_par_oferta_id_imagem_id  ::  tests=1 assertions=5
-
+# ⚠️ assertions AJUSTADO 5 -> 4 em 14/10/2026 pelo ORQUESTRADOR, e o teste foi
+#    CONSERTADO na raiz em vez de ter a regua elevada. Era uma asserção POR arquivo do
+#    glob `*pub_aprovacao*`, então o número subia a cada migration nova do portão:
+#    reprovou 5->6 quando o 186-04 criou a 3ª, e ia virar 7 e 8 nas waves 3 e 4.
+#    ⚠️ Isso é `feedback_gate_que_reprova_pelo_proprio_conserto`: elevar o número 3
+#    vezes treina o executor seguinte a ajustar réguas, e um dia ele ajusta uma que
+#    importava. Agora os infratores são COLETADOS numa asserção só, de contagem FIXA.
+#    MEDIDO depois do conserto: `Tests: 1 passed (4 assertions)`.
+#    E PROVADO que não cegou: injetei o par `(oferta_id, imagem_id)` na migration do
+#    186-04 e o teste REPROVOU nomeando o arquivo e dizendo que varreu 3 — melhor que
+#    antes, que parava no primeiro infrator. Restaurado por sha256 idêntico.
+sem-par-oferta-imagem  php  test_estrutural_nenhuma_tabela_do_portao_tem_o_par_oferta_id_imagem_id  ::  tests=1 assertions=4
 # ─── O EIXO VARIANTE — o achado S2, e a decisão do usuário de 14/10 ────────────
 
 # 3 valores de eixo que definem foto rendem 4 conjuntos (3 + GENERAL), conferidos
