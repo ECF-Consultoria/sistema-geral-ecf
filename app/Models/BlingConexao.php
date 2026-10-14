@@ -113,4 +113,14 @@ class BlingConexao extends Model
     {
         return $this->expires_at && $this->expires_at->lt(now()->addMinutes($minutos));
     }
+
+    /**
+     * Fase 184, Plano 11 — para quem só precisa saber "dá para falar com o Bling agora?"
+     * sem repetir o literal `STATUS_ATIVA` em cada chamador (ex.: a varredura de estoque
+     * do `MlbPublicadorBlingController`, que não deve recalcular estado).
+     */
+    public function estaAtiva(): bool
+    {
+        return $this->status === self::STATUS_ATIVA;
+    }
 }

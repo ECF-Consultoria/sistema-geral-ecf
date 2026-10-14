@@ -51,6 +51,23 @@ class BlingOAuthService
     // ═══ OAuth: geração de URL e consumo do state ════════════════════════════
 
     /**
+     * Fase 184, Plano 11 — ponto único para "dá para falar com o Bling agora?",
+     * para quem só precisa do guard sem repetir `BlingConexao::estaConfigurado()`
+     * em cada chamador (ex.: `MlbPublicadorBlingController`, que não deve
+     * recalcular nenhum estado).
+     *
+     * @throws \RuntimeException quando as credenciais do app não estão no `.env`
+     */
+    public function assertConfigurado(): void
+    {
+        if (! BlingConexao::estaConfigurado()) {
+            throw new \RuntimeException(
+                '[Bling] Credenciais não configuradas — preencha BLING_CLIENT_ID, BLING_CLIENT_SECRET e BLING_REDIRECT_URI no .env.'
+            );
+        }
+    }
+
+    /**
      * Gera a URL de autorização do Bling e guarda o `state` em cache, de uso
      * único, preso à empresa/ator/destino.
      *

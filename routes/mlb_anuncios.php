@@ -4,6 +4,7 @@ use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorAcervoController;
+use App\Http\Controllers\MlbPublicadorBlingController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
 use App\Http\Controllers\MlbPublicadorDescricaoController;
@@ -285,6 +286,48 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.visao-geral');
         Route::get('publicador/empresas/{conta}/configuracoes', [MlbPublicadorEntradaController::class, 'configuracoes'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.configuracoes');
+
+        // Fase 184, Plano 11 (BLING-20, BLING-27, BLING-31) — as sete ações do bloco do
+        // Bling nas Configurações da loja (plano 12 é a tela).
+        //
+        // ⚠️ Throttle de prefixo PRÓPRIO por ação (`publicador.bling.<ação>`), nunca um
+        // prefixo compartilhado: um prefixo só faria a chamada de uma conta consumir a
+        // cota do THROTTLE de outra conta diferente, mascarando o limite de uma empresa
+        // específica que precisa de mais tentativas. `leitura`, `importar` e `estoque`
+        // têm cota BAIXA (6/min) de propósito: cada chamada consome a cota do Bling DO
+        // CLIENTE, não a nossa — gastar essa cota à toa é o risco, não o nosso servidor.
+        //
+        // `{conta}` com a MESMA trava das vizinhas (`where('conta', '(empresa|company)-
+        // [0-9]+')`), repetida em CADA rota (convenção do arquivo — `identidade`,
+        // `visao-geral`, `configuracoes` e `acoes/adiar` fazem o mesmo, cada uma com o
+        // próprio `->where()`): fora do padrão, morre na ROTA, antes do controller
+        // (T-184-75).
+        //
+        // Nenhuma colisão com rota vizinha: `publicador/empresas/{conta}` (tela B) só
+        // casa a URI sem segmento extra, `identidade`/`visao-geral`/`configuracoes`/
+        // `acoes/adiar` têm os próprios literais, e `bling` não existe em nenhuma delas
+        // — a mesma conferência que o comentário de `acoes/adiar` já registrou aqui.
+        Route::get('publicador/empresas/{conta}/bling', [MlbPublicadorBlingController::class, 'estado'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.bling.estado')->name('publicador.bling.estado');
+        Route::post('publicador/empresas/{conta}/bling/link', [MlbPublicadorBlingController::class, 'gerarLink'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:10,1,publicador.bling.link')->name('publicador.bling.link');
+        Route::delete('publicador/empresas/{conta}/bling', [MlbPublicadorBlingController::class, 'desconectar'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:10,1,publicador.bling.desconectar')->name('publicador.bling.desconectar');
+        Route::post('publicador/empresas/{conta}/bling/leitura', [MlbPublicadorBlingController::class, 'iniciarLeitura'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:6,1,publicador.bling.leitura')->name('publicador.bling.leitura');
+        Route::get('publicador/empresas/{conta}/bling/leitura/{rodada}', [MlbPublicadorBlingController::class, 'progresso'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:120,1,publicador.bling.progresso')->name('publicador.bling.leitura.progresso');
+        Route::post('publicador/empresas/{conta}/bling/importar', [MlbPublicadorBlingController::class, 'importar'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:6,1,publicador.bling.importar')->name('publicador.bling.importar');
+        Route::post('publicador/empresas/{conta}/bling/estoque', [MlbPublicadorBlingController::class, 'atualizarEstoque'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:6,1,publicador.bling.estoque')->name('publicador.bling.estoque');
 
         // 179-05 (VG-11): adiar uma ação do bloco "O que fazer agora" até amanhã às
         // 8h, para QUEM adiou nesta conta. Fica ao lado da `visao-geral` porque é a
