@@ -384,6 +384,21 @@ const ROTULO_DO_TIPO = { classico: 'Clássico', premium: 'Premium' };
  * `severidade` seria INFERIR: um anúncio moderado pode ter `severidade = 0`
  * (medido pelo plano 180-04). A linha mostra o status real do ML e o motivo
  * embaixo; o recorte "Com erro" vive na aba e nos chips. Lacuna na SUMMARY.
+ *
+ * ⚠️⚠️ DECISÃO DO USUÁRIO, 14/10/2026 (checkpoint do plano 180-10) — ESTE MAPA
+ * É O COMPORTAMENTO ESCOLHIDO, NÃO UM ESQUECIMENTO.
+ *
+ * A pergunta levada a ele foi: quando um anúncio está "Em revisão" **E** com
+ * erro ao mesmo tempo (`com_erro` é EIXO, não status — `AcervoTriagemService`
+ * `:275`-`:278`), qual dos dois a célula deve afirmar? Ele respondeu **"o
+ * status real do ML ganha"**, que é exatamente o que este mapa de QUATRO
+ * entradas já faz hoje.
+ *
+ * ➡️ **NADA A IMPLEMENTAR.** `com_erro` continua chegando no item (plano
+ * 180-04B) e continua aparecendo **na aba** (o servidor filtra por
+ * `sub_status`) e **nos chips de triagem**. Uma 5ª entrada aqui, ou uma
+ * precedência de `com_erro` sobre o status, é o OPOSTO da decisão dele.
+ * ⚠️ Nenhuma fase futura deve "consertar" isto achando que faltou fazer.
  */
 const STATUS_DA_PUBLICACAO = {
     active: 'ativa',
@@ -426,6 +441,76 @@ export function quantidadeDeCombo(quantidade) {
 /** `permalink` só vira `href` quando é uma URL http(s) de verdade (EXMP-01 / T-180-08-T). */
 export function urlSegura(valor) {
     return typeof valor === 'string' && /^https?:\/\//.test(valor.trim()) ? valor.trim() : null;
+}
+
+/**
+ * O SKU por VARIAÇÃO do anúncio, a partir de `item.skus`.
+ *
+ * ⚠️⚠️ POR QUE ESTE PEDAÇO EXISTE — DECISÃO DO USUÁRIO, 14/10/2026
+ * (checkpoint do plano 180-10, plano corretivo 180-10B).
+ *
+ * O plano 180-10 declarou uma PERDA: ao trocar a tabela antiga pelo layout
+ * novo, o SKU por variação saiu da linha (a célula Publicação passou a mostrar
+ * título + MLB + nome do produto). O usuário pediu o SKU de volta.
+ *
+ * ⚠️ É DIVERGÊNCIA DO PROTÓTIPO, AUTORIZADA: `Publicacoes v2.dc.html` não
+ * desenha SKU na linha da publicação — ele o desenha na linha de GRUPO
+ * (`:178`) e no painel de inspeção de 460px (`:382`). ➡️ **Mas a TIPOGRAFIA
+ * aqui é a do protótipo**, medida nos dois lugares: `font-family:'Geist
+ * Mono',monospace` + `font-size:11.5px` + `color:#8A8A90`. Como a linha meta
+ * (`:212`) JÁ é `text-[11.5px] text-pub-txt-3`, o pedaço NÃO redeclara tamanho
+ * nem cor — exatamente o que o MLB de `:213` faz.
+ *
+ * ⚠️ `ml_acervo_itens.skus` é uma LISTA (pai + variações), criada na quick
+ * `261010-rie`: em anúncio com variações o SKU é POR VARIAÇÃO, e escolher um
+ * mentiria sobre os outros. Daí o `+N` e o `title` com a lista inteira — é
+ * byte a byte o contrato que o `CelulaSku` de `MeusAnuncios.jsx` já tinha.
+ *
+ * ⚠️ `produto_sku` é OUTRA chave (o SKU do PRODUTO) e continua na linha de
+ * grupo, em `LinhaDeGrupoDeProduto.jsx`. São dados diferentes: o grupo diz o
+ * SKU do produto, a linha diz o da variação anunciada.
+ *
+ * ⚠️ "nunca medimos" ≠ "medimos e é zero": sem SKU devolve `null` e NADA é
+ * desenhado — nem `—`, nem string vazia, nem separador solto. O controller
+ * colapsa `null` em `[]` (`MlbAnuncioController.php:740`); quem distingue
+ * "ainda não coletado" é a prop `skuNaoColetado`, que já vive na tela.
+ *
+ * ⚠️ SEM `.map()` de propósito: o gate deste arquivo o proíbe nos 3 arquivos
+ * da tabela (o Rollup elimina variável de escopo usada dentro do callback). E
+ * sem `String(` — o valor vem do servidor e `String({toString: null})` LANÇA.
+ * O dedup é defensivo: a migration promete "DISTINTOS", mas `['A','A']` viraria
+ * "SKU A +1", que seria falso sobre o anúncio.
+ *
+ * @param {unknown} skus a lista do servidor — pode ser nula, ausente ou suja
+ * @returns {{primeiro: string, outros: number, lista: string[]}|null}
+ */
+export function skuDaVariacao(skus) {
+    if (!Array.isArray(skus)) return null;
+
+    const lista = [];
+    for (const bruto of skus) {
+        if (typeof bruto !== 'string') continue;
+        const limpo = bruto.trim();
+        if (limpo === '' || lista.includes(limpo)) continue;
+        lista.push(limpo);
+    }
+
+    if (lista.length === 0) return null;
+
+    return { primeiro: lista[0], outros: lista.length - 1, lista };
+}
+
+/**
+ * O `title` do pedaço do SKU — o contrato do `CelulaSku` de hoje, preservado.
+ *
+ * ⚠️ `lista` só contém strings (o laço de `skuDaVariacao` descarta o resto),
+ * então o `join` não coage nada: `[{toString: null}].join()` LANÇARIA.
+ */
+export function tituloDoSku(sku) {
+    if (sku === null) return undefined;
+    return sku.lista.length > 1
+        ? `${sku.lista.length} SKUs (um por variação): ${sku.lista.join(', ')}`
+        : `SKU ${sku.primeiro}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -502,6 +587,11 @@ export function CelulaPublicacao({ item, agrupada = false, copiada = false, onCo
     const nomeDoProduto = textoDaTela(dados.produto_nome);
     const titulo = textoDaTela(dados.titulo);
     const emGrupo = agrupada === true;
+    // ⚠️ O SKU por VARIAÇÃO, reposto em 14/10/2026 por decisão do usuário (ver
+    // `skuDaVariacao`). Ele aparece NAS DUAS visões: na "Por produto" a linha
+    // de grupo diz o SKU do PRODUTO, que é outro dado — esconder um porque o
+    // outro existe seria mentir sobre a variação anunciada.
+    const sku = skuDaVariacao(dados.skus);
 
     return (
         <div
@@ -543,6 +633,21 @@ export function CelulaPublicacao({ item, agrupada = false, copiada = false, onCo
                     )}
                     {!emGrupo && nomeDoProduto !== null && (
                         <span className="min-w-0 truncate">{nomeDoProduto}</span>
+                    )}
+                    {/* ⚠️ O SKU vai no FIM da linha meta, e isso é deliberado:
+                        os gates do plano 180-08 travam o título, a meta e o MLB
+                        por ÍNDICE ABSOLUTO de `<span>` (spans[1], [2] e [3]) —
+                        inserir no meio deslocaria todos eles. E o separador é o
+                        de `:218` (`color:#52525B;flex:none`), só desenhado
+                        quando há SKU depois dele. */}
+                    {sku !== null && (
+                        <span aria-hidden="true" className="flex-none text-pub-txt-off">·</span>
+                    )}
+                    {sku !== null && (
+                        <span title={tituloDoSku(sku)} className="flex-none">
+                            SKU <span className="font-pub-mono">{sku.primeiro}</span>
+                            {sku.outros > 0 ? ` +${sku.outros}` : ''}
+                        </span>
                     )}
                 </span>
             </div>

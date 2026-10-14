@@ -337,6 +337,13 @@ const ITEM_CHEIO = {
     autor_nome: 'Ana Rodrigues Silva',
     autor_tipo: 'pessoa',
     publicada_em: '2026-10-13T09:05:00-03:00',
+    // ⚠️ ACRESCENTADO PELO PLANO 180-10B: o SKU por VARIAÇÃO voltou à linha por
+    // decisão do usuário (14/10/2026). Está no fixture CHEIO de propósito —
+    // assim (a) o laço de render adverso cobre a chave nova em 18 formas + a
+    // ausência, com a contagem DERIVADA, e (b) as negativas do bloco do SKU
+    // deixam de ser vazias por construção (learnings §4.10: asserção de
+    // ausência rodada com dado vazio não prova nada).
+    skus: ['FON-001-P', 'FON-001-G'],
 };
 
 const ROTULOS_DE_MOTIVO = {
@@ -1388,12 +1395,32 @@ test('FID — a célula Publicação, em Lista e Por produto (:206-:218)', async
         assertClasses(tagEm(HTML_UMA, spans[3]), ['font-pub-mono', 'flex-none'], 'o MLB');
     });
 
-    await contexto.test('o `·` só existe COM nome depois dele (:218)', () => {
-        const comNome = celulaPublicacao(HTML_UMA).bloco;
-        assert.ok(comNome.includes('text-pub-txt-off'), 'o separador perdeu a cor do :218');
+    await contexto.test('o `·` só existe COM algo depois dele (:218) — contagem EXATA nas 4 combinações', () => {
+        // ⚠️⚠️ REAPONTE DE VALOR (plano 180-10B), e é ENDURECIMENTO.
+        //
+        // VALOR ANTIGO:
+        //   assert.ok(comNome.includes('text-pub-txt-off'));
+        //   assert.ok(!semNome.includes('text-pub-txt-off'));
+        // POR QUE MUDOU: o SKU por variação voltou à linha (decisão do usuário
+        // de 14/10/2026) e ele tem o SEU separador, com a MESMA classe do
+        // `:218`. A negativa por SUBSTRING passaria a reprovar o código CERTO
+        // (sem nome, mas com SKU, o separador do SKU existe e DEVE existir).
+        // VALOR NOVO: a CONTAGEM exata nas quatro combinações nome × SKU — que
+        // prova mais do que a antiga: ela pega separador a MAIS e a MENOS, e
+        // pega os dois casos novos que a antiga não via.
+        const separadores = (bloco) => (bloco.match(/text-pub-txt-off/g) ?? []).length;
 
-        const semNome = celulaPublicacao(umaLinha({ item: { ...ITEM_CHEIO, produto_nome: null } })).bloco;
-        assert.ok(!semNome.includes('text-pub-txt-off'), 'o separador ficou órfão, sem nome depois');
+        const comNomeComSku = celulaPublicacao(HTML_UMA).bloco;
+        const semNomeComSku = celulaPublicacao(umaLinha({ item: { ...ITEM_CHEIO, produto_nome: null } })).bloco;
+        const comNomeSemSku = celulaPublicacao(umaLinha({ item: { ...ITEM_CHEIO, skus: [] } })).bloco;
+        const semNomeSemSku = celulaPublicacao(
+            umaLinha({ item: { ...ITEM_CHEIO, produto_nome: null, skus: [] } }),
+        ).bloco;
+
+        assert.equal(separadores(comNomeComSku), 2, 'nome + SKU: são DOIS separadores (um antes de cada)');
+        assert.equal(separadores(semNomeComSku), 1, 'só SKU: UM separador — e ele não é órfão, tem o SKU depois');
+        assert.equal(separadores(comNomeSemSku), 1, 'só nome: UM separador, como no :218');
+        assert.equal(separadores(semNomeSemSku), 0, 'sem nome e sem SKU: o separador ficaria órfão — não pode existir');
     });
 
     await contexto.test('`nova: true` → o BadgeNova; `false` → nada', () => {
@@ -1404,11 +1431,219 @@ test('FID — a célula Publicação, em Lista e Por produto (:206-:218)', async
     });
 
     await contexto.test('⚠️ `ml_item_id` ausente → nem MLB nem botão de copiar', () => {
+        // ⚠️⚠️ REAPONTE DE VALOR (plano 180-10B), e é ENDURECIMENTO.
+        //
+        // VALOR ANTIGO: `assert.ok(!celula.includes('font-pub-mono'))`.
+        // POR QUE MUDOU: `font-pub-mono` era PROXY do MLB — e deixou de ser
+        // exclusivo dele quando o SKU por variação voltou à linha (decisão do
+        // usuário de 14/10/2026), porque o SKU usa a MESMA fonte mono, que é
+        // o que o protótipo mede nos dois lugares em que desenha SKU (`:178`
+        // e `:382`). A negativa antiga reprovaria o código CERTO.
+        // VALOR NOVO: o LITERAL do MLB (que é exclusivo dele) + a CONTAGEM de
+        // mono — que prova mais: ela pega o MLB reaparecendo com outra classe.
         const celula = celulaPublicacao(umaLinha({ item: { ...ITEM_CHEIO, ml_item_id: null } })).bloco;
-        assert.ok(!celula.includes('font-pub-mono'));
+        assert.ok(!celula.includes('MLB4402230188'), 'o MLB foi desenhado sem `ml_item_id`');
         assert.ok(!celula.includes('Copiar MLB'), 'sobrou um botão de copiar sem nada para copiar');
+        assert.equal(
+            (celula.match(/font-pub-mono/g) ?? []).length,
+            1,
+            'sem MLB sobra UM mono: o do SKU. Dois significa que o MLB voltou por outro caminho',
+        );
+        // E sem MLB E sem SKU não sobra mono nenhum — é a ISCA que prova que a
+        // contagem de cima não é 1 por construção.
+        const semOsDois = celulaPublicacao(
+            umaLinha({ item: { ...ITEM_CHEIO, ml_item_id: null, skus: [] } }),
+        ).bloco;
+        assert.equal((semOsDois.match(/font-pub-mono/g) ?? []).length, 0);
         // E o título continua.
         assert.ok(celula.includes('Kit 2 Fones'));
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14b. ⚠️ O SKU POR VARIAÇÃO VOLTOU À LINHA (plano 180-10B)
+//
+// DECISÃO DO USUÁRIO, 14/10/2026 (checkpoint do plano 180-10). Aquele plano
+// declarou a perda: ao trocar a tabela antiga pelo layout novo, o SKU por
+// variação saiu da linha. Ele pediu de volta.
+//
+// ⚠️ É DIVERGÊNCIA DO PROTÓTIPO, AUTORIZADA: `Publicacoes v2.dc.html` NÃO
+// desenha SKU na linha da publicação (medido por `grep -ni sku`: `:70` e `:288`
+// são textos da busca, `:178` é a linha de GRUPO e `:382` é o painel de 460px).
+// ➡️ Mas a TIPOGRAFIA é a dele, dos dois lugares em que ele desenha SKU:
+// Geist Mono + 11.5px + `#8A8A90`. Como a linha meta (`:212`) JÁ é
+// `text-[11.5px] text-pub-txt-3`, o pedaço não redeclara tamanho nem cor —
+// exatamente o que o MLB de `:213` faz.
+//
+// O que precisaria estar errado para este bloco falhar: o pedaço do SKU sair
+// da célula; aparecer sem SKU (um `—`, uma string vazia, um separador órfão);
+// perder o mono; mostrar o SKU do PRODUTO no lugar do da variação; inventar
+// `+N` com um SKU só; contar duplicata como variação; ou deslocar os índices
+// absolutos do título/meta/MLB que o bloco 14 trava.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('180-10B — o SKU por VARIAÇÃO na linha: de onde vem, como aparece, e quando NÃO aparece', async (contexto) => {
+    const celulaPub = (html) => celulasDaLinha(html, indicesDasLinhas(html)[0])[1];
+    const spansDa = (html, bloco) => tagsInternas(html, bloco, 'span');
+
+    await contexto.test('a FONTE é `item.skus` (a lista por variação), nunca `produto_sku`', () => {
+        // ⚠️ O fixture tem os DOIS, com valores DIFERENTES: `produto_sku` é
+        // 'FON-001' e `skus` é ['FON-001-P','FON-001-G']. Sem essa distinção o
+        // gate passaria com a célula mostrando o SKU do PRODUTO, que é o dado
+        // da linha de GRUPO e seria mentir sobre a variação anunciada.
+        assert.equal(ITEM_CHEIO.produto_sku, 'FON-001');
+        const celula = celulaPub(HTML_UMA).bloco;
+        assert.ok(celula.includes('FON-001-P'), 'o SKU da variação não apareceu na linha');
+        assert.ok(!celula.includes('>FON-001<'), 'a linha mostrou o SKU do PRODUTO no lugar do da variação');
+        // E a célula de GRUPO continua sendo a casa do SKU do produto — a prova
+        // é que este arquivo não desenha `produto_sku` em lugar nenhum.
+        assert.ok(!FONTE_CELULAS.includes('produto_sku'),
+            'a célula passou a ler `produto_sku`: o SKU do produto é da linha de grupo (LinhaDeGrupoDeProduto)');
+    });
+
+    await contexto.test('as classes do pedaço, por igualdade de conjunto e por ÁRVORE', () => {
+        // ⚠️ Localização por ÍNDICE ABSOLUTO de `<span>` dentro da célula, e a
+        // CONTAGEM travada: inserir elemento no meio deslocaria o título, a
+        // meta e o MLB (spans[1]/[2]/[3] do bloco 14) — o pedaço do SKU vai no
+        // FIM de propósito, e esta contagem é o que prova que ele ficou lá.
+        const celula = celulaPub(HTML_UMA).bloco;
+        const spans = spansDa(HTML_UMA, celula);
+        assert.equal(spans.length, 9,
+            'a contagem de <span> da célula mudou: tile, título, meta, MLB, separador+nome, separador+SKU, mono');
+
+        assertClasses(tagEm(HTML_UMA, spans[6]), ['flex-none', 'text-pub-txt-off'], 'o separador do SKU (:218)');
+        assertClasses(tagEm(HTML_UMA, spans[7]), ['flex-none'], 'o pedaço do SKU');
+        assertClasses(tagEm(HTML_UMA, spans[8]), ['font-pub-mono'], 'o código do SKU (Geist Mono, :178/:382)');
+
+        // ⚠️ O pedaço NÃO redeclara tamanho nem cor: herda os 11.5px e o
+        // `#8A8A90` da meta, como o MLB de `:213`. Redeclarar seria a
+        // adaptação "por segurança" que o usuário recusou (FID-02).
+        for (const vetada of ['text-[11.5px]', 'text-pub-txt-3', 'text-pub-neutral-txt']) {
+            assert.ok(!classesDa(tagEm(HTML_UMA, spans[7])).includes(vetada), `o pedaço redeclarou ${vetada}`);
+            assert.ok(!classesDa(tagEm(HTML_UMA, spans[8])).includes(vetada), `o código redeclarou ${vetada}`);
+        }
+        // E o `flex-none` é o do MLB: quem encolhe é o nome do produto, não o
+        // SKU que o usuário pediu para VER.
+        assert.ok(classesDa(tagEm(HTML_UMA, spans[3])).includes('flex-none'));
+    });
+
+    await contexto.test('o rótulo "SKU" + o código + o `+N` das outras variações', () => {
+        const celula = celulaPub(HTML_UMA).bloco;
+        assert.match(celula, /SKU <span class="font-pub-mono">FON-001-P<\/span> \+1/,
+            'a forma do pedaço mudou: é o rótulo "SKU", o PRIMEIRO código em mono e o "+N" das outras');
+        // ⚠️ O rótulo existe porque código nu ao lado do MLB é jargão (regra
+        // permanente do projeto) — e é o que o `CelulaSku` de hoje já escrevia.
+        // O protótipo mostra o código cru, mas num contexto onde a COLUNA diz
+        // que aquilo é SKU; aqui não há coluna. Divergência declarada.
+        assert.ok(celula.includes('SKU '), 'o rótulo "SKU" saiu — o código ficaria nu ao lado do MLB');
+    });
+
+    await contexto.test('UM SKU só → NENHUM `+N` (e duplicata não conta como variação)', () => {
+        const um = celulaPub(umaLinha({ item: { ...ITEM_CHEIO, skus: ['SO-UM'] } })).bloco;
+        assert.match(um, /SKU <span class="font-pub-mono">SO-UM<\/span><\/span>/, 'o pedaço mudou de forma com 1 SKU');
+        assert.ok(!um.includes('+1'), 'um SKU só ganhou "+1" — seria afirmar uma variação que não existe');
+
+        const duplicado = celulaPub(umaLinha({ item: { ...ITEM_CHEIO, skus: ['A-1', 'A-1', ' A-1 '] } })).bloco;
+        assert.ok(!duplicado.includes('+1'), 'três vezes o MESMO SKU viraram "+2" — o dedup caiu');
+        assert.ok(!duplicado.includes('+2'));
+        assert.match(duplicado, /SKU <span class="font-pub-mono">A-1<\/span><\/span>/);
+    });
+
+    await contexto.test('⚠️ SEM SKU: NADA é desenhado — nem "—", nem vazio, nem separador solto', () => {
+        // "nunca medimos" ≠ "medimos e é zero" (EXMP-01). O controller colapsa
+        // `null` em `[]` (`MlbAnuncioController.php:740`); quem distingue
+        // "ainda não coletado" é a prop `skuNaoColetado`, que vive na tela.
+        const SEM = [
+            ['lista vazia', []],
+            ['nula', null],
+            ['string em vez de lista', 'FON-001'],
+            ['objeto', {}],
+            ['só sujeira', ['', '   ', {}, 7, null, true, [], { toString: null }]],
+        ];
+        for (const [nome, valor] of SEM) {
+            const celula = celulaPub(umaLinha({ item: { ...ITEM_CHEIO, skus: valor } })).bloco;
+            assert.ok(!celula.includes('SKU '), `${nome}: o rótulo "SKU" apareceu sem SKU nenhum`);
+            assert.ok(!celula.includes('font-pub-mono">—'), `${nome}: a célula inventou um "—" de SKU`);
+            assert.doesNotMatch(celula, RE_SUJEIRA, `${nome}: sujou a tela`);
+            assert.equal(
+                (celula.match(/text-pub-txt-off/g) ?? []).length,
+                1,
+                `${nome}: sobrou (ou faltou) separador — com nome e sem SKU é UM`,
+            );
+            // E o resto da linha continua inteiro.
+            assert.ok(celula.includes('MLB4402230188'), `${nome}: o MLB sumiu junto`);
+            assert.ok(celula.includes('Fone Bluetooth XYZ'), `${nome}: o nome do produto sumiu junto`);
+        }
+
+        // A chave AUSENTE também.
+        const semChave = { ...ITEM_CHEIO };
+        delete semChave.skus;
+        assert.ok(!celulaPub(umaLinha({ item: semChave })).bloco.includes('SKU '));
+
+        // ⚠️ ISCA: o detector acima não é cego — com SKU de verdade ele ACHA.
+        assert.ok(celulaPub(HTML_UMA).bloco.includes('SKU '), 'a sonda do rótulo está cega');
+    });
+
+    await contexto.test('lista SUJA: só as strings não vazias entram, na ordem', () => {
+        const celula = celulaPub(umaLinha({
+            item: { ...ITEM_CHEIO, skus: ['', '   ', {}, 7, null, { toString: null }, 'FON-9', ['x'], 'FON-10'] },
+        })).bloco;
+        assert.match(celula, /SKU <span class="font-pub-mono">FON-9<\/span> \+1/,
+            'a lista suja não foi saneada para as DUAS strings válidas, na ordem');
+        assert.doesNotMatch(celula, RE_SUJEIRA);
+        assert.ok(!celula.includes('+7'), 'os valores inválidos entraram na contagem de variações');
+    });
+
+    await contexto.test('o `title` diz a lista INTEIRA (o contrato do CelulaSku de hoje)', () => {
+        const spans = spansDa(HTML_UMA, celulaPub(HTML_UMA).bloco);
+        assert.equal(
+            atributo(tagEm(HTML_UMA, spans[7]), 'title'),
+            '2 SKUs (um por variação): FON-001-P, FON-001-G',
+            'o title perdeu a lista inteira — com variações, mostrar um só sem dizer os outros mentiria',
+        );
+        const umHtml = umaLinha({ item: { ...ITEM_CHEIO, skus: ['SO-UM'] } });
+        const umSpans = spansDa(umHtml, celulaPub(umHtml).bloco);
+        assert.equal(atributo(tagEm(umHtml, umSpans[7]), 'title'), 'SKU SO-UM');
+    });
+
+    await contexto.test('na visão "Por produto" o SKU da VARIAÇÃO aparece — o do produto é do grupo', () => {
+        const celula = celulaPub(HTML_AGRUPADA).bloco;
+        assert.ok(celula.includes('FON-001-P'),
+            'o SKU da variação sumiu na visão agrupada. A linha de grupo diz o SKU do PRODUTO, que é outro dado');
+        // E o que o grupo JÁ diz continua fora da linha (bloco 14).
+        assert.ok(!celula.includes('Fone Bluetooth XYZ'), 'o nome do produto voltou a repetir dentro do grupo');
+        const spans = spansDa(HTML_AGRUPADA, celula);
+        assert.equal(spans.length, 6, 'agrupada: título, meta, MLB, separador, SKU e mono — sem tile e sem nome');
+        assertClasses(tagEm(HTML_AGRUPADA, spans[5]), ['font-pub-mono'], 'o código do SKU na visão agrupada');
+    });
+
+    await contexto.test('`skuDaVariacao()` como função pura, nas formas adversas', () => {
+        const f = MOD_CELULAS.skuDaVariacao;
+        assert.deepEqual(f(['A', 'B']), { primeiro: 'A', outros: 1, lista: ['A', 'B'] });
+        assert.deepEqual(f([' A ']), { primeiro: 'A', outros: 0, lista: ['A'] });
+        assert.equal(f([]), null);
+        assert.equal(f(null), null);
+        assert.equal(f(undefined), null);
+        assert.equal(f('A'), null, 'string não é lista — o servidor manda array (cast `array` do model)');
+        assert.equal(f({ 0: 'A', length: 1 }), null, 'array-like não é array');
+        assert.equal(f(['', '  ']), null);
+        for (const [nome, valor] of FORMAS_ADVERSAS) {
+            assert.doesNotThrow(() => f(valor), `skuDaVariacao(${nome}) lançou`);
+            assert.doesNotThrow(() => f([valor]), `skuDaVariacao([${nome}]) lançou`);
+            assert.doesNotThrow(() => MOD_CELULAS.tituloDoSku(f([valor])), `tituloDoSku com ${nome} lançou`);
+        }
+        assert.equal(MOD_CELULAS.tituloDoSku(null), undefined, 'sem SKU não há title — nem vazio');
+    });
+
+    await contexto.test('⚠️ o SKU aparece UMA vez: a página não monta o `CelulaSku` órfão', () => {
+        // `CelulaSku` continua EXPORTADO de `MeusAnuncios.jsx` (órfão declarado
+        // pelo plano 180-10, com gate próprio em
+        // `publicador-meus-anuncios-sku-render.test.js`). Se alguém o montasse
+        // agora, o SKU apareceria DUAS vezes na mesma linha.
+        const pagina = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+        assert.match(pagina, /export function CelulaSku/, 'o export órfão foi apagado — ele tem gate próprio');
+        assert.doesNotMatch(pagina, /<CelulaSku/,
+            'a página montou o `CelulaSku` órfão: o SKU apareceria DUAS vezes na linha (o do componente novo e o dele)');
     });
 });
 
@@ -1824,6 +2059,26 @@ test('FID — as classes GERAM CSS com o valor certo (não só existem)', async 
         );
         assert.notEqual(hover, null, 'o hover do botão de ação não gerou CSS');
         assert.match(hover[1], /rgb\(38 38 38/);
+    });
+
+    await contexto.test('⚠️ 180-10B: `font-pub-mono` compila com a Geist Mono (o SKU e o MLB)', () => {
+        // ⚠️ A sonda de HTML acima prova que o ELEMENTO tem a classe; esta
+        // prova que a CLASSE EXISTE COM O VALOR CERTO. Os dois gates são
+        // necessários e não se substituem (learnings §3) — e aqui o valor é a
+        // medida do protótipo nos dois lugares em que ele desenha SKU
+        // (`:178` e `:382`): `font-family:'Geist Mono',monospace`.
+        const regra = regraDe('font-pub-mono');
+        assert.notEqual(regra, null, '`font-pub-mono` não gerou CSS — o Tailwind não varreu a classe do SKU?');
+        assert.match(regra, /font-family:\s*Geist Mono/i, `o mono do SKU/MLB compilou para outra fonte: ${regra}`);
+        // ⚠️ E NÃO é a `font-pub` (Geist, não Geist Mono): `font-pub` é
+        // PREFIXO de `font-pub-mono`, e trocar uma pela outra no SKU passaria
+        // num gate de substring.
+        const proporcional = regraDe('font-pub');
+        assert.notEqual(proporcional, null);
+        assert.notEqual(regra, proporcional, '`font-pub` e `font-pub-mono` compilaram para a MESMA pilha');
+        assert.doesNotMatch(proporcional, /Geist Mono/i, '`font-pub` virou mono — o texto da tela ficaria monoespaçado');
+        // ISCA: classe inexistente no projeto inteiro.
+        assert.equal(regraDe('font-pub-mono-sku-7z'), null);
     });
 
     await contexto.test('os 16/24/28/18 px dos elementos de interação', () => {
