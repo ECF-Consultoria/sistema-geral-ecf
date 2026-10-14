@@ -30,19 +30,19 @@ import { caminhoSeguro, textoDaTela } from './CelulasDaLinha';
 //                              `border-radius:4px`)
 //   · "SKU · Estoque"  → :178 (`12px #8A8A90`, o SKU em `'Geist Mono'` a
 //                              `11.5px`)
-//   · bloco cobertura  → :179 (`gap:14px;margin-left:22px;padding-left:22px;`
+//   · bloco cobertura  → :180 (`gap:14px;margin-left:22px;padding-left:22px;`
 //                              `border-left:1px solid #262626;height:30px`)
-//   · par de fase      → :181/:182 (`gap:5px` + rótulo `F1`/`F2` em
+//   · par de fase      → :182/:183 (`gap:5px` + rótulo `F1`/`F2` em
 //                              `11.5px/600 #A1A1AA`, `margin-right:2px`)
-//   · célula do mapa   → :184 (`20×20`, raio 5, `10.5px/600`)
-//   · "Criar combo"    → :187/:188 (`gap:5px;font-size:12px;font-weight:500;`
+//   · célula do mapa   → :185 (`20×20`, raio 5, `10.5px/600`)
+//   · "Criar combo"    → :190/:191 (`gap:5px;font-size:12px;font-weight:500;`
 //                              `color:#FACC15;padding:4px 9px;`
 //                              `border-radius:6px;`
 //                              `background:rgba(250,204,21,0.12)` + seta
 //                              `11×11 viewBox 16`, `stroke:currentColor`,
 //                              `stroke-width:1.8`, path `M4 8h8M9 5l3 3-3 3`)
-//   · contagem         → :190 (`margin-left:auto;font-size:12.5px;#A1A1AA`)
-//   · "Ver produto"    → :191/:192 (`gap:5px;font-size:12.5px;`
+//   · contagem         → :194 (`margin-left:auto;font-size:12.5px;#A1A1AA`)
+//   · "Ver produto"    → :195/:196 (`gap:5px;font-size:12.5px;`
 //                              `font-weight:500;padding:6px 10px;`
 //                              `border:1px solid #262626;border-radius:7px;`
 //                              `background:#111111` + a MESMA seta de 11px)
@@ -54,7 +54,7 @@ import { caminhoSeguro, textoDaTela } from './CelulasDaLinha';
 // nenhuma string de `grid-cols-[…]` nasce neste arquivo.
 //
 // ⚠️ DESVIO DECLARADO (não é omissão escondida): o protótipo separa
-// **`F1 [C][P]`** de **`F2 [C][P]`**, cada par com rótulo próprio (`:181`/`:182`)
+// **`F1 [C][P]`** de **`F2 [C][P]`**, cada par com rótulo próprio (`:182`/`:183`)
 // e `gap:14px` entre os pares; `MapaDeCobertura` (Fase 177) desenha as QUATRO
 // células seguidas com `gap:3px` e sem rótulo de fase. O conserto é uma prop
 // aditiva em `identidade/MapaDeCobertura.jsx` — território que esta fase NÃO
@@ -127,7 +127,7 @@ export function rotuloDaContagem(totalVisivel, totalNoProduto) {
 const TRAVESSAO = '—';
 
 /**
- * A seta de 11px dos dois links (`:188` e `:192`, byte a byte iguais).
+ * A seta de 11px dos dois links (`:191` e `:196`, byte a byte iguais).
  *
  * ⚠️ `viewBox "0 0 16 16"` e `stroke-width:1.8` são os do protótipo, LITERAIS —
  * não há conversão de escala aqui porque não é ícone do Lucide (a regra

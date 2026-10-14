@@ -19,6 +19,16 @@ import { contagemMedida } from './LinhaDeGrupoDeProduto';
 //                         `border-radius:4px;background:#111111;color:#A1A1AA`)
 //   · as 4 teclas → `/ buscar` · `↑↓ navegar` · `Enter detalhes` · `Esc fechar`
 //
+// ⚠️⚠️ O `footerLabel` do próprio protótipo está MEDIDO em `:644`:
+//     `list.length + ' de ' + all.length + ' publicações · ' + prodCount +`
+//     `(prodCount === 1 ? ' produto' : ' produtos')`
+//   — ou seja: singular em "produto" e SEMPRE plural em "publicações". Mas o
+//   `resultSummary` da MESMA tela (`:626`) escreve
+//     `(list.length === 1 ? ' publicação' : ' publicações')`.
+//   ⚠️ O protótipo é INCOERENTE CONSIGO MESMO, então aqui vale a INTENÇÃO (o
+//   plural certo nos dois), e não a letra do `:644` — "1 de 1 publicações"
+//   seria erro de português na tela. Declarado na 180-09-SUMMARY.
+//
 // ⚠️ A PAGINAÇÃO DE 50 É A DE HOJE E FICA (critério 13). Ela chega como NÓ
 // PRONTO (`paginacao`), montado na página (plano 180-10) com o
 // `decodificarRotuloPaginacao()` que já existe em `MeusAnuncios.jsx:267` —
