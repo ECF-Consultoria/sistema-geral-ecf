@@ -3,10 +3,12 @@
 namespace App\Services\Bling;
 
 use App\Jobs\LerProdutosDoBlingJob;
+use App\Models\BlingConexao;
 use App\Models\BlingVinculo;
 use App\Models\Company;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
+use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -77,6 +79,165 @@ final class ImportadorDoBling
             'grupos'    => $grupos,
             'avisos'    => $plano['avisos'],
             'progresso' => $plano['progresso'],
+        ];
+    }
+
+    /**
+     * Refaz o plano do ZERO (sem estado — o navegador não manda o que gravar)
+     * e grava em lotes de até `self::LOTE` linhas, pelo caminho único de
+     * escrita de produto com `agendarPreparo: false` — fecha os DOIS caminhos
+     * até o agendamento do preparo pela IA (risco 5 do seed: importar 500
+     * produtos agendaria centenas de cadeias de IA na fila que publica
+     * anúncio e manda o código de acesso do Portal).
+     *
+     * `nao_entraram` junta, na mesma lista, as recusas do PLANO (código vazio,
+     * repetido, formato não suportado) e as falhas da GRAVAÇÃO (categoria
+     * inválida, código que bate no unique do banco) — o mesmo precedente
+     * BE-WR-04 do `ImportadorProdutos`: sem isso a tela diria "concluída" com
+     * produto que não existe.
+     *
+     * Vínculos órfãos (produto que estava vinculado e não apareceu nesta
+     * rodada) viram `BlingVinculo::SITUACAO_REMOVIDO_NO_BLING`, com motivo —
+     * NADA é apagado no Portal: nem variação, nem produto, nem oferta. Só
+     * roda com a rodada CONCLUÍDA: uma rodada interrompida no meio não leu o
+     * catálogo inteiro, e marcaria como removido tudo o que ainda não viu.
+     *
+     * Esta classe nunca chama, direta ou indiretamente, o agendamento do
+     * preparo pela IA. Se um dia for preciso levar os produtos importados ao
+     * Publicador, o caminho é um Job de sincronização por produto, só para
+     * quem tem rascunho ainda não publicado, despachado no FIM — não
+     * implementado aqui (seed §5).
+     *
+     * @return array{erro_geral: ?string, novos: int, atualizados: int, sem_mudanca: int, erros: int, nao_entraram: list<array{codigo: ?string, motivo: string}>, vinculos_criados: int, vinculos_removidos: int, avisos: list<string>}
+     */
+    public function aplicar(Company $empresa, string $rodada, AtorDoPortal $ator): array
+    {
+        $plano = $this->plano($empresa, $rodada);
+
+        if ($plano['erro_geral'] !== null) {
+            return [
+                'erro_geral' => $plano['erro_geral'],
+                'novos' => 0, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0,
+                'nao_entraram' => [], 'vinculos_criados' => 0, 'vinculos_removidos' => 0, 'avisos' => [],
+            ];
+        }
+
+        $linhas = $plano['linhas'];
+        $vinculosDaLinha = $plano['vinculos'];
+
+        $naoEntraram = array_map(
+            fn (array $r) => ['codigo' => $r['codigo'] ?? null, 'motivo' => (string) $r['motivo']],
+            $plano['erros'],
+        );
+
+        $totais = ['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0];
+        $vinculosCriados = 0;
+        $avisos = $plano['avisos'];
+
+        foreach (array_chunk($linhas, self::LOTE, true) as $loteComIndice) {
+            $indices = array_keys($loteComIndice);
+            $loteLinhas = array_values($loteComIndice);
+
+            $res = $this->cadastro->gravarLinhas($empresa, $loteLinhas, $ator, ProdutoCadastroService::MODO_IMPORTACAO, agendarPreparo: false);
+
+            $totais['criadas'] += $res['totais']['criadas'];
+            $totais['atualizadas'] += $res['totais']['atualizadas'];
+            $totais['sem_mudanca'] += $res['totais']['sem_mudanca'];
+            $totais['com_erro'] += $res['totais']['com_erro'];
+            $avisos = [...$avisos, ...$res['avisos']];
+
+            foreach ($res['erros'] as $e) {
+                $naoEntraram[] = ['codigo' => $e['codigo'] ?? null, 'motivo' => (string) $e['mensagem']];
+            }
+
+            $variacaoIdPorCodigo = [];
+            foreach ($res['linhas'] as $l) {
+                if (isset($l['codigo'])) {
+                    $variacaoIdPorCodigo[ProdutoCadastroService::chaveCodigo((string) $l['codigo'])] = (int) $l['id'];
+                }
+            }
+
+            foreach ($indices as $posicao => $indiceOriginal) {
+                $linha = $loteLinhas[$posicao];
+                $vinculo = $vinculosDaLinha[$indiceOriginal] ?? null;
+                if ($vinculo === null) {
+                    continue;
+                }
+
+                $chave = ProdutoCadastroService::chaveCodigo((string) ($linha['codigo'] ?? ''));
+                $variacaoId = $variacaoIdPorCodigo[$chave] ?? null;
+                if ($variacaoId === null) {
+                    // A linha não foi gravada (entrou em nao_entraram): sem variação, sem vínculo.
+                    continue;
+                }
+
+                $existiaAntes = BlingVinculo::query()
+                    ->where('company_id', $empresa->id)
+                    ->where('bling_produto_id', $vinculo['bling_produto_id'])
+                    ->exists();
+
+                BlingVinculo::updateOrCreate(
+                    ['company_id' => $empresa->id, 'bling_produto_id' => $vinculo['bling_produto_id']],
+                    [
+                        'bling_pai_id' => $vinculo['bling_pai_id'] ?? null,
+                        'variacao_id'  => $variacaoId,
+                        'codigo_bling' => $vinculo['codigo_bling'] ?? null,
+                        'formato'      => $vinculo['formato'] ?? null,
+                        'gtin'         => $vinculo['gtin'] ?? null,
+                        'situacao'     => BlingVinculo::SITUACAO_VINCULADO,
+                        'motivo'       => null,
+                        // A memória de "quem escreveu" (CONTEXT §4.1): o próximo Sincronizar
+                        // compara contra isto para saber se o cliente editou por cima.
+                        'escrito' => json_encode([
+                            'nome'      => $linha['nome'] ?? null,
+                            'descricao' => $linha['descricao'] ?? null,
+                            'custo'     => $linha['custo'] ?? null,
+                            'volumes'   => $linha['volumes'] ?? null,
+                            'codigo'    => $linha['codigo'] ?? null,
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                );
+
+                if (! $existiaAntes) {
+                    $vinculosCriados++;
+                }
+            }
+        }
+
+        $vinculosRemovidos = 0;
+        if ($plano['progresso']['concluida']) {
+            $idsNestaRodada = array_values(array_filter(array_column($vinculosDaLinha, 'bling_produto_id')));
+
+            $orfaos = BlingVinculo::query()
+                ->where('company_id', $empresa->id)
+                ->where('situacao', BlingVinculo::SITUACAO_VINCULADO)
+                ->when($idsNestaRodada !== [], fn ($q) => $q->whereNotIn('bling_produto_id', $idsNestaRodada))
+                ->get();
+
+            foreach ($orfaos as $vinculo) {
+                $vinculo->situacao = BlingVinculo::SITUACAO_REMOVIDO_NO_BLING;
+                $vinculo->motivo = 'O produto não apareceu na última leitura do Bling — pode ter sido removido ou inativado lá.';
+                $vinculo->save();
+                $vinculosRemovidos++;
+            }
+        }
+
+        $conexao = BlingConexao::where('company_id', $empresa->id)->first();
+        if ($conexao) {
+            $conexao->ultima_importacao_em = now();
+            $conexao->save();
+        }
+
+        return [
+            'erro_geral'         => null,
+            'novos'              => $totais['criadas'],
+            'atualizados'        => $totais['atualizadas'],
+            'sem_mudanca'        => $totais['sem_mudanca'],
+            'erros'              => count($plano['erros']) + $totais['com_erro'],
+            'nao_entraram'       => $naoEntraram,
+            'vinculos_criados'   => $vinculosCriados,
+            'vinculos_removidos' => $vinculosRemovidos,
+            'avisos'             => array_values(array_unique($avisos)),
         ];
     }
 
