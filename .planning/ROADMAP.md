@@ -4113,7 +4113,7 @@ Plans:
 - [x] 184-05-PLAN.md — tradutor: eixo composto, unidade de medida, multivolume, e `SaldoDoBling` (onda 2)
 - [x] 184-06-PLAN.md — `BlingClient` só de leitura, com limitador por conta e global por IP, 401/429 (onda 3)
 - [x] 184-07-PLAN.md — link assinado de 7 dias, landing pública amigável e callback com conferência de CNPJ (onda 4)
-- [ ] 184-08-PLAN.md — importador do Bling (prévia e aplicar) e Job de leitura em fatias por `release()` (onda 4)
+- [x] 184-08-PLAN.md — importador do Bling (prévia e aplicar) e Job de leitura em fatias por `release()` (onda 4)
 - [ ] 184-09-PLAN.md — estoque do Bling: gravação só da coluna, varredura em blocos e comando `bling:estoque` (onda 5)
 - [ ] 184-10-PLAN.md — estoque só-leitura e Ref travada na variação vinculada (regra no serviço + ficha) (onda 6)
 - [ ] 184-11-PLAN.md — estado da conexão como fonte única e as 7 ações da tela, admin-only (onda 6)
