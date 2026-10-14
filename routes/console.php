@@ -582,3 +582,20 @@ Schedule::command('publicador:fila-publicacao')
     ->name('publicador-fila-publicacao')
     ->withoutOverlapping(10)
     ->onOneServer();
+
+// Fase 184 (BLING-13) — keep-alive ESPALHADO dos tokens do Bling. De hora em
+// hora, e NUNCA uma rajada diária: o access_token do Bling dura ~6h e o
+// refresh_token 30 dias, então uma rodada por hora já espalha a carga
+// naturalmente, enquanto uma rodada diária única reproduziria a mesma rajada
+// do `ml:refresh-tokens` (que renova tudo de uma vez). 20 chamadas a
+// /oauth/token em 60s bloqueiam o IP da VPS por 60 minutos, para TODOS os
+// clientes do Bling — não só o desta fase. `withoutOverlapping(55)` deixa o
+// mutex expirar antes da rodada seguinte se o processo morrer no meio.
+Schedule::command('bling:renovar-tokens')
+    ->hourly()
+    ->timezone('America/Sao_Paulo')
+    ->name('bling-renovar-tokens')
+    ->withoutOverlapping(55)
+    ->onOneServer()
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/bling.log'));
