@@ -94,9 +94,9 @@ do arquivo errado.
 
 ---
 
-## 4. A família das asserções que casam sempre — DEZ casos medidos
+## 4. A família das asserções que casam sempre — ONZE casos medidos
 
-Este projeto já foi mordido dez vezes pela mesma classe de erro: asserção que passa
+Este projeto já foi mordido onze vezes pela mesma classe de erro: asserção que passa
 **independentemente do código**.
 
 1. `assert.match(tag, /disabled/)` casa com a classe `disabled:opacity-40` → use `/disabled=/`.
@@ -145,6 +145,14 @@ Este projeto já foi mordido dez vezes pela mesma classe de erro: asserção que
    outras fazem um gate passar; esta faz a **prova inteira** passar.
 10. ⚠️ **Asserção de ausência rodada com dado VAZIO é vazia por construção.** Se você assertar que
    um bloco não aparece, rode **com as props preenchidas**.
+
+11. ⚠️ **O SINTOMA PODE SER A CONTAGEM DE TESTES CAIR, não teste falhar.** Medido em 13/10/2026
+   (plano 180-08): um `sed` de renome em massa pegou a **declaração** da função junto com os call
+   sites, o arquivo virou `SyntaxError`, e o veredicto foi **1 teste em vez de 107** — nenhuma
+   falha, nenhum erro gritado. Mesma família do ANSI (item 9) e do `after()` do `node --test`:
+   **o modo de falhar é silêncio com aparência de sucesso.**
+   ➡️ **Compare sempre a CONTAGEM esperada, não só "0 fail".** Um arquivo que não carrega
+   reporta zero falhas.
 
 ➡️ **A pergunta que desmascara todos:** *"o que precisaria estar errado no código para este gate
 falhar?"* Sem resposta concreta, o gate é decorativo. **Cada uma das 11 waves da Fase 179 pegou um
