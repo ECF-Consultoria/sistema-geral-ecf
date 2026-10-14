@@ -11,6 +11,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubRascunhoAlvo;
 use App\Models\User;
+use App\Services\Publicador\Aprovacao\AjustesDaOfertaService;
 use App\Services\Publicador\Aprovacao\HistoricoDaOfertaService;
 use App\Support\Publicador\RegraViolada;
 use Carbon\Carbon;
@@ -522,6 +523,354 @@ class ExcecaoAutorizadaTest extends TestCase
             'versao' => 2,
         ]);
         $this->assertTrue(PubAprovacaoExcecao::findOrFail($criada->id)->ativa);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // BLOQ-09 — A EXCEÇÃO APLICADA: MOTIVO OBRIGATÓRIO, EFEITO IMEDIATO, SEM SEGUNDO PASSO
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public function test_aplicar_excecao_com_nove_caracteres_e_recusada_e_com_dez_e_imediata(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $gestor = User::factory()->create(['name' => 'Ricardo Gomes']);
+        $servico = app(AjustesDaOfertaService::class);
+
+        // ⚠️ 9 CARACTERES — **RECUSADA**, e nada é gravado (T-186-16, repúdio: exceção sem motivo
+        // rastreável). A fronteira é medida nos dois lados porque fronteira já tirou o bônus de
+        // alguém neste projeto SEM mudança de código.
+        $pegou = null;
+        try {
+            $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::RESULTADO_NEGATIVO, '123456789');
+        } catch (RegraViolada $e) {
+            $pegou = $e;
+        }
+        $this->assertNotNull($pegou, 'BLOQ-09: exceção com 9 caracteres de motivo tem de ser RECUSADA');
+        $this->assertSame(AjustesDaOfertaService::REGRA_JUSTIFICATIVA_CURTA, $pegou->regra);
+        $this->assertSame(0, PubAprovacaoExcecao::count(), 'a recusa gravou a exceção');
+        $this->assertSame(0, PubAprovacaoEvento::where('tipo', PubAprovacaoEvento::EXCECAO)->count(), 'a recusa gravou evento no histórico');
+
+        // "Só espaço" também é recusado — `trim()` antes de contar.
+        $pegou = null;
+        try {
+            $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::RESULTADO_NEGATIVO, '                              ');
+        } catch (RegraViolada $e) {
+            $pegou = $e;
+        }
+        $this->assertNotNull($pegou, '"só espaço" não é motivo escrito');
+        $this->assertSame(0, PubAprovacaoExcecao::count());
+
+        // ⚠️ 10 CARACTERES — ACEITA, e **O EFEITO É IMEDIATO**: não há passo intermediário, não há
+        // "aguardando autorização", não há nada a confirmar depois.
+        $excecao = $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::RESULTADO_NEGATIVO, '1234567890');
+
+        $naLinha = PubAprovacaoExcecao::findOrFail($excecao->id);
+        $this->assertTrue($naLinha->ativa, 'BLOQ-09: a exceção tem de nascer VALENDO — não existe estado de espera');
+        $this->assertSame($gestor->id, $naLinha->liberada_por, 'T-186-16: QUEM liberou tem de ficar gravado');
+        $this->assertSame('2026-10-15 14:30:00', $naLinha->liberada_em->format('Y-m-d H:i:s'), 'T-186-16: QUANDO tem de ficar gravado, com a data do SERVIDOR');
+        $this->assertSame((int) $classico->versao, $naLinha->versao, 'BLOQ-05: a exceção guarda em QUE versão foi liberada');
+
+        // ⚠️ IMEDIATO, medido pela consulta de vigência: sem nenhum passo adicional, ela já vale.
+        $this->assertTrue(PubAprovacaoExcecao::vigentesDa($classico->id)->where('tipo', PubAprovacaoExcecao::RESULTADO_NEGATIVO)->exists());
+
+        // ⚠️⚠️ E **NÃO EXISTE COLUNA DE SEGUNDO PASSO** na tabela. Esta negativa **NÃO é vazia por
+        // construção**: a tabela é criada POR ESTE PLANO, e a isca prova que a sonda enxerga as
+        // colunas que EXISTEM.
+        foreach (['oferta_id', 'tipo', 'justificativa', 'liberada_por', 'liberada_em', 'versao', 'ativa'] as $existe) {
+            $this->assertTrue(Schema::hasColumn('pub_aprovacao_excecoes', $existe), "ISCA CEGA: `hasColumn` não acha a coluna `{$existe}`, que EXISTE");
+        }
+        foreach (['status', 'aprovada_por', 'autorizada_por', 'solicitada_em', 'solicitada_por', 'aguardando', 'pendente', 'em_analise'] as $segundoPasso) {
+            $this->assertFalse(Schema::hasColumn('pub_aprovacao_excecoes', $segundoPasso), "BLOQ-09: a coluna `{$segundoPasso}` é um SEGUNDO PASSO, e o usuário recusou o segundo passo em 14/10/2026");
+        }
+    }
+
+    public function test_excecao_de_resultado_negativo_nao_libera_margem_e_vice_versa(): void
+    {
+        [$classico, $premium] = $this->asDuasOfertas();
+        $gestor = User::factory()->create(['name' => 'Ricardo Gomes']);
+        $servico = app(AjustesDaOfertaService::class);
+
+        // ⚠️⚠️ É AQUI QUE O NOSSO COMPORTAMENTO DIFERE DO PROTÓTIPO. Em
+        // `Aprovacao.dc.html:1093-1094` há **um único `!o.exc`** suprimindo `loss` **e** `margin`
+        // de uma vez: lá a exceção é um FLAG. Aqui ela é TIPADA, e autorizar margem **não** libera
+        // prejuízo de graça (BLOQ-08 + BLOQ-09: são dois atos, com justificativas diferentes, e
+        // não há desfazer).
+        $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::RESULTADO_NEGATIVO, 'Venda no custo autorizada para girar estoque parado');
+
+        $vigentes = PubAprovacaoExcecao::vigentesDa($classico->id);
+        $this->assertTrue((clone $vigentes)->where('tipo', PubAprovacaoExcecao::RESULTADO_NEGATIVO)->exists());
+        $this->assertFalse((clone $vigentes)->where('tipo', PubAprovacaoExcecao::MARGEM_ABAIXO_DO_MINIMO)->exists(), 'BLOQ-08: a exceção de prejuízo liberou a de margem — é o `!o.exc` único do protótipo, que NÃO é o nosso comportamento');
+
+        // A direção simétrica, com a OUTRA oferta PREENCHIDA (GATE-13).
+        $servico->aplicarExcecao($premium, $gestor, PubAprovacaoExcecao::MARGEM_ABAIXO_DO_MINIMO, 'Margem menor aceita pelo cliente nesta campanha');
+        $doPremium = PubAprovacaoExcecao::vigentesDa($premium->id);
+        $this->assertTrue((clone $doPremium)->where('tipo', PubAprovacaoExcecao::MARGEM_ABAIXO_DO_MINIMO)->exists());
+        $this->assertFalse((clone $doPremium)->where('tipo', PubAprovacaoExcecao::RESULTADO_NEGATIVO)->exists(), 'BLOQ-08: a exceção de margem liberou a de prejuízo');
+
+        // ⚠️ E a exceção de UMA oferta não atravessa para a IRMÃ: ela é por OFERTA, e as duas têm
+        // preço e resultado SEPARADOS (a granularidade resolvida no plano 186-04).
+        $this->assertFalse(PubAprovacaoExcecao::vigentesDa($premium->id)->where('tipo', PubAprovacaoExcecao::RESULTADO_NEGATIVO)->exists());
+
+        // ⚠️ BLOQ-08 — tipo FORA dos dois é recusado com código PRÓPRIO, e com as chaves pt-BR dos
+        // outros bloqueios (do MESMO namespace): com chave inglesa a asserção seria vazia.
+        foreach (['fotos_a_conferir', 'frete_ausente', 'alteracao_nao_conferida', 'ajuste_em_aberto', 'titulo_longo', 'loss', 'margin'] as $naoLibera) {
+            $pegou = null;
+            try {
+                $servico->aplicarExcecao($classico, $gestor, $naoLibera, 'Justificativa longa o suficiente para passar do mínimo');
+            } catch (RegraViolada $e) {
+                $pegou = $e;
+            }
+            $this->assertNotNull($pegou, "T-186-17: a exceção aceitou liberar `{$naoLibera}`, que ela NÃO pode liberar");
+            $this->assertSame(AjustesDaOfertaService::REGRA_EXCECAO_NAO_LIBERA, $pegou->regra);
+        }
+    }
+
+    public function test_a_excecao_aplicada_aparece_na_linha_do_tempo_com_tipo_exc_autor_e_carimbo(): void
+    {
+        [$classico] = $this->asDuasOfertas();
+        $gestor = User::factory()->create(['name' => 'Ricardo Gomes']);
+        $servico = app(AjustesDaOfertaService::class);
+
+        Carbon::setTestNow('2026-10-15 17:05:00');
+        $servico->aplicarExcecao($classico, $gestor, PubAprovacaoExcecao::MARGEM_ABAIXO_DO_MINIMO, 'Margem menor aceita pelo cliente nesta campanha de lançamento');
+        Carbon::setTestNow('2026-10-15 14:30:00');
+
+        $linha = $this->historico()->linhaDoTempo($classico);
+        $excecoes = array_values(array_filter($linha, fn ($i) => $i['tipo'] === PubAprovacaoEvento::EXCECAO));
+
+        // ⚠️ É ESTE EVENTO QUE TORNA "AUDITORIA DEPOIS" VERDADE (BLOQ-09). Sem ele, a exceção
+        // existiria e ninguém a veria ao abrir a oferta.
+        $this->assertCount(1, $excecoes, 'BLOQ-09: a exceção aplicada NÃO entrou no histórico — "auditoria depois" ficaria sendo só uma frase');
+        $evento = $excecoes[0];
+
+        $this->assertSame('§', $evento['icone'], 'o glifo é o `§` de `HK.exc` do protótipo');
+        $this->assertSame('Exceção autorizada', $evento['rotulo']);
+        // AUTOR e CARIMBO DE TEMPO, os dois.
+        $this->assertSame('Ricardo Gomes', $evento['autor'], 'T-186-16: a exceção no histórico sem autor rastreável é repúdio');
+        $this->assertFalse($evento['ator_sistema'], 'exceção é ato de PESSOA, nunca do Sistema');
+        $this->assertSame('15/10/2026 17:05', $evento['ocorrido_formatado']);
+        $this->assertSame((int) $classico->versao, $evento['versao'], 'BLOQ-05: o histórico diz em QUE versão a exceção foi dada');
+
+        // A frase nomeia o bloqueio liberado e traz a justificativa (é a prova do motivo escrito).
+        $this->assertStringContainsString('Margem abaixo do mínimo', $evento['texto']);
+        $this->assertStringContainsString('Margem menor aceita pelo cliente', $evento['texto']);
+
+        // ⚠️ ISCA (GATE-13): um evento de OUTRO tipo está PREENCHIDO na mesma linha do tempo —
+        // senão "achei 1 do tipo exc" e "achei 1 evento" dariam o mesmo número.
+        $this->assertGreaterThan(1, count($linha), 'ISCA CEGA: a linha do tempo tem só o evento da exceção — o filtro por tipo não estaria sendo medido');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ BLOQ-09 — A AUSÊNCIA DELIBERADA DO ESTADO "EXCEÇÃO AGUARDANDO AUTORIZAÇÃO"
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public function test_nao_existe_estado_de_espera_de_autorizacao_na_area_nova_com_isca(): void
+    {
+        // ⚠️⚠️ A SONDA ANCORA NA **FORMA**, NÃO NUMA LISTA DE NOMES (achado G8): a lista de três
+        // nomes da primeira redação (`aguardando_autorizacao`, `pendente_aprovacao`,
+        // `solicitar_autorizacao`) **não era exaustiva** — `excecaoPendente`, `aguardandoGestor`,
+        // `excecao_em_analise` e `exc_status` passariam todos.
+        //
+        // ⚠️⚠️ MAS A FORMA SOZINHA NÃO SERVE, E ISTO FOI **MEDIDO** EM 15/10/2026. O par
+        // sugerido — `(aguardand|pendent|em_analise|solicit)` × `(autoriza|gestor|aprova)` —
+        // produz **10 ocorrências LEGÍTIMAS** na área, todas do vocabulário de ANDAMENTO e de
+        // FOTO das waves 1-2: `'Aguardando aprovação'` (o rótulo VOC-02, em 3 arquivos),
+        // `AJUSTES_SOLICITADOS => [..., self::APROVADO]` (as transições do 186-04),
+        // `PubAprovacaoImagem::PENDENTE` ao lado de `APROVADA`, e o toast
+        // `'Aprovado — aguardando publicação'`. **O domínio fala "aguardando aprovação" por toda
+        // parte, e isso é correto** — é a OFERTA esperando a ECF conferir.
+        //
+        // ⚠️⚠️ E o par escrito no plano (`…|aprovad`) ficava calado **por ACIDENTE DE GRAFIA**: o
+        // radical `aprovad` **não casa a palavra pt-BR `aprovação`/`aprovacao`** (c, não d). Uma
+        // sonda cujo silêncio depende de uma letra não é ancorada na forma — é sorte, e é
+        // exatamente a classe "gate vazio por construção" com outra roupa.
+        //
+        // ➡️ **O DISCRIMINADOR REAL É O SUJEITO:** o que não pode existir é **A EXCEÇÃO**
+        // esperando alguém autorizar. Daí as TRÊS camadas abaixo, cada uma com isca própria.
+
+        // ─── CAMADA A — a ÁREA TODA, por glob, ancorada no SUJEITO `exceção` ─────────────────
+        // É esta que vale para os arquivos que as Fases 187-194 ainda vão acrescentar.
+        $formas = [
+            '/(exce[cç][aã]o|\bexc\b|excecoes).{0,40}(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar)/i',
+            '/(aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar).{0,40}(exce[cç][aã]o|\bexc\b|excecoes)/i',
+        ];
+
+        // ⚠️ ISCA DO REGEX, nos dois sentidos: ele TEM de casar o que deveria e NÃO casar o que
+        // não deveria. Sem isto, um regex quebrado devolveria "nenhuma violação" para sempre.
+        foreach ([
+            'excecaoPendenteDeAprovacao', 'excecao_aguardando_autorizacao', 'exc_pendente',
+            'excecao_em_analise', 'excecaoAguardandoGestor', 'solicitarExcecao', 'aguardando_excecao',
+        ] as $deveCasar) {
+            $casou = false;
+            foreach ($formas as $forma) {
+                $casou = $casou || (bool) preg_match($forma, $deveCasar);
+            }
+            $this->assertTrue($casou, "ISCA CEGA: a sonda de forma NÃO casa `{$deveCasar}` — ela estaria cega para o estado de espera");
+        }
+        // ⚠️ E NÃO casa o vocabulário LEGÍTIMO do andamento/foto, que é o que a medição de
+        // 15/10/2026 mostrou ser o problema do par sem sujeito.
+        foreach ([
+            'aplicarExcecao', 'liberada_por', 'justificativaValida', 'aguardando_aprovacao',
+            'Aguardando aprovação', 'AJUSTES_SOLICITADOS', 'PubAprovacaoImagem::PENDENTE',
+            'Exceção autorizada por', 'excecao->ativa',
+        ] as $naoDeveCasar) {
+            foreach ($formas as $forma) {
+                $this->assertSame(0, preg_match($forma, $naoDeveCasar), "ISCA: a sonda casou `{$naoDeveCasar}`, que é LEGÍTIMO — ela reprovaria o próprio conserto");
+            }
+        }
+
+        // ⚠️ A contagem **não** depende de quantos arquivos existem (contagem por glob é frágil
+        // por construção): cada glob só precisa achar **ao menos um** arquivo, e os infratores são
+        // coletados numa asserção ÚNICA.
+        $globs = [
+            'app/Services/Publicador/Aprovacao/*.php',
+            'app/Models/PubAprovacao*.php',
+            'resources/js/Components/Mlb/Publicador/aprovacao/*.jsx',
+            'database/migrations/2026_10_15_10*.php',
+        ];
+
+        $infratores = [];
+        $lidos = 0;
+
+        foreach ($globs as $glob) {
+            $arquivos = glob(base_path($glob));
+            $this->assertNotEmpty($arquivos, "ISCA CEGA: o glob `{$glob}` não achou arquivo nenhum — a varredura rodaria sobre lista vazia");
+
+            foreach ($arquivos as $abs) {
+                $bruto = file_get_contents($abs);
+
+                // ⚠️⚠️ LER O **CÓDIGO SEM COMENTÁRIOS** É OBRIGATÓRIO AQUI, e não é cosmético: os
+                // docblocks deste plano **explicam** que o estado de espera não existe, e a frase
+                // "EXCEÇÃO AGUARDANDO AUTORIZAÇÃO" casa a primeira forma. Um gate que lesse o
+                // arquivo inteiro reprovaria pelo PRÓPRIO CONSERTO
+                // (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+                $codigo = str_ends_with($abs, '.php') ? $this->semComentarios($bruto) : $this->semComentariosJs($bruto);
+                $lidos++;
+
+                foreach ($formas as $forma) {
+                    if (preg_match($forma, $codigo, $achado)) {
+                        $infratores[] = str_replace(base_path() . DIRECTORY_SEPARATOR, '', $abs) . ': ' . $achado[0];
+                    }
+                }
+            }
+        }
+
+        $this->assertGreaterThan(10, $lidos, 'ISCA: a varredura leu pouquíssimos arquivos — algo no glob mudou');
+
+        // ⚠️ ISCA DE CONTEÚDO (a que prova que o leitor devolveu CÓDIGO de verdade): o nome do
+        // método da exceção TEM de ser achado por uma busca simples na mesma área. Sem isto,
+        // "nenhum infrator" poderia significar "li string vazia de tudo".
+        $achouAplicar = false;
+        foreach (glob(base_path('app/Services/Publicador/Aprovacao/*.php')) as $abs) {
+            $achouAplicar = $achouAplicar || str_contains($this->semComentarios(file_get_contents($abs)), 'aplicarExcecao');
+        }
+        $this->assertTrue($achouAplicar, 'ISCA CEGA: a varredura não acha `aplicarExcecao` no CÓDIGO da área — ela está lendo nada');
+
+        // ⚠️⚠️ A ASSERÇÃO DA CAMADA A. O usuário OFERECEU e RECUSOU a aprovação em dois passos em
+        // 14/10/2026 (BLOQ-09): o controle da exceção é **auditoria DEPOIS, não barreira ANTES**,
+        // porque aprovar já publica e não há desfazer.
+        $this->assertSame([], $infratores, "BLOQ-09: apareceu a FORMA de um estado de espera da EXCEÇÃO na área nova:\n- " . implode("\n- ", $infratores));
+
+        // ─── CAMADA B — a CASA da exceção: ali o vocabulário de espera é proibido INTEIRO ────
+        // Nestes arquivos não existe assunto "andamento da oferta" que justifique uma palavra de
+        // espera; qualquer uma é o estado recusado. Por isso aqui a sonda **não** precisa de
+        // sujeito — e é o que pega `aguardando_autorizacao`, `pendente_aprovacao`,
+        // `solicitar_autorizacao` e `aguardandoGestor`, que a Camada A não casaria sozinha.
+        $vocabularioDeEspera = '/(status|aguardand|aguardar|pendent|em[_ ]?analise|a[_ ]?autorizar|autorizacao|solicitar[_ ]?autoriza|aprovada_por|autorizada_por)/i';
+
+        // ISCA DO REGEX nos dois sentidos.
+        foreach (['aguardando_autorizacao', 'pendente_aprovacao', 'solicitar_autorizacao', 'aguardandoGestor', 'exc_status', 'excecao_em_analise', 'aprovada_por'] as $deveCasar) {
+            $this->assertSame(1, preg_match($vocabularioDeEspera, $deveCasar), "ISCA CEGA: o vocabulário de espera não casa `{$deveCasar}`");
+        }
+        foreach (['liberada_por', 'liberada_em', 'justificativa', 'aplicarExcecao', 'Exceção autorizada por', 'ativa'] as $naoDeveCasar) {
+            $this->assertSame(0, preg_match($vocabularioDeEspera, $naoDeveCasar), "ISCA: o vocabulário de espera casou `{$naoDeveCasar}`, que é legítimo");
+        }
+
+        $casa = [
+            'app/Models/PubAprovacaoExcecao.php',
+            'app/Services/Publicador/Aprovacao/AjustesDaOfertaService.php',
+        ];
+        $stripBateu = false;
+
+        foreach ($casa as $arquivo) {
+            $codigo = $this->semComentarios($this->texto($arquivo));
+
+            // ⚠️ **A ÚNICA EXEMPÇÃO NOMEADA**, e ela é GATEADA: `AGUARDANDO_APROVACAO` é a
+            // constante de ANDAMENTO do plano 186-04 (outro namespace — é a OFERTA esperando a
+            // ECF, não a exceção esperando alguém). Ela é recortada antes da varredura, e a isca
+            // abaixo exige que o recorte tenha batido em ALGUM dos arquivos: exempção que não
+            // encontra nada é exempção que esconde a sonda.
+            $limpo = str_replace('AGUARDANDO_APROVACAO', '', $codigo);
+            $stripBateu = $stripBateu || $limpo !== $codigo;
+
+            preg_match_all($vocabularioDeEspera, $limpo, $achados);
+            $this->assertSame([], $achados[0], "BLOQ-09: vocabulário de espera em `{$arquivo}`, que é a CASA da exceção: " . implode(', ', $achados[0]));
+        }
+
+        $this->assertTrue($stripBateu, 'ISCA CEGA: a exempção de `AGUARDANDO_APROVACAO` não encontrou nada — ou o serviço deixou de usar a única porta, ou a leitura veio vazia');
+
+        // ─── CAMADA C — O SCHEMA: nenhuma COLUNA com a forma de um segundo passo ─────────────
+        // É a camada que de fato BINDA: sem coluna, o estado não tem onde morar.
+        // ⚠️ Medida sobre **TODAS** as colunas da tabela, não sobre lista escrita à mão — e a
+        // tabela é criada POR ESTE PLANO, então a negativa **não** é vazia por construção.
+        $colunas = array_column(Schema::getColumns('pub_aprovacao_excecoes'), 'name');
+        $this->assertNotEmpty($colunas, 'ISCA CEGA: o leitor de colunas devolveu lista vazia');
+        $this->assertContains('liberada_por', $colunas, 'ISCA: a sonda enxerga as colunas que EXISTEM');
+        $this->assertContains('justificativa', $colunas);
+
+        $deSegundoPasso = array_values(array_filter($colunas, fn ($c) => (bool) preg_match($vocabularioDeEspera, $c)));
+        $this->assertSame([], $deSegundoPasso, 'BLOQ-09: a tabela da exceção ganhou coluna com a forma de um segundo passo: ' . implode(', ', $deSegundoPasso));
+
+        // ⚠️ E a ausência está DECLARADA por escrito, com a data e a razão — senão a próxima sessão
+        // "completa" o fluxo achando que faltou. (Lido do arquivo CRU, de propósito: é comentário.)
+        foreach (['database/migrations/2026_10_15_100300_create_pub_aprovacao_ajustes_tables.php', 'app/Models/PubAprovacaoExcecao.php'] as $declara) {
+            $cru = $this->texto($declara);
+            $this->assertStringContainsString('14/10/2026', $cru, "a DATA da decisão não está declarada em `{$declara}`");
+            $this->assertStringContainsString('RECUSADA', $cru, "a recusa do segundo passo não está declarada em `{$declara}`");
+            $this->assertStringContainsString('NÃO EXISTE', $cru, "a ausência não está declarada em `{$declara}`");
+        }
+
+        // ⚠️ ESTE GATE **NÃO SUBSTITUI** o do plano 186-09, e o 186-09 não substitui este: aquele
+        // mede a área inteira no fim da fase (inclusive telas e rotas); este roda junto com o
+        // código que criou a exceção, e falha na hora em que alguém a "completar".
+        $this->assertStringContainsString('186-09', $this->texto('app/Models/PubAprovacaoExcecao.php'), 'a relação com o gate transversal do 186-09 tem de ficar declarada');
+    }
+
+    /** O CÓDIGO sem os comentários, pelo tokenizador do PHP. */
+    private function semComentarios(string $texto): string
+    {
+        $saida = '';
+
+        foreach (token_get_all($texto) as $token) {
+            if (! is_array($token)) {
+                $saida .= $token;
+
+                continue;
+            }
+
+            if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                $saida .= str_repeat("\n", substr_count($token[1], "\n"));
+
+                continue;
+            }
+
+            $saida .= $token[1];
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O mesmo para `.jsx`, onde não há tokenizador do PHP.
+     *
+     * ⚠️ É um recorte de blocos `/* … *\/` e linhas `//`, e **é deliberadamente conservador**: ele
+     * pode deixar passar comentário dentro de string, o que só tornaria a sonda MAIS rígida
+     * (acharia infrator a mais), nunca mais frouxa.
+     */
+    private function semComentariosJs(string $texto): string
+    {
+        $sem = preg_replace('#/\*.*?\*/#s', '', $texto);
+
+        return (string) preg_replace('#^\s*//.*$#m', '', (string) $sem);
     }
 
     /** O default de uma coluna no SCHEMA VIVO (SQLite dos testes), normalizado para string. */
