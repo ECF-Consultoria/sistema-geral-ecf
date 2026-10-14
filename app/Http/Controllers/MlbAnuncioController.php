@@ -802,6 +802,96 @@ class MlbAnuncioController extends Controller
                 ? (self::TIPO_POR_LISTING_TYPE[$item->listing_type_id] ?? null)
                 : null,
             'catalogo'       => (bool) $item->catalog_listing,
+
+            // ─── Fase 180, plano 04B: as TRÊS chaves que faltavam ────────────
+            //
+            // O plano 180-08 construiu a tabela e MEDIU (§6 da SUMMARY dele)
+            // que três props não chegavam daqui, deixando três requisitos
+            // inalcançáveis. As três linhas abaixo são ADITIVAS e **não custam
+            // consulta nenhuma**: `price` e `sub_status` vêm da MESMA linha do
+            // acervo que a página já carregou (`AcervoTriagemService::escopo()`
+            // não restringe colunas) e `publicada_em` já está no mapa de
+            // metodologia resolvido acima, fora do `through()`.
+
+            // ⚠️ O PREÇO (LIST-12). Sem ele a célula "Preço" mostrava `—` no
+            // valor E na margem, em TODAS as linhas.
+            //
+            // ⚠️ Chega como STRING (`"399.90"`): o cast é `'decimal:2'`
+            // (`MlAcervoItem.php:101`) e o Eloquent serializa decimal em JSON
+            // como string. **Isso é de propósito e está medido:**
+            // `CelulasDaLinha.jsx:132`-`:143` (`numeroMedido`) aceita string
+            // numérica de forma FECHADA, com `RE_NUMERO` (`:117`). Não
+            // converter para `float` aqui — a forma já foi medida como aceita e
+            // o cast preserva as 2 casas do banco.
+            //
+            // ⚠️ `price` nulo continua NULO, não `"0.00"`: `'decimal'` está em
+            // `HasAttributes::$primitiveCastTypes`. "Nunca medimos" ≠ "medimos
+            // e é zero" (EXMP-01) — a tela mostra `—` no primeiro caso e
+            // `R$ 0,00` no segundo.
+            //
+            // ⚠️⚠️ `margem`, `lucro`, `repasse` e `tarifa` CONTINUAM NÃO
+            // EXISTINDO (ver o bloco acima). Este plano entrega a 1ª linha da
+            // célula (o valor); a 2ª ("Margem x%" / "▲ Prejuízo") é a camada
+            // ASSÍNCRONA da Fase 181 e segue em `—`. NUNCA estimar a tarifa por
+            // percentual para preencher a lacuna.
+            'preco'          => $item->price,
+
+            // ⚠️ O BADGE "NOVA" e o fundo de linha `#14120A` (LIST-11).
+            //
+            // A RÉGUA FOI MEDIDA NO PROTÓTIPO, não escolhida:
+            //  · `isNew` é dado da PUBLICAÇÃO, hardcoded item por item em
+            //    `PUBS` (`Publicacoes v2.dc.html:433`-`:434`) — e NÃO um estado
+            //    de sessão (a faixa de sucesso é a prop `showSuccess`, `:506`);
+            //  · os ÚNICOS dois itens com `isNew: true` são exatamente os dois
+            //    com `d: '2026-10-10T…'`, e o "hoje" do protótipo é o literal
+            //    `new Date('2026-10-10T00:00')` de `:491`. Dos 24 itens do mock,
+            //    2 caem nesse dia e são os 2 marcados: zero falso positivo,
+            //    zero falso negativo;
+            //  · a mesma régua já é a de `days(d) === 0`, que escreve
+            //    "Hoje, hh:mm" (`:498`) e move o filtro `period: 'today'`
+            //    (`:523`).
+            //
+            // ➡️ "NOVA" = publicada no DIA CIVIL de hoje. O fuso é DECLARADO e
+            // não herdado: `config/app.php:68` dá `America/Sao_Paulo`, o mesmo
+            // de `hojeEmSaoPaulo()` na tela e o mesmo do `periodo=hoje` que
+            // `idsPorMetodologia()` já usa (`now()->startOfDay()`).
+            //
+            // ⚠️ `ml_acervo_itens.created_at` foi CONSIDERADO E RECUSADO: ele é
+            // quando a COLETA viu o anúncio, não quando ele foi publicado — a
+            // tela chamaria de "nova" uma publicação antiga recém-coletada.
+            // Há asserção negativa para essa régua.
+            //
+            // ⚠️ A fonte é a MESMA string que a coluna "Publicada" mostra
+            // (`publicada_em`), para que a linha não possa dizer "NOVA" e a
+            // data dizer outro dia. Legado (sem `publicada_em`) é `false`:
+            // ausência de dado não é novidade.
+            //
+            // ⚠️ Isto NÃO é a faixa de sucesso. `faixaSucesso` segue `null`
+            // SEMPRE (plano 04 §2: não existe chave de flash de publicação e a
+            // publicação termina assíncrona) — são dois eixos diferentes.
+            'nova'           => $this->publicadaHoje(
+                $metodologia[(string) $item->ml_item_id]['publicada_em'] ?? null,
+            ),
+
+            // ⚠️ "Com erro" NA LINHA (LIST-10), com a MESMA lista fechada da ABA.
+            //
+            // `com_erro` é a CHAVE (`AcervoTriagemService::STATUS_COM_ERRO`), a
+            // mesma que o `?status=` e a aba já usam — nunca o rótulo, que mora
+            // na tela.
+            //
+            // ⚠️ O que sai daqui é um BOOL derivado, e não o `sub_status` cru:
+            //  (a) `sub_status` é cast `'array'` (`MlAcervoItem.php:86`) e campo
+            //      objeto/array novo no item é a herança da tela preta de
+            //      07/10/2026;
+            //  (b) a lista fechada tem de viver em UM lugar — mandar o eixo cru
+            //      empurraria a régua para o JS e a LINHA poderia discordar da
+            //      ABA, que é o defeito que este plano existe para impedir.
+            //
+            // ⚠️ PROIBIDO derivar de `severidade` ou de `motivos` (docblock de
+            // `SUB_STATUS_COM_ERRO`, `AcervoTriagemService.php:67`-`:72`): um
+            // anúncio moderado pode ter `severidade = 0`, e "Pausado"/"Sem
+            // estoque" é outra coisa. Há caso negativo para as duas tentações.
+            'com_erro'       => $this->temSubStatusComErro($item),
         ]);
 
         // ─── Triagem (D-09) e defasagem (D-08) — extraídas para
@@ -1194,6 +1284,79 @@ class MlbAnuncioController extends Controller
         }
 
         return array_keys($ids);
+    }
+
+    /**
+     * A publicação caiu no DIA CIVIL de hoje? (Fase 180, plano 04B — LIST-11.)
+     *
+     * É a régua do badge "NOVA" e do fundo de linha `#14120A`, MEDIDA no
+     * protótipo (`Publicacoes v2.dc.html:433`/`:434`/`:491`) e não escolhida —
+     * ver o comentário longo no item de `meus()`.
+     *
+     * ⚠️ A entrada é a MESMA string ISO-8601 que a tela mostra na coluna
+     * "Publicada" (`PublicacoesDaListaService::metodologiaPorMlItemId` →
+     * `isoOuNulo(concluida_em)`): derivar do mesmo valor é o que impede a linha
+     * dizer "NOVA" e a data dizer outro dia.
+     *
+     * ⚠️ O fuso é o da APLICAÇÃO (`America/Sao_Paulo`, `config/app.php:68`), o
+     * mesmo de `hojeEmSaoPaulo()` na tela — e a comparação é por dia CIVIL,
+     * nunca por "24 horas atrás": `isSameDay()` compara `Y-m-d`, que é o
+     * `days(d) === 0` do protótipo.
+     *
+     * ⚠️ Valor malformado devolve `false` em vez de derrubar a listagem inteira
+     * (Rule 2): o único produtor é o nosso próprio serviço, mas uma exceção
+     * dentro do `through()` custaria a PÁGINA, e "não sei" aqui é `false` —
+     * o badge não acende, que é o lado seguro.
+     */
+    private function publicadaHoje(mixed $publicadaEm): bool
+    {
+        if (! is_string($publicadaEm) || $publicadaEm === '') {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($publicadaEm)
+                ->setTimezone(config('app.timezone'))
+                ->isSameDay(now());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * O anúncio está no eixo "Com erro" do Mercado Livre? (Plano 04B — LIST-10.)
+     *
+     * ⚠️⚠️ **A LISTA FECHADA É A MESMA DA ABA**, por referência à constante
+     * `AcervoTriagemService::SUB_STATUS_COM_ERRO` — nunca copiada. Se a LINHA e
+     * a ABA tivessem duas cópias, elas divergiriam na primeira emenda, e dois
+     * números que discordam na mesma tela já custaram uma decisão do usuário
+     * nesta milestone. Há mutação cujo único efeito é trocar a lista desta
+     * função por uma diferente, e ela TEM de reprovar.
+     *
+     * ⚠️ PROIBIDO derivar de `severidade` ou de `motivos` — ver o docblock da
+     * constante (`AcervoTriagemService.php:67`-`:72`). Anúncio moderado pode
+     * ter `severidade = 0`.
+     *
+     * ⚠️ EQUIVALÊNCIA COM O SQL DA ABA, e o limite: a aba faz
+     * `orWhere('sub_status', 'like', '%"<valor>"%')` por valor da constante;
+     * aqui é `array_intersect` sobre os valores do array. Para o json que o ML
+     * emite (lista achatada de strings) os dois coincidem, inclusive na borda
+     * (`%"warning"%` NÃO casa dentro de `"pre_warning"`, porque as aspas
+     * ancoram os dois lados). **Se o `sub_status` chegasse como OBJETO com uma
+     * chave chamada `warning`, o `LIKE` casaria e isto não** — o ML emite
+     * array, e a divergência fica escrita em vez de escondida.
+     */
+    private function temSubStatusComErro(MlAcervoItem $item): bool
+    {
+        $subStatus = $item->sub_status;
+
+        if (! is_array($subStatus)) {
+            return false;
+        }
+
+        $valores = array_filter($subStatus, 'is_string');
+
+        return array_intersect($valores, AcervoTriagemService::SUB_STATUS_COM_ERRO) !== [];
     }
 
     /**
