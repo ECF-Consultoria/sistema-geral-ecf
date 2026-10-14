@@ -380,6 +380,7 @@ learnings avisa: a troca de `14` por `15` ficou numa **linha de argumento**, nã
 | suíte PHP | ⚠️ **NÃO RODADA, de propósito** (instrução do briefing: a sessão paralela da Fase 184 commita PHP na mesma árvore) |
 | D-11 (×2) e D-22 | **intocados**, identificados por **SEMÂNTICA**: `estrutura-meus-anuncios.test.js:250`, `:256` e `:285` — as referências do briefing bateram desta vez |
 | o discriminador de sessão | o **ESCOPO DO ASSUNTO** (`180-*` × `184-*`). ⚠️ **NÃO conferi autor**: as duas sessões usam o mesmo `user.name` |
+| ⚠️ **a sessão paralela commitou ENTRE os meus, e foi medido** | `dba466e3 docs(184)` e `79623de5 fix(184)` entraram **entre** `4b8a8942` (09:55) e `a8815f15` (10:02). Tocaram só `.planning/phases/184-*/184-APP-BLING-CONTEUDO.md` e 6 arquivos de `public/images/` — **zero** arquivo meu. ➡️ **É por isso que a prova é commit por commit:** um `git diff <inicio>..HEAD` teria acusado os dois como se fossem deste plano |
 | árvore | limpa nos meus alvos (`git status --short -- resources/js tests/js app database routes` → vazio) |
 
 ---
