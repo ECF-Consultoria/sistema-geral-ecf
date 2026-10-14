@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
+use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,14 @@ class TravaDaVariacaoVinculadaTest extends TestCase
     private function cadastro(): ProdutoCadastroService
     {
         return app(ProdutoCadastroService::class);
+    }
+
+    /** O item de UMA variação na saída de `ProdutoLinhas::paraProdutos`. */
+    private function itemDaVariacao(Company $empresa, EstruturaProdutoVariacao $variacao): array
+    {
+        $linhas = app(ProdutoLinhas::class)->paraProdutos($empresa, [$variacao->produto_id]);
+
+        return collect($linhas)->firstWhere('id', $variacao->id);
     }
 
     private function criarVariacao(Company $empresa, string $codigo, array $extra = []): EstruturaProdutoVariacao
@@ -256,7 +265,12 @@ class TravaDaVariacaoVinculadaTest extends TestCase
 
         $this->cadastro()->gravarLinhas($empresa, $linhas, $this->atorCliente($empresa), ProdutoCadastroService::MODO_GRADE);
 
-        $this->assertSame(1, $consultas, 'uma consulta a bling_vinculos para o lote de 50 linhas — não uma por linha');
+        // DUAS consultas CONSTANTES para o lote de 50 linhas (nenhuma por linha): uma em
+        // `carregar()` (a trava, Task 1) e uma em `ProdutoLinhas::paraProdutos` (o bloco
+        // `bling` da resposta, Task 2) — a mesma regra, chamada duas vezes porque
+        // `gravarLinhas` monta a própria resposta com `paraProdutos` no fim. Se fosse uma
+        // consulta por linha, 50 linhas dariam 50+, não 2.
+        $this->assertSame(2, $consultas, 'duas consultas CONSTANTES (carregar + paraProdutos da resposta) para o lote de 50 linhas — não uma por linha');
     }
 
     // ═══ Teste 10 — aviso em pt-BR quando a linha é travada ═════════════════════════
@@ -275,5 +289,140 @@ class TravaDaVariacaoVinculadaTest extends TestCase
         $this->assertStringContainsString('estoque', $aviso[0]);
         $this->assertStringContainsString('Ref', $aviso[0]);
         $this->assertStringContainsString('Bling', $aviso[0]);
+    }
+
+    // ═══ Task 2 — o sinal no modelo de leitura (ProdutoLinhas) ═════════════════════
+
+    public function test_leitura_variacao_vinculada_com_conexao_ativa_e_estoque_ativo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-1');
+        $this->conexaoAtiva($empresa);
+        $this->vincular($empresa, $variacao, 'BL-R1');
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $this->assertSame(['vinculado' => true, 'estoque_travado' => true, 'sku_travado' => true], [
+            'vinculado' => $item['bling']['vinculado'], 'estoque_travado' => $item['bling']['estoque_travado'], 'sku_travado' => $item['bling']['sku_travado'],
+        ]);
+    }
+
+    public function test_leitura_sem_vinculo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-2');
+        $this->conexaoAtiva($empresa);
+        // Nenhum BlingVinculo criado para esta variação.
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $this->assertFalse($item['bling']['vinculado']);
+        $this->assertFalse($item['bling']['estoque_travado']);
+        $this->assertFalse($item['bling']['sku_travado']);
+    }
+
+    public function test_leitura_estoque_ativo_false_bate_com_a_regra_do_servico(): void
+    {
+        // Bate exatamente com o Teste 6 da Task 1 (mesma regra, lado da leitura).
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-3');
+        $this->conexaoAtiva($empresa, ['estoque_ativo' => false]);
+        $this->vincular($empresa, $variacao, 'BL-R3');
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $this->assertFalse($item['bling']['estoque_travado']);
+        $this->assertTrue($item['bling']['sku_travado']);
+    }
+
+    public function test_leitura_vinculo_removido_no_bling(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-4');
+        $this->conexaoAtiva($empresa);
+        $this->vincular($empresa, $variacao, 'BL-R4', ['situacao' => BlingVinculo::SITUACAO_REMOVIDO_NO_BLING]);
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $this->assertFalse($item['bling']['vinculado']);
+        $this->assertFalse($item['bling']['estoque_travado']);
+        $this->assertFalse($item['bling']['sku_travado']);
+        $this->assertTrue($item['bling']['removido'], 'a tela precisa poder avisar que o produto saiu do Bling');
+    }
+
+    public function test_leitura_saldo_lido_em_iso_quando_ha_leitura_e_nulo_quando_nao_ha(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+
+        $comLeitura = $this->criarVariacao($empresa, 'BLR-5A');
+        $semLeitura = $this->criarVariacao($empresa, 'BLR-5B');
+        $this->conexaoAtiva($empresa);
+        $this->vincular($empresa, $comLeitura, 'BL-R5A', ['saldo' => 3, 'saldo_lido_em' => now()]);
+        $this->vincular($empresa, $semLeitura, 'BL-R5B');
+
+        $itemComLeitura = $this->itemDaVariacao($empresa, $comLeitura);
+        $itemSemLeitura = $this->itemDaVariacao($empresa, $semLeitura);
+
+        $this->assertIsString($itemComLeitura['bling']['saldo_lido_em']);
+        $this->assertNull($itemSemLeitura['bling']['saldo_lido_em']);
+    }
+
+    public function test_leitura_de_30_produtos_faz_uma_consulta_por_tabela(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conexaoAtiva($empresa);
+
+        $produtoIds = [];
+        foreach (range(1, 30) as $i) {
+            $produto = EstruturaProduto::create(['company_id' => $empresa->id, 'nome' => "Produto leitura {$i}"]);
+            $variacao = EstruturaProdutoVariacao::create([
+                'produto_id' => $produto->id, 'company_id' => $empresa->id, 'ordem' => 1, 'codigo' => "BLR-MASSA-{$i}",
+            ]);
+            $this->vincular($empresa, $variacao, "BL-RMASSA-{$i}");
+            $produtoIds[] = $produto->id;
+        }
+
+        $consultas = ['bling_vinculos' => 0, 'bling_conexoes' => 0];
+        DB::listen(function ($q) use (&$consultas) {
+            foreach (array_keys($consultas) as $tabela) {
+                if (str_starts_with(strtolower($q->sql), 'select') && str_contains($q->sql, $tabela)) {
+                    $consultas[$tabela]++;
+                }
+            }
+        });
+
+        app(ProdutoLinhas::class)->paraProdutos($empresa, $produtoIds);
+
+        $this->assertSame(1, $consultas['bling_vinculos'], 'uma consulta a bling_vinculos para os 30 produtos');
+        $this->assertSame(1, $consultas['bling_conexoes'], 'uma consulta a bling_conexoes para os 30 produtos');
+    }
+
+    public function test_leitura_empresa_sem_nenhuma_conexao_ainda_traz_a_chave_bling(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-7');
+        // NENHUM BlingConexao criado para esta empresa.
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $this->assertArrayHasKey('bling', $item, 'a chave nunca falta — recarga parcial do Inertia não pode derrubar a tela');
+        $this->assertFalse($item['bling']['vinculado']);
+        $this->assertFalse($item['bling']['estoque_travado']);
+        $this->assertFalse($item['bling']['sku_travado']);
+        $this->assertFalse($item['bling']['removido']);
+        $this->assertNull($item['bling']['saldo_lido_em']);
+    }
+
+    public function test_leitura_bloco_bling_nao_cita_a_plataforma_de_venda(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->criarVariacao($empresa, 'BLR-8');
+        $this->conexaoAtiva($empresa);
+        $this->vincular($empresa, $variacao, 'BL-R8', ['saldo' => 4, 'saldo_lido_em' => now()]);
+
+        $item = $this->itemDaVariacao($empresa, $variacao);
+
+        $texto = json_encode($item['bling']);
+        $this->assertDoesNotMatchRegularExpression('/mercado|an[uú]ncio|public(ar|a[cç][aã]o|ador)|\bMLB?\b|shopee|magalu|amazon/i', $texto);
     }
 }

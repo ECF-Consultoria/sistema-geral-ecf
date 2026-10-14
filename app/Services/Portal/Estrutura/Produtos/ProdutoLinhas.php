@@ -2,6 +2,8 @@
 
 namespace App\Services\Portal\Estrutura\Produtos;
 
+use App\Models\BlingConexao;
+use App\Models\BlingVinculo;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
@@ -91,6 +93,7 @@ class ProdutoLinhas
             ->keyBy('variacao_id');
 
         $capas = $this->capas($empresa, $variacaoIds);
+        $bling = $this->blingPorVariacao($empresa, $variacaoIds);
 
         // Passo 1: o que depende só dos volumes; Passo 2: UMA estimativa de frete para todas.
         // Os limites do ME2 são os da modalidade de envio da conta, já lida pela cotação real
@@ -125,7 +128,7 @@ class ProdutoLinhas
             foreach ($produto->variacoes as $indice => $variacao) {
                 [$volumes, $log] = $base[$variacao->id];
 
-                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id), $capas[$variacao->id] ?? null);
+                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id), $capas[$variacao->id] ?? null, $bling[$variacao->id]);
             }
         }
 
@@ -160,7 +163,57 @@ class ProdutoLinhas
         return $capas;
     }
 
-    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta, ?string $capa = null): array
+    /**
+     * O bloco `bling` de cada variação (184-10, CONTEXT §4.1) — SEMPRE presente no retorno,
+     * mesmo para empresa sem nenhuma conexão com o Bling (tudo `false`, `saldo_lido_em`
+     * nulo): chave que às vezes falta derruba tela (precedente do `cabecalho: null` em
+     * `Configuracoes.jsx`).
+     *
+     * As travas vêm de `BlingVinculo::travas()` — a MESMA regra que
+     * `ProdutoCadastroService::gravarLinha` usa para decidir o que a linha pode escrever
+     * (duas implementações divergindo já aconteceu neste projeto com o ERP declarado).
+     * Uma consulta a `bling_conexoes` e, só quando ela existe, uma a `bling_vinculos` — para
+     * o lote INTEIRO, nunca por variação.
+     *
+     * @param  array<int, int>  $variacaoIds
+     * @return array<int, array{vinculado: bool, removido: bool, estoque_travado: bool, sku_travado: bool, saldo_lido_em: ?string}>
+     */
+    private function blingPorVariacao(Company $empresa, array $variacaoIds): array
+    {
+        $vazio = ['vinculado' => false, 'removido' => false, 'estoque_travado' => false, 'sku_travado' => false, 'saldo_lido_em' => null];
+
+        if ($variacaoIds === []) {
+            return [];
+        }
+
+        $mapa = [];
+        $conexao = BlingConexao::query()->where('company_id', $empresa->id)->first();
+
+        if ($conexao) {
+            BlingVinculo::query()
+                ->where('company_id', $empresa->id)
+                ->whereIn('variacao_id', $variacaoIds)
+                ->get(['variacao_id', 'situacao', 'saldo_lido_em'])
+                ->each(function (BlingVinculo $vinculo) use (&$mapa, $conexao) {
+                    $travas = BlingVinculo::travas($conexao, $vinculo);
+                    $mapa[(int) $vinculo->variacao_id] = [
+                        'vinculado'       => $vinculo->situacao === BlingVinculo::SITUACAO_VINCULADO,
+                        'removido'        => $vinculo->situacao === BlingVinculo::SITUACAO_REMOVIDO_NO_BLING,
+                        'estoque_travado' => $travas['estoque_travado'],
+                        'sku_travado'     => $travas['sku_travado'],
+                        'saldo_lido_em'   => $vinculo->saldo_lido_em?->toIso8601String(),
+                    ];
+                });
+        }
+
+        foreach ($variacaoIds as $id) {
+            $mapa[$id] ??= $vazio;
+        }
+
+        return $mapa;
+    }
+
+    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta, ?string $capa, array $bling): array
     {
         $familia   = $produto->familia?->nome;
         $ambientes = $produto->ambientes->pluck('nome')->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
@@ -222,6 +275,10 @@ class ProdutoLinhas
                     'quantidade' => (int) $c->quantidade,
                 ])->sortBy([['fase', 'asc'], ['quantidade', 'asc'], ['sku', 'asc']])->values()->all(),
             ] : null,
+            // 184-10 (CONTEXT §4.1): sempre presente, mesmo sem nenhuma conexão com o Bling
+            // (tudo `false`, `saldo_lido_em` nulo) — chave ausente numa recarga parcial do
+            // Inertia já derrubou tela (precedente do `cabecalho: null` em Configuracoes.jsx).
+            'bling'                => $bling,
         ];
     }
 }
