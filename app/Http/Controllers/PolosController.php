@@ -20,7 +20,9 @@ use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
+use App\Models\PoloTarefaMeta;
 use App\Models\PolosComentario;
+use App\Models\Ppa;
 use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -355,6 +357,12 @@ class PolosController extends Controller
         // já grava — uma consulta para a lista toda, nenhuma chamada nova à Adman.
         $vinculoAdman = VinculoAdmanPolos::carregar();
 
+        // Tarefas do time (TKT-0017): o "feito" de Campanha e de PPA sai destas duas leituras,
+        // uma consulta cada para a lista inteira. Campanha usa a mesma regra do filtro de
+        // /polos/empresas (DEV-43); PPA = a empresa tem ao menos um plano.
+        $leiturasAds = PoloAdsStatus::frescos()->get()->keyBy(fn (PoloAdsStatus $l) => (string) $l->cust_id);
+        $comPpa      = Ppa::whereNotNull('mlb_empresa_id')->distinct()->pluck('mlb_empresa_id')->flip();
+
         // Lista operacional ancorada em MlbEmpresa projeto=POLOS (só DB — sem ECF Drive).
         // ATIVAS apenas: empresas arquivadas (ausentes na planilha) saem daqui e NÃO
         // contam em nada — vão para a aba "Arquivados" (prop `arquivadas`, abaixo).
@@ -370,7 +378,7 @@ class PolosController extends Controller
             ->get()
             // Projeto canônico: coluna `projeto`, com fallback por fase (empresas antigas).
             ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
-            ->map(function ($e) use ($vinculoAdman) {
+            ->map(function ($e) use ($vinculoAdman, $leiturasAds, $comPpa) {
                 $impl  = $e->implementacao;
                 $prazo = $impl?->infoPrazo();
 
@@ -438,6 +446,13 @@ class PolosController extends Controller
                     // sem Cust ID). Regra em VinculoAdmanPolos.
                     'adman_vinculo'            => $vinculoAdman->status($e->fase, $e->cust_id),
                     'adman_lido_em'            => $vinculoAdman->lidoEm($e->cust_id),
+                    // Tarefas do time (TKT-0017), só leitura: situação das campanhas ('ativa',
+                    // 'desligada', 'sem_campanha' ou null = não verificado) e se há PPA.
+                    'ads_campanha'             => PoloAdsStatus::situacaoDaEmpresa(
+                        $leiturasAds[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? null,
+                        $e->ads_desligado === null ? null : (bool) $e->ads_desligado,
+                    ),
+                    'tem_ppa'                  => isset($comPpa[$e->id]),
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
                     // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).
                     'link_whatsapp'            => $impl?->link_whatsapp,
@@ -531,6 +546,10 @@ class PolosController extends Controller
             // Metas de entrantes por região × mês (aba Metas). Alvos cadastrados; realizado
             // é derivado no front a partir de `empresas` (cust_id + acesso + grupo whatsapp).
             'metasEntrada' => PoloMetaEntrada::all(['polo', 'mes', 'meta']),
+            // Tarefas do time com meta editável (TKT-0017): cartões da tela "Tarefas" do Modo TV
+            // e da sub-aba "Tarefas do time". O "feito" é calculado no front (lib/polosTarefas).
+            'tarefasMeta' => PoloTarefaMeta::with('responsavel:id,name')->orderBy('id')->get()
+                ->map(fn (PoloTarefaMeta $t) => $t->paraTela())->values(),
             // Props do modal "Ver" (mesma fonte da tela de Onboarding — MlbImplementacaoController@index).
             'checklist'         => MlbImplementacao::CHECKLIST,
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
@@ -1211,6 +1230,79 @@ class PolosController extends Controller
         Configuracao::set('polo_meta_faturamento', $meta);
 
         return response()->json(['ok' => true, 'meta' => $meta]);
+    }
+
+    // ═══ TAREFAS DO TIME (TKT-0017) ═══
+    // Cartões da tela "Tarefas" do Modo TV: indicador de uma lista fixa, meta, responsável e
+    // prazo, editados pela gestão. Mesmo gate operacional do painel e do salvarMetaEntrada —
+    // quem vê o Painel acompanha e ajusta a meta do time. JSON, como as outras metas do painel.
+
+    public function tarefaStore(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa = PoloTarefaMeta::create($this->dadosDaTarefa($request) + [
+            'criado_por'     => $request->user()->id,
+            'atualizado_por' => $request->user()->id,
+        ]);
+
+        return response()->json(['ok' => true, 'tarefa' => $tarefa->load('responsavel:id,name')->paraTela()]);
+    }
+
+    public function tarefaUpdate(Request $request, PoloTarefaMeta $tarefa): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa->update($this->dadosDaTarefa($request) + ['atualizado_por' => $request->user()->id]);
+
+        return response()->json(['ok' => true, 'tarefa' => $tarefa->load('responsavel:id,name')->paraTela()]);
+    }
+
+    /** Remove o cartão da tela (soft delete: o histórico da meta fica no activity_log). */
+    public function tarefaDestroy(Request $request, PoloTarefaMeta $tarefa): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa->update(['atualizado_por' => $request->user()->id]);
+        $tarefa->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Gate operacional do Painel Polos: admin OU permissão mlb.projetos (mesma régua de painel()). */
+    private function checkPainelOperacional(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+    }
+
+    /**
+     * Valida e normaliza o formulário do cartão. Estágio-alvo só existe na Publicação (e cai no
+     * padrão "Estágio 1" = saiu de Não Listado quando vem vazio); nos outros indicadores é limpo,
+     * para um cartão que trocou de indicador não carregar um estágio que não usa.
+     */
+    private function dadosDaTarefa(Request $request): array
+    {
+        $data = $request->validate([
+            'indicador'      => ['required', 'string', \Illuminate\Validation\Rule::in(array_keys(PoloTarefaMeta::INDICADORES))],
+            'estagio_alvo'   => ['nullable', 'string', \Illuminate\Validation\Rule::in(PoloTarefaMeta::ESTAGIOS_ALVO)],
+            'titulo'         => ['required', 'string', 'max:120'],
+            'descricao'      => ['nullable', 'string', 'max:500'],
+            'meta'           => ['required', 'integer', 'min:0', 'max:100000'],
+            'responsavel_id' => ['nullable', 'integer', 'exists:users,id'],
+            'prazo'          => ['nullable', 'date'],
+        ]);
+
+        $data['estagio_alvo'] = $data['indicador'] === 'publicacao'
+            ? ($data['estagio_alvo'] ?? PoloTarefaMeta::ESTAGIO_ALVO_PADRAO)
+            : null;
+        $data['descricao'] = ($data['descricao'] ?? null) ?: null;
+
+        return $data;
     }
 
     /**

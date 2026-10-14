@@ -1643,6 +1643,10 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
     // Meta ÚNICA de faturamento Polos (card "% Geral da meta"; JSON; admin-only).
     Route::post('/polos-painel/meta-faturamento', [PolosController::class, 'salvarMetaFaturamento'])->name('polos-painel.meta-faturamento');
+    // Tarefas do time com meta editável (tela "Tarefas" do Modo TV — TKT-0017; JSON; mesmo gate operacional).
+    Route::post('/polos-painel/tarefas',             [PolosController::class, 'tarefaStore'])->name('polos-painel.tarefas.store');
+    Route::put('/polos-painel/tarefas/{tarefa}',     [PolosController::class, 'tarefaUpdate'])->name('polos-painel.tarefas.update');
+    Route::delete('/polos-painel/tarefas/{tarefa}',  [PolosController::class, 'tarefaDestroy'])->name('polos-painel.tarefas.destroy');
     // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
     Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
     Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');

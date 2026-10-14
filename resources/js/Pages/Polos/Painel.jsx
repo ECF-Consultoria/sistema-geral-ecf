@@ -35,6 +35,7 @@ import { corAds } from './components/adsCor';
 import OperacoesPanel from './components/OperacoesPanel';
 import MetasPanel from './components/MetasPanel';
 import EntrantesM0Panel from './components/EntrantesM0Panel';
+import TarefasPanel from './components/TarefasPanel';
 import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
@@ -663,6 +664,7 @@ export default function PolosPainel({
     usuarios = [],
     opcoes   = {},
     metasEntrada = [],
+    tarefasMeta = [],
     checklist = [],
     erp_opcoes = [],
     integrador_opcoes = [],
@@ -690,7 +692,8 @@ export default function PolosPainel({
     useEffect(() => {
         try { window.sessionStorage.setItem('polos-painel-escopo', soEscopo ? 'escopo' : 'todas'); } catch (_) { /* quota/priv */ }
     }, [soEscopo]);
-    // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Visão geral" (MetasPanel).
+    // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Visão geral" (MetasPanel)
+    // | "Tarefas do time" (cartões com meta editável da tela Tarefas do Modo TV — TKT-0017).
     const [metaView, setMetaView] = useState('entrantes');
 
     // Metas de entrantes por região × mês (aba Metas) — seed das props; edição otimista.
@@ -1201,6 +1204,20 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-entrada'), { polo, mes, meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [csrf_token]);
 
+    // Tarefas do time (TKT-0017): grava e recarrega só a lista. Devolve a Promise para o
+    // formulário mostrar o erro de validação em vez de fechar calado.
+    const salvarTarefa = useCallback((dados, id) => {
+        const cfg = { headers: { 'X-CSRF-TOKEN': csrf_token } };
+        const req = id
+            ? window.axios.put(route('mlb.polos-painel.tarefas.update', id), dados, cfg)
+            : window.axios.post(route('mlb.polos-painel.tarefas.store'), dados, cfg);
+        return req.then((r) => { router.reload({ only: ['tarefasMeta'], preserveScroll: true, preserveState: true }); return r; });
+    }, [csrf_token]);
+    const removerTarefa = useCallback((id) => (
+        window.axios.delete(route('mlb.polos-painel.tarefas.destroy', id), { headers: { 'X-CSRF-TOKEN': csrf_token } })
+            .then((r) => { router.reload({ only: ['tarefasMeta'], preserveScroll: true, preserveState: true }); return r; })
+    ), [csrf_token]);
+
     // Abre a edição da meta de faturamento com o valor atual (em R$ inteiros) no input.
     const abrirEdicaoMeta = useCallback(() => {
         setMetaInput(String(Math.round(metaFat)));
@@ -1287,7 +1304,7 @@ export default function PolosPainel({
     // Recarga automática dos dados enquanto a TV está ligada: `only` mantém o payload
     // enxuto (empresas + metas), e o finTick refaz o fetch do cockpit financeiro.
     const atualizarDadosTv = useCallback(() => {
-        router.reload({ only: ['empresas', 'metasEntrada', 'arquivadas'], preserveScroll: true, preserveState: true });
+        router.reload({ only: ['empresas', 'metasEntrada', 'arquivadas', 'tarefasMeta'], preserveScroll: true, preserveState: true });
         if (isAdmin) setFinTick((t) => t + 1);
     }, [isAdmin]);
     // Esc sai da tela cheia (exceto se um modal estiver aberto — aí o Esc é dele).
@@ -1528,8 +1545,10 @@ export default function PolosPainel({
                         </button>
                         <button type="button" onClick={toggleModoTv}
                             title={lente === 'metas'
-                                ? 'Painel de parede da TV — abre a tela de METAS (entrantes × meta do mês). Setas ← → alternam para Faturamento.'
-                                : 'Painel de parede da TV — abre a tela de FATURAMENTO POLOS. Setas ← → alternam para Metas.'}
+                                ? (metaView === 'tarefas'
+                                    ? 'Painel de parede da TV — abre a tela de TAREFAS (evolução das tarefas do time × meta). Setas ← → alternam entre as telas.'
+                                    : 'Painel de parede da TV — abre a tela de METAS (entrantes × meta do mês). Setas ← → alternam entre as telas.')
+                                : 'Painel de parede da TV — abre a tela de FATURAMENTO POLOS. Setas ← → alternam entre as telas.'}
                             className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
                                 modoTv ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
                                        : 'border-white/[0.1] bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]')}>
@@ -1551,7 +1570,7 @@ export default function PolosPainel({
                     <div className="space-y-4">
                         {/* Sub-toggle da lente Metas */}
                         <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
-                            {[['entrantes', 'Entrantes (M0)'], ['torre', 'Visão geral']].map(([k, lbl]) => (
+                            {[['entrantes', 'Entrantes (M0)'], ['torre', 'Visão geral'], ['tarefas', 'Tarefas do time']].map(([k, lbl]) => (
                                 <button key={k} type="button" onClick={() => setMetaView(k)}
                                     className={cn('rounded-md px-3 py-1.5 text-[12px] font-semibold transition',
                                         metaView === k ? 'bg-ecf-yellow/15 text-ecf-yellow' : 'text-white/50 hover:text-white/80')}>
@@ -1562,6 +1581,9 @@ export default function PolosPainel({
 
                         {metaView === 'entrantes' ? (
                             <EntrantesM0Panel empresas={empresas} regioes={opcoes.polo ?? []} metasEntrada={metas} />
+                        ) : metaView === 'tarefas' ? (
+                            <TarefasPanel empresas={empresas} tarefas={tarefasMeta} usuarios={usuarios}
+                                          onSalvar={salvarTarefa} onRemover={removerTarefa} />
                         ) : (
                             <MetasPanel
                                 empresas={empresas}
@@ -1724,10 +1746,11 @@ export default function PolosPainel({
                 <ModoTV
                     empresas={empresas}
                     metasEntrada={metas}
+                    tarefas={tarefasMeta}
                     regioes={opcoes.polo ?? []}
                     cockpit={cockpit}
                     isAdmin={isAdmin}
-                    lenteInicial={lente}
+                    lenteInicial={lente === 'metas' && metaView === 'tarefas' ? 'tarefas' : lente}
                     onSair={toggleModoTv}
                     onAtualizar={atualizarDadosTv}
                 />
