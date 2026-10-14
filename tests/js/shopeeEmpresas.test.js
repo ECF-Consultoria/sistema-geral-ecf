@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO } from '../../resources/js/lib/shopeeEmpresas.js';
+import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO, estadoDoLink } from '../../resources/js/lib/shopeeEmpresas.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Lente por grupo da aba Empresas da Shopee.
@@ -66,5 +66,61 @@ describe('opcoesDeGrupo', () => {
 
     test('nao quebra sem grupos', () => {
         assert.deepEqual(opcoesDeGrupo(EMPRESAS, []).opcoes, []);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Coluna "Conexão": o "Regerar" gravava o link novo, mas a célula seguia
+// "Link expirado" porque a validade era lida só das props da página.
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('estadoDoLink', () => {
+    const AGORA = new Date('2026-10-14T12:00:00Z');
+    const VENCIDA = {
+        shopee_link_url: 'https://admin/shopee/conectar/7?expires=1&signature=velha',
+        shopee_link_generated_at: '2026-09-23T12:00:00Z',
+        shopee_link_expires_at: '2026-09-30T12:00:00Z',
+    };
+
+    test('link do banco vencido: marca vencido e NÃO oferece a url para copiar', () => {
+        const link = estadoDoLink(VENCIDA, null, AGORA);
+        assert.equal(link.vencido, true);
+        assert.equal(link.pendente, false);
+        assert.equal(link.url, null);
+    });
+
+    test('depois de regerar vale a validade devolvida pelo servidor, não a das props', () => {
+        const gerado = {
+            url: 'https://admin/shopee/conectar/7?expires=2&signature=nova',
+            expires_at: '2026-10-21T12:00:00Z',
+        };
+        const link = estadoDoLink(VENCIDA, gerado, AGORA);
+        assert.equal(link.vencido, false);
+        assert.equal(link.pendente, true);
+        assert.equal(link.dias, 7);
+        assert.equal(link.url, gerado.url);
+    });
+
+    test('link regerado sem expires_at na resposta não herda a validade vencida', () => {
+        const link = estadoDoLink(VENCIDA, { url: 'https://admin/nova' }, AGORA);
+        assert.equal(link.vencido, false);
+        assert.equal(link.pendente, true);
+        assert.equal(link.url, 'https://admin/nova');
+    });
+
+    test('link do banco ainda válido: pendente com os dias restantes', () => {
+        const link = estadoDoLink({
+            shopee_link_url: 'https://admin/x',
+            shopee_link_generated_at: '2026-10-12T12:00:00Z',
+            shopee_link_expires_at: '2026-10-19T12:00:00Z',
+        }, null, AGORA);
+        assert.equal(link.pendente, true);
+        assert.equal(link.vencido, false);
+        assert.equal(link.dias, 5);
+    });
+
+    test('empresa sem link: nem pendente nem vencido (botão "Gerar link")', () => {
+        const link = estadoDoLink({ shopee_link_url: null, shopee_link_generated_at: null, shopee_link_expires_at: null }, null, AGORA);
+        assert.deepEqual(link, { url: null, dias: null, vencido: false, pendente: false });
     });
 });
