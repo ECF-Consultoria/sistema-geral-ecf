@@ -4,6 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,7 +41,8 @@ import { lerSemComentarios } from './_fonte.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(__dirname, '../..');
 
-const CAMINHO_ATALHOS = path.join(RAIZ, 'resources/js/Components/Mlb/Publicador/publicacoes/atalhosDaLista.js');
+const CAMINHO_RELATIVO_ATALHOS = 'resources/js/Components/Mlb/Publicador/publicacoes/atalhosDaLista.js';
+const CAMINHO_ATALHOS = path.join(RAIZ, CAMINHO_RELATIVO_ATALHOS);
 const CAMINHO_PAGINA = path.join(RAIZ, 'resources/js/Pages/Mlb/MeusAnuncios.jsx');
 
 global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
@@ -63,8 +66,19 @@ export default function AppLayout({ children, title }) {
 }
 `, 'utf8');
 
+// A grade do módulo de massa é canvas puro e importa um CSS no topo do módulo —
+// bundle de CSS dentro de bundle ESM de Node não roda. Ela não é assunto deste
+// gate; o stub mantém o grafo de import honesto sem arrastar o canvas.
+const STUB_GRADE = path.join(__dirname, `.atalhos-grade-stub-${process.pid}.mjs`);
+fs.writeFileSync(STUB_GRADE, `
+import React from 'react';
+export default function GradeAnuncioGlide() {
+    return React.createElement('div', { 'data-grade-stub': 'true' });
+}
+`, 'utf8');
+
 after(() => {
-    for (const f of [STUB_INERTIA, STUB_LAYOUT]) fs.rmSync(f, { force: true });
+    for (const f of [STUB_INERTIA, STUB_LAYOUT, STUB_GRADE]) fs.rmSync(f, { force: true });
 });
 
 async function montar(relativo, rotulo) {
@@ -78,6 +92,7 @@ async function montar(relativo, rotulo) {
         logLevel: 'silent',
         alias: {
             '@/Layouts/AppLayout': STUB_LAYOUT,
+            '@/Pages/Mlb/GradeAnuncioGlide': STUB_GRADE,
             '@inertiajs/react': STUB_INERTIA,
             '@': path.resolve(RAIZ, 'resources/js'),
         },
@@ -97,6 +112,8 @@ async function montar(relativo, rotulo) {
 
 // ─── REND-03: tudo montado aqui, no topo do módulo ───
 const ATALHOS = await montar('resources/js/Components/Mlb/Publicador/publicacoes/atalhosDaLista.js', 'atalhos');
+const MOD_PAGINA = await montar('resources/js/Pages/Mlb/MeusAnuncios.jsx', 'pg-atalhos');
+const PAGINA = MOD_PAGINA.default;
 
 const {
     ACOES, estaDigitando, proximoIndice, interpretarTecla, interpretarTeclaDaBusca, idsNaOrdemVisual,
@@ -509,4 +526,345 @@ test('180-11 caso 7: atalhosDaLista.js não tem uma única classe do Tailwind', 
     assert.match(fonte, /export function proximoIndice\(/);
     assert.match(fonte, /export function interpretarTeclaDaBusca\(/);
     assert.match(fonte, /ignoraAtalho/, 'reusa a guarda da Fase 177, não reimplementa');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASO 12 — `blocosDaLista` e `chaveDoItem` da PÁGINA: uma casa só
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('180-11 caso 12: blocosDaLista — a travessia que o teclado e a tabela compartilham', () => {
+    const { blocosDaLista, chaveDoItem, grupoAberto, CLASSE_DA_LINHA_ATIVA } = MOD_PAGINA;
+
+    const itens = [
+        { ml_item_id: 'MLB1' }, { ml_item_id: 'MLB2' }, { ml_item_id: 'MLB3' },
+    ];
+    const grupos = [
+        { produto_id: 10, ml_item_ids: ['MLB2'] },
+        { produto_id: 20, ml_item_ids: ['MLB1', 'MLB3'] },
+    ];
+
+    // Visão por grupo: a ordem é a DOS GRUPOS, não a de `anuncios.data`.
+    const porGrupo = blocosDaLista({ itens, grupos, porGrupo: true, buscaAtiva: false, colapsados: [] });
+    assert.equal(porGrupo.length, 2);
+    assert.deepEqual(idsNaOrdemVisual(porGrupo, chaveDoItem), ['MLB2', 'MLB1', 'MLB3'],
+        'a ordem VISUAL difere da ordem de anuncios.data — é por isso que a função existe');
+    assert.equal(porGrupo[0].primeiro, true);
+    assert.equal(porGrupo[1].primeiro, false);
+
+    // ⚠️ Grupo RECOLHIDO não contribui com id nenhum: sem isto, a seta ↓
+    // focaria uma linha que o usuário não vê.
+    const comRecolhido = blocosDaLista({ itens, grupos, porGrupo: true, buscaAtiva: false, colapsados: ['10'] });
+    assert.equal(comRecolhido[0].aberto, false);
+    assert.deepEqual(comRecolhido[0].itens, []);
+    assert.deepEqual(idsNaOrdemVisual(comRecolhido, chaveDoItem), ['MLB1', 'MLB3']);
+
+    // ⚠️ A busca ativa FORÇA aberto (LIST-09) — a regra continua em
+    // `grupoAberto()`, e `blocosDaLista` a CHAMA em vez de repeti-la.
+    const comBusca = blocosDaLista({ itens, grupos, porGrupo: true, buscaAtiva: true, colapsados: ['10', '20'] });
+    assert.equal(comBusca[0].aberto, true);
+    assert.deepEqual(idsNaOrdemVisual(comBusca, chaveDoItem), ['MLB2', 'MLB1', 'MLB3']);
+    assert.equal(grupoAberto(true, ['10'], '10'), true, 'a regra de LIST-09 segue exportada e viva');
+
+    // Visão "Lista": UM bloco plano, sem linha de grupo, na ordem do servidor.
+    const plana = blocosDaLista({ itens, grupos, porGrupo: false, buscaAtiva: false, colapsados: [] });
+    assert.equal(plana.length, 1);
+    assert.equal(plana[0].grupo, null, 'bloco plano não desenha linha de grupo');
+    assert.deepEqual(idsNaOrdemVisual(plana, chaveDoItem), ['MLB1', 'MLB2', 'MLB3']);
+
+    // ⚠️ Visão por grupo SEM grupo nenhum do servidor cai no bloco plano: sem
+    // isto a tela esconderia linhas que o rodapé está contando.
+    const semGrupo = blocosDaLista({ itens, grupos: [], porGrupo: true, buscaAtiva: false, colapsados: [] });
+    assert.equal(semGrupo.length, 1);
+    assert.equal(semGrupo[0].grupo, null);
+    assert.deepEqual(idsNaOrdemVisual(semGrupo, chaveDoItem), ['MLB1', 'MLB2', 'MLB3']);
+
+    // Entrada adversa: nunca lança, nunca devolve algo que não seja lista.
+    const adversos = [undefined, {}, { itens: null, grupos: null }, { itens: 'x', grupos: 42, porGrupo: true },
+        { itens, grupos: [null, 'x', 42], porGrupo: true }, { itens: [null, 42, 'x'], grupos, porGrupo: true }];
+    for (const bruto of adversos) {
+        assert.doesNotThrow(() => blocosDaLista(bruto));
+        const saida = blocosDaLista(bruto);
+        assert.ok(Array.isArray(saida));
+        assert.doesNotThrow(() => idsNaOrdemVisual(saida, chaveDoItem));
+    }
+    assert.doesNotThrow(() => blocosDaLista({
+        itens: [{ ml_item_id: { toString: null } }],
+        grupos: [{ produto_id: { toString: null }, ml_item_ids: [{ toString: null }] }],
+        porGrupo: true, buscaAtiva: false, colapsados: [{ toString: null }],
+    }), 'chave objeto não derruba a travessia (a busca de chave coage e LANÇA)');
+
+    // `chaveDoItem` é a MESMA regra da `key` do React e do `sel` da URL.
+    assert.equal(chaveDoItem({ ml_item_id: 'MLB9' }), 'MLB9');
+    assert.equal(chaveDoItem({ ml_item_id: 42 }), '42');
+    assert.equal(chaveDoItem({ ml_item_id: null }), null);
+    assert.equal(chaveDoItem(null), null);
+    assert.equal(chaveDoItem({ ml_item_id: { toString: null } }), null);
+
+    // A classe-gancho da linha ativa é literal e NÃO é vocabulário do Tailwind.
+    assert.equal(CLASSE_DA_LINHA_ATIVA, 'js-pub-linha-ativa');
+    assert.doesNotMatch(CLASSE_DA_LINHA_ATIVA, /^(?:bg|text|border|rounded)-/,
+        'a classe-gancho não pode parecer utilitário do Tailwind');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASO 8 — ⚠️ O QUE SÓ O LITERAL PROVA
+//
+// ⚠️⚠️ ESTE BLOCO NÃO PROVA COMPORTAMENTO, E ISSO ESTÁ ESCRITO NA SUMMARY.
+// `renderToStaticMarkup` não dispara efeito de React, não tem `window`, não
+// entrega `keydown` e não mede `preventDefault`. O que estas asserções fazem é
+// impedir que as PEÇAS desapareçam — o ouvinte, o cleanup, o literal do
+// temporizador, as duas opções do `router.get`, a ausência da segunda API de
+// histórico. Que o ouvinte faça a coisa certa é provado no caso 2 (função pura)
+// e conferido na validação visual com o usuário.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('180-11 caso 8: as 9 peças que só o literal da fonte prova', async (contexto) => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+
+    await contexto.test('(1) o ouvinte de keydown EXISTE e é REMOVIDO no cleanup (T-180-11-D)', () => {
+        assert.match(fonte, /window\.addEventListener\('keydown'/,
+            'sem o ouvinte, nenhum atalho desta tela existe');
+        assert.match(fonte, /window\.removeEventListener\('keydown'/,
+            'ouvinte sem cleanup empilha um atalho por navegação do Inertia');
+
+        // ⚠️ CONTAGEM: exatamente UM de cada. Dois `add` com um `remove` é
+        // vazamento que a presença não pega.
+        const adiciona = [...fonte.matchAll(/addEventListener\('keydown'/g)].length;
+        const remove = [...fonte.matchAll(/removeEventListener\('keydown'/g)].length;
+        assert.equal(adiciona, 1, 'esperava 1 addEventListener(keydown), achei ' + adiciona);
+        assert.equal(remove, 1, 'esperava 1 removeEventListener(keydown), achei ' + remove);
+    });
+
+    await contexto.test('(2) o 1300 do selo copiado, com clearTimeout (LIST-11, critério 9)', () => {
+        // ⚠️ `String.raw` OBRIGATÓRIO: a mesma regex escrita com template
+        // literal teria `\b` = BACKSPACE (U+0008) e seria VAZIA por
+        // construção — passaria com qualquer número.
+        const RE_1300 = new RegExp(String.raw`\b1300\b`);
+        assert.match(fonte, RE_1300, 'o literal medido no protótipo é 1300 ms');
+        // ⚠️ ISCA da regex: ela NÃO casa com um número que só CONTÉM 1300.
+        assert.ok(!RE_1300.test('const x = 13000;'), 'a borda de palavra está mesmo valendo');
+        assert.ok(!RE_1300.test('const x = 11300;'));
+        assert.ok(RE_1300.test('setTimeout(f, 1300)'));
+
+        assert.match(fonte, /clearTimeout\(/, 'temporizador sem clearTimeout acumula (T-180-11-D2)');
+    });
+
+    await contexto.test('(3) `preserveState: true` e `replace: true` no round-trip', () => {
+        assert.match(fonte, /preserveState: true/,
+            'sem preserveState, cada filtro remontaria a página e perderia scroll/colapsados');
+        assert.match(fonte, /replace: true/,
+            'sem replace, 20 toques num chip enterrariam o botão voltar do navegador');
+    });
+
+    await contexto.test('(4) `navigator.clipboard` DENTRO de `try` — e o try é o do copiarMlb', () => {
+        // ⚠️ Localização por ÁRVORE, não pelo `indexOf` da string solta: o que
+        // precisa estar dentro do `try` é o acesso ao clipboard DAQUELA função.
+        const inicio = fonte.indexOf('function copiarMlb(');
+        assert.ok(inicio > 0, 'copiarMlb desapareceu');
+        const corpo = fonte.slice(inicio, fonte.indexOf('\n    }', inicio));
+        assert.match(corpo, /navigator/, 'o corpo medido é o certo (isca da fatia)');
+        assert.match(corpo, /try\s*\{[\s\S]*navigator/,
+            'em contexto não seguro o writeText LANCA SINCRONO e o .catch() nunca veria');
+    });
+
+    await contexto.test('(5) ZERO history.pushState e ZERO history.replaceState — um mecanismo só', () => {
+        assert.doesNotMatch(fonte, /history\.pushState/,
+            'o estado na URL é router.get com preserveState+replace, não uma segunda API');
+        assert.doesNotMatch(fonte, /history\.replaceState/);
+        // ⚠️ ISCA: a negativa não é vazia — `router.get(` ESTÁ na fonte.
+        assert.match(fonte, /router\.get\(/);
+    });
+
+    await contexto.test('(6) `page: 1` zera a página em toda mudança de recorte', () => {
+        assert.match(fonte, /page: 1,/,
+            'sem isto, filtrar na página 7 cai num vazio que PARECE "não achei nada"');
+        // ⚠️ E `page` tem de ser escrito ANTES do espalhamento, senão quem
+        // quiser outra página não poderia sobrescrever.
+        const inicio = fonte.indexOf('function navegar(');
+        assert.ok(inicio > 0, 'navegar() desapareceu');
+        const corpo = fonte.slice(inicio, fonte.indexOf('\n    }', inicio));
+        const posPage = corpo.indexOf('page: 1,');
+        const posSpread = corpo.indexOf('...params');
+        assert.ok(posPage > 0 && posSpread > 0, 'a fatia medida é a certa (isca)');
+        assert.ok(posPage < posSpread, 'page: 1 tem de vir ANTES de ...params');
+    });
+
+    await contexto.test('(7) `sel` preserva a PÁGINA — selecionar não é mudar de recorte', () => {
+        // ⚠️ A melhoria MEDIDA deste plano: `navegar()` zera `page`, e se
+        // `selecionar()` não o sobrescrevesse, clicar numa linha da página 7
+        // jogaria o usuário na página 1 e a linha selecionada sumiria.
+        const inicio = fonte.indexOf('function selecionar(');
+        assert.ok(inicio > 0, 'selecionar() desapareceu');
+        const corpo = fonte.slice(inicio, fonte.indexOf('\n    }', inicio));
+        assert.match(corpo, /navegar\(\{ sel: chave, page: paginaAtual \}\)/);
+        assert.doesNotMatch(corpo, /page: 1/, 'selecionar não pode zerar a página');
+        assert.match(corpo, /abrirDetalhe\(chave\)/, 'EXMP-01: Enter/clique tem de ABRIR algo hoje');
+    });
+
+    await contexto.test('(8) D-11 recontado: zero put/delete/patch e exatamente UM router.post', () => {
+        assert.doesNotMatch(fonte, /router\.put\(/);
+        assert.doesNotMatch(fonte, /router\.delete\(/);
+        assert.doesNotMatch(fonte, /router\.patch\(/);
+        const posts = [...fonte.matchAll(/router\.post\(/g)].length;
+        assert.equal(posts, 1, 'a tela nunca escreve no ML: esperava 1 router.post, achei ' + posts);
+        assert.match(fonte, /mlb\.anuncios\.meus\.atualizar/, 'e o único post ENFILEIRA a coleta');
+        // ⚠️ NENHUM atalho de teclado dispara escrita (T-180-11-E): o módulo de
+        // teclado não tem router nenhum, e o despachante só chama
+        // focus/blur/setState/navegar.
+        assert.doesNotMatch(lerSemComentarios(CAMINHO_RELATIVO_ATALHOS), /router/);
+    });
+
+    await contexto.test('(9) a página LIGA os ganchos do `BuscaDePublicacoes` (senão `/` e ↓ não chegam)', () => {
+        assert.match(fonte, /refDoInput=\{refDoInput\}/,
+            'sem o ref, o atalho / não tem onde focar');
+        assert.match(fonte, /onTecla=\{aoTeclarNaBusca\}/,
+            'sem o onTecla, as teclas dentro da busca não vão ao primeiro resultado');
+        assert.match(fonte, /atalhosDaLista/, 'a página importa a máquina de teclado');
+        assert.match(fonte, /interpretarTecla\(/);
+        assert.match(fonte, /interpretarTeclaDaBusca\(/);
+        assert.match(fonte, /proximoIndice\(/);
+        assert.match(fonte, /scrollIntoView\(\{ block: 'nearest' \}\)/,
+            'rolar até a linha ativa, sem pular quando ela já está visível');
+        // ⚠️ O `?.` do ref não é opcional: na fonte Rascunhos a busca não é
+        // desenhada e `refDoInput.current` é null.
+        assert.match(fonte, /refDoInput\.current\?\./);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASO 9 — RENDER ADVERSO: a tela preta de 07/10 não volta por `sel` nem por
+// param nenhum da URL
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SUJO = /\[object Object\]|NaN|undefined|Invalid Date/;
+
+function props(extras = {}) {
+    return {
+        empresa: { id: 7, name: 'Empresa Teste' },
+        sub: 'publicados',
+        anuncios: {
+            data: [
+                { ml_item_id: 'MLB1', title: 'Fone', status: 'active', produto_id: 10 },
+                { ml_item_id: 'MLB2', title: 'Cadeira', status: 'paused', produto_id: 20 },
+            ],
+            links: [], current_page: 3, total: 2,
+        },
+        grupos: [
+            { produto_id: 10, produto_nome: 'Fone', ml_item_ids: ['MLB1'] },
+            { produto_id: 20, produto_nome: 'Cadeira', ml_item_ids: ['MLB2'] },
+        ],
+        filtros: { status: 'acionaveis', visao: 'grupo', sel: 'MLB1' },
+        triagem: { total: 2, chips: [] },
+        abas: [], contagens: {}, rodape: null, sincronizacao: null, faixaSucesso: null,
+        defasagem: {}, cabecalho: null,
+        ...extras,
+    };
+}
+
+function render(extras) {
+    return renderToStaticMarkup(React.createElement(PAGINA, props(extras)));
+}
+
+test('180-11 caso 9: `filtros.sel` e os params da URL em todo formato adverso', async (contexto) => {
+    const { CLASSE_DA_LINHA_ATIVA } = MOD_PAGINA;
+
+    await contexto.test('a linha selecionada é PINTADA e ganha a classe-gancho — exatamente UMA', () => {
+        const html = render();
+        // ⚠️ `bg-pub-row-sel` é o fundo da linha selecionada, travado no plano
+        // 180-08. Sem seleção ele não aparece — é a isca deste sub-teste.
+        assert.match(html, /bg-pub-row-sel/, 'a linha de filtros.sel tem de ficar pintada');
+        const ganchos = [...html.matchAll(new RegExp(CLASSE_DA_LINHA_ATIVA, 'g'))].length;
+        assert.equal(ganchos, 1, 'a classe-gancho tem de aparecer UMA vez, achei ' + ganchos);
+
+        // ⚠️ ISCA: sem `sel` não há fundo de seleção nem gancho. Sem isto as
+        // asserções acima passariam com a página pintando tudo.
+        const semSel = render({ filtros: { status: 'acionaveis', visao: 'grupo' } });
+        assert.doesNotMatch(semSel, /bg-pub-row-sel/);
+        assert.ok(!semSel.includes(CLASSE_DA_LINHA_ATIVA));
+
+        // E `sel` apontando para um MLB que não está na página: nada pintado,
+        // nada quebrado.
+        const selForaDaPagina = render({ filtros: { status: 'acionaveis', visao: 'grupo', sel: 'MLB999' } });
+        assert.doesNotMatch(selForaDaPagina, /bg-pub-row-sel/);
+        assert.ok(!selForaDaPagina.includes(CLASSE_DA_LINHA_ATIVA));
+        assert.doesNotMatch(selForaDaPagina, SUJO);
+    });
+
+    await contexto.test('`sel` objeto, nulo, ausente, array, número e string vazia', () => {
+        // ⚠️ O plano 180-04 já consertou `busca[]=x` dando 500 no SERVIDOR; o
+        // CLIENTE também tem de sobreviver a cada um destes formatos.
+        const formatos = [
+            { toString: null }, { a: 1 }, null, undefined, [], ['MLB1'], 42, NaN, Infinity,
+            '', '   ', 'abacaxi', true, false, { nested: { deep: 1 } },
+        ];
+
+        for (const sel of formatos) {
+            const rotulo = 'sel do tipo ' + typeof sel + (Array.isArray(sel) ? ' (array)' : '');
+            let html = '';
+            assert.doesNotThrow(() => { html = render({ filtros: { status: 'acionaveis', visao: 'grupo', sel } }); }, rotulo);
+            assert.doesNotMatch(html, SUJO, rotulo);
+            assert.ok(!html.includes(CLASSE_DA_LINHA_ATIVA), rotulo + ': formato inválido não seleciona nada');
+        }
+    });
+
+    await contexto.test('os 12 params da URL, cada um em 6 formatos adversos', () => {
+        const CHAVES = ['busca', 'status', 'motivo', 'com_venda', 'fase', 'tipo',
+            'catalogo', 'responsavel', 'periodo', 'visao', 'sel', 'page'];
+        const FORMATOS = [{ toString: null }, [], ['x'], 42, null, ''];
+
+        for (const chave of CHAVES) {
+            for (const valor of FORMATOS) {
+                const rotulo = 'filtros.' + chave + ' = ' + typeof valor;
+                let html = '';
+                assert.doesNotThrow(() => { html = render({ filtros: { [chave]: valor } }); }, rotulo);
+                assert.doesNotMatch(html, SUJO, rotulo);
+            }
+        }
+
+        // `filtros` inteiro adverso.
+        for (const filtros of [null, undefined, 'x', 42, [], { toString: null }]) {
+            assert.doesNotThrow(() => render({ filtros }));
+            assert.doesNotMatch(render({ filtros }), SUJO);
+        }
+    });
+
+    await contexto.test('`anuncios` sem `data`, `grupos` com grupo nulo e `current_page` sujo', () => {
+        const casos = [
+            { anuncios: {} },
+            { anuncios: { data: null } },
+            { anuncios: { data: 'x', links: 'y' } },
+            { anuncios: null },
+            { anuncios: { data: [null, 42, 'x', {}], links: [] } },
+            { anuncios: { data: [{ ml_item_id: { toString: null } }], links: [] } },
+            { anuncios: { data: [], links: [], current_page: { toString: null } } },
+            { anuncios: { data: [], links: [], current_page: NaN } },
+            { anuncios: { data: [], links: [], current_page: -7 } },
+            { anuncios: { data: [], links: [], current_page: 'tres' } },
+            { grupos: [null] },
+            { grupos: [null, 'x', 42, {}, { produto_id: { toString: null } }] },
+            { grupos: null },
+            { grupos: { toString: null } },
+            { grupos: [{ produto_id: 10, ml_item_ids: 'MLB1' }] },
+            { grupos: [{ produto_id: 10, ml_item_ids: [{ toString: null }] }] },
+        ];
+
+        for (const caso of casos) {
+            const rotulo = Object.keys(caso).join(',');
+            let html = '';
+            assert.doesNotThrow(() => { html = render(caso); }, rotulo);
+            assert.doesNotMatch(html, SUJO, rotulo);
+        }
+    });
+
+    await contexto.test('o MÓDULO de teclado também sobrevive aos mesmos formatos', () => {
+        // ⚠️ O módulo não renderiza, mas recebe o MESMO dado adverso vindo da
+        // página — e um `throw` dele dentro do ouvinte derrubaria o handler.
+        const adversos = [{ toString: null }, [], 42, null, undefined, '', NaN];
+        for (const valor of adversos) {
+            assert.doesNotThrow(() => proximoIndice([valor], valor, 1));
+            assert.doesNotThrow(() => interpretarTecla({ key: 'Escape', target: valor }, { menuAberto: valor }));
+            assert.doesNotThrow(() => interpretarTeclaDaBusca({ key: 'Enter', target: valor }, valor));
+            assert.doesNotThrow(() => idsNaOrdemVisual([{ itens: [valor] }], () => valor));
+        }
+    });
 });

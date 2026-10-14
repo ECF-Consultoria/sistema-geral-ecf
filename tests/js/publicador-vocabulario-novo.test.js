@@ -123,6 +123,19 @@ const ARQUIVOS_NOVOS = [
     `${DIR_PUB}/LinhaDeGrupoDeProduto.jsx`,
     `${DIR_PUB}/RodapeDaTabela.jsx`,
     `${DIR_PUB}/VaziosDaLista.jsx`,
+    // ⚠️⚠️ Plano 180-11 — o PRIMEIRO `.js` deste diretório: a máquina de
+    // teclado da lista (LIST-18). Ele entra aqui para o `deepEqual` de
+    // `DIRETORIOS_FECHADOS` continuar fechando — arquivo no disco fora da lista
+    // passa SEM conferência de vocabulário e o gate passaria POR OMISSÃO.
+    //
+    // ⚠️ E o vocabulário que este arquivo tem de respeitar é o mais severo de
+    // todos: ZERO classe. O `content` do `tailwind.config.js` varre `*.jsx` e
+    // **não** `*.js`, então classe escrita nele não gera CSS e NÃO EXISTE PARA
+    // A TELA — com todos os testes de render passando. A proibição com nome e
+    // isca vive em `publicador-publicacoes-cabecalho.test.js` (bloco TAILWIND)
+    // e em `publicador-publicacoes-atalhos.test.js` (caso 7); aqui ele só
+    // precisa estar DECLARADO.
+    `${DIR_PUB}/atalhosDaLista.js`,
     // ⚠️⚠️ Plano 180-10 — A PÁGINA. Ela não é um componente de `publicacoes/`:
     // é `resources/js/Pages/Mlb/MeusAnuncios.jsx`, a tela de Publicações, cujo
     // CORPO passou a ser o layout novo. Entrar aqui é o REAPONTE que fecha a
@@ -241,9 +254,10 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
         );
     });
 
-    await contexto.test('os 14 arquivos da Fase 180 estão na lista', () => {
-        // ⚠️ Número ELEVADO pelo plano 180-09: 2 do 180-05, que abre o
-        // diretório, + 3 do 180-06 + 3 do 180-07 + 3 do 180-08 + 3 deste. Os planos seguintes
+    await contexto.test('os 15 arquivos da Fase 180 estão na lista', () => {
+        // ⚠️ Número ELEVADO de 14 para 15 pelo plano 180-11: 2 do 180-05, que
+        // abre o diretório, + 3 do 180-06 + 3 do 180-07 + 3 do 180-08 + 3 do
+        // 180-09 + 1 deste (`atalhosDaLista.js`). Os planos seguintes
         // da fase ELEVAM este valor junto com os arquivos deles — deixar o
         // número parado é o jeito de descobrir que alguém esqueceu de declarar
         // o arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência
@@ -251,21 +265,37 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
         // OMISSÃO.
         assert.equal(
             ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`)).length,
-            14,
-            'a Fase 180 tem 14 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
+            15,
+            'a Fase 180 tem 15 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
             + ' 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles),'
             + ' 3 do 180-07 (MenuDeFiltro + ChipsDeFiltro + ChipsDeTriagem),'
-            + ' 3 do 180-08 (CabecalhoDaTabela + LinhaDePublicacao + CelulasDaLinha)'
-            + ' e 3 do 180-09 (LinhaDeGrupoDeProduto + RodapeDaTabela + VaziosDaLista)',
+            + ' 3 do 180-08 (CabecalhoDaTabela + LinhaDePublicacao + CelulasDaLinha),'
+            + ' 3 do 180-09 (LinhaDeGrupoDeProduto + RodapeDaTabela + VaziosDaLista)'
+            + ' e 1 do 180-11 (atalhosDaLista.js, o único .js do diretório)',
+        );
+
+        // ⚠️ E o ÚNICO `.js` é ele: o diretório inteiro é `.jsx` de propósito,
+        // porque é só no `.jsx` que o `content` do Tailwind varre classe. Um
+        // `.js` novo aqui tem de ser decisão consciente, não descuido.
+        const MODULO_DE_TECLADO = `${DIR_PUB}/atalhosDaLista.js`;
+        assert.ok(
+            ARQUIVOS_NOVOS.includes(MODULO_DE_TECLADO),
+            `${MODULO_DE_TECLADO} saiu de ARQUIVOS_NOVOS: ficaria sem conferência de vocabulário`,
+        );
+        assert.deepEqual(
+            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`) && c.endsWith('.js')),
+            [MODULO_DE_TECLADO],
+            'só `atalhosDaLista.js` é .js em `publicacoes/` — classe num .js não gera CSS',
         );
     });
 
-    await contexto.test('e a PÁGINA de Publicações entrou na lista — a Fase 180 contribui 15 arquivos (plano 180-10)', () => {
-        // ⚠️ POR QUE O NÚMERO ACIMA CONTINUA 14, E ESTE É 15: o plano 180-10
+    await contexto.test('e a PÁGINA de Publicações entrou na lista — a Fase 180 contribui 16 arquivos (planos 180-10 e 180-11)', () => {
+        // ⚠️ POR QUE O NÚMERO ACIMA É 15 E ESTE É 16: o plano 180-10
         // NÃO cria componente em `publicacoes/` — ele COMPÕE a página. Elevar
-        // o 14 seria mentir sobre o diretório (e o gate de território daquele
-        // plano prova diff VAZIO em `publicacoes/`). O que cresce é a lista
-        // INTEIRA da fase: os 14 componentes + a página.
+        // o número do DIRETÓRIO por causa dele seria mentir sobre o diretório
+        // (e o gate de território daquele plano prova diff VAZIO em
+        // `publicacoes/`). O que cresce é a lista INTEIRA da fase: os 15
+        // arquivos de `publicacoes/` + a página.
         //
         // ⚠️ E este sub-teste é o que impede a entrada CALADA da página: sem
         // ele, acrescentar o caminho em `ARQUIVOS_NOVOS` não mexeria em nenhum
@@ -277,9 +307,18 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/` ou `publicacoes
             `${PAGINA} saiu de ARQUIVOS_NOVOS: a tela de Publicações ficaria sem conferência de vocabulário`,
         );
         assert.equal(
+            ARQUIVOS_NOVOS.filter((c) => c === PAGINA).length,
+            1,
+            // ⚠️ Duplicata PASSARIA CALADA de outro jeito: o `deepEqual` de
+            // `DIRETORIOS_FECHADOS` não cobre `Pages/`, e a soma abaixo com
+            // o caminho repetido daria 17 em vez de 16 — número errado, mas
+            // sem dizer POR QUE. Esta asserção nomeia a causa.
+            `${PAGINA} está DUAS vezes em ARQUIVOS_NOVOS: o gate rodaria o mesmo arquivo duas vezes`,
+        );
+        assert.equal(
             ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`) || c === PAGINA).length,
-            15,
-            'a Fase 180 contribui 15 arquivos: os 14 componentes de `publicacoes/` (planos 05 a 09) mais a'
+            16,
+            'a Fase 180 contribui 16 arquivos: os 15 de `publicacoes/` (planos 05 a 09 e 11) mais a'
             + ' página `Pages/Mlb/MeusAnuncios.jsx` (plano 10), que é quem os compõe',
         );
     });
