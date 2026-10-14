@@ -1,0 +1,150 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-03 (o portão no servidor: conjunto
+# de fotos compartilhado, revisão por imagem, verificações automáticas,
+# checklist de fidelidade e defeitos — 2 migrations / 5 tabelas).
+#
+# Lido por `tests/gates/verificar-testes.sh 03 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# lição dos casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+#
+# ⚠️ TODAS as contagens abaixo foram MEDIDAS em 14/10/2026 nesta máquina, uma
+#    invocação por método, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum método deste plano tem sonda com `skip` por
+#    `mtime` — por isso não há segundo regime: pristino e mutado dão o MESMO
+#    número, e a campanha de mutação roda sem tocar neste arquivo.
+#
+# ⚠️ O arquivo de teste tem 13 métodos + 1 `skip` NOMEADO
+#    (`test_estrutural_pub_aprovacao_ofertas_nao_tem_conjunto_id_com_isca`, que
+#    só mede quando `pub_aprovacao_ofertas` existir — plano 186-04). O método em
+#    `skip` **não entra em gate nenhum**: `Tests: 1 skipped` não casa
+#    `N passed (A assertions)` e abortaria o helper. A prova estrutural que VALE
+#    neste plano é a TEXTUAL, e tem gate próprio (`sem-par-oferta-imagem`).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Critério 10 — o compartilhamento Clássico↔Premium ─────────────────────────
+
+# Aprovar a foto UMA vez vale para os dois alvos, sem rotina de propagação.
+# O que precisaria estar errado para falhar: alguém gravar a aprovação por oferta
+# e o Premium passar a precisar de aprovação própria da mesma foto.
+# 1 / 6 MEDIDO em 14/10/2026.
+conjunto-compartilhado  php  test_aprovar_a_foto_uma_vez_vale_para_classico_e_premium_sem_propagacao  ::  tests=1 assertions=6
+
+# A razão ESTRUTURAL (e não por fixture): nenhuma tabela do portão declara o par
+# (oferta_id, imagem_id) no MESMO bloco de `Schema::create`. Tem DUAS iscas — uma
+# que exige ACHAR o par no texto sintético, outra que exige NÃO achar quando as
+# colunas estão em tabelas diferentes.
+# ⚠️ A 1ª isca pegou a sonda CEGA de verdade: a primeira redação casava o fim do
+#    bloco por indentação (12 espaços antes do `});`) e nunca casava nada.
+# 1 / 5 MEDIDO em 14/10/2026.
+sem-par-oferta-imagem  php  test_estrutural_nenhuma_tabela_do_portao_tem_o_par_oferta_id_imagem_id  ::  tests=1 assertions=5
+
+# ─── O EIXO VARIANTE — o achado S2, e a decisão do usuário de 14/10 ────────────
+
+# 3 valores de eixo que definem foto rendem 4 conjuntos (3 + GENERAL), conferidos
+# contra o `ResolvedorGruposImagem::chaveDoGrupo()` REAL, e as DUAS ofertas veem
+# os 4. Inclui a asserção de que a união sai em 2 consultas e NÃO cresce com o
+# número de grupos (uma por grupo daria 5).
+# 1 / 7 MEDIDO em 14/10/2026.
+quatro-conjuntos  php  test_tres_cores_que_definem_foto_rendem_quatro_conjuntos_e_as_duas_ofertas_veem_os_quatro  ::  tests=1 assertions=7
+
+# Uma foto pendente num grupo que NÃO é o primeiro deixa as DUAS ofertas
+# não-aprováveis. Com isca: aprovar a última faz o bloqueio desaparecer.
+# É o gate que pega o achado S2 (`conjunto_id` único na oferta deixaria os outros
+# grupos FORA do bloqueio, e aprovar já publica, sem desfazer).
+# 1 / 10 MEDIDO em 14/10/2026.
+eixo-variante-bloqueia  php  test_uma_foto_pendente_num_grupo_que_nao_e_o_primeiro_bloqueia_as_duas_ofertas_com_isca  ::  tests=1 assertions=10
+
+# O mesmo caso, mas a pendente no grupo GENERAL — as GERAIS também entram no
+# bloqueio (decisão do usuário: todas as variações E as gerais conferidas).
+# 1 / 8 MEDIDO em 14/10/2026.
+eixo-variante-geral  php  test_uma_foto_pendente_no_grupo_GERAL_bloqueia_as_duas_ofertas_com_isca  ::  tests=1 assertions=8
+
+# A fronteira "mesmo produto E formato": aprovar a foto do base não afeta o kit
+# (pub_produtos próprio, rascunho próprio, fotos próprias).
+# 1 / 6 MEDIDO em 14/10/2026.
+fronteira-base-kit  php  test_aprovar_a_foto_do_produto_base_nao_afeta_o_conjunto_do_kit  ::  tests=1 assertions=6
+
+# ─── Critério 3 — os dois eixos de estado não se misturam ─────────────────────
+
+# DADO-05, nas DUAS direções: aprovar na revisão não mexe em `upload_status`, e
+# subir ao ML não mexe em `estado`. Mais a disjunção dos literais.
+# 1 / 5 MEDIDO em 14/10/2026.
+eixos-nao-se-misturam  php  test_o_eixo_de_upload_e_o_de_revisao_nao_se_misturam_nas_duas_direcoes  ::  tests=1 assertions=5
+
+# DADO-06 — alerta `high` em imagem PENDENTE conta como "com alerta"; o MESMO
+# alerta em imagem APROVADA não conta (e não é apagado: é histórico).
+# ⚠️ Este gate reprovou de verdade na primeira rodada: `comAlerta()` não filtrava
+#    por PENDENTE. Foi o RED que produziu o GREEN.
+# 1 / 8 MEDIDO em 14/10/2026.
+alerta-conta-so-pendente  php  test_alerta_alto_em_imagem_pendente_conta_como_com_alerta_e_em_aprovada_nao  ::  tests=1 assertions=8
+
+# ─── Critério 13 — a disciplina MIG-01..09, medida pelo guarda ────────────────
+
+# MIG-03 — toda FK `nullOnDelete()` tem coluna `nullable()` explícita (erro 1830,
+# invisível no SQLite). Pareamento por SEMÂNTICA do nome da coluna, porque aqui a
+# coluna e a FK são statements SEPARADOS. QUATRO iscas (sem nullable / com
+# nullable / forma encadeada / encadeada sem nullable).
+# ⚠️ A isca 1 pegou a sonda CEGA: o regex `->foreignId?\(` casava `foreignI`, não
+#    `foreign`, e a sonda não achava a coluna de nenhuma FK deste plano.
+# 1 / 8 MEDIDO em 14/10/2026.
+guarda-nullable  php  test_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca  ::  tests=1 assertions=8
+
+# MIG-02 — os nomes PADRÃO do Laravel (`<tabela>_<coluna>_foreign`) também cabem
+# em 64, calculados por `strlen` e nunca por número copiado à mão; mais a
+# convenção de que TODA FK é nomeada à mão (nenhum `->constrained()`).
+# ⚠️ É este gate que mediu que o 186-03-PLAN.md errava em 1 o nome mais longo
+#    (dizia 57 para `pub_aprovacao_imagem_alertas_aprovacao_imagem_id_foreign`,
+#    são 56) — e ele TRAVA o 56, então mudar o schema sem reconferir o docblock
+#    reprova.
+# 1 / 28 MEDIDO em 14/10/2026.
+guarda-nomes-64  php  test_os_nomes_padrao_do_laravel_tambem_cabem_em_64_e_toda_fk_e_nomeada_a_mao  ::  tests=1 assertions=28
+
+# MIG-04 — nenhuma migration do portão usa `enum` (o CHECK é enforçado no SQLite
+# dos testes e cegaria a suíte). Com isca nos dois sentidos.
+# 1 / 4 MEDIDO em 14/10/2026.
+guarda-sem-enum  php  test_nenhuma_migration_do_portao_usa_enum  ::  tests=1 assertions=4
+
+# MIG-05 — sem `try/catch` em volta de DDL (um 1553 ficou engolido 2 meses neste
+# projeto dentro de um catch).
+# ⚠️ Este gate reprovou de verdade na primeira rodada, pelo MOTIVO ERRADO: a
+#    palavra `try` aparece no DOCBLOCK das duas migrations, na frase que explica
+#    que try/catch NÃO é usado. É a classe de falha de
+#    `feedback_gate_que_reprova_pelo_proprio_conserto`. O conserto certo não foi
+#    tirar a frase: foi ler o CÓDIGO sem comentários, pelo tokenizador do PHP.
+# 1 / 3 MEDIDO em 14/10/2026.
+guarda-sem-try  php  test_nenhuma_migration_do_portao_tem_try_catch  ::  tests=1 assertions=3
+
+# O tokenizador que tira comentário e PRESERVA código — a sonda da qual os gates
+# `guarda-sem-enum` e `guarda-sem-try` dependem. Sem este gate, "a palavra não
+# aparece" poderia significar "o tokenizador comeu o arquivo inteiro".
+# 1 / 4 MEDIDO em 14/10/2026.
+guarda-tokenizador  php  test_isca_o_tokenizador_tira_comentario_e_preserva_codigo  ::  tests=1 assertions=4
+
+# 1553 / ordem do `down()`. ⚠️ As duas migrations deste plano só CRIAM, então o
+# `down()` não tem `dropIndex` nenhum e a sonda de ordem dropForeign→dropIndex
+# roda sobre ZERO casos — seria gate vazio por construção se parasse ali. O
+# invariante que VALE para migration de `create` é este: o `down()` derruba
+# TABELAS, filha antes da mãe, na ordem exata, e não derruba coluna. Com isca de
+# ordem invertida.
+# 1 / 8 MEDIDO em 14/10/2026.
+guarda-down-ordem  php  test_o_down_das_migrations_de_create_derruba_tabelas_filha_antes_da_mae  ::  tests=1 assertions=8
+
+# O precedente do texto de 600: `grupo_chave` NUNCA entra em índice (estouraria a
+# chave de 3072 bytes do InnoDB em utf8mb4), e o `grupo_hash` ESTÁ indexado pelo
+# unique (rascunho_id, grupo_hash) — sem isso a consulta por grupo varreria.
+# 1 / 15 MEDIDO em 14/10/2026.
+guarda-hash-indexado  php  test_grupo_chave_de_600_chars_nunca_entra_num_indice  ::  tests=1 assertions=15
