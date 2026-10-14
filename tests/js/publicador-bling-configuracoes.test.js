@@ -281,3 +281,137 @@ test('SecaoBling — render real (esbuild + react-dom/server), sete estados', as
         assert.match(html, /sem vaga para mais uma loja/);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Task 3 — encaixe em Configuracoes.jsx (ConteudoConfiguracoes + prop `bling`)
+// ─────────────────────────────────────────────────────────────────────────
+
+const PAGINA = 'resources/js/Pages/Mlb/Publicador/Configuracoes.jsx';
+
+const STUB_INERTIA_PAGINA = path.join(__dirname, `.bling-pagina-inertia-stub-${process.pid}.mjs`);
+fs.writeFileSync(STUB_INERTIA_PAGINA, `
+import React from 'react';
+export function Link({ href, children, className, ...props }) {
+    return React.createElement('a', { href, className, ...props }, children);
+}
+export const router = { get: () => {}, post: () => {}, reload: () => {} };
+export function usePage() { return { props: {} }; }
+`, 'utf8');
+
+const STUB_APPLAYOUT_PAGINA = path.join(__dirname, `.bling-pagina-applayout-stub-${process.pid}.mjs`);
+fs.writeFileSync(STUB_APPLAYOUT_PAGINA, `
+import React from 'react';
+export default function AppLayout({ children }) {
+    return React.createElement('div', null, children);
+}
+`, 'utf8');
+
+after(() => {
+    fs.rmSync(STUB_INERTIA_PAGINA, { force: true });
+    fs.rmSync(STUB_APPLAYOUT_PAGINA, { force: true });
+});
+
+/** Compila `Configuracoes.jsx` de verdade (JSX + imports reais) e devolve os exports. */
+async function montarPaginaConfiguracoes() {
+    const entry = path.resolve(RAIZ, PAGINA);
+    const resultado = await esbuild.build({
+        entryPoints: [entry],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        jsx: 'automatic',
+        write: false,
+        logLevel: 'silent',
+        alias: {
+            '@': path.resolve(RAIZ, 'resources/js'),
+            '@inertiajs/react': STUB_INERTIA_PAGINA,
+            '@/Layouts/AppLayout': STUB_APPLAYOUT_PAGINA,
+        },
+        external: [
+            'react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios',
+            '@radix-ui/react-popover', '@radix-ui/react-dialog', '@radix-ui/react-slot',
+        ],
+    });
+
+    const outfile = path.join(__dirname, `.pagina-bling-render-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+    fs.writeFileSync(outfile, resultado.outputFiles[0].text, 'utf8');
+    try {
+        return await import(pathToFileURL(outfile).href);
+    } finally {
+        fs.rmSync(outfile, { force: true });
+    }
+}
+
+const blingConexaoBase = (overrides = {}) => ({
+    estado: 'a_conectar',
+    disponivel: true,
+    motivo: null,
+    link_url: null,
+    link_gerado_em: null,
+    link_expira_em: null,
+    bling_nome: null,
+    bling_cnpj: null,
+    conectado_em: null,
+    ultima_importacao_em: null,
+    ultimo_estoque_em: null,
+    estoque_ativo: false,
+    produtos_vinculados: 0,
+    ultimo_erro: null,
+    ultimo_erro_em: null,
+    teto: { limite: 10, conectadas: 2 },
+    ...overrides,
+});
+
+test('ConteudoConfiguracoes + bling — encaixe na página (Fase 184, plano 12)', async (contexto) => {
+    const mod = await montarPaginaConfiguracoes();
+    const { ConteudoConfiguracoes } = mod;
+    assert.ok(ConteudoConfiguracoes, 'export nomeado ConteudoConfiguracoes precisa existir em Configuracoes.jsx');
+
+    const propsBase = (overrides = {}) => ({
+        identidade: { texto: null, atualizadoEm: null, carregando: false, salvando: false, erro: null, onSalvar: () => {} },
+        conexoes: {
+            mercado_livre: { token: 'ativo' },
+            publicacao_liberada: true,
+            alavancas_liberada: false,
+            portal: { situacao: 'sem_portal', novas: 0, sincronizado_em: null },
+            erp: { valor: 'Bling', rotulo: 'Bling' },
+        },
+        programa: 'polos',
+        responsavel: 'Fulano da Silva',
+        conta: 'empresa-5',
+        ...overrides,
+    });
+
+    await contexto.test(
+        'bling preenchido renderiza o título "Bling" E continua renderizando a linha "ERP · declarado no onboarding" (não-regressão)',
+        () => {
+            const html = renderToStaticMarkup(React.createElement(ConteudoConfiguracoes, propsBase({
+                bling: blingConexaoBase(),
+            })));
+            assert.match(html, /Bling · declarado no onboarding/);
+            assert.match(html, />Bling</);
+        },
+    );
+
+    await contexto.test('sem o prop bling renderiza a tela inteira sem lançar e sem a seção do Bling', () => {
+        assert.doesNotThrow(() => {
+            const html = renderToStaticMarkup(React.createElement(ConteudoConfiguracoes, propsBase()));
+            assert.match(html, /Conexões/);
+            assert.match(html, /Programa e responsável/);
+            // "declarado no onboarding" aparece (ERP), mas o título da seção
+            // conectada do Bling ("Prévia da importação" ou o selo de estado)
+            // nunca aparece sem o prop `bling`.
+            assert.doesNotMatch(html, /Gerar link para o cliente|Importar produtos|Atualizar estoque agora/);
+        });
+    });
+
+    await contexto.test('conexoes: null renderiza sem lançar (com bling preenchido)', () => {
+        assert.doesNotThrow(() => {
+            const html = renderToStaticMarkup(React.createElement(ConteudoConfiguracoes, propsBase({
+                conexoes: null,
+                bling: blingConexaoBase(),
+            })));
+            assert.doesNotMatch(html, /\[object Object\]/);
+        });
+    });
+});

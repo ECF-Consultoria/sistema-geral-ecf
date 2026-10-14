@@ -5,6 +5,7 @@ import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import { CampoIdentidade } from '@/Components/Publicador/Mesa/IdentidadeDaConta';
 import useIdentidadeDaContaPorConta from '@/Components/Mlb/Publicador/useIdentidadeDaContaPorConta';
+import BlingDaLoja from '@/Components/Mlb/Publicador/BlingDaLoja';
 import { formatarDataHora } from '@/lib/dataHora';
 
 // ─── Configurações da conta (Fase 173, plano 07) ────────────────────────────
@@ -24,6 +25,14 @@ import { formatarDataHora } from '@/lib/dataHora';
 //
 // ERP é apenas DECLARADO no onboarding (decisão 8 do handoff) — nunca mostrar
 // como "conectado"; sem valor, "Não informado".
+//
+// ⚠️ Fase 184, plano 12: REVOGAÇÃO PARCIAL da regra acima, só para o Bling.
+// São dois fatos diferentes que não se sobrescrevem: a linha "ERP · declarado
+// no onboarding" dentro de Conexões continua existindo exatamente como antes
+// (o que o cliente marcou no onboarding); a conexão DE VERDADE com o Bling
+// — que pode estar "conectado" de fato — é uma seção própria, logo abaixo,
+// fora do `LinhaSoLeitura` (contrato: nunca um botão de editar lá dentro).
+// Nenhuma das duas lê ou escreve a chave da outra.
 
 /** Uma linha rótulo/valor só leitura — nunca um botão de editar aqui dentro. */
 function LinhaSoLeitura({ rotulo, children }) {
@@ -41,7 +50,7 @@ function LinhaSoLeitura({ rotulo, children }) {
  * de `CampoIdentidade`/`textoSeguro`: campo em formato inesperado nunca
  * derruba a tela — `tests/js/publicador-configuracoes-render.test.js`).
  */
-export function ConteudoConfiguracoes({ identidade, conexoes, programa, responsavel }) {
+export function ConteudoConfiguracoes({ identidade, conexoes, programa, responsavel, bling = null, conta = null }) {
     const dataFormatada = formatarDataHora(identidade?.atualizadoEm);
     const erpValor = typeof conexoes?.erp?.valor === 'string' ? conexoes.erp.valor : null;
     const erpRotulo = textoSeguro(conexoes?.erp?.rotulo, 'Não informado');
@@ -72,6 +81,8 @@ export function ConteudoConfiguracoes({ identidade, conexoes, programa, responsa
                     <LinhaSoLeitura rotulo="ERP">{erpValor ? `${erpRotulo} · declarado no onboarding` : 'Não informado'}</LinhaSoLeitura>
                 </div>
             </section>
+
+            {bling && <BlingDaLoja conta={conta} inicial={bling} />}
 
             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                 <h3 className="text-[13px] font-bold text-white/90">Programa e responsável</h3>
@@ -117,6 +128,8 @@ export default function Configuracoes({ empresa, conexoes, programa, responsavel
                     conexoes={conexoes}
                     programa={programa}
                     responsavel={responsavel}
+                    bling={conexoes?.bling ?? null}
+                    conta={empresa.chave}
                 />
             </div>
         </AppLayout>
