@@ -28,12 +28,23 @@ use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
  * Precificação (ECF), e a árvore de categoria do Bling é do cliente — não casa com a do Mercado
  * Livre. Não existe, nesta classe, nenhum caminho de código que leia o preço ou a categoria do
  * produto do Bling para popular a linha.
+ *
+ * O mapa de campos (seed §4) também deixa de propósito, fora desta classe, os campos abaixo — não
+ * é esquecimento, é decisão: o campo `linhaProduto` e o campo `marca` (Fase 2 do seed — ficha e
+ * família), as fotos em `midia`/`imagens` (Fase 2 do seed — download na importação), a árvore de
+ * categoria do cliente (não casa com a do Mercado Livre; "Sugerir categorias" resolve) e o preço
+ * promocional e os campos fiscais (tributação/NCM) — fora de escopo desta fase inteira.
  */
 final class TradutorBlingParaPortal
 {
     /** @return array{linhas: list<array<string, mixed>>, recusadas: list<array{bling_produto_id: ?string, codigo: ?string, motivo: string}>, avisos: list<string>, vinculos: list<array{bling_produto_id: string, bling_pai_id: ?string, codigo_bling: ?string, formato: string, gtin: ?string}>} */
     public static function paraLinhas(array $produto): array
     {
+        $motivoRecusa = self::motivoSeInativoOuServico($produto);
+        if ($motivoRecusa !== null) {
+            return self::recusarProdutoInteiro($produto, $motivoRecusa);
+        }
+
         $formato = $produto['formato'] ?? null;
 
         return match ($formato) {
@@ -44,6 +55,28 @@ final class TradutorBlingParaPortal
             'E' => self::recusarProdutoInteiro($produto, 'Kit do Bling não entra nesta fase.'),
             default => self::recusarProdutoInteiro($produto, self::motivoFormato($formato)),
         };
+    }
+
+    /**
+     * `situacao` diferente de "Ativo" ou `tipo` fora de PS/P/C/E/V/T (serviço = "S", de propósito
+     * fora da lista) recusam o produto inteiro, antes de qualquer tradução — seed §4. Ausência de
+     * `situacao`/`tipo` no payload não recusa nada (fixtures de teste, e contas antigas do Bling,
+     * nem sempre trazem os dois campos).
+     */
+    private static function motivoSeInativoOuServico(array $produto): ?string
+    {
+        $situacao = $produto['situacao'] ?? null;
+        if (is_string($situacao) && mb_strtolower(trim($situacao)) !== 'ativo') {
+            return 'Produto inativo ou de tipo que não entra no cadastro.';
+        }
+
+        $tipo = $produto['tipo'] ?? null;
+        $tiposPermitidos = ['PS', 'P', 'C', 'E', 'V', 'T'];
+        if ($tipo !== null && ! in_array($tipo, $tiposPermitidos, true)) {
+            return 'Produto inativo ou de tipo que não entra no cadastro.';
+        }
+
+        return null;
     }
 
     private static function motivoFormato(mixed $formato): string
@@ -105,7 +138,10 @@ final class TradutorBlingParaPortal
             $linha['descricao'] = $descricao;
         }
 
-        $custo = self::custoDoProduto($produto);
+        [$custo, $avisoCusto] = self::custoDoProduto($produto);
+        if ($avisoCusto !== null) {
+            $avisos[] = $avisoCusto;
+        }
         if ($custo !== null) {
             $linha['custo'] = $custo;
         }
@@ -170,7 +206,10 @@ final class TradutorBlingParaPortal
             $avisos[] = $avisoDescricao;
         }
 
-        $custo = self::custoDoProduto($produto);
+        [$custo, $avisoCusto] = self::custoDoProduto($produto);
+        if ($avisoCusto !== null) {
+            $avisos[] = $avisoCusto;
+        }
 
         // custo/descrição/volumes vêm do PAI e vão para todas as linhas — mesma regra do ramo S.
         [$volumes, $avisoVolumes] = self::volumesDoProduto($produto);
@@ -262,38 +301,77 @@ final class TradutorBlingParaPortal
     }
 
     /**
-     * `variacao.nome` chega como `"Eixo:Valor"` (`"Cor:Azul"`) ou, por vezes, com dois atributos
-     * separados por `;` (`"Cor:Preto;Tamanho:M"`). O Portal tem só 1 eixo por variação.
+     * `variacao.nome` chega como `"Eixo:Valor"` (`"Cor:Azul"`) ou, por vezes, com dois ou mais
+     * atributos separados por `;` (`"Cor:Preto;Tamanho:M"`). O Portal tem só 1 eixo por variação.
      *
-     * TODO(184-05): dois ou mais pares ainda não têm tratamento definitivo — por ora o primeiro
-     * par vence, sem o aviso de "dois atributos" (isso é tarefa do plano 05, não desta).
+     * (184-05) Suposição 2 do RESEARCH §5 — o formato real de `variacao.nome` não está medido.
+     * Dois ou mais pares NÃO cabem num eixo só: em vez de usar o primeiro e descartar o resto em
+     * silêncio (o que apagaria dado do cliente sem erro nenhum, T-184-29), a variação entra como
+     * `eixo = 'outro'` com os valores unidos por `' · '`, e um aviso cita o código da variação. O
+     * checkpoint humano do plano 12 confere o formato real em produtos de verdade.
      *
      * @return array{0: ?string, 1: ?string, 2: ?string} [eixo, valor, aviso ou null]
      */
     private static function eixoEValorDaVariacao(mixed $nomeVariacaoBruto, string $codigoVariacao): array
     {
+        $semInformacao = "Variação do código \"{$codigoVariacao}\": o Bling não informou o tipo/valor da variação.";
+
         $nome = trim((string) $nomeVariacaoBruto);
-        if ($nome === '' || ! str_contains($nome, ':')) {
-            return [null, null, null];
+        if ($nome === '') {
+            return [null, null, $semInformacao];
         }
 
         $pares = array_values(array_filter(array_map('trim', explode(';', $nome)), fn (string $p) => $p !== ''));
         if ($pares === []) {
-            return [null, null, null];
+            return [null, null, $semInformacao];
         }
 
-        // TODO(184-05): usar só $pares[0] enquanto o plano 05 não resolve 2+ atributos.
-        [$rotulo, $valor] = array_pad(array_map('trim', explode(':', $pares[0], 2)), 2, null);
-        if ($rotulo === null || $valor === null || $valor === '') {
-            return [null, null, null];
+        if (count($pares) > 1) {
+            $valores = array_map(function (string $par) {
+                $partes = array_map('trim', explode(':', $par, 2));
+
+                return ($partes[1] ?? '') !== '' ? $partes[1] : $partes[0];
+            }, $pares);
+
+            [$valor, $avisoCorte] = self::valorDaVariacaoCortado(implode(' · ', $valores));
+
+            $aviso = $avisoCorte ?? "A variação {$codigoVariacao} tem mais de um atributo no Bling; ela entrou como \"Outro\" com o valor \"{$valor}\".";
+
+            return ['outro', $valor, $aviso];
         }
+
+        [$rotulo, $valorBruto] = array_pad(array_map('trim', explode(':', $pares[0], 2)), 2, null);
+
+        // Texto solto sem ":" — o par inteiro é o valor, sem eixo identificável no Bling.
+        if ($valorBruto === null || $valorBruto === '') {
+            [$valor, $avisoCorte] = self::valorDaVariacaoCortado($rotulo);
+
+            return ['outro', $valor, $avisoCorte ?? "Variação do código \"{$codigoVariacao}\": o Bling não informou um eixo reconhecível (\"{$rotulo}\"), usamos \"Outro\"."];
+        }
+
+        [$valor, $avisoCorte] = self::valorDaVariacaoCortado($valorBruto);
 
         $eixo = NormalizadorDeLinha::eixo($rotulo);
         if ($eixo === null) {
-            return ['outro', $valor, "Variação do código \"{$codigoVariacao}\": o tipo \"{$rotulo}\" não está na lista, usamos \"Outro\"."];
+            return ['outro', $valor, $avisoCorte ?? "Variação do código \"{$codigoVariacao}\": o tipo \"{$rotulo}\" não está na lista, usamos \"Outro\"."];
         }
 
-        return [$eixo, $valor, null];
+        return [$eixo, $valor, $avisoCorte];
+    }
+
+    /**
+     * Corta o valor da variação no mesmo limite que o `NormalizadorDeLinha` usa na grade/planilha
+     * (acceptance criteria: a régua vem de lá, não de um 80 solto aqui).
+     *
+     * @return array{0: string, 1: ?string} [valor cortado, aviso ou null]
+     */
+    private static function valorDaVariacaoCortado(string $valor): array
+    {
+        if (mb_strlen($valor) <= NormalizadorDeLinha::MAX_VALOR) {
+            return [$valor, null];
+        }
+
+        return [mb_substr($valor, 0, NormalizadorDeLinha::MAX_VALOR), 'Valor da variação do Bling cortado em '.NormalizadorDeLinha::MAX_VALOR.' caracteres.'];
     }
 
     /** @return array{0: string, 1: ?string} [nome cortado, aviso ou null] */
@@ -337,26 +415,43 @@ final class TradutorBlingParaPortal
     /**
      * `custo` vem de `fornecedor.precoCusto`, com reserva em `precoCusto` no nível do produto.
      * Ausente ou não numérico → `null` (a chave sai omitida da linha — "chave ausente = não mexer").
+     * Fora de `[0, NormalizadorDeLinha::MAX_CUSTO]` → também omite a chave, com aviso: a régua é a
+     * mesma que a grade/planilha usam, nunca um número duplicado aqui.
+     *
+     * @return array{0: ?float, 1: ?string} [custo ou null, aviso ou null]
      */
-    private static function custoDoProduto(array $produto): ?float
+    private static function custoDoProduto(array $produto): array
     {
         $custo = $produto['fornecedor']['precoCusto'] ?? $produto['precoCusto'] ?? null;
 
-        if (! is_numeric($custo)) {
-            return null;
+        if ($custo === null) {
+            return [null, null];
         }
 
-        return (float) $custo;
+        if (! is_numeric($custo)) {
+            return [null, 'Custo do Bling não é um número: a chave "custo" não entra.'];
+        }
+
+        $custo = (float) $custo;
+        if ($custo < 0 || $custo > NormalizadorDeLinha::MAX_CUSTO) {
+            return [null, 'Custo do Bling fora da faixa aceita pelo Portal: a chave "custo" não entra.'];
+        }
+
+        return [$custo, null];
     }
 
     /**
      * Monta a lista de `volumes` (contrato cm/kg do `NormalizadorDeLinha`) a partir de
      * `dimensoes` + `pesoBruto` (reserva `pesoLiquido`) do pai/produto simples.
      *
-     * Só o caminho `unidadeMedida === 1` (cm) está implementado nesta tarefa — metro (`0`) e
-     * milímetro (`2`) são `TODO(184-05)`: a suposição 7 do RESEARCH §5 (se a medida é do produto
-     * embalado) também fica para lá. `volumes > 1` do Bling é outro caso de borda do plano 05: por
-     * ora é tratado como medida incompleta (omite a chave, com aviso), nunca como fato inventado.
+     * `volumes > 1` do Bling: a medida **não entra** (ele guarda 1 medida por produto; replicá-la
+     * por N volumes inventaria dado — T-184-25). `unidadeMedida` 0/1/2 (metro/cm/milímetro) é
+     * convertido para cm por `paraCentimetros()`; ausente ou fora dessa lista é lido como cm **com
+     * aviso declarado** — (184-05) suposição 7 do RESEARCH §5 (se as medidas do Bling são do
+     * produto embalado) não está medida, e o checkpoint humano do plano 12 confere em 2 ou 3
+     * produtos reais (T-184-24: nunca adivinhar em silêncio). Medida convertida fora da faixa do
+     * `NormalizadorDeLinha` (`MIN_MEDIDA`/`MAX_MEDIDA`/`MIN_PESO`/`MAX_PESO`) **omite** a chave —
+     * nunca grava zero (precedente BE-IN-03, T-184-26).
      *
      * @return array{0: ?list<array{c: float, l: float, a: float, kg: float}>, 1: ?string}
      */
@@ -364,8 +459,9 @@ final class TradutorBlingParaPortal
     {
         $qtdVolumes = $produto['volumes'] ?? null;
         if ($qtdVolumes !== null && (int) $qtdVolumes > 1) {
-            // TODO(184-05): produto com mais de 1 volume — medida não entra, por decisão do plano.
-            return [null, 'Produto do Bling com mais de 1 volume: a medida não entra nesta fase.'];
+            $n = (int) $qtdVolumes;
+
+            return [null, "Produto do Bling com {$n} volumes: a medida precisa ser informada no Portal (o Bling guarda 1 medida por produto)."];
         }
 
         $dimensoes = $produto['dimensoes'] ?? null;
@@ -373,7 +469,7 @@ final class TradutorBlingParaPortal
             return [null, null];
         }
 
-        $unidade = $dimensoes['unidadeMedida'] ?? null;
+        $unidade      = $dimensoes['unidadeMedida'] ?? null;
         $largura      = self::numeroOuNull($dimensoes['largura'] ?? null);
         $altura       = self::numeroOuNull($dimensoes['altura'] ?? null);
         $profundidade = self::numeroOuNull($dimensoes['profundidade'] ?? null);
@@ -383,17 +479,47 @@ final class TradutorBlingParaPortal
             return [null, 'Medida ou peso incompletos no Bling: o volume não entra (não é erro de produto).'];
         }
 
-        if ($unidade !== 1) {
-            // TODO(184-05): unidadeMedida 0 (metro) e 2 (milímetro) — converter para cm.
-            // Nesta tarefa só 1 (cm) está provado; unidade desconhecida segue sem conversão.
+        $aviso = null;
+        if (! in_array($unidade, [0, 1, 2], true)) {
+            $aviso = 'Unidade de medida do Bling não informada ou desconhecida: a medida foi lida em centímetros.';
+        }
+
+        $larguraCm      = self::paraCentimetros($largura, $unidade);
+        $alturaCm       = self::paraCentimetros($altura, $unidade);
+        $profundidadeCm = self::paraCentimetros($profundidade, $unidade);
+
+        foreach ([$larguraCm, $alturaCm, $profundidadeCm] as $medidaCm) {
+            if ($medidaCm < NormalizadorDeLinha::MIN_MEDIDA || $medidaCm > NormalizadorDeLinha::MAX_MEDIDA) {
+                // Nunca gravar zero (BE-IN-03): a chave sai omitida, nunca um valor fora de faixa.
+                return [null, 'Medida do Bling, convertida para centímetro, fica fora da faixa aceita pelo Portal: o volume não entra.'];
+            }
+        }
+        if ($peso < NormalizadorDeLinha::MIN_PESO || $peso > NormalizadorDeLinha::MAX_PESO) {
+            return [null, 'Peso do Bling fora da faixa aceita pelo Portal: o volume não entra.'];
         }
 
         return [[[
-            'c'  => $profundidade, // dimensoes.profundidade É o comprimento do Portal
-            'l'  => $largura,
-            'a'  => $altura,
+            'c'  => $profundidadeCm, // dimensoes.profundidade É o comprimento do Portal
+            'l'  => $larguraCm,
+            'a'  => $alturaCm,
             'kg' => $peso,
-        ]], null];
+        ]], $aviso];
+    }
+
+    /**
+     * `unidadeMedida`: `0` metro (× 100), `1` centímetro (inalterado), `2` milímetro (÷ 10).
+     * Qualquer outro valor (ausente, `null`, texto) é lido como centímetro — o aviso declarado do
+     * fallback é responsabilidade de quem chama, para não repetir o mesmo aviso por medida.
+     */
+    private static function paraCentimetros(float $valor, mixed $unidade): float
+    {
+        $resultado = match ($unidade) {
+            0 => $valor * 100,
+            2 => $valor / 10,
+            default => $valor, // 1 (cm) e unidade desconhecida (fallback da suposição 7)
+        };
+
+        return round($resultado, 2);
     }
 
     private static function numeroOuNull(mixed $v): ?float

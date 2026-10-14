@@ -39,14 +39,18 @@ final class NormalizadorDeLinha
     private const MAX_CODIGO    = 120;
     private const MAX_NOME      = 255;
     private const MAX_GRUPO     = 120;
-    private const MAX_VALOR     = 80;
+    /** Público (184-05): o tradutor do Bling corta o valor da variação pela mesma régua, em vez de duplicar o número. */
+    public const MAX_VALOR      = 80;
     private const MAX_VOLUMES   = 20;
-    private const MAX_MEDIDA    = 999.99;
-    private const MAX_PESO      = 9999.999;
-    private const MIN_MEDIDA    = 0.01;  // decimal(7,2)
-    private const MIN_PESO      = 0.001; // decimal(8,3)
-    private const MAX_CUSTO     = 9999999999;
-    private const MAX_ESTOQUE   = 99999999;
+    /** Público (184-05): limites da coluna decimal(7,2) — o tradutor do Bling valida contra eles antes de converter unidade. */
+    public const MAX_MEDIDA     = 999.99;
+    /** Público (184-05): limite da coluna decimal(8,3) — mesma régua usada pelo tradutor do Bling. */
+    public const MAX_PESO       = 9999.999;
+    public const MIN_MEDIDA     = 0.01;  // decimal(7,2)
+    public const MIN_PESO       = 0.001; // decimal(8,3)
+    /** Público (184-05): o tradutor do Bling e `SaldoDoBling` leem este teto em vez de duplicá-lo. */
+    public const MAX_CUSTO      = 9999999999;
+    public const MAX_ESTOQUE    = 99999999;
     /** O mesmo teto da rota da descrição na ficha (`gravarDescricao`, max:5000). */
     public const MAX_DESCRICAO  = 5000;
     public const MAX_ORDEM      = 65535; // SMALLINT UNSIGNED
