@@ -5,7 +5,7 @@ import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import BotaoAtualizar from '@/Pages/Mlb/components/BotaoAtualizarAcervo';
-import CabecalhoDePublicacoes, { BotaoAtualizarDoCabecalho } from '@/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes';
+import CabecalhoDePublicacoes from '@/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes';
 import FaixaDeSucesso from '@/Components/Mlb/Publicador/publicacoes/FaixaDeSucesso';
 import BuscaDePublicacoes from '@/Components/Mlb/Publicador/publicacoes/BuscaDePublicacoes';
 import LinhaDeControles from '@/Components/Mlb/Publicador/publicacoes/LinhaDeControles';
@@ -647,16 +647,43 @@ export default function MeusAnuncios({
                         `AnunciosHistorico.jsx` nem os testes deles — ver o
                         cabeçalho deste arquivo. */}
 
-                    <CabecalhoDePublicacoes
-                        sincronizacao={sincronizacao ?? null}
-                        acaoAtualizar={(
-                            <BotaoAtualizarDoCabecalho
-                                atualizando={atualizando}
-                                cooldown={cooldown}
-                                onClick={atualizarAgora}
-                            />
-                        )}
-                    />
+                    {/* ⚠️⚠️ AQUI FICAVA O SEGUNDO BOTÃO "Atualizar" — ELE SAIU
+                        EM 14/10/2026, POR DECISÃO DO USUÁRIO NO CHECKPOINT DO
+                        PLANO 180-10 (plano 180-10B).
+
+                        O que havia: `acaoAtualizar={(<BotaoAtualizarDoCabecalho
+                        atualizando={atualizando} cooldown={cooldown}
+                        onClick={atualizarAgora} />)}` — o "Atualizar" de 36px do
+                        protótipo (`Publicacoes v2.dc.html:39`).
+
+                        POR QUE SAIU: a tela mostrava DOIS botões de atualizar
+                        lado a lado com a MESMA ação. Medido, não presumido: os
+                        dois recebiam `atualizando`, `cooldown` e
+                        `onClick={atualizarAgora}` idênticos, e `atualizarAgora`
+                        é o ÚNICO `router.post` desta página — um botão só,
+                        duplicado na tela.
+
+                        POR QUE SAIU ESTE, E NÃO O OUTRO: o "Atualizar agora" do
+                        `PublicadorHeader` (slot `acoes`, logo acima) é contrato
+                        da Fase 177 e serve AS 9 PÁGINAS do módulo, com gate
+                        próprio (`estrutura-meus-anuncios.test.js`, teste
+                        "177-08: Atualizar agora continua no slot de ações").
+                        Removê-lo quebraria telas que não são desta fase.
+
+                        ⚠️ É DIVERGÊNCIA DELIBERADA DO PROTÓTIPO, autorizada
+                        pelo usuário. NÃO restaurar sem decisão NOVA dele.
+
+                        ⚠️ O "● Sincronizado há X" FICA: ele é informação, não
+                        ação, e não depende do botão (`CabecalhoDePublicacoes`
+                        desenha os dois como irmãos independentes).
+
+                        ⚠️ O export `BotaoAtualizarDoCabecalho` CONTINUA em
+                        `publicacoes/CabecalhoDePublicacoes.jsx`, junto com o
+                        slot `acaoAtualizar` — é ÓRFÃO DECLARADO, como o
+                        `CelulaSku` deste arquivo. Apagá-lo exigiria REMOVER
+                        asserções do gate do plano 180-05, que é o oposto do que
+                        esta cirurgia faz. */}
+                    <CabecalhoDePublicacoes sincronizacao={sincronizacao ?? null} />
 
                     {/* A faixa verde de sucesso pós-publicação (LIST-02).
                         ⚠️ `faixaSucesso` é `null` SEMPRE hoje, e isso foi

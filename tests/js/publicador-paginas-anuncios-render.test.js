@@ -230,7 +230,7 @@ const propsMassa = (extras = {}) => ({
 // · `headers`: a contagem esperada de `<header>` na página. Era **1** para as
 //   três, implícita no `assert.equal(…, 1)` de dentro do laço. Em
 //   `MeusAnuncios` passou a ser **2**, porque o cabeçalho da PÁGINA (LIST-01:
-//   H1 "Publicações" + "● Sincronizado há X" + "Atualizar") é um `<header>`
+//   H1 "Publicações" + "● Sincronizado há X") é um `<header>`
 //   semântico, como no protótipo (`Publicacoes v2.dc.html:31`). ⚠️ Sem o valor
 //   por página, o laço reprovaria o código CERTO — e, pior, trocar o esperado
 //   para 2 nas três deixaria as outras duas perderem o header global em
@@ -287,6 +287,26 @@ function navDoHeader(html) {
     const fim = html.indexOf('</nav>', inicio);
     assert.notEqual(fim, -1, '<nav> do header sem fechamento');
     return html.slice(inicio, fim);
+}
+
+/**
+ * O bloco do SEGUNDO `<header>` da saída — o cabeçalho DA PÁGINA (LIST-01),
+ * desenhado por `publicacoes/CabecalhoDePublicacoes.jsx`.
+ *
+ * ⚠️ Localização por ÁRVORE com índices ABSOLUTOS, e não por lista de classes
+ * nem por `html.indexOf('<header')`: o primeiro `<header` é o GLOBAL do
+ * Publicador, e pegar o irmão errado foi o furo que o learnings §4.7 registra
+ * (quatro gates do ERP mediam a linha do Mercado Livre). `<header>` não
+ * aninha, logo o fechamento do segundo é o segundo `</header>`.
+ */
+function headerDaPagina(html) {
+    const primeiro = html.indexOf('<header');
+    assert.notEqual(primeiro, -1, 'a saída não tem nenhum <header>');
+    const inicio = html.indexOf('<header', primeiro + 1);
+    assert.notEqual(inicio, -1, 'a saída não tem um SEGUNDO <header> — o cabeçalho da página (LIST-01) sumiu');
+    const fim = html.indexOf('</header>', inicio);
+    assert.notEqual(fim, -1, 'o segundo <header> não fecha');
+    return html.slice(inicio, fim + '</header>'.length);
 }
 
 /** O CORPO da página: tudo o que vem depois do `</header>`. */
@@ -412,6 +432,59 @@ test('MeusAnuncios — "Atualizar agora" está no slot de ações do header, den
         // `/disabled/` sem o `=` casaria a palavra dentro de qualquer classe —
         // asserção vazia (GATE-05).
         assert.doesNotMatch(botao[0], /disabled=/);
+    });
+});
+
+// ═══ 3b. ⚠️ CIRURGIA 3 (plano 180-10B) — o cabeçalho DA PÁGINA perdeu o
+// segundo botão "Atualizar", e o do header global ficou.
+//
+// Decisão do usuário em 14/10/2026 (checkpoint do 180-10): a tela mostrava
+// DOIS botões de atualizar lado a lado com a MESMA ação (medido: os dois
+// recebiam `atualizando`/`cooldown`/`onClick={atualizarAgora}` idênticos, e
+// há UM `router.post` só). Sai o da página; fica o do header, que serve as 9
+// páginas do módulo e é contrato gateado da Fase 177.
+//
+// O que precisaria estar errado para este teste falhar: o botão voltar ao
+// cabeçalho da página; o cabeçalho da página perder o H1 ou o
+// "● Sincronizado"; ou o header global perder o "Atualizar agora".
+test('180-10B — o cabeçalho da PÁGINA não tem mais botão nenhum, e o do header global continua', async (contexto) => {
+    const html = render(MEUS, propsMeusCheias());
+
+    await contexto.test('⚠️ ISCA: a sonda do rótulo tem dentes (e não casa com "Atualizar agora")', () => {
+        // `Atualizar` é PREFIXO de `Atualizar agora` e de `Atualizando…`:
+        // `/Atualizar/` seria vazia por construção (learnings §4.4). A borda é
+        // o `</button>`.
+        const RE = /Atualizar<\/button>/;
+        assert.match(renderToStaticMarkup(React.createElement('button', null, 'Atualizar')), RE,
+            'a sonda não reconhece o rótulo que ela existe para proibir');
+        assert.doesNotMatch(renderToStaticMarkup(React.createElement('button', null, 'Atualizar agora')), RE,
+            'a sonda casaria com o botão que FICA — ela proibiria o certo');
+        assert.doesNotMatch(renderToStaticMarkup(React.createElement('button', null, 'Atualizando…')), RE);
+    });
+
+    await contexto.test('ZERO <button> dentro do cabeçalho da página', () => {
+        const cabecalho = headerDaPagina(html);
+        assert.equal(
+            (cabecalho.match(/<button/g) ?? []).length,
+            0,
+            'nasceu um botão no cabeçalho da página. O "Atualizar" de 36px do protótipo saiu em 14/10/2026 por'
+            + ' decisão do usuário (eram dois botões com a mesma ação) — não restaurar sem decisão nova dele',
+        );
+        assert.doesNotMatch(cabecalho, /Atualizar<\/button>/);
+    });
+
+    await contexto.test('e o cabeçalho da página continua com o H1 e o "● Sincronizado" (só o botão saiu)', () => {
+        const cabecalho = headerDaPagina(html);
+        assert.match(cabecalho, /Publicações/, 'o H1 da tela saiu junto com o botão — ele FICA (LIST-01)');
+        assert.match(cabecalho, /Sincronizado/,
+            'o "● Sincronizado há X" saiu junto com o botão. Ele é INFORMAÇÃO, não ação, e fica');
+        // E o dot verde, que é o "●" da frase.
+        assert.match(cabecalho, /bg-pub-ok/, 'o dot verde do "● Sincronizado" sumiu');
+    });
+
+    await contexto.test('⚠️ o botão que FICA continua na <nav> do header global — não perdemos os dois', () => {
+        assert.match(navDoHeader(html), /Atualizar agora/,
+            'a decisão foi tirar o botão DA PÁGINA e manter o do header. Este sumiu');
     });
 });
 

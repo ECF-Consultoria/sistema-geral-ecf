@@ -872,6 +872,55 @@ test('D-11 — nenhum dos dois componentes escreve, nem navega por conta própri
         assert.equal((pagina.match(/router\.post\(/g) ?? []).length, 1, 'a página perdeu (ou ganhou) router.post');
         assert.match(pagina, /mlb\.anuncios\.meus\.atualizar/);
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️ VETO ACRESCENTADO PELO PLANO 180-10B (14/10/2026) — nenhuma asserção
+    // deste arquivo foi removida nem reapontada: só entraram as de baixo.
+    //
+    // A PÁGINA DEIXOU DE PREENCHER O SLOT `acaoAtualizar`, por decisão do
+    // usuário no checkpoint do plano 180-10: a tela mostrava DOIS botões de
+    // atualizar lado a lado com a MESMA ação (medido: os dois recebiam
+    // `atualizando`/`cooldown`/`onClick={atualizarAgora}` idênticos, e há UM
+    // `router.post` só). Ficou o "Atualizar agora" do `PublicadorHeader`, que
+    // serve as 9 páginas do módulo e é contrato gateado da Fase 177.
+    //
+    // ⚠️ O CONTRATO DESTE PLANO (180-05) NÃO MUDOU: o slot continua existindo
+    // e o export nomeado continua desenhando a geometria do protótipo — ele é
+    // ÓRFÃO DECLARADO, como o `CelulaSku` de `MeusAnuncios.jsx`. Apagá-lo
+    // exigiria remover os 6 pontos de gate deste arquivo, que é o oposto de
+    // uma cirurgia honesta.
+    // ═══════════════════════════════════════════════════════════════════════
+    await contexto.test('⚠️ 180-10B: a PÁGINA não monta mais o botão — mas o slot e o export FICAM', () => {
+        const pagina = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+
+        assert.doesNotMatch(
+            pagina,
+            /BotaoAtualizarDoCabecalho/,
+            'a página voltou a montar o segundo botão "Atualizar". Ele saiu em 14/10/2026 por decisão do usuário'
+            + ' (dois botões com a mesma ação) — não restaurar sem decisão nova dele',
+        );
+        assert.doesNotMatch(pagina, /acaoAtualizar/, 'a página voltou a preencher o slot `acaoAtualizar`');
+
+        // ⚠️ E O ENDURECIMENTO: o contrato deste plano continua INTEIRO. Sem
+        // estas três, as negativas acima passariam também se alguém tivesse
+        // apagado o componente — que não foi o que o usuário decidiu.
+        assert.equal(typeof BotaoAtualizar, 'function',
+            'o export nomeado `BotaoAtualizarDoCabecalho` foi apagado — ele é órfão DECLARADO, não removido');
+        assert.match(render(BotaoAtualizar, { onClick: () => {} }), /<button/,
+            'o botão órfão deixou de renderizar — a geometria do protótipo tem de continuar alcançável');
+        assert.match(
+            lerSemComentarios('resources/js/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes.jsx'),
+            /acaoAtualizar = null/,
+            'o slot `acaoAtualizar` saiu do contrato do cabeçalho — quem parou de usá-lo foi a PÁGINA',
+        );
+
+        // E o "● Sincronizado há X" continua ligado na página: só o botão saiu.
+        assert.match(
+            pagina,
+            /sincronizacao=\{sincronizacao \?\? null\}/,
+            'a página parou de passar `sincronizacao` — e aí o "● Sincronizado há X" desapareceria da tela',
+        );
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

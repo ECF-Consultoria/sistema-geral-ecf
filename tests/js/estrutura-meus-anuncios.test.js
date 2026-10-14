@@ -608,3 +608,102 @@ test('180: Publicados | Rascunhos — o segmentado separado SAIU, a query e o co
         + ' alguma delas passar a contar por conta própria, o número do trilho pode divergir do de hoje',
     );
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// ⚠️ CIRURGIA 3 (Fase 180, plano 10B) — o SEGUNDO botão "Atualizar" saiu
+// desta página, e o do HEADER GLOBAL ficou. Reaponte com VETO.
+//
+// A tela mostrava DOIS botões de atualizar lado a lado, com a MESMA ação.
+// MEDIDO antes de decidir (não presumido a partir do relatório do 180-10):
+// os dois recebiam `atualizando`, `cooldown` e `onClick={atualizarAgora}`
+// IDÊNTICOS, e `atualizarAgora` é o ÚNICO `router.post` desta página — logo
+// não são duas coletas de escopos diferentes, é um botão só, duplicado.
+//
+// DECISÃO DO USUÁRIO, 14/10/2026 (checkpoint do plano 180-10): sai o da
+// PÁGINA, fica o do header. O do header é contrato da Fase 177 e serve AS 9
+// PÁGINAS do módulo — removê-lo quebraria telas que não são desta fase.
+//
+// ⚠️ É DIVERGÊNCIA DELIBERADA DO PROTÓTIPO (`Publicacoes v2.dc.html:39`
+// desenha o "Atualizar" no cabeçalho da página), AUTORIZADA pelo usuário.
+// ═══════════════════════════════════════════════════════════════════════
+
+const fonteCabecalhoDePublicacoes = lerSemComentarios(
+    'resources/js/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes.jsx',
+);
+
+test('180-10B: o "Atualizar" do cabeçalho DA PÁGINA saiu — e o contrato do plano 180-05 continua INTEIRO', () => {
+    // ⚠️⚠️ VALOR ANTIGO (plano 180-10), e ele era o estado da tela:
+    //   acaoAtualizar={(<BotaoAtualizarDoCabecalho atualizando={atualizando}
+    //       cooldown={cooldown} onClick={atualizarAgora} />)}
+    // VALOR NOVO: as duas asserções são NEGATIVAS.
+    // ⚠️ NÃO RESTAURAR sem uma decisão NOVA do usuário. É a terceira exceção
+    // explícita dele à regra-mestra "melhorar sem regredir" nesta milestone
+    // (1ª: os dois blocos da Visão geral, 12/10; 2ª: o "No ar | Histórico",
+    // 13/10).
+    assert.doesNotMatch(
+        fonte,
+        /BotaoAtualizarDoCabecalho/,
+        'o segundo botão "Atualizar" voltou para MeusAnuncios.jsx (mount ou import). Ele saiu DE PROPÓSITO em'
+        + ' 14/10/2026, por decisão do usuário no checkpoint do plano 180-10: a tela tinha DOIS botões de'
+        + ' atualizar com a MESMA ação, e o que fica é o "Atualizar agora" do PublicadorHeader, que serve as 9'
+        + ' páginas do módulo e é contrato gateado da Fase 177',
+    );
+    assert.doesNotMatch(
+        fonte,
+        /acaoAtualizar/,
+        'a página voltou a preencher o slot `acaoAtualizar` do cabeçalho — o slot existe e é válido, mas esta'
+        + ' tela não o usa mais (decisão de 14/10/2026)',
+    );
+
+    // ⚠️ O ENDURECIMENTO QUE JUSTIFICA AS NEGATIVAS — sem ele, "o botão não
+    // está na página" passaria também se alguém tivesse APAGADO o componente
+    // do plano 180-05, que é outra coisa e não foi autorizada. O usuário tirou
+    // o botão DA TELA; o contrato do componente fica.
+    assert.match(
+        fonteCabecalhoDePublicacoes,
+        /export function BotaoAtualizarDoCabecalho\(/,
+        'o export nomeado `BotaoAtualizarDoCabecalho` foi APAGADO. Ele é ÓRFÃO DECLARADO (o padrão do'
+        + ' `CelulaSku` deste arquivo e do `PainelVisaoGeral.jsx` da Fase 179): a geometria do protótipo e os'
+        + ' 6 pontos do gate do plano 180-05 dependem dele',
+    );
+    assert.match(
+        fonteCabecalhoDePublicacoes,
+        /acaoAtualizar = null/,
+        'o slot `acaoAtualizar` saiu do contrato de `CabecalhoDePublicacoes` — a decisão foi a página parar de'
+        + ' PREENCHER o slot, não o cabeçalho parar de tê-lo',
+    );
+    // E o "● Sincronizado há X" FICA: ele é informação, não ação, e não
+    // depende do botão (os dois são irmãos independentes no bloco da direita).
+    assert.match(
+        fonteCabecalhoDePublicacoes,
+        /PREFIXO_SINCRONIZADO = 'Sincronizado'/,
+        'o "● Sincronizado há X" saiu junto com o botão — ele FICA: só o botão duplicado foi removido',
+    );
+    assert.match(
+        fonte,
+        /sincronizacao=\{sincronizacao \?\? null\}/,
+        'a página parou de passar `sincronizacao` ao cabeçalho — e aí o "● Sincronizado há X" desapareceria da tela',
+    );
+
+    // ⚠️ E O BOTÃO QUE FICA CONTINUA LÁ, no slot do header global. Sem esta
+    // asserção aqui, este teste passaria com a tela tendo perdido os DOIS —
+    // que é exatamente o oposto do que o usuário decidiu.
+    assert.match(
+        fonte,
+        /acoes=\{\(\s*<BotaoAtualizar atualizando=\{atualizando\} cooldown=\{cooldown\} onClick=\{atualizarAgora\} \/>\s*\)\}/,
+        'o "Atualizar agora" do header global sumiu — a decisão de 14/10 foi tirar o DA PÁGINA e manter ESTE',
+    );
+    // E a ação continua sendo UMA só: nenhum router.post foi criado nem perdido.
+    assert.equal(
+        (fonte.match(/router\.post\(/g) ?? []).length,
+        1,
+        'a contagem de router.post mudou com a remoção do botão — ela tem de continuar 1 (`meus.atualizar`)',
+    );
+    assert.match(fonte, /mlb\.anuncios\.meus\.atualizar/);
+    // E o handler compartilhado continua existindo, com o MESMO nome.
+    assert.match(
+        fonte,
+        /function atualizarAgora\(\)/,
+        '`atualizarAgora` foi removido junto com o botão duplicado — ele é a ação do botão que FICOU',
+    );
+});
