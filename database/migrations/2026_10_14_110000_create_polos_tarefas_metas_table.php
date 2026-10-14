@@ -22,7 +22,10 @@ use Illuminate\Support\Facades\Schema;
  *    É assim que a "evolução de estágios" cabe no modelo feito × meta sem histórico de estágio
  *    (o estágio fica fora do activity_log de MlbEmpresa e o roster congelado não o grava).
  *  - `prazo` nulo = "contínuo", como no desenho do ticket.
- *  - Sem coluna de "feito": guardar o número congelaria um retrato que a tela precisa ao vivo.
+ *  - O "feito" dos indicadores automáticos não é guardado: o número congelaria um retrato que a
+ *    tela precisa ao vivo. A exceção é `feito_manual`, só do indicador "manual" — a tarefa cuja
+ *    lista de empresas o time escolhe à mão (o cartão "Integração de anúncios ME1 · 1/4" do
+ *    desenho), sem coluna da ficha que diga quem já está feito; quem atualiza é a gestão.
  *  - Soft delete: remover tira o cartão da TV sem apagar o histórico da meta (LogsActivity).
  *  - FKs de users `nullable + nullOnDelete` — nullable é pré-requisito do nullOnDelete no
  *    MariaDB (erro 1830). Nomes gerados ficam abaixo de 64 caracteres (o maior tem 41).
@@ -50,6 +53,9 @@ return new class extends Migration
             $table->string('descricao', 500)->nullable();
 
             $table->unsignedInteger('meta')->default(0);
+
+            // Só no indicador 'manual': o feito digitado pela gestão. NULL nos automáticos.
+            $table->unsignedInteger('feito_manual')->nullable();
 
             $table->foreignId('responsavel_id')->nullable()->constrained('users')->nullOnDelete();
 

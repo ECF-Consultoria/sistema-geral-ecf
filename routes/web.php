@@ -1645,6 +1645,7 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/meta-faturamento', [PolosController::class, 'salvarMetaFaturamento'])->name('polos-painel.meta-faturamento');
     // Tarefas do time com meta editável (tela "Tarefas" do Modo TV — TKT-0017; JSON; mesmo gate operacional).
     Route::post('/polos-painel/tarefas',             [PolosController::class, 'tarefaStore'])->name('polos-painel.tarefas.store');
+    Route::post('/polos-painel/tarefas/proximos-passos', [PolosController::class, 'salvarProximosPassos'])->name('polos-painel.tarefas.proximos-passos');
     Route::put('/polos-painel/tarefas/{tarefa}',     [PolosController::class, 'tarefaUpdate'])->name('polos-painel.tarefas.update');
     Route::delete('/polos-painel/tarefas/{tarefa}',  [PolosController::class, 'tarefaDestroy'])->name('polos-painel.tarefas.destroy');
     // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).

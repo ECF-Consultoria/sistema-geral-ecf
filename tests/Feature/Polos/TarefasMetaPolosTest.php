@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Polos;
 
+use App\Models\Configuracao;
 use App\Models\MlbEmpresa;
 use App\Models\PoloAdsStatus;
 use App\Models\PoloTarefaMeta;
@@ -19,7 +20,9 @@ use Tests\TestCase;
  *     (situação da campanha e "tem PPA"), sem chamada nova à Adman;
  *   - criar, editar e remover passam pelo mesmo gate operacional do Painel;
  *   - estágio-alvo só existe na Publicação (e cai em "Estágio 1" quando vem vazio);
- *   - remover é soft delete com histórico: o cartão sai da tela, a meta fica registrada.
+ *   - remover é soft delete com histórico: o cartão sai da tela, a meta fica registrada;
+ *   - o feito digitado só existe na contagem manual;
+ *   - os "Próximos passos" do rodapé da TV gravam pelo mesmo gate e chegam ao Painel.
  *
  * A régua de "feito" por indicador está em tests/js/polosTarefas.test.js.
  *
@@ -206,5 +209,74 @@ class TarefasMetaPolosTest extends TestCase
 
         $this->assertSame(1, PoloTarefaMeta::count());
         $this->assertSame(5, $tarefa->fresh()->meta);
+    }
+
+    // ─── Contagem manual ─────────────────────────────────────────────────────
+
+    public function test_feito_digitado_so_vale_na_contagem_manual(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->postJson(route('mlb.polos-painel.tarefas.store'), $this->dados([
+                'indicador' => 'manual', 'titulo' => 'Integração de anúncios ME1',
+                'descricao' => 'Artri, Móveis Podenski, Nobre Comercial, TELASUL', 'meta' => 4, 'feito_manual' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('tarefa.feito_manual', 1);
+
+        // Num indicador automático o número digitado é descartado: o feito sai das empresas.
+        $this->actingAs($admin)
+            ->postJson(route('mlb.polos-painel.tarefas.store'), $this->dados(['feito_manual' => 30]))
+            ->assertOk()
+            ->assertJsonPath('tarefa.feito_manual', null);
+
+        $this->actingAs($admin)->postJson(route('mlb.polos-painel.tarefas.store'), $this->dados(['indicador' => 'manual', 'feito_manual' => -1]))
+            ->assertStatus(422)->assertJsonValidationErrors('feito_manual');
+
+        $manual = collect($this->propsDoPainel($admin)['tarefasMeta'])->firstWhere('indicador', 'manual');
+        $this->assertSame(1, $manual['feito_manual']);
+    }
+
+    // ─── Próximos passos (rodapé da TV) ──────────────────────────────────────
+
+    public function test_proximos_passos_gravam_sem_linha_vazia_e_chegam_ao_painel(): void
+    {
+        $admin = $this->admin();
+
+        $this->assertSame([], $this->propsDoPainel($admin)['proximosPassos']);
+
+        $this->actingAs($admin)
+            ->postJson(route('mlb.polos-painel.tarefas.proximos-passos'), [
+                'itens' => ['  Acompanhar evolução diária das tarefas ', '', 'Reforçar prazos com o time', null],
+            ])
+            ->assertOk()
+            ->assertJsonPath('itens', ['Acompanhar evolução diária das tarefas', 'Reforçar prazos com o time']);
+
+        $this->assertSame(
+            ['Acompanhar evolução diária das tarefas', 'Reforçar prazos com o time'],
+            $this->propsDoPainel($admin)['proximosPassos']
+        );
+
+        // Lista vazia apaga o bloco.
+        $this->actingAs($admin)->postJson(route('mlb.polos-painel.tarefas.proximos-passos'), ['itens' => []])->assertOk();
+        $this->assertSame([], $this->propsDoPainel($admin)['proximosPassos']);
+    }
+
+    public function test_proximos_passos_recusam_lista_longa_e_quem_nao_tem_acesso(): void
+    {
+        $admin = $this->admin();
+        Configuracao::set(PoloTarefaMeta::CHAVE_PROXIMOS_PASSOS, json_encode(['Antes']));
+
+        $this->actingAs($admin)
+            ->postJson(route('mlb.polos-painel.tarefas.proximos-passos'), ['itens' => array_fill(0, 7, 'Passo')])
+            ->assertStatus(422)->assertJsonValidationErrors('itens');
+
+        $consultor = User::factory()->create(['role' => 'consultor']);
+        $this->actingAs($consultor)
+            ->postJson(route('mlb.polos-painel.tarefas.proximos-passos'), ['itens' => ['Outro']])
+            ->assertForbidden();
+
+        $this->assertSame(['Antes'], PoloTarefaMeta::proximosPassos());
     }
 }

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Building2, CalendarDays, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
 import {
     universoTarefas, progressoDaTarefa, resumoPorResponsavel, distribuicaoEstagios,
-    coresDosResponsaveis, COR_SEM_RESPONSAVEL,
+    coresDosResponsaveis, COR_SEM_RESPONSAVEL, COR_ESTAGIO_TV,
 } from '@/lib/polosTarefas';
 import { useAnunciarModoTv } from '@/hooks/useModoTv';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
 import StatusDonut from './StatusDonut';
-import { AnelProgresso, DonutEstagios, corDoProgresso } from './TarefasPanel';
+import TarefasTV from './TarefasTV';
 
 /**
  * ModoTV — o Painel Polos na TV da empresa. Painel de PAREDE, lido a 4–5 metros.
@@ -20,10 +20,10 @@ import { AnelProgresso, DonutEstagios, corDoProgresso } from './TarefasPanel';
  * Três telas (a lente ativa decide qual abre):
  *  · METAS       → a aba "Metas → Entrantes (M0)" INTEIRA: meta do mês, aceites, reserva,
  *                  funil de entrada por polo e prontidão de setup dos M0.
- *  · TAREFAS     → a evolução das tarefas do time (TKT-0017): um cartão por tarefa com
- *                  feito/meta, responsável e prazo, a distribuição por estágio de M1 a M4 e
- *                  o resumo por responsável — o desenho que a gestão anexou ao ticket. Os
- *                  cartões são criados em "Metas → Tarefas do time"; régua em lib/polosTarefas.
+ *  · TAREFAS     → a evolução das tarefas do time (TKT-0017), IGUAL ao desenho que a gestão
+ *                  anexou ao ticket: pôster próprio (TarefasTV), com cabeçalho e rodapé dele,
+ *                  no lugar do cabeçalho comum. Os cartões são criados em "Metas → Tarefas do
+ *                  time"; régua em lib/polosTarefas.
  *  · FATURAMENTO → faturamento total e empresas ativas, faturamento × meta POR POLO
  *                  (barras, no lugar da antiga lista de ranking) e distribuição de
  *                  status — o anel, protagonista, ocupando a coluna direita inteira.
@@ -293,95 +293,11 @@ function LinhaPolo({ nome, valor, apoio = null, pct: p, cor = HEX.yellow, escala
     );
 }
 
-/**
- * Grade dos cartões de tarefa pela CONTAGEM (mesma lição do funil por polo: decidir por
- * medição já escondeu item na parede). Colunas e fileiras em `style`, nunca em breakpoint —
- * a TV roda a ~960×600 CSS px e `lg:`/`xl:` não disparam lá.
- */
-function gradeCartoes(total, compacto = false) {
-    // Na TV estreita (~960 px) 4 colunas deixavam o cartão com ~140 px: o título virava "C…".
-    // Lá o teto é 3 colunas, e o excedente vira fileira (a escala do cartão desce junto).
-    const colunas = total <= 1 ? 1 : total <= 4 ? 2 : (total <= 9 || compacto) ? 3 : 4;
-    const linhas  = Math.max(1, Math.ceil(total / colunas));
-    return {
-        linhas,
-        style: {
-            gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${linhas}, minmax(0, 1fr))`,
-        },
-    };
-}
-
-// Escala do cartão pelo número de FILEIRAS: poucas tarefas ficam grandes e preenchem a área.
-const ESCALA_CARTAO = {
-    g: { titulo: 'clamp(1rem, 1.9vw, 2.3rem)',    apoio: FT.rotulo,                         num: 'clamp(1.3rem, 2.6vw, 3.2rem)',  anel: 'clamp(56px, 7vw, 132px)',  barra: 'clamp(8px, 0.8vw, 14px)' },
-    m: { titulo: 'clamp(0.95rem, 1.6vw, 1.95rem)', apoio: 'clamp(0.75rem, 1.1vw, 1.35rem)', num: 'clamp(1.15rem, 2.1vw, 2.6rem)', anel: 'clamp(48px, 5.6vw, 108px)', barra: 'clamp(6px, 0.6vw, 11px)' },
-    p: { titulo: 'clamp(0.85rem, 1.3vw, 1.6rem)', apoio: 'clamp(0.7rem, 0.95vw, 1.15rem)', num: 'clamp(1rem, 1.7vw, 2.1rem)',    anel: 'clamp(40px, 4.4vw, 86px)',  barra: 'clamp(5px, 0.5vw, 9px)' },
-};
-const escalaCartao = (linhas) => (linhas <= 2 ? ESCALA_CARTAO.g : linhas === 3 ? ESCALA_CARTAO.m : ESCALA_CARTAO.p);
-
-// Cartão de tarefa da parede: responsável, título, descrição, anel de %, barra, feito/meta e prazo.
-// `compacto` (viewport < 1280px, que é como a TV da sala renderiza) tira o dia da semana do
-// prazo: com ele o rótulo era cortado no meio, e prazo cortado a 4 m não se lê.
-function CartaoTarefaTV({ tarefa, p, cor, escala, compacto = false }) {
-    const corP  = corDoProgresso(p);
-    const semDiaDaSemana = p.prazoLabel.replace(/\s*\(.*\)$/, '');
-    // "atrasada" já ocupa a largura: o dia da semana sai sempre que ela aparece.
-    const prazo = compacto || p.atrasada ? semDiaDaSemana : p.prazoLabel;
-    // Na TV estreita, "atrasada" + data não cabe ao lado do número: fica a palavra, em vermelho.
-    const textoPrazo = p.atrasada ? (compacto ? 'atrasada' : `atrasada ${prazo}`) : prazo;
-    // Na TV estreita com 4+ fileiras não sobra altura para a descrição: ela virava um risco
-    // cortado sob o título. Sai inteira — o título e o número contam a tarefa.
-    const mostrarDescricao = !!tarefa.descricao && !(compacto && escala === ESCALA_CARTAO.p);
-    // Na TV estreita o título desce um degrau: na fonte da escala, "PUBLICAÇÃO" não cabia ao
-    // lado do anel e quebrava no meio da palavra.
-    const fonteTitulo = compacto ? 'clamp(0.8rem, 1.3vw, 1.6rem)' : escala.titulo;
-    // ...e o anel usa o menor degrau, para sobrar largura ao título.
-    const tamanhoAnel = compacto ? ESCALA_CARTAO.p.anel : escala.anel;
-    return (
-        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04] px-[16px] py-[12px]">
-            <div className="flex items-start justify-between gap-[12px]">
-                <div className="min-w-0 flex-1">
-                    <span className="inline-block max-w-full truncate rounded-md px-[8px] py-[2px] font-bold uppercase leading-[1.2] tracking-[0.08em] text-black"
-                          style={{ background: cor, fontSize: escala.apoio }}>
-                        {tarefa.responsavel_nome || 'Sem responsável'}
-                    </span>
-                    {/* Até 2 linhas: o anel divide a largura com o título, e "ACESSO COL…"
-                        truncado numa linha só não dizia de que tarefa se tratava. */}
-                    <div className="mt-[6px] line-clamp-2 break-words font-extrabold uppercase leading-[1.15] tracking-[0.04em] text-white"
-                         style={{ fontSize: fonteTitulo }} title={tarefa.titulo}>{tarefa.titulo}</div>
-                </div>
-                <AnelProgresso pct={p.pct} cor={corP} tamanho={tamanhoAnel} />
-            </div>
-            {/* Descrição na largura toda do cartão, fora da coluna espremida pelo anel. Na TV
-                estreita, 1 linha: a 2ª era cortada ao meio pela altura do cartão. */}
-            {mostrarDescricao && (
-                <div className={cn('mt-[4px] leading-[1.25] text-white/50', compacto ? 'line-clamp-1' : 'line-clamp-2')}
-                     style={{ fontSize: escala.apoio }}>{tarefa.descricao}</div>
-            )}
-            <div className="mt-auto pt-[8px]">
-                <div className="w-full overflow-hidden rounded-full bg-white/[0.08]" style={{ height: escala.barra }}>
-                    <div className="h-full rounded-full" style={{ width: `${p.pctBarra}%`, background: corP }} />
-                </div>
-                <div className="mt-[6px] flex items-baseline justify-between gap-[10px]">
-                    <span className="whitespace-nowrap font-display font-extrabold leading-none tabular-nums text-white" style={{ fontSize: escala.num }}>
-                        {p.feito}<span className="text-white/40"> / {p.meta}</span>
-                    </span>
-                    {/* Sem o prefixo "Prazo:": o ícone de calendário já diz o que é. */}
-                    <span className={cn('inline-flex min-w-0 items-center gap-[6px] truncate leading-none', p.atrasada ? 'font-semibold text-red-400' : 'text-white/45')}
-                          style={{ fontSize: escala.apoio }}>
-                        <CalendarDays size="1em" className="shrink-0" /> {textoPrazo}
-                    </span>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 export default function ModoTV({
     empresas = [],
     metasEntrada = [],
     tarefas = [],
+    proximosPassos = [],
     regioes = [],
     cockpit = null,
     isAdmin = false,
@@ -514,6 +430,29 @@ export default function ModoTV({
     const estagios   = useMemo(() => distribuicaoEstagios(universoT), [universoT]);
     const coresResp  = useMemo(() => coresDosResponsaveis(tarefas), [tarefas]);
     const corResp    = (id) => (id ? (coresResp[id] ?? COR_SEM_RESPONSAVEL) : COR_SEM_RESPONSAVEL);
+    // A tela Tarefas pinta os estágios com a paleta do desenho do ticket.
+    const estagiosTV = useMemo(() => ({
+        ...estagios,
+        linhas: estagios.linhas.map((l) => ({ ...l, cor: COR_ESTAGIO_TV[l.chave] ?? l.cor })),
+    }), [estagios]);
+    // Visão geral da tela Tarefas. "Com meta" = M2–M4 (M1 é onboarding, sem meta de
+    // faturamento — o mesmo "com meta" da aba Metas). "Sem faturamento" sai do cockpit: as
+    // M2–M4 do mês com faturamento zero mais as M1 da coorte; sem cockpit (não-admin), "—".
+    const visaoGeral = useMemo(() => {
+        const semFaturamento = temCk
+            ? [...polosCk.flatMap((p) => p.empresas ?? []), ...(cockpit?.m1?.empresas ?? []).filter((e) => e.fase === 'M1')]
+                .filter((e) => !(Number(e.faturamento) > 0)).length
+            : null;
+        return {
+            total: universoT.length,
+            comMeta: universoT.filter((e) => e.fase !== 'M1').length,
+            semFaturamento,
+            faturamento: temCk ? formatCurrency(totalFatProjeto) : null,
+            faturamentoApoio: temCk
+                ? (metaFat > 0 ? `M2–M4: ${pctFat}% da meta ${formatCurrencyCompact(metaFat)}` : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`)
+                : 'só para admin',
+        };
+    }, [temCk, polosCk, cockpit, universoT, totalFatProjeto, metaFat, pctFat, mesRefFat, parcial]);
 
     // ── Telas (a lente ativa escolhe a inicial) ──
     const telas = useMemo(() => (temCk ? ['metas', 'tarefas', 'faturamento'] : ['metas', 'tarefas']), [temCk]);
@@ -558,10 +497,6 @@ export default function ModoTV({
     const [refDonut, alturaDonut]     = useAlturaMedida();
     const [refGrafico, alturaGrafico] = useAlturaMedida();
     const larguraJanela               = useLarguraJanela();
-    // A TV da sala renderiza a ~960 CSS px: abaixo de 1280 a tela de tarefas enxuga rótulos.
-    const compactoT                   = larguraJanela < 1280;
-    const gradeT                      = gradeCartoes(cartoes.length, compactoT);
-    const escalaT                     = escalaCartao(gradeT.linhas);
     // Teto de fonte do gráfico pela altura da FILEIRA: com muitos polos a tipografia de
     // parede se sobreporia. O piso de 11px existe para o nome nunca sumir — com
     // interval:0 o ECharts desenha todos, e nome apertado é melhor que polo anônimo.
@@ -573,6 +508,42 @@ export default function ModoTV({
 
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    // Controles quase invisíveis: a TV não tem mouse — reaparecem no hover.
+    const controles = (
+        <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
+            {telas.length > 1 && (
+                <>
+                    <button type="button" onClick={anterior} title="Tela anterior (←)"
+                            className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronLeft size={16} /></button>
+                    <button type="button" onClick={proxima} title="Próxima tela (→)"
+                            className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronRight size={16} /></button>
+                </>
+            )}
+            <button type="button" onClick={() => onSair?.()} title="Sair do Modo TV (Esc)"
+                    className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><X size={16} /></button>
+        </div>
+    );
+
+    // Tela Tarefas: o pôster do desenho do ticket ocupa a parede inteira, com cabeçalho e
+    // rodapé próprios. As setas do teclado seguem trocando de tela; os botões ficam no canto.
+    if (telaAtiva === 'tarefas') {
+        return (
+            <div className="fixed inset-0 z-50 overflow-hidden bg-ecf-bg text-white">
+                <TarefasTV
+                    assetUrl={asset_url ?? ''}
+                    atualizadoEm={atualizadoEm}
+                    visaoGeral={visaoGeral}
+                    estagios={estagiosTV}
+                    cartoes={cartoes}
+                    resumo={resumoResp}
+                    corResp={corResp}
+                    proximosPassos={proximosPassos}
+                />
+                <div className="absolute bottom-2 right-2 z-10">{controles}</div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-ecf-bg text-white">
@@ -599,25 +570,11 @@ export default function ModoTV({
                 </div>
                 <div className="flex min-w-0 shrink-0 items-center gap-[16px]">
                     <span className="truncate uppercase leading-none tracking-[0.16em] text-white/40" style={{ fontSize: FT.rotulo }}>
-                        {telaAtiva === 'metas' ? mesCorrente
-                            : telaAtiva === 'tarefas' ? `M1–M4 · hoje ${agora.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`
-                            : `${mesRefFat}${parcial ? ' · parcial' : ''}`}
+                        {telaAtiva === 'metas' ? mesCorrente : `${mesRefFat}${parcial ? ' · parcial' : ''}`}
                     </span>
                     <span className="hidden leading-none text-white/25 lg:inline" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
                     <span className="font-display font-extrabold leading-none tabular-nums text-white" style={{ fontSize: FT.titulo }}>{hora}</span>
-                    {/* Controles quase invisíveis: a TV não tem mouse — reaparecem no hover. */}
-                    <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
-                        {telas.length > 1 && (
-                            <>
-                                <button type="button" onClick={anterior} title="Tela anterior (←)"
-                                        className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronLeft size={16} /></button>
-                                <button type="button" onClick={proxima} title="Próxima tela (→)"
-                                        className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronRight size={16} /></button>
-                            </>
-                        )}
-                        <button type="button" onClick={() => onSair?.()} title="Sair do Modo TV (Esc)"
-                                className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><X size={16} /></button>
-                    </div>
+                    {controles}
                 </div>
             </div>
 
@@ -679,75 +636,6 @@ export default function ModoTV({
                                         <LinhaPolo key={s.rotulo} nome={s.rotulo} valor={`${s.n}/${entrantes.length}`}
                                                    apoio={`${pct(s.n, entrantes.length)}%`}
                                                    pct={pct(s.n, entrantes.length)} cor={s.cor} escala={ESCALA_LINHA.sm} />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ) : telaAtiva === 'tarefas' ? (
-                    /* ── TAREFAS = o desenho do ticket: cartões de tarefa à esquerda; estágios
-                       (Não Listado → Concluído) e resumo por responsável à direita. Colunas e
-                       fileiras em `style` pelo mesmo motivo da tela de faturamento. */
-                    <div className="grid h-full gap-[16px]"
-                         style={{ gridTemplateColumns: 'minmax(0, 1.9fr) minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1.1fr) minmax(0, 1fr)' }}>
-                        <div className="flex min-h-0 flex-col" style={{ gridColumn: 1, gridRow: '1 / span 2' }}>
-                            <Titulo extra={`base ${fmtInt(universoT.length)} empresas M1–M4`}>Evolução das tarefas</Titulo>
-                            {cartoes.length === 0 ? (
-                                <p className="m-auto text-center text-white/35" style={{ fontSize: FT.barraNome }}>
-                                    Nenhuma tarefa cadastrada.<br />Crie em Metas → Tarefas do time.
-                                </p>
-                            ) : (
-                                <div className="grid min-h-0 flex-1 gap-[12px] overflow-hidden" style={gradeT.style}>
-                                    {cartoes.map(({ t, p }) => (
-                                        <CartaoTarefaTV key={t.id} tarefa={t} p={p} cor={corResp(t.responsavel_id)} escala={escalaT} compacto={compactoT} />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex min-h-0 flex-col rounded-2xl border border-white/[0.1] bg-white/[0.03] px-[20px] py-[14px]"
-                             style={{ gridColumn: 2, gridRow: 1 }}>
-                            <Titulo>Estágios · M1–M4</Titulo>
-                            <div className="flex min-h-0 flex-1 items-center gap-[20px]">
-                                <DonutEstagios linhas={estagios.linhas} total={estagios.total} tamanho="clamp(84px, 11vw, 250px)" />
-                                <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
-                                    {estagios.linhas.map((l) => (
-                                        <div key={l.chave} className="flex min-w-0 items-center gap-[10px] leading-none">
-                                            <span className="shrink-0 rounded-full" style={{ background: l.cor, width: '0.8em', height: '0.8em', fontSize: FT.rotulo }} />
-                                            <span className="min-w-0 flex-1 truncate text-white/70" style={{ fontSize: FT.rotulo }}>{l.rotulo}</span>
-                                            <b className="font-display font-extrabold tabular-nums text-white" style={{ fontSize: FT.titulo }}>{fmtInt(l.n)}</b>
-                                            {/* Na TV estreita o % sai: com ele o NOME do estágio virava "E…". */}
-                                            {!compactoT && (
-                                                <span className="w-[3.2em] text-right tabular-nums text-white/40" style={{ fontSize: FT.rotulo }}>{l.pct}%</span>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex min-h-0 flex-col rounded-2xl border border-white/[0.1] bg-white/[0.03] px-[20px] py-[14px]"
-                             style={{ gridColumn: 2, gridRow: 2 }}>
-                            <Titulo>Resumo por responsável</Titulo>
-                            {resumoResp.length === 0 ? (
-                                <p className="text-white/35" style={{ fontSize: FT.rotulo }}>Sem tarefas cadastradas.</p>
-                            ) : (
-                                <div className="grid min-h-0 flex-1 gap-y-[8px] overflow-hidden"
-                                     style={{ gridTemplateRows: `repeat(${resumoResp.length}, minmax(0, 1fr))` }}>
-                                    {resumoResp.map((r) => (
-                                        <div key={r.id ?? 'sem'} className="flex min-w-0 flex-col justify-center">
-                                            <div className="flex min-w-0 items-center justify-between gap-[10px] leading-none">
-                                                <span className="flex min-w-0 items-center gap-[10px]">
-                                                    <span className="truncate rounded-md px-[8px] py-[3px] font-bold uppercase tracking-[0.06em] text-black"
-                                                          style={{ background: corResp(r.id), fontSize: FT.rotulo }}>{r.nome}</span>
-                                                    <span className="shrink-0 text-white/45" style={{ fontSize: FT.rotulo }}>{r.tarefas} {r.tarefas === 1 ? 'tarefa' : 'tarefas'}</span>
-                                                </span>
-                                                <b className="shrink-0 font-display font-extrabold tabular-nums text-white" style={{ fontSize: FT.titulo }}>{r.pct === null ? '—' : `${r.pct}%`}</b>
-                                            </div>
-                                            <div className="mt-[6px] w-full overflow-hidden rounded-full bg-white/[0.08]" style={{ height: 'clamp(6px, 0.6vw, 11px)' }}>
-                                                <div className="h-full rounded-full" style={{ width: `${r.pct ?? 0}%`, background: corResp(r.id) }} />
-                                            </div>
-                                        </div>
                                     ))}
                                 </div>
                             )}

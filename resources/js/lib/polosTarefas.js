@@ -37,6 +37,16 @@ export const COR_ESTAGIO = {
 };
 export const COR_SEM_ESTAGIO = '#4b5563';
 
+// Paleta da tela Tarefas da TV — a do desenho anexado ao ticket (vermelho, amarelo, verde,
+// violeta, azul), pedida "igual à imagem". Só a TV usa: a grade do Painel segue com a do badge.
+export const COR_ESTAGIO_TV = {
+    'Não Listado': '#ef4444',
+    'Estágio 1':   '#facc15',
+    'Estágio 2':   '#22c55e',
+    'Estágio 3':   '#a855f7',
+    'Concluido':   '#3b82f6',
+};
+
 /** Sem acento, sem caixa e sem espaço nas pontas. */
 export function normaliza(valor) {
     return String(valor ?? '')
@@ -114,6 +124,13 @@ export const INDICADORES_TAREFA = {
             return alvo > 0 && atual >= alvo;
         },
     },
+    manual: {
+        rotulo: 'Contagem manual',
+        regra: 'o número que você atualiza (lista de empresas escolhida à mão)',
+        // Sem coluna na ficha que diga quem está feito: o número vem de `feito_manual`.
+        manual: true,
+        feito: () => false,
+    },
 };
 
 /** Ordem do select do formulário (a mesma de PoloTarefaMeta::INDICADORES). */
@@ -126,6 +143,7 @@ export const universoTarefas = (empresas = []) => empresas.filter((e) => FASES_T
 export function feitoDaTarefa(tarefa, universo = []) {
     const ind = INDICADORES_TAREFA[tarefa?.indicador];
     if (!ind) return 0;
+    if (ind.manual) return Math.max(0, parseInt(tarefa?.feito_manual, 10) || 0);
     return universo.reduce((n, e) => n + (ind.feito(e, tarefa) ? 1 : 0), 0);
 }
 
@@ -222,3 +240,32 @@ export function coresDosResponsaveis(tarefas = []) {
     return mapa;
 }
 export const COR_SEM_RESPONSAVEL = '#9ca3af';
+
+/**
+ * Larguras dos cartões na tela Tarefas da TV, numa grade de 12 colunas — o arranjo do desenho
+ * do ticket: dois cartões por fileira e, com quantidade ímpar, os três últimos dividindo a
+ * última fileira em larguras decrescentes (5 · 4 · 3, como Campanha · Decola · Publicação).
+ * Com 10 ou mais, três por fileira; a sobra fecha em fileiras de dois.
+ */
+export function spansDosCartoes(total) {
+    const n = Math.max(0, Math.floor(Number(total) || 0));
+    if (n === 0) return [];
+    if (n === 1) return [12];
+    if (n <= 9) return n % 2 === 0 ? Array(n).fill(6) : [...Array(n - 3).fill(6), 5, 4, 3];
+    const resto = n % 3;
+    if (resto === 1) return [...Array(n - 4).fill(4), 6, 6, 6, 6];
+    if (resto === 2) return [...Array(n - 2).fill(4), 6, 6];
+    return Array(n).fill(4);
+}
+
+/** Quantas fileiras as larguras ocupam (cada fileira soma 12). */
+export function fileirasDosSpans(spans = []) {
+    let soma = 0;
+    let fileiras = 0;
+    spans.forEach((s) => {
+        if (soma === 0) fileiras += 1;
+        soma += s;
+        if (soma >= 12) soma = 0;
+    });
+    return fileiras;
+}

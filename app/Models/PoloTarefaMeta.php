@@ -36,7 +36,19 @@ class PoloTarefaMeta extends Model
         'adman'            => 'Adman',
         'ppa'              => 'PPA',
         'publicacao'       => 'Publicação',
+        'manual'           => 'Contagem manual',
     ];
+
+    /** Indicador cujo feito é digitado (lista de empresas escolhida à mão, sem coluna na ficha). */
+    public const INDICADOR_MANUAL = 'manual';
+
+    /**
+     * "Próximos passos" do rodapé da tela Tarefas da TV: lista curta de texto livre, uma por
+     * Painel — fica em `configuracoes` (chave/valor), não numa tabela própria.
+     */
+    public const CHAVE_PROXIMOS_PASSOS = 'polos_tv_proximos_passos';
+
+    public const MAX_PROXIMOS_PASSOS = 6;
 
     /** Estágio-alvo da Publicação (strings EXATAS de mlb_empresas.estagio; 'Concluido' sem acento). */
     public const ESTAGIOS_ALVO = ['Estágio 1', 'Estágio 2', 'Estágio 3', 'Concluido'];
@@ -45,19 +57,20 @@ class PoloTarefaMeta extends Model
     public const ESTAGIO_ALVO_PADRAO = 'Estágio 1';
 
     protected $fillable = [
-        'indicador', 'estagio_alvo', 'titulo', 'descricao', 'meta',
+        'indicador', 'estagio_alvo', 'titulo', 'descricao', 'meta', 'feito_manual',
         'responsavel_id', 'prazo', 'criado_por', 'atualizado_por',
     ];
 
     protected $casts = [
-        'meta'  => 'integer',
-        'prazo' => 'date',
+        'meta'         => 'integer',
+        'feito_manual' => 'integer',
+        'prazo'        => 'date',
     ];
 
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['indicador', 'estagio_alvo', 'titulo', 'descricao', 'meta', 'responsavel_id', 'prazo'])
+            ->logOnly(['indicador', 'estagio_alvo', 'titulo', 'descricao', 'meta', 'feito_manual', 'responsavel_id', 'prazo'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->useLogName('polos')
@@ -84,9 +97,18 @@ class PoloTarefaMeta extends Model
             'titulo'           => $this->titulo,
             'descricao'        => $this->descricao,
             'meta'             => $this->meta,
+            'feito_manual'     => $this->feito_manual,
             'responsavel_id'   => $this->responsavel_id,
             'responsavel_nome' => $this->responsavel?->name,
             'prazo'            => $this->prazo?->format('Y-m-d'),
         ];
+    }
+
+    /** Próximos passos gravados (lista de textos; vazia quando nunca foram preenchidos). */
+    public static function proximosPassos(): array
+    {
+        $itens = json_decode((string) Configuracao::get(self::CHAVE_PROXIMOS_PASSOS, '[]'), true);
+
+        return is_array($itens) ? array_values(array_filter($itens, 'is_string')) : [];
     }
 }

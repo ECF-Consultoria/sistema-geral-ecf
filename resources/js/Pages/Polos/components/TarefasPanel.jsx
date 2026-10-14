@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { CalendarDays, ListChecks, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ListChecks, Pencil, Plus, Trash2, X, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     INDICADORES_TAREFA,
@@ -26,6 +26,7 @@ import {
  * quando o time bate (80/120 → 120/180); nada zera na virada do mês.
  *
  * Gravação: o Painel passa `onSalvar(dados, id?)` e `onRemover(id)`, que devolvem Promise.
+ * Os "Próximos passos" do rodapé da TV são editados aqui também (`onSalvarProximosPassos`).
  */
 
 // Cor do anel/barra pelo andamento: verde = bateu, vermelho = prazo vencido, amarelo = em curso.
@@ -130,7 +131,7 @@ function CartaoTarefa({ tarefa, progresso: p, cor, onEditar, onRemover }) {
     );
 }
 
-const VAZIA = { indicador: 'places', estagio_alvo: null, titulo: '', descricao: '', meta: '', responsavel_id: '', prazo: '' };
+const VAZIA = { indicador: 'places', estagio_alvo: null, titulo: '', descricao: '', meta: '', feito_manual: '', responsavel_id: '', prazo: '' };
 const campo = 'w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[13px] text-white outline-none focus:border-ecf-yellow/40';
 const rotuloCampo = 'mb-1 block text-[11px] font-semibold uppercase tracking-wider text-white/45';
 
@@ -140,6 +141,7 @@ function ModalTarefa({ inicial, universo, usuarios, onFechar, onSalvar }) {
         ...inicial,
         titulo: inicial?.titulo ?? INDICADORES_TAREFA[inicial?.indicador ?? VAZIA.indicador].rotulo,
         meta: inicial?.meta ?? '',
+        feito_manual: inicial?.feito_manual ?? '',
         responsavel_id: inicial?.responsavel_id ? String(inicial.responsavel_id) : '',
         prazo: inicial?.prazo ?? '',
         descricao: inicial?.descricao ?? '',
@@ -172,6 +174,7 @@ function ModalTarefa({ inicial, universo, usuarios, onFechar, onSalvar }) {
             titulo: (f.titulo || ind?.rotulo || '').trim(),
             descricao: (f.descricao || '').trim() || null,
             meta: Math.max(0, parseInt(f.meta, 10) || 0),
+            feito_manual: ind?.manual ? Math.max(0, parseInt(f.feito_manual, 10) || 0) : null,
             responsavel_id: f.responsavel_id ? Number(f.responsavel_id) : null,
             prazo: continuo ? null : (f.prazo || null),
         };
@@ -198,9 +201,16 @@ function ModalTarefa({ inicial, universo, usuarios, onFechar, onSalvar }) {
                         <select id="tarefa-indicador" value={f.indicador} onChange={(e) => trocarIndicador(e.target.value)} className={campo}>
                             {ORDEM_INDICADORES.map((k) => <option key={k} value={k} className="bg-ecf-card">{INDICADORES_TAREFA[k].rotulo}</option>)}
                         </select>
-                        <p className="mt-1.5 text-[12px] text-white/45">
-                            Conta as empresas de M1 a M4 com {ind?.regra}. Hoje: <b className="text-white/80 tabular-nums">{feitoHoje}</b> de {universo.length}.
-                        </p>
+                        {ind?.manual ? (
+                            <p className="mt-1.5 text-[12px] text-white/45">
+                                Para a tarefa com uma lista de empresas escolhida à mão (ex.: integração de anúncios ME1 de 4 empresas).
+                                O feito é o número que você atualiza abaixo; ponha os nomes na descrição.
+                            </p>
+                        ) : (
+                            <p className="mt-1.5 text-[12px] text-white/45">
+                                Conta as empresas de M1 a M4 com {ind?.regra}. Hoje: <b className="text-white/80 tabular-nums">{feitoHoje}</b> de {universo.length}.
+                            </p>
+                        )}
                     </div>
                     {f.indicador === 'publicacao' && (
                         <div>
@@ -222,6 +232,13 @@ function ModalTarefa({ inicial, universo, usuarios, onFechar, onSalvar }) {
                                   placeholder="Ex.: ativar 39 empresas até sexta"
                                   onChange={(e) => setF((v) => ({ ...v, descricao: e.target.value }))} className={cn(campo, 'resize-none')} />
                     </div>
+                    {ind?.manual && (
+                        <div>
+                            <label className={rotuloCampo} htmlFor="tarefa-feito">Feito até agora</label>
+                            <input id="tarefa-feito" type="number" min={0} max={100000} value={f.feito_manual}
+                                   onChange={(e) => setF((v) => ({ ...v, feito_manual: e.target.value }))} className={cn(campo, 'tabular-nums')} />
+                        </div>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className={rotuloCampo} htmlFor="tarefa-meta">Meta (empresas)</label>
@@ -263,7 +280,74 @@ function ModalTarefa({ inicial, universo, usuarios, onFechar, onSalvar }) {
     );
 }
 
-export default function TarefasPanel({ empresas = [], tarefas = [], usuarios = [], onSalvar, onRemover }) {
+const MAX_PASSOS = 6;
+
+/** "Próximos passos" do rodapé da tela Tarefas da TV: até 6 linhas curtas, salvas de uma vez. */
+function ProximosPassos({ itens = [], onSalvar }) {
+    const chave = JSON.stringify(itens);
+    const [lista, setLista] = useState(() => (itens.length > 0 ? itens : ['']));
+    const [salvando, setSalvando] = useState(false);
+    const [aviso, setAviso] = useState(null);
+
+    // Volta ao que está gravado quando o Painel recarrega a lista.
+    useEffect(() => { setLista(itens.length > 0 ? itens : ['']); }, [chave]);
+
+    const salvar = () => {
+        setSalvando(true);
+        setAviso(null);
+        onSalvar?.(lista.map((t) => t.trim()).filter(Boolean))
+            .then(() => setAviso({ ok: true, texto: 'Salvo. Já aparece na TV.' }))
+            .catch((e) => {
+                const erros = e?.response?.data?.errors;
+                setAviso({ ok: false, texto: erros ? Object.values(erros).flat().join(' ') : 'Não foi possível salvar. Tente de novo.' });
+            })
+            .finally(() => setSalvando(false));
+    };
+
+    return (
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                    <Zap size={12} className="text-ecf-yellow" /> Próximos passos (rodapé da TV)
+                </h4>
+                <span className="text-[11px] text-white/35">Até {MAX_PASSOS} linhas. Vazio = o bloco some da TV.</span>
+            </div>
+            <div className="mt-3 space-y-2">
+                {lista.map((texto, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                        <input value={texto} maxLength={120} placeholder="Ex.: Acompanhar evolução diária das tarefas"
+                               aria-label={`Próximo passo ${i + 1}`}
+                               onChange={(e) => setLista((l) => l.map((t, j) => (j === i ? e.target.value : t)))}
+                               className={cn(campo, 'flex-1')} />
+                        <button type="button" title="Tirar esta linha"
+                                onClick={() => setLista((l) => (l.length > 1 ? l.filter((_, j) => j !== i) : ['']))}
+                                className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-2 text-white/45 hover:border-red-500/40 hover:text-red-300">
+                            <X size={13} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <button type="button" disabled={lista.length >= MAX_PASSOS}
+                        onClick={() => setLista((l) => [...l, ''])}
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-semibold text-white/70 hover:bg-white/[0.08] disabled:opacity-40">
+                    <Plus size={12} /> Adicionar linha
+                </button>
+                <div className="flex items-center gap-3">
+                    {aviso && <span className={cn('text-[12px]', aviso.ok ? 'text-emerald-300' : 'text-red-300')}>{aviso.texto}</span>}
+                    <button type="button" onClick={salvar} disabled={salvando}
+                            className="rounded-lg bg-ecf-yellow px-3 py-1.5 text-[12px] font-bold text-black transition hover:brightness-95 disabled:opacity-50">
+                        {salvando ? 'Salvando…' : 'Salvar próximos passos'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function TarefasPanel({
+    empresas = [], tarefas = [], usuarios = [], onSalvar, onRemover, proximosPassos = [], onSalvarProximosPassos,
+}) {
     const [editando, setEditando] = useState(null);   // null | {} (nova) | tarefa
     const universo = useMemo(() => universoTarefas(empresas), [empresas]);
     const cores    = useMemo(() => coresDosResponsaveis(tarefas), [tarefas]);
@@ -348,6 +432,8 @@ export default function TarefasPanel({ empresas = [], tarefas = [], usuarios = [
                     )}
                 </div>
             </div>
+
+            <ProximosPassos itens={proximosPassos} onSalvar={onSalvarProximosPassos} />
 
             {editando && (
                 <ModalTarefa inicial={editando} universo={universo} usuarios={usuarios}

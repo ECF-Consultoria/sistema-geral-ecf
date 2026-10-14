@@ -642,8 +642,10 @@ indicador foi aprovada pela solicitante e mora SÓ ali (a lista de chaves é esp
 O que não é dedutível do código:
 
 - **Universo = fases M1–M4, todas** (resposta da solicitante). Não é a base da meta de
-  faturamento (M2–M4) nem as "Empresas ativas" do cockpit — o número de baixo do título da TV
-  ("base N empresas M1–M4") não fecha com nenhum dos dois, e não deve.
+  faturamento (M2–M4) nem as "Empresas ativas" do cockpit — o "Total de empresas" da TV (e o
+  centro do donut) não fecha com nenhum dos dois, e não deve. Na Visão geral da TV, "Empresas
+  com meta" = as de M2–M4 (o mesmo "com meta" da aba Metas) e "Sem faturamento" sai do cockpit
+  (M2–M4 com faturamento zero no mês + M1 da coorte) — só admin tem cockpit; os outros veem "—".
 - **Nada guarda a evolução.** `mlb_empresas.estagio` fica FORA do `logOnly` do activity_log de
   `MlbEmpresa` (é gerido por `atualizaEstagio()`) e o `polos_roster_snapshots` não grava estágio.
   Por isso "evolução de estágio 1 para 2" virou **estágio-alvo** na tarefa de Publicação (conta
@@ -652,10 +654,20 @@ O que não é dedutível do código:
 - **Campanha usa `ads_campanha`** (`PoloAdsStatus::situacaoDaEmpresa`, DEV-43), não o
   `campanha_criada` manual da ficha nem o `ads_desligado` cru: conta sem leitura e sem marcação
   é "não verificada", e não conta como feita.
-- **A TV da sala renderiza a ~960 CSS px.** A tela de tarefas tem um modo compacto abaixo de
-  1280 px (título um degrau menor, anel menor, sem dia da semana no prazo, sem % na legenda dos
-  estágios, no máximo 3 colunas). Sem ele "PUBLICAÇÃO" quebrava no meio da palavra e a legenda
-  virava "E…". Conferir sempre a 960×600 além de 1920×1080.
+- **A tela Tarefas da TV é um PÔSTER, não um layout responsivo.** O usuário reprovou a 1ª
+  versão (grade adaptativa) e pediu "literalmente igual" ao desenho anexado ao ticket.
+  `TarefasTV.jsx` desenha tudo em 1600×1000 px de projeto e escala com `transform` para caber;
+  em tela mais larga que 16:10 a largura do projeto cresce (colunas `fr`), a altura fica 1000.
+  Não troque por breakpoint: a TV da sala renderiza a ~960×600 CSS px e lá `lg:`/`xl:` não
+  disparam. Para conferir sem mexer na janela, abra a página num iframe de 960×600 por cima
+  dela (o Modo TV reabre sozinho pelo sessionStorage).
+- **Paleta de estágio da TV diverge da grade de propósito.** `COR_ESTAGIO_TV` (vermelho,
+  amarelo, verde, violeta, azul) é a do desenho; o badge da grade e a sub-aba seguem com
+  `COR_ESTAGIO`. Não "unifique": a TV foi pedida igual à imagem.
+- **Indicador `manual`** é a tarefa com lista de empresas escolhida à mão ("Integração de
+  anúncios ME1 · 1/4" do desenho): não há coluna da ficha que diga quem está feito, então o
+  feito é digitado (`feito_manual`). Os "Próximos passos" do rodapé ficam em `configuracoes`
+  (`polos_tv_proximos_passos`, JSON), editados na sub-aba.
 - Worktree novo: o `node_modules` do checkout principal pode estar atrás do `package.json` do
   `origin/main` (em 14/10 faltava o `jsqr`) e o `vite build` falha em `Autenticadores/Index.jsx`.
   Aponte a junction para um `node_modules` de árvore com o mesmo `package-lock.json` (`cmp -s`).

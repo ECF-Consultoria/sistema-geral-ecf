@@ -550,6 +550,8 @@ class PolosController extends Controller
             // e da sub-aba "Tarefas do time". O "feito" é calculado no front (lib/polosTarefas).
             'tarefasMeta' => PoloTarefaMeta::with('responsavel:id,name')->orderBy('id')->get()
                 ->map(fn (PoloTarefaMeta $t) => $t->paraTela())->values(),
+            // "Próximos passos" do rodapé da tela Tarefas da TV (lista curta, editada na sub-aba).
+            'proximosPassos' => PoloTarefaMeta::proximosPassos(),
             // Props do modal "Ver" (mesma fonte da tela de Onboarding — MlbImplementacaoController@index).
             'checklist'         => MlbImplementacao::CHECKLIST,
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
@@ -1269,6 +1271,32 @@ class PolosController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Grava os "Próximos passos" da tela Tarefas da TV: a lista inteira de uma vez (a tela manda
+     * todos os itens, na ordem). Linha vazia sai; lista vazia apaga o bloco da TV.
+     */
+    public function salvarProximosPassos(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $data = $request->validate([
+            'itens'   => ['present', 'array', 'max:'.PoloTarefaMeta::MAX_PROXIMOS_PASSOS],
+            'itens.*' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $itens = array_values(array_filter(array_map(fn ($i) => trim((string) $i), $data['itens']), fn ($i) => $i !== ''));
+        $antes = PoloTarefaMeta::proximosPassos();
+
+        Configuracao::set(PoloTarefaMeta::CHAVE_PROXIMOS_PASSOS, json_encode($itens, JSON_UNESCAPED_UNICODE));
+
+        activity('polos')
+            ->causedBy($request->user())
+            ->withProperties(['antes' => $antes, 'depois' => $itens])
+            ->log('Próximos passos da TV (Polos) atualizados');
+
+        return response()->json(['ok' => true, 'itens' => $itens]);
+    }
+
     /** Gate operacional do Painel Polos: admin OU permissão mlb.projetos (mesma régua de painel()). */
     private function checkPainelOperacional(Request $request): void
     {
@@ -1283,7 +1311,8 @@ class PolosController extends Controller
     /**
      * Valida e normaliza o formulário do cartão. Estágio-alvo só existe na Publicação (e cai no
      * padrão "Estágio 1" = saiu de Não Listado quando vem vazio); nos outros indicadores é limpo,
-     * para um cartão que trocou de indicador não carregar um estágio que não usa.
+     * para um cartão que trocou de indicador não carregar um estágio que não usa. O mesmo vale
+     * para o feito digitado, que só a contagem manual tem.
      */
     private function dadosDaTarefa(Request $request): array
     {
@@ -1293,6 +1322,7 @@ class PolosController extends Controller
             'titulo'         => ['required', 'string', 'max:120'],
             'descricao'      => ['nullable', 'string', 'max:500'],
             'meta'           => ['required', 'integer', 'min:0', 'max:100000'],
+            'feito_manual'   => ['nullable', 'integer', 'min:0', 'max:100000'],
             'responsavel_id' => ['nullable', 'integer', 'exists:users,id'],
             'prazo'          => ['nullable', 'date'],
         ]);
@@ -1301,6 +1331,11 @@ class PolosController extends Controller
             ? ($data['estagio_alvo'] ?? PoloTarefaMeta::ESTAGIO_ALVO_PADRAO)
             : null;
         $data['descricao'] = ($data['descricao'] ?? null) ?: null;
+        // Feito digitado só existe na contagem manual (zero quando vem vazio); os automáticos
+        // são calculados ao vivo e não guardam número nenhum.
+        $data['feito_manual'] = $data['indicador'] === PoloTarefaMeta::INDICADOR_MANUAL
+            ? (int) ($data['feito_manual'] ?? 0)
+            : null;
 
         return $data;
     }

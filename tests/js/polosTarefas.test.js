@@ -11,6 +11,8 @@ import {
     rotuloPrazo,
     nivelEstagio,
     coresDosResponsaveis,
+    spansDosCartoes,
+    fileirasDosSpans,
 } from '../../resources/js/lib/polosTarefas.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -21,6 +23,8 @@ import { lerSemComentarios } from './_fonte.js';
 //   · o universo é M1–M4 (resposta da solicitante) — M0, Churn e Encerrado não contam;
 //   · a régua de cada indicador é a aprovada no ticket, sem acento nem caixa (texto livre);
 //   · Publicação conta quem chegou ao estágio-alvo OU ADIANTE (evolução de estágios);
+//   · a contagem manual usa o número digitado, não as empresas;
+//   · os cartões da TV ficam no arranjo do desenho (2 por fileira, a última com 3);
 //   · a lista de indicadores do JS é a mesma do PHP (sem enum compartilhado).
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -140,4 +144,29 @@ test('os indicadores do JS são os mesmos do PHP (PoloTarefaMeta::INDICADORES), 
     assert.ok(bloco, 'INDICADORES não encontrado no model');
     const chavesPhp = [...bloco[1].matchAll(/'([a-z_0-9]+)'\s*=>/g)].map((m) => m[1]);
     assert.deepEqual(ORDEM_INDICADORES, chavesPhp);
+});
+
+test('contagem manual: o feito é o número digitado, não as empresas', () => {
+    const universo = [emp({ places: 'Ativo' }), emp({ places: 'Ativo' })];
+    assert.equal(feitoDaTarefa({ indicador: 'manual', feito_manual: 1 }, universo), 1);
+    assert.equal(feitoDaTarefa({ indicador: 'manual', feito_manual: null }, universo), 0);
+    assert.equal(feitoDaTarefa({ indicador: 'manual', feito_manual: '-3' }, universo), 0);
+    const p = progressoDaTarefa({ indicador: 'manual', feito_manual: 1, meta: 4 }, universo);
+    assert.equal(p.pct, 25);
+});
+
+test('cartões da TV no arranjo do desenho: 2 por fileira, a última com 3 quando ímpar', () => {
+    assert.deepEqual(spansDosCartoes(7), [6, 6, 6, 6, 5, 4, 3]);
+    assert.equal(fileirasDosSpans(spansDosCartoes(7)), 3);
+    assert.deepEqual(spansDosCartoes(6), [6, 6, 6, 6, 6, 6]);
+    assert.deepEqual(spansDosCartoes(3), [5, 4, 3]);
+    assert.deepEqual(spansDosCartoes(1), [12]);
+    assert.deepEqual(spansDosCartoes(0), []);
+    // De 10 em diante, três por fileira; toda fileira fecha em 12.
+    [10, 11, 12, 13].forEach((n) => {
+        const spans = spansDosCartoes(n);
+        assert.equal(spans.length, n);
+        assert.equal(spans.reduce((a, b) => a + b, 0) % 12, 0, `n=${n}`);
+    });
+    assert.equal(fileirasDosSpans(spansDosCartoes(10)), 4);
 });

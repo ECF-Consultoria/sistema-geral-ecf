@@ -665,6 +665,7 @@ export default function PolosPainel({
     opcoes   = {},
     metasEntrada = [],
     tarefasMeta = [],
+    proximosPassos = [],
     checklist = [],
     erp_opcoes = [],
     integrador_opcoes = [],
@@ -1217,6 +1218,11 @@ export default function PolosPainel({
         window.axios.delete(route('mlb.polos-painel.tarefas.destroy', id), { headers: { 'X-CSRF-TOKEN': csrf_token } })
             .then((r) => { router.reload({ only: ['tarefasMeta'], preserveScroll: true, preserveState: true }); return r; })
     ), [csrf_token]);
+    // "Próximos passos" do rodapé da tela Tarefas da TV: a lista inteira vai de uma vez.
+    const salvarProximosPassos = useCallback((itens) => (
+        window.axios.post(route('mlb.polos-painel.tarefas.proximos-passos'), { itens }, { headers: { 'X-CSRF-TOKEN': csrf_token } })
+            .then((r) => { router.reload({ only: ['proximosPassos'], preserveScroll: true, preserveState: true }); return r; })
+    ), [csrf_token]);
 
     // Abre a edição da meta de faturamento com o valor atual (em R$ inteiros) no input.
     const abrirEdicaoMeta = useCallback(() => {
@@ -1304,7 +1310,7 @@ export default function PolosPainel({
     // Recarga automática dos dados enquanto a TV está ligada: `only` mantém o payload
     // enxuto (empresas + metas), e o finTick refaz o fetch do cockpit financeiro.
     const atualizarDadosTv = useCallback(() => {
-        router.reload({ only: ['empresas', 'metasEntrada', 'arquivadas', 'tarefasMeta'], preserveScroll: true, preserveState: true });
+        router.reload({ only: ['empresas', 'metasEntrada', 'arquivadas', 'tarefasMeta', 'proximosPassos'], preserveScroll: true, preserveState: true });
         if (isAdmin) setFinTick((t) => t + 1);
     }, [isAdmin]);
     // Esc sai da tela cheia (exceto se um modal estiver aberto — aí o Esc é dele).
@@ -1583,7 +1589,8 @@ export default function PolosPainel({
                             <EntrantesM0Panel empresas={empresas} regioes={opcoes.polo ?? []} metasEntrada={metas} />
                         ) : metaView === 'tarefas' ? (
                             <TarefasPanel empresas={empresas} tarefas={tarefasMeta} usuarios={usuarios}
-                                          onSalvar={salvarTarefa} onRemover={removerTarefa} />
+                                          onSalvar={salvarTarefa} onRemover={removerTarefa}
+                                          proximosPassos={proximosPassos} onSalvarProximosPassos={salvarProximosPassos} />
                         ) : (
                             <MetasPanel
                                 empresas={empresas}
@@ -1747,6 +1754,7 @@ export default function PolosPainel({
                     empresas={empresas}
                     metasEntrada={metas}
                     tarefas={tarefasMeta}
+                    proximosPassos={proximosPassos}
                     regioes={opcoes.polo ?? []}
                     cockpit={cockpit}
                     isAdmin={isAdmin}
