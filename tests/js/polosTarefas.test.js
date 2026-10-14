@@ -87,7 +87,8 @@ test('progresso: feito/meta, barra com teto, meta batida e atraso', () => {
     assert.equal(p.prazoLabel, '10/10 (sáb)');
 
     const estourada = progressoDaTarefa({ indicador: 'places', meta: 1, prazo: '2026-10-10' }, universo, hoje);
-    assert.deepEqual([estourada.pct, estourada.pctBarra, estourada.batida, estourada.atrasada], [200, 100, true, false]);
+    // Meta estourada (2 de 1): o % para em 100; o excedente aparece no "feito / meta".
+    assert.deepEqual([estourada.feito, estourada.pct, estourada.pctBarra, estourada.batida, estourada.atrasada], [2, 100, 100, true, false]);
 
     const continua = progressoDaTarefa({ indicador: 'places', meta: 10, prazo: null }, universo, hoje);
     assert.equal(continua.atrasada, false);

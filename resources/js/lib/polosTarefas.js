@@ -167,13 +167,16 @@ export function rotuloPrazo(prazo) {
 }
 
 /**
- * Progresso de uma tarefa: feito, meta, % (null sem meta), % da barra (0–100), se bateu e se
- * está atrasada (prazo vencido sem bater a meta; tarefa contínua nunca atrasa).
+ * Progresso de uma tarefa: feito, meta, % (null sem meta; teto de 100), % da barra, se bateu e
+ * se está atrasada (prazo vencido sem bater a meta; tarefa contínua nunca atrasa).
+ *
+ * O % para em 100 a pedido do desenvolvedor (14/10): meta estourada aparecia como "549%" no anel.
+ * Quanto passou da meta continua visível no "feito / meta" do cartão.
  */
 export function progressoDaTarefa(tarefa, universo = [], hoje = new Date()) {
     const feito = feitoDaTarefa(tarefa, universo);
     const meta = Math.max(0, Number(tarefa?.meta) || 0);
-    const pct = meta > 0 ? Math.round((feito / meta) * 100) : null;
+    const pct = meta > 0 ? Math.min(100, Math.round((feito / meta) * 100)) : null;
     const batida = meta > 0 && feito >= meta;
     const prazo = tarefa?.prazo ? String(tarefa.prazo).slice(0, 10) : null;
     const atrasada = !!prazo && !batida && prazo < hojeISO(hoje);
