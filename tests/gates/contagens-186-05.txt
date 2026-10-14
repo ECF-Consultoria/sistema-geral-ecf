@@ -155,3 +155,252 @@ frase-da-excecao  php  test_a_frase_de_exibicao_da_excecao_e_o_literal_do_protot
 # aprovar já publica.
 # 1 / 8 MEDIDO em 15/10/2026.
 default-nasce-valendo  php  test_a_excecao_nasce_valendo_e_o_default_do_modelo_e_o_do_schema_vivo  ::  tests=1 assertions=8
+
+# ───────────────────────────────────────────────────────────────────────────────
+# O ID QUE O PLANO 186-05 DECLARA NO `<verify>` DA TASK 3
+#
+# `ajustes-e-historico` roda os SEIS métodos que o `<done>` da tarefa nomeia: os
+# 3 escopos movendo o conjunto certo de ofertas, a volta só no último ajuste, a
+# exceção recusada com 9 e aceita com 10, e o gate de ausência do estado de
+# espera com isca.
+# ⚠️ Os seis TAMBÉM têm id individual mais abaixo: é a granularidade que diz QUAL
+# deles caiu quando este gate composto reprova.
+# 6 / 128 MEDIDO em 15/10/2026.
+# ───────────────────────────────────────────────────────────────────────────────
+ajustes-e-historico  php  test_(pedir_ajuste_de_escopo_offer_move_so_aquela_oferta|pedir_ajuste_de_escopo_set_move_todas_as_ofertas_do_conjunto|pedir_ajuste_de_escopo_product_move_todas_as_ofertas_do_produto|resolver_o_ultimo_ajuste_devolve_para_aguardando_e_um_de_dois_nao_devolve|aplicar_excecao_com_nove_caracteres_e_recusada_e_com_dez_e_imediata|nao_existe_estado_de_espera_de_autorizacao_na_area_nova_com_isca)  ::  tests=6 assertions=128
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — AND-07: OS 3 ESCOPOS E A VOLTA
+# Arquivo: tests/Feature/Publicador/Aprovacao/AjustesEHistoricoTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# Escopo `offer` move **só aquela** oferta, com a IRMÃ preenchida no MESMO
+# andamento (GATE-13: sem ela, "só uma moveu" e "nenhuma moveu" dariam o mesmo
+# resultado). Mais a âncora única e o destino legível com a modalidade.
+# O que precisaria estar errado: o ajuste de um anúncio tirar o outro da fila sem
+# motivo — e as duas ofertas têm preço e resultado SEPARADOS.
+# 1 / 9 MEDIDO em 15/10/2026.
+escopo-offer  php  test_pedir_ajuste_de_escopo_offer_move_so_aquela_oferta  ::  tests=1 assertions=9
+
+# ⚠️⚠️ O CASO QUE IMPORTA PARA A SEGURANÇA: escopo `set` move **as DUAS** ofertas
+# do conjunto (o conjunto de fotos é COMPARTILHADO entre Clássico e Premium), e
+# NÃO alcança oferta de outro produto da mesma empresa (isca preenchida).
+# O que precisaria estar errado: o Premium não vir. Ele seguiria aprovável e
+# **iria ao ar com a foto reprovada** — e aprovar já publica, sem desfazer.
+# 1 / 7 MEDIDO em 15/10/2026.
+escopo-set  php  test_pedir_ajuste_de_escopo_set_move_todas_as_ofertas_do_conjunto  ::  tests=1 assertions=7
+
+# Escopo `product` move TODAS as ofertas do produto e nenhuma de outro produto da
+# MESMA empresa (isca preenchida).
+# O que precisaria estar errado: ajuste no cadastro base deixar uma oferta do
+# mesmo produto publicável com o cadastro errado.
+# 1 / 7 MEDIDO em 15/10/2026.
+escopo-product  php  test_pedir_ajuste_de_escopo_product_move_todas_as_ofertas_do_produto  ::  tests=1 assertions=7
+
+# AND-07, a volta: resolver 1 de 2 **não** devolve; resolver o ÚLTIMO devolve
+# para `aguardando_aprovacao`. Com a contagem dos dois abertos conferida ANTES
+# (senão o caso "um de dois" é vazio por construção), e a autoria + carimbo da
+# resolução.
+# O que precisaria estar errado: a oferta voltar a ser aprovável com um ajuste
+# ainda em aberto.
+# 1 / 10 MEDIDO em 15/10/2026.
+voltar-so-no-ultimo  php  test_resolver_o_ultimo_ajuste_devolve_para_aguardando_e_um_de_dois_nao_devolve  ::  tests=1 assertions=10
+
+# MOD-01 — texto vazio (3 formas, inclusive só espaço e só tabulação/quebra)
+# lança e **não grava nem ajuste nem evento**, com a contagem conferida antes e
+# depois e isca do pedido COM texto. E `prod` recusado com código PRÓPRIO.
+# O que precisaria estar errado: ajuste sem frase contaria como bloqueio e
+# ninguém saberia o que fazer — a oferta travaria para sempre.
+# 1 / 12 MEDIDO em 15/10/2026.
+texto-vazio-nao-envia  php  test_texto_vazio_nao_envia_e_nao_grava_nada  ::  tests=1 assertions=12
+
+# Cada pedido e cada resolução grava **UM** evento `adjust` por oferta afetada,
+# com autor e data REAIS (COL-05) e a frase nomeando o item.
+# ⚠️ ESTE GATE REPROVOU DE VERDADE em 15/10/2026, e pelo motivo legítimo: o
+#    `registrarTransicao` mapeava `ajustes_solicitados => adjust`, e saíam DOIS
+#    eventos `adjust` por pedido (o ato humano e a transição). A sonda **não foi
+#    afrouxada** — o conserto foi na raiz: ato de PESSOA pertence a quem narra o
+#    ato, transição é fato de `sys`, que é o que o protótipo faz (`:1198` gera UM
+#    evento). Contar o mesmo fato duas vezes dobraria o filtro por tipo.
+# O que precisaria estar errado: a linha do tempo do Premium não explicar por que
+# ele saiu da fila (o evento vai para TODAS as afetadas, não só para a pedida).
+# 1 / 23 MEDIDO em 15/10/2026.
+evento-por-pedido-e-resolucao  php  test_cada_pedido_e_cada_resolucao_grava_evento_adjust_com_autor_e_data_reais  ::  tests=1 assertions=23
+
+# T-186-20 / DADO-14 — a consulta dos 3 escopos numa leitura, o resolvido FORA, e
+# nada da outra empresa. ⚠️ A outra empresa está **PREENCHIDA nos TRÊS escopos** e
+# a direção simétrica é medida (a consulta dela acha os 3 DELA): sem isso, "não
+# vazou" poderia ser "não achou nada".
+# O que precisaria estar errado: leitura cruzando empresas. E `produto_id` nulo
+# virando "todos os produtos" casaria com todo ajuste órfão do banco.
+# 1 / 8 MEDIDO em 15/10/2026.
+tres-escopos-com-recorte  php  test_abertos_que_afetam_junta_os_tres_escopos_e_nao_alcanca_outra_empresa  ::  tests=1 assertions=8
+
+# T-186-11 — NENHUMA escrita direta de `andamento` no serviço: a transição passa
+# SEMPRE pela única porta. Com isca do regex nos quatro casos.
+# ⚠️ ESTE GATE REPROVOU DE VERDADE em 15/10/2026, e o defeito era NA SONDA:
+#    `assertStringNotContainsString('->andamento =')` reprovava uma COMPARAÇÃO
+#    legítima (a forma `=== ` contém `= ` como substring). Virou regex com
+#    `(?!=)` e isca provando que a ATRIBUIÇÃO continua sendo pega. Sonda que
+#    acusa `===` como se fosse `=` empurra o executor seguinte a reescrever
+#    código correto — ou a apagar o gate.
+# O que precisaria estar errado: um `update(['andamento' => 'aprovado'])` aqui
+# publicaria um anúncio que ninguém conferiu, sem desfazer.
+# 1 / 15 MEDIDO em 15/10/2026.
+unica-porta-nos-ajustes  php  test_a_movimentacao_passa_sempre_pela_unica_porta_do_andamento_com_isca  ::  tests=1 assertions=15
+
+# O diff do `AndamentoDaOfertaService` neste plano é **SÓ A LIGAÇÃO**: nenhuma
+# linha removida toca `TRANSICOES`, `DB::transaction`, `mover()` ou `aoAprovar()`,
+# e os dois ganchos seguem com a MESMA assinatura.
+# ⚠️ Usa **RANGE** (`<partida>..HEAD`): sem range, o diff por caminho depois de
+# commitar compara a ÁRVORE e sai **vazio sempre**. E tem **DUAS iscas de diff**:
+# um arquivo que este plano NÃO tocou sai vazio, e a migration DESTE plano sai
+# NÃO vazia — senão um `git` falhando em silêncio deixaria o gate verde para
+# sempre.
+# O que precisaria estar errado: reescrever a máquina de estado de outro plano,
+# ou partir a transação única em duas.
+# 1 / 46 MEDIDO em 15/10/2026.
+ligacao-e-so-ligacao  php  test_o_diff_do_servico_de_andamento_e_so_a_ligacao_do_registrar  ::  tests=1 assertions=46
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — BLOQ-09 / BLOQ-08: A EXCEÇÃO APLICADA
+# Arquivo: tests/Feature/Publicador/Aprovacao/ExcecaoAutorizadaTest.php
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ⚠️⚠️ BLOQ-09 — 9 caracteres RECUSADO (e nada gravado: nem exceção nem evento),
+# "só espaço" recusado, 10 ACEITO com `liberada_por` + `liberada_em` + `versao`,
+# e **o efeito é IMEDIATO** (medido pela consulta de vigência, sem passo
+# adicional). Mais a ausência de coluna de segundo passo, com isca das 7 colunas
+# que EXISTEM.
+# O que precisaria estar errado: exceção sem motivo rastreável (T-186-16,
+# repúdio) — não se saberia QUEM liberou a publicação de um prejuízo. Ou um
+# segundo passo entre marcar e valer, que o usuário RECUSOU em 14/10/2026.
+# 1 / 26 MEDIDO em 15/10/2026.
+excecao-nove-e-dez  php  test_aplicar_excecao_com_nove_caracteres_e_recusada_e_com_dez_e_imediata  ::  tests=1 assertions=26
+
+# ⚠️⚠️ BLOQ-08 — É AQUI QUE O NOSSO COMPORTAMENTO DIFERE DO PROTÓTIPO: exceção de
+# `resultado_negativo` **não** libera `margem_abaixo_do_minimo` e vice-versa, nas
+# DUAS direções e com a outra oferta PREENCHIDA. Em `Aprovacao.dc.html:1093-1094`
+# há **um único `!o.exc`** suprimindo os dois de uma vez (lá a exceção é um
+# FLAG). Mais: a exceção de uma oferta não atravessa para a IRMÃ, e os 5 outros
+# bloqueios pt-BR + as 2 chaves inglesas são recusados com código próprio.
+# O que precisaria estar errado: autorizar margem liberaria prejuízo de graça — e
+# aprovar já publica, sem desfazer.
+# 1 / 19 MEDIDO em 15/10/2026.
+loss-nao-libera-margem  php  test_excecao_de_resultado_negativo_nao_libera_margem_e_vice_versa  ::  tests=1 assertions=19
+
+# BLOQ-09 — a exceção aplicada aparece na linha do tempo como `exc`, com o glifo
+# `§`, o rótulo pt-BR, **o autor**, **o carimbo de tempo** e a VERSÃO, e a frase
+# traz o bloqueio liberado e a justificativa. Com isca de outro evento
+# PREENCHIDO na mesma linha do tempo (senão "achei 1 do tipo exc" e "achei 1
+# evento" dariam o mesmo número).
+# O que precisaria estar errado: a exceção existir e ninguém a ver ao abrir a
+# oferta — "auditoria depois" seria só uma frase.
+# 1 / 10 MEDIDO em 15/10/2026.
+excecao-no-historico  php  test_a_excecao_aplicada_aparece_na_linha_do_tempo_com_tipo_exc_autor_e_carimbo  ::  tests=1 assertions=10
+
+# ⚠️⚠️ O GATE DE AUSÊNCIA DO ESTADO DE ESPERA, EM **TRÊS CAMADAS** — e as três
+# existem porque **a forma sozinha NÃO serve, e isso foi MEDIDO em 15/10/2026**:
+#   · o par sugerido pelo plano, `(aguardand|pendent|em_analise|solicit)` ×
+#     `(autoriza|gestor|aprova)`, produz **10 ocorrências LEGÍTIMAS** na área —
+#     "Aguardando aprovação" (o rótulo VOC-02, em 3 arquivos),
+#     `AJUSTES_SOLICITADOS => [..., APROVADO]`, `PubAprovacaoImagem::PENDENTE` ao
+#     lado de `APROVADA`, e o toast "Aprovado — aguardando publicação". **O
+#     domínio fala "aguardando aprovação" por toda parte, e está CORRETO**: é a
+#     OFERTA esperando a ECF conferir.
+#   · e o par **escrito no plano** (terminando em `aprovad`) ficava calado por
+#     **ACIDENTE DE GRAFIA**: `aprovad` não casa a palavra pt-BR
+#     `aprovação`/`aprovacao` (c, não d). Sonda cujo silêncio depende de uma letra
+#     não é ancorada na forma — é sorte, e é "gate vazio por construção" com outra
+#     roupa.
+#   · camada A: a ÁREA TODA por glob, ancorada no **SUJEITO** `exceção` (é a que
+#     vale para as Fases 187-194, e a contagem NÃO depende de quantos arquivos
+#     existem — cada glob só precisa achar ao menos 1, e os infratores vão numa
+#     asserção única); camada B: a CASA da exceção, onde o vocabulário de espera é
+#     proibido INTEIRO, com UMA exempção nomeada (`AGUARDANDO_APROVACAO`) que é
+#     ela mesma GATEADA; camada C: o SCHEMA, sobre TODAS as colunas da tabela — a
+#     camada que de fato BINDA, porque sem coluna o estado não tem onde morar.
+#   · 16 iscas de regex nos dois sentidos, isca de conteúdo (`aplicarExcecao` tem
+#     de ser achado no código da área), e a prova de que a ausência está
+#     DECLARADA por escrito com a data e a razão.
+# ⚠️ Este gate **não substitui** o transversal do plano 186-09, nem é substituído
+#    por ele: aquele mede a área inteira no fim da fase; este falha na hora em que
+#    alguém "completar" o fluxo.
+# O que precisaria estar errado: alguém acrescentar um segundo passo na exceção —
+# exatamente o que o usuário OFERECEU e RECUSOU em 14/10/2026.
+# 1 / 69 MEDIDO em 15/10/2026.
+sem-estado-de-espera  php  test_nao_existe_estado_de_espera_de_autorizacao_na_area_nova_com_isca  ::  tests=1 assertions=69
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Task 3 — A DISCIPLINA DA MIGRATION (guarda PRÓPRIO)
+# Arquivo: tests/Feature/Publicador/Aprovacao/AjustesEHistoricoTest.php
+#
+# ⚠️⚠️ OS QUATRO GUARDAS LEVAM `_guarda_05_` NO NOME, E ISSO NÃO É ESTILO: medido
+# em 15/10/2026, os nomes genéricos COLIDIAM com os homónimos de
+# `OfertaDoPortaoTest` (plano 186-04) e de `FreteInformadoTest` (plano 186-06,
+# rodando EM PARALELO) — o `--filter` casava 2 e 3 métodos. O helper só aceita
+# filtro por MÉTODO, então nome compartilhado faz a contagem DESTE manifesto
+# **depender de quantos arquivos de outros planos existem**, que é a classe de
+# gate frágil por construção que esta fase já consertou na raiz uma vez.
+#
+# ⚠️ E eles existem porque os guardas do 186-03 e do 186-04 declaram SÓ as
+# migrations DAQUELES planos: a desta migration ficaria "coberta" por um gate que
+# nunca a lê, que é a definição de passar por omissão.
+# ───────────────────────────────────────────────────────────────────────────────
+
+# MIG-02 — os **18** nomes declarados (9 índices + 9 FKs) e os **9** nomes PADRÃO
+# do Laravel, todos medidos por `strlen`, com o MAIOR de cada grupo TRAVADO (20
+# declarado, 43 padrão) e `->constrained()` proibido.
+# ⚠️ **QUATRO dos números do docblock estavam errados por 1** na primeira redação
+# (41/40/38/38 escritos como 42/41/39/39) e foram corrigidos PELA MEDIÇÃO — é o
+# mesmo erro de mais-ou-menos 1 que o plano 186-03 mediu, e a razão pela qual o
+# guarda recalcula em vez de ler número copiado à mão.
+# O que precisaria estar errado: erro **1059** no MariaDB, que deixa a migration
+# `Pending` com a tabela JÁ criada — o pior estado possível. O SQLite aceita.
+# 1 / 64 MEDIDO em 15/10/2026.
+guarda-05-nomes-64  php  test_guarda_05_nenhum_nome_de_indice_ou_fk_passa_de_64_medido_por_strlen_com_isca  ::  tests=1 assertions=64
+
+# MIG-03 — as **5** FKs `nullOnDelete` têm coluna `nullable()` EXPLÍCITO (com o
+# conjunto delas TRAVADO), as CASCADE de eventos/exceções são NOT NULL de
+# propósito, e as duas CASCADE de `pub_aprovacao_ajustes` SÃO anuláveis por outro
+# motivo (só uma âncora por linha). Conferido também no SCHEMA VIVO, com isca do
+# regex nos dois sentidos.
+# O que precisaria estar errado: erro **1830** no MariaDB, invisível no SQLite.
+# 1 / 18 MEDIDO em 15/10/2026.
+guarda-05-nullable  php  test_guarda_05_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca  ::  tests=1 assertions=18
+
+# MIG-04/05/07/09 — sem `enum`, sem `try/catch` em volta de DDL, `up()`
+# idempotente por `hasTable` **nas TRÊS tabelas**, DECISÃO DE SCHEMA antes do
+# código, e nenhum `change`/`renameColumn`/`dropColumn`/`delete`/`truncate`.
+# ⚠️ Lê o CÓDIGO pelo tokenizador do PHP, com isca nos dois sentidos: o docblock
+# EXPLICA que não usa `enum` nem `try/catch`, e um gate que conte a palavra no
+# arquivo inteiro reprovaria pelo PRÓPRIO CONSERTO. Há também a isca inversa — as
+# palavras TÊM de estar no docblock.
+# O que precisaria estar errado: o CHECK do `enum` enforçado no SQLite cegaria a
+# suíte; e neste projeto um 1553 ficou engolido 2 meses dentro de um catch.
+# 1 / 21 MEDIDO em 15/10/2026.
+guarda-05-sem-enum-sem-try  php  test_guarda_05_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente  ::  tests=1 assertions=21
+
+# O `down()` derruba as **3** tabelas na ordem INVERSA da criação (filha para mãe,
+# segura por construção) e **não derruba nenhuma das 4 tabelas-MÃES**, que são de
+# outros planos e EXISTEM (conferido — a asserção seria vazia sem isso).
+# ⚠️⚠️ A sonda de ordem `dropForeign` antes de `dropIndex` roda sobre **ZERO
+# casos** numa migration de `create` (o `dropIfExists` subsume o par, que é a
+# receita ADITIVA), e **gate sobre zero casos não prova nada** — então ela fica
+# COM ISCA num texto sintético aditivo, onde TEM de achar os dois e ver a ordem.
+# O que precisaria estar errado: um `dropIndex` sem o par (erro 1553), ou o
+# `down()` derrubar tabela alheia.
+# 1 / 16 MEDIDO em 15/10/2026.
+guarda-05-down-create  php  test_guarda_05_o_down_derruba_as_tres_tabelas_na_ordem_inversa_da_criacao  ::  tests=1 assertions=16
+
+# ⚠️ MIG-09 / T-186-18 — o histórico é **APPEND-ONLY**: nenhum
+# `->delete(`/`::destroy(`/`truncate(`/`forceDelete(` nos 4 arquivos do plano
+# (lidos SEM comentários), **nenhuma coluna de "apagado"/"oculto"/`deleted_at`**
+# que permitisse esconder um evento sem apagá-lo, e o append-only DECLARADO na
+# migration e no modelo. Com isca da sonda nos dois sentidos e isca de `hasColumn`
+# achando coluna que EXISTE.
+# O que precisaria estar errado: histórico apagado para esconder uma aprovação.
+# "Auditoria depois" (BLOQ-09) deixaria de ser verdade e a suíte seguiria verde —
+# o que falta é justamente a prova de um ato que já aconteceu.
+# 1 / 39 MEDIDO em 15/10/2026.
+historico-append-only  php  test_o_historico_e_append_only_e_nenhum_codigo_do_plano_apaga_evento_com_isca  ::  tests=1 assertions=39
