@@ -322,3 +322,24 @@ wizard de `/mlb/anuncios` — com o job rodando DE VERDADE durante o polling.
 - **Job com IA/ML:** rodar o `handle()` num script contra o mesmo SQLite, com
   `Http::fake` + `Http::preventStrayRequests()`, enquanto a página está aberta —
   prova o polling e a abertura automática, não só o estado final.
+
+## 13. Telas de `/polos` no banco descartável: o ECF Drive precisa de um servidor falso (14/10/2026)
+
+Medido verificando a "Planilha" de `/polos/empresas` (TKT-0018) na receita do §12.
+
+- **`EcfDriveService::listFiles()` não tem cache** (só o `fileJson()` tem), então semear
+  o cache não basta: toda abertura de `/polos`, `/polos/empresas` e do cockpit chama
+  `GET /files` de verdade. Sem rede para o ECF Drive real, suba um **segundo**
+  `php -S` (outra porta) com um script que responde `/files` (um arquivo POLOS_MENSAL
+  `etlStatus=done`) e `/files/{id}/json` (`rows: []` basta: o mês corrente entra sozinho
+  e os números vêm de `polos_faturamento_snapshots`), e aponte `ECF_API_BASE` para ele.
+  **Não** use o próprio servidor do worktree: o `php -S` do Windows atende uma
+  requisição por vez, e a página chamando a si mesma trava.
+- **Download por form POST no Puppeteer: só o primeiro passa com `element.click()` do
+  DOM.** O segundo some calado — o POST chega ao servidor e o arquivo não chega na pasta
+  (o mais provável é a proteção de "vários downloads automáticos" do Chrome, já que o
+  clique do DOM não conta como gesto). Clique pelo
+  `ElementHandle.click()` (input do CDP, conta como gesto) e defina a pasta com
+  `Browser.setDownloadBehavior`. Renomeie o 1º arquivo antes do 2º, que vem com o
+  mesmo nome. O `php -S` não registra o status de rota PHP no log — a prova é o
+  arquivo na pasta, aberto e comparado com a lista que a tela mostrava.

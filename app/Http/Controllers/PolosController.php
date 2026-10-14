@@ -925,7 +925,7 @@ class PolosController extends Controller
      * Streaming (e não `save()` num arquivo temporário) porque a planilha do painel passa
      * de 500 linhas × 35 colunas e não há motivo para encostar no disco.
      *
-     * @param array<int,array{key:string,label:string,tipo:string}> $colunas
+     * @param array<int,array{key:string,label:string,tipo:string,largura?:int,quebrar?:bool}> $colunas
      * @param array<int,array<string,mixed>>                        $linhas
      */
     private function streamXlsx(array $colunas, array $linhas, string $nomeArquivo, string $nomeAba): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -988,6 +988,13 @@ class PolosController extends Controller
                     // o formato percentual do Excel, que multiplicaria por 100.
                     $folha->getStyle($faixa)->getNumberFormat()->setFormatCode('0"%"');
                 }
+                // Texto longo em várias linhas (comentários): quebra dentro da célula e
+                // alinha no topo, senão o Excel mostra só a primeira linha cortada.
+                if (! empty($col['quebrar'])) {
+                    $folha->getStyle($faixa)->getAlignment()
+                        ->setWrapText(true)
+                        ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+                }
             }
         }
 
@@ -998,7 +1005,8 @@ class PolosController extends Controller
         // Largura fixa por tipo, NÃO setAutoSize: o autosize obriga o writer a medir cada
         // célula (35 colunas × 500+ empresas) e é de longe a parte mais cara da geração.
         foreach ($colunas as $i => $col) {
-            $largura = match (true) {
+            // `largura` na definição da coluna vence a regra geral abaixo.
+            $largura = $col['largura'] ?? match (true) {
                 $col['key'] === 'nome'                       => 34,
                 $col['key'] === 'situacao'                   => 30,
                 in_array($col['key'], ['problema_nota', 'link_whatsapp'], true) => 32,
@@ -1452,18 +1460,7 @@ class PolosController extends Controller
                 ]));
             }
 
-            // Lista plana (com o polo de cada empresa), ordenada por faturamento desc.
-            $empresas = [];
-            foreach ($d['polos'] as $p) {
-                foreach (($p['empresas'] ?? []) as $e) {
-                    $empresas[] = $e + ['polo' => $p['polo']];
-                }
-            }
-            usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
-
-            // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
-            // fechado segue com o `ads_desligado` congelado no roster daquele mês.
-            $empresas = $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+            $empresas = $this->linhasDaVisaoCompleta($d);
 
             $totFat  = array_sum(array_column($empresas, 'faturamento'));
             $totMeta = array_sum(array_column($empresas, 'meta'));
@@ -1499,6 +1496,186 @@ class PolosController extends Controller
                 'erro' => 'Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.',
             ]));
         }
+    }
+
+    /**
+     * Linhas da visão completa (/polos/empresas): lista plana com o polo de cada empresa,
+     * ordenada por faturamento desc. Compartilhada pela tela e pela planilha exportada,
+     * para as duas nunca divergirem.
+     *
+     * @param  array  $d  Saída de montarPolos()
+     * @return array<int, array<string,mixed>>
+     */
+    private function linhasDaVisaoCompleta(array $d): array
+    {
+        $empresas = [];
+        foreach ($d['polos'] as $p) {
+            foreach (($p['empresas'] ?? []) as $e) {
+                $empresas[] = $e + ['polo' => $p['polo']];
+            }
+        }
+        usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
+
+        // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
+        // fechado segue com o `ads_desligado` congelado no roster daquele mês.
+        return $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+    }
+
+    // ═══ Planilha do Faturamento Polos (/polos/empresas — TKT-0018) ═══
+
+    /** Rótulos espelhados de STATUS_META de Polos/Empresas.jsx (aqui "Não" é "Não faturou"). */
+    private const EMPRESAS_STATUS_LABEL = [
+        'Sim'          => 'No alvo',
+        'Em progresso' => 'Em progresso',
+        'Não'          => 'Não faturou',
+        'Problema'     => 'Problema',
+    ];
+
+    /** Rótulos espelhados de CAMPANHAS de Polos/Empresas.jsx; null = não verificado. */
+    private const EMPRESAS_CAMPANHA_LABEL = [
+        PoloAdsStatus::CAMPANHA_ATIVA        => 'Ativa',
+        PoloAdsStatus::CAMPANHA_DESLIGADA    => 'Desligada',
+        PoloAdsStatus::CAMPANHA_SEM_CAMPANHA => 'Sem campanha',
+    ];
+
+    /**
+     * Baixa a visão completa do Faturamento Polos (/polos/empresas) como planilha .xlsx:
+     * as colunas da tabela, mais Cust ID, meta, a reunião do mês e os comentários da
+     * empresa (de todos os meses, como a tela mostra).
+     *
+     * Mesmo padrão da planilha do Painel Polos (`exportarPlanilha`): POST com as linhas
+     * VISÍVEIS (`custs`, já filtradas pelos chips e pela busca, na ordem da tela) e o mês
+     * selecionado; sem `custs`, sai o mês inteiro. A lista é remontada aqui pelo mesmo
+     * `montarPolos()` da tela — o front só diz QUAIS linhas, nunca os números.
+     *
+     * "% da meta" sai com o valor REAL: a tela trava a barra em 100 (learnings §9) e mostra
+     * o real no hover; numa planilha o número cru é o que serve para filtrar e ordenar.
+     */
+    public function exportarEmpresas(Request $request)
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'mes'     => ['sometimes', 'nullable', 'string', 'max:6'],
+            'custs'   => ['sometimes', 'array', 'max:5000'],
+            'custs.*' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        try {
+            $d = $this->montarPolos();
+        } catch (\Throwable $e) {
+            report($e);
+            $d = null;
+        }
+        if ($d === null) {
+            return back()->with('error', 'Não foi possível montar a planilha agora: o ECF Drive não respondeu. Tente em alguns segundos.');
+        }
+
+        $empresas = $this->linhasDaVisaoCompleta($d);
+
+        // Recorte e ordem da tela. Empresa sem Cust ID chega como '' (o middleware a
+        // transforma em null) e casa com as demais sem Cust ID, como na própria tabela.
+        if (array_key_exists('custs', $dados)) {
+            $posicao = [];
+            foreach ($dados['custs'] as $i => $c) {
+                $posicao[CustId::normaliza((string) $c)] ??= $i;
+            }
+            $empresas = array_values(array_filter($empresas, fn ($e) => isset($posicao[(string) $e['cust_id']])));
+            usort($empresas, fn ($a, $b) => $posicao[(string) $a['cust_id']] <=> $posicao[(string) $b['cust_id']]);
+        }
+
+        $parcial     = (bool) $d['parcial'];
+        $comentarios = $this->comentariosDasEmpresas(array_column($empresas, 'cust_id'), $request->user());
+        $reunioes    = $this->reunioesDoMes($d['mesSel']);
+
+        $colunas = [
+            ['key' => 'nome',          'label' => 'Empresa',     'tipo' => 'texto'],
+            ['key' => 'cust_id',       'label' => 'Cust ID',     'tipo' => 'texto'],
+            ['key' => 'polo',          'label' => 'Polo',        'tipo' => 'texto'],
+            ['key' => 'fase',          'label' => 'Fase',        'tipo' => 'texto'],
+            ['key' => 'status',        'label' => 'Status',      'tipo' => 'texto'],
+            ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (móveis)', 'tipo' => 'dinheiro'],
+            ['key' => 'meta',          'label' => 'Meta',        'tipo' => 'dinheiro'],
+            ['key' => 'pct',           'label' => '% da meta',   'tipo' => 'percentual'],
+            ['key' => 'ads',           'label' => 'ADS',         'tipo' => 'dinheiro'],
+            ['key' => 'ads_situacao',  'label' => 'ADS ligado/desligado', 'tipo' => 'texto'],
+        ];
+        // O filtro "Campanhas" só existe no mês corrente (é estado de agora) — a coluna também.
+        if ($parcial) {
+            $colunas[] = ['key' => 'campanhas', 'label' => 'Campanhas', 'tipo' => 'texto'];
+        }
+        array_push($colunas,
+            ['key' => 'problema',        'label' => 'Problema',            'tipo' => 'texto'],
+            ['key' => 'problema_nota',   'label' => 'Nota do problema',    'tipo' => 'texto', 'largura' => 32],
+            ['key' => 'reuniao',         'label' => 'Reunião do mês',      'tipo' => 'texto'],
+            ['key' => 'reuniao_por',     'label' => 'Reunião marcada por', 'tipo' => 'texto', 'largura' => 32],
+            ['key' => 'comentarios',     'label' => 'Comentários',         'tipo' => 'texto', 'largura' => 70, 'quebrar' => true],
+        );
+
+        $linhas = array_map(function (array $e) use ($comentarios, $reunioes, $parcial) {
+            $reuniao = $reunioes[$e['cust_id']] ?? null;
+
+            // Como a coluna Sinais: true = desligado, false = ligado, null = não informado.
+            $adsSituacao = match ($e['ads_desligado'] ?? null) {
+                true    => 'Desligado',
+                false   => 'Ligado',
+                default => null,
+            };
+
+            return [
+                'nome'          => $e['nome'],
+                'cust_id'       => $e['cust_id'],
+                'polo'          => $e['polo'],
+                'fase'          => $e['fase'],
+                'status'        => self::EMPRESAS_STATUS_LABEL[$e['status']] ?? $e['status'],
+                'faturamento'   => $e['faturamento'],
+                'meta'          => $e['meta'],
+                'pct'           => $e['pct'],
+                'ads'           => $e['ads'],
+                'ads_situacao'  => $adsSituacao,
+                'campanhas'     => $parcial ? (self::EMPRESAS_CAMPANHA_LABEL[$e['ads_campanha'] ?? ''] ?? 'Não verificado') : null,
+                'problema'      => ! empty($e['problema']) ? 'Sim' : null,
+                'problema_nota' => ! empty($e['problema']) ? $e['problema_nota'] : null,
+                // Sem marcação = não feita, como a tela mostra.
+                'reuniao'       => ($reuniao['feita'] ?? false) ? 'Feita' : 'Não feita',
+                'reuniao_por'   => $reuniao ? trim($reuniao['por'] . ($reuniao['em'] ? " em {$reuniao['em']}" : '')) : null,
+                'comentarios'   => $this->comentariosParaCelula($comentarios[$e['cust_id']] ?? []),
+            ];
+        }, $empresas);
+
+        activity('polos')
+            ->causedBy($request->user())
+            ->withProperties(['linhas' => count($linhas), 'mes' => $d['mesSel']])
+            ->log('[Polos] Faturamento Polos exportado em planilha (' . count($linhas) . ' empresa(s))');
+
+        return $this->streamXlsx(
+            $colunas,
+            $linhas,
+            'faturamento-polos-' . ($d['mesSel'] ?? 'sem-mes') . '-' . now()->format('Y-m-d') . '.xlsx',
+            'Faturamento Polos'
+        );
+    }
+
+    /**
+     * Comentários de UMA empresa numa célula só, do mais recente para o mais antigo, cada
+     * um com o mês de referência, o autor e a data — o que a gaveta da tela mostra.
+     *
+     * @param  array<int, array<string,mixed>>  $lista  Saída de comentariosDasEmpresas() da empresa
+     */
+    private function comentariosParaCelula(array $lista): ?string
+    {
+        if ($lista === []) {
+            return null;
+        }
+
+        $texto = implode("\n\n", array_map(function (array $c) {
+            $cabecalho = implode(' · ', array_filter([$c['mes_label'] ?? null, $c['autor'] ?? null, $c['criado_em'] ?? null]));
+
+            return $cabecalho . ($c['editado_em'] ? ' (editado)' : '') . "\n" . $c['texto'];
+        }, $lista));
+
+        // Limite de uma célula do Excel: 32.767 caracteres. Acima disso o arquivo abre com erro.
+        return mb_strlen($texto) > 32000 ? mb_substr($texto, 0, 32000) . '…' : $texto;
     }
 
     // ═══ Comentários de performance (/polos/empresas) ═══

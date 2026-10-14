@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown, ArrowUpDown,
-         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX } from 'lucide-react';
+         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { corAds } from './components/adsCor';
 
@@ -133,6 +133,31 @@ export default function PolosEmpresas({
         return l;
     }, [empresas, filtro, campanha, busca, ordem, parcial]);
 
+    // Baixar planilha (.xlsx) — mesmo padrão do Painel Polos: form POST oculto (download
+    // nativo do navegador) levando o mês e os cust_id das linhas VISÍVEIS, na ordem da
+    // tabela. O servidor remonta os números; daqui só sai quais linhas e em que ordem.
+    const { csrf_token } = usePage().props;
+    const baixarPlanilha = () => {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = route('polos.empresas.exportar');
+        form.style.display = 'none';
+
+        const campo = (nome, valor) => {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = nome; i.value = valor ?? '';
+            form.appendChild(i);
+        };
+
+        campo('_token', csrf_token);
+        if (mesSelecionado) campo('mes', mesSelecionado);
+        lista.forEach((e) => campo('custs[]', e.cust_id));
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    };
+
     const contar = (key) => key === 'todas' ? empresas.length
         : key === 'ads' ? empresas.filter((e) => e.ads_desligado === true).length
         : empresas.filter((e) => e.status === key).length;
@@ -170,6 +195,12 @@ export default function PolosEmpresas({
 
                     {meses.length > 0 && (
                         <div className="flex items-center gap-2">
+                            <button type="button" onClick={baixarPlanilha} disabled={lista.length === 0}
+                                    title="Baixar as empresas da lista abaixo (filtros e busca aplicados) em .xlsx, com reunião do mês e comentários"
+                                    className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40">
+                                <Download size={13} /> Planilha
+                                <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{lista.length}</span>
+                            </button>
                             <label className="text-white/40 text-xs uppercase tracking-wider">Mês</label>
                             <select value={mesSelecionado ?? ''} onChange={trocarMes}
                                     className="rounded-lg border border-white/[0.1] bg-ecf-card px-3 py-1.5 text-sm text-white/90 outline-none focus:border-ecf-yellow/40">
