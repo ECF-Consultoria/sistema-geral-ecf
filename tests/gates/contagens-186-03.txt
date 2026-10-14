@@ -103,6 +103,20 @@ alerta-conta-so-pendente  php  test_alerta_alto_em_imagem_pendente_conta_como_co
 # 1 / 8 MEDIDO em 14/10/2026.
 guarda-nullable  php  test_toda_fk_nullondelete_tem_coluna_nullable_explicito_com_isca  ::  tests=1 assertions=8
 
+# MIG-02 — nenhum nome de índice/FK DECLARADO no texto passa de 64 (erro 1059 do
+# MariaDB, que deixa a migration Pending com a tabela JÁ criada). Com isca nas
+# duas formas de declaração (`index('col','nome')` e `foreign('col','nome')`).
+# ⚠️⚠️ ESTE GATE NASCEU DE UM SOBREVIVENTE DA CAMPANHA DE MUTAÇÃO (14/10/2026).
+#    A mutação "nome de índice com 65 caracteres" SOBREVIVEU ao gate
+#    `guarda-nomes-64` — e não por equivalência: `guarda-nomes-64` mede só os
+#    nomes PADRÃO do Laravel (computados por `strlen`) e a convenção de nomear à
+#    mão; quem mede os nomes DECLARADOS é este método, que estava no arquivo de
+#    teste e NÃO tinha id no manifesto. Era cobertura real faltando, exatamente a
+#    classe de buraco que a campanha existe para achar. Com este gate, a mesma
+#    mutação MORRE (reconferido).
+# 1 / 50 MEDIDO em 14/10/2026.
+guarda-nomes-declarados  php  test_nenhum_nome_de_indice_ou_fk_declarado_passa_de_64_com_isca  ::  tests=1 assertions=50
+
 # MIG-02 — os nomes PADRÃO do Laravel (`<tabela>_<coluna>_foreign`) também cabem
 # em 64, calculados por `strlen` e nunca por número copiado à mão; mais a
 # convenção de que TODA FK é nomeada à mão (nenhum `->constrained()`).
