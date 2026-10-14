@@ -298,8 +298,49 @@ class ShopeeToolTest extends TestCase
         $this->assertEquals(3, $resposta['recompra']['media_de_dias_entre_pedidos']);
         $this->assertSame(2, $resposta['pedidos_por_status']['COMPLETED']);
 
-        // 31 dias = três janelas (a Shopee aceita até 15 por lista).
-        Http::assertSentCount(4);
+        // Uma lista por dia (31, em paralelo) + um lote de detalhe.
+        Http::assertSentCount(32);
+    }
+
+    public function test_vendas_segue_o_cursor_do_dia_com_mais_de_cem_pedidos(): void
+    {
+        $this->lojaShopee('Loja Cheia');
+        Http::fake([
+            '*/api/v2/order/get_order_list*' => fn (RequisicaoHttp $r) => $r['cursor'] === ''
+                ? $this->ok(['order_list' => [['order_sn' => 'P1']], 'more' => true, 'next_cursor' => 'c2'])
+                : $this->ok(['order_list' => [['order_sn' => 'P2']], 'more' => false, 'next_cursor' => '']),
+            '*/api/v2/order/get_order_detail*' => $this->ok(['order_list' => [
+                ['order_sn' => 'P1', 'buyer_user_id' => 1, 'pay_time' => 1759300000, 'order_status' => 'COMPLETED', 'item_list' => []],
+                ['order_sn' => 'P2', 'buyer_user_id' => 2, 'pay_time' => 1759300000, 'order_status' => 'COMPLETED', 'item_list' => []],
+            ]]),
+        ]);
+
+        $resposta = $this->shopee($this->consultor(), ['dado' => 'vendas', 'loja' => 'Loja Cheia', 'de' => '2025-10-01', 'ate' => '2025-10-02']);
+
+        // 2 dias: 2 primeiras páginas + 2 segundas (cursor c2) + 1 detalhe.
+        $this->assertSame(2, $resposta['pedido_feito']['pedidos']);
+        Http::assertSentCount(5);
+        // A chamada em paralelo vai assinada como as outras.
+        Http::assertSent(fn (RequisicaoHttp $r) => str_contains($r->url(), 'get_order_list') && $r['cursor'] === 'c2'
+            && $r['partner_id'] == self::PARTNER_ERP && $r['shop_id'] == 900001 && strlen((string) $r['sign']) === 64);
+    }
+
+    public function test_carteira_comeca_na_pagina_1_da_shopee(): void
+    {
+        $this->lojaShopee('Loja Carteira');
+        Http::fake(['*/api/v2/payment/get_wallet_transaction_list*' => $this->ok([
+            'transaction_list' => [['create_time' => 1760000000, 'transaction_type' => 'ESCROW_VERIFIED_ADD', 'amount' => 35.19, 'current_balance' => 100]],
+            'more' => true,
+        ])]);
+        $consultor = $this->consultor();
+
+        $p1 = $this->shopee($consultor, ['dado' => 'carteira', 'loja' => 'Loja Carteira']);
+        $this->shopee($consultor, ['dado' => 'carteira', 'loja' => 'Loja Carteira', 'cursor' => $p1['proximo_cursor']]);
+
+        // Com 0 e com 1 a Shopee devolve a mesma página (medido em produção).
+        Http::assertSent(fn (RequisicaoHttp $r) => $r['page_no'] == 1);
+        Http::assertSent(fn (RequisicaoHttp $r) => $r['page_no'] == 2);
+        Http::assertNotSent(fn (RequisicaoHttp $r) => $r['page_no'] == 0);
     }
 
     public function test_pedido_traz_o_financeiro_do_escrow(): void

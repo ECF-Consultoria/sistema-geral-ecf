@@ -61,10 +61,7 @@ class ChamadaShopee
         }
 
         if (! in_array($natural, $tokens, true)) {
-            throw new ErroDaFerramenta(
-                'Este dado vem do app '.self::ROTULO[$natural].' da Shopee, e a loja '.$loja->name
-                .' não tem esse app conectado. A conexão é feita em /shopee-oauth.'
-            );
+            throw new ErroDaFerramenta($this->semApp($loja, $natural));
         }
 
         throw new ErroDaFerramenta(
@@ -102,10 +99,7 @@ class ChamadaShopee
     public function comServico(Company $loja, string $app, callable $acao): mixed
     {
         if (! in_array($app, $this->appsConectados($loja), true)) {
-            throw new ErroDaFerramenta(
-                'Este dado vem do app '.self::ROTULO[$app].' da Shopee, e a loja '.$loja->name
-                .' não tem esse app conectado. A conexão é feita em /shopee-oauth.'
-            );
+            throw new ErroDaFerramenta($this->semApp($loja, $app));
         }
 
         try {
@@ -113,6 +107,35 @@ class ChamadaShopee
         } catch (PermissaoNegada $e) {
             throw new ErroDaFerramenta('A Shopee não libera este dado para o app '.self::ROTULO[$app].' da ECF (resposta: '.$e->getMessage().').');
         }
+    }
+
+    /**
+     * Várias consultas ao MESMO endpoint, até 8 por vez — cada chamada à
+     * Shopee leva ~2 s. Só app ERP (pedido, produto): sem a segunda tentativa
+     * no outro app.
+     *
+     * @param  array<int|string, array<string, mixed>>  $consultas chave => parâmetros
+     * @return array<int|string, array<mixed>> conteúdo útil de cada uma, com a chave dela
+     *
+     * @throws ErroDaFerramenta
+     */
+    public function chamarEmParalelo(Company $loja, string $caminho, array $consultas): array
+    {
+        if ($consultas === []) {
+            return [];
+        }
+
+        if (! in_array('erp', $this->appsConectados($loja), true)) {
+            throw new ErroDaFerramenta($this->semApp($loja, 'erp'));
+        }
+
+        try {
+            $jsons = $this->traduzindo($loja, 'erp', $caminho, fn () => (new ShopeeService('erp'))->getEmParalelo($loja, $caminho, $consultas));
+        } catch (PermissaoNegada $e) {
+            throw new ErroDaFerramenta("A Shopee não libera {$caminho} para o app ERP da ECF (resposta: {$e->getMessage()}).");
+        }
+
+        return array_map(fn (array $json) => $this->conteudo($json), $jsons);
     }
 
     /**
@@ -130,10 +153,6 @@ class ChamadaShopee
     }
 
     /**
-     * O conteúdo útil da resposta: a chave `response` (padrão da v2) ou, para
-     * os endpoints que respondem na raiz (`get_shop_info`), o JSON sem o
-     * envelope (`error`, `message`, `request_id`).
-     *
      * @param  array<string, mixed>  $parametros
      * @return array<mixed>
      */
@@ -141,15 +160,32 @@ class ChamadaShopee
     {
         $servico = new ShopeeService($app);
 
-        $json = $this->traduzindo($loja, $app, $caminho, fn () => $metodo === 'POST'
+        return $this->conteudo($this->traduzindo($loja, $app, $caminho, fn () => $metodo === 'POST'
             ? $servico->postCompleto($loja, $caminho, $parametros)
-            : $servico->getCompleto($loja, $caminho, $parametros));
+            : $servico->getCompleto($loja, $caminho, $parametros)));
+    }
 
+    /**
+     * O conteúdo útil da resposta: a chave `response` (padrão da v2) ou, para
+     * os endpoints que respondem na raiz (`get_shop_info`), o JSON sem o
+     * envelope (`error`, `message`, `request_id`).
+     *
+     * @param  array<string, mixed>  $json
+     * @return array<mixed>
+     */
+    private function conteudo(array $json): array
+    {
         if (array_key_exists('response', $json)) {
             return (array) $json['response'];
         }
 
         return array_diff_key($json, array_flip(['error', 'message', 'request_id', 'warning']));
+    }
+
+    private function semApp(Company $loja, string $app): string
+    {
+        return 'Este dado vem do app '.self::ROTULO[$app].' da Shopee, e a loja '.$loja->name
+            .' não tem esse app conectado. A conexão é feita em /shopee-oauth.';
     }
 
     /**

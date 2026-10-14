@@ -297,24 +297,33 @@ Código em `app/Mcp/Shopee/` (`LeitorShopee` = um método por dado;
   outro app da mesma loja — vídeo, afiliados (AMS) e live não têm dono
   certo, e a matriz "API PERMISSION" por tipo de app só aparece na página de
   cada endpoint no console.
-- **Montado pela documentação, sem chamada real** (o `.env` local não tem a
-  chave de produção): `saude`, `promocoes`, `ads_campanhas`, `devolucoes`,
-  `repasses`, `carteira`, `avaliacoes` e as partes extras de `produto`. O
-  que já rodou de verdade no sync é pedido (lista/detalhe/escrow) e ADS
-  diário. Suspeita principal: `page_no` começando em 0 (devoluções,
-  carteira) ou em 1 (repasses). Erro de parâmetro volta com a mensagem
-  da própria Shopee ("error_param — …"), que diz o campo. **Teste de fumaça
-  em produção PENDENTE** — rodar cada dado numa loja grande e anotar aqui o
-  que falhou.
+- **Teste de fumaça em produção (14/10/2026, GENUINEAUTOMOTIVE #132, ERP +
+  ADS):** todos os dados responderam. A paginação difere por endpoint e só
+  se descobre medindo: `get_return_list` começa em `page_no` 0,
+  `get_escrow_list` e `get_wallet_transaction_list` em 1 — na carteira, 0 e
+  1 devolvem a MESMA página (a página 2 repetia a 1). Pelo modo `api`:
+  `ams/*` (afiliados) é RECUSADO para os dois apps; `video/*` não é recusado,
+  mas exige `user_id` (da conta de vídeo) na query; `fbs/query_br_*`,
+  `get_item_limit` e `get_shop_installment_status` respondem no ERP.
+- **Cada chamada à Shopee leva ~2 s** (lista de 100 pedidos 1,9 s; detalhe
+  de 50, 2,1 s — mesmo com menos campos). O `vendas` de UM dia da
+  GENUINEAUTOMOTIVE (967 pedidos) levou 63 s em série. Saída:
+  `ShopeeService::getEmParalelo()` (Http::pool, 8 por vez) — lista com uma
+  janela por dia, todas juntas, e detalhe em lotes paralelos. O nginx e o
+  PHP aceitam 300 s; o limite que importa é a paciência do cliente MCP.
+  Pedidos em 30 dias por loja conectada (14/10): 25.730 na GENUINE, depois
+  2.820, 1.597, 1.204… — 13 das 19 abaixo de 700.
 - **`get_shop_info` responde na RAIZ do JSON, não em `response`.** O
   `ShopeeService::get()` devolvia `[]` para ele (provavelmente é o `[]` do
   app ADS anotado em julho). Criados `getCompleto()`/`postCompleto()`; o `get()`
   continua devolvendo só `response`.
 - **Comprador:** sai só apelido e id. Endereço, telefone e CPF não são pedidos
   à Shopee (`LeitorShopee::CAMPOS_PEDIDO`).
-- **`vendas` soma no máximo 2.500 pedidos ao vivo** (31 dias, cache de
-  30 min). A GENUINEAUTOMOTIVE faz ~980 pedidos/dia, então nela só cabem 2–3
-  dias. O faturamento do mês está no `resumo`, que lê `shopee_metrics`.
+- **`vendas` soma no máximo 3.000 pedidos ao vivo** (31 dias, cache de
+  30 min) — o mês de 18 das 19 lojas. Na GENUINEAUTOMOTIVE (~850/dia) só
+  cabem 3 dias. O faturamento do mês está no `resumo`, que lê
+  `shopee_metrics`. A varredura de produtos (`busca`/`ordenar`) vai até
+  2.000 anúncios; a GENUINE tem 6.686.
 - **SQLite dos testes perde o último dia** em `whereBetween('reference_date',
   …)`: o cast `date` grava `2026-10-13 00:00:00`, que é maior que
   `'2026-10-13'`. No MariaDB a coluna é DATE e não perde. O dashboard usa a

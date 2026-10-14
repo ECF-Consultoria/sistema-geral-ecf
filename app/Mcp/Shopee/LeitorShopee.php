@@ -36,11 +36,16 @@ class LeitorShopee
 {
     public const FUSO = 'America/Sao_Paulo';
 
-    /** Pedidos que o `vendas` aceita somar ao vivo — acima disso fica lento demais para o MCP. */
-    public const MAX_PEDIDOS_VENDAS = 2500;
+    /**
+     * Pedidos que o `vendas` aceita somar ao vivo. Cada chamada à Shopee leva
+     * ~2 s; em paralelo (8 por vez), 3.000 pedidos ficam em ~30 s. Cobre o mês
+     * de 18 das 19 lojas conectadas em 14/10/2026 — a GENUINEAUTOMOTIVE
+     * (~850 pedidos/dia) só cabe em 3 dias.
+     */
+    public const MAX_PEDIDOS_VENDAS = 3000;
 
-    /** Anúncios varridos quando há `busca` ou `ordenar` (5 chamadas a cada 100). */
-    public const MAX_ITENS_VARREDURA = 600;
+    /** Anúncios varridos quando há `busca` ou `ordenar` (em paralelo, ~10 s). */
+    public const MAX_ITENS_VARREDURA = 2000;
 
     /** Resposta do dado `api` acima disso vira erro pedindo filtro. */
     private const MAX_BYTES_API = 200_000;
@@ -131,7 +136,7 @@ class LeitorShopee
             '/api/v2/ads/get_gms_campaign_performance' => 'campanha GMS (start_date, end_date)',
             '/api/v2/ads/get_gms_item_performance' => 'itens da campanha GMS (start_date, end_date)',
         ],
-        'Vídeo (pode não estar liberado para os apps da ECF)' => [
+        'Vídeo (o app ERP alcança; a Shopee exige o user_id da conta de vídeo da loja na query)' => [
             '/api/v2/video/get_overview_performance' => 'vendas, pedidos, visualizações e conversão dos vídeos da loja',
             '/api/v2/video/get_metric_trend' => 'série de visualizações, vendas e pedidos dos vídeos',
             '/api/v2/video/get_video_list' => 'vídeos publicados',
@@ -139,10 +144,10 @@ class LeitorShopee
             '/api/v2/video/get_prodcut_performance_list' => 'desempenho por produto nos vídeos (o "prodcut" é da Shopee)',
             '/api/v2/video/get_user_demographics' => 'perfil do público dos vídeos',
         ],
-        'Outros módulos (nomes a confirmar na consulta)' => [
-            '/api/v2/ams/…' => 'afiliados (Affiliate Marketing Solution): desempenho da loja, produtos, afiliados e conversões',
-            '/api/v2/livestream/…' => 'lives da loja',
+        'Outros módulos' => [
             '/api/v2/fbs/query_br_shop_enrollment_status' => 'adesão ao Full da Shopee no Brasil',
+            '/api/v2/livestream/…' => 'lives da loja (nomes dos endpoints a confirmar na consulta)',
+            '/api/v2/ams/…' => 'afiliados (AMS): a Shopee RECUSA para os dois apps da ECF (testado em 14/10/2026)',
         ],
     ];
 
@@ -414,27 +419,32 @@ class LeitorShopee
             "mcp.shopee.produtos.{$loja->id}.{$status}",
             now()->addMinutes(15),
             function () use ($loja, $status) {
-                $ids    = [];
-                $offset = 0;
-                $total  = 0;
+                $pagina = fn (int $offset) => ['offset' => $offset, 'page_size' => 100, 'item_status' => $status];
 
-                do {
-                    $lista = $this->chamada->chamar($loja, '/api/v2/product/get_item_list', [
-                        'offset'      => $offset,
-                        'page_size'   => 100,
-                        'item_status' => $status,
-                    ])['resposta'];
+                // A 1ª página diz o total; as outras saem juntas pelo offset.
+                $primeira = $this->chamada->chamar($loja, '/api/v2/product/get_item_list', $pagina(0))['resposta'];
+                $total    = (int) ($primeira['total_count'] ?? 0);
+                $ate      = min($total, self::MAX_ITENS_VARREDURA);
 
-                    array_push($ids, ...array_filter(array_column($lista['item'] ?? [], 'item_id')));
-                    $total  = (int) ($lista['total_count'] ?? count($ids));
-                    $mais   = (bool) ($lista['has_next_page'] ?? false);
-                    $offset = (int) ($lista['next_offset'] ?? $offset + 100);
-                } while ($mais && count($ids) < self::MAX_ITENS_VARREDURA);
+                $paginas = [$primeira];
+                if (($primeira['has_next_page'] ?? false) && $ate > 100) {
+                    $consultas = [];
+                    for ($offset = 100; $offset < $ate; $offset += 100) {
+                        $consultas[$offset] = $pagina($offset);
+                    }
+                    array_push($paginas, ...array_values($this->chamada->chamarEmParalelo($loja, '/api/v2/product/get_item_list', $consultas)));
+                }
+
+                $ids = [];
+                foreach ($paginas as $p) {
+                    array_push($ids, ...array_filter(array_column($p['item'] ?? [], 'item_id')));
+                }
+                $ids = array_slice(array_values(array_unique($ids)), 0, self::MAX_ITENS_VARREDURA);
 
                 return [
-                    'itens'    => $this->detalharProdutos($loja, array_slice($ids, 0, self::MAX_ITENS_VARREDURA)),
+                    'itens'    => $this->detalharProdutos($loja, $ids),
                     'total'    => $total,
-                    'truncado' => $mais,
+                    'truncado' => $total > self::MAX_ITENS_VARREDURA,
                 ];
             }
         );
@@ -468,23 +478,30 @@ class LeitorShopee
 
     /**
      * Cadastro (`get_item_base_info`) + métricas (`get_item_extra_info`), em
-     * lotes de 50 — o máximo dos dois endpoints.
+     * lotes de 50 — o máximo dos dois endpoints —, em paralelo.
      *
      * @param  array<int, int|string>  $ids
      * @return array<int, array<string, mixed>>
      */
     private function detalharProdutos(Company $loja, array $ids): array
     {
-        $linhas = [];
+        $consultas = array_map(fn (array $lote) => ['item_id_list' => implode(',', $lote)], array_chunk($ids, 50));
 
-        foreach (array_chunk($ids, 50) as $lote) {
-            $lista = implode(',', $lote);
+        $bases = $this->chamada->chamarEmParalelo($loja, '/api/v2/product/get_item_base_info', $consultas);
 
-            $base  = $this->chamada->chamar($loja, '/api/v2/product/get_item_base_info', ['item_id_list' => $lista])['resposta'];
-            $extra = $this->chamada->tentar($loja, '/api/v2/product/get_item_extra_info', ['item_id_list' => $lista]);
+        // Sem métrica o anúncio ainda sai, com aviso.
+        try {
+            $extras = $this->chamada->chamarEmParalelo($loja, '/api/v2/product/get_item_extra_info', $consultas);
+            $aviso  = null;
+        } catch (ErroDaFerramenta $e) {
+            $extras = [];
+            $aviso  = 'Métricas indisponíveis: '.$e->getMessage();
+        }
 
-            $metricas = collect($extra['resposta']['item_list'] ?? [])->keyBy('item_id');
+        $metricas = collect($extras)->flatMap(fn (array $r) => $r['item_list'] ?? [])->keyBy('item_id');
+        $linhas   = [];
 
+        foreach ($bases as $base) {
             foreach ($base['item_list'] ?? [] as $item) {
                 $m     = $metricas->get($item['item_id'] ?? null, []);
                 $preco = $item['price_info'][0] ?? [];
@@ -507,10 +524,10 @@ class LeitorShopee
                     'atualizado_em'  => $this->quando($item['update_time'] ?? null),
                 ];
             }
+        }
 
-            if (! $extra['ok'] && $linhas !== []) {
-                $linhas[array_key_last($linhas)]['aviso'] = 'Métricas indisponíveis: '.$extra['erro'];
-            }
+        if ($aviso !== null && $linhas !== []) {
+            $linhas[0]['aviso'] = $aviso;
         }
 
         return $linhas;
@@ -694,35 +711,42 @@ class LeitorShopee
     {
         @set_time_limit(180);
 
-        // A Shopee aceita no máximo 15 dias por consulta de lista.
+        // Uma janela por dia, todas de uma vez; o dia com mais de 100 pedidos
+        // segue o cursor nas rodadas seguintes, de novo todos juntos.
+        $janelas = [];
+        for ($dia = $de; $dia->lte($ate); $dia = $dia->addDay()) {
+            $janelas[$dia->toDateString()] = [
+                'time_range_field' => 'create_time',
+                'time_from'        => $dia->startOfDay()->getTimestamp(),
+                'time_to'          => $dia->endOfDay()->getTimestamp(),
+                'page_size'        => 100,
+                'cursor'           => '',
+            ];
+        }
+
         $sns = [];
-        for ($inicio = $de; $inicio->lte($ate); $inicio = $inicio->addDays(15)) {
-            $fim    = $inicio->addDays(14)->min($ate);
-            $cursor = '';
+        while ($janelas !== []) {
+            $seguintes = [];
 
-            do {
-                $lista = $this->chamada->chamar($loja, '/api/v2/order/get_order_list', [
-                    'time_range_field' => 'create_time',
-                    'time_from'        => $inicio->startOfDay()->getTimestamp(),
-                    'time_to'          => $fim->endOfDay()->getTimestamp(),
-                    'page_size'        => 100,
-                    'cursor'           => $cursor,
-                ])['resposta'];
-
+            foreach ($this->chamada->chamarEmParalelo($loja, '/api/v2/order/get_order_list', $janelas) as $dia => $lista) {
                 foreach ($lista['order_list'] ?? [] as $o) {
                     if (! empty($o['order_sn'])) {
                         $sns[$o['order_sn']] = true;
                     }
                 }
 
-                if (count($sns) > self::MAX_PEDIDOS_VENDAS) {
-                    throw new ErroDaFerramenta('A loja tem mais de '.self::MAX_PEDIDOS_VENDAS.' pedidos nesse período — demais para somar ao vivo. '
-                        .'Use um período menor (ex.: uma semana); o faturamento do mês inteiro está no dado "resumo".');
-                }
-
                 $cursor = (string) ($lista['next_cursor'] ?? '');
-                $mais   = (bool) ($lista['more'] ?? false);
-            } while ($mais && $cursor !== '');
+                if (($lista['more'] ?? false) && $cursor !== '') {
+                    $seguintes[$dia] = ['cursor' => $cursor] + $janelas[$dia];
+                }
+            }
+
+            if (count($sns) > self::MAX_PEDIDOS_VENDAS) {
+                throw new ErroDaFerramenta('A loja tem mais de '.number_format(self::MAX_PEDIDOS_VENDAS, 0, ',', '.').' pedidos nesse período — demais para somar ao vivo. '
+                    .'Use um período menor; o faturamento do mês inteiro está no dado "resumo".');
+            }
+
+            $janelas = $seguintes;
         }
 
         $pedidos = $this->detalharPedidos($loja, array_keys($sns), 'buyer_user_id,item_list,pay_time,order_status');
@@ -819,21 +843,20 @@ class LeitorShopee
     }
 
     /**
-     * `get_order_detail` em lotes de 50 (o máximo), por order_sn.
+     * `get_order_detail` em lotes de 50 (o máximo), em paralelo, por order_sn.
      *
      * @param  array<int, string>  $sns
      * @return array<string, array<string, mixed>>
      */
     private function detalharPedidos(Company $loja, array $sns, string $campos): array
     {
+        $consultas = array_map(fn (array $lote) => [
+            'order_sn_list'            => implode(',', $lote),
+            'response_optional_fields' => $campos,
+        ], array_chunk(array_map('strval', $sns), 50));
+
         $porSn = [];
-
-        foreach (array_chunk($sns, 50) as $lote) {
-            $r = $this->chamada->chamar($loja, '/api/v2/order/get_order_detail', [
-                'order_sn_list'            => implode(',', $lote),
-                'response_optional_fields' => $campos,
-            ])['resposta'];
-
+        foreach ($this->chamada->chamarEmParalelo($loja, '/api/v2/order/get_order_detail', $consultas) as $r) {
             foreach ($r['order_list'] ?? [] as $o) {
                 if (! empty($o['order_sn'])) {
                     $porSn[(string) $o['order_sn']] = $o;
@@ -994,7 +1017,9 @@ class LeitorShopee
     {
         [$de, $ate] = $this->periodo($a, 15, 7);
 
-        $pagina = (int) ($this->lerCursor($a) ?? 0);
+        // `page_no` aqui começa em 1: com 0 e com 1 a Shopee devolve a mesma
+        // página (medido em produção, 14/10/2026). Nas devoluções começa em 0.
+        $pagina = (int) ($this->lerCursor($a) ?? 1);
         $r      = $this->chamada->chamar($loja, '/api/v2/payment/get_wallet_transaction_list', [
             'page_no'          => $pagina,
             'page_size'        => $this->limite($a, 100),
