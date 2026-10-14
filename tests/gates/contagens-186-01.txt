@@ -27,8 +27,17 @@
 gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=55,55
 
 # Os 7 arquivos de JS tocados por este plano: o gate novo + as 6 asserções
-# reapontadas. Contagem MEDIDA depois do rename (regime pristino e mutado).
-rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=PENDENTE
+# reapontadas. DOIS REGIMES, os dois MEDIDOS em 14/10/2026 depois do rename:
+#   817 = CSS construído mais NOVO que os componentes (logo após `npm run build`).
+#   809 = CSS construído mais VELHO que os componentes — é o que acontece toda vez
+#         que um arquivo de produção é tocado, inclusive em CADA mutação da
+#         campanha. Nesse regime o teste "FID — as classes GERAM CSS com o valor
+#         certo" entra em `SKIP` por `mtime` e leva 8 subtestes consigo
+#         (817 - 809), com 1 skipped no lugar.
+# ⚠️ Travar só em 817 abortaria a 1ª mutação da campanha; não travar em nenhum
+#    dos dois marcaria a campanha inteira como "SOBREVIVEU" por um motivo que não
+#    é o código. Os dois números são MEDIDOS, nenhum é chute.
+rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=817,809
 
 # ABA-03 — o rótulo da aba vem do SERVIDOR, e a CHAVE `em_revisao` não muda.
 # ⚠️ O nome do método é `test_as_seis_abas_vem_na_ordem_do_servidor`

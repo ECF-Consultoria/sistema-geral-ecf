@@ -1049,7 +1049,9 @@ test('IDENT — os componentes de identidade são REUSADOS, não redesenhados', 
         const porStatus = {
             active: ['Ativa', 'bg-pub-ok'],
             paused: ['Pausada', 'bg-pub-warn'],
-            under_review: ['Em revisão', 'border-pub-neutral-dot'],
+            // ⚠️ REAPONTADO na Fase 186, plano 01 (VOC-01).
+            // VALOR ANTIGO: 'Em revisão'. A forma e a classe não mudaram.
+            under_review: ['Em análise pelo Mercado Livre', 'border-pub-neutral-dot'],
         };
         for (const [status, [rotulo, forma]] of Object.entries(porStatus)) {
             const html = umaLinha({ item: { ...ITEM_CHEIO, status } });
@@ -1057,6 +1059,15 @@ test('IDENT — os componentes de identidade são REUSADOS, não redesenhados', 
             assert.ok(celula.includes(rotulo), `${status} deveria dizer "${rotulo}"`);
             assert.ok(celula.includes(forma), `${status} perdeu a FORMA e ficou só na cor`);
         }
+
+        // ⚠️ VETO do rótulo antigo (Fase 186, plano 01), na célula de
+        // `under_review` — a única que o usava. Positiva sozinha não pega
+        // regressão: um mapa com os DOIS rótulos passaria no laço acima.
+        const emAnalise = umaLinha({ item: { ...ITEM_CHEIO, status: 'under_review' } });
+        assert.ok(
+            !celulasDaLinha(emAnalise, indicesDasLinhas(emAnalise)[0])[4].bloco.includes('Em revisão'),
+            'o rótulo antigo "Em revisão" voltou à célula Status',
+        );
         // `closed` não tem chave no componente de identidade: entra como rótulo.
         const fechada = umaLinha({ item: { ...ITEM_CHEIO, status: 'closed' } });
         assert.ok(celulasDaLinha(fechada, indicesDasLinhas(fechada)[0])[4].bloco.includes('Encerrada'));

@@ -814,7 +814,15 @@ test('C1 — "Publicações recentes": 5 linhas e as medidas de :313-:329', asyn
         // As quatro formas, cada uma na sua linha — nunca a mesma.
         const formas = linhas.slice(0, 4).map((l) => l.filhos[2].filhos[0].filhos[0].bruto);
         assert.equal(new Set(formas).size, 4, 'duas formas de status ficaram iguais');
-        assert.ok(html.includes('>Ativa<') && html.includes('>Em revisão<') && html.includes('>Pausada<') && html.includes('>Com erro<'));
+        // ⚠️ REAPONTADO na Fase 186, plano 01 (VOC-01). VALOR ANTIGO:
+        // `>Em revisão<`. Este bloco renderiza o PRÓPRIO
+        // `SeloDeStatusDaPublicacao`, então ele acompanha o rename do selo —
+        // independentemente da faixa de `acoes.js`.
+        assert.ok(html.includes('>Ativa<') && html.includes('>Em análise pelo Mercado Livre<') && html.includes('>Pausada<') && html.includes('>Com erro<'));
+        // ⚠️ VETO: o recorte é `>Em revisão<` (com os dois delimitadores de nó),
+        // que é EXCLUSIVO do rótulo antigo — "Em revisão pela ECF" e "Em revisão
+        // pelo Mercado Livre" nunca casariam com ele.
+        assert.ok(!html.includes('>Em revisão<'), 'o rótulo antigo voltou ao selo de Recentes');
     });
 
     await contexto.test('quem e quando, na coluna da direita (:329)', () => {

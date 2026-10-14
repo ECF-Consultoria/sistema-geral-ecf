@@ -16,7 +16,23 @@ import { cn } from '@/lib/utils';
 //   · dot de "Com erro"    → :86 (`6×6;border-radius:50%`) + `:532` (`#EF4444`,
 //                                 `hasDot: k === 'error' && counts.error > 0`)
 //   · contagem na aba      → :88 (`font-size:12px;color:#8A8A90;font-variant-numeric:tabular-nums`)
-//   · os 5 rótulos         → :531 (`Todas · Ativas · Pausadas · Com erro · Em revisão`)
+//   · os 5 rótulos         → :531 (`Todas · Ativas · Pausadas · Com erro · <o 5º, abaixo>`)
+//
+// ⚠️ Fase 186, plano 01 (ABA-03 / VOC-01) — o 5º rótulo mudou. MEDIDO por
+// `diff` entre as DUAS versões do protótipo (elas coexistem no disco e têm
+// conteúdo diferente — 656 × 659 linhas):
+//   `new_layout_publicador/Publicacoes v2.dc.html`:531      → 'Em revisão'
+//   `design_handoff_publicador/Publicacoes v2.dc.html`:534  → 'Em análise pelo ML'
+// As linhas MEDIDAS acima (:83/:85/:86/:88/:531/:532) são as da versão
+// `new_layout_`, a da Fase 180; na versão nova elas estão +3 por causa dos dois
+// hunks do header (que são da Fase 187, não desta).
+//
+// ⚠️⚠️ **O RÓTULO NÃO MORA NESTE ARQUIVO** — nem o antigo morava. O trilho só
+// renderiza `abas[].rotulo`, que vem do servidor
+// (`MlbAnuncioController::meus()`, onde o rename de fato aconteceu). Este
+// comentário é a razão pela qual o briefing da fase apontou este arquivo como o
+// lugar do rename: o `grep` casou com a PROSA, não com o código. É a armadilha
+// do próprio learnings (gate/busca que lê comentário), e fica registrada aqui.
 //
 // ⚠️ `cursor-pointer` ESTÁ aqui porque o protótipo o declara (`:85`) — a tabela
 // FID-01 do plano o omitiu. O protótipo ganha.

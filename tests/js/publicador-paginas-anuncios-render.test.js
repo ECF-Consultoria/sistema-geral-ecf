@@ -186,7 +186,12 @@ const propsMeus = (extras = {}) => ({
         { chave: 'ativos', rotulo: 'Ativas', total: 2, comDot: false },
         { chave: 'pausados', rotulo: 'Pausadas', total: 1, comDot: false },
         { chave: 'com_erro', rotulo: 'Com erro', total: 0, comDot: false },
-        { chave: 'em_revisao', rotulo: 'Em revisão', total: 0, comDot: false },
+        // ⚠️ REAPONTADO na Fase 186, plano 01 (ABA-03). VALOR ANTIGO:
+        // `rotulo: 'Em revisão'`. Esta fixture ESPELHA a prop `abas` do servidor
+        // (`MlbAnuncioController::meus()`); deixá-la no rótulo antigo faria o
+        // teste render uma tela que o servidor não manda mais.
+        // ⚠️ A CHAVE `em_revisao` não muda (TERR-08).
+        { chave: 'em_revisao', rotulo: 'Em análise pelo ML', total: 0, comDot: false },
         { chave: 'rascunhos', rotulo: 'Rascunhos', total: 1, comDot: false },
     ],
     contagens: {
@@ -670,6 +675,26 @@ test('180: "Rascunhos" continua no corpo COM contador — na forma nova, dentro 
             deRascunhos[0],
             /<span[^>]*>1<\/span>/,
             'o contador de "Rascunhos" (abas[].total, o mesmo $totalDeRascunhos do servidor) sumiu da opção',
+        );
+    });
+
+    // ⚠️ VETO do rótulo antigo (Fase 186, plano 01 — VOC-01/ABA-03). Recortado à
+    // OPÇÃO do trilho, não ao HTML inteiro, pelo mesmo motivo do teste acima.
+    // O recorte `>Em revisão<` tem os dois delimitadores de nó e é EXCLUSIVO do
+    // rótulo antigo: nem "Em revisão pela ECF" nem "Em revisão pelo Mercado
+    // Livre" casariam com ele.
+    await contexto.test('o trilho diz "Em análise pelo ML" e NÃO mais "Em revisão" (ABA-03)', () => {
+        const opcoes = corpo.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) ?? [];
+        assert.ok(opcoes.length >= 6, `esperadas ao menos 6 opções no trilho, achei ${opcoes.length}`);
+        assert.equal(
+            opcoes.filter((opcao) => opcao.includes('>Em análise pelo ML<')).length,
+            1,
+            'o rótulo novo da aba (vindo do servidor, via abas[].rotulo) não chegou a UMA opção do trilho',
+        );
+        assert.equal(
+            opcoes.filter((opcao) => opcao.includes('>Em revisão<')).length,
+            0,
+            'o rótulo antigo "Em revisão" voltou a uma opção do trilho',
         );
     });
 

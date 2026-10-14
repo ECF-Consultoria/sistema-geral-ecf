@@ -979,7 +979,20 @@ class MlbAnuncioController extends Controller
             ['chave' => 'ativos',                              'rotulo' => 'Ativas',     'total' => $contagens['ativos'],     'comDot' => false],
             ['chave' => 'pausados',                            'rotulo' => 'Pausadas',   'total' => $contagens['pausados'],   'comDot' => false],
             ['chave' => AcervoTriagemService::STATUS_COM_ERRO, 'rotulo' => 'Com erro',   'total' => $contagens['com_erro'],   'comDot' => $contagens['com_erro'] > 0],
-            ['chave' => 'em_revisao',                          'rotulo' => 'Em revisão', 'total' => $contagens['em_revisao'], 'comDot' => false],
+            // ⚠️ Fase 186, plano 01 (ABA-03 / VOC-01) — o rótulo desta aba passou
+            // de "Em revisão" para "Em análise pelo ML", medido no protótipo
+            // ("Publicacoes v2.dc.html":534, `tabsDef`). É a versão CURTA de
+            // propósito: a aba é estreita, e o selo da linha é que traz o nome
+            // inteiro ("Em análise pelo Mercado Livre").
+            //
+            // POR QUÊ: "Em revisão" é substring de "Em revisão pela ECF", o
+            // estado INTERNO da aprovação que esta milestone introduz (VOC-02);
+            // com os dois na tela ninguém sabe de quem é a revisão.
+            //
+            // ⚠️ A CHAVE `em_revisao` NÃO MUDOU (TERR-08): `?status=em_revisao`
+            // na URL, filtro salvo e a validação de `escopo()` dependem dela.
+            // Só o rótulo mudou.
+            ['chave' => 'em_revisao',                          'rotulo' => 'Em análise pelo ML', 'total' => $contagens['em_revisao'], 'comDot' => false],
             // LIST-25: "Rascunhos" entrou no MESMO trilho das abas de status. O
             // dado e a query continuam os de hoje (`sub`/`subTotais`, D-14) — o
             // que mudou é o lugar do atalho.

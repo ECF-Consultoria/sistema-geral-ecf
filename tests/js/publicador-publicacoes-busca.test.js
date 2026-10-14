@@ -246,7 +246,12 @@ const ABAS_6 = [
     { chave: 'ativos', rotulo: 'Ativas', total: 18, comDot: false },
     { chave: 'pausados', rotulo: 'Pausadas', total: 4, comDot: false },
     { chave: 'com_erro', rotulo: 'Com erro', total: 2, comDot: true },
-    { chave: 'em_revisao', rotulo: 'Em revisão', total: 0, comDot: false },
+    // ⚠️ REAPONTADO na Fase 186, plano 01 (ABA-03). VALOR ANTIGO:
+    // `rotulo: 'Em revisão'`. Esta fixture ESPELHA a prop `abas` do servidor, e
+    // `ROTULOS_6` (abaixo) é derivado dela — a asserção dos 6 rótulos do trilho
+    // acompanha este valor, então o reaponte é real e não cosmético.
+    // ⚠️ A CHAVE `em_revisao` não muda (TERR-08).
+    { chave: 'em_revisao', rotulo: 'Em análise pelo ML', total: 0, comDot: false },
     { chave: 'rascunhos', rotulo: 'Rascunhos', total: 7, comDot: false },
 ];
 
@@ -363,6 +368,14 @@ test('LIST-05/06/25 — os literais do trilho e do toggle estão byte a byte', a
                 `a ${i + 1}ª opção não é "${ROTULOS_6[i]}": ${botoes[i].bloco}`,
             );
         }
+    });
+
+    // ⚠️ VETO do rótulo antigo (Fase 186, plano 01). O recorte `>Em revisão<`
+    // tem os dois delimitadores de nó e é EXCLUSIVO do rótulo antigo: nem
+    // "Em revisão pela ECF" nem "Em revisão pelo Mercado Livre" casariam com ele.
+    await contexto.test('o trilho NÃO diz mais "Em revisão" cru (VOC-01)', () => {
+        assert.ok(!HTML_ABAS.includes('>Em revisão<'), 'o rótulo antigo voltou ao trilho de status');
+        assert.ok(HTML_ABAS.includes('>Em análise pelo ML<'), 'o rótulo novo da aba não chegou ao trilho');
     });
 
     await contexto.test('"Rascunhos" é a 6ª e última, com o contador de hoje (LIST-25)', () => {

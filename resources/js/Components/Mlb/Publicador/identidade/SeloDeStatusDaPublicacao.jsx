@@ -7,7 +7,7 @@ import { textoSeguro } from '../BarraDaConta';
 //
 // README §Componentes de identidade: "ícone com forma + cor + texto" —
 // Ativa = círculo cheio · Pausada = duas barras · Com erro = triângulo ·
-// Em revisão = anel aberto. Motivo do status em 11.5px abaixo.
+// Em análise pelo Mercado Livre = anel aberto. Motivo do status em 11.5px abaixo.
 //
 // ⚠️ As QUATRO coisas de uma vez: forma, cor e texto. Quem enxerga mal cor
 // distingue pela forma; quem usa leitor de tela ouve o texto. Nenhuma das três
@@ -24,11 +24,24 @@ import { textoSeguro } from '../BarraDaConta';
 // o que chega.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ⚠️ Fase 186, plano 01 (VOC-01) — o rótulo de `em_revisao` passou de
+// "Em revisão" para "Em análise pelo Mercado Livre", medido no protótipo
+// ("Publicacoes v2.dc.html":461, `ST.pending`).
+//
+// POR QUÊ: "Em revisão" é SUBSTRING de "Em revisão pela ECF", que esta milestone
+// introduz como o estado INTERNO da aprovação (VOC-02). Com os dois na tela ao
+// mesmo tempo, o usuário não tem como saber de quem é a revisão — e toda
+// asserção negativa sobre o literal fica ambígua. O rótulo agora diz o autor.
+//
+// ⚠️ A CHAVE `em_revisao` NÃO MUDOU (TERR-08): `?status=em_revisao` na URL,
+// filtro salvo e os testes de comportamento dependem dela. Só o rótulo mudou —
+// a classe de texto, a forma (anel aberto) e todas as medidas ficaram byte a
+// byte como estavam.
 const STATUS = {
     ativa: { rotulo: 'Ativa', texto: 'text-pub-ok-txt' },
     pausada: { rotulo: 'Pausada', texto: 'text-pub-warn-txt' },
     com_erro: { rotulo: 'Com erro', texto: 'text-pub-danger-txt' },
-    em_revisao: { rotulo: 'Em revisão', texto: 'text-pub-neutral-txt' },
+    em_revisao: { rotulo: 'Em análise pelo Mercado Livre', texto: 'text-pub-neutral-txt' },
 };
 
 /**

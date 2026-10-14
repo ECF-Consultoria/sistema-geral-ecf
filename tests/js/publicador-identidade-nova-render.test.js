@@ -320,9 +320,14 @@ test('SeloDeStatusDaPublicacao — forma + cor + texto nas 4 chaves, e no status
         assert.match(html, /text-pub-danger-txt/);
     });
 
-    await contexto.test('em_revisao: anel ABERTO (borda com um lado transparente) + "Em revisão"', () => {
+    // ⚠️ REAPONTADO na Fase 186, plano 01 (VOC-01). VALOR ANTIGO: 'Em revisão'.
+    // A asserção ficou MAIS forte, não mais fraca: além de provar o rótulo novo,
+    // ela VETA o antigo — e o veto é exclusivo, porque 'Em análise pelo Mercado
+    // Livre' não contém 'Em revisão' como substring (medido).
+    await contexto.test('em_revisao: anel ABERTO (borda com um lado transparente) + "Em análise pelo Mercado Livre"', () => {
         const html = renderizar(SeloDeStatusDaPublicacao, { status: 'em_revisao' });
-        assert.ok(html.includes('Em revisão'));
+        assert.ok(html.includes('Em análise pelo Mercado Livre'));
+        assert.ok(!html.includes('Em revisão'), 'o rótulo antigo voltou — "de quem é a revisão?" ficou sem resposta');
         assert.match(html, /rounded-full border-\[1\.6px\] border-pub-neutral-dot border-r-transparent/);
         // Anel aberto é borda, nunca preenchimento.
         assert.doesNotMatch(html, /bg-pub-neutral-dot/);

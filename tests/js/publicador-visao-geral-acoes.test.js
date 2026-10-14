@@ -510,12 +510,22 @@ test('os literais da Saúde e de Publicações (:523-:532, :534-:536, :606-:607)
         assert.equal(A.TITULO_PUBS, 'Publicações no Mercado Livre');
         assert.equal(A.VER_TODAS, 'Ver todas →');
         assert.equal(A.OFERTAS, 'ofertas');
+        // ⚠️ REAPONTADO na Fase 186, plano 01 — DECISÃO DO USUÁRIO de 14/10/2026.
+        // VALOR ANTIGO: `em_revisao: 'Em revisão'`. As outras três faixas e as
+        // quatro CHAVES não mudaram.
+        // ⚠️ O `deepEqual` do mapa INTEIRO já é o veto: qualquer rótulo a mais, a
+        // menos ou diferente reprova. É por isso que ele compara o objeto todo em
+        // vez de campo a campo.
         assert.deepEqual(A.FAIXAS, {
             ativas: 'Ativas',
             pausadas: 'Pausadas',
-            em_revisao: 'Em revisão',
+            em_revisao: 'Em análise pelo Mercado Livre',
             encerradas: 'Encerradas',
         });
+        assert.ok(
+            !Object.values(A.FAIXAS).includes('Em revisão'),
+            'o rótulo antigo voltou a alguma faixa da Visão Geral',
+        );
         assert.equal(A.PEDEM_ACAO, 'Pedem ação');
         assert.equal(A.ACERVO, 'Acervo de imagens');
         assert.equal(A.SEM_MEDIDA, '—');

@@ -530,7 +530,20 @@ export const OFERTAS = 'ofertas';
 export const FAIXAS = {
     ativas: 'Ativas',
     pausadas: 'Pausadas',
-    em_revisao: 'Em revisão',
+    // ⚠️ Fase 186, plano 01 — DECISÃO DO USUÁRIO, 14/10/2026: esta faixa também
+    // deixou de dizer "Em revisão". Razão que ele aceitou: é uma string só, e
+    // deixar um lugar dizendo "Em revisão" enquanto o estado interno da ECF
+    // passa a ser "Em revisão pela ECF" (VOC-02) recria exatamente a ambiguidade
+    // que o rename existe para matar.
+    // ⚠️ Fora do protótipo: a barra de publicações da Visão Geral
+    // ("Visao Geral.dc.html":536, `pubBar`) só desenha Ativas/Pausadas/Com erro —
+    // nunca teve esta faixa. Não há medida de protótipo a seguir aqui.
+    // ⚠️ SÓ O RÓTULO: a chave `em_revisao` continua intacta (TERR-08).
+    // ⚠️ Este arquivo é `.js` e o `content` do `tailwind.config.js` NÃO o varre
+    // (ele aponta para `*.jsx`). Aqui isso NÃO importa, porque o que mudou é
+    // rótulo de TEXTO, não classe — e é por isso que o arquivo NÃO deve ser
+    // movido nem renomeado para `.jsx`: fazer isso arrasta a Fase 179 inteira.
+    em_revisao: 'Em análise pelo Mercado Livre',
     encerradas: 'Encerradas',
 };
 
