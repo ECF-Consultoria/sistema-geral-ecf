@@ -113,7 +113,7 @@ class ServidorMcpTest extends TestCase
         'salvar_demanda',
     ];
 
-    public function test_admin_ve_as_dezesseis_ferramentas(): void
+    public function test_admin_ve_as_dezessete_ferramentas(): void
     {
         $this->assertSame([
             'abrir_ticket',
@@ -131,6 +131,7 @@ class ServidorMcpTest extends TestCase
             'ppa',
             'registrar_atualizacao_demanda',
             'salvar_demanda',
+            'shopee',
             'sugadores',
         ], $this->ferramentasVisiveis($this->admin()));
     }
@@ -139,13 +140,14 @@ class ServidorMcpTest extends TestCase
     {
         // Consultor sem nenhuma permissão de setor: o PPA (a tela /ppa só
         // exige login), os alertas (rota role:admin,consultor,mentor), os
-        // tickets (qualquer logado, com o módulo liberado) e as genéricas —
+        // tickets (qualquer logado, com o módulo liberado), a Shopee (a tela
+        // /dashboard/shopee só exige login) e as genéricas —
         // que abrem e enviam só o que o perfil dele abre e envia. Demanda dev
         // não: cadastrar é de admin e o diário é de quem tem demanda.
         $consultor = User::factory()->create(['role' => 'consultor', 'active' => true]);
 
         $this->assertSame(
-            ['abrir_ticket', 'alertas_estrategicos', 'atuar_no_ticket', 'enviar_formulario', 'ler_tela', 'ler_ticket', 'listar_acoes', 'listar_telas', 'ppa'],
+            ['abrir_ticket', 'alertas_estrategicos', 'atuar_no_ticket', 'enviar_formulario', 'ler_tela', 'ler_ticket', 'listar_acoes', 'listar_telas', 'ppa', 'shopee'],
             $this->ferramentasVisiveis($consultor)
         );
 
@@ -161,7 +163,7 @@ class ServidorMcpTest extends TestCase
         $lista       = $this->rpc($this->admin(), 'tools/list')->assertOk();
         $ferramentas = $lista->json('result.tools');
 
-        $this->assertCount(16, $ferramentas);
+        $this->assertCount(17, $ferramentas);
         // Tudo numa página: o pacote pagina de 15 em 15 e nem todo cliente busca a 2ª.
         $this->assertNull($lista->json('result.nextCursor'));
         foreach ($ferramentas as $f) {

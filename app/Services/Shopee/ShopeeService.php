@@ -368,6 +368,19 @@ class ShopeeService
      */
     public function get(Company $company, string $apiPath, array $query = []): array
     {
+        return $this->getCompleto($company, $apiPath, $query)['response'] ?? [];
+    }
+
+    /**
+     * Igual ao get(), mas devolve o JSON INTEIRO da Shopee. Alguns endpoints
+     * respondem fora da chave `response` — o `get_shop_info` traz shop_name e
+     * status na raiz, e o get() devolveria [] para ele. Usado pelo MCP, que
+     * repassa qualquer endpoint de leitura.
+     *
+     * @throws \RuntimeException
+     */
+    public function getCompleto(Company $company, string $apiPath, array $query = []): array
+    {
         $token = $this->ensureValidToken($company);
 
         if (! $token) {
@@ -392,7 +405,7 @@ class ShopeeService
             throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
         }
 
-        return $json['response'] ?? [];
+        return $json;
     }
 
     /**
@@ -415,6 +428,16 @@ class ShopeeService
      * @throws \RuntimeException
      */
     public function post(Company $company, string $apiPath, array $payload = []): array
+    {
+        return $this->postCompleto($company, $apiPath, $payload)['response'] ?? [];
+    }
+
+    /**
+     * Igual ao post(), mas devolve o JSON INTEIRO (ver getCompleto()).
+     *
+     * @throws \RuntimeException
+     */
+    public function postCompleto(Company $company, string $apiPath, array $payload = []): array
     {
         $token = $this->ensureValidToken($company);
 
@@ -441,7 +464,7 @@ class ShopeeService
             throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
         }
 
-        return $json['response'] ?? [];
+        return $json;
     }
 
     /** True quando a resposta v2 traz um `error` não-vazio. */

@@ -17,6 +17,7 @@ use App\Mcp\Tools\PainelExecutivoTool;
 use App\Mcp\Tools\PpaTool;
 use App\Mcp\Tools\RegistrarAtualizacaoDemandaTool;
 use App\Mcp\Tools\SalvarDemandaTool;
+use App\Mcp\Tools\ShopeeTool;
 use App\Mcp\Tools\SugadoresTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Instructions;
@@ -43,7 +44,7 @@ use Laravel\Mcp\Server\Attributes\Version;
  * {@see \App\Mcp\Tools\FerramentaDeEscrita}.
  */
 #[Name('ECF Admin')]
-#[Version('1.1.0')]
+#[Version('1.2.0')]
 #[Instructions(<<<'MD'
 Servidor do ECF Admin, o sistema interno da ECF Consultoria (consultoria de e-commerce em Mercado Livre). Cada ferramenta de leitura devolve os mesmos números da tela correspondente do Admin, e cada ferramenta de gravação usa o mesmo formulário da tela — sempre com o recorte e as permissões de quem conectou: o que a pessoa não vê ou não pode fazer no Admin, ela também não vê nem faz aqui.
 
@@ -56,6 +57,7 @@ Ferramentas e telas:
 - alertas_estrategicos → /alertas-estrategicos (alertas diários do ECF Drive)
 - painel_executivo → /painel-executivo (carteira inteira no ECF Drive, só admin)
 - ler_ticket → tickets do time de desenvolvimento: a lista (equipe dev: a caixa da equipe; demais: os que a pessoa abriu) e o detalhe com descrição, mensagens e os prints anexados
+- shopee → lojas com Shopee conectada, AO VIVO na API da Shopee: produtos (estoque, vendas, visualizações), pedidos, funil pedido feito × pago e recompra, repasse e taxas, carteira, devoluções, avaliações, saúde da conta, promoções, ADS e qualquer outro endpoint de leitura. O funil de tráfego do Seller Centre (visitantes, rejeição, carrinho, conversão) não existe na API.
 - listar_telas + ler_tela → QUALQUER outra tela do Admin (NPS, contratos, onboarding, painel dos Polos, detalhe de empresa, dashboard, desempenho, metas, comercial, MLB, agenda, tickets...). Prefira as ferramentas específicas quando elas respondem a pergunta; para o resto, ache a tela com listar_telas e abra com ler_tela — primeiro sem "campo" (resumo), depois com o "campo" que interessa.
 
 Cada fonte conta empresas de um universo diferente: o Cadastro (/companies) conta só Performance sem Polos; o Painel Executivo conta todos os sellers da carteira no ECF Drive, inclusive Polos. Não compare esses totais como se fossem o mesmo número. Diga ao usuário de qual tela o número veio.
@@ -91,6 +93,7 @@ class EcfAdminServer extends Server
         ListarTelasTool::class,
         LerTelaTool::class,
         LerTicketTool::class,
+        ShopeeTool::class,
         // Gravação
         AbrirTicketTool::class,
         AtuarNoTicketTool::class,

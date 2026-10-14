@@ -277,3 +277,45 @@ papel por guard ou sessão, só o Portal do Cliente, que fica fora).
   Os testes usavam dev com papel de consultor, que tem filtro, e passavam.
   Sempre agrupe: `where(fn ($q) => $q->whereIn(...)->orWhere(...))`, e teste o
   perfil admin quando a regra tiver ramo "admin vê tudo".
+
+## 12. Ferramenta `shopee` — a API da Shopee ao vivo (14/10/2026)
+Pedido do usuário: "preciso de tudo que dá pra puxar da API da Shopee no MCP".
+Decisões dele (não refaça sem perguntar): **consulta AO VIVO**, sem tabela
+nova; **qualquer usuário logado** vê todas as lojas conectadas — a régua do
+`/dashboard/shopee` —, inclusive repasse, taxas e extrato da carteira.
+Código em `app/Mcp/Shopee/` (`LeitorShopee` = um método por dado;
+`ChamadaShopee` = app e erro) e `app/Mcp/Tools/ShopeeTool.php`.
+- **O funil de tráfego do Seller Centre não existe na Open Platform.** A tela
+  "Dados do Negócio" (visitantes, visualizações e curtidas por período,
+  rejeição, carrinho, conversão) não tem endpoint. Pesquisado em 14/10/2026:
+  o SDK aberto `congminh1254/shopee-sdk` cobre 30 módulos e nenhum é de
+  tráfego. Por anúncio só existe `get_item_extra_info` (`views`, `likes`,
+  `sale`), que é contador acumulado, não recorte de período. A ferramenta
+  diz isso ao Claude em vez de deixá-lo estimar.
+- **Dois apps, rota por módulo.** `/api/v2/ads/*` vai no app ADS e o resto
+  no ERP. Se a Shopee responder `error_permission_denied`, tenta UMA vez o
+  outro app da mesma loja — vídeo, afiliados (AMS) e live não têm dono
+  certo, e a matriz "API PERMISSION" por tipo de app só aparece na página de
+  cada endpoint no console.
+- **Montado pela documentação, sem chamada real** (o `.env` local não tem a
+  chave de produção): `saude`, `promocoes`, `ads_campanhas`, `devolucoes`,
+  `repasses`, `carteira`, `avaliacoes` e as partes extras de `produto`. O
+  que já rodou de verdade no sync é pedido (lista/detalhe/escrow) e ADS
+  diário. Suspeita principal: `page_no` começando em 0 (devoluções,
+  carteira) ou em 1 (repasses). Erro de parâmetro volta com a mensagem
+  da própria Shopee ("error_param — …"), que diz o campo. **Teste de fumaça
+  em produção PENDENTE** — rodar cada dado numa loja grande e anotar aqui o
+  que falhou.
+- **`get_shop_info` responde na RAIZ do JSON, não em `response`.** O
+  `ShopeeService::get()` devolvia `[]` para ele (provavelmente é o `[]` do
+  app ADS anotado em julho). Criados `getCompleto()`/`postCompleto()`; o `get()`
+  continua devolvendo só `response`.
+- **Comprador:** sai só apelido e id. Endereço, telefone e CPF não são pedidos
+  à Shopee (`LeitorShopee::CAMPOS_PEDIDO`).
+- **`vendas` soma no máximo 2.500 pedidos ao vivo** (31 dias, cache de
+  30 min). A GENUINEAUTOMOTIVE faz ~980 pedidos/dia, então nela só cabem 2–3
+  dias. O faturamento do mês está no `resumo`, que lê `shopee_metrics`.
+- **SQLite dos testes perde o último dia** em `whereBetween('reference_date',
+  …)`: o cast `date` grava `2026-10-13 00:00:00`, que é maior que
+  `'2026-10-13'`. No MariaDB a coluna é DATE e não perde. O dashboard usa a
+  mesma consulta. Nos testes, termine o período um dia depois.
