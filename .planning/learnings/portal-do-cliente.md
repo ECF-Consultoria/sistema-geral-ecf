@@ -1350,6 +1350,11 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
     A escolha na tela (`vinculos` no `useFichaProduto`) vence o derivado; marcada, trava C/L/A e acompanha as mudanças do
     produto (`seguirMedidasDoProduto`, puro). O peso do volume continua obrigatório e editável: marcar copia o peso do
     produto se houver; depois só acompanha enquanto ele ainda for a cópia. Recarregar a página volta ao derivado.
+  - **REMOVIDA em 14/10/2026, a pedido do usuário** ("remove isso: Usar as mesmas medidas do produto fora da caixa"):
+    a caixa, o vínculo (`vinculos`), a regra de acompanhar (`seguirMedidasDoProduto` e as conversões de unidade da
+    `lib/medidasDoProduto.js`) e a explicação `mesmas_medidas` do glossário. As medidas do volume voltaram a ser
+    sempre digitadas, e mudar as do produto não mexe nelas. Não trazer de volta sem pedido: o bloco "Medidas do
+    produto (fora da caixa)" continua, só a ligação com o volume saiu.
 
 ## 39. Planilha de produtos v2: o modelo, a planilha baixada e as categorias em lote (09/10/2026)
 
