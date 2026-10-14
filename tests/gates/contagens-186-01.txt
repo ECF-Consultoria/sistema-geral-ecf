@@ -1,0 +1,41 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-01.
+# Lido por `tests/gates/verificar-testes.sh <plano> <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# lição dos casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os **dois regimes** de contagem (pristino e mutado),
+#     para a campanha de mutação não precisar mexer no gate — e mexer no gate
+#     durante a mutação invalida a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# O gate de ausência de "Em revisão" cru (VOC-01 / ABA-04).
+# 55 MEDIDO em 14/10/2026 nos dois regimes — este arquivo não tem sonda com
+# `skip` por `mtime`, então pristino e mutado dão o MESMO número. O segundo valor
+# está escrito de propósito: deixa explícito que a coincidência foi MEDIDA, e não
+# que o regime mutado ficou sem medir.
+gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=55,55
+
+# Os 7 arquivos de JS tocados por este plano: o gate novo + as 6 asserções
+# reapontadas. Contagem MEDIDA depois do rename (regime pristino e mutado).
+rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=PENDENTE
+
+# ABA-03 — o rótulo da aba vem do SERVIDOR, e a CHAVE `em_revisao` não muda.
+# ⚠️ O nome do método é `test_as_seis_abas_vem_na_ordem_do_servidor`
+# (`tests/Feature/Publicador/PublicacoesDaTelaTest.php:681`, conferido por grep).
+# O nome que o plano trazia antes — `test_meus_manda_as_seis_abas_na_ordem` — NÃO
+# EXISTE; filtro que não casa nada faria o gate antigo reprovar e o novo abortar,
+# mas nenhum dos dois mediria o comportamento.
+# 1 / 22 MEDIDO em 14/10/2026, antes e depois do rename (o teste assere as CHAVES
+# e o shape, nunca o valor do `rotulo` — por isso o número não se move).
+abas-do-servidor  php  test_as_seis_abas_vem_na_ordem_do_servidor  ::  tests=1 assertions=22
