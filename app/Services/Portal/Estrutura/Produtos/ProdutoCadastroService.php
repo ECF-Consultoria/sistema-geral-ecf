@@ -100,10 +100,21 @@ class ProdutoCadastroService
     }
 
     /**
+     * `$agendarPreparo = false` é para a gravação automática vinda do Bling (Fase 184,
+     * BLING-22): fecha os DOIS caminhos até `PreparoIaAgenda::aoSalvar` — o direto (o bloco
+     * final abaixo) e o que passa pela oferta (`criarOferta()`/`garantirOfertas()` →
+     * `EstruturaOfertaService::criar(..., prepararNoPublicador: false)`). Motivo medido
+     * (`publicador-ml.md` §22): 60 produtos de uma vez ocupam a fila `high` por quase 2h,
+     * a mesma fila que publica anúncio e manda o código de acesso do Portal. Quem chama com
+     * `agendarPreparo: false` fica responsável por agendar o que quiser no fim (nos planos
+     * 08/09 isso é, no máximo, um `SincronizarProdutoDoPortalJob` por produto com rascunho
+     * não publicado — não implementado aqui). Grade, planilha e ficha não passam este
+     * parâmetro: o padrão `true` preserva o comportamento de todas elas.
+     *
      * @param  array<int, array>  $linhas  linhas de entrada (contrato do NormalizadorDeLinha)
      * @return array{linhas: list<array>, erros: list<array{indice: int, chave: ?string, codigo: ?string, mensagem: string, campos: array<string, string>}>, avisos: list<string>, criadas_nas_listas: array{familias: list<string>, ambientes: list<string>}, totais: array{criadas: int, atualizadas: int, sem_mudanca: int, com_erro: int}}
      */
-    public function gravarLinhas(Company $empresa, array $linhas, AtorDoPortal $ator, string $modo = self::MODO_GRADE): array
+    public function gravarLinhas(Company $empresa, array $linhas, AtorDoPortal $ator, string $modo = self::MODO_GRADE, bool $agendarPreparo = true): array
     {
         $limite = $modo === self::MODO_IMPORTACAO ? self::MAX_IMPORTACAO : self::MAX_GRADE;
         if (count($linhas) > $limite) {
@@ -125,7 +136,7 @@ class ProdutoCadastroService
         $lidas = array_map(fn ($bruta) => NormalizadorDeLinha::normalizar(is_array($bruta) ? $bruta : []), array_values($linhas));
         $estado['categorias'] = $this->categoriasDoLote($lidas);
 
-        DB::transaction(function () use ($empresa, $lidas, $ator, $modo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$produtosMudados, &$estado) {
+        DB::transaction(function () use ($empresa, $lidas, $ator, $modo, $agendarPreparo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$produtosMudados, &$estado) {
             $skusParaVarrer = [];
 
             foreach ($lidas as $indice => $lida) {
@@ -139,8 +150,8 @@ class ProdutoCadastroService
 
                 $tocados = []; // models do estado que a linha alterou (para desfazer em memória)
                 try {
-                    $res = DB::transaction(function () use ($empresa, $campos, $lida, $ator, $modo, $estado, &$tocados) {
-                        return $this->gravarLinha($empresa, $campos, $lida['presentes'], $ator, $modo, $estado, $tocados);
+                    $res = DB::transaction(function () use ($empresa, $campos, $lida, $ator, $modo, $agendarPreparo, $estado, &$tocados) {
+                        return $this->gravarLinha($empresa, $campos, $lida['presentes'], $ator, $modo, $estado, $tocados, $agendarPreparo);
                     });
                 } catch (ValidationException $e) {
                     $this->desfazerNoEstado($tocados);
@@ -192,7 +203,7 @@ class ProdutoCadastroService
             $gravadas = $totais['criadas'] + $totais['atualizadas'];
             if ($gravadas > 0) {
                 // Rede de segurança, na mesma transação: variação nunca fica sem oferta.
-                $this->garantirOfertas($empresa, $ator);
+                $this->garantirOfertas($empresa, $ator, $agendarPreparo);
 
                 RegistroEstrutura::registrar($ator, $empresa, null, 'produtos_gravados',
                     "{$gravadas} variação(ões) gravada(s) no Produtos",
@@ -201,8 +212,9 @@ class ProdutoCadastroService
         });
 
         // O produto mudou: o Publicador o prepara, com espera (sincronizar + IA; `PreparoIaAgenda`).
-        // Vale para a grade e para a importação da planilha, que passa por aqui.
-        if ($produtosMudados !== []) {
+        // Vale para a grade e para a importação da planilha, que passa por aqui. Caminho DIRETO até
+        // o PreparoIaAgenda (o outro é via oferta: ver `criarOferta`/`sincronizarOferta` abaixo).
+        if ($agendarPreparo && $produtosMudados !== []) {
             app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, array_keys($produtosMudados));
         }
 
@@ -238,16 +250,21 @@ class ProdutoCadastroService
      * Com `$skusDoLote`, a espera NÃO é varrida aqui: o SKU entra na lista e o lote
      * varre uma vez no fim (BE-WR-05). Sem ela (reconciliador avulso), varre na hora.
      *
+     * `$agendarPreparo = false` (Fase 184, BLING-22, caminho 2 até `PreparoIaAgenda`) propaga
+     * `prepararNoPublicador: false` para `EstruturaOfertaService::criar` — sem isto, uma oferta
+     * criada pela gravação automática do Bling agendaria a IA por este caminho mesmo com o
+     * caminho direto de `gravarLinhas` fechado.
+     *
      * @return int quantos anúncios da espera a oferta nova absorveu (0 quando o lote varre)
      */
-    private function criarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null): int
+    private function criarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null, bool $agendarPreparo = true): int
     {
         [, $absorvidos] = $this->ofertas->criar($empresa, [
             'sku'         => $variacao->codigo,
             'fase'        => EstruturaOferta::FASE_SIMPLES,
             'nome'        => self::nomeDaOferta($produto->nome, $variacao->valor),
             'variacao_id' => $variacao->id,
-        ], $ator, varrerEspera: $skusDoLote === null);
+        ], $ator, varrerEspera: $skusDoLote === null, prepararNoPublicador: $agendarPreparo);
 
         if ($skusDoLote !== null) {
             $skusDoLote[] = $variacao->codigo;
@@ -257,11 +274,11 @@ class ProdutoCadastroService
     }
 
     /** Acompanha código/nome na oferta ligada; se ela não existe (não deveria), cria. */
-    private function sincronizarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null): int
+    private function sincronizarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null, bool $agendarPreparo = true): int
     {
         $oferta = EstruturaOferta::query()->where('variacao_id', $variacao->id)->first();
         if (! $oferta) {
-            return $this->criarOferta($empresa, $produto, $variacao, $ator, $skusDoLote);
+            return $this->criarOferta($empresa, $produto, $variacao, $ator, $skusDoLote, $agendarPreparo);
         }
 
         if ($skusDoLote !== null && EstruturaOferta::normalizarSku($oferta->sku) !== EstruturaOferta::normalizarSku($variacao->codigo)) {
@@ -299,9 +316,9 @@ class ProdutoCadastroService
      *
      * @return int quantas ofertas criou
      */
-    public function garantirOfertas(Company $empresa, AtorDoPortal $ator): int
+    public function garantirOfertas(Company $empresa, AtorDoPortal $ator, bool $agendarPreparo = true): int
     {
-        return DB::transaction(function () use ($empresa, $ator) {
+        return DB::transaction(function () use ($empresa, $ator, $agendarPreparo) {
             $criadas = 0;
             $faltam = EstruturaProdutoVariacao::query()
                 ->where('company_id', $empresa->id)
@@ -310,7 +327,7 @@ class ProdutoCadastroService
                 ->get();
 
             foreach ($faltam as $v) {
-                $this->criarOferta($empresa, $v->produto, $v, $ator);
+                $this->criarOferta($empresa, $v->produto, $v, $ator, agendarPreparo: $agendarPreparo);
                 $criadas++;
             }
 
@@ -453,7 +470,7 @@ class ProdutoCadastroService
      *
      * @return array{resultado: string, skus: list<string>, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
      */
-    private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado, array &$tocados): array
+    private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado, array &$tocados, bool $agendarPreparo = true): array
     {
         $codigo = $campos['codigo'];
         $chaveCodigo = self::chaveCodigo($codigo);
@@ -677,7 +694,7 @@ class ProdutoCadastroService
         // A espera não é varrida aqui: os SKUs tocados voltam em `skus` e o lote varre uma vez (BE-WR-05).
         $skus = [];
         if ($variacaoNova) {
-            $this->criarOferta($empresa, $produto, $variacao, $ator, $skus);
+            $this->criarOferta($empresa, $produto, $variacao, $ator, $skus, $agendarPreparo);
         }
         if ($mudouProduto && ! $produtoNovo) {
             // Produto mudou: TODAS as ofertas dele acompanham — inclusive quando a linha que o
@@ -687,10 +704,10 @@ class ProdutoCadastroService
                 ->when($variacaoNova, fn ($q) => $q->whereKeyNot($variacao->id))
                 ->get();
             foreach ($irmas as $v) {
-                $this->sincronizarOferta($empresa, $produto, $v, $ator, $skus);
+                $this->sincronizarOferta($empresa, $produto, $v, $ator, $skus, $agendarPreparo);
             }
         } elseif (! $variacaoNova && $mudouVariacao) {
-            $this->sincronizarOferta($empresa, $produto, $variacao, $ator, $skus);
+            $this->sincronizarOferta($empresa, $produto, $variacao, $ator, $skus, $agendarPreparo);
         }
 
         $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao || $mudouDescricao) ? 'atualizadas' : 'sem_mudanca');
