@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logo ECF — variante para FUNDO ESCURO. É a spec ORIGINAL, Phase 32, D-01 LOCKED
+  (`resources/views/partials/logo-ecf.blade.php` e `resources/js/Components/LogoEcf.jsx`):
+  texto branco, barra com o gradiente azul -> rosa -> laranja -> amarelo.
+
+  Nada aqui diverge do LOCKED. A variante de fundo claro é o arquivo irmão
+  `logo-ecf-claro.svg`, onde SÓ a cor do texto muda.
+
+  ⚠️ Montserrat NÃO está embutida (o repositório não tem arquivo de fonte; ela vem
+  do Google Fonts em runtime). Onde Montserrat não estiver instalada, cai para
+  Helvetica/Arial. Para fidelidade garantida, exportar do arquivo original com o
+  texto convertido em contornos.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 52" width="240" height="52" role="img" aria-label="ECF Consultoria &amp; Assessoria">
+  <title>ECF Consultoria &amp; Assessoria</title>
+  <defs>
+    <!-- Equivale a linear-gradient(0deg, ...) do CSS: 0% embaixo, 100% em cima. -->
+    <linearGradient id="barraEcfEscuro" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#1e5ef3"/>
+      <stop offset="40%" stop-color="#e84393"/>
+      <stop offset="70%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#facc15"/>
+    </linearGradient>
+  </defs>
+
+  <text x="96" y="40" text-anchor="end"
+        font-family="Montserrat, Helvetica, Arial, sans-serif"
+        font-weight="700" font-size="42" letter-spacing="-0.84" fill="#ffffff">ECF</text>
+
+  <rect x="106" y="10" width="4" height="32" fill="url(#barraEcfEscuro)"/>
+
+  <text x="120" y="22"
+        font-family="Montserrat, Helvetica, Arial, sans-serif"
+        font-weight="300" font-size="12" letter-spacing="1.44" fill="#ffffff">CONSULTORIA</text>
+  <text x="120" y="38"
+        font-family="Montserrat, Helvetica, Arial, sans-serif"
+        font-weight="300" font-size="12" letter-spacing="1.44" fill="#ffffff">&amp; ASSESSORIA</text>
+</svg>
