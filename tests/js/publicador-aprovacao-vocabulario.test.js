@@ -4,6 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -773,5 +775,572 @@ test('GATE-08 — o diretório `aprovacao/` é 100% `.jsx`', async (contexto) =>
             assert.doesNotMatch(fonte, /\bdelay-\[/, `${caminho}: delay-[…] não compila aqui`);
             assert.doesNotMatch(fonte, /\bease-\[/, `${caminho}: ease-[…] não compila aqui`);
         }
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9. O SELO DE ANDAMENTO INTERNO — render REAL dos 8 estados (Task 2)
+//
+// Medidas do protótipo, MEDIDAS por `grep -n` em
+// `design_handoff_publicador/Aprovacao.dc.html`:
+//   · a pill        → :170  `display:flex;align-items:center;gap:6px;height:22px;`
+//                           `padding:0 8px;border-radius:6px;white-space:nowrap;`
+//                           `border:1px solid <borda>;background:<fundo>;`
+//                           `color:<texto>;font-size:11.5px;font-weight:600`
+//   · o anel girando→ :171  `width:9px;height:9px;border-radius:50%;`
+//                           `border:1.5px solid <texto>;border-right-color:transparent`
+//   · a bolinha     → :172  `width:6px;height:6px;border-radius:50%;background:<texto>`
+//
+// ⚠️⚠️ MEDIÇÃO QUE A TABELA DO PLANO NÃO TRAZIA: dentro da pill, a bolinha e o
+// anel são pintados com `r.stColor`, que é `m[1]` — a COR DO TEXTO —, e **não**
+// com `m[4]`, a cor de dot de `STM`. O `m[4]` é usado em outro lugar: nos cards
+// da faixa de andamento (`:1217`, `dot: m[4]`), que são da Fase 187. Por isso a
+// forma aqui é `bg-current`/`border-current`: mesmo valor computado da cor do
+// texto que a própria pill declara, sem repetir a classe e sem chance de os dois
+// divergirem. O campo `dot` de `ANDAMENTOS` continua existindo para a faixa.
+//
+// ⚠️ O destino deste componente está DECLARADO: ele é consumido pela coluna
+// **Andamento** da tabela da fila (FILA-13) na **Fase 187**. Não é componente
+// órfão — é a peça que aquela fase monta. Enquanto isso, render direto.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const REL_SELO = `${DIR_APROV}/SeloDeAndamentoInterno.jsx`;
+
+if (!fs.existsSync(path.resolve(RAIZ, REL_SELO))) {
+    throw new Error(`caminho inexistente: ${REL_SELO} — o gate mediria NADA`);
+}
+
+const MOD_SELO = await montar(REL_SELO);
+const Selo = MOD_SELO.default;
+
+FONTES.set(REL_SELO, lerSemComentarios(REL_SELO));
+
+/** Render de servidor, sem comentários `<!-- -->` entre nós de texto. */
+const render = (Componente, props) => renderToStaticMarkup(React.createElement(Componente, props));
+
+/** A tag de abertura inteira que começa em `pos`. */
+function tagEm(html, pos) {
+    assert.ok(pos !== -1 && pos < html.length, 'posição fora do HTML');
+    const fim = html.indexOf('>', pos);
+    assert.ok(fim !== -1, 'tag de abertura sem fechamento');
+    return html.slice(pos, fim + 1);
+}
+
+/** O conjunto de classes de uma tag de abertura, ordenado. */
+function classesDe(tag) {
+    const m = tag.match(/class="([^"]*)"/);
+    assert.ok(m, `a tag nao tem atributo class`);
+    return m[1].split(/\s+/).filter(Boolean).sort();
+}
+
+/** O texto visível do HTML — tags fora, entidades das que aparecem aqui desfeitas. */
+function textoDe(html) {
+    return html
+        .replace(/<[^>]*>/g, '')
+        .replace(/&#x27;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.1 — OS 8 ESTADOS pt-BR RENDEM O RÓTULO DE VOC-02
+//
+// O que precisaria estar errado para falhar: o componente voltar a usar as
+// chaves do protótipo (e aí nenhuma das 8 chaves do BANCO casaria, e o selo
+// sairia com o rótulo neutro em vez do estado). É o bug S3 pelo lado do render.
+//
+// ⚠️ UM `test()` POR ESTADO, nunca um laço com 8 asserções dentro: com o laço a
+// contagem de testes seria 1 e perder um estado não moveria número nenhum.
+// ─────────────────────────────────────────────────────────────────────────────
+
+for (const chave of ['preparando', 'aguardando_aprovacao', 'em_revisao_ecf', 'ajustes_solicitados',
+    'aprovado', 'publicando', 'falha', 'publicado']) {
+    test(`VOC-05 — o selo de \`${chave}\` traz forma + cor + TEXTO`, () => {
+        const html = render(Selo, { andamento: chave });
+        const esperado = ANDAMENTOS[chave].rotulo;
+
+        // 1. TEXTO. É o que um leitor de tela ouve e o que quem enxerga mal cor lê.
+        assert.ok(html.includes(esperado), `o rotulo esperado nao esta no HTML`);
+        assert.equal(textoDe(html), esperado, 'o texto visivel nao e exatamente o rotulo');
+
+        // 2. COR — por NOME de token, no elemento raiz.
+        const raiz = tagEm(html, 0);
+        const classes = classesDe(raiz);
+        assert.ok(classes.includes(ANDAMENTOS[chave].texto), 'a classe de cor do texto nao esta na raiz');
+        assert.ok(classes.includes(ANDAMENTOS[chave].fundo), 'a classe de fundo nao esta na raiz');
+        assert.ok(classes.includes(ANDAMENTOS[chave].borda), 'a classe de borda nao esta na raiz');
+
+        // 3. FORMA — bolinha ou anel, sempre uma das duas, sempre decorativa.
+        assert.match(html, /aria-hidden="true"/, 'a forma nao esta marcada como decorativa');
+        assert.match(html, /rounded-full/, 'nao ha forma redonda no selo');
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.2 — ⚠️⚠️ AS 8 CHAVES DO PROTÓTIPO: O SELO NÃO FICA VAZIO
+//
+// O que precisaria estar errado para falhar: `andamentoDe()` voltar a devolver
+// `null` (ou o componente fazer `if (!entrada) return null`). O sintoma em
+// produção seria o selo renderizando um retângulo colorido SEM TEXTO, e um
+// teste que só checasse "não lançou" passaria.
+//
+// ⚠️ Por isso a asserção é de TEXTO NÃO-VAZIO DENTRO DO ELEMENTO, e não de
+// ausência de exceção.
+// ─────────────────────────────────────────────────────────────────────────────
+
+for (const [chaveInglesa] of STM_DO_PROTOTIPO) {
+    test(`REND — a chave do prototipo \`${chaveInglesa}\` rende TEXTO NAO-VAZIO`, () => {
+        const html = render(Selo, { andamento: chaveInglesa });
+
+        assert.ok(html.trim() !== '', 'o componente nao renderizou nada');
+        const texto = textoDe(html);
+        assert.ok(texto !== '', 'O SELO RENDERIZOU VAZIO — e exatamente o bug S3');
+        // Aparece COMO CHEGOU: não se apaga a linha nem se inventa um rótulo.
+        assert.equal(texto, chaveInglesa);
+        // E com a forma/cor NEUTRAS, não com a de um estado conhecido.
+        const classes = classesDe(tagEm(html, 0));
+        assert.ok(classes.includes('text-pub-neutral-txt'), 'a cor nao e a neutra');
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/);
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.3 — O SPINNER
+//
+// O que precisaria estar errado para falhar: o anel girando aparecer em
+// `aprovado`/`publicado` (a linha pareceria estar trabalhando quando já
+// terminou) ou desaparecer de `publicando` (a linha pareceria parada enquanto a
+// oferta sobe para o ML).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('AND — o anel girando e so de `preparando` e `publicando`', async (contexto) => {
+    for (const chave of CHAVES_DE_ANDAMENTO) {
+        await contexto.test(`${chave}: spinner=${ANDAMENTOS[chave].spinner}`, () => {
+            const html = render(Selo, { andamento: chave });
+            const temSpinner = html.includes('animate-pub-spin');
+            assert.equal(temSpinner, ANDAMENTOS[chave].spinner);
+
+            if (temSpinner) {
+                // ⚠️ `border-r-transparent` é o que ABRE o anel: sem ele a
+                // forma é um círculo fechado e a rotação não se vê.
+                assert.match(html, /border-r-transparent/, 'o anel ficou fechado — a rotacao nao aparece');
+                assert.match(html, /w-\[9px\]/, 'o anel nao tem os 9px do prototipo');
+            } else {
+                assert.match(html, /w-\[6px\]/, 'a bolinha nao tem os 6px do prototipo');
+                assert.doesNotMatch(html, /border-r-transparent/);
+            }
+        });
+    }
+
+    await contexto.test('⚠️ GATE-09: o spinner usa a animacao NOMEADA, nunca `duration-[Nms]`', () => {
+        const html = render(Selo, { andamento: 'publicando' });
+        assert.match(html, /animate-pub-spin/);
+        // `duration-[…]`, `delay-[…]` e `ease-[…]` NÃO COMPILAM neste projeto
+        // (`tailwindcss-animate` torna a classe ambígua).
+        assert.doesNotMatch(html, /duration-\[/);
+        assert.doesNotMatch(html, /delay-\[/);
+        assert.doesNotMatch(html, /ease-\[/);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.4 — ⚠️ OS CASOS ADVERSOS: A TELA PRETA DE 07/10
+//
+// O que precisaria estar errado para falhar: `String(valor)`,
+// `hasOwnProperty(valor)` ou QUALQUER `obj[valor]` sem guarda de tipo. Medido
+// neste projeto: os três LANÇAM com `{ toString: null }`, e prop de NÓ chegando
+// objeto comum faz o React lançar e derruba a PÁGINA INTEIRA. A tela preta
+// voltou QUATRO vezes na Fase 180, sempre achada só pelo render adverso.
+//
+// ⚠️ A mensagem de asserção usa `typeof` + descrição FIXA. `String(adverso)` e
+// `JSON.stringify(adverso)` matariam o bloco DENTRO da mensagem (plano 180-05,
+// 5 blocos).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('REND-01/REND-03 — nenhum valor adverso derruba o selo', async (contexto) => {
+    const ADVERSOS = [
+        ['objeto comum', { a: 1 }],
+        ['objeto com toString nulo', { toString: null }],
+        ['objeto com toString que lanca', { toString() { throw new Error('nunca deve ser chamado'); } }],
+        ['nulo', null],
+        ['numero', 42],
+        ['NaN', NaN],
+        ['string vazia', ''],
+        ['string de espacos', '   '],
+        ['array', []],
+        ['booleano', true],
+        ['chave desconhecida', 'estado_que_nao_existe'],
+        ['chave do prototipo de Object', 'toString'],
+    ];
+
+    for (const [nome, valor] of ADVERSOS) {
+        await contexto.test(`andamento = ${nome} — renderiza e nao derruba`, () => {
+            const tipo = typeof valor;
+            let html = '';
+            assert.doesNotThrow(() => {
+                html = render(Selo, { andamento: valor });
+            }, `o render lancou com valor do tipo ${tipo}`);
+
+            assert.ok(html.trim() !== '', `nada renderizado`);
+            // ⚠️ Asserção de ausência rodada com dado VAZIO é vazia por
+            // construção — aqui ela roda com a prop PREENCHIDA (ou com o valor
+            // adverso que é o assunto do caso).
+            assert.doesNotMatch(
+                html,
+                /\[object Object\]|NaN|undefined|Invalid Date/,
+                `vazou representacao interna, tipo ${tipo}`,
+            );
+            // E o selo continua dizendo ALGO: nunca um retângulo mudo.
+            assert.ok(textoDe(html) !== '', `o selo ficou VAZIO, tipo ${tipo}`);
+        });
+    }
+
+    await contexto.test('prop AUSENTE (componente chamado sem props) nao lanca', () => {
+        let html = '';
+        assert.doesNotThrow(() => { html = render(Selo, {}); });
+        assert.ok(textoDe(html) !== '', 'sem props o selo ficou vazio');
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/);
+    });
+
+    await contexto.test('props = null (o segundo argumento do createElement nulo) nao lanca', () => {
+        let html = '';
+        assert.doesNotThrow(() => { html = render(Selo, null); });
+        assert.ok(textoDe(html) !== '');
+    });
+
+    await contexto.test('`className` adverso nao derruba nem vaza', () => {
+        for (const adverso of [{ a: 1 }, 42, null, [], true]) {
+            const tipo = typeof adverso;
+            let html = '';
+            assert.doesNotThrow(() => {
+                html = render(Selo, { andamento: 'aprovado', className: adverso });
+            }, `className do tipo ${tipo} derrubou o render`);
+            assert.ok(html.includes('Aprovado'), `className do tipo ${tipo} comeu o rotulo`);
+            assert.doesNotMatch(html, /\[object Object\]/);
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.5 — GATE DE HTML: IGUALDADE DE CONJUNTO DE CLASSES
+//
+// O que precisaria estar errado para falhar: uma classe da pill sumir (ou
+// aparecer uma a mais) numa refatoração — `h-[22px]` virando `h-6` (24px),
+// `px-[8px]` virando `px-2.5` (10px), `text-[11.5px]` virando `text-xs` (12px).
+// A sonda de CSS NÃO pega nada disso: ela lê o último build e a mesma classe
+// pode ter outro dono no repositório. São gates diferentes e não se substituem
+// (GATE-02).
+//
+// ⚠️ A raiz é localizada pela POSIÇÃO 0 (é o elemento mais externo), nunca pela
+// lista de classes: quatro gates deste projeto já mediram o irmão errado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A base da pill, igual nos 8 estados (`:170`). Fora do `test()` porque 9.7 também a usa. */
+const BASE_DA_PILL = [
+    'inline-flex',
+    'items-center',
+    'gap-[6px]',
+    'h-[22px]',
+    'px-[8px]',
+    'rounded-pub-chip',
+    'whitespace-nowrap',
+    'border',
+    'text-[11.5px]',
+    'font-semibold',
+];
+
+/** As classes da bolinha (`:172`) e as do anel (`:171`), medidas. */
+const CLASSES_DA_BOLINHA = ['bg-current', 'flex-none', 'h-[6px]', 'rounded-full', 'w-[6px]'];
+const CLASSES_DO_ANEL = [
+    'animate-pub-spin', 'border-[1.5px]', 'border-current', 'border-r-transparent',
+    'flex-none', 'h-[9px]', 'rounded-full', 'w-[9px]',
+];
+
+test('GATE-02 (HTML) — a pill tem EXATAMENTE as classes medidas no prototipo', async (contexto) => {
+    for (const chave of CHAVES_DE_ANDAMENTO) {
+        await contexto.test(`${chave} — conjunto de classes da raiz, por igualdade`, () => {
+            const html = render(Selo, { andamento: chave });
+            const entrada = ANDAMENTOS[chave];
+            const esperado = [...BASE_DA_PILL, entrada.fundo, entrada.borda, entrada.texto].sort();
+            assert.deepEqual(classesDe(tagEm(html, 0)), esperado);
+        });
+    }
+
+    await contexto.test('a FORMA tem as classes medidas (bolinha 6px / anel 9px com 1.5px)', () => {
+        const comDot = render(Selo, { andamento: 'aprovado' });
+        const tagDoDot = tagEm(comDot, comDot.indexOf('<span', 1));
+        assert.deepEqual(classesDe(tagDoDot), [...CLASSES_DA_BOLINHA].sort());
+
+        const comAnel = render(Selo, { andamento: 'publicando' });
+        const tagDoAnel = tagEm(comAnel, comAnel.indexOf('<span', 1));
+        assert.deepEqual(classesDe(tagDoAnel), [...CLASSES_DO_ANEL].sort());
+    });
+
+    await contexto.test('⚠️ substring nao prova medida: `z-3` casa em `z-30`, `w-[` casa em sombra', () => {
+        // A asserção acima é de IGUALDADE DE CONJUNTO exatamente por isto: um
+        // `includes('h-[2')` passaria com `h-[22px]`, `h-[24px]` e `h-[2px]`.
+        const html = render(Selo, { andamento: 'aprovado' });
+        const classes = classesDe(tagEm(html, 0));
+        assert.ok(!classes.includes('h-[24px]'), 'a altura virou 24px');
+        assert.ok(!classes.includes('text-[12px]'), 'o corpo virou 12px');
+    });
+
+    await contexto.test('⚠️ `className` entra NA RAIZ e nao come nenhuma classe da pill', () => {
+        const html = render(Selo, { andamento: 'aprovado', className: 'ml-auto' });
+        const classes = classesDe(tagEm(html, 0));
+        assert.ok(classes.includes('ml-auto'), 'o className nao chegou');
+        for (const base of BASE_DA_PILL) {
+            assert.ok(classes.includes(base), `o className comeu uma classe da pill`);
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9.6 — O ARQUIVO NOVO É `.jsx` E RESPEITA O VOCABULÁRIO
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('GATE-08 — `SeloDeAndamentoInterno.jsx` e `.jsx` e sem hex/`text-sm`', () => {
+    const fonte = FONTES.get(REL_SELO);
+    assert.ok(REL_SELO.endsWith('.jsx'), 'o selo nao e .jsx — classe nele nao geraria CSS');
+    assert.doesNotMatch(fonte, /#[0-9a-fA-F]{3,8}\b/);
+    assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/);
+    assert.doesNotMatch(fonte, /\becf-(bg|card|card-2|yellow|yellow-2|line|dim|mute)\b/);
+    assert.doesNotMatch(fonte, /\bfont-display\b/);
+    // ⚠️ `assert.match(tag, /disabled/)` é asserção VAZIA: casa com
+    // `disabled:opacity-40`. Aqui o selo não tem botão, e a prova de que ele não
+    // ganhou um é a ausência do atributo COM o `=`.
+    assert.doesNotMatch(fonte, /disabled=/);
+    // O selo IMPORTA `andamentoDe` em vez de recriar a tabela (uma regra, uma casa).
+    assert.match(fonte, /from '\.\/andamentoDoPortao'/);
+    assert.match(fonte, /andamentoDe\(/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9.7 — GATE DE CSS: A CLASSE GERA CSS COM O VALOR CERTO (GATE-02, o 2º eixo)
+//
+// O que precisaria estar errado para falhar: a classe estar PRESENTE com o
+// VALOR errado. O token `pub-accent` apontando para outro amarelo, o raio do
+// `pub-chip` mudando de 6 para 8, o alfa de `/[0.10]` arredondando para
+// `/[0.12]`, `animate-pub-spin` deixando de existir. NADA disso o gate de HTML
+// acima pega — ele só prova que a classe foi ESCRITA.
+//
+// ⚠️ E o inverso também vale: a sonda de CSS NÃO protege a fidelidade DESTE
+// arquivo. Ela lê o CSS do ÚLTIMO BUILD, e a mesma classe pode ter outro dono
+// no repositório inteiro. Os dois gates são necessários e nenhum substitui o
+// outro.
+//
+// ⚠️ AS SETE NORMALIZAÇÕES DO CSS CONSTRUÍDO, todas MEDIDAS nesta rodada
+// (14/10/2026, `public/build/assets/app-*.css`, 223.881 bytes) e não presumidas:
+//   (i)   token SÓLIDO sai DECIMAL com a variável de opacidade:
+//         `bg-pub-hover-2` → `--tw-bg-opacity: 1;background-color:rgb(22 22 22 / var(--tw-bg-opacity, 1))`
+//   (ii)  modificador de opacidade em `background`/`border` sai em HEX DE 8
+//         DÍGITOS, minúsculo: `bg-pub-accent/[0.10]` → `background-color:#facc151a`
+//         e `border-pub-ok/[0.35]` → `border-color:#22c55e59`.
+//         ⚠️ É o byte do alfa que distingue 0.10 (`1a`) de 0.12 (`1f`) e
+//         0.35 (`59`) de 0.4 (`66`) — e é ele que a asserção lê.
+//   (iii) o cssnano COME O ZERO DA FRENTE: `animation:spin .7s linear infinite`
+//         (e não `0.7s`).
+//   (iv)  o seletor vem ESCAPADO (`.h-\[22px\]`), e escapar só a barra
+//         invertida transformaria os colchetes em classe de caracteres.
+//   (v)   `bg-current`/`border-current` saem como `currentColor` literal, sem
+//         variável de opacidade.
+//   (vi)  o prefixo de variante faz parte do nome da classe (não há variante
+//         nesta pill, mas a função `regraDe` já lida com isso).
+//   (vii) `escapaRegex` escapa TODOS os metacaracteres, parênteses inclusive.
+//
+// ⚠️ A sonda PULA com razão ESCRITA quando o CSS é mais velho que os fontes —
+// é o que acontece em CADA mutação da campanha, porque mutar toca o `.jsx`.
+// `skip` NOMEADO, nunca `return` calado. É daí que vêm os DOIS REGIMES de
+// contagem do manifesto (`tests/gates/contagens-186-02.txt`).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Escapa TODOS os metacaracteres de regex, parênteses inclusive (vii). */
+function escapaRegex(texto) {
+    return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** O seletor que o Tailwind emite: `.` + o nome com os metacaracteres de CSS escapados (iv). */
+function seletorDe(classe) {
+    return `.${classe.replace(/[[\].:/%,]/g, (ch) => `\\${ch}`)}`;
+}
+
+function carregarCssConstruido() {
+    const manifestRel = 'public/build/manifest.json';
+    const manifestAbs = path.resolve(RAIZ, manifestRel);
+    if (!fs.existsSync(manifestAbs)) return { motivo: `${manifestRel} ausente — rode \`npm run build\`` };
+
+    // ⚠️ Manifest SEMPRE pelo JSON, nunca por grep: o hash do arquivo sai com
+    // HÍFEN (`app-BhcXX3y8.css`) e um `grep` de nome quebraria nele.
+    const manifest = JSON.parse(fs.readFileSync(manifestAbs, 'utf8'));
+    const entrada = manifest['resources/js/app.jsx'];
+    if (!entrada || !Array.isArray(entrada.css) || entrada.css.length === 0) {
+        return { motivo: 'o manifest não aponta CSS para resources/js/app.jsx' };
+    }
+
+    const cssAbs = path.resolve(RAIZ, 'public/build', entrada.css[0]);
+    if (!fs.existsSync(cssAbs)) return { motivo: `${entrada.css[0]} ausente — rode \`npm run build\`` };
+
+    const mtimeCss = fs.statSync(cssAbs).mtimeMs;
+    const mtimeFontes = Math.max(
+        ...[REL_SELO, REL_ANDAMENTO, REL_VOCABULARIO].map((rel) => fs.statSync(path.resolve(RAIZ, rel)).mtimeMs),
+    );
+    if (mtimeCss < mtimeFontes) {
+        return { motivo: `o CSS construído (${entrada.css[0]}) é mais antigo que os componentes — rode \`npm run build\`` };
+    }
+
+    return { arquivo: entrada.css[0], css: fs.readFileSync(cssAbs, 'utf8') };
+}
+
+const CSS = carregarCssConstruido();
+
+test('GATE-02 (CSS) — as classes da pill GERAM CSS com o valor certo', async (contexto) => {
+    if (CSS.motivo) {
+        contexto.skip(CSS.motivo);
+        return;
+    }
+
+    /** O corpo da regra da classe, ou `null`. */
+    const regraDe = (classe) => {
+        const re = new RegExp(`${escapaRegex(seletorDe(classe))}(?![\\w\\\\-])[^{}]*\\{([^}]*)\\}`);
+        const m = CSS.css.match(re);
+        return m ? m[1] : null;
+    };
+
+    await contexto.test('o CSS lido é o do manifest e tem tamanho de CSS de verdade', () => {
+        assert.ok(CSS.css.length > 100000, `CSS suspeito de truncado: ${CSS.css.length} bytes`);
+    });
+
+    await contexto.test('⚠️ ISCA: a sonda reporta AUSENTE o que não existe', () => {
+        // As duas iscas foram medidas como INEXISTENTES no repo inteiro
+        // (`grep -rl` em `resources/`, `app/`, `tests/`, `tailwind.config.js`)
+        // antes de serem usadas — é a lição do `w-[13px]`, que parecia inventado
+        // e estava presente. `text-[97.5px]` FOI DESCARTADA como isca por este
+        // motivo: ela aparece em `publicador-publicacoes-busca.test.js`.
+        for (const isca of ['bg-pub-isca-186a2', 'h-[223px]']) {
+            assert.equal(regraDe(isca), null, `a isca ${isca} virou classe de verdade — troque a isca`);
+            assert.ok(!CSS.css.includes(isca), `a string da isca apareceu no CSS`);
+        }
+        // E o CONTROLE POSITIVO: a sonda ACHA o que existe. Sem ele, a negativa
+        // acima passaria com a sonda cega.
+        assert.notEqual(regraDe('h-[22px]'), null, 'a sonda está cega: nem o controle ela acha');
+    });
+
+    await contexto.test('a geometria da pill: 22px de altura, 8px de lado, gap 6, raio 6', () => {
+        assert.match(regraDe('h-[22px]'), /height:\s*22px/);
+        assert.match(regraDe('px-[8px]'), /padding-left:\s*8px/);
+        assert.match(regraDe('px-[8px]'), /padding-right:\s*8px/);
+        assert.match(regraDe('gap-[6px]'), /gap:\s*6px/);
+        assert.match(regraDe('rounded-pub-chip'), /border-radius:\s*6px/);
+        assert.match(regraDe('border'), /border-width:\s*1px/);
+        assert.match(regraDe('whitespace-nowrap'), /white-space:\s*nowrap/);
+        assert.match(regraDe('inline-flex'), /display:\s*inline-flex/);
+    });
+
+    await contexto.test('⚠️ o corpo é 11.5px e o peso 600 — `text-sm` seria 14px (FID-03)', () => {
+        assert.match(regraDe('text-[11.5px]'), /font-size:\s*11\.5px/);
+        assert.match(regraDe('font-semibold'), /font-weight:\s*600/);
+        // ⚠️ substring não prova medida: `text-[11px]` casa DENTRO de
+        // `text-[11.5px]` numa busca ingênua. Aqui as duas regras são lidas
+        // separadas e comparadas por valor.
+        const onze = regraDe('text-[11px]');
+        if (onze !== null) {
+            assert.ok(!/font-size:\s*11\.5px/.test(onze), 'a regra de 11px carrega o valor de 11.5px');
+        }
+        assert.ok(!/font-size:\s*14px/.test(regraDe('text-[11.5px]')), 'o corpo virou 14px');
+    });
+
+    await contexto.test('a FORMA: bolinha 6px, anel 9px com borda de 1.5px e raio redondo', () => {
+        assert.match(regraDe('w-[6px]'), /width:\s*6px/);
+        assert.match(regraDe('h-[6px]'), /height:\s*6px/);
+        assert.match(regraDe('w-[9px]'), /width:\s*9px/);
+        assert.match(regraDe('h-[9px]'), /height:\s*9px/);
+        assert.match(regraDe('border-[1.5px]'), /border-width:\s*1\.5px/);
+        assert.match(regraDe('rounded-full'), /border-radius:\s*9999px/);
+        assert.match(regraDe('flex-none'), /flex:\s*none/);
+    });
+
+    await contexto.test('(v) a forma herda a cor do texto: `currentColor` literal', () => {
+        // MEDIDO: `bg-current` NÃO ganha variável de opacidade — sai
+        // `background-color:currentColor` cru. É o que faz a bolinha ter a
+        // MESMA cor que o rótulo, como o protótipo pinta (`r.stColor`).
+        assert.match(regraDe('bg-current'), /background-color:\s*currentColor/);
+        assert.match(regraDe('border-current'), /border-color:\s*currentColor/);
+        assert.match(regraDe('border-r-transparent'), /border-right-color:\s*transparent/);
+    });
+
+    await contexto.test('(iii) o anel usa a animação NOMEADA, com o zero da frente comido pelo cssnano', () => {
+        // ⚠️ `.7s`, não `0.7s`: o cssnano come o zero da frente. Escrever
+        // `0\.7s` na regex aqui reprovaria o CSS certo.
+        assert.match(regraDe('animate-pub-spin'), /animation:\s*spin \.7s linear infinite/);
+        // E o keyframe existe de verdade — animação apontando para keyframe
+        // inexistente não gira e nenhum teste de HTML acusaria.
+        assert.match(CSS.css, /@keyframes spin\{to\{transform:rotate\(360deg\)\}\}/);
+        // ⚠️ DIVERGÊNCIA DECLARADA: o protótipo mede `.8s` (`:171`) e o token
+        // existente é `.7s`. A asserção trava o valor REAL do token para que
+        // mudá-lo seja um diff visível; o décimo de diferença está registrado na
+        // 186-02-SUMMARY.
+        assert.ok(!/animation:\s*spin \.8s/.test(regraDe('animate-pub-spin')), 'o token virou .8s sem registro');
+    });
+
+    await contexto.test('(i) tokens SÓLIDOS saem em DECIMAL, com a variável de opacidade', () => {
+        assert.match(regraDe('bg-pub-hover-2'), /background-color:\s*rgb\(22 22 22 \/ var\(--tw-bg-opacity/);
+        assert.match(regraDe('bg-pub-hover-3'), /background-color:\s*rgb\(26 26 26 \/ var\(--tw-bg-opacity/);
+        assert.match(regraDe('border-pub-line-strong'), /border-color:\s*rgb\(46 46 46 \/ var\(--tw-border-opacity/);
+        assert.match(regraDe('border-pub-line-off'), /border-color:\s*rgb\(63 63 70 \/ var\(--tw-border-opacity/);
+    });
+
+    await contexto.test('(i) as 6 cores de TEXTO dos 8 estados, em decimal', () => {
+        assert.match(regraDe('text-pub-neutral-txt'), /color:\s*rgb\(161 161 170 \//);  // #A1A1AA
+        assert.match(regraDe('text-pub-accent'), /color:\s*rgb\(250 204 21 \//);        // #FACC15
+        assert.match(regraDe('text-pub-fase1'), /color:\s*rgb\(212 212 216 \//);        // #D4D4D8
+        assert.match(regraDe('text-pub-warn-txt'), /color:\s*rgb\(251 191 36 \//);      // #FBBF24
+        assert.match(regraDe('text-pub-ok-txt'), /color:\s*rgb\(74 222 128 \//);        // #4ADE80
+        assert.match(regraDe('text-pub-danger-txt'), /color:\s*rgb\(248 113 113 \//);   // #F87171
+    });
+
+    await contexto.test('⚠️ (ii) as TINTAS saem em HEX DE 8 DÍGITOS — e o byte do alfa é o que importa', () => {
+        // `1a` = 26/255 = 0.102 (o `0.10` do protótipo). `1f` seria 0.12.
+        assert.match(regraDe('bg-pub-accent/[0.10]'), /background-color:\s*#facc151a/i);
+        assert.match(regraDe('bg-pub-warn/[0.10]'), /background-color:\s*#f59e0b1a/i);
+        assert.match(regraDe('bg-pub-ok/[0.10]'), /background-color:\s*#22c55e1a/i);
+        assert.match(regraDe('bg-pub-danger/[0.10]'), /background-color:\s*#ef44441a/i);
+        // `59` = 89/255 = 0.349 (`0.35`) e `66` = 102/255 = 0.4. São BYTES
+        // diferentes: é isto que distingue a borda de `aprovado` da de `falha`.
+        assert.match(regraDe('border-pub-accent/[0.35]'), /border-color:\s*#facc1559/i);
+        assert.match(regraDe('border-pub-ok/[0.35]'), /border-color:\s*#22c55e59/i);
+        assert.match(regraDe('border-pub-warn/[0.4]'), /border-color:\s*#f59e0b66/i);
+        assert.match(regraDe('border-pub-danger/[0.4]'), /border-color:\s*#ef444466/i);
+        // E o controle NEGATIVO do alfa: 0.35 não pode ter virado 0.4.
+        assert.ok(!/#22c55e66/i.test(regraDe('border-pub-ok/[0.35]')), 'o alfa 0.35 virou 0.4');
+        assert.ok(!/#f59e0b59/i.test(regraDe('border-pub-warn/[0.4]')), 'o alfa 0.4 virou 0.35');
+    });
+
+    await contexto.test('TODA classe que os 8 estados escrevem existe no CSS construído', () => {
+        // ⚠️ Este sub-teste é o que impede a omissão: um token novo escrito num
+        // dos 8 estados sem existir na camada geraria classe SEM CSS, e a cor
+        // simplesmente não apareceria na tela. A lista sai de `ANDAMENTOS`, não
+        // de uma cópia à mão.
+        const usadas = new Set([...BASE_DA_PILL, ...CLASSES_DA_BOLINHA, ...CLASSES_DO_ANEL]);
+        for (const chave of CHAVES_DE_ANDAMENTO) {
+            for (const campo of ['fundo', 'borda', 'texto']) {
+                usadas.add(ANDAMENTOS[chave][campo]);
+            }
+        }
+        for (const classe of usadas) {
+            assert.notEqual(regraDe(classe), null, `a classe ${classe} NÃO GERA CSS — a tela não a veria`);
+        }
+        // ⚠️ O número está escrito para que acrescentar classe à pill seja um
+        // diff visível aqui. A aritmética, MEDIDA e conferida:
+        //   10 da base + 5 da bolinha + 8 do anel − 2 em comum entre as duas
+        //   formas (`flex-none` e `rounded-full`) = 21 de geometria;
+        //   + 6 fundos distintos + 6 bordas distintas + 6 cores de texto
+        //     distintas = 18 de cor (os 8 estados compartilham: `aprovado`,
+        //     `publicando` e `publicado` têm exatamente o mesmo trio verde).
+        //   21 + 18 = 39.
+        assert.equal(usadas.size, 39, `a pill usa ${usadas.size} classes distintas, esperava 39`);
     });
 });

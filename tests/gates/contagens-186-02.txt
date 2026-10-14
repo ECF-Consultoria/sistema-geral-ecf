@@ -20,14 +20,35 @@
 # antes de ter sido medido — id sem medição não é escrito "para depois".
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── Task 1 — os dois módulos de vocabulário ──
-# 113 MEDIDO em 14/10/2026 com os dois módulos (`andamentoDoPortao.jsx` e
-# `vocabularioDoPortao.jsx`) no lugar. A medição do regime RED está registrada na
-# SUMMARY: sem os módulos o arquivo sai `# tests 1 / # fail 1`, porque a guarda
-# de `test -e` do topo lança antes de registrar teste nenhum.
+# ── Tasks 1 e 2 — os dois módulos de vocabulário E o selo de andamento ──
 #
-# ⚠️ ESTE NÚMERO SOBE na Task 2, quando o bloco de render do
-# `SeloDeAndamentoInterno` entrar no MESMO arquivo — e a elevação fica escrita
-# aqui, porque deixar o número parado é como se descobre que alguém esqueceu de
-# declarar um teste novo.
-vocabulario-modulos  js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=113
+# ⚠️ Os dois ids apontam para o MESMO arquivo de teste, e isso é deliberado: o
+# plano pede um gate por tarefa, mas o arquivo é um só
+# (`publicador-aprovacao-vocabulario.test.js` cobre os módulos E o render do
+# selo, e os dois precisam do mesmo `montar()` de esbuild). Dois arquivos
+# dobrariam o tempo de compilação sem medir nada a mais.
+#
+# ⚠️⚠️ O NÚMERO SUBIU DE 113 PARA 180 — e a elevação está escrita porque deixar
+# o número parado é como se descobre que alguém esqueceu de declarar um teste
+# novo. O histórico MEDIDO, em 14/10/2026:
+#   ·   1 / fail 1 — regime RED da Task 1: sem os dois módulos no disco, a
+#                    guarda de `test -e` do topo lança antes de registrar teste
+#                    nenhum.
+#   · 113          — Task 1 verde (só os módulos).
+#   · 114 / fail 1 — regime RED da Task 2: o bloco do selo registrado e o
+#                    componente ainda ausente.
+#   · 180          — Task 2 verde, com o bloco de CSS construído.
+#
+# DOIS REGIMES (GATE-10), os dois MEDIDOS nesta máquina:
+#   180 = CSS construído mais NOVO que os três `.jsx` (logo após `npm run
+#         build`): o bloco "GATE-02 (CSS)" roda inteiro, com os seus 11
+#         subtestes.
+#   169 = CSS construído mais VELHO que algum dos `.jsx` — é o que acontece em
+#         CADA mutação da campanha, porque mutar toca o arquivo. Nesse regime o
+#         bloco de CSS entra em SKIP por `mtime`, com razão ESCRITA, e leva os
+#         11 subtestes consigo (180 − 169 = 11), com `# skipped 1` no lugar.
+# ⚠️ Travar só em 180 abortaria a 1ª mutação da campanha; não travar em nenhum
+#    dos dois marcaria a campanha inteira como "SOBREVIVEU" por um motivo que
+#    não é o código. Os dois números são MEDIDOS, nenhum é chute.
+vocabulario-modulos  js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=180,169
+vocabulario-render   js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  tests=180,169
