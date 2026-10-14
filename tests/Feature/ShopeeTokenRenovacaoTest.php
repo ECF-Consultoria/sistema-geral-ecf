@@ -170,6 +170,33 @@ class ShopeeTokenRenovacaoTest extends TestCase
         $this->assertTrue(\Carbon\Carbon::parse($resp->json('expires_at'))->gt(now()->addDays(6)));
     }
 
+    /**
+     * Membro do setor com shopee.empresas (sem sistema.shopee_oauth) vê o botão
+     * "Regerar link" na aba /shopee/empresas — e levava 403 calado (14/10/2026).
+     */
+    public function test_quem_ve_a_aba_empresas_da_shopee_consegue_gerar_link(): void
+    {
+        $usuario = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $setor   = \App\Models\Setor::create(['slug' => 'shopee-teste', 'nome' => 'Shopee teste', 'active' => true]);
+        \App\Models\SetorPermissao::create(['setor_id' => $setor->id, 'permission_key' => 'shopee.empresas']);
+        $setor->membros()->attach($usuario->id, ['is_principal' => false, 'assigned_at' => now()]);
+        $usuario = $usuario->fresh();
+        $this->assertFalse($usuario->hasPermission('sistema.shopee_oauth'));
+
+        $company = Company::factory()->create(['shopee_link_generated_at' => now()->subDays(30)]);
+
+        $this->actingAs($usuario)->postJson(route('shopee.oauth.initiate', $company))
+            ->assertOk()->assertJsonStructure(['url', 'expires_at']);
+    }
+
+    public function test_sem_permissao_shopee_nao_gera_link(): void
+    {
+        $usuario = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $company = Company::factory()->create();
+
+        $this->actingAs($usuario)->postJson(route('shopee.oauth.initiate', $company))->assertForbidden();
+    }
+
     public function test_painel_expoe_status_de_renovacao_sem_vazar_tokens(): void
     {
         $admin   = User::factory()->create(['role' => 'admin', 'active' => true]);

@@ -27,10 +27,17 @@ function ShopeeConexao({ company }) {
     const [loading, setLoading]       = useState(false);
     const [copied, setCopied]         = useState(false);
     const [sessionUrl, setSessionUrl] = useState(null);
+    const [sessionExpires, setSessionExpires] = useState(null); // expiração do link regerado nesta sessão
+    const [erro, setErro]             = useState(null);
     const [syncing, setSyncing]       = useState(false);
 
-    const linkUrl   = sessionUrl ?? company.shopee_link_url;
-    const pendente  = !!(sessionUrl || company.shopee_link_generated_at) && !!linkUrl;
+    const expiresAt    = sessionExpires ?? company.shopee_link_expires_at;
+    const days         = daysLeft(expiresAt);
+    const expired      = days !== null && days <= 0;
+    // Link vencido não é oferecido para copiar: a assinatura não vale mais e o
+    // cliente cairia na página de "link venceu". O caminho é regerar.
+    const linkUrl   = sessionUrl ?? (expired ? null : company.shopee_link_url);
+    const pendente  = !!(sessionUrl || company.shopee_link_generated_at);
 
     const gerarLink = async () => {
         setLoading(true);
@@ -42,8 +49,16 @@ function ShopeeConexao({ company }) {
                     'Accept': 'application/json',
                 },
             });
-            const data = await res.json();
-            if (data.url) setSessionUrl(data.url);
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.url) {
+                setSessionUrl(data.url);
+                setSessionExpires(data.expires_at ?? null);
+                setErro(null);
+            } else {
+                setErro(data.message ?? `Não foi possível gerar o link (erro ${res.status}).`);
+            }
+        } catch {
+            setErro('Não foi possível gerar o link. Verifique a conexão e tente de novo.');
         } finally {
             setLoading(false);
         }
@@ -91,20 +106,21 @@ function ShopeeConexao({ company }) {
 
     // Link já gerado (pendente) → mostra "Aguardando" + copiar + regerar.
     if (pendente) {
-        const days = daysLeft(company.shopee_link_expires_at);
-        const expired = days !== null && days <= 0;
         return (
-            <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <div className="flex items-center gap-1.5 whitespace-nowrap" title={erro ?? undefined}>
                 <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold', expired ? 'text-red-400' : 'text-amber-400')}>
                     <Clock className="h-3.5 w-3.5 shrink-0" />
                     {expired ? 'Link expirado' : `Aguardando${days !== null ? ` · ${days}d` : ''}`}
                 </span>
-                <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
-                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                </button>
-                <button onClick={gerarLink} disabled={loading} title="Regerar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40">
+                {linkUrl && (
+                    <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
+                        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                )}
+                <button onClick={gerarLink} disabled={loading} title={expired ? 'Link vencido — clique para gerar um novo' : 'Regerar link'} className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40">
                     <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
                 </button>
+                {erro && <span className="text-[11px] text-red-400 truncate max-w-[180px]">{erro}</span>}
             </div>
         );
     }
@@ -120,6 +136,7 @@ function ShopeeConexao({ company }) {
         >
             {loading ? <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
             Gerar link
+            {erro && <span className="text-red-400 ml-1" title={erro}>· erro</span>}
         </button>
     );
 }

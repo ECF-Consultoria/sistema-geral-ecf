@@ -1420,8 +1420,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Desconectar + sync manual permanecem admin-only (herdado do grupo).
         Route::get('/shopee-oauth',                            [ShopeeOAuthController::class, 'adminIndex'])
             ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.index');
+        // Gerar link também para quem tem shopee.empresas: a aba /shopee/empresas
+        // mostra o botão "Gerar/Regerar link", e membros do setor que recebem
+        // shopee.empresas pelo setor (sem sistema.shopee_oauth) levavam 403 calado
+        // e seguiam copiando o link vencido. Gerar link não expõe token nem dado.
         Route::post('/companies/{company}/shopee/initiate',   [ShopeeOAuthController::class, 'initiate'])
-            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.initiate');
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth,shopee.empresas')->name('shopee.oauth.initiate');
         Route::delete('/companies/{company}/shopee/disconnect',[ShopeeOAuthController::class, 'disconnect'])->name('shopee.oauth.disconnect');
         Route::post('/companies/{company}/shopee/sync-now',   [ShopeeOAuthController::class, 'syncNow'])->name('shopee.sync.now');
         // Sync forçado que PERSISTE em shopee_metrics (via fila) — por loja e geral.

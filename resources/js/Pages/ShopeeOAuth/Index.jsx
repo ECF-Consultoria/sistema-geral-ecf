@@ -108,11 +108,15 @@ function CompanyRow({ company, adsConfigured, onDisconnect, onLinkGenerated }) {
                     'Accept': 'application/json',
                 },
             });
-            const data = await res.json();
-            if (data.url) {
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.url) {
                 setSessionUrl(data.url);
                 onLinkGenerated?.(company.id, data);
+            } else {
+                alert(data.message ?? `Não foi possível gerar o link (erro ${res.status}).`);
             }
+        } catch {
+            alert('Não foi possível gerar o link. Verifique a conexão e tente de novo.');
         } finally {
             setLoading(false);
         }
