@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound, Ticket, Megaphone, Zap,
+    MessageSquareText, UsersRound, Ticket, Megaphone, Zap, Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
@@ -105,6 +105,9 @@ const NAV_TREE = [
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
             { label: 'PPA',         routeName: 'ppa.index',           page: 'Ppa',          icon: FileText,        permission: 'core.ppa' },
+            // Planejador FULL (15/10/2026): reposição do estoque no Fulfillment com dados da API do ML.
+            // Sem permission: aberto a todos os logados (decisão de produto).
+            { label: 'Planejador FULL', routeName: 'planejador-full.index', page: ['PlanejadorFull/Index', 'PlanejadorFull/Show'], icon: Truck },
             // ── Separator visual: Performance | Dados Estrategicos ─────
             // Feedback UAT 2026-07-03: dados vem do ECF Drive (fonte ML-only na
             // pratica), entao Dados Estrategicos e ML-especifico. Movido pra

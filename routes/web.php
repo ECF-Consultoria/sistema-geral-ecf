@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\SetorMembroController;
 use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AutenticadorController;
+use App\Http\Controllers\PlanejadorFullController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
@@ -883,6 +884,28 @@ Route::middleware(['auth', 'verified'])->prefix('autenticadores')->name('autenti
     Route::post('/{autenticador}/copiar', [AutenticadorController::class, 'copiar'])->name('copiar');
     Route::get('/{autenticador}/historico', [AutenticadorController::class, 'historico'])->name('historico');
     Route::delete('/{autenticador}', [AutenticadorController::class, 'destroy'])->name('destroy');
+});
+
+// ── Planejador FULL ─────────────────────────────────────────────────────────
+// Reposição do estoque no Fulfillment do ML, com dados da coleta diária na API
+// (full:coletar). Acesso de TODOS os colaboradores logados (decisão de 15/10/2026).
+Route::middleware(['auth', 'verified'])->prefix('planejador-full')->name('planejador-full.')->group(function () {
+    Route::get('/', [PlanejadorFullController::class, 'index'])->name('index');
+    Route::get('/{company}', [PlanejadorFullController::class, 'show'])->whereNumber('company')->name('show');
+    Route::post('/{company}/atualizar', [PlanejadorFullController::class, 'atualizar'])->whereNumber('company')
+        ->middleware('throttle:6,1,planejador-full.atualizar')->name('atualizar');
+    Route::get('/{company}/status', [PlanejadorFullController::class, 'status'])->whereNumber('company')->name('status');
+    Route::get('/{company}/vendas/{inventory}', [PlanejadorFullController::class, 'vendas'])->whereNumber('company')
+        ->where('inventory', '[A-Za-z0-9]{3,30}')->name('vendas');
+    Route::put('/{company}/config', [PlanejadorFullController::class, 'salvarConfig'])->whereNumber('company')->name('config');
+    Route::put('/{company}/skus', [PlanejadorFullController::class, 'salvarSkus'])->whereNumber('company')->name('skus');
+    Route::put('/{company}/itens', [PlanejadorFullController::class, 'salvarItens'])->whereNumber('company')->name('itens');
+    Route::post('/{company}/galpao', [PlanejadorFullController::class, 'importarGalpao'])->whereNumber('company')->name('galpao');
+    Route::post('/{company}/envios', [PlanejadorFullController::class, 'registrarEnvio'])->whereNumber('company')->name('envios.store');
+    Route::post('/{company}/envios/planilha', [PlanejadorFullController::class, 'importarPlanilhaEstoque'])->whereNumber('company')->name('envios.planilha');
+    Route::patch('/{company}/envios/{envio}', [PlanejadorFullController::class, 'atualizarEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.update');
+    Route::delete('/{company}/envios/{envio}', [PlanejadorFullController::class, 'excluirEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.destroy');
+    Route::post('/{company}/exportar', [PlanejadorFullController::class, 'exportar'])->whereNumber('company')->name('exportar');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
