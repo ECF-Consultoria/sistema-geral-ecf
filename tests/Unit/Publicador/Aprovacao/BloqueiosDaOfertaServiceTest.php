@@ -1475,7 +1475,10 @@ class BloqueiosDaOfertaServiceTest extends TestCase
         $manifesto = base_path('tests/gates/contagens-186-08.txt');
         $this->assertFileExists($manifesto);
 
-        $arquivos = [base_path('tests/Unit/Publicador/Aprovacao/BloqueiosDaOfertaServiceTest.php')];
+        $arquivos = [
+            base_path('tests/Unit/Publicador/Aprovacao/BloqueiosDaOfertaServiceTest.php'),
+            base_path('tests/Feature/Publicador/Aprovacao/BloqueiosContraOPrototipoTest.php'),
+        ];
 
         $metodos = [];
         foreach ($arquivos as $arquivo) {

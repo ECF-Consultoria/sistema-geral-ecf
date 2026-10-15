@@ -50,10 +50,13 @@ achado-s2-todos-os-grupos  php  test_achado_s2_pendente_(fora_do_primeiro_grupo|
 galeria-e-foco  php  test_(img12_galeria_vazia_devolve_sem_fotos_e_nao_tela_vazia_silenciosa|photos_aponta_para_a_primeira_com_alerta_e_sem_alerta_para_a_primeira_pendente|o_bloqueio_de_fotos_nao_faz_uma_consulta_por_grupo)  ::  tests=3 assertions=35
 titulo-change-adjust-prep  php  test_(titulo_com_sessenta_nao_bloqueia_e_com_sessenta_e_um_bloqueia|alteracao_de_preco_e_ajuste_em_aberto_tem_o_texto_e_a_correcao_do_prototipo|prep_aparece_so_em_preparando_com_a_frase_real_e_correcao_vazia)  ::  tests=3 assertions=36
 kinds-aprovavel-rodape  php  test_(bloq03_kinds_ganha_alerta_e_falha_que_nao_sao_bloqueio|bloq04_aprovavel_e_verdadeiro_so_com_live_e_zero_bloqueios|bloq12_o_rodape_tem_o_literal_verde_e_o_bloqueado_com_mais_n|o_texto_do_frete_nomeia_a_fonte_que_de_fato_falta_e_nao_mente)  ::  tests=4 assertions=53
+estados-o1-a-o5  php  test_estado_o(1_do_prototipo_inverte_de_aprovavel_para_margem_abaixo_do_minimo|2_do_prototipo_e_o_premium_com_a_tarifa_real_mais_alta|3_do_prototipo_da_prejuizo_e_nao_margem_baixa_como_diz_a_prosa_do_readme|4_do_prototipo_e_o_caso_que_decide_a_exclusividade_da_cadeia|5_do_prototipo_esta_em_revisao_ecf_com_duas_fotos_a_conferir)  ::  tests=5 assertions=104
+estados-o6-a-o10  php  test_estado_o(6_do_prototipo_tem_ajuste_aberto_e_esta_em_ajustes_solicitados|7_do_prototipo_falhou_e_ganha_o_kind_de_falha_sem_ganhar_bloqueio|8_do_prototipo_esta_aprovado_e_nao_e_aprovavel_de_novo|9_do_prototipo_esta_publicando_e_a_edicao_fica_bloqueada|10_do_prototipo_esta_preparando_com_a_frase_real_do_que_falta)  ::  tests=5 assertions=64
+tabela-isca-e-cobertura  php  test_(isca_da_tabela_nenhum_dos_dez_e_aprovavel_e_consertar_o_o5_torna_ele_aprovavel|a_tabela_cobre_os_dez_estados_e_os_oito_andamentos_do_prototipo)  ::  tests=2 assertions=44
 ausencia-e-territorio  php  test_(o_leitor_tira_os_comentarios_do_plano_08_e_preserva_o_codigo|nenhum_arquivo_deste_plano_cria_segundo_clique_desfazer_ou_cancelar_aprovacao|o_minimo_da_margem_vem_do_resolvedor_unico_e_nunca_de_literal_neste_plano|terr09_a_fronteira_do_d11_esta_declarada_e_este_plano_nao_escreve_no_ml)  ::  tests=4 assertions=83
 # ⚠️ A contagem de `bijecao-manifesto` DEPENDE do número de linhas deste arquivo
 #    (uma asserção `php` por linha de gate). É contagem frágil por construção, e
 #    está declarada como tal: acrescentar um id aqui **sobe** este número em 1, e
 #    o helper reprova até que ele seja remedido. Isso é desconforto DE PROPÓSITO —
 #    é o que impede acrescentar id sem rodar o gate.
-bijecao-manifesto  php  test_todo_metodo_do_plano_08_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=20
+bijecao-manifesto  php  test_todo_metodo_do_plano_08_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=24
