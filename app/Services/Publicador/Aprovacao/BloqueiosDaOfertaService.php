@@ -292,6 +292,29 @@ class BloqueiosDaOfertaService
     }
 
     /**
+     * **x de y fotos aprovadas** — a contagem da galeria final de TODOS os grupos do rascunho.
+     *
+     * ⚠️ Existe para que a frase de `AND-06` (*"Salvou revisão · x de y fotos aprovadas"*) e o
+     * bloqueio `fotos_a_conferir` leiam **A MESMA** definição de "galeria final" e de "aprovada".
+     * Duas contagens da mesma verdade divergiriam, e a divergência apareceria como a tela dizendo
+     * "5 de 5 fotos aprovadas" **com um bloqueio de fotos de pé** — que é o pior tipo de bug de
+     * dado, porque parece completo.
+     *
+     * @return array{total: int, aprovadas: int, pendentes: int, com_alerta: int}
+     */
+    public function contagemDeFotos(PubAprovacaoOferta $oferta): array
+    {
+        $galeria = $this->galeriaDoRascunho($oferta);
+
+        return [
+            'total' => $galeria['na_galeria']->count(),
+            'aprovadas' => $galeria['na_galeria']->count() - $galeria['pendentes']->count(),
+            'pendentes' => $galeria['pendentes']->count(),
+            'com_alerta' => $galeria['com_alerta']->count(),
+        ];
+    }
+
+    /**
      * A galeria final de **TODOS** os grupos do rascunho, e o que nela está pendente / com alerta.
      *
      * ⚠️ Três consultas FIXAS (conjuntos · imagens por `whereIn` · alertas por eager loading), e
