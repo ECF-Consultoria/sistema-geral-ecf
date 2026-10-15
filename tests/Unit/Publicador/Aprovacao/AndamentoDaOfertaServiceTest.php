@@ -880,7 +880,96 @@ class AndamentoDaOfertaServiceTest extends TestCase
             }
         }
         sort($escrevem);
-        $this->assertSame(['AndamentoDaOfertaService.php', 'PubAprovacaoOferta.php'], $escrevem, 'alguém além do serviço e do default do modelo escreve `andamento` — a porta deixou de ser única');
+        $this->assertSame(['AndamentoDaOfertaService.php', 'PubAprovacaoOferta.php'], $escrevem, 'alguém além do serviço e do default do modelo MENCIONA `andamento` como chave — entre na LISTA acima declarando se ESCREVE ou só EXPÕE, e o detector de escrita abaixo prova qual dos dois');
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // ⚠️ CAMADA B, ACRESCENTADA EM 14/10/2026 PELO ORQUESTRADOR — o detector de ESCRITA.
+        //
+        // POR QUE FALTAVA. A lista acima é um ARAME DE TROPEÇO: acusa qualquer menção nova a
+        // `andamento`, o que é bom. Mas NÃO distingue **escrever estado** de **apenas expor o
+        // valor numa chave de array de saída** — as duas coisas casam `'andamento' =>`. Medido:
+        // o 186-07 só LÊ o andamento da oferta irmã, e a chave do array de retorno o fez aparecer
+        // como terceiro "escritor". Ele consertou do lado dele e devolveu a pergunta em vez de
+        // mexer neste gate — corretamente.
+        //
+        // ⚠️ O PERIGO REAL ERA O OUTRO: enquanto a lista era a única prova, **entrar na lista não
+        // era conferido por nada**. Quem acrescentasse um arquivo ali — por engano ou para "fazer
+        // passar" — passaria a poder ESCREVER `andamento` sem gate nenhum notar. A lista protegia
+        // a porta por NOME, não por COMPORTAMENTO.
+        //
+        // ⚠️ E ESTREITAR A CAMADA A CONTINUA ERRADO, pela razão que o 186-02 mediu e escreveu
+        // acima: o serviço monta as mudanças numa VARIÁVEL (`$mudancas`), então uma sonda que só
+        // procurasse `->update([...])` não casaria nem a escrita de verdade e ficaria vazia por
+        // construção. ➡️ A camada A FICA ampla, e a B entra ao lado dela.
+        //
+        // O que a B afirma: FORA do serviço e do `$attributes` do modelo, ninguém atribui
+        // `andamento` nem o passa a um método de escrita do Eloquent.
+        $formasDeEscrita = [
+            'atribuição direta' => '/->andamento\s*=[^=]/',
+            // ⚠️ O limite é o `;` (fim do statement), NÃO o `]`. A primeira versão usava
+            // `\[[^\]]{0,400}?` e a ISCA do `updateOrCreate` a REPROVOU na hora: ali o
+            // `andamento` vai no SEGUNDO array (`updateOrCreate([chaves], [valores])`), e
+            // `[^\]]` não atravessa o `]` que fecha o primeiro. Foi a isca pegando o furo do
+            // próprio detector — que é exatamente para isso que ela existe.
+            // Ficar dentro do statement é também o que impede o falso positivo: uma chave de
+            // saída `'andamento' =>` num `return` não tem método de escrita antes dela no MESMO
+            // statement, e a última isca abaixo prova isso.
+            'passado a um método de escrita' => '/(?:update|fill|forceFill|create|updateOrCreate|insert|upsert)\s*\([^;]{0,400}?\'andamento\'\s*=>/s',
+        ];
+
+        foreach ($arquivos as $arquivo) {
+            $nome = basename($arquivo);
+            if ($nome === 'AndamentoDaOfertaService.php') {
+                continue; // é a porta: é ELE que tem o direito de escrever
+            }
+
+            $texto = $this->semComentarios(file_get_contents($arquivo));
+
+            // O `$attributes` do modelo é DECLARAÇÃO DE DEFAULT, não escrita — e o contrato exato
+            // dele já é medido abaixo. Tiro o bloco antes de aplicar o detector.
+            if ($nome === 'PubAprovacaoOferta.php') {
+                $ini = strpos($texto, 'protected $attributes = [');
+                if ($ini !== false) {
+                    $fim = strpos($texto, '];', $ini);
+                    $texto = substr_replace($texto, '', $ini, $fim - $ini);
+                }
+            }
+
+            foreach ($formasDeEscrita as $comoSeChama => $padrao) {
+                $this->assertSame(
+                    0,
+                    preg_match_all($padrao, $texto),
+                    "`{$nome}` escreve `andamento` por {$comoSeChama} — só `AndamentoDaOfertaService` move o estado. "
+                    . 'Estar na lista da camada A permite MENCIONAR, nunca ESCREVER.'
+                );
+            }
+        }
+
+        // ⚠️ ISCAS DA CAMADA B — sem elas eu não saberia se o detector enxerga cada forma. Cada
+        // uma é uma escrita que ele TEM de pegar; a última é uma LEITURA que ele NÃO pode pegar
+        // (é o falso positivo que motivou esta camada).
+        $iscasQueDevemCasar = [
+            'atribuição'     => '<?php $o->andamento = self::APROVADO;',
+            'update'         => "<?php \$o->update(['andamento' => self::APROVADO]);",
+            'fill'           => "<?php \$o->fill(['andamento' => 'x']);",
+            'create'         => "<?php Oferta::create(['alvo_id' => 1, 'andamento' => 'x']);",
+            'updateOrCreate' => "<?php Oferta::updateOrCreate(['alvo_id' => 1], ['andamento' => 'x']);",
+        ];
+
+        foreach ($iscasQueDevemCasar as $comoSeChama => $amostra) {
+            $pegou = 0;
+            foreach ($formasDeEscrita as $padrao) {
+                $pegou += preg_match_all($padrao, $amostra);
+            }
+            $this->assertGreaterThan(0, $pegou, "ISCA CEGA: o detector de escrita NÃO pega a forma `{$comoSeChama}` — ele não está medindo o que diz medir.");
+        }
+
+        $soExpoe = "<?php return ['andamento' => \$irma->andamento, 'rotulo' => \$r];";
+        $pegouLeitura = 0;
+        foreach ($formasDeEscrita as $padrao) {
+            $pegouLeitura += preg_match_all($padrao, $soExpoe);
+        }
+        $this->assertSame(0, $pegouLeitura, 'o detector de escrita acusou uma LEITURA (chave de array de saída) — é o falso positivo que esta camada existe para não repetir.');
 
         // ISCA da sonda de escrita: o padrão que ela procura EXISTE no serviço (senão a lista
         // acima estaria vazia por construção e a asserção passaria sem medir).

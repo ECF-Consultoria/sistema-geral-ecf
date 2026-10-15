@@ -54,7 +54,7 @@
 # é a granularidade que diz QUAL dos três caiu quando este gate composto reprova.
 # Nenhum método do plano fica sem id próprio (ver o aviso do topo).
 # 3 / 39 MEDIDO em 14/10/2026.
-oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=39
+oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=57   # 39 -> 57 pelo mesmo motivo: 15 -> 33 na `unica-porta` (camada B)
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 2 — O MODELO: os 8 estados, as transições, LIVE, ORDEM e cta
@@ -255,7 +255,15 @@ aprovar-na-transacao  php  test_aprovar_grava_os_tres_campos_de_aprovacao_na_mes
 # `aprovado` em qualquer controller — publicaria um anúncio que ninguém conferiu
 # (T-186-11).
 # 1 / 15 MEDIDO em 14/10/2026.
-unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=15
+# ⚠️ assertions ATUALIZADO em 14/10/2026 pelo ORQUESTRADOR: o teste ganhou a CAMADA B
+#    (detector de ESCRITA de `andamento`), e o motivo NÃO foi a régua subir — foi uma LACUNA.
+#    A camada A (lista de arquivos que MENCIONAM `andamento`) é arame de tropeço e não
+#    distingue ESCRITA de LEITURA: uma chave de array de SAÍDA casa `'andamento' =>` igual.
+#    Medido: o 186-07 só LÊ o andamento da irmã e apareceu como terceiro "escritor".
+#    ⚠️ O furo real era outro: ENTRAR NA LISTA não era conferido por nada, então quem
+#    acrescentasse um arquivo ali passava a poder ESCREVER sem gate notar. A lista
+#    protegia a porta por NOME, não por COMPORTAMENTO. A camada B fecha isso.
+unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=33
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 3 — A OFERTA NO GRAFO REAL e a disciplina da migration
