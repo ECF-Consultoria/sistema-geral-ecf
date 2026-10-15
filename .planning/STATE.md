@@ -4305,3 +4305,38 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 180]: 180-12: **CHECKPOINT HUMANO ABERTO — a Fase 180 NÃO está aprovada.** ⚠️ **NENHUMA TELA RENDERIZADA FOI VISTA, em nenhum dos 13 planos**: o banco local não tem empresa com `ml_token` (`meus()` faz `abort_unless`), `ml_acervo_itens` está **VAZIA** e a leitura de produção está **bloqueada**. O roteiro de **11 passos** para a conta **459** (`/mlb/anuncios/meus/459`) está no fechamento, e as **11 perguntas em aberto** também — **nenhuma decidida por mim**: (A) a **prioridade da fase do Histórico**; (B) quem cola o texto no `ROADMAP.md`/`REQUIREMENTS-v26.md`; (C) algum dos **26 desvios declarados** que ele prefira diferente; (D) o **overlap do `Escape`** (dois ouvintes de janela: com popover DO HEADER aberto + linha selecionada, um `Escape` fecha o popover **e** limpa a seleção — consertar exige editar `atalhosDoHeader.js`, território proibido; **não é regressão**, antes não havia seleção a perder); (E) a **faixa de sucesso que nunca aparece** (`faixaSucesso` é `null` SEMPRE, medido por 3 caminhos; ligar exige chave de flash **declarada no `HandleInertiaRequests`** + decisão sobre a fila assíncrona); (F) o **chip "Responsável" que não nasce** (`responsavel.opcoes` sem fonte); (G) o **checkbox que marca, pinta e não leva a ação** (barra de lote é a Fase 181; ele escolheu deixar ligado em 14/10); (H) as **três divergências de `identidade/`** (rótulos F1/F2, o anel `#5F5F68` com o token já órfão, o "Com erro" preenchido); (I) os **7 usos mortos** de `duration-[…]`/`ease-[…]` fora da fase; (J) as duas da Fase 177 (`top-[108px]` × `109px` e a espessura dos traços); (K) a **lacuna do `skus`** (o controller colapsa `null` em `[]`). ⚠️ **E o que os gates NÃO provam, escrito e não maquiado:** teclado/foco/`preventDefault`/debounce/`preserveState`/rolagem/timer de 1,3 s/`title` são provados pela **FUNÇÃO PURA** e pelo **LITERAL**, nunca pelo runtime; a eliminação de variável pelo **Rollup** não é reproduzível em `renderToStaticMarkup`; a comparação de contagem de testes é **ESTÁTICA**; a suíte PHP fora do Publicador **não foi medida**; e **nenhum número de PRODUÇÃO foi medido**.
 
 - [Quick 261014-ea0]: **O Bling no domínio do cliente — lacuna da Fase 184 que o USUÁRIO achou ao cadastrar o app no Bling.** O seed §7 dizia que o callback público ficaria "na allowlist do domínio do cliente"; o plano 07 criou as rotas em `routes/web.php` e **não** tocou no `RestringeDominioDoPortal` (o arquivo nem estava no `files_modified` dele). ⚠️ **O middleware NÃO roda no localhost** (`portal.dominio_cliente` vazio) — a suíte inteira passava e o **404 só apareceria em produção**. É o mesmo sintoma que o próprio middleware documenta nos comentários (as escritas do onboarding, 14/09). Consertado: `bling/conectar/*` + `oauth/bling/callback` na allowlist; link assinado **relativo** (`absolute: false`) levado ao domínio do cliente por `UrlDoPortal::noDominioDoCliente()`; rota com `signed:relative`. ⚠️ **Por que relativo:** assinatura ABSOLUTA cobre o HOST, então gerar no domínio do painel e trocar o host depois daria **403 no link que o cliente acabou de receber**. Gates: Bling **219 passed** (210+9, zero regressão), PortalCliente **757** igual ao baseline, e **controle positivo rodado** — removendo as duas linhas da allowlist **6 dos 9 testes reprovam**, com restauração por cópia pristina e `sha256` igual. Também achado: duas gerações de link **no mesmo segundo** produzem URL idêntica (o `expires` é o mesmo e a assinatura é determinística) — não é defeito, e o teste passou a usar `travel(2)->seconds()`.
+
+## Fase 186 — O portão no servidor (15/10/2026)
+
+**9 planos em 6 waves, executados em 14-15/10/2026.** O portão de aprovação passou a existir como
+**dado e regra**: 12 estruturas em 6 migrations por assunto, os 8 estados de andamento interno com as
+**13** transições declaradas, os 8 bloqueios por oferta com a cadeia exclusiva, a composição
+financeira com origem por linha, a exceção registrada e o vínculo durável com a foto original.
+
+**Medido em `63e59ca8`:** PHP `tests/{Unit,Feature}/Publicador` = **2346 / 20.261 / 0** · JS =
+**4836 / 4835 pass / 1 fail** (a pré-existente da Fase 87, não corrigida) · **163 ids de gate nos 9
+manifestos, todos passando** · dos **17 critérios de sucesso: 15 OK, 2 com RESSALVA declarada,
+nenhum REPROVA**.
+
+⚠️ **As 2 ressalvas não são dívida:** a da **Embalagem** é exceção **deliberada e única** à regra
+do `null`, decidida pelo usuário em 14/10 — sem ela o painel diria "Incompleto" em **100%** das
+ofertas e nada poderia ser aprovado; a da **tabela FID-01** é que os 4 planos de **schema** (186-03 a
+186-06) não têm protótipo a medir.
+
+⚠️ **TREZE decisões do usuário** entraram durante a execução e estão na tabela de decisões do
+`ROADMAP.md`, **cada uma com o que foi RECUSADO e por quê**. A decisão **13 ficou EM ABERTO e fora de
+escopo**: `PUBLICADO => []` é terminal, e mexer na foto de anúncio **já no ar** é da **Fase 193**.
+
+⚠️ **O que esta fase NÃO entrega:** **nenhuma tela nova**. A fila "Aguardando aprovação" é a
+**Fase 187**, o painel de revisão é a **188**, a revisão detalhada é a **191**. O único conferível na
+tela é o rename "Em revisão" → "Em análise pelo Mercado Livre", em **três** lugares.
+
+⚠️ **Estruturas criadas e NÃO preenchidas, com a fase dona nomeada:** checklist de fidelidade e
+defeitos → **191**; verificações automáticas com coordenadas → **192**; **vínculo durável
+(DADO-15)** → **192/194**, **sem backfill possível** — na estreia, nenhuma imagem antiga terá
+original para comparar.
+
+**CINCO armadilhas de gate consertadas NA RAIZ durante a execução**, todas da família "o gate é mais
+largo que o invariante" ou "a contagem depende de quantos arquivos existem" — documentadas em
+`.planning/learnings/gates-do-redesign-e-o-medidor-que-mente.md` §4b e §4c. **Em nenhuma a régua foi
+simplesmente elevada.**
