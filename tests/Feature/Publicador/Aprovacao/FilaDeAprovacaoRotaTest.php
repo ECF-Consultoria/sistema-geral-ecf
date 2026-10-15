@@ -965,6 +965,15 @@ class FilaDeAprovacaoRotaTest extends TestCase
             'tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php',
             'tests/gates/contagens-187-02.txt',
             '.planning/phases/187-a-fila-aguardando-aprovacao-e-a-aba-que-leva-a-ela/187-02-SUMMARY.md',
+            // ⚠️ ENTROU DEPOIS, E A RAZÃO VAI NA SUMMARY. `PublicacoesDaTelaTest::
+            // test_custo_da_action_esta_travado` é o gate de custo da Fase 180 que trava o número
+            // de consultas de `meus()` em `CONSULTAS_DA_ACTION`. Ele reprovou a suíte — e
+            // CORRETAMENTE: este plano acrescenta UMA consulta àquela action, de propósito. A
+            // mensagem do próprio gate manda *"se foi de PROPÓSITO, atualize CONSULTAS_DA_ACTION
+            // e escreva no docblock qual consulta entrou/saiu"*, e foi exatamente isso: 33 -> 34,
+            // com a 34ª enumerada no docblock. ⚠️ Não é "ajustar gate para passar": é o protocolo
+            // que o próprio gate declara para mudança intencional, e o número foi RE-MEDIDO.
+            'tests/Feature/Publicador/PublicacoesDaTelaTest.php',
         ];
 
         $commits = $this->commitsDoEscopo();

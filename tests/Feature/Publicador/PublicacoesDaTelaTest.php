@@ -1207,8 +1207,9 @@ class PublicacoesDaTelaTest extends TestCase
      * ⚠️ O NÚMERO TRAVADO. Travá-lo é o que faz um N+1 futuro reprovar — a Fase
      * 179 deixou um N+1 conhecido por não ter este gate.
      *
-     * **33 consultas, MEDIDAS em 13/10/2026** com 50 linhas em 9 produtos, e
-     * enumeradas uma a uma (`?status=todos`, `visao=grupo`, sem busca):
+     * **34 consultas, MEDIDAS em 13/10/2026 (33) e 15/10/2026 (a 34ª)** com 50
+     * linhas em 9 produtos, e enumeradas uma a uma (`?status=todos`,
+     * `visao=grupo`, sem busca):
      *
      *   1-5   · middleware/autenticação: a `Company` da rota, os setores e a
      *           liderança do usuário (`HandleInertiaRequests`)
@@ -1228,12 +1229,26 @@ class PublicacoesDaTelaTest extends TestCase
      *   25-33 · o resto do `cabecalho` e do middleware (`pub_produtos`,
      *           `pub_tarefas`, `mlb_implementacoes`, `sugadores`,
      *           `notifications`) e o `subTotais.publicados`
+     *   **34**  · ⚠️ **ENTROU EM 15/10/2026, Fase 187 plano 02** — o contador da
+     *           aba "Aguardando aprovação" (ABA-05):
+     *           `select count(*) from pub_aprovacao_ofertas where company_id = ?
+     *           and mlb_empresa_id = ? and andamento in (?, ?, ?)`, UMA, sobre o
+     *           índice `pubapof_conta_andamento_ix` (`company_id`, `andamento`).
+     *           É a prop `aguardando_aprovacao`, ADITIVA — nenhuma das 19 props
+     *           anteriores mudou de nome ou de tipo, e a tela recebe o NÚMERO,
+     *           nunca as linhas da fila (se recebesse, somar no cliente passaria
+     *           a ser possível, e ABA-05 diz que o número vem do servidor).
+     *           ⚠️ O número do contador **não cresce com a linha**: é um
+     *           `count(*)` por conta, então o caso irmão (1 item × 50 itens
+     *           custam o mesmo) continua valendo sem mudança.
      *
-     * As 11 em negrito são as desta action; 22 são middleware/cabeçalho, que já
-     * existiam antes da Fase 180.
+     * As **12** em negrito são as desta action; 22 são middleware/cabeçalho, que
+     * já existiam antes da Fase 180.
      *
      * ⚠️ O valor é MEDIDO, não estimado, e a mensagem diz o que fazer quando
-     * mudar de propósito.
+     * mudar de propósito. Em 15/10/2026 ele mudou de propósito **uma vez**: de
+     * **33** para **34**, pela consulta 34 acima. A 34ª foi re-medida nesta
+     * máquina depois da mudança, não estimada.
      *
      * @group phase180
      */
@@ -1286,8 +1301,12 @@ class PublicacoesDaTelaTest extends TestCase
         );
     }
 
-    /** O número medido em 13/10/2026 — ver o docblock do caso acima. */
-    private const CONSULTAS_DA_ACTION = 33;
+    /**
+     * O número medido em 13/10/2026 (33) e re-medido em 15/10/2026 (34, pela
+     * consulta do contador da aba "Aguardando aprovação") — ver o docblock do
+     * caso acima, que enumera as 34 uma a uma.
+     */
+    private const CONSULTAS_DA_ACTION = 34;
 
     /**
      * A definição OPERACIONAL de "a página não cresce com a linha": a MESMA
