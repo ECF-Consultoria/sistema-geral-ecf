@@ -389,6 +389,55 @@ esteja nela**.
 - **Nome de método de guarda genérico COLIDE** entre planos: `--filter` casa os homónimos de vários
   arquivos e **soma as contagens**. Dê sufixo próprio aos seus.
 
+## 4c. Duas lições do ORQUESTRADOR, 14/10/2026 — as duas são erro meu
+
+Não vieram de executor. Vieram de eu fazer e quebrar.
+
+### ⚠️⚠️ 4c.1 — Na campanha de mutação, restaure de uma CÓPIA. NUNCA de `git checkout`
+
+Eu mutei um arquivo para provar um gate e desfiz com `git checkout -- <arquivo>`. O arquivo também
+tinha **trabalho meu ainda não commitado** — e o `checkout` restaura o estado **COMMITADO**.
+**Perdi a camada de gate inteira**, cerca de 90 linhas, e só percebi porque fui reconferir a
+contagem de asserções: tinha voltado de 33 para 15.
+
+⚠️ **`git checkout` está na lista de proibidos deste projeto EXATAMENTE por isso**, e eu o usei
+mesmo assim, porque com pathspec ele *parece* a ferramenta de restaurar mutação.
+
+➡️ **A receita, nesta ordem:**
+1. **COMMITE o trabalho ANTES de mutar.** Mutação em cima de trabalho não commitado é risco sem
+   necessidade.
+2. **`cp <arquivo> <scratchpad>/copia-*.ext`** antes de aplicar.
+3. Restaure com **`cp` da cópia de volta**, em `finally`.
+4. **Confira o sha256 contra `git show HEAD:<arquivo>`**, não contra a memória.
+5. Apague as cópias no fim.
+
+⚠️ E note a ordem de quem acerta: um executor desta fase teve o script de mutação **crashar no
+meio** e deixar o arquivo mutado no disco — por isso o `finally` é obrigatório, não recomendado.
+
+### ⚠️ 4c.2 — A isca pegou o furo do MEU próprio detector, e por isso ela existe
+
+Escrevi um detector de escrita com `\[[^\]]{0,400}?'campo'\s*=>` para pegar
+`update(['campo' => ...])`. As iscas que eu mesmo escrevi reprovaram na hora: **`updateOrCreate`
+põe o campo no SEGUNDO array** (`updateOrCreate([chaves], [valores])`), e `[^\]]` **não atravessa**
+o `]` que fecha o primeiro.
+
+➡️ O limite certo era o **`;`** (fim do statement), não o `]` — e ficar dentro do statement é
+**também** o que evita o falso positivo da chave de saída num `return`.
+➡️ **Isca não é cerimônia: é o único jeito de saber se a sonda enxerga o que ela diz enxergar.**
+Escreva uma isca **por FORMA** que a sonda deve pegar, e **uma que ela NÃO pode pegar**. Sonda sem
+isca para o caso positivo é sonda que você **espera** que funcione.
+
+### ⚠️ O padrão por trás dos dois: "lista de nomes" não é "prova de comportamento"
+
+Um gate guardava o invariante *"só um lugar escreve o estado"* com a **lista fechada dos arquivos
+que mencionam o campo**. Parecia forte, e tinha isca. Mas **entrar na lista não era conferido por
+nada**: quem acrescentasse um arquivo ali — por engano, ou para "fazer passar" — **passava a poder
+escrever sem gate nenhum notar**. A lista protegia a porta **por NOME**, não **por COMPORTAMENTO**.
+
+➡️ Quando o gate tem uma **lista de exceções**, pergunte: **o que impede alguém de entrar nela?**
+Se a resposta for "nada", a lista é a própria porta dos fundos. O conserto não é fechar a lista —
+é **pôr ao lado dela um gate que meça o COMPORTAMENTO** de quem está dentro.
+
 ## 5. Asserção negativa exige medir se o literal é EXCLUSIVO
 
 Ao proibir um texto na tela, confira que ele não é legítimo em outro lugar. Medido na Fase 179,
