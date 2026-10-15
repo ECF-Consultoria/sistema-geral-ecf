@@ -8,6 +8,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Publicador\AcervoDeImagensService;
+use App\Services\Publicador\AcervoExclusaoService;
 use App\Services\Publicador\Criativos\PublicadorAcervoService;
 use App\Services\Publicador\Criativos\PublicadorCriativoAprovacaoService;
 use App\Services\Publicador\Criativos\PublicadorCriativoReferenciaService;
@@ -47,6 +48,7 @@ class MlbPublicadorAcervoController extends Controller
         private AcervoDeImagensService $biblioteca,
         private ImagemAssetService $imagens,
         private EditorRascunhoService $editor,
+        private AcervoExclusaoService $exclusao,
     ) {}
 
     /** A listagem do acervo — do produto aberto, ou de toda a conta com `toda_conta=1`. */
@@ -158,6 +160,52 @@ class MlbPublicadorAcervoController extends Controller
         $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $dados['grupo']);
 
         return response()->json(['ok' => true, 'imagem_id' => (string) $res['imagem']->id, 'repetida' => ! $res['nova']]);
+    }
+
+    // ─── Exclusão segura (v28.0 Fase 199) ────────────────────────────────────────────────────────
+
+    /** Antes de confirmar: onde a imagem está em uso e se a exclusão é permitida. */
+    public function ativoExclusao(int $produto, int $ativo): JsonResponse
+    {
+        return response()->json($this->exclusao->analisar($this->ativoDoProduto($produto, $ativo)));
+    }
+
+    /** Exclui do acervo (o objeto sai do storage por job). Em uso em anúncio não publicado = 422 com a lista. */
+    public function ativoExcluir(int $produto, int $ativo): JsonResponse
+    {
+        $res = $this->exclusao->pedir($this->ativoDoProduto($produto, $ativo));
+
+        return $res['ok']
+            ? response()->json(['ok' => true])
+            : response()->json(['ok' => false, 'bloqueios' => $res['analise']['bloqueios'],
+                'erros' => [['mensagem' => 'Esta imagem está em anúncio que ainda não foi publicado. Tire a foto de lá antes de excluir.']]], 422);
+    }
+
+    /** Exclusão em lote: cada imagem passa pela mesma regra; devolve o que saiu e o que ficou (e por quê). */
+    public function ativosExcluirLote(Request $request, int $produto): JsonResponse
+    {
+        $r = $this->rascunhoDoProduto($produto);
+        $dados = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:'.AcervoExclusaoService::MAXIMO_LOTE],
+            'ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $excluidas = [];
+        $recusadas = [];
+        foreach (array_values(array_unique($dados['ids'])) as $id) {
+            $a = $this->biblioteca->ativoDaConta($r, (int) $id);
+            if ($a === null) {
+                $recusadas[] = ['id' => (int) $id, 'motivo' => 'Imagem não encontrada nesta conta.'];
+
+                continue;
+            }
+            $res = $this->exclusao->pedir($a);
+            $res['ok']
+                ? $excluidas[] = $a->id
+                : $recusadas[] = ['id' => $a->id, 'motivo' => 'Em anúncio ainda não publicado.', 'bloqueios' => $res['analise']['bloqueios']];
+        }
+
+        return response()->json(['ok' => true, 'excluidas' => $excluidas, 'recusadas' => $recusadas]);
     }
 
     /** O produto autorizado (programa ativo) + o rascunho — sem a chave do Creative Engine. */

@@ -89,6 +89,51 @@ export default function useAcervoDaConta({ produtoId }) {
         }
     };
 
+    // ─── Exclusão segura (v28.0 Fase 199) ───
+
+    /** Onde a imagem está em uso e se pode ser excluída — nunca exclui nada. */
+    const analisarExclusao = async (ativoId) => {
+        try {
+            const { data } = await axios.get(rota('acervo.ativos.exclusao', produtoId, { ativo: ativoId }));
+
+            return data;
+        } catch (e) {
+            setErro(mensagemDe(e));
+
+            return null;
+        }
+    };
+
+    /** Exclui uma imagem do acervo; recarrega a página atual quando sai. */
+    const excluir = async (ativoId) => {
+        setErro(null);
+        try {
+            await axios.delete(rota('acervo.ativos.excluir', produtoId, { ativo: ativoId }));
+            await carregar(filtros, pagina);
+
+            return true;
+        } catch (e) {
+            setErro(e?.response?.data?.erros?.[0]?.mensagem ?? mensagemDe(e));
+
+            return false;
+        }
+    };
+
+    /** Exclui várias de uma vez; devolve o que saiu e o que ficou. */
+    const excluirLote = async (ids) => {
+        setErro(null);
+        try {
+            const { data } = await axios.post(rota('acervo.ativos.excluir-lote', produtoId), { ids });
+            await carregar(filtros, pagina);
+
+            return data;
+        } catch (e) {
+            setErro(mensagemDe(e));
+
+            return null;
+        }
+    };
+
     const limparErro = () => setErro(null);
 
     useEffect(() => {
@@ -97,5 +142,8 @@ export default function useAcervoDaConta({ produtoId }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [produtoId]);
 
-    return { itens, total, pagina, paginas, filtros, carregando, reaproveitando, erro, carregar, filtrar, limparFiltros, irParaPagina, reaproveitar, limparErro };
+    return {
+        itens, total, pagina, paginas, filtros, carregando, reaproveitando, erro,
+        carregar, filtrar, limparFiltros, irParaPagina, reaproveitar, analisarExclusao, excluir, excluirLote, limparErro,
+    };
 }

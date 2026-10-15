@@ -293,4 +293,18 @@ return [
         'max_cotacoes' => (int) env('PUBLICADOR_FRETE_MAX_COTACOES', 6),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Acervo de imagens (v28.0)
+    |--------------------------------------------------------------------------
+    |
+    | `retencao_geracoes_dias`: geração de IA que ninguém aprovou fica no disco da VPS
+    | (`creative-geradas/`) por este prazo e então é apagada por `acervo:limpar-geracoes`
+    | (decisão do usuário, 15/10/2026: 30 dias). O comando só apaga com `--aplicar`.
+    |
+    */
+    'acervo' => [
+        'retencao_geracoes_dias' => (int) env('ACERVO_RETENCAO_GERACOES_DIAS', 30),
+    ],
+
 ];

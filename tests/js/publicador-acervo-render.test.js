@@ -207,3 +207,41 @@ test('AcervoDaConta v28.0 — campos do acervo por ativo', async (contexto) => {
         }
     });
 });
+
+// v28.0 Fase 199 — exclusão segura: o painel mostra o que o servidor respondeu e nunca crasha.
+test('AcervoDaConta v28.0 — exclusão', async (contexto) => {
+    const { CartaoAcervo, ConfirmarExclusao } = await montarAcervoDaConta();
+    const painel = (props) => renderToStaticMarkup(React.createElement(ConfirmarExclusao, { onConfirmar: () => {}, onCancelar: () => {}, ...props }));
+
+    await contexto.test('o cartão só mostra "Excluir do acervo" quando recebe onExcluir, e some no modo seleção', () => {
+        const base = { item: itemBase(), grupos: GRUPOS, onUsar: () => {}, ocupado: false };
+        assert.doesNotMatch(renderToStaticMarkup(React.createElement(CartaoAcervo, base)), /Excluir do acervo/);
+        assert.match(renderToStaticMarkup(React.createElement(CartaoAcervo, { ...base, onExcluir: () => {} })), /Excluir do acervo/);
+        const emSelecao = renderToStaticMarkup(React.createElement(CartaoAcervo, { ...base, onExcluir: () => {}, selecionando: true }));
+        assert.doesNotMatch(emSelecao, /Excluir do acervo/);
+        assert.match(emSelecao, /type="checkbox"/);
+    });
+
+    await contexto.test('bloqueada: explica e lista onde está em uso, sem botão de excluir', () => {
+        const html = painel({ analise: { pode: false, publicados: 0, bloqueios: [{ produto: 'Cadeira azul', sku: 'CAD-01', status: 'DRAFT' }] } });
+        assert.match(html, /não pode ser excluída agora/);
+        assert.match(html, /Cadeira azul/);
+        assert.match(html, /SKU CAD-01/);
+        assert.doesNotMatch(html, /data-acao="confirmar-exclusao"/);
+    });
+
+    await contexto.test('liberada com anúncios publicados: avisa que eles não mudam', () => {
+        const html = painel({ analise: { pode: true, publicados: 2, bloqueios: [] } });
+        assert.match(html, /Excluir esta imagem do acervo\?/);
+        assert.match(html, /2 anúncios já publicados/);
+        assert.match(html, /data-acao="confirmar-exclusao"/);
+    });
+
+    await contexto.test('análise em formato inesperado — nunca lança, nunca [object Object]', () => {
+        for (const analise of [null, { pode: 'sim', bloqueios: 'x', publicados: {} }, { pode: false, bloqueios: [{ produto: { a: 1 }, sku: ['x'] }] }]) {
+            let html;
+            assert.doesNotThrow(() => { html = painel({ analise }); });
+            assert.doesNotMatch(html, /\[object Object\]/);
+        }
+    });
+});

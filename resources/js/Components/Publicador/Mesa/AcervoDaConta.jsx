@@ -33,7 +33,7 @@ const ORIGENS = [
  * e o botão para usar no grupo escolhido. Apresentação pura — sem hook, sem rota crua — testável
  * por render real com o JSON que o servidor pode mandar.
  */
-export function CartaoAcervo({ item, grupos, onUsar, ocupado, onAmpliar = () => {} }) {
+export function CartaoAcervo({ item, grupos, onUsar, ocupado, onAmpliar = () => {}, onExcluir = null, selecionando = false, selecionado = false, onSelecionar = () => {} }) {
     const [grupoEscolhido, setGrupoEscolhido] = useState(() => grupos[0]?.chave ?? GERAL);
     const rotulo = textoSeguro(item?.rotulo);
     const criadoEm = textoSeguro(item?.criado_em);
@@ -45,7 +45,13 @@ export function CartaoAcervo({ item, grupos, onUsar, ocupado, onAmpliar = () => 
     const jaNesteAnuncio = item?.no_rascunho_atual === true;
 
     return (
-        <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-black/20" data-item-acervo={item?.id}>
+        <div className={cn('relative overflow-hidden rounded-lg border bg-black/20', selecionado ? 'border-ecf-yellow' : 'border-white/[0.08]')} data-item-acervo={item?.id}>
+            {selecionando && (
+                <label className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded bg-black/70">
+                    <input type="checkbox" checked={selecionado} onChange={() => onSelecionar(item?.id)} aria-label="Selecionar esta imagem"
+                        className="h-4 w-4 rounded border-white/40 bg-transparent text-ecf-yellow" data-selecionar={item?.id} />
+                </label>
+            )}
             {imagem ? (
                 <button type="button" onClick={() => onAmpliar(item)} className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
                     aria-label="Ver a imagem em tamanho maior">
@@ -79,6 +85,12 @@ export function CartaoAcervo({ item, grupos, onUsar, ocupado, onAmpliar = () => 
                 <BotaoAcao disabled={ocupado} onClick={() => onUsar(item?.id, grupoEscolhido)} className="h-8 w-full text-[12px]" data-acao="usar-do-acervo">
                     {ocupado ? 'Adicionando…' : jaNesteAnuncio ? 'Usar de novo neste grupo' : 'Usar esta foto'}
                 </BotaoAcao>
+                {onExcluir && ! selecionando && (
+                    <button type="button" onClick={() => onExcluir(item)} className="w-full text-center text-[11px] font-normal text-white/40 hover:text-red-300"
+                        data-acao="excluir-do-acervo">
+                        Excluir do acervo
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -110,10 +122,71 @@ function ImagemAmpliada({ item, onFechar }) {
     );
 }
 
+/**
+ * Confirmação da exclusão com o que o servidor respondeu: em uso em anúncio não publicado → explica
+ * onde e não deixa excluir; senão pede confirmação e avisa que anúncios já publicados não mudam.
+ */
+export function ConfirmarExclusao({ analise, quantidade = 1, onConfirmar, onCancelar, excluindo = false }) {
+    const bloqueios = Array.isArray(analise?.bloqueios) ? analise.bloqueios : [];
+    const publicados = Number.isFinite(analise?.publicados) ? analise.publicados : 0;
+    const pode = analise?.pode === true;
+    const avisoPublicados = publicados === 1 ? '1 anúncio já publicado' : `${publicados} anúncios já publicados`;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" onClick={onCancelar}>
+            <div className="w-full max-w-md rounded-xl border border-white/[0.08] bg-ecf-card p-5" onClick={(e) => e.stopPropagation()} data-confirmar-exclusao>
+                {pode ? (
+                    <>
+                        <h4 className="text-[15px] font-bold text-white/90">
+                            {quantidade > 1 ? `Excluir ${quantidade} imagens do acervo?` : 'Excluir esta imagem do acervo?'}
+                        </h4>
+                        <p className="mt-2 text-[13px] font-normal text-white/60">
+                            O arquivo é apagado e não dá para desfazer.
+                            {quantidade > 1 && ' As que estiverem em anúncio ainda não publicado ficam.'}
+                            {publicados > 0 && ` Ela está em ${avisoPublicados} — esses anúncios não mudam, porque o Mercado Livre guarda a própria cópia.`}
+                        </p>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <BotaoAcao onClick={onCancelar} className="h-9 text-[13px]">Cancelar</BotaoAcao>
+                            <button type="button" disabled={excluindo} onClick={onConfirmar}
+                                className="h-9 rounded-lg bg-red-500/90 px-4 text-[13px] font-bold text-white hover:bg-red-500 disabled:opacity-50" data-acao="confirmar-exclusao">
+                                {excluindo ? 'Excluindo…' : 'Excluir'}
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <h4 className="text-[15px] font-bold text-white/90">Esta imagem não pode ser excluída agora</h4>
+                        <p className="mt-2 text-[13px] font-normal text-white/60">
+                            Ela está em anúncio que ainda não foi publicado. Tire a foto de lá e tente de novo.
+                        </p>
+                        <ul className="mt-3 space-y-1 text-[13px] font-normal text-white/80">
+                            {bloqueios.map((b, i) => (
+                                <li key={i}>
+                                    {textoSeguro(b?.produto) ?? 'Anúncio sem nome'}
+                                    {textoSeguro(b?.sku) !== null && <span className="text-white/40"> · SKU {textoSeguro(b?.sku)}</span>}
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="mt-4 flex justify-end">
+                            <BotaoAcao onClick={onCancelar} className="h-9 text-[13px]">Entendi</BotaoAcao>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export default function AcervoDaConta({ produtoId, m }) {
     const c = useAcervoDaConta({ produtoId });
     const [ampliada, setAmpliada] = useState(null);
     const [busca, setBusca] = useState('');
+    // Exclusão (Fase 199): `confirmacao` = { ids, lote, analise } aberta no painel; `selecionando` = modo lote.
+    const [confirmacao, setConfirmacao] = useState(null);
+    const [excluindo, setExcluindo] = useState(false);
+    const [selecionando, setSelecionando] = useState(false);
+    const [selecao, setSelecao] = useState([]);
+    const [aviso, setAviso] = useState(null);
 
     // A busca espera o usuário parar de digitar (400 ms) antes de pedir ao servidor.
     useEffect(() => {
@@ -123,7 +196,44 @@ export default function AcervoDaConta({ produtoId, m }) {
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [busca]);
-    useEffect(() => setBusca(''), [produtoId]);
+    useEffect(() => {
+        setBusca('');
+        setSelecionando(false);
+        setSelecao([]);
+        setAviso(null);
+    }, [produtoId]);
+
+    const pedirExclusao = async (item) => {
+        setAviso(null);
+        const analise = await c.analisarExclusao(item?.id);
+        if (analise) setConfirmacao({ ids: [item.id], lote: false, analise });
+    };
+
+    // Lote: o servidor confere cada uma; o painel só confirma e o resultado diz o que ficou.
+    const pedirExclusaoLote = () => setConfirmacao({ ids: selecao, lote: true, analise: { pode: true, bloqueios: [], publicados: 0 } });
+
+    const confirmarExclusao = async () => {
+        if (! confirmacao) return;
+        setExcluindo(true);
+        if (! confirmacao.lote) {
+            await c.excluir(confirmacao.ids[0]);
+        } else {
+            const r = await c.excluirLote(confirmacao.ids);
+            if (r) {
+                const sairam = Array.isArray(r.excluidas) ? r.excluidas.length : 0;
+                const ficaram = Array.isArray(r.recusadas) ? r.recusadas.length : 0;
+                setAviso(ficaram > 0
+                    ? `${sairam} excluída(s). ${ficaram} ficaram porque estão em anúncio ainda não publicado.`
+                    : `${sairam} excluída(s).`);
+            }
+            setSelecao([]);
+            setSelecionando(false);
+        }
+        setExcluindo(false);
+        setConfirmacao(null);
+    };
+
+    const alternarSelecao = (id) => setSelecao((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
 
     // A lista de grupos válidos do rascunho ATUAL, derivada do estado já carregado pela Mesa
     // (mesma fonte que `FotosEVariacoes.jsx` usa em `fotosDaVariante()`) — nenhuma chamada nova.
@@ -184,15 +294,29 @@ export default function AcervoDaConta({ produtoId, m }) {
                         data-opcao="so-este-produto" />
                     Só deste produto
                 </label>
-                {filtrando && (
-                    <button type="button" onClick={() => { setBusca(''); c.limparFiltros(); }}
-                        className="text-[12px] font-bold text-white/60 underline-offset-4 hover:text-ecf-yellow hover:underline">
-                        Limpar filtros
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {selecionando && selecao.length > 0 && (
+                        <button type="button" onClick={pedirExclusaoLote} className="text-[12px] font-bold text-red-300 hover:text-red-200" data-acao="excluir-selecionadas">
+                            Excluir {selecao.length} selecionada(s)
+                        </button>
+                    )}
+                    {c.itens.length > 0 && (
+                        <button type="button" onClick={() => { setSelecionando(! selecionando); setSelecao([]); }}
+                            className="text-[12px] font-bold text-white/60 underline-offset-4 hover:text-ecf-yellow hover:underline" data-acao="selecionar">
+                            {selecionando ? 'Cancelar seleção' : 'Selecionar várias'}
+                        </button>
+                    )}
+                    {filtrando && (
+                        <button type="button" onClick={() => { setBusca(''); c.limparFiltros(); }}
+                            className="text-[12px] font-bold text-white/60 underline-offset-4 hover:text-ecf-yellow hover:underline">
+                            Limpar filtros
+                        </button>
+                    )}
+                </div>
             </div>
 
             {c.erro && <p className="mt-3 text-[13px] font-normal text-red-300">{c.erro}</p>}
+            {aviso && <p className="mt-3 text-[13px] font-normal text-white/70">{aviso}</p>}
 
             {c.carregando && c.itens.length === 0 ? (
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -206,7 +330,8 @@ export default function AcervoDaConta({ produtoId, m }) {
                 <>
                     <div className={cn('mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4', c.carregando && 'opacity-60')}>
                         {c.itens.map((item) => (
-                            <CartaoAcervo key={item.id} item={item} grupos={grupos} ocupado={c.reaproveitando === item.id} onUsar={aoUsar} onAmpliar={setAmpliada} />
+                            <CartaoAcervo key={item.id} item={item} grupos={grupos} ocupado={c.reaproveitando === item.id} onUsar={aoUsar} onAmpliar={setAmpliada}
+                                onExcluir={pedirExclusao} selecionando={selecionando} selecionado={selecao.includes(item.id)} onSelecionar={alternarSelecao} />
                         ))}
                     </div>
                     <div className="mt-3 flex items-center justify-between text-[12px] font-normal text-white/50">
@@ -223,6 +348,10 @@ export default function AcervoDaConta({ produtoId, m }) {
             )}
 
             {ampliada && <ImagemAmpliada item={ampliada} onFechar={() => setAmpliada(null)} />}
+            {confirmacao && (
+                <ConfirmarExclusao analise={confirmacao.analise} quantidade={confirmacao.ids.length} excluindo={excluindo}
+                    onConfirmar={confirmarExclusao} onCancelar={() => ! excluindo && setConfirmacao(null)} />
+            )}
         </div>
     );
 }

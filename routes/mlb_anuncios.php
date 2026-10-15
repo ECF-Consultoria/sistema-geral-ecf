@@ -276,6 +276,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                         ->whereNumber('ativo')->middleware('throttle:240,1,publicador.acervo.original')->name('original');
                     Route::post('/{ativo}/usar', [MlbPublicadorAcervoController::class, 'ativoUsar'])
                         ->whereNumber('ativo')->middleware('throttle:30,1,publicador.acervo.ativo-usar')->name('usar');
+
+                    // Fase 199 — exclusão segura: bloqueia se em anúncio não publicado; o objeto sai por job.
+                    Route::get('/{ativo}/exclusao', [MlbPublicadorAcervoController::class, 'ativoExclusao'])
+                        ->whereNumber('ativo')->middleware('throttle:120,1,publicador.acervo.exclusao')->name('exclusao');
+                    Route::delete('/{ativo}', [MlbPublicadorAcervoController::class, 'ativoExcluir'])
+                        ->whereNumber('ativo')->middleware('throttle:60,1,publicador.acervo.excluir')->name('excluir');
+                    Route::post('/excluir-lote', [MlbPublicadorAcervoController::class, 'ativosExcluirLote'])
+                        ->middleware('throttle:10,1,publicador.acervo.excluir-lote')->name('excluir-lote');
                 });
             });
         });

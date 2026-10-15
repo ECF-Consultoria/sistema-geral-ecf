@@ -7,6 +7,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Registra a imagem DEFINITIVA no acervo da conta do Mercado Livre (v28.0, ATV-03).
@@ -233,11 +234,15 @@ class AcervoDeImagensService
             return $ativo;
         }
 
-        ArquivosDeImagem::gravar($ativo->caminho, $conteudo);
-        $ativo->update(['status' => AcervoImagem::DISPONIVEL, 'disco' => ArquivosDeImagem::nomeDoDisco(),
-            'exclusao_pedida_em' => null, 'exclusao_erro' => null, 'exclusao_tentativas' => 0]);
+        // Mesma trava do job de exclusão (Fase 199): reviver o ativo e apagar o objeto nunca se cruzam.
+        return Cache::lock('acervo-ativo-'.$ativo->id, 30)->block(10, function () use ($ativo, $conteudo) {
+            $ativo->refresh();
+            ArquivosDeImagem::gravar($ativo->caminho, $conteudo);
+            $ativo->update(['status' => AcervoImagem::DISPONIVEL, 'disco' => ArquivosDeImagem::nomeDoDisco(),
+                'exclusao_pedida_em' => null, 'exclusao_erro' => null, 'exclusao_tentativas' => 0]);
 
-        return $ativo;
+            return $ativo;
+        });
     }
 
     private function mlUserId(PubProduto $produto): ?string
