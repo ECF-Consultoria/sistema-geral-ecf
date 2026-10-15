@@ -5,20 +5,40 @@ import { textoUtil } from '@/Components/Mlb/Publicador/BarraDaConta';
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 180, plano 05 — o cabeçalho da tela de Publicações (LIST-01).
 //
-// Protótipo: `new_layout_publicador/Publicacoes v2.dc.html`. Linhas MEDIDAS com
-// `grep -n` (não copiadas da tabela do plano — e, desta vez, a tabela bateu):
-//   · `<header>` do bloco  → :31  (`align-items:flex-end;justify-content:space-between;gap:24px`)
-//   · coluna do título     → :32  (`gap:6px`)
+// ⚠️⚠️ PROTÓTIPO — A REFERÊNCIA MUDOU NA FASE 187, PLANO 03, e o docblock
+// de antes citava a cópia ERRADA para a seção A1. Existem DUAS
+// `Publicacoes v2.dc.html` no disco, com conteúdo diferente (656 × 659 linhas):
+//
+//   · `design_handoff_publicador/Publicacoes v2.dc.html` (sha256 56e6c194b896151c)
+//     é a **AUTORIDADE** da seção A1 — é ela que tem a borda do `<header>`, o
+//     `gap:14px` e AS DUAS ABAS no lugar do subtítulo;
+//   · `new_layout_publicador/Publicacoes v2.dc.html` (sha256 6dcbb2f9ff8782e0) é
+//     a versão ANTIGA — a que estava no ar desde a Fase 180, com SUBTÍTULO e sem
+//     aba nenhuma. **Era ela que este docblock citava**, e é a referência certa
+//     para o que a Fase 180 entregou e a ERRADA para o que está aqui agora.
+//
+// Medido por `diff` no plano 187-01: as duas diferem em 4 hunks, dois deles na
+// A1. E o deslocamento de linha entre as cópias é **+3** de `:39` para baixo,
+// com o conteúdo daquele trecho byte a byte IGUAL.
+//
+// Linhas MEDIDAS com `grep -n` em `design_handoff_publicador/Publicacoes v2.dc.html`:
+//   · `<header>` do bloco  → :31  (`align-items:flex-end;justify-content:space-between;gap:24px;`
+//                                  `border-bottom:1px solid #1F1F1F`)
+//   · coluna do título     → :32  (`gap:14px`)
 //   · H1 "Publicações"     → :33  (`font-size:28px;line-height:1;font-weight:600;letter-spacing:-0.025em;margin:0`)
-//   · subtítulo            → :34  (`font-size:13.5px;color:#A1A1AA`)
-//   · bloco da direita     → :36  (`gap:10px`)
-//   · "Sincronizado {X}"   → :37  (`gap:6px;font-size:12.5px;color:#A1A1AA;padding-right:4px`)
-//   · dot verde            → :38  (`6×6;border-radius:50%;background:#22C55E`)
-//   · botão "Atualizar"    → :39  (`36px;0 14px;1px #2E2E2E;raio 9px;#111111;13px/500;#F4F4F5;gap:7px`,
+//   · ⚠️ trilho das ABAS   → :34-:36 — onde ANTES ficava o subtítulo. Ele NÃO
+//                                  mora aqui: entra pelo slot `abas`, montado
+//                                  pela página com `publicacoes/AbasDaPagina.jsx`
+//   · bloco da direita     → :39  (`gap:10px`) ⚠️ e **sem `padding-bottom`**: o
+//                                  `padding-bottom:12px` é de `Aprovacao.dc.html:38`,
+//                                  a linha "ⓘ Margem mínima" da FILA — outra tela
+//   · "Sincronizado {X}"   → :40  (`gap:6px;font-size:12.5px;color:#A1A1AA;padding-right:4px`)
+//   · dot verde            → :41  (`6×6;border-radius:50%;background:#22C55E`)
+//   · botão "Atualizar"    → :42  (`36px;0 14px;1px #2E2E2E;raio 9px;#111111;13px/500;#F4F4F5;gap:7px`,
 //                                  hover `#161616`)
-//   · spinner              → :41  (`13×13;border:1.6px #3F3F46;border-top-color:#FACC15;spin .7s`)
-//   · ícone de refresh     → :44  (`14×14 viewBox 0 0 16 16 stroke-width:1.6`)
-//   · rótulos do botão     → :619 (`S.syncing ? 'Atualizando…' : 'Atualizar'`)
+//   · spinner              → :45  (`13×13;border:1.6px #3F3F46;border-top-color:#FACC15;spin .7s`)
+//   · ícone de refresh     → :48  (`14×14 viewBox 0 0 16 16 stroke-width:1.6`)
+//   · rótulos do botão     → :622 (`S.syncing ? 'Atualizando…' : 'Atualizar'`)
 //
 // ⚠️ O container do `<main>` (`:30`, `padding:28px 36px 110px;min-width:0;
 // max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:18px`)
@@ -60,7 +80,12 @@ import { textoUtil } from '@/Components/Mlb/Publicador/BarraDaConta';
 
 /** Os literais de tela, byte a byte como o protótipo e o README os escrevem. */
 export const TITULO = 'Publicações';
-export const SUBTITULO = 'Ofertas ativas e históricas desta empresa no Mercado Livre';
+// ⚠️ O export `SUBTITULO` SAIU na Fase 187, plano 03, junto com o render dele
+// (ABA-01: *"o subtítulo sai"*). Deixá-lo como órfão seria um literal MORTO
+// pronto para voltar à tela por engano — e o gate daquele plano é de AUSÊNCIA
+// no HTML **e** no arquivo, com isca. (Diferente do
+// `BotaoAtualizarDoCabecalho` abaixo, que é órfão DECLARADO por decisão da
+// 180-10: aquele continua, e reativá-lo não é escopo deste plano.)
 export const PREFIXO_SINCRONIZADO = 'Sincronizado';
 export const ATUALIZAR = 'Atualizar';
 export const ATUALIZANDO = 'Atualizando…';
@@ -168,26 +193,34 @@ export function BotaoAtualizarDoCabecalho({ atualizando = false, cooldown = fals
 }
 
 /**
- * O cabeçalho da tela de Publicações: H1, subtítulo, "● Sincronizado há X" e o
- * slot do botão "Atualizar".
+ * O cabeçalho da tela de Publicações: H1, o slot das ABAS, "● Sincronizado há X"
+ * e o slot do botão "Atualizar".
+ *
+ * ⚠️ As duas abas entram por SLOT e não nascem aqui: quem sabe qual delas é a
+ * ativa e para onde a outra aponta é a PÁGINA (a lista monta `ativa="publicadas"`,
+ * a fila monta `ativa="aprovacao"`). É o mesmo contrato do `acaoAtualizar`.
  *
  * @param {object} props
  * @param {unknown} [props.sincronizacao] `{coletado_em, horas, rotulo, nunca_coletado}` ou `null`
+ * @param {unknown} [props.abas] o nó do trilho das abas, montado pela página
  * @param {unknown} [props.acaoAtualizar] o nó do botão, montado pela página
  */
-export default function CabecalhoDePublicacoes({ sincronizacao = null, acaoAtualizar = null }) {
+export default function CabecalhoDePublicacoes({ sincronizacao = null, abas = null, acaoAtualizar = null }) {
     const rotulo = rotuloDeSincronizacao(sincronizacao);
 
-    // ⚠️ NUNCA `String(acaoAtualizar)`: campo-objeto renderizado como texto
-    // derrubou a página inteira em 07/10/2026 (`[object Object]` na tela). Nó
-    // inválido simplesmente não é desenhado.
+    // ⚠️ NUNCA `String(acaoAtualizar)` nem `String(abas)`: campo-objeto
+    // renderizado como texto derrubou a página inteira em 07/10/2026
+    // (`[object Object]` na tela), e nó INVÁLIDO passado como filho faz o React
+    // LANÇAR — o que mataria a tela de Publicações, que está no ar. Nó inválido
+    // simplesmente não é desenhado.
     const acao = isValidElement(acaoAtualizar) ? acaoAtualizar : null;
+    const trilhoDeAbas = isValidElement(abas) ? abas : null;
 
     return (
-        <header className="flex items-end justify-between gap-[24px]">
-            <div className="flex flex-col gap-[6px]">
+        <header className="flex items-end justify-between gap-[24px] border-b border-pub-line-subtle">
+            <div className="flex flex-col gap-[14px]">
                 <h1 className="m-0 text-[28px] font-semibold leading-none tracking-[-0.025em]">{TITULO}</h1>
-                <span className="text-[13.5px] text-pub-neutral-txt">{SUBTITULO}</span>
+                {trilhoDeAbas}
             </div>
 
             <div className="flex items-center gap-[10px]">
