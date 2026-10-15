@@ -1123,6 +1123,21 @@ class MlbImplementacaoController extends Controller
             }
         }
 
+        // TKT-0016: com 2+ produtos na Planilha de Produtos e 2+ com custo na Precificação, o
+        // cliente já mandou o que a equipe precisa para listar — a Listagem do Painel Polos
+        // vira "Pronto para listar" sozinha. Só sobe a partir de vazio, 'Não' ou 'Falta
+        // informação' ('Já listado' e valor criado à mão são da equipe) e não volta se o
+        // cliente apagar produtos depois, como o Decola e o Acesso Colaborador abaixo.
+        if (in_array($id, ['planilha_produtos', 'precificacao'], true) && $campo === 'produtos'
+            && in_array($impl->listagem, MlbImplementacao::LISTAGEM_PROMOVIVEIS, true)
+            && MlbImplementacao::prontaParaListar($dados)) {
+            $anterior = $impl->listagem; // capturar ANTES: update() ressincroniza o original
+            $impl->update(['listagem' => 'Pronto para listar']);
+            activity('implementacao')
+                ->withProperties(['empresa' => $impl->empresa->nome, 'anterior' => $anterior])
+                ->log('[Onboarding] Listagem marcada como "Pronto para listar" — o cliente cadastrou 2 ou mais produtos com custo na implementação de "' . $impl->empresa->nome . '" (cliente)');
+        }
+
         // ONB-ACESSO: marcar "Acesso Colaborador" no link é o CLIENTE dizendo que mandou o
         // convite — não que a ECF já aceitou. Vira "Falta Aceitar" no Painel Polos para
         // virar fila de trabalho visível, em vez de morrer dentro do JSON da ficha.
