@@ -225,9 +225,45 @@ const ARQUIVOS_NOVOS = [
  * Varredura completa de `font-size:` em `Publicacoes v2.dc.html` (13/10/2026):
  * 10, 10.5, 11.5, 12, 12.5, 13, 13.5, 14, 15, 15.5, 17, 18, 20, 28. Só `15.5` e
  * `18` faltavam na lista; só `15.5` é desta fase.
+ *
+ * ⚠️⚠️ Fase 187, plano 01 — `9.5` e `22` entraram, e também é AMPLIAÇÃO, não
+ * endurecimento: **nenhum valor saiu**. A medida, no mesmo formato do `8.5` e
+ * do `15.5`:
+ *
+ *   Varredura de `font-size:` no E1 de `design_handoff_publicador/Aprovacao.dc.html`
+ *   (linhas `:26`-`:205`, POR SCRIPT, 15/10/2026):
+ *   9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 22, 28.
+ *   Faltavam na lista: **9.5** e **22**. Os outros onze já estavam.
+ *
+ *   · `9.5px` — declarado **3 vezes dentro do E1**, todas em glifo dentro de
+ *     círculo pequeno: as iniciais do avatar de 22px do popover de Responsável
+ *     (`:86`), o glifo do anel de progresso de 16px (`:135`) e as iniciais do
+ *     avatar de 24px da coluna Responsável (`:166`).
+ *     ⚠️ As linhas do plano (`:91`/`:135`/`:168`) estão DESLOCADAS em duas das
+ *     três; estas foram medidas com `grep -n`.
+ *     (No arquivo INTEIRO são 12 declarações, as outras 9 fora do E1.)
+ *   · `22px` — declarado **1 vez só**: o NÚMERO de cada um dos 9 cards da faixa
+ *     de andamento (`:48`, com `line-height:1`, `font-weight:600`,
+ *     `letter-spacing:-0.02em` e `font-variant-numeric:tabular-nums`).
+ *     ⚠️ O plano cita `:49`, que é o `</button>`.
+ *
+ * ⚠️ Sem a liberação aqui, o plano da faixa teria de arredondar para
+ * `text-[24px]` ou `text-xl` (20px) — exatamente o que FID-03 proíbe. E nada
+ * foi acrescentado "por precaução": os onze valores restantes da varredura já
+ * estavam na lista, e tamanho liberado sem uso medido é o que torna este gate
+ * inútil.
+ *
+ * ⚠️ Os dois valores do E1 que NÃO precisaram de nada: `28px` (o `<h1>`
+ * "Publicações", `:33`) e `11px` (a pílula de contagem da aba ativa, `:35`) já
+ * estavam na lista desde a Fase 177.
+ *
+ * ⚠️ A prova de que esta ampliação não removeu nada é MECÂNICA e mora em
+ * `tests/js/publicador-fila-tokens-187.test.js` (`TAM-187`): contagem FIXA
+ * (21 → 23) **mais** a inclusão do conjunto antigo no novo — porque
+ * `contagem += 2` sozinha passaria se alguém trocasse dois valores por dois.
  */
 const TAMANHOS_PERMITIDOS = new Set([
-    8.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 24, 28, 30, 32, 34,
+    8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 22, 24, 28, 30, 32, 34,
 ]);
 
 const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentarios(caminho)]));

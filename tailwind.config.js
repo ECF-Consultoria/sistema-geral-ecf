@@ -112,6 +112,19 @@ export default {
                     page: '#0A0A0A',          // fundo da página e do header
                     surface: '#111111',       // cards, tabela, painel, inputs
                     sunken: '#0D0D0D',        // cabeçalho de tabela, rodapés, sub-listas
+                    // ⚠️ Fase 187, plano 01 — `sunken-2` fica ENTRE `sunken`
+                    // (#0D0D0D) e `raised-0` (#131313), e o protótipo pinta os
+                    // TRÊS distintos. Medido em
+                    // `design_handoff_publicador/Aprovacao.dc.html:124` — o
+                    // fundo da sub-linha de conjunto de fotos, a faixa de 38px
+                    // com `border-top:1px solid #1C1C1C` que pendura as duas
+                    // ofertas do mesmo conjunto embaixo do grupo.
+                    // Por que não serve o parecido: com `sunken` a sub-linha
+                    // some dentro do rodapé da tabela; com `raised-0` ela sobe
+                    // acima da linha de grupo e inverte a hierarquia visual.
+                    // "Usar o token parecido que já existe" é justificativa
+                    // vetada (FID-02).
+                    'sunken-2': '#0F0F0F',
                     // `raised-0` e `hover-0` nomeiam tons MAIS ESCUROS que
                     // `raised` (#151515) e `hover` (#141414) — o sufixo `-0`
                     // existe para dizer isso. A diferença de 2 e 3 pontos é
@@ -147,6 +160,28 @@ export default {
                     // `line-strong` é a borda de INPUT/botão secundário, outro
                     // uso. Encostar no parecido aqui é FID-02 literal.
                     'line-off-2': '#2A2A2A',
+                    // ── Flutuantes (TOK-05) — Fase 187, plano 01 ──
+                    // O FUNDO e a BORDA dos elementos que flutuam sobre a fila:
+                    // a barra de ação em lote (`Aprovacao.dc.html:897`,
+                    // `position:fixed;bottom:24px`) e o toast
+                    // (`:905`, `top:124px`).
+                    //
+                    // ⚠️ `float` tem o MESMO hex de `line-subtle-2` e de
+                    // `row-focus`, e isso é de propósito: lá ele é BORDA
+                    // (divisória interna) e LINHA DE TABELA (foco do teclado).
+                    // Escrever `bg-pub-line-subtle-2` no fundo de uma barra
+                    // flutuante seria um nome mentindo sobre o uso. Duplicata
+                    // DENTRO da camada é justamente o que a camada existe para
+                    // absorver — é o precedente já declarado de
+                    // `neutral-dot`/`txt-4` e de `row-focus`/`line-subtle-2`;
+                    // nas telas é o que TOK-15 proíbe.
+                    float: '#1C1C1C',
+                    // A borda dos dois flutuantes e o divisor vertical do
+                    // rótulo da barra de lote (`:898`, `border-right`).
+                    // ⚠️ NÃO é `seg-ring` (mesmo hex): aquele é o
+                    // `inset 0 0 0 1px` da opção ativa do segmented control,
+                    // outro uso e outra propriedade.
+                    'float-line': '#333333',
                     // ── Texto (TOK-05) ──
                     txt: '#F4F4F5',
                     'txt-2': '#A1A1AA',
@@ -232,6 +267,20 @@ export default {
                 'pub-cta': '0 0 0 1px rgba(250,204,21,0.25), 0 6px 20px rgba(250,204,21,0.12)',
                 'pub-aba-ativa': 'inset 0 0 0 1px #262626',
                 'pub-seg-ativo': 'inset 0 0 0 1px #333333',
+                // ⚠️ Fase 187, plano 01 — a sombra dos FLUTUANTES da fila.
+                // Medida em `design_handoff_publicador/Aprovacao.dc.html`
+                // quatro vezes, com o MESMO valor: os dois popovers de filtro
+                // (`:82` Responsável e `:95` Motivo de bloqueio), a barra de
+                // ação em lote (`:897`) e o toast (`:905`).
+                // ⚠️ O plano cita `:88`/`:98` para os popovers; medido com
+                // `grep -n`, são `:82`/`:95`.
+                //
+                // Por que não serve a parecida: `pub-popover` é
+                // `0 24px 60px rgba(0,0,0,0.7)` e `pub-painel` é
+                // `-24px 0 64px rgba(0,0,0,0.6)` — deslocamento, difusão e
+                // alfa DIFERENTES. FID-03 proíbe arredondar em direção ao
+                // token que já existe.
+                'pub-flutuante': '0 16px 40px rgba(0,0,0,0.6)',
             },
             keyframes: {
                 'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
@@ -275,6 +324,18 @@ export default {
                 // As duas cores já têm nome na camada (`line-off` e `seg`/`line`);
                 // o gradiente é que não tinha.
                 'pub-hachura': 'repeating-linear-gradient(135deg,#3F3F46 0 3px,#262626 3px 6px)',
+                // ⚠️ Fase 187, plano 01 — o anel de "revisão PARCIAL salva": meia
+                // bolinha preenchida. Medido em
+                // `design_handoff_publicador/Aprovacao.dc.html:1241`
+                // (`PG.partial`, o terceiro elemento da tupla) e na legenda do
+                // rodapé da fila, `:194` — ⚠️ o plano cita `:201`.
+                // Vive aqui pelo mesmo motivo de `pub-hachura`: é assim que o
+                // Tailwind o emite como classe (`bg-pub-anel-parcial`), e
+                // escrito na tela seria um `bg-[linear-gradient(...)]` com hex
+                // cru dentro — o que TOK-15 e o gate de vocabulário reprovam.
+                // O `#A1A1AA` já tem nome na camada (`txt-2`/`neutral-txt`); o
+                // gradiente é que não tinha.
+                'pub-anel-parcial': 'linear-gradient(90deg,#A1A1AA 50%,transparent 50%)',
             },
         },
     },

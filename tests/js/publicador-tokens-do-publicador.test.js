@@ -100,6 +100,11 @@ const PUB_ESPERADOS = {
     page: '#0A0A0A',
     surface: '#111111',
     sunken: '#0D0D0D',
+    // ⚠️ Fase 187, plano 01 — `sunken-2` fica ENTRE `sunken` (#0D0D0D) e
+    // `raised-0` (#131313), e o protótipo pinta os TRÊS distintos. Medido em
+    // `design_handoff_publicador/Aprovacao.dc.html:124` (fundo da sub-linha de
+    // conjunto de fotos).
+    'sunken-2': '#0F0F0F',
     // `raised-0`/`hover-0` (plano 179-04) nomeiam tons MAIS ESCUROS que
     // `raised`/`hover`, e o sufixo `-0` existe para dizer isso. Reaproveitar o
     // vizinho é a justificativa vetada por FID-02.
@@ -124,6 +129,18 @@ const PUB_ESPERADOS = {
     // Plano 180-01 — borda OFF dos chips de filtro (`Publicacoes v2.dc.html:608`).
     // NÃO é `line-strong`: 4 pontos de diferença e outro uso (FID-02).
     'line-off-2': '#2A2A2A',
+    // ⚠️ Fase 187, plano 01 — Flutuantes (TOK-05). O fundo e a borda da barra
+    // de ação em lote (`Aprovacao.dc.html:897`) e do toast (`:905`), mais o
+    // divisor vertical do rótulo da barra (`:898`).
+    // ⚠️ Os DOIS hex já têm nome na camada (`float` = `line-subtle-2`/
+    // `row-focus`; `float-line` = `seg-ring`), e isso é de propósito: lá são
+    // BORDA, LINHA DE TABELA e `inset` do segmented. Nome mentindo sobre o uso
+    // é o que esta camada existe para evitar (precedente de `neutral-dot`/
+    // `txt-4`). ⚠️ `hexComNome()` devolve o PRIMEIRO nome na ordem de
+    // declaração, então estes dois não entram em nenhuma varredura de órfão —
+    // quem confere o valor deles é esta tabela.
+    float: '#1C1C1C',
+    'float-line': '#333333',
     // Texto (TOK-05)
     txt: '#F4F4F5',
     'txt-2': '#A1A1AA',
@@ -197,6 +214,12 @@ const SOMBRAS_ESPERADAS = {
     'pub-cta': '0 0 0 1px rgba(250,204,21,0.25), 0 6px 20px rgba(250,204,21,0.12)',
     'pub-aba-ativa': 'inset 0 0 0 1px #262626',
     'pub-seg-ativo': 'inset 0 0 0 1px #333333',
+    // ⚠️ Fase 187, plano 01 — a sombra dos flutuantes da fila de aprovação,
+    // medida 4 vezes com o mesmo valor em
+    // `design_handoff_publicador/Aprovacao.dc.html` (`:82`, `:95`, `:897`,
+    // `:905`). Entra AQUI porque esta tabela é o único lugar que confere valor
+    // de `boxShadow`: um token de sombra fora dela fica sem gate nenhum.
+    'pub-flutuante': '0 16px 40px rgba(0,0,0,0.6)',
 };
 
 // A hachura do estágio "Sem publicação" (VG-07, plano 179-04). Vive em
@@ -208,6 +231,13 @@ const SOMBRAS_ESPERADAS = {
 // passaria com o gradiente truncado (passo, ângulo ou segunda cor perdidos).
 const IMAGENS_ESPERADAS = {
     'pub-hachura': 'repeating-linear-gradient(135deg,#3F3F46 0 3px,#262626 3px 6px)',
+    // ⚠️ Fase 187, plano 01 — o anel de "revisão PARCIAL salva" (meia bolinha
+    // preenchida) da fila de aprovação. Medido em
+    // `design_handoff_publicador/Aprovacao.dc.html:1241` (`PG.partial`) e na
+    // legenda do rodapé, `:194`. Entra aqui por OBRIGAÇÃO, não por zelo: o
+    // teste "nenhum token de backgroundImage passa por omissão" faz `deepEqual`
+    // do CONJUNTO de chaves contra esta tabela.
+    'pub-anel-parcial': 'linear-gradient(90deg,#A1A1AA 50%,transparent 50%)',
     // Os dois gradientes do resto do sistema seguem intactos: `backgroundImage`
     // é camada compartilhada e o Publicador entra nela só por adição.
     'ecf-grad': 'linear-gradient(90deg, #171392 0%, #FE4D46 55%, #EDBA06 100%)',
