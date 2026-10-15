@@ -1176,6 +1176,35 @@ class MlbAnuncioController extends Controller
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
+            // ═══ Fase 187, plano 02 — O CONTADOR DA ABA "Aguardando aprovação" ═══
+            //
+            // ⚠️ ÚNICA chave ADITIVA deste plano: nenhuma das 19 props acima muda de nome ou de
+            // tipo (há gate de contagem FIXA sobre a lista de chaves, com o tipo de cada uma).
+            //
+            // ⚠️ O número vem do SERVIDOR, e isso é o requisito ABA-05, não detalhe de
+            // implementação: somar no cliente exigiria mandar a fila INTEIRA para uma tela que
+            // não a mostra, e o contador passaria a depender do que a página carregou, não do que
+            // existe. Há gate provando que nenhuma linha da fila chega neste payload.
+            //
+            // ⚠️ `PubAprovacaoOferta::LIVE` é lido do modelo dentro de `contadorDaAba()` — nunca
+            // um array de três estados escrito à mão. É isso que faz um 4º estado futuro entrar
+            // sozinho na contagem.
+            //
+            // ⚠️ CUSTO: UM `count(*)` sobre o índice `pubapof_conta_andamento_ix`
+            // (`company_id`, `andamento`). Gate conta as consultas: esta action ganha
+            // EXATAMENTE uma.
+            //
+            // ⚠️ Resolvido por `app()` e não por injeção na assinatura DE PROPÓSITO: a trava de
+            // território deste plano é "UM hunk, só na lista de props" — mexer na assinatura de
+            // `meus()` abriria um segundo hunk neste arquivo, que é o mesmo onde vivem os 11
+            // endpoints `criativo*` do outro dev. A injeção entra quando esta action for aberta
+            // por outro motivo.
+            //
+            // ⚠️ `$alvo['mlb_empresa']->id ?? null` é a SEGUNDA âncora de conta: `$alvo` pode ser
+            // nulo (ver `'cabecalho'` acima) e o `??` avalia a cadeia em contexto `isset`, sem
+            // warning. Nulo aqui significa "recorte só por `company_id`", nunca "sem recorte" —
+            // `filaDaConta()` LANÇA quando as duas âncoras faltam.
+            'aguardando_aprovacao' => app(\App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService::class)->contadorDaAba($company->id, $alvo['mlb_empresa']->id ?? null),
         ]);
     }
 

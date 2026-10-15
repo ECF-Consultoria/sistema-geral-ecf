@@ -33,9 +33,14 @@ use Illuminate\Support\Collection;
  *
  * ═══ ⚠️ O CONTADOR DA ABA LÊ `PubAprovacaoOferta::LIVE` — NUNCA UM ARRAY À MÃO ═════════════════
  *
- * Escrever os três estados aqui criaria uma cópia da mesma verdade, livre para divergir no dia em
- * que um **4º** estado entrar em `LIVE`. Lendo a constante, o 4º estado entra sozinho — e é por
- * isso que o gate proíbe literal de estado neste arquivo.
+ * `LIVE` são hoje três — `aguardando_aprovacao`, `em_revisao_ecf` e `ajustes_solicitados` —, e
+ * **esta frase é a única razão pela qual os três nomes aparecem neste arquivo**: ela está num
+ * COMENTÁRIO, e o gate lê o código **sem comentários**. Escrever os três no CÓDIGO criaria uma
+ * cópia da mesma verdade, livre para divergir no dia em que um **4º** estado entrar em `LIVE`.
+ * Lendo a constante, o 4º estado entra sozinho — e é por isso que o gate proíbe literal de estado
+ * aqui. ⚠️ A frase também é a **isca** do leitor sem comentário: se `semComentariosPhp` parasse
+ * de tirar comentário, o gate reprovaria **por este parágrafo**, e o conserto barato seria apagar
+ * a explicação em vez de consertar o leitor.
  *
  * ⚠️ E o contador **vem do servidor** (ABA-05). Somar no cliente exigiria mandar a fila inteira
  * para uma tela que não a mostra, e o número passaria a depender **do que a página carregou**, não
