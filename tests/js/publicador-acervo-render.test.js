@@ -139,7 +139,8 @@ test('AcervoDaConta — render real (esbuild + react-dom/server), não só estru
         }));
 
         assert.match(html, /<button[^>]*disabled[^>]*>/);
-        assert.match(html, /Copiando…/);
+        // v28.0 (Fase 198): usar do acervo não copia mais o arquivo — o texto diz o que acontece.
+        assert.match(html, /Adicionando…/);
     });
 
     await contexto.test('imagem_url em formato inesperado (não string) — não renderiza <img>, não crasha', () => {
@@ -160,14 +161,49 @@ test('AcervoDaConta — render real (esbuild + react-dom/server), não só estru
         });
     });
 
-    await contexto.test('título "Acervo de imagens já geradas" sempre aparece no bloco default', () => {
+    // v28.0 (Fase 198): o acervo passou a ter fotos enviadas também, não só geradas.
+    await contexto.test('título "Acervo de imagens da conta" sempre aparece no bloco default', () => {
         const html = renderToStaticMarkup(React.createElement(AcervoDaConta, { produtoId: 7, m: {} }));
-        assert.match(html, /Acervo de imagens já geradas/);
+        assert.match(html, /Acervo de imagens da conta/);
     });
 
     await contexto.test('estado vazio (sem itens) — mensagem clara, sem crashar (o hook ainda não respondeu, mas não é "carregando")', () => {
         const html = renderToStaticMarkup(React.createElement(AcervoDaConta, { produtoId: 7, m: {} }));
         // Logo após montar (SSR, sem efeito), o hook está em `carregando=true` — o esqueleto aparece, não a grade.
         assert.doesNotMatch(html, /<img/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v28.0 Fase 198 — os campos novos do acervo por ATIVO (sku, em_uso, miniatura,
+// no_rascunho_atual) também chegam do servidor e nunca podem derrubar a tela.
+// ═══════════════════════════════════════════════════════════════════════════
+test('AcervoDaConta v28.0 — campos do acervo por ativo', async (contexto) => {
+    const { CartaoAcervo } = await montarAcervoDaConta();
+    const render = (item) => renderToStaticMarkup(React.createElement(CartaoAcervo, { item: itemBase(item), grupos: GRUPOS, onUsar: () => {}, ocupado: false }));
+
+    await contexto.test('a grade usa a MINIATURA quando ela vem, nunca o original', () => {
+        const html = render({ miniatura_url: '/mini.webp', imagem_url: '/original.jpg' });
+        assert.match(html, /<img[^>]*src="\/mini\.webp"/);
+        assert.doesNotMatch(html, /original\.jpg/);
+    });
+
+    await contexto.test('SKU e onde está em uso aparecem', () => {
+        assert.match(render({ sku: 'CAD-01', em_uso: 3 }), /SKU CAD-01 · Em 3 anúncios/);
+        assert.match(render({ em_uso: 0 }), /Em nenhum anúncio/);
+        assert.match(render({ em_uso: 1 }), /Em 1 anúncio</);
+    });
+
+    await contexto.test('já está neste anúncio — o botão diz que é para usar de novo em um grupo', () => {
+        assert.match(render({ no_rascunho_atual: true }), /Usar de novo neste grupo/);
+    });
+
+    await contexto.test('sku, em_uso e miniatura_url em formatos inesperados — nunca lança, nunca [object Object]', () => {
+        for (const invalido of [{ foo: 'bar' }, ['a'], true]) {
+            let html;
+            assert.doesNotThrow(() => { html = render({ sku: invalido, em_uso: invalido, miniatura_url: invalido }); });
+            assert.doesNotMatch(html, /\[object Object\]/);
+            assert.doesNotMatch(html, /foo/);
+        }
     });
 });

@@ -3,6 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Contracts\ContaMercadoLivre;
+use App\Models\AcervoImagem;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
 use App\Support\Publicador\ContasLiberadas;
@@ -105,6 +106,42 @@ class ImagemAssetService
         $precisaSubir = $enviar && $imagem->upload_status !== PubImagem::ENVIADA;
 
         return ['imagem' => $precisaSubir ? $this->enviarAoMl($imagem, $conteudo) : $imagem, 'problemas' => $problemas, 'nova' => true];
+    }
+
+    /**
+     * Usa no rascunho uma imagem que já está no acervo da conta (v28.0, ACV-05) — sem cópia física:
+     * a linha nova aponta para o MESMO objeto do ativo. A imagem já passou pelo L1 quando entrou no
+     * acervo; o ML recebe pelo caminho de sempre (`enviarAoMl`, com D26), ou reaproveita o id se o
+     * ativo já subiu por outro rascunho da mesma conta.
+     *
+     * @return array{imagem: PubImagem, nova: bool}
+     */
+    public function usarDoAcervo(PubRascunho $r, AcervoImagem $ativo): array
+    {
+        if ($existente = $r->imagens()->where('sha256', $ativo->sha256)->first()) {
+            return ['imagem' => $existente, 'nova' => false];
+        }
+
+        $jaNoMl = PubImagem::query()->where('acervo_imagem_id', $ativo->id)
+            ->where('upload_status', PubImagem::ENVIADA)->whereNotNull('ml_picture_id')->first();
+
+        try {
+            $imagem = $r->imagens()->create([
+                'caminho' => $ativo->caminho, 'acervo_imagem_id' => $ativo->id, 'sha256' => $ativo->sha256, 'mime' => $ativo->mime,
+                'bytes' => $ativo->bytes, 'largura' => $ativo->largura, 'altura' => $ativo->altura,
+                'upload_status' => $jaNoMl !== null ? PubImagem::ENVIADA : PubImagem::PENDENTE,
+                'ml_picture_id' => $jaNoMl?->ml_picture_id, 'ml_url' => $jaNoMl?->ml_url,
+            ]);
+        } catch (QueryException $e) {
+            $existente = (string) $e->getCode() === '23000' ? $r->imagens()->where('sha256', $ativo->sha256)->first() : null;
+            if ($existente === null) {
+                throw $e;
+            }
+
+            return ['imagem' => $existente, 'nova' => false];
+        }
+
+        return ['imagem' => $imagem->upload_status === PubImagem::ENVIADA ? $imagem : $this->enviarAoMl($imagem), 'nova' => true];
     }
 
     /**

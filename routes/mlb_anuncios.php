@@ -264,6 +264,19 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                     ->whereNumber('criativo')->middleware('throttle:240,1,publicador.acervo.arquivo')->name('imagem');
                 Route::post('/{criativo}/usar', [MlbPublicadorAcervoController::class, 'usar'])
                     ->whereNumber('criativo')->middleware('throttle:30,1,publicador.acervo.usar')->name('usar');
+
+                // v28.0 Fase 198 — acervo da conta por ATIVO (`acervo_imagens`): uploads + IA aprovada,
+                // filtros e paginação. Sem a chave do Creative Engine; {ativo} numérico, 404 fora da conta.
+                Route::prefix('ativos')->name('ativos.')->group(function () {
+                    Route::get('/', [MlbPublicadorAcervoController::class, 'ativos'])
+                        ->middleware('throttle:120,1,publicador.acervo.ativos')->name('listar');
+                    Route::get('/{ativo}/miniatura', [MlbPublicadorAcervoController::class, 'ativoMiniatura'])
+                        ->whereNumber('ativo')->middleware('throttle:600,1,publicador.acervo.miniatura')->name('miniatura');
+                    Route::get('/{ativo}/original', [MlbPublicadorAcervoController::class, 'ativoOriginal'])
+                        ->whereNumber('ativo')->middleware('throttle:240,1,publicador.acervo.original')->name('original');
+                    Route::post('/{ativo}/usar', [MlbPublicadorAcervoController::class, 'ativoUsar'])
+                        ->whereNumber('ativo')->middleware('throttle:30,1,publicador.acervo.ativo-usar')->name('usar');
+                });
             });
         });
 
