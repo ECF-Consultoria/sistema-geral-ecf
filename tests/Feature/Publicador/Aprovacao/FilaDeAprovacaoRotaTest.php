@@ -282,12 +282,32 @@ class FilaDeAprovacaoRotaTest extends TestCase
         // ⚠️ ISCA — o admin passa pela MESMA rota. Sem isto, uma rota inexistente (404) ou
         // quebrada passaria o `assertForbidden` por outro motivo... e não passaria: 404 ≠ 403.
         // A isca fecha o outro lado: o 403 é do papel, não do estado da rota.
-        $this->actingAs($admin)
-            ->get(route('mlb.anuncios.meus.aprovacao', $company))
-            ->assertOk();
+        //
+        // ⚠️⚠️ A ISCA USA O CAMINHO INERTIA, E O MOTIVO FOI MEDIDO NESTA SESSÃO (vai na SUMMARY):
+        // um GET **sem** `X-Inertia` renderiza a view raiz `app.blade.php`, cujo `@vite` procura
+        // `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` no `manifest.json` — e aquele arquivo
+        // **só existe a partir do 187-04**. A resposta medida foi *"Unable to locate file in Vite
+        // manifest"*, e não é defeito desta rota: é a fronteira de wave declarada no plano.
+        // ➡️ Pelo caminho Inertia o Laravel devolve JSON e **não** carrega o `.jsx`. A asserção de
+        // componente RESOLVIDO (e o caminho sem `X-Inertia`) são **pendência NOMEADA do 187-04**.
+        $this->assertSame($company->id, $this->propsDaFila($admin, $company)['empresa']['id']);
 
-        // E o anônimo é mandado para o login pelo `auth` do grupo — nenhum middleware novo.
-        $this->get(route('mlb.anuncios.meus.aprovacao', $company))->assertRedirect(route('login'));
+        // ⚠️ **NENHUM MIDDLEWARE NOVO** (T-187-12), provado por IGUALDADE com a rota da lista que
+        // já está no ar — não por "contém `role:admin`", que passaria com um middleware extra ao
+        // lado. A lista FECHADA é o invariante: a fila entra no grupo que existe, e nada mais.
+        //
+        // ⚠️ Não há caso de usuário ANÔNIMO aqui de propósito: `actingAs()` do Laravel persiste
+        // pelo resto do método, então um `get()` sem ator depois de um `actingAs()` continua
+        // AUTENTICADO — medido nesta sessão (veio 200 onde o teste esperava redirect). Um caso
+        // "anônimo" escrito ingenuamente seria **verde por construção**, e é a mesma família do
+        // gate vazio. O `auth` do grupo está coberto pela igualdade abaixo.
+        $daFila = Route::getRoutes()->getByName('mlb.anuncios.meus.aprovacao')->gatherMiddleware();
+        $daLista = Route::getRoutes()->getByName('mlb.anuncios.meus')->gatherMiddleware();
+
+        $this->assertSame($daLista, $daFila, 'T-187-12: a rota da fila não tem a MESMA pilha de middleware da lista.');
+        $this->assertContains('role:admin', $daFila, 'ISCA: a pilha comparada não é a que contém o gate de papel — a igualdade acima não prova nada.');
+        $this->assertContains('auth', $daFila);
+        $this->assertContains('verified', $daFila);
     }
 
     /**
@@ -378,13 +398,20 @@ class FilaDeAprovacaoRotaTest extends TestCase
 
         $props = $this->propsDaFila($admin, $company);
 
-        // As 6 chaves deste plano, exatamente — contagem FIXA.
-        $this->assertSame(
-            ['cabecalho', 'contador_da_aba', 'conta', 'empresa', 'faixa', 'margem_minima'],
-            collect(['cabecalho', 'contador_da_aba', 'conta', 'empresa', 'faixa', 'margem_minima'])
-                ->filter(fn (string $k) => array_key_exists($k, $props))->values()->all(),
-            'O payload mínimo deste plano perdeu uma chave.',
-        );
+        // As 6 chaves deste plano — contagem FIXA, coletando as AUSENTES (não uma asserção por
+        // chave: asserção por linha de lista é a armadilha que caiu 4 vezes na Fase 186).
+        $esperadas = ['cabecalho', 'contador_da_aba', 'conta', 'empresa', 'faixa', 'margem_minima'];
+        $ausentes = array_values(array_filter($esperadas, fn (string $k) => ! array_key_exists($k, $props)));
+        $this->assertSame([], $ausentes, 'O payload mínimo deste plano perdeu chave.');
+
+        // ⚠️ ISCA — `array_key_exists` sobre este `$props` SABE dizer "não tem". Sem isto, um
+        // payload que respondesse a qualquer chave deixaria `$ausentes` vazio para sempre.
+        $this->assertFalse(array_key_exists('nao_existe_9z7', $props), 'ISCA: o payload responde a QUALQUER chave — a asserção de ausência é vazia.');
+
+        // ⚠️ E as props que são de OUTRA tela não vazam para cá: este plano não manda a lista.
+        foreach (['anuncios', 'abas', 'triagem', 'aguardando_aprovacao'] as $deOutraTela) {
+            $this->assertFalse(array_key_exists($deOutraTela, $props), "A prop `{$deOutraTela}` é da tela de Publicações e não do payload da fila.");
+        }
 
         $this->assertCount(9, $props['faixa'], 'AND-09: a faixa tem de ter 9 recortes.');
         $this->assertSame(['chave', 'rotulo', 'total'], array_keys($props['faixa'][0]));
