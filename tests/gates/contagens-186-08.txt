@@ -53,10 +53,28 @@ kinds-aprovavel-rodape  php  test_(bloq03_kinds_ganha_alerta_e_falha_que_nao_sao
 estados-o1-a-o5  php  test_estado_o(1_do_prototipo_inverte_de_aprovavel_para_margem_abaixo_do_minimo|2_do_prototipo_e_o_premium_com_a_tarifa_real_mais_alta|3_do_prototipo_da_prejuizo_e_nao_margem_baixa_como_diz_a_prosa_do_readme|4_do_prototipo_e_o_caso_que_decide_a_exclusividade_da_cadeia|5_do_prototipo_esta_em_revisao_ecf_com_duas_fotos_a_conferir)  ::  tests=5 assertions=104
 estados-o6-a-o10  php  test_estado_o(6_do_prototipo_tem_ajuste_aberto_e_esta_em_ajustes_solicitados|7_do_prototipo_falhou_e_ganha_o_kind_de_falha_sem_ganhar_bloqueio|8_do_prototipo_esta_aprovado_e_nao_e_aprovavel_de_novo|9_do_prototipo_esta_publicando_e_a_edicao_fica_bloqueada|10_do_prototipo_esta_preparando_com_a_frase_real_do_que_falta)  ::  tests=5 assertions=64
 tabela-isca-e-cobertura  php  test_(isca_da_tabela_nenhum_dos_dez_e_aprovavel_e_consertar_o_o5_torna_ele_aprovavel|a_tabela_cobre_os_dez_estados_e_os_oito_andamentos_do_prototipo)  ::  tests=2 assertions=44
-ausencia-e-territorio  php  test_(o_leitor_tira_os_comentarios_do_plano_08_e_preserva_o_codigo|nenhum_arquivo_deste_plano_cria_segundo_clique_desfazer_ou_cancelar_aprovacao|o_minimo_da_margem_vem_do_resolvedor_unico_e_nunca_de_literal_neste_plano|terr09_a_fronteira_do_d11_esta_declarada_e_este_plano_nao_escreve_no_ml)  ::  tests=4 assertions=83
+#
+# ── TAREFA 2 (15/10/2026): aprovar · reabrir · conferir · lote ────────────────
+# ⚠️ Possíveis só depois de o usuário decidir, em 15/10/2026, acrescentar o 13º
+#    par `aprovado -> aguardando_aprovacao` a `PubAprovacaoOferta::TRANSICOES`.
+#    Antes disso este plano PAROU e devolveu a pergunta.
+aprovar-recusas  php  test_bloq04_aprovar_(com_qualquer_um_dos_oito_bloqueios_e_recusado_e_nada_e_gravado|fora_dos_tres_ao_vivo_e_recusado_nos_cinco_estados)  ::  tests=2 assertions=79
+aprovar-e-transacao  php  test_(bloq05_aprovar_grava_quem_quando_em_que_versao_marca_tocado_e_congela|t186_34_a_falha_no_meio_da_aprovacao_nao_deixa_oferta_aprovada_sem_prova|aprovar_com_excecao_ativa_deixa_a_autorizacao_na_linha_do_tempo)  ::  tests=3 assertions=39
+as-oito-mudancas  php  test_bloq06_(as_oito_mudancas_incrementam_a_versao_em_um_e_reabrem_com_registro|mudanca_de_foto_reabre_as_duas_ofertas_do_conjunto|preco_e_frete_reabrem_so_a_oferta_deles)  ::  tests=3 assertions=99
+decimo-terceiro-par  php  test_o_decimo_terceiro_par_e_o_unico_caminho_de_volta_e_a_reabertura_o_usa  ::  tests=1 assertions=9
+lote-conferir-e-retry  php  test_(bloq07_conferir_alteracao_nao_altera_o_preco_e_tira_o_bloqueio|bloq10_o_lote_devolve_o_veredicto_de_todas_e_aprova_so_as_aptas|bloq11_falha_preserva_a_revisao_e_tentar_de_novo_nao_mexe_na_versao|col04_aprovar_informando_uma_versao_velha_e_recusado_com_erro_proprio)  ::  tests=4 assertions=53
+salvar-revisao-e-gancho  php  test_(and06_e_col01_salvar_revisao_move_registra_x_de_y_e_fica_no_banco|pub09_existe_exatamente_um_aoaprovar_no_portao_e_ele_esta_vazio|o_leitor_sem_comentarios_do_plano_08_preserva_o_codigo_e_tira_o_docblock)  ::  tests=3 assertions=32
+#
+# ── TAREFA 3 (15/10/2026): as regras de imagem ────────────────────────────────
+img-aprovar  php  test_img0(4_aprovar_foto_grava_quem_quando_marca_tocado_nas_duas_e_nao_reabre|5_aprovar_sem_alerta_nao_toca_na_pendente_com_alerta)  ::  tests=2 assertions=19
+img-reprovar-e-substituir  php  test_img0(1_e_img10_reprovar_exige_motivo_tira_da_galeria_e_promove_a_proxima|3_substituir_por_original_mantem_a_posicao_e_preserva_a_aprovacao|8_recolocar_original_volta_para_pendente_e_sai_de_fora_da_publicacao)  ::  tests=3 assertions=49
+img-ordem-e-regenerando  php  test_img0(7_reordenar_e_definir_principal_mantem_a_galeria_consistente|9_em_regenerando_as_quatro_acoes_sao_recusadas|2_a_regeneracao_traz_a_nova_como_pendente_na_mesma_posicao)  ::  tests=3 assertions=41
+img06-reabre-o-conjunto  php  test_(img06_as_seis_acoes_reabrem_a_aprovacao_de_todas_as_ofertas_do_conjunto|a_reabertura_mora_num_lugar_so_e_este_servico_a_delega)  ::  tests=2 assertions=70
+#
+ausencia-e-territorio  php  test_(o_leitor_tira_os_comentarios_do_plano_08_e_preserva_o_codigo|nenhum_arquivo_deste_plano_cria_segundo_clique_desfazer_ou_cancelar_aprovacao|o_minimo_da_margem_vem_do_resolvedor_unico_e_nunca_de_literal_neste_plano|terr09_a_fronteira_do_d11_esta_declarada_e_este_plano_nao_escreve_no_ml)  ::  tests=4 assertions=115   # 83 -> 115 em 15/10/2026: os gates transversais passaram a cobrir 4 arquivos de producao (os dois servicos das tarefas 2 e 3), e cada arquivo custa asserçoes nos lacos de ausencia
 # ⚠️ A contagem de `bijecao-manifesto` DEPENDE do número de linhas deste arquivo
 #    (uma asserção `php` por linha de gate). É contagem frágil por construção, e
 #    está declarada como tal: acrescentar um id aqui **sobe** este número em 1, e
 #    o helper reprova até que ele seja remedido. Isso é desconforto DE PROPÓSITO —
 #    é o que impede acrescentar id sem rodar o gate.
-bijecao-manifesto  php  test_todo_metodo_do_plano_08_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=24
+bijecao-manifesto  php  test_todo_metodo_do_plano_08_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=36

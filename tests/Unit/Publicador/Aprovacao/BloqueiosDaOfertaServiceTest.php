@@ -91,10 +91,19 @@ class BloqueiosDaOfertaServiceTest extends TestCase
     /** ⚠️ **SOMENTE LEITURA** para este plano — a fonte do espelho é o PHP, o `.jsx` é o espelho. */
     private const MODULO_JSX = 'resources/js/Components/Mlb/Publicador/aprovacao/vocabularioDoPortao.jsx';
 
-    /** Os arquivos de PRODUÇÃO que este plano criou — o alvo dos gates de ausência. */
+    /**
+     * Os **quatro** arquivos de PRODUÇÃO que este plano criou — o alvo dos gates de ausência.
+     *
+     * ⚠️ A lista é CONSTANTE e cada entrada é conferida com `assertFileExists` (isca de caminho
+     * fantasma: arquivo ausente faria o gate reportar zero infrações e parecer verde). Os dois
+     * últimos entraram em 15/10/2026, com as tarefas 2 e 3 — e o gate de "segundo clique /
+     * desfazer" vale para eles pelo MESMO motivo: a decisão de 14/10 é transversal.
+     */
     private const MEUS_ARQUIVOS = [
         'app/Services/Publicador/Aprovacao/VocabularioDoPortao.php',
         'app/Services/Publicador/Aprovacao/BloqueiosDaOfertaService.php',
+        'app/Services/Publicador/Aprovacao/AprovacaoDaOfertaService.php',
+        'app/Services/Publicador/Aprovacao/RevisaoDeImagemService.php',
     ];
 
     /** `"{categoria}|{listing_type}"` → corpo da resposta do `/sites/MLB/listing_prices`. */
@@ -1377,7 +1386,7 @@ class BloqueiosDaOfertaServiceTest extends TestCase
 
         // ⚠️ A lista de arquivos é CONSTANTE e cada entrada EXISTE (isca de caminho fantasma:
         // arquivo ausente faria o gate reportar zero infrações e parecer verde).
-        $this->assertCount(2, self::MEUS_ARQUIVOS);
+        $this->assertCount(4, self::MEUS_ARQUIVOS);
         $infratores = [];
         foreach (self::MEUS_ARQUIVOS as $relativo) {
             $caminho = base_path($relativo);
@@ -1478,6 +1487,8 @@ class BloqueiosDaOfertaServiceTest extends TestCase
         $arquivos = [
             base_path('tests/Unit/Publicador/Aprovacao/BloqueiosDaOfertaServiceTest.php'),
             base_path('tests/Feature/Publicador/Aprovacao/BloqueiosContraOPrototipoTest.php'),
+            base_path('tests/Feature/Publicador/Aprovacao/AprovarEReabrirTest.php'),
+            base_path('tests/Feature/Publicador/Aprovacao/RevisaoDeImagemTest.php'),
         ];
 
         $metodos = [];
