@@ -173,6 +173,26 @@ class ComposicaoFinanceiraServiceTest extends TestCase
         $this->assertCount(7, $comInfoC->linhasDaConta());
         $this->assertCount(1, $comInfoC->linhasInformativas());
 
+        // ⚠️⚠️ SOBREVIVENTE DA MUTAÇÃO (M11, 15/10/2026), e era LACUNA REAL: trocar o filtro por
+        // `array_values($linhas)` — a informativa ENTRANDO na soma — passava este gate, porque a
+        // linha informativa de cima tem `valor = null` e `null ?? 0.0` soma ZERO. O mutante era
+        // invisível. ➡️ A mesma afirmação com a informativa CARREGANDO VALOR, que é o caso que
+        // descontaria o frete duas vezes.
+        $comValor = [...$linhas, LinhaFinanceira::informativa('frete_comprador', 'Frete pago pelo comprador', 'Não entra na conta', 25.0, 'O Mercado Livre cobra do comprador')];
+        $informativaComValor = ComposicaoDaOferta::montar(preco: $preco, linhas: $comValor, comissaoPercentual: 11.0, impostoPercentual: 19.0,
+            margemMinima: 12.0, margemMinimaOrigem: PubAprovacaoComposicao::MINIMO_CONFIG);
+
+        $this->assertSame(25.0, $informativaComValor->linhasInformativas()[0]->valor, 'ISCA CEGA: a informativa não carregou valor — o mutante seguiria invisível.');
+        $this->assertSame($semInfo->total, $informativaComValor->total, 'FIN-08: a informativa COM VALOR entrou no total e descontou o frete duas vezes');
+        $this->assertSame($semInfo->resultado, $informativaComValor->resultado);
+        $this->assertSame($semInfo->somaFixa, $informativaComValor->somaFixa);
+
+        // ⚠️ E ela também não pode mexer em `estimadoPorBaixo`: a informativa não é lacuna da
+        // conta, é contexto. (Com o mutante M11 a informativa de valor nulo marcava o resultado
+        // como estimado, que é afirmação falsa.)
+        $this->assertSame($semInfo->estimadoPorBaixo, $comInfoC->estimadoPorBaixo, 'a linha informativa marcou o resultado como estimado por baixo');
+        $this->assertFalse($comInfoC->estimadoPorBaixo);
+
         // O total é a soma das 7 (a mesma conta do protótipo), conferida aqui à parte.
         $esperado = round(200.0 + round($preco * 0.11, 2) + 0.0 + 42.9 + round($preco * 0.19, 2) + 8.0 + 0.0, 2);
         $this->assertSame($esperado, $semInfo->total);
@@ -223,6 +243,35 @@ class ComposicaoFinanceiraServiceTest extends TestCase
         $this->assertGreaterThanOrEqual(round($fixedSum / (1 - $vr), 2), $c->equilibrio);
         $this->assertSame(0.01, round($teto(1.0001) - 1.0, 4), 'ISCA CEGA: `c2` não está arredondando para CIMA — o preço-alvo sairia abaixo do mínimo pedido.');
         $this->assertSame(1.0, $teto(1.0), 'ISCA CEGA: `c2` sobe um centavo até no valor exato — o protótipo subtrai 1e-6 justamente para isso.');
+
+        // ⚠️⚠️ SOBREVIVENTE DA MUTAÇÃO (M12, 15/10/2026), e era LACUNA REAL: trocar o `ceil` da
+        // composição por `round()` passava este gate, porque nos números acima **os dois dão o
+        // MESMO resultado** (358,43 e 432,59). As duas iscas acima mediam o `$teto` DO TESTE, não
+        // o `c2` da produção. ➡️ O caso DISCRIMINANTE, medido: soma fixa **70,01** com
+        // comissão 11% + imposto 19% e mínimo **10%** põe a terceira decimal **abaixo de 5**, e aí
+        // teto e arredondamento DIVERGEM em um centavo.
+        $discriminante = [
+            LinhaFinanceira::confirmada('custo', 'Custo do produto', '1 un. × R$ 70,01', 70.01, 'Precificação do Portal'),
+            LinhaFinanceira::confirmada('comissao', 'Comissão Clássico', '—', round(100.0 * 0.11, 2), 'Mercado Livre'),
+            LinhaFinanceira::confirmada('tarifa_fixa', 'Tarifa fixa por venda', '—', 0.0, 'Mercado Livre'),
+            LinhaFinanceira::confirmada('frete', 'Frete pago pelo vendedor', '—', 0.0, 'Precificação do Portal'),
+            LinhaFinanceira::confirmada('imposto', 'Impostos', '—', round(100.0 * 0.19, 2), 'Parâmetros da empresa'),
+            LinhaFinanceira::confirmada('embalagem', 'Embalagem', '—', 0.0, 'Informado pelo cliente'),
+            LinhaFinanceira::confirmada('outros', 'Outros custos', '—', 0.0, 'Cadastro do produto'),
+        ];
+        $borda = ComposicaoDaOferta::montar(preco: 100.0, linhas: $discriminante, comissaoPercentual: 11.0, impostoPercentual: 19.0,
+            margemMinima: 10.0, margemMinimaOrigem: PubAprovacaoComposicao::MINIMO_CONFIG);
+
+        $this->assertSame(70.01, $borda->somaFixa);
+        $this->assertSame(100.02, $borda->equilibrio, 'o equilíbrio virou ARREDONDAMENTO: 100,01 em vez do teto 100,02');
+        $this->assertSame(116.69, $borda->precoAlvo, 'o preço-alvo virou ARREDONDAMENTO: 116,68 em vez do teto 116,69');
+
+        // ⚠️ A prova de que o caso DISCRIMINA: aqui teto ≠ arredondamento. Sem esta asserção o
+        // caso de borda poderia deixar de discriminar em silêncio.
+        $this->assertNotSame(round(70.01 / (1 - 0.30), 2), $borda->equilibrio, 'ISCA CEGA: neste caso teto e arredondamento dão o mesmo — ele não discrimina nada.');
+        $this->assertNotSame(round(70.01 / (1 - 0.30 - 0.10), 2), $borda->precoAlvo, 'ISCA CEGA: o caso do preço-alvo não discrimina teto de arredondamento.');
+        $this->assertSame($teto(70.01 / (1 - 0.30)), $borda->equilibrio);
+        $this->assertSame($teto(70.01 / (1 - 0.30 - 0.10)), $borda->precoAlvo);
     }
 
     public function test_a_nota_da_margem_tem_as_quatro_frases_e_o_numero_vem_do_minimo_resolvido(): void
