@@ -259,6 +259,14 @@ class ComposicaoFinanceiraServiceTest extends TestCase
 
         // ⚠️ DECISÃO (9): a nota do portão NOMEIA a fonte da tarifa.
         $this->assertStringContainsString('com a tarifa real do Mercado Livre', $acima->notaDaMargem);
+
+        // ⚠️ VOC-03 / FIN-14: os dois nomes travados, LIDOS do modelo e nunca recopiados. O outro
+        // nome — o que promete descontar despesa fixa e devolução — é PROIBIDO: nada nesta conta
+        // as desconta, e usá-lo seria afirmação falsa.
+        $this->assertSame('Resultado estimado por venda', $acima->rotuloDoResultado());
+        $this->assertSame('Margem de contribuição estimada', $acima->rotuloDaMargem());
+        $this->assertSame(PubAprovacaoComposicao::ROTULO_RESULTADO, $acima->rotuloDoResultado());
+        $this->assertSame(PubAprovacaoComposicao::ROTULO_MARGEM, $acima->rotuloDaMargem());
     }
 
     public function test_a_excecao_da_embalagem_mantem_o_resultado_e_marca_estimado_por_baixo(): void

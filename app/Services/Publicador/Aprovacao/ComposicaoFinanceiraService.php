@@ -150,9 +150,6 @@ class ComposicaoFinanceiraService
 
     public const ROTULO_FRETE_COMPRADOR = 'Frete pago pelo comprador';
 
-    /** As parcelas em R$ que compõem a `somaFixa` do equilíbrio (a ordem é a do protótipo). */
-    public const PARCELAS_FIXAS = ['custo', 'tarifa_fixa', 'frete', 'embalagem', 'outros'];
-
     /**
      * ⚠️ A origem viva do custo da Precificação → a frase legível. `digitado` e `produto` são
      * números de gente ou do cadastro; `componentes` é a soma dos componentes do combo, todos eles

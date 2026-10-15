@@ -78,6 +78,15 @@ use App\Models\PubAprovacaoComposicao;
 final readonly class ComposicaoDaOferta
 {
     /**
+     * As parcelas em R$ que compõem a `somaFixa` do equilíbrio — a ordem é a do protótipo
+     * (`Aprovacao.dc.html:1076`), e o filtro dele PRESERVA a ordem das linhas.
+     *
+     * ⚠️ Mora aqui e **em nenhum outro lugar**: duas listas da mesma verdade ficariam livres para
+     * divergir, e o equilíbrio e o preço-alvo passariam a discordar entre si.
+     */
+    public const PARCELAS_FIXAS = ['custo', 'tarifa_fixa', 'frete', 'embalagem', 'outros'];
+
+    /**
      * @param  list<LinhaFinanceira>  $linhas  as 7 da conta, na ordem, mais as informativas
      */
     private function __construct(
@@ -162,7 +171,7 @@ final readonly class ComposicaoDaOferta
         // A ORDEM de `$daConta` é a do protótipo, e o filtro preserva a ordem (`:1076`).
         $somaFixa = 0.0;
         foreach ($daConta as $linha) {
-            if (in_array($linha->chave, ['custo', 'tarifa_fixa', 'frete', 'embalagem', 'outros'], true)) {
+            if (in_array($linha->chave, self::PARCELAS_FIXAS, true)) {
                 $somaFixa += (float) ($linha->valor ?? 0.0);
             }
         }
@@ -204,6 +213,24 @@ final readonly class ComposicaoDaOferta
         }
 
         return null;
+    }
+
+    /**
+     * ⚠️ VOC-03 / FIN-14 — os dois nomes travados, LIDOS de
+     * {@see PubAprovacaoComposicao}, nunca recopiados.
+     *
+     * Duas redações da mesma verdade ficariam livres para divergir, e a que divergisse seria a que
+     * a pessoa lê. ⚠️ O outro nome — o que promete descontar despesa fixa e devolução — é
+     * **PROIBIDO** aqui: nada nesta conta as desconta, e usá-lo seria afirmação falsa.
+     */
+    public function rotuloDoResultado(): string
+    {
+        return PubAprovacaoComposicao::ROTULO_RESULTADO;
+    }
+
+    public function rotuloDaMargem(): string
+    {
+        return PubAprovacaoComposicao::ROTULO_MARGEM;
     }
 
     /** De qual lado do fallback o mínimo veio, em português. */
