@@ -4549,7 +4549,7 @@ o contador real levando até aqui.
   15. O plano traz a tabela FID-01 da fila contra `Aprovacao.dc.html` e **declara como mediu**
       (FID-01, FID-02)
 
-**Plans**: **10 planos em 10 waves** — a fase é quase toda de TELA, e as waves são sequenciais por
+**Plans**: **11 planos em 11 waves** — a fase é quase toda de TELA, e as waves são sequenciais por
 um motivo medido: `tests/js/publicador-vocabulario-novo.test.js` tem `publicacoes/` e `aprovacao/`
 em `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`, então **todo plano que cria um
 `.jsx` tem de editar aquele arquivo** — e pré-declarar não é possível (`FONTES` lê todos os caminhos
@@ -4563,7 +4563,20 @@ e LANÇA com arquivo inexistente). Dois planos na mesma wave compartilhariam ess
 - [ ] `187-07-PLAN.md` — wave 7 — a TABELA, níveis 1 e 2: grid de 11 colunas, linha de produto 52px, sub-linha de conjunto 38px
 - [ ] `187-08-PLAN.md` — wave 8 — a LINHA DA OFERTA: as 11 células, o anel de progresso e a barra de margem
 - [ ] `187-09-PLAN.md` — wave 9 — LOTE (barra flutuante + casca de modal + modal), TOASTS, rodapé e os dois vazios honestos + checkpoint humano
-- [ ] `187-10-PLAN.md` — wave 10 — o FECHAMENTO MEDIDO (15 critérios, 4 baselines re-medidas, território, FID-01 consolidada, mutação, perguntas)
+- [ ] `187-10-PLAN.md` — wave 10 — **PRÉ-AQUECIMENTO da tarifa do ML fora do request** (decisão do usuário, 15/10): serviço + job na fila `high` + comando na forma do `adman:warm-diff`
+- [ ] `187-11-PLAN.md` — wave 11 — o FECHAMENTO MEDIDO (15 critérios, 4 baselines re-medidas, território, FID-01 consolidada, mutação, as 4 perguntas respondidas)
+
+⚠️ **São 15 critérios de sucesso, não 17** — medido em 15/10/2026 (`grep -cE "^  [0-9]+\. "` nesta
+entrada devolve 15, numerados 1..15 sem buraco). **17 é a contagem da Fase 186.**
+
+**Decisões do usuário em 15/10/2026, aplicadas nos planos:** (1) o "pior caso entre N variações" é
+**balão ao passar o mouse** + frase visível no painel da Fase 188, com a coluna de preço em **uma
+linha** (187-08); (2) ⚠️ o custo da composição por oferta é resolvido **pré-aquecendo por tarefa em
+segundo plano** — *"aceitar e medir em produção"* e *"limitar N consultas por abertura"* foram
+**recusadas**, a segunda porque **"Incompleto" bloqueia a aprovação** e limitar protegeria o servidor
+travando o trabalho (**187-10**); (3) **dois vazios honestos**, porque o aviso único mentiria e
+ofereceria um botão sem o que limpar (187-09); (4) a frase do cadastro **só aparece quando é
+verdade**, e sem fonte o executor **para e devolve** (187-07).
 **UI hint**: yes
 
 ### Phase 188: Revisão simples — o painel de 1140px onde a aprovação acontece
