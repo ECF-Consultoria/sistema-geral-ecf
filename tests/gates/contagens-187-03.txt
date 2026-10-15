@@ -1,0 +1,92 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-03 — AS DUAS ABAS da seção A1, o
+# cabeçalho sem subtítulo e a prova de que a LISTA não mudou.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-03 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ Este plano NÃO tem gate `php`: ele não escreve uma linha de PHP. Um gate de
+#    PHP sobre um diff sem PHP é **gate vazio por construção**, e por isso não
+#    existe aqui — está DECLARADO, não esquecido. Há, em compensação, uma
+#    asserção provando que nenhum commit deste plano toca `.php`
+#    (`TERR-05 … nenhum commit deste plano toca PHP`).
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por gate, com `node --test --test-reporter=tap` e o ANSI tirado
+#    antes de ler as linhas `# tests`. Nenhuma é chute, e nenhum id foi escrito
+#    antes de ter sido medido.
+#
+# ⚠️⚠️ DOIS REGIMES em TODOS os três ids (`tests=A,B`), e isso é MEDIDO, não
+#    precaução. Os dois arquivos de gate têm camada de CSS construído que PULA
+#    (com `skip` NOMEADO) quando o `app-*.css` é mais ANTIGO que as fontes — e
+#    **editar qualquer fonte a deixa mais nova**, o que é exatamente o que a
+#    campanha de mutação faz. Medido nesta máquina:
+#      · `publicador-abas-da-pagina-187.test.js`    pristino 111 / mutado 101 (10 subtestes de CSS)
+#      · `publicador-publicacoes-cabecalho.test.js` pristino  86 / mutado  76 (10 subtestes de CSS)
+#    Sem os dois regimes a campanha abortaria na 1ª execução ("BASE com contagem
+#    inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o código
+#    (learnings §4 caso 11).
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre TRÊS arquivos de teste — um criado
+#    por este plano e dois ALTERADOS por ele:
+#      · `tests/js/publicador-abas-da-pagina-187.test.js`      (criado)
+#      · `tests/js/publicador-publicacoes-cabecalho.test.js`   (6 reapontes com veto)
+#      · `tests/js/publicador-vocabulario-novo.test.js`        (declaração + 2 reapontes)
+#    ⚠️ `tests/js/estrutura-meus-anuncios.test.js` NÃO está aqui DE PROPÓSITO:
+#    este plano não o toca (`numstat` ZERO, provado no gate de território), e
+#    declará-lo criaria um id apontando para arquivo que o plano não altera —
+#    gate sobre ZERO casos deste plano, e a bijeção abaixo o reprovaria com
+#    razão. O D-11 e o D-22 que aquele arquivo guarda são reconferidos DENTRO do
+#    gate deste plano, sobre a mesma fonte.
+#
+# ⚠️⚠️ **TODO ARQUIVO DE TESTE DESTE PLANO TEM id AQUI, E A BIJEÇÃO É PROVADA POR
+#    SCRIPT**, nos DOIS sentidos e com o lado "o que o plano toca" MEDIDO NO GIT
+#    pelo escopo do assunto (`(187-03)`), nunca por lista à mão. Arquivo de teste
+#    fora do manifesto **NUNCA RODA** — foi o sobrevivente da mutação do plano
+#    186-03. A asserção é UMA por sentido, de contagem FIXA, coletando os
+#    infratores: contagem que depende de quantas LINHAS este arquivo tem é
+#    frágil por construção e obrigaria a remedir o próprio gate a cada id novo
+#    (caiu 4 vezes na Fase 186).
+#
+# ⚠️ A bijeção mora DENTRO de `publicador-abas-da-pagina-187.test.js` e NÃO tem
+#    id próprio, ao contrário do que o plano 187-02 fez — e a razão é medida: lá
+#    a bijeção era uma asserção POR LINHA do manifesto, então a contagem do id
+#    dependia do próprio manifesto e um conserto dele mudava o número que ele
+#    declara. Aqui ela é um número FIXO de subtestes (7) que coleta infratores em
+#    laço, então acrescentar id ao manifesto NÃO move contagem nenhuma. Id
+#    próprio só seria necessário se a circularidade existisse.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── TAREFA 1 — as duas abas, com a geometria literal ─────────────────────────
+# Os dois rótulos byte a byte (com controle no protótipo de AUTORIDADE e isca de
+# paráfrase), FID-01 por igualdade de CONJUNTO de classes localizada por árvore,
+# a ausência MEDIDA de `cursor-pointer` com controle positivo no cabeçalho
+# vizinho, a troca de estado por prop com a ativa sem `href`, a pill só com
+# número medido (e o `0` que É um fato), o render adverso com 12 valores em 4
+# props, o CSS construído lido pelo manifest JSON com isca, a montagem na página,
+# D-11/D-22 intactos, o território por escopo de assunto e a bijeção.
+# 111 pristino / 101 mutado.
+abas-da-pagina  js  tests/js/publicador-abas-da-pagina-187.test.js  ::  tests=111,101
+
+# ─── TAREFA 2 — o cabeçalho sem subtítulo, com a borda e o slot ───────────────
+# O arquivo da Fase 180 DEPOIS dos 6 reapontes: a borda do `<header>`, o
+# `gap-[14px]`, a ausência do subtítulo no HTML E no arquivo (com isca), o trilho
+# das abas no lugar dele localizado por árvore, a direita IDÊNTICA e o bloco novo
+# da guarda de nó do slot. 86 pristino / 76 mutado.
+cabecalho-sem-subtitulo  js  tests/js/publicador-publicacoes-cabecalho.test.js  ::  tests=86,76
+
+# ─── TAREFA 3 — a montagem, o território e o vocabulário fechado ──────────────
+# Os dois arquivos juntos: o gate deste plano (103) e o GATE-03 inteiro DEPOIS de
+# `AbasDaPagina.jsx` entrar em `ARQUIVOS_NOVOS` (407 — era 399; +6 do laço por
+# arquivo e +2 dos dois sub-testes novos do eixo D2). 518 pristino / 508 mutado.
+montagem-e-territorio  js  tests/js/publicador-abas-da-pagina-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=518,508

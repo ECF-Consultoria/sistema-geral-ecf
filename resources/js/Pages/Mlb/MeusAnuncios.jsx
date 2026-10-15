@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import BotaoAtualizar from '@/Pages/Mlb/components/BotaoAtualizarAcervo';
 import CabecalhoDePublicacoes from '@/Components/Mlb/Publicador/publicacoes/CabecalhoDePublicacoes';
+import AbasDaPagina from '@/Components/Mlb/Publicador/publicacoes/AbasDaPagina';
 import FaixaDeSucesso from '@/Components/Mlb/Publicador/publicacoes/FaixaDeSucesso';
 import BuscaDePublicacoes from '@/Components/Mlb/Publicador/publicacoes/BuscaDePublicacoes';
 import LinhaDeControles from '@/Components/Mlb/Publicador/publicacoes/LinhaDeControles';
@@ -388,6 +389,21 @@ export default function MeusAnuncios({
     // do Publicador. O header sabe lidar com isso (botões desabilitados com
     // explicação); o default aqui só cobre `undefined`.
     cabecalho = null,
+    // ⚠️ Fase 187, plano 02 — O CONTADOR DA ABA "Aguardando aprovação".
+    //
+    // O número vem do SERVIDOR (`MlbAnuncioController::meus()`, que o lê de
+    // `FilaDeAprovacaoService::contadorDaAba()` com `PubAprovacaoOferta::LIVE`).
+    // ⚠️ NADA é somado aqui, e isso é o requisito ABA-05, não detalhe de
+    // implementação: somar no cliente exigiria mandar a FILA INTEIRA para uma
+    // tela que não a mostra, e o contador passaria a depender do que a página
+    // carregou em vez do que existe. Há gate provando que nenhuma linha da fila
+    // chega neste payload, e outro provando que os estados internos da fila não
+    // são nomeados nesta página.
+    //
+    // ⚠️ A prop PRECISA estar declarada aqui: consumi-la sem declarar a
+    // deixaria `undefined` para sempre — a pílula nunca seria desenhada e
+    // nenhum teste de render reclamaria.
+    aguardando_aprovacao = null,
 }) {
     const emp = objetoSeguro(empresa);
     const empresaId = numeroSeguro(emp.id);
@@ -1140,7 +1156,41 @@ export default function MeusAnuncios({
                         `CelulaSku` deste arquivo. Apagá-lo exigiria REMOVER
                         asserções do gate do plano 180-05, que é o oposto do que
                         esta cirurgia faz. */}
-                    <CabecalhoDePublicacoes sincronizacao={sincronizacao ?? null} />
+                    {/* ⚠️ Fase 187, plano 03 — AS DUAS ABAS da seção A1 (ABA-01/ABA-02).
+                        O subtítulo saiu do cabeçalho e o trilho das abas entrou
+                        pelo slot `abas`.
+
+                        ⚠️ A ABA VEM COM A ROTA. `mlb.anuncios.meus.aprovacao`
+                        nasceu no plano 187-02 e responde; a PÁGINA dela é do
+                        187-04. A ordem é deliberada — a página importa
+                        `AbasDaPagina`, então inverter as waves quebraria. Aba
+                        com contador real que não leva a lugar nenhum é a
+                        definição de enfeite, e PIOR que ausência, porque promete.
+
+                        ⚠️ OS DOIS CONTADORES SÃO REAIS. `aguardando_aprovacao`
+                        vem do servidor e `subTotais.publicados` já vinha. O `24`
+                        e o `6` do protótipo são dado MOCK, e número fixo no JSX é
+                        proibido (EXMP-01) — há gate de ausência dos dois.
+
+                        ⚠️ A fila nasce VAZIA e o contador será 0 até a Fase 194,
+                        porque nada cria oferta antes dela. Zero medido é um FATO:
+                        a aba NÃO é escondida e o número NÃO é inventado — foi
+                        decisão do usuário. */}
+                    <CabecalhoDePublicacoes
+                        sincronizacao={sincronizacao ?? null}
+                        abas={(
+                            <AbasDaPagina
+                                ativa="publicadas"
+                                publicadas={numeroSeguro(objetoSeguro(subTotais).publicados)}
+                                aguardando={aguardando_aprovacao}
+                                // ⚠️ `empresaId` pode ser nulo (`numeroSeguro(emp.id)`): e a MESMA
+                                // guarda que o `router.get` da busca usa (`:446`). Sem destino a
+                                // aba deixa de ser link e NAO ganha `href="#"` — `#` seria destino
+                                // FALSO, que e exatamente o que esta fase existe para nao entregar.
+                                hrefAprovacao={empresaId === null ? null : route('mlb.anuncios.meus.aprovacao', { company: empresaId })}
+                            />
+                        )}
+                    />
 
                     {/* A faixa verde de sucesso pós-publicação (LIST-02).
                         ⚠️ `faixaSucesso` é `null` SEMPRE hoje, e isso foi

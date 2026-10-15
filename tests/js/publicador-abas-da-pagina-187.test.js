@@ -765,16 +765,29 @@ test('ABA-05 — a página monta as abas com a rota do 187-02 e o contador do se
 
     await contexto.test('o slot `abas` do cabeçalho recebe <AbasDaPagina ativa="publicadas" …>', () => {
         assert.match(FONTE_PAGINA, /<AbasDaPagina\b/, 'a página não monta AbasDaPagina');
-        assert.match(FONTE_PAGINA, /abas=\{\s*<AbasDaPagina/, 'as abas não entram pelo slot `abas` do cabeçalho');
+        // ⚠️ O `\(?` aceita o parêntese de agrupamento do JSX multilinha
+        // (`abas={(\n<AbasDaPagina …`), que é a formatação que o projeto usa. Sem
+        // ele o gate reprovaria a forma CERTA e empurraria o executor seguinte a
+        // escrever tudo numa linha só para o gate passar.
+        assert.match(FONTE_PAGINA, /abas=\{\s*\(?\s*<AbasDaPagina/, 'as abas não entram pelo slot `abas` do cabeçalho');
+        // ISCA: a sonda casa nas DUAS formas que ela aceita, e não numa terceira.
+        assert.match('abas={<AbasDaPagina ativa="x" />}', /abas=\{\s*\(?\s*<AbasDaPagina/, 'a sonda do slot está cega');
+        assert.doesNotMatch('abas={outraCoisa}', /abas=\{\s*\(?\s*<AbasDaPagina/, 'a sonda do slot aceita qualquer nó');
         assert.match(FONTE_PAGINA, /ativa="publicadas"/, 'esta página é a das PUBLICADAS — a aba ativa é ela');
         assert.doesNotMatch(FONTE_PAGINA, /ativa="aprovacao"/, 'a página da lista marcou a aba da FILA como ativa');
     });
 
     await contexto.test('⚠️ o href é a rota `mlb.anuncios.meus.aprovacao`, e NUNCA `#`', () => {
+        // ⚠️ A sonda NÃO exige `hrefAprovacao={route(` colado: `empresaId` pode
+        // ser nulo (`numeroSeguro(emp.id)`), e a página guarda contra isso com a
+        // mesma forma que o `router.get` da busca já usa. Exigir a forma colada
+        // seria um gate que REPROVA PELO PRÓPRIO CONSERTO — ele proibiria a
+        // guarda certa e ensinaria o executor seguinte a tirá-la.
+        assert.match(FONTE_PAGINA, /hrefAprovacao=\{/, 'a aba não recebe href nenhum');
         assert.match(
             FONTE_PAGINA,
-            /hrefAprovacao=\{route\('mlb\.anuncios\.meus\.aprovacao'/,
-            'o href da aba não é a rota que o 187-02 registrou',
+            /route\('mlb\.anuncios\.meus\.aprovacao',\s*\{\s*company:\s*empresaId\s*\}\)/,
+            'o href da aba não é a rota que o 187-02 registrou, com a empresa da página',
         );
         assert.doesNotMatch(FONTE_PAGINA, /hrefAprovacao=\{?['"]#['"]\}?/, 'a aba aponta para o VAZIO');
         assert.doesNotMatch(FONTE_PAGINA, /hrefAprovacao="#"/, 'a aba aponta para o VAZIO');
@@ -1014,5 +1027,147 @@ test('TERR-05 — o território do plano 187-03, por escopo de assunto', async (
             }
         }
         assert.deepEqual(php, [], 'este plano tocou PHP — ele é só render');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. A BIJEÇÃO ids ↔ ARQUIVOS DE TESTE, por script, nos DOIS sentidos
+//
+// ⚠️⚠️ O QUE ELA EXISTE PARA PEGAR: **teste sem id no manifesto NUNCA RODA.**
+// O harness só executa o que está em `contagens-187-03.txt`; um arquivo de teste
+// deste plano que ficasse fora dele seria escrito, commitado, e jamais
+// executado por gate nenhum — foi o sobrevivente da campanha de mutação do
+// plano 186-03. E o sentido inverso também importa: id apontando para arquivo
+// que este plano não toca é gate sobre ZERO casos.
+//
+// ⚠️ A asserção é UMA por sentido, de contagem FIXA, COLETANDO OS INFRATORES —
+// nunca uma asserção por linha do manifesto. Contagem que depende de quantas
+// linhas o manifesto tem é frágil por construção (caiu 4 vezes na Fase 186), e
+// obrigaria a remedir este próprio gate a cada id acrescentado.
+//
+// ⚠️ E o lado "o que este plano toca" é MEDIDO NO GIT, pelo escopo do assunto —
+// não é uma lista escrita à mão que eu poderia esquecer de atualizar junto.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MANIFESTO_REL = 'tests/gates/contagens-187-03.txt';
+
+/** As linhas de gate do manifesto, já quebradas. */
+function linhasDoManifesto() {
+    const bruto = fs.readFileSync(path.resolve(RAIZ, MANIFESTO_REL), 'utf8');
+    return bruto
+        .split(/\r?\n/)
+        .map((linha) => linha.trim())
+        .filter((linha) => linha !== '' && !linha.startsWith('#'))
+        .map((linha) => {
+            const [antes, depois] = linha.split('::');
+            const campos = antes.trim().split(/\s+/);
+            return {
+                id: campos[0],
+                modo: campos[1],
+                alvos: campos.slice(2),
+                params: (depois ?? '').trim(),
+            };
+        });
+}
+
+test('GATE DO MANIFESTO — a bijeção ids ↔ arquivos de teste vale nos DOIS sentidos', async (contexto) => {
+    const linhas = linhasDoManifesto();
+
+    await contexto.test('⚠️ o manifesto NÃO está vazio e cada linha está completa', () => {
+        // Sem isto, tudo abaixo passaria sobre ZERO casos.
+        assert.ok(linhas.length >= 3, `o manifesto tem ${linhas.length} linha(s) de gate, esperava ao menos 3`);
+
+        const malFormadas = linhas.filter(
+            (l) => l.id === undefined || l.modo === undefined || l.alvos.length === 0 || !/tests=\d/.test(l.params),
+        );
+        assert.deepEqual(
+            malFormadas.map((l) => l.id ?? '(sem id)'),
+            [],
+            'linha de gate sem id, sem modo, sem alvo ou sem `tests=` — o harness ABORTA nela, mas melhor saber aqui',
+        );
+
+        // `tests=0` não é contagem, é número de fora.
+        const zerados = linhas.filter((l) => /tests=0(,|\s|$)/.test(l.params)).map((l) => l.id);
+        assert.deepEqual(zerados, [], '`tests=0` no manifesto: isso não é contagem');
+    });
+
+    await contexto.test('os ids são ÚNICOS — id repetido faz o harness rodar só o primeiro', () => {
+        const vistos = new Map();
+        for (const l of linhas) vistos.set(l.id, (vistos.get(l.id) ?? 0) + 1);
+        const repetidos = [...vistos.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+        assert.deepEqual(repetidos, [], 'id repetido no manifesto: o `awk` do harness pega o PRIMEIRO e ignora o resto');
+    });
+
+    await contexto.test('todo ALVO declarado EXISTE no disco', () => {
+        const fantasmas = [];
+        for (const l of linhas) {
+            for (const alvo of l.alvos) {
+                if (!fs.existsSync(path.resolve(RAIZ, alvo))) fantasmas.push(`${l.id} -> ${alvo}`);
+            }
+        }
+        assert.deepEqual(fantasmas, [], 'alvo inexistente no manifesto — o gate rodaria sobre NADA');
+    });
+
+    await contexto.test('⚠️ SENTIDO 1: todo arquivo de teste que este plano TOCA tem id no manifesto', () => {
+        // Medido no GIT, pelo escopo do assunto — não por lista à mão.
+        const tocadosNosTestes = new Set();
+        for (const c of COMMITS_DO_PLANO) {
+            const saida = execFileSync('git', ['show', '--numstat', '--format=', c.sha], { cwd: RAIZ, encoding: 'utf8' });
+            for (const linha of saida.split('\n')) {
+                const partes = linha.trim().split('\t');
+                if (partes.length === 3 && /^tests\/js\/.*\.test\.js$/.test(partes[2])) tocadosNosTestes.add(partes[2]);
+            }
+        }
+        // Sem esta âncora positiva o conjunto poderia ser vazio e o gate vazio.
+        assert.ok(tocadosNosTestes.size >= 2, `o plano tocou ${tocadosNosTestes.size} arquivo(s) de teste, esperava ao menos 2`);
+
+        const declarados = new Set(linhas.flatMap((l) => l.alvos));
+        const semId = [...tocadosNosTestes].filter((f) => !declarados.has(f)).sort();
+        assert.deepEqual(
+            semId,
+            [],
+            'arquivo de teste deste plano FORA do manifesto: ele NUNCA RODA por gate nenhum',
+        );
+    });
+
+    await contexto.test('⚠️ SENTIDO 2: todo arquivo declarado é um que este plano TOCA — nada de id órfão', () => {
+        const tocados = new Set();
+        for (const c of COMMITS_DO_PLANO) {
+            const saida = execFileSync('git', ['show', '--numstat', '--format=', c.sha], { cwd: RAIZ, encoding: 'utf8' });
+            for (const linha of saida.split('\n')) {
+                const partes = linha.trim().split('\t');
+                if (partes.length === 3) tocados.add(partes[2]);
+            }
+        }
+        const orfaos = [...new Set(linhas.flatMap((l) => l.alvos))].filter((f) => !tocados.has(f)).sort();
+        assert.deepEqual(
+            orfaos,
+            [],
+            'id do manifesto aponta para arquivo que este plano NÃO toca — gate sobre ZERO casos deste plano',
+        );
+    });
+
+    await contexto.test('⚠️ ISCA DA BIJEÇÃO: um id forjado é pego pela MESMA comparação', () => {
+        // Sem esta isca, os dois `deepEqual` vazios acima poderiam ser vazios
+        // porque a comparação está cega — e não porque a bijeção vale.
+        const declarados = new Set(linhas.flatMap((l) => l.alvos));
+        const FORJADO = 'tests/js/publicador-gate-que-ninguem-declarou-9z7.test.js';
+        assert.ok(!declarados.has(FORJADO), 'a isca virou alvo declarado de verdade — troque a isca');
+        assert.ok(
+            [...declarados, FORJADO].filter((f) => !fs.existsSync(path.resolve(RAIZ, f))).includes(FORJADO),
+            'a comparação não distingue um alvo a mais — ela está cega',
+        );
+    });
+
+    await contexto.test('o sufixo próprio do plano está nos nomes de guarda deste arquivo', () => {
+        // ⚠️ Nome de guarda GENÉRICO colide com homônimo de outro arquivo e o
+        // `--filter` SOMA as contagens dos dois, estourando o número do
+        // manifesto em silêncio. No JS a colisão é por NOME DE ARQUIVO, e o
+        // sufixo dele é o `-187`.
+        assert.match(MANIFESTO_REL, /contagens-187-03\.txt$/);
+        assert.ok(
+            fs.existsSync(path.resolve(RAIZ, 'tests/js/publicador-abas-da-pagina-187.test.js')),
+            'o arquivo de gate deste plano mudou de nome sem o manifesto saber',
+        );
     });
 });
