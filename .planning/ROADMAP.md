@@ -4549,7 +4549,21 @@ o contador real levando até aqui.
   15. O plano traz a tabela FID-01 da fila contra `Aprovacao.dc.html` e **declara como mediu**
       (FID-01, FID-02)
 
-**Plans**: TBD
+**Plans**: **10 planos em 10 waves** — a fase é quase toda de TELA, e as waves são sequenciais por
+um motivo medido: `tests/js/publicador-vocabulario-novo.test.js` tem `publicacoes/` e `aprovacao/`
+em `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`, então **todo plano que cria um
+`.jsx` tem de editar aquele arquivo** — e pré-declarar não é possível (`FONTES` lê todos os caminhos
+e LANÇA com arquivo inexistente). Dois planos na mesma wave compartilhariam esse arquivo.
+- [ ] `187-01-PLAN.md` — wave 1 — baselines medidas ANTES, o harness da fase, os 5 tokens novos, 9.5px e 22px liberados e a tabela FID-01 do E1 medida por SCRIPT
+- [ ] `187-02-PLAN.md` — wave 2 — SERVIDOR da fila: a rota, o escopo da conta, o contador real da aba, a faixa de 9 e a ordenação de `ORD`
+- [ ] `187-03-PLAN.md` — wave 3 — as DUAS ABAS no cabeçalho de Publicações (A1), com a lista intocada
+- [ ] `187-04-PLAN.md` — wave 4 — a PÁGINA da fila: casca, cabeçalho com a aba ativa, ⓘ margem mínima e a faixa de 9 cards
+- [ ] `187-05-PLAN.md` — wave 5 — "PRÓXIMO A REVISAR": a regra literal de três degraus e a faixa amarelada
+- [ ] `187-06-PLAN.md` — wave 6 — FILTROS: busca sem acento no servidor, 2 segmentados, 2 popovers com contagem, limpar, N de M, URL e o remapeamento de z-index
+- [ ] `187-07-PLAN.md` — wave 7 — a TABELA, níveis 1 e 2: grid de 11 colunas, linha de produto 52px, sub-linha de conjunto 38px
+- [ ] `187-08-PLAN.md` — wave 8 — a LINHA DA OFERTA: as 11 células, o anel de progresso e a barra de margem
+- [ ] `187-09-PLAN.md` — wave 9 — LOTE (barra flutuante + casca de modal + modal), TOASTS, rodapé e os dois vazios honestos + checkpoint humano
+- [ ] `187-10-PLAN.md` — wave 10 — o FECHAMENTO MEDIDO (15 critérios, 4 baselines re-medidas, território, FID-01 consolidada, mutação, perguntas)
 **UI hint**: yes
 
 ### Phase 188: Revisão simples — o painel de 1140px onde a aprovação acontece
