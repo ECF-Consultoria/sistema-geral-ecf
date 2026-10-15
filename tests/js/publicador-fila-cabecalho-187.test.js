@@ -843,3 +843,414 @@ test('FID — as classes do cabeçalho da fila GERAM CSS com o valor certo', asy
         assert.notEqual(valor, separador, 'o valor e o separador viraram a mesma cor');
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. A FAIXA DE 9 COLUNAS — a peça com mais literal da tela
+//
+// Linhas MEDIDAS com `grep -n` nesta sessão (⚠️ as QUATRO do plano estavam
+// deslocadas em 1):
+//   · grid           → :44  (`display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px`)
+//                            ⚠️ o plano cita :43
+//   · `<button>`     → :46  (`flex-direction:column;align-items:flex-start;gap:8px;`
+//                            `padding:11px 12px;border:1px solid …;border-radius:10px;`
+//                            `color:#F4F4F5;cursor:pointer;text-align:left;min-width:0`
+//                            + `style-hover="border-color:#3F3F46"`)  ⚠️ o plano cita :45
+//   · rótulo + dot   → :47  (`gap:6px;font-size:11.5px;font-weight:500;min-height:28px;`
+//                            `line-height:1.2` + dot `7×7;border-radius:50%;flex:none`)
+//                            ⚠️ o plano cita :46
+//   · número         → :48  (`font-size:22px;line-height:1;font-weight:600;`
+//                            `letter-spacing:-0.02em;font-variant-numeric:tabular-nums`)
+//                            ⚠️ o plano cita :47
+//   · ativo/inativo  → :1217 (`bg: on ? '#181818' : '#111111'`,
+//                             `border: on ? '#3F3F46' : '#1F1F1F'`,
+//                             `labelColor: on ? '#F4F4F5' : '#A1A1AA'`,
+//                             `countColor: cnt[k] ? '#F4F4F5' : '#52525B'`,
+//                             `dot: k === 'all' ? '#F4F4F5' : m[4]`)  ✓ bate
+//
+// ⚠️⚠️ OS 9 RÓTULOS E A ORDEM SÃO **LIDOS** DE `andamentoDoPortao.jsx`, nunca
+// recopiados: a Fase 186 deixou aquele módulo como fonte única de propósito, e
+// uma segunda cópia divergiria num rótulo sem nenhum teste de render acusar. Há
+// gate de AUSÊNCIA dos 9 literais na fonte do componente, com controle positivo
+// no módulo da 186.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REL_FAIXA = `${DIR_APROV}/FaixaDeAndamento.jsx`;
+
+if (!fs.existsSync(path.resolve(RAIZ, REL_FAIXA))) {
+    throw new Error(`caminho inexistente: ${REL_FAIXA} — gate mediria NADA`);
+}
+
+const MOD_FAIXA = await montar(REL_FAIXA);
+const MOD_ANDAMENTO = await montar(REL_ANDAMENTO);
+
+const Faixa = MOD_FAIXA.default;
+const FONTE_FAIXA = lerSemComentarios(REL_FAIXA);
+const FONTE_ANDAMENTO = lerSemComentarios(REL_ANDAMENTO);
+
+/** A faixa como o servidor a manda (`FilaDeAprovacaoService::faixa`). */
+const FAIXA_DO_SERVIDOR = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO.map((entrada, indice) => ({
+    chave: entrada.chave,
+    rotulo: entrada.rotulo,
+    // Totais DISTINTOS e um ZERO no meio, para os dois ramos de cor saírem no
+    // mesmo render: `publicando` (índice 6) é o zero.
+    total: indice === 6 ? 0 : (indice + 1) * 3,
+}));
+
+const HTML_FAIXA = renderToStaticMarkup(React.createElement(Faixa, {
+    faixa: FAIXA_DO_SERVIDOR,
+    ativa: 'aguardando_aprovacao',
+    onEtapa: () => {},
+}));
+
+const HTML_FAIXA_SEM_CLIQUE = renderToStaticMarkup(React.createElement(Faixa, {
+    faixa: FAIXA_DO_SERVIDOR,
+    ativa: 'todas',
+}));
+
+// As classes PRESCRITAS da faixa.
+const CL_GRID = ['grid', 'grid-cols-[repeat(9,minmax(0,1fr))]', 'gap-[6px]'];
+const CL_CARD = [
+    'flex', 'min-w-0', 'flex-col', 'items-start', 'gap-[8px]', 'rounded-pub-sub',
+    'border', 'px-[12px]', 'py-[11px]', 'text-left', 'text-pub-txt', 'hover:border-pub-line-off',
+];
+const CL_CARD_CLICAVEL = ['cursor-pointer'];
+const CL_CARD_ATIVO = ['bg-pub-raised-2', 'border-pub-line-off'];
+const CL_CARD_INATIVO = ['bg-pub-surface', 'border-pub-line-subtle'];
+const CL_ROTULO = ['flex', 'min-h-[28px]', 'items-center', 'gap-[6px]', 'text-[11.5px]', 'font-medium', 'leading-[1.2]'];
+const CL_ROTULO_ATIVO = ['text-pub-txt'];
+const CL_ROTULO_INATIVO = ['text-pub-txt-2'];
+const CL_DOT = ['h-[7px]', 'w-[7px]', 'flex-none', 'rounded-full'];
+const CL_NUMERO = ['text-[22px]', 'font-semibold', 'leading-none', 'tracking-[-0.02em]', 'tabular-nums'];
+
+/** O dot de "todas" (`:1217`: `k === 'all' ? '#F4F4F5'`) — não é estado. */
+const DOT_DE_TODAS = 'bg-pub-txt';
+
+/** Todas as tags de abertura `<nome` do HTML, em ordem. */
+function todasAsTags(html, nome) {
+    const fora = [];
+    let pos = html.indexOf(`<${nome}`);
+    while (pos !== -1) {
+        fora.push(tagEm(html, pos));
+        pos = html.indexOf(`<${nome}`, pos + 1);
+    }
+    return fora;
+}
+
+/** O pedaço de HTML do card que contém o rótulo `rotulo` (até o fechamento dele). */
+function cardDe(html, rotulo, nome) {
+    const iRotulo = html.indexOf(`>${rotulo}<`);
+    assert.ok(iRotulo !== -1, `o rótulo "${rotulo}" não está no HTML como texto próprio`);
+    const inicio = html.lastIndexOf(`<${nome}`, iRotulo);
+    assert.ok(inicio !== -1, `não achei <${nome}> envolvendo "${rotulo}"`);
+    const fim = html.indexOf(`</${nome}>`, iRotulo);
+    assert.ok(fim !== -1, `o <${nome}> de "${rotulo}" não fecha`);
+    return html.slice(inicio, fim + nome.length + 3);
+}
+
+test('AND-09 — a faixa é um grid de 9 colunas com os 9 cards do protótipo', async (contexto) => {
+    await contexto.test('grid :44 — `repeat(9,minmax(0,1fr))` literal e `gap-[6px]`', () => {
+        assertClasses(tagEm(HTML_FAIXA, indiceDaTag(HTML_FAIXA, 'div')), CL_GRID, 'grid :44');
+        // ⚠️ O literal tem PARÊNTESE e VÍRGULA — os dois são metacaracteres de
+        // regex e de seletor CSS, e é por isso que o medidor de CSS escapa TODOS.
+        assert.ok(FONTE_FAIXA.includes('grid-cols-[repeat(9,minmax(0,1fr))]'), 'o grid de 9 não está na FONTE');
+        assert.ok(!FONTE_FAIXA.includes('grid-cols-9'), 'FID-03: `grid-cols-9` é o passo do Tailwind, não o literal do protótipo');
+    });
+
+    await contexto.test('saem exatamente 9 cards, e eles são a lista INTEIRA do grid', () => {
+        assert.equal(todasAsTags(HTML_FAIXA, 'button').length, 9, HTML_FAIXA);
+        // ⚠️ Card a mais fora do `.map()` (uma casca falsa, por exemplo) sairia
+        // como 10º elemento.
+        assert.equal((HTML_FAIXA.match(/<button/g) ?? []).length, 9);
+    });
+
+    await contexto.test('⚠️⚠️ os 9 rótulos e a ORDEM são LIDOS de `andamentoDoPortao.jsx`', () => {
+        // ⚠️ A ordem é conferida pela POSIÇÃO no HTML, não só pela presença:
+        // uma lista reordenada tem os mesmos 9 rótulos.
+        const esperados = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO.map((e) => e.rotulo);
+        assert.equal(esperados.length, 9, 'o módulo da 186 deixou de ter 9 entradas');
+
+        let anterior = -1;
+        for (const rotulo of esperados) {
+            const pos = HTML_FAIXA.indexOf(`>${rotulo}<`);
+            assert.ok(pos !== -1, `o rótulo "${rotulo}" não saiu no HTML`);
+            assert.ok(pos > anterior, `o rótulo "${rotulo}" saiu FORA da ordem de FAIXA_DE_ANDAMENTO`);
+            anterior = pos;
+        }
+
+        // ⚠️ E o último é "Publicado hoje", um recorte DO DIA — não o estado
+        // inteiro. Trocá-lo por "Publicado" faria a faixa prometer o histórico
+        // completo e entregar o do dia.
+        assert.equal(esperados[8], 'Publicado hoje');
+        assert.equal(MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO[8].chave, 'publicado');
+    });
+
+    await contexto.test('⚠️ AUSÊNCIA: nenhum dos 9 rótulos está COPIADO na fonte do componente', () => {
+        // Segunda cópia divergiria num rótulo sem nenhum teste de render acusar.
+        const copiados = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO
+            .map((e) => e.rotulo)
+            .filter((rotulo) => FONTE_FAIXA.includes(rotulo));
+        assert.deepEqual(copiados, [], 'rótulo da faixa COPIADO à mão para o componente');
+
+        // ⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 9 onde eles moram.
+        const naFonte = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO
+            .map((e) => e.rotulo)
+            .filter((rotulo) => FONTE_ANDAMENTO.includes(rotulo));
+        assert.equal(naFonte.length, 9, 'a sonda está cega: não acha os 9 nem em andamentoDoPortao.jsx');
+
+        // E o import é do módulo, por caminho relativo ao diretório.
+        assert.match(FONTE_FAIXA, /import \{[^}]*FAIXA_DE_ANDAMENTO[^}]*\} from '\.\/andamentoDoPortao'/);
+        assert.match(FONTE_FAIXA, /import \{[^}]*andamentoDe[^}]*\} from '\.\/andamentoDoPortao'/);
+    });
+});
+
+test('FID-01 — a geometria dos 9 cards bate com o protótipo', async (contexto) => {
+    await contexto.test('card :46 — coluna, gap 8, 11×12 de padding, raio 10, borda, texto à esquerda', () => {
+        const card = tagDoElementoComTexto(HTML_FAIXA, 'Aguardando aprovação', 'button');
+        assertClasses(card, [...CL_CARD, ...CL_CARD_CLICAVEL, ...CL_CARD_ATIVO], 'card ATIVO :46');
+        assert.equal(atributo(card, 'type'), 'button', 'o card não é `type="button"` — num <form> ele submeteria');
+    });
+
+    await contexto.test('card ATIVO :1217 — `#181818` e borda `#3F3F46`; INATIVO `#111111` e `#1F1F1F`', () => {
+        const ativo = tagDoElementoComTexto(HTML_FAIXA, 'Aguardando aprovação', 'button');
+        const inativo = tagDoElementoComTexto(HTML_FAIXA, 'Todas', 'button');
+        assertClasses(ativo, [...CL_CARD, ...CL_CARD_CLICAVEL, ...CL_CARD_ATIVO], 'card ATIVO');
+        assertClasses(inativo, [...CL_CARD, ...CL_CARD_CLICAVEL, ...CL_CARD_INATIVO], 'card INATIVO');
+        // ⚠️ E exatamente UM card é o ativo: dois ativos mentiriam sobre o filtro.
+        const ativos = todasAsTags(HTML_FAIXA, 'button').filter((t) => classesDa(t).includes('bg-pub-raised-2'));
+        assert.equal(ativos.length, 1, `${ativos.length} cards ativos no mesmo render`);
+    });
+
+    await contexto.test('rótulo :47 — 11.5px / 500 / min-height 28 / leading 1.2, e as duas cores', () => {
+        const spanAtivo = tagDoElementoComTexto(HTML_FAIXA, 'Aguardando aprovação', 'span');
+        assertClasses(spanAtivo, [...CL_ROTULO, ...CL_ROTULO_ATIVO], 'rótulo ATIVO :47');
+        const spanInativo = tagDoElementoComTexto(HTML_FAIXA, 'Todas', 'span');
+        assertClasses(spanInativo, [...CL_ROTULO, ...CL_ROTULO_INATIVO], 'rótulo INATIVO :47');
+    });
+
+    await contexto.test('⚠️⚠️ dot :47 — a classe de cor é LIDA de `andamentoDe(chave).dot`', () => {
+        for (const entrada of MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO) {
+            const card = cardDe(HTML_FAIXA, entrada.rotulo, 'button');
+            const iRotulo = card.indexOf('<span');
+            assert.ok(iRotulo !== -1, `o card "${entrada.rotulo}" não tem <span> nenhuma`);
+            // A primeira <span> do card é o rótulo; a SEGUNDA é o dot (ele é
+            // filho do rótulo, `:47`).
+            const iDot = card.indexOf('<span', iRotulo + 1);
+            assert.ok(iDot !== -1, `o card "${entrada.rotulo}" não tem dot`);
+
+            // ⚠️ `todas` NÃO está em `ANDAMENTOS` (não é estado): o dot dela é
+            // `bg-pub-txt` (`:1217`, `k === 'all' ? '#F4F4F5'`), e isso vai
+            // ESCRITO, não deduzido.
+            const esperada = entrada.chave === 'todas'
+                ? DOT_DE_TODAS
+                : MOD_ANDAMENTO.andamentoDe(entrada.chave).dot;
+            assert.ok(esperada, `não há classe de dot para "${entrada.chave}"`);
+            assertClasses(tagEm(card, iDot), [...CL_DOT, esperada], `dot de "${entrada.rotulo}"`);
+        }
+    });
+
+    await contexto.test('⚠️ e nenhuma classe de dot está COPIADA na fonte (elas vêm do módulo)', () => {
+        const doModulo = MOD_ANDAMENTO.CHAVES_DE_ANDAMENTO.map((c) => MOD_ANDAMENTO.andamentoDe(c).dot);
+        assert.equal(doModulo.length, 8, 'o módulo da 186 deixou de ter 8 estados');
+        const copiadas = [...new Set(doModulo)].filter((classe) => FONTE_FAIXA.includes(classe));
+        assert.deepEqual(copiadas, [], 'classe de dot COPIADA à mão — duas verdades para a mesma cor');
+        // ⚠️ CONTROLE POSITIVO: a sonda acha as distintas onde elas moram.
+        const noModulo = [...new Set(doModulo)].filter((classe) => FONTE_ANDAMENTO.includes(classe));
+        assert.equal(noModulo.length, new Set(doModulo).size, 'a sonda está cega');
+        // ⚠️ E a ÚNICA escrita aqui é a de `todas`, com a linha do protótipo.
+        assert.ok(FONTE_FAIXA.includes(DOT_DE_TODAS), '`bg-pub-txt` (o dot de "todas") saiu da fonte');
+    });
+
+    await contexto.test('número :48 — 22px / 600 / leading 1 / tracking -0.02em / tabular', () => {
+        const card = cardDe(HTML_FAIXA, 'Aguardando aprovação', 'button');
+        const tags = todasAsTags(card, 'span');
+        // As três <span> do card: rótulo, dot e número.
+        assert.equal(tags.length, 3, `o card tem ${tags.length} <span>, esperava 3 (rótulo, dot, número)`);
+        assertClasses(tags[2], [...CL_NUMERO, 'text-pub-txt'], 'número :48');
+        // ⚠️ `text-[22px]` depende da liberação do 187-01. `text-xl` (20px) e
+        // `text-[24px]` seriam FID-03 literal.
+        assert.ok(FONTE_FAIXA.includes('text-[22px]'), 'o 22px do número virou outro passo');
+        assert.doesNotMatch(FONTE_FAIXA, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/, 'FID-03');
+    });
+
+    await contexto.test('número ZERO :1217 — `text-pub-txt-off`; maior que zero, `text-pub-txt`', () => {
+        // O zero do fixture é `publicando` (índice 6).
+        const zero = cardDe(HTML_FAIXA, 'Publicando', 'button');
+        const tagsZero = todasAsTags(zero, 'span');
+        assertClasses(tagsZero[2], [...CL_NUMERO, 'text-pub-txt-off'], 'número ZERO');
+        assert.ok(zero.includes('>0</span>'), `o zero não saiu como texto: ${zero}`);
+
+        const cheio = cardDe(HTML_FAIXA, 'Todas', 'button');
+        const tagsCheio = todasAsTags(cheio, 'span');
+        assertClasses(tagsCheio[2], [...CL_NUMERO, 'text-pub-txt'], 'número NÃO-zero');
+
+        // ⚠️ E as duas cores são DIFERENTES no mesmo render — sem isto, as duas
+        // asserções acima poderiam estar lendo a mesma classe.
+        assert.notDeepEqual(classesDa(tagsZero[2]).sort(), classesDa(tagsCheio[2]).sort());
+    });
+
+    await contexto.test('⚠️ `cursor-pointer` está nos 9 cards — `:46` o DECLARA (16 ocorrências no E1)', () => {
+        // ⚠️ Aqui o sentido é a OMISSÃO: o `cursor:pointer` foi omitido ONZE
+        // vezes numa única fase deste projeto. O protótipo o declara no
+        // `<button>` de cada card.
+        const semCursor = todasAsTags(HTML_FAIXA, 'button').filter((t) => !classesDa(t).includes('cursor-pointer'));
+        assert.deepEqual(semCursor, [], 'card clicável sem `cursor-pointer` — a omissão nº 1 deste projeto');
+    });
+
+    await contexto.test('⚠️ as classes moram NESTE .jsx (o content do Tailwind não varre .js)', () => {
+        assert.ok(REL_FAIXA.endsWith('.jsx'), 'o componente tem de ser .jsx para o Tailwind varrer as classes');
+        for (const classe of [
+            ...CL_GRID, ...CL_CARD, ...CL_CARD_CLICAVEL, ...CL_CARD_ATIVO, ...CL_CARD_INATIVO,
+            ...CL_ROTULO, ...CL_ROTULO_ATIVO, ...CL_ROTULO_INATIVO, ...CL_DOT, ...CL_NUMERO,
+            'text-pub-txt-off',
+        ]) {
+            assert.ok(FONTE_FAIXA.includes(classe), `a classe ${classe} não está na FONTE do .jsx`);
+        }
+    });
+
+    await contexto.test('FID-04 — nenhum token da camada antiga, nenhum hex, nenhum breakpoint', () => {
+        assert.doesNotMatch(FONTE_FAIXA, /\becf-(bg|card|card-2|yellow|yellow-2|line|dim|mute)\b/, 'FID-04');
+        assert.doesNotMatch(FONTE_FAIXA, /\bfont-display\b/, 'FID-04');
+        assert.doesNotMatch(FONTE_FAIXA, /border-white\/\[0\.08\]/, 'FID-04');
+        assert.doesNotMatch(FONTE_FAIXA, /#[0-9a-fA-F]{3,8}\b/, 'TOK-15');
+        assert.doesNotMatch(FONTE_FAIXA, /\b(sm|md|lg|xl|2xl):/, 'FID-05: nenhum breakpoint');
+    });
+});
+
+test('COL-03 — o clique filtra, e card sem destino NÃO é botão', async (contexto) => {
+    await contexto.test('com `onEtapa` função, os 9 são <button type="button">', () => {
+        assert.equal(todasAsTags(HTML_FAIXA, 'button').length, 9);
+        for (const tag of todasAsTags(HTML_FAIXA, 'button')) {
+            assert.equal(atributo(tag, 'type'), 'button', `card sem type="button": ${tag}`);
+        }
+    });
+
+    await contexto.test('⚠️ SEM `onEtapa` função: nenhum <button>, nenhum `cursor-pointer`', () => {
+        // Botão sem destino é PROIBIDO (EXMP-01). Mas o número é INFORMAÇÃO e
+        // continua na tela — esconder a faixa esconderia dado medido.
+        assert.equal(todasAsTags(HTML_FAIXA_SEM_CLIQUE, 'button').length, 0, HTML_FAIXA_SEM_CLIQUE);
+        assert.ok(!HTML_FAIXA_SEM_CLIQUE.includes('cursor-pointer'), HTML_FAIXA_SEM_CLIQUE);
+        // E os 9 rótulos CONTINUAM.
+        for (const entrada of MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO) {
+            assert.ok(HTML_FAIXA_SEM_CLIQUE.includes(`>${entrada.rotulo}<`), `"${entrada.rotulo}" sumiu sem o clique`);
+        }
+    });
+
+    await contexto.test('`onEtapa` NÃO-função não vira botão (os 16 valores adversos)', () => {
+        for (const onEtapa of ADVERSOS) {
+            const html = renderToStaticMarkup(React.createElement(Faixa, { faixa: FAIXA_DO_SERVIDOR, onEtapa }));
+            assert.equal(
+                todasAsTags(html, 'button').length,
+                0,
+                `onEtapa ${descreve(onEtapa)}: virou botão sem destino`,
+            );
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `onEtapa ${descreve(onEtapa)}`);
+        }
+    });
+
+    await contexto.test('⚠️ o clique chama `onEtapa` com a CHAVE, nunca com o rótulo', () => {
+        // A chave é o que vai para a URL; o rótulo é texto de tela. Mandar o
+        // rótulo montaria `?etapa=Aguardando%20aprova%C3%A7%C3%A3o`.
+        assert.match(FONTE_FAIXA, /onEtapa\(entrada\.chave\)/, 'o clique não manda a chave');
+        assert.ok(!FONTE_FAIXA.includes('onEtapa(entrada.rotulo'), 'o clique manda o RÓTULO para a URL');
+    });
+
+    await contexto.test('⚠️ NADA de `localStorage` nem `router` aqui — o destino é da PÁGINA', () => {
+        // `localStorage` é artefato do protótipo (`KEY='ecf-aprovacao-v1'`,
+        // `:914`) e o critério 13 o proíbe: o filtro vive na URL.
+        assert.doesNotMatch(FONTE_FAIXA, /localStorage/, 'critério 13: o filtro vive na URL, não no localStorage');
+        assert.doesNotMatch(FONTE_FAIXA, /sessionStorage/, 'mesma regra do localStorage');
+        // ⚠️ E nenhum `router.*` no componente: quem sabe para onde o clique vai
+        // é a PÁGINA. É o mesmo contrato dos slots do 180-05.
+        assert.doesNotMatch(FONTE_FAIXA, /router\./, 'o componente navega por conta própria — o destino é da página');
+    });
+});
+
+test('REND-01/02/04 — a faixa adversa não derruba a página, e as flags nascem no `.map()`', async (contexto) => {
+    await contexto.test('`faixa` com os 16 valores adversos: os 9 cards CONTINUAM', () => {
+        for (const faixa of ADVERSOS) {
+            const html = renderToStaticMarkup(React.createElement(Faixa, { faixa, onEtapa: () => {} }));
+            const onde = `faixa ${descreve(faixa)}`;
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `${onde}: ${html}`);
+            // ⚠️ Os 9 cards são a ESTRUTURA (vêm do módulo), não o dado: sem
+            // faixa nenhuma a navegação continua, com o total em "—".
+            assert.equal(todasAsTags(html, 'button').length, 9, `${onde}: a faixa perdeu cards`);
+        }
+    });
+
+    await contexto.test('`faixa` com ENTRADAS adversas (sem chave, total objeto, item nulo)', () => {
+        const adversas = [
+            [null, undefined, 0, 'x', [], {}],
+            [{ chave: 'todas' }, { total: 5 }, { chave: null, total: 5 }],
+            [{ chave: 'todas', total: {} }, { chave: 'aprovado', total: NaN }, { chave: 'falha', total: '7' }],
+            [{ chave: { toString: null }, total: 1 }, { chave: 'todas', total: Infinity }],
+            [{ chave: 'todas', total: -5 }, { chave: 'todas', total: 1.5 }],
+        ];
+        for (const faixa of adversas) {
+            const html = renderToStaticMarkup(React.createElement(Faixa, { faixa, onEtapa: () => {} }));
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, html);
+            assert.equal(todasAsTags(html, 'button').length, 9, html);
+            // ⚠️ E NENHUM card sai VAZIO: card sem texto passa em render e
+            // DESAPARECE na tela — foi assim que o bug S3 quase chegou em produção.
+            for (const entrada of MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO) {
+                const card = cardDe(html, entrada.rotulo, 'button');
+                const miolo = card.replace(/<[^>]*>/g, '').trim();
+                assert.ok(miolo !== '', `card "${entrada.rotulo}" saiu VAZIO: ${card}`);
+            }
+        }
+    });
+
+    await contexto.test('`ativa` desconhecida não marca card nenhum, e `{toString:null}` não lança', () => {
+        for (const ativa of [...ADVERSOS, 'nao_existe']) {
+            const html = renderToStaticMarkup(React.createElement(Faixa, { faixa: FAIXA_DO_SERVIDOR, ativa, onEtapa: () => {} }));
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `ativa ${descreve(ativa)}`);
+            const ativos = todasAsTags(html, 'button').filter((t) => classesDa(t).includes('bg-pub-raised-2'));
+            assert.ok(ativos.length <= 1, `ativa ${descreve(ativa)}: ${ativos.length} cards ativos`);
+        }
+        // ⚠️ `all`/`awaiting`/… são chaves do PROTÓTIPO (inglês) e NÃO são chave
+        // de dado: nenhuma delas pode marcar card. Aceitar "as duas formas" num
+        // `||` foi achado como defeito GRAVE na verificação da Fase 186.
+        for (const doPrototipo of ['all', 'awaiting', 'ecf_review', 'changes', 'published']) {
+            const html = renderToStaticMarkup(React.createElement(Faixa, { faixa: FAIXA_DO_SERVIDOR, ativa: doPrototipo, onEtapa: () => {} }));
+            const ativos = todasAsTags(html, 'button').filter((t) => classesDa(t).includes('bg-pub-raised-2'));
+            assert.equal(ativos.length, 0, `a chave INGLESA "${doPrototipo}" marcou um card — ela não é chave de dado`);
+        }
+    });
+
+    await contexto.test('⚠️ ISCA INVERTIDA: com faixa preenchida, a lista é NÃO-vazia e os números SAEM', () => {
+        // Sem esta isca, as asserções de ausência acima rodariam sobre dado
+        // vazio e seriam vazias por construção.
+        assert.equal(todasAsTags(HTML_FAIXA, 'button').length, 9, HTML_FAIXA);
+        for (const entrada of FAIXA_DO_SERVIDOR) {
+            const card = cardDe(HTML_FAIXA, entrada.rotulo, 'button');
+            assert.ok(card.includes(`>${entrada.total}</span>`), `o total ${entrada.total} de "${entrada.rotulo}" não saiu: ${card}`);
+        }
+    });
+
+    await contexto.test('⚠️⚠️ REND-04 — NENHUMA flag nasce fora do callback do `.map()`', () => {
+        // O Rollup elimina variável de escopo do componente usada dentro de um
+        // `.map()`, e o `ReferenceError` só aparece no bundle de PRODUÇÃO. São 9
+        // cards mapeados.
+        const iMap = FONTE_FAIXA.indexOf('.map(');
+        assert.ok(iMap !== -1, 'não achei o `.map(` — a faixa deixou de mapear');
+        const iComponente = FONTE_FAIXA.indexOf('export default function');
+        assert.ok(iComponente !== -1 && iComponente < iMap, 'não achei o componente antes do `.map(`');
+        const antes = FONTE_FAIXA.slice(iComponente, iMap);
+
+        const foraDoCallback = ['ehAtiva', 'ehTodas', 'classesDoCard', 'classesDoRotulo', 'corDoDot', 'corDoNumero', 'texto', 'total']
+            .filter((nome) => new RegExp(`const\\s+${nome}\\b`).test(antes));
+        assert.deepEqual(foraDoCallback, [], 'flag por card declarada FORA do `.map()` — ReferenceError só no bundle');
+
+        // ⚠️ ISCA DA SONDA: ela ACHA a declaração quando ela está lá.
+        assert.match('export default function X() { const ehAtiva = 1; return a.map(', /const\s+ehAtiva\b/, 'a sonda de flag está cega');
+    });
+
+    await contexto.test('REND-03 — nem String() nem JSON.stringify nem hasOwnProperty na FONTE', () => {
+        assert.doesNotMatch(FONTE_FAIXA, /String\(/, 'String({toString:null}) LANÇA e derruba a página');
+        assert.doesNotMatch(FONTE_FAIXA, /JSON\.stringify\(/, 'JSON.stringify MENTE: NaN vira null');
+        assert.doesNotMatch(FONTE_FAIXA, /hasOwnProperty/, 'hasOwnProperty.call LANÇA com chave {toString:null}');
+        // ⚠️ E o lookup do total é por `Map.get`, que NUNCA coage a chave —
+        // `objeto[chaveAdversa]` LANÇA com `{toString:null}` e, com chave do
+        // protótipo (`'toString'`), devolve uma FUNÇÃO.
+        assert.match(FONTE_FAIXA, /new Map\(/, 'o lookup do total não é por Map — `obj[chave]` LANÇA');
+    });
+});
