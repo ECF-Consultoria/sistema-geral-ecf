@@ -25,12 +25,22 @@
 #    (`tests=A,B`), e isso é MEDIDO, não precaução: aquele arquivo tem camada de
 #    CSS CONSTRUÍDO que PULA (com `skip` NOMEADO) quando o `app-*.css` é mais
 #    ANTIGO que as fontes — e **editar qualquer fonte a deixa mais nova**, que é
-#    exatamente o que a campanha de mutação faz. Medido nesta máquina:
-#      · pristino (CSS mais novo): 47 testes / 47 pass / 0 fail / 0 skipped
-#      · mutado   (fonte mais nova): 40 testes / 39 pass / 0 fail / 1 skipped
+#    exatamente o que a campanha de mutação faz. ⚠️ São DUAS camadas de CSS
+#    (uma para o cabeçalho, uma para a faixa), então o mutado perde 14 testes, não
+#    7. Medido nesta máquina:
+#      · pristino (CSS mais novo): 84 testes / 84 pass / 0 fail / 0 skipped
+#      · mutado   (fonte mais nova): 70 testes / 68 pass / 0 fail / 2 skipped
 #    Sem os dois regimes a campanha abortaria na 1ª execução ("BASE com contagem
 #    inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o código
 #    (learnings §4 caso 11).
+#
+# ⚠️ POR QUE `cabecalho-da-fila` E `faixa-de-andamento` APONTAM PARA O MESMO
+#    ARQUIVO, com a MESMA contagem — e isso é DECLARADO, não descuido: os dois
+#    ids existem porque o `<verify>` das tarefas 1 e 2 do plano os nomeia, e as
+#    duas tarefas escrevem no MESMO arquivo de gate (é o que o plano manda em
+#    `<files>`). Criar dois arquivos de teste só para separar os ids deixaria os
+#    helpers de árvore e o render adverso duplicados — duas verdades para a mesma
+#    sonda. O que discrimina as duas tarefas é o COMMIT, não o id.
 #
 # ⚠️ ESCOPO DECLARADO: este manifesto cobre os arquivos de teste que este plano
 #    CRIA ou ALTERA, e a bijeção é provada por script nos DOIS sentidos, com o
@@ -48,5 +58,19 @@
 # dois controles, a linha INTEIRA ausente sem valor medido (D4/EXMP-01), o render
 # adverso com 16 valores em 4 props e o CSS CONSTRUÍDO — incluindo a asserção que
 # justifica a divergência do peso 800 (`font-[800]` compila para `font-weight:800`).
-# 47 pristino / 40 mutado.
-cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=47,40
+# 84 pristino / 70 mutado.
+cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=84,70
+
+# ─── TAREFA 2 — a faixa de 9 cards ────────────────────────────────────────────
+# O grid `repeat(9,minmax(0,1fr))` + `gap-[6px]` literais com os 9 cards exatos,
+# os 9 rótulos e a ORDEM LIDOS de `andamentoDoPortao.jsx` (conferidos por POSIÇÃO
+# e com gate de ausência das cópias à mão), o dot de cada card LIDO de
+# `andamentoDe(chave).dot` com o de `todas` em `bg-pub-txt` (`:1217`), as cinco
+# cores de `:1217`, o zero em `txt-off` no MESMO render do não-zero, o
+# `cursor-pointer` nos 9 (a omissão nº 1 deste projeto), o card que NÃO é botão
+# sem destino, as chaves INGLESAS que não marcam card, o render adverso com
+# entradas quebradas, REND-04 (flag dentro do `.map()`) e o CSS construído —
+# incluindo a OITAVA normalização do medidor, descoberta aqui: o seletor de uma
+# classe com PARÊNTESE e VÍRGULA precisa do escape GERAL.
+# ⚠️ MESMO arquivo e MESMA contagem do id acima — ver a nota do cabeçalho.
+faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=84,70

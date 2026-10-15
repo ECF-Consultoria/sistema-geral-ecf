@@ -206,6 +206,12 @@ const ARQUIVOS_NOVOS = [
     // `*.jsx` e **NÃO** `*.js`. Este arquivo é a única casa das classes do
     // cabeçalho da fila — num `.js` elas não gerariam CSS nenhum.
     `${DIR_APROV}/CabecalhoDaFila.jsx`,
+    // ─── Fase 187, plano 04 — a FAIXA de 9 cards filtráveis ───
+    //
+    // ⚠️ Mesma regra do arquivo acima: declarado no plano que o cria, `.jsx`
+    // porque é a única casa das classes dos 9 cards, e o GATE-03 o confere
+    // contra `text-sm`, hex cru, `ecf-*`, `font-display` e breakpoint.
+    `${DIR_APROV}/FaixaDeAndamento.jsx`,
 ];
 
 /**

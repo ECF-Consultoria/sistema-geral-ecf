@@ -136,13 +136,14 @@ async function montar(caminhoRelativo) {
 
 const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 const REL_CABECALHO = `${DIR_APROV}/CabecalhoDaFila.jsx`;
+const REL_FAIXA = `${DIR_APROV}/FaixaDeAndamento.jsx`;
 const REL_ANDAMENTO = `${DIR_APROV}/andamentoDoPortao.jsx`;
 const REL_ABAS = 'resources/js/Components/Mlb/Publicador/publicacoes/AbasDaPagina.jsx';
 const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 
 // ⚠️ `test -e` ANTES de acreditar em qualquer leitura vazia. Seis caminhos
 // fantasma já "provaram" território intocado nesta milestone.
-for (const caminho of [DIR_APROV, REL_CABECALHO, REL_ANDAMENTO, REL_ABAS, PROTOTIPO]) {
+for (const caminho of [DIR_APROV, REL_CABECALHO, REL_FAIXA, REL_ANDAMENTO, REL_ABAS, PROTOTIPO]) {
     if (!fs.existsSync(path.resolve(RAIZ, caminho))) {
         throw new Error(`caminho inexistente: ${caminho} — gate mediria NADA`);
     }
@@ -705,13 +706,34 @@ function escapaRegex(texto) {
     return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** O seletor que o Tailwind emite: `.` + o nome com os metacaracteres de CSS escapados. */
+/**
+ * O seletor que o Tailwind emite: `.` + o nome com os metacaracteres de CSS
+ * escapados.
+ *
+ * ⚠️⚠️ A REGRA É GERAL — *escapa tudo que não é `[A-Za-z0-9_-]`* —, e isso é
+ * CORREÇÃO DE UM FURO MEDIDO NESTA SESSÃO, não zelo. A forma herdada das waves
+ * anteriores escapava só `[].:/%`, e com ela
+ * `grid-cols-[repeat(9,minmax(0,1fr))]` saía **AUSENTE** no CSS construído —
+ * embora a classe esteja lá, compilada, com o seletor
+ * `.grid-cols-\[repeat\(9\,minmax\(0\,1fr\)\)\]` (medido no
+ * `app-C34qCe1a.css`). ➡️ O gate reprovava o código CERTO, e o conserto barato
+ * seria tirar a asserção do grid — perdendo justamente a classe mais cheia de
+ * metacaracteres da tela.
+ *
+ * É a OITAVA normalização do medidor de CSS construído, e vale para qualquer
+ * classe com parêntese ou vírgula (`calc(…)`, `repeat(…,…)`, `minmax(…)`).
+ */
 function seletorDe(classe) {
-    return `.${classe.replace(/[[\].:/%]/g, (ch) => `\\${ch}`)}`;
+    return `.${[...classe].map((ch) => (/[A-Za-z0-9_-]/.test(ch) ? ch : `\\${ch}`)).join('')}`;
 }
 
-/** Os caminhos cujo `mtime` o CSS tem de superar (ver o `skip` NOMEADO abaixo). */
-const FONTES_DO_CSS = [REL_CABECALHO];
+/**
+ * Os caminhos cujo `mtime` o CSS tem de superar (ver o `skip` NOMEADO abaixo).
+ *
+ * ⚠️ TODOS os `.jsx` deste plano entram: se um ficasse de fora, mutá-lo deixaria
+ * a camada de CSS medir um build velho e o gate aprovaria o errado.
+ */
+const FONTES_DO_CSS = [REL_CABECALHO, REL_FAIXA];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -773,6 +795,15 @@ test('FID — as classes do cabeçalho da fila GERAM CSS com o valor certo', asy
             assert.ok(!CSS.css.includes(isca), `a string da isca ${isca} aparece no CSS`);
         }
         assert.notEqual(regraDe('text-[12.5px]'), null, 'a sonda está cega: nem o controle ela acha');
+
+        // ⚠️⚠️ CONTROLE DA OITAVA NORMALIZAÇÃO: uma classe com PARÊNTESE e
+        // VÍRGULA tem de ser ACHADA. Com o escape antigo (só `[].:/%`) ela saía
+        // AUSENTE e o gate reprovava o código certo — ver `seletorDe`.
+        assert.notEqual(
+            regraDe('grid-cols-[repeat(9,minmax(0,1fr))]'),
+            null,
+            'a sonda está cega para classe com parêntese/vírgula — é o furo medido nesta sessão',
+        );
     });
 
     await contexto.test('o <header> e a coluna — gap 24, gap 14 e a borda de 1px', () => {
@@ -874,12 +905,6 @@ test('FID — as classes do cabeçalho da fila GERAM CSS com o valor certo', asy
 // no módulo da 186.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const REL_FAIXA = `${DIR_APROV}/FaixaDeAndamento.jsx`;
-
-if (!fs.existsSync(path.resolve(RAIZ, REL_FAIXA))) {
-    throw new Error(`caminho inexistente: ${REL_FAIXA} — gate mediria NADA`);
-}
-
 const MOD_FAIXA = await montar(REL_FAIXA);
 const MOD_ANDAMENTO = await montar(REL_ANDAMENTO);
 
@@ -936,6 +961,30 @@ function todasAsTags(html, nome) {
     return fora;
 }
 
+/**
+ * Conta o literal COMPLETO num corpo, nunca a substring.
+ *
+ * ⚠️⚠️ ELA EXISTE PORQUE O `includes` REPROVOU O CÓDIGO CERTO. A primeira
+ * redação do gate de AUSÊNCIA dos 9 rótulos usava `FONTE.includes(rotulo)` e
+ * acusou `'Todas'` — porque a flag `ehTodas`, declarada dentro do callback do
+ * `.map()`, **contém a substring**. É a família *"substring casa com prefixo"*
+ * (learnings §4 caso 4), a mesma que a sonda dos eixos de
+ * `publicador-vocabulario-novo.test.js` já tinha medido em `chaveAtiva` ⊃
+ * `Ativa`. Forma copiada de lá, com `\p{L}` para os acentos.
+ */
+function contarLiteralCompleto(corpo, literal) {
+    const padrao = new RegExp(
+        String.raw`(?<![\p{L}\p{N}_])` + escapaLiteral(literal) + String.raw`(?![\p{L}\p{N}_])`,
+        'gu',
+    );
+    return (corpo.match(padrao) ?? []).length;
+}
+
+/** Escapa um literal para uso dentro de regex. */
+function escapaLiteral(texto) {
+    return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** O pedaço de HTML do card que contém o rótulo `rotulo` (até o fechamento dele). */
 function cardDe(html, rotulo, nome) {
     const iRotulo = html.indexOf(`>${rotulo}<`);
@@ -986,16 +1035,26 @@ test('AND-09 — a faixa é um grid de 9 colunas com os 9 cards do protótipo', 
 
     await contexto.test('⚠️ AUSÊNCIA: nenhum dos 9 rótulos está COPIADO na fonte do componente', () => {
         // Segunda cópia divergiria num rótulo sem nenhum teste de render acusar.
+        //
+        // ⚠️ Pelo literal COMPLETO, nunca por `includes`: a flag `ehTodas` do
+        // callback do `.map()` CONTÉM `'Todas'`, e o `includes` reprovou o
+        // código certo na primeira rodada deste gate.
         const copiados = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO
             .map((e) => e.rotulo)
-            .filter((rotulo) => FONTE_FAIXA.includes(rotulo));
+            .filter((rotulo) => contarLiteralCompleto(FONTE_FAIXA, rotulo) > 0);
         assert.deepEqual(copiados, [], 'rótulo da faixa COPIADO à mão para o componente');
 
         // ⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 9 onde eles moram.
         const naFonte = MOD_ANDAMENTO.FAIXA_DE_ANDAMENTO
             .map((e) => e.rotulo)
-            .filter((rotulo) => FONTE_ANDAMENTO.includes(rotulo));
+            .filter((rotulo) => contarLiteralCompleto(FONTE_ANDAMENTO, rotulo) > 0);
         assert.equal(naFonte.length, 9, 'a sonda está cega: não acha os 9 nem em andamentoDoPortao.jsx');
+
+        // ⚠️ AUTO-TESTE DA SONDA, nas duas direções — ela acha o literal inteiro
+        // e NÃO conta a substring que derrubou a primeira redação.
+        assert.equal(contarLiteralCompleto('o card diz Todas agora', 'Todas'), 1, 'a sonda não acha o literal inteiro');
+        assert.equal(contarLiteralCompleto('const ehTodas = x;', 'Todas'), 0, 'a sonda conta SUBSTRING — ela reprovaria o código certo');
+        assert.equal(contarLiteralCompleto('Publicado hoje e Publicado', 'Publicado hoje'), 1, 'a sonda não respeita a borda do literal composto');
 
         // E o import é do módulo, por caminho relativo ao diretório.
         assert.match(FONTE_FAIXA, /import \{[^}]*FAIXA_DE_ANDAMENTO[^}]*\} from '\.\/andamentoDoPortao'/);
@@ -1021,10 +1080,14 @@ test('FID-01 — a geometria dos 9 cards bate com o protótipo', async (contexto
     });
 
     await contexto.test('rótulo :47 — 11.5px / 500 / min-height 28 / leading 1.2, e as duas cores', () => {
-        const spanAtivo = tagDoElementoComTexto(HTML_FAIXA, 'Aguardando aprovação', 'span');
-        assertClasses(spanAtivo, [...CL_ROTULO, ...CL_ROTULO_ATIVO], 'rótulo ATIVO :47');
-        const spanInativo = tagDoElementoComTexto(HTML_FAIXA, 'Todas', 'span');
-        assertClasses(spanInativo, [...CL_ROTULO, ...CL_ROTULO_INATIVO], 'rótulo INATIVO :47');
+        // ⚠️ POR ÁRVORE COM ÍNDICE, e não por "a <span> que envolve o texto":
+        // o dot é o PRIMEIRO filho do rótulo (`:47`), então a última `<span>`
+        // aberta antes do texto é o DOT, não o rótulo. A primeira redação deste
+        // gate lia o dot e reprovava o código certo — o mesmo modo de falhar que
+        // `tagQueEnvolve` existe para evitar quando há irmão intercalado.
+        const rotuloDoCard = (rotulo) => todasAsTags(cardDe(HTML_FAIXA, rotulo, 'button'), 'span')[0];
+        assertClasses(rotuloDoCard('Aguardando aprovação'), [...CL_ROTULO, ...CL_ROTULO_ATIVO], 'rótulo ATIVO :47');
+        assertClasses(rotuloDoCard('Todas'), [...CL_ROTULO, ...CL_ROTULO_INATIVO], 'rótulo INATIVO :47');
     });
 
     await contexto.test('⚠️⚠️ dot :47 — a classe de cor é LIDA de `andamentoDe(chave).dot`', () => {
@@ -1252,5 +1315,104 @@ test('REND-01/02/04 — a faixa adversa não derruba a página, e as flags nasce
         // `objeto[chaveAdversa]` LANÇA com `{toString:null}` e, com chave do
         // protótipo (`'toString'`), devolve uma FUNÇÃO.
         assert.match(FONTE_FAIXA, /new Map\(/, 'o lookup do total não é por Map — `obj[chave]` LANÇA');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. O CSS CONSTRUÍDO DA FAIXA — o `repeat(9,…)` com PARÊNTESE e VÍRGULA
+//
+// O que precisaria estar errado para falhar: o `grid-cols-[repeat(9,minmax(0,1fr))]`
+// não compilar (é o valor arbitrário mais cheio de metacaracteres de toda a
+// tela), o `leading-[1.2]` virar `line-height:1.2px`, ou uma das cinco cores de
+// `:1217` sair com o hex de outra.
+//
+// ⚠️ O seletor deste literal tem PARÊNTESE, VÍRGULA e COLCHETE — e os três são
+// metacaracteres. É o caso que o escape de TODOS os metacaracteres existe para
+// cobrir; uma regex montada à mão aqui casaria qualquer coisa.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('FID — as classes da faixa de 9 GERAM CSS com o valor certo', async (contexto) => {
+    if (CSS.motivo) {
+        contexto.skip(CSS.motivo);
+        return;
+    }
+
+    const regraDe = (classe) => {
+        const re = new RegExp(`${escapaRegex(seletorDe(classe))}(?![\\w\\\\-])[^{}]*\\{([^}]*)\\}`);
+        const m = CSS.css.match(re);
+        return m ? m[1] : null;
+    };
+
+    await contexto.test('⚠️⚠️ o grid de 9 colunas — o literal com parêntese e vírgula COMPILA', () => {
+        const grid = regraDe('grid-cols-[repeat(9,minmax(0,1fr))]');
+        assert.notEqual(grid, null, '`grid-cols-[repeat(9,minmax(0,1fr))]` não gerou CSS — a faixa perderia as 9 colunas');
+        assert.match(grid, /grid-template-columns:\s*repeat\(9,\s*minmax\(0,\s*1fr\)\)/, grid);
+        assert.match(regraDe('gap-[6px]'), /gap:\s*6px/);
+
+        // ⚠️ ISCA: o mesmo medidor reporta AUSENTE um grid de 8 — a mutação que
+        // a campanha deste plano aplica.
+        assert.equal(regraDe('grid-cols-[repeat(8,minmax(0,1fr))]'), null, 'a isca do grid de 8 virou classe de verdade');
+    });
+
+    await contexto.test('o card — raio 10 (`rounded-pub-sub`), padding 11×12 e `min-w-0`', () => {
+        assert.match(regraDe('rounded-pub-sub'), /border-radius:\s*10px/);
+        assert.match(regraDe('px-[12px]'), /padding-left:\s*12px/);
+        assert.match(regraDe('py-[11px]'), /padding-top:\s*11px/);
+        assert.match(regraDe('min-w-0'), /min-width:\s*0/);
+        assert.match(regraDe('cursor-pointer'), /cursor:\s*pointer/);
+    });
+
+    await contexto.test('as DUAS superfícies de `:1217` — ativo #181818 e inativo #111111', () => {
+        const ativo = regraDe('bg-pub-raised-2');
+        const inativo = regraDe('bg-pub-surface');
+        assert.notEqual(ativo, null, 'o fundo do card ATIVO não gerou CSS');
+        assert.notEqual(inativo, null, 'o fundo do card INATIVO não gerou CSS');
+        // #181818 → 24 24 24 ; #111111 → 17 17 17
+        assert.match(ativo, /rgb\(\s*24\s+24\s+24\b/, ativo);
+        assert.match(inativo, /rgb\(\s*17\s+17\s+17\b/, inativo);
+        // ⚠️ E são DIFERENTES: o protótipo pinta os dois distintos, e "usar o
+        // token parecido que já existe" é justificativa vetada (FID-02).
+        assert.notEqual(ativo, inativo, 'as duas superfícies viraram a mesma — o card ativo deixa de se ver');
+    });
+
+    await contexto.test('o rótulo — 11.5px, peso 500, min-height 28 e `leading-[1.2]` SEM unidade', () => {
+        assert.match(regraDe('text-[11.5px]'), /font-size:\s*11\.5px/);
+        assert.match(regraDe('font-medium'), /font-weight:\s*500/);
+        assert.match(regraDe('min-h-[28px]'), /min-height:\s*28px/);
+        const leading = regraDe('leading-[1.2]');
+        assert.notEqual(leading, null, '`leading-[1.2]` não gerou CSS');
+        // ⚠️ SEM unidade: `line-height:1.2px` seria 1,2 pixel de altura de linha.
+        assert.match(leading, /line-height:\s*1\.2\s*$|line-height:\s*1\.2[^p]/, leading);
+        assert.ok(!/line-height:\s*1\.2px/.test(leading), 'o leading saiu em PIXEL — a linha ficaria com 1,2px');
+        // As duas cores de rótulo: #F4F4F5 → 244 244 245 ; #A1A1AA → 161 161 170
+        assert.match(regraDe('text-pub-txt'), /rgb\(\s*244\s+244\s+245\b/);
+        assert.match(regraDe('text-pub-txt-2'), /rgb\(\s*161\s+161\s+170\b/);
+    });
+
+    await contexto.test('o dot — 7×7 e redondo', () => {
+        assert.match(regraDe('h-[7px]'), /height:\s*7px/);
+        assert.match(regraDe('w-[7px]'), /width:\s*7px/);
+        assert.match(regraDe('flex-none'), /flex:\s*none/);
+    });
+
+    await contexto.test('o número — 22px, tracking -0.02em e `tabular-nums`', () => {
+        const vinteEDois = regraDe('text-[22px]');
+        assert.notEqual(vinteEDois, null, '`text-[22px]` não gerou CSS — o 22 do 187-01 não chegou à tela');
+        assert.match(vinteEDois, /font-size:\s*22px/);
+        // ⚠️ O zero depois do menos é comido pelo cssnano: `-.02em`.
+        assert.match(regraDe('tracking-[-0.02em]'), /letter-spacing:\s*-\.02em/);
+        assert.match(regraDe('tabular-nums'), /font-variant-numeric:/);
+        // O zero: #52525B → 82 82 91
+        assert.match(regraDe('text-pub-txt-off'), /rgb\(\s*82\s+82\s+91\b/);
+    });
+
+    await contexto.test('⚠️ o hover da borda — `:46` declara `border-color:#3F3F46` no `style-hover`', () => {
+        // ⚠️ Classe de VARIANTE: o seletor do Tailwind é `.hover\:border-pub-line-off:hover`.
+        // Uma sonda que procurasse só `.hover\:border-pub-line-off` reportaria
+        // ausente e reprovaria o código certo.
+        assert.ok(
+            CSS.css.includes('.hover\\:border-pub-line-off:hover'),
+            'o hover da borda do card não gerou CSS — `:46` o declara em `style-hover`',
+        );
     });
 });
