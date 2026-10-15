@@ -707,7 +707,8 @@ class ComposicaoContraOPrototipoTest extends TestCase
         $this->assertSame(self::PREMIUM, $comparacao['listing_type_id']);
         $this->assertSame(529.90, $comparacao['preco']);
         $this->assertNotNull($comparacao['resultado']);
-        $this->assertSame(PubAprovacaoOferta::PREPARANDO, $comparacao['andamento']);
+        $this->assertSame(PubAprovacaoOferta::PREPARANDO, $comparacao['andamento_da_irma'],
+            'a chave é `andamento_da_irma` de propósito: o contrato da única porta do plano 186-02 reserva a chave literal `andamento` a dois arquivos (AndamentoDaOfertaServiceTest:883)');
         $this->assertSame('Preparando', $comparacao['rotulo_do_andamento']);
 
         // E o caminho de volta: do Premium se vê o Clássico.

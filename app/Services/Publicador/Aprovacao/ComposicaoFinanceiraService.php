@@ -290,7 +290,17 @@ class ComposicaoFinanceiraService
      * ⚠️ A ligação é `rascunho_id`, o mesmo dos conjuntos de foto: o par é **estrutural**, não
      * combinado. Sem irmã devolve **`null`** — nunca zeros, que a tela leria como verdade.
      *
-     * @return array{oferta_id: int, listing_type_id: ?string, preco: float, resultado: ?float, margem: ?float, incompleto: bool, andamento: ?string, rotulo_do_andamento: ?string}|null
+     * ⚠️ A chave do estado é `andamento_da_irma`, e o nome NÃO é estilo: o plano 186-02 declarou o
+     * invariante da **única porta** do `andamento` com uma sonda **ampla de propósito**
+     * (`'andamento' =>` ou `->andamento =`) sobre todo o diretório do portão, e um **contrato
+     * exato** de dois arquivos — `AndamentoDaOfertaService` e `PubAprovacaoOferta`
+     * (`tests/Unit/Publicador/Aprovacao/AndamentoDaOfertaServiceTest.php:883`). O autor daquele
+     * gate escreveu que ele **reprovou de verdade e NÃO foi afrouxado**. Este serviço só **LÊ** o
+     * andamento, mas a chave literal `'andamento' =>` o faria aparecer como terceiro escritor.
+     * ➡️ O nome mais específico resolve do lado de cá, sem tocar naquele gate — e descreve melhor
+     * o que o valor é (o estado da IRMÃ, não desta oferta). ⚠️ **Não renomear de volta.**
+     *
+     * @return array{oferta_id: int, listing_type_id: ?string, preco: float, resultado: ?float, margem: ?float, incompleto: bool, andamento_da_irma: ?string, rotulo_do_andamento: ?string}|null
      */
     public function comparacaoComAIrma(PubAprovacaoOferta $oferta): ?array
     {
@@ -313,7 +323,7 @@ class ComposicaoFinanceiraService
             'resultado' => $composicao->resultado,
             'margem' => $composicao->margem,
             'incompleto' => $composicao->incompleto,
-            'andamento' => $irma->andamento,
+            'andamento_da_irma' => $irma->andamento,
             'rotulo_do_andamento' => $irma->rotulo(),
         ];
     }
