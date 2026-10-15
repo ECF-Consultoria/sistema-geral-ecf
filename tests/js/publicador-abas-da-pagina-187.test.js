@@ -151,8 +151,13 @@ const FONTE_CABECALHO = lerSemComentarios(REL_CABECALHO);
 
 const render = (Componente, props) => renderToStaticMarkup(React.createElement(Componente, props));
 
-const HREF_FILA = '/mlb.anuncios.meus.aprovacao{"company":9}';
-const HREF_LISTA = '/mlb.anuncios.meus{"company":9}';
+// ⚠️ Os dois `href` do fixture NÃO levam aspas nem chaves: o
+// `renderToStaticMarkup` escapa `"` como `&quot;` dentro de atributo, e a
+// primeira versão deste gate comparava a string CRUA contra a ESCAPADA e
+// reprovava o código certo. Estes são o formato real das URIs
+// (`routes/mlb_anuncios.php:501`: `/meus/{company}/aprovacao`).
+const HREF_FILA = '/mlb/anuncios/meus/9/aprovacao';
+const HREF_LISTA = '/mlb/anuncios/meus/9';
 
 const HTML_NA_LISTA = render(Abas, {
     ativa: 'publicadas',
