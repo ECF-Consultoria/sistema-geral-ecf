@@ -4,6 +4,7 @@ namespace App\Services\PlanejadorFull;
 
 use App\Models\Company;
 use App\Models\FullColeta;
+use App\Models\FullCompartilhamento;
 use App\Models\FullConfiguracao;
 use App\Models\FullEnvio;
 use App\Models\FullEnvioItem;
@@ -79,6 +80,13 @@ class PlanejadorFullService
             ->groupBy('company_id')
             ->pluck('n', 'company_id');
 
+        $comLink = FullCompartilhamento::query()
+            ->whereIn('company_id', $contagem->keys())
+            ->whereNotNull('token_hash')
+            ->whereNull('revogado_em')
+            ->pluck('company_id')
+            ->flip();
+
         return Company::query()
             ->whereIn('id', $contagem->keys())
             ->orderBy('name')
@@ -89,6 +97,7 @@ class PlanejadorFullService
                 'codigos'   => (int) $contagem[$c->id]->codigos,
                 'aptas'     => (int) $contagem[$c->id]->aptas,
                 'envios'    => (int) ($aCaminho[$c->id] ?? 0),
+                'linkCliente' => isset($comLink[$c->id]),
                 'coleta'    => isset($ultimas[$c->id]) ? $this->coletaPublica($ultimas[$c->id]) : null,
             ])
             ->values()

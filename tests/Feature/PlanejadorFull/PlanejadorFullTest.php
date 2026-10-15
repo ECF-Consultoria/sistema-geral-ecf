@@ -404,7 +404,7 @@ class PlanejadorFullTest extends TestCase
         Queue::fake();
         $company = $this->empresaColetada();
 
-        $this->actingAs($this->user)->post(route('planejador-full.atualizar', $company))->assertRedirect();
+        $this->actingAs($this->user)->postJson(route('planejador-full.atualizar', $company))->assertOk()->assertJsonStructure(['mensagem']);
 
         Queue::assertPushedOn('high', ColetarPlanejadorFullJob::class);
     }

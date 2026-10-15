@@ -23,6 +23,7 @@ use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AutenticadorController;
 use App\Http\Controllers\PlanejadorFullController;
+use App\Http\Controllers\PlanejadorFullPublicoController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
@@ -906,7 +907,36 @@ Route::middleware(['auth', 'verified'])->prefix('planejador-full')->name('planej
     Route::patch('/{company}/envios/{envio}', [PlanejadorFullController::class, 'atualizarEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.update');
     Route::delete('/{company}/envios/{envio}', [PlanejadorFullController::class, 'excluirEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.destroy');
     Route::post('/{company}/exportar', [PlanejadorFullController::class, 'exportar'])->whereNumber('company')->name('exportar');
+    Route::post('/{company}/compartilhar', [PlanejadorFullController::class, 'compartilhar'])->whereNumber('company')->name('compartilhar');
+    Route::delete('/{company}/compartilhar', [PlanejadorFullController::class, 'revogarCompartilhamento'])->whereNumber('company')->name('compartilhar.revogar');
 });
+
+// ── Planejador FULL — link aberto do cliente ────────────────────────────────
+// SEM login (decisão do usuário, 15/10/2026): quem tem o link vê e opera o planejador
+// DAQUELA empresa. A empresa sai do token (FullCompartilhamento); trocado ou revogado = 404.
+// Prefixo `planejador/` é EXCLUSIVO deste link — está liberado no domínio do cliente
+// (RestringeDominioDoPortal) e um teste barra rota interna aqui. A tela interna é
+// `planejador-full/`, outro prefixo de propósito.
+Route::prefix('planejador/{token}')->name('planejador-publico.')
+    ->where(['token' => '[A-Za-z0-9]{48}'])
+    ->middleware('throttle:240,1,planejador-publico')
+    ->group(function () {
+        Route::get('/', [PlanejadorFullPublicoController::class, 'show'])->name('show');
+        Route::post('/atualizar', [PlanejadorFullPublicoController::class, 'atualizar'])
+            ->middleware('throttle:6,1,planejador-publico.atualizar')->name('atualizar');
+        Route::get('/status', [PlanejadorFullPublicoController::class, 'status'])->name('status');
+        Route::get('/vendas/{inventory}', [PlanejadorFullPublicoController::class, 'vendas'])
+            ->where('inventory', '[A-Za-z0-9]{3,30}')->name('vendas');
+        Route::put('/config', [PlanejadorFullPublicoController::class, 'salvarConfig'])->name('config');
+        Route::put('/skus', [PlanejadorFullPublicoController::class, 'salvarSkus'])->name('skus');
+        Route::put('/itens', [PlanejadorFullPublicoController::class, 'salvarItens'])->name('itens');
+        Route::post('/galpao', [PlanejadorFullPublicoController::class, 'importarGalpao'])->name('galpao');
+        Route::post('/envios', [PlanejadorFullPublicoController::class, 'registrarEnvio'])->name('envios.store');
+        Route::post('/envios/planilha', [PlanejadorFullPublicoController::class, 'importarPlanilhaEstoque'])->name('envios.planilha');
+        Route::patch('/envios/{envio}', [PlanejadorFullPublicoController::class, 'atualizarEnvio'])->whereNumber('envio')->name('envios.update');
+        Route::delete('/envios/{envio}', [PlanejadorFullPublicoController::class, 'excluirEnvio'])->whereNumber('envio')->name('envios.destroy');
+        Route::post('/exportar', [PlanejadorFullPublicoController::class, 'exportar'])->name('exportar');
+    });
 
 Route::middleware(['auth', 'verified'])->group(function () {
 

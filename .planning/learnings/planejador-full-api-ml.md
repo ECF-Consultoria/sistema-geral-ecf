@@ -50,3 +50,26 @@ Nas páginas com o `AppLayout`, o Chrome headless fica com `document.hasFocus() 
 `el.focus()` muda o `activeElement` mas **não dispara focus/blur**, e o teclado não chega.
 Parece bug de "campo não grava ao sair". Preencha pelo setter nativo + `input` e dispare
 `focusout` à mão. Na tela de login (sem o layout) o teclado funciona.
+
+## 5. Link aberto do cliente (15/10/2026)
+
+Decisão do usuário: o cliente entra por **link sem login**, vê só a empresa dele e opera
+tudo, igual à equipe. Contraria de propósito a aposentadoria do token do Portal (15/09) —
+por isso o link nasce desligado e a equipe controla:
+
+- Só existe link para empresa em que alguém clicou "Gerar link do cliente"
+  (`full_compartilhamentos`, uma linha por empresa). "Gerar novo" troca o token na mesma
+  linha e o antigo dá 404 na hora; "Desligar" zera o hash. Cada ação do link resolve o token
+  de novo, então desligar corta até aba aberta.
+- O token não fica em texto: a rota procura por `token_hash` (SHA-256); `token_cifrado`
+  (Crypt) existe só para a equipe copiar o link de novo. **Trocar a `APP_KEY` quebra a
+  cópia** (o link continua valendo, mas o modal não consegue mostrá-lo — gere outro).
+- Prefixo `planejador/` é EXCLUSIVO do link (`planejador-publico.*`); a tela interna é
+  `planejador-full/`. O curinga `planejador/*` na allowlist do `RestringeDominioDoPortal`
+  só é seguro por isso — `PlanejadorFullLinkClienteTest` quebra se surgir rota interna lá
+  (ver portal-do-cliente.md §24: curinga em allowlist já vazou tela admin uma vez).
+- A tela é a mesma nas duas portas (`Components/PlanejadorFull/Planejador.jsx`); os
+  endereços chegam do servidor em `rotas`. Nunca chamar `route('planejador-full.*')` nas
+  ações — no link do cliente isso aponta para rota com login, fora do domínio dele.
+- O que o cliente faz não tem autor (`criado_por`/`updated_by` nulos); envio dele nasce
+  com `origem = cliente`.

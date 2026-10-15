@@ -28,6 +28,8 @@ class FullEnvio extends Model
 
     public const ORIGEM_PLANEJADOR = 'planejador';
     public const ORIGEM_PLANILHA   = 'planilha';
+    /** Registrado pelo cliente no link aberto do planejador (sem login, sem autor). */
+    public const ORIGEM_CLIENTE    = 'cliente';
 
     protected $fillable = [
         'company_id', 'data_despacho', 'inbound_ml', 'chegadas_desde', 'status', 'origem', 'observacao',

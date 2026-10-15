@@ -93,6 +93,12 @@ class RestringeDominioDoPortal
         // `portal.link_equipe` (loja de teste). Assinado; sem assinatura, 403.
         'equipe/link/*',
 
+        // 15/10/2026 — link aberto do Planejador FULL (sem login, por token da empresa).
+        // O curinga é seguro SÓ porque o prefixo `planejador/` é exclusivo das rotas
+        // `planejador-publico.*` — a tela interna é `planejador-full/`, outro prefixo de
+        // propósito, e `PlanejadorFullLinkClienteTest` quebra se surgir rota interna aqui.
+        'planejador/*',
+
         // Uma linha por rota, NUNCA `portal/*`. O curinga deixava passar
         // `/portal/usuarios` — a tela ADMIN de gerenciar acessos, que colide
         // no prefixo. Foi pego em produção, e é a demonstração de por que a

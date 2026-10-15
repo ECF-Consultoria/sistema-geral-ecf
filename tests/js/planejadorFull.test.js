@@ -233,8 +233,33 @@ describe('tela: entrada pendente e transferência', () => {
     });
 
     test('sem envio registrado a tela avisa que a entrada pendente está zerada', () => {
-        const show = lerSemComentarios('resources/js/Pages/PlanejadorFull/Show.jsx');
-        assert.match(show, /enviosAbertos === 0/);
-        assert.match(show, /Entrada pendente zerada/);
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        assert.match(tela, /enviosAbertos === 0/);
+        assert.match(tela, /Entrada pendente zerada/);
+    });
+});
+
+describe('tela: duas portas (equipe e link do cliente)', () => {
+    // O link aberto do cliente (15/10/2026) usa a MESMA tela. Ela só pode chamar os endereços
+    // que o servidor manda em `rotas` — nome de rota interno fixo levaria o cliente para uma
+    // rota que exige login (e que nem existe no domínio dele).
+    test('as ações do planejador usam rotas.* e nunca a rota interna por nome', () => {
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        const gaveta = lerSemComentarios('resources/js/Components/PlanejadorFull/Gaveta.jsx');
+        for (const acao of ['config', 'skus', 'itens', 'galpao', 'envios', 'atualizar', 'status', 'exportar', 'vendas']) {
+            const porNome = `route('planejador-full.${acao}`;
+            assert.ok(!tela.includes(porNome), `Planejador.jsx chama planejador-full.${acao} por nome`);
+            assert.ok(!gaveta.includes(porNome), `Gaveta.jsx chama planejador-full.${acao} por nome`);
+        }
+        assert.ok(tela.includes('rotas.config'));
+        assert.ok(gaveta.includes('rotaVendas'));
+    });
+
+    test('a página do link não carrega o layout interno nem o compartilhar', () => {
+        const publico = lerSemComentarios('resources/js/Pages/PlanejadorFull/Publico.jsx');
+        assert.ok(!publico.includes('AppLayout'));
+        assert.ok(publico.includes('modo="cliente"'));
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        assert.match(tela, /interno && modalCompartilhar/);
     });
 });
