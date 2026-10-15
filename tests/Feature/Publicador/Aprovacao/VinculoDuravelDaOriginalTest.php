@@ -405,14 +405,95 @@ class VinculoDuravelDaOriginalTest extends TestCase
 
         // ⚠️⚠️ COM **RANGE**. `git diff -- <caminho>` depois de commitar compara a ÁRVORE e sai
         // **VAZIO POR CONSTRUÇÃO** (`feedback_gate_vazio_por_construcao`).
+        // ⚠️⚠️ CONSERTADO EM 15/10/2026 PELO ORQUESTRADOR — era a SEXTA ocorrência da família
+        // "gate com range ABERTO tem validade de UM plano" (learnings §4b.4 e §9), e esta foi a
+        // pior: ela acusava o OUTRO DEV de mexer no PRÓPRIO arquivo dele.
+        //
+        // Era `assertSame('', $this->gitDiff($caminho))` com o range `<partida>..HEAD`. A mensagem
+        // dizia *"este plano mexeu em X"* — mas o plano 186-06 **não** mexeu: quem mexeu foi o
+        // commit `67d6a005 feat(196)` da **sessão paralela**, em
+        // `PublicadorCriativoReferenciaService.php`, que é **território dela**. `..HEAD` atribui
+        // ao plano tudo que acontece DEPOIS dele, então o gate passou a dizer que o dono do
+        // Creative Engine invadiu o Creative Engine.
+        //
+        // ⚠️ O dano era maior que um vermelho: a suíte do Publicador saiu com **exit 1 herdado**,
+        // e os **dez** planos seguintes da Fase 187 iam medir as baselines com essa falha dentro —
+        // treinando todos a conviver com vermelho, que é como regressão de verdade passa.
+        //
+        // ⚠️ E o conserto NÃO é criar `REF_PHP_FALHAS` para calar a suíte (o executor do 187-01
+        // cogitou e **recusou**, corretamente): isso afrouxaria a régua de TODA a fase.
+        //
+        // ➡️ O invariante certo é **"nenhum commit DESTE PLANO tocou o território alheio"**, e o
+        // discriminador é o **ESCOPO DO ASSUNTO** — nunca o autor, porque as três sessões usam o
+        // MESMO `user.name` (medido). Então o gate passou a olhar os COMMITS, não a árvore.
+        $invasores = [];
+
         foreach (self::TERRITORIO_DO_OUTRO_DEV as $caminho) {
-            $diff = $this->gitDiff($caminho);
-            $this->assertSame('', $diff, "este plano mexeu em `{$diff}` — TERR-11: a retenção de 48 h e o Creative Engine são do OUTRO DEV, e a saída certa é o vínculo durável NOSSO, nunca esticar a retenção alheia");
+            foreach (array_filter(explode("\n", $this->gitLog([$caminho]))) as $linha) {
+                // Só acusa quem carrega o escopo deste plano. Commit de outra sessão no arquivo
+                // dela é esperado e legítimo.
+                if (preg_match('/\(186-06\)/', trim($linha)) === 1) {
+                    $invasores[] = trim($linha) . ' → ' . $caminho;
+                }
+            }
         }
 
+        $this->assertSame(
+            [],
+            $invasores,
+            'commit(s) com escopo 186-06 tocaram território do OUTRO DEV: ' . implode(' | ', $invasores)
+            . '. TERR-11: a retenção de 48 h e o Creative Engine são dele, e a saída certa é o '
+            . 'vínculo durável NOSSO — nunca esticar a retenção alheia.'
+        );
+
+        // ⚠️ ISCA 1 — a sonda de escopo PEGA um commit deste plano. Sem isto, `$invasores` poderia
+        // ficar vazio por a regex nunca casar, e o gate seria verde permanente.
+        $this->assertSame(1, preg_match('/\(186-06\)/', 'feat(186-06): o vinculo duravel'), 'ISCA 1: a sonda de escopo não acha o escopo deste plano.');
+
+        // ⚠️ ISCA 2 — e NÃO pega o commit de outra sessão. É o falso positivo que motivou o
+        // conserto, preso em asserção para não voltar.
+        $this->assertSame(0, preg_match('/\(186-06\)/', 'feat(196): fotos do Publicador gravam no disco'), 'ISCA 2: a sonda de escopo acusa commit de OUTRA sessão — é o falso positivo de 15/10 voltando.');
+
+        // ⚠️ ISCA 3 — o `gitLog` enxerga o range: ele ACHA commits nos arquivos DESTE plano.
+        // Sem isto, um `git` falhando em silêncio devolveria vazio para tudo.
+        $this->assertNotSame('', $this->gitLog([self::MIGRATION]), 'ISCA 3: o log por range não acha nem a migration deste plano — o `git` devolve vazio para tudo.');
+
         // ⚠️ TERR-01 — `App\Support\Publicador` é LIDO e nunca alterado, **nem com subdiretório
-        // novo** (por isso o diff é no DIRETÓRIO).
-        $this->assertSame('', $this->gitDiff(self::SUPPORT_INTOCADO), 'este plano escreveu em `app/Support/Publicador/` — ele é LIDO (o `ConferenciaDeFrete::ORIGENS`) e nunca alterado');
+        // novo** (por isso o olhar é no DIRETÓRIO).
+        //
+        // ⚠️⚠️ MESMO CONSERTO DE 15/10/2026, e a mesma armadilha DUAS VEZES no mesmo método:
+        // era `assertSame('', $this->gitDiff(SUPPORT_INTOCADO))` com range ABERTO, e reprovou
+        // porque o commit `67d6a005 feat(196)` da **sessão paralela** criou
+        // `app/Support/Publicador/Imagem/ArquivosDeImagem.php`. A mensagem acusava *"este plano
+        // escreveu"* — o plano 186-06 não escreveu nada ali.
+        // ➡️ Mesma correção: o invariante é **"nenhum commit DESTE PLANO escreveu no diretório"**,
+        // discriminado pelo **ESCOPO DO ASSUNTO** (o autor não serve: as três sessões usam o mesmo
+        // `user.name`). O diretório segue sendo o alvo — subdiretório novo continua pego.
+        $invasoresDoSupport = [];
+
+        foreach (array_filter(explode("\n", $this->gitLog([self::SUPPORT_INTOCADO]))) as $linha) {
+            if (preg_match('/\(186-06\)/', trim($linha)) === 1) {
+                $invasoresDoSupport[] = trim($linha);
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $invasoresDoSupport,
+            'commit(s) com escopo 186-06 escreveram em `app/Support/Publicador/`: '
+            . implode(' | ', $invasoresDoSupport)
+            . '. TERR-01: aquele namespace é LIDO (o `ConferenciaDeFrete::ORIGENS`) e nunca '
+            . 'alterado, nem com subdiretório novo.'
+        );
+
+        // ⚠️ ISCA: o `gitLog` ENXERGA aquele diretório. Se ele devolvesse vazio por caminho errado,
+        // a asserção acima passaria sem medir nada. Hoje a sessão paralela tem commit lá — e no dia
+        // em que não tiver, esta isca avisa, em vez de o gate virar decorativo em silêncio.
+        $this->assertNotSame(
+            '',
+            $this->gitLog([self::SUPPORT_INTOCADO]),
+            'ISCA: o log por range não acha commit NENHUM em `app/Support/Publicador/` — ou o caminho está errado, ou ninguém mais toca lá e esta isca precisa de outro sujeito.'
+        );
 
         // ⚠️ ISCA DO DIFF: o MESMO comando, nos arquivos que ESTE plano criou, tem de sair NÃO
         // vazio. Sem ela, um `git` que falhasse em silêncio devolveria string vazia para TUDO e o
