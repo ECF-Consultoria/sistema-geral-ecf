@@ -131,7 +131,7 @@ class PubAprovacaoOferta extends Model
     /**
      * ⚠️⚠️ AS TRANSIÇÕES DECLARADAS — **LISTA FECHADA** (T-186-11).
      *
-     * origem => destinos permitidos. São **10 regras / 12 pares**, e a diferença é que
+     * origem => destinos permitidos. São **10 regras / 13 pares**, e a diferença é que
      * "qualquer `live` → `aprovado`" vale para os três estados ao vivo.
      *
      * **Por que é lista fechada e não um laço de proibições:** `aprovado` é o portão que libera a
@@ -139,8 +139,29 @@ class PubAprovacaoOferta extends Model
      * proibir PERMITIDO — numa máquina de estado cujo passo errado publica anúncio não conferido,
      * o default tem de ser "recusa".
      *
+     * ═══ ⚠️⚠️ O 13º PAR: `aprovado → aguardando_aprovacao` (DECISÃO DO USUÁRIO, 15/10/2026) ═════
+     *
+     * **A REABERTURA.** `BLOQ-06` manda que mudança relevante em oferta **JÁ APROVADA** faça ela
+     * **voltar para "Aguardando aprovação"**, com o registro *"Aprovação reaberta: …"* — é o
+     * `reopen()` do protótipo (`design_handoff_publicador/Aprovacao.dc.html:1149`). O par **não
+     * existia** nesta lista, e o plano 186-08 **parou e devolveu a pergunta** em vez de
+     * acrescentá-lo por conta própria. O usuário decidiu em 15/10/2026: **acrescentar**.
+     *
+     * ⚠️ **ELE É UM PAR PARA TRÁS, e isso é o ponto inteiro.** A frase que guarda esta lista —
+     * *"transição a mais aqui publica sem ninguém ter conferido"* — fala de pares que **aproximam
+     * a oferta do ar**. Este **AFASTA**: ele tira a oferta de `aprovado` e devolve à fila de
+     * conferência, deixando-a `live` outra vez (logo **editável**, `podeEditar()`) para que a foto
+     * que acabou de mudar possa ser consertada. Sem ele, a oferta ficaria presa em `aprovado`,
+     * **não editável**, com uma foto que ninguém conferiu — e aprovar já publicou.
+     *
+     * ⚠️ **ESCOPO, declarado:** a decisão cobre a janela **entre aprovar e publicar**, que é o que
+     * `BLOQ-06` pede. **Mexer na foto de anúncio que JÁ ESTÁ NO AR (`publicado`) é OUTRO FLUXO, e
+     * quem decide é a Fase 193** (decisão 13 do ROADMAP, **EM ABERTO e fora do escopo desta
+     * fase**). ➡️ `PUBLICADO => []` continua **terminal por estrutura**, e **nenhuma** transição
+     * sai dele.
+     *
      * ⚠️ `aprovado → publicado` **não existe**: tem de passar por `publicando`, porque é ali que o
-     * `ml_item_id` chega. `publicado` é **terminal por estrutura** (lista vazia), não por exceção.
+     * `ml_item_id` chega.
      * ⚠️ `falha → publicando` é o "Tentar de novo" (AND-10), e ele **não** incrementa a `versao`
      * nem mexe em `versao_aprovada`/`aprovado_por`/`aprovado_em` (BLOQ-11): a revisão é
      * PRESERVADA.
@@ -150,7 +171,8 @@ class PubAprovacaoOferta extends Model
         self::AGUARDANDO_APROVACAO => [self::EM_REVISAO_ECF, self::AJUSTES_SOLICITADOS, self::APROVADO],
         self::EM_REVISAO_ECF => [self::AJUSTES_SOLICITADOS, self::APROVADO],
         self::AJUSTES_SOLICITADOS => [self::AGUARDANDO_APROVACAO, self::APROVADO],
-        self::APROVADO => [self::PUBLICANDO],
+        // ⚠️ O 13º par é o `AGUARDANDO_APROVACAO`: a REABERTURA (BLOQ-06). Ver o docblock.
+        self::APROVADO => [self::PUBLICANDO, self::AGUARDANDO_APROVACAO],
         self::PUBLICANDO => [self::PUBLICADO, self::FALHA],
         self::FALHA => [self::PUBLICANDO],
         self::PUBLICADO => [],

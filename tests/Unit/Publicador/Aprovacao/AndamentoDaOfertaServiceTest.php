@@ -227,7 +227,7 @@ class AndamentoDaOfertaServiceTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
-    // AND-02 — as transições DECLARADAS: 10 regras / 12 pares aceitos, e as recusadas
+    // AND-02 — as transições DECLARADAS: 10 regras / 13 pares aceitos, e as recusadas
     // ─────────────────────────────────────────────────────────────────────────────────────────
 
     public function test_as_transicoes_aceitas_e_as_recusadas_estao_declaradas(): void
@@ -247,19 +247,171 @@ class AndamentoDaOfertaServiceTest extends TestCase
             ['publicando', 'falha'],
             // "Tentar de novo" (AND-10).
             ['falha', 'publicando'],
+            // ⚠️ O 13º par — A REABERTURA (BLOQ-06), decisão do usuário de 15/10/2026. Ver o
+            // bloco de conjunto exato abaixo para a razão de ele ser seguro.
+            ['aprovado', 'aguardando_aprovacao'],
         ];
 
         foreach ($aceitos as [$de, $para]) {
             $this->assertTrue(PubAprovacaoOferta::transicaoPermitida($de, $para), "a transição `{$de}` -> `{$para}` deveria ser aceita e NÃO é");
         }
 
-        // ⚠️ A CONTAGEM: 12 pares e nada além deles. Sem isto, acrescentar uma transição nova
-        // (= publicar sem conferência, T-186-11) não moveria número nenhum.
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // ⚠️ (1) A CONTAGEM — primeira linha de defesa. 13 pares e nada além deles.
+        //
+        // Sem ela, acrescentar uma transição nova não moveria número nenhum. ⚠️ **Mas ela NÃO
+        // BASTA**, e a isca no fim deste bloco prova por quê: **treze pares podem ser alcançados
+        // por um par PERIGOSO substituindo um seguro** — a contagem não distingue, o CONJUNTO
+        // distingue. (Elevada de 12 para 13 em 15/10/2026, pela decisão da reabertura.)
+        // ═════════════════════════════════════════════════════════════════════════════════════
         $pares = 0;
         foreach (PubAprovacaoOferta::TRANSICOES as $destinos) {
             $pares += count($destinos);
         }
-        $this->assertSame(12, $pares, 'o número de transições aceitas mudou — transição a mais aqui publica sem ninguém ter conferido');
+        $this->assertSame(13, $pares, 'o número de transições declaradas mudou — remeça o CONJUNTO EXATO abaixo antes de ajustar este número');
+
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // ⚠️⚠️ (2) O CONJUNTO EXATO — a prova. Uma asserção, ordenada, contagem fixa.
+        //
+        // ⚠️ **A FRASE ANTIGA DESTE GATE NÃO SE APLICA AO 13º PAR.** Ela dizia *"transição a mais
+        // aqui publica sem ninguém ter conferido"*, e isso descreve **par para FRENTE** — par que
+        // APROXIMA a oferta do ar. O par novo (`aprovado → aguardando_aprovacao`) é **par para
+        // TRÁS**: ele AFASTA a oferta do ar, devolvendo-a à fila de conferência e deixando-a
+        // `live` (logo **editável**) para que a foto que mudou possa ser consertada.
+        //
+        // ➡️ A distinção não é retórica: **par para frente é a classe perigosa** (ele pode pular
+        // conferência e publicar), e **par para trás é seguro por construção** (o pior que faz é
+        // pedir conferência de novo). Por isso os dois conjuntos são asseverados SEPARADAMENTE.
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        $achatar = function (array $mapa): array {
+            $lista = [];
+            foreach ($mapa as $de => $destinos) {
+                foreach ($destinos as $para) {
+                    $lista[] = $de.' -> '.$para;
+                }
+            }
+            sort($lista);
+
+            return $lista;
+        };
+
+        $declarados = $achatar(PubAprovacaoOferta::TRANSICOES);
+
+        $esperados = [
+            'ajustes_solicitados -> aguardando_aprovacao',
+            'ajustes_solicitados -> aprovado',
+            'aguardando_aprovacao -> ajustes_solicitados',
+            'aguardando_aprovacao -> aprovado',
+            'aguardando_aprovacao -> em_revisao_ecf',
+            'aprovado -> aguardando_aprovacao',
+            'aprovado -> publicando',
+            'em_revisao_ecf -> ajustes_solicitados',
+            'em_revisao_ecf -> aprovado',
+            'falha -> publicando',
+            'preparando -> aguardando_aprovacao',
+            'publicando -> falha',
+            'publicando -> publicado',
+        ];
+        sort($esperados);
+
+        $this->assertSame($esperados, $declarados, 'o CONJUNTO de transições declaradas mudou. Par PARA FRENTE (que aproxima a oferta do ar) é a classe perigosa: ele pode pular conferência e publicar anúncio que ninguém olhou. Par PARA TRÁS (que devolve a oferta à fila) é seguro por construção. Não ajuste esta lista sem dizer de qual classe é o par');
+
+        // ⚠️ O eixo de AVANÇO (distância do ar), para classificar cada par.
+        //
+        // Os três `live` **empatam**: entre eles a oferta anda de lado, não para a frente —
+        // "em revisão pela ECF" e "ajustes solicitados" não aproximam o anúncio do ar.
+        // ⚠️ `falha` fica **ABAIXO** de `publicando` de propósito: "Tentar de novo"
+        // (`falha → publicando`) **aproxima** a oferta do ar e é par para FRENTE; `publicando →
+        // falha` afasta. Pôr os dois no mesmo degrau os faria "de lado" e tiraria o retry da
+        // classe perigosa — onde ele pertence.
+        $avanco = [
+            'preparando' => 0,
+            'aguardando_aprovacao' => 10,
+            'em_revisao_ecf' => 10,
+            'ajustes_solicitados' => 10,
+            'aprovado' => 20,
+            'falha' => 25,
+            'publicando' => 30,
+            'publicado' => 40,
+        ];
+        // ⚠️ A COBERTURA do eixo: os 8 andamentos, nem um a mais nem um a menos. A comparação é
+        // por CONJUNTO (ordenado), não pela ordem do mapa: a ordem de `ANDAMENTOS` é a do `STM`
+        // do protótipo, e a deste eixo é a de avanço — são coisas diferentes de propósito.
+        $chavesDoEixo = array_keys($avanco);
+        sort($chavesDoEixo);
+        $chavesDoModelo = array_keys(PubAprovacaoOferta::ANDAMENTOS);
+        sort($chavesDoModelo);
+        $this->assertSame($chavesDoModelo, $chavesDoEixo, 'o eixo de avanço deixou de cobrir os 8 andamentos — estado sem avanço declarado não seria classificado e sairia da medição em silêncio');
+
+        $classe = function (string $par) use ($avanco): string {
+            [$de, $para] = explode(' -> ', $par);
+
+            return match (true) {
+                $avanco[$para] > $avanco[$de] => 'frente',
+                $avanco[$para] < $avanco[$de] => 'tras',
+                default => 'lado',
+            };
+        };
+
+        $porClasse = ['frente' => [], 'tras' => [], 'lado' => []];
+        foreach ($declarados as $par) {
+            $porClasse[$classe($par)][] = $par;
+        }
+
+        // ⚠️⚠️ A CLASSE PERIGOSA, pinada item a item: **só** estes 7 pares aproximam a oferta do
+        // ar. É nesta lista que "transição a mais publica sem ninguém ter conferido" se aplica.
+        $this->assertSame([
+            'aguardando_aprovacao -> aprovado',
+            'ajustes_solicitados -> aprovado',
+            'aprovado -> publicando',
+            'em_revisao_ecf -> aprovado',
+            'falha -> publicando',
+            'preparando -> aguardando_aprovacao',
+            'publicando -> publicado',
+        ], $porClasse['frente'], 'apareceu (ou desapareceu) um par PARA FRENTE — esta é a classe que aproxima a oferta do ar e pode publicar sem conferência (T-186-11)');
+
+        // ⚠️ A classe segura: dois pares afastam a oferta do ar.
+        $this->assertSame([
+            'aprovado -> aguardando_aprovacao',
+            'publicando -> falha',
+        ], $porClasse['tras'], 'mudou a classe PARA TRÁS — ela afasta a oferta do ar e é segura por construção, mas a lista é fechada do mesmo jeito');
+
+        // ⚠️⚠️ E A AFIRMAÇÃO PRECISA SOBRE O 13º PAR: ele é o **único** par que sai de um estado
+        // NÃO-`live` e **devolve a oferta a `live`** — isto é, o único que reabre a conferência e
+        // volta a deixar a oferta EDITÁVEL. `publicando → falha` também é para trás, mas `falha`
+        // não é `live`: lá a oferta não volta a ser editada, ela é retentada.
+        $reabrem = array_values(array_filter($declarados, function (string $par): bool {
+            [$de, $para] = explode(' -> ', $par);
+
+            return ! in_array($de, PubAprovacaoOferta::LIVE, true)
+                && in_array($para, PubAprovacaoOferta::LIVE, true)
+                && $de !== PubAprovacaoOferta::PREPARANDO;
+        }));
+        $this->assertSame(['aprovado -> aguardando_aprovacao'], $reabrem, 'a REABERTURA (BLOQ-06) deixou de ser o único par que devolve a oferta ao estado editável');
+
+        // ⚠️⚠️ A ISCA, em duas partes — ela é a razão de o conjunto existir ao lado da contagem.
+        $forjado = 'aguardando_aprovacao -> publicando';
+        $this->assertSame('frente', $classe($forjado), 'ISCA CEGA: o classificador não reconhece um par PARA FRENTE — a separação por classe não mediria nada.');
+        $this->assertNotContains($forjado, $declarados, 'o par forjado para frente ENTROU na lista fechada: ele pularia a aprovação e publicaria sem ninguém ter conferido');
+
+        // (a) par a MAIS: o conjunto reprova.
+        $comForjado = array_merge($declarados, [$forjado]);
+        sort($comForjado);
+        $this->assertNotSame($esperados, $comForjado, 'ISCA CEGA: o conjunto esperado aceita um par a mais — a asserção não distingue nada.');
+
+        // (b) ⚠️ A PROVA DE QUE A CONTAGEM NÃO BASTA: trocar o par seguro pelo perigoso **mantém
+        // 13**. A contagem passaria; o conjunto (e a classe) reprovam.
+        $trocado = $declarados;
+        $trocado[(int) array_search('aprovado -> aguardando_aprovacao', $trocado, true)] = $forjado;
+        sort($trocado);
+        $this->assertCount(count($declarados), $trocado, 'ISCA CEGA: a troca mudou a contagem — então o caso que a contagem não pega não está sendo simulado.');
+        $this->assertNotSame($esperados, $trocado, 'ISCA CEGA: o conjunto esperado não distingue a troca de um par SEGURO por um PERIGOSO — e é exatamente para isso que ele existe.');
+
+        // ⚠️ FORA DE ESCOPO DECLARADO: `publicado` continua TERMINAL, sem nenhuma transição
+        // saindo. Mexer na foto de anúncio que **já está no ar** é outro fluxo, e quem decide é a
+        // **Fase 193** (decisão 13 do ROADMAP, EM ABERTO). A decisão de 15/10/2026 cobre só a
+        // janela **entre aprovar e publicar**.
+        $this->assertSame([], array_values(array_filter($declarados, fn (string $p) => str_starts_with($p, 'publicado -> '))), 'nasceu transição saindo de `publicado` — isso é a Fase 193, não esta fase');
 
         $recusados = [
             // Pular a conferência inteira.

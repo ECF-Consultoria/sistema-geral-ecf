@@ -54,7 +54,7 @@
 # é a granularidade que diz QUAL dos três caiu quando este gate composto reprova.
 # Nenhum método do plano fica sem id próprio (ver o aviso do topo).
 # 3 / 39 MEDIDO em 14/10/2026.
-oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=57   # 39 -> 57 pelo mesmo motivo: 15 -> 33 na `unica-porta` (camada B)
+oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=65   # 57 -> 65 em 15/10/2026 pelo MESMO motivo da linha "unica-porta", que este filtro inclui: +4 arquivos no diretorio do portao x 2 asserçoes da camada B.
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 2 — O MODELO: os 8 estados, as transições, LIVE, ORDEM e cta
@@ -86,7 +86,7 @@ oito-estados  php  test_sao_exatamente_oito_andamentos_com_rotulo_espelhado_do_m
 # Como **aprovar JÁ PUBLICA e não há desfazer**, transição a mais aqui é elevação
 # de privilégio: publica sem ninguém ter conferido (T-186-11).
 # 1 / 27 MEDIDO em 14/10/2026.
-transicoes  php  test_as_transicoes_aceitas_e_as_recusadas_estao_declaradas  ::  tests=1 assertions=27
+transicoes  php  test_as_transicoes_aceitas_e_as_recusadas_estao_declaradas  ::  tests=1 assertions=39   # 27 -> 39 em 15/10/2026: o 13o par (a REABERTURA, BLOQ-06) e, com ele, o CONJUNTO EXATO de pares + a separacao por classe (frente/tras/lado) + a isca do par forjado para frente. A contagem 12 -> 13 NAO bastaria: treze pares podem ser alcancados por um par PERIGOSO substituindo um seguro.
 
 # AND-05 — `LIVE` são os três ao vivo, `ehLive()` é o ÚNICO decisor, e
 # `abreRevisao()` É `ehLive()` nos 8 estados (regra num lugar só). Com a metade
@@ -263,7 +263,7 @@ aprovar-na-transacao  php  test_aprovar_grava_os_tres_campos_de_aprovacao_na_mes
 #    ⚠️ O furo real era outro: ENTRAR NA LISTA não era conferido por nada, então quem
 #    acrescentasse um arquivo ali passava a poder ESCREVER sem gate notar. A lista
 #    protegia a porta por NOME, não por COMPORTAMENTO. A camada B fecha isso.
-unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=33
+unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=41   # 33 -> 41 em 15/10/2026. NAO e mudanca de comportamento: a camada B percorre glob(app/Services/Publicador/Aprovacao/*.php) e faz 2 asserçoes POR ARQUIVO, e o plano 186-08 criou 4 arquivos novos naquele diretorio. CONTAGEM FRAGIL POR CONSTRUCAO, declarada: todo arquivo novo no portao move este numero.
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 3 — A OFERTA NO GRAFO REAL e a disciplina da migration
