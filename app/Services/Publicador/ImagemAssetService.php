@@ -6,12 +6,13 @@ use App\Contracts\ContaMercadoLivre;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
 use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Validacao\ContextoValidacao;
 use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Validacao\ValidadorImagem;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 /**
  * As fotos do rascunho (`06` §7): conferir (L1), guardar, deduplicar e subir
@@ -20,16 +21,14 @@ use Illuminate\Support\Facades\Storage;
  * 1. L1 antes de guardar: JPG/PNG, até 10 MB, lados ≥ 500 px (o ML recusa
  *    abaixo disso). Bloqueio = nada é guardado.
  * 2. O mesmo arquivo (sha256) no mesmo rascunho é a mesma foto (TC-58).
- * 3. Guarda no disco PRIVADO (`local`), não no público: a foto do cliente só
- *    sai daqui para o ML.
+ * 3. Guarda no disco PRIVADO das imagens (`ArquivosDeImagem`: `local` ou o bucket
+ *    privado do R2 — v28.0), nunca no público: a foto do cliente só sai daqui para o ML.
  * 4. Sobe na hora (`POST /pictures/items/upload`) e guarda o `ml_picture_id`
  *    — o payload usa ids (RN-65). Falhou: `failed` com o motivo, e a
  *    publicação não segue sem ela (V-IMG-08, TC-59).
  */
 class ImagemAssetService
 {
-    private const DISCO = 'local';
-
     public function __construct(private ClienteMlPublicador $cliente) {}
 
     /**
@@ -52,7 +51,14 @@ class ImagemAssetService
         }
 
         $caminho = "publicador/{$r->id}/{$sha}.".($meta['mime'] === 'image/png' ? 'png' : 'jpg');
-        Storage::disk(self::DISCO)->put($caminho, $conteudo);
+        try {
+            ArquivosDeImagem::gravar($caminho, $conteudo);
+        } catch (\Throwable $e) {
+            // ARM-04: storage fora do ar não cria linha apontando para arquivo inexistente.
+            Log::warning("[Publicador] Rascunho {$r->id}: não gravou a foto {$caminho}: ".class_basename($e)." — ".$e->getMessage());
+
+            return ['imagem' => null, 'problemas' => [...$problemas, Problema::bloqueio('V-IMG-12', 'Não foi possível guardar a foto agora. Tente de novo em instantes.', [], 'L1')], 'nova' => false];
+        }
 
         try {
             $imagem = $r->imagens()->create([
@@ -63,6 +69,10 @@ class ImagemAssetService
             // Corrida no `pubim_sha_uq`: outro processo guardou a mesma foto entre a checagem e o create.
             $existente = (string) $e->getCode() === '23000' ? $r->imagens()->where('sha256', $sha)->first() : null;
             if ($existente === null) {
+                // ARM-03: o insert falhou de vez — o arquivo recém-gravado não tem dono. (Na corrida
+                // do unique NÃO se apaga: o caminho é o mesmo da linha que ganhou.)
+                rescue(fn () => ArquivosDeImagem::apagar($caminho), report: false);
+
                 throw $e;
             }
 
@@ -96,7 +106,12 @@ class ImagemAssetService
             return $imagem;
         }
 
-        $conteudo ??= Storage::disk(self::DISCO)->get($imagem->caminho);
+        $conteudo ??= ArquivosDeImagem::ler($imagem->caminho);
+        if ($conteudo === null) {
+            $imagem->update(['upload_status' => PubImagem::FALHOU, 'upload_erro' => ['mensagem' => 'O arquivo desta foto não foi encontrado agora. Tente enviar de novo em instantes.']]);
+
+            return $imagem->fresh();
+        }
         $resposta = $this->cliente->enviarFoto($conta, $conteudo, basename($imagem->caminho));
 
         if ($resposta->ok() && is_array($resposta->corpo) && isset($resposta->corpo['id'])) {
@@ -140,7 +155,7 @@ class ImagemAssetService
     public function remover(PubImagem $imagem): void
     {
         if ($imagem->caminho) {
-            Storage::disk(self::DISCO)->delete($imagem->caminho);
+            ArquivosDeImagem::apagar($imagem->caminho);
         }
         $imagem->delete();
     }

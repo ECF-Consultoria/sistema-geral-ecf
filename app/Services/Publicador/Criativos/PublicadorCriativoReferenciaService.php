@@ -8,11 +8,11 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Creative\ReferenciaEfemeraService;
 use App\Services\Publicador\RascunhoRepository;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\Eixo;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -85,7 +85,7 @@ class PublicadorCriativoReferenciaService
 
         return array_values(array_filter(
             array_map(fn ($id) => $doRascunho->get($id), $ids),
-            fn (PubImagem $img) => $img->caminho !== null && Storage::disk('local')->exists($img->caminho),
+            fn (PubImagem $img) => ArquivosDeImagem::existe($img->caminho),
         ));
     }
 
@@ -123,23 +123,38 @@ class PublicadorCriativoReferenciaService
      */
     public function guardar(MlAnuncioCriativo $portador, array $fotos, array $uploads): array
     {
-        $arquivos = [
-            ...array_map(fn (PubImagem $img) => new UploadedFile(
-                Storage::disk('local')->path($img->caminho),
-                'foto-'.$img->id.'.'.($img->mime === 'image/png' ? 'png' : 'jpg'),
-                $img->mime,
-                null,
-                true,
-            ), $fotos),
-            ...$uploads,
-        ];
-        $arquivos = array_slice($arquivos, 0, self::MAX);
+        // v28.0: a foto do rascunho pode estar no R2 — os bytes vão para um temporário só durante
+        // esta chamada (a referência em si continua efêmera e LOCAL, D8) e o temporário some no finally.
+        $temporarios = [];
+        $daFoto = function (PubImagem $img) use (&$temporarios): ?UploadedFile {
+            $conteudo = ArquivosDeImagem::ler((string) $img->caminho);
+            if ($conteudo === null) {
+                return null;
+            }
+            $tmp = tempnam(sys_get_temp_dir(), 'pubref');
+            file_put_contents($tmp, $conteudo);
+            $temporarios[] = $tmp;
 
-        if ($arquivos === []) {
-            throw new \InvalidArgumentException('Nenhuma foto de referência para guardar.');
+            return new UploadedFile($tmp, 'foto-'.$img->id.'.'.($img->mime === 'image/png' ? 'png' : 'jpg'), $img->mime, null, true);
+        };
+
+        try {
+            $arquivos = [
+                ...array_filter(array_map($daFoto, $fotos)),
+                ...$uploads,
+            ];
+            $arquivos = array_slice($arquivos, 0, self::MAX);
+
+            if ($arquivos === []) {
+                throw new \InvalidArgumentException('Nenhuma foto de referência para guardar.');
+            }
+
+            $refs = $this->efemera->guardar($portador, $arquivos);
+        } finally {
+            foreach ($temporarios as $tmp) {
+                @unlink($tmp);
+            }
         }
-
-        $refs = $this->efemera->guardar($portador, $arquivos);
         $portador->update(['referencias' => $refs]);
 
         return $refs;

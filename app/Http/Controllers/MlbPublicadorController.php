@@ -23,7 +23,7 @@ use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use Illuminate\Validation\Rule;
 
 /**
@@ -212,9 +212,9 @@ class MlbPublicadorController extends Controller
     public function arquivoFoto(int $produto, int $imagem)
     {
         $img = $this->rascunho($produto)->imagens()->findOrFail($imagem);
-        abort_if($img->caminho === null || ! Storage::disk('local')->exists($img->caminho), 404);
+        $resposta = $img->caminho === null ? null : ArquivosDeImagem::resposta($img->caminho, ['Cache-Control' => 'private, max-age=300']);
 
-        return Storage::disk('local')->response($img->caminho, null, ['Cache-Control' => 'private, max-age=300']);
+        return $resposta ?? abort(404);
     }
 
     public function atribuirFotos(Request $request, int $produto): JsonResponse

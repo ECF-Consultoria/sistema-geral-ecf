@@ -10,12 +10,12 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Support\Publicador\EditorEmUso;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use App\Support\Publicador\NaFilaDePublicacao;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Excluir produtos do Publicador, um ou vários (pedido do usuário, 10/10/2026: limpar os produtos de teste).
@@ -45,8 +45,6 @@ final class ExcluirProdutoService
 {
     /** Teto de produtos por pedido; a tela manda a seleção inteira. */
     public const MAXIMO = 200;
-
-    private const DISCO = 'local';
 
     public function __construct(private ProgramasPublicadorService $programas) {}
 
@@ -252,15 +250,10 @@ final class ExcluirProdutoService
 
         // Banco confirmado: agora os arquivos (fora da cascata) e as marcas de uso.
         foreach ($caminhos as $caminho) {
-            rescue(fn () => Storage::disk(self::DISCO)->delete($caminho), fn (\Throwable $e) => Log::warning("[Publicador] Produto {$id} excluído, mas a foto {$caminho} ficou no disco: ".$e->getMessage()), false);
+            rescue(fn () => ArquivosDeImagem::apagar($caminho), fn (\Throwable $e) => Log::warning("[Publicador] Produto {$id} excluído, mas a foto {$caminho} ficou no disco: ".$e->getMessage()), false);
         }
         if ($retrato['rascunho_id'] !== null) {
-            rescue(function () use ($retrato) {
-                $pasta = "publicador/{$retrato['rascunho_id']}";
-                if (Storage::disk(self::DISCO)->exists($pasta) && Storage::disk(self::DISCO)->allFiles($pasta) === []) {
-                    Storage::disk(self::DISCO)->deleteDirectory($pasta);
-                }
-            }, null, false);
+            rescue(fn () => ArquivosDeImagem::apagarPastaSeVazia("publicador/{$retrato['rascunho_id']}"), null, false);
         }
         Cache::forget(EditorEmUso::chave($id));
         Cache::forget(ResumoRapidoService::chaveConferindo($id));

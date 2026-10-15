@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use Illuminate\Support\Str;
 
 /**
@@ -265,7 +265,7 @@ final class CriativosAutomaticosService
         $porGrupo = [];
         foreach ($atribuicoes as $a) {
             $img = $imagens->get($a->id);
-            if ($img !== null && Storage::disk('local')->exists($img->caminho)) {
+            if ($img !== null && ArquivosDeImagem::existe($img->caminho)) {
                 $porGrupo[(string) $a->grupo_chave][] = $img;
             }
         }

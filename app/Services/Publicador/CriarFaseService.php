@@ -7,12 +7,12 @@ use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use App\Support\Publicador\PacoteDoKit;
 use App\Support\Publicador\QuantidadesDoKit;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * A Fase N de um produto (§5 da ETAPA-3): cria o `PubProduto` do kit e copia o
@@ -102,13 +102,6 @@ use Illuminate\Support\Facades\Storage;
  */
 class CriarFaseService
 {
-    /**
-     * O disco privado das fotos do Publicador. Espelha `ImagemAssetService::DISCO`,
-     * que é `private` lá — e este plano não mexe naquele arquivo. Os dois têm de
-     * continuar iguais: se um dia o disco mudar, muda nos dois.
-     */
-    private const DISCO = 'local';
-
     /** O EAN é da UNIDADE, não do kit: o GTIN nasce vazio no produto e em cada variante (§5). */
     private const GTIN = 'GTIN';
 
@@ -597,14 +590,14 @@ class CriarFaseService
      * transação e cota de foto gasta de novo, por uma foto que já está na conta
      * (T-175-06). O que o kit precisa é só o `ml_picture_id`, e ele vem copiado.
      *
-     * A cópia de bytes é I/O dentro da transação de propósito: é disco LOCAL, não
-     * HTTP. Cada `put()` entra em `$escritos` para o rollback de disco.
+     * A cópia de bytes é I/O dentro da transação de propósito. Com `IMAGENS_DISK=r2`
+     * (v28.0) ela vira HTTP — mais lenta, mas cada gravação continua em `$escritos`
+     * para o rollback de disco, e a leitura cai no local para foto ainda não migrada.
      *
      * @param  list<string>  $escritos  caminhos gravados no disco, para o rollback
      */
     protected function copiarImagens(PubRascunho $base, PubRascunho $kit, array &$escritos): void
     {
-        $disco = Storage::disk(self::DISCO);
         // Dedup pelo unique `(rascunho_id, sha256)`: se duas fotos do base caírem no
         // mesmo sha (só possível quando o base tem `sha256` NULL), a segunda reusa a
         // primeira em vez de estourar o unique e derrubar o clone inteiro.
@@ -614,8 +607,10 @@ class CriarFaseService
             $conteudo = null;
             $sha = $original->sha256;
 
-            if ($original->caminho !== null && $disco->exists($original->caminho)) {
-                $conteudo = $disco->get($original->caminho);
+            if ($original->caminho !== null) {
+                $conteudo = ArquivosDeImagem::ler($original->caminho);
+            }
+            if ($conteudo !== null) {
                 // `sha256` NULL com arquivo presente: calcula, porque é ele que nomeia o arquivo.
                 $sha ??= hash('sha256', (string) $conteudo);
             }
@@ -631,7 +626,7 @@ class CriarFaseService
                 // MESMA extensão do original (o ML aceita jpg e png; não se converte nada aqui).
                 $ext = strtolower(pathinfo((string) $original->caminho, PATHINFO_EXTENSION)) ?: 'jpg';
                 $caminho = "publicador/{$kit->id}/{$sha}.{$ext}";
-                $disco->put($caminho, $conteudo);
+                ArquivosDeImagem::gravar($caminho, $conteudo);
                 $escritos[] = $caminho;
             }
 
@@ -675,7 +670,7 @@ class CriarFaseService
     private function apagarArquivos(array $caminhos): void
     {
         foreach ($caminhos as $caminho) {
-            rescue(fn () => Storage::disk(self::DISCO)->delete($caminho), report: false);
+            rescue(fn () => ArquivosDeImagem::apagar($caminho), report: false);
         }
     }
 }
