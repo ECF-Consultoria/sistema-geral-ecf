@@ -67,6 +67,11 @@ use Illuminate\Support\Facades\DB;
  *    lá, e preservar os ids entrega exatamente o "sem reupload" que a §5 queria,
  *    sem compartilhar arquivo. O unique `(rascunho_id, sha256)` de `pub_imagens`
  *    garante estruturalmente que dois rascunhos nunca compartilhem caminho.
+ *    ➡️ **v28.0 (Fase 197):** foto com ativo do acervo (`acervo_imagem_id`) agora
+ *    É compartilhada — o kit ganha uma linha nova apontando para o MESMO objeto,
+ *    sem copiar bytes, porque `remover()` passou a desfazer só o uso e nunca
+ *    apaga o objeto do acervo (`PubImagem::arquivoProprio()`). Foto antiga, sem
+ *    ativo, segue copiando bytes como acima.
  *
  * 5. **`receber()` e `enviarAoMl()` são PROIBIDOS aqui** (T-175-06): `receber()`
  *    revalida a imagem e TERMINA enviando ao ML — HTTP dentro da transação e
@@ -604,6 +609,23 @@ class CriarFaseService
         $porSha = [];
 
         foreach ($base->imagens as $original) {
+            // v28.0: o ativo do acervo é da conta — o kit (mesma conta) usa o mesmo objeto, sem cópia.
+            if ($original->acervo_imagem_id !== null && $original->caminho !== null && $original->sha256 !== null) {
+                if (isset($porSha[$original->sha256])) {
+                    $this->copiarAtribuicoes($original, $porSha[$original->sha256]);
+
+                    continue;
+                }
+                $copia = $kit->imagens()->create($original->only([
+                    'caminho', 'acervo_imagem_id', 'sha256', 'mime', 'bytes', 'largura', 'altura',
+                    'ml_picture_id', 'ml_url', 'upload_status', 'upload_erro',
+                ]));
+                $porSha[$original->sha256] = $copia;
+                $this->copiarAtribuicoes($original, $copia);
+
+                continue;
+            }
+
             $conteudo = null;
             $sha = $original->sha256;
 

@@ -70,13 +70,13 @@ final class ArquivosDeImagem
 
     public static function existe(?string $caminho): bool
     {
-        return $caminho !== null && self::onde($caminho) !== null;
+        return $caminho !== null && self::discoDe($caminho) !== null;
     }
 
     /** A resposta HTTP que entrega o arquivo ao navegador, ou null se ele não está em lugar nenhum. */
     public static function resposta(string $caminho, array $cabecalhos = []): ?StreamedResponse
     {
-        $nome = self::onde($caminho);
+        $nome = self::discoDe($caminho);
 
         return $nome === null ? null : Storage::disk($nome)->response($caminho, null, $cabecalhos);
     }
@@ -106,7 +106,8 @@ final class ArquivosDeImagem
         return array_values(array_unique([self::nomeDoDisco(), self::LEGADO]));
     }
 
-    private static function onde(string $caminho): ?string
+    /** Em qual disco o arquivo está agora (o das imagens primeiro), ou null. */
+    public static function discoDe(string $caminho): ?string
     {
         foreach (self::discos() as $nome) {
             try {

@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador\Criativos;
 
+use App\Models\AcervoImagem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\PubRascunho;
 use App\Models\User;
@@ -117,7 +118,8 @@ class PublicadorAcervoService
         }
 
         // FORA de qualquer transação: pode fazer HTTP ao Mercado Livre (D26), igual a aprovarSlot().
-        $res = $this->imagens->receber($destino, $disco->get($origem->imagem_path), "acervo-{$origem->token}.jpg");
+        $res = $this->imagens->receber($destino, $disco->get($origem->imagem_path), "acervo-{$origem->token}.jpg",
+            origem: ['origem' => AcervoImagem::ORIGEM_IA, 'modelo_ia' => $origem->modelo, 'criativo_id' => $origem->id]);
         if ($res['imagem'] === null) {
             $bloqueio = collect($res['problemas'])->first(fn (Problema $p) => $p->bloqueia());
             $mensagem = $bloqueio !== null

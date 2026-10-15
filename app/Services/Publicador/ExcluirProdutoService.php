@@ -221,7 +221,9 @@ final class ExcluirProdutoService
                 return $motivo;
             }
 
-            $caminhos = $r === null ? [] : $r->imagens()->whereNotNull('caminho')->pluck('caminho')->all();
+            // v28.0: só os arquivos que são da linha; o objeto do acervo da conta fica (Fase 199).
+            $caminhos = $r === null ? [] : $r->imagens()->with('acervoImagem')->whereNotNull('caminho')->get()
+                ->map(fn ($img) => $img->arquivoProprio())->filter()->values()->all();
             $retrato = [
                 'produto_id' => $id, 'sku' => $p->sku, 'nome' => $p->nome, 'origem' => $p->origem,
                 'kit' => $p->produto_base_id !== null, 'quantidade_kit' => $p->quantidade_kit,

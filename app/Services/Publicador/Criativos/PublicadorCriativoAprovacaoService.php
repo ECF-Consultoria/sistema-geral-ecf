@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador\Criativos;
 
+use App\Models\AcervoImagem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubImagemAtribuicao;
@@ -91,7 +92,8 @@ class PublicadorCriativoAprovacaoService
         }
 
         // FORA de qualquer transação: pode fazer HTTP ao Mercado Livre (D26).
-        $res = $this->imagens->receber($r, $disco->get($slot->imagem_path), "criativo-{$slot->token}.jpg");
+        $res = $this->imagens->receber($r, $disco->get($slot->imagem_path), "criativo-{$slot->token}.jpg",
+            origem: ['origem' => AcervoImagem::ORIGEM_IA, 'modelo_ia' => $slot->modelo, 'criativo_id' => $slot->id]);
         if ($res['imagem'] === null) {
             $bloqueio = collect($res['problemas'])->first(fn (Problema $p) => $p->bloqueia());
             $mensagem = $bloqueio !== null ? EditorRascunhoService::problemaParaTela($bloqueio)['mensagem'] : 'A imagem gerada não pôde ser usada como foto.';

@@ -94,7 +94,10 @@ class AprovacaoParaPubImagensTest extends TestCase
 
         $img = PubImagem::find($res['imagem_id']);
         $this->assertSame(PubImagem::PENDENTE, $img->upload_status, 'D26: conta não liberada não recebe foto');
-        $this->assertStringStartsWith("publicador/{$this->r->id}/", $img->caminho);
+        // v28.0 (Fase 197): a imagem aprovada vira ativo do acervo da conta — caminho por conteúdo, origem `ia`.
+        $this->assertSame($img->acervoImagem->caminho, $img->caminho);
+        $this->assertStringStartsWith('imagens/'.$img->acervoImagem->dono_chave.'/', $img->caminho);
+        $this->assertSame([\App\Models\AcervoImagem::ORIGEM_IA, $slot->id], [$img->acervoImagem->origem, $img->acervoImagem->criativo_id]);
         Http::assertNothingSent();
 
         $doGeral = $this->doGrupo(R::GERAL);

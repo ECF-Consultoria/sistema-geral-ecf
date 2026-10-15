@@ -185,13 +185,32 @@ class ImagensTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_remover_apaga_o_arquivo(): void
+    /**
+     * v28.0 (Fase 197): remover a foto do rascunho desfaz o USO; o objeto é do acervo da conta e
+     * fica (pode estar em outro anúncio) — sai só pela exclusão segura do acervo (Fase 199).
+     * A foto antiga, sem ativo, continua tendo o arquivo apagado junto (`PubImagem::arquivoProprio`).
+     */
+    public function test_remover_desfaz_o_uso_e_o_objeto_fica_no_acervo(): void
     {
         $img = $this->servico->receber($this->rascunho, self::jpg(), 'a.jpg')['imagem'];
+        $this->assertNotNull($img->acervo_imagem_id);
 
         $this->servico->remover($img);
 
-        Storage::disk('local')->assertMissing($img->caminho);
+        Storage::disk('local')->assertExists($img->caminho);
+        $this->assertSame(0, PubImagem::count());
+    }
+
+    public function test_remover_foto_sem_ativo_apaga_o_arquivo(): void
+    {
+        $caminho = "publicador/{$this->rascunho->id}/antiga.jpg";
+        Storage::disk('local')->put($caminho, self::jpg());
+        $img = $this->rascunho->imagens()->create(['caminho' => $caminho, 'sha256' => str_repeat('b', 64), 'mime' => 'image/jpeg',
+            'bytes' => 10, 'upload_status' => PubImagem::PENDENTE]);
+
+        $this->servico->remover($img);
+
+        Storage::disk('local')->assertMissing($caminho);
         $this->assertSame(0, PubImagem::count());
     }
 

@@ -29,15 +29,17 @@ use Illuminate\Support\Facades\Log;
  */
 class ImagemAssetService
 {
-    public function __construct(private ClienteMlPublicador $cliente) {}
+    public function __construct(private ClienteMlPublicador $cliente, private AcervoDeImagensService $acervo) {}
 
     /**
      * @param  bool  $enviar  false = só guarda (pendente), sem chamar o ML: o Sincronizar do Portal
      *                        grava rascunho e nunca escreve no ML; a foto sobe em `enviarPendentes`
      *                        antes da conferência/publicação (D26 intacto).
+     * @param  array{origem?: string, modelo_ia?: ?string, criativo_id?: ?int}  $origem  de onde a imagem
+     *                        veio, para o acervo (v28.0): padrão upload manual; aprovação de IA passa `ia`
      * @return array{imagem: ?PubImagem, problemas: list<Problema>, nova: bool}
      */
-    public function receber(PubRascunho $r, string $conteudo, string $nomeOriginal, bool $enviar = true): array
+    public function receber(PubRascunho $r, string $conteudo, string $nomeOriginal, bool $enviar = true, array $origem = []): array
     {
         $meta = self::metadados($conteudo);
         $problemas = ValidadorImagem::problemas('nova', $meta, new ContextoValidacao());
@@ -50,28 +52,49 @@ class ImagemAssetService
             return ['imagem' => $existente, 'problemas' => $problemas, 'nova' => false];
         }
 
+        // v28.0: a foto vira (ou reaproveita) um ativo do acervo da conta — mesmo sha na mesma conta é o
+        // mesmo objeto físico. Produto sem conta fica no caminho antigo, por rascunho.
+        $ativo = null;
+        $ativoNovo = false;
         $caminho = "publicador/{$r->id}/{$sha}.".($meta['mime'] === 'image/png' ? 'png' : 'jpg');
         try {
-            ArquivosDeImagem::gravar($caminho, $conteudo);
+            $registro = $this->acervo->registrar($r->produto, $conteudo, $sha, $meta, $nomeOriginal, $origem);
+            if ($registro !== null) {
+                ['ativo' => $ativo, 'novo' => $ativoNovo] = $registro;
+                $caminho = $ativo->caminho;
+            } else {
+                ArquivosDeImagem::gravar($caminho, $conteudo);
+            }
         } catch (\Throwable $e) {
             // ARM-04: storage fora do ar não cria linha apontando para arquivo inexistente.
-            Log::warning("[Publicador] Rascunho {$r->id}: não gravou a foto {$caminho}: ".class_basename($e)." — ".$e->getMessage());
+            Log::warning("[Publicador] Rascunho {$r->id}: não gravou a foto {$caminho}: ".class_basename($e).' — '.$e->getMessage());
 
             return ['imagem' => null, 'problemas' => [...$problemas, Problema::bloqueio('V-IMG-12', 'Não foi possível guardar a foto agora. Tente de novo em instantes.', [], 'L1')], 'nova' => false];
         }
 
+        // Mesma conta do ML ⇒ se o ativo já subiu por outro rascunho, a foto já está lá: reaproveita
+        // os ids (o mesmo "sem reupload" do CriarFaseService) e não gasta cota de foto de novo.
+        $jaNoMl = $ativo === null ? null : PubImagem::query()->where('acervo_imagem_id', $ativo->id)
+            ->where('upload_status', PubImagem::ENVIADA)->whereNotNull('ml_picture_id')->first();
+
         try {
             $imagem = $r->imagens()->create([
-                'caminho' => $caminho, 'sha256' => $sha, 'mime' => $meta['mime'], 'bytes' => $meta['bytes'],
-                'largura' => $meta['largura'], 'altura' => $meta['altura'], 'upload_status' => PubImagem::PENDENTE,
+                'caminho' => $caminho, 'acervo_imagem_id' => $ativo?->id, 'sha256' => $sha, 'mime' => $meta['mime'], 'bytes' => $meta['bytes'],
+                'largura' => $meta['largura'], 'altura' => $meta['altura'],
+                'upload_status' => $jaNoMl !== null ? PubImagem::ENVIADA : PubImagem::PENDENTE,
+                'ml_picture_id' => $jaNoMl?->ml_picture_id, 'ml_url' => $jaNoMl?->ml_url,
             ]);
         } catch (QueryException $e) {
             // Corrida no `pubim_sha_uq`: outro processo guardou a mesma foto entre a checagem e o create.
             $existente = (string) $e->getCode() === '23000' ? $r->imagens()->where('sha256', $sha)->first() : null;
             if ($existente === null) {
-                // ARM-03: o insert falhou de vez — o arquivo recém-gravado não tem dono. (Na corrida
-                // do unique NÃO se apaga: o caminho é o mesmo da linha que ganhou.)
-                rescue(fn () => ArquivosDeImagem::apagar($caminho), report: false);
+                // ARM-03: o insert falhou de vez — o arquivo recém-gravado não tem dono. Ativo que já
+                // existia fica (é do acervo); o caminho antigo só se apaga fora da corrida do unique.
+                if ($ativo === null) {
+                    rescue(fn () => ArquivosDeImagem::apagar($caminho), report: false);
+                } elseif ($ativoNovo) {
+                    $this->acervo->desfazer($ativo);
+                }
 
                 throw $e;
             }
@@ -79,7 +102,9 @@ class ImagemAssetService
             return ['imagem' => $existente, 'problemas' => $problemas, 'nova' => false];
         }
 
-        return ['imagem' => $enviar ? $this->enviarAoMl($imagem, $conteudo) : $imagem, 'problemas' => $problemas, 'nova' => true];
+        $precisaSubir = $enviar && $imagem->upload_status !== PubImagem::ENVIADA;
+
+        return ['imagem' => $precisaSubir ? $this->enviarAoMl($imagem, $conteudo) : $imagem, 'problemas' => $problemas, 'nova' => true];
     }
 
     /**
@@ -154,8 +179,10 @@ class ImagemAssetService
 
     public function remover(PubImagem $imagem): void
     {
-        if ($imagem->caminho) {
-            ArquivosDeImagem::apagar($imagem->caminho);
+        // v28.0: tirar a foto do rascunho desfaz o USO, nunca apaga o objeto do acervo — ele pode estar
+        // em outro anúncio e só sai pela exclusão segura do acervo (Fase 199).
+        if ($proprio = $imagem->arquivoProprio()) {
+            ArquivosDeImagem::apagar($proprio);
         }
         $imagem->delete();
     }
