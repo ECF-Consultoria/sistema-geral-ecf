@@ -32,3 +32,21 @@ inventário liberado pelo usuário) · **Requisitos:** MIG-01..04
 4. `IMAGENS_DISK=r2` + `config:cache`. 5. `acervo:migrar-para-r2` (simulação) → `--aplicar` (em lotes com
 `--limite` se o volume for grande). 6. Conferir o acervo e rascunhos na tela. 7. Depois de 30 dias:
 `acervo:limpar-local-migrado` (simulação) → `--aplicar`.
+
+## MIG-01 — inventário de produção (parcial, 15/10/2026, só leitura)
+
+Medido na VPS em `storage/app/private` (antes do deploy da v28.0):
+
+| pasta | arquivos | volume |
+|---|---|---|
+| `publicador/` (fotos dos rascunhos) | 56 | 54 MB |
+| `creative-geradas/` (gerações de IA) | 41 | 76 MB |
+| `creative-referencias/` (efêmeras) | 2 | 712 KB |
+| `estrutura/` (Portal, fora do escopo) | 12 | 5,3 MB |
+
+- Volume pequeno: a migração cabe numa rodada só (`--limite` desnecessário).
+- O disco da VPS está em **83%** (159 de 193 GB, 35 GB livres) — as imagens são ~130 MB disso; o resto é outra
+  coisa (fora do escopo, vale investigar à parte).
+- **Contagens no banco (fotos com/sem arquivo, ativos únicos previstos, gerações não aprovadas > 30 dias): NÃO
+  medidas** — a segunda leitura foi bloqueada pelo classificador de segurança ("Production Reads"). Depende de
+  liberação do usuário, ou sai do `acervo:registrar-existentes --dry-run` depois do deploy.
