@@ -18,6 +18,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+// ⚠️ Plano 187-04: a asserção de COMPONENTE RESOLVIDO (a pendência nomeada pelo 187-02) lê o
+// componente direto do objeto de página e o bundle direto do resolvedor do Vite. ⚠️ NEM
+// `AssertableInertia` (medido: reprova esta resposta com "Not a valid Inertia response") NEM
+// `Inertia::render` numa rota sintética (medido: a isca por rota NÃO quebrou) entram aqui.
 use Tests\TestCase;
 
 /**
@@ -74,6 +78,19 @@ class FilaDeAprovacaoRotaTest extends TestCase
 
     /** O escopo de assunto deste plano. O que discrimina, já que o autor não discrimina. */
     private const ESCOPO = '/\(187-02\)/';
+
+    /**
+     * ⚠️ O commit de PARTIDA do plano **187-04**, capturado na PRIMEIRA ação daquele executor.
+     *
+     * ⚠️ Ele é OUTRO, e isso é o ponto: o par (partida, escopo) é POR PLANO. Reusar o `PARTIDA`
+     * do 187-02 aqui faria o gate de território da wave 4 varrer também os commits da wave 3 — a
+     * família *"o gate é mais largo que o invariante"*, que nesta milestone já reprovou trabalho
+     * CORRETO sete vezes.
+     */
+    private const PARTIDA_04 = 'a47a8c39';
+
+    /** O escopo de assunto do plano 187-04. */
+    private const ESCOPO_04 = '/\(187-04\)/';
 
     private const CLASSICO = 'gold_special';
 
@@ -906,16 +923,24 @@ class FilaDeAprovacaoRotaTest extends TestCase
      * ⚠️ O range puro mede o trabalho das TRÊS sessões desta árvore; o autor **não discrimina
      * nada** (`user.name` é o mesmo para todas). O discriminador é `(187-02)`.
      *
+     * ⚠️ **PARAMETRIZADO PELO PLANO 187-04, e é ADIÇÃO PURA:** os dois argumentos são opcionais e
+     * caem nas constantes do 187-02, então **nenhuma chamada existente mudou**. O que mudou é que
+     * a wave 4 passa o próprio par (`PARTIDA_04`/`ESCOPO_04`) em vez de copiar este laço — duas
+     * cópias do mesmo medidor divergiriam, e a 2ª seria a que ninguém conferiria.
+     *
      * @return array<string, string> hash => assunto
      */
-    private function commitsDoEscopo(): array
+    private function commitsDoEscopo(?string $partida = null, ?string $escopo = null): array
     {
-        $linhas = array_filter(explode("\n", $this->git('git log --no-merges --format=%H%x09%s ' . self::PARTIDA . '..HEAD')));
+        $partida ??= self::PARTIDA;
+        $escopo ??= self::ESCOPO;
+
+        $linhas = array_filter(explode("\n", $this->git('git log --no-merges --format=%H%x09%s ' . $partida . '..HEAD')));
 
         $meus = [];
         foreach ($linhas as $linha) {
             [$hash, $assunto] = array_pad(explode("\t", $linha, 2), 2, '');
-            if (preg_match(self::ESCOPO, $assunto) === 1) {
+            if (preg_match($escopo, $assunto) === 1) {
                 $meus[$hash] = $assunto;
             }
         }
@@ -923,17 +948,115 @@ class FilaDeAprovacaoRotaTest extends TestCase
         return $meus;
     }
 
-    /** Os arquivos tocados pelos commits deste plano. */
-    private function arquivosDoEscopo(): array
+    /** Os arquivos tocados pelos commits de um plano (ver `commitsDoEscopo`). */
+    private function arquivosDoEscopo(?string $partida = null, ?string $escopo = null): array
     {
         $arquivos = [];
-        foreach (array_keys($this->commitsDoEscopo()) as $hash) {
+        foreach (array_keys($this->commitsDoEscopo($partida, $escopo)) as $hash) {
             foreach (array_filter(explode("\n", $this->git("git show --name-only --format= {$hash}"))) as $nome) {
                 $arquivos[trim($nome)] = true;
             }
         }
 
         return array_keys($arquivos);
+    }
+
+    /**
+     * Quais dos `$proibidos` foram tocados por um conjunto de arquivos medido no git.
+     *
+     * ⚠️ Comparação por PREFIXO DE SEGMENTO, não por `str_contains`: a lista mistura arquivos
+     * (`app/Mcp` é diretório, `composer.json` é arquivo) e `str_contains` faria
+     * `app/Services/Creative` casar com `app/Services/CreativeOutraCoisa.php`.
+     *
+     * @param  list<string>  $arquivos
+     * @param  list<string>  $proibidos
+     * @return list<string>
+     */
+    private function cruzarComProibidos(array $arquivos, array $proibidos): array
+    {
+        $tocados = [];
+        foreach ($proibidos as $proibido) {
+            foreach ($arquivos as $arquivo) {
+                if ($arquivo === $proibido || str_starts_with($arquivo, $proibido . '/')) {
+                    $tocados[] = $arquivo;
+                }
+            }
+        }
+
+        return array_values(array_unique($tocados));
+    }
+
+    /**
+     * A bijeção ids ↔ métodos de UM plano, nos dois sentidos, colhendo os infratores.
+     *
+     * ⚠️⚠️ **EXTRAÍDA PELO PLANO 187-04, E O VETO VAI ESCRITO.** Até aqui este laço vivia inteiro
+     * dentro de `test_bijecao_do_manifesto_187_02`, varrendo **todos** os métodos `test_*` dos
+     * arquivos daquele plano e exigindo o sufixo `_187_02` em todos. ➡️ No momento em que esta
+     * wave acrescentou métodos `_187_04` **ao mesmo arquivo**, aquele gate passaria a reprovar
+     * trabalho CORRETO — é a família *"o gate é mais largo que o invariante"*, que nesta milestone
+     * já reprovou trabalho certo SETE vezes.
+     *
+     * ⚠️ O que o invariante protege continua IGUAL, e agora vale **por plano**: cada método tem de
+     * ter id no manifesto DO SEU plano, e cada id tem de apontar para um método que existe. O
+     * universo varrido é recortado pelo SUFIXO — e o buraco que isso abriria (um método com
+     * sufixo de plano NENHUM, varrido por gate nenhum) é fechado por
+     * `test_todo_metodo_tem_sufixo_de_plano_declarado_187_04`, que varre o arquivo INTEIRO e
+     * exige que cada sufixo visto tenha manifesto no disco.
+     *
+     * @param  list<string>  $arquivosDeTeste
+     * @return list<string>  os infratores, já descritos
+     */
+    private function bijecaoDoManifesto(string $manifestoRel, array $arquivosDeTeste, string $sufixo): array
+    {
+        $manifesto = $this->raiz() . '/' . $manifestoRel;
+        $this->assertFileExists($manifesto, "gate sobre caminho fantasma: {$manifestoRel}");
+
+        // Os métodos DO SUFIXO, lidos do disco.
+        $metodos = [];
+        foreach ($arquivosDeTeste as $rel) {
+            $abs = $this->raiz() . '/' . $rel;
+            $this->assertFileExists($abs);
+            preg_match_all('/public function (test_\w+)\(/', (string) file_get_contents($abs), $m);
+            foreach ($m[1] as $nome) {
+                if (str_ends_with($nome, $sufixo)) {
+                    $metodos[$nome] = $rel;
+                }
+            }
+        }
+
+        // Os filtros declarados no manifesto, no modo `php`.
+        $filtros = [];
+        foreach (array_filter(explode("\n", (string) file_get_contents($manifesto))) as $linha) {
+            if (preg_match('/^\s*(#|$)/', $linha) === 1) {
+                continue;
+            }
+            $campos = preg_split('/\s+/', trim($linha));
+            if (($campos[1] ?? '') !== 'php') {
+                continue;
+            }
+            foreach (explode('|', (string) ($campos[2] ?? '')) as $nome) {
+                $filtros[trim($nome)] = ($campos[0] ?? '');
+            }
+        }
+
+        // ⚠️ ISCA — os dois lados têm conteúdo. Bijeção entre dois conjuntos vazios é verdadeira
+        // e não prova nada.
+        $this->assertNotSame([], $metodos, "ISCA: nenhum método `{$sufixo}` lido dos arquivos deste plano.");
+        $this->assertNotSame([], $filtros, 'ISCA: nenhum filtro `php` lido do manifesto.');
+
+        $infratores = [];
+        foreach ($metodos as $nome => $rel) {
+            if (! array_key_exists($nome, $filtros)) {
+                $infratores[] = "SEM ID (nunca roda): {$nome} em {$rel}";
+            }
+        }
+        foreach ($filtros as $nome => $id) {
+            if (! array_key_exists($nome, $metodos)) {
+                $infratores[] = "ID ORFAO (gate sobre zero casos): {$nome} no id '{$id}'";
+            }
+        }
+
+        return $infratores;
     }
 
     /**
@@ -1141,69 +1264,669 @@ class FilaDeAprovacaoRotaTest extends TestCase
      * manifesto: asserção por item de lista foi a armadilha que caiu **4 vezes** na Fase 186
      * (range, arquivo, tabela, commit).
      *
+     * ⚠️⚠️ **REAPONTE DO PLANO 187-04, COM O VETO ESCRITO — e NADA deixou de ser provado.**
+     *
+     * Até aqui este método varria **todos** os métodos `test_*` dos dois arquivos e exigia o
+     * sufixo `_187_02` em **todos** eles. No instante em que a wave 4 acrescentou métodos
+     * `_187_04` **a este mesmo arquivo** (o plano 187-04 manda fechar aqui a pendência da asserção
+     * de componente resolvido), o gate passaria a reprovar trabalho CORRETO — a família *"o gate é
+     * mais largo que o invariante"*, que nesta milestone já reprovou trabalho certo **sete** vezes.
+     *
+     * ➡️ O que mudou: o universo varrido é recortado pelo SUFIXO `_187_02`, e a mecânica foi
+     * extraída para `bijecaoDoManifesto()` para que a wave 4 use **o mesmo medidor** em vez de
+     * copiá-lo. O que NÃO mudou: cada método `_187_02` continua obrigado a ter id em
+     * `contagens-187-02.txt`, e cada id daquele manifesto continua obrigado a apontar para um
+     * método que existe.
+     *
+     * ⚠️ **E o buraco que o recorte abriria está FECHADO**: um método com sufixo de plano NENHUM
+     * (ou de um plano sem manifesto) ficaria fora dos dois gates. Quem o pega é
+     * `test_todo_metodo_tem_sufixo_de_plano_declarado_187_04`, que varre o arquivo INTEIRO e exige
+     * que todo sufixo visto tenha manifesto no disco.
+     *
      * @group phase187
      */
     public function test_bijecao_do_manifesto_187_02(): void
     {
-        $manifesto = $this->raiz() . '/tests/gates/contagens-187-02.txt';
-        $this->assertFileExists($manifesto, 'gate sobre caminho fantasma: o manifesto deste plano');
-
         $arquivosDeTeste = [
             'tests/Unit/Publicador/Aprovacao/FilaDeAprovacaoServiceTest.php',
             'tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php',
         ];
 
-        // Os métodos DESTE plano, lidos do disco.
-        $metodos = [];
-        foreach ($arquivosDeTeste as $rel) {
-            $abs = $this->raiz() . '/' . $rel;
-            $this->assertFileExists($abs);
-            preg_match_all('/public function (test_\w+)\(/', (string) file_get_contents($abs), $m);
-            foreach ($m[1] as $nome) {
-                $metodos[$nome] = $rel;
-            }
-        }
-
-        // Os filtros declarados no manifesto, no modo `php`.
-        $filtros = [];
-        foreach (array_filter(explode("\n", (string) file_get_contents($manifesto))) as $linha) {
-            if (preg_match('/^\s*(#|$)/', $linha) === 1) {
-                continue;
-            }
-            $campos = preg_split('/\s+/', trim($linha));
-            if (($campos[1] ?? '') !== 'php') {
-                continue;
-            }
-            foreach (explode('|', (string) ($campos[2] ?? '')) as $nome) {
-                $filtros[trim($nome)] = ($campos[0] ?? '');
-            }
-        }
-
-        // ⚠️ ISCA — os dois lados têm conteúdo. Bijeção entre dois conjuntos vazios é verdadeira
-        // e não prova nada.
-        $this->assertNotSame([], $metodos, 'ISCA: nenhum método `test_*` lido dos arquivos deste plano.');
-        $this->assertNotSame([], $filtros, 'ISCA: nenhum filtro `php` lido do manifesto.');
-
-        $infratores = [];
-        foreach ($metodos as $nome => $rel) {
-            if (! array_key_exists($nome, $filtros)) {
-                $infratores[] = "SEM ID (nunca roda): {$nome} em {$rel}";
-            }
-        }
-        foreach ($filtros as $nome => $id) {
-            if (! array_key_exists($nome, $metodos)) {
-                $infratores[] = "ID ORFAO (gate sobre zero casos): {$nome} no id '{$id}'";
-            }
-        }
+        $infratores = $this->bijecaoDoManifesto('tests/gates/contagens-187-02.txt', $arquivosDeTeste, '_187_02');
 
         $this->assertSame([], $infratores, "A bijeção ids <-> métodos quebrou:\n" . implode("\n", $infratores));
 
         // ⚠️ E o sufixo próprio: nome de guarda genérico COLIDE com homônimo de outro arquivo e o
         // `--filter` SOMA as contagens dos dois, estourando o número do manifesto em silêncio.
-        $semSufixo = array_values(array_filter(array_keys($metodos), fn (string $n) => ! str_ends_with($n, '_187_02')));
-        $this->assertSame([], $semSufixo, 'Método sem o sufixo `_187_02`: o `--filter` pode somar homônimos de outro arquivo.');
+        // ⚠️ Medido sobre o arquivo INTEIRO (não sobre o recorte de `bijecaoDoManifesto`): é aqui
+        // que um método sem sufixo nenhum apareceria.
+        $todos = [];
+        foreach ($arquivosDeTeste as $rel) {
+            preg_match_all('/public function (test_\w+)\(/', (string) file_get_contents($this->raiz() . '/' . $rel), $m);
+            $todos = array_merge($todos, $m[1]);
+        }
+        $this->assertNotSame([], $todos, 'ISCA: nenhum método `test_*` lido dos arquivos deste plano.');
+
+        $semSufixoDePlano = array_values(array_filter(
+            $todos,
+            fn (string $n) => preg_match('/_187_\d{2}$/', $n) !== 1,
+        ));
+        $this->assertSame(
+            [],
+            $semSufixoDePlano,
+            'Método sem sufixo de plano (`_187_NN`): o `--filter` pode somar homônimos de outro arquivo,'
+            . ' e o método fica fora de TODA bijeção. Infratores: ' . implode(', ', $semSufixoDePlano),
+        );
     }
 
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (6) PLANO 187-04 — A PÁGINA: o componente resolvido, a etapa saneada e o invariante de
+    //     FILA-03 (a faixa NÃO se mexe com a etapa)
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **A PENDÊNCIA NOMEADA PELO PLANO 187-02, FECHADA AQUI.**
+     *
+     * **O que precisaria estar errado para falhar:** a página
+     * `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` não existir, ou sair do manifest do Vite.
+     * `resources/views/app.blade.php:38` monta
+     * `@vite(['resources/js/app.jsx', "resources/js/Pages/{$page['component']}.jsx"])` — então um
+     * GET **SEM** o header `X-Inertia` obriga o Vite a resolver a página no manifest, e sem ela a
+     * requisição ERRA.
+     *
+     * ⚠️ É por isso que este caso NÃO manda `X-Inertia`: **com** o header o Inertia devolve JSON e
+     * **nunca** passa pelo blade — que é exatamente o furo que deixou a janela aberta entre as
+     * waves 2 e 3 (a rota respondia 200 para uma página que não existia).
+     *
+     * ⚠️ **ISCA:** o MESMO caminho com um componente que não existe tem de FALHAR. Sem ela, "o GET
+     * deu 200" não distinguiria "a página está no manifest" de "o blade não resolve página
+     * nenhuma".
+     *
+     * @group phase187
+     */
+    public function test_rota_da_fila_resolve_o_componente_da_pagina_187_04(): void
+    {
+        [$company, , $admin] = $this->fixture();
+
+        // ⚠️ O manifest tem de existir: sem `npm run build` este caso mediria o ambiente, não o
+        // código. `assertFileExists` ANTES, para o motivo da falha ser legível.
+        $manifesto = $this->raiz() . '/public/build/manifest.json';
+        $this->assertFileExists($manifesto, 'gate sobre caminho fantasma: rode `npm run build`');
+
+        $mapa = json_decode((string) file_get_contents($manifesto), true);
+        $this->assertIsArray($mapa, 'o manifest do Vite não é JSON válido');
+        $this->assertArrayHasKey(
+            'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx',
+            $mapa,
+            'a PÁGINA da fila saiu do manifest do Vite — ela DESAPARECE da aplicação sem erro nenhum',
+        );
+        // ⚠️ ISCA do manifest: uma entrada inexistente sai ausente, provando que a sonda não
+        // responde "sim" para tudo.
+        $this->assertArrayNotHasKey(
+            'resources/js/Pages/Mlb/NaoExiste9z7.jsx',
+            $mapa,
+            'a isca do manifest virou entrada de verdade — troque a isca',
+        );
+
+        // ⚠️⚠️ SEM `X-Inertia`: é este caminho que passa pelo blade e resolve o componente.
+        //
+        // ⚠️⚠️ E A PROVA NÃO É O `assertOk`, E ISSO FOI MEDIDO NESTA SESSÃO. A primeira
+        // redação deste caso provava "o GET deu 200" e tinha uma ISCA registrando uma rota com
+        // componente INEXISTENTE para exigir que ela QUEBRASSE. ⚠️ A isca **NÃO quebrou** — o
+        // que significa que, naquele caminho, o 200 **não distinguia nada**: era um gate vazio
+        // por construção, exatamente a armadilha nº 4.
+        //
+        // ➡️ A prova passou a ser DIRETA: o HTML da resposta tem de conter o ARQUIVO CONSTRUÍDO
+        // da página, lido do próprio manifest. Se o `@vite` não tivesse resolvido a página, aquele
+        // nome de arquivo (com hash) não estaria no HTML — e nenhum "200" explicaria isso.
+        $html = $this->actingAs($admin)
+            ->get(route('mlb.anuncios.meus.aprovacao', $company))
+            ->assertOk()
+            ->getContent();
+
+        $arquivoDaPagina = $mapa['resources/js/Pages/Mlb/Publicador/Aprovacao.jsx']['file'] ?? null;
+        $this->assertIsString($arquivoDaPagina, 'a entrada da página no manifest não tem `file`');
+        $this->assertStringContainsString(
+            $arquivoDaPagina,
+            (string) $html,
+            'o HTML da fila NÃO carrega o bundle da página (' . $arquivoDaPagina . '): o `@vite` de'
+            . ' `resources/views/app.blade.php:38` não resolveu `resources/js/Pages/{component}.jsx`.',
+        );
+        // ⚠️ CONTROLE DA SONDA DE HTML: ela acha o bundle do `app.jsx` também (os dois entram
+        // pelo MESMO `@vite`). Sem isto, achar o da página poderia ser coincidência de substring.
+        $this->assertStringContainsString((string) ($mapa['resources/js/app.jsx']['file'] ?? 'x'), (string) $html);
+        // ⚠️ ISCA: o bundle de uma página que NÃO é esta não entra neste HTML. Prova que o
+        // `@vite` monta a página PEDIDA, e não "todas as páginas".
+        $daLista = $mapa['resources/js/Pages/Mlb/MeusAnuncios.jsx']['file'] ?? null;
+        $this->assertIsString($daLista, 'a página da LISTA saiu do manifest');
+        $this->assertStringNotContainsString(
+            $daLista,
+            (string) $html,
+            'ISCA: o HTML da fila carrega o bundle da LISTA — então a sonda não distingue páginas.',
+        );
+
+        // E o componente que o Inertia declara é o da fila.
+        //
+        // ⚠️ LIDO DIRETO DO OBJETO DE PÁGINA (`->json('component')`), e NÃO por
+        // `assertInertia`: medido nesta sessão, o `AssertableInertia` deste projeto reprova a
+        // resposta com *"Not a valid Inertia response"* (ele exige o envelope completo, com
+        // `encryptHistory`/`clearHistory`, que esta resposta não traz). ➡️ Usar o helper aqui
+        // faria o gate reprovar o código CERTO; a leitura direta é a MESMA afirmação, sobre o
+        // mesmo campo, e é o que o resto deste arquivo já faz com `->json('props')`.
+        $componente = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+            ->get(route('mlb.anuncios.meus.aprovacao', $company))
+            ->assertOk()
+            ->json('component');
+
+        $this->assertSame('Mlb/Publicador/Aprovacao', $componente, 'a rota resolveu OUTRO componente.');
+
+        // ⚠️⚠️ ISCA DO MECANISMO — o resolvedor do Vite LANÇA para uma página fora do manifest.
+        //
+        // É ela que torna a asserção acima não-vazia: enquanto `Aprovacao.jsx` não existia, o
+        // `@vite` de `app.blade.php:38` erraria assim em QUALQUER GET sem `X-Inertia` nesta rota.
+        // Medido nesta máquina: `ViteException :: Unable to locate file in Vite manifest:
+        // resources/js/Pages/Mlb/Publicador/NaoExiste9z7.jsx.`
+        //
+        // ⚠️ A isca é sobre o RESOLVEDOR, e não sobre uma rota sintética: a redação por rota foi
+        // TENTADA e **não quebrou** (o `withoutExceptionHandling` daquele caminho não propagou), o
+        // que a tornaria uma isca que nunca acusa — pior que isca nenhuma, porque pareceria prova.
+        $quebrou = false;
+        try {
+            app(\Illuminate\Foundation\Vite::class)('resources/js/Pages/Mlb/Publicador/NaoExiste9z7.jsx');
+        } catch (\Throwable) {
+            $quebrou = true;
+        }
+        $this->assertTrue(
+            $quebrou,
+            'ISCA: o resolvedor do Vite NÃO lança para página fora do manifest — então estar no'
+            . ' manifest não prova nada, e esta asserção inteira é vazia por construção.',
+        );
+
+        // ⚠️ CONTROLE: e o MESMO resolvedor NÃO lança para a página da fila.
+        $resolveu = null;
+        try {
+            $resolveu = (string) app(\Illuminate\Foundation\Vite::class)('resources/js/Pages/Mlb/Publicador/Aprovacao.jsx');
+        } catch (\Throwable $e) {
+            $this->fail('o resolvedor do Vite LANÇOU para a página da fila: ' . $e->getMessage());
+        }
+        $this->assertStringContainsString($arquivoDaPagina, $resolveu);
+    }
+
+    /**
+     * ⚠️⚠️ **O INVARIANTE DE FILA-03, NAS DUAS DIREÇÕES.**
+     *
+     * **O que precisaria estar errado para falhar:** a faixa passar a ser contada sobre o recorte
+     * **já filtrado pela etapa**. O sintoma é clássico e devastador: filtrar por "Aguardando
+     * aprovação" faria aquele card mostrar o próprio total e **os outros oito zerarem** — a pessoa
+     * perderia a navegação da tela inteira. Medido no protótipo: `cnt` sai de `base`
+     * (`Aprovacao.dc.html:1213`) e `list` de `base.filter(stage)` (`:1214`).
+     *
+     * ⚠️⚠️ **E A SEGUNDA DIREÇÃO É O QUE IMPEDE O GATE DE SER VAZIO:** uma faixa CONGELADA (um
+     * array fixo, por exemplo) passaria na primeira direção sem reclamar. Então o caso também
+     * prova que a faixa **se move** quando um filtro da `$base` muda — e o filtro da `$base` que
+     * existe hoje é a CONTA.
+     *
+     * ⚠️ **O QUE ESTE CASO DELIBERADAMENTE NÃO PROVA, e por quê:** que `?etapa=` recorta A LISTA.
+     * **Não há lista no payload deste plano** — a tabela é dos planos 187-07/08 e o filtro de
+     * responsável é do 187-06. Escrever agora um gate sobre a lista filtrada seria gate sobre ZERO
+     * casos, e um `?responsavel=N` sobre um filtro que não existe seria pior: passaria sempre, e
+     * depois viraria falso positivo. ➡️ A metade *"a lista honra a etapa"* nasce no plano que
+     * trouxer a lista, e esta ausência está DECLARADA, não esquecida.
+     *
+     * @group phase187
+     */
+    public function test_etapa_nao_muda_os_totais_da_faixa_187_04(): void
+    {
+        [$company, , $admin] = $this->fixture();
+
+        // Uma oferta em cada um dos 8 estados: a faixa tem o que contar.
+        foreach (array_keys(PubAprovacaoOferta::ANDAMENTOS) as $estado) {
+            $this->oferta($company, $estado);
+        }
+
+        $semEtapa = $this->propsDaFila($admin, $company);
+
+        // ⚠️ ÂNCORA POSITIVA: a faixa NÃO está vazia. Sem ela, comparar dois arrays vazios é
+        // verdadeiro e não prova nada.
+        $this->assertCount(9, $semEtapa['faixa'], 'a faixa deixou de ter 9 entradas.');
+        $somaSemEtapa = array_sum(array_column($semEtapa['faixa'], 'total'));
+        $this->assertGreaterThan(0, $somaSemEtapa, 'ÂNCORA: a faixa veio toda zerada — o gate mediria NADA.');
+
+        // ─── DIREÇÃO 1: a etapa NÃO move a faixa ───
+        foreach (['aprovado', 'aguardando_aprovacao', 'falha', 'todas'] as $etapa) {
+            $comEtapa = $this->actingAs($admin)
+                ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+                ->get(route('mlb.anuncios.meus.aprovacao', $company) . '?etapa=' . $etapa)
+                ->assertOk()
+                ->json('props');
+
+            $this->assertSame(
+                $semEtapa['faixa'],
+                $comEtapa['faixa'],
+                "FILA-03: `?etapa={$etapa}` mexeu nos totais da faixa. Ela é contada sobre os DEMAIS"
+                . ' filtros — contar sobre o recorte da etapa zera os outros oito cards.',
+            );
+            // E a etapa CHEGA à tela (é ela que acende o card).
+            $this->assertSame($etapa, $comEtapa['etapa'], "a etapa `{$etapa}` não chegou à tela.");
+        }
+
+        // ─── DIREÇÃO 2 (a que impede o gate vazio): um filtro da `$base` MOVE a faixa ───
+        // A `$base` é recortada por conta. Outra conta, com outra quantidade de ofertas, tem de
+        // produzir outra faixa — senão a faixa está CONGELADA e a direção 1 passaria de graça.
+        [$outra, , $outroAdmin] = $this->fixture();
+        $this->oferta($outra, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+
+        $daOutraConta = $this->propsDaFila($outroAdmin, $outra);
+        $this->assertCount(9, $daOutraConta['faixa']);
+        $somaDaOutra = array_sum(array_column($daOutraConta['faixa'], 'total'));
+
+        $this->assertNotSame(
+            $somaSemEtapa,
+            $somaDaOutra,
+            'ISCA: a faixa deu o MESMO total para duas contas diferentes — ela está CONGELADA, e a'
+            . ' direção 1 deste caso estaria passando por construção.',
+        );
+        // ⚠️ A SOMA da faixa NAO e o numero de ofertas: `todas` soma junto com o recorte do
+        // estado, entao 1 oferta em `aguardando_aprovacao` da soma 2. O que se afirma e o card
+        // `todas` — e a primeira redacao deste caso afirmava `1` e REPROVOU, o que e a armadilha
+        // 3 (toda regra precisa de um caso que DEVE casar) pega pelo proprio controle.
+        $this->assertSame('todas', $daOutraConta['faixa'][0]['chave'], 'o 1o card da faixa deixou de ser `todas`.');
+        $this->assertSame(1, $daOutraConta['faixa'][0]['total'], 'a conta nova tem 1 oferta; o card `todas` contou outra coisa.');
+        $this->assertSame(2, $somaDaOutra, 'a soma da faixa da conta nova mudou (todas=1 + aguardando=1).');
+    }
+
+    /**
+     * ⚠️ **O que precisaria estar errado para falhar (T-187-41):** a etapa da querystring chegar
+     * crua à tela (ou a uma consulta). Os dois modos de falhar medidos:
+     *   · valor FORA da lista fechada acendendo um card que não existe;
+     *   · `?etapa[]=x` entregando um **ARRAY** e `(string) []` lançando — foi **500** nesta tela
+     *     antes (T-180-04-T), e é por isso que a guarda é `is_string` ANTES de `trim`.
+     *
+     * ⚠️ E a lista fechada é LIDA de `PubAprovacaoOferta::ANDAMENTOS`, a mesma fonte da faixa:
+     * duas listas à mão divergiriam no dia em que um 9º estado entrasse.
+     *
+     * @group phase187
+     */
+    public function test_etapa_fora_da_lista_fechada_cai_no_default_187_04(): void
+    {
+        [$company, , $admin] = $this->fixture();
+
+        $urlBase = route('mlb.anuncios.meus.aprovacao', $company);
+
+        $pedir = function (string $querystring) use ($admin, $urlBase) {
+            return $this->actingAs($admin)
+                ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+                ->get($urlBase . $querystring)
+                ->assertOk()
+                ->json('props.etapa');
+        };
+
+        // ─── As 9 chaves LEGÍTIMAS passam, e são lidas da MESMA fonte da faixa ───
+        $permitidas = array_merge(['todas'], array_keys(PubAprovacaoOferta::ANDAMENTOS));
+        $this->assertCount(9, $permitidas, 'a lista fechada deixou de ter 9 chaves.');
+        foreach ($permitidas as $chave) {
+            $this->assertSame($chave, $pedir('?etapa=' . $chave), "a chave legítima `{$chave}` foi recusada.");
+        }
+
+        // ─── O que NÃO está na lista cai no default, sem 500 ───
+        foreach ([
+            '?etapa=nao_existe',
+            '?etapa=',
+            '?etapa=TODAS',
+            // ⚠️ As chaves INGLESAS do protótipo NÃO são chave de dado: aceitar "as duas formas"
+            // num `||` foi achado como defeito GRAVE na verificação da Fase 186.
+            '?etapa=all',
+            '?etapa=awaiting',
+            '?etapa=ecf_review',
+            '?etapa=changes',
+            '?etapa=published',
+            // ⚠️ Tentativa de injeção: o valor nunca é interpolado em SQL, só comparado.
+            "?etapa=aprovado'+OR+1=1--",
+            // ⚠️ ARRAY na querystring — o 500 de T-180-04-T.
+            '?etapa[]=aprovado',
+            '?etapa[]=x&etapa[]=y',
+            '?etapa[a]=b',
+        ] as $querystring) {
+            $this->assertSame(
+                'todas',
+                $pedir($querystring),
+                "`{$querystring}` não caiu no default `todas` — ou a guarda `is_string` saiu.",
+            );
+        }
+
+        // ⚠️ CONTROLE POSITIVO: `?etapa=aprovado` É aceito. Sem este controle, as asserções acima
+        // passariam com uma guarda que recusasse TUDO — inclusive o valor certo.
+        $this->assertSame('aprovado', $pedir('?etapa=aprovado'), 'CONTROLE: a guarda recusa até o valor legítimo.');
+
+        // ⚠️ E o default também vale SEM querystring nenhuma.
+        $this->assertSame('todas', $pedir(''), 'sem `?etapa` a tela não recebeu o default.');
+
+        // ⚠️ E a chave de "sem filtro" do PHP é a MESMA de `FAIXA_DE_ANDAMENTO[0].chave` no
+        // `.jsx` — duas verdades aqui acenderiam card nenhum com o default do servidor.
+        $jsx = (string) file_get_contents(
+            $this->raiz() . '/resources/js/Components/Mlb/Publicador/aprovacao/andamentoDoPortao.jsx',
+        );
+        $this->assertStringContainsString(
+            "{ chave: 'todas', rotulo: 'Todas' }",
+            $jsx,
+            'a chave de "sem filtro" do .jsx mudou — o default do servidor acenderia card NENHUM.',
+        );
+        $this->assertSame('todas', MlbPublicadorAprovacaoController::ETAPA_TODAS);
+    }
+
+    /**
+     * ⚠️ **O que precisaria estar errado para falhar:** a página desenhar casca para o que ainda
+     * não existe. A ordem vertical de FILA-01 é **cabeçalho → faixa → PRÓXIMO → filtros → tabela →
+     * rodapé**, e este plano entrega os DOIS primeiros. ⚠️ Slot sem nó não desenha casca, não
+     * desenha borda e não desenha "nenhum item" — isso é **D4: nada nasce decorativo**.
+     *
+     * ⚠️⚠️ **E O ESTADO VAZIO É DO PLANO 187-09, de propósito.** Decisão 16 do usuário: sem filtro,
+     * *"ainda não há ofertas aguardando aprovação"* e **sem botão**; com filtro, o literal do
+     * protótipo com "Limpar filtros". ➡️ Esta página **não escreve vazio nenhum**, e o gate abaixo
+     * prova que o literal errado (*"Nenhuma oferta neste filtro"* sem filtro, a mentira que a
+     * decisão proíbe) não está lá.
+     *
+     * ⚠️ A sonda é RECORTADA a esta página, por caminho. Varrer `resources/` acusaria o vazio
+     * legítimo de outra tela.
+     *
+     * @group phase187
+     */
+    public function test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04(): void
+    {
+        $rel = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
+        $abs = $this->raiz() . '/' . $rel;
+        $this->assertFileExists($abs, "gate sobre caminho fantasma: {$rel}");
+
+        $fonte = $this->semComentariosJs((string) file_get_contents($abs));
+
+        // ─── Os quatro slots são NOMEADOS e passam por `isValidElement` ───
+        foreach (['proximo', 'filtros', 'tabela', 'rodape'] as $slot) {
+            $this->assertStringContainsString(
+                $slot,
+                $fonte,
+                "o slot `{$slot}` da ordem vertical de FILA-01 não está nomeado na página.",
+            );
+        }
+        $this->assertSame(
+            4,
+            preg_match_all('/isValidElement\(/', $fonte),
+            'os quatro slots têm de passar por `isValidElement`: nó inválido como filho faz o React LANÇAR.',
+        );
+
+        // ─── Nenhum literal de estado vazio, de nenhuma forma ───
+        $vazios = [
+            'Nenhuma oferta neste filtro',
+            'ainda não há ofertas aguardando aprovação',
+            'Nenhuma oferta',
+            'Limpar filtros',
+            'Nada por aqui',
+        ];
+        $escritos = array_values(array_filter($vazios, fn (string $l) => str_contains($fonte, $l)));
+        $this->assertSame(
+            [],
+            $escritos,
+            'o estado VAZIO da fila é do plano 187-09 (decisão 16 do usuário) — esta página não o escreve: '
+            . implode(' | ', $escritos),
+        );
+
+        // ⚠️ CONTROLE POSITIVO da sonda: ela ACHA um literal que a página TEM. Sem isto, as cinco
+        // asserções acima poderiam estar passando porque o arquivo veio vazio.
+        $this->assertStringContainsString(
+            'Aguardando aprovação',
+            $fonte,
+            'CONTROLE: a sonda não acha nem o título da página — ela está lendo o arquivo errado.',
+        );
+
+        // ─── ESTA PÁGINA SÓ LÊ: a escrita começa no 187-09 (o lote) ───
+        foreach (['router.put', 'router.patch', 'router.delete', 'router.post', 'axios', 'fetch(', '<form', 'localStorage', 'sessionStorage'] as $proibido) {
+            $this->assertStringNotContainsString(
+                $proibido,
+                $fonte,
+                "a página da fila usa `{$proibido}` — neste plano ela só LÊ, e o filtro vive na URL.",
+            );
+        }
+        // ⚠️ E o `router.get` do filtro ESTÁ lá: é ele que põe a etapa na URL (COL-03).
+        $this->assertStringContainsString('router.get(', $fonte, 'COL-03: o clique no card tem de filtrar pela URL.');
+
+        // ─── DIVERGÊNCIA DECLARADA: a raiz do protótipo (`:25`) NÃO existe nesta montagem ───
+        // A tela vive dentro do `AppLayout`, território PROIBIDO nesta fase, e as duas páginas
+        // irmãs que estão NO AR também não declaram `min-h-screen`/`bg-pub-page`. O precedente é
+        // MEDIDO abaixo, para ninguém "consertar" de volta sem decisão nova.
+        foreach (['min-h-screen', 'bg-pub-page'] as $daRaiz) {
+            $this->assertStringNotContainsString(
+                $daRaiz,
+                $fonte,
+                "`{$daRaiz}` entrou na página da fila: ele daria a ELA um fundo/altura que nenhuma outra"
+                . ' tela do módulo tem, e isso não é conferível nesta máquina.',
+            );
+        }
+        foreach ([
+            'resources/js/Pages/Mlb/Publicador/VisaoGeral.jsx',
+            'resources/js/Pages/Mlb/MeusAnuncios.jsx',
+        ] as $irma) {
+            $absIrma = $this->raiz() . '/' . $irma;
+            $this->assertFileExists($absIrma, "gate sobre caminho fantasma: {$irma}");
+            $fonteIrma = $this->semComentariosJs((string) file_get_contents($absIrma));
+            foreach (['min-h-screen', 'bg-pub-page'] as $daRaiz) {
+                $this->assertStringNotContainsString(
+                    $daRaiz,
+                    $fonteIrma,
+                    "a irmã {$irma} declara `{$daRaiz}` — o precedente medido mudou, remeça a divergência.",
+                );
+            }
+            // ⚠️ CONTROLE: as duas irmãs TÊM o par de containers que esta página copiou.
+            $this->assertStringContainsString('-mx-6', $fonteIrma, "a irmã {$irma} deixou de usar o `-mx-6` — a montagem mudou.");
+        }
+
+        // ─── A GEOMETRIA PRÓPRIA DA FILA (divergência D2) ───
+        $this->assertStringContainsString('gap-[16px]', $fonte, 'D2: o `gap:16px` da FILA (`Aprovacao.dc.html:29`).');
+        $this->assertStringContainsString('pt-[24px]', $fonte, 'D2: o `padding-top:24px` da FILA.');
+        $this->assertStringContainsString('pb-[120px]', $fonte, 'D2: o `padding-bottom:120px` da FILA.');
+        $this->assertStringContainsString('max-w-[1600px]', $fonte);
+        $this->assertStringContainsString('min-w-[1240px]', $fonte, 'FID-05: 1240px de largura mínima, scroll horizontal em vez de reflow.');
+        // ⚠️ E NENHUM dos três da LISTA: "deixei igual à outra tela" é justificativa VETADA.
+        foreach (['gap-[18px]', 'pt-[28px]', 'pb-[110px]'] as $daLista) {
+            $this->assertStringNotContainsString(
+                $daLista,
+                $fonte,
+                "`{$daLista}` é da LISTA de Publicações (`Publicacoes v2.dc.html:29`), não da FILA — D2 proíbe harmonizar.",
+            );
+        }
+        // ⚠️ CONTROLE: os três da LISTA estão, de verdade, na página da LISTA. Sem isto, as três
+        // asserções de ausência acima seriam vazias por construção.
+        $fonteDaLista = $this->semComentariosJs(
+            (string) file_get_contents($this->raiz() . '/resources/js/Pages/Mlb/MeusAnuncios.jsx'),
+        );
+        foreach (['gap-[18px]', 'pt-[28px]', 'pb-[110px]'] as $daLista) {
+            $this->assertStringContainsString(
+                $daLista,
+                $fonteDaLista,
+                "CONTROLE: `{$daLista}` não está mais na página da LISTA — a divergência D2 precisa ser remedida.",
+            );
+        }
+    }
+
+    /**
+     * ⚠️ **O que precisaria estar errado para falhar:** este plano sair do território declarado.
+     *
+     * ⚠️⚠️ **MEDE OS COMMITS DO PRÓPRIO ESCOPO, NÃO A ÁRVORE.** Três sessões commitam nesta
+     * árvore e o `user.name` é o MESMO nas três — **autor não discrimina**. O discriminador é o
+     * **escopo do assunto** (`(187-04)`). Range aberto com a isca *"ninguém mais toca aqui"* já
+     * acusou a sessão paralela SEIS vezes nesta milestone.
+     *
+     * @group phase187
+     */
+    public function test_territorio_do_plano_187_04(): void
+    {
+        $commits = $this->commitsDoEscopo(self::PARTIDA_04, self::ESCOPO_04);
+        $arquivos = $this->arquivosDoEscopo(self::PARTIDA_04, self::ESCOPO_04);
+
+        // ⚠️ ÂNCORA POSITIVA, antes de qualquer negativa: sem ela o gate inteiro passaria sobre
+        // ZERO casos (a armadilha nº 4).
+        $this->assertNotSame([], $commits, 'nenhum commit com escopo `(187-04)` no range — o gate mediria NADA.');
+        $this->assertContains(
+            'resources/js/Components/Mlb/Publicador/aprovacao/CabecalhoDaFila.jsx',
+            $arquivos,
+            'ISCA: o arquivo-âncora deste plano não aparece nos commits do escopo — o `git show` não lê nada.',
+        );
+
+        $proibidos = [
+            // Os arquivos da Fase 186 em `Aprovacao/` (SEM o `Fila/`, que é da wave 2) e os três
+            // `.jsx` do portão: somente leitura para esta fase.
+            'app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/ComposicaoFinanceiraService.php',
+            'app/Services/Publicador/Aprovacao/AprovacaoDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/BloqueiosDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/VocabularioDoPortao.php',
+            'app/Services/Publicador/Aprovacao/Fila/FilaDeAprovacaoService.php',
+            'resources/js/Components/Mlb/Publicador/aprovacao/andamentoDoPortao.jsx',
+            'resources/js/Components/Mlb/Publicador/aprovacao/vocabularioDoPortao.jsx',
+            'resources/js/Components/Mlb/Publicador/aprovacao/SeloDeAndamentoInterno.jsx',
+            // A aba do 187-03: esta página IMPORTA, não altera.
+            'resources/js/Components/Mlb/Publicador/publicacoes/AbasDaPagina.jsx',
+            // O corpo da LISTA, que está NO AR.
+            'resources/js/Pages/Mlb/MeusAnuncios.jsx',
+            'app/Http/Controllers/MlbAnuncioController.php',
+            // Creative Engine e o editor — território do outro dev.
+            'app/Services/Creative',
+            'resources/js/Pages/Mlb/AnunciarML.jsx',
+            'resources/js/Pages/Mlb/Publicador/Editor.jsx',
+            'resources/js/Components/Publicador/Mesa',
+            'app/Services/Mlb/Publicacao/MlPublicacaoService.php',
+            'app/Support/Publicador',
+            'app/Mcp',
+            // O header global e os dois gates INTOCÁVEIS.
+            'resources/js/Layouts/AppLayout.jsx',
+            'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
+            'tests/js/publicador-header-zindex-ordem.test.js',
+            'tests/js/estrutura-meus-anuncios.test.js',
+            // Os artefatos de planejamento que este plano não toca.
+            '.planning/ROADMAP.md',
+            '.planning/STATE.md',
+            // Dependências (T-187-SC): este plano não instala nada.
+            'package.json',
+            'package-lock.json',
+            'composer.json',
+            'composer.lock',
+            // Migrations: esta fase NÃO tem migration.
+            'database/migrations',
+        ];
+
+        // ⚠️ `test -e` em CADA caminho: caminho fantasma "prova" território intocado medindo NADA.
+        foreach ($proibidos as $caminho) {
+            $this->assertFileExists($this->raiz() . '/' . $caminho, "gate sobre caminho fantasma: {$caminho}");
+        }
+
+        $tocados = $this->cruzarComProibidos($arquivos, $proibidos);
+        $this->assertSame([], $tocados, 'Este plano saiu do território declarado: ' . implode(', ', $tocados));
+
+        // ⚠️ ISCA DO CRUZAMENTO: o MESMO medidor ACHA um arquivo que É deste plano, se ele estiver
+        // na lista. Sem ela, o `assertSame([])` acima poderia ser vazio porque o cruzamento está
+        // cego — a forma nº 1 de gate verde inútil neste projeto.
+        $achouOMeu = $this->cruzarComProibidos($arquivos, [
+            'resources/js/Components/Mlb/Publicador/aprovacao/CabecalhoDaFila.jsx',
+        ]);
+        $this->assertNotSame([], $achouOMeu, 'ISCA: o cruzamento não acha nem o arquivo deste plano — ele está cego.');
+
+        // ⚠️ ISCA DO PREFIXO DE SEGMENTO: `app/Mcp` NÃO casa `app/McpOutraCoisa.php`.
+        $this->assertSame(
+            [],
+            $this->cruzarComProibidos(['app/McpOutraCoisa.php'], ['app/Mcp']),
+            'ISCA: o cruzamento casa por SUBSTRING — ele acusaria arquivo de nome parecido.',
+        );
+        $this->assertSame(
+            ['app/Mcp/Servidor.php'],
+            $this->cruzarComProibidos(['app/Mcp/Servidor.php'], ['app/Mcp']),
+            'ISCA: o cruzamento não casa o diretório proibido de verdade.',
+        );
+
+        // ⚠️ ISCAS DA SONDA DE ESCOPO, nas três direções que importam.
+        $this->assertSame(1, preg_match(self::ESCOPO_04, 'feat(187-04): a pagina da fila'), 'ISCA: a sonda não acha o escopo deste plano.');
+        $this->assertSame(0, preg_match(self::ESCOPO_04, 'feat(187-03): as duas abas'), 'ISCA: a sonda acusa a wave anterior desta fase.');
+        $this->assertSame(0, preg_match(self::ESCOPO_04, 'feat(197): acervo_imagens por conta do ML'), 'ISCA: a sonda acusa commit de OUTRA sessão.');
+
+        // ⚠️ ESTA FASE NÃO TEM MIGRATION, e o gate é por COMMIT — não por "não rodei o artisan".
+        $this->assertSame(
+            [],
+            $this->cruzarComProibidos($arquivos, ['database/migrations']),
+            'Este plano criou migration — a Fase 187 não tem nenhuma.',
+        );
+    }
+
+    /**
+     * ⚠️ **O que precisaria estar errado para falhar:** um método `test_*` deste arquivo ficar com
+     * sufixo de um plano que **não tem manifesto no disco** — e aí ele ficaria fora de TODA
+     * bijeção, rodando por gate nenhum (foi o sobrevivente da mutação do plano 186-03).
+     *
+     * ⚠️⚠️ **ESTE CASO É O QUE FECHA O BURACO ABERTO PELO RECORTE POR SUFIXO.** Quando o plano
+     * 187-04 recortou `test_bijecao_do_manifesto_187_02` ao sufixo `_187_02` (para não reprovar os
+     * métodos `_187_04` do mesmo arquivo), passou a existir uma terceira possibilidade: um método
+     * `_187_07` sem manifesto. Sem este gate, ele não reprovaria em lugar nenhum.
+     *
+     * @group phase187
+     */
+    public function test_todo_metodo_tem_sufixo_de_plano_declarado_187_04(): void
+    {
+        $rel = 'tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php';
+        $abs = $this->raiz() . '/' . $rel;
+        $this->assertFileExists($abs, "gate sobre caminho fantasma: {$rel}");
+
+        preg_match_all('/public function (test_\w+)\(/', (string) file_get_contents($abs), $m);
+        $metodos = $m[1];
+
+        // ⚠️ ÂNCORA: o arquivo tem métodos. Gate sobre lista vazia não prova nada.
+        $this->assertGreaterThanOrEqual(10, count($metodos), 'ÂNCORA: achei ' . count($metodos) . ' métodos — a sonda não está lendo o arquivo.');
+
+        $infratores = [];
+        foreach ($metodos as $nome) {
+            if (preg_match('/_(187_\d{2})$/', $nome, $casou) !== 1) {
+                $infratores[] = "SEM SUFIXO DE PLANO: {$nome}";
+
+                continue;
+            }
+            $manifesto = 'tests/gates/contagens-' . str_replace('_', '-', $casou[1]) . '.txt';
+            if (! file_exists($this->raiz() . '/' . $manifesto)) {
+                $infratores[] = "SUFIXO SEM MANIFESTO: {$nome} esperaria {$manifesto}";
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $infratores,
+            "Método fora de toda bijeção — ele rodaria por gate NENHUM:\n" . implode("\n", $infratores),
+        );
+
+        // ⚠️ ISCA: a sonda ACUSA as duas formas que ela proíbe, e NÃO acusa a certa.
+        $this->assertSame(0, preg_match('/_(187_\d{2})$/', 'test_coisa_sem_sufixo'), 'ISCA: a sonda de sufixo está cega.');
+        $this->assertSame(1, preg_match('/_(187_\d{2})$/', 'test_coisa_187_04'), 'ISCA: a sonda recusa o sufixo CERTO.');
+        $this->assertFileDoesNotExist(
+            $this->raiz() . '/tests/gates/contagens-187-99.txt',
+            'a isca do manifesto inexistente virou arquivo de verdade — troque a isca',
+        );
+    }
+
+    /**
+     * ⚠️ **O que precisaria estar errado para falhar:** um método `_187_04` **não ter id** em
+     * `contagens-187-04.txt` — e então **nunca rodar** por `verificar-testes.sh` — ou um id estar
+     * **órfão**, sendo gate sobre ZERO casos.
+     *
+     * ⚠️ **UMA asserção, de contagem FIXA, coletando os infratores** — nunca uma por linha do
+     * manifesto: asserção por item de lista foi a armadilha que caiu **4 vezes** na Fase 186.
+     *
+     * @group phase187
+     */
+    public function test_bijecao_do_manifesto_187_04(): void
+    {
+        $infratores = $this->bijecaoDoManifesto(
+            'tests/gates/contagens-187-04.txt',
+            ['tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php'],
+            '_187_04',
+        );
+
+        $this->assertSame([], $infratores, "A bijeção ids <-> métodos do 187-04 quebrou:\n" . implode("\n", $infratores));
+    }
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // Auxiliares de varredura
     // ─────────────────────────────────────────────────────────────────────────────────────────

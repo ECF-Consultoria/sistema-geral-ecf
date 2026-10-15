@@ -59,7 +59,7 @@
 # adverso com 16 valores em 4 props e o CSS CONSTRUÍDO — incluindo a asserção que
 # justifica a divergência do peso 800 (`font-[800]` compila para `font-weight:800`).
 # 84 pristino / 70 mutado.
-cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=84,70
+cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=99,85
 
 # ─── TAREFA 2 — a faixa de 9 cards ────────────────────────────────────────────
 # O grid `repeat(9,minmax(0,1fr))` + `gap-[6px]` literais com os 9 cards exatos,
@@ -73,4 +73,35 @@ cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests
 # incluindo a OITAVA normalização do medidor, descoberta aqui: o seletor de uma
 # classe com PARÊNTESE e VÍRGULA precisa do escape GERAL.
 # ⚠️ MESMO arquivo e MESMA contagem do id acima — ver a nota do cabeçalho.
-faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=84,70
+faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=99,85
+
+# ─── TAREFA 3 — a página, o manifest, a etapa saneada e a contagem da faixa ───
+# O lado JS: a ordem vertical de FILA-01 por POSIÇÃO na fonte, os 4 slots com
+# `isValidElement`, as props do servidor repassadas (nada inventado, zero
+# `reduce(`), o filtro na URL sem `localStorage`, a aba global `publicacoes`, a
+# geometria própria da fila (D2) com os três valores da LISTA PROIBIDOS e o
+# controle de que eles estão na página da lista, a divergência declarada da raiz
+# do protótipo com o precedente das DUAS irmãs medido, e A JANELA FECHANDO: a
+# página no manifest do Vite lida pelo JSON, com isca ausente.
+# ⚠️ MESMO arquivo dos dois ids acima: 99 pristino / 85 mutado.
+pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=535,521
+
+# ─── TAREFA 3 — o lado PHP ────────────────────────────────────────────────────
+# A PENDÊNCIA DO 187-02 FECHADA: o HTML da rota carrega o bundle CONSTRUÍDO da
+# página (lido do próprio manifest), com a isca do resolvedor do Vite que LANÇA
+# para página ausente e o controle de que o bundle da LISTA não entra neste HTML.
+# Mais o invariante de FILA-03 nas DUAS direções (a etapa não move a faixa; a
+# conta move), a etapa saneada contra a lista FECHADA lida de
+# `PubAprovacaoOferta::ANDAMENTOS` (incluindo `?etapa[]=x`, que já foi 500 nesta
+# tela), os 4 slots sem casca e sem estado vazio (que é do 187-09), o território
+# por escopo de assunto e o gate que fecha o buraco do recorte por sufixo.
+# 6 casos / 170 asserções, 8 s.
+pagina-rota  php  test_rota_da_fila_resolve_o_componente_da_pagina_187_04|test_etapa_nao_muda_os_totais_da_faixa_187_04|test_etapa_fora_da_lista_fechada_cai_no_default_187_04|test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04|test_territorio_do_plano_187_04|test_todo_metodo_tem_sufixo_de_plano_declarado_187_04  ::  tests=6 assertions=170
+
+# ─── A BIJEÇÃO — id próprio, de propósito ─────────────────────────────────────
+# ⚠️ Ela tem id SEPARADO porque é o único gate deste plano que LÊ ESTE ARQUIVO:
+# metê-la num id junto com os outros tornaria a contagem daquele id dependente do
+# próprio manifesto, e um conserto do manifesto mudaria o número que o manifesto
+# declara. Id próprio mantém as duas coisas independentes. (Mesma razão do
+# `bijecao-manifesto` do 187-02.)
+bijecao-manifesto  php  test_bijecao_do_manifesto_187_04  ::  tests=1 assertions=5

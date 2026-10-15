@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -18,11 +19,17 @@ use Inertia\Inertia;
  * vezes na milestone anterior. Este controller é a metade do servidor dessa decisão — quando o
  * plano **187-03** montar a aba, a rota **já responde**.
  *
- * ⚠️ **ESTE PLANO NÃO DESENHA TELA.** A página `Mlb/Publicador/Aprovacao` é criada pelo plano
- * **187-04**. O teste de rota deste plano exercita a action pelo caminho Inertia **sem resolver o
- * componente** (header `X-Inertia` + asserção sobre as props), que é o que a suíte do projeto já
- * faz e que **não** carrega o `.jsx`. ➡️ **A asserção de componente resolvido é pendência NOMEADA
- * do 187-04** — está escrito aqui para ninguém achar que faltou gate.
+ * ⚠️ **O PLANO 187-02 NÃO DESENHOU TELA.** A página `Mlb/Publicador/Aprovacao` foi criada pelo
+ * plano **187-04**. O teste de rota do 187-02 exercitava a action pelo caminho Inertia **sem
+ * resolver o componente** (header `X-Inertia` + asserção sobre as props), que é o que a suíte do
+ * projeto já faz e que **não** carrega o `.jsx`.
+ *
+ * ⚠️⚠️ **PENDÊNCIA FECHADA PELO PLANO 187-04**, e com o mecanismo escrito: enquanto o `.jsx` não
+ * existia, um GET **sem** `X-Inertia` nesta rota ERRAVA, porque `resources/views/app.blade.php:38`
+ * monta `@vite(['resources/js/app.jsx', "resources/js/Pages/{$page['component']}.jsx"])` e o Vite
+ * não achava a página no manifest. ➡️ `FilaDeAprovacaoRotaTest::
+ * test_rota_da_fila_resolve_o_componente_da_pagina_187_04` faz exatamente esse GET e exige **200**,
+ * com a isca de um componente inexistente provando que a sonda não está cega.
  *
  * ═══ ⚠️⚠️ A DIVERGÊNCIA DE ROTA, DECLARADA E MEDIDA ════════════════════════════════════════════
  *
@@ -62,6 +69,44 @@ use Inertia\Inertia;
 class MlbPublicadorAprovacaoController extends Controller
 {
     /**
+     * A etapa "sem filtro" — não é estado, e por isso não está em `ANDAMENTOS`.
+     *
+     * ⚠️ Plano **187-04**. O valor é o MESMO de `FAIXA_DE_ANDAMENTO[0].chave` em
+     * `andamentoDoPortao.jsx`, e há gate comparando os dois lados.
+     */
+    public const ETAPA_TODAS = 'todas';
+
+    /**
+     * A etapa filtrada, SANEADA contra a lista FECHADA das 9 chaves da faixa (T-187-41).
+     *
+     * ⚠️⚠️ **A LISTA É LIDA de `PubAprovacaoOferta::ANDAMENTOS`, nunca escrita à mão** — é a mesma
+     * fonte de `AndamentoDaOfertaService::faixaDeAndamento()`, então as duas pontas não podem
+     * divergir. Escrever as 8 chaves aqui criaria uma segunda verdade, livre para ficar velha no
+     * dia em que um 9º estado entrar.
+     *
+     * ⚠️⚠️ **`is_string` ANTES de `trim`, e NUNCA `(string) $valor`:** `?etapa[]=x` entrega um
+     * ARRAY, e `(string) []` lança `Array to string conversion` — foi 500 nesta tela antes
+     * (T-180-04-T). Qualquer coisa que não seja string de uma das 9 chaves cai no default.
+     *
+     * ⚠️ E o valor **nunca** é interpolado em SQL: ele só é comparado contra a lista fechada, e
+     * quem consulta é o Eloquent com bind.
+     */
+    private function etapaSaneada(Request $request): string
+    {
+        $cru = $request->query('etapa');
+
+        if (! is_string($cru)) {
+            return self::ETAPA_TODAS;
+        }
+
+        $chave = trim($cru);
+
+        $permitidas = array_merge([self::ETAPA_TODAS], array_keys(PubAprovacaoOferta::ANDAMENTOS));
+
+        return in_array($chave, $permitidas, true) ? $chave : self::ETAPA_TODAS;
+    }
+
+    /**
      * A fila da conta: o contador da aba, a faixa de 9 recortes e a margem mínima com origem.
      *
      * ⚠️ `role:admin` vem do GRUPO de `routes/mlb_anuncios.php` — **nenhum middleware novo**
@@ -98,8 +143,22 @@ class MlbPublicadorAprovacaoController extends Controller
             'cabecalho' => $alvo !== null ? $cabecalhos->para($alvo, $conta, 'publicacoes') : null,
             // ⚠️ O contador vem do SERVIDOR, e é `PubAprovacaoOferta::LIVE` lido do modelo.
             'contador_da_aba' => $fila->contadorDaAba($company->id, $mlbEmpresaId),
-            // As 9 entradas, na ordem literal de `ST`, com "Publicado hoje" como recorte DO DIA.
+            // ⚠️⚠️ As 9 entradas, na ordem literal de `ST`, com "Publicado hoje" como recorte DO
+            // DIA — e contadas sobre a `$base`, que tem **todos os filtros MENOS a etapa**
+            // (FILA-03). Medido no protótipo: `cnt` é calculado sobre `base` (`:1213`) e `list` é
+            // `base.filter(stage)` (`:1214`).
+            //
+            // ⚠️ Contar sobre o recorte JÁ FILTRADO por etapa faria o card ativo mostrar o próprio
+            // total e **todos os outros oito zerarem** — a pessoa perderia a navegação. É o
+            // sintoma clássico, e por isso o gate deste plano prova as DUAS direções: a etapa NÃO
+            // move a faixa, e um filtro da `$base` (a conta) MOVE.
             'faixa' => $fila->faixa($base),
+            // ⚠️ Plano 187-04 — a etapa SANEADA contra a lista fechada das 9 chaves. É ela que
+            // marca o card ativo; o filtro vive na URL (COL-03), nunca em `localStorage`.
+            // ⚠️ A LISTA da fila ainda não existe nesta tela (ela chega nos planos 187-07/08), e
+            // é por isso que a `etapa` ainda não recorta consulta nenhuma: ela só diz à faixa qual
+            // card está aceso. Aplicá-la a uma lista que não existe seria código sem consumidor.
+            'etapa' => $this->etapaSaneada($request),
             // ⚠️ FIN-09 — `{valor, origem}`. O número NUNCA é literal: cada número diz de onde vem.
             'margem_minima' => $fila->margemMinima($company->id),
         ]);

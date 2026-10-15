@@ -212,6 +212,25 @@ const ARQUIVOS_NOVOS = [
     // porque é a única casa das classes dos 9 cards, e o GATE-03 o confere
     // contra `text-sm`, hex cru, `ecf-*`, `font-display` e breakpoint.
     `${DIR_APROV}/FaixaDeAndamento.jsx`,
+    // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
+    //
+    // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem
+    // página de outras fases: `VisaoGeral`, `Produtos`, `Editor`, `Tarefas`…),
+    // então esquecer esta linha **NÃO reprovaria sozinho** — a página ficaria sem
+    // conferência contra `text-sm`, `ecf-*`, hex cru, `font-display` e
+    // breakpoint, e o GATE-03 passaria POR OMISSÃO. É exatamente por isso que a
+    // declaração é EXPLÍCITA aqui, e não "coberta pela pasta".
+    //
+    // ⚠️ Precedente idêntico: `Pages/Mlb/MeusAnuncios.jsx` entrou pela MESMA
+    // razão no plano 180-10, e há um sub-teste abaixo cobrando a presença dele.
+    //
+    // ⚠️ E ela ENTRA em `PAGINAS_COM_HEADER`/`CONTAINER_POR_PAGINA` do gate
+    // HEAD-14: aquele gate SIM varre a pasta inteira (`deepEqual` com o disco), e
+    // página nova lá dentro reprova até alguém decidir, à mão, se ela tem header
+    // de conta. A da fila TEM — `aba="publicacoes"`, porque a fila é aba INTERNA
+    // da tela de Publicações e `CabecalhoPublicadorService::ABAS` é lista FECHADA
+    // de cinco (decisão do plano 187-02).
+    'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx',
 ];
 
 /**
@@ -867,6 +886,11 @@ test('GATE-01 — nenhuma página do Publicador monta BarraDaConta nem AbasDaCon
  */
 const CONTAINER_POR_PAGINA = new Map([
     ['VisaoGeral.jsx', 'mx-auto flex max-w-[1600px]'],
+    // ⚠️ Fase 187, plano 04 — a FILA. O literal inclui o `gap-[16px]` de
+    // propósito: ele é a divergência **D2** (a fila é `gap:16px` e a lista de
+    // Publicações é `gap:18px`), e pô-lo no localizador faz esta tabela acusar
+    // uma harmonização que o FID-02 veta — em vez de só achar "um container".
+    ['Aprovacao.jsx', 'mx-auto flex max-w-[1600px] min-w-[1240px] flex-col gap-[16px]'],
     ['Produtos.jsx', 'mx-auto max-w-[1240px]'],
     ['Produto.jsx', 'mx-auto max-w-[1240px]'],
     ['Alavancas.jsx', 'mx-auto max-w-[1240px]'],
@@ -876,6 +900,13 @@ const CONTAINER_POR_PAGINA = new Map([
 
 const ABA_POR_PAGINA = new Map([
     ['VisaoGeral.jsx', 'visao-geral'],
+    // ⚠️ Fase 187, plano 04 — a FILA marca `publicacoes`, e isso é DECISÃO, não
+    // descuido: `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco e a
+    // fila é uma aba INTERNA da tela de Publicações (as duas abas do protótipo
+    // vivem dentro do MESMO header). Mandar `'aprovacao'` faria o header global
+    // perder o destaque de Publicações e exigiria alterar um serviço que a Fase
+    // 187 não possui. É o mesmo caso declarado de `Produto.jsx` → `produtos`.
+    ['Aprovacao.jsx', 'publicacoes'],
     ['Produtos.jsx', 'produtos'],
     ['Produto.jsx', 'produtos'],
     ['Alavancas.jsx', 'alavancas'],
@@ -1243,6 +1274,47 @@ test('D2 — NENHUM rótulo de status do Mercado Livre aparece em `aprovacao/`',
         });
     }
 
+    await contexto.test('⚠️⚠️ Fase 187, plano 04 — e nenhum deles aparece na PÁGINA da fila', () => {
+        // ⚠️ POR QUE ESTE SUB-TESTE PRECISOU EXISTIR: o laço acima varre o
+        // DIRETÓRIO `aprovacao/`, e a PÁGINA da fila não mora nele — ela é
+        // `Pages/Mlb/Publicador/Aprovacao.jsx`. Sem esta varredura, a tela que
+        // COMPÕE a fila ficaria fora do eixo D2, e o gate passaria POR OMISSÃO
+        // exatamente no arquivo onde um "Ativa"/"Pausada" copiado da lista teria
+        // mais chance de entrar.
+        //
+        // ⚠️ O D2 é regra de DADO, não de arquivo (`REQUIREMENTS-v27.md:51`-`:53`:
+        // *"Isto é regra de dado, não de tela"*), e vale nas DUAS direções: o
+        // andamento interno nunca aparece na lista de Publicadas, e o status do
+        // Mercado Livre nunca aparece na fila.
+        const PAGINA_DA_FILA = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
+        const corpoDaPagina = lerSemComentarios(PAGINA_DA_FILA);
+
+        // ⚠️ ÂNCORA: a leitura não está vazia. Sem ela, as negativas abaixo
+        // seriam vazias por construção.
+        assert.ok(
+            contarLiteralCompleto(corpoDaPagina, 'Aguardando aprovação') > 0,
+            `${PAGINA_DA_FILA}: a leitura está cega — nem o título da tela ela acha`,
+        );
+
+        const infratores = ROTULOS_DO_ML
+            .filter((rotulo) => contarLiteralCompleto(corpoDaPagina, rotulo) > 0);
+        assert.deepEqual(
+            infratores,
+            [],
+            `${PAGINA_DA_FILA} usa rótulo de STATUS DO MERCADO LIVRE — erro de EIXO: o status do ML`
+            + ' nunca aparece na fila do portão (README §C)',
+        );
+
+        // ⚠️ ISCA: a MESMA sonda, sobre a MESMA página, ACUSA um status do ML
+        // sintético. Sem ela, "zero infratores" não distinguiria "o eixo está
+        // limpo" de "a sonda não casa nada".
+        const sujo = `${corpoDaPagina}\nconst x = 'Pausada';`;
+        assert.ok(
+            ROTULOS_DO_ML.filter((rotulo) => contarLiteralCompleto(sujo, rotulo) > 0).length > 0,
+            'a sonda não acusa nem um status do ML plantado na página — ela está cega',
+        );
+    });
+
     await contexto.test('⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 4 rótulos do ML onde eles moram', () => {
         // ⚠️ O 5º ("Em análise pelo ML", a forma curta da aba) NÃO está aqui de
         // propósito: ele vive no PHP (`MlbAnuncioController::meus()`), medido
@@ -1281,7 +1353,18 @@ test('D2 — NENHUM rótulo de status do Mercado Livre aparece em `aprovacao/`',
 // só uma delas deixaria a outra passar.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ARQUIVOS_DO_PORTAO = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`));
+/**
+ * ⚠️ Fase 187, plano 04 — A PÁGINA da fila entra na sonda de VOC-03.
+ *
+ * Ela não mora em `aprovacao/`, então o `filter` abaixo não a pegaria — e é
+ * justamente a tela que compõe o painel financeiro da fila nas waves seguintes.
+ */
+const PAGINA_DA_FILA = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
+
+const ARQUIVOS_DO_PORTAO = [
+    ...ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`)),
+    PAGINA_DA_FILA,
+];
 
 /** As duas formas proibidas, insensíveis a maiúscula. */
 const FORMAS_DE_LUCRO = [/lucro\s+l[ií]quido/i, /lucro_l[ií]quido/i];
@@ -1318,6 +1401,12 @@ test('VOC-03 — "lucro líquido" não existe em nenhum arquivo novo do portão'
         assert.ok(
             ARQUIVOS_DO_PORTAO.length >= DO_PORTAO_DA_FASE_186.length,
             `a lista do portão tem ${ARQUIVOS_DO_PORTAO.length} arquivo(s) e encolheu abaixo dos 3 da Fase 186`,
+        );
+        // ⚠️ E a PÁGINA da fila está na varredura: ela não mora em `aprovacao/`,
+        // então sem esta linha ela ficaria fora da sonda de VOC-03.
+        assert.ok(
+            ARQUIVOS_DO_PORTAO.includes(PAGINA_DA_FILA),
+            `${PAGINA_DA_FILA} saiu da varredura de VOC-03`,
         );
     });
 

@@ -83,6 +83,19 @@ contador-e-territorio  php  test_meus_passa_o_contador_do_servidor_187_02|test_m
 # metê-la num id junto com os outros tornaria a contagem daquele id dependente do
 # próprio manifesto, e um conserto do manifesto mudaria o número que o manifesto
 # declara. Id próprio mantém as duas coisas independentes.
-# 1 caso / 7 asserções (MEDIDO depois de este arquivo existir — era o único número
+# 1 caso / 8 asserções (MEDIDO depois de este arquivo existir — era o único número
 # que não podia ser medido antes, porque o gate LÊ o manifesto).
-bijecao-manifesto  php  test_bijecao_do_manifesto_187_02  ::  tests=1 assertions=7
+#
+# ⚠️⚠️ NÚMERO RE-MEDIDO PELO PLANO 187-04: era **7**, agora é **8**. A razão está
+#    escrita no docblock do próprio método: a wave 4 acrescentou métodos `_187_04`
+#    AO MESMO arquivo de teste (o plano 187-04 manda fechar ali a pendência da
+#    asserção de componente resolvido), e este gate exigia o sufixo `_187_02` em
+#    **todos** os métodos do arquivo — ele reprovaria trabalho CORRETO, que é a
+#    família *"o gate é mais largo que o invariante"*. ➡️ O universo varrido passou
+#    a ser recortado pelo SUFIXO e a mecânica foi extraída para
+#    `bijecaoDoManifesto()`, que a wave 4 reusa; a asserção nova é a que exige que
+#    **todo** método do arquivo tenha sufixo `_187_NN` (nenhum fica fora de toda
+#    bijeção). ⚠️ Não é "ajustar número para passar": o que o gate prova ficou
+#    ESTRITAMENTE MAIOR, e o buraco do recorte é fechado por
+#    `test_todo_metodo_tem_sufixo_de_plano_declarado_187_04`.
+bijecao-manifesto  php  test_bijecao_do_manifesto_187_02  ::  tests=1 assertions=8

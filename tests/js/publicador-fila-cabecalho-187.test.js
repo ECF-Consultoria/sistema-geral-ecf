@@ -139,11 +139,12 @@ const REL_CABECALHO = `${DIR_APROV}/CabecalhoDaFila.jsx`;
 const REL_FAIXA = `${DIR_APROV}/FaixaDeAndamento.jsx`;
 const REL_ANDAMENTO = `${DIR_APROV}/andamentoDoPortao.jsx`;
 const REL_ABAS = 'resources/js/Components/Mlb/Publicador/publicacoes/AbasDaPagina.jsx';
+const REL_PAGINA = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
 const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 
 // ⚠️ `test -e` ANTES de acreditar em qualquer leitura vazia. Seis caminhos
 // fantasma já "provaram" território intocado nesta milestone.
-for (const caminho of [DIR_APROV, REL_CABECALHO, REL_FAIXA, REL_ANDAMENTO, REL_ABAS, PROTOTIPO]) {
+for (const caminho of [DIR_APROV, REL_CABECALHO, REL_FAIXA, REL_ANDAMENTO, REL_ABAS, REL_PAGINA, PROTOTIPO]) {
     if (!fs.existsSync(path.resolve(RAIZ, caminho))) {
         throw new Error(`caminho inexistente: ${caminho} — gate mediria NADA`);
     }
@@ -733,7 +734,7 @@ function seletorDe(classe) {
  * ⚠️ TODOS os `.jsx` deste plano entram: se um ficasse de fora, mutá-lo deixaria
  * a camada de CSS medir um build velho e o gate aprovaria o errado.
  */
-const FONTES_DO_CSS = [REL_CABECALHO, REL_FAIXA];
+const FONTES_DO_CSS = [REL_CABECALHO, REL_FAIXA, REL_PAGINA];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -1414,5 +1415,284 @@ test('FID — as classes da faixa de 9 GERAM CSS com o valor certo', async (cont
             CSS.css.includes('.hover\\:border-pub-line-off:hover'),
             'o hover da borda do card não gerou CSS — `:46` o declara em `style-hover`',
         );
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. A PÁGINA — a ordem vertical de FILA-01, os slots VAZIOS e o manifest
+//
+// ⚠️⚠️ ESCOPO DECLARADO: aqui a prova é sobre a FONTE da página e sobre o
+// MANIFEST, **não sobre o render dela**. Renderizar `Pages/Mlb/Publicador/
+// Aprovacao.jsx` exigiria montar o `AppLayout` e o `PublicadorHeader` inteiros
+// (que leem `usePage()`, Radix e o `localStorage` das contas recentes) — e o
+// que isso mediria seria a casca da Fase 177, não esta wave. O comportamento
+// adverso está provado nos DOIS COMPONENTES, que são quem decide desenhar: as
+// seções 4 a 11 deste arquivo. É o mesmo recorte declarado pelo gate do 187-03.
+//
+// ⚠️ E o que NÃO pode ser afirmado está escrito: **nenhum executor desta fase
+// viu esta tela renderizada**. O banco local não tem empresa com `ml_token` e
+// `ml_acervo_itens` está vazia (a rota dá 404 nesta máquina). A conferência é do
+// usuário, em produção.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
+
+test('FILA-01 — a página monta cabeçalho e faixa na ordem vertical, e os slots nascem VAZIOS', async (contexto) => {
+    await contexto.test('a página IMPORTA os dois componentes desta wave e o header da Fase 177', () => {
+        assert.match(
+            FONTE_PAGINA,
+            /import CabecalhoDaFila from '@\/Components\/Mlb\/Publicador\/aprovacao\/CabecalhoDaFila'/,
+        );
+        assert.match(
+            FONTE_PAGINA,
+            /import FaixaDeAndamento from '@\/Components\/Mlb\/Publicador\/aprovacao\/FaixaDeAndamento'/,
+        );
+        assert.match(
+            FONTE_PAGINA,
+            /import PublicadorHeader from '@\/Components\/Mlb\/Publicador\/header\/PublicadorHeader'/,
+        );
+    });
+
+    await contexto.test('⚠️ a ORDEM VERTICAL de FILA-01, medida por POSIÇÃO na fonte', () => {
+        // cabeçalho → faixa → PRÓXIMO → filtros → tabela → rodapé.
+        const posicoes = ['<CabecalhoDaFila', '<FaixaDeAndamento', '{noProximo}', '{noFiltros}', '{noTabela}', '{noRodape}']
+            .map((marca) => ({ marca, pos: FONTE_PAGINA.indexOf(marca) }));
+
+        for (const { marca, pos } of posicoes) {
+            assert.ok(pos !== -1, `${marca} não está na página`);
+        }
+        for (let i = 1; i < posicoes.length; i += 1) {
+            assert.ok(
+                posicoes[i].pos > posicoes[i - 1].pos,
+                `${posicoes[i].marca} vem ANTES de ${posicoes[i - 1].marca} — a ordem vertical de FILA-01 inverteu`,
+            );
+        }
+
+        // ⚠️ E o header global vem ANTES do container do corpo (HEAD-14): é ele
+        // que carrega o `-mx-6 -mt-6` que neutraliza o `p-6` do `<main>`.
+        assert.ok(
+            FONTE_PAGINA.indexOf('<PublicadorHeader') < FONTE_PAGINA.indexOf('mx-auto flex max-w-[1600px]'),
+            'HEAD-14: o header nasceu DENTRO do container do corpo',
+        );
+    });
+
+    await contexto.test('⚠️ os 4 slots passam por `isValidElement`, e são exatamente 4', () => {
+        assert.equal(
+            (FONTE_PAGINA.match(/isValidElement\(/g) ?? []).length,
+            4,
+            'os quatro slots têm de passar por `isValidElement`: nó inválido como filho faz o React LANÇAR',
+        );
+        for (const slot of ['proximo', 'filtros', 'tabela', 'rodape']) {
+            assert.ok(FONTE_PAGINA.includes(slot), `o slot \`${slot}\` não está nomeado na página`);
+        }
+    });
+
+    await contexto.test('⚠️ as props do servidor são REPASSADAS, nenhuma inventada', () => {
+        // O contador, a faixa e a margem mínima vêm do SERVIDOR (ABA-05/FIN-09).
+        assert.match(FONTE_PAGINA, /contador=\{contador_da_aba\}/, 'o contador da aba não vem do servidor');
+        assert.match(FONTE_PAGINA, /margemMinima=\{margem_minima\}/, 'a margem mínima não vem do servidor');
+        assert.match(FONTE_PAGINA, /faixa=\{faixa\}/, 'a faixa não vem do servidor');
+        assert.match(FONTE_PAGINA, /cabecalho=\{cabecalho \?\? null\}/, 'HEAD-14: o `?? null` explícito saiu');
+        // ⚠️ E a página NÃO soma nada: o contador é do servidor, e `reduce(` aqui
+        // faria o número depender do que a tela carregou.
+        assert.doesNotMatch(FONTE_PAGINA, /reduce\s*\(/, 'ABA-05: a página SOMA andamento — o contador tem de vir do servidor');
+    });
+
+    await contexto.test('⚠️ o filtro vai para a URL, e nada de `localStorage` (critério 13)', () => {
+        assert.match(FONTE_PAGINA, /router\.get\(/, 'COL-03: o clique no card tem de filtrar pela URL');
+        assert.match(FONTE_PAGINA, /etapa: chave/, 'o `router.get` não manda a etapa');
+        assert.doesNotMatch(FONTE_PAGINA, /localStorage/, 'critério 13: o filtro vive na URL');
+        assert.doesNotMatch(FONTE_PAGINA, /sessionStorage/, 'mesma regra do localStorage');
+        // ⚠️ E a página só LÊ neste plano: a escrita começa no 187-09 (o lote).
+        for (const escrita of [/router\.post\(/, /router\.put\(/, /router\.patch\(/, /router\.delete\(/, /axios/, /fetch\(/, /<form/]) {
+            assert.doesNotMatch(FONTE_PAGINA, escrita, `a página escreve (${escrita}) — neste plano ela só LÊ`);
+        }
+    });
+
+    await contexto.test('⚠️ o header global NÃO é tocado, e a aba é `publicacoes`', () => {
+        // ⚠️ `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco e a fila
+        // é aba INTERNA da tela de Publicações (decisão do 187-02). Mandar
+        // `'aprovacao'` faria o header global perder o destaque de Publicações.
+        assert.match(FONTE_PAGINA, /aba="publicacoes"/, 'a página não marca a aba global certa');
+        assert.ok(!FONTE_PAGINA.includes('aba="aprovacao"'), 'a página inventou uma 6ª aba no menu global');
+        assert.equal((FONTE_PAGINA.match(/<PublicadorHeader\b/g) ?? []).length, 1, 'mais de um header na página');
+    });
+
+    await contexto.test('⚠️ a geometria PRÓPRIA da fila (D2), e NENHUM dos três valores da LISTA', () => {
+        for (const daFila of ['max-w-[1600px]', 'min-w-[1240px]', 'gap-[16px]', 'px-[36px]', 'pt-[24px]', 'pb-[120px]', '-mx-6', '-mb-6']) {
+            assert.ok(FONTE_PAGINA.includes(daFila), `a página perdeu \`${daFila}\` (\`Aprovacao.dc.html:29\`)`);
+        }
+        for (const daLista of ['gap-[18px]', 'pt-[28px]', 'pb-[110px]']) {
+            assert.ok(
+                !FONTE_PAGINA.includes(daLista),
+                `\`${daLista}\` é da LISTA (\`Publicacoes v2.dc.html:29\`) — D2 proíbe harmonizar`,
+            );
+        }
+        // ⚠️ CONTROLE: os três da LISTA estão, de verdade, na página da LISTA —
+        // senão as três asserções de ausência acima seriam vazias por construção.
+        const fonteDaLista = lerSemComentarios('resources/js/Pages/Mlb/MeusAnuncios.jsx');
+        for (const daLista of ['gap-[18px]', 'pt-[28px]', 'pb-[110px]']) {
+            assert.ok(fonteDaLista.includes(daLista), `CONTROLE: \`${daLista}\` saiu da página da LISTA — remeça a D2`);
+        }
+    });
+
+    await contexto.test('⚠️ FID-03/FID-04 na página — nenhuma escala nomeada, nenhum token antigo, nenhum hex', () => {
+        assert.doesNotMatch(FONTE_PAGINA, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/, 'FID-03');
+        assert.doesNotMatch(FONTE_PAGINA, /\becf-(bg|card|card-2|yellow|yellow-2|line|dim|mute)\b/, 'FID-04');
+        assert.doesNotMatch(FONTE_PAGINA, /\bfont-display\b/, 'FID-04');
+        assert.doesNotMatch(FONTE_PAGINA, /border-white\/\[0\.08\]/, 'FID-04');
+        assert.doesNotMatch(FONTE_PAGINA, /#[0-9a-fA-F]{3,8}\b/, 'TOK-15');
+        assert.doesNotMatch(FONTE_PAGINA, /String\(/, 'String({toString:null}) LANÇA e derruba a página');
+        assert.doesNotMatch(FONTE_PAGINA, /JSON\.stringify\(/, 'JSON.stringify MENTE: NaN vira null');
+    });
+
+    await contexto.test('⚠️⚠️ A JANELA FECHOU: a página está no manifest do Vite, lida pelo JSON', () => {
+        // ⚠️ Esta é a asserção que o 187-02 declarou como pendência desta wave.
+        // Uma página React FORA do manifest DESAPARECE da aplicação sem levantar
+        // erro nenhum, e `resources/views/app.blade.php:38` monta
+        // `@vite([... "resources/js/Pages/{$page['component']}.jsx"])` — então
+        // até este arquivo existir, um GET sem `X-Inertia` nesta rota ERRAVA.
+        //
+        // ⚠️ Lido pelo JSON e com `Object.prototype.hasOwnProperty.call`, NUNCA
+        // por grep: o hash sai com HÍFEN (`assets/app-Dv6-mbDf.js`, medido no
+        // 187-01) e o grep ingênuo não casa.
+        const manifestAbs = path.resolve(RAIZ, 'public/build/manifest.json');
+        assert.ok(fs.existsSync(manifestAbs), 'manifest ausente — rode `npm run build`');
+        const manifest = JSON.parse(fs.readFileSync(manifestAbs, 'utf8'));
+
+        assert.ok(
+            Object.prototype.hasOwnProperty.call(manifest, REL_PAGINA),
+            `${REL_PAGINA} NÃO está no manifest do Vite — a página da fila SOME sem erro nenhum`,
+        );
+        // ⚠️ ISCA: uma entrada inexistente sai ausente, provando que a sonda não
+        // responde "sim" para tudo.
+        assert.ok(
+            !Object.prototype.hasOwnProperty.call(manifest, 'resources/js/Pages/Mlb/NaoExiste9z7.jsx'),
+            'a isca do manifest virou entrada de verdade — troque a isca',
+        );
+        // ⚠️ E a página da LISTA continua lá: esta wave não a tirou de circulação.
+        assert.ok(
+            Object.prototype.hasOwnProperty.call(manifest, 'resources/js/Pages/Mlb/MeusAnuncios.jsx'),
+            'a página da LISTA saiu do manifest — a tela que está NO AR desapareceria',
+        );
+    });
+
+    await contexto.test('⚠️ DIVERGÊNCIA DECLARADA: a raiz do protótipo (`:25`) não existe nesta montagem', () => {
+        // O protótipo tem `min-height:100vh;min-width:1240px;background:#0A0A0A`
+        // na raiz — mas lá aquele `<div>` É O DOCUMENTO. Aqui a tela vive dentro
+        // do `AppLayout`, que já dá altura e cor de fundo, e `AppLayout.jsx` é
+        // território PROIBIDO nesta fase.
+        //
+        // ⚠️ O `min-width:1240px` FOI preservado (ele está no container do corpo,
+        // como nas duas irmãs). O que não entrou foi `min-h-screen`/`bg-pub-page`
+        // — e o PRECEDENTE é medido aqui, para ninguém "consertar" de volta sem
+        // decisão nova.
+        for (const daRaiz of ['min-h-screen', 'bg-pub-page']) {
+            assert.ok(!FONTE_PAGINA.includes(daRaiz), `\`${daRaiz}\` entrou na página da fila`);
+            for (const irma of ['resources/js/Pages/Mlb/Publicador/VisaoGeral.jsx', 'resources/js/Pages/Mlb/MeusAnuncios.jsx']) {
+                assert.ok(
+                    !lerSemComentarios(irma).includes(daRaiz),
+                    `a irmã ${irma} declara \`${daRaiz}\` — o precedente medido mudou, remeça a divergência`,
+                );
+            }
+        }
+        // ⚠️ CONTROLE: as duas irmãs TÊM o par de containers que esta página copiou.
+        for (const irma of ['resources/js/Pages/Mlb/Publicador/VisaoGeral.jsx', 'resources/js/Pages/Mlb/MeusAnuncios.jsx']) {
+            assert.ok(lerSemComentarios(irma).includes('-mx-6'), `a irmã ${irma} deixou de usar o \`-mx-6\``);
+        }
+        // ⚠️ E o protótipo REALMENTE declara os dois na raiz: sem este controle a
+        // divergência poderia estar sendo afirmada sobre algo que não existe.
+        assert.ok(TEXTO_PROTOTIPO.includes('min-height:100vh;min-width:1240px;background:#0A0A0A'), 'o protótipo mudou');
+    });
+});
+
+test('TERR — o território do plano 187-04, por escopo de assunto', async (contexto) => {
+    /** Os commits DESTE plano: range `PARTIDA..HEAD` FILTRADO pelo escopo do assunto. */
+    const commitsDoPlano = () => execFileSync('git', ['log', '--no-merges', '--format=%H%x09%s', `${PARTIDA}..HEAD`], { cwd: RAIZ, encoding: 'utf8' })
+        .split('\n')
+        .map((linha) => linha.trim())
+        .filter((linha) => linha !== '')
+        .map((linha) => {
+            const [sha, assunto] = linha.split('\t');
+            return { sha, assunto: assunto ?? '' };
+        })
+        .filter((c) => c.assunto.includes(ESCOPO));
+
+    /** Os arquivos tocados por esses commits. */
+    const arquivosDoPlano = () => {
+        const vistos = new Set();
+        for (const c of commitsDoPlano()) {
+            const saida = execFileSync('git', ['show', '--name-only', '--format=', c.sha], { cwd: RAIZ, encoding: 'utf8' });
+            for (const nome of saida.split('\n').map((l) => l.trim()).filter(Boolean)) vistos.add(nome);
+        }
+        return [...vistos];
+    };
+
+    const COMMITS = commitsDoPlano();
+    const ARQUIVOS = arquivosDoPlano();
+
+    await contexto.test('⚠️ o gate NÃO é vazio por construção: há commit com o escopo deste plano', () => {
+        // ⚠️ Sem esta âncora POSITIVA o gate inteiro passaria sobre ZERO casos —
+        // a armadilha nº 4, e a razão de o range precisar de âncora antes de
+        // qualquer negativa.
+        assert.ok(
+            COMMITS.length >= 1,
+            `nenhum commit com o escopo ${ESCOPO} em ${PARTIDA}..HEAD — o gate mediria NADA`,
+        );
+        assert.ok(ARQUIVOS.includes(REL_CABECALHO), `o medidor não acha nem ${REL_CABECALHO} — ele está cego`);
+    });
+
+    await contexto.test('⚠️ o escopo DISCRIMINA: há commits no range que NÃO são deste plano', () => {
+        // Três sessões commitam nesta árvore e o `user.name` é o MESMO nas três:
+        // autor NÃO discrimina. Range aberto com a isca "ninguém mais toca aqui"
+        // vale UM plano.
+        const todos = execFileSync('git', ['log', '--no-merges', '--format=%H', `${PARTIDA}..HEAD`], { cwd: RAIZ, encoding: 'utf8' })
+            .split('\n').map((l) => l.trim()).filter(Boolean);
+        assert.ok(todos.length >= COMMITS.length, 'o filtro de escopo achou MAIS commits que o range inteiro');
+        assert.ok('feat(187-04): a pagina da fila'.includes(ESCOPO), 'ISCA: a sonda de escopo não acha o escopo deste plano');
+        assert.ok(!'feat(187-03): as duas abas'.includes(ESCOPO), 'ISCA: a sonda acusa a wave anterior');
+        assert.ok(!'feat(197): acervo_imagens'.includes(ESCOPO), 'ISCA: a sonda acusa commit de OUTRA sessão');
+    });
+
+    await contexto.test('os arquivos SOMENTE LEITURA têm diff VAZIO', () => {
+        const PROIBIDOS = [
+            // Os três `.jsx` do portão (Fase 186) e a aba do 187-03.
+            `${DIR_APROV}/andamentoDoPortao.jsx`,
+            `${DIR_APROV}/vocabularioDoPortao.jsx`,
+            `${DIR_APROV}/SeloDeAndamentoInterno.jsx`,
+            REL_ABAS,
+            // O corpo da LISTA e o header global, que estão NO AR.
+            'resources/js/Pages/Mlb/MeusAnuncios.jsx',
+            'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
+            'resources/js/Layouts/AppLayout.jsx',
+            // Território do outro dev.
+            'resources/js/Pages/Mlb/AnunciarML.jsx',
+            'resources/js/Pages/Mlb/Publicador/Editor.jsx',
+            'resources/js/Components/Publicador/Mesa',
+            'app/Services/Creative',
+            'app/Mcp',
+            // Os dois gates INTOCÁVEIS.
+            'tests/js/publicador-header-zindex-ordem.test.js',
+            'tests/js/estrutura-meus-anuncios.test.js',
+            // Dependências (T-187-SC) e migrations (esta fase não tem).
+            'package.json',
+            'package-lock.json',
+            'composer.json',
+            'composer.lock',
+            'database/migrations',
+        ];
+
+        // ⚠️ `test -e` em CADA caminho: seis caminhos fantasma já "provaram"
+        // território intocado nesta milestone, medindo NADA.
+        for (const caminho of PROIBIDOS) {
+            assert.ok(fs.existsSync(path.resolve(RAIZ, caminho)), `caminho inexistente: ${caminho} — o gate mediria NADA`);
+        }
+
+        // Prefixo de SEGMENTO, nunca `includes`: `app/Mcp` não pode casar
+        // `app/McpOutraCoisa.php`.
+        const tocados = ARQUIVOS.filter(
+            (a) => PROIBIDOS.some((p) => a === p || a.startsWith(`${p}/`)),
+        );
+        assert.deepEqual(tocados, [], 'este plano saiu do território declarado');
     });
 });
