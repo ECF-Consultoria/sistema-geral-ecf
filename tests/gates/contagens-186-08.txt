@@ -43,7 +43,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 vocabulario-php-e-jsx  php  test_(bloq12_as_nove_abreviacoes_e_os_oito_rotulos_sao_espelho_lido_do_modulo_jsx|voc06_a_bijecao_das_onze_chaves_vale_nos_dois_sentidos_e_as_inglesas_nao_sao_chave|voc05_a_severidade_segue_o_prototipo_e_cor_nunca_e_o_unico_sinal)  ::  tests=3 assertions=140
-cadeia-exclusiva  php  test_criterio4_(frete_ausente_com_resultado_negativo_e_margem_baixa_devolve_so_frete|resultado_negativo_devolve_so_loss_e_nunca_margin|margem_baixa_com_resultado_positivo_devolve_so_margin_e_nunca_loss|no_maximo_um_dos_tres_nasce_e_a_ordem_e_a_do_prototipo)  ::  tests=4 assertions=63
+cadeia-exclusiva  php  test_criterio4_(frete_ausente_com_resultado_negativo_e_margem_baixa_devolve_so_frete|resultado_negativo_devolve_so_loss_e_nunca_margin|margem_baixa_com_resultado_positivo_devolve_so_margin_e_nunca_loss|no_maximo_um_dos_tres_nasce_e_a_ordem_e_a_do_prototipo)  ::  tests=4 assertions=65
 estimado-por-baixo  php  test_decisao7_embalagem_sem_fonte_nao_dispara_frete_e_loss_margin_disparam_sobre_o_estimado  ::  tests=1 assertions=14
 excecao-libera-so-dois  php  test_bloq08_excecao_(de_prejuizo_remove_so_o_loss_e_deixa_os_outros_cinco_preenchidos|de_margem_nao_libera_o_prejuizo_e_nem_as_fotos)  ::  tests=2 assertions=30
 achado-s2-todos-os-grupos  php  test_achado_s2_pendente_(fora_do_primeiro_grupo|no_grupo_general)_bloqueia_as_duas_ofertas_com_isca  ::  tests=2 assertions=32

@@ -550,6 +550,30 @@ class BloqueiosDaOfertaServiceTest extends TestCase
         $this->assertNull($info['composicao']->resultado, 'o resultado virou número onde não há dado');
         $this->assertNull($info['composicao']->margem);
 
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // ⚠️⚠️ O INVARIANTE QUE TORNA O PRIMEIRO ELO **IMPOSSÍVEL DE OBSERVAR**, e por que ele
+        // está escrito aqui.
+        //
+        // MEDIDO na campanha de mutação de 15/10/2026 (mutação **M1**): trocar o `elseif` do elo
+        // do prejuízo por um `if` independente **SOBREVIVEU** a todos os gates. Investigado em
+        // vez de presumido equivalente — e é **mutante equivalente de verdade**, não lacuna:
+        // `ComposicaoDaOferta::montar()` devolve `resultado`/`margem` **null** sempre que
+        // `incompleto`, e `null < 0` é `false` em PHP. Logo `if (incompleto) … if (resultado < 0)`
+        // tem o MESMO comportamento do `elseif`.
+        //
+        // ➡️ O que dá para medir é o INVARIANTE, e é isto que esta asserção prende: se um dia a
+        // composição passar a devolver número com `incompleto`, o `elseif` deixa de ser redundante
+        // e esta linha reprova **antes** de a tela dizer "Resultado negativo" sobre um número
+        // inventado. O modelo até reserva um código de regra para a combinação proibida.
+        // ⚠️ O `elseif` **FICA** no serviço: ele é a intenção, e a redundância é a rede.
+        // ⚠️ O elo `prejuízo → margem`, esse SIM é observável — e a mutação M2 morreu nele.
+        $this->assertSame(
+            $info['composicao']->incompleto,
+            $info['composicao']->resultado === null,
+            'a composição passou a conviver com `incompleto` E resultado numérico — o primeiro elo da cadeia deixou de ser protegido pelo `null` e só o `elseif` segura'
+        );
+        $this->assertSame('FIN-05-INCOMPLETO-COM-RESULTADO', PubAprovacaoComposicao::REGRA_INCOMPLETO_COM_RESULTADO, 'o código de regra da combinação proibida saiu do modelo');
+
         // O texto e a correção são os do protótipo (`:1092` + `fix()` `:1173`).
         $this->assertSame('Frete do vendedor não confirmado · resultado indisponível', $info['bloqueios'][0]['texto']);
         $this->assertSame('Informar frete', $info['bloqueios'][0]['correcao']);
