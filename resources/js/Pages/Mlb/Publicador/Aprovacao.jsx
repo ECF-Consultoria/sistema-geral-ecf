@@ -146,6 +146,7 @@ function chaveSegura(valor) {
  * @param {unknown} [props.empresa] `{id, nome}`
  * @param {unknown} [props.conta] a conta para o header global
  * @param {unknown} [props.cabecalho] o bloco do `CabecalhoPublicadorService`
+ * @param {unknown} [props.liberada] se a conta está liberada para publicar (REG-01)
  * @param {unknown} [props.contador_da_aba] quantas ofertas estão ao vivo (do servidor)
  * @param {unknown} [props.faixa] as 9 entradas `{chave, rotulo, total}` (do servidor)
  * @param {unknown} [props.margem_minima] `{valor, origem}` (FIN-09)
@@ -158,6 +159,7 @@ function chaveSegura(valor) {
 export default function Aprovacao({
     empresa = null,
     cabecalho = null,
+    liberada = true,
     contador_da_aba = null,
     faixa = null,
     margem_minima = null,
@@ -204,8 +206,21 @@ export default function Aprovacao({
 
                 ⚠️ Nenhuma ação no slot `acoes`: o "Atualizar agora" é do acervo
                 da LISTA, e a fila não tem o que atualizar sob demanda. Desenhá-lo
-                aqui seria botão sem destino. */}
-            <PublicadorHeader aba="publicacoes" cabecalho={cabecalho ?? null} />
+                aqui seria botão sem destino.
+
+                ⚠️⚠️ `liberada` É REPASSADA, e isso foi COBRADO por um gate de
+                OUTRA fase: `tests/js/publicador-header-nas-paginas.test.js`
+                exige, para TODA página que monta o header, que o selo
+                "Publicação ainda não liberada" apareça na linha 1 quando a conta
+                está travada (REG-01). É contrato da Fase 177 e vale para as
+                outras cinco páginas por conta — a fila não é exceção.
+
+                ⚠️ O controller da fila AINDA NÃO manda `liberada`, e o default
+                `true` é o MESMO do `PublicadorHeader`: nada muda de
+                comportamento hoje. É ponto de extensão DECLARADO para a wave que
+                precisar dele (a trava de conta pesa na APROVAÇÃO, que é do
+                187-09/193), e não dado inventado. */}
+            <PublicadorHeader aba="publicacoes" cabecalho={cabecalho ?? null} liberada={liberada} />
 
             {/* A neutralização do `p-6` do <main>, em DOIS elementos: `-mx-6` e
                 `mx-auto` disputam a mesma margem lateral, então não dá para

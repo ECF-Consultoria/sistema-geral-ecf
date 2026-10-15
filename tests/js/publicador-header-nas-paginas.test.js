@@ -206,6 +206,46 @@ const PAGINAS = [
             responsavel: 'Fulano da Silva',
         }),
     },
+    // ⚠️⚠️ Fase 187, plano 04 — A FILA "Aguardando aprovação".
+    //
+    // ⚠️ ELA ENTRA AQUI PORQUE ESTE GATE A COBROU, e isso é o comportamento
+    // CERTO: o teste `as 6 páginas do Publicador estão todas aqui (nenhuma entra
+    // calada)` faz `deepEqual` da pasta contra esta tabela, e uma página nova
+    // reprova até alguém decidir, à mão, que ela monta o header. O plano 187-04
+    // não previa este arquivo; o gate alheio reprovou por um motivo LEGÍTIMO, e a
+    // declaração é a resposta — não o afrouxamento do gate.
+    //
+    // ⚠️ `aba: 'publicacoes'` é DECISÃO do plano 187-02:
+    // `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco e a fila é uma
+    // aba INTERNA da tela de Publicações (as duas abas do protótipo vivem dentro
+    // do MESMO header). Mandar `'aprovacao'` faria o header global perder o
+    // destaque de Publicações.
+    //
+    // ⚠️ E é aqui que a página da fila ganha RENDER REAL com `cabecalho` adverso
+    // (objeto/array/nulo/ausente em cada campo) — o gate do próprio plano prova a
+    // fonte e os dois COMPONENTES, e este prova a PÁGINA montada.
+    {
+        arquivo: 'Aprovacao.jsx',
+        aba: 'publicacoes',
+        props: () => ({
+            empresa: { id: 459, nome: 'Dev 02 Testes API' },
+            contador_da_aba: 0,
+            // As 9 entradas como o servidor as manda (`FilaDeAprovacaoService::faixa`).
+            faixa: [
+                { chave: 'todas', rotulo: 'Todas', total: 0 },
+                { chave: 'preparando', rotulo: 'Preparando', total: 0 },
+                { chave: 'aguardando_aprovacao', rotulo: 'Aguardando aprovação', total: 0 },
+                { chave: 'em_revisao_ecf', rotulo: 'Em revisão pela ECF', total: 0 },
+                { chave: 'ajustes_solicitados', rotulo: 'Ajustes solicitados', total: 0 },
+                { chave: 'aprovado', rotulo: 'Aprovado', total: 0 },
+                { chave: 'publicando', rotulo: 'Publicando', total: 0 },
+                { chave: 'falha', rotulo: 'Falha na publicação', total: 0 },
+                { chave: 'publicado', rotulo: 'Publicado hoje', total: 0 },
+            ],
+            margem_minima: { valor: 12.0, origem: 'config' },
+            etapa: 'todas',
+        }),
+    },
     {
         arquivo: 'PublicacaoEmLote.jsx',
         aba: 'produtos',
@@ -276,9 +316,41 @@ for (const { arquivo, aba, props } of PAGINAS) {
             assert.match(header, />2</);
             // ⚠️ `publicacoes: null` NÃO desenha pílula e NUNCA escreve "0":
             // zero diria "não há", quando o certo é "não sabemos".
-            const publicacoes = header.match(/Publicações(<span[^>]*>[^<]*<\/span>)?/);
+            //
+            // ⚠️⚠️ REAPONTE DA FASE 187, PLANO 04, COM O VETO ESCRITO — a sonda
+            // antiga reprovava o código CERTO. Ela exigia que NADA seguisse o
+            // literal "Publicações", e isso valia por acidente: nenhuma das 6
+            // páginas tinha a aba **Publicações** como ATIVA. A fila
+            // (`Aprovacao.jsx`, `aba: 'publicacoes'`) tem — e a aba ativa ganha o
+            // SUBLINHADO amarelo, que é um `<span aria-hidden="true">` VAZIO
+            // logo depois do rótulo. A sonda antiga o confundia com a pílula.
+            //
+            // ⚠️ O invariante NÃO foi afrouxado, ficou mais preciso: o que não
+            // pode aparecer é PÍLULA DE CONTADOR — `<span>` com TEXTO. O
+            // sublinhado é `aria-hidden` e vazio, e por isso é aceito
+            // explicitamente. Uma pílula com "0" (ou com qualquer número)
+            // continua reprovando, e há asserção abaixo provando isso.
+            const publicacoes = header.match(/Publicações((?:<span[^>]*>[^<]*<\/span>)?)/);
             assert.ok(publicacoes, 'aba Publicações não encontrada');
-            assert.equal(publicacoes[1], undefined, `pílula desenhada com contador nulo: ${publicacoes[0]}`);
+            const seguinteDePublicacoes = publicacoes[1] ?? '';
+            const ehSublinhadoDaAbaAtiva = /aria-hidden="true"/.test(seguinteDePublicacoes)
+                && />\s*<\/span>$/.test(seguinteDePublicacoes);
+            assert.ok(
+                seguinteDePublicacoes === '' || ehSublinhadoDaAbaAtiva,
+                `pílula desenhada com contador nulo: ${publicacoes[0]}`,
+            );
+            // ⚠️ ISCA DA SONDA, nas duas direções: ela ACEITA o sublinhado e
+            // RECUSA a pílula. Sem isto o reaponte poderia ter virado "aceita
+            // qualquer coisa depois de Publicações".
+            const sublinhado = '<span aria-hidden="true" class="absolute bottom-[-7px] bg-pub-accent"></span>';
+            const pilula = '<span class="grid tabular-nums">0</span>';
+            const sonda = (depois) => {
+                const m = `Publicações${depois}`.match(/Publicações((?:<span[^>]*>[^<]*<\/span>)?)/);
+                const g = m[1] ?? '';
+                return g === '' || (/aria-hidden="true"/.test(g) && />\s*<\/span>$/.test(g));
+            };
+            assert.ok(sonda(sublinhado), 'ISCA: a sonda recusa o sublinhado da aba ATIVA');
+            assert.ok(!sonda(pilula), 'ISCA: a sonda ACEITA uma pílula de contador — ela deixou de medir');
         });
 
         await contexto.test('cabecalho NULO não derruba a tela (o default de parâmetro não cobre null)', () => {
