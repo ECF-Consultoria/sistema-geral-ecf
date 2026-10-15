@@ -818,12 +818,51 @@ class FechamentoDaFase186Test extends TestCase
             if ($rel === $porta || $rel === $declaraDefault) {
                 continue;
             }
-            if (preg_match($sonda, $this->semComentariosPhp($conteudo))) {
+            $limpo = $this->semComentariosPhp($conteudo);
+
+            // ⚠️ ESTREITADO EM 15/10/2026 PELO ORQUESTRADOR — era FALSO POSITIVO, e a causa vale
+            // escrever: `andamento` é **palavra comum do português**, e a sonda varria o `app/`
+            // INTEIRO. O merge da sessão paralela trouxe `app/Mcp/Shopee/LeitorShopee.php`, que usa
+            // `['andamento' => 'ongoing', 'agendadas' => 'upcoming', …]` como **status de promoção
+            // da Shopee** — outro domínio, uso legítimo, e o gate reprovou o deploy por isso.
+            //
+            // ⚠️ É a QUINTA ocorrência nesta fase da família "o gate é mais largo que o
+            // invariante", e a mais perigosa delas: as outras quatro eram de CONTAGEM, esta
+            // reprovava o merge de outra sessão por uma palavra do idioma.
+            //
+            // ➡️ O alcance de `app/` INTEIRO **fica** (é o valor do gate: um escritor clandestino
+            // em qualquer canto é pego). O que entrou é o segundo filtro: só é escritor quem mexe
+            // em `andamento` **E** referencia o portão — pelo MODELO ou pela TABELA, porque um
+            // `DB::table('pub_aprovacao_ofertas')->update([...])` não nomeia o modelo.
+            // Quem usa a palavra noutro domínio não casa, e continua livre.
+            if (preg_match($sonda, $limpo) === 1 && preg_match('/PubAprovacaoOferta|pub_aprovacao_ofertas/', $limpo) === 1) {
                 $escritores[] = $rel;
             }
         }
         $this->assertGreaterThan(200, $varridos, 'gate sobre poucos arquivos');
         $this->assertSame([], $escritores, 'AND-09: a escrita de `andamento` passa SEMPRE pela única porta');
+
+        // ⚠️ ISCA 1 — o filtro novo NÃO pode deixar passar escritor de verdade: um arquivo que
+        // escreve `andamento` E referencia o portão TEM de ser acusado. Sem esta isca, o segundo
+        // filtro poderia estar sempre falso e o gate ficaria verde permanente.
+        $clandestino = "<?php class X { public function f(\$o) { \$o->update(['andamento' => 'aprovado']); } } // PubAprovacaoOferta";
+        $this->assertSame(1, preg_match($sonda, $clandestino), 'ISCA 1a: a sonda de escrita não acha a escrita.');
+        $this->assertSame(1, preg_match('/PubAprovacaoOferta|pub_aprovacao_ofertas/', $clandestino), 'ISCA 1b: o filtro do portão não acha a referência ao portão.');
+
+        // ⚠️ ISCA 2 — e o uso LEGÍTIMO da palavra noutro domínio NÃO pode ser acusado. É o caso
+        // real que motivou o conserto: o status de promoção da Shopee.
+        $outroDominio = "<?php class Y { const S = ['andamento' => 'ongoing', 'agendadas' => 'upcoming']; }";
+        $this->assertSame(1, preg_match($sonda, $outroDominio), 'ISCA 2a: a sonda larga casa o uso de outro domínio — é por isso que o 2º filtro existe.');
+        $this->assertSame(0, preg_match('/PubAprovacaoOferta|pub_aprovacao_ofertas/', $outroDominio), 'ISCA 2b: o filtro do portão casou um arquivo que não fala do portão — ele não está discriminando nada.');
+
+        // ⚠️ ISCA 3 — o caso REAL, lido do disco: o arquivo que reprovou este gate em 15/10 usa a
+        // palavra e NÃO fala do portão. Se um dia ele passar a falar, quero saber.
+        $shopee = base_path('app/Mcp/Shopee/LeitorShopee.php');
+        if (is_file($shopee)) {
+            $conteudoShopee = $this->semComentariosPhp(file_get_contents($shopee));
+            $this->assertSame(1, preg_match($sonda, $conteudoShopee), 'ISCA 3a: o caso real deixou de casar a sonda larga — o arquivo mudou, e a isca perdeu o sujeito.');
+            $this->assertSame(0, preg_match('/PubAprovacaoOferta|pub_aprovacao_ofertas/', $conteudoShopee), 'ISCA 3b: o MCP da Shopee passou a referenciar o portão — isto não é mais falso positivo e precisa de análise.');
+        }
 
         // ⚠️ ISCA 1: a própria porta TEM de ser achada pela sonda. Se não fosse, a sonda estaria
         // cega e o laço acima sairia verde por nunca casar nada.

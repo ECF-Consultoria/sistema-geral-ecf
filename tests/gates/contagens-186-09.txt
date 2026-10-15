@@ -35,7 +35,7 @@
 # lista constante (22 PHP + 3 JSX). Arquivo novo no portão NÃO entra na lista
 # sozinho (é ato deliberado), então o número só se move quando alguém o move de
 # propósito — e aí o diff é visível, que é o ponto.
-transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=245
+transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=251
 
 # ─── O lado do RENDER (HTML + o CSS construído) ────────────────────────────────
 # ⚠️ 8 dos 14 são "um `test()` por estado", de propósito: laço com 8 asserções
@@ -53,7 +53,22 @@ jargao-so-no-valor  php  test_nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_l
 # (d) cor nunca é o único sinal — VOC-05
 cor-nunca-sozinha  php  test_cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa  ::  tests=1 assertions=15
 # (f) a escrita de `andamento` mora num lugar só
-andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=7
+# ⚠️ assertions AJUSTADO em 15/10/2026 pelo ORQUESTRADOR: o gate era FALSO POSITIVO e
+#    foi ESTREITADO, nao teve a regua elevada.
+#    `andamento` e PALAVRA COMUM DO PORTUGUES, e a sonda varria o `app/` INTEIRO. O merge
+#    da sessao paralela trouxe `app/Mcp/Shopee/LeitorShopee.php`, que usa
+#    `['andamento' => 'ongoing', 'agendadas' => 'upcoming', ...]` como status de promocao
+#    da Shopee — outro dominio, uso legitimo — e o gate REPROVOU O DEPLOY por isso.
+#    ⚠️ QUINTA ocorrencia na fase da familia "o gate e mais largo que o invariante", e a
+#    mais perigosa: as outras quatro eram de CONTAGEM, esta barrava o merge de outra
+#    sessao por uma palavra do idioma.
+#    ➡️ O alcance do `app/` inteiro FICA (e o valor do gate). Entrou um 2o filtro: so e
+#    escritor quem mexe em `andamento` E referencia o portao (pelo MODELO ou pela TABELA,
+#    porque `DB::table('pub_aprovacao_ofertas')->update([...])` nao nomeia o modelo).
+#    Com TRES iscas: escritor clandestino TEM de casar; uso de outro dominio NAO pode
+#    casar; e o caso real lido do disco, que avisa se o MCP da Shopee passar a falar do
+#    portao. 7 -> 13 assercoes, e 245 -> 251 no composto.
+andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=13
 # (g) PHP × JSX em sincronia — e os DOIS LADOS existem
 sincronia-php-jsx  php  test_php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca  ::  tests=1 assertions=29
 # (g2) a ausência de segundo passo — PUB-09 / BLOQ-09
