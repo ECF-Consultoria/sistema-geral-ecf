@@ -5112,3 +5112,91 @@ decisões seguem em aberto e bloqueiam fases nomeadas** (chips estruturados e a 
 192; enfileirar automaticamente → 193; o que falta para ligar a chave → 194), e **três perguntas
 antigas foram RESPONDIDAS por medição** em 14/10 — a regeneração de uma imagem existe, o criativo é
 alcançável por `pub_imagem_id` (nenhuma coluna nova) e o vínculo com a original existe mas é efêmero.*
+
+---
+
+## Milestone v28.0 — Acervo de imagens no Cloudflare R2 (Fases 195-201)
+
+**Requirements:** `.planning/REQUIREMENTS-v28.md` · **Origem:** plano do usuário + auditoria de 15/10/2026.
+
+**Goal:** as imagens definitivas do Publicador saem da VPS para um bucket R2 privado, e o acervo vira uma
+biblioteca única por conta do Mercado Livre (uploads manuais + IA aprovada), com exclusão segura e
+retenção controlada — sem mudar o que o Mercado Livre recebe (bytes via `/pictures/items/upload`).
+
+⚠️ **Gates humanos:** aprovação antes da Fase 197 (tabela de ativos) e antes de qualquer exclusão física
+(Fase 199). Credenciais R2 vão direto no `.env` da VPS pelo usuário, nunca no chat.
+⚠️ **Convivência com a v27.0:** `pub_aprovacao_imagens` e `pub_imagem_referencias` apontam para
+`pub_imagens` com `cascadeOnDelete` — esta milestone **acrescenta** acima de `pub_imagens`, não a substitui.
+
+### Phase 195: Infra R2 — driver, disco `imagens` e teste de conexão
+
+**Goal**: o sistema sabe falar com o R2, mas continua usando o disco local até a chave virar.
+**Depends on**: nada.
+**Requirements**: R2-01, R2-02, R2-03, R2-04
+**Success Criteria**:
+  1. `IMAGENS_DISK=local` (padrão) → suíte do Publicador verde, comportamento idêntico.
+  2. Com as credenciais no `.env`, o comando de teste grava, lê, confere sha256 e apaga um objeto sob o prefixo.
+  3. Nenhum segredo aparece em log ou saída de comando.
+
+### Phase 196: Disco configurável nos pontos de gravação e leitura
+
+**Goal**: toda imagem definitiva nova vai para o disco `imagens`, e as antigas seguem legíveis do local.
+**Depends on**: 195.
+**Requirements**: ARM-01, ARM-02, ARM-03, ARM-04, ARM-05
+**Success Criteria**:
+  1. Com o disco `imagens` apontando para um fake S3, upload manual, aprovação de IA, "Usar" do acervo e
+     criação de fase de kit gravam lá.
+  2. Foto antiga (só no local) continua aparecendo e subindo ao ML.
+  3. Falha do storage no upload não deixa linha nem arquivo órfão.
+  4. Referência do Gemini e geração não aprovada continuam no local.
+
+### Phase 197: Tabela de ativos por conta + backfill só de banco ⚠️ GATE
+
+**Goal**: cada imagem definitiva vira um ativo da conta do ML, com dedup por sha256 e metadados completos.
+**Depends on**: 196 e **aprovação do usuário** do desenho da tabela.
+**Requirements**: ATV-01, ATV-02, ATV-03, ATV-04, ATV-05
+**Success Criteria**:
+  1. A mesma foto enviada em dois produtos da mesma conta gera um ativo e um objeto físico.
+  2. Backfill em dry-run mostra contagens; aplicado duas vezes não duplica.
+  3. Migration aplicada em MariaDB sem erro; FKs da v27 inalteradas.
+
+### Phase 198: Acervo da conta — biblioteca com filtros, miniaturas e reuso
+
+**Goal**: o acervo mostra uploads e IA aprovada da conta, com busca, filtros, paginação e reuso sem cópia.
+**Depends on**: 197.
+**Requirements**: ACV-01..08
+**Success Criteria**:
+  1. Upload manual aparece no acervo da conta; IA não aprovada não aparece.
+  2. Filtro por origem/produto/SKU/período e paginação funcionam; a grade carrega só miniaturas.
+  3. Conta A não lê imagem da conta B (teste de acesso cruzado).
+  4. A visão "este produto" mostra as imagens de IA do produto (bug do `pub_rascunho_id` corrigido).
+
+### Phase 199: Exclusão segura — referências, job idempotente e limpeza de gerações ⚠️ GATE
+
+**Goal**: excluir do acervo apaga o objeto físico quando nada mais depende dele, sem quebrar rascunho nem
+histórico de aprovação.
+**Depends on**: 198 e **aprovação do usuário** antes de ligar exclusão física.
+**Requirements**: EXC-01..05
+**Success Criteria**:
+  1. Ativo em uso mostra onde está em uso e não é apagado fisicamente.
+  2. Ativo sem uso: `excluindo` → job apaga → `excluida`; falha repete e fica registrada.
+  3. Limpeza de `creative-geradas/` não aprovadas roda em dry-run antes de valer.
+
+### Phase 200: Migração do legado local → R2
+
+**Goal**: as imagens que já estão na VPS passam para o R2 sem perda, com volta possível.
+**Depends on**: 196 (pode rodar antes da 198/199) + inventário de produção liberado pelo usuário.
+**Requirements**: MIG-01..04
+**Success Criteria**:
+  1. Inventário somente leitura entregue antes de migrar.
+  2. Rodar o comando duas vezes não duplica; sha256 confere em 100% dos objetos.
+  3. Locais preservados por 30 dias; voltar `IMAGENS_DISK=local` restaura o comportamento.
+
+### Phase 201: Retenção e custo — relatórios em dry-run
+
+**Goal**: a ECF enxerga volume e crescimento por conta e o que seria descartável, sem excluir nada.
+**Depends on**: 197.
+**Requirements**: RET-01, RET-02
+**Success Criteria**:
+  1. Relatório por conta com contagem, volume e crescimento mensal.
+  2. Relatório de descartáveis lista candidatos e não apaga nada.
