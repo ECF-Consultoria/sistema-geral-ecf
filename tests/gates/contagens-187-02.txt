@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-02 — O SERVIDOR DA FILA: a rota
+# `mlb.anuncios.meus.aprovacao`, o escopo da conta, o CONTADOR REAL da aba, a
+# faixa de 9 e a ordenação de `ORD`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-02 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ Este plano NÃO tem gate `js`: ele não escreve uma linha de `resources/`. Um
+#    gate de build ou de JS sobre um diff sem JS é **gate vazio por construção**,
+#    e por isso não existe aqui — está DECLARADO, não esquecido. A aba (187-03) e
+#    a página (187-04) trazem os deles.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por gate, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **TODO MÉTODO DESTE PLANO TEM id AQUI, E A BIJEÇÃO É PROVADA POR SCRIPT**
+#    — pelo gate `bijecao-manifesto`, que falha nos DOIS sentidos: método sem id
+#    (ele **NUNCA RODA**, e foi o sobrevivente da mutação do plano 186-03) e id
+#    órfão (gate sobre ZERO casos). A asserção é **UMA**, de contagem fixa,
+#    coletando os infratores — nunca uma por linha do manifesto, que foi a 4ª
+#    ocorrência da mesma armadilha na Fase 186 (range/arquivo/tabela/commit).
+#
+# ⚠️ SUFIXO PRÓPRIO `_187_02` em todos os métodos, e há gate exigindo isso: nome
+#    de guarda genérico COLIDE com homônimo de outro arquivo e o `--filter` SOMA
+#    as contagens dos dois, estourando o número deste manifesto em silêncio.
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre DOIS arquivos de teste, os dois
+#    criados por este plano:
+#      · `tests/Unit/Publicador/Aprovacao/FilaDeAprovacaoServiceTest.php`  (10)
+#      · `tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php`  (14)
+#    Nenhum arquivo de teste de fase anterior foi alterado por este plano.
+#
+# ⚠️ Nenhum filtro passa de 10 métodos e o mais longo mediu **7 s** — bem abaixo
+#    dos 120 s do shell deste ambiente. `--filter` de CLASSE continua recusado
+#    pelo harness.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── TAREFA 1 — a leitura da fila (arquivo de Unit inteiro, 10 métodos) ───────
+# O recorte da conta (a `RegraViolada` PROPAGADA, não engolida), o contador
+# igual a `PubAprovacaoOferta::LIVE` medido um estado por vez nos 8, a faixa de
+# 9 com "Publicado hoje" provado pela DESIGUALDADE "Todas" > soma dos oito, os
+# dois desempates de `ORD` e a margem mínima com `origem` (e o zero que não
+# desliga). 10 casos / 46 asserções, 7 s.
+fila-servico  php  test_fila_sem_conta_propaga_a_regra_violada_187_02|test_fila_nao_mostra_oferta_de_outra_conta_187_02|test_contador_da_aba_conta_exatamente_os_tres_live_187_02|test_contador_da_aba_e_zero_inteiro_em_conta_sem_oferta_187_02|test_faixa_tem_nove_entradas_na_ordem_de_st_e_publicado_e_do_dia_187_02|test_faixa_conta_sobre_o_recorte_que_recebe_187_02|test_ordem_da_fila_e_a_literal_de_ord_187_02|test_dentro_do_degrau_a_maior_espera_vem_primeiro_187_02|test_entrou_na_fila_em_nulo_vai_para_o_fim_do_degrau_187_02|test_margem_minima_vem_do_resolvedor_e_o_zero_nao_desliga_187_02  ::  tests=10 assertions=46
+
+# ─── TAREFA 2 — a rota, a trava de conta, a resolução e o payload mínimo ──────
+# 200 com conta conectada, 404 sem ela (com a mensagem conferida CONTRA a da
+# lista), 403 para quem não é admin com a pilha de middleware provada IGUAL à da
+# lista, a resolução medida pelo ROUTER nas duas direções, o payload com faixa de
+# 9 + margem mínima {valor, origem} + contador, o gate de ausência do 12% com os
+# dois controles, e zero chamada ao Mercado Livre com isca.
+# 7 casos / 53 asserções, 7 s.
+fila-rota  php  test_rota_da_fila_responde_200_com_conta_conectada_187_02|test_rota_da_fila_recusa_empresa_sem_conta_ml_187_02|test_rota_da_fila_recusa_quem_nao_e_admin_187_02|test_rota_da_fila_nao_rouba_o_detalhe_do_anuncio_187_02|test_payload_da_fila_traz_faixa_margem_minima_e_contador_187_02|test_sem_literal_de_doze_por_cento_na_fila_187_02|test_a_fila_nao_chama_o_mercado_livre_187_02  ::  tests=7 assertions=53
+
+# ─── TAREFA 3 — o contador na tela que está NO AR, o custo e o território ─────
+# A prop `aguardando_aprovacao` IGUALANDO o serviço, as **19** props de hoje com
+# nome E tipo (contagem FIXA coletando divergentes — medido: são 19, não 20), o
+# zero inteiro, UMA consulta exata com o SQL conferido e o índice lido do schema
+# vivo, a tela NÃO recebendo linha da fila (sonda em posição de VALOR), o serviço
+# sem lógica própria (código lido SEM comentário, com isca do leitor), o
+# território por ESCOPO DE ASSUNTO e o diff do controller da lista em 1 hunk / 1
+# linha de código / 0 remoções, sem tocar nos 11 endpoints `criativo*`.
+# 8 casos / 102 asserções, 8 s.
+contador-e-territorio  php  test_meus_passa_o_contador_do_servidor_187_02|test_meus_mantem_as_dezenove_props_de_hoje_187_02|test_contador_na_tela_e_zero_inteiro_sem_oferta_187_02|test_meus_ganha_exatamente_uma_consulta_187_02|test_a_tela_nao_recebe_a_fila_para_poder_somar_187_02|test_servico_da_fila_nao_tem_logica_propria_187_02|test_territorio_do_plano_187_02|test_o_diff_do_controller_da_lista_e_um_hunk_e_nao_toca_criativos_187_02  ::  tests=8 assertions=102
+
+# ─── A BIJEÇÃO — id próprio, de propósito ─────────────────────────────────────
+# ⚠️ Ela tem id SEPARADO porque é o único gate deste plano que LÊ ESTE ARQUIVO:
+# metê-la num id junto com os outros tornaria a contagem daquele id dependente do
+# próprio manifesto, e um conserto do manifesto mudaria o número que o manifesto
+# declara. Id próprio mantém as duas coisas independentes.
+# 1 caso / 7 asserções (MEDIDO depois de este arquivo existir — era o único número
+# que não podia ser medido antes, porque o gate LÊ o manifesto).
+bijecao-manifesto  php  test_bijecao_do_manifesto_187_02  ::  tests=1 assertions=7
