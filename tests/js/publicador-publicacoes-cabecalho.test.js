@@ -243,6 +243,25 @@ const HTML_CAB_CHEIO = render(Cabecalho, {
     acaoAtualizar: React.createElement(BotaoAtualizar, { onClick: () => {} }),
 });
 
+// ⚠️ Fase 187, plano 03 — o cabeçalho COM o slot `abas` preenchido. Ele é um
+// fixture SEPARADO de propósito: `HTML_CAB_CHEIO` (sem o slot) é o que mantém os
+// índices absolutos de `<div>` dos gates do bloco FID-01 apontando para o bloco
+// da DIREITA, e o trilho das abas é um `<div>` a mais DENTRO da coluna do
+// título. Juntar os dois fixtures faria `indiceDaTag(…, 'div', 2)` pegar o irmão
+// errado — que é exatamente a armadilha que aquele bloco já documenta.
+const ABAS_FIXTURE = React.createElement(
+    'div',
+    { className: 'flex gap-[20px] mb-[-1px]' },
+    React.createElement('span', null, 'Publicadas no Mercado Livre'),
+    React.createElement('a', { href: '/mlb/anuncios/meus/9/aprovacao' }, 'Aguardando aprovação'),
+);
+
+const HTML_CAB_COM_ABAS = render(Cabecalho, {
+    sincronizacao: SINC_OK,
+    abas: ABAS_FIXTURE,
+    acaoAtualizar: React.createElement(BotaoAtualizar, { onClick: () => {} }),
+});
+
 const HTML_CAB_GIRANDO = render(Cabecalho, {
     sincronizacao: { rotulo: 'agora', nunca_coletado: false },
     acaoAtualizar: React.createElement(BotaoAtualizar, { onClick: () => {}, atualizando: true }),
@@ -264,12 +283,27 @@ const HTML_FAIXA_CHEIA = render(Faixa, {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test('LIST-01/02 — os literais de tela estão byte a byte', async (contexto) => {
-    await contexto.test('o H1 e o subtítulo do README', () => {
-        assert.ok(HTML_CAB_CHEIO.includes('Publicações'), HTML_CAB_CHEIO);
-        assert.ok(
-            HTML_CAB_CHEIO.includes('Ofertas ativas e históricas desta empresa no Mercado Livre'),
-            'subtítulo parafraseado — o literal é o do README §2 e do protótipo :34',
-        );
+    await contexto.test('o H1 fica, e o SUBTÍTULO SAIU — do render E do arquivo', () => {
+        // ⚠️ REAPONTADO pela Fase 187, plano 03 (ABA-01: *"o subtítulo sai"*).
+        // O VETO: a asserção de HOJE era `includes(…)` do literal. Virar
+        // `doesNotMatch` é o reaponte certo, e ele precisa de ISCA — sem ela,
+        // uma sonda cega passaria igual.
+        //
+        // ⚠️ E a ausência é conferida nos DOIS lugares: no HTML renderizado e no
+        // ARQUIVO lido sem comentários. Só no HTML, o literal poderia continuar
+        // exportado como `SUBTITULO` — um literal MORTO, pronto para voltar à
+        // tela por engano. Ele saiu do arquivo também.
+        const SUBTITULO_APOSENTADO = 'Ofertas ativas e históricas desta empresa no Mercado Livre';
+
+        // ISCA (controle positivo): a sonda ACHA o que continua lá.
+        assert.ok(HTML_CAB_CHEIO.includes('Publicações'), 'a sonda está cega: nem o H1 ela acha');
+        assert.match(FONTE_CABECALHO, /Publicações/, 'a sonda do arquivo está cega: nem o H1 ela acha');
+
+        assert.ok(!HTML_CAB_CHEIO.includes(SUBTITULO_APOSENTADO), 'o subtítulo voltou ao render');
+        assert.ok(!HTML_CAB_COM_ABAS.includes(SUBTITULO_APOSENTADO), 'o subtítulo voltou ao render (com abas)');
+        assert.ok(!FONTE_CABECALHO.includes(SUBTITULO_APOSENTADO), 'o literal do subtítulo continua NO ARQUIVO');
+        assert.ok(!FONTE_CABECALHO.includes('SUBTITULO'), 'o export SUBTITULO continua no arquivo — literal morto');
+        assert.equal(MOD_CABECALHO.SUBTITULO, undefined, 'o módulo ainda exporta SUBTITULO');
     });
 
     await contexto.test('"Sincronizado" + o rótulo PRONTO do servidor, numa frase só', () => {
@@ -328,12 +362,65 @@ test('LIST-01/02 — os literais de tela estão byte a byte', async (contexto) =
 // É este bloco que impede a "adaptação ao sistema atual".
 // ═══════════════════════════════════════════════════════════════════════════
 
+test('ABA-01 — o slot `abas` tem a MESMA guarda de nó do `acaoAtualizar`', async (contexto) => {
+    // O que precisaria estar errado para este bloco falhar: alguém renderizar o
+    // slot com `String(abas)` ou `{abas}` cru. Campo-objeto renderizado como
+    // texto derrubou a página inteira em 07/10/2026 (`[object Object]` na tela),
+    // e nó inválido passado como filho FAZ O REACT LANÇAR — o que mata a tela de
+    // Publicações, que está NO AR.
+    const NOS_INVALIDOS = [
+        ['objeto comum', { total: 3 }],
+        ['objeto com toString nulo', { toString: null }],
+        ['array de objetos', [{ a: 1 }]],
+        ['string', 'as abas'],
+        ['número', 7],
+        ['função', () => {}],
+        ['nulo', null],
+        ['ausente', undefined],
+        ['booleano', true],
+    ];
+
+    for (const [rotulo, no] of NOS_INVALIDOS) {
+        await contexto.test(`abas = ${rotulo} não derruba o cabeçalho`, () => {
+            const html = render(Cabecalho, { sincronizacao: SINC_OK, abas: no });
+            assert.ok(html.includes('Publicações'), 'o cabeçalho sumiu');
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, html);
+        });
+    }
+
+    await contexto.test('SEM o slot `abas` o cabeçalho continua renderizando (a tela de Publicações sempre passa)', () => {
+        assert.ok(HTML_CAB_CHEIO.includes('Publicações'));
+        assert.ok(HTML_CAB_CHEIO.includes('Sincronizado há 25 min'));
+        assert.ok(HTML_CAB_CHEIO.includes('Atualizar'));
+    });
+
+    await contexto.test('REND-03 — nem `String()` nem `JSON.stringify()` sobre o slot, na FONTE', () => {
+        assert.doesNotMatch(FONTE_CABECALHO, /String\(/, 'String({toString:null}) LANÇA e derruba a página');
+        assert.doesNotMatch(FONTE_CABECALHO, /JSON\.stringify\(/, 'JSON.stringify MENTE: NaN vira null');
+        // E a guarda é a MESMA do `acaoAtualizar`: `isValidElement`.
+        assert.match(FONTE_CABECALHO, /isValidElement\(abas\)/, 'o slot `abas` não tem guarda de nó');
+        assert.match(FONTE_CABECALHO, /isValidElement\(acaoAtualizar\)/, 'a guarda do `acaoAtualizar` saiu');
+        // ISCA: as duas sondas de proibição casam na forma que elas proíbem.
+        assert.match('const t = String(x);', /String\(/, 'a sonda de String() está cega');
+        assert.match('JSON.stringify(x)', /JSON\.stringify\(/, 'a sonda de stringify está cega');
+    });
+});
+
 test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contexto) => {
-    await contexto.test('<header> :31 — flex-end, space-between, gap 24', () => {
+    await contexto.test('<header> :31 — flex-end, space-between, gap 24 E a borda de baixo', () => {
+        // ⚠️ REAPONTADO pela Fase 187, plano 03 (ABA-01): `border-b
+        // border-pub-line-subtle` ENTROU. Medido em
+        // `design_handoff_publicador/Publicacoes v2.dc.html:31`
+        // (`border-bottom:1px solid #1F1F1F`) — o protótipo de AUTORIDADE da
+        // seção A1, e NÃO `new_layout_publicador/`, que é a versão antiga.
+        //
+        // ⚠️ O VETO: sem esta borda a aba ativa não tem linha para cobrir com o
+        // `mb-[-1px]` do trilho, e o layout das abas fica flutuando. As duas
+        // medidas são UMA coisa só; tirar qualquer das duas quebra a outra.
         assert.equal((HTML_CAB_CHEIO.match(/<header/g) ?? []).length, 1, 'o cabeçalho tem UM <header>');
         assertClasses(
             tagEm(HTML_CAB_CHEIO, indiceDaTag(HTML_CAB_CHEIO, 'header')),
-            ['flex', 'items-end', 'justify-between', 'gap-[24px]'],
+            ['flex', 'items-end', 'justify-between', 'gap-[24px]', 'border-b', 'border-pub-line-subtle'],
             '<header> :31',
         );
     });
@@ -347,37 +434,82 @@ test('FID-01 — a geometria do cabeçalho bate com o protótipo', async (contex
         );
     });
 
-    await contexto.test('coluna do título :32 — gap 6', () => {
+    await contexto.test('coluna do título :32 — gap 14 (era 6)', () => {
+        // ⚠️ REAPONTADO pela Fase 187, plano 03 (ABA-01). O VETO: `gap-[6px]`
+        // era a medida do SUBTÍTULO colado no H1. Com as abas de 40px no lugar
+        // dele, a medida do protótipo de autoridade é 14
+        // (`design_handoff_publicador/Publicacoes v2.dc.html:32`, `gap:14px`).
         // Localizada pelo H1, não por classes: é a tag que o envolve.
         const h1 = indiceDaTag(HTML_CAB_CHEIO, 'h1');
         assertClasses(
             tagQueEnvolve(HTML_CAB_CHEIO, h1, 'div'),
-            ['flex', 'flex-col', 'gap-[6px]'],
+            ['flex', 'flex-col', 'gap-[14px]'],
             'coluna do título :32',
         );
+        // ⚠️ NÃO existe aqui uma sonda `!html.includes('gap-[6px]')`: ela seria
+        // FALSA POR CONSTRUÇÃO — a <span> do "Sincronizado X" tem `gap-[6px]`
+        // de propósito (`:40` do protótipo de autoridade) e continua tendo. O
+        // que prova a troca é a igualdade de CONJUNTO acima, no elemento certo.
     });
 
-    await contexto.test('subtítulo :34 — 13.5px e a cor neutra (nunca text-sm)', () => {
-        // Por ÁRVORE: a primeira <span> dentro da coluna do título.
-        const coluna = tagQueEnvolve(HTML_CAB_CHEIO, indiceDaTag(HTML_CAB_CHEIO, 'h1'), 'div');
-        assert.ok(coluna, 'coluna do título não localizada');
-        const iSub = primeiraTagApos(HTML_CAB_CHEIO, indiceDaTag(HTML_CAB_CHEIO, 'h1'), 'span');
-        // E ela É a do subtítulo — conferido pelo texto que vem logo depois.
+    await contexto.test('o nó depois do H1 :34 — é o TRILHO DAS ABAS, nunca mais uma <span> de subtítulo', () => {
+        // ⚠️ REAPONTADO pela Fase 187, plano 03. O VETO: a <span> que este teste
+        // localizava NÃO EXISTE MAIS. Mantê-lo apontado para ela o deixaria
+        // VAZIO POR CONSTRUÇÃO — `primeiraTagApos` passaria a achar a <span> do
+        // "Sincronizado X", que está no OUTRO ramo do cabeçalho, e o gate
+        // mediria o elemento errado em silêncio.
+        //
+        // O que ele prova agora: o slot `abas` entra EXATAMENTE no lugar do
+        // subtítulo, dentro da coluna do título e logo depois do H1.
+        const iH1 = indiceDaTag(HTML_CAB_COM_ABAS, 'h1');
+        const iTrilho = primeiraTagApos(HTML_CAB_COM_ABAS, iH1, 'div');
+        const trilho = tagEm(HTML_CAB_COM_ABAS, iTrilho);
+        assertClasses(trilho, ['flex', 'gap-[20px]', 'mb-[-1px]'], 'trilho das abas :34');
+
+        // E ele É o trilho — conferido pelo texto único que vem dentro dele.
         assert.ok(
-            HTML_CAB_CHEIO.indexOf('Ofertas ativas e históricas') > iSub,
-            'a <span> achada não é a do subtítulo',
+            HTML_CAB_COM_ABAS.indexOf('Publicadas no Mercado Livre') > iTrilho,
+            'o <div> achado não é o trilho das abas',
         );
-        assertClasses(tagEm(HTML_CAB_CHEIO, iSub), ['text-[13.5px]', 'text-pub-neutral-txt'], 'subtítulo :34');
+        // ⚠️ E está DENTRO da coluna do título, não solto no <header>: a tag que
+        // envolve o H1 tem de ser a mesma que envolve o trilho.
+        assert.equal(
+            HTML_CAB_COM_ABAS.lastIndexOf('<div', iH1),
+            HTML_CAB_COM_ABAS.lastIndexOf('<div', iTrilho - 1),
+            'o trilho das abas não está na coluna do título',
+        );
+        // ⚠️ E nenhuma <span> de subtítulo sobrou entre o H1 e o trilho.
+        const entre = HTML_CAB_COM_ABAS.slice(iH1, iTrilho);
+        assert.ok(!entre.includes('text-[13.5px]'), 'sobrou a <span> de 13.5px do subtítulo entre o H1 e as abas');
     });
 
-    await contexto.test('bloco da direita :36 — gap 10', () => {
+    await contexto.test('bloco da direita :39 — gap 10, IDÊNTICO (e sem padding-bottom)', () => {
         // ⚠️ Por ÁRVORE com índice ABSOLUTO: é o 2º <div> do cabeçalho (o 1º é
         // a coluna do título). Localizar por classes pegaria o irmão errado.
         assertClasses(
             tagEm(HTML_CAB_CHEIO, indiceDaTag(HTML_CAB_CHEIO, 'div', 2)),
             ['flex', 'items-center', 'gap-[10px]'],
-            'bloco da direita :36',
+            'bloco da direita :39',
         );
+
+        // ⚠️ REFERÊNCIA CORRIGIDA pela Fase 187, plano 03 — a antiga (`:36`) era
+        // a da cópia `new_layout_publicador/`. No protótipo de AUTORIDADE
+        // (`design_handoff_publicador/`) este bloco é `:39`: os dois hunks da A1
+        // deslocaram tudo daqui para baixo em **+3**, e o CONTEÚDO é byte a byte
+        // o mesmo. (O plano deste executor dizia `:37`, que é o `</div>` de
+        // fechamento do trilho — ponteiro deslocado, medido com `grep -n`.)
+        //
+        // ⚠️ E a DIREITA NÃO MUDA. `padding-bottom` não existe em NENHUMA linha
+        // de `Publicacoes v2.dc.html` (medido: `grep -n padding-bottom` sai
+        // vazio nas duas cópias). O `padding-bottom:12px` que se poderia querer
+        // copiar está em `design_handoff_publicador/Aprovacao.dc.html:38` — a
+        // linha "ⓘ Margem mínima" da FILA, outro conteúdo, outro arquivo, outro
+        // plano (187-04). Trazê-lo para cá harmonizaria duas telas que o
+        // protótipo pinta diferentes (FID-02).
+        assert.ok(!HTML_CAB_CHEIO.includes('pb-[12px]'), 'o padding-bottom da FILA vazou para o cabeçalho da LISTA');
+        assert.doesNotMatch(FONTE_CABECALHO, /pb-\[12px\]/, 'o padding-bottom da FILA vazou para o cabeçalho da LISTA');
+        // ISCA: a sonda casa na forma que ela proíbe.
+        assert.match('className="pb-[12px]"', /pb-\[12px\]/, 'a sonda do padding-bottom está cega');
     });
 
     await contexto.test('"Sincronizado X" :37 — 12.5px, gap 6, pr 4', () => {
@@ -1102,8 +1234,25 @@ test('FID — as classes GERAM CSS com o valor certo (não só existem)', async 
         assert.notEqual(regraDe('text-[13.5px]'), null, 'a sonda está cega: nem o controle ela acha');
     });
 
-    await contexto.test('(v) subtítulo — .text-\\[13\\.5px\\] = font-size:13.5px', () => {
-        assert.match(regraDe('text-[13.5px]'), /font-size:\s*13\.5px/);
+    await contexto.test('(v) a borda do <header> — .border-pub-line-subtle = #1F1F1F', () => {
+        // ⚠️ REAPONTADO pela Fase 187, plano 03. O VETO: este caso se chamava
+        // "subtítulo" e media `text-[13.5px]`, a classe do elemento que SAIU da
+        // tela. A classe continua existindo no CSS (43 outros `.jsx` a usam) —
+        // então o teste continuaria VERDE para sempre, provando um fato
+        // verdadeiro sobre um elemento que este arquivo não desenha mais. Teste
+        // que para de provar algo é pior que teste ausente.
+        //
+        // O que ele prova agora é a medida que NASCEU aqui: a borda de baixo do
+        // `<header>` (ABA-01). `text-[13.5px]` segue como CONTROLE POSITIVO da
+        // sonda, no caso da ISCA acima — que é o papel certo para ela.
+        const regra = regraDe('border-pub-line-subtle');
+        assert.notEqual(regra, null, 'a borda do cabeçalho não gerou CSS — a aba ativa não tem linha para cobrir');
+        // #1F1F1F → 31 31 31 (token sólido NÃO compila para hex).
+        assert.match(regra, /rgb\(\s*31\s+31\s+31\b/, regra);
+        // CONTROLE DE VALOR: não é o `line-subtle-2` (#1C1C1C → 28 28 28).
+        assert.ok(!/rgb\(\s*28\s+28\s+28\b/.test(regra), 'a borda está com o #1C1C1C, não o #1F1F1F');
+        // E o `gap-[14px]` novo da coluna do título também gera CSS.
+        assert.match(regraDe('gap-[14px]'), /gap:\s*14px/);
     });
 
     await contexto.test('H1 — 28px e (iv) o zero comido depois do menos', () => {
