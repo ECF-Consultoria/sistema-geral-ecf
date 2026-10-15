@@ -106,6 +106,7 @@ class Modules
     public const MLB_EMPRESAS                = 'mlb.empresas';
     public const MLB_METAS                   = 'mlb.metas';
     public const MLB_PROJETOS                = 'mlb.projetos';
+    public const MLB_PLANEJADOR_FULL         = 'mlb.planejador_full';
 
     // ═══ Shopee ═══
     public const SHOPEE_EMPRESAS             = 'shopee.empresas';
@@ -200,6 +201,7 @@ class Modules
                 ['key' => self::MLB_EMPRESAS,              'name' => 'Pub · Empresas',              'grupo' => 'Publicações (Mercado Livre)', 'route_prefix' => 'mlb.empresas',           'permission_key' => Permissions::MLB_EMPRESAS,       'stage' => 'producao'],
                 ['key' => self::MLB_METAS,                 'name' => 'Pub · Metas',                 'grupo' => 'Publicações (Mercado Livre)', 'route_prefix' => 'mlb.metas.index',        'permission_key' => Permissions::MLB_METAS,          'stage' => 'producao'],
                 ['key' => self::MLB_PROJETOS,              'name' => 'Projetos',                    'grupo' => 'Publicações (Mercado Livre)', 'route_prefix' => 'mlb.projetos',           'permission_key' => Permissions::MLB_PROJETOS,       'stage' => 'producao'],
+                ['key' => self::MLB_PLANEJADOR_FULL,       'name' => 'Planejador FULL',             'grupo' => 'Publicações (Mercado Livre)', 'route_prefix' => 'planejador-full.',       'permission_key' => null,                            'stage' => 'producao'],
             ],
             'Shopee' => [
                 ['key' => self::SHOPEE_EMPRESAS,  'name' => 'Shopee · Empresas',  'grupo' => 'Shopee', 'route_prefix' => 'shopee.empresas.index', 'permission_key' => Permissions::SHOPEE_EMPRESAS, 'stage' => 'producao'],

@@ -20,6 +20,7 @@ final class LeitorDeDados
     public const COMPARTILHADOS = [
         'auth', 'flash', 'errors', 'asset_url', 'csrf_token',
         'sugadores_pendentes', 'notificacoes_nao_lidas', 'alertas_criticos_count',
+        'tarefas_alavancas',
     ];
 
     /** Teto da resposta, em bytes de JSON. */

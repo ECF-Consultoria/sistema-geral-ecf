@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Company;
 use App\Models\ShopeeToken;
+use App\Models\User;
 use App\Services\Shopee\ShopeeService;
 use App\Services\Shopee\ShopeeSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -103,6 +104,31 @@ class ShopeeOAuthTest extends TestCase
         $this->get($adulterada)
             ->assertStatus(403)
             ->assertSee('Link inválido', false);
+    }
+
+    public function test_regerar_link_vencido_grava_link_novo_e_devolve_a_validade_nova(): void
+    {
+        $admin   = User::factory()->create(['role' => 'admin', 'active' => true]);
+        $company = Company::factory()->create([
+            'shopee_link_generated_at' => now()->subDays(21),
+            'shopee_link_url'          => 'https://link-velho-vencido',
+        ]);
+
+        $resp = $this->actingAs($admin)
+            ->postJson(route('shopee.oauth.initiate', $company->id))
+            ->assertOk()
+            ->assertJsonStructure(['url', 'generated_at', 'expires_at']);
+
+        // A tela de Empresas atualiza o selo com este expires_at — sem ele o
+        // "Regerar" seguia mostrando "Link expirado".
+        $this->assertTrue(now()->addDays(7)->diffInSeconds($resp->json('expires_at'), true) < 5);
+
+        $company->refresh();
+        $this->assertSame($resp->json('url'), $company->shopee_link_url);
+        $this->assertTrue($company->shopee_link_generated_at->isToday());
+
+        // O link novo abre a landing (não a página de link vencido).
+        $this->get($resp->json('url'))->assertOk()->assertSee('Passo 1', false);
     }
 
     public function test_build_auth_url_monta_link_assinado(): void

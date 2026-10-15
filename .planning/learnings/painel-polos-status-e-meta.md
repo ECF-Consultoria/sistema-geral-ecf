@@ -630,3 +630,44 @@ grava `ads_desligado` + `polos_ads_status`. Ligado = pelo menos uma campanha `ac
 - **É estado de AGORA.** Só o mês corrente lê/grava; o botão Sincronizar de mês passado não
   regrava. Mês fechado mostra o `ads_desligado` congelado pelo `polos:congelar-roster` (23:40).
 - As duas varreduras usam a MESMA trava (`polos-sync-faturamento:handle`) — cota de ~10 rpm.
+
+## 17. Tarefas do time: "feito" é estado de HOJE, e o estágio não tem histórico (TKT-0017, 14/10/2026)
+
+A tela "Tarefas" do Modo TV e a sub-aba "Metas → Tarefas do time" mostram cartões
+(`polos_tarefas_metas`) com indicador, meta digitada, responsável e prazo. O "feito" de cada
+cartão é calculado na hora, no front, por `resources/js/lib/polosTarefas.js` — a régua de cada
+indicador foi aprovada pela solicitante e mora SÓ ali (a lista de chaves é espelhada em
+`PoloTarefaMeta::INDICADORES`, com teste que trava as duas na mesma ordem).
+
+O que não é dedutível do código:
+
+- **Universo = fases M1–M4, todas** (resposta da solicitante). Não é a base da meta de
+  faturamento (M2–M4) nem as "Empresas ativas" do cockpit — o "Total de empresas" da TV (e o
+  centro do donut) não fecha com nenhum dos dois, e não deve. Na Visão geral da TV, "Empresas
+  com meta" = as de M2–M4 (o mesmo "com meta" da aba Metas) e "Sem faturamento" sai do cockpit
+  (M2–M4 com faturamento zero no mês + M1 da coorte) — só admin tem cockpit; os outros veem "—".
+- **Nada guarda a evolução.** `mlb_empresas.estagio` fica FORA do `logOnly` do activity_log de
+  `MlbEmpresa` (é gerido por `atualizaEstagio()`) e o `polos_roster_snapshots` não grava estágio.
+  Por isso "evolução de estágio 1 para 2" virou **estágio-alvo** na tarefa de Publicação (conta
+  quem está no alvo ou adiante), e não "quantas mudaram desde segunda". Pedido de gráfico de
+  evolução diária exige snapshot novo antes — não há de onde reconstruir.
+- **Campanha usa `ads_campanha`** (`PoloAdsStatus::situacaoDaEmpresa`, DEV-43), não o
+  `campanha_criada` manual da ficha nem o `ads_desligado` cru: conta sem leitura e sem marcação
+  é "não verificada", e não conta como feita.
+- **A tela Tarefas da TV é um PÔSTER, não um layout responsivo.** O usuário reprovou a 1ª
+  versão (grade adaptativa) e pediu "literalmente igual" ao desenho anexado ao ticket.
+  `TarefasTV.jsx` desenha tudo em 1600×1000 px de projeto e escala com `transform` para caber;
+  em tela mais larga que 16:10 a largura do projeto cresce (colunas `fr`), a altura fica 1000.
+  Não troque por breakpoint: a TV da sala renderiza a ~960×600 CSS px e lá `lg:`/`xl:` não
+  disparam. Para conferir sem mexer na janela, abra a página num iframe de 960×600 por cima
+  dela (o Modo TV reabre sozinho pelo sessionStorage).
+- **Paleta de estágio da TV diverge da grade de propósito.** `COR_ESTAGIO_TV` (vermelho,
+  amarelo, verde, violeta, azul) é a do desenho; o badge da grade e a sub-aba seguem com
+  `COR_ESTAGIO`. Não "unifique": a TV foi pedida igual à imagem.
+- **Indicador `manual`** é a tarefa com lista de empresas escolhida à mão ("Integração de
+  anúncios ME1 · 1/4" do desenho): não há coluna da ficha que diga quem está feito, então o
+  feito é digitado (`feito_manual`). Os "Próximos passos" do rodapé ficam em `configuracoes`
+  (`polos_tv_proximos_passos`, JSON), editados na sub-aba.
+- Worktree novo: o `node_modules` do checkout principal pode estar atrás do `package.json` do
+  `origin/main` (em 14/10 faltava o `jsqr`) e o `vite build` falha em `Autenticadores/Index.jsx`.
+  Aponte a junction para um `node_modules` de árvore com o mesmo `package-lock.json` (`cmp -s`).

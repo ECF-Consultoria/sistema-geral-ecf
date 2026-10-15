@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\SetorMembroController;
 use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AutenticadorController;
+use App\Http\Controllers\PlanejadorFullController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
@@ -885,6 +886,28 @@ Route::middleware(['auth', 'verified'])->prefix('autenticadores')->name('autenti
     Route::delete('/{autenticador}', [AutenticadorController::class, 'destroy'])->name('destroy');
 });
 
+// ── Planejador FULL ─────────────────────────────────────────────────────────
+// Reposição do estoque no Fulfillment do ML, com dados da coleta diária na API
+// (full:coletar). Acesso de TODOS os colaboradores logados (decisão de 15/10/2026).
+Route::middleware(['auth', 'verified'])->prefix('planejador-full')->name('planejador-full.')->group(function () {
+    Route::get('/', [PlanejadorFullController::class, 'index'])->name('index');
+    Route::get('/{company}', [PlanejadorFullController::class, 'show'])->whereNumber('company')->name('show');
+    Route::post('/{company}/atualizar', [PlanejadorFullController::class, 'atualizar'])->whereNumber('company')
+        ->middleware('throttle:6,1,planejador-full.atualizar')->name('atualizar');
+    Route::get('/{company}/status', [PlanejadorFullController::class, 'status'])->whereNumber('company')->name('status');
+    Route::get('/{company}/vendas/{inventory}', [PlanejadorFullController::class, 'vendas'])->whereNumber('company')
+        ->where('inventory', '[A-Za-z0-9]{3,30}')->name('vendas');
+    Route::put('/{company}/config', [PlanejadorFullController::class, 'salvarConfig'])->whereNumber('company')->name('config');
+    Route::put('/{company}/skus', [PlanejadorFullController::class, 'salvarSkus'])->whereNumber('company')->name('skus');
+    Route::put('/{company}/itens', [PlanejadorFullController::class, 'salvarItens'])->whereNumber('company')->name('itens');
+    Route::post('/{company}/galpao', [PlanejadorFullController::class, 'importarGalpao'])->whereNumber('company')->name('galpao');
+    Route::post('/{company}/envios', [PlanejadorFullController::class, 'registrarEnvio'])->whereNumber('company')->name('envios.store');
+    Route::post('/{company}/envios/planilha', [PlanejadorFullController::class, 'importarPlanilhaEstoque'])->whereNumber('company')->name('envios.planilha');
+    Route::patch('/{company}/envios/{envio}', [PlanejadorFullController::class, 'atualizarEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.update');
+    Route::delete('/{company}/envios/{envio}', [PlanejadorFullController::class, 'excluirEnvio'])->whereNumber('company')->whereNumber('envio')->name('envios.destroy');
+    Route::post('/{company}/exportar', [PlanejadorFullController::class, 'exportar'])->whereNumber('company')->name('exportar');
+});
+
 Route::middleware(['auth', 'verified'])->group(function () {
 
     // Dashboard
@@ -1613,6 +1636,8 @@ Route::middleware(['auth', 'verified'])
          Route::patch('/empresas/{empresa}/ads', [PolosController::class, 'marcarAds'])->name('empresas.ads');
          // Check "reunião do mês feita" por empresa/mês (gaveta de /polos/empresas — TKT-0004).
          Route::post('/reunioes', [PolosController::class, 'reuniaoMarcar'])->name('reunioes.marcar');
+         // Baixar /polos/empresas em .xlsx (TKT-0018). POST: leva os cust_id das linhas visíveis.
+         Route::post('/empresas/exportar', [PolosController::class, 'exportarEmpresas'])->name('empresas.exportar');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
@@ -1647,6 +1672,11 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
     // Meta ÚNICA de faturamento Polos (card "% Geral da meta"; JSON; admin-only).
     Route::post('/polos-painel/meta-faturamento', [PolosController::class, 'salvarMetaFaturamento'])->name('polos-painel.meta-faturamento');
+    // Tarefas do time com meta editável (tela "Tarefas" do Modo TV — TKT-0017; JSON; mesmo gate operacional).
+    Route::post('/polos-painel/tarefas',             [PolosController::class, 'tarefaStore'])->name('polos-painel.tarefas.store');
+    Route::post('/polos-painel/tarefas/proximos-passos', [PolosController::class, 'salvarProximosPassos'])->name('polos-painel.tarefas.proximos-passos');
+    Route::put('/polos-painel/tarefas/{tarefa}',     [PolosController::class, 'tarefaUpdate'])->name('polos-painel.tarefas.update');
+    Route::delete('/polos-painel/tarefas/{tarefa}',  [PolosController::class, 'tarefaDestroy'])->name('polos-painel.tarefas.destroy');
     // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
     Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
     Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');

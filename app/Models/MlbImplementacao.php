@@ -763,6 +763,41 @@ class MlbImplementacao extends Model
     /** Peso da embalagem não pode ultrapassar 50 kg. */
     public const ME_PESO_MAX_KG = 50;
 
+    // ─── Listagem automática (TKT-0016) ──────────────────────────────────────
+
+    /** Mínimo de produtos, na Planilha de Produtos e com custo na Precificação, para listar. */
+    public const LISTAGEM_MIN_PRODUTOS = 2;
+
+    /**
+     * Valores da Listagem que a regra automática pode promover a 'Pronto para listar'.
+     * 'Já listado' e valor criado à mão no Painel são da equipe e ficam como estão.
+     */
+    public const LISTAGEM_PROMOVIVEIS = [null, '', 'Não', 'Falta informação'];
+
+    /**
+     * Verdadeiro quando o cliente já mandou, pelo link do Onboarding, o que a equipe precisa
+     * para listar: ao menos LISTAGEM_MIN_PRODUTOS produtos identificados (SKU ou nome) na
+     * Planilha de Produtos E ao menos LISTAGEM_MIN_PRODUTOS com custo na Precificação.
+     * Mesmo critério de "preenchido" do itemTemConteudo, só que contando.
+     *
+     * @param array $dados O JSON `dados` da ficha (com `itens`).
+     */
+    public static function prontaParaListar(array $dados): bool
+    {
+        $produtos = $dados['itens']['planilha_produtos']['produtos'] ?? [];
+        $precos   = $dados['itens']['precificacao']['produtos'] ?? [];
+        if (! is_array($produtos) || ! is_array($precos)) {
+            return false;
+        }
+
+        $identificados = count(array_filter($produtos, fn ($p) => is_array($p)
+            && (trim((string) ($p['sku'] ?? '')) !== '' || trim((string) ($p['produto'] ?? '')) !== '')));
+        $comCusto = count(array_filter($precos, fn ($p) => is_array($p)
+            && trim((string) ($p['custo'] ?? '')) !== ''));
+
+        return $identificados >= self::LISTAGEM_MIN_PRODUTOS && $comCusto >= self::LISTAGEM_MIN_PRODUTOS;
+    }
+
     /**
      * Verdadeiro se ALGUM produto da Planilha de Produtos ultrapassa os limites
      * do Mercado Envios nas MEDIDAS DA EMBALAGEM (altura_emb/largura_emb/prof_emb

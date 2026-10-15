@@ -222,6 +222,15 @@ Schedule::command('mlb:sync-acervo')
     ->name('sync-ml-acervo')
     ->withoutOverlapping();
 
+// Planejador FULL — estoque no Fulfillment, vendas de 30 dias e chegadas dos envios,
+// direto da API do ML (substitui o upload das duas planilhas). 06:30 = o plano do dia
+// já está pronto quando o time chega, e fica longe da cascata de ML das 11h. O
+// ensureValidToken() renova o token que vencer antes das 08:00 do ml:refresh-tokens.
+Schedule::command('full:coletar')
+    ->dailyAt('06:30')
+    ->name('planejador-full-coleta')
+    ->withoutOverlapping();
+
 // Sync direto Shopee (D-1) — 11:15, logo após o ml:sync.
 // Só processa empresas com token Shopee ativo; grava em shopee_metrics.
 Schedule::command('shopee:sync')

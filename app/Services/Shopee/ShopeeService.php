@@ -5,6 +5,7 @@ namespace App\Services\Shopee;
 use App\Models\Company;
 use App\Models\ShopeeMetric;
 use App\Models\ShopeeToken;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -368,6 +369,19 @@ class ShopeeService
      */
     public function get(Company $company, string $apiPath, array $query = []): array
     {
+        return $this->getCompleto($company, $apiPath, $query)['response'] ?? [];
+    }
+
+    /**
+     * Igual ao get(), mas devolve o JSON INTEIRO da Shopee. Alguns endpoints
+     * respondem fora da chave `response` — o `get_shop_info` traz shop_name e
+     * status na raiz, e o get() devolveria [] para ele. Usado pelo MCP, que
+     * repassa qualquer endpoint de leitura.
+     *
+     * @throws \RuntimeException
+     */
+    public function getCompleto(Company $company, string $apiPath, array $query = []): array
+    {
         $token = $this->ensureValidToken($company);
 
         if (! $token) {
@@ -392,7 +406,7 @@ class ShopeeService
             throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
         }
 
-        return $json['response'] ?? [];
+        return $json;
     }
 
     /**
@@ -415,6 +429,16 @@ class ShopeeService
      * @throws \RuntimeException
      */
     public function post(Company $company, string $apiPath, array $payload = []): array
+    {
+        return $this->postCompleto($company, $apiPath, $payload)['response'] ?? [];
+    }
+
+    /**
+     * Igual ao post(), mas devolve o JSON INTEIRO (ver getCompleto()).
+     *
+     * @throws \RuntimeException
+     */
+    public function postCompleto(Company $company, string $apiPath, array $payload = []): array
     {
         $token = $this->ensureValidToken($company);
 
@@ -441,7 +465,74 @@ class ShopeeService
             throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
         }
 
-        return $json['response'] ?? [];
+        return $json;
+    }
+
+    /**
+     * Várias GET ao MESMO endpoint de loja, até `$simultaneas` por vez
+     * (Http::pool) — mesmo token e mesma assinatura do getCompleto(). Devolve
+     * o JSON inteiro de cada consulta, com a chave dela.
+     *
+     * Existe para o MCP: cada chamada à Shopee leva ~2 s (medido em 14/10/2026
+     * na GENUINEAUTOMOTIVE: lista de 100 pedidos 1,9 s; detalhe de 50, 2,1 s),
+     * e somar um mês de pedidos em série passava de um minuto.
+     *
+     * Qualquer consulta com erro lança RuntimeException igual à do get().
+     *
+     * @param  array<int|string, array<string, mixed>>  $consultas chave => query
+     * @return array<int|string, array<string, mixed>>
+     *
+     * @throws \RuntimeException
+     */
+    public function getEmParalelo(Company $company, string $apiPath, array $consultas, int $simultaneas = 8): array
+    {
+        $token = $this->ensureValidToken($company);
+
+        if (! $token) {
+            throw new \RuntimeException("[Shopee] Empresa {$company->id} sem token válido.");
+        }
+
+        $resultados = [];
+
+        foreach (array_chunk($consultas, max(1, $simultaneas), true) as $lote) {
+            $respostas = Http::pool(function (Pool $pool) use ($lote, $apiPath, $token) {
+                foreach ($lote as $chave => $query) {
+                    $timestamp = time();
+                    $requisicao = $pool->as((string) $chave)->timeout(30);
+
+                    if (! config('services.shopee.verify_ssl', true)) {
+                        $requisicao = $requisicao->withoutVerifying();
+                    }
+
+                    $requisicao->get($this->host . $apiPath, array_merge([
+                        'partner_id'   => $this->partnerId,
+                        'timestamp'    => $timestamp,
+                        'access_token' => $token->access_token,
+                        'shop_id'      => (int) $token->shop_id,
+                        'sign'         => $this->signer->sign($apiPath, $timestamp, $token->access_token, (int) $token->shop_id),
+                    ], $query));
+                }
+            });
+
+            foreach (array_keys($lote) as $chave) {
+                $resposta = $respostas[(string) $chave] ?? null;
+
+                if (! $resposta instanceof \Illuminate\Http\Client\Response) {
+                    $motivo = $resposta instanceof \Throwable ? $resposta->getMessage() : 'sem resposta';
+                    throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$motivo}");
+                }
+
+                $json = $resposta->json() ?? [];
+
+                if (! $resposta->successful() || $this->isError($json)) {
+                    throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$resposta->body()}");
+                }
+
+                $resultados[$chave] = $json;
+            }
+        }
+
+        return $resultados;
     }
 
     /** True quando a resposta v2 traz um `error` não-vazio. */

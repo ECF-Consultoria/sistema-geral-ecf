@@ -43,7 +43,7 @@ export default function Fila({ demandas, usuarios, eu, pode, hoje, onAbrir, onAt
                         onChange={(e) => setQuem(e.target.value)}
                         className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/50 focus:outline-none"
                     >
-                        <option value="todos">Todo mundo</option>
+                        <option value="todos">Todos</option>
                         {comDemanda.map((u) => <option key={u.id} value={String(u.id)}>{u.id === eu.id ? `${u.name} (eu)` : u.name}</option>)}
                     </select>
                 )}

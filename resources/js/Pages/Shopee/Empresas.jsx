@@ -9,14 +9,9 @@ import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store, UserCog } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
-import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO } from '@/lib/shopeeEmpresas';
+import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO, estadoDoLink } from '@/lib/shopeeEmpresas';
 
 const SHOPEE_ORANGE = '#ee4d2d'; // laranja da marca Shopee
-
-function daysLeft(expiresAt) {
-    if (!expiresAt) return null;
-    return Math.ceil((new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
-}
 
 // Célula "Conexão" da Shopee: status do OAuth + gerar/copiar o link que o cliente
 // usa para autorizar. Reusa a rota shopee.oauth.initiate — o líder do Setor Shopee
@@ -24,23 +19,17 @@ function daysLeft(expiresAt) {
 function ShopeeConexao({ company }) {
     const token = company.shopee_token;
     const isConnected = token?.status === 'active';
-    const [loading, setLoading]       = useState(false);
-    const [copied, setCopied]         = useState(false);
-    const [sessionUrl, setSessionUrl] = useState(null);
-    const [sessionExpires, setSessionExpires] = useState(null); // expiração do link regerado nesta sessão
-    const [erro, setErro]             = useState(null);
-    const [syncing, setSyncing]       = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [copied, setCopied]   = useState(false);
+    const [gerado, setGerado]   = useState(null); // {url, expires_at} do "Regerar" desta sessão
+    const [erro, setErro]       = useState(null);
+    const [syncing, setSyncing] = useState(false);
 
-    const expiresAt    = sessionExpires ?? company.shopee_link_expires_at;
-    const days         = daysLeft(expiresAt);
-    const expired      = days !== null && days <= 0;
-    // Link vencido não é oferecido para copiar: a assinatura não vale mais e o
-    // cliente cairia na página de "link venceu". O caminho é regerar.
-    const linkUrl   = sessionUrl ?? (expired ? null : company.shopee_link_url);
-    const pendente  = !!(sessionUrl || company.shopee_link_generated_at);
+    const link = estadoDoLink(company, gerado);
 
     const gerarLink = async () => {
         setLoading(true);
+        setErro(null);
         try {
             const res = await fetch(route('shopee.oauth.initiate', company.id), {
                 method: 'POST',
@@ -49,24 +38,25 @@ function ShopeeConexao({ company }) {
                     'Accept': 'application/json',
                 },
             });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok && data.url) {
-                setSessionUrl(data.url);
-                setSessionExpires(data.expires_at ?? null);
-                setErro(null);
+            const data = res.ok ? await res.json() : null;
+            if (data?.url) {
+                setGerado(data);
             } else {
-                setErro(data.message ?? `Não foi possível gerar o link (erro ${res.status}).`);
+                // Antes a falha era muda: o botão girava e nada mudava.
+                setErro(res.status === 419 ? 'Sessão expirada: recarregue a página.'
+                    : res.status === 403 ? 'Sem permissão para gerar o link.'
+                    : 'Não foi possível gerar o link.');
             }
         } catch {
-            setErro('Não foi possível gerar o link. Verifique a conexão e tente de novo.');
+            setErro('Não foi possível gerar o link.');
         } finally {
             setLoading(false);
         }
     };
 
     const copiar = () => {
-        if (!linkUrl) return;
-        navigator.clipboard.writeText(linkUrl);
+        if (!link.url) return;
+        navigator.clipboard.writeText(link.url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -104,40 +94,63 @@ function ShopeeConexao({ company }) {
         );
     }
 
-    // Link já gerado (pendente) → mostra "Aguardando" + copiar + regerar.
-    if (pendente) {
+    const aviso = erro && <span className="text-[11px] text-red-400 whitespace-nowrap">{erro}</span>;
+
+    // Link vencido → sem "Copiar" (a assinatura não vale mais); só regerar.
+    if (link.vencido) {
         return (
-            <div className="flex items-center gap-1.5 whitespace-nowrap" title={erro ?? undefined}>
-                <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold', expired ? 'text-red-400' : 'text-amber-400')}>
-                    <Clock className="h-3.5 w-3.5 shrink-0" />
-                    {expired ? 'Link expirado' : `Aguardando${days !== null ? ` · ${days}d` : ''}`}
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400">
+                    <Clock className="h-3.5 w-3.5 shrink-0" /> Link expirado
                 </span>
-                {linkUrl && (
-                    <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
-                        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                )}
-                <button onClick={gerarLink} disabled={loading} title={expired ? 'Link vencido — clique para gerar um novo' : 'Regerar link'} className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40">
+                <button
+                    onClick={gerarLink}
+                    disabled={loading}
+                    title="Gerar um link novo, válido por 7 dias"
+                    className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-white/10 text-[11px] text-white/50 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40"
+                >
+                    <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
+                    {loading ? 'Gerando…' : 'Regerar'}
+                </button>
+                {aviso}
+            </div>
+        );
+    }
+
+    // Link válido (pendente) → mostra "Aguardando" + copiar + regerar.
+    if (link.pendente) {
+        return (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400">
+                    <Clock className="h-3.5 w-3.5 shrink-0" />
+                    {`Aguardando${link.dias !== null ? ` · ${link.dias}d` : ''}`}
+                </span>
+                <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
+                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                </button>
+                <button onClick={gerarLink} disabled={loading} title="Regerar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40">
                     <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
                 </button>
-                {erro && <span className="text-[11px] text-red-400 truncate max-w-[180px]">{erro}</span>}
+                {aviso}
             </div>
         );
     }
 
     // Sem link → botão "Gerar link".
     return (
-        <button
-            onClick={gerarLink}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors hover:brightness-110 disabled:opacity-40"
-            style={{ backgroundColor: `${SHOPEE_ORANGE}1a`, border: `1px solid ${SHOPEE_ORANGE}33`, color: SHOPEE_ORANGE }}
-            title="Gerar o link de conexão Shopee para enviar ao cliente"
-        >
-            {loading ? <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
-            Gerar link
-            {erro && <span className="text-red-400 ml-1" title={erro}>· erro</span>}
-        </button>
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <button
+                onClick={gerarLink}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors hover:brightness-110 disabled:opacity-40"
+                style={{ backgroundColor: `${SHOPEE_ORANGE}1a`, border: `1px solid ${SHOPEE_ORANGE}33`, color: SHOPEE_ORANGE }}
+                title="Gerar o link de conexão Shopee para enviar ao cliente"
+            >
+                {loading ? <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
+                Gerar link
+            </button>
+            {aviso}
+        </div>
     );
 }
 

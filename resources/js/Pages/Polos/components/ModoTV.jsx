@@ -3,18 +3,27 @@ import { usePage } from '@inertiajs/react';
 import { Building2, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
+import {
+    universoTarefas, progressoDaTarefa, resumoPorResponsavel, distribuicaoEstagios,
+    coresDosResponsaveis, COR_SEM_RESPONSAVEL, COR_ESTAGIO_TV,
+} from '@/lib/polosTarefas';
 import { useAnunciarModoTv } from '@/hooks/useModoTv';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
 import StatusDonut from './StatusDonut';
+import TarefasTV from './TarefasTV';
 
 /**
  * ModoTV — o Painel Polos na TV da empresa. Painel de PAREDE, lido a 4–5 metros.
  *
- * Duas telas, uma por aba do painel (a lente ativa decide qual abre):
+ * Três telas (a lente ativa decide qual abre):
  *  · METAS       → a aba "Metas → Entrantes (M0)" INTEIRA: meta do mês, aceites, reserva,
  *                  funil de entrada por polo e prontidão de setup dos M0.
+ *  · TAREFAS     → a evolução das tarefas do time (TKT-0017), IGUAL ao desenho que a gestão
+ *                  anexou ao ticket: pôster próprio (TarefasTV), com cabeçalho e rodapé dele,
+ *                  no lugar do cabeçalho comum. Os cartões são criados em "Metas → Tarefas do
+ *                  time"; régua em lib/polosTarefas.
  *  · FATURAMENTO → faturamento total e empresas ativas, faturamento × meta POR POLO
  *                  (barras, no lugar da antiga lista de ranking) e distribuição de
  *                  status — o anel, protagonista, ocupando a coluna direita inteira.
@@ -51,6 +60,7 @@ const temAcesso = (e) => e.acesso_colaborador === 'Com acesso';
 const temGrupo  = (e) => e.grupo_whatsapp === true;
 
 const MESES_BR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const ROTULO_TELA = { metas: 'Metas', tarefas: 'Tarefas', faturamento: 'Faturamento' };
 const HEX = { yellow: '#ffe600', green: '#22c55e', violet: '#a855f7', sky: '#38bdf8', fuchsia: '#e879f9' };
 
 const pct = (n, t) => (t > 0 ? Math.round((n / t) * 100) : 0);
@@ -286,6 +296,8 @@ function LinhaPolo({ nome, valor, apoio = null, pct: p, cor = HEX.yellow, escala
 export default function ModoTV({
     empresas = [],
     metasEntrada = [],
+    tarefas = [],
+    proximosPassos = [],
     regioes = [],
     cockpit = null,
     isAdmin = false,
@@ -409,15 +421,49 @@ export default function ModoTV({
     const mesRefFat   = cockpit?.mesRefLabel ?? `${mesNomeCalendario}/${agora.getFullYear()}`;
     const parcial     = !!cockpit?.parcial;   // mês corrente ainda em curso (Adman ao vivo)
 
+    // ── Tarefas do time (TKT-0017): mesma régua da sub-aba "Tarefas do time" ──
+    const universoT  = useMemo(() => universoTarefas(empresas), [empresas]);
+    // Sem useMemo de propósito: são poucas tarefas × ~300 empresas, e recalcular a cada tique
+    // do relógio (`agora`) faz o "atrasada" virar à meia-noite sem ninguém dar F5.
+    const cartoes    = tarefas.map((t) => ({ t, p: progressoDaTarefa(t, universoT, agora) }));
+    const resumoResp = resumoPorResponsavel(tarefas, universoT, agora);
+    const estagios   = useMemo(() => distribuicaoEstagios(universoT), [universoT]);
+    const coresResp  = useMemo(() => coresDosResponsaveis(tarefas), [tarefas]);
+    const corResp    = (id) => (id ? (coresResp[id] ?? COR_SEM_RESPONSAVEL) : COR_SEM_RESPONSAVEL);
+    // A tela Tarefas pinta os estágios com a paleta do desenho do ticket.
+    const estagiosTV = useMemo(() => ({
+        ...estagios,
+        linhas: estagios.linhas.map((l) => ({ ...l, cor: COR_ESTAGIO_TV[l.chave] ?? l.cor })),
+    }), [estagios]);
+    // Visão geral da tela Tarefas. "Com meta" = M2–M4 (M1 é onboarding, sem meta de
+    // faturamento — o mesmo "com meta" da aba Metas). "Sem faturamento" sai do cockpit: as
+    // M2–M4 do mês com faturamento zero mais as M1 da coorte; sem cockpit (não-admin), "—".
+    const visaoGeral = useMemo(() => {
+        const semFaturamento = temCk
+            ? [...polosCk.flatMap((p) => p.empresas ?? []), ...(cockpit?.m1?.empresas ?? []).filter((e) => e.fase === 'M1')]
+                .filter((e) => !(Number(e.faturamento) > 0)).length
+            : null;
+        return {
+            total: universoT.length,
+            comMeta: universoT.filter((e) => e.fase !== 'M1').length,
+            semFaturamento,
+            faturamento: temCk ? formatCurrency(totalFatProjeto) : null,
+            faturamentoApoio: temCk
+                ? (metaFat > 0 ? `M2–M4: ${pctFat}% da meta ${formatCurrencyCompact(metaFat)}` : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`)
+                : 'só para admin',
+        };
+    }, [temCk, polosCk, cockpit, universoT, totalFatProjeto, metaFat, pctFat, mesRefFat, parcial]);
+
     // ── Telas (a lente ativa escolhe a inicial) ──
-    const telas = useMemo(() => (temCk ? ['metas', 'faturamento'] : ['metas']), [temCk]);
+    const telas = useMemo(() => (temCk ? ['metas', 'tarefas', 'faturamento'] : ['metas', 'tarefas']), [temCk]);
     // A tela escolhida também sobrevive ao reload — senão a parede volta sozinha para a
     // aba que a lente do painel indica, e não para a que estava no ar.
     const [tela, setTela] = useState(() => {
         try {
             const salva = window.sessionStorage.getItem('polos-painel-tv-tela');
-            if (salva === 'metas' || salva === 'faturamento') return salva;
+            if (salva === 'metas' || salva === 'tarefas' || salva === 'faturamento') return salva;
         } catch (_) { /* quota/priv */ }
+        if (lenteInicial === 'tarefas') return 'tarefas';
         return lenteInicial === 'metas' ? 'metas' : 'faturamento';
     });
     const telaAtiva = telas.includes(tela) ? tela : 'metas';
@@ -463,6 +509,42 @@ export default function ModoTV({
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+    // Controles quase invisíveis: a TV não tem mouse — reaparecem no hover.
+    const controles = (
+        <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
+            {telas.length > 1 && (
+                <>
+                    <button type="button" onClick={anterior} title="Tela anterior (←)"
+                            className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronLeft size={16} /></button>
+                    <button type="button" onClick={proxima} title="Próxima tela (→)"
+                            className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronRight size={16} /></button>
+                </>
+            )}
+            <button type="button" onClick={() => onSair?.()} title="Sair do Modo TV (Esc)"
+                    className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><X size={16} /></button>
+        </div>
+    );
+
+    // Tela Tarefas: o pôster do desenho do ticket ocupa a parede inteira, com cabeçalho e
+    // rodapé próprios. As setas do teclado seguem trocando de tela; os botões ficam no canto.
+    if (telaAtiva === 'tarefas') {
+        return (
+            <div className="fixed inset-0 z-50 overflow-hidden bg-ecf-bg text-white">
+                <TarefasTV
+                    assetUrl={asset_url ?? ''}
+                    atualizadoEm={atualizadoEm}
+                    visaoGeral={visaoGeral}
+                    estagios={estagiosTV}
+                    cartoes={cartoes}
+                    resumo={resumoResp}
+                    corResp={corResp}
+                    proximosPassos={proximosPassos}
+                />
+                <div className="absolute bottom-2 right-2 z-10">{controles}</div>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-ecf-bg text-white">
             {/* Cabeçalho de 64px: logo + tela + mês + relógio (sem rodapé — a área é da parede) */}
@@ -481,30 +563,18 @@ export default function ModoTV({
                                     className={cn('rounded-lg px-[12px] py-[4px] uppercase leading-none tracking-[0.16em] transition-colors',
                                         t === telaAtiva ? 'bg-ecf-yellow/15 text-ecf-yellow' : 'text-white/25 hover:text-white/50')}
                                     style={{ fontSize: FT.rotulo }}>
-                                {t === 'metas' ? 'Metas' : 'Faturamento'}
+                                {ROTULO_TELA[t]}
                             </button>
                         ))}
                     </div>
                 </div>
                 <div className="flex min-w-0 shrink-0 items-center gap-[16px]">
                     <span className="truncate uppercase leading-none tracking-[0.16em] text-white/40" style={{ fontSize: FT.rotulo }}>
-                        {telaAtiva === 'metas' ? mesCorrente : mesRefFat}{telaAtiva !== 'metas' && parcial ? ' · parcial' : ''}
+                        {telaAtiva === 'metas' ? mesCorrente : `${mesRefFat}${parcial ? ' · parcial' : ''}`}
                     </span>
                     <span className="hidden leading-none text-white/25 lg:inline" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
                     <span className="font-display font-extrabold leading-none tabular-nums text-white" style={{ fontSize: FT.titulo }}>{hora}</span>
-                    {/* Controles quase invisíveis: a TV não tem mouse — reaparecem no hover. */}
-                    <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
-                        {telas.length > 1 && (
-                            <>
-                                <button type="button" onClick={anterior} title="Tela anterior (←)"
-                                        className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronLeft size={16} /></button>
-                                <button type="button" onClick={proxima} title="Próxima tela (→)"
-                                        className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><ChevronRight size={16} /></button>
-                            </>
-                        )}
-                        <button type="button" onClick={() => onSair?.()} title="Sair do Modo TV (Esc)"
-                                className="rounded-lg border border-white/[0.1] bg-white/[0.04] p-1.5 text-white/70 hover:bg-white/[0.1]"><X size={16} /></button>
-                    </div>
+                    {controles}
                 </div>
             </div>
 

@@ -20,7 +20,9 @@ use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
+use App\Models\PoloTarefaMeta;
 use App\Models\PolosComentario;
+use App\Models\Ppa;
 use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -355,6 +357,12 @@ class PolosController extends Controller
         // já grava — uma consulta para a lista toda, nenhuma chamada nova à Adman.
         $vinculoAdman = VinculoAdmanPolos::carregar();
 
+        // Tarefas do time (TKT-0017): o "feito" de Campanha e de PPA sai destas duas leituras,
+        // uma consulta cada para a lista inteira. Campanha usa a mesma regra do filtro de
+        // /polos/empresas (DEV-43); PPA = a empresa tem ao menos um plano.
+        $leiturasAds = PoloAdsStatus::frescos()->get()->keyBy(fn (PoloAdsStatus $l) => (string) $l->cust_id);
+        $comPpa      = Ppa::whereNotNull('mlb_empresa_id')->distinct()->pluck('mlb_empresa_id')->flip();
+
         // Lista operacional ancorada em MlbEmpresa projeto=POLOS (só DB — sem ECF Drive).
         // ATIVAS apenas: empresas arquivadas (ausentes na planilha) saem daqui e NÃO
         // contam em nada — vão para a aba "Arquivados" (prop `arquivadas`, abaixo).
@@ -370,7 +378,7 @@ class PolosController extends Controller
             ->get()
             // Projeto canônico: coluna `projeto`, com fallback por fase (empresas antigas).
             ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
-            ->map(function ($e) use ($vinculoAdman) {
+            ->map(function ($e) use ($vinculoAdman, $leiturasAds, $comPpa) {
                 $impl  = $e->implementacao;
                 $prazo = $impl?->infoPrazo();
 
@@ -438,6 +446,13 @@ class PolosController extends Controller
                     // sem Cust ID). Regra em VinculoAdmanPolos.
                     'adman_vinculo'            => $vinculoAdman->status($e->fase, $e->cust_id),
                     'adman_lido_em'            => $vinculoAdman->lidoEm($e->cust_id),
+                    // Tarefas do time (TKT-0017), só leitura: situação das campanhas ('ativa',
+                    // 'desligada', 'sem_campanha' ou null = não verificado) e se há PPA.
+                    'ads_campanha'             => PoloAdsStatus::situacaoDaEmpresa(
+                        $leiturasAds[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? null,
+                        $e->ads_desligado === null ? null : (bool) $e->ads_desligado,
+                    ),
+                    'tem_ppa'                  => isset($comPpa[$e->id]),
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
                     // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).
                     'link_whatsapp'            => $impl?->link_whatsapp,
@@ -531,6 +546,12 @@ class PolosController extends Controller
             // Metas de entrantes por região × mês (aba Metas). Alvos cadastrados; realizado
             // é derivado no front a partir de `empresas` (cust_id + acesso + grupo whatsapp).
             'metasEntrada' => PoloMetaEntrada::all(['polo', 'mes', 'meta']),
+            // Tarefas do time com meta editável (TKT-0017): cartões da tela "Tarefas" do Modo TV
+            // e da sub-aba "Tarefas do time". O "feito" é calculado no front (lib/polosTarefas).
+            'tarefasMeta' => PoloTarefaMeta::with('responsavel:id,name')->orderBy('id')->get()
+                ->map(fn (PoloTarefaMeta $t) => $t->paraTela())->values(),
+            // "Próximos passos" do rodapé da tela Tarefas da TV (lista curta, editada na sub-aba).
+            'proximosPassos' => PoloTarefaMeta::proximosPassos(),
             // Props do modal "Ver" (mesma fonte da tela de Onboarding — MlbImplementacaoController@index).
             'checklist'         => MlbImplementacao::CHECKLIST,
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
@@ -904,7 +925,7 @@ class PolosController extends Controller
      * Streaming (e não `save()` num arquivo temporário) porque a planilha do painel passa
      * de 500 linhas × 35 colunas e não há motivo para encostar no disco.
      *
-     * @param array<int,array{key:string,label:string,tipo:string}> $colunas
+     * @param array<int,array{key:string,label:string,tipo:string,largura?:int,quebrar?:bool}> $colunas
      * @param array<int,array<string,mixed>>                        $linhas
      */
     private function streamXlsx(array $colunas, array $linhas, string $nomeArquivo, string $nomeAba): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -967,6 +988,13 @@ class PolosController extends Controller
                     // o formato percentual do Excel, que multiplicaria por 100.
                     $folha->getStyle($faixa)->getNumberFormat()->setFormatCode('0"%"');
                 }
+                // Texto longo em várias linhas (comentários): quebra dentro da célula e
+                // alinha no topo, senão o Excel mostra só a primeira linha cortada.
+                if (! empty($col['quebrar'])) {
+                    $folha->getStyle($faixa)->getAlignment()
+                        ->setWrapText(true)
+                        ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+                }
             }
         }
 
@@ -977,7 +1005,8 @@ class PolosController extends Controller
         // Largura fixa por tipo, NÃO setAutoSize: o autosize obriga o writer a medir cada
         // célula (35 colunas × 500+ empresas) e é de longe a parte mais cara da geração.
         foreach ($colunas as $i => $col) {
-            $largura = match (true) {
+            // `largura` na definição da coluna vence a regra geral abaixo.
+            $largura = $col['largura'] ?? match (true) {
                 $col['key'] === 'nome'                       => 34,
                 $col['key'] === 'situacao'                   => 30,
                 in_array($col['key'], ['problema_nota', 'link_whatsapp'], true) => 32,
@@ -1213,6 +1242,112 @@ class PolosController extends Controller
         return response()->json(['ok' => true, 'meta' => $meta]);
     }
 
+    // ═══ TAREFAS DO TIME (TKT-0017) ═══
+    // Cartões da tela "Tarefas" do Modo TV: indicador de uma lista fixa, meta, responsável e
+    // prazo, editados pela gestão. Mesmo gate operacional do painel e do salvarMetaEntrada —
+    // quem vê o Painel acompanha e ajusta a meta do time. JSON, como as outras metas do painel.
+
+    public function tarefaStore(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa = PoloTarefaMeta::create($this->dadosDaTarefa($request) + [
+            'criado_por'     => $request->user()->id,
+            'atualizado_por' => $request->user()->id,
+        ]);
+
+        return response()->json(['ok' => true, 'tarefa' => $tarefa->load('responsavel:id,name')->paraTela()]);
+    }
+
+    public function tarefaUpdate(Request $request, PoloTarefaMeta $tarefa): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa->update($this->dadosDaTarefa($request) + ['atualizado_por' => $request->user()->id]);
+
+        return response()->json(['ok' => true, 'tarefa' => $tarefa->load('responsavel:id,name')->paraTela()]);
+    }
+
+    /** Remove o cartão da tela (soft delete: o histórico da meta fica no activity_log). */
+    public function tarefaDestroy(Request $request, PoloTarefaMeta $tarefa): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $tarefa->update(['atualizado_por' => $request->user()->id]);
+        $tarefa->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Grava os "Próximos passos" da tela Tarefas da TV: a lista inteira de uma vez (a tela manda
+     * todos os itens, na ordem). Linha vazia sai; lista vazia apaga o bloco da TV.
+     */
+    public function salvarProximosPassos(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $this->checkPainelOperacional($request);
+
+        $data = $request->validate([
+            'itens'   => ['present', 'array', 'max:'.PoloTarefaMeta::MAX_PROXIMOS_PASSOS],
+            'itens.*' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $itens = array_values(array_filter(array_map(fn ($i) => trim((string) $i), $data['itens']), fn ($i) => $i !== ''));
+        $antes = PoloTarefaMeta::proximosPassos();
+
+        Configuracao::set(PoloTarefaMeta::CHAVE_PROXIMOS_PASSOS, json_encode($itens, JSON_UNESCAPED_UNICODE));
+
+        activity('polos')
+            ->causedBy($request->user())
+            ->withProperties(['antes' => $antes, 'depois' => $itens])
+            ->log('Próximos passos da TV (Polos) atualizados');
+
+        return response()->json(['ok' => true, 'itens' => $itens]);
+    }
+
+    /** Gate operacional do Painel Polos: admin OU permissão mlb.projetos (mesma régua de painel()). */
+    private function checkPainelOperacional(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+    }
+
+    /**
+     * Valida e normaliza o formulário do cartão. Estágio-alvo só existe na Publicação (e cai no
+     * padrão "Estágio 1" = saiu de Não Listado quando vem vazio); nos outros indicadores é limpo,
+     * para um cartão que trocou de indicador não carregar um estágio que não usa. O mesmo vale
+     * para o feito digitado, que só a contagem manual tem.
+     */
+    private function dadosDaTarefa(Request $request): array
+    {
+        $data = $request->validate([
+            'indicador'      => ['required', 'string', \Illuminate\Validation\Rule::in(array_keys(PoloTarefaMeta::INDICADORES))],
+            'estagio_alvo'   => ['nullable', 'string', \Illuminate\Validation\Rule::in(PoloTarefaMeta::ESTAGIOS_ALVO)],
+            'titulo'         => ['required', 'string', 'max:120'],
+            'descricao'      => ['nullable', 'string', 'max:500'],
+            'meta'           => ['required', 'integer', 'min:0', 'max:100000'],
+            'feito_manual'   => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'responsavel_id' => ['nullable', 'integer', 'exists:users,id'],
+            'prazo'          => ['nullable', 'date'],
+        ]);
+
+        $data['estagio_alvo'] = $data['indicador'] === 'publicacao'
+            ? ($data['estagio_alvo'] ?? PoloTarefaMeta::ESTAGIO_ALVO_PADRAO)
+            : null;
+        $data['descricao'] = ($data['descricao'] ?? null) ?: null;
+        // Feito digitado só existe na contagem manual (zero quando vem vazio); os automáticos
+        // são calculados ao vivo e não guardam número nenhum.
+        $data['feito_manual'] = $data['indicador'] === PoloTarefaMeta::INDICADOR_MANUAL
+            ? (int) ($data['feito_manual'] ?? 0)
+            : null;
+
+        return $data;
+    }
+
     /**
      * Arquiva UMA empresa Polos (RF-Arquivamento): sai do Painel e NÃO conta mais em
      * metas/faturamento/cockpit. Reversível (nada é apagado — só marca `arquivado_em`).
@@ -1325,18 +1460,7 @@ class PolosController extends Controller
                 ]));
             }
 
-            // Lista plana (com o polo de cada empresa), ordenada por faturamento desc.
-            $empresas = [];
-            foreach ($d['polos'] as $p) {
-                foreach (($p['empresas'] ?? []) as $e) {
-                    $empresas[] = $e + ['polo' => $p['polo']];
-                }
-            }
-            usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
-
-            // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
-            // fechado segue com o `ads_desligado` congelado no roster daquele mês.
-            $empresas = $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+            $empresas = $this->linhasDaVisaoCompleta($d);
 
             $totFat  = array_sum(array_column($empresas, 'faturamento'));
             $totMeta = array_sum(array_column($empresas, 'meta'));
@@ -1372,6 +1496,186 @@ class PolosController extends Controller
                 'erro' => 'Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.',
             ]));
         }
+    }
+
+    /**
+     * Linhas da visão completa (/polos/empresas): lista plana com o polo de cada empresa,
+     * ordenada por faturamento desc. Compartilhada pela tela e pela planilha exportada,
+     * para as duas nunca divergirem.
+     *
+     * @param  array  $d  Saída de montarPolos()
+     * @return array<int, array<string,mixed>>
+     */
+    private function linhasDaVisaoCompleta(array $d): array
+    {
+        $empresas = [];
+        foreach ($d['polos'] as $p) {
+            foreach (($p['empresas'] ?? []) as $e) {
+                $empresas[] = $e + ['polo' => $p['polo']];
+            }
+        }
+        usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
+
+        // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
+        // fechado segue com o `ads_desligado` congelado no roster daquele mês.
+        return $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+    }
+
+    // ═══ Planilha do Faturamento Polos (/polos/empresas — TKT-0018) ═══
+
+    /** Rótulos espelhados de STATUS_META de Polos/Empresas.jsx (aqui "Não" é "Não faturou"). */
+    private const EMPRESAS_STATUS_LABEL = [
+        'Sim'          => 'No alvo',
+        'Em progresso' => 'Em progresso',
+        'Não'          => 'Não faturou',
+        'Problema'     => 'Problema',
+    ];
+
+    /** Rótulos espelhados de CAMPANHAS de Polos/Empresas.jsx; null = não verificado. */
+    private const EMPRESAS_CAMPANHA_LABEL = [
+        PoloAdsStatus::CAMPANHA_ATIVA        => 'Ativa',
+        PoloAdsStatus::CAMPANHA_DESLIGADA    => 'Desligada',
+        PoloAdsStatus::CAMPANHA_SEM_CAMPANHA => 'Sem campanha',
+    ];
+
+    /**
+     * Baixa a visão completa do Faturamento Polos (/polos/empresas) como planilha .xlsx:
+     * as colunas da tabela, mais Cust ID, meta, a reunião do mês e os comentários da
+     * empresa (de todos os meses, como a tela mostra).
+     *
+     * Mesmo padrão da planilha do Painel Polos (`exportarPlanilha`): POST com as linhas
+     * VISÍVEIS (`custs`, já filtradas pelos chips e pela busca, na ordem da tela) e o mês
+     * selecionado; sem `custs`, sai o mês inteiro. A lista é remontada aqui pelo mesmo
+     * `montarPolos()` da tela — o front só diz QUAIS linhas, nunca os números.
+     *
+     * "% da meta" sai com o valor REAL: a tela trava a barra em 100 (learnings §9) e mostra
+     * o real no hover; numa planilha o número cru é o que serve para filtrar e ordenar.
+     */
+    public function exportarEmpresas(Request $request)
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'mes'     => ['sometimes', 'nullable', 'string', 'max:6'],
+            'custs'   => ['sometimes', 'array', 'max:5000'],
+            'custs.*' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        try {
+            $d = $this->montarPolos();
+        } catch (\Throwable $e) {
+            report($e);
+            $d = null;
+        }
+        if ($d === null) {
+            return back()->with('error', 'Não foi possível montar a planilha agora: o ECF Drive não respondeu. Tente em alguns segundos.');
+        }
+
+        $empresas = $this->linhasDaVisaoCompleta($d);
+
+        // Recorte e ordem da tela. Empresa sem Cust ID chega como '' (o middleware a
+        // transforma em null) e casa com as demais sem Cust ID, como na própria tabela.
+        if (array_key_exists('custs', $dados)) {
+            $posicao = [];
+            foreach ($dados['custs'] as $i => $c) {
+                $posicao[CustId::normaliza((string) $c)] ??= $i;
+            }
+            $empresas = array_values(array_filter($empresas, fn ($e) => isset($posicao[(string) $e['cust_id']])));
+            usort($empresas, fn ($a, $b) => $posicao[(string) $a['cust_id']] <=> $posicao[(string) $b['cust_id']]);
+        }
+
+        $parcial     = (bool) $d['parcial'];
+        $comentarios = $this->comentariosDasEmpresas(array_column($empresas, 'cust_id'), $request->user());
+        $reunioes    = $this->reunioesDoMes($d['mesSel']);
+
+        $colunas = [
+            ['key' => 'nome',          'label' => 'Empresa',     'tipo' => 'texto'],
+            ['key' => 'cust_id',       'label' => 'Cust ID',     'tipo' => 'texto'],
+            ['key' => 'polo',          'label' => 'Polo',        'tipo' => 'texto'],
+            ['key' => 'fase',          'label' => 'Fase',        'tipo' => 'texto'],
+            ['key' => 'status',        'label' => 'Status',      'tipo' => 'texto'],
+            ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (móveis)', 'tipo' => 'dinheiro'],
+            ['key' => 'meta',          'label' => 'Meta',        'tipo' => 'dinheiro'],
+            ['key' => 'pct',           'label' => '% da meta',   'tipo' => 'percentual'],
+            ['key' => 'ads',           'label' => 'ADS',         'tipo' => 'dinheiro'],
+            ['key' => 'ads_situacao',  'label' => 'ADS ligado/desligado', 'tipo' => 'texto'],
+        ];
+        // O filtro "Campanhas" só existe no mês corrente (é estado de agora) — a coluna também.
+        if ($parcial) {
+            $colunas[] = ['key' => 'campanhas', 'label' => 'Campanhas', 'tipo' => 'texto'];
+        }
+        array_push($colunas,
+            ['key' => 'problema',        'label' => 'Problema',            'tipo' => 'texto'],
+            ['key' => 'problema_nota',   'label' => 'Nota do problema',    'tipo' => 'texto', 'largura' => 32],
+            ['key' => 'reuniao',         'label' => 'Reunião do mês',      'tipo' => 'texto'],
+            ['key' => 'reuniao_por',     'label' => 'Reunião marcada por', 'tipo' => 'texto', 'largura' => 32],
+            ['key' => 'comentarios',     'label' => 'Comentários',         'tipo' => 'texto', 'largura' => 70, 'quebrar' => true],
+        );
+
+        $linhas = array_map(function (array $e) use ($comentarios, $reunioes, $parcial) {
+            $reuniao = $reunioes[$e['cust_id']] ?? null;
+
+            // Como a coluna Sinais: true = desligado, false = ligado, null = não informado.
+            $adsSituacao = match ($e['ads_desligado'] ?? null) {
+                true    => 'Desligado',
+                false   => 'Ligado',
+                default => null,
+            };
+
+            return [
+                'nome'          => $e['nome'],
+                'cust_id'       => $e['cust_id'],
+                'polo'          => $e['polo'],
+                'fase'          => $e['fase'],
+                'status'        => self::EMPRESAS_STATUS_LABEL[$e['status']] ?? $e['status'],
+                'faturamento'   => $e['faturamento'],
+                'meta'          => $e['meta'],
+                'pct'           => $e['pct'],
+                'ads'           => $e['ads'],
+                'ads_situacao'  => $adsSituacao,
+                'campanhas'     => $parcial ? (self::EMPRESAS_CAMPANHA_LABEL[$e['ads_campanha'] ?? ''] ?? 'Não verificado') : null,
+                'problema'      => ! empty($e['problema']) ? 'Sim' : null,
+                'problema_nota' => ! empty($e['problema']) ? $e['problema_nota'] : null,
+                // Sem marcação = não feita, como a tela mostra.
+                'reuniao'       => ($reuniao['feita'] ?? false) ? 'Feita' : 'Não feita',
+                'reuniao_por'   => $reuniao ? trim($reuniao['por'] . ($reuniao['em'] ? " em {$reuniao['em']}" : '')) : null,
+                'comentarios'   => $this->comentariosParaCelula($comentarios[$e['cust_id']] ?? []),
+            ];
+        }, $empresas);
+
+        activity('polos')
+            ->causedBy($request->user())
+            ->withProperties(['linhas' => count($linhas), 'mes' => $d['mesSel']])
+            ->log('[Polos] Faturamento Polos exportado em planilha (' . count($linhas) . ' empresa(s))');
+
+        return $this->streamXlsx(
+            $colunas,
+            $linhas,
+            'faturamento-polos-' . ($d['mesSel'] ?? 'sem-mes') . '-' . now()->format('Y-m-d') . '.xlsx',
+            'Faturamento Polos'
+        );
+    }
+
+    /**
+     * Comentários de UMA empresa numa célula só, do mais recente para o mais antigo, cada
+     * um com o mês de referência, o autor e a data — o que a gaveta da tela mostra.
+     *
+     * @param  array<int, array<string,mixed>>  $lista  Saída de comentariosDasEmpresas() da empresa
+     */
+    private function comentariosParaCelula(array $lista): ?string
+    {
+        if ($lista === []) {
+            return null;
+        }
+
+        $texto = implode("\n\n", array_map(function (array $c) {
+            $cabecalho = implode(' · ', array_filter([$c['mes_label'] ?? null, $c['autor'] ?? null, $c['criado_em'] ?? null]));
+
+            return $cabecalho . ($c['editado_em'] ? ' (editado)' : '') . "\n" . $c['texto'];
+        }, $lista));
+
+        // Limite de uma célula do Excel: 32.767 caracteres. Acima disso o arquivo abre com erro.
+        return mb_strlen($texto) > 32000 ? mb_substr($texto, 0, 32000) . '…' : $texto;
     }
 
     // ═══ Comentários de performance (/polos/empresas) ═══

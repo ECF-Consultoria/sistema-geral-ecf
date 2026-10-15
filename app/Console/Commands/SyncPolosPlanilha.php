@@ -400,6 +400,16 @@ class SyncPolosPlanilha extends Command
                 unset($fichaData['decola']);
                 $this->rel['sentinelas_preservadas']++;
             }
+
+            // Listagem automática (TKT-0016): enquanto o cliente tem os produtos com custo no
+            // link, a planilha não rebaixa o 'Pronto para listar' para 'Não' ou 'Falta
+            // informação'. 'Já listado' ou outro valor da planilha seguem valendo.
+            if (array_key_exists('listagem', $fichaData) && $ficha->listagem === 'Pronto para listar'
+                && in_array($fichaData['listagem'], MlbImplementacao::LISTAGEM_PROMOVIVEIS, true)
+                && MlbImplementacao::prontaParaListar($ficha->dados ?? [])) {
+                unset($fichaData['listagem']);
+                $this->rel['sentinelas_preservadas']++;
+            }
         }
 
         if (empty($fichaData)) {

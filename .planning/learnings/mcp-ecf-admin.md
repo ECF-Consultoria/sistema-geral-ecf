@@ -277,3 +277,57 @@ papel por guard ou sessão, só o Portal do Cliente, que fica fora).
   Os testes usavam dev com papel de consultor, que tem filtro, e passavam.
   Sempre agrupe: `where(fn ($q) => $q->whereIn(...)->orWhere(...))`, e teste o
   perfil admin quando a regra tiver ramo "admin vê tudo".
+
+## 12. Ferramenta `shopee` — a API da Shopee ao vivo (14/10/2026)
+Pedido do usuário: "preciso de tudo que dá pra puxar da API da Shopee no MCP".
+Decisões dele (não refaça sem perguntar): **consulta AO VIVO**, sem tabela
+nova; **qualquer usuário logado** vê todas as lojas conectadas — a régua do
+`/dashboard/shopee` —, inclusive repasse, taxas e extrato da carteira.
+Código em `app/Mcp/Shopee/` (`LeitorShopee` = um método por dado;
+`ChamadaShopee` = app e erro) e `app/Mcp/Tools/ShopeeTool.php`.
+- **O funil de tráfego do Seller Centre não existe na Open Platform.** A tela
+  "Dados do Negócio" (visitantes, visualizações e curtidas por período,
+  rejeição, carrinho, conversão) não tem endpoint. Pesquisado em 14/10/2026:
+  o SDK aberto `congminh1254/shopee-sdk` cobre 30 módulos e nenhum é de
+  tráfego. Por anúncio só existe `get_item_extra_info` (`views`, `likes`,
+  `sale`), que é contador acumulado, não recorte de período. A ferramenta
+  diz isso ao Claude em vez de deixá-lo estimar.
+- **Dois apps, rota por módulo.** `/api/v2/ads/*` vai no app ADS e o resto
+  no ERP. Se a Shopee responder `error_permission_denied`, tenta UMA vez o
+  outro app da mesma loja — vídeo, afiliados (AMS) e live não têm dono
+  certo, e a matriz "API PERMISSION" por tipo de app só aparece na página de
+  cada endpoint no console.
+- **Teste de fumaça em produção (14/10/2026, GENUINEAUTOMOTIVE #132, ERP +
+  ADS):** todos os dados responderam. A paginação difere por endpoint e só
+  se descobre medindo: `get_return_list` começa em `page_no` 0,
+  `get_escrow_list` e `get_wallet_transaction_list` em 1 — na carteira, 0 e
+  1 devolvem a MESMA página (a página 2 repetia a 1). Pelo modo `api`:
+  `ams/*` (afiliados) é RECUSADO para os dois apps; `video/*` não é recusado,
+  mas exige `user_id` (da conta de vídeo) na query; `fbs/query_br_*`,
+  `get_item_limit` e `get_shop_installment_status` respondem no ERP.
+- **Cada chamada à Shopee leva ~2 s** (lista de 100 pedidos 1,9 s; detalhe
+  de 50, 2,1 s — mesmo com menos campos). O `vendas` de UM dia da
+  GENUINEAUTOMOTIVE (967 pedidos) levou 63 s em série. Saída:
+  `ShopeeService::getEmParalelo()` (Http::pool, 8 por vez) — lista com uma
+  janela por dia, todas juntas, e detalhe em lotes paralelos. O nginx e o
+  PHP aceitam 300 s; o limite que importa é a paciência do cliente MCP.
+  Pedidos em 30 dias por loja conectada (14/10): 25.730 na GENUINE, depois
+  2.820, 1.597, 1.204… — 13 das 19 abaixo de 700.
+- **`get_shop_info` responde na RAIZ do JSON, não em `response`.** O
+  `ShopeeService::get()` devolvia `[]` para ele (provavelmente é o `[]` do
+  app ADS anotado em julho). Criados `getCompleto()`/`postCompleto()`; o `get()`
+  continua devolvendo só `response`.
+- **Comprador:** sai só apelido e id. Endereço, telefone e CPF não são pedidos
+  à Shopee (`LeitorShopee::CAMPOS_PEDIDO`).
+- **`vendas` soma no máximo 3.000 pedidos ao vivo** (31 dias, cache de
+  30 min). O teto conta TODOS os pedidos criados, não só os pagos do
+  `shopee_metrics`: a MPozenato tem ~2.800 pagos no mês e passou do teto.
+  Cabe o mês de 17 das 19 lojas. Medido após o paralelo: 1 dia da
+  GENUINEAUTOMOTIVE (967 pedidos) 23 s (eram 63 s); recusa de período
+  grande sai em 12–15 s; varredura de 2.000 anúncios, 9 s. O faturamento do mês está no `resumo`, que lê
+  `shopee_metrics`. A varredura de produtos (`busca`/`ordenar`) vai até
+  2.000 anúncios; a GENUINE tem 6.686.
+- **SQLite dos testes perde o último dia** em `whereBetween('reference_date',
+  …)`: o cast `date` grava `2026-10-13 00:00:00`, que é maior que
+  `'2026-10-13'`. No MariaDB a coluna é DATE e não perde. O dashboard usa a
+  mesma consulta. Nos testes, termine o período um dia depois.
