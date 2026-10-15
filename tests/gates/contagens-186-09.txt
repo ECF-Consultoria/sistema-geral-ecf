@@ -1,0 +1,68 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-09 — O FECHAMENTO MEDIDO.
+# Lido por `tests/gates/verificar-testes.sh 09 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os **dois regimes** (pristino e mutado), para a
+#     campanha de mutação não precisar mexer no gate — e mexer no gate durante a
+#     mutação invalida a mutação.
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente.
+#    ⚠️ A alternância de `transversais` abaixo É a classe inteira na prática, e
+#    isso é aceitável **porque foi medido**: a classe roda em ~3,5 s (ela não
+#    toca o banco — é toda leitura de arquivo e de constante).
+#
+# ⚠️ **ARMADILHA 9 DESTA FASE, EVITADA DE PROPÓSITO:** nome de guarda genérico
+# COLIDE entre planos e o `--filter` **SOMA** os dois arquivos — já aconteceu
+# nesta fase, e o gate media DOIS arquivos achando que media UM. Todo método
+# deste plano traz `fechamento`/`09`/um sujeito único no nome, e
+# `test_os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos` **mede** a
+# ausência de homônimo nos nove manifestos.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── O gate da Task 1: os 8 gates transversais de uma vez ──────────────────────
+# ⚠️ Medido em 15/10/2026. A contagem de asserções é FRÁGIL POR CONSTRUÇÃO e isso
+# está declarado: vários laços deste arquivo fazem N asserções por arquivo da
+# lista constante (22 PHP + 3 JSX). Arquivo novo no portão NÃO entra na lista
+# sozinho (é ato deliberado), então o número só se move quando alguém o move de
+# propósito — e aí o diff é visível, que é o ponto.
+transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=245
+
+# ─── O lado do RENDER (HTML + o CSS construído) ────────────────────────────────
+# ⚠️ 8 dos 14 são "um `test()` por estado", de propósito: laço com 8 asserções
+# dentro reporta **1** teste, e aí a contagem deixa de ser sinal (GATE-11).
+transversais-render  js  tests/js/publicador-aprovacao-fechamento.test.js  ::  tests=14
+
+# ─── Os gates individuais, para a campanha de mutação mirar um por um ──────────
+# (a) destino de cada estrutura — PUB-10 / T-186-42
+destino-das-estruturas  php  test_destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada  ::  tests=1 assertions=19
+sem-escrita-das-quatro  php  test_as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados  ::  tests=1 assertions=5
+# (b) os dois eixos — AND-02 / critério 3
+dois-eixos-transversal  php  test_os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes  ::  tests=1 assertions=35
+# (c) jargão — VOC-06
+jargao-so-no-valor  php  test_nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca  ::  tests=1 assertions=19
+# (d) cor nunca é o único sinal — VOC-05
+cor-nunca-sozinha  php  test_cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa  ::  tests=1 assertions=15
+# (f) a escrita de `andamento` mora num lugar só
+andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=7
+# (g) PHP × JSX em sincronia — e os DOIS LADOS existem
+sincronia-php-jsx  php  test_php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca  ::  tests=1 assertions=29
+# (g2) a ausência de segundo passo — PUB-09 / BLOQ-09
+sem-segundo-passo  php  test_pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira  ::  tests=1 assertions=53
+# (h) GATE-08 / GATE-09 na área nova
+gate08-e-gate09  php  test_gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle  ::  tests=1 assertions=16
+# as armadilhas 1 e 9 — bijeção e homônimo nos nove manifestos
+bijecao-e-homonimo  php  test_os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos  ::  tests=1 assertions=31
+# os dois leitores sem comentário — a isca que sustenta todas as sondas acima
+leitores-sem-comentario  php  test_os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca  ::  tests=1 assertions=10
+# a lista constante — `test -e` em cada alvo ANTES de acreditar em vazio
+lista-constante-existe  php  test_a_lista_constante_do_fechamento_tem_cada_entrada_no_disco  ::  tests=1 assertions=6
