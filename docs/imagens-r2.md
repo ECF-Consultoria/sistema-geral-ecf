@@ -49,3 +49,29 @@ php artisan config:cache
 
 **Rollback:** voltar `IMAGENS_DISK=local` e `php artisan config:cache`. Enquanto a migração do legado não
 terminar (Fase 200), os arquivos antigos continuam no disco local e seguem sendo lidos de lá.
+
+## Comandos do acervo (v28.0)
+
+| Comando | O que faz | Apaga? |
+|---|---|---|
+| `imagens:testar-conexao --disco=r2` | Grava, lê, confere e apaga um objeto de teste | Só o objeto de teste |
+| `acervo:relatorio [--orfaos]` | Inventário do disco, volume por conta, crescimento, candidatos a descarte | Nunca |
+| `acervo:registrar-existentes [--dry-run]` | Registra no acervo as fotos que já existiam (só banco) | Nunca |
+| `acervo:migrar-para-r2 [--aplicar] [--limite=N]` | Copia os objetos do local para o R2 conferindo sha256 | Nunca (locais ficam) |
+| `acervo:limpar-local-migrado [--aplicar]` | Apaga do local o que foi migrado há mais de 30 dias e nada mais aponta | Só com `--aplicar` |
+| `acervo:limpar-geracoes [--aplicar]` | Apaga gerações de IA não aprovadas com mais de 30 dias | Só com `--aplicar` |
+
+Sem `--aplicar`, todo comando que apaga é **simulação**. Nenhum deles está agendado.
+
+### Ordem da virada em produção
+
+1. Deploy (migrations da v28.0).
+2. Credenciais no `.env` → `php artisan config:clear` → `imagens:testar-conexao --disco=r2`.
+3. `acervo:relatorio` → `acervo:registrar-existentes --dry-run` → `acervo:registrar-existentes`.
+4. `IMAGENS_DISK=r2` no `.env` → `php artisan config:cache`.
+5. `acervo:migrar-para-r2` (simulação) → `acervo:migrar-para-r2 --aplicar` (com `--limite` se o volume for grande).
+6. Conferir o acervo e os rascunhos na tela.
+7. Depois de 30 dias: `acervo:limpar-local-migrado` → `--aplicar`.
+
+**Rollback a qualquer momento:** `IMAGENS_DISK=local` + `config:cache`. Com o bucket configurado, as fotos já
+migradas continuam sendo lidas do R2.

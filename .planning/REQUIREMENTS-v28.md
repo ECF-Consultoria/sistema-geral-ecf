@@ -74,61 +74,61 @@ Credenciais do R2: o usuário as coloca no `.env` quando pedido — **nunca cola
 
 ### R2 — Infraestrutura
 
-- [ ] **R2-01** — O driver S3 do Flysystem está instalado e o disco `imagens` existe em `config/filesystems.php`,
+- [x] **R2-01** — O driver S3 do Flysystem está instalado e o disco `imagens` existe em `config/filesystems.php`,
   configurado só por variáveis de ambiente (endpoint, bucket, chaves, prefixo), com `local` como padrão.
-- [ ] **R2-02** — Com `IMAGENS_DISK=local` (padrão) o comportamento do sistema é idêntico ao de hoje.
-- [ ] **R2-03** — Um comando artisan testa a conexão (grava, lê, confere sha256 e apaga um objeto de teste sob o
+- [x] **R2-02** — Com `IMAGENS_DISK=local` (padrão) o comportamento do sistema é idêntico ao de hoje.
+- [x] **R2-03** — Um comando artisan testa a conexão (grava, lê, confere sha256 e apaga um objeto de teste sob o
   prefixo do ambiente) sem imprimir segredo.
-- [ ] **R2-04** — `.env.example` e a documentação listam as variáveis do R2 e o passo a passo de criação do
+- [x] **R2-04** — `.env.example` e a documentação listam as variáveis do R2 e o passo a passo de criação do
   bucket e da chave no painel da Cloudflare.
 
 ### ARM — Armazenamento definitivo
 
-- [ ] **ARM-01** — Toda gravação definitiva de imagem do Publicador (upload manual, aprovação de IA, uso do
+- [x] **ARM-01** — Toda gravação definitiva de imagem do Publicador (upload manual, aprovação de IA, uso do
   acervo, cópia de fase de kit) usa o disco `imagens`.
-- [ ] **ARM-02** — Leitura com compatibilidade: se o objeto não está no disco `imagens`, lê do `local`
+- [x] **ARM-02** — Leitura com compatibilidade: se o objeto não está no disco `imagens`, lê do `local`
   (caminhos antigos seguem funcionando durante a migração).
-- [ ] **ARM-03** — `receber()` não deixa arquivo órfão quando o insert falha.
-- [ ] **ARM-04** — Falha/timeout do R2 no upload devolve erro claro ao usuário e não cria linha apontando para
+- [x] **ARM-03** — `receber()` não deixa arquivo órfão quando o insert falha.
+- [x] **ARM-04** — Falha/timeout do R2 no upload devolve erro claro ao usuário e não cria linha apontando para
   objeto inexistente.
-- [ ] **ARM-05** — Foto de referência do Gemini e gerações não aprovadas continuam no disco local.
+- [x] **ARM-05** — Foto de referência do Gemini e gerações não aprovadas continuam no disco local.
 
 ### ATV — Tabela de ativos (GATE: aprovação do usuário antes)
 
-- [ ] **ATV-01** — Tabela de ativos por conta (âncora MlbEmpresa/Company, `ml_user_id` quando houver) com chave
+- [x] **ATV-01** — Tabela de ativos por conta (âncora MlbEmpresa/Company, `ml_user_id` quando houver) com chave
   do objeto, sha256 (único por conta), mime, bytes, largura, altura, origem (`upload`|`ia`), modelo de IA,
   nome original, produto/SKU/nome de origem, status (`disponivel`|`excluindo`|`excluida`|`falhou`) e datas.
-- [ ] **ATV-02** — `pub_imagens` ganha referência anulável ao ativo; nenhuma FK da v27 muda.
-- [ ] **ATV-03** — `receber()` cria ou reaproveita o ativo da conta (mesmo sha256 = mesmo objeto físico, sem
+- [x] **ATV-02** — `pub_imagens` ganha referência anulável ao ativo; nenhuma FK da v27 muda.
+- [x] **ATV-03** — `receber()` cria ou reaproveita o ativo da conta (mesmo sha256 = mesmo objeto físico, sem
   cópia nova).
-- [ ] **ATV-04** — Backfill **só de banco**, idempotente e com dry-run: registra como ativos as `pub_imagens`
+- [x] **ATV-04** — Backfill **só de banco**, idempotente e com dry-run: registra como ativos as `pub_imagens`
   existentes com arquivo e as criativas aprovadas.
-- [ ] **ATV-05** — Migration segura em MariaDB (nomes de índice ≤ 64, nullable onde há `nullOnDelete`, índice
+- [x] **ATV-05** — Migration segura em MariaDB (nomes de índice ≤ 64, nullable onde há `nullOnDelete`, índice
   antes de FK) e com branch SQLite quando preciso.
 
 ### ACV — Acervo
 
-- [ ] **ACV-01** — O acervo mostra uploads manuais e imagens de IA aprovadas da conta; não mostra IA não
+- [x] **ACV-01** — O acervo mostra uploads manuais e imagens de IA aprovadas da conta; não mostra IA não
   aprovada nem reprovada.
-- [ ] **ACV-02** — Filtros por origem, produto, SKU/nome e período; ordenação por data; paginação.
-- [ ] **ACV-03** — Miniaturas WebP (GD) geradas e guardadas; a grade nunca carrega o original.
-- [ ] **ACV-04** — Visualização ampliada do original sob demanda.
-- [ ] **ACV-05** — "Usar no anúncio" vincula o ativo existente ao rascunho sem nova cópia física.
-- [ ] **ACV-06** — Cada imagem exibe produto, SKU, origem e data quando disponíveis, e onde está em uso.
-- [ ] **ACV-07** — Corrigido o `pub_rascunho_id` dos slots (visão "este produto" e `produto_nome`).
-- [ ] **ACV-08** — Uma conta nunca vê nem lê imagem de outra (teste de acesso cruzado).
+- [x] **ACV-02** — Filtros por origem, produto, SKU/nome e período; ordenação por data; paginação.
+- [x] **ACV-03** — Miniaturas WebP (GD) geradas e guardadas; a grade nunca carrega o original.
+- [x] **ACV-04** — Visualização ampliada do original sob demanda.
+- [x] **ACV-05** — "Usar no anúncio" vincula o ativo existente ao rascunho sem nova cópia física.
+- [x] **ACV-06** — Cada imagem exibe produto, SKU, origem e data quando disponíveis, e onde está em uso.
+- [x] **ACV-07** — Corrigido o `pub_rascunho_id` dos slots (visão "este produto" e `produto_nome`).
+- [x] **ACV-08** — Uma conta nunca vê nem lê imagem de outra (teste de acesso cruzado).
 
 ### EXC — Exclusão (GATE: aprovação do usuário antes de exclusão física)
 
-- [ ] **EXC-01** — Antes de excluir, o sistema lista onde o ativo está em uso (rascunhos, conjuntos de
+- [x] **EXC-01** — Antes de excluir, o sistema lista onde o ativo está em uso (rascunhos, conjuntos de
   aprovação da v27, anúncios) e bloqueia quando a exclusão quebraria um rascunho ou histórico.
-- [ ] **EXC-02** — Excluir do acervo marca o ativo como `excluindo`; um job idempotente com retry apaga o objeto
+- [x] **EXC-02** — Excluir do acervo marca o ativo como `excluindo`; um job idempotente com retry apaga o objeto
   e confirma o status.
-- [ ] **EXC-03** — Remover a foto de um rascunho remove o vínculo, não o objeto físico, enquanto houver outra
+- [x] **EXC-03** — Remover a foto de um rascunho remove o vínculo, não o objeto físico, enquanto houver outra
   referência.
-- [ ] **EXC-04** — Gerações de IA não aprovadas em `creative-geradas/` são limpas por prazo configurável, com
+- [x] **EXC-04** — Gerações de IA não aprovadas em `creative-geradas/` são limpas por prazo configurável, com
   dry-run.
-- [ ] **EXC-05** — Exclusão em lote com confirmação e o mesmo bloqueio de referências.
+- [x] **EXC-05** — Exclusão em lote com confirmação e o mesmo bloqueio de referências.
 
 ### MIG — Migração do legado
 
@@ -140,8 +140,8 @@ Credenciais do R2: o usuário as coloca no `.env` quando pedido — **nunca cola
 
 ### RET — Retenção e custo
 
-- [ ] **RET-01** — Relatório por conta: imagens, volume, uploads e gerações por mês, crescimento.
-- [ ] **RET-02** — Relatório dry-run de descartáveis (sem vínculo, rascunho abandonado, órfãos no R2, conta
+- [x] **RET-01** — Relatório por conta: imagens, volume, uploads e gerações por mês, crescimento.
+- [x] **RET-02** — Relatório dry-run de descartáveis (sem vínculo, rascunho abandonado, órfãos no R2, conta
   inativa > 90 dias pelo critério que a operação definir) — **sem excluir nada**.
 
 ---
