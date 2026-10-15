@@ -451,6 +451,34 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('mlItemId', 'MLB[0-9]+')
             ->name('meus.detalhe');
 
+        // ─── Fase 187 (plano 02): a fila "Aguardando aprovação" ───────────────
+        //
+        // A decisão estrutural da milestone é que **a aba e a rota nascem juntas**: uma aba
+        // com contador real que não leva a lugar nenhum é a definição de enfeite. Esta rota
+        // nasce no plano 02 e a aba que leva a ela no plano 03 — nenhum momento da fase tem
+        // aba apontando para o vazio.
+        //
+        // ⚠️⚠️ DIVERGÊNCIA DECLARADA E MEDIDA. ABA-06 e o `design_handoff_publicador/
+        // README-v2.md` dizem `…/publicacoes` (lista) e `…/publicacoes/aprovacao` (fila). A
+        // rota real da lista neste sistema é `/mlb/anuncios/meus/{company}` (a linha `:445`
+        // acima, `name('meus')`), e o README chama as dele de *"Rotas sugeridas"*. Renomear a
+        // rota da lista quebraria (a) o critério 4 desta fase ("a lista continua como está"),
+        // (b) TERR-08 (URL e filtro salvo continuam funcionando) e (c) 22 testes de
+        // `tests/Feature/Phase134/MeusAnunciosTest.php`, que usam o nome `mlb.anuncios.meus`.
+        // ➡️ **A fila pendura na rota que EXISTE.** A revisão detalhada
+        // (`…/aprovacao/{oferta}/{aba}`) é da Fase 190/191 e NÃO nasce aqui.
+        //
+        // ⚠️ Mesmo gate `role:admin` do grupo, **sem middleware novo** (T-187-12).
+        //
+        // ⚠️ Esta URI tem DOIS segmentos depois de `meus`; `meus.detalhe` tem TRÊS — as duas
+        // não podem colidir por estrutura. Mesmo assim há gate resolvendo as duas **pelo
+        // router** (`FilaDeAprovacaoRotaTest::test_rota_da_fila_nao_rouba_o_detalhe_do_
+        // anuncio_187_02`), porque a pergunta que continua podendo ter a resposta errada
+        // amanhã é "qual rota ganha esta URI" — uma curinga de dois segmentos registrada
+        // antes desta linha roubaria a fila em silêncio.
+        Route::get('/meus/{company}/aprovacao', [MlbPublicadorAprovacaoController::class, 'index'])
+            ->name('meus.aprovacao');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 
