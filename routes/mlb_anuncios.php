@@ -4,6 +4,7 @@ use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorAcervoController;
+use App\Http\Controllers\MlbPublicadorAprovacaoController;
 use App\Http\Controllers\MlbPublicadorBlingController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
