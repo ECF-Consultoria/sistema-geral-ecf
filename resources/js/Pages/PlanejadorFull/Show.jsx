@@ -370,6 +370,18 @@ function Planejador({
             {!temToken && (
                 <Faixa tipo="alerta">Esta empresa está sem token do Mercado Livre ativo: a coleta diária não roda. Conecte a conta em Dev → ML OAuth.</Faixa>
             )}
+            {coletaOk && enviosAbertos === 0 && aba !== 'envios' && aba !== 'ajustes' && (
+                // A API do ML não entrega a "Entrada pendente" (medido em 15/10/2026): sem envio
+                // registrado aqui ela fica zerada e o plano pode sugerir de novo o que já está indo.
+                <Faixa tipo="alerta">
+                    <b>Entrada pendente zerada: nenhum envio registrado nesta conta.</b> A API do Mercado Livre não informa o que já foi
+                    enviado ao FULL e ainda não chegou — sem isso, o plano pode sugerir de novo o que já está a caminho.{' '}
+                    <button type="button" onClick={() => mudarAba('envios')} className="font-semibold underline underline-offset-2 hover:text-white">
+                        Importar a planilha de estoque do ML
+                    </button>{' '}
+                    (uma vez) ou registrar os envios na aba Próximo envio. "Em transferência" já vem da API.
+                </Faixa>
+            )}
 
             <nav className="mb-5 flex gap-0.5 overflow-x-auto border-b border-white/[0.08]" role="tablist" aria-label="Seções">
                 {ABAS.map(([k, rotulo]) => (

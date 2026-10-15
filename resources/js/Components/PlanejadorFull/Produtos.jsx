@@ -89,7 +89,8 @@ export default function Produtos({ R, filtro, setFiltro, abrirProduto }) {
                                 <th className={cn(classeTh, 'text-center')}>Curva</th>
                                 <th className={cn(classeTh, 'text-right')}>Venda/dia</th>
                                 <th className={cn(classeTh, 'text-right')}>Apto</th>
-                                <th className={cn(classeTh, 'text-right')}>A caminho</th>
+                                <th className={cn(classeTh, 'text-right')} title="Enviado ao FULL e ainda não recebido (envios registrados na aba Envios a caminho)">Entrada pendente</th>
+                                <th className={cn(classeTh, 'text-right')} title="Em transferência entre centros do ML (vem da API)">Em transferência</th>
                                 <th className={classeTh}>Cobertura</th>
                                 <th className={cn(classeTh, 'text-right')}>Ruptura</th>
                                 <th className={cn(classeTh, 'text-right')}>Iniciar envio até</th>
@@ -113,7 +114,8 @@ export default function Produtos({ R, filtro, setFiltro, abrirProduto }) {
                                         <td className={cn(classeTd, 'text-center')}><Curva abc={r.abc} /></td>
                                         <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtDec(r.d)}</td>
                                         <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtInt(r.aptas)}</td>
-                                        <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtInt(r.aCaminho)}</td>
+                                        <td className={cn(classeTd, 'text-right tabular-nums', r.pendente ? 'text-white/80' : 'text-white/30')}>{fmtInt(r.pendente)}</td>
+                                        <td className={cn(classeTd, 'text-right tabular-nums', r.transferencia ? 'text-white/80' : 'text-white/30')}>{fmtInt(r.transferencia)}</td>
                                         <td className={classeTd}><BarraCobertura row={r} R={R} /></td>
                                         <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtDia(r.ruptura)}</td>
                                         <td className={cn(classeTd, 'text-right tabular-nums', vencido ? 'font-bold text-red-300' : 'text-white/80')}>{fmtDia(r.iniciarAte)}</td>

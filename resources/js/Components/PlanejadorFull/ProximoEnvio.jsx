@@ -67,7 +67,8 @@ export default function ProximoEnvio({ R, alterarConfig, salvarItem, exportar, c
                                     <th className={cn(classeTh, 'text-center')}>Curva</th>
                                     <th className={cn(classeTh, 'text-right')}>Venda/dia</th>
                                     <th className={cn(classeTh, 'text-right')}>Apto</th>
-                                    <th className={cn(classeTh, 'text-right')}>A caminho</th>
+                                    <th className={cn(classeTh, 'text-right')} title="Enviado ao FULL e ainda não recebido (envios registrados na aba Envios a caminho)">Pendente</th>
+                                    <th className={cn(classeTh, 'text-right')} title="Em transferência entre centros do ML (vem da API)">Em transf.</th>
                                     <th className={classeTh}>Cobertura</th>
                                     <th className={cn(classeTh, 'text-right')}>Ruptura</th>
                                     <th className={cn(classeTh, 'text-right')}>Iniciar até</th>
@@ -95,7 +96,8 @@ export default function ProximoEnvio({ R, alterarConfig, salvarItem, exportar, c
                                             <td className={cn(classeTd, 'text-center')}><Curva abc={r.abc} /></td>
                                             <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtDec(r.d)}</td>
                                             <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtInt(r.aptas)}</td>
-                                            <td className={cn(classeTd, 'text-right tabular-nums text-white/80')} title={`Pendente ${r.pendente} · em transferência ${r.transferencia}`}>{fmtInt(r.aCaminho)}</td>
+                                            <td className={cn(classeTd, 'text-right tabular-nums', r.pendente ? 'text-white/80' : 'text-white/30')}>{fmtInt(r.pendente)}</td>
+                                            <td className={cn(classeTd, 'text-right tabular-nums', r.transferencia ? 'text-white/80' : 'text-white/30')}>{fmtInt(r.transferencia)}</td>
                                             <td className={classeTd}><BarraCobertura row={r} R={R} /></td>
                                             <td className={cn(classeTd, 'text-right tabular-nums text-white/80')}>{fmtDia(r.ruptura)}</td>
                                             <td className={cn(classeTd, 'text-right tabular-nums', vencido ? 'font-bold text-red-300' : 'text-white/80')} title={vencido ? 'Prazo vencido: o item já vai chegar abaixo da segurança' : undefined}>{fmtDia(r.iniciarAte)}</td>
@@ -126,7 +128,7 @@ export default function ProximoEnvio({ R, alterarConfig, salvarItem, exportar, c
                             </tbody>
                             <tfoot>
                                 <tr className="bg-white/[0.03] font-bold text-white">
-                                    <td className="px-2.5 py-2" colSpan={9}>Total do envio</td>
+                                    <td className="px-2.5 py-2" colSpan={10}>Total do envio</td>
                                     <td className="px-2.5 py-2 text-right tabular-nums">{fmtInt(R.rows.reduce((a, r) => a + r.sugerido, 0))}</td>
                                     <td className="max-md:hidden" />
                                     <td className="px-2.5 py-2 text-right tabular-nums">{fmtInt(unidades)}</td>
@@ -137,7 +139,7 @@ export default function ProximoEnvio({ R, alterarConfig, salvarItem, exportar, c
                     </div>
                     <p className="px-5 py-3 text-[12px] text-white/40">
                         Qtd final em branco = sugerido{temGalpao ? ', limitado ao estoque do galpão' : ''}. Digite um número para fixar.
-                        {' '}* SKU dividido entre mais de um Código ML. "Fora" tira o item deste envio. "A caminho" soma a entrada pendente dos envios registrados e o que está em transferência no ML.
+                        {' '}* SKU dividido entre mais de um Código ML. "Fora" tira o item deste envio. Pendente = enviado ao FULL e ainda não recebido (envios registrados); Em transf. = em transferência entre centros do ML. Os dois contam como estoque a caminho na conta.
                     </p>
                 </>
             ) : (

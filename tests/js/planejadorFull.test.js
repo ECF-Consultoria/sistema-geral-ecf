@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     calcular, paraDia, deDia, arredondarMultiplo, porPrioridade, projecaoEstoque, fmtCobertura, fmtDia, CONFIG_PADRAO,
 } from '../../resources/js/lib/planejadorFull.js';
+import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Planejador FULL — motor de cálculo (porta do Planejador_FULL.html).
@@ -211,5 +212,29 @@ describe('projeção e formatos', () => {
         assert.equal(fmtCobertura(5000), '999+ d');
         assert.equal(fmtDia(paraDia('2026-10-15'), 'semana'), 'qui 15/10');
         assert.equal(fmtDia(paraDia('2026-10-15'), 'ano'), '15/10/2026');
+    });
+});
+
+describe('tela: entrada pendente e transferência', () => {
+    // Pedido do usuário em 15/10/2026: "Entrada pendente e Em transferência não estão puxando".
+    // A transferência vinha da API mas sumia somada na coluna "A caminho"; o pendente fica zerado
+    // até haver envio registrado (a API não o entrega). As duas colunas ficam separadas e a tela
+    // avisa quando não há envio registrado.
+    test('Produtos e Próximo envio mostram pendente e transferência em colunas próprias', () => {
+        const produtos = lerSemComentarios('resources/js/Components/PlanejadorFull/Produtos.jsx');
+        const envio = lerSemComentarios('resources/js/Components/PlanejadorFull/ProximoEnvio.jsx');
+        for (const fonte of [produtos, envio]) {
+            assert.ok(fonte.includes('fmtInt(r.pendente)'));
+            assert.ok(fonte.includes('fmtInt(r.transferencia)'));
+            assert.ok(!fonte.includes('fmtInt(r.aCaminho)'));
+        }
+        assert.match(produtos, />Entrada pendente</);
+        assert.match(produtos, />Em transferência</);
+    });
+
+    test('sem envio registrado a tela avisa que a entrada pendente está zerada', () => {
+        const show = lerSemComentarios('resources/js/Pages/PlanejadorFull/Show.jsx');
+        assert.match(show, /enviosAbertos === 0/);
+        assert.match(show, /Entrada pendente zerada/);
     });
 });
