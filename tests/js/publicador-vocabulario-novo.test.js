@@ -161,6 +161,20 @@ const ARQUIVOS_NOVOS = [
     // outras fases (`AnunciosHistorico`, `AnunciarMassa`, `AnunciarML`…) e
     // varrer a pasta inteira reprovaria trabalho que não é desta milestone.
     'resources/js/Pages/Mlb/MeusAnuncios.jsx',
+    // ─── Fase 187, plano 03 — AS DUAS ABAS da seção A1 ───
+    //
+    // ⚠️ DECLARADO NO MESMO PLANO QUE CRIA O ARQUIVO, e as duas pontas disso são
+    // medidas: `DIR_PUB` está em `DIRETORIOS_FECHADOS` e o GATE-03 faz
+    // `assert.deepEqual(noDisco, declarados)` — esquecer a declaração reprova na
+    // hora (é o comportamento certo), e declarar ANTES de o arquivo existir
+    // **LANÇA** no carregamento do módulo, porque `FONTES` lê todos os caminhos.
+    // É por isso que as 11 waves desta fase são sequenciais: quem escreve aqui
+    // tem de ser o plano que acabou de criar o arquivo, nunca o anterior.
+    //
+    // ⚠️ `.jsx`, como todo o diretório: o `content` do `tailwind.config.js` varre
+    // `*.jsx` e **NÃO** `*.js`. Este arquivo é o único lugar onde as classes das
+    // abas existem, e num `.js` elas não gerariam CSS nenhum.
+    `${DIR_PUB}/AbasDaPagina.jsx`,
     // ─── Fase 186, plano 02 — os 3 arquivos do PORTÃO de aprovação ───
     //
     // POR QUE ELES ENTRAM AGORA, e não no fim da fase: `aprovacao/` nasce neste
@@ -266,6 +280,49 @@ const TAMANHOS_PERMITIDOS = new Set([
     8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 22, 24, 28, 30, 32, 34,
 ]);
 
+/**
+ * Os 15 arquivos que a Fase 180 criou em `publicacoes/`, POR NOME.
+ *
+ * ⚠️⚠️ REAPONTE DA FASE 187, PLANO 03 — e com o veto escrito. Antes, as duas
+ * asserções abaixo contavam `ARQUIVOS_NOVOS.filter(startsWith(DIR_PUB)).length`
+ * e exigiam 15 e 16. Isso media o DIRETÓRIO, não a Fase 180 — e o diretório
+ * deixou de ser 100% daquela fase quando a 187 pôs `AbasDaPagina.jsx` lá.
+ *
+ * Com a contagem de diretório, **todo plano da Fase 187 que criasse componente
+ * aqui teria de subir estes dois números** — e é exatamente a régua que sobe a
+ * cada plano que "treina o executor seguinte a ajustar números em vez de
+ * consertar código" (learnings §4b.2). Pior: subir o número aceitaria a REMOÇÃO
+ * de um arquivo da 180 compensada pela criação de um da 187.
+ *
+ * ⚠️ O que as asserções provam continua IGUAL e ficou mais forte: nenhum dos 15
+ * arquivos da Fase 180 saiu de `ARQUIVOS_NOVOS` (antes, só a contagem; agora, os
+ * nomes, com os infratores coletados). Quem fecha o outro lado — arquivo NOVO no
+ * disco fora da lista — é o `deepEqual` de `DIRETORIOS_FECHADOS`, que não mudou.
+ */
+const DA_FASE_180 = [
+    // 180-05 — o cabeçalho da página e a faixa de sucesso
+    `${DIR_PUB}/CabecalhoDePublicacoes.jsx`,
+    `${DIR_PUB}/FaixaDeSucesso.jsx`,
+    // 180-06 — a busca de 54px, o trilho de status e a linha de controles
+    `${DIR_PUB}/BuscaDePublicacoes.jsx`,
+    `${DIR_PUB}/AbasDeStatus.jsx`,
+    `${DIR_PUB}/LinhaDeControles.jsx`,
+    // 180-07 — os chips de filtro, a casca dos popovers e a triagem
+    `${DIR_PUB}/MenuDeFiltro.jsx`,
+    `${DIR_PUB}/ChipsDeFiltro.jsx`,
+    `${DIR_PUB}/ChipsDeTriagem.jsx`,
+    // 180-08 — a tabela
+    `${DIR_PUB}/CabecalhoDaTabela.jsx`,
+    `${DIR_PUB}/LinhaDePublicacao.jsx`,
+    `${DIR_PUB}/CelulasDaLinha.jsx`,
+    // 180-09 — a linha de grupo, o rodapé e os estados vazios
+    `${DIR_PUB}/LinhaDeGrupoDeProduto.jsx`,
+    `${DIR_PUB}/RodapeDaTabela.jsx`,
+    `${DIR_PUB}/VaziosDaLista.jsx`,
+    // 180-11 — o único `.js` do diretório: a máquina de teclado da lista
+    `${DIR_PUB}/atalhosDaLista.js`,
+];
+
 const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentarios(caminho)]));
 
 /**
@@ -337,8 +394,12 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/`, `publicacoes/`
         // o arquivo em `ARQUIVOS_NOVOS` (e aí ele ficaria sem conferência
         // contra `text-sm`, `ecf-*`, hex e breakpoint), e o gate passaria POR
         // OMISSÃO.
+        // ⚠️ REAPONTADO pela Fase 187, plano 03: a contagem é sobre os 15 NOMES
+        // da Fase 180, não sobre o tamanho do diretório. Ver o veto escrito em
+        // `DA_FASE_180`. A contagem FIXA continua, e o que ela prova ficou mais
+        // forte: além do número, os nomes, com os infratores COLETADOS.
         assert.equal(
-            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`)).length,
+            DA_FASE_180.length,
             15,
             'a Fase 180 tem 15 arquivos em `publicacoes/`: 2 do 180-05 (CabecalhoDePublicacoes + FaixaDeSucesso),'
             + ' 3 do 180-06 (BuscaDePublicacoes + AbasDeStatus + LinhaDeControles),'
@@ -347,6 +408,19 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/`, `publicacoes/`
             + ' 3 do 180-09 (LinhaDeGrupoDeProduto + RodapeDaTabela + VaziosDaLista)'
             + ' e 1 do 180-11 (atalhosDaLista.js, o único .js do diretório)',
         );
+        const faltando = DA_FASE_180.filter((c) => !ARQUIVOS_NOVOS.includes(c));
+        assert.deepEqual(
+            faltando,
+            [],
+            'arquivo da Fase 180 fora de ARQUIVOS_NOVOS: ele fica SEM conferência contra `text-sm`,'
+            + ' `ecf-*`, hex cru e breakpoint, e o gate passa POR OMISSÃO',
+        );
+        // ⚠️ E os 15 estão todos NO DISCO: lista de nomes que aponta para
+        // caminho fantasma "prova" cobertura medindo NADA.
+        const fantasmas = DA_FASE_180.filter(
+            (c) => !existsSync(resolve(import.meta.dirname, '../..', c)),
+        );
+        assert.deepEqual(fantasmas, [], 'caminho fantasma em DA_FASE_180 — o gate mediria NADA');
 
         // ⚠️ E o ÚNICO `.js` é ele: o diretório inteiro é `.jsx` de propósito,
         // porque é só no `.jsx` que o `content` do Tailwind varre classe. Um
@@ -389,11 +463,28 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/`, `publicacoes/`
             // sem dizer POR QUE. Esta asserção nomeia a causa.
             `${PAGINA} está DUAS vezes em ARQUIVOS_NOVOS: o gate rodaria o mesmo arquivo duas vezes`,
         );
+        // ⚠️ REAPONTADO pela Fase 187, plano 03: o conjunto é `DA_FASE_180` + a
+        // página, e não "tudo que está em `publicacoes/`" + a página. Com a
+        // contagem antiga, `AbasDaPagina.jsx` (Fase 187) entraria neste 16 e
+        // obrigaria a subir o número de uma fase FECHADA — régua que sobe a cada
+        // plano, que é o que o learnings §4b.2 chama de frágil por construção.
         assert.equal(
-            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_PUB}/`) || c === PAGINA).length,
+            ARQUIVOS_NOVOS.filter((c) => DA_FASE_180.includes(c) || c === PAGINA).length,
             16,
             'a Fase 180 contribui 16 arquivos: os 15 de `publicacoes/` (planos 05 a 09 e 11) mais a'
             + ' página `Pages/Mlb/MeusAnuncios.jsx` (plano 10), que é quem os compõe',
+        );
+        // ⚠️ E a prova de que o conjunto NÃO é o diretório: `AbasDaPagina.jsx`
+        // está em `ARQUIVOS_NOVOS` (o GATE-03 o confere) e fora de `DA_FASE_180`.
+        // Sem esta asserção, trocar `DA_FASE_180` de volta por `startsWith` não
+        // mexeria em nenhum número aqui e o reaponte seria revogado em silêncio.
+        assert.ok(
+            ARQUIVOS_NOVOS.includes(`${DIR_PUB}/AbasDaPagina.jsx`),
+            'AbasDaPagina.jsx saiu de ARQUIVOS_NOVOS: as abas ficariam sem conferência de vocabulário',
+        );
+        assert.ok(
+            !DA_FASE_180.includes(`${DIR_PUB}/AbasDaPagina.jsx`),
+            'AbasDaPagina.jsx é da Fase 187, não da 180 — a lista nomeia a fase, não a pasta',
         );
     });
 
@@ -964,6 +1055,31 @@ test('D2 — NENHUM rótulo de andamento INTERNO aparece em `publicacoes/`', asy
     for (const rotulo of ROTULOS_INTERNOS) {
         await contexto.test(`"${rotulo}" não está em nenhum arquivo de publicacoes/`, () => {
             for (const { relativo, corpo } of CORPOS_DE_PUBLICACOES) {
+                // ⚠️⚠️ A ÚNICA EXCEÇÃO, com o veto escrito — Fase 187, plano 03.
+                //
+                // `AbasDaPagina.jsx` é a NAVEGAÇÃO para o outro eixo, não um
+                // renderizador de andamento: "Aguardando aprovação" aparece lá
+                // como RÓTULO DE ABA no cabeçalho, exigido literalmente por
+                // ABA-01 e ABA-02 (`REQUIREMENTS-v27.md:310`-`:317`).
+                //
+                // E o D2 NÃO proíbe isso. O texto dele é *"o andamento interno
+                // nunca aparece **na lista de Publicadas**"* e termina com *"Isto
+                // é **regra de dado, não de tela**"* (`REQUIREMENTS-v27.md:51`-
+                // `:53`). O gate implementou a regra por um PROXY de tela — *"em
+                // nenhum arquivo de `publicacoes/`"* — e o proxy ficou MAIS LARGO
+                // que o invariante: ele reprova o cabeçalho que leva à fila, que
+                // é justamente o que separa os dois eixos em vez de misturá-los.
+                //
+                // ⚠️ A exceção é de UM arquivo e de UM rótulo, e NÃO afrouxa o
+                // gate: os outros 7 rótulos internos continuam proibidos em
+                // `AbasDaPagina.jsx` (sub-teste próprio, abaixo) e "Aguardando
+                // aprovação" continua proibida nos outros 15 arquivos do
+                // diretório (outro sub-teste próprio, também abaixo, coletando os
+                // infratores). Onde havia UMA asserção agora há TRÊS.
+                const excecaoDaAba = relativo === `${DIR_PUB}/AbasDaPagina.jsx`
+                    && rotulo === 'Aguardando aprovação';
+                if (excecaoDaAba) continue;
+
                 assert.equal(
                     contarLiteralCompleto(corpo, rotulo),
                     0,
@@ -973,6 +1089,54 @@ test('D2 — NENHUM rótulo de andamento INTERNO aparece em `publicacoes/`', asy
             }
         });
     }
+
+    await contexto.test('⚠️ a exceção da aba é NAVEGAÇÃO: os outros 7 rótulos internos NÃO estão nela', () => {
+        // O que precisaria estar errado para este gate falhar: `AbasDaPagina.jsx`
+        // virar um renderizador de andamento (um selo, uma célula, um mapa de
+        // estados) em vez de duas abas. A exceção acima cobre UM rótulo; este
+        // sub-teste é o que impede que ela se transforme numa porta larga.
+        const aba = CORPOS_DE_PUBLICACOES.find(
+            ({ relativo }) => relativo === `${DIR_PUB}/AbasDaPagina.jsx`,
+        );
+        assert.notEqual(aba, undefined, 'AbasDaPagina.jsx não foi varrido — a exceção acima mediria NADA');
+
+        // CONTROLE POSITIVO: o rótulo da exceção ESTÁ lá, fora de comentário.
+        // Sem ele, a exceção poderia estar protegendo um arquivo que nem usa o
+        // literal, e as negativas abaixo seriam vazias por construção.
+        assert.ok(
+            contarLiteralCompleto(aba.corpo, 'Aguardando aprovação') > 0,
+            'o rótulo da aba saiu de AbasDaPagina.jsx — então a exceção do D2 não tem mais razão de existir',
+        );
+
+        const intrusos = ROTULOS_INTERNOS
+            .filter((rotulo) => rotulo !== 'Aguardando aprovação')
+            .filter((rotulo) => contarLiteralCompleto(aba.corpo, rotulo) > 0);
+        assert.deepEqual(
+            intrusos,
+            [],
+            'AbasDaPagina.jsx passou a desenhar andamento interno — a exceção do D2 vale SÓ para o rótulo da aba',
+        );
+    });
+
+    await contexto.test('⚠️ e "Aguardando aprovação" continua PROIBIDA nos outros arquivos de publicacoes/', () => {
+        // Esta é a asserção que PRESERVA o que o D2 provava antes do reaponte —
+        // com os infratores COLETADOS, em vez de reprovar no primeiro.
+        const infratores = CORPOS_DE_PUBLICACOES
+            .filter(({ relativo }) => relativo !== `${DIR_PUB}/AbasDaPagina.jsx`)
+            .filter(({ corpo }) => contarLiteralCompleto(corpo, 'Aguardando aprovação') > 0)
+            .map(({ relativo }) => relativo);
+        assert.deepEqual(
+            infratores,
+            [],
+            'o rótulo de ANDAMENTO INTERNO "Aguardando aprovação" vazou para a lista de Publicadas — erro de EIXO',
+        );
+        // ⚠️ E a varredura NÃO é de um arquivo só: sem isto, o `filter` acima
+        // poderia estar sobrando zero corpos e o gate seria vazio.
+        assert.ok(
+            CORPOS_DE_PUBLICACOES.length - 1 >= 15,
+            `sobraram ${CORPOS_DE_PUBLICACOES.length - 1} arquivos para varrer, esperava ao menos 15`,
+        );
+    });
 
     await contexto.test('⚠️ CONTROLE POSITIVO: a MESMA sonda acha os 8 em `aprovacao/`', () => {
         // Sem este controle a negativa acima seria vazia por construção: uma
