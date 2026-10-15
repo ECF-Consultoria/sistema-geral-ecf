@@ -4962,17 +4962,17 @@ Parar na **189** ou na **192** também é íntegro — são acréscimos à revis
 
 | Requirement | Phase | Status |
 |---|---|---|
-| VOC-01..VOC-08 (8) | Phase 186 | Pending |
-| ABA-03, ABA-04 (2) | Phase 186 | Pending |
-| AND-01..AND-10 (10) | Phase 186 | Pending |
-| DADO-01..DADO-15 (15) | Phase 186 | Pending |
-| BLOQ-01..BLOQ-12 (12) | Phase 186 | Pending |
-| FIN-01..FIN-14 (14) | Phase 186 | Pending |
-| MIG-01..MIG-09 (9) | Phase 186 | Pending |
-| FID-01..FID-08 (8) | Phase 186 (**transversal**) | Pending |
-| GATE-01..GATE-14 (14) | Phase 186 (**transversal**) | Pending |
-| REND-01..REND-08 (8) | Phase 186 (**transversal**) | Pending |
-| TERR-01..TERR-11 (11) | Phase 186 (**transversal**) | Pending |
+| VOC-01..VOC-08 (8) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| ABA-03, ABA-04 (2) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| AND-01..AND-10 (10) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| DADO-01..DADO-15 (15) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** — DADO-15 criado e NÃO preenchido (escrita nas Fases 192/194, sem backfill possível) |
+| BLOQ-01..BLOQ-12 (12) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| FIN-01..FIN-14 (14) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** — ⚠️ RESSALVA no CRIT-05: a "Embalagem" é exceção DELIBERADA e ÚNICA à regra do `null` (decisão 7 do usuário, 14/10); sem ela o painel diria "Incompleto" em 100% das ofertas |
+| MIG-01..MIG-09 (9) | Phase 186 | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** — 6 migrations / 12 tabelas, `migrate → rollback → migrate` provado no MariaDB local |
+| FID-01..FID-08 (8) | Phase 186 (**transversal**) | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** — ⚠️ RESSALVA no CRIT-17: os 4 planos de SCHEMA (186-03..06) não têm protótipo a medir |
+| GATE-01..GATE-14 (14) | Phase 186 (**transversal**) | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| REND-01..REND-08 (8) | Phase 186 (**transversal**) | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
+| TERR-01..TERR-11 (11) | Phase 186 (**transversal**) | **Entregue no CÓDIGO (15/10/2026) — ⚠️ NÃO DEPLOYADO** |
 | ABA-01, ABA-02, ABA-05, ABA-06 (4) | Phase 187 | Pending |
 | FILA-01..FILA-16 (16) | Phase 187 | Pending |
 | MOD-11, MOD-12 (2) | Phase 187 | Pending |
