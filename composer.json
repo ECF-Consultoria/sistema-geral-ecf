@@ -14,6 +14,7 @@
         "laravel/passport": "^13.7",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "league/flysystem-aws-s3-v3": "^3.0",
         "league/flysystem-sftp-v3": "^3.33",
         "paragonie/sodium_compat": "^2.5",
         "phpoffice/phpspreadsheet": "^2.3",
