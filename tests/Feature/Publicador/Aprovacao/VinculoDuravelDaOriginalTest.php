@@ -459,9 +459,42 @@ class VinculoDuravelDaOriginalTest extends TestCase
         $this->assertNotSame('', $assuntos, 'ISCA CEGA: o log por range não acha nem os commits que criaram os arquivos deste plano.');
         $linhas = array_filter(explode("\n", $assuntos));
         $this->assertGreaterThanOrEqual(3, count($linhas), 'ISCA CEGA: o log achou menos commits do que este plano fez — o range ou o pathspec está errado.');
+        // ⚠️ CONSERTADO EM 15/10/2026 PELO ORQUESTRADOR, no FECHAMENTO da fase — e o motivo é a
+        // quarta ocorrência da mesma armadilha nesta fase, então vale escrever por extenso.
+        //
+        // Era **uma asserção POR COMMIT** (`foreach ($linhas as $linha) { assertMatches… }`). O
+        // invariante estava CERTO; a CONTAGEM é que era frágil por construção: o range é ABERTO
+        // (`<partida>..HEAD`), então o número de asserções **cresce a cada commit novo** que toque
+        // um arquivo deste plano — inclusive o **próprio commit de SUMMARY do 186-06**, feito
+        // depois de o manifesto ter sido escrito.
+        // Medido na rodada dos 9 manifestos: o teste **PASSAVA** (`1 passed`) com **31** asserções
+        // contra as **30** do manifesto. Território intacto; só o número se moveu.
+        //
+        // ⚠️ Elevar 30 → 31 seria o conserto errado, e pela razão que já custou três consertos
+        // nesta fase: o número voltaria a subir no próximo commit, e elevar régua repetidamente
+        // **treina o executor seguinte a ajustar réguas quando elas incomodam** — um dia ele
+        // ajusta uma que importava (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+        //
+        // ➡️ Agora os infratores são COLETADOS e a asserção é UMA, de contagem FIXA. Não se perde
+        // nada e se ganha: a mensagem nomeia **todos** os commits fora de escopo de uma vez, em vez
+        // de parar no primeiro. As duas iscas acima (o log não vem vazio; achou ao menos 3
+        // commits) seguem sendo a trava contra a sonda rodar sobre nada.
+        $foraDeEscopo = [];
+
         foreach ($linhas as $linha) {
-            $this->assertMatchesRegularExpression('/\(186-06\)/', trim($linha), "o commit `{$linha}` tocou um arquivo DESTE plano e NÃO tem o escopo 186-06 — ou este plano commitou assunto alheio, ou outro commit arrastou arquivo meu");
+            if (preg_match('/\(186-06\)/', trim($linha)) !== 1) {
+                $foraDeEscopo[] = trim($linha);
+            }
         }
+
+        $this->assertSame(
+            [],
+            $foraDeEscopo,
+            'commit(s) que tocaram um arquivo DESTE plano e NÃO têm o escopo 186-06: '
+            . implode(' | ', $foraDeEscopo)
+            . '. Ou este plano commitou assunto alheio, ou outro commit arrastou arquivo meu. '
+            . '(' . count($linhas) . ' commit(s) no range tocaram arquivos deste plano.)'
+        );
 
         // ⚠️ ISCA DO FILTRO POR CAMINHO: sem pathspec o MESMO range traz commits de OUTRO escopo
         // (a sessão paralela). Se esta isca deixar de achar escopo alheio, o filtro acima passou a

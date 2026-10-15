@@ -63,7 +63,7 @@
 # ⚠️ Os quatro TAMBÉM têm id individual mais abaixo, e isso é deliberado: é a
 # granularidade que diz QUAL deles caiu quando este gate composto reprova.
 # 4 / 76 MEDIDO em 15/10/2026.
-territorio-e-vinculo  php  test_(terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range|originais_de_imagem_sem_vinculo_devolve_colecao_vazia_e_o_estado_declarado|fin_07_a_linha_de_frete_nasce_confirmado_ou_estimado_nas_origens_vivas_e_pendente_so_sem_fonte|dado_15_esta_fase_nao_escreve_o_vinculo_com_isca_de_dois_lados)  ::  tests=4 assertions=76
+territorio-e-vinculo  php  test_(terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range|originais_de_imagem_sem_vinculo_devolve_colecao_vazia_e_o_estado_declarado|fin_07_a_linha_de_frete_nasce_confirmado_ou_estimado_nas_origens_vivas_e_pendente_so_sem_fonte|dado_15_esta_fase_nao_escreve_o_vinculo_com_isca_de_dois_lados)  ::  tests=4 assertions=74
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 3 — O FRETE DO VENDEDOR INFORMADO (DADO-12 / MOD-03)
@@ -351,7 +351,18 @@ dado-15-sem-escrita  php  test_dado_15_esta_fase_nao_escreve_o_vinculo_com_isca_
 # privacidade de OUTRA PESSOA (D-02 da v24.0, com o incidente do ECF Drive como
 # razão do desenho).
 # 1 / 30 MEDIDO em 15/10/2026.
-terr-11-por-range  php  test_terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range  ::  tests=1 assertions=30
+# ⚠️ assertions AJUSTADO em 15/10/2026 pelo ORQUESTRADOR, no FECHAMENTO da fase — e o
+#    teste foi CONSERTADO NA RAIZ, não teve a régua elevada.
+#    Era **uma asserção POR COMMIT** no range `<partida>..HEAD`. O invariante estava
+#    CERTO (todo commit que toca arquivo deste plano tem escopo 186-06), mas a CONTAGEM
+#    cresce a cada commit novo — inclusive o próprio commit de SUMMARY do 186-06, feito
+#    depois de esta linha ser escrita.
+#    Medido na rodada dos 9 manifestos (163 ids): o teste PASSAVA (`1 passed`) com 31
+#    asserções contra as 30 escritas aqui. Território INTACTO; só o número se moveu.
+#    ⚠️ Elevar 30 -> 31 seria errado: voltaria a subir no próximo commit. Agora os
+#    infratores são COLETADOS numa asserção de contagem FIXA, que nomeia TODOS de uma vez.
+#    É a QUARTA vez que esta armadilha aparece na fase (learnings §4b.2 e §4c).
+terr-11-por-range  php  test_terr_11_a_retencao_de_48h_e_o_creative_engine_estao_intocados_por_range  ::  tests=1 assertions=28
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 2 — A DISCIPLINA DA MIGRATION DO VÍNCULO
