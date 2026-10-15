@@ -33,11 +33,11 @@
 # vira o próximo caso da lista do learnings.
 #
 # USO
-#   sh tests/gates/verificar-testes.sh <plano> <id-do-gate>   # roda e confere
+#   sh … verificar-testes.sh <fase>-<plano> <id>  # confere (187-04; `04` nu = 186)
 #   sh tests/gates/verificar-testes.sh --suite <php|js>        # suíte INTEIRA (baseline)
 #   sh tests/gates/verificar-testes.sh --autoteste             # prova que as formas REPROVAM
 #
-# MANIFESTO (`tests/gates/contagens-186-<plano>.txt`), uma linha por gate:
+# MANIFESTO (`contagens-<fase>-<plano>.txt`; <plano> nu = 186), uma linha por gate:
 #   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
 #   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
 #
@@ -52,13 +52,30 @@ set -u
 RAIZ=$(cd "$(dirname "$0")/../.." && pwd)
 PHP_BIN="${PHP_BIN:-C:/xampp/php/php.exe}"
 
-# Referências da Fase 186, medidas no commit de partida d4aeaa30 (14/10/2026).
+# Referências MEDIDAS no commit de partida da Fase 187 — `75b9f82f`, 15/10/2026,
+# por `--suite js` e `--suite php` ANTES de qualquer edição do plano 187-01:
+#   JS  4836 / 4835 pass / 1 fail / 0 skipped
+#   PHP 2346 / 20243 / 1
+# (Ver `.planning/phases/187-…/187-BASELINES.md` §1.)
+#
 # ⚠️ Contagem ACIMA da referência é ESPERADA (a sessão paralela acrescenta
 # testes) e passa. Contagem ABAIXO é regressão e reprova. NUNCA "ajustar" para
 # baixo: registrar a diferença.
-REF_JS_TESTS="${REF_JS_TESTS:-4482}"
+#
+# ⚠️⚠️ OS VALORES ANTIGOS DA FASE 186 (`4482` e `2103`, medidos em d4aeaa30)
+# **SAÍRAM**, e isso é de propósito (learnings §4b.2): quando a régua tem de
+# subir, mede-se as duas pontas, sobe-se MEDINDO e o valor antigo **sai**.
+# Manter o antigo aceito faria o gate passar se alguém APAGASSE os 243 testes
+# que a Fase 186 acrescentou — exatamente o furo que a régua existe para fechar.
+REF_JS_TESTS="${REF_JS_TESTS:-4836}"
 REF_JS_FALHAS="${REF_JS_FALHAS:-1}"   # a pré-existente de `estrutura-grade-glide.test.js`
-REF_PHP_TESTS="${REF_PHP_TESTS:-2103}"
+REF_PHP_TESTS="${REF_PHP_TESTS:-2346}"
+# ⚠️ NÃO existe `REF_PHP_FALHAS`, e NÃO deve passar a existir. No commit de
+# partida da Fase 187 a suíte PHP tem **1 falha herdada** — o gate de território
+# por RANGE da Fase 186 (`VinculoDuravelDaOriginalTest::terr_11`) acusando o
+# commit `67d6a005` (`feat(196)`) da SESSÃO PARALELA. Criar um limiar de falhas
+# aceito para calar isso seria afrouxar a única régua que prova "nada quebrou".
+# A falha está REGISTRADA em `187-BASELINES.md` §2.2, não silenciada aqui.
 
 ESC=$(printf '\033')
 
@@ -75,6 +92,39 @@ limpar_ansi() {
 abortar() {
     echo "ABORTOU: $*" >&2
     exit 2
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Onde mora o manifesto do plano. — Fase 187, plano 01.
+#
+# O PROBLEMA MEDIDO: até aqui o caminho era `contagens-186-${PLANO}.txt`, com a
+# fase CRAVADA no código e o número do plano como 1º argumento. Nos dez planos
+# da Fase 187 o manifesto é `contagens-187-NN.txt`, e só se chegava nele por
+# `MANIFESTO_FORCADO=…` — env var que, esquecida, faz o harness ler o manifesto
+# da **186** com o mesmo número e rodar o gate ERRADO em silêncio.
+#
+# A mudança é MÍNIMA e ADITIVA:
+#   · `<fase>-<plano>` (`187-04`, `186-01`) resolve `contagens-<fase>-<plano>.txt`;
+#   · o número NU (`04`) continua resolvendo para a **186** — é o que mantém
+#     funcionando os **163 ids** já versionados nos nove manifestos daquela fase,
+#     que são prova de uma fase EM PRODUÇÃO (deploy `a4c4187f`);
+#   · `MANIFESTO_FORCADO` **permanece** e tem precedência (é o que o `--autoteste`
+#     usa para alimentar manifesto sintético);
+#   · manifesto inexistente continua ABORTANDO.
+#
+# ⚠️ As duas formas são conferidas pelos casos 11 e 12 do `--autoteste`, e o 12 é
+# ISCA: ele exige que `01` e `186-01` resolvam o MESMO caminho. Se um dia
+# divergirem, a compatibilidade com a 186 quebrou.
+# ─────────────────────────────────────────────────────────────────────────────
+caminho_do_manifesto() {
+    # `<fase>-<plano>`: dois grupos de dígitos separados por UM hífen. Nada mais.
+    # (`case` com glob não distingue `187-01` de `18-7-01`; o `sed` distingue.)
+    _fp=$(printf '%s' "$1" | sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p')
+    if [ -n "$_fp" ]; then
+        echo "${RAIZ}/tests/gates/contagens-${_fp}.txt"
+    else
+        echo "${RAIZ}/tests/gates/contagens-186-$1.txt"
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -216,6 +266,29 @@ FIM
     veredicto_php "$tmp/php1.cru" 1 22 >/dev/null 2>&1
     conferir "ISCA ANSI: o caso que passa limpo, SEM limpar_ansi" REPROVA $?
 
+    echo "== MANIFESTO: a resolucao por fase (187-NN) e a compatibilidade com a 186 =="
+    # O que precisaria estar errado para o caso 11 falhar: alguem voltar a cravar
+    # a fase no caminho (ou trocar o `sed` por algo que nao case `187-01`), ou o
+    # `contagens-187-01.txt` desaparecer. Os dois sao erros REAIS, nao decorativos.
+    _esp187="${RAIZ}/tests/gates/contagens-187-01.txt"
+    _obt187=$(caminho_do_manifesto 187-01)
+    [ "$_obt187" = "$_esp187" ] && [ -f "$_obt187" ]
+    conferir "'187-01' resolve contagens-187-01.txt E o arquivo existe" PASSA $?
+
+    # ⚠️ ISCA DA COMPATIBILIDADE. Os **163 ids** dos nove manifestos da Fase 186
+    # sao chamados pelo numero NU (`01`..`09`), e aquela fase esta EM PRODUCAO.
+    # Esta isca exige que `01` e `186-01` resolvam o MESMO caminho — e que
+    # `187-01` resolva o OUTRO. Se alguem "simplificar" a resolucao exigindo
+    # sempre o prefixo da fase, os 163 ids param de resolver e este caso reprova
+    # ANTES de o gate errado rodar em silencio.
+    _nu=$(caminho_do_manifesto 01)
+    _cheio=$(caminho_do_manifesto 186-01)
+    [ "$_nu" = "$_cheio" ] \
+        && [ "$_nu" = "${RAIZ}/tests/gates/contagens-186-01.txt" ] \
+        && [ "$_nu" != "$_obt187" ] \
+        && [ -f "$_nu" ]
+    conferir "ISCA: '01' e '186-01' no MESMO caminho (186), e '187-01' no OUTRO" PASSA $?
+
     echo "== MANIFESTO: incompleto tem de ABORTAR =="
     for _mal in "g js a.test.js :: tests=0" "g js a.test.js ::" "g php test_x :: tests=1"; do
         echo "$_mal" > "$tmp/manifesto.txt"
@@ -258,7 +331,7 @@ modo_gate_interno() {
     _id="$1"
     _manifesto="${MANIFESTO_FORCADO:-}"
     if [ -z "$_manifesto" ]; then
-        _manifesto="${RAIZ}/tests/gates/contagens-186-${PLANO}.txt"
+        _manifesto=$(caminho_do_manifesto "$PLANO")
     fi
 
     [ -f "$_manifesto" ] || abortar "manifesto nao existe: ${_manifesto}"

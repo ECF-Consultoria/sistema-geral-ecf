@@ -1,0 +1,72 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-01 — AS BASELINES, O HARNESS DA
+# FASE 187, OS 5 TOKENS DA FILA e OS 2 TAMANHOS LIBERADOS.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-01 <id-do-gate>`.
+#
+# ⚠️⚠️ ESTE É O PRIMEIRO MANIFESTO DA FASE 187, e ele só é alcançável porque o
+# plano 187-01 ensinou o harness a resolver `<fase>-<plano>`. Antes disso
+# `sh … 01 <id>` ia no `contagens-186-01.txt` — o manifesto da fase ERRADA, com
+# o mesmo número, em silêncio. Os dois casos NOVOS do `--autoteste` (11 e 12)
+# guardam isso, e o 12 é ISCA: ele exige que `01` e `186-01` resolvam o MESMO
+# caminho, porque os 163 ids dos nove manifestos da Fase 186 são chamados pelo
+# número NU e aquela fase está EM PRODUÇÃO (deploy `a4c4187f`).
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ Este plano NÃO tem gate `php`: ele não toca em PHP nenhum. A suíte PHP
+#    aparece só como BASELINE (`--suite php`), e lá ela sai com 1 falha HERDADA
+#    da sessão paralela — ver `187-BASELINES.md` §2.2. Não há número de PHP para
+#    escrever aqui, e inventar um seria pior que não ter.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    **uma invocação por gate**, com `node --test --test-reporter=tap`. Nenhuma é
+#    chute, e nenhum id foi escrito antes de ter sido medido.
+#
+# ⚠️⚠️ DOIS REGIMES em `tokens-da-fila` (`tests=16,9`), e isso é MEDIDO, não
+#    precaução. A camada de CSS daquele arquivo pula quando o CSS construído é
+#    mais ANTIGO que o `tailwind.config.js` — e **mutar o config o deixa mais
+#    novo**. Medido nesta máquina:
+#      · pristino (CSS mais novo):  16 testes / 11 pass / 0 fail / 5 skipped
+#      · mutado   (config mais novo): 9 testes /  7 pass / 0 fail / 2 skipped
+#    Sem os dois regimes a campanha de mutação abortaria na 1ª execução
+#    ("BASE com contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que
+#    NÃO é o código (learnings §4 caso 11).
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre TRÊS arquivos de teste, e dois deles
+#    são COMPARTILHADOS com fases anteriores. Eles estão aqui porque este plano
+#    os ALTEROU e porque eles são a prova de que a alteração não regrediu nada:
+#      · `publicador-vocabulario-novo.test.js` — recebeu `9.5` e `22` em
+#        `TAMANHOS_PERMITIDOS`, com a medida escrita ao lado;
+#      · `publicador-tokens-do-publicador.test.js` — recebeu os 5 tokens novos
+#        nas suas três tabelas. ⚠️ Esta alteração NÃO estava no plano e foi
+#        OBRIGATÓRIA: aquele arquivo faz `deepEqual` do CONJUNTO de chaves de
+#        `colors.pub` e de `backgroundImage` contra as tabelas dele, então
+#        acrescentar token sem entrar lá o reprovaria. Ver a SUMMARY (desvio
+#        Regra 3).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Os 5 tokens novos (camada do config SEMPRE + camada do CSS com skip NOMEADO por
+# token), os 2 tamanhos liberados com a prova de que nada saiu da lista, e
+# `duration-[Nms]` continuando a não compilar. 16 pristino / 9 mutado.
+tokens-da-fila  js  tests/js/publicador-fila-tokens-187.test.js  ::  tests=16,9
+
+# GATE-03 inteiro (o vocabulário fechado dos 5 diretórios) DEPOIS de 9.5 e 22
+# entrarem. É a prova de que a AMPLIAÇÃO não afrouxou nada mais: 399 casos, 0
+# falha. ⚠️ Era 399 antes também — este gate não varre tamanho liberado, ele
+# varre USO; o que prova a ampliação é o `tokens-da-fila`.
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=399
+
+# A camada de tokens da Fase 177 DEPOIS dos 5 acréscimos. É aqui que mora o
+# `deepEqual` do conjunto de chaves — se um token novo tivesse ficado fora das
+# tabelas, este gate reprovaria. 13 casos, 0 falha.
+camada-de-tokens-177  js  tests/js/publicador-tokens-do-publicador.test.js  ::  tests=13
