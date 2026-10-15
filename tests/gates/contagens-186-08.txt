@@ -1,0 +1,59 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 186-08 — OS 8 BLOQUEIOS, A CADEIA
+# EXCLUSIVA e o lado PHP do vocabulário de bloqueio do portão.
+#
+# Lido por `tests/gates/verificar-testes.sh 08 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe.
+# ⚠️ E alternância GRANDE equivale a filtro de classe (medido no plano 186-07):
+#    por isso os 27 métodos deste plano estão quebrados em **10 ids**, nenhum com
+#    mais de quatro métodos.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por gate, com o ANSI tirado antes de ler a linha `Tests:`.
+#    Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#    Nenhum método deste plano tem sonda com `skip` por `mtime`, então pristino e
+#    mutado dão o MESMO número e a campanha de mutação roda sem tocar neste
+#    arquivo (por isso não há segundo regime em nenhuma linha).
+#
+# ⚠️⚠️ **TODO MÉTODO DO ARQUIVO DESTE PLANO TEM id AQUI, E A BIJEÇÃO É PROVADA
+#    POR SCRIPT** — pelo gate `bijecao-manifesto`, que falha nos DOIS sentidos:
+#    método sem id (ele NUNCA RODA — foi o sobrevivente da mutação do plano
+#    186-03) e id órfão (gate sobre ZERO casos).
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre **um** arquivo de teste
+#    (`tests/Unit/Publicador/Aprovacao/BloqueiosDaOfertaServiceTest.php`), porque
+#    as tarefas 2 e 3 do plano foram **DEVOLVIDAS COMO PERGUNTA** — a transição
+#    `aprovado → aguardando_aprovacao` que BLOQ-06 exige **não existe** na lista
+#    fechada de `PubAprovacaoOferta::TRANSICOES` (12 pares, pinados pelo gate
+#    `transicoes` do plano 186-04). Ver a SUMMARY do plano 186-08.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+vocabulario-php-e-jsx  php  test_(bloq12_as_nove_abreviacoes_e_os_oito_rotulos_sao_espelho_lido_do_modulo_jsx|voc06_a_bijecao_das_onze_chaves_vale_nos_dois_sentidos_e_as_inglesas_nao_sao_chave|voc05_a_severidade_segue_o_prototipo_e_cor_nunca_e_o_unico_sinal)  ::  tests=3 assertions=140
+cadeia-exclusiva  php  test_criterio4_(frete_ausente_com_resultado_negativo_e_margem_baixa_devolve_so_frete|resultado_negativo_devolve_so_loss_e_nunca_margin|margem_baixa_com_resultado_positivo_devolve_so_margin_e_nunca_loss|no_maximo_um_dos_tres_nasce_e_a_ordem_e_a_do_prototipo)  ::  tests=4 assertions=63
+estimado-por-baixo  php  test_decisao7_embalagem_sem_fonte_nao_dispara_frete_e_loss_margin_disparam_sobre_o_estimado  ::  tests=1 assertions=14
+excecao-libera-so-dois  php  test_bloq08_excecao_(de_prejuizo_remove_so_o_loss_e_deixa_os_outros_cinco_preenchidos|de_margem_nao_libera_o_prejuizo_e_nem_as_fotos)  ::  tests=2 assertions=30
+achado-s2-todos-os-grupos  php  test_achado_s2_pendente_(fora_do_primeiro_grupo|no_grupo_general)_bloqueia_as_duas_ofertas_com_isca  ::  tests=2 assertions=32
+galeria-e-foco  php  test_(img12_galeria_vazia_devolve_sem_fotos_e_nao_tela_vazia_silenciosa|photos_aponta_para_a_primeira_com_alerta_e_sem_alerta_para_a_primeira_pendente|o_bloqueio_de_fotos_nao_faz_uma_consulta_por_grupo)  ::  tests=3 assertions=35
+titulo-change-adjust-prep  php  test_(titulo_com_sessenta_nao_bloqueia_e_com_sessenta_e_um_bloqueia|alteracao_de_preco_e_ajuste_em_aberto_tem_o_texto_e_a_correcao_do_prototipo|prep_aparece_so_em_preparando_com_a_frase_real_e_correcao_vazia)  ::  tests=3 assertions=36
+kinds-aprovavel-rodape  php  test_(bloq03_kinds_ganha_alerta_e_falha_que_nao_sao_bloqueio|bloq04_aprovavel_e_verdadeiro_so_com_live_e_zero_bloqueios|bloq12_o_rodape_tem_o_literal_verde_e_o_bloqueado_com_mais_n|o_texto_do_frete_nomeia_a_fonte_que_de_fato_falta_e_nao_mente)  ::  tests=4 assertions=53
+ausencia-e-territorio  php  test_(o_leitor_tira_os_comentarios_do_plano_08_e_preserva_o_codigo|nenhum_arquivo_deste_plano_cria_segundo_clique_desfazer_ou_cancelar_aprovacao|o_minimo_da_margem_vem_do_resolvedor_unico_e_nunca_de_literal_neste_plano|terr09_a_fronteira_do_d11_esta_declarada_e_este_plano_nao_escreve_no_ml)  ::  tests=4 assertions=83
+# ⚠️ A contagem de `bijecao-manifesto` DEPENDE do número de linhas deste arquivo
+#    (uma asserção `php` por linha de gate). É contagem frágil por construção, e
+#    está declarada como tal: acrescentar um id aqui **sobe** este número em 1, e
+#    o helper reprova até que ele seja remedido. Isso é desconforto DE PROPÓSITO —
+#    é o que impede acrescentar id sem rodar o gate.
+bijecao-manifesto  php  test_todo_metodo_do_plano_08_tem_id_no_manifesto_e_todo_id_casa_um_metodo  ::  tests=1 assertions=20
