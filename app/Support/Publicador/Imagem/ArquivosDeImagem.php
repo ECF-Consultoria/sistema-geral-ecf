@@ -100,10 +100,18 @@ final class ArquivosDeImagem
         }
     }
 
-    /** @return list<string> o disco das imagens primeiro, o legado depois (sem repetir) */
+    /**
+     * O disco das imagens primeiro, o legado depois — e o R2 por último quando ele está configurado
+     * (bucket no .env), mesmo com `IMAGENS_DISK=local`: é o ROLLBACK da Fase 200. Voltar a chave para
+     * `local` muda só onde as fotos NOVAS são gravadas; as já migradas seguem legíveis (e apagáveis).
+     *
+     * @return list<string>
+     */
     private static function discos(): array
     {
-        return array_values(array_unique([self::nomeDoDisco(), self::LEGADO]));
+        $r2 = filled(config('filesystems.disks.r2.bucket')) ? ['r2'] : [];
+
+        return array_values(array_unique([self::nomeDoDisco(), self::LEGADO, ...$r2]));
     }
 
     /** Em qual disco o arquivo está agora (o das imagens primeiro), ou null. */

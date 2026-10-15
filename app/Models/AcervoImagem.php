@@ -33,6 +33,8 @@ class AcervoImagem extends Model
         'altura' => 'integer',
         'exclusao_tentativas' => 'integer',
         'exclusao_pedida_em' => 'datetime',
+        'migrado_em' => 'datetime',
+        'caminhos_legados' => 'array',
     ];
 
     /**
