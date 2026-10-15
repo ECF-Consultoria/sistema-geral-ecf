@@ -416,7 +416,27 @@ class AjustesEHistoricoTest extends TestCase
         // ⚠️ ISCA DO DIFF: o MESMO comando, num arquivo que este plano NÃO tocou, sai vazio —
         // senão um `git` que falhasse em silêncio devolveria string vazia para tudo (ou o nome
         // para tudo) e o gate seria verde permanente.
-        $this->assertSame('', $this->gitDiff('app/Models/PubAprovacaoOferta.php'), 'ISCA DO DIFF: o modelo do plano 186-04 aparece como tocado — este plano não o altera');
+        //
+        // ⚠️⚠️ O SUJEITO DESTA ISCA FOI TROCADO EM 15/10/2026 PELO ORQUESTRADOR, e a razão é uma
+        // CLASSE NOVA de gate frágil que vale mais que o conserto:
+        //
+        //   **Gate com range ABERTO (`<partida>..HEAD`) cuja isca é "ninguém mais toca neste
+        //   arquivo" tem validade de UM PLANO.** `..HEAD` não mede o plano dele — mede tudo o que
+        //   vier DEPOIS. Era `app/Models/PubAprovacaoOferta.php`, e a isca caiu no instante em que
+        //   o plano 186-08 acrescentou o 13º par de transição — uma mudança **autorizada e
+        //   correta**, decidida pelo usuário em 15/10. O gate acusou trabalho legítimo, e as
+        //   outras 45 asserções (as que medem comportamento) seguiram verdes.
+        //
+        // ⚠️ O conserto NÃO é "trocar por outro arquivo qualquer e esperar": é escolher um sujeito
+        // cuja estabilidade seja **garantida por regra**. `app/Support/Publicador/` é território
+        // VETADO em toda a milestone (TERR-03), e há gate próprio exigindo que o diff dele saia
+        // VAZIO. ➡️ Enquanto aquele gate existir, esta isca não pode cair — a mesma regra protege
+        // as duas. Medido em 15/10: `git diff --name-only 1c16d9e9..HEAD -- app/Support/Publicador/`
+        // devolve **0** linhas.
+        //
+        // A isca mede o que sempre mediu: que o `git` não devolve vazio para TUDO. O sujeito é
+        // indiferente desde que esteja fora do assunto da milestone — e agora está, por regra.
+        $this->assertSame('', $this->gitDiff('app/Support/Publicador/RegraViolada.php'), 'ISCA DO DIFF: um arquivo de território VETADO (TERR-03) aparece como tocado — ou o `git` devolve o nome para tudo, ou alguém mexeu em `App\\Support\\Publicador`');
         $this->assertNotSame('', $this->gitDiff(self::MIGRATION), 'ISCA DO DIFF: a migration DESTE plano não aparece como tocada — o `git` está devolvendo vazio para tudo');
 
         // ⚠️ O DIFF É **SÓ A LIGAÇÃO**: as linhas acrescentadas são o construtor, a chamada ao

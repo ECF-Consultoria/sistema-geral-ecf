@@ -653,7 +653,7 @@ class OfertaDoPortaoTest extends TestCase
         $this->fail("coluna `{$coluna}` não existe em `pub_aprovacao_ofertas`");
     }
 
-    public function test_guarda_a_migration_nao_usa_enum_nem_try_catch_e_o_up_e_idempotente(): void
+    public function test_guarda_a_migration_da_oferta_nao_usa_enum_nem_try_catch_e_up_idempotente(): void
     {
         $cru = $this->textoDaMigration();
         $codigo = $this->semComentarios($cru);
