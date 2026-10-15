@@ -522,7 +522,13 @@ test('FIN-09 — o mínimo vem da prop, com a origem, e nunca de literal', async
     await contexto.test('⚠️ GATE DE AUSÊNCIA do literal `12` como percentual, com os DOIS controles', () => {
         // A sonda: `12%`, `= 12`, `: 12`, `0.12` — com `\b` nas duas pontas,
         // para `120` e `1.12` não casarem (learnings §4 caso 4).
-        const sonda = /\b0\.12\b|\b12(?:\.0+)?\s*%|(?:=>|=|:)\s*12(?:\.0+)?\s*[;,)\]]/;
+        //
+        // ⚠️ O `}` na classe de terminadores NÃO é zelo: o CONTROLE POSITIVO
+        // `const p = { margem: 12 };` REPROVOU a primeira redação desta sonda,
+        // porque `12` ali é seguido de ` }` e a classe só tinha `;,)]`. É o
+        // achado da armadilha 3 — *teste toda regex contra um caso que DEVE
+        // casar* — e a forma mais comum de literal em objeto de props no JSX.
+        const sonda = /\b0\.12\b|\b12(?:\.0+)?\s*%|(?:=>|=|:)\s*12(?:\.0+)?\s*[;,)\]}]/;
         assert.doesNotMatch(FONTE_CABECALHO, sonda, 'FIN-09: o 12% virou literal no componente');
 
         // ⚠️ CONTROLE POSITIVO — a sonda ACUSA as formas que ela proíbe.
@@ -678,5 +684,162 @@ test('REND-01/02/03 — nenhum campo adverso derruba o cabeçalho nem vaza lixo'
         assert.match('const t = String(x);', /String\(/, 'a sonda de String() está cega');
         assert.match('JSON.stringify(x)', /JSON\.stringify\(/, 'a sonda de stringify está cega');
         assert.match('o.hasOwnProperty(k)', /hasOwnProperty/, 'a sonda de hasOwnProperty está cega');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. O CSS CONSTRUÍDO — a classe EXISTE com o valor certo, não só "está escrita"
+//
+// O que precisaria estar errado para falhar: a classe sair do `content` do
+// Tailwind (num `.js`, num mapa, numa string montada), ou o valor arbitrário
+// não compilar — `duration-[Nms]` é o precedente MEDIDO neste projeto, e é
+// justamente por isso que o `font-[800]` desta tela tem asserção própria aqui.
+//
+// As SETE normalizações do medidor estão aplicadas: seletor ESCAPADO, TODOS os
+// metacaracteres de regex escapados, token sólido em `rgb()` DECIMAL, e o zero
+// comido depois do menos (`letter-spacing:-.025em`, medido nesta máquina).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Escapa TODOS os metacaracteres de regex. */
+function escapaRegex(texto) {
+    return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** O seletor que o Tailwind emite: `.` + o nome com os metacaracteres de CSS escapados. */
+function seletorDe(classe) {
+    return `.${classe.replace(/[[\].:/%]/g, (ch) => `\\${ch}`)}`;
+}
+
+/** Os caminhos cujo `mtime` o CSS tem de superar (ver o `skip` NOMEADO abaixo). */
+const FONTES_DO_CSS = [REL_CABECALHO];
+
+function carregarCssConstruido() {
+    const manifestRel = 'public/build/manifest.json';
+    const manifestAbs = path.resolve(RAIZ, manifestRel);
+    if (!fs.existsSync(manifestAbs)) return { motivo: `${manifestRel} ausente — rode \`npm run build\`` };
+
+    // ⚠️ Manifest SEMPRE pelo JSON, nunca por grep: o hash sai com HÍFEN
+    // (`assets/app-Dv6-mbDf.js`, medido no 187-01) e o grep ingênuo não casa.
+    // ⚠️ E `resources/css/app.css` NÃO é chave do manifest (divergência N5 do
+    // `187-BASELINES.md`): o CSS entra por `manifest['resources/js/app.jsx'].css[0]`.
+    const manifest = JSON.parse(fs.readFileSync(manifestAbs, 'utf8'));
+    const entrada = manifest['resources/js/app.jsx'];
+    if (!entrada || !Array.isArray(entrada.css) || entrada.css.length === 0) {
+        return { motivo: 'o manifest não aponta CSS para resources/js/app.jsx' };
+    }
+
+    const cssAbs = path.resolve(RAIZ, 'public/build', entrada.css[0]);
+    if (!fs.existsSync(cssAbs)) return { motivo: `${entrada.css[0]} ausente — rode \`npm run build\`` };
+
+    // ⚠️ O CSS tem de ser mais NOVO que as fontes, senão este bloco mediria um
+    // build velho e reprovaria o código certo (ou aprovaria o errado). ⚠️ É esta
+    // guarda que produz os DOIS REGIMES de contagem do manifesto: mutar uma
+    // fonte a deixa mais nova que o CSS e esta camada PULA.
+    const mtimeCss = fs.statSync(cssAbs).mtimeMs;
+    const mtimeFontes = Math.max(
+        ...FONTES_DO_CSS.map((rel) => fs.statSync(path.resolve(RAIZ, rel)).mtimeMs),
+    );
+    if (mtimeCss < mtimeFontes) {
+        return { motivo: `o CSS construído (${entrada.css[0]}) é mais antigo que as fontes — rode \`npm run build\`` };
+    }
+
+    return { arquivo: entrada.css[0], css: fs.readFileSync(cssAbs, 'utf8'), manifest };
+}
+
+const CSS = carregarCssConstruido();
+
+test('FID — as classes do cabeçalho da fila GERAM CSS com o valor certo', async (contexto) => {
+    if (CSS.motivo) {
+        // ⚠️ `skip` com razão ESCRITA (e `skipped N` aparece no sumário), nunca
+        // `return` calado.
+        contexto.skip(CSS.motivo);
+        return;
+    }
+
+    /** O corpo da regra da classe, ou `null`. */
+    const regraDe = (classe) => {
+        const re = new RegExp(`${escapaRegex(seletorDe(classe))}(?![\\w\\\\-])[^{}]*\\{([^}]*)\\}`);
+        const m = CSS.css.match(re);
+        return m ? m[1] : null;
+    };
+
+    await contexto.test('o CSS lido é o do manifest e tem tamanho de CSS de verdade', () => {
+        assert.ok(CSS.css.length > 100000, `CSS suspeito de truncado: ${CSS.css.length} bytes`);
+    });
+
+    await contexto.test('⚠️ ISCA: a sonda reporta AUSENTE o que não existe, e ACHA o que existe', () => {
+        for (const isca of ['bg-pub-isca-187-04', 'text-[99.5px]', 'gap-[997px]', 'font-[333]']) {
+            assert.equal(regraDe(isca), null, `a isca ${isca} virou classe de verdade — troque a isca`);
+            assert.ok(!CSS.css.includes(isca), `a string da isca ${isca} aparece no CSS`);
+        }
+        assert.notEqual(regraDe('text-[12.5px]'), null, 'a sonda está cega: nem o controle ela acha');
+    });
+
+    await contexto.test('o <header> e a coluna — gap 24, gap 14 e a borda de 1px', () => {
+        assert.match(regraDe('gap-[24px]'), /gap:\s*24px/);
+        assert.match(regraDe('gap-[14px]'), /gap:\s*14px/);
+        assert.match(regraDe('items-end'), /align-items:\s*flex-end/);
+        assert.match(regraDe('border-b'), /border-bottom-width:\s*1px/);
+        const borda = regraDe('border-pub-line-subtle');
+        assert.notEqual(borda, null, 'a borda do cabeçalho não gerou CSS');
+        // #1F1F1F → 31 31 31 (token sólido sai em `rgb()` DECIMAL, nunca hex).
+        assert.match(borda, /rgb\(\s*31\s+31\s+31\b/, borda);
+    });
+
+    await contexto.test('o H1 — 28px, leading 1 e o tracking com o ZERO COMIDO pelo cssnano', () => {
+        assert.match(regraDe('text-[28px]'), /font-size:\s*28px/);
+        assert.match(regraDe('leading-none'), /line-height:\s*1\b/);
+        // ⚠️ `-0.025em` sai `-.025em`: o cssnano come o zero depois do menos. É
+        // uma das sete normalizações do medidor — comparar com `-0.025em`
+        // reprovaria o código CERTO.
+        assert.match(regraDe('tracking-[-0.025em]'), /letter-spacing:\s*-\.025em/);
+    });
+
+    await contexto.test('⚠️ a DIREITA — e o `pb-[12px]` que só a FILA tem (D2)', () => {
+        assert.match(regraDe('text-[12.5px]'), /font-size:\s*12\.5px/);
+        assert.match(regraDe('gap-[8px]'), /gap:\s*8px/);
+        const pb = regraDe('pb-[12px]');
+        assert.notEqual(pb, null, '`pb-[12px]` não gerou CSS — é ele que distingue a direita da FILA da da LISTA');
+        assert.match(pb, /padding-bottom:\s*12px/);
+        assert.match(regraDe('whitespace-nowrap'), /white-space:\s*nowrap/);
+        // #8A8A90 → 138 138 144
+        assert.match(regraDe('text-pub-txt-3'), /rgb\(\s*138\s+138\s+144\b/);
+    });
+
+    await contexto.test('⚠️⚠️ o ⓘ — 16×16, redondo, e o `font-[800]` COMPILANDO para 800', () => {
+        assert.match(regraDe('h-[16px]'), /height:\s*16px/);
+        assert.match(regraDe('w-[16px]'), /width:\s*16px/);
+        assert.match(regraDe('rounded-full'), /border-radius:\s*9999px/);
+        assert.match(regraDe('place-items-center'), /place-items:\s*center/);
+        assert.match(regraDe('text-[10px]'), /font-size:\s*10px/);
+
+        // ⚠️⚠️ A ASSERÇÃO QUE JUSTIFICA A DIVERGÊNCIA DO PESO 800. O plano pedia
+        // `font-extrabold`, que o GATE-03 proíbe; a saída é o valor arbitrário.
+        // Valor arbitrário que NÃO compila é o precedente medido de
+        // `duration-[Nms]`, e sem esta asserção o ⓘ sairia com o peso herdado.
+        const peso = regraDe('font-[800]');
+        assert.notEqual(peso, null, '`font-[800]` não gerou CSS — o ⓘ perderia o peso 800 de `:39`');
+        assert.match(peso, /font-weight:\s*800/, peso);
+        // E o CONTROLE DE VALOR: não é 700 (o `font-bold` para o qual FID-03
+        // proíbe arredondar).
+        assert.ok(!/font-weight:\s*700/.test(peso), 'o peso do ⓘ virou 700 — FID-03 proíbe arredondar');
+
+        // #1F1F1F → 31 31 31 (o fundo) e #D4D4D8 → 212 212 216 (a letra).
+        assert.match(regraDe('bg-pub-line-subtle'), /rgb\(\s*31\s+31\s+31\b/);
+        assert.match(regraDe('text-pub-fase1'), /rgb\(\s*212\s+212\s+216\b/);
+    });
+
+    await contexto.test('o valor e o separador — 600 sobre `txt` (#F4F4F5) e o `·` em `line-off` (#3F3F46)', () => {
+        assert.match(regraDe('font-semibold'), /font-weight:\s*600/);
+        const valor = regraDe('text-pub-txt');
+        const separador = regraDe('text-pub-line-off');
+        assert.notEqual(valor, null, 'a cor do valor não gerou CSS');
+        assert.notEqual(separador, null, 'a cor do separador não gerou CSS');
+        // #F4F4F5 → 244 244 245 ; #3F3F46 → 63 63 70
+        assert.match(valor, /rgb\(\s*244\s+244\s+245\b/, valor);
+        assert.match(separador, /rgb\(\s*63\s+63\s+70\b/, separador);
+        // ⚠️ E as duas são DIFERENTES: harmonizá-las apagaria o separador do
+        // protótipo, que é de propósito mais apagado que o número.
+        assert.notEqual(valor, separador, 'o valor e o separador viraram a mesma cor');
     });
 });

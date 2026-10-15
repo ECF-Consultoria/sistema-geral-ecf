@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-04 — A PÁGINA DA FILA: a casca, o
+# cabeçalho com a aba "Aguardando aprovação" ATIVA, a linha da margem mínima e a
+# FAIXA DE 9 COLUNAS que filtra.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-04 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 15/10/2026,
+#    uma invocação por gate, com `node --test --test-reporter=tap` e o ANSI tirado
+#    antes de ler as linhas `# tests`. Nenhuma é chute, e nenhum id foi escrito
+#    antes de ter sido medido.
+#
+# ⚠️⚠️ DOIS REGIMES nos ids que tocam `publicador-fila-cabecalho-187.test.js`
+#    (`tests=A,B`), e isso é MEDIDO, não precaução: aquele arquivo tem camada de
+#    CSS CONSTRUÍDO que PULA (com `skip` NOMEADO) quando o `app-*.css` é mais
+#    ANTIGO que as fontes — e **editar qualquer fonte a deixa mais nova**, que é
+#    exatamente o que a campanha de mutação faz. Medido nesta máquina:
+#      · pristino (CSS mais novo): 47 testes / 47 pass / 0 fail / 0 skipped
+#      · mutado   (fonte mais nova): 40 testes / 39 pass / 0 fail / 1 skipped
+#    Sem os dois regimes a campanha abortaria na 1ª execução ("BASE com contagem
+#    inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o código
+#    (learnings §4 caso 11).
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre os arquivos de teste que este plano
+#    CRIA ou ALTERA, e a bijeção é provada por script nos DOIS sentidos, com o
+#    lado "o que o plano toca" MEDIDO NO GIT pelo escopo do assunto (`(187-04)`),
+#    nunca por lista à mão. Arquivo de teste fora do manifesto **NUNCA RODA** —
+#    foi o sobrevivente da campanha de mutação do plano 186-03.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── TAREFA 1 — o cabeçalho da fila ───────────────────────────────────────────
+# O H1 "Publicações" (o MESMO literal da lista, porque é a mesma página), as duas
+# abas IMPORTADAS do 187-03 com a da fila ATIVA e sem href, a geometria FID-01 por
+# igualdade de CONJUNTO de classes localizada por árvore, o `pb-[12px]` que só a
+# FILA tem (D2), o ⓘ como `<span>` com a letra `i` (D4) e NUNCA ícone, o valor
+# vindo da prop com a origem no `title`, o gate de ausência do literal `12` com os
+# dois controles, a linha INTEIRA ausente sem valor medido (D4/EXMP-01), o render
+# adverso com 16 valores em 4 props e o CSS CONSTRUÍDO — incluindo a asserção que
+# justifica a divergência do peso 800 (`font-[800]` compila para `font-weight:800`).
+# 47 pristino / 40 mutado.
+cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=47,40

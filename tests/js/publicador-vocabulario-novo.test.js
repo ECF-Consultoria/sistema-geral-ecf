@@ -194,6 +194,18 @@ const ARQUIVOS_NOVOS = [
     `${DIR_APROV}/andamentoDoPortao.jsx`,
     `${DIR_APROV}/vocabularioDoPortao.jsx`,
     `${DIR_APROV}/SeloDeAndamentoInterno.jsx`,
+    // ─── Fase 187, plano 04 — o CABEÇALHO da fila ───
+    //
+    // ⚠️ DECLARADO NO MESMO PLANO QUE CRIA O ARQUIVO, e as duas pontas disso são
+    // medidas: `DIR_APROV` está em `DIRETORIOS_FECHADOS` e o GATE-03 faz
+    // `assert.deepEqual(noDisco, declarados)` — esquecer a declaração reprova na
+    // hora (é o comportamento certo), e declarar ANTES de o arquivo existir
+    // **LANÇA** no carregamento do módulo, porque `FONTES` lê todos os caminhos.
+    //
+    // ⚠️ `.jsx`, como todo o diretório: o `content` do `tailwind.config.js` varre
+    // `*.jsx` e **NÃO** `*.js`. Este arquivo é a única casa das classes do
+    // cabeçalho da fila — num `.js` elas não gerariam CSS nenhum.
+    `${DIR_APROV}/CabecalhoDaFila.jsx`,
 ];
 
 /**
@@ -495,29 +507,81 @@ test('GATE-03 — nenhum arquivo de `identidade/`, `visaogeral/`, `publicacoes/`
         // `ecf-*`, `font-display` e breakpoint, com o gate passando POR
         // OMISSÃO.
         //
-        // ⚠️ OS PLANOS SEGUINTES DA FASE 186 **ELEVAM** ESTE VALOR junto com os
-        // arquivos deles. Hoje são 3, os do plano 186-02, que é quem ABRE o
-        // diretório: `andamentoDoPortao.jsx` (os 8 estados),
-        // `vocabularioDoPortao.jsx` (selos de origem, bloqueios, critérios,
-        // defeitos e toasts) e `SeloDeAndamentoInterno.jsx` (a pill).
-        const daFase186 = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`));
+        // ⚠️⚠️ REAPONTE DA FASE 187, PLANO 04 — e com o veto escrito. Antes esta
+        // asserção contava `ARQUIVOS_NOVOS.filter(startsWith(DIR_APROV)).length`
+        // e exigia 3. Isso media o DIRETÓRIO, não a Fase 186 — e o diretório
+        // deixou de ser 100% daquela fase quando a 187 pôs os componentes da
+        // fila lá.
+        //
+        // É a MESMA cirurgia que o plano 187-03 fez em `DA_FASE_180`, pelo mesmo
+        // motivo medido: com a contagem de diretório, **todo plano da Fase 187
+        // que criasse componente aqui teria de subir este número** — a régua que
+        // sobe a cada plano e "treina o executor seguinte a ajustar números em
+        // vez de consertar código" (learnings §4b.2). Pior: subir o número
+        // aceitaria a REMOÇÃO de um arquivo da 186 compensada pela criação de um
+        // da 187.
+        //
+        // ⚠️ O que a asserção prova continua IGUAL e ficou mais forte: nenhum dos
+        // 3 arquivos da Fase 186 saiu de `ARQUIVOS_NOVOS` — antes só a contagem,
+        // agora os NOMES, com os infratores coletados. Quem fecha o outro lado
+        // (arquivo novo no disco fora da lista) é o `deepEqual` de
+        // `DIRETORIOS_FECHADOS`, que não mudou.
+        const DA_FASE_186 = [
+            // Plano 186-02 — os 8 estados de andamento interno, o resto do
+            // vocabulário do portão e a pill que os desenha:
+            `${DIR_APROV}/andamentoDoPortao.jsx`,
+            `${DIR_APROV}/vocabularioDoPortao.jsx`,
+            `${DIR_APROV}/SeloDeAndamentoInterno.jsx`,
+        ];
+
         assert.equal(
-            daFase186.length,
+            DA_FASE_186.length,
             3,
             'a Fase 186 tem 3 arquivos em `aprovacao/` (plano 186-02: andamentoDoPortao +'
             + ' vocabularioDoPortao + SeloDeAndamentoInterno)',
         );
+        const faltando186 = DA_FASE_186.filter((c) => !ARQUIVOS_NOVOS.includes(c));
+        assert.deepEqual(
+            faltando186,
+            [],
+            'arquivo da Fase 186 fora de ARQUIVOS_NOVOS: ele fica SEM conferência contra `text-sm`,'
+            + ' `ecf-*`, hex cru e breakpoint, e o gate passa POR OMISSÃO',
+        );
+        // ⚠️ E os 3 estão todos NO DISCO: lista de nomes que aponta para caminho
+        // fantasma "prova" cobertura medindo NADA.
+        const fantasmas186 = DA_FASE_186.filter(
+            (c) => !existsSync(resolve(import.meta.dirname, '../..', c)),
+        );
+        assert.deepEqual(fantasmas186, [], 'caminho fantasma em DA_FASE_186 — o gate mediria NADA');
 
-        // ⚠️ E NENHUM deles é `.js`. O diretório é 100% `.jsx` de propósito,
-        // porque é só no `.jsx` que o `content` do Tailwind varre classe. Um
-        // `.js` aqui tem de ser decisão consciente e declarada, como o
-        // `atalhosDaLista.js` de `publicacoes/` foi.
+        // O diretório INTEIRO, que é o que as duas asserções abaixo medem (e
+        // elas medem o diretório de propósito: a regra do `.jsx` vale para
+        // qualquer fase que escreva aqui, não só para a 186).
+        const daFase186 = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APROV}/`));
+
+        // ⚠️ E NENHUM arquivo de `aprovacao/` é `.js`. O diretório é 100% `.jsx`
+        // de propósito, porque é só no `.jsx` que o `content` do Tailwind varre
+        // classe. Um `.js` aqui tem de ser decisão consciente e declarada, como
+        // o `atalhosDaLista.js` de `publicacoes/` foi.
         assert.deepEqual(
             daFase186.filter((c) => c.endsWith('.js')),
             [],
             'há um `.js` em `aprovacao/` — classe escrita nele NÃO GERA CSS e não existe para a tela',
         );
-        assert.equal(daFase186.filter((c) => c.endsWith('.jsx')).length, 3);
+        assert.equal(daFase186.filter((c) => c.endsWith('.jsx')).length, daFase186.length);
+
+        // ⚠️ E a prova de que o conjunto NÃO é o diretório: os componentes da
+        // fila (Fase 187) estão em `ARQUIVOS_NOVOS` e FORA de `DA_FASE_186`. Sem
+        // esta asserção, trocar `DA_FASE_186` de volta por `startsWith` não
+        // mexeria em nenhum número aqui e o reaponte seria revogado em silêncio.
+        assert.ok(
+            ARQUIVOS_NOVOS.includes(`${DIR_APROV}/CabecalhoDaFila.jsx`),
+            'CabecalhoDaFila.jsx saiu de ARQUIVOS_NOVOS: o cabeçalho da fila ficaria sem conferência',
+        );
+        assert.ok(
+            !DA_FASE_186.includes(`${DIR_APROV}/CabecalhoDaFila.jsx`),
+            'CabecalhoDaFila.jsx é da Fase 187, não da 186 — a lista nomeia a fase, não a pasta',
+        );
 
         // ⚠️ ISCA DA CONTAGEM: um arquivo forjado FORA da lista tem de ser
         // detectado pela mesma comparação que o `deepEqual` acima usa. Sem esta
@@ -1216,9 +1280,39 @@ const ARQUIVOS_DO_PORTAO = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_APRO
 /** As duas formas proibidas, insensíveis a maiúscula. */
 const FORMAS_DE_LUCRO = [/lucro\s+l[ií]quido/i, /lucro_l[ií]quido/i];
 
+/**
+ * Os 3 arquivos do portão que a Fase 186 criou, POR NOME.
+ *
+ * ⚠️⚠️ REAPONTE DA FASE 187, PLANO 04, com o veto escrito. Antes a asserção
+ * abaixo era `assert.equal(ARQUIVOS_DO_PORTAO.length, 3)` — um número do
+ * DIRETÓRIO fazendo as vezes de prova sobre uma FASE. Com ele, **todo plano da
+ * Fase 187 que criasse componente em `aprovacao/` teria de subir o número**, que
+ * é a régua que sobe a cada plano (learnings §4b.2); e subir o número aceitaria
+ * a REMOÇÃO de um arquivo da 186 compensada pela criação de um da 187.
+ *
+ * ⚠️ O que ficou no lugar é ESTRITAMENTE MAIS FORTE: os três NOMES têm de estar
+ * na lista varrida (infratores coletados) **e** a lista não pode encolher. É a
+ * mesma cirurgia que o plano 187-03 fez em `DA_FASE_180`.
+ */
+const DO_PORTAO_DA_FASE_186 = [
+    `${DIR_APROV}/andamentoDoPortao.jsx`,
+    `${DIR_APROV}/vocabularioDoPortao.jsx`,
+    `${DIR_APROV}/SeloDeAndamentoInterno.jsx`,
+];
+
 test('VOC-03 — "lucro líquido" não existe em nenhum arquivo novo do portão', async (contexto) => {
-    await contexto.test('a lista varrida não está vazia (3 arquivos declarados)', () => {
-        assert.equal(ARQUIVOS_DO_PORTAO.length, 3, 'a lista do portão encolheu — a sonda mediria menos');
+    await contexto.test('a lista varrida não está vazia e não encolheu', () => {
+        // ⚠️ Os três da Fase 186, por NOME — e não "o tamanho do diretório".
+        const faltando = DO_PORTAO_DA_FASE_186.filter((c) => !ARQUIVOS_DO_PORTAO.includes(c));
+        assert.deepEqual(
+            faltando,
+            [],
+            'arquivo do portão da Fase 186 saiu da lista varrida — a sonda de VOC-03 mediria MENOS',
+        );
+        assert.ok(
+            ARQUIVOS_DO_PORTAO.length >= DO_PORTAO_DA_FASE_186.length,
+            `a lista do portão tem ${ARQUIVOS_DO_PORTAO.length} arquivo(s) e encolheu abaixo dos 3 da Fase 186`,
+        );
     });
 
     for (const caminho of ARQUIVOS_DO_PORTAO) {
