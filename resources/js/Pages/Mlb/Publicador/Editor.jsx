@@ -310,10 +310,25 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                         )}
                         {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}
                         {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
+                        {/* Quick 261016-imr: a faixa dizia "precisa ser reconectada" para QUALQUER falha ao
+                            ler a conta — inclusive o ML fora do ar com o token bom, enquanto o selo do topo
+                            (que lê o token) mostrava "ML conectado". Agora mostra o motivo real que o
+                            servidor mandou, e só oferece reconectar quando o token não está ativo. */}
                         {tokenExpirado && (
-                            <Faixa icone={AlertTriangle} tom="vermelho">
-                                <p>A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar.</p>
-                                {empresa.link_reconexao && <div className="mt-2"><LinkReconexao link={empresa.link_reconexao} /></div>}
+                            <Faixa
+                                icone={AlertTriangle}
+                                tom="vermelho"
+                                acao={empresa.token === 'ativo'
+                                    ? <button type="button" onClick={pub.recarregar} className="shrink-0 rounded text-[13px] font-bold text-white hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Tentar de novo</button>
+                                    : undefined}
+                            >
+                                {empresa.token !== 'ativo' ? (<>
+                                    <p>A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar.</p>
+                                    {empresa.link_reconexao && <div className="mt-2"><LinkReconexao link={empresa.link_reconexao} /></div>}
+                                </>) : (<>
+                                    <p>{estado.conta.erro}</p>
+                                    <p className="mt-1">Até isso se resolver, dá para preparar o anúncio, mas não conferir no Mercado Livre nem publicar.</p>
+                                </>)}
                             </Faixa>
                         )}
                     </div>

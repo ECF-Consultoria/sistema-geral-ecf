@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import NavegadorDeCategorias from '@/Components/Categorias/NavegadorDeCategorias';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
-import { NOME_TIPO } from '../apoio';
+import { NOME_TIPO, mensagemDe } from '../apoio';
 import { mostraSeloDaIa } from '../derivados.js';
 import { juntarTermo, termoNoTitulo } from '../ferramentas';
 import { CAMPO, Campo, ErroDoCampo, GeradoPelaIa, INVALIDO, LINK, Secao, useErroDoCampo } from './comum';
@@ -56,7 +56,7 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
         try {
             setSugestoes(await m.buscarCategorias(busca.trim()));
         } catch (e) {
-            setErro(e?.message ?? 'Não foi possível buscar agora. Tente de novo.');
+            setErro(mensagemDe(e));
         } finally {
             setBuscando(false);
             setBuscou(true);
@@ -116,7 +116,13 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
                     })}
                 </div>
             )}
-            {buscou && ! buscando && (
+            {/* Com erro, "a busca não achou nada" mentiria — a busca nem rodou. Fica só o atalho. */}
+            {buscou && ! buscando && erro && (
+                <p className="text-[13px] text-white/55" data-dica-navegar>
+                    Enquanto isso, <button type="button" onClick={() => setModo('navegar')} className={LINK} data-acao="navegar-pelas-categorias">navegue pelas categorias</button>, nível a nível.
+                </p>
+            )}
+            {buscou && ! buscando && ! erro && (
                 <p className="text-[13px] text-white/55" data-dica-navegar>
                     {sugestoes.length === 0 ? 'A busca não achou nada para esse texto. ' : 'Não é nenhuma dessas? '}
                     <button type="button" onClick={() => setModo('navegar')} className={LINK} data-acao="navegar-pelas-categorias">Navegue pelas categorias</button>, nível a nível.

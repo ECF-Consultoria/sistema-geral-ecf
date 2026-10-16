@@ -200,6 +200,32 @@ function AvisoTextoIndisponivel({ kit }) {
     );
 }
 
+// Quick 261016-imr: o caminho tinha "Gerar com IA" → "Planejar as imagens" → "Gerar agora" (e,
+// depois de "Agora não", "Gerar as imagens") sem dizer em que ponto se estava. As três etapas
+// dão o mapa; o status do kit decide qual está acesa.
+const ETAPAS_DO_KIT = ['Fotos de referência', 'Plano e custo', 'Imagens'];
+
+export const etapaDoKit = (fase, kit) => {
+    if (fase !== 'kit' || ! kit) return 0;
+
+    return kit.status === 'planejando' || kit.status === 'planejado' ? 1 : 2;
+};
+
+function EtapasDoKit({ atual }) {
+    return (
+        <ol className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]" aria-label="Etapas">
+            {ETAPAS_DO_KIT.map((rotulo, i) => (
+                <li key={rotulo} className="flex items-center gap-2" aria-current={i === atual ? 'step' : undefined}>
+                    {i > 0 && <span aria-hidden="true" className="text-white/25">›</span>}
+                    <span className={i === atual ? 'font-bold text-white' : i < atual ? 'text-white/55' : 'text-white/35'}>
+                        {i + 1}. {rotulo}
+                    </span>
+                </li>
+            ))}
+        </ol>
+    );
+}
+
 /**
  * `c` é o valor de `useCriativosDoPublicador`. `sugeridas` são as fotos do anúncio com arquivo
  * guardado (`{ id, url }`), calculadas pelo bloco que montou o painel. `disabled` só desabilita
@@ -233,6 +259,18 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c.fase, chaveSugeridas]);
 
+    // Quick 261016-imr: o painel nasce logo abaixo do bloco de fotos — e, com o bloco perto do fim
+    // da tela, nascia ATRÁS da barra fixa "Voltar / Continuar" (medido: y=883 numa janela de 900).
+    // Nada mudava à vista e o segundo clique "para conferir" fechava o painel. Só rola quando o
+    // topo do painel está na parte de baixo da tela; `scroll-mt-40` deixa o bloco de fotos à vista.
+    const secaoRef = useRef(null);
+    const visivel = c.fase !== 'parado';
+    useEffect(() => {
+        const el = secaoRef.current;
+        if (! visivel || ! el || typeof window === 'undefined') return;
+        if (el.getBoundingClientRect().top > window.innerHeight * 0.6) el.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    }, [visivel]);
+
     if (c.fase === 'parado') return null;
 
     const alternar = (id) => setMarcadas((m) => {
@@ -255,11 +293,13 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
     // nenhum caso em que ele precise ficar desabilitado por aqui.
 
     return (
-        <section data-painel-criativos={c.alvo?.grupo} aria-label={`Gerar fotos com IA — ${titulo}`} className="mt-3 rounded-lg border border-white/20 bg-black/40 p-4">
+        <section ref={secaoRef} data-painel-criativos={c.alvo?.grupo} aria-label={`Gerar fotos com IA — ${titulo}`} className="mt-3 scroll-mt-40 rounded-lg border border-white/20 bg-black/40 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h5 className="flex items-center gap-1.5 text-[15px] font-bold text-white"><Sparkles size={15} /> Gerar fotos com IA</h5>
                 <button type="button" onClick={c.fechar} className={LINK}><X size={14} /> Fechar</button>
             </div>
+
+            <EtapasDoKit atual={etapaDoKit(c.fase, kit)} />
 
             {c.erro && (
                 <div className="mb-3 flex items-start justify-between gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2">
@@ -336,6 +376,9 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                             onClick={() => c.planejar({ imagens: [...marcadas], arquivos })}>
                             {c.processando === 'planejar' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Planejar as imagens
                         </BotaoAcao>
+                        <p className="text-[13px] font-normal text-white/45">
+                            Planejar não custa nada: a IA decide quais imagens fazer e você vê o custo antes de gerar.
+                        </p>
                     </div>
                 )}
 
@@ -369,7 +412,7 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                                 </div>
                             ) : (
                                 <BotaoAcao disabled={disabled || !! c.processando} onClick={c.mostrarConfirmacao}>
-                                    <Sparkles size={14} /> Gerar as imagens
+                                    <Sparkles size={14} /> Ver o custo e gerar
                                 </BotaoAcao>
                             )
                         )}

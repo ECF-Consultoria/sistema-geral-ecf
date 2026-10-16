@@ -1,5 +1,5 @@
 import { useContext, useEffect, useId, useMemo, useRef } from 'react';
-import { AlertTriangle, Lock, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, Lock, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import FotosDoPar from '@/Components/Portal/Estrutura/FotosDoPar';
 import { GERAL } from './apoio';
@@ -137,7 +137,9 @@ export function BlocoDeFotos({
                         {visivel && (
                             <button type="button" data-gerar-com-ia={grupo} aria-expanded={aberto} disabled={disabled} className={LINK}
                                 onClick={() => (aberto ? criativos.fechar() : criativos.abrir(grupo, titulo, instancia))}>
-                                <Sparkles size={14} aria-hidden="true" /> Gerar com IA
+                                {/* Quick 261016-imr: o botão é liga/desliga; aberto, ele diz que fecha — antes o
+                                    segundo clique "para conferir" fechava o painel sem aviso. */}
+                                {aberto ? <><X size={14} aria-hidden="true" /> Fechar IA</> : <><Sparkles size={14} aria-hidden="true" /> Gerar com IA</>}
                             </button>
                         )}
                         <span className="text-[13px] tabular-nums text-white/45">{fotos.length} de até {maxFotos}{minimo ? ` · recomendado ${minimo} ou mais` : ''}</span>
