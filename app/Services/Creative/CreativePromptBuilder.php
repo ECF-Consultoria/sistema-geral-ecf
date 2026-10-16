@@ -25,6 +25,9 @@ use App\Services\Creative\Dto\ProductTruth;
  */
 class CreativePromptBuilder
 {
+    /** Cabeçalho fixo da imagem de medidas — o mesmo que `CreativeSlotCatalog::LAYOUT_MEDIDAS` descreve. */
+    public const CABECALHO_MEDIDAS = 'TAMANHO DO PRODUTO';
+
     /**
      * Claim literal que proíbe texto na imagem — uma das `CLAIMS_FIXAS` de
      * `ProductTruthBuilder`. Correto para o HERO (regra de moderação do
@@ -154,7 +157,15 @@ class CreativePromptBuilder
         $linhas[] = 'SLOT: '.$this->sanitizar((string) ($padrao['rotulo'] ?? $tipo))
             .' (posição '.($slotPlano['indice'] ?? '?').' do kit)';
         $linhas[] = $this->sanitizar((string) ($slotPlano['objetivo'] ?? ($padrao['objetivo_padrao'] ?? '')));
-        $linhas[] = 'CENA: '.$this->sanitizar((string) ($slotPlano['cena'] ?? ($padrao['cena_padrao'] ?? '')));
+        // Quick 261016-mwe: tipo que aceita texto tem layout FIXO do catálogo (o planner já o força
+        // no planejamento, 261007-amb) — e aqui ele passa a ser lido do catálogo ATUAL, não do
+        // `slot_plano` gravado. Sem isto, todo kit planejado antes de uma correção de layout
+        // seguia com o texto velho em cada regeneração: o kit 17 (produto 53), planejado antes do
+        // 261016-lu1, continuava pedindo "miniatura do produto no canto superior".
+        $cena = $aceitaTexto && isset($padrao['cena_padrao'])
+            ? (string) $padrao['cena_padrao']
+            : (string) ($slotPlano['cena'] ?? ($padrao['cena_padrao'] ?? ''));
+        $linhas[] = 'CENA: '.$this->sanitizar($cena);
         $linhas[] = '';
 
         $blocoAmbiente = $this->linhasAmbiente($tipo);
@@ -429,9 +440,29 @@ class CreativePromptBuilder
             $linhas[] = '- Headline: '.$this->sanitizar((string) $headline);
         }
 
+        // Quick 261016-mwe: a CENA de medidas pede o cabeçalho "TAMANHO DO PRODUTO", mas ele não
+        // estava nesta lista — e a lista diz "não acrescente nenhum outro texto". O modelo ficava
+        // entre duas ordens contrárias. É texto de leiaute (fixo), não fato do produto.
+        if (($slotPlano['tipo'] ?? null) === 'dimensions') {
+            $linhas[] = '- Cabeçalho: '.self::CABECALHO_MEDIDAS;
+        }
+
         foreach ((array) ($slotPlano['badges'] ?? []) as $badge) {
             $linhas[] = '- Badge: '.$this->sanitizar((string) $badge);
         }
+
+        // Quick 261016-mwe: o texto é o que mais falha nesta imagem (palavra ou número trocado).
+        // Regras explícitas de escrita — o modelo de imagem erra menos com pouco texto, grande,
+        // em uma linha, copiado sem reinterpretar.
+        array_push($linhas,
+            'Regras da escrita (é o ponto que mais falha — siga à risca):',
+            '- Copie cada texto acima letra por letra e número por número, em português do Brasil, com os',
+            '  acentos exatamente como estão. Não traduza, não abrevie, não troque nem invente letras ou dígitos.',
+            '- Cada texto aparece UMA única vez na imagem.',
+            '- Letras grandes e legíveis, em uma linha só, com alto contraste com o fundo — nada de texto',
+            '  pequeno, curvo, inclinado, em perspectiva ou sobre textura.',
+            '- Nenhuma palavra, número ou sigla fora da lista acima: sem legenda, sem slogan, sem linha de apoio.',
+        );
 
         return $linhas;
     }
