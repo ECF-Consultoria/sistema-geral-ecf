@@ -340,8 +340,29 @@ class MlAnuncioCriativoKit extends Model
         return (int) config('services.creative.kit.max_imagens', self::MAX_IMAGENS);
     }
 
+    /**
+     * Quick 261016-lu1 — decisão do usuário (16/10/2026): o kit do PUBLICADOR não tem teto de
+     * imagens nem de regenerações. Medido no kit 17 (produto 53): as 2 imagens foram reprovadas pelo
+     * juiz, a regeneração AUTOMÁTICA de cada uma consumiu a cota inteira (4 imagens, 2 regenerações)
+     * e a pessoa ficou sem poder refazer a imagem ruim sem ter clicado nada.
+     *
+     * O que continua segurando o custo: o limite por minuto por usuário
+     * (`creative-kit-gerar`/`creative-regenerar`, AppServiceProvider), a trava anti-laço do juiz
+     * (`regeneracao_automatica` — UMA automática por imagem, para sempre, ValidarCriativoIaJob) e o
+     * fato de toda regeneração do Publicador ser um clique. O assistente antigo (`AnunciarML`, kit
+     * sem `pub_rascunho_id`) mantém os tetos — é do Creative Engine, fora deste pedido.
+     */
+    public function semTeto(): bool
+    {
+        return $this->pub_rascunho_id !== null;
+    }
+
     public function tetoDeImagensAtingido(): bool
     {
+        if ($this->semTeto()) {
+            return false;
+        }
+
         return $this->imagens_geradas >= $this->maxImagens();
     }
 
@@ -367,6 +388,10 @@ class MlAnuncioCriativoKit extends Model
      */
     public function podeRegenerarAsset(MlAnuncioCriativo $asset): bool
     {
+        if ($this->semTeto()) {
+            return true;
+        }
+
         if ($this->tetoDeImagensAtingido()) {
             return false;
         }
@@ -378,9 +403,13 @@ class MlAnuncioCriativoKit extends Model
         return $asset->regeneracoes < $this->maxRegeneracoesAsset();
     }
 
-    /** Quantas regenerações o ASSET ainda tem — nunca negativo. */
-    public function regeneracoesRestantesAsset(MlAnuncioCriativo $asset): int
+    /** Quantas regenerações o ASSET ainda tem — nunca negativo; `null` = sem limite (`semTeto()`). */
+    public function regeneracoesRestantesAsset(MlAnuncioCriativo $asset): ?int
     {
+        if ($this->semTeto()) {
+            return null;
+        }
+
         return max(0, $this->maxRegeneracoesAsset() - $asset->regeneracoes);
     }
 
@@ -401,6 +430,10 @@ class MlAnuncioCriativoKit extends Model
     /** Mensagem pt-BR do motivo do teto, para a tela — `null` quando não há teto batendo. */
     public function motivoDoTeto(): ?string
     {
+        if ($this->semTeto()) {
+            return null;
+        }
+
         if ($this->tetoDeImagensAtingido()) {
             return "Este kit já gerou o máximo de {$this->maxImagens()} imagens permitido.";
         }
@@ -425,7 +458,7 @@ class MlAnuncioCriativoKit extends Model
             return $motivoDoKit;
         }
 
-        if ($asset->regeneracoes >= $this->maxRegeneracoesAsset()) {
+        if (! $this->semTeto() && $asset->regeneracoes >= $this->maxRegeneracoesAsset()) {
             return "Este slot já atingiu o limite de {$this->maxRegeneracoesAsset()} regenerações.";
         }
 

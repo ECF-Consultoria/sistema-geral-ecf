@@ -85,7 +85,9 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
     const [confirmandoRisco, setConfirmandoRisco] = useState(false);
     const ocupado = disabled || !! c.processando;
     const emAndamento = c.processando === `aprovar-${s.indice}` || c.processando === `regenerar-${s.indice}`;
-    const podeRegenerar = podeRegenerarKit && (s.status === 'pronto' || s.status === 'erro') && s.regeneracoes_restantes > 0;
+    // Quick 261016-lu1: `regeneracoes_restantes` null = sem limite (kit do Publicador).
+    const semLimite = s.regeneracoes_restantes === null || s.regeneracoes_restantes === undefined;
+    const podeRegenerar = podeRegenerarKit && (s.status === 'pronto' || s.status === 'erro') && (semLimite || s.regeneracoes_restantes > 0);
     const reprovada = s.validacao_status === 'reprovada';
     const pendenteValidacao = s.validacao_status === 'pendente';
 
@@ -162,7 +164,11 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
                     <button type="button" onClick={() => c.regenerar(s.indice)} disabled={ocupado} className={LINK}>
                         {emAndamento ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Gerar de novo
                     </button>
-                    <p className="text-[11px] font-normal text-white/35">pode gerar de novo mais {s.regeneracoes_restantes} vez(es)</p>
+                    <p className="text-[11px] font-normal text-white/35">
+                        {semLimite
+                            ? `cada nova imagem custa cerca de US$ ${dolares(CUSTO_POR_IMAGEM_USD)}`
+                            : `pode gerar de novo mais ${s.regeneracoes_restantes} vez(es)`}
+                    </p>
                 </div>
             )}
         </div>
