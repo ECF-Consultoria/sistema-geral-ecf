@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-05 — "PRÓXIMO A REVISAR": a regra
+# literal de TRÊS DEGRAUS, a frase descritiva e a faixa amarelada de 46px.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-05 <id-do-gate>`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 16/10/2026,
+#    uma invocação por gate, com o ANSI tirado antes de ler as linhas de
+#    veredicto. Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#
+# ⚠️⚠️ DOIS REGIMES no id `proximo-render` (`tests=A,B`), e isso é MEDIDO, não
+#    precaução: `publicador-fila-proximo-187.test.js` tem camada de CSS
+#    CONSTRUÍDO que PULA (com `skip` NOMEADO) quando o `app-*.css` é mais ANTIGO
+#    que as fontes — e **editar qualquer fonte a deixa mais nova**, que é
+#    exatamente o que a campanha de mutação faz. Sem os dois regimes a campanha
+#    abortaria na 1ª execução ("BASE com contagem inesperada") ou marcaria
+#    "SOBREVIVEU" por um motivo que NÃO é o código (learnings §4 caso 11).
+#
+# ⚠️ ESCOPO DECLARADO: este manifesto cobre os arquivos de teste que este plano
+#    CRIA ou ALTERA, e a bijeção é provada por script nos DOIS sentidos, com o
+#    universo recortado pelo SUFIXO `_187_05` — nunca pelo arquivo inteiro, que
+#    reprovaria método de outra wave acrescentado ao mesmo arquivo (a família
+#    *"o gate é mais largo que o invariante"*, oito ocorrências nesta milestone).
+#    Arquivo de teste fora do manifesto **NUNCA RODA** — foi o sobrevivente da
+#    campanha de mutação do plano 186-03.
+#
+# ⚠️ SUFIXO PRÓPRIO `_187_05` em todos os métodos, e há gate exigindo isso: nome
+#    de guarda genérico COLIDE com homônimo de outro arquivo e o `--filter` SOMA
+#    as contagens dos dois, estourando o número deste manifesto em silêncio.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── TAREFA 1 — o serviço: os três degraus, a frase e o custo ─────────────────
+# Um caso POR DEGRAU, cada um com fixture que FORÇA a queda para ele (sem o 2º e
+# o 3º a faixa desapareceria quando toda a fila já foi tocada); os 5 estados fora
+# de `LIVE` que nunca vencem (contagem FIXA coletando infratores, com isca
+# invertida); o `!tocado` provado nas DUAS direções (destocar muda a escolha); a
+# frase na ordem literal de `:1221` medida por CODEPOINT (U+2014, U+00B7, U+00D7)
+# com controle no protótipo; o estado de `:1222` com SINGULAR, plural e o zero; o
+# rótulo de espera de `:1054` nos 8 pontos da fórmula mais a espera DESCONHECIDA;
+# `para()` chamado UMA vez numa fila de 6 ao vivo (espião por subclasse); a
+# delegação da ordem lida SEM COMENTÁRIO com controle positivo; o recorte de
+# conta nas duas direções; a integração REAL com `BloqueiosDaOfertaService` (as
+# chaves não são invenção coerente do espião) com zero rede e isca; e a
+# modalidade desconhecida que SAI da frase em vez de virar "Clássico".
+# 14 casos / 90 asserções, 9 s.
+proximo-servico  php  test_degrau_1_vence_a_aguardando_nao_tocada_de_maior_espera_187_05|test_degrau_2_vence_a_primeira_ao_vivo_nao_tocada_187_05|test_degrau_3_vence_a_primeira_ao_vivo_quando_todas_foram_tocadas_187_05|test_sem_oferta_ao_vivo_devolve_nulo_e_os_cinco_estados_de_fora_nunca_vencem_187_05|test_aguardando_tocada_nao_vence_o_degrau_1_e_destocada_passa_a_vencer_187_05|test_a_frase_sai_na_ordem_literal_do_prototipo_187_05|test_o_estado_tem_singular_plural_e_o_pronto_para_aprovar_187_05|test_o_rotulo_da_espera_e_o_do_prototipo_187_05|test_bloqueios_para_e_chamado_uma_unica_vez_187_05|test_a_ordem_e_os_estados_sao_delegados_e_nao_reescritos_187_05|test_a_proxima_e_da_conta_e_nunca_de_outra_187_05|test_a_integracao_real_com_bloqueios_entrega_aprovavel_e_bloqueios_187_05|test_modalidade_desconhecida_sai_da_frase_em_vez_de_virar_classico_187_05|test_escolher_recusa_oferta_fora_de_live_mesmo_recebendo_a_fila_inteira_187_05  ::  tests=14 assertions=90
+
+# ─── TAREFA 2 — o território, por ESCOPO DE ASSUNTO ───────────────────────────
+# O range `1dceb28f..HEAD` FILTRADO por `(187-05)`, com as quatro iscas: o escopo
+# EXISTE, o arquivo-âncora aparece, a sonda DISCRIMINA (ela não acusa `(187-04)`
+# nem `(200)`) e a comparação de prefixo casa o diretório sem casar o IRMÃO. Mais
+# a tabela de PROIBIDOS com `test -e` em cada caminho — incluindo
+# `ImagemAssetService` (a v28 acabou de virar o acervo para o R2 em produção) e
+# `database/migrations` (esta fase NÃO tem migration).
+# ⚠️ Id PRÓPRIO porque ele LÊ O GIT: metê-lo junto com os casos de comportamento
+# faria a contagem daquele id depender de quantos commits existem.
+# 1 caso / 53 asserções, 3 s.
+territorio  php  test_territorio_do_plano_187_05  ::  tests=1 assertions=53
+
+# ─── A BIJEÇÃO — id próprio, de propósito ─────────────────────────────────────
+# ⚠️ Ela tem id SEPARADO porque é o único gate deste plano que LÊ ESTE ARQUIVO:
+# metê-la num id junto com os outros tornaria a contagem daquele id dependente do
+# próprio manifesto, e um conserto do manifesto mudaria o número que o manifesto
+# declara. Id próprio mantém as duas coisas independentes. (Mesma razão do
+# `bijecao-manifesto` dos planos 187-02 e 187-04.)
+#
+# Ela falha nos DOIS sentidos — método sem id (ele **NUNCA RODA**) e id órfão
+# (gate sobre ZERO casos) — e FECHA o buraco do recorte por sufixo: todo método
+# do arquivo tem de ter sufixo `_187_NN` com manifesto no disco.
+bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions=7
+

@@ -419,6 +419,52 @@ class ProximoARevisarServiceTest extends TestCase
     }
 
     /**
+     * ⚠️⚠️ **ESTE CASO NASCEU DE UMA MUTAÇÃO SOBREVIVENTE, e a sobrevivente era lacuna de
+     * cobertura REAL — não equivalência.** Na campanha de 16/10/2026, tirar o
+     * `->filter(ehLive())` de dentro de `escolher()` passou com 13 de 13 verdes: todos os casos
+     * chegavam ali por `aoVivo()`, que já recorta `LIVE` **no SQL**, então a guarda de dentro
+     * nunca era exercitada.
+     *
+     * ⚠️ **O que precisaria estar errado para falhar:** uma wave futura chamar `escolher()` com
+     * a fila INTEIRA (é um método público, e `ordenarFila()` devolve a fila inteira ordenada).
+     * `falha` é o degrau **0** de `ORDEM` — o mais urgente —, então ela seria a PRIMEIRA
+     * escolhida, e a faixa ofereceria "Revisar agora" numa oferta que não é revisável nem
+     * aprovável. A guarda de dentro é o que impede isso, e agora ela TEM teste.
+     *
+     * @group phase187
+     */
+    public function test_escolher_recusa_oferta_fora_de_live_mesmo_recebendo_a_fila_inteira_187_05(): void
+    {
+        $this->espiaoDeBloqueios();
+        $empresa = Company::factory()->create();
+
+        $falha = $this->oferta($empresa, PubAprovacaoOferta::FALHA, ['entrou' => '2026-10-01 08:00:00']);
+        $viva = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO, ['entrou' => '2026-10-14 08:00:00']);
+        $this->oferta($empresa, PubAprovacaoOferta::PREPARANDO);
+        $this->oferta($empresa, PubAprovacaoOferta::PUBLICADO);
+
+        // ⚠️ A fila INTEIRA, sem recorte de `LIVE` — o que um chamador distraído passaria.
+        $inteira = $this->fila()->ordenar(
+            PubAprovacaoOferta::where('company_id', $empresa->id)->with(['alvo', 'produto', 'responsavel'])->get()
+        );
+
+        // ⚠️ A ARMADILHA, medida: a PRIMEIRA da fila inteira é a `falha` (degrau 0 de `ORDEM`).
+        // Sem esta asserção o caso não provaria que havia armadilha nenhuma.
+        $this->assertSame($falha->id, $inteira->first()->id, 'ISCA: `falha` não é a primeira da fila ordenada — a armadilha não existe neste fixture.');
+
+        $escolhida = $this->servico()->escolher($inteira);
+
+        $this->assertSame($viva->id, $escolhida?->id, 'a escolha caiu numa oferta FORA de `LIVE` — a guarda de `ehLive()` saiu.');
+        $this->assertTrue($escolhida->ehLive());
+
+        // ⚠️ ISCA INVERTIDA — a MESMA coleção SEM nenhuma ao vivo devolve `null`, e não a
+        // `falha`. Sem isto, "escolheu a viva" não distinguiria o recorte de uma ordem favorável.
+        $soMortas = $inteira->filter(fn (PubAprovacaoOferta $o) => ! $o->ehLive())->values();
+        $this->assertCount(3, $soMortas);
+        $this->assertNull($this->servico()->escolher($soMortas), 'coleção sem nenhuma ao vivo devolveu oferta.');
+    }
+
+    /**
      * ⚠️ **O que precisaria estar errado para falhar:** o `!tocado` do 1º degrau ser lido ao
      * contrário, ou esquecido. A faixa passaria a oferecer justamente a oferta em que alguém já
      * está mexendo — e a isca prova o SENTIDO, não só o silêncio: destocando a MESMA oferta, ela
