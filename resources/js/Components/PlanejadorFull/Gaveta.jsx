@@ -21,7 +21,7 @@ function DicaGrafico({ active, payload, label, formatar }) {
     );
 }
 
-export default function Gaveta({ row, R, empresaId, dataBase, skus, fornecedoresLista, salvarItem, salvarSku, fechar }) {
+export default function Gaveta({ row, R, rotaVendas, dataBase, skus, fornecedoresLista, salvarItem, salvarSku, fechar }) {
     const [serie, setSerie] = useState(null);
     const sd = skus[row.chaveSku] || {};
     const compra = R.compras.find((b) => b.chaveSku === row.chaveSku);
@@ -38,11 +38,11 @@ export default function Gaveta({ row, R, empresaId, dataBase, skus, fornecedores
     useEffect(() => {
         let vivo = true;
         setSerie(null);
-        window.axios.get(route('planejador-full.vendas', [empresaId, row.cod]), { params: { base: dataBase } })
+        window.axios.get(rotaVendas.replace('__COD__', row.cod), { params: { base: dataBase } })
             .then((r) => { if (vivo) setSerie(r.data.serie || []); })
             .catch(() => { if (vivo) setSerie([]); });
         return () => { vivo = false; };
-    }, [empresaId, row.cod, dataBase]);
+    }, [rotaVendas, row.cod, dataBase]);
 
     const celulas = [
         ['Venda/dia usada', fmtDec(row.d)],

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     calcular, paraDia, deDia, arredondarMultiplo, porPrioridade, projecaoEstoque, fmtCobertura, fmtDia, CONFIG_PADRAO,
 } from '../../resources/js/lib/planejadorFull.js';
+import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Planejador FULL — motor de cálculo (porta do Planejador_FULL.html).
@@ -211,5 +212,54 @@ describe('projeção e formatos', () => {
         assert.equal(fmtCobertura(5000), '999+ d');
         assert.equal(fmtDia(paraDia('2026-10-15'), 'semana'), 'qui 15/10');
         assert.equal(fmtDia(paraDia('2026-10-15'), 'ano'), '15/10/2026');
+    });
+});
+
+describe('tela: entrada pendente e transferência', () => {
+    // Pedido do usuário em 15/10/2026: "Entrada pendente e Em transferência não estão puxando".
+    // A transferência vinha da API mas sumia somada na coluna "A caminho"; o pendente fica zerado
+    // até haver envio registrado (a API não o entrega). As duas colunas ficam separadas e a tela
+    // avisa quando não há envio registrado.
+    test('Produtos e Próximo envio mostram pendente e transferência em colunas próprias', () => {
+        const produtos = lerSemComentarios('resources/js/Components/PlanejadorFull/Produtos.jsx');
+        const envio = lerSemComentarios('resources/js/Components/PlanejadorFull/ProximoEnvio.jsx');
+        for (const fonte of [produtos, envio]) {
+            assert.ok(fonte.includes('fmtInt(r.pendente)'));
+            assert.ok(fonte.includes('fmtInt(r.transferencia)'));
+            assert.ok(!fonte.includes('fmtInt(r.aCaminho)'));
+        }
+        assert.match(produtos, />Entrada pendente</);
+        assert.match(produtos, />Em transferência</);
+    });
+
+    test('sem envio registrado a tela avisa que a entrada pendente está zerada', () => {
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        assert.match(tela, /enviosAbertos === 0/);
+        assert.match(tela, /Entrada pendente zerada/);
+    });
+});
+
+describe('tela: duas portas (equipe e link do cliente)', () => {
+    // O link aberto do cliente (15/10/2026) usa a MESMA tela. Ela só pode chamar os endereços
+    // que o servidor manda em `rotas` — nome de rota interno fixo levaria o cliente para uma
+    // rota que exige login (e que nem existe no domínio dele).
+    test('as ações do planejador usam rotas.* e nunca a rota interna por nome', () => {
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        const gaveta = lerSemComentarios('resources/js/Components/PlanejadorFull/Gaveta.jsx');
+        for (const acao of ['config', 'skus', 'itens', 'galpao', 'envios', 'atualizar', 'status', 'exportar', 'vendas']) {
+            const porNome = `route('planejador-full.${acao}`;
+            assert.ok(!tela.includes(porNome), `Planejador.jsx chama planejador-full.${acao} por nome`);
+            assert.ok(!gaveta.includes(porNome), `Gaveta.jsx chama planejador-full.${acao} por nome`);
+        }
+        assert.ok(tela.includes('rotas.config'));
+        assert.ok(gaveta.includes('rotaVendas'));
+    });
+
+    test('a página do link não carrega o layout interno nem o compartilhar', () => {
+        const publico = lerSemComentarios('resources/js/Pages/PlanejadorFull/Publico.jsx');
+        assert.ok(!publico.includes('AppLayout'));
+        assert.ok(publico.includes('modo="cliente"'));
+        const tela = lerSemComentarios('resources/js/Components/PlanejadorFull/Planejador.jsx');
+        assert.match(tela, /interno && modalCompartilhar/);
     });
 });

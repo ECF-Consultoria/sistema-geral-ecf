@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronRight, Search, Truck } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Link2, Search, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtInt, normalizar } from '@/lib/planejadorFull';
 
@@ -63,7 +63,14 @@ export default function Index({ empresas = [] }) {
                                 <li key={e.id}>
                                     <Link href={route('planejador-full.show', e.id)} className="flex flex-wrap items-center gap-x-6 gap-y-1 px-5 py-3.5 transition hover:bg-white/[0.03]">
                                         <span className="min-w-[200px] flex-1">
-                                            <span className="block font-medium text-white">{e.nome}</span>
+                                            <span className="flex items-center gap-2 font-medium text-white">
+                                                {e.nome}
+                                                {e.linkCliente && (
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-px text-[10.5px] font-semibold text-emerald-300" title="O cliente tem o link aberto deste planejador">
+                                                        <Link2 size={11} /> link do cliente
+                                                    </span>
+                                                )}
+                                            </span>
                                             <span className="block text-[12px] text-white/40">
                                                 {e.coleta ? `Atualizado ${fmtDataHora(e.coleta.iniciadoEm)}` : 'Sem coleta registrada'}
                                             </span>

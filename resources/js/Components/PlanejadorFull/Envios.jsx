@@ -10,6 +10,9 @@ const STATUS_ENVIO = {
     cancelado: { label: 'Cancelado', cls: 'bg-white/[0.06] text-white/50 border-white/10' },
 };
 
+// Como o envio nasceu: pela tela da equipe, pela planilha do ML ou pelo cliente no link aberto.
+const ORIGEM_ENVIO = { planejador: 'Planejador', planilha: 'Planilha do ML', cliente: 'Cliente (link)' };
+
 const fmtDataHora = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export default function Envios({ envios, atualizarEnvio, excluirEnvio, importarPlanilha }) {
@@ -85,7 +88,7 @@ function LinhaEnvio({ envio: e, atualizarEnvio, excluirEnvio }) {
                     <span>
                         <span className="block text-[14px] font-semibold text-white">Despacho {fmtDia(paraDia(e.dataDespacho), 'semana')}</span>
                         <span className="block text-[11.5px] text-white/40">
-                            {e.origem === 'planilha' ? 'Planilha do ML' : 'Planejador'}{e.criadoPor ? ` · ${e.criadoPor}` : ''}
+                            {ORIGEM_ENVIO[e.origem] || 'Planejador'}{e.criadoPor ? ` · ${e.criadoPor}` : ''}
                             {e.status === 'a_caminho' && dias > 0 ? ` · há ${dias} dia(s)` : ''}
                         </span>
                     </span>
