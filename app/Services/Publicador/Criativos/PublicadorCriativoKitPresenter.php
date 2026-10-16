@@ -169,11 +169,16 @@ class PublicadorCriativoKitPresenter
                     'status' => $slot->status,
                     'etapa' => $slot->etapa,
                     'erro' => $this->semToken($slot->erro_mensagem),
+                    // Quick 261016-mwe: `v` muda a cada geração. O arquivo é SOBRESCRITO no mesmo
+                    // caminho (`{token}/{slot}.jpg`) e a URL era sempre a mesma — o `src` do <img>
+                    // não mudava, o navegador não pedia de novo e a imagem regenerada só aparecia
+                    // com F5 (o `no-store` da resposta não força nova requisição de um src igual).
                     'imagem_url' => $slot->imagem_path !== null
                         ? route('mlb.anuncios.publicador.criativos.slot.imagem', [
                             'produto' => $r->produto_id,
                             'kit' => $kit->id,
                             'indice' => $slot->slot_indice,
+                            'v' => $slot->finished_at?->timestamp ?? $slot->regeneracoes,
                         ])
                         : null,
                     'modelo' => $slot->modelo,

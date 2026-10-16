@@ -75,14 +75,20 @@ class CreativeSlotCatalog
      * modelo (mesmo motivo de PLAN-02 forçar `hero`/`lifestyle` na
      * posição 1).
      */
-    private const LAYOUT_MEDIDAS = 'Fundo claro e liso. Cabeçalho curto em caixa alta com ícone simples '
-        .'de régua (ex.: "TAMANHO DO PRODUTO"). Ao lado do cabeçalho, a lista das medidas com marcadores '
-        .'quadrados. Produto centralizado, em ângulo que mostre bem suas dimensões, com linhas de cota '
-        .'finas sobre ele — seta nas duas pontas de cada linha, valor da medida rotulado ao lado. '
+    // Quick 261016-mwe: o texto saía "bugado" (uma palavra ou um número trocado) e o layout pedia
+    // texto que a lista TEXTO não trazia — o cabeçalho e uma LISTA das medidas além das cotas, ou
+    // seja, cada medida escrita DUAS vezes. Agora: o cabeçalho está na lista TEXTO
+    // (`CreativePromptBuilder`), cada medida aparece UMA vez, junto da sua cota, e a tipografia é
+    // simples e em peso forte (o que o modelo de imagem escreve com menos erro).
+    private const LAYOUT_MEDIDAS = 'Fundo claro e liso. No alto, o cabeçalho curto em caixa alta "TAMANHO DO PRODUTO" '
+        .'com um ícone simples de régua. Produto centralizado, em ângulo que mostre bem suas dimensões, com '
+        .'linhas de cota finas sobre ele — seta nas duas pontas de cada linha e, ao lado de cada linha, o '
+        .'rótulo daquela medida. Cada medida aparece UMA única vez na imagem, só junto da sua linha de cota '
+        .'— sem lista repetindo as medidas. '
         // Quick 261016-lu1: esta frase pedia "miniatura do produto em outro ângulo no canto
         // superior" — e o modelo obedecia em toda imagem de medidas. O usuário não quer a miniatura.
         .'O produto aparece UMA única vez na imagem: sem miniatura, sem segunda vista e sem detalhe '
-        .'ampliado em nenhum canto. Tipografia sans-serif, texto escuro sobre fundo claro.';
+        .'ampliado em nenhum canto. Tipografia sans-serif simples, em peso forte, texto escuro sobre fundo claro.';
 
     /**
      * Layout da imagem de TÓPICOS (quick 261007-amb), inspirado noutro
@@ -92,10 +98,12 @@ class CreativeSlotCatalog
      * `LAYOUT_MEDIDAS`: é FORMA, nunca conteúdo, e é FORÇADO como `cena`
      * pelo `CreativePlanner`, nunca a critério do LLM.
      */
+    // Quick 261016-mwe: pedia "uma linha de apoio menor abaixo" do rótulo — texto que a lista TEXTO
+    // nunca trazia, então o modelo o INVENTAVA (e era onde mais saía palavra bugada).
     private const LAYOUT_TOPICOS = 'Fundo branco. Um ou dois recortes circulares com close-up de uma '
-        .'parte do produto. De cada círculo, uma linha fina horizontal até um rótulo curto em negrito, '
-        .'com uma linha de apoio menor abaixo. Barra vertical fina de cor escura na borda esquerda da '
-        .'imagem.';
+        .'parte do produto. De cada círculo, uma linha fina horizontal até um rótulo curto em negrito — '
+        .'o rótulo é um dos textos da lista TEXTO, sem nenhuma linha de texto extra abaixo dele. Barra '
+        .'vertical fina de cor escura na borda esquerda da imagem. Tipografia sans-serif simples, em peso forte.';
 
     /**
      * id de atributo casando dimensão (largura/altura/comprimento/profundidade),
