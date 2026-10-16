@@ -1,4 +1,4 @@
-import { Link, usePage, router } from '@inertiajs/react';
+import { Head, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     LayoutDashboard, Building2, Users, CalendarCheck, CalendarDays,
@@ -955,6 +955,10 @@ export default function AppLayout({ children, title }) {
 
     return (
         <div className="flex h-screen bg-[#050507] overflow-hidden">
+            {/* Quick 261016-imr: o `title` virava só o <h1> do topo e a aba do navegador ficava
+                "- ECF Admin" — com várias empresas abertas não dava para saber qual aba é qual.
+                Página que tem <Head> próprio continua mandando: ele é renderizado depois deste. */}
+            {typeof title === 'string' && title !== '' && <Head title={title} />}
             {/* Desktop sidebar — minimizada por padrao, expande no hover.
                 O <aside> e so o TRILHO que reserva espaco no fluxo: enquanto a
                 barra nao esta fixada, ele permanece com 64px e a expansao

@@ -8,7 +8,16 @@ export const criarRota = (prefixo, chave) => (nome, id, extra = {}) => route(`${
 
 export const mensagemDe = (e) => {
     if (e?.code === 'ECONNABORTED') return 'O servidor demorou demais. Recarregue a página e confira antes de tentar de novo.';
-    const d = e?.response?.data;
+    // Quick 261016-imr: estes três chegavam crus na tela — "Request failed with status code 500",
+    // "Server Error" (inglês, em produção) ou o texto da exceção (em debug, ex. "[MLB Coleta] Falha
+    // ao obter app token: HTTP 400"). Os 5xx INTENCIONAIS do Publicador usam 502 com mensagem própria
+    // em português e continuam passando; 500 é sempre a exceção não tratada.
+    if (! e?.response) return e?.request ? 'Sem resposta do servidor. Confira a conexão e tente de novo.' : 'Não foi possível concluir. Tente de novo.';
+    const status = e.response.status;
+    if (status === 500) return 'Algo deu errado do nosso lado. Tente de novo em instantes — se continuar, avise o time de desenvolvimento.';
+    if (status === 419) return 'Sua sessão expirou. Recarregue a página e tente de novo.';
+    if (status === 429) return 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
+    const d = e.response.data;
     if (d?.errors) return Object.values(d.errors).flat()[0];
 
     return d?.message ?? 'Não foi possível concluir. Tente de novo.';
