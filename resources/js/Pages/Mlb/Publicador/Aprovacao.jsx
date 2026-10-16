@@ -4,6 +4,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import CabecalhoDaFila from '@/Components/Mlb/Publicador/aprovacao/CabecalhoDaFila';
 import FaixaDeAndamento from '@/Components/Mlb/Publicador/aprovacao/FaixaDeAndamento';
+import ProximoARevisar from '@/Components/Mlb/Publicador/aprovacao/ProximoARevisar';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -140,6 +141,36 @@ function chaveSegura(valor) {
 }
 
 /**
+ * O destino do "Revisar agora" (plano 187-05), ou `null` quando não há destino.
+ *
+ * ⚠️⚠️ **PARA ONDE O BOTÃO VAI HOJE, e por quê.** O painel de revisão é a
+ * **Fase 188** e a revisão detalhada a **190/191** — nenhuma das duas existe.
+ * ➡️ O botão navega para a PRÓPRIA FILA com a oferta na URL (`?oferta=<id>`,
+ * COL-03): uma rota que EXISTE e responde 200, com o recorte de conta já
+ * aplicado. Quando o painel existir, é AQUI que o destino troca — o componente
+ * da faixa não sabe de rota nenhuma.
+ *
+ * ⚠️ **Não é `href="#"` e não é `onClick` vazio**: as duas seriam botão sem
+ * destino, que é D4 violado, e "desabilitar por enquanto" é a mesma dívida com
+ * outra roupa. ⚠️ Sem `empresaId` o handler é `null` e o botão **não é
+ * desenhado** — nunca uma rota inventada.
+ *
+ * ⚠️ A `etapa` viaja junto para o filtro em que a pessoa está NÃO ser apagado
+ * pelo clique. O servidor a saneia contra a lista fechada das 9 chaves.
+ */
+function irParaOferta(empresaId, etapaAtiva) {
+    if (empresaId === null) return null;
+
+    return (ofertaId) => {
+        router.get(
+            route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+            { etapa: etapaAtiva, oferta: ofertaId },
+            { preserveState: true, preserveScroll: true, replace: true },
+        );
+    };
+}
+
+/**
  * A fila "Aguardando aprovação" de uma conta.
  *
  * @param {object} props
@@ -151,7 +182,8 @@ function chaveSegura(valor) {
  * @param {unknown} [props.faixa] as 9 entradas `{chave, rotulo, total}` (do servidor)
  * @param {unknown} [props.margem_minima] `{valor, origem}` (FIN-09)
  * @param {unknown} [props.etapa] a etapa filtrada, já SANEADA pelo servidor
- * @param {unknown} [props.proximo] SLOT — "PRÓXIMO A REVISAR" (plano 187-05)
+ * @param {unknown} [props.proximo_a_revisar] a faixa "PRÓXIMO A REVISAR" do servidor (plano 187-05)
+ * @param {unknown} [props.proximo] SLOT de NÓ — sobrepõe a faixa montada do dado (contrato do 187-04)
  * @param {unknown} [props.filtros] SLOT — a barra de filtros (plano 187-06)
  * @param {unknown} [props.tabela] SLOT — a tabela da fila (planos 187-07/08)
  * @param {unknown} [props.rodape] SLOT — o rodapé e o lote (plano 187-09)
@@ -164,6 +196,7 @@ export default function Aprovacao({
     faixa = null,
     margem_minima = null,
     etapa = null,
+    proximo_a_revisar = null,
     proximo = null,
     filtros = null,
     tabela = null,
@@ -171,10 +204,23 @@ export default function Aprovacao({
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
 
+    // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
+    // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
+    // em que a pessoa está.
+    const etapaAtiva = chaveSegura(etapa) ?? 'todas';
+
     // ⚠️ `isValidElement` e NUNCA `String(slot)`: campo-objeto renderizado como
     // texto derrubou a página inteira em 07/10/2026 (`[object Object]` na tela),
     // e nó INVÁLIDO passado como filho faz o React LANÇAR.
-    const noProximo = isValidElement(proximo) ? proximo : null;
+    //
+    // ⚠️⚠️ Fase 187, plano 05 — O SLOT `proximo` FOI PREENCHIDO, e o contrato de
+    // NÓ do 187-04 **continua valendo**: quem compõe um nó manda o nó, e sem nó a
+    // faixa é montada a partir dos DADOS do servidor (`proximo_a_revisar`). São
+    // duas props com UM significado cada — nó de composição × dado —, nunca uma
+    // prop com dois sentidos, que foi achado como defeito grave na Fase 186.
+    const noProximo = isValidElement(proximo)
+        ? proximo
+        : <ProximoARevisar proximo={proximo_a_revisar} onRevisar={irParaOferta(empresaId, etapaAtiva)} />;
     const noFiltros = isValidElement(filtros) ? filtros : null;
     const noTabela = isValidElement(tabela) ? tabela : null;
     const noRodape = isValidElement(rodape) ? rodape : null;
@@ -242,7 +288,7 @@ export default function Aprovacao({
                         recalcula nada. */}
                     <FaixaDeAndamento
                         faixa={faixa}
-                        ativa={chaveSegura(etapa) ?? 'todas'}
+                        ativa={etapaAtiva}
                         onEtapa={irParaEtapa}
                     />
 

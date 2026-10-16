@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
+use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use Illuminate\Http\Request;
@@ -116,6 +117,7 @@ class MlbPublicadorAprovacaoController extends Controller
         Request $request,
         Company $company,
         FilaDeAprovacaoService $fila,
+        ProximoARevisarService $proximo,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -161,6 +163,22 @@ class MlbPublicadorAprovacaoController extends Controller
             'etapa' => $this->etapaSaneada($request),
             // ⚠️ FIN-09 — `{valor, origem}`. O número NUNCA é literal: cada número diz de onde vem.
             'margem_minima' => $fila->margemMinima($company->id),
+            // ⚠️⚠️ Plano 187-05 — a faixa "PRÓXIMO A REVISAR", escolhida pela regra literal de
+            // TRÊS DEGRAUS do protótipo (`Aprovacao.dc.html:1220`). `null` quando não há oferta
+            // ao vivo, e aí a faixa INTEIRA não aparece — nunca uma casca amarela vazia.
+            //
+            // ⚠️ Ela é calculada sobre a `$base` (todos os filtros MENOS a etapa), igual à faixa
+            // de 9: a "próxima a revisar" não muda porque alguém filtrou um recorte. Filtrar por
+            // "Aprovado" não pode apagar a próxima da fila.
+            //
+            // ⚠️⚠️ **É AQUI QUE ESTA ACTION PASSA A PODER CHAMAR O MERCADO LIVRE**, e é
+            // decisão do usuário de 15/10/2026: `BloqueiosDaOfertaService::para()` lê a
+            // composição, que consulta `/sites/MLB/listing_prices` (cache de 1 h por
+            // categoria+tipo+preço, pré-aquecido pelo job do plano 187-10). "Limitar N consultas
+            // por abertura" foi **oferecido e RECUSADO** — limitar protegeria o servidor travando
+            // o trabalho. ➡️ `para()` é chamado **UMA** vez, só para a oferta escolhida, e há
+            // teste com espião contando as chamadas numa fila de 6 ao vivo (T-187-51).
+            'proximo_a_revisar' => $proximo->para($base),
         ]);
     }
 }

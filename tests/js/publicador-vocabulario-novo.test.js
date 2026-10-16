@@ -212,6 +212,20 @@ const ARQUIVOS_NOVOS = [
     // porque é a única casa das classes dos 9 cards, e o GATE-03 o confere
     // contra `text-sm`, hex cru, `ecf-*`, `font-display` e breakpoint.
     `${DIR_APROV}/FaixaDeAndamento.jsx`,
+    // ─── Fase 187, plano 05 — a FAIXA "PRÓXIMO A REVISAR" ───
+    //
+    // ⚠️⚠️ **SE ESTA LINHA FALTASSE, O GATE-03 PASSARIA POR OMISSÃO** para este
+    // arquivo — e `DIR_APROV` está em `DIRETORIOS_FECHADOS`, então o
+    // `assert.deepEqual(noDisco, declarados)` reprova na hora (é o comportamento
+    // certo). ⚠️ E declarar ANTES de o arquivo existir **LANÇA** no carregamento
+    // do módulo, porque `FONTES` lê todos os caminhos: é por isso que quem
+    // escreve aqui é o plano que acabou de criar o arquivo, nunca o anterior.
+    //
+    // ⚠️ `.jsx`, como todo o diretório: o `content` do `tailwind.config.js` varre
+    // `*.jsx` e **NÃO** `*.js`. Este arquivo é a única casa das classes da faixa
+    // (o `#14120A`, a borda `rgba(250,204,21,0.35)`, a miniatura de 46px e o
+    // botão amarelo de 36px) — num `.js` nenhuma delas geraria CSS.
+    `${DIR_APROV}/ProximoARevisar.jsx`,
     // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
     //
     // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem
