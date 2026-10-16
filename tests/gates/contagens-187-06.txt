@@ -1,0 +1,161 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-06 — OS FILTROS DA FILA: a busca
+# sem acento no servidor, as listas FECHADAS, os TRÊS recortes de contagem, o
+# CUSTO em chamadas ao ML, o remapeamento de z-index e a URL como fonte.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-06 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `187-06`, E NÃO `06`. O número NU resolve
+# `contagens-186-06.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 11 e 12 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os 18 métodos deste plano estão
+#    quebrados em **6 ids**, nenhum com mais de quatro métodos.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 16/10/2026,
+#    uma invocação por gate, com o ANSI tirado antes de ler a linha `Tests:` (php)
+#    e com `node --test --test-reporter=tap` (js). Nenhuma é chute, e nenhum id
+#    foi escrito antes de ter sido medido.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ DIVERGÊNCIA DECLARADA DOS NOMES DE ID QUE O PLANO PRESCREVE
+# ═══════════════════════════════════════════════════════════════════════════════
+# O plano 187-06 escreve três ids nos `<verify>`: `filtros-servico` (tarefa 1),
+# `filtros-render` (tarefa 2) e `filtros-na-url` (tarefa 3).
+#
+# `filtros-render` e `filtros-na-url` estão aqui com esses nomes. **`filtros-
+# servico` NÃO existe**, e isso é decisão medida: ele cobriria os **14** métodos
+# PHP da tarefa 1 numa alternância só, e alternância grande equivale a filtro de
+# CLASSE — que passa dos 120 s do shell deste ambiente e o helper RECUSA (é a
+# medição do plano 186-07, escrita no manifesto `contagens-186-08.txt`).
+# ➡️ Os 14 viraram QUATRO ids por assunto: `busca-sem-acento`,
+# `filtros-fechados`, `tres-escopos` e `custo-do-ml`. Nenhum método ficou de
+# fora — a bijeção é provada por script, nos dois sentidos, pelo id
+# `bijecao-manifesto`.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ O QUE **NÃO** ENTRA NESTE MANIFESTO, E POR QUÊ
+# ═══════════════════════════════════════════════════════════════════════════════
+# `tests/js/publicador-vocabulario-novo.test.js` (o GATE-03 dos cinco diretórios
+# fechados) **recebeu os dois `.jsx` desta wave em `ARQUIVOS_NOVOS`** — sem isso
+# o GATE-03 passaria POR OMISSÃO para eles. ⚠️ Mas ele **NÃO entra em id nenhum
+# daqui**, e a regra é nova (16/10/2026): a contagem daquele arquivo **CRESCE POR
+# CONSTRUÇÃO** (um subteste por arquivo varrido), ele já tem id PRÓPRIO
+# (`vocabulario-tamanhos`, em `contagens-187-01.txt`, com a forma `>=443`), e
+# embutí-lo num id COMPOSTO foi exatamente o que fez a wave 5 reprovar DOIS ids
+# de outras waves e exigiu o conserto de QUATRO manifestos.
+# ➡️ Medido nesta rodada: ele saiu **457 / 457 pass / 0 fail**, acima do mínimo
+#    443 — o `>=` daquele id já cobre esta wave, e nada aqui precisa mudar.
+#
+# ⚠️ E `>=` NÃO é usado em nenhum id deste plano: a contagem destes arquivos
+#    **não cresce por construção**, e a igualdade exata é mais forte e é o padrão.
+#
+# ⚠️ `tests/js/publicador-header-zindex-ordem.test.js` é **INTOCÁVEL** (`numstat`
+#    ZERO) e **não** é alvo de id nenhum: o gate de z desta wave é um arquivo
+#    NOVO (`publicador-fila-zindex-187.test.js`), porque nome de guarda genérico
+#    COLIDE no `--filter` e o harness SOMA as contagens.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: o serviço (PHP) ────────────────────────────────────────────────
+
+# A busca sem acento NO SERVIDOR, nos quatro sentidos, os três campos (com um
+# caso em que só o SKU casa e um em que só o título casa), a prova de que os DOIS
+# lados leem o MESMO mapa entrada por entrada, e `?busca[]=x` (ARRAY) nos seis
+# parâmetros — que já foi 500 nesta tela (T-180-04-T).
+busca-sem-acento  php  test_(a_busca_acha_nas_quatro_direcoes_de_acento_e_caixa_187_06|a_busca_cobre_os_tres_campos_com_so_o_sku_e_so_o_titulo_187_06|os_dois_lados_da_busca_leem_o_MESMO_mapa_de_acentos_187_06|busca_em_ARRAY_nao_vira_500_e_busca_vazia_nao_filtra_nada_187_06)  ::  tests=4 assertions=84
+
+# As quatro listas FECHADAS com valor LEGÍTIMO passando ao lado do forjado, a
+# fronteira do combo (`>= 2`) com isca nas duas direções, a INTERSEÇÃO dos quatro
+# filtros (com isca provando que cada um sozinho pega MAIS), e o descarte em
+# silêncio que NÃO zera a lista.
+filtros-fechados  php  test_(modalidade_e_formato_sao_listas_FECHADAS_com_default_187_06|formato_combo_casa_dois_ou_mais_e_unidade_casa_um_com_isca_187_06|os_quatro_filtros_compoem_por_INTERSECAO_e_nunca_por_OU_187_06|responsavel_e_motivo_forjados_sao_descartados_em_SILENCIO_187_06)  ::  tests=4 assertions=50
+
+# ⚠️ OS TRÊS RECORTES DE CONTAGEM, provados LADO A LADO no mesmo caso (é a
+# confusão que o desenho convida): popovers sobre a CONTA, faixa sobre a `base`,
+# lista sobre `base + etapa`. Mais o M do "N de M" incluindo `preparando` e
+# `publicado` (divergência D8) e o `algum_filtro` como ausência dos SEIS.
+tres-escopos  php  test_(as_contagens_dos_POPOVERS_sao_sobre_TODAS_as_ofertas_da_conta_187_06|os_TRES_escopos_de_contagem_lado_a_lado_187_06|o_M_do_N_de_M_inclui_preparando_e_publicado_187_06|algum_filtro_e_a_ausencia_dos_SEIS_187_06)  ::  tests=4 assertions=47
+
+# ⚠️⚠️ O GATE DE CUSTO — o mais importante deste plano. `Http::fake` +
+# `preventStrayRequests`, no máximo UMA requisição a `/sites/MLB/listing_prices`
+# por trio `(categoria, tipo, preço)` distinto, com ISCA NAS DUAS DIREÇÕES (trio
+# igual dedupa, trio diferente não), e `para()` chamado EXATAMENTE uma vez por
+# oferta, com isca provando que o espião conta.
+# ⚠️ O aquecimento do plano 187-10 muda QUANDO a requisição acontece, **não
+#    QUANTAS** — este id continua valendo depois dele, sem afrouxamento.
+custo-do-ml  php  test_CUSTO_(uma_requisicao_por_trio_distinto_com_isca_nas_duas_direcoes_187_06|para_e_chamado_exatamente_uma_vez_por_oferta_187_06)  ::  tests=2 assertions=13
+
+# ── TAREFA 3: a URL como fonte do estado (PHP, pelas PROPS da rota) ──────────
+
+# Recarregar com os seis na querystring devolve o MESMO recorte nas props; sem
+# querystring tudo volta no default e `algum_filtro` é FALSO; valor forjado é
+# descartado sem zerar a lista; e `?oferta=` NÃO conta como filtro (senão abrir
+# uma oferta faria "Limpar filtros" aparecer).
+filtros-na-url  php  test_(recarregar_com_a_querystring_devolve_o_MESMO_recorte_nas_props_187_06|a_oferta_na_url_NAO_conta_como_filtro_187_06)  ::  tests=2 assertions=34
+
+# ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
+
+# Território por ESCOPO DO ASSUNTO (nunca por range aberto: nesta árvore as
+# sessões rodam com o MESMO `user.name`), as ausências lidas do código SEM
+# COMENTÁRIO, e a ISCA do leitor — a prosa CITA `localStorage`, `Str::ascii`,
+# `COLLATION`, `whereRaw`, `REPLACE(` e `gold_special` de propósito.
+territorio-filtros  php  test_territorio_e_ausencias_do_plano_187_06  ::  tests=1 assertions=64
+
+# ⚠️ A BIJEÇÃO ids ↔ métodos, nos DOIS sentidos: método sem id NUNCA RODA (foi o
+# sobrevivente da mutação do plano 186-03) e id órfão é gate sobre ZERO casos.
+# ⚠️ A contagem deste id **NÃO depende do número de linhas deste arquivo** — ao
+#    contrário do `bijecao-manifesto` da Fase 186, que subia 1 a cada id novo. As
+#    asserções aqui são de forma fixa (`>= 5` linhas, `>= 14` métodos, dois
+#    `deepEqual` coletando infratores e uma isca), então acrescentar id aqui NÃO
+#    mexe neste número. Era fragilidade por construção e foi tirada de propósito.
+bijecao-manifesto  php  test_todo_metodo_do_plano_06_tem_id_no_manifesto_e_todo_id_casa_um_metodo_187_06  ::  tests=1 assertions=9
+
+# ── TAREFA 2: o render (JS) ─────────────────────────────────────────────────
+
+# ⚠️⚠️ DOIS REGIMES (`tests=29,19`), e eles são MEDIDOS, não precaução. A camada
+# de CSS deste arquivo PULA quando o CSS construído é mais ANTIGO que as fontes
+# (`FiltrosDaFila.jsx`, `PopoverDeFiltro.jsx`, `Aprovacao.jsx`) — e mutar
+# qualquer uma delas a deixa mais nova. Medido nesta máquina em 16/10/2026:
+#   · pristino (CSS mais novo):   29 testes / 29 pass / 0 fail / 0 skipped
+#   · mutado   (fonte mais nova): 19 testes / 18 pass / 0 fail / 1 skipped
+# Sem os dois regimes a campanha de mutação abortaria na 1ª execução ("BASE com
+# contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o código
+# (learnings §4 caso 11).
+#
+# O que ele cobre: a geometria literal de `:66`-`:105`, a lupa SVG `0 0 16 16`
+# (nunca Lucide — D5), os dois tints DISTINTOS declarados lado a lado com o BYTE
+# DO ALFA de cada um no CSS compilado (0x29 / 0x1F / 0x8C), os 8 rótulos LIDOS de
+# `vocabularioDoPortao.jsx` na ordem do módulo (D6: o dado ganha do placeholder
+# `6`), a contagem `0` que APARECE e a AUSENTE que não desenha número, o avatar
+# com as iniciais de `identidade.js` (IDENT-08), "Limpar filtros" só com filtro
+# ativo, o "N de M" com o M imóvel (D8), o render ADVERSO em 12 formas × 17
+# campos, zero `localStorage` com isca, e o único `useState` da página sendo o do
+# MENU — nunca de filtro.
+filtros-render  js  tests/js/publicador-fila-filtros-187.test.js  ::  tests=29,19
+
+# ⚠️ O Z-INDEX REMAPEADO (divergência D1): a ordem relativa do protótipo
+# (overlay 44 < popover 45 < header 50 < lote 60 < toast 120) traduzida para a
+# escala TRAVADA deste projeto (overlay 10 < popover 20 < header 30 < lote 35 <
+# menu/painel 40 < toast 45), lendo os QUATRO pontos travados DOS ARQUIVOS DELES
+# e **sem tocar** em `publicador-header-zindex-ordem.test.js`.
+# ⚠️ As duas peças do plano 187-09 (barra de lote e toast) entram como PRESCRIÇÃO
+#    PINADA, com asserção de que os arquivos delas AINDA NÃO EXISTEM — assim,
+#    quando nascerem, o gate obriga a trocar a prescrição por LEITURA.
+filtros-zindex  js  tests/js/publicador-fila-zindex-187.test.js  ::  tests=6

@@ -226,6 +226,22 @@ const ARQUIVOS_NOVOS = [
     // (o `#14120A`, a borda `rgba(250,204,21,0.35)`, a miniatura de 46px e o
     // botão amarelo de 36px) — num `.js` nenhuma delas geraria CSS.
     `${DIR_APROV}/ProximoARevisar.jsx`,
+    // ─── Fase 187, plano 06 — A LINHA DE FILTROS e o POPOVER de filtro ───
+    //
+    // ⚠️⚠️ **SE ESTAS DUAS LINHAS FALTASSEM, O GATE-03 PASSARIA POR OMISSÃO**
+    // para os dois arquivos — e `DIR_APROV` está em `DIRETORIOS_FECHADOS`, então
+    // o `assert.deepEqual(noDisco, declarados)` reprova na hora (é o
+    // comportamento certo). ⚠️ E declarar ANTES de o arquivo existir **LANÇA** no
+    // carregamento do módulo, porque `FONTES` lê todos os caminhos: quem escreve
+    // aqui é o plano que acabou de criar o arquivo, nunca o anterior.
+    //
+    // ⚠️ `.jsx` nos dois, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // das classes da linha de filtros (o input de 240×32, os dois tints amarelos
+    // distintos, as larguras 220/260 dos popovers e a `shadow-pub-flutuante`) —
+    // num `.js` nenhuma delas geraria CSS.
+    `${DIR_APROV}/FiltrosDaFila.jsx`,
+    `${DIR_APROV}/PopoverDeFiltro.jsx`,
     // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
     //
     // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem

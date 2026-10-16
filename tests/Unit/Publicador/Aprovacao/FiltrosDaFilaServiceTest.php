@@ -801,8 +801,8 @@ class FiltrosDaFilaServiceTest extends TestCase
 
         $semFiltro = $servico->responsaveisDaConta($this->daConta($empresa));
         $this->assertSame([
-            ['id' => (int) $ana->id, 'nome' => 'Ana Ribeiro', 'iniciais' => 'AR', 'total' => 2],
-            ['id' => (int) $bruno->id, 'nome' => 'Bruno Lima', 'iniciais' => 'BL', 'total' => 1],
+            ['id' => (int) $ana->id, 'nome' => 'Ana Ribeiro', 'total' => 2],
+            ['id' => (int) $bruno->id, 'nome' => 'Bruno Lima', 'total' => 1],
         ], $semFiltro, 'a contagem por responsável não é a da CONTA (inclui preparando e aprovado)');
 
         $motivos = $servico->motivosDaConta($panorama);
@@ -833,7 +833,7 @@ class FiltrosDaFilaServiceTest extends TestCase
         // ⚠️ ISCA NA OUTRA DIREÇÃO: elas MUDAM quando a CONTA muda. Sem isto, uma contagem
         // cravada em zero passaria nas duas asserções acima.
         $this->assertSame([
-            ['id' => (int) $ana->id, 'nome' => 'Ana Ribeiro', 'iniciais' => 'AR', 'total' => 1],
+            ['id' => (int) $ana->id, 'nome' => 'Ana Ribeiro', 'total' => 1],
         ], $servico->responsaveisDaConta($this->daConta($outra)));
     }
 
@@ -1140,11 +1140,11 @@ class FiltrosDaFilaServiceTest extends TestCase
 
         // ⚠️ COL-03: os SEIS voltam, e voltam SANEADOS — é isso que faz recarregar e compartilhar
         // o link devolverem o mesmo recorte.
-        $this->assertSame('poltrona', $props['filtros']['busca']);
-        $this->assertSame('premium', $props['filtros']['modalidade']);
-        $this->assertSame('combo', $props['filtros']['formato']);
-        $this->assertSame([(int) $ana->id], $props['filtros']['responsavel']);
-        $this->assertSame(['frete_ausente'], $props['filtros']['motivo']);
+        $this->assertSame('poltrona', $props['filtros_ativos']['busca']);
+        $this->assertSame('premium', $props['filtros_ativos']['modalidade']);
+        $this->assertSame('combo', $props['filtros_ativos']['formato']);
+        $this->assertSame([(int) $ana->id], $props['filtros_ativos']['responsavel']);
+        $this->assertSame(['frete_ausente'], $props['filtros_ativos']['motivo']);
         $this->assertSame('aprovado', $props['etapa']);
         $this->assertTrue($props['algum_filtro']);
 
@@ -1158,20 +1158,20 @@ class FiltrosDaFilaServiceTest extends TestCase
 
         // ⚠️ SEM querystring: os seis voltam no default e `algum_filtro` é FALSO.
         $limpo = $this->propsDaFila($admin, $company);
-        $this->assertSame('', $limpo['filtros']['busca']);
-        $this->assertSame('todas', $limpo['filtros']['modalidade']);
-        $this->assertSame('todos', $limpo['filtros']['formato']);
-        $this->assertSame([], $limpo['filtros']['responsavel']);
-        $this->assertSame([], $limpo['filtros']['motivo']);
+        $this->assertSame('', $limpo['filtros_ativos']['busca']);
+        $this->assertSame('todas', $limpo['filtros_ativos']['modalidade']);
+        $this->assertSame('todos', $limpo['filtros_ativos']['formato']);
+        $this->assertSame([], $limpo['filtros_ativos']['responsavel']);
+        $this->assertSame([], $limpo['filtros_ativos']['motivo']);
         $this->assertSame('todas', $limpo['etapa']);
         $this->assertFalse($limpo['algum_filtro'], '"Limpar filtros" apareceria sem filtro nenhum');
         $this->assertSame(1, $limpo['contagem']['exibidas']);
 
         // ⚠️ Valor FORJADO na URL não zera a lista nem derruba a tela — 200 com o default.
         $forjado = $this->propsDaFila($admin, $company, ['responsavel' => 'abc', 'motivo' => 'inexistente', 'busca' => ['x']]);
-        $this->assertSame([], $forjado['filtros']['responsavel']);
-        $this->assertSame([], $forjado['filtros']['motivo']);
-        $this->assertSame('', $forjado['filtros']['busca']);
+        $this->assertSame([], $forjado['filtros_ativos']['responsavel']);
+        $this->assertSame([], $forjado['filtros_ativos']['motivo']);
+        $this->assertSame('', $forjado['filtros_ativos']['busca']);
         $this->assertFalse($forjado['algum_filtro']);
         $this->assertSame(1, $forjado['contagem']['exibidas'], 'valor forjado ZEROU a lista');
     }
@@ -1264,14 +1264,6 @@ class FiltrosDaFilaServiceTest extends TestCase
         // aberto já acusou a sessão paralela e deixou a suíte com 1 falha herdada (15/10/2026).
         $escopo = $this->git('git log --format=%h:%s '.self::PARTIDA.'..HEAD');
 
-        if ($escopo === '') {
-            // Sem commit no range (primeira rodada): o gate não tem o que medir, e dizer "intocado"
-            // aqui seria gate VAZIO POR CONSTRUÇÃO.
-            $this->addToAssertionCount(1);
-
-            return;
-        }
-
         $meus = [];
         foreach (explode("\n", $escopo) as $linha) {
             [$hash, $assunto] = array_pad(explode(':', $linha, 2), 2, '');
@@ -1286,11 +1278,22 @@ class FiltrosDaFilaServiceTest extends TestCase
         $this->assertDoesNotMatchRegularExpression(self::ESCOPO, 'feat(187-05): x');
         $this->assertDoesNotMatchRegularExpression(self::ESCOPO, 'feat(196): x');
 
-        if ($meus === []) {
-            $this->addToAssertionCount(1);
-
-            return;
-        }
+        // ⚠️⚠️ **NENHUM RAMO DE SAÍDA ANTECIPADA AQUI, e isso é correção MEDIDA em 16/10/2026.**
+        // A primeira redação devolvia cedo quando o range estava vazio (`addToAssertionCount(1)` e
+        // `return`), com a razão "não há o que medir". Duas coisas erradas nisso:
+        //   1. a contagem de asserções deste método passava a ter DOIS valores (um por ramo), e o
+        //      manifesto só aceita um — o gate reprovava sozinho na primeira vez que o plano
+        //      commitasse algo (medido: 33 no ramo curto, 63 no completo);
+        //   2. território sem commit para medir é **gate VAZIO POR CONSTRUÇÃO**, e ele tem de
+        //      REPROVAR, não passar com uma asserção de enfeite.
+        // ➡️ O range tem de ter commit do escopo. Se não tiver, a asserção abaixo reprova com a
+        // razão escrita, em vez de o gate ficar verde sem medir nada.
+        $this->assertNotSame(
+            [],
+            $meus,
+            'nenhum commit com o escopo '.self::ESCOPO.' no range '.self::PARTIDA.'..HEAD: '
+            .'este gate de território rodaria sobre ZERO casos. Commite o trabalho do plano antes de medi-lo.',
+        );
 
         $arquivos = array_values(array_filter(array_map(
             'trim',
