@@ -143,10 +143,44 @@ veredicto_js() {
         return 1
     fi
 
+    # ⚠️ FORMA `>=N`, acrescentada em 16/10/2026 — e o motivo vale mais que a sintaxe.
+    #
+    # Há arquivo de gate cuja contagem CRESCE POR CONSTRUÇÃO: o
+    # `publicador-vocabulario-novo.test.js` faz UM subteste por arquivo varrido nos
+    # diretórios fechados, então todo plano que cria componente em `aprovacao/` o
+    # faz subir. Medido: ele reprovou a wave 5 em DOIS ids de outras waves, e ia
+    # reprovar de novo em TODA wave de 6 a 11 — a NONA ocorrência da família
+    # "contagem que depende de quantos arquivos existem" (learnings §4b.2).
+    #
+    # ⚠️ Subir o número a cada wave seria o conserto errado pela razão já medida
+    # cinco vezes nesta milestone: elevar régua repetidamente TREINA o executor
+    # seguinte a ajustar réguas quando elas incomodam, e um dia ele ajusta uma que
+    # importava (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+    #
+    # ➡️ Para esse caso o invariante de verdade é **"zero falhas E a varredura não
+    # ENCOLHEU"** — exatamente a semântica que o modo `--suite` já usa (`-lt`
+    # contra `REF_JS_TESTS`). `>=N` pega o que importa: arquivo que não carrega,
+    # `SyntaxError`, ou teste que DESAPARECEU. Teste novo só soma, e somar é
+    # esperado.
+    #
+    # ⚠️ É OPT-IN e deve continuar raro: a igualdade exata é mais forte e segue
+    # sendo o padrão. Use `>=` SÓ quando o crescimento for estrutural, e escreva
+    # no manifesto POR QUE aquele número cresce.
     for _n in $(echo "$_spec" | tr ',' ' '); do
-        if grep -qE "^# tests ${_n}\$" "$_saida"; then
-            return 0
-        fi
+        case "$_n" in
+            '>='*)
+                _min=${_n#>=}
+                _t=$(sed -nE 's/^# tests ([0-9]+)$/\1/p' "$_saida" | tail -1)
+                if [ -n "$_t" ] && [ "$_t" -ge "$_min" ] 2>/dev/null; then
+                    return 0
+                fi
+                ;;
+            *)
+                if grep -qE "^# tests ${_n}\$" "$_saida"; then
+                    return 0
+                fi
+                ;;
+        esac
     done
 
     echo "  REPROVOU: nenhuma das contagens aceitas (${_spec}) casou."
@@ -221,6 +255,18 @@ FIM
     veredicto_js "$tmp/verde.limpo" "2" >/dev/null 2>&1; conferir "2 verdes, N=2" PASSA $?
     veredicto_js "$tmp/vermelho.limpo" "2" >/dev/null 2>&1; conferir "1 de 2 falhando" REPROVA $?
     veredicto_js "$tmp/verde.limpo" "344" >/dev/null 2>&1; conferir "2 verdes mas N=344 (arquivo nao carregou)" REPROVA $?
+
+    # ⚠️ ISCAS DA FORMA `>=N` (16/10/2026). Sem elas eu nao saberia se o `>=` mede
+    # algo — e um `>=` que sempre passasse seria pior que a igualdade que ele
+    # substituiu. Tres casos, porque sao tres comportamentos distintos:
+    #   · igual ao minimo PASSA (o caso de hoje);
+    #   · ACIMA do minimo PASSA (teste novo so soma — e o motivo do `>=` existir);
+    #   · ABAIXO do minimo REPROVA (arquivo que nao carregou, ou teste que DESAPARECEU
+    #     — que e exatamente o que a igualdade pegava e nao pode ser perdido).
+    veredicto_js "$tmp/verde.limpo" ">=2" >/dev/null 2>&1; conferir "ISCA >=: 2 verdes com >=2 (igual ao minimo)" PASSA $?
+    veredicto_js "$tmp/verde.limpo" ">=1" >/dev/null 2>&1; conferir "ISCA >=: 2 verdes com >=1 (acima do minimo, teste novo so soma)" PASSA $?
+    veredicto_js "$tmp/verde.limpo" ">=5" >/dev/null 2>&1; conferir "ISCA >=: 2 verdes com >=5 (encolheu ou nao carregou)" REPROVA $?
+    veredicto_js "$tmp/vermelho.limpo" ">=1" >/dev/null 2>&1; conferir "ISCA >=: falha nao e perdoada pelo >= (o '# fail 0' vem ANTES)" REPROVA $?
 
     # ISCA DA FORMA: prova que o reporter PADRAO cega o gate (G1). Sem o `tap` o
     # caso 1 — tudo verde — teria de REPROVAR. Se esta isca passar, a forma do JS
@@ -343,7 +389,7 @@ modo_gate_interno() {
     _alvos=$(printf '%s\n' "$_linha" | sed -E 's/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+//; s/[[:space:]]*::.*$//')
     _params=$(printf '%s\n' "$_linha" | sed -nE 's/^.*::[[:space:]]*//p')
 
-    _tests=$(printf '%s\n' "$_params" | sed -nE 's/.*(^|[[:space:]])tests=([0-9,]+).*/\2/p')
+    _tests=$(printf '%s\n' "$_params" | sed -nE 's/.*(^|[[:space:]])tests=([0-9,>=]+).*/\2/p')
     _asserts=$(printf '%s\n' "$_params" | sed -nE 's/.*(^|[[:space:]])assertions=([0-9]+).*/\2/p')
 
     # ⚠️ Manifesto incompleto ABORTA. E a trava contra "deixa o numero para

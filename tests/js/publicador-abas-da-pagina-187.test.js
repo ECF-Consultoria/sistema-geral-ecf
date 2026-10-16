@@ -1052,8 +1052,10 @@ test('TERR-05 — o território do plano 187-03, por escopo de assunto', async (
 const MANIFESTO_REL = 'tests/gates/contagens-187-03.txt';
 
 /** As linhas de gate do manifesto, já quebradas. */
-function linhasDoManifesto() {
-    const bruto = fs.readFileSync(path.resolve(RAIZ, MANIFESTO_REL), 'utf8');
+// ⚠️ O parâmetro entrou em 16/10/2026: o SENTIDO 1 passou a ler a UNIÃO dos manifestos da fase
+// (ver a razão escrita lá). Sem argumento, segue lendo o deste plano — nenhum chamador antigo muda.
+function linhasDoManifesto(relativo = MANIFESTO_REL) {
+    const bruto = fs.readFileSync(path.resolve(RAIZ, relativo), 'utf8');
     return bruto
         .split(/\r?\n/)
         .map((linha) => linha.trim())
@@ -1121,7 +1123,50 @@ test('GATE DO MANIFESTO — a bijeção ids ↔ arquivos de teste vale nos DOIS 
         // Sem esta âncora positiva o conjunto poderia ser vazio e o gate vazio.
         assert.ok(tocadosNosTestes.size >= 2, `o plano tocou ${tocadosNosTestes.size} arquivo(s) de teste, esperava ao menos 2`);
 
-        const declarados = new Set(linhas.flatMap((l) => l.alvos));
+        // ⚠️ ALARGADO EM 16/10/2026 PELO ORQUESTRADOR — o recorte estava mais ESTREITO que o
+        // invariante, e a mensagem da própria asserção dizia a verdade que deixou de valer:
+        // *"ele NUNCA RODA por gate nenhum"*.
+        //
+        // O que o gate protege é **"nenhum arquivo de teste fica sem gate que o rode"**. Ele
+        // media isso contra ESTE manifesto — e eu, ao reestruturar os manifestos (o
+        // `publicador-vocabulario-novo.test.js` ganhou **id PRÓPRIO** em `contagens-187-01.txt`,
+        // com a forma `>=`, porque a contagem dele cresce por construção), fiz o arquivo sair
+        // deste id e entrar no de outra wave. ➡️ O arquivo **RODA**, só não por aqui — então a
+        // asserção passou a afirmar algo falso e reprovou trabalho correto.
+        //
+        // ⚠️ É a mesma família de "gate mais largo/estreito que o invariante" que esta milestone
+        // já mediu NOVE vezes — e a guarda **fez o trabalho dela**: percebeu que a composição do
+        // manifesto mudou, em vez de deixar passar calado. Por isso foi REAPONTADA, não removida.
+        //
+        // ➡️ Agora o universo é a UNIÃO dos alvos de TODOS os manifestos da fase. Continua
+        // pegando o caso perigoso (arquivo que nenhum gate roda) e para de acusar o arquivo que
+        // outro plano passou a rodar.
+        const manifestosDaFase = fs
+            .readdirSync(path.resolve(RAIZ, 'tests/gates'))
+            .filter((n) => /^contagens-187-\d+\.txt$/.test(n));
+
+        // ⚠️ ÂNCORA: sem isto, uma pasta vazia ou um padrão errado deixaria o universo vazio e a
+        // asserção acusaria TODOS os arquivos — ou, pior, um universo acidentalmente enorme
+        // deixaria o gate verde para sempre.
+        assert.ok(
+            manifestosDaFase.length >= 5,
+            `achei ${manifestosDaFase.length} manifesto(s) da Fase 187 em tests/gates — esperava ao menos 5; o padrão está errado?`,
+        );
+
+        const declarados = new Set();
+        for (const nome of manifestosDaFase) {
+            for (const l of linhasDoManifesto(`tests/gates/${nome}`)) {
+                for (const alvo of l.alvos) declarados.add(alvo);
+            }
+        }
+
+        // ⚠️ ISCA: o universo alargado TEM de conter o alvo deste plano. Se não contiver, o leitor
+        // de manifesto quebrou e o gate ficaria verde medindo um conjunto vazio de infratores.
+        assert.ok(
+            declarados.has('tests/js/publicador-abas-da-pagina-187.test.js'),
+            'ISCA: a união dos manifestos da fase não contém nem o arquivo de teste DESTE plano — o leitor quebrou.',
+        );
+
         const semId = [...tocadosNosTestes].filter((f) => !declarados.has(f)).sort();
         assert.deepEqual(
             semId,

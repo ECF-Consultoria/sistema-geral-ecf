@@ -89,4 +89,16 @@ cabecalho-sem-subtitulo  js  tests/js/publicador-publicacoes-cabecalho.test.js  
 # Os dois arquivos juntos: o gate deste plano (103) e o GATE-03 inteiro DEPOIS de
 # `AbasDaPagina.jsx` entrar em `ARQUIVOS_NOVOS` (407 — era 399; +6 do laço por
 # arquivo e +2 dos dois sub-testes novos do eixo D2). 518 pristino / 508 mutado.
-montagem-e-territorio  js  tests/js/publicador-abas-da-pagina-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=518,508
+# ⚠️ REESTRUTURADO EM 16/10/2026 PELO ORQUESTRADOR — NONA ocorrência da família
+#    "contagem que depende de quantos ARQUIVOS existem" (learnings §4b.2).
+#    Este id embutia `publicador-vocabulario-novo.test.js` na contagem, e aquele arquivo
+#    faz UM subteste POR ARQUIVO varrido nos diretórios fechados — então TODA wave que
+#    cria componente em `aprovacao/` o fazia subir. Medido: ele reprovou a wave 5 em DOIS
+#    ids de outras waves, e ia reprovar de novo nas waves 6 a 11.
+#    ⚠️ Subir o número a cada wave seria o conserto ERRADO, pela razão já medida cinco
+#    vezes nesta milestone: elevar régua repetidamente treina o executor seguinte a
+#    ajustar réguas quando elas incomodam.
+#    ➡️ O arquivo que cresce saiu para um id PRÓPRIO (`vocabulario-da-area`, no
+#    `contagens-187-01.txt`) com a forma `>=`, e este id voltou a medir SÓ o que é dele,
+#    com igualdade EXATA — que é a forma mais forte e segue sendo o padrão.
+montagem-e-territorio  js  tests/js/publicador-abas-da-pagina-187.test.js  ::  tests=111

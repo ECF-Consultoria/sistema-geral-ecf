@@ -70,3 +70,26 @@ vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  test
 # `deepEqual` do conjunto de chaves — se um token novo tivesse ficado fora das
 # tabelas, este gate reprovaria. 13 casos, 0 falha.
 camada-de-tokens-177  js  tests/js/publicador-tokens-do-publicador.test.js  ::  tests=13
+
+# ⚠️ ID PRÓPRIO do gate de vocabulário da área, criado em 16/10/2026 pelo ORQUESTRADOR.
+#
+# POR QUE ELE EXISTE, e por que a forma é `>=` e não igualdade:
+#   `publicador-vocabulario-novo.test.js` é o GATE-03 dos diretórios fechados
+#   (`identidade/`, `visaogeral/`, `publicacoes/`, `aprovacao/`) e faz **UM subteste por
+#   arquivo varrido**. Logo a contagem dele **cresce por construção** a cada componente
+#   novo — e crescer é o comportamento CERTO, não regressão.
+#   ⚠️ Com igualdade exata ele reprovava em TODA wave, e estava embutido na contagem de
+#   dois ids de outras waves (187-03 e 187-04), fazendo o sangramento se espalhar.
+#
+# O QUE O `>=` AINDA PEGA (e por isso não é afrouxamento):
+#   · arquivo que NÃO CARREGA (`SyntaxError`, import quebrado) — dá 0 ou poucos testes;
+#   · teste que DESAPARECEU;
+#   · e o `# fail 0` vem ANTES do `>=`, então falha nunca é perdoada.
+#   As QUATRO iscas de `>=` estão no `--autoteste` (20 casos, 0 divergência).
+#
+# ⚠️ O MÍNIMO SÓ SOBE QUANDO ALGUÉM MEDIR, e subir é OPCIONAL: 443 medido em 16/10/2026
+#   (`node --test --test-reporter=tap`). Deixar em 443 não enfraquece nada — só significa
+#   "não encolheu abaixo do que já havia".
+# ⚠️ E `>=` é OPT-IN e deve continuar RARO: a igualdade exata é mais forte e é o padrão.
+#   Use só quando o crescimento for ESTRUTURAL, e escreva por quê.
+vocabulario-da-area  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=443

@@ -84,7 +84,19 @@ faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  test
 # do protótipo com o precedente das DUAS irmãs medido, e A JANELA FECHANDO: a
 # página no manifest do Vite lida pelo JSON, com isca ausente.
 # ⚠️ MESMO arquivo dos dois ids acima: 99 pristino / 85 mutado.
-pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=535,521
+# ⚠️ REESTRUTURADO EM 16/10/2026 PELO ORQUESTRADOR — NONA ocorrência da família
+#    "contagem que depende de quantos ARQUIVOS existem" (learnings §4b.2).
+#    Este id embutia `publicador-vocabulario-novo.test.js` na contagem, e aquele arquivo
+#    faz UM subteste POR ARQUIVO varrido nos diretórios fechados — então TODA wave que
+#    cria componente em `aprovacao/` o fazia subir. Medido: ele reprovou a wave 5 em DOIS
+#    ids de outras waves, e ia reprovar de novo nas waves 6 a 11.
+#    ⚠️ Subir o número a cada wave seria o conserto ERRADO, pela razão já medida cinco
+#    vezes nesta milestone: elevar régua repetidamente treina o executor seguinte a
+#    ajustar réguas quando elas incomodam.
+#    ➡️ O arquivo que cresce saiu para um id PRÓPRIO (`vocabulario-da-area`, no
+#    `contagens-187-01.txt`) com a forma `>=`, e este id voltou a medir SÓ o que é dele,
+#    com igualdade EXATA — que é a forma mais forte e segue sendo o padrão.
+pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=99
 
 # ─── TAREFA 3 — o lado PHP ────────────────────────────────────────────────────
 # A PENDÊNCIA DO 187-02 FECHADA: o HTML da rota carrega o bundle CONSTRUÍDO da
