@@ -297,12 +297,27 @@ export default function Aprovacao({
     // recarregar devolver o mesmo recorte e o link compartilhado abrir a mesma
     // fila (COL-03). Cada handler recalcula a querystring INTEIRA a partir dele
     // — mudar um filtro não pode apagar os outros cinco.
+    //
+    // ⚠️⚠️ **CADA ELEMENTO DAS DUAS LISTAS É VALIDADO AQUI, e isso é correção MEDIDA
+    // em 16/10/2026.** A primeira redação guardava os arrays CRUS do servidor e só
+    // os convertia com `String(v)` no handler — e `String({toString: null})`
+    // **LANÇA**. Era a TELA PRETA de 07/10/2026 com outra roupa: não derrubaria o
+    // render, mas derrubaria o CLIQUE, que é pior porque ninguém desconfia.
+    // ⚠️ `join(',')` tem o mesmo problema: ele chama `toString` de cada elemento.
+    // ➡️ `responsavel` guarda só INTEIROS e `motivo` só TEXTO não-vazio. Depois
+    // disso, nem `join` nem template literal podem lançar — e é por isso que
+    // **`String(` não aparece nesta página** (há gate da wave 4 cobrando).
+    const cru = objetoSeguro(filtros_ativos);
     const recorteAtual = {
-        busca: typeof objetoSeguro(filtros_ativos)?.busca === 'string' ? objetoSeguro(filtros_ativos).busca : '',
-        modalidade: chaveSegura(objetoSeguro(filtros_ativos)?.modalidade) ?? SEM_FILTRO.modalidade,
-        formato: chaveSegura(objetoSeguro(filtros_ativos)?.formato) ?? SEM_FILTRO.formato,
-        responsavel: Array.isArray(objetoSeguro(filtros_ativos)?.responsavel) ? objetoSeguro(filtros_ativos).responsavel : [],
-        motivo: Array.isArray(objetoSeguro(filtros_ativos)?.motivo) ? objetoSeguro(filtros_ativos).motivo : [],
+        busca: typeof cru?.busca === 'string' ? cru.busca : '',
+        modalidade: chaveSegura(cru?.modalidade) ?? SEM_FILTRO.modalidade,
+        formato: chaveSegura(cru?.formato) ?? SEM_FILTRO.formato,
+        responsavel: (Array.isArray(cru?.responsavel) ? cru.responsavel : [])
+            .map((id) => inteiroSeguro(id))
+            .filter((id) => id !== null && id >= 0),
+        motivo: (Array.isArray(cru?.motivo) ? cru.motivo : [])
+            .map((chave) => chaveSegura(chave))
+            .filter((chave) => chave !== null),
         etapa: etapaAtiva,
     };
 
@@ -324,16 +339,30 @@ export default function Aprovacao({
     /**
      * Marca/desmarca um valor de lista (Responsável e Motivo são múltiplos).
      *
-     * ⚠️ As chaves chegam do popover como TEXTO (é o que o DOM fala) e saem na
-     * URL como TEXTO. O servidor é quem converte e valida contra a lista fechada.
+     * ⚠️⚠️ A chave chega do popover como TEXTO — é o que o DOM fala —, e a
+     * conversão acontece **AQUI, de texto para o tipo da lista**, nunca o
+     * contrário. Converter a lista para texto exigiria `String(v)` sobre valor do
+     * servidor, e `String({toString: null})` LANÇA. Este sentido é seguro:
+     * `Number.parseInt` sobre string nunca lança, e devolve `NaN` no lixo.
+     *
+     * ⚠️ `Number.parseInt` e NUNCA `Number(chave)`: `Number('')` é **0**, e um id
+     * de responsável igual a 0 entraria na URL como filtro inventado.
      */
-    const alternar = (campo) => (chave) => {
-        if (navegar === null) return;
+    const alternar = (campo, comoInteiro) => (chave) => {
+        if (navegar === null || typeof chave !== 'string' || chave === '') return;
 
-        const atuais = recorteAtual[campo].map((v) => String(v));
-        const proximos = atuais.includes(chave)
-            ? atuais.filter((v) => v !== chave)
-            : atuais.concat(chave);
+        let valor = chave;
+
+        if (comoInteiro) {
+            const n = Number.parseInt(chave, 10);
+            if (!Number.isInteger(n) || n < 0) return;
+            valor = n;
+        }
+
+        const atuais = recorteAtual[campo];
+        const proximos = atuais.includes(valor)
+            ? atuais.filter((v) => v !== valor)
+            : atuais.concat(valor);
 
         navegar({ [campo]: proximos });
     };
@@ -365,8 +394,8 @@ export default function Aprovacao({
                 onBusca={navegar === null ? null : (termo) => navegar({ busca: termo })}
                 onModalidade={navegar === null ? null : (valor) => navegar({ modalidade: valor })}
                 onFormato={navegar === null ? null : (valor) => navegar({ formato: valor })}
-                onResponsavel={navegar === null ? null : alternar('responsavel')}
-                onMotivo={navegar === null ? null : alternar('motivo')}
+                onResponsavel={navegar === null ? null : alternar('responsavel', true)}
+                onMotivo={navegar === null ? null : alternar('motivo', false)}
                 onLimpar={limpar}
             />
         );

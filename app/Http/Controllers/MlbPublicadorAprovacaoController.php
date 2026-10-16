@@ -168,11 +168,21 @@ class MlbPublicadorAprovacaoController extends Controller
 
         $base = $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama);
 
-        // ⚠️ A faixa é calculada DEPOIS dos filtros e sobre a `$base`: ela se move com busca,
-        // modalidade, formato, responsável e motivo — e **não** com a etapa.
-        $faixa = $fila->faixa($base);
-
-        return Inertia::render('Mlb/Publicador/Aprovacao', [
+        // ⚠️⚠️ **O PAYLOAD É MONTADO EM VARIÁVEL, e a `faixa` fica INLINE — as duas coisas de
+        // propósito.**
+        //
+        // A `contagem.exibidas` precisa LER a faixa já calculada (o N do "N de M" é lido dela,
+        // nunca recontado — ver o docblock de `FiltrosDaFilaService::exibidasNaEtapa`), e
+        // recalculá-la custaria **nove** `count()` a mais por request.
+        //
+        // ⚠️ E a chamada fica ESCRITA como `'faixa' => $fila->faixa($base)` em vez de guardada
+        // numa variável acima, porque é esse o texto que o CONTROLE de
+        // `tests/js/publicador-fila-proximo-187.test.js` (wave 5, arquivo que esta wave **não
+        // pode tocar**) lê para provar o invariante de FILA-03: *a faixa de 9 é calculada sobre a
+        // `$base`*. Guardá-la numa variável reprovava aquele gate — medido em 16/10/2026 — e o
+        // conserto certo era mudar ESTE arquivo, não o gate alheio.
+        // ➡️ **Não "arrume" isto para uma variável sem antes conferir aquele controle.**
+        $payload = [
             'empresa' => ['id' => $company->id, 'nome' => $company->name],
             'conta' => $conta,
             // ⚠️ `'publicacoes'` de propósito — ver o docblock da classe.
@@ -188,7 +198,7 @@ class MlbPublicadorAprovacaoController extends Controller
             // total e **todos os outros oito zerarem** — a pessoa perderia a navegação. É o
             // sintoma clássico, e por isso o gate deste plano prova as DUAS direções: a etapa NÃO
             // move a faixa, e um filtro da `$base` (a conta) MOVE.
-            'faixa' => $faixa,
+            'faixa' => $fila->faixa($base),
             // ⚠️ Plano 187-04 — a etapa SANEADA contra a lista fechada das 9 chaves. É ela que
             // marca o card ativo; o filtro vive na URL (COL-03), nunca em `localStorage`.
             // ⚠️ A LISTA da fila ainda não existe nesta tela (ela chega nos planos 187-07/08), e
@@ -239,10 +249,9 @@ class MlbPublicadorAprovacaoController extends Controller
             // ⚠️ E o **N** é **LIDO da faixa**, nunca recontado: na etapa `publicado` o recorte é
             // "publicado HOJE" (`whereDate('updated_at', hoje)`), e uma segunda consulta aqui
             // poderia divergir do card. Conta e lista TÊM de bater (decisões 9 e 16 do usuário).
-            'contagem' => [
-                'exibidas' => $filtros->exibidasNaEtapa($faixa, $etapa),
-                'total' => $filtros->totalDaConta($daConta),
-            ],
+            // ⚠️ `exibidas` é preenchida ABAIXO, lendo `$payload['faixa']` — a MESMA array que a
+            // tela recebe, calculada UMA vez. É assim que conta e lista não podem divergir.
+            'contagem' => ['exibidas' => null, 'total' => $filtros->totalDaConta($daConta)],
             // ⚠️ FIN-09 — `{valor, origem}`. O número NUNCA é literal: cada número diz de onde vem.
             'margem_minima' => $fila->margemMinima($company->id),
             // ⚠️⚠️ Plano 187-05 — a faixa "PRÓXIMO A REVISAR", escolhida pela regra literal de
@@ -261,6 +270,15 @@ class MlbPublicadorAprovacaoController extends Controller
             // o trabalho. ➡️ `para()` é chamado **UMA** vez, só para a oferta escolhida, e há
             // teste com espião contando as chamadas numa fila de 6 ao vivo (T-187-51).
             'proximo_a_revisar' => $proximo->para($base),
-        ]);
+        ];
+
+        // ⚠️⚠️ O **N** do "N de M" é LIDO da faixa que acabou de ser calculada — a MESMA array
+        // que a tela recebe. Recontar aqui produziria uma segunda consulta livre para divergir, e
+        // é justamente na etapa `publicado` que ela divergiria: ali o recorte é "publicado HOJE"
+        // (`whereDate('updated_at', hoje)`, `AndamentoDaOfertaService:294`-`:295`). O usuário
+        // recusou número divergente entre conta e lista **duas vezes** (decisões 9 e 16).
+        $payload['contagem']['exibidas'] = $filtros->exibidasNaEtapa($payload['faixa'], $etapa);
+
+        return Inertia::render('Mlb/Publicador/Aprovacao', $payload);
     }
 }
