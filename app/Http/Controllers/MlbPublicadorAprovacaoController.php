@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
+use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -118,6 +119,7 @@ class MlbPublicadorAprovacaoController extends Controller
         Company $company,
         FilaDeAprovacaoService $fila,
         ProximoARevisarService $proximo,
+        FiltrosDaFilaService $filtros,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -136,7 +138,39 @@ class MlbPublicadorAprovacaoController extends Controller
         // resolver()`), e aí o recorte é só `company_id` — nunca "sem recorte".
         $mlbEmpresaId = $alvo['mlb_empresa']?->id;
 
-        $base = $fila->paraAConta($company->id, $mlbEmpresaId);
+        // ═══ ⚠️⚠️ OS TRÊS RECORTES DA FASE 187, PLANO 06 — E ELES SÃO DIFERENTES DE PROPÓSITO ══
+        //
+        // `$daConta` = TODAS as ofertas da conta, **zero filtro** (o `all` do protótipo, `:1208`).
+        //   É sobre ele que as contagens dos DOIS POPOVERS são feitas (`:1265`/`:1266`) e é dele
+        //   que sai o **M** do "N de M" (divergência D8: o M inclui `preparando` e `publicado`).
+        // `$base`    = `$daConta` + todos os filtros **MENOS a etapa** (`:1210`). É a base da faixa
+        //   de 9 (FILA-03) e do "PRÓXIMO A REVISAR".
+        // `lista`    = `$base` + a etapa (`:1214`), e ela é dos planos 187-07/08.
+        //
+        // ⚠️ Colapsar dois destes recortes é o bug que faz o card ativo mostrar o próprio total e
+        // os outros oito zerarem — e o popover deixar de dizer quanto EXISTE.
+        $daConta = $fila->paraAConta($company->id, $mlbEmpresaId);
+
+        // ⚠️ A lista FECHADA do filtro de Responsável são os ids que a conta de fato tem: id de
+        // outra conta na URL é descartado em silêncio, e NÃO zera a lista.
+        $responsaveis = $filtros->responsaveisDaConta($daConta);
+        $idsDeResponsavel = array_map(static fn (array $r): int => $r['id'], $responsaveis);
+
+        // ⚠️⚠️ **UMA chamada a `BloqueiosDaOfertaService::para()` por oferta, e UM mapa só.** O
+        // filtro por motivo e as 8 contagens leem o MESMO mapa — por isso o custo é mensurável, e
+        // é por isso que o gate de custo deste plano conta requisições por trio distinto. O
+        // pré-aquecimento fora do request é o plano 187-10 (decisão do usuário de 15/10/2026); ele
+        // muda QUANDO a requisição acontece, não QUANTAS.
+        $panorama = $filtros->panoramaDaConta($daConta);
+
+        $escolhidos = $filtros->saneados($request, $idsDeResponsavel);
+        $etapa = $this->etapaSaneada($request);
+
+        $base = $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama);
+
+        // ⚠️ A faixa é calculada DEPOIS dos filtros e sobre a `$base`: ela se move com busca,
+        // modalidade, formato, responsável e motivo — e **não** com a etapa.
+        $faixa = $fila->faixa($base);
 
         return Inertia::render('Mlb/Publicador/Aprovacao', [
             'empresa' => ['id' => $company->id, 'nome' => $company->name],
@@ -154,13 +188,54 @@ class MlbPublicadorAprovacaoController extends Controller
             // total e **todos os outros oito zerarem** — a pessoa perderia a navegação. É o
             // sintoma clássico, e por isso o gate deste plano prova as DUAS direções: a etapa NÃO
             // move a faixa, e um filtro da `$base` (a conta) MOVE.
-            'faixa' => $fila->faixa($base),
+            'faixa' => $faixa,
             // ⚠️ Plano 187-04 — a etapa SANEADA contra a lista fechada das 9 chaves. É ela que
             // marca o card ativo; o filtro vive na URL (COL-03), nunca em `localStorage`.
             // ⚠️ A LISTA da fila ainda não existe nesta tela (ela chega nos planos 187-07/08), e
             // é por isso que a `etapa` ainda não recorta consulta nenhuma: ela só diz à faixa qual
             // card está aceso. Aplicá-la a uma lista que não existe seria código sem consumidor.
-            'etapa' => $this->etapaSaneada($request),
+            'etapa' => $etapa,
+            // ═══ ⚠️ Plano 187-06 — OS FILTROS, e todos eles VIVEM NA URL (COL-03) ═════════════
+            //
+            // ⚠️ **NADA de `localStorage`** (COL-02 / critério 13): o `KEY='ecf-aprovacao-v1'` do
+            // protótipo (`:914`) é artefato dele. Filtro que mora no navegador não sobrevive a um
+            // link compartilhado — a pessoa manda o link e o colega abre outra fila.
+            //
+            // ⚠️ Os cinco voltam JÁ SANEADOS, e é por isso que recarregar devolve o mesmo
+            // recorte: a URL é a fonte, e o servidor é quem a valida contra as listas fechadas.
+            'filtros' => $escolhidos,
+            // ⚠️⚠️ As OPÇÕES vêm do servidor porque três das quatro listas são DADO: os
+            // responsáveis saem do banco (com nome e contagem) e os motivos saem de
+            // `VocabularioDoPortao::ROTULOS`. As duas de modalidade leem `EstruturaAnuncio::TIPOS`
+            // — "Clássico" e "Premium" têm UMA casa, e esta não é ela.
+            //
+            // ⚠️ As CONTAGENS de `responsaveis` e `motivos` são sobre **TODAS** as ofertas da
+            // conta (FILA-06), e NÃO sobre o recorte filtrado: o popover diz quanto EXISTE, não
+            // quanto sobrou. Recontá-las sobre a `$base` faria a pessoa marcar um motivo e ver a
+            // própria contagem dele mudar — o sintoma clássico.
+            'opcoes' => [
+                'modalidades' => $filtros->opcoesDeModalidade(),
+                'formatos' => $filtros->opcoesDeFormato(),
+                'responsaveis' => $responsaveis,
+                'motivos' => $filtros->motivosDaConta($panorama),
+            ],
+            // ⚠️ "Limpar filtros" só aparece com algum dos SEIS ativo — e a **etapa** é um deles
+            // (`anyFilter`, `:1270`, inclui `S.stage !== 'all'`). ⚠️ O `?oferta=<id>` do plano
+            // 187-05 **NÃO** entra: ele dá foco a uma linha, e se contasse, abrir uma oferta faria
+            // "Limpar filtros" aparecer sem filtro nenhum.
+            'algum_filtro' => $filtros->algumFiltro($escolhidos, $etapa !== self::ETAPA_TODAS),
+            // ⚠️⚠️ O "N de M ofertas" (divergência **D8**): o **M** é o total de TODAS as ofertas
+            // da conta — inclusive `preparando` e `publicado` —, não o das ao vivo (`:1276`:
+            // `list.length + ' de ' + all.length`). **Reproduzido, não "consertado"**: o total da
+            // fila tornaria o número incoerente com o card "Todas" da faixa.
+            //
+            // ⚠️ E o **N** é **LIDO da faixa**, nunca recontado: na etapa `publicado` o recorte é
+            // "publicado HOJE" (`whereDate('updated_at', hoje)`), e uma segunda consulta aqui
+            // poderia divergir do card. Conta e lista TÊM de bater (decisões 9 e 16 do usuário).
+            'contagem' => [
+                'exibidas' => $filtros->exibidasNaEtapa($faixa, $etapa),
+                'total' => $filtros->totalDaConta($daConta),
+            ],
             // ⚠️ FIN-09 — `{valor, origem}`. O número NUNCA é literal: cada número diz de onde vem.
             'margem_minima' => $fila->margemMinima($company->id),
             // ⚠️⚠️ Plano 187-05 — a faixa "PRÓXIMO A REVISAR", escolhida pela regra literal de
