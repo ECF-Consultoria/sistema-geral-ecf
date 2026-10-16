@@ -857,6 +857,71 @@ test('FILA-01 — a página preenche o slot `proximo` e dá ao botão um destino
         assert.match(FONTE_PAGINA, /onRevisar=\{irParaOferta\(empresaId, etapaAtiva\)\}/, 'o handler não chega à faixa');
     });
 
+    await contexto.test('⚠️⚠️ o destino está no caminho VIVO da função, não em código morto', () => {
+        // ⚠️⚠️ ESTE SUB-TESTE NASCEU DE UMA MUTAÇÃO. As asserções de fonte acima
+        // provam que `oferta: ofertaId` EXISTE no arquivo, e não que ela é
+        // ALCANÇADA. Medido em 16/10/2026: inserir `return () => {};` ANTES do
+        // handler deixa o `router.get` inteiro em código MORTO — o botão é
+        // desenhado, o clique não faz nada, e todas as asserções de fonte
+        // continuam verdes. É botão decorativo passando por gate de literal, e é
+        // exatamente o que a régua do usuário proíbe.
+        //
+        // ⚠️ O recorte é o CORPO da função, e a prova é ESTRUTURAL: ele tem
+        // EXATAMENTE dois `return` (o `null` sem empresa e o handler), e o
+        // handler é a ÚLTIMA coisa do corpo — então não há nada depois dele, nem
+        // nada antes dele devolvendo outra coisa.
+        const i = FONTE_PAGINA.indexOf('function irParaOferta(');
+        assert.ok(i !== -1, 'a função do destino não está na página');
+        const fim = FONTE_PAGINA.indexOf('\n}', i);
+        assert.ok(fim > i, 'não achei o fim da função do destino');
+        const corpo = FONTE_PAGINA.slice(i, fim);
+
+        const RETORNOS = /\breturn\b/g;
+        const HANDLER_VIVO = /return \(ofertaId\) => \{[\s\S]*router\.get\([\s\S]*oferta: ofertaId[\s\S]*\};\s*$/;
+
+        assert.equal(
+            (corpo.match(RETORNOS) ?? []).length,
+            2,
+            `\`irParaOferta\` tem de ter exatamente 2 \`return\` (o null e o handler). Corpo:\n${corpo}`,
+        );
+        assert.match(
+            corpo,
+            HANDLER_VIVO,
+            'o handler que navega não é a última coisa do corpo — há código depois dele, ou ele é inalcançável',
+        );
+        assert.doesNotMatch(corpo, /return \(\) => \{\s*\}/, 'a função devolve um handler VAZIO');
+
+        // ⚠️⚠️ AS DUAS ISCAS, porque o código morto tem DUAS FORMAS e cada uma é
+        // pega por uma asserção DIFERENTE — medido ao escrever este gate:
+        //
+        //   FORMA A — trocar o handler por um vazio e rebaixar o original a
+        //   `const`. O número de `return` continua **2** (o `return` do original
+        //   foi consumido pela troca), então a contagem NÃO pega; quem pega é a
+        //   regex estrutural, porque `return (ofertaId) =>` desapareceu.
+        //
+        //   FORMA B — INSERIR um `return () => {};` antes, deixando o handler
+        //   intacto e inalcançável. A regex estrutural CONTINUA casando (o
+        //   handler segue sendo a última coisa do corpo), então ela não pega;
+        //   quem pega é a contagem, que vai a **3**.
+        //
+        // ⚠️ Era este o buraco: cada asserção sozinha deixaria passar uma das
+        // duas formas. As duas juntas fecham as duas.
+        const mortoA = corpo.replace(
+            'return (ofertaId) => {',
+            'return () => {};\n    const morto = (ofertaId) => {',
+        );
+        assert.notEqual(mortoA, corpo, 'ISCA A: a montagem do caso morto não mudou nada');
+        assert.equal((mortoA.match(RETORNOS) ?? []).length, 2, 'ISCA A: a forma A deixa 2 `return`, por construção');
+        assert.doesNotMatch(mortoA, HANDLER_VIVO, 'ISCA A: a regex estrutural aceita o handler SUBSTITUÍDO');
+
+        const mortoB = corpo.replace(
+            'return (ofertaId) => {',
+            'return () => {};\n    return (ofertaId) => {',
+        );
+        assert.equal((mortoB.match(RETORNOS) ?? []).length, 3, 'ISCA B: a forma B acrescenta um `return`');
+        assert.match(mortoB, HANDLER_VIVO, 'ISCA B: a regex estrutural NÃO pega a forma B — é a contagem que pega');
+    });
+
     await contexto.test('⚠️ sem `empresaId` NÃO há destino: o handler é `null` e o botão não é desenhado', () => {
         assert.match(FONTE_PAGINA, /if \(empresaId === null\) return null;/, 'a página monta rota sem empresa');
     });

@@ -100,8 +100,8 @@ bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions
 # `border-pub-accent/[0.35]`).
 #
 # ⚠️⚠️ DOIS REGIMES MEDIDOS nesta máquina (16/10/2026):
-#   · pristino (CSS mais novo que as fontes): 518 testes / 518 pass / 0 skipped
-#   · mutado   (fonte mais nova que o CSS):   509 testes / 508 pass / 1 skipped
+#   · pristino (CSS mais novo que as fontes): 519 testes / 519 pass / 0 skipped
+#   · mutado   (fonte mais nova que o CSS):   510 testes / 509 pass / 1 skipped
 # A diferença são os 9 sub-testes da camada de CSS, que entra em `skip` NOMEADO
 # quando o `app-*.css` é mais ANTIGO que os `.jsx` — e mutar um `.jsx` o deixa
 # mais novo. Sem os dois regimes a campanha abortaria na 1ª execução ("BASE com
@@ -112,4 +112,4 @@ bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions
 # ALTERA (declara `ProximoARevisar.jsx` em `ARQUIVOS_NOVOS`): sem a declaração, o
 # GATE-03 passaria POR OMISSÃO para o arquivo novo, e `DIR_APROV` está em
 # `DIRETORIOS_FECHADOS`, então o `deepEqual` com o disco reprova na hora.
-proximo-render  js  tests/js/publicador-fila-proximo-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=518,509
+proximo-render  js  tests/js/publicador-fila-proximo-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=519,510
