@@ -147,7 +147,10 @@ class ProximoARevisarServiceTest extends TestCase
             'company_id' => $empresa->id,
             'andamento' => $andamento,
             'tocado' => $o['tocado'] ?? false,
-            'entrou_na_fila_em' => $o['entrou'] ?? '2026-10-15 07:00:00',
+            // ⚠️ `array_key_exists` e NÃO `??`: `['entrou' => null]` é o caso da espera
+            // DESCONHECIDA, e o `??` o devolveria para o default — o caso passaria medindo
+            // outra coisa.
+            'entrou_na_fila_em' => array_key_exists('entrou', $o) ? $o['entrou'] : '2026-10-15 07:00:00',
             'responsavel_id' => isset($o['responsavel']) ? $o['responsavel']->id : null,
         ]);
     }
