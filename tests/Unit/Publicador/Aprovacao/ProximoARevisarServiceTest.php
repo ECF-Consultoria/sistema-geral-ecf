@@ -643,8 +643,19 @@ class ProximoARevisarServiceTest extends TestCase
             [60, '1 h'],
             [120, '2 h'],
             [1439, '24 h'],
-            [1440, '1 d'],
-            [4320, '3 d'],
+            // ⚠⚠ REAPONTADO EM 16/10/2026 — DECISÃO DO USUÁRIO: "dia"/"dias" POR EXTENSO.
+            // O protótipo escreve `' d'` e a régua desta milestone é que ele ganha nos
+            // RÓTULOS — **esta é a exceção**, e ela nasce de CONFLITO entre duas regras do
+            // projeto, resolvido pelo usuário: a régua permanente *"evitar jargão e
+            // abreviatura não explicada na tela"* (07/07/2026) vale mais que a fidelidade
+            // literal aqui, porque *"aguardando há 3 d"* é exatamente o caso que ela existe
+            // para impedir.
+            // ⚠️ `min` e `h` FICAM abreviados, de propósito: são convenção corrente em
+            // português e se leem sem explicação; `d` para dias não é. **Não uniformize.**
+            // ⚠️ E o SINGULAR entrou: "1 dia", nunca "1 dias".
+            [1440, '1 dia'],
+            [2880, '2 dias'],
+            [4320, '3 dias'],
         ];
 
         $infratores = [];
@@ -661,7 +672,11 @@ class ProximoARevisarServiceTest extends TestCase
         $this->assertStringContainsString(
             "wait(m) { return m < 60 ? m + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d'; }",
             $prototipo,
-            'a fórmula de `wait()` mudou no protótipo — remeça a divergência.',
+            'a fórmula de `wait()` mudou no protótipo — remeça a divergência. ⚠️ Este controle '
+            .'segue valendo DEPOIS da decisão do usuário de 16/10: ele prova que o protótipo '
+            .'continua escrevendo a abreviatura de um caractere, e portanto que a nossa '
+            .'divergência é DELIBERADA e '
+            .'nomeada — não um desvio que ninguém percebeu.',
         );
 
         // ⚠️ Espera DESCONHECIDA não vira espera zero nem espera infinita: o trecho sai fora.

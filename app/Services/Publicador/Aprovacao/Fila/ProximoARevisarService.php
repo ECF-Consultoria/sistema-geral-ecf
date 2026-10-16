@@ -245,7 +245,24 @@ class ProximoARevisarService
      * ⚠️ Ela é **pública** porque o plano 187-08 (a coluna de espera da linha) lê a MESMA
      * medida. Copiar a fórmula lá criaria duas verdades para o mesmo número na mesma tela.
      *
-     * ⚠️ `' d'` e não `' dias'`: ver a divergência registrada no docblock da classe.
+     * ⚠️⚠️ **DECISÃO DO USUÁRIO, 16/10/2026 — "dia"/"dias" POR EXTENSO, e o protótipo PERDE aqui.**
+     *
+     * O protótipo escreve `' d'` (`design_handoff_publicador/Aprovacao.dc.html:1054`), e a régua
+     * desta milestone é que o protótipo ganha nos RÓTULOS. ➡️ **Esta é a exceção, e ela não é
+     * capricho: é CONFLITO entre duas regras do projeto, resolvido pelo usuário.** A régua
+     * permanente *"evitar jargão e abreviatura não explicada na tela"* (feedback de 07/07/2026)
+     * vale mais que a fidelidade literal num rótulo de texto — e *"aguardando há 3 d"* é
+     * exatamente o caso que aquela régua existe para impedir.
+     *
+     * ⚠️ **`min` e `h` FICAM abreviados, de propósito.** São convenção corrente em português
+     * ("5 min", "3h") e se leem sem explicação; **`d` para dias não é convenção**, e era o único
+     * que a pergunta levantou. **Não "uniformize" os três por estética** — escrever "3 minutos" e
+     * "5 horas" numa coluna estreita custa espaço sem ganhar clareza.
+     *
+     * ⚠️ **SINGULAR e PLURAL**, pela mesma razão que o estado já os tem: "1 dia", nunca "1 dias".
+     *
+     * ⚠️ Este rótulo é **público e reusado** pela coluna de espera da linha (plano 187-08): mudar
+     * aqui muda nos dois lugares, e é por isso que ele mora num lugar só.
      */
     public function rotuloDaEspera(int $minutos): string
     {
@@ -257,7 +274,9 @@ class ProximoARevisarService
             return ((int) round($minutos / 60)).' h';
         }
 
-        return ((int) round($minutos / 1440)).' d';
+        $dias = (int) round($minutos / 1440);
+
+        return $dias.($dias === 1 ? ' dia' : ' dias');
     }
 
     /**
