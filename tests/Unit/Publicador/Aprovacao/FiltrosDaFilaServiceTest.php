@@ -1147,7 +1147,9 @@ class FiltrosDaFilaServiceTest extends TestCase
         // ➡️ Agora são TRÊS ofertas: uma ao vivo, uma `preparando` e uma `publicado`. Logo
         // **conta = 3** e **ao vivo = 1**, e as duas mutações morrem.
         $this->oferta($company, PubAprovacaoOferta::AGUARDANDO_APROVACAO, ['responsavel' => $ana]);
-        $this->oferta($company, PubAprovacaoOferta::PREPARANDO, ['responsavel' => $ana]);
+        // ⚠️ A `preparando` recebe um nome DISTINTIVO: ela é a oferta que só existe no recorte
+        // DA CONTA, e é por ela que a busca prova que o panorama não foi estreitado.
+        $this->oferta($company, PubAprovacaoOferta::PREPARANDO, ['responsavel' => $ana, 'produto' => 'Banqueta Zyx Exclusiva']);
         $this->oferta($company, PubAprovacaoOferta::PUBLICADO, ['responsavel' => $ana, 'atualizado' => '2026-10-16 08:00:00']);
 
         $this->assertSame(1, $this->fila()->contadorDaAba($company->id), 'ISCA CEGA: a fixture deixou de distinguir conta × ao vivo');
@@ -1189,6 +1191,33 @@ class FiltrosDaFilaServiceTest extends TestCase
         $totalDosMotivos = array_sum(array_column($props['opcoes']['motivos'], 'total'));
         $this->assertGreaterThan(0, $totalDosMotivos, 'ISCA CEGA: nenhum motivo foi contado — o escopo do popover não é mensurável nesta fixture');
         $this->assertLessThanOrEqual(3 * 8, $totalDosMotivos);
+
+        // ⚠️⚠️ **A PROVA MAIS FORTE DO ESCOPO DO PANORAMA, e ela foi achada pela RODADA 2 da
+        // campanha de mutação (16/10/2026):** estreitar `panoramaDaConta()` para as AO VIVO
+        // sobreviveu a TODAS as asserções acima, porque as contagens de motivo da fixture
+        // vinham da oferta ao vivo e a soma continuava > 0.
+        //
+        // O que discrimina é a **BUSCA**: ela é resolvida sobre o MESMO panorama. Uma oferta
+        // `preparando` existe no recorte DA CONTA e não no das ao vivo — então buscar pelo
+        // nome dela ACHA (1) com o panorama certo e NÃO ACHA (0) com o panorama estreitado.
+        //
+        // ⚠️ `etapa=todas` de propósito: a `preparando` não está em nenhuma etapa ao vivo, e o
+        // que se mede aqui é o PANORAMA, não a etapa.
+        $soAPreparando = $this->propsDaFila($admin, $company, ['busca' => 'Zyx Exclusiva']);
+        $this->assertSame(
+            1,
+            $soAPreparando['contagem']['exibidas'],
+            'a busca não achou a oferta `preparando`: o panorama da conta foi ESTREITADO '
+            .'(e com ele as 8 contagens de motivo e o filtro por motivo também seriam).',
+        );
+        $this->assertSame(3, $soAPreparando['contagem']['total'], 'o M mudou com a busca — ele é o total da CONTA');
+        $this->assertTrue($soAPreparando['algum_filtro']);
+
+        // ⚠️ ISCA: a busca SABE recusar — termo impossível devolve 0, então o `1` acima não
+        // veio de uma busca que ignora o termo.
+        $nenhuma = $this->propsDaFila($admin, $company, ['busca' => 'termo-que-nao-existe-zz']);
+        $this->assertSame(0, $nenhuma['contagem']['exibidas'], 'a busca não recorta nada — ela está ignorando o termo');
+        $this->assertSame(3, $nenhuma['contagem']['total']);
 
         // ⚠️ E o nome vem SEM `iniciais` (IDENT-08: quem as deriva é `identidade.js`).
         $this->assertSame(['id', 'nome', 'total'], array_keys($props['opcoes']['responsaveis'][0]), 'a forma da opção de responsável mudou');

@@ -108,7 +108,7 @@ custo-do-ml  php  test_CUSTO_(uma_requisicao_por_trio_distinto_com_isca_nas_duas
 # querystring tudo volta no default e `algum_filtro` é FALSO; valor forjado é
 # descartado sem zerar a lista; e `?oferta=` NÃO conta como filtro (senão abrir
 # uma oferta faria "Limpar filtros" aparecer).
-filtros-na-url  php  test_(recarregar_com_a_querystring_devolve_o_MESMO_recorte_nas_props_187_06|a_oferta_na_url_NAO_conta_como_filtro_187_06)  ::  tests=2 assertions=41
+filtros-na-url  php  test_(recarregar_com_a_querystring_devolve_o_MESMO_recorte_nas_props_187_06|a_oferta_na_url_NAO_conta_como_filtro_187_06)  ::  tests=2 assertions=48
 
 # ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
 
