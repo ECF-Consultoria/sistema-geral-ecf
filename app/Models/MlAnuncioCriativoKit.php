@@ -268,7 +268,12 @@ class MlAnuncioCriativoKit extends Model
 
         $novo = match (true) {
             $rodando > 0           => self::STATUS_GERANDO,
-            $pendentes === $total  => self::STATUS_PLANEJADO,
+            // Quick 261016-ibm: todos `pendente` num kit que JÁ foi mandado gerar é "despachado,
+            // esperando o worker pegar" — não "planejado". Regredir aqui fazia a tela, que relê o
+            // status logo depois do "Gerar agora", receber `planejado`/`em_andamento=false`, não
+            // ligar o polling e pedir o clique de novo. Kit que nunca começa cai em
+            // `encerrarSeTravado()` (LIMITE_MINUTOS), como qualquer outro `gerando`.
+            $pendentes === $total  => $this->status === self::STATUS_GERANDO ? self::STATUS_GERANDO : self::STATUS_PLANEJADO,
             $erros === $total      => self::STATUS_ERRO,
             $prontos === $total    => self::STATUS_PRONTO,
             ($prontos + $erros) === $total && $prontos > 0 && $erros > 0 => self::STATUS_PARCIAL,

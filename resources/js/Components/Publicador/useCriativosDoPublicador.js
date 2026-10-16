@@ -159,7 +159,11 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
         setErro(null);
 
         try {
-            await axios.post(rota('criativos.kit.gerar', produtoId, { kit: kit.kit_id }));
+            const { data } = await axios.post(rota('criativos.kit.gerar', produtoId, { kit: kit.kit_id }));
+            // Quick 261016-ibm: aplica já o que o servidor respondeu (`gerando`) — é o que liga o
+            // polling. Sem isto a tela dependia só da releitura abaixo, e uma releitura que chegue
+            // antes de o worker pegar o primeiro job devolvia o botão "Gerar agora" de novo.
+            if (data?.status) setKit((k) => (k ? { ...k, status: data.status, em_andamento: data.status === 'gerando' || data.status === 'planejando' } : k));
             await relerKit();
         } catch (e) {
             setErro(e?.response?.data?.erros?.[0]?.mensagem ?? mensagemDe(e));

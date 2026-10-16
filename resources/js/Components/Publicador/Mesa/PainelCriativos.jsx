@@ -294,7 +294,14 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                                 <Upload size={14} /> Enviar foto do computador
                             </button>
                             <input ref={arquivoRef} type="file" accept="image/jpeg,image/png" multiple className="hidden"
-                                onChange={(e) => { setArquivos((a) => [...a, ...Array.from(e.target.files ?? [])]); e.target.value = ''; }} />
+                                onChange={(e) => {
+                                    // Quick 261016-ibm: copia ANTES de limpar o input — o updater do
+                                    // `setArquivos` pode rodar depois do `value = ''`, e aí a lista já
+                                    // está vazia (a foto escolhida sumia sem aviso).
+                                    const novos = Array.from(e.target.files ?? []);
+                                    setArquivos((a) => [...a, ...novos]);
+                                    e.target.value = '';
+                                }} />
                         </div>
                         {arquivos.length > 0 && (
                             <div className="space-y-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-2" data-arquivos-escolhidos={arquivos.length}>
