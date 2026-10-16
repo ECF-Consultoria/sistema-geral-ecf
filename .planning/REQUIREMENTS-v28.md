@@ -136,7 +136,7 @@ Credenciais do R2: o usuário as coloca no `.env` quando pedido — **nunca cola
 - [x] **MIG-02** — Comando idempotente local → R2 que confere sha256 e tamanho, retoma de onde parou e não
   duplica.
 - [x] **MIG-03** — Arquivos locais preservados por 30 dias após a migração; rollback = voltar `IMAGENS_DISK`.
-- [ ] **MIG-04** — Validação pós-migração: acervo e rascunhos exibem tudo; anúncios publicados não mudam.
+- [x] **MIG-04** — Validação pós-migração: acervo e rascunhos exibem tudo; anúncios publicados não mudam.
 
 ### RET — Retenção e custo
 
