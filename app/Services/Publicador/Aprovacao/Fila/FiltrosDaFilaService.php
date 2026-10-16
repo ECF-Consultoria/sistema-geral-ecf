@@ -21,6 +21,14 @@ use Illuminate\Http\Request;
  *
  * | recorte            | o que é                                              | medido no protótipo |
  * |--------------------|------------------------------------------------------|---------------------|
+ * ⚠️ **ESTE SERVIÇO NÃO MONTA O RECORTE POR CONTA — ele o RECEBE.** Todos os métodos que
+ * consultam recebem um `Builder` sobre `pub_aprovacao_ofertas` que veio de
+ * `FilaDeAprovacaoService::paraAConta()`, e é lá que vive a trava T-186-14: aquele método
+ * **LANÇA** `RegraViolada` quando as duas âncoras de conta são nulas, porque quem não sabe de que
+ * conta fala **não recebe a fila**. Reconstruir o `where('company_id', …)` aqui criaria uma
+ * segunda verdade — e uma que pode nascer SEM a trava, já que as duas colunas de conta são
+ * anuláveis por construção (ver a §5 da migration `2026_10_15_100200_…`).
+ *
  * | **da conta**       | TODAS as ofertas da conta, **zero filtro**            | `all` (`:1208`)     |
  * | **base**           | todos os filtros **MENOS** a etapa                    | `base` (`:1210`)    |
  * | **lista**          | a `base` **mais** a etapa                             | `list` (`:1214`)    |
