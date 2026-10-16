@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
+import { Check, Loader2, RefreshCw, Sparkles, Upload, X, ZoomIn } from 'lucide-react';
 import { BotaoAcao } from './botoes';
 import { AREA, LINK } from './comum';
+import ImagemAmpliada from './ImagemAmpliada';
 
 // ─── Painel do kit de criativos por IA (Fase 165, D-08) ─────────────────────
 //
@@ -83,6 +84,7 @@ function Estrategia({ estrategia }) {
  */
 function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
     const [confirmandoRisco, setConfirmandoRisco] = useState(false);
+    const [ampliada, setAmpliada] = useState(false);
     const ocupado = disabled || !! c.processando;
     const emAndamento = c.processando === `aprovar-${s.indice}` || c.processando === `regenerar-${s.indice}`;
     // Quick 261016-lu1: `regeneracoes_restantes` null = sem limite (kit do Publicador).
@@ -97,7 +99,15 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
             <p className="text-[11px] font-normal text-white/50">{textoSeguro(s.objetivo)}</p>
 
             {s.imagem_url ? (
-                <img src={s.imagem_url} alt={textoSeguro(s.rotulo) ?? ''} loading="lazy" className="w-full rounded object-cover" />
+                // Quick 261016-mgv: a imagem gerada amplia em tela cheia para ver os detalhes.
+                <button type="button" onClick={() => setAmpliada(true)} data-ampliar-slot={s.indice}
+                    aria-label={`Ampliar a imagem ${s.indice}${textoSeguro(s.rotulo) ? ` — ${textoSeguro(s.rotulo)}` : ''}`}
+                    className="group relative block w-full cursor-zoom-in rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
+                    <img src={s.imagem_url} alt={textoSeguro(s.rotulo) ?? ''} loading="lazy" className="w-full rounded object-cover" />
+                    <span aria-hidden="true" className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-md bg-black/60 text-white/80 group-hover:text-white">
+                        <ZoomIn size={14} />
+                    </span>
+                </button>
             ) : (
                 <p className="text-[11px] font-normal text-white/50">
                     {s.status === 'pendente' && 'Na fila'}
@@ -171,6 +181,7 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
                     </p>
                 </div>
             )}
+            {ampliada && s.imagem_url && <ImagemAmpliada url={s.imagem_url} rotulo={`${s.indice}. ${textoSeguro(s.rotulo) ?? 'Imagem gerada'}`} onFechar={() => setAmpliada(false)} />}
         </div>
     );
 }

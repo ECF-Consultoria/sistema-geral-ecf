@@ -244,9 +244,15 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
 
     const limparErro = () => setErro(null);
 
-    // Polling — só enquanto o kit está em andamento; para sozinho (kit terminado, 404 ou teto de tempo).
+    // Quick 261016-mgv: o kit vira `pronto` assim que a imagem sai, mas o JUIZ ainda está validando —
+    // e pode até regenerar sozinho. Parar aí deixava "Validando automaticamente…" na tela até um F5.
+    // O servidor encerra validação perdida em LIMITE_VALIDACAO_MINUTOS, então isto sempre termina.
+    const acompanhando = !! kit?.em_andamento || (Array.isArray(kit?.slots) && kit.slots.some((s) => s?.validacao_status === 'pendente'));
+
+    // Polling — enquanto o kit está em andamento OU alguma imagem está em validação; para sozinho
+    // (kit terminado, 404 ou teto de tempo).
     useEffect(() => {
-        if (! kit?.em_andamento) {
+        if (! acompanhando) {
             desde.current = null;
 
             return undefined;
@@ -279,7 +285,7 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
         }, INTERVALO);
 
         return () => { vivo = false; clearInterval(t); };
-    }, [kit?.kit_id, kit?.em_andamento, produtoId]);
+    }, [kit?.kit_id, acompanhando, produtoId]);
 
     // Retomada: troca de produto ou F5 na mesma aba — o alvo guardado reabre o painel; a
     // instância é reivindicada pelo próprio bloco quando ele montar (`reivindicar`).
