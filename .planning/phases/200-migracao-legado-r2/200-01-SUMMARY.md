@@ -61,3 +61,19 @@ Medido na VPS em `storage/app/private` (antes do deploy da v28.0):
   0 sem dono.
 - **`acervo:limpar-geracoes` (simulação):** 0 gerações não aprovadas com mais de 30 dias.
 - **Credenciais R2:** todas AUSENTES no `.env` da VPS — próximo passo é do usuário.
+
+## Virada em produção — 16/10/2026 (aprovada pelo usuário: "as 3 etapas em sequência")
+
+1. Credenciais R2 no `.env` da VPS (bucket `ecfadmin`, prefixo `production`). Primeiro teste: `AccessDenied` — a
+   VPS sai também por **IPv6** (`2a02:4780:75:7408::1`) e o token tinha filtro de IP; o usuário ajustou o token e
+   `imagens:testar-conexao --disco=r2` passou (gravou, leu, conferiu sha256, apagou).
+2. `acervo:registrar-existentes`: 49 ativos (43 fotos + 6 criativos antigos), 13 usos ligados a ativo existente;
+   segunda rodada vazia. Reconsulta: 49 disponíveis, 0 fotos com arquivo sem ativo.
+3. `IMAGENS_DISK=r2` + `config:cache` + `queue:restart` (backup do `.env` antes). Fotos novas gravam no R2.
+4. `acervo:migrar-para-r2 --aplicar`: 49 migrados, 52,3 MB, 0 sha divergente, 0 falha. **Conferido por
+   reconsulta:** 49/49 objetos no R2 com tamanho igual ao registrado; 0 usos fora do caminho do ativo; 56/56 usos
+   legíveis por `ArquivosDeImagem`; nova rodada encontra 0 a migrar.
+
+Arquivos locais preservados (`caminhos_legados`). **Limpeza local a partir de 15/11/2026:**
+`acervo:limpar-local-migrado` (simulação) → `--aplicar`. **MIG-04 falta só o olho humano na tela** (acervo e
+fotos de um rascunho no navegador).

@@ -132,10 +132,10 @@ Credenciais do R2: o usuário as coloca no `.env` quando pedido — **nunca cola
 
 ### MIG — Migração do legado
 
-- [ ] **MIG-01** — Inventário de produção somente leitura (volume e contagem por pasta) antes de migrar.
-- [ ] **MIG-02** — Comando idempotente local → R2 que confere sha256 e tamanho, retoma de onde parou e não
+- [x] **MIG-01** — Inventário de produção somente leitura (volume e contagem por pasta) antes de migrar.
+- [x] **MIG-02** — Comando idempotente local → R2 que confere sha256 e tamanho, retoma de onde parou e não
   duplica.
-- [ ] **MIG-03** — Arquivos locais preservados por 30 dias após a migração; rollback = voltar `IMAGENS_DISK`.
+- [x] **MIG-03** — Arquivos locais preservados por 30 dias após a migração; rollback = voltar `IMAGENS_DISK`.
 - [ ] **MIG-04** — Validação pós-migração: acervo e rascunhos exibem tudo; anúncios publicados não mudam.
 
 ### RET — Retenção e custo
