@@ -242,21 +242,30 @@ class RegenerarEAprovarKitTest extends TestCase
         }
     }
 
-    public function test_teto_de_regeneracoes_por_imagem_devolve_422_com_motivo_do_teto(): void
+    /**
+     * Era `test_teto_de_regeneracoes_por_imagem_devolve_422_com_motivo_do_teto`. Quick 261016-lu1 —
+     * decisão do usuário: o kit do Publicador não tem mais teto (as regenerações automáticas do juiz
+     * consumiam a cota inteira sem nenhum clique — kit 17, produto 53). O teto do assistente antigo
+     * continua coberto pelos testes da Fase 161/162.
+     */
+    public function test_sem_teto_no_publicador_regenera_mesmo_com_todas_as_cotas_antigas_estouradas(): void
     {
         $kit = $this->kitProntoDoPublicador('GENERAL', 3);
-        $slot = $kit->slots()->where('slot_indice', 1)->first();
+        $kit->update([
+            'imagens_geradas' => MlAnuncioCriativoKit::MAX_IMAGENS,
+            'regeneracoes' => MlAnuncioCriativoKit::MAX_REGENERACOES_KIT,
+            'regeneracoes_automaticas' => MlAnuncioCriativoKit::MAX_REGENERACOES_KIT,
+        ]);
+        $slot = $kit->slots()->where('slot_indice', 2)->first();
         $slot->update(['regeneracoes' => MlAnuncioCriativoKit::MAX_REGENERACOES_ASSET]);
         $admin = $this->admin();
 
-        $resp = $this->actingAs($admin)->postJson($this->rotaRegenerar($kit->id, 1));
+        $resp = $this->actingAs($admin)->postJson($this->rotaRegenerar($kit->id, 2));
 
-        $resp->assertStatus(422);
-        $resp->assertJsonPath(
-            'erros.0.mensagem',
-            'Este slot já atingiu o limite de ' . MlAnuncioCriativoKit::MAX_REGENERACOES_ASSET . ' regenerações.',
-        );
-        $this->assertSame((int) MlAnuncioCriativoKit::MAX_REGENERACOES_ASSET, $slot->fresh()->regeneracoes);
+        $resp->assertStatus(202);
+        $resp->assertJsonPath('regeneracoes_restantes', null);
+        $this->assertSame((int) MlAnuncioCriativoKit::MAX_REGENERACOES_ASSET + 1, $slot->fresh()->regeneracoes);
+        $this->assertNull($kit->fresh()->motivoDoTeto());
     }
 
     // ═══ Kit fechado ou sem referência viva — nunca sobe contador nem despacha job ═══

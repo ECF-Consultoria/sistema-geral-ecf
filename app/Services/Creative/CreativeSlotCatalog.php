@@ -79,8 +79,10 @@ class CreativeSlotCatalog
         .'de régua (ex.: "TAMANHO DO PRODUTO"). Ao lado do cabeçalho, a lista das medidas com marcadores '
         .'quadrados. Produto centralizado, em ângulo que mostre bem suas dimensões, com linhas de cota '
         .'finas sobre ele — seta nas duas pontas de cada linha, valor da medida rotulado ao lado. '
-        .'Miniatura do produto em outro ângulo no canto superior. Tipografia sans-serif, texto escuro '
-        .'sobre fundo claro.';
+        // Quick 261016-lu1: esta frase pedia "miniatura do produto em outro ângulo no canto
+        // superior" — e o modelo obedecia em toda imagem de medidas. O usuário não quer a miniatura.
+        .'O produto aparece UMA única vez na imagem: sem miniatura, sem segunda vista e sem detalhe '
+        .'ampliado em nenhum canto. Tipografia sans-serif, texto escuro sobre fundo claro.';
 
     /**
      * Layout da imagem de TÓPICOS (quick 261007-amb), inspirado noutro

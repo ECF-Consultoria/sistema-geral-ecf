@@ -319,7 +319,11 @@ class KitIdempotenciaTest extends TestCase
         $resp->assertJsonPath('erros.0.mensagem', 'O planejamento deste kit ainda não terminou — aguarde antes de gerar as imagens.');
     }
 
-    public function test_gerar_com_teto_atingido_devolve_422(): void
+    /**
+     * Era `test_gerar_com_teto_atingido_devolve_422`. Quick 261016-lu1 — decisão do usuário: o kit
+     * do Publicador não tem teto de imagens; o teto do assistente antigo segue nos testes da 161.
+     */
+    public function test_gerar_no_publicador_nao_e_barrado_pelo_teto_antigo_de_imagens(): void
     {
         $kit = $this->kitDePlanejadoPendente();
         $kit->update(['imagens_geradas' => MlAnuncioCriativoKit::MAX_IMAGENS]);
@@ -327,7 +331,7 @@ class KitIdempotenciaTest extends TestCase
 
         $resp = $this->actingAs($admin)->postJson($this->rotaGerar($kit->id));
 
-        $resp->assertStatus(422);
+        $resp->assertStatus(202);
     }
 
     public function test_gerar_com_trabalho_em_andamento_devolve_202_enfileirados_zero(): void
