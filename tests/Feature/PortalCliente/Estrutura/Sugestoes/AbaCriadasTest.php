@@ -3,11 +3,16 @@
 namespace Tests\Feature\PortalCliente\Estrutura\Sugestoes;
 
 use App\Models\Company;
+use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
+use App\Models\MlAcervoItem;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\Geracao\OfertasCriadas;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
+use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -78,7 +83,7 @@ class AbaCriadasTest extends TestCase
 
         $doCombo = $r['grupos'][0]['itens'][0];
         $this->assertSame([$combo->id, 'NINA-CB2', 'Combo 2 Nina', 'combo'], [$doCombo['id'], $doCombo['sku'], $doCombo['nome'], $doCombo['fase']]);
-        $this->assertSame([['id' => $nina->id, 'sku' => 'NINA', 'nome' => 'Produto NINA', 'quantidade' => 2]], $doCombo['composicao']);
+        $this->assertSame([['id' => $nina->id, 'sku' => 'NINA', 'nome' => 'Produto NINA', 'quantidade' => 2, 'foto' => null]], $doCombo['composicao'], 'sem galeria e sem anúncio: sem foto');
         // O envio é o da Precificação: as duas caixas somadas passam do limite e viram ME1.
         $this->assertSame(LogisticaProduto::ME1, $doCombo['envio']['chave']);
         $this->assertSame(['c' => 53.0, 'l' => 60.0, 'a' => 160.0, 'peso' => 16.0], $doCombo['envio']['pacote']);
@@ -89,6 +94,39 @@ class AbaCriadasTest extends TestCase
         $this->assertSame(['NINA', 'MESA'], array_column($doKit['composicao'], 'sku'));
         $this->assertSame('sem_custo', $doKit['pendencia'], 'a mesa não tem custo: o do kit não fecha');
         $this->assertFalse($doKit['sem_calculo']);
+    }
+
+    /**
+     * 16/10/2026 — "não dá para saber quais são os produtos, quais foram os kits… visualmente pela foto". Cada
+     * componente leva a foto: a capa da galeria (ordem 0, como na lista de Produtos) e, sem galeria, a miniatura
+     * do anúncio ATIVO no acervo. Tudo do banco: nenhuma chamada ao Mercado Livre (o Http::fake do setUp estoura).
+     */
+    public function test_cada_componente_leva_a_foto_capa_da_galeria_ou_miniatura_do_acervo(): void
+    {
+        [$empresa, $nina, $mesa] = $this->cenario();
+        $variacao = EstruturaProdutoVariacao::findOrFail($nina->variacao_id);
+        $imagem = fn (int $ordem) => EstruturaProdutoVariacaoImagem::create([
+            'company_id' => $empresa->id, 'produto_id' => $variacao->produto_id, 'variacao_id' => $variacao->id,
+            'caminho' => "teste/{$ordem}.jpg", 'nome_original' => "{$ordem}.jpg", 'mime' => 'image/jpeg', 'tamanho' => 10, 'ordem' => $ordem,
+        ]);
+        $imagem(1);                 // gravada primeiro, mas não é a capa
+        $capa = $imagem(0);
+
+        // A mesa não tem galeria: vale a miniatura do anúncio ativo; a do inativo, não.
+        EstruturaAnuncio::create(['oferta_id' => $mesa->id, 'tipo' => 'classico', 'status' => 'inativo', 'codigo_mlb' => 'MLB9', 'titulo' => 'x']);
+        EstruturaAnuncio::create(['oferta_id' => $mesa->id, 'tipo' => 'premium', 'status' => 'ativo', 'codigo_mlb' => 'MLB2', 'titulo' => 'x']);
+        foreach (['MLB9' => 'velha', 'MLB2' => 'D_2-I'] as $mlb => $arquivo) {
+            MlAcervoItem::create(['company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => 'Mesa', 'listing_type_id' => 'gold_special',
+                'status' => 'active', 'thumbnail' => "http://http2.mlstatic.com/{$arquivo}.jpg"]);
+        }
+
+        $r = app(OfertasCriadas::class)->listar($empresa);
+        $urlDaCapa = VariacaoImagensService::url($variacao->id, $capa->id);
+
+        $this->assertSame([$urlDaCapa], array_column($r['grupos'][0]['itens'][0]['composicao'], 'foto'), 'Combo: a capa da galeria');
+        $this->assertSame([$urlDaCapa, 'https://http2.mlstatic.com/D_2-I.jpg'], array_column($r['grupos'][1]['itens'][0]['composicao'], 'foto'),
+            'Kit: a capa da poltrona e, para a mesa sem galeria, a miniatura do anúncio ativo, já em https');
+        $this->assertSame([$urlDaCapa, 'https://http2.mlstatic.com/D_2-I.jpg'], array_column($r['grupos'][2]['itens'][0]['composicao'], 'foto'), 'Combit: as mesmas');
     }
 
     public function test_a_pagina_traz_a_contagem_em_toda_aba_e_a_lista_so_na_aba_criadas(): void

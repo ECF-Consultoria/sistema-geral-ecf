@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { rotuloDaPendencia, textoDeQuantasCriadas } from '../../resources/js/lib/sugestoesCriadas.js';
+import { pecasDaVitrine, resumoDasCriadas, rotuloDaPendencia, tamanhoDaPeca, textoDeQuantasCriadas } from '../../resources/js/lib/sugestoesCriadas.js';
 import { controlesDaAba, filtrosDaAba } from '../../resources/js/lib/sugestoesEstrutura.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -50,16 +50,19 @@ async function montar(relativo) {
     }
 }
 
+const FOTO_NINA = '/portal/estrutura/produtos/variacoes/9/imagens/41';
 const COMBO = {
     id: 571, sku: 'poltrona-nina-CB2', nome: 'Combo 2 Poltrona Nina — Cinza', fase: 'combo', pendencia: 'sem_frete', sem_calculo: false,
-    composicao: [{ id: 566, sku: 'poltrona-nina', nome: 'Poltrona Nina', quantidade: 2 }],
+    composicao: [{ id: 566, sku: 'poltrona-nina', nome: 'Poltrona Nina', quantidade: 2, foto: FOTO_NINA }],
     envio: { chave: 'me1', pacote: { c: 53, l: 60, a: 160, peso: 16 }, somado: true, volumes: 2, sem_medida: [], declarada: null, modalidade: 'drop_off',
         estouros: [{ medida: 'maior', valor: 160, limite: 100 }] },
+    preco: { classico: null, premium: null },
 };
 const KIT = {
     id: 580, sku: 'NINA+MESA', nome: 'Kit Nina e Mesa', fase: 'kit', pendencia: null, sem_calculo: false,
-    composicao: [{ id: 566, sku: 'poltrona-nina', nome: 'Poltrona Nina', quantidade: 1 }, { id: 525, sku: 'MESA-RD', nome: 'Mesa Redonda', quantidade: 1 }],
+    composicao: [{ id: 566, sku: 'poltrona-nina', nome: 'Poltrona Nina', quantidade: 1, foto: FOTO_NINA }, { id: 525, sku: 'MESA-RD', nome: 'Mesa Redonda', quantidade: 1, foto: null }],
     envio: { chave: 'me2', pacote: { c: 60, l: 60, a: 90, peso: 20 }, somado: true, volumes: 2, estouros: [], sem_medida: [], declarada: null, modalidade: 'drop_off' },
+    preco: { classico: 989.92, premium: 1133.39 },
 };
 const CRIADAS = { total: 2, mostrando: 2, grupos: [{ fase: 'combo', rotulo: 'Combos', itens: [COMBO] }, { fase: 'kit', rotulo: 'Kits', itens: [KIT] }] };
 
@@ -82,6 +85,20 @@ test('quantas foram criadas; acima do teto avisa onde está a lista inteira', ()
     assert.equal(textoDeQuantasCriadas(null), '0 criadas');
 });
 
+test('o resumo do topo conta as com preço e as com pendência do que está na tela', () => {
+    assert.deepEqual(resumoDasCriadas(CRIADAS), { comPreco: 1, pendentes: 1 });
+    assert.deepEqual(resumoDasCriadas({ grupos: [{ itens: [KIT, KIT, { ...KIT, sem_calculo: true }] }] }), { comPreco: 2, pendentes: 1 }, 'sem cálculo é pendência');
+    assert.deepEqual(resumoDasCriadas(null), { comPreco: 0, pendentes: 0 });
+});
+
+test('a vitrine: foto grande no Combo, menores conforme o kit cresce, e "+N" passando de 4 peças', () => {
+    assert.deepEqual([1, 2, 3, 4, 5].map(tamanhoDaPeca), [132, 108, 76, 56, 56]);
+    const seis = [1, 2, 3, 4, 5, 6].map((id) => ({ id, quantidade: 1 }));
+    assert.deepEqual(pecasDaVitrine(seis.slice(0, 4)), { pecas: seis.slice(0, 4), resto: 0 }, 'quatro cabem inteiras');
+    assert.deepEqual(pecasDaVitrine(seis), { pecas: seis.slice(0, 3), resto: 3 });
+    assert.deepEqual(pecasDaVitrine(undefined), { pecas: [], resto: 0 });
+});
+
 test('a aba Criadas não usa nenhum filtro da barra e abre com a URL limpa', () => {
     assert.deepEqual(controlesDaAba('criadas'), { busca: false, familia: false, fase: false, tipo: false, status: false });
     assert.deepEqual(filtrosDaAba({ fase: 'kit', familia: '12', q: 'nina', status: 'prontas' }, 'criadas'), { aba: 'criadas' });
@@ -97,23 +114,47 @@ test('PainelCriadas: por tipo, com do que é feito, o envio, o preço e os dois 
     const html = renderToStaticMarkup(React.createElement(PainelCriadas, { criadas: CRIADAS }));
 
     assert.match(html, /data-criadas-total="true"[^>]*>2 criadas</);
+    assert.match(html, /data-criadas-com-preco="true"[\s\S]*?<\/span> 1 com preço</);
+    assert.match(html, /data-criadas-pendentes="true"[\s\S]*?<\/span> 1 com pendência</);
     assert.ok(html.indexOf('data-grupo-criadas="combo"') < html.indexOf('data-grupo-criadas="kit"'), 'Combos antes de Kits');
     assert.match(html, />Combos <span[^>]*>1<\/span>/);
+    assert.match(html, /o mesmo produto em mais unidades/);
 
     const combo = html.match(/<li[^>]*data-criada="571"[\s\S]*?<\/li>/)[0];
     assert.match(combo, />poltrona-nina-CB2</);
-    assert.match(combo, /data-preco="sem_frete"[^>]*>Falta o frete</);
+    assert.match(combo, /data-tipo="true"[\s\S]*?Combo</);
+    // A vitrine: UMA foto, empilhada, com o selo "2×".
+    assert.equal([...combo.matchAll(/data-peca="/g)].length, 1);
+    assert.match(combo, /data-peca="566" data-quantidade="2"/);
+    assert.match(combo, new RegExp(`<img src="${FOTO_NINA}" alt="Poltrona Nina"`));
+    assert.match(combo, /data-qtd="true">2<!-- -->×<|data-qtd="true">2×</);
+    assert.match(combo, /data-preco="sem_frete"[\s\S]*?Falta o frete</);
     assert.match(combo, />2× poltrona-nina</);
-    assert.match(combo, /data-envio="me1"/);
-    assert.match(combo, /Fora do Mercado Envios \(ME1\)<\/span> · Pacote somado \(2 caixas\): 53 × 60 × 160 cm · 16 kg/);
-    assert.match(combo, /passa do limite: maior lado 160 cm \(máx\. 100\)/);
+    // O envio é o selo curto; o texto inteiro vai no balão.
+    assert.match(combo, /title="Fora do Mercado Envios \(ME1\) · Pacote somado \(2 caixas\): 53 × 60 × 160 cm · 16 kg · passa do limite: maior lado 160 cm \(máx\. 100\)" data-envio="me1"/);
+    assert.match(combo, /data-envio="me1">[\s\S]*?ME1</);
     assert.match(combo, /<a href="\/portal\.auth\.estrutura\.mapeamento\?abrir=571"[^>]*data-acao="editar-criada"/);
-    assert.match(combo, /<a href="\/portal\.auth\.estrutura\.precificacao\?q=poltrona-nina-CB2"[^>]*data-acao="precificar-criada"/);
+    assert.match(combo, /<a href="\/portal\.auth\.estrutura\.precificacao\?q=poltrona-nina-CB2"[^>]*data-acao="precificar-criada"[^>]*>Completar preço/);
+    assert.match(combo, /bg-ecf-yellow[^"]*"[^>]*data-acao="precificar-criada"/, 'pendente: o atalho do preço fica amarelo');
 
     const kit = html.match(/<li[^>]*data-criada="580"[\s\S]*?<\/li>/)[0];
-    assert.match(kit, /data-preco="ok"[^>]*>Com preço</);
+    // Duas peças lado a lado, sem selo de quantidade (uma de cada); a mesa sem foto mostra o código.
+    assert.equal([...kit.matchAll(/data-peca="/g)].length, 2);
+    assert.doesNotMatch(kit, /data-qtd/);
+    assert.match(kit, /data-sem-foto="true"[\s\S]*?MESA-RD</);
+    assert.match(kit, /data-preco="ok"[\s\S]*?Clássico[\s\S]*?R\$\s989,92[\s\S]*?Premium[\s\S]*?R\$\s1\.133,39/);
     assert.match(kit, />1× poltrona-nina<[\s\S]*>1× MESA-RD</);
+    assert.match(kit, /data-acao="precificar-criada">Preço/);
     assert.doesNotMatch(kit, /passa do limite/, 'dentro do envio padrão não há motivo a mostrar');
+});
+
+test('PainelCriadas: kit de 6 componentes mostra 3 fotos e "+3"', async () => {
+    const { default: PainelCriadas } = await montar(`${DIR}/PainelCriadas.jsx`);
+    const composicao = [1, 2, 3, 4, 5, 6].map((id) => ({ id, sku: `P${id}`, nome: `Produto ${id}`, quantidade: 1, foto: null }));
+    const html = renderToStaticMarkup(React.createElement(PainelCriadas, { criadas: { total: 1, mostrando: 1, grupos: [{ fase: 'kit', rotulo: 'Kits', itens: [{ ...KIT, composicao }] }] } }));
+
+    assert.equal([...html.matchAll(/data-peca="/g)].length, 3);
+    assert.match(html, /data-resto="true">\+<!-- -->3<|data-resto="true">\+3</);
 });
 
 test('PainelCriadas vazio: diz que o que for aceito ou montado fica ali', async () => {
@@ -146,4 +187,7 @@ test('a página liga a aba: recebe `criadas`, esconde o resumo e os filtros nela
     assert.match(pagina, /const ehAbaCriadas = sugestoes\.aba === 'criadas';/);
     assert.match(pagina, /\{sugestoes\.tem_produtos && ! ehAbaCriadas && \(/);
     assert.match(pagina, /\{ehAbaCriadas && <PainelCriadas criadas=\{criadas\} \/>\}/);
+    // 16/10: o subtítulo fala do que está na aba, e o "Atualizado" (das sugestões) sai dela.
+    assert.match(pagina, /ehAbaCriadas\s*\?\s*'Os combos, kits e combits que você já criou, com o preço e o que falta em cada um\.'/);
+    assert.match(pagina, /\{textoDeAtualizacao && ! ehAbaCriadas && \(/);
 });
