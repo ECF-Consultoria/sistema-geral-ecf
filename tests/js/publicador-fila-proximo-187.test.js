@@ -11,7 +11,7 @@ import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 05 — A FAIXA "PRÓXIMO A REVISAR": a regra de TRÊS DEGRAUS
-// chegando pronta do servidor, a geometria de `:54`-`:61` e o botão que nunca
+// chegando pronta do servidor, a geometria de `:54`-`:62` e o botão que nunca
 // nasce sem destino (FILA-04, AND-05, AND-10, FID-01..04, REND-01..03).
 //
 // ⚠️⚠️ PROTÓTIPO DE AUTORIDADE: `design_handoff_publicador/Aprovacao.dc.html`
@@ -29,13 +29,13 @@ import { lerSemComentarios } from './_fonte.js';
 //   eyebrow         :56     :57   ⚠️
 //   nome            :57     :58   ⚠️
 //   sub             :58     :59   ⚠️
-//   estado + dot    :59     :60   ⚠️
-//   botão           :60     :61   ⚠️
+//   estado + dot    :59     :61   ⚠️ (+2: `:60` fecha a coluna)
+//   botão           :60     :62   ⚠️ (+2)
 //   `nextO`/`descr`/`next`  :1222/:1223/:1224  →  :1220/:1221/:1222  ⚠️
 //   `wait(m)`       —       :1054
 //
 // ⚠️⚠️ OMISSÃO MEDIDA NA TABELA DO PLANO: o botão declara `white-space:nowrap`
-// (a PRIMEIRA propriedade de `:61`) e a classe prescrita no plano não a tem. A
+// (a PRIMEIRA propriedade de `:62`) e a classe prescrita no plano não a tem. A
 // tabela de fidelidade deste projeto não erra VALOR: erra por OMISSÃO e por
 // REFERÊNCIA — e aqui foi por omissão.
 //
@@ -425,7 +425,7 @@ test('FID-01 — a geometria da faixa, elemento por elemento, por ÁRVORE', asyn
         assertClasses(tagDoElementoComTexto(HTML, DO_SERVIDOR.sub, 'span'), CL_SUB, 'sub');
     });
 
-    await contexto.test('o estado (`:60`): `ml-auto`, gap 7px, 12.5px/500 e `nowrap`', () => {
+    await contexto.test('o estado (`:61`): `ml-auto`, gap 7px, 12.5px/500 e `nowrap`', () => {
         // ⚠️⚠️ POR ÍNDICE ABSOLUTO, e NÃO por `tagQueEnvolve(texto)`: o bloco do
         // estado tem o DOT como primeiro filho, então `lastIndexOf('<span')`
         // antes do texto devolve a tag do DOT — o IRMÃO ERRADO. Foi medido nesta
@@ -438,7 +438,7 @@ test('FID-01 — a geometria da faixa, elemento por elemento, por ÁRVORE', asyn
         assert.ok(HTML.indexOf(DO_SERVIDOR.estado) > indiceDaTag(HTML, 'span', 5), 'o índice 5 não é o bloco do estado');
     });
 
-    await contexto.test('o dot (`:60`): 7×7 redondo, e ele está DENTRO do bloco do estado', () => {
+    await contexto.test('o dot (`:61`): 7×7 redondo, e ele está DENTRO do bloco do estado', () => {
         // ⚠️ Por ÁRVORE com índice absoluto: 1=miniatura, 2=eyebrow, 3=nome,
         // 4=sub, 5=estado, 6=dot. Localizar pela lista de classes pegaria o
         // irmão errado se outro elemento compartilhasse as mesmas classes.
@@ -449,16 +449,16 @@ test('FID-01 — a geometria da faixa, elemento por elemento, por ÁRVORE', asyn
         assert.equal(atributo(tagEm(HTML, iDot), 'aria-hidden'), 'true', 'o dot não é decorativo para o leitor de tela');
     });
 
-    await contexto.test('⚠️ o botão (`:61`): 36px, raio 9px, amarelo, `cursor-pointer` E `whitespace-nowrap`', () => {
+    await contexto.test('⚠️ o botão (`:62`): 36px, raio 9px, amarelo, `cursor-pointer` E `whitespace-nowrap`', () => {
         const tag = tagEm(HTML, indiceDaTag(HTML, 'button', 1));
         assertClasses(tag, CL_BOTAO, 'botão');
         assert.equal(atributo(tag, 'type'), 'button', 'o botão sem `type` submete formulário por padrão');
 
         // ⚠️ `cursor:pointer` foi OMITIDO onze vezes numa única fase deste
         // projeto. A asserção é própria, não só parte do conjunto.
-        assert.ok(classesDa(tag).includes('cursor-pointer'), 'o `cursor-pointer` do botão (`:61`) saiu');
+        assert.ok(classesDa(tag).includes('cursor-pointer'), 'o `cursor-pointer` do botão (`:62`) saiu');
         // ⚠️ E o `white-space:nowrap`, que a TABELA DO PLANO omitiu.
-        assert.ok(classesDa(tag).includes('whitespace-nowrap'), 'o `whitespace-nowrap` do botão (`:61`) saiu');
+        assert.ok(classesDa(tag).includes('whitespace-nowrap'), 'o `whitespace-nowrap` do botão (`:62`) saiu');
         assert.ok(
             TEXTO_PROTOTIPO.includes('white-space:nowrap;height:36px;padding:0 16px;border:none;border-radius:9px;background:#FACC15'),
             'o protótipo mudou o botão — remeça a omissão da tabela',
@@ -603,7 +603,7 @@ test('AND-10 — "Revisar agora" nunca é desenhado sem destino', async (context
         for (const falso of [/href="#"/, /href='#'/, /onClick=\{\(\) => \{\}\}/, /\bdisabled\b/, /aria-disabled/, /pointer-events-none/]) {
             assert.doesNotMatch(FONTE_PROXIMO, falso, `destino/estado FALSO na faixa (${falso})`);
         }
-        assert.ok(!HTML.includes('href'), 'a faixa virou link — o protótipo usa <button> (`:61`)');
+        assert.ok(!HTML.includes('href'), 'a faixa virou link — o protótipo usa <button> (`:62`)');
         // ⚠️ CONTROLE da sonda do `#`: ela SABE acusar.
         assert.match('<a href="#">x</a>', /href="#"/, 'a sonda do destino falso não casa nem o caso óbvio');
     });

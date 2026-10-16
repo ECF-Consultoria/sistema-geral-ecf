@@ -19,11 +19,11 @@ import { cn } from '@/lib/utils';
 //   eyebrow         :56     :57   ⚠️ deslocado
 //   nome            :57     :58   ⚠️ deslocado
 //   sub             :58     :59   ⚠️ deslocado
-//   estado + dot    :59     :60   ⚠️ deslocado
-//   botão           :60     :61   ⚠️ deslocado
+//   estado + dot    :59     :61   ⚠️ deslocado em +2 (`:60` fecha a coluna)
+//   botão           :60     :62   ⚠️ deslocado em +2
 //
 // ⚠️⚠️ **OMISSÃO NA TABELA DO PLANO, MEDIDA:** o botão declara
-// `white-space:nowrap` — é a **PRIMEIRA** propriedade dele em `:61` — e a classe
+// `white-space:nowrap` — é a **PRIMEIRA** propriedade dele em `:62` — e a classe
 // prescrita no plano não a tem. "Revisar agora" quebraria em duas linhas dentro
 // de um botão de 36px fixos. A tabela de fidelidade deste projeto não erra
 // VALOR: erra por OMISSÃO e por REFERÊNCIA.
@@ -36,7 +36,7 @@ import { cn } from '@/lib/utils';
 //
 // ═══ ⚠️⚠️ A COR NUNCA É O ÚNICO SINAL ══════════════════════════════════════
 //
-// O protótipo pinta o estado com `stateColor` (`#4ADE80` aprovável, `#FBBF24`
+// O protótipo pinta o estado (`:61`) com `stateColor` (`#4ADE80` aprovável, `#FBBF24`
 // com pendência, `:1222`) e desenha um dot da MESMA cor. ➡️ Aqui o **texto diz
 // o estado** ("Pronto para aprovar" / "N pendências") e o dot acompanha: quem
 // não distingue as duas cores lê a frase. E **sem texto o bloco inteiro não

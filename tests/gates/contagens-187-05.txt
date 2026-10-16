@@ -84,7 +84,7 @@ bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions
 # ─── TAREFA 2 — a faixa amarelada, o slot da página e o GATE-03 ───────────────
 # O eyebrow "PRÓXIMO A REVISAR" byte a byte com as 6 paráfrases como isca; os
 # CODEPOINTS da frase chegando intactos (U+2014 e U+00B7, indistinguíveis a olho
-# dos vizinhos de teclado); a geometria FID-01 de `:54`-`:61` por igualdade de
+# dos vizinhos de teclado); a geometria FID-01 de `:54`-`:62` por igualdade de
 # CONJUNTO de classes localizada por ÁRVORE com índice absoluto (46px e NÃO os
 # 44px da linha da oferta, que é outro bloco — `:138`); o `cursor-pointer` E o
 # `whitespace-nowrap` do botão (o segundo OMITIDO pela tabela do plano); o estado
