@@ -112,4 +112,9 @@ bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions
 # ALTERA (declara `ProximoARevisar.jsx` em `ARQUIVOS_NOVOS`): sem a declaração, o
 # GATE-03 passaria POR OMISSÃO para o arquivo novo, e `DIR_APROV` está em
 # `DIRETORIOS_FECHADOS`, então o `deepEqual` com o disco reprova na hora.
-proximo-render  js  tests/js/publicador-fila-proximo-187.test.js tests/js/publicador-vocabulario-novo.test.js  ::  tests=519,510
+# ⚠️ REESTRUTURADO em 16/10/2026: este id embutia
+#    `publicador-vocabulario-novo.test.js`, cuja contagem CRESCE por construção (um subteste
+#    por arquivo varrido). Aquele arquivo passou a ter id PRÓPRIO com a forma `>=` em
+#    `contagens-187-01.txt` (`vocabulario-tamanhos`), e este voltou a medir SÓ o que é dele,
+#    com igualdade EXATA — 76 medido.
+proximo-render  js  tests/js/publicador-fila-proximo-187.test.js  ::  tests=76

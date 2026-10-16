@@ -93,7 +93,7 @@ faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  test
 #    ⚠️ Subir o número a cada wave seria o conserto ERRADO, pela razão já medida cinco
 #    vezes nesta milestone: elevar régua repetidamente treina o executor seguinte a
 #    ajustar réguas quando elas incomodam.
-#    ➡️ O arquivo que cresce saiu para um id PRÓPRIO (`vocabulario-da-area`, no
+#    ➡️ O arquivo que cresce saiu para um id PRÓPRIO (`vocabulario-tamanhos`, no
 #    `contagens-187-01.txt`) com a forma `>=`, e este id voltou a medir SÓ o que é dele,
 #    com igualdade EXATA — que é a forma mais forte e segue sendo o padrão.
 pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=99
