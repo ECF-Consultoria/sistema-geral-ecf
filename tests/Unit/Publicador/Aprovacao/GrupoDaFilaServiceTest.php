@@ -1105,18 +1105,21 @@ class GrupoDaFilaServiceTest extends TestCase
             }
         }
 
-        if ($hashes === []) {
-            // Primeira rodada: sem commit no escopo não há o que medir — e dizer "intocado" aqui
-            // seria gate VAZIO POR CONSTRUÇÃO.
-            $this->assertTrue(true, 'sem commit no escopo ainda');
-
-            return;
-        }
-
-        $arquivos = array_values(array_filter(array_map(
-            'trim',
-            explode("\n", $this->git('git show --name-only --format= '.implode(' ', $hashes))),
-        )));
+        // ⚠️⚠️ **SEM `return` ANTECIPADO, e isto é CORREÇÃO MEDIDA nesta sessão.** A primeira
+        // redação saía do método quando ainda não havia commit no escopo — e com isso a CONTAGEM
+        // DE ASSERÇÕES deste caso **dependia de quantos commits existiam**: 26 antes de commitar,
+        // **70** depois (medido). O manifesto reprovava, e o conserto barato seria "ajustar o
+        // número", que é o treino errado.
+        // ⚠️ É a família *"contagem que depende de quantos arquivos/tabelas/commits existem"* —
+        // **NOVE** ocorrências nesta milestone, todas consertadas **na raiz**. ➡️ Aqui a raiz é
+        // não ramificar: `$arquivos` é `[]` sem commit, e a prova de que o range não está vazio
+        // virou **uma asserção coletada** em vez de um `return`.
+        $arquivos = $hashes === []
+            ? []
+            : array_values(array_filter(array_map(
+                'trim',
+                explode("\n", $this->git('git show --name-only --format= '.implode(' ', $hashes))),
+            )));
 
         $proibidos = [
             // Os 10 da Fase 186 em `Aprovacao/` (fora de `Fila/`) e os das waves 2/5/6.
@@ -1166,9 +1169,19 @@ class GrupoDaFilaServiceTest extends TestCase
 
         // ⚠️ `test -e` em CADA caminho ANTES de acreditar num diff vazio: caminho fantasma
         // "provaria" território intocado medindo NADA (seis vezes nesta milestone).
-        foreach ($proibidos as $caminho) {
-            $this->assertFileExists($this->raiz().'/'.$caminho, "caminho inexistente: {$caminho} — o gate mediria NADA");
-        }
+        // ⚠️⚠️ **UMA asserção, coletando os infratores** — e não uma por caminho: asserção por
+        // item de lista é a armadilha que caiu 4 vezes na Fase 186, e aqui ela também fazia a
+        // contagem deste caso crescer junto com a lista de proibidos.
+        $fantasmas = array_values(array_filter(
+            $proibidos,
+            fn (string $caminho): bool => ! file_exists($this->raiz().'/'.$caminho),
+        ));
+        $this->assertSame([], $fantasmas, 'caminho inexistente na lista de proibidos — o gate mediria NADA');
+
+        // ⚠️ ISCA DO `test -e`: a varredura SABE acusar caminho que não existe. Sem ela, uma lista
+        // inteira de fantasmas passaria como "território intocado".
+        $this->assertFalse(file_exists($this->raiz().'/app/Services/NaoExiste9z7'), 'a isca do fantasma virou caminho de verdade');
+        $this->assertTrue(file_exists($this->raiz().'/'.$proibidos[0]), 'o CONTROLE da varredura não existe mais');
 
         // Prefixo de SEGMENTO, nunca `str_contains`: `app/Mcp` não pode casar `app/McpOutro.php`.
         $tocados = array_values(array_filter($arquivos, static function (string $a) use ($proibidos): bool {
@@ -1183,18 +1196,32 @@ class GrupoDaFilaServiceTest extends TestCase
 
         $this->assertSame([], $tocados, 'este plano saiu do território declarado');
 
-        // ⚠️⚠️ E a prova de que o range NÃO está vazio por construção: os commits do escopo
-        // TOCARAM os arquivos deste plano. Um `git show` vazio faria o `assertSame([], [])` acima
+        // ⚠️⚠️ E a prova de que o range NÃO está vazio por construção: havendo commit no escopo,
+        // ele TOCOU os arquivos deste plano. Um `git show` vazio faria o `assertSame([], [])` acima
         // passar medindo NADA.
-        $this->assertNotSame([], $arquivos, 'o range do escopo não devolveu arquivo nenhum — o gate está vazio');
-        $this->assertTrue(
-            (bool) array_filter($arquivos, static fn (string $a): bool => str_contains($a, 'Fila/Galeria')
-                || str_contains($a, 'Fila/Grupo')
-                || str_contains($a, 'aprovacao/TabelaDaFila')
-                || str_contains($a, 'GrupoDaFilaServiceTest')
-                || str_contains($a, 'contagens-187-07')),
-            'os commits do escopo não tocaram nenhum arquivo deste plano: '.json_encode(array_slice($arquivos, 0, 8)),
-        );
+        //
+        // ⚠️ **UMA asserção COLETADA, e não um `assertNotSame` que reprovaria antes do primeiro
+        // commit.** É isso que mantém a contagem deste caso FIXA: com ou sem commit no escopo, o
+        // número de asserções é o mesmo (ver o bloco do `$arquivos` acima).
+        $doPlano = ['Fila/Galeria', 'Fila/Grupo', 'aprovacao/TabelaDaFila', 'aprovacao/LinhaDeProduto',
+            'aprovacao/SubLinhaDeConjunto', 'aprovacao/QuadradosDeFoto', 'GrupoDaFilaServiceTest',
+            'contagens-187-07', 'publicador-fila-tabela-187'];
+
+        $semProva = $hashes !== [] && ! array_filter(
+            $arquivos,
+            static fn (string $a): bool => (bool) array_filter($doPlano, static fn (string $p): bool => str_contains($a, $p)),
+        )
+            ? ['os commits do escopo não tocaram arquivo deste plano: '.json_encode(array_slice($arquivos, 0, 8))]
+            : [];
+
+        $this->assertSame([], $semProva, 'o range do escopo está vazio por construção');
+
+        // ⚠️ ISCA DA PROVA, nas duas direções: a varredura SABE reconhecer um arquivo deste plano
+        // e SABE recusar um que não é. Sem ela, um `$doPlano` quebrado faria a asserção acima
+        // passar sempre.
+        $reconhece = static fn (string $a): bool => (bool) array_filter($doPlano, static fn (string $p): bool => str_contains($a, $p));
+        $this->assertTrue($reconhece('app/Services/Publicador/Aprovacao/Fila/GaleriaDaOfertaService.php'), 'a prova não reconhece a galeria');
+        $this->assertFalse($reconhece('app/Services/Creative/CreativeJuiz.php'), 'a prova reconhece arquivo de OUTRA fase');
     }
 
     /**

@@ -158,7 +158,20 @@ lista-pela-etapa  php  test_a_lista_recortada_pela_etapa_bate_com_o_card_nas_NOV
 # depois dos 8 commits da outra máquina), as ausências lidas do código SEM
 # COMENTÁRIO, e a ISCA DO LEITOR — a prosa do caso CITA `ehKit`,
 # `galeriaDoRascunho`, `temAlerta`, `localStorage` e `lucro líquido` de propósito.
-territorio-tabela  php  test_territorio_e_ausencias_do_plano_187_07  ::  tests=1 assertions=26
+# ⚠️⚠️ A CONTAGEM DESTE ID **NÃO depende de quantos commits existem no escopo**, e
+# isso é CORREÇÃO MEDIDA nesta sessão. A primeira redação do caso tinha `return`
+# antecipado quando ainda não havia commit no escopo, e por isso ele media **26**
+# asserções antes de commitar e **70** depois — o manifesto reprovava e o conserto
+# barato seria "ajustar o número", que é exatamente o treino errado
+# (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+# ➡️ Consertado NA RAIZ: nenhuma asserção mora dentro de condicional, o `test -e`
+# dos ~40 proibidos virou UMA asserção coletando fantasmas (em vez de uma por
+# caminho, que fazia a contagem crescer junto com a lista), e a prova de que o
+# range não está vazio virou asserção COLETADA em vez de `return`. Agora são
+# **32** com ou sem commit no escopo.
+# ⚠️ É a NONA ocorrência da família "contagem que depende de quantos
+#    arquivos/tabelas/commits existem" nesta milestone — todas consertadas na raiz.
+territorio-tabela  php  test_territorio_e_ausencias_do_plano_187_07  ::  tests=1 assertions=32
 
 # ⚠️⚠️ O NOME DESTE MÉTODO FOI TROCADO, e a razão foi MEDIDA por um gate ALHEIO.
 # A primeira redação o chamava `test_todo_metodo_do_plano_07_tem_id_no_manifesto_
