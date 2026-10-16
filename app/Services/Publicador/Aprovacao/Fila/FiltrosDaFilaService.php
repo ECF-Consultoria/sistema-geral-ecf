@@ -473,7 +473,15 @@ class FiltrosDaFilaService
      * ⚠️ Oferta **sem** responsável não entra em opção nenhuma — e isso é honesto: não existe
      * "Sem responsável" no protótipo, e inventar a opção faria a soma das opções divergir do M.
      *
-     * @return list<array{id: int, nome: string, iniciais: string, total: int}>
+     * ⚠️⚠️ **SEM `iniciais` no payload, e isso é correção MEDIDA em 16/10/2026.** A primeira
+     * redação deste método calculava as iniciais em PHP (primeira + última palavra) — uma SEGUNDA
+     * implementação da regra, e **divergente** da única declarada:
+     * `resources/js/Components/Mlb/Publicador/identidade/identidade.js:27` (`iniciais()`), que é
+     * **fonte ÚNICA por IDENT-08** (*"nenhuma tela reimplementa"*) e só considera palavras com
+     * MAIS de duas letras. Medido: "Ana de Souza Lima" daria **AL** no PHP e **AS** no módulo.
+     * ➡️ O servidor manda o **nome**; quem deriva as iniciais é o componente, pelo módulo.
+     *
+     * @return list<array{id: int, nome: string, total: int}>
      */
     public function responsaveisDaConta(Builder $daConta): array
     {
@@ -510,7 +518,6 @@ class FiltrosDaFilaService
             $opcoes[] = [
                 'id' => (int) $pessoa->id,
                 'nome' => $nome,
-                'iniciais' => $this->iniciais($nome),
                 'total' => (int) ($contagens[$pessoa->id] ?? 0),
             ];
         }
@@ -770,23 +777,4 @@ class FiltrosDaFilaService
         return trim(mb_strtolower($this->semAcento($texto)));
     }
 
-    /**
-     * As iniciais do avatar do popover de Responsável: primeira letra do primeiro e do último nome.
-     *
-     * ⚠️ `mb_substr`/`mb_strtoupper`: `substr` cortaria um byte do meio de um caractere acentuado e
-     * devolveria lixo na tela. ⚠️ Nome de uma palavra devolve UMA letra, nunca duas iguais.
-     */
-    private function iniciais(string $nome): string
-    {
-        $partes = array_values(array_filter(preg_split('/\s+/u', $nome) ?: [], fn ($p) => $p !== ''));
-
-        if ($partes === []) {
-            return '';
-        }
-
-        $primeira = mb_substr($partes[0], 0, 1);
-        $ultima = count($partes) > 1 ? mb_substr($partes[count($partes) - 1], 0, 1) : '';
-
-        return mb_strtoupper($primeira.$ultima);
-    }
 }

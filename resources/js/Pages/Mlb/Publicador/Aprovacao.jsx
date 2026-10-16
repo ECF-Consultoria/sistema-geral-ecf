@@ -1,10 +1,11 @@
-import { isValidElement } from 'react';
+import { isValidElement, useState } from 'react';
 import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import CabecalhoDaFila from '@/Components/Mlb/Publicador/aprovacao/CabecalhoDaFila';
 import FaixaDeAndamento from '@/Components/Mlb/Publicador/aprovacao/FaixaDeAndamento';
 import ProximoARevisar from '@/Components/Mlb/Publicador/aprovacao/ProximoARevisar';
+import FiltrosDaFila from '@/Components/Mlb/Publicador/aprovacao/FiltrosDaFila';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -170,6 +171,59 @@ function irParaOferta(empresaId, etapaAtiva) {
     };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 187, plano 06 — A URL É A FONTE DO ESTADO DOS FILTROS (COL-03).
+//
+// ⚠️⚠️ **NADA de `localStorage`** (COL-02 / critério 13): o `KEY='ecf-aprovacao-v1'`
+// do protótipo (`:914`) é artefato dele, e filtro que mora no navegador não
+// sobrevive a um link compartilhado — a pessoa manda a URL e o colega abre outra
+// fila.
+//
+// ⚠️ E **nenhum filtro mora em `useState`**: os cinco mais a etapa vêm das props
+// (já SANEADOS pelo servidor) e todo clique devolve um `router.get`. O ÚNICO
+// `useState` desta página é **qual popover está aberto**, que não é filtro —
+// não vai para a URL, não recorta nada, e não sobrevive à navegação de
+// propósito (menu aberto depois de recarregar seria estado fantasma).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os defaults "sem filtro", iguais aos do servidor. Chave com o default SAI da URL. */
+const SEM_FILTRO = { busca: '', modalidade: 'todas', formato: 'todos', etapa: 'todas' };
+
+/**
+ * A querystring do recorte, com as chaves no default OMITIDAS.
+ *
+ * ⚠️ Omitir o default não é estética: é o que faz "Limpar filtros" produzir uma
+ * URL **limpa** e o que torna o link compartilhável legível. O servidor saneia
+ * a ausência para o mesmo default, então as duas formas são equivalentes.
+ *
+ * ⚠️ **O `?oferta=` do plano 187-05 NÃO é carregado adiante.** Ele dá FOCO a uma
+ * linha, e mudar o filtro pode justamente tirar aquela linha da lista — manter o
+ * foco apontaria para uma oferta que não está mais ali. Quem o põe de volta é o
+ * clique em "Revisar agora".
+ */
+function querystringDe(recorte) {
+    const query = {};
+
+    for (const chave of ['busca', 'modalidade', 'formato', 'etapa']) {
+        const valor = recorte[chave];
+        if (typeof valor === 'string' && valor !== '' && valor !== SEM_FILTRO[chave]) {
+            query[chave] = valor;
+        }
+    }
+
+    // ⚠️ Listas viajam como `a,b` — a MESMA forma que `FiltrosDaFilaService`
+    // sabe ler (`explode(',')`). `?responsavel[]=` seria outra forma, e o
+    // servidor a descarta de propósito (`is_string` antes de `trim`).
+    for (const chave of ['responsavel', 'motivo']) {
+        const lista = Array.isArray(recorte[chave]) ? recorte[chave].filter((v) => v !== null && v !== '') : [];
+        if (lista.length > 0) {
+            query[chave] = lista.join(',');
+        }
+    }
+
+    return query;
+}
+
 /**
  * A fila "Aguardando aprovação" de uma conta.
  *
@@ -184,7 +238,11 @@ function irParaOferta(empresaId, etapaAtiva) {
  * @param {unknown} [props.etapa] a etapa filtrada, já SANEADA pelo servidor
  * @param {unknown} [props.proximo_a_revisar] a faixa "PRÓXIMO A REVISAR" do servidor (plano 187-05)
  * @param {unknown} [props.proximo] SLOT de NÓ — sobrepõe a faixa montada do dado (contrato do 187-04)
- * @param {unknown} [props.filtros] SLOT — a barra de filtros (plano 187-06)
+ * @param {unknown} [props.filtros_ativos] os 5 filtros SANEADOS pelo servidor (plano 187-06)
+ * @param {unknown} [props.opcoes] `{modalidades, formatos, responsaveis, motivos}` (plano 187-06)
+ * @param {unknown} [props.contagem] `{exibidas, total}` — o "N de M" (plano 187-06)
+ * @param {unknown} [props.algum_filtro] se "Limpar filtros" aparece (plano 187-06)
+ * @param {unknown} [props.filtros] SLOT de NÓ — sobrepõe a linha montada do dado (plano 187-06)
  * @param {unknown} [props.tabela] SLOT — a tabela da fila (planos 187-07/08)
  * @param {unknown} [props.rodape] SLOT — o rodapé e o lote (plano 187-09)
  */
@@ -198,11 +256,20 @@ export default function Aprovacao({
     etapa = null,
     proximo_a_revisar = null,
     proximo = null,
+    filtros_ativos = null,
+    opcoes = null,
+    contagem = null,
+    algum_filtro = false,
     filtros = null,
     tabela = null,
     rodape = null,
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
+
+    // ⚠️ O ÚNICO estado local desta página, e ele NÃO é filtro: qual popover está
+    // aberto. Não vai para a URL, não recorta nada, e não sobrevive à navegação
+    // de propósito.
+    const [menuAberto, setMenuAberto] = useState(null);
 
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
@@ -221,9 +288,88 @@ export default function Aprovacao({
     const noProximo = isValidElement(proximo)
         ? proximo
         : <ProximoARevisar proximo={proximo_a_revisar} onRevisar={irParaOferta(empresaId, etapaAtiva)} />;
-    const noFiltros = isValidElement(filtros) ? filtros : null;
     const noTabela = isValidElement(tabela) ? tabela : null;
     const noRodape = isValidElement(rodape) ? rodape : null;
+
+    // ═══ ⚠️ Plano 187-06 — O RECORTE ATUAL E OS HANDLERS QUE O MOVEM ═══════
+    //
+    // ⚠️ O recorte é derivado das PROPS, nunca de `useState`: é o que faz
+    // recarregar devolver o mesmo recorte e o link compartilhado abrir a mesma
+    // fila (COL-03). Cada handler recalcula a querystring INTEIRA a partir dele
+    // — mudar um filtro não pode apagar os outros cinco.
+    const recorteAtual = {
+        busca: typeof objetoSeguro(filtros_ativos)?.busca === 'string' ? objetoSeguro(filtros_ativos).busca : '',
+        modalidade: chaveSegura(objetoSeguro(filtros_ativos)?.modalidade) ?? SEM_FILTRO.modalidade,
+        formato: chaveSegura(objetoSeguro(filtros_ativos)?.formato) ?? SEM_FILTRO.formato,
+        responsavel: Array.isArray(objetoSeguro(filtros_ativos)?.responsavel) ? objetoSeguro(filtros_ativos).responsavel : [],
+        motivo: Array.isArray(objetoSeguro(filtros_ativos)?.motivo) ? objetoSeguro(filtros_ativos).motivo : [],
+        etapa: etapaAtiva,
+    };
+
+    // ⚠️ Sem id de empresa não há destino: o clique NÃO é oferecido, em vez de
+    // montar uma rota inventada. É a mesma regra do "Revisar agora".
+    const navegar = empresaId === null
+        ? null
+        : (mudanca) => {
+            // ⚠️ O menu fecha ao filtrar: deixá-lo aberto sobre uma lista que
+            // acabou de mudar é o estado fantasma que o `useState` local evita.
+            setMenuAberto(null);
+            router.get(
+                route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+                querystringDe({ ...recorteAtual, ...mudanca }),
+                { preserveState: true, preserveScroll: true, replace: true },
+            );
+        };
+
+    /**
+     * Marca/desmarca um valor de lista (Responsável e Motivo são múltiplos).
+     *
+     * ⚠️ As chaves chegam do popover como TEXTO (é o que o DOM fala) e saem na
+     * URL como TEXTO. O servidor é quem converte e valida contra a lista fechada.
+     */
+    const alternar = (campo) => (chave) => {
+        if (navegar === null) return;
+
+        const atuais = recorteAtual[campo].map((v) => String(v));
+        const proximos = atuais.includes(chave)
+            ? atuais.filter((v) => v !== chave)
+            : atuais.concat(chave);
+
+        navegar({ [campo]: proximos });
+    };
+
+    // ⚠️ "Limpar filtros" é a AUSÊNCIA dos seis (`onClear`, `:1276`, que zera
+    // `stage` junto). Aqui ele navega para a rota SEM querystring nenhuma — e
+    // isso tira o `?oferta=` também, que é o certo: limpar é limpar.
+    const limpar = empresaId === null
+        ? null
+        : () => {
+            setMenuAberto(null);
+            router.get(
+                route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+                {},
+                { preserveState: true, preserveScroll: true, replace: true },
+            );
+        };
+
+    const noFiltros = isValidElement(filtros)
+        ? filtros
+        : (
+            <FiltrosDaFila
+                filtros={recorteAtual}
+                opcoes={opcoes}
+                contagem={contagem}
+                algumFiltro={algum_filtro === true}
+                menuAberto={menuAberto}
+                onMenu={(qual) => setMenuAberto(qual)}
+                onBusca={navegar === null ? null : (termo) => navegar({ busca: termo })}
+                onModalidade={navegar === null ? null : (valor) => navegar({ modalidade: valor })}
+                onFormato={navegar === null ? null : (valor) => navegar({ formato: valor })}
+                onResponsavel={navegar === null ? null : alternar('responsavel')}
+                onMotivo={navegar === null ? null : alternar('motivo')}
+                onLimpar={limpar}
+            />
+        );
 
     // ⚠️ Sem id de empresa não há destino: o clique NÃO é oferecido (botão sem
     // destino é proibido) em vez de montar uma rota inventada.
@@ -292,14 +438,20 @@ export default function Aprovacao({
                         onEtapa={irParaEtapa}
                     />
 
-                    {/* ⚠️ OS QUATRO SLOTS DA ORDEM VERTICAL DE FILA-01, nomeados
-                        e VAZIOS. Slot sem nó não desenha NADA — nem casca, nem
-                        borda, nem "nenhum item" (D4).
+                    {/* ⚠️ OS SLOTS DA ORDEM VERTICAL DE FILA-01. Slot sem nó
+                        não desenha NADA — nem casca, nem borda, nem "nenhum
+                        item" (D4).
 
-                        · `proximo` → "PRÓXIMO A REVISAR"      (plano 187-05)
-                        · `filtros` → a barra de filtros        (plano 187-06)
+                        · `proximo` → "PRÓXIMO A REVISAR"      (plano 187-05 ✔)
+                        · `filtros` → a linha de filtros        (plano 187-06 ✔)
                         · `tabela`  → a tabela da fila          (planos 187-07/08)
                         · `rodape`  → o rodapé e a ação em lote (plano 187-09)
+
+                        ⚠️⚠️ `filtros` (NÓ) × `filtros_ativos` (DADO) são DUAS
+                        props com UM sentido cada, nunca uma com dois — prop de
+                        duplo sentido foi achada como defeito grave na Fase 186, e
+                        o 187-05 já resolveu o caso gêmeo (`proximo` ×
+                        `proximo_a_revisar`).
 
                         ⚠️ E o ESTADO VAZIO da fila é do 187-09, de propósito:
                         os dois literais honestos (com e sem filtro) são decisão

@@ -203,7 +203,14 @@ class MlbPublicadorAprovacaoController extends Controller
             //
             // ⚠️ Os cinco voltam JÁ SANEADOS, e é por isso que recarregar devolve o mesmo
             // recorte: a URL é a fonte, e o servidor é quem a valida contra as listas fechadas.
-            'filtros' => $escolhidos,
+            //
+            // ⚠️⚠️ O NOME É `filtros_ativos`, e **não** `filtros`, de propósito: `filtros` é o
+            // SLOT de NÓ do plano 187-04 (quem compõe um nó manda o nó). Uma prop com DOIS
+            // sentidos — nó de composição × dado — foi achada como **defeito grave** na
+            // verificação da Fase 186, e o plano 187-05 já resolveu o caso gêmeo com o par
+            // `proximo` (nó) × `proximo_a_revisar` (dado). Aqui o par é
+            // `filtros` (nó) × `filtros_ativos` (dado).
+            'filtros_ativos' => $escolhidos,
             // ⚠️⚠️ As OPÇÕES vêm do servidor porque três das quatro listas são DADO: os
             // responsáveis saem do banco (com nome e contagem) e os motivos saem de
             // `VocabularioDoPortao::ROTULOS`. As duas de modalidade leem `EstruturaAnuncio::TIPOS`
