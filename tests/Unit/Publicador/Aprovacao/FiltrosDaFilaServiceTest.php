@@ -1131,7 +1131,26 @@ class FiltrosDaFilaServiceTest extends TestCase
     {
         [$company, $admin] = $this->contaComToken();
         $ana = User::factory()->create(['name' => 'Ana Ribeiro']);
+
+        // ⚠️⚠️ A FIXTURE DISCRIMINA DE PROPÓSITO, e isso é correção MEDIDA pela
+        // CAMPANHA DE MUTAÇÃO de 16/10/2026 — duas mutações SOBREVIVERAM a este caso
+        // quando ele tinha UMA oferta ao vivo só:
+        //
+        //   · trocar o `panoramaDaConta($daConta)` do controller por um recorte só das AO VIVO
+        //     (as contagens dos popovers passariam a ser sobre o recorte, não sobre a conta);
+        //   · trocar o M do "N de M" por `contadorDaAba()` (desfazendo a divergência D8).
+        //
+        // As duas sobreviveram porque, com UMA oferta ao vivo, "a conta inteira" e "as ao
+        // vivo" davam o MESMO número — fixture que não distingue é gate CEGO, mesmo com a
+        // asserção certa escrita.
+        //
+        // ➡️ Agora são TRÊS ofertas: uma ao vivo, uma `preparando` e uma `publicado`. Logo
+        // **conta = 3** e **ao vivo = 1**, e as duas mutações morrem.
         $this->oferta($company, PubAprovacaoOferta::AGUARDANDO_APROVACAO, ['responsavel' => $ana]);
+        $this->oferta($company, PubAprovacaoOferta::PREPARANDO, ['responsavel' => $ana]);
+        $this->oferta($company, PubAprovacaoOferta::PUBLICADO, ['responsavel' => $ana, 'atualizado' => '2026-10-16 08:00:00']);
+
+        $this->assertSame(1, $this->fila()->contadorDaAba($company->id), 'ISCA CEGA: a fixture deixou de distinguir conta × ao vivo');
 
         $props = $this->propsDaFila($admin, $company, [
             'busca' => 'poltrona', 'modalidade' => 'premium', 'formato' => 'combo',
@@ -1153,8 +1172,26 @@ class FiltrosDaFilaServiceTest extends TestCase
         $this->assertCount(3, $props['opcoes']['formatos']);
         $this->assertCount(8, $props['opcoes']['motivos']);
         $this->assertSame([(int) $ana->id], array_column($props['opcoes']['responsaveis'], 'id'));
-        $this->assertSame(1, $props['contagem']['total']);
+
+        // ⚠️⚠️ **O M É A CONTA INTEIRA (3), NÃO AS AO VIVO (1)** — divergência D8, provada
+        // aqui pelas PROPS e não só no serviço. Mata a mutação "o M vira o total ao vivo".
+        $this->assertSame(3, $props['contagem']['total'], 'o M do "N de M" deixou de ser o total da CONTA (D8)');
         $this->assertSame(0, $props['contagem']['exibidas'], 'nada está aprovado: a etapa aprovado exibe 0');
+
+        // ⚠️⚠️ **A CONTAGEM DO POPOVER É A CONTA INTEIRA (3)**, mesmo com os seis filtros
+        // ativos na URL. Mata a mutação "popovers contados sobre o recorte": com o recorte
+        // das ao vivo ela daria 1, e com o recorte FILTRADO daria 0.
+        $this->assertSame(3, $props['opcoes']['responsaveis'][0]['total'], 'a contagem do popover deixou de ser sobre TODAS as ofertas da conta (FILA-06)');
+
+        // ⚠️ E as 8 contagens de motivo também saem sobre a conta: a soma delas não pode ser
+        // zero por recorte. (Sem tarifa no `Http::fake`, os `kinds` reais desta fixture
+        // incluem `frete_ausente` — o que importa aqui é que o ESCOPO é a conta.)
+        $totalDosMotivos = array_sum(array_column($props['opcoes']['motivos'], 'total'));
+        $this->assertGreaterThan(0, $totalDosMotivos, 'ISCA CEGA: nenhum motivo foi contado — o escopo do popover não é mensurável nesta fixture');
+        $this->assertLessThanOrEqual(3 * 8, $totalDosMotivos);
+
+        // ⚠️ E o nome vem SEM `iniciais` (IDENT-08: quem as deriva é `identidade.js`).
+        $this->assertSame(['id', 'nome', 'total'], array_keys($props['opcoes']['responsaveis'][0]), 'a forma da opção de responsável mudou');
 
         // ⚠️ SEM querystring: os seis voltam no default e `algum_filtro` é FALSO.
         $limpo = $this->propsDaFila($admin, $company);
@@ -1165,7 +1202,12 @@ class FiltrosDaFilaServiceTest extends TestCase
         $this->assertSame([], $limpo['filtros_ativos']['motivo']);
         $this->assertSame('todas', $limpo['etapa']);
         $this->assertFalse($limpo['algum_filtro'], '"Limpar filtros" apareceria sem filtro nenhum');
-        $this->assertSame(1, $limpo['contagem']['exibidas']);
+
+        // ⚠️ SEM filtro, o N e o M são o MESMO número (as 3 da conta): é o recorte "Todas" da
+        // faixa, que também conta sem recorte de estado. ⚠️ E a `publicado` de HOJE conta aqui,
+        // porque na etapa `todas` não há recorte do dia.
+        $this->assertSame(3, $limpo['contagem']['exibidas']);
+        $this->assertSame(3, $limpo['contagem']['total']);
 
         // ⚠️ Valor FORJADO na URL não zera a lista nem derruba a tela — 200 com o default.
         $forjado = $this->propsDaFila($admin, $company, ['responsavel' => 'abc', 'motivo' => 'inexistente', 'busca' => ['x']]);
@@ -1173,7 +1215,7 @@ class FiltrosDaFilaServiceTest extends TestCase
         $this->assertSame([], $forjado['filtros_ativos']['motivo']);
         $this->assertSame('', $forjado['filtros_ativos']['busca']);
         $this->assertFalse($forjado['algum_filtro']);
-        $this->assertSame(1, $forjado['contagem']['exibidas'], 'valor forjado ZEROU a lista');
+        $this->assertSame(3, $forjado['contagem']['exibidas'], 'valor forjado ZEROU a lista');
     }
 
     public function test_a_oferta_na_url_NAO_conta_como_filtro_187_06(): void
