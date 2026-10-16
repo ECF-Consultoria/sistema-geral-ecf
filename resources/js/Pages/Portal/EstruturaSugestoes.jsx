@@ -111,7 +111,7 @@ function BlocoDeCombos({ chave, bloco, ocupado, onAlternar, children }) {
     );
 }
 
-export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, criadas = null, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
+export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, criadas = null, filtros_criadas = null, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
     const limites = sugestoes.limites;
     const [montarAberto, setMontarAberto] = useState(false);
     const [produtoMontar, setProdutoMontar] = useState(null);     // `?montar=<produto>`: entra já escolhido
@@ -206,7 +206,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
     };
 
     // Os filtros seguem junto na troca de aba; a página volta para 1 (mesmo caminho: a guarda não pergunta).
-    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', filtrosDaAba(filtros, aba));
+    // Saindo de Criadas, os filtros dela (busca e tipo inclusive) ficam para trás.
+    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', filtrosDaAba(ehAbaCriadas ? {} : filtros, aba));
 
     // ─── Marcação e edição (libs do 168-05) ─────────────────────────────────
 
@@ -602,7 +603,9 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                             <div className="min-w-0">
                                 <h1 className="font-display text-[26px] font-bold leading-tight text-white">Planejamento</h1>
                                 <p className="mt-0.5 max-w-[900px] text-[14px] leading-relaxed text-white/65">
-                                    O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.
+                                    {ehAbaCriadas
+                                        ? 'Os combos, kits e combits que você já criou, com o preço e o que falta em cada um.'
+                                        : 'O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.'}
                                 </p>
                             </div>
                         </div>
@@ -613,7 +616,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                                 </Botao>
                             )}
                             <Botao variante="fantasma" onClick={() => setAula(true)} data-acao="como-funciona" className="h-9">Como funciona</Botao>
-                            {textoDeAtualizacao && (
+                            {/* O "Atualizado" fala das sugestões; em Criadas a lista é a do banco, sem geração. */}
+                            {textoDeAtualizacao && ! ehAbaCriadas && (
                                 <span data-atualizado title={horaExata} className="inline-flex items-center gap-2 text-[13px] text-white/70">
                                     <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-400" />
                                     {textoDeAtualizacao}
@@ -751,7 +755,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                     </>
                 )}
 
-                {ehAbaCriadas && <PainelCriadas criadas={criadas} />}
+                {ehAbaCriadas && <PainelCriadas criadas={criadas} filtros={filtros_criadas} />}
 
                 {ehAbaSemTipo && sugestoes.tem_produtos && (
                     <PainelSemTipo produtos={sugestoes.produtos_sem_tipo ?? []} tipos={sugestoes.tipos ?? []} paginacao={sugestoes.paginacao}

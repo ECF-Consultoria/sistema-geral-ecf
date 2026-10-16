@@ -686,11 +686,23 @@ class PortalEstruturaProdutosController extends Controller
      * Entrega o arquivo da imagem (o `<img src>` da tela aponta para cá; o cookie de sessão
      * autentica). Só se a variação E a imagem forem da empresa da sessão; senão, 404 uniforme.
      * Cache só do navegador (`private`): a imagem de uma empresa nunca fica em cache compartilhado.
+     *
+     * `?w=320` (16/10/2026) entrega a miniatura de exibição ({@see VariacaoImagensService::miniatura()});
+     * sem ela, ou se não der para gerá-la, vai a original. O id da imagem nunca troca de conteúdo, então
+     * a miniatura pode ficar uma semana no cache do navegador.
      */
-    public function verImagem(int $variacao, int $imagem)
+    public function verImagem(Request $request, int $variacao, int $imagem)
     {
         $img = $this->imagemDaEmpresa(PortalContexto::empresa()->id, $variacao, $imagem);
         abort_unless($this->imagens->existe($img), 404);
+
+        if ((int) $request->query('w') === VariacaoImagensService::MINIATURA && ($miniatura = $this->imagens->miniatura($img)) !== null) {
+            return Storage::disk(VariacaoImagensService::DISCO)->response($miniatura, null, [
+                'Content-Type'           => 'image/jpeg',
+                'Cache-Control'          => 'private, max-age=604800',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
 
         return Storage::disk(VariacaoImagensService::DISCO)->response($img->caminho, null, [
             'Content-Type'           => $img->mime,
