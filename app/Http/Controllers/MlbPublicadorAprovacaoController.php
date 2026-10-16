@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
+use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -120,6 +121,7 @@ class MlbPublicadorAprovacaoController extends Controller
         FilaDeAprovacaoService $fila,
         ProximoARevisarService $proximo,
         FiltrosDaFilaService $filtros,
+        GrupoDaFilaService $gruposDaFila,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -270,6 +272,32 @@ class MlbPublicadorAprovacaoController extends Controller
             // o trabalho. ➡️ `para()` é chamado **UMA** vez, só para a oferta escolhida, e há
             // teste com espião contando as chamadas numa fila de 6 ao vivo (T-187-51).
             'proximo_a_revisar' => $proximo->para($base),
+            // ═══ ⚠️⚠️ Plano 187-07 — A TABELA: OS TRÊS NÍVEIS DA LISTA ═══════════════════════
+            //
+            // ⚠️ A `lista` é o TERCEIRO recorte (`:1214`: `list = base.filter(stage)`), e ele é
+            // DIFERENTE dos outros dois de propósito — ver o bloco dos três recortes acima.
+            // `recortarPelaEtapa()` mora num lugar só e há gate comparando o `count()` dele com o
+            // total do card correspondente **nas 9 chaves**: na etapa `publicado` o recorte é
+            // "publicado HOJE", e uma segunda regra escrita de cabeça mostraria na tabela
+            // publicações de ontem com o card dizendo outro número. ⚠️ **Conta e lista TÊM de
+            // bater** (decisões 9 e 16 do usuário, que recusou número divergente DUAS vezes).
+            //
+            // ⚠️ `with()` nas três relações que a árvore usa, e `produto.rascunho` NÃO entra: o
+            // `rascunho_id` já está na própria oferta, e o `GrupoDaFilaService` lê categoria e
+            // ficha técnica por consulta AGREGADA (uma para a árvore inteira), nunca por produto.
+            //
+            // ⚠️⚠️ **ZERO chamada ao Mercado Livre sai daqui.** `GrupoDaFilaService::montar()` não
+            // chama `BloqueiosDaOfertaService::para()` — há gate com espião contando ZERO, com
+            // isca provando que o espião conta. As 11 células da linha (que PRECISAM da
+            // composição) são o plano **187-08**, e é lá que o slot `linhaDaOferta` é preenchido.
+            'grupos' => $gruposDaFila->montar(
+                $fila->ordenar(
+                    $gruposDaFila->recortarPelaEtapa(
+                        $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama),
+                        $etapa,
+                    )->with(['alvo', 'produto', 'responsavel'])->get()
+                )
+            ),
         ];
 
         // ⚠️⚠️ O **N** do "N de M" é LIDO da faixa que acabou de ser calculada — a MESMA array

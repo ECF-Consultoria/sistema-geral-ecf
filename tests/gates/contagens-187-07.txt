@@ -138,6 +138,19 @@ unidade-e-combo  php  test_(Unidade_e_Combo_vem_de_quantidade_kit_com_isca_187_0
 # que o espião conta.
 cadastro-e-sublinha  php  test_(a_frase_do_cadastro_so_aparece_quando_e_VERDADE_187_07|a_sublinha_le_a_galeria_e_nao_reconta_187_07|CUSTO_a_arvore_nao_chama_para_nenhuma_vez_187_07)  ::  tests=3 assertions=14
 
+# ⚠️⚠️ A LISTA CONTRA A CONTA — **DESVIO DECLARADO (Regra 3), e o motivo está na
+# SUMMARY.** O terceiro recorte (`lista = base + etapa`, `:1214`) **não existia em
+# lugar nenhum**: `faixaDeAndamento()` conta os 9 cards mas não devolve consulta, e
+# `exibidasNaEtapa()` só LÊ o número da faixa. Escrevê-lo no controller faria a
+# regra morar na action, longe de todo gate. ➡️ `GrupoDaFilaService::
+# recortarPelaEtapa()` é a casa dele, e este id compara o `count()` dela com o
+# total do card correspondente **nas 9 chaves**, com ISCA INVERTIDA: a fixture tem
+# DUAS ofertas `publicado` (uma de HOJE e uma de ONTEM) e o card conta UMA. Sem a
+# de ontem, o recorte do dia e o recorte só por andamento dariam o MESMO número e
+# a comparação não mediria nada. Mais a chave forjada caindo na base inteira (ela
+# só é COMPARADA contra a lista fechada, nunca interpolada em SQL).
+lista-pela-etapa  php  test_a_lista_recortada_pela_etapa_bate_com_o_card_nas_NOVE_chaves_187_07  ::  tests=1 assertions=12
+
 # ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
 
 # Território por ESCOPO DO ASSUNTO (nunca por range aberto: nesta árvore as TRÊS
@@ -147,6 +160,20 @@ cadastro-e-sublinha  php  test_(a_frase_do_cadastro_so_aparece_quando_e_VERDADE_
 # `galeriaDoRascunho`, `temAlerta`, `localStorage` e `lucro líquido` de propósito.
 territorio-tabela  php  test_territorio_e_ausencias_do_plano_187_07  ::  tests=1 assertions=26
 
+# ⚠️⚠️ O NOME DESTE MÉTODO FOI TROCADO, e a razão foi MEDIDA por um gate ALHEIO.
+# A primeira redação o chamava `test_todo_metodo_do_plano_07_tem_id_no_manifesto_
+# e_todo_id_casa_um_metodo_187_07` — e `FechamentoDaFase186Test::os_nove_
+# manifestos_nao_tem_homonimo_que_some_dois_arquivos` REPROVOU: existe um
+# `test_todo_metodo_do_plano_07_tem_id_no_manifesto_e_todo_id_casa_um_metodo`
+# (sem sufixo) em `SemLiteralDeTaxaTest.php`, da **Fase 186, plano 07**, e o meu
+# era SUPERSTRING dele. O `--filter` do PHPUnit é regex **NÃO ANCORADO**, então
+# rodar o id da 186 casaria os DOIS e SOMARIA as contagens — o manifesto daquela
+# fase (que está EM PRODUÇÃO) passaria a reprovar por causa desta wave.
+# ➡️ O conserto é **sufixo próprio ao método NOVO**, exatamente como aquele gate
+# manda, e **NUNCA** elevar a contagem do manifesto alheio.
+# ⚠️ A colisão só aparece porque as duas fases numeram planos de 01 a 09+: todo
+#    `_0N` desta fase tem um homônimo possível na 186. Vale para o 187-08.
+#
 # ⚠️ A BIJEÇÃO ids ↔ métodos, nos DOIS sentidos: método sem id NUNCA RODA (foi o
 # sobrevivente da mutação do plano 186-03) e id órfão é gate sobre ZERO casos.
 # ⚠️ A contagem deste id **NÃO depende do número de linhas deste arquivo**: as
@@ -155,4 +182,46 @@ territorio-tabela  php  test_territorio_e_ausencias_do_plano_187_07  ::  tests=1
 #    NÃO mexe neste número. Era fragilidade por construção e foi tirada de
 #    propósito (é a NONA ocorrência da família "contagem que depende de quantos
 #    arquivos/linhas existem").
-bijecao-manifesto-07  php  test_todo_metodo_do_plano_07_tem_id_no_manifesto_e_todo_id_casa_um_metodo_187_07  ::  tests=1 assertions=9
+bijecao-manifesto-07  php  test_bijecao_do_manifesto_da_tabela_187_07  ::  tests=1 assertions=9
+
+# ── TAREFA 3: o render (JS) ─────────────────────────────────────────────────
+
+# ⚠️⚠️ DOIS REGIMES (`tests=27,19`), e eles são MEDIDOS, não precaução. A camada
+# de CSS deste arquivo PULA quando o CSS construído é mais ANTIGO que as fontes
+# (`TabelaDaFila.jsx`, `LinhaDeProdutoDaFila.jsx`, `SubLinhaDeConjunto.jsx`,
+# `QuadradosDeFoto.jsx`, `Aprovacao.jsx`) — e mutar qualquer uma delas a deixa
+# mais nova. Medido nesta máquina em 16/10/2026:
+#   · pristino (CSS mais novo):   27 testes / 27 pass / 0 fail / 0 skipped
+#   · mutado   (fonte mais nova): 19 testes / 18 pass / 0 fail / 1 skipped
+# Sem os dois regimes a campanha de mutação abortaria na 1ª execução ("BASE com
+# contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o código
+# (learnings §4 caso 11).
+#
+# O que ele cobre: o GRID DE 11 COLUNAS lido do PROTÓTIPO e comparado por
+# IGUALDADE DE STRING (com isca do quase-igual, porque `substring` casa com
+# prefixo e já mordeu este projeto quatro vezes) e provado IDÊNTICO no cabeçalho;
+# as 11 células do cabeçalho localizadas por ÁRVORE com índice ABSOLUTO (nunca
+# `indexOf` de classes — quatro gates deste projeto mediam o irmão errado); os
+# **8** rótulos (o plano dizia 9) lidos do módulo E conferidos contra `:111`; as
+# DUAS células à direita; o checkbox só COM handler e nunca com `font-extrabold`
+# (que o GATE-03 proíbe); a linha de produto de 52px com o WRAPPER de `gap:8px`
+# que o plano OMITE; a frase do cadastro só quando é VERDADE, com ausência rodada
+# com as props PREENCHIDAS; a sub-linha de 38px com `pl-[62px]` e o token
+# `pub-sunken-2` que ACORDA nesta wave (provado DIFERENTE dos dois vizinhos no
+# CSS compilado); o "x/y aprovadas" com a cor NUNCA sendo o único sinal; o pill
+# só com `compartilhado: true` (e truthiness NÃO vale); "Revisar fotos do
+# conjunto" com o `whitespace-nowrap` que o plano OMITE; os 4 estados do quadrado
+# com a ORDEM do ternário (`regenerating` ANTES do alerta) e os 2 tamanhos
+# literais; o `title` NUNCA vazio; o slot das linhas provando ZERO casca sem nó;
+# a borda entre grupos nas três contagens (1, 2 e 3 grupos) com o índice como
+# trava; o render ADVERSO em 20 formas × cada campo dos três níveis; e as
+# ausências (`localStorage`, "Restaurar dados de exemplo", "lucro líquido",
+# `String(`, `JSON.stringify`) sobre a lista CONSTANTE de 4 arquivos.
+#
+# ⚠️ E o bloco que prova que `pub-float`/`pub-float-line` **CONTINUAM DORMINDO**:
+#    medido no `tailwind.config.js`, eles foram declarados para a barra de lote
+#    (`:897`) e o toast (`:905`), que são do plano **187-09** — NÃO para esta
+#    sub-linha. Usar token fora do lugar medido só para zerar um `skip` é o que a
+#    wave 4 recusou, e estava certa. A isca lê a camada para provar que os dois
+#    EXISTEM (o `skip` não é "token inexistente").
+tabela-niveis-1-e-2  js  tests/js/publicador-fila-tabela-187.test.js  ::  tests=27,19

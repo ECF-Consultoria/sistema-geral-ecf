@@ -935,6 +935,89 @@ class GrupoDaFilaServiceTest extends TestCase
         $this->assertSame(1, $espiao->chamadas, 'ISCA: o espião não conta — o 0 acima não prova nada');
     }
 
+    /**
+     * ⚠️⚠️ **A LISTA E A CONTA NÃO PODEM DIVERGIR** — `recortarPelaEtapa()` conferido contra o
+     * total do card correspondente **nas 9 chaves da faixa**.
+     *
+     * ⚠️ **O que precisaria estar errado no mundo para este caso falhar:** alguém escrever o
+     * recorte da lista de cabeça. O risco REAL é a etapa `publicado`: o card conta
+     * "publicado **HOJE**" (`whereDate('updated_at', hoje)`, `AndamentoDaOfertaService::
+     * faixaDeAndamento()`), e uma segunda regra mostraria na tabela publicações de ONTEM com o
+     * card dizendo outro número. **O usuário recusou número divergente entre conta e lista DUAS
+     * vezes** (decisões 9 e 16).
+     *
+     * ⚠️ É a MESMA técnica do caso da galeria contra o bloqueio: duas leituras, uma comparação, e
+     * o gate acusa no dia em que elas divergirem.
+     */
+    public function test_a_lista_recortada_pela_etapa_bate_com_o_card_nas_NOVE_chaves_187_07(): void
+    {
+        $empresa = Company::factory()->create();
+
+        // ⚠️ A fixture DISCRIMINA: um produto por andamento, mais DUAS `publicado` — uma de HOJE e
+        // uma de ONTEM. Sem a de ontem, o recorte do dia e o recorte só por andamento dariam o
+        // MESMO número e a comparação não mediria nada (foi assim que duas mutações da Fase 186
+        // sobreviveram: a fixture é que não discriminava).
+        foreach (array_keys(PubAprovacaoOferta::ANDAMENTOS) as $andamento) {
+            $produto = $this->produto($empresa, ['produto' => 'Produto '.$andamento]);
+            $this->oferta($empresa, $produto, $this->rascunho($produto), self::CLASSICO, $andamento);
+        }
+
+        $deOntem = $this->produto($empresa, ['produto' => 'Publicado Ontem']);
+        $ofertaDeOntem = $this->oferta($empresa, $deOntem, $this->rascunho($deOntem), self::CLASSICO, PubAprovacaoOferta::PUBLICADO);
+        PubAprovacaoOferta::withoutTimestamps(
+            fn () => $ofertaDeOntem->forceFill(['updated_at' => '2026-10-15 09:00:00'])->save()
+        );
+
+        $faixa = $this->fila()->faixa($this->fila()->paraAConta($empresa->id));
+        $this->assertCount(9, $faixa, 'a faixa deveria ter 9 cards');
+
+        $divergencias = [];
+        foreach ($faixa as $card) {
+            // Flag DENTRO do laço.
+            $daLista = $this->grupos()
+                ->recortarPelaEtapa($this->fila()->paraAConta($empresa->id), $card['chave'])
+                ->count();
+
+            if ($daLista !== $card['total']) {
+                $divergencias[] = $card['chave'].": lista {$daLista} × card {$card['total']}";
+            }
+        }
+
+        // UMA asserção, coletando os infratores.
+        $this->assertSame([], $divergencias, 'a lista divergiu do card — conta e lista TÊM de bater');
+
+        // ⚠️⚠️ ISCA INVERTIDA, e ela é o coração do caso: a etapa `publicado` tem DUAS ofertas no
+        // banco e o card conta UMA (a de hoje). Sem esta asserção, um recorte que ignorasse o dia
+        // passaria nas 9 comparações acima com a fixture errada.
+        $noBanco = PubAprovacaoOferta::query()
+            ->where('company_id', $empresa->id)
+            ->where('andamento', PubAprovacaoOferta::PUBLICADO)
+            ->count();
+        $this->assertSame(2, $noBanco, 'a fixture não discrimina: precisa de UMA publicada hoje e UMA de ontem');
+        $this->assertSame(
+            1,
+            $this->grupos()->recortarPelaEtapa($this->fila()->paraAConta($empresa->id), PubAprovacaoOferta::PUBLICADO)->count(),
+            '`publicado` deveria ser recorte DO DIA — a de ontem entrou na lista',
+        );
+
+        // ⚠️ E a chave `todas` (que NÃO está em `ANDAMENTOS`) devolve a base inteira.
+        $this->assertSame(
+            9,
+            $this->grupos()->recortarPelaEtapa($this->fila()->paraAConta($empresa->id), 'todas')->count(),
+            '`todas` deveria devolver a base inteira (8 andamentos + a publicada de ontem)',
+        );
+
+        // ⚠️ Chave forjada/não-string cai no mesmo lugar que "todas": aqui ela só é COMPARADA
+        // contra a lista fechada, nunca interpolada em SQL.
+        foreach (['gold_special', '', 'DROP TABLE', 42, null, [], new \stdClass] as $forjada) {
+            $this->assertSame(
+                9,
+                $this->grupos()->recortarPelaEtapa($this->fila()->paraAConta($empresa->id), $forjada)->count(),
+                'chave forjada deveria cair na base inteira, sem recortar nada',
+            );
+        }
+    }
+
     // ═════════════════════════════════════════════════════════════════════════════════════════
     // TRANSVERSAIS
     // ═════════════════════════════════════════════════════════════════════════════════════════
@@ -1125,7 +1208,7 @@ class GrupoDaFilaServiceTest extends TestCase
      * são de forma fixa (`>=` para linhas e métodos), então acrescentar id aqui NÃO mexe neste
      * número. Era fragilidade por construção e foi tirada de propósito.
      */
-    public function test_todo_metodo_do_plano_07_tem_id_no_manifesto_e_todo_id_casa_um_metodo_187_07(): void
+    public function test_bijecao_do_manifesto_da_tabela_187_07(): void
     {
         $manifesto = $this->raiz().'/tests/gates/contagens-187-07.txt';
         $this->assertFileExists($manifesto, 'manifesto ausente — os gates deste plano rodariam sem régua');

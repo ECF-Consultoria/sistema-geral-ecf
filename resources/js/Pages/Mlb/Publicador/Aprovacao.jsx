@@ -6,6 +6,7 @@ import CabecalhoDaFila from '@/Components/Mlb/Publicador/aprovacao/CabecalhoDaFi
 import FaixaDeAndamento from '@/Components/Mlb/Publicador/aprovacao/FaixaDeAndamento';
 import ProximoARevisar from '@/Components/Mlb/Publicador/aprovacao/ProximoARevisar';
 import FiltrosDaFila from '@/Components/Mlb/Publicador/aprovacao/FiltrosDaFila';
+import TabelaDaFila from '@/Components/Mlb/Publicador/aprovacao/TabelaDaFila';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -243,7 +244,8 @@ function querystringDe(recorte) {
  * @param {unknown} [props.contagem] `{exibidas, total}` — o "N de M" (plano 187-06)
  * @param {unknown} [props.algum_filtro] se "Limpar filtros" aparece (plano 187-06)
  * @param {unknown} [props.filtros] SLOT de NÓ — sobrepõe a linha montada do dado (plano 187-06)
- * @param {unknown} [props.tabela] SLOT — a tabela da fila (planos 187-07/08)
+ * @param {unknown} [props.grupos] a árvore de 3 níveis da lista (plano 187-07)
+ * @param {unknown} [props.tabela] SLOT de NÓ — sobrepõe a tabela montada do dado (planos 187-07/08)
  * @param {unknown} [props.rodape] SLOT — o rodapé e o lote (plano 187-09)
  */
 export default function Aprovacao({
@@ -261,6 +263,7 @@ export default function Aprovacao({
     contagem = null,
     algum_filtro = false,
     filtros = null,
+    grupos = null,
     tabela = null,
     rodape = null,
 }) {
@@ -288,7 +291,26 @@ export default function Aprovacao({
     const noProximo = isValidElement(proximo)
         ? proximo
         : <ProximoARevisar proximo={proximo_a_revisar} onRevisar={irParaOferta(empresaId, etapaAtiva)} />;
-    const noTabela = isValidElement(tabela) ? tabela : null;
+    // ⚠️⚠️ Fase 187, plano 07 — O SLOT `tabela` FOI PREENCHIDO, e o contrato de NÓ
+    // do 187-04 **continua valendo**: quem compõe um nó manda o nó, e sem nó a
+    // tabela é montada a partir dos DADOS do servidor (`grupos`). São duas props
+    // com UM significado cada — nó de composição × dado —, nunca uma prop com
+    // dois sentidos, que foi achado como defeito grave na Fase 186. É o terceiro
+    // par da mesma família: `proximo`/`proximo_a_revisar`,
+    // `filtros`/`filtros_ativos` e agora `tabela`/`grupos`.
+    //
+    // ⚠️ **O slot `linhaDaOferta` da tabela NÃO é preenchido aqui**, e isso é o
+    // plano **187-08**: sem ele a tabela desenha o cabeçalho, a linha de produto e
+    // a sub-linha, e **NENHUMA casca de linha de oferta** (D4 — nada nasce
+    // decorativo). Peça que depende do que vem depois fica **nomeada e ausente**,
+    // nunca esboço visível.
+    //
+    // ⚠️ E `onRevisarFotos`/`onMarcarVisiveis` também não: o painel de revisão é a
+    // **Fase 188** e a seleção em lote é o **187-09**. Sem handler, nem o atalho
+    // "Revisar fotos do conjunto" nem o checkbox do cabeçalho são desenhados —
+    // botão sem destino é D4 violado, e `onClick` vazio é a mesma dívida com
+    // outra roupa.
+    const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila grupos={grupos} />;
     const noRodape = isValidElement(rodape) ? rodape : null;
 
     // ═══ ⚠️ Plano 187-06 — O RECORTE ATUAL E OS HANDLERS QUE O MOVEM ═══════
@@ -473,7 +495,7 @@ export default function Aprovacao({
 
                         · `proximo` → "PRÓXIMO A REVISAR"      (plano 187-05 ✔)
                         · `filtros` → a linha de filtros        (plano 187-06 ✔)
-                        · `tabela`  → a tabela da fila          (planos 187-07/08)
+                        · `tabela`  → a tabela da fila          (plano 187-07 ✔)
                         · `rodape`  → o rodapé e a ação em lote (plano 187-09)
 
                         ⚠️⚠️ `filtros` (NÓ) × `filtros_ativos` (DADO) são DUAS

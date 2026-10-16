@@ -6,6 +6,7 @@ use App\Models\PubAprovacaoOferta;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubRascunhoAtributo;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -281,6 +282,44 @@ class GrupoDaFilaService
         }
 
         return $arvore;
+    }
+
+    /**
+     * A LISTA: a `$base` (todos os filtros **menos** a etapa) recortada **pela etapa**.
+     *
+     * ⚠️⚠️ **POR QUE ISTO NASCE AQUI, E É DESVIO DECLARADO (Regra 3).** O controller precisava da
+     * `lista` para a tabela (`:1214`: `list = base.filter(stage)`), e esse recorte **não existia em
+     * lugar nenhum**: `AndamentoDaOfertaService::faixaDeAndamento()` conta os 9 cards mas não
+     * devolve consulta, e `FiltrosDaFilaService::exibidasNaEtapa()` só LÊ o número da faixa já
+     * calculada. Escrevê-lo no controller faria o recorte morar na action, longe de qualquer gate.
+     *
+     * ⚠️⚠️ **E O RISCO REAL É A ETAPA `publicado`:** ali o card conta "publicado **HOJE**"
+     * (`whereDate('updated_at', hoje)`, `AndamentoDaOfertaService::faixaDeAndamento()`), e uma
+     * segunda regra escrita de cabeça mostraria na tabela publicações de ontem com o card dizendo
+     * outro número. **O usuário recusou número divergente entre conta e lista DUAS vezes**
+     * (decisões 9 e 16).
+     * ➡️ A regra mora num lugar só, e há gate comparando `recortarPelaEtapa()->count()` com o total
+     * do card correspondente **nas 9 chaves**, com isca — a MESMA técnica que a tarefa 1 usa para
+     * a galeria contra o bloqueio. Se um dia os dois divergirem, o gate acusa.
+     *
+     * ⚠️ `$etapa` é a chave **já SANEADA** pelo controller contra a lista fechada das 9
+     * (`MlbPublicadorAprovacaoController::etapaSaneada()`): aqui ela só é comparada, nunca
+     * interpolada em SQL. Chave desconhecida devolve a base inteira — o mesmo que "todas".
+     */
+    public function recortarPelaEtapa(Builder $base, mixed $etapa): Builder
+    {
+        if (! is_string($etapa) || ! array_key_exists($etapa, PubAprovacaoOferta::ANDAMENTOS)) {
+            return $base;
+        }
+
+        $recortada = $base->where('andamento', $etapa);
+
+        // ⚠️ "Publicado hoje" é recorte DO DIA, e é o único card que não é só o andamento.
+        if ($etapa === PubAprovacaoOferta::PUBLICADO) {
+            $recortada = $recortada->whereDate('updated_at', now()->toDateString());
+        }
+
+        return $recortada;
     }
 
     /**

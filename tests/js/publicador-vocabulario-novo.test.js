@@ -242,6 +242,28 @@ const ARQUIVOS_NOVOS = [
     // num `.js` nenhuma delas geraria CSS.
     `${DIR_APROV}/FiltrosDaFila.jsx`,
     `${DIR_APROV}/PopoverDeFiltro.jsx`,
+    // ─── Fase 187, plano 07 — A TABELA DA FILA: a casca com o grid de 11
+    //     colunas, a linha de produto (nível 1), a sub-linha de conjunto
+    //     (nível 2) e os mini-quadrados de foto ───
+    //
+    // ⚠️⚠️ **SE ESTAS QUATRO LINHAS FALTASSEM, O GATE-03 PASSARIA POR OMISSÃO**
+    // para os quatro arquivos — e `DIR_APROV` está em `DIRETORIOS_FECHADOS`,
+    // então o `assert.deepEqual(noDisco, declarados)` reprova na hora (é o
+    // comportamento certo). ⚠️ E declarar ANTES de o arquivo existir **LANÇA** no
+    // carregamento do módulo, porque `FONTES` lê todos os caminhos: quem escreve
+    // aqui é o plano que acabou de criar o arquivo, nunca o anterior. É por isso
+    // que `LinhaDaOferta.jsx`, `AnelDeProgresso.jsx` e `BarraDeMargem.jsx` (plano
+    // **187-08**) **NÃO** estão pré-declarados.
+    //
+    // ⚠️ `.jsx` nos quatro, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // das classes da tabela — o grid literal de 11 colunas, as alturas de 52px e
+    // 38px, o recuo de 62px, os quadrados de 10/12px e o token `pub-sunken-2`,
+    // que ACORDA nesta wave. Num `.js` nenhuma delas geraria CSS.
+    `${DIR_APROV}/TabelaDaFila.jsx`,
+    `${DIR_APROV}/LinhaDeProdutoDaFila.jsx`,
+    `${DIR_APROV}/SubLinhaDeConjunto.jsx`,
+    `${DIR_APROV}/QuadradosDeFoto.jsx`,
     // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
     //
     // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem
