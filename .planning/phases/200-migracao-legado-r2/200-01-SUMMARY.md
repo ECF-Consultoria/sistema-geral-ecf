@@ -50,3 +50,14 @@ Medido na VPS em `storage/app/private` (antes do deploy da v28.0):
 - **Contagens no banco (fotos com/sem arquivo, ativos únicos previstos, gerações não aprovadas > 30 dias): NÃO
   medidas** — a segunda leitura foi bloqueada pelo classificador de segurança ("Production Reads"). Depende de
   liberação do usuário, ou sai do `acervo:registrar-existentes --dry-run` depois do deploy.
+
+## Deploy e simulações em produção — 16/10/2026
+
+- **Deploy `507cc355`** (v28.0 inteira + Fase 187 parcial da v27, liberada pela outra sessão/usuário + Planejador
+  FULL do outro dev). Migrations `…200000_create_acervo_imagens_table` e `…210000_add_migracao_to_acervo_imagens`
+  **Ran**, zero pendentes. `queue:restart` enviado. Site HTTP 200. `IMAGENS_DISK` ausente no `.env` = `local`.
+- **`acervo:registrar-existentes --dry-run`:** 43 ativos de fotos + 6 de criativos antigos aprovados = **49 ativos**;
+  13 fotos ligadas a ativo já existente (13 cópias físicas redundantes, consolidadas na migração); 0 sem arquivo;
+  0 sem dono.
+- **`acervo:limpar-geracoes` (simulação):** 0 gerações não aprovadas com mais de 30 dias.
+- **Credenciais R2:** todas AUSENTES no `.env` da VPS — próximo passo é do usuário.
