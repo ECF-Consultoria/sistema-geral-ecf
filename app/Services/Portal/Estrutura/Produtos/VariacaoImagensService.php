@@ -29,6 +29,12 @@ use Illuminate\Validation\ValidationException;
  * Nada é redimensionado ou recomprimido: o arquivo é guardado como veio. O tratamento e o
  * envio para qualquer destino são de outra etapa.
  *
+ * ### Miniatura (16/10/2026)
+ * Só para EXIBIR em lista: uma cópia JPEG de até {@see self::MINIATURA}px, gerada na primeira vez
+ * que a tela pede (`?w=`) e guardada ao lado da original, em `miniaturas/`. A original não é
+ * tocada. Medido na #459: 9 capas somavam 4,3 MB (PNG de ~700 px, 280–690 KB) para quadros de
+ * 56–132 px. Sem GD, ou com arquivo que o GD não lê, a rota entrega a original.
+ *
  * ### Ordem
  * `ordem` 0 é a capa. Ao excluir ou reordenar, a numeração é refeita de 0 a N-1 sem buracos.
  *
@@ -39,6 +45,9 @@ use Illuminate\Validation\ValidationException;
 class VariacaoImagensService
 {
     public const DISCO = 'local';
+
+    /** O lado maior da miniatura: o dobro do maior quadro da tela (132 px), para tela de alta densidade. */
+    public const MINIATURA = 320;
 
     /** O que o cliente lê quando o envio estoura o limite do PHP (`post_max_size` / `upload_max_filesize`). */
     public const MENSAGEM_GRANDE_DEMAIS = 'A imagem é grande demais para enviar; tente uma menor.';
@@ -75,6 +84,65 @@ class VariacaoImagensService
     public static function url(int $variacaoId, int $imagemId): string
     {
         return route('portal.auth.estrutura.produtos.imagens.ver', ['variacao' => $variacaoId, 'imagem' => $imagemId], false);
+    }
+
+    /** A mesma rota pedindo a miniatura. */
+    public static function urlMiniatura(int $variacaoId, int $imagemId): string
+    {
+        return route('portal.auth.estrutura.produtos.imagens.ver', ['variacao' => $variacaoId, 'imagem' => $imagemId, 'w' => self::MINIATURA], false);
+    }
+
+    /** Onde a miniatura de uma imagem fica no disco: na pasta da variação, que leva junto ao ser apagada. */
+    public static function caminhoDaMiniatura(EstruturaProdutoVariacaoImagem $imagem): string
+    {
+        return dirname($imagem->caminho).'/miniaturas/'.self::MINIATURA.'/'.$imagem->id.'.jpg';
+    }
+
+    /**
+     * O caminho da miniatura, gerada agora se ainda não existe; null quando não dá para gerar (sem GD,
+     * formato que o GD não lê, imagem que estoura a memória) — aí quem chama entrega a original.
+     */
+    public function miniatura(EstruturaProdutoVariacaoImagem $imagem): ?string
+    {
+        $disco = Storage::disk(self::DISCO);
+        $destino = self::caminhoDaMiniatura($imagem);
+
+        if ($disco->exists($destino)) {
+            return $destino;
+        }
+        if (! function_exists('imagecreatefromstring')) {
+            return null;
+        }
+
+        try {
+            $original = @imagecreatefromstring((string) $disco->get($imagem->caminho));
+            if ($original === false) {
+                return null;
+            }
+
+            [$w, $h] = [imagesx($original), imagesy($original)];
+            $escala = min(1, self::MINIATURA / max($w, $h));
+            [$nw, $nh] = [max(1, (int) round($w * $escala)), max(1, (int) round($h * $escala))];
+
+            // Fundo branco: o PNG transparente fica como na tela (o quadro é branco), e o JPEG não tem alfa.
+            $mini = imagecreatetruecolor($nw, $nh);
+            imagefill($mini, 0, 0, imagecolorallocate($mini, 255, 255, 255));
+            imagecopyresampled($mini, $original, 0, 0, 0, 0, $nw, $nh, $w, $h);
+
+            ob_start();
+            imagejpeg($mini, null, 82);
+            $bytes = (string) ob_get_clean();
+            imagedestroy($original);
+            imagedestroy($mini);
+
+            $disco->put($destino, $bytes);
+
+            return $destino;
+        } catch (\Throwable $e) {
+            Log::warning('[Estrutura Imagens] miniatura não gerada; vai a original', ['imagem' => (int) $imagem->id, 'erro' => $e->getMessage()]);
+
+            return null;
+        }
     }
 
     // ═══ Leitura ════════════════════════════════════════════════════════════
@@ -218,6 +286,7 @@ class VariacaoImagensService
     public function excluir(Company $empresa, EstruturaProdutoVariacao $variacao, EstruturaProdutoVariacaoImagem $imagem, AtorDoPortal $ator): array
     {
         $caminho = $imagem->caminho;
+        $miniatura = self::caminhoDaMiniatura($imagem);
 
         DB::transaction(function () use ($empresa, $variacao, $imagem) {
             $imagem->delete();
@@ -226,7 +295,7 @@ class VariacaoImagensService
 
         // Depois do commit: se o banco desfizer, o arquivo continua lá para a linha que sobrou.
         try {
-            Storage::disk(self::DISCO)->delete($caminho);
+            Storage::disk(self::DISCO)->delete([$caminho, $miniatura]);
         } catch (\Throwable $e) {
             Log::warning('[Estrutura Imagens] arquivo não pôde ser removido do disco', ['caminho' => $caminho, 'erro' => $e->getMessage()]);
         }

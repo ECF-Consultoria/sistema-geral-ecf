@@ -77,17 +77,21 @@ class PortalEstruturaSugestoesController extends Controller
         $naAbaCriadas = $filtros['aba'] === self::ABA_CRIADAS;
 
         // Na aba Criadas o painel (contagens, famílias, tipos) continua o das sugestões; só a lista é outra.
-        $sugestoes = $this->lista->listar($empresa, $naAbaCriadas ? ['aba' => 'sugestoes'] + $filtros : $filtros, (int) $request->query('pagina', 1));
+        // A busca e o tipo da aba Criadas são dela: o painel das sugestões é montado sem eles.
+        $sugestoes = $this->lista->listar($empresa, $naAbaCriadas ? ['aba' => 'sugestoes', 'fase' => null, 'q' => ''] + $filtros : $filtros,
+            $naAbaCriadas ? 1 : (int) $request->query('pagina', 1));
         $sugestoes['contagens'][self::ABA_CRIADAS] = $this->criadas->contar($empresa);
         if ($naAbaCriadas) {
             $sugestoes['aba'] = self::ABA_CRIADAS;
         }
+        $filtrosCriadas = $naAbaCriadas ? $this->filtrosCriadas($request, $filtros) : null;
 
         return Inertia::render('Portal/EstruturaSugestoes', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.sugestoes', PortalContexto::ator()),
             'sugestoes'    => $sugestoes,
-            // Os combos, kits e combits que já existem; só quando a aba está aberta.
-            'criadas'      => $naAbaCriadas ? $this->criadas->listar($empresa) : null,
+            // Os combos, kits e combits que já existem; só quando a aba está aberta. Filtros e página próprios (16/10).
+            'criadas'      => $naAbaCriadas ? $this->criadas->listar($empresa, $filtrosCriadas, (int) $request->query('pagina', 1)) : null,
+            'filtros_criadas' => $filtrosCriadas,
             'filtros'      => $filtros,
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => [
@@ -274,6 +278,23 @@ class PortalEstruturaSugestoesController extends Controller
             'status'  => in_array($status, ListaDeSugestoes::STATUS, true) ? $status : null,
             'q'       => mb_substr(trim((string) $request->query('q', '')), 0, 100),
             'combos'  => $combos,
+        ];
+    }
+
+    /**
+     * Os filtros da aba Criadas (16/10/2026): `fase` e `q` são os mesmos da URL das outras abas; `situacao`,
+     * `envio` e `ordem` só valem aqui. O que não está na lista vira "sem filtro" (nunca 422 por URL estranha).
+     */
+    private function filtrosCriadas(Request $request, array $filtros): array
+    {
+        $escolha = fn (string $chave, array $validos) => in_array($v = (string) $request->query($chave, ''), $validos, true) ? $v : null;
+
+        return [
+            'fase'     => $filtros['fase'],
+            'situacao' => $escolha('situacao', OfertasCriadas::SITUACOES),
+            'envio'    => $escolha('envio', OfertasCriadas::ENVIOS),
+            'ordem'    => $escolha('ordem', OfertasCriadas::ORDENS) ?? 'recentes',
+            'q'        => $filtros['q'],
         ];
     }
 }

@@ -77,7 +77,8 @@ class AbaCriadasTest extends TestCase
         $r = app(OfertasCriadas::class)->listar($empresa);
 
         $this->assertSame(3, $r['total']);
-        $this->assertSame(3, $r['mostrando']);
+        $this->assertSame(3, $r['filtrado']);
+        $this->assertSame(['pagina' => 1, 'paginas' => 1, 'por_pagina' => OfertasCriadas::POR_PAGINA, 'blocos' => 3], $r['paginacao']);
         $this->assertSame(['combo', 'kit', 'combit'], array_column($r['grupos'], 'fase'), 'a ordem dos grupos; as ofertas simples não entram');
         $this->assertSame(['Combos', 'Kits', 'Combits'], array_column($r['grupos'], 'rotulo'));
 
@@ -93,7 +94,93 @@ class AbaCriadasTest extends TestCase
         $this->assertSame($kit->id, $doKit['id']);
         $this->assertSame(['NINA', 'MESA'], array_column($doKit['composicao'], 'sku'));
         $this->assertSame('sem_custo', $doKit['pendencia'], 'a mesa não tem custo: o do kit não fecha');
+        $this->assertSame(['MESA'], $doKit['faltam_custo'], 'diz QUAL produto está sem custo — é no cadastro dele que se resolve');
+        $this->assertSame([], $doCombo['faltam_custo']);
         $this->assertFalse($doKit['sem_calculo']);
+        $this->assertArrayNotHasKey('_busca', $doKit, 'o texto interno da busca não vai para a tela');
+    }
+
+    /**
+     * 16/10/2026 — "deveria ter filtros, modo lista também". Tipo, situação do preço, envio e busca; cada filtro
+     * conta as suas opções com os OUTROS aplicados. No cenário: o combo está sem frete (ME1); kit e combit, sem
+     * custo (a mesa não tem).
+     */
+    public function test_filtros_e_contagens_de_cada_opcao_com_os_outros_filtros_aplicados(): void
+    {
+        [$empresa, , , $combo, $kit, $combit] = $this->cenario();
+        $svc = app(OfertasCriadas::class);
+        $ids = fn (array $r) => array_merge(...array_map(fn ($g) => array_column($g['itens'], 'id'), $r['grupos'] ?: [['itens' => []]]));
+
+        $tudo = $svc->listar($empresa);
+        $this->assertSame(['todas' => 3, 'combo' => 1, 'kit' => 1, 'combit' => 1], $tudo['contagens']['fase']);
+        $this->assertSame(['todas' => 3, 'com_preco' => 0, 'pendente' => 3, 'sem_custo' => 2, 'sem_frete' => 1, 'impossivel' => 0], $tudo['contagens']['situacao']);
+        $this->assertSame(3, $tudo['contagens']['envio']['todas']);
+
+        $this->assertSame([$kit->id], $ids($svc->listar($empresa, ['fase' => 'kit'])));
+        $this->assertSame([$kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'sem_custo'])), 'kit e combit, na ordem dos tipos');
+        $this->assertSame([$combo->id, $kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'pendente'])));
+        $this->assertSame([], $ids($svc->listar($empresa, ['situacao' => 'com_preco'])));
+        $this->assertSame([$combo->id], $ids($svc->listar($empresa, ['envio' => LogisticaProduto::ME1, 'fase' => 'combo'])));
+
+        // Com o tipo Kit ligado, a situação conta só o kit; o tipo continua contando todos (é ele o filtro).
+        $soKit = $svc->listar($empresa, ['fase' => 'kit']);
+        $this->assertSame(1, $soKit['filtrado']);
+        $this->assertSame(['todas' => 1, 'com_preco' => 0, 'pendente' => 1, 'sem_custo' => 1, 'sem_frete' => 0, 'impossivel' => 0], $soKit['contagens']['situacao']);
+        $this->assertSame(['todas' => 3, 'combo' => 1, 'kit' => 1, 'combit' => 1], $soKit['contagens']['fase']);
+        $semCusto = $svc->listar($empresa, ['situacao' => 'sem_custo']);
+        $this->assertSame(['todas' => 2, 'combo' => 0, 'kit' => 1, 'combit' => 1], $semCusto['contagens']['fase'], 'o tipo conta com a situação aplicada');
+
+        // Valor fora da lista não filtra (nem quebra).
+        $this->assertSame(3, $svc->listar($empresa, ['fase' => 'xyz', 'situacao' => 'tudo', 'envio' => 'drone'])['filtrado']);
+    }
+
+    public function test_busca_acha_pelo_item_ou_por_um_produto_dele_sem_ligar_para_acento_ou_maiuscula(): void
+    {
+        [$empresa, , , $combo, $kit, $combit] = $this->cenario();
+        $svc = app(OfertasCriadas::class);
+        $ids = fn (string $q) => array_merge(...array_map(fn ($g) => array_column($g['itens'], 'id'), $svc->listar($empresa, ['q' => $q])['grupos'] ?: [['itens' => []]]));
+
+        $this->assertSame([$kit->id, $combit->id], $ids('mesa'), 'pelo componente');
+        $this->assertSame([$combo->id], $ids('nina-cb2'), 'pelo código do item');
+        $this->assertSame([$kit->id], $ids('KIT NINA'), 'pelo nome, sem ligar para maiúscula');
+        $this->assertSame([$combo->id, $kit->id, $combit->id], $ids('  '), 'só espaço não filtra');
+        $this->assertSame([], $ids('Luminária'));
+
+        // Acento: "Cômoda" no nome é achada por "comoda".
+        $combo->update(['nome' => 'Combo 2 Nina Cômoda']);
+        $this->assertSame([$combo->id], $ids('comoda'));
+    }
+
+    public function test_ordem_dentro_de_cada_tipo_e_paginas_de_60_sem_teto(): void
+    {
+        [$empresa, $nina, , $combo, $kit, $combit] = $this->cenario();
+        $ofertas = app(EstruturaOfertaService::class);
+        $ator = $this->atorCliente($empresa);
+        // Mais 60 combos (Combo 3 a Combo 62 da Nina): 61 combos + 1 kit + 1 combit = 63 criadas, 2 páginas.
+        $novos = [];
+        foreach (range(3, 62) as $n) {
+            [$novos[]] = $ofertas->criar($empresa, ['sku' => "NINA-CB{$n}", 'fase' => 'combo', 'nome' => "Combo {$n} Nina",
+                'componentes' => [['id' => $nina->id, 'quantidade' => $n]]], $ator);
+        }
+        $svc = app(OfertasCriadas::class);
+
+        $p1 = $svc->listar($empresa);
+        $this->assertSame(63, $p1['total']);
+        $this->assertSame(['pagina' => 1, 'paginas' => 2, 'por_pagina' => 60, 'blocos' => 63], $p1['paginacao']);
+        $this->assertSame(['combo'], array_column($p1['grupos'], 'fase'), 'os tipos ficam contíguos: os combos vêm antes');
+        $this->assertSame(end($novos)->id, $p1['grupos'][0]['itens'][0]['id'], 'mais recente primeiro');
+
+        // Antes (teto de 300 mais recentes) os Kits e Combits sumiam atrás dos Combos; agora estão na página 2.
+        $p2 = $svc->listar($empresa, [], 2);
+        $this->assertSame(['combo', 'kit', 'combit'], array_column($p2['grupos'], 'fase'));
+        $this->assertSame([$combo->id], array_column($p2['grupos'][0]['itens'], 'id'), 'o combo mais antigo fecha a lista de combos');
+        $this->assertSame(2, $svc->listar($empresa, [], 99)['paginacao']['pagina'], 'página além da última cai na última');
+
+        $porNome = $svc->listar($empresa, ['ordem' => 'nome', 'fase' => 'combo']);
+        $this->assertSame(['Combo 2 Nina', 'Combo 3 Nina', 'Combo 4 Nina'], array_slice(array_column($porNome['grupos'][0]['itens'], 'nome'), 0, 3), 'ordem natural: 2, 3, 4… e não 10, 11');
+
+        $pendentesPrimeiro = $svc->listar($empresa, ['ordem' => 'pendentes']);
+        $this->assertSame(63, $pendentesPrimeiro['filtrado']);
     }
 
     /**
@@ -121,7 +208,7 @@ class AbaCriadasTest extends TestCase
         }
 
         $r = app(OfertasCriadas::class)->listar($empresa);
-        $urlDaCapa = VariacaoImagensService::url($variacao->id, $capa->id);
+        $urlDaCapa = VariacaoImagensService::urlMiniatura($variacao->id, $capa->id);
 
         $this->assertSame([$urlDaCapa], array_column($r['grupos'][0]['itens'][0]['composicao'], 'foto'), 'Combo: a capa da galeria');
         $this->assertSame([$urlDaCapa, 'https://http2.mlstatic.com/D_2-I.jpg'], array_column($r['grupos'][1]['itens'][0]['composicao'], 'foto'),
@@ -147,7 +234,17 @@ class AbaCriadasTest extends TestCase
                 ->where('criadas.total', 3)
                 ->where('criadas.grupos.0.fase', 'combo')
                 ->where('criadas.grupos.0.itens.0.sku', 'NINA-CB2')
-                ->where('criadas.grupos.2.itens.0.composicao.0.quantidade', 4));
+                ->where('criadas.grupos.2.itens.0.composicao.0.quantidade', 4)
+                ->where('filtros_criadas', ['fase' => null, 'situacao' => null, 'envio' => null, 'ordem' => 'recentes', 'q' => '']));
+
+        // Os filtros pela URL; o que não está na lista vira "sem filtro".
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas', 'fase' => 'kit', 'situacao' => 'sem_custo', 'envio' => 'drone', 'ordem' => 'nome', 'q' => 'nina']))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('filtros_criadas', ['fase' => 'kit', 'situacao' => 'sem_custo', 'envio' => null, 'ordem' => 'nome', 'q' => 'nina'])
+                ->where('criadas.filtrado', 1)
+                ->where('criadas.grupos.0.itens.0.sku', 'NINA+MESA')
+                // A busca e o tipo da aba Criadas não mexem nas contagens das outras abas.
+                ->where('sugestoes.contagens.criadas', 3));
 
         // A página não consulta o Mercado Livre (o que sai é só o aviso interno do layout, de outro serviço).
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'mercadolibre') || str_contains($req->url(), 'mercadolivre'));
@@ -159,7 +256,8 @@ class AbaCriadasTest extends TestCase
         $outra = $this->empresaDoGabarito();
         $this->simples($outra, 'SO', ['c' => 10, 'l' => 10, 'a' => 10, 'kg' => 1], '5');
 
-        $this->assertSame(['total' => 0, 'mostrando' => 0, 'grupos' => []], app(OfertasCriadas::class)->listar($outra), 'só oferta simples: nada criado');
+        $vazia = app(OfertasCriadas::class)->listar($outra);
+        $this->assertSame([0, 0, []], [$vazia['total'], $vazia['filtrado'], $vazia['grupos']], 'só oferta simples: nada criado');
         $this->assertSame(0, app(OfertasCriadas::class)->contar($outra));
         $this->assertSame(3, app(OfertasCriadas::class)->contar($empresa));
     }

@@ -111,7 +111,7 @@ function BlocoDeCombos({ chave, bloco, ocupado, onAlternar, children }) {
     );
 }
 
-export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, criadas = null, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
+export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, criadas = null, filtros_criadas = null, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
     const limites = sugestoes.limites;
     const [montarAberto, setMontarAberto] = useState(false);
     const [produtoMontar, setProdutoMontar] = useState(null);     // `?montar=<produto>`: entra já escolhido
@@ -206,7 +206,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
     };
 
     // Os filtros seguem junto na troca de aba; a página volta para 1 (mesmo caminho: a guarda não pergunta).
-    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', filtrosDaAba(filtros, aba));
+    // Saindo de Criadas, os filtros dela (busca e tipo inclusive) ficam para trás.
+    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', filtrosDaAba(ehAbaCriadas ? {} : filtros, aba));
 
     // ─── Marcação e edição (libs do 168-05) ─────────────────────────────────
 
@@ -754,7 +755,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                     </>
                 )}
 
-                {ehAbaCriadas && <PainelCriadas criadas={criadas} />}
+                {ehAbaCriadas && <PainelCriadas criadas={criadas} filtros={filtros_criadas} />}
 
                 {ehAbaSemTipo && sugestoes.tem_produtos && (
                     <PainelSemTipo produtos={sugestoes.produtos_sem_tipo ?? []} tipos={sugestoes.tipos ?? []} paginacao={sugestoes.paginacao}
