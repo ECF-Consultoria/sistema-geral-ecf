@@ -574,6 +574,14 @@ class MlbPublicadorCriativoController extends Controller
             $kit->encerrarSeTravado();
         }
 
+        // Quick 261016-mgv: a tela agora acompanha também a VALIDAÇÃO; uma validação perdida
+        // (job que nunca roda) não pode prender o "Validando automaticamente…" — passados
+        // LIMITE_VALIDACAO_MINUTOS vira `indisponivel`, como já fazem os endpoints de aprovação.
+        $kit->slots()
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_PENDENTE)
+            ->get()
+            ->each(fn (MlAnuncioCriativo $slot) => $slot->encerrarValidacaoSeTravada());
+
         if ($kit->aprovadas() === 0) {
             $kit->recalcularStatus();
         }

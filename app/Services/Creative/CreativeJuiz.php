@@ -109,14 +109,28 @@ class CreativeJuiz
     public function julgarEGravar(MlAnuncioCriativo $criativo): CreativeValidacao
     {
         $maxValidacoesAsset = (int) config('services.creative.validacao.max_validacoes_asset', 3);
+        $kit = $criativo->kit;
 
-        if ($criativo->validacoes >= $maxValidacoesAsset) {
-            return $this->indisponivel('Esta imagem já passou pelo número máximo de validações automáticas.');
+        // Quick 261016-mgv: o teto conta o SLOT inteiro (soma todas as regenerações). No Publicador
+        // (kit sem teto, 261016-lu1) toda imagem NOVA é validada — sem isto, a 4ª imagem de um slot
+        // nunca era julgada. A retentativa de um juiz que falha sempre segue contida pelos
+        // `$tries` do ValidarCriativoIaJob, por imagem.
+        if (! ($kit?->semTeto() ?? false) && $criativo->validacoes >= $maxValidacoesAsset) {
+            $validacao = $this->indisponivel('Esta imagem já passou pelo número máximo de validações automáticas.');
+
+            // Quick 261016-mgv: devolvia SEM gravar — o criativo ficava `pendente` para sempre e a
+            // tela presa em "Validando automaticamente…" (kit 17, slot 1, produção, 16/10/2026).
+            $criativo->update([
+                'validacao_status' => $validacao->status,
+                'validacao'         => $validacao->paraColuna(),
+                'validacao_em'      => now(),
+            ]);
+
+            return $validacao;
         }
 
         $criativo->increment('validacoes');
 
-        $kit = $criativo->kit;
         if ($kit !== null) {
             $kit->increment('validacoes');
         }
