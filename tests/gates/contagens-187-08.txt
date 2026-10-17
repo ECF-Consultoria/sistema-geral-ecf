@@ -1,0 +1,242 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-08 — A LINHA DA OFERTA:
+# as ONZE células resolvidas no servidor, o anel de progresso nos quatro estados
+# e a barra de margem de 0 a 40% com o traço do mínimo.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-08 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `187-08`, E NÃO `08`. O número NU resolve
+# `contagens-186-08.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **15** métodos PHP deste
+#    plano estão quebrados em **NOVE** ids, nenhum com mais de **TRÊS** métodos.
+#    (Foi assim que o 187-07 virou 7 ids e o 187-06, 4.)
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 16/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:` (php) e com `node --test --test-reporter=tap`
+#    (js). Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#
+# ⚠️ `>=` **NÃO** é usado em nenhum id deste plano: a contagem destes arquivos
+#    não cresce por construção, e a igualdade exata é mais forte e é o padrão.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ ESTE PLANO FOI HERDADO DE UM AGENTE QUE CAIU DUAS VEZES
+# ═══════════════════════════════════════════════════════════════════════════════
+# `LinhaDaOfertaService.php` (786 linhas), `LinhaDaOfertaServiceTest.php`
+# (15 métodos) e a fiação do `MlbPublicadorAprovacaoController` chegaram PRONTOS
+# e SEM COMMIT na árvore. **A ÚNICA coisa vermelha era o próprio gate de bijeção
+# reclamando que ESTE ARQUIVO não existia** (`assertFileExists`), e é por isso
+# que escrevê-lo foi a PRIMEIRA ação desta sessão — antes de uma linha de JSX.
+# ⚠️ `test_metodo_que_ninguem_escreveu_187_08` **NÃO é método**: é a string da
+# ISCA do gate de bijeção (`LinhaDaOfertaServiceTest:1341`), que exige que o
+# filtro do PRIMEIRO id php **não** case um nome que ninguém escreveu. Foi LIDA
+# antes de qualquer conclusão, e é isca — respeitada, não removida.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ DIVERGÊNCIA DECLARADA DOS NOMES DE ID QUE O PLANO PRESCREVE
+# ═══════════════════════════════════════════════════════════════════════════════
+# O plano 187-08 escreve três ids nos `<verify>`: `linha-servico` (tarefa 1),
+# `anel-e-barra` (tarefa 2) e `linha-render` (tarefa 3).
+#
+# **`linha-servico` NÃO existe**, e isso é decisão MEDIDA, não preferência: ele
+# cobriria os **13** métodos de comportamento da tarefa 1 numa alternância só, e
+# alternância grande equivale a filtro de CLASSE — que passa dos 120 s do shell
+# deste ambiente e o helper RECUSA (é a medição do plano 186-07, escrita em
+# `contagens-186-08.txt`, e a mesma razão que quebrou o `filtros-servico` do
+# plano 187-06 em quatro ids e o 187-07 em sete).
+# ➡️ Os 13 viraram **SETE** ids por assunto: `anel-e-meta`, `dinheiro-da-linha`,
+# `margem-e-preco`, `fotos-e-espera`, `andamento-e-acao`, `abertura-e-fundos` e
+# `custo-da-linha`. Mais os dois transversais (`territorio-linha` e
+# `bijecao-manifesto-08`) = **nove** ids php.
+# ⚠️ `anel-e-barra` e `linha-render` eram DOIS ids para o MESMO arquivo de gate
+# JS (`publicador-fila-linha-187.test.js`). No modo `js` o harness roda o ARQUIVO
+# inteiro, então dois ids sobre um arquivo só dariam a MESMA contagem duas vezes
+# e nenhum deles mediria a sua própria metade — gate decorativo por construção.
+# ➡️ Um id só: `linha-da-oferta-render`.
+# ⚠️ **Nenhum método ficou de fora** — a bijeção é provada por script, nos DOIS
+# sentidos, pelo id `bijecao-manifesto-08`, com asserção ÚNICA de contagem fixa
+# coletando os infratores.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO CONTRA A FASE 186 — CONFERIDO POR SCRIPT, NÃO DE CABEÇA
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as duas fases numeram
+# planos de 01 a 09+: **todo `_0N` desta fase tem homônimo possível na 186.** Um
+# método meu que fosse SUPERSTRING de um método da 186 faria o id daquela fase
+# SOMAR contagens e **reprovar o manifesto de uma fase EM PRODUÇÃO** (deploy
+# `a4c4187f`). Foi o que `FechamentoDaFase186Test::os_nove_manifestos_nao_tem_
+# homonimo_que_some_dois_arquivos` pegou no plano 187-07.
+# ➡️ Varri os **15** nomes deste arquivo contra **todo** `test_*` de `tests/`,
+#    nas DUAS direções (meu contém o alheio / alheio contém o meu):
+#    **NENHUMA COLISÃO.** Nenhum sufixo precisou ser trocado — e, se precisasse,
+#    o conserto seria sufixo no método NOVO, **nunca** elevar a contagem do
+#    manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ O QUE **NÃO** ENTRA NESTE MANIFESTO, E POR QUÊ
+# ═══════════════════════════════════════════════════════════════════════════════
+# `tests/js/publicador-vocabulario-novo.test.js` (o GATE-03 dos cinco diretórios
+# fechados) **recebeu os TRÊS `.jsx` desta wave em `ARQUIVOS_NOVOS`** — sem isso
+# o GATE-03 passaria POR OMISSÃO para eles, e o `deepEqual` de
+# `DIRETORIOS_FECHADOS` reprovaria na hora (é o comportamento certo). ⚠️ Mas ele
+# **NÃO entra em id nenhum daqui**: a contagem daquele arquivo **CRESCE POR
+# CONSTRUÇÃO** (um subteste por arquivo varrido), ele já tem id PRÓPRIO
+# (`vocabulario-tamanhos`, em `contagens-187-01.txt`, com a forma `>=443`), e
+# embuti-lo num id COMPOSTO foi exatamente o que fez a wave 5 reprovar DOIS ids
+# de outras waves e exigiu o conserto de QUATRO manifestos.
+#
+# ⚠️ `tests/js/publicador-fila-tabela-187.test.js`, `-cabecalho-187`,
+#    `-filtros-187`, `-proximo-187`, `-zindex-187`, `-tokens-187`,
+#    `publicador-header-zindex-ordem.test.js` e `estrutura-meus-anuncios.test.js`
+#    são de OUTRAS waves (ou INTOCÁVEIS) e **não** são alvo de id nenhum: nome de
+#    guarda genérico COLIDE no `--filter` e o harness SOMA as contagens. O gate JS
+#    desta wave é um arquivo NOVO.
+#
+# ⚠️ `tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php` também não
+#    tem id aqui: ele é o gate da wave 2 e a mudança desta wave nele foi na ISCA
+#    de um caso ALHEIO (`test_a_tela_nao_recebe_a_fila_para_poder_somar_187_02`),
+#    declarada no próprio arquivo. O id daquele caso vive em `contagens-187-02.txt`.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES, REMEDIDAS NO HEAD DESTE PLANO (`44d0a364`, 16/10/2026)
+# ═══════════════════════════════════════════════════════════════════════════════
+# A referência do plano 187-07 era **PHP 2430 / 21.239 / 0 falhas** e
+# **JS 5354 / 5349 pass / 1 fail / 4 skipped**. Remedidas nesta sessão, não
+# ajustadas — ver `187-08-SUMMARY.md` §baselines.
+# ⚠️ A falha JS é a PRÉ-EXISTENTE de `tests/js/estrutura-grade-glide.test.js`
+#    (Fase 87, *"Características secundárias nasce recolhido"*) — **não
+#    corrigida**, e **não** existe `REF_PHP_FALHAS`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: as 11 células resolvidas no servidor (PHP) ────────────────────
+
+# ⚠️⚠️ O ANEL e a META. O estado do anel é o literal de `:1229`, e o ramo
+# `&& st!=='preparing'` é CONTRAINTUITIVO: **`preparando` cai em `nao_analisada`,
+# NÃO em `parcial`** — uma oferta que o sistema ainda está montando não tem
+# "revisão parcial salva", porque ninguém a tocou. Há ISCA declarando isso, e a
+# mutação do plano (pôr `preparando` em `parcial`) existe para ela.
+# Mais o peso 600 do título só no `nao_analisada` (500 nos outros três) e a META
+# na ordem literal SKU · origem · vN · EXCEÇÃO, com o `-K{N}` do combo e a
+# exceção vinda de `PubAprovacaoExcecao::vigentesDa()`.
+anel-e-meta  php  test_(o_anel_tem_QUATRO_estados_e_preparando_nao_e_parcial_187_08|a_meta_sai_na_ordem_SKU_origem_versao_excecao_187_08)  ::  tests=2 assertions=20
+
+# ⚠️⚠️ O DINHEIRO — e o caso do meio é o mais caro desta fase. `Incompleto` em
+# âmbar (LIDO de `VocabularioDoPortao::INCOMPLETO`, porque *"custo ou frete
+# ausente não vira zero"*: zero afirmaria que é de graça), negativo em vermelho
+# com "prejuízo", positivo com "estimado" — as três cores DIFERENTES.
+# ⚠️ E a **EMBALAGEM**, que é a exceção DELIBERADA e ÚNICA (decisões 7+10 do
+# usuário, 14/10/2026): ela nasce `Pendente` VISÍVEL e **NÃO** anula o resultado;
+# o resultado sai estimado **por baixo** e `prejuízo`/`margem` **DISPARAM** sobre
+# ele. O **FRETE** ausente, no MESMO cenário, **anula** — é a isca que separa as
+# duas, e sem ela um serviço que tratasse "qualquer pendência" como `Incompleto`
+# passaria em metade dos casos.
+# Mais o `brl()` do protótipo (`:1044`) nas QUATRO formas, byte a byte — inclusive
+# o **U+2212** do negativo, que não é o hífen-menos.
+dinheiro-da-linha  php  test_(o_resultado_tem_TRES_casos_com_as_tres_cores_187_08|a_EMBALAGEM_nao_anula_mas_o_FRETE_anula_187_08|o_dinheiro_sai_no_formato_do_prototipo_nas_QUATRO_formas_187_08)  ::  tests=3 assertions=41
+
+# ⚠️⚠️ A MARGEM e o PREÇO. A barra é `min(40, max(0, m))/40` — **CLAMPADA nas
+# duas pontas** (negativa não desenha para a esquerda, 95% não estoura a trilha) —
+# e o traço do mínimo é `minimo/40`. ⚠️ **D10 é prescrição de FÓRMULA, não de
+# número**: o protótipo escreve `left:30%` *porque* `MIN = 12` (`:914`) e
+# `12/40 = 30%`; o teste prova as DUAS leituras, e com outro mínimo continua certo.
+# ⚠️ E o PREÇO: `precoDoAlvo()` devolve o **PIOR CASO** (o menor preço ativo), a
+# coluna tem 92px e **UMA** linha (`:156`), e o pior caso vai no **BALÃO**
+# (decisão do usuário de 15/10/2026 — a frase VISÍVEL é da Fase 188). Com **um**
+# preço só, `variante` é `null` e **não há nota nenhuma**.
+margem-e-preco  php  test_(a_margem_tem_barra_clampada_e_o_traco_em_minimo_sobre_40_187_08|o_preco_e_UMA_linha_e_o_pior_caso_vai_no_BALAO_187_08)  ::  tests=2 assertions=38
+
+# As FOTOS (`N fotos · M IA` + o resumo nos três casos, com as três cores
+# DIFERENTES e o alerta GANHANDO do "a conferir") e o RESPONSÁVEL.
+# ⚠️⚠️ A fronteira da espera é **ESTRITAMENTE maior** que 1440 min (`:1247`):
+# `== 1440` **NÃO** é âmbar, e o caso prova as duas pontas com
+# `Carbon::setTestNow()` — sem o agora PARADO ele viraria dependente da hora do
+# dia. A mutação do plano (trocar `1440` por `144`) existe para esta fronteira.
+fotos-e-espera  php  test_(as_fotos_sao_N_fotos_M_IA_com_o_resumo_nos_TRES_casos_187_08|o_responsavel_fica_ambar_ACIMA_de_1440_min_e_nao_EM_1440_187_08)  ::  tests=2 assertions=21
+
+# A sub-linha do ANDAMENTO (a cadeia de **SETE** casos de `:1232`-`:1239`) e as
+# QUATRO cores de `:1238`.
+# ⚠️ Os literais que a Fase 186 **já tem** são **CHAMADOS**, nunca recopiados:
+# `resumoDoRodape()` monta "Bloqueado: {abreviação} +N" com o `+N` contando **os
+# DEMAIS** (com 2 bloqueios a linha é "… +1"), e o rótulo da AÇÃO vem do mapa
+# `PubAprovacaoOferta::CTA`. Recopiar criaria duas verdades. As mutações do plano
+# (tirar o `+N`; trocar "prejuízo" por "Incompleto") batem aqui.
+# ⚠️⚠️ E `Revisar` é **AMARELO só na oferta PRÓXIMA** (`isNext`, `:1240`) —
+# T-187-85: pintar todas de amarelo apagaria o sinal de "comece por esta".
+andamento-e-acao  php  test_(a_sublinha_do_andamento_tem_SETE_casos_e_QUATRO_cores_187_08|a_acao_le_o_CTA_do_modelo_e_Revisar_e_amarelo_SO_na_proxima_187_08)  ::  tests=2 assertions=32
+
+# ⚠️⚠️ A DIVERGÊNCIA D9, e ela é CONTRAINTUITIVA: `preparando` **não abre** a
+# linha (`:1252`) nem entra na navegação (`_nav`, `:1264`), **mas ENTRA em `ids`**
+# (`:1226`), que é o que o checkbox do cabeçalho marca. "Consertar" mudaria o
+# comportamento do lote sem ninguém pedir. Reproduzida e DECLARADA.
+# Mais os 5 fundos de `:1250` na PRECEDÊNCIA do ternário (aberta > foco > marcada
+# > padrão), provada com DOIS estados ativos ao mesmo tempo — a mutação do plano
+# (trocar a ordem dos fundos) bate aqui.
+abertura-e-fundos  php  test_preparando_NAO_abre_mas_ENTRA_no_lote_e_os_fundos_tem_precedencia_187_08  ::  tests=1 assertions=14
+
+# ⚠️⚠️ O CUSTO (T-187-83). `BloqueiosDaOfertaService::para()` lê a composição, que
+# consulta `/sites/MLB/listing_prices` — então o espião exige **exatamente UMA**
+# chamada por oferta e **no máximo uma requisição por trio `(categoria, tipo,
+# preço)` distinto**, com ISCA NAS DUAS DIREÇÕES (o espião conta de verdade; e
+# trio distinto gera requisição nova).
+# ⚠️ É a classe do incidente de 30/07/2026, quando requisições lentas ocuparam os
+# workers do php-fpm e até o login parou.
+# ⚠️ O pré-aquecimento fora do request é o plano **187-10**: ele muda **QUANDO** a
+# requisição acontece, **não QUANTAS** — aquele plano NÃO afrouxa este gate.
+custo-da-linha  php  test_CUSTO_para_e_uma_chamada_por_oferta_e_uma_requisicao_por_trio_187_08  ::  tests=1 assertions=10
+
+# ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
+
+# Território por ESCOPO DO ASSUNTO (`(187-08)`), nunca por range aberto: nesta
+# árvore as TRÊS sessões commitam com o MESMO `user.name`, então o AUTOR não
+# discrimina NADA. Há isca nas duas direções (o escopo não casa `(187-07)` nem
+# `(261016-mwe)`).
+# ⚠️ A PARTIDA foi **REMEDIDA** para `44d0a364` (o HEAD do começo deste plano);
+#    antes era `07d87a56`, que abraçava os quatro commits do plano 187-07. O
+#    escopo já os descartava, e **a contagem é 28 com as duas partidas** — mas um
+#    range que abraça wave alheia é afirmação falsa sobre o que este plano tocou.
+# ⚠️⚠️ A CONTAGEM DESTE ID **NÃO depende de quantos commits existem no escopo**:
+#    nenhuma asserção mora dentro de condicional, o `test -e` dos ~40 caminhos
+#    proibidos é UMA asserção coletando fantasmas (em vez de uma por caminho, que
+#    fazia a contagem crescer junto com a lista) e a prova de que o range não está
+#    vazio é asserção COLETADA, nunca `return` antecipado. Medido: **28 com zero e
+#    com N commits no escopo**. Era a NONA ocorrência da família "contagem que
+#    depende de quantos arquivos/tabelas/commits existem" nesta milestone, e ela
+#    foi consertada na RAIZ no plano 187-07 (lá a contagem ia de 26 para 70).
+# ⚠️ As ausências são lidas do código **SEM COMENTÁRIO** (`semComentarios()`):
+#    palavra no docblock que EXPLICA "não uso isso" casa com o gate que conta
+#    isso, e a wave 4 teve TRÊS mutações abortando por esse motivo. Há ISCA DO
+#    LEITOR: a prosa do caso cita `ehKit`, `localStorage`, hex e "lucro líquido"
+#    de propósito.
+# ⚠️ O gate de "lucro líquido" é **recortado à lista CONSTANTE dos arquivos deste
+#    plano**: `lucro_liquido` é campo LEGÍTIMO do Portal, e varrer o `app/` inteiro
+#    reprovaria trabalho de outra sessão — foi a 5ª ocorrência de "gate mais largo
+#    que o invariante" na Fase 186, e ela **barrou um deploy**.
+territorio-linha  php  test_territorio_e_ausencias_do_plano_187_08  ::  tests=1 assertions=28
+
+# ⚠️ A BIJEÇÃO ids ↔ métodos, nos DOIS sentidos: método sem id **NUNCA RODA** (foi
+# o sobrevivente da mutação do plano 186-03) e id órfão é gate sobre ZERO casos.
+# ⚠️ A contagem deste id **NÃO depende do número de linhas deste arquivo**: as
+#    asserções são de forma FIXA (`>= 4` linhas, `>= 8` métodos, dois
+#    `assertSame([])` coletando infratores e a isca do nome que ninguém escreveu),
+#    então acrescentar id aqui — como o id `js` que entra na tarefa 3 — **NÃO**
+#    mexe neste número. Era fragilidade por construção e foi tirada de propósito.
+bijecao-manifesto-08  php  test_bijecao_do_manifesto_da_linha_187_08  ::  tests=1 assertions=9

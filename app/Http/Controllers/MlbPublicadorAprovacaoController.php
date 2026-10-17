@@ -7,6 +7,7 @@ use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
+use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -122,6 +123,7 @@ class MlbPublicadorAprovacaoController extends Controller
         ProximoARevisarService $proximo,
         FiltrosDaFilaService $filtros,
         GrupoDaFilaService $gruposDaFila,
+        LinhaDaOfertaService $linhaDaOferta,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -169,6 +171,33 @@ class MlbPublicadorAprovacaoController extends Controller
         $etapa = $this->etapaSaneada($request);
 
         $base = $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama);
+
+        // ═══ ⚠️⚠️ Plano 187-08 — A OFERTA PRÓXIMA E A EM FOCO, RESOLVIDAS UMA VEZ ════════════
+        //
+        // ⚠️ `$proximo->para($base)` saiu de dentro do array do payload e virou VARIÁVEL — e isso
+        // é deliberado e CONFERIDO: a linha da oferta precisa do **id** da próxima para pintar
+        // `Revisar` de amarelo **só nela** (`isNext`, `:1240`), e chamá-lo duas vezes faria **duas**
+        // leituras de `BloqueiosDaOfertaService::para()` (uma requisição extra ao Mercado Livre) e
+        // abriria a chance de a faixa e a linha apontarem para ofertas DIFERENTES.
+        //
+        // ⚠️⚠️ **A `faixa` E O `proximo_a_revisar` CONTINUAM INLINE no payload, e isso é MEDIDO.**
+        // `tests/js/publicador-fila-proximo-187.test.js` (wave 5) lê os DOIS textos no controller:
+        // `'faixa' => $fila->faixa($base)` (FILA-03) e
+        // `'proximo_a_revisar' => $proximo->para($base)`. Guardar qualquer um dos dois numa
+        // variável **reprova aquele gate** — medido nesta sessão, em 16/10/2026, quando a primeira
+        // redação desta wave hoisteou o segundo para pegar o id da próxima oferta.
+        // ➡️ A saída é a MESMA que o `contagem.exibidas` já usava: ler do `$payload` **DEPOIS** de
+        // montá-lo. Ver o bloco do `$payload['grupos']` no fim da action.
+
+        // ⚠️ `?oferta=` dá FOCO a uma linha (plano 187-05, COL-03) — é o `focusId` do protótipo
+        // (`:1250`). ⚠️ **`is_numeric` ANTES de `(int)`, e NUNCA `(int) $request->query()` cru:**
+        // `?oferta[]=x` entrega um ARRAY e `(int) []` emite `Array to string conversion`, que já
+        // foi **500** nesta tela (T-180-04-T). Valor que não é inteiro positivo cai em `null`, e
+        // aí **nenhuma** linha recebe foco — nunca a linha errada.
+        $ofertaCrua = $request->query('oferta');
+        $ofertaEmFoco = is_string($ofertaCrua) && ctype_digit($ofertaCrua) && (int) $ofertaCrua > 0
+            ? (int) $ofertaCrua
+            : null;
 
         // ⚠️⚠️ **O PAYLOAD É MONTADO EM VARIÁVEL, e a `faixa` fica INLINE — as duas coisas de
         // propósito.**
@@ -290,14 +319,6 @@ class MlbPublicadorAprovacaoController extends Controller
             // chama `BloqueiosDaOfertaService::para()` — há gate com espião contando ZERO, com
             // isca provando que o espião conta. As 11 células da linha (que PRECISAM da
             // composição) são o plano **187-08**, e é lá que o slot `linhaDaOferta` é preenchido.
-            'grupos' => $gruposDaFila->montar(
-                $fila->ordenar(
-                    $gruposDaFila->recortarPelaEtapa(
-                        $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama),
-                        $etapa,
-                    )->with(['alvo', 'produto', 'responsavel'])->get()
-                )
-            ),
         ];
 
         // ⚠️⚠️ O **N** do "N de M" é LIDO da faixa que acabou de ser calculada — a MESMA array
@@ -306,6 +327,66 @@ class MlbPublicadorAprovacaoController extends Controller
         // (`whereDate('updated_at', hoje)`, `AndamentoDaOfertaService:294`-`:295`). O usuário
         // recusou número divergente entre conta e lista **duas vezes** (decisões 9 e 16).
         $payload['contagem']['exibidas'] = $filtros->exibidasNaEtapa($payload['faixa'], $etapa);
+
+        // ═══ ⚠️⚠️ Plano 187-08 — A LISTA, COM AS 11 CÉLULAS DE CADA LINHA ════
+        //
+        // ⚠️⚠️ **MONTADA AQUI, DEPOIS DO PAYLOAD, e pela MESMA razão do `exibidas` acima:** a
+        // linha precisa do **id da oferta próxima** para pintar `Revisar` de amarelo **só nela**
+        // (`isNext`, `:1240`), e esse id tem de ser o da **MESMA array** que a faixa "PRÓXIMO A
+        // REVISAR" recebeu. Recalculá-lo chamaria `ProximoARevisarService::para()` **duas vezes**
+        // (uma leitura extra de `BloqueiosDaOfertaService::para()`, logo uma requisição extra ao
+        // Mercado Livre) e abriria a chance de a faixa e a linha apontarem para ofertas
+        // DIFERENTES — o usuário recusou número divergente entre conta e lista DUAS vezes.
+        // ⚠️ E é isto que mantém `'proximo_a_revisar' => $proximo->para($base)` INLINE, que é o
+        //    texto que o gate da wave 5 lê.
+        $idDoProximo = is_array($payload['proximo_a_revisar'] ?? null) && isset($payload['proximo_a_revisar']['id'])
+            ? (int) $payload['proximo_a_revisar']['id']
+            : null;
+
+        $payload['grupos'] = $gruposDaFila->montar(
+                $fila->ordenar(
+                    $gruposDaFila->recortarPelaEtapa(
+                        $filtros->aplicar($fila->paraAConta($company->id, $mlbEmpresaId), $escolhidos, $panorama),
+                        $etapa,
+                    )
+                        // ⚠️ Plano 187-08 — `aprovadoPor` entra porque a sub-linha de `aprovado` diz
+                        // "aguardando publicação · <quem>" (`:1234`). Sem o eager loading, uma fila
+                        // de 30 linhas faria 30 consultas só para aquela frase.
+                        ->with(['alvo', 'produto', 'responsavel', 'aprovadoPor'])
+                        ->get()
+                ),
+                // ═══ ⚠️⚠️ Plano 187-08 — O SLOT DA LINHA, PREENCHIDO ═══════════════════════════
+                //
+                // ⚠️ O slot é um PARÂMETRO de `montar()` e nasceu no plano **187-07** de propósito:
+                // `GrupoDaFilaService.php` **não está** nos `files_modified` desta wave, então sem
+                // o slot esta wave teria de abrir uma SEGUNDA varredura da mesma árvore. É a forma
+                // literal do protótipo, que também injeta a linha (`rows: rows.map(rowVm)`, `:1262`).
+                //
+                // ⚠️⚠️ **`para()` é chamado UMA vez por oferta**, e é aqui que isso acontece: uma
+                // chamada por linha da árvore, nunca uma por célula. Ele lê a composição, que
+                // consulta `/sites/MLB/listing_prices` (cache de 1 h por categoria+tipo+preço) — e
+                // há gate com espião contando as chamadas e as requisições por trio distinto.
+                // ⚠️ O pré-aquecimento do plano **187-10** muda QUANDO a requisição acontece, não
+                // QUANTAS: aquele plano não afrouxa este gate.
+                fn (PubAprovacaoOferta $oferta): array => $linhaDaOferta->para(
+                    $oferta,
+                    // ⚠️ `Revisar` AMARELO **só** na oferta próxima (`isNext`, `:1240`): pintar
+                    // todas de amarelo apagaria o sinal de "comece por esta" (T-187-85). O id vem
+                    // da MESMA array que a faixa "PRÓXIMO A REVISAR" recebeu — nunca recalculado,
+                    // senão a faixa e a linha poderiam apontar para ofertas diferentes.
+                    $idDoProximo !== null && (int) $oferta->id === $idDoProximo,
+                    [
+                        // ⚠️ `?oferta=` dá FOCO a uma linha (COL-03, plano 187-05). Ele é o
+                        // `focusId` do protótipo (`:1250`), e NÃO conta como filtro.
+                        'foco' => $ofertaEmFoco !== null && (int) $oferta->id === $ofertaEmFoco,
+                        // ⚠️ `aberta` é o painel de revisão (**Fase 188**) e `marcada` é a seleção
+                        // em lote (**plano 187-09**) — nenhum dos dois existe hoje. ➡️ Eles ficam
+                        // **nomeados e ausentes**, nunca `true` por acidente: o serviço tem os dois
+                        // ramos, conferidos por props diretas, e é aqui que as waves os ligam.
+                    ],
+                ),
+            );
+
 
         return Inertia::render('Mlb/Publicador/Aprovacao', $payload);
     }

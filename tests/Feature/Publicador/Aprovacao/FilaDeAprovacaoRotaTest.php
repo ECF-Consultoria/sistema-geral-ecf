@@ -789,7 +789,29 @@ class FilaDeAprovacaoRotaTest extends TestCase
         $jsonDaFila = (string) json_encode($this->propsDaFila($admin, $company), JSON_UNESCAPED_UNICODE);
         $achadas = array_values(array_filter($marcas, fn (string $m) => str_contains($jsonDaFila, $m)));
 
-        $this->assertCount(8, $achadas, 'ISCA: a sonda não acha os 8 estados nem no payload da FILA — ela está cega. Achou: ' . implode(', ', $achadas));
+        // ⚠️⚠️ **A ISCA PEDE *TODAS* AS MARCAS, NÃO UM NÚMERO FIXO — e isto é correção MEDIDA na
+        // wave 8 (16/10/2026), feita NA RAIZ e DECLARADA.**
+        //
+        // A redação anterior era `assertCount(8, $achadas)`, e ela reprovou trabalho CERTO: o
+        // plano **187-08** acrescentou a prop `grupos` ao payload da FILA, e com ela a chave
+        // `"andamento":` passou a existir ali — então a sonda achou **9** das 9 marcas, não 8.
+        // ⚠️ O invariante deste caso (`$vazados === []`, logo acima: *a tela de PUBLICAÇÕES não
+        // recebe dado da fila*) **continuou passando o tempo todo**; o que quebrou foi a ISCA.
+        //
+        // ⚠️ Era a família *"contagem que depende de quantos campos/arquivos existem"* — a mesma
+        // que o plano 187-07 consertou no gate de território dele (26 → 70 asserções). Fixar `8`
+        // amarrava esta isca ao INVENTÁRIO DE CHAVES do payload da fila, que cresce por
+        // construção a cada wave.
+        //
+        // ➡️ `assertSame($marcas, $achadas)` é **ESTRITAMENTE MAIS FORTE** que o `assertCount(8)`:
+        // antes bastavam 8 das 9; agora são **todas**, e a mensagem diz QUAIS faltaram. A isca
+        // continua reprovando exatamente o que ela existe para pegar — uma marca que deixou de
+        // ser achável, isto é, a sonda ficando cega. **Não é régua levantada para passar.**
+        $this->assertSame(
+            $marcas,
+            $achadas,
+            'ISCA: a sonda não acha TODAS as marcas nem no payload da FILA — ela está cega. Achou: ' . implode(', ', $achadas),
+        );
 
         // ⚠️ CONTROLES da sonda, nas duas direções — os dois casos que a derrubaram nesta rodada.
         $this->assertTrue(str_contains('{"andamento":"preparando"}', '"andamento":'), 'CONTROLE POSITIVO: a sonda não acha a coluna vazada.');
