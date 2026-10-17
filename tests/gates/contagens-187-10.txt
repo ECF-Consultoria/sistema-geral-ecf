@@ -26,8 +26,8 @@
 # ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
 #    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
 #    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
-#    de classe (medido no plano 186-07): por isso os **25** métodos PHP deste
-#    plano estão quebrados em **ONZE** ids, nenhum com mais de **TRÊS** métodos.
+#    de classe (medido no plano 186-07): por isso os **26** métodos PHP deste
+#    plano estão quebrados em **DOZE** ids, nenhum com mais de **TRÊS** métodos.
 #
 # ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 17/10/2026,
 #    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
@@ -56,7 +56,7 @@
 # passa dos 120 s do shell deste ambiente e o helper RECUSA (é a medição do plano
 # 186-07, escrita em `contagens-186-08.txt`, e a mesma razão que quebrou o
 # `filtros-servico` do 187-06 em quatro ids, o 187-07 em sete e o 187-08 em nove).
-# ➡️ Os 25 viraram **ONZE** ids por assunto, nenhum com mais de três métodos.
+# ➡️ Os 26 viraram **DOZE** ids por assunto, nenhum com mais de três métodos.
 # ⚠️ **Nenhum método ficou de fora** — a bijeção é provada por script, nos DOIS
 # sentidos, pelo id `bijecao-manifesto-10`, com asserção ÚNICA de contagem fixa
 # coletando os infratores. ⚠️ E ela varre os **DOIS** arquivos de teste deste
@@ -68,7 +68,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # O `--filter` do PHPUnit é regex **NÃO ANCORADO**: nome que é PREFIXO de outro
 # casa os DOIS e o harness **SOMA** as contagens, reprovando o manifesto alheio.
-# ➡️ Varri os **25** nomes deste plano contra **todos os 7.668** `test_*` de
+# ➡️ Varri os **26** nomes deste plano contra **todos os 7.668** `test_*` de
 #    `tests/`, nas DUAS direções (meu contém o alheio / alheio contém o meu) e
 #    também entre os meus — por **duas implementações independentes** (`awk` e
 #    `case` de shell), que concordaram: **ZERO colisão, exata ou de prefixo.**
@@ -266,3 +266,24 @@ aquecimento-disparos  php  test_(abrir_publicacoes_despacha_o_aquecimento_da_con
 # `assertSame([])` coletando infratores e a isca do nome que ninguém escreveu).
 # Acrescentar id aqui **NÃO** mexe neste número — conferido, não suposto.
 bijecao-manifesto-10  php  test_bijecao_do_manifesto_do_aquecimento_187_10  ::  tests=1 assertions=11
+
+# ⚠️⚠️ A TRAVA QUE NASCEU DE UM GATE ALHEIO REPROVANDO — e ela e de PRODUCAO,
+# nao acerto de teste. `FilaDeAprovacaoRotaTest::test_meus_ganha_exatamente_uma_
+# consulta_187_02` (T-187-14, wave 2) reprovou com o disparo em `meus()`: na
+# conexao `sync` o `dispatch()` roda o job **DENTRO do request**, e a consulta
+# `select * from pub_aprovacao_ofertas` do aquecimento apareceu como se fosse de
+# `meus()`. ⚠️ MEDIDO: `->afterResponse()` **NAO resolve** (o `terminate()` roda
+# dentro da janela do `DB::listen`; a unica diferenca e a ORDEM das consultas).
+# ⚠️⚠️ E a leitura certa e que o gate alheio estava **CERTO**: numa conexao que
+# executa em linha, `meus()` — a tela que esta NO AR — pagaria as N chamadas HTTP
+# ao Mercado Livre SINCRONAMENTE. E a classe literal do incidente de 30/07/2026, e
+# nao e risco de teste: basta alguem por `QUEUE_CONNECTION=sync` no VPS.
+# ➡️ O conserto foi do lado DESTE plano (`Queue::connection() instanceof
+# SyncQueue` → nao despacha) e o gate alheio ficou **INTOCADO**. Melhor NAO
+# aquecer do que aquecer dentro do request.
+# ⚠️ A sonda e sobre o COMPORTAMENTO da conexao, nunca `config('queue.default')
+# === 'sync'` (que e 'sync' tambem sob `Queue::fake()`, e ai o aquecimento nunca
+# aconteceria em teste nenhum) nem `runningUnitTests()` (que desligaria a trava em
+# producao). ISCA NAS DUAS DIRECOES: com `sync` nao despacha E `meus()` fica com
+# UMA consulta; com `Queue::fake()` despacha na `high`.
+aquecimento-sem-fila-em-linha  php  test_conexao_de_fila_em_linha_NAO_aquece_dentro_do_request_187_10  ::  tests=1 assertions=11

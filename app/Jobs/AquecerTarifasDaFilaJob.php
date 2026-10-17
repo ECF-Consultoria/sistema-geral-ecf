@@ -8,8 +8,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -101,6 +103,28 @@ class AquecerTarifasDaFilaJob implements ShouldQueue
     public static function despacharParaAConta(int $companyId, ?int $mlbEmpresaId = null): bool
     {
         try {
+            // ═══ ⚠️⚠️ CONEXÃO QUE EXECUTA EM LINHA NÃO AQUECE NADA ═══════════════════════════
+            //
+            // ⚠️⚠️ **`SyncQueue` roda o job DENTRO do request que o despachou.** Despachar para
+            // ela faria `meus()` — a tela que está **NO AR** — pagar as N chamadas HTTP ao
+            // Mercado Livre **sincronamente**, que é o **oposto exato** deste plano e a classe
+            // literal do incidente de **30/07/2026** (requisições lentas ocuparam os workers do
+            // php-fpm e **até o login parou**).
+            //
+            // ➡️ **Melhor NÃO aquecer do que aquecer dentro do request.** Sem aquecimento a tela
+            // continua produzindo o número **CERTO**, só mais devagar na primeira abertura —
+            // exatamente o comportamento que o usuário aceitou em 15/10/2026 ao recusar
+            // "limitar N consultas por abertura". Aquecer em linha seria a degradação que ele
+            // recusou, entrando pela porta dos fundos.
+            //
+            // ⚠️ A sonda é sobre o **COMPORTAMENTO da conexão** (`instanceof SyncQueue`), nunca
+            // sobre `config('queue.default') === 'sync'` nem sobre `app()->runningUnitTests()`:
+            // com `Queue::fake()` a conexão é o `QueueFake` (que **não** executa em linha) e o
+            // despacho TEM de acontecer. Há isca nas duas direções.
+            if (Queue::connection() instanceof SyncQueue) {
+                return false;
+            }
+
             // ⚠️ A trava é curta e **expira sozinha** — nunca é liberada à mão. Soltá-la no fim
             // do job devolveria o F5 repetido à `high`; e soltá-la aqui a tornaria decorativa.
             if (! Cache::lock(self::chaveDaTrava($companyId), self::TRAVA_SEGUNDOS)->get()) {

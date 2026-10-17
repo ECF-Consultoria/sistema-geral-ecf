@@ -16,6 +16,7 @@ use App\Services\Publicador\Aprovacao\Fila\AquecimentoDeTarifasService;
 use App\Services\Publicador\DadosEfetivosService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -515,6 +516,87 @@ class AquecerTarifasDaFilaTest extends TestCase
             ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
             ->get(route('mlb.anuncios.meus.aprovacao', $company))
             ->assertOk();
+    }
+
+    /**
+     * ⚠️⚠️ **O CASO QUE NASCEU DE UM GATE ALHEIO REPROVANDO — e ele é uma trava de PRODUÇÃO, não
+     * um acerto de teste.**
+     *
+     * `FilaDeAprovacaoRotaTest::test_meus_ganha_exatamente_uma_consulta_187_02` (T-187-14, wave 2)
+     * reprovou com o disparo em `meus()`: na conexão `sync` o `dispatch()` roda o job **DENTRO do
+     * request**, e a consulta `select * from pub_aprovacao_ofertas` do aquecimento apareceu como
+     * se fosse de `meus()`. ⚠️ **Medido, não suposto:** `->afterResponse()` **não resolve** — o
+     * `terminate()` roda dentro da janela do `DB::listen` do teste (a única diferença é a ORDEM
+     * das duas consultas).
+     *
+     * ⚠️⚠️ **E a leitura certa do gate alheio é que ele estava CERTO.** Numa conexão que executa
+     * em linha, `meus()` — a tela que está **NO AR** — pagaria as N chamadas HTTP ao Mercado
+     * Livre **sincronamente**: o oposto exato deste plano e a classe literal do incidente de
+     * **30/07/2026**, quando requisições lentas ocuparam os workers do php-fpm e **até o login
+     * parou**. ➡️ Não é risco de teste: basta alguém pôr `QUEUE_CONNECTION=sync` no VPS.
+     *
+     * ➡️ O conserto foi **do lado deste plano** (`Queue::connection() instanceof SyncQueue` →
+     * não despacha), e o gate alheio ficou **INTOCADO**. Melhor **não aquecer** do que aquecer
+     * dentro do request: sem aquecimento a tela dá o número **CERTO**, só mais devagar — o
+     * comportamento que o usuário aceitou ao recusar "limitar N consultas por abertura".
+     *
+     * ⚠️ **O que precisaria estar errado para falhar:** a sonda ser
+     * `config('queue.default') === 'sync'` (que é `'sync'` também sob `Queue::fake()`, e aí o
+     * aquecimento NUNCA aconteceria em teste nenhum) ou `app()->runningUnitTests()` (que
+     * desligaria a trava em produção). A sonda é sobre o **COMPORTAMENTO da conexão**.
+     *
+     * @group phase187
+     */
+    public function test_conexao_de_fila_em_linha_NAO_aquece_dentro_do_request_187_10(): void
+    {
+        $this->comTarifa(self::CLASSICO);
+        $this->comDadosEfetivos();
+
+        [$company, , $admin] = $this->conta();
+        $this->oferta($company);
+
+        // ── DIREÇÃO 1: conexão `sync` (sem `Queue::fake()`) → NÃO despacha, ZERO consulta à fila
+        config(['queue.default' => 'sync']);
+        $this->assertInstanceOf(
+            SyncQueue::class,
+            Queue::connection(),
+            'o cenário não está na conexão que executa em linha — o caso não mede nada',
+        );
+
+        $this->assertFalse(
+            AquecerTarifasDaFilaJob::despacharParaAConta($company->id),
+            'despachou para uma conexão que executa EM LINHA: `meus()` pagaria as chamadas ao ML dentro do request',
+        );
+        $this->assertSame(0, $this->requisicoesDeTarifa(), 'o aquecimento em linha consultou o Mercado Livre no request');
+
+        // ⚠️ E a prova no REQUEST de verdade: `meus()` não ganha consulta à fila além do contador,
+        // que é o invariante T-187-14 da wave 2 — reproduzido aqui para esta wave ter a sua
+        // própria prova, sem depender de um gate que ela não pode tocar.
+        $doRequest = [];
+        \Illuminate\Support\Facades\DB::listen(static function ($q) use (&$doRequest): void {
+            $doRequest[] = $q->sql;
+        });
+        $this->propsDePublicacoes($admin, $company);
+
+        $daFila = array_values(array_filter(
+            $doRequest,
+            static fn (string $sql): bool => str_contains($sql, 'pub_aprovacao_ofertas'),
+        ));
+        $this->assertCount(1, $daFila, 'T-187-14: `meus()` ganhou consulta à fila por causa do aquecimento: '.implode(' | ', $daFila));
+        $this->assertStringContainsString('count(*)', $daFila[0], 'a única consulta à fila deveria ser o contador da aba');
+        $this->assertGreaterThan(1, count($doRequest), 'ISCA: o `DB::listen` não registrou consulta nenhuma do request');
+
+        // ── DIREÇÃO 2 (A ISCA): com `Queue::fake()` a conexão NÃO executa em linha → despacha ──
+        //
+        // ⚠️ Sem esta metade, a trava poderia ser um `return false` incondicional e o aquecimento
+        // nunca aconteceria em lugar nenhum — gate satisfeito por código que não faz nada.
+        Queue::fake();
+        $this->assertNotInstanceOf(SyncQueue::class, Queue::connection(), 'o `Queue::fake()` virou uma conexão em linha');
+        $this->assertTrue(
+            AquecerTarifasDaFilaJob::despacharParaAConta($company->id),
+            'ISCA: a trava do `sync` está desligando o aquecimento também fora dele',
+        );
+        Queue::assertPushedOn('high', AquecerTarifasDaFilaJob::class);
     }
 
     /**
