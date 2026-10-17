@@ -915,7 +915,14 @@ class LoteDaFilaTest extends TestCase
             'app/Services/Publicador/Aprovacao/VocabularioDoPortao.php',
             'app/Services/Publicador/Aprovacao/ComposicaoDaOferta.php',
             'app/Services/Publicador/Aprovacao/LinhaFinanceira.php',
-            'app/Services/Publicador/MlPublicacaoService.php',
+            // ⚠️ CAMINHO CORRIGIDO: ele NÃO está em `app/Services/Publicador/`, e isto foi
+            // MEDIDO — o `test -e` deste próprio caso o acusou como FANTASMA, que é
+            // exatamente o motivo de ele existir. A v26.0 teve SEIS caminhos fantasma
+            // "provando" território intocado medindo NADA.
+            'app/Services/Mlb/Publicacao/MlPublicacaoService.php',
+            'app/Services/Creative',
+            'app/Support/Publicador',
+            'app/Mcp',
             'resources/js/Layouts/AppLayout.jsx',
             'resources/js/Components/Mlb/Publicador/aprovacao/vocabularioDoPortao.jsx',
             'resources/js/Components/Mlb/Publicador/aprovacao/andamentoDoPortao.jsx',

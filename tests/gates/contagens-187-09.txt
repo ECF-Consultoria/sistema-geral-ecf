@@ -1,0 +1,331 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-09 — O LOTE, OS TOASTS, O RODAPÉ
+# E OS **DOIS** AVISOS DE TELA VAZIA.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-09 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `187-09`, E NÃO `09`. O número NU resolve
+# `contagens-186-09.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **11** métodos PHP deste
+#    plano estão quebrados em **CINCO** ids, nenhum com mais de **TRÊS** métodos.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 17/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:` (php) e com `node --test --test-reporter=tap`
+#    (js). Nenhuma é chute, e nenhum id foi escrito antes de ter sido medido.
+#
+# ⚠️ `>=` **NÃO** é usado em nenhum id deste plano: a contagem destes arquivos
+#    não cresce por construção, e a igualdade exata é mais forte e é o padrão.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ DIVERGÊNCIA DECLARADA DOS NOMES DE ID QUE O PLANO PRESCREVE
+# ═══════════════════════════════════════════════════════════════════════════════
+# O plano 187-09 escreve três ids nos `<verify>`: `lote-servidor` (tarefa 1),
+# `lote-render` (tarefa 2) e `rodape-e-vazio` (tarefas 3 e 4).
+#
+# **`lote-servidor` NÃO existe**, e isso é decisão MEDIDA, não preferência: ele
+# cobriria os **9** métodos de comportamento da tarefa 1 numa alternância só, e
+# alternância grande equivale a filtro de CLASSE — que passa dos 120 s do shell
+# deste ambiente e o helper RECUSA (é a medição do plano 186-07, escrita em
+# `contagens-186-08.txt`, e a mesma razão que quebrou o `filtros-servico` do
+# plano 187-06 em quatro ids, o 187-07 em sete e o 187-08 em nove).
+# ➡️ Os 9 viraram **TRÊS** ids por assunto: `lote-veredicto` (o veredicto e os
+# literais), `lote-escrita` (quem é aprovado, a versão e o sucesso falso) e
+# `lote-rota` (a conta, o middleware e a fronteira com o ML). Mais os dois
+# transversais (`territorio-lote` e `bijecao-manifesto-09`) = **cinco** ids php.
+#
+# **`rodape-e-vazio` NÃO existe**, pela razão medida no plano 187-08: no modo
+# `js` o harness roda o ARQUIVO INTEIRO, então dois ids sobre o MESMO arquivo
+# (`publicador-fila-lote-187.test.js`) dariam a MESMA contagem duas vezes e
+# **nenhum dos dois mediria a sua própria metade** — gate decorativo por
+# construção. ➡️ Um id só: `lote-render`, que é o nome que o plano já usa na
+# tarefa 2.
+# ⚠️ O rodapé e os dois vazios **NÃO ficaram sem gate**: eles são os blocos 7, 8
+# e 11 daquele arquivo (`o RODAPÉ tem as SEIS legendas…`, `"Restaurar dados de
+# exemplo" NÃO EXISTE…`, `os DOIS vazios são textos DIFERENTES…`).
+# ⚠️ **Nenhum método ficou de fora** — a bijeção é provada por script, nos DOIS
+# sentidos, pelo id `bijecao-manifesto-09`, com asserção ÚNICA de contagem fixa
+# coletando os infratores.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO CONTRA A FASE 186 — CONFERIDO POR SCRIPT, NÃO DE CABEÇA
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as duas fases numeram
+# planos de 01 a 09+: **todo `_0N` desta fase tem homônimo possível na 186.** Um
+# método meu que fosse SUPERSTRING de um método da 186 faria o id daquela fase
+# SOMAR contagens e **reprovar o manifesto de uma fase EM PRODUÇÃO** (deploy
+# `a4c4187f`). Foi o que `FechamentoDaFase186Test::os_nove_manifestos_nao_tem_
+# homonimo_que_some_dois_arquivos` pegou no plano 187-07.
+# ➡️ Varri os **11** nomes deste arquivo contra **todo** `test_*` de `tests/`,
+#    nas DUAS direções (meu contém o alheio / alheio contém o meu):
+#    **NENHUMA COLISÃO.** A varredura é o próprio caso `bijecao-manifesto-09`,
+#    que a roda a cada execução — não é conferência de uma vez só. E, se
+#    precisasse, o conserto seria sufixo no método NOVO, **nunca** elevar a
+#    contagem do manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ O QUE **NÃO** ENTRA NESTE MANIFESTO, E POR QUÊ
+# ═══════════════════════════════════════════════════════════════════════════════
+# `tests/js/publicador-vocabulario-novo.test.js` (o GATE-03 dos cinco diretórios
+# fechados) **recebeu os SEIS `.jsx` desta wave em `ARQUIVOS_NOVOS`** — sem isso
+# o GATE-03 passaria POR OMISSÃO para eles, e o `deepEqual` de
+# `DIRETORIOS_FECHADOS` reprovaria na hora (é o comportamento certo). ⚠️ Mas ele
+# **NÃO entra em id nenhum daqui**: a contagem daquele arquivo **CRESCE POR
+# CONSTRUÇÃO** (um subteste por arquivo varrido), ele já tem id PRÓPRIO
+# (`vocabulario-tamanhos`, em `contagens-187-01.txt`, com a forma `>=443`), e
+# embuti-lo num id COMPOSTO foi exatamente o que fez a wave 5 reprovar DOIS ids
+# de outras waves e exigiu o conserto de QUATRO manifestos.
+# ⚠️ MEDIDO nesta sessão: com os seis arquivos declarados ele vai de **548**
+#    subtestes, todos verdes. (Era 506 na wave 8 — ele sobe sozinho, e é por isso
+#    que a forma dele é `>=`.)
+#
+# ⚠️ `tests/js/publicador-fila-zindex-187.test.js` também **NÃO** tem id aqui:
+#    ele é o gate da wave 6 (`filtros-zindex`, em `contagens-187-06.txt`, com
+#    `tests=6`), e a mudança desta wave nele foi **trocar a PRESCRIÇÃO PINADA das
+#    três peças `fixed` por LEITURA da fonte** — que era exatamente o que a
+#    asserção de ausência daquele arquivo existia para forçar quando os arquivos
+#    nascessem. ⚠️ A contagem continua **6** (o caso 2 foi reescrito, não
+#    acrescentado), e foi RE-MEDIDA: `filtros-zindex` passa.
+#
+# ⚠️ `tests/js/publicador-header-zindex-ordem.test.js` e
+#    `tests/js/estrutura-meus-anuncios.test.js` são **INTOCÁVEIS** (`numstat`
+#    ZERO) e não são alvo de id nenhum: nome de guarda genérico COLIDE no
+#    `--filter` e o harness SOMA as contagens.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES, REMEDIDAS NO HEAD DESTE PLANO (`f75864d0`, 17/10/2026)
+# ═══════════════════════════════════════════════════════════════════════════════
+# A referência do plano 187-08 era **PHP 2445 / 21.463 / 2 falhas** e
+# **JS 5409 / 5406 pass / 1 fail / 2 skipped**. Remedidas nesta sessão, não
+# ajustadas — ver `187-09-SUMMARY.md` §baselines.
+#
+# ⚠️⚠️ **AS DUAS FALHAS PHP SÃO ALHEIAS, E NÃO SÃO CORRIGIDAS AQUI:**
+# `tests/Feature/Publicador/CockpitDaContaTest.php` (**Fase 179**, EM PRODUÇÃO),
+# `:966` e `:1318` — fragilidade de **FRONTEIRA DE DIA** (o arquivo usa o relógio
+# 54 vezes, e o último commit dele é literalmente *"ancora o relogio no caso de
+# agrupamento da Atividade"*: alguém já consertou **um** caso e deixou estes
+# dois). **Nenhum arquivo de cockpit está no range desta fase.**
+# ⚠️ **NÃO existe `REF_PHP_FALHAS`, e NÃO deve passar a existir** — criar um
+# limiar de falhas aceito para calar isso seria afrouxar a única régua que prova
+# "nada quebrou". Contagem ACIMA de 2, ou falha num teste DIFERENTE, É REGRESSÃO.
+#
+# ⚠️ A falha JS é a PRÉ-EXISTENTE de `tests/js/estrutura-grade-glide.test.js`
+#    (Fase 87, *"Características secundárias nasce recolhido"*) — não corrigida.
+#
+# ⚠️⚠️ **E OS DOIS `skipped` DA SUÍTE JS ZERARAM NESTA WAVE.** Eles eram os dois
+# blocos que PULAVAM por `pub-float`/`pub-float-line` estarem DORMINDO: os dois
+# tokens foram declarados em `tailwind.config.js` para a **barra de lote**
+# (`:897`) e o **toast** (`:905`), que são deste plano. A wave 4 recusou acendê-los
+# fora do lugar medido e a wave 8 tem gate provando que eles continuavam
+# dormindo — **esta wave é o lugar medido deles**, e o CSS construído foi
+# conferido pelo JSON (`bg-pub-float` → `rgb(28 28 28 …)`, `border-pub-float-line`
+# → `rgb(51 51 51 …)`).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: O VEREDICTO E A ESCRITA (PHP) ─────────────────────────────────
+
+# ⚠️⚠️ O VEREDICTO DE **TODAS** AS SELECIONADAS, e os **DOIS CAMINHOS** do motivo.
+# *"Aprovar só as que passam, silenciosamente"* foi **RECUSADO** pelo usuário — a
+# escolha dele foi *"tudo de uma vez, e só libera com todas conferidas"*. E os dois
+# caminhos não são variação cosmética: a inapta **AO VIVO** tem bloqueios a listar
+# (as ABREVIAÇÕES de `VocabularioDoPortao::ABREVIACOES`, por ", "); a inapta **FORA
+# do ao vivo** não tem bloqueio nenhum, e o motivo dela é o RÓTULO DO ANDAMENTO em
+# minúsculas (`PubAprovacaoOferta::ANDAMENTOS`, por `mb_strtolower`). Um serviço que
+# só soubesse o primeiro caminho mostraria `×` SEM MOTIVO exatamente numa oferta
+# `publicado` — e há isca com os dois lados no MESMO caso.
+# ⚠️ Mais os literais de `:1282`/`:1425`/`:885` byte a byte, com o plural MEDIDO:
+# `> 1` é plural, então **zero sai no SINGULAR** ("Aprovar 0 oferta"). Não foi
+# arredondado para o que soa melhor — é o literal.
+lote-veredicto  php  test_(o_veredicto_lista_TODAS_as_selecionadas_com_glifo_e_motivo_187_09|o_motivo_tem_DOIS_caminhos_abreviacoes_e_andamento_minusculo_187_09|os_literais_do_painel_batem_com_o_prototipo_e_o_plural_187_09)  ::  tests=3 assertions=50
+
+# ⚠️⚠️ A ESCRITA: SÓ AS APTAS, NA VERSÃO INDICADA, E AS INAPTAS **INTOCADAS**.
+# As inaptas são conferidas **campo a campo** (andamento, versão, `tocado`,
+# `aprovado_por`): "não mudou o andamento" é mais fraco que "ficou exatamente como
+# estava" (T-187-92).
+#
+# ⚠️⚠️ E A VERSÃO DIVERGENTE É **MEDIÇÃO, NÃO PRECAUÇÃO.**
+# `AprovacaoDaOfertaService:258` faz `$versao = (int) $oferta->versao` e passa isso
+# para `aprovar()` — a versão **do próprio modelo que ele acabou de receber**. No
+# caminho do POST o modelo é recém-carregado, então esperado e atual são **sempre
+# iguais** e `COL-04-VERSAO-DIVERGENTE` **nunca dispararia**: delegar a conferência
+# a ele seria uma trava que não trava. ➡️ A versão que importa é a que a pessoa
+# **VIU NO MODAL**, ela vem no corpo do POST, e a conferência mora em
+# `LoteDaFilaService::aprovar()`. A recusa é **SÓ DELA** — as outras passam —, e há
+# ISCA NA OUTRA DIREÇÃO (sem o mapa de versões as duas passam), sem a qual uma
+# implementação que recusasse TUDO passaria no caso principal.
+#
+# ⚠️ Mais o SUCESSO FALSO: lote vazio e lote só com inaptas gravam NADA e dizem
+# **0**. Com aprovar-já-publica e sem desfazer, quem lê "aprovadas: 2" acredita que
+# duas ofertas foram para o Mercado Livre.
+lote-escrita  php  test_(o_lote_aprova_SO_as_aptas_e_as_inaptas_ficam_INTOCADAS_187_09|a_versao_divergente_recusa_SO_ELA_e_as_outras_passam_187_09|lote_vazio_e_lote_so_com_inaptas_gravam_NADA_e_dizem_ZERO_187_09)  ::  tests=3 assertions=26
+
+# ⚠️⚠️ A ROTA: A CONTA, O MIDDLEWARE E A **FRONTEIRA COM O MERCADO LIVRE**.
+#   · **oferta de OUTRA conta no corpo do POST** é a elevação de privilégio mais
+#     direta desta fase, porque a aprovação publica e **não tem desfazer**
+#     (T-187-91 / T-187-96). O teste prova que **NADA** da oferta alheia foi
+#     gravado, **campo a campo** — não só que "a resposta não falou dela". E o
+#     filtro é a CONSULTA (`paraAConta()->whereIn('id', …)`), nunca um `in_array`
+#     sobre lista montada no PHP.
+#   · **`role:admin` do grupo, sem middleware novo**, mais a trava de `ml_token`
+#     (404) com a mensagem BYTE A BYTE igual à da rota GET da fila — divergir faria
+#     a tela dizer outra coisa para o mesmo fato. Há ISCA DO ADMIN (ele passa pela
+#     MESMA rota), sem a qual uma rota inexistente faria as negativas passar por
+#     ausência.
+#   · ⚠️⚠️ **ZERO REQUISIÇÃO DE ESCRITA AO ML, provada por AUSÊNCIA DE
+#     REQUISIÇÃO** (`Http::fake()` + `preventStrayRequests()`), não por leitura de
+#     código. Aprovar **ENFILEIRA**: `aprovarEmLote` move o andamento e congela a
+#     composição **no nosso banco**; o gancho `aoAprovar`, que fala com o ML, está
+#     **VAZIO** e é da **Fase 193**. ⚠️ ISCA NAS DUAS DIREÇÕES: a tarifa
+#     (`/sites/MLB/listing_prices`) **É** consultada, então a negativa não passou
+#     por "nada foi registrado" — que é o jeito clássico de um gate de ausência
+#     virar decoração.
+#   · ⚠️ **A FRONTEIRA DO D-11, DECLARADA:** `estrutura-meus-anuncios.test.js`
+#     prova que **a LISTA de Publicações nunca escreve no ML**, e isso continua
+#     verdade (este plano não toca os arquivos da lista). **A FILA escreve** — no
+#     banco. O D-11 não é esticado para a área nova nem afrouxado na lista.
+lote-rota  php  test_(oferta_de_OUTRA_conta_no_POST_nao_e_aprovada_nem_gravada_187_09|a_rota_do_lote_exige_admin_e_conta_conectada_187_09|aprovar_em_lote_NAO_faz_requisicao_de_publicacao_ao_ML_187_09)  ::  tests=3 assertions=23
+
+# ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
+
+# Território por ESCOPO DO ASSUNTO (`(187-09)`), nunca por range aberto: nesta
+# árvore as TRÊS sessões commitam com o MESMO `user.name`, então o AUTOR **não
+# discrimina NADA**. Há isca nas duas direções (o escopo não casa `(187-08)` nem
+# `(261016-mwe)`).
+# ⚠️⚠️ A CONTAGEM DESTE ID **NÃO depende de quantos commits existem no escopo**:
+#    nenhuma asserção mora dentro de condicional, o `test -e` dos ~21 caminhos
+#    proibidos é UMA asserção coletando fantasmas (em vez de uma por caminho, que
+#    fazia a contagem crescer junto com a lista) e a prova de que o range não está
+#    vazio é asserção COLETADA, nunca `return` antecipado. Era a NONA ocorrência da
+#    família "contagem que depende de quantos arquivos/tabelas/commits existem"
+#    nesta milestone, e ela foi consertada na RAIZ no plano 187-07.
+# ⚠️ As ausências são lidas do código **SEM COMENTÁRIO** (`token_get_all` no PHP,
+#    remoção de bloco e de `//` no JSX): palavra no docblock que EXPLICA "não uso
+#    isso" casa com o gate que conta isso, e a wave 4 teve TRÊS mutações abortando
+#    por esse motivo. Há **ISCA DO LEITOR**: a prosa deste caso cita `localStorage`,
+#    "lucro líquido" e "Restaurar dados de exemplo" de propósito, e o docblock de
+#    `RodapeDaFila.jsx` também.
+# ⚠️ O gate de "lucro líquido" é **recortado à lista CONSTANTE dos 7 arquivos deste
+#    plano**: `lucro_liquido` é campo LEGÍTIMO do Portal, e varrer o `app/` inteiro
+#    reprovaria trabalho de outra sessão — foi a 5ª ocorrência de "gate mais largo
+#    que o invariante" na Fase 186, e ela **barrou um deploy**.
+# ⚠️⚠️ E o **GATE DE AUSÊNCIA DO SEGUNDO PASSO** (T-187-93, valendo para as Fases
+#    187-194) vive aqui, ancorado no SUJEITO e **com os acentos**: `aprovad` **não
+#    casa** "aprovação", e o par solto `(aguardand|pendent) × (autoriza|aprovad)`
+#    casaria **10 ocorrências LEGÍTIMAS** da área ("Aguardando aprovação" é
+#    vocabulário correto desta tela). A ISCA é por FORMA, nas DUAS direções: a sonda
+#    PEGA "Confirmar publicação"/"Cancelar aprovação" e **NÃO** pega "Aprovar para
+#    publicação" nem "Aguardando aprovação". E o rótulo CERTO é provado presente —
+#    negativa sozinha vira falso positivo no dia em que alguém apagar a barra.
+territorio-lote  php  test_territorio_e_ausencias_do_plano_187_09  ::  tests=1 assertions=17
+
+# ⚠️ A BIJEÇÃO ids ↔ métodos, nos DOIS sentidos: método sem id **NUNCA RODA** (foi
+# o sobrevivente da mutação do plano 186-03) e id órfão é gate sobre ZERO casos.
+# ⚠️ A contagem deste id **NÃO depende do número de linhas deste arquivo**: as
+#    asserções são de forma FIXA (`>= 4` linhas, `>= 8` métodos, dois
+#    `assertSame([])` coletando infratores e a isca do nome que ninguém escreveu),
+#    então acrescentar id aqui **NÃO** mexe neste número.
+# ⚠️⚠️ E É ELE QUE RODA A VARREDURA DE HOMÔNIMO contra todo `test_*` de `tests/`,
+#    nas DUAS direções, a cada execução — com asserção de que a varredura achou
+#    mais de 100 métodos alheios, sem a qual uma varredura CEGA passaria.
+bijecao-manifesto-09  php  test_bijecao_do_manifesto_do_lote_187_09  ::  tests=1 assertions=11
+
+# ── TAREFAS 2 e 3: o render (JS) ────────────────────────────────────────────
+
+# ⚠️⚠️ DOIS REGIMES (`tests=26,19`), e eles são MEDIDOS, não precaução. A camada
+# de CSS deste arquivo é UM `test()` com SETE subtestes, e ela **PULA** quando o
+# CSS construído é mais ANTIGO que as fontes (`BarraDeSelecao.jsx`,
+# `CascaDeModal.jsx`, `ModalDeLote.jsx`, `ToastDaFila.jsx`, `RodapeDaFila.jsx`,
+# `VazioDaFila.jsx`, `Aprovacao.jsx`) — e mutar qualquer uma delas a deixa mais
+# nova. Medido nesta máquina em 17/10/2026:
+#   · pristino (CSS mais novo):   26 testes / 26 pass / 0 fail / 0 skipped
+#   · mutado   (fonte mais nova): 19 testes / 18 pass / 0 fail / 1 skipped
+# Sem os dois regimes a campanha de mutação abortaria na 1ª execução ("BASE com
+# contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o
+# código (learnings §4 caso 11).
+#
+# O que ele cobre (13 blocos, cada um com a pergunta *"o que precisaria estar
+# errado no mundo para ele falhar?"* respondida no topo do arquivo):
+#   1. a BARRA por ÁRVORE com índice ABSOLUTO, com as TRÊS omissões medidas da
+#      tabela do plano (`white-space:nowrap` em `:898`/`:899`/`:900` e
+#      `cursor:pointer` em `:899`/`:900`), o plural de `:1282`, e o botão APAGADO
+#      **com `disabled`** — porque **cor não é o único sinal**. ⚠️ E a prova de que
+#      o `·` do rótulo **NÃO é caractere**: ele é a `border-right` de `:898`, e um
+#      `·` literal ali desenharia dois pontos ao lado de duas bordas.
+#   2. a AUSÊNCIA DO SEGUNDO PASSO (T-187-93), com isca por FORMA nas duas direções.
+#   3. a CASCA: 560px, `max-h-[calc(100vh-140px)]`, `pt-[96px]`, backdrop a 65%,
+#      raio 16px, `shadow-pub-modal`, o `stopPropagation` do corpo, e o **WRAPPER
+#      de `:778`** que a tabela do plano OMITE.
+#   4. ⚠️⚠️ **SEM PORTAL** — o furo mais perigoso deste plano, porque ele deixa o
+#      gate VERDE: o render de SERVIDOR do React não desenha portal, e um
+#      `createPortal` faria todos os blocos acima passar POR OMISSÃO. Negativa
+#      **com contraprova** (o HTML não é vazio) + os 15 NAMED EXPORTS (REND-05),
+#      com as duas peças internas renderizadas sozinhas.
+#   5. o MODAL com as TRÊS selecionadas, os glifos nas DUAS cores, o **WRAPPER de
+#      `:881`** (a omissão mais cara, com o `min-width:0` que faz o truncate valer),
+#      o `truncate` + `title` do texto INTEIRO, e a nota de `:885` BYTE A BYTE com
+#      o ✓ U+2713 — mais a isca do quase-igual (`v` em vez de `✓`).
+#   6. os 6 literais de `TOASTS` **IMPORTADOS**, com a prova de que **nenhum deles
+#      está escrito** nos meus arquivos; o travessão U+2014 no HTML; `textoDoToast`
+#      recusando chave adversa sem LANÇAR e sem devolver a chave CRUA; e os DONOS
+#      dos outros cinco NOMEADOS (188 / 192 / **193**), com a asserção de que a
+#      página dispara **exatamente** `['aprovado']`.
+#   7. o timer de **3800 ms pela FUNÇÃO PURA**, com a ordem cancelar→agendar, o
+#      relógio adverso, as iscas de 380/38000 — e **a declaração explícita de que o
+#      RUNTIME do timer NÃO é provado** (não há navegador neste ambiente).
+#   8. o Z-INDEX das três peças LIDO da fonte, a ordem entre elas, e a
+#      **conferência PEÇA POR PEÇA** contra o número que o protótipo deu A ELA
+#      (60/100/120) — e **não** contra a lista larga, que MEDIDO nesta sessão
+#      **reprovou código certo** porque `45` é o número do POPOVER. Mais a prova de
+#      que a cobertura das três **não desapareceu** do gate dedicado da wave 6.
+#   9. o RODAPÉ com as 6 legendas, a CAIXA dos literais (3 maiúsculas + 3
+#      minúsculas, que é o que separa oferta de foto), as 6 pinturas TODAS
+#      DIFERENTES, e a ausência MEDIDA do anel de FALHA e do quadrado de
+#      REGENERANDO — reproduzida, não consertada.
+#  10. "Restaurar dados de exemplo" AUSENTE, lido SEM COMENTÁRIO, com **isca do
+#      leitor** (a prosa do rodapé cita a frase) e **isca cega** (a legenda "Não
+#      analisada" continua presente).
+#  11. ⚠️⚠️ os **DOIS** vazios honestos: o literal do protótipo + "Limpar filtros"
+#      no caso COM filtro, e o texto honesto **SEM botão** no caso SEM filtro — com
+#      a prova de que os dois textos são DIFERENTES, que o literal do filtro **não**
+#      aparece no segundo, e que o precedente de `VaziosDaLista.jsx` (Fase 180, *"seria
+#      MENTIR"*) existe e é CITADO. Mais a fronteira com a Fase 194 declarada.
+#  12. o render ADVERSO em **20 formas × 19 campos** mais o campo AUSENTE, a prop
+#      inteira adversa e **o CLIQUE** (a tela preta da wave 6 foi no clique, e
+#      `renderToStaticMarkup` não dispara `onClick`).
+#  13. a FLAG dentro do callback do `.map()` — ⚠️ **ancorada no COMPORTAMENTO**: a
+#      primeira redação exigia corpo em TODO callback e **reprovou código certo**
+#      (`.map((id) => inteiroSeguro(id))` lê nome de MÓDULO, que o Rollup nunca
+#      elide). A régua certa aceita expressão quando tudo que ela lê é parâmetro ou
+#      nome de módulo. Mais as ausências sobre a lista CONSTANTE de 6 arquivos
+#      (`localStorage`, "lucro líquido" RECORTADO, `String(`, hex, `.hasOwnProperty(`),
+#      cada uma com isca.
+#  14. a PÁGINA: os 3 slots ligados, a seleção na URL (`?sel=`), o POST com o mapa
+#      de `versoes` (COL-04), e as três peças `fixed` **FORA do container do corpo**
+#      por ÁRVORE. ⚠️ A sonda do `backdrop-filter` no `AppLayout` é **recortada
+#      entre `<main` e `</main>`**: a primeira redação varria até o fim do arquivo e
+#      reprovou código certo, porque o `backdrop-blur-md` de `AppLayout.jsx:1068`
+#      está **FORA** do `</main>` (`:1057`) — é o aviso de ticket do canto.
+#  15. o CSS CONSTRUÍDO, com as OITO normalizações do medidor aplicadas (seletor
+#      escapado por regra GERAL — `max-h-[calc(100vh-140px)]` tem parêntese e
+#      vírgula), e **`pub-float`/`pub-float-line` ACORDANDO no lugar medido**, com
+#      a prova de que eles aparecem **só** na barra (`:897`) e no toast (`:905`).
+lote-render  js  tests/js/publicador-fila-lote-187.test.js  ::  tests=26,19

@@ -8,6 +8,11 @@ import ProximoARevisar from '@/Components/Mlb/Publicador/aprovacao/ProximoARevis
 import FiltrosDaFila from '@/Components/Mlb/Publicador/aprovacao/FiltrosDaFila';
 import TabelaDaFila from '@/Components/Mlb/Publicador/aprovacao/TabelaDaFila';
 import LinhaDaOferta from '@/Components/Mlb/Publicador/aprovacao/LinhaDaOferta';
+import RodapeDaFila from '@/Components/Mlb/Publicador/aprovacao/RodapeDaFila';
+import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
+import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
+import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
+import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -188,6 +193,31 @@ function irParaOferta(empresaId, etapaAtiva) {
 // propósito (menu aberto depois de recarregar seria estado fantasma).
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * O **sub** do toast do lote — a contagem do que acabou de ser aprovado.
+ *
+ * ⚠️⚠️ **O TEXTO PRINCIPAL DO TOAST NÃO MORA AQUI.** Ele é o literal travado
+ * `TOASTS.aprovado` ("Aprovado — aguardando publicação", com o travessão U+2014),
+ * LIDO de `vocabularioDoPortao.jsx` por `ToastDaFila`. O que esta função monta é
+ * só a linha de apoio — e ela diz **"aguardando publicação"**, não "publicado":
+ * nesta fase aprovar **ENFILEIRA**, e a escrita no Mercado Livre é da Fase 193.
+ *
+ * ⚠️ **DIVERGÊNCIA DECLARADA DO PROTÓTIPO:** em `:1167` o protótipo usa como texto
+ * principal `"N ofertas aprovadas"` e manda "Aguardando publicação no Mercado
+ * Livre" para o sub. Aqui o principal é o literal TRAVADO de `TOASTS` (VOC-08) e a
+ * contagem desce para o sub. O motivo é que os 6 literais da Fase 186 são o
+ * vocabulário do portão e existe gate de literal sobre eles; inventar um sétimo
+ * texto de toast criaria uma frase fora do vocabulário travado.
+ *
+ * @param {number} aprovadas quantas ofertas foram de fato aprovadas
+ */
+export function subDoToastDoLote(aprovadas) {
+    // ⚠️ `> 1` é plural, igual ao resto do lote (medido em `:1282`/`:1425`).
+    const n = typeof aprovadas === 'number' && Number.isInteger(aprovadas) ? aprovadas : 0;
+
+    return n + (n > 1 ? ' ofertas aprovadas' : ' oferta aprovada');
+}
+
 /** Os defaults "sem filtro", iguais aos do servidor. Chave com o default SAI da URL. */
 const SEM_FILTRO = { busca: '', modalidade: 'todas', formato: 'todos', etapa: 'todas' };
 
@@ -267,6 +297,9 @@ export default function Aprovacao({
     grupos = null,
     tabela = null,
     rodape = null,
+    selecionados = null,
+    lote = null,
+    flash = null,
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
 
@@ -274,6 +307,13 @@ export default function Aprovacao({
     // aberto. Não vai para a URL, não recorta nada, e não sobrevive à navegação
     // de propósito.
     const [menuAberto, setMenuAberto] = useState(null);
+
+    // ⚠️⚠️ **O MODAL DE LOTE ABRE E FECHA POR ESTADO LOCAL, e isso é decisão.** A
+    // SELEÇÃO vive na URL (ela é dado que precisa sobreviver a recarregar); "o
+    // modal está aberto" é GESTO, não dado — pôr isso na URL faria um link
+    // compartilhado abrir um modal de aprovação na cara de outra pessoa, numa ação
+    // que publica e não tem desfazer.
+    const [modalDoLoteAberto, setModalDoLoteAberto] = useState(false);
 
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
@@ -322,13 +362,11 @@ export default function Aprovacao({
     // ⚠️ O destino é o **FOCO da oferta** (`?oferta=<id>`, o `focusId` de `:1250` e
     // o COL-03 do plano 187-05) — o MESMO que o "Revisar agora" da faixa "PRÓXIMO A
     // REVISAR" já usa em produção. O painel que de fato ABRE a revisão é a Fase 188.
-    const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila
-        grupos={grupos}
-        linhaDaOferta={(oferta) => (
-            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} />
-        )}
-    />;
-    const noRodape = isValidElement(rodape) ? rodape : null;
+    //
+    // ⚠️⚠️ **Plano 187-09: `onMarcarVisiveis`, `vazio` e `rodape` FORAM LIGADOS.**
+    // Os três slots só podem ser montados DEPOIS de `limpar` e dos handlers de
+    // seleção existirem (eles vivem na URL), e por isso a composição da tabela
+    // desceu para junto deles — ver o bloco "O LOTE" mais abaixo.
 
     // ═══ ⚠️ Plano 187-06 — O RECORTE ATUAL E OS HANDLERS QUE O MOVEM ═══════
     //
@@ -451,6 +489,177 @@ export default function Aprovacao({
             );
         };
 
+    // ═══ ⚠️⚠️ Plano 187-09 — O LOTE: A SELEÇÃO NA URL, OS DOIS VAZIOS E O RODAPÉ ═══
+    //
+    // ⚠️⚠️ **A SELEÇÃO VIVE NA URL** (COL-03, critério 13): `?sel=1,2,3`. É o que a
+    // faz sobreviver a recarregar, a voltar do painel e a compartilhar o link — e é
+    // a razão de **NÃO** haver `localStorage` nesta tela. (O do protótipo,
+    // `KEY='ecf-aprovacao-v1'` em `:914`, é recurso de protótipo.)
+    //
+    // ⚠️ Os ids vêm do servidor **JÁ SANEADOS** contra as ofertas da conta
+    // (`selecaoSaneada()`): id de outra empresa na querystring é DESCARTADO. A tela
+    // nunca pinta como selecionada uma oferta que o POST depois recusaria.
+    const idsSelecionados = (Array.isArray(selecionados) ? selecionados : [])
+        .map((id) => inteiroSeguro(id))
+        .filter((id) => id !== null);
+
+    // Navega mantendo o recorte e trocando só a seleção.
+    const irParaSelecao = empresaId === null
+        ? null
+        : (ids) => {
+            const limpos = (Array.isArray(ids) ? ids : []).map((id) => inteiroSeguro(id)).filter((id) => id !== null);
+            const query = querystringDe(recorteAtual);
+
+            // ⚠️ `sel` SAI da URL quando a seleção é vazia, igual aos filtros no
+            // default: querystring com `sel=` vazio é sujeira que o usuário
+            // compartilha sem saber.
+            if (limpos.length > 0) {
+                query.sel = limpos.join(',');
+            }
+
+            router.get(
+                route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+                query,
+                { preserveState: true, preserveScroll: true, replace: true },
+            );
+        };
+
+    // ⚠️⚠️ O CHECKBOX DO CABEÇALHO MARCA **TODAS AS LINHAS VISÍVEIS** — e isso
+    // inclui as em `preparando` (divergência **D9**, medida pela wave 8:
+    // `preparando` NÃO abre a linha e NÃO entra na navegação, **mas ENTRA em
+    // `ids`**, que é o que este checkbox marca). "Consertar" isso mudaria o
+    // comportamento do lote sem ninguém pedir. ➡️ Elas são marcadas, e o MODAL as
+    // lista como **inaptas com o motivo** — que é exatamente o que o usuário
+    // pediu: a tela diz quem ficou de fora e por quê.
+    const idsVisiveis = (Array.isArray(grupos) ? grupos : []).flatMap((cruGrupo) => {
+        // ⚠️ Flag DENTRO do callback: o Rollup elimina variável de escopo do
+        // componente usada dentro de `.map()`/`.flatMap()`.
+        const grupo = objetoSeguro(cruGrupo);
+        const conjuntos = grupo !== null && Array.isArray(grupo.conjuntos) ? grupo.conjuntos : [];
+
+        return conjuntos.flatMap((cruConjunto) => {
+            const conjunto = objetoSeguro(cruConjunto);
+            const ofertas = conjunto !== null && Array.isArray(conjunto.ofertas) ? conjunto.ofertas : [];
+
+            return ofertas.map((cruOferta) => inteiroSeguro(objetoSeguro(cruOferta)?.id)).filter((id) => id !== null);
+        });
+    });
+
+    const todasVisiveisMarcadas = idsVisiveis.length > 0
+        && idsVisiveis.every((id) => idsSelecionados.includes(id));
+
+    const marcarVisiveis = irParaSelecao === null
+        ? null
+        : (marcar) => {
+            // ⚠️ Marcar ACRESCENTA às já selecionadas (sem duplicar) e desmarcar
+            // RETIRA só as visíveis: a seleção de outro recorte não é perdida por
+            // causa de um clique neste.
+            const proximos = marcar === true
+                ? idsSelecionados.concat(idsVisiveis.filter((id) => !idsSelecionados.includes(id)))
+                : idsSelecionados.filter((id) => !idsVisiveis.includes(id));
+
+            irParaSelecao(proximos);
+        };
+
+    // ⚠️⚠️ **OS DOIS VAZIOS HONESTOS** (decisão 16 do usuário, 15/10/2026). O
+    // `algum_filtro` é o MESMO booleano do servidor que a linha de filtros usa — ele
+    // é **LIDO**, nunca recalculado aqui: duas respostas para "há filtro?"
+    // produziriam o texto errado exatamente no caso que esta peça existe para
+    // acertar.
+    //
+    // ⚠️ E o vazio só é desenhado quando **não há linha nenhuma**: com linhas na
+    // tela, um aviso de vazio seria contradição visível.
+    const noVazio = idsVisiveis.length > 0 || (Array.isArray(grupos) && grupos.length > 0)
+        ? null
+        : <VazioDaFila algumFiltro={algum_filtro === true} onLimpar={limpar} />;
+
+    // ⚠️ O rodapé é ESTÁTICO (a legenda não depende de dado) e aparece SEMPRE —
+    // inclusive com a fila vazia, que é justamente quando a pessoa mais precisa
+    // saber o que as formas significam.
+    const noRodape = isValidElement(rodape) ? rodape : <RodapeDaFila />;
+
+    // ⚠️⚠️ Fase 187, plano 07 — O SLOT `tabela` FOI PREENCHIDO, e o contrato de NÓ
+    // do 187-04 **continua valendo**: quem compõe um nó manda o nó, e sem nó a
+    // tabela é montada a partir dos DADOS do servidor (`grupos`). São duas props
+    // com UM significado cada — nó de composição × dado —, nunca uma prop com
+    // dois sentidos, que foi achado como defeito grave na Fase 186.
+    //
+    // ⚠️⚠️ Fase 187, plano 08 — **O SLOT `linhaDaOferta` FOI PREENCHIDO.**
+    //
+    // ⚠️⚠️ **`irParaOferta(empresaId, etapaAtiva)` é chamado de NOVO aqui, e isso é
+    // DELIBERADO.** `publicador-fila-proximo-187.test.js:857` (wave 5) lê o TEXTO
+    // `onRevisar={irParaOferta(empresaId, etapaAtiva)}` na fonte desta página:
+    // guardar a chamada numa variável e reusá-la nos dois lugares **reprovaria
+    // aquele gate**. A função não faz I/O — ela só devolve um `router.get` fechado
+    // sobre os mesmos dois valores —, então duas chamadas são dois closures
+    // idênticos, nunca dois comportamentos.
+    //
+    // ⚠️ `onRevisarFotos` CONTINUA ausente: o painel de revisão é a **Fase 188**.
+    // Sem handler, o atalho "Revisar fotos do conjunto" não é desenhado — botão sem
+    // destino é D4 violado, e `onClick` vazio é a mesma dívida com outra roupa.
+    const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila
+        grupos={grupos}
+        linhaDaOferta={(oferta) => (
+            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} />
+        )}
+        onMarcarVisiveis={marcarVisiveis}
+        visiveisMarcadas={todasVisiveisMarcadas}
+        vazio={noVazio}
+        rodape={noRodape}
+    />;
+
+    // ⚠️⚠️ **APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE** (decisão 3 do usuário,
+    // 14/10/2026). Este handler **submete** — não abre confirmação, não oferece
+    // desfazer, não tem passo 2 de 2. A conferência aconteceu no modal, ANTES, e é
+    // por isso que o modal lista TODAS as selecionadas com ✓/× e o motivo de cada
+    // uma de fora.
+    //
+    // ⚠️ As **VERSÕES** vão no corpo (COL-04): são as que a pessoa VIU. Se alguém
+    // mexeu numa oferta entre o veredicto e o clique, ELA é recusada e as outras
+    // passam — e sem o mapa a trava não travaria nada, porque `aprovarEmLote` lê a
+    // versão do próprio modelo que acabou de carregar.
+    const painelDoLote = objetoSeguro(lote);
+    const aprovarOLote = empresaId === null || painelDoLote === null
+        ? null
+        : () => {
+            const linhas = Array.isArray(painelDoLote.linhas) ? painelDoLote.linhas : [];
+            const versoes = {};
+
+            for (const cru of linhas) {
+                // ⚠️ Flag DENTRO do laço.
+                const item = objetoSeguro(cru);
+                const id = item === null ? null : inteiroSeguro(item.id);
+                const versao = item === null ? null : inteiroSeguro(item.versao);
+
+                if (id !== null && versao !== null) {
+                    versoes[id] = versao;
+                }
+            }
+
+            setModalDoLoteAberto(false);
+
+            router.post(
+                route('mlb.anuncios.meus.aprovacao.lote', { company: empresaId }),
+                { ofertas: idsSelecionados, versoes },
+                { preserveScroll: true },
+            );
+        };
+
+    // ⚠️⚠️ **NESTA FASE SÓ `aprovado` DISPARA**, e ele vem do flash do servidor
+    // depois do POST do lote. Os outros cinco toasts têm dono:
+    // `revisao_salva`/`ajuste_solicitado`/`foto_reprovada` → Fase 188;
+    // `gerando_com_ia` → 192; `publicado` → **193** (e ele EXIGE MLB confirmado,
+    // AND-04/VOC-08 — afirmá-lo sem o MLB seria mentir sobre o anúncio do cliente).
+    //
+    // ⚠️ O toast só nasce quando ALGUMA oferta foi de fato aprovada: "0 aprovadas"
+    // não é sucesso, e um toast verde dizendo "Aprovado" com zero aprovações seria
+    // a mentira mais cara desta tela.
+    const resultadoDoLote = objetoSeguro(objetoSeguro(flash)?.lote_aprovado);
+    const aprovadasAgora = inteiroSeguro(resultadoDoLote?.aprovadas);
+    const noToast = aprovadasAgora !== null && aprovadasAgora > 0
+        ? <ToastDaFila toast={{ chave: 'aprovado', sub: subDoToastDoLote(aprovadasAgora) }} />
+        : null;
+
     return (
         <AppLayout title="Aguardando aprovação">
             {/* ═══ Header global do Publicador (Fase 177, plano 177-08) ═══
@@ -528,9 +737,61 @@ export default function Aprovacao({
                     {noProximo}
                     {noFiltros}
                     {noTabela}
-                    {noRodape}
                 </div>
             </div>
+
+            {/* ═══ ⚠️⚠️ AS TRÊS PEÇAS `fixed` — FORA DO CONTAINER DO CORPO ═══════
+                ⚠️⚠️ **SEM PORTAL, E O MOTIVO É MEDIDO.** O renderizador de
+                SERVIDOR do React **não renderiza portal** ("Portals are not
+                currently supported by the server renderer"): um teste de render
+                veria **vazio** e passaria **POR OMISSÃO** — o gate ficaria verde
+                provando nada. E conteúdo portado **não herda a fonte**: os dois
+                `Popover.Content` do 177-06 e o modal da Fase 178 tiveram de
+                declarar `font-pub` por conta própria.
+
+                ⚠️⚠️ **DIVERGÊNCIA DECLARADA DO PLANO, E ELA É DE AMBIENTE, NÃO DE
+                ESCOLHA.** O plano prescreve as três peças como *"irmãs do
+                `<main>`"*, como no protótipo (`:896` e `:904`, fora do `<main>`).
+                **Isso é impossível sem tocar `AppLayout.jsx`**, que renderiza
+                `<main className="flex-1 overflow-y-auto p-6 animate-fade-in">
+                {children}</main>` (`AppLayout.jsx:1055`-`:1057`) — e aquele
+                arquivo é INTOCÁVEL nesta fase (D2).
+                ➡️ O que importa é o invariante, e ele é respeitado: as três são
+                **irmãs do `PublicadorHeader`**, que é o único elemento desta
+                árvore com `backdrop-filter`. `backdrop-filter` cria containing
+                block **só para DESCENDENTES**, e nenhuma delas é descendente do
+                header — então `position: fixed` resolve contra o viewport, que é
+                o comportamento do protótipo.
+                ⚠️ E `<main>` não cria containing block: `overflow-y-auto` não
+                cria, `p-6` não cria. O único `transform` da árvore é o do
+                keyframe `fade-in` (`tailwind.config.js:288`), que roda por
+                `0.3s` **sem `fill-mode`** — depois disso o transform sai e não há
+                containing block nenhum. Medido na camada, não presumido.
+
+                ⚠️ Há gate provando por ÁRVORE que as três **não** estão dentro do
+                container do corpo nem dentro do header. */}
+
+            {/* ⚠️ A barra só aparece com seleção > 0 — barra vazia cobre a última
+                linha da tabela e não diz nada. `z-[35]`: acima do header `z-30`,
+                abaixo do menu/painel `z-40` (a ordem TRAVADA do projeto). */}
+            <BarraDeSelecao
+                lote={lote}
+                onAbrir={painelDoLote === null ? null : () => setModalDoLoteAberto(true)}
+                onLimpar={irParaSelecao === null ? null : () => irParaSelecao([])}
+            />
+
+            {/* ⚠️⚠️ O modal é CONFERÊNCIA, não segundo passo: aprovar JÁ PUBLICA
+                (decisão 3). `z-[42]`: acima do menu/painel, abaixo do toast. */}
+            <ModalDeLote
+                lote={lote}
+                aberto={modalDoLoteAberto}
+                onFechar={() => setModalDoLoteAberto(false)}
+                onAprovar={aprovarOLote}
+            />
+
+            {/* ⚠️ `z-[45]`: acima de tudo — o toast é o aviso do que acabou de
+                acontecer, e nada pode cobri-lo. */}
+            {noToast}
         </AppLayout>
     );
 }

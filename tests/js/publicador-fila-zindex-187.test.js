@@ -61,8 +61,23 @@ const REL_FILTROS = 'resources/js/Components/Mlb/Publicador/aprovacao/FiltrosDaF
 const REL_POPOVER = 'resources/js/Components/Mlb/Publicador/aprovacao/PopoverDeFiltro.jsx';
 const REL_TRAVADO = 'tests/js/publicador-header-zindex-ordem.test.js';
 
+// ⚠️⚠️ PLANO 187-09 — AS TRÊS PEÇAS `fixed` NASCERAM, E A PRESCRIÇÃO PINADA VIROU
+// LEITURA. Era exatamente isso que a asserção de ausência deste arquivo existia
+// para forçar: enquanto os arquivos não existiam, gate sobre eles seria gate sobre
+// ZERO casos; agora eles existem e os números são LIDOS da fonte, como as 6 peças
+// antigas.
+//
+// ⚠️ **DIVERGÊNCIA DE NOME, DECLARADA:** a prescrição falava de `BarraDeLote.jsx`.
+// O arquivo real do plano 187-09 é **`BarraDeSelecao.jsx`** (é o nome que o
+// `files_modified` daquele plano prescreve, e é o que está no disco). Corrigir o
+// nome aqui é o conserto certo; inventar um `BarraDeLote.jsx` só para casar uma
+// string antiga seria criar arquivo para alimentar um gate.
+const REL_BARRA = 'resources/js/Components/Mlb/Publicador/aprovacao/BarraDeSelecao.jsx';
+const REL_CASCA = 'resources/js/Components/Mlb/Publicador/aprovacao/CascaDeModal.jsx';
+const REL_TOAST = 'resources/js/Components/Mlb/Publicador/aprovacao/ToastDaFila.jsx';
+
 /** ⚠️ `test -e` ANTES de acreditar em leitura vazia. */
-for (const caminho of [REL_FILTROS, REL_POPOVER, REL_TRAVADO]) {
+for (const caminho of [REL_FILTROS, REL_POPOVER, REL_TRAVADO, REL_BARRA, REL_CASCA, REL_TOAST]) {
     if (!fs.existsSync(path.resolve(RAIZ, caminho))) {
         throw new Error(`caminho inexistente: ${caminho} — o gate mediria NADA`);
     }
@@ -107,23 +122,28 @@ const DESTA_WAVE = {
         ancora: /const CLASSES_POPOVER = 'absolute left-0 top-\[38px\] z-(\d+)(?=[\s'])/g,
         descricao: 'o popover de filtro (Responsável e Motivo de bloqueio)',
     },
+    // ⚠️⚠️ As TRÊS do plano 187-09. Elas usam a forma de VALOR ARBITRÁRIO
+    // (`z-[35]`), e não `z-35`, porque **35, 42 e 45 não existem na escala nomeada
+    // do Tailwind** — a escala vai 0, 10, 20, 30, 40, 50. Por isso a âncora tem os
+    // colchetes: uma âncora `z-(\d+)` NÃO casaria `z-[35]` e devolveria 0
+    // ocorrências, e o `zDe()` abaixo reprovaria com "a âncora casou 0 vez(es)" —
+    // que é o comportamento certo, mas pelo motivo errado.
+    barraDeLote: {
+        arquivo: REL_BARRA,
+        ancora: /bottom-\[24px\] left-1\/2 z-\[(\d+)\](?=[\s'])/g,
+        descricao: 'a barra flutuante da seleção em lote',
+    },
+    modal: {
+        arquivo: REL_CASCA,
+        ancora: /const CLASSES_BACKDROP = 'fixed inset-0 z-\[(\d+)\](?=[\s'])/g,
+        descricao: 'o backdrop da casca de modal',
+    },
+    toast: {
+        arquivo: REL_TOAST,
+        ancora: /top-\[124px\] z-\[(\d+)\](?=[\s'])/g,
+        descricao: 'o toast da fila',
+    },
 };
-
-/**
- * ⚠️ As duas peças do plano **187-09**, como PRESCRIÇÃO PINADA. Os arquivos
- * ainda não existem, e por isso aqui há NÚMERO e não leitura — mas a prescrição
- * é conferida contra os pontos LIDOS, então ela não é decorativa.
- */
-const PRESCRITO_187_09 = {
-    barraDeLote: 35,
-    toast: 45,
-};
-
-/** Os arquivos que o 187-09 vai criar — hoje AUSENTES, e há asserção disso. */
-const ARQUIVOS_DO_187_09 = [
-    'resources/js/Components/Mlb/Publicador/aprovacao/BarraDeLote.jsx',
-    'resources/js/Components/Mlb/Publicador/aprovacao/ToastDaFila.jsx',
-];
 
 /**
  * Lê um z-index DO CÓDIGO.
@@ -199,39 +219,95 @@ test('a ordem das 6 peças que EXISTEM: overlay < popover < header < menu = pain
     }
 });
 
-test('a prescrição do 187-09 (barra de lote e toast) respeita os pontos LIDOS 187-06', () => {
+test('as TRÊS peças do 187-09 (barra, modal e toast), LIDAS da fonte 187-06', () => {
     const header = zDe(TRAVADOS, 'header');
     const menu = zDe(TRAVADOS, 'menuLateral');
+    const painel = zDe(TRAVADOS, 'painelDoProduto');
     const popover = zDe(DESTA_WAVE, 'popover');
 
-    // ⚠️ No protótipo a barra de lote (60) fica ACIMA do header (50) e o toast
-    // (120) acima de tudo. A prescrição preserva essa ordem na escala daqui.
-    assert.ok(
-        PRESCRITO_187_09.barraDeLote > header,
-        `a barra de lote prescrita (${PRESCRITO_187_09.barraDeLote}) tem de ficar ACIMA do header (${header})`,
-    );
-    assert.ok(
-        PRESCRITO_187_09.barraDeLote < menu,
-        `a barra de lote prescrita (${PRESCRITO_187_09.barraDeLote}) tem de ficar ABAIXO do menu/painel (${menu}): `
-        + 'acima, ela cobriria o menu expandido — o bug de 12/10/2026 com outra roupa.',
-    );
-    assert.ok(
-        PRESCRITO_187_09.toast > menu,
-        `o toast prescrito (${PRESCRITO_187_09.toast}) tem de ficar ACIMA do menu/painel (${menu}): `
-        + 'ele é o aviso do que acabou de acontecer, e nada pode cobri-lo.',
-    );
-    assert.ok(popover < PRESCRITO_187_09.barraDeLote, 'o popover tem de ficar abaixo da barra de lote');
+    // ⚠️⚠️ LIDOS da fonte, não prescritos: quando o 187-09 criou os arquivos, a
+    // prescrição pinada deste bloco virou medição, que era o que a asserção de
+    // ausência existia para forçar.
+    const barra = zDe(DESTA_WAVE, 'barraDeLote');
+    const modal = zDe(DESTA_WAVE, 'modal');
+    const toast = zDe(DESTA_WAVE, 'toast');
 
-    // ⚠️⚠️ A asserção que torna este bloco uma PENDÊNCIA e não uma negativa que
-    // vira falso positivo: os dois arquivos NÃO existem hoje. Quando o 187-09 os
-    // criar, isto reprova e obriga a trocar a prescrição por LEITURA.
-    for (const caminho of ARQUIVOS_DO_187_09) {
-        assert.equal(
-            fs.existsSync(path.resolve(RAIZ, caminho)),
-            false,
-            `${caminho} JÁ EXISTE: troque a prescrição pinada por LEITURA da fonte, como as 6 peças acima.`,
+    // ⚠️ No protótipo a barra de lote (60) fica ACIMA do header (50), o modal (100)
+    // acima dela e o toast (120) acima de tudo. A ORDEM RELATIVA é preservada na
+    // escala daqui; os NÚMEROS são novos (D1).
+    assert.ok(barra > header, `a barra de lote (${barra}) tem de ficar ACIMA do header (${header})`);
+    assert.ok(
+        barra < menu,
+        `a barra de lote (${barra}) tem de ficar ABAIXO do menu/painel (${menu}): acima, ela cobriria o `
+        + 'menu expandido — o bug de 12/10/2026 com outra roupa.',
+    );
+    assert.ok(
+        modal > menu && modal > painel,
+        `o modal (${modal}) tem de ficar ACIMA do menu (${menu}) e do painel (${painel}): ele é MODAL, e `
+        + 'nada pode ficar na frente dele a não ser o aviso do que acabou de acontecer.',
+    );
+    assert.ok(modal > barra, `o modal (${modal}) tem de ficar ACIMA da barra que o abriu (${barra})`);
+    assert.ok(
+        toast > modal,
+        `o toast (${toast}) tem de ficar ACIMA do modal (${modal}): ele é o aviso do que acabou de `
+        + 'acontecer, e nada pode cobri-lo.',
+    );
+    assert.ok(popover < barra, 'o popover tem de ficar abaixo da barra de lote');
+
+    // ⚠️⚠️ E NENHUM número DO PROTÓTIPO FOI COPIADO — **conferido PEÇA POR PEÇA**.
+    //
+    // ⚠️⚠️ **POR QUE ESTA ASSERÇÃO NÃO É A LISTA LARGA DO CASO 1, E A DIFERENÇA FOI
+    // MEDIDA NESTA SESSÃO.** A primeira redação deste bloco reusou o
+    // `![44, 45, 50, 60, 100, 120].includes(valor)` do caso acima — e **REPROVOU
+    // CÓDIGO CERTO**: o toast ficou com `z-[45]`, e `45` está na lista porque é o
+    // número que o protótipo deu ao **POPOVER** (`:82`/`:95`), não ao toast (que lá
+    // é **120**).
+    // ➡️ O invariante de verdade é *"a peça não herdou o número que o protótipo deu
+    // A ELA"*, e é isso que o mapa abaixo mede. A lista larga é mais larga que o
+    // invariante — é a família que nesta milestone já reprovou trabalho correto três
+    // vezes e **barrou um deploy**. ⚠️ E o conserto certo NÃO era baixar a régua:
+    // era ancorá-la no COMPORTAMENTO (qual número o protótipo deu A ESTA peça), que
+    // é mais forte, porque uma lista de seis números perdoaria um sétimo.
+    //
+    // ⚠️ O caso 1 **não foi tocado**: para as 6 peças antigas (10/20/30/40) a lista
+    // larga não colide com nada, e ela é prova da wave 6.
+    const DO_PROTOTIPO = { barra: 60, modal: 100, toast: 120 };
+    for (const [nome, valor] of Object.entries({ barra, modal, toast })) {
+        assert.notEqual(
+            valor,
+            DO_PROTOTIPO[nome],
+            `"${nome}" ficou com ${valor}, que é EXATAMENTE o número que o protótipo deu a ela. A escala `
+            + 'deste projeto é outra (D1): preserve a ORDEM, não os números.',
         );
     }
+
+    // ⚠️⚠️ ISCA DO MAPA, nas DUAS direções — sem ela um mapa com a chave errada
+    // (ou um `undefined`) faria as três asserções acima passar comparando contra
+    // `undefined`, que nunca é igual a um inteiro.
+    assert.deepEqual(
+        Object.keys(DO_PROTOTIPO).sort(),
+        ['barra', 'modal', 'toast'],
+        'o mapa do protótipo perdeu (ou ganhou) uma peça — as asserções acima compararam contra `undefined`',
+    );
+    for (const nome of Object.keys(DO_PROTOTIPO)) {
+        assert.equal(typeof DO_PROTOTIPO[nome], 'number', `o número do protótipo de "${nome}" não é número`);
+    }
+    // E a prova de que a asserção SABE recusar: o próprio número do protótipo reprova.
+    assert.throws(
+        () => assert.notEqual(DO_PROTOTIPO.toast, DO_PROTOTIPO.toast),
+        'ISCA CEGA: `notEqual` não recusa nem o número idêntico',
+    );
+
+    // ⚠️ ISCA: as três âncoras NÃO casam a forma da escala NOMEADA (`z-45` sem
+    // colchete). Sem isto, uma âncora que casasse as duas formas leria o número
+    // errado no dia em que alguém trocasse `z-[45]` por `z-45` — que não compila
+    // nesta escala e deixaria a peça SEM z-index nenhum.
+    const semColchete = "const CLASSES_BACKDROP = 'fixed inset-0 z-42 flex';";
+    assert.equal(
+        [...semColchete.matchAll(new RegExp(DESTA_WAVE.modal.ancora.source, 'g'))].length,
+        0,
+        'a âncora do modal casa `z-42` sem colchete — ela leria um número que o Tailwind não compila',
+    );
 });
 
 test('a extração não casa por PREFIXO (z-1 não casa dentro de z-10, z-10 dentro de z-100) 187-06', () => {

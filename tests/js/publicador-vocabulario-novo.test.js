@@ -290,6 +290,38 @@ const ARQUIVOS_NOVOS = [
     `${DIR_APROV}/LinhaDaOferta.jsx`,
     `${DIR_APROV}/AnelDeProgresso.jsx`,
     `${DIR_APROV}/BarraDeMargem.jsx`,
+    // ─── Fase 187, plano 09 — O LOTE, OS TOASTS, O RODAPÉ E OS DOIS VAZIOS ───
+    //
+    // ⚠️⚠️ **SE ESTAS SEIS LINHAS FALTASSEM, O GATE-03 PASSARIA POR OMISSÃO** para
+    // os seis arquivos — e `DIR_APROV` está em `DIRETORIOS_FECHADOS`, então o
+    // `assert.deepEqual(noDisco, declarados)` reprova na hora (é o comportamento
+    // certo). ⚠️ E declarar ANTES de o arquivo existir **LANÇA** no carregamento do
+    // módulo, porque `FONTES` lê todos os caminhos: quem escreve aqui é o plano que
+    // acabou de criar o arquivo.
+    //
+    // ⚠️ `.jsx` nos seis, como todo o diretório: o `content` do `tailwind.config.js`
+    // varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa das classes do lote —
+    // a casca flutuante de `:897`, o backdrop de 560px de `:775`/`:776`, o glifo de
+    // 18px de `:880`, o dot de 8px de `:906` e as seis formas de 10px da legenda de
+    // `:193`-`:198`. Num `.js` nenhuma delas geraria CSS, e as peças sairiam sem
+    // geometria na tela com todo teste de render passando.
+    //
+    // ⚠️⚠️ **E É AQUI QUE `pub-float` E `pub-float-line` ACORDAM.** Os dois foram
+    // declarados em `tailwind.config.js` para a barra de lote (`:897`) e o toast
+    // (`:905`), e até esta wave estavam DORMINDO — a wave 4 recusou acordá-los fora
+    // do lugar medido e a wave 8 tem gate provando que eles continuavam dormindo.
+    // Esta wave é o lugar medido deles.
+    //
+    // ⚠️ **FID-03:** `text-[13.5px]` (o texto do toast, `:907`), `text-[12.5px]`
+    // (o sub do modal, `:778`) e `text-[10.5px]` (o glifo, `:880`) são medidas do
+    // protótipo, e o passo do Tailwind não tem meio pixel — quem arredondasse
+    // `13.5` para `text-sm` (14px) mudaria o layout.
+    `${DIR_APROV}/BarraDeSelecao.jsx`,
+    `${DIR_APROV}/CascaDeModal.jsx`,
+    `${DIR_APROV}/ModalDeLote.jsx`,
+    `${DIR_APROV}/ToastDaFila.jsx`,
+    `${DIR_APROV}/RodapeDaFila.jsx`,
+    `${DIR_APROV}/VazioDaFila.jsx`,
     // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
     //
     // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem
