@@ -358,6 +358,11 @@ class LoteDaFilaTest extends TestCase
         return $oferta->fresh();
     }
 
+    private function versaoInertia(): string
+    {
+        return (string) app(\App\Http\Middleware\HandleInertiaRequests::class)->version(request());
+    }
+
     private function raiz(): string
     {
         return rtrim(str_replace('\\', '/', base_path()), '/');
@@ -850,6 +855,82 @@ class LoteDaFilaTest extends TestCase
         }
         $this->assertNotSame([], $lidas, 'ISCA CEGA: o espião de HTTP não registrou NADA — a negativa acima não prova nada');
         $this->assertContains('/sites/MLB/listing_prices', $lidas, 'a tarifa não foi consultada — o espião está medindo outra coisa');
+    }
+
+    /**
+     * ⚠️⚠️ **T-187-96 / COL-03 — `?sel=` COM ID DE OUTRA CONTA É DESCARTADO, E ESTE CASO NASCEU
+     * DE UMA MUTAÇÃO SOBREVIVENTE.**
+     *
+     * **MEDIDO na campanha de mutação desta sessão:** trocar
+     * `$fila->paraAConta(...)->whereIn('id', $pedidos)` por `PubAprovacaoOferta::query()
+     * ->whereIn('id', $pedidos)` **dentro de `selecaoSaneada()`** (o caminho do GET)
+     * **SOBREVIVEU** ao gate `lote-rota`. A razão é exata: `lote-rota` exercita o **POST**, e a
+     * conferência que eu tinha para o GET era um **proxy de FONTE** (um `assert.match` sobre o
+     * texto do controller) que casava a ocorrência do POST e ficava verde.
+     *
+     * ➡️ Proxy de fonte não prova comportamento. Este caso é a prova de COMPORTAMENTO: a oferta
+     * de outra conta **não entra em `selecionados`**, **não acende a linha como marcada** e
+     * **não entra no `lote`** que a tela recebe. Sem isso, a tela pintaria como selecionada uma
+     * oferta que o POST depois recusaria — duas verdades sobre a mesma seleção — e o painel do
+     * lote exibiria o NOME de uma oferta de outra empresa (vazamento de informação).
+     *
+     * ⚠️ É a classe de defeito mais caras desta fase: a aprovação **publica** e **não tem
+     * desfazer**.
+     *
+     * @group phase187
+     */
+    public function test_sel_da_URL_com_id_de_OUTRA_conta_e_descartado_187_09(): void
+    {
+        [$minha, , $admin] = $this->conta();
+        [$alheia] = $this->conta();
+
+        $daMinha = $this->levarAo($this->oferta($minha), PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $daAlheia = $this->levarAo($this->oferta($alheia), PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+
+        $props = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+            ->get(route('mlb.anuncios.meus.aprovacao', $minha).'?sel='.$daMinha->id.','.$daAlheia->id)
+            ->assertOk()
+            ->json('props');
+
+        // ⚠️ SÓ a minha sobrevive ao saneamento.
+        $this->assertSame([(int) $daMinha->id], $props['selecionados'], 'T-187-96: id de outra conta sobreviveu ao `?sel=`');
+
+        // ⚠️ E o painel do lote conta UMA, não duas — nem o NOME da alheia aparece.
+        $this->assertNotNull($props['lote'], 'o painel do lote não foi montado para a seleção legítima');
+        $this->assertSame(1, $props['lote']['selecionadas'], 'a oferta alheia entrou na contagem do lote');
+        $this->assertCount(1, $props['lote']['linhas']);
+        $this->assertSame((int) $daMinha->id, $props['lote']['linhas'][0]['id']);
+
+        $payload = json_encode($props, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString(
+            (string) $daAlheia->alvo->titulo,
+            (string) $payload,
+            'T-187-96: o título da oferta de OUTRA conta vazou para as props da tela',
+        );
+
+        // ⚠️⚠️ ISCA NA OUTRA DIREÇÃO: a seleção LEGÍTIMA passa. Sem ela, um saneamento que
+        // descartasse TUDO passaria nas asserções acima — e a seleção em lote nunca funcionaria.
+        $this->assertNotSame([], $props['selecionados'], 'ISCA CEGA: o saneamento descartou a oferta da PRÓPRIA conta');
+
+        // ⚠️ E `?sel=` com lixo não vira 500 nem id 0: `(int) '3abc'` é 3 e `(int) ''` é 0, e os
+        // dois entrariam num `whereIn` se o saneamento usasse cast em vez de `ctype_digit`.
+        $comLixo = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+            ->get(route('mlb.anuncios.meus.aprovacao', $minha).'?sel=abc,,0,-4,'.$daMinha->id.'x,'.$daMinha->id)
+            ->assertOk()
+            ->json('props');
+        $this->assertSame([(int) $daMinha->id], $comLixo['selecionados'], 'o saneamento aceitou lixo da querystring');
+
+        // ⚠️ E sem `?sel=` o painel do lote é `null` — nenhuma chamada extra de bloqueios
+        // acontece no caso comum (o custo é recortado à SELEÇÃO, nunca à fila).
+        $semSel = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->versaoInertia()])
+            ->get(route('mlb.anuncios.meus.aprovacao', $minha))
+            ->assertOk()
+            ->json('props');
+        $this->assertSame([], $semSel['selecionados']);
+        $this->assertNull($semSel['lote'], 'sem seleção o painel do lote tem de ser `null`');
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════

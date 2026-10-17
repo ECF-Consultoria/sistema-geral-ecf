@@ -1482,7 +1482,23 @@ test('a PÁGINA liga os TRÊS slots, põe a seleção na URL e mantém as 3 peç
 
     // ⚠️⚠️ E a seleção é saneada POR CONSULTA, nunca por `in_array` sobre lista
     // montada no PHP: id de outra conta não volta do `paraAConta()`.
-    assert.match(controller, /paraAConta\([^)]*\)\s*\n?\s*->whereIn\('id', \$pedidos\)/, 'o saneamento da seleção não é por consulta contra `paraAConta()`');
+    // ⚠️⚠️ **SÃO DOIS CAMINHOS, E A CONTAGEM É EXATA — conserto que uma MUTAÇÃO
+    // SOBREVIVENTE desta sessão obrigou.** O saneamento acontece em DOIS lugares:
+    // `selecaoSaneada()` (o **GET**, que lê `?sel=`) e `aprovarLote()` (o **POST**).
+    // A primeira redação usava `assert.match`, que casa a PRIMEIRA ocorrência — e
+    // por isso a mutação que trocava `paraAConta(...)` por
+    // `PubAprovacaoOferta::query()` **dentro de `selecaoSaneada()`** SOBREVIVEU: a
+    // sonda continuava achando a ocorrência do POST e ficava verde.
+    // ➡️ Agora a contagem é **2**, exata. ⚠️ E, mais importante que a sonda de
+    // fonte: o comportamento do GET passou a ter teste PRÓPRIO
+    // (`LoteDaFilaTest::test_sel_da_URL_com_id_de_OUTRA_conta_e_descartado_187_09`,
+    // id `selecao-na-url`), porque **proxy de fonte não prova comportamento** — e
+    // foi a mutação, não a leitura, que mostrou isso.
+    assert.equal(
+        (controller.match(/paraAConta\([^)]*\)\s*\n?\s*->whereIn\('id', \$pedidos\)/g) ?? []).length,
+        2,
+        'o saneamento por consulta contra `paraAConta()` tem de estar nos DOIS caminhos (o `?sel=` do GET e o corpo do POST)',
+    );
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

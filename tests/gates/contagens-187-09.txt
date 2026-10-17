@@ -204,6 +204,27 @@ lote-escrita  php  test_(o_lote_aprova_SO_as_aptas_e_as_inaptas_ficam_INTOCADAS_
 #     banco. O D-11 não é esticado para a área nova nem afrouxado na lista.
 lote-rota  php  test_(oferta_de_OUTRA_conta_no_POST_nao_e_aprovada_nem_gravada_187_09|a_rota_do_lote_exige_admin_e_conta_conectada_187_09|aprovar_em_lote_NAO_faz_requisicao_de_publicacao_ao_ML_187_09)  ::  tests=3 assertions=23
 
+# ⚠️⚠️ A SELEÇÃO DA URL (`?sel=`) — **ID PRÓPRIO, E ELE NASCEU DE UMA MUTAÇÃO
+# SOBREVIVENTE.** Ele NÃO entrou no `lote-rota` por duas razões, as duas medidas:
+#   (a) aquele id já tem **TRÊS** métodos, que é o teto deste projeto (alternância
+#       grande equivale a filtro de CLASSE, passa dos 120 s e o helper RECUSA);
+#   (b) ele mede o caminho do **GET**, e `lote-rota` mede o do **POST** — dois
+#       assuntos.
+#
+# ⚠⚠ **O QUE A MUTAÇÃO ACHOU:** trocar `paraAConta(...)->whereIn(...)` por
+# `PubAprovacaoOferta::query()->whereIn(...)` **dentro de `selecaoSaneada()`**
+# SOBREVIVEU a TODOS os gates. A conferência que eu tinha para o GET era um
+# **proxy de FONTE** (um `assert.match` sobre o texto do controller) que casava a
+# ocorrência do **POST** e ficava verde — proxy de fonte não prova comportamento.
+# ⚠️ O caso novo prova por COMPORTAMENTO: a oferta de outra conta não entra em
+# `selecionados`, não entra no `lote`, e o **TÍTULO dela não vaza** para as props
+# (vazamento de informação, T-187-96). Mais a isca na outra direção (a seleção
+# legítima PASSA), o lixo da querystring (`abc`, `0`, `-4`, `12x` — `(int) '3abc'`
+# é 3 e `(int) ''` é 0, e os dois entrariam num `whereIn` com cast em vez de
+# `ctype_digit`) e a prova de que **sem `?sel=` o painel é `null`** (o custo é
+# recortado à SELEÇÃO, nunca à fila).
+selecao-na-url  php  test_sel_da_URL_com_id_de_OUTRA_conta_e_descartado_187_09  ::  tests=1 assertions=13
+
 # ── TRANSVERSAIS (PHP) ──────────────────────────────────────────────────────
 
 # Território por ESCOPO DO ASSUNTO (`(187-09)`), nunca por range aberto: nesta
