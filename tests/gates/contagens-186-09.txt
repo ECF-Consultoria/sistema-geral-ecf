@@ -35,7 +35,7 @@
 # lista constante (22 PHP + 3 JSX). Arquivo novo no portão NÃO entra na lista
 # sozinho (é ato deliberado), então o número só se move quando alguém o move de
 # propósito — e aí o diff é visível, que é o ponto.
-transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=251
+transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=257
 
 # ─── O lado do RENDER (HTML + o CSS construído) ────────────────────────────────
 # ⚠️ 8 dos 14 são "um `test()` por estado", de propósito: laço com 8 asserções
@@ -68,7 +68,36 @@ cor-nunca-sozinha  php  test_cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_t
 #    Com TRES iscas: escritor clandestino TEM de casar; uso de outro dominio NAO pode
 #    casar; e o caso real lido do disco, que avisa se o MCP da Shopee passar a falar do
 #    portao. 7 -> 13 assercoes, e 245 -> 251 no composto.
-andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=13
+#
+# ⚠️⚠️ REMEDIDO EM 17/10/2026 PELO PLANO 187-08: 13 -> 19 assercoes aqui, e
+#    251 -> 257 no composto `transversais`. ⚠️ A Fase 186 esta EM PRODUCAO e o
+#    numero NAO foi "ajustado para passar": foi MEDIDO de novo, uma invocacao por
+#    id, depois de a mudanca ACRESCENTAR prova.
+#
+#    O QUE MUDOU: entrou uma lista de EXPOSITORES (hoje com um arquivo,
+#    `Fila/LinhaDaOfertaService.php`), que EXPOE o andamento numa chave de SAIDA
+#    do payload (`'andamento' => ['chave' => (string) $oferta->andamento, ...]`) e
+#    NAO escreve nada. A sonda larga casa `'andamento' =>` em QUALQUER array,
+#    inclusive o de saida, e o 2o filtro casa porque o servico recebe um
+#    `PubAprovacaoOferta` por parametro — como tem de receber. Era FALSO POSITIVO
+#    da MESMA familia do `LeitorShopee` que barrou o deploy em 15/10: *o gate e
+#    mais largo que o invariante* (SEXTA ocorrencia).
+#
+#    ⚠️ O QUE **NAO** FOI FEITO: renomear a chave de saida para fugir da sonda
+#    (seria dobrar a tela para o gate, contra a regra de UM VOCABULARIO SO, com
+#    chaves pt-BR iguais nos dois lados), enfraquecer a sonda, ou tirar o alcance
+#    de `app/` inteiro — que e o valor deste gate.
+#
+#    ⚠️⚠️ E a excecao e **PROVADA, nao afirmada**: `continue` por lista e justamente
+#    a forma de afrouxar um gate sem ninguem ver. As 6 assercoes novas exigem, para
+#    CADA expositor, que ele (1) CASE a sonda larga — senao a excecao nao tem
+#    sujeito e e linha morta abrindo buraco para o futuro — e (2) NAO contenha
+#    nenhuma forma de ESCRITA (`->andamento =`, `update/create/fill/insert` com a
+#    chave). Mais TRES iscas da sonda de escrita, nas duas direcoes: ela acha a
+#    atribuicao, acha o `update`, e **NAO** acusa a chave de SAIDA. As duas
+#    primeiras sao asercoes UNICAS coletando infratores, para a contagem nao
+#    crescer junto com a lista (a licao do 187-07).
+andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=19
 # (g) PHP × JSX em sincronia — e os DOIS LADOS existem
 sincronia-php-jsx  php  test_php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca  ::  tests=1 assertions=29
 # (g2) a ausência de segundo passo — PUB-09 / BLOQ-09

@@ -808,14 +808,47 @@ class FechamentoDaFase186Test extends TestCase
         $porta = 'app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php';
         $declaraDefault = 'app/Models/PubAprovacaoOferta.php';
 
+        // ⚠️⚠️ OS EXPOSITORES — acrescentado pelo plano 187-08 (17/10/2026), e a exceção é
+        // **PROVADA, não afirmada** (as três asserções no fim deste caso).
+        //
+        // `LinhaDaOfertaService` monta as 11 células da linha da fila e **EXPÕE** o andamento numa
+        // chave de SAÍDA do payload — `'andamento' => ['chave' => (string) $oferta->andamento, …]`.
+        // Ele **LÊ** a coluna; **não escreve nada** (o arquivo não tem `update`, `create`, `fill`,
+        // `save` nem atribuição a `->andamento`).
+        //
+        // ⚠️ A sonda larga casa `'andamento' =>` **em qualquer array**, inclusive no de SAÍDA, e o
+        // segundo filtro (referenciar o portão) casa porque o serviço recebe um
+        // `PubAprovacaoOferta` por parâmetro — como tem de receber. ➡️ Era FALSO POSITIVO, da MESMA
+        // família do `app/Mcp/Shopee/LeitorShopee.php` que reprovou o deploy em 15/10: *o gate é
+        // mais largo que o invariante*.
+        //
+        // ⚠️⚠️ **O QUE NÃO FOI FEITO, e por que:** renomear a chave de saída para fugir da sonda
+        // (`'estado_interno' =>`, por exemplo) seria dobrar a tela para o gate — e a régua do
+        // projeto é UM VOCABULÁRIO SÓ, chaves pt-BR iguais nos dois lados (o `.jsx` lê
+        // `andamento.chave`). Enfraquecer a sonda ou tirar o alcance de `app/` inteiro também está
+        // fora: o valor deste gate é pegar escritor clandestino em qualquer canto.
+        // ➡️ A saída é a LISTA, **com prova** — e a prova é mais forte que a exceção: para cada
+        // expositor, este caso exige que ele **case a sonda larga** (senão a exceção não tem
+        // sujeito) e que **NÃO contenha nenhuma forma de escrita**.
+        //
+        // ⚠️ `contagens-186-09.txt` foi **REMEDIDO** por causa desta mudança (ids `transversais` e
+        // `andamento-um-lugar-so`). A Fase 186 está EM PRODUÇÃO: o número não foi "ajustado para
+        // passar" — foi medido de novo, e as asserções novas só ACRESCENTAM prova.
+        $expositores = [
+            'app/Services/Publicador/Aprovacao/Fila/LinhaDaOfertaService.php',
+        ];
+
         // Sonda: a chave literal num array de update/create, ou a atribuição à propriedade.
         $sonda = "/'andamento'\s*=>|->andamento\s*=(?!=)/";
+
+        // ⚠️ As formas de ESCRITA de verdade — é o que um expositor NÃO pode ter.
+        $sondaDeEscrita = "/->andamento\s*=(?!=)|(?:update|updateOrCreate|create|fill|insert|forceFill)\s*\(\s*\[[^\]]*'andamento'\s*=>/s";
 
         $escritores = [];
         $varridos = 0;
         foreach ($this->todosOsPhpDeApp() as $rel => $conteudo) {
             $varridos++;
-            if ($rel === $porta || $rel === $declaraDefault) {
+            if ($rel === $porta || $rel === $declaraDefault || in_array($rel, $expositores, true)) {
                 continue;
             }
             $limpo = $this->semComentariosPhp($conteudo);
@@ -863,6 +896,38 @@ class FechamentoDaFase186Test extends TestCase
             $this->assertSame(1, preg_match($sonda, $conteudoShopee), 'ISCA 3a: o caso real deixou de casar a sonda larga — o arquivo mudou, e a isca perdeu o sujeito.');
             $this->assertSame(0, preg_match('/PubAprovacaoOferta|pub_aprovacao_ofertas/', $conteudoShopee), 'ISCA 3b: o MCP da Shopee passou a referenciar o portão — isto não é mais falso positivo e precisa de análise.');
         }
+
+        // ═══ ⚠️⚠️ A PROVA DE CADA EXPOSITOR (plano 187-08) ═══════════════════════════════════
+        //
+        // A exceção acima é um `continue` — e `continue` por lista é exatamente a forma de afrouxar
+        // um gate sem ninguém ver. ➡️ Aqui ela é **PROVADA**, nos dois sentidos, com UMA asserção
+        // por sentido coletando infratores (nunca uma por arquivo, que faria a contagem crescer
+        // junto com a lista — a lição do 187-07).
+        $semSujeito = [];
+        $queEscrevem = [];
+        foreach ($expositores as $rel) {
+            $limpoExpositor = $this->semComentariosPhp($this->ler($rel));
+
+            // (1) O expositor TEM de casar a sonda larga: se não casasse, a exceção não teria
+            //     sujeito e seria linha morta abrindo um buraco para o futuro.
+            if (preg_match($sonda, $limpoExpositor) !== 1) {
+                $semSujeito[] = $rel;
+            }
+
+            // (2) E NÃO pode conter NENHUMA forma de escrita. É isto que distingue EXPOR de
+            //     ESCREVER, e é o invariante que o gate existe para proteger.
+            if (preg_match($sondaDeEscrita, $limpoExpositor) === 1) {
+                $queEscrevem[] = $rel;
+            }
+        }
+        $this->assertSame([], $semSujeito, 'expositor que não casa a sonda larga: a exceção dele é linha morta — tire da lista');
+        $this->assertSame([], $queEscrevem, 'AND-09: um EXPOSITOR declarado está ESCREVENDO `andamento` — a exceção é inválida');
+
+        // ⚠️ ISCA DA SONDA DE ESCRITA, nas duas direções. Sem ela, uma regex quebrada deixaria o
+        // `continue` dos expositores passar qualquer coisa.
+        $this->assertSame(1, preg_match($sondaDeEscrita, "\$o->andamento = 'aprovado';"), 'ISCA 4a: a sonda de escrita não acha a atribuição.');
+        $this->assertSame(1, preg_match($sondaDeEscrita, "\$o->update(['andamento' => 'aprovado']);"), 'ISCA 4b: a sonda de escrita não acha o update.');
+        $this->assertSame(0, preg_match($sondaDeEscrita, "return ['andamento' => ['chave' => (string) \$o->andamento]];"), 'ISCA 4c: a sonda de escrita acusa a chave de SAÍDA — ela não discrimina expor de escrever.');
 
         // ⚠️ ISCA 1: a própria porta TEM de ser achada pela sonda. Se não fosse, a sonda estaria
         // cega e o laço acima sairia verde por nunca casar nada.
