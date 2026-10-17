@@ -236,3 +236,33 @@ aquecimento-sem-duplicacao  php  test_o_comando_nao_duplica_a_logica_do_servico_
 #    máquina diz que ele NÃO EXISTE (oitavo caminho fantasma desta milestone). E
 #    `contagens-187-09.txt` também, por não existir ainda no disco.
 territorio-aquecimento  php  test_territorio_e_ausencias_do_plano_187_10  ::  tests=1 assertions=27
+
+# ⚠️⚠️ OS DOIS DISPAROS, e eles são diferentes de propósito:
+#   1. `MlbAnuncioController::meus()` — o que de FATO aquece antes do uso. É o
+#      passo imediatamente anterior a clicar na aba "Aguardando aprovação": entre
+#      o carregamento da lista e o clique passam segundos, o job está na `high`, e
+#      a fila abre com o cache quente.
+#   2. `MlbPublicadorAprovacaoController::index()` — para quem chega por URL
+#      direta ou recarrega. ⚠️ Ele **não ajuda AQUELE request** (a página já está
+#      calculando `para()` por oferta no mesmo instante): aquece a PRÓXIMA
+#      abertura dentro da hora. Está escrito no próprio controller.
+# ⚠️⚠️ E o caso que prova que o aquecimento é ACESSÓRIO: com a fila de jobs
+# INDISPONÍVEL (`queue.default` apontando para conexão que não existe) as DUAS
+# telas respondem **200** — e há ISCA provando que, na MESMA configuração, o
+# `dispatch()` cru **LANÇA**. Sem a isca, o 200 poderia ser um cenário em que nada
+# deu errado. A mutação do plano (trocar `despacharParaAConta(` por `dispatch(`
+# em `meus()`) reprova AQUI.
+aquecimento-disparos  php  test_(abrir_publicacoes_despacha_o_aquecimento_da_conta_187_10|abrir_a_fila_tambem_despacha_o_aquecimento_187_10|fila_de_jobs_indisponivel_nao_derruba_nenhuma_das_duas_telas_187_10)  ::  tests=3 assertions=10
+
+# ⚠️ A BIJEÇÃO ids ↔ métodos, nos DOIS sentidos: método sem id **NUNCA RODA** (foi
+# o sobrevivente da mutação do plano 186-03) e id órfão é gate sobre ZERO casos.
+# ⚠️⚠️ Ela varre os **DOIS** arquivos de teste deste plano lendo os nomes do
+# **FONTE**: `get_class_methods($this)` só veria a classe do Feature e deixaria o
+# `AquecimentoDeTarifasServiceTest` **sem bijeção em silêncio** — justamente o furo
+# que a bijeção existe para fechar. (Foi o desvio declarado deste plano em relação
+# ao molde do 187-08, que tem um arquivo de teste só.)
+# ⚠️ A contagem deste id **NÃO depende do número de ids nem de linhas deste
+# arquivo**: as asserções são de forma FIXA (`>= 6` linhas, `>= 20` métodos, dois
+# `assertSame([])` coletando infratores e a isca do nome que ninguém escreveu).
+# Acrescentar id aqui **NÃO** mexe neste número — conferido, não suposto.
+bijecao-manifesto-10  php  test_bijecao_do_manifesto_do_aquecimento_187_10  ::  tests=1 assertions=11

@@ -194,6 +194,28 @@ class MlbPublicadorAprovacaoController extends Controller
         // resolver()`), e aí o recorte é só `company_id` — nunca "sem recorte".
         $mlbEmpresaId = $alvo['mlb_empresa']?->id;
 
+        // ═══ ⚠️⚠️ Plano 187-10 — O PRÉ-AQUECIMENTO DA TARIFA, FORA DO REQUEST ═════════════════
+        //
+        // ⚠️ Ele **não ajuda ESTE request**, e isso é sabido: a página já está calculando
+        // `ComposicaoFinanceiraService::para()` por oferta no mesmo instante. Ele aquece a
+        // **PRÓXIMA** abertura dentro da hora, e existe para quem chega por **URL direta** ou
+        // **recarrega** — quem vem pelo caminho normal já foi aquecido por `meus()`, o passo
+        // imediatamente anterior a clicar na aba.
+        //
+        // ⚠️⚠️ **NUNCA pode derrubar esta tela.** Todo o corpo de `despacharParaAConta()` é
+        // `try/catch (\Throwable)` + `Log::warning`; há teste com a fila de jobs INDISPONÍVEL
+        // exigindo **200** aqui e em Publicações. O retorno é descartado de propósito.
+        //
+        // ⚠️ Fila `high` com trava curta (ver o docblock do job): a `default` de produção é Redis
+        // e já ficou congestionada — 179 jobs de acervo seguraram um webhook por horas em
+        // 16/09/2026.
+        //
+        // ⚠️ E ele **muda QUANDO a requisição acontece, não QUANTAS**: o gate de custo dos planos
+        // 187-06 e 187-08 continua valendo e **não** foi afrouxado. Nenhum cap por request,
+        // nenhum "sem tarifa", nenhum "incompleto" — cache frio dá o número CERTO, só mais
+        // devagar (decisão do usuário de 15/10/2026).
+        \App\Jobs\AquecerTarifasDaFilaJob::despacharParaAConta($company->id, $mlbEmpresaId);
+
         // ═══ ⚠️⚠️ OS TRÊS RECORTES DA FASE 187, PLANO 06 — E ELES SÃO DIFERENTES DE PROPÓSITO ══
         //
         // `$daConta` = TODAS as ofertas da conta, **zero filtro** (o `all` do protótipo, `:1208`).
