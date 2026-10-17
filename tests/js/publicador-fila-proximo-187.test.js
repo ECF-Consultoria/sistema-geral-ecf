@@ -832,17 +832,30 @@ test('FILA-01 — a página preenche o slot `proximo` e dá ao botão um destino
     });
 
     await contexto.test('⚠️ a ORDEM VERTICAL de FILA-01 continua, medida por POSIÇÃO na fonte', () => {
-        const posicoes = ['<CabecalhoDaFila', '<FaixaDeAndamento', '{noProximo}', '{noFiltros}', '{noTabela}', '{noRodape}']
+        // ⚠️⚠️ **O `{noRodape}` SAIU DO NÍVEL DA PÁGINA NO PLANO 187-09, E ISSO É O
+        // PROTÓTIPO.** Medido: o rodapé da legenda é `:191` e o `</section>` da
+        // tabela é `:202` em `design_handoff_publicador/Aprovacao.dc.html` — ele
+        // vive **DENTRO** da seção. `TabelaDaFila.jsx` já nascera (187-07) com os
+        // slots `vazio` e `rodape` para isso. A ordem vertical **não mudou**; o que
+        // mudou é onde a peça é montada, e a ordem real é medida na TABELA.
+        const posicoes = ['<CabecalhoDaFila', '<FaixaDeAndamento', '{noProximo}', '{noFiltros}', '{noTabela}', 'rodape={noRodape}']
             .map((marca) => ({ marca, pos: FONTE_PAGINA.indexOf(marca) }));
         for (const { marca, pos } of posicoes) {
             assert.ok(pos !== -1, `${marca} não está na página`);
         }
-        for (let i = 1; i < posicoes.length; i += 1) {
+        // ⚠️ O sexto é PROP do `<TabelaDaFila`: a cadeia vale para os cinco
+        // primeiros, e o rodapé é conferido onde ele mora.
+        for (let i = 1; i < posicoes.length - 1; i += 1) {
             assert.ok(
                 posicoes[i].pos > posicoes[i - 1].pos,
                 `${posicoes[i].marca} vem ANTES de ${posicoes[i - 1].marca} — a ordem vertical de FILA-01 inverteu`,
             );
         }
+        const fonteDaTabela = lerSemComentarios('resources/js/Components/Mlb/Publicador/aprovacao/TabelaDaFila.jsx');
+        assert.ok(
+            fonteDaTabela.indexOf('lista.map(') < fonteDaTabela.indexOf('{noRodape}'),
+            'o rodapé da tabela subiu para cima das linhas — a legenda apareceria ACIMA das ofertas',
+        );
     });
 
     await contexto.test('⚠️⚠️ O DESTINO DE HOJE: a própria fila com `?oferta=<id>` (COL-03)', () => {
@@ -930,9 +943,14 @@ test('FILA-01 — a página preenche o slot `proximo` e dá ao botão um destino
         for (const falso of [/href="#"/, /onClick=\{\(\) => \{\}\}/, /localStorage/, /sessionStorage/]) {
             assert.doesNotMatch(FONTE_PAGINA, falso, `destino falso ou filtro no navegador (${falso})`);
         }
-        // ⚠️ E a página continua só LENDO: a escrita começa no 187-09 (o lote).
-        for (const escrita of [/router\.post\(/, /router\.put\(/, /router\.patch\(/, /router\.delete\(/, /axios/, /fetch\(/, /<form/]) {
-            assert.doesNotMatch(FONTE_PAGINA, escrita, `a página escreve (${escrita}) — nesta wave ela só LÊ`);
+        // ⚠️⚠️ **A ESCRITA COMEÇOU NO 187-09, E A RÉGUA FOI INVERTIDA EM VEZ DE
+        // AFROUXADA** (item 6 da régua: o comentário original já nomeava o plano que
+        // a tornaria falsa). O invariante permanente é **"a ÚNICA escrita da página
+        // é o POST do LOTE"** — aprovar JÁ PUBLICA e não tem desfazer, então um
+        // segundo caminho de escrita nascendo aqui em silêncio é o que precisa doer.
+        assert.equal((FONTE_PAGINA.match(/router\.post\(/g) ?? []).length, 1, 'a página tem mais de UM `router.post` — a única escrita dela é o lote');
+        for (const escrita of [/router\.put\(/, /router\.patch\(/, /router\.delete\(/, /axios/, /fetch\(/, /<form/]) {
+            assert.doesNotMatch(FONTE_PAGINA, escrita, `a página escreve por ${escrita} — a única escrita dela é o POST do lote`);
         }
     });
 

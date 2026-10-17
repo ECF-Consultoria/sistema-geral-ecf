@@ -1454,19 +1454,48 @@ test('FILA-01 — a página monta cabeçalho e faixa na ordem vertical, e os slo
     });
 
     await contexto.test('⚠️ a ORDEM VERTICAL de FILA-01, medida por POSIÇÃO na fonte', () => {
-        // cabeçalho → faixa → PRÓXIMO → filtros → tabela → rodapé.
-        const posicoes = ['<CabecalhoDaFila', '<FaixaDeAndamento', '{noProximo}', '{noFiltros}', '{noTabela}', '{noRodape}']
+        // cabeçalho → faixa → PRÓXIMO → filtros → tabela (que CONTÉM o rodapé).
+        //
+        // ⚠️⚠️ **O `{noRodape}` SAIU DO NÍVEL DA PÁGINA NO PLANO 187-09, E ISSO É O
+        // PROTÓTIPO, NÃO DESVIO.** Medido por script em `design_handoff_publicador/
+        // Aprovacao.dc.html`: o rodapé da legenda é `:191` e o `</section>` da tabela
+        // é `:202` — ele vive **DENTRO** da seção, não como irmão dela. E
+        // `TabelaDaFila.jsx` já nascera (no 187-07) com os slots `vazio` e `rodape`
+        // justamente para isso, com o comentário *"Os DOIS slots do plano 187-09"*.
+        //
+        // ➡️ **A ordem vertical NÃO mudou** (a legenda continua embaixo das linhas);
+        // o que mudou é ONDE ela é montada. Medir a posição do token `{noRodape}` no
+        // nível da página passou a medir uma coisa que não existe mais — e isso é o
+        // item 6 da régua: *asserção escrita quando a peça ainda não tinha dono*.
+        // ⚠️ A ordem REAL é medida ONDE ELA MORA, logo abaixo, em `TabelaDaFila.jsx`
+        // — estritamente mais forte que a posição de um token nesta página.
+        const posicoes = ['<CabecalhoDaFila', '<FaixaDeAndamento', '{noProximo}', '{noFiltros}', '{noTabela}', 'rodape={noRodape}']
             .map((marca) => ({ marca, pos: FONTE_PAGINA.indexOf(marca) }));
 
         for (const { marca, pos } of posicoes) {
             assert.ok(pos !== -1, `${marca} não está na página`);
         }
-        for (let i = 1; i < posicoes.length; i += 1) {
+        // ⚠️ `rodape={noRodape}` é PROP do `<TabelaDaFila`: ele aparece DEPOIS da
+        // abertura do elemento, então a cadeia de posições vale para os CINCO
+        // primeiros. O sexto é conferido na tabela.
+        for (let i = 1; i < posicoes.length - 1; i += 1) {
             assert.ok(
                 posicoes[i].pos > posicoes[i - 1].pos,
                 `${posicoes[i].marca} vem ANTES de ${posicoes[i - 1].marca} — a ordem vertical de FILA-01 inverteu`,
             );
         }
+        // ⚠️⚠️ E A ORDEM DE VERDADE, onde ela mora: dentro da `<section>` o rodapé
+        // vem DEPOIS do vazio, que vem depois das linhas. Invertido, a legenda
+        // apareceria ACIMA das ofertas.
+        const fonteDaTabela = lerSemComentarios('resources/js/Components/Mlb/Publicador/aprovacao/TabelaDaFila.jsx');
+        assert.ok(
+            fonteDaTabela.indexOf('{noVazio}') < fonteDaTabela.indexOf('{noRodape}'),
+            'o rodapé da tabela subiu para cima do vazio',
+        );
+        assert.ok(
+            fonteDaTabela.indexOf('lista.map(') < fonteDaTabela.indexOf('{noRodape}'),
+            'o rodapé da tabela subiu para cima das linhas — a legenda apareceria ACIMA das ofertas',
+        );
 
         // ⚠️ E o header global vem ANTES do container do corpo (HEAD-14): é ele
         // que carrega o `-mx-6 -mt-6` que neutraliza o `p-6` do `<main>`.
@@ -1503,9 +1532,19 @@ test('FILA-01 — a página monta cabeçalho e faixa na ordem vertical, e os slo
         assert.match(FONTE_PAGINA, /etapa: chave/, 'o `router.get` não manda a etapa');
         assert.doesNotMatch(FONTE_PAGINA, /localStorage/, 'critério 13: o filtro vive na URL');
         assert.doesNotMatch(FONTE_PAGINA, /sessionStorage/, 'mesma regra do localStorage');
-        // ⚠️ E a página só LÊ neste plano: a escrita começa no 187-09 (o lote).
-        for (const escrita of [/router\.post\(/, /router\.put\(/, /router\.patch\(/, /router\.delete\(/, /axios/, /fetch\(/, /<form/]) {
-            assert.doesNotMatch(FONTE_PAGINA, escrita, `a página escreve (${escrita}) — neste plano ela só LÊ`);
+        // ⚠️⚠️ **A ESCRITA COMEÇOU NO PLANO 187-09, E ESTA RÉGUA FOI INVERTIDA EM
+        // VEZ DE AFROUXADA.** O comentário original desta negativa dizia
+        // textualmente *"a escrita começa no 187-09 (o lote)"* — era uma asserção
+        // cuja própria mensagem nomeava o plano que a tornaria FALSA (item 6 da
+        // régua). ➡️ O invariante PERMANENTE não é *"a página não escreve"*: é
+        // **"a ÚNICA escrita da página é o POST do LOTE"**. Aprovar JÁ PUBLICA e não
+        // tem desfazer, então um segundo caminho de escrita nascendo aqui em
+        // silêncio é exatamente o que precisa doer — e a forma nova pega isso, que a
+        // negativa antiga nunca ia pegar depois de o lote existir.
+        assert.match(FONTE_PAGINA, /route\('mlb\.anuncios\.meus\.aprovacao\.lote'/, 'a página perdeu o POST do lote (plano 187-09)');
+        assert.equal((FONTE_PAGINA.match(/router\.post\(/g) ?? []).length, 1, 'a página tem mais de UM `router.post` — a única escrita dela é o lote');
+        for (const escrita of [/router\.put\(/, /router\.patch\(/, /router\.delete\(/, /axios/, /fetch\(/, /<form/]) {
+            assert.doesNotMatch(FONTE_PAGINA, escrita, `a página escreve por ${escrita} — a única escrita dela é o POST do lote`);
         }
     });
 

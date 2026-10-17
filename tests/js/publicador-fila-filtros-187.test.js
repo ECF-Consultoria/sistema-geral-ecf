@@ -688,12 +688,21 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
         assert.equal(fonte.includes('useEffect'), false, `${nome} ganhou efeito`);
     }
 
-    // ⚠️ A PÁGINA tem UM `useState`, e ele é do MENU — não de filtro. Menu
-    // aberto não vai para a URL de propósito (seria estado fantasma depois de
-    // recarregar).
+    // ⚠️ A PÁGINA tem DOIS `useState`, e **nenhum dos dois é de FILTRO** — que é o
+    // invariante deste caso. Menu aberto e modal aberto não vão para a URL **de
+    // propósito**: os dois são GESTO, não dado.
+    //
+    // ⚠️⚠️ **SUBIU DE 1 PARA 2 NO PLANO 187-09, e o número é MEDIDO, não
+    // afrouxado.** O segundo é `modalDoLoteAberto`, e pôr "o modal está aberto" na
+    // URL faria um **link compartilhado abrir um modal de aprovação na cara de
+    // outra pessoa** — numa ação que publica e **não tem desfazer**. A SELEÇÃO, que
+    // é dado, continua na URL (`?sel=`).
+    // ⚠️ E a régua não virou `>=`: os dois são NOMEADOS um por um logo abaixo, de
+    // forma que um terceiro `useState` nascendo aqui — de filtro ou não — reprova.
     const usos = [...FONTE_PAGINA.matchAll(/useState\(/g)];
-    assert.equal(usos.length, 1, `a página tem ${usos.length} \`useState\` — esperava 1 (o menu aberto)`);
-    assert.match(FONTE_PAGINA, /const \[menuAberto, setMenuAberto\] = useState\(null\)/, 'o único `useState` deixou de ser o do menu');
+    assert.equal(usos.length, 2, `a página tem ${usos.length} \`useState\` — esperava 2 (o menu aberto e o modal do lote)`);
+    assert.match(FONTE_PAGINA, /const \[menuAberto, setMenuAberto\] = useState\(null\)/, 'o `useState` do menu saiu');
+    assert.match(FONTE_PAGINA, /const \[modalDoLoteAberto, setModalDoLoteAberto\] = useState\(false\)/, 'o `useState` do modal do lote saiu');
 
     // ⚠️ E NENHUM dos seis nomes de filtro aparece dentro de `useState(`.
     for (const campo of ['busca', 'modalidade', 'formato', 'responsavel', 'motivo', 'etapa']) {

@@ -1702,13 +1702,35 @@ class FilaDeAprovacaoRotaTest extends TestCase
         );
 
         // ─── ESTA PÁGINA SÓ LÊ: a escrita começa no 187-09 (o lote) ───
-        foreach (['router.put', 'router.patch', 'router.delete', 'router.post', 'axios', 'fetch(', '<form', 'localStorage', 'sessionStorage'] as $proibido) {
+        // ⚠️⚠️ **A ESCRITA COMEÇOU NO PLANO 187-09, E ESTA RÉGUA FOI INVERTIDA EM VEZ DE
+        // AFROUXADA.** O comentário do bloco acima já dizia *"a escrita começa no 187-09 (o
+        // lote)"*: era uma asserção cuja própria mensagem nomeava o plano que a tornaria FALSA
+        // — item 6 da régua (*asserção escrita quando a peça ainda não tinha dono*).
+        // ➡️ O invariante PERMANENTE não é *"a página não escreve"*: é **"a ÚNICA escrita da
+        // página é o POST do LOTE"**. Aprovar JÁ PUBLICA e **não tem desfazer**, então um
+        // segundo caminho de escrita nascendo aqui em silêncio é exatamente o que precisa doer
+        // — e a forma nova pega isso, que a negativa antiga nunca ia pegar depois do lote.
+        // ⚠️ `router.post` SAIU da lista de proibidos (8 entradas agora) e ganhou duas
+        // asserções próprias: a contagem de asserções deste método subiu em **1**, e
+        // `contagens-187-04.txt` foi REMEDIDO junto — diff visível, não número ajustado de
+        // cabeça.
+        foreach (['router.put', 'router.patch', 'router.delete', 'axios', 'fetch(', '<form', 'localStorage', 'sessionStorage'] as $proibido) {
             $this->assertStringNotContainsString(
                 $proibido,
                 $fonte,
-                "a página da fila usa `{$proibido}` — neste plano ela só LÊ, e o filtro vive na URL.",
+                "a página da fila usa `{$proibido}` — a única escrita dela é o POST do lote, e o filtro vive na URL.",
             );
         }
+        $this->assertStringContainsString(
+            "route('mlb.anuncios.meus.aprovacao.lote'",
+            $fonte,
+            'a página perdeu o POST do lote (plano 187-09): a fila deixaria de poder aprovar.',
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/router\.post\(/', $fonte),
+            'a página tem mais de UM `router.post` — a única escrita dela é o POST do lote.',
+        );
         // ⚠️ E o `router.get` do filtro ESTÁ lá: é ele que põe a etapa na URL (COL-03).
         $this->assertStringContainsString('router.get(', $fonte, 'COL-03: o clique no card tem de filtrar pela URL.');
 

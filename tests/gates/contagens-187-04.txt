@@ -108,7 +108,25 @@ pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests
 # tela), os 4 slots sem casca e sem estado vazio (que é do 187-09), o território
 # por escopo de assunto e o gate que fecha o buraco do recorte por sufixo.
 # 6 casos / 170 asserções, 8 s.
-pagina-rota  php  test_rota_da_fila_resolve_o_componente_da_pagina_187_04|test_etapa_nao_muda_os_totais_da_faixa_187_04|test_etapa_fora_da_lista_fechada_cai_no_default_187_04|test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04|test_territorio_do_plano_187_04|test_todo_metodo_tem_sufixo_de_plano_declarado_187_04  ::  tests=6 assertions=170
+# ⚠️⚠️ 170 → 171 EM 17/10/2026, PELO PLANO **187-09**, E O MOTIVO É PENDÊNCIA
+# FECHADA, NÃO RÉGUA AFROUXADA.
+#
+# `test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04` proibia **toda**
+# escrita na página, com a mensagem *"neste plano ela só LÊ"* e o comentário
+# *"a escrita começa no 187-09 (o lote)"*. Era uma asserção cuja própria mensagem
+# nomeava o plano que a tornaria FALSA — o item 6 da régua.
+#
+# ➡️ Com o lote no ar ela foi **INVERTIDA**: `router.post` saiu da lista de
+# proibidos (8 entradas) e ganhou DUAS asserções próprias — *o POST do lote
+# EXISTE* e *há exatamente UM `router.post`*. O invariante ficou mais forte: o
+# que importa não é "a página não escreve", é **"a ÚNICA escrita da página é o
+# POST do lote"** — e um segundo caminho de escrita nascendo aqui em silêncio,
+# numa ação que publica e não tem desfazer, é o que precisa doer.
+#
+# ⚠️ 9 negativas → 8 negativas + 2 asserções = **+1**. O número foi MEDIDO
+# (`6 passed (171 assertions)`), não ajustado de cabeça, e os outros cinco
+# métodos deste id não foram tocados.
+pagina-rota  php  test_rota_da_fila_resolve_o_componente_da_pagina_187_04|test_etapa_nao_muda_os_totais_da_faixa_187_04|test_etapa_fora_da_lista_fechada_cai_no_default_187_04|test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04|test_territorio_do_plano_187_04|test_todo_metodo_tem_sufixo_de_plano_declarado_187_04  ::  tests=6 assertions=171
 
 # ─── A BIJEÇÃO — id próprio, de propósito ─────────────────────────────────────
 # ⚠️ Ela tem id SEPARADO porque é o único gate deste plano que LÊ ESTE ARQUIVO:

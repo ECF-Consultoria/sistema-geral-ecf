@@ -1026,9 +1026,15 @@ test('a PÁGINA preencheu o slot `tabela` e o nó de composição ainda SOBREPÕ
     // da wave 8; `:747` e `:765` continuam valendo porque renderizam o componente.
     assert.match(FONTE_PAGINA, /linhaDaOferta=\{/, 'a página deixou de preencher `linhaDaOferta` (plano 187-08)');
 
-    // ⚠️ Os handlers do 187-09 CONTINUAM ausentes: peça que depende do que vem
-    // depois fica NOMEADA E AUSENTE.
-    assert.doesNotMatch(FONTE_PAGINA, /onMarcarVisiveis=/, 'a seleção em lote é do plano 187-09');
+    // ⚠️⚠️ **O `onMarcarVisiveis` CHEGOU NO PLANO 187-09 — a SEGUNDA negativa desta
+    // família invertida, e pela MESMA razão que a wave 8 já havia escrito logo
+    // acima:** asserção cuja mensagem nomeia o plano que a tornará falsa é o item 6
+    // da régua. O slot nasceu aqui (187-07) NOMEADO E VAZIO para esta wave o
+    // preencher, e a positiva é mais forte: sem o handler, o checkbox do cabeçalho
+    // não é desenhado e a fila perde a seleção em lote.
+    // ⚠️ A contagem de asserções deste caso **não muda** (uma virou uma), então
+    // `contagens-187-07.txt` segue intocado — conferido, não suposto.
+    assert.match(FONTE_PAGINA, /onMarcarVisiveis=\{marcarVisiveis\}/, 'a página deixou de ligar a seleção em lote (plano 187-09)');
 
     // ⚠️ Zero `localStorage` e zero `String(` na página (gate da wave 4).
     assert.doesNotMatch(FONTE_PAGINA, /localStorage|sessionStorage/);
@@ -1169,15 +1175,34 @@ test('FID — as classes da tabela GERAM CSS com o valor certo 187-07', async (c
         assert.match(regraDe('bg-pub-raised'), /rgb\(\s*21\s+21\s+21\b/, '`#151515` em decimal');
     });
 
-    await contexto.test('⚠️ os tokens `pub-float`/`pub-float-line` CONTINUAM dormindo, e isso é DECISÃO', () => {
+    await contexto.test('⚠️ os tokens `pub-float`/`pub-float-line` ACORDARAM no 187-09, e NÃO nesta wave', () => {
         // ⚠️⚠️ Medido no `tailwind.config.js`: os dois foram declarados para a
         // **barra de lote** (`:897`) e o **toast** (`:905`), que são do plano
         // **187-09** — NÃO para esta sub-linha. Usar token fora do lugar onde ele
         // foi medido só para zerar um `skip` é o que a wave 4 recusou, e estava
-        // certa. ➡️ Eles acordam na wave que os usa.
-        assert.equal(regraDe('bg-pub-float'), null, '`pub-float` acordou fora do lugar medido (`:897`, plano 187-09)');
-        assert.equal(regraDe('border-pub-float-line'), null, '`pub-float-line` acordou fora do lugar medido (`:905`)');
+        // certa. ➡️ Eles acordaram na wave que os usa.
+        //
+        // ⚠️⚠️ **O PLANO 187-09 CHEGOU, E O `regraDe(...) === null` FOI INVERTIDO EM
+        // VEZ DE AFROUXADO.** Aquela asserção era um PROXY: o invariante desta wave
+        // nunca foi *"os tokens não compilam"* (isso não depende dela), e sim **"os
+        // arquivos DESTA wave não os usam"**. O proxy virava falso no instante em
+        // que a wave dona dos tokens chegasse — item 6 da régua, e o próprio
+        // comentário acima já dizia *"eles acordam na wave que os usa"*.
+        // ➡️ A forma nova é mais forte: ela prova que os tokens COMPILAM (se alguém
+        // apagar a barra ou o toast, isto acusa) **e** que não é esta wave que os
+        // usa (a negativa de fonte, que é o invariante de verdade, continua).
+        assert.notEqual(regraDe('bg-pub-float'), null, '`pub-float` não compila — a barra de lote do 187-09 perdeu o fundo');
+        assert.notEqual(regraDe('border-pub-float-line'), null, '`pub-float-line` não compila — a barra e o toast perderam a borda');
         assert.doesNotMatch(TODAS_AS_FONTES, /pub-float/, 'um arquivo desta wave usou `pub-float` — ele é do 187-09');
+
+        // ⚠️ E quem os usa são EXATAMENTE os dois arquivos medidos (`:897` e `:905`).
+        // Sem isto, a negativa de fonte acima seria satisfeita por "ninguém usa".
+        for (const dono of [
+            'resources/js/Components/Mlb/Publicador/aprovacao/BarraDeSelecao.jsx',
+            'resources/js/Components/Mlb/Publicador/aprovacao/ToastDaFila.jsx',
+        ]) {
+            assert.match(fs.readFileSync(path.resolve(RAIZ, dono), 'utf8'), /pub-float/, `${dono} deixou de usar \`pub-float\``);
+        }
 
         // ⚠️ ISCA: os dois EXISTEM na camada (o `skip` não é "token inexistente").
         const config = fs.readFileSync(path.resolve(RAIZ, 'tailwind.config.js'), 'utf8');

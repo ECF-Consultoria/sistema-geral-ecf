@@ -1248,14 +1248,32 @@ test('FID — as classes da linha GERAM CSS com o valor certo 187_08', async (co
         assert.match(config, /'pub-anel-parcial':\s*'linear-gradient\(90deg,#A1A1AA 50%,transparent 50%\)'/, 'o token saiu da camada');
     });
 
-    await contexto.test('⚠️ os tokens `pub-float`/`pub-float-line` CONTINUAM dormindo, e isso é DECISÃO', () => {
+    await contexto.test('⚠️ os tokens `pub-float`/`pub-float-line` ACORDARAM no 187-09, e NÃO nesta wave', () => {
         // ⚠️⚠️ Medido no `tailwind.config.js`: os dois foram declarados para a
         // **barra de lote** (`:897`) e o **toast** (`:905`), que são do plano
         // **187-09** — NÃO para esta linha. Usar token fora do lugar onde ele foi
         // medido só para zerar um `skip` é o que a wave 4 recusou, e estava certa.
-        assert.equal(regraDe('bg-pub-float'), null, '`pub-float` acordou fora do lugar medido (`:897`, plano 187-09)');
-        assert.equal(regraDe('border-pub-float-line'), null, '`pub-float-line` acordou fora do lugar medido (`:905`)');
+        //
+        // ⚠️⚠️ **O PLANO 187-09 CHEGOU, E O `regraDe(...) === null` FOI INVERTIDO EM
+        // VEZ DE AFROUXADO.** Aquela asserção era um PROXY: o invariante desta wave
+        // nunca foi *"os tokens não compilam"* (isso não depende dela), e sim **"os
+        // arquivos DESTA wave não os usam"**. O proxy virava falso no instante em
+        // que a wave dona dos tokens chegasse — item 6 da régua.
+        // ➡️ A forma nova é mais forte: prova que os tokens COMPILAM (se alguém
+        // apagar a barra ou o toast, isto acusa) **e** que não é esta wave que os
+        // usa (a negativa de fonte, que é o invariante de verdade, continua).
+        assert.notEqual(regraDe('bg-pub-float'), null, '`pub-float` não compila — a barra de lote do 187-09 perdeu o fundo');
+        assert.notEqual(regraDe('border-pub-float-line'), null, '`pub-float-line` não compila — a barra e o toast perderam a borda');
         assert.doesNotMatch(TODAS_AS_FONTES, /pub-float/, 'um arquivo desta wave usou `pub-float` — ele é do 187-09');
+
+        // ⚠️ E quem os usa são EXATAMENTE os dois arquivos medidos (`:897` e `:905`).
+        // Sem isto, a negativa de fonte acima seria satisfeita por "ninguém usa".
+        for (const dono of [
+            'resources/js/Components/Mlb/Publicador/aprovacao/BarraDeSelecao.jsx',
+            'resources/js/Components/Mlb/Publicador/aprovacao/ToastDaFila.jsx',
+        ]) {
+            assert.match(fs.readFileSync(path.resolve(RAIZ, dono), 'utf8'), /pub-float/, `${dono} deixou de usar \`pub-float\``);
+        }
 
         // ⚠️ ISCA: os dois EXISTEM na camada (o `skip` não é "token inexistente").
         const config = fs.readFileSync(path.resolve(RAIZ, 'tailwind.config.js'), 'utf8');
@@ -1344,8 +1362,18 @@ test('a PÁGINA preencheu o slot `linhaDaOferta`, e o destino é o FOCO da ofert
     assert.match(FONTE_PAGINA, /onRevisar=\{irParaOferta\(empresaId, etapaAtiva\)\}/, 'a faixa perdeu o destino (gate da wave 5)');
     assert.match(FONTE_PAGINA, /onAbrir=\{irParaOferta\(empresaId, etapaAtiva\)\}/, 'a linha não recebeu o destino do foco');
 
-    // ⚠️ Os handlers do 187-09 CONTINUAM ausentes (D4: nomeado e ausente).
-    assert.doesNotMatch(FONTE_PAGINA, /onMarcarVisiveis=/, 'a seleção em lote é do plano 187-09');
+    // ⚠️⚠️ **O `onMarcarVisiveis` CHEGOU NO PLANO 187-09, e esta negativa foi
+    // INVERTIDA em vez de afrouxada.** A mensagem original — *"a seleção em lote é
+    // do plano 187-09"* — nomeava o plano que a tornaria FALSA: é o item 6 da régua
+    // (*asserção escrita quando a peça ainda não tinha dono*), e a pergunta que ela
+    // deveria ter respondido é *"o desenho PROÍBE isso, ou eu só não vi ainda?"*.
+    // O desenho não proibia: `TabelaDaFila.jsx` nasceu (187-07) com o slot NOMEADO
+    // E VAZIO exatamente para esta wave o preencher.
+    // ➡️ A positiva é estritamente mais forte e permanente: sem o handler, o
+    // checkbox do cabeçalho **não é desenhado** e a fila perde a seleção em lote —
+    // e nenhum outro gate desta wave pegaria isso, porque os casos que rodam o
+    // COMPONENTE provam "sem handler não há checkbox", não "a página o liga".
+    assert.match(FONTE_PAGINA, /onMarcarVisiveis=\{marcarVisiveis\}/, 'a página deixou de ligar a seleção em lote (plano 187-09)');
     assert.doesNotMatch(FONTE_PAGINA, /onMarcar=/, 'o checkbox da LINHA é do plano 187-09');
     assert.doesNotMatch(FONTE_PAGINA, /onRevisarFotos=/, 'o painel de revisão é a Fase 188');
 
