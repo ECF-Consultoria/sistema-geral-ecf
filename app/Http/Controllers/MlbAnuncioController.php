@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AquecerTarifasDaFilaJob;
 use App\Jobs\GerarAnaliseAnuncioIaJob;
 use App\Jobs\GerarCriativoIaJob;
 use App\Jobs\PlanejarKitCriativosJob;
@@ -1127,6 +1128,30 @@ class MlbAnuncioController extends Controller
                     'ml_item_id'   => $r->ml_item_id,
                 ])
             : [];
+
+        // ═══ ⚠️⚠️ Fase 187, plano 10 — O PRÉ-AQUECIMENTO DA TARIFA, FORA DO REQUEST ═══════════
+        //
+        // Esta é a tela imediatamente ANTERIOR a clicar na aba "Aguardando aprovação": entre o
+        // carregamento da lista e o clique passam segundos, o job está na fila `high`, e a fila
+        // abre com o cache da tarifa quente. Despachá-lo de dentro da própria fila não ajudaria
+        // AQUELE request — a página já está calculando a composição no mesmo instante.
+        //
+        // ⚠️⚠️ **ELE NUNCA PODE DERRUBAR ESTA TELA, QUE ESTÁ NO AR.** Todo o corpo de
+        // `despacharParaAConta()` é `try/catch (\Throwable)` + `Log::warning`: Redis fora do ar é
+        // problema de aquecimento, **não** motivo para a lista de Publicações parar de abrir. Há
+        // teste com o dispatch LANÇANDO que exige **200** aqui e na fila.
+        //
+        // ⚠️ Nenhuma prop muda, nenhuma consulta nova: o retorno é **descartado** de propósito.
+        // ⚠️ E ele não publica nada no ML — só LÊ tarifa. A escrita no ML é da Fase 193.
+        //
+        // ⚠️ `is_array($alvo)` ANTES do índice: `resolver()` devolve **null** para empresa sem
+        // programa resolvido (ver `empresaParaTela()` logo acima), e `null['mlb_empresa']` emite
+        // `Trying to access array offset on value of type null`. A segunda âncora é OPCIONAL — sem
+        // ela o recorte é só `company_id`, nunca "sem recorte".
+        AquecerTarifasDaFilaJob::despacharParaAConta(
+            $company->id,
+            is_array($alvo) ? $alvo['mlb_empresa']?->id : null,
+        );
 
         return Inertia::render('Mlb/MeusAnuncios', [
             'empresa'   => ['id' => $company->id, 'nome' => $company->name],

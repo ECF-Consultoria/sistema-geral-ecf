@@ -27,7 +27,7 @@
 #    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
 #    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
 #    de classe (medido no plano 186-07): por isso os **25** métodos PHP deste
-#    plano estão quebrados em **NOVE** ids, nenhum com mais de **TRÊS** métodos.
+#    plano estão quebrados em **ONZE** ids, nenhum com mais de **TRÊS** métodos.
 #
 # ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 17/10/2026,
 #    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
@@ -56,7 +56,7 @@
 # passa dos 120 s do shell deste ambiente e o helper RECUSA (é a medição do plano
 # 186-07, escrita em `contagens-186-08.txt`, e a mesma razão que quebrou o
 # `filtros-servico` do 187-06 em quatro ids, o 187-07 em sete e o 187-08 em nove).
-# ➡️ Os 25 viraram **NOVE** ids por assunto, nenhum com mais de três métodos.
+# ➡️ Os 25 viraram **ONZE** ids por assunto, nenhum com mais de três métodos.
 # ⚠️ **Nenhum método ficou de fora** — a bijeção é provada por script, nos DOIS
 # sentidos, pelo id `bijecao-manifesto-10`, com asserção ÚNICA de contagem fixa
 # coletando os infratores. ⚠️ E ela varre os **DOIS** arquivos de teste deste
@@ -153,3 +153,86 @@ aquecimento-chave-estrutural  php  test_(o_literal_da_chave_mora_em_UM_arquivo_s
 # trios e **não consultando**; e a `RegraViolada` PROPAGADA sem recorte de conta —
 # não existe "aquecer a fila de todo mundo".
 aquecimento-bordas  php  test_(falha_de_uma_oferta_nao_interrompe_as_outras_187_10|o_aquecimento_nao_grava_nada_e_o_simular_nao_consulta_187_10|sem_recorte_de_conta_o_aquecimento_propaga_a_regra_violada_187_10)  ::  tests=3 assertions=16
+
+
+# ── TAREFA 2: o JOB na fila `high` e os dois disparos (PHP) ─────────────────
+
+# ⚠️⚠️ A FILA `high`, e a asserção é sobre a **FILA**, não sobre a classe: a
+# mutação do plano (`onQueue('high')` → `'default'`) reprova AQUI. A razão da
+# escolha está escrita no projeto, no docblock de `AquecerPedidosMlEstruturaJob`
+# (*"é disparado ao abrir a página, com alguém olhando — na `default` de produção
+# ficaria atrás do sync do acervo"*), e a medição de produção confirma o risco da
+# outra escolha: em 16/09/2026, **179 jobs de acervo do ML na `default`**
+# seguraram um webhook da Clicksign **por horas** (a tabela `jobs` dá 0 e engana —
+# a fila de produção é Redis).
+# Mais `tries = 1` (retry empilharia chamadas ao ML por um ganho já expirado); a
+# TRAVA, que faz duas aberturas despacharem UMA vez e volta a despachar passada a
+# janela; e — ⚠️ a parte que importa — a janela cobrada como **ESTRITAMENTE
+# MENOR** que o TTL de 1 h, lido de `config('publicador.alavancas.cache.tarifa')`
+# nas duas pontas: trava de 1 h ou mais impediria o REAQUECIMENTO depois de o
+# cache esfriar, e a tela voltaria a pagar a consulta no request.
+# Mais o RECORTE: o job de uma conta nunca aquece outra, com isca pelo tipo de
+# anúncio (a conta alheia só tem `gold_pro`).
+aquecimento-job-e-trava  php  test_(o_job_do_aquecimento_vai_para_a_fila_high_com_uma_tentativa_187_10|a_trava_faz_duas_aberturas_despacharem_UMA_vez_187_10|o_aquecimento_de_uma_conta_nunca_toca_outra_187_10)  ::  tests=3 assertions=21
+
+# ⚠️ O disparo é ADITIVO: a tela de Publicações continua com as MESMAS 19 props e
+# **nenhuma** prop deste assunto entra (sonda de "aquec"/"tarifa" nas chaves, com
+# isca provando que ela pega um nome sintético). O retorno do despachante é
+# DESCARTADO de propósito.
+aquecimento-props-intactas  php  test_publicacoes_continua_com_as_MESMAS_props_187_10  ::  tests=1 assertions=22
+
+# ── TAREFA 3: o comando, a ausência do cron e as transversais (PHP) ─────────
+
+# O relatório em **linha de forma fixa**, casada INTEIRA por regex ancorada nas
+# duas pontas (gate que casa um pedaço passa com a linha meio montada), com isca
+# recusando a linha com um campo faltando. Mais `--dry-run` fazendo **ZERO**
+# requisição (com isca: sem `--dry-run` a MESMA fixture consulta) e o universo sem
+# `--empresa` sendo as contas que TÊM oferta — `contas=0` com a fila vazia.
+aquecimento-comando-relatorio  php  test_(o_comando_imprime_o_relatorio_em_linha_de_forma_fixa_187_10|o_comando_com_dry_run_nao_faz_requisicao_nenhuma_187_10|o_comando_sem_empresa_varre_as_contas_com_oferta_187_10)  ::  tests=3 assertions=15
+
+# ⚠️⚠️ "0 TRIOS" É SUCESSO, e a saída não pode ter vocabulário de erro — nada cria
+# `PubAprovacaoOferta` até a Fase 194, então 0 é o número honesto e gritar por um
+# estado correto treina quem lê o log a ignorá-lo. ⚠️ A isca da sonda exercita os
+# QUATRO termos (`falhou`, `falha`, `erro`, `exception`): a primeira redação dela
+# esperava `['falhou','falha']` de uma frase com só "falhou" e **REPROVOU**, porque
+# `falha` NÃO é substring de `falhou` — o conserto foi exercer os quatro, não
+# baixar a expectativa.
+# Mais uma CONTA que falha não interrompendo as demais (dublê que LANÇA na conta do
+# meio, com o laço provado por `contasVistas`) e o **GATE DE AUSÊNCIA** do
+# agendamento: nenhum `Schedule::command('publicador:warm-tarifas')` em
+# `routes/console.php`, lido SEM comentário, com **controle positivo** (o
+# `adman:warm-diff` ESTÁ lá, logo a sonda lê o arquivo certo), **isca** (ela pega
+# um agendamento sintético) e a RAZÃO exigida no docblock do comando — ausência sem
+# razão escrita é esquecimento disfarçado de decisão.
+aquecimento-comando-vazio-e-falha  php  test_(o_comando_com_fila_vazia_da_SUCCESS_e_nao_parece_erro_187_10|uma_conta_que_falha_nao_interrompe_as_demais_187_10|NAO_existe_agendamento_do_warm_tarifas_no_cron_187_10)  ::  tests=3 assertions=17
+
+# ⚠️ ZERO LÓGICA DUPLICADA: o corpo do comando, SEM comentário, não tem `->para(`,
+# não tem `Cache::` e não tem `/sites/MLB/` — e as TRÊS sondas são exercidas no
+# arquivo onde elas DEVEM casar (o serviço da Fase 186 tem as três), senão seriam
+# sondas cegas. ⚠️ A sonda do comando é `->para(` e **não** `para(`: `paraAConta(`
+# é o método legítimo que ele chama, e a forma larga reprovaria o trabalho certo —
+# a família "gate mais largo que o invariante", que nesta milestone já reprovou
+# trabalho correto três vezes e barrou um deploy.
+# ⚠️ E no JOB o `Cache::` é **só a trava**: a sonda ali é ANCORADA em
+# `'aprovacao:aquecer:'`, nunca na palavra `Cache`.
+aquecimento-sem-duplicacao  php  test_o_comando_nao_duplica_a_logica_do_servico_187_10  ::  tests=1 assertions=13
+
+# Território por ESCOPO DO ASSUNTO (`(187-10)`), nunca por range aberto: nesta
+# árvore as TRÊS sessões commitam com o MESMO `user.name`, então o AUTOR não
+# discrimina NADA. Isca nas QUATRO direções — o escopo não casa `(187-09)` (que
+# roda EM PARALELO), nem `(187-08)`, nem `(261016-mwe)`.
+# ⚠️⚠️ A CONTAGEM DESTE ID **NÃO depende de quantos commits existem no escopo**:
+#    nenhuma asserção mora dentro de condicional, o `test -e` dos ~35 caminhos
+#    proibidos é UMA asserção coletando fantasmas, e a prova de que o range não
+#    está vazio é asserção COLETADA, nunca `return` antecipado.
+# ⚠️ As ausências são lidas do código **SEM COMENTÁRIO**, e há ISCA DO LEITOR: a
+#    prosa dos três arquivos CITA "incompleto" de propósito (é o que o usuário
+#    RECUSOU), então um leitor que parasse de tirar comentário reprovaria pela
+#    própria explicação — e o conserto barato seria apagá-la.
+# ⚠️ As sondas de degradação são ancoradas na FORMA do defeito (`Incompleto`,
+#    `array_slice(`, `take(`, `limit(`), nunca em `limite`/`max`, que são palavras
+#    comuns e reprovariam trabalho correto.
+# ⚠️ `ResumoRapidoService.php` **saiu** da lista de proibidos: `test -e` nesta
+#    máquina diz que ele NÃO EXISTE (oitavo caminho fantasma desta milestone). E
+#    `contagens-187-09.txt` também, por não existir ainda no disco.
+territorio-aquecimento  php  test_territorio_e_ausencias_do_plano_187_10  ::  tests=1 assertions=27
