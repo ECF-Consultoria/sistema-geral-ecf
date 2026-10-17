@@ -501,6 +501,32 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/meus/{company}/aprovacao', [MlbPublicadorAprovacaoController::class, 'index'])
             ->name('meus.aprovacao');
 
+        // ─── Fase 187 (plano 09): APROVAR EM LOTE — a PRIMEIRA ESCRITA da fila ────
+        //
+        // ⚠️⚠️ **APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE** (decisão 3 do usuário, 14/10/2026):
+        // não há rota de "confirmar", de "desfazer" nem de "cancelar aprovação", e isso é
+        // desenho, não omissão. O que existe é o VEREDICTO antes do clique — o modal lista
+        // todas as selecionadas com ✓/× e o motivo de cada exclusão.
+        //
+        // ⚠️⚠️ **A FRONTEIRA DO D-11, DECLARADA.** `tests/js/estrutura-meus-anuncios.test.js`
+        // prova que **a LISTA de Publicações nunca escreve no Mercado Livre**, e isso continua
+        // verdade: aquele gate é sobre os arquivos da lista, que este plano não toca. **A FILA
+        // escreve**, e esta rota é a primeira escrita dela. ⚠️ E nesta fase a escrita é **só no
+        // nosso banco**: `aprovarEmLote` move o andamento e congela a composição; o gancho
+        // `aoAprovar`, que publica, está VAZIO e é da **Fase 193**. Há caso de teste provando
+        // por AUSÊNCIA de requisição HTTP, não por leitura de código.
+        //
+        // ⚠️ Mesmo gate `role:admin` do grupo, **sem middleware novo** (T-187-91) — mais a
+        // trava de `ml_token` (404) no controller e a conferência das ofertas contra
+        // `FilaDeAprovacaoService::paraAConta()` ANTES de qualquer gravação. CSRF é o normal
+        // do módulo: rota POST sem exceção.
+        //
+        // ⚠️ `throttle:30,1` nomeado, no padrão do módulo. Aprovação em lote é ação humana
+        // deliberada e sem desfazer — 30 por minuto é folgado para o uso e estreito para
+        // script.
+        Route::post('/meus/{company}/aprovacao/lote', [MlbPublicadorAprovacaoController::class, 'aprovarLote'])
+            ->middleware('throttle:30,1,publicador.aprovacao.lote')->name('meus.aprovacao.lote');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 

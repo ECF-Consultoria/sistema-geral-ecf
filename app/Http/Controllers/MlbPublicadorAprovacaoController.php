@@ -8,6 +8,7 @@ use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
+use App\Services\Publicador\Aprovacao\Fila\LoteDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -111,6 +112,56 @@ class MlbPublicadorAprovacaoController extends Controller
     }
 
     /**
+     * **COL-03 / T-187-96** — a seleção do lote, lida da URL (`?sel=1,2,3`) e **SANEADA contra as
+     * ofertas da conta**.
+     *
+     * ⚠️⚠️ **ID DE OUTRA CONTA É DESCARTADO, NUNCA APROVADO.** A querystring vem do navegador, e
+     * um id de outra empresa na lista seria aprovar oferta alheia — vazamento **e** escrita
+     * indevida, num fluxo que **não tem desfazer**. O saneamento é por `whereIn` contra
+     * `FilaDeAprovacaoService::paraAConta()`, que é a MESMA porta que a tela usa para listar.
+     *
+     * ⚠️ **`is_string` ANTES de qualquer coisa:** `?sel[]=1` entrega ARRAY, e `(string) []` lança
+     * `Array to string conversion` — já foi 500 nesta tela (T-180-04-T). ⚠️ E `ctype_digit` em vez
+     * de `(int)`: `(int) '3abc'` é `3` em silêncio, e `(int) ''` é `0`.
+     *
+     * @return list<int> os ids pedidos que EXISTEM na conta, na ordem da fila
+     */
+    private function selecaoSaneada(Request $request, FilaDeAprovacaoService $fila, int $companyId, ?int $mlbEmpresaId): array
+    {
+        $cru = $request->query('sel');
+
+        if (! is_string($cru) || trim($cru) === '') {
+            return [];
+        }
+
+        $pedidos = [];
+
+        foreach (explode(',', $cru) as $pedaco) {
+            $limpo = trim($pedaco);
+
+            // ⚠️ Flag DENTRO do laço, nunca calculada fora.
+            if ($limpo !== '' && ctype_digit($limpo) && (int) $limpo > 0) {
+                $pedidos[] = (int) $limpo;
+            }
+        }
+
+        $pedidos = array_values(array_unique($pedidos));
+
+        if ($pedidos === []) {
+            return [];
+        }
+
+        // ⚠️ `pluck` no Builder DA CONTA: o que não é da conta simplesmente não volta. Nenhum
+        // `in_array` sobre lista montada no PHP — a trava é a consulta.
+        return $fila->paraAConta($companyId, $mlbEmpresaId)
+            ->whereIn('id', $pedidos)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
      * A fila da conta: o contador da aba, a faixa de 9 recortes e a margem mínima com origem.
      *
      * ⚠️ `role:admin` vem do GRUPO de `routes/mlb_anuncios.php` — **nenhum middleware novo**
@@ -124,6 +175,7 @@ class MlbPublicadorAprovacaoController extends Controller
         FiltrosDaFilaService $filtros,
         GrupoDaFilaService $gruposDaFila,
         LinhaDaOfertaService $linhaDaOferta,
+        LoteDaFilaService $loteDaFila,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -328,6 +380,38 @@ class MlbPublicadorAprovacaoController extends Controller
         // recusou número divergente entre conta e lista **duas vezes** (decisões 9 e 16).
         $payload['contagem']['exibidas'] = $filtros->exibidasNaEtapa($payload['faixa'], $etapa);
 
+        // ═══ ⚠️⚠️ Plano 187-09 — A SELEÇÃO EM LOTE, LIDA DA URL ═══════════════════════════════
+        //
+        // ⚠️ **A seleção vive na URL** (COL-03, critério 13): `?sel=1,2,3`. É isso que a faz
+        // sobreviver a recarregar, a voltar do painel e a compartilhar o link — e é a razão de
+        // **não** haver `localStorage` nenhum nesta tela (o do protótipo, `KEY='ecf-aprovacao-v1'`
+        // em `:914`, é recurso de protótipo e **não existe no produto**).
+        //
+        // ⚠️⚠️ **O VEREDICTO É DO SERVIDOR, e por isso ele está aqui e não no `.jsx`.** Quem
+        // decide se uma oferta pode ser aprovada é `BloqueiosDaOfertaService::para()`, com a
+        // composição financeira e a tarifa do ML. A tela **lê** o veredicto; ela não o calcula —
+        // calcular no cliente daria duas verdades, e a divergente seria descoberta por alguém
+        // clicando "Aprovar 3" e recebendo 1.
+        //
+        // ⚠️ **O CUSTO é recortado à SELEÇÃO, nunca à fila.** `painel()` chama
+        // `BloqueiosDaOfertaService::para()` **uma vez por oferta SELECIONADA** — e só para as que
+        // estão ao vivo. Sem seleção (o caso comum), `lote` é `null` e **nenhuma** chamada extra
+        // acontece. Varrer a fila inteira para "já deixar pronto" seria a classe do incidente de
+        // 30/07/2026, quando requisições lentas ocuparam os workers do php-fpm.
+        $selecionados = $this->selecaoSaneada($request, $fila, $company->id, $mlbEmpresaId);
+
+        $payload['selecionados'] = $selecionados;
+        $payload['lote'] = $selecionados === []
+            ? null
+            : $loteDaFila->painel(
+                $fila->ordenar(
+                    PubAprovacaoOferta::query()
+                        ->whereIn('id', $selecionados)
+                        ->with(['alvo', 'produto', 'responsavel'])
+                        ->get()
+                )
+            );
+
         // ═══ ⚠️⚠️ Plano 187-08 — A LISTA, COM AS 11 CÉLULAS DE CADA LINHA ════
         //
         // ⚠️⚠️ **MONTADA AQUI, DEPOIS DO PAYLOAD, e pela MESMA razão do `exibidas` acima:** a
@@ -379,15 +463,112 @@ class MlbPublicadorAprovacaoController extends Controller
                         // ⚠️ `?oferta=` dá FOCO a uma linha (COL-03, plano 187-05). Ele é o
                         // `focusId` do protótipo (`:1250`), e NÃO conta como filtro.
                         'foco' => $ofertaEmFoco !== null && (int) $oferta->id === $ofertaEmFoco,
-                        // ⚠️ `aberta` é o painel de revisão (**Fase 188**) e `marcada` é a seleção
-                        // em lote (**plano 187-09**) — nenhum dos dois existe hoje. ➡️ Eles ficam
-                        // **nomeados e ausentes**, nunca `true` por acidente: o serviço tem os dois
-                        // ramos, conferidos por props diretas, e é aqui que as waves os ligam.
+                        // ⚠️⚠️ **Plano 187-09 LIGA `marcada`.** Ela é a seleção em lote, e vem da
+                        // URL já SANEADA contra as ofertas da conta (`selecaoSaneada()`): id de
+                        // outra empresa na querystring não acende linha nenhuma e não entra no
+                        // lote. Sem o saneamento, a tela pintaria como selecionada uma oferta que
+                        // o POST depois recusaria — duas verdades sobre a mesma seleção.
+                        'marcada' => in_array((int) $oferta->id, $selecionados, true),
+                        // ⚠️ `aberta` é o painel de revisão (**Fase 188**) e continua **nomeada e
+                        // ausente**, nunca `true` por acidente: o serviço tem o ramo, conferido
+                        // por prop direta, e é aquela fase que o liga.
                     ],
                 ),
             );
 
 
         return Inertia::render('Mlb/Publicador/Aprovacao', $payload);
+    }
+
+    /**
+     * **BLOQ-10 / FILA-15** — APROVAR EM LOTE. A **PRIMEIRA ESCRITA** da fila.
+     *
+     * ⚠️⚠️ **APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE** (decisão 3 do usuário, 14/10/2026): não há
+     * "confirmar publicação", não há "desfazer", não há segundo passo e não há cancelamento de
+     * aprovação. A conferência acontece **antes**, no modal, que lista TODAS as selecionadas com
+     * ✓/× e o **motivo** de cada exclusão. Por isso esta action **não** tem etapa intermediária:
+     * ela recebe os ids, confere, aprova as aptas e volta com o resumo.
+     *
+     * ⚠️⚠️ **E NESTA FASE APROVAR ENFILEIRA.** `aprovarEmLote()` move o andamento, grava os três
+     * campos de aprovação, marca `tocado` e congela a composição — **tudo no nosso banco**. O
+     * gancho `aoAprovar`, que fala com o Mercado Livre, está **VAZIO** e é da **Fase 193**. Há
+     * caso provando por **ausência de requisição HTTP**, não por leitura de código.
+     *
+     * ═══ O GATE DE ESCRITA PRÓPRIO DA ÁREA NOVA (T-187-91) ═════════════════════════════════════
+     *   · **`role:admin`** — do grupo da rota, **sem middleware novo**;
+     *   · **trava de conta** — `abort_unless($company->mlToken !== null, 404)`, byte a byte a das
+     *     outras actions do módulo;
+     *   · **as ofertas conferidas contra `FilaDeAprovacaoService::paraAConta()` ANTES de qualquer
+     *     gravação** — id de outra conta no corpo do POST **não é aprovado** e nada dele é
+     *     gravado (T-187-96);
+     *   · **transação** — é a de `aprovar()`, uma por oferta, e **não se abre outra por fora**:
+     *     uma que falhe não desfaz as já aprovadas, porque elas já foram enfileiradas;
+     *   · **CSRF** — rota POST normal do módulo, sem exceção;
+     *   · **throttle nomeado** — `throttle:30,1,publicador.aprovacao.lote`.
+     *
+     * ⚠️ `validate()` com `integer` e `min:1`: `"3abc"` é recusado com 422, nunca convertido em
+     * `3` em silêncio. ⚠️ E `ofertas` vazio é recusado pelo `min:1` do array — "aprovei 0" não é
+     * um pedido legítimo, é formulário quebrado.
+     */
+    public function aprovarLote(
+        Request $request,
+        Company $company,
+        FilaDeAprovacaoService $fila,
+        LoteDaFilaService $loteDaFila,
+        ProgramasPublicadorService $programas,
+    ) {
+        // ⚠️ A MESMA trava de conta das outras actions, com a MESMA mensagem.
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        $dados = $request->validate([
+            'ofertas' => ['required', 'array', 'min:1'],
+            'ofertas.*' => ['required', 'integer', 'min:1'],
+            // ⚠️⚠️ **A VERSÃO QUE A PESSOA VIU NO MODAL** (COL-04). Ela é o que torna
+            // "aprovada na versão indicada" verdade: se alguém mexeu na oferta entre o
+            // veredicto e o clique, ELA é recusada e as outras passam. ⚠️ `nullable` de
+            // propósito — aprovação sem afirmação de versão (o botão da linha, Fase 188) não
+            // tem o que divergir, e exigir o mapa quebraria aquele caminho.
+            'versoes' => ['sometimes', 'array'],
+            'versoes.*' => ['integer', 'min:1'],
+        ]);
+
+        $alvo = $programas->resolver('company-' . $company->id);
+        $mlbEmpresaId = $alvo['mlb_empresa']?->id;
+
+        $pedidos = array_values(array_unique(array_map(static fn (mixed $id): int => (int) $id, $dados['ofertas'])));
+
+        // ⚠️⚠️ **A CONFERÊNCIA DE CONTA, ANTES DE QUALQUER GRAVAÇÃO.** O filtro é a consulta: o
+        // que não é da conta **não volta** do `paraAConta()`, então não existe caminho em que uma
+        // oferta alheia chegue a `aprovarEmLote()`. ⚠️ Nenhum `in_array` sobre lista montada no
+        // PHP — é a consulta que trava.
+        $ofertas = $fila->ordenar(
+            $fila->paraAConta($company->id, $mlbEmpresaId)
+                ->whereIn('id', $pedidos)
+                ->with(['alvo', 'produto', 'responsavel'])
+                ->get()
+        );
+
+        // ⚠️ O mapa `oferta_id => versão` sai do corpo com as CHAVES normalizadas para `int`:
+        // a querystring/JSON entrega chave string (`"12"`), e `array_key_exists(12, ['12' => 3])`
+        // é `true` em PHP só porque o engine já converte chave numérica — mas não dá para contar
+        // com isso quando a chave vem de JSON aninhado. Normalizar é explícito.
+        $versoes = [];
+        foreach (($dados['versoes'] ?? []) as $chave => $valor) {
+            if (ctype_digit((string) $chave) && is_int($valor)) {
+                $versoes[(int) $chave] = $valor;
+            }
+        }
+
+        $resumo = $loteDaFila->aprovar($ofertas, $request->user(), $versoes);
+
+        // ⚠️ A resposta diz quantas foram aprovadas, **contadas**, nunca presumidas do tamanho do
+        // pedido: lote só com inaptas devolve **0**, jamais um sucesso falso.
+        return back()->with('lote_aprovado', [
+            'pedidas' => count($pedidos),
+            'selecionadas' => $resumo['selecionadas'],
+            'aprovadas' => $resumo['aprovadas'],
+            'recusadas_por_versao' => $resumo['recusadas_por_versao'],
+        ]);
     }
 }
