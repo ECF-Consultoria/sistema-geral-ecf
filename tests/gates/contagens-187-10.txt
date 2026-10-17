@@ -1,0 +1,155 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 187-10 — O PRÉ-AQUECIMENTO DA TARIFA
+# DO MERCADO LIVRE: a consulta sai do request e vai para um job na fila `high`,
+# sem que NENHUM número da tela mude.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 187-10 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `187-10`, E NÃO `10`. O número NU resolve
+# `contagens-186-10.txt` — que **NÃO EXISTE** (a Fase 186 tem nove planos), então
+# `sh … verificar-testes.sh 10 <id>` **ABORTA** com "manifesto nao existe". Essa
+# compatibilidade com o número nu é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados assim e aquela fase está EM PRODUÇÃO), e os casos 15 e
+# 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **25** métodos PHP deste
+#    plano estão quebrados em **NOVE** ids, nenhum com mais de **TRÊS** métodos.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 17/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma é chute, e nenhum id foi escrito
+#    antes de ter sido medido.
+#
+# ⚠️ **`>=` NÃO é usado em nenhum id deste plano.** Ele é opt-in e raro, e aqui
+#    não há arquivo cuja contagem cresça por construção: este plano **não escreve
+#    nenhum `.jsx`**, logo não há id `js` nenhum e nada entra em
+#    `tests/js/publicador-vocabulario-novo.test.js`. ⚠️ **Conferido, não suposto:**
+#    `ARQUIVOS_NOVOS` daquele gate **não foi tocado** por este plano, e nem
+#    precisava — o `git diff --name-only` deste plano não tem um arquivo sob
+#    `resources/`. O id próprio dele (`vocabulario-tamanhos`, forma `>=443`)
+#    continua vivendo em `contagens-187-01.txt`, e **não** foi embutido aqui.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ DIVERGÊNCIA DECLARADA DOS NOMES DE ID QUE O PLANO PRESCREVE
+# ═══════════════════════════════════════════════════════════════════════════════
+# O plano 187-10 escreve três ids nos `<verify>`: `aquecimento-servico` (tarefa
+# 1), `aquecimento-job` (tarefa 2) e `aquecimento-comando` (tarefa 3).
+#
+# **NENHUM DOS TRÊS EXISTE COM ESSE RECORTE**, e isso é decisão MEDIDA, não
+# preferência: `aquecimento-servico` cobriria os **9** métodos da tarefa 1 numa
+# alternância só, `aquecimento-job` os **7** da tarefa 2 e `aquecimento-comando`
+# os **9** da tarefa 3. Alternância grande equivale a filtro de CLASSE — que
+# passa dos 120 s do shell deste ambiente e o helper RECUSA (é a medição do plano
+# 186-07, escrita em `contagens-186-08.txt`, e a mesma razão que quebrou o
+# `filtros-servico` do 187-06 em quatro ids, o 187-07 em sete e o 187-08 em nove).
+# ➡️ Os 25 viraram **NOVE** ids por assunto, nenhum com mais de três métodos.
+# ⚠️ **Nenhum método ficou de fora** — a bijeção é provada por script, nos DOIS
+# sentidos, pelo id `bijecao-manifesto-10`, com asserção ÚNICA de contagem fixa
+# coletando os infratores. ⚠️ E ela varre os **DOIS** arquivos de teste deste
+# plano (Unit + Feature), lendo os nomes do FONTE — `get_class_methods($this)`
+# só veria uma das duas classes e deixaria a outra sem bijeção em silêncio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO — CONFERIDO POR SCRIPT, NOS DOIS SENTIDOS, NÃO DE CABEÇA
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**: nome que é PREFIXO de outro
+# casa os DOIS e o harness **SOMA** as contagens, reprovando o manifesto alheio.
+# ➡️ Varri os **25** nomes deste plano contra **todos os 7.668** `test_*` de
+#    `tests/`, nas DUAS direções (meu contém o alheio / alheio contém o meu) e
+#    também entre os meus — por **duas implementações independentes** (`awk` e
+#    `case` de shell), que concordaram: **ZERO colisão, exata ou de prefixo.**
+#    Nenhum sufixo precisou ser trocado — e, se precisasse, o conserto seria
+#    sufixo no método NOVO (`…_187_10`), **nunca** elevar a contagem do manifesto
+#    alheio.
+# ⚠️ `FechamentoDaFase186Test::os_nove_manifestos_nao_tem_homonimo_que_some_dois_
+#    arquivos` varre `tests/{Unit,Feature}/Publicador/Aprovacao/*.php` — ou seja,
+#    **os dois arquivos deste plano entram naquele gate**. Ele continua verde, e
+#    a contagem dele NÃO muda: as asserções dele são de forma fixa
+#    (`assertGreaterThan(100, $metodos)` + `assertSame([], …)` coletando
+#    infratores), de propósito.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ O QUE **NÃO** ENTRA NESTE MANIFESTO, E POR QUÊ
+# ═══════════════════════════════════════════════════════════════════════════════
+# · **Nenhum id `js`.** Este plano não escreve `.jsx` nenhum — gate de build ou
+#   de render sobre um diff sem `resources/` é gate **vazio por construção**.
+# · `custo-da-linha` (`contagens-187-08.txt`) e o id de custo do 187-06 **não são
+#   alvo de id nenhum aqui**: são gates de OUTRAS waves. Eles foram
+#   **RECONFERIDOS** depois deste plano e continuam verdes, com as contagens
+#   INTOCADAS — ver `187-10-SUMMARY.md`. ⚠️ Este plano muda **QUANDO** a
+#   requisição acontece, **não QUANTAS**: ele não afrouxa gate nenhum.
+# · `tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php` (wave 2) e
+#   `tests/Unit/Publicador/Aprovacao/LinhaDaOfertaServiceTest.php` (wave 8) são
+#   **INTOCADOS** por este plano.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES, MEDIDAS NO COMMIT DE PARTIDA DESTE PLANO (`f75864d0`)
+# ═══════════════════════════════════════════════════════════════════════════════
+# A referência registrada pela wave 8 em `f75864d0` é **PHP 2445 / 21.463 / 2
+# falhas** e **JS 5409 / 5406 pass / 1 fail / 2 skipped**.
+# ⚠️ As **DUAS** falhas PHP são ALHEIAS e de FRONTEIRA DE DIA, em
+#    `tests/Feature/Publicador/CockpitDaContaTest.php` (Fase 179, em produção),
+#    `:966` e `:1318`. **NÃO corrigidas**, e **não** existe `REF_PHP_FALHAS`.
+# ⚠️ A única falha JS é a pré-existente de `tests/js/estrutura-grade-glide.test.js`
+#    (Fase 87) — **não corrigida**. Os 2 `skipped` são `pub-float`/`pub-float-line`,
+#    que o plano 187-09 acorda.
+# ⚠️ O plano **187-09 roda EM PARALELO** nesta mesma árvore e muda essas contagens
+#    no meio do trabalho — ver `187-10-SUMMARY.md` §baselines.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: o serviço do aquecimento (PHP) ────────────────────────────────
+
+# ⚠️⚠️ O CUSTO E A CHAVE PROVADA POR COMPORTAMENTO. No máximo **UMA requisição
+# por trio `(categoria, tipo, preço)` distinto**, com ISCA NAS DUAS DIREÇÕES
+# (quatro ofertas em dois trios → 2 requisições; quatro preços distintos → 4), e
+# `para()` chamado **uma vez por TRIO** por espião-SUBCLASSE (a mutação "aquecer
+# todas as ofertas" não muda as requisições — o cache dedupa — e muda ESTA
+# contagem). Mais a idempotência (a 2ª rodada custa ZERO) e a prova de que a
+# composição que a TELA chama, depois do aquecimento, faz **ZERO** requisição.
+# ⚠️ E a ISCA DA CHAVE: aquecer com `preço + 1` **NÃO serve** — a tela volta a
+# consultar. É ela que separa *"o aquecimento CHAMA `para()`"* de *"o aquecimento
+# é parecido com `para()`"*.
+# ⚠️⚠️ **A FIXTURE TEM `categoria_id` PREENCHIDO**, e isso não é zelo: a fixture
+# de `FilaDeAprovacaoRotaTest:161` cria o rascunho **SEM** categoria, e aí
+# `tarifaDoMl()` devolve "sem fonte" em `:470` **sem sair para a rede** — aquele
+# gate alheio está verde sem provar que a fila nunca chama o ML. Sem categoria,
+# TODO gate de custo desta wave seria vazio por construção também.
+aquecimento-custo-e-chave  php  test_(uma_requisicao_por_trio_distinto_com_isca_nas_duas_direcoes_187_10|o_aquecimento_e_idempotente_e_a_composicao_depois_nao_consulta_187_10|ISCA_DA_CHAVE_aquecer_com_outro_preco_nao_serve_187_10)  ::  tests=3 assertions=33
+
+# ⚠️⚠️ O GATE ESTRUTURAL DA CHAVE — a porta dos fundos que o comportamento não
+# pega: uma chave "quase igual" ainda produz valor de cache VÁLIDO, só no lugar
+# errado. O literal `'aprovacao:tarifa:'` aparece no CÓDIGO de **exatamente UM**
+# arquivo de `app/` (o `ComposicaoFinanceiraService` da Fase 186, `:474`) e em
+# **ZERO** dos três arquivos deste plano, nomeados um a um.
+# ⚠️ ISCA NAS DUAS DIREÇÕES: cópia sintética do literal no CÓDIGO **é pega**; o
+# MESMO literal num COMENTÁRIO **NÃO conta** (isca INVERTIDA) — sem ela, um
+# docblock que explicasse *"eu não monto esta chave"* reprovaria o trabalho certo
+# e o conserto barato seria apagar a explicação.
+# Mais a oferta sem fonte contada como **PULADA** (com isca da fixture completa
+# aquecendo de verdade) e a **FILA VAZIA** devolvendo `trios=0` com a forma do
+# relatório FECHADA.
+aquecimento-chave-estrutural  php  test_(o_literal_da_chave_mora_em_UM_arquivo_so_de_app_187_10|oferta_sem_categoria_ou_sem_tipo_e_contada_como_pulada_187_10|fila_vazia_devolve_zero_trios_e_isso_nao_e_erro_187_10)  ::  tests=3 assertions=23
+
+# As BORDAS: uma oferta que explode **não** leva as outras (o `try/catch` é da
+# OFERTA, não da varredura — senão um dado ruim deixaria todos os demais trios
+# frios e a tela pagaria a consulta de todos eles); o aquecimento **não grava
+# nada** (as três tabelas do portão com a MESMA contagem antes e depois, porque
+# *"Nada é gravado aqui. Quem grava é `congelar()`"*) com `--dry-run` contando os
+# trios e **não consultando**; e a `RegraViolada` PROPAGADA sem recorte de conta —
+# não existe "aquecer a fila de todo mundo".
+aquecimento-bordas  php  test_(falha_de_uma_oferta_nao_interrompe_as_outras_187_10|o_aquecimento_nao_grava_nada_e_o_simular_nao_consulta_187_10|sem_recorte_de_conta_o_aquecimento_propaga_a_regra_violada_187_10)  ::  tests=3 assertions=16
