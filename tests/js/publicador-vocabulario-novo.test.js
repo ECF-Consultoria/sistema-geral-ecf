@@ -264,6 +264,32 @@ const ARQUIVOS_NOVOS = [
     `${DIR_APROV}/LinhaDeProdutoDaFila.jsx`,
     `${DIR_APROV}/SubLinhaDeConjunto.jsx`,
     `${DIR_APROV}/QuadradosDeFoto.jsx`,
+    // ─── Fase 187, plano 08 — A LINHA DA OFERTA: as 11 células do grid, o anel
+    //     de progresso nos quatro estados e a barra de margem de 0 a 40% ───
+    //
+    // ⚠️⚠️ **SE ESTAS TRÊS LINHAS FALTASSEM, O GATE-03 PASSARIA POR OMISSÃO** para
+    // os três arquivos — e `DIR_APROV` está em `DIRETORIOS_FECHADOS`, então o
+    // `assert.deepEqual(noDisco, declarados)` reprova na hora (é o comportamento
+    // certo). ⚠️ E declarar ANTES de o arquivo existir **LANÇA** no carregamento do
+    // módulo, porque `FONTES` lê todos os caminhos: quem escreve aqui é o plano que
+    // acabou de criar o arquivo — foi por isso que o plano 187-07 as deixou
+    // explicitamente **fora**.
+    //
+    // ⚠️ `.jsx` nos três, como todo o diretório: o `content` do `tailwind.config.js`
+    // varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa das classes da linha —
+    // o `min-h-[64px]` de `:133`, o anel de 16px de `:135`, o losango `rotate-45`
+    // de `:148`, os `text-[13.5px]` de `:139`/`:156`/`:158` e a trilha de 4px de
+    // `:163`, mais o token `pub-anel-parcial`, que ACORDA nesta wave. Num `.js`
+    // nenhuma delas geraria CSS, e a linha sairia sem geometria na tela com todo
+    // teste de render passando.
+    //
+    // ⚠️ **FID-03:** `text-[13.5px]` e `text-[12.5px]` são medidas do protótipo e
+    // o passo do Tailwind não tem meio pixel — quem arredondasse para `text-sm`
+    // (14px) mudaria o layout. É por isso que `13.5` e `12.5` estão na lista de
+    // tamanhos permitidos deste gate.
+    `${DIR_APROV}/LinhaDaOferta.jsx`,
+    `${DIR_APROV}/AnelDeProgresso.jsx`,
+    `${DIR_APROV}/BarraDeMargem.jsx`,
     // ⚠️⚠️ Fase 187, plano 04 — A PÁGINA DA FILA.
     //
     // ⚠️ `Pages/Mlb/Publicador/` **NÃO** está em `DIRETORIOS_FECHADOS` (ele tem

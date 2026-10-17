@@ -1004,9 +1004,30 @@ test('a PÁGINA preencheu o slot `tabela` e o nó de composição ainda SOBREPÕ
     assert.match(FONTE_PAGINA, /grupos=\{grupos\}/, 'a página não repassa `grupos` ao componente');
     assert.match(FONTE_PAGINA, /^\s*grupos = null,/m, 'a prop `grupos` não tem default nulo');
 
-    // ⚠️ E a página NÃO preenche `linhaDaOferta` (plano 187-08) nem os handlers do
-    // 187-09: peça que depende do que vem depois fica NOMEADA E AUSENTE.
-    assert.doesNotMatch(FONTE_PAGINA, /linhaDaOferta=/, '`linhaDaOferta` é do plano 187-08');
+    // ⚠️⚠️ **ESTA ASSERÇÃO FOI INVERTIDA PELO PLANO 187-08, E O MOTIVO É A PRÓPRIA
+    // RÉGUA DO PROJETO — não conveniência.**
+    //
+    // A redação da wave 7 era `assert.doesNotMatch(FONTE_PAGINA, /linhaDaOferta=/,
+    // '`linhaDaOferta` é do plano 187-08')`: uma asserção de AUSÊNCIA cuja própria
+    // mensagem nomeava a wave que a tornaria FALSA. É literalmente o item 6 da
+    // régua — *"asserção vazia quando escrita que vira FALSO POSITIVO depois"* —, e
+    // a pergunta que ela deveria ter respondido é *"o desenho PROÍBE isso, ou eu só
+    // não vi ainda?"*. O desenho **não** proibia: o slot nasceu NOMEADO E VAZIO no
+    // 187-07 exatamente para o 187-08 o preencher.
+    //
+    // ➡️ Invertida PARA UMA POSITIVA, que é estritamente mais forte e permanente:
+    // a página **tem** de preencher o slot, senão a tabela volta a desenhar
+    // cabeçalho + produto + sub-linha e **nenhuma linha de oferta** — a fila ficaria
+    // sem o conteúdo que ela existe para mostrar, e nenhum outro gate pegaria isso
+    // (os casos acima, que provam "sem slot não há casca", rodam o COMPONENTE, não
+    // a página). ⚠️ A contagem de asserções deste caso **não muda** (uma por uma),
+    // então `contagens-187-07.txt` segue intocado — conferido, não suposto.
+    // ⚠️ Foi o ÚNICO ponto em que uma régua da wave 7 reprovaria o trabalho certo
+    // da wave 8; `:747` e `:765` continuam valendo porque renderizam o componente.
+    assert.match(FONTE_PAGINA, /linhaDaOferta=\{/, 'a página deixou de preencher `linhaDaOferta` (plano 187-08)');
+
+    // ⚠️ Os handlers do 187-09 CONTINUAM ausentes: peça que depende do que vem
+    // depois fica NOMEADA E AUSENTE.
     assert.doesNotMatch(FONTE_PAGINA, /onMarcarVisiveis=/, 'a seleção em lote é do plano 187-09');
 
     // ⚠️ Zero `localStorage` e zero `String(` na página (gate da wave 4).

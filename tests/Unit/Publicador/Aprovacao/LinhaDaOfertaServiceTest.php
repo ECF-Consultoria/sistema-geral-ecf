@@ -1277,7 +1277,19 @@ class LinhaDaOfertaServiceTest extends TestCase
             'tests/js/publicador-fila-tokens-187.test.js',
             'tests/js/publicador-fila-zindex-187.test.js',
             'tests/js/publicador-fila-cabecalho-187.test.js',
-            'tests/js/publicador-fila-tabela-187.test.js',
+            // ⚠️⚠️ `tests/js/publicador-fila-tabela-187.test.js` **SAIU desta lista**, e é
+            // DESVIO DECLARADO desta sessão — não descuido. Aquele gate da wave 7 tinha, em
+            // `:1009`, `assert.doesNotMatch(FONTE_PAGINA, /linhaDaOferta=/, '`linhaDaOferta` é do
+            // plano 187-08')`: uma asserção de AUSÊNCIA cuja PRÓPRIA MENSAGEM nomeava a wave que
+            // a tornaria falsa. É o item 6 da régua (*"asserção vazia quando escrita que vira
+            // FALSO POSITIVO depois"*), e o slot nasceu NOMEADO E VAZIO no 187-07 justamente para
+            // esta wave o preencher.
+            // ➡️ Ela foi **INVERTIDA para uma POSITIVA** (`assert.match(…, /linhaDaOferta=\{/)`),
+            // que é permanente e mais forte. A CONTAGEM daquele id não muda (uma asserção por
+            // uma), então `contagens-187-07.txt` segue INTOCADO e continua na lista abaixo.
+            // ⚠️ Nenhuma outra régua da wave 7 reprova o trabalho certo desta: os casos `:747` e
+            // `:765` renderizam o COMPONENTE (e continuam valendo), e o gate de território dela é
+            // filtrado por `(187-07)`, então os commits desta wave são invisíveis para ele.
             'tests/Unit/Publicador/Aprovacao/GrupoDaFilaServiceTest.php',
             'tests/gates/contagens-187-07.txt',
             // Dependências (T-187-SC), migrations e a camada de tokens.

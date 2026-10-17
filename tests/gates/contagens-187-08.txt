@@ -240,3 +240,67 @@ territorio-linha  php  test_territorio_e_ausencias_do_plano_187_08  ::  tests=1 
 #    então acrescentar id aqui — como o id `js` que entra na tarefa 3 — **NÃO**
 #    mexe neste número. Era fragilidade por construção e foi tirada de propósito.
 bijecao-manifesto-08  php  test_bijecao_do_manifesto_da_linha_187_08  ::  tests=1 assertions=9
+
+# ── TAREFAS 2 e 3: o render (JS) ────────────────────────────────────────────
+
+# ⚠️⚠️ DOIS REGIMES (`tests=23,14`), e eles são MEDIDOS, não precaução. A camada
+# de CSS deste arquivo é UM `test()` com NOVE subtestes, e ela **PULA** quando o
+# CSS construído é mais ANTIGO que as fontes (`LinhaDaOferta.jsx`,
+# `AnelDeProgresso.jsx`, `BarraDeMargem.jsx`, `TabelaDaFila.jsx`,
+# `Aprovacao.jsx`) — e mutar qualquer uma delas a deixa mais nova. Medido nesta
+# máquina em 16/10/2026, com `touch` numa fonte:
+#   · pristino (CSS mais novo):   23 testes / 23 pass / 0 fail / 0 skipped
+#   · mutado   (fonte mais nova): 14 testes / 13 pass / 0 fail / 1 skipped
+# Sem os dois regimes a campanha de mutação abortaria na 1ª execução ("BASE com
+# contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que NÃO é o
+# código (learnings §4 caso 11).
+#
+# ⚠️⚠️ DIVERGÊNCIA DECLARADA: o plano prescreve DOIS ids para este arquivo
+# (`anel-e-barra` na tarefa 2 e `linha-render` na tarefa 3). No modo `js` o
+# harness roda o ARQUIVO INTEIRO, então dois ids sobre um arquivo só dariam a
+# MESMA contagem duas vezes e **nenhum dos dois mediria a sua própria metade** —
+# gate decorativo por construção. ➡️ Um id só.
+#
+# O que ele cobre (14 blocos, cada um com a pergunta *"o que precisaria estar
+# errado no mundo para ele falhar?"* respondida no topo do arquivo):
+# o GRID DE 11 COLUNAS **IMPORTADO** de `TabelaDaFila.jsx` e comparado por
+# IGUALDADE DE STRING (com isca do quase-igual), mais a prova de que o literal
+# NÃO foi recopiado; `min-h-[64px]` com sonda ANCORADA (a primeira redação usava
+# `includes('h-[64px]')` e REPROVOU código certo, porque `min-h-[64px]` contém
+# a substring); as 11 células por ÁRVORE com índice ABSOLUTO; os QUATRO fundos de
+# `:1250` com fallback no PADRÃO para chave desconhecida (nunca em `aberta`, que
+# afirmaria um painel aberto); a META em UMA linha com `truncate`, na ordem
+# literal, com o separador `·` ENTRE SKU/origem e origem/versão e **não** antes do
+# selo EXCEÇÃO (medido em `:142`/`:143`), mais os TRÊS wrappers que a tabela do
+# plano OMITE (`:138`, `:142`, `:147`, `:167`); o losango `rotate-45` SÓ no
+# Premium, com truthiness recusada; os QUATRO rótulos da ação LIDOS do bloco
+# `public const CTA` do MODELO (recorte conferido contra o mapa vizinho, que a
+# primeira redação abraçava) e as QUATRO paletas literais; `preparando` NÃO
+# abrindo (D9) **exercido no CLIQUE de verdade**, porque a tela preta da wave 6
+# foi no clique e `renderToStaticMarkup` não dispara `onClick`; a sub-linha com
+# `truncate` + `title` do texto INTEIRO; os QUATRO estados do anel com `title`
+# SEMPRE não-vazio e o NEUTRO para chave desconhecida (guarda que devolvesse
+# `null` daria elemento vazio, que passa em render e DESAPARECE na tela); a barra
+# com a largura por `style` (classe concatenada o Tailwind não varre), o CLAMP
+# recusando `-5%`/`150%`/`NaN%` e o traço em `minimo/40` provado com DOIS mínimos
+# (D10 é fórmula, não o `30%` literal); o render ADVERSO em **8 formas × os 53
+# campos** mais o campo AUSENTE, a prop inteira adversa e o CLIQUE; a flag DENTRO
+# do callback do `.map()`; as NOVE ausências sobre a lista CONSTANTE de 3
+# arquivos (`lucro líquido` recortado — `lucro_liquido` é campo legítimo do
+# Portal e a varredura larga barrou um deploy na 186); o CSS CONSTRUÍDO com
+# `pub-anel-parcial` ACORDANDO com o gradiente literal; e a PÁGINA com o slot
+# preenchido e o destino do clique.
+#
+# ⚠️ E o bloco que prova que `pub-float`/`pub-float-line` **CONTINUAM DORMINDO**:
+#    medido no `tailwind.config.js`, eles foram declarados para a barra de lote
+#    (`:897`) e o toast (`:905`), que são do plano **187-09** — NÃO para esta
+#    linha. Usar token fora do lugar medido só para zerar um `skip` é o que a
+#    wave 4 recusou, e estava certa. A isca lê a camada para provar que os dois
+#    EXISTEM (o `skip` não é "token inexistente").
+#
+# ⚠️ As ISCAS do bloco de CSS foram MEDIDAS contra o CSS de verdade: `h-[64px]` e
+#    `left-[30%]` **EXISTEM** no CSS construído (outros arquivos do projeto os
+#    usam), então **não servem** como isca de ausência ali — a ausência deles é
+#    cobrada na FONTE, onde o invariante mora. Trocadas por `bg-pub-isca-187-08`,
+#    `text-[99.5px]`, `w-[997px]` e `h-[463px]`, as quatro conferidas ausentes.
+linha-da-oferta-render  js  tests/js/publicador-fila-linha-187.test.js  ::  tests=23,14

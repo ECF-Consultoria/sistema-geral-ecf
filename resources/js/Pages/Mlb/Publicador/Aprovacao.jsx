@@ -7,6 +7,7 @@ import FaixaDeAndamento from '@/Components/Mlb/Publicador/aprovacao/FaixaDeAndam
 import ProximoARevisar from '@/Components/Mlb/Publicador/aprovacao/ProximoARevisar';
 import FiltrosDaFila from '@/Components/Mlb/Publicador/aprovacao/FiltrosDaFila';
 import TabelaDaFila from '@/Components/Mlb/Publicador/aprovacao/TabelaDaFila';
+import LinhaDaOferta from '@/Components/Mlb/Publicador/aprovacao/LinhaDaOferta';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -299,18 +300,34 @@ export default function Aprovacao({
     // par da mesma família: `proximo`/`proximo_a_revisar`,
     // `filtros`/`filtros_ativos` e agora `tabela`/`grupos`.
     //
-    // ⚠️ **O slot `linhaDaOferta` da tabela NÃO é preenchido aqui**, e isso é o
-    // plano **187-08**: sem ele a tabela desenha o cabeçalho, a linha de produto e
-    // a sub-linha, e **NENHUMA casca de linha de oferta** (D4 — nada nasce
-    // decorativo). Peça que depende do que vem depois fica **nomeada e ausente**,
-    // nunca esboço visível.
+    // ⚠️⚠️ Fase 187, plano 08 — **O SLOT `linhaDaOferta` FOI PREENCHIDO.** Sem ele
+    // a tabela desenhava cabeçalho, linha de produto e sub-linha, e NENHUMA casca
+    // de linha de oferta (D4); agora as 11 células existem, resolvidas no servidor
+    // por `LinhaDaOfertaService::para()` e repassadas em `grupos`.
     //
-    // ⚠️ E `onRevisarFotos`/`onMarcarVisiveis` também não: o painel de revisão é a
-    // **Fase 188** e a seleção em lote é o **187-09**. Sem handler, nem o atalho
-    // "Revisar fotos do conjunto" nem o checkbox do cabeçalho são desenhados —
-    // botão sem destino é D4 violado, e `onClick` vazio é a mesma dívida com
-    // outra roupa.
-    const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila grupos={grupos} />;
+    // ⚠️ `onRevisarFotos`/`onMarcarVisiveis` CONTINUAM ausentes: o painel de
+    // revisão é a **Fase 188** e a seleção em lote é o **187-09**. Sem handler, nem
+    // o atalho "Revisar fotos do conjunto" nem o checkbox do cabeçalho (nem o da
+    // linha) são desenhados — botão sem destino é D4 violado, e `onClick` vazio é a
+    // mesma dívida com outra roupa.
+    //
+    // ⚠️⚠️ **`irParaOferta(empresaId, etapaAtiva)` é chamado de NOVO aqui, e isso é
+    // DELIBERADO.** `publicador-fila-proximo-187.test.js:857` (wave 5) lê o TEXTO
+    // `onRevisar={irParaOferta(empresaId, etapaAtiva)}` na fonte desta página:
+    // guardar a chamada numa variável e reusá-la nos dois lugares **reprovaria
+    // aquele gate**. A função não faz I/O — ela só devolve um `router.get` fechado
+    // sobre os mesmos dois valores —, então duas chamadas são dois closures
+    // idênticos, nunca dois comportamentos.
+    //
+    // ⚠️ O destino é o **FOCO da oferta** (`?oferta=<id>`, o `focusId` de `:1250` e
+    // o COL-03 do plano 187-05) — o MESMO que o "Revisar agora" da faixa "PRÓXIMO A
+    // REVISAR" já usa em produção. O painel que de fato ABRE a revisão é a Fase 188.
+    const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila
+        grupos={grupos}
+        linhaDaOferta={(oferta) => (
+            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} />
+        )}
+    />;
     const noRodape = isValidElement(rodape) ? rodape : null;
 
     // ═══ ⚠️ Plano 187-06 — O RECORTE ATUAL E OS HANDLERS QUE O MOVEM ═══════
