@@ -1003,9 +1003,20 @@ test('⚠️⚠️ os DOIS vazios são textos DIFERENTES, e o segundo NÃO tem b
 
     const botoesComFiltro = tagsDeAbertura(comFiltro).filter((e) => e.tag === 'button');
     assert.equal(botoesComFiltro.length, 1, `o caso COM filtro desenhou ${botoesComFiltro.length} botões, esperava 1`);
-    for (const classe of ['h-[32px]', 'cursor-pointer', 'whitespace-nowrap', 'rounded-[8px]', 'border', 'border-pub-line-strong', 'bg-pub-surface', 'px-[14px]', 'text-[12.5px]', 'text-pub-txt']) {
+    for (const classe of ['h-[32px]', 'cursor-pointer', 'rounded-[8px]', 'border', 'border-pub-line-strong', 'bg-pub-surface', 'px-[14px]', 'text-[12.5px]', 'text-pub-txt']) {
         assert.ok(classesDe(botoesComFiltro[0]).has(classe), `o botão "Limpar filtros" perdeu \`${classe}\`: ${botoesComFiltro[0].classe}`);
     }
+    // ⚠️⚠️ E `whitespace-nowrap` **NÃO** pode estar aqui — MEDIDO por script: `:188` é o
+    // ÚNICO botão desta wave SEM `white-space:nowrap` (os outros seis o têm: `:779`, `:889`,
+    // `:890`, `:899`, `:900`, e o `:200` que não existe no produto). A primeira redação do
+    // componente o tinha posto por SIMETRIA com os vizinhos, e este gate o exigia junto —
+    // os dois errados pelo mesmo motivo. ➡️ **O PROTÓTIPO GANHA.** Simetria que ninguém
+    // mediu é o "ficou mais parecido com o resto do sistema" que FID-02 não aceita.
+    assert.equal(
+        classesDe(botoesComFiltro[0]).has('whitespace-nowrap'),
+        false,
+        '`whitespace-nowrap` entrou no botão "Limpar filtros", e `:188` NÃO o tem (medido por script)',
+    );
 
     // ─── CASO 2: SEM filtro nenhum e zero oferta ───
     const semFiltro = render(Vazio, { algumFiltro: false, onLimpar: nada });

@@ -50,9 +50,19 @@ export const CLASSES_TITULO = 'text-[15px] font-semibold';
 /** O corpo explicativo — só o segundo vazio o tem (o protótipo não tem corpo nenhum). */
 export const CLASSES_CORPO = 'max-w-[460px] text-[12.5px] text-pub-txt-3';
 
-/** `:188` — o botão "Limpar filtros". ⚠️ `cursor-pointer` está no protótipo e é fácil de perder. */
+/**
+ * `:188` — o botão "Limpar filtros".
+ *
+ * ⚠️ `cursor-pointer` **está** no protótipo e é fácil de perder (`cursor:pointer` já foi
+ * omitido ONZE vezes numa fase deste projeto).
+ * ⚠⚠ E `whitespace-nowrap` **NÃO** está em `:188`, ao contrário dos outros seis botões
+ * desta wave (`:779`, `:889`, `:890`, `:899`, `:900` — e o `:200`, que não existe no
+ * produto). **MEDIDO por script nesta sessão**, e a primeira redação o tinha posto aqui por
+ * simetria com os vizinhos. ➡️ **O PROTÓTIPO GANHA**: ele saiu. Simetria que ninguém mediu
+ * é exatamente o tipo de "ficou mais parecido com o resto" que FID-02 não aceita.
+ */
 export const CLASSES_BOTAO =
-    'h-[32px] cursor-pointer whitespace-nowrap rounded-[8px] border border-pub-line-strong bg-pub-surface px-[14px] text-[12.5px] text-pub-txt';
+    'h-[32px] cursor-pointer rounded-[8px] border border-pub-line-strong bg-pub-surface px-[14px] text-[12.5px] text-pub-txt';
 
 /**
  * ⚠️⚠️ **OS DOIS VAZIOS, E ELES SÃO TEXTOS DIFERENTES.**
