@@ -147,8 +147,29 @@ const TOKENS_NOVOS = [
         caminho: ['backgroundImage', 'pub-anel-parcial'],
         valor: 'linear-gradient(90deg,#A1A1AA 50%,transparent 50%)',
         classe: 'bg-pub-anel-parcial',
-        // (iii) o gradiente sai com o hex em MINÚSCULA no CSS construído.
-        propriedade: /background-image:\s*linear-gradient\(90deg,#a1a1aa 50%,transparent 50%\)/,
+        // ⚠️⚠️ **A PRESCRIÇÃO ANTERIOR ESTAVA ERRADA, E FOI CORRIGIDA POR MEDIÇÃO
+        // NO PLANO 187-08 (16/10/2026) — o plano que ACORDOU este token.**
+        //
+        // Ela dizia *"(iii) o gradiente sai com o hex em MINÚSCULA no CSS
+        // construído"* e cravava `#a1a1aa`. **Sai em MAIÚSCULA.** Medido no CSS de
+        // verdade, com o token em uso por `AnelDeProgresso.jsx`:
+        //
+        //     bg-pub-anel-parcial  =>  background-image:linear-gradient(90deg,#A1A1AA 50%,transparent 50%)
+        //
+        // ⚠️ Por que o erro ficou invisível até agora: enquanto **nenhum `.jsx`**
+        // usava a classe, este sub-teste **PULAVA** (é o `sub.skip()` nomeado
+        // abaixo), então a regex **nunca foi exercida**. Era prescrição escrita às
+        // CEGAS — exatamente o item 3 do learnings §3 (*"leia a forma REAL no CSS
+        // construído antes de escrever a regex; prescrever às cegas foi a 8ª
+        // mentira do medidor desta milestone"*). O próprio gate diz que **"ACORDA
+        // SOZINHO no plano que escrever a classe"**: é por desenho que a wave que
+        // acorda o token é a que confere (e conserta) a prescrição.
+        //
+        // ⚠️ `/i` de propósito: o que este gate prova é a ESTRUTURA do gradiente
+        // (ângulo, as duas paradas em 50% e a cor), não a CAIXA do hex — que é
+        // detalhe do minificador e já mudou de prescrição uma vez. Baixar a régua
+        // para "qualquer `background-image`" é que seria afrouxar; isto não é.
+        propriedade: /background-image:\s*linear-gradient\(90deg,#A1A1AA 50%,transparent 50%\)/i,
         medidoEm: 'Aprovacao.dc.html:1241 (PG.partial) e :194 (legenda do rodapé) — ⚠️ o plano cita :201',
         // Gradiente não tem token nenhum, e escrito na tela viraria hex cru, que
         // o gate de vocabulário proíbe. É o precedente de `pub-hachura`.

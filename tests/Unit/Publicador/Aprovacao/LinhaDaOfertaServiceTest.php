@@ -1274,7 +1274,21 @@ class LinhaDaOfertaServiceTest extends TestCase
             'tests/js/estrutura-meus-anuncios.test.js',
             'tests/js/publicador-fila-filtros-187.test.js',
             'tests/js/publicador-fila-proximo-187.test.js',
-            'tests/js/publicador-fila-tokens-187.test.js',
+            // ⚠️⚠️ `tests/js/publicador-fila-tokens-187.test.js` **SAIU desta lista**, e é o SEGUNDO
+            // desvio declarado desta sessão — da mesma família do anterior. Aquele gate da wave 1
+            // prescrevia, para `bg-pub-anel-parcial`, a regex
+            // `/background-image:\s*linear-gradient\(90deg,#a1a1aa 50%,transparent 50%\)/`, com o
+            // comentário *"o gradiente sai com o hex em MINÚSCULA"*. **Sai em MAIÚSCULA** — medido
+            // no CSS construído com o token EM USO.
+            // ⚠️ O erro ficou invisível porque, enquanto nenhum `.jsx` usava a classe, o sub-teste
+            // **PULAVA** e a regex **nunca era exercida**: prescrição escrita às CEGAS (learnings §3
+            // item 3). O próprio gate declara que **"ACORDA SOZINHO no plano que escrever a
+            // classe"** — é por DESENHO que a wave que acorda o token confere a prescrição, e esta é
+            // a wave que acorda.
+            // ➡️ Corrigido para a forma MEDIDA (com `/i`, porque o que o gate prova é a ESTRUTURA do
+            // gradiente, não a caixa do hex). A contagem do id daquela wave **não muda**: o
+            // sub-teste já era registrado (só pulava), e `tests=` conta testes, não skips —
+            // conferido, não suposto.
             'tests/js/publicador-fila-zindex-187.test.js',
             'tests/js/publicador-fila-cabecalho-187.test.js',
             // ⚠️⚠️ `tests/js/publicador-fila-tabela-187.test.js` **SAIU desta lista**, e é
