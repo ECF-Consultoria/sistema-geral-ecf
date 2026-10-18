@@ -49,6 +49,15 @@ presumido:
 | **não há navegador** | todo render é `esbuild` + `react-dom/server` com fixture sintético; todo CSS é o construído em `public/build/assets/*.css` | nenhum `useEffect`, `setTimeout` ou `onClick` do browser rodou |
 | a suíte PHP roda em **SQLite em memória** | `phpunit.xml` | armadilha de MariaDB não aparece aqui (e esta fase não tem migration, então não há o que aparecer) |
 
+⚠️⚠️ **PROCEDÊNCIA, linha por linha, porque isto é um documento de medição:**
+
+| fato | quem mediu |
+|---|---|
+| banco sem `ml_token`, `ml_acervo_itens` vazia, `pub_aprovacao_ofertas` vazia | **os executores das waves 04 e 09** — eu **NÃO** pude reconfirmar: medido nesta sessão, o **`mysqld` local não está em execução** (`tasklist` não o lista, e o `.env` aponta `DB_CONNECTION=mysql`), então não há banco local a consultar. **Registro com a fonte, em vez de afirmar como medição minha** |
+| leitura de produção bloqueada | **medido por mim** — o classificador barra `plink`/`tinker` em subagente |
+| sem navegador | **medido por mim** — todo render desta sessão é `esbuild` + `react-dom/server`; o `npm run build` desta sessão saiu **exit 0 em 63 s** e o CSS construído é `assets/app-DtSI74zM.css` |
+| suíte PHP em SQLite em memória | **medido por mim** — `phpunit.xml` |
+
 ➡️ ⚠️ **Toda afirmação desta fase sobre "a tela mostra X" significa "o HTML gerado contém X".**
 
 ➡️ E duas limitações nomeadas, que seguem valendo:
@@ -435,7 +444,7 @@ CRIT-11: OK — marcar linhas mostra a barra flutuante "N selecionadas · Aprova
 CRIT-12: RESSALVA — os toasts ficam no **topo central** (irmãos do header, sem portal — render de servidor não desenha portal e o gate passaria POR OMISSÃO), com os **6 literais do módulo** (`TOASTS` da Fase 186) e "Publicado e confirmado no Mercado Livre · MLB…" **só** com MLB confirmado; ⚠️ **a ressalva é o RUNTIME dos ~3,8 s, que NÃO é provado** — não há navegador: provados, pela função pura, o número **3800**, a ordem **cancelar → agendar** e a robustez a relógio adverso — gate lote-render, 26 testes
 CRIT-13: OK — **zero `localStorage`** e **nenhum "Restaurar dados de exemplo"** (gate de ausência com isca por FORMA, e a mutação que os devolveu MORREU); filtros e seleção vivem na **URL** (`?etapa=`, `?sel=`), com a seleção **saneada contra a conta** — e a mutação M16 provou que um `assert.match` sobre o TEXTO do controller era **proxy de fonte**, não comportamento — gate filtros-na-url, 2/48 + gate selecao-na-url, 1/13 + gate lote-render, 26 testes
 CRIT-14: OK — render adverso de **todo** campo novo (objeto, nulo, ausente; coleção nula/string/número; prop inteira nula), sem `[object Object]`/`NaN`/`undefined`/`Invalid Date`; e **nenhuma flag fora do callback do `.map()`** — com a correção medida na wave 09: expressão de `.map()` é aceita quando tudo que ela lê é parâmetro ou nome de MÓDULO, que o Rollup nunca elide — gate linha-da-oferta-render, 23 testes + gate cabecalho-da-fila, 99 testes + gate tabela-niveis-1-e-2, 27 testes
-CRIT-15: OK — a tabela FID-01 da fila foi medida contra `design_handoff_publicador/Aprovacao.dc.html` (sha256 `68624883ce35547e`, não se moveu) e **declara como mediu**, plano por plano, em §5 — **8 de 10 por SCRIPT e 2 SEM-PROTOTIPO (servidor e infraestrutura, onde não há `.dc.html` a medir); ZERO por LEITURA**, com `cursor` em coluna própria e as referências RE-MEDIDAS por `grep -n` (os planos erraram 9/16, 7/12, 8/9, 13/20, 11/17 e 19/25 ponteiros) — gate vocabulario-tamanhos, 443 testes + gate territorio-e-fid, 3/32
+CRIT-15: OK — a tabela FID-01 da fila foi medida contra `design_handoff_publicador/Aprovacao.dc.html` (sha256 `68624883ce35547e`, não se moveu) e **declara como mediu**, plano por plano, em §5 — **8 de 10 por SCRIPT e 2 SEM-PROTOTIPO (servidor e infraestrutura, onde não há `.dc.html` a medir); ZERO por LEITURA**, com `cursor` em coluna própria e as referências RE-MEDIDAS por `grep -n` (os planos erraram 9/16, 7/12, 8/9, 13/20, 11/17 e 19/25 ponteiros) — gate vocabulario-tamanhos, 548 testes (piso `>=443`) + gate territorio-e-fid, 3/32
 
 ### Placar
 
