@@ -78,15 +78,23 @@ refazer exatamente isto: *"um fechamento que afirma número velho é pior que um
 número."*
 
 ```
-COMMIT: A-MEDIR
+COMMIT: 6ba51bd6
 BUILD: exit 0 em 63s
 MANIFEST: 495 entradas / 202 paginas / isca ausente
-JS: A-MEDIR
-PHP: A-MEDIR
+JS: 5489 / 5488 pass / 1 fail / 0 skipped
+PHP: 2493 / 21920 / 2
 PROTOTIPO design_handoff_publicador/Aprovacao.dc.html: 1432 linhas sha256 68624883ce35547e
 PROTOTIPO design_handoff_publicador/Publicacoes v2.dc.html: 659 linhas sha256 56e6c194b896151c
 PROTOTIPO new_layout_publicador/Publicacoes v2.dc.html: 656 linhas sha256 6dcbb2f9ff8782e0
 ```
+
+⚠️⚠️ **O `COMMIT:` e as duas contagens de suíte são do MESMO commit — `6ba51bd6`** — e é por isso que
+os gates deste plano foram **commitados ANTES** de medir (`8bc75ffc`, `f056b52a`, `eb989104`,
+`6ba51bd6`). ⚠️ **Os commits posteriores a este são SOMENTE DOCUMENTO** (`541ef4b6` e os seguintes:
+`.planning/` apenas, **zero** arquivo de teste e **zero** arquivo de produção), e por isso **não podem
+mover** as contagens. **Prova medida, não afirmada:** depois de `541ef4b6` os quatro ids PHP deste
+plano continuam reportando exatamente as contagens declaradas no manifesto — **3/27, 3/32, 3/32 e
+1/6** —, que são listas fixas e não dependem do texto do documento.
 
 ### Como cada uma foi medida, nesta sessão
 
@@ -130,10 +138,24 @@ NOMEADO**, nunca para "conferido".
 | `MANIFEST` entradas | 489 | **495** | **OK** — ACIMA é esperado (+6: a página da fila + 5 da sessão paralela) |
 | `MANIFEST` páginas | 200 | **202** | **OK** — ACIMA é esperado (+1 `Aprovacao.jsx` + 1 alheia) |
 | `MANIFEST` isca | ausente | **ausente** | **OK** |
-| `JS` testes | 4836 | *(ver §2.1)* | — |
-| `JS` falhas | 1 | *(ver §2.1)* | — |
-| `PHP` testes | 2346 | *(ver §2.1)* | — |
-| `PHP` asserções | 20243 | *(ver §2.1)* | — |
+| `JS` testes | 4836 | **5489** | **OK** — ACIMA é esperado (+653; **+6 deste plano**, o resto das waves 2-10 e da sessão paralela) |
+| `JS` passando | 4835 | **5488** | **OK** |
+| `JS` falhas | 1 | **1** | **OK** — a **mesma**, pré-existente da Fase 87, localizada por SEMÂNTICA (ver §2.1) |
+| `JS` skipped | 0 | **0** | **OK** — e os que a wave 01 deixou dormindo (`pub-float`, `pub-float-line`) **acordaram** |
+| `PHP` testes | 2346 | **2493** | **OK** — ACIMA é esperado (+147; **+10 deste plano**) |
+| `PHP` asserções | 20243 | **21920** | **OK** — ACIMA é esperado (+1677; **+102 deste plano**) |
+| `PHP` falhas | 1 (`VinculoDuravelDaOriginalTest::terr_11`) | **2** (as duas de `CockpitDaContaTest`) | ⚠️ **ver §2.1** — a falha da baseline **NÃO** está mais na lista, e as **duas** de hoje são de **outra família e outra fase** |
+
+⚠️⚠️ **Referência das waves 09/10, para comparação (NÃO transcrita — medida por elas em `7791d7aa`):**
+**PHP 2483 / 21818 / 0 falhas** e **JS 5483 / 5482 pass / 1 fail / 0 skipped**. ➡️ Meu delta contra
+elas é **+10 testes PHP / +102 asserções** (os 10 métodos deste plano) e **+6 testes JS** (os 6 deste
+plano) — **exatamente** o que este plano acrescenta, e **nada mais**. ⚠️ **As 2 falhas PHP de hoje
+contra as 0 delas é a FRONTEIRA DE DIA**, não regressão: elas mediram com o dia "do lado certo".
+
+⚠️ **E a falha PHP da baseline de partida DESAPARECEU:** `VinculoDuravelDaOriginalTest::terr_11`
+(Fase 186), que reprovava em `75b9f82f`, **não está na lista de falhas desta medição** — ela consta
+uma única vez no log, e não como `FAILED`. **Registrado, não investigado:** é gate de outra fase e
+**não é território deste plano**.
 | `Aprovacao.dc.html` | 1432 / `68624883ce35547e` | **1432 / `68624883ce35547e`** | **OK** — não se moveu |
 | `design_handoff/Publicacoes v2` | 659 / `56e6c194b896151c` | **659 / `56e6c194b896151c`** | **OK** — não se moveu |
 | `new_layout/Publicacoes v2` | 656 / `6dcbb2f9ff8782e0` | **656 / `6dcbb2f9ff8782e0`** | **OK** — não se moveu |
@@ -172,10 +194,21 @@ Arquivo: **`tests/Feature/Publicador/CockpitDaContaTest.php`** — **Fase 179, E
 milestone, **e esta é a razão de a régua exigir `test -e` em CADA caminho citado, inclusive os
 citados pelo orquestrador.**
 
+⚠️ **MEDIDO POR MIM nesta sessão, na suíte inteira — e são EXATAMENTE DUAS, nenhuma outra**,
+localizadas por **SEMÂNTICA** (o nome do `test()`), não por número de linha:
+
+```
+⨯ publicacoes criadas mede as duas janelas e a serie de trinta dias
+⨯ evento sem data vai para o ultimo grupo nunca para o topo
+
+FAILED  Tests\Feature\Publicador\CockpitDaContaTest > publicacoes criadas mede as duas janelas …
+FAILED  Tests\Feature\Publicador\CockpitDaContaTest > evento sem data vai para o ultimo grupo …
+```
+
 | linha | o que espera | o que obtém |
 |---|---|---|
-| `:966` | `serie[29] == 12` (*"a última posição é HOJE"*) | **`0`** |
-| `:1318` | `'hoje'` na primeira chave dos grupos | **`'ontem'`** |
+| `:966` | `assertSame(12, $kpi['serie'][29], 'a última posição é HOJE')` | **`0`** |
+| `:1318` | `assertSame(['hoje', …], array_column($grupos, 'chave'))` | **`'ontem'`** no lugar de `'hoje'` |
 
 **Diagnóstico medido, não presumido:** é **fragilidade de FRONTEIRA DE DIA**. O arquivo usa o relógio
 **52 vezes** (`grep -c "now()"` = **52**; contando também `setTestNow`/`today()`, **53**) — ⚠️ o
@@ -850,6 +883,13 @@ tocou `PublicadorCriativoReferenciaService.php`.
 ⚠️ **NÃO corrigido, por três razões:** o arquivo acusado está **proibido** a esta fase (Creative
 Engine / retenção de 48 h); o teste é prova de uma fase **em produção**; e reapontar um gate da 186
 para "fazer passar" é a definição de **teste que para de provar algo**.
+
+⚠️⚠️ **E MEDIDO HOJE: ele NÃO está mais falhando.** Na suíte inteira rodada em `6ba51bd6`, as falhas
+são **exatamente duas** e **as duas são de `CockpitDaContaTest`** — `VinculoDuravelDaOriginalTest`
+aparece **uma vez** no log e **não** como `FAILED`. ➡️ **Registrado, não investigado:** é gate de
+outra fase, não é território deste plano, e **o fechamento não conserta o que não é dele**. Quem for
+depender disso: **meça**, não transcreva — foi o próprio comportamento intermitente desta família que
+produziu o aviso do parágrafo seguinte.
 
 ➡️ ⚠️ **É o terceiro caso desta fase da mesma família:** *"gate de território por RANGE acusa o
 ORQUESTRADOR e as SESSÕES PARALELAS"* (os outros dois: §3.1 e o próprio Teste 2 do plano 187-11). O
