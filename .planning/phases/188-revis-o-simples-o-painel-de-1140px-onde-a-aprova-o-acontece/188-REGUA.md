@@ -552,26 +552,42 @@ teste), nunca "abrir e ver".
 > ⚠️ Lista viva. Quem achar pergunta nova **acrescenta aqui com dono** e **devolve** — não decide.
 
 ```
-PERGUNTA-188-A: ABERTA — dono: usuário — o rótulo "VERIFICAÇÃO AUTOMÁTICA · APOIO" no PAINEL (E2).
-  MEDIDO POR SCRIPT em 18/10/2026: o literal existe UMA vez no protótipo, em `:369`, que é a REVISÃO
-  DETALHADA (E4). No PAINEL (`:633`) o protótipo escreve o prefixo INLINE, minúsculo, em #71717A:
-  `Verificação automática{{ a.n }} · ` + texto — e `a.n` é `''` quando a severidade é `ok` e o
-  ORDINAL do alerta quando não (então sai literalmente "Verificação automática2 · …", SEM espaço
-  antes do número). O ROADMAP (critério 4) e o REQUIREMENTS (REVS-10) pedem o literal em MAIÚSCULAS
-  no painel. É o TERCEIRO conflito protótipo × regra do projeto da milestone, e os dois anteriores
-  foram decididos PELO USUÁRIO. Opções: (a) obedecer o protótipo (prefixo inline minúsculo, sem
-  cabeçalho) e registrar divergência FID-01 contra o requisito; (b) obedecer REVS-10 (cabeçalho
-  "VERIFICAÇÃO AUTOMÁTICA · APOIO" também no painel) e registrar divergência FID-01 contra o
-  protótipo. ⚠️ O argumento SEMÂNTICO de (b): é o cabeçalho que diz "APOIO" — sem ele a verificação
-  automática pode ser lida como VEREDICTO, e o REVS-10 pede "como APOIO" justamente para impedir
-  isso (D7). BLOQUEIA: o rótulo da tarefa 3 do 188-03 e da tarefa 2 do 188-08
-PERGUNTA-188-B: ABERTA — dono: Fase 190/191 — para onde o botão de correção de `ajuste` e de `titulo`
-  leva HOJE. `fix()` (`:1171`-`:1178`) manda `openDetail(o.id, 'pend')` e `openDetail(o.id,
-  'conteudo')`, e a ROTA da revisão detalhada (`…/aprovacao/{oferta}/{aba}`) é da Fase 190/191 e NÃO
-  nasce aqui (está escrito em `routes/mlb_anuncios.php:491`). ➡️ Decisão do plano 188-10, DECLARADA e
-  não inventada: enquanto a rota não existir, os dois botões NÃO são desenhados e o texto do bloqueio
-  continua aparecendo — "nada nasce decorativo" (D4) proíbe botão sem destino, e o usuário já exerceu
-  essa régua TRÊS vezes. ⚠️ Se o usuário preferir um destino provisório, ele diz; o plano não inventa
+PERGUNTA-188-A: RESPONDIDA — dono: usuário (18/10/2026) — opção (c), HÍBRIDO: no PAINEL (E2) entra o
+  cabeçalho "VERIFICAÇÃO AUTOMÁTICA · APOIO" UMA VEZ, e CADA ITEM MANTÉM O NÚMERO que o liga ao
+  marcador x/y na foto. Razão do usuário: o cabeçalho é o que diz APOIO — sem ele a verificação
+  automática pode ser lida como VEREDICTO, que é o que REVS-10 e a D7 querem impedir; e o ordinal é
+  FUNCIONAL (liga o item ao marcador), não enfeite. ⚠️ O PROTÓTIPO PERDE AQUI — TERCEIRA derrota dele
+  na milestone, e a terceira por conflito entre DUAS REGRAS DO PROJETO resolvido pelo usuário, nunca
+  por erro dele. ⚠️ O ordinal vira O NÚMERO DO MARCADOR, e NÃO o sufixo colado da frase: não
+  reproduzir o "Verificação automática2 · " sem espaço de `:633`. APLICADA EM: 188-03 (o dado) e
+  188-08 (o rótulo)
+PERGUNTA-188-B: RESPONDIDA — dono: usuário/Fase 190/191 — os destinos de correção de `ajuste_em_aberto`
+  e `titulo_longo` ficam `null` e SEM BOTÃO enquanto a rota da revisão detalhada não existir
+  (`routes/mlb_anuncios.php:491` diz que ela é da Fase 190/191); o TEXTO do bloqueio continua
+  aparecendo. APLICADA EM: 188-02 (os destinos) e 188-10 (a ausência do botão)
+PERGUNTA-188-B3: RESPONDIDA — dono: usuário (18/10/2026) — o botão "Abrir revisão detalhada ↗" do topo
+  de 54px (`:558`) NÃO É DESENHADO nesta fase: ele nasce na Fase 190/191, junto com a tela. Razão do
+  usuário: é a mesma régua do aviso de tela vazia — SEM BOTÃO, porque não há o que fazer com ele.
+  ⚠️ "Desenhar desabilitado com explicação" foi OFERECIDO e RECUSADO. ⚠️ Nada de `onClick` vazio,
+  nada de `disabled` decorativo. ⚠️ O CRITÉRIO 2 FICA COM RESSALVA DECLARADA no fechamento.
+  APLICADA EM: 188-07 (a ausência) e 188-13 (a ressalva)
+PERGUNTA-188-C: ABERTA — dono: usuário — ⚠️ EFEITO COLATERAL MEDIDO do reuso da rota de miniatura.
+  `mlb.anuncios.publicador.fotos.arquivo` → `MlbPublicadorController::arquivoFoto` →
+  `rascunho($produto)` → `produto($id)`, e `produto()` chama **`EditorEmUso::marcar($p->id)`**
+  (`MlbPublicadorController:405`), que grava cache por `publicador.preparo_ia.editor_em_uso_min` = **3
+  minutos** (`config/publicador.php:148`). ➡️ **Carregar miniatura no painel marca o produto como "com
+  o editor aberto"**, e isso é LIDO por `AgendadorDaFila:337` (devolve `'esperar'`),
+  `PreparoIaDoRascunhoService:131`/`:180`/`:366`, `GarantiaPadrao:192` e `ExcluirProdutoService:195`.
+  ⚠️ O efeito é SEMANTICAMENTE ALINHADO com o portão (o comentário de `AgendadorDaFila:336` diz
+  textualmente *"Gente com o editor aberto: não publica por baixo dela"*, e é exatamente o que a
+  revisão quer), e por isso o plano SEGUE COM O REUSO, como o orquestrador instruiu — mas é mudança de
+  comportamento que ninguém pediu, e ela fica DECLARADA aqui em vez de descoberta depois.
+  ⚠️ Duas saídas, se o usuário quiser mudar: (a) aceitar o efeito e registrar (é o default do plano);
+  (b) action de leitura NOSSA em `mlb.anuncios.meus.aprovacao.*` fazendo o mesmo trajeto
+  (`PubAprovacaoImagem.imagem_id` → `PubImagem.caminho`) e CHAMANDO `ArquivosDeImagem::resposta()`
+  sem o `marcar()` — ⚠️ **chamar NÃO é editar**, mas encosta em classe vetada e por isso NÃO é decisão
+  do executor. ⚠️ AVISO À FASE 194: ela liga `publicador.criativos_auto.ativo`, e é ela quem mais
+  sente `PreparoIaDoRascunhoService` suprimido
 PERGUNTA-VISUAL-187: ABERTA — dono: usuário — a conferência visual da FILA (Fase 187) na conta 459,
   roteiro de 8 itens em `187-FECHAMENTO.md` §11. Nada desta fase a substitui nem a presume feita
 PERGUNTA-17: ABERTA — dono: Fase 194 — BUG LATENTE: o recorte da fila usa as duas âncoras com `AND`
@@ -579,3 +595,74 @@ PERGUNTA-17: ABERTA — dono: Fase 194 — BUG LATENTE: o recorte da fila usa as
 PERGUNTA-13: ABERTA — dono: Fase 193 — `PUBLICADO => []` é TERMINAL. Mexer na foto de anúncio JÁ NO
   AR é outro fluxo. NÃO bloqueia a 188
 ```
+
+---
+
+## §13 — ⚠️⚠️ A ORDEM MECÂNICA: manifesto e `ARQUIVOS_NOVOS` na MESMA tarefa que cria o arquivo
+
+**Regra binding, e ela é mecânica — não é estilo.** Medida na revisão dos 13 planos:
+
+| o que acontece se você inverter | por quê |
+|---|---|
+| `sh tests/gates/verificar-testes.sh 188-NN <id>` **ABORTA** | **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`) — é de propósito, para ninguém "deixar o número para depois" |
+| o `deepEqual` de `DIRETORIOS_FECHADOS` fica **VERMELHO no meio do plano** | `aprovacao/` está em `DIRETORIOS_FECHADOS`, e `.jsx` no disco fora de `ARQUIVOS_NOVOS` reprova **na hora** (é o comportamento certo) |
+| ⚠️⚠️ num plano com **checkpoint**, a árvore fica **VERMELHA esperando resposta** | e **árvore vermelha pode BARRAR DEPLOY** — é o caso do **188-08** |
+
+➡️ **A ordem, em TODA tarefa que cria arquivo:**
+1. escreve o arquivo (`.jsx`, `.php`, `.test.js`);
+2. **na MESMA tarefa**: registra o `.jsx` em `ARQUIVOS_NOVOS` (`tests/js/publicador-vocabulario-novo.test.js:45`) **e** escreve/atualiza `tests/gates/contagens-188-NN.txt` com o id **medido**;
+3. **só então** roda o `<verify>` que usa aquele id.
+
+⚠️ **Por isso `tests/gates/contagens-188-NN.txt` aparece no `<files>` da PRIMEIRA tarefa de cada plano**,
+e cresce nas tarefas seguintes — **nunca** nasce na última. ⚠️ **E a contagem é MEDIDA, nunca chutada:**
+uma invocação por id, com o ANSI tirado antes de ler a linha `Tests:` (php) e
+`node --test --test-reporter=tap` (js).
+
+---
+
+## §14 — ⚠️⚠️ A URL DA MINIATURA: a rota JÁ EXISTE, e o mapeamento está MEDIDO
+
+**O problema:** `GaleriaDaOfertaService::doRascunho()` devolve `id`, `estado`, `de_ia`, `com_alerta`,
+`rotulo`, `titulo` — e **NENHUMA URL**. `PubAprovacaoImagem` **não tem coluna de arquivo**.
+
+**A saída, medida em 18/10/2026 — e ela NÃO exige território novo:**
+
+```
+routes/mlb_anuncios.php:157  Route::prefix('publicador/produtos/{produto}')->whereNumber('produto')->name('publicador.')
+routes/mlb_anuncios.php:178  Route::get('/fotos/{imagem}/arquivo', [MlbPublicadorController::class, 'arquivoFoto'])
+                                 ->whereNumber('imagem')->middleware('throttle:240,1,publicador.fotos.arquivo')
+                                 ->name('fotos.arquivo')
+➡️ nome completo: mlb.anuncios.publicador.fotos.arquivo    params: {produto} = pub_produtos.id
+                                                                    {imagem} = pub_imagens.id
+```
+
+**A cadeia do mapeamento, conferida model por model:**
+
+| de | por | para |
+|---|---|---|
+| `PubAprovacaoImagem` | **`imagem_id`** (`PubAprovacaoImagem:67`-`:70`, `belongsTo(PubImagem::class)`) | `PubImagem` — ⚠️ *"a `pub_imagens` crua — é ali que vive o eixo de UPLOAD"* |
+| `PubImagem` | **`caminho`** | o arquivo que `arquivoFoto` serve por `ArquivosDeImagem::resposta()` (`:215`) |
+| `PubAprovacaoOferta` | **`produto_id`** (`:280`-`:283`, `belongsTo(PubProduto::class)`) | o `{produto}` da rota |
+
+➡️ **A URL é:**
+```php
+route('mlb.anuncios.publicador.fotos.arquivo', [
+    'produto' => $oferta->produto_id,          // a oferta JÁ tem a coluna
+    'imagem'  => $revisao->imagem_id,          // a linha de revisão JÁ tem a coluna
+])
+```
+
+⚠️⚠️ **REUSAR NÃO É EDITAR.** `App\Support\Publicador\Imagem\ArquivosDeImagem`, `Acervo*` e
+`ImagemAssetService` seguem **VETADOS** — a v28 virou o acervo para o **R2 privado** em produção em
+16/10, e **o bucket não serve URL pública** (ver `.planning/learnings/acervo-imagens-r2.md`). ➡️ **A
+rota serve BYTES, e é isso que o `<img src>` precisa.** **Nenhuma coluna nova. Nenhum caminho de
+arquivo montado à mão. Nenhum toque no acervo.**
+
+⚠️ **O CASO `caminho === null`, que é REAL:** o docblock de `PubImagem:10` diz *"`caminho` nulo = veio
+do Anunciar"*, e `arquivoFoto` faz **`abort(404)`** nesse caso (`:215`-`:217`). ➡️ **O servidor devolve
+`url_arquivo = null`** para essas, e **a tela mostra o estado declarado** — ⚠️ **nunca ícone de imagem
+quebrada, nunca `<img src="">`, nunca painel vazio.** É a mesma disciplina do IMG-13 (*"original de
+referência não disponível"*): **nunca painel vazio, nunca zero**.
+
+⚠️ **E o efeito colateral do reuso está medido e declarado na PERGUNTA-188-C** (`EditorEmUso::marcar`,
+3 minutos, lido por 5 consumidores). **Leia-a antes de escrever o docblock.**

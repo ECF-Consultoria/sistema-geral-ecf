@@ -55,7 +55,7 @@ resultado: 31 de 31 COBERTOS, nenhum órfão
 | REVS-02 | 07 | MOD-02 | 06, 11 |
 | REVS-03 | 07 | MOD-03 | 06, 12 |
 | REVS-04 | 02, 07 | MOD-04 | 05, 12 |
-| REVS-05 | 02, 07 | MOD-05 | 11, 12 |
+| REVS-05 | 02, **05** (a rota), 07 | MOD-05 | 11, 12 |
 | REVS-06 | 07 | IMG-01 | 05, 12 |
 | REVS-07 | 03, 08 | IMG-02 | 05 |
 | REVS-08 | 03, 08 | IMG-03 | 05 |
@@ -73,8 +73,55 @@ resultado: 31 de 31 COBERTOS, nenhum órfão
 (substituir por original) e `MOD-07..10` (gerar novamente com IA) pertencem às Fases **189/192**
 (Coverage Map do `ROADMAP.md`). ➡️ Nesta fase eles são cobertos pelo plano **188-05**, por **gate de
 não-regressão** sobre `RevisaoDeImagemService::substituirPorOriginal()`, `recolocarOriginal()` e
-`concluirRegeneracao()`, **com a fronteira DECLARADA** — ⚠️ **nunca** inventando UI que o desenho põe
-noutra fase (D4/D14: nenhuma fase deixa botão sem destino na sua fronteira).
+`concluirRegeneracao()`, **com id próprio no manifesto** (`img-02-img-03-sem-regressao` — teste sem id
+**NUNCA RODA**) e **com a fronteira DECLARADA** — ⚠️ **nunca** inventando UI que o desenho põe noutra
+fase (D4/D14).
+
+## ⚠️⚠️ OS TRÊS REQ-IDs **PARCIAIS**, com a fase dona nomeada
+
+**Declarados aqui para ninguém os ler como completos no fechamento:**
+
+| REQ-ID | o que ESTA fase entrega | o que fica para outra, e por quê |
+|---|---|---|
+| **REVS-03** (topo de 54px) | "REVISÃO SIMPLES", "x de N na fila", ↑ ↓ e × | ⚠️ **"Abrir revisão detalhada ↗" NÃO é desenhado** — **Fase 190/191**, junto com a tela (PERGUNTA-188-B3, resposta do usuário em 18/10). ➡️ **CRIT-02 sai como RESSALVA** |
+| **REVS-05** (caixa de falha) | a caixa com a mensagem real **e** a rota `POST …/tentar-de-novo`, que **nasce no plano 188-05** | nada — ⚠️ **mas ela NÃO publica: a escrita no ML é da Fase 193** (critério 18) |
+| **REVS-08** (imagem grande) | 1:1, #n, ★ PRINCIPAL, ✦ IA/Original, estado e os **marcadores x/y** | ⚠️ **os DOIS botões do canto**: "✦ Gerar novamente com IA" é da **Fase 192** e "⤢ Ampliar" é da **Fase 189**. **Não são desenhados** (D4/D14) |
+| **IMG-02 / IMG-03** | as regras no servidor, provadas por **não-regressão** | o **caminho de tela** (MOD-06 / MOD-07..10) — **Fases 189/192** |
+
+⚠️ **Nenhum dos quatro é "trabalho faltando dentro desta fase"** — são **fronteiras do desenho**, e o
+plano **188-13** os registra com veredicto e **dono nomeado**.
+
+## ⚠️⚠️ OS SEIS CAMPOS DE PAYLOAD, e onde cada um passou a ser entregue
+
+| # | o que faltava | quem entrega | chave |
+|---|---|---|---|
+| 1 | a **lista de navegação** ↑/↓ (só havia a string `pos`) | **188-02** | `navegacao.ids` (sem `preparando`), `anterior_id`, `proxima_id`, `posicao`, `total`, `pos` |
+| 2 | a **URL da imagem** (nem o serviço nem o model tinham) | **188-03** | `url_arquivo` — por `route('mlb.anuncios.publicador.fotos.arquivo', ['produto' => $oferta->produto_id, 'imagem' => $revisao->imagem_id])`; **`null`** quando `PubImagem.caminho` é nulo |
+| 3 | o **transporte da simulação** de preço | **188-06** | `POST …/aprovacao/{oferta}/preco/simular` — **não grava nada** |
+| 4 | os **autorizadores** da exceção | **188-06** | `modais.excecao.autorizadores` |
+| 5 | os **chips de defeito** do reprovar | **188-06** | `modais.reprovar.defeitos` (de `PubAprovacaoDefeito`) |
+| 6 | os **itens e destinos** do ajuste | **188-06** | `modais.ajuste.itens` — 8 fixos na ordem + 1 por imagem, com `destino` e `nota_do_escopo` |
+
+⚠️ **Os três do 188-06 nascem como LISTA, nunca ausentes**, com **teste POR CAMPO** e **id próprio**
+(`payload-dos-modais`) — a primeira redação afirmava que o serviço *"devolve"* e **nada media**.
+
+## ⚠️⚠️ OS QUATRO BOTÕES QUE SÓ EXISTEM COM HANDLER — e quem religa cada um
+
+**O defeito que isto conserta:** os planos de tela diziam *"se o modal não existir, o botão não é
+desenhado"*, e os planos dos modais **não listavam aqueles componentes** — então **os critérios 12, 13
+e 14 ficavam inalcançáveis**, e o 188-10 ainda **contradizia a si mesmo** (o `behavior` exigia o botão
+desenhado com `live`; o `action` dizia que não).
+
+| botão | desenhado em | religado em | critério |
+|---|---|---|---|
+| **Reprovar** (bloco da imagem) | 188-08, com `onReprovar` | **188-12** (o arquivo entra no `files`) | **13** |
+| **Informar frete confirmado** | 188-09, com `onInformarFrete` | **188-12** | **14** |
+| **Solicitar ajustes** (rodapé) | 188-10, com `onSolicitarAjustes` | **188-11** | **12** |
+| **botões de correção** das pendências | 188-10, com `onFix` | **188-11** (frete/exceção) | **9** |
+
+⚠️ **A regra é uma só: o botão existe quando o handler é FUNÇÃO.** ⚠️ **Nada de `onClick` vazio, nada
+de `disabled` decorativo** — as duas são a mesma dívida com outra roupa (D4). ⚠️ **E cada plano de tela
+testa os DOIS estados** (handler função × `null`).
 
 ## As DECISÕES do usuário × os planos
 
@@ -94,13 +141,15 @@ noutra fase (D4/D14: nenhuma fase deixa botão sem destino na sua fronteira).
 
 ## As PERGUNTAS, e quem bloqueia o quê
 
-| pergunta | dono | bloqueia |
-|---|---|---|
-| **PERGUNTA-188-A** — o rótulo `VERIFICAÇÃO AUTOMÁTICA · APOIO` no painel | **usuário** | o rótulo da tarefa 3 do **188-03** e da tarefa 2 do **188-08** (checkpoints bloqueantes) |
-| **PERGUNTA-188-B** — destino de `ajuste`/`titulo` sem a rota da revisão detalhada | Fase 190/191 (decisão do plano **declarada**) | **nada** — o botão não é desenhado e o texto continua |
-| PERGUNTA-VISUAL-187 — a conferência visual da **FILA**, conta 459 | usuário | nada nesta fase; **não presumir feita** |
-| PERGUNTA-17 — `mlb_empresa_id` anulável no recorte da fila | Fase 194 | nada nesta fase |
-| PERGUNTA-13 — editar foto de anúncio **já no ar** | Fase 193 | nada nesta fase |
+| pergunta | estado | dono | efeito |
+|---|---|---|---|
+| **PERGUNTA-188-A** — o rótulo `VERIFICAÇÃO AUTOMÁTICA · APOIO` no painel | ✅ **RESPONDIDA** 18/10 — **(c) HÍBRIDO** | usuário | cabeçalho **uma vez** + **o número do marcador** em cada item; aplicada em **188-03** (dado) e **188-08** (rótulo); **os checkpoints bloqueantes saíram** |
+| **PERGUNTA-188-B** — destino de `ajuste`/`titulo` | ✅ **RESPONDIDA** | usuário / Fase 190/191 | `destino = null`, **sem botão**, e o **texto do bloqueio continua** |
+| **PERGUNTA-188-B3** — o botão "Abrir revisão detalhada ↗" | ✅ **RESPONDIDA** 18/10 | usuário / Fase 190/191 | **NÃO é desenhado** (nem desabilitado com explicação, que foi **recusado**); **CRIT-02 sai com RESSALVA** |
+| **PERGUNTA-188-C** — o `EditorEmUso::marcar` do reuso da rota de miniatura | ⚠️ **ABERTA** | **usuário** | **nada bloqueia**: o plano **segue com o reuso** (semanticamente alinhado ao portão) e **declara** o efeito. Aviso à **Fase 194** |
+| PERGUNTA-VISUAL-187 — a conferência visual da **FILA**, conta 459 | ⚠️ ABERTA | usuário | nada nesta fase; **não presumir feita** |
+| PERGUNTA-17 — `mlb_empresa_id` anulável no recorte da fila | ⚠️ ABERTA | Fase 194 | nada nesta fase |
+| PERGUNTA-13 — editar foto de anúncio **já no ar** | ⚠️ ABERTA | Fase 193 | nada nesta fase |
 
 ## As WAVES, e por que são sequenciais
 
@@ -118,16 +167,16 @@ noutra fase (D4/D14: nenhuma fase deixa botão sem destino na sua fronteira).
 |---|---|---|---|
 | 1 | **188-01** | baselines ANTES · `21` liberado · FID-01 por script · `--autoteste` | — |
 | 2 | **188-02** | SERVIDOR: view-model do painel + a prop `painel` no `?oferta=` | 01 |
-| 3 | **188-03** | SERVIDOR: coluna de fotos (x/y, grade, sem-alerta, todos os grupos) ⚠️ checkpoint | 02 |
+| 3 | **188-03** | SERVIDOR: coluna de fotos (x/y, **`url_arquivo`**, grade, sem-alerta, todos os grupos, verificações com ordinal) | 02 |
 | 4 | **188-04** | SERVIDOR: coluna de preço (KPIs, composição, simulação, irmã) | 02, 03 |
 | 5 | **188-05** | SERVIDOR: escrita de IMAGEM + salvar revisão + **aprovar** | 03 |
-| 6 | **188-06** | SERVIDOR: escrita de preço/frete/ajuste/exceção | 04, 05 |
+| 6 | **188-06** | SERVIDOR: escrita de preço/frete/ajuste/exceção **+ os 4 payloads dos modais e a rota de simular** | 02, 04, 05 |
 | 7 | **188-07** | TELA: casca do painel **por PORTAL** + teclado + duas colunas | 02 |
-| 8 | **188-08** | TELA: coluna de fotos ⚠️ checkpoint (PERGUNTA-188-A) | 03, 07 |
+| 8 | **188-08** | TELA: coluna de fotos + o cabeçalho híbrido das verificações | 03, 07 |
 | 9 | **188-09** | TELA: coluna de preço | 04, 07 |
 | 10 | **188-10** | TELA: pendências + rodapé (`disabled=`) | 05, 07 |
-| 11 | **188-11** | TELA: modais de **ajuste** e **exceção** (importando a casca) | 06, 10 |
-| 12 | **188-12** | TELA: modais de **frete** e **reprovar** + aviso de concorrência | 06, 11 |
+| 11 | **188-11** | TELA: modais de **ajuste** e **exceção** (importando a casca) **+ religa o rodapé e as pendências** | 06, 10 |
+| 12 | **188-12** | TELA: modais de **frete** e **reprovar** + aviso de concorrência **+ religa o bloco da imagem e a composição** | 06, 08, 09, 11 |
 | 13 | **188-13** | FECHAMENTO medido dos 20 critérios ⚠️ checkpoint humano | todos |
 
 ⚠️ **Por que 13 planos e não 6:** **três agentes caíram na Fase 187** (travamento de 600 s, erro de
