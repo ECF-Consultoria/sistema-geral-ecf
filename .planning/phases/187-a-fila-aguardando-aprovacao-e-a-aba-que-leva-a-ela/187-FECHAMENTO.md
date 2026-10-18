@@ -150,19 +150,27 @@ tokens, acordados pela barra de lote e pelo toast (`Aprovacao.dc.html:897`/`:905
 
 ### ⚠️⚠️ PHP — DUAS falhas ALHEIAS que vão e voltam com a HORA DO DIA
 
-Arquivo: **`tests/Feature/Publicador/Aprovacao/CockpitDaContaTest.php`** — **Fase 179, EM
-PRODUÇÃO**.
+Arquivo: **`tests/Feature/Publicador/CockpitDaContaTest.php`** — **Fase 179, EM PRODUÇÃO**.
+
+⚠️⚠️ **E O CAMINHO É O NONO FANTASMA DA MILESTONE.** O briefing desta sessão cita
+`tests/Feature/Publicador/**Aprovacao/**CockpitDaContaTest.php`, que **não existe**
+(`ls` → *"No such file or directory"*). O real é
+`tests/Feature/Publicador/CockpitDaContaTest.php`, **fora** de `Aprovacao/` — e é o que o próprio
+`deferred-items.md` da wave 08 já registrava corretamente. ➡️ Nove caminhos fantasmas nesta
+milestone, **e esta é a razão de a régua exigir `test -e` em CADA caminho citado, inclusive os
+citados pelo orquestrador.**
 
 | linha | o que espera | o que obtém |
 |---|---|---|
-| `:966` | `serie[29] == 12` | `0` |
-| `:1318` | `'hoje'` | `'ontem'` |
+| `:966` | `serie[29] == 12` (*"a última posição é HOJE"*) | **`0`** |
+| `:1318` | `'hoje'` na primeira chave dos grupos | **`'ontem'`** |
 
 **Diagnóstico medido, não presumido:** é **fragilidade de FRONTEIRA DE DIA**. O arquivo usa o relógio
-**54 vezes**, e o último commit dele é literalmente *"ancora o relogio no caso de agrupamento da
-Atividade"* — alguém já consertou **um** caso desta família e deixou **estes dois**. Histórico desta
-fase: **VERMELHAS** na wave 08, **VERDES** nas waves 09 e 10, e **vermelhas outra vez hoje**, porque
-o dia virou.
+**52 vezes** (`grep -c "now()"` = **52**; contando também `setTestNow`/`today()`, **53**) — ⚠️ o
+briefing diz **54**, e a medida é 52/53 —, e um dos últimos commits dele é literalmente
+**`0edc4462` — `test(179): ancora o relogio no caso de agrupamento da Atividade`**: alguém **já**
+consertou **um** caso desta família e deixou **estes dois**. Histórico desta fase: **VERMELHAS** na
+wave 08, **VERDES** nas waves 09 e 10, e **vermelhas outra vez hoje**, porque o dia virou.
 
 ⚠️ **NÃO são desta fase, e isso foi MEDIDO:** nenhum arquivo de cockpit está no range de commits da
 Fase 187 (ver §3, `PASSADA1_VIOLACOES=0`).
@@ -523,6 +531,8 @@ fase exerceu.
 | **F4** | A SUMMARY do 187-08 registra `Aprovacao.dc.html` com **1433 linhas**; o `wc -l` desta sessão — e as SUMMARYs 01 e 09 — dizem **1432**. O **sha256 é idêntico nas três medições** (`68624883ce35547e`), então **o arquivo não mudou**: é erro de transcrição numa SUMMARY. É a família FID-03 ("erra por REFERÊNCIA") acontecendo num número de linhas | `187-08-SUMMARY.md:191` contra `wc -l` |
 | **F5** | ⚠️ **Eu caí na armadilha do `lerSemComentarios` ao escrever o gate deste plano** — e isso é a melhor prova de que ela está viva: o helper remove blocos de comentário, e `'./resources/js/**/*.jsx'` **contém** um `/*` seguido de um `*/`, então o glob chega ao gate como `'./resources/js*.jsx'` e o gate mede NADA. ⚠️ **Não é achado novo**: está medida desde a Fase 179-06, e há **duas iscas invertidas** no repositório exigindo que o helper CONTINUE mastigando o glob. Segui o precedente (leitura **CRUA**) e acrescentei a **terceira** isca | `tests/js/_fonte.js` contra `publicador-visao-geral-acoes.test.js:344` e `publicador-aprovacao-vocabulario.test.js:746` |
 | **F6** | O briefing desta sessão diz que o `--autoteste` tem **20** casos; a SUMMARY do 187-01 registra **16** (ela elevou de 14 para 16). Os **4** que entraram depois são as **iscas da forma `>=N`** (16/10/2026). **Re-medido hoje: 20 casos, 0 divergência** | `verificar-testes.sh`, casos 4 a 7 |
+| **F7** | ⚠️ **O NONO caminho fantasma da milestone**, e ele veio do briefing do orquestrador: `tests/Feature/Publicador/Aprovacao/CockpitDaContaTest.php` **não existe**; o real é `tests/Feature/Publicador/CockpitDaContaTest.php`, **fora** de `Aprovacao/`. ➡️ `test -e` vale também para os caminhos que o **orquestrador** cita | `ls` nos dois caminhos; §2.1 |
+| **F8** | O briefing diz que o `CockpitDaContaTest` usa o relógio **54** vezes; medido: **52** (`grep -c "now()"`) e **53** contando `setTestNow`/`today()`. O `deferred-items.md` da wave 08 registra **52**, e está certo | `grep -c` em `tests/Feature/Publicador/CockpitDaContaTest.php` |
 
 ---
 

@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fase 187, plano 11 — O FECHAMENTO MEDIDO.
+#
+# ⚠️ Uso: `sh tests/gates/verificar-testes.sh 187-11 <id>`
+#    O 1º argumento é `187-11` (com a fase), NÃO `11` nu — número nu resolve para
+#    a Fase **186**, por compatibilidade com os 163 ids daquela fase, que está
+#    EM PRODUÇÃO. Esquecer a fase roda o gate ERRADO em silêncio.
+#
+# ⚠️ **NENHUM ID COM MAIS DE TRÊS MÉTODOS.** Id composto grande soma contagens de
+#    coisas que não têm relação, e a correção barata passa a ser "elevar o número".
+#    Os 10 métodos do `FechamentoDaFase187Test` estão em QUATRO ids de ≤3.
+#
+# ⚠️ **O gate PHP deste plano NÃO confere número de teste, de asserção nem de
+#    build do fechamento.** O `187-FECHAMENTO.md` é MEDIÇÃO DATADA: os números
+#    dele valem para o commit medido. O que estes gates conferem é a **FORMA** —
+#    e é a forma que impede o "ajuste" silencioso de um critério que não passou.
+#
+# ⚠️ `tests/js/publicador-vocabulario-novo.test.js` **NÃO** é embutido em nenhum
+#    id deste manifesto: ele tem id PRÓPRIO (`vocabulario-tamanhos`, forma `>=N`)
+#    em `contagens-187-01.txt`, porque a contagem dele CRESCE POR CONSTRUÇÃO.
+#    Há gate provando isso (`fechamento-manifestos`).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── PHP: a FORMA do documento de fechamento ───────────────────────────────────
+fechamento-15-criterios  php  test_o_fechamento_187_(existe_e_tem_as_oito_linhas_de_forma_fixa|tem_os_quinze_criterios_sem_nenhum_reprova|declara_que_ninguem_viu_tela_renderizada)  ::  tests=3 assertions=1
+territorio-e-fid  php  test_territorio_187_(os_alvos_citados_existem_no_disco|nenhum_import_novo_fora_do_que_ja_estava_declarado|a_fid01_consolidada_declara_script_ou_leitura_por_plano)  ::  tests=3 assertions=1
+fechamento-perguntas  php  test_perguntas_187_(toda_pergunta_tem_veredicto_e_dono|as_dividas_da_fase_estao_no_deferred_items|nenhum_filtro_dos_manifestos_tem_homonimo_nas_duas_direcoes)  ::  tests=3 assertions=1
+fechamento-fronteira  php  test_o_fechamento_187_declara_a_fronteira_de_escrita_no_ml  ::  tests=1 assertions=1
+
+# ─── JS: a contagem FIXA dos arquivos da fase e os 11 manifestos ───────────────
+fechamento-arquivos-e-manifestos  js  tests/js/publicador-fila-fechamento-187.test.js  ::  tests=6
