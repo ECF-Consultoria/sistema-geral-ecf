@@ -4345,3 +4345,90 @@ original para comparar.
 largo que o invariante" ou "a contagem depende de quantos arquivos existem" — documentadas em
 `.planning/learnings/gates-do-redesign-e-o-medidor-que-mente.md` §4b e §4c. **Em nenhuma a régua foi
 simplesmente elevada.**
+
+---
+
+## Fase 187 — A fila "Aguardando aprovação", e a aba que leva a ela — **FECHADA e EM PRODUÇÃO**
+
+**Em produção desde 18/10/2026, no commit `7791d7aa`.** Medido na VPS pelo orquestrador: *"Nothing to
+migrate"* e **zero migrations pendentes** · **9 workers RUNNING** (o `queue:restart` pegou `high`,
+`creative` e `ia`, que o `deploy.sh` **não** reinicia) · site **HTTP 200 em 0,53 s**.
+
+**11 planos em 11 waves.** Entrega: as duas abas no cabeçalho de Publicações com contador real do
+servidor; a página da fila com cabeçalho, faixa de 9 cards e "Próximo a revisar"; os filtros (busca
+sem acento, dois segmentados, dois popovers com contagem, estado na URL); a tabela em três níveis com
+a grade literal de 11 colunas; a linha da oferta com anel de progresso, barra de margem e as 11
+células; o lote com modal, toasts e os **dois avisos de tela vazia**; e o pré-aquecimento das tarifas
+do ML por job na fila `high`.
+
+**Medido em `6ba51bd6`:** PHP `tests/{Unit,Feature}/Publicador` = **2493 / 21.920 / 2** · JS =
+**5489 / 5488 pass / 1 fail / 0 skipped** · **71 ids de gate nos 11 manifestos** · **132 mutações na
+fase, 0 sobreviventes ao fim** · dos **15 critérios de sucesso: 12 OK, 3 com RESSALVA declarada,
+nenhum REPROVA**. Nenhum critério foi reescrito para caber.
+
+⚠️ **As 2 falhas PHP NÃO são desta fase:** `tests/Feature/Publicador/CockpitDaContaTest.php:966` e
+`:1318` (**Fase 179**, em produção) são **fragilidade de fronteira de dia** — ficaram vermelhas em
+16/10, verdes em 17/10 e vermelhas outra vez em 18/10, **sem nenhuma mudança de código**. Nenhum
+arquivo de cockpit está no range da fase. **Conserto certo, para quem mantiver a 179: ancorar o
+relógio nos dois casos, sem mexer no serviço.** A falha JS é a pré-existente da Fase 87.
+
+⚠️ **As 3 ressalvas não são dívida desta fase:** **CRIT-02** e **CRIT-03** dependem da **Fase 194** —
+a fila nasce vazia porque **nada nesta fase cria oferta**, e a decisão 17 segue aberta
+(`mlb_empresa_id` anulável deixaria oferta invisível no recorte); **CRIT-12** é limitação do
+ambiente — o runtime dos ~3,8 s do toast **não é provado** por não haver navegador, e o que foi
+provado pela função pura está declarado no componente e no teste.
+
+⚠️ **A CONFERÊNCIA VISUAL ESTÁ ABERTA, e o dono é o usuário.** **Nenhum executor desta fase viu tela
+renderizada** — o banco local não tem empresa com `ml_token` (a rota dá 404), `pub_aprovacao_ofertas`
+está vazia e todo render é `esbuild` + `react-dom/server`. O roteiro de 8 itens para a **conta 459**
+está em `187-FECHAMENTO.md` §11. ⚠️ **Fila vazia é o esperado:** o texto tem de ser *"Nenhuma oferta
+aguardando aprovação."* **sem** o botão "Limpar filtros".
+
+⚠️ **DUAS decisões do usuário em que o PROTÓTIPO PERDEU** — as únicas duas da fase, contra ~146 em
+que ele ganhou, e **nenhuma por o protótipo estar errado**: ambas eram conflito entre duas regras do
+projeto, resolvido por ele. (1) `'3 dias'` **por extenso** contra o `' d'` do protótipo, mantendo
+`min`/`h` abreviados de propósito; (2) o toast do lote mantém o **vocabulário travado**
+(*"Aprovado — aguardando publicação"*, contagem no sub) contra o *"N ofertas aprovadas"* do protótipo
+(`:1167`), para não criar uma 7ª frase fora do vocabulário com gate.
+
+⚠️ **EXPANSÃO DE TERRITÓRIO DECLARADA:** o plano 187-08 mexeu num gate da **Fase 186, que está em
+produção** (commit `37c3ebaf`) — a camada B do `FechamentoDaFase186Test` acusava **EXPOR** o
+andamento como **ESCREVER**. Ganhou lista de **EXPOSITORES com a exceção PROVADA, não afirmada** (o
+expositor **tem** de casar a sonda larga, senão a exceção é linha morta, e **não** pode ter nenhuma
+forma de escrita). `contagens-186-09.txt` remedido: **13→19** e **251→257**; os dois ids reconferidos
+e **passam**. Renomear a chave de saída foi recusado: dobraria a tela para agradar a régua, contra
+**UM VOCABULÁRIO SÓ**.
+
+⚠️ **UM CONSERTO QUE ERA RISCO DE PRODUÇÃO:** o plano 187-10 viu um gate da wave 02 reprovar e
+concluiu que o gate estava **certo** — na conexão `sync`, `dispatch()` roda o job **dentro** do
+request, e a tela de Publicações **que está no ar** pagaria as chamadas HTTP ao ML **sincronamente**.
+Guarda por `Queue::connection() instanceof SyncQueue`; **nunca** por `config('queue.default')` (que é
+`'sync'` também sob `Queue::fake()`) nem `runningUnitTests()`. O gate alheio ficou **intocado** e
+voltou ao verde. A razão escrita: **melhor não aquecer do que aquecer dentro do request** — sem
+aquecimento a tela dá o número **certo**, só mais devagar.
+
+⚠️ **ACHADO NOVO DE ORQUESTRAÇÃO, registrado em `learnings` §4c.3:** **o scratchpad é COMPARTILHADO
+entre subagentes lançados em paralelo pela mesma sessão.** As waves 09 e 10 rodaram juntas e o script
+de mutação de uma foi **sobrescrito pelo da outra** no meio do trabalho. A lição: **conclusão de
+mutação tirada com script auxiliar de nome genérico, em execução paralela, não vale** — o nome do
+script precisa carregar o plano. A wave 09 **refez a campanha inteira** com nomes únicos; nenhum
+arquivo de produção se perdeu (conferido por `sha256` contra `git show HEAD:`).
+
+⚠️ **NOVE caminhos fantasma na milestone**, quatro deles achados nesta fase e **três vindos de
+briefing do orquestrador**. O mais perigoso: `ResumoRapidoService` **existe** — em
+`app/Services/Publicador/Fila/`, **não** em `.../Aprovacao/Fila/` — e **não** é o
+`FilaDeAprovacaoService`. Confundi-los apagaria a **decisão 9**, que cita
+`ResumoRapidoService:384-391` como o lugar onde a margem da visão rápida usa o parâmetro da
+Precificação em vez da tarifa real do ML. **É a razão de a régua exigir `test -e` em cada caminho
+citado.**
+
+⚠️ **AVISO À FASE 188:** `CascaDeModal.jsx` é da wave 09 e deve ser **IMPORTADA, nunca recriada** —
+duas cascas divergiriam, e há gate provando o aviso no arquivo e a ausência de uma segunda.
+⚠️ **AVISO A QUEM EDITAR `MlbPublicadorAprovacaoController`:** `$mlbEmpresaId` existe **duas vezes**
+(`:195` e `:559`) depois das edições paralelas das waves 09 e 10 — **âncora por número de linha
+escreve no lugar errado.**
+
+⚠️ **`REQUIREMENTS-v27.md` não rastreia conclusão** — medido: **zero checkboxes**, e os `✅` do
+arquivo marcam **decisão respondida**, não requisito entregue. Quem rastreia é o **Coverage Map** do
+`ROADMAP.md`, escrito no fechamento. **`requirements.mark-complete` dá `not_found` para IDs de
+`REQUIREMENTS-vNN.md`.**
