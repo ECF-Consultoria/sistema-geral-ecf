@@ -438,6 +438,53 @@ escrever sem gate nenhum notar**. A lista protegia a porta **por NOME**, não **
 Se a resposta for "nada", a lista é a própria porta dos fundos. O conserto não é fechar a lista —
 é **pôr ao lado dela um gate que meça o COMPORTAMENTO** de quem está dentro.
 
+### ⚠️⚠️ 4c.3 — O SCRATCHPAD É COMPARTILHADO entre subagentes lançados EM PARALELO (18/10/2026)
+
+**Terceira lição do orquestrador, e ela também é erro meu.**
+
+Lancei as waves **187-09** e **187-10** **em paralelo**, pela mesma sessão. **As duas receberam o
+MESMO diretório de scratchpad** — e as duas escreveram o script de mutação com nome **genérico**
+(`mutar.sh`, `de.txt`, `para.txt`, `out.txt`). ➡️ **O `mutar.sh` da wave 10 foi SOBRESCRITO pelo da
+wave 09 no meio do trabalho.**
+
+| quem | o que fez |
+|---|---|
+| **wave 10** | **detectou** por `sha256` que o próprio script auxiliar havia mudado debaixo dela |
+| **wave 09** | **refez a campanha de mutação INTEIRA**, com `…-187-09-waveNOVE` em **todos** os nomes, e rodou com a wave 10 **já fechada** — sem colisão possível |
+| **as duas** | conferiram, por `sha256` contra `git show HEAD:`, que **nenhum arquivo de produção se perdeu** |
+
+➡️ **A LIÇÃO EXATA:** **conclusão de mutação tirada com script auxiliar de NOME GENÉRICO, em
+execução PARALELA, NÃO VALE — o nome do script precisa CARREGAR O PLANO.**
+
+⚠️ **E note o que torna isto perigoso em silêncio:** o dano não é o script sumir — é o script
+**continuar lá, com outro conteúdo**. A campanha segue rodando, imprime "MORREU"/"SOBREVIVEU" e o
+veredicto parece normal. **Mutação é a última linha de defesa contra gate vazio; se a ferramenta dela
+for trocada no meio, perde-se a única prova de que os gates medem algo.**
+
+➡️ **A receita, acrescentada à de §4c.1:**
+- **todo** arquivo auxiliar no scratchpad leva o identificador do plano no nome
+  (`mutar-187-11.sh`, `sha-187-11.sh`, `out-187-11-<rotulo>.txt`, `copia-187-11-<caminho>`);
+- em execução paralela, **conferir o `sha256` do próprio script auxiliar** antes de confiar no
+  veredicto;
+- e **nada** no scratchpad é tratado como privado da sessão: ele é **compartilhado**, como o
+  `refs/stash` do git é compartilhado entre worktrees.
+
+### ⚠️ 4c.4 — "Gate mais LARGO" e "gate mais ESTREITO" dão o MESMO prejuízo (18/10/2026)
+
+A lista das armadilhas deste arquivo enfatiza o gate **largo** (o que passa calado). O fechamento da
+Fase 187 mediu, no **próprio** gate recém-escrito, os **dois** lados no mesmo dia:
+
+| direção | caso medido | efeito |
+|---|---|---|
+| **LARGO** | contar "itens numerados" no documento **inteiro** em vez de na seção do roteiro: media **23** em vez de 8 | reprova **trabalho certo**, e o conserto barato é **afrouxar** |
+| **ESTREITO** | procurar `não há desfazer` com **espaço literal**, num markdown de 100 colunas onde a frase **quebra** no meio | reprova **trabalho certo** pelo mesmo motivo oposto |
+| **VAZIO por construção** | recortar a seção com `.` sob a flag **`/s`**: o `.*$` do cabeçalho engole o **documento inteiro** e o corpo sai **VAZIO** | o gate mede **nada** e reprova com lista vazia |
+
+➡️ **O gate que reprova trabalho certo é tão caro quanto o que passa calado**, porque é ele que
+**ensina o executor seguinte a mexer na régua**. ⚠️ E o terceiro caso é a lembrança de que, em PCRE,
+**`/s` muda o significado de `.` e portanto o de `$`** — num recorte de seção, use `[^\n]*` para a
+linha do cabeçalho e `[\s\S]*?` para o corpo, **nunca `.` com `/s`**.
+
 ## 5. Asserção negativa exige medir se o literal é EXCLUSIVO
 
 Ao proibir um texto na tela, confira que ele não é legítimo em outro lugar. Medido na Fase 179,

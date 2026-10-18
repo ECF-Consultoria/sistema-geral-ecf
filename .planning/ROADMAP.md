@@ -4566,6 +4566,18 @@ e LANÇA com arquivo inexistente). Dois planos na mesma wave compartilhariam ess
 - [ ] `187-10-PLAN.md` — wave 10 — **PRÉ-AQUECIMENTO da tarifa do ML fora do request** (decisão do usuário, 15/10): serviço + job na fila `high` + comando na forma do `adman:warm-diff`
 - [ ] `187-11-PLAN.md` — wave 11 — o FECHAMENTO MEDIDO (15 critérios, 4 baselines re-medidas, território, FID-01 consolidada, mutação, as 4 perguntas respondidas)
 
+**Plans — ESTADO EM 18/10/2026** (bloco aditivo; os checkboxes acima **não** foram editados, para o
+diff desta linha ser 100% inserção): **11 de 11 planos EXECUTADOS**, com as **11** SUMMARYs no
+diretório da fase (`187-01-SUMMARY.md` … `187-11-SUMMARY.md`) e os **11** manifestos de gate
+(`tests/gates/contagens-187-01.txt` … `-11.txt`, **71 ids**). O fechamento medido está em
+**`187-FECHAMENTO.md`**: **15 critérios — 12 OK, 3 RESSALVA, 0 REPROVA**. ⚠️ **A fase está EM
+PRODUÇÃO desde 18/10/2026, no commit `7791d7aa`** (migrations: *"Nothing to migrate"*, zero
+pendentes — a fase não tem migration; 9 workers RUNNING; site HTTP 200 em 0,53 s). ⚠️⚠️ **A
+CONFERÊNCIA VISUAL DO USUÁRIO SEGUE PENDENTE** — é em produção, na conta **459**, com roteiro de 8
+itens em `187-FECHAMENTO.md` §11. ⚠️ **Nenhum executor desta fase viu tela renderizada** (banco local
+sem `ml_token`, `ml_acervo_itens` e `pub_aprovacao_ofertas` vazias, leitura de produção bloqueada,
+sem navegador): toda afirmação sobre *"a tela mostra X"* significa *"o HTML gerado contém X"*.
+
 ⚠️ **São 15 critérios de sucesso, não 17** — medido em 15/10/2026 (`grep -cE "^  [0-9]+\. "` nesta
 entrada devolve 15, numerados 1..15 sem buraco). **17 é a contagem da Fase 186.**
 
@@ -5024,6 +5036,38 @@ COL(6) MIG(9) TERR(11) GATE(14) REND(8). **Nenhum órfão, nenhuma duplicata.**
 ⚠️ **FID, GATE, REND e TERR são transversais:** estão mapeados na **Fase 186** porque é onde nascem,
 mas **valem e são conferidos em todas as fases** — cada fase repete a tabela de conferência (FID-01),
 o render adverso (REND-01) e a prova de território (TERR-01..11).
+
+#### Coverage Map — Milestone v27.0: **ATUALIZAÇÃO DE 18/10/2026** (bloco ADITIVO)
+
+> ⚠️ **Bloco ADITIVO, 0 remoções.** As linhas da tabela acima **não** foram editadas de propósito: o
+> `roadmap update-plan-progress` **reporta sucesso e não escreve nada**, o
+> `requirements.mark-complete` devolve **`not_found`** para IDs de `REQUIREMENTS-vNN.md`, e o
+> `state.advance-plan` já **corrompeu o `STATE.md` deste projeto SEIS vezes**. ➡️ Este bloco
+> **SUPERSEDE** o `Pending` das três linhas da Fase 187 e a forma *"NÃO DEPLOYADO"* das linhas da
+> Fase 186. **Nada acima foi apagado.**
+
+| Requirement | Phase | Status medido em 18/10/2026 |
+|---|---|---|
+| VOC, ABA-03/04, AND, DADO, BLOQ, FIN, MIG (todas as famílias da 186) | Phase 186 | ⚠️ **EM PRODUÇÃO** — a 186 foi deployada no commit **`a4c4187f`**. ⚠️ **A forma *"Entregue no CÓDIGO — NÃO DEPLOYADO"* das linhas acima era verdade em 15/10/2026 e DEIXOU DE SER.** ⚠️⚠️ **Procedência deste fato: informado pelo orquestrador, NÃO medido pelo executor do 187-11** — a leitura de produção está bloqueada nesta sessão. As ressalvas do `186-FECHAMENTO.md` (CRIT-05 da "Embalagem", CRIT-17 dos 4 planos de schema) **continuam valendo** |
+| **ABA-01, ABA-02, ABA-05, ABA-06** (4) | **Phase 187** | ⚠️ **EM PRODUÇÃO (18/10/2026, commit `7791d7aa`)** — CRIT-01 **OK**; CRIT-02 **RESSALVA** (decisão 17, `mlb_empresa_id` anulável; dono: **Fase 194**); CRIT-03 **RESSALVA** (a rota existe e responde 200, mas a fila nasce VAZIA até a 194); CRIT-04 **OK** |
+| **FILA-01..FILA-16** (16) | **Phase 187** | ⚠️ **EM PRODUÇÃO (18/10/2026, commit `7791d7aa`)** — CRIT-05 a CRIT-11 e CRIT-13 a CRIT-15 **OK** |
+| **MOD-11, MOD-12** (2) | **Phase 187** | ⚠️ **EM PRODUÇÃO (18/10/2026, commit `7791d7aa`)** — CRIT-11 **OK**; CRIT-12 **RESSALVA**: o runtime dos ~3,8 s do toast **não é provado** (não há navegador); provados, pela função pura, o número 3800, a ordem cancelar→agendar e a robustez a relógio adverso |
+| FID, GATE, REND, TERR (transversais) | Phase 187 (repetidos) | ⚠️ **CONFERIDOS nesta fase**: FID-01 consolidada com **8 de 10 planos por SCRIPT** e 2 SEM-PROTOTIPO (zero por LEITURA); território **VAZIO por ESCOPO DO ASSUNTO** nos 60 alvos, com **0 violações** em duas passadas independentes e isca nas duas direções; **132 mutações** na fase, **0 sobreviventes ao fim** |
+
+**Migration:** ⚠️ **a Fase 187 NÃO tem migration** — medido na VPS: *"Nothing to migrate"*, zero
+pendentes.
+
+**⚠️ O que SEGUE PENDENTE na Fase 187, com dono:**
+
+| pendência | dono |
+|---|---|
+| a **conferência visual** da fila em produção, na conta **459** (roteiro de 8 itens em `187-FECHAMENTO.md` §11) | **usuário** |
+| a **decisão 17** — oferta com `mlb_empresa_id = NULL` fica invisível na fila; **resolver ANTES de criar a primeira oferta** | **Fase 194** |
+| a **decisão 13** — `PUBLICADO => []` é terminal; editar foto de anúncio no ar é outro fluxo | **Fase 193** |
+| as duas perguntas dos **chips estruturados** e da ordem de mexer em `validacao_status` | **outro dev** → Fase 192 |
+| o que falta para ligar `publicador.criativos_auto.ativo` | **outro dev** → Fase 194 |
+| ancorar o relógio em `tests/Feature/Publicador/CockpitDaContaTest.php:966` e `:1318` (duas falhas de **fronteira de dia**, da Fase 179, que vão e voltam com a hora) | quem mantiver a **Fase 179** |
+| a **`CascaDeModal.jsx`** nasceu na 187 e a **Fase 188 tem de IMPORTÁ-LA, nunca recriar** (duas cascas divergiriam) | **Fase 188** |
 
 #### Coverage Map — item do handoff × fase
 

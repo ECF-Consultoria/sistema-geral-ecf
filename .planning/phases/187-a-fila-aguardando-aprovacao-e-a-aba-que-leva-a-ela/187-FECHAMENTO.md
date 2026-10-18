@@ -13,7 +13,10 @@
 
 ## ⚠️⚠️ §0 — A FASE ESTÁ EM PRODUÇÃO DESDE 18/10/2026
 
-Medido pelo orquestrador na VPS, com autorização explícita do usuário:
+⚠️⚠️ **PROCEDÊNCIA: os quatro números abaixo foram medidos pelo ORQUESTRADOR na VPS, com autorização
+explícita do usuário — NÃO por este executor.** A leitura de produção está **bloqueada** nesta
+sessão (o classificador barra `plink`/`tinker`, e barra também o MCP em subagente), então eu os
+**registro com a fonte declarada** em vez de afirmá-los como medição minha:
 
 | o quê | medida |
 |---|---|
@@ -609,9 +612,92 @@ rodadas da wave 09 usaram nomes **genéricos** (`mutar.sh`, `de.txt`, `para.txt`
 auxiliar de **nome genérico**, em execução **paralela**, **não vale** — o nome do script precisa
 carregar o plano.* Este plano usa `…-187-11` em todos os nomes de script e de saída.
 
-### §6.2 — A campanha DESTE plano
+### §6.2 — A campanha DESTE plano: 11 mutações, 13 execuções, **0 sobreviventes ao fim**
 
-<!-- PREENCHIDA NA TAREFA 3; ver a tabela em §6.2.1 -->
+⚠️ Scripts com **nome que carrega o plano**: `mutar-187-11.sh`, `sha-187-11.sh`,
+`out-187-11-<rotulo>.txt`, `copia-187-11-<caminho>` — exatamente a lição de §6.1.
+
+| # | mutação | gate | veredicto |
+|---|---|---|---|
+| **M1** | `CRIT-13: OK` vira `CRIT-99: OK` (quebra a numeração 01..15) | `fechamento-15-criterios` | **MORREU** |
+| **M2** | `CRIT-02: RESSALVA` vira **`CRIT-02: REPROVA`** | `fechamento-15-criterios` | **MORREU** — o fechamento **para** com `REPROVA`, não "registra" |
+| **M3** | um `ALVO-INTOCADO:` aponta para `app/Mcp/NaoExiste9z7/` (**caminho fantasma**) | `territorio-e-fid` | **MORREU** |
+| **M4** | `FID-01-PLANO-05: SCRIPT` vira `LEITURA-RAPIDA` (veredicto fora da lista) | `territorio-e-fid` | **MORREU** |
+| **M5** | tirar o `dono:` da **PERGUNTA-17** (a do bug latente da Fase 194) | `fechamento-perguntas` | ⚠️⚠️ **SOBREVIVEU** — ver abaixo |
+| **M5b** | a **mesma** mutação, contra o gate **consertado** | `fechamento-perguntas` | **MORREU** |
+| **M6** | tirar a menção a "conta 459" do §0 | `fechamento-15-criterios` | ⚠️ **SOBREVIVEU** — ver abaixo |
+| **M6b** | o item **8** do roteiro vira **7** (numeração duplicada) | `fechamento-15-criterios` | **MORREU** |
+| **M7** | acrescentar `biblioteca-nova-9z7` a `PACOTES_PERMITIDOS` (pacote **fora** do `package.json`) | `territorio-e-fid` | **MORREU** — a lista de exceções **não** é porta dos fundos |
+| **M8** | tirar um método da alternação do manifesto (ele passa a **nunca rodar**) | `fechamento-perguntas` | **MORREU** |
+| **M9** | embutir `publicador-vocabulario-novo.test.js` num **segundo id** do manifesto | `fechamento-arquivos-e-manifestos` | **MORREU** |
+| **M10** | apagar as **4** linhas `ALVO-INTOCADO:` das dependências (a lista **encolhe** de 60 para 56) | `territorio-e-fid` | **MORREU** — o **piso** pega encolhimento |
+| **M11** | tirar `VazioDaFila.jsx` da lista constante dos 20 `.jsx` | `fechamento-arquivos-e-manifestos` | **MORREU** — o `deepEqual` contra o **disco** não é vazio |
+
+```
+CAMPANHA 187-11: 13 execucoes · 11 mortas na 1a tentativa · 2 sobreviventes INVESTIGADAS
+                 · 0 sobreviventes ao fim
+sha256 arvore x `git show HEAD:` (com `tr -d '\r'` nos dois lados), conferido depois de CADA rodada:
+  OK  tests/Feature/Publicador/Aprovacao/FechamentoDaFase187Test.php
+  OK  tests/js/publicador-fila-fechamento-187.test.js
+  OK  tests/gates/contagens-187-11.txt
+  OK  .planning/phases/187-.../187-FECHAMENTO.md
+```
+
+#### ⚠️⚠️ A sobrevivente **M5** era LACUNA REAL — e o conserto NÃO foi elevar o piso
+
+**MEDIDO:** tirar o `dono:` da **PERGUNTA-17** — justamente a que carrega o **bug latente da Fase
+194** — passava em **todas** as asserções. **A causa é exata:** elas eram **PISO**
+(`assertGreaterThanOrEqual(8, …)`, `(4, respondidas)`, `(4, abertas)`), e com **13** perguntas no
+documento perder **uma** deixava 12 — **acima de todos os pisos**.
+
+➡️ ⚠️ **Piso não prova PRESENÇA de uma pergunta específica.** E a pergunta que mais importa não
+perder é precisamente a que tem um bug latente com dono.
+
+➡️ **Conserto:** a **lista CONSTANTE** das 13 perguntas obrigatórias (`P1`..`P7`, `VISUAL`, `13`,
+`17`, `D1`, `D2`, `D4`), com os infratores **COLETADOS** numa asserção única e **isca de id
+inventado**. ⚠️ **Elevar o piso de 8 para 13 teria "feito passar" e não teria provado nada** — é
+exatamente o que o learnings §4b.2 manda não fazer.
+
+#### ⚠️ A sobrevivente **M6**: a mutação estava MAL APONTADA — e a investigação achou o furo REAL
+
+`conta 459` aparece **3 vezes** no documento; eu tirei **uma**, e o
+`assertMatchesRegularExpression('/conta 459/')` continuou verde. ➡️ **A mutação não removeu o
+invariante**, então "sobreviveu" não era furo *dela*.
+
+⚠️ **Mas a investigação achou o furo:** o gate provava uma **MENÇÃO**, não o **ROTEIRO**. Menção é
+"lista de nomes"; roteiro é **comportamento**. ➡️ **Conserto:** o roteiro tem **8 itens numerados de
+1 a 8, sem buraco**, e carrega o aviso **"não há desfazer"**. Reapontada como **M6b**, ela
+**morre**.
+
+#### ⚠️⚠️ E o gate novo REPROVOU CÓDIGO CERTO três vezes — as três por largura ou estreiteza
+
+Registro as três porque são a **mesma família**, e ela já custou **dez** ocorrências nesta milestone:
+
+| # | o gate fazia | por que estava errado | conserto |
+|---|---|---|---|
+| 1 | contava "itens numerados" no **documento inteiro** | há listas numeradas também em **§2.1** (as 3 razões de não consertar), **§6** (os 7 passos da disciplina), **§12** (os 3 arquivos a marcar) e **§13** (os 4 avisos à 188) — media **23** em vez de 8 | **recorte à §11**, com isca nas duas direções (o recorte não está vazio **e** é menor que o documento) |
+| 2 | recortava a seção com `.` sob a flag **`/s`** | com `/s` o `.` casa `\n`, então o `.*$` do **cabeçalho** engolia o **documento inteiro**, o corpo saía **VAZIO** e o gate reprovava com `itens=[]` — **um recorte que não recorta** | `[^\n]*` no cabeçalho e `[\s\S]*?` no corpo, **sem `/s`** |
+| 3 | procurava **"não há desfazer"** com **espaço literal** | o documento é markdown de 100 colunas e a frase **QUEBRA** no meio (`não há` + nova linha + `desfazer`) | `\s+` entre as palavras, com isca que atravessa a quebra **e** isca que recusa a frase **sem** a negativa |
+
+➡️ **O par é simétrico, e vale dito junto:** *gate mais LARGO que o invariante* e *gate mais ESTREITO
+que o invariante* dão **o mesmo prejuízo**. O primeiro reprova trabalho certo e **treina a
+afrouxar**; o segundo passa calado.
+
+#### ⚠️ E um defeito do MEU mutador, pela segunda vez nesta fase
+
+O relatório de linha do `mutar-187-11.sh` saiu **`NAO-ACHEI`** na M9 e **`linha 1`** nas M10/M11 —
+porque a substituição era **multi-linha** (M9) ou **vazia** (M10/M11), e o detector procura a string
+de **substituição**. ⚠️ **É o mesmo defeito que a wave 02 mediu** (lá a substituição era `0` e casou
+um comentário). ➡️ **A garantia é a TRAVA DE OCORRÊNCIA (= 1 antes de aplicar), nunca o relatório de
+linha** — e o relatório só é confiável com substituição **distintiva e de uma linha**.
+
+#### Um defeito MEU que o gate pegou antes de qualquer mutação
+
+`str_contains` acusava os **9** métodos COBERTOS como *"sem id no manifesto"*, porque os filtros
+deste manifesto são **ALTERNAÇÕES** (`test_o_fechamento_187_(a|b|c)`) e o nome completo do método
+**não aparece literalmente** no arquivo. ➡️ **O invariante não é "o nome está escrito no manifesto",
+e sim "algum filtro do manifesto RODA este método"** — medido por `preg_match`, com isca de método
+inventado.
 
 ---
 
