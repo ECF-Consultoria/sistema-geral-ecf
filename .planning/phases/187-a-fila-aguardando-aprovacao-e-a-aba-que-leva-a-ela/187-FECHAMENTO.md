@@ -436,3 +436,90 @@ CRIT-15: OK — a tabela FID-01 da fila foi medida contra `design_handoff_public
 
 ⚠️ **Nenhum `REPROVA`.** As três ressalvas são **limites declarados do ambiente e do escopo**, com
 dono nomeado — nunca trabalho faltando dentro desta fase.
+
+---
+
+## §5 — A TABELA FID-01 CONSOLIDADA, COM `SCRIPT` OU `LEITURA` DECLARADO
+
+> *"Tabela derivada de SCRIPT é confiável; tabela derivada de LEITURA não é."* — medido neste
+> projeto em 13/10/2026.
+>
+> ⚠️⚠️ **FID-03: a tabela não erra VALOR — erra por OMISSÃO e por REFERÊNCIA.** Neste projeto
+> `cursor:pointer` foi omitido **onze vezes** numa única fase. Por isso a conferência é por
+> **SEMÂNTICA** (localizar o identificador), **nunca** pelo número de linha que o plano citou.
+
+<!-- ⚠️ Forma fixa lida pelo gate `territorio-e-fid`. Uma linha por plano, 01 a 10. -->
+
+FID-01-PLANO-01: SCRIPT — o E1 INTEIRO (`design_handoff_publicador/Aprovacao.dc.html:26`-`:205`, 180 linhas, sha256 `68624883ce35547e`), 21 varreduras + `cursor` em coluna própria (16 ocorrências, uma por linha); o script está colado inteiro no `187-BASELINES.md`
+FID-01-PLANO-02: SEM-PROTOTIPO — plano de SERVIDOR (rota, escopo da conta, contador, faixa, ordenação): zero `.dc.html` a medir; o que foi medido por script foi o CÓDIGO (`app/Http/Controllers/MlbAnuncioController.php` — 19 props em `meus()`, não as "20" que plano e briefing afirmavam)
+FID-01-PLANO-03: SCRIPT — a seção A1 de `design_handoff_publicador/Publicacoes v2.dc.html:31`-`:37`, com `cursor` em coluna própria; e o `diff` contra `new_layout_publicador/Publicacoes v2.dc.html` medido em **4 hunks** (dois deles da seção **A2**, não da A1 — divergência N1)
+FID-01-PLANO-04: SCRIPT — o cabeçalho da fila e os 9 cards (`design_handoff_publicador/Aprovacao.dc.html:29`-`:52`), incluindo o ⓘ de `:39` (um `<span>` de 16px com a letra `i`, não um ícone — D4)
+FID-01-PLANO-05: SCRIPT — a faixa "PRÓXIMO A REVISAR" (`design_handoff_publicador/Aprovacao.dc.html:56`-`:64`, mais a regra de `:1220`-`:1264`), com o rótulo da espera medido como `' d'` e não `' dias'`
+FID-01-PLANO-06: SCRIPT — a barra de filtros (`design_handoff_publicador/Aprovacao.dc.html:66`-`:106`), os dois popovers (`:82`/`:95`) e a lupa SVG de `:68`; o `z-index` **remapeado** e nunca copiado (D1)
+FID-01-PLANO-07: SCRIPT — a tabela, níveis 1 e 2 (`design_handoff_publicador/Aprovacao.dc.html:108`-`:132`), com o grid de 11 colunas e `cursor` em coluna própria; o plano errava **11 de 17** ponteiros
+FID-01-PLANO-08: SCRIPT — a linha da oferta, as 11 células (`design_handoff_publicador/Aprovacao.dc.html:133`-`:177`), com `cursor`, `white-space` e `text-overflow` em colunas próprias; inclui o `cursor:pointer` do `<div>` de `:133`, o único do E1 fora de `<button>` (N3)
+FID-01-PLANO-09: SCRIPT — lote, toasts, rodapé e os dois vazios (`design_handoff_publicador/Aprovacao.dc.html:180`-`:205`, mais `:897`/`:905`), varrido por `python`, com `cursor`/`white-space`/`text-overflow` em colunas próprias; **cinco omissões da tabela do plano achadas por script**
+FID-01-PLANO-10: SEM-PROTOTIPO — plano de INFRAESTRUTURA (pré-aquecimento da tarifa): não há tela nem `.dc.html`; o que foi medido por script foi `app/Services/Publicador/Aprovacao/ComposicaoFinanceiraService.php` (a chave de cache **não é recopiada**: quem a constrói é o próprio `para()`)
+
+⚠️ **10 linhas, 8 por SCRIPT e 2 SEM-PROTOTIPO** — e as duas sem protótipo são de servidor e de
+infraestrutura, onde não existe `.dc.html` a medir. **Nenhuma por LEITURA.**
+
+### ⚠️ A REGRA DE OURO, e a exceção declarada
+
+**Quando a tabela discordar do protótipo, MEÇA no `.dc.html` e o PROTÓTIPO GANHA**; a divergência vai
+registrada com `arquivo:linha`.
+
+⚠️ **EXCEÇÃO:** o protótipo ganha na **FÓRMULA**, nos **RÓTULOS** e na **ORDEM** — **NUNCA nos
+NÚMEROS**. As taxas de `fin()` são ficção do próprio protótipo (`Aprovacao.dc.html:1064`-`:1066`,
+"taxa de exemplo", `src` igual a `est`), e a seção F do `README-v2.md` é **prosa**: só `info()`
+decide bloqueio.
+
+### ⚠️⚠️ OS DOIS CASOS DESTA FASE EM QUE O PROTÓTIPO **PERDEU** — registrados juntos
+
+Sozinho, cada um parece arbitrário. Juntos, eles delimitam a exceção à regra de ouro:
+
+| # | o que estava em jogo | o que ficou | por quê |
+|---|---|---|---|
+| 1 | a prosa do **plano** dizia `' dias'` por extenso; o **protótipo** diz `' d'` (`Aprovacao.dc.html:1054`) | **`' d'`** | ⚠️ aqui o protótipo **GANHOU** — quem perdeu foi a prosa do plano. Está aqui para o par ficar completo e ninguém trocar os dois casos |
+| 2 | o **protótipo** diz **"N ofertas aprovadas"** no toast do lote (`Aprovacao.dc.html:1167`) | **`TOASTS.aprovado`** — "Aprovado — aguardando publicação", com a contagem no sub | ⚠️ **o protótipo PERDEU, por DECISÃO DO USUÁRIO (17-18/10/2026)**: adotar a frase dele criaria uma **7ª frase fora do vocabulário travado** dos 6 `TOASTS` (VOC-08, com gate). O vocabulário é o invariante; a frase é redação |
+
+➡️ **A regra "o protótipo ganha" vale para FÓRMULA, RÓTULO e ORDEM do DESENHO.** Ela **não** vale
+contra um **vocabulário de produto já travado e gateado** — e essa é a **única** exceção que esta
+fase exerceu.
+
+### As 10 divergências do `187-BASELINES.md` (D1..D10) — veredicto de cada uma
+
+| # | divergência | veredicto no fim da fase |
+|---|---|---|
+| **D1** | a escala de `z-index` do protótipo (40..120) é incompatível com a travada do projeto (filtros 10 < header 30 < menu/painel 40) | **REMAPEADA, nunca copiada** (187-06): overlay 10, popover 20, toast `z-[45]` na escala daqui. A mutação que subia o popover para `z-40` MORREU. A ordem travada de `publicador-header-zindex-ordem.test.js` **não** foi tocada (`numstat` ZERO) |
+| **D2** | o `main` da fila é `padding:24px 36px 120px; gap:16px`; o de Publicações é `28px 36px 110px; gap:18px` | **NÃO harmonizados** — a mutação que tirava o `gap-[16px]` MORREU |
+| **D3** | linha com FOCO é `#1A1A1A` na fila e `#1C1C1C` em Publicações (4 ramos contra 5 ramos) | **NÃO unificados** |
+| **D4** | o ⓘ da margem mínima não é ícone: é um `span` redondo de 16px com a letra `i` | **reproduzido** (187-04, `:39` — a referência do plano, `:38`, era o `div` que o embrulha) |
+| **D5** | a lupa é SVG inline `viewBox="0 0 16 16"` com `stroke-width:1.6` (Lucide é `0 0 24 24`) | **SVG inline**, não Lucide (187-06, `:68`) |
+| **D6** | o popover de Motivo tem `hint-placeholder-count` igual a 6, mas `BLK` declara **8** motivos | **O DADO GANHOU DO PLACEHOLDER** — 8 motivos (187-06) |
+| **D7** | o `title` do mini-quadrado em `regenerating` diz **"a conferir"**, embora a borda seja tracejada | **REPRODUZIDO DE PROPÓSITO** e registrado no `deferred-items.md` — o protótipo é a autoridade do rótulo |
+| **D8** | `countLabel` é `list.length` + " de " + `all.length` — o **M** é o total de TODAS as ofertas da conta | **reproduzido** (187-06), e é o que faz o "N de M" não mentir |
+| **D9** | `ids` (que o checkbox do cabeçalho marca) **inclui** as `preparando`; só `_nav` as exclui | **REPRODUZIDO DE PROPÓSITO** e no `deferred-items.md`. ⚠️ A segurança não depende disto: a trava real é `aprovarEmLote` **no servidor**, e o modal mostra ✓/× **com o motivo** |
+| **D10** | o traço do mínimo está em `left:30%` **porque `MIN` é 12 e 12/40 dá 30%** | **implementada a FÓRMULA** `min(40,max(0,minimo))/40` (FIN-09), nunca o `30%` literal — o mínimo vem do parâmetro e pode ser outro por empresa |
+| **D-ANEL** (a 11ª) | o protótipo gira em `.8s`; o token `animate-pub-spin` é **`.7s`** | **divergência HERDADA de propósito** — ela já está escrita em `SeloDeAndamentoInterno.jsx` (Fase 186, somente leitura). Criar um `.8s` ao lado criaria **duas verdades**. **Nenhum token de animação foi criado** |
+
+### As 5 divergências NOVAS do `187-BASELINES.md` (N1..N5) — reconfirmadas
+
+| # | o quê | estado no fim da fase |
+|---|---|---|
+| **N1** | as duas cópias de `Publicacoes v2.dc.html` diferem em **4 hunks**, não só na seção A1 (dois são da **A2**) | confirmada; quem implementar a seção A precisa dos quatro |
+| **N2** | os 5 tokens novos **não podiam** compilar no plano 01 (o `content` varre só `*.jsx`, e aquele plano não escreveu `.jsx` nenhum) | **RESOLVIDA**: o gate era `skip` NOMEADO por token e **acordou sozinho** nas waves que escreveram os `.jsx`; os `skipped` da suíte JS **zeraram na wave 09** |
+| **N3** | o `cursor:pointer` de `:133` está num **`div`** — o único do E1 fora de `button`, e é a LINHA INTEIRA da tabela | confirmada e implementada (187-08) |
+| **N4** | `border-left` **não existe** no E1 (varredura vazia é medida, não descuido) | confirmada |
+| **N5** | `resources/css/app.css` **não é chave** do `manifest.json` | **reconfirmada nesta sessão**: o CSS entra por `manifest['resources/js/app.jsx'].css`, hoje `assets/app-DtSI74zM.css` |
+
+### Divergências NOVAS medidas **neste plano de fechamento**
+
+| # | o quê | medida |
+|---|---|---|
+| **F1** | ⚠️ A "Prova 1 por RANGE" que o próprio plano 187-11 prescreve **não pode passar**: o range tem 43 commits alheios e acusa **12** dos 60 alvos. **Registrada, não contornada** — e o gate perene foi escrito sobre o invariante certo | §3.1 deste documento |
+| **F2** | ⚠️ Quatro **caminhos fantasmas**, os quatro com o arquivo REAL em outro lugar — e o `ResumoRapidoService` **existe** e **não é** o `FilaDeAprovacaoService` | §3.3 deste documento |
+| **F3** | ⚠️ O Teste 4 do plano ("nenhum arquivo novo da fase é `.js`") é **literalmente falso**: há 9 `.js` novos, todos testes. O invariante certo é sobre `resources/` | §3.6 deste documento |
+| **F4** | A SUMMARY do 187-08 registra `Aprovacao.dc.html` com **1433 linhas**; o `wc -l` desta sessão — e as SUMMARYs 01 e 09 — dizem **1432**. O **sha256 é idêntico nas três medições** (`68624883ce35547e`), então **o arquivo não mudou**: é erro de transcrição numa SUMMARY. É a família FID-03 ("erra por REFERÊNCIA") acontecendo num número de linhas | `187-08-SUMMARY.md:191` contra `wc -l` |
+| **F5** | ⚠️ **Eu caí na armadilha do `lerSemComentarios` ao escrever o gate deste plano** — e isso é a melhor prova de que ela está viva: o helper remove blocos de comentário, e `'./resources/js/**/*.jsx'` **contém** um `/*` seguido de um `*/`, então o glob chega ao gate como `'./resources/js*.jsx'` e o gate mede NADA. ⚠️ **Não é achado novo**: está medida desde a Fase 179-06, e há **duas iscas invertidas** no repositório exigindo que o helper CONTINUE mastigando o glob. Segui o precedente (leitura **CRUA**) e acrescentei a **terceira** isca | `tests/js/_fonte.js` contra `publicador-visao-geral-acoes.test.js:344` e `publicador-aprovacao-vocabulario.test.js:746` |
+| **F6** | O briefing desta sessão diz que o `--autoteste` tem **20** casos; a SUMMARY do 187-01 registra **16** (ela elevou de 14 para 16). Os **4** que entraram depois são as **iscas da forma `>=N`** (16/10/2026). **Re-medido hoje: 20 casos, 0 divergência** | `verificar-testes.sh`, casos 4 a 7 |
