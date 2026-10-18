@@ -443,6 +443,34 @@ class FechamentoDaFase187Test extends TestCase
         }
         $this->assertSame([], $semDono, 'pergunta sem dono real — "a definir" nao e dono');
 
+        // ⚠️⚠️ **A LISTA FIXA DAS PERGUNTAS OBRIGATORIAS — e ela existe porque a MUTACAO M5
+        // SOBREVIVEU.**
+        //
+        // MEDIDO: tirar o `dono:` da **PERGUNTA-17** (a do `mlb_empresa_id` nulo, dona: Fase 194)
+        // passava em todas as asserções acima. A razao e exata: os `assertGreaterThanOrEqual`
+        // acima sao **PISO**, e com 13 perguntas no documento perder UMA deixava 12 — acima de
+        // todos os pisos. ➡️ **Piso nao prova PRESENCA de uma pergunta especifica**, e a pergunta
+        // que mais importa perder e justamente a que carrega um BUG LATENTE com dono.
+        //
+        // ⚠️ O conserto certo NAO e elevar o piso (isso treina a ajustar reguas): e a **lista
+        // CONSTANTE** das perguntas que o fechamento desta fase tem de carregar, com os infratores
+        // COLETADOS numa asserção unica.
+        $obrigatorias = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'VISUAL', '13', '17', 'D1', 'D2', 'D4'];
+        $declaradas = array_map(static fn (array $l): string => $l[1], $m);
+        $ausentes = array_values(array_diff($obrigatorias, $declaradas));
+        $this->assertSame(
+            [],
+            $ausentes,
+            'pergunta OBRIGATORIA ausente (ou sem `dono:`, que a tira da varredura) — e a 17 e a que carrega o bug latente da Fase 194'
+        );
+
+        // ⚠️ ISCA DA LISTA FIXA: um id que NAO esta no documento tem de ser acusado.
+        $this->assertSame(
+            ['9z7'],
+            array_values(array_diff(['9z7'], $declaradas)),
+            'a lista fixa de perguntas nao acusa um id inventado — ela nao mede nada'
+        );
+
         // ⚠️ ISCA nas duas direcoes.
         $re = '/^PERGUNTA-(\S+): (RESPONDIDA|ABERTA) — dono: ([^—]+) — (.+)$/m';
         $this->assertSame(1, preg_match($re, "PERGUNTA-13: ABERTA — dono: Fase 193 — editar foto no ar\n"), 'a sonda de pergunta nao casa a forma que exige');
@@ -639,6 +667,24 @@ class FechamentoDaFase187Test extends TestCase
     // Auxiliares
     // ───────────────────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * O corpo de uma seção do fechamento, do cabeçalho `## §N` até o próximo `## `.
+     *
+     * ⚠️ Existe porque **gate sem recorte reprova código certo**: varrer o documento inteiro à
+     * procura de "itens numerados" acha os de §2.1, §6, §12 e §13 também.
+     */
+    private function secao(string $texto, string $marca): string
+    {
+        // ⚠️ `[^\n]*` no cabecalho e `[\s\S]*?` no corpo — **nunca `.` com a flag `/s`**. Medido
+        // nesta sessao: com `/s` o `.*$` do cabecalho casa o DOCUMENTO INTEIRO (porque `.` passa a
+        // casar `\n` e `$` casa o fim do texto), o corpo sai VAZIO e o gate reprova com
+        // `itens=[]` — um recorte que nao recorta, exatamente o que a isca abaixo pega.
+        $re = '/^## [^\n]*' . preg_quote($marca, '/') . '\b[^\n]*\n([\s\S]*?)(?=^## |\z)/m';
+        $this->assertSame(1, preg_match($re, $texto, $m), "nao achei a secao {$marca} no fechamento");
+
+        return $m[1];
+    }
+
     private function fechamento(): string
     {
         $caminho = base_path(self::DIR_FASE . '/187-FECHAMENTO.md');
@@ -711,6 +757,50 @@ class FechamentoDaFase187Test extends TestCase
             $texto,
             'o roteiro da conferencia visual na conta 459 nao esta no fechamento'
         );
+
+        // ⚠️⚠️ **O ROTEIRO DE 8 ITENS — e ele esta aqui porque a MUTACAO M6 SOBREVIVEU.**
+        //
+        // MEDIDO: `conta 459` aparece **3 vezes** no documento, e tirar UMA das tres deixava o
+        // `assertMatchesRegularExpression` acima VERDE. ⚠️ A mutacao foi mal apontada (ela nao
+        // removeu o invariante), mas a investigacao achou o furo REAL: **o gate provava uma
+        // MENCAO, nao o ROTEIRO.** Mencao e "lista de nomes"; roteiro e comportamento.
+        //
+        // ➡️ O invariante certo: o roteiro tem **8 itens NUMERADOS, de 1 a 8, sem buraco**, e
+        // carrega o aviso que nao pode faltar — **nao ha desfazer**.
+        //
+        // ⚠️⚠️ **E O RECORTE A §11 E OBRIGATORIO — o gate SEM recorte REPROVOU codigo CERTO.**
+        // MEDIDO na primeira rodada: o documento tem listas numeradas tambem em §2.1 (as tres
+        // razoes de nao consertar), §6 (a disciplina da mutacao, 7 itens), §12 (os tres arquivos a
+        // marcar a mao) e §13 (os quatro avisos a Fase 188). Varrer o documento inteiro media
+        // **23** itens em vez de 8. **Gate mais largo que o invariante da o mesmo prejuizo que o
+        // mais estreito** — e e a familia de DEZ ocorrencias desta milestone.
+        $roteiro = $this->secao($texto, '§11');
+        preg_match_all('/^(\d)\. \S/m', $roteiro, $itens);
+        $numeros = array_map('intval', $itens[1]);
+        $this->assertSame(
+            range(1, 8),
+            $numeros,
+            'o roteiro da conferencia visual (§11) nao tem 8 itens numerados de 1 a 8 sem buraco'
+        );
+        // ⚠️ ISCA DO RECORTE, nas duas direcoes: a §11 e MENOR que o documento, e nao esta vazia.
+        $this->assertNotSame('', trim($roteiro), 'o recorte da §11 saiu VAZIO — gate sobre zero casos nao prova nada');
+        $this->assertLessThan(strlen($texto), strlen($roteiro), 'o recorte da §11 devolveu o documento inteiro — o recorte nao recorta');
+        // ⚠️ `\s+` e nao um espaco literal: o documento e markdown com linha de 100 colunas, e a
+        // frase QUEBRA no meio ("nao ha\n   desfazer"). Medido nesta sessao — a primeira versao
+        // desta sonda, com espaco literal, REPROVOU o documento CERTO. **Sonda cujo silencio
+        // depende de onde o paragrafo quebrou e sorte, nao ancoragem.**
+        $this->assertMatchesRegularExpression(
+            '/n(ã|a)o h(á|a)\s+desfazer/iu',
+            $texto,
+            'o roteiro nao avisa que NAO HA DESFAZER — e aprovar publica'
+        );
+        // ⚠️ ISCA DO `\s+`: a sonda casa com a quebra de linha no meio da frase.
+        $this->assertSame(1, preg_match('/n(ã|a)o h(á|a)\s+desfazer/iu', "nao ha\n   desfazer"), 'a sonda nao atravessa a quebra de linha do markdown');
+        $this->assertSame(0, preg_match('/n(ã|a)o h(á|a)\s+desfazer/iu', 'ha desfazer'), 'a sonda casa a frase SEM a negativa');
+
+        // ⚠️ ISCA NAS DUAS DIRECOES da sonda de item numerado.
+        $this->assertSame(1, preg_match('/^(\d)\. \S/m', "3. Conferir que\n"), 'a sonda de item numerado nao casa a forma que exige');
+        $this->assertSame(0, preg_match('/^(\d)\. \S/m', "o item 3. vem depois do 2\n"), 'a sonda de item numerado casa numero no MEIO da linha');
     }
 
     /**
