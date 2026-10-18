@@ -523,3 +523,350 @@ fase exerceu.
 | **F4** | A SUMMARY do 187-08 registra `Aprovacao.dc.html` com **1433 linhas**; o `wc -l` desta sessão — e as SUMMARYs 01 e 09 — dizem **1432**. O **sha256 é idêntico nas três medições** (`68624883ce35547e`), então **o arquivo não mudou**: é erro de transcrição numa SUMMARY. É a família FID-03 ("erra por REFERÊNCIA") acontecendo num número de linhas | `187-08-SUMMARY.md:191` contra `wc -l` |
 | **F5** | ⚠️ **Eu caí na armadilha do `lerSemComentarios` ao escrever o gate deste plano** — e isso é a melhor prova de que ela está viva: o helper remove blocos de comentário, e `'./resources/js/**/*.jsx'` **contém** um `/*` seguido de um `*/`, então o glob chega ao gate como `'./resources/js*.jsx'` e o gate mede NADA. ⚠️ **Não é achado novo**: está medida desde a Fase 179-06, e há **duas iscas invertidas** no repositório exigindo que o helper CONTINUE mastigando o glob. Segui o precedente (leitura **CRUA**) e acrescentei a **terceira** isca | `tests/js/_fonte.js` contra `publicador-visao-geral-acoes.test.js:344` e `publicador-aprovacao-vocabulario.test.js:746` |
 | **F6** | O briefing desta sessão diz que o `--autoteste` tem **20** casos; a SUMMARY do 187-01 registra **16** (ela elevou de 14 para 16). Os **4** que entraram depois são as **iscas da forma `>=N`** (16/10/2026). **Re-medido hoje: 20 casos, 0 divergência** | `verificar-testes.sh`, casos 4 a 7 |
+
+---
+
+## §6 — A CAMPANHA DE MUTAÇÃO CONSOLIDADA
+
+### A disciplina, igual nos onze planos
+
+1. **COMMITAR ANTES de mutar** — mutação sobre trabalho não commitado é risco sem necessidade;
+2. `cp` do arquivo para o **scratchpad** (fora do repositório);
+3. aplicar com a **ocorrência TRAVADA EM 1 ANTES** de substituir (aborta se diferente de 1);
+4. **linha conferida DEPOIS** de aplicar;
+5. restauração **DA CÓPIA**, em `trap EXIT` / `finally`;
+6. `sha256` da árvore contra `git show HEAD:`, com `tr -d '\r'` **nos dois lados**;
+7. ⚠️⚠️ **`git checkout` NUNCA** — ele comeu **90 linhas** de gate na Fase 186 (learnings §4c.1).
+
+### Uma linha por plano
+
+| plano | mutações | mortas | sobreviventes | observação |
+|---|---|---|---|---|
+| **187-01** | **0** | — | — | ⚠️ **declarado:** plano de baselines, harness e tokens — não há código de tela para mutar. A prova de que o harness não é vazio é o **`--autoteste`** (20 casos), que é mutação por outro nome |
+| **187-02** | 8 (+2 reaplicações) | 8 | **0** | a **M6** é a que mais importa: alargar o escopo do gate de território para incluir a wave 1 faz ele **reprovar** — prova de que o gate **não é vazio por construção** |
+| **187-03** | 10 | 10 | **0** | inclui a mutação do `href` da aba para `'#'` e a da aba ativa **ganhando** `href` (navegar para si mesma, D4) |
+| **187-04** | 18 | 18 | **0** | **3 mutações ABORTARAM antes de rodar** — e isso é a trava funcionando: duas por **2 ocorrências** (uma no docblock, uma no JSX) e uma por **0 ocorrências** (`grep -F` não casa escape de regex). ⚠️ Uma delas, `ativa="aprovacao"` no docblock, é exatamente a família *"comentário que explica casa com o gate que conta"* |
+| **187-05** | 26 (9 PHP + 17 JS) | 26 | **0 depois de 2 consertos** | ⚠️ a **M4** (tirar o recorte de `LIVE` de dentro de `escolher()`) **SOBREVIVEU** e era **lacuna de cobertura REAL** |
+| **187-06** | 17, em **3 rodadas** | 17 | **0 na rodada 3** | ⚠️⚠️ **DUAS LACUNAS REAIS**, e a causa das duas era a **FIXTURE**, não a asserção: com **uma** oferta ao vivo só, "a conta inteira" e "as ao vivo" davam o **MESMO número**. Consertado com fixture de **TRÊS** ofertas + asserções pelas **PROPS** + isca do termo impossível |
+| **187-07** | 7 | 7 | **0** | — |
+| **187-08** | 11 | 11 | **0** | — |
+| **187-09** | 17 | 17 | **0** | ⚠️⚠️ **a campanha foi REFEITA INTEIRA** (ver §6.1). ⚠️ A **M16** sobreviveu numa rodada e era **lacuna REAL** (ver abaixo). E **M1 contra o gate `lote-escrita` sobreviveu de propósito**: `veredicto()` é camada de TELA e a trava é `aprovarEmLote` **no servidor** — contra `lote-veredicto` ela morre. **Controle por construção, não furo** |
+| **187-10** | 9 | 9 | **0** | — |
+| **187-11** (este) | **9** | **9** | **0** | ver §6.2 |
+| **TOTAL** | **132** | **132** | **0 ao fim** | **5 eventos de sobrevivência**, dos quais **4 eram lacuna REAL** e **1 era controle por construção** — a mesma proporção que a Fase 186 mediu (6 sobreviventes, 4 lacunas reais) |
+
+### ⚠️ Cada sobrevivente INVESTIGADA, nunca presumida equivalente
+
+| sobrevivente | investigação | conserto |
+|---|---|---|
+| **187-05 M4** — tirar o recorte de `LIVE` de dentro de `escolher()` | `escolher()` **não tinha teste** para a guarda de `LIVE`: as fixtures só traziam ofertas ao vivo, então remover a guarda não mudava nada | teste novo da guarda, com fixture que inclui oferta fora de `LIVE` |
+| **187-06 M6 / M7** — popovers contados sobre o recorte, e o **M** virando o total ao vivo | ⚠️ **a causa não era a asserção, era a FIXTURE**: uma oferta ao vivo só não distingue "a conta" de "as ao vivo". E as asserções de escopo moravam no **serviço**, não nas **PROPS** — que é onde a fiação do controller aparece | fixture de 3 ofertas (1 ao vivo + 1 `preparando` + 1 `publicado` de hoje), `assertSame(1, contadorDaAba())` como **isca cega**, e asserções pelas PROPS |
+| **187-06 R2-1** — estreitar `panoramaDaConta()`, **ainda sobreviveu** | passava em **todas** as asserções novas, porque as contagens de motivo vinham da oferta ao vivo e a soma continuava > 0. ⚠️ **Quem discrimina é a BUSCA**: ela é resolvida sobre o MESMO panorama, e uma `preparando` existe no recorte DA CONTA e não no das ao vivo | a `preparando` ganhou nome distintivo, e entraram duas asserções pelas PROPS (acha **1** com o panorama certo, **0** com o estreitado) + a **isca do termo impossível** |
+| **187-09 M16** — aceitar id de **outra conta** no `?sel=` | ⚠️⚠️ **PROXY DE FONTE não prova comportamento.** O gate `lote-rota` exercita o **POST**, e a conferência do GET era um `assert.match` sobre o **TEXTO** do controller — e `match` casa a **primeira** ocorrência, que é a do POST. O gate ficava verde | nasceu `test_sel_da_URL_com_id_de_OUTRA_conta_e_descartado_187_09` (id `selecao-na-url`): a oferta de outra conta não entra em `selecionados`, não entra no lote e **o título dela não vaza para as props** (T-187-96); mais o lixo da querystring e a isca na outra direção. E o proxy de fonte virou **contagem exata de 2** |
+| **187-09 M1 contra `lote-escrita`** | **controle por construção** — mutar a camada de tela não muda quem é aprovado, que é o desenho da Fase 186 | nenhum: a mutação morre contra o gate certo (`lote-veredicto`) |
+
+### ⚠️ Os DOIS regimes de contagem, e qual manifesto os guarda
+
+Oito ids de JS desta fase têm **duas** contagens (`tests=N,N-mutado`): a sonda com `skip` por `mtime`
+reporta números **diferentes** com o arquivo pristino e com ele mutado. Sem os dois regimes a
+campanha de mutação **abortaria na primeira execução** ou marcaria "SOBREVIVEU" por um motivo que
+**não é o código**.
+
+| manifesto | ids com dois regimes |
+|---|---|
+| `contagens-187-01.txt` | `tokens-da-fila` (16,9) |
+| `contagens-187-03.txt` | `abas-da-pagina` (111,101) · `cabecalho-sem-subtitulo` (86,76) |
+| `contagens-187-04.txt` | `cabecalho-da-fila` (99,85) · `faixa-de-andamento` (99,85) |
+| `contagens-187-06.txt` | `filtros-render` (29,19) |
+| `contagens-187-07.txt` | `tabela-niveis-1-e-2` (27,19) |
+| `contagens-187-08.txt` | `linha-da-oferta-render` (23,14) |
+| `contagens-187-09.txt` | `lote-render` (26,19) |
+
+### ⚠️⚠️ §6.1 — ACHADO NOVO DE ORQUESTRAÇÃO: **o scratchpad é COMPARTILHADO entre subagentes paralelos**
+
+**E o erro é do ORQUESTRADOR, não do executor.** As waves **09** e **10** foram lançadas **em
+paralelo** pela mesma sessão, e **as duas recebem o MESMO diretório de scratchpad**. As primeiras
+rodadas da wave 09 usaram nomes **genéricos** (`mutar.sh`, `de.txt`, `para.txt`, `out.txt`) — e o
+`mutar.sh` da wave 10 **foi sobrescrito pelo da 09 no meio do trabalho**.
+
+| quem | o que fez |
+|---|---|
+| **wave 10** | **detectou** por `sha256` que o próprio script havia mudado |
+| **wave 09** | **refez a campanha INTEIRA** com nomes únicos (`…-187-09-waveNOVE` em todos) e rodou com a wave 10 **já fechada**, sem colisão possível |
+| **as duas** | conferiram, por `sha256` contra `git show HEAD:`, que **nenhum arquivo de produção se perdeu** |
+
+➡️ ⚠️ **A LIÇÃO EXATA, que vai para o learnings §4c:** *conclusão de mutação tirada com script
+auxiliar de **nome genérico**, em execução **paralela**, **não vale** — o nome do script precisa
+carregar o plano.* Este plano usa `…-187-11` em todos os nomes de script e de saída.
+
+### §6.2 — A campanha DESTE plano
+
+<!-- PREENCHIDA NA TAREFA 3; ver a tabela em §6.2.1 -->
+
+---
+
+## §7 — OS 11 MANIFESTOS E O `--autoteste`
+
+| manifesto | ids | manifesto | ids |
+|---|---|---|---|
+| `contagens-187-01.txt` | 3 | `contagens-187-07.txt` | 9 |
+| `contagens-187-02.txt` | 4 | `contagens-187-08.txt` | 10 |
+| `contagens-187-03.txt` | 3 | `contagens-187-09.txt` | 7 |
+| `contagens-187-04.txt` | 5 | `contagens-187-10.txt` | 12 |
+| `contagens-187-05.txt` | 4 | **`contagens-187-11.txt`** | **5** |
+| `contagens-187-06.txt` | 9 | **TOTAL** | **71** |
+
+⚠️ **Nenhum id com `tests=0`** (gate provando, com a razão escrita: *"`tests=0` não é contagem, é
+número de fora"*). ⚠️ **Nenhum id repetido dentro do mesmo manifesto** (o harness pega o **primeiro**
+e o segundo nunca roda). ⚠️ **Todo método PHP deste plano tem id** — teste em arquivo sem id no
+manifesto **NUNCA RODA**, e é a armadilha 1 da Fase 186.
+
+⚠️ **Os 4 ids PHP deste plano têm NO MÁXIMO 3 métodos cada** (3 + 3 + 3 + 1 = 10). Id composto
+grande soma contagens de coisas sem relação, e a correção barata passa a ser *"elevar o número"*.
+
+⚠️⚠️ **`tests/js/publicador-vocabulario-novo.test.js` NÃO está embutido em nenhum id composto.** Ele
+tem id **próprio** (`vocabulario-tamanhos`), com a forma **`>=443`**, em `contagens-187-01.txt` — e
+há gate provando que ele não aparece em nenhum outro id de nenhum manifesto da fase. A razão é
+medida: a contagem dele **cresce por construção** (um sub-teste por arquivo varrido nos diretórios
+fechados), reprovou a wave 5 em **dois** ids de outras waves, e ia reprovar em **toda** wave de 6 a
+11 — a **nona** ocorrência da família *"contagem que depende de quantos arquivos existem"*.
+
+### O harness, re-medido nesta sessão
+
+```
+AUTOTESTE: 20 casos, 0 divergencia. As duas formas REPROVAM quando devem.
+```
+
+Os 20: 3 da forma do JS + **4 iscas da forma `>=N`** + 1 **isca G1** (reporter padrão cega o gate) +
+5 da forma do PHP + 1 **isca ANSI** + 2 da resolução de manifesto (incluindo a **isca de
+compatibilidade** com os 163 ids da Fase 186) + 4 de manifesto incompleto/ausente **abortando**.
+
+### A conferência de HOMÔNIMO, por script, nas DUAS direções
+
+⚠️ O `--filter` do PHPUnit é **regex NÃO ANCORADO**, e a Fase 186 está **em produção**. Medido nesta
+sessão sobre `tests/Feature/Publicador/Aprovacao/*.php` + `tests/Unit/Publicador/Aprovacao/*.php`:
+
+```
+ARQUIVOS=26  METODOS=389  HOMONIMOS_EXATOS=0  PREFIXOS=0
+```
+
+⚠️ **A conferência de PREFIXO é a que importa**, e foi ela que a Fase 186 teve de acrescentar depois
+de o caso acontecer **duas vezes**: nome que é **prefixo** de outro casa os **DOIS**, e o gate mede
+duas suítes achando que mede uma. Os 10 métodos deste plano levam `_187_` no nome e **nenhum** é
+prefixo de outro arquivo, nem tem outro arquivo como prefixo.
+
+---
+
+## §8 — AS PERGUNTAS, TODAS COM DONO
+
+<!-- ⚠️ Forma fixa lida pelo gate `fechamento-perguntas`. "a definir" NÃO é dono. -->
+
+PERGUNTA-P1: RESPONDIDA — dono: usuário (15/10/2026) — o "pior caso entre N variações" na célula Preço fica em BALÃO ao passar o mouse (`title`), e a frase visível vai para o painel da Fase 188; a coluna fica com UMA linha, fiel ao protótipo (92px, `:156`), e com um preço só `variante` é `null` e não há nota. Recusado: acrescentar segunda linha na coluna. APLICADA EM: 187-08 (o `title`) e Fase 188 (a frase)
+PERGUNTA-P2: RESPONDIDA — dono: usuário (15/10/2026) — o custo da composição por oferta é resolvido PRÉ-AQUECENDO por tarefa em segundo plano. Recusadas explicitamente "aceitar e medir em produção" e "limitar N consultas por abertura" — a segunda porque "Incompleto" BLOQUEIA a aprovação, logo limitar protegeria o servidor travando o trabalho. APLICADA EM: 187-10 (plano novo, criado por causa desta resposta)
+PERGUNTA-P3: RESPONDIDA — dono: usuário (15/10/2026) — a fila nasce vazia até a Fase 194: confirmado, é honesto e não é defeito. APLICADA EM: 187-09 (os dois vazios) e 187-10 (o relatório diz "0 trios" sem parecer erro)
+PERGUNTA-P4: RESPONDIDA — dono: usuário (15/10/2026) — "Cadastro completo · categoria e ficha técnica organizadas" é medido no rascunho; não sendo verdade, a frase NÃO aparece, e sem nenhuma fonte servível o executor PARA e devolve. Não imprimir a frase do protótipo como decoração. APLICADA EM: 187-07
+PERGUNTA-P5: RESPONDIDA — dono: usuário (17-18/10/2026) — o vazio honesto fica com o literal "Nenhuma oferta aguardando aprovação." mais "As ofertas entram nesta fila quando o sistema termina de preparar o anúncio. Enquanto isso, nada aqui é um erro.", SEM BOTÃO. APLICADA EM: 187-09
+PERGUNTA-P6: RESPONDIDA — dono: usuário (17-18/10/2026) — o toast do lote mantém o VOCABULÁRIO TRAVADO (`TOASTS.aprovado`, "Aprovado — aguardando publicação", contagem no sub); o protótipo (`Aprovacao.dc.html:1167`, "N ofertas aprovadas") PERDE aqui, para não criar uma 7ª frase fora do vocabulário com gate. APLICADA EM: 187-09, e registrada em §5 como o segundo caso da fase em que o protótipo perde
+PERGUNTA-P7: RESPONDIDA — dono: usuário (18/10/2026) — autorizou o DEPLOY da fase inteira, para que a conferência visual possa acontecer em produção. APLICADA EM: o deploy do commit `7791d7aa` (ver §0)
+PERGUNTA-VISUAL: ABERTA — dono: usuário — a CONFERÊNCIA VISUAL da fila na conta 459, em produção. Roteiro de 8 itens em §11. Nada neste documento afirma que a tela foi conferida
+PERGUNTA-13: ABERTA — dono: Fase 193 — `PUBLICADO => []` é TERMINAL: não há transição saindo de "Publicado". A decisão 12 cobre a janela entre aprovar e publicar (BLOQ-06); mexer na foto de um anúncio que JÁ ESTÁ NO AR é outro fluxo (editar publicado), e quem decide é a Fase 193. Não bloqueia nada na 187
+PERGUNTA-17: ABERTA — dono: Fase 194 — BUG LATENTE: o recorte da fila usa as duas âncoras com `AND` (`where company_id = ? and mlb_empresa_id = ? and andamento in (...)`) e `mlb_empresa_id` é ANULÁVEL, então oferta com nulo numa conta que TEM `MlbEmpresa` fica INVISÍVEL e a pílula diria `0` com trabalho esperando. Hoje não é bug (nada cria oferta). Duas saídas, e a 194 escolhe UMA: (a) preencher sempre as duas colunas ao criar a oferta — mais simples e não toca código em produção; ou (b) o recorte da Fase 186 vira tolerante a nulo. ⚠️ O executor do 187-02 NÃO corrigiu, e estava certo: a semântica mora no `AndamentoDaOfertaService`, somente leitura, e reimplementar o recorte criaria a segunda verdade. É a RESSALVA do CRIT-02
+PERGUNTA-D1: ABERTA — dono: outro dev (bloqueia a Fase 192) — os chips de problema estruturados viram texto na nossa borda, ou o problema é guardado estruturado do lado do Creative Engine, servindo ao `CreativeJuiz`? (IA-03)
+PERGUNTA-D2: ABERTA — dono: outro dev (bloqueia a Fase 192) — ele pretende mexer em `validacao_status`, no `PublicadorCriativoAprovacaoService` ou nos endpoints `criativo*` nas próximas semanas? Se sim, combinar a ORDEM antes
+PERGUNTA-D4: ABERTA — dono: outro dev (bloqueia a Fase 194) — o que falta do lado do Creative Engine para ligar `publicador.criativos_auto.ativo`? (AUTO-07)
+
+⚠️ **7 RESPONDIDAS e 6 ABERTAS.** Nenhuma das 6 abertas bloqueia a Fase 187 — e **nenhuma delas é
+desta fase para resolver**.
+
+---
+
+## §9 — OS DOIS GATES **ALHEIOS** QUE ESTA FASE TOCOU, DECLARADOS
+
+### ⚠️⚠️ §9.1 — EXPANSÃO DE TERRITÓRIO DECLARADA: a wave 08 mexeu num gate da **Fase 186**, que está EM PRODUÇÃO
+
+**O plano 187-08 não previa tocar gate da 186.** Tocou, e o registro é este — porque expansão de
+território **não declarada** é o que faz a próxima fase descobrir por acidente.
+
+| o quê | medida |
+|---|---|
+| arquivo | `tests/Feature/Publicador/Aprovacao/FechamentoDaFase186Test.php` |
+| commit | **`37c3ebaf`** |
+| o defeito | a **camada B** daquele gate acusava **EXPOR** o andamento como se fosse **ESCREVER** — e a linha da fila legitimamente **expõe** |
+| o conserto | lista de **EXPOSITORES** com a exceção **PROVADA, não afirmada**: o expositor **tem** de casar a sonda larga (senão a exceção é linha morta) **e** não pode ter nenhuma forma de escrita |
+| manifesto remedido | `contagens-186-09.txt`: `andamento-um-lugar-so` **13 → 19** asserções · `transversais` **251 → 257** asserções |
+
+⚠️ **RECONFERIDO POR MIM NESTA SESSÃO**, os dois ids, rodando o harness:
+
+```
+gate 'andamento-um-lugar-so' (php): esperado 1 passed / 19 assertions
+  Tests:    1 passed (19 assertions)          PASSOU
+
+gate 'transversais' (php): esperado 12 passed / 257 assertions
+  Tests:    12 passed (257 assertions)         PASSOU
+```
+
+⚠️ **E a razão de o conserto ser legítimo e não "fazer passar":** a exceção não é uma **lista de
+nomes** — é uma lista **cujos membros são conferidos por COMPORTAMENTO** (casar a sonda larga **e**
+não escrever). É exatamente a correção que o learnings §4c prescreve para *"o que impede alguém de
+entrar na lista de exceções?"*.
+
+⚠️ **E eu conferi o efeito colateral antes de criar o meu arquivo:** o
+`FechamentoDaFase186Test::test_os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos` faz
+`glob()` em `tests/Feature/Publicador/Aprovacao/*.php` — **o diretório onde este plano cria
+`FechamentoDaFase187Test.php`**. Medido: as asserções daquele método são **fora dos laços**, então a
+contagem **não muda**; o que mudaria é o veredicto, se eu introduzisse homônimo ou prefixo. **Medi
+antes: 0 e 0.**
+
+### ⚠️ §9.2 — A wave 10 consertou, DO PRÓPRIO LADO, um gate da wave 02 que reprovou
+
+| o quê | medida |
+|---|---|
+| o gate | `contador-e-territorio` (plano 187-02) |
+| por que ficou vermelho | a wave 10 acrescentou o **despacho do job de aquecimento** em `meus()`, e o gate daquela wave contava o diff de `MlbAnuncioController` |
+| ⚠️ **o risco REAL, e é de produção** | na conexão **`sync`**, `dispatch()` roda o job **DENTRO do request** — e a tela de Publicações, **que está no ar**, pagaria as chamadas HTTP ao Mercado Livre **sincronamente** |
+| a guarda | **`Queue::connection() instanceof SyncQueue`** |
+| ⚠️ **o que NÃO serve como guarda** | `config('queue.default')` — ele é `'sync'` **também sob `Queue::fake()`**, então a guarda desligaria o aquecimento nos próprios testes que o provam; e `runningUnitTests()`, que confunde ambiente com conexão |
+| conserto | feito **do lado da wave 10**, sem tocar o arquivo de gate da wave 02 |
+
+⚠️ **RECONFERIDO POR MIM NESTA SESSÃO** (gate alheio, rodado inteiro): `contador-e-territorio` →
+**8 testes / 102 asserções, PASSOU**.
+
+➡️ **A decisão registrada:** *conexão de fila que executa EM LINHA não recebe job de aquecimento* —
+**melhor não aquecer do que aquecer dentro do request**. É desvio Rule 2 (funcionalidade crítica
+ausente), e a razão é o incidente de **30/07/2026**, quando requisições lentas ocuparam os workers
+do php-fpm e **até o login parou**.
+
+### ⚠️ §9.3 — Um gate da **Fase 186** reprovou no commit de partida desta fase, e NÃO foi consertado
+
+`VinculoDuravelDaOriginalTest::terr_11` (Fase 186) é um gate de território **por RANGE**, com
+`PARTIDA = '1c16d9e9'` cravada. A **sessão paralela** commitou `feat(196)` **dentro** daquele range e
+tocou `PublicadorCriativoReferenciaService.php`.
+
+⚠️ **NÃO corrigido, por três razões:** o arquivo acusado está **proibido** a esta fase (Creative
+Engine / retenção de 48 h); o teste é prova de uma fase **em produção**; e reapontar um gate da 186
+para "fazer passar" é a definição de **teste que para de provar algo**.
+
+➡️ ⚠️ **É o terceiro caso desta fase da mesma família:** *"gate de território por RANGE acusa o
+ORQUESTRADOR e as SESSÕES PARALELAS"* (os outros dois: §3.1 e o próprio Teste 2 do plano 187-11). O
+recorte certo é **por ESCOPO DO ASSUNTO**, nunca por range puro — e nunca pelo **autor**, que aqui
+não discrimina.
+
+---
+
+## §10 — AS DÍVIDAS DESTA FASE
+
+Registradas com dono em
+`.planning/phases/187-a-fila-aguardando-aprovacao-e-a-aba-que-leva-a-ela/deferred-items.md`:
+
+| dívida | dono |
+|---|---|
+| o **risco de custo** da composição por linha (pergunta P2) — mitigado pelo pré-aquecimento, **não eliminado** | Fase 188 / operação |
+| a **`CascaDeModal.jsx`** nasceu aqui e a **Fase 188 REUSA** — se ela recriar, haverá **duas cascas divergindo** | Fase 188 |
+| a **legenda do rodapé** não lista o anel de **falha** nem o quadrado de **regenerando**, embora os dois existam na tabela | Fase futura (melhoria) |
+| a divergência **D7** (o `title` do quadrado em `regenerating` diz "a conferir") | protótipo — reproduzida de propósito |
+| a divergência **D9** (o checkbox do cabeçalho marca linhas em `preparando`) | protótipo — reproduzida de propósito |
+| a dívida **DIV-01 da Fase 186** (3 das 4 estruturas declaram a fase dona **só fora do docblock**) **segue aberta** e **não é desta fase** | orquestrador ou Fase 191 |
+| ancorar o relógio em `CockpitDaContaTest.php:966` e `:1318` (as duas falhas de fronteira de dia) | quem mantiver a Fase 179 |
+
+### ⚠️ A legenda do rodapé — item para fase futura, **não lacuna**
+
+A legenda **não lista** o anel de *falha* nem o quadrado de *regenerando*, e isso é **FIEL ao
+protótipo** (`Aprovacao.dc.html:193`-`:198`). A wave 09 **reproduziu e PERGUNTOU**; a decisão foi
+**MANTER**, porque acrescentar seria **adaptar o layout** — e o protótipo ganha nos rótulos e na
+ordem. ➡️ **Registrado como item para fase futura, não como lacuna desta.**
+
+---
+
+## §11 — O CHECKPOINT HUMANO: A CONFERÊNCIA VISUAL É DO USUÁRIO
+
+⚠️⚠️ **Antes do roteiro, a frase que o precede:** **nenhum executor desta fase viu tela
+renderizada** (§1). ⚠️ **A conferência é EM PRODUÇÃO, na conta 459** — e o deploy que a torna
+possível **já aconteceu**, em `7791d7aa`, **com autorização explícita do usuário em 18/10/2026**
+(§0). ⚠️ **Este plano NÃO deployou, NÃO deu push e NÃO tocou no VPS.**
+
+**Roteiro, 8 itens:**
+
+1. Abrir `/mlb/anuncios/meus/459` e conferir que **o subtítulo saiu** e entraram **duas abas**
+   alinhadas à base, com a linha de 1px embaixo do cabeçalho.
+2. Conferir que **"Publicadas no Mercado Livre"** está **ativa** (amarelo embaixo) com o contador
+   simples, e que **"Aguardando aprovação"** tem a **pílula amarela** com um número.
+3. Conferir que **busca, filtros, agrupamento, painel, lote e atalhos da lista continuam
+   funcionando igual** — e que uma URL antiga com `?status=em_revisao` **ainda funciona**.
+4. Clicar em **"Aguardando aprovação"** e conferir que a fila abre: a linha
+   "ⓘ Margem mínima: N% · Toda oferta precisa de aprovação humana antes de publicar", a faixa de 9
+   cards, os filtros e a tabela.
+5. ⚠️ **Se a fila estiver VAZIA, isso é o esperado hoje:** nada nesta fase cria oferta. O texto tem
+   de ser o do vazio **honesto** — *"Nenhuma oferta aguardando aprovação."* mais *"As ofertas entram
+   nesta fila quando o sistema termina de preparar o anúncio. Enquanto isso, nada aqui é um erro."*
+   —, **sem** o botão "Limpar filtros". Ver uma oferta de verdade depende da **Fase 194**.
+6. Clicar num card da faixa e conferir que (a) a lista filtra, (b) **as contagens dos outros cards
+   NÃO mudam** e (c) a URL carrega o filtro; recarregar devolve o mesmo recorte.
+7. Abrir um popover e conferir que ele fica **abaixo** do header global e **acima** da tabela.
+8. Marcar duas linhas, conferir a barra flutuante no rodapé, abrir o modal e conferir que ele lista
+   as duas com ✓/× **e o motivo**. ⚠️⚠️ **Só aprovar se quiser aprovar de verdade: não há
+   desfazer.**
+
+➡️ **Divergência que o usuário relatar vira item com `arquivo:linha`** — nesta SUMMARY ou numa quick
+task, nunca "ajuste" silencioso de critério.
+
+---
+
+## §12 — O QUE O ORQUESTRADOR TEM DE MARCAR À MÃO, E POR QUÊ
+
+⚠️ **Nenhum dos arquivos abaixo pertence a este plano** (GATE-07): quem edita é o **orquestrador**.
+E os três têm de ser editados **à mão**, em **bloco ADITIVO**, com `git diff --numstat` provando
+**0 remoções** — pelas razões **medidas neste projeto**:
+
+| ferramenta | o que ela faz de verdade |
+|---|---|
+| `roadmap update-plan-progress` | **reporta sucesso e NÃO escreve nada** |
+| `requirements.mark-complete` | devolve **`not_found`** para IDs que só existem em `REQUIREMENTS-vNN.md` (o `REQUIREMENTS.md` da raiz parou na v17.0) |
+| `gsd-sdk query state.advance-plan` | **corrompeu o `STATE.md` deste projeto SEIS vezes** — ⚠️ **não rodar** |
+
+1. **`.planning/ROADMAP.md`** — o **Coverage Map** da Fase 187 (famílias `ABA-01/02/05/06`,
+   `FILA-01..16`, `MOD-11`, `MOD-12`) e a linha `**Plans**:` da fase. ⚠️ A forma é
+   **"em produção (18/10/2026, commit `7791d7aa`)"** — **NÃO** a da Fase 186 (*"Entregue no CÓDIGO —
+   NÃO DEPLOYADO"*), que era verdade em 15/10 e deixou de ser.
+2. **`.planning/REQUIREMENTS-v27.md`** — marcar os checkboxes **à mão**.
+3. **`.planning/STATE.md`** — **bloco aditivo**, sem `state.advance-plan`.
+
+---
+
+## §13 — AVISOS ÀS FASES SEGUINTES
+
+### ⚠️⚠️ Para a **Fase 188** (Revisão simples — o painel de 1140px)
+
+1. ⚠️⚠️ **`resources/js/Components/Mlb/Publicador/aprovacao/CascaDeModal.jsx` É DESTA FASE. IMPORTE-A,
+   NUNCA A RECRIE.** O Coverage Map atribui a "casca comum" à 188 (MOD-01..05), mas o **modal de
+   lote** é da 187 — então ela **nasceu aqui**. **Duas cascas divergiriam.** Está declarado dentro do
+   arquivo e **tem gate** (`fechamento-arquivos-e-manifestos`).
+2. ⚠️ **`MlbPublicadorAprovacaoController` tem `$mlbEmpresaId` DUAS vezes** — em **`:195`** e em
+   **`:559`** —, resultado das edições paralelas das waves 09 e 10. ➡️ **Quem editar ali NÃO deve
+   usar âncora por número de linha**: use âncora semântica (o nome do método, a linha inteira da
+   atribuição com o contexto).
+3. A frase *"pior caso entre N variações"* **visível** é da 188 (decisão P1); na fila ela é só
+   `title`.
+4. O **FOCO** da oferta (`?oferta=`) é o que a 188 substitui pelo `openPanel`. A **miniatura** da
+   foto também é da 188 — o acervo é território proibido nesta fase.
+
+### Para a **Fase 193** (do aprovado ao ar)
+
+⚠️⚠️ **A FRONTEIRA DESTA FASE: a fila APROVA — e aprovar ENFILEIRA. A fila NÃO PUBLICA.** A escrita
+no Mercado Livre é da **Fase 193**, e **nada nesta fase escreve no ML**
+(`Http::fake` + `preventStrayRequests()` em toda a suíte; `MlPublicacaoService` com `numstat` ZERO).
+⚠️ E a tensão declarada no `ROADMAP.md` continua declarada: o **D-11** prova que a **LISTA** não
+escreve; a **FILA** escreve, com gate de escrita próprio. Quem ler só um dos dois lê contradição.
+⚠️ A **PERGUNTA-13** (editar foto de anúncio no ar) é sua.
+
+### Para a **Fase 194** (ligar `publicador.criativos_auto.ativo`)
+
+⚠️⚠️ **A PERGUNTA-17 é sua, e é BUG LATENTE que tem de ser resolvido ANTES de criar a primeira
+oferta.** Ver §8. **Duas saídas, escolha UMA**; a (a) é mais simples e **não toca código em
+produção**.
+
+### Para a **Fase 192**
+
+As **PERGUNTA-D1** e **PERGUNTA-D2** são do **outro dev**. ⚠️ Antes de mexer em
+`app/Services/Creative/`, nos endpoints `criativo*`, em `AnunciarML.jsx`, `PainelCriativosIa.jsx` ou
+`KitCriativosGrade.jsx` — **mostre o aviso de coordenação ao usuário e pergunte se ele já combinou
+com o outro dev. Não decida por ele.**
