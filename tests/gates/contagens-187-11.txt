@@ -22,10 +22,10 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ─── PHP: a FORMA do documento de fechamento ───────────────────────────────────
-fechamento-15-criterios  php  test_o_fechamento_187_(existe_e_tem_as_oito_linhas_de_forma_fixa|tem_os_quinze_criterios_sem_nenhum_reprova|declara_que_ninguem_viu_tela_renderizada)  ::  tests=3 assertions=1
-territorio-e-fid  php  test_territorio_187_(os_alvos_citados_existem_no_disco|nenhum_import_novo_fora_do_que_ja_estava_declarado|a_fid01_consolidada_declara_script_ou_leitura_por_plano)  ::  tests=3 assertions=1
-fechamento-perguntas  php  test_perguntas_187_(toda_pergunta_tem_veredicto_e_dono|as_dividas_da_fase_estao_no_deferred_items|nenhum_filtro_dos_manifestos_tem_homonimo_nas_duas_direcoes)  ::  tests=3 assertions=1
-fechamento-fronteira  php  test_o_fechamento_187_declara_a_fronteira_de_escrita_no_ml  ::  tests=1 assertions=1
+fechamento-15-criterios  php  test_o_fechamento_187_(existe_e_tem_as_oito_linhas_de_forma_fixa|tem_os_quinze_criterios_sem_nenhum_reprova|declara_que_ninguem_viu_tela_renderizada)  ::  tests=3 assertions=18
+territorio-e-fid  php  test_territorio_187_(os_alvos_citados_existem_no_disco|nenhum_import_novo_fora_do_que_ja_estava_declarado|a_fid01_consolidada_declara_script_ou_leitura_por_plano)  ::  tests=3 assertions=32
+fechamento-perguntas  php  test_perguntas_187_(toda_pergunta_tem_veredicto_e_dono|as_dividas_da_fase_estao_no_deferred_items|nenhum_filtro_dos_manifestos_tem_homonimo_nas_duas_direcoes)  ::  tests=3 assertions=30
+fechamento-fronteira  php  test_o_fechamento_187_declara_a_fronteira_de_escrita_no_ml  ::  tests=1 assertions=6
 
 # ─── JS: a contagem FIXA dos arquivos da fase e os 11 manifestos ───────────────
 fechamento-arquivos-e-manifestos  js  tests/js/publicador-fila-fechamento-187.test.js  ::  tests=6

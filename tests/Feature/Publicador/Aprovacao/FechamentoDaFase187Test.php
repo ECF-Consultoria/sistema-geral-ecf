@@ -542,17 +542,51 @@ class FechamentoDaFase187Test extends TestCase
         $meus = $this->metodosDesteArquivo();
         $this->assertCount(10, $meus, 'o FechamentoDaFase187Test nao tem exatamente 10 metodos de teste');
 
-        // ⚠️ **ARMADILHA 1 da Fase 186: teste em arquivo sem id no manifesto NUNCA RODA.** Todo
+        // ⚠️⚠️ **ARMADILHA 1 da Fase 186: teste em arquivo sem id no manifesto NUNCA RODA.** Todo
         // metodo deste arquivo tem de ter id em `contagens-187-11.txt` — senao ele e lacuna
         // apresentada como cobertura.
-        $meuManifesto = (string) file_get_contents(base_path('tests/gates/contagens-187-11.txt'));
+        //
+        // ⚠️ A conferencia e por `preg_match`, NAO por `str_contains` — e isso foi um DEFEITO MEU
+        // que este proprio gate pegou na primeira rodada: os filtros deste manifesto sao
+        // ALTERNACOES (`test_o_fechamento_187_(a|b|c)`), e o nome completo do metodo **nao aparece
+        // literalmente** no arquivo. `str_contains` acusava os 9 metodos cobertos como "sem id".
+        // ➡️ O invariante nao e "o nome esta escrito no manifesto", e **"algum filtro do manifesto
+        // RODA este metodo"** — que e o que `preg_match` mede.
+        $filtrosDoMeuPlano = [];
+        foreach (preg_split('/\R/', (string) file_get_contents(base_path('tests/gates/contagens-187-11.txt'))) ?: [] as $linha) {
+            if ($linha === '' || preg_match('/^\s*#/', $linha)) {
+                continue;
+            }
+            $campos = preg_split('/\s+/', trim($linha));
+            if (count($campos) >= 3 && $campos[1] === 'php') {
+                $filtrosDoMeuPlano[] = $campos[2];
+            }
+        }
+        $this->assertGreaterThanOrEqual(4, count($filtrosDoMeuPlano), 'li menos de 4 filtros php em contagens-187-11.txt — sonda cega');
+
         $semId = [];
         foreach ($meus as $metodo) {
-            if (! str_contains($meuManifesto, $metodo)) {
+            $coberto = false;
+            foreach ($filtrosDoMeuPlano as $filtro) {
+                if (preg_match('/' . $filtro . '/', $metodo)) {
+                    $coberto = true;
+                    break;
+                }
+            }
+            if (! $coberto) {
                 $semId[] = $metodo;
             }
         }
         $this->assertSame([], $semId, 'metodo sem id no manifesto NUNCA RODA — e lacuna, nao cobertura');
+
+        // ⚠️ ISCA: a cobertura por `preg_match` TEM de recusar um metodo que nenhum filtro roda.
+        $naoCoberto = false;
+        foreach ($filtrosDoMeuPlano as $filtro) {
+            if (preg_match('/' . $filtro . '/', 'test_metodo_que_ninguem_declarou_9z7')) {
+                $naoCoberto = true;
+            }
+        }
+        $this->assertFalse($naoCoberto, 'algum filtro do manifesto casa um metodo inventado — o filtro esta largo demais');
 
         // Os metodos do fechamento da Fase 186 (o vizinho mais provavel de colidir).
         $da186 = [];
