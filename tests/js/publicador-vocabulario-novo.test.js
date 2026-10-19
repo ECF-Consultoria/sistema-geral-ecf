@@ -412,6 +412,12 @@ const ARQUIVOS_NOVOS = [
     // não tem meio pixel.
     `${DIR_APROV}/KpisDoPainel.jsx`,
     `${DIR_APROV}/ColunaDePreco.jsx`,
+    // ⚠ Tarefa 2 do mesmo plano: a composição completa da conta — o cabeçalho de
+    // `:655`, as 7 linhas de `:657` com o SELO DE ORIGEM de `:659`, o rodapé do
+    // resultado de `:663`, a nota do frete do comprador de `:665` e o botão de
+    // `:667`. ⚠️ `text-[10.5px]` (o selo) e `text-[11px]` (o detalhe truncado)
+    // são medidas do protótipo — o passo do Tailwind não tem meio pixel.
+    `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`,
 ];
 
 /**

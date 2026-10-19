@@ -5,6 +5,7 @@ import KpisDoPainel, {
     objetoDoPainel,
     textoDoPainel,
 } from './KpisDoPainel';
+import ComposicaoFinanceiraDoPainel from './ComposicaoFinanceiraDoPainel';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 188, plano 09 — A COLUNA DE PREÇO E RESULTADO DO PAINEL (`:639`-`:693`).
@@ -63,8 +64,11 @@ import KpisDoPainel, {
  *   é da wave **188-06** e **não existe** no HEAD de partida (`091340b6`,
  *   medido em `routes/mlb_anuncios.php`). Sem handler o botão não é desenhado,
  *   exatamente como o `onTentarDeNovo` da 188-07 e o `onReprovar` da 188-08.
+ * @param {unknown} [props.onInformarFrete] `() => void`, ou `null` — o modal de
+ *   frete é do plano **188-12**, que RELIGA este handler (B2). Sem ele o botão
+ *   de `:667` não é desenhado, e o TEXTO da composição continua aparecendo.
  */
-export default function ColunaDePreco({ preco = null, onConferirAlteracao = null }) {
+export default function ColunaDePreco({ preco = null, onConferirAlteracao = null, onInformarFrete = null }) {
     const dados = objetoDoPainel(preco);
 
     // ⚠️ Slot sem dado **não desenha casca**.
@@ -79,6 +83,14 @@ export default function ColunaDePreco({ preco = null, onConferirAlteracao = null
         titulo === null ? null : <span key="titulo" className={CLASSES_TITULO}>{titulo}</span>,
         <KpisDoPainel key="kpis" kpis={dados.kpis} />,
         <AvisoDeAlteracao key="alteracao" alteracao={dados.alteracao} onConferir={onConferirAlteracao} />,
+        <ComposicaoFinanceiraDoPainel
+            key="composicao"
+            composicao={dados.composicao}
+            preco={dados.preco}
+            frete={dados.frete}
+            freteAusente={dados.frete_ausente}
+            onInformarFrete={onInformarFrete}
+        />,
     ]);
 
     // ⚠️ `filhosSeguros` não sabe que um elemento VAI renderizar vazio — ele só
@@ -86,8 +98,9 @@ export default function ColunaDePreco({ preco = null, onConferirAlteracao = null
     // título, sem KPI e sem aviso, a coluna inteira some.
     const temKpis = Array.isArray(dados.kpis) && dados.kpis.length > 0;
     const temAviso = objetoDoPainel(dados.alteracao) !== null;
+    const temComposicao = objetoDoPainel(dados.composicao) !== null;
 
-    if (titulo === null && !temKpis && !temAviso) return null;
+    if (titulo === null && !temKpis && !temAviso && !temComposicao) return null;
 
     return <ColunaDoPainel>{conteudo}</ColunaDoPainel>;
 }

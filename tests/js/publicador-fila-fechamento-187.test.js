@@ -134,6 +134,7 @@ const JSX_DEPOIS_DA_187 = [
     // a oferta irmã.
     `${DIR_APROV}/KpisDoPainel.jsx`,
     `${DIR_APROV}/ColunaDePreco.jsx`,
+    `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

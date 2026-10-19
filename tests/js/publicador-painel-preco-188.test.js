@@ -156,6 +156,7 @@ async function montar(caminhoRelativo) {
 
 const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 const REL_KPIS = `${DIR_APROV}/KpisDoPainel.jsx`;
+const REL_COMPOSICAO = `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`;
 const REL_COLUNA = `${DIR_APROV}/ColunaDePreco.jsx`;
 const REL_PAINEL = `${DIR_APROV}/PainelDeRevisao.jsx`;
 const REL_BARRA_DA_FILA = `${DIR_APROV}/BarraDeMargem.jsx`;
@@ -178,7 +179,7 @@ const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 // fantasmas nesta milestone, TRÊS deles vindos de briefing do orquestrador.
 // Sonda de AUSÊNCIA sobre arquivo inexistente passa CALADA.
 const CAMINHOS_CITADOS = [
-    REL_KPIS, REL_COLUNA, REL_PAINEL, REL_BARRA_DA_FILA, REL_VOCABULARIO, REL_IMAGEM,
+    REL_KPIS, REL_COMPOSICAO, REL_COLUNA, REL_PAINEL, REL_BARRA_DA_FILA, REL_VOCABULARIO, REL_IMAGEM,
     REL_PAGINA, REL_SERVICO_PRECO, REL_SERVICO_PAINEL, REL_DTO, REL_LINHA_FINANCEIRA,
     REL_RESUMO_RAPIDO, REL_ROTAS, REL_GATE_VOCABULARIO, REL_GATE_FECHAMENTO,
     REL_GATE_ZINDEX, REL_MANIFESTO,
@@ -188,6 +189,7 @@ const CAMINHOS_CITADOS = [
 // identificadores e os próprios literais, e **palavra no docblock reprova pelo
 // próprio conserto**.
 const FONTE_KPIS = lerSemComentarios(REL_KPIS);
+const FONTE_COMPOSICAO = lerSemComentarios(REL_COMPOSICAO);
 const FONTE_COLUNA = lerSemComentarios(REL_COLUNA);
 const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
@@ -202,6 +204,7 @@ const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
  */
 const FONTES_DO_PLANO = [
     [REL_KPIS, FONTE_KPIS],
+    [REL_COMPOSICAO, FONTE_COMPOSICAO],
     [REL_COLUNA, FONTE_COLUNA],
 ];
 
@@ -375,6 +378,7 @@ const PRECO_OK = {
 
 // ⚠️⚠️ OS BUNDLES, TODOS MONTADOS ANTES DO PRIMEIRO `test()`.
 const MOD_KPIS = await montar(REL_KPIS);
+const MOD_COMPOSICAO = await montar(REL_COMPOSICAO);
 const MOD_COLUNA = await montar(REL_COLUNA);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -689,14 +693,51 @@ test('⚠️⚠️ D4: "Conferir alteração" NÃO é desenhado sem handler, e a
     assert.equal(botoes.length, 1, `com handler não há exatamente 1 botão: ${botoes.length}`);
     assert.equal(botoes[0].desabilitado, false, 'o botão nasceu `disabled` — `disabled` decorativo foi OFERECIDO e RECUSADO');
 
-    // ⚠️⚠️ **E A ROTA NÃO EXISTE NO HEAD** — a wave 188-06 é a dona do
-    // transporte. MEDIDO em `routes/mlb_anuncios.php`.
-    const rotas = fs.readFileSync(path.resolve(RAIZ, REL_ROTAS), 'utf8');
-    for (const ausente of ['preco/simular', 'preco.simular', 'alteracao.conferir', 'conferir-alteracao']) {
-        assert.ok(!rotas.includes(ausente), `a rota \`${ausente}\` apareceu — se a wave 188-06 já rodou, RELIGUE o handler em vez de deixar o botão sem destino`);
+    // ═══ ⚠️⚠️ O TRANSPORTE NÃO É DESTA WAVE — E ESTA SONDA JÁ FOI CONSERTADA
+    //     UMA VEZ, POR TER REPROVADO TRABALHO CORRETO DE OUTRA SESSÃO ════════
+    //
+    // ⚠️⚠️ **MEDIDO EM 19/10/2026, DURANTE ESTA EXECUÇÃO:** a primeira redação
+    // deste caso exigia que `preco/simular` **NÃO existisse** em
+    // `routes/mlb_anuncios.php`. Ela REPROVOU — porque a wave **188-06** tem WIP
+    // **não commitado** nesta MESMA árvore (+61 em `routes/`, +329 no
+    // `MlbPublicadorAprovacaoController`, +288 e +220 nos dois serviços do
+    // painel). ➡️ A sonda era **mais LARGA que o invariante** e reprovava
+    // trabalho CORRETO: é a família de erro que já BARROU UM DEPLOY neste
+    // projeto (`188-REGUA.md` §6, regra 8).
+    //
+    // ⚠️ O invariante CERTO desta wave **não** é *"a rota não existe"* — é
+    // **esta wave não escreve o transporte**: a peça recebe o handler por PROP,
+    // e sem handler o botão não nasce. Quem liga a rota é a **188-06** (o
+    // transporte) e a **188-12** (a religação). ➡️ **Ancorado no COMPORTAMENTO,
+    // não na ausência de uma linha num arquivo de outra wave.**
+    const infratoresDoTransporte = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        // ⚠️ Nenhum `.jsx` deste plano chama `router.` direto NEM nomeia rota: o
+        // helper único é `escreverNoPainel` (W11/COL-04), e o gate de LISTA
+        // CONSTANTE dele mora no **188-12** — aqui ele seria gate sobre zero
+        // casos, porque a escrita desta coluna chega por prop.
+        if (/\brouter\s*\./.test(fonte)) infratoresDoTransporte.push(`${rel} router.`);
+        if (/mlb\.anuncios\.meus\.aprovacao/.test(fonte)) infratoresDoTransporte.push(`${rel} nome de rota`);
+        if (/\baxios\b|\bfetch\s*\(/.test(fonte)) infratoresDoTransporte.push(`${rel} HTTP direto`);
     }
-    // ⚠️ ISCA DA LEITURA: as rotas que JÁ existem casam. Sem ela a sonda acima
-    // passaria com o arquivo vazio ou com o caminho errado.
+    assert.deepEqual(infratoresDoTransporte, [], 'a coluna de preço passou a FALAR com o servidor — o transporte é da wave 188-06, e o helper único é `escreverNoPainel`');
+    // ⚠️ ISCA NAS DUAS DIREÇÕES: a sonda pega as três formas erradas...
+    for (const cebo of ['router.post(rota, corpo)', "route('mlb.anuncios.meus.aprovacao.painel.preco')", 'await fetch (url)']) {
+        assert.ok(
+            /\brouter\s*\./.test(cebo) || /mlb\.anuncios\.meus\.aprovacao/.test(cebo) || /\baxios\b|\bfetch\s*\(/.test(cebo),
+            `a sonda do transporte NÃO pega o cebo \`${cebo}\``,
+        );
+    }
+    // ...e NÃO pega a forma LEGÍTIMA (receber o handler por prop).
+    for (const legitimo of ['onConferirAlteracao = null', 'typeof onConferir === \'function\'']) {
+        assert.ok(
+            !/\brouter\s*\./.test(legitimo) && !/mlb\.anuncios\.meus\.aprovacao/.test(legitimo),
+            `a sonda do transporte reprova a forma LEGÍTIMA \`${legitimo}\``,
+        );
+    }
+    // ⚠️ E o arquivo de rotas continua legível (ISCA da leitura): sem isso a
+    // ausência de `router.` acima poderia ser medida sobre um caminho errado.
+    const rotas = fs.readFileSync(path.resolve(RAIZ, REL_ROTAS), 'utf8');
     for (const presente of ['meus.aprovacao.painel.tentar-de-novo', 'meus.aprovacao.painel.fotos.sem-alerta']) {
         assert.ok(rotas.includes(presente), `a isca \`${presente}\` não está nas rotas — a leitura está CEGA`);
     }
@@ -932,6 +973,19 @@ test('⚠️ TERR: as Fases 189/192 e as waves 10/11/12 NÃO são antecipadas 18
 });
 
 test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09', () => {
+    // ⚠️⚠️ **SÓ ENTRA AQUI O QUE NENHUMA WAVE IRMÃ DESTA FASE TOCA.** E isso é
+    // CONSERTO MEDIDO nesta execução, não cautela: a primeira redação listava
+    // `PrecoDoPainelService.php` e `PainelDeRevisaoService.php`, e REPROVOU —
+    // porque a wave **188-06** tem WIP **não commitado** nesta MESMA árvore
+    // (+220 e +288 naqueles dois, +329 no controller, +61 em `routes/`).
+    //
+    // ⚠️⚠️ `git diff HEAD` **NÃO ATRIBUI AUTORIA**: ele mostra a árvore inteira,
+    // e nesta árvore há outra sessão escrevendo. ➡️ Para arquivo que uma wave
+    // irmã legitimamente edita, a prova de território **não pode ser o diff** —
+    // ela é o CONTRATO (as constantes e as chaves que esta coluna LÊ continuam
+    // lá), e isso está assertido caso por caso nos blocos acima. ⚠️ Conferir o
+    // AUTOR também não serviria: as três máquinas desta árvore commitam com o
+    // MESMO `user.name`.
     const INTOCAVEIS = [
         REL_GATE_ZINDEX,
         'tests/js/estrutura-meus-anuncios.test.js',
@@ -941,18 +995,33 @@ test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09',
         `${DIR_APROV}/CascaDeModal.jsx`,
         `${DIR_APROV}/ToastDaFila.jsx`,
         `${DIR_APROV}/BarraDeMargem.jsx`,
+        `${DIR_APROV}/ColunaDeFotos.jsx`,
+        `${DIR_APROV}/PainelDeRevisao.jsx`,
+        `${DIR_APROV}/TopoDoPainel.jsx`,
         'resources/js/Layouts/AppLayout.jsx',
         'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
-        REL_SERVICO_PRECO,
-        REL_SERVICO_PAINEL,
+        // ⚠️ Fase 186, EM PRODUÇÃO: nenhuma wave da 188 pode editá-los.
         REL_DTO,
         REL_LINHA_FINANCEIRA,
+        // ⚠️ GATE-07 — nenhum dos três pertence a plano nenhum.
         '.planning/ROADMAP.md',
         '.planning/STATE.md',
         '.planning/REQUIREMENTS-v27.md',
+        // ⚠️ T-188-SC — esta wave não instala nada.
         'package.json',
         'package-lock.json',
     ];
+
+    // ⚠️⚠️ OS QUE A SONDA DE DIFF **NÃO PODE** MEDIR, e por quê — declarado em
+    // vez de silenciosamente omitido. A prova deles é o CONTRATO.
+    const SOMENTE_POR_CONTRATO = [REL_SERVICO_PRECO, REL_SERVICO_PAINEL, REL_ROTAS];
+    const colididos = SOMENTE_POR_CONTRATO.filter((rel) => INTOCAVEIS.includes(rel));
+    assert.deepEqual(colididos, [], 'arquivo de wave irmã entrou na lista de diff — a sonda voltaria a reprovar trabalho correto de outra sessão');
+    // ⚠️ E o contrato que esta coluna LÊ continua de pé, nos três:
+    const doPreco = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    for (const contrato of ['KPIS_EM_ORDEM', 'ORDEM_DAS_LINHAS', 'NOTA_DO_FRETE_DO_COMPRADOR', 'FRETE_ROTULO_ACAO', "COR_NEUTRA = 'neutro'"]) {
+        assert.ok(doPreco.includes(contrato), `o contrato \`${contrato}\` saiu de PrecoDoPainelService — a coluna leria o nada`);
+    }
 
     // ⚠️ ANTI-FANTASMA antes do diff: `numstat` de caminho inexistente sai VAZIO
     // e a sonda passaria CALADA.
@@ -973,6 +1042,7 @@ test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09',
     // e ela já está no laço acima; aqui fica a razão escrita: install que falha
     // pode ser pacote slopsquatted, e o conserto NÃO é trocar o nome.
     assert.ok(INTOCAVEIS.includes('package-lock.json'), 'o lockfile saiu da lista de intocáveis (T-188-SC)');
+    assert.ok(SOMENTE_POR_CONTRATO.length === 3, 'a lista dos medidos por CONTRATO mudou de tamanho — declare por quê');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1064,6 +1134,449 @@ test('⚠️ MANIFESTO: este arquivo está declarado em `contagens-188-09.txt`, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. A COMPOSIÇÃO — as 7 linhas, o SELO DE ORIGEM e as TRÊS formas do valor
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** ⚠️ As SETE linhas da conta, na ordem do servidor, cada uma com nota PRÓPRIA. */
+const LINHAS_DA_CONTA = [
+    { chave: 'custo', rotulo: 'Custo do produto', detalhe: 'ERP Bling · atualizado 11 out', valor: '− R$ 62,00', valor_cor: 'clara', origem: 'confirmado', origem_rotulo: 'Confirmado', origem_cor: 'verde', origem_borda: 'verde_fraca', nota: 'ERP Bling · atualizado 11 out', pendente: false, informativa: false },
+    { chave: 'comissao', rotulo: 'Comissão', detalhe: '16,5% · Clássico', valor: '− R$ 24,73', valor_cor: 'clara', origem: 'confirmado', origem_rotulo: 'Confirmado', origem_cor: 'verde', origem_borda: 'verde_fraca', nota: 'tarifa real do Mercado Livre', pendente: false, informativa: false },
+    { chave: 'tarifa_fixa', rotulo: 'Tarifa fixa por venda', detalhe: 'faixa acima de R$ 79,00', valor: '− R$ 6,75', valor_cor: 'clara', origem: 'confirmado', origem_rotulo: 'Confirmado', origem_cor: 'verde', origem_borda: 'verde_fraca', nota: 'tabela do Mercado Livre', pendente: false, informativa: false },
+    { chave: 'frete', rotulo: 'Frete pago pelo vendedor', detalhe: 'Mercado Envios Full', valor: '− R$ 21,90', valor_cor: 'clara', origem: 'estimado', origem_rotulo: 'Estimado', origem_cor: 'clara', origem_borda: 'trilha', nota: 'cotação média dos últimos 30 dias', pendente: false, informativa: false },
+    { chave: 'imposto', rotulo: 'Impostos', detalhe: 'Simples Nacional · 6%', valor: '− R$ 8,99', valor_cor: 'clara', origem: 'estimado', origem_rotulo: 'Estimado', origem_cor: 'clara', origem_borda: 'trilha', nota: 'parâmetro da empresa', pendente: false, informativa: false },
+    // ⚠️⚠️ A EXCEÇÃO DELIBERADA: Embalagem nasce `Pendente` e **NÃO anula**.
+    { chave: 'embalagem', rotulo: 'Embalagem', detalhe: 'não informado', valor: 'Pendente', valor_cor: 'vermelho', origem: 'pendente', origem_rotulo: 'Pendente', origem_cor: 'vermelho', origem_borda: 'vermelha_fraca', nota: 'ninguém informou o custo de embalagem', pendente: true, informativa: false },
+    // ⚠️ "Outros custos" nasce R$ 0,00 `Confirmado` — e ZERO sai SEM sinal, em neutro.
+    { chave: 'outros', rotulo: 'Outros custos', detalhe: 'nenhum lançamento', valor: 'R$ 0,00', valor_cor: 'neutro', origem: 'confirmado', origem_rotulo: 'Confirmado', origem_cor: 'verde', origem_borda: 'verde_fraca', nota: 'nenhum custo extra lançado', pendente: false, informativa: false },
+];
+
+/** FIN-08 — a linha INFORMATIVA: aparece e **não entra na soma**. */
+const LINHAS_INFORMATIVAS = [
+    { chave: 'frete_do_comprador', rotulo: 'Frete pago pelo comprador', detalhe: 'cobrado no checkout', valor: 'R$ 0,00', valor_cor: 'neutro', origem: 'estimado', origem_rotulo: 'Estimado', origem_cor: 'clara', origem_borda: 'trilha', nota: 'regra de frete grátis do Mercado Livre', pendente: false, informativa: true },
+];
+
+const COMPOSICAO_OK = {
+    cabecalho: { rotulo: 'Preço de venda', valor: 'R$ 149,90' },
+    linhas: LINHAS_DA_CONTA,
+    informativas: LINHAS_INFORMATIVAS,
+    rodape: { rotulo: 'Resultado estimado por venda', valor: 'R$ 23,41', cor: 'texto' },
+    nota: 'Frete pago pelo comprador não entra no resultado.',
+};
+
+/** ⚠️ O módulo do VOCABULÁRIO, montado ANTES do primeiro `test()` que o usa. */
+const MOD_VOCABULARIO = await montar(REL_VOCABULARIO);
+
+test('⚠️⚠️ DADO-13: as 7 linhas saem na ORDEM do servidor, e TODAS têm `title` NÃO-VAZIO 188_09', () => {
+    const html = render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK, preco: { valor: 'R$ 149,90', variante: null, nota: null } });
+    const conteudo = texto(html);
+
+    // ⚠️ A ORDEM, por POSIÇÃO do rótulo no texto — e ela é a do servidor.
+    const posicoes = LINHAS_DA_CONTA.map((l) => conteudo.indexOf(l.rotulo));
+    assert.deepEqual(posicoes.filter((p) => p < 0), [], 'faltou rótulo de linha na tela');
+    const ordenadas = [...posicoes].sort((a, b) => a - b);
+    assert.deepEqual(posicoes, ordenadas, 'a tela REORDENOU as 7 linhas — a ordem é `ORDEM_DAS_LINHAS` do servidor');
+
+    // ⚠️⚠️ A PROVA DE QUE A ORDEM É A DO SERVIDOR: com a lista invertida, a tela
+    // inverte. Uma ordenação interna passaria acima e reprovaria aqui.
+    const invertido = texto(render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, linhas: [...LINHAS_DA_CONTA].reverse() } }));
+    assert.ok(invertido.indexOf('Outros custos') < invertido.indexOf('Custo do produto'), 'a tela tem a sua própria ordem — ela seria a terceira lista do mesmo fato');
+
+    // ⚠️ E a ordem do contrato é `array_keys(PubAprovacaoComposicao::LINHAS)`.
+    assert.deepEqual(MOD_COMPOSICAO.ORDEM_DAS_LINHAS, ['custo', 'comissao', 'tarifa_fixa', 'frete', 'imposto', 'embalagem', 'outros'], 'a ordem declarada divergiu do servidor');
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /ORDEM_DAS_LINHAS = \['custo', 'comissao', 'tarifa_fixa', 'frete', 'imposto', 'embalagem', 'outros'\]/, 'a ordem mudou no servidor — remeça o contrato');
+
+    // ⚠️⚠️ DADO-13 — `title` NÃO-VAZIO nas SETE linhas + na informativa. `title=""`
+    // é um `title` AUSENTE, e nota vazia é ERRO (não decoração) por regra do
+    // servidor. ⚠️ A asserção COLETA os infratores, em contagem FIXA.
+    const selos = tagsDeAbertura(html).filter((t) => /text-\[10\.5px\]/.test(t.classe));
+    assert.equal(selos.length, 8, `não há 8 selos de origem (7 linhas + 1 informativa): ${selos.length}`);
+    const semTitulo = selos.filter((t) => t.titulo === null || t.titulo.trim() === '');
+    assert.deepEqual(semTitulo.map((t) => t.classe), [], 'selo de origem com `title` VAZIO — nota vazia é ERRO (DADO-13 / LinhaFinanceira::REGRA_NOTA_VAZIA)');
+
+    // ⚠️ E a nota NOMEIA a fonte: ela não é texto decorativo.
+    assert.ok(selos.some((t) => /ERP Bling/.test(t.titulo)), 'a nota do custo não NOMEIA o ERP');
+    assert.ok(selos.some((t) => /tarifa real do Mercado Livre/.test(t.titulo)), 'a nota da comissão não NOMEIA a tarifa real');
+
+    // ⚠️ ISCA: nota em branco PRODUZ `title` ausente, e a sonda acima o pegaria.
+    // ⚠️ DEFEITO DO PRÓPRIO TESTE, achado por ele: sem `informativas: []` a isca
+    // produzia DOIS selos (a linha + a informativa) e a contagem fixa reprovava.
+    const comVazia = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, linhas: [{ ...LINHAS_DA_CONTA[0], nota: '   ' }], informativas: [] } });
+    const seloVazio = tagsDeAbertura(comVazia).filter((t) => /text-\[10\.5px\]/.test(t.classe));
+    assert.equal(seloVazio.length, 1, 'a isca não produziu selo');
+    assert.equal(seloVazio[0].titulo, null, 'nota em branco virou `title=""` — ele seria um `title` AUSENTE que passa em render e desaparece na tela');
+
+    // ⚠️ A regra existe no servidor (isca da leitura).
+    const linhaFinanceira = fs.readFileSync(path.resolve(RAIZ, REL_LINHA_FINANCEIRA), 'utf8');
+    assert.match(linhaFinanceira, /REGRA_NOTA_VAZIA/, 'a regra de nota vazia saiu do servidor — sem ela o `title` deste gate não prova nada');
+});
+
+test('⚠️⚠️ `:1125`: as TRÊS origens têm SEIS cores distintas aos pares, e batem com o VOCABULÁRIO 188_09', () => {
+    const html = render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK });
+    const selos = tagsDeAbertura(html).filter((t) => /text-\[10\.5px\]/.test(t.classe));
+
+    // ⚠️ Por ORIGEM, e por ÁRVORE com índice ABSOLUTO: o selo 0 é `Confirmado`, o
+    // 3 é `Estimado`, o 5 é `Pendente` — nunca `indexOf` de classes.
+    const paleta = new Map();
+    for (const [origem, indice] of [['confirmado', 0], ['estimado', 3], ['pendente', 5]]) {
+        const classes = classesDe(selos[indice]);
+        const daCor = [...classes].filter((c) => c.startsWith('text-pub-'));
+        const daBorda = [...classes].filter((c) => c.startsWith('border-pub-'));
+        assert.equal(daCor.length, 1, `${origem}: ${daCor.length} classes de texto no selo`);
+        assert.equal(daBorda.length, 1, `${origem}: ${daBorda.length} classes de borda no selo`);
+        paleta.set(origem, { texto: daCor[0], borda: daBorda[0] });
+    }
+
+    // ⚠️⚠️ SEIS cores DISTINTAS aos pares. Duas iguais passariam num teste de
+    // EXISTÊNCIA e apagariam a diferença entre "conferido" e "não existe".
+    const textos = [...paleta.values()].map((p) => p.texto);
+    const bordas = [...paleta.values()].map((p) => p.borda);
+    assert.equal(new Set(textos).size, 3, `as cores de TEXTO das origens não são três distintas: ${textos.join(' ')}`);
+    assert.equal(new Set(bordas).size, 3, `as cores de BORDA das origens não são três distintas: ${bordas.join(' ')}`);
+    assert.equal(new Set([...textos, ...bordas]).size, 6, 'as seis cores das origens não são distintas aos pares');
+
+    // ⚠️⚠️ E ELAS BATEM COM `SELOS_DE_ORIGEM` DO VOCABULÁRIO, origem por origem:
+    // é ele a casa do vocabulário, e duas paletas para a mesma coisa divergiriam
+    // no primeiro ajuste.
+    for (const [origem, resolvida] of paleta) {
+        const doVocabulario = MOD_VOCABULARIO.SELOS_DE_ORIGEM[origem];
+        assert.ok(doVocabulario, `a origem \`${origem}\` saiu de SELOS_DE_ORIGEM — a leitura está CEGA`);
+        assert.equal(resolvida.texto, doVocabulario.texto, `a cor de TEXTO de \`${origem}\` divergiu do vocabulário`);
+        assert.equal(resolvida.borda, doVocabulario.borda, `a cor de BORDA de \`${origem}\` divergiu do vocabulário`);
+    }
+
+    // ⚠️ ISCA: chave de origem desconhecida NÃO cai no verde (afirmar confirmação
+    // que não existe é o pior lado do erro nesta coluna).
+    const sujo = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, linhas: [{ ...LINHAS_DA_CONTA[0], origem_cor: 'inventada', origem_borda: 'inventada' }] } });
+    const seloSujo = tagsDeAbertura(sujo).filter((t) => /text-\[10\.5px\]/.test(t.classe))[0];
+    assert.ok(!classesDe(seloSujo).has('text-pub-ok-txt'), 'chave de cor desconhecida caiu no VERDE');
+});
+
+test('⚠️⚠️ `:1126`: o valor da linha tem TRÊS formas — invertido, zero neutro e `Pendente` 188_09', () => {
+    const html = render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK });
+    const valores = tagsDeAbertura(html).filter((t) => /text-right/.test(t.classe));
+    assert.equal(valores.length, 8, `não há 8 valores de linha: ${valores.length}`);
+
+    const conteudo = texto(html);
+
+    // (1) ⚠️⚠️ O SINAL INVERTIDO, com **U+2212 MINUS SIGN seguido de espaço**
+    // (`E2 88 92 20`) — e NÃO o hífen-menos. Trocar passa desapercebido na tela,
+    // e por isso a conferência é por BYTES.
+    const bytesDoMenos = Buffer.from('− ', 'utf8');
+    assert.deepEqual([...bytesDoMenos], [0xE2, 0x88, 0x92, 0x20], 'a referência do U+2212 está errada no próprio teste');
+    assert.ok(Buffer.from(conteudo, 'utf8').includes(bytesDoMenos), 'o valor negativo não usa U+2212 seguido de espaço');
+    assert.ok(!/-\s?R\$/.test(conteudo), 'apareceu hífen-menos antes de R$ — o `brl()` do servidor imprime U+2212');
+    assert.ok(conteudo.includes('− R$ 62,00'), 'o custo positivo não foi EXIBIDO negativo');
+
+    // (2) ⚠️ ZERO sai SEM sinal e em NEUTRO ("Outros custos" nasce R$ 0,00
+    // `Confirmado`). `− R$ 0,00` seria a tela inventando um sinal.
+    assert.ok(classesDe(valores[6]).has('text-pub-txt-4'), 'o valor zero não saiu em neutro');
+    assert.ok(conteudo.includes('R$ 0,00'), 'o zero não apareceu');
+    assert.ok(!conteudo.includes('− R$ 0,00'), 'o zero saiu COM sinal — ele é zero, não um desconto');
+
+    // (3) ⚠️ `null` sai como o TEXTO `Pendente`, em vermelho — e é o MESMO texto
+    // do selo, porque os dois saem de `rotuloDaOrigem()`.
+    assert.ok(classesDe(valores[5]).has('text-pub-danger-txt'), 'o valor pendente não saiu em vermelho');
+    assert.ok(conteudo.includes('Pendente'), 'o valor pendente não saiu como TEXTO');
+
+    // ⚠️⚠️ E NENHUM FORMATADOR NOVO NASCEU AQUI: a formatação é toda do servidor.
+    const infratores = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        if (/toLocaleString/.test(fonte)) infratores.push(`${rel} toLocaleString`);
+        if (/Intl\.NumberFormat/.test(fonte)) infratores.push(`${rel} Intl.NumberFormat`);
+        if (/toFixed\(/.test(fonte)) infratores.push(`${rel} toFixed(`);
+        if (/'R\$ '|"R\$ "/.test(fonte)) infratores.push(`${rel} prefixo R$ literal`);
+        if (/−/.test(fonte)) infratores.push(`${rel} U+2212 literal`);
+    }
+    assert.deepEqual(infratores, [], 'nasceu um SEGUNDO formatador de moeda na tela — a formatação é do servidor, byte a byte');
+    // ⚠️ ISCA: as sondas pegam o que devem pegar.
+    assert.ok(/toFixed\(/.test('n.toFixed(2)'), 'a sonda de `toFixed(` está furada');
+    assert.ok(/'R\$ '|"R\$ "/.test("return 'R$ ' + n"), 'a sonda do prefixo R$ está furada');
+    assert.ok(/−/.test('− R$ 1,00'), 'a sonda do U+2212 está furada');
+});
+
+test('⚠️⚠️ DECISÃO 3: Embalagem `Pendente` NÃO anula o resultado, e o FRETE ausente ANULA 188_09', () => {
+    // ⚠️⚠️ A EXCEÇÃO DELIBERADA: com Embalagem `Pendente` o resultado EXISTE (sem
+    // ela **100%** das ofertas diriam "Incompleto" e nada seria aprovável), e sai
+    // marcado "estimado por baixo" pela nota da margem.
+    const comEmbalagemPendente = render(MOD_KPIS.default, {
+        kpis: [KPI_PRECO, KPI_RESULTADO_OK, { ...KPI_MARGEM_MIN_12, nota_da_margem: 'acima do mínimo de 12% · com a tarifa real do Mercado Livre · sem o custo de embalagem' }],
+    });
+    const textoEmbalagem = texto(comEmbalagemPendente);
+    assert.ok(textoEmbalagem.includes('R$ 23,41'), 'com Embalagem `Pendente` o resultado DESAPARECEU — a exceção da decisão 3 foi apagada');
+    assert.ok(!textoEmbalagem.includes('Incompleto'), 'com Embalagem `Pendente` o resultado virou `Incompleto` — sem a exceção NADA seria aprovável');
+    assert.ok(textoEmbalagem.includes('sem o custo de embalagem'), 'o resultado não saiu marcado "estimado por baixo" — a tela esconderia que ele é OTIMISTA');
+
+    // ⚠️ E a composição mostra a Embalagem como `Pendente` SEM derrubar o rodapé.
+    const daComposicao = texto(render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK }));
+    assert.ok(daComposicao.includes('Embalagem'), 'a linha da Embalagem sumiu');
+    assert.ok(daComposicao.includes('R$ 23,41'), 'o rodapé do resultado foi ANULADO pela Embalagem pendente — a decisão 3 foi desfeita');
+
+    // ⚠️⚠️ E O SINAL VIAJA POR UMA FONTE SÓ: `nota_da_margem`. Desenhá-lo DE NOVO
+    // poria o MESMO fato em DUAS fontes — e fato repetido em dois lugares já
+    // divergiu neste projeto (razão da decisão 9 e da PERGUNTA-188-D, em que
+    // "toast + texto fixo" foi OFERECIDO e RECUSADO).
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/estimado por baixo/i.test(fonte), `${rel} escreveu "estimado por baixo" — o sinal vem de nota_da_margem, uma fonte só`);
+        assert.ok(!/sem o custo de embalagem/.test(fonte), `${rel} remontou a frase da embalagem — ela é de ComposicaoDaOferta`);
+    }
+    // ⚠️ ISCA: a frase ESTÁ no servidor.
+    const dto = fs.readFileSync(path.resolve(RAIZ, REL_DTO), 'utf8');
+    assert.match(dto, /· sem o custo de embalagem/, 'a frase do estimado por baixo saiu do servidor');
+
+    // ⚠️⚠️ A ISCA QUE SEPARA AS DUAS: o FRETE ausente **ANULA** — resultado
+    // `Incompleto`, margem `—`, e NUNCA `R$ 0,00`.
+    const comFreteAusente = texto(render(MOD_KPIS.default, { kpis: KPIS_INCOMPLETO }));
+    assert.ok(comFreteAusente.includes('Incompleto'), 'com frete ausente o resultado NÃO foi anulado — o frete anula e a embalagem não');
+    assert.ok(!comFreteAusente.includes('R$ 0,00'), 'frete ausente virou zero — zero afirmaria que o frete é de graça (FIN-05/FIN-06)');
+
+    // ⚠️ E a lista das que ANULAM continua no servidor, sem a embalagem.
+    const modelo = fs.readFileSync(path.resolve(RAIZ, 'app/Models/PubAprovacaoComposicao.php'), 'utf8');
+    const bloco = modelo.match(/ANULAM_O_RESULTADO = \[([\s\S]*?)\];/);
+    assert.ok(bloco, 'não achei ANULAM_O_RESULTADO — a leitura está CEGA');
+    assert.ok(bloco[1].includes("'frete'"), 'o frete saiu das que ANULAM');
+    assert.ok(!bloco[1].includes("'embalagem'"), 'a embalagem ENTROU nas que anulam — a exceção deliberada da decisão 3 foi desfeita');
+    assert.ok(!bloco[1].includes("'outros'"), '"outros custos" entrou nas que anulam — ele nasce R$ 0,00 Confirmado');
+});
+
+test('⚠️ FIN-08: as linhas INFORMATIVAS vêm SEPARADAS e DEPOIS do rodapé do resultado 188_09', () => {
+    const html = render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK });
+    const conteudo = texto(html);
+
+    const iRodape = conteudo.indexOf('Resultado estimado por venda');
+    const iInformativa = conteudo.indexOf('Frete pago pelo comprador');
+    assert.ok(iRodape >= 0 && iInformativa >= 0, 'faltou rodapé ou informativa');
+    assert.ok(
+        iRodape < iInformativa,
+        'a linha INFORMATIVA saiu ANTES do rodapé — a pessoa somaria o frete do comprador junto, e o rodapé discordaria da lista (FIN-08)',
+    );
+
+    // ⚠️ Gate sobre dado PREENCHIDO **e** sobre dado AUSENTE: asserção de ausência
+    // rodada com lista vazia é vazia por construção.
+    // ⚠️⚠️ DEFEITO DO PRÓPRIO TESTE, achado por ele: a primeira redação procurava
+    // `'Frete pago pelo comprador'`, que é **PREFIXO** da nota de `:665` (*"Frete
+    // pago pelo comprador não entra no resultado."*) — a sonda de ausência NUNCA
+    // ficava vazia, e reprovava com a lista correta. É a família do `includes`
+    // que casa prefixo, que já mordeu CINCO vezes neste projeto.
+    // ➡️ O recorte é o DETALHE da linha informativa, que só ela tem.
+    const semInformativa = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, informativas: [] } });
+    // ⚠️⚠️ **E O RECORTE ESCOLHIDO FOI O SEGUNDO, porque o PRIMEIRO TAMBÉM
+    // COLIDIU:** `'acima de R$ 79,00'` é SUBSTRING do detalhe da linha
+    // `tarifa_fixa` (*"faixa acima de R$ 79,00"*). ➡️ Foi a TERCEIRA colisão de
+    // substring que este gate achou nas PRÓPRIAS sondas, e a isca final é um
+    // detalhe que **só** a linha informativa tem.
+    assert.ok(!texto(semInformativa).includes('cobrado no checkout'), 'a informativa apareceu com a lista VAZIA');
+    assert.ok(texto(semInformativa).includes('Resultado estimado por venda'), 'o rodapé sumiu junto com a informativa');
+    // ⚠️ SONDA NÃO-CEGA: com a lista PREENCHIDA o detalhe aparece.
+    assert.ok(texto(html).includes('cobrado no checkout'), 'o detalhe da informativa não aparece nem com a lista cheia — a sonda está CEGA');
+
+    // ⚠️⚠️ DIVERGÊNCIA (1) DECLARADA: SÓ A PRIMEIRA FRASE DE `:665`. A segunda
+    // ("Taxas de comissão são exemplos configuráveis.") é disclaimer da FICÇÃO do
+    // protótipo, e aqui a comissão é a tarifa REAL do ML (decisão 9) — dizê-la
+    // seria a tela AFIRMANDO O QUE NÃO É (D8 / FIN-02 / FIN-03).
+    assert.ok(conteudo.includes('Frete pago pelo comprador não entra no resultado.'), 'a primeira frase de `:665` não saiu');
+    assert.ok(!/exemplos configur[áa]veis/i.test(conteudo), 'a SEGUNDA frase de `:665` foi reproduzida — ela é FALSA neste produto');
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/exemplos configur[áa]veis/i.test(fonte), `${rel} escreveu "exemplos configuráveis" — divergência (1), declarada`);
+        assert.ok(!/taxa de exemplo/i.test(fonte), `${rel} trouxe a ficção do protótipo`);
+    }
+    // ⚠️ ISCA: a sonda PEGA a frase proibida, COM e SEM acento — silêncio que
+    // depende de UMA LETRA é sorte.
+    assert.ok(/exemplos configur[áa]veis/i.test('Taxas de comissão são exemplos configuráveis.'), 'a sonda da 2ª frase está furada');
+    assert.ok(/exemplos configur[áa]veis/i.test('exemplos configuraveis'), 'a sonda da 2ª frase não pega a forma sem acento');
+    // ⚠️ E a frase do servidor é EXATAMENTE a primeira (isca da leitura).
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /NOTA_DO_FRETE_DO_COMPRADOR = 'Frete pago pelo comprador não entra no resultado\.';/, 'a nota do servidor mudou — remeça a divergência (1)');
+});
+
+test('⚠️⚠️ DECISÃO 2 + P1: a frase do PIOR CASO é VISÍVEL com N > 1 e AUSENTE com um preço só 188_09', () => {
+    // ⚠️ Com mais de um preço: a frase é TEXTO, não `title`. Na fila (187-08) ela
+    // é só `title` porque a coluna tem 92px e UMA linha — "acrescentar segunda
+    // linha na coluna de preço" foi OFERECIDO e RECUSADO. Aqui a decisão P1 do
+    // usuário (15/10) a tornou VISÍVEL.
+    const comNota = render(MOD_COMPOSICAO.default, {
+        composicao: COMPOSICAO_OK,
+        preco: { valor: 'R$ 149,90', variante: 'Azul · M', nota: 'pior caso entre 3 variantes · Azul · M' },
+    });
+    const conteudo = texto(comNota);
+    assert.ok(conteudo.includes('pior caso entre 3 variantes'), 'a frase do PIOR CASO não é VISÍVEL — na fila ela é `title`, aqui é TEXTO (decisão P1)');
+    assert.ok(conteudo.includes('Azul · M'), 'a frase não NOMEIA a variação');
+
+    // ⚠️⚠️ E ela é TEXTO de verdade, não um `title` escondido: `title` seria
+    // indistinguível de "não desenhei nada" para quem olha a tela.
+    const comoTitulo = tagsDeAbertura(comNota).filter((t) => t.titulo !== null && /pior caso/.test(t.titulo));
+    assert.deepEqual(comoTitulo.map((t) => t.classe), [], 'a frase do pior caso saiu como `title` — a decisão P1 pede TEXTO VISÍVEL');
+
+    // ⚠️ Com UM preço só a nota é `null` e NÃO há frase — nunca "pior caso entre
+    // 1 variante".
+    for (const semNota of [null, undefined, '', '   ', {}, [], NaN]) {
+        const html = render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK, preco: { valor: 'R$ 149,90', variante: null, nota: semNota } });
+        assert.ok(!/pior caso/.test(texto(html)), 'a frase do pior caso apareceu SEM nota do servidor');
+        assert.ok(!/1 variante/.test(texto(html)), 'apareceu "1 variante" — com um preço só NÃO há nota');
+    }
+
+    // ⚠️⚠️ E a frase NÃO é remontada aqui: ela é `ComposicaoDaOferta::$notaDoPreco`.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/pior caso/i.test(fonte), `${rel} remontou a frase do pior caso — ela vem do DTO`);
+    }
+    const dto = fs.readFileSync(path.resolve(RAIZ, REL_DTO), 'utf8');
+    assert.match(dto, /'pior caso entre '\.\$precosAtivos\.' variantes'/, 'a frase do pior caso saiu do DTO — remeça a decisão 2');
+    assert.match(dto, /\$precosAtivos <= 1/, 'o DTO deixou de tratar o caso de UM preço só');
+});
+
+test('⚠️⚠️ B2 / D4: "Informar frete confirmado" nas QUATRO combinações — só UMA desenha 188_09', () => {
+    const casos = [
+        { freteAusente: true, handler: nada, desenha: true },
+        { freteAusente: true, handler: null, desenha: false },
+        { freteAusente: false, handler: nada, desenha: false },
+        { freteAusente: false, handler: null, desenha: false },
+    ];
+
+    for (const caso of casos) {
+        const html = render(MOD_COMPOSICAO.default, {
+            composicao: COMPOSICAO_OK,
+            frete: { rotulo_acao: 'Informar frete confirmado' },
+            freteAusente: caso.freteAusente,
+            onInformarFrete: caso.handler,
+        });
+        const botoes = tagsDeAbertura(html).filter((t) => t.tag === 'button');
+        assert.equal(
+            botoes.length,
+            caso.desenha ? 1 : 0,
+            `frete_ausente=${caso.freteAusente} handler=${caso.handler === null ? 'null' : 'funcao'}: esperava ${caso.desenha ? 1 : 0} botão`,
+        );
+        if (caso.desenha) {
+            assert.equal(botoes[0].desabilitado, false, 'o botão de frete nasceu `disabled` — `disabled` decorativo foi RECUSADO');
+            assert.ok(texto(html).includes('Informar frete confirmado'), 'o rótulo do botão não veio do servidor');
+        }
+        // ⚠️ E o TEXTO da composição continua aparecendo nos quatro casos: o botão
+        // é que não nasce, a informação não desaparece (régua da PERGUNTA-188-B).
+        assert.ok(texto(html).includes('Resultado estimado por venda'), 'a composição sumiu junto com o botão');
+    }
+
+    // ⚠️ O rótulo não é escrito na tela.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/Informar frete/.test(fonte), `${rel} escreveu o rótulo do frete à mão — ele é PrecoDoPainelService::FRETE_ROTULO_ACAO`);
+    }
+
+    // ⚠️⚠️ DIVERGÊNCIA (2): o dado é PRECISO. O `freightMissing` do protótipo
+    // (`:1143`) é o `missing` INTEIRO, e acenderia o botão quando o que falta é o
+    // CUSTO — mandando a pessoa ao lugar errado. O servidor manda os DOIS dados
+    // separados, e o botão lê o PRECISO.
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /'frete_ausente' => \$this->fretePendente\(\$composicao\)/, 'o servidor deixou de mandar o dado PRECISO do frete');
+    assert.match(servico, /linha\('frete'\)\?->ehPendente\(\) === true/, 'o `fretePendente` deixou de olhar SÓ o frete');
+
+    // ⚠️ E o DESTINO não é cravado aqui: `frete_ausente` tem DOIS destinos, já
+    // resolvidos por `PainelDeRevisaoService::destino()`.
+    const doPainel = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PAINEL), 'utf8');
+    assert.match(doPainel, /function destino/, 'o `destino()` saiu do serviço do painel — a tela passaria a cravar o modal');
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/openModal|abrirModal/.test(fonte), `${rel} cravou a abertura de um modal — o destino do frete tem DOIS e é resolvido no servidor`);
+    }
+});
+
+test('⚠️ FID: a GEOMETRIA da linha da composição, por IGUALDADE e com isca do quase-igual 188_09', () => {
+    // ⚠️⚠️ IGUALDADE DE STRING, nunca `includes`: ele casa prefixo E sufixo de
+    // outro nome, e já mordeu CINCO vezes (`h-[64px]`×`min-h-[64px]`,
+    // `w-[560px]`×`max-w-[560px]`).
+    assert.equal(
+        MOD_COMPOSICAO.CLASSES_LINHA,
+        'grid grid-cols-[minmax(0,1fr)_auto_92px] items-center gap-[10px] '
+        + 'border-t border-pub-hover-3 px-[12px] py-[7px] text-[12.5px]',
+        'a linha da composição divergiu de `:657`',
+    );
+
+    for (const quaseIgual of [
+        'grid-cols-[minmax(0,1fr)_auto_92px_auto]',
+        'grid-cols-[minmax(0,2fr)_auto_92px]',
+        'grid-cols-[minmax(0,1fr)_auto_90px]',
+        'grid-cols-3',
+    ]) {
+        assert.ok(!FONTE_COMPOSICAO.includes(quaseIgual), `o quase-igual \`${quaseIgual}\` entrou na fonte`);
+    }
+    // ⚠️ ISCA DO QUASE-IGUAL: a forma CERTA está lá, e a sonda a distingue.
+    assert.ok(FONTE_COMPOSICAO.includes('grid-cols-[minmax(0,1fr)_auto_92px]'), 'a sonda do quase-igual está cega: nem a forma certa ela acha');
+
+    // ⚠️⚠️ `min-w-0` É LOAD-BEARING, e a tabela FID-01 o OMITIA: sem ele o
+    // `truncate` do detalhe NÃO TRUNCA — item de grade tem `min-width:auto` por
+    // default e estoura a coluna de `minmax(0,1fr)` em vez de cortar o texto.
+    assert.equal(MOD_COMPOSICAO.CLASSES_LINHA_TEXTO, 'flex min-w-0 flex-col gap-[1px]', 'o wrapper de `:658` divergiu — sem `min-w-0` o detalhe não trunca');
+    assert.ok(MOD_COMPOSICAO.CLASSES_LINHA_DETALHE.includes('truncate'), 'o detalhe de `:658` perdeu o `truncate` (os TRÊS de `overflow`/`ellipsis`/`nowrap`)');
+
+    // ⚠️ O rodapé: o `justify-between` e o `items-center` que a tabela OMITIA.
+    assert.ok(MOD_COMPOSICAO.CLASSES_RODAPE.includes('justify-between'), 'o rodapé de `:663` perdeu o `justify-content:space-between`');
+    assert.ok(MOD_COMPOSICAO.CLASSES_RODAPE.includes('items-center'), 'o rodapé de `:663` perdeu o `align-items:center`');
+    assert.ok(MOD_COMPOSICAO.CLASSES_RODAPE_VALOR.includes('font-bold'), 'o valor do rodapé perdeu o `font-weight:700`');
+    assert.ok(MOD_COMPOSICAO.CLASSES_LINHA_VALOR.includes('font-medium'), 'o valor da linha perdeu o `font-weight:500`');
+
+    // ⚠️ E a nota solta tem o `margin-top:-4px` de `:665`.
+    assert.ok(MOD_COMPOSICAO.CLASSES_NOTA.includes('-mt-[4px]'), 'a nota de `:665` perdeu o `margin-top:-4px`');
+
+    // ⚠️ O selo tem o `whitespace-nowrap` de `:659` (omitido SETE vezes na 187).
+    assert.ok(MOD_COMPOSICAO.CLASSES_SELO.includes('whitespace-nowrap'), 'o selo de `:659` perdeu o `white-space:nowrap`');
+    assert.ok(MOD_COMPOSICAO.CLASSES_FRETE.includes('whitespace-nowrap'), 'o botão de `:667` perdeu o `white-space:nowrap` (a 1ª propriedade da linha)');
+    assert.ok(MOD_COMPOSICAO.CLASSES_FRETE.includes('cursor-pointer'), 'o botão de `:667` perdeu o `cursor:pointer`');
+    assert.ok(MOD_COMPOSICAO.CLASSES_FRETE.includes('self-start'), 'o botão de `:667` perdeu o `align-self:flex-start`');
+});
+
+test('⚠️⚠️ REND: nenhum campo adverso da composição derruba a página, nem no CLIQUE 188_09', () => {
+    const CAMPOS = ['chave', 'rotulo', 'detalhe', 'valor', 'valor_cor', 'origem', 'origem_rotulo', 'origem_cor', 'origem_borda', 'nota', 'pendente', 'informativa'];
+
+    for (const campo of CAMPOS) {
+        for (const forma of ADVERSAS) {
+            let html = null;
+            assert.doesNotThrow(
+                () => { html = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, linhas: [{ ...LINHAS_DA_CONTA[0], [campo]: forma }] } }); },
+                `o campo \`linha.${campo}\` derrubou o render da composição`,
+            );
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `o campo \`linha.${campo}\` vazou valor cru`);
+        }
+    }
+
+    // ⚠️ O cabeçalho, o rodapé e as notas, bloco por bloco.
+    for (const bloco of ['cabecalho', 'rodape', 'nota']) {
+        for (const forma of ADVERSAS) {
+            let html = null;
+            assert.doesNotThrow(() => { html = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, [bloco]: forma } }); }, `o bloco \`${bloco}\` derrubou o render`);
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined/, `o bloco \`${bloco}\` vazou valor cru`);
+        }
+    }
+
+    // ⚠️ As COLEÇÕES adversas (`.map` em string LANÇA) e a prop inteira.
+    for (const forma of [...ADVERSAS, [null], [{}], ['x'], [[]], [LINHAS_DA_CONTA[0], null, 'x']]) {
+        let html = null;
+        assert.doesNotThrow(() => { html = render(MOD_COMPOSICAO.default, { composicao: { ...COMPOSICAO_OK, linhas: forma, informativas: forma } }); }, 'a coleção de linhas derrubou o render');
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined/, 'a coleção de linhas vazou valor cru');
+
+        let inteiro = null;
+        assert.doesNotThrow(() => { inteiro = render(MOD_COMPOSICAO.default, { composicao: forma, preco: forma, frete: forma, freteAusente: forma, onInformarFrete: forma }); }, 'a prop inteira derrubou o render');
+        assert.doesNotMatch(inteiro, /\[object Object\]|NaN|undefined/, 'a prop inteira vazou valor cru');
+    }
+
+    // ⚠️⚠️ E NO CLIQUE: `renderToStaticMarkup` **não dispara `onClick`**, então a
+    // decisão do botão é exercida DIRETO — e ela é função PURA de propósito.
+    for (const forma of ADVERSAS) {
+        assert.doesNotThrow(
+            () => MOD_COMPOSICAO.rotuloDoBotaoDeFrete(forma, forma, forma),
+            'a decisão do botão de frete LANÇOU com entrada adversa',
+        );
+        assert.equal(MOD_COMPOSICAO.rotuloDoBotaoDeFrete(forma, forma, forma), null, 'a decisão do botão devolveu rótulo com entrada adversa');
+    }
+    // ⚠️ SONDA NÃO-CEGA: ela devolve o rótulo quando TUDO está certo.
+    assert.equal(
+        MOD_COMPOSICAO.rotuloDoBotaoDeFrete({ rotulo_acao: 'Informar frete confirmado' }, true, nada),
+        'Informar frete confirmado',
+        'a decisão do botão está CEGA: nem o caso certo ela aceita',
+    );
+
+    // ⚠️ O handler de verdade é chamado só no clique, nunca no render.
+    let chamadas = 0;
+    render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK, frete: { rotulo_acao: 'Informar frete confirmado' }, freteAusente: true, onInformarFrete: () => { chamadas += 1; } });
+    assert.equal(chamadas, 0, 'o handler do frete foi chamado NO RENDER');
+});
 // 10. O PROTÓTIPO — `skip` EXPLÍCITO quando o pacote não está no disco
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1160,7 +1673,7 @@ function seletorDe(classe) {
  * `skip`. ⚠️ E `cp` ATUALIZA o `mtime`, então `npm run build` vem DEPOIS da
  * mutação (`cp -p` preserva, e aí o regime pristino volta sem build).
  */
-const FONTES_DO_CSS = [REL_KPIS, REL_COLUNA];
+const FONTES_DO_CSS = [REL_KPIS, REL_COMPOSICAO, REL_COLUNA];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -1253,6 +1766,25 @@ test('⚠️ FID: as classes da coluna de preço GERAM CSS com o valor certo 188
         // arredondar para ele mudaria o layout: esta é a razão de o 21 existir.
         assert.match(regraDe('text-[21px]'), /font-size:\s*21px/, 'o `text-[21px]` dos KPIs não compilou');
 
+        // ⚠️ A COMPOSIÇÃO (`:654`-`:667`) — a 3ª normalização de novo, agora em
+        // `border-color` e em `background-color` do botão de frete.
+        assert.match(regraDe('grid-cols-[minmax(0,1fr)_auto_92px]'), /minmax\(0\s*,\s*1fr\)\s+auto\s+92px/, 'a grade da linha de `:657` não compilou');
+        assert.match(regraDe('border-pub-hover-3'), /rgb\(26 26 26/, '`border-pub-hover-3` não é #1A1A1A — a borda MEDIDA de `:657` (o plano dizia #1C1C1C)');
+        assert.match(regraDe('border-pub-ok/[0.35]'), /#22c55e59/, 'a borda do selo `Confirmado` não é `rgba(34,197,94,0.35)`');
+        assert.match(regraDe('border-pub-danger/[0.45]'), /#ef444473/, 'a borda do selo `Pendente` não é `rgba(239,68,68,0.45)`');
+        assert.match(regraDe('border-pub-danger/[0.5]'), /#ef444480/, 'a borda do botão de `:667` não é `rgba(239,68,68,0.5)`');
+        assert.match(regraDe('bg-pub-danger/[0.08]'), /#ef444414/, 'o fundo do botão de `:667` não é `rgba(239,68,68,0.08)`');
+        assert.match(regraDe('bg-pub-sunken'), /rgb\(13 13 13/, '`bg-pub-sunken` não é #0D0D0D (o cabeçalho de `:655` e o rodapé de `:663`)');
+        // ⚠️ `truncate` é EXATAMENTE os TRÊS de `:658`, e o `nowrap` foi omitido
+        // SETE vezes na Fase 187.
+        assert.match(regraDe('truncate'), /overflow:hidden/, '`truncate` perdeu o `overflow:hidden`');
+        assert.match(regraDe('truncate'), /text-overflow:ellipsis/, '`truncate` perdeu o `text-overflow:ellipsis`');
+        assert.match(regraDe('truncate'), /white-space:nowrap/, '`truncate` perdeu o `white-space:nowrap`');
+        // ⚠️ `min-w-0` é LOAD-BEARING: sem ele o detalhe não trunca.
+        assert.match(regraDe('min-w-0'), /min-width:\s*0/, '`min-w-0` não compilou — o detalhe de `:658` estouraria a coluna');
+        // ⚠️ 4ª normalização: o zero da frente de `-4px` não existe, mas o sinal sim.
+        assert.match(regraDe('-mt-[4px]'), /margin-top:\s*-4px/, 'o `margin-top:-4px` de `:665` não compilou');
+
         // O resto das medidas, numa asserção COLETANDO.
         const semRegra = [
             'rounded-pub-sub', 'rounded-pub-table', 'rounded-pub-control', 'rounded-pub-chip',
@@ -1266,6 +1798,12 @@ test('⚠️ FID: as classes da coluna de preço GERAM CSS com o valor certo 188
             'text-pub-fase1', 'text-pub-accent', 'text-pub-warn-txt', 'text-pub-danger-txt',
             'text-pub-ok-txt', 'bg-pub-danger', 'bg-pub-warn', 'bg-pub-surface',
             'border-pub-line', 'border-pub-line-subtle',
+            // ─── tarefa 2: a composição (`:654`-`:667`) ───
+            'rounded-pub-badge', 'rounded-pub-control-sm', 'overflow-hidden', 'border-t',
+            'justify-between', 'text-right', 'self-start', 'min-w-0', 'truncate',
+            'h-[30px]', 'py-[2px]', 'py-[7px]', 'py-[8px]', 'py-[10px]', 'px-[6px]',
+            'gap-[1px]', 'text-[10.5px]', 'text-[13px]', 'font-medium',
+            'text-pub-txt-3', 'border-pub-line-off',
         ].filter((c) => regraDe(c) === null);
         assert.deepEqual(semRegra, [], 'classe da coluna de preço NÃO gerou CSS — num `.js` isso aconteceria com todo teste de render passando');
     });
