@@ -1,0 +1,102 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-01 — A ABERTURA DA FASE:
+# as quatro baselines medidas antes de editar, o único tamanho novo (`21`)
+# liberado em `TAMANHOS_PERMITIDOS`, e a tabela FID-01 re-medida por script.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-01 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-01`, E NÃO `01`. O número NU resolve
+# `contagens-186-01.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: **nenhum id deste plano tem mais de TRÊS métodos** (os dois ids
+#    php têm UM cada).
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação por id**, com o ANSI tirado ANTES de ler a linha `Tests:`
+#    (php) e com `node --test --test-reporter=tap` (js). Nenhuma é chute, e
+#    nenhum id foi escrito antes de ter sido medido.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA (`188-REGUA.md` §13) — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O plano prescreve `tests/gates/contagens-188-01.txt` no `<files>` da tarefa 1 e
+# **não** da última, e isso é MECÂNICO, não estilo: o `<verify>` da tarefa 1 usa
+# o id `baselines-medidas`, e **manifesto sem o id ABORTA**.
+# ⚠️ **RESÍDUO DE REDAÇÃO CORRIGIDO NA EXECUÇÃO:** o `<files>` da tarefa 2
+# (`tokens-e-tamanhos`) também precisava deste arquivo e **não o listava** — o
+# plano só o reescrevia na tarefa 3. O harness ABORTARIA. ➡️ As três tarefas
+# ACRESCENTAM ids aqui, cada uma antes do seu próprio verify, e a tarefa 2
+# acrescenta os seus DOIS na mesma tarefa que os usa.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO CONTRA AS FASES 186 E 187 — CONFERIDO POR SCRIPT
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as Fases 186 e 187 estão as
+# duas EM PRODUÇÃO (186 em `a4c4187f`; 187 inteira em `7791d7aa`). Um método meu
+# que fosse SUPERSTRING de um método delas faria o id daquela fase **SOMAR**
+# contagens e reprovar o manifesto de uma fase no ar.
+# ➡️ Varri os **2** nomes deste arquivo contra **todo** `test_*` de `tests/`, nas
+#    DUAS direções (meu contém o alheio / alheio contém o meu) e **incluindo
+#    prefixo**:
+#      ARQUIVOS=1208  METODOS=7755  HOMONIMOS=0
+#    A sonda tem isca nas duas direções (acusa um nome que existe; não acusa
+#    `test_nome_que_ninguem_escreveu_9z7_188_01`), senão "0 colisões" poderia
+#    significar que ela não leu método nenhum.
+# ⚠️ Se precisasse, o conserto seria sufixo no método **NOVO** — nunca elevar a
+#    contagem do manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES, MEDIDAS NO HEAD DE PARTIDA (`db9b1ff9`, 19/10/2026)
+# ═══════════════════════════════════════════════════════════════════════════════
+#   BUILD: exit 0 · 79 s
+#   MANIFEST: 495 entradas / 202 paginas
+#   JS: 5489 / 5488 pass / 1 fail / 0 skipped
+#   PHP: 2493 / 21915 / 0
+#   PROTOTIPO: 1432 linhas · sha256 68624883ce35547e
+# Registradas em `188-BASELINES.md`, com o comando de cada linha ao lado.
+# ⚠️ As 2 falhas PHP da Fase 179 (`CockpitDaContaTest`, fronteira de dia) estão
+#    **VERDES hoje** — e isso CONFIRMA que são oscilação de relógio, não código:
+#    `git log --name-only 6ba51bd6..db9b1ff9 -- tests/` sai **vazio**.
+# ⚠️ A única falha JS é a pré-existente de `estrutura-grade-glide.test.js`
+#    (Fase 87) — **não corrigida**, e **não** existe `REF_PHP_FALHAS`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: as quatro baselines, medidas antes de editar (PHP) ─────────────
+
+# ⚠️⚠️ ESTE ID EXISTE PORQUE O `--autoteste` SOZINHO NÃO PROVAVA NADA DA TAREFA 1.
+# Para o `--autoteste` reprovar, o próprio harness teria de estar quebrado — e um
+# `188-BASELINES.md` **vazio ou com números inventados PASSAVA**. A pergunta que
+# desmascara todo gate (*"o que precisaria estar errado no CÓDIGO para ele
+# falhar?"*) tinha a resposta **"nada"**, que é ACHADO.
+# ➡️ O método LÊ o `188-BASELINES.md` e cobra a FORMA: as 7 linhas presentes e
+# NÃO-VAZIAS; `PARTIDA`/`COMMIT` como sha de 7 a 40 hexas; os 4 números do JS e
+# os 3 do PHP como INTEIROS; falhas JS <= 1 e PHP <= 2 (as oscilações herdadas);
+# o sha256 do protótipo IGUAL ao constante; o COMANDO de cada linha escrito ao
+# lado dela; e as falhas alheias NOMEADAS por semântica.
+# ⚠️ Ele **NÃO** confere o VALOR dos números de suíte, de propósito: é a mesma
+# disciplina do `FechamentoDaFase187Test` (*"medição datada, não gate perene"*).
+# Cravar `JS: 5489` aqui seria régua que sobe a cada wave — a família com NOVE
+# ocorrências nesta milestone.
+# ⚠️ **ISCA NAS DUAS DIREÇÕES, em memória** (nenhum arquivo do repo é tocado): a
+# mesma validação roda sobre o documento real (PASSA), sobre uma cópia com os
+# números trocados por travessões (REPROVA) e sobre uma cópia com o sha256 do
+# protótipo trocado (REPROVA).
+baselines-medidas  php  test_as_baselines_da_fase_188_estao_medidas_e_nao_afirmadas_188_01  ::  tests=1 assertions=7
