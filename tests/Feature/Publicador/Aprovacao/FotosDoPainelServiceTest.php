@@ -871,6 +871,32 @@ class FotosDoPainelServiceTest extends TestCase
         $badges = array_column($fotos['imagens'], 'com_alerta');
         $this->assertSame([false, true, false, false, true], $badges, 'o badge `!` deixou de ser só de `pending` COM alerta');
 
+        // ─── ⚠️⚠️ A SOBREVIVENTE DA MUTAÇÃO (ii-b), INVESTIGADA E DECLARADA ────────────────
+        //
+        // A campanha mutou o serviço para dar badge também a `rejected` e a mutação **SOBREVIVEU**.
+        // ⚠️ **Não é lacuna de asserção: é INOBSERVABILIDADE por construção.**
+        // `PubAprovacaoImagem::noConjuntoFinal()` admite só `pending` ∪ `approved`, então
+        // `rejected` **nunca chega** à galeria final — e o ramo `rejected` do badge não tem como
+        // ser exercitado por `para()`.
+        //
+        // ⚠️ **A regra mora um nível ABAIXO** (`PubAprovacaoConjunto::comAlerta()` +
+        // `GaleriaDaOfertaService`, Fases 186/187, as duas **EM PRODUÇÃO** e com gates próprios), e
+        // este serviço só a **REPASSA**. ➡️ O que **é** meu para provar são as duas coisas abaixo.
+        //
+        // (a) O badge é **LIDO** da chave da galeria, nunca recomputado aqui:
+        $doServico = $this->semComentarios('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php');
+        $this->assertStringContainsString("\$daGaleria['com_alerta']", $doServico, 'o badge foi RECOMPUTADO em vez de LIDO da galeria — seria a SEGUNDA definição de "com alerta"');
+
+        // (b) ⚠️⚠️ **E A PREMISSA FICA TRAVADA:** no dia em que `NO_CONJUNTO_FINAL` ganhar
+        // `rejected`, a inobservabilidade **deixa de valer** e este caso REPROVA — que é
+        // exatamente quando alguém precisa reabrir a questão. Gate que dispara **na hora** em que
+        // a premissa muda, em vez de uma nota que ninguém lê.
+        $this->assertSame(
+            [PubAprovacaoImagem::PENDENTE, PubAprovacaoImagem::APROVADA],
+            PubAprovacaoImagem::NO_CONJUNTO_FINAL,
+            'a galeria final mudou de estados: o ramo `rejected` do badge passou a ser observável e precisa de caso próprio',
+        );
+
         // ⚠️⚠️ **AS TRÊS REGRAS SÃO TRÊS, E O MESMO DADO AS SEPARA.** A `#4` (aprovada COM alerta
         // `high` COM ponto) tem **verificação**, **sem** badge e **sem** marcador; a `#2` (pendente
         // com alerta) tem os três. Unificar duas quaisquer delas REPROVA aqui.

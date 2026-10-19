@@ -157,7 +157,7 @@ galeria-e-marcadores  php  test_(o_progresso_e_a_nota_de_conjunto_saem_de_UMA_co
 #      quaisquer REPROVA;
 #   6. galeria vazia virando tela muda (IMG-12 é bloqueio `sem_fotos`, e o gate
 #      confere que o bloqueio está de pé), e o clamp do índice nas **DUAS** pontas.
-borda-e-estados  php  test_(a_borda_tem_CINCO_ramos_e_a_precedencia_se_prova_com_CONFLITO_188_03|o_estado_rotulo_NUNCA_e_vazio_e_o_badge_e_de_UM_estado_so_188_03|a_galeria_vazia_e_o_clamp_nas_DUAS_pontas_188_03)  ::  tests=3 assertions=56
+borda-e-estados  php  test_(a_borda_tem_CINCO_ramos_e_a_precedencia_se_prova_com_CONFLITO_188_03|o_estado_rotulo_NUNCA_e_vazio_e_o_badge_e_de_UM_estado_so_188_03|a_galeria_vazia_e_o_clamp_nas_DUAS_pontas_188_03)  ::  tests=3 assertions=59
 
 
 # ── TAREFA 2: "Aprovar N sem alerta" — a contagem, e o custo da coluna ───────
