@@ -367,6 +367,27 @@ const ARQUIVOS_NOVOS = [
     // `:566`) e `text-[12.5px]` (a mensagem da falha, `:581`) são medidas do
     // protótipo — arredondar para `text-xl`/`text-sm` mudaria o layout (FID-03).
     `${DIR_APROV}/IdentificacaoDaOferta.jsx`,
+    // ═══ ⚠️⚠️ Fase 188, plano 08 — A COLUNA DE FOTOS DO PAINEL ═══════════════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE OS CRIA** (`188-REGUA.md` §13), pela razão mecânica
+    // escrita no bloco do plano 07 acima: `aprovacao/` está em
+    // `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`.
+    //
+    // ⚠️ `.jsx` nos quatro, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // do `grid-cols-[repeat(6,minmax(0,1fr))]` de `:610`, do marcador de 24px de
+    // `:596` e das cinco bordas de `:1113`. Num `.js` nenhuma delas geraria CSS, e
+    // a grade sairia sem geometria **com todo teste de render passando**.
+    //
+    // ⚠️ **FID-03:** `text-[11.5px]` (os selos, `:598`/`:600`/`:601`/`:603`),
+    // `text-[12.5px]` (o progresso de `:589` e as duas ações de `:626`/`:627`),
+    // `text-[9.5px]` (o glifo do item de verificação, `:633`) e `text-[11px]` (o
+    // cabeçalho de `:369`) são medidas do protótipo — o passo do Tailwind não tem
+    // meio pixel, e arredondar para `text-xs`/`text-sm` mudaria o layout.
+    `${DIR_APROV}/ImagemGrandeDoPainel.jsx`,
+    `${DIR_APROV}/GradeDeMiniaturas.jsx`,
+    `${DIR_APROV}/BlocoDaImagemSelecionada.jsx`,
+    `${DIR_APROV}/ColunaDeFotos.jsx`,
 ];
 
 /**

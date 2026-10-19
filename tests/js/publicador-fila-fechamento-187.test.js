@@ -122,6 +122,12 @@ const JSX_DEPOIS_DA_187 = [
     `${DIR_APROV}/PainelDeRevisao.jsx`,
     `${DIR_APROV}/TopoDoPainel.jsx`,
     `${DIR_APROV}/IdentificacaoDaOferta.jsx`,
+    // Fase 188, plano 08 — a coluna de FOTOS do painel: a imagem grande 1:1 com
+    // os marcadores x/y, a grade de 6 colunas e o bloco da imagem selecionada.
+    `${DIR_APROV}/ImagemGrandeDoPainel.jsx`,
+    `${DIR_APROV}/GradeDeMiniaturas.jsx`,
+    `${DIR_APROV}/BlocoDaImagemSelecionada.jsx`,
+    `${DIR_APROV}/ColunaDeFotos.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

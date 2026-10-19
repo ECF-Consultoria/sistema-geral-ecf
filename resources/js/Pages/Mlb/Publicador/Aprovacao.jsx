@@ -14,6 +14,7 @@ import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
 import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -320,6 +321,24 @@ export default function Aprovacao({
     // compartilhado abrir um modal de aprovação na cara de outra pessoa, numa ação
     // que publica e não tem desfazer.
     const [modalDoLoteAberto, setModalDoLoteAberto] = useState(false);
+
+    // ═══ ⚠⚠ Fase 188, plano 08 — QUAL FOTO ESTÁ ABERTA ═══════════════════
+    //
+    // ⚠⚠ **A BORDA DE SELEÇÃO NÃO PODE VIR DO SERVIDOR, e isso é MEDIDO.**
+    // `PainelDeRevisaoService.php:310` chama `FotosDoPainelService::para($oferta)`
+    // **sem o índice**, e o default é `0` — então `borda`, `anel`, `selecionada` e
+    // `selecionada_indice` do payload estão **presos na foto 0**. Usá-los crus
+    // deixaria o anel amarelo na primeira miniatura **para sempre**, qualquer que
+    // fosse a foto aberta. ➡️ A seleção viva mora AQUI, e a borda é resolvida em
+    // `GradeDeMiniaturas` espelhando `FotosDoPainelService::borda()`.
+    // ⚠️ **Divergência DECLARADA do protótipo**, que é estático por construção.
+    // ⚠️ E o serviço da wave 188-03 **não é alterado**: território somente leitura.
+    //
+    // ⚠️ Qual foto está aberta é GESTO, não dado: não vai para a URL (a oferta vai,
+    // `?oferta=`) e **nada de `localStorage`** — ele é artefato do protótipo
+    // (`:914`). ⚠️ O par guarda a OFERTA junto do índice, para a troca de oferta
+    // voltar à foto 1 **por derivação pura**, sem `useEffect` de sincronização.
+    const [fotoAberta, setFotoAberta] = useState({ oferta: null, indice: 0 });
 
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
@@ -754,15 +773,70 @@ export default function Aprovacao({
             versao: versaoDoPainel,
         });
 
+    // ═══ ⚠⚠ Fase 188, plano 08 — A COLUNA DE FOTOS NO SLOT ═══════════════
+    //
+    // ⚠ `live` **não existe como chave de topo** no payload. `rodape.botoes.salvar`
+    // **É** o `$aoVivo` byte a byte (`PainelDeRevisaoService.php:647`), então é ele
+    // que se lê — uma definição só de "ao vivo", nunca uma segunda inventada na
+    // tela. As duas ações da foto e o "Aprovar N sem alerta" dependem dela.
+    //
+    // ⚠ `onReprovar` fica `null` por ora: o **modal de reprovar imagem** é do plano
+    // **188-12**, e `BlocoDaImagemSelecionada` só desenha o botão quando o handler
+    // é FUNÇÃO. ⚠ Botão sem destino é D4 violado, e `onClick` vazio é a mesma
+    // dívida com outra roupa. ⚠ É o mesmo contrato com que o `onTentarDeNovo`
+    // nasceu `null` acima — e a 188-05 mostrou como ele é religado.
+    //
+    // ⚠ `onConflito` também é do **188-12** (o dono do AVISO na tela). O helper
+    // `escreverNoPainel` **registra o `onError` de todo jeito** e nada é engolido:
+    // o 422 continua chegando pela sacola `errors` do Inertia.
+    const fotosDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.fotos);
+    const rodapeDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.rodape);
+    const painelAoVivo = objetoSeguro(rodapeDoPainel?.botoes)?.salvar === true;
+
+    // ⚠ Derivação PURA: oferta diferente da guardada volta à foto 1. Sem
+    // `useEffect`, sem estado derivado de prop.
+    const indiceDaFoto = fotoAberta.oferta === ofertaDoPainel ? fotoAberta.indice : 0;
+    const totalDeFotos = Array.isArray(fotosDoPainel?.imagens) ? fotosDoPainel.imagens.length : 0;
+
+    const trocarFoto = ofertaDoPainel === null
+        ? null
+        : (indice) => {
+            const alvo = inteiroSeguro(indice);
+            if (alvo === null || alvo < 0 || alvo >= totalDeFotos) return;
+
+            setFotoAberta({ oferta: ofertaDoPainel, indice: alvo });
+        };
+
+    const colunaDeFotos = fotosDoPainel === null
+        ? null
+        : (
+            <ColunaDeFotos
+                key="coluna-de-fotos"
+                fotos={fotosDoPainel}
+                live={painelAoVivo}
+                selecionada={indiceDaFoto}
+                onSelecionar={trocarFoto}
+                empresaId={empresaId}
+                ofertaId={ofertaDoPainel}
+                versao={versaoDoPainel}
+                onReprovar={null}
+                onConflito={null}
+            />
+        );
+
     const noPainel = isValidElement(painelNo)
         ? painelNo
         : (
             <PainelDeRevisao
                 aberto={painelDeRevisao !== null}
                 painel={painelDeRevisao}
+                imagemAtual={indiceDaFoto}
+                totalDeImagens={totalDeFotos}
                 onIr={abrirOferta}
                 onFechar={fecharOferta}
+                onTrocarImagem={trocarFoto}
                 onTentarDeNovo={tentarDeNovo}
+                colunaDeFotos={colunaDeFotos}
             />
         );
 
