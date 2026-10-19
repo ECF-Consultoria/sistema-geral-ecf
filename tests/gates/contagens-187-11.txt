@@ -27,5 +27,32 @@ territorio-e-fid  php  test_territorio_187_(os_alvos_citados_existem_no_disco|ne
 fechamento-perguntas  php  test_perguntas_187_(toda_pergunta_tem_veredicto_e_dono|as_dividas_da_fase_estao_no_deferred_items|nenhum_filtro_dos_manifestos_tem_homonimo_nas_duas_direcoes)  ::  tests=3 assertions=32
 fechamento-fronteira  php  test_o_fechamento_187_declara_a_fronteira_de_escrita_no_ml  ::  tests=1 assertions=6
 
-# ─── JS: a contagem FIXA dos arquivos da fase e os 11 manifestos ───────────────
+# ─── JS: o CONJUNTO DECLARADO dos arquivos da fase e os 11 manifestos ──────────
+#
+# ⚠️⚠️ 19/10/2026 — CIRURGIA DA FASE 188 NESTE ARQUIVO, E A CONTAGEM REMEDIDA:
+#    **continua `6`.** Está escrito aqui de novo em vez de presumido igual (esta
+#    fase já teve DUAS contagens estimadas corrigidas pela medição no plano
+#    188-04: 103→101 e 193→185).
+#
+#    O QUE MUDOU: o gate afirmava `assert.equal(noDisco.length, 21)` sobre
+#    `resources/js/Components/Mlb/Publicador/aprovacao/` — o diretório que a Fase
+#    188 **existe para acrescentar**. O plano 188-07 pôs três `.jsx`
+#    (`PainelDeRevisao`, `TopoDoPainel`, `IdentificacaoDaOferta`) e o diretório
+#    virou 24; as waves 188-08 a 188-13 põem mais. ⚠️ O próprio docblock deste
+#    arquivo já dizia que contagem que sobe a cada plano é frágil POR CONSTRUÇÃO
+#    — e esta escapou porque media o DIRETÓRIO, não a FASE.
+#
+#    O CONSERTO, na RAIZ e **sem nenhum total**: entrou a lista constante
+#    `JSX_DEPOIS_DA_187` (nome + fase + plano dono) e o `deepEqual` com o disco
+#    passou a fechar o diretório inteiro; e o gate foi REAPONTADO PARA A
+#    INVARIANTE que ele de fato precisa provar — *o conjunto no disco é o
+#    conjunto declarado em `ARQUIVOS_NOVOS`* (`publicador-vocabulario-novo.test.js`,
+#    GATE-03), lido do literal daquele arquivo. Arquivo fora daquela lista fica
+#    sem conferência contra `text-sm`, `ecf-*`, `font-display` e hex cru (VOC-07).
+#
+#    POR QUE A CONTAGEM NÃO SE MOVEU: as asserções novas entraram DENTRO do
+#    `test()` que já existia (só o NOME dele mudou: *"o diretorio da fila tem
+#    exatamente 21"* → *"o diretorio da fila e o conjunto DECLARADO"*), e nenhum
+#    `test()` foi criado ou removido. Medido nesta máquina em 19/10/2026, uma
+#    invocação: **6 testes / 6 pass / 0 fail / 0 skipped**.
 fechamento-arquivos-e-manifestos  js  tests/js/publicador-fila-fechamento-187.test.js  ::  tests=6

@@ -70,29 +70,131 @@ const JSX_DA_FASE_186 = [
     `${DIR_APROV}/vocabularioDoPortao.jsx`,
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ CIRURGIA DA FASE 188 (19/10/2026) — O TOTAL `21` DO DIRETÓRIO SAIU, E O
+// REAPONTE PARA A INVARIANTE ENTROU. **Nenhum invariante foi afrouxado; dois
+// foram acrescentados.**
+//
+// O QUE ESTAVA AQUI: `assert.equal(noDisco.length, 21, 'o diretorio aprovacao/
+// nao tem 21 .jsx')`, com o raciocínio *"18 da 187 + 3 da 186 = 21, e nada
+// mais"*.
+//
+// POR QUE REPROVAVA TRABALHO CERTO: a Fase 188 **existe para acrescentar peça
+// neste diretório**. O plano 188-07 pôs três — `PainelDeRevisao.jsx`,
+// `TopoDoPainel.jsx` e `IdentificacaoDaOferta.jsx` — e o diretório virou 24. As
+// waves 188-08 a 188-13 põem mais, e cada uma teria de subir o número de novo.
+//
+// ⚠️ E O PRÓPRIO DOCBLOCK DESTE ARQUIVO JÁ DIZIA O PORQUÊ, no topo: *"contagem
+// que sobe a cada plano é frágil POR CONSTRUÇÃO, e elevar régua repetidamente
+// treina o executor seguinte a ajustar réguas quando elas incomodam"*. A
+// contagem de 21 era desta família (a décima da milestone, learnings §4b.2) e
+// escapou porque media o DIRETÓRIO, não a FASE — exatamente o diagnóstico que os
+// planos 187-03 e 187-04 escreveram ao reapontar `DA_FASE_180` e
+// `DO_PORTAO_DA_FASE_186`.
+//
+// O QUE ENTROU NO LUGAR, e por que é MAIS FORTE que o total:
+//   (a) `JSX_DEPOIS_DA_187` — lista CONSTANTE de nomes, cada um com a fase e o
+//       plano dono. O `deepEqual(noDisco, declarados)` que já existia passa a
+//       cobrir o diretório INTEIRO sem nenhum número: arquivo no disco fora das
+//       TRÊS listas continua REPROVANDO (era o que o 21 garantia), cada
+//       acréscimo fica NOMEADO, e acrescentar é **diff VISÍVEL** — não um número
+//       trocado em silêncio. ⚠️ E ele é mais forte numa direção que o total não
+//       cobria: o 21 aceitava a REMOÇÃO de um arquivo da 187 compensada pela
+//       criação de um da 188.
+//   (b) O REAPONTE PARA A INVARIANTE: o que este gate de fato precisa provar é
+//       *"o conjunto no disco é o conjunto DECLARADO no gate de vocabulário"* —
+//       porque arquivo fora de `ARQUIVOS_NOVOS` fica sem conferência contra
+//       `text-sm`, `ecf-*`, `font-display` e hex cru, e o gate de vocabulário
+//       passaria POR OMISSÃO (VOC-07). Isso é o `deepEqual(noDisco, declarados)`
+//       do GATE-03, que **já está verde com os três `.jsx` da 188-07** — e agora
+//       este arquivo confere o MESMO conjunto, lendo o literal daquele gate.
+//       Nenhum número no meio.
+//
+// ⚠️ QUEM CRIAR `.jsx` EM `aprovacao/` ACRESCENTA UMA LINHA ABAIXO, com a fase e
+// o plano dono, **e** o caminho em `ARQUIVOS_NOVOS`. Faltando um dos dois, o
+// gate REPROVA — e é esse o comportamento certo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** `.jsx` nascidos em `aprovacao/` DEPOIS do fechamento da Fase 187. */
+const JSX_DEPOIS_DA_187 = [
+    // Fase 188, plano 07 — o painel de revisão de 1140px montado POR PORTAL, o
+    // topo de 54px dele e a coluna de identificação da oferta com os 5 chips.
+    `${DIR_APROV}/PainelDeRevisao.jsx`,
+    `${DIR_APROV}/TopoDoPainel.jsx`,
+    `${DIR_APROV}/IdentificacaoDaOferta.jsx`,
+];
+
+/** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */
+const REL_VOCABULARIO = 'tests/js/publicador-vocabulario-novo.test.js';
+
+/**
+ * Os `.jsx` de `aprovacao/` DECLARADOS em `ARQUIVOS_NOVOS`, lidos do literal.
+ *
+ * ⚠️ `ARQUIVOS_NOVOS` é `const` de módulo naquele arquivo, não export — e
+ * importá-lo RODARIA os testes dele. Então lê-se o LITERAL, e da fonte SEM
+ * COMENTÁRIO: a prosa daquele gate CITA nomes de arquivo em pt-BR, e uma leitura
+ * crua colheria o comentário junto (foi medido em dois gates desta milestone).
+ * ⚠️ E recortado ao bloco de `ARQUIVOS_NOVOS`: `DIR_APROV` aparece 37 vezes
+ * naquele arquivo, a maioria em OUTRAS listas, e varrê-lo inteiro mediria um
+ * conjunto que não é o do gate de vocabulário.
+ */
+function declaradosNoGateDeVocabulario() {
+    const fonte = lerSemComentarios(REL_VOCABULARIO);
+    const bloco = fonte.match(/const\s+ARQUIVOS_NOVOS\s*=\s*\[([\s\S]*?)\n\];/);
+    assert.ok(bloco, `nao achei o literal de ARQUIVOS_NOVOS em ${REL_VOCABULARIO} — a leitura esta cega`);
+    const nomes = [...bloco[1].matchAll(/\$\{DIR_APROV\}\/([\w.-]+\.jsx)/g)].map((m) => m[1]);
+    assert.ok(nomes.length > 0, `ARQUIVOS_NOVOS nao declara nenhum .jsx de aprovacao/ — a leitura esta cega`);
+    return [...new Set(nomes)].sort();
+}
+
 const abs = (rel) => path.resolve(RAIZ, rel);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // id de gate `fechamento-arquivos-da-fase`
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('187-11: os 20 .jsx de producao da fase existem no disco, e o diretorio da fila tem exatamente 21', () => {
+test('187-11: os 20 .jsx de producao da fase existem no disco, e o diretorio da fila e o conjunto DECLARADO', () => {
     const faltando = JSX_DA_FASE_187.filter((rel) => !fs.existsSync(abs(rel)));
     assert.deepEqual(faltando, [], 'arquivo de producao da Fase 187 ausente do disco');
 
     const faltando186 = JSX_DA_FASE_186.filter((rel) => !fs.existsSync(abs(rel)));
     assert.deepEqual(faltando186, [], 'arquivo da Fase 186 em aprovacao/ desapareceu — territorio somente leitura');
 
-    // ⚠️ A soma fecha o diretório: 18 da 187 + 3 da 186 = 21, e **nada mais**.
-    // Arquivo no disco fora das duas listas é peça que ninguém declarou — e o
+    // ⚠️ E as peças nascidas depois da 187 tambem estao no disco: lista que
+    // aponta para caminho fantasma "prova" cobertura medindo NADA.
+    const faltandoDepois = JSX_DEPOIS_DA_187.filter((rel) => !fs.existsSync(abs(rel)));
+    assert.deepEqual(faltandoDepois, [], 'caminho fantasma em JSX_DEPOIS_DA_187 — entrada morta e linha morta');
+
+    // ⚠️ O conjunto fecha o diretório SEM NENHUM TOTAL (ver o bloco de cirurgia
+    // acima): 18 da 187 + 3 da 186 + os declarados depois, e **nada mais**.
+    // Arquivo no disco fora das TRÊS listas é peça que ninguém declarou — e o
     // gate de vocabulário não a varreria.
     const noDisco = fs.readdirSync(abs(DIR_APROV)).filter((f) => f.endsWith('.jsx')).sort();
-    const declarados = [...JSX_DA_FASE_187, ...JSX_DA_FASE_186]
+    const declarados = [...JSX_DA_FASE_187, ...JSX_DA_FASE_186, ...JSX_DEPOIS_DA_187]
         .filter((rel) => rel.startsWith(DIR_APROV))
         .map((rel) => path.basename(rel))
         .sort();
-    assert.deepEqual(noDisco, declarados, 'o diretorio aprovacao/ tem .jsx que nenhuma das duas listas declara');
-    assert.equal(noDisco.length, 21, 'o diretorio aprovacao/ nao tem 21 .jsx');
+    // ⚠️ SONDA NÃO-CEGA primeiro: diretorio renomeado devolveria `[]` e o
+    // `deepEqual` passaria se as listas tambem estivessem vazias.
+    assert.ok(noDisco.length > 0, 'nenhum .jsx em aprovacao/ — o caminho DIR_APROV esta errado?');
+    assert.deepEqual(
+        noDisco,
+        declarados,
+        'o diretorio aprovacao/ divergiu do DECLARADO. Criou .jsx novo? Acrescente-o a JSX_DEPOIS_DA_187'
+        + ' com a fase e o plano dono — e tambem a ARQUIVOS_NOVOS, senao ele fica SEM conferencia de vocabulario.'
+        + ` nao-declarados=[${noDisco.filter((f) => !declarados.includes(f)).join(', ')}]`
+        + ` fantasmas=[${declarados.filter((f) => !noDisco.includes(f)).join(', ')}]`,
+    );
+
+    // ⚠️⚠️ O REAPONTE PARA A INVARIANTE: o conjunto no disco é o conjunto que o
+    // GATE-03 declara. É isto, e não um total, que prova que nenhuma peça deste
+    // diretorio ficou FORA da conferencia de vocabulario (VOC-07).
+    assert.deepEqual(
+        declaradosNoGateDeVocabulario(),
+        noDisco,
+        `ARQUIVOS_NOVOS (${REL_VOCABULARIO}) divergiu do disco: arquivo fora daquela lista passa SEM`
+        + ' conferencia contra `text-sm`, `ecf-*`, `font-display` e hex cru, e o gate passa POR OMISSAO',
+    );
 
     // ⚠️ ISCA: a conferência de existência TEM de reprovar um nome inventado.
     assert.equal(
@@ -100,13 +202,22 @@ test('187-11: os 20 .jsx de producao da fase existem no disco, e o diretorio da 
         false,
         'a isca do arquivo inexistente EXISTE no disco — troque o nome da isca',
     );
+    // ⚠️ ISCA DA LEITURA DO LITERAL: o nome inventado NAO esta declarado no gate
+    // de vocabulario. Sem ela, `declaradosNoGateDeVocabulario()` devolvendo
+    // sempre tudo faria o reaponte acima passar com a sonda cega.
+    assert.ok(
+        !declaradosNoGateDeVocabulario().includes('NaoExiste9z7.jsx'),
+        'a leitura de ARQUIVOS_NOVOS acha arquivo que nao existe — a sonda esta cega',
+    );
 });
 
 test('187-11: nenhuma peca de tela da fase e .js — o content do Tailwind varre *.jsx e NAO *.js', () => {
     // O invariante REAL, e ele não é "nenhum arquivo novo da fase é `.js`": os
     // **9 arquivos de teste** da fase são `.js` de propósito (`tests/js/*.test.js`),
     // e teste não é varrido pelo Tailwind. ⚠️ O invariante é sobre `resources/`.
-    const comExtensaoErrada = [...JSX_DA_FASE_187, ...JSX_DA_FASE_186].filter(
+    // ⚠️ `JSX_DEPOIS_DA_187` entra aqui pela Fase 188: a regra do `content` do
+    // Tailwind vale para TODA peça do diretorio, nao so para as da 187.
+    const comExtensaoErrada = [...JSX_DA_FASE_187, ...JSX_DA_FASE_186, ...JSX_DEPOIS_DA_187].filter(
         (rel) => rel.startsWith('resources/') && !rel.endsWith('.jsx'),
     );
     assert.deepEqual(comExtensaoErrada, [], 'peca de tela da fase com extensao .js — as classes dela NAO compilam');
