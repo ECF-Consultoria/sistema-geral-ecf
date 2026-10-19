@@ -117,4 +117,30 @@ bijecao-manifesto  php  test_bijecao_do_manifesto_187_05  ::  tests=1 assertions
 #    por arquivo varrido). Aquele arquivo passou a ter id PRÓPRIO com a forma `>=` em
 #    `contagens-187-01.txt` (`vocabulario-tamanhos`), e este voltou a medir SÓ o que é dele,
 #    com igualdade EXATA — 76 medido.
+#
+# ⚠️⚠️ 19/10/2026 — CIRURGIA DA FASE 188 NESTE ARQUIVO, E A CONTAGEM REMEDIDA:
+#    **continua `76`.** Nenhum número mudou, e está escrito aqui de novo em vez
+#    de presumido igual (esta fase já teve DUAS contagens estimadas corrigidas
+#    pela medição, plano 188-04: 103→101 e 193→185).
+#
+#    O QUE MUDOU: o caso `o CONTRATO DE NÓ do 187-04 fica INTACTO: exatamente 4
+#    isValidElement` afirmava um TOTAL e passou a reprovar trabalho CORRETO
+#    quando o plano 188-07 abriu o QUINTO slot de NÓ da página (`painelNo`, o
+#    painel de revisão por portal). ⚠️ O comentário daquele caso já previa o dano
+#    na direção OPOSTA (*"trocar o slot de NÓ por dado derrubaria para 3 e
+#    reprovaria trabalho CORRETO daquela wave"*) — era um número que reprovava
+#    trabalho certo para os dois lados. O conserto foi na RAIZ: o total saiu e
+#    entraram as listas `SLOTS_DE_NO_DA_187` e `SLOTS_DE_NO_DEPOIS_DA_187`, com
+#    igualdade de CONJUNTO, controle de regex e conferência CONTRA A LISTA DO
+#    GATE IRMÃO (`publicador-fila-cabecalho-187.test.js`, ids `cabecalho-da-fila`,
+#    `faixa-de-andamento` e `pagina-e-contagem` em `contagens-187-04.txt`), que
+#    cobrava o mesmo total.
+#
+#    POR QUE A CONTAGEM NÃO SE MOVEU: as asserções novas entraram DENTRO do
+#    sub-teste que já existia — nenhum `test()` nem `contexto.test()` foi criado
+#    ou removido. Medido nesta máquina em 19/10/2026, uma invocação:
+#      · 76 testes / 76 pass / 0 fail / 0 skipped
+#    ⚠️ Este id NÃO tem regime mutado no manifesto, e continua sem: a camada de
+#    CSS deste arquivo compara o `app-*.css` com os `.jsx`, não com o arquivo de
+#    teste — e a campanha de mutação desta cirurgia mexeu só nas LISTAS do teste.
 proximo-render  js  tests/js/publicador-fila-proximo-187.test.js  ::  tests=76

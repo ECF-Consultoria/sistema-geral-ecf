@@ -47,6 +47,32 @@
 #    lado "o que o plano toca" MEDIDO NO GIT pelo escopo do assunto (`(187-04)`),
 #    nunca por lista à mão. Arquivo de teste fora do manifesto **NUNCA RODA** —
 #    foi o sobrevivente da campanha de mutação do plano 186-03.
+#
+# ⚠️⚠️ 19/10/2026 — CIRURGIA DA FASE 188 NO ARQUIVO DOS TRÊS IDS, E AS TRÊS
+#    CONTAGENS REMEDIDAS (uma invocação por id): **as três continuam `99,85`.**
+#    Nenhum número mudou, e é por isso que elas estão escritas aqui de novo em
+#    vez de "presumidas iguais" — este manifesto já corrigiu DUAS contagens
+#    estimadas nesta fase (103→101 e 193→185, plano 188-04).
+#
+#    O QUE MUDOU no arquivo: o caso `os 4 slots passam por isValidElement, e são
+#    exatamente 4` afirmava um TOTAL (`assert.equal(…, 4)`) e passou a reprovar
+#    trabalho CORRETO quando o plano 188-07 abriu o QUINTO slot de NÓ da página
+#    (`painelNo`, o painel de revisão por portal). O conserto foi na RAIZ: o
+#    total saiu e entraram as listas constantes `SLOTS_DE_NO_DA_187` e
+#    `SLOTS_DE_NO_DEPOIS_DA_187`, com igualdade de CONJUNTO, controle de regex,
+#    e conferência CONTRA A LISTA DO GATE IRMÃO
+#    (`publicador-fila-proximo-187.test.js`, id `proximo-render` em
+#    `contagens-187-05.txt`), que cobrava o mesmo total.
+#
+#    POR QUE A CONTAGEM NÃO SE MOVEU: as asserções novas entraram DENTRO do
+#    mesmo sub-teste que já existia — nenhum `test()` nem `contexto.test()` foi
+#    criado ou removido. Medido nesta máquina em 19/10/2026:
+#      · pristino: 99 testes / 99 pass / 0 fail / 0 skipped
+#    ⚠️ O regime mutado (`85`) **não foi remedido nesta cirurgia** e segue valendo
+#    como medida de 15/10: ele existe porque editar fonte deixa o CSS velho e as
+#    DUAS camadas de CSS pulam, e a campanha de mutação desta cirurgia mexeu só
+#    nas LISTAS deste arquivo de teste — o que não altera quantos casos a camada
+#    de CSS registra. Quem mexer no número tem de remedir as duas pontas.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ─── TAREFA 1 — o cabeçalho da fila ───────────────────────────────────────────
@@ -76,8 +102,9 @@ cabecalho-da-fila  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests
 faixa-de-andamento  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests=99,85
 
 # ─── TAREFA 3 — a página, o manifest, a etapa saneada e a contagem da faixa ───
-# O lado JS: a ordem vertical de FILA-01 por POSIÇÃO na fonte, os 4 slots com
-# `isValidElement`, as props do servidor repassadas (nada inventado, zero
+# O lado JS: a ordem vertical de FILA-01 por POSIÇÃO na fonte, os slots de NÓ com
+# `isValidElement` (o CONJUNTO DECLARADO, desde a cirurgia da Fase 188 — era "os 4
+# slots, e são exatamente 4"), as props do servidor repassadas (nada inventado, zero
 # `reduce(`), o filtro na URL sem `localStorage`, a aba global `publicacoes`, a
 # geometria própria da fila (D2) com os três valores da LISTA PROIBIDOS e o
 # controle de que eles estão na página da lista, a divergência declarada da raiz

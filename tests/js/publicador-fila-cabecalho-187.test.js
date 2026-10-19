@@ -1437,6 +1437,84 @@ test('FID — as classes da faixa de 9 GERAM CSS com o valor certo', async (cont
 
 const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ CIRURGIA DA FASE 188 (19/10/2026) — A CONTAGEM FIXA DE `isValidElement`
+// SAIU, E A LISTA CONSTANTE DE SLOTS ENTROU. **Nenhum invariante foi
+// afrouxado; dois foram acrescentados.**
+//
+// O QUE ESTAVA AQUI: `assert.equal((FONTE_PAGINA.match(/isValidElement\(/g) ??
+// []).length, 4)`, num caso chamado *"os 4 slots … e são exatamente 4"*. O
+// mesmo total é cobrado pelo gate irmão `publicador-fila-proximo-187.test.js`.
+//
+// POR QUE REPROVAVA TRABALHO CERTO: o plano 188-07 abriu o QUINTO slot de NÓ da
+// página — `painelNo`, o painel de revisão por portal, com a prop de DADO
+// `painel` ao lado (o mesmo par nó × dado de `proximo`/`proximo_a_revisar`,
+// `filtros`/`filtros_ativos` e `tabela`/`grupos`). O contrato de NÓ ficou
+// INTACTO e o número virou 5.
+//
+// POR QUE NÃO SE SOBE O NÚMERO (de 4 para 5): as waves 188-08 a 188-13 montam
+// mais peças dentro do painel, e cada slot novo obrigaria a subir de novo — em
+// DOIS arquivos. É a família "contagem que depende de quantas peças existem",
+// com DEZ ocorrências nesta milestone, **todas consertadas na RAIZ** com lista
+// constante (learnings §4b.2 e `feedback_gate_que_reprova_pelo_proprio_conserto`):
+// número que muda quando o trabalho certo é feito treina o executor seguinte a
+// ajustar réguas quando elas incomodam, e um dia ele ajusta uma que importava.
+//
+// O QUE ENTROU, E POR QUE É MAIS FORTE QUE A CONTAGEM:
+//   · o total provava *"são quatro"* sem dizer **QUAIS** — trocar o slot
+//     `rodape` por um `cabecalhoNo` inventado mantinha o 4 e passava. Agora a
+//     prova é **igualdade de CONJUNTO** contra nomes declarados, então slot
+//     RENOMEADO, REMOVIDO ou TROCADO cai, e cada acréscimo fica NOMEADO com a
+//     fase dona ao lado;
+//   · slot novo que **não entra na lista continua REPROVANDO** — o veto que o
+//     total dava é preservado inteiro, e acrescentar à lista é **diff VISÍVEL**,
+//     não um número trocado em silêncio;
+//   · e a lista é conferida CONTRA A DO GATE IRMÃO, lida do literal: duas
+//     listas que podem divergir são uma lista que ninguém mantém.
+//
+// ⚠️ É o MESMO molde dos reapontes que os planos 187-03 e 187-04 fizeram em
+// `DA_FASE_180` e `DO_PORTAO_DA_FASE_186` (`publicador-vocabulario-novo.test.js`)
+// e do `LIBERADOS_DEPOIS_DA_187` do plano 188-01
+// (`publicador-fila-tokens-187.test.js`).
+// ⚠️ QUEM ABRIR SLOT DE NÓ NOVO ACRESCENTA UMA LINHA NAS DUAS LISTAS, nos DOIS
+// arquivos, com a fase e o plano dono.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os 4 slots de NÓ que a Fase 187 abriu na página, com o plano dono. */
+const SLOTS_DE_NO_DA_187 = [
+    'filtros',  // 187-08 — a linha de filtros e os popovers
+    'proximo',  // 187-05 — a faixa "Próximo a revisar"
+    'rodape',   // 187-07/187-09 — a legenda, montada DENTRO da `<section>` da tabela
+    'tabela',   // 187-07 — a tabela da fila
+];
+
+/** ⚠️ Slot de NÓ aberto DEPOIS do fechamento da Fase 187 — um por linha. */
+const SLOTS_DE_NO_DEPOIS_DA_187 = [
+    'painelNo', // Fase 188, plano 07 — o painel de revisão de 1140px, por portal
+];
+
+/** O gate irmão que cobra o MESMO contrato de NÓ (plano 187-05). */
+const REL_IRMAO_DO_CONTRATO_DE_NO = 'tests/js/publicador-fila-proximo-187.test.js';
+
+/** A regex do contrato: `isValidElement(<identificador>)`. */
+const RE_SLOT_DE_NO = /isValidElement\(\s*([A-Za-z_$][\w$]*)\s*\)/g;
+
+/** Os identificadores que a página de fato passa por `isValidElement(...)`. */
+function slotsDeNoDaPagina() {
+    const achados = [...FONTE_PAGINA.matchAll(RE_SLOT_DE_NO)].map((m) => m[1]);
+    return [...new Set(achados)].sort();
+}
+
+/** As duas listas de slots DECLARADAS num arquivo de gate, lidas do literal. */
+function slotsDeclaradosEm(rel) {
+    const fonte = lerSemComentarios(rel);
+    const blocos = [...fonte.matchAll(/const\s+SLOTS_DE_NO_(?:DA_187|DEPOIS_DA_187)\s*=\s*\[([^\]]*)\]/g)];
+    assert.equal(blocos.length, 2, `não achei as DUAS listas de slots de NÓ em ${rel} — a leitura está cega`);
+    const nomes = blocos.flatMap((bloco) => [...bloco[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+    assert.ok(nomes.length > 0, `as listas de slots de NÓ em ${rel} saíram VAZIAS — a leitura está cega`);
+    return [...new Set(nomes)].sort();
+}
+
 test('FILA-01 — a página monta cabeçalho e faixa na ordem vertical, e os slots nascem VAZIOS', async (contexto) => {
     await contexto.test('a página IMPORTA os dois componentes desta wave e o header da Fase 177', () => {
         assert.match(
@@ -1505,15 +1583,65 @@ test('FILA-01 — a página monta cabeçalho e faixa na ordem vertical, e os slo
         );
     });
 
-    await contexto.test('⚠️ os 4 slots passam por `isValidElement`, e são exatamente 4', () => {
-        assert.equal(
-            (FONTE_PAGINA.match(/isValidElement\(/g) ?? []).length,
-            4,
-            'os quatro slots têm de passar por `isValidElement`: nó inválido como filho faz o React LANÇAR',
+    await contexto.test('⚠️ todo slot de NÓ passa por `isValidElement`, e o conjunto é o DECLARADO', () => {
+        // ⚠️ Ver o bloco de cirurgia acima: aqui era `assert.equal(…, 4)`.
+        // O invariante é o CONTRATO DE NÓ — nó inválido como filho faz o React
+        // LANÇAR e derruba a tela inteira —, e ele vale para CADA slot, não para
+        // a quantidade deles.
+        const declarados = [...new Set([...SLOTS_DE_NO_DA_187, ...SLOTS_DE_NO_DEPOIS_DA_187])].sort();
+        const naPagina = slotsDeNoDaPagina();
+
+        // ⚠️ SONDA NÃO-CEGA primeiro: lista vazia casaria com lista vazia e o
+        // `deepEqual` abaixo passaria afirmando NADA (learnings §4b.1).
+        assert.ok(naPagina.length > 0, 'nenhum `isValidElement(<slot>)` na página — a sonda está cega ou o contrato de NÓ caiu');
+        assert.ok(declarados.length > 0, 'as listas de slots declarados estão vazias');
+
+        assert.deepEqual(
+            naPagina,
+            declarados,
+            'os slots de NÓ da página divergiram do DECLARADO. Abriu slot novo? Acrescente-o a'
+            + ` SLOTS_DE_NO_DEPOIS_DA_187 com a fase e o plano dono, aqui E em ${REL_IRMAO_DO_CONTRATO_DE_NO}.`
+            + ` nao-declarados=[${naPagina.filter((s) => !declarados.includes(s)).join(', ')}]`
+            + ` sem-isValidElement=[${declarados.filter((s) => !naPagina.includes(s)).join(', ')}]`,
         );
-        for (const slot of ['proximo', 'filtros', 'tabela', 'rodape']) {
+
+        // ⚠️ E cada slot declarado é NOMEADO na página (o `deepEqual` acima já
+        // cai, mas esta mensagem diz QUAL).
+        for (const slot of declarados) {
             assert.ok(FONTE_PAGINA.includes(slot), `o slot \`${slot}\` não está nomeado na página`);
         }
+
+        // ⚠️ CONTROLE DA REGEX, contra um caso que DEVE casar — escrito à mão,
+        // não lido do arquivo. Regex cega devolveria `[]` e tudo acima passaria
+        // com as duas listas vazias.
+        assert.deepEqual(
+            [...'const noIsca = isValidElement( iscaDeSonda188 ) ? x : y;'.matchAll(new RegExp(RE_SLOT_DE_NO.source, 'g'))].map((m) => m[1]),
+            ['iscaDeSonda188'],
+            'a regex do contrato de NÓ está CEGA: ela não casa nem uma chamada escrita à mão',
+        );
+        // ⚠️ E ela NÃO casa o `import { isValidElement, … }` do topo (que não tem
+        // parêntese) nem `isValidElement(algo.aqui)` (que não é identificador
+        // simples) — se um dia a página usar a forma com expressão, este controle
+        // reprova e manda ampliar a regex em vez de deixá-la medir menos.
+        assert.deepEqual(
+            [...'import { isValidElement, useState } from "react";'.matchAll(new RegExp(RE_SLOT_DE_NO.source, 'g'))].map((m) => m[1]),
+            [],
+            'a regex do contrato de NÓ passou a casar o import — ela contaria o que não é slot',
+        );
+        assert.doesNotMatch(
+            FONTE_PAGINA,
+            /isValidElement\((?!\s*[A-Za-z_$][\w$]*\s*\))/,
+            'há `isValidElement(` com algo que NÃO é identificador simples — a sonda de slots mediria MENOS que a realidade',
+        );
+
+        // ⚠️⚠️ ANTI-DERIVA: o gate irmão cobra o MESMO contrato, e as duas listas
+        // têm de ser a MESMA. Sem isto, acrescentar o slot só aqui deixaria o
+        // outro arquivo medindo um conjunto antigo em silêncio.
+        assert.deepEqual(
+            slotsDeclaradosEm(REL_IRMAO_DO_CONTRATO_DE_NO),
+            declarados,
+            `as listas de slots de NÓ deste arquivo e de ${REL_IRMAO_DO_CONTRATO_DE_NO} DIVERGIRAM — slot novo entra nos DOIS`,
+        );
     });
 
     await contexto.test('⚠️ as props do servidor são REPASSADAS, nenhuma inventada', () => {
