@@ -128,6 +128,12 @@ const JSX_DEPOIS_DA_187 = [
     `${DIR_APROV}/GradeDeMiniaturas.jsx`,
     `${DIR_APROV}/BlocoDaImagemSelecionada.jsx`,
     `${DIR_APROV}/ColunaDeFotos.jsx`,
+    // Fase 188, plano 09 — a coluna de PREÇO do painel: os 3 KPIs com a barra da
+    // margem de 0 a 40%, o aviso de alteração não conferida, a composição com
+    // selo de origem por linha, a simulação que nunca é salva e a comparação com
+    // a oferta irmã.
+    `${DIR_APROV}/KpisDoPainel.jsx`,
+    `${DIR_APROV}/ColunaDePreco.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

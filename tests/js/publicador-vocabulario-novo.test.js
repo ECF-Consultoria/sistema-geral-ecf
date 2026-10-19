@@ -388,6 +388,30 @@ const ARQUIVOS_NOVOS = [
     `${DIR_APROV}/GradeDeMiniaturas.jsx`,
     `${DIR_APROV}/BlocoDaImagemSelecionada.jsx`,
     `${DIR_APROV}/ColunaDeFotos.jsx`,
+    // ═══ ⚠️⚠️ Fase 188, plano 09 — A COLUNA DE PREÇO E RESULTADO ════════════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE OS CRIA** (`188-REGUA.md` §13), pela razão mecânica
+    // escrita nos blocos dos planos 07/08 acima: `aprovacao/` está em
+    // `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`, e `.jsx`
+    // no disco fora desta lista deixa o gate VERMELHO na hora — árvore vermelha
+    // no HEAD pode BARRAR DEPLOY. ⚠️ Pré-declarar **não é possível**: `FONTES` lê
+    // todos os caminhos e **LANÇA** com arquivo inexistente.
+    //
+    // ⚠️ `.jsx` nos dois, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // do `grid-cols-[repeat(3,minmax(0,1fr))]` de `:641`, da trilha de 4px com o
+    // traço de 1,5px×10px de `:645` e da caixa amarelada de `:649`. Num `.js`
+    // nenhuma delas geraria CSS, e os KPIs sairiam sem geometria **com todo teste
+    // de render passando**.
+    //
+    // ⚠️ **FID-03:** `text-[21px]` (o valor dos 3 KPIs, `:642`-`:644`) é a medida
+    // do protótipo e foi liberado MEDINDO pelo plano 188-01 — arredondar para
+    // `text-xl` (20px) mudaria o layout. `text-[11.5px]` (o rótulo), `text-[11px]`
+    // (a nota da margem, `:646`), `text-[12.5px]` (a caixa de `:649`) e
+    // `text-[12px]` (o botão de `:651`) também são medidas, e o passo do Tailwind
+    // não tem meio pixel.
+    `${DIR_APROV}/KpisDoPainel.jsx`,
+    `${DIR_APROV}/ColunaDePreco.jsx`,
 ];
 
 /**

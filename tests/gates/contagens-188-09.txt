@@ -1,0 +1,242 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-09 — A TELA: A COLUNA DE PREÇO E
+# RESULTADO do painel de revisão (os 3 KPIs com a barra da margem, o aviso de
+# alteração não conferida, a composição com SELO DE ORIGEM por linha, a simulação
+# que NUNCA é salva e a comparação clicável com a oferta irmã).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-09 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-09`, E NÃO `09`. O número NU resolve
+# `contagens-186-09.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA (`188-REGUA.md` §13) — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `coluna-de-preco`, e **manifesto sem o id ABORTA**.
+# ➡️ As três tarefas deste plano ACRESCENTAM aqui, cada uma **antes do seu próprio
+# verify**, e os CINCO `.jsx` entram em `ARQUIVOS_NOVOS`
+# (`tests/js/publicador-vocabulario-novo.test.js`) **na MESMA tarefa que os cria**.
+#
+# ⚠️ E eles entram TAMBÉM em `JSX_DEPOIS_DA_187`
+# (`tests/js/publicador-fila-fechamento-187.test.js`): são **DUAS** escriturações
+# para `aprovacao/`, e isso é DELIBERADO — o último conserto da família RECUSOU
+# criar uma terceira e apontou o gate do fechamento para a INVARIANTE em vez de
+# copiar 28 nomes. Declarar numa e esquecer a outra **REPROVA**, e é esse o
+# comportamento certo.
+#
+# ⚠️ O que esta wave **NÃO** mexeu, e por que:
+#   · `SLOTS_DE_NO_DEPOIS_DA_187` (três pontas) — ela **não abre** `isValidElement(`
+#     novo na página; o slot `colunaDePreco` já existe desde a 188-07 e é
+#     preenchido pela expressão `colunaDePreco={colunaDePreco}`;
+#   · `QUEM_USA_SHADOW_PUB_PAINEL` — nenhum `.jsx` desta wave usa o token;
+#   · `ESTADO_LOCAL_DA_PAGINA` — ela **não acrescenta `useState(`** na página (a
+#     simulação não guarda estado local: sem a rota da wave 188-06 não há o que
+#     digitar, e a caixa recebe o handler por prop);
+#   · `VARRIDOS_DECLARADOS` — nenhum `.jsx` novo em `publicacoes/`, `identidade/`
+#     ou `visaogeral/`; e `aprovacao/` ali aponta para a invariante, não para lista;
+#   · `LIBERADOS_DEPOIS_DA_187` — **nenhum tamanho novo**: o `21` já foi liberado
+#     MEDINDO pelo plano 188-01, e os outros (11 · 11.5 · 12 · 12.5 · 13 · 15 ·
+#     10.5) já estavam na lista. Há sub-teste cobrando isso por MEDIÇÃO dos
+#     `text-[Npx]` realmente escritos.
+#
+# ⚠️ E os ids de OUTRAS fases cujos arquivos esta wave TOCOU foram RE-MEDIDOS,
+#   um por invocação, com número MEDIDO (ver a §BASELINES da SUMMARY):
+#   · `fechamento-arquivos-e-manifestos` (`contagens-187-11.txt`, `tests=6`) —
+#     **NÃO mudou**: as listas moram DENTRO de um `test()`, e acrescentar entrada
+#     não cria caso novo. Medido ANTES (6) e DEPOIS (6);
+#   · `gate-rename` (`contagens-186-01.txt`, `tests=23`) — **NÃO mudou**: aquele
+#     gate lê `JSX_DEPOIS_DA_187` como INVARIANTE de `aprovacao/`, e a contagem
+#     não depende de quantos arquivos há. Medido ANTES (23) e DEPOIS (23);
+#   · `vocabulario-tamanhos` — **MUDOU por construção** (um sub-teste por arquivo
+#     varrido), e por isso a forma é `>=`. Ver o bloco dele abaixo.
+#   ⚠️ **Nenhum número foi SUBIDO para calar gate, e nenhum foi rebaixado para
+#   contagem.**
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ OS DOIS REGIMES DE `coluna-de-preco`
+# ═══════════════════════════════════════════════════════════════════════════════
+# A camada de CSS construído deste gate só roda quando o `mtime` do CSS do
+# manifest SUPERA o `mtime` dos `.jsx` deste plano. Durante a campanha de MUTAÇÃO
+# o arquivo mutado fica mais novo que o CSS, a camada cai em `skip` NOMEADO e a
+# contagem muda — mesma mecânica medida nas waves 188-07 e 188-08.
+#
+# ⚠️ Sem os DOIS regimes a campanha de mutação **aborta na 1ª execução** ou marca
+# "SOBREVIVEU" por um motivo que **NÃO é o código** (learnings §4 caso 11).
+# ⚠️ E `cp -p` **preserva o `mtime`**, então a restauração da cópia devolve o
+# regime pristino sem precisar de `npm run build` — mas o `cp` de ida NÃO
+# preserva, e é por isso que `npm run build` vem DEPOIS da mutação.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ `vocabulario-tamanhos` EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AQUI
+# ═══════════════════════════════════════════════════════════════════════════════
+# A regra é **quem roda, declara** (`188-REGUA.md` §6): este plano roda o GATE-03
+# (ele tem cinco `.jsx` novos), então ele declara o id na SUA PRÓPRIA LINHA.
+#
+# ⚠️ A FORMA É `>=` porque a contagem **cresce por construção** — um sub-teste por
+# arquivo varrido nos diretórios fechados, e cada `.jsx` novo a aumenta. Os dez
+# manifestos da 187 cravaram `>=443`; a 188-01 mediu `>=548`; a 188-07, `>=569`;
+# a 188-08, `>=597`. **Com os cinco `.jsx` deste plano a medição é 632**
+# (597 + 5 arquivos × 7 sub-testes, e a soma fecha — medido por
+# `node --test --test-reporter=tap` em 19/10/2026, nos dois pontos: 597 antes,
+# 611 com os dois primeiros, 632 com os cinco).
+# ⚠️ O que continua PROIBIDO é uma coisa só: embuti-lo num id que também roda
+# OUTROS arquivos — foi o id COMPOSTO que fez a wave 187-05 reprovar dois ids de
+# outras waves e exigir consertar quatro manifestos.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ BIJEÇÃO E HOMÔNIMO
+# ═══════════════════════════════════════════════════════════════════════════════
+# · id ↔ `<verify>`: os DOIS ids abaixo aparecem em `<verify>` do `188-09-PLAN.md`
+#   (`coluna-de-preco` nas três tarefas — `:277`, `:333`, `:384`;
+#   `vocabulario-tamanhos` na tarefa 3 — `:384`), e todo id usado por um
+#   `<verify>` daquele plano está declarado aqui. **As duas direções, zero órfão.**
+# · id ↔ teste: todo `test()` do arquivo de gate casa o id `coluna-de-preco`
+#   (modo `js` roda o ARQUIVO inteiro), e há sub-teste cobrando que **todo** nome
+#   de teste termine em `188_09`.
+# · ⚠️⚠️ **UM ID POR ARQUIVO DE GATE, no modo `js`.** O harness roda o ARQUIVO
+#   INTEIRO: dois ids sobre o mesmo arquivo dariam a MESMA contagem duas vezes e
+#   **nenhum mediria a sua metade** — gate decorativo por construção, medido na
+#   187-08.
+# · ⚠️ **Nenhum id `php` neste manifesto**, e isso é DECLARADO: o `--filter` do
+#   PHPUnit (regex NÃO ANCORADO) só existe no modo `php`, então a colisão de
+#   homônimo **não tem onde acontecer** aqui. O gate deste plano prova o que é
+#   VERDADE no lugar disso: todo nome de teste do arquivo termina em `188_09`, e
+#   há asserção cobrando a ausência de id `php` — se um dia entrar, aquela sonda
+#   vira a de `--filter`. ⚠️ E o expansor de alternância está testado contra
+#   `test_(a|b)_188_09`, que é o furo MEDIDO pela wave 188-05
+#   (`/test_[A-Za-z0-9_]+/` **não casa** a forma de alternância e deu `SEM_ID=14`
+#   acusando trabalho CORRETO).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: os 3 KPIs, a barra por FÓRMULA e o aviso de alteração ──────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **VOC-03 / D6** — "lucro líquido" na tela. O recorte é a lista
+#      CONSTANTE dos `.jsx` deste plano, porque `lucro_liquido` é campo
+#      **legítimo** do Portal (8 arquivos) e varrer `app/` **BARROU UM DEPLOY** na
+#      Fase 186. ⚠️ A leitura é SEM COMENTÁRIO: o docblock que PROÍBE a palavra a
+#      CONTÉM, e leitura crua reprovaria pelo próprio conserto (regra 2 da §6,
+#      TRÊS mutações abortadas por ela na 187-04). **Isca nas DUAS direções:** a
+#      sonda pega os três cebos, e um arquivo legítimo de FORA do recorte casa —
+#      é exatamente por isso que o recorte existe;
+#   2. ⚠️⚠️ **DECISÃO 9 DO USUÁRIO** — a margem sem dizer de onde vem. A frase
+#      `· com a tarifa real do Mercado Livre` chega FECHADA de
+#      `ComposicaoDaOferta:271`, e **deixar a margem sem texto foi RECUSADO**.
+#      O gate prova a substring NA TELA **e** que nenhum `.jsx` deste plano a
+#      REMONTA (literal na tela seria a 2ª redação) **e** que as DUAS margens não
+#      foram unificadas (`Publicador/Fila/ResumoRapidoService`, ⚠️ o caminho NÃO é
+#      `.../Aprovacao/Fila/` — confundi-los APAGARIA a decisão);
+#   3. ⚠️⚠️ **D10 — A BARRA É FÓRMULA** — cravar a posição do traço. O `left:30%`
+#      de `:645` existe **porque `MIN = 12`** (`:914`) e `12/40 = 30%`. ⚠️ Só se
+#      prova com **DOIS mínimos**: 12 ⇒ `30%` e 20 ⇒ `50%`. Com um mínimo só, o
+#      literal cravado PASSARIA;
+#   4. ⚠️⚠️ **O `style`** — largura/posição por CLASSE montada por template
+#      literal. O scanner do Tailwind **não vê** classe concatenada: ela fica no
+#      HTML, todo render passa, e **a barra não desenha**. ⚠️ A sonda é na FONTE
+#      SEM COMENTÁRIO, e isso é ACHADO MEDIDO da 188-08: no CSS construído o
+#      próprio docblock que proíbe a classe **a faz existir** (o CSS encolheu 7
+#      bytes quando o exemplo foi neutralizado);
+#   5. ⚠️⚠️ **AS TRÊS CORES DO RESULTADO** — duas iguais. Um teste de EXISTÊNCIA
+#      passaria; o que distingue é a DIFERENÇA aos pares, e duas iguais apagariam
+#      a diferença entre *"dá prejuízo"* e *"não se sabe"*. ⚠️ Mais **D7**: cada
+#      estado tem PALAVRA ao lado da cor (`Incompleto`, `prejuízo por venda`,
+#      `acima do mínimo`), e nunca `R$ 0,00`/`0%` — zero AFIRMARIA que é de graça;
+#   6. ⚠️ **A ORDEM** — a tela reordenar os KPIs. `KPIS_EM_ORDEM` é o contrato do
+#      servidor, e a prova de que a tela NÃO reordena é renderizar a lista
+#      INVERTIDA: uma ordenação interna passaria no caso direto e reprovaria aqui;
+#   7. ⚠️ **A DIVISÓRIA** — `border-left` na célula 1, ou faltando na 2/3. Ela é
+#      POSIÇÃO, não propriedade do KPI. Elemento por **árvore com índice
+#      ABSOLUTO**, nunca `indexOf` de classes (QUATRO gates deste projeto mediam
+#      o irmão errado, e a 188-08 caiu nisso);
+#   8. ⚠️⚠️ **D4 — BOTÃO SEM DESTINO** — "Conferir alteração" desenhado sem
+#      handler, com `onClick` vazio, ou com `disabled` decorativo (as duas foram
+#      OFERECIDAS e RECUSADAS). ⚠️ `/disabled=/` e **nunca** `/disabled/`, que casa
+#      `disabled:opacity-40`. **A rota é da wave 188-06 e NÃO EXISTE no HEAD de
+#      partida** — medido em `routes/mlb_anuncios.php`, com ISCA das rotas que JÁ
+#      existem (sem ela a sonda de ausência passaria com o caminho errado);
+#   9. ⚠️ **A DECISÃO SOBRE `BarraDeMargem.jsx`** — forçar o reuso de uma
+#      geometria diferente, ou alterar o arquivo da FILA (que está NO AR). As TRÊS
+#      divergências estão MEDIDAS e asseridas: o traço do painel é `pub-txt-2`
+#      (#A1A1AA, `:645`) e o da fila é `pub-txt-4` (#71717A, `:163`); o
+#      preenchimento normal do painel é `clara` (#D4D4D8, `:1132`) e o da fila é
+#      `suave` (#A1A1AA, `:1246`); e o wrapper é outro. ⚠️ Um gate que exigisse a
+#      MESMA chave nos dois **reprovaria código certo** (`188-FID01.md` §L);
+#  10. ⚠️⚠️ **A TELA PRETA** — 9 campos × 17 formas adversas, os 3 campos da barra,
+#      a coleção inteira, a prop inteira, **e TAMBÉM no CLIQUE**
+#      (`renderToStaticMarkup` **não dispara `onClick`**, e a última tela preta
+#      deste projeto foi NO CLIQUE). `doesNotMatch` de
+#      `[object Object]|NaN|undefined|Invalid Date`, e **nunca
+#      `String()`/`JSON.stringify()` na mensagem de asserção** (eles lançam/mentem
+#      com `{toString: null}`). ⚠️ E o leitor de mapa de cor não LANÇA com chave
+#      adversa, **nem cai no VERDE** — afirmar confirmação que não existe é o pior
+#      lado do erro nesta coluna;
+#  11. ⚠️⚠️ **A CHAVE NEUTRA DESTA COLUNA É `neutro`, E A DA COLUNA DE FOTOS É
+#      `neutra`** — MEDIDO nos dois serviços. É por isso que o `classeDaCor()` da
+#      188-08 **não serve** aqui (o fallback dele cai numa chave que este mapa não
+#      tem, e a cor sairia do nada), e um gate que exigisse o reuso reprovaria
+#      código certo;
+#  12. ⚠️ **TERRITÓRIO** — `localStorage`, "Restaurar dados de exemplo", `String(`,
+#      `JSON.stringify(`, hex cru (TOK-15), os tokens VETADOS de FID-04,
+#      `text-sm`/`text-xs`/`text-xl` (FID-03), as Fases **189**/**192**
+#      antecipadas, o segundo passo (decisão 1), o rodapé da 188-10 aparecendo
+#      como provisório, peça nova em `.js` (⚠️ o invariante CERTO é *"nenhuma PEÇA
+#      nova sob `resources/` é `.js`"* — a 187-11 mediu que *"nenhum arquivo novo
+#      é `.js`"* era literalmente FALSO), T-188-SC (lockfile intocado), e os
+#      INTOCÁVEIS com `numstat` VAZIO. ⚠️ A ISCA da sonda de `numstat` é a ÁRVORE
+#      VAZIA do git, e **não** "um arquivo que esta wave alterou": essa segunda
+#      forma é **vazia por construção DEPOIS DO COMMIT** e o gate viraria falso
+#      positivo no dia seguinte;
+#  13. ⚠️ **AS LISTAS CONSTANTES** — `.jsx` deste plano fora de `ARQUIVOS_NOVOS`
+#      (o GATE-03 passaria POR OMISSÃO, VOC-07) ou fora de `JSX_DEPOIS_DA_187` (o
+#      conjunto do diretório divergiria), e tamanho usado FORA de
+#      `TAMANHOS_PERMITIDOS`. ⚠️ Com **sonda NÃO-CEGA antes** de cada leitura de
+#      literal: bloco vazio casaria com qualquer `includes`;
+#  14. ⚠️ **O PROTÓTIPO** — `skip` EXPLÍCITO e NOMEADO quando
+#      `design_handoff_publicador/` não está no disco (ele **NÃO é versionado**).
+#      Dentro dele: os 13 ponteiros do §D e do view-model reconferidos por LEITURA
+#      DA LINHA, e `cursor`/`white-space`/`text-overflow` em colunas próprias
+#      (⚠️ `white-space:nowrap` foi omitido SETE vezes na Fase 187, TRÊS como
+#      PRIMEIRA propriedade da linha — e aqui ele é a primeira de `:651`);
+#  15. ⚠️ **O CSS CONSTRUÍDO** com as OITO normalizações — token sólido saindo em
+#      `rgb(R G B / var(…))` e não em hex, a opacidade em `border-color` saindo em
+#      **hex de 8 dígitos** (`0.35` → `0x59`, `0.5` → `0x80`), o zero da frente
+#      comido pelo cssnano (`-0.02em` → `-.02em`), o seletor **escapado** e o
+#      escape **GERAL**, sem o qual `grid-cols-[repeat(3,minmax(0,1fr))]` sairia
+#      **AUSENTE estando presente**. ⚠️ Com **ISCA MEDIDA** (as quatro foram
+#      conferidas AUSENTES contra o CSS de verdade — `grid-cols-6` e
+#      `left-[37.5%]` PARECIAM inventadas e saíram PRESENTES na 188-08) e
+#      **CONTROLE POSITIVO** (`duration-[180ms]` não compila × `duration-200`
+#      compila — sem ele o gate não distingue "o arbitrário não compila" de "a
+#      sonda está cega").
+#
+# OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026:
+#   · **29** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#     os 21 testes de topo, os 4 sub-testes do PROTÓTIPO e os 4 sub-testes da
+#     camada de CSS, todos rodando (29 / 29 pass / 0 skipped);
+#   · **25** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#     o `cp` atualiza o `mtime` do `.jsx`): a camada cai em `skip` NOMEADO e os 4
+#     sub-testes dela não entram na contagem (25 / 24 pass / 1 skipped — o `skip`
+#     é NOMEADO, com a razão escrita). ⚠️ `# tests` conta sub-teste, e é por isso
+#     que o número MUDA — não é teste que desapareceu.
+#   ⚠️ Os DOIS foram MEDIDOS por sonda de `mtime` ANTES da campanha, e o hash do
+#   CSS do manifest saiu `assets/app-B0-WY4Lv.css` — **com HÍFEN**, que é por que
+#   o manifest se lê pelo JSON e nunca por `grep`.
+coluna-de-preco  js  tests/js/publicador-painel-preco-188.test.js  ::  tests=29,25
