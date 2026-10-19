@@ -547,10 +547,15 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->comTarifa();
         $quem = User::factory()->create();
 
-        $destinoDe = function (PubAprovacaoOferta $oferta, string $chave) use ($empresa): ?array {
+        // ⚠️ O destino de CADA uma das nove é COLETADO, para a equivalência do fim deste caso.
+        $destinos = [];
+
+        $destinoDe = function (PubAprovacaoOferta $oferta, string $chave) use ($empresa, &$destinos): ?array {
             foreach ($this->servico()->para($oferta, $this->base($empresa))['pendencias'] as $p) {
                 // ⚠️ Flag DENTRO do laço.
                 if ($p['chave'] === $chave) {
+                    $destinos[$chave] = $p['destino'];
+
                     return $p['destino'];
                 }
             }
@@ -638,6 +643,7 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertNull($doAjuste[0]['destino'], 'PERGUNTA-188-B: sem rota, SEM destino');
         $this->assertNull($doAjuste[0]['correcao'], 'PERGUNTA-188-B: sem destino, SEM botão');
         // ⚠️⚠️ **MAS O TEXTO CONTINUA APARECENDO** — a pessoa precisa saber o que trava a oferta.
+        $destinos[VocabularioDoPortao::AJUSTE_EM_ABERTO] = $doAjuste[0]['destino'];
         $this->assertSame('1 ajuste solicitado em aberto', $doAjuste[0]['texto'], 'o TEXTO do bloqueio sumiu junto com o botão');
         $this->assertSame(VocabularioDoPortao::GLIFO, $doAjuste[0]['glifo'], 'VOC-05: ícone + texto, nunca só cor');
 
@@ -654,6 +660,7 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertCount(1, $doTitulo, 'a pendência de título não nasceu — o caso mediria NADA');
         $this->assertNull($doTitulo[0]['destino']);
         $this->assertNull($doTitulo[0]['correcao']);
+        $destinos[VocabularioDoPortao::TITULO_LONGO] = $doTitulo[0]['destino'];
         $this->assertStringContainsString('61 caracteres', $doTitulo[0]['texto'], 'o TEXTO do bloqueio sumiu junto com o botão');
 
         // ─── (1) `em_preparacao` → **`null`** nos dois campos (`:1089`, `fix: ''`) ────────────
@@ -666,6 +673,7 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertCount(1, $doPreparo);
         $this->assertNull($doPreparo[0]['destino'], '`:1089` — não há nada que a pessoa possa fazer');
         $this->assertNull($doPreparo[0]['correcao']);
+        $destinos[VocabularioDoPortao::EM_PREPARACAO] = $doPreparo[0]['destino'];
         $this->assertSame('Sistema ainda gerando as fotos', $doPreparo[0]['texto'], 'AUTO-01: a frase REAL do que falta');
 
         // ⚠️⚠️ **A LISTA CONSTANTE da PERGUNTA-188-B, e ela é quem a Fase 190/191 esvazia.**
@@ -684,6 +692,48 @@ class PainelDeRevisaoServiceTest extends TestCase
             VocabularioDoPortao::BLOQUEIOS_EM_ORDEM,
             'as 9 chaves mudaram — este caso cobre uma por uma e precisa ser revisto',
         );
+        // ⚠️ E as NOVE foram de fato MEDIDAS aqui, não quatro delas.
+        $this->assertSame([], array_values(array_diff(VocabularioDoPortao::BLOQUEIOS_EM_ORDEM, array_keys($destinos))), 'chave dos 9 sem destino MEDIDO neste caso');
+
+        // ═══ ⚠️⚠️ A EQUIVALÊNCIA QUE TORNA `SEM_ROTA_ATE_A_FASE_190` LOAD-BEARING ════════════
+        //
+        // ⚠️⚠️ **ESTE BLOCO NASCEU DE UMA SOBREVIVENTE DA MUTAÇÃO, e a investigação achou GAP
+        // REAL.** Esvaziar `SEM_ROTA_ATE_A_FASE_190` **não reprovava nada**: sem o `return null`
+        // antecipado, `destino()` cai no `match`, que **não tem arm** para `ajuste_em_aberto` nem
+        // `titulo_longo` — então o `default => null` devolvia o mesmo `null`. A mutação era
+        // **semanticamente equivalente**, e a decisão do usuário na PERGUNTA-188-B estava protegida
+        // **só pela ausência acidental de dois arms**.
+        //
+        // ⚠️ É a régua 6 em estado puro: *"asserção vazia quando escrita vira FALSO POSITIVO
+        // depois"*. No dia em que a Fase 190/191 acrescentar o arm da revisão detalhada e esquecer
+        // de esvaziar a lista — ou o contrário —, nada acusaria.
+        //
+        // ➡️ O conserto fecha o laço na OUTRA direção: **ter destino ⟺ NÃO estar na lista dos sem
+        // rota e NÃO ser `em_preparacao`**. Com a lista vazia, as duas passam a DEVER ter destino,
+        // não têm, e a mutação **MORRE**. ⚠️ UMA asserção coletando os divergentes.
+        $semDestinoPorDesenho = array_merge(
+            PainelDeRevisaoService::SEM_ROTA_ATE_A_FASE_190,
+            // `em_preparacao` tem `fix: ''` (`:1089`): não há nada a fazer, e é por OUTRA razão.
+            [VocabularioDoPortao::EM_PREPARACAO],
+        );
+        $divergentes = [];
+        foreach (VocabularioDoPortao::BLOQUEIOS_EM_ORDEM as $chave) {
+            // ⚠️ Flag DENTRO do laço.
+            $deveTer = ! in_array($chave, $semDestinoPorDesenho, true);
+            $tem = ($destinos[$chave] ?? null) !== null;
+            if ($deveTer !== $tem) {
+                $divergentes[] = $chave.($deveTer ? ' deveria TER destino e não tem' : ' tem destino e NÃO deveria');
+            }
+        }
+        $this->assertSame([], $divergentes, 'a equivalência destino ⟺ fora da lista dos sem-rota quebrou');
+
+        // ⚠️ ISCA DA EQUIVALÊNCIA, nas duas direções — sem ela, "[] divergentes" poderia ser o
+        // valor de um laço que nunca compara nada.
+        $this->assertCount(3, $semDestinoPorDesenho, 'a lista dos sem-destino mudou de tamanho');
+        $this->assertTrue(in_array(VocabularioDoPortao::AJUSTE_EM_ABERTO, $semDestinoPorDesenho, true));
+        $this->assertFalse(in_array(VocabularioDoPortao::FRETE_AUSENTE, $semDestinoPorDesenho, true), 'o frete entrou na lista dos sem-destino');
+        $this->assertNotNull($destinos[VocabularioDoPortao::FRETE_AUSENTE], 'ISCA: quem está FORA da lista tem de ter destino');
+        $this->assertNull($destinos[VocabularioDoPortao::AJUSTE_EM_ABERTO], 'ISCA: quem está DENTRO da lista não pode ter destino');
     }
 
     /**
@@ -1334,7 +1384,15 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertStringContainsString('rotuloDaEspera', $doPainel, 'a espera tem de vir da fórmula pública do 187-05');
         $this->assertStringContainsString('PREFIXO_ESPERA', $doPainel, 'o prefixo da espera tem de ser LIDO');
         $this->assertStringContainsString('ordenarFila', $doPainel, 'a ordem tem de vir da ÚNICA PORTA');
-        $this->assertStringContainsString('TUDO_CONFERIDO', $doPainel, 'o literal verde tem de ser LIDO do vocabulário');
+        // ⚠️⚠️ **AQUI NÃO SE COBRA `TUDO_CONFERIDO`, E ISSO É MEDIDO, NÃO ESQUECIMENTO.** A
+        // primeira redação deste gate exigia o nome da constante no arquivo — e **o desenho CERTO
+        // não a menciona**: o literal verde sai de dentro de `resumoDoRodape()`, que é justamente o
+        // que este plano DEVE chamar. ➡️ Cobrar a constante empurraria o executor seguinte a
+        // **remontar a frase** só para o gate passar, perdendo o único-lugar. É a família
+        // `feedback_gate_que_reprova_pelo_proprio_conserto`, e o gate reprovou **o conserto certo**
+        // na primeira rodada (*"To contain: TUDO_CONFERIDO"*).
+        // ➡️ O invariante de verdade é o PAR que já está acima: `resumoDoRodape` **é chamado** e o
+        // literal **não é recopiado**. Os dois juntos só passam com a frase vindo de um lugar só.
         $this->assertStringContainsString("->rotulo()", $doPainel, 'o rótulo do andamento tem de ser LIDO do modelo');
         // ⚠️ E os literais da 186/187 NÃO foram recopiados.
         $this->assertStringNotContainsString("'Fotos, preço e conteúdo conferidos'", $doPainel, 'o literal verde foi RECOPIADO');

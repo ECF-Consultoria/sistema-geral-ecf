@@ -88,7 +88,7 @@
 
 # ─── Tarefa 1 — `PainelDeRevisaoService` ────────────────────────────────────────
 identificacao-e-chips  php  test_(a_identificacao_sai_com_SKU_formato_origem_e_os_cinco_chips_188_02|a_espera_e_a_falha_vem_do_servidor_formatadas_188_02)  ::  tests=2 assertions=41
-pendencias-e-destinos  php  test_(os_NOVE_destinos_de_correcao_estao_resolvidos_no_servidor_188_02|a_correcao_e_nula_em_TODAS_fora_do_live_e_a_ordem_e_a_do_vocabulario_188_02)  ::  tests=2 assertions=38
+pendencias-e-destinos  php  test_(os_NOVE_destinos_de_correcao_estao_resolvidos_no_servidor_188_02|a_correcao_e_nula_em_TODAS_fora_do_live_e_a_ordem_e_a_do_vocabulario_188_02)  ::  tests=2 assertions=45
 rodape-e-aprovavel  php  test_(o_rodape_le_o_aprovavel_e_o_resumo_do_rodape_188_02|o_motivo_fora_do_live_tem_os_CINCO_textos_e_os_botoes_somem_188_02)  ::  tests=2 assertions=43
 cadeia-e-incompleto  php  test_a_cadeia_e_EXCLUSIVA_e_a_embalagem_nao_anula_mas_o_frete_anula_188_02  ::  tests=1 assertions=20
 navegacao-e-payload  php  test_(a_navegacao_pula_preparando_e_as_pontas_sao_nulas_188_02|o_payload_tem_todas_as_chaves_e_nenhuma_data_sai_como_objeto_188_02)  ::  tests=2 assertions=50
