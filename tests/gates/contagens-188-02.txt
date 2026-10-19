@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-02 — O SERVIDOR DO PAINEL:
+# `PainelDeRevisaoService` (identificação, falha, os NOVE destinos, rodapé,
+# aprovável, versão, navegação) e a prop `painel` no `?oferta=`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-02 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-02`, E NÃO `02`. O número NU resolve
+# `contagens-186-02.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **15** métodos PHP deste
+#    plano estão quebrados em **NOVE** ids, **nenhum com mais de DOIS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A BIJEÇÃO, NOS TRÊS SENTIDOS — e o terceiro é o que a revisão desta fase
+# achou furado:
+#   (1) todo MÉTODO `_188_02` dos dois arquivos casa ALGUM id daqui — método sem
+#       id **NUNCA RODA** (foi o sobrevivente da mutação do 186-03);
+#   (2) todo id daqui casa ALGUM método — id órfão roda sobre **ZERO casos** e é
+#       indistinguível de gate verde;
+#   (3) ⚠️ todo id daqui aparece em ALGUM `<verify>` do `188-02-PLAN.md`, e todo
+#       id usado num `<verify>` está declarado aqui. **Cinco ids desta fase eram
+#       órfãos na primeira redação** — no manifesto, com contagem medida, e
+#       rodados por verify nenhum.
+# ➡️ Os três sentidos são provados por `test_bijecao_do_manifesto_do_painel_188_02`
+#    (os dois primeiros, por script sobre os DOIS arquivos) e pelo plano 188-13
+#    (o terceiro, sobre os treze pares plano×manifesto).
+#
+# O MAPA id → `<verify>` do plano (conferido linha a linha em 19/10/2026):
+#   tarefa 1 → identificacao-e-chips · pendencias-e-destinos · rodape-e-aprovavel
+#              · cadeia-e-incompleto · navegacao-e-payload
+#   tarefa 2 → painel-na-rota · custo-do-painel · territorio-painel
+#              · bijecao-manifesto-02
+# ⚠️ Nenhum id a mais, nenhum a menos. **Zero órfão.**
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO — CONFERIDO POR SCRIPT, NAS DUAS DIREÇÕES, INCLUINDO SUBSTRING
+#
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e todo plano `_0N` desta fase
+# tem homônimo possível nas Fases 186 **E** 187, as duas **EM PRODUÇÃO**. Método
+# superstring de uma delas faz o id daquela fase **SOMAR** e reprovar.
+#
+# MEDIDO em 19/10/2026 (`homonimo-188-02.sh`, sobre todo `test_*` de `tests/`):
+#   ARQUIVOS=902  METODOS=7718  HOMONIMOS=0
+#
+# ⚠️ E a sonda tem ISCA nas DUAS direções, também medida:
+#   · direção 1 (meu nome é SUBSTRING de um alheio): `test_territorio_e_ausencias_do_plano`
+#     acusa `..._187_06`, `_187_07`, `_187_08`, `_187_09`, `_187_10` — **os cinco EXISTEM**,
+#     e é exatamente por isso que o sufixo `_188_02` não é zelo;
+#   · direção 2 (um alheio é SUBSTRING do meu): um nome terminado em
+#     `..._em_app_inteiro_com_isca_E_MAIS` acusa o método real da Fase 186;
+#   · controle: `test_metodo_que_ninguem_escreveu_188_02` → HOMONIMOS=0.
+#
+# ⚠️ O conserto de colisão é **sufixo no método NOVO**, NUNCA levantar a contagem
+#    do manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (GATE-03), E ESTÁ CERTO:
+#    ele é **só de servidor** e **não cria `.jsx` nenhum**, então não roda aquele
+#    gate. A regra é **quem roda, declara** — não *todos declaram*.
+#    (O precedente é `contagens-187-02.txt`, que também não o declara pela mesma
+#    razão, e aquela fase está em produção.)
+#
+# ⚠️ E não há linha `js` neste manifesto: este plano não tem arquivo de render.
+#    A tela do painel é dos planos 188-07 em diante.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Tarefa 1 — `PainelDeRevisaoService` ────────────────────────────────────────
+identificacao-e-chips  php  test_(a_identificacao_sai_com_SKU_formato_origem_e_os_cinco_chips_188_02|a_espera_e_a_falha_vem_do_servidor_formatadas_188_02)  ::  tests=2 assertions=41
+pendencias-e-destinos  php  test_(os_NOVE_destinos_de_correcao_estao_resolvidos_no_servidor_188_02|a_correcao_e_nula_em_TODAS_fora_do_live_e_a_ordem_e_a_do_vocabulario_188_02)  ::  tests=2 assertions=38
+rodape-e-aprovavel  php  test_(o_rodape_le_o_aprovavel_e_o_resumo_do_rodape_188_02|o_motivo_fora_do_live_tem_os_CINCO_textos_e_os_botoes_somem_188_02)  ::  tests=2 assertions=43
+cadeia-e-incompleto  php  test_a_cadeia_e_EXCLUSIVA_e_a_embalagem_nao_anula_mas_o_frete_anula_188_02  ::  tests=1 assertions=20
+navegacao-e-payload  php  test_(a_navegacao_pula_preparando_e_as_pontas_sao_nulas_188_02|o_payload_tem_todas_as_chaves_e_nenhuma_data_sai_como_objeto_188_02)  ::  tests=2 assertions=50
