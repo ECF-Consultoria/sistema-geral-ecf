@@ -1748,9 +1748,40 @@ test('FID — as classes GERAM CSS com o valor certo (não só existem)', async 
         const fundo = regraDe('bg-pub-accent/[0.12]');
         assert.match(fundo, /background-color:\s*#facc151f/i, fundo);
 
-        // ⚠️ E as formas vizinhas NÃO existem — é o que a mutação testa.
-        assert.equal(regraDe('border-pub-accent/[0.5]'), null, '0.5 existe e passaria por 0.55 num gate de presença');
-        assert.equal(regraDe('bg-pub-accent/[0.1]'), null);
+        // ⚠️⚠️ REAPONTE MEDIDO (Fase 188, wave 09) — A FORMA ANTIGA ERA UM GATE
+        //     MAIS LARGO QUE O INVARIANTE, E REPROVAVA CÓDIGO CERTO.
+        //
+        // O que estava aqui:
+        //     assert.equal(regraDe('border-pub-accent/[0.5]'), null, ...)
+        //     assert.equal(regraDe('bg-pub-accent/[0.1]'), null)
+        // — ou seja, exigia que as classes VIZINHAS **não existissem no CSS do
+        // projeto INTEIRO**. Isso proibia qualquer outro arquivo de usar 0,5 ou
+        // 0,1 legitimamente, e foi exatamente o que aconteceu:
+        //
+        //   · `design_handoff_publicador/Aprovacao.dc.html:651` mede
+        //     `border:1px solid rgba(250,204,21,0.5)` no botão "Conferir
+        //     alteração" do painel E2, e a wave **188-09** o traduziu para
+        //     `border-pub-accent/[0.5]` — **código CERTO**, pelo valor MEDIDO.
+        //
+        // ⚠⚠ **A SONDA DE CSS NÃO PROTEGE A FIDELIDADE DE UM ARQUIVO:** o CSS é
+        // do último build e a MESMA classe pode ter OUTRO dono — foi assim que
+        // `grid-cols-6` saiu PRESENTE na wave 188-08 e que `left-[37.5%]` nasceu
+        // de um COMENTÁRIO. Afirmar ausência global é afirmar sobre o projeto
+        // todo, e nenhum gate de um arquivo pode fazer isso.
+        //
+        // ➡️ O INVARIANTE CERTO é o BYTE **DESTE** chip, e ele continua provando o
+        // que a ausência queria provar (0,55 ≠ 0,5 e 0,12 ≠ 0,1 — um gate de
+        // PRESENÇA não os distinguiria) **sem** proibir o resto do projeto. É mais
+        // forte numa direção que a forma antiga: ela aceitava a borda do chip
+        // mudar para 0,5 desde que ninguém mais usasse 0,5.
+        // ⚠️ `0.5` → `0x80`, `0.55` → `0x8c`, `0.1` → `0x1a`, `0.12` → `0x1f`.
+        assert.ok(!/#facc1580/i.test(borda), `o 0,55 do chip virou o 0,5 — o byte os distingue: ${borda}`);
+        assert.ok(!/#facc151a/i.test(fundo), `o 0,12 do chip virou o 0,1 — o byte os distingue: ${fundo}`);
+        // ⚠️ ISCA DA LEITURA: a sonda do byte NÃO está cega — ela acha o byte certo
+        // nos dois, e os dois bytes são DIFERENTES entre si.
+        assert.ok(/#facc158c/i.test(borda), 'a sonda do byte da borda está CEGA');
+        assert.ok(/#facc151f/i.test(fundo), 'a sonda do byte do fundo está CEGA');
+        assert.notEqual(borda, fundo, 'a borda e o fundo do chip saem na MESMA regra — a leitura está cega');
     });
 
     await contexto.test('⚠️ e o ALFA da opção segmentada é OUTRO: 0,16 (seg() :535)', () => {
