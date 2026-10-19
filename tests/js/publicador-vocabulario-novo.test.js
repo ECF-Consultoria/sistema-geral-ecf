@@ -341,6 +341,27 @@ const ARQUIVOS_NOVOS = [
     // da tela de Publicações e `CabecalhoPublicadorService::ABAS` é lista FECHADA
     // de cinco (decisão do plano 187-02).
     'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx',
+    // ═══ ⚠️⚠️ Fase 188, plano 07 — A CASCA DO PAINEL DE REVISÃO SIMPLES ══════
+    //
+    // ⚠️⚠️ **ELES ENTRAM NA MESMA TAREFA QUE OS CRIA, e isso é MECÂNICO, não
+    // estilo** (`188-REGUA.md` §13): `aprovacao/` está em `DIRETORIOS_FECHADOS`
+    // com `assert.deepEqual(noDisco, declarados)`, então `.jsx` no disco fora
+    // desta lista deixa o `deepEqual` **VERMELHO na hora** — e árvore vermelha
+    // no HEAD pode BARRAR DEPLOY. ⚠️ Pré-declarar **não é possível**: `FONTES`
+    // lê todos os caminhos e **LANÇA** com arquivo inexistente. É por isso que
+    // as waves que criam `.jsx` são SEQUENCIAIS.
+    //
+    // ⚠️ `.jsx` nos dois, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // das classes da casca — o `w-[min(1140px,calc(100vw-100px))]` de `:550`, o
+    // `grid-cols-[minmax(0,1fr)_minmax(0,1fr)]` de `:586` e o topo de 54px de
+    // `:551`. Num `.js` nenhuma delas geraria CSS, e o painel sairia sem
+    // geometria na tela **com todo teste de render passando**.
+    //
+    // ⚠️ **FID-03:** `text-[11px]` (o rótulo, `:552`) e `text-[11.5px]` (o SKU,
+    // `:565`) são medidas do protótipo, e o passo do Tailwind não tem meio pixel.
+    `${DIR_APROV}/PainelDeRevisao.jsx`,
+    `${DIR_APROV}/TopoDoPainel.jsx`,
 ];
 
 /**
