@@ -692,15 +692,63 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
     // invariante deste caso. Menu aberto e modal aberto não vão para a URL **de
     // propósito**: os dois são GESTO, não dado.
     //
-    // ⚠️⚠️ **SUBIU DE 1 PARA 2 NO PLANO 187-09, e o número é MEDIDO, não
-    // afrouxado.** O segundo é `modalDoLoteAberto`, e pôr "o modal está aberto" na
-    // URL faria um **link compartilhado abrir um modal de aprovação na cara de
-    // outra pessoa** — numa ação que publica e **não tem desfazer**. A SELEÇÃO, que
-    // é dado, continua na URL (`?sel=`).
-    // ⚠️ E a régua não virou `>=`: os dois são NOMEADOS um por um logo abaixo, de
-    // forma que um terceiro `useState` nascendo aqui — de filtro ou não — reprova.
-    const usos = [...FONTE_PAGINA.matchAll(/useState\(/g)];
-    assert.equal(usos.length, 2, `a página tem ${usos.length} \`useState\` — esperava 2 (o menu aberto e o modal do lote)`);
+    // ⚠️⚠️ **O TOTAL SAIU, E ISSO É CIRURGIA — não afrouxamento.** Antes esta linha
+    // era `assert.equal(usos.length, 2)`, e o número já havia **SUBIDO de 1 para
+    // 2** no plano 187-09. Um número que **muda quando o trabalho certo é feito**
+    // treina o executor seguinte a ajustar a régua em vez de consertar código
+    // (learnings §4b.2) — é a MESMA classe dos cinco gates desta família que a
+    // Fase 188 consertou (`JSX_DEPOIS_DA_187`, `SLOTS_DE_NO_DEPOIS_DA_187`,
+    // `QUEM_USA_SHADOW_PUB_PAINEL`, `LIBERADOS_DEPOIS_DA_187`, `DA_FASE_180`).
+    //
+    // ➡️ Virou **LISTA CONSTANTE DE NOMES**, com `deepEqual` nas DUAS direções:
+    //   · `useState` novo na página **sem entrar na lista** continua REPROVANDO
+    //     (era o que o total garantia);
+    //   · entrada da lista que **não existe mais** na página também reprova
+    //     (entrada morta é linha morta) — o total NÃO cobria isso: ele aceitava a
+    //     REMOÇÃO do `menuAberto` compensada pela criação de outro estado;
+    //   · e cada acréscimo fica **NOMEADO**, com a fase dona ao lado — diff
+    //     VISÍVEL, não um número trocado em silêncio.
+    //
+    // ⚠️ O INVARIANTE deste caso continua sendo *"nenhum FILTRO mora em
+    // `useState`"*, e quem o prova é o laço dos seis nomes de filtro, logo abaixo.
+    // O que a lista prova é o outro lado: todo estado local da página é GESTO, e
+    // não DADO.
+    const ESTADO_LOCAL_DA_PAGINA = [
+        // Fase 187, plano 06 — qual popover de filtro está aberto.
+        'menuAberto',
+        // Fase 187, plano 09 — o modal de aprovação em lote. Pôr "o modal está
+        // aberto" na URL faria um link compartilhado abrir um modal de aprovação na
+        // cara de outra pessoa, numa ação que publica e **não tem desfazer**. A
+        // SELEÇÃO, que é dado, continua na URL (`?sel=`).
+        'modalDoLoteAberto',
+        // ⚠️ Fase 188, plano 08 — qual FOTO está aberta na coluna de fotos do
+        // painel. É GESTO, não dado: a OFERTA vai para a URL (`?oferta=`), a foto
+        // não. ⚠️ E ele não pode vir do servidor: `PainelDeRevisaoService.php:310`
+        // chama `FotosDoPainelService::para($oferta)` **sem o índice**, e o default
+        // é `0` — `borda`/`anel`/`selecionada_indice` do payload estão presos na
+        // foto 0, e a borda de seleção ficaria na primeira miniatura para sempre.
+        'fotoAberta',
+    ];
+
+    const naPagina = [...FONTE_PAGINA.matchAll(/const \[([A-Za-z_$][\w$]*),\s*[A-Za-z_$][\w$]*\] = useState\(/g)].map((m) => m[1]);
+
+    // ⚠️ SONDA NÃO-CEGA **antes** do `deepEqual`: lista vazia casaria com lista
+    // vazia e o `deepEqual` passaria afirmando NADA (learnings §4b.1).
+    assert.ok(naPagina.length > 0, 'nenhum `const [x, setX] = useState(` na página — a sonda está CEGA');
+    assert.equal(
+        naPagina.length,
+        [...FONTE_PAGINA.matchAll(/useState\(/g)].length,
+        'há `useState(` na página fora da forma `const [x, setX] = useState(` — a leitura não vê todos',
+    );
+    assert.deepEqual(
+        [...naPagina].sort(),
+        [...ESTADO_LOCAL_DA_PAGINA].sort(),
+        'o estado local da página divergiu do DECLARADO. Nasceu estado novo? Acrescente-o a'
+        + ' `ESTADO_LOCAL_DA_PAGINA` com a fase e o plano dono, e escreva por que ele é GESTO e não DADO.'
+        + ` nao-declarados=[${naPagina.filter((n) => !ESTADO_LOCAL_DA_PAGINA.includes(n)).join(', ')}]`
+        + ` sem-useState=[${ESTADO_LOCAL_DA_PAGINA.filter((n) => !naPagina.includes(n)).join(', ')}]`,
+    );
+
     assert.match(FONTE_PAGINA, /const \[menuAberto, setMenuAberto\] = useState\(null\)/, 'o `useState` do menu saiu');
     assert.match(FONTE_PAGINA, /const \[modalDoLoteAberto, setModalDoLoteAberto\] = useState\(false\)/, 'o `useState` do modal do lote saiu');
 
