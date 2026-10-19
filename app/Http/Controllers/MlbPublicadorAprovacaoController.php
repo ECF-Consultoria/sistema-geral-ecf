@@ -839,7 +839,8 @@ class MlbPublicadorAprovacaoController extends Controller
      * O `required|string` daqui é a porta da frente (recusa a ausência da chave e a string vazia);
      * o piso de conteúdo é de lá.
      *
-     * ⚠️ **MEDIDO, e é divergência declarada:** o protótipo exige `> 2` caracteres (`:1404`) e o
+     * ⚠️ **MEDIDO, e é divergência declarada:** o protótipo exige `> 2` caracteres (`:1402`, RECONFERIDO por `sed` — a prosa do
+     * plano dizia `:1404`, que é o ramo `regen`) e o
      * serviço da 186 aceita **qualquer motivo não-vazio**. Um `min:3` aqui criaria uma segunda
      * regra sobre o mesmo campo, mais estrita que a do serviço que está EM PRODUÇÃO e que tem
      * outros chamadores — duas verdades sobre "motivo válido". ➡️ O `> 2` do protótipo é o

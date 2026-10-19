@@ -633,7 +633,8 @@ class EscritaDeImagemDoPainelTest extends TestCase
 
     /**
      * ⚠️⚠️ **DIVERGÊNCIA DECLARADA, MEDIDA:** o protótipo exige `> 2` caracteres
-     * (`Aprovacao.dc.html:1404`) e `RevisaoDeImagemService::reprovar()` — **em produção desde a
+     * (`Aprovacao.dc.html:1402` — ponteiro RECONFERIDO por `sed`; a prosa do plano dizia
+     * `:1404`, que é o ramo `regen`, outro assunto) e `RevisaoDeImagemService::reprovar()` — **em produção desde a
      * Fase 186** — aceita **qualquer motivo não-vazio** depois do `trim()`.
      *
      * ➡️ O piso do **servidor** é não-vazio, e é isso que este caso mede. O `> 2` do protótipo é o
