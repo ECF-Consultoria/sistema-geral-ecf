@@ -419,12 +419,40 @@ const ARQUIVOS_NOVOS = [
  * estavam na lista desde a Fase 177.
  *
  * ⚠️ A prova de que esta ampliação não removeu nada é MECÂNICA e mora em
- * `tests/js/publicador-fila-tokens-187.test.js` (`TAM-187`): contagem FIXA
- * (21 → 23) **mais** a inclusão do conjunto antigo no novo — porque
- * `contagem += 2` sozinha passaria se alguém trocasse dois valores por dois.
+ * `tests/js/publicador-fila-tokens-187.test.js` (`TAM-187`): a inclusão do
+ * conjunto antigo no novo **mais** a lista CONSTANTE do que foi liberado depois
+ * — porque `contagem += 2` sozinha passaria se alguém trocasse dois valores por
+ * dois. ⚠️ Até 19/10/2026 aquele gate usava **contagem FIXA** (`23`); ela foi
+ * trocada pela lista constante no plano 188-01, e o porquê está escrito lá.
+ *
+ * ⚠️⚠️ Fase 188, plano 01 — **`21` entrou, e é o ÚNICO tamanho novo da fase.**
+ * Também é AMPLIAÇÃO: nenhum valor saiu.
+ *
+ *   Varredura de `font-size:` no painel E2 e nos 4 modais de
+ *   `design_handoff_publicador/Aprovacao.dc.html` (POR SCRIPT, 19/10/2026 —
+ *   ⚠️ CITE O DIRETÓRIO: há duas cópias do pacote de handoff com conteúdo
+ *   diferente, e só esta tem o `Aprovacao.dc.html`):
+ *     painel (`:547`-`:721`): 9.5 10 10.5 11 11.5 12 12.5 13 13.5 14 15 16 20 21
+ *     modais (`:775`-`:905`): 9.5 10 10.5 11 11.5 12 12.5 13 14 16
+ *   Faltava na lista: **só o 21**. Os outros treze já estavam — conferido por
+ *   script contra o literal desta própria lista, não de cabeça.
+ *
+ *   · `21px` — declarado **3 vezes**, e as três são o VALOR dos três KPIs da
+ *     coluna de preço do painel (`:642` "Preço de venda", `:643` "Resultado
+ *     estimado por venda", `:644` "Margem sobre o preço"), cada um com
+ *     `font-weight:600`, `letter-spacing:-0.02em`, `white-space:nowrap` e
+ *     `font-variant-numeric:tabular-nums`.
+ *     ⚠️ O `white-space:nowrap` NÃO estava na medida escrita no plano 188-01
+ *     (`:194`) — é a mesma omissão que a Fase 187 cometeu SETE vezes, e por
+ *     isso ela vai escrita aqui.
+ *
+ * ⚠️ Sem a liberação aqui, o painel teria de arredondar o KPI para
+ * `text-[20px]` ou `text-[22px]`, que já estão na lista — e é exatamente a
+ * "aproximação porque o Tailwind não tem esse passo" que FID-02/FID-03
+ * **vetam**. ⚠️ E **nada** foi acrescentado "por precaução": só o 21.
  */
 const TAMANHOS_PERMITIDOS = new Set([
-    8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 22, 24, 28, 30, 32, 34,
+    8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 21, 22, 24, 28, 30, 32, 34,
 ]);
 
 /**

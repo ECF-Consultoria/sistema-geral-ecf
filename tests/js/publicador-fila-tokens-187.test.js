@@ -407,13 +407,60 @@ function tamanhosPermitidos() {
 /** A lista EXATA de antes da Fase 187, medida em `75b9f82f` — 21 valores. */
 const ANTES_DA_187 = [8.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 24, 28, 30, 32, 34];
 
+/**
+ * ⚠️⚠️ CIRURGIA DO PLANO 188-01 (19/10/2026) — A CONTAGEM FIXA SAIU, E A LISTA
+ * CONSTANTE ENTROU. **Nenhum invariante foi afrouxado; um foi acrescentado.**
+ *
+ * O QUE ESTAVA AQUI: `assert.equal(agora.length, 23)` e
+ * `assert.equal(new Set(agora).size, 23)`, com o comentário *"Contagem FIXA: 21
+ * antes, 23 depois. Não é `+= 2`"*.
+ *
+ * POR QUE SAIU — e **não** porque incomodou:
+ *   · `TAMANHOS_PERMITIDOS` é uma régua que **toda fase nova legitimamente
+ *     AMPLIA MEDINDO** (a 177 pôs 11 e 28, a 179/180 puseram 8.5, 13.5 e 15.5, a
+ *     187 pôs 9.5 e 22, a 188 põe 21). Uma contagem fixa transforma **todo
+ *     trabalho correto das Fases 188-194 em vermelho**, e o conserto barato —
+ *     subir 23 para 24 — é **exatamente** o que este projeto já identificou
+ *     como o dano: *"elevar régua repetidamente TREINA o executor seguinte a
+ *     ajustar réguas quando elas incomodam, e um dia ele ajusta uma que
+ *     importava"* (está escrito no `verificar-testes.sh`, na justificativa da
+ *     forma `>=`, e em `feedback_gate_que_reprova_pelo_proprio_conserto`).
+ *   · É a família **"contagem que depende de quantos valores/arquivos/commits
+ *     existem"**, com NOVE ocorrências anteriores nesta milestone, **todas
+ *     consertadas na RAIZ** com lista CONSTANTE (learnings §4b.2). Este é o
+ *     décimo caso, e o conserto é o mesmo.
+ *   · ⚠️ E o próprio autor do caso já sabia que a contagem **não era a
+ *     asserção que carregava o peso**: o comentário do `removidos` abaixo diz,
+ *     desde 15/10/2026, *"É esta asserção, e não a contagem, que impede trocar
+ *     dois valores por outros dois"*.
+ *
+ * O QUE ENTROU NO LUGAR, e por que é **mais forte** que a contagem:
+ *   a contagem fixa provava *"nada entrou além dos dois"* sem dizer **o que**
+ *   poderia entrar. A lista constante prova a mesma coisa **e NOMEIA cada
+ *   acréscimo com o plano dono e a medição** — então valor liberado sem medição
+ *   continua reprovando, que é o único motivo de este gate existir.
+ *
+ * ⚠️ QUEM AMPLIAR A RÉGUA ACRESCENTA UMA LINHA AQUI, com o plano e a medida.
+ * **Não** basta pôr o número em `TAMANHOS_PERMITIDOS`: sem a linha aqui, este
+ * gate REPROVA — e é esse o comportamento certo.
+ * ⚠️ A contagem de `test()` deste arquivo **não mudou** (são as mesmas três
+ * asserções reorganizadas dentro dos mesmos casos), então `tokens-da-fila`
+ * (`contagens-187-01.txt`, `tests=16,9`) continua valendo sem retoque.
+ */
+const LIBERADOS_DEPOIS_DA_187 = [
+    // Fase 188, plano 01 — os 3 KPIs da coluna de preço do painel E2 de
+    // `design_handoff_publicador/Aprovacao.dc.html` (`:642`-`:644`), medidos por
+    // script em 19/10/2026. Era o ÚNICO ausente da lista.
+    21,
+];
+
 test('TAM-187 — 9.5 e 22 entraram, e é AMPLIAÇÃO: nada saiu da lista', () => {
     const agora = tamanhosPermitidos();
 
-    // Contagem FIXA: 21 antes, 23 depois. Não é `+= 2`.
+    // O "antes" é CONGELADO: se ele mudar de tamanho, alguém reescreveu a
+    // história em vez de ampliar a régua.
     assert.equal(ANTES_DA_187.length, 21, 'a lista de antes mudou de tamanho — remeça o "antes"');
-    assert.equal(agora.length, 23, `TAMANHOS_PERMITIDOS deveria ter 23 valores e tem ${agora.length}: ${agora.join(', ')}`);
-    assert.equal(new Set(agora).size, 23, 'há valor duplicado em TAMANHOS_PERMITIDOS');
+    assert.equal(new Set(agora).size, agora.length, `há valor duplicado em TAMANHOS_PERMITIDOS: ${agora.join(', ')}`);
 
     // Os dois novos entraram...
     const faltando = [9.5, 22].filter((v) => !agora.includes(v));
@@ -424,8 +471,14 @@ test('TAM-187 — 9.5 e 22 entraram, e é AMPLIAÇÃO: nada saiu da lista', () =
     const removidos = ANTES_DA_187.filter((v) => !agora.includes(v));
     assert.deepEqual(removidos, [], `valores REMOVIDOS de TAMANHOS_PERMITIDOS: ${removidos.join(', ')} — esta fase AMPLIA, nunca endurece`);
 
-    // E o conjunto é exatamente o antigo + os dois.
-    assert.deepEqual([...agora].sort((a, b) => a - b), [...ANTES_DA_187, 9.5, 22].sort((a, b) => a - b));
+    // E o conjunto é EXATAMENTE o antigo + os dois da 187 + a lista CONSTANTE do
+    // que foi liberado depois, cada um com o plano dono escrito ao lado.
+    // ⚠️ Valor que entrar em `TAMANHOS_PERMITIDOS` sem entrar em
+    // `LIBERADOS_DEPOIS_DA_187` cai aqui — é a porta dos fundos que a contagem
+    // fixa fechava, e ela continua fechada.
+    const esperado = [...new Set([...ANTES_DA_187, 9.5, 22, ...LIBERADOS_DEPOIS_DA_187])].sort((a, b) => a - b);
+    assert.deepEqual([...agora].sort((a, b) => a - b), esperado,
+        `TAMANHOS_PERMITIDOS divergiu do esperado. Liberou tamanho novo? Acrescente-o a LIBERADOS_DEPOIS_DA_187 com o plano e a medida. nao-medidos=[${agora.filter((v) => !esperado.includes(v)).join(', ')}]`);
 });
 
 test('⚠️ ISCA INVERTIDA de TAM-187 — a lista é NÃO-VAZIA e tem os marcos das fases anteriores', () => {

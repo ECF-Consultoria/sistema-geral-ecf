@@ -100,3 +100,68 @@
 # números trocados por travessões (REPROVA) e sobre uma cópia com o sha256 do
 # protótipo trocado (REPROVA).
 baselines-medidas  php  test_as_baselines_da_fase_188_estao_medidas_e_nao_afirmadas_188_01  ::  tests=1 assertions=7
+
+
+# ── TAREFA 2: o único tamanho novo e os tokens que NÃO foram criados (JS) ────
+
+# ⚠️⚠️ O ARQUIVO NOVO DESTE PLANO, com NOVE sub-testes e isca nas DUAS direções em
+# cada bloco. O que ele cobra:
+#   1. `21` está em `TAMANHOS_PERMITIDOS` — lido por REGEX sobre a FONTE do
+#      arquivo de vocabulário (importá-lo RODARIA os 548 testes dele dentro deste
+#      gate), com ISCA INVERTIDA: `23` e os outros cinco vizinhos NÃO medidos
+#      **não** podem estar. Mais a ordem numérica, a ausência de duplicata, e a
+#      MEDIDA escrita ao lado (o protótipo, o DIRETÓRIO dele e os 3 KPIs
+#      `:642`-`:644`) — lida do arquivo CRU, porque ali o alvo é o comentário.
+#   2. `shadow-pub-painel` por `assert.equal` contra `-24px 0 64px rgba(0,0,0,0.6)`
+#      — **IGUALDADE, nunca `includes`**, com TRÊS iscas do quase-igual (`0.60`,
+#      `.6` e o espaço no fim). `includes`/`substring` casa prefixo E sufixo de
+#      outro nome e já mordeu CINCO vezes neste projeto.
+#   3. Os 5 tokens que o painel REUSA, lista CONSTANTE, **UMA** asserção
+#      coletando infratores (nunca uma por token, que faria a contagem crescer
+#      com a lista — learnings §4b.2), com isca do recorte e isca positiva.
+#      ⚠️ Mais um caso que confirma os valores no `.dc.html` e **degrada para
+#      `skip` EXPLÍCITO e NOMEADO** se o pacote de handoff (NÃO versionado) não
+#      estiver no disco — nunca para "conferido". O `skip` **não** muda a
+#      contagem: são 9 testes com e sem o arquivo.
+#   4. "ESTE PLANO não adicionou token", em DUAS passadas independentes:
+#      · passada A, por **ESCOPO DO ASSUNTO** (`(188-01)`), com o analisador de
+#        diff como função PURA e TRÊS iscas (acusa chave acrescentada; NÃO pega
+#        commit de outro assunto; contexto/remoção/`+++` não contam);
+#      · passada B, pelo CONTEÚDO em `git show db9b1ff9:tailwind.config.js` — os
+#        6 tokens já existiam **com o mesmo valor** na PARTIDA.
+#   + a sonda do FID-04, provada DISCRIMINANTE em fonte sintética (os 5 vetados
+#     numa suja, zero numa limpa), com a ISCA DO LEITOR: a prosa deste arquivo
+#     cita `ecf-bg`/`ecf-card`/`ecf-yellow`/`font-display`/`border-white/[0.08]`
+#     de propósito, e o gate continua VERDE.
+#
+# ⚠️⚠️ O INVARIANTE DO BLOCO 4 É "ESTE PLANO NÃO ADICIONOU", E **NÃO** "A CAMADA
+# FICOU IDÊNTICA À PARTIDA PARA SEMPRE". A primeira redação do plano exigia
+# igualdade das chaves com a partida — **gate mais largo que o invariante**, a 11ª
+# ocorrência dessa família nesta milestone: reprovaria o trabalho CORRETO das
+# Fases 189-194 e da sessão paralela, que legitimamente acrescentam token.
+# ⚠️ RANGE CRU NÃO SERVE (§6, regra 9: 111 commits, 43 da sessão paralela, 12 dos
+# 60 alvos vetados acusados pelo diff cru) e ⚠️ o AUTOR não discrimina nada (as
+# três máquinas desta árvore commitam com o mesmo `user.name`).
+tokens-e-tamanhos  js  tests/js/publicador-painel-tokens-188.test.js  ::  tests=9
+
+# ⚠️⚠️ ID PRÓPRIO, EM LINHA PRÓPRIA — e isto foi MEDIDO, não deduzido:
+# `grep -l vocabulario-tamanhos tests/gates/contagens-*.txt` devolve **DEZ**
+# arquivos (`contagens-187-01.txt` e `-03` até `-11`), **um por wave da 187 que
+# roda o GATE-03**. A convenção real é "quem roda, declara" — não "todos
+# declaram" (o `contagens-187-02.txt` não o declara, e está CERTO: aquele plano é
+# só de servidor).
+# ⚠️ **Sem esta linha, `verificar-testes.sh 188-01 vocabulario-tamanhos` ABORTA**
+# ("manifesto nao existe" / "id nao esta em").
+# ⚠️ A FORMA É `>=`, e o N foi MEDIDO NA HORA: a contagem deste arquivo **CRESCE
+# POR CONSTRUÇÃO** (um sub-teste por arquivo varrido nos diretórios fechados), e
+# cada `.jsx` novo da fase a aumenta. Os dez manifestos da 187 cravaram `>=443` e
+# **hoje ele mede 548** — medido nesta máquina em 19/10/2026, depois da edição
+# deste plano. ⚠️ Subir a igualdade a cada wave seria o conserto ERRADO: elevar
+# régua repetidamente treina o executor seguinte a ajustar réguas quando elas
+# incomodam. O `>=` pega o que importa — arquivo que não carrega, `SyntaxError`,
+# ou teste que DESAPARECEU.
+# ⚠️ O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também rode
+# OUTROS arquivos. Foi o id COMPOSTO que fez a wave 187-05 reprovar DOIS ids de
+# outras waves e exigiu consertar QUATRO manifestos. **Linha própria é o oposto
+# disso.**
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=548
