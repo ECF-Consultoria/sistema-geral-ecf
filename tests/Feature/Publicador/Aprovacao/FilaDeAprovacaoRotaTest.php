@@ -94,6 +94,74 @@ class FilaDeAprovacaoRotaTest extends TestCase
 
     private const CLASSICO = 'gold_special';
 
+    /**
+     * ⚠️⚠️ CIRURGIA DA FASE 188 (19/10/2026) — O TOTAL DE `isValidElement` SAIU, E A LISTA
+     * CONSTANTE DE SLOTS ENTROU. **Nenhum invariante foi afrouxado; três foram acrescentados.**
+     *
+     * Este é o **GÊMEO EM PHP** da cirurgia feita nos dois gates JS do mesmo invariante
+     * (`tests/js/publicador-fila-cabecalho-187.test.js` e
+     * `tests/js/publicador-fila-proximo-187.test.js`, commit `93de698d`) — o QUINTO caso da
+     * mesma família nesta campanha, e o único em PHP.
+     *
+     * O QUE ESTAVA EM `test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04()`:
+     * `assertSame(4, preg_match_all('/isValidElement\(/', $fonte))`.
+     *
+     * POR QUE REPROVAVA TRABALHO CERTO: o plano 188-07 abriu o QUINTO slot de NÓ da página —
+     * `painelNo`, o painel de revisão montado por portal, com a prop de DADO `painel` ao lado
+     * (o mesmo par nó × dado de `proximo`/`proximo_a_revisar`, `filtros`/`filtros_ativos` e
+     * `tabela`/`grupos`). O contrato de NÓ ficou INTACTO e o número virou 5.
+     *
+     * POR QUE NÃO SE SOBE O NÚMERO (de 4 para 5): as waves 188-08 a 188-13 montam mais peças
+     * dentro do painel, e cada slot novo obrigaria a subir de novo — em TRÊS arquivos. É a
+     * família *"contagem que depende de quantas peças existem"*, com dez ocorrências nesta
+     * milestone, **todas consertadas na RAIZ** com lista constante (learnings §4b.2 e
+     * `feedback_gate_que_reprova_pelo_proprio_conserto`): número que muda quando o trabalho
+     * certo é feito treina o executor seguinte a ajustar réguas quando elas incomodam, e um dia
+     * ele ajusta uma que importava.
+     *
+     * O QUE ENTROU, E POR QUE É MAIS FORTE QUE A CONTAGEM:
+     *   · o total provava *"são quatro"* sem dizer **QUAIS** — trocar o slot `rodape` por um
+     *     `cabecalhoNo` inventado mantinha o 4 e passava. Agora a prova é **igualdade de
+     *     CONJUNTO** contra nomes declarados, então slot RENOMEADO, REMOVIDO ou TROCADO cai;
+     *   · slot novo que **não entra na lista continua REPROVANDO** — o veto do total fica
+     *     inteiro, cada acréscimo fica NOMEADO com a fase dona ao lado, e acrescentar é **diff
+     *     VISÍVEL**, não um número trocado em silêncio;
+     *   · ⚠️⚠️ e a lista é conferida **CONTRA AS DOS DOIS GATES JS**, lidas do literal. Sem
+     *     isso seriam **TRÊS lugares declarando o mesmo conjunto**, e dois poderiam derivar em
+     *     silêncio — o defeito simétrico da lista constante. Com a amarra em três pontas,
+     *     declarar o slot em um arquivo e esquecer os outros REPROVA.
+     *
+     * ⚠️ É o MESMO molde dos reapontes que os planos 187-03 e 187-04 fizeram em `DA_FASE_180` e
+     * `DO_PORTAO_DA_FASE_186` (`publicador-vocabulario-novo.test.js`) e do
+     * `LIBERADOS_DEPOIS_DA_187` do plano 188-01 (`publicador-fila-tokens-187.test.js`).
+     * ⚠️ QUEM ABRIR SLOT DE NÓ NOVO ACRESCENTA UMA LINHA NAS LISTAS DOS **TRÊS** ARQUIVOS, com
+     * a fase e o plano dono.
+     */
+    private const SLOTS_DE_NO_DA_187 = [
+        'filtros',  // 187-08 — a linha de filtros e os popovers
+        'proximo',  // 187-05 — a faixa "Próximo a revisar"
+        'rodape',   // 187-07/187-09 — a legenda, montada DENTRO da `<section>` da tabela
+        'tabela',   // 187-07 — a tabela da fila
+    ];
+
+    /** ⚠️ Slot de NÓ aberto DEPOIS do fechamento da Fase 187 — um por linha. */
+    private const SLOTS_DE_NO_DEPOIS_DA_187 = [
+        'painelNo', // Fase 188, plano 07 — o painel de revisão de 1140px, por portal
+    ];
+
+    /**
+     * Os gates JS que declaram o MESMO conjunto de slots. A leitura cruzada é o que impede que
+     * as três listas derivem — e é viável do lado PHP porque este arquivo já lê `.jsx` e `.js`
+     * por `file_get_contents()` + {@see self::semComentariosJs()}.
+     */
+    private const GATES_JS_DO_CONTRATO_DE_NO = [
+        'tests/js/publicador-fila-cabecalho-187.test.js',
+        'tests/js/publicador-fila-proximo-187.test.js',
+    ];
+
+    /** A regex do contrato: `isValidElement(<identificador>)`. */
+    private const RE_SLOT_DE_NO = '/isValidElement\(\s*([A-Za-z_$][\w$]*)\s*\)/';
+
     private int $sequencia = 0;
 
     protected function setUp(): void
@@ -1663,19 +1731,83 @@ class FilaDeAprovacaoRotaTest extends TestCase
 
         $fonte = $this->semComentariosJs((string) file_get_contents($abs));
 
-        // ─── Os quatro slots são NOMEADOS e passam por `isValidElement` ───
-        foreach (['proximo', 'filtros', 'tabela', 'rodape'] as $slot) {
+        // ─── O CONTRATO DE NÓ: o CONJUNTO DECLARADO de slots, e nunca o total ───
+        // ⚠️ Ver o veto escrito em `self::SLOTS_DE_NO_DA_187`: aqui era
+        // `assertSame(4, preg_match_all('/isValidElement\(/', $fonte))`. O invariante é o
+        // CONTRATO — nó inválido como filho faz o React LANÇAR e derruba a tela inteira —, e
+        // ele vale para CADA slot, não para a quantidade deles.
+        $declarados = array_values(array_unique(array_merge(
+            self::SLOTS_DE_NO_DA_187,
+            self::SLOTS_DE_NO_DEPOIS_DA_187,
+        )));
+        sort($declarados);
+
+        foreach ($declarados as $slot) {
             $this->assertStringContainsString(
                 $slot,
                 $fonte,
                 "o slot `{$slot}` da ordem vertical de FILA-01 não está nomeado na página.",
             );
         }
-        $this->assertSame(
-            4,
-            preg_match_all('/isValidElement\(/', $fonte),
-            'os quatro slots têm de passar por `isValidElement`: nó inválido como filho faz o React LANÇAR.',
+
+        $naPagina = $this->slotsDeNoDaPagina($fonte);
+
+        // ⚠️ SONDA NÃO-CEGA primeiro: lista vazia casaria com lista vazia e o `assertSame`
+        // abaixo passaria afirmando NADA (learnings §4b.1).
+        $this->assertNotSame(
+            [],
+            $naPagina,
+            'nenhum `isValidElement(<slot>)` na página — a sonda está cega ou o contrato de NÓ caiu.',
         );
+        $this->assertNotSame([], $declarados, 'as listas de slots declarados estão vazias.');
+
+        $this->assertSame(
+            $declarados,
+            $naPagina,
+            'os slots de NÓ da página divergiram do DECLARADO. Abriu slot novo? Acrescente-o a '
+            . 'SLOTS_DE_NO_DEPOIS_DA_187 com a fase e o plano dono, aqui E nos dois gates JS. '
+            . 'nao-declarados=[' . implode(', ', array_diff($naPagina, $declarados)) . '] '
+            . 'sem-isValidElement=[' . implode(', ', array_diff($declarados, $naPagina)) . ']',
+        );
+
+        // ⚠️ CONTROLE DA REGEX, contra um caso que DEVE casar — escrito à mão, não lido do
+        // arquivo. Regex cega devolveria `[]` e tudo acima passaria com as duas listas vazias.
+        $this->assertSame(
+            ['iscaDeSonda188'],
+            $this->slotsDeNoDaPagina('const noIsca = isValidElement( iscaDeSonda188 ) ? x : y;'),
+            'a regex do contrato de NÓ está CEGA: ela não casa nem uma chamada escrita à mão.',
+        );
+        // ⚠️ E ela NÃO casa o `import { isValidElement, … }` do topo da página, que não tem
+        // parêntese — senão contaria o que não é slot.
+        $this->assertSame(
+            [],
+            $this->slotsDeNoDaPagina('import { isValidElement, useState } from "react";'),
+            'a regex do contrato de NÓ passou a casar o import — ela contaria o que não é slot.',
+        );
+        // ⚠️⚠️ E a sonda mede TODA chamada: se um dia a página usar `isValidElement(algo.aqui)`
+        // (expressão, não identificador simples), a contagem bruta fica ACIMA da contagem da
+        // forma nomeada e este caso reprova — em vez de a sonda medir MENOS que a realidade em
+        // silêncio. O `preg_match_all` cru fica aqui como MEDIDOR DE CONSISTÊNCIA, nunca como
+        // total esperado.
+        $this->assertSame(
+            preg_match_all('/isValidElement\(/', $fonte),
+            preg_match_all(self::RE_SLOT_DE_NO, $fonte),
+            'há `isValidElement(` com algo que NÃO é identificador simples — a sonda de slots '
+            . 'mediria MENOS que a realidade.',
+        );
+
+        // ⚠️⚠️ ANTI-DERIVA EM TRÊS PONTAS: os dois gates JS cobram o MESMO contrato, e as três
+        // listas têm de ser a MESMA. Sem isto, acrescentar o slot só aqui (ou só lá) deixaria o
+        // outro lado medindo um conjunto antigo em SILÊNCIO.
+        foreach (self::GATES_JS_DO_CONTRATO_DE_NO as $relGate) {
+            $absGate = $this->raiz() . '/' . $relGate;
+            $this->assertFileExists($absGate, "gate sobre caminho fantasma: {$relGate}");
+            $this->assertSame(
+                $declarados,
+                $this->slotsDeclaradosNoGateJs((string) file_get_contents($absGate)),
+                "as listas de slots de NÓ deste gate e de {$relGate} DIVERGIRAM — slot novo entra nos TRÊS.",
+            );
+        }
 
         // ─── Nenhum literal de estado vazio, de nenhuma forma ───
         $vazios = [
@@ -2002,5 +2134,60 @@ class FilaDeAprovacaoRotaTest extends TestCase
         $sem = (string) preg_replace('#/\*.*?\*/#s', '', $conteudo);
 
         return (string) preg_replace('#(^|[^:\w])//.*$#m', '$1', $sem);
+    }
+
+    /**
+     * Os identificadores que a fonte de fato passa por `isValidElement(...)` — únicos e
+     * ordenados, para comparar por CONJUNTO. Ver o veto em {@see self::SLOTS_DE_NO_DA_187}.
+     *
+     * @return list<string>
+     */
+    private function slotsDeNoDaPagina(string $fonte): array
+    {
+        preg_match_all(self::RE_SLOT_DE_NO, $fonte, $achados);
+        $nomes = array_values(array_unique($achados[1] ?? []));
+        sort($nomes);
+
+        return $nomes;
+    }
+
+    /**
+     * As DUAS listas de slots de NÓ declaradas num gate JS, lidas do LITERAL.
+     *
+     * ⚠️ Da fonte SEM COMENTÁRIO, de propósito: a prosa daqueles arquivos CITA os nomes dos
+     * slots em pt-BR (o bloco de cirurgia fala de `painelNo` e de `rodape`), e uma leitura crua
+     * colheria o comentário junto — a armadilha que já pegou dois gates desta milestone.
+     * ⚠️ E recortado aos DOIS literais: `SLOTS_DE_NO_` casa só as duas listas, e `[^\]]*` para
+     * no primeiro `]`, que é o fim do array.
+     *
+     * @return list<string>
+     */
+    private function slotsDeclaradosNoGateJs(string $conteudoJs): array
+    {
+        $sem = $this->semComentariosJs($conteudoJs);
+
+        preg_match_all('/const\s+SLOTS_DE_NO_(?:DA_187|DEPOIS_DA_187)\s*=\s*\[([^\]]*)\]/', $sem, $blocos);
+        $this->assertCount(
+            2,
+            $blocos[1] ?? [],
+            'não achei as DUAS listas de slots de NÓ no gate JS — a leitura do literal está cega.',
+        );
+
+        $nomes = [];
+        foreach ($blocos[1] as $bloco) {
+            preg_match_all("/'([^']+)'/", $bloco, $achados);
+            foreach ($achados[1] as $nome) {
+                $nomes[] = $nome;
+            }
+        }
+
+        $nomes = array_values(array_unique($nomes));
+        sort($nomes);
+
+        // ⚠️ Vazio aqui não é "tudo certo": é a leitura cega, e ela faria a igualdade de
+        // conjunto do chamador passar só se a lista do PHP também estivesse vazia.
+        $this->assertNotSame([], $nomes, 'as listas de slots de NÓ do gate JS saíram VAZIAS — a leitura está cega.');
+
+        return $nomes;
     }
 }

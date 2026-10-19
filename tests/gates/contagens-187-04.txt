@@ -153,7 +153,44 @@ pagina-e-contagem  js  tests/js/publicador-fila-cabecalho-187.test.js  ::  tests
 # ⚠️ 9 negativas → 8 negativas + 2 asserções = **+1**. O número foi MEDIDO
 # (`6 passed (171 assertions)`), não ajustado de cabeça, e os outros cinco
 # métodos deste id não foram tocados.
-pagina-rota  php  test_rota_da_fila_resolve_o_componente_da_pagina_187_04|test_etapa_nao_muda_os_totais_da_faixa_187_04|test_etapa_fora_da_lista_fechada_cai_no_default_187_04|test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04|test_territorio_do_plano_187_04|test_todo_metodo_tem_sufixo_de_plano_declarado_187_04  ::  tests=6 assertions=171
+#
+# ⚠️⚠️ 19/10/2026 — `assertions=171` → **`assertions=185`**, REMEDIDO numa invocação
+# (`6 passed (185 assertions)`). O `tests=6` NÃO mudou: nenhum método foi criado
+# nem removido.
+#
+# POR QUE MUDOU: `test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04`
+# afirmava `assertSame(4, preg_match_all('/isValidElement\(/', $fonte))` — o
+# GÊMEO EM PHP do total que os dois gates JS cobravam. O plano 188-07 abriu o
+# QUINTO slot de NÓ da página (`painelNo`, o painel de revisão por portal) e o
+# gate passou a reprovar trabalho CORRETO. ⚠️ Este foi o QUINTO caso da mesma
+# família nesta campanha, e o único em PHP: os quatro primeiros estavam em
+# `tests/js/` (commits `93de698d`, `b10c19cc`, `f7616e7f`).
+#
+# O CONSERTO (mesmo da RAIZ, portado do `93de698d`): o total saiu e entraram as
+# constantes `SLOTS_DE_NO_DA_187` e `SLOTS_DE_NO_DEPOIS_DA_187` da classe, com
+# igualdade de CONJUNTO contra os identificadores que a página de fato passa por
+# `isValidElement(<ident>)`, controle da regex contra um caso que DEVE casar, a
+# prova de que ela NÃO casa o `import { isValidElement }`, e o `preg_match_all`
+# cru rebaixado a MEDIDOR DE CONSISTÊNCIA (chamada por expressão faz a contagem
+# bruta passar da nomeada e reprova, em vez de a sonda medir menos que a
+# realidade em silêncio).
+#
+# ⚠️⚠️ E O ANTI-DERIVA EM TRÊS PONTAS, que é a parte que justifica o +14: este
+# gate LÊ O LITERAL das listas dos dois gates JS
+# (`publicador-fila-cabecalho-187.test.js` e `publicador-fila-proximo-187.test.js`,
+# por `file_get_contents` + `semComentariosJs`, como ele já lia `.jsx`) e exige
+# igualdade. Sem isso seriam TRÊS lugares declarando o mesmo conjunto, e dois
+# poderiam derivar em silêncio — o defeito simétrico da lista constante. Slot
+# novo tem de entrar nos TRÊS arquivos.
+#
+# ⚠️ A conta das 14, conferida CONTRA a medição (e não no lugar dela): +1 pelo
+# quinto nome de slot (eram 4 no `foreach`), +2 sondas não-cegas, +3 controles de
+# regex (a isca que DEVE casar, o import que NÃO pode casar, e a consistência
+# bruta × nomeada), +2 `assertFileExists` dos dois gates JS, +2 igualdades
+# cruzadas, +4 dentro do leitor do literal (o `assertCount` das DUAS listas e o
+# `assertNotSame` do vazio, uma vez por gate). A igualdade de conjunto apenas
+# SUBSTITUI o total, então não soma. 171 + 14 = 185, que é o medido.
+pagina-rota  php  test_rota_da_fila_resolve_o_componente_da_pagina_187_04|test_etapa_nao_muda_os_totais_da_faixa_187_04|test_etapa_fora_da_lista_fechada_cai_no_default_187_04|test_a_pagina_da_fila_nao_desenha_o_que_nao_existe_187_04|test_territorio_do_plano_187_04|test_todo_metodo_tem_sufixo_de_plano_declarado_187_04  ::  tests=6 assertions=185
 
 # ─── A BIJEÇÃO — id próprio, de propósito ─────────────────────────────────────
 # ⚠️ Ela tem id SEPARADO porque é o único gate deste plano que LÊ ESTE ARQUIVO:
