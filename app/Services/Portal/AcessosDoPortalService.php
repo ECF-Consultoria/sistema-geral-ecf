@@ -5,22 +5,68 @@ namespace App\Services\Portal;
 use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\PortalUsuario;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * AcessosDoPortalService — os dados da tela "Acessos do Portal do Cliente".
  *
- * A tela vive DENTRO da aba Onboarding de `/companies` (25/08/2026). Antes era
- * uma página própria em `/acessos-portal`, sem link em lugar nenhum: só quem
- * sabia a URL chegava lá. Dar acesso ao portal é parte de colocar o cliente
- * para dentro — o lugar dessa operação é junto do onboarding, não numa tela
- * órfã.
+ * A tela vive na aba "Portal do cliente" de `/companies` (19/10/2026). Antes
+ * era uma sub-aba do Onboarding (25/08/2026) e, antes disso, uma página própria
+ * em `/acessos-portal` sem link em lugar nenhum. Saiu do Onboarding quando o
+ * portal passou a servir sobretudo ao Mapeamento Estrutural: entrar no portal
+ * e dar login ao cliente deixaram de ser assunto só de quem está entrando.
  *
  * O serviço existe para que o `CompanyController` — que já é grande — não
- * ganhe as três consultas do portal no meio dele.
+ * ganhe as consultas do portal no meio dele.
  */
 class AcessosDoPortalService
 {
     /**
+     * Os logins de cliente de cada empresa — a coluna da aba "Portal do
+     * cliente".
+     *
+     * Conta só login ATIVO: desativado não entra, e contá-lo faria a linha
+     * dizer que o cliente tem acesso quando não tem.
+     *
+     * `ultimo_login` é o último login de QUALQUER dessas pessoas, e login é da
+     * pessoa, não da empresa: quem responde por um grupo inteiro carimba a
+     * mesma data em todas as empresas dele. Por isso a tela diz "último login",
+     * e não "último acesso à empresa" — esse registro não existe.
+     *
+     * Uma consulta só, agrupada — a aba lista todas as empresas da página.
+     *
+     * @param  array<int>  $empresaIds
+     * @return array<int, array{logins: int, nunca_entrou: int, ultimo_login: ?string}>
+     */
+    public function loginsPorEmpresa(array $empresaIds): array
+    {
+        if ($empresaIds === []) {
+            return [];
+        }
+
+        return DB::table('portal_usuario_empresa as pue')
+            ->join('portal_usuarios as pu', 'pu.id', '=', 'pue.portal_usuario_id')
+            ->whereIn('pue.company_id', $empresaIds)
+            ->where('pu.ativo', true)
+            ->groupBy('pue.company_id')
+            ->selectRaw('pue.company_id, COUNT(*) as logins')
+            ->selectRaw('SUM(CASE WHEN pu.primeiro_acesso_em IS NULL THEN 1 ELSE 0 END) as nunca_entrou')
+            ->selectRaw('MAX(pu.ultimo_acesso_em) as ultimo_login')
+            ->get()
+            ->mapWithKeys(fn ($l) => [(int) $l->company_id => [
+                'logins'       => (int) $l->logins,
+                'nunca_entrou' => (int) $l->nunca_entrou,
+                'ultimo_login' => $l->ultimo_login
+                    ? Carbon::parse($l->ultimo_login)->format('d/m/Y H:i')
+                    : null,
+            ]])
+            ->all();
+    }
+
+    /**
+     * A lista da sub-aba "Acessos do portal" — só admin, e só sob demanda.
+     *
      * @return array{usuarios: \Illuminate\Support\Collection, empresas: \Illuminate\Support\Collection, grupos: \Illuminate\Support\Collection}
      */
     public function dados(): array

@@ -16,11 +16,12 @@ import { cn } from '@/lib/utils';
 // Onde a EQUIPE decide quem entra. Não há auto-cadastro: sem passar por aqui,
 // ninguém acessa o portal.
 //
-// ### Por que fica dentro da aba Onboarding
+// ### Onde fica
 // Era uma página própria em `/acessos-portal`, sem link em lugar nenhum — só
-// chegava quem já sabia a URL. Dar acesso ao portal é parte de colocar o
-// cliente para dentro, e a pergunta "esse cliente já consegue entrar?" nasce
-// olhando o onboarding dele. O lugar da operação é aqui.
+// chegava quem já sabia a URL. Virou sub-aba do Onboarding em 25/08/2026 e,
+// em 19/10/2026, da aba Portal do cliente de `/companies`: o portal passou a
+// servir sobretudo ao Mapeamento Estrutural, e dar login ao cliente deixou de
+// ser assunto só de quem está fazendo onboarding.
 //
 // ### As duas formas de tirar acesso, e por que são separadas
 //  - **Desvincular a empresa** tira o acesso àquela empresa e preserva as

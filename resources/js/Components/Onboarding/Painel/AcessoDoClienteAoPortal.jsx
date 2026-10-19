@@ -68,7 +68,7 @@ export default function AcessoDoClienteAoPortal({ companyId, link }) {
                     </p>
 
                     <Link
-                        href={route('companies.index', { tab: 'onboarding', sub: 'acessos', portal_company: companyId })}
+                        href={route('companies.index', { tab: 'portal', sub: 'acessos', portal_company: companyId })}
                         className="inline-flex items-center gap-1 text-white/35 hover:text-white/75 text-[11.5px] transition-colors"
                     >
                         <UserPlus size={11} /> {acessos.length ? 'Gerenciar' : 'Dar acesso'}

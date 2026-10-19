@@ -262,6 +262,6 @@ class AcessoPorGrupoTest extends TestCase
     {
         $this->actingAs($this->admin())
             ->get(route('portal.usuarios.index'))
-            ->assertRedirect(route('companies.index', ['tab' => 'onboarding', 'sub' => 'acessos']));
+            ->assertRedirect(route('companies.index', ['tab' => 'portal', 'sub' => 'acessos']));
     }
 }

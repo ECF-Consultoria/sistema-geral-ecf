@@ -1819,3 +1819,31 @@ mesmo card".
 - **Prova sem servidor:** `scratchpad/prova_linhas.mjs <pasta>` desenha a página no Puppeteer com o CSS do build e os
   números do print do usuário, abre o detalhe, usa o atalho, recolhe, edita os parâmetros, digita no frete único e
   confere o PUT que sairia (os dois tipos), e fotografa em 1440 e em 900 px.
+
+## 51. A porta da equipe virou aba de `/companies` — "Portal do cliente" (19/10/2026)
+
+Pedido do usuário: entrar no portal sem passar pelo Onboarding, porque o portal passou a ser usado sobretudo pelo
+Mapeamento Estrutural. Até aqui a única porta pela tela era o menu "…" de cada linha da aba Onboarding — **empresa sem
+onboarding não tinha como ser aberta** (o §49 ainda descreve esse estado).
+
+- **Onde ficou:** aba `?tab=portal` de `/companies`, ao lado de Onboarding. Sub-abas "Empresas" (todos que podem
+  entrar) e "Acessos do portal" (admin). **Acessos saiu do Onboarding** por decisão do usuário; os endereços velhos
+  continuam chegando: `?tab=onboarding&sub=acessos` é traduzido no `useState` da aba em `Companies/Index.jsx`, e
+  `/acessos-portal`, o checklist da Fase 152 e o "Sair do portal" já apontam para `tab=portal`.
+- **A lista é a régua de `PortalEquipeService::podeEntrar()`, montada no servidor** (`portal_empresas`): admin vê todas
+  as empresas da página, os demais só a carteira (`company_users`). O universo é o de `/companies` —
+  `EmpresasVisiveisService`: Performance com contrato ativo, **sem MlbEmpresa**. Empresa de Polos ou sem contrato
+  ativo continua sem porta pela tela; a rota `companies.portal.abrir` abre qualquer `Company`, só falta onde clicar.
+  `AbaPortalEmCompaniesTest::toda_empresa_listada_abre_pela_porta_da_equipe` clica em todas as linhas: se alguém
+  alargar a lista sem mexer em `podeEntrar()`, ele quebra (conferido por mutação: sem o filtro de carteira, 2 testes
+  caem).
+- **"Último login" é da PESSOA, não da empresa.** `portal_usuarios.ultimo_acesso_em` é carimbado no login
+  (`PortalLoginService`), e quem responde por um grupo carimba a mesma data em todas as empresas dele. Não existe
+  registro de "último acesso à empresa X" para o portal autenticado — `onboarding_links.ultimo_acesso` é do link por
+  token, aposentado em 15/09. Não renomeie a coluna para "último acesso" sem criar esse registro.
+- **A contagem é uma consulta só** (`AcessosDoPortalService::loginsPorEmpresa`, GROUP BY no pivot): acesso por GRUPO
+  vira uma linha por empresa no `portal_usuario_empresa`, então contar o pivot já cobre o grupo. Desativado não conta
+  nem empurra a data.
+- **Falhas que NÃO são desta mudança** (iguais no `origin/main@7791d7aa` sem ela):
+  `Phase18/CompaniesCustIdFilterTest` (2) — as empresas do teste não têm contrato, e a listagem exige contrato
+  Performance ativo — e `Phase14MlbControllerFiltroTest` (1), causa não investigada.

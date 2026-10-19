@@ -148,7 +148,7 @@ class PortalEquipeController extends Controller
         // domínio do cliente, e `route()` devolveria `cliente.…/companies`,
         // que responde 404 por desenho.
         return $dominio
-            ? redirect()->away(rtrim(config('app.url'), '/').'/companies?tab=onboarding')
+            ? redirect()->away(rtrim(config('app.url'), '/').'/companies?tab=portal')
             : redirect()->route('portal.entrada');
     }
 }
