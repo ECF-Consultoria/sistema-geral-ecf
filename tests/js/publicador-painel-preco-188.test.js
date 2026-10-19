@@ -1656,6 +1656,29 @@ test('⚠️⚠️ CRITÉRIO 7: o selo "SIMULAÇÃO · NÃO SALVA" só com `simu
     const ativo = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_ATIVA, onSimular: nada, onDescartar: nada, onSalvar: nada });
     assert.ok(texto(ativo).includes('SIMULAÇÃO · NÃO SALVA'), 'o selo não apareceu com simulação ativa');
 
+    // ⚠️⚠️ **A FIXTURE QUE DISCRIMINA, e ela nasceu da CAMPANHA DE MUTAÇÃO:** no
+    // estado neutro o servidor manda `selo: null`, então a guarda de `simulando`
+    // da TELA ficaria **inobservável** — a mutação que a remove SOBREVIVERIA, e o
+    // gate estaria medindo o servidor, não a tela.
+    // ➡️ Aqui o selo chega PREENCHIDO com `simulando: false`: é o payload
+    // contraditório (ou velho) que a tela **não pode** acreditar. ⚠️ Com `>= 0` na
+    // tolerância do servidor o selo apareceria com o preço IGUAL ao salvo, e
+    // `pode_salvar` ficaria verdadeiro para salvar o que já está salvo.
+    const contraditorio = render(MOD_SIMULACAO.default, {
+        simulacao: { ...SIMULACAO_NEUTRA, selo: 'SIMULAÇÃO · NÃO SALVA', simulando: false },
+        onSimular: nada,
+    });
+    assert.ok(
+        !texto(contraditorio).includes('SIMULAÇÃO'),
+        'o selo apareceu com `simulando: false` — a tela acreditou num selo que o servidor não acendeu',
+    );
+    // ⚠️ E com `simulando: true` ele aparece (sonda NÃO-CEGA do caso acima).
+    const coerente = render(MOD_SIMULACAO.default, {
+        simulacao: { ...SIMULACAO_NEUTRA, selo: 'SIMULAÇÃO · NÃO SALVA', simulando: true },
+        onSimular: nada,
+    });
+    assert.ok(texto(coerente).includes('SIMULAÇÃO'), 'a sonda do selo está CEGA: nem com `simulando: true` ela o vê');
+
     // ⚠️ O selo é LITERAL do servidor, com o `·` U+00B7 — a tela não o escreve.
     for (const [rel, fonte] of FONTES_DO_PLANO) {
         assert.ok(!/SIMULA[ÇC][ÃA]O/.test(fonte), `${rel} escreveu o selo à mão — ele é PrecoDoPainelService::SIMULACAO_SELO`);
