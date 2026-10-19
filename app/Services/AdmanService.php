@@ -1132,6 +1132,52 @@ class AdmanService
         }
     }
 
+    /**
+     * Bônus de ADS da conta (TKT-0021): as bonificações de Product Ads que o Mercado Livre deu
+     * ao seller e que ainda podem ser gastas. A Adman liberou para integrador em 19/10/2026
+     * (`/ads/{cust}/bonifications`; no MCP é a ferramenta `get_bonifications`). Ela consulta o
+     * ML ao vivo e devolve só bônus vigentes e com saldo: lista vazia = sem crédito.
+     *
+     * Mesmo tratamento de fetchCampanhasAtivas: conta não vinculada responde 500 "User is not
+     * mentored by agency" (permanente), então só 429 é repetido.
+     *
+     * @return array<int, array<string,mixed>>|null  itens crus da Adman (level, campaignId,
+     *   campaignName, benefitName, amount, balance, currencyId, endDate, daysRemaining);
+     *   null = a Adman não respondeu (não gravar nada)
+     */
+    public function fetchBonificacoes(string $custId, string $marketplace = 'meli'): ?array
+    {
+        try {
+            $response = null;
+            for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
+                $response = Http::withHeaders($this->headers())
+                    ->timeout(30)
+                    ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/bonifications");
+                if ($response->status() !== 429 || $tentativa === 3) {
+                    break;
+                }
+                $retryAfter = (int) ($response->header('Retry-After') ?? 0);
+                sleep($retryAfter > 0 ? min($retryAfter, 30) : 2 ** $tentativa);
+            }
+
+            if ($response->failed()) {
+                Log::warning("[Adman/Bonificacoes] custId={$custId}: HTTP {$response->status()} " . trim(substr($response->body(), 0, 120)));
+                return null;
+            }
+
+            $data = $response->json();
+            if (! is_array($data) || ! isset($data['bonifications']) || ! is_array($data['bonifications'])) {
+                Log::warning("[Adman/Bonificacoes] custId={$custId}: resposta sem 'bonifications' " . trim(substr($response->body(), 0, 120)));
+                return null;
+            }
+
+            return array_values(array_filter($data['bonifications'], 'is_array'));
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/Bonificacoes] custId={$custId}: " . $e->getMessage());
+            return null;
+        }
+    }
+
     public function fetchCampaignMetrics(string $custId, string $campaignId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $response = Http::withHeaders($this->headers())

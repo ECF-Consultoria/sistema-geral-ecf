@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown, ArrowUpDown,
-         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download } from 'lucide-react';
+         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download, Gift } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { corAds } from './components/adsCor';
 
@@ -332,6 +332,7 @@ export default function PolosEmpresas({
                                                     <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
                                                         {formatCurrency(gastoAds)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
                                                     </span>
+                                                    {e.ads_bonus && <BonusAds bonus={e.ads_bonus} />}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
@@ -587,6 +588,42 @@ function AdsLigadoDesligado({ valor, auto, editavel, salvando, onMudar }) {
             {opcao(false, Megaphone, 'Ligado', 'bg-green-500/15 text-green-400')}
             {opcao(true, MegaphoneOff, 'Desligado', 'bg-red-500/15 text-red-400')}
         </div>
+    );
+}
+
+// Programas do ML que dão bônus de ADS (`benefitName` da Adman); fora da lista, o nome cru.
+const PROGRAMAS_BONUS = {
+    'manual-credits':         'Crédito manual',
+    'seller-startup-program': 'Programa para novos vendedores',
+    'certification':          'Certificação',
+    'smart_benefits':         'Benefícios inteligentes',
+};
+
+const dataBR = (ymd) => ymd.split('-').reverse().join('/');
+const diasTexto = (n) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
+
+/**
+ * Bônus de ADS da conta (TKT-0021), ao lado do consumo: saldo somado e dias do bônus que
+ * vence primeiro — o mesmo do modal "Bonificações da conta" da Adman. Lido uma vez por dia
+ * (`polos:ads-bonus`, 08:15); o servidor manda pronto em `ads_bonus` e só quando há bônus
+ * vigente. Cada bônus aparece no hover. Faltando 7 dias ou menos, fica âmbar.
+ */
+function BonusAds({ bonus }) {
+    const perto = bonus.dias <= 7;
+    const linhas = bonus.itens.map((b) => {
+        const nome = PROGRAMAS_BONUS[b.programa] ?? b.programa;
+        const onde = b.nivel === 'campaign' && b.campanha ? ` (campanha ${b.campanha})` : '';
+        return `• ${nome}${onde}: ${formatCurrency(b.saldo)} de ${formatCurrency(b.valor)} · vence ${dataBR(b.vence_em)} (${diasTexto(b.dias)})`;
+    });
+    const titulo = [`Bônus de ADS da conta — Adman${bonus.verificado_em ? `, lido em ${bonus.verificado_em}` : ''}`, ...linhas].join('\n');
+
+    return (
+        <span title={titulo}
+              className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                  perto ? 'bg-amber-500/15 text-amber-300' : 'bg-sky-500/10 text-sky-300')}>
+            <Gift size={12} /> {formatCurrency(bonus.saldo)}
+            <span className="font-normal opacity-70">· {diasTexto(bonus.dias)}</span>
+        </span>
     );
 }
 

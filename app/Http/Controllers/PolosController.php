@@ -17,6 +17,7 @@ use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
+use App\Models\PoloAdsBonificacao;
 use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
@@ -1516,9 +1517,9 @@ class PolosController extends Controller
         }
         usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
 
-        // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
-        // fechado segue com o `ads_desligado` congelado no roster daquele mês.
-        return $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+        // Status das campanhas e bônus de ADS são estado de AGORA: só o mês corrente os mostra.
+        // Mês fechado segue com o `ads_desligado` congelado no roster daquele mês.
+        return $d['parcial'] ? $this->comBonusAds($this->comAdsAutomatico($empresas)) : $empresas;
     }
 
     // ═══ Planilha do Faturamento Polos (/polos/empresas — TKT-0018) ═══
@@ -1887,6 +1888,29 @@ class PolosController extends Controller
             }
             $manual = $e['ads_desligado'] ?? null;
             $e['ads_campanha'] = PoloAdsStatus::situacaoDaEmpresa($l, $manual === null ? null : (bool) $manual);
+        }
+        unset($e);
+
+        return $empresas;
+    }
+
+    /**
+     * Anexa a cada linha o bônus de ADS da conta (TKT-0021): saldo somado, dias do bônus que
+     * vence primeiro e a lista completa, ou null quando não há bônus vigente ou leitura
+     * fresca (PoloAdsBonificacao::FRESCOR_HORAS). Lido pelo `polos:ads-bonus` (08:15).
+     *
+     * @param  array<int, array<string,mixed>>  $empresas
+     * @return array<int, array<string,mixed>>
+     */
+    private function comBonusAds(array $empresas): array
+    {
+        $leituras = PoloAdsBonificacao::frescos()
+            ->whereIn('cust_id', array_column($empresas, 'cust_id'))
+            ->get()
+            ->keyBy('cust_id');
+
+        foreach ($empresas as &$e) {
+            $e['ads_bonus'] = ($leituras[$e['cust_id']] ?? null)?->paraTela();
         }
         unset($e);
 

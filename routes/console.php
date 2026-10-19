@@ -166,6 +166,18 @@ Schedule::command('polos:ads-status')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/polos-warm.log'));
 
+// Bônus de ADS das empresas dos polos (saldo e dias restantes, TKT-0021) — uma leitura por
+// dia basta: o saldo só cai com o gasto. 08:15 fica fora das outras varreduras da Adman
+// (06:00 warm-diff, cascata 11:00–13:50, 17:30 acima) e deixa o dado pronto antes do time
+// começar. Uma chamada leve por empresa a ~10 rpm (~30 min), com a MESMA trava do sync.
+Schedule::command('polos:ads-bonus')
+    ->dailyAt('08:15')
+    ->timezone('America/Sao_Paulo')
+    ->name('polos-ads-bonus-manha')
+    ->withoutOverlapping(120)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/polos-warm.log'));
+
 // Congela o roster de polos do mês corrente (quem está ativo e em que fase). Roda 23:40
 // BRT, tarde o bastante para pegar as mudanças de fase do dia — inclusive a cascata que o
 // time faz na virada do mês (M0→M1→…→M4→Encerrado). Sem isso o mês fechado precisa ser
