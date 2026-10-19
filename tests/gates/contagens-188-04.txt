@@ -1,0 +1,108 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-04 — O SERVIDOR DA COLUNA DE PREÇO
+# E RESULTADO: `PrecoDoPainelService` (os 3 KPIs, a composição com origem por
+# linha, a simulação que nunca é salva, equilíbrio/preço-alvo, a exceção e a
+# oferta irmã) + a ligação da chave `preco` no `PainelDeRevisaoService`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-04 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-04`, E NÃO `04`. O número NU resolve
+# `contagens-186-04.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **12** métodos PHP deste
+#    plano estão quebrados em **QUATRO** ids, **nenhum com mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ⚠️⚠️ COLISÃO DE HOMÔNIMO — conferida POR SCRIPT, nas DUAS direções
+#    (`mutar-188-04.sh`/`homonimo-188-04.sh` no scratchpad, 19/10/2026):
+#    `ARQUIVOS=1213 METODOS=7757 MEUS=12 HOMONIMOS=0`. O `--filter` do PHPUnit é regex
+#    **NÃO ANCORADO** e as Fases 186 E 187 estão EM PRODUÇÃO: método superstring
+#    de uma delas faria o id daquela fase **SOMAR** e reprovar. ➡️ **Todo método
+#    deste plano leva `_188_04` no nome**, e a isca da direção 1 acusa os
+#    homônimos REAIS sem o sufixo — prova de que a colisão não é hipótese.
+#    ⚠️ O conserto de colisão é **sufixo no método NOVO**, NUNCA levantar a
+#    contagem de manifesto alheio.
+#
+# ⚠️⚠️ A TERCEIRA BIJEÇÃO (id ↔ `<verify>`): os QUATRO ids abaixo aparecem, todos,
+#    em algum `<verify>` do `188-04-PLAN.md` — `kpis-e-incompleto` e
+#    `composicao-e-origem` na tarefa 1, `simulacao-sem-salvar` e
+#    `atalhos-excecao-irma` na tarefa 2. Id no manifesto que nenhum `<verify>`
+#    roda **não falha: ele simplesmente nunca roda**, e é indistinguível de gate
+#    verde. Quem prova isso sobre os treze pares plano×manifesto é o 188-13.
+#
+# ⚠️ ESTE PLANO NÃO DECLARA O `vocabulario-tamanhos` (GATE-03) — e está CERTO:
+#    a regra é **quem roda, declara**, não *todos declaram*. Este plano é só de
+#    SERVIDOR e não cria nenhum `.jsx`; quem roda o GATE-03 é o 188-09.
+#    (O precedente é `contagens-187-02.txt`, que também não o declara.)
+#
+# ⚠️ BASELINES RE-MEDIDAS NO INÍCIO DESTA WAVE (HEAD de partida `9becc6e7`):
+#    PHP 2522 / 22568 / **0 falhas** · JS 5498 / 5497 pass / 1 fail / 0 skipped ·
+#    MANIFEST 495 entradas / 202 páginas (lido pelo JSON) · protótipo 1432 linhas
+#    sha256 68624883ce35547e… ➡️ A régua do PHP é **0**. As duas falhas alheias de
+#    `tests/Feature/Publicador/CockpitDaContaTest.php:966`/`:1318` (Fase 179,
+#    **fora** de `Aprovacao/`) oscilam com a hora do dia e hoje estão VERDES —
+#    **não consertar, não contar como regressão, não criar `REF_PHP_FALHAS`**.
+#    ⚠️ A contagem de ASSERÇÕES do PHP **não é invariante** (o 188-01 mediu −5 com
+#    testes idênticos): compare TESTES e FALHAS.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── TAREFA 1 — os 3 KPIs, a barra por FÓRMULA e o par embalagem × frete ───────
+#
+# `kpis-e-incompleto`: a ordem dos três, os rótulos **LIDOS** do DTO (VOC-03), as
+# TRÊS cores do resultado (âmbar/vermelho/texto, distintas aos pares), a frase
+# `· com a tarifa real do Mercado Livre` LIDA de `ComposicaoDaOferta:271`
+# (decisão 9), a barra provada **por FÓRMULA com DOIS mínimos** (12 ⇒ 30% e
+# 20 ⇒ 50%, porque `left:30%` é CONSEQUÊNCIA de `MIN = 12`), o clamp nas DUAS
+# pontas, e o par **embalagem (NÃO anula) × frete (ANULA)** nos dois sentidos,
+# com a isca do CUSTO ausente separando `incompleto` de `frete_ausente`.
+kpis-e-incompleto  php  test_(os_tres_KPIs_saem_na_ordem_com_rotulos_LIDOS_e_as_tres_cores_188_04|a_barra_da_margem_e_FORMULA_clampada_e_o_traco_segue_o_minimo_188_04|a_embalagem_NAO_anula_e_o_frete_ANULA_no_mesmo_cenario_188_04)  ::  tests=3 assertions=101
+
+# `composicao-e-origem`: as 7 linhas na **ORDEM EXPLÍCITA** (uma constante só, e
+# a premissa de que a ordem que CHEGA é a da constante fica TRAVADA), a nota que
+# NOMEIA a fonte e nunca é vazia (DADO-13), as **seis** cores das três origens
+# distintas aos pares, o valor com o **sinal invertido** nas quatro formas
+# (positivo com U+2212 medido em BYTES, zero sem sinal, `null` como o texto
+# `Pendente`, milhar em pt-BR), a nota do combo, e o **pior caso** nomeando a
+# variação — sem nota com um preço só.
+composicao-e-origem  php  test_(as_sete_linhas_saem_na_ORDEM_EXPLICITA_com_origem_e_nota_nao_vazia_188_04|o_valor_da_linha_tem_o_sinal_invertido_e_as_tres_formas_188_04|o_preco_manda_o_PIOR_CASO_e_sem_nota_com_um_preco_so_188_04)  ::  tests=3 assertions=89
+
+# ─── TAREFA 2 — a simulação, os atalhos, a exceção, a irmã e o território ──────
+#
+# `simulacao-sem-salvar`: a simulação recalcula e **NUNCA grava** (composição não
+# congelada, versão intacta, zero requisição que não seja leitura de tarifa, e no
+# máximo UMA por trio `(categoria, tipo, preço)`), o selo
+# `SIMULAÇÃO · NÃO SALVA` dependendo da tolerância **literal** `0,001`, os 14
+# preços inválidos caindo no neutro **sem exceção** (⚠️ inclusive `'-10,00'` —
+# DIVERGÊNCIA (3), medida: o `num()` do protótipo ENGOLE o menos), `pode_salvar`
+# nos **dois** eixos, e o gate de ausência de escrita ancorado no **operador de
+# chamada** com isca nas duas direções.
+simulacao-sem-salvar  php  test_(a_simulacao_recalcula_sem_gravar_e_o_selo_depende_da_tolerancia_188_04|os_precos_invalidos_caem_no_neutro_sem_excecao_e_pode_salvar_exige_live_188_04|o_servico_de_preco_nao_escreve_nada_e_nao_congela_188_04)  ::  tests=3 assertions=77
+
+# `atalhos-excecao-irma`: os atalhos só com dado completo + a frase literal do
+# indisponível, o mínimo **REAL** (17,5% reprova o `12%` cravado),
+# `ceil(alvo) − 0,1` reproduzido (⚠️ `:1140`, e **não** o `:1139` da prosa do
+# plano), o aviso de alteração com quem/quando, a exceção liberando **SÓ**
+# `loss`/`margin` com os outros **seis** provados um por um, a irmã **clicável**
+# na ordem **Clássico → Premium** (⚠️ `:1294`, e não o `:1292` da prosa) — e o
+# TERRITÓRIO por **escopo do assunto** + a **bijeção** nos dois sentidos.
+atalhos-excecao-irma  php  test_(os_atalhos_so_existem_com_dado_completo_e_o_minimo_e_o_REAL_188_04|a_excecao_libera_SO_dois_e_a_irma_e_clicavel_na_ordem_certa_188_04|territorio_e_bijecao_do_manifesto_do_preco_188_04)  ::  tests=3 assertions=185
