@@ -193,6 +193,28 @@ class PainelSellersEnxutoTest extends TestCase
         $this->assertNull($m0['places'], 'sem ficha não há campo da ficha');
     }
 
+    public function test_cust_repetido_nao_passa_o_financeiro_para_quem_esta_fora_da_meta(): void
+    {
+        // Produção, 19/10/2026: "Moveis absoluto" (Encaminhar Comercial) tem o cust do
+        // Natture (M2) e saía com o faturamento e o "Sim" dele.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->ecfDrive();
+        $this->empresa('Natture', '3561917388', ['fase' => 'M2']);
+        $this->empresa('Moveis absoluto', '3561917388', ['fase' => 'Encaminhar Comercial']);
+        $this->empresa('Sem Cust na Meta', '', ['fase' => 'M3']);
+        $this->faturou('3561917388', 32576.98);
+
+        $resposta = $this->sellers($admin);
+
+        $this->assertEquals(32576.98, $this->seller($resposta, 'Natture')['faturamento']);
+        $fora = $this->seller($resposta, 'Moveis absoluto');
+        $this->assertNull($fora['faturamento'], 'fora da meta não herda o financeiro de outra empresa');
+        $this->assertNull($fora['status_meta']);
+        $semCust = $this->seller($resposta, 'Sem Cust na Meta');
+        $this->assertSame('Não', $semCust['status_meta'], 'na meta sem cust: liga pelo id e sai como "Não", como no /polos/empresas');
+        $this->assertEquals(4000, $semCust['meta']);
+    }
+
     // ─── Acesso ──────────────────────────────────────────────────────────────
 
     public function test_sem_acesso_ao_faturamento_recebe_so_o_operacional_e_nao_toca_o_ecf_drive(): void

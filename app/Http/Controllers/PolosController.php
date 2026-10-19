@@ -676,8 +676,13 @@ class PolosController extends Controller
             }
         }
 
-        // cust normalizado → linha do /polos/empresas (só quem está na meta do mês).
-        $financeiro = collect($d ? $this->linhasDaVisaoCompleta($d) : [])->keyBy('cust_id');
+        // Linhas do /polos/empresas (só quem está na meta do mês). Liga pelo id do cadastro,
+        // que o mês corrente e o roster congelado trazem; só a reconstrução antiga pelo CSV
+        // vem sem id e liga pelo cust. Ligar só pelo cust dava a uma empresa FORA da meta o
+        // faturamento de outra com o mesmo cust (Moveis absoluto × Natture, 19/10/2026).
+        $linhasFin  = collect($d ? $this->linhasDaVisaoCompleta($d) : []);
+        $finPorId   = $linhasFin->whereNotNull('mlb_empresa_id')->keyBy('mlb_empresa_id');
+        $finPorCust = $linhasFin->whereNull('mlb_empresa_id')->keyBy('cust_id');
 
         $vinculoAdman = VinculoAdmanPolos::carregar();
         $leiturasAds  = PoloAdsStatus::frescos()->get()->keyBy(fn (PoloAdsStatus $l) => (string) $l->cust_id);
@@ -696,10 +701,10 @@ class PolosController extends Controller
             ->orderBy('nome')
             ->get()
             ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
-            ->map(function (MlbEmpresa $e) use ($financeiro, $vinculoAdman, $leiturasAds, $comPpa, &$semRegiao) {
+            ->map(function (MlbEmpresa $e) use ($finPorId, $finPorCust, $vinculoAdman, $leiturasAds, $comPpa, &$semRegiao) {
                 $impl = $e->implementacao;
                 $cust = CustId::normaliza((string) ($e->cust_id ?? ''));
-                $fin  = $cust !== '' ? $financeiro->get($cust) : null;
+                $fin  = $finPorId->get($e->id) ?? ($cust !== '' ? $finPorCust->get($cust) : null);
 
                 $regiao = MlbImplementacao::poloOficial($e->polo) ?? MlbImplementacao::poloOficial($fin['polo'] ?? null);
                 if ($regiao === null && trim((string) $e->polo) !== '') {
