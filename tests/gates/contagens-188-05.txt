@@ -1,0 +1,146 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-05 — AS SEIS ESCRITAS DO PAINEL DE
+# REVISÃO: aprovar foto · aprovar N sem alerta · reprovar imagem · salvar revisão
+# · aprovar para publicação · tentar de novo.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-05 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-05`, E NÃO `05`. O número NU resolve
+# `contagens-186-05.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **16** métodos PHP deste
+#    plano estão quebrados em **SETE** ids, **nenhum com mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**
+#    (`medir-188-05.sh` no scratchpad), com o ANSI tirado ANTES de ler a linha
+#    `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ⚠️⚠️ BIJEÇÃO ids ↔ MÉTODOS, conferida POR SCRIPT nos DOIS sentidos
+#    (`homonimo-188-05.php` no scratchpad, 19/10/2026):
+#    `ARQUIVOS=1215 METODOS=7810 MEUS=16 HOMONIMOS=0`,
+#    `SEM_ID=0 ORFAOS=0 IDS_REPETIDOS=0`.
+#    · **método sem id NUNCA RODA** (foi o sobrevivente da mutação do 186-03);
+#    · **id órfão é gate sobre ZERO casos**, indistinguível de verde.
+#    As duas iscas do script: um nome sintético superstring/prefixo do meu TEM de
+#    acusar (`ISCA_POSITIVA=2/2`) e um nome real de outra fase NÃO pode acusar
+#    (`ISCA_NEGATIVA=nao-acusa`).
+#
+# ⚠️⚠️ E A TERCEIRA BIJEÇÃO — id ↔ `<verify>`: os SETE ids abaixo aparecem em
+#    `<verify>` do `188-05-PLAN.md`, e nenhum `<verify>` usa id que não esteja
+#    aqui. ⚠️ **`img-02-img-03-sem-regressao` e `tentar-de-novo` estavam ÓRFÃOS na
+#    primeira redação do plano** (declarados, medidos, apontando para métodos que
+#    existiriam — e rodados por `<verify>` NENHUM). Um id órfão **não falha: ele
+#    simplesmente nunca roda**. Os dois agora estão em `<verify>`.
+#
+# ⚠️⚠️ COLISÃO DE HOMÔNIMO — conferida POR SCRIPT, nas DUAS direções, incluindo
+#    PREFIXO. O `--filter` do PHPUnit é regex **NÃO ANCORADO** e as Fases 186 E
+#    187 estão EM PRODUÇÃO: método superstring de uma delas faria o id daquela
+#    fase **SOMAR** e reprovar. ➡️ **Todo método deste plano leva `_188_05` no
+#    nome, e o conserto de colisão é sufixo no método NOVO — NUNCA levantar a
+#    contagem do manifesto alheio.**
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: ele
+#    é **só de servidor** e não roda aquele gate — nenhum `.jsx` é dele. A regra é
+#    **quem roda, declara**, não *todos declaram* (é o mesmo caso de
+#    `contagens-187-02.txt`).
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# imagem-aprovar-e-sem-alerta
+#   · DADO-04: aprovar a foto no Clássico conta como aprovada no Premium do MESMO
+#     conjunto (fixture com DUAS ofertas; com uma só isso é inobservável);
+#   · ⚠️⚠️ **o caso central do plano**: "Aprovar N sem alerta" PERCORRE
+#     `PubAprovacaoConjunto::doRascunho()` e aprova **o mesmo número que o botão
+#     promete** — lido de `FotosDoPainelService::para()['sem_alerta']`, nunca de um
+#     literal. A fixture tem DOIS grupos (`GENERAL` 2 + `COR:Azul` 1 = 3) porque
+#     com um grupo só "percorrer" e "não percorrer" dão o mesmo número;
+#   · ⚠️ ZERO requisição HTTP das três rotas de imagem, com ISCA nas duas pontas.
+#
+# imagem-reprovar
+#   · ⚠️⚠️ os **CINCO** efeitos do critério 13 ao reprovar a PRINCIPAL, cada um
+#     com isca: sai da galeria · vai para "Fora da publicação" · a próxima vira
+#     principal · o motivo é registrado · a aprovação de **TODAS** as ofertas do
+#     conjunto é reaberta;
+#   · motivo vazio / só espaços recusados **sem gravar nada** (T-188-47), e a
+#     guarda do serviço exercitada DIRETO (pela rota o `TrimStrings` chega antes);
+#   · conta alheia → **404, nunca 403** (T-188-44); `regenerating` → 422 (IMG-09).
+#
+# img-02-img-03-sem-regressao
+#   · IMG-02/IMG-03 são REQ-IDs desta fase, mas o CAMINHO DE TELA deles (MOD-06/
+#     MOD-07) é das Fases **189/192** — **fronteira DECLARADA**, nada antecipado.
+#     O que se prova é NÃO-REGRESSÃO de `substituirPorOriginal()`,
+#     `recolocarOriginal()` e `concluirRegeneracao()`, mais a ausência de rota da
+#     189/192 por **igualdade de conjunto** das seis rotas do painel (piso `>= 6`
+#     NÃO prova presença).
+#
+# salvar-revisao
+#   · `aguardando_aprovacao → em_revisao_ecf` pela **ÚNICA PORTA**, com o registro
+#     literal *"Salvou revisão · x de y fotos aprovadas"*;
+#   · ⚠️ **COL-02 — a revisão parcial está no SERVIDOR, não em `localStorage`**:
+#     outra pessoa lê o mesmo estado e o segundo autor fica registrado;
+#   · salvar de novo em `em_revisao_ecf` registra **sem mover**; fora do `live`
+#     → 422 sem gravar (guarda da action — o serviço não a tem, medido);
+#   · o `x de y` montado de `contagemDeFotos()`, e a OUTRA PONTA conferida: com
+#     `x < y` o bloqueio `fotos_a_conferir` TEM de estar de pé.
+#
+# aprovar-e-enfileirar
+#   · recusa nos **TRÊS** eixos (bloqueio, fora do `live`, versão divergente),
+#     **chamando a rota DIRETO, sem passar pela tela** — é o único jeito de provar
+#     que a trava não é cosmética (T-188-41/42);
+#   · com zero bloqueios: os três campos de aprovação, o registro e o
+#     congelamento; e **nenhum `MLB…` gravado** (T-188-46);
+#   · ⚠️⚠️ **aprovar ENFILEIRA**: zero requisição de **ESCRITA** ao Mercado Livre,
+#     com ISCA. ⚠️ A régua é "zero escrita", não "zero requisição", e isso é
+#     MEDIDO: `aprovar()` LÊ a tarifa real no GET `/sites/MLB/listing_prices`
+#     (decisão 9 do usuário). Prometer zero absoluto seria gate que o próprio
+#     desenho contradiz. A leitura está em **lista CONSTANTE** nomeada.
+#
+# ausencia-de-segundo-passo
+#   · ⚠️⚠️ decisão 1 do usuário: **aprovar já publica, sem segundo clique**. Gate
+#     de AUSÊNCIA de *confirmar publicação* / *desfazer aprovação* / *segundo
+#     passo* / *cancelar aprovação*, lendo o código **SEM COMENTÁRIO**
+#     (`token_get_all`, nunca regex) — porque a prosa cita os quatro de propósito
+#     e um gate que lesse comentários **reprovaria pelo próprio conserto** (foi o
+#     que abortou TRÊS mutações da wave 187-04);
+#   · recorte em **lista CONSTANTE** dos arquivos deste plano, com `test -e`
+#     anti-fantasma em cada caminho, e isca das sondas nas DUAS direções (a forma
+#     que elas devem pegar, e o rótulo legítimo que elas não podem pegar).
+#
+# tentar-de-novo
+#   · REVS-05/BLOQ-11 — a rota do botão "Tentar publicar novamente", que **não
+#     existia** (medido: `grep tentarDeNovo routes/` saía VAZIO) e sem a qual o
+#     botão seria D4 violado;
+#   · `falha → publicando` pela única porta, com a `versao` intacta e
+#     `versao_aprovada`/`aprovado_por`/`aprovado_em` **preservados**;
+#   · ⚠️ a guarda "só a partir de `falha`" é da ACTION, e a isca prova por que ela
+#     existe: `TRANSICOES[aprovado]` **inclui** `publicando`, então o serviço não
+#     recusaria;
+#   · e ela **não publica**: zero escrita ao ML, com isca.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+imagem-aprovar-e-sem-alerta  php  test_(aprovar_a_foto_vale_para_as_duas_ofertas_do_conjunto_188_05|aprovar_sem_alerta_percorre_todos_os_grupos_do_rascunho_188_05|as_tres_rotas_de_imagem_nao_fazem_nenhuma_requisicao_ao_ml_com_isca_188_05)  ::  tests=3 assertions=49
+imagem-reprovar  php  test_(reprovar_a_principal_tem_os_cinco_efeitos_188_05|reprovar_sem_motivo_e_recusado_sem_gravar_nada_188_05|reprovar_imagem_de_outra_conta_ou_regenerando_e_recusado_188_05)  ::  tests=3 assertions=58
+img-02-img-03-sem-regressao  php  test_substituir_recolocar_e_concluir_regeneracao_nao_regrediram_188_05  ::  tests=1 assertions=15
+salvar-revisao  php  test_(salvar_revisao_move_awaiting_para_ecf_review_pela_unica_porta_188_05|salvar_de_novo_em_ecf_review_registra_sem_mover_e_fora_do_live_recusa_188_05|o_x_de_y_do_registro_vem_de_contagem_de_fotos_188_05)  ::  tests=3 assertions=52
+aprovar-e-enfileirar  php  test_(aprovar_recusa_nos_tres_eixos_chamando_a_rota_direto_188_05|aprovar_com_zero_bloqueios_grava_os_tres_campos_e_registra_188_05|aprovar_enfileira_e_nao_escreve_no_mercado_livre_com_isca_188_05)  ::  tests=3 assertions=85
+ausencia-de-segundo-passo  php  test_nao_existe_rota_action_nem_rotulo_de_segundo_passo_188_05  ::  tests=1 assertions=17
+tentar-de-novo  php  test_(tentar_de_novo_so_a_partir_de_falha_e_preserva_a_versao_aprovada_188_05|tentar_de_novo_nao_publica_no_mercado_livre_com_isca_188_05)  ::  tests=2 assertions=32

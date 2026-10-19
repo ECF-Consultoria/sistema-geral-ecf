@@ -3,7 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\PubAprovacaoConjunto;
+use App\Models\PubAprovacaoImagem;
 use App\Models\PubAprovacaoOferta;
+use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
+use App\Services\Publicador\Aprovacao\AprovacaoDaOfertaService;
+use App\Services\Publicador\Aprovacao\BloqueiosDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
@@ -11,8 +16,11 @@ use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\LoteDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService;
+use App\Services\Publicador\Aprovacao\RevisaoDeImagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\RegraViolada;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -667,5 +675,431 @@ class MlbPublicadorAprovacaoController extends Controller
             'aprovadas' => $resumo['aprovadas'],
             'recusadas_por_versao' => $resumo['recusadas_por_versao'],
         ]);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ FASE 188, PLANO 05 — AS SEIS ESCRITAS DO PAINEL DE REVISÃO
+    //
+    // Três de imagem (coluna de fotos), duas de oferta (rodapé) e a de retry.
+    //
+    // ═══ A FRONTEIRA, DECLARADA ═══════════════════════════════════════════════════════════════
+    //
+    // ⚠️⚠️ **APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE** (decisão 1 do usuário), com o rótulo
+    // "Aprovar para publicação" inalterado. Não existe nestas actions nenhuma etapa intermediária
+    // e nenhum caminho de volta: a conferência acontece ANTES do clique, no painel, que mostra as
+    // pendências com o motivo de cada uma. Há gate de ausência com isca lendo o código SEM
+    // COMENTÁRIO, válido para as Fases 187 a 194.
+    //
+    // ⚠️⚠️ **E APROVAR ENFILEIRA — A ESCRITA NO MERCADO LIVRE É DA FASE 193** (critério 18).
+    // `AprovacaoDaOfertaService::aprovar()` move o andamento pela única porta, grava os três
+    // campos de aprovação e congela a composição: **tudo no nosso banco**. O gancho `aoAprovar`,
+    // que fala com o ML, está VAZIO e é daquela fase. ⚠️ E nenhum `MLB…` é gravado aqui (AND-04
+    // exige MLB confirmado pelo Mercado Livre).
+    //
+    // ⚠️ **O QUE SAI PELA REDE, MEDIDO em 19/10/2026 — e é LEITURA:** as actions que leem a
+    // composição (`aprovar`, por `BloqueiosDaOfertaService::para()`) disparam o GET público
+    // `/sites/MLB/listing_prices`, que é a **tarifa real** da decisão 9 do usuário e tem cache de
+    // 1 h pré-aquecido por job. ➡️ A asserção honesta é **zero requisição de ESCRITA** (nenhum
+    // método diferente de GET, nenhuma URL de `/items`), não "zero requisição". Prometer zero
+    // absoluto aqui seria gate que o próprio desenho contradiz — e as três actions de imagem, que
+    // não leem composição, são provadas com **zero requisição de qualquer tipo**.
+    //
+    // ═══ O GATE DE ESCRITA, O MESMO DAS OUTRAS ACTIONS DA ÁREA (T-188-40) ═════════════════════
+    //   · **`role:admin`** — do grupo da rota, **sem middleware novo**;
+    //   · **trava de conta** — `abort_unless($company->mlToken !== null, 404)`, byte a byte;
+    //   · **a oferta conferida contra `FilaDeAprovacaoService::paraAConta()` ANTES de gravar**, e
+    //     a imagem/conjunto conferidos contra o rascunho DAQUELA oferta;
+    //   · **404, nunca 403** — um 403 confirma que o id existe, que é metade do vazamento;
+    //   · **CSRF** — rotas POST normais do módulo, sem exceção;
+    //   · **throttle nomeado** — `throttle:30,1,publicador.aprovacao.painel.*`.
+    //
+    // ═══ A FORMA DA RESPOSTA, e por que ela é MISTA ═══════════════════════════════════════════
+    //
+    // Sucesso devolve `back()->with(...)`: o painel inteiro tem de **renascer** da prop, porque
+    // aprovar uma foto muda progresso, bloqueios, rodapé e selo de uma vez — devolver só o delta
+    // criaria uma segunda verdade sobre o mesmo estado. É o que `aprovarLote()` já faz.
+    // Recusa devolve `response()->json(['message', 'regra'], 422)`, que é o formato que o módulo
+    // já usa (`MlbPublicadorLoteController:233`, `MlbPublicadorFaseController::recusa()`): a tela
+    // precisa do **id estável da regra**, não só do texto.
+    //
+    // ⚠️ **NENHUMA destas actions escreve `andamento`.** Quem move é
+    // `AndamentoDaOfertaService::mover()`, sempre, por dentro dos serviços da 186 — e por isso
+    // este arquivo **não entrou** na lista de EXPOSITORES da camada B: ele não casa a sonda larga
+    // (`'andamento' =>` / `->andamento =`), então entrar nela seria linha morta. Medido.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * **IMG-04 / DADO-04** — aprova UMA foto: grava quem e quando, marca o conjunto e TODAS as
+     * ofertas dele como tocados, e registra na linha do tempo das duas.
+     *
+     * ⚠️ A action é FINA: trava de conta → resolução da imagem → **uma** chamada ao serviço →
+     * retorno. As 11 regras de imagem são de {@see RevisaoDeImagemService}, que está EM PRODUÇÃO
+     * desde a Fase 186. Reimplementar qualquer uma criaria a segunda verdade, e a divergente só
+     * apareceria no caso raro — que aqui é justamente o que mais importa.
+     *
+     * ⚠️ Imagem em `regenerating` é recusada pelo serviço (IMG-09), com `REGRA_REGENERANDO`.
+     */
+    public function aprovarImagem(
+        Request $request,
+        Company $company,
+        int $oferta,
+        int $imagem,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        RevisaoDeImagemService $revisao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+        $daGaleria = $this->imagemDoPainel($daConta, $imagem);
+
+        try {
+            $aprovada = $revisao->aprovar($daGaleria, $request->user());
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_foto_aprovada', [
+            'oferta_id' => (int) $daConta->id,
+            'aprovacao_imagem_id' => (int) $aprovada->id,
+        ]);
+    }
+
+    /**
+     * **IMG-05** — "Aprovar N sem alerta": aprova as `pending` **sem** verificação automática
+     * acima de `ok`, em **TODOS os grupos do rascunho**, e devolve quantas foram.
+     *
+     * ⚠️⚠️ **O LAÇO PELOS CONJUNTOS NÃO É ESTILO — É O QUE FAZ O BOTÃO NÃO MENTIR.** O rótulo
+     * "Aprovar N sem alerta" vem de `FotosDoPainelService::para()` → `sem_alerta.quantidade`, e
+     * aquele N sai de {@see BloqueiosDaOfertaService::contagemDeFotos()}, que cobre **todos** os
+     * grupos (`PubAprovacaoConjunto::doRascunho()`). Já
+     * {@see RevisaoDeImagemService::aprovarSemAlerta()} recebe **UM conjunto por chamada**.
+     * ➡️ Chamar o serviço para um conjunto só aprovaria **menos do que o botão promete**: com
+     * `GENERAL → 2` e `COR:Azul → 1`, o admin clicaria em "Aprovar 3 sem alerta" e **uma ficaria
+     * de pé**, sem nada na tela explicando por quê.
+     * ⚠️ É a mesma razão da **decisão 5 do usuário**: o bloqueio de fotos cobre TODOS os grupos, e
+     * **aprovação cor por cor foi RECUSADA** — aprovar já publica e não há desfazer.
+     *
+     * ⚠️ **Decisão 8 do usuário:** *"tudo de uma vez, e só libera com todas conferidas"*. Aprovar
+     * silenciosamente só as que passam foi **RECUSADO**, e a tela **diz quem ficou de fora e por
+     * quê**. ➡️ Por isso a resposta leva `com_alerta_restantes` junto de `aprovadas` — os dois da
+     * **MESMA** `contagemDeFotos()`, nunca de duas contagens que poderiam somar diferente.
+     *
+     * ⚠️ **O TEXTO do aviso NÃO é desta action, e não é desta fase.** `VOC-08` fecha o vocabulário
+     * em **6** toasts (`vocabularioDoPortao.jsx:213`-`:220`) e o par do protótipo (`:1151`)
+     * **NÃO está entre eles** — ver a PERGUNTA-188-D, com dono no usuário, na SUMMARY deste
+     * plano. Cunhar uma 7ª frase aqui seria decidir o que não é meu.
+     */
+    public function aprovarFotosSemAlerta(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        RevisaoDeImagemService $revisao,
+        BloqueiosDaOfertaService $bloqueios,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        // ⚠️ `orderBy('id')` explícito: a ordem de uma lista que o servidor PERCORRE não pode vir
+        // do índice do banco. MariaDB e SQLite divergem aí, e aqui a divergência mudaria a ordem
+        // dos registros na linha do tempo sem nenhuma asserção acusar.
+        $conjuntos = PubAprovacaoConjunto::doRascunho((int) $daConta->rascunho_id)
+            ->orderBy('id')
+            ->get();
+
+        $aprovadas = 0;
+
+        try {
+            foreach ($conjuntos as $conjunto) {
+                $aprovadas += $revisao->aprovarSemAlerta($conjunto, $request->user());
+            }
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        $contagem = $bloqueios->contagemDeFotos($daConta->refresh());
+
+        return back()->with('painel_fotos_sem_alerta', [
+            'oferta_id' => (int) $daConta->id,
+            'aprovadas' => $aprovadas,
+            'grupos_percorridos' => $conjuntos->count(),
+            // ⚠️ Quem ficou de fora, para a tela poder dizer (decisão 8). MESMA fonte do N.
+            'com_alerta_restantes' => (int) $contagem['com_alerta'],
+            'pendentes' => (int) $contagem['pendentes'],
+        ]);
+    }
+
+    /**
+     * **IMG-01 / IMG-06 / IMG-10 / BLOQ-06** — reprova a foto. Os **cinco** efeitos são de
+     * {@see RevisaoDeImagemService::reprovar()}, numa **transação única**: a foto sai do conjunto
+     * final na hora, vai para "Fora da publicação", a próxima vira principal se era a principal, o
+     * motivo é registrado, e a aprovação de **TODAS** as ofertas do conjunto é reaberta.
+     *
+     * ⚠️⚠️ **O MOTIVO É OBRIGATÓRIO, E A TRAVA REAL É DO SERVIÇO** (`REGRA_SEM_MOTIVO`), que faz
+     * `trim()` antes de conferir: "só espaço" não é motivo, e a recusa é **no-op completo**.
+     * O `required|string` daqui é a porta da frente (recusa a ausência da chave e a string vazia);
+     * o piso de conteúdo é de lá.
+     *
+     * ⚠️ **MEDIDO, e é divergência declarada:** o protótipo exige `> 2` caracteres (`:1404`) e o
+     * serviço da 186 aceita **qualquer motivo não-vazio**. Um `min:3` aqui criaria uma segunda
+     * regra sobre o mesmo campo, mais estrita que a do serviço que está EM PRODUÇÃO e que tem
+     * outros chamadores — duas verdades sobre "motivo válido". ➡️ O `> 2` do protótipo é o
+     * `disabled=` do **modal MOD-04** (plano 188-11/12), que é conforto de tela; o piso do
+     * servidor é não-vazio. Está provado nos dois sentidos no gate `imagem-reprovar`.
+     */
+    public function reprovarImagem(
+        Request $request,
+        Company $company,
+        int $oferta,
+        int $imagem,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        RevisaoDeImagemService $revisao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+        $daGaleria = $this->imagemDoPainel($daConta, $imagem);
+
+        $dados = $request->validate([
+            'motivo' => ['required', 'string'],
+        ]);
+
+        try {
+            $reprovada = $revisao->reprovar($daGaleria, $request->user(), $dados['motivo']);
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_foto_reprovada', [
+            'oferta_id' => (int) $daConta->id,
+            'aprovacao_imagem_id' => (int) $reprovada->id,
+        ]);
+    }
+
+    /**
+     * **COL-01 / COL-02 / AND-06** — salva a revisão parcial: `aguardando_aprovacao →
+     * em_revisao_ecf` **pela única porta**, com o registro *"Salvou revisão · x de y fotos
+     * aprovadas"*.
+     *
+     * ⚠️⚠️ **A REVISÃO PARCIAL FICA NO SERVIDOR, NÃO EM `localStorage`** (COL-02): outra pessoa
+     * continua de onde esta parou, e reler a oferta em outra instância devolve o mesmo estado.
+     * Guardar isso no navegador faria a revisão existir só para quem a começou — e o painel é
+     * explicitamente um trabalho que troca de mãos.
+     *
+     * ⚠️ O `x de y` é de `contagemDeFotos()`, a MESMA definição que o bloqueio `fotos_a_conferir`
+     * usa — por dentro de `salvarRevisao()`, nunca recontado aqui.
+     *
+     * ⚠️ **A RECUSA FORA DO `live` É DAQUI, e isso está medido:** `salvarRevisao()` não tem essa
+     * guarda (ele só promove a partir de `aguardando_aprovacao` e registra sempre), e em
+     * `publicado` ou `publicando` "salvar revisão" registraria um fato que não aconteceu numa
+     * oferta que ninguém pode mais revisar. ➡️ A guarda usa o **id de regra que já existe**
+     * ({@see AprovacaoDaOfertaService::REGRA_FORA_DO_AO_VIVO}), nunca um id novo: a tela já sabe
+     * ler aquele, e cunhar um segundo para a mesma recusa espalharia o vocabulário.
+     * ⚠️ E ela é **ANTES** de qualquer gravação.
+     */
+    public function salvarRevisao(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        if (! $daConta->ehLive()) {
+            return $this->recusaDoPainel(new RegraViolada(
+                AprovacaoDaOfertaService::REGRA_FORA_DO_AO_VIVO,
+                'Esta oferta não está aberta para revisão.',
+                ['oferta_id' => (int) $daConta->id]
+            ));
+        }
+
+        try {
+            $salva = $aprovacao->salvarRevisao($daConta, $request->user());
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_revisao_salva', [
+            'oferta_id' => (int) $salva->id,
+            'versao' => (int) $salva->versao,
+        ]);
+    }
+
+    /**
+     * **BLOQ-04 / COL-04 / AND-05** — aprova para publicação. ⚠️ **E ISTO JÁ PUBLICA** (decisão 1),
+     * sem segundo clique e sem desfazer; ⚠️ **mas nesta fase APROVAR ENFILEIRA** — ver o bloco de
+     * fronteira acima.
+     *
+     * ⚠️⚠️ **A TRAVA É DO SERVIDOR, E É POR ISSO QUE ESTA ROTA NASCE ANTES DO RODAPÉ** (plano
+     * 188-10). O `disabled=` do botão é conveniência; quem recusa é
+     * {@see AprovacaoDaOfertaService::aprovar()}, nos **três** eixos:
+     *   · qualquer bloqueio de pé → `REGRA_COM_BLOQUEIO`;
+     *   · andamento fora dos três `live` → `REGRA_FORA_DO_AO_VIVO`;
+     *   · `versao_esperada` divergente → `REGRA_VERSAO_DIVERGENTE`.
+     * Há caso chamando esta rota **direto, com bloqueio de pé**, sem passar pela tela — é o único
+     * jeito de provar que a trava não é cosmética. Confiar no cliente aqui seria elevação de
+     * privilégio: aprovar publica e não há volta.
+     *
+     * ⚠️ `versao_esperada` é **opcional no corpo** (`nullable`) e, quando vem, é **repassada**: é a
+     * metade da escrita do critério 17 (o aviso na tela é do plano 188-12). ⚠️ **Nunca
+     * sobrescrever em silêncio** — se alguém mexeu na oferta entre o que a tela mostrou e o
+     * clique, a aprovação é RECUSADA.
+     *
+     * ⚠️ O `with exceção` **não** é acrescentado ao registro por esta action, e isso é medido:
+     * `HistoricoDaOfertaService:169` grava *"Aprovou para publicação (versão N)"* e a exceção tem
+     * **evento próprio** (*"Autorizou exceção (…): …"*, de `AjustesDaOfertaService:319`) na MESMA
+     * linha do tempo, gravado no momento em que ela foi autorizada e **com quem a liberou**
+     * (decisão 6 do usuário). Emendar a frase aqui exigiria alterar um serviço da 186 em produção
+     * **e** recriaria o defeito que o docblock daquele arquivo registra como consertado em
+     * 15/10/2026: dois eventos para o mesmo fato. Ver a divergência declarada na SUMMARY.
+     */
+    public function aprovar(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        $esperada = $dados['versao_esperada'] ?? null;
+
+        try {
+            $aprovada = $aprovacao->aprovar($daConta, $request->user(), $esperada === null ? null : (int) $esperada);
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_oferta_aprovada', [
+            'oferta_id' => (int) $aprovada->id,
+            'versao_aprovada' => (int) $aprovada->versao_aprovada,
+        ]);
+    }
+
+    /**
+     * **REVS-05 / BLOQ-11 / AND-10** — "Tentar publicar novamente", da caixa de falha.
+     *
+     * ⚠️ Chama {@see AprovacaoDaOfertaService::tentarDeNovo()} e **nada mais**: `falha →
+     * publicando` pela única porta, **sem** mexer na `versao` e **preservando** `versao_aprovada`,
+     * `aprovado_por` e `aprovado_em`.
+     *
+     * ⚠️⚠️ **E ELA NÃO PUBLICA.** Move o andamento e registra; a escrita no Mercado Livre é da
+     * **Fase 193**. Há caso provando por ausência de requisição de escrita, com isca.
+     *
+     * ⚠️ **A GUARDA DE "SÓ A PARTIR DE `falha`" É DAQUI, e isso está MEDIDO:**
+     * `PubAprovacaoOferta::TRANSICOES` tem `aprovado => [publicando, aguardando_aprovacao]`, então
+     * `mover(…, publicando)` a partir de `aprovado` é transição **legal** e `tentarDeNovo()` não a
+     * recusaria. Sem esta guarda, "tentar de novo" numa oferta recém-aprovada a empurraria para
+     * `publicando` sem nenhuma falha ter acontecido — e aí a Fase 193 publicaria por cima.
+     * ⚠️ Reusa `REGRA_FORA_DO_AO_VIVO`? **Não** — aqui o destino legítimo não é `live`, é `falha`.
+     * O id é o do serviço de andamento para transição recusada, e a mensagem nomeia o estado.
+     */
+    public function tentarDeNovo(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        if ($daConta->andamento !== PubAprovacaoOferta::FALHA) {
+            return $this->recusaDoPainel(new RegraViolada(
+                AndamentoDaOfertaService::REGRA_TRANSICAO_ILEGAL,
+                'Só é possível tentar de novo uma publicação que falhou.',
+                ['oferta_id' => (int) $daConta->id]
+            ));
+        }
+
+        try {
+            $retentada = $aprovacao->tentarDeNovo($daConta, $request->user());
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_retry', [
+            'oferta_id' => (int) $retentada->id,
+            // ⚠️ A versão aprovada é PRESERVADA — é o que o protótipo diz com todas as letras.
+            'versao_aprovada' => (int) $retentada->versao_aprovada,
+        ]);
+    }
+
+    // ═══ Apoio das seis escritas do painel ═══════════════════════════════════════════════════
+
+    /**
+     * A oferta da URL, **conferida contra a conta ANTES de qualquer gravação** (T-188-40).
+     *
+     * ⚠️ **O FILTRO É A CONSULTA**, nunca um `in_array` sobre lista montada no PHP: o que não é da
+     * conta **não volta** de `paraAConta()`, então não existe caminho em que uma oferta alheia
+     * chegue a um serviço de escrita.
+     * ⚠️ **404, nunca 403** — um 403 confirmaria que o id existe (T-188-44).
+     *
+     * ⚠️ A variável da segunda âncora se chama `$mlbEmpresaIdDoPainel` de propósito: `$mlbEmpresaId`
+     * já existe **duas vezes** neste arquivo (em `index()` e em `aprovarLote()`), resultado das
+     * edições paralelas das waves 187-09/10, e um terceiro homônimo tornaria qualquer busca por
+     * nome ambígua para quem vier depois.
+     */
+    private function ofertaDoPainel(
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+    ): PubAprovacaoOferta {
+        // ⚠️ A MESMA trava das outras actions do módulo, com a MESMA mensagem (T-187-11).
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        $alvo = $programas->resolver('company-'.$company->id);
+        $mlbEmpresaIdDoPainel = $alvo['mlb_empresa']?->id;
+
+        $daConta = $fila->paraAConta($company->id, $mlbEmpresaIdDoPainel)
+            ->whereKey($oferta)
+            ->first();
+
+        abort_if($daConta === null, 404, 'Oferta fora desta conta.');
+
+        return $daConta;
+    }
+
+    /**
+     * A linha de revisão de imagem da URL, conferida contra **o rascunho daquela oferta**.
+     *
+     * ⚠️ `{imagem}` é `pub_aprovacao_imagens.id`, **não** `pub_imagens.id`. O recorte é pelos
+     * conjuntos do rascunho da oferta já travada — foto de outro rascunho dá **404**, mesmo sendo
+     * da mesma empresa: o escopo da escrita é a oferta que está aberta no painel.
+     */
+    private function imagemDoPainel(PubAprovacaoOferta $daConta, int $imagem): PubAprovacaoImagem
+    {
+        $daGaleria = PubAprovacaoImagem::query()
+            ->whereKey($imagem)
+            ->whereIn(
+                'conjunto_id',
+                PubAprovacaoConjunto::doRascunho((int) $daConta->rascunho_id)->select('id')
+            )
+            ->first();
+
+        abort_if($daGaleria === null, 404, 'Foto fora desta oferta.');
+
+        return $daGaleria;
+    }
+
+    /**
+     * A recusa no formato que o módulo já usa, com o **id estável da regra** junto do texto.
+     *
+     * ⚠️ `regra` não é enfeite: é por ele que a tela decide onde marcar o erro, e é ele que
+     * aparece nos testes. Devolver só a mensagem obrigaria a tela a casar texto em português.
+     */
+    private function recusaDoPainel(RegraViolada $e): JsonResponse
+    {
+        return response()->json([
+            'message' => $e->getMessage(),
+            'regra' => $e->regra,
+        ], 422);
     }
 }

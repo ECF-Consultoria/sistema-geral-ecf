@@ -527,6 +527,77 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('/meus/{company}/aprovacao/lote', [MlbPublicadorAprovacaoController::class, 'aprovarLote'])
             ->middleware('throttle:30,1,publicador.aprovacao.lote')->name('meus.aprovacao.lote');
 
+        // ─── Fase 188 (plano 05): AS SEIS ESCRITAS DO PAINEL DE REVISÃO ─────────────────
+        //
+        // Três de imagem (coluna de fotos), duas de oferta (rodapé) e a de retry. Todas no
+        // MESMO padrão das linhas `:527`-`:528` acima: gate `role:admin` do grupo, **sem
+        // middleware novo**, `throttle:30,1` nomeado, CSRF normal do módulo.
+        //
+        // ⚠️⚠️ **APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE** (decisão 1 do usuário). Não existe
+        // rota de confirmação, de desfazer, de segundo passo nem de cancelamento de
+        // aprovação, e isso é DESENHO, não omissão. Há gate de ausência com isca lendo o
+        // código sem comentário, válido para as Fases 187-194.
+        //
+        // ⚠️⚠️ **E APROVAR ENFILEIRA: a escrita no Mercado Livre é da Fase 193** (critério
+        // 18). `AprovacaoDaOfertaService::aprovar()` move o andamento pela única porta, grava
+        // os três campos de aprovação e congela a composição — tudo no NOSSO banco. O gancho
+        // `aoAprovar`, que fala com o ML, está VAZIO e é daquela fase. Há caso provando por
+        // AUSÊNCIA de requisição de escrita, com isca.
+        //
+        // ⚠️ A TRAVA REAL É DO SERVIDOR. O `disabled=` do botão (plano 188-10) é conforto; a
+        // recusa com bloqueio de pé ou fora do `live` é de `aprovar()`, e há caso chamando
+        // estas rotas DIRETO, sem passar pela tela.
+        //
+        // ⚠️ A ordem importa: `/aprovacao/lote` tem DOIS segmentos depois de `meus` e estas
+        // têm TRÊS ou mais, então não há como `{oferta}` capturar `lote`. Mesmo assim
+        // `whereNumber('oferta')` entra — o invariante que pode mudar amanhã é "qual rota
+        // ganha esta URI", e há gate resolvendo as seis pelo ROUTER.
+        //
+        // ⚠️ `{imagem}` é `pub_aprovacao_imagens.id` (a linha de REVISÃO), nunca
+        // `pub_imagens.id` — são tabelas diferentes e confundi-las escreveria na foto errada.
+        Route::post('/meus/{company}/aprovacao/{oferta}/imagem/{imagem}/aprovar', [MlbPublicadorAprovacaoController::class, 'aprovarImagem'])
+            ->whereNumber(['oferta', 'imagem'])
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.imagem-aprovar')->name('meus.aprovacao.painel.imagem.aprovar');
+
+        // ⚠️⚠️ SEM `{conjunto}` NA URI, E ISSO É MEDIDO, NÃO ESTILO. O rótulo "Aprovar N sem
+        // alerta" vem de `FotosDoPainelService::para()` → `sem_alerta.quantidade`, que sai de
+        // `BloqueiosDaOfertaService::contagemDeFotos()` — e aquela contagem cobre **TODOS os
+        // grupos do rascunho** (`PubAprovacaoConjunto::doRascunho()`). `RevisaoDeImagemService::
+        // aprovarSemAlerta()` recebe UM conjunto por chamada, então a action PERCORRE os
+        // conjuntos e soma. Uma rota por conjunto aprovaria MENOS do que o botão promete, e o
+        // admin veria "Aprovar 3" deixando 1 de pé.
+        // ⚠️ E casa com a decisão 5 do usuário: o bloqueio de fotos cobre TODOS os grupos —
+        // aprovação cor por cor foi RECUSADA.
+        Route::post('/meus/{company}/aprovacao/{oferta}/fotos/aprovar-sem-alerta', [MlbPublicadorAprovacaoController::class, 'aprovarFotosSemAlerta'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.sem-alerta')->name('meus.aprovacao.painel.fotos.sem-alerta');
+
+        // ⚠️ MOTIVO OBRIGATÓRIO (IMG-10). A trava real é `RevisaoDeImagemService::reprovar()`,
+        // que faz `trim()` antes de conferir e é no-op completo sem motivo.
+        Route::post('/meus/{company}/aprovacao/{oferta}/imagem/{imagem}/reprovar', [MlbPublicadorAprovacaoController::class, 'reprovarImagem'])
+            ->whereNumber(['oferta', 'imagem'])
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.imagem-reprovar')->name('meus.aprovacao.painel.imagem.reprovar');
+
+        // ⚠️ COL-01/COL-02/AND-06 — a revisão parcial fica NO SERVIDOR, nunca em
+        // `localStorage`: outra pessoa continua de onde a primeira parou.
+        Route::post('/meus/{company}/aprovacao/{oferta}/salvar-revisao', [MlbPublicadorAprovacaoController::class, 'salvarRevisao'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.salvar')->name('meus.aprovacao.painel.salvar-revisao');
+
+        Route::post('/meus/{company}/aprovacao/{oferta}/aprovar', [MlbPublicadorAprovacaoController::class, 'aprovar'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.aprovar')->name('meus.aprovacao.painel.aprovar');
+
+        // ⚠️⚠️ REVS-05 / BLOQ-11 — "TENTAR PUBLICAR NOVAMENTE". Medido antes de escrever:
+        // `grep tentarDeNovo routes/` saía VAZIO — o serviço da Fase 186 existe
+        // (`AprovacaoDaOfertaService::tentarDeNovo()`) e NENHUMA rota o chamava. Sem rota a
+        // caixa de falha teria botão sem destino, que é D4 violado.
+        // ⚠️ E ela também NÃO publica: move o andamento pela única porta e registra. A escrita
+        // no Mercado Livre segue sendo da Fase 193.
+        Route::post('/meus/{company}/aprovacao/{oferta}/tentar-de-novo', [MlbPublicadorAprovacaoController::class, 'tentarDeNovo'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.retry')->name('meus.aprovacao.painel.tentar-de-novo');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 
