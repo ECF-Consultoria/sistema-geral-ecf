@@ -32,15 +32,41 @@
 #    **uma invocação por gate**, com `node --test --test-reporter=tap`. Nenhuma é
 #    chute, e nenhum id foi escrito antes de ter sido medido.
 #
-# ⚠️⚠️ DOIS REGIMES em `tokens-da-fila` (`tests=16,9`), e isso é MEDIDO, não
+# ⚠️⚠️ DOIS REGIMES em `tokens-da-fila` (`tests=17,10`), e isso é MEDIDO, não
 #    precaução. A camada de CSS daquele arquivo pula quando o CSS construído é
 #    mais ANTIGO que o `tailwind.config.js` — e **mutar o config o deixa mais
 #    novo**. Medido nesta máquina:
-#      · pristino (CSS mais novo):  16 testes / 11 pass / 0 fail / 5 skipped
-#      · mutado   (config mais novo): 9 testes /  7 pass / 0 fail / 2 skipped
+#      · pristino (CSS mais novo):  17 testes / 17 pass / 0 fail / 0 skipped
+#      · mutado   (config mais novo): 10 testes /  8 pass / 0 fail / 2 skipped
 #    Sem os dois regimes a campanha de mutação abortaria na 1ª execução
 #    ("BASE com contagem inesperada") ou marcaria "SOBREVIVEU" por um motivo que
 #    NÃO é o código (learnings §4 caso 11).
+#
+# ⚠️⚠️ POR QUE OS DOIS NÚMEROS MUDARAM (19/10/2026, cirurgia da Fase 188) —
+#    `16,9` → `17,10`, e os dois foram REMEDIDOS, não estimados:
+#      · **+1 em CADA regime**: entrou UM caso de topo novo em
+#        `publicador-fila-tokens-187.test.js` — `TOK-188 (CONFIG) — quem usa
+#        \`shadow-pub-painel\` está DECLARADO, e o precedente sem uso continua sem
+#        uso`. Ele é de TOPO de propósito: a camada de CSS PULA quando o build
+#        está velho, e o VETO da lista constante não pode dormir junto com ela.
+#      · A razão da cirurgia: a isca invertida daquele arquivo afirmava um TOTAL
+#        (`jsxQueUsam('shadow-pub-painel').length === 0`) sobre o token que a
+#        `188-REGUA.md` manda USAR no painel de revisão (critério 1,
+#        `-24px 0 64px rgba(0,0,0,0.6)`). O plano 188-07 o escreveu em
+#        `PainelDeRevisao.jsx` e o gate passou a reprovar trabalho CORRETO. O
+#        conserto foi na RAIZ: lista `QUEM_USA_SHADOW_PUB_PAINEL` com veto, e o
+#        precedente da isca invertida TROCADO para `ease-pub-painel` (mesmo nome
+#        de token na camada `transitionTimingFunction`, 0 `.jsx`, ausente do CSS
+#        — medido em `public/build/assets/app-CtjSDO4t.css`).
+#      · ⚠️ A mudança de COMPOSIÇÃO do regime pristino (era `11 pass / 5 skipped`,
+#        hoje `17 pass / 0 skipped`) **não é desta cirurgia**: os 5 skips por
+#        token eram de 15/10, quando nenhum `.jsx` ainda escrevia os tokens novos
+#        da fila. As waves 187-07 em diante os escreveram e a camada de CSS
+#        ACORDOU SOZINHA, como ela foi desenhada para fazer.
+#      · ⚠️ O regime mutado foi medido com a receita documentada ao lado: cópia
+#        do CSS construído com `cp -p`, `touch -d '2000-01-01'` no original para
+#        deixá-lo mais velho que o config, UMA invocação, e restauração do mtime
+#        por `touch -r` da cópia. `sha256` do CSS idêntico antes e depois.
 #
 # ⚠️ ESCOPO DECLARADO: este manifesto cobre TRÊS arquivos de teste, e dois deles
 #    são COMPARTILHADOS com fases anteriores. Eles estão aqui porque este plano
@@ -57,8 +83,10 @@
 
 # Os 5 tokens novos (camada do config SEMPRE + camada do CSS com skip NOMEADO por
 # token), os 2 tamanhos liberados com a prova de que nada saiu da lista, e
-# `duration-[Nms]` continuando a não compilar. 16 pristino / 9 mutado.
-tokens-da-fila  js  tests/js/publicador-fila-tokens-187.test.js  ::  tests=16,9
+# `duration-[Nms]` continuando a não compilar. 17 pristino / 10 mutado.
+# ⚠️ REMEDIDO em 19/10/2026 (era `16,9`): +1 caso de topo pela cirurgia da Fase
+# 188 na isca invertida de `pub-painel` — ver o bloco do cabeçalho.
+tokens-da-fila  js  tests/js/publicador-fila-tokens-187.test.js  ::  tests=17,10
 
 # GATE-03 inteiro (o vocabulário fechado dos 5 diretórios) DEPOIS de 9.5 e 22
 # entrarem. É a prova de que a AMPLIAÇÃO não afrouxou nada mais: 399 casos, 0

@@ -67,7 +67,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire, registerHooks } from 'node:module';
 import { lerSemComentarios } from './_fonte.js';
@@ -255,6 +255,121 @@ test('⚠️ ISCA do config: um token `pub-*` inexistente sai UNDEFINED', () => 
     assert.equal(emCaminho(EXT, ['colors', 'pub', 'page']), '#0A0A0A');
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ CIRURGIA DA FASE 188 (19/10/2026) — A ISCA INVERTIDA DE `pub-painel` FOI
+// REAPONTADA COM VETO, E CONTINUA INVERTIDA. **Nenhum invariante foi afrouxado;
+// um foi acrescentado.**
+//
+// O QUE ESTAVA AQUI (dentro do caso `CONTROLE POSITIVO + ISCA`, abaixo):
+// `assert.equal(jsxQueUsam('shadow-pub-painel').length, 0)` — um TOTAL afirmado
+// sobre um token que a Fase 188 **existe para usar**. A `188-REGUA.md` manda
+// desenhar o painel de revisão com `-24px 0 64px rgba(0,0,0,0.6)` (critério 1),
+// e esse valor **É** `boxShadow['pub-painel']`; o plano 188-07 o escreveu em
+// `PainelDeRevisao.jsx`. O gate passou a reprovar trabalho CORRETO — e a própria
+// mensagem dele já dizia o conserto: *"troque o precedente desta isca invertida"*.
+//
+// POR QUE NÃO SE SOBE O NÚMERO (de 0 para 1): as waves 188-08 a 188-13 põem mais
+// peças no painel, e cada uma teria de subir de novo. É a família "contagem que
+// depende de quantos arquivos existem", com DEZ ocorrências nesta milestone,
+// **todas consertadas na RAIZ** com lista constante (learnings §4b.2 e
+// `feedback_gate_que_reprova_pelo_proprio_conserto`): número que muda quando o
+// trabalho certo é feito treina o executor seguinte a ajustar réguas quando elas
+// incomodam, e um dia ele ajusta uma que importava.
+//
+// O QUE ENTROU, EM DUAS PARTES:
+//   (a) O INVARIANTE DO TOKEN USADO deixou de ser *"ninguém usa"* e passou a ser
+//       **"quem usa está DECLARADO"**, por igualdade de CONJUNTO contra
+//       `QUEM_USA_SHADOW_PUB_PAINEL` — lista de NOMES, cada um com o plano dono.
+//       ⚠️ É MAIS FORTE que o zero e que qualquer contagem: `.jsx` que passar a
+//       escrever a sombra **sem entrar na lista continua REPROVANDO**, cada uso
+//       fica NOMEADO, e acrescentar à lista é **diff VISÍVEL** — não um número
+//       trocado em silêncio. (Mesmo molde do `LIBERADOS_DEPOIS_DA_187` deste
+//       arquivo, plano 188-01, e dos reapontes que os planos 187-03 e 187-04
+//       fizeram em `DA_FASE_180` e `DO_PORTAO_DA_FASE_186`.)
+//   (b) A ISCA INVERTIDA **PERMANECE INVERTIDA**, com o PRECEDENTE TROCADO para
+//       `ease-pub-painel` — o MESMO nome de token na camada
+//       `transitionTimingFunction` (TOK-12: a curva de entrada do painel), que
+//       continua declarado no config, continua sem NENHUM `.jsx` e continua
+//       AUSENTE do CSS construído (medido em 19/10/2026 em
+//       `public/build/assets/app-CtjSDO4t.css`: 0 ocorrências de
+//       `ease-pub-painel`, contra 1 de `.shadow-pub-painel{…}`). É ele que agora
+//       prova que "token no config e ausente do CSS" é um estado REAL deste
+//       projeto, e não a sonda cega — e é isso que mantém honesto todo `skip`
+//       por token da camada de CSS.
+//
+// ⚠️ QUEM PASSAR A USAR A SOMBRA ACRESCENTA UMA LINHA ABAIXO, com o plano dono e
+// a medida. **Não** basta escrever a classe no `.jsx`: sem a linha aqui, o gate
+// REPROVA — e é esse o comportamento certo.
+// ═══════════════════════════════════════════════════════════════════════════════
+const QUEM_USA_SHADOW_PUB_PAINEL = [
+    // Fase 188, plano 07 — o painel de revisão de 1140px, montado POR PORTAL.
+    // A sombra `-24px 0 64px rgba(0,0,0,0.6)` é o critério 1 da `188-REGUA.md`, e
+    // o deslocamento NEGATIVO no eixo X é o que a derrama para a ESQUERDA, sobre
+    // a fila. Medido em 19/10/2026.
+    'resources/js/Components/Mlb/Publicador/aprovacao/PainelDeRevisao.jsx',
+];
+
+/**
+ * O PRECEDENTE SEM USO que mantém honesto todo `skip` da camada de CSS: token
+ * DECLARADO no config, nenhum `.jsx` escrevendo a classe, e por isso ausente do
+ * CSS. Trocar o precedente é o conserto certo quando alguém passa a usá-lo.
+ */
+const PRECEDENTE_SEM_USO = {
+    classe: 'ease-pub-painel',
+    camada: 'transitionTimingFunction',
+    chave: 'pub-painel',
+    valor: 'cubic-bezier(.2,.8,.2,1)',
+};
+
+test('TOK-188 (CONFIG) — quem usa `shadow-pub-painel` está DECLARADO, e o precedente sem uso continua sem uso', () => {
+    // ⚠️ Este caso vive FORA da camada de CSS de propósito: aquela camada PULA
+    // quando o CSS construído é mais antigo que as fontes, e o VETO da lista não
+    // pode dormir junto. Aqui só se lê o config e os `.jsx` — roda SEMPRE.
+    assert.equal(
+        EXT.boxShadow?.['pub-painel'],
+        '-24px 0 64px rgba(0,0,0,0.6)',
+        'a sombra do painel saiu da camada de tokens — ela é o critério 1 da `188-REGUA.md`',
+    );
+
+    // ⚠️ IGUALDADE DE CONJUNTO, não contagem: arquivo que usa e não está na lista
+    // cai aqui, e entrada na lista que ninguém usa também.
+    assert.deepEqual(
+        jsxQueUsamRel('shadow-pub-painel'),
+        [...QUEM_USA_SHADOW_PUB_PAINEL].sort(),
+        'quem escreve `shadow-pub-painel` divergiu de QUEM_USA_SHADOW_PUB_PAINEL:'
+        + ' acrescente o arquivo à lista com o plano dono e a medida, ou pare de usar a sombra',
+    );
+
+    // ⚠️ Lista que aponta para caminho fantasma "prova" cobertura medindo NADA —
+    // e entrada morta é linha morta (learnings §4b.1).
+    assert.deepEqual(
+        QUEM_USA_SHADOW_PUB_PAINEL.filter((rel) => !existsSync(resolve(RAIZ, rel))),
+        [],
+        'caminho fantasma em QUEM_USA_SHADOW_PUB_PAINEL',
+    );
+
+    // ⚠️ CONTROLE DA SONDA, nas DUAS direções: ela ACHA uma classe que existe
+    // (`bg-pub-raised-0`, 1 `.jsx` medido) e NÃO acha uma `pub-*` inventada. Sem
+    // isto, a igualdade de conjunto acima passaria com `jsxQueUsamRel` cega
+    // devolvendo sempre `[]` — e a lista teria de estar vazia para casar.
+    assert.ok(jsxQueUsamRel('bg-pub-raised-0').length > 0, 'a sonda de uso está CEGA: nem o controle `bg-pub-raised-0` ela acha');
+    assert.deepEqual(jsxQueUsamRel('shadow-pub-isca-188a'), [], 'a isca `shadow-pub-isca-188a` virou classe de verdade — troque a isca');
+
+    // ⚠️ ISCA INVERTIDA — o precedente TROCADO pela Fase 188 (ver o bloco acima).
+    // Quando alguém animar o painel com esta curva, este caso reprova e manda
+    // trocar o precedente. De propósito.
+    assert.equal(
+        EXT[PRECEDENTE_SEM_USO.camada]?.[PRECEDENTE_SEM_USO.chave],
+        PRECEDENTE_SEM_USO.valor,
+        'o precedente saiu da camada de tokens — escolha outro token DECLARADO e sem uso',
+    );
+    assert.deepEqual(
+        jsxQueUsamRel(PRECEDENTE_SEM_USO.classe),
+        [],
+        `alguém passou a usar \`${PRECEDENTE_SEM_USO.classe}\` — troque o precedente desta isca invertida`,
+    );
+});
+
 // ───────────────────────────────────────────────────────────────────────────────
 // 2. A CAMADA DO CSS — por token, com skip NOMEADO no que nenhum `.jsx` usa.
 // ───────────────────────────────────────────────────────────────────────────────
@@ -320,6 +435,18 @@ function jsxQueUsam(classe) {
     return todosOsJsx(DIR_JSX).filter((abs) => re.test(readFileSync(abs, 'utf8')));
 }
 
+/**
+ * O mesmo, em caminho RELATIVO à raiz e com `/` — é a forma que as listas
+ * constantes deste arquivo declaram, e a única comparável entre máquinas.
+ * ⚠️ `relative()` devolve `\` no Windows; sem a troca a igualdade de conjunto
+ * falharia por separador e pareceria divergência de lista.
+ */
+function jsxQueUsamRel(classe) {
+    return jsxQueUsam(classe)
+        .map((abs) => relative(RAIZ, abs).split('\\').join('/'))
+        .sort();
+}
+
 test('TOK-187 (CSS) — cada token novo GERA regra com o valor certo, ou pula NOMEADO', async (contexto) => {
     if (CSS.motivo) {
         contexto.skip(CSS.motivo);
@@ -350,14 +477,35 @@ test('TOK-187 (CSS) — cada token novo GERA regra com o valor certo, ou pula NO
         }
 
         // ⚠️ ISCA INVERTIDA — o PRECEDENTE que torna honesto todo `skip` deste
-        // teste: `shadow-pub-painel` existe na camada desde a Fase 177, nenhum
-        // `.jsx` o usa, e por isso ele NÃO está no CSS. Prova que "token no
-        // config e ausente do CSS" é um estado REAL do projeto, e não a sonda
-        // quebrada. Se um dia alguém usar `shadow-pub-painel` num `.jsx`, este
-        // caso reprova e manda trocar o precedente — de propósito.
-        assert.equal(EXT.boxShadow?.['pub-painel'], '-24px 0 64px rgba(0,0,0,0.6)');
-        assert.equal(jsxQueUsam('shadow-pub-painel').length, 0, 'alguém passou a usar `shadow-pub-painel` — troque o precedente desta isca invertida');
-        assert.deepEqual(regrasDe('shadow-pub-painel'), [], 'o precedente apareceu no CSS sem nenhum .jsx usá-lo');
+        // teste. ⚠️⚠️ **REAPONTADO PELA FASE 188 (ver o bloco de cirurgia acima
+        // de `QUEM_USA_SHADOW_PUB_PAINEL`):** era `shadow-pub-painel`, que o
+        // plano 188-07 passou a usar legitimamente; agora é `ease-pub-painel` —
+        // o MESMO token na camada `transitionTimingFunction`, declarado no
+        // config, sem NENHUM `.jsx` e por isso AUSENTE do CSS. Prova que "token
+        // no config e ausente do CSS" é um estado REAL do projeto, e não a sonda
+        // quebrada. Quando alguém animar o painel com esta curva, este caso
+        // reprova e manda trocar o precedente — de propósito.
+        assert.equal(EXT[PRECEDENTE_SEM_USO.camada]?.[PRECEDENTE_SEM_USO.chave], PRECEDENTE_SEM_USO.valor);
+        assert.equal(jsxQueUsam(PRECEDENTE_SEM_USO.classe).length, 0, `alguém passou a usar \`${PRECEDENTE_SEM_USO.classe}\` — troque o precedente desta isca invertida`);
+        assert.deepEqual(regrasDe(PRECEDENTE_SEM_USO.classe), [], 'o precedente apareceu no CSS sem nenhum .jsx usá-lo');
+
+        // ⚠️⚠️ E O LADO DE CÁ, que a Fase 188 ACRESCENTOU: agora que a lista
+        // `QUEM_USA_SHADOW_PUB_PAINEL` é NÃO-VAZIA, a sombra TEM de estar no CSS
+        // com o valor certo. Antes este token era prova de ausência; hoje é prova
+        // de PRESENÇA, e as duas direções da sonda ficam cobertas no mesmo caso.
+        // ⚠️ O cssnano come o zero da frente (normalização (ii)): `.6`, não `0.6`.
+        assert.ok(QUEM_USA_SHADOW_PUB_PAINEL.length > 0, 'QUEM_USA_SHADOW_PUB_PAINEL esvaziou — então o token voltou a ser candidato a precedente sem uso');
+        const doPainel = regrasDe('shadow-pub-painel');
+        assert.equal(
+            doPainel.length,
+            1,
+            `\`shadow-pub-painel\` é escrito por ${QUEM_USA_SHADOW_PUB_PAINEL.length} .jsx e NÃO está no CSS — rode \`npm run build\``,
+        );
+        assert.match(
+            doPainel[0],
+            /--tw-shadow:\s*-24px 0 64px rgba\(0,0,0,\.6\)/,
+            `a sombra do painel compilou com o valor ERRADO: ${doPainel[0]}`,
+        );
     });
 
     for (const token of TOKENS_NOVOS) {
