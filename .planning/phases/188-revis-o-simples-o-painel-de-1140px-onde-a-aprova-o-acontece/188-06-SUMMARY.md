@@ -7,7 +7,7 @@ partida: 091340b6
 commits:
   - 1f2dbe44  # feat(188-06) preco salvo, conferir alteracao, frete + o TRANSPORTE da simulacao
   - 4c3dde27  # feat(188-06) ajuste por ESCOPO, resolver e a excecao
-  - (este)    # docs(188-06) a SUMMARY + a §P do FID01
+  - ece8d674  # docs(188-06) a SUMMARY + a §P do FID01
 requires:
   - AndamentoDaOfertaService     # a UNICA PORTA dos 8 estados / 13 transicoes (Fase 186)
   - AprovacaoDaOfertaService     # conferirAlteracao / confirmarFrete / registrarPrecoSalvo / registrarMudanca (Fase 186)
