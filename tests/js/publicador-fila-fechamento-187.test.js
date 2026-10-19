@@ -137,6 +137,10 @@ const JSX_DEPOIS_DA_187 = [
     `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`,
     `${DIR_APROV}/SimulacaoDePreco.jsx`,
     `${DIR_APROV}/ComparacaoComAIrma.jsx`,
+    // Fase 188, plano 10 — as PENDÊNCIAS com o botão de correção de cada uma (os
+    // nove destinos LIDOS do servidor) e o RODAPÉ FIXO de 66px com os quatro
+    // botões e o motivo, onde vive o `disabled=` de "Aprovar para publicação".
+    `${DIR_APROV}/PendenciasDoPainel.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

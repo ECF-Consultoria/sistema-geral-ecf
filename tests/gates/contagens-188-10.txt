@@ -1,0 +1,312 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-10 — A TELA: AS PENDÊNCIAS com o
+# SEU botão de correção levando ao LUGAR CERTO (os nove destinos LIDOS do
+# servidor) e o RODAPÉ FIXO de 66px com os quatro botões e o motivo, onde vive o
+# `disabled=` de "Aprovar para publicação".
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-10 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-10`, E NÃO `10`. O número NU resolve
+# `contagens-186-10.txt` — que **NÃO EXISTE** (a Fase 186 tem nove planos), e o
+# harness ABORTA com *"manifesto nao existe"*. ⚠️ Nas waves cujo número EXISTE na
+# 186 o efeito é pior: ele resolve o manifesto da fase ERRADA **em silêncio**.
+# Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos da Fase 186
+# são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os casos 15 e 16
+# do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA (`188-REGUA.md` §13) — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `pendencias-e-rodape`, e **manifesto sem o id
+# ABORTA**. ➡️ As DUAS tarefas deste plano ACRESCENTAM aqui, cada uma **antes do
+# seu próprio verify**, e os DOIS `.jsx` entram em `ARQUIVOS_NOVOS`
+# (`tests/js/publicador-vocabulario-novo.test.js`) **na MESMA tarefa que os cria**.
+#
+# ⚠️ E eles entram TAMBÉM em `JSX_DEPOIS_DA_187`
+# (`tests/js/publicador-fila-fechamento-187.test.js`): são **DUAS** escriturações
+# para `aprovacao/`, e isso é DELIBERADO — o último conserto da família RECUSOU
+# criar uma terceira e apontou o gate do fechamento para a INVARIANTE em vez de
+# copiar 28 nomes. Declarar numa e esquecer a outra **REPROVA**, e é esse o
+# comportamento certo.
+#
+# ⚠️ O que esta wave **NÃO** mexeu, e por que — DECLARADO em vez de
+#   silenciosamente omitido:
+#   · `SLOTS_DE_NO_DEPOIS_DA_187` (três pontas: `publicador-fila-cabecalho-187`,
+#     `publicador-fila-proximo-187` e `FilaDeAprovacaoRotaTest.php`) — ela **não
+#     abre `isValidElement(` novo NA PÁGINA**. Os slots novos `pendencias` e
+#     `rodape` nascem em `PainelDeRevisao.jsx`, que não é a página, e viajam por
+#     expressão (`pendencias={noPendencias}`), exatamente como `colunaDeFotos` e
+#     `colunaDePreco` desde a 188-07;
+#   · `ESTADO_LOCAL_DA_PAGINA` (`publicador-fila-filtros-187.test.js`) — ela
+#     **não acrescenta `useState(` na página**: os modais são das waves 188-11/12,
+#     e sem eles não há estado de modal a guardar. Há asserção neste gate
+#     cobrando que nenhum `.jsx` deste plano tenha `useState(`;
+#   · `QUEM_USA_SHADOW_PUB_PAINEL` (`publicador-fila-tokens-187.test.js`) —
+#     nenhum `.jsx` desta wave usa o token; há asserção cobrando;
+#   · `LIBERADOS_DEPOIS_DA_187` — **NENHUM tamanho novo**. Os `text-[Npx]`
+#     realmente escritos são `10.5 · 12 · 12.5 · 13 · 13.5 · 15`, e os SEIS já
+#     estavam na lista (o `21` da 188-01 não é usado aqui). Há sub-teste cobrando
+#     isso por MEDIÇÃO dos `text-[Npx]`, não por leitura;
+#   · `VARRIDOS_DECLARADOS` — nenhum `.jsx` novo em `publicacoes/`, `identidade/`
+#     ou `visaogeral/`; e `aprovacao/` ali aponta para a invariante, não para lista.
+#
+# ⚠️ E os ids de OUTRAS fases cujos arquivos esta wave TOCOU foram RE-MEDIDOS,
+#   um por invocação, com número MEDIDO (ver a §BASELINES da SUMMARY):
+#   · `fechamento-arquivos-e-manifestos` (`contagens-187-11.txt`, `tests=6`) —
+#     **NÃO mudou**: as listas moram DENTRO de um `test()`, e acrescentar entrada
+#     não cria caso novo. Medido ANTES (6) e DEPOIS (6);
+#   · `gate-rename` (`contagens-186-01.txt`, `tests=23`) — **NÃO mudou**: aquele
+#     gate lê `JSX_DEPOIS_DA_187` como INVARIANTE de `aprovacao/`, e a contagem
+#     não depende de quantos arquivos há;
+#   · `vocabulario-tamanhos` — **MUDOU por construção** (um sub-teste por arquivo
+#     varrido), e por isso a forma é `>=`. Ver o bloco dele abaixo.
+#   ⚠️ **Nenhum número foi SUBIDO para calar gate, e nenhum foi rebaixado para
+#   contagem.**
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ OS DOIS REGIMES DE `pendencias-e-rodape`
+# ═══════════════════════════════════════════════════════════════════════════════
+# A camada de CSS construído deste gate só roda quando o `mtime` do CSS do
+# manifest SUPERA o `mtime` dos `.jsx` deste plano. Durante a campanha de MUTAÇÃO
+# o arquivo mutado fica mais novo que o CSS, a camada cai em `skip` NOMEADO e a
+# contagem muda — mesma mecânica medida nas waves 188-07, 188-08 e 188-09.
+#
+# ⚠️ Sem os DOIS regimes a campanha de mutação **aborta na 1ª execução** ou marca
+# "SOBREVIVEU" por um motivo que **NÃO é o código** (learnings §4 caso 11).
+# ⚠️ E `cp -p` **preserva o `mtime`**, então a restauração da cópia devolve o
+# regime pristino sem precisar de `npm run build` — mas o `cp` de ida NÃO
+# preserva, e é por isso que `npm run build` vem DEPOIS da mutação.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ `vocabulario-tamanhos` EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AQUI
+# ═══════════════════════════════════════════════════════════════════════════════
+# A regra é **quem roda, declara** (`188-REGUA.md` §6): este plano roda o GATE-03
+# (ele tem `.jsx` novos), então ele declara o id na SUA PRÓPRIA LINHA.
+#
+# ⚠️ A FORMA É `>=` porque a contagem **cresce por construção** — o gate roda
+# **7** sub-testes por arquivo varrido em `ARQUIVOS_NOVOS`/`DIRETORIOS_FECHADOS`,
+# e cada `.jsx` novo a aumenta. Os dez manifestos da 187 cravaram `>=443`; a
+# 188-01 mediu `>=548`; a 188-07, `>=569`; a 188-08, `>=597`; a 188-09, `>=632`.
+# **MEDIDO nesta máquina em 19/10/2026, nos DOIS pontos desta wave:**
+#   · **639** com o `.jsx` da tarefa 1 (632 + 1 × 7);
+#   · **646** com o `.jsx` da tarefa 2 (639 + 1 × 7) — e a soma fecha.
+# ➡️ O piso é o MEDIDO, e o `>=` existe porque teste novo só SOMA — o que o piso
+# pega é arquivo que não carrega, `SyntaxError`, ou teste que DESAPARECEU.
+# ⚠️ O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também roda
+# OUTROS arquivos — foi o id COMPOSTO que fez a wave 187-05 reprovar dois ids de
+# outras waves e exigir consertar quatro manifestos. Há asserção neste gate
+# provando que a linha dele cita **exatamente UM** arquivo.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ BIJEÇÃO E HOMÔNIMO
+# ═══════════════════════════════════════════════════════════════════════════════
+# · id ↔ `<verify>`: os DOIS ids abaixo aparecem em `<verify>` do `188-10-PLAN.md`
+#   (`pendencias-e-rodape` nas DUAS tarefas; `vocabulario-tamanhos` na tarefa 2),
+#   e todo id usado por um `<verify>` daquele plano está declarado aqui. **As duas
+#   direções, zero órfão.**
+# · id ↔ teste: todo `test()` do arquivo de gate casa o id `pendencias-e-rodape`
+#   (modo `js` roda o ARQUIVO inteiro), e há sub-teste cobrando que **todo** nome
+#   de teste termine em `188_10`.
+# · ⚠️⚠️ **UM ID POR ARQUIVO DE GATE, no modo `js`.** O harness roda o ARQUIVO
+#   INTEIRO: dois ids sobre o mesmo arquivo dariam a MESMA contagem duas vezes e
+#   **nenhum mediria a sua metade** — gate decorativo por construção, medido na
+#   187-08. Há asserção neste gate provando isso sobre o manifesto.
+# · ⚠️ **Nenhum id `php` neste manifesto**, e isso é DECLARADO: o `--filter` do
+#   PHPUnit (regex NÃO ANCORADO) só existe no modo `php`, então a colisão de
+#   homônimo **não tem onde acontecer** aqui. O gate deste plano prova o que é
+#   VERDADE no lugar disso: todo nome de teste do arquivo termina em `188_10`, e
+#   há asserção cobrando a ausência de id `php` — se um dia entrar, aquela sonda
+#   vira a de `--filter`. ⚠️ E o expansor de alternância está testado contra
+#   `test_(a|b)_188_10`, que é o furo MEDIDO pela wave 188-05
+#   (`/test_[A-Za-z0-9_]+/` **não casa** a forma de alternância e deu `SEM_ID=14`
+#   acusando trabalho CORRETO).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: as pendências, cada uma com o SEU botão de correção ────────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **CRITÉRIO 9 — O DESTINO** — a tela decidindo para onde vai cada
+#      correção, em vez de OBEDECER o `destino` que o servidor resolveu. Um
+#      `switch` por chave de bloqueio aqui seria a **SEGUNDA VERDADE**, e a
+#      divergente só apareceria NO CLIQUE. ➡️ A sonda procura as NOVE chaves de
+#      bloqueio na fonte SEM COMENTÁRIO (nenhuma pode aparecer) **e** prova que os
+#      QUATRO tipos de destino levam ao lugar certo, cada um com a sua ponta
+#      medida. ⚠️ Com ISCA nas duas direções: as nove chaves ESTÃO no servidor, e
+#      os quatro tipos CERTOS continuam produzindo ação;
+#   2. ⚠️⚠️ **`frete_ausente` TEM DOIS DESTINOS** (desvio declarado, medido pela
+#      wave 188-05): quando o que falta é o CUSTO do produto a 186 troca a
+#      correção para "Solicitar ajuste" e o destino acompanha. Cravar o modal de
+#      frete nessa chave faria o RÓTULO apontar para um lugar e o DESTINO para
+#      outro — exatamente o que VOC-04 existe para impedir;
+#   3. ⚠️⚠️ **PERGUNTA-188-B** — destino `null` desenhando botão. Os dois `null`
+#      (`ajuste_em_aberto` e `titulo_longo`) levariam à revisão detalhada, cuja
+#      rota é da **Fase 190/191** e **não existe** (`routes/mlb_anuncios.php:491`).
+#      ➡️ ZERO botão **e o TEXTO continuando a aparecer**, provado com os três
+#      textos. ⚠️ Mais ZERO `onClick` vazio e ZERO `disabled` decorativo — as duas
+#      formas foram OFERECIDAS e RECUSADAS. ⚠️ Com ISCA: a MESMA pendência COM
+#      destino produz botão, senão o caso passaria com a tela nunca desenhando
+#      botão nenhum;
+#   4. ⚠️⚠️ **AS DUAS CORES DE `fotos_a_conferir`** — o ramo mais fácil de omitir
+#      da cadeia (`:1295`: `(b.k === 'photos' && inf.alerts.length)`), porque os
+#      outros três são por chave FIXA. ➡️ A **MESMA chave** é testada nas DUAS
+#      cores, e as duas têm de sair DISTINTAS: duas iguais apagariam a diferença
+#      entre *"há alerta automático"* e *"só falta conferir"*. ⚠️ Mais a prova de
+#      que a tela LÊ a severidade em vez de recalculá-la;
+#   5. ⚠️⚠️ **`hasFix && live`** (`:1295`) — e a **FIXTURE QUE DISCRIMINA**: o
+#      payload chega com `destino`/`correcao` PREENCHIDOS e `live: false`. O
+#      servidor já os zera fora do `live`, então **sem esse payload contraditório
+#      o gate mediria o SERVIDOR** e a guarda da tela ficaria INOBSERVÁVEL — foi
+#      exatamente a sobrevivente da wave 188-09. ⚠️ Mais `live` por FORMA (só
+#      `true`: `'true'`, `1` e `{}` são verdadeiros em JS e não podem destravar);
+#   6. ⚠️⚠️ **D7 — COR NUNCA É O ÚNICO SINAL** — item com cor e sem texto. ➡️ Os
+#      NOVE saem com TEXTO e com GLIFO, e item sem texto **não é desenhado**;
+#   7. ⚠️⚠️ **`:708` × O RODAPÉ** — a frase verde da SEÇÃO confundida com
+#      `VocabularioDoPortao::TUDO_CONFERIDO`. São **DUAS frases, em dois lugares
+#      da MESMA tela**, e o protótipo as escreve distintas: esta explica O QUE foi
+#      conferido, a do rodapé é o veredicto. Confundi-las apagaria uma das duas;
+#   8. ⚠️⚠️ **CHAVE AUSENTE × LISTA VAZIA** — sem a lista a seção **não é
+#      desenhada** (não se sabe); com a lista vazia ela **diz** que não há.
+#      Afirmar "nada bloqueia" sem dado seria a tela mentindo numa tela em que
+#      **aprovar JÁ PUBLICA e não há desfazer**;
+#   9. ⚠️⚠️ **T-188-92 — `tipo` DESCONHECIDO** virando clique morto. ➡️ Tipo,
+#      modal e ação fora das listas FECHADAS dão **ZERO botão** (inclusive o
+#      quase-igual: `fret`, `frete2`, `FRETE`, `ajuste`), nunca um botão que chama
+#      `undefined` — ele pareceria funcionar e não faria nada;
+#  10. ⚠️⚠️ **CRITÉRIO 17 / COL-04 / W11 — O HELPER ÚNICO** — escrita sem
+#      `versao_esperada`. A chave é **OPCIONAL no corpo** da action, então
+#      OMITI-LA faz `exigirVersao()` receber `null` e **LIBERAR** a escrita, que é
+#      literalmente *"sobrescrever em silêncio"*. ➡️ A chamada é GRAVADA pelo stub
+#      e o corpo é conferido. ⚠️ Mais a lista CONSTANTE de ausência de
+#      `router.post` direto (com isca que tolera espaço: `router . post(`), e a
+#      recusa com `0`/negativo/`'459'`/`1.5` — **`0` é id plausível**, e com ele a
+#      escrita sairia para uma rota que não existe;
+#  11. ⚠️ **A GEOMETRIA** — por **IGUALDADE DE CONJUNTO** de classes, elemento por
+#      **ÁRVORE COM ÍNDICE ABSOLUTO** (nunca `indexOf` de classes: QUATRO gates
+#      deste projeto mediam o irmão errado). ⚠️⚠️ Com a armadilha ESCRITA:
+#      `min-h-[34px]` **CONTÉM** `h-[34px]`, e a sonda prova as DUAS direções
+#      (tem o `min-h`, **não** tem o `h-`) mais a premissa (`includes` não
+#      distingue). ⚠️ E a prova de que `:705` e `:590` continuam IDÊNTICOS — eles
+#      foram MEDIDOS idênticos byte a byte no protótipo, e as duas constantes
+#      ficam PRÓPRIAS para que uma divergência futura seja VISÍVEL em vez de
+#      automática;
+#  12. ⚠️⚠️ **AS DUAS OMISSÕES MEDIDAS NESTA WAVE** — a §E **não cita**
+#      `display:grid;place-items:center` em `:703` nem no glifo de `:708`, e é ele
+#      que CENTRA o `!` e o `✓` dentro do círculo de 18px. Sem ele os dois glifos
+#      encostam no canto. ➡️ Asserido no protótipo **e** no CSS construído;
+#  13. ⚠️ **`font-[800]` e NÃO `font-extrabold`** — o GATE-03 PROÍBE a escala
+#      nomeada, e `:703`/`:708` medem `font-weight:800`. ➡️ O valor arbitrário
+#      entrega o MESMO peso, e há prova no CSS CONSTRUÍDO de que ele COMPILA.
+#      ⚠️ Com ISCA INVERTIDA: a sonda de peso **não pode** reprovar `font-[800]`,
+#      que é o conserto CERTO;
+#  14. ⚠️⚠️ **A TELA PRETA** — 6 campos × 17 formas adversas, 15 formas de lista
+#      (inclusive **objeto comum no meio**, que faz o React LANÇAR), a prop
+#      inteira, os handlers, **e TAMBÉM no CLIQUE** (`renderToStaticMarkup` **não
+#      dispara `onClick`**, e a última tela preta deste projeto foi NO CLIQUE).
+#      `doesNotMatch` de `[object Object]|NaN|undefined|Invalid Date`, e **nunca
+#      `String()`/`JSON.stringify()` na mensagem de asserção** (eles lançam/mentem
+#      com `{toString: null}`). ⚠️ E o handler que LANÇA **não é engolido**:
+#      engolir deixaria a pessoa achando que a correção aconteceu;
+#  15. ⚠️⚠️ **ROLLUP** — flag de escopo do componente lida dentro do `.map()`. O
+#      Rollup a ELIMINA e o bundle sai com `ReferenceError`. ➡️ A sonda lê os
+#      identificadores da expressão do `.map()` e exige que todos sejam
+#      **parâmetro** ou prop, e o BUNDLE de verdade renderiza;
+#  16. ⚠️ **TERRITÓRIO** — `localStorage`, "Restaurar dados de exemplo",
+#      `String(`, `JSON.stringify(`, hex cru (TOK-15), os tokens VETADOS de
+#      FID-04, `text-sm`/`text-xs`/`text-xl` (FID-03), as Fases **189**/**192**
+#      antecipadas, o segundo passo (decisão 1), peça nova em `.js` (⚠️ o
+#      invariante CERTO é *"nenhuma PEÇA nova sob `resources/` é `.js`"* — a
+#      187-11 mediu que *"nenhum arquivo novo é `.js`"* era literalmente FALSO),
+#      T-188-SC (lockfile intocado), e os INTOCÁVEIS com `numstat` VAZIO. ⚠️ A
+#      ISCA da sonda de `numstat` é a ÁRVORE VAZIA do git
+#      (`4b825dc642cb6eb9a060e54bf8d69288fbee4904`), e **não** "um arquivo que
+#      esta wave alterou": essa segunda forma é **vazia por construção DEPOIS DO
+#      COMMIT** e o gate viraria falso positivo no dia seguinte. ⚠️ E os arquivos
+#      que uma wave IRMÃ legitimamente edita ficam em `SOMENTE_POR_CONTRATO`, com
+#      asserção impedindo que voltem para a lista de diff;
+#  17. ⚠️ **AS LISTAS CONSTANTES** — `.jsx` deste plano fora de `ARQUIVOS_NOVOS`
+#      (o GATE-03 passaria POR OMISSÃO, VOC-07) ou fora de `JSX_DEPOIS_DA_187` (o
+#      conjunto do diretório divergiria), e tamanho usado FORA da lista permitida.
+#      ⚠️ Com **sonda NÃO-CEGA antes** de cada leitura de literal: bloco vazio
+#      casaria com qualquer `includes`;
+#  18. ⚠️ **O PROTÓTIPO** — `skip` EXPLÍCITO e NOMEADO quando
+#      `design_handoff_publicador/` não está no disco (ele **NÃO é versionado**).
+#      Dentro dele: os ponteiros de `:699`-`:721` e os SEIS do view-model
+#      reconferidos por LEITURA DA LINHA — ⚠️⚠️ **incluindo os TRÊS que a prosa
+#      errava**: `hasFix`/cores é **`:1295`** (não `:1304`), o `reason`/`join` é
+#      **`:1297`** (não `:1307`), e os 4 pares de cor do aprovar são **`:1307`**
+#      (não `:1143`, que é o `freightMissing`) —, mais
+#      `cursor`/`white-space`/`text-overflow` em **colunas próprias** (⚠️
+#      `white-space:nowrap` foi omitido SETE vezes na Fase 187, TRÊS como PRIMEIRA
+#      propriedade da linha, e aqui ele é a primeira de CINCO), com ISCA nas duas
+#      direções;
+#  19. ⚠️ **O CSS CONSTRUÍDO** com as OITO normalizações — token sólido saindo em
+#      `rgb(R G B / var(…))` e não em hex, a opacidade em `background` saindo em
+#      **hex de 8 dígitos** (`0.14` → `0x24`), o seletor **escapado** e o escape
+#      **GERAL**. ⚠️ Com **ISCA MEDIDA** (as quatro foram conferidas AUSENTES
+#      contra o CSS de verdade — `grid-cols-6` e `left-[37.5%]` PARECIAM
+#      inventadas e saíram PRESENTES na 188-08, a segunda **gerada por um
+#      COMENTÁRIO**) e **CONTROLE POSITIVO** (`duration-[180ms]` não compila ×
+#      `duration-200` compila — sem ele o gate não distingue "o arbitrário não
+#      compila" de "a sonda está cega").
+#
+# OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026 por sonda de `mtime`:
+#   · **29** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#     os 25 testes de topo mais os 4 sub-testes da camada de CSS (ela entra com os
+#     seus 4, e o `test()` de topo dela não conta separado);
+#   · **25** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#     o `cp` atualiza o `mtime`): a camada cai em `skip` NOMEADO e os 4 sub-testes
+#     dela não entram na contagem (`1 skipped`, com a razão ESCRITA).
+#   ⚠️ `# tests` conta sub-teste, e é por isso que o número MUDA — não é teste que
+#   desapareceu. ⚠️ Os DOIS foram MEDIDOS antes da campanha, e o hash do CSS do
+#   manifest saiu `assets/app-*.css` lido **pelo JSON** e nunca por `grep` (o hash
+#   sai **com hífen**).
+pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  tests=29,25
+
+
+# ── TAREFA 2: o GATE-03 (vocabulário novo fechado) ──────────────────────────
+
+# ⚠️⚠️ **ESTE ID É DECLARADO EM LINHA PRÓPRIA, e isso foi MEDIDO, não deduzido:**
+#   grep -l "vocabulario-tamanhos" tests/gates/contagens-*.txt
+#     → os dez manifestos da 187 (`-01` e `-03` … `-11`), mais `contagens-188-01`,
+#       `-07`, `-08` e `-09`, com a linha na MESMA forma nos catorze.
+# ➡️ **Quem roda o GATE-03, declara.** `contagens-187-02.txt`,
+#   `contagens-188-02.txt` e `-03.txt` **NÃO** o declaram, e estão CERTOS: aqueles
+#   planos são só de servidor e não criam `.jsx` nenhum. A regra é **quem roda,
+#   declara** — não *todos declaram*.
+# ⚠️⚠️ **O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também roda
+#   OUTROS arquivos.** Declarar em linha própria **NÃO é** embutir em id composto —
+#   é o oposto, e é o que as dez waves da 187 fizeram. Foi o id **COMPOSTO** que
+#   fez a wave 187-05 reprovar DOIS ids de outras waves e exigir consertar QUATRO
+#   manifestos.
+# ⚠️ **Sem a linha o harness ABORTA** — medido: `verificar-testes.sh 188-07
+#   vocabulario-tamanhos` → *"ABORTOU: manifesto nao existe"*.
+#
+# ⚠️⚠️ **A FORMA É `>=`, E O N FOI MEDIDO NA HORA — nunca copiado da 187.** A
+#   contagem **CRESCE POR CONSTRUÇÃO**: 7 sub-testes por arquivo varrido, e cada
+#   `.jsx` novo a aumenta. MEDIDO nesta máquina em 19/10/2026, nos DOIS pontos
+#   desta wave: **639** com o da tarefa 1 (632 + 7) e **646** com o da tarefa 2
+#   (639 + 7). A soma fecha.
+#
+# ⚠️⚠️ **O QUE ESTE ID MEDE, nos DOIS `.jsx` deste plano:** FID-03 (nenhum
+#   `text-sm`/`text-xs`; os seis tamanhos usados já estavam na lista), **os 4
+#   pesos** (400/500/600/700 — e é por isso que os glifos usam `font-[800]`
+#   arbitrário, não `font-extrabold`), FID-04 (zero `ecf-*`, zero `font-display`,
+#   zero `border-white/[0.08]`), **TOK-15** (nenhum hex literal no código),
+#   FID-05 (nenhum breakpoint) e o **`deepEqual` de `DIRETORIOS_FECHADOS`**, que é
+#   o que impede `.jsx` novo de entrar CALADO em `aprovacao/`.
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=639

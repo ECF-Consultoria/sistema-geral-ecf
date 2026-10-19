@@ -425,6 +425,32 @@ const ARQUIVOS_NOVOS = [
     // frase do indisponível) são medidas do protótipo.
     `${DIR_APROV}/SimulacaoDePreco.jsx`,
     `${DIR_APROV}/ComparacaoComAIrma.jsx`,
+    // ═══ ⚠️⚠️ Fase 188, plano 10 — AS PENDÊNCIAS E O RODAPÉ DE 66px ═════════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE OS CRIA** (`188-REGUA.md` §13), pela razão mecânica
+    // escrita nos blocos dos planos 07/08/09 acima: `aprovacao/` está em
+    // `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`, e `.jsx`
+    // no disco fora desta lista deixa o gate VERMELHO na hora — árvore vermelha
+    // no HEAD pode BARRAR DEPLOY. ⚠️ Pré-declarar **não é possível**: `FONTES` lê
+    // todos os caminhos e **LANÇA** com arquivo inexistente.
+    //
+    // ⚠️ `.jsx` nos dois, como todo o diretório: o `content` do
+    // `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`. Estes são a única casa
+    // do círculo de 18px com `grid place-items-center` de `:703`/`:708`, do
+    // `min-h-[34px]` de `:702` e dos QUATRO pares de cor do botão de aprovar de
+    // `:1307` — num `.js` nenhuma delas geraria CSS, e o rodapé sairia sem
+    // geometria **com todo teste de render passando**.
+    //
+    // ⚠️ **FID-03:** `text-[13.5px]` (o rótulo de "Aprovar para publicação",
+    // `:719`), `text-[12.5px]` (o motivo, `:717`), `text-[13px]` (os botões e o
+    // texto da pendência) e `text-[10.5px]` (os dois glifos) são medidas do
+    // protótipo — o passo do Tailwind não tem meio pixel, e `text-sm` (14px)
+    // mudaria o layout. Nenhum tamanho NOVO: os quatro já estão na lista.
+    // ⚠️ **`font-[800]` e NÃO `font-extrabold`** nos glifos de `:703`/`:708`: o
+    // sub-teste 2 deste gate PROÍBE a escala nomeada, e o valor arbitrário
+    // entrega o MESMO peso computado (precedente de `AnelDeProgresso.jsx:67` e
+    // de quatro outros arquivos em produção).
+    `${DIR_APROV}/PendenciasDoPainel.jsx`,
 ];
 
 /**
