@@ -957,4 +957,327 @@ class FotosDoPainelServiceTest extends TestCase
         // ⚠️ A `selecionada` é **a MESMA entrada** da lista — não uma segunda montagem dela.
         $this->assertSame($dentro['imagens'][2], $dentro['selecionada'], 'a selecionada foi montada DUAS vezes');
     }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (7) "Aprovar N sem alerta" — a contagem TEM de ser igual ao que a AÇÃO aprova
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **CRITÉRIO 5 / IMG-05, literal:** *"Aprovar N sem alerta" aprova **SÓ** as pendentes
+     * **SEM** alerta automático — foto com alerta continua para conferência individual.*
+     *
+     * ⚠️ **Se a contagem e a ação divergirem, a pessoa clica *"Aprovar 4"* e 2 são aprovadas** —
+     * exatamente o sintoma que o usuário recusou duas vezes (*"conta e lista TÊM de bater"*). ➡️ A
+     * igualdade é medida contra o **retorno REAL** de `RevisaoDeImagemService::aprovarSemAlerta()`,
+     * na MESMA fixture.
+     *
+     * ⚠️⚠️ **E A SOMA É SOBRE TODOS OS CONJUNTOS, porque a ação recebe UM conjunto por chamada.**
+     * Isto é **aviso medido ao plano 188-05**: chamá-la para um conjunto só aprovaria **menos** do
+     * que o botão promete. Com dois grupos na fixture, uma chamada única dá **menos** que o total —
+     * e é essa a **isca do recorte**.
+     */
+    public function test_a_contagem_sem_alerta_e_IGUAL_ao_que_a_acao_aprova_188_03(): void
+    {
+        $empresa = Company::factory()->create();
+        $quem = \App\Models\User::factory()->create(['name' => 'Rafaela Guedes']);
+
+        $oferta = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $geral = $this->conjunto($oferta);
+        $cor = $this->conjunto($oferta, 'COR:Azul');
+
+        // ⚠️ FIXTURE QUE DISCRIMINA — e ela é de propósito ASSIMÉTRICA entre os dois grupos:
+        //   · `GENERAL`: 1 aprovada · 2 pendentes SEM alerta · 1 pendente COM alerta;
+        //   · `COR:Azul`: 1 pendente SEM alerta · 1 pendente COM alerta · 1 regenerando.
+        // ➡️ "sem alerta" = 3, "com alerta restantes" = 2, pendentes = 5. Com um grupo só, ou com
+        // todas as pendentes limpas, os dois números COINCIDIRIAM com o total e a sonda ficaria cega.
+        $this->imagem($geral, 0, ['estado' => PubAprovacaoImagem::APROVADA]);
+        $this->imagem($geral, 1, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        $this->imagem($geral, 2, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        $this->imagem($geral, 3, [
+            'estado' => PubAprovacaoImagem::PENDENTE,
+            'alertas' => [[PubAprovacaoImagemAlerta::ALTO, 20.0, 30.0]],
+        ]);
+        $this->imagem($cor, 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        $this->imagem($cor, 1, [
+            'estado' => PubAprovacaoImagem::PENDENTE,
+            'alertas' => [[PubAprovacaoImagemAlerta::MEDIO, 40.0, 50.0]],
+        ]);
+        $this->imagem($cor, 2, ['estado' => PubAprovacaoImagem::REGENERANDO]);
+
+        $fotos = $this->servico()->para($oferta);
+
+        // ─── A contagem, e o RÓTULO byte a byte (`:1305`) ────────────────────────────────────
+        $this->assertSame(3, $fotos['sem_alerta']['quantidade'], 'a contagem de "sem alerta" mudou');
+        $this->assertSame('Aprovar 3 sem alerta', $fotos['sem_alerta']['rotulo']);
+        $this->assertSame(['quantidade', 'rotulo'], array_keys($fotos['sem_alerta']));
+
+        // ⚠️ ISCA DO RECORTE: a contagem é **MENOR** que o total de pendentes. Se fossem iguais, a
+        // sonda estaria cega — ela não distinguiria "pendentes" de "pendentes sem alerta".
+        $this->assertSame(5, $fotos['pendentes'], 'a fixture não produziu 5 pendentes');
+        $this->assertLessThan($fotos['pendentes'], $fotos['sem_alerta']['quantidade'], 'ISCA: a contagem é igual ao total de pendentes — ela não filtra alerta');
+
+        // ⚠️ Decisão 8 do usuário: **a tela diz quem ficou de fora e por quê.**
+        $this->assertSame(2, $fotos['com_alerta_restantes'], 'as duas com alerta continuam para conferência individual');
+        $this->assertSame(
+            $fotos['pendentes'],
+            $fotos['sem_alerta']['quantidade'] + $fotos['com_alerta_restantes'],
+            'a soma não fecha: "aprovar N sem alerta" + "N continuam" tem de dar as pendentes',
+        );
+
+        // ─── ⚠️⚠️ A IGUALDADE COM A AÇÃO REAL, somada sobre TODOS os conjuntos ──────────────
+        $acao = app(\App\Services\Publicador\Aprovacao\RevisaoDeImagemService::class);
+
+        $porConjunto = [];
+        foreach (PubAprovacaoConjunto::doRascunho((int) $oferta->rascunho_id)->orderBy('id')->get() as $conjunto) {
+            // ⚠️ Flag DENTRO do laço.
+            $porConjunto[(string) $conjunto->grupo_chave] = $acao->aprovarSemAlerta($conjunto, $quem);
+        }
+
+        $this->assertSame(
+            $fotos['sem_alerta']['quantidade'],
+            array_sum($porConjunto),
+            'a contagem do painel DIVERGIU do que `aprovarSemAlerta()` aprova — a pessoa clicaria "Aprovar N" e outro número seria aprovado',
+        );
+
+        // ⚠️⚠️ **O AVISO AO 188-05, MEDIDO:** uma chamada única (um conjunto) aprova **MENOS** que
+        // o botão promete. Sem este caso, o plano seguinte poderia chamar a ação uma vez e o
+        // sintoma só apareceria em produção.
+        $this->assertSame([PubAprovacaoConjunto::GERAL => 2, 'COR:Azul' => 1], $porConjunto, 'a repartição por grupo mudou');
+        $this->assertLessThan(
+            array_sum($porConjunto),
+            $porConjunto[PubAprovacaoConjunto::GERAL],
+            'ISCA: um conjunto só já aprova o total — a cobertura de TODOS os grupos não é observável nesta fixture',
+        );
+
+        // ⚠️ E a ação aprovou **SÓ** as sem alerta: as duas com alerta continuam `pending`.
+        $aindaPendentes = PubAprovacaoImagem::query()
+            ->whereIn('conjunto_id', [$geral->id, $cor->id])
+            ->where('estado', PubAprovacaoImagem::PENDENTE)
+            ->get();
+        $this->assertCount(2, $aindaPendentes, 'a ação aprovou foto COM alerta');
+        $comAlertaDepois = $aindaPendentes->filter(
+            fn (PubAprovacaoImagem $i): bool => $i->alertas->contains(
+                fn (PubAprovacaoImagemAlerta $a): bool => $a->severidade !== PubAprovacaoImagemAlerta::OK
+            )
+        );
+        $this->assertCount(2, $comAlertaDepois, 'quem continuou pendente não é quem tem alerta');
+
+        // ─── E depois da ação o painel RE-LÊ: o botão SOME e o progresso anda ───────────────
+        $depois = $this->servico()->para($oferta->fresh(['alvo', 'produto']));
+        $this->assertSame(2, $depois['com_alerta_restantes'], 'as com alerta continuam contando depois da ação');
+        $this->assertNull($depois['sem_alerta'], 'sem pendente LIMPA o botão não é desenhado (D4)');
+        $this->assertSame('4 de 6 aprovadas', $depois['progresso'], 'o progresso não acompanhou a aprovação em lote');
+    }
+
+    /**
+     * ⚠️ `sem_alerta` é **`null`** com **N = 0** **ou** fora do `live` — `hasSafe = pend.filter(…)
+     * .length > 0 && inf.live` (`:1305`, remedido: a prosa herdada apontava `:1311`, que é o
+     * `selActions`).
+     *
+     * ⚠️ **Botão sem destino é D4 violado**, e o usuário já exerceu essa régua três vezes.
+     */
+    public function test_sem_alerta_e_nulo_com_zero_e_fora_do_live_e_cobre_TODOS_os_grupos_188_03(): void
+    {
+        $empresa = Company::factory()->create();
+
+        // ─── N = 0: toda pendente TEM alerta ────────────────────────────────────────────────
+        $todasComAlerta = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $conjunto = $this->conjunto($todasComAlerta);
+        $this->imagem($conjunto, 0, ['estado' => PubAprovacaoImagem::APROVADA]);
+        $this->imagem($conjunto, 1, [
+            'estado' => PubAprovacaoImagem::PENDENTE,
+            'alertas' => [[PubAprovacaoImagemAlerta::ALTO, 5.0, 6.0]],
+        ]);
+
+        $semBotao = $this->servico()->para($todasComAlerta);
+        $this->assertNull($semBotao['sem_alerta'], 'N = 0 e o botão foi desenhado');
+        // ⚠️ ISCA: há pendente, e ela TEM alerta — então o `null` não vem de "não há pendente".
+        $this->assertSame(1, $semBotao['pendentes'], 'ISCA: a fixture não tem pendente — o caso mede nada');
+        $this->assertSame(1, $semBotao['com_alerta_restantes'], 'a tela ainda diz que 1 continua para conferência');
+
+        // ─── Fora do `live`: há pendente LIMPA, e o botão continua ausente ───────────────────
+        //
+        // ⚠️ A ISCA DO RECORTE é esta: a MESMA fixture dentro do `live` TEM botão. Sem comparar as
+        // duas, o `null` seria indistinguível de "a fixture não produz N > 0".
+        $naoVivos = [PubAprovacaoOferta::PUBLICADO, PubAprovacaoOferta::PUBLICANDO,
+            PubAprovacaoOferta::APROVADO, PubAprovacaoOferta::PREPARANDO, PubAprovacaoOferta::FALHA];
+        $desenhados = [];
+        foreach ($naoVivos as $andamento) {
+            // ⚠️ Flag DENTRO do laço.
+            $fora = $this->oferta($empresa, $andamento);
+            $c = $this->conjunto($fora);
+            $this->imagem($c, 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+
+            $vm = $this->servico()->para($fora);
+            if ($vm['sem_alerta'] !== null) {
+                $desenhados[] = $andamento;
+            }
+            // ⚠️ E o progresso CONTINUA: fora do `live` a coluna não fica muda.
+            $this->assertSame('0 de 1 aprovadas', $vm['progresso'], "o progresso sumiu em `{$andamento}`");
+        }
+        // ⚠️ **UMA** asserção coletando os infratores — nunca uma por andamento.
+        $this->assertSame([], $desenhados, 'D4: botão "Aprovar N sem alerta" desenhado fora do `live`');
+        $this->assertCount(5, $naoVivos, 'a lista CONSTANTE dos andamentos fora do `live` encolheu');
+
+        // ⚠️ ISCA POSITIVA: dentro do `live`, a MESMA fixture TEM botão.
+        $vivos = [PubAprovacaoOferta::AGUARDANDO_APROVACAO, PubAprovacaoOferta::EM_REVISAO_ECF,
+            PubAprovacaoOferta::AJUSTES_SOLICITADOS];
+        $this->assertSame($vivos, PubAprovacaoOferta::LIVE, 'a lista do `live` é LIDA do modelo (AND-05)');
+        $ausentes = [];
+        foreach ($vivos as $andamento) {
+            // ⚠️ Flag DENTRO do laço.
+            $vivo = $this->oferta($empresa, $andamento);
+            $this->imagem($this->conjunto($vivo), 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+
+            if ($this->servico()->para($vivo)['sem_alerta'] === null) {
+                $ausentes[] = $andamento;
+            }
+        }
+        $this->assertSame([], $ausentes, 'ISCA: dentro do `live` o botão NÃO apareceu — a sonda do `live` está cega');
+
+        // ─── ⚠️⚠️ A COBERTURA SOBRE **TODOS OS GRUPOS** (decisão 5 do usuário) ─────────────
+        //
+        // ⚠️ `ResolvedorGruposImagem::chaveDoGrupo()` dá um grupo por valor de eixo que define foto
+        // **mais o `GENERAL`**. Com QUATRO grupos, a contagem do grupo da selecionada seria 1 —
+        // então um serviço que lesse só o grupo da imagem aberta REPROVA aqui.
+        $quatro = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $grupos = [PubAprovacaoConjunto::GERAL, 'COR:Azul', 'COR:Verde', 'COR:Preto'];
+        foreach ($grupos as $grupo) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->imagem($this->conjunto($quatro, $grupo), 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        }
+
+        $deQuatro = $this->servico()->para($quatro);
+        $this->assertCount(4, $grupos, 'a fixture dos grupos encolheu');
+        $this->assertSame(4, $deQuatro['sem_alerta']['quantidade'], 'a contagem cobriu só UM grupo, não todos');
+        $this->assertSame('Aprovar 4 sem alerta', $deQuatro['sem_alerta']['rotulo']);
+        $this->assertSame('0 de 4 aprovadas', $deQuatro['progresso'], 'o progresso cobriu só um grupo');
+        $this->assertCount(4, $deQuatro['imagens'], 'a galeria cobriu só um grupo');
+        // ⚠️ E o `GENERAL` vem PRIMEIRO (a ordem da 186/187, lida — nunca redefinida).
+        $this->assertTrue($deQuatro['imagens'][0]['grupo_geral'], 'o `GENERAL` deixou de vir primeiro');
+        $this->assertSame(
+            [true, false, false, false],
+            array_column($deQuatro['imagens'], 'grupo_geral'),
+            'a ordem dos grupos mudou',
+        );
+
+        // ⚠️⚠️ **DIVERGÊNCIA ESTRUTURAL DECLARADA:** com 4 grupos há **4** principais (a capa é do
+        // CONJUNTO: `pub_aprovacao_conjuntos.principal_imagem_id`), enquanto o protótipo tem UMA
+        // (`D.main[set]`). O `#n` da coluna é o índice GLOBAL; o `rotulo` é por grupo.
+        $this->assertSame([true, true, true, true], array_column($deQuatro['imagens'], 'principal'), 'a capa é por GRUPO — 4 grupos, 4 principais');
+        $this->assertSame([1, 2, 3, 4], array_column($deQuatro['imagens'], 'posicao'), 'a `posicao` da coluna é o índice GLOBAL');
+        $this->assertSame(
+            [GaleriaDaOfertaService::ROTULO_CAPA, GaleriaDaOfertaService::ROTULO_CAPA,
+                GaleriaDaOfertaService::ROTULO_CAPA, GaleriaDaOfertaService::ROTULO_CAPA],
+            array_column($deQuatro['imagens'], 'rotulo'),
+            'o `rotulo` é o da galeria da 187, derivado da `posicao` DO BANCO (por conjunto)',
+        );
+    }
+
+    /**
+     * ⚠️⚠️ **O CUSTO: FIXO, e não cresce com imagem nem com GRUPO.**
+     *
+     * ⚠️ `temAlerta()` e `$revisao->imagem` lidos um por um fariam **uma consulta POR IMAGEM** — o
+     * N+1 clássico (T-188-23). E uma consulta **por grupo** multiplicaria a coluna pelo número de
+     * variações: é a dívida que `BloqueiosDaOfertaService` já declarou e evitou.
+     *
+     * ⚠️⚠️ **E ESTE CASO TRAVA UM ACHADO DO FRAMEWORK, MEDIDO AO SER ESCRITO.** A primeira redação
+     * desta wave deu a `PainelDeRevisaoService::$fotos` o default `null`, para não mexer no gate de
+     * custo do 188-02 (que constrói o serviço com **três** argumentos posicionais). ⚠️ **Este gate
+     * REPROVOU**, e o motivo é `Container::resolveClass()`
+     * (`vendor/laravel/framework/src/Illuminate/Container/Container.php:1327`-`:1331`): **havendo
+     * default e não havendo binding explícito, o container devolve o DEFAULT** — *"to avoid
+     * overriding any of the developer specified defaults"*. ➡️ A dependência **nunca** seria
+     * injetada, e a coluna de fotos sairia de um `app()` **por chamada**: service locator
+     * disfarçado de injeção. **O conserto foi o argumento obrigatório + uma linha no gate do
+     * 188-02**, sem mexer na contagem de asserções daquele manifesto.
+     */
+    public function test_o_CUSTO_da_coluna_de_fotos_nao_cresce_com_imagem_nem_grupo_188_03(): void
+    {
+        $empresa = Company::factory()->create();
+
+        $contar = function (PubAprovacaoOferta $oferta): int {
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            $this->servico()->para($oferta);
+            $consultas = count(\Illuminate\Support\Facades\DB::getQueryLog());
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            return $consultas;
+        };
+
+        // ─── Uma imagem, um grupo ───────────────────────────────────────────────────────────
+        $pequena = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $this->imagem($this->conjunto($pequena), 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        $umaSo = $contar($pequena->fresh(['alvo', 'produto']));
+
+        // ⚠️ ISCA DO CONTADOR: ele conta de verdade. Sem isto, "igual" seria indistinguível de
+        // contador cego devolvendo sempre zero.
+        $this->assertGreaterThan(0, $umaSo, 'ISCA: o contador de consultas devolveu ZERO — ele está cego');
+
+        // ─── Doze imagens em QUATRO grupos ──────────────────────────────────────────────────
+        $grande = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        foreach ([PubAprovacaoConjunto::GERAL, 'COR:Azul', 'COR:Verde', 'COR:Preto'] as $grupo) {
+            // ⚠️ Flag DENTRO do laço.
+            $conjunto = $this->conjunto($grande, $grupo);
+            for ($i = 0; $i < 3; $i++) {
+                $this->imagem($conjunto, $i, [
+                    'estado' => PubAprovacaoImagem::PENDENTE,
+                    'alertas' => [[PubAprovacaoImagemAlerta::ALTO, 10.0 + $i, 20.0 + $i]],
+                ]);
+            }
+        }
+        $grandeOferta = $grande->fresh(['alvo', 'produto']);
+        $doze = $contar($grandeOferta);
+
+        $this->assertCount(12, $this->servico()->para($grandeOferta)['imagens'], 'a fixture grande não produziu 12 imagens');
+        $this->assertSame($umaSo, $doze, 'o custo CRESCEU com o número de imagens/grupos — é o N+1 de T-188-23');
+
+        // ─── ⚠️⚠️ A INJEÇÃO DO PAINEL: OBRIGATÓRIA, E O DEFAULT **NÃO SERVIRIA** ───────────
+        $reflexao = new \ReflectionClass(\App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService::class);
+        $parametros = $reflexao->getConstructor()?->getParameters() ?? [];
+        $this->assertCount(4, $parametros, 'o construtor do painel ganhou ou perdeu dependência');
+        $this->assertSame('fotos', $parametros[3]->getName());
+
+        // ⚠️⚠️ **O INVARIANTE É "SEM DEFAULT", e ele não é estilo:** com default o container
+        // devolveria o DEFAULT (`Container.php:1327`-`:1331`) e a injeção seria uma ILUSÃO.
+        $this->assertFalse(
+            $parametros[3]->isDefaultValueAvailable(),
+            'o 4º parâmetro ganhou default: o container passaria a devolver o DEFAULT e `FotosDoPainelService` nunca seria injetado',
+        );
+        $this->assertFalse($parametros[3]->allowsNull(), '`fotos` anulável esconderia a mesma falha');
+
+        // (a) O container injeta a instância REAL.
+        $propriedade = $reflexao->getProperty('fotos');
+        $propriedade->setAccessible(true);
+        $doContainer = app(\App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService::class);
+        $this->assertInstanceOf(
+            FotosDoPainelService::class,
+            $propriedade->getValue($doContainer),
+            'o container não injetou `FotosDoPainelService` — a coluna de fotos sairia de um `app()` por chamada',
+        );
+
+        // (b) ⚠️ **A PROVA DO ACHADO, em memória, sobre uma classe de MENTIRA** — para que o
+        // próximo executor não tenha de descobrir de novo por que o default foi recusado. A mesma
+        // dependência, com default, **NÃO** é injetada pelo container.
+        $comDefault = new class(null)
+        {
+            public function __construct(public ?FotosDoPainelService $fotos = null) {}
+        };
+        $resolvida = app(get_class($comDefault));
+        $this->assertNull(
+            $resolvida->fotos,
+            'ISCA DO ACHADO: o container passou a injetar classe com DEFAULT — se isto mudar no framework, o docblock do construtor do painel precisa ser revisto',
+        );
+        // ⚠️ E a MESMA classe sem default É injetada — é o par que prova que a causa é o default,
+        // e não "o container não resolve esta classe".
+        $semDefault = new class(app(FotosDoPainelService::class))
+        {
+            public function __construct(public FotosDoPainelService $fotos) {}
+        };
+        $this->assertInstanceOf(FotosDoPainelService::class, app(get_class($semDefault))->fotos, 'ISCA: o container não resolve a classe nem SEM default — a prova do achado é vazia');
+
+        // ⚠️ E NADA foi ao Mercado Livre nesta coluna.
+        $this->assertSame([], $this->chamadas, 'a coluna de fotos fez requisição ao Mercado Livre');
+    }
 }

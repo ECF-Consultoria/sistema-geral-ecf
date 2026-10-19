@@ -222,26 +222,29 @@ class PainelDeRevisaoService
     public const FORA_DA_NAVEGACAO = [PubAprovacaoOferta::PREPARANDO];
 
     /**
-     * ⚠️⚠️ **`$fotos` TEM DEFAULT `null` DE PROPÓSITO, E ISSO FOI MEDIDO — NÃO "SIMPLIFIQUE".**
+     * ⚠️⚠️ **`$fotos` É OBRIGATÓRIO, E A ALTERNATIVA FOI MEDIDA E DESCARTADA — NÃO a torne
+     * anulável "para não quebrar teste".**
      *
-     * O gate de custo do plano 188-02 constrói este serviço **à mão, com TRÊS argumentos
-     * posicionais** (`PainelDeRevisaoServiceTest:1259`: `new PainelDeRevisaoService($espiao,
-     * app(ProximoARevisarService::class), app(AndamentoDaOfertaService::class))`), porque o espião
-     * de `BloqueiosDaOfertaService::para()` é uma **subclasse anônima no teste**. Um quarto
-     * argumento **obrigatório** faria aquele gate — de uma wave JÁ FECHADA, com contagem de
-     * asserções medida no manifesto — morrer com `ArgumentCountError`.
+     * A primeira redação deste plano deu a ela `?FotosDoPainelService $fotos = null`, para não
+     * mexer no gate de custo do 188-02, que constrói este serviço **à mão com três argumentos
+     * posicionais**. ⚠️ **O gate escrito para provar isso REPROVOU, e o motivo está no framework:**
+     * `Container::resolveClass()`
+     * (`vendor/laravel/framework/src/Illuminate/Container/Container.php:1327`-`:1331`) devolve o
+     * **DEFAULT** quando ele existe e a classe **não está explicitamente ligada** — *"to avoid
+     * overriding any of the developer specified defaults"*. ➡️ Com default, o container **nunca**
+     * injetaria `FotosDoPainelService`, e a coluna de fotos sairia de um `app()` **por chamada**:
+     * service locator disfarçado de injeção, e impossível de dublar em teste.
      *
-     * ⚠️ O container **resolve a classe de verdade** mesmo com default (`resolveClass` só cai no
-     * default se a resolução LANÇAR), então `app(PainelDeRevisaoService::class)` recebe o serviço
-     * real; o `?? app(...)` do `para()` só cobre a construção manual. ➡️ **Há gate provando as DUAS
-     * formas de construção**, para que o executor seguinte não troque isto por um parâmetro
-     * obrigatório sem ver o motivo.
+     * ➡️ O conserto certo foi o **argumento obrigatório** aqui + a chamada do gate de custo do
+     * 188-02 passando o quarto argumento (uma linha, **sem mudar a contagem de asserções** daquele
+     * manifesto). **Há gate travando as duas pontas** (o construtor tem 4 parâmetros obrigatórios
+     * **e** o container injeta a instância real).
      */
     public function __construct(
         private BloqueiosDaOfertaService $bloqueios,
         private ProximoARevisarService $proximo,
         private AndamentoDaOfertaService $andamento,
-        private ?FotosDoPainelService $fotos = null,
+        private FotosDoPainelService $fotos,
     ) {}
 
     /**
@@ -295,7 +298,7 @@ class PainelDeRevisaoService
             // **TODOS os grupos do rascunho** (decisão do usuário, 14/10/2026).
             // ⚠️ `contagemDeFotos()` **não** chama `para()` — ele lê o banco. O gate de custo do
             // 188-02 (`para()` UMA vez por oferta) continua valendo, e há caso provando isso.
-            'fotos' => ($this->fotos ?? app(FotosDoPainelService::class))->para($oferta),
+            'fotos' => $this->fotos->para($oferta),
             // ⚠️ NASCE `null`, DECLARADA, com o plano dono — nunca ausente. Ver o docblock.
             'preco' => null,   // plano 188-04
         ];

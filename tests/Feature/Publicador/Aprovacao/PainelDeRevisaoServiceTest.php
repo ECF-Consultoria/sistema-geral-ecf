@@ -1260,7 +1260,16 @@ class PainelDeRevisaoServiceTest extends TestCase
             }
         };
 
-        $servico = new PainelDeRevisaoService($espiao, app(ProximoARevisarService::class), app(AndamentoDaOfertaService::class));
+        // ⚠️ O **QUARTO** argumento (`FotosDoPainelService`, plano 188-03) é obrigatório, e a razão
+        // está no docblock do construtor: com default o container devolveria o DEFAULT
+        // (`Container.php:1327`-`:1331`) e a coluna de fotos sairia de um `app()` por chamada.
+        // ⚠️ Isto NÃO muda a contagem de asserções deste caso — `contagens-188-02.txt` segue igual.
+        $servico = new PainelDeRevisaoService(
+            $espiao,
+            app(ProximoARevisarService::class),
+            app(AndamentoDaOfertaService::class),
+            app(\App\Services\Publicador\Aprovacao\Painel\FotosDoPainelService::class),
+        );
 
         $ofertas = [];
         foreach ([self::CLASSICO, self::PREMIUM, self::CLASSICO] as $i => $tipo) {

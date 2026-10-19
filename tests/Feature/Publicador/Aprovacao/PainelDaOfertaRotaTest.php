@@ -195,10 +195,15 @@ class PainelDaOfertaRotaTest extends TestCase
      */
     private function espiao()
     {
+        // ⚠️ O **QUARTO** argumento (`FotosDoPainelService`, plano 188-03) é obrigatório, e a razão
+        // está no docblock do construtor do painel: com default o container devolveria o DEFAULT
+        // (`Container.php:1327`-`:1331`) e a injeção seria uma ILUSÃO.
+        // ⚠️ Isto NÃO muda a contagem de asserções deste caso — `contagens-188-02.txt` segue igual.
         $espiao = new class(
             app(BloqueiosDaOfertaService::class),
             app(ProximoARevisarService::class),
             app(AndamentoDaOfertaService::class),
+            app(\App\Services\Publicador\Aprovacao\Painel\FotosDoPainelService::class),
         ) extends PainelDeRevisaoService
         {
             public int $chamadas = 0;
