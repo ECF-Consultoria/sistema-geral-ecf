@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-08 — A TELA: A COLUNA DE FOTOS do
+# painel de revisão (o progresso, "Aprovar N sem alerta", a imagem 1:1 com os
+# MARCADORES x/y, a grade de 6 colunas e o bloco da imagem selecionada).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-08 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-08`, E NÃO `08`. O número NU resolve
+# `contagens-186-08.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA (`188-REGUA.md` §13) — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `coluna-de-fotos`, e **manifesto sem o id ABORTA**.
+# ➡️ As três tarefas deste plano ACRESCENTAM aqui, cada uma **antes do seu próprio
+# verify**, e os quatro `.jsx` entram em `ARQUIVOS_NOVOS`
+# (`tests/js/publicador-vocabulario-novo.test.js`) **na MESMA tarefa que os cria**.
+#
+# ⚠️ E eles entram TAMBÉM em `JSX_DEPOIS_DA_187`
+# (`tests/js/publicador-fila-fechamento-187.test.js`): declarar numa lista e
+# esquecer a outra **REPROVA**, e é esse o comportamento certo.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ OS DOIS REGIMES DE `coluna-de-fotos` — `tests=32,28`
+# ═══════════════════════════════════════════════════════════════════════════════
+# A camada de CSS construído deste gate só roda quando o `mtime` do CSS do
+# manifest SUPERA o `mtime` dos quatro `.jsx`. Durante a campanha de MUTAÇÃO o
+# arquivo mutado fica mais novo que o CSS, a camada cai em `skip` NOMEADO e a
+# contagem muda — medido nesta máquina, por sonda de `mtime`:
+#
+#   pristino (CSS mais novo)  → 32 testes / 30 pass / 0 skipped
+#   mutado   (fonte mais nova) → 28 testes / 25 pass / 1 skipped
+#
+# (Os 2 `fail` das duas medições eram justamente os dois casos que cobram ESTE
+# arquivo, antes de ele existir — o anti-fantasma e o bloco do manifesto.)
+#
+# ⚠️ Sem os DOIS regimes a campanha de mutação **aborta na 1ª execução** ou marca
+# "SOBREVIVEU" por um motivo que **NÃO é o código** (learnings §4 caso 11).
+# ⚠️ E `cp -p` **preserva o `mtime`**, então a restauração da cópia devolve o
+# regime pristino sem precisar de `npm run build` — conferido na mesma sonda.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ `vocabulario-tamanhos` EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AQUI
+# ═══════════════════════════════════════════════════════════════════════════════
+# A regra é **quem roda, declara** (`188-REGUA.md` §6): este plano roda o GATE-03
+# (ele tem quatro `.jsx` novos), então ele declara o id na SUA PRÓPRIA LINHA.
+#
+# ⚠️ A FORMA É `>=` porque a contagem **cresce por construção** — um sub-teste por
+# arquivo varrido nos diretórios fechados, e cada `.jsx` novo a aumenta. Os dez
+# manifestos da 187 cravaram `>=443`; o 188-07 mediu `>=569`; **com os quatro
+# `.jsx` deste plano a medição é 597** (569 + 4 arquivos × 6 sub-testes, e a soma
+# fecha).
+# ⚠️ O que continua PROIBIDO é uma coisa só: embuti-lo num id que também roda
+# OUTROS arquivos — foi o id COMPOSTO que fez a wave 187-05 reprovar dois ids de
+# outras waves e exigir consertar quatro manifestos.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ BIJEÇÃO E HOMÔNIMO
+# ═══════════════════════════════════════════════════════════════════════════════
+# · id ↔ arquivo: os DOIS ids abaixo aparecem em `<verify>` do `188-08-PLAN.md`
+#   (`coluna-de-fotos` nas três tarefas, `vocabulario-tamanhos` na tarefa 3), e
+#   todo id usado por um `<verify>` daquele plano está declarado aqui. As duas
+#   direções.
+# · ⚠️ **Nenhum id `php` neste manifesto**, e isso é DECLARADO: o `--filter` do
+#   PHPUnit (regex NÃO ANCORADO) só existe no modo `php`, então a colisão de
+#   homônimo **não tem onde acontecer** aqui. O gate deste plano prova o que é
+#   VERDADE no lugar disso: todo nome de teste do arquivo termina em `188_08`, e
+#   há asserção cobrando a ausência de id `php` — se um dia entrar, aquela sonda
+#   vira a de `--filter`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+coluna-de-fotos  js  tests/js/publicador-painel-fotos-188.test.js  ::  tests=32,28
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=597
