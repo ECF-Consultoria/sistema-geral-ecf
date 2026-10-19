@@ -25,7 +25,7 @@
 # ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
 #    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
 #    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
-#    de classe (medido no plano 186-07): por isso os **17** métodos PHP deste
+#    de classe (medido no plano 186-07): por isso os **18** métodos PHP deste
 #    plano estão quebrados em **SETE** ids, **nenhum com mais de TRÊS métodos**.
 #
 # ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
@@ -180,3 +180,6 @@ preco-salvo-e-versao  php  test_(salvar_preco_tem_os_tres_efeitos_e_reabre_a_apr
 frete-confirmado  php  test_(confirmar_frete_grava_valor_origem_nota_e_versao_188_06|origem_fora_das_tres_e_valor_invalido_recusam_sem_gravar_188_06|previa_do_frete_nao_grava_e_bate_com_a_composicao_no_ponto_fixo_188_06)  ::  tests=3 assertions=44
 simular-sem-gravar  php  test_(simular_devolve_as_nove_chaves_e_nao_persiste_nada_188_06|nem_simular_nem_a_previa_escrevem_no_mercado_livre_com_isca_188_06)  ::  tests=2 assertions=25
 payload-dos-modais  php  test_(os_tres_payloads_dos_modais_existem_sempre_com_assercao_por_campo_188_06|a_ordem_dos_sete_itens_fixos_e_a_alternancia_do_setimo_188_06)  ::  tests=2 assertions=26
+ajuste-por-escopo  php  test_(os_tres_escopos_movem_exatamente_as_ofertas_do_seu_alcance_188_06|publicando_e_publicado_nao_vao_para_changes_188_06|escopo_invalido_ancora_incoerente_e_texto_vazio_recusam_sem_gravar_188_06)  ::  tests=3 assertions=46
+resolver-ajuste  php  test_(resolver_o_ultimo_devolve_para_awaiting_e_havendo_outro_continua_em_changes_188_06|ajuste_de_outra_conta_ou_ja_resolvido_da_404_188_06)  ::  tests=2 assertions=30
+excecao-travas  php  test_(a_excecao_libera_so_os_dois_financeiros_e_recusa_os_seis_outros_188_06|justificativa_em_9_10_e_11_caracteres_e_o_responsavel_da_conta_188_06|nao_existe_excecao_aguardando_autorizacao_188_06)  ::  tests=3 assertions=40

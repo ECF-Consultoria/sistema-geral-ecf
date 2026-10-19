@@ -659,6 +659,46 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->whereNumber('oferta')
             ->middleware('throttle:120,1,publicador.aprovacao.painel.frete-previa')->name('meus.aprovacao.painel.frete.previa');
 
+        // ─── Fase 188 (plano 06, tarefa 2): AJUSTE COM ESCOPO, RESOLVER E EXCEÇÃO ──────
+        //
+        // As TRÊS que mexem no ANDAMENTO, e **sempre pela ÚNICA PORTA**
+        // (`AndamentoDaOfertaService::mover`, por dentro de `AjustesDaOfertaService`): nenhuma
+        // action escreve a coluna, e nenhuma delas devolve o andamento numa chave de saída.
+        //
+        // ⚠️⚠️ **CRITÉRIO 12 — O ESCOPO DECIDE QUANTAS OFERTAS SAEM DA FILA**, e é a parte que
+        // erra em silêncio: `offer` move só aquela, `set` move as DUAS do rascunho (o conjunto de
+        // fotos é COMPARTILHADO) e `product` move TODAS as ofertas do produto. Se um pedido de
+        // conjunto movesse só o Clássico, **o Premium iria ao ar com a foto reprovada** — e
+        // aprovar já publica, sem desfazer.
+        //
+        // ⚠️ AND-07 — resolver o **ÚLTIMO** ajuste aberto devolve a oferta para
+        // `aguardando_aprovacao`; havendo **outro** aberto, ela **continua** em
+        // `ajustes_solicitados`. Os dois sentidos têm caso próprio.
+        //
+        // ⚠️⚠️ **CRITÉRIO 11 / DECISÃO 6 DO USUÁRIO — A EXCEÇÃO SÓ REGISTRA QUEM LIBEROU.** Não
+        // existe estado de espera, não existe segundo passo, não existe rota de autorização
+        // posterior: o controle é **auditoria DEPOIS, não barreira ANTES**. E ela libera **SÓ**
+        // resultado negativo e margem abaixo do mínimo — nunca fotos, frete, alteração, ajuste ou
+        // título. As duas travas são de `AjustesDaOfertaService`/`PubAprovacaoExcecao`, que estão
+        // EM PRODUÇÃO desde a Fase 186.
+        //
+        // ⚠️ `throttle:30,1` nomeado nas três, como as seis do 188-05: ato humano deliberado.
+        // Pedir ajuste em massa por script é o T-188-57, e é por isso que o teto é estreito.
+        Route::post('/meus/{company}/aprovacao/{oferta}/ajuste', [MlbPublicadorAprovacaoController::class, 'pedirAjuste'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.ajuste')->name('meus.aprovacao.painel.ajuste');
+
+        // ⚠️ `{ajuste}` é conferido contra **os ajustes que afetam ESTA oferta**
+        // (`AjustesDaOfertaService::abertosQueAfetam()`), não contra a tabela inteira: ajuste de
+        // outra conta dá **404, nunca 403** (T-188-58) — um 403 confirmaria que o id existe.
+        Route::post('/meus/{company}/aprovacao/{oferta}/ajuste/{ajuste}/resolver', [MlbPublicadorAprovacaoController::class, 'resolverAjuste'])
+            ->whereNumber(['oferta', 'ajuste'])
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.ajuste-resolver')->name('meus.aprovacao.painel.ajuste.resolver');
+
+        Route::post('/meus/{company}/aprovacao/{oferta}/excecao', [MlbPublicadorAprovacaoController::class, 'registrarExcecao'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.excecao')->name('meus.aprovacao.painel.excecao');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 

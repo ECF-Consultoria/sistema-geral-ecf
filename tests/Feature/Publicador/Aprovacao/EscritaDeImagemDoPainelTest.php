@@ -894,14 +894,18 @@ class EscritaDeImagemDoPainelTest extends TestCase
         // ⚠️ IGUALDADE DE CONJUNTO, nunca `>= 6`: piso não prova PRESENÇA, e perder uma rota
         // deixaria cinco passando por um `assertGreaterThan`.
         // ⚠️ **REAPONTADO PELA WAVE 188-06 (19/10/2026), E É O QUE A MENSAGEM DESTE GATE PEDE.**
-        // As CINCO linhas marcadas abaixo são as rotas do plano **188-06** (preço, simular preço,
-        // conferir alteração, frete e prévia do frete). ⚠️ A asserção continua sendo **UMA** e
+        // As OITO linhas marcadas abaixo são as rotas do plano **188-06** (preço, simular preço,
+        // conferir alteração, frete, prévia do frete, ajuste, resolver ajuste e exceção).
+        // ⚠️ A asserção continua sendo **UMA** e
         // continua sendo **IGUALDADE DE CONJUNTO** — a contagem de `contagens-188-05.txt` NÃO
         // muda, e o invariante que importa segue de pé: **nenhuma rota da 189/192 aqui**
         // (`imagem.substituir`, `imagem.recolocar`, `imagem.regenerar`).
         $this->assertSame([
+            'mlb.anuncios.meus.aprovacao.painel.ajuste',                // 188-06
+            'mlb.anuncios.meus.aprovacao.painel.ajuste.resolver',       // 188-06
             'mlb.anuncios.meus.aprovacao.painel.aprovar',
-            'mlb.anuncios.meus.aprovacao.painel.conferir-alteracao',   // 188-06
+            'mlb.anuncios.meus.aprovacao.painel.conferir-alteracao',    // 188-06
+            'mlb.anuncios.meus.aprovacao.painel.excecao',               // 188-06
             'mlb.anuncios.meus.aprovacao.painel.fotos.sem-alerta',
             'mlb.anuncios.meus.aprovacao.painel.frete',                 // 188-06
             'mlb.anuncios.meus.aprovacao.painel.frete.previa',          // 188-06

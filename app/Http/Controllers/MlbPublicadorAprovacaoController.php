@@ -8,6 +8,7 @@ use App\Models\PubAprovacaoImagem;
 use App\Models\PubAprovacaoEvento;
 use App\Models\PubAprovacaoFrete;
 use App\Models\PubAprovacaoOferta;
+use App\Services\Publicador\Aprovacao\AjustesDaOfertaService;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
 use App\Services\Publicador\Aprovacao\AprovacaoDaOfertaService;
 use App\Services\Publicador\Aprovacao\BloqueiosDaOfertaService;
@@ -1357,6 +1358,225 @@ class MlbPublicadorAprovacaoController extends Controller
         return $request->expectsJson()
             ? response()->json($previa)
             : back()->with('painel_frete_previa', $previa);
+    }
+
+
+    // ═══ ⚠️⚠️ Fase 188, plano 06 (tarefa 2) — AJUSTE COM ESCOPO, RESOLVER E EXCEÇÃO ═══════════
+    //
+    // ⚠️⚠️ **AS TRÊS ESCREVEM ANDAMENTO — SEMPRE PELA ÚNICA PORTA.** Quem move é
+    // `AndamentoDaOfertaService::mover()`, por dentro de `AjustesDaOfertaService::pedir()` e
+    // `::resolver()`. **Nenhuma destas actions toca a coluna `andamento`**, e **nenhuma a devolve
+    // numa chave de saída** — por isso este arquivo continua **FORA** da lista de EXPOSITORES da
+    // camada B do gate de andamento: ele não casa a sonda larga (`'andamento' =>` /
+    // `->andamento =`), e entrar nela seria **linha morta**. Medido.
+    //
+    // ⚠️ O que as respostas devolvem, em vez do andamento, são **IDS** (quais ofertas o escopo
+    // alcançou, quantos ajustes restam): é o que a tela precisa para saber que o pedido foi além
+    // da oferta aberta, sem criar um segundo lugar que afirme o estado.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * **MOD-01 / DADO-09 / AND-07 — pede um ajuste e move as ofertas AFETADAS para
+     * `ajustes_solicitados`, conforme o ESCOPO.**
+     *
+     * ⚠️⚠️ **O ESCOPO É A PARTE QUE ERRA EM SILÊNCIO** (`:1197`): `offer → [o.id]` ·
+     * `set → as duas do rascunho` · `product → todas as ofertas do produto`. O conjunto de fotos é
+     * **compartilhado** entre Clássico e Premium — se um pedido de conjunto movesse só o Clássico,
+     * **o Premium seguiria aprovável e iria ao ar com a foto reprovada**, e aprovar já publica.
+     *
+     * ⚠️ **O RECORTE DE `:1198` NÃO É OPCIONAL:** só `awaiting`, `ecf_review` e `approved` vão
+     * para `changes`. Oferta em `publicando`/`publicado` **recebe o evento** (o fato aconteceu) e
+     * **não muda de andamento** — mandar tudo reabriria a revisão de algo que **já está no ar**.
+     * Quem aplica esse recorte é `AjustesDaOfertaService::pedir()`, e lá está a divergência
+     * declarada: `aprovado → ajustes_solicitados` **não existe** em `TRANSICOES`, então uma oferta
+     * aprovada recebe o evento e segue o seu caminho.
+     *
+     * ⚠️⚠️ **A CHAVE DO ESCOPO É `offer`/`set`/`product`, as de `PubAprovacaoAjuste::ESCOPOS`** —
+     * e **`prod` do protótipo é RECUSADO de propósito** (`ESCOPO_DO_PROTOTIPO` é mapa de
+     * conferência, não um `||` que aceita as duas formas). O que a tela MOSTRA é o `destino`
+     * legível, que o payload do painel já entrega (`modais.ajuste.itens`).
+     *
+     * ⚠️ **O `required` do `texto` é a porta da frente; o piso de conteúdo é do serviço**
+     * (`REGRA_TEXTO_VAZIO`). ⚠️ **E, PELA ROTA, AQUELE CAMINHO É INALCANÇÁVEL — medido na wave
+     * 188-05:** o middleware `TrimStrings` chega **antes** da validação, `'     '` vira `''` e
+     * morre no `required`, com `errors.texto` em vez do id do serviço. ➡️ A guarda do serviço é o
+     * backstop de jobs/commands, e o gate a exercita **DIRETO**; afirmá-la pela rota mediria o
+     * caminho errado.
+     */
+    public function pedirAjuste(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AjustesDaOfertaService $ajustes,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'escopo' => ['required', 'string'],
+            'item' => ['required', 'string'],
+            'texto' => ['required', 'string'],
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        if (($recusa = $this->recusaDeRevisao($daConta, $dados['versao_esperada'] ?? null)) !== null) {
+            return $recusa;
+        }
+
+        try {
+            $ajuste = $ajustes->pedir($daConta, $request->user(), $dados['escopo'], $dados['item'], $dados['texto']);
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_ajuste_pedido', [
+            'oferta_id' => (int) $daConta->id,
+            'ajuste_id' => (int) $ajuste->id,
+            'escopo' => (string) $ajuste->escopo,
+            // ⚠️ VOC-06 — o destino LEGÍVEL, montado no servidor por
+            // `PubAprovacaoAjuste::destinoLegivel()`. A chave nunca chega à tela.
+            'destino' => (string) $ajuste->destino,
+            // ⚠️ **QUAIS ofertas o escopo alcançou** — a tela tem de poder dizer que o pedido foi
+            // além da oferta aberta (a caixa "Encaminhar para" é do plano 188-11). São IDS, não
+            // andamentos: o estado tem UM lugar só.
+            'ofertas_afetadas' => $ajustes->ofertasAfetadas($ajuste)->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+        ]);
+    }
+
+    /**
+     * **AND-07 — resolve o ajuste e, SENDO O ÚLTIMO EM ABERTO, devolve a oferta para
+     * `aguardando_aprovacao`.**
+     *
+     * ⚠️⚠️ **"O ÚLTIMO" É POR OFERTA, NÃO POR AJUSTE** (`:1202`: `if (!left && status ===
+     * 'changes')`). Resolver um de dois **não** devolve ninguém: a oferta voltaria a ser aprovável
+     * com um ajuste ainda em aberto, e aprovar publica. ➡️ Os **dois** sentidos têm asserção, na
+     * mesma fixture — um gate que só testasse o "último" passaria com um serviço que devolve
+     * **sempre**.
+     *
+     * ⚠️ `{ajuste}` é conferido contra **os ajustes que afetam ESTA oferta**, nunca contra a
+     * tabela inteira: o filtro é a CONSULTA (`abertosQueAfetam()`), não um `in_array` no PHP, e
+     * ajuste de outra conta dá **404, nunca 403** (T-188-58).
+     * ⚠️ Ajuste **já resolvido** também dá 404: `abertosQueAfetam()` só traz os abertos, e
+     * resolver duas vezes registraria o mesmo fato duas vezes na linha do tempo.
+     */
+    public function resolverAjuste(
+        Request $request,
+        Company $company,
+        int $oferta,
+        int $ajuste,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AjustesDaOfertaService $ajustes,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $aberto = $ajustes->abertosQueAfetam($daConta)->firstWhere('id', $ajuste);
+
+        abort_if($aberto === null, 404, 'Ajuste fora desta oferta.');
+
+        try {
+            $resolvido = $ajustes->resolver($aberto, $request->user());
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_ajuste_resolvido', [
+            'oferta_id' => (int) $daConta->id,
+            'ajuste_id' => (int) $resolvido->id,
+            // ⚠️ **QUANTOS AINDA RESTAM** — é o número que explica por que a oferta voltou (ou
+            // não) para a fila de conferência, e ele sai da MESMA consulta do bloqueio
+            // `ajuste_em_aberto`. Recontar na tela abriria a segunda verdade.
+            'restantes' => $ajustes->abertosQueAfetam($daConta->refresh())->count(),
+        ]);
+    }
+
+    /**
+     * **BLOQ-08 / BLOQ-09 / DADO-11 — registra a EXCEÇÃO AUTORIZADA.** O efeito é **IMEDIATO**.
+     *
+     * ⚠️⚠️ **DECISÃO 6 DO USUÁRIO (14/10/2026): A EXCEÇÃO SÓ REGISTRA QUEM LIBEROU.** Não existe
+     * estado "exceção aguardando autorização", não existe segundo passo, não existe caixa de
+     * pendência e não existe rota de autorização posterior. **Aprovação em dois passos foi
+     * OFERECIDA e RECUSADA.** O controle é **auditoria DEPOIS, não barreira ANTES**, porque
+     * aprovar já publica e não há desfazer. ⚠️ Há gate de ausência, ancorado no **sujeito**.
+     *
+     * ⚠️⚠️ **ELA LIBERA SÓ DOIS BLOQUEIOS** (`PubAprovacaoExcecao::LIBERA`): resultado negativo e
+     * margem abaixo do mínimo. **Nunca** fotos, frete, alteração, ajuste ou título — e o gate prova
+     * a recusa nos **SEIS** outros, um por um, não só a aceitação nos dois. Exceção que liberasse
+     * fotos poria foto não conferida no ar, **sem desfazer** (T-188-50).
+     *
+     * ⚠️ **AS CHAVES SÃO pt-BR** (`resultado_negativo`, `margem_abaixo_do_minimo`), as mesmas dos
+     * oito bloqueios do módulo. **`loss`/`margin` do protótipo são RECUSADOS de propósito** —
+     * `TIPO_DO_PROTOTIPO` é mapa de conferência, não um `||` que aceita as duas formas.
+     *
+     * ⚠️ **`$quem` de `aplicarExcecao()` é O RESPONSÁVEL ESCOLHIDO, não quem clicou**, e isso é o
+     * centro do critério 11: `liberada_por` tem de ser quem autorizou (`:1203`: o evento entra com
+     * `F.by`, não com `this.ME`). ➡️ O `responsavel_id` é conferido contra a **lista FECHADA da
+     * conta** — o MESMO resolvedor do filtro de Responsável da fila e dos autorizadores do payload
+     * (`FiltrosDaFilaService::responsaveisDaConta()`). Id de fora da conta é **404**, nunca 403.
+     *
+     * ⚠️ **A justificativa é `>= 10`, não `> 10`** (`:1203`: `length < 10` recusa), e a trava real
+     * é do servidor (`PubAprovacaoExcecao::justificativaValida()`); o botão apagado é conforto de
+     * tela. O gate mede **9, 10 e 11** — a fronteira é onde o erro mora.
+     *
+     * ⚠️ **DIVERGÊNCIA DECLARADA, e ela JÁ ESTÁ DECLARADA pela Fase 186 e pela wave 188-05 — não
+     * se reabre:** o critério 11 descreve o registro como *"§ Exceção autorizada por X · data ·
+     * justificativa"*, e essa é a frase de **EXIBIÇÃO** (`PubAprovacaoExcecao::fraseDeExibicao()`,
+     * que o painel entrega em `preco.excecao`, plano 188-04). O **evento do histórico** é
+     * *"Autorizou exceção (…): …"*, gravado por `AjustesDaOfertaService:319` **com quem liberou**.
+     * Emendar o texto exigiria alterar um serviço da 186 em produção, ou gravar um **2º evento
+     * para o mesmo fato** — o defeito que a 186 consertou em 15/10/2026.
+     */
+    public function registrarExcecao(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        FiltrosDaFilaService $filtros,
+        AjustesDaOfertaService $ajustes,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'tipo' => ['required', 'string'],
+            'justificativa' => ['required', 'string'],
+            'responsavel_id' => ['required', 'integer'],
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        if (($recusa = $this->recusaDeRevisao($daConta, $dados['versao_esperada'] ?? null)) !== null) {
+            return $recusa;
+        }
+
+        // ⚠️ A lista FECHADA de quem pode autorizar — a MESMA do filtro da fila e do payload dos
+        // modais. **O FILTRO É A CONSULTA**: quem não é da conta não volta de `responsaveisDaConta()`,
+        // então não existe caminho em que um id alheio chegue ao serviço de escrita.
+        $alvo = $programas->resolver('company-'.$company->id);
+        $daContaBuilder = $fila->paraAConta($company->id, $alvo['mlb_empresa']?->id);
+        $ids = array_map(static fn (array $r): int => $r['id'], $filtros->responsaveisDaConta($daContaBuilder));
+
+        abort_unless(in_array((int) $dados['responsavel_id'], $ids, true), 404, 'Responsável fora desta conta.');
+
+        /** @var \App\Models\User $responsavel */
+        $responsavel = \App\Models\User::query()->whereKey((int) $dados['responsavel_id'])->firstOrFail();
+
+        try {
+            // ⚠️ **O `$quem` é o RESPONSÁVEL**, e é ele que vai para `liberada_por` e para o autor
+            // do evento do histórico (`:1203`). Mandar quem clicou apagaria o critério 11.
+            $excecao = $ajustes->aplicarExcecao($daConta, $responsavel, $dados['tipo'], $dados['justificativa']);
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_excecao_registrada', [
+            'oferta_id' => (int) $daConta->id,
+            'excecao_id' => (int) $excecao->id,
+            'tipo' => (string) $excecao->tipo,
+            // ⚠️ A frase que a tela mostra (D29) é LIDA do modelo — remontá-la aqui criaria a
+            // segunda redação do mesmo registro.
+            'frase' => $excecao->fresh()->load('liberadaPor')->fraseDeExibicao(),
+        ]);
     }
 
     // ═══ Apoio das seis escritas do painel ═══════════════════════════════════════════════════
