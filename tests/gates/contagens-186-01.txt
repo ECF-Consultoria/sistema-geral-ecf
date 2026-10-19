@@ -35,7 +35,32 @@
 #    alguem APAGASSE `aprovacao/`, ou seja, aceitaria a regressao.
 # ⚠️ CONSEQUENCIA PARA OS PLANOS SEGUINTES: este numero cresce +1 por arquivo novo nos
 #    diretorios varridos. 186-04..09 vao mover de novo — RE-MEDIR, nunca calcular.
-gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=58
+#
+# ⚠️⚠️ ATUALIZADO EM 19/10/2026 (cirurgia da Fase 188): `tests=58` -> `tests=23`.
+#    A PROFECIA DA LINHA ACIMA SE CUMPRIU, e o conserto NAO foi re-medir de novo.
+#    · MEDIDO antes de mexer: o gate REPROVAVA (EXIT 1) com `# tests 84` e `# fail 0`
+#      — zero teste falhando, so a contagem.
+#    · QUEM QUEBROU FOI A **FASE 187**, nao a 188: ela pos 19 arquivos nos diretorios
+#      varridos (1 em `publicacoes/` pelo plano 187-03, 18 em `aprovacao/` pelos planos
+#      187-04 a 187-09). A Fase 188 pos outros 7 (planos 188-07 e 188-08). Aritmetica
+#      medida: 38 arquivos (fim do 186-02) + 19 + 7 = 64, e `84 - 26 = 58` EXATAMENTE.
+#      Tirando SO os 4 arquivos da wave 188-08 daria 80 — ainda != 58. O gate quebrou
+#      no plano 187-03, e ficou vermelho desde entao.
+#    · O CONSERTO foi na RAIZ: o bloco ABA-04 abria **um subteste por arquivo varrido**,
+#      e virou UMA asserção agregada; o `PISO_DE_ARQUIVOS >= 30` virou
+#      `deepEqual(noDisco, VARRIDOS_DECLARADOS)`, lista CONSTANTE de nomes com a fase
+#      dona ao lado (e `aprovacao/` REAPONTADO ao `deepEqual` ja verde de
+#      `publicador-fila-fechamento-187.test.js`, em vez de uma 3a escrituracao).
+#    · ⚠️ 23 MEDIDO (`# tests 23`, `# pass 23`, `# fail 0`, `# skipped 0`), nao estimado.
+#      Esta fase ja teve DUAS contagens estimadas corrigidas pela medicao (103->101 e
+#      193->185).
+#    · ⚠️ E AGORA O NUMERO PAROU DE SE MOVER: ele nao depende mais da quantidade de
+#      arquivos varridos. A proxima wave que criar peca de tela nao reprova este gate
+#      pela contagem — reprova pelo `deepEqual` se esquecer de DECLARAR o arquivo, que
+#      e o modo de falhar certo (nomeado, e com diff visivel no conserto).
+#    · ⚠️ POR QUE A LISTA E MAIS FORTE QUE O 58 QUE ELA SUBSTITUIU: 58 continuava 58 se
+#      alguem APAGASSE um arquivo varrido e CRIASSE outro. O conjunto nao aceita a troca.
+gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=23
 
 # Os 7 arquivos de JS tocados por este plano: o gate novo + as 6 asserções
 # reapontadas. DOIS REGIMES, os dois MEDIDOS em 14/10/2026 depois do rename:
@@ -48,7 +73,7 @@ gate-rename  js  tests/js/publicador-rename-em-analise-ml.test.js  ::  tests=58
 # ⚠️ Travar só em 817 abortaria a 1ª mutação da campanha; não travar em nenhum
 #    dos dois marcaria a campanha inteira como "SOBREVIVEU" por um motivo que não
 #    é o código. Os dois números são MEDIDOS, nenhum é chute.
-rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=820
+rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/js/publicador-identidade-nova-render.test.js tests/js/publicador-paginas-anuncios-render.test.js tests/js/publicador-publicacoes-busca.test.js tests/js/publicador-publicacoes-tabela.test.js tests/js/publicador-visao-geral-acoes.test.js tests/js/publicador-visao-geral-recentes.test.js  ::  tests=785
 # ⚠️ ATUALIZADO EM 14/10/2026, DEPOIS DO 186-02. Era `tests=817,809` (+3 pelo mesmo
 #    motivo do gate acima: 3 arquivos novos em `aprovacao/`).
 # ⚠️ E O SEGUNDO REGIME SAIU, porque eu NAO consegui reproduzi-lo — e nao se escreve
@@ -59,6 +84,23 @@ rename-e-reapontes  js  tests/js/publicador-rename-em-analise-ml.test.js tests/j
 #    ⚠️ Se o `skip` reaparecer numa campanha de mutacao, o gate ABORTA pela contagem
 #    — e esse e o modo de falhar CERTO: alto e visivel. Quem o encontrar deve MEDIR o
 #    numero do regime de skip e acrescenta-lo aqui, com a prova ao lado.
+#
+# ⚠️⚠️ ATUALIZADO EM 19/10/2026 (cirurgia da Fase 188): `tests=820` -> `tests=785`.
+#    MESMA CAUSA E MESMO CONSERTO do `gate-rename` acima — leia o bloco de la.
+#    · MEDIDO antes de mexer: REPROVAVA com `# tests 846` e `# fail 0`.
+#    · O DELTA INTEIRO ERA DE UM ARQUIVO SO, e isso foi medido arquivo por arquivo:
+#        84 rename + 64 identidade + 120 paginas-anuncios + 115 publicacoes-busca
+#      + 130 publicacoes-tabela + 214 visao-geral-acoes + 119 visao-geral-recentes = 846.
+#      `846 - 84 = 762 = 820 - 58`: os OUTROS SEIS arquivos nunca se moveram. Quem
+#      derivava era so o loop de `readdirSync` do arquivo do rename.
+#    · POR ISSO OS DOIS GATES SE CONSERTAM NA MESMA EDICAO, e num commit so: commitar
+#      separado deixaria um HEAD intermediario VERMELHO (o mesmo motivo do `93de698d`).
+#    · ⚠️ 785 MEDIDO (`# tests 785`, `# pass 785`, `# fail 0`, `# skipped 0`), nao
+#      calculado — ainda que 23 + 762 de 785 e os dois caminhos tenham batido.
+#    · ⚠️ O SEGUNDO REGIME CONTINUA FORA, e agora com uma razao a mais: a campanha de
+#      mutacao desta cirurgia toca SO `tests/js/`, nunca `resources/`, logo nao move o
+#      `mtime` de componente de producao e o `skip` por `mtime` nao dispara. `# skipped 0`
+#      nas duas medicoes. Quem mutar arquivo de `resources/` deve MEDIR o regime de skip.
 
 # ABA-03 — o rótulo da aba vem do SERVIDOR, e a CHAVE `em_revisao` não muda.
 # ⚠️ O nome do método é `test_as_seis_abas_vem_na_ordem_do_servidor`

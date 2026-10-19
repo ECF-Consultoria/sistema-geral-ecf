@@ -128,8 +128,160 @@ const DIRETORIOS = [
 
 const ISCA = 'resources/js/Components/Mlb/Publicador/aprovacaoZZ9';
 
-/** Piso de arquivos varridos. MEDIDO em 14/10/2026: 15 + 8 + 12 = 35. */
-const PISO_DE_ARQUIVOS = 30;
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ CIRURGIA DA FASE 188 (19/10/2026) — O TOTAL DO MANIFESTO SAIU DO CAMINHO
+// CRÍTICO, E A LISTA CONSTANTE DE NOMES ENTROU. **Nenhum invariante foi
+// afrouxado; dois foram acrescentados.**
+//
+// O QUE ESTAVA AQUI: `const PISO_DE_ARQUIVOS = 30`, e o bloco ABA-04 lá embaixo
+// abria **um `contexto.test()` POR ARQUIVO VARRIDO**. Logo o `# tests` do
+// arquivo era `20 + (nº de arquivos nos 4 diretórios)` — e o manifesto
+// `contagens-186-01.txt` travava esse total em `tests=58` (`gate-rename`) e em
+// `tests=820` (`rename-e-reapontes`, que soma este arquivo a outros 6).
+//
+// POR QUE OS DOIS GATES REPROVAVAM TRABALHO CERTO (medido em 19/10/2026):
+//   · 58 era o número do fim do plano 186-02, com 38 arquivos varridos;
+//   · a **Fase 187** pôs 19 `.jsx` nos diretórios varridos (1 em `publicacoes/`
+//     pelo plano 187-03, e 18 em `aprovacao/` pelos planos 187-04 a 187-09);
+//   · a **Fase 188** pôs 7 (planos 188-07 e 188-08);
+//   · 38 + 19 + 7 = 64 arquivos → `# tests 84`, e `84 - 26 = 58` EXATAMENTE.
+//   ➡️ Os dois gates REPROVAVAM com `# fail 0`: zero teste falhando, só a
+//      contagem. Quem os quebrou foi a Fase **187**, no plano 187-03 — tirando
+//      só os 4 arquivos da wave 188-08 daria 80 e 842, ainda ≠ 58 e 820.
+//
+// ⚠️ ESTA É A DÉCIMA PRIMEIRA CONTAGEM DESTA FAMÍLIA NA MILESTONE (learnings
+//    §4b.2). O próprio manifesto já tinha escrito a profecia, em 14/10:
+//    *"este numero cresce +1 por arquivo novo nos diretorios varridos"*. Um
+//    número que sobe quando o trabalho certo é feito **treina o executor
+//    seguinte a ajustar réguas quando elas incomodam** — um dia ele ajusta uma
+//    que importava (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+//
+// O QUE ENTROU NO LUGAR, E POR QUE É MAIS FORTE QUE O TOTAL:
+//   (a) `VARRIDOS_DECLARADOS` — lista CONSTANTE de nomes por diretório, cada
+//       grupo com a FASE E O PLANO DONO ao lado. O `deepEqual(noDisco,
+//       declarado)` fecha os diretórios **sem nenhum número**: arquivo no disco
+//       fora da lista continua REPROVANDO (era o que o 58 garantia), cada
+//       acréscimo fica NOMEADO, e acrescentar é **diff VISÍVEL** — não um
+//       número trocado em silêncio.
+//   (b) ⚠️ E ele é mais forte numa direção que o total NÃO cobria: **58
+//       continuava 58 se alguém APAGASSE um arquivo e CRIASSE outro.** O
+//       conjunto não aceita essa troca. O mesmo vale para o `>= 30` do piso,
+//       que o `deepEqual` subsume por inteiro (prova o conjunto EXATO, não um
+//       limite inferior) — por isso o piso saiu, e não por afrouxamento.
+//   (c) O `# tests` deste arquivo passou a ser **independente da quantidade de
+//       arquivos varridos**: o bloco ABA-04 virou UMA asserção agregada. Logo o
+//       manifesto não volta a reprovar na próxima wave que criar peça de tela.
+//
+// ⚠️ `aprovacao/` NÃO É DUPLICADO AQUI — ELE É REAPONTADO PARA A INVARIANTE.
+//    O conjunto daquele diretório já é provado, arquivo por arquivo e com a fase
+//    dona ao lado, pelo `deepEqual(noDisco, declarados)` de
+//    `publicador-fila-fechamento-187.test.js` (plano 188-01, commit `b10c19cc`),
+//    que está VERDE (6/6, medido em 19/10/2026). Copiar os 28 nomes para cá
+//    criaria uma TERCEIRA escrituração do diretório mais movimentado da
+//    milestone (as outras duas: `ARQUIVOS_NOVOS` do gate de vocabulário e as
+//    três listas do fechamento) — e cada lugar esquecido é uma reprovação de
+//    trabalho legítimo. Lendo o literal de lá, a ponta fica AMARRADA: declarar
+//    no fechamento e esquecer aqui é impossível, porque aqui não há o que
+//    esquecer; e apagar a lista de lá derruba a sonda não-cega deste arquivo.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const DIR_APROVACAO = 'resources/js/Components/Mlb/Publicador/aprovacao';
+
+/** O gate irmão que já fecha o conjunto de `aprovacao/`, com a fase dona de cada peça. */
+const REL_FECHAMENTO_187 = 'tests/js/publicador-fila-fechamento-187.test.js';
+const LISTAS_DO_FECHAMENTO = ['JSX_DA_FASE_187', 'JSX_DA_FASE_186', 'JSX_DEPOIS_DA_187'];
+
+/**
+ * Os arquivos de `aprovacao/` DECLARADOS no gate de fechamento, lidos do LITERAL.
+ *
+ * ⚠️ Lê-se o literal, não se importa o módulo: `import` daquele arquivo RODARIA
+ * os testes dele dentro deste. E lê-se da fonte SEM COMENTÁRIO, porque a prosa
+ * em pt-BR daquele gate CITA nomes de arquivo (`CascaDeModal.jsx` aparece no
+ * docblock do topo) — leitura crua colheria o comentário junto. Isto já foi
+ * MEDIDO em dois gates desta milestone, e o scanner do Tailwind mostrou a mesma
+ * família de armadilha ao compilar uma classe escrita dentro de um docblock.
+ *
+ * ⚠️ Recortado AO BLOCO de cada lista: `DIR_APROV` aparece dezenas de vezes
+ * naquele arquivo, a maioria fora das três listas.
+ *
+ * @returns {string[]} nomes-base ordenados, sem repetição
+ */
+function aprovacaoDeclaradaNoFechamento187() {
+    const fonte = lerSemComentarios(REL_FECHAMENTO_187);
+    const nomes = [];
+    for (const lista of LISTAS_DO_FECHAMENTO) {
+        const bloco = fonte.match(
+            new RegExp(String.raw`const\s+` + lista + String.raw`\s*=\s*\[([\s\S]*?)\n\];`),
+        );
+        // ⚠️ SONDA NÃO-CEGA: lista que sumiu daquele gate não pode virar silêncio.
+        assert.ok(bloco, `não achei o literal de ${lista} em ${REL_FECHAMENTO_187} — a leitura está CEGA`);
+        nomes.push(...[...bloco[1].matchAll(/\$\{DIR_APROV\}\/([\w.-]+\.jsx?)/g)].map((m) => m[1]));
+    }
+    assert.ok(
+        nomes.length > 0,
+        `nenhum arquivo de aprovacao/ declarado em ${REL_FECHAMENTO_187} — a leitura está CEGA`,
+    );
+    return [...new Set(nomes)].sort();
+}
+
+/**
+ * Os nomes-base que CADA diretório varrido deve ter — e nada mais.
+ *
+ * ⚠️ QUEM CRIAR `.jsx`/`.js` NESTES DIRETÓRIOS ACRESCENTA UMA LINHA AQUI, com a
+ * fase e o plano dono. Faltando a linha, o gate REPROVA — e é esse o
+ * comportamento certo: arquivo não declarado é peça que ninguém assumiu, e o
+ * rótulo "Em revisão" dela entraria no produto sem ninguém ter olhado.
+ * ⚠️ `aprovacao/` NÃO está aqui de propósito: ele é reapontado (ver acima).
+ */
+const VARRIDOS_DECLARADOS = {
+    'resources/js/Components/Mlb/Publicador/publicacoes': [
+        // Fase 180 — a lista de publicações (planos 180-05 a 180-11).
+        'AbasDeStatus.jsx',
+        'BuscaDePublicacoes.jsx',
+        'CabecalhoDaTabela.jsx',
+        'CabecalhoDePublicacoes.jsx',
+        'CelulasDaLinha.jsx',
+        'ChipsDeFiltro.jsx',
+        'ChipsDeTriagem.jsx',
+        'FaixaDeSucesso.jsx',
+        'LinhaDeControles.jsx',
+        'LinhaDeGrupoDeProduto.jsx',
+        'LinhaDePublicacao.jsx',
+        'MenuDeFiltro.jsx',
+        'RodapeDaTabela.jsx',
+        'VaziosDaLista.jsx',
+        'atalhosDaLista.js',
+        // Fase 187, plano 187-03 — as abas da página. ⚠️ É ESTE o arquivo que
+        // levou o total de 58 para 59 e quebrou os dois gates.
+        'AbasDaPagina.jsx',
+    ],
+    'resources/js/Components/Mlb/Publicador/identidade': [
+        // Fase 177, plano 177-02 — glyph, rótulo, tipo, badge, selo e tile.
+        'BadgeNova.jsx',
+        'GlyphDaFase.jsx',
+        'MapaDeCobertura.jsx',
+        'RotuloDaFase.jsx',
+        'SeloDeStatusDaPublicacao.jsx',
+        'SeloDoTipo.jsx',
+        'TileDoProduto.jsx',
+        'identidade.js',
+    ],
+    'resources/js/Components/Mlb/Publicador/visaogeral': [
+        // Fase 179 — a visão geral da conta (planos 179-06 a 179-09).
+        'AtividadeRecente.jsx',
+        'BannerDeIntegracao.jsx',
+        'CockpitDaConta.jsx',
+        'FaixaDeDesempenho.jsx',
+        'JornadaDosProdutos.jsx',
+        'OQueFazerAgora.jsx',
+        'PublicacoesNoMercadoLivre.jsx',
+        'PublicacoesRecentes.jsx',
+        'SaudeDaConta.jsx',
+        'acoes.js',
+        'jornada.js',
+        'recentes.js',
+    ],
+};
 
 const varridos = [];
 const pulados = [];
@@ -187,11 +339,52 @@ test('AUTO-TESTE DA SONDA — ela enxerga o cru e poupa o qualificado', async (c
 });
 
 test('a montagem não ficou vazia — gate que varre 0 arquivo passa por ausência', async (contexto) => {
-    await contexto.test(`varreu ao menos ${PISO_DE_ARQUIVOS} arquivos`, () => {
+    await contexto.test('a varredura não ficou vazia (sonda não-cega antes do deepEqual)', () => {
+        // ⚠️ Vazio casa com vazio: sem esta linha, diretório renomeado devolveria
+        // `[]` e o `deepEqual` abaixo passaria se as listas também esvaziassem.
         assert.ok(
-            varridos.length >= PISO_DE_ARQUIVOS,
-            `varridos ${varridos.length} arquivos, piso ${PISO_DE_ARQUIVOS} — a varredura encolheu ou os diretórios mudaram de lugar`,
+            varridos.length > 0,
+            'nenhum arquivo varrido — os 4 diretórios mudaram de lugar?',
         );
+    });
+
+    await contexto.test('o conjunto varrido é EXATAMENTE o DECLARADO, por diretório', () => {
+        // ⚠️ O VETO NAS DUAS DIREÇÕES, e é ele que substituiu o total do
+        // manifesto: arquivo no disco fora da lista REPROVA (criou peça sem
+        // declarar), e nome na lista fora do disco REPROVA (entrada morta é
+        // linha morta — "lista de nomes não é prova de comportamento").
+        const esperadoPorDir = {
+            ...VARRIDOS_DECLARADOS,
+            [DIR_APROVACAO]: aprovacaoDeclaradaNoFechamento187(),
+        };
+
+        // Todo diretório varrido tem de ter conjunto declarado. Sem esta linha,
+        // acrescentar um 5º diretório a `DIRETORIOS` o deixaria sem veto.
+        const varridosPorDir = {};
+        for (const { relativo } of varridos) {
+            const dir = relativo.slice(0, relativo.lastIndexOf('/'));
+            (varridosPorDir[dir] ??= []).push(relativo.slice(dir.length + 1));
+        }
+        assert.deepEqual(
+            Object.keys(varridosPorDir).sort(),
+            Object.keys(esperadoPorDir).sort(),
+            'há diretório varrido SEM conjunto declarado (ou declarado SEM ser varrido)'
+                + ` — varridos=[${Object.keys(varridosPorDir).sort().join(', ')}]`,
+        );
+
+        for (const [dir, esperado] of Object.entries(esperadoPorDir)) {
+            const noDisco = [...varridosPorDir[dir]].sort();
+            const declarado = [...esperado].sort();
+            assert.deepEqual(
+                noDisco,
+                declarado,
+                `${dir} divergiu do DECLARADO. Criou arquivo novo? Acrescente-o a`
+                    + ' `VARRIDOS_DECLARADOS` com a fase e o plano dono'
+                    + ` (ou, em aprovacao/, às listas de ${REL_FECHAMENTO_187}).`
+                    + ` nao-declarados=[${noDisco.filter((f) => !declarado.includes(f)).join(', ')}]`
+                    + ` fantasmas=[${declarado.filter((f) => !noDisco.includes(f)).join(', ')}]`,
+            );
+        }
     });
 
     await contexto.test('os três diretórios de hoje foram varridos de verdade', () => {
@@ -224,19 +417,33 @@ test('ISCA DE CAMINHO — diretório ausente é `skip` NOMEADO, nunca silêncio'
 });
 
 test('ABA-04 — nenhum corpo diz "Em revisão" sem dizer de quem', async (contexto) => {
-    for (const { relativo, corpo } of varridos) {
-        await contexto.test(`${relativo} — sem "Em revisão" cru`, () => {
+    // ⚠️ UMA asserção AGREGADA, não uma por arquivo varrido. Era o loop
+    // `for (varridos) { contexto.test(...) }` que fazia o `# tests` deste
+    // arquivo crescer +1 por `.jsx` novo e reprovava os dois gates do manifesto
+    // com `# fail 0` (ver a CIRURGIA DA FASE 188 no topo). O invariante é o
+    // MESMO — todos os arquivos do disco continuam sendo lidos, porque a
+    // varredura segue vindo de `readdirSync` e não da lista declarada; só o
+    // RELATO mudou de lugar, da linha do TAP para a mensagem do assert.
+    await contexto.test('a varredura chegou aqui com arquivos (sonda não-cega)', () => {
+        // Sem esta linha, `ofensores` vazio por varredura vazia passaria igual.
+        assert.ok(varridos.length > 0, 'ABA-04 rodou sobre ZERO arquivo — passaria por ausência');
+    });
+
+    await contexto.test('nenhum dos arquivos varridos diz "Em revisão" cru', () => {
+        const ofensores = [];
+        for (const { relativo, corpo } of varridos) {
             const achados = acharEmRevisaoCru(corpo);
+            if (achados.length === 0) continue;
             // ⚠️ A mensagem usa só STRINGS já vindas do arquivo — nunca
             // `String()`/`JSON.stringify()` de valor adverso (learnings §7).
-            const trechos = achados.map((a) => a.vizinhanca).join(' | ');
-            assert.equal(
-                achados.length,
-                0,
-                `"Em revisão" cru em ${relativo}: ${trechos}`,
-            );
-        });
-    }
+            ofensores.push(`${relativo}: ${achados.map((a) => a.vizinhanca).join(' | ')}`);
+        }
+        assert.deepEqual(
+            ofensores,
+            [],
+            `"Em revisão" cru em ${ofensores.length} arquivo(s) — ${ofensores.join(' || ')}`,
+        );
+    });
 });
 
 test('CONTROLE POSITIVO — os rótulos NOVOS estão lá (negativa sozinha é metade)', async (contexto) => {
