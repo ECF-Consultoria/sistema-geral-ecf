@@ -52,7 +52,8 @@ Estão no §6 da `189-REGUA.md`:
 Achados durante o planejamento da 189, medidos no código de hoje:
 
 1. **A borda de seleção das miniaturas vem fixa na foto 0.** `FotosDoPainelService::para()` é chamado
-   **sem índice** (`PainelDeRevisaoService:301`), então a `borda` do servidor sai sempre `selecionada`
+   **sem índice** — em `PainelDeRevisaoService::para()`, a chave `'fotos' => $this->fotos->para($oferta)`
+   (linha 310 em `2f7fd02c`; o `para()` dele tem `int $selecionado = 0`) —, então a `borda` do servidor sai sempre `selecionada`
    na imagem 0. Como ←/→ trocam a foto **no cliente**, a grade do **188-08** não pode usar essa
    `borda` crua para a seleção — a foto 0 ficaria amarela sem estar selecionada.
 2. **Não existe rótulo legível de variação no payload.** Só vêm `grupo` (chave canônica, tipo
