@@ -165,3 +165,52 @@ tokens-e-tamanhos  js  tests/js/publicador-painel-tokens-188.test.js  ::  tests=
 # outras waves e exigiu consertar QUATRO manifestos. **Linha própria é o oposto
 # disso.**
 vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=548
+
+
+# ── TAREFA 3: a tabela FID-01 re-medida por script (PHP) ────────────────────
+
+# ⚠️⚠️ ESTE ID EXISTE PORQUE O `<verify>` DA TAREFA 3 RODAVA O GATE DA TAREFA 2.
+# A primeira redação do plano punha `tokens-e-tamanhos` aqui — e ele não media
+# **nada** desta tarefa: o `188-FID01.md` podia ficar INTOCADO e o verify passava
+# verde. É "gate sobre zero casos" com outra roupa.
+# ➡️ O método LÊ o `188-FID01.md` e cobra a FORMA:
+#   · toda seção de §B a §F declara **COMO MEDIDA: `SCRIPT`** ou `LEITURA`
+#     (**UMA** asserção coletando as que não declaram, nunca uma por seção — a
+#     contagem não pode crescer com o número de seções);
+#   · a **§I** existe, e cada classificação usada está na lista FECHADA de três
+#     valores (OMISSÃO / REFERÊNCIA / VALOR); fora dela, reprova;
+#   · a §I **não pode estar vazia por construção**: ou traz sub-seções de
+#     classificação, ou traz o CABEÇALHO de escape;
+#   · todo ponteiro `` `:N` `` do documento aponta para **<= 1432** (o tamanho
+#     medido do protótipo) — ponteiro fora do arquivo é erro de REFERÊNCIA, que é
+#     como esta tabela mais erra;
+#   · a PERGUNTA-188-A traz a resposta, a razão e o registro da TERCEIRA derrota
+#     do protótipo, com os quatro `arquivo:linha`.
+#
+# ⚠️ CINCO ISCAS INVERTIDAS + UMA POSITIVA, todas em memória (nenhum arquivo do
+# repo é tocado): §I sem classificação REPROVA · seção sem declarar SCRIPT/LEITURA
+# REPROVA · ponteiro `:9999` REPROVA · classificação `APROXIMADO` REPROVA · e o
+# CAMINHO DE ESCAPE **FUNCIONA** (se o regex dele estivesse errado, uma fase
+# futura sem divergências seria OBRIGADA a inventar uma — a pior coisa que um gate
+# pode induzir).
+#
+# ⚠️⚠️ DOIS ACHADOS QUE ESTE GATE PRODUZIU AO SER ESCRITO, e os dois ficam aqui:
+#   1. O ponteiro da 1ª derrota do protótipo estava ERRADO na prosa herdada:
+#      `:1045` é `pct(n)`; a função `wait` (o `' d'`) está em **`:1054`**. Medido
+#      por `grep -n 'function wait'`. É a divergência **R20** da §I, e eu ia
+#      propagá-la sem medir.
+#   2. A primeira versão do escape procurava a **FRASE** "nenhuma divergência
+#      nesta re-medição" em qualquer lugar do corpo — e **a própria prosa da §I
+#      que EXPLICA a regra cita a frase**, deixando o escape ligado para sempre.
+#      A isca invertida pegou. É a **regra 2 do learnings** (*palavra que explica
+#      "não uso isso" casa com o gate que conta isso*) acontecendo **dentro do
+#      gate escrito para evitar exatamente isso**. ➡️ O escape passou a ser um
+#      CABEÇALHO estrutural, que a prosa não satisfaz por acidente.
+#
+# ⚠️⚠️ E A DEGRADAÇÃO **NÃO É `markTestSkipped`**, por uma razão MEDIDA: no modo
+# `php` o harness exige a linha `Tests: N passed (A assertions)`; teste PULADO
+# imprime `1 skipped` e o gate **REPROVARIA** — o "skip" derrubaria o gate em vez
+# de degradá-lo. ➡️ Quando `design_handoff_publicador/` (NÃO versionado) não está
+# no disco, a degradação é **razão NOMEADA registrada numa lista**, e há asserção
+# exigindo que ela esteja nomeada. **Nunca "conferido".**
+fid01-remedida  php  test_a_tabela_fid01_declara_como_mediu_e_lista_as_divergencias_188_01  ::  tests=1 assertions=13
