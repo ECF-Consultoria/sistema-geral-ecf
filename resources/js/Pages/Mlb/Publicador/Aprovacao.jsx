@@ -13,6 +13,7 @@ import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
 import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
+import PainelDeRevisao from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -278,6 +279,9 @@ function querystringDe(recorte) {
  * @param {unknown} [props.grupos] a árvore de 3 níveis da lista (plano 187-07)
  * @param {unknown} [props.tabela] SLOT de NÓ — sobrepõe a tabela montada do dado (planos 187-07/08)
  * @param {unknown} [props.rodape] SLOT — o rodapé e o lote (plano 187-09)
+ * @param {unknown} [props.painel] o view-model do PAINEL DE REVISÃO (plano 188-02),
+ *   ou `null` sem `?oferta=` válido na URL
+ * @param {unknown} [props.painelNo] SLOT de NÓ — sobrepõe o painel montado do dado
  */
 export default function Aprovacao({
     empresa = null,
@@ -299,6 +303,8 @@ export default function Aprovacao({
     rodape = null,
     selecionados = null,
     lote = null,
+    painel = null,
+    painelNo = null,
     flash = null,
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
@@ -654,6 +660,76 @@ export default function Aprovacao({
     // ⚠️ O toast só nasce quando ALGUMA oferta foi de fato aprovada: "0 aprovadas"
     // não é sucesso, e um toast verde dizendo "Aprovado" com zero aprovações seria
     // a mentira mais cara desta tela.
+    // ═══ ⚠⚠ Fase 188, plano 07 — O PAINEL DE REVISÃO SIMPLES ══════════════
+    //
+    // ⚠⚠ **A OFERTA ABERTA VIVE NA URL** (`?oferta=`, COL-02/COL-03), e o painel
+    // nasce do DADO que o servidor montou (`painel`). **Nada de `localStorage`**:
+    // ele é artefato do protótipo (`KEY='ecf-aprovacao-v1'`, `:914`), e revisão
+    // parcial que mora no navegador não sobrevive a um link compartilhado — a
+    // revisão parcial fica no SERVIDOR (critério 16).
+    //
+    // ⚠ `painelNo` (NÓ) × `painel` (DADO) são DUAS props com UM sentido cada,
+    // nunca uma com dois — prop de duplo sentido foi achada como defeito grave na
+    // Fase 186. É o QUARTO par da mesma família: `proximo`/`proximo_a_revisar`,
+    // `filtros`/`filtros_ativos`, `tabela`/`grupos` e agora `painelNo`/`painel`.
+    //
+    // ⚠⚠ **A NAVEGAÇÃO ↑/↓ É RECARREGAMENTO PARCIAL, e isso é o que resolve
+    // COL-04.** `only: ['painel']` traz **a `versao` FRESCA** do servidor: sem ir ao
+    // servidor, a tela poderia aprovar uma oferta que mudou debaixo de quem revisa,
+    // num fluxo em que **aprovar JÁ PUBLICA e não há desfazer**. A alternativa (um
+    // endpoint JSON próprio) foi CONSIDERADA e RECUSADA pelo plano 188-02 — a
+    // razão está escrita em `MlbPublicadorAprovacaoController` para ser achada por
+    // `grep`, não por bisseção.
+    //
+    // ⚠ `preserveState`/`preserveScroll`: a fila atrás do painel não pisca, e a
+    // pessoa volta para a MESMA linha quando fecha.
+    const painelDeRevisao = objetoSeguro(painel);
+    const abrirOferta = empresaId === null
+        ? null
+        : (ofertaId) => {
+            const id = inteiroSeguro(ofertaId);
+            if (id === null) return;
+
+            router.get(
+                route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+                { ...querystringDe(recorteAtual), oferta: id },
+                { only: ['painel'], preserveState: true, preserveScroll: true, replace: true },
+            );
+        };
+
+    // ⚠ Fechar é tirar o `?oferta=` da URL — e só ele: o recorte em que a pessoa
+    // está continua de pé. Vale para o ×, para o `Esc` e para o clique fora.
+    const fecharOferta = empresaId === null
+        ? null
+        : () => {
+            router.get(
+                route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
+                querystringDe(recorteAtual),
+                { preserveState: true, preserveScroll: true, replace: true },
+            );
+        };
+
+    // ⚠⚠ **"Tentar publicar novamente" NÃO É DESENHADO, e o motivo é MEDIDO:**
+    // não existe rota para `AprovacaoDaOfertaService::tentarDeNovo()` (as únicas
+    // rotas da aprovação são `meus.aprovacao` no GET e `meus.aprovacao.lote` no
+    // POST; as de escrita do painel são dos planos **188-05/06**). Sem handler o
+    // botão não nasce, e a caixa de falha **continua aparecendo** com a mensagem
+    // REAL do Mercado Livre. ⚠ Botão sem destino é D4 violado, e `onClick` vazio
+    // é a mesma dívida com outra roupa.
+    //
+    // ⚠ As duas COLUNAS também chegam vazias: a de fotos é do plano **188-08** e a
+    // de preço do **188-09**. Slot sem nó **não desenha casca**.
+    const noPainel = isValidElement(painelNo)
+        ? painelNo
+        : (
+            <PainelDeRevisao
+                aberto={painelDeRevisao !== null}
+                painel={painelDeRevisao}
+                onIr={abrirOferta}
+                onFechar={fecharOferta}
+            />
+        );
+
     const resultadoDoLote = objetoSeguro(objetoSeguro(flash)?.lote_aprovado);
     const aprovadasAgora = inteiroSeguro(resultadoDoLote?.aprovadas);
     const noToast = aprovadasAgora !== null && aprovadasAgora > 0
@@ -792,6 +868,25 @@ export default function Aprovacao({
             {/* ⚠️ `z-[45]`: acima de tudo — o toast é o aviso do que acabou de
                 acontecer, e nada pode cobri-lo. */}
             {noToast}
+
+            {/* ═══ ⚠⚠ O PAINEL DE REVISÃO — POR PORTAL, acima do header ════════
+                ⚠⚠ **ELE É O ÚNICO DESTA TELA QUE USA PORTAL, e o motivo é MEDIDO.**
+                O `backdrop-filter` do `PublicadorHeader` (`:171`) **cria
+                containing block para `position:fixed`**, e o critério 1 exige o
+                painel acima do header **sem alterar o header**. As três peças
+                acima (`BarraDeSelecao`, `ModalDeLote`, `ToastDaFila`) **não**
+                precisam de portal: elas são IRMÃS do header, não descendentes,
+                e `backdrop-filter` cria containing block **só para
+                DESCENDENTES**. ⚠ **São casos diferentes — não "consertar" as
+                três.**
+                ⚠ O painel também é irmão do header aqui; o portal o leva para o
+                `document.body` de todo jeito, e isso também resolve o
+                *"irmã do `<main>`"* que seria IMPOSSÍVEL sem tocar
+                `AppLayout.jsx` (**INTOCÁVEL**).
+                ⚠ `z-[39]`/`z-[40]`: acima do header `z-30` e da barra `z-[35]`,
+                abaixo do modal `z-[42]` e do toast `z-[45]` — a ORDEM travada do
+                projeto, nunca os números do protótipo (lá o header é 50). */}
+            {noPainel}
         </AppLayout>
     );
 }

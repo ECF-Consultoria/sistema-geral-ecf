@@ -362,6 +362,11 @@ const ARQUIVOS_NOVOS = [
     // `:565`) são medidas do protótipo, e o passo do Tailwind não tem meio pixel.
     `${DIR_APROV}/PainelDeRevisao.jsx`,
     `${DIR_APROV}/TopoDoPainel.jsx`,
+    // ⚠ Tarefa 2 do mesmo plano: a identificação (produto · SKU, o título, os 5
+    // chips e responsavel+espera) e a caixa de falha. ⚠ `text-[20px]` (o título,
+    // `:566`) e `text-[12.5px]` (a mensagem da falha, `:581`) são medidas do
+    // protótipo — arredondar para `text-xl`/`text-sm` mudaria o layout (FID-03).
+    `${DIR_APROV}/IdentificacaoDaOferta.jsx`,
 ];
 
 /**

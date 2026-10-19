@@ -1,8 +1,9 @@
-import { isValidElement } from 'react';
+import { isValidElement, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import TopoDoPainel from './TopoDoPainel';
+import IdentificacaoDaOferta, { temIdentificacao } from './IdentificacaoDaOferta';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 188, plano 07 — A CASCA DO PAINEL DE REVISÃO SIMPLES (critérios 1, 2, 3).
@@ -357,6 +358,144 @@ export function ColunaDoPainel({ children = null, className = null }) {
     return <section className={cn(CLASSES_COLUNA, classeExtra)}>{filhosSeguros(children)}</section>;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ OS ATALHOS DE TECLADO — FUNÇÃO PURA, E O RUNTIME **NÃO É PROVADO**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️⚠️ **DECLARAÇÃO OBRIGATÓRIA: não há navegador nesta máquina.** Todo render
+// desta fase é `esbuild` + `react-dom/server`, e `renderToStaticMarkup` **não
+// dispara evento nenhum**. ➡️ O que está PROVADO é a **FUNÇÃO** que decide o que
+// cada tecla faz; o `addEventListener` do navegador **NÃO está provado**, e esta
+// fase não pode afirmar *"a tecla funciona"*.
+//
+// ⚠️ A ORDEM do `Escape` é LITERAL do protótipo (`:1014`, medido por `sed`):
+// `modal → lightbox → menu → painel`. ➡️ **O lightbox é da Fase 189 e o menu é da
+// 187**, então aqui a cadeia é `modal → painel` — **com o degrau da 189 PREVISTO
+// e DECLARADO**, nunca "esquecido". **Não antecipar o lightbox.**
+//
+// ⚠️⚠️ **DIVERGÊNCIA DECLARADA DO PLANO, e o PROTÓTIPO GANHA.** O `<behavior>` do
+// plano diz *"os QUATRO atalhos não disparam quando o foco está em INPUT,
+// TEXTAREA ou SELECT"*. **Medido por `sed` em 19/10/2026:** no protótipo o
+// `if (typing) return;` está em **`:1015`**, ou seja **DEPOIS** do bloco do
+// `Escape` (`:1014`) — então **o `Escape` dispara TAMBÉM enquanto se digita**, e
+// só `↑ ↓ ← →` são barrados. ➡️ Reproduzido como no protótipo, porque o
+// contrário TRANCARIA a pessoa dentro de um campo de texto de modal: Esc é
+// exatamente a saída de que ela precisa ali. **São TRÊS atalhos barrados, não
+// quatro.**
+//
+// ⚠️ `e.target.tagName` pode vir `undefined` — o protótipo já usa
+// `(e.target.tagName || '')` em `:1013`. **Guarda de tipo.**
+//
+// ⚠️⚠️ `←`/`→` são CLAMPADAS nas DUAS pontas, e o protótipo clampa em DOIS
+// lugares diferentes: `:1018` clampa só o PISO (`Math.max(0, S.pImg + delta)`) e
+// o TETO é clampado na LEITURA (`:1293`: `imgs[Math.min(selIdx, imgs.length - 1)]
+// || null`, medido por `sed`). ➡️ Aqui as duas pontas são resolvidas na própria
+// função: índice fora da lista **não pode dar bloco vazio**.
+
+/** As teclas que este painel escuta. ⚠️ Lista FECHADA: o resto passa adiante. */
+export const TECLAS = {
+    FECHAR: 'Escape',
+    ANTERIOR: 'ArrowUp',
+    PROXIMA: 'ArrowDown',
+    IMAGEM_ANTERIOR: 'ArrowLeft',
+    IMAGEM_PROXIMA: 'ArrowRight',
+};
+
+/** As tags em que `↑ ↓ ← →` **não** disparam (`:1013`). ⚠️ `Escape` dispara. */
+export const TAGS_DE_CAMPO = ['INPUT', 'TEXTAREA', 'SELECT'];
+
+/** As ações que o resolvedor pode devolver. */
+export const ACOES = {
+    FECHAR_MODAL: 'fechar-modal',
+    FECHAR_PAINEL: 'fechar-painel',
+    IR_PARA_OFERTA: 'ir-para-oferta',
+    TROCAR_IMAGEM: 'trocar-imagem',
+};
+
+/**
+ * ⚠️⚠️ **O RESOLVEDOR DE ATALHO — a FUNÇÃO PURA que os gates provam.**
+ *
+ * ⚠️⚠️ **DESVIO DECLARADO DA ASSINATURA DO PLANO, e ele é o conserto que a
+ * própria prosa do plano manda fazer.** A assinatura prescrita era
+ * `({tecla, temModal, alvoEhCampo, indiceAtual, total, imagemAtual,
+ * totalDeImagens})` — com `indiceAtual`/`total`, que obrigariam a tela a
+ * **recalcular a fila no cliente**. ⚠️ O próprio plano corrige isso: *"O
+ * resolvedor devolve o ID de destino lido de `anterior_id`/`proxima_id` — nunca
+ * recalcula a fila, nunca filtra `preparando` no cliente"*. ➡️ Ele recebe os
+ * **IDs** que o plano 188-02 entrega. Filtrar `preparando` aqui seria a segunda
+ * verdade que aquele plano existe para impedir.
+ *
+ * ⚠️ `preparando` **sai da NAVEGAÇÃO mas CONTINUA nos `ids` do LOTE**
+ * (divergência **D9** da Fase 187, já no ar): **são listas diferentes, e não se
+ * unificam.** Este resolvedor lê a da NAVEGAÇÃO.
+ *
+ * @param {object} [evento]
+ * @param {unknown} [evento.tecla] `event.key`
+ * @param {unknown} [evento.temModal] se algum modal está aberto (planos 188-11/12)
+ * @param {unknown} [evento.alvoEhCampo] se o foco está em INPUT/TEXTAREA/SELECT
+ * @param {unknown} [evento.anteriorId] `navegacao.anterior_id` — `null` na primeira
+ * @param {unknown} [evento.proximaId] `navegacao.proxima_id` — `null` na última
+ * @param {unknown} [evento.imagemAtual] o índice da imagem selecionada
+ * @param {unknown} [evento.totalDeImagens] quantas imagens há na galeria
+ * @returns {{acao: string, oferta: ?number, imagem: ?number}|null} `null` = a
+ *   tecla não é desta peça e **não é consumida** (nada de `preventDefault`).
+ */
+export function resolverAtalhoDoPainel(evento = null) {
+    const e = objetoDoPainel(evento);
+    if (e === null) return null;
+
+    const tecla = typeof e.tecla === 'string' ? e.tecla : null;
+    if (tecla === null) return null;
+
+    const temModal = e.temModal === true;
+
+    // ⚠️⚠️ `Escape` PRIMEIRO, e **ANTES da guarda de campo** — é a ordem medida em
+    // `:1014`/`:1015`. A cadeia é `modal → painel`, com o degrau do lightbox da
+    // Fase 189 declarado no bloco acima e NÃO antecipado.
+    if (tecla === TECLAS.FECHAR) {
+        return { acao: temModal ? ACOES.FECHAR_MODAL : ACOES.FECHAR_PAINEL, oferta: null, imagem: null };
+    }
+
+    // ⚠️ Daqui para baixo, campo de texto engole a tecla (`:1015`). Sem isso,
+    // digitar "a seta" numa busca navegaria a fila por baixo de quem digita.
+    if (e.alvoEhCampo === true) return null;
+
+    // ⚠️ Com modal aberto, `↑ ↓ ← →` não fazem nada (`:1017`/`:1018` exigem
+    // `!S.modal`): navegar a fila por trás de um modal aberto trocaria a oferta
+    // que o modal está confirmando.
+    if (temModal) return null;
+
+    if (tecla === TECLAS.ANTERIOR || tecla === TECLAS.PROXIMA) {
+        // ⚠️ O destino é **LIDO** do servidor. `null` na ponta → a tecla **não
+        // navega** (e devolve `null`, então nem consome o evento).
+        const destino = inteiroDoPainel(tecla === TECLAS.ANTERIOR ? e.anteriorId : e.proximaId);
+
+        return destino === null ? null : { acao: ACOES.IR_PARA_OFERTA, oferta: destino, imagem: null };
+    }
+
+    if (tecla === TECLAS.IMAGEM_ANTERIOR || tecla === TECLAS.IMAGEM_PROXIMA) {
+        const total = inteiroDoPainel(e.totalDeImagens);
+
+        // ⚠️ Sem galeria não há o que trocar — e índice numa lista vazia daria
+        // bloco vazio na tela.
+        if (total === null || total <= 0) return null;
+
+        const atual = inteiroDoPainel(e.imagemAtual) ?? 0;
+        const passo = tecla === TECLAS.IMAGEM_PROXIMA ? 1 : -1;
+
+        // ⚠️⚠️ AS DUAS PONTAS. `Math.max(0, …)` é o piso de `:1018`;
+        // `Math.min(…, total - 1)` é o teto que o protótipo clampa só na LEITURA
+        // (`:1293`). Resolver os dois aqui é o que impede índice fora da lista.
+        const destino = Math.min(Math.max(0, atual + passo), total - 1);
+
+        // ⚠️ Já na ponta, a tecla **não** é consumida: `preventDefault` numa tecla
+        // que não faz nada tira a rolagem da pessoa sem motivo.
+        return destino === atual ? null : { acao: ACOES.TROCAR_IMAGEM, oferta: null, imagem: destino };
+    }
+
+    return null;
+}
+
 /**
  * ⚠️⚠️ **A RAIZ DO QUE É PORTADO — e é ELA que os gates conferem.**
  *
@@ -369,16 +508,45 @@ export function ColunaDoPainel({ children = null, className = null }) {
  */
 export function RaizDoPainel({
     navegacao = null,
+    identificacao = null,
+    falha = null,
     onIr = null,
     onFechar = null,
+    onTentarDeNovo = null,
+    colunaDeFotos = null,
+    colunaDePreco = null,
     children = null,
 }) {
+    // ⚠️⚠️ O corpo rolável de `:562` só existe COM CONTEÚDO, e a decisão é tomada
+    // **ANTES** de desenhar a casca: um componente que devolve `null` por dentro
+    // **já desenhou a casca por fora**, e bloco de 18px de padding vazio é D4
+    // violado. É por isso que `temIdentificacao()` é named export.
+    const temIdentidade = temIdentificacao(identificacao, falha);
+    const temColuna = filhosSeguros(colunaDeFotos) !== null || filhosSeguros(colunaDePreco) !== null;
+    const extra = filhosSeguros(children);
+
+    const corpo = temIdentidade || temColuna || extra !== null
+        ? (
+            <CorpoDoPainel>
+                {[
+                    temIdentidade
+                        ? <IdentificacaoDaOferta key="identificacao" identificacao={identificacao} falha={falha} onTentarDeNovo={onTentarDeNovo} />
+                        : null,
+                    temColuna
+                        ? <ColunasDoPainel key="colunas" colunaDeFotos={colunaDeFotos} colunaDePreco={colunaDePreco} />
+                        : null,
+                    extra,
+                ]}
+            </CorpoDoPainel>
+        )
+        : null;
+
     return (
         <>
             <BackdropDoPainel onFechar={onFechar} />
             <aside className={CLASSES_PAINEL}>
                 <TopoDoPainel navegacao={navegacao} onIr={onIr} onFechar={onFechar} />
-                {filhosSeguros(children)}
+                {corpo}
             </aside>
         </>
     );
@@ -392,7 +560,16 @@ export function RaizDoPainel({
  * @param {unknown} [props.painel] o payload de `PainelDeRevisaoService::para()`
  * @param {unknown} [props.onIr] `(id) => void` — a navegação ↑/↓
  * @param {unknown} [props.onFechar] `() => void` — Esc, clique fora e o ×
- * @param {unknown} [props.children] o corpo (identificação, colunas, rodapé)
+ * @param {unknown} [props.temModal] se algum modal está aberto (planos 188-11/12)
+ * @param {unknown} [props.imagemAtual] o índice da imagem selecionada (coluna de fotos, 188-08)
+ * @param {unknown} [props.totalDeImagens] quantas imagens há na galeria
+ * @param {unknown} [props.onFecharModal] `() => void` — o `Esc` com modal aberto
+ * @param {unknown} [props.onTrocarImagem] `(indice) => void` — as setas ←/→
+ * @param {unknown} [props.onTentarDeNovo] `() => void`, ou `null` (o normal hoje:
+ *   a rota de `tentarDeNovo` **não existe** — ver `IdentificacaoDaOferta.jsx`)
+ * @param {unknown} [props.colunaDeFotos] SLOT de NÓ — a coluna de fotos (plano 188-08)
+ * @param {unknown} [props.colunaDePreco] SLOT de NÓ — a coluna de preço (plano 188-09)
+ * @param {unknown} [props.children] o resto do corpo (pendências e rodapé, plano 188-10)
  *
  * ⚠️ `aberto !== true` devolve `null`: **nada no DOM, nenhum backdrop fantasma**.
  * Backdrop invisível capturaria o clique da tela inteira sem ninguém ver por quê.
@@ -402,13 +579,70 @@ export function RaizDoPainel({
 export default function PainelDeRevisao({
     aberto = false,
     painel = null,
+    temModal = false,
+    imagemAtual = 0,
+    totalDeImagens = 0,
     onIr = null,
     onFechar = null,
+    onFecharModal = null,
+    onTrocarImagem = null,
+    onTentarDeNovo = null,
+    colunaDeFotos = null,
+    colunaDePreco = null,
     children = null,
 }) {
     const dados = objetoDoPainel(painel);
+    const navegacao = objetoDoPainel(dados === null ? null : dados.navegacao);
+    const estaAberto = aberto === true && dados !== null;
 
-    if (aberto !== true || dados === null) return null;
+    // ═══ ⚠️⚠️ OS ATALHOS — e o que está PROVADO deles ═══════════════
+    //
+    // ⚠️⚠️ **O `addEventListener` abaixo NÃO ESTÁ PROVADO: não há navegador
+    // nesta máquina.** O que os gates provam é `resolverAtalhoDoPainel()`, que é
+    // **função pura** e decide o que cada tecla faz. Esta fase **não pode afirmar
+    // "a tecla funciona"** — só "a função que decide está certa".
+    //
+    // ⚠️ O `useEffect` roda antes das guardas de `aberto`/`document` de propósito:
+    // hook atrás de `return` condicional viola as regras dos hooks. A guarda de
+    // "está aberto?" mora DENTRO do efeito.
+    useEffect(() => {
+        if (!estaAberto || typeof document === 'undefined') return undefined;
+
+        const aoTeclar = (evento) => {
+            // ⚠️ Flag DENTRO do callback.
+            const alvo = evento === null || typeof evento !== 'object' ? null : evento.target;
+            const tag = alvo === null || typeof alvo !== 'object' ? '' : alvo.tagName;
+
+            const decisao = resolverAtalhoDoPainel({
+                tecla: evento?.key,
+                temModal: temModal === true,
+                // ⚠️ `e.target.tagName` pode vir `undefined` — o próprio protótipo
+                // usa `(e.target.tagName || '')` em `:1013`.
+                alvoEhCampo: TAGS_DE_CAMPO.includes(typeof tag === 'string' ? tag : ''),
+                anteriorId: navegacao === null ? null : navegacao.anterior_id,
+                proximaId: navegacao === null ? null : navegacao.proxima_id,
+                imagemAtual,
+                totalDeImagens,
+            });
+
+            // ⚠️ `null` = a tecla **não é desta peça**: nada de `preventDefault`,
+            // que tiraria a rolagem da pessoa sem motivo.
+            if (decisao === null) return;
+
+            evento.preventDefault?.();
+
+            if (decisao.acao === ACOES.FECHAR_MODAL && typeof onFecharModal === 'function') onFecharModal();
+            else if (decisao.acao === ACOES.FECHAR_PAINEL && typeof onFechar === 'function') onFechar();
+            else if (decisao.acao === ACOES.IR_PARA_OFERTA && typeof onIr === 'function') onIr(decisao.oferta);
+            else if (decisao.acao === ACOES.TROCAR_IMAGEM && typeof onTrocarImagem === 'function') onTrocarImagem(decisao.imagem);
+        };
+
+        window.addEventListener('keydown', aoTeclar);
+
+        return () => window.removeEventListener('keydown', aoTeclar);
+    });
+
+    if (!estaAberto) return null;
 
     // ⚠️⚠️ A GUARDA DE AMBIENTE. Sem ela o render de SERVIDOR **LANÇA**
     // (`document is not defined`); com ela devolve `null`, e é por isso que **todas
@@ -419,9 +653,14 @@ export default function PainelDeRevisao({
 
     return createPortal(
         <RaizDoPainel
-            navegacao={dados.navegacao ?? null}
+            navegacao={navegacao}
+            identificacao={dados.identificacao ?? null}
+            falha={dados.falha ?? null}
             onIr={onIr}
             onFechar={onFechar}
+            onTentarDeNovo={onTentarDeNovo}
+            colunaDeFotos={colunaDeFotos}
+            colunaDePreco={colunaDePreco}
         >
             {children}
         </RaizDoPainel>,

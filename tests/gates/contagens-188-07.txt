@@ -198,10 +198,52 @@
 # de mutação ABORTA na 1ª execução ou marca "SOBREVIVEU" por um motivo que NÃO é o
 # código** (learnings §4 caso 11). Os DOIS foram MEDIDOS antes da campanha.
 # OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026:
-#   · **33** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
-#     os 29 testes de topo MAIS os 4 sub-testes da camada de CSS, que rodam;
-#   · **29** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#   · **45** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#     os 41 testes de topo MAIS os 4 sub-testes da camada de CSS, que rodam;
+#   · **41** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
 #     o `cp` atualiza o `mtime` do `.jsx`): a camada cai em `skip` NOMEADO e os 4
 #     sub-testes dela não entram na contagem. ⚠️ `# tests` conta sub-teste, e é
 #     por isso que o número MUDA — não é teste que desapareceu.
-casca-do-painel  js  tests/js/publicador-painel-casca-188.test.js  ::  tests=33,29
+# ⚠️ A tarefa 1 media **33,29**; a tarefa 2 acrescentou 12 testes (teclado,
+#   identificação, falha e página). O número foi **RE-MEDIDO**, nunca estimado.
+casca-do-painel  js  tests/js/publicador-painel-casca-188.test.js  ::  tests=45,41
+
+
+# ── TAREFA 2: o GATE-03 (vocabulário novo fechado) ─────────────────────
+
+# ⚠⚠ **ESTE ID É DECLARADO EM LINHA PRÓPRIA, e isso foi MEDIDO, não deduzido:**
+#   grep -l "vocabulario-tamanhos" tests/gates/contagens-*.txt
+#     → DEZ arquivos (contagens-187-01.txt e contagens-187-03.txt … -11.txt),
+#       a linha IDENTICA nos dez, e também em contagens-188-01.txt.
+# ➡️ **Quem roda o GATE-03, declara.** `contagens-187-02.txt` e
+#   `contagens-188-02.txt`/`-03.txt` **NÃO** o declaram, e estão CERTOS: aqueles
+#   planos são só de servidor e não criam `.jsx` nenhum. A regra é **quem roda,
+#   declara** — não *todos declaram*.
+# ⚠⚠ **O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também roda
+#   OUTROS arquivos.** Declarar em linha própria **NÃO é** embutir em id composto —
+#   é o oposto, e é o que as dez waves da 187 fizeram. Foi o id **COMPOSTO** que
+#   fez a wave 187-05 reprovar DOIS ids de outras waves e exigir consertar QUATRO
+#   manifestos.
+# ⚠ **Sem a linha o harness ABORTA** — medido:
+#   `verificar-testes.sh 188-07 vocabulario-tamanhos` → *"ABORTOU: manifesto nao
+#   existe"* antes de este arquivo nascer.
+#
+# ⚠⚠ **A FORMA É `>=`, E O N FOI MEDIDO NA HORA — nunca copiado da 187.** A
+#   contagem **CRESCE POR CONSTRUÇÃO**: o gate roda um sub-teste por arquivo
+#   varrido em `ARQUIVOS_NOVOS`/`DIRETORIOS_FECHADOS`, e **cada `.jsx` novo a
+#   aumenta**. Os dez manifestos da 187 cravaram `>=443`; a wave 188-01 mediu
+#   `>=548`; **com os TRÊS `.jsx` deste plano o arquivo mede 569** (medido por
+#   `node --test --test-reporter=tap` em 19/10/2026: `# tests 569 / # pass 569`).
+#   ➡️ O piso é o MEDIDO, e o `>=` existe porque teste novo só SOMA — o que o
+#   piso pega é arquivo que não carrega, `SyntaxError`, ou teste que DESAPARECEU.
+#
+# ⚠⚠ **O QUE ESTE ID MEDE, nos três `.jsx` deste plano:** FID-03 (nenhum
+#   `text-sm`/`text-xs`; `text-[11px]`/`[11.5px]`/`[12px]`/`[12.5px]`/`[13px]`/
+#   `[14px]`/`[16px]`/`[20px]` todos na lista do README), **os 4 pesos**
+#   (400/500/600/700 — e foi este sub-teste que REPROVOU o `font-extrabold` do
+#   glifo de `:580`, trocado para `font-[800]`), FID-04 (zero `ecf-*`, zero
+#   `font-display`, zero `border-white/[0.08]`), **TOK-15** (nenhum hex literal no
+#   código), FID-05 (nenhum breakpoint) e o **`deepEqual` de
+#   `DIRETORIOS_FECHADOS`**, que é o que impede `.jsx` novo de entrar CALADO em
+#   `aprovacao/`.
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=569

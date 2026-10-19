@@ -162,6 +162,10 @@ async function montar(caminhoRelativo) {
 const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 const REL_PAINEL = `${DIR_APROV}/PainelDeRevisao.jsx`;
 const REL_TOPO = `${DIR_APROV}/TopoDoPainel.jsx`;
+const REL_IDENT = `${DIR_APROV}/IdentificacaoDaOferta.jsx`;
+const REL_ANDAMENTO = `${DIR_APROV}/andamentoDoPortao.jsx`;
+const REL_PAGINA = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
+const REL_ROTAS = 'routes/mlb_anuncios.php';
 const REL_CASCA_MODAL = `${DIR_APROV}/CascaDeModal.jsx`;
 const REL_TOAST = `${DIR_APROV}/ToastDaFila.jsx`;
 const REL_BARRA = `${DIR_APROV}/BarraDeSelecao.jsx`;
@@ -177,8 +181,9 @@ const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 // faz `lerSemComentarios` LANÇAR, mas uma sonda de AUSÊNCIA sobre arquivo
 // inexistente passaria calada.
 const CAMINHOS_CITADOS = [
-    REL_PAINEL, REL_TOPO, REL_CASCA_MODAL, REL_TOAST, REL_BARRA, REL_HEADER,
+    REL_PAINEL, REL_TOPO, REL_IDENT, REL_CASCA_MODAL, REL_TOAST, REL_BARRA, REL_HEADER,
     REL_ZINDEX_ORDEM, REL_LAYOUT, REL_MODAL_NOVA, REL_SERVICO_APROVACAO,
+    REL_ANDAMENTO, REL_PAGINA, REL_ROTAS,
 ];
 
 // ⚠️ As fontes SEM comentário: a prosa em pt-BR deste projeto cita os próprios
@@ -186,6 +191,8 @@ const CAMINHOS_CITADOS = [
 // próprio conserto** (TRÊS mutações da wave 187-04 abortaram por isso).
 const FONTE_PAINEL = lerSemComentarios(REL_PAINEL);
 const FONTE_TOPO = lerSemComentarios(REL_TOPO);
+const FONTE_IDENT = lerSemComentarios(REL_IDENT);
+const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
 // ⚠️⚠️ E as fontes CRUAS, para o único bloco que lê COMENTÁRIO DE PROPÓSITO: o
 // docblock **é** o artefato sob teste nos três motivos do portal (a próxima pessoa
@@ -198,6 +205,7 @@ const CRUA_TOPO = fs.readFileSync(path.resolve(RAIZ, REL_TOPO), 'utf8');
 const FONTES_DO_PLANO = [
     [REL_PAINEL, FONTE_PAINEL],
     [REL_TOPO, FONTE_TOPO],
+    [REL_IDENT, FONTE_IDENT],
 ];
 
 const render = (Componente, props) => renderToStaticMarkup(React.createElement(Componente, props));
@@ -255,6 +263,8 @@ const PAINEL = { oferta_id: 12, versao: 3, navegacao: NAV_MEIO };
 // ─── Os bundles: TODOS montados ANTES do primeiro `test()` ───
 const M_PAINEL = await montar(REL_PAINEL);
 const M_TOPO = await montar(REL_TOPO);
+const M_IDENT = await montar(REL_IDENT);
+const M_ANDAMENTO = await montar(REL_ANDAMENTO);
 // ⚠️ O gravador compartilhado — ver a razão no bloco do stub, acima. Importar o
 // arquivo de stub NÃO serve: o esbuild o inlina no bundle e as duas cópias teriam
 // arrays diferentes.
@@ -403,6 +413,16 @@ test('⚠️⚠️ PORTAL: TODAS as peças internas são NAMED EXPORTS (lista CO
         'ColunaDoPainel', 'filhosSeguros', 'escreverNoPainel', 'objetoDoPainel', 'inteiroDoPainel',
         'CLASSES_BACKDROP', 'CLASSES_PAINEL', 'CLASSES_CORPO', 'CLASSES_COLUNAS', 'CLASSES_COLUNA',
         'CHAVE_DA_VERSAO', 'REGRA_VERSAO_DIVERGENTE',
+        'resolverAtalhoDoPainel', 'TECLAS', 'TAGS_DE_CAMPO', 'ACOES',
+    ];
+    const DO_IDENT = [
+        'default', 'CaixaDeFalha', 'chipsDaOferta', 'temIdentificacao', 'textoDaOferta', 'objetoDaOferta',
+        'CLASSES_LINHA', 'CLASSES_COLUNA_ESQUERDA', 'CLASSES_PRODUTO', 'CLASSES_SKU', 'SEPARADOR',
+        'CLASSES_TITULO', 'CLASSES_FILA_DE_CHIPS', 'CLASSES_CHIP', 'CLASSES_CHIP_MODALIDADE',
+        'CLASSES_LOSANGO', 'CLASSES_CHIP_CONTORNO', 'CLASSES_CHIP_ANDAMENTO', 'CLASSES_DOT',
+        'CLASSES_LADO_DIREITO', 'CLASSES_RESPONSAVEL', 'CLASSES_FALHA', 'CLASSES_GLIFO_FALHA',
+        'GLIFO_FALHA', 'CLASSES_FALHA_TEXTO', 'CLASSES_FALHA_TITULO', 'TITULO_DA_FALHA',
+        'CLASSES_FALHA_MENSAGEM', 'CLASSES_FALHA_ACAO',
     ];
     const DO_TOPO = [
         'default', 'SetaDoPainel', 'textoDoTopo', 'idDoTopo',
@@ -415,6 +435,7 @@ test('⚠️⚠️ PORTAL: TODAS as peças internas são NAMED EXPORTS (lista CO
     const faltando = [
         ...DO_PAINEL.filter((nome) => M_PAINEL[nome] === undefined).map((n) => `${REL_PAINEL}#${n}`),
         ...DO_TOPO.filter((nome) => M_TOPO[nome] === undefined).map((n) => `${REL_TOPO}#${n}`),
+        ...DO_IDENT.filter((nome) => M_IDENT[nome] === undefined).map((n) => `${REL_IDENT}#${n}`),
     ];
     assert.deepEqual(faltando, [], 'named export sumiu — sem ela o gate mede o COMPOSTO, que o render de servidor devolve VAZIO');
 
@@ -1042,7 +1063,15 @@ test('⚠️⚠️ TERRITÓRIO: as ausências deste plano, recortadas aos SEUS a
 
     // ⚠️ E o RECORTE tem isca também: a lista varrida não está vazia e tem os DOIS
     // arquivos. Sonda sobre lista vazia é vazia por construção.
-    assert.equal(FONTES_DO_PLANO.length, 2, 'a lista varrida deixou de ter os dois arquivos deste plano');
+    // ⚠⚠ **LISTA CONSTANTE, nunca uma CONTAGEM.** A primeira redação deste
+    // bloco dizia `length === 2`, e a tarefa 2 (que criou o terceiro `.jsx`) o
+    // REPROVOU — é a régua que sobe a cada tarefa, e que treina o executor
+    // seguinte a ajustar número em vez de consertar código (learnings §4b.2).
+    assert.deepEqual(
+        FONTES_DO_PLANO.map(([rel]) => rel),
+        [REL_PAINEL, REL_TOPO, REL_IDENT],
+        'a lista varrida deixou de ser EXATAMENTE os três arquivos deste plano',
+    );
     const vazias = FONTES_DO_PLANO.filter(([, f]) => f.trim().length < 500).map(([rel]) => rel);
     assert.deepEqual(vazias, [], 'fonte lida veio vazia/curta — a leitura está quebrada e as ausências passariam caladas');
 });
@@ -1123,6 +1152,435 @@ test('⚠️ TERRITÓRIO: o ESCOPO DO ASSUNTO `(188-07)`, em duas passadas 188_0
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 8b. OS ATALHOS DE TECLADO — pela FUNÇÃO PURA, com o runtime DECLARADO
+//     NÃO PROVADO
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('⚠️⚠️ TECLADO: o `Esc` fecha o MODAL primeiro, e dispara TAMBÉM digitando 188_07', () => {
+    // ⚠️⚠️ **O RUNTIME NÃO É PROVADO:** não há navegador nesta máquina, e
+    // `renderToStaticMarkup` não dispara evento nenhum. O que está provado é a
+    // FUNÇÃO que decide. Esta fase **não pode afirmar "a tecla funciona"**.
+    const r = M_PAINEL.resolverAtalhoDoPainel;
+
+    // `:1014` — a cadeia é `modal → painel` (o degrau do lightbox é da Fase 189 e
+    // está DECLARADO no docblock, não antecipado).
+    assert.deepEqual(r({ tecla: 'Escape', temModal: true }), { acao: M_PAINEL.ACOES.FECHAR_MODAL, oferta: null, imagem: null }, 'com modal aberto o Esc tem de fechar O MODAL primeiro');
+    assert.deepEqual(r({ tecla: 'Escape', temModal: false }), { acao: M_PAINEL.ACOES.FECHAR_PAINEL, oferta: null, imagem: null }, 'sem modal o Esc tem de fechar o PAINEL');
+
+    // ⚠️⚠️ **DIVERGÊNCIA DECLARADA DO PLANO, e o PROTÓTIPO GANHA.** O `<behavior>`
+    // do plano diz que os QUATRO atalhos não disparam em campo de texto. Medido
+    // por `sed`: `:1015` (`if (typing) return;`) vem **DEPOIS** do bloco do
+    // `Escape` (`:1014`), então o `Escape` dispara **também digitando**. O
+    // contrário TRANCARIA a pessoa dentro de um campo de texto de modal.
+    assert.deepEqual(
+        r({ tecla: 'Escape', temModal: true, alvoEhCampo: true }),
+        { acao: M_PAINEL.ACOES.FECHAR_MODAL, oferta: null, imagem: null },
+        'o Esc foi barrado em campo de texto — `:1015` vem DEPOIS de `:1014`, e sem ele a pessoa fica trancada no campo',
+    );
+});
+
+test('⚠️ TECLADO: ↑/↓ leem o ID do SERVIDOR e param nas pontas 188_07', () => {
+    const r = M_PAINEL.resolverAtalhoDoPainel;
+    const base = { anteriorId: 11, proximaId: 13 };
+
+    // ⚠️⚠️ O destino é **LIDO** de `anterior_id`/`proxima_id` (plano 188-02) — a
+    // tela **NUNCA recalcula a fila** nem filtra `preparando` no cliente, que é a
+    // segunda verdade que aquele plano existe para impedir.
+    // ⚠️ `preparando` sai da NAVEGAÇÃO mas CONTINUA nos `ids` do LOTE (divergência
+    // D9 da Fase 187, já no ar): são listas diferentes, e não se unificam.
+    assert.deepEqual(r({ tecla: 'ArrowUp', ...base }), { acao: M_PAINEL.ACOES.IR_PARA_OFERTA, oferta: 11, imagem: null }, 'o ↑ não levou o `anterior_id` do servidor');
+    assert.deepEqual(r({ tecla: 'ArrowDown', ...base }), { acao: M_PAINEL.ACOES.IR_PARA_OFERTA, oferta: 13, imagem: null }, 'o ↓ não levou o `proxima_id` do servidor');
+
+    // ⚠️ AS DUAS PONTAS, e elas se DISTINGUEM: `null` é "a tecla não é desta peça",
+    // então nem `preventDefault` acontece.
+    assert.equal(r({ tecla: 'ArrowUp', anteriorId: null, proximaId: 13 }), null, 'na PRIMEIRA da fila o ↑ navegou');
+    assert.equal(r({ tecla: 'ArrowDown', anteriorId: 11, proximaId: null }), null, 'na ÚLTIMA da fila o ↓ navegou');
+    assert.notEqual(r({ tecla: 'ArrowDown', anteriorId: null, proximaId: 13 }), null, 'na PRIMEIRA o ↓ deveria navegar — a fixture não distingue as pontas');
+
+    // ⚠️ A oferta em `preparando`: FORA da navegação, as duas pontas nulas.
+    assert.equal(r({ tecla: 'ArrowUp', anteriorId: null, proximaId: null }), null, 'fora da navegação o ↑ navegou');
+    assert.equal(r({ tecla: 'ArrowDown', anteriorId: null, proximaId: null }), null, 'fora da navegação o ↓ navegou');
+
+    // ⚠️ `:1017` exige `!S.modal`: navegar a fila por trás de um modal aberto
+    // trocaria a oferta que o modal está confirmando.
+    assert.equal(r({ tecla: 'ArrowUp', temModal: true, ...base }), null, 'o ↑ navegou com modal aberto');
+    assert.equal(r({ tecla: 'ArrowDown', temModal: true, ...base }), null, 'o ↓ navegou com modal aberto');
+
+    // ⚠️ `:1015` — campo de texto engole as setas.
+    for (const tecla of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+        assert.equal(r({ tecla, alvoEhCampo: true, ...base, imagemAtual: 0, totalDeImagens: 5 }), null, `o ${tecla} disparou com o foco num campo de texto`);
+    }
+
+    // ⚠️ ISCA: a guarda de campo é por lista FECHADA e as três tags estão nela.
+    assert.deepEqual(M_PAINEL.TAGS_DE_CAMPO, ['INPUT', 'TEXTAREA', 'SELECT'], 'a lista de tags de `:1013` mudou');
+});
+
+test('⚠️⚠️ TECLADO: ←/→ trocam a foto, CLAMPADAS nas DUAS pontas 188_07', () => {
+    const r = M_PAINEL.resolverAtalhoDoPainel;
+
+    assert.deepEqual(r({ tecla: 'ArrowRight', imagemAtual: 0, totalDeImagens: 5 }), { acao: M_PAINEL.ACOES.TROCAR_IMAGEM, oferta: null, imagem: 1 }, 'o → não avançou a foto');
+    assert.deepEqual(r({ tecla: 'ArrowLeft', imagemAtual: 3, totalDeImagens: 5 }), { acao: M_PAINEL.ACOES.TROCAR_IMAGEM, oferta: null, imagem: 2 }, 'o ← não voltou a foto');
+
+    // ⚠️⚠️ AS DUAS PONTAS. O protótipo clampa em DOIS lugares diferentes: `:1018`
+    // clampa só o PISO (`Math.max(0, …)`) e o TETO é clampado na LEITURA (`:1293`,
+    // `imgs[Math.min(selIdx, imgs.length - 1)] || null`). Resolver os dois aqui é
+    // o que impede índice fora da lista — que daria bloco VAZIO na tela.
+    assert.equal(r({ tecla: 'ArrowLeft', imagemAtual: 0, totalDeImagens: 5 }), null, 'o ← passou do PISO (`:1018`)');
+    assert.equal(r({ tecla: 'ArrowRight', imagemAtual: 4, totalDeImagens: 5 }), null, 'o → passou do TETO (`:1293`)');
+
+    // ⚠⚠ **Índice JÁ fora da lista volta para DENTRO, nunca para fora** — e isto
+    // foi conserto da própria sonda: a primeira redação esperava `null` no → a
+    // partir de 99, e o CÓDIGO estava certo. Índice 99 numa galeria de 5 é estado
+    // inválido; a tecla tem de trazer a seleção para a última foto que EXISTE, em
+    // vez de não fazer nada e deixar a pessoa olhando um bloco vazio. É o clamp de
+    // LEITURA do protótipo (`:1293`) aplicado nas DUAS direções.
+    const doAlto = { acao: M_PAINEL.ACOES.TROCAR_IMAGEM, oferta: null, imagem: 4 };
+    assert.deepEqual(r({ tecla: 'ArrowRight', imagemAtual: 99, totalDeImagens: 5 }), doAlto, 'índice acima do teto não foi trazido para dentro pelo →');
+    assert.deepEqual(r({ tecla: 'ArrowLeft', imagemAtual: 99, totalDeImagens: 5 }), doAlto, 'índice acima do teto não foi trazido para dentro pelo ←');
+    // ⚠ E índice negativo volta para o PISO, pelo mesmo caminho.
+    assert.deepEqual(r({ tecla: 'ArrowLeft', imagemAtual: -7, totalDeImagens: 5 }), { acao: M_PAINEL.ACOES.TROCAR_IMAGEM, oferta: null, imagem: 0 }, 'índice negativo não foi trazido para o piso');
+
+    // ⚠️ Galeria vazia: não há o que trocar (IMG-12 é bloqueio, não índice).
+    for (const total of [0, null, undefined, -1, NaN, {}, [], '5']) {
+        assert.equal(r({ tecla: 'ArrowRight', imagemAtual: 0, totalDeImagens: total }), null, `o → disparou com total adverso (${typeof total})`);
+    }
+
+    // ⚠️ Com modal aberto, nada (`:1018` exige `!S.modal`).
+    assert.equal(r({ tecla: 'ArrowRight', temModal: true, imagemAtual: 0, totalDeImagens: 5 }), null, 'o → trocou a foto com modal aberto');
+
+    // ⚠️ Tecla que não é desta peça devolve `null` — nada de `preventDefault`, que
+    // tiraria a rolagem da pessoa sem motivo.
+    for (const tecla of ['Enter', 'Tab', ' ', 'a', 'PageDown', 'Home', null, undefined, 7, {}, []]) {
+        assert.equal(r({ tecla, anteriorId: 11, proximaId: 13, imagemAtual: 0, totalDeImagens: 5 }), null, `a tecla ${typeof tecla} foi consumida indevidamente`);
+    }
+
+    // ⚠️ Evento inteiro adverso não derruba o CLIQUE/TECLA.
+    for (const evento of [null, undefined, 'x', 7, [], { toString: null }, { tecla: { toString: null } }]) {
+        assert.doesNotThrow(() => r(evento), `o resolvedor LANÇOU com evento adverso (${typeof evento})`);
+        assert.equal(r(evento), null, `o resolvedor devolveu ação com evento adverso (${typeof evento})`);
+    }
+});
+
+test('⚠️ TECLADO: o runtime está DECLARADO como não provado, e o lightbox NÃO foi antecipado 188_07', () => {
+    // ⚠️⚠️ Bloco que lê COMENTÁRIO DE PROPÓSITO (a inversão está declarada no topo
+    // deste arquivo): a declaração de que o runtime não é provado **é** o artefato,
+    // porque afirmar "a tecla funciona" é o que esta fase não pode fazer.
+    const EXIGIDOS = ['NÃO ESTÁ PROVADO', 'não há navegador', 'função pura', 'Fase 189'];
+    const faltando = EXIGIDOS.filter((t) => !CRUA_PAINEL.toLowerCase().includes(t.toLowerCase()));
+    assert.deepEqual(faltando, [], 'a declaração de que o runtime do teclado NÃO é provado saiu do docblock');
+
+    // ⚠️ E o degrau do lightbox é PREVISTO, nunca IMPLEMENTADO: a ação não existe.
+    assert.equal(Object.values(M_PAINEL.ACOES).includes('fechar-lightbox'), false, 'o lightbox da Fase 189 foi antecipado');
+    assert.deepEqual(
+        Object.keys(M_PAINEL.ACOES).sort(),
+        ['FECHAR_MODAL', 'FECHAR_PAINEL', 'IR_PARA_OFERTA', 'TROCAR_IMAGEM'],
+        'a lista de ações do resolvedor mudou — ela é FECHADA de propósito',
+    );
+
+    // ⚠️ E o listener existe no composto (ele não é prova de runtime, mas a sua
+    // AUSÊNCIA seria prova de que nada escuta).
+    assert.match(FONTE_PAINEL, /window\.addEventListener\('keydown'/, 'ninguém escuta o teclado');
+    assert.match(FONTE_PAINEL, /window\.removeEventListener\('keydown'/, 'o listener não é removido — cada abertura somaria um');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8c. A IDENTIFICAÇÃO — os 5 chips, o losango só do Premium, e a caixa de falha
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ⚠️⚠️ A FIXTURE do bloco `identificacao` — o payload REAL de
+// `PainelDeRevisaoService::identificacao()`. **Ela DISCRIMINA**: Premium (para o
+// losango existir), combo (para o formato ser o de `×N`) e um andamento do
+// `live` (para as cores do chip serem as do estado, não as do neutro).
+const IDENT = {
+    produto: 'Poltrona Beny Decorativa',
+    sku: 'PBD-114-K2',
+    titulo: 'Poltrona Beny Decorativa Veludo Cinza Pés Madeira',
+    chips: {
+        modalidade: { rotulo: 'Premium', premium: true },
+        formato: 'Combo ×2 · 2 un. por oferta',
+        origem: 'Preparado automaticamente',
+        versao: 'Versão 3',
+        andamento: { chave: 'aguardando_aprovacao', rotulo: 'Aguardando aprovação' },
+    },
+    responsavel: 'Mariana Alves',
+    espera: 'aguardando há 3 dias',
+};
+
+const IDENT_CLASSICO = {
+    ...IDENT,
+    chips: { ...IDENT.chips, modalidade: { rotulo: 'Clássico', premium: false } },
+};
+
+const FALHA = { mensagem: 'O atributo BRAND é obrigatório para esta categoria.', rotulo_acao: 'Tentar publicar novamente' };
+
+test('⚠️ IDENTIFICAÇÃO: os CINCO chips, NA ORDEM de `:568`-`:572` 188_07', () => {
+    const chips = M_IDENT.chipsDaOferta(IDENT.chips);
+    assert.deepEqual(
+        chips.map((c) => c.chave),
+        ['modalidade', 'formato', 'origem', 'versao', 'andamento'],
+        'a ORDEM dos cinco chips divergiu do protótipo — ele GANHA em ORDEM',
+    );
+
+    const html = render(M_IDENT.default, { identificacao: IDENT, falha: null });
+
+    // ⚠️ Os cinco RÓTULOS, e a ORDEM deles no HTML.
+    const rotulos = ['Premium', 'Combo ×2 · 2 un. por oferta', 'Preparado automaticamente', 'Versão 3', 'Aguardando aprovação'];
+    const faltando = rotulos.filter((r) => !html.includes(r));
+    assert.deepEqual(faltando, [], 'rótulo de chip desapareceu da tela');
+    const posicoes = rotulos.map((r) => html.indexOf(r));
+    assert.deepEqual(posicoes, [...posicoes].sort((a, b) => a - b), 'a ordem dos chips no HTML não é a de `:568`-`:572`');
+
+    // ⚠️ Produto, SKU (em monoespaçada), título, responsável e espera.
+    assert.match(html, /Poltrona Beny Decorativa/, 'o produto desapareceu (`:565`)');
+    assert.match(html, /font-pub-mono[^"]*">PBD-114-K2</, 'o SKU não está em monoespaçada (`:565`)');
+    assert.match(html, /Mariana Alves/, 'o responsável desapareceu (`:575`)');
+    assert.match(html, /aguardando há 3 dias/, 'a espera desapareceu (`:575`)');
+
+    // ⚠️ Chip sem rótulo NÃO entra — chip vazio de 24px é D4 violado. ⚠️ Mas o de
+    // ANDAMENTO entra sempre, porque `andamentoDe()` nunca devolve texto vazio.
+    assert.deepEqual(M_IDENT.chipsDaOferta({ formato: 'x' }).map((c) => c.chave), ['formato', 'andamento'], 'chip sem rótulo entrou, ou o andamento (que NUNCA é vazio) saiu');
+    assert.deepEqual(M_IDENT.chipsDaOferta(null), [], 'chips nulos devolveram lista');
+});
+
+test('⚠️⚠️ IDENTIFICAÇÃO: o losango é SÓ do Premium, por CHAVE e nunca por truthiness 188_07', () => {
+    const premium = render(M_IDENT.default, { identificacao: IDENT, falha: null });
+    const classico = render(M_IDENT.default, { identificacao: IDENT_CLASSICO, falha: null });
+
+    // ⚠️⚠️ **A diferença entre os dois é SÓ `premium: true/false`** — se o código
+    // usasse `if (modalidade)` (truthiness genérica), o losango apareceria nos DOIS
+    // e este par não distinguiria nada. Foi asserção da 187-08.
+    assert.match(premium, new RegExp(escapaRegex(M_IDENT.CLASSES_LOSANGO)), 'o losango do Premium (`:568`) desapareceu');
+    assert.doesNotMatch(classico, new RegExp(escapaRegex(M_IDENT.CLASSES_LOSANGO)), 'o losango apareceu no CLÁSSICO — truthiness genérica');
+    assert.match(classico, /Clássico/, 'o rótulo Clássico desapareceu');
+
+    // ⚠️ E a chave tem de ser exatamente `true`: `1`, `'true'` e `{}` não valem.
+    for (const valor of [1, 'true', {}, [], 'sim', NaN]) {
+        const chips = M_IDENT.chipsDaOferta({ ...IDENT.chips, modalidade: { rotulo: 'Premium', premium: valor } });
+        assert.equal(chips[0].premium, false, `\`premium: ${typeof valor}\` virou Premium — truthiness genérica`);
+    }
+    assert.equal(M_IDENT.chipsDaOferta(IDENT.chips)[0].premium, true, 'a sonda está cega: nem o Premium de verdade ela aceita');
+});
+
+test('⚠️⚠️ IDENTIFICAÇÃO: as cores do andamento são LIDAS do módulo da 186, e o rótulo NUNCA é vazio 188_07', () => {
+    // ⚠️⚠️ Duas tabelas de cor para o mesmo andamento divergiriam na primeira
+    // edição. Aqui as classes são comparadas com o que `andamentoDe()` devolve.
+    const doModulo = M_ANDAMENTO.andamentoDe('aguardando_aprovacao');
+    const html = render(M_IDENT.default, { identificacao: IDENT, falha: null });
+    const ausentes = [doModulo.borda, doModulo.fundo, doModulo.texto].filter((c) => !html.includes(c));
+    assert.deepEqual(ausentes, [], 'a cor do chip de andamento não veio de `andamentoDe()` — foi recopiada');
+
+    // ⚠️⚠️ `andamentoDe()` **NUNCA devolve `null`**, e o selo exige TEXTO
+    // NÃO-VAZIO: guarda que devolve `null` produz elemento vazio, que **passa em
+    // render e DESAPARECE na tela**. UMA asserção coletando.
+    const semRotulo = [null, undefined, '', '  ', 'chave_inventada_9z7', 7, {}, [], NaN, { toString: null }]
+        .filter((chave) => {
+            // ⚠️ Flag DENTRO do callback.
+            const chips = M_IDENT.chipsDaOferta({ andamento: { chave } });
+            const andamento = chips.find((c) => c.chave === 'andamento');
+
+            return andamento === undefined || typeof andamento.rotulo !== 'string' || andamento.rotulo.trim() === '';
+        });
+    assert.deepEqual(semRotulo, [], 'chave de andamento adversa produziu chip SEM TEXTO — retângulo colorido vazio na tela');
+
+    // ⚠️ E a chave DESCONHECIDA aparece COMO CHEGOU (forma neutra), nunca apagada.
+    const inventada = M_IDENT.chipsDaOferta({ andamento: { chave: 'chave_inventada_9z7' } }).find((c) => c.chave === 'andamento');
+    assert.equal(inventada.rotulo, 'chave_inventada_9z7', 'a chave desconhecida foi apagada em vez de aparecer como chegou');
+});
+
+test('⚠️⚠️ FALHA: a mensagem É A REAL do ML, e o botão NÃO é desenhado hoje 188_07', () => {
+    const html = render(M_IDENT.CaixaDeFalha, { falha: FALHA, onTentarDeNovo: null });
+
+    // ⚠️ PUB-05 — a mensagem é o erro REAL, nunca um "algo deu errado": sem a frase
+    // real a pessoa não sabe se tenta de novo ou conserta o cadastro.
+    assert.match(html, /O atributo BRAND é obrigatório para esta categoria\./, 'a mensagem REAL do Mercado Livre desapareceu');
+    assert.match(html, /Falha na publicação/, 'o título de `:581` desapareceu');
+    assert.match(html, />!</, 'o glifo `!` de `:580` desapareceu');
+
+    // ⚠️⚠️ **O BOTÃO NÃO É DESENHADO, e o motivo é MEDIDO:** não existe rota para
+    // `AprovacaoDaOfertaService::tentarDeNovo()`. Sem handler, nada de `onClick`
+    // vazio nem `disabled` decorativo — é a mesma régua de PERGUNTA-188-B.
+    assert.doesNotMatch(html, /<button/, 'o botão nasceu sem rota de destino — D4 violado');
+    assert.doesNotMatch(html, /Tentar publicar novamente/, 'o rótulo da ação apareceu sem destino');
+
+    // ⚠️⚠️ A PROVA de que a rota NÃO existe (senão esta ausência seria arbitrária):
+    // as únicas rotas da aprovação são o GET da fila e o POST do lote.
+    const rotas = fs.readFileSync(path.resolve(RAIZ, REL_ROTAS), 'utf8');
+    assert.doesNotMatch(rotas, /tentarDeNovo|tentar-de-novo|tentar_de_novo/, 'a rota de `tentarDeNovo` passou a existir — o botão pode (e deve) nascer, remeça esta ausência');
+    // ⚠️ ISCA: a sonda ACHA as rotas que EXISTEM, senão o `doesNotMatch` acima
+    // seria vazio por construção (arquivo lido errado).
+    assert.match(rotas, /name\('meus\.aprovacao'\)/, 'a rota da fila desapareceu — a leitura de `routes/` está quebrada');
+    assert.match(rotas, /name\('meus\.aprovacao\.lote'\)/, 'a rota do lote desapareceu');
+
+    // ⚠️ E a página passa handler NENHUM — é ela quem decide, e hoje não há destino.
+    assert.doesNotMatch(FONTE_PAGINA, /onTentarDeNovo=/, 'a página passou um handler de "tentar de novo" sem rota');
+
+    // ⚠️ COM handler o botão nasce E o clique chama — sem esta ponta, o
+    // `doesNotMatch` acima seria vazio por construção (talvez o botão nunca nasça).
+    let tentou = 0;
+    const comHandler = render(M_IDENT.CaixaDeFalha, { falha: FALHA, onTentarDeNovo: () => { tentou += 1; } });
+    assert.match(comHandler, /Tentar publicar novamente/, 'com handler o botão não nasceu — a ausência acima não prova nada');
+    const arvore = M_IDENT.CaixaDeFalha({ falha: FALHA, onTentarDeNovo: () => { tentou += 1; } });
+    const botao = arvore.props.children.find((filho) => filho !== null && typeof filho === 'object' && filho.type === 'button');
+    assert.ok(botao !== undefined, 'o botão não foi achado na árvore');
+    botao.props.onClick();
+    assert.equal(tentou, 1, 'o clique no botão não chamou o handler');
+
+    // ⚠️ Sem falha, NADA. E com falha SEM mensagem a caixa **continua aparecendo**:
+    // a falha É o fato, e esconder a caixa esconderia trabalho.
+    assert.equal(render(M_IDENT.CaixaDeFalha, { falha: null }), '', 'a caixa de falha apareceu sem falha');
+    const semMensagem = render(M_IDENT.CaixaDeFalha, { falha: { mensagem: null, rotulo_acao: 'x' } });
+    assert.match(semMensagem, /Falha na publicação/, 'a caixa desapareceu sem mensagem — esconder a caixa esconde trabalho');
+    assert.doesNotMatch(semMensagem, /\[object Object\]|NaN|undefined/, 'a caixa imprimiu lixo sem mensagem');
+});
+
+test('⚠️ IDENTIFICAÇÃO: a GEOMETRIA literal, e as QUATRO omissões medidas da tabela FID-01 188_07', () => {
+    const ESPERADO = {
+        // `:563` / `:564` — ⚠️ `min-w-0` é o que permite o título truncar no grid.
+        CLASSES_LINHA: ['flex', 'items-start', 'justify-between', 'gap-[20px]'],
+        CLASSES_COLUNA_ESQUERDA: ['flex', 'min-w-0', 'flex-col', 'gap-[8px]'],
+        CLASSES_PRODUTO: ['text-[12px]', 'text-pub-txt-3'],
+        CLASSES_SKU: ['font-pub-mono', 'text-[11.5px]'],
+        CLASSES_TITULO: ['text-[20px]', 'font-semibold', 'leading-[1.25]', 'tracking-[-0.015em]', 'text-pretty'],
+        // `:567` — ⚠️ `flex-wrap` é o que impede os 5 chips de vazarem.
+        CLASSES_FILA_DE_CHIPS: ['flex', 'flex-wrap', 'gap-[6px]'],
+        // ⚠️ OMISSÃO 4: `display:flex;align-items:center` não estão nas medidas-chave
+        // de B14/B15/B16 — sem eles o chip não centra o conteúdo na altura de 24px.
+        CLASSES_CHIP: ['flex', 'items-center', 'h-[24px]', 'px-[9px]', 'rounded-pub-chip', 'whitespace-nowrap', 'text-[12px]'],
+        CLASSES_CHIP_MODALIDADE: ['gap-[6px]', 'bg-pub-line-subtle', 'font-semibold'],
+        CLASSES_LOSANGO: ['h-[7px]', 'w-[7px]', 'flex-none', 'rotate-45', 'rounded-[1px]', 'bg-pub-txt'],
+        CLASSES_CHIP_CONTORNO: ['border', 'border-pub-line-strong'],
+        CLASSES_CHIP_ANDAMENTO: ['gap-[6px]', 'border', 'font-semibold'],
+        CLASSES_DOT: ['h-[6px]', 'w-[6px]', 'flex-none', 'rounded-full', 'bg-current'],
+        CLASSES_LADO_DIREITO: ['flex', 'flex-none', 'flex-col', 'items-end', 'gap-[3px]', 'whitespace-nowrap', 'text-[12px]', 'text-pub-txt-3'],
+        CLASSES_RESPONSAVEL: ['text-pub-fase1'],
+        // ⚠️ OMISSÃO 3: `display:flex;align-items:center` não estão na medida de B18.
+        CLASSES_FALHA: ['flex', 'items-center', 'gap-[12px]', 'rounded-pub-sub', 'border', 'border-pub-danger/[0.4]', 'bg-pub-danger/[0.07]', 'px-[14px]', 'py-[12px]'],
+        // ⚠️⚠️ OMISSÃO 1: `display:grid;place-items:center` de `:580` NÃO está na
+        // célula do documento — é o que CENTRA o `!` no círculo de 22px.
+        // ⚠️ `font-[800]` e não `font-extrabold`: o GATE-03 proíbe a escala nomeada,
+        // e o valor arbitrário entrega o MESMO peso (precedente de
+        // `AnelDeProgresso.jsx:67`, em produção).
+        CLASSES_GLIFO_FALHA: ['grid', 'h-[22px]', 'w-[22px]', 'flex-none', 'place-items-center', 'rounded-full', 'bg-pub-danger', 'text-[12px]', 'font-[800]', 'text-pub-page'],
+        // ⚠️⚠️ OMISSÃO 2: o WRAPPER de `:581` não é nomeado na tabela — é o `flex-1`
+        // dele que empurra o botão de `:582` para a direita.
+        CLASSES_FALHA_TEXTO: ['flex', 'flex-1', 'flex-col', 'gap-[2px]'],
+        CLASSES_FALHA_TITULO: ['text-[13px]', 'font-semibold', 'text-pub-danger-txt'],
+        CLASSES_FALHA_MENSAGEM: ['text-[12.5px]', 'text-pub-fase1'],
+        CLASSES_FALHA_ACAO: ['h-[32px]', 'flex-none', 'cursor-pointer', 'whitespace-nowrap', 'rounded-[8px]', 'bg-pub-accent', 'px-[14px]', 'text-[12.5px]', 'font-semibold', 'text-pub-page'],
+    };
+
+    const divergentes = Object.keys(ESPERADO).filter((chave) => {
+        // ⚠️ Flag DENTRO do callback.
+        const noDisco = new Set(M_IDENT[chave].split(/\s+/).filter((c) => c !== ''));
+
+        return noDisco.size !== ESPERADO[chave].length || ESPERADO[chave].some((c) => !noDisco.has(c));
+    });
+    assert.deepEqual(divergentes, [], 'a geometria da identificação divergiu do protótipo');
+
+    // ⚠️ Os literais travados.
+    assert.equal(M_IDENT.TITULO_DA_FALHA, 'Falha na publicação', 'o literal de `:581` mudou');
+    assert.equal(M_IDENT.GLIFO_FALHA, '!', 'o glifo de `:580` mudou');
+    assert.equal(M_IDENT.SEPARADOR, '·', 'o separador de `:565` não é o U+00B7');
+});
+
+test('⚠️ IDENTIFICAÇÃO: nada para mostrar NÃO desenha wrapper, e nenhum campo adverso derruba 188_07', () => {
+    // ⚠️ Linha de 20px de gap sem conteúdo é D4 violado.
+    assert.equal(render(M_IDENT.default, {}), '', 'a identificação desenhou casca vazia');
+    assert.equal(render(M_IDENT.default, { identificacao: {}, falha: null }), '', 'a identificação desenhou com bloco vazio');
+    assert.equal(M_IDENT.temIdentificacao(null, null), false, '`temIdentificacao` disse que há conteúdo onde não há');
+    assert.equal(M_IDENT.temIdentificacao(IDENT, null), true, '`temIdentificacao` não viu o conteúdo de verdade');
+    assert.equal(M_IDENT.temIdentificacao(null, FALHA), true, '`temIdentificacao` ignorou a falha');
+
+    // ⚠️⚠️ A TELA PRETA, campo por campo.
+    const ADVERSOS = [{}, null, undefined, NaN, [], { toString: null }, 0, '', true, { a: { toString: null } }];
+    for (const campo of ['produto', 'sku', 'titulo', 'responsavel', 'espera', 'chips']) {
+        for (const valor of ADVERSOS) {
+            const id = { ...IDENT, [campo]: valor };
+            let html = '';
+            assert.doesNotThrow(() => { html = render(M_IDENT.default, { identificacao: id, falha: null }); }, `a identificação LANÇOU com ${campo} adverso (${typeof valor})`);
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `a identificação imprimiu lixo com ${campo} adverso (${typeof valor})`);
+        }
+    }
+    for (const campo of ['modalidade', 'formato', 'origem', 'versao', 'andamento']) {
+        for (const valor of ADVERSOS) {
+            const id = { ...IDENT, chips: { ...IDENT.chips, [campo]: valor } };
+            let html = '';
+            assert.doesNotThrow(() => { html = render(M_IDENT.default, { identificacao: id, falha: null }); }, `o chip ${campo} LANÇOU (${typeof valor})`);
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `o chip ${campo} imprimiu lixo (${typeof valor})`);
+        }
+    }
+    for (const valor of ADVERSOS) {
+        let html = '';
+        assert.doesNotThrow(() => { html = render(M_IDENT.default, { identificacao: valor, falha: valor }); }, `a identificação LANÇOU com as props inteiras adversas (${typeof valor})`);
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `imprimiu lixo com as props inteiras adversas (${typeof valor})`);
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8d. A PÁGINA — o slot `painelNo`/`painel` e o recarregamento PARCIAL (COL-04)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('⚠️⚠️ PÁGINA: o slot `painelNo` (NÓ) × `painel` (DADO), e a oferta vive na URL 188_07', () => {
+    // ⚠️ **Prop com DOIS sentidos foi achada como defeito grave na Fase 186.** É o
+    // QUARTO par da mesma família: `proximo`/`proximo_a_revisar`,
+    // `filtros`/`filtros_ativos`, `tabela`/`grupos` e agora `painelNo`/`painel`.
+    assert.match(FONTE_PAGINA, /isValidElement\(painelNo\)/, 'o slot de NÓ do painel não é resolvido por `isValidElement`');
+    assert.match(FONTE_PAGINA, /painelNo = null/, 'a prop de NÓ `painelNo` saiu da página');
+    assert.match(FONTE_PAGINA, /painel = null/, 'a prop de DADO `painel` saiu da página');
+    assert.match(FONTE_PAGINA, /<PainelDeRevisao/, 'a página deixou de montar o painel do dado');
+
+    // ⚠️⚠️ **COL-04 — a navegação ↑/↓ É RECARREGAMENTO PARCIAL**, e é ele que faz a
+    // `versao` voltar FRESCA do servidor. Sem ir ao servidor, a tela poderia aprovar
+    // uma oferta que mudou debaixo de quem revisa — e **aprovar JÁ PUBLICA**.
+    assert.match(FONTE_PAGINA, /only: \['painel'\]/, 'a navegação ↑/↓ deixou de ser recarregamento PARCIAL — a `versao` não volta fresca (COL-04)');
+    assert.match(FONTE_PAGINA, /oferta: id/, 'a oferta aberta saiu da URL (COL-03)');
+
+    // ⚠️ **COL-02 — NADA de `localStorage` na página**: filtro/oferta que mora no
+    // navegador não sobrevive a um link compartilhado, e a revisão parcial fica no
+    // SERVIDOR (critério 16).
+    assert.doesNotMatch(FONTE_PAGINA, /localStorage|sessionStorage/, '`localStorage` voltou à página');
+    // ⚠️ Há gate da wave 187-04 que PROÍBE `String(` nesta página — está certo.
+    assert.doesNotMatch(FONTE_PAGINA, /\bString\(/, '`String(` voltou à página — ele LANÇA com `{toString:null}`');
+
+    // ⚠️ ISCA: a leitura da página não veio vazia (senão os `doesNotMatch` acima
+    // seriam vazios por construção).
+    // ⚠ A ÂNCORA é o que prova a leitura; o piso de bytes é só o segundo sinal, e
+    // foi **MEDIDO** (14.644 bytes SEM comentário em 19/10/2026 — a página tem 797
+    // linhas CRUAS, mas `lerSemComentarios` tira a prosa em pt-BR).
+    assert.match(FONTE_PAGINA, /export default function Aprovacao\(/, 'a página da fila desapareceu da fonte lida — os `doesNotMatch` acima seriam vazios');
+    assert.ok(FONTE_PAGINA.length > 10000, `a fonte da página veio com ${FONTE_PAGINA.length} bytes — a leitura está quebrada`);
+});
+
+test('⚠️ CASCA: o corpo monta identificação + colunas, e o composto segue VAZIO no servidor 188_07', () => {
+    const html = render(M_PAINEL.RaizDoPainel, {
+        navegacao: NAV_MEIO,
+        identificacao: IDENT,
+        falha: FALHA,
+        onIr: nada,
+        onFechar: nada,
+        colunaDeFotos: React.createElement('b', null, 'fotos'),
+    });
+
+    assert.match(html, /overflow-y-auto/, 'o corpo rolável de `:562` desapareceu');
+    assert.match(html, /Poltrona Beny Decorativa/, 'a identificação não chegou ao corpo');
+    assert.match(html, /Falha na publicação/, 'a caixa de falha não chegou ao corpo');
+    assert.match(html, /grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/, 'a grade das duas colunas não chegou ao corpo');
+    assert.match(html, /<b>fotos<\/b>/, 'o slot de fotos não chegou à grade');
+
+    // ⚠️ A ORDEM vertical: identificação → falha → colunas (`:563` → `:579` → `:586`).
+    assert.ok(html.indexOf('Poltrona Beny') < html.indexOf('Falha na publica'), 'a falha subiu acima da identificação');
+    assert.ok(html.indexOf('Falha na publica') < html.indexOf('grid-cols-'), 'as colunas subiram acima da falha');
+
+    // ⚠️⚠️ E o COMPOSTO continua VAZIO no servidor: o portal segue de pé depois da
+    // tarefa 2. Sem esta linha, uma edição que tirasse o portal passaria calada.
+    assert.equal(
+        render(M_PAINEL.default, { aberto: true, painel: { ...PAINEL, identificacao: IDENT }, onFechar: nada, onIr: nada }),
+        '',
+        'o composto renderizou no servidor — o portal caiu na tarefa 2',
+    );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 9. O CSS CONSTRUÍDO — com as OITO normalizações, e as iscas MEDIDAS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1152,7 +1610,7 @@ function seletorDe(classe) {
  * regimes a campanha de mutação **aborta na 1ª execução** ou marca "SOBREVIVEU"
  * por um motivo que **NÃO é o código** (learnings §4 caso 11).
  */
-const FONTES_DO_CSS = [REL_PAINEL, REL_TOPO];
+const FONTES_DO_CSS = [REL_PAINEL, REL_TOPO, REL_IDENT];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -1261,7 +1719,30 @@ test('⚠️ FID: as classes da casca GERAM CSS com o valor certo 188_07', async
         // (`.hover\:bg-pub-hover-3:hover`).
         assert.match(regraDe('hover:bg-pub-hover-3'), /rgb\(26 26 26/, 'o hover `#1A1A1A` de `:555`/`:556`/`:559` não compilou');
 
-        // As medidas restantes do topo e da casca, numa asserção coletando.
+        // ⚠⚠ A 3ª normalização OUTRA VEZ, agora em `border-color`: `0.4` sai como
+        // **hex de 8 dígitos** e o byte do alfa PROVA a opacidade (`0.4` → `0x66`).
+        // É a borda da caixa de falha de `:579`, `rgba(239,68,68,0.4)`.
+        assert.match(regraDe('border-pub-danger/[0.4]'), /#ef444466/, 'a borda da caixa de falha não é `rgba(239,68,68,0.4)` (`:579`)');
+        // ⚠ E `0.07` → `0x12` no fundo da mesma caixa.
+        assert.match(regraDe('bg-pub-danger/[0.07]'), /#ef444412/, 'o fundo da caixa de falha não é `rgba(239,68,68,0.07)` (`:579`)');
+
+        // ⚠⚠ `font-[800]` — o peso de `:580`, por valor ARBITRÁRIO. O **GATE-03**
+        // proíbe a escala NOMEADA `font-extrabold` em todo arquivo de
+        // `ARQUIVOS_NOVOS` (só 400/500/600/700), e o arbitrário entrega o MESMO peso
+        // computado — precedente de `AnelDeProgresso.jsx:67`, em produção. ⚠️ Sem
+        // esta prova, `font-[800]` poderia simplesmente NÃO COMPILAR e o `!` sairia
+        // com o peso herdado, com todo teste de render passando.
+        assert.match(regraDe('font-[800]'), /font-weight:\s*800/, '`font-[800]` não compilou para `font-weight:800` — o glifo de `:580` sairia com o peso errado');
+
+        // ⚠ O `letter-spacing:-0.015em` de `:566`: o cssnano tira o zero da frente
+        // **inclusive depois do sinal de menos** (4ª normalização).
+        assert.match(regraDe('tracking-[-0.015em]'), /-\.015em/, 'o `letter-spacing:-0.015em` de `:566` não compilou (o cssnano come o zero após o sinal)');
+
+        // ⚠ `rotate-45` é o `transform:rotate(45deg)` do losango de `:568`.
+        assert.notEqual(regraDe('rotate-45'), null, 'o `rotate-45` do losango de `:568` não compilou');
+
+        // As medidas restantes do topo, da casca e da identificação, numa asserção
+        // coletando.
         const semRegra = [
             'h-[54px]', 'pl-[22px]', 'pr-[14px]', 'gap-[10px]', 'text-[11px]', 'text-[12px]',
             'gap-[2px]', 'ml-[6px]', 'w-[30px]', 'h-[30px]', 'rounded-pub-control-sm', 'text-[14px]',
@@ -1270,6 +1751,15 @@ test('⚠️ FID: as classes da casca GERAM CSS com o valor certo 188_07', async
             'pt-[18px]', 'pb-[24px]', 'gap-[16px]', 'items-start', 'gap-[12px]', 'p-[14px]',
             'text-pub-txt-2', 'text-pub-txt-3', 'text-pub-txt-4', 'bg-pub-surface',
             'z-[39]', 'z-[40]',
+            // ─── a identificação (`:563`-`:582`) ───
+            'gap-[20px]', 'min-w-0', 'gap-[8px]', 'font-pub-mono', 'text-[11.5px]',
+            'text-[20px]', 'leading-[1.25]', 'text-pretty', 'flex-wrap', 'gap-[6px]',
+            'h-[24px]', 'px-[9px]', 'rounded-pub-chip', 'bg-pub-line-subtle',
+            'h-[7px]', 'w-[7px]', 'rounded-[1px]', 'bg-pub-txt', 'h-[6px]', 'w-[6px]',
+            'bg-current', 'gap-[3px]', 'items-end', 'text-pub-fase1',
+            'rounded-pub-sub', 'px-[14px]', 'py-[12px]', 'h-[22px]', 'w-[22px]',
+            'place-items-center', 'bg-pub-danger', 'text-pub-page', 'gap-[2px]',
+            'text-[13px]', 'text-pub-danger-txt', 'text-[12.5px]', 'bg-pub-accent',
         ].filter((c) => regraDe(c) === null);
         assert.deepEqual(semRegra, [], 'classe da casca NÃO gerou CSS — num `.js` isso aconteceria com todo teste de render passando');
     });
