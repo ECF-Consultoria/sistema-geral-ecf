@@ -157,6 +157,8 @@ async function montar(caminhoRelativo) {
 const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 const REL_KPIS = `${DIR_APROV}/KpisDoPainel.jsx`;
 const REL_COMPOSICAO = `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`;
+const REL_SIMULACAO = `${DIR_APROV}/SimulacaoDePreco.jsx`;
+const REL_IRMA = `${DIR_APROV}/ComparacaoComAIrma.jsx`;
 const REL_COLUNA = `${DIR_APROV}/ColunaDePreco.jsx`;
 const REL_PAINEL = `${DIR_APROV}/PainelDeRevisao.jsx`;
 const REL_BARRA_DA_FILA = `${DIR_APROV}/BarraDeMargem.jsx`;
@@ -173,13 +175,15 @@ const REL_GATE_VOCABULARIO = 'tests/js/publicador-vocabulario-novo.test.js';
 const REL_GATE_FECHAMENTO = 'tests/js/publicador-fila-fechamento-187.test.js';
 const REL_GATE_ZINDEX = 'tests/js/publicador-header-zindex-ordem.test.js';
 const REL_MANIFESTO = 'tests/gates/contagens-188-09.txt';
+const REL_ANDAMENTO = `${DIR_APROV}/andamentoDoPortao.jsx`;
 const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 
 // ⚠️⚠️ ANTI-FANTASMA — `test -e` em CADA caminho citado. São NOVE caminhos
 // fantasmas nesta milestone, TRÊS deles vindos de briefing do orquestrador.
 // Sonda de AUSÊNCIA sobre arquivo inexistente passa CALADA.
 const CAMINHOS_CITADOS = [
-    REL_KPIS, REL_COMPOSICAO, REL_COLUNA, REL_PAINEL, REL_BARRA_DA_FILA, REL_VOCABULARIO, REL_IMAGEM,
+    REL_KPIS, REL_COMPOSICAO, REL_SIMULACAO, REL_IRMA, REL_COLUNA, REL_PAINEL, REL_BARRA_DA_FILA,
+    REL_VOCABULARIO, REL_IMAGEM, REL_ANDAMENTO,
     REL_PAGINA, REL_SERVICO_PRECO, REL_SERVICO_PAINEL, REL_DTO, REL_LINHA_FINANCEIRA,
     REL_RESUMO_RAPIDO, REL_ROTAS, REL_GATE_VOCABULARIO, REL_GATE_FECHAMENTO,
     REL_GATE_ZINDEX, REL_MANIFESTO,
@@ -190,6 +194,8 @@ const CAMINHOS_CITADOS = [
 // próprio conserto**.
 const FONTE_KPIS = lerSemComentarios(REL_KPIS);
 const FONTE_COMPOSICAO = lerSemComentarios(REL_COMPOSICAO);
+const FONTE_SIMULACAO = lerSemComentarios(REL_SIMULACAO);
+const FONTE_IRMA = lerSemComentarios(REL_IRMA);
 const FONTE_COLUNA = lerSemComentarios(REL_COLUNA);
 const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
@@ -205,6 +211,8 @@ const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 const FONTES_DO_PLANO = [
     [REL_KPIS, FONTE_KPIS],
     [REL_COMPOSICAO, FONTE_COMPOSICAO],
+    [REL_SIMULACAO, FONTE_SIMULACAO],
+    [REL_IRMA, FONTE_IRMA],
     [REL_COLUNA, FONTE_COLUNA],
 ];
 
@@ -379,6 +387,8 @@ const PRECO_OK = {
 // ⚠️⚠️ OS BUNDLES, TODOS MONTADOS ANTES DO PRIMEIRO `test()`.
 const MOD_KPIS = await montar(REL_KPIS);
 const MOD_COMPOSICAO = await montar(REL_COMPOSICAO);
+const MOD_SIMULACAO = await montar(REL_SIMULACAO);
+const MOD_IRMA = await montar(REL_IRMA);
 const MOD_COLUNA = await montar(REL_COLUNA);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1577,6 +1587,562 @@ test('⚠️⚠️ REND: nenhum campo adverso da composição derruba a página,
     render(MOD_COMPOSICAO.default, { composicao: COMPOSICAO_OK, frete: { rotulo_acao: 'Informar frete confirmado' }, freteAusente: true, onInformarFrete: () => { chamadas += 1; } });
     assert.equal(chamadas, 0, 'o handler do frete foi chamado NO RENDER');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. A SIMULAÇÃO — o selo nos dois eixos, os atalhos e ZERO conta na tela
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** O estado NEUTRO: nada digitado, sem selo, sem delta, sem salvar. */
+const SIMULACAO_NEUTRA = {
+    titulo: 'Simular preço',
+    placeholder: '0,00',
+    rotulo_descartar: 'Descartar',
+    rotulo_salvar: 'Salvar no anúncio',
+    simulando: false,
+    selo: null,
+    preco_salvo: 'R$ 149,90',
+    preco_simulado: null,
+    preenche: '',
+    resultado: '—',
+    resultado_cor: 'texto',
+    margem: '—',
+    margem_cor: 'neutro',
+    delta: '',
+    delta_cor: 'neutro',
+    pode_salvar: false,
+    versao: 7,
+};
+
+/** ⚠️ Simulando **e** `live`: é o único estado em que os dois botões nascem. */
+const SIMULACAO_ATIVA = {
+    ...SIMULACAO_NEUTRA,
+    simulando: true,
+    selo: 'SIMULAÇÃO · NÃO SALVA',
+    preco_simulado: 'R$ 159,90',
+    preenche: '159,90',
+    resultado: 'R$ 31,52',
+    resultado_cor: 'texto',
+    margem: '19,7%',
+    margem_cor: 'ambar',
+    delta: '+ R$ 8,11 vs. salvo',
+    delta_cor: 'verde',
+    pode_salvar: true,
+};
+
+/** ⚠️ Simulando mas FORA do `live`: o selo aparece e os botões NÃO. */
+const SIMULACAO_SEM_LIVE = { ...SIMULACAO_ATIVA, pode_salvar: false };
+
+/**
+ * ⚠️⚠️ Os atalhos com o mínimo em **20%**, não em 12%.
+ *
+ * O protótipo escreve *"Margem mínima 12%"* porque `MIN = 12` (`:914`). Com 12
+ * aqui, um literal cravado na tela PASSARIA — e a tela mentiria para a empresa
+ * que configurou outro mínimo (FIN-09).
+ * ⚠️ E `preenche` do segundo é `ceil(alvo) − 0,1` (`:1140`): alvo R$ 118,43
+ * preenche **118,90**, não 118,43. O cálculo é do SERVIDOR.
+ */
+const ATALHOS = [
+    { chave: 'equilibrio', rotulo: 'Equilíbrio · R$ 104,37', preenche: '104,37' },
+    { chave: 'margem_minima', rotulo: 'Margem mínima 20% · R$ 118,43', preenche: '118,90' },
+];
+
+test('⚠️⚠️ CRITÉRIO 7: o selo "SIMULAÇÃO · NÃO SALVA" só com `simulando`, e os botões nos DOIS eixos 188_09', () => {
+    // ⚠️ `:1129` — o selo só existe quando o digitado DIFERE do salvo (tolerância
+    // `0,001`). Com `>= 0` ele apareceria com o preço IGUAL ao salvo.
+    const neutro = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_NEUTRA, onSimular: nada });
+    assert.ok(!texto(neutro).includes('SIMULAÇÃO'), 'o selo apareceu SEM simulação ativa');
+    assert.ok(texto(neutro).includes('Simular preço'), 'o título da caixa sumiu no estado neutro');
+
+    const ativo = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_ATIVA, onSimular: nada, onDescartar: nada, onSalvar: nada });
+    assert.ok(texto(ativo).includes('SIMULAÇÃO · NÃO SALVA'), 'o selo não apareceu com simulação ativa');
+
+    // ⚠️ O selo é LITERAL do servidor, com o `·` U+00B7 — a tela não o escreve.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/SIMULA[ÇC][ÃA]O/.test(fonte), `${rel} escreveu o selo à mão — ele é PrecoDoPainelService::SIMULACAO_SELO`);
+    }
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /SIMULACAO_SELO = 'SIMULAÇÃO · NÃO SALVA';/, 'o selo mudou no servidor — remeça o literal');
+    assert.match(servico, /TOLERANCIA_DO_SIMULADO = 0\.001;/, 'a tolerância de `:1129` mudou no servidor');
+
+    // ⚠️⚠️ OS DOIS EIXOS DOS BOTÕES — e são QUATRO combinações, com só UMA
+    // desenhando os dois. `pode_salvar` já é `simOn && live` no servidor (`:1142`).
+    const casos = [
+        { simulacao: SIMULACAO_ATIVA, handlers: true, botoes: 2 },
+        { simulacao: SIMULACAO_ATIVA, handlers: false, botoes: 0 },
+        { simulacao: SIMULACAO_SEM_LIVE, handlers: true, botoes: 0 },
+        { simulacao: SIMULACAO_NEUTRA, handlers: true, botoes: 0 },
+    ];
+    for (const caso of casos) {
+        const html = render(MOD_SIMULACAO.default, {
+            simulacao: caso.simulacao,
+            onSimular: nada,
+            onDescartar: caso.handlers ? nada : null,
+            onSalvar: caso.handlers ? nada : null,
+        });
+        const botoes = tagsDeAbertura(html).filter((t) => t.tag === 'button');
+        assert.equal(botoes.length, caso.botoes, `pode_salvar=${caso.simulacao.pode_salvar} handlers=${caso.handlers}: esperava ${caso.botoes} botão(ões)`);
+        const semDisabled = botoes.filter((t) => t.desabilitado);
+        assert.deepEqual(semDisabled.map((t) => t.classe), [], 'botão da simulação nasceu `disabled` — `disabled` decorativo foi RECUSADO');
+    }
+
+    // ⚠️ E o delta sai com o sufixo ` vs. salvo`, do servidor.
+    assert.ok(texto(ativo).includes('vs. salvo'), 'o delta perdeu o sufixo ` vs. salvo` de `:1136`');
+    assert.match(servico, /DELTA_SUFIXO = ' vs\. salvo';/, 'o sufixo do delta mudou no servidor');
+});
+
+test('⚠️⚠️ D4: sem o transporte da wave 188-06 a caixa de simulação NÃO é desenhada 188_09', () => {
+    // ⚠️⚠️ Campo de digitação sem destino é CONTROLE MORTO — a pessoa digita e
+    // nada acontece, que é pior que a ausência. E caixa tracejada com só o título
+    // dentro é casca decorativa (D4). ⚠️ "Desenhar desabilitado com explicação" foi
+    // OFERECIDO e RECUSADO na PERGUNTA-188-B3.
+    for (const semTransporte of [null, undefined, {}, 'x', 7, true, []]) {
+        const html = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_ATIVA, atalhos: ATALHOS, onSimular: semTransporte });
+        assert.equal(html, '', 'a caixa de simulação nasceu SEM transporte — campo sem destino é controle morto (D4)');
+    }
+
+    // ⚠️ COM transporte: um input, e ele é o de 120×32 de `:675`.
+    const html = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_ATIVA, atalhos: ATALHOS, onSimular: nada });
+    const inputs = tagsDeAbertura(html).filter((t) => t.tag === 'input');
+    assert.equal(inputs.length, 1, `não há exatamente 1 input de simulação: ${inputs.length}`);
+    const doInput = classesDe(inputs[0]);
+    assert.ok(doInput.has('w-[120px]'), 'o input não tem os 120px de `:675`');
+    assert.ok(doInput.has('h-[32px]'), 'o input não tem os 32px de `:675`');
+    assert.ok(doInput.has('pl-[32px]'), 'o input perdeu o `padding-left:32px` que abre espaço para o `R$`');
+    assert.ok(doInput.has('focus:border-pub-accent'), 'o input perdeu o `style-focus` de `:675`');
+    assert.ok(texto(html).includes('R$'), 'o prefixo `R$` absoluto de `:675` sumiu');
+
+    // ⚠️ E a página DECLARA que o transporte é de outra wave, em vez de inventar
+    // um `onClick` vazio. ⚠️ A leitura é do arquivo CRU: o docblock é o artefato.
+    const paginaCrua = fs.readFileSync(path.resolve(RAIZ, REL_PAGINA), 'utf8');
+    assert.match(paginaCrua, /O TRANSPORTE DA SIMULAÇÃO E DO "CONFERIR ALTERAÇÃO" É DA WAVE/, 'a página não DECLARA de quem é o transporte — a próxima pessoa teria de achar por bisseção');
+    assert.match(FONTE_PAGINA, /onSimular=\{null\}/, 'a página passou a mandar um `onSimular` — se a wave 188-06 fechou, religue pelo helper `escreverNoPainel`');
+    assert.match(FONTE_PAGINA, /colunaDePreco=\{colunaDePreco\}/, 'a página não ligou o slot `colunaDePreco`');
+});
+
+test('⚠️⚠️ T-188-82: ZERO aritmética de taxa na tela, lida SEM comentário 188_09', () => {
+    // ⚠️⚠️ A tela EXIBE; ela NÃO calcula. Conta no cliente divergiria da conta do
+    // servidor na primeira edição — num campo em que **salvar troca o preço de
+    // verdade e não há desfazer**.
+    const ARITMETICA = [
+        /\*\s*0\.1[0-9]/, /\*\s*0\.0[0-9]/, /\/\s*\(\s*1\s*-/, /\b6\.75\b/, /\b0\.165\b/,
+        /\*\s*\(\s*1\s*-/, /\bMath\.round\(/, /\btoFixed\(/,
+    ];
+
+    const infratores = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        for (const re of ARITMETICA) {
+            if (re.test(fonte)) infratores.push(`${rel} ~ ${re}`);
+        }
+    }
+    assert.deepEqual(infratores, [], 'apareceu aritmética de taxa na tela — ela EXIBE o que o servidor devolve');
+
+    // ⚠️ ISCA POSITIVA: a sonda PEGA as formas erradas.
+    for (const cebo of ['const taxa = preco * 0.165', 'return valor / (1 - margem)', 'const fixa = 6.75', 'n.toFixed(2)']) {
+        assert.ok(ARITMETICA.some((re) => re.test(cebo)), `a sonda de aritmética NÃO pega o cebo \`${cebo}\``);
+    }
+    // ⚠️ ISCA NEGATIVA: ela NÃO pega as formas legítimas desta coluna.
+    for (const legitimo of ['lista.length < 2', 'ofertaId > 0', 'indice > 0', "dados.pode_salvar === true"]) {
+        assert.ok(!ARITMETICA.some((re) => re.test(legitimo)), `a sonda de aritmética reprova a forma LEGÍTIMA \`${legitimo}\``);
+    }
+
+    // ⚠️⚠️ E A LEITURA É SEM COMENTÁRIO, DE PROPÓSITO: o docblock de
+    // `SimulacaoDePreco.jsx` **cita** `* 0.12` e `/ (1 - margem)` para explicar
+    // que eles NÃO existem ali — leitura CRUA reprovaria pelo próprio conserto, e
+    // TRÊS mutações da wave 187-04 abortaram exatamente por isso.
+    const cru = fs.readFileSync(path.resolve(RAIZ, REL_SIMULACAO), 'utf8');
+    assert.ok(ARITMETICA.some((re) => re.test(cru)), 'o docblock deixou de explicar que não há conta aqui — sem ele a próxima pessoa não acha o motivo por grep');
+    assert.ok(!ARITMETICA.some((re) => re.test(FONTE_SIMULACAO)), 'a leitura SEM comentário não está limpando o docblock');
+});
+
+test('⚠️⚠️ FIN-09: o `N%` do atalho vem do mínimo REAL, e o `ceil(alvo) − 0,1` é do SERVIDOR 188_09', () => {
+    const html = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_NEUTRA, atalhos: ATALHOS, onSimular: nada });
+    const conteudo = texto(html);
+
+    // ⚠️ A fixture usa mínimo **20%**, não 12%: com 12 um literal cravado passaria.
+    assert.ok(conteudo.includes('Margem mínima 20%'), 'o rótulo do atalho não traz o mínimo REAL — ele é do servidor (FIN-09)');
+    assert.ok(!conteudo.includes('12%'), 'apareceu `12%` com mínimo 20 — alguém cravou o `MIN` do protótipo');
+    assert.ok(conteudo.includes('Equilíbrio · R$ 104,37'), 'o atalho de equilíbrio não saiu');
+
+    // ⚠️ Nenhum dos dois rótulos é escrito na tela.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/Margem m[íi]nima/.test(fonte), `${rel} escreveu o rótulo da margem mínima à mão`);
+        assert.ok(!/Equil[íi]brio/.test(fonte), `${rel} escreveu o rótulo do equilíbrio à mão`);
+        assert.ok(!/\b12\b\s*%/.test(fonte), `${rel} cravou o 12% do protótipo`);
+    }
+
+    // ⚠️⚠️ E O `ceil(alvo) − 0,1` É DO SERVIDOR (`:1140`, ponteiro corrigido pela
+    // §L do FID01 — o plano dizia `:1139`, que é o `onSimBE`, SEM o ajuste). A
+    // tela só repassa `atalho.preenche`: R$ 118,43 preenche **118,90**.
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /\$preenche = ceil\(\$alvo\) - 0\.1;/, 'o `ceil(alvo) − 0,1` saiu do servidor — a tela passaria a arredondar');
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/Math\.ceil\(/.test(fonte), `${rel} arredondou na tela — o cálculo é do servidor`);
+    }
+    // ⚠️ O atalho PREENCHE pelo mesmo caminho da digitação (uma porta só).
+    assert.match(FONTE_SIMULACAO, /onClick=\{\(\) => simular\(preenche\)\}/, 'o atalho deixou de preencher pelo caminho da digitação');
+
+    // ⚠️ Sem atalhos, a tela DIZ POR QUÊ — e o texto é do servidor.
+    const semAtalhos = render(MOD_SIMULACAO.default, {
+        simulacao: SIMULACAO_NEUTRA,
+        atalhos: [],
+        atalhosIndisponivel: 'Preço de equilíbrio indisponível até o frete ser confirmado.',
+        onSimular: nada,
+    });
+    const semConteudo = texto(semAtalhos);
+    assert.ok(semConteudo.includes('Preço de equilíbrio indisponível até o frete ser confirmado.'), 'a frase de `:685` não saiu');
+    assert.ok(!semConteudo.includes('Equilíbrio ·'), 'o atalho apareceu com a lista VAZIA');
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/indispon[íi]vel at[ée]/.test(fonte), `${rel} escreveu a frase de \`:685\` à mão`);
+    }
+    assert.match(servico, /EQUILIBRIO_INDISPONIVEL = 'Preço de equilíbrio indisponível até o frete ser confirmado\.';/, 'a frase de `:685` mudou no servidor');
+});
+
+test('⚠️ FID: a caixa de simulação é TRACEJADA, e os atalhos são PÍLULA com `flex-wrap` 188_09', () => {
+    // ⚠️ IGUALDADE de string, com isca do quase-igual.
+    assert.equal(
+        MOD_SIMULACAO.CLASSES_CAIXA,
+        'flex flex-col gap-[8px] rounded-pub-sub border border-dashed border-pub-line-strong p-[12px]',
+        'a caixa de simulação divergiu de `:669`',
+    );
+    assert.ok(MOD_SIMULACAO.CLASSES_CAIXA.includes('border-dashed'), 'a caixa perdeu o `border:1px dashed` — é ele que a distingue das outras');
+
+    // ⚠️ `border-radius:999px` é `rounded-full`, não `rounded-pub-chip` (6px).
+    assert.ok(MOD_SIMULACAO.CLASSES_ATALHO.includes('rounded-full'), 'o atalho perdeu o `border-radius:999px` de `:681`');
+    assert.ok(!MOD_SIMULACAO.CLASSES_ATALHO.includes('rounded-pub-chip'), 'o atalho virou `rounded-pub-chip` (6px) — ele é pílula');
+    assert.ok(MOD_SIMULACAO.CLASSES_ATALHO.includes('h-[26px]'), 'o atalho perdeu a altura de 26px');
+
+    // ⚠️⚠️ `flex-wrap` é LOAD-BEARING (D26w, que a tabela §D OMITIA): com os dois
+    // rótulos longos eles quebram para a 2ª linha em vez de VAZAR a coluna.
+    assert.ok(MOD_SIMULACAO.CLASSES_ATALHOS.includes('flex-wrap'), 'o wrapper dos atalhos perdeu o `flex-wrap:wrap` de `:680` — os rótulos longos vazariam a coluna');
+
+    // ⚠️ O `margin-left:auto` de `:677` que empurra os botões para a direita.
+    assert.ok(MOD_SIMULACAO.CLASSES_ACOES.includes('ml-auto'), 'o wrapper dos botões perdeu o `margin-left:auto` de `:677`');
+    // ⚠️ "Descartar" é `border:none`, e "Salvar no anúncio" tem borda — são DOIS.
+    assert.ok(MOD_SIMULACAO.CLASSES_DESCARTAR.includes('border-none'), 'o "Descartar" ganhou borda — `:677` diz `border:none`');
+    assert.ok(MOD_SIMULACAO.CLASSES_SALVAR.includes('border-pub-line-off'), 'o "Salvar no anúncio" perdeu a borda `#3F3F46` de `:677`');
+    assert.notEqual(MOD_SIMULACAO.CLASSES_DESCARTAR, MOD_SIMULACAO.CLASSES_SALVAR, 'os dois botões ficaram iguais — eles têm aparências DIFERENTES');
+
+    // ⚠️ O wrapper INTERNO de `:676` que empilha o resultado e o delta (gap 1px).
+    assert.ok(MOD_SIMULACAO.CLASSES_RESULTADO.includes('gap-[1px]'), 'o wrapper interno de `:676` perdeu o `gap:1px`');
+    // ⚠️ O separador `· ` é U+00B7.
+    assert.equal(MOD_SIMULACAO.SEPARADOR, '· ', 'o separador de `:676` não é U+00B7 seguido de espaço');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. A IRMÃ — clicável, na ordem certa, com DUAS aparências
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** ⚠️ A célula ATUAL: `href` **null** — ela não navega para si mesma (`:1294`). */
+const CELULA_ATUAL = {
+    oferta_id: 4101,
+    rotulo: 'Clássico',
+    premium: false,
+    ordem: 0,
+    preco: 'R$ 149,90',
+    resultado: 'R$ 23,41',
+    resultado_cor: 'texto',
+    margem: '15,6%',
+    margem_cor: 'clara',
+    andamento_da_irma: 'em_revisao_ecf',
+    rotulo_do_andamento: 'Em revisão pela ECF',
+    atual: true,
+    href: null,
+};
+
+/** ⚠️ A IRMÃ: Premium (losango), com `href` e números DIFERENTES da atual. */
+const CELULA_IRMA = {
+    oferta_id: 4102,
+    rotulo: 'Premium',
+    premium: true,
+    ordem: 1,
+    preco: 'R$ 179,90',
+    resultado: '− R$ 4,20',
+    resultado_cor: 'vermelho',
+    margem: '−2,3%',
+    margem_cor: 'vermelho',
+    andamento_da_irma: 'aguardando_aprovacao',
+    rotulo_do_andamento: 'Aguardando aprovação',
+    atual: false,
+    href: '?oferta=4102',
+};
+
+test('⚠️⚠️ REVS-11 / FIN-13: a irmã é CLICÁVEL, na ordem Clássico → Premium, e a ATUAL não navega 188_09', () => {
+    let abertas = [];
+    const html = render(MOD_IRMA.default, {
+        comparacao: [CELULA_ATUAL, CELULA_IRMA],
+        irma: CELULA_IRMA,
+        onAbrir: (id) => { abertas = [...abertas, id]; },
+    });
+    const conteudo = texto(html);
+
+    // ⚠️ A ORDEM é do servidor: Clássico (posição 0) antes de Premium (posição 1).
+    assert.ok(conteudo.indexOf('Clássico') < conteudo.indexOf('Premium'), 'a ordem Clássico → Premium se inverteu (`:1294`)');
+
+    // ⚠️⚠️ A PROVA DE QUE A ORDEM É A DO SERVIDOR: com a lista invertida, a tela
+    // inverte. Uma ordenação interna passaria acima e reprovaria aqui.
+    const invertido = texto(render(MOD_IRMA.default, { comparacao: [CELULA_IRMA, CELULA_ATUAL], irma: CELULA_IRMA }));
+    assert.ok(invertido.indexOf('Premium') < invertido.indexOf('Clássico'), 'a tela tem a sua própria ordem — ela seria a terceira lista do mesmo fato');
+
+    // ⚠️ E a ordem vem da CONSTANTE no servidor, nunca de `orderBy('id')`.
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /array_keys\(EstruturaPublicacao::LISTING_TYPES\)/, 'a ordem das irmãs deixou de vir da CONSTANTE');
+    // ⚠️⚠️ **DEFEITO DA PRÓPRIA SONDA, ACHADO POR ELA — e é a regra 2 da §6, agora
+    // num arquivo PHP:** a primeira redação procurava `orderBy('id')` no arquivo
+    // CRU e REPROVOU, porque o docblock de `PrecoDoPainelService:1138` **cita**
+    // `nunca orderBy('id')` para explicar que ele NÃO é usado. ➡️ *"Palavra no
+    // DOCBLOCK que explica 'não uso isso' reprova pelo próprio conserto"* — a
+    // leitura tem de ser SEM COMENTÁRIO. (TRÊS mutações da wave 187-04 abortaram
+    // pelo mesmo motivo, e esta é a quarta ocorrência da família nesta fase.)
+    const servicoSemComentario = lerSemComentarios(REL_SERVICO_PRECO);
+    assert.ok(!/orderBy\('id'\)/.test(servicoSemComentario), 'o servidor passou a ordenar por `id` — dependeria de qual oferta foi criada primeiro');
+    // ⚠️ ISCA DA LEITURA: o docblock CONTINUA explicando a proibição (é por grep
+    // que a próxima pessoa acha o motivo), e a leitura sem comentário o limpa.
+    assert.ok(/orderBy\('id'\)/.test(servico), 'o docblock deixou de explicar por que a ordenacao por id e proibida ali');
+    // ⚠️ E o invariante POSITIVO: a ordenação é por `ordem`, com a chave
+    // desconhecida indo para o FIM (`PHP_INT_MAX`), nunca para a frente.
+    assert.match(servicoSemComentario, /\$a\['ordem'\] <=> \$b\['ordem'\]/, 'a ordenação das irmãs deixou de usar a posição da CONSTANTE');
+    assert.match(servicoSemComentario, /\$ordem === false \? PHP_INT_MAX : \$ordem/, 'chave de modalidade desconhecida deixou de ir para o FIM');
+
+    // ⚠️⚠️ SÓ A IRMÃ É LINK: a atual tem `href` null no servidor e sai como
+    // elemento NÃO clicável (`:1294`, `x.id !== o.id`).
+    const links = tagsDeAbertura(html).filter((t) => t.tag === 'a');
+    assert.equal(links.length, 1, `não há exatamente 1 célula clicável: ${links.length}`);
+    assert.equal(links[0].href, '?oferta=4102', 'o `href` da irmã não é o `?oferta=` do servidor');
+    assert.ok(classesDe(links[0]).has('cursor-pointer'), 'a irmã perdeu o `cursor:pointer` de `:690`');
+
+    // ⚠️⚠️ AS DUAS APARÊNCIAS, DIFERENTES — e por ÁRVORE com índice ABSOLUTO.
+    const celulas = tagsDeAbertura(html).filter((t) => /py-\[10px\]/.test(t.classe));
+    assert.equal(celulas.length, 2, `não há exatamente 2 células: ${celulas.length}`);
+    const daAtual = classesDe(celulas[0]);
+    const daOutra = classesDe(celulas[1]);
+    assert.ok(daAtual.has('bg-pub-hover-3'), 'a célula ATUAL perdeu o fundo `#1A1A1A` de `:1294`');
+    assert.ok(daAtual.has('border-pub-line-off'), 'a célula ATUAL perdeu a borda `#3F3F46` de `:1294`');
+    assert.ok(daOutra.has('bg-pub-surface'), 'a OUTRA perdeu o fundo `#111111` de `:1294`');
+    assert.ok(daOutra.has('border-pub-line-subtle'), 'a OUTRA perdeu a borda `#1F1F1F` de `:1294`');
+    assert.notDeepEqual([...daAtual].sort(), [...daOutra].sort(), 'as DUAS células ficaram com a MESMA aparência — a pessoa perderia de vista em qual ela está');
+
+    // ⚠️ O losango SÓ no Premium, 6px e SEM `border-radius` (medido em `:691`).
+    const losangos = tagsDeAbertura(html).filter((t) => /rotate-45/.test(t.classe));
+    assert.equal(losangos.length, 1, `o losango não é exclusivo do Premium: ${losangos.length}`);
+    assert.ok(classesDe(losangos[0]).has('h-[6px]'), 'o losango da irmã não tem 6px — os outros dois do módulo têm 7px, e são elementos DIFERENTES');
+    assert.ok(!classesDe(losangos[0]).has('rounded-[1px]'), 'o losango de `:691` ganhou `border-radius` — ele não tem');
+
+    // ⚠️⚠️ E O CLIQUE CHAMA O HANDLER COM O ID DA IRMÃ, uma vez.
+    assert.deepEqual(abertas, [], 'o handler foi chamado NO RENDER');
+    const nomes = Object.keys(MOD_IRMA);
+    assert.ok(nomes.includes('CelulaDaComparacao'), 'a célula não é NAMED EXPORT — o gate não poderia exercer o clique');
+
+    // ⚠️ A grade por IGUALDADE de string, com isca do quase-igual.
+    assert.equal(MOD_IRMA.CLASSES_GRADE, 'grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[6px]', 'a grade das irmãs divergiu de `:688`');
+    for (const quaseIgual of ['grid-cols-2', 'grid-cols-[repeat(2,1fr)]', 'grid-cols-[repeat(3,minmax(0,1fr))]']) {
+        assert.ok(!FONTE_IRMA.includes(quaseIgual), `o quase-igual \`${quaseIgual}\` entrou na fonte`);
+    }
+    assert.ok(FONTE_IRMA.includes('grid-cols-[repeat(2,minmax(0,1fr))]'), 'a sonda do quase-igual está cega');
+});
+
+test('⚠️⚠️ SEM IRMÃ, SEM GRADE: 2 colunas com um item só é casca vazia 188_09', () => {
+    // ⚠️ O servidor SEMPRE manda a célula atual, e `irma` é `null` quando não há a
+    // outra modalidade. Desenhar a grade com um item deixaria meia tela de borda.
+    for (const semIrma of [null, undefined, '', 7, [], 'x', true]) {
+        const html = render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL], irma: semIrma, onAbrir: nada });
+        assert.equal(html, '', 'a grade das irmãs nasceu SEM irmã — 2 colunas com um item é casca vazia (D4)');
+    }
+
+    // ⚠️ E com `irma` presente mas a lista TORTA (uma célula só), também não: as
+    // duas chaves vêm do MESMO lugar no servidor, e exigir as duas é o que impede
+    // a grade de nascer torta.
+    assert.equal(render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL], irma: CELULA_IRMA }), '', 'a grade nasceu com UMA célula e `irma` preenchida — as duas chaves discordaram');
+
+    // ⚠️ SONDA NÃO-CEGA: com as DUAS ela nasce.
+    assert.ok(render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL, CELULA_IRMA], irma: CELULA_IRMA }) !== '', 'a grade não nasce nem com as duas — a sonda está CEGA');
+
+    // ⚠️ E `irma` é DERIVADA de `comparacao` no servidor, para que nunca discordem.
+    const servico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
+    assert.match(servico, /'irma' => \$irmas\[0\] \?\? null/, 'a `irma` deixou de ser DERIVADA de `comparacao` — as duas chaves poderiam discordar');
+});
+
+test('⚠️ VOC: o rótulo do andamento da irmã é do SERVIDOR, e a COR vem do módulo 188_09', () => {
+    const html = render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL, CELULA_IRMA], irma: CELULA_IRMA });
+    const conteudo = texto(html);
+
+    assert.ok(conteudo.includes('Em revisão pela ECF'), 'o rótulo do andamento da atual não saiu');
+    assert.ok(conteudo.includes('Aguardando aprovação'), 'o rótulo do andamento da irmã não saiu');
+
+    // ⚠️ UM VOCABULÁRIO SÓ: nenhum rótulo de andamento é escrito aqui.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/Em revis[ãa]o/.test(fonte), `${rel} escreveu um rótulo de andamento à mão`);
+        assert.ok(!/Aguardando aprova/.test(fonte), `${rel} escreveu um rótulo de andamento à mão`);
+    }
+
+    // ⚠️⚠️ `andamentoDe()` NUNCA devolve `null` e o rótulo dele NUNCA é vazio: uma
+    // guarda que devolvesse `null` produziria elemento vazio, que **passa em
+    // render e desaparece na tela**.
+    const MOD_ANDAMENTO = MOD_IRMA;
+    assert.ok(MOD_ANDAMENTO !== null);
+    for (const chave of [null, undefined, {}, [], NaN, '', '   ', 7, true, 'chave_que_nao_existe']) {
+        const semRotulo = render(MOD_IRMA.default, {
+            comparacao: [CELULA_ATUAL, { ...CELULA_IRMA, andamento_da_irma: chave, rotulo_do_andamento: null }],
+            irma: CELULA_IRMA,
+        });
+        const status = tagsDeAbertura(semRotulo).filter((t) => /ml-auto/.test(t.classe));
+        assert.equal(status.length, 2, 'o selo de status desapareceu com andamento adverso — elemento vazio passa em render e some na tela');
+    }
+
+    // ⚠️ A COR do status vem do módulo (TOK-15: nenhum hex sai do PHP), e é a do
+    // andamento — não um cinza genérico.
+    const status = tagsDeAbertura(html).filter((t) => /ml-auto/.test(t.classe));
+    assert.equal(status.length, 2, 'não há 2 selos de status');
+    const cores = status.map((t) => [...classesDe(t)].filter((c) => c.startsWith('text-pub-')));
+    assert.deepEqual(cores.map((c) => c.length), [1, 1], 'o selo de status não tem exatamente 1 classe de cor');
+    assert.notEqual(cores[0][0], cores[1][0], 'os dois andamentos saíram com a MESMA cor — eles são estados diferentes');
+    const doAndamento = lerSemComentarios(REL_ANDAMENTO);
+    assert.ok(doAndamento.includes('em_revisao_ecf'), 'o andamento `em_revisao_ecf` saiu do módulo — a cor viria do nada');
+});
+
+test('⚠️⚠️ DECISÃO 6: "exceção aguardando autorização" NÃO EXISTE, e a frase é do SERVIDOR 188_09', () => {
+    const html = render(MOD_COLUNA.default, {
+        preco: { ...PRECO_OK, excecao: '§ Exceção autorizada por Rafael Lima · 17 out 09:12 · “cliente aceitou a margem menor no lote de Natal”' },
+    });
+    const conteudo = texto(html);
+    assert.ok(conteudo.includes('Exceção autorizada por Rafael Lima'), 'a frase da exceção não saiu');
+    assert.ok(conteudo.includes('§'), 'o glifo `§` da exceção sumiu');
+
+    // ⚠️ Sem exceção, sem linha — nada nasce decorativo.
+    for (const sem of [null, undefined, '', '   ', {}, [], 7]) {
+        const semExcecao = render(MOD_COLUNA.default, { preco: { ...PRECO_OK, excecao: sem } });
+        assert.ok(!texto(semExcecao).includes('§'), 'a linha da exceção nasceu SEM exceção');
+    }
+
+    // ⚠️⚠️ **A EXCEÇÃO SÓ REGISTRA QUEM LIBEROU** (decisão 6): não há estado de
+    // espera. ⚠️ A sonda é ancorada no SUJEITO, e não em palavras soltas:
+    // *"Aguardando aprovação"* é vocabulário CORRETO do domínio (é um dos 8
+    // andamentos) e casa dez ocorrências legítimas. ⚠️ E `aprovad` NÃO casa
+    // `aprovação` — conte com a cedilha e os acentos.
+    const PROIBIDAS = [
+        /exce[çc][ãa]o\s+aguardando/i,
+        /aguardando\s+autoriza[çc][ãa]o/i,
+        /exce[çc][ãa]o\s+pendente/i,
+        /autoriza[çc][ãa]o\s+pendente/i,
+    ];
+    const infratores = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        for (const re of PROIBIDAS) {
+            if (re.test(fonte)) infratores.push(`${rel} ~ ${re}`);
+        }
+    }
+    assert.deepEqual(infratores, [], '"exceção aguardando autorização" NÃO EXISTE (decisão 6) — a exceção só REGISTRA quem liberou');
+
+    // ⚠️ ISCA POSITIVA: a sonda pega as quatro formas, COM e SEM acento.
+    for (const cebo of ['Exceção aguardando autorização', 'excecao aguardando aprovacao', 'aguardando autorizacao do gestor', 'Exceção pendente de análise']) {
+        assert.ok(PROIBIDAS.some((re) => re.test(cebo)), `a sonda da exceção NÃO pega o cebo "${cebo}"`);
+    }
+    // ⚠️⚠️ ISCA NEGATIVA — ela NÃO pega o vocabulário CORRETO do domínio: o
+    // andamento "Aguardando aprovação" é um dos OITO e aparece em produção. Uma
+    // sonda por palavra solta reprovaria código certo (é a 10ª ocorrência dessa
+    // família neste projeto, e uma delas BARROU UM DEPLOY).
+    for (const legitimo of ['Aguardando aprovação', 'aguardando_aprovacao', 'Aprovado — aguardando publicação', 'aguardando publicação']) {
+        assert.ok(!PROIBIDAS.some((re) => re.test(legitimo)), `a sonda da exceção reprova o vocabulário LEGÍTIMO "${legitimo}"`);
+    }
+
+    // ⚠️ E a frase é LIDA de `PubAprovacaoExcecao::fraseDeExibicao()`, que trata
+    // `liberada_por` nulo SEM mentir. A tela não remonta nada.
+    const modelo = fs.readFileSync(path.resolve(RAIZ, 'app/Models/PubAprovacaoExcecao.php'), 'utf8');
+    assert.match(modelo, /Exceção autorizada por/, 'a frase da exceção saiu do modelo');
+    assert.match(modelo, /responsável removido/, 'o tratamento de `liberada_por` nulo saiu do modelo — a frase passaria a mentir');
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.ok(!/Exce[çc][ãa]o autorizada/.test(fonte), `${rel} remontou a frase da exceção`);
+    }
+    // ⚠️ E `LIBERA` continua a lista FECHADA de DOIS (decisão 6): só prejuízo e
+    // margem — nunca fotos, frete, alteração, ajuste ou título.
+    const bloco = modelo.match(/LIBERA = \[([\s\S]*?)\];/);
+    assert.ok(bloco, 'não achei `LIBERA` — a leitura está CEGA');
+    for (const nunca of ['fotos', 'frete', 'alteracao', 'ajuste', 'titulo']) {
+        assert.ok(!bloco[1].includes(nunca), `a exceção passou a liberar \`${nunca}\` — a lista é FECHADA em prejuízo e margem (decisão 6)`);
+    }
+});
+
+test('⚠️⚠️ REND: nenhum campo adverso da simulação nem da irmã derruba a página, nem no CLIQUE 188_09', () => {
+    const DA_SIMULACAO = ['titulo', 'placeholder', 'rotulo_descartar', 'rotulo_salvar', 'simulando', 'selo', 'preco_salvo', 'preco_simulado', 'preenche', 'resultado', 'resultado_cor', 'margem', 'margem_cor', 'delta', 'delta_cor', 'pode_salvar', 'versao'];
+
+    for (const campo of DA_SIMULACAO) {
+        for (const forma of ADVERSAS) {
+            let html = null;
+            assert.doesNotThrow(
+                () => { html = render(MOD_SIMULACAO.default, { simulacao: { ...SIMULACAO_ATIVA, [campo]: forma }, atalhos: ATALHOS, onSimular: nada, onDescartar: nada, onSalvar: nada }); },
+                `o campo \`simulacao.${campo}\` derrubou o render`,
+            );
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `o campo \`simulacao.${campo}\` vazou valor cru`);
+        }
+    }
+
+    // ⚠️ Os ATALHOS, campo por campo, e a coleção inteira.
+    for (const campo of ['chave', 'rotulo', 'preenche']) {
+        for (const forma of ADVERSAS) {
+            let html = null;
+            assert.doesNotThrow(() => { html = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_NEUTRA, atalhos: [{ ...ATALHOS[0], [campo]: forma }], onSimular: nada }); }, `o campo \`atalho.${campo}\` derrubou o render`);
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined/, `o campo \`atalho.${campo}\` vazou valor cru`);
+        }
+    }
+    for (const forma of [...ADVERSAS, [null], [{}], ['x'], [[]], [ATALHOS[0], null, 'x']]) {
+        let html = null;
+        assert.doesNotThrow(() => { html = render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_NEUTRA, atalhos: forma, atalhosIndisponivel: forma, onSimular: nada }); }, 'a coleção de atalhos derrubou o render');
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined/, 'a coleção de atalhos vazou valor cru');
+    }
+
+    // ⚠️ A IRMÃ, campo por campo — e com objeto NO MEIO da coleção.
+    const DA_IRMA = ['oferta_id', 'rotulo', 'premium', 'ordem', 'preco', 'resultado', 'resultado_cor', 'margem', 'margem_cor', 'andamento_da_irma', 'rotulo_do_andamento', 'atual', 'href'];
+    for (const campo of DA_IRMA) {
+        for (const forma of ADVERSAS) {
+            let html = null;
+            assert.doesNotThrow(
+                () => { html = render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL, { ...CELULA_IRMA, [campo]: forma }], irma: CELULA_IRMA, onAbrir: nada }); },
+                `o campo \`irma.${campo}\` derrubou o render`,
+            );
+            assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, `o campo \`irma.${campo}\` vazou valor cru`);
+        }
+    }
+    for (const forma of [...ADVERSAS, [null], [{}], ['x'], [[]], [CELULA_ATUAL, null], [CELULA_ATUAL, 'x', CELULA_IRMA]]) {
+        let html = null;
+        assert.doesNotThrow(() => { html = render(MOD_IRMA.default, { comparacao: forma, irma: forma, onAbrir: forma }); }, 'a coleção de irmãs derrubou o render');
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined/, 'a coleção de irmãs vazou valor cru');
+    }
+
+    // ⚠️⚠️ E NO CLIQUE: `renderToStaticMarkup` **não dispara `onClick`**, e a TELA
+    // PRETA deste projeto voltou SEIS vezes — a última NO CLIQUE. A célula é
+    // NAMED EXPORT exatamente para o clique ser exercido direto.
+    for (const forma of ADVERSAS) {
+        assert.doesNotThrow(
+            () => render(MOD_IRMA.CelulaDaComparacao, { celula: { ...CELULA_IRMA, oferta_id: forma }, onAbrir: forma }),
+            'o clique da irmã derrubou o render com entrada adversa',
+        );
+        assert.doesNotThrow(
+            () => render(MOD_SIMULACAO.default, { simulacao: SIMULACAO_ATIVA, onSimular: nada, onDescartar: forma, onSalvar: forma }),
+            'os handlers adversos da simulação derrubaram o render',
+        );
+    }
+
+    // ⚠️⚠️ **`id = 0` PASSA pela guarda de inteiro, e ZERO é um id PLAUSÍVEL** —
+    // conserto MEDIDO pela wave 188-08. A navegação exige inteiro POSITIVO.
+    const comZero = render(MOD_IRMA.default, { comparacao: [CELULA_ATUAL, { ...CELULA_IRMA, oferta_id: 0 }], irma: CELULA_IRMA, onAbrir: nada });
+    const linksComZero = tagsDeAbertura(comZero).filter((t) => t.tag === 'a');
+    assert.equal(linksComZero.length, 1, 'a célula com id 0 deixou de ser link — o `href` do servidor continua sendo destino');
+    assert.ok(FONTE_IRMA.includes('ofertaId > 0'), 'a guarda de id POSITIVO saiu — `0` passaria pela guarda de inteiro e navegaria para uma oferta que não existe');
+
+    // ⚠️ E a coluna INTEIRA com todos os blocos adversos de uma vez.
+    for (const forma of ADVERSAS) {
+        let html = null;
+        assert.doesNotThrow(
+            () => {
+                html = render(MOD_COLUNA.default, {
+                    preco: { titulo: forma, kpis: forma, alteracao: forma, composicao: forma, preco: forma, frete: forma, frete_ausente: forma, simulacao: forma, atalhos: forma, atalhos_indisponivel: forma, excecao: forma, comparacao: forma, irma: forma },
+                    onConferirAlteracao: forma, onInformarFrete: forma, onSimular: forma, onDescartar: forma, onSalvar: forma, onAbrirIrma: forma,
+                });
+            },
+            'a coluna inteira derrubou o render com TODOS os campos adversos',
+        );
+        assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, 'a coluna inteira vazou valor cru');
+    }
+});
 // 10. O PROTÓTIPO — `skip` EXPLÍCITO quando o pacote não está no disco
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1673,7 +2239,7 @@ function seletorDe(classe) {
  * `skip`. ⚠️ E `cp` ATUALIZA o `mtime`, então `npm run build` vem DEPOIS da
  * mutação (`cp -p` preserva, e aí o regime pristino volta sem build).
  */
-const FONTES_DO_CSS = [REL_KPIS, REL_COMPOSICAO, REL_COLUNA];
+const FONTES_DO_CSS = [REL_KPIS, REL_COMPOSICAO, REL_SIMULACAO, REL_IRMA, REL_COLUNA];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -1785,6 +2351,19 @@ test('⚠️ FID: as classes da coluna de preço GERAM CSS com o valor certo 188
         // ⚠️ 4ª normalização: o zero da frente de `-4px` não existe, mas o sinal sim.
         assert.match(regraDe('-mt-[4px]'), /margin-top:\s*-4px/, 'o `margin-top:-4px` de `:665` não compilou');
 
+        // ⚠️ A SIMULAÇÃO e as IRMÃS — a 8ª normalização de novo na grade de 2, e a
+        // 4ª no `letter-spacing` (o cssnano come o zero da frente: `.05em`).
+        assert.match(regraDe('grid-cols-[repeat(2,minmax(0,1fr))]'), /repeat\(2\s*,\s*minmax\(0\s*,\s*1fr\)\)/, 'a grade das irmãs de `:688` não compilou');
+        assert.match(regraDe('tracking-[0.05em]'), /\.05em/, 'o `letter-spacing:0.05em` do selo de `:672` não compilou');
+        assert.match(regraDe('border-dashed'), /border-style:\s*dashed/, 'o `border:1px dashed` de `:669` não compilou');
+        assert.match(regraDe('rounded-full'), /border-radius:\s*9999px/, 'o `border-radius:999px` dos atalhos não compilou');
+        assert.match(regraDe('bg-pub-seg'), /rgb\(38 38 38/, '`bg-pub-seg` não é #262626 (o fundo do selo de `:672`)');
+        assert.match(regraDe('bg-pub-hover-2'), /rgb\(22 22 22/, '`bg-pub-hover-2` não é #161616 (o fundo da exceção de `:687`)');
+        assert.match(regraDe('bg-pub-hover-3'), /rgb\(26 26 26/, '`bg-pub-hover-3` não é #1A1A1A (o fundo da célula ATUAL de `:1294`)');
+        assert.match(regraDe('bg-pub-surface'), /rgb\(17 17 17/, '`bg-pub-surface` não é #111111 (o fundo da OUTRA célula de `:1294`)');
+        // ⚠️ 6ª normalização: na VARIANTE o prefixo faz parte do nome.
+        assert.match(regraDe('focus:border-pub-accent'), /rgb\(250 204 21/, 'o `style-focus` do input de `:675` não compilou');
+
         // O resto das medidas, numa asserção COLETANDO.
         const semRegra = [
             'rounded-pub-sub', 'rounded-pub-table', 'rounded-pub-control', 'rounded-pub-chip',
@@ -1804,6 +2383,12 @@ test('⚠️ FID: as classes da coluna de preço GERAM CSS com o valor certo 188
             'h-[30px]', 'py-[2px]', 'py-[7px]', 'py-[8px]', 'py-[10px]', 'px-[6px]',
             'gap-[1px]', 'text-[10.5px]', 'text-[13px]', 'font-medium',
             'text-pub-txt-3', 'border-pub-line-off',
+            // --- tarefa 3: a simulacao (`:669`-`:685`) e as irmas (`:688`-`:692`) ---
+            'border-dashed', 'rounded-full', 'rounded-[8px]', 'flex-wrap', 'ml-auto',
+            'outline-none', 'rotate-45', 'flex-none', 'h-[26px]', 'h-[28px]', 'h-[32px]',
+            'w-[120px]', 'w-[6px]', 'h-[6px]', 'left-[10px]', 'pl-[32px]', 'pr-[10px]',
+            'px-[9px]', 'gap-[8px]', 'text-[11.5px]', 'bg-pub-seg', 'bg-pub-hover-2',
+            'bg-pub-hover-3', 'border-pub-line-strong', 'tracking-[0.05em]',
         ].filter((c) => regraDe(c) === null);
         assert.deepEqual(semRegra, [], 'classe da coluna de preço NÃO gerou CSS — num `.js` isso aconteceria com todo teste de render passando');
     });

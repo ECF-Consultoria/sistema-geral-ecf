@@ -6,6 +6,28 @@ import KpisDoPainel, {
     textoDoPainel,
 } from './KpisDoPainel';
 import ComposicaoFinanceiraDoPainel from './ComposicaoFinanceiraDoPainel';
+import SimulacaoDePreco from './SimulacaoDePreco';
+import ComparacaoComAIrma from './ComparacaoComAIrma';
+
+/**
+ * `:687` — a linha da exceção autorizada.
+ *
+ * ⚠️⚠️ **PONTEIRO CORRIGIDO:** a §D registrava `:686`, que é o `<sc-if>` de
+ * abertura; o elemento está em **`:687`** — reconferido por `sed` nesta wave.
+ *
+ * ⚠️⚠️ **A EXCEÇÃO SÓ REGISTRA QUEM LIBEROU** (decisão 6 do usuário):
+ * *"exceção aguardando autorização" **NÃO EXISTE***, e `ativa` é o único filtro
+ * de vigência — não há estado de espera a conferir. ⚠️ E ela libera **SÓ**
+ * `resultado_negativo` e `margem_abaixo_do_minimo` (`PubAprovacaoExcecao::LIBERA`,
+ * lista FECHADA): nunca fotos, frete, alteração, ajuste, título, preparação ou
+ * falha.
+ *
+ * ⚠️ A frase inteira — com o glifo `§`, o nome de quem liberou, a data e a
+ * justificativa — vem de `PubAprovacaoExcecao::fraseDeExibicao()`, que já trata
+ * `liberada_por` nulo **sem mentir** (*"responsável removido"*). **A tela não
+ * remonta nada**, e por isso não há aqui nenhum literal de exceção.
+ */
+export const CLASSES_EXCECAO = 'rounded-[8px] bg-pub-hover-2 px-[10px] py-[8px] text-[12px] text-pub-fase1';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 188, plano 09 — A COLUNA DE PREÇO E RESULTADO DO PAINEL (`:639`-`:693`).
@@ -67,14 +89,31 @@ import ComposicaoFinanceiraDoPainel from './ComposicaoFinanceiraDoPainel';
  * @param {unknown} [props.onInformarFrete] `() => void`, ou `null` — o modal de
  *   frete é do plano **188-12**, que RELIGA este handler (B2). Sem ele o botão
  *   de `:667` não é desenhado, e o TEXTO da composição continua aparecendo.
+ * @param {unknown} [props.onSimular] `(valorDigitado) => void`, ou `null` — o
+ *   transporte é da wave **188-06**. ⚠️ Sem ele a caixa de simulação **não é
+ *   desenhada**: campo de digitação sem destino é controle MORTO.
+ * @param {unknown} [props.onDescartar] `() => void`, ou `null`
+ * @param {unknown} [props.onSalvar] `() => void`, ou `null`
+ * @param {unknown} [props.onAbrirIrma] `(ofertaId) => void`, ou `null` — a
+ *   navegação é da página (`abrirOferta`), que preserva o recorte
  */
-export default function ColunaDePreco({ preco = null, onConferirAlteracao = null, onInformarFrete = null }) {
+export default function ColunaDePreco({
+    preco = null,
+    onConferirAlteracao = null,
+    onInformarFrete = null,
+    onSimular = null,
+    onDescartar = null,
+    onSalvar = null,
+    onAbrirIrma = null,
+}) {
     const dados = objetoDoPainel(preco);
 
     // ⚠️ Slot sem dado **não desenha casca**.
     if (dados === null) return null;
 
     const titulo = textoDoPainel(dados.titulo);
+    // ⚠️ A frase da exceção vem FECHADA do servidor (glifo `§` incluído).
+    const excecao = textoDoPainel(dados.excecao);
 
     // ⚠️⚠️ A lista é montada ANTES da casca, e `filhosSeguros` devolve `null`
     // quando nada sobrou: payload sem nenhuma chave útil (um `{}`, ou um objeto
@@ -91,6 +130,17 @@ export default function ColunaDePreco({ preco = null, onConferirAlteracao = null
             freteAusente={dados.frete_ausente}
             onInformarFrete={onInformarFrete}
         />,
+        <SimulacaoDePreco
+            key="simulacao"
+            simulacao={dados.simulacao}
+            atalhos={dados.atalhos}
+            atalhosIndisponivel={dados.atalhos_indisponivel}
+            onSimular={onSimular}
+            onDescartar={onDescartar}
+            onSalvar={onSalvar}
+        />,
+        excecao === null ? null : <span key="excecao" className={CLASSES_EXCECAO}>{excecao}</span>,
+        <ComparacaoComAIrma key="irma" comparacao={dados.comparacao} irma={dados.irma} onAbrir={onAbrirIrma} />,
     ]);
 
     // ⚠️ `filhosSeguros` não sabe que um elemento VAI renderizar vazio — ele só
@@ -99,8 +149,9 @@ export default function ColunaDePreco({ preco = null, onConferirAlteracao = null
     const temKpis = Array.isArray(dados.kpis) && dados.kpis.length > 0;
     const temAviso = objetoDoPainel(dados.alteracao) !== null;
     const temComposicao = objetoDoPainel(dados.composicao) !== null;
+    const temIrma = objetoDoPainel(dados.irma) !== null;
 
-    if (titulo === null && !temKpis && !temAviso && !temComposicao) return null;
+    if (titulo === null && !temKpis && !temAviso && !temComposicao && excecao === null && !temIrma) return null;
 
     return <ColunaDoPainel>{conteudo}</ColunaDoPainel>;
 }

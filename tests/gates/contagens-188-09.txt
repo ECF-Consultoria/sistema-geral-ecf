@@ -228,20 +228,63 @@
 #      sonda está cega").
 #
 # OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026:
-#   · **38** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
-#     os 30 testes de topo, os 4 sub-testes do PROTÓTIPO e os 4 sub-testes da
-#     camada de CSS, todos rodando (38 / 38 pass / 0 skipped);
-#   · **34** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#   · **48** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#     os 40 testes de topo, os 4 sub-testes do PROTÓTIPO e os 4 sub-testes da
+#     camada de CSS, todos rodando (48 / 48 pass / 0 skipped);
+#   · **44** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
 #     o `cp` atualiza o `mtime` do `.jsx`): a camada cai em `skip` NOMEADO e os 4
-#     sub-testes dela não entram na contagem (34 / 33 pass / 1 skipped — o `skip`
+#     sub-testes dela não entram na contagem (44 / 43 pass / 1 skipped — o `skip`
 #     é NOMEADO, com a razão escrita). ⚠️ `# tests` conta sub-teste, e é por isso
 #     que o número MUDA — não é teste que desapareceu.
 #   ⚠️ Os DOIS foram MEDIDOS por sonda de `mtime` ANTES da campanha, e o hash do
-#   CSS do manifest saiu `assets/app-B0-WY4Lv.css` — **com HÍFEN**, que é por que
-#   o manifest se lê pelo JSON e nunca por `grep`.
+#   CSS do manifest saiu `assets/app-BatUsbz0.css` — e numa das medições
+#   `assets/app-B0-WY4Lv.css`, **com HÍFEN**, que é por que o manifest se lê pelo
+#   JSON e nunca por `grep`.
 #
 # ⚠️ A TAREFA 1 media **29,25** (21 testes de topo). A TAREFA 2 acrescentou **9**
-#   testes (a composição, as 6 cores das origens, as 3 formas do valor, a decisão
-#   3, a FIN-08, o pior caso, as 4 combinações do frete, a geometria da linha e o
-#   render adverso da composição). O número foi **RE-MEDIDO**, nunca estimado.
-coluna-de-preco  js  tests/js/publicador-painel-preco-188.test.js  ::  tests=38,34
+#   (a composição, as 6 cores das origens, as 3 formas do valor, a decisão 3, a
+#   FIN-08, o pior caso, as 4 combinações do frete, a geometria da linha e o
+#   render adverso dela). A TAREFA 3 acrescentou **10** (o selo nos dois eixos, a
+#   caixa sem transporte, a aritmética de taxa, o `N%` real, a geometria da
+#   simulação, a irmã clicável, a grade sem irmã, o vocabulário do andamento, a
+#   decisão 6 e o render adverso das duas peças).
+#   ➡️ **Os números foram RE-MEDIDOS a cada tarefa, nunca estimados.**
+coluna-de-preco  js  tests/js/publicador-painel-preco-188.test.js  ::  tests=48,44
+
+
+# ── TAREFA 3: o GATE-03 (vocabulário novo fechado) ──────────────────────────
+
+# ⚠️⚠️ **ESTE ID É DECLARADO EM LINHA PRÓPRIA, e isso foi MEDIDO, não deduzido:**
+#   grep -l "vocabulario-tamanhos" tests/gates/contagens-*.txt
+#     → os dez manifestos da 187 (`-01` e `-03` … `-11`), mais `contagens-188-01`,
+#       `-07` e `-08`, com a linha na MESMA forma nos treze.
+# ➡️ **Quem roda o GATE-03, declara.** `contagens-187-02.txt`,
+#   `contagens-188-02.txt` e `-03.txt` **NÃO** o declaram, e estão CERTOS: aqueles
+#   planos são só de servidor e não criam `.jsx` nenhum. A regra é **quem roda,
+#   declara** — não *todos declaram*.
+# ⚠️⚠️ **O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também roda
+#   OUTROS arquivos.** Declarar em linha própria **NÃO é** embutir em id composto —
+#   é o oposto, e é o que as dez waves da 187 fizeram. Foi o id **COMPOSTO** que
+#   fez a wave 187-05 reprovar DOIS ids de outras waves e exigir consertar QUATRO
+#   manifestos.
+# ⚠️ **Sem a linha o harness ABORTA.**
+#
+# ⚠️⚠️ **A FORMA É `>=`, E O N FOI MEDIDO NA HORA — nunca copiado.** A contagem
+#   **CRESCE POR CONSTRUÇÃO**: o gate roda **7** sub-testes por arquivo varrido em
+#   `ARQUIVOS_NOVOS`/`DIRETORIOS_FECHADOS`, e cada `.jsx` novo a aumenta. MEDIDO
+#   nesta máquina em 19/10/2026, nos TRÊS pontos desta wave:
+#     · **597** antes de qualquer arquivo deste plano existir (o piso da 188-08);
+#     · **611** com os DOIS da tarefa 1 (597 + 2 × 7);
+#     · **618** com o da tarefa 2 (611 + 7);
+#     · **632** com os DOIS da tarefa 3 (618 + 2 × 7) — e a soma fecha.
+#   ➡️ O piso é o MEDIDO, e o `>=` existe porque teste novo só SOMA — o que o piso
+#   pega é arquivo que não carrega, `SyntaxError`, ou teste que DESAPARECEU.
+#
+# ⚠️⚠️ **O QUE ESTE ID MEDE, nos CINCO `.jsx` deste plano:** FID-03 (nenhum
+#   `text-sm`/`text-xs`; `text-[21px]` liberado MEDINDO pelo plano 188-01, e os
+#   demais já na lista), **os 4 pesos** (400/500/600/700), FID-04 (zero `ecf-*`,
+#   zero `font-display`, zero `border-white/[0.08]`), **TOK-15** (nenhum hex
+#   literal no código), FID-05 (nenhum breakpoint) e o **`deepEqual` de
+#   `DIRETORIOS_FECHADOS`**, que é o que impede `.jsx` novo de entrar CALADO em
+#   `aprovacao/`.
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=632

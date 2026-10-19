@@ -135,6 +135,8 @@ const JSX_DEPOIS_DA_187 = [
     `${DIR_APROV}/KpisDoPainel.jsx`,
     `${DIR_APROV}/ColunaDePreco.jsx`,
     `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`,
+    `${DIR_APROV}/SimulacaoDePreco.jsx`,
+    `${DIR_APROV}/ComparacaoComAIrma.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

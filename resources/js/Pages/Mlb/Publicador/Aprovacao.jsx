@@ -15,6 +15,7 @@ import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
 import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
 import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
+import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -790,6 +791,7 @@ export default function Aprovacao({
     // `escreverNoPainel` **registra o `onError` de todo jeito** e nada é engolido:
     // o 422 continua chegando pela sacola `errors` do Inertia.
     const fotosDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.fotos);
+    const precoDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.preco);
     const rodapeDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.rodape);
     const painelAoVivo = objetoSeguro(rodapeDoPainel?.botoes)?.salvar === true;
 
@@ -824,6 +826,44 @@ export default function Aprovacao({
             />
         );
 
+    // ═══ ⚠⚠ Fase 188, plano 09 — A COLUNA DE PREÇO NO SLOT ══════════════
+    //
+    // ⚠⚠ **O TRANSPORTE DA SIMULAÇÃO E DO "CONFERIR ALTERAÇÃO" É DA WAVE
+    // 188-06, E ISSO ESTÁ DECLARADO EM VEZ DE ADIVINHADO.** MEDIDO no HEAD de
+    // partida desta wave (`091340b6`, 19/10/2026): `routes/mlb_anuncios.php`
+    // **não tinha** rota de preço nenhuma. ➡️ `onSimular`, `onDescartar`,
+    // `onSalvar` e `onConferirAlteracao` ficam `null`, e a peça **não desenha o
+    // que não tem destino** — a caixa de simulação inteira não nasce, e o botão
+    // de conferir não nasce (o TEXTO do aviso continua aparecendo).
+    // ⚠️ É o MESMO contrato com que o `onTentarDeNovo` nasceu `null` acima e o
+    // `onReprovar` da coluna de fotos nasceu `null` na 188-08. **Nada de
+    // `onClick` vazio, nada de `disabled` decorativo** (D4).
+    // ⚠️ Quando a rota chegar, a escrita vai pelo helper único
+    // `escreverNoPainel` (W11 / COL-04) — `versao_esperada` SEMPRE no corpo, e o
+    // 422 de versão divergente NUNCA engolido.
+    //
+    // ⚠️ `onInformarFrete` também é `null`: o modal de frete é do plano
+    // **188-12**, que religa este handler (B2).
+    //
+    // ⚠️⚠️ **A IRMÃ, SIM, É CLICÁVEL DE VERDADE** — e sem rota nova: o `href`
+    // vem do servidor (`?oferta=<id>`, do MESMO rascunho) e o clique reusa o
+    // `abrirOferta` que esta página já tem, que preserva o recorte em que a
+    // pessoa está. ⚠️ A rota é a do plano **188-02**, que está COMMITADA.
+    const colunaDePreco = precoDoPainel === null
+        ? null
+        : (
+            <ColunaDePreco
+                key="coluna-de-preco"
+                preco={precoDoPainel}
+                onConferirAlteracao={null}
+                onInformarFrete={null}
+                onSimular={null}
+                onDescartar={null}
+                onSalvar={null}
+                onAbrirIrma={abrirOferta}
+            />
+        );
+
     const noPainel = isValidElement(painelNo)
         ? painelNo
         : (
@@ -837,6 +877,7 @@ export default function Aprovacao({
                 onTrocarImagem={trocarFoto}
                 onTentarDeNovo={tentarDeNovo}
                 colunaDeFotos={colunaDeFotos}
+                colunaDePreco={colunaDePreco}
             />
         );
 

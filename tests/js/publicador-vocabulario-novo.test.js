@@ -418,6 +418,13 @@ const ARQUIVOS_NOVOS = [
     // `:667`. ⚠️ `text-[10.5px]` (o selo) e `text-[11px]` (o detalhe truncado)
     // são medidas do protótipo — o passo do Tailwind não tem meio pixel.
     `${DIR_APROV}/ComposicaoFinanceiraDoPainel.jsx`,
+    // ⚠ Tarefa 3 do mesmo plano: a caixa TRACEJADA da simulação de `:669` (com o
+    // selo de `:672`, o input de 120×32 de `:675`, os atalhos em pílula de
+    // `:681`/`:682` e a frase de `:685`) e a grade de 2 colunas das irmãs de
+    // `:688`-`:692`. ⚠️ `text-[10.5px]` (o selo) e `text-[11.5px]` (os atalhos e a
+    // frase do indisponível) são medidas do protótipo.
+    `${DIR_APROV}/SimulacaoDePreco.jsx`,
+    `${DIR_APROV}/ComparacaoComAIrma.jsx`,
 ];
 
 /**
