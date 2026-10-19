@@ -1281,6 +1281,29 @@ test('⚠️ TECLADO: o runtime está DECLARADO como não provado, e o lightbox 
     // AUSÊNCIA seria prova de que nada escuta).
     assert.match(FONTE_PAINEL, /window\.addEventListener\('keydown'/, 'ninguém escuta o teclado');
     assert.match(FONTE_PAINEL, /window\.removeEventListener\('keydown'/, 'o listener não é removido — cada abertura somaria um');
+
+    // ═══ ⚠⚠ A PREMISSA TRAVADA, porque o runtime É INOBSERVÁVEL AQUI ══════
+    //
+    // ⚠⚠ **ACHADO DA CAMPANHA DE MUTAÇÃO desta wave, declarado em vez de
+    // escondido.** A guarda de `tagName` tem DUAS metades: a **decisão** (`if
+    // (e.alvoEhCampo === true) return null;`), que é função PURA e está provada
+    // acima, e a **composição** (ler `evento.target.tagName` e casar com
+    // `TAGS_DE_CAMPO`), que vive dentro do `useEffect` e **só roda no navegador**.
+    // ➡️ Mutar a composição **SOBREVIVERIA**: sem navegador, nenhum teste de
+    // comportamento a alcança.
+    // ⚠ **Sobrevivente INOBSERVÁVEL não se descarta: TRAVA-SE.** Isto aqui é
+    // **proxy de FONTE** — e proxy de fonte **NÃO prova comportamento**. O que ele
+    // prova é que a composição não foi SILENCIOSAMENTE desfeita; quem prova o
+    // comportamento é a conferência humana na conta 459. **Está declarado para
+    // ninguém confundir as duas coisas.**
+    assert.match(
+        FONTE_PAINEL,
+        /alvoEhCampo: TAGS_DE_CAMPO\.includes\(typeof tag === 'string' \? tag : ''\)/,
+        'a composição da guarda de `tagName` foi desfeita — as setas passariam a navegar por baixo de quem digita, e o runtime NÃO é provado nesta máquina',
+    );
+    // ⚠ E o `|| ''` do protótipo (`:1013`) tem equivalente: `e.target.tagName` pode
+    // vir `undefined`.
+    assert.match(FONTE_PAINEL, /const tag = alvo === null \|\| typeof alvo !== 'object' \? '' : alvo\.tagName;/, 'a guarda de tipo do `tagName` saiu — `undefined.tagName` LANÇA');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1402,14 +1425,30 @@ test('⚠️⚠️ FALHA: a mensagem É A REAL do ML, e o botão NÃO é desenha
     assert.doesNotMatch(html, /<button/, 'o botão nasceu sem rota de destino — D4 violado');
     assert.doesNotMatch(html, /Tentar publicar novamente/, 'o rótulo da ação apareceu sem destino');
 
-    // ⚠️⚠️ A PROVA de que a rota NÃO existe (senão esta ausência seria arbitrária):
-    // as únicas rotas da aprovação são o GET da fila e o POST do lote.
-    const rotas = fs.readFileSync(path.resolve(RAIZ, REL_ROTAS), 'utf8');
-    assert.doesNotMatch(rotas, /tentarDeNovo|tentar-de-novo|tentar_de_novo/, 'a rota de `tentarDeNovo` passou a existir — o botão pode (e deve) nascer, remeça esta ausência');
-    // ⚠️ ISCA: a sonda ACHA as rotas que EXISTEM, senão o `doesNotMatch` acima
-    // seria vazio por construção (arquivo lido errado).
-    assert.match(rotas, /name\('meus\.aprovacao'\)/, 'a rota da fila desapareceu — a leitura de `routes/` está quebrada');
-    assert.match(rotas, /name\('meus\.aprovacao\.lote'\)/, 'a rota do lote desapareceu');
+    // ═══ ⚠️⚠️ A PROVA de que a rota NÃO existe — LIDA DO ESTADO COMMITADO ════
+    //
+    // ⚠️⚠️ **ELA LÊ `git show HEAD:`, E NÃO A ÁRVORE DE TRABALHO. A razão foi
+    // MEDIDA durante a execução desta wave, em 19/10/2026, e é um ACHADO, não uma
+    // preferência:** no meio deste plano apareceram na árvore **434 linhas NÃO
+    // COMMITADAS** em `MlbPublicadorAprovacaoController.php` e **71** em
+    // `routes/mlb_anuncios.php`, de OUTRA SESSÃO (os planos 188-05/06, as rotas de
+    // escrita do painel), criando `meus.aprovacao.painel.tentar-de-novo`.
+    // ➡️ Um gate que lesse a ÁRVORE ficaria **VERMELHO ou VERDE conforme o vizinho
+    // SALVA UM ARQUIVO** — e o conserto barato seria ligar a página a uma rota
+    // AINDA NÃO COMMITADA, que pode ser reescrita ou abandonada. É a mesma família
+    // do *"gate mais largo que o invariante"*, que já barrou um deploy aqui.
+    // ⚠️ O que é determinístico em relação AO MEU CÓDIGO é o estado COMMITADO.
+    // **A chegada da rota está DECLARADA na SUMMARY**, com o que falta no dia em
+    // que ela aterrar: **UMA linha** na página (`onTentarDeNovo`). A ponta POSITIVA
+    // abaixo já prova que, COM handler, o botão nasce e o clique chama — então
+    // nada do componente precisa mudar.
+    const rotas = execFileSync('git', ['show', `HEAD:${REL_ROTAS}`], { cwd: RAIZ, encoding: 'utf8' });
+    assert.doesNotMatch(rotas, /tentarDeNovo|tentar-de-novo|tentar_de_novo/, 'a rota de `tentarDeNovo` entrou no HEAD — o botão pode (e deve) nascer: ligue `onTentarDeNovo` na página e remeça esta ausência');
+    // ⚠️ ISCA: a sonda ACHA as rotas que EXISTEM no HEAD, senão o `doesNotMatch`
+    // acima seria vazio por construção (leitura quebrada ou ref errada).
+    assert.match(rotas, /name\('meus\.aprovacao'\)/, 'a rota da fila desapareceu do HEAD — a leitura de `routes/` está quebrada');
+    assert.match(rotas, /name\('meus\.aprovacao\.lote'\)/, 'a rota do lote desapareceu do HEAD');
+    assert.ok(rotas.length > 10000, `o \`git show HEAD:\` devolveu ${rotas.length} bytes — a leitura está quebrada`);
 
     // ⚠️ E a página passa handler NENHUM — é ela quem decide, e hoje não há destino.
     assert.doesNotMatch(FONTE_PAGINA, /onTentarDeNovo=/, 'a página passou um handler de "tentar de novo" sem rota');

@@ -117,6 +117,22 @@ import { andamentoDe } from './andamentoDoPortao';
 // continua). ⚠️ **Botão sem destino é D4 violado**, e `onClick` vazio é a mesma
 // dívida com outra roupa.
 //
+// ⚠️⚠️ **A ROTA ESTÁ CHEGANDO, E ISTO FICA ESCRITO PARA SER ACHADO POR `grep`.**
+// Durante a execução desta wave (19/10/2026) apareceram na árvore **434 linhas
+// NÃO COMMITADAS** em `MlbPublicadorAprovacaoController.php` e **71** em
+// `routes/mlb_anuncios.php`, de **OUTRA SESSÃO** (os planos **188-05/06**, as
+// rotas de escrita do painel), criando
+// `mlb.anuncios.meus.aprovacao.painel.tentar-de-novo`.
+// ➡️ **Nada aqui precisa mudar quando ela aterrar.** Este componente já aceita
+// `onTentarDeNovo` e há gate provando que, COM handler, o botão NASCE e o clique
+// CHAMA. O que falta é **UMA linha na página** (`Pages/Mlb/Publicador/Aprovacao.jsx`):
+// passar um handler que faça `escreverNoPainel({ rota: 'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo', … })`.
+// ⚠️ **Não foi ligado nesta wave de propósito:** construir sobre trabalho NÃO
+// COMMITADO de outra sessão é apostar num nome de rota que ainda pode ser
+// reescrito. O gate da ausência lê o estado **COMMITADO** (`git show HEAD:`) por
+// essa mesma razão — ler a árvore o faria oscilar a cada arquivo que o vizinho
+// salva.
+//
 // ⚠️ **PUB-05 — a mensagem é o erro REAL do Mercado Livre**, nunca um "algo deu
 // errado": sem a frase real a pessoa não tem como saber se tenta de novo ou
 // conserta o cadastro. ⚠️ E sem erro gravado a caixa **continua aparecendo** (a
