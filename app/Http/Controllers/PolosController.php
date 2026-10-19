@@ -627,6 +627,138 @@ class PolosController extends Controller
 
         return response()->json(['cockpit' => $cockpit, 'financeiro' => $fin]);
     }
+
+    /**
+     * Lista ENXUTA dos sellers do Painel Polos, em JSON (TKT-0022).
+     *
+     * Para quem lê o Admin por máquina (o `ler_tela` do MCP, o artefato de gestão do time):
+     * o prop `empresas` do painel passa de 7 MB porque cada linha leva a ficha inteira
+     * (`dados`, com a planilha de produtos e o checklist) e o `payload_empresa`, e uma
+     * empresa sozinha estoura o tamanho máximo de resposta do MCP. Aqui vai uma linha curta
+     * por empresa, do MESMO universo do painel e com as MESMAS regras (responsável, campanha,
+     * Decola automático, vínculo Adman, PPA) — inclusive o que a régua das tarefas do time
+     * (lib/polosTarefas.js) precisa para contar o "feito".
+     *
+     * Financeiro (faturamento, meta, status da meta, ADS do mês) sai do MESMO montarPolos()
+     * do /polos/empresas, aceita `?mes=AAAAMM` como ele e só vem para quem abre aquela tela
+     * (admin ou mlb.faturamento_polos): os demais recebem esses campos nulos. É nulo também
+     * para quem está fora da meta do mês (M0, M1 e fases terminais). Os campos operacionais
+     * são o estado de HOJE, qualquer que seja o mês.
+     *
+     * Região: a do cadastro (a coluna Polo do painel) e, sem ela, a LOCALIDADE do CSV,
+     * sempre como um dos 4 nomes oficiais (MlbImplementacao::poloOficial). Não grava nada.
+     */
+    public function painelSellers(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+
+        // Mesmo gate operacional do painel.
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        // Mesma régua de checkFaturamentoAccess() (/polos/empresas).
+        $verFinanceiro = $user->isAdmin() || $user->hasPermission('mlb.faturamento_polos');
+
+        $d              = null;
+        $erroFinanceiro = null;
+        if ($verFinanceiro) {
+            try {
+                $d = $this->montarPolos();
+                if ($d === null) {
+                    $erroFinanceiro = 'Arquivo CSV POLOS MENSAL não encontrado no ECF Drive.';
+                }
+            } catch (\Throwable $e) {
+                report($e);
+                $erroFinanceiro = 'Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.';
+            }
+        }
+
+        // cust normalizado → linha do /polos/empresas (só quem está na meta do mês).
+        $financeiro = collect($d ? $this->linhasDaVisaoCompleta($d) : [])->keyBy('cust_id');
+
+        $vinculoAdman = VinculoAdmanPolos::carregar();
+        $leiturasAds  = PoloAdsStatus::frescos()->get()->keyBy(fn (PoloAdsStatus $l) => (string) $l->cust_id);
+        $comPpa       = Ppa::whereNotNull('mlb_empresa_id')->distinct()->pluck('mlb_empresa_id')->flip();
+
+        $semRegiao = [];
+
+        $sellers = MlbEmpresa::ativas()
+            ->with([
+                'responsavel:id,name',
+                'decolaMl',
+                // Só as colunas usadas: `dados` (planilha + checklist) é o que pesa no painel.
+                'implementacao:id,empresa_id,responsavel_id,acesso_colaborador,places,decola,central_promocao,me1,listagem,publicacao',
+                'implementacao.responsavel:id,name',
+            ])
+            ->orderBy('nome')
+            ->get()
+            ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
+            ->map(function (MlbEmpresa $e) use ($financeiro, $vinculoAdman, $leiturasAds, $comPpa, &$semRegiao) {
+                $impl = $e->implementacao;
+                $cust = CustId::normaliza((string) ($e->cust_id ?? ''));
+                $fin  = $cust !== '' ? $financeiro->get($cust) : null;
+
+                $regiao = MlbImplementacao::poloOficial($e->polo) ?? MlbImplementacao::poloOficial($fin['polo'] ?? null);
+                if ($regiao === null && trim((string) $e->polo) !== '') {
+                    $semRegiao[$e->polo] = true;
+                }
+
+                return [
+                    'id'                    => $e->id,
+                    'nome'                  => $e->nome,
+                    'cust_id'               => $e->cust_id,
+                    'fase'                  => $e->fase,
+                    'estagio'               => $e->estagio,
+                    'regiao'                => $regiao,
+                    // Mesma regra da coluna Responsável do painel: com ficha, o da ficha; sem, o da empresa.
+                    'responsavel'           => $impl ? $impl->responsavel?->name : $e->responsavel?->name,
+                    'faturamento'           => $fin['faturamento'] ?? null,
+                    'meta'                  => $fin['meta'] ?? null,
+                    'status_meta'           => $fin['status'] ?? null,
+                    'ads'                   => $fin['ads'] ?? null,
+                    'ads_desligado'         => (bool) $e->ads_desligado,
+                    'ads_campanha'          => PoloAdsStatus::situacaoDaEmpresa(
+                        $leiturasAds[$cust] ?? null,
+                        $e->ads_desligado === null ? null : (bool) $e->ads_desligado,
+                    ),
+                    'problema'              => (bool) $e->problema,
+                    'problema_nota'         => $e->problema_nota,
+                    'problema_fora_da_meta' => $this->desconsideraDaMeta([
+                        'problema'                   => $e->problema,
+                        'problema_desconsidera_meta' => $e->problema_desconsidera_meta,
+                    ]),
+                    'places'                => $impl?->places,
+                    'decola'                => $impl?->decola,
+                    'decola_ml_ativo'       => (bool) $e->decolaMl?->ativoEFresco(),
+                    'central_promocao'      => $impl?->central_promocao,
+                    'me1'                   => $impl?->me1,
+                    'listagem'              => $impl?->listagem,
+                    'publicacao'            => $impl?->publicacao,
+                    'acesso_colaborador'    => $impl?->acesso_colaborador,
+                    'adman_vinculo'         => $vinculoAdman->status($e->fase, $e->cust_id),
+                    'tem_ppa'               => isset($comPpa[$e->id]),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'mes'                      => $d['mesSel'] ?? null,
+            'mes_label'                => $d['mesAtual']['label'] ?? null,
+            'parcial'                  => $d['parcial'] ?? null,
+            'meses'                    => $d['meses'] ?? [],
+            'financeiro'               => $d !== null,
+            'erro_financeiro'          => $erroFinanceiro,
+            'regioes'                  => MlbImplementacao::ONB_POLO_OPCOES,
+            // Grafias do cadastro que não viraram nenhuma das 4 regiões (a linha sai sem região).
+            'regioes_nao_reconhecidas' => array_keys($semRegiao),
+            'total'                    => $sellers->count(),
+            'sellers'                  => $sellers,
+        ]);
+    }
+
     /**
      * Colunas da planilha exportada — MESMA ordem e MESMOS rótulos da lente "Geral"
      * do Painel (`COLS_POR_LENTE.geral` em Polos/Painel.jsx), precedidas da

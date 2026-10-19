@@ -1693,6 +1693,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/polos-painel', [PolosController::class, 'painel'])->name('polos-painel');
     // Camada financeira do Painel (JSON assíncrono, admin-only — gate em painelFinanceiro).
     Route::get('/polos-painel/financeiro', [PolosController::class, 'painelFinanceiro'])->name('polos-painel.financeiro');
+    // Lista enxuta dos sellers em JSON, sem a ficha (TKT-0022): leitura por máquina (ler_tela do
+    // MCP). Gate operacional do painel; financeiro só p/ quem abre /polos/empresas.
+    Route::get('/polos-painel/sellers', [PolosController::class, 'painelSellers'])->name('polos-painel.sellers');
     // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Baixar o Painel como planilha .xlsx (colunas + AutoFiltro). POST porque o front
