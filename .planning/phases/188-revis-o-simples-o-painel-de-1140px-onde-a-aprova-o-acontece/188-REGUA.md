@@ -295,13 +295,46 @@ o reporter do Node v24 emite **`ℹ`**, não `#`, então `grep "^# tests"` **nun
 dos 120 s do shell e o helper **RECUSA** (a 186-07 virou 7 ids, a 187-06 virou 4, a 187-07 virou 7).
 ⚠️ **Bijeção ids ↔ métodos por script, nos DOIS sentidos:** método sem id **NUNCA RODA** (foi o
 sobrevivente da mutação do 186-03) e id órfão é gate sobre ZERO casos.
+
+⚠️⚠️ **E HÁ UMA TERCEIRA BIJEÇÃO, que a revisão desta fase achou furada: id ↔ `<verify>`.** Um id pode
+estar **no manifesto, com contagem medida, apontando para métodos que existem — e não ser rodado por
+`<verify>` nenhum**. ⚠️ **Ele não falha: ele simplesmente nunca roda**, e é indistinguível de um gate
+verde. Foi o caso de **cinco** ids desta fase na primeira redação
+(`img-02-img-03-sem-regressao`, `tentar-de-novo`, `simular-sem-gravar`, `payload-dos-modais` e
+cinco do `188-02`).
+➡️ **REGRA, sem exceção: todo id declarado em `contagens-188-NN.txt` aparece em ALGUM `<verify>` do
+plano NN, e todo id usado num `<verify>` está declarado naquele manifesto.** As duas direções.
+⚠️ **E o plano 188-13 prova isso por script** sobre os treze pares plano×manifesto — é o único lugar
+que vê os treze. ⚠️ **Com asserção ÚNICA coletando os infratores**, nunca uma por id.
 ⚠️ **Nenhum id repetido dentro do mesmo manifesto** (o harness pega o **primeiro**).
 
-⚠️⚠️ **`tests/js/publicador-vocabulario-novo.test.js` tem id PRÓPRIO** (`vocabulario-tamanhos`,
-forma **`>=`**, em `contagens-187-01.txt`) e **hoje mede 548** (piso `>=443`). **NUNCA embuti-lo num
-id composto** — a contagem dele **cresce por construção** (um sub-teste por arquivo varrido) e
-embuti-lo fez a wave 5 da 187 reprovar DOIS ids de outras waves e exigiu consertar QUATRO
-manifestos. ⚠️ **E `aprovacao/` já está em `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco,
+⚠️⚠️ **`tests/js/publicador-vocabulario-novo.test.js` É DECLARADO POR CADA MANIFESTO QUE O RODA, EM
+LINHA PRÓPRIA — e isto foi MEDIDO em 19/10/2026, não deduzido:**
+
+```
+grep -l "vocabulario-tamanhos" tests/gates/contagens-*.txt
+  → DEZ arquivos: contagens-187-01.txt, e contagens-187-03.txt … -11.txt
+grep -h "^vocabulario-tamanhos" tests/gates/contagens-187-*.txt     (a linha, IDÊNTICA nos dez)
+  → vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=443
+```
+
+➡️ **TODO plano que roda o GATE-03 declara o id na SUA PRÓPRIA LINHA, no SEU manifesto.** O harness
+resolve `contagens-188-NN.txt` pelo 1º argumento, e **manifesto sem a linha ABORTA** — medido:
+`verificar-testes.sh 188-07 vocabulario-tamanhos` → *"ABORTOU: manifesto nao existe"*.
+⚠️ **`contagens-187-02.txt` NÃO o declara, e está CERTO:** aquele plano é só de servidor e **não roda
+o GATE-03**. A regra é **quem roda, declara** — não *todos declaram*.
+
+⚠️ **A FORMA É `>=`, e N é MEDIDO NA HORA — nunca copiado da 187.** A contagem **cresce por
+construção** (um sub-teste por arquivo varrido nos diretórios fechados), e **cada `.jsx` novo desta
+fase a aumenta**: os dez manifestos da 187 cravaram `>=443` e hoje o arquivo mede **548**. ➡️ **Meça
+no seu plano, use o medido como piso, e escreva a razão do `>=` ao lado.**
+
+⚠️⚠️ **O QUE CONTINUA PROIBIDO É UMA COISA SÓ: embuti-lo num id que também roda OUTROS arquivos.**
+Declarar linha própria **NÃO é** embutir em id composto — **é o oposto**, e é o que as dez waves da
+187 fizeram. Foi o **id COMPOSTO** que fez a wave 187-05 reprovar **dois ids de outras waves** e
+exigir consertar **quatro** manifestos.
+
+⚠️ **E `aprovacao/` já está em `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco,
 declarados)`: TODO arquivo `.jsx` novo entra em `ARQUIVOS_NOVOS` (`:45`)** ou o gate passa **por
 omissão** — e o `deepEqual` reprova na hora (comportamento certo). ⚠️ Pré-declarar **não é
 possível**: `FONTES` lê todos os caminhos e **LANÇA** com arquivo inexistente. **É por isso que as
