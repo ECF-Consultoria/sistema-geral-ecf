@@ -1167,9 +1167,14 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertSame(['aprovavel', 'motivo', 'motivo_cor', 'botoes'], array_keys($vm['rodape']));
         $this->assertSame(['chave', 'texto', 'correcao', 'severidade', 'glifo', 'destino'], array_keys($vm['pendencias'][0]));
 
-        // ⚠️⚠️ `fotos` e `preco` NASCEM `null`, **declaradas** com o plano dono no docblock —
-        // **nunca ausentes**.
-        $this->assertNull($vm['fotos'], '`fotos` é do plano 188-03 e nasce null, declarada');
+        // ⚠️⚠️ `fotos` e `preco` NASCERAM `null`, **declaradas** com o plano dono no docblock —
+        // **nunca ausentes**. ⚠️ **`fotos` FOI PREENCHIDA pelo plano 188-03** (`FotosDoPainelService`),
+        // e esta linha foi atualizada pela wave 3: a asserção antiga (`assertNull($vm['fotos'])`)
+        // **reprovava pelo próprio conserto** — ela media *"o dono ainda não chegou"*, que é uma
+        // medição DATADA, não invariante. ⚠️ **A contagem de asserções deste caso não mudou**
+        // (uma asserção virou uma), então `contagens-188-02.txt` continua valendo sem retoque.
+        // ⚠️ `preco` continua `null`: ela é do plano **188-04**.
+        $this->assertIsArray($vm['fotos'], '`fotos` é do plano 188-03 e já está preenchida');
         $this->assertNull($vm['preco'], '`preco` é do plano 188-04 e nasce null, declarada');
         $this->assertTrue(array_key_exists('fotos', $vm) && array_key_exists('preco', $vm), 'chave nula ≠ chave ausente');
 

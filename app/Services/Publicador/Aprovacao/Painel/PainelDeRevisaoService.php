@@ -221,10 +221,27 @@ class PainelDeRevisaoService
      */
     public const FORA_DA_NAVEGACAO = [PubAprovacaoOferta::PREPARANDO];
 
+    /**
+     * ⚠️⚠️ **`$fotos` TEM DEFAULT `null` DE PROPÓSITO, E ISSO FOI MEDIDO — NÃO "SIMPLIFIQUE".**
+     *
+     * O gate de custo do plano 188-02 constrói este serviço **à mão, com TRÊS argumentos
+     * posicionais** (`PainelDeRevisaoServiceTest:1259`: `new PainelDeRevisaoService($espiao,
+     * app(ProximoARevisarService::class), app(AndamentoDaOfertaService::class))`), porque o espião
+     * de `BloqueiosDaOfertaService::para()` é uma **subclasse anônima no teste**. Um quarto
+     * argumento **obrigatório** faria aquele gate — de uma wave JÁ FECHADA, com contagem de
+     * asserções medida no manifesto — morrer com `ArgumentCountError`.
+     *
+     * ⚠️ O container **resolve a classe de verdade** mesmo com default (`resolveClass` só cai no
+     * default se a resolução LANÇAR), então `app(PainelDeRevisaoService::class)` recebe o serviço
+     * real; o `?? app(...)` do `para()` só cobre a construção manual. ➡️ **Há gate provando as DUAS
+     * formas de construção**, para que o executor seguinte não troque isto por um parâmetro
+     * obrigatório sem ver o motivo.
+     */
     public function __construct(
         private BloqueiosDaOfertaService $bloqueios,
         private ProximoARevisarService $proximo,
         private AndamentoDaOfertaService $andamento,
+        private ?FotosDoPainelService $fotos = null,
     ) {}
 
     /**
@@ -246,7 +263,7 @@ class PainelDeRevisaoService
      *     navegacao: array{ids: list<int>, anterior_id: ?int, proxima_id: ?int, posicao: ?int, total: int, pos: ?string},
      *     pendencias: list<array{chave: string, texto: string, correcao: ?string, severidade: string, glifo: string, destino: ?array}>,
      *     rodape: array{aprovavel: bool, motivo: string, motivo_cor: string, botoes: array{salvar: bool, ajustes: bool, aprovar: bool, proximo: bool}},
-     *     fotos: null,
+     *     fotos: array{progresso: string, progresso_cor: string, total: int, aprovadas: int, pendentes: int, com_alerta: int, com_alerta_restantes: int, nota_de_conjunto: ?string, imagens: list<array<string, mixed>>, selecionada: ?array<string, mixed>, selecionada_indice: ?int, sem_alerta: array{quantidade: int, rotulo: string}|null},
      *     preco: null
      * }
      */
@@ -272,8 +289,14 @@ class PainelDeRevisaoService
             'navegacao' => $navegacao,
             'pendencias' => $this->pendencias($bloqueios, $aoVivo, $leitura['foco_imagem_id'] ?? null),
             'rodape' => $this->rodape($oferta, $leitura, $aoVivo, $bloqueios),
-            // ⚠️ NASCEM `null`, DECLARADAS, com o plano dono — nunca ausentes. Ver o docblock.
-            'fotos' => null,   // plano 188-03
+            // ⚠️ A COLUNA DE FOTOS — plano 188-03. Ela é **CHAMADA**, não montada aqui: o
+            // progresso, o bloqueio de fotos e a contagem de "sem alerta" saem todos de
+            // {@see BloqueiosDaOfertaService::contagemDeFotos()}, uma definição só, cobrindo
+            // **TODOS os grupos do rascunho** (decisão do usuário, 14/10/2026).
+            // ⚠️ `contagemDeFotos()` **não** chama `para()` — ele lê o banco. O gate de custo do
+            // 188-02 (`para()` UMA vez por oferta) continua valendo, e há caso provando isso.
+            'fotos' => ($this->fotos ?? app(FotosDoPainelService::class))->para($oferta),
+            // ⚠️ NASCE `null`, DECLARADA, com o plano dono — nunca ausente. Ver o docblock.
             'preco' => null,   // plano 188-04
         ];
     }

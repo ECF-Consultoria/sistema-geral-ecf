@@ -1,0 +1,160 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-03 — O SERVIDOR DA COLUNA DE FOTOS:
+# `FotosDoPainelService` (progresso, galeria ordenada, URL do arquivo, marcadores
+# x/y em PERCENTUAL, borda de 5 ramos, "Aprovar N sem alerta" e as verificações
+# automáticas com o ordinal do marcador), ligado ao `PainelDeRevisaoService`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-03 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-03`, E NÃO `03`. O número NU resolve
+# `contagens-186-03.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: **nenhum id deste plano tem mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA (`188-REGUA.md` §13) — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `galeria-e-marcadores` e `borda-e-estados`, e
+# **manifesto sem o id ABORTA**. ➡️ As três tarefas ACRESCENTAM ids aqui, cada
+# uma **antes do seu próprio verify**.
+#
+# ⚠️⚠️ **RESÍDUO DE REDAÇÃO DO PLANO, CORRIGIDO NA EXECUÇÃO:** o `<files>` da
+# **tarefa 2** (`188-03-PLAN.md:266`, id `sem-alerta-e-contagem`) já listava este
+# arquivo, mas a prosa da **tarefa 3** (`:357`) dizia que ele é *"escrito desde a
+# tarefa 1 e FECHADO aqui"* — e o `<verify>` da tarefa 2 (`:299`) depende de um id
+# que só existiria na tarefa 3 se a leitura fosse a da prosa. ➡️ Aqui o id de cada
+# tarefa é escrito **na mesma tarefa que o usa**, antes do verify. O harness
+# ABORTARIA de outro jeito, e isso é DE PROPÓSITO.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A BIJEÇÃO, NOS TRÊS SENTIDOS
+# ═══════════════════════════════════════════════════════════════════════════════
+#   (1) todo MÉTODO `_188_03` do arquivo de teste casa ALGUM id daqui — método sem
+#       id **NUNCA RODA** (foi o sobrevivente da mutação do 186-03);
+#   (2) todo id daqui casa ALGUM método — id órfão roda sobre **ZERO casos** e é
+#       indistinguível de gate verde;
+#   (3) ⚠️ todo id daqui aparece em ALGUM `<verify>` do `188-03-PLAN.md`, e todo
+#       id usado num `<verify>` está declarado aqui. **Cinco ids desta fase eram
+#       órfãos na primeira redação dos planos.**
+# ➡️ (1) e (2) são provados por `test_bijecao_do_manifesto_das_fotos_188_03`, por
+#    script, nos dois sentidos; (3) pelo plano 188-13, sobre os treze pares.
+#
+# O MAPA id → `<verify>` do plano (conferido linha a linha em 19/10/2026):
+#   tarefa 1 (`:240`) → galeria-e-marcadores · borda-e-estados
+#   tarefa 2 (`:299`) → sem-alerta-e-contagem
+#   tarefa 3 (`:365`) → verificacoes-e-ordinal
+# ⚠️ Nenhum id a mais, nenhum a menos. **Zero órfão.**
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO — CONFERIDO POR SCRIPT, NAS DUAS DIREÇÕES, INCLUINDO PREFIXO
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e todo plano `_0N` desta fase
+# tem homônimo possível nas Fases 186 **E** 187, as duas **EM PRODUÇÃO**. Método
+# superstring de uma delas faz o id daquela fase **SOMAR** e reprovar.
+#
+# MEDIDO em 19/10/2026 (`homonimo-188-03.sh`, sobre todo `test_*` de `tests/`):
+#   ARQUIVOS=905  METODOS=7739  MEUS=12  HOMONIMOS=0
+#
+# ⚠️ E a sonda tem ISCA nas DUAS direções, também medida:
+#   · direção 1 (meu nome é SUBSTRING de um alheio): `test_territorio_e_ausencias_do_plano`
+#     **acusa 6** métodos que EXISTEM (`_187_06` … `_187_10` e `_188_02`) — é
+#     exatamente por isso que o sufixo `_188_03` não é zelo;
+#   · controle: `test_metodo_que_ninguem_escreveu_188_03` → 0.
+#
+# ⚠️ O conserto de colisão é **sufixo no método NOVO**, NUNCA levantar a contagem
+#    do manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (GATE-03), E ESTÁ CERTO:
+#    ele é **só de servidor** e **não cria `.jsx` nenhum**, então não roda aquele
+#    gate. A regra é **quem roda, declara** — não *todos declaram*. O precedente é
+#    `contagens-187-02.txt` (também só de servidor), e aquela fase está no ar.
+#
+# ⚠️ E não há linha `js` neste manifesto: a tela da coluna de fotos é do plano
+#    **188-08**.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES RE-MEDIDAS NO HEAD DE PARTIDA (`f931e5d9`, 19/10/2026)
+# ═══════════════════════════════════════════════════════════════════════════════
+#   PHP: 2510 / 22264 / 0   (`sh tests/gates/verificar-testes.sh --suite php`)
+# ⚠️ **A régua é `0`.** As 2 falhas da Fase 179
+#    (`tests/Feature/Publicador/CockpitDaContaTest.php:966` e `:1318`, fronteira
+#    de dia, `now()` 52 vezes) estão **VERDES** nesta medição — exatamente como no
+#    fim da wave 2. ➡️ Se voltarem: **não consertar, não contar como regressão, não
+#    criar `REF_PHP_FALHAS`**. Passar de 2, ou falhar um teste DIFERENTE, **é da
+#    fase**.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: o progresso, a galeria com a URL, e os marcadores x/y ──────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. `contagemDeFotos()` **RECONTADO** em vez de chamado — espião é SUBCLASSE no
+#      teste (a 186 não é alterada no disco), com isca provando que ele conta;
+#   2. os quatro números divergindo da contagem da 186 (seria *"5 de 5 aprovadas"*
+#      com bloqueio de fotos de pé — o bug que **parece completo**);
+#   3. `com_alerta_restantes` virando uma SEGUNDA contagem (decisão 8: a tela diz
+#      quem ficou de fora);
+#   4. a cor do progresso com menos de três ramos — com ISCA provando que as três
+#      chaves semânticas são três valores DISTINTOS;
+#   5. a nota de conjunto nomeando **a própria** oferta em vez da irmã, ou
+#      aparecendo com UMA oferta só no rascunho; e DADO-04 medido (Clássico e
+#      Premium do mesmo rascunho dão o MESMO progresso);
+#   6. a lista deixando de ser a **galeria final** — a fixture tem reprovada,
+#      substituída e regenerando, com ISCA de que as três EXISTEM no banco;
+#   7. ⚠️ **B1.2** — a `url_arquivo` não sendo a da rota que já existe, ou virando
+#      **string vazia** no caso `caminho === null` (`<img src="">` recarrega a
+#      própria página);
+#   8. ⚠️⚠️ **PERGUNTA-188-C** — o docblock **não nomeando** os 3 minutos
+#      (`config/publicador.php:148`), o ponto de gravação
+#      (`MlbPublicadorController:405`) e os **CINCO leitores**
+#      (`AgendadorDaFila:337`, `PreparoIaDoRascunhoService:131`/`:180`/`:366`,
+#      `GarantiaPadrao:192`, `ExcluirProdutoService:195`). **UMA** asserção
+#      coletando os ausentes, com **ISCA NAS DUAS DIREÇÕES** (o docblock completo
+#      PASSA; tirar um dos nomes REPROVA) e **anti-fantasma**: as cinco linhas
+#      citadas são lidas do disco e têm de conter `EditorEmUso::`;
+#   9. os marcadores existindo fora de `pending`/`rejected`, perdendo a numeração
+#      1..N **sobre os alertas**, ou aceitando percentual fora de 0–100.
+#
+# ⚠️⚠️ ESTE É O ÚNICO GATE DESTA FASE QUE **LÊ COMENTÁRIO DE PROPÓSITO** — o
+# docblock **é** o artefato sob teste (razão: a causa do agendamento parado tem de
+# ser achável por `grep`, não por bisseção). A inversão está DECLARADA no arquivo
+# de teste; "consertá-lo" para `semComentarios()` faria o gate medir NADA.
+galeria-e-marcadores  php  test_(o_progresso_e_a_nota_de_conjunto_saem_de_UMA_contagem_so_188_03|a_galeria_final_ordenada_traz_url_do_arquivo_nos_DOIS_casos_188_03|os_marcadores_existem_em_DOIS_estados_numerados_e_saneados_188_03)  ::  tests=3 assertions=84
+
+# ⚠️⚠️ O QUE ESTE ID MEDE:
+#   1. a borda com menos de **CINCO** ramos — e a **precedência só se prova com
+#      CONFLITO** (selecionada **E** com alerta; com alerta **E** aprovada), no
+#      método puro **e** no payload real;
+#   2. o **anel** (2ª omissão do REVS-09) aparecendo em mais de uma miniatura;
+#   3. `estado_rotulo` vazio em qualquer um dos **6** estados, no inventado, na
+#      string vazia ou no `null` — **UMA** asserção coletando, e o NEUTRO **não
+#      pode se disfarçar** de "A conferir" nem de "Aprovada";
+#   4. o badge `!` saindo de **UM** estado só (`pending` COM alerta);
+#   5. ⚠️ **as TRÊS regras unificadas**: a aprovada-com-alerta tem verificação SIM,
+#      badge NÃO, marcador NÃO; a pendente-com-alerta tem os três. Unificar duas
+#      quaisquer REPROVA;
+#   6. galeria vazia virando tela muda (IMG-12 é bloqueio `sem_fotos`, e o gate
+#      confere que o bloqueio está de pé), e o clamp do índice nas **DUAS** pontas.
+borda-e-estados  php  test_(a_borda_tem_CINCO_ramos_e_a_precedencia_se_prova_com_CONFLITO_188_03|o_estado_rotulo_NUNCA_e_vazio_e_o_badge_e_de_UM_estado_so_188_03|a_galeria_vazia_e_o_clamp_nas_DUAS_pontas_188_03)  ::  tests=3 assertions=56
