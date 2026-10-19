@@ -380,12 +380,52 @@ class FotosDoPainelService
     public function alertasOrdenados(iterable $alertas): array
     {
         $lista = [];
-        foreach ($alertas as $alerta) {
+        foreach ($this->porId($alertas) as $alerta) {
             // ⚠️ Flag DENTRO do laço.
             if ($alerta->ehAlerta()) {
                 $lista[] = $alerta;
             }
         }
+
+        return $lista;
+    }
+
+    /**
+     * Os alertas em ordem **DETERMINÍSTICA**, por `id` — a ordem em que a verificação os produziu.
+     *
+     * ⚠️⚠️ **ISTO NÃO É ZELO: A ORDEM DA RELAÇÃO VINHA DO ÍNDICE, E FOI MEDIDO.**
+     * `PubAprovacaoImagem::alertas()` não tem `orderBy`, e a tabela tem o índice composto
+     * `pubapal_sev_ix` em `(aprovacao_imagem_id, severidade)`
+     * (`database/migrations/2026_10_15_100000_create_pub_aprovacao_conjuntos_tables.php:240`).
+     * ➡️ O planejador varre por esse índice e devolve os alertas **ordenados por `severidade`**
+     * (`high` < `med` < `ok`, alfabético), **não** por criação: uma fixture gravada
+     * `high, ok, med, med` voltou `high, med, med, ok`.
+     *
+     * ⚠️ **O dano é a NUMERAÇÃO.** O ordinal do item de texto e o número do marcador são a posição
+     * nesta lista; se a ordem depende do plano de consulta, **o mesmo defeito ganha números
+     * diferentes em ambientes diferentes** — e o MariaDB de produção não é obrigado a escolher o
+     * mesmo índice que o SQLite dos testes. ⚠️ **Nenhuma suíte pegaria isso**: os dois lados
+     * (texto e marcador) leem a MESMA lista, então eles continuariam CONCORDANDO entre si enquanto
+     * apontam para outro ponto da foto.
+     *
+     * ⚠️ A ordem **não é** corrigida no modelo: `PubAprovacaoImagem` é da Fase 186 e **INTOCÁVEL**
+     * nesta fase. Ela é normalizada aqui, no único lugar que numera.
+     *
+     * @param  iterable<PubAprovacaoImagemAlerta>  $alertas
+     * @return list<PubAprovacaoImagemAlerta>
+     */
+    public function porId(iterable $alertas): array
+    {
+        $lista = [];
+        foreach ($alertas as $alerta) {
+            // ⚠️ Flag DENTRO do laço.
+            $lista[] = $alerta;
+        }
+
+        usort(
+            $lista,
+            static fn (PubAprovacaoImagemAlerta $a, PubAprovacaoImagemAlerta $b): int => (int) $a->id <=> (int) $b->id
+        );
 
         return $lista;
     }
@@ -445,7 +485,9 @@ class FotosDoPainelService
         $somenteAlertas = $this->alertasOrdenados($alertas);
 
         $lista = [];
-        foreach ($alertas as $alerta) {
+        // ⚠️ A ordem da LISTA é a mesma normalização (`porId()`) que a numeração usa — ver o
+        // docblock dela: a relação do modelo vem ordenada pelo ÍNDICE, não por criação.
+        foreach ($this->porId($alertas) as $alerta) {
             // ⚠️ Flag DENTRO do laço.
             $posicao = array_search($alerta, $somenteAlertas, true);
 

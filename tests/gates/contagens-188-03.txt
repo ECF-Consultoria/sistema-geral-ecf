@@ -74,11 +74,11 @@
 # superstring de uma delas faz o id daquela fase **SOMAR** e reprovar.
 #
 # MEDIDO em 19/10/2026 (`homonimo-188-03.sh`, sobre todo `test_*` de `tests/`):
-#   ARQUIVOS=905  METODOS=7739  MEUS=12  HOMONIMOS=0
+#   ARQUIVOS=905  METODOS=7745  MEUS=12  HOMONIMOS=0
 #
 # ⚠️ E a sonda tem ISCA nas DUAS direções, também medida:
 #   · direção 1 (meu nome é SUBSTRING de um alheio): `test_territorio_e_ausencias_do_plano`
-#     **acusa 6** métodos que EXISTEM (`_187_06` … `_187_10` e `_188_02`) — é
+#     **acusa 7** métodos que EXISTEM (`_187_06` … `_187_10`, `_188_02` e o meu) — é
 #     exatamente por isso que o sufixo `_188_03` não é zelo;
 #   · controle: `test_metodo_que_ninguem_escreveu_188_03` → 0.
 #
@@ -192,3 +192,42 @@ borda-e-estados  php  test_(a_borda_tem_CINCO_ramos_e_a_precedencia_se_prova_com
 #      `app()` por chamada. O achado tem **prova em memória, com o par**: uma
 #      classe anônima COM default não é injetada, a MESMA SEM default é.
 sem-alerta-e-contagem  php  test_(a_contagem_sem_alerta_e_IGUAL_ao_que_a_acao_aprova_188_03|sem_alerta_e_nulo_com_zero_e_fora_do_live_e_cobre_TODOS_os_grupos_188_03|o_CUSTO_da_coluna_de_fotos_nao_cresce_com_imagem_nem_grupo_188_03)  ::  tests=3 assertions=48
+
+
+# ── TAREFA 3: as verificações com o ordinal, o território e a bijeção ────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **PERGUNTA-188-A (híbrido, usuário, 18/10/2026)** — o `ordinal` é o
+#      número do MARCADOR, e sai do **MESMO cálculo**: a fixture põe o `ok` **NO
+#      MEIO**, então uma numeração feita sobre a lista inteira daria `[1,2,3,4]`
+#      em vez de `[1,null,2,3]` (e passaria se o `ok` fosse o último);
+#   2. o `ordinal` do `ok` virando `0` ou `''` — `0` é um número de marcador
+#      plausível para quem lê, e `''` é mentira de tipo. ⚠️ **DIVERGÊNCIA
+#      DECLARADA do `:1108`**, que usa `''`;
+#   3. o serviço entregando a **frase montada** ou o **cabeçalho**: `VERIFICAÇÃO
+#      AUTOMÁTICA · APOIO` e `Verificação automática{{ a.n }} · ` são procurados
+#      na fonte **SEM comentário**, com **ISCA DO LEITOR** (a prosa do serviço
+#      cita os dois DE PROPÓSITO, e o arquivo CRU tem de contê-los);
+#   4. os **DOIS lados da TERCEIRA derrota do protótipo**, lidos do arquivo:
+#      `:369` TEM o literal (mas é a revisão detalhada E4, Fase 190/191) e `:633`
+#      é a frase colada do painel. ⚠️ Com o pacote de handoff ausente (ele **não é
+#      versionado**) o caso **degrada para razão NOMEADA**, nunca para "conferido";
+#   5. as cores de `ok`/`med`/`high` colidindo (três valores DISTINTOS) e o glifo
+#      deixando de ser `✓`/`!`;
+#   6. `verificacoes` vazia saindo **ausente** em vez de LISTA vazia;
+#   7. ⚠️ **TERRITÓRIO** — recorte à lista CONSTANTE dos DOIS arquivos deste plano
+#      (`lucro_liquido` é campo legítimo do Portal: varrer `app/` inteiro já
+#      BARROU UM DEPLOY na 186), TOK-15 (nenhum hex no PHP), o acervo VETADO
+#      (`ArquivosDeImagem`/`Acervo`/`ImagemAssetService`/`App\Support\Publicador`),
+#      a ausência de segundo passo, as **Fases 189 e 192 não antecipadas**
+#      (`⤢ Ampliar` / `✦ Gerar novamente`), a sonda de escrita com isca nas duas
+#      direções, a 186/187 **CHAMADA e não recopiada**, o **ESCOPO DO ASSUNTO**
+#      `(188-03)` com isca nas duas direções (range cru NÃO passa nesta árvore, e
+#      o AUTOR não discrimina nada), o **anti-fantasma** (`test -e`) em cada
+#      vetado, T-188-SC (nada instalado) e **nenhuma migration**;
+#   8. ⚠️ **BIJEÇÃO** — os QUATRO ids por **lista CONSTANTE** (piso não prova
+#      PRESENÇA), os **12** métodos, os dois sentidos com UMA asserção coletando,
+#      nenhum id com mais de 3 métodos, nenhuma linha sem `tests=`, e o
+#      **homônimo** provado pelo par (o filtro NÃO casa `_188_02` nem `_187_08`, e
+#      os dois métodos EXISTEM no disco).
+verificacoes-e-ordinal  php  test_(as_verificacoes_saem_como_DADO_com_o_ordinal_DO_MARCADOR_188_03|territorio_e_ausencias_do_plano_188_03|bijecao_do_manifesto_das_fotos_188_03)  ::  tests=3 assertions=113

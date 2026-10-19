@@ -1280,4 +1280,592 @@ class FotosDoPainelServiceTest extends TestCase
         // ⚠️ E NADA foi ao Mercado Livre nesta coluna.
         $this->assertSame([], $this->chamadas, 'a coluna de fotos fez requisição ao Mercado Livre');
     }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (8) AS VERIFICAÇÕES AUTOMÁTICAS — DADO, com o ordinal DO MARCADOR (PERGUNTA-188-A)
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **PERGUNTA-188-A, RESPONDIDA PELO USUÁRIO em 18/10/2026 — opção (c), HÍBRIDO:** no painel
+     * o cabeçalho **`VERIFICAÇÃO AUTOMÁTICA · APOIO`** aparece **uma vez** **e** cada item mantém
+     * **o número que o liga ao marcador x/y**.
+     *
+     * A razão escrita pelo usuário: *o cabeçalho é o que diz **APOIO** — sem ele a verificação
+     * automática pode ser lida como **VEREDICTO**, que é o que REVS-10 e a D7 querem impedir; e o
+     * ordinal é **funcional** (liga o item ao marcador), não enfeite.*
+     *
+     * ⚠️⚠️ **O PROTÓTIPO PERDEU AQUI — é a TERCEIRA derrota dele na milestone, e as três foram
+     * conflito entre DUAS REGRAS DO PROJETO resolvido PELO USUÁRIO, nunca erro dele.** Os dois
+     * lados, medidos por `sed`:
+     *   · `design_handoff_publicador/Aprovacao.dc.html:369` **TEM** o literal
+     *     `VERIFICAÇÃO AUTOMÁTICA · APOIO` — mas é a **revisão detalhada (E4)**, da Fase 190/191;
+     *   · `:633` é o que o **PAINEL** escreve, e ele monta
+     *     `<span>Verificação automática{{ a.n }} · </span>{{ a.text }}` — a frase **colada**, sem
+     *     cabeçalho e **sem espaço** antes do número.
+     * ➡️ Aqui o serviço entrega **`ordinal: 2`**; ele **não** entrega a string `"automática2"` nem
+     * o cabeçalho. O cabeçalho é da **tela** (plano 188-08).
+     *
+     * ⚠️⚠️ **E O ORDINAL SAI DO MESMO CÁLCULO DO MARCADOR**, não de dois: duas numerações da mesma
+     * verdade divergiriam, e a divergência apareceria como o texto dizendo *"ponto 2"* com o
+     * marcador 2 em **outro defeito** — o pior erro possível aqui, porque **a pessoa reprova a foto
+     * errada**. No protótipo os dois também saem do mesmo `al` (`:1108` usa
+     * `String(al.indexOf(a) + 1)`; `:1109` usa `n + 1` do `al.map`).
+     */
+    public function test_as_verificacoes_saem_como_DADO_com_o_ordinal_DO_MARCADOR_188_03(): void
+    {
+        $empresa = Company::factory()->create();
+        $servico = $this->servico();
+
+        $oferta = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $conjunto = $this->conjunto($oferta);
+
+        // ⚠️ FIXTURE QUE DISCRIMINA: o `ok` está **NO MEIO**, então uma numeração feita sobre a
+        // lista INTEIRA daria `[1, 2, 3, 4]` em vez de `[1, null, 2, 3]` — e passaria num cenário
+        // em que o `ok` fosse o último.
+        $imagem = $this->imagem($conjunto, 0, [
+            'estado' => PubAprovacaoImagem::PENDENTE,
+            'alertas' => [
+                [PubAprovacaoImagemAlerta::ALTO, 31.25, 68.5, 'A medida da foto não confere com a da descrição.'],
+                [PubAprovacaoImagemAlerta::OK, null, null, 'Fundo branco e sem moldura.'],
+                [PubAprovacaoImagemAlerta::MEDIO, 12.0, 90.0, 'O texto sobre a imagem está pequeno.'],
+                // ⚠️ Alerta SEM ponto: ele **mantém** o ordinal (1..N é sobre os alertas) e **não**
+                // vira marcador. **DIVERGÊNCIA DECLARADA:** no protótipo `pins` não filtra x/y
+                // nulos e desenharia `left: "undefined%"`. Por desenho, alerta acima de `ok`
+                // SEMPRE tem ponto (`PubAprovacaoImagemAlerta`, docblock), então este é o caso
+                // anômalo — e renumerar aqui faria o texto dizer "3" com o marcador escrito "4".
+                [PubAprovacaoImagemAlerta::MEDIO, null, null, 'Sem ponto apontado.'],
+            ],
+        ]);
+
+        $fotos = $servico->para($oferta);
+        $daImagem = $fotos['imagens'][0];
+
+        // ─── O contrato de CADA verificação ─────────────────────────────────────────────────
+        $this->assertCount(4, $daImagem['verificacoes'], 'a lista de verificações perdeu ou ganhou item');
+        $faltando = [];
+        foreach ($daImagem['verificacoes'] as $i => $v) {
+            // ⚠️ Flag DENTRO do laço.
+            foreach (['severidade', 'texto', 'glifo', 'cor', 'ordinal'] as $chave) {
+                if (! array_key_exists($chave, $v)) {
+                    $faltando[] = $i.'.'.$chave;
+                }
+            }
+        }
+        $this->assertSame([], $faltando, 'chave AUSENTE numa verificação');
+
+        // ─── ⚠️⚠️ OS ORDINAIS: `1..N` SOBRE OS ALERTAS, e `null` no `ok` ───────────────────
+        $this->assertSame([1, null, 2, 3], array_column($daImagem['verificacoes'], 'ordinal'), 'a numeração não é 1..N sobre os ALERTAS');
+
+        // ⚠️ **NUNCA `0` nem `''`** — `0` é um número de marcador plausível para quem lê, e `''` é
+        // mentira de tipo. ⚠️ **DIVERGÊNCIA DECLARADA do `:1108`**, que usa `''`.
+        $doOk = $daImagem['verificacoes'][1];
+        $this->assertNull($doOk['ordinal'], 'a verificação `ok` ganhou ordinal');
+        $this->assertNotSame(0, $doOk['ordinal'], '`0` é um número de marcador plausível');
+        $this->assertNotSame('', $doOk['ordinal'], 'string vazia num campo de número é mentira de tipo');
+        $this->assertTrue(array_key_exists('ordinal', $doOk), 'chave nula ≠ chave ausente');
+
+        // ─── ⚠️⚠️ O ORDINAL É O NÚMERO DO MARCADOR — mesmo cálculo, provado pelo PAR ────────
+        $ordinaisDeTexto = array_values(array_filter(
+            array_column($daImagem['verificacoes'], 'ordinal'),
+            static fn (?int $o): bool => $o !== null,
+        ));
+        $this->assertSame([1, 2, 3], $ordinaisDeTexto, 'os ordinais dos alertas não são 1..N');
+
+        // ⚠️ Os marcadores desenháveis são os DOIS primeiros (o 3º não tem ponto), e os números
+        // deles são **os MESMOS** `1` e `2` do texto — nunca uma renumeração própria.
+        $this->assertSame([1, 2], array_column($daImagem['marcadores'], 'ordinal'), 'o marcador renumerou por conta própria');
+
+        // ⚠️⚠️ **A PROVA DE QUE É UM CÁLCULO SÓ:** os dois métodos públicos leem a MESMA lista
+        // (`alertasOrdenados()`), e o ordinal é a POSIÇÃO nela.
+        $alertas = $imagem->alertas->all();
+        $somenteAlertas = $servico->alertasOrdenados($alertas);
+        $this->assertCount(3, $somenteAlertas, 'a lista de alertas (sem `ok`) mudou de tamanho');
+        $esperados = [];
+        foreach ($somenteAlertas as $posicao => $alerta) {
+            // ⚠️ Flag DENTRO do laço.
+            $esperados[(string) $alerta->texto] = $posicao + 1;
+        }
+        $porTexto = [];
+        foreach ($servico->verificacoes($alertas) as $v) {
+            // ⚠️ Flag DENTRO do laço.
+            if ($v['ordinal'] !== null) {
+                $porTexto[$v['texto']] = $v['ordinal'];
+            }
+        }
+        $this->assertSame($esperados, $porTexto, 'o ordinal do texto não é a POSIÇÃO na lista que os marcadores numeram');
+
+        // ⚠️⚠️ **ISCA DO CÁLCULO ÚNICO: tirando o PRIMEIRO alerta, os dois ANDAM JUNTO.**
+        //
+        // ⚠️ A isca é formulada sobre a lista **SÓ COM ALERTAS QUE TÊM PONTO**, e isso é medido, não
+        // conveniência: com um alerta sem ponto na lista, o texto mostra um número que **não** tem
+        // marcador, então a igualdade seria FALSA por desenho (é a divergência declarada acima) e a
+        // isca reprovaria o comportamento CERTO — a família "gate mais largo que o invariante".
+        $comPonto = array_values(array_filter(
+            $servico->alertasOrdenados($alertas),
+            static fn (PubAprovacaoImagemAlerta $a): bool => $a->temPonto(),
+        ));
+        $this->assertCount(2, $comPonto, 'ISCA: a fixture não tem DOIS alertas com ponto — a isca mediria um caso trivial');
+
+        $semOPrimeiro = array_values(array_slice($comPonto, 1));
+        $this->assertSame(
+            array_column($servico->marcadores(PubAprovacaoImagem::PENDENTE, $semOPrimeiro), 'ordinal'),
+            array_values(array_filter(
+                array_column($servico->verificacoes($semOPrimeiro), 'ordinal'),
+                static fn (?int $o): bool => $o !== null,
+            )),
+            'ISCA: tirando um alerta, o texto e o marcador renumeraram DIFERENTE',
+        );
+        // ⚠️ E a isca NÃO é trivial: ela reprovaria uma renumeração própria do marcador.
+        $this->assertSame([1], array_column($servico->marcadores(PubAprovacaoImagem::PENDENTE, $semOPrimeiro), 'ordinal'));
+
+        // ⚠️⚠️ **A DIVERGÊNCIA DECLARADA, MEDIDA:** o alerta **sem ponto** mantém o ordinal no
+        // texto (`3`) e **não** tem marcador — então os marcadores são um **SUBCONJUNTO** dos
+        // ordinais do texto, nunca uma lista com número que o texto não mostre.
+        $this->assertSame(
+            [],
+            array_values(array_diff(array_column($daImagem['marcadores'], 'ordinal'), $ordinaisDeTexto)),
+            'há marcador cujo número NENHUM item de texto mostra',
+        );
+        $this->assertSame(
+            [3],
+            array_values(array_diff($ordinaisDeTexto, array_column($daImagem['marcadores'], 'ordinal'))),
+            'o alerta SEM ponto deixou de manter o seu ordinal no texto (renumeração), ou ganhou marcador',
+        );
+
+        // ─── O GLIFO e as TRÊS cores distintas (`:1108`) ────────────────────────────────────
+        $this->assertSame(
+            [FotosDoPainelService::GLIFO_ALERTA, FotosDoPainelService::GLIFO_OK,
+                FotosDoPainelService::GLIFO_ALERTA, FotosDoPainelService::GLIFO_ALERTA],
+            array_column($daImagem['verificacoes'], 'glifo'),
+            'o glifo é `✓` para `ok` e `!` para alerta',
+        );
+        $this->assertSame('✓', FotosDoPainelService::GLIFO_OK);
+        $this->assertSame('!', FotosDoPainelService::GLIFO_ALERTA);
+
+        $cores = array_column($daImagem['verificacoes'], 'cor');
+        $this->assertSame(
+            [FotosDoPainelService::COR_VERMELHA, FotosDoPainelService::COR_VERDE,
+                FotosDoPainelService::COR_AMBAR, FotosDoPainelService::COR_AMBAR],
+            $cores,
+            '`high` vermelho, `ok` verde, `med` âmbar',
+        );
+        // ⚠️ **TRÊS valores DISTINTOS** — sem esta isca, um serviço que devolvesse sempre a mesma
+        // cor passaria nos três ramos acima.
+        $this->assertCount(3, array_unique($cores), 'as cores de `ok`, `med` e `high` colidiram');
+
+        // ─── O TEXTO é o do banco, pronto para a tela — e NÃO vem montado ───────────────────
+        $this->assertSame('A medida da foto não confere com a da descrição.', $daImagem['verificacoes'][0]['texto']);
+        $infratores = array_values(array_filter(
+            array_column($daImagem['verificacoes'], 'texto'),
+            static fn (string $t): bool => str_contains(mb_strtolower($t), 'verificação autom') || str_contains($t, 'APOIO'),
+        ));
+        $this->assertSame([], $infratores, 'o serviço montou a FRASE: o prefixo e o cabeçalho são da TELA (plano 188-08)');
+
+        // ─── ⚠️ `verificacoes` VAZIA é LISTA vazia, nunca ausente ───────────────────────────
+        $limpa = $fotos['imagens'][0];
+        $this->assertNotSame([], $limpa['verificacoes'], 'ISCA: a imagem da fixture não tem verificação');
+
+        $semNada = $this->oferta($empresa, PubAprovacaoOferta::AGUARDANDO_APROVACAO);
+        $this->imagem($this->conjunto($semNada), 0, ['estado' => PubAprovacaoImagem::PENDENTE]);
+        $vazia = $this->servico()->para($semNada)['imagens'][0];
+        $this->assertSame([], $vazia['verificacoes'], 'sem alerta a chave tem de existir como LISTA vazia');
+        $this->assertTrue(array_key_exists('verificacoes', $vazia), 'chave vazia ≠ chave ausente');
+        $this->assertSame([], $vazia['marcadores']);
+
+        // ─── ⚠️ OS DOIS LADOS DA TERCEIRA DERROTA DO PROTÓTIPO, lidos do ARQUIVO ────────────
+        $prototipo = $this->raiz().'/design_handoff_publicador/Aprovacao.dc.html';
+
+        // ⚠️ `design_handoff_publicador/` NÃO é versionado: sem ele o caso **degrada para uma
+        // razão NOMEADA**, nunca para "conferido".
+        $degradacoes = [];
+        if (! file_exists($prototipo)) {
+            $degradacoes[] = 'design_handoff_publicador/Aprovacao.dc.html ausente (pacote de handoff NÃO versionado)';
+        } else {
+            $linhas = explode("\n", str_replace("\r", '', (string) file_get_contents($prototipo)));
+            // `:369` TEM o literal — mas é a revisão detalhada (E4), da Fase 190/191.
+            $this->assertStringContainsString('VERIFICAÇÃO AUTOMÁTICA · APOIO', $linhas[368] ?? '', ':369 deixou de ter o literal do cabeçalho');
+            // `:633` é o que o PAINEL escreve — a frase COLADA, sem cabeçalho.
+            $this->assertStringContainsString('Verificação automática{{ a.n }} · ', $linhas[632] ?? '', ':633 deixou de ter a frase colada do painel');
+            $this->assertStringNotContainsString('APOIO', $linhas[632] ?? '', ':633 passou a ter o cabeçalho — a derrota do protótipo mudou de forma');
+        }
+        $this->assertSame([], $degradacoes, 'degradação NOMEADA: '.implode(' · ', $degradacoes));
+
+        // ⚠️⚠️ E O SERVIÇO **NÃO** REPRODUZ A FRASE COLADA — lido **SEM** comentário, porque a
+        // prosa dele cita `VERIFICAÇÃO AUTOMÁTICA · APOIO` de propósito (ISCA DO LEITOR).
+        $fonte = $this->semComentarios('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php');
+        $this->assertStringNotContainsString('VERIFICAÇÃO AUTOMÁTICA', $fonte, 'o cabeçalho é da TELA (plano 188-08)');
+        $this->assertStringNotContainsString('Verificação automática', $fonte, 'o serviço reproduziu o prefixo colado de `:633`');
+        $this->assertStringNotContainsString('APOIO', $fonte, 'o rótulo de APOIO é da tela');
+        // ⚠️ ISCA DO LEITOR, nas duas direções: o arquivo CRU **TEM** os três termos.
+        $cru = $this->cru('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php');
+        $this->assertStringContainsString('VERIFICAÇÃO AUTOMÁTICA · APOIO', $cru, 'ISCA: a prosa do serviço não cita o cabeçalho — o leitor sem comentário não está sendo exercitado');
+        $this->assertStringNotContainsString('VERIFICAÇÃO AUTOMÁTICA', $fonte, 'o leitor sem comentário não removeu o docblock');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // TRANSVERSAIS
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Território e AUSÊNCIAS, lidas do código **SEM COMENTÁRIO**.
+     *
+     * ⚠️ Ler sem comentário não é zelo: a prosa deste projeto cita os próprios identificadores que
+     * diz NÃO usar, e um gate cru reprovaria **pelo próprio conserto**. ⚠️ **ESTA PROSA CITA DE
+     * PROPÓSITO** `#FACC15`, `ArquivosDeImagem`, `ImagemAssetService`, `Acervo`, `gold_pro`,
+     * `desfazer`, `Ampliar`, `Gerar novamente` e `lucro líquido` — é a **ISCA DO LEITOR**.
+     *
+     * ⚠️⚠️ O gate de "lucro líquido" é recortado à **lista CONSTANTE dos arquivos deste plano**:
+     * `lucro_liquido` é campo **legítimo** do Portal, e varrer o `app/` inteiro reprovaria trabalho
+     * de outra sessão — foi a 5ª ocorrência de "gate mais largo que o invariante" na Fase 186, e
+     * ela **BARROU UM DEPLOY**.
+     */
+    public function test_territorio_e_ausencias_do_plano_188_03(): void
+    {
+        // ⚠️ A lista CONSTANTE dos arquivos DESTE plano — nunca `app/` inteiro.
+        $meus = [
+            'app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php',
+            'app/Services/Publicador/Aprovacao/Painel/PainelDeRevisaoService.php',
+        ];
+
+        $fonte = '';
+        foreach ($meus as $rel) {
+            // ⚠️ Flag DENTRO do laço.
+            $fonte .= $this->semComentarios($rel);
+        }
+
+        // ⚠️ ISCA DO RECORTE: a lista não está vazia e cada entrada EXISTE no disco.
+        $this->assertCount(2, $meus);
+        $this->assertNotSame('', trim($fonte), 'o leitor devolveu vazio — o gate mediria NADA');
+
+        // ─── VOC-03, COL-02 e TOK-15 ─────────────────────────────────────────────────────────
+        $this->assertStringNotContainsString('lucro', mb_strtolower($fonte), 'VOC-03: "lucro líquido" é proibido');
+        $this->assertStringNotContainsString('localStorage', $fonte, 'COL-02: filtro e oferta aberta vivem na URL');
+        // ⚠️ TOK-15 — nenhum HEX sai do PHP: o `content` do Tailwind **NÃO** varre `.php`, então a
+        // classe não geraria CSS. A cor é CHAVE SEMÂNTICA.
+        $this->assertDoesNotMatchRegularExpression('/#[0-9A-Fa-f]{6}\b/', $fonte, 'hex no PHP: a classe não seria varrida pelo Tailwind');
+
+        // ─── ⚠️⚠️ REUSAR NÃO É EDITAR: o ACERVO fica INTOCADO (v28, R2 PRIVADO) ─────────────
+        foreach (['ArquivosDeImagem', 'ImagemAssetService', 'Acervo', 'App\\Support\\Publicador'] as $vetado) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertStringNotContainsString($vetado, $fonte, "território VETADO referenciado: {$vetado}");
+        }
+
+        // ─── APROVAR JÁ PUBLICA: a ausência de segundo passo, na FORMA ───────────────────────
+        foreach (['desfazer', 'confirmar publica', 'cancelar aprova', 'segundo passo'] as $proibido) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertStringNotContainsString($proibido, mb_strtolower($fonte), 'decisão do usuário 14/10/2026: aprovar JÁ PUBLICA');
+        }
+
+        // ─── ⚠️ AS FASES 189 E 192 **NÃO** SÃO ANTECIPADAS ──────────────────────────────────
+        //
+        // ⚠️ "⤢ Ampliar" é o lightbox (Fase 189) e "✦ Gerar novamente com IA" é a Fase 192. D4/D14:
+        // nenhuma fase deixa botão sem destino na sua fronteira.
+        foreach (['Ampliar', 'Gerar novamente', '⤢', '✦'] as $deOutraFase) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertStringNotContainsString($deOutraFase, $fonte, "a Fase 189/192 foi antecipada: {$deOutraFase}");
+        }
+
+        // ⚠️ ISCA DAS SONDAS, nas duas direções.
+        $this->assertStringContainsString('lucro', mb_strtolower('O lucro líquido do mês'), 'a sonda de lucro está cega');
+        $this->assertMatchesRegularExpression('/#[0-9A-Fa-f]{6}\b/', 'border: #FACC15;', 'a sonda de hex está cega');
+        $this->assertDoesNotMatchRegularExpression('/#[0-9A-Fa-f]{6}\b/', "self::COR_VERDE;", 'a sonda de hex acusa a chave semântica — ela está larga');
+        $this->assertStringContainsString('desfazer', mb_strtolower('Botão de Desfazer'), 'a sonda de segundo passo está cega');
+        $this->assertStringContainsString('Ampliar', '⤢ Ampliar', 'a sonda da Fase 189 está cega');
+        $this->assertStringContainsString('Acervo', 'use App\\Services\\Publicador\\AcervoImagemService;', 'a sonda do acervo está cega');
+
+        // ─── ⚠️ ESTE SERVIÇO NÃO ESCREVE NADA ───────────────────────────────────────────────
+        $doServico = $this->semComentarios('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php');
+        $sondaDeEscrita = "/->estado\s*=(?!=)|->andamento\s*=(?!=)|(?:update|updateOrCreate|create|fill|insert|forceFill|save|delete)\s*\(/";
+        $this->assertSame(0, preg_match($sondaDeEscrita, $doServico), 'o serviço da coluna de fotos ESCREVE — ele só pode LER');
+        // ⚠️ ISCA: a sonda de escrita PEGA, nas duas direções.
+        $this->assertSame(1, preg_match($sondaDeEscrita, '$i->update([1]);'), 'a sonda de escrita está cega');
+        $this->assertSame(1, preg_match($sondaDeEscrita, "\$i->estado = 'approved';"), 'a sonda não pega a atribuição de estado');
+        $this->assertSame(0, preg_match($sondaDeEscrita, "return ['estado' => (string) \$i->estado];"), 'a sonda acusa a chave de SAÍDA — não discrimina expor de escrever');
+
+        // ─── A 186/187 É CHAMADA, NUNCA RECOPIADA ───────────────────────────────────────────
+        $this->assertStringContainsString('contagemDeFotos', $doServico, 'o progresso tem de CHAMAR `contagemDeFotos()`');
+        $this->assertStringContainsString('doRascunho', $doServico, 'a galeria tem de vir de `GaleriaDaOfertaService::doRascunho()`');
+        $this->assertStringContainsString('ehPrincipal', $doServico, 'IMG-07: a principal é LIDA do modelo');
+        $this->assertStringContainsString('ehAlerta', $doServico, 'a definição de alerta é LIDA do modelo');
+        $this->assertStringContainsString('temPonto', $doServico, 'o "tem ponto" é LIDO do modelo');
+        $this->assertStringContainsString('ehLive', $doServico, 'AND-05: o `live` é LIDO do modelo');
+        $this->assertStringContainsString("route('mlb.anuncios.publicador.fotos.arquivo'", $doServico, 'B1.2: a URL tem de sair da rota que já existe');
+
+        // ⚠️ E os literais da 186/187 NÃO foram recopiados.
+        $this->assertStringNotContainsString("'Capa'", $doServico, 'o rótulo da capa foi RECOPIADO (ele é `GaleriaDaOfertaService::ROTULO_CAPA`)');
+        $this->assertStringNotContainsString("'a conferir'", $doServico, 'o veredicto do `title` foi RECOPIADO');
+        $this->assertStringNotContainsString("'gold_pro'", $doServico, 'o listing type foi escrito à mão — seria a TERCEIRA cópia daquele literal');
+        $this->assertStringNotContainsString("'pending'", $doServico, 'o estado foi escrito à mão em vez de LIDO da constante');
+        $this->assertStringNotContainsString("'approved'", $doServico, 'o estado foi escrito à mão em vez de LIDO da constante');
+        $this->assertStringNotContainsString("'high'", $doServico, 'a severidade foi escrita à mão em vez de LIDA da constante');
+
+        // ─── O ESCOPO DO ASSUNTO, com ISCA nas duas direções ────────────────────────────────
+        //
+        // ⚠️⚠️ **"Prova de território por RANGE" NÃO PASSA nesta árvore:** a 187-11 mediu 111
+        // commits no range, **43 da sessão paralela**, e o diff cru acusava **12 dos 60 alvos
+        // vetados**. ⚠️ **E NÃO se confere o AUTOR:** as três máquinas usam o MESMO `user.name`.
+        $this->assertSame(1, preg_match(self::ESCOPO, 'feat(188-03): x'), 'o escopo não casa o próprio assunto');
+        $this->assertSame(0, preg_match(self::ESCOPO, 'feat(188-02): x'), 'o escopo casa a wave 2 — ele está largo');
+        $this->assertSame(0, preg_match(self::ESCOPO, 'feat(187-03): x'), 'o escopo casa a Fase 187 — ele está largo');
+        $this->assertSame(0, preg_match(self::ESCOPO, 'fix(261016-mwe): x'), 'o escopo casa a outra máquina — ele está largo');
+
+        $log = $this->git('git log --format=%h:%s '.self::PARTIDA.'..HEAD');
+        $hashes = [];
+        foreach (array_filter(explode("\n", $log)) as $linha) {
+            // ⚠️ Flag DENTRO do laço.
+            $corte = strpos($linha, ':');
+            if ($corte !== false && preg_match(self::ESCOPO, substr($linha, $corte + 1)) === 1) {
+                $hashes[] = substr($linha, 0, $corte);
+            }
+        }
+
+        // ⚠️ **SEM `return` antecipado:** a contagem deste caso NÃO pode depender de quantos
+        // commits existem (a lição medida no 187-07, onde ela ia de 26 para 70).
+        $arquivos = $hashes === []
+            ? []
+            : array_values(array_filter(array_map(
+                'trim',
+                explode("\n", $this->git('git show --name-only --format= '.implode(' ', $hashes))),
+            )));
+
+        // ⚠️ A lista dos VETADOS — `188-REGUA.md` §9.
+        $proibidos = [
+            // Os 10 da Fase 186 em `Aprovacao/` (fora de `Fila/` e de `Painel/`).
+            'app/Services/Publicador/Aprovacao/BloqueiosDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/VocabularioDoPortao.php',
+            'app/Services/Publicador/Aprovacao/ComposicaoFinanceiraService.php',
+            'app/Services/Publicador/Aprovacao/ComposicaoDaOferta.php',
+            'app/Services/Publicador/Aprovacao/AprovacaoDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/RevisaoDeImagemService.php',
+            'app/Services/Publicador/Aprovacao/AjustesDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/HistoricoDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/LinhaFinanceira.php',
+            // Os 8 de `Fila/` da Fase 187.
+            'app/Services/Publicador/Aprovacao/Fila/FilaDeAprovacaoService.php',
+            'app/Services/Publicador/Aprovacao/Fila/ProximoARevisarService.php',
+            'app/Services/Publicador/Aprovacao/Fila/FiltrosDaFilaService.php',
+            'app/Services/Publicador/Aprovacao/Fila/GrupoDaFilaService.php',
+            'app/Services/Publicador/Aprovacao/Fila/GaleriaDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/Fila/LinhaDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/Fila/LoteDaFilaService.php',
+            'app/Services/Publicador/Aprovacao/Fila/AquecimentoDeTarifasService.php',
+            // Os modelos do portão (Fase 186) e os `.jsx` NO AR.
+            'app/Models/PubAprovacaoImagem.php',
+            'app/Models/PubAprovacaoImagemAlerta.php',
+            'app/Models/PubAprovacaoConjunto.php',
+            'resources/js/Components/Mlb/Publicador/aprovacao',
+            'resources/js/Components/Mlb/Publicador/publicacoes',
+            'resources/js/Components/Mlb/Publicador/identidade',
+            'resources/js/Components/Publicador/Mesa',
+            'resources/js/Layouts/AppLayout.jsx',
+            'resources/js/Pages/Mlb/Publicador/Editor.jsx',
+            // ⚠️ O ACERVO (v28, R2 PRIVADO), o Creative Engine, o MCP, o Support e o Portal.
+            'app/Services/Creative',
+            'app/Services/Publicador/Criativos',
+            'app/Services/Publicador/ImagemAssetService.php',
+            'app/Support/Publicador',
+            'app/Http/Controllers/MlbPublicadorController.php',
+            'app/Mcp',
+            'app/Services/Portal',
+            'app/Services/Mlb/Publicacao/MlPublicacaoService.php',
+            'app/Services/Publicador/Fila/ResumoRapidoService.php',
+            'app/Services/Publicador/Fila/AgendadorDaFila.php',
+            'app/Services/Publicador/PreparoIaDoRascunhoService.php',
+            'app/Services/Publicador/ExcluirProdutoService.php',
+            'routes/mlb_anuncios.php',
+            // Os gates INTOCÁVEIS.
+            'tests/js/publicador-header-zindex-ordem.test.js',
+            'tests/js/estrutura-meus-anuncios.test.js',
+            'tests/js/publicador-fila-tokens-187.test.js',
+            'tests/js/publicador-fila-proximo-187.test.js',
+            // ⚠️ GATE-07 — nenhum destes pertence a plano nenhum; quem edita é o orquestrador.
+            '.planning/ROADMAP.md',
+            '.planning/REQUIREMENTS-v27.md',
+            '.planning/STATE.md',
+        ];
+
+        // ⚠️⚠️ **UMA asserção coletando os infratores**, nunca uma por caminho.
+        $tocados = [];
+        foreach ($arquivos as $a) {
+            // ⚠️ Flag DENTRO do laço.
+            foreach ($proibidos as $p) {
+                if ($a === $p || str_starts_with($a, rtrim($p, '/').'/')) {
+                    $tocados[] = $a;
+                }
+            }
+        }
+        $this->assertSame([], array_values(array_unique($tocados)), 'commit do escopo (188-03) tocou alvo VETADO');
+
+        // ⚠️ A prova de que o escopo não está vazio por construção, COLETADA.
+        $doPlano = ['Aprovacao/Painel/FotosDoPainel', 'Aprovacao/Painel/PainelDeRevisao',
+            'FotosDoPainelServiceTest', 'PainelDeRevisaoServiceTest', 'PainelDaOfertaRotaTest',
+            'contagens-188-03', '188-03-SUMMARY', '188-FID01'];
+        $reconhece = static fn (string $a): bool => (bool) array_filter($doPlano, static fn (string $p): bool => str_contains($a, $p));
+
+        $semProva = $hashes !== [] && ! array_filter($arquivos, $reconhece)
+            ? ['os commits do escopo não tocaram arquivo deste plano: '.json_encode(array_slice($arquivos, 0, 8))]
+            : [];
+        $this->assertSame([], $semProva, 'o range do escopo está vazio por construção');
+
+        // ⚠️ ISCA DA PROVA, nas duas direções.
+        $this->assertTrue($reconhece('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php'), 'a prova não reconhece o serviço deste plano');
+        $this->assertFalse($reconhece('app/Services/Creative/CreativeJuiz.php'), 'a prova reconhece arquivo de OUTRA fase');
+
+        // ⚠️ E o ANTI-FANTASMA, que é o gate PERENE (`test -e` em cada alvo citado) — são NOVE
+        // caminhos fantasmas nesta milestone, TRÊS vindos de briefing.
+        $semDisco = array_values(array_filter(
+            $proibidos,
+            fn (string $p): bool => ! file_exists($this->raiz().'/'.$p) && ! str_contains($p, 'REQUIREMENTS-v27'),
+        ));
+        $this->assertSame([], $semDisco, 'caminho FANTASMA na lista de vetados — o gate dele mede NADA');
+
+        // ⚠️ **T-188-SC — este plano NÃO instala nada**, provado por FORMA (nunca por `numstat` de
+        // range): nenhum manifesto de dependência aparece entre os arquivos do escopo.
+        $this->assertSame(
+            [],
+            array_values(array_filter($arquivos, static fn (string $a): bool => in_array($a, ['composer.json', 'composer.lock', 'package.json', 'package-lock.json'], true))),
+            'T-188-SC: este plano não instala nada',
+        );
+
+        // ⚠️ E **NENHUMA MIGRATION**: esta fase não tem migration (o aviso é explícito no briefing).
+        $this->assertSame(
+            [],
+            array_values(array_filter($arquivos, static fn (string $a): bool => str_starts_with($a, 'database/migrations/'))),
+            'esta fase NÃO tem migration',
+        );
+    }
+
+    /**
+     * ⚠️ A BIJEÇÃO ids ↔ métodos, nos **DOIS** sentidos.
+     *
+     * ⚠️⚠️ **O SUFIXO `_188_03` NÃO É ZELO.** O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e
+     * todo plano `_0N` desta fase tem homônimo possível nas Fases 186 **E** 187, as duas **EM
+     * PRODUÇÃO**. Medido por script em 19/10/2026 (`ARQUIVOS=905 METODOS=7739 HOMONIMOS=0`), e a
+     * direção 1 **acusou 6** métodos reais com o nome sem sufixo — prova de que a colisão é real.
+     *
+     * ⚠️ **E HÁ UMA TERCEIRA BIJEÇÃO: id ↔ `<verify>`.** Um id pode estar no manifesto, com
+     * contagem medida, apontando para métodos que existem — e **não ser rodado por `<verify>`
+     * nenhum**. Ele não falha: **nunca roda**. Quem a prova sobre os treze pares é o plano
+     * **188-13**; aqui provo que os QUATRO ids deste manifesto existem e casam método.
+     */
+    public function test_bijecao_do_manifesto_das_fotos_188_03(): void
+    {
+        $manifesto = $this->raiz().'/tests/gates/contagens-188-03.txt';
+        $this->assertFileExists($manifesto, 'manifesto ausente — os gates deste plano rodariam sem régua');
+
+        $linhas = array_values(array_filter(
+            array_map('trim', explode("\n", (string) file_get_contents($manifesto))),
+            static fn (string $l): bool => $l !== '' && ! str_starts_with($l, '#'),
+        ));
+
+        $filtrosDosIds = [];
+        foreach ($linhas as $linha) {
+            // ⚠️ Flag DENTRO do laço.
+            $partes = preg_split('/\s+/', $linha);
+            if (($partes[1] ?? '') === 'php') {
+                $this->assertArrayNotHasKey($partes[0], $filtrosDosIds, 'id REPETIDO no manifesto: o harness pega o PRIMEIRO');
+                $filtrosDosIds[$partes[0]] = $partes[2];
+            }
+        }
+
+        // ⚠️ Lista CONSTANTE dos QUATRO, nunca `count()` — **piso não prova PRESENÇA** (a 187-11
+        // mediu uma sobrevivente exatamente aí: com 13 itens, perder um deixava 12 e o piso
+        // passava). ⚠️ O conserto é lista constante, NUNCA elevar o piso.
+        $this->assertSame(
+            ['galeria-e-marcadores', 'borda-e-estados', 'sem-alerta-e-contagem', 'verificacoes-e-ordinal'],
+            array_keys($filtrosDosIds),
+            'os QUATRO ids deste plano, nesta ordem — id a mais ou a menos muda o que roda',
+        );
+
+        // ─── Os métodos, lidos do DISCO ─────────────────────────────────────────────────────
+        $rel = 'tests/Feature/Publicador/Aprovacao/FotosDoPainelServiceTest.php';
+        preg_match_all('/function (test_[A-Za-z0-9_]*_188_03)\s*\(/', $this->cru($rel), $m);
+        $metodos = array_values(array_unique($m[1]));
+
+        $this->assertCount(12, $metodos, 'os métodos `_188_03` deste plano encolheram ou cresceram');
+
+        // ⚠️ SENTIDO 1 — método sem id **NUNCA RODA** em gate nenhum (foi o sobrevivente da
+        // mutação do 186-03). UMA asserção coletando.
+        $semId = [];
+        foreach ($metodos as $metodo) {
+            // ⚠️ Flag DENTRO do laço.
+            $achou = false;
+            foreach ($filtrosDosIds as $filtro) {
+                if (preg_match('/^'.$filtro.'$/', $metodo) === 1) {
+                    $achou = true;
+                    break;
+                }
+            }
+            if (! $achou) {
+                $semId[] = $metodo;
+            }
+        }
+        $this->assertSame([], $semId, 'método sem id no manifesto: ele NUNCA RODA em gate nenhum');
+
+        // ⚠️ SENTIDO 2 — id órfão roda sobre **ZERO casos** e é indistinguível de gate verde.
+        $orfaos = [];
+        foreach ($filtrosDosIds as $id => $filtro) {
+            // ⚠️ Flag DENTRO do laço.
+            $casou = false;
+            foreach ($metodos as $metodo) {
+                if (preg_match('/^'.$filtro.'$/', $metodo) === 1) {
+                    $casou = true;
+                    break;
+                }
+            }
+            if (! $casou) {
+                $orfaos[] = $id;
+            }
+        }
+        $this->assertSame([], $orfaos, 'id órfão no manifesto: o gate dele roda sobre ZERO casos');
+
+        // ⚠️ **NENHUM id com mais de TRÊS métodos** (alternância grande equivale a filtro de classe,
+        // passa dos 120 s do shell e o helper RECUSA). UMA asserção coletando.
+        $gordos = [];
+        foreach ($filtrosDosIds as $id => $filtro) {
+            // ⚠️ Flag DENTRO do laço.
+            $quantos = count(array_filter($metodos, static fn (string $mm): bool => preg_match('/^'.$filtro.'$/', $mm) === 1));
+            if ($quantos > 3) {
+                $gordos[] = $id.' ('.$quantos.')';
+            }
+        }
+        $this->assertSame([], $gordos, 'id com mais de TRÊS métodos: o harness RECUSA e o shell estoura');
+
+        // ⚠️ E nenhum id com `tests=0` / sem `tests=` (o harness ABORTA, de propósito).
+        $semContagem = array_values(array_filter(
+            $linhas,
+            static fn (string $l): bool => ! str_contains($l, 'tests=') || str_contains($l, 'tests=0'),
+        ));
+        $this->assertSame([], $semContagem, 'linha sem `tests=` ou com `tests=0`: o harness ABORTA');
+
+        // ⚠️ ISCA DO NOME QUE NINGUÉM ESCREVEU, nas duas direções.
+        $casouFantasma = array_values(array_filter(
+            $filtrosDosIds,
+            static fn (string $f): bool => preg_match('/^'.$f.'$/', 'test_metodo_que_ninguem_escreveu_188_03') === 1,
+        ));
+        $this->assertSame([], $casouFantasma, 'ISCA: um filtro casa método que ninguém escreveu — ele está largo');
+        $this->assertSame(1, preg_match('/^'.$filtrosDosIds['verificacoes-e-ordinal'].'$/', 'test_territorio_e_ausencias_do_plano_188_03'), 'ISCA: o filtro não casa o próprio método');
+
+        // ⚠️⚠️ **E O SUFIXO PROTEGE DE VERDADE:** os métodos homônimos das outras waves **existem**,
+        // e o meu filtro **NÃO** os casa. Sem estas linhas, o sufixo seria zelo não medido.
+        foreach (['test_territorio_e_ausencias_do_plano_188_02', 'test_territorio_e_ausencias_do_plano_187_08'] as $homonimo) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertSame(0, preg_match('/^'.$filtrosDosIds['verificacoes-e-ordinal'].'$/', $homonimo), "o filtro casa o homônimo {$homonimo} — as contagens SOMARIAM");
+        }
+        $this->assertStringContainsString(
+            'test_territorio_e_ausencias_do_plano_188_02',
+            $this->cru('tests/Feature/Publicador/Aprovacao/PainelDeRevisaoServiceTest.php'),
+            'o homônimo da wave 2 mudou de nome — a isca perdeu o sujeito',
+        );
+        $this->assertStringContainsString(
+            'test_territorio_e_ausencias_do_plano_187_08',
+            $this->cru('tests/Unit/Publicador/Aprovacao/LinhaDaOfertaServiceTest.php'),
+            'o homônimo da 187 mudou de nome — a isca perdeu o sujeito',
+        );
+
+        // ⚠️ E o 1º ARGUMENTO do harness é `188-03`: o número NU resolveria `contagens-186-03.txt`,
+        // a fase ERRADA, em silêncio. O manifesto da 186 com esse número **existe**.
+        $this->assertFileExists($this->raiz().'/tests/gates/contagens-186-03.txt', 'a isca do número nu perdeu o sujeito — a confusão deixaria de ser possível');
+    }
 }
