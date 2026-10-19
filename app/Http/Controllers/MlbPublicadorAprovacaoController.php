@@ -10,6 +10,7 @@ use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\LoteDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
+use App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use Illuminate\Http\Request;
@@ -176,6 +177,7 @@ class MlbPublicadorAprovacaoController extends Controller
         GrupoDaFilaService $gruposDaFila,
         LinhaDaOfertaService $linhaDaOferta,
         LoteDaFilaService $loteDaFila,
+        PainelDeRevisaoService $painelDeRevisao,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -498,6 +500,71 @@ class MlbPublicadorAprovacaoController extends Controller
                 ),
             );
 
+        // ═══ ⚠️⚠️ Fase 188, plano 02 — O PAINEL DE REVISÃO, MONTADO NO SERVIDOR ══════════════
+        //
+        // ⚠️⚠️ **O VEREDICTO É DO SERVIDOR, e por isso o painel nasce aqui e não no `.jsx`.** Quem
+        // decide se uma oferta pode ser aprovada é `BloqueiosDaOfertaService::para()`, com a
+        // composição financeira e a tarifa real do Mercado Livre. A tela **LÊ** o veredicto; ela
+        // não o calcula — calcular no cliente daria duas verdades, e a divergente seria descoberta
+        // por alguém clicando "Aprovar para publicação" e sendo recusado, num fluxo em que
+        // **aprovar JÁ PUBLICA e não há desfazer**.
+        //
+        // ═══ ⚠️ O CAMINHO ESCOLHIDO, E A ALTERNATIVA RECUSADA ════════════════════════════════
+        //
+        // O painel é montado **na mesma action**, recortado à oferta do `?oferta=`, e a navegação
+        // ↑/↓ da tela é um **recarregamento parcial do Inertia**
+        // (`router.get(…, { only: ['painel'], preserveState: true, preserveScroll: true })`, que é
+        // tarefa do plano **188-07**).
+        //
+        // ⚠️ **A alternativa — um endpoint JSON próprio para o painel — foi CONSIDERADA e
+        // RECUSADA**, por três razões medidas:
+        //   (1) criaria uma **segunda verdade** sobre o view-model do painel, fora do payload que a
+        //       página já recebe;
+        //   (2) **COL-03 exige a oferta aberta na URL** de qualquer forma, então a ida ao servidor
+        //       **não é evitável**;
+        //   (3) ir ao servidor em cada ↑/↓ é **exatamente** o que resolve **COL-04**: a `versao`
+        //       volta fresca, e a tela não pode sobrescrever em silêncio uma oferta que mudou
+        //       debaixo de quem revisa.
+        // ➡️ **Sem esta razão escrita, o executor seguinte "otimiza" para JSON e perde a
+        // concorrência.** Está escrito para ser achado pelo grep, não por bisseção.
+        //
+        // ═══ ⚠️⚠️ O CUSTO É RECORTADO À OFERTA, NUNCA À FILA ═════════════════════════════════
+        //
+        // `PainelDeRevisaoService::para()` é chamado **UMA** vez, e **só** quando há `?oferta=`
+        // válido. Sem `?oferta=`, `painel` é `null` e **nenhuma** chamada extra ao Mercado Livre
+        // acontece — há gate com espião contando ZERO, com isca provando que o espião conta.
+        // ⚠️ Varrer a fila "para já deixar pronto" é a classe do incidente de **30/07/2026**, quando
+        // requisições lentas ocuparam os workers do php-fpm e **até o login parou**.
+        //
+        // ═══ ⚠️ A TRAVA DE CONTA, E POR QUE ELA É SILENCIOSA ════════════════════════════════
+        //
+        // ⚠️ `$ofertaEmFoco` é **REUSADO** (ver o bloco de `?oferta=` acima), com a guarda
+        // `is_string && ctype_digit && > 0` — **nunca `(int) $request->query()` cru**: `?oferta[]=x`
+        // entrega ARRAY e `(int) []` emite `Array to string conversion`, que já foi **500** nesta
+        // tela (T-180-04-T).
+        // ⚠️⚠️ **O recorte é `paraAConta()` + `where('id', …)`, e a MESMA porta que a tela usa para
+        // listar.** Id de **outra conta** cai em `null` **em silêncio** — e **nunca** 403, que
+        // confirmaria a existência da oferta alheia (T-188-10). Nenhum `in_array` sobre lista
+        // montada no PHP: a trava é a **consulta**.
+        //
+        // ⚠️ E a fronteira do critério 18 continua: o painel **APROVA** (e aprovar **ENFILEIRA**),
+        // **NÃO PUBLICA**. A escrita no Mercado Livre é da **Fase 193**.
+        $ofertaDoPainel = $ofertaEmFoco === null
+            ? null
+            : $fila->paraAConta($company->id, $mlbEmpresaId)
+                ->where('id', $ofertaEmFoco)
+                // ⚠️ As três relações que a identificação usa, por eager loading: sem elas o
+                // view-model faria quatro consultas só para produto, título e responsável.
+                ->with(['alvo', 'produto', 'responsavel', 'aprovadoPor'])
+                ->first();
+
+        // ⚠️ A navegação ↑/↓ recebe a **`$base`** — a conta mais os filtros, **menos a etapa** —,
+        // que é o MESMO recorte da faixa de 9 e do "PRÓXIMO A REVISAR". ➡️ É isso que impede o ↑/↓
+        // de pular para fora do recorte em que a pessoa está, e é por isso que o serviço recebe o
+        // Builder em vez de remontá-lo (remontar abriria uma segunda consulta livre para divergir).
+        $payload['painel'] = $ofertaDoPainel === null
+            ? null
+            : $painelDeRevisao->para($ofertaDoPainel, $base);
 
         return Inertia::render('Mlb/Publicador/Aprovacao', $payload);
     }

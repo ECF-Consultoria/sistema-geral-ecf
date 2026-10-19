@@ -834,8 +834,35 @@ class FechamentoDaFase186Test extends TestCase
         // ⚠️ `contagens-186-09.txt` foi **REMEDIDO** por causa desta mudança (ids `transversais` e
         // `andamento-um-lugar-so`). A Fase 186 está EM PRODUÇÃO: o número não foi "ajustado para
         // passar" — foi medido de novo, e as asserções novas só ACRESCENTAM prova.
+        //
+        // ═══ ⚠️⚠️ O SEGUNDO EXPOSITOR — plano 188-02 (19/10/2026), MESMA exceção, MESMA prova ═══
+        //
+        // `PainelDeRevisaoService` monta o view-model do painel de revisão e **EXPÕE** o andamento
+        // em **DOIS** lugares de SAÍDA: o **chip de identificação**
+        // (`'andamento' => ['chave' => (string) $oferta->andamento, 'rotulo' => $oferta->rotulo()]`)
+        // e a escolha do **motivo do rodapé** fora do `live` (os 5 textos de `Aprovacao.dc.html:1297`).
+        // Ele **LÊ** a coluna; **não escreve NADA** — nem `andamento`, nem `versao`, nem composição
+        // congelada. Quem move andamento continua sendo **só** `AndamentoDaOfertaService::mover()`.
+        //
+        // ⚠️ **MEDIDO antes de entrar na lista:** com o arquivo novo no disco e sem esta linha, este
+        // caso reprovava acusando-o em `$escritores` — `Tests: 1 failed (2 assertions)`, com a
+        // mensagem *"AND-09: a escrita de `andamento` passa SEMPRE pela única porta"*. ➡️ Era FALSO
+        // POSITIVO pela MESMA razão do primeiro expositor: a sonda larga casa `'andamento' =>` em
+        // **qualquer** array, inclusive no de SAÍDA, e o segundo filtro casa porque o serviço recebe
+        // um `PubAprovacaoOferta` por parâmetro — como tem de receber.
+        //
+        // ⚠️⚠️ **O QUE NÃO FOI FEITO, de novo:** renomear a chave de saída para fugir da sonda. O
+        // `.jsx` lê `andamento.chave` nos dois lugares (fila e painel), e dobrar a tela para o gate
+        // criaria DOIS nomes para o mesmo dado na MESMA tela. Enfraquecer a sonda ou tirar o alcance
+        // de `app/` inteiro também está fora.
+        //
+        // ⚠️ E o lado do PRÓPRIO plano 188-02 prova o mesmo invariante com uma sonda de escrita
+        // **mais larga** (ela inclui `save(` e `delete(`), em
+        // `PainelDeRevisaoServiceTest::test_territorio_e_ausencias_do_plano_188_02` — então o
+        // expositor é conferido pelos DOIS lados, não só por este `continue`.
         $expositores = [
             'app/Services/Publicador/Aprovacao/Fila/LinhaDaOfertaService.php',
+            'app/Services/Publicador/Aprovacao/Painel/PainelDeRevisaoService.php',
         ];
 
         // Sonda: a chave literal num array de update/create, ou a atribuição à propriedade.

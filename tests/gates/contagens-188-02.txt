@@ -92,3 +92,9 @@ pendencias-e-destinos  php  test_(os_NOVE_destinos_de_correcao_estao_resolvidos_
 rodape-e-aprovavel  php  test_(o_rodape_le_o_aprovavel_e_o_resumo_do_rodape_188_02|o_motivo_fora_do_live_tem_os_CINCO_textos_e_os_botoes_somem_188_02)  ::  tests=2 assertions=43
 cadeia-e-incompleto  php  test_a_cadeia_e_EXCLUSIVA_e_a_embalagem_nao_anula_mas_o_frete_anula_188_02  ::  tests=1 assertions=20
 navegacao-e-payload  php  test_(a_navegacao_pula_preparando_e_as_pontas_sao_nulas_188_02|o_payload_tem_todas_as_chaves_e_nenhuma_data_sai_como_objeto_188_02)  ::  tests=2 assertions=50
+
+# ─── Tarefa 2 — a prop `painel` na rota, o custo, o território e a bijeção ──────
+custo-do-painel  php  test_(CUSTO_para_e_chamado_UMA_vez_por_oferta_no_painel_188_02|sem_oferta_nenhuma_chamada_extra_ao_mercado_livre_188_02)  ::  tests=2 assertions=24
+painel-na-rota  php  test_(a_rota_monta_o_painel_so_com_oferta_valida_da_conta_188_02|os_quatro_casos_adversos_de_oferta_caem_em_nulo_sem_500_188_02)  ::  tests=2 assertions=41
+territorio-painel  php  test_territorio_e_ausencias_do_plano_188_02  ::  tests=1 assertions=42
+bijecao-manifesto-02  php  test_bijecao_do_manifesto_do_painel_188_02  ::  tests=1 assertions=22

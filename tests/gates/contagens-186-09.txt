@@ -35,7 +35,7 @@
 # lista constante (22 PHP + 3 JSX). Arquivo novo no portão NÃO entra na lista
 # sozinho (é ato deliberado), então o número só se move quando alguém o move de
 # propósito — e aí o diff é visível, que é o ponto.
-transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=257
+transversais  php  test_(a_lista_constante_do_fechamento_tem_cada_entrada_no_disco|os_dois_leitores_tiram_comentario_e_preservam_codigo_com_isca|destino_das_quatro_estruturas_nao_preenchidas_esta_declarado_com_isca_de_fase_inventada|as_quatro_estruturas_nao_preenchidas_nao_tem_escrita_com_isca_de_dois_lados|os_dois_eixos_nao_se_misturam_na_area_inteira_com_isca_nas_duas_direcoes|nenhuma_chave_inglesa_vai_a_tela_como_texto_so_o_lado_do_valor_com_isca|cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_todo_mapa|a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca|php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca|pub09_e_bloq09_a_ausencia_de_segundo_passo_na_forma_e_na_area_inteira|gate08_e_gate09_na_area_nova_lidos_sem_comentario_com_controle|os_nove_manifestos_nao_tem_homonimo_que_some_dois_arquivos)  ::  tests=12 assertions=258
 
 # ─── O lado do RENDER (HTML + o CSS construído) ────────────────────────────────
 # ⚠️ 8 dos 14 são "um `test()` por estado", de propósito: laço com 8 asserções
@@ -97,7 +97,44 @@ cor-nunca-sozinha  php  test_cor_nunca_e_o_unico_sinal_rotulo_e_cor_empatam_em_t
 #    atribuicao, acha o `update`, e **NAO** acusa a chave de SAIDA. As duas
 #    primeiras sao asercoes UNICAS coletando infratores, para a contagem nao
 #    crescer junto com a lista (a licao do 187-07).
-andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=19
+#
+# ---------------------------------------------------------------------------
+# ⚠️⚠️ REMEDIDO EM 19/10/2026 PELO PLANO 188-02: 19 -> 20 assercoes aqui, e
+#    257 -> 258 no composto `transversais`. ⚠️ A Fase 186 esta EM PRODUCAO e o
+#    numero NAO foi "ajustado para passar": foi MEDIDO de novo, uma invocacao por
+#    id, com o ANSI tirado antes de ler a linha `Tests:`.
+#
+#    O QUE MUDOU: entrou o SEGUNDO EXPOSITOR,
+#    `Aprovacao/Painel/PainelDeRevisaoService.php` (o view-model do painel de
+#    revisao simples, Fase 188). Ele EXPOE o andamento em DOIS lugares de SAIDA —
+#    o chip de identificacao (`'andamento' => ['chave' => (string) $oferta->andamento,
+#    'rotulo' => $oferta->rotulo()]`) e a escolha do motivo do rodape fora do
+#    `live` — e NAO escreve nada. A unica porta de escrita continua sendo
+#    `AndamentoDaOfertaService::mover()`.
+#
+#    ⚠️ MEDIDO ANTES de entrar na lista: com o arquivo no disco e sem a entrada,
+#    este caso REPROVAVA acusando-o em `$escritores` — `Tests: 1 failed
+#    (2 assertions)`, mensagem *"AND-09: a escrita de `andamento` passa SEMPRE pela
+#    unica porta"*. Era FALSO POSITIVO pela MESMA razao do primeiro expositor.
+#    ➡️ A excecao nao e declaracao: o proprio caso exige que o expositor CASE a
+#    sonda larga (senao e linha morta) e NAO tenha nenhuma forma de escrita.
+#
+#    ⚠️ O QUE **NAO** FOI FEITO, de novo: renomear a chave de saida para fugir da
+#    sonda (o `.jsx` le `andamento.chave` na fila E no painel; dobrar a tela para o
+#    gate criaria DOIS nomes para o mesmo dado na MESMA tela), enfraquecer a sonda,
+#    ou tirar o alcance de `app/` inteiro.
+#
+#    ⚠️ DE ONDE VEM O +1, exatamente: o laco de prova chama `$this->ler($rel)`, que
+#    tem um `assertFileExists` POR EXPOSITOR. ➡️ Esta UNICA assercao do gate cresce
+#    com o tamanho da lista — e isso e da familia `learnings §4b.2` ("contagem que
+#    depende de quantos itens existem"). NAO foi consertado aqui de proposito:
+#    consertar a FORMA de um gate da 186 EM PRODUCAO esta fora da unica excecao de
+#    territorio aberta a esta fase (entrar na lista COM PROVA e remedir). ⚠️ Fica
+#    REGISTRADO para o fechamento (plano 188-13) decidir: as DUAS assercoes de
+#    veredicto do laco ja sao unicas e coletam infratores; so o `assertFileExists`
+#    do leitor e por item.
+# ---------------------------------------------------------------------------
+andamento-um-lugar-so  php  test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca  ::  tests=1 assertions=20
 # (g) PHP × JSX em sincronia — e os DOIS LADOS existem
 sincronia-php-jsx  php  test_php_e_jsx_em_sincronia_nas_cinco_listas_lidas_dos_dois_lados_com_isca  ::  tests=1 assertions=29
 # (g2) a ausência de segundo passo — PUB-09 / BLOQ-09
