@@ -86,7 +86,8 @@ test('daUnidadeMl / numeroDoAtributo / unidadeInicial — o gravado volta na uni
 
 test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e termoNoTitulo reconhece', () => {
     assert.equal(juntarTermo('Cadeira Escritório', 'cadeira escritorio giratoria'), 'Cadeira Escritório giratoria');
-    assert.equal(juntarTermo('', 'cadeira gamer'), 'cadeira gamer');
+    // 19/10/2026: o título nasce com a 1ª letra maiúscula (lib/tituloDoProduto).
+    assert.equal(juntarTermo('', 'cadeira gamer'), 'Cadeira gamer');
     assert.equal(juntarTermo('Cadeira Gamer', 'cadeira gamer'), 'Cadeira Gamer');
     assert.equal(termoNoTitulo('Cadeira Escritório Giratória', 'cadeira giratoria'), true);
     assert.equal(termoNoTitulo('Cadeira Escritório', 'cadeira gamer'), false);
@@ -163,14 +164,19 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     const card = lerSemComentarios(`${BASE}/Mesa/EtapaProduto.jsx`);
     assert.match(card, /<TermosMaisBuscados /);
     assert.match(card, /m\.pedirPalavrasIa\(`titulo_\$\{lt\}`, \{ escolhidos \}\)/);
-    assert.match(card, /juntarTermo\(/);
+    // 19/10/2026: o clique alterna (acrescenta ou tira) e o painel é o mesmo do cadastro do Portal.
+    assert.match(card, /alternarTermo\(/);
     const painel = lerSemComentarios(`${BASE}/Mesa/TermosMaisBuscados.jsx`);
-    assert.match(painel, /t\.relacionado/);
     assert.match(painel, /m\.carregarTermos\(\)/);
-    assert.match(painel, /Ver também os que não citam o produto/);
+    assert.match(painel, /<TermosDaCategoria /);
+    const comum = lerSemComentarios('resources/js/Components/Titulo/TermosDaCategoria.jsx');
+    assert.match(comum, /x\.relacionado/);
+    // O filtro dos que citam o produto existe e começa DESLIGADO (todos à vista).
+    assert.match(comum, /Só os que citam o produto/);
+    assert.match(comum, /useState\(false\)/);
     // Categoria de nicho: os termos do nível de cima vêm num bloco à parte, com o nome dela (14/10/2026).
-    assert.match(painel, /t\.origem === 'acima'/);
-    assert.match(painel, /Da categoria acima · \{acima\.nome\}/);
+    assert.match(comum, /x\.origem === 'acima'/);
+    assert.match(comum, /Da categoria acima · \{acima\.nome\}/);
 });
 
 test('§4 — Variações: "Adicionar variação" à vista (Detalhes) e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {

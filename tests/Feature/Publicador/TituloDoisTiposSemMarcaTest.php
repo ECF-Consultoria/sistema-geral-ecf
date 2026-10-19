@@ -110,7 +110,8 @@ class TituloDoisTiposSemMarcaTest extends TestCase
         $titulos = $this->servico()->gerarTitulos($this->r->fresh());
 
         $this->assertSame('Puff Redondo Sala Banqueta', $titulos['gold_special']);
-        $this->assertSame('puff redondo banquetas sála', $titulos['gold_pro'], 'o produto principal fica no começo; troca a ordem das duas últimas');
+        // 19/10/2026: todo título sai com a 1ª letra maiúscula (o resto como a IA escreveu).
+        $this->assertSame('Puff redondo banquetas sála', $titulos['gold_pro'], 'o produto principal fica no começo; troca a ordem das duas últimas');
         $this->assertFalse(RegrasDoTitulo::mesmo($titulos['gold_special'], $titulos['gold_pro']));
     }
 

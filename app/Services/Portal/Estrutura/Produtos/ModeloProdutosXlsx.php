@@ -42,6 +42,7 @@ final class ModeloProdutosXlsx
         'Tipo de variação',
         'Variação',
         'Nome do produto*',
+        'Título',
         'Família (linha/coleção)',
         'Ambiente(s)',
         'Categoria',
@@ -58,7 +59,7 @@ final class ModeloProdutosXlsx
      * `eixo` é o "Tipo de variação" e `variacao` o nome dela ("Natural").
      */
     public const CAMPOS = [
-        'codigo', 'grupo', 'eixo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria',
+        'codigo', 'grupo', 'eixo', 'variacao', 'nome', 'titulo', 'familia', 'ambientes', 'categoria',
         'n_volumes', 'volumes_texto', 'peso_total', 'custo', 'estoque', 'descricao',
     ];
 
@@ -69,7 +70,7 @@ final class ModeloProdutosXlsx
     public const EXEMPLOS = [
         [
             'codigo' => 'EXEMPLO-1', 'grupo' => 'EXEMPLO', 'eixo' => 'Cor', 'variacao' => 'Natural',
-            'nome' => 'Mesa de exemplo', 'familia' => 'Linha Exemplo', 'ambientes' => 'Sala de Jantar / Sala de Estar',
+            'nome' => 'Mesa de exemplo', 'titulo' => 'Mesa de jantar retangular madeira 6 lugares', 'familia' => 'Linha Exemplo', 'ambientes' => 'Sala de Jantar / Sala de Estar',
             'categoria' => 'Mesa de jantar', 'n_volumes' => '2',
             'volumes_texto' => "120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5",
             'peso_total' => '33,5', 'custo' => '1.234,50', 'estoque' => '10',
@@ -77,7 +78,7 @@ final class ModeloProdutosXlsx
         ],
         [
             'codigo' => 'EXEMPLO-2', 'grupo' => 'EXEMPLO', 'eixo' => 'Cor', 'variacao' => 'Off White',
-            'nome' => 'Mesa de exemplo', 'familia' => 'Linha Exemplo', 'ambientes' => 'Sala de Jantar / Sala de Estar',
+            'nome' => 'Mesa de exemplo', 'titulo' => 'Mesa de jantar retangular madeira 6 lugares', 'familia' => 'Linha Exemplo', 'ambientes' => 'Sala de Jantar / Sala de Estar',
             'categoria' => 'Mesa de jantar', 'n_volumes' => '2',
             'volumes_texto' => "120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5",
             'peso_total' => '33,5', 'custo' => '1.234,50', 'estoque' => '0',
@@ -95,7 +96,7 @@ final class ModeloProdutosXlsx
         'volumes_texto' => "120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5", 'peso_total' => '33,5',
     ];
 
-    private const LARGURAS = [14, 18, 17, 18, 32, 24, 30, 24, 11, 42, 15, 13, 13, 60];
+    private const LARGURAS = [14, 18, 17, 18, 32, 40, 24, 30, 24, 11, 42, 15, 13, 13, 60];
 
     /** Colunas de código: formato texto para "0012" não virar 12 nem "1014" virar número. */
     private const COLUNAS_TEXTO = ['codigo', 'grupo', 'variacao'];
@@ -263,7 +264,8 @@ final class ModeloProdutosXlsx
             'Produto (grupo)*: o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as variações dele.',
             'Tipo de variação: '.self::emTexto(array_values(EstruturaProdutoVariacao::EIXOS)).'. Em branco quando o produto não tem variação.',
             'Variação: o nome da variação, como Natural ou Off White. Dê nome a cada variação (ex.: a cor) para elas ficarem juntas no mesmo produto.',
-            'Nome do produto*, Família, Ambiente(s), Categoria e Descrição são do produto: valem os da primeira linha dele.',
+            'Nome do produto*, Título, Família, Ambiente(s), Categoria e Descrição são do produto: valem os da primeira linha dele.',
+            'Título: como o produto aparece para quem procura, separado do nome. Até 60 caracteres na maioria das categorias. Pode deixar em branco e completar depois no cadastro.',
             'Família (linha/coleção): um nome só. Ambiente(s): separe vários com "/". O que ainda não existe é criado na lista.',
             'Categoria: o tipo do produto, como Mesa de jantar. Depois de enviar, você confirma a categoria de cada nome.',
             "Volumes: C\u{00D7}L\u{00D7}A \u{00B7} kg, uma caixa por vez, separadas por \"|\". Exemplo: 120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5. Escreva SEM MEDIDAS se ainda não tem as medidas.",

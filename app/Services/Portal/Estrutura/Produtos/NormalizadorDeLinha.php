@@ -3,6 +3,7 @@
 namespace App\Services\Portal\Estrutura\Produtos;
 
 use App\Models\EstruturaProdutoVariacao;
+use App\Support\TituloDoProduto;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -27,8 +28,12 @@ use InvalidArgumentException;
  * campo, FE-CR-03/BE-IN-05). Chave ausente = não mexer.
  * "SEM MEDIDAS" em `volumes_texto` é célula em branco, não "limpar" (BE-CR-02).
  *
- * Nomes lógicos em `presentes`: grupo, nome, eixo, valor, ordem, familia,
+ * Nomes lógicos em `presentes`: grupo, nome, titulo, eixo, valor, ordem, familia,
  * ambientes, categoria, volumes, custo, estoque, descricao.
+ *
+ * `titulo` é o título de venda, do PRODUTO (19/10/2026): separado do nome, com a 1ª
+ * letra maiúscula e os espaços repetidos juntados. Vazio não bloqueia (o produto fica
+ * pendente); o limite da categoria é conferido por quem grava, que conhece a categoria.
  *
  * `descricao` é do PRODUTO (a planilha de 09/10/2026 a traz; a ficha grava a
  * descrição pela rota própria e nunca a manda aqui). As quebras de linha do
@@ -38,6 +43,7 @@ final class NormalizadorDeLinha
 {
     private const MAX_CODIGO    = 120;
     private const MAX_NOME      = 255;
+    public const MAX_TITULO     = 255;
     private const MAX_GRUPO     = 120;
     /** Público (184-05): o tradutor do Bling corta o valor da variação pela mesma régua, em vez de duplicar o número. */
     public const MAX_VALOR      = 80;
@@ -68,6 +74,7 @@ final class NormalizadorDeLinha
             'grupo'           => null,
             'codigo'          => '',
             'nome'            => '',
+            'titulo'          => null,
             'eixo'            => null,
             'valor'           => null,
             'ordem'           => null,
@@ -105,6 +112,21 @@ final class NormalizadorDeLinha
         $campos['nome'] = $nome;
         if ($nome !== '') {
             $presentes[] = 'nome';
+        }
+
+        // ─── Título de venda (do produto; null explícito = limpar; ausente/'' = não mexi) ───
+        if (array_key_exists('titulo', $bruta)) {
+            if ($bruta['titulo'] === null) {
+                $presentes[] = 'titulo';
+            } elseif (is_scalar($bruta['titulo'])) {
+                $titulo = trim((string) preg_replace('/\s+/u', ' ', (string) $bruta['titulo']));
+                if (mb_strlen($titulo) > self::MAX_TITULO) {
+                    $erros['titulo'] = 'O título pode ter no máximo '.self::MAX_TITULO.' caracteres.';
+                } elseif ($titulo !== '') {
+                    $campos['titulo'] = TituloDoProduto::capitalizar($titulo);
+                    $presentes[] = 'titulo';
+                }
+            }
         }
 
         // ─── Grupo ───

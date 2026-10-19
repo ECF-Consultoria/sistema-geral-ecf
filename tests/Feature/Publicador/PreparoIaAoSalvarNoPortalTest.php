@@ -451,9 +451,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->rodar(GerarPreparoIaJob::class);
 
         $titulos = $this->titulos($r->fresh());
-        $this->assertSame('cadeira escritorio giratoria ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
+        // 19/10/2026: o título da equipe também se grava com a 1ª letra maiúscula (o resto como ela escreveu).
+        $this->assertSame('Cadeira escritorio giratoria ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
         $this->assertSame('Cadeira Escritório Ergonômica Giratória', $titulos['gold_special'], 'o Clássico não repete o Premium (nem por caixa, acento ou plural)');
-        $this->assertStringContainsString('cadeira escritorio giratoria ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
+        $this->assertStringContainsString('Cadeira escritorio giratoria ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
     }
 
     // ═══ Hash dos fatos ══════════════════════════════════════════════════════

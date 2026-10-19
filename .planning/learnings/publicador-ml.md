@@ -1570,3 +1570,11 @@ Relato do usuário: num teste a IA gerou a descrição com emoji, e o Mercado Li
   `Emojis::PICTOGRAMAS`.
 - **Título:** o da IA nunca teve como levar emoji (`RegrasDoTitulo::limpar` troca por espaço tudo que não é letra ou
   número). O digitado não passa por limpeza nenhuma.
+
+## 36. Título do cliente como planejado do Clássico e a 1ª letra maiúscula (19/10/2026)
+
+(§35 está reservado pelo commit local da planilha direta, `e87404db`, ainda fora do `main`.)
+Detalhes em `portal-do-cliente.md` §52. Para quem mexe no Publicador: o título planejado do Clássico agora pode vir do
+título de venda do Portal (`DadosEfetivosService::comTituloDoCadastro`); a IA nunca o sobrescreve e apaga o Clássico que
+ela mesma tinha escrito quando o cliente dá o título depois (`devolvidosAoPortal`); e todo título sai capitalizado pelo
+`Alvo` e pelo mutator de `PubRascunhoAlvo` — update por query precisa capitalizar à mão (`gravarTitulos`).

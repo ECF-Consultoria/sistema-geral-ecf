@@ -194,26 +194,11 @@ export const unidadeInicial = (valorMl, tipo) => {
 };
 
 // ── Termos mais buscados no título ──
+// As regras moram em lib/tituloDoProduto.js (19/10/2026): são as mesmas do cadastro do Portal.
+
+export { alternarTermo, juntarTermo, termoNoTitulo } from '../../lib/tituloDoProduto.js';
 
 const normalizar = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-
-/** As palavras do termo que o título ainda não tem, acrescentadas no fim (sem repetir palavra). */
-export function juntarTermo(titulo, termo) {
-    const atual = String(titulo ?? '').trim();
-    const tem = new Set(atual.split(/\s+/).filter(Boolean).map(normalizar));
-    const novas = String(termo ?? '').trim().split(/\s+/).filter((p) => p && ! tem.has(normalizar(p)));
-    if (novas.length === 0) return atual;
-
-    return [atual, ...novas].filter(Boolean).join(' ');
-}
-
-/** O termo já está inteiro no título? (para o chip aparecer marcado) */
-export const termoNoTitulo = (titulo, termo) => {
-    const tem = new Set(String(titulo ?? '').split(/\s+/).filter(Boolean).map(normalizar));
-    const palavras = String(termo ?? '').split(/\s+/).filter(Boolean);
-
-    return palavras.length > 0 && palavras.every((p) => tem.has(normalizar(p)));
-};
 
 // ── Modelo × título (08/10/2026) ──
 // O Modelo existe para expandir a busca: termo que só repete palavras do título

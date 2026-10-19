@@ -354,6 +354,7 @@ class ImportadorDoBlingTest extends TestCase
             app(\App\Services\Portal\Estrutura\Produtos\ProdutoLinhas::class),
             app(\App\Services\Portal\Estrutura\EstruturaOfertaService::class),
             app(\App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto::class),
+            app(\App\Services\Portal\Estrutura\Produtos\LimiteDoTitulo::class),
         ) extends ProdutoCadastroService {
             public int $chamadas = 0;
 

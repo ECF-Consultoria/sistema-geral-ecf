@@ -321,6 +321,7 @@ class ImportadorProdutos
             }
 
             $this->descricaoNaPrimeiraLinha($validas, $indices, $rotulo, $plano['avisos']);
+            $this->tituloNaPrimeiraLinha($validas, $indices, $rotulo, $plano['avisos']);
             $this->categoriaDoProduto($validas, $indices, $existente, $confirmadas, $categorias, $plano['confirmadas_refs']);
 
             foreach ($this->variacoesSeparadas($validas, $indices, $existente ? ($variacoesDoProduto[$existente->id] ?? []) : []) as $problema) {
@@ -404,11 +405,34 @@ class ImportadorProdutos
      */
     private function descricaoNaPrimeiraLinha(array &$validas, array $indices, string $rotulo, array &$avisos): void
     {
+        $this->doProdutoNaPrimeiraLinha($validas, $indices, 'descricao', "Produto (grupo) {$rotulo}: descrições diferentes, usamos a da linha %d.", $avisos);
+    }
+
+    /**
+     * O título de venda é do produto, como a descrição (19/10/2026): o primeiro que vier nas linhas
+     * dele vai para a 1ª linha. Sem título nenhum o produto entra assim mesmo (fica pendente).
+     *
+     * @param  list<int>  $indices
+     */
+    private function tituloNaPrimeiraLinha(array &$validas, array $indices, string $rotulo, array &$avisos): void
+    {
+        $this->doProdutoNaPrimeiraLinha($validas, $indices, 'titulo', "Produto (grupo) {$rotulo}: títulos diferentes, usamos o da linha %d.", $avisos);
+    }
+
+    /**
+     * Campo do PRODUTO numa planilha de uma linha por variação: o primeiro valor que aparecer nas
+     * linhas do produto vai para a 1ª linha e sai das outras. Valores diferentes: vale o primeiro,
+     * com o aviso (`%d` = a linha de onde ele veio).
+     *
+     * @param  list<int>  $indices
+     */
+    private function doProdutoNaPrimeiraLinha(array &$validas, array $indices, string $campo, string $avisoDiferentes, array &$avisos): void
+    {
         $escolhida = null;
         $deOnde = null;
         $diferentes = false;
         foreach ($indices as $i) {
-            $texto = in_array('descricao', $validas[$i]['presentes'], true) ? $validas[$i]['campos']['descricao'] : null;
+            $texto = in_array($campo, $validas[$i]['presentes'], true) ? $validas[$i]['campos'][$campo] : null;
             if ($texto === null) {
                 continue;
             }
@@ -420,18 +444,18 @@ class ImportadorProdutos
         }
 
         foreach ($indices as $i) {
-            unset($validas[$i]['bruta']['descricao']);
-            $validas[$i]['campos']['descricao'] = null;
-            $validas[$i]['presentes'] = array_values(array_diff($validas[$i]['presentes'], ['descricao']));
+            unset($validas[$i]['bruta'][$campo]);
+            $validas[$i]['campos'][$campo] = null;
+            $validas[$i]['presentes'] = array_values(array_diff($validas[$i]['presentes'], [$campo]));
         }
         if ($escolhida !== null) {
             $p = $indices[0];
-            $validas[$p]['bruta']['descricao'] = $escolhida;
-            $validas[$p]['campos']['descricao'] = $escolhida;
-            $validas[$p]['presentes'][] = 'descricao';
+            $validas[$p]['bruta'][$campo] = $escolhida;
+            $validas[$p]['campos'][$campo] = $escolhida;
+            $validas[$p]['presentes'][] = $campo;
         }
         if ($diferentes) {
-            $avisos[] = "Produto (grupo) {$rotulo}: descrições diferentes, usamos a da linha {$deOnde}.";
+            $avisos[] = sprintf($avisoDiferentes, $deOnde);
         }
     }
 
@@ -600,7 +624,9 @@ class ImportadorProdutos
     {
         $comparavel = fn (mixed $v) => trim((string) preg_replace('/\s+/u', ' ', is_scalar($v) ? (string) $v : ''));
 
-        foreach ([...ModeloProdutosXlsx::EXEMPLOS, ModeloProdutosXlsx::EXEMPLO_ANTIGO] as $exemplo) {
+        // O modelo baixado antes de 19/10/2026 traz os mesmos exemplos sem a coluna Título.
+        $semTitulo = array_map(fn (array $e) => array_diff_key($e, ['titulo' => true]), ModeloProdutosXlsx::EXEMPLOS);
+        foreach ([...ModeloProdutosXlsx::EXEMPLOS, ...$semTitulo, ModeloProdutosXlsx::EXEMPLO_ANTIGO] as $exemplo) {
             $igual = true;
             foreach (array_unique([...array_keys($exemplo), ...array_keys($bruta)]) as $campo) {
                 if ($comparavel($bruta[$campo] ?? null) !== $comparavel($exemplo[$campo] ?? null)) {
@@ -719,6 +745,10 @@ class ImportadorProdutos
 
         if ($tem('nome') && $produto->nome !== $campos['nome']) {
             $mudou[] = 'nome';
+        }
+
+        if ($tem('titulo') && (string) $produto->titulo !== (string) $campos['titulo']) {
+            $mudou[] = 'título';
         }
 
         if ($tem('familia')

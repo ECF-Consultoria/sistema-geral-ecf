@@ -174,14 +174,16 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(35, $achadas); // 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
+        $this->assertSame(36, $achadas); // 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
     {
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
-        $this->assertCount(27, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        $this->assertCount(28, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        // 19/10/2026 — os termos e o limite do título de venda.
+        $this->assertContains('portal/estrutura/produtos/termos-titulo', $permitido);
         // 13/10/2026 — o modelo completo da planilha.
         $this->assertContains('portal/estrutura/produtos/modelo-completo', $permitido);
         $this->assertContains('portal/estrutura/produtos/exportar-completo', $permitido);

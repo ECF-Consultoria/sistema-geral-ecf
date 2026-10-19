@@ -121,6 +121,8 @@ return [
     */
     'portal_campos' => [
         'nome' => 'O nome do produto como você o chama no dia a dia. Vale para todas as variações.',
+        // 19/10/2026: o título de venda, separado do nome.
+        'titulo' => 'Como o produto aparece para quem procura. Comece pelo que o produto é e use os termos mais buscados da categoria. O limite de caracteres é o da categoria.',
         'familia' => 'Família é a linha de design (ex.: Farmhouse), não a cor do produto. Junta produtos que combinam entre si.',
         'ambientes' => 'Onde o produto costuma ser usado (sala, quarto, escritório…). Pode escolher mais de um.',
         'categoria' => 'O tipo do produto. É a categoria que define quais características aparecem na ficha técnica.',

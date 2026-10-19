@@ -206,8 +206,10 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame('Produto (grupo)*', $cabecalhos[0]);
         $this->assertNotContains('Categoria', $cabecalhos);
         // As medidas vêm em colunas separadas, quatro por volume, e não mais no texto "C×L×A · kg".
-        $this->assertSame(['Volume 1: comprimento (cm)', 'Volume 1: largura (cm)', 'Volume 1: altura (cm)', 'Volume 1: peso (kg)', 'Volume 2: comprimento (cm)'], array_slice($cabecalhos, 7, 5));
-        $this->assertSame(7 + 4 * ModeloCompleto::VOLUMES_NO_MODELO + 3, count($doProduto));
+        $this->assertSame(['Volume 1: comprimento (cm)', 'Volume 1: largura (cm)', 'Volume 1: altura (cm)', 'Volume 1: peso (kg)', 'Volume 2: comprimento (cm)'], array_slice($cabecalhos, 8, 5));
+        // 19/10/2026: 8 colunas antes das medidas (o Título entrou depois do nome).
+        $this->assertSame(8 + 4 * ModeloCompleto::VOLUMES_NO_MODELO + 3, count($doProduto));
+        $this->assertSame('Título', $cabecalhos[array_search('Nome do produto*', $cabecalhos, true) + 1]);
         foreach ($cabecalhos as $titulo) {
             $this->assertStringNotContainsString("\u{00D7}", $titulo, 'nenhum cabeçalho pede medidas juntas numa célula');
         }

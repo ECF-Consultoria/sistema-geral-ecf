@@ -103,6 +103,7 @@ class ProdutoCadastroService
         private ProdutoLinhas $linhas,
         private EstruturaOfertaService $ofertas,
         private DescricaoDoProduto $descricao,
+        private LimiteDoTitulo $limiteDoTitulo,
     ) {}
 
     /** Forma usada para comparar códigos: sem caixa, acento nem espaço nas pontas. */
@@ -742,6 +743,22 @@ class ProdutoCadastroService
             $mudouDescricao = $produto->descricao !== $antes;
         }
 
+        // ─── Título de venda: do produto, só a 1ª linha dele (19/10/2026) ───
+        // Separado de `mudouProduto` (como a descrição): o título não muda o nome das ofertas. Vazio
+        // não bloqueia — o produto fica pendente. Acima do limite da categoria, a linha é recusada;
+        // vale também quando só a categoria mudou e o título que já existia passou a não caber.
+        $mudouTitulo = false;
+        if ($primeiraDoProduto && in_array('titulo', $presentes, true)) {
+            $produto->titulo = $campos['titulo'];
+        }
+        if ($primeiraDoProduto && (in_array('titulo', $presentes, true) || in_array('categoria', $presentes, true))) {
+            $this->limiteDoTitulo->conferir($produto->titulo, $produto->categoria_ml_id);
+        }
+        if ($produto->isDirty('titulo')) {
+            $produto->save();
+            $mudouTitulo = true;
+        }
+
         // ─── Variação ───
         $variacaoNova = $variacao === null;
         $mudouVariacao = false;
@@ -839,7 +856,7 @@ class ProdutoCadastroService
             $this->sincronizarOferta($empresa, $produto, $variacao, $ator, $skus, $agendarPreparo);
         }
 
-        $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao || $mudouDescricao) ? 'atualizadas' : 'sem_mudanca');
+        $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao || $mudouDescricao || $mudouTitulo) ? 'atualizadas' : 'sem_mudanca');
 
         return [
             'resultado'          => $resultado,
@@ -854,6 +871,7 @@ class ProdutoCadastroService
                 'ambientes' => in_array('ambientes', $presentes, true) ? $campos['ambientes'] : null,
                 'categoria' => in_array('categoria', $presentes, true) ? ($campos['categoria_ml_id'] ?? $campos['categoria_texto'] ?? '') : null,
                 'descricao' => in_array('descricao', $presentes, true) ? $campos['descricao'] : null,
+                'titulo'    => in_array('titulo', $presentes, true) ? $campos['titulo'] : null,
             ],
             'categorias'         => $categorias,
             // Mapas das listas com o que esta linha criou: só passam a valer se a linha gravar.
@@ -950,6 +968,10 @@ class ProdutoCadastroService
         if (in_array('descricao', $presentes, true) && ($primeira['descricao'] ?? null) !== null
             && (string) $campos['descricao'] !== (string) $primeira['descricao']) {
             $diverge('a descrição');
+        }
+        if (in_array('titulo', $presentes, true) && ($primeira['titulo'] ?? null) !== null
+            && (string) $campos['titulo'] !== (string) $primeira['titulo']) {
+            $diverge('o título');
         }
 
         return $avisos;

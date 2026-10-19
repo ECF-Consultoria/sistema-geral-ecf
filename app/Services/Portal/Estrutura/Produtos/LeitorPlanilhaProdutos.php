@@ -73,7 +73,7 @@ final class LeitorPlanilhaProdutos
      * estoque também: o Excel guarda 10 como 10.0, e o normalizador só aceita o inteiro em texto
      * ("10"); 2,5 vira "2.5" e cai na mensagem de unidades inteiras.
      */
-    private const TEXTUAIS = ['codigo', 'grupo', 'eixo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria', 'volumes_texto', 'estoque', 'descricao'];
+    private const TEXTUAIS = ['codigo', 'grupo', 'eixo', 'variacao', 'nome', 'titulo', 'familia', 'ambientes', 'categoria', 'volumes_texto', 'estoque', 'descricao'];
 
     /** Chaves da célula com fórmula na matriz: o texto da fórmula e o valor em cache. */
     private const FORMULA = 'f';
@@ -413,6 +413,8 @@ final class LeitorPlanilhaProdutos
             str_starts_with($t, 'custo') => 'custo',
             str_starts_with($t, 'estoque') => 'estoque',
             str_starts_with($t, 'descricao') => 'descricao',
+            // 19/10/2026: o título de venda, coluna separada do nome do produto.
+            str_starts_with($t, 'titulo') => 'titulo',
             default => null,
         };
     }

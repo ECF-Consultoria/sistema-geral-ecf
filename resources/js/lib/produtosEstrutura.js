@@ -162,6 +162,7 @@ export function linhaDoServidor(linha, rotulos = {}) {
         ...linha,
         _k: `v${linha.id}`,
         familia: linha.familia ?? '',
+        titulo: linha.titulo ?? '',
         eixo_rotulo: linha.eixo_rotulo ?? '',
         valor: linha.valor ?? '',
         categoria: linha.categoria_ml_nome ?? linha.categoria_ml_id ?? '',
@@ -177,7 +178,7 @@ export function linhaDoServidor(linha, rotulos = {}) {
     return pronta;
 }
 
-const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'eixo_rotulo', 'valor', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo', 'estoque'];
+const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'titulo', 'eixo_rotulo', 'valor', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo', 'estoque'];
 
 /** Os campos que a pessoa pode alterar numa linha, para comparar antes/depois. */
 export function campoEditaveis(row) {
@@ -218,6 +219,10 @@ export function linhaParaServidor(row) {
 
     if (alterou('valor') && ! vazio('valor')) out.valor = row.valor;
     else if (limpou('valor')) out.valor = null;
+
+    // Título de venda (19/10/2026): do produto, como a família — esvaziar o que o servidor tinha vai null (limpar).
+    if (alterou('titulo') && ! vazio('titulo')) out.titulo = String(row.titulo).trim();
+    else if (limpou('titulo')) out.titulo = null;
 
     // "Sem família" no picker esvazia o campo: com retrato do servidor, vai null (limpar; FE-IN-12).
     if (alterou('familia') && ! vazio('familia')) out.familia = row.familia;

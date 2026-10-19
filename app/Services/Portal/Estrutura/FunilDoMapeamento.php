@@ -110,6 +110,7 @@ class FunilDoMapeamento
                     'volumes'         => $volumes,
                     'custo'           => $v->custo,
                     'categoria_ml_id' => $p->categoria_ml_id,
+                    'titulo'          => $p->titulo,
                     'familia'         => $p->familia?->nome,
                     'ambientes'       => $p->ambientes->pluck('nome')->all(),
                     'logistica'       => LogisticaProduto::daVolumes($volumes, $modalidade)['logistica'],

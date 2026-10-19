@@ -25,6 +25,7 @@ use App\Services\Portal\Estrutura\Produtos\PlanilhaDosProdutos;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Services\Portal\Estrutura\Produtos\SugestaoDeCategoriaPorNome;
+use App\Services\Portal\Estrutura\Produtos\TituloDeVendaService;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
 use App\Services\Publicador\CategoriaBuscaService;
@@ -465,6 +466,22 @@ class PortalEstruturaProdutosController extends Controller
         }
 
         return response()->json(['categorias' => $categorias, 'indisponivel' => $categorias === []]);
+    }
+
+    /**
+     * Título de venda da ficha (19/10/2026): os termos mais buscados da categoria escolhida e o limite
+     * de caracteres do título. O nome do produto só marca os termos que o citam. Lista indisponível
+     * responde 200 com `indisponivel` (a ficha deixa digitar o título à mão), nunca erro; e nada da
+     * resposta cita a plataforma (`TituloDeVendaService`).
+     */
+    public function termosDoTitulo(Request $request, TituloDeVendaService $titulo)
+    {
+        $dados = $request->validate([
+            'categoria' => ['required', 'string', 'regex:/^MLB[0-9]+$/'],
+            'nome' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        return response()->json($titulo->termos($dados['categoria'], trim((string) ($dados['nome'] ?? ''))));
     }
 
     /**

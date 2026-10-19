@@ -89,6 +89,7 @@ class PlanilhaDosProdutos
                     'eixo'      => $variacao->eixo ? (string) (EstruturaProdutoVariacao::EIXOS[$variacao->eixo] ?? '') : '',
                     'variacao'  => (string) $variacao->valor,
                     'nome'      => (string) $produto->nome,
+                    'titulo'    => (string) $produto->titulo,
                     'familia'   => (string) $produto->familia?->nome,
                     'ambientes' => $ambientes,
                     'categoria' => $categoria,

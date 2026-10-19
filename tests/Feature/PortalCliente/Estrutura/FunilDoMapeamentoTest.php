@@ -87,7 +87,8 @@ class FunilDoMapeamentoTest extends TestCase
 
         // Todos com categoria (a do catálogo sintético é só texto): sobram o banco sem medidas, a cadeira sem
         // família e o que vai por transportadora sem frete — os mesmos da tela de Produtos.
-        EstruturaProduto::where('company_id', $empresa->id)->update(['categoria_ml_id' => 'MLB0000']);
+        // 19/10/2026: título de venda também (sem ele o produto é pendente desde então).
+        EstruturaProduto::where('company_id', $empresa->id)->update(['categoria_ml_id' => 'MLB0000', 'titulo' => 'Título de venda']);
         $f = $this->funil($empresa)['produtos'];
         $this->assertSame(10, $f['total']);
         $semFicha = $daTelaDeProdutos();

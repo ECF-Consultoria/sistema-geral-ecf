@@ -15,6 +15,7 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use App\Support\TituloDoProduto;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -178,8 +179,9 @@ class RascunhoRepository
     {
         DB::transaction(function () use ($r, $porTipo) {
             foreach ($porTipo as $tipo => $titulo) {
+                // Update pela query não passa pelo model: a 1ª letra maiúscula (19/10/2026) vai explícita.
                 $r->alvos()->where('listing_type_id', $tipo)->update([
-                    'titulo' => trim((string) $titulo) === '' ? null : mb_substr(trim((string) $titulo), 0, 255),
+                    'titulo' => trim((string) $titulo) === '' ? null : TituloDoProduto::capitalizar(mb_substr(trim((string) $titulo), 0, 255)),
                 ]);
             }
         });
