@@ -1168,14 +1168,15 @@ class PainelDeRevisaoServiceTest extends TestCase
         $this->assertSame(['chave', 'texto', 'correcao', 'severidade', 'glifo', 'destino'], array_keys($vm['pendencias'][0]));
 
         // ⚠️⚠️ `fotos` e `preco` NASCERAM `null`, **declaradas** com o plano dono no docblock —
-        // **nunca ausentes**. ⚠️ **`fotos` FOI PREENCHIDA pelo plano 188-03** (`FotosDoPainelService`),
-        // e esta linha foi atualizada pela wave 3: a asserção antiga (`assertNull($vm['fotos'])`)
-        // **reprovava pelo próprio conserto** — ela media *"o dono ainda não chegou"*, que é uma
-        // medição DATADA, não invariante. ⚠️ **A contagem de asserções deste caso não mudou**
-        // (uma asserção virou uma), então `contagens-188-02.txt` continua valendo sem retoque.
-        // ⚠️ `preco` continua `null`: ela é do plano **188-04**.
+        // **nunca ausentes**. ⚠️ **AS DUAS JÁ ESTÃO PREENCHIDAS** (`fotos` pelo plano 188-03 com
+        // `FotosDoPainelService`, `preco` pelo plano 188-04 com `PrecoDoPainelService`), e as duas
+        // linhas foram atualizadas pelas waves donas: as asserções antigas (`assertNull(...)`)
+        // **reprovavam pelo próprio conserto** — elas mediam *"o dono ainda não chegou"*, que é uma
+        // medição DATADA, não invariante. ⚠️ **A contagem de asserções deste caso NÃO mudou** (cada
+        // asserção virou uma asserção), então `contagens-188-02.txt` continua valendo sem retoque —
+        // e isso foi **remedido** pela wave 188-04, não presumido.
         $this->assertIsArray($vm['fotos'], '`fotos` é do plano 188-03 e já está preenchida');
-        $this->assertNull($vm['preco'], '`preco` é do plano 188-04 e nasce null, declarada');
+        $this->assertIsArray($vm['preco'], '`preco` é do plano 188-04 e já está preenchida');
         $this->assertTrue(array_key_exists('fotos', $vm) && array_key_exists('preco', $vm), 'chave nula ≠ chave ausente');
 
         // ⚠️⚠️ **COL-06 — NENHUMA data sai como objeto.** UMA asserção coletando os infratores.
@@ -1260,15 +1261,17 @@ class PainelDeRevisaoServiceTest extends TestCase
             }
         };
 
-        // ⚠️ O **QUARTO** argumento (`FotosDoPainelService`, plano 188-03) é obrigatório, e a razão
-        // está no docblock do construtor: com default o container devolveria o DEFAULT
-        // (`Container.php:1327`-`:1331`) e a coluna de fotos sairia de um `app()` por chamada.
+        // ⚠️ O **QUARTO** argumento (`FotosDoPainelService`, plano 188-03) e o **QUINTO**
+        // (`PrecoDoPainelService`, plano 188-04) são obrigatórios, e a razão está no docblock do
+        // construtor: com default o container devolveria o DEFAULT (`Container.php:1327`-`:1331`)
+        // e a coluna sairia de um `app()` por chamada — service locator disfarçado de injeção.
         // ⚠️ Isto NÃO muda a contagem de asserções deste caso — `contagens-188-02.txt` segue igual.
         $servico = new PainelDeRevisaoService(
             $espiao,
             app(ProximoARevisarService::class),
             app(AndamentoDaOfertaService::class),
             app(\App\Services\Publicador\Aprovacao\Painel\FotosDoPainelService::class),
+            app(\App\Services\Publicador\Aprovacao\Painel\PrecoDoPainelService::class),
         );
 
         $ofertas = [];

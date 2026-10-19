@@ -107,9 +107,10 @@ use Illuminate\Database\Eloquent\Builder;
  * - **`fotos`** → preenchida pelo plano **188-03** (a coluna de fotos e a URL da miniatura);
  * - **`preco`** → preenchida pelo plano **188-04** (a coluna de preço e resultado).
  *
- * ⚠️ As duas chaves **EXISTEM desde já, com valor `null`** — **nunca ausentes**. Chave ausente e
- * chave nula são casos **diferentes** no cliente, e foi chave ausente que derrubou a página em
- * 07/10/2026.
+ * ⚠️ As duas chaves **EXISTEM desde já** — **nunca ausentes**. Chave ausente e chave nula são casos
+ * **diferentes** no cliente, e foi chave ausente que derrubou a página em 07/10/2026.
+ * ⚠️ **AS DUAS JÁ ESTÃO PREENCHIDAS** (188-03 e 188-04): este bloco fica como registro de quem é
+ * dono de cada coluna, porque é por ele que a próxima pessoa sabe **onde** mexer.
  *
  * ═══ ⚠️ CUSTO: UMA leitura de bloqueios por oferta, e NENHUMA fora do `?oferta=` ════════════════
  *
@@ -237,14 +238,22 @@ class PainelDeRevisaoService
      *
      * ➡️ O conserto certo foi o **argumento obrigatório** aqui + a chamada do gate de custo do
      * 188-02 passando o quarto argumento (uma linha, **sem mudar a contagem de asserções** daquele
-     * manifesto). **Há gate travando as duas pontas** (o construtor tem 4 parâmetros obrigatórios
-     * **e** o container injeta a instância real).
+     * manifesto). **Há gate travando as duas pontas** (o construtor tem 5 parâmetros obrigatórios
+     * **e** o container injeta as instâncias reais).
+     *
+     * ⚠️⚠️ **`$preco` (plano 188-04) entrou pela MESMA razão e com a MESMA forma: OBRIGATÓRIO.**
+     * Dar-lhe default repetiria o defeito medido acima — o container devolveria o **DEFAULT**
+     * (`Container.php:1327`-`:1331`) e a coluna de preço sairia de um `app()` por chamada. ➡️ As
+     * **duas** construções manuais que existem na suíte foram atualizadas para passar o quinto
+     * argumento (`PainelDeRevisaoServiceTest:1267` e `PainelDaOfertaRotaTest:198`), **sem mudar a
+     * contagem de asserções de nenhum id do `contagens-188-02.txt`**.
      */
     public function __construct(
         private BloqueiosDaOfertaService $bloqueios,
         private ProximoARevisarService $proximo,
         private AndamentoDaOfertaService $andamento,
         private FotosDoPainelService $fotos,
+        private PrecoDoPainelService $preco,
     ) {}
 
     /**
@@ -267,7 +276,7 @@ class PainelDeRevisaoService
      *     pendencias: list<array{chave: string, texto: string, correcao: ?string, severidade: string, glifo: string, destino: ?array}>,
      *     rodape: array{aprovavel: bool, motivo: string, motivo_cor: string, botoes: array{salvar: bool, ajustes: bool, aprovar: bool, proximo: bool}},
      *     fotos: array{progresso: string, progresso_cor: string, total: int, aprovadas: int, pendentes: int, com_alerta: int, com_alerta_restantes: int, nota_de_conjunto: ?string, imagens: list<array<string, mixed>>, selecionada: ?array<string, mixed>, selecionada_indice: ?int, sem_alerta: array{quantidade: int, rotulo: string}|null},
-     *     preco: null
+     *     preco: array<string, mixed>
      * }
      */
     public function para(PubAprovacaoOferta $oferta, Builder $base): array
@@ -299,8 +308,15 @@ class PainelDeRevisaoService
             // ⚠️ `contagemDeFotos()` **não** chama `para()` — ele lê o banco. O gate de custo do
             // 188-02 (`para()` UMA vez por oferta) continua valendo, e há caso provando isso.
             'fotos' => $this->fotos->para($oferta),
-            // ⚠️ NASCE `null`, DECLARADA, com o plano dono — nunca ausente. Ver o docblock.
-            'preco' => null,   // plano 188-04
+            // ⚠️⚠️ A COLUNA DE PREÇO — plano 188-04. Ela recebe a **composição que a leitura acima
+            // JÁ carregou** (`$leitura['composicao']`), e isso é o que mantém o gate de custo do
+            // 188-02 (`BloqueiosDaOfertaService::para()` UMA vez por oferta) de pé: pedir a
+            // composição de novo lá dentro dobraria a consulta a `/sites/MLB/listing_prices`
+            // **dentro da requisição** — a classe do incidente de 30/07/2026, em que requisições
+            // lentas ocuparam os workers do php-fpm e até o login parou.
+            // ⚠️ `PrecoDoPainelService` **só LÊ**: a simulação nunca é persistida nem enviada ao
+            // ML, e a ESCRITA do preço salvo é do plano 188-06.
+            'preco' => $this->preco->para($oferta, $leitura['composicao']),
         ];
     }
 

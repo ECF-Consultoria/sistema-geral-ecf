@@ -1260,18 +1260,40 @@ class FotosDoPainelServiceTest extends TestCase
         $this->assertSame($umaSo, $doze, 'o custo CRESCEU com o número de imagens/grupos — é o N+1 de T-188-23');
 
         // ─── ⚠️⚠️ A INJEÇÃO DO PAINEL: OBRIGATÓRIA, E O DEFAULT **NÃO SERVIRIA** ───────────
+        //
+        // ⚠️⚠️ **CIRURGIA DA WAVE 188-04, e a razão é a régua, não conveniência.** A redação
+        // original era `assertCount(4, $parametros)` + `$parametros[3]` — ou seja, uma asserção
+        // **de CONTAGEM e de POSIÇÃO**. Mas o invariante não é *"o construtor tem exatamente 4
+        // dependências"*: cada wave seguinte do painel acrescenta a SUA coluna como argumento
+        // OBRIGATÓRIO (é o conserto que esta própria wave 3 mediu e declarou). ➡️ A contagem
+        // **muda quando o trabalho certo é feito**, e número assim faz o executor seguinte
+        // *"ajustá-lo para passar"* — é o `feedback_gate_que_reprova_pelo_proprio_conserto`.
+        // ⚠️ **MEDIDO:** com a 5ª dependência (`PrecoDoPainelService`, plano 188-04) este caso
+        // reprovou com *"o construtor do painel ganhou ou perdeu dependência"*, e o conserto certo
+        // era **deste lado**, não do lado da 188-04 (o briefing dela PRESCREVE o argumento
+        // obrigatório).
+        // ➡️ Agora a âncora é **NOME + TIPO**, que é o invariante de verdade: `fotos` é dependência
+        // do construtor, é do tipo certo, **não tem default** e **não é anulável**.
+        // ⚠️ **A CONTAGEM DE ASSERÇÕES DESTE CASO NÃO MUDOU** (duas asserções viraram duas), então
+        // `contagens-188-03.txt` segue valendo — e isso foi **REMEDIDO**, não presumido.
         $reflexao = new \ReflectionClass(\App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService::class);
         $parametros = $reflexao->getConstructor()?->getParameters() ?? [];
-        $this->assertCount(4, $parametros, 'o construtor do painel ganhou ou perdeu dependência');
-        $this->assertSame('fotos', $parametros[3]->getName());
+        $porNome = [];
+        foreach ($parametros as $p) {
+            // ⚠️ Flag DENTRO do laço.
+            $porNome[$p->getName()] = $p;
+        }
+        $this->assertArrayHasKey('fotos', $porNome, '`fotos` deixou de ser dependência do construtor do painel');
+        $oFotos = $porNome['fotos'];
+        $this->assertSame(FotosDoPainelService::class, $oFotos->getType()?->getName(), '`fotos` mudou de tipo');
 
         // ⚠️⚠️ **O INVARIANTE É "SEM DEFAULT", e ele não é estilo:** com default o container
         // devolveria o DEFAULT (`Container.php:1327`-`:1331`) e a injeção seria uma ILUSÃO.
         $this->assertFalse(
-            $parametros[3]->isDefaultValueAvailable(),
-            'o 4º parâmetro ganhou default: o container passaria a devolver o DEFAULT e `FotosDoPainelService` nunca seria injetado',
+            $oFotos->isDefaultValueAvailable(),
+            '`fotos` ganhou default: o container passaria a devolver o DEFAULT e `FotosDoPainelService` nunca seria injetado',
         );
-        $this->assertFalse($parametros[3]->allowsNull(), '`fotos` anulável esconderia a mesma falha');
+        $this->assertFalse($oFotos->allowsNull(), '`fotos` anulável esconderia a mesma falha');
 
         // (a) O container injeta a instância REAL.
         $propriedade = $reflexao->getProperty('fotos');
