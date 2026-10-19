@@ -184,6 +184,15 @@ export const estadoDaConferencia = ({ conf = null, aguardando = null, sujo = fal
 };
 
 /**
+ * A conferência pedida já chegou: o estado lido traz uma conferência diferente da que havia no clique.
+ * "Nenhuma conferência" é `null` dos dois lados. O servidor manda a chave nula ou ausente
+ * (`undefined`), e `undefined !== null` encerrava a espera na 1ª leitura da 1ª conferência do
+ * produto, antes de o job gravar o resultado: a tela ficava em "Ainda não conferido", sem a
+ * caixa "Li os avisos", até recarregar (19/10/2026).
+ */
+export const conferenciaChegou = (aguardando, estado) => (estado?.conferencia?.id ?? null) !== (aguardando?.conferencia ?? null);
+
+/**
  * As pendências da conferência que ainda vale, com a origem (WR-F07). Em conta liberada
  * a conferência é a do Mercado Livre (camada L3), mas ela pode parar ANTES do `validate`
  * num bloqueio da ficha (camada L2, recalculado com a conta e os condicionais lidos na

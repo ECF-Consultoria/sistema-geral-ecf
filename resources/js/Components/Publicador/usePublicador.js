@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema, valorVazio } from './apoio.js';
 import {
-    contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, mesclarAlvos,
+    conferenciaChegou, contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, mesclarAlvos,
     mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar,
     resumoDoLancamento, semRepetir, textoDaConferencia, totalDeAnuncios,
 } from './derivados.js';
@@ -397,7 +397,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
                 setEstado(data);
-                if (aguardando.tipo === 'conferencia' && data.conferencia?.id !== aguardando.conferencia) setAguardando(null);
+                if (aguardando.tipo === 'conferencia' && conferenciaChegou(aguardando, data)) setAguardando(null);
                 if (aguardando.tipo === 'publicacao' && data.publicacao?.status !== 'RUNNING') {
                     setAguardando(null);
                     onPublicou?.();
