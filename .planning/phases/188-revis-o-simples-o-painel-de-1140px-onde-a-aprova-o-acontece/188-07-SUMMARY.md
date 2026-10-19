@@ -41,7 +41,7 @@ metrics:
   commits: 3
   duration: "~5h"
   completed: 2026-10-19
-status: ENTREGUE COM PERGUNTA EM ABERTO (quatro gates de FECHAMENTO da Fase 187)
+status: ENTREGUE. Os 4 gates de fechamento da 187 foram consertados pela sessao paralela (93de698d, b10c19cc, f7616e7f); resta o QUINTO, o gemeo PHP em FilaDeAprovacaoRotaTest.php:1674 — ver a CORRECAO no topo
 ---
 
 # Fase 188 Plano 07: a casca do painel de 1140px por portal — Summary
@@ -52,6 +52,122 @@ identificação com os cinco chips, a caixa de falha com a mensagem **real** do 
 **duas colunas de mesmo peso** — com os dois slots (fotos e preço) **nomeados e vazios**.
 
 ---
+
+---
+
+# ⚠️⚠️⚠️ CORREÇÃO DESTA SUMMARY — LEIA ANTES DO RESTO (19/10/2026, depois do handback)
+
+**Três coisas mudaram depois que eu entreguei o relatório, e DUAS delas são correções de
+ERRO MEU. Esta seção tem precedência sobre o que está escrito abaixo.**
+
+## 1. ⚠️⚠️ ERRO MEU: eu reportei a baseline PHP ERRADA, lendo um log que estava sendo ESCRITO
+
+**Eu reportei `PHP: 2534 / 23020 / 0`. O número REAL é `PHP: 2550 / 23099 / 11`.**
+
+**A causa, e ela é exatamente a armadilha que a régua deste projeto nomeia:** eu rodei a suíte PHP em
+**background** e, antes de ela terminar, fui ler **`/tmp/ultima-suite-php.log`** — o arquivo que o
+próprio harness estava escrevendo. O que eu li era **o estado de uma execução anterior/parcial**, e
+eu o tomei por resultado final.
+
+➡️ **É a disciplina de *"conferir por RECONSULTA, nunca por stdout"* violada por mim.** O veredicto do
+harness (o único que vale) só apareceu no fim:
+
+```
+PHP: 2550 / 23099 / 11
+REGRESSAO: 11 teste(s) failed/error na suite do Publicador
+```
+
+⚠️ **A lição, para quem vier:** log de harness em caminho FIXO e COMPARTILHADO (`/tmp/ultima-suite-*.log`)
+**não pode ser lido enquanto a execução corre** — nem pela própria sessão, nem por outra. **Espere o
+veredicto do harness.**
+
+### De quem são as 11 — medido **uma por uma, rodando cada arquivo SOZINHO**
+
+| arquivo | falhas na suíte | **SOZINHO** | veredicto |
+|---|---|---|---|
+| `tests/Feature/Publicador/Aprovacao/SalvarEAprovarDoPainelTest.php` | 9 | **9 passed (186 assertions)** | **não é regressão** — é do plano **188-05**, e falha só na suíte CHEIA |
+| `tests/Feature/Publicador/Aprovacao/EscritaDeImagemDoPainelTest.php` | 1 | **7 passed (122 assertions)** | idem |
+| `tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php` | 1 | ⛔ **FALHA TAMBÉM SOZINHA** | ⚠️ **é o QUINTO gate** — ver o item 2 |
+
+➡️ **10 das 11 são a MESMA corrida de sistema de arquivos** que eu já havia diagnosticado na partida
+(duas suítes PHPUnit sobre o mesmo `storage/framework/testing`, porque a **sessão paralela roda a
+suíte dela ao mesmo tempo**). **Passam em isolamento, não se consertam, e não são regressão.**
+⚠️ **E o `+16` de testes (2534 → 2550) é da sessão paralela**, que **commitou** durante a minha
+execução (`e2b074ac`, `86795e06`).
+
+## 2. ⚠️⚠️ ERRO MEU: os gates da mesma família eram **CINCO**, não quatro — há um gêmeo em **PHP**
+
+Eu reportei **quatro**. **O quinto é o gêmeo PHP de #1/#2, e eu não o tinha achado** porque a suíte
+PHP só terminou depois do handback:
+
+| **#5** | `tests/Feature/Publicador/Aprovacao/FilaDeAprovacaoRotaTest.php:1674` |
+|---|---|
+| afirma | `assertSame(4, preg_match_all('/isValidElement\(/', $fonte))` — **exatamente 4** slots na página |
+| reprova porque | o quinto slot (`painelNo`) → **5**. **Mesma causa, mesma família, terceira cópia da MESMA asserção** |
+| id / manifesto | o método é `a pagina da fila nao desenha o que nao existe 187 04` → **`contagens-187-04.txt`** |
+| mensagem | *"os quatro slots têm de passar por `isValidElement`… Failed asserting that 5 is identical to 4."* |
+
+⚠️ **NÃO consertei, e a razão é a mesma de antes, agora mais forte:** é teste **PHP da Fase 187** (em
+produção), o id vive em **manifesto da 187**, e o diretório `tests/Feature/Publicador/Aprovacao/` é
+**exatamente onde a sessão paralela está commitando** (3 commits nos últimos minutos). Encostar ali
+é o risco de corrida de git-index que este projeto já conhece.
+
+➡️ ⚠️ **O conserto está PRONTO para ser copiado:** a sessão paralela **já fez os dois gêmeos JS**, em
+`93de698d` — *"o contrato de NO deixa de ser um TOTAL e passa a ser o CONJUNTO DECLARADO de slots"*.
+**Basta aplicar o MESMO em `FilaDeAprovacaoRotaTest.php:1674` e re-medir `contagens-187-04.txt`.**
+
+## 3. ✅ A PERGUNTA QUE EU DEVOLVI JÁ FOI RESOLVIDA — e com o conserto que eu recomendei
+
+A sessão paralela consertou os **quatro** que eu havia reportado, **exatamente** pelo "REAPONTE com
+veto" (lista/invariante em vez de total):
+
+| commit | o que fez | resolve |
+|---|---|---|
+| `93de698d` | *"o contrato de NO deixa de ser um TOTAL e passa a ser o CONJUNTO DECLARADO de slots"* | **#1 e #2** |
+| `b10c19cc` | *"o fechamento da 187 deixa de contar 21 arquivos e passa a provar a INVARIANTE do diretorio"* | **#3** |
+| `f7616e7f` | *"a isca invertida de `pub-painel` troca de precedente e ganha veto — e CONTINUA invertida"* | **#4** |
+
+## 4. ✅ E A ROTA `tentar-de-novo` CHEGOU — o botão está LIGADO, e o gate foi quem avisou
+
+O plano **188-05** **commitou** a rota (`mlb.anuncios.meus.aprovacao.painel.tentar-de-novo`,
+`routes/mlb_anuncios.php:597`). ➡️ **A condição que justificava a ausência caiu**, e **o meu próprio
+gate reprovou com a mensagem que ele mesmo carregava**: *"a rota entrou no HEAD — o botão pode (e
+deve) nascer: ligue `onTentarDeNovo` na página"*.
+
+**Ligado em `391d4787`** (`resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` é **meu** `files_modified`
+— conferido: **não** está em 188-05, 188-06 nem 188-10):
+
+- a escrita vai pelo **helper único** `escreverNoPainel()` (COL-04/W11), que põe `versao_esperada` em
+  TODA chamada — com gate de **contagem EXATA de UM** `router.post` cru na página (o do **lote**, da
+  187-09), para ninguém fugir do helper;
+- **sem empresa, sem oferta ou sem versão o handler é `null`** → o botão **não nasce**;
+- a asserção do gate virou de **PRESENÇA**, e **continua lendo `git show HEAD:`** — o único estado
+  determinístico, e o que a impede de oscilar com o WIP do vizinho. **Com isca nas duas direções**
+  (acha as rotas que existem, **não** acha `…painel.nao-existe-9z7`);
+- `onConflito` segue para o plano **188-12** (o dono do aviso na tela); o helper **registra o
+  `onError` de todo jeito**, então **nada é engolido**;
+- ⚠️ **o histórico ficou ESCRITO no código** (página e gate), porque é a prova de que a ausência
+  nunca foi arbitrária — e de que o gate fez exatamente o que foi desenhado para fazer.
+
+## AS BASELINES CORRIGIDAS, no estado final (`391d4787`)
+
+| | PARTIDA (`14fa6b32`) | **FIM (corrigido)** | leitura |
+|---|---|---|---|
+| **JS** | 5498 / 5497 pass / **1 fail** | **5568 / 5567 pass / 1 fail / 0 skipped** | ⚠️ **a ÚNICA falha é a pré-existente da Fase 87.** Os 4 gates que eu havia reportado foram consertados pela sessão paralela, e o meu (o da rota) foi resolvido ligando o botão |
+| **PHP** | 2534 / 23014 / 1 | **2550 / 23099 / 11** | **+16 testes são da sessão paralela** (ela commitou durante a minha execução). **10 das 11 falhas passam em ISOLAMENTO** (corrida de FS entre as duas suítes); **1 é o QUINTO gate** do item 2, que **NÃO é meu conserto** |
+| **BUILD** | — | **exit 0**, 1m2s | rodado depois da campanha **e** depois de ligar o botão |
+| **meus gates** | — | `casca-do-painel` **45/45** · `vocabulario-tamanhos` **569/569** | **PASSOU** nos dois, no HEAD, depois do build final |
+
+⚠️ **O que continua VERDADEIRO de tudo o que está escrito abaixo:** os três motivos do portal, o
+z-index provado pela ORDEM (com a medição de que a troca que **não inverte** morre **só** pelo gate de
+FID), o topo de 54px, as duas colunas de mesmo peso, os atalhos pela função pura com o runtime
+**declarado não provado**, as 4 omissões novas da FID-01, a campanha de **20 mutações / 20 mortas**, a
+bijeção, o homônimo e o território por escopo do assunto. **Nada disso mudou.**
+
+⚠️ **O que está SUPERADO abaixo:** (a) a linha `PHP … / 0 fail` da tabela de baselines e a seção *"E
+NO FIM A FALHA PHP DESAPARECEU"* — **as duas estão ERRADAS**, pelo motivo do item 1; (b) a contagem de
+*"QUATRO gates"* — **são CINCO**; (c) a afirmação de que *"Tentar publicar novamente" NÃO é
+desenhado* e a linha dele em **Known Stubs** — **ele está LIGADO** desde `391d4787`.
 
 ## ⚠️⚠️ PARE AQUI: QUATRO GATES DE FECHAMENTO DA FASE 187 REPROVAM, E O CONSERTO **NÃO É DO MEU LADO**
 
