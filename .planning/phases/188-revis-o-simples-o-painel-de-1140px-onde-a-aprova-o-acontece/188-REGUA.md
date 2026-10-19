@@ -571,7 +571,15 @@ PERGUNTA-188-B3: RESPONDIDA — dono: usuário (18/10/2026) — o botão "Abrir 
   ⚠️ "Desenhar desabilitado com explicação" foi OFERECIDO e RECUSADO. ⚠️ Nada de `onClick` vazio,
   nada de `disabled` decorativo. ⚠️ O CRITÉRIO 2 FICA COM RESSALVA DECLARADA no fechamento.
   APLICADA EM: 188-07 (a ausência) e 188-13 (a ressalva)
-PERGUNTA-188-C: ABERTA — dono: usuário — ⚠️ EFEITO COLATERAL MEDIDO do reuso da rota de miniatura.
+PERGUNTA-188-C: DECIDIDA (usuário, 19/10/2026) — ACEITO O REUSO, COM O EFEITO COLATERAL. Razão dele:
+  É O QUE O PORTÃO QUER — `AgendadorDaFila:336` diz "Gente com o editor aberto: não publica por baixo
+  dela", e REVISAR É TRABALHAR NO PRODUTO. ⚠️ "Servir a foto sem marcar" foi OFERECIDO e RECUSADO:
+  exigiria rota nova sobre `App\Support\Publicador`, território da OUTRA SESSÃO, e coordenação que o
+  ganho não paga. ➡️ Não há nada a consertar e não se abre rota nova. ⚠️ MAS O EFEITO CONTINUA SENDO
+  DECLARADO no docblock e na SUMMARY do 188-03, com os CINCO LEITORES nomeados um por um (há gate) —
+  a razão é que a próxima pessoa que vir o agendamento parado tem de achar a causa PELO GREP, não por
+  bisseção. APLICADA EM: 188-03 (o docblock + o gate) e 188-13 (§8 como decidida, §13 o aviso à 194).
+  ⚠️ O QUE FOI MEDIDO, e não muda com a decisão:
   `mlb.anuncios.publicador.fotos.arquivo` → `MlbPublicadorController::arquivoFoto` →
   `rascunho($produto)` → `produto($id)`, e `produto()` chama **`EditorEmUso::marcar($p->id)`**
   (`MlbPublicadorController:405`), que grava cache por `publicador.preparo_ia.editor_em_uso_min` = **3
@@ -580,14 +588,14 @@ PERGUNTA-188-C: ABERTA — dono: usuário — ⚠️ EFEITO COLATERAL MEDIDO do 
   `PreparoIaDoRascunhoService:131`/`:180`/`:366`, `GarantiaPadrao:192` e `ExcluirProdutoService:195`.
   ⚠️ O efeito é SEMANTICAMENTE ALINHADO com o portão (o comentário de `AgendadorDaFila:336` diz
   textualmente *"Gente com o editor aberto: não publica por baixo dela"*, e é exatamente o que a
-  revisão quer), e por isso o plano SEGUE COM O REUSO, como o orquestrador instruiu — mas é mudança de
-  comportamento que ninguém pediu, e ela fica DECLARADA aqui em vez de descoberta depois.
-  ⚠️ Duas saídas, se o usuário quiser mudar: (a) aceitar o efeito e registrar (é o default do plano);
-  (b) action de leitura NOSSA em `mlb.anuncios.meus.aprovacao.*` fazendo o mesmo trajeto
-  (`PubAprovacaoImagem.imagem_id` → `PubImagem.caminho`) e CHAMANDO `ArquivosDeImagem::resposta()`
-  sem o `marcar()` — ⚠️ **chamar NÃO é editar**, mas encosta em classe vetada e por isso NÃO é decisão
-  do executor. ⚠️ AVISO À FASE 194: ela liga `publicador.criativos_auto.ativo`, e é ela quem mais
-  sente `PreparoIaDoRascunhoService` suprimido
+  revisão quer) — e foi por essa razão que O USUÁRIO o ACEITOU, em 19/10/2026. ⚠️ Mesmo aceito, é
+  mudança de comportamento que ninguém pediu, e ela fica DECLARADA aqui e no código em vez de
+  descoberta depois.
+  ⚠️ A SAÍDA (b) — action de leitura nossa em `mlb.anuncios.meus.aprovacao.*` fazendo o mesmo trajeto
+  sem o `marcar()` — foi OFERECIDA E RECUSADA pelo usuário em 19/10/2026, e NÃO se reabre: ela
+  encostaria em `App\Support\Publicador`, território da outra sessão. ⚠️ AVISO À FASE 194, QUE
+  PERMANECE: ela liga `publicador.criativos_auto.ativo`, e é ela quem mais sente
+  `PreparoIaDoRascunhoService` suprimido enquanto alguém revisa
 PERGUNTA-VISUAL-187: ABERTA — dono: usuário — a conferência visual da FILA (Fase 187) na conta 459,
   roteiro de 8 itens em `187-FECHAMENTO.md` §11. Nada desta fase a substitui nem a presume feita
 PERGUNTA-17: ABERTA — dono: Fase 194 — BUG LATENTE: o recorte da fila usa as duas âncoras com `AND`
