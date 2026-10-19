@@ -914,3 +914,88 @@ PERGUNTA-188-E: ABERTA — dono: usuário / orquestrador — o gate de FID de
   devolver quando o conserto certo não é do meu lado. ➡️ CONFIRMAR ou mandar reverter
   (`a874fc00` é revertível isolado; nenhum manifesto declara aquele arquivo).
 ```
+
+---
+
+## ⚠️⚠️ APÊNDICE — A WAVE 188-06 FECHOU **DURANTE** ESTA EXECUÇÃO, e o que isso muda
+
+Entre o commit `a874fc00` (o último de código desta wave) e o `aecda262` (os docs), a wave
+**188-06** commitou o seu trabalho:
+
+```
+1f2dbe44  feat(188-06): preco salvo, conferir alteracao, frete -- e o TRANSPORTE da simulacao, que era BLOCKER
+```
+
+### O que foi RE-CONFERIDO contra ela, depois do commit dela
+
+| medida | resultado |
+|---|---|
+| `verificar-testes.sh 188-09 coluna-de-preco` | **PASSOU** (`48 / 48 pass / 0 fail`) |
+| `verificar-testes.sh 188-09 vocabulario-tamanhos` | **PASSOU** (`632 / 632 pass`) |
+| o CONTRATO que esta coluna LÊ em `PrecoDoPainelService` | **os 8 itens de pé:** `KPIS_EM_ORDEM` · `ORDEM_DAS_LINHAS` · `NOTA_DO_FRETE_DO_COMPRADOR` · `FRETE_ROTULO_ACAO` · `COR_NEUTRA = 'neutro'` · `SIMULACAO_SELO` · `TOLERANCIA_DO_SIMULADO = 0.001` · `DELTA_SUFIXO` |
+| **JS** | **`5654 / 5653 pass / 1 fail / 0 skipped`** — só a pré-existente da Fase 87 |
+
+⚠️ **A sonda de transporte desta wave continuou verde**, e isso é a prova de que o conserto dela
+foi na raiz: ela mede **comportamento** (*nenhum `.jsx` desta coluna chama `router.`, nomeia rota
+ou fala HTTP*), não a ausência de uma linha num arquivo de outra wave. A forma antiga teria
+reprovado **de novo** agora que a rota está commitada.
+
+### ⚠️ As rotas do transporte, AGORA COMMITADAS — e a religação é da 188-06 / 188-12
+
+```
+routes/mlb_anuncios.php:630  ->name('meus.aprovacao.painel.preco')
+routes/mlb_anuncios.php:638  ->name('meus.aprovacao.painel.preco.simular')
+```
+
+➡️ **Esta wave NÃO as ligou, e isso é DELIBERADO:** quando as tarefas 1-3 foram escritas e
+commitadas, as rotas **não existiam** no HEAD de partida (`091340b6`) nem estavam commitadas.
+Ligar a tela a trabalho **não commitado** de outra sessão é frágil — se aquela wave abortasse, a
+página ficaria chamando uma rota inexistente.
+⚠️ **A peça está PRONTA PARA RECEBER**, e o religamento é uma linha por handler na página:
+
+```jsx
+onSimular={...}   onDescartar={...}   onSalvar={...}   onConferirAlteracao={...}
+```
+
+⚠️⚠️ **E quando religar, a escrita vai pelo helper único `escreverNoPainel`** (W11 / COL-04):
+`versao_esperada` **SEMPRE** no corpo, e o 422 de versão divergente **NUNCA** engolido — omitir a
+versão faz `exigirVersao()` receber `null` e **LIBERAR** a escrita, que é literalmente
+*"sobrescrever em silêncio"* (critério 17). O payload já traz `simulacao.versao`.
+⚠️ **O gate de "nenhum `router.post` direto" mora no 188-12**, com lista CONSTANTE — e os cinco
+`.jsx` desta coluna estão prontos para entrar nela.
+
+### ⚠️ AS DUAS FALHAS PHP DA MEDIÇÃO FINAL — **da CORRIDA, provadas por execução ISOLADA**
+
+A rodada de `tests/Feature/Publicador/Aprovacao` no fim deu `2 failed, 317 passed (5607
+assertions)`. **As duas passam SOZINHAS:**
+
+| arquivo | no diretório | **ISOLADO** |
+|---|---|---|
+| `EscritaDeAjusteEExcecaoDoPainelTest.php` | FAILED (*"justificativa em 9 10 e 11 carac…"*) | **`8 passed (116 assertions)`** |
+| `EscritaDeImagemDoPainelTest.php` | FAILED (*"substituir recolocar e concluir regenera…"*) | **`7 passed (122 assertions)`** |
+
+➡️ **É a CORRIDA de `storage/framework/testing` entre duas suítes simultâneas na MESMA árvore** —
+a mesma que a wave 188-07 mediu e registrou. **Não é regressão, não se conserta, e não se cria
+`REF_PHP_FALHAS`.**
+
+⚠️⚠️ **E a prova de que não pode ser desta wave é ARITMÉTICA, não opinião:** os **seis** commits
+desta wave tocaram **ZERO** arquivos `.php`, conferido um por um:
+
+```
+99794441 -> 0 arquivos .php     00bdba8e -> 0 arquivos .php
+83b3ba66 -> 0 arquivos .php     a874fc00 -> 0 arquivos .php
+cdaf03a9 -> 0 arquivos .php     aecda262 -> 0 arquivos .php
+```
+
+⚠️ Os dois arquivos de teste que falharam pertencem às waves **188-05** (`4bcf236e`) e **188-06**
+(`1f2dbe44`) — `git log` por caminho.
+⚠️ **E nenhum é o oscilador conhecido da Fase 179:** `CockpitDaContaTest.php` está **FORA** de
+`Aprovacao/` e não entrou em nenhuma destas medições.
+
+### O número de referência para a wave 10
+
+```
+PHP tests/Feature/Publicador/Aprovacao:  317 passed + 2 da CORRIDA  /  5607 assertions
+  (na partida desta wave eram 301 / 5367 — os +18 são das waves 188-05/06, não desta)
+JS:  5654 / 5653 pass / 1 fail (a pré-existente da Fase 87) / 0 skipped
+```
