@@ -210,11 +210,16 @@ class PainelDaOfertaRotaTest extends TestCase
         {
             public int $chamadas = 0;
 
-            public function para(PubAprovacaoOferta $oferta, Builder $base): array
+            // ⚠️ O **TERCEIRO** parâmetro (`$responsaveisDaConta`, plano 188-06) é repassado
+            // INTACTO: ele é a lista de autorizadores do modal de exceção, e comer o argumento
+            // aqui faria o espião devolver um painel com `modais.excecao.autorizadores` VAZIO —
+            // um falso negativo neste arquivo e um verde mentiroso no gate do 188-06.
+            // ⚠️ Isto NÃO muda a contagem de asserções deste caso.
+            public function para(PubAprovacaoOferta $oferta, Builder $base, array $responsaveisDaConta = []): array
             {
                 $this->chamadas++;
 
-                return parent::para($oferta, $base);
+                return parent::para($oferta, $base, $responsaveisDaConta);
             }
         };
 

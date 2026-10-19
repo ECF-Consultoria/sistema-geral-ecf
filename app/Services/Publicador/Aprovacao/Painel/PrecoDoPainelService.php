@@ -305,6 +305,50 @@ class PrecoDoPainelService
      */
     public const TOLERANCIA_DO_SIMULADO = 0.001;
 
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ Fase 188, plano 06 — O QUE AS ESCRITAS DE PREÇO E FRETE PRECISAM DAQUI
+    //
+    // As rotas do plano 06 são actions FINAS. Três coisas que elas precisam **não podem** morar
+    // lá: o id estável da recusa (a tela decide por ele onde marcar o erro), as FRASES do
+    // histórico (que levam dinheiro formatado, e a formatação do dinheiro mora aqui, numa casa
+    // só) e a PRÉVIA do frete. Escrevê-las na action criaria a segunda redação de cada uma.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * FIN-11 — o preço digitado não é um preço (`0`, negativo, vazio, texto, array, objeto).
+     *
+     * ⚠️ O id existe porque a tela precisa do **identificador estável** da recusa, não só do
+     * texto: devolver apenas a mensagem obrigaria o cliente a casar português.
+     */
+    public const REGRA_PRECO_INVALIDO = 'FIN-11-PRECO-INVALIDO';
+
+    /** MOD-03 — o valor de frete digitado não é um valor (mesmo saneamento do preço, só `> 0`). */
+    public const REGRA_FRETE_INVALIDO = 'MOD-03-FRETE-SEM-VALOR';
+
+    /** `:1401` — a prévia do frete **sem valor digitado**, literal. */
+    public const PREVIA_SEM_VALOR = 'Informe o valor para ver o resultado';
+
+    /** `:1401` — `'Resultado ' + brl(result) + ' · margem ' + pct(margin)`, nas três partes. */
+    public const PREVIA_PREFIXO = 'Resultado ';
+
+    public const PREVIA_SEPARADOR = ' · margem ';
+
+    /** `:1169` — `'Alterou o preço de X para Y na revisão · versão N'`, nas quatro partes. */
+    public const REGISTRO_PRECO_PREFIXO = 'Alterou o preço de ';
+
+    public const REGISTRO_PRECO_PARA = ' para ';
+
+    public const REGISTRO_PRECO_SUFIXO = ' na revisão · versão ';
+
+    /** `:1204` — `'Confirmou o frete do vendedor: R$ X (origem) · versão N'`, nas partes. */
+    public const REGISTRO_FRETE_PREFIXO = 'Confirmou o frete do vendedor: ';
+
+    public const REGISTRO_FRETE_ABRE = ' (';
+
+    public const REGISTRO_FRETE_FECHA = ')';
+
+    public const REGISTRO_VERSAO = ' · versão ';
+
     /**
      * ⚠️ A ORDEM das 7 linhas da conta — `array_keys(PubAprovacaoComposicao::LINHAS)`.
      *
@@ -470,6 +514,182 @@ class PrecoDoPainelService
             // COL-04 — a versão no instante da leitura.
             'versao' => max(1, (int) $oferta->versao),
         ];
+    }
+
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ Fase 188, plano 06 — A PRÉVIA DO FRETE (critério 14), **SEM PERSISTIR NADA**
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * MOD-03 / critério 14 — o resultado e a margem **como ficariam** com o frete informado,
+     * para a pessoa ver ANTES de confirmar. ⚠️ **NADA é gravado.**
+     *
+     * ═══ ⚠️⚠️ POR QUE ESTE MÉTODO EXISTE EM VEZ DE `ComposicaoFinanceiraService::para()` ══════
+     *
+     * A `188-FID01.md` §F.3 prescreve "ComposicaoFinanceiraService::para($oferta, …) com o frete
+     * simulado", espelhando o `fin(Object.assign({}, o, {freight: v}), o.price)` do protótipo
+     * (`:1400` — **remedido por `sed`**; a prosa do plano dizia `:1402`, que é o ramo `reject`).
+     * ⚠️ **Essa assinatura NÃO EXISTE:** `para(PubAprovacaoOferta, ?float $precoForcado)` força o
+     * **PREÇO**, nunca o frete, e a linha de frete é montada dentro dele por
+     * `PubAprovacaoComposicao::linhaDeFrete($vivo, PubAprovacaoFrete::vigenteDe($oferta))`.
+     * Acrescentar um `?float $freteForcado` lá seria **alterar um serviço da Fase 186 que está em
+     * produção**, o que esta fase não faz.
+     *
+     * ⚠️ **As duas saídas que foram MEDIDAS e DESCARTADAS, para ninguém as tentar de novo:**
+     *
+     *   (a) **Dublar `DadosEfetivosService`** e pedir `para()` ao serviço real. **Não funciona:**
+     *       em `PubAprovacaoComposicao::linhaDeFrete()` o frete **informado à mão VENCE** o da
+     *       Precificação — então, numa oferta que já tem frete confirmado (o caso de corrigir o
+     *       valor), a prévia mostraria o frete **ANTIGO**. Prévia que ignora o que a pessoa
+     *       digitou é pior que prévia nenhuma.
+     *   (b) **Subtrair o delta do `resultado` atual** (`resultado − (novo − velho)`). **Não
+     *       funciona no caso principal:** sem frete a composição é `incompleta` e `resultado` é
+     *       **`null`** — e o modal de frete existe justamente porque o frete falta.
+     *
+     * ➡️ A saída: **trocar a LINHA e somar como o DTO da própria Fase 186 soma**. O que este
+     * método decide é só qual linha entra; `total`, `resultado` e `margem` seguem a definição de
+     * {@see ComposicaoDaOferta::montar()} — **menos** os dois percentuais, que são privados de
+     * `ComposicaoFinanceiraService` e **não são recuperáveis sem perda** (o da comissão só
+     * existe formatado, com 0 ou 1 casa, em `percentual()`).
+     *
+     * ⚠️⚠️ **E É POR ISSO QUE A PREMISSA FICA TRAVADA POR ASSERÇÃO, não por confiança:** o gate
+     * `frete-confirmado` exige que, com o valor **IGUAL** ao frete que já vale, esta prévia
+     * devolva **exatamente** o `resultado` e a margem de `ComposicaoFinanceiraService::para()`.
+     * É o ponto fixo. Se a fórmula do DTO mudar, aquela asserção **quebra** — que é o
+     * comportamento certo. ⚠️ **`equilibrio` e `precoAlvo` NÃO são calculados aqui** (eles
+     * precisariam dos percentuais): número plausível e errado é pior que número ausente, e a
+     * prévia do protótipo não os mostra.
+     *
+     * ⚠️ `$bruto` é **`mixed` de propósito** — mesmo saneamento do preço (`num()`, `:1048`, só
+     * `> 0`): `0`, negativo, vazio, texto, **array** e objeto caem no estado "sem valor", **sem
+     * exceção**. `(float) []` é a família do `(int) []` que já foi **500** nesta tela.
+     *
+     * @return array{preenchido: bool, valor: ?float, texto: string, cor: string, resultado: ?string, margem: ?string, incompleto: bool}
+     */
+    public function previaDoFrete(PubAprovacaoOferta $oferta, mixed $bruto): array
+    {
+        $valor = self::sanear($bruto);
+
+        if ($valor === null) {
+            // ⚠️ `:1401` — sem valor a frase é a do protótipo e a cor é a NEUTRA. Nunca
+            // "Resultado R$ 0,00", que a tela leria como verdade.
+            return [
+                'preenchido' => false,
+                'valor' => null,
+                'texto' => self::PREVIA_SEM_VALOR,
+                'cor' => self::COR_NEUTRA,
+                'resultado' => null,
+                'margem' => null,
+                'incompleto' => false,
+            ];
+        }
+
+        $atual = $this->financeira->para($oferta);
+        $comFrete = $this->comFreteSubstituido($atual, $valor);
+
+        if ($comFrete === null) {
+            // ⚠️ Falta OUTRO dado da conta (custo, comissão, tarifa fixa ou imposto): confirmar o
+            // frete não destrava o resultado, e dizer um número aqui seria afirmar o que não é.
+            // ⚠️ O rótulo é LIDO de `VocabularioDoPortao::INCOMPLETO` — uma terceira redação de
+            // "Incompleto" seria a que a pessoa leria.
+            return [
+                'preenchido' => true,
+                'valor' => $valor,
+                'texto' => VocabularioDoPortao::INCOMPLETO,
+                'cor' => self::COR_AMBAR,
+                'resultado' => null,
+                'margem' => null,
+                'incompleto' => true,
+            ];
+        }
+
+        [$resultado, $margem] = $comFrete;
+
+        return [
+            'preenchido' => true,
+            'valor' => $valor,
+            'texto' => self::PREVIA_PREFIXO.self::brl($resultado).self::PREVIA_SEPARADOR.self::pct($margem),
+            // ⚠️ `:1401` — a ORDEM dos ramos é a do protótipo: **resultado negativo vence**
+            // margem baixa. Invertê-la pintaria de âmbar um prejuízo.
+            'cor' => match (true) {
+                $resultado < 0 => self::COR_VERMELHA,
+                $margem < $atual->margemMinima => self::COR_AMBAR,
+                default => self::COR_VERDE,
+            },
+            'resultado' => self::brl($resultado),
+            'margem' => self::pct($margem),
+            'incompleto' => false,
+        ];
+    }
+
+    /**
+     * ⚠️ As FRASES do histórico das duas escritas, **numa casa só** — elas levam dinheiro
+     * formatado, e `brl()` é privado daqui.
+     *
+     * `:1169` — "Alterou o preço de R$ 100,00 para R$ 120,00 na revisão · versão 3".
+     */
+    public function registroDePrecoSalvo(float $de, float $para, int $versao): string
+    {
+        return self::REGISTRO_PRECO_PREFIXO.self::brl($de)
+            .self::REGISTRO_PRECO_PARA.self::brl($para)
+            .self::REGISTRO_PRECO_SUFIXO.$versao;
+    }
+
+    /**
+     * `:1204` — "Confirmou o frete do vendedor: R$ 18,00 (Tabela do cliente) · versão 4".
+     *
+     * ⚠️ `$rotuloDaOrigem` é o RÓTULO, nunca a chave (VOC-06): quem traduz é
+     * `PubAprovacaoFrete::ORIGENS`, e `cotacao_transportadora` não vai para a linha do tempo.
+     */
+    public function registroDeFreteConfirmado(float $valor, string $rotuloDaOrigem, int $versao): string
+    {
+        return self::REGISTRO_FRETE_PREFIXO.self::brl($valor)
+            .self::REGISTRO_FRETE_ABRE.$rotuloDaOrigem.self::REGISTRO_FRETE_FECHA
+            .self::REGISTRO_VERSAO.$versao;
+    }
+
+    /**
+     * O `resultado` e a `margem` da composição **com a linha de frete trocada** — ou `null`
+     * quando falta OUTRO dado da conta.
+     *
+     * ⚠️ A lista de quem anula é **LIDA** de `PubAprovacaoComposicao::ANULAM_O_RESULTADO`, nunca
+     * reescrita: ela é a decisão 3 do usuário (a Embalagem nasce `Pendente` e **não** anula; o
+     * FRETE, no mesmo cenário, **anula**) e uma segunda lista divergiria dela em silêncio.
+     *
+     * ⚠️ A soma é sobre `linhasDaConta()`, que já **exclui** a informativa do frete do comprador
+     * (FIN-08) — e é por isso que a prévia não desconta duas vezes o frete.
+     *
+     * @return array{0: float, 1: float}|null
+     */
+    private function comFreteSubstituido(ComposicaoDaOferta $atual, float $frete): ?array
+    {
+        if ($atual->preco <= 0) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($atual->linhasDaConta() as $linha) {
+            // ⚠️ Flag DENTRO do laço.
+            $ehFrete = $linha->chave === 'frete';
+
+            if ($ehFrete) {
+                $total += $frete;
+
+                continue;
+            }
+
+            if ($linha->ehPendente() && in_array($linha->chave, PubAprovacaoComposicao::ANULAM_O_RESULTADO, true)) {
+                return null;
+            }
+
+            $total += (float) ($linha->valor ?? 0.0);
+        }
+
+        $total = round($total, 2);
+        $resultado = round($atual->preco - $total, 2);
+
+        return [$resultado, $resultado / $atual->preco * 100];
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════

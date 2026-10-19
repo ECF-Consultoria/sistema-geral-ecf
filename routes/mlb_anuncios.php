@@ -598,6 +598,67 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->whereNumber('oferta')
             ->middleware('throttle:30,1,publicador.aprovacao.painel.retry')->name('meus.aprovacao.painel.tentar-de-novo');
 
+        // ─── Fase 188 (plano 06): PREÇO, CONFERIR ALTERAÇÃO E FRETE ────────────────────
+        //
+        // Cinco rotas, no MESMO padrão das linhas `:527`-`:528` e das seis do plano 188-05:
+        // gate `role:admin` do grupo, **sem middleware novo**, throttle nomeado, CSRF normal,
+        // trava de `ml_token` (404) e a oferta conferida contra `FilaDeAprovacaoService::
+        // paraAConta()` ANTES de qualquer gravação.
+        //
+        // ⚠️⚠️ **DUAS DELAS NÃO GRAVAM NADA** — `preco/simular` e `frete/previa`. Elas existem
+        // porque o critério 6 (simular preço) e o 14 (ver o resultado ANTES de confirmar o
+        // frete) **não tinham caminho nenhum**: o cálculo é do servidor (o plano 188-09 PROÍBE
+        // aritmética de taxa no cliente) e nenhuma rota recebia o valor digitado. Há gate de
+        // ausência de ESCRITA nas duas, ancorado no **operador de chamada**.
+        //
+        // ⚠️ **POST, e não GET, de propósito, nas duas de leitura:** o valor é entrada da
+        // pessoa e **não é bookmarkável**. Preço simulado na URL faria um link compartilhado
+        // abrir a tela com a simulação de outra pessoa, e a decisão de *"gesto não vai para a
+        // URL"* já está tomada neste módulo (o modal de lote, `Aprovacao.jsx:316`-`:317`).
+        //
+        // ⚠️ `throttle` MAIS FOLGADO nas duas de leitura (`120,1`): a pessoa digita e vê, e um
+        // `30,1` apagaria a prévia no meio da digitação. As três que GRAVAM ficam em `30,1`,
+        // como as seis do 188-05 — ato humano deliberado e sem desfazer.
+        //
+        // ⚠️ A ordem das rotas: `/preco` tem TRÊS segmentos depois de `meus` e
+        // `/preco/simular` tem QUATRO, então não há como uma capturar a outra; o mesmo vale
+        // para `/frete` e `/frete/previa`. Mesmo assim `whereNumber('oferta')` entra — o
+        // invariante que pode mudar amanhã é "qual rota ganha esta URI", e há gate resolvendo
+        // as cinco pelo ROUTER.
+        Route::post('/meus/{company}/aprovacao/{oferta}/preco', [MlbPublicadorAprovacaoController::class, 'salvarPreco'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.preco')->name('meus.aprovacao.painel.preco');
+
+        // ⚠️⚠️ O TRANSPORTE DA SIMULAÇÃO (FIN-11/FIN-12). `PrecoDoPainelService::simular()`
+        // existe desde o plano 188-04 e **nenhuma rota recebia o preço digitado** — era o
+        // BLOCKER do verificador. ⚠️ Ela é **LEITURA PURA com entrada no corpo**: nada é
+        // persistido, nada vai ao Mercado Livre além da LEITURA de tarifa (decisão 9).
+        Route::post('/meus/{company}/aprovacao/{oferta}/preco/simular', [MlbPublicadorAprovacaoController::class, 'simularPreco'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:120,1,publicador.aprovacao.painel.preco-simular')->name('meus.aprovacao.painel.preco.simular');
+
+        // ⚠️⚠️ BLOQ-07 — "CONFERIR ALTERAÇÃO" **NÃO ALTERA O PREÇO**, e isso é contraintuitivo:
+        // o botão se chama "Conferir alteração" e **não reaplica nada** (`:1170`:
+        // `D.offers[id].priceChanged = null` e só). Quem confere está dizendo *"eu vi que
+        // mudou"*, e é isso que faz o bloqueio `alteracao_nao_conferida` sair.
+        Route::post('/meus/{company}/aprovacao/{oferta}/conferir-alteracao', [MlbPublicadorAprovacaoController::class, 'conferirAlteracao'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.conferir-alteracao')->name('meus.aprovacao.painel.conferir-alteracao');
+
+        // ⚠️ MOD-03/DADO-13 — confirmar o frete grava valor + origem `Confirmado` + a nota que
+        // **nomeia a fonte e a data**, e INCREMENTA a versão. As TRÊS origens são lista
+        // FECHADA (`PubAprovacaoFrete::ORIGENS`): valor fora dela é 422, com o id estável
+        // `MOD-03-ORIGEM-DESCONHECIDA` do próprio modelo.
+        Route::post('/meus/{company}/aprovacao/{oferta}/frete', [MlbPublicadorAprovacaoController::class, 'confirmarFrete'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:30,1,publicador.aprovacao.painel.frete')->name('meus.aprovacao.painel.frete');
+
+        // ⚠️⚠️ A PRÉVIA DO FRETE (critério 14): *"mostra a prévia do resultado e da margem
+        // ANTES de confirmar"*. ⚠️ **Ela NÃO GRAVA** — gate de ausência de escrita, com isca.
+        Route::post('/meus/{company}/aprovacao/{oferta}/frete/previa', [MlbPublicadorAprovacaoController::class, 'previaDoFrete'])
+            ->whereNumber('oferta')
+            ->middleware('throttle:120,1,publicador.aprovacao.painel.frete-previa')->name('meus.aprovacao.painel.frete.previa');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 

@@ -5,23 +5,29 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\PubAprovacaoConjunto;
 use App\Models\PubAprovacaoImagem;
+use App\Models\PubAprovacaoEvento;
+use App\Models\PubAprovacaoFrete;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
 use App\Services\Publicador\Aprovacao\AprovacaoDaOfertaService;
 use App\Services\Publicador\Aprovacao\BloqueiosDaOfertaService;
+use App\Services\Publicador\Aprovacao\ComposicaoFinanceiraService;
 use App\Services\Publicador\Aprovacao\Fila\FilaDeAprovacaoService;
 use App\Services\Publicador\Aprovacao\Fila\FiltrosDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\GrupoDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\LoteDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
+use App\Services\Publicador\Aprovacao\HistoricoDaOfertaService;
 use App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService;
+use App\Services\Publicador\Aprovacao\Painel\PrecoDoPainelService;
 use App\Services\Publicador\Aprovacao\RevisaoDeImagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 /**
@@ -475,7 +481,13 @@ class MlbPublicadorAprovacaoController extends Controller
             // atribuição depois do array esconderia a prop de quem lê o payload de cima a baixo.
             'painel' => $ofertaDoPainel === null
                 ? null
-                : $painelDeRevisao->para($ofertaDoPainel, $base),
+                // ⚠️ O **TERCEIRO** argumento (plano 188-06) são os autorizadores do modal de
+                // exceção, e ele é a MESMA array que o filtro de Responsável da fila já usa
+                // (`$responsaveis`, logo acima): **zero consulta nova e zero segunda verdade**
+                // sobre "quem é desta conta". Um 6º argumento no CONSTRUTOR quebraria o gate de
+                // aridade do plano 188-04 (`PrecoDoPainelServiceTest:1481`), e um `app()` lá
+                // dentro seria service locator disfarçado de injeção.
+                : $painelDeRevisao->para($ofertaDoPainel, $base, $responsaveis),
         ];
 
         // ⚠️⚠️ O **N** do "N de M" é LIDO da faixa que acabou de ser calculada — a MESMA array
@@ -1031,6 +1043,322 @@ class MlbPublicadorAprovacaoController extends Controller
         ]);
     }
 
+
+    // ═══ ⚠️⚠️ Fase 188, plano 06 — PREÇO, CONFERIR ALTERAÇÃO E FRETE ══════════════════════════
+    //
+    // Cinco actions, o MESMO gate de escrita das seis do plano 188-05 (T-188-40): `role:admin` do
+    // grupo, trava de `ml_token` (404), a oferta conferida contra `paraAConta()` ANTES de gravar,
+    // 404 e nunca 403, CSRF normal, throttle nomeado.
+    //
+    // ⚠️⚠️ **DUAS DELAS NÃO GRAVAM: `simularPreco()` e `previaDoFrete()`.** São LEITURAS com
+    // entrada no corpo, e existem porque o critério 6 e o 14 **não tinham caminho nenhum** — o
+    // cálculo é do servidor (o plano 188-09 proíbe aritmética de taxa no cliente) e nenhuma rota
+    // recebia o valor digitado. Há gate de ausência de ESCRITA nas duas.
+    //
+    // ⚠️ **O QUE SAI PELA REDE, E A RÉGUA HONESTA:** as actions que leem a composição disparam o
+    // GET público `/sites/MLB/listing_prices` — a **tarifa real** da decisão 9 do usuário, com
+    // cache de 1 h pré-aquecido por job. ➡️ A asserção é **zero requisição de ESCRITA** (nenhum
+    // método diferente de GET, nenhuma URL de `/items`), nunca "zero requisição": prometer zero
+    // absoluto aqui seria gate que o próprio desenho contradiz, e o executor seguinte o
+    // "consertaria" pré-aquecendo o cache.
+    //
+    // ⚠️ **NENHUMA destas actions escreve `andamento`.** `approved → awaiting` ao salvar preço ou
+    // confirmar frete é de `AprovacaoDaOfertaService::registrarMudanca()`, que move pela ÚNICA
+    // PORTA. E nenhuma delas EXPÕE `andamento` numa chave de saída, então este arquivo continua
+    // **fora** da lista de EXPOSITORES da camada B: entrar nela seria linha morta.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * **FIN-11 / COL-04 / BLOQ-06 — salva o preço simulado no anúncio.** Os **três** efeitos, numa
+     * transação: a `versao` sobe, o aviso de alteração é limpo, e o ato vai para o histórico.
+     *
+     * ⚠️⚠️ **OS TRÊS, SEPARADAMENTE — e isso não é zelo.** Um gate que só olhasse a versão passaria
+     * com o aviso de alteração esquecido de pé, e aí a oferta ficaria bloqueada por uma alteração
+     * que a pessoa **acabou de fazer**. ⚠️ E a NARRAÇÃO do ato é desta action porque
+     * {@see AprovacaoDaOfertaService::registrarPrecoSalvo()} **não a escreve**: ele registra a
+     * CONSEQUÊNCIA (*"Aprovação reaberta: preço alterado na revisão · de X para Y"*) e **só quando
+     * a oferta estava `aprovado`** — numa oferta ao vivo o histórico ficaria **sem nenhuma linha**.
+     * É a régua que `HistoricoDaOfertaService:160`-`:162` escreve: *"quem narra o ATO é quem o
+     * executa"*, a mesma de `RevisaoDeImagemService`.
+     *
+     * ⚠️ **O PREÇO EM SI NÃO É GRAVADO AQUI, e isso é território:** o preço efetivo é LIDO
+     * (`DadosEfetivosService` / `pub_variante_precos`) e quem o escreve é o **editor**, que esta
+     * fase não toca. O que pertence ao portão é a consequência — e é ela que está no serviço da
+     * 186. **DIVERGÊNCIA DECLARADA** do `applyPrice` do protótipo (`:1169`), que faz `x.price =
+     * r2(p)` por ser um protótipo com o banco em memória.
+     *
+     * ⚠️ **`aprovado` É ACEITO, de propósito** (`:1169`: `if (x.status === 'approved') x.status =
+     * 'awaiting'`): salvar preço numa oferta aprovada **reabre** a aprovação pela única porta, o
+     * que **impede** a Fase 193 de publicar um preço velho. É estritamente mais seguro que
+     * recusar. ⚠️ A chave `pode_salvar` do payload é só `live` (plano 188-04) — ela é o
+     * **conforto** da tela; a trava é esta, e é um estado mais permissiva **na direção segura**.
+     *
+     * ⚠️ `versao_esperada` é **opcional no corpo** e, quando vem, é EXIGIDA: omiti-la equivale a
+     * sobrescrever em silêncio, que é o que o critério 17 proíbe.
+     */
+    public function salvarPreco(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+        ComposicaoFinanceiraService $financeira,
+        HistoricoDaOfertaService $historico,
+        PrecoDoPainelService $preco,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        if (($recusa = $this->recusaDeRevisao($daConta, $dados['versao_esperada'] ?? null)) !== null) {
+            return $recusa;
+        }
+
+        // ⚠️ `num()` (`:1048`), só `> 0`, com GUARDA DE TIPO antes de qualquer cast: `?preco[]=x`
+        // chega ARRAY e `(float) []` é a família do `(int) []` que já foi **500** nesta tela.
+        $novo = PrecoDoPainelService::sanear($request->input('preco'));
+
+        if ($novo === null) {
+            return $this->recusaDoPainel(new RegraViolada(
+                PrecoDoPainelService::REGRA_PRECO_INVALIDO,
+                'Informe o novo preço de venda.',
+                ['oferta_id' => (int) $daConta->id]
+            ));
+        }
+
+        // ⚠️ O preço de ONDE veio, para a frase do histórico. `precoDoAlvo()` lê a Precificação —
+        // **nenhuma requisição ao Mercado Livre** sai dele.
+        $de = (float) ($financeira->precoDoAlvo($daConta)['preco'] ?? 0.0);
+
+        $salva = DB::transaction(function () use ($aprovacao, $historico, $preco, $daConta, $de, $novo, $request) {
+            // 1) e 2) — a versão sobe e o aviso de alteração é limpo (serviço da 186).
+            $salva = $aprovacao->registrarPrecoSalvo($daConta, $de, $novo, $request->user());
+
+            // 3) — o ATO, na frase do protótipo (`:1169`) e com a versão RESULTANTE.
+            $historico->registrar(
+                $salva,
+                $request->user(),
+                PubAprovacaoEvento::ALTERACAO,
+                $preco->registroDePrecoSalvo($de, $novo, (int) $salva->versao),
+                (int) $salva->versao,
+            );
+
+            return $salva;
+        });
+
+        return back()->with('painel_preco_salvo', [
+            'oferta_id' => (int) $salva->id,
+            'versao' => (int) $salva->versao,
+            'preco_de' => $de,
+            'preco_para' => $novo,
+        ]);
+    }
+
+    /**
+     * **FIN-11 / FIN-12 — O TRANSPORTE DA SIMULAÇÃO.** ⚠️ **LEITURA PURA: não grava nada, não
+     * envia nada ao Mercado Livre além da LEITURA de tarifa.**
+     *
+     * ⚠️⚠️ **ELA EXISTE PORQUE NÃO HAVIA CAMINHO.** `PrecoDoPainelService::simular()` está pronto
+     * desde o plano 188-04 e **nenhuma rota nem parâmetro recebia o preço digitado** — e o plano
+     * 188-09 **proíbe aritmética de taxa no cliente**. Sem este transporte, o critério 6
+     * ("simular preço") e o 7 ("recalcula e mostra o selo") ficavam **sem caminho nenhum**.
+     *
+     * ⚠️ **POST e não GET, de propósito:** o valor é entrada da pessoa e não é bookmarkável —
+     * preço simulado na URL faria um link compartilhado abrir a tela com a simulação de outra
+     * pessoa. A decisão de *"gesto não vai para a URL"* já está tomada neste módulo
+     * (`Aprovacao.jsx:316`-`:317`).
+     *
+     * ⚠️ **Preço inválido NÃO é 422 aqui, e isso é diferente de `salvarPreco()` de propósito:**
+     * `simular()` devolve o **estado NEUTRO** para `0`, negativo, vazio, texto e array (`num()`,
+     * `:1048`) — a pessoa está DIGITANDO, e um erro vermelho a cada tecla seria a tela brigando
+     * com quem a usa. Já salvar é um ato: lá a recusa é explícita.
+     *
+     * ⚠️ **As duas formas de resposta carregam a MESMA array**, construída uma vez: JSON para quem
+     * pedir JSON, e `back()->with(...)` para o `router.post` do Inertia (é o helper
+     * `escreverNoPainel` do plano 188-07 que o cliente usa). Duas montagens poderiam divergir;
+     * duas **entregas** da mesma array, não.
+     */
+    public function simularPreco(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        PrecoDoPainelService $preco,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $simulacao = $preco->simular($daConta, $request->input('preco'));
+
+        return $request->expectsJson()
+            ? response()->json($simulacao)
+            : back()->with('painel_simulacao', $simulacao);
+    }
+
+    /**
+     * **BLOQ-07 — "Conferir alteração" CONFERE SEM ALTERAR O PREÇO.**
+     *
+     * ⚠️⚠️ **É CONTRAINTUITIVO, e a asserção que prova isso é o que impede alguém de "completar"
+     * a função:** o botão se chama *"Conferir alteração"* e **não reaplica nada** (`:1170`:
+     * `D.offers[id].priceChanged = null` e só). Quem confere diz *"eu vi que mudou"*, e é isso
+     * que faz o bloqueio `alteracao_nao_conferida` sair. ➡️ Há caso exigindo que o preço fique
+     * **IGUAL** depois.
+     *
+     * ⚠️ A guarda de "só em oferta revisável" é DAQUI:
+     * {@see AprovacaoDaOfertaService::conferirAlteracao()} não a tem, e em `publicado` ou
+     * `publicando` ela registraria um fato que ninguém pode mais produzir. É o mesmo desenho (e o
+     * mesmo id de regra) da guarda de `salvarRevisao()`, do plano 188-05.
+     */
+    public function conferirAlteracao(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        if (($recusa = $this->recusaDeRevisao($daConta, $dados['versao_esperada'] ?? null)) !== null) {
+            return $recusa;
+        }
+
+        try {
+            $conferida = $aprovacao->conferirAlteracao($daConta, $request->user());
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        return back()->with('painel_alteracao_conferida', [
+            'oferta_id' => (int) $conferida->id,
+            // ⚠️ A versão NÃO sobe: conferir não é mudança relevante. A chave vai para a tela
+            // poder continuar mandando `versao_esperada` sem recarregar.
+            'versao' => (int) $conferida->versao,
+        ]);
+    }
+
+    /**
+     * **MOD-03 / DADO-13 / BLOQ-05 — confirma o frete do vendedor.** Grava valor + origem
+     * `Confirmado` + a **nota que nomeia a fonte E a data**, e **INCREMENTA a versão**.
+     *
+     * ⚠️ Os três efeitos são de {@see AprovacaoDaOfertaService::confirmarFrete()} (que delega a
+     * `PubAprovacaoFrete::informar()`, numa transação única: linha nova, a anterior derrubada,
+     * versão++). A narração do ato (`:1204`) é desta action, pela mesma razão de `salvarPreco()`.
+     *
+     * ⚠️⚠️ **AS TRÊS ORIGENS SÃO LISTA FECHADA, E O QUE VIAJA É A CHAVE** (VOC-06): o corpo manda
+     * `cotacao_transportadora` · `tabela_cliente` · `simulador`, e os RÓTULOS que a pessoa lê
+     * (`Cotação da transportadora` · `Tabela do cliente` · `Simulador de frete`, literais do
+     * protótipo em `:1401` — **remedido**; a prosa do plano dizia `:1403`, que é o modal
+     * `reject`) moram em `PubAprovacaoFrete::ORIGENS`. ➡️ Quem recusa a origem inventada é o
+     * modelo, com o id estável `MOD-03-ORIGEM-DESCONHECIDA`, **antes** de qualquer escrita.
+     *
+     * ⚠️ **FIN-07 não é reaberto aqui:** "antes de declarar o frete Pendente está provado que não
+     * há fonte" é decisão da Fase 186 (`ComposicaoFinanceiraService` + `PubAprovacaoComposicao::
+     * linhaDeFrete()`, onde o informado à mão VENCE o da Precificação). Esta action só grava o
+     * frete que a pessoa informa.
+     */
+    public function confirmarFrete(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        AprovacaoDaOfertaService $aprovacao,
+        HistoricoDaOfertaService $historico,
+        PrecoDoPainelService $preco,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $dados = $request->validate([
+            'origem' => ['required', 'string'],
+            'versao_esperada' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
+        if (($recusa = $this->recusaDeRevisao($daConta, $dados['versao_esperada'] ?? null)) !== null) {
+            return $recusa;
+        }
+
+        $valor = PrecoDoPainelService::sanear($request->input('valor'));
+
+        if ($valor === null) {
+            return $this->recusaDoPainel(new RegraViolada(
+                PrecoDoPainelService::REGRA_FRETE_INVALIDO,
+                'Informe o frete pago pelo vendedor.',
+                ['oferta_id' => (int) $daConta->id]
+            ));
+        }
+
+        $origem = (string) $dados['origem'];
+
+        try {
+            $confirmada = DB::transaction(function () use ($aprovacao, $historico, $preco, $daConta, $valor, $origem, $request) {
+                $confirmada = $aprovacao->confirmarFrete($daConta, $valor, $origem, $request->user());
+
+                $historico->registrar(
+                    $confirmada,
+                    $request->user(),
+                    PubAprovacaoEvento::ALTERACAO,
+                    // ⚠️ O RÓTULO, nunca a chave: `cotacao_transportadora` não vai para a linha
+                    // do tempo. Quem traduz é o modelo.
+                    $preco->registroDeFreteConfirmado($valor, PubAprovacaoFrete::ORIGENS[$origem] ?? $origem, (int) $confirmada->versao),
+                    (int) $confirmada->versao,
+                );
+
+                return $confirmada;
+            });
+        } catch (RegraViolada $e) {
+            return $this->recusaDoPainel($e);
+        }
+
+        $vigente = PubAprovacaoFrete::vigenteDe($confirmada);
+
+        return back()->with('painel_frete_confirmado', [
+            'oferta_id' => (int) $confirmada->id,
+            'versao' => (int) $confirmada->versao,
+            'valor' => $valor,
+            'origem' => $origem,
+            // ⚠️ DADO-13 — a nota nomeia a FONTE e a DATA, e é LIDA da linha gravada. Remontá-la
+            // aqui criaria a segunda redação da mesma frase.
+            'nota' => $vigente?->nota,
+        ]);
+    }
+
+    /**
+     * **Critério 14 — a PRÉVIA do resultado e da margem, ANTES de confirmar o frete.**
+     * ⚠️ **LEITURA PURA: não grava nada.**
+     *
+     * ⚠️ Toda a regra está em {@see PrecoDoPainelService::previaDoFrete()}, inclusive **por que
+     * ela não pode ser `ComposicaoFinanceiraService::para()` com o frete substituído** (aquela
+     * assinatura não existe, e as duas alternativas foram medidas e descartadas — está escrito
+     * lá, com o ponto fixo que trava a premissa por asserção).
+     *
+     * ⚠️ Valor inválido devolve o estado "sem valor" com a frase do protótipo (`:1401`), **não um
+     * 422**: a pessoa está digitando.
+     */
+    public function previaDoFrete(
+        Request $request,
+        Company $company,
+        int $oferta,
+        FilaDeAprovacaoService $fila,
+        ProgramasPublicadorService $programas,
+        PrecoDoPainelService $preco,
+    ) {
+        $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
+
+        $previa = $preco->previaDoFrete($daConta, $request->input('valor'));
+
+        return $request->expectsJson()
+            ? response()->json($previa)
+            : back()->with('painel_frete_previa', $previa);
+    }
+
     // ═══ Apoio das seis escritas do painel ═══════════════════════════════════════════════════
 
     /**
@@ -1088,6 +1416,54 @@ class MlbPublicadorAprovacaoController extends Controller
         abort_if($daGaleria === null, 404, 'Foto fora desta oferta.');
 
         return $daGaleria;
+    }
+
+    /**
+     * ⚠️⚠️ **A GUARDA COMUM DAS TRÊS ESCRITAS DO PLANO 188-06** (preço, conferir alteração,
+     * frete): a oferta tem de estar **revisável**, e a `versao_esperada`, quando vem, tem de ser a
+     * atual. Devolve a recusa pronta, ou `null` quando pode gravar.
+     *
+     * ⚠️ **"Revisável" aqui é `LIVE` MAIS `aprovado`, e isso é MEDIDO, não folga:**
+     * `registrarMudanca()` (a única rotina de reabertura, plano 186-08) devolve a oferta
+     * `aprovado` para `aguardando_aprovacao` pela única porta — então salvar preço ou confirmar
+     * frete numa oferta aprovada **REABRE** a aprovação, e é exatamente isso que **impede a Fase
+     * 193 de publicar um número velho**. Recusar seria *menos* seguro. É o que o protótipo faz
+     * (`:1169`: `if (x.status === 'approved') x.status = 'awaiting'`). ⚠️ Fora disso
+     * (`preparando`, `publicando`, `publicado`, `falha`) não há revisão a fazer: a edição está
+     * bloqueada e gravar registraria um fato que ninguém pode produzir.
+     *
+     * ⚠️ **O id da regra é o que JÁ EXISTE** ({@see AprovacaoDaOfertaService::REGRA_FORA_DO_AO_VIVO}
+     * e {@see AprovacaoDaOfertaService::REGRA_VERSAO_DIVERGENTE}), nunca um id novo: a tela já sabe
+     * ler os dois, e cunhar um segundo para a mesma recusa espalharia o vocabulário.
+     *
+     * ⚠️ **E ela roda ANTES de qualquer gravação**, nas três.
+     */
+    private function recusaDeRevisao(PubAprovacaoOferta $daConta, ?int $versaoEsperada): ?JsonResponse
+    {
+        if (! $daConta->ehLive() && $daConta->andamento !== PubAprovacaoOferta::APROVADO) {
+            return $this->recusaDoPainel(new RegraViolada(
+                AprovacaoDaOfertaService::REGRA_FORA_DO_AO_VIVO,
+                'Esta oferta não está aberta para revisão.',
+                ['oferta_id' => (int) $daConta->id]
+            ));
+        }
+
+        if ($versaoEsperada !== null && $versaoEsperada !== (int) $daConta->versao) {
+            // ⚠️ COL-04 / critério 17 — alguém mexeu na oferta entre o que a tela mostrou e o
+            // clique. **Nunca sobrescrever em silêncio.** A mensagem diz as DUAS versões, porque
+            // sem elas a pessoa não tem o que conferir; o `regra` é o id ESTÁVEL que a tela usa.
+            return $this->recusaDoPainel(new RegraViolada(
+                AprovacaoDaOfertaService::REGRA_VERSAO_DIVERGENTE,
+                sprintf(
+                    'Esta oferta mudou enquanto você revisava (você viu a versão %d, a atual é %d). Confira de novo antes de gravar.',
+                    $versaoEsperada,
+                    (int) $daConta->versao
+                ),
+                ['oferta_id' => (int) $daConta->id, 'versao_vista' => $versaoEsperada, 'versao_atual' => (int) $daConta->versao]
+            ));
+        }
+
+        return null;
     }
 
     /**

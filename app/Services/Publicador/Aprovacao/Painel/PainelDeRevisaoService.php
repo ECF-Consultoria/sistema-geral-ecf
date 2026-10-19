@@ -4,6 +4,8 @@ namespace App\Services\Publicador\Aprovacao\Painel;
 
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaPublicacao;
+use App\Models\PubAprovacaoAjuste;
+use App\Models\PubAprovacaoDefeito;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
 use App\Services\Publicador\Aprovacao\BloqueiosDaOfertaService;
@@ -222,6 +224,113 @@ class PainelDeRevisaoService
      */
     public const FORA_DA_NAVEGACAO = [PubAprovacaoOferta::PREPARANDO];
 
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ Fase 188, plano 06 — OS TRÊS PAYLOADS QUE OS MODAIS CONSOMEM (B1.4 · B1.5 · B1.6)
+    //
+    // Os planos 188-11 e 188-12 mandavam **PARAR** se o servidor não entregasse estas listas, e
+    // **nenhum plano as entregava**. Elas nascem aqui, dentro do MESMO payload do painel, por
+    // uma razão de desenho: o `destino` e a `nota_do_escopo` de cada item de ajuste dizem **o que
+    // aquele item afeta**, e é esse dado que decide quantas ofertas vão para `changes`. Escrever
+    // a tabela de escopos no `.jsx` criaria a segunda verdade sobre isso — e a divergente
+    // **moveria ofertas erradas**.
+    //
+    // ⚠️ **OS TRÊS NASCEM COMO LISTA, NUNCA AUSENTES.** Chave ausente e lista vazia são casos
+    // DIFERENTES no cliente, e foi chave ausente que derrubou esta página em 07/10/2026.
+    // ⚠️ **E lista vazia é caso REAL, com comportamento declarado:** sem autorizador o modal de
+    // exceção **diz** e **não envia** (D4); sem defeito, **nenhum chip**, e o campo de motivo
+    // continua funcionando.
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /** `:1181` — o prefixo do item de imagem, e o separador. */
+    public const AJUSTE_IMAGEM_PREFIXO = 'Imagem #';
+
+    public const AJUSTE_IMAGEM_SEPARADOR = ' · ';
+
+    /** `:1181` — as quatro sugestões do item de imagem, **na ordem**. */
+    public const AJUSTE_SUGESTOES_DA_IMAGEM = [
+        'IA alterou os pés da poltrona',
+        'Cor diferente da original',
+        'Quantidade do kit incorreta',
+        'Texto ilegível na imagem',
+    ];
+
+    /** `:1183` — o rótulo do item de preço ganha a modalidade (`modName`, `:1059`). */
+    public const AJUSTE_PRECO_PREFIXO = 'Preço';
+
+    /**
+     * ⚠️⚠️ `:1183`-`:1189` — OS **SETE** ITENS FIXOS, **NA ORDEM**, com escopo e sugestões.
+     *
+     * ⚠️ **SÃO SETE, E ISSO FOI MEDIDO POR `sed`** — a prosa do `188-06-PLAN.md` diz "os **8**
+     * fixos na ordem, com o **8º** alternando"; o protótipo tem **4 de escopo `offer` + 3 de
+     * escopo `product`**, e a `188-FID01.md` §F.1 também lista **sete**. ➡️ **O FID01 tem razão**
+     * (é a quarta vez nesta fase que o `<interfaces>`/a prosa de um plano divergiu dele). O que
+     * alterna é o **ÚLTIMO**, que é o **sétimo**.
+     *
+     * ⚠️ O item de preço entra com `null` no rótulo porque ele é o único que depende da
+     * MODALIDADE da oferta: ele é montado em {@see self::itensDeAjuste()}.
+     *
+     * @var list<array{rotulo: ?string, escopo: string, sugestoes: list<string>}>
+     */
+    public const AJUSTE_ITENS_FIXOS = [
+        ['rotulo' => null, 'escopo' => PubAprovacaoAjuste::ESCOPO_OFERTA, 'sugestoes' => [
+            'Rever preço para atingir a margem mínima',
+            'Preço abaixo do praticado pelo cliente',
+        ]],
+        ['rotulo' => 'Frete do vendedor', 'escopo' => PubAprovacaoAjuste::ESCOPO_OFERTA, 'sugestoes' => [
+            'Frete do vendedor ainda não confirmado',
+            'Cotar frete para o volume do kit',
+        ]],
+        ['rotulo' => 'Título', 'escopo' => PubAprovacaoAjuste::ESCOPO_OFERTA, 'sugestoes' => [
+            'Incluir medida e material no título',
+        ]],
+        ['rotulo' => 'Descrição', 'escopo' => PubAprovacaoAjuste::ESCOPO_OFERTA, 'sugestoes' => [
+            'Descrição sem informações de montagem',
+        ]],
+        ['rotulo' => 'Custo do produto', 'escopo' => PubAprovacaoAjuste::ESCOPO_PRODUTO, 'sugestoes' => [
+            'Custo desatualizado no ERP',
+        ]],
+        ['rotulo' => 'Atributos e ficha técnica', 'escopo' => PubAprovacaoAjuste::ESCOPO_PRODUTO, 'sugestoes' => [
+            'Atributo obrigatório divergente',
+        ]],
+        // ⚠️ O SÉTIMO **ALTERNA** por `units > 1` (`:1189`) — ver `AJUSTE_ULTIMO_*`.
+        ['rotulo' => null, 'escopo' => PubAprovacaoAjuste::ESCOPO_PRODUTO, 'sugestoes' => [
+            'Composição do kit divergente das fotos',
+        ]],
+    ];
+
+    /** `:1189` — o sétimo item: `set.units > 1 ? 'Composição do kit' : 'Categoria'`. */
+    public const AJUSTE_ULTIMO_COMBO = 'Composição do kit';
+
+    public const AJUSTE_ULTIMO_UNIDADE = 'Categoria';
+
+    /**
+     * `:1397` — a NOTA de cada escopo, literal do protótipo.
+     *
+     * ⚠️ Ela é o que a caixa "Encaminhar para" mostra ao lado do destino (a caixa é tela, plano
+     * 188-11; o **dado** é daqui). ⚠️ `:1397`, **remedido por `sed`** — a §F.1 do FID01 aponta
+     * `:1396`, que é a linha do `if (k === 'adjust')`.
+     */
+    public const AJUSTE_NOTA_DO_ESCOPO = [
+        PubAprovacaoAjuste::ESCOPO_PRODUTO => 'Ajuste no cadastro base: afeta todas as ofertas deste produto',
+        PubAprovacaoAjuste::ESCOPO_CONJUNTO => 'Ajuste no conjunto de fotos compartilhado',
+        PubAprovacaoAjuste::ESCOPO_OFERTA => 'Ajuste específico desta oferta',
+    ];
+
+    /**
+     * ⚠️ A `descricao` do autorizador — **DIVERGÊNCIA DECLARADA do protótipo**.
+     *
+     * `:1399` traz `[{v:'RG', l:'Ricardo Gomes · gestor da conta'}, {v:'CM', l:'Carla Mendes ·
+     * coordenação'}]`: dois nomes INVENTADOS com um CARGO inventado. ⚠️ **Não existe dado de
+     * "cargo na conta"** neste sistema (a pivot `company_users` tem papel por SERVIÇO, não
+     * "gestor desta conta ML"), e escrever um cargo seria a tela **afirmando o que não é** — a
+     * mesma régua da §3 do FID01, que dá ao protótipo a FÓRMULA, os RÓTULOS e a ORDEM, **nunca
+     * os DADOS**. ➡️ A descrição é o número REAL que a conta tem, o **mesmo** que o filtro de
+     * Responsável da fila já mostra (`FiltrosDaFilaService::responsaveisDaConta()` → `total`).
+     */
+    public const AUTORIZADOR_UMA = ' oferta nesta conta';
+
+    public const AUTORIZADOR_VARIAS = ' ofertas nesta conta';
+
     /**
      * ⚠️⚠️ **`$fotos` É OBRIGATÓRIO, E A ALTERNATIVA FOI MEDIDA E DESCARTADA — NÃO a torne
      * anulável "para não quebrar teste".**
@@ -276,10 +385,11 @@ class PainelDeRevisaoService
      *     pendencias: list<array{chave: string, texto: string, correcao: ?string, severidade: string, glifo: string, destino: ?array}>,
      *     rodape: array{aprovavel: bool, motivo: string, motivo_cor: string, botoes: array{salvar: bool, ajustes: bool, aprovar: bool, proximo: bool}},
      *     fotos: array{progresso: string, progresso_cor: string, total: int, aprovadas: int, pendentes: int, com_alerta: int, com_alerta_restantes: int, nota_de_conjunto: ?string, imagens: list<array<string, mixed>>, selecionada: ?array<string, mixed>, selecionada_indice: ?int, sem_alerta: array{quantidade: int, rotulo: string}|null},
-     *     preco: array<string, mixed>
+     *     preco: array<string, mixed>,
+     *     modais: array{ajuste: array{itens: list<array<string, mixed>>}, excecao: array{autorizadores: list<array<string, mixed>>}, reprovar: array{defeitos: list<array{chave: string, rotulo: string}>}}
      * }
      */
-    public function para(PubAprovacaoOferta $oferta, Builder $base): array
+    public function para(PubAprovacaoOferta $oferta, Builder $base, array $responsaveisDaConta = []): array
     {
         // ⚠️⚠️ **UMA leitura, e é a ÚNICA deste método.** Ela consulta o Mercado Livre pela
         // composição; duas chamadas dobrariam as requisições. Há gate com espião, com isca.
@@ -289,6 +399,12 @@ class PainelDeRevisaoService
         $bloqueios = is_array($leitura['bloqueios'] ?? null) ? $leitura['bloqueios'] : [];
 
         $navegacao = $this->navegacao($oferta, $base);
+
+        // ⚠️⚠️ **UMA leitura da coluna de fotos por oferta.** Ela alimenta a chave `fotos` E os
+        // itens do modal de ajustes (um por imagem, `:1181`). Chamar `FotosDoPainelService::
+        // para()` duas vezes dobraria as consultas da galeria **e** abriria a chance de as duas
+        // listas discordarem — e aí o "Imagem #3" do modal apontaria para outra foto.
+        $fotos = $this->fotos->para($oferta);
 
         return [
             'oferta_id' => (int) $oferta->id,
@@ -307,7 +423,7 @@ class PainelDeRevisaoService
             // **TODOS os grupos do rascunho** (decisão do usuário, 14/10/2026).
             // ⚠️ `contagemDeFotos()` **não** chama `para()` — ele lê o banco. O gate de custo do
             // 188-02 (`para()` UMA vez por oferta) continua valendo, e há caso provando isso.
-            'fotos' => $this->fotos->para($oferta),
+            'fotos' => $fotos,
             // ⚠️⚠️ A COLUNA DE PREÇO — plano 188-04. Ela recebe a **composição que a leitura acima
             // JÁ carregou** (`$leitura['composicao']`), e isso é o que mantém o gate de custo do
             // 188-02 (`BloqueiosDaOfertaService::para()` UMA vez por oferta) de pé: pedir a
@@ -317,7 +433,176 @@ class PainelDeRevisaoService
             // ⚠️ `PrecoDoPainelService` **só LÊ**: a simulação nunca é persistida nem enviada ao
             // ML, e a ESCRITA do preço salvo é do plano 188-06.
             'preco' => $this->preco->para($oferta, $leitura['composicao']),
+            // ⚠️⚠️ OS TRÊS PAYLOADS DOS MODAIS — plano 188-06 (B1.4/B1.5/B1.6). Eles vêm no
+            // MESMO payload porque o `destino`/`nota_do_escopo` de cada item de ajuste DECIDE
+            // quantas ofertas vão para `changes`: a tela não pode ter a segunda tabela de
+            // escopos. ⚠️ As três chaves existem SEMPRE, mesmo vazias.
+            'modais' => $this->modais($oferta, $fotos, $responsaveisDaConta),
         ];
+    }
+
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // ⚠️⚠️ OS TRÊS PAYLOADS DOS MODAIS (plano 188-06, B1.4 · B1.5 · B1.6)
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * `modais.ajuste.itens` · `modais.excecao.autorizadores` · `modais.reprovar.defeitos`.
+     *
+     * ⚠️ **As três chaves existem SEMPRE**, mesmo vazias — ver o bloco de constantes acima.
+     *
+     * @param  array<string, mixed>  $fotos  a coluna de fotos JÁ LIDA — ver `para()`
+     * @param  list<array{id: int, nome: string, total: int}>  $responsaveisDaConta
+     * @return array{ajuste: array{itens: list<array<string, mixed>>}, excecao: array{autorizadores: list<array{id: int, nome: string, descricao: string}>}, reprovar: array{defeitos: list<array{chave: string, rotulo: string}>}}
+     */
+    private function modais(PubAprovacaoOferta $oferta, array $fotos, array $responsaveisDaConta): array
+    {
+        return [
+            'ajuste' => ['itens' => $this->itensDeAjuste($oferta, $fotos)],
+            'excecao' => ['autorizadores' => $this->autorizadores($responsaveisDaConta)],
+            // ⚠️ B1.5 — os chips de defeito, LIDOS do modelo da Fase 186
+            // (`PubAprovacaoDefeito::DEFEITOS`, a lista canônica). Escrever os seis aqui criaria a
+            // segunda redação dos rótulos, e a divergente seria a que a pessoa clica.
+            'reprovar' => ['defeitos' => $this->defeitos()],
+        ];
+    }
+
+    /**
+     * ⚠️⚠️ B1.6 — `adjustItems` (`:1179`-`:1191`): **uma entrada por imagem da galeria** e depois
+     * os **SETE** fixos, nesta ordem, com o **sétimo alternando** por `units > 1`.
+     *
+     * ⚠️ A ORDEM é a da constante {@see self::AJUSTE_ITENS_FIXOS}, nunca a ordem em que o PHP
+     * resolveu os `if`: lista que a tela NUMERA ou ORDENA precisa de ordem EXPLÍCITA, e esta é a
+     * ordem do `<select>` do modal.
+     *
+     * ⚠️ As imagens chegam **JÁ LIDAS** (a MESMA array da chave `fotos`), com o `rotulo` e a
+     * `posicao` resolvidos. Reler o conjunto aqui abriria uma segunda consulta livre para divergir
+     * da que a tela viu — e o "Imagem #3" do modal apontaria para outra foto.
+     *
+     * ⚠️ `destino` é **LIDO** de `PubAprovacaoAjuste::destinoLegivel()` (VOC-06: as chaves
+     * `offer`/`set`/`product` nunca chegam à tela), e `nota_do_escopo` da constante do protótipo.
+     *
+     * @return list<array{rotulo: string, escopo: string, destino: string, nota_do_escopo: string, sugestoes: list<string>}>
+     */
+    private function itensDeAjuste(PubAprovacaoOferta $oferta, array $fotos): array
+    {
+        $listingType = $this->texto($oferta->alvo?->listing_type_id);
+        $modalidade = $listingType === null ? null : (PubAprovacaoAjuste::MODALIDADES[$listingType] ?? null);
+        $unidades = $this->unidades($oferta);
+
+        $itens = [];
+
+        foreach ((is_array($fotos['imagens'] ?? null) ? $fotos['imagens'] : []) as $imagem) {
+            // ⚠️ Flag DENTRO do laço.
+            $posicao = is_int($imagem['posicao'] ?? null) ? (int) $imagem['posicao'] : count($itens) + 1;
+            $rotulo = $this->texto($imagem['rotulo'] ?? null);
+
+            $itens[] = $this->itemDeAjuste(
+                self::AJUSTE_IMAGEM_PREFIXO.$posicao.($rotulo === null ? '' : self::AJUSTE_IMAGEM_SEPARADOR.$rotulo),
+                PubAprovacaoAjuste::ESCOPO_CONJUNTO,
+                $listingType,
+                self::AJUSTE_SUGESTOES_DA_IMAGEM,
+            );
+        }
+
+        foreach (self::AJUSTE_ITENS_FIXOS as $posicao => $fixo) {
+            // ⚠️ Flag DENTRO do laço. Os DOIS rótulos `null` da constante são os que dependem da
+            // oferta: o PRIMEIRO item (preço · modalidade) e o SÉTIMO (kit × categoria).
+            $ehOPrimeiro = $posicao === 0;
+            $rotulo = match (true) {
+                $fixo['rotulo'] !== null => (string) $fixo['rotulo'],
+                // ⚠️ Modalidade desconhecida ⇒ só "Preço", **sem o espaço solto no fim**. A tela
+                // nunca mostra "Preço " nem "Preço null".
+                $ehOPrimeiro => self::AJUSTE_PRECO_PREFIXO.($modalidade === null ? '' : ' '.$modalidade),
+                $unidades > 1 => self::AJUSTE_ULTIMO_COMBO,
+                default => self::AJUSTE_ULTIMO_UNIDADE,
+            };
+
+            $itens[] = $this->itemDeAjuste($rotulo, (string) $fixo['escopo'], $listingType, $fixo['sugestoes']);
+        }
+
+        return $itens;
+    }
+
+    /**
+     * Um item, com o destino e a nota **do escopo** — os dois de UM lugar só.
+     *
+     * @param  list<string>  $sugestoes
+     * @return array{rotulo: string, escopo: string, destino: string, nota_do_escopo: string, sugestoes: list<string>}
+     */
+    private function itemDeAjuste(string $rotulo, string $escopo, ?string $listingType, array $sugestoes): array
+    {
+        return [
+            'rotulo' => $rotulo,
+            'escopo' => $escopo,
+            'destino' => PubAprovacaoAjuste::destinoLegivel($escopo, $listingType),
+            'nota_do_escopo' => self::AJUSTE_NOTA_DO_ESCOPO[$escopo] ?? '',
+            'sugestoes' => array_values($sugestoes),
+        ];
+    }
+
+    /**
+     * ⚠️ B1.4 — quem pode autorizar a exceção: o **MESMO** resolvedor do filtro de Responsável da
+     * fila (`FiltrosDaFilaService::responsaveisDaConta()`), recebido JÁ RESOLVIDO.
+     *
+     * ⚠️⚠️ **E ELE CHEGA POR PARÂMETRO, NÃO POR INJEÇÃO — a razão é MEDIDA.** Um 6º argumento no
+     * construtor quebraria o gate de aridade do plano 188-04
+     * (`PrecoDoPainelServiceTest:1481`-`:1482`, que exige **cinco** parâmetros obrigatórios), e
+     * aquele gate está CERTO: ele guarda a armadilha do `Container::resolveClass()`. Já um `app()`
+     * aqui dentro seria service locator disfarçado de injeção, exatamente o que o docblock do
+     * construtor proíbe. ➡️ A action já calcula `$responsaveis` para o filtro da fila
+     * (`MlbPublicadorAprovacaoController:244`) e **repassa a mesma array**: zero consulta nova,
+     * zero segunda verdade.
+     *
+     * ⚠️ O default `[]` **não é a ilusão de injeção** daquele docblock (ela vale para parâmetro de
+     * CLASSE que o container resolve): aqui ele é o caso honesto "nenhum autorizador resolvido", e
+     * o modal então **diz e não envia** (D4). Há caso de ROTA exigindo a lista **não vazia** com a
+     * conta preenchida — é ele que impede este default de virar silêncio.
+     *
+     * @param  list<array{id: int, nome: string, total: int}>  $responsaveisDaConta
+     * @return list<array{id: int, nome: string, descricao: string}>
+     */
+    private function autorizadores(array $responsaveisDaConta): array
+    {
+        $lista = [];
+
+        foreach ($responsaveisDaConta as $cru) {
+            // ⚠️ Flag DENTRO do laço. E guarda de tipo ANTES de qualquer acesso: esta array vem
+            // de outro serviço, e `$cru['id']` com `$cru` não-array LANÇA.
+            $pessoa = is_array($cru) ? $cru : [];
+            $id = is_int($pessoa['id'] ?? null) ? (int) $pessoa['id'] : null;
+            $nome = $this->texto($pessoa['nome'] ?? null);
+            $total = is_int($pessoa['total'] ?? null) ? (int) $pessoa['total'] : 0;
+
+            if ($id === null || $nome === null) {
+                continue;
+            }
+
+            $lista[] = [
+                'id' => $id,
+                'nome' => $nome,
+                'descricao' => $total.($total === 1 ? self::AUTORIZADOR_UMA : self::AUTORIZADOR_VARIAS),
+            ];
+        }
+
+        return $lista;
+    }
+
+    /**
+     * ⚠️ B1.5 — os chips de defeito do modal MOD-04, **lidos do modelo canônico da Fase 186**.
+     *
+     * @return list<array{chave: string, rotulo: string}>
+     */
+    private function defeitos(): array
+    {
+        $chips = [];
+
+        foreach (PubAprovacaoDefeito::DEFEITOS as $chave => $rotulo) {
+            // ⚠️ Flag DENTRO do laço.
+            $chips[] = ['chave' => (string) $chave, 'rotulo' => (string) $rotulo];
+        }
+
+        return $chips;
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════

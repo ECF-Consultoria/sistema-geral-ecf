@@ -1148,7 +1148,12 @@ class PainelDeRevisaoServiceTest extends TestCase
         // faria a contagem crescer junto com o contrato (learnings §4b.2). ⚠️ E `array_key_exists`,
         // não `isset`: **chave ausente e chave NULA são casos DIFERENTES** no cliente, e foi chave
         // ausente que derrubou a página em 07/10/2026.
-        $esperadas = ['oferta_id', 'versao', 'identificacao', 'falha', 'navegacao', 'pendencias', 'rodape', 'fotos', 'preco'];
+        // ⚠️ `modais` entrou na wave **188-06** (B1.4/B1.5/B1.6): os três payloads que os modais
+        // consomem viajam no MESMO payload do painel, porque o `destino`/`nota_do_escopo` de cada
+        // item de ajuste decide **quantas ofertas vão para `changes`** — a tela não pode ter a
+        // segunda tabela de escopos. ⚠️ A asserção segue sendo **UMA** e segue sendo IGUALDADE DE
+        // CONJUNTO: a contagem deste caso NÃO muda.
+        $esperadas = ['oferta_id', 'versao', 'identificacao', 'falha', 'navegacao', 'pendencias', 'rodape', 'fotos', 'preco', 'modais'];
         $this->assertSame(
             [],
             array_values(array_filter($esperadas, static fn (string $k): bool => ! array_key_exists($k, $vm))),

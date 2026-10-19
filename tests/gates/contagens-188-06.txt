@@ -1,0 +1,182 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 188-06 — AS ESCRITAS DE PREÇO, FRETE,
+# AJUSTE-POR-ESCOPO e EXCEÇÃO do painel de revisão, mais o TRANSPORTE da
+# simulação e os TRÊS payloads que os modais consomem.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 188-06 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `188-06`, E NÃO `06`. O número NU resolve
+# `contagens-186-06.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os **17** métodos PHP deste
+#    plano estão quebrados em **SETE** ids, **nenhum com mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 19/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**
+#    (`medir-188-06.sh` no scratchpad), com o ANSI tirado ANTES de ler a linha
+#    `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ⚠️⚠️ BIJEÇÃO ids ↔ MÉTODOS, conferida POR SCRIPT nos DOIS sentidos
+#    (`bijecao-188-06.php` no scratchpad, 19/10/2026), e a sonda EXPANDE a
+#    alternância `test_(a|b|c)` antes de comparar — foi o furo medido pela wave
+#    188-05, em que `/test_[A-Za-z0-9_]+/` NÃO casava a forma de alternância e
+#    acusava `SEM_ID=14` com o manifesto CORRETO.
+#    · **método sem id NUNCA RODA** (foi o sobrevivente da mutação do 186-03);
+#    · **id órfão é gate sobre ZERO casos**, indistinguível de verde.
+#
+# ⚠️⚠️ E A TERCEIRA BIJEÇÃO — id ↔ `<verify>`: os SETE ids abaixo aparecem em
+#    `<verify>` do `188-06-PLAN.md` (quatro na tarefa 1, três na tarefa 2), e
+#    nenhum `<verify>` usa id que não esteja aqui. ⚠️ `simular-sem-gravar` e
+#    `payload-dos-modais` estavam ÓRFÃOS na primeira redação do plano — hoje os
+#    dois rodam no `<verify>` da tarefa 1.
+#
+# ⚠️⚠️ COLISÃO DE HOMÔNIMO — conferida POR SCRIPT, nas DUAS direções, incluindo
+#    PREFIXO. O `--filter` do PHPUnit é regex **NÃO ANCORADO** e as Fases 186 E
+#    187 estão EM PRODUÇÃO: método superstring de uma delas faria o id daquela
+#    fase **SOMAR** e reprovar. ➡️ **Todo método deste plano leva `_188_06` no
+#    nome, e o conserto de colisão é sufixo no método NOVO — NUNCA levantar a
+#    contagem do manifesto alheio.**
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: ele
+#    é **só de servidor** e não cria nenhum `.jsx`. A regra é **quem roda,
+#    declara**, não *todos declaram* (é o mesmo caso de `contagens-187-02.txt` e
+#    `contagens-188-05.txt`).
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# preco-salvo-e-versao
+#   · ⚠️⚠️ OS **TRÊS** EFEITOS DE SALVAR O PREÇO, MEDIDOS SEPARADAMENTE: a
+#     `versao` sobe · o aviso de alteração (`preco_alterado`) é LIMPO · o ato vai
+#     ao histórico na frase de `:1169`. Um gate que só olhasse a versão passaria
+#     com o aviso de pé, e a oferta ficaria bloqueada por uma alteração que a
+#     pessoa ACABOU de fazer. A fixture nasce COM o aviso de pé — sem isso, "o
+#     aviso foi limpo" seria verdade por ele nunca ter existido;
+#   · `aprovado → aguardando_aprovacao` pela **ÚNICA PORTA** (BLOQ-06), e a
+#     IRMÃ **não** é alcançada (preço é escopo de oferta; com uma oferta só isso
+#     seria inobservável);
+#   · ⚠️ **BLOQ-07 — "Conferir alteração" NÃO MEXE NO PREÇO** (`:1170`): há
+#     asserção de que o preço ficou IGUAL, e de que a versão **não** subiu. É essa
+#     asserção que impede alguém de "completar" a função;
+#   · 14 entradas que não são preço → 422 `FIN-11-PRECO-INVALIDO` **sem gravar**,
+#     numa asserção ÚNICA coletando os infratores, com **isca do recorte** (preço
+#     válido TEM de ser aceito). Inclui `-10,00` e o U+2212: o `num()` do
+#     protótipo os ENGOLIRIA (divergência (3) da wave 188-04);
+#   · `versao_esperada` divergente → 422 `COL-04-VERSAO-DIVERGENTE` sem gravar,
+#     com isca (versão certa grava); e os três andamentos fora da revisão → 422
+#     `BLOQ-04-APROVAR-FORA-DO-AO-VIVO` sem gravar.
+#
+# frete-confirmado
+#   · MOD-03/DADO-13 — valor + origem `Confirmado` + a nota que NOMEIA a fonte e
+#     a DATA (`:1204`), e a versão sobe **exatamente uma vez** (`informar()` já
+#     incrementa; duas deixariam `versao_aprovada` duas atrás);
+#   · as **TRÊS** origens como lista FECHADA lida de `PubAprovacaoFrete::ORIGENS`:
+#     rótulo pt-BR, chave do protótipo e inventada são 422, com **isca** provando
+#     que as três chaves legítimas são aceitas; e VOC-06 — a chave não chega ao
+#     histórico;
+#   · ⚠️⚠️ **A PRÉVIA (critério 14) NÃO GRAVA, e está amarrada à composição real
+#     pelo PONTO FIXO:** com o valor IGUAL ao frete vigente ela devolve
+#     exatamente o `resultado`/`margem` de `ComposicaoFinanceiraService::para()`.
+#     É o que torna a soma de `previaDoFrete()` uma EQUIVALÊNCIA MEDIDA em vez de
+#     uma segunda verdade — se a fórmula do DTO da 186 mudar, a asserção QUEBRA.
+#     ⚠️ E há o caso que prova por que as duas alternativas foram descartadas: sem
+#     frete o `resultado` da composição é **NULO**, então "subtrair o delta" não
+#     funcionaria; a prévia, mesmo assim, dá o número CERTO.
+#
+# simular-sem-gravar
+#   · ⚠️⚠️ **O TRANSPORTE** (B1.3) — era BLOCKER do verificador: `simular()`
+#     existia desde a wave 188-04 e **nenhuma rota recebia o preço digitado**;
+#   · as **9 chaves** que o plano declarou ler dali existem no estado SIMULADO E
+#     no NEUTRO (forma diferente quebraria o cliente em metade das respostas),
+#     com UMA asserção coletando as ausentes;
+#   · **nada é persistido** (versão, eventos, fretes, composições congeladas,
+#     ajustes e o aviso de alteração, todos inalterados) — ⚠️ **com ISCA**: salvar
+#     o preço MEXE nos mesmos contadores, senão "nada mudou" seria verdade por o
+#     contador estar cego;
+#   · `pode_salvar` falso nos TRÊS andamentos fora do `live`;
+#   · ⚠️ **zero requisição de ESCRITA** ao Mercado Livre — e a régua é essa, não
+#     "zero requisição": `para()` LÊ a tarifa real no GET
+#     `/sites/MLB/listing_prices` (decisão 9 do usuário). Prometer zero absoluto
+#     seria gate que o próprio desenho contradiz. **Duas iscas:** a de que o
+#     espião viu requisição (não está cego) e a de que ele ACUSA um POST em
+#     `/items`.
+#
+# payload-dos-modais
+#   · ⚠️ B1.4/B1.5/B1.6 — os planos 188-11/12 mandavam PARAR se o servidor não
+#     entregasse estas listas, e **nenhum plano as entregava**. ⚠️ **TESTE DE
+#     LEITURA**, pela rota do painel: a primeira redação afirmava que o serviço
+#     "devolve" os itens sem nada medir isso;
+#   · as **sete** chaves do caminho `modais.*` existem SEMPRE (chave ausente e
+#     lista vazia são casos DIFERENTES no cliente — foi chave ausente que
+#     derrubou esta página em 07/10/2026), numa asserção ÚNICA;
+#   · autorizadores recortados pela CONTA, com `descricao` derivada do número
+#     REAL (**divergência declarada**: o cargo de `:1399` é ficção do protótipo), e
+#     **isca** — conta sem responsável devolve lista VAZIA;
+#   · os chips LIDOS de `PubAprovacaoDefeito::DEFEITOS`;
+#   · ⚠️⚠️ a **LISTA INTEIRA** dos itens de ajuste, na ORDEM, com a alternância do
+#     SÉTIMO provada em fixture de UNIDADE e de COMBO. **Piso NÃO prova
+#     presença.** ⚠️ E a premissa fica travada: são **SETE** fixos, não oito — a
+#     prosa do plano diz 8, o protótipo (`:1183`-`:1189`) e a §F.1 do FID01 dizem
+#     SETE, e **o FID01 tem razão**.
+#
+# ajuste-por-escopo
+#   · ⚠️⚠️ OS TRÊS ESCOPOS com fixture de **4 ofertas em 2 conjuntos**: com uma
+#     oferta só os três dariam o mesmo resultado e **nada se provaria** (foi a
+#     falha de fixture das duas sobreviventes da wave 187-06);
+#   · `offer` move SÓ aquela · `set` move as DUAS do rascunho · `product` move as
+#     QUATRO — sempre pela **ÚNICA PORTA**;
+#   · `publicando`/`publicado` **NÃO** vão para `changes` (`:1198` só move
+#     `awaiting`/`ecf_review`/`approved`): mandar tudo reabriria a revisão de algo
+#     que já está no ar;
+#   · texto vazio/só espaços → 422 sem gravar, **e a guarda do serviço exercitada
+#     DIRETO** porque pela rota o `TrimStrings` chega antes (medido na wave
+#     188-05); escopo fora da lista → `DADO-09-ESCOPO-INVALIDO`; âncora
+#     incoerente → `DADO-09-ANCORA-INCOERENTE`.
+#
+# resolver-ajuste
+#   · ⚠️ AND-07 nos **DOIS** sentidos, na MESMA fixture: resolver o ÚLTIMO ajuste
+#     aberto devolve a oferta para `awaiting`; **havendo outro**, ela CONTINUA em
+#     `changes`. Um gate que só testasse o "último" passaria com um serviço que
+#     devolve SEMPRE;
+#   · a fixture é levada ao estado pela única porta — medir "reabrir" numa oferta
+#     que nunca saiu é cenário IMPOSSÍVEL, e passa sem provar nada (achado da
+#     wave 188-05);
+#   · ajuste de outra conta → **404, nunca 403**.
+#
+# excecao-travas
+#   · ⚠️⚠️ BLOQ-08 — a exceção libera **SÓ** `resultado_negativo` e
+#     `margem_abaixo_do_minimo`, e há **ISCA POR BLOQUEIO** provando que ela não
+#     libera os outros SEIS (fotos, frete, alteração, ajuste, título e o segundo
+#     financeiro), com `BLOQ-08-EXCECAO-NAO-LIBERA-ESSE-BLOQUEIO`. Testar só a
+#     aceitação nos dois deixaria a elevação de privilégio passar;
+#   · ⚠️ a trava é `>= 10`, **não `> 10`**: medida em **9, 10 e 11** caracteres —
+#     a fronteira é onde o erro mora;
+#   · responsável obrigatório, e o registro no histórico com **quem liberou**;
+#   · ⚠️ DADO-11 / decisão 6 do usuário — **"exceção aguardando autorização" NÃO
+#     EXISTE**: gate de ausência ancorado no **SUJEITO** (não em palavras soltas:
+#     *"Aguardando aprovação"* é vocabulário CORRETO do domínio), sobre a lista
+#     CONSTANTE dos arquivos deste plano, lendo **sem comentário**, com os acentos
+#     e a cedilha (`aprovad` NÃO casa `aprovação`) e **isca nas duas direções**.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+preco-salvo-e-versao  php  test_(salvar_preco_tem_os_tres_efeitos_e_reabre_a_aprovada_pela_unica_porta_188_06|conferir_alteracao_confere_sem_mexer_no_preco_188_06|preco_invalido_versao_divergente_e_fora_da_revisao_recusam_sem_gravar_188_06)  ::  tests=3 assertions=38
+frete-confirmado  php  test_(confirmar_frete_grava_valor_origem_nota_e_versao_188_06|origem_fora_das_tres_e_valor_invalido_recusam_sem_gravar_188_06|previa_do_frete_nao_grava_e_bate_com_a_composicao_no_ponto_fixo_188_06)  ::  tests=3 assertions=44
+simular-sem-gravar  php  test_(simular_devolve_as_nove_chaves_e_nao_persiste_nada_188_06|nem_simular_nem_a_previa_escrevem_no_mercado_livre_com_isca_188_06)  ::  tests=2 assertions=25
+payload-dos-modais  php  test_(os_tres_payloads_dos_modais_existem_sempre_com_assercao_por_campo_188_06|a_ordem_dos_sete_itens_fixos_e_a_alternancia_do_setimo_188_06)  ::  tests=2 assertions=26
