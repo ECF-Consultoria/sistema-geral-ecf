@@ -325,9 +325,19 @@ function chavesAcrescentadas(diff) {
         .split(/\r?\n/)
         .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
         .map((l) => l.slice(1))
-        .map((l) => l.match(/^\s*'?([A-Za-z][A-Za-z0-9-]*)'?\s*:\s*['"[{]/))
-        .filter(Boolean)
-        .map((m) => m[1]);
+        // ⚠️⚠️ VARREDURA GLOBAL DA LINHA, e não só do começo dela — achado da
+        // INVESTIGAÇÃO da única sobrevivente da campanha de mutação (a nº 3).
+        // A primeira redação ancorava em `^\s*`, então numa linha com DUAS chaves
+        // (`'line-strong': '#2E2E2E', 'linha-inventada-188': '#ABCDEF',`) o
+        // VEREDICTO ficava CERTO — a lista saía não-vazia e o gate morreria —, mas
+        // a mensagem **nomeava `line-strong`**, a chave LEGÍTIMA, em vez da
+        // inventada. ⚠️ Mensagem que nomeia a coisa errada é como o executor
+        // seguinte conserta a coisa errada: é a família do *"gate que empurrava
+        // para o conserto errado"* (`188-REGUA.md` §6, regra 8).
+        // ⚠️ O guard `['"[{]` depois dos dois-pontos é o que impede casar DENTRO
+        // de um valor: `max-height:calc(100vh - 140px)` **não** casa, porque
+        // `calc(` não começa por aspa nem colchete.
+        .flatMap((l) => [...l.matchAll(/'?([A-Za-z][A-Za-z0-9-]*)'?\s*:\s*['"[{]/g)].map((m) => m[1]));
 }
 
 test('TOK-188-01 — nenhum commit de escopo `(188-01)` acrescenta token (passada A)', () => {
