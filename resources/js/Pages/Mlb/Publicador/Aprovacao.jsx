@@ -13,7 +13,7 @@ import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
 import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
-import PainelDeRevisao from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -709,16 +709,51 @@ export default function Aprovacao({
             );
         };
 
-    // ⚠⚠ **"Tentar publicar novamente" NÃO É DESENHADO, e o motivo é MEDIDO:**
-    // não existe rota para `AprovacaoDaOfertaService::tentarDeNovo()` (as únicas
-    // rotas da aprovação são `meus.aprovacao` no GET e `meus.aprovacao.lote` no
-    // POST; as de escrita do painel são dos planos **188-05/06**). Sem handler o
-    // botão não nasce, e a caixa de falha **continua aparecendo** com a mensagem
-    // REAL do Mercado Livre. ⚠ Botão sem destino é D4 violado, e `onClick` vazio
-    // é a mesma dívida com outra roupa.
+    // ═══ ⚠⚠ "TENTAR PUBLICAR NOVAMENTE" — LIGADO, e o histórico fica escrito ═══
     //
-    // ⚠ As duas COLUNAS também chegam vazias: a de fotos é do plano **188-08** e a
-    // de preço do **188-09**. Slot sem nó **não desenha casca**.
+    // ⚠⚠ **A ROTA PASSOU A EXISTIR NO MEIO DESTA WAVE, e o gate foi quem avisou.**
+    // Quando esta linha foi escrita pela primeira vez, `grep tentarDeNovo routes/`
+    // saía VAZIO e o botão **não era desenhado** — a instrução literal do plano
+    // 188-07 era *"se essa rota não existir ainda, o botão NÃO é desenhado e você
+    // declara"*, e é a mesma régua de PERGUNTA-188-B (destino `null` → SEM BOTÃO,
+    // e o TEXTO continua). ⚠ Botão sem destino é D4 violado, e `onClick` vazio é a
+    // mesma dívida com outra roupa.
+    // ➡️ O plano **188-05** commitou a rota (`mlb.anuncios.meus.aprovacao.painel
+    // .tentar-de-novo`, `routes/mlb_anuncios.php:597`), **a condição caiu**, e o
+    // gate de ausência REPROVOU com a mensagem que ele mesmo carregava: *"a rota
+    // entrou no HEAD — o botão pode (e deve) nascer: ligue `onTentarDeNovo`"*.
+    // ⚠ **Ficou escrito porque é o registro de que a ausência nunca foi arbitrária,
+    // e de que o gate fez exatamente o que foi desenhado para fazer.**
+    //
+    // ⚠ A escrita vai pelo **helper único** `escreverNoPainel()` (COL-04/W11), que
+    // põe `versao_esperada` em TODA chamada — a versão que a pessoa **VIU**. Sem
+    // ela, `AprovacaoDaOfertaService::exigirVersao()` recebe `null` e **LIBERA** a
+    // escrita (o ramo de uso interno/console), que é literalmente *"sobrescrever em
+    // silêncio"* numa tela onde **aprovar JÁ PUBLICA e não há desfazer**.
+    // ⚠ **`onConflito` fica para o plano 188-12**, que é o dono do AVISO na tela: o
+    // helper **registra o `onError` de todo jeito** (nada é engolido) e o 422 do
+    // servidor continua chegando à página pela sacola `errors` do Inertia. ⚠ Os
+    // três — 188-05 (a rota), 188-07 (o envio) e 188-12 (o aviso) — declaram a
+    // mesma fronteira.
+    // ⚠ **`tentarDeNovo` NÃO publica:** ela move o andamento pela única porta e
+    // registra. A escrita no Mercado Livre segue sendo da **Fase 193**.
+    //
+    // ⚠ As duas COLUNAS continuam chegando vazias: a de fotos é do plano **188-08**
+    // e a de preço do **188-09**. Slot sem nó **não desenha casca**.
+    const ofertaDoPainel = painelDeRevisao === null ? null : inteiroSeguro(painelDeRevisao.oferta_id);
+    const versaoDoPainel = painelDeRevisao === null ? null : inteiroSeguro(painelDeRevisao.versao);
+
+    // ⚠ Sem empresa, sem oferta ou sem versão **não há handler** — e sem handler o
+    // botão **não é desenhado**. É a mesma régua do "Revisar agora": nunca uma rota
+    // inventada, nunca uma escrita sobre versão que a tela não viu.
+    const tentarDeNovo = empresaId === null || ofertaDoPainel === null || versaoDoPainel === null
+        ? null
+        : () => escreverNoPainel({
+            rota: 'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo',
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            versao: versaoDoPainel,
+        });
+
     const noPainel = isValidElement(painelNo)
         ? painelNo
         : (
@@ -727,6 +762,7 @@ export default function Aprovacao({
                 painel={painelDeRevisao}
                 onIr={abrirOferta}
                 onFechar={fecharOferta}
+                onTentarDeNovo={tentarDeNovo}
             />
         );
 

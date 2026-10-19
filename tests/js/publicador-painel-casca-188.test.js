@@ -1410,7 +1410,7 @@ test('⚠️⚠️ IDENTIFICAÇÃO: as cores do andamento são LIDAS do módulo 
     assert.equal(inventada.rotulo, 'chave_inventada_9z7', 'a chave desconhecida foi apagada em vez de aparecer como chegou');
 });
 
-test('⚠️⚠️ FALHA: a mensagem É A REAL do ML, e o botão NÃO é desenhado hoje 188_07', () => {
+test('⚠️⚠️ FALHA: a mensagem É A REAL do ML, e o botão SÓ existe com destino 188_07', () => {
     const html = render(M_IDENT.CaixaDeFalha, { falha: FALHA, onTentarDeNovo: null });
 
     // ⚠️ PUB-05 — a mensagem é o erro REAL, nunca um "algo deu errado": sem a frase
@@ -1419,39 +1419,60 @@ test('⚠️⚠️ FALHA: a mensagem É A REAL do ML, e o botão NÃO é desenha
     assert.match(html, /Falha na publicação/, 'o título de `:581` desapareceu');
     assert.match(html, />!</, 'o glifo `!` de `:580` desapareceu');
 
-    // ⚠️⚠️ **O BOTÃO NÃO É DESENHADO, e o motivo é MEDIDO:** não existe rota para
-    // `AprovacaoDaOfertaService::tentarDeNovo()`. Sem handler, nada de `onClick`
-    // vazio nem `disabled` decorativo — é a mesma régua de PERGUNTA-188-B.
-    assert.doesNotMatch(html, /<button/, 'o botão nasceu sem rota de destino — D4 violado');
+    // ⚠️⚠️ **SEM HANDLER O BOTÃO NÃO NASCE** — nada de `onClick` vazio nem
+    // `disabled` decorativo. É a régua de PERGUNTA-188-B (destino `null` → SEM
+    // BOTÃO, e o TEXTO continua), e vale para sempre: é o COMPONENTE que a garante,
+    // independentemente de a rota existir ou não.
+    assert.doesNotMatch(html, /<button/, 'o botão nasceu sem destino — D4 violado');
     assert.doesNotMatch(html, /Tentar publicar novamente/, 'o rótulo da ação apareceu sem destino');
 
-    // ═══ ⚠️⚠️ A PROVA de que a rota NÃO existe — LIDA DO ESTADO COMMITADO ════
+    // ═══ ⚠️⚠️ A ROTA CHEGOU NO MEIO DESTA WAVE, E O GATE FOI QUEM AVISOU ══════
     //
-    // ⚠️⚠️ **ELA LÊ `git show HEAD:`, E NÃO A ÁRVORE DE TRABALHO. A razão foi
-    // MEDIDA durante a execução desta wave, em 19/10/2026, e é um ACHADO, não uma
-    // preferência:** no meio deste plano apareceram na árvore **434 linhas NÃO
-    // COMMITADAS** em `MlbPublicadorAprovacaoController.php` e **71** em
-    // `routes/mlb_anuncios.php`, de OUTRA SESSÃO (os planos 188-05/06, as rotas de
-    // escrita do painel), criando `meus.aprovacao.painel.tentar-de-novo`.
-    // ➡️ Um gate que lesse a ÁRVORE ficaria **VERMELHO ou VERDE conforme o vizinho
-    // SALVA UM ARQUIVO** — e o conserto barato seria ligar a página a uma rota
-    // AINDA NÃO COMMITADA, que pode ser reescrita ou abandonada. É a mesma família
-    // do *"gate mais largo que o invariante"*, que já barrou um deploy aqui.
-    // ⚠️ O que é determinístico em relação AO MEU CÓDIGO é o estado COMMITADO.
-    // **A chegada da rota está DECLARADA na SUMMARY**, com o que falta no dia em
-    // que ela aterrar: **UMA linha** na página (`onTentarDeNovo`). A ponta POSITIVA
-    // abaixo já prova que, COM handler, o botão nasce e o clique chama — então
-    // nada do componente precisa mudar.
+    // ⚠️⚠️ **HISTÓRICO MEDIDO, 19/10/2026, e ele fica escrito porque é a prova de
+    // que a ausência nunca foi arbitrária.** Quando este bloco nasceu,
+    // `grep tentarDeNovo routes/` saía VAZIO **no HEAD** e o botão não era
+    // desenhado — a instrução literal do plano. ⚠️ Naquele momento havia **434
+    // linhas NÃO COMMITADAS** em `MlbPublicadorAprovacaoController.php` e **71** em
+    // `routes/mlb_anuncios.php`, de OUTRA SESSÃO (o plano **188-05**), e por isso
+    // este bloco passou a ler **`git show HEAD:`** e **não** a árvore: um gate que
+    // lesse a árvore ficaria vermelho/verde **conforme o vizinho salva um arquivo**,
+    // e o conserto barato seria ligar a página a uma rota que ainda podia ser
+    // reescrita.
+    // ➡️ **O plano 188-05 COMMITOU a rota, a condição caiu, e este gate REPROVOU
+    // com a mensagem que ele mesmo carregava** (*"ligue `onTentarDeNovo` na
+    // página"*). O botão está ligado, e a asserção virou de PRESENÇA.
+    // ⚠️ **Continua lendo o HEAD de propósito:** é o único estado determinístico em
+    // relação ao código, e é o que impede o gate de oscilar com o WIP do vizinho.
     const rotas = execFileSync('git', ['show', `HEAD:${REL_ROTAS}`], { cwd: RAIZ, encoding: 'utf8' });
-    assert.doesNotMatch(rotas, /tentarDeNovo|tentar-de-novo|tentar_de_novo/, 'a rota de `tentarDeNovo` entrou no HEAD — o botão pode (e deve) nascer: ligue `onTentarDeNovo` na página e remeça esta ausência');
-    // ⚠️ ISCA: a sonda ACHA as rotas que EXISTEM no HEAD, senão o `doesNotMatch`
-    // acima seria vazio por construção (leitura quebrada ou ref errada).
+    assert.match(rotas, /name\('meus\.aprovacao\.painel\.tentar-de-novo'\)/, 'a rota de `tentarDeNovo` saiu do HEAD — então o botão TEM de voltar a não ser desenhado (D4), e esta asserção volta a ser de AUSÊNCIA');
+    // ⚠️ ISCA: a sonda ACHA as outras rotas que EXISTEM no HEAD **e não acha** uma
+    // que eu sei que não existe — senão o `match` acima passaria por leitura certa
+    // e tudo o mais por acidente.
     assert.match(rotas, /name\('meus\.aprovacao'\)/, 'a rota da fila desapareceu do HEAD — a leitura de `routes/` está quebrada');
     assert.match(rotas, /name\('meus\.aprovacao\.lote'\)/, 'a rota do lote desapareceu do HEAD');
+    assert.doesNotMatch(rotas, /name\('meus\.aprovacao\.painel\.nao-existe-9z7'\)/, 'a isca da rota virou rota de verdade');
     assert.ok(rotas.length > 10000, `o \`git show HEAD:\` devolveu ${rotas.length} bytes — a leitura está quebrada`);
 
-    // ⚠️ E a página passa handler NENHUM — é ela quem decide, e hoje não há destino.
-    assert.doesNotMatch(FONTE_PAGINA, /onTentarDeNovo=/, 'a página passou um handler de "tentar de novo" sem rota');
+    // ═══ ⚠️⚠️ A PÁGINA LIGA O BOTÃO, E PELA PORTA ÚNICA DE ESCRITA ════════════
+    //
+    // ⚠️ A escrita vai por `escreverNoPainel()` (COL-04/W11), que põe
+    // `versao_esperada` em TODA chamada. Ligar o botão com um `router.post` cru
+    // aqui fugiria do helper — e é exatamente o que o critério 17 existe para
+    // impedir.
+    assert.match(FONTE_PAGINA, /onTentarDeNovo=\{tentarDeNovo\}/, 'a página deixou de ligar o botão de "tentar publicar novamente"');
+    assert.match(FONTE_PAGINA, /escreverNoPainel\(\{/, 'a página não usa o helper único de escrita — `versao_esperada` deixaria de viajar');
+    assert.match(FONTE_PAGINA, /rota: 'mlb\.anuncios\.meus\.aprovacao\.painel\.tentar-de-novo'/, 'o nome da rota divergiu do que está no HEAD');
+    // ⚠️ E **sem empresa, sem oferta ou sem versão o handler é `null`** — e aí o
+    // botão não nasce. Nunca uma rota inventada, nunca escrita sobre versão que a
+    // tela não viu.
+    assert.match(FONTE_PAGINA, /empresaId === null \|\| ofertaDoPainel === null \|\| versaoDoPainel === null/, 'a guarda do handler (empresa, oferta e versão) saiu da página');
+    // ⚠️ E `router.post` cru NÃO aparece para esta ação (o do lote é outro, e é da
+    // 187-09): a contagem é EXATA, não um piso.
+    assert.equal(
+        (FONTE_PAGINA.match(/router\.post\(/g) ?? []).length,
+        1,
+        'apareceu um `router.post` cru a mais na página — a escrita do painel tem de ir pelo helper único (o único legítimo é o do LOTE, da 187-09)',
+    );
 
     // ⚠️ COM handler o botão nasce E o clique chama — sem esta ponta, o
     // `doesNotMatch` acima seria vazio por construção (talvez o botão nunca nasça).
