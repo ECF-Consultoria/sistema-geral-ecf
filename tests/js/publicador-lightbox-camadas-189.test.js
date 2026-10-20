@@ -487,3 +487,361 @@ test('⚠️ ISCA do GATE-09 na fonte: `duration-[150ms]` é acusado, `duration-
 
     assert.equal(PROIBIDAS_NA_FONTE.length, 3, 'a lista de formas proibidas mudou de tamanho — remeça as duas iscas');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. O CSS CONSTRUÍDO — o SEGUNDO gate por elemento
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️⚠️ **LIMITAÇÃO ESTRUTURAL, DECLARADA (learnings §3):** a sonda de CSS **NÃO
+// protege a fidelidade de UM arquivo**, por duas razões medidas:
+//   · o CSS conferido é o do **último build**;
+//   · a mesma classe pode ter **OUTRO DONO** no repositório — tirar a classe
+//     deste componente não faz a regra desaparecer se outro arquivo a usa.
+// ➡️ **São DOIS gates por elemento e eles NÃO se substituem:** o de CSS prova
+// que a classe EXISTE com o valor certo; o de **HTML** (o
+// `publicador-lightbox-casca-189.test.js` do 189-03, por igualdade de conjunto
+// de classes com índice ABSOLUTO na árvore) prova que o ELEMENTO a tem. Gate de
+// CSS sozinho deixa passar classe removida do arquivo errado.
+//
+// ⚠️ A contrapartida aqui: a lista CONSTANTE abaixo é conferida contra os
+// TOKENS de classe da FONTE do lightbox (nenhuma entrada morta — *"entrada morta
+// é linha morta"*), então ela não pode virar uma lista de classes alheias.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** ⚠️ 8ª normalização: escapa TODOS os metacaracteres, não só a barra. */
+function escapaRegex(texto_) {
+    return texto_.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * O seletor que o Tailwind emite (5ª normalização: o seletor vem ESCAPADO).
+ *
+ * ⚠️⚠️ A 8ª normalização existe porque escapar **só a barra invertida** quebra
+ * em classe com colchete, ponto ou parêntese: os metacaracteres sobrevivem sem
+ * escape, a regex passa a ler **classe de caracteres** em vez de literais, e a
+ * regra **presente e correta** sai como AUSENTE. Aqui o escape é **GERAL** —
+ * tudo que não é `[A-Za-z0-9_-]`.
+ */
+function seletorDe(classe) {
+    return `.${[...classe].map((ch) => (/[A-Za-z0-9_-]/.test(ch) ? ch : `\\${ch}`)).join('')}`;
+}
+
+/**
+ * ⚠️ É esta guarda de `mtime` que produz os **DOIS REGIMES** de contagem do
+ * manifesto: mutar a fonte a deixa mais nova que o CSS e esta camada cai em
+ * `skip` NOMEADO. ⚠️ E **`cp` ATUALIZA o `mtime`**, então a RESTAURAÇÃO da
+ * mutação também derruba a camada — por isso `npm run build` roda **DEPOIS** da
+ * campanha de mutação.
+ */
+const FONTES_DO_CSS = [REL_LIGHTBOX];
+
+function carregarCssConstruido() {
+    const manifestRel = 'public/build/manifest.json';
+    const manifestAbs = path.resolve(RAIZ, manifestRel);
+    if (!fs.existsSync(manifestAbs)) return { motivo: `${manifestRel} ausente — rode \`npm run build\`` };
+
+    // ⚠️ Manifest SEMPRE pelo JSON, nunca por grep: o hash sai com HÍFEN às vezes
+    // (MEDIDO nesta wave: `assets/app-CL-Xc-QC.css`) e o grep ingênuo não casa.
+    const manifest = JSON.parse(fs.readFileSync(manifestAbs, 'utf8'));
+    const entrada = manifest['resources/js/app.jsx'];
+    if (!entrada || !Array.isArray(entrada.css) || entrada.css.length === 0) {
+        return { motivo: 'o manifest não aponta CSS para resources/js/app.jsx' };
+    }
+
+    const cssAbs = path.resolve(RAIZ, 'public/build', entrada.css[0]);
+    if (!fs.existsSync(cssAbs)) return { motivo: `${entrada.css[0]} ausente — rode \`npm run build\`` };
+
+    const mtimeCss = fs.statSync(cssAbs).mtimeMs;
+    const mtimeFontes = Math.max(...FONTES_DO_CSS.map((rel) => fs.statSync(path.resolve(RAIZ, rel)).mtimeMs));
+    if (mtimeCss < mtimeFontes) {
+        return { motivo: `o CSS construído (${entrada.css[0]}) é mais antigo que ${REL_LIGHTBOX} — rode \`npm run build\`` };
+    }
+
+    return { arquivo: entrada.css[0], css: fs.readFileSync(cssAbs, 'utf8'), manifest };
+}
+
+const CSS = carregarCssConstruido();
+
+/**
+ * Os TOKENS de classe que a FONTE do lightbox escreve, extraídos dos literais.
+ *
+ * ⚠️ Serve para provar que a lista constante abaixo **não tem entrada morta** —
+ * e a conferência é por **pertencer ao conjunto**, nunca por `includes` da
+ * string: `'border'` é substring de `'border-2'`, `'border-pub-page'` e
+ * `'border-[1.5px]'`, e um `includes` daria verde para uma classe que o arquivo
+ * não tem.
+ */
+function tokensDeClasseDaFonte(rel) {
+    const fonte = lerSemComentarios(rel);
+    const tokens = new Set();
+    for (const re of [/'([^'\n]*)'/g, /`([^`\n]*)`/g]) {
+        for (const m of fonte.matchAll(re)) {
+            for (const t of m[1].split(/\s+/)) if (t.length > 0) tokens.add(t);
+        }
+    }
+
+    return tokens;
+}
+
+/**
+ * ⚠️⚠️ A LISTA **CONSTANTE** das classes do lightbox, com o corpo da regra
+ * **MEDIDO no CSS construído** nesta wave (20/10/2026) — nunca prescrito.
+ *
+ * ⚠️ Cada entrada diz QUAL das oito normalizações se aplicou, porque é isso que
+ * separa uma sonda que mede de uma que adivinha:
+ *   N1 token sólido → `rgb(R G B / var(…))` **DECIMAL**, nunca hex;
+ *   N3 modificador de opacidade → **hex de 8 dígitos** em `background`/`border`;
+ *   N4 o cssnano **come o zero da frente**, inclusive depois do `-`;
+ *   N5 o seletor vem **escapado**;
+ *   N6 na variante o prefixo faz **parte do nome**;
+ *   N8 o escape é **GERAL** (parênteses, vírgulas, colchetes, pontos, barras).
+ */
+const CLASSES_COM_VALOR = [
+    // ── a raiz do portal (`:727`) ──
+    ['z-[41]', /z-index:41/, 'N5 — o seletor sai `.z-\\[41\\]`'],
+    ['grid-cols-[minmax(0,1fr)_320px]', /grid-template-columns:minmax\(0,1fr\) 320px/, 'N8 — parênteses e vírgulas exigem escape GERAL'],
+    // ⚠️⚠️ N3 MEDIDA, NÃO PRESUMIDA: `rgba(5,5,5,0.94)` **não sai como `rgba(…)`**
+    // — o Tailwind/cssnano a normaliza para **hex de 8 dígitos**, e o byte do alfa
+    // (`0.94 × 255 = 239,7 → 0xF0`) é o que PROVA a opacidade. Esperar `rgba(…)`
+    // aqui daria uma falsa falta, e era exatamente o aviso do 189-03 §23
+    // (*"pode sair normalizado — meça, não presuma"*).
+    ['bg-[rgba(5,5,5,0.94)]', /background-color:#050505f0/, 'N3 — hex de 8 dígitos, com o alfa 0xF0 provando o 0,94'],
+    ['font-pub', /font-family:Geist/, '— o token de fonte (REND-05)'],
+    ['text-pub-txt', /color:rgb\(244 244 245 /, 'N1 — token sólido em DECIMAL'],
+
+    // ── o palco (`:728`) ──
+    ['gap-[14px]', /gap:14px/, 'N5'],
+    ['px-[70px]', /padding-left:70px;padding-right:70px/, 'N5 — a classe emite as DUAS laterais'],
+    ['py-[24px]', /padding-top:24px;padding-bottom:24px/, 'N5'],
+
+    // ── a linha do título (`:729`) ──
+    ['gap-[10px]', /gap:10px/, 'N5'],
+    ['text-[13px]', /font-size:13px/, 'N5'],
+    ['text-pub-txt-2', /color:rgb\(161 161 170 /, 'N1'],
+
+    // ── a caixa 1:1 de até 78vh (`:730`) ──
+    // ⚠️ MEDIDO: a forma COM espaço (`min(78vh, 100%)`) está **AUSENTE** do CSS —
+    // é a prova de que espaço dentro de valor arbitrário QUEBRA a classe.
+    ['w-[min(78vh,100%)]', /width:min\(78vh,100%\)/, 'N8 — parênteses e vírgula'],
+    ['aspect-square', /aspect-ratio:1 \/ 1/, '—'],
+    ['rounded-pub-panel', /border-radius:12px/, '— token de raio'],
+    ['bg-pub-hover', /background-color:rgb\(20 20 20 /, 'N1'],
+    ['text-pub-txt-off', /color:rgb\(82 82 91 /, 'N1'],
+
+    // ── o marcador numerado (`:733`) ──
+    ['h-[26px]', /height:26px/, 'N5'],
+    ['w-[26px]', /width:26px/, 'N5'],
+    ['-translate-x-1/2', /--tw-translate-x: -50%/, 'N8 — a barra do `1/2` exige escape'],
+    ['-translate-y-1/2', /--tw-translate-y: -50%/, 'N8'],
+    ['border-2', /border-width:2px/, '—'],
+    ['border-pub-page', /border-color:rgb\(10 10 10 /, 'N1'],
+    ['text-[11.5px]', /font-size:11\.5px/, 'N5 — o PONTO sai escapado no seletor'],
+    // ⚠️⚠️ A FORMA DA **FONTE**, e não a nomeada. O 189-03 usou `font-[800]`
+    // porque o GATE-03 fecha a escala nomeada em 400/500/600/700 (D1 da §9 dele).
+    ['font-[800]', /font-weight:800/, 'N5 — a forma ARBITRÁRIA, que é a da fonte'],
+    ['text-pub-page', /color:rgb\(10 10 10 /, 'N1'],
+
+    // ── a faixa e as miniaturas (`:736`/`:738`) ──
+    ['gap-[6px]', /gap:6px/, 'N5'],
+    ['h-[56px]', /height:56px/, 'N5'],
+    ['w-[56px]', /width:56px/, 'N5'],
+    ['rounded-pub-control-sm', /border-radius:7px/, '— token de raio (7px)'],
+    ['border-[1.5px]', /border-width:1\.5px/, 'N5 — o ponto escapado'],
+    ['bg-pub-hover-2', /background-color:rgb\(22 22 22 /, 'N1'],
+
+    // ── as setas ← → (`:741`/`:742`) ──
+    ['top-1/2', /top:50%/, 'N8 — a barra'],
+    ['-mt-[22px]', /margin-top:-22px/, 'N4/N5 — negativo no valor arbitrário'],
+    ['h-[44px]', /height:44px/, 'N5'],
+    ['w-[44px]', /width:44px/, 'N5'],
+    ['border', /border-width:1px/, '—'],
+    ['border-pub-line-strong', /border-color:rgb\(46 46 46 /, 'N1'],
+    ['bg-pub-surface', /background-color:rgb\(17 17 17 /, 'N1'],
+    // ⚠️ O ÚNICO tamanho NOVO desta fase, liberado pela via canônica na 189-01.
+    ['text-[18px]', /font-size:18px/, 'N5'],
+    ['left-[16px]', /left:16px/, 'N5'],
+    ['right-[16px]', /right:16px/, 'N5'],
+
+    // ── o cursor dinâmico: DUAS classes LITERAIS, nunca concatenadas (`:730`) ──
+    ['cursor-crosshair', /cursor:crosshair/, '—'],
+    ['cursor-zoom-out', /cursor:zoom-out/, '—'],
+];
+
+/** O resto, sem valor para cobrar: a asserção é COLETANDO (a contagem não cresce com a lista). */
+const CLASSES_SO_PRESENCA = [
+    'fixed', 'inset-0', 'grid', 'relative', 'flex', 'flex-col', 'items-center',
+    'justify-center', 'font-semibold', 'overflow-hidden', 'absolute',
+    'pointer-events-none', 'place-items-center', 'rounded-full', 'cursor-pointer',
+];
+
+/**
+ * ⚠️⚠️ AS ISCAS — **MEDIDAS contra o CSS de verdade** nesta wave, nunca
+ * inventadas. A régua é brutal aqui: a isca tem de ser classe inexistente no
+ * projeto INTEIRO, e o que *"parecia inventado"* saiu PRESENTE mais de uma vez.
+ *
+ * ⚠️ MEDIDO e REJEITADO como isca (as cinco existem no CSS, de outros donos):
+ * `w-[13px]`, `h-[64px]`, `left-[30%]`, `grid-cols-6` e **`z-[90]`** (1 ocorrência
+ * em `resources/`). ⚠️ E **`text-[17px]` EXISTE** (22 ocorrências) — ou seja,
+ * "arredondar o 18 para 17" compilaria, e é a camada de FONTE que o barra.
+ *
+ * ⚠️ As duas últimas são as iscas do **QUASE-IGUAL**, que é o caso difícil: a
+ * forma COM ESPAÇO do `min(…)` e um passo de `gap` vizinho.
+ */
+const ISCAS_AUSENTES = [
+    'bg-pub-isca-189-04', 'text-[97.5px]', 'w-[1993px]', 'top-[62.5%]', 'z-[43]',
+    'px-[71px]', '-mt-[23px]', 'gap-[14.5px]', 'w-[min(78vh, 100%)]',
+];
+
+/**
+ * ⚠️⚠️ **ESTE CASO FICA FORA DA CAMADA DE CSS DE PROPÓSITO, e a razão é a
+ * campanha de MUTAÇÃO.** Ele lê **só a FONTE**, então não tem por que depender
+ * do `mtime` do bundle — e se morasse dentro do pai que faz `skip`, toda
+ * mutação que tirasse uma classe do arquivo sobreviveria A ESTE GATE em
+ * silêncio (porque mutar a fonte derruba a camada de CSS). Medido: é ele que
+ * mata a mutação que tira o `font-pub` da raiz do portal.
+ */
+test('⚠️ ZERO entrada MORTA: toda classe da lista constante está nos TOKENS da FONTE 189_04', () => {
+    const tokens = tokensDeClasseDaFonte(REL_LIGHTBOX);
+
+    // ⚠️ SONDA NÃO-CEGA antes do `deepEqual`: a extração achou tokens de
+    // verdade, e um token que SABIDAMENTE não está lá não aparece.
+    assert.ok(tokens.size > 40, `a extração de tokens achou só ${tokens.size} — leitura suspeita`);
+    assert.ok(tokens.has('z-[41]'), 'a extração não achou nem o `z-[41]` — ela está cega');
+    assert.equal(tokens.has('font-extrabold'), false, 'a extração achou `font-extrabold` na fonte — a D1 do 189-03 se perdeu');
+    assert.equal(tokens.has('w-[1993px]'), false, 'a extração acha token inventado — ela está larga');
+
+    const mortas = [...CLASSES_COM_VALOR.map(([c]) => c), ...CLASSES_SO_PRESENCA]
+        .filter((c) => !tokens.has(c));
+
+    assert.deepEqual(
+        mortas,
+        [],
+        'entrada da lista constante que a FONTE do lightbox não escreve — "entrada morta é linha morta", e ela faria o gate medir classe ALHEIA',
+    );
+});
+
+test('⚠️⚠️ o CSS CONSTRUÍDO: GATE-09 com CONTROLE e as classes do lightbox PELO CORPO DA REGRA 189_04', async (contexto) => {
+    if (CSS.motivo) {
+        // ⚠️ `skip` EXPLÍCITO e NOMEADO, nunca "conferido": é o regime MUTADO da
+        // contagem no manifesto, e a mensagem diz exatamente o que fazer.
+        contexto.skip(`camada de CSS PULADA — ${CSS.motivo}`);
+
+        return;
+    }
+
+    const regraDe = (classe) => {
+        const re = new RegExp(`${escapaRegex(seletorDe(classe))}(?![\\w\\\\-])[^{}]*\\{([^}]*)\\}`);
+        const m = CSS.css.match(re);
+
+        return m ? m[1] : null;
+    };
+
+    await contexto.test('o CSS lido é o do manifest, e a PÁGINA está no manifest', () => {
+        assert.ok(CSS.css.length > 100000, `CSS suspeito de truncado: ${CSS.css.length} bytes`);
+
+        const tem = (k) => Object.prototype.hasOwnProperty.call(CSS.manifest, k);
+
+        // ⚠️⚠️ O que se confere no manifest é a **PÁGINA**. Componente aninhado é
+        // FUNDIDO no chunk dela e **NÃO aparece** — medido: a Fase 188 criou 19
+        // `.jsx` em `aprovacao/` e nenhum está no manifest. Cobrar o componente
+        // aqui seria um gate que reprova trabalho certo.
+        assert.ok(tem(REL_PAGINA), 'a página da aprovação saiu do manifest — a tela desaparece sem erro');
+        assert.equal(
+            tem(REL_LIGHTBOX),
+            false,
+            'o COMPONENTE apareceu no manifest — o invariante medido (componente aninhado é fundido no chunk da página) mudou: remeça antes de cobrar',
+        );
+
+        // ⚠️ ISCA do manifest, nas duas direções.
+        assert.equal(tem('resources/js/Pages/Mlb/NaoExiste9z7.jsx'), false, 'a isca do manifest virou entrada de verdade');
+    });
+
+    await contexto.test('⚠️ ISCA: a sonda reporta AUSENTE o que não existe, e ACHA o que existe', () => {
+        const falsasPresencas = ISCAS_AUSENTES.filter((c) => regraDe(c) !== null);
+        assert.deepEqual(falsasPresencas, [], 'isca virou classe de verdade — troque a isca, não a asserção');
+
+        // ⚠️ SONDA NÃO-CEGA: sem isto, "todas as iscas ausentes" seria satisfeito
+        // por um `regraDe` que devolve `null` sempre.
+        assert.notEqual(regraDe('text-[13px]'), null, 'a sonda está cega: nem o controle ela acha');
+        assert.notEqual(regraDe('z-[41]'), null, 'a sonda está cega no valor arbitrário com colchete');
+        assert.equal(ISCAS_AUSENTES.length, 9, 'a lista de iscas mudou de tamanho — remeça cada uma contra o CSS');
+
+        // ⚠️⚠️ A ISCA DO QUASE-IGUAL, e ela é a mais informativa das nove: a MESMA
+        // classe com um ESPAÇO depois da vírgula **não compila**, e a sem espaço
+        // compila. É a prova medida de que `w-[min(78vh, 100%)]` quebraria a caixa
+        // 1:1 com todo render passando.
+        assert.equal(regraDe('w-[min(78vh, 100%)]'), null, 'a forma COM espaço passou a compilar — remeça a razão do `:730`');
+        assert.notEqual(regraDe('w-[min(78vh,100%)]'), null, 'a forma SEM espaço deixou de compilar — a caixa 1:1 perdeu a largura');
+    });
+
+    await contexto.test('⚠️⚠️ GATE-09 no CSS: `.duration-200` EXISTE e NENHUMA `.duration-[` existe', () => {
+        // ⚠️⚠️ O CONTROLE primeiro: sem ele a sonda não distingue "o arbitrário não
+        // compila" de "a sonda está cega". MEDIDO: `.duration-200` → `.2s` (N4, o
+        // cssnano comeu o zero da frente de `0.2s`).
+        assert.match(regraDe('duration-200'), /transition-duration:\s*\.2s/, 'o CONTROLE da escala NOMEADA sumiu do CSS');
+
+        // ⚠️ E as três formas arbitrárias, por REGRA e por STRING de seletor.
+        const compilaram = ['duration-[150ms]', 'duration-[180ms]', 'delay-[30ms]', 'ease-[ease]']
+            .filter((c) => regraDe(c) !== null);
+        assert.deepEqual(compilaram, [], 'uma forma arbitrária passou a compilar — remeça o GATE-09 inteiro antes de liberar');
+
+        // ⚠️ A varredura do bundle INTEIRO: nenhum seletor `.duration-\[`.
+        assert.deepEqual(
+            CSS.css.match(/\.duration-\\\[/g) || [],
+            [],
+            'apareceu seletor `.duration-[` no bundle — o `tailwindcss-animate` deixou de tornar a classe ambígua',
+        );
+
+        // ⚠️⚠️ **POR QUE A AUSÊNCIA POR ARQUIVO NÃO PODE MORAR AQUI**, e a medida
+        // que prova: `transition-transform` **EXISTE** no CSS (41 ocorrências em
+        // `resources/`, de outros donos) e traz `cubic-bezier(.4,0,.2,1)` — a curva
+        // ERRADA para o `:731`, que é `transition:transform .15s` com o `ease`
+        // padrão do CSS. ➡️ No CSS não há como provar que ESTE arquivo não a usa;
+        // quem prova é a camada de FONTE (acima) e o gate do 189-03.
+        assert.match(
+            regraDe('transition-transform'),
+            /cubic-bezier\(\.4,0,\.2,1\)/,
+            'a classe `transition-transform` mudou de curva — remeça a razão de a transição ir por `style`',
+        );
+    });
+
+    await contexto.test('⚠️⚠️ as classes do lightbox GERAM CSS com o valor MEDIDO (as oito normalizações)', () => {
+        // ⚠️ UMA asserção coletando por valor errado: a contagem não cresce com a
+        // lista, e a mensagem nomeia a classe, o esperado e o que veio.
+        const erradas = CLASSES_COM_VALOR
+            .map(([classe, esperado, norm]) => ({ classe, esperado, norm, corpo: regraDe(classe) }))
+            .filter(({ esperado, corpo }) => corpo === null || !esperado.test(corpo))
+            .map(({ classe, esperado, norm, corpo }) => `${classe} [${norm}]: esperava ${esperado} e veio ${JSON.stringify(corpo)}`);
+
+        assert.deepEqual(erradas, [], 'classe do lightbox sem CSS ou com VALOR errado — presença não é fidelidade');
+
+        // ⚠️ E as de presença só, também COLETANDO.
+        assert.deepEqual(
+            CLASSES_SO_PRESENCA.filter((c) => regraDe(c) === null),
+            [],
+            'classe do lightbox NÃO gerou CSS — num módulo `.js`, ou montada por concatenação, isso aconteceria com todo render passando',
+        );
+
+        // ⚠️ SONDA NÃO-CEGA para os dois `deepEqual` acima: a lista tem tamanho
+        // conhecido, e a mesma asserção REPROVA quando o esperado é falso.
+        assert.equal(CLASSES_COM_VALOR.length, 43, 'a lista constante com valor mudou de tamanho — remeça cada corpo no CSS');
+        assert.equal(CLASSES_SO_PRESENCA.length, 15, 'a lista constante de presença mudou de tamanho');
+        assert.ok(
+            !/font-weight:700/.test(regraDe('font-[800]')),
+            'ISCA CEGA: o corpo do `font-[800]` casaria qualquer peso — a sonda não está lendo o corpo',
+        );
+    });
+
+    await contexto.test('⚠️⚠️ a `font-extrabold` EXISTE no CSS por OUTROS donos — e é por isso que a sonda procura a forma da FONTE', () => {
+        // ⚠️⚠️ MEDIDO nesta wave, e CONTRARIA o que se poderia supor: as duas
+        // formas **existem** no bundle e dão **o MESMO valor** (`font-weight:800`).
+        // `font-extrabold` tem **135 ocorrências** em `resources/` (outros donos,
+        // fora do Publicador), então uma sonda que procurasse a forma NOMEADA
+        // passaria VERDE mesmo que o lightbox tivesse perdido o peso do marcador.
+        // ➡️ É a limitação estrutural do §3 do learnings em ato: a sonda de CSS
+        // **não protege a fidelidade de um arquivo**, e a lista constante aqui só
+        // vale porque é conferida contra os TOKENS DA FONTE (caso acima).
+        assert.match(regraDe('font-[800]'), /font-weight:800/, 'a forma ARBITRÁRIA (a da fonte) deixou de compilar');
+        assert.match(regraDe('font-extrabold'), /font-weight:800/, 'a forma NOMEADA saiu do bundle — a medida desta wave mudou, remeça a declaração');
+    });
+});

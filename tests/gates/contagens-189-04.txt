@@ -195,14 +195,37 @@
 #    versionado): os `:NNN` do protótipo aparecem só como referência em
 #    comentário. A tabela FID-01 é conferida por SCRIPT na SUMMARY, não aqui.
 #
-# ⚠️⚠️ **OS DOIS REGIMES DE CONTAGEM (`tests=8,…`) não são enfeite.** A camada de
-# CSS cai em `skip` NOMEADO quando o CSS construído é mais velho que as fontes
-# (`mtime`), e **`cp` ATUALIZA o `mtime`** — então a campanha de mutação, que
-# restaura DA CÓPIA, derruba a camada. É por isso que `npm run build` roda
-# **DEPOIS** da mutação, e por isso o regime mutado está declarado aqui: sem ele
-# a campanha não rodaria sem mexer no gate, e mexer no gate durante a mutação
-# invalida a mutação.
+# ⚠️⚠️ **OS DOIS REGIMES DE CONTAGEM (`tests=15,10`) não são enfeite.** A camada de
+# CSS cai em `skip` NOMEADO quando o CSS construído é mais velho que a fonte do
+# lightbox (`mtime`), e **`cp` ATUALIZA o `mtime`** — então a campanha de
+# mutação, que restaura DA CÓPIA, derruba a camada. É por isso que `npm run
+# build` roda **DEPOIS** da mutação, e por isso o regime mutado está declarado
+# aqui: sem ele a campanha não rodaria sem mexer no gate, e mexer no gate durante
+# a mutação invalida a mutação.
+#
+#    OS DOIS REGIMES, MEDIDOS NESTA MÁQUINA EM 20/10/2026:
+#      · PRISTINO (CSS mais novo que a fonte, logo depois do `npm run build`):
+#        `# tests 15 · # pass 15 · # fail 0 · # skipped 0`
+#      · MUTADO (fonte mais nova que o CSS — reproduzido por `touch` na fonte,
+#        com o `sha256` conferido IDÊNTICO antes e depois: `530a4d50e08f5382`):
+#        `# tests 10 · # pass  9 · # fail 0 · # skipped 1`
+#    A diferença são exatamente os **5** sub-testes da camada de CSS (o caso pai
+#    conta nos dois regimes, como `skip` no segundo). ⚠️ `# skipped 1` **NÃO é
+#    regressão** — é o `skip` EXPLÍCITO e NOMEADO, com a mensagem dizendo qual
+#    arquivo de CSS está velho e o que fazer.
+#
+# ⚠️⚠️ **O QUE FICA DE FORA DA CAMADA DE CSS, DE PROPÓSITO, E POR CAUSA DA
+#    MUTAÇÃO:** o caso *"ZERO entrada MORTA"* lê **só a FONTE** e por isso é
+#    TOP-LEVEL. Se morasse dentro do pai que faz `skip`, toda mutação que
+#    tirasse uma classe do arquivo **sobreviveria a este gate em silêncio** —
+#    porque mutar a fonte derruba a camada de CSS. ➡️ É ele que mata a mutação
+#    que tira o `font-pub` da raiz do portal (M2 da campanha).
 #
 # ⚠️⚠️ CONTAGEM REMEDIDA NA TAREFA 2, ANTES DO VERIFY DELA: `tests=8` (tarefa 1,
-# a cadeia e o GATE-09 na fonte) → `tests=<REMEDIDO NA TAREFA 2>`.
-camadas-e-css  js  tests/js/publicador-lightbox-camadas-189.test.js  ::  tests=8
+# a cadeia e o GATE-09 na fonte, commitada em `06e6c206`) → `tests=15,10` (a
+# tarefa 2 acrescenta 1 caso de fonte + 1 caso pai de CSS + 5 sub-testes).
+# ⚠️ **NÃO é "subir número para passar"**: é o MESMO arquivo de gate ganhando
+# uma camada, e o RED dela foi MEDIDO
+# (`# tests 15 · # pass 13 · # fail 2`, com a camada de CSS falhando antes de o
+# número da lista constante ser remedido — 43, não 44).
+camadas-e-css  js  tests/js/publicador-lightbox-camadas-189.test.js  ::  tests=15,10
