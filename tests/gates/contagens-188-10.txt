@@ -265,19 +265,29 @@
 #      compila" de "a sonda está cega").
 #
 # OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026 por sonda de `mtime`:
-#   · **41** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#   · **42** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
 #     os testes de topo mais os 5 sub-testes da camada de CSS;
-#   · **36** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#   · **37** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
 #     o `cp` atualiza o `mtime`): a camada cai em `skip` NOMEADO e os 5 sub-testes
 #     dela não entram na contagem (`1 skipped`, com a razão ESCRITA).
-#   ⚠️ MEDIDO pelas DUAS pontas: 41 depois do build, e 36 com o `mtime` da fonte
+#   ⚠️ MEDIDO pelas DUAS pontas: 42 depois do build, e 37 com o `mtime` da fonte
 #   adiantado por `touch` e devolvido com `touch -d` (o `mtime` original foi
 #   capturado por `stat -c %y` ANTES).
+#
+# ⚠️⚠️ **O +1 DOS DOIS REGIMES (de 41/36 para 42/37) VEIO DE UMA MUTAÇÃO
+# SOBREVIVENTE, e ela achou DEFEITO REAL na sonda — não no código.** A 1ª redação
+# do caso de `:708` comparava o render do módulo com o LITERAL DO PRÓPRIO MÓDULO:
+# tautologia. Trocar o literal por um SINÔNIMO mudava os DOIS lados juntos e o
+# gate ficava verde. ➡️ Entrou o caso *"OS LITERAIS DESTA TELA, CONGELADOS byte a
+# byte"*, com a expectativa ESCRITA no gate (que **não depende do protótipo**,
+# porque ele não é versionado) **mais** o cruzamento `em(708).includes(<o literal
+# do MÓDULO>)` no bloco do protótipo. ⚠️ **Nenhum número foi SUBIDO para calar
+# gate: o +1 é um caso NOVO, e a mutação passou a MORRER.**
 #   ⚠️ `# tests` conta sub-teste, e é por isso que o número MUDA — não é teste que
 #   desapareceu. ⚠️ Os DOIS foram MEDIDOS antes da campanha, e o hash do CSS do
 #   manifest saiu `assets/app-*.css` lido **pelo JSON** e nunca por `grep` (o hash
 #   sai **com hífen**).
-pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  tests=41,36
+pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  tests=42,37
 
 
 # ── TAREFA 2: o GATE-03 (vocabulário novo fechado) ──────────────────────────

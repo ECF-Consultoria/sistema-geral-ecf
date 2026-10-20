@@ -701,6 +701,79 @@ test('⚠️ `:708`: sem pendência nenhuma, a mensagem VERDE com o glifo ✓ 18
     assert.ok(!FONTE_PENDENCIAS.includes(M_VOCABULARIO.TUDO_CONFERIDO), 'a seção de pendências copiou o literal do RODAPÉ');
 });
 
+test('⚠️⚠️ OS LITERAIS DESTA TELA, CONGELADOS byte a byte — e o porquê desta sonda existir 188_10', () => {
+    // ⚠️⚠️ **ESTE CASO NASCEU DE UMA MUTAÇÃO SOBREVIVENTE, e ela achou um defeito
+    // REAL na sonda — não no código.** A 1ª redação do caso de `:708` fazia
+    //
+    //     assert.ok(texto(html).includes(M_PENDENCIAS.SEM_PENDENCIA_TEXTO))
+    //
+    // — ou seja, lia o literal **do mesmo módulo** que renderizou o HTML. É
+    // **TAUTOLOGIA**: trocar o literal por um SINÔNIMO muda os DOIS lados juntos
+    // e o gate continua verde. ➡️ A mutação `vi-sinonimo-do-literal-verde`
+    // SOBREVIVEU, e é esta a correção na RAIZ.
+    //
+    // ⚠️ É a mesma família das asserções vazias do learnings: *"o que precisaria
+    // estar errado no mundo para este gate falhar?"* — ali, **nada**.
+    //
+    // ➡️ **DUAS CAMADAS, de propósito:**
+    //   1. a EXPECTATIVA CONGELADA aqui, que **não depende do protótipo** (ele
+    //      NÃO é versionado, e um gate que só vivesse lá voltaria a ser
+    //      tautológico no dia em que o pacote de handoff não estivesse no disco);
+    //   2. o cruzamento com o `.dc.html` no bloco do protótipo, que é o DONO
+    //      destes literais (eles não têm dono no servidor) — ali a comparação é
+    //      `em(708).includes(<o literal do MÓDULO>)`, que fecha o círculo.
+    //
+    // ⚠️ Esta é a MESMA forma que os quatro rótulos do rodapé já tinham
+    // (`ROTULO_APROVAR` etc.) — o que faltava era aplicá-la aqui também.
+    const CONGELADOS = [
+        ['PendenciasDoPainel.SEM_PENDENCIA_TEXTO', M_PENDENCIAS.SEM_PENDENCIA_TEXTO,
+            'Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da regra'],
+        ['PendenciasDoPainel.TITULO_DA_SECAO', M_PENDENCIAS.TITULO_DA_SECAO, 'Pendências'],
+        ['PendenciasDoPainel.GLIFO_OK', M_PENDENCIAS.GLIFO_OK, '✓'],
+        ['RodapeDoPainel.ROTULO_SALVAR', M_RODAPE.ROTULO_SALVAR, 'Salvar revisão'],
+        ['RodapeDoPainel.ROTULO_AJUSTES', M_RODAPE.ROTULO_AJUSTES, 'Solicitar ajustes'],
+        ['RodapeDoPainel.ROTULO_APROVAR', M_RODAPE.ROTULO_APROVAR, 'Aprovar para publicação'],
+        ['RodapeDoPainel.ROTULO_PROXIMO', M_RODAPE.ROTULO_PROXIMO, 'Próximo ↓'],
+        // ⚠️ Os do vocabulário são do módulo INTOCÁVEL da Fase 186, e são
+        // congelados aqui porque as FIXTURES deste gate os usam: se eles
+        // mudassem, as fixturas mudariam com eles e os casos do motivo voltariam
+        // a ser tautológicos.
+        ['vocabularioDoPortao.TUDO_CONFERIDO', M_VOCABULARIO.TUDO_CONFERIDO, 'Fotos, preço e conteúdo conferidos'],
+        ['vocabularioDoPortao.BLOQUEADO_PREFIXO', M_VOCABULARIO.BLOQUEADO_PREFIXO, 'Bloqueado: '],
+        ['vocabularioDoPortao.ABREVIACAO_DO_BLOQUEIO.frete_ausente', M_VOCABULARIO.ABREVIACAO_DO_BLOQUEIO.frete_ausente, 'frete pendente'],
+    ];
+
+    // ⚠️ IGUALDADE DE STRING, nunca `includes`: `includes` casa PREFIXO e SUFIXO
+    // de outro nome, e já mordeu CINCO vezes neste projeto.
+    for (const [nome, atual, esperado] of CONGELADOS) {
+        assert.equal(atual, esperado, `o literal \`${nome}\` mudou — paráfrase na tela é o que o vocabulário travado existe para impedir`);
+    }
+
+    // ⚠️ ISCA DO QUASE-IGUAL, nas DUAS direções: a sonda REPROVA o sinônimo que a
+    // mutação usou, e REPROVA o prefixo/sufixo do literal certo.
+    const QUASE = [
+        'Nada pendente · fotos aprovadas, composição financeira completa e margem dentro da regra',
+        'Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da regra.',
+        'Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da',
+        'Aprovar para publicacao',
+        'Aprovar para publicação ',
+        'Próximo',
+        'Fotos, preço e conteudo conferidos',
+    ];
+    for (const quase of QUASE) {
+        const casa = CONGELADOS.some(([, , esperado]) => esperado === quase);
+        assert.equal(casa, false, `a isca do quase-igual \`${quase}\` casou um literal congelado — a igualdade não distingue`);
+    }
+    // ⚠️ E a prova de que `includes` NÃO distinguiria: ele casaria o truncado.
+    assert.ok(M_PENDENCIAS.SEM_PENDENCIA_TEXTO.includes('Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da'), 'a premissa caiu: `includes` deixou de casar o truncado — remeça a razão da igualdade');
+
+    // ⚠️ E a tela RENDERIZA os congelados, contra a expectativa — não contra o
+    // módulo. Sem esta ponta o congelamento provaria a constante e não a TELA.
+    const semPendencia = texto(render(PendenciasDoPainel, propsDaSecao({ pendencias: [], ...acoesEspiao([]) })));
+    assert.ok(semPendencia.includes('Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da regra'), 'a tela não mostra o literal CONGELADO de `:708`');
+    assert.ok(semPendencia.includes('Pendências'), 'a tela não mostra o título CONGELADO de `:700`');
+});
+
 test('⚠️⚠️ T-188-92: `tipo` desconhecido dá ZERO botão, nunca um que chama `undefined` 188_10', () => {
     const registro = [];
     const acoes = acoesEspiao(registro);
@@ -1906,7 +1979,13 @@ test('⚠️ FID: os literais e os ponteiros de `:699`-`:721` medidos contra o p
         assert.match(em(708), /color:#4ADE80/, '`:708` não é a mensagem verde');
         // ⚠️⚠️ A SEGUNDA OMISSÃO MEDIDA: o glifo `✓` também tem `place-items`.
         assert.match(em(708), /display:grid;place-items:center/, '`:708` perdeu o `grid place-items-center` do glifo ✓');
-        assert.ok(em(708).includes('Nenhuma pendência · fotos aprovadas, composição financeira completa e margem dentro da regra'), '`:708` perdeu o literal da mensagem verde');
+        // ⚠️⚠️ O CRUZAMENTO QUE FECHA O CÍRCULO: o literal do MÓDULO tem de estar
+        // em `:708`, byte a byte. ⚠️ A camada congelada do caso "OS LITERAIS
+        // DESTA TELA" é a que sobrevive quando este bloco cai em `skip` — e foi
+        // uma mutação SOBREVIVENTE que mostrou que as DUAS são necessárias.
+        assert.ok(em(708).includes(M_PENDENCIAS.SEM_PENDENCIA_TEXTO), '`:708` não contém o literal que o MÓDULO renderiza — a mensagem verde virou paráfrase');
+        assert.ok(em(700).includes(M_PENDENCIAS.TITULO_DA_SECAO), '`:700` não contém o título que o MÓDULO renderiza');
+        assert.ok(em(708).includes(M_PENDENCIAS.GLIFO_OK), '`:708` não contém o glifo que o MÓDULO renderiza');
 
         // ⚠️⚠️ OS PONTEIROS DO VIEW-MODEL, da região que NENHUMA passada de
         // HTML/CSS re-mediu (`188-FID01.md` §J) — e eles estavam DESLOCADOS na
@@ -1963,8 +2042,9 @@ test('⚠️ FID: os literais e os ponteiros de `:699`-`:721` medidos contra o p
     await contexto.test('⚠️⚠️ os PONTEIROS do RODAPÉ (`:712`-`:721`) e as duas medidas do motivo', () => {
         assert.match(em(712), /height:66px;padding:0 22px;border-top:1px solid #1F1F1F;background:#111111;flex:none/, '`:712` não é o rodapé de 66px');
         assert.match(em(714), /height:36px;padding:0 14px/, '`:714` não é "Salvar revisão"');
-        assert.ok(em(714).includes('Salvar revisão'), '`:714` perdeu o rótulo "Salvar revisão"');
-        assert.ok(em(715).includes('Solicitar ajustes'), '`:715` perdeu o rótulo "Solicitar ajustes"');
+        // ⚠️ Os rótulos do MÓDULO contra o protótipo — o mesmo cruzamento do `:708`.
+        assert.ok(em(714).includes(M_RODAPE.ROTULO_SALVAR), '`:714` não contém o rótulo que o MÓDULO renderiza');
+        assert.ok(em(715).includes(M_RODAPE.ROTULO_AJUSTES), '`:715` não contém o rótulo que o MÓDULO renderiza');
         // ⚠️ A §E diz "idem E9" para `:715` — MEDIDO: os dois `style` são iguais.
         const estilo = (n) => (em(n).match(/ style="([^"]*)"/) || [])[1] ?? null;
         assert.equal(estilo(715), estilo(714), '`:715` divergiu de `:714` — a §E diz "idem E9"');
@@ -1982,10 +2062,10 @@ test('⚠️ FID: os literais e os ponteiros de `:699`-`:721` medidos contra o p
 
         assert.match(em(719), /height:38px;padding:0 18px/, '`:719` não é "Aprovar para publicação"');
         assert.match(em(719), /disabled="\{\{ P\.notApprovable \}\}"/, '`:719` perdeu o `disabled=` — ele É o critério 8');
-        assert.ok(em(719).includes('Aprovar para publicação'), '`:719` perdeu o rótulo "Aprovar para publicação"');
+        assert.ok(em(719).includes(M_RODAPE.ROTULO_APROVAR), '`:719` não contém o rótulo que o MÓDULO renderiza — e a decisão 1 o quer INALTERADO');
         assert.equal(em(719).includes('style-hover'), false, '`:719` ganhou `style-hover` — o protótipo NÃO dá hover a este botão');
         assert.match(em(721), /background:transparent;color:#D4D4D8/, '`:721` não é "Próximo ↓"');
-        assert.ok(em(721).includes('Próximo ↓'), '`:721` perdeu o rótulo "Próximo ↓"');
+        assert.ok(em(721).includes(M_RODAPE.ROTULO_PROXIMO), '`:721` não contém o rótulo que o MÓDULO renderiza (a seta é U+2193)');
         assert.match(em(721), /style-hover="background:#161616"/, '`:721` perdeu o `style-hover` de FUNDO');
 
         // ⚠️⚠️ **AS DUAS FORMAS DO MOTIVO EXISTEM NO PRÓPRIO PROTÓTIPO**, e é por
