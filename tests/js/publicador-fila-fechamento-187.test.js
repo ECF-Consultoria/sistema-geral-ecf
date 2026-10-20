@@ -142,6 +142,10 @@ const JSX_DEPOIS_DA_187 = [
     // botões e o motivo, onde vive o `disabled=` de "Aprovar para publicação".
     `${DIR_APROV}/PendenciasDoPainel.jsx`,
     `${DIR_APROV}/RodapeDoPainel.jsx`,
+    // Fase 188, plano 11 — os dois primeiros MODAIS do painel, dentro da casca da
+    // Fase 187 (`CascaDeModal.jsx`, IMPORTADA e nunca recriada). Tarefa 1: MOD-01
+    // "Solicitar ajustes" (item, destino por escopo, comentário e sugestões).
+    `${DIR_APROV}/ModalDeAjuste.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

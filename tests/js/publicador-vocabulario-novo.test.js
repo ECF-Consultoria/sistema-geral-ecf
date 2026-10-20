@@ -458,6 +458,35 @@ const ARQUIVOS_NOVOS = [
     // ⚠️ `text-[13.5px]` (o rótulo de aprovar) e `text-[12.5px]` (o motivo) são
     // medidas do protótipo — `text-sm` é 14px e arredondar mudaria o layout.
     `${DIR_APROV}/RodapeDoPainel.jsx`,
+    // ═══ ⚠️⚠️ Fase 188, plano 11 — OS DOIS PRIMEIROS MODAIS DO PAINEL ═══════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE OS CRIA** (`188-REGUA.md` §13), pela razão mecânica
+    // escrita nos blocos dos planos 07/08/09/10 acima: `aprovacao/` está em
+    // `DIRETORIOS_FECHADOS` com `assert.deepEqual(noDisco, declarados)`, e `.jsx`
+    // no disco fora desta lista deixa o gate VERMELHO na hora.
+    //
+    // ⚠️⚠️ **OS DOIS IMPORTAM `CascaDeModal.jsx` (Fase 187, plano 09) e NÃO a
+    // recriam** — duas cascas divergiriam, e a divergente seria descoberta por
+    // alguém vendo dois modais com raios diferentes na mesma tela. Há gate da
+    // outra ponta provando que nenhum arquivo além dela declara `w-[560px]`,
+    // `pt-[96px]`, `max-h-[calc(100vh-140px)]` nem `shadow-pub-modal`.
+    // ⚠️ **E CADA UM DECLARA `font-pub` NO CORPO** (critério 15 / REND-05): o
+    // painel desta fase é PORTAL, e conteúdo portado **não herda fonte** — sem a
+    // classe o modal perde a Geist **em silêncio**, com render verde.
+    //
+    // ⚠️ **FID-03:** `text-[12.5px]` (os `<label>` e a caixa de destino),
+    // `text-[13px]` (o `<select>`, o `<textarea>` e o motivo), `text-[11.5px]`
+    // (a nota do escopo e os chips) e `text-[12px]` são medidas do protótipo —
+    // nenhum tamanho NOVO: os quatro já estão na lista.
+    // ⚠️ **`rounded-[8px]` é valor ARBITRÁRIO de propósito:** 8px **não existe**
+    // na escala `rounded-pub-*` (16 · 14 · 12 · 10 · 9 · 7 · 6 · 4), e *"usar o
+    // token parecido que já existe"* é justificativa **VETADA** (FID-02).
+    //
+    // Tarefa 1 — MOD-01 "Solicitar ajustes": o `<select>` dos N+7 itens do
+    // servidor, a caixa "Encaminhar para" com destino e nota por escopo (âmbar
+    // **só** no produto, `:1397`), o comentário de `rows="3"` e os chips de
+    // sugestão que **CONCATENAM e acrescentam um PONTO**.
+    `${DIR_APROV}/ModalDeAjuste.jsx`,
 ];
 
 /**
