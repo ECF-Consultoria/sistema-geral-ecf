@@ -46,6 +46,35 @@
 # **Não crie.**
 #
 # ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ AS LISTAS CONSTANTES QUE ESTE PLANO TOCOU — e as que NÃO tocou, com razão
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOCADAS (uma linha NOMEADA cada, pela via canônica que o docblock de cada lista
+# prescreve — contagem do gate dono INALTERADA nos dois casos):
+#   · `ESTADO_LOCAL_DA_PAGINA` (`tests/js/publicador-fila-filtros-187.test.js`) —
+#     `+doLightbox`, o estado do lightbox na página. Medido: `filtros-render`
+#     29/29/0, o MESMO número que `contagens-187-06.txt` declara (`29,19`).
+#   · `ACOES_DEPOIS_DA_188_07` (`tests/js/publicador-painel-casca-188.test.js`) —
+#     lista CRIADA por este plano no reaponte com veto do DÉCIMO gate (ver a
+#     SUMMARY §: o `ACOES` estava FECHADO nas quatro da 188-07). Medido:
+#     `casca-do-painel` 41/40/0/1 — contagem `45,41` INALTERADA.
+#
+# NÃO TOCADAS, e a razão de cada uma:
+#   · `ARQUIVOS_NOVOS` e `JSX_DEPOIS_DA_187` — **este plano não cria `.jsx`**;
+#   · `LIBERADOS_DEPOIS_DA_187` (`publicador-fila-tokens-187.test.js`) — nenhum
+#     tamanho novo: `text-[12px]` já estava liberado, e o `18` foi liberado pelo
+#     189-01. Medido: `tokens-187` 17/17/0;
+#   · `SLOTS_DE_NO_DA_187` / `SLOTS_DE_NO_DEPOIS_DA_187` (nos DOIS arquivos) —
+#     a prop `lightbox` é **DADO**, não slot de NÓ, e o lightbox é montado como
+#     componente (não por `isValidElement`). Medido: `cabecalho-187` 99/99/0 e
+#     `proximo-187` 76/76/0;
+#   · `QUEM_USA_SHADOW_PUB_PAINEL`, `DA_FASE_180`, `DO_PORTAO_DA_FASE_186` —
+#     nenhuma sombra, token ou frase nova;
+#   · `TAMANHOS_PERMITIDOS` — nenhum tamanho novo (`vocabulario-tamanhos` 695);
+#   · `contagens-186-02.txt:83` (`voc-07-gate-03 … tests=399,399`) — achado
+#     HERDADO e já estourado antes desta fase; manifesto de fase EM PRODUÇÃO,
+#     **não é deste plano consertar**, e nada aqui depende dele.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
 # ⚠️ NO MODO `js` O HARNESS RODA O ARQUIVO INTEIRO: **um id por arquivo de gate**.
 #    É por isso que `lightbox-no-painel` cobre as duas tarefas deste plano — não
 #    é agregação por conveniência, é o que o modo `js` permite. Há asserção neste

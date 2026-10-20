@@ -761,6 +761,28 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
         // ~3,8 s** — *"um aviso de concorrência que desaparece é um aviso que não
         // houve"*.
         'conflitoDoPainel',
+        // ⚠️⚠️ Fase 189, plano 06 — O LIGHTBOX: `{indice, zoom, origem, contexto}`.
+        //
+        // **É GESTO, não DADO, e por isso NÃO vai para a URL:** um link
+        // compartilhado abriria a foto ampliada de outra pessoa, numa tela em que
+        // **aprovar ENFILEIRA e não há desfazer**. É a MESMA decisão já tomada
+        // para `modalDoLoteAberto`, `fotoAberta`, `modalDoPainel` e
+        // `conflitoDoPainel`; a OFERTA, que é dado, continua na URL (`?oferta=`).
+        // ⚠️ E **nada de `localStorage`** (T-189-44): o estado de revisão não mora
+        // no navegador, e há gate de ausência na página.
+        //
+        // ⚠️⚠️ **UM `useState` SÓ, com o contexto dentro**, e a razão é mecânica —
+        // a mesma do `modalDoPainel`: o `LightboxDaImagem` (189-03) e a
+        // `LateralDoLightbox` (189-05) são **CONTROLADOS** e não guardam estado,
+        // então alguém precisa ser o dono. Um `useState` por campo seria QUATRO
+        // entradas aqui para um gesto só.
+        //
+        // ⚠️ **Por que ele vive na PÁGINA e não no `PainelDeRevisao`:** quem
+        // desenha o "⤢ Ampliar" é a `ColunaDeFotos`, e ela chega ao painel como
+        // **NÓ PRONTO** pelo slot `colunaDeFotos`, montado aqui — estado no painel
+        // nunca alcançaria o botão. O painel continua com o **ÚNICO** `keydown`
+        // da tela, que é o que o degrau do `Escape` exige.
+        'doLightbox',
     ];
 
     const naPagina = [...FONTE_PAGINA.matchAll(/const \[([A-Za-z_$][\w$]*),\s*[A-Za-z_$][\w$]*\] = useState\(/g)].map((m) => m[1]);
