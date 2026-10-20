@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fase 188, plano 13 — O FECHAMENTO MEDIDO.
+#
+# ⚠️ Uso: `sh tests/gates/verificar-testes.sh 188-13 <id>`
+#    O 1º argumento é `188-13` (COM a fase), NÃO `13` nu — número nu resolve para
+#    a Fase **186**, por compatibilidade com os 163 ids daquela fase, que está
+#    EM PRODUÇÃO. Esquecer a fase roda o gate ERRADO em silêncio. Os casos 15 e
+#    16 do `--autoteste` guardam exatamente isso.
+#
+# ⚠️ **NENHUM ID COM MAIS DE TRÊS MÉTODOS.** Id composto grande soma contagens de
+#    coisas que não têm relação, equivale a filtro de classe, passa dos 120 s do
+#    shell, e a correção barata passa a ser "elevar o número". Os 9 métodos do
+#    `FechamentoDaFase188Test` estão em TRÊS ids de 3.
+#
+# ⚠️ **ZERO ID ÓRFÃO, e a bijeção é nos DOIS sentidos.** Os três ids abaixo
+#    aparecem em `<verify>` do `188-13-PLAN.md`, e nenhum `<verify>` daquele plano
+#    usa id que não esteja aqui. ⚠️ Id declarado e fora de todo `<verify>` **não
+#    falha: ele NUNCA RODA**, e é indistinguível de um gate verde — a revisão
+#    desta fase achou NOVE assim. O próprio gate `fechamento-manifestos` prova a
+#    bijeção sobre os TREZE pares plano × manifesto.
+#
+# ⚠️ **O gate PHP deste plano NÃO confere número de suíte, de asserção, de build
+#    nem de manifest.** O `188-FECHAMENTO.md` é MEDIÇÃO DATADA: os números dele
+#    valem para o commit medido. O que estes três ids conferem é a **FORMA** — e
+#    é a forma que impede o "ajuste" silencioso de um critério que não passou.
+#
+# ⚠️ **`vocabulario-tamanhos` NÃO é declarado aqui, e está CERTO.** A regra é
+#    **quem RODA, declara** — e não *todos declaram*. Este plano não escreve
+#    `.jsx` nenhum e **não roda o GATE-03**; declará-lo aqui criaria um id órfão.
+#    (Declaram-no, em linha própria e com N MEDIDO, as waves 01, 07, 08, 09, 10,
+#    11 e 12.)
+#
+# ⚠️ **As contagens abaixo foram MEDIDAS**, uma invocação por id, com o ANSI
+#    tirado antes de ler a linha `Tests:`. Nenhuma foi chutada.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── PHP: a FORMA do documento de fechamento ───────────────────────────────────
+
+# O documento existe e não é esqueleto; as 6 linhas de baseline em forma fixa; a
+# declaração de que NINGUÉM VIU TELA RENDERIZADA e de que a fase NÃO FOI
+# DEPLOYADA (forma deliberadamente diferente da das Fases 186/187, que estão em
+# produção); e o ANTI-FANTASMA — `file_exists` em cada `ALVO-INTOCADO:`, que é o
+# gate PERENE deste arquivo, porque `git diff` num caminho inexistente sai VAZIO
+# e vazio é indistinguível de "intocado". Mais a FID-01 declarando SCRIPT /
+# LEITURA / SEM-PROTOTIPO em cada um dos 13 planos.
+fechamento-territorio  php  test_(o_fechamento_188_existe_e_tem_as_seis_linhas_de_forma_fixa_188_13|o_fechamento_188_declara_que_ninguem_viu_tela_e_nao_afirma_deploy_188_13|o_territorio_188_os_alvos_existem_e_a_fid01_declara_como_mediu_188_13)  ::  tests=3 assertions=24
+
+# Os 20 critérios em FORMA FIXA, numerados 01..20 sem buraco e sem repetição (15
+# é a contagem da Fase 187 e 17 a da 186); nenhum REPROVA; cada RESSALVA com
+# DONO na própria linha; o PLACAR fechando em 20; as perguntas TODAS com dono
+# ("a definir" NÃO é dono — e é lista CONSTANTE, não piso: piso não prova
+# PRESENÇA, foi a sobrevivente M5 da Fase 187); e o ROTEIRO da conta 459 como
+# ROTEIRO (itens 1..N sem buraco, o aviso de que NÃO HÁ DESFAZER e o caminho
+# alternativo da fila vazia), nunca como MENÇÃO — foi a sobrevivente M6 da 187.
+fechamento-criterios  php  test_(os_vinte_criterios_188_estao_em_forma_fixa_sem_buraco_188_13|nenhum_criterio_188_reprovado_e_cada_ressalva_tem_dono_188_13|as_perguntas_188_tem_dono_e_o_roteiro_da_conta_459_e_roteiro_188_13)  ::  tests=3 assertions=26
+
+# Os 13 manifestos existindo, sem `tests=0`, sem id repetido e sem id com mais de
+# 3 métodos; a TERCEIRA BIJEÇÃO (id ↔ `<verify>`) sobre os treze pares, com
+# asserção ÚNICA por direção coletando os infratores e o `NN` ANCORADO na forma
+# `188-NN`; e o `vocabulario-tamanhos` em LINHA PRÓPRIA em quem o roda e em
+# NENHUM id composto — as duas exigências são OPOSTAS, e confundi-las foi erro de
+# briefing nesta fase.
+fechamento-manifestos  php  test_(os_treze_manifestos_188_existem_com_ids_bem_formados_188_13|a_terceira_bijecao_id_verify_nos_treze_pares_188_13|o_vocabulario_tamanhos_em_linha_propria_e_em_nenhum_id_composto_188_13)  ::  tests=3 assertions=20
