@@ -942,17 +942,32 @@ class LightboxDoPainelServiceTest extends TestCase
         Http::get('https://api.mercadolibre.com/items/MLB1');
         $this->assertNotSame([], $this->chamadas, 'ISCA: o gravador está CEGO — a prova por ausência não vale nada');
 
-        // ⚠️⚠️ **ISCA DA TRAVA:** `preventStrayRequests()` está ARMADO. Sem esta prova, o
-        // `Http::fake()` catch-all do `setUp()` faria a trava passar sem nunca ter sido exercida.
-        // ⚠️ Fica no FIM do caso de propósito: ela re-faqueia o cliente.
-        Http::fake(['api.mercadolibre.com/*' => Http::response([], 200)]);
+        // ⚠️⚠️ **ISCA DA TRAVA, EM DUAS PARTES — e a primeira redação dela ERA CEGA.**
+        //
+        // ⚠️ **MEDIDO em 20/10/2026:** eu tentei provar a trava re-faqueando o facade
+        // (`Http::fake(['api.mercadolibre.com/*' => …])`) e esperando `StrayRequestException` numa
+        // URL não faqueada. **Não lançou**, e a razão é de desenho do framework:
+        // `Factory::fake()` **ACRESCENTA** stubs, não os substitui — o callback catch-all do
+        // `setUp()` continua casando TUDO. ➡️ Aquela "isca" provava NADA, e foi o vermelho que a
+        // pegou. **Fica escrito para ninguém a reescrever assim.**
+        //
+        // A forma que mede:
+        //   (a) **o flag do facade REAL** está ligado — é a trava deste arquivo de teste;
+        //   (b) **o mecanismo LANÇA**, provado numa `Factory` NOVA (sem o catch-all do `setUp()`),
+        //       com uma URL faqueada que PASSA e uma não faqueada que LANÇA.
+        $this->assertTrue(Http::preventingStrayRequests(), '(a) a trava deste arquivo não está armada — requisição não faqueada sairia de verdade');
+
+        $fabrica = new \Illuminate\Http\Client\Factory();
+        $fabrica->preventStrayRequests();
+        $fabrica->fake(['api.mercadolibre.com/*' => $fabrica->response([], 200)]);
+        $this->assertSame(200, $fabrica->get('https://api.mercadolibre.com/items/MLB1')->status(), '(b) ISCA CEGA: nem a URL FAQUEADA passa — a trava abaixo reprovaria pelo motivo errado');
         $lancou = false;
         try {
-            Http::get('https://nao-faqueado-189-02.test/x');
+            $fabrica->get('https://nao-faqueado-189-02.test/x');
         } catch (\Illuminate\Http\Client\StrayRequestException $e) {
             $lancou = true;
         }
-        $this->assertTrue($lancou, 'ISCA: `Http::preventStrayRequests()` não está armado — requisição não faqueada sairia de verdade');
+        $this->assertTrue($lancou, '(b) `preventStrayRequests()` não LANÇA em requisição não faqueada — o mecanismo mudou');
     }
 
     public function test_territorio_e_bijecao_do_manifesto_do_lightbox_189_02(): void

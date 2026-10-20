@@ -20,6 +20,7 @@ use App\Services\Publicador\Aprovacao\Fila\LinhaDaOfertaService;
 use App\Services\Publicador\Aprovacao\Fila\LoteDaFilaService;
 use App\Services\Publicador\Aprovacao\Fila\ProximoARevisarService;
 use App\Services\Publicador\Aprovacao\HistoricoDaOfertaService;
+use App\Services\Publicador\Aprovacao\Painel\LightboxDoPainelService;
 use App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService;
 use App\Services\Publicador\Aprovacao\Painel\PrecoDoPainelService;
 use App\Services\Publicador\Aprovacao\RevisaoDeImagemService;
@@ -193,6 +194,9 @@ class MlbPublicadorAprovacaoController extends Controller
         LinhaDaOfertaService $linhaDaOferta,
         LoteDaFilaService $loteDaFila,
         PainelDeRevisaoService $painelDeRevisao,
+        // ⚠️ Fase 189, plano 02 — method injection, como o `$painelDeRevisao` logo acima: o
+        // serviço do lightbox é da 189 e **não** entra no construtor do painel (que é da 188).
+        LightboxDoPainelService $lightboxDoPainel,
         ProgramasPublicadorService $programas,
         CabecalhoPublicadorService $cabecalhos,
     ) {
@@ -497,6 +501,32 @@ class MlbPublicadorAprovacaoController extends Controller
         // (`whereDate('updated_at', hoje)`, `AndamentoDaOfertaService:294`-`:295`). O usuário
         // recusou número divergente entre conta e lista **duas vezes** (decisões 9 e 16).
         $payload['contagem']['exibidas'] = $filtros->exibidasNaEtapa($payload['faixa'], $etapa);
+
+        // ═══ ⚠️⚠️ Fase 189, plano 02 — A PROP `lightbox` ═══════════════════════════════════
+        //
+        // ⚠️ **POR QUE ELA É SEPARADA DO `painel`, e não mais uma chave dentro dele:** o
+        // `PainelDeRevisaoService` é da **Fase 188** e esta fase **não altera serviço da 188**
+        // (`189-REGUA.md` §3). A original de referência é o ÚNICO dado novo de servidor da 189, e
+        // ela entra por um serviço NOVO — `LightboxDoPainelService` —, sem encostar no da 188.
+        //
+        // ⚠️ **POR QUE ELA É CALCULADA DEPOIS DO LITERAL**, ao contrário da `faixa`, do
+        // `proximo_a_revisar` e do `painel`: ela **LÊ** o `painel` já montado (`fotos.imagens`),
+        // que é a MESMA galeria que a tela recebe. Montá-la dentro do literal exigiria chamar o
+        // painel duas vezes ou remontar a galeria — a segunda consulta livre para divergir da que
+        // a pessoa está vendo, e a divergência apareceria como *"a lateral mostra a original de
+        // outra foto"*. O precedente é o `$payload['contagem']['exibidas']` logo acima.
+        //
+        // ⚠️ **RECORTADA AO `?oferta=`:** sem oferta em foco ela é **`null`** — nenhuma consulta a
+        // `pub_imagem_referencias` acontece na abertura comum da fila, e há gate contando as
+        // consultas nas duas direções. ⚠️ E nada daqui vai ao Mercado Livre: a leitura do lightbox
+        // é LEITURA, e **aprovar ENFILEIRA** (a escrita no ML é da **Fase 193**).
+        //
+        // ⚠️ **Guarda de tipo** antes de ler `fotos`/`imagens`: lista vazia quando ausente, nunca
+        // um `??` que entregue `null` ao serviço.
+        $imagensDoPainel = is_array($payload['painel']['fotos']['imagens'] ?? null)
+            ? $payload['painel']['fotos']['imagens']
+            : [];
+        $payload['lightbox'] = $payload['painel'] === null ? null : $lightboxDoPainel->para($ofertaDoPainel, $imagensDoPainel);
 
         // ═══ ⚠️⚠️ Plano 187-09 — A SELEÇÃO EM LOTE, LIDA DA URL ═══════════════════════════════
         //

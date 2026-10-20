@@ -203,3 +203,54 @@ original-de-referencia  php  test_(a_original_sai_pela_MESMA_rota_na_ordem_de_po
 #      os tipos CERTOS produz bloco disponível (senão "não gera bloco" seria
 #      satisfeito por um serviço que nunca gera nada).
 estado-img13-e-recorte  php  test_(o_estado_img13_e_LIDO_das_constantes_do_modelo_189_02|a_original_de_OUTRO_rascunho_fica_FORA_do_payload_189_02|a_entrada_adversa_nao_lanca_e_nao_gera_bloco_189_02)  ::  tests=3 assertions=32
+
+
+# ── TAREFA 2: a prop `lightbox` na rota, o território e a bijeção ────────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **a prop `lightbox` sendo montada SEM `?oferta=`** — custo puro em
+#      TODA abertura da fila. A prova é dupla: a prop é `null` **e** a contagem de
+#      consultas a `pub_imagem_referencias` é **0**, com **ISCA na direção oposta**
+#      (COM `?oferta=` a consulta ACONTECE) — sem ela o zero seria indistinguível
+#      de sonda cega;
+#   2. a prop DESAPARECENDO do payload em vez de ser `null` (a tela distingue
+#      "não há oferta em foco" de "a prop sumiu");
+#   3. as chaves de `lightbox.originais` não casando, uma a uma, com os `id` de
+#      `painel.fotos.imagens` — seria a lateral mostrando a original de OUTRA foto;
+#   4. ⚠️ **T-189-11** — `?oferta=` de OUTRA conta montando o `lightbox`. A trava é
+#      a do 188-02 (a prop só existe quando o `painel` existe), e há isca cega
+#      provando que o `painel` daquela oferta também é `null`;
+#   5. ⚠️ `faixa` ou `proximo_a_revisar` saindo de **INLINE no literal** — há gate
+#      em JS (`tests/js/publicador-fila-proximo-187.test.js`) lendo esse TEXTO;
+#   6. ⚠️⚠️ **o Mercado Livre**, na forma HONESTA e medida: o SERVIÇO sozinho faz
+#      **zero requisição LITERAL** (com isca deliberada que TEM de aparecer no
+#      gravador), e na ROTA os caminhos do ML são conferidos contra a **lista
+#      CONSTANTE medida** `['/sites/MLB/listing_prices']` — porque abrir o painel
+#      **LÊ a tarifa real** (decisão do usuário de 15/10/2026), e prometer zero
+#      absoluto ali seria gate que o desenho contradiz. Endpoint NOVO aparecendo
+#      REPROVA.
+#      ⚠️⚠️ **E A ISCA DA TRAVA, cuja PRIMEIRA REDAÇÃO ERA CEGA — medido nesta
+#      wave:** re-faquear o facade e esperar `StrayRequestException` **NÃO LANÇA**,
+#      porque `Factory::fake()` **ACRESCENTA** stubs e o callback catch-all do
+#      `setUp()` continua casando tudo. ➡️ A forma que mede é em DUAS partes: (a) o
+#      flag `Http::preventingStrayRequests()` do facade REAL, e (b) o mecanismo
+#      LANÇANDO numa `Factory` NOVA, com a URL faqueada passando (isca cega) e a
+#      não faqueada lançando;
+#   7. ⚠️ **TERRITÓRIO**, recortado à lista CONSTANTE dos DOIS arquivos deste plano
+#      (`lucro_liquido` é campo legítimo do Portal: varrer `app/` inteiro já BARROU
+#      UM DEPLOY na 186) e, no controller, recortado ao **trecho NOVO** (o arquivo
+#      inteiro é da 187/188): ausência de "confirmar publicação"/"desfazer"/
+#      "segundo passo"/"cancelar aprovação" **com isca de cada forma**, território
+#      VETADO (`ArquivosDeImagem`/`ImagemAssetService`/`AcervoImagem`/
+#      `App\Support\Publicador`) com **anti-fantasma** (`test -e`) e isca da sonda,
+#      TOK-15 (nenhum hex no PHP) e **nenhuma forma de ESCRITA** no serviço, com
+#      isca provando que a sonda acha o caso canônico;
+#   8. ⚠️⚠️ **BIJEÇÃO** id ↔ método nos DOIS sentidos, por lista derivada do
+#      MANIFESTO (nunca piso `>=`), com o **EXPANSOR DE ALTERNÂNCIA** e isca
+#      medindo os dois lados: o expansor abre `test_(a|b)`, e a regex ingênua
+#      `/test_[A-Za-z0-9_]+/` devolve **0** nela — foi esse furo que produziu
+#      `SEM_ID=14` acusando trabalho correto na wave 189-01. Mais: nenhum id com
+#      mais de TRÊS métodos, `tests=` casando a contagem de métodos, e o
+#      **HOMÔNIMO** contra todo `test_*` de `tests/` nas duas direções (com isca
+#      que ACUSA 7 métodos reais das Fases 187/188 e controle em 0).
+prop-lightbox-e-sem-http  php  test_(a_rota_monta_a_prop_lightbox_so_com_oferta_valida_da_conta_189_02|a_prop_lightbox_nao_faz_requisicao_ao_mercado_livre_com_isca_189_02|territorio_e_bijecao_do_manifesto_do_lightbox_189_02)  ::  tests=3 assertions=74
