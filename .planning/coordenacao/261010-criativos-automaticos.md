@@ -68,3 +68,20 @@ código para o fluxo sem clique.
 2. `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` — usuário ativo com `mlb.criativos_ia`;
 3. `Configuracao::set('publicador_criativos_auto_companies', '<id>,<id>')` — começar pela #459;
 4. `queue:restart` (os Jobs novos rodam na fila `creative`).
+
+## Adendo de 20/10/2026 — as imagens entram SOZINHAS no anúncio
+
+Decisão do usuário: o colaborador só confere a Prévia (etapa 5); "a IA faz o resto, e se estiver errado a gente
+corrige". As 2 imagens do kit AUTOMÁTICO entram na galeria sozinhas, NA FRENTE (capa), na ordem dos `slots`.
+
+**Nada do seu motor foi editado.** O que fizemos:
+- ganchos `updated` nos SEUS modelos (`MlAnuncioCriativoKit` e `MlAnuncioCriativo`), registrados no
+  `AppServiceProvider`: só conferem a chave e o status e põem um Job na fila `creative`; nunca lançam;
+- o Job chama `CriativosAutomaticosService::aplicar`, que aprova pelo SEU `PublicadorCriativoAprovacaoService::aprovarSlot`
+  (como o botão) e depois reordena a galeria (`EditorRascunhoService::trazerParaFrente`);
+- espera o juiz e a refação automática (VAL-05); imagem reprovada que não vai ser refeita NÃO entra (fica no painel);
+- o kit pedido no botão continua com aprovação de gente.
+
+Se você mudar como o status do kit ou o `validacao_status` são gravados (por exemplo, por query builder em vez do
+modelo), o gancho deixa de ouvir — nos avise. Os 5 pontos acima (par de imagens, fila, juiz, autoria, selo) seguem
+seus; ligar em produção continua dependendo do usuário.

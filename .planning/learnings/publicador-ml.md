@@ -1677,3 +1677,31 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
 - **Build local de worktree aponta os pedaços dinâmicos para o `ASSET_URL` do `.env`** (`localhost/ecf_admin/public`):
   servindo o build por outra porta, um chunk cai em CORS. Para provar o bundle de produção do worktree, basta
   renomear o `public/hot` DELE (não o do `ecf_admin`) e recarregar; o resto da página carrega do `/build`.
+
+## 40. As imagens por IA automáticas entram SOZINHAS, na frente da galeria (20/10/2026)
+
+- **Decisão do usuário:** "quando salvo no Portal, o cliente coloca as imagens, o produto vai para o Publicador e,
+  assim como título e Modelo, a imagem também é gerada pela IA; o preview é a única coisa que o colaborador confere —
+  se tiver errado a gente corrige". Respostas dele: a imagem entra sozinha (confere na Prévia) e as 2 da IA vão NA
+  FRENTE, como capa (o Clássico abre com a 1ª e o Premium com a 2ª, pela rotação D6). A geração já existia (§16, 10/10,
+  `CriativosAutomaticosService`, DESLIGADA); o que faltava era a aprovação sem gente.
+- **`CriativosAutomaticosService::aplicar`** (Job `AplicarCriativosAutomaticosJob`, fila `creative`, único por kit,
+  20 s de espera para juntar os gatilhos): só o kit que a automação pediu (`step_state.criativos_auto.grupos[grupo]
+  .kit_id`) — o do botão segue com aprovação de gente; entra pelo MESMO `aprovarSlot` do botão e depois vai para a
+  frente (`EditorRascunhoService::trazerParaFrente`, no FIM da classe de propósito: os documentos da Fase 188 apontam
+  `EditorRascunhoService:370-372`).
+- **O gatilho é evento do Eloquent, não código do outro dev:** `MlAnuncioCriativoKit::updated` (o `recalcularStatus()`
+  grava pelo modelo) e `MlAnuncioCriativo::updated` (o juiz grava `validacao_status` pelo modelo), registrados no
+  `AppServiceProvider`. Os ganchos só conferem o barato e NUNCA lançam: rodam dentro dos Jobs do Creative Engine.
+- **Corrida do juiz:** o `ValidarCriativoIaJob` grava "reprovada", recalcula o kit e SÓ DEPOIS decide refazer a imagem
+  (VAL-05, uma vez, dentro do orçamento do kit). Por isso o `aplicar` espera enquanto houver reprovada que ainda pode
+  ser refeita (`regeneracao_automatica` falso e `podeRegenerarAsset`); a que não vai ser refeita NÃO entra (fica no
+  painel). Juiz `pendente` também faz esperar.
+- **Produto do Portal tem as fotos POR COR:** com `criativos_auto.todas_as_cores = false` (padrão), a galeria geral
+  costuma estar vazia e só a 1ª cor ganha kit — as outras cores seguem com a foto do cliente na capa. Para a IA fazer a
+  capa de todas as cores: `PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES=true` (custo ≈ US$ 0,20 × cores; o teto diário
+  conta kits).
+- **Para ligar em produção** (só com o ok do usuário): o deploy, `PUBLICADOR_CRIATIVOS_AUTO_ATIVO=true` + `config:cache`,
+  `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` (ativo, com `mlb.criativos_ia`),
+  `publicador_criativos_auto_companies` (começar pela #459), a chave do Creative Engine e `queue:restart`.
+  Lembrar: foto desenhada já deu infração na #459 (10/10) — a Prévia passa a ser a única barreira.
