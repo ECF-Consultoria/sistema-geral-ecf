@@ -4505,3 +4505,182 @@ alcançáveis por `PainelDeRevisaoService`. **Se a 190 for reaberta, o dado já 
 2. O diagrama de dependências dizia que a **193** estava *"BLOQUEADA: 1 decisão do usuário"*. Ela
    está **DESBLOQUEADA desde 14/10** (aprovar JÁ publica) — o próprio bloco da fase já dizia isso, e
    só o diagrama ficou para trás.
+
+---
+
+## ✅ FASE 189 FECHADA — 20/10/2026 · `PLACAR-189: OK=5 · RESSALVA=3 · REPROVA=0`
+
+**8 planos em 7 waves.** Fechamento medido em `189-FECHAMENTO.md` (1407 linhas) + `FechamentoDaFase189Test.php`
+(9 métodos / 3 ids). **Baselines no fechamento:** BUILD **exit 0 / 44 s** · MANIFEST **498 / 203** · JS
+**6012 / 6011 pass / 1 fail / 0 skipped** · PHP **RECORTE 2631 / 24.041 / 0** · protótipo **1432 linhas,
+`sha256 68624883ce35547e`, não se moveu**. ⚠️ **NÃO DEPLOYADA.**
+
+⚠️ **Os dois Δ FECHAM EXATO, e isso é a prova de que a contagem mede o que o gate executa:** JS **+141** =
+`3+27+16+27+22+25` (os gates da fase) `+14` (vocabulário 681→695) `+7` (a quick **alheia** `261020-tdz`);
+PHP **+48** = **36 alheios** (quatro quicks do Agente Publicador) **+12** da fase, atribuídos por
+`git show --name-only` **do commit que CRIOU cada arquivo** — nunca por range (a 189-07 caiu nisso: o range
+**englobava os commits dela**). E o recorte re-medido **depois** do commit fecha **nas duas** contagens
+(`2631+9=2640` **e** `24041+85=24126`).
+
+### ⚠️⚠️ O ACHADO QUE VALE MAIS QUE A FASE: CINCO TELAS PRETAS EM PRODUÇÃO
+
+A wave **189-07** achou que `Aprovacao.jsx` lia `const` **antes** de serem inicializadas — TDZ,
+`ReferenceError`, **tela preta no instante em que o painel de revisão abre com conteúdo**. Consertado pela
+quick **`261020-tdz`** (`ee201392`, `85c3b46b`).
+
+⚠️ **O orquestrador diagnosticou QUATRO e mediu três vezes. ERAM CINCO.** O quinto,
+**`podeEscreverNoPainel`** (declarada `:1107`, lida eager **4×** em `:1013/:1015/:1016/:1017`), vive na forma
+`prop={!nome ? null : …}` — **o TESTE do ternário**, avaliado na hora — e **a sonda que achou os outros
+quatro não vê essa forma** (medido: casa `prop={nome}`, não vê `{!nome ? …}` nem `{nome === …}`).
+➡️ **Seguir o briefing ao pé da letra teria consertado quatro e deixado a tela preta de pé.**
+
+⚠️⚠️ **A CAUSA RAIZ, e é a lição estrutural da milestone: NENHUM GATE DESTE PROJETO JAMAIS INSTANCIOU O
+`default export` DA PÁGINA.** Todos montam por esbuild e exercitam **só named exports**. O defeito morava no
+**único lugar que nenhuma sonda olhava**, e **três waves da 188** o publicaram. O gate que faltava agora
+existe: `tests/js/publicador-pagina-aprovacao-tdz-261020.test.js` (**7/7/0**), com
+`tests/gates/contagens-261020-01.txt` — **o primeiro manifesto de QUICK do projeto** (⚠️ medido: a forma
+`261020-tdz` **não funciona**, porque `verificar-testes.sh:122` exige **dois grupos de DÍGITOS**).
+⚠️ **E `renderToStaticMarkup` não desenha portal:** `len=28119` **igual** com `painel: null` e com payload
+cheio — um `doesNotMatch` sobre o HTML da página não mediria **nada** do painel.
+
+### ⚠️ Dois gates que reprovavam PELO PRÓPRIO CONSERTO — os dois consertados na RAIZ
+
+1. **`publicador-lightbox-acoes-189.test.js:1097`** (`62e5efae`, orquestrador): provava não-cegueira **pela
+   existência dos defeitos reais**. Duas correções — a prova foi para **cebo sintético**, e a **lista de
+   permissão SAIU**, porque com os cinco consertados ela virava **PONTO CEGO** (regressão em qualquer um
+   dos cinco passaria filtrada). A varredura foi **unificada numa função só** — havia **duas cópias da
+   regex**, e aí o cebo provaria *"uma regex desta forma funciona"*, não *"a regex que o gate usa"*.
+   **Provado por mutação nas duas direções** (cega → morre; larga → morre), `# tests = 25` nas duas.
+2. **`contagens-186-02.txt:83`** (`5f4fbb5f`, orquestrador): declarava `tests=399,399` num arquivo
+   **compartilhado** que mede **695**, e **reprovava com todos os 695 passando**. Reancorado em
+   **`tests=>=399`** — o mínimo que a 186 **realmente mediu**, não o de hoje.
+
+⚠️ **Com o 15º (`2444feea`, os cinco leitores reancorados por NOME, não por LINHA, com `tests` IGUAL e as
+asserções subindo 84→91 — o gate ficou mais FORTE), são QUINZE gates de âncora frágil consertados na RAIZ
+nesta milestone, e segue ZERO por elevação de número.**
+
+### ⚠️ O INVENTÁRIO DE GATES ESTAVA INCOMPLETO — e a razão é de construção
+
+O inventário A2 mapeou **nove em JS + dois em PHP**, todos por `/Ampliar/`. A 189-06 achou **mais dois que
+barravam a fase SEM casar esse padrão**: o **10º** `casca-188:1264` (conjunto `ACOES` **FECHADO** nas quatro
+da 188-07) e o **11º** `filtros-187:684` (`ESTADO_LOCAL_DA_PAGINA`, que **só a SUÍTE COMPLETA achou**).
+⚠️ **E a premissa escrita no plano — *"todos os casos do `casca-188` continuam passando sem alteração"* —
+era FALSA, medida.** ➡️ **Inventariar por PADRÃO DE TEXTO é mais estreito que o invariante "o que barra esta
+fase". Rode a suíte COMPLETA.**
+
+### ⚠️⚠️ SEIS CAMINHOS FANTASMA, e a lição em uma frase
+
+O fechamento construiu 32 alvos de território e o anti-fantasma pegou **SEIS (19%)**, **todos construídos a
+partir de NOMES** citados na régua, no `CLAUDE.md` e no briefing do orquestrador:
+
+| construído | **REAL** |
+|---|---|
+| `app/Support/Publicador/ArquivosDeImagem.php` | `app/Support/Publicador/Imagem/ArquivosDeImagem.php` |
+| `app/Support/Publicador/ResolvedorGruposImagem.php` | `app/Support/Publicador/Imagem/ResolvedorGruposImagem.php` |
+| `app/Services/Mlb/Publicacao/PublicacaoService.php` | **`app/Services/Publicador/PublicacaoService.php`** |
+| `resources/js/Pages/Mlb/PainelCriativosIa.jsx` | `resources/js/Pages/Mlb/components/PainelCriativosIa.jsx` |
+| `resources/js/Components/Mlb/KitCriativosGrade.jsx` | `resources/js/Pages/Mlb/components/KitCriativosGrade.jsx` |
+| `app/Services/Publicador/Imagem/ImagemAssetService.php` | `app/Services/Publicador/ImagemAssetService.php` |
+
+➡️⚠️ **UM NOME NÃO É UM CAMINHO.** Veto escrito a partir do nome é gate sobre **ZERO casos** e passa
+**VERDE para sempre**. **Total da milestone: 18.** ⚠️ **O terceiro importa para a Fase 193** — e os planos
+dela **já citam o caminho certo** (conferido pelo orquestrador).
+
+### ⚠️ As TRÊS FACES do limite de território, todas CONCRETIZADAS e medidas
+
+**Sobre-captura:** 39 commits pelo assunto × **43** pela mensagem (`git log --grep` lê a mensagem inteira).
+**Sub-captura, DOIS casos:** `62e5efae` (edita o gate do 189-07) e `85c3b46b` (edita `Aprovacao.jsx`) —
+**a varredura por assunto não vê nenhum dos dois**. **O autor:** ver abaixo.
+
+### ⚠️⚠️ DEZ erros de briefing do orquestrador nesta milestone — TODOS achados por medição de executor
+
+Ficam escritos porque são a prova de que a régua *"a medição ganha do briefing"* funciona:
+
+1. ⚠️ *"Reusar `MlPublicacaoService`"* (Fase 193): **ERRADO** — ele recebe `MlAnuncioRascunho`, do assistente
+   **antigo**, e **zero `PubRascunho`**. Obedecer teria ligado o portão ao publicador **errado**.
+2. ⚠️ *"Quatro telas pretas"*: **eram CINCO**, e o quinto era invisível para a sonda que achou os quatro.
+3. ⚠️ *"A sonda de `font-extrabold` não acharia a classe"*: **ela ACHA** (135 ocorrências de donos fora do
+   Publicador). **Erro na DIREÇÃO PERIGOSA** — eu disse *"falha"*, e o real é *"passa VERDE pelo motivo
+   ERRADO"*.
+4. ⚠️ *"O índice 13 da lateral"*: **é função da FIXTURA** (13 com 1 imagem, 21 com 3; 12 com 1 foto e 15 com
+   4 no `z-[42]`). **O invariante é profundidade + irmandade.**
+5. ⚠️ *"Os ponteiros do view-model estão deslocados"*: **os DOZE estavam CERTOS.**
+6. ⚠️ *"Quatro gates"* numa família de **CINCO**; *"cinco leitores"* de `EditorEmUso` que são **5 arquivos /
+   6 PONTOS**.
+7. ⚠️ **Três caminhos fantasma vindos de briefing meu** — o pior: `ResumoRapidoService` está em
+   `app/Services/Publicador/Fila/`, **não** em `.../Aprovacao/Fila/`, e **não** é o `FilaDeAprovacaoService`.
+8. ⚠️ *"Migration provável"* na Fase 193: **NÃO TEM** — as três colunas já existem desde a 186.
+9. ⚠️⚠️ *"O autor não discrimina, as três máquinas usam `MB.ECF-100376`"*: **premissa INCOMPLETA.** Medido
+   nos últimos 120 commits: **`MB.ECF-100376` ×118 e `ECF Dev` ×2**. A **conclusão** segue certa (os 39 do
+   escopo são o mesmo nome), **mas o único commit alheio que de fato quebrou um gate nesta fase É
+   author-discriminável.** ➡️ **Absoluto demais: o certo é "o autor quase nunca discrimina — confira".**
+10. ⚠️ *"A migration `2026_10_20_100000_create_pub_agente_tables.php` é untracked de outra sessão"*: **já
+    está RASTREADA** (commitada em `1253cc86`) — logo `git status --porcelain -- database/migrations` sai
+    **VAZIO** e o `casca-188:1097` está **VERDE**.
+
+⚠️ **E um erro meu de FERRAMENTA, no próprio fechamento:** usei `grep -c "dono: Fase 190/191"`, ele devolveu
+**1**, e eu escrevi uma âncora esperando **1 ocorrência** — são **DUAS, na MESMA linha**. ➡️ **`grep -c` conta
+LINHAS, não ocorrências**, que é exatamente o que eu aviso em todo briefing. **A guarda de contagem do script
+abortou antes de escrever nada** — foi ela que me salvou, não a leitura.
+
+### ⚠️ DEVOLVIDO AO USUÁRIO / ORQUESTRADOR — dois itens, nenhum urgente
+
+1. ⚠️⚠️ **A família *"gate mede WIP, não território"* é MUITO maior do que se pensava: o registro dizia
+   **TRÊS**, o fechamento mediu **24 pontos em 7 arquivos** (`numstatDe(rel)` sem o 2º argumento compara a
+   **ÁRVORE**, não um range), mais dois `git status --porcelain`. ⚠️ **E a isca de não-cegueira de cada ponto
+   é ela mesma mais larga que o invariante:** prova que o **pathspec resolve**, não que **um commit seria
+   pego**. ⚠️ **O conserto de RAIZ JÁ ESTÁ NO CÓDIGO:** o helper **aceita a base** (`numstatDe(rel, base)`) e
+   o `casca-188:549` **já usa RANGE** (`HEAD~1 HEAD`) — a forma certa era conhecida **no mesmo arquivo**.
+   **Não consertado:** são gates de fase **em produção**, fora do território do fechamento. **Dono: usuário /
+   orquestrador.** ⚠️ **Eles não protegem nada hoje** (verdes depois de qualquer commit), mas também **não
+   bloqueiam** — e **reprovam trabalho CERTO no meio de uma wave**, que é o custo real.
+2. ⚠️ **Os ponteiros do `189-FID01.md` §G apodreceram pela TERCEIRA vez** (`L5038` → `L5081` → **`L5132`**,
+   empurrados pelos commits de escopo; e `L4730` → **`L4752`**). ⚠️ **Dois achados piores que o deslocamento:**
+   `grep -n "Requirements:.*MOD-06"` devolve **ZERO** porque o arquivo escreve `**Requirements**:`, com os
+   asteriscos **antes** dos dois-pontos — **a forma citada é gate vazio por construção**; e o §G **atribui
+   MOD-06 à Fase 190, que foi CANCELADA** — o ponteiro mudou **de verdade**, não só de linha. **Não
+   reescrito** (CINCO gates o leem, um com isca por BYTES da §G; a régua permite **ESTENDER**).
+
+### ⚠️ A decisão do fechamento sobre `casca-189:1352`: **NÃO consertar**, e com razão medida
+
+O furo **já está fechado** em `publicador-lightbox-camadas-189.test.js:726-733` (189-04, `86b887bf`), pelas
+**quatro formas EXATAS**, cada uma casando 1 vez, com a isca construída **do mutante M1 de verdade**. ➡️ O
+`:1352` é **redundância larga, não furo**; editá-lo mudaria o `tests=27` de uma wave **fechada** sem ganhar
+invariante. **Sem dono pendente.**
+
+### Itens SEM DONO (e a razão)
+
+| item | situação |
+|---|---|
+| **AMPL-05** (*"Comparar lado a lado"*) | **sem dono** — 190/191 **canceladas** em 20/10/2026 |
+| **`refLabel`** (conserto de **1 linha** no `LightboxDoPainelService`) | **sem dono** — a régua §3 manda PARAR em vez de a wave mexer em serviço de outra |
+| a linha **"Variação"** | **sem dono** — ⚠️ **custo funcional real:** num produto com **3 cores**, as fotos das três aparecem **juntas na mesma grade, sem dizer qual é de qual cor** (quem revisa vê 12 fotos e **não sabe** que as 4 primeiras são da preta) |
+| **AMPL-07** (*"✦ Gerar novamente com IA"*) | **Fase 192**, agora a **ÚLTIMA** da milestone |
+| **`PERGUNTA-189-D`** | **ABERTA — dono: usuário.** D1 e D2 aplicados e declarados, com a asserção que **distingue** default de alternativa (`recarregarNaOferta = null SEMPRE`) **travada no gate**: trocar para a alternativa **REPROVA, de propósito** |
+
+### ⚠️⚠️ A CONFERÊNCIA VISUAL — TRÊS, ABERTAS E SEPARADAS
+
+`PERGUNTA-VISUAL-189` **ABERTA**, com roteiro de **12 itens** na §11 do fechamento, **começando pelo caminho
+da fila VAZIA** antes dos itens com oferta. ⚠️ **As das Fases 187 e 188 seguem ABERTAS e SEPARADAS** — esta
+não as substitui. ⚠️ **Nenhum executor de nenhuma das três fases viu tela renderizada** (sem navegador,
+`mysqld` local parado, nenhuma empresa com `ml_token`, `pub_aprovacao_ofertas` vazia).
+⚠️ **Só é executável depois de um deploy que o usuário autorize.**
+
+### ⚠️⚠️ O QUE MUDOU O QUADRO, e não foi decisão nossa
+
+O commit **`c810a8ac`** (outra sessão, quick `261020-oeg`, AG-03) ligou o **`PreparadorDaAprovacao`** — pelo
+registro da própria sessão, **o primeiro código de produção que CRIA `PubAprovacaoOferta`**. ➡️ **A primeira
+oferta real deixou de depender só da Fase 194.**
+
+⚠️ **Medido pelo orquestrador: nem o produtor nem o conserto das telas pretas estão publicados** — há **58
+commits locais** à frente de `origin/main`. **Produção tem o defeito e NÃO tem o produtor**, logo a tela preta
+segue **inalcançável**. ⚠️ **Como os dois estão do MESMO lado, um deploy normal carrega os dois; o único
+cenário ruim seria um deploy PARCIAL que levasse o produtor sem o conserto.**
+
+⚠️ **E `origin/main` ANDOU:** 18 commits do outro dev foram publicados (vitrine, IA de texto migrada para o
+**Gemini**, fases do Publicador). **Nenhum tocou `Aprovacao.jsx`.**
+
+### A ordem da milestone, depois da decisão 20
+
+**189 ✅ → 193 (planejada, 5 planos) → 194 → 192 (última).** As **190 e 191** estão **⛔ fora de escopo**.
+⚠️ **O `193-01` tem portão de entrada que PARA se a 189 não estiver fechada** — agora está.
