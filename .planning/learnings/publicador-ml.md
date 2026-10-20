@@ -1645,9 +1645,16 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   Portal já dizia Fase 4, escolheu "Fase 4 nos dois". Não mude o "Como funciona" do Portal.
 - **Decisão de 20/10: criar Combo, Kit e Combit é SÓ no Planejamento do Portal** — implementada no mesmo dia (nota ao
   outro dev: `.planning/coordenacao/261020-combo-kit-combit-so-no-planejamento.md`). O que não se deduz do código:
-  - **O combo nasce sozinho com a Fase 1 no ar** (`CombosDoPlanejamentoService` + `CriarCombosDoPlanejamentoJob`, fila
-    `high`). Dois gatilhos, que só AGENDAM: o fim da publicação (`PublicacaoService::concluir` e `encerrar` — "Parte
-    publicada" conta, como no KIT-05) e o Sincronizar (o Combo planejado DEPOIS de a Fase 1 estar no ar;
+  - **A fase nasce do ACEITE no Planejamento, nunca de uma regra do Publicador.** Correção do usuário no mesmo dia:
+    "o certo não é criar outras fases automaticamente; essas fases são decididas no Planejamento" — lá a equipe
+    analisa se faz sentido combo de 2, 3 ou outra quantidade, e o que ela aceita vai ao Publicador e vira fase. A
+    metodologia: anuncia o produto unitário (Fase 1) e DEPOIS vê o que mais dá para fazer (2 cadeiras; mesa + 4
+    cadeiras). Sugestão não aceita nunca vira fase; o Publicador não escolhe quantidade. **Diga "aceito no
+    Planejamento", nunca "planejado"**: "planejado" foi lido como sugestão e gerou a correção. Combo aceito ANTES de
+    a Fase 1 ir ao ar espera por ela (confirmado pelo usuário).
+  - **O combo aceito vira fase sozinho com a Fase 1 no ar** (`CombosDoPlanejamentoService` + `CriarCombosDoPlanejamentoJob`,
+    fila `high`). Dois gatilhos, que só AGENDAM: o fim da publicação (`PublicacaoService::concluir` e `encerrar` — "Parte
+    publicada" conta, como no KIT-05) e o Sincronizar (o Combo aceito DEPOIS de a Fase 1 estar no ar — o caminho normal;
     `combos_agendados` no resumo). O deploy NÃO cria nada sozinho: base já publicada com combo esperando ganha o kit no
     próximo "Sincronizar do Portal" ou no próximo save daquele produto no Portal. Job novo na `high` → `queue:restart`.
   - **O kit sai só com as cores que têm o Combo N no Portal** (`variantes_ativas` no `CriarFaseService`; a cor sem
