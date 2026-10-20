@@ -1643,11 +1643,24 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   quantidade. Alinhar o resto é decisão do usuário, com o outro dev (o código é da Fase 175).
 - **O Combit é Fase 4.** Numa primeira pergunta o usuário pôs o Combit "na Fase 3, junto com o Kit"; quando viu que o
   Portal já dizia Fase 4, escolheu "Fase 4 nos dois". Não mude o "Como funciona" do Portal.
-- **Decisão de 20/10: criar Combo, Kit e Combit é SÓ no Planejamento do Portal.** O Publicador monta o anúncio de cada
-  um sozinho. O combo planejado vira anúncio quando a Fase 1 for publicada (a regra do KIT-05 vira o gatilho). O
-  "Criar Fase N" sai do Publicador, menos onde não há Portal: conta de Polos sem empresa cadastrada e produto criado
-  direto no Publicador. **Ainda não implementado** (nota `.planning/coordenacao/261020-combo-kit-combit-so-no-planejamento.md`):
-  hoje o Combo do Portal continua "aguardando a Fase N" até alguém clicar.
+- **Decisão de 20/10: criar Combo, Kit e Combit é SÓ no Planejamento do Portal** — implementada no mesmo dia (nota ao
+  outro dev: `.planning/coordenacao/261020-combo-kit-combit-so-no-planejamento.md`). O que não se deduz do código:
+  - **O combo nasce sozinho com a Fase 1 no ar** (`CombosDoPlanejamentoService` + `CriarCombosDoPlanejamentoJob`, fila
+    `high`). Dois gatilhos, que só AGENDAM: o fim da publicação (`PublicacaoService::concluir` e `encerrar` — "Parte
+    publicada" conta, como no KIT-05) e o Sincronizar (o Combo planejado DEPOIS de a Fase 1 estar no ar;
+    `combos_agendados` no resumo). O deploy NÃO cria nada sozinho: base já publicada com combo esperando ganha o kit no
+    próximo "Sincronizar do Portal" ou no próximo save daquele produto no Portal. Job novo na `high` → `queue:restart`.
+  - **O kit sai só com as cores que têm o Combo N no Portal** (`variantes_ativas` no `CriarFaseService`; a cor sem
+    Combo N fica INATIVA no kit). A cor cujo Combo N já está no ar como produto avulso (o Sincronizar de antes criava um
+    por oferta) também fica de fora — publicar o kit com ela duplicaria o anúncio. Sem capa por IA (custo; a equipe pede
+    no editor). Depois de criar, roda o `estado()` do editor: sem ele o kit que ninguém abriu aparecia "Pronto".
+  - **O Publicador não cria oferta no Portal nem com pessoa:** o `garantirOfertas` virou `skusDasOfertas` (só lê). O
+    aviso `ofertas_novas_no_portal` da prévia virou `cores_sem_combo`.
+  - **"Do Portal" = `estrutura_produto_id` preenchido e não ser kit** (`CombosDoPlanejamentoService::doPortal`). Esses
+    não têm "Criar Fase N": o endpoint recusa com KIT-08 (prévia, criar e IA), a lista manda `combos_no_portal` (o
+    menu esconde) e a tela do Produto troca o botão por "Nasce do Planejamento do Portal" (`proxima_fase.combos_no_portal`,
+    `combos_esperando`, `fase_1_no_ar`). Produto sem esse vínculo — Polos sem empresa cadastrada, produto criado no
+    Publicador, legado de um produto por oferta — segue com o "Criar Fase N" de sempre.
 - **Na vitrine, o Kit e o Combit aparecem no cartão de CADA componente** que está no Publicador (a mesma face; marcar
   num marca no outro, porque a seleção é pelo id). O componente se acha pela variação → produto do Portal → base
   (`estrutura_produto_id`) ou, no legado de um produto por cor, pela oferta Simples (`oferta_id`). Composto sem
