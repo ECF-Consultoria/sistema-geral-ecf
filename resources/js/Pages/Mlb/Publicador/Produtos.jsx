@@ -875,17 +875,18 @@ export default function Produtos({
                 <section ref={area} className="rounded-xl bg-ecf-card">
 
                     {/* ─── O BLOCO FIXO: filtros + seleção + cabeçalho das colunas ───
-                        ⚠️ `top-[108px]`, não `top-0` (Fase 177, plano 07). O
+                        ⚠️ `top-[84px]`, não `top-0` (Fase 177, plano 07). O
                         header do `AppLayout` (`h-[60px] shrink-0`) continua FORA
                         do scrollport e segue não contando — o que mudou é que o
-                        `PublicadorHeader` agora é `sticky top-0` DENTRO do mesmo
+                        `PublicadorHeader` agora é `sticky -top-6` DENTRO do mesmo
                         scrollport (o `<main>` com `overflow-y-auto`) e ocupa 60px
-                        da linha 1 + 48px da nav = 108px do topo. Com `top-0`
+                        da linha 1 + 48px da nav = 108px; descontados os 24px do
+                        `p-6` do `<main>` (o sticky conta da borda do conteúdo), 84px. Com `top-0`
                         este bloco colaria em 0 e ficaria ATRÁS do header ao
                         rolar: o usuário perderia os filtros e os nomes das
                         colunas. É regressão funcional evitada, não ajuste de
                         gosto. */}
-                    <div className="sticky top-[108px] z-10 rounded-t-xl bg-ecf-card">
+                    <div className="sticky top-[84px] z-10 rounded-t-xl bg-ecf-card">
                         <div className="flex flex-wrap items-center gap-3 p-4">
                             {/* Grupo SEGMENTADO de situação: mesmos 5 filtros, mesmas
                                 contagens, mesmo `?filtro=`. */}

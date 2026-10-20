@@ -359,7 +359,7 @@ for (const { nome, Componente, props, titulo, headers, container } of PAGINAS) {
             const tag = tagDoHeader(html);
             // ⚠️ `z-30` desde 12/10/2026 (261012-mbw), NÃO `z-50` — ver
             // `publicador-header-zindex-ordem.test.js`.
-            for (const classe of ['sticky', 'top-0', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]']) {
+            for (const classe of ['sticky', '-top-6', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]']) {
                 // `\b` não serve: `top-0` é prefixo de `top-0.5`, e `-mx-6` de
                 // `-mx-6/5`. A classe tem de terminar em espaço ou em aspas.
                 assert.match(tag, new RegExp(classe.replace(/[[\]/\\^$*+?.()|{}]/g, '\\$&') + '[\\s"]'),

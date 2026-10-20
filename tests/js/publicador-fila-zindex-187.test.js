@@ -94,7 +94,7 @@ for (const caminho of [REL_FILTROS, REL_POPOVER, REL_TRAVADO, REL_BARRA, REL_CAS
 const TRAVADOS = {
     header: {
         arquivo: 'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
-        ancora: /<header className="sticky top-0 z-(\d+)(?=[\s"])/g,
+        ancora: /<header className="sticky -top-6 z-(\d+)(?=[\s"])/g,
     },
     menuLateral: {
         arquivo: 'resources/js/Layouts/AppLayout.jsx',
@@ -106,7 +106,7 @@ const TRAVADOS = {
     },
     filtrosDaGrade: {
         arquivo: 'resources/js/Pages/Mlb/Publicador/Produtos.jsx',
-        ancora: /<div className="sticky top-\[108px\] z-(\d+)(?=[\s"])/g,
+        ancora: /<div className="sticky top-\[84px\] z-(\d+)(?=[\s"])/g,
     },
 };
 
@@ -382,9 +382,9 @@ test('ISCA: os comentários SÃO removidos antes de ler (a prosa cita os número
     // prosa seria só prosa.
     assert.doesNotMatch(
         lerSemComentarios(REL_FILTROS),
-        /sticky|top-\[108px\]|top-0/,
+        /sticky|top-\[84px\]|top-0/,
         'a linha de filtros ganhou sticky: o protótipo (`:66`) NÃO o declara. Se for decisão nova, '
-        + 'o valor é `sticky top-[108px] z-10` (nunca `top-0`: o header ocupa 108px do scrollport).',
+        + 'o valor é `sticky top-[84px] z-10` (nunca `top-0`: o header ocupa 108px do scrollport).',
     );
 });
 
@@ -424,7 +424,7 @@ test('o arquivo TRAVADO não foi tocado e continua provando a ordem dele 187-06'
     // caso "âncora que eu sei que NÃO existe"). Isca que colide com a isca alheia
     // é um falso positivo esperando a hora, então aqui ela é `zzz-`.
     assert.equal(
-        travado.includes('<header className="sticky top-0 zzz-(\\d+)'),
+        travado.includes('<header className="sticky -top-6 zzz-(\\d+)'),
         false,
         'a isca casou — a comparação está cega (ou alguém escreveu a isca de verdade naquele arquivo)',
     );

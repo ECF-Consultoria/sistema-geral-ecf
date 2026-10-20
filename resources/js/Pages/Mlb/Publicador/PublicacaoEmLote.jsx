@@ -237,14 +237,15 @@ export default function PublicacaoEmLote({
                 </div>
 
                 <section className="rounded-xl bg-ecf-card">
-                    {/* ⚠️ `top-[108px]`, não `top-0` (Fase 177, plano 07). O
-                        `PublicadorHeader` é `sticky top-0` no MESMO scrollport
+                    {/* ⚠️ `top-[84px]`, não `top-0` (Fase 177, plano 07). O
+                        `PublicadorHeader` é `sticky -top-6` no MESMO scrollport
                         (o `<main>` com `overflow-y-auto`) e ocupa 60px da linha
-                        1 + 48px da nav = 108px do topo. Com `top-0` este bloco
+                        1 + 48px da nav = 108px; menos os 24px do `p-6` do `<main>`
+                        (o sticky conta da borda do conteúdo) = 84px. Com `top-0` este bloco
                         colaria em 0 e ficaria ATRÁS do header ao rolar: o
                         usuário perderia os filtros e os nomes das colunas.
                         É regressão funcional evitada, não ajuste de gosto. */}
-                    <div className="sticky top-[108px] z-10 rounded-t-xl bg-ecf-card">
+                    <div className="sticky top-[84px] z-10 rounded-t-xl bg-ecf-card">
                         <div className="flex flex-wrap items-center gap-3 p-4">
                             <div className="inline-flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]" role="group" aria-label="Filtro">
                                 {FILTROS.map((f) => {
