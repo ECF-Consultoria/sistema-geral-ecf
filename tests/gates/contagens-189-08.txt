@@ -1,0 +1,54 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-08 — O FECHAMENTO MEDIDO DA FASE 189:
+# a forma fixa dos 8 veredictos, as linhas de baseline com a procedência, o
+# anti-fantasma do território, os 8 manifestos e as três bijeções, e as perguntas
+# com dono.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-08 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-08`, E NÃO `08`. O número NU resolve
+# `contagens-186-08.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem, quando os dois existem.
+#
+# ⚠️ ESTE PLANO NÃO TEM MUTAÇÃO, e isso é declarado em vez de omitido: ele não
+# escreve código de produção — ele MEDE. O que ele entrega é um documento e o
+# gate que lê a FORMA desse documento. A prova de que o gate não é cego são as
+# ISCAS internas de cada método (linha de baseline inventada, `CRIT-99`,
+# `FID-01-PLANO-NN: LEITURA-RAPIDA`, id de pergunta inventado, caminho
+# inexistente no anti-fantasma, id injetado no `<verify>`, o número NU recusado,
+# e o recorte de seção conferido NÃO-VAZIO e MENOR que o documento).
+# ⚠️ Por isso NÃO há 2º regime (`tests=N,M`) em nenhuma linha: não existe arquivo
+# mutado a comparar, e inventar um 2º número seria afirmar medição que não houve.
+#
+# ⚠️ NENHUM id com mais de TRÊS métodos: os três abaixo têm EXATAMENTE 3.
+# Id com mais de três equivale a filtro de classe, passa dos 120 s do shell e
+# soma contagens de coisas sem relação — e aí a correção barata passa a ser
+# "elevar o número".
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos`, e isso está CERTO: a regra é
+# "quem RODA, declara" — e este plano não cria `.jsx` nem toca vocabulário, logo
+# não roda o GATE-03. Um gate que exigisse a linha nos oito manifestos
+# reprovaria TRÊS manifestos corretos (189-02, 189-04 e este).
+#
+# FORMATO (uma linha por gate):
+#   <id>  php  <regex do --filter>  ::  tests=<N> assertions=<A>
+#
+# ⚠️ Os métodos levam o sufixo `_189_08`, conferido por script contra todo
+# `test_*` de `tests/`, nas DUAS direções e COM EXPANSOR DE ALTERNÂNCIA:
+#   ARQUIVOS=1231  METODOS=7971  HOMONIMOS=0  PREFIXOS=0  SEM_ID=0
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fechamento-territorio  php  test_(o_fechamento_189_existe_e_tem_as_linhas_de_forma_fixa_189_08|o_fechamento_189_declara_que_ninguem_viu_tela_e_nao_afirma_deploy_189_08|o_territorio_189_os_alvos_existem_e_os_toques_alheios_estao_declarados_189_08)  ::  tests=3 assertions=32
+
+fechamento-criterios  php  test_(os_oito_criterios_189_estao_em_forma_fixa_sem_buraco_189_08|nenhum_criterio_189_reprovado_e_cada_ressalva_tem_dono_189_08|as_perguntas_189_tem_dono_e_o_roteiro_da_conta_459_e_roteiro_189_08)  ::  tests=3 assertions=32
+
+fechamento-manifestos  php  test_(os_oito_manifestos_189_existem_com_ids_bem_formados_189_08|a_terceira_bijecao_id_verify_nos_oito_pares_189_08|o_vocabulario_tamanhos_em_linha_propria_e_em_nenhum_id_composto_189_08)  ::  tests=3 assertions=21
