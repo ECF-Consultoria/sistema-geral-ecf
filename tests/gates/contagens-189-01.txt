@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-01 — A ABERTURA DA FASE DO LIGHTBOX:
+# o gate de ENTRADA (a Fase 188 fechada), as baselines medidas, o INVENTÁRIO do
+# contrato real que a 188 entregou, a re-medição da `189-FID01.md` por script e a
+# liberação do ÚNICO tamanho novo da fase (`text-[18px]`, as setas ← → do
+# lightbox).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-01 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-01`, E NÃO `01`. O número NU resolve
+# `contagens-186-01.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: **nenhum id deste plano tem mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    **uma invocação por id**, com o ANSI tirado ANTES de ler a linha `Tests:` /
+#    `# tests`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ⚠️⚠️ HOMÔNIMO — conferido por SCRIPT, nas DUAS direções e incluindo PREFIXO,
+#    contra TODO `test_*` de `tests/`:
+#      ARQUIVOS=1667  METODOS=7876  MEUS=3  HOMONIMOS=0  PREFIXOS=0
+#    E a ISCA prova que a sonda VÊ: os mesmos nomes SEM o sufixo `_189_01`
+#    acusam **9** métodos reais das Fases 187/188 (7 de
+#    `test_territorio_e_ausencias_do_plano`, 1 de
+#    `test_as_baselines_da_fase_188_estao_medidas_e_nao_afirmadas`, 1 de
+#    `test_a_tabela_fid01_declara_como_mediu_e_lista_as_divergencias`).
+#    Sem essa isca, `HOMONIMOS=0` seria indistinguível de sonda cega.
+#
+# ⚠️⚠️ `vocabulario-tamanhos` EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AQUI.
+#    Aquele arquivo (`publicador-vocabulario-novo.test.js`) faz **7 sub-testes por
+#    arquivo varrido** nos diretórios fechados, então a contagem dele CRESCE POR
+#    CONSTRUÇÃO a cada componente novo em `aprovacao/`. A forma `>=` é o conserto
+#    de RAIZ (o invariante é *"zero falhas E a varredura não ENCOLHEU"*), e
+#    **nunca** se eleva o piso por conveniência.
+#    ⚠️ **Este plano NÃO cria nenhum `.jsx`** — ele só acrescenta o `18` ao
+#    literal de `TAMANHOS_PERMITIDOS`, e acrescentar valor a um `Set` **não cria
+#    sub-teste**. ➡️ A contagem MEDIDA é a MESMA da 188-12 (**681**), e o piso é
+#    `>=681` — o mesmo número, **sem subir**.
+#
+# ⚠️ AS LISTAS CONSTANTES DAS FASES 186/187 QUE ESTE PLANO **NÃO** MEXEU, com a
+#    razão medida de cada uma (declarar por escrito é parte da régua):
+#      · `ARQUIVOS_NOVOS` (publicador-vocabulario-novo.test.js) — este plano NÃO
+#        cria `.jsx`. Medido: `DIRETORIOS_FECHADOS` = [identidade, visaogeral,
+#        publicacoes, aprovacao] e o GATE-03 compara por `deepEqual` os `.js`/`.jsx`
+#        do DISCO com a lista; sem arquivo novo sob `resources/`, nada a declarar.
+#      · `JSX_DEPOIS_DA_187` (publicador-fila-fechamento-187.test.js) — idem. São
+#        DUAS escriturações de propósito (um conserto da 188 RECUSOU criar a
+#        terceira); as duas ficam intocadas.
+#      · `SLOTS_DE_NO_DEPOIS_DA_187` (3 pontas) — este plano não abre slot de NÓ
+#        nenhum na página: ele não toca `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx`.
+#      · `ESTADO_LOCAL_DA_PAGINA` (publicador-fila-filtros-187.test.js) — este
+#        plano não acrescenta `useState` à página.
+#      · `QUEM_USA_SHADOW_PUB_PAINEL` (publicador-fila-tokens-187.test.js) — nenhum
+#        arquivo deste plano escreve `shadow-pub-painel`.
+#      · `VARRIDOS_DECLARADOS` (publicador-rename-em-analise-ml.test.js) — MEDIDO:
+#        ela declara TRÊS diretórios, todos sob `resources/js/Components/Mlb/Publicador/`
+#        (`publicacoes`, `identidade`, `visaogeral`) e **não** inclui `tests/js` nem
+#        `aprovacao/`. O `.test.js` novo deste plano não entra nela.
+#    ➡️ A ÚNICA lista constante que este plano TOCA é `LIBERADOS_DEPOIS_DA_187`
+#       (`tests/js/publicador-fila-tokens-187.test.js`), com **uma linha própria**
+#       para o `18`. A linha do `21` (188-01) fica byte a byte, e há asserção
+#       cobrando isso em `TOK-189-1`.
+#
+# ⚠️ BIJEÇÃO id ↔ `<verify>`: os CINCO ids abaixo são exatamente os cinco usados
+#    pelos `<verify>` das três tarefas deste plano. ZERO id órfão (id no manifesto
+#    fora de `<verify>` = gate sobre zero casos) e ZERO verify sem id.
+#      tarefa 1 → baselines-medidas
+#      tarefa 2 → contrato-188-inventariado
+#      tarefa 3 → fid01-189-remedida · tokens-e-tamanhos-189 · vocabulario-tamanhos
+#
+# ⚠️ NO MODO `js` O HARNESS RODA O ARQUIVO INTEIRO: um id por arquivo de gate.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+baselines-medidas  php  test_a_entrada_e_as_baselines_estao_medidas_e_nao_afirmadas_189_01  ::  tests=1 assertions=11
