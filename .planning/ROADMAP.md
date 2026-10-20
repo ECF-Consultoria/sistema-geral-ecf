@@ -4947,9 +4947,60 @@ publicar errado, e a falha de publicação **preserva a revisão aprovada** em v
 
 **Requirements**: PUB-01..10
 
-**Migration**: ⚠️ **provável, e pequena** — a coluna de ligação entre a oferta aprovada e a fila de
-publicação (`pub_fila_publicacao_itens` / `pub_publicacao_itens`). **Nada além disso**, e sob a mesma
-disciplina MIG-01..09. O planejamento decide se a ligação é coluna nova ou derivável.
+**Plans**: **5 planos em 5 waves SEQUENCIAIS**, planejados em 20/10/2026 — `193-01` (gate de entrada
+da 189 + baselines medidas em isolamento + a prova por asserção de que não há migration) · `193-02`
+(`PublicacaoDoPortaoService::enfileirar()` + ligar o `aoAprovar()`) · `193-03` (`reconciliar()`:
+`publicando` / `publicado` **só com MLB** / falha com o erro real) · `193-04` (o comando
+`publicador:portao-publicacao` + schedule + "Tentar de novo" que republica) · `193-05` (gates
+transversais, D-11, diff vazio, fechamento medido + **checkpoint humano**).
+⚠️ **Sequenciais por decisão, não por falta de análise:** os planos 02-04 editam o **mesmo arquivo
+novo**, três agentes caíram na Fase 187, o scratchpad é **compartilhado** entre subagentes e **duas
+suítes PHPUnit simultâneas produzem falhas que PASSAM EM ISOLAMENTO**.
+
+⚠️⚠️ **MEDIÇÃO QUE CORRIGE A PREMISSA: o `MlPublicacaoService` NÃO é quem publica o Publicador.**
+Ele recebe **`MlAnuncioRascunho`** — o rascunho do **assistente antigo** — e **zero `PubRascunho`**.
+O caminho real do Publicador, que esta fase REUSA, é:
+`PubAprovacaoOferta(aprovado)` → `FilaPublicacaoService::agendar()` → `publicador:fila-publicacao`
+(`AgendadorDaFila`) → `PublicacaoService::iniciar()` → `PublicarRascunhoJob` (fila **`high`**) →
+`executarFatia()`, que é o **Único** `POST /items` (`PublicacaoService.php:442`).
+➡️ **Consequência boa:** o **PUB-03 fica MAIS fácil** — o `MlPublicacaoService` sai com `numstat`
+**ZERO** porque **não está no caminho**. ⚠️ **Era um erro de briefing do orquestrador**, achado por
+medição do planejador: obedecê-lo teria ligado o portão ao publicador **errado**.
+
+⚠️ **Medido também: a fase é Só SERVIDOR** — o *"UI hint"* era superestimativa. Já existem
+`PainelDeRevisaoService::falha()` lendo `erro_publicacao`, o botão *"Tentar publicar novamente"*, a
+rota `POST .../tentar-de-novo` (cujo comentário **declara** que a escrita no ML é desta fase), os 8
+estados com cor+ícone+texto e os **6 toasts** de VOC-08. **Nenhum plano edita `.jsx`**, e o manifest
+tem de ficar **IGUAL** (498 / 203).
+
+⚠️ **Toda a disciplina do PUB-06 JÁ está implementada** em `PublicacaoService` — `ContasLiberadas::exigir()`
+**antes de qualquer gravação** (fail-closed, lista vazia = ninguém), item gravado **`SENT` antes do
+POST**, `4xx → FAILED`, `5xx`/rede **→ `UNKNOWN`**, RN-93 por SKU, trava por publicação e
+`retryUntil(30min)`. ➡️ **A fase PROVA não-regressão, não reescreve** — e garante o que falta: o
+reconciliador **jamais** toca item `PENDING`/`SENT`/`UNKNOWN`, com isca invertida.
+
+⚠️ **Nenhum feature-flag novo:** a trava é `ContasLiberadas`, a mesma que o PUB-06 exige — um
+segundo interruptor faria **duas verdades** sobre quem pode publicar.
+
+⚠️ **O critério 10 nasce RESSALVA:** a validação de ponta a ponta **é impossível** nesta máquina
+(sem navegador, `mysqld` parado, nenhuma empresa com `ml_token`, `pub_aprovacao_ofertas` vazia e
+**nada em `app/` cria oferta** — quem cria é a **194**). A prova é **`Http::fake` +
+`preventStrayRequests()`**, e o critério só é executável **depois da 194**.
+
+**Migration**: ✅ **NÃO — MEDIDO no planejamento (20/10/2026), e a estimativa acima estava ERRADA.**
+As três colunas **já existem**, criadas pela migration da Fase 186
+(`2026_10_15_100200_create_pub_aprovacao_ofertas_table.php`) e documentadas na tabela de decisão de
+schema dela: **`fila_item_id`** (`unsignedBigInteger` nullable, índice `pubapof_fila_item_ix`, FK
+`pubapof_fila_item_fk` → `pub_fila_publicacao_itens`, **`nullOnDelete`**), **`ml_item_id`**
+(`string(20)` nullable, índice `pubapof_mlb_ix`) e **`erro_publicacao`** (`string(1000)` nullable,
+`:291`). ➡️ **A ligação é LIDA pelo `fila_item_id`, não copiada** — a 186 já resolveu isso sob a
+disciplina MIG-01..09 (1059 / 1830 / 1553 / sem enum / `up()` idempotente / dado em produção).
+⚠️ **E virou ASSERÇÃO, não afirmação:** o plano `193-01` lê o **schema vivo** com isca invertida e
+contagem fixa coletora, e **PARA e devolve** se o executor concluir que falta coluna. A tabela de
+decisão de schema completa, com as armadilhas endereçadas uma por uma, está em `193-REGUA.md` §2.
+⚠️ **O `mysqld` local está PARADO** (`tasklist | grep mysqld` vazio) — como não há DDL, o ritual
+`migrate → rollback → migrate` **não se aplica**, e isso está declarado com a receita guardada
+(`--batch=<N> --path=<arquivo>`, **nunca `--step=1`**) para o caso de a decisão ser reaberta.
 
 **Success Criteria** (o que deve ser VERDADE):
 
