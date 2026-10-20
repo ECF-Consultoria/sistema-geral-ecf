@@ -4,6 +4,7 @@ use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorAcervoController;
+use App\Http\Controllers\MlbPublicadorAgenteController;
 use App\Http\Controllers\MlbPublicadorAprovacaoController;
 use App\Http\Controllers\MlbPublicadorBlingController;
 use App\Http\Controllers\MlbPublicadorController;
@@ -308,6 +309,24 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.visao-geral');
         Route::get('publicador/empresas/{conta}/configuracoes', [MlbPublicadorEntradaController::class, 'configuracoes'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.configuracoes');
+
+        // Agente ECF Publicador (AG-07, 20/10/2026) — Rotina e fila, Configuração essencial e Atividade da loja.
+        // Só leitura do banco no GET; as escritas não chamam ML nem IA (o "Preparar agora" só admite a execução).
+        // `agente` é literal próprio: não casa com `identidade`/`visao-geral`/`configuracoes`/`bling`/`acoes`.
+        Route::prefix('publicador/empresas/{conta}/agente')->where(['conta' => '(empresa|company)-[0-9]+'])
+            ->name('publicador.agente')->group(function () {
+                Route::get('/', [MlbPublicadorAgenteController::class, 'mostrar'])->name('');
+                Route::put('configuracao', [MlbPublicadorAgenteController::class, 'salvarConfiguracao'])
+                    ->middleware('throttle:30,1,publicador.agente.configuracao')->name('.configuracao');
+                Route::post('executar', [MlbPublicadorAgenteController::class, 'executar'])
+                    ->middleware('throttle:30,1,publicador.agente.executar')->name('.executar');
+                Route::post('pausar', [MlbPublicadorAgenteController::class, 'pausar'])
+                    ->middleware('throttle:30,1,publicador.agente.controle')->name('.pausar');
+                Route::post('suspender', [MlbPublicadorAgenteController::class, 'suspender'])
+                    ->middleware('throttle:30,1,publicador.agente.controle')->name('.suspender');
+                Route::post('retomar', [MlbPublicadorAgenteController::class, 'retomar'])
+                    ->middleware('throttle:30,1,publicador.agente.controle')->name('.retomar');
+            });
 
         // Fase 184, Plano 11 (BLING-20, BLING-27, BLING-31) — as sete ações do bloco do
         // Bling nas Configurações da loja (plano 12 é a tela).

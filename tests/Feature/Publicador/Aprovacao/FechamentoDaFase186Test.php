@@ -860,9 +860,19 @@ class FechamentoDaFase186Test extends TestCase
         // **mais larga** (ela inclui `save(` e `delete(`), em
         // `PainelDeRevisaoServiceTest::test_territorio_e_ausencias_do_plano_188_02` — então o
         // expositor é conferido pelos DOIS lados, não só por este `continue`.
+        //
+        // ═══ ⚠️⚠️ O TERCEIRO EXPOSITOR — AG-07 do Agente ECF Publicador (20/10/2026), MESMA exceção, MESMA prova ═══
+        //
+        // `LeituraDoAgente` monta a fila da tela do agente e EXPÕE o andamento da oferta de cada produto
+        // (`'andamento' => $oferta->andamento`, ao lado do link para a Aprovação). Só LÊ; não escreve nada —
+        // a tela do agente não move oferta. **MEDIDO antes de entrar na lista:** sem esta linha, o caso
+        // reprovou acusando-o em `$escritores` (suíte do Publicador, 20/10). Não renomeei a chave pelo mesmo
+        // motivo dos dois de cima (um vocabulário só: o `.jsx` lê `oferta.andamento`). Quem move continua
+        // sendo só `AndamentoDaOfertaService::mover()` — o `PreparadorDaAprovacao` do agente chama ele.
         $expositores = [
             'app/Services/Publicador/Aprovacao/Fila/LinhaDaOfertaService.php',
             'app/Services/Publicador/Aprovacao/Painel/PainelDeRevisaoService.php',
+            'app/Services/Publicador/Agente/LeituraDoAgente.php',
         ];
 
         // Sonda: a chave literal num array de update/create, ou a atribuição à propriedade.

@@ -1,0 +1,163 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\PubAgenteExecucao;
+use App\Models\PubProduto;
+use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
+use App\Services\Publicador\Agente\ControleDoAgente;
+use App\Services\Publicador\Agente\EntradaDoPreparo;
+use App\Services\Publicador\Agente\LeituraDoAgente;
+use App\Services\Publicador\CabecalhoPublicadorService;
+use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\RegraViolada;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/**
+ * A tela do Agente ECF Publicador de UMA loja (AG-07, 20/10/2026): Rotina e fila, Configuração essencial e
+ * Atividade. Fica no grupo `auth`+`verified`+`role:admin` das rotas do Publicador.
+ *
+ * A conta vem SEMPRE do `{conta}` resolvido no servidor (`ProgramasPublicadorService::resolver`); produto de outra
+ * loja é recusado pela política do agente antes de qualquer escrita. Nada aqui chama o ML ou a IA no request:
+ * "Preparar agora" só ADMITE a execução — a IA roda no Job de sempre.
+ *
+ * A aprovação não mora aqui: os links levam à Aprovação que já existe (`meus.aprovacao?oferta=`).
+ */
+class MlbPublicadorAgenteController extends Controller
+{
+    public function __construct(private ProgramasPublicadorService $programas) {}
+
+    public function mostrar(string $conta, LeituraDoAgente $leitura, CabecalhoPublicadorService $cabecalhos): Response|RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+        if ($alvo['chave'] !== $conta) {
+            return redirect()->route('mlb.anuncios.publicador.agente', ['conta' => $alvo['chave']]);
+        }
+        $empresa = $this->programas->empresaParaTela($alvo);
+
+        return Inertia::render('Mlb/Publicador/Agente', [
+            'empresa' => $empresa,
+            'agente' => $leitura->paraConta($alvo),
+            // Conta travada para publicar: o header mostra o selo, como nas outras telas da conta. O agente segue
+            // preparando para a Aprovação; quem barra o envio é o `ContasLiberadas` na publicação.
+            'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
+            'produtos' => $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])
+                ->whereNull('produto_base_id')->orderBy('nome')->limit(500)->get(['id', 'nome', 'sku'])
+                ->map(fn (PubProduto $p) => ['id' => $p->id, 'nome' => $p->nome, 'sku' => $p->sku])->values(),
+            // `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco: o agente não é uma delas. `configuracoes`
+            // é o valor que a casa usa para tela fora das quatro abas (nenhuma fica ativa) — mesmo papel que em
+            // Configurações da conta.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'configuracoes'),
+        ]);
+    }
+
+    public function salvarConfiguracao(string $conta, Request $request, ConfiguracaoDoAgenteService $config): RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+        $dados = $request->validate([
+            'versao_esperada' => ['required', 'integer', 'min:0'],
+            'habilitado' => ['required', 'boolean'],
+            'modalidade' => ['nullable', 'in:'.implode(',', ConfiguracaoDoAgenteService::MODALIDADES)],
+            'estoque_minimo' => ['required', 'integer', 'min:0', 'max:100000'],
+            'limite_diario' => ['required', 'integer', 'min:0', 'max:1000'],
+            'teto_fila' => ['required', 'integer', 'min:0', 'max:1000'],
+            'janela_inicio' => ['nullable', 'date_format:H:i'],
+            'janela_fim' => ['nullable', 'date_format:H:i'],
+        ]);
+
+        return $this->executarRegra(function () use ($config, $alvo, $dados, $request) {
+            $versao = (int) $dados['versao_esperada'];
+            unset($dados['versao_esperada']);
+            $config->salvar($alvo, $dados, $versao, $request->user());
+
+            return 'Configuração do agente salva.';
+        });
+    }
+
+    public function executar(string $conta, Request $request, EntradaDoPreparo $entrada): RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+        $dados = $request->validate(['produto_id' => ['required', 'integer']]);
+        $produto = PubProduto::find($dados['produto_id']);
+        abort_if($produto === null, 404);
+
+        return $this->executarRegra(function () use ($entrada, $alvo, $produto, $request) {
+            $r = $entrada->pedir($alvo, $produto, PubAgenteExecucao::ORIGEM_MANUAL, $request->user());
+            $e = $r['execucao'];
+
+            return match (true) {
+                ! $r['nova'] => "\"{$produto->nome}\" já está com o agente ({$this->estadoLegivel($e->estado)}).",
+                $e->estado === PubAgenteExecucao::BLOQUEADA => "\"{$produto->nome}\" não pôde ser preparado: faltam dados (veja a fila).",
+                default => "Preparo de \"{$produto->nome}\" iniciado.",
+            };
+        });
+    }
+
+    public function pausar(string $conta, Request $request, ControleDoAgente $controle): RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+        $motivo = $request->validate(['motivo' => ['nullable', 'string', 'max:500']])['motivo'] ?? null;
+
+        return $this->executarRegra(function () use ($controle, $alvo, $request, $motivo) {
+            $controle->pausar($alvo, $request->user(), $motivo);
+
+            return 'Agente pausado nesta loja. Anúncios no ar e ofertas na Aprovação não mudam.';
+        });
+    }
+
+    public function suspender(string $conta, Request $request, ControleDoAgente $controle): RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+        $motivo = $request->validate(['motivo' => ['nullable', 'string', 'max:500']])['motivo'] ?? null;
+
+        return $this->executarRegra(function () use ($controle, $alvo, $request, $motivo) {
+            $controle->suspender($alvo, $request->user(), $motivo);
+
+            return 'Agente suspenso nesta loja. Nenhuma etapa nova começa; anúncios no ar não mudam.';
+        });
+    }
+
+    public function retomar(string $conta, Request $request, ControleDoAgente $controle): RedirectResponse
+    {
+        $alvo = $this->conta($conta);
+
+        return $this->executarRegra(function () use ($controle, $alvo, $request) {
+            $r = $controle->retomar($alvo, $request->user());
+
+            return "Agente retomado. {$r['continuadas']} preparo(s) em andamento continuaram de onde pararam.";
+        });
+    }
+
+    /** A conta do `{conta}`, resolvida no servidor; arquivada/sem programa = 404. */
+    private function conta(string $conta): array
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        return $alvo;
+    }
+
+    /** Regra do agente recusou → volta com a mensagem dela; senão volta com o sucesso. */
+    private function executarRegra(callable $acao): RedirectResponse
+    {
+        try {
+            return back()->with('success', $acao());
+        } catch (RegraViolada $e) {
+            return back()->with('error', $e->getMessage())->withErrors(['agente' => $e->getMessage()]);
+        }
+    }
+
+    private function estadoLegivel(string $estado): string
+    {
+        return match ($estado) {
+            PubAgenteExecucao::ADMITIDA, PubAgenteExecucao::PREPARANDO => 'preparando',
+            PubAgenteExecucao::AGUARDANDO_APROVACAO => 'aguardando aprovação',
+            PubAgenteExecucao::CONCLUIDA => 'concluído',
+            default => $estado,
+        };
+    }
+}

@@ -260,6 +260,19 @@ const PAGINAS = [
             config: { por_rodada_padrao: 5, por_rodada_maximo: 10, teto_por_minuto: 2, intervalo_padrao: 20, intervalo_minimo: 2, intervalo_maximo: 240, conferir_max: 100, polling_s: 10 },
         }),
     },
+    // AG-07 (20/10/2026) — a tela do Agente da loja. Entra porque o gate "nenhuma entra calada" a cobrou (é o
+    // certo). `aba: 'configuracoes'`: o agente não é uma das quatro abas e `CabecalhoPublicadorService::ABAS` é
+    // lista fechada — mesmo caso de Configurações da conta (nenhuma das quatro ativa).
+    {
+        arquivo: 'Agente.jsx',
+        aba: 'configuracoes',
+        props: () => ({
+            empresa: empresaBase(),
+            liberada: true,
+            agente: { configuracao: { existe: false, habilitado: false, versao: 0 }, contadores: {}, fila: [] },
+            produtos: [],
+        }),
+    },
 ];
 
 // ⚠️ Todos os 6 bundles AGORA, antes do primeiro `test()`.

@@ -1317,6 +1317,8 @@ const CONTAINER_POR_PAGINA = new Map([
     ['Alavancas.jsx', 'mx-auto max-w-[1240px]'],
     ['Configuracoes.jsx', 'mx-auto max-w-[1240px]'],
     ['PublicacaoEmLote.jsx', 'mx-auto max-w-[1240px]'],
+    // AG-07 (20/10/2026) — a tela do Agente da loja, declarada à mão porque o gate a cobrou (é o certo).
+    ['Agente.jsx', 'mx-auto max-w-[1240px]'],
 ]);
 
 const ABA_POR_PAGINA = new Map([
@@ -1333,6 +1335,9 @@ const ABA_POR_PAGINA = new Map([
     ['Alavancas.jsx', 'alavancas'],
     ['Configuracoes.jsx', 'configuracoes'],
     ['PublicacaoEmLote.jsx', 'produtos'],
+    // AG-07 — o Agente não é uma das quatro abas e `CabecalhoPublicadorService::ABAS` é lista fechada:
+    // `configuracoes` é o valor de "nenhuma das quatro ativa", o mesmo caso de Configurações da conta.
+    ['Agente.jsx', 'configuracoes'],
 ]);
 
 const PAGINAS_COM_HEADER = [...ABA_POR_PAGINA.keys()];
