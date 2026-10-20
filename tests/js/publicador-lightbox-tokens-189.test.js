@@ -292,11 +292,39 @@ const ESCOPO_QUE_DEVE_ACUSAR = '(187-01)';
 
 const git = (args) => execFileSync('git', args, { cwd: RAIZ, encoding: 'utf8' });
 
-/** Os commits de um escopo de assunto. ⚠️ `--fixed-strings`: os parênteses são literais. */
+/**
+ * Os commits cujo **ASSUNTO** carrega o escopo.
+ *
+ * ⚠️⚠️ **MEDIDO em 20/10/2026, e é um conserto de FRAGILIDADE, não zelo:**
+ * `git log --grep` casa a **MENSAGEM INTEIRA** (assunto **+ corpo**), não só o
+ * assunto. Prova: `git log --grep='(186-01)' --fixed-strings` devolve
+ * `e1fa96d3` e `90dfa946`, cujo assunto é **`docs(188-13)`** — eles só casam
+ * porque **citam `(186-01)` no CORPO**.
+ *
+ * ➡️ Sem o recorte por assunto, bastaria uma fase futura **mencionar `(189-01)`
+ * no corpo de um commit** para que os arquivos daquele commit entrassem na
+ * interseção e este gate **REPROVASSE TRABALHO CORRETO** — a armadilha "gate
+ * mais largo que o invariante", com **quatorze** ocorrências nesta milestone,
+ * uma delas tendo **barrado um deploy**.
+ *
+ * ⚠️ `--fixed-strings`: os parênteses do escopo são LITERAIS, não regex.
+ */
 function commitsDoEscopo(escopo) {
-    return git(['log', '--format=%h', '--grep=' + escopo, '--fixed-strings'])
+    const candidatos = git(['log', '--format=%h', '--grep=' + escopo, '--fixed-strings'])
         .split(/\r?\n/)
         .filter((l) => l.trim() !== '');
+
+    // ⚠️ Flag DENTRO do filtro: o assunto é relido por commit.
+    return candidatos.filter((h) => git(['log', '-1', '--format=%s', h]).includes(escopo));
+}
+
+/** Os que casaram só pelo CORPO — informação, não falha. */
+function commitsSoNoCorpo(escopo) {
+    const candidatos = git(['log', '--format=%h', '--grep=' + escopo, '--fixed-strings'])
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== '');
+
+    return candidatos.filter((h) => !git(['log', '-1', '--format=%s', h]).includes(escopo));
 }
 
 /** PASSADA 1: `git show --stat` por commit, juntando os caminhos tocados. */
@@ -359,14 +387,34 @@ test('TOK-189-3 — ESTE plano (189-01) não criou token: PI por ESCOPO DO ASSUN
     );
 
     // ⚠️ (5b) ISCA DA DIREÇÃO CONTRÁRIA: o recorte não vaza para outra sessão.
-    // Nenhum commit do meu escopo pode ter assunto de outra fase.
+    // ⚠️⚠️ O recorte é por ASSUNTO, e aqui se PROVA que ele de fato recortou —
+    // porque `git log --grep` casa a mensagem INTEIRA (assunto + corpo).
     const vazamento = [];
     for (const h of meus) {
         // ⚠️ Flag DENTRO do laço.
         const assunto = git(['log', '-1', '--format=%s', h]);
         if (!assunto.includes(ESCOPO_DESTE_PLANO)) vazamento.push(`${h}: ${assunto.trim()}`);
     }
-    assert.deepEqual(vazamento, [], 'o recorte por escopo trouxe commit de OUTRO assunto — ele vaza para a sessão paralela');
+    assert.deepEqual(vazamento, [], 'o recorte por ASSUNTO não funcionou — commit de outro assunto entrou na PI');
+
+    // ⚠️⚠️ ISCA QUE PROVA QUE O RECORTE POR ASSUNTO MEDE ALGO — e ela é MEDIDA,
+    // não hipotética: hoje `(186-01)` tem DOIS commits que casam **só pelo
+    // CORPO** (`e1fa96d3` e `90dfa946`, de assunto `docs(188-13)`). Se esta isca
+    // passar a devolver zero, ou o histórico mudou, ou o recorte deixou de
+    // recortar — e aí o gate voltaria a poder reprovar trabalho correto de uma
+    // fase futura que apenas CITE `(189-01)` no corpo de um commit.
+    const soNoCorpoDeOutra = commitsSoNoCorpo('(186-01)');
+    assert.ok(
+        soNoCorpoDeOutra.length > 0,
+        'a isca do recorte por assunto não achou nenhum commit que casa só pelo CORPO — ela não prova que `--grep` lê o corpo'
+    );
+    for (const h of soNoCorpoDeOutra) {
+        // ⚠️ Flag DENTRO do laço.
+        assert.ok(
+            !git(['log', '-1', '--format=%s', h]).includes('(186-01)'),
+            `${h} foi classificado como "só no corpo" mas o assunto tem o escopo — a classificação está errada`
+        );
+    }
 
     // ⚠️ (6) E a prova de que o invariante é o CERTO, não o mais largo: este
     // gate NÃO afirma "a camada ficou idêntica para sempre". A camada TEM
