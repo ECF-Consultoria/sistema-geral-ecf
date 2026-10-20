@@ -514,6 +514,47 @@ test('⚠️⚠️ A COLUNA repassa `onAmpliar`/`refDoAmpliar` à imagem grande 
     assert.equal(COLUNA.indiceSelecionado(2, 3), 2, 'a coluna deixou de clampar o índice para a faixa');
     IMAGEM.aoClicarEmAmpliar(COLUNA.indiceSelecionado(2, 3), (i) => pedidos.push(i));
     assert.deepEqual(pedidos, [2], 'o índice entregue ao handler não é o da foto SELECIONADA');
+
+    // ═══ ⚠️⚠️ RENDER ADVERSO DO RELÉ — CADA PROP, E A PROP INTEIRA NULA ══════
+    //
+    // ⚠️⚠️ A TELA PRETA voltou SEIS vezes nesta milestone, a última **NO CLIQUE**:
+    // `String(valor)`, `hasOwnProperty` e **qualquer `obj[chave]`** LANÇAM com
+    // `{toString: null}`; `textoSeguro(NaN)` devolve `'NaN'`; e prop de NÓ
+    // chegando objeto comum MATA A PÁGINA. ➡️ Cada fio deste relé é exercido com
+    // objeto, nulo, ausente, `NaN` e array, **e a prop inteira nula**.
+    const SUJEIRA = /\[object Object\]|NaN|undefined|Invalid Date/;
+    for (const adverso of ADVERSOS) {
+        // a IMAGEM GRANDE, prop por prop
+        for (const chave of ['imagem', 'indice', 'onAmpliar', 'refDoAmpliar']) {
+            const props = { imagem: FOTO_PENDENTE, indice: 0, onAmpliar: nada, [chave]: adverso };
+            let html;
+            assert.doesNotThrow(() => { html = render(IMAGEM.default, props); }, `a imagem grande LANÇOU com \`${chave}\` adverso (typeof ${typeof adverso})`);
+            assert.doesNotMatch(html, SUJEIRA, `a imagem grande escreveu sujeira na tela com \`${chave}\` adverso (typeof ${typeof adverso})`);
+        }
+        // a COLUNA, nos DOIS fios novos
+        for (const chave of ['onAmpliar', 'refDoAmpliar']) {
+            const props = { ...comum, onAmpliar: nada, refDoAmpliar: { current: null }, [chave]: adverso };
+            let html;
+            assert.doesNotThrow(() => { html = render(COLUNA.default, props); }, `a coluna LANÇOU com \`${chave}\` adverso (typeof ${typeof adverso})`);
+            assert.doesNotMatch(html, SUJEIRA, `a coluna escreveu sujeira na tela com \`${chave}\` adverso (typeof ${typeof adverso})`);
+        }
+        // ⚠️ E a PROP INTEIRA nula/adversa (o objeto de props, não um campo).
+        assert.doesNotThrow(() => render(IMAGEM.default, adverso === null || typeof adverso !== 'object' || Array.isArray(adverso) ? {} : adverso), `a imagem grande LANÇOU com o objeto de props adverso (typeof ${typeof adverso})`);
+    }
+
+    // ⚠️⚠️ **E NO CLIQUE** — `renderToStaticMarkup` NÃO dispara `onClick`, então o
+    // clique é exercido pelo HANDLER, com a imagem e o índice adversos juntos.
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => IMAGEM.aoClicarEmAmpliar(adverso, nada), `o CLIQUE LANÇOU com índice adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(() => IMAGEM.aoClicarEmAmpliar(0, adverso), `o CLIQUE LANÇOU com handler adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(() => COLUNA.indiceSelecionado(adverso, adverso), `o clamp da coluna LANÇOU (typeof ${typeof adverso})`);
+    }
+
+    // ⚠️ ISCA DA SONDA DE SUJEIRA: ela ACUSA o que deve acusar (sonda que não
+    // acusa nada é vazia por construção).
+    assert.match('<span>[object Object]</span>', SUJEIRA, 'a sonda de sujeira está CEGA para `[object Object]`');
+    assert.match('<span>NaN</span>', SUJEIRA, 'a sonda de sujeira está CEGA para `NaN`');
+    assert.doesNotMatch(render(IMAGEM.default, { imagem: FOTO_PENDENTE, indice: 0, onAmpliar: nada }), SUJEIRA, 'o CONTROLE já tem sujeira — a sonda não distingue nada');
 });
 
 test('⚠️⚠️ T-189-40 — a inversão do 188-08 NÃO afrouxou a ausência de "Gerar novamente" 189_06', () => {
@@ -967,6 +1008,21 @@ test('⚠️⚠️ O painel compõe o LIGHTBOX e a LATERAL, e os três exports p
     for (const [chave, valor] of [['FECHAR_MODAL', 'fechar-modal'], ['FECHAR_PAINEL', 'fechar-painel'], ['IR_PARA_OFERTA', 'ir-para-oferta'], ['TROCAR_IMAGEM', 'trocar-imagem']]) {
         assert.equal(PAINEL.ACOES[chave], valor, `a ação \`${chave}\` do 188-07 mudou de valor`);
     }
+
+    // ⚠️⚠️ **O DÉCIMO GATE, que o inventário NÃO mapeou** (o `189-CONTRATO-188.md`
+    // A2 lista NOVE gates de `/Ampliar/`; este não casa `/Ampliar/`):
+    // `publicador-painel-casca-188.test.js` tinha o conjunto de `ACOES` **FECHADO
+    // nas quatro da 188-07** e um `includes('fechar-lightbox') === false`, num
+    // caso chamado *"o lightbox NÃO foi antecipado"*. ➡️ Ele foi **REAPONTADO COM
+    // VETO** por este plano (contagem `45,41` INALTERADA), e aqui se cobra que o
+    // reaponte não seja desfeito em silêncio: o conjunto continua FECHADO, as
+    // duas ações novas ficam NOMEADAS com a fase dona, e a lista das quatro
+    // antigas continua EXIGIDA.
+    assert.match(FONTE_GATE_CASCA, /const ACOES_DEPOIS_DA_188_07 = \[/, 'o reaponte do `casca-188` foi desfeito — a lista NOMEADA das ações novas saiu');
+    assert.match(FONTE_GATE_CASCA, /const ACOES_DA_188_07 = \[/, 'a lista EXIGIDA das quatro ações do 188-07 saiu do `casca-188`');
+    assert.doesNotMatch(FONTE_GATE_CASCA, /includes\('fechar-lightbox'\), false/, 'a asserção que PROIBIA o degrau voltou ao `casca-188` — ela reprova trabalho correto');
+    // ⚠️ ISCA: a leitura do gate vizinho não está cega.
+    assert.match(FONTE_GATE_CASCA, /ACOES/, 'a fonte do `casca-188` veio sem `ACOES` — a leitura está quebrada');
 
     // ⚠️ O painel continua sendo PORTAL e os `z` continuam onde estavam: as duas
     // âncoras de `publicador-lightbox-camadas-189.test.js` casam EXATAMENTE 1x.

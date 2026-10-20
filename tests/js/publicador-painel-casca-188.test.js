@@ -1269,12 +1269,66 @@ test('⚠️ TECLADO: o runtime está DECLARADO como não provado, e o lightbox 
     const faltando = EXIGIDOS.filter((t) => !CRUA_PAINEL.toLowerCase().includes(t.toLowerCase()));
     assert.deepEqual(faltando, [], 'a declaração de que o runtime do teclado NÃO é provado saiu do docblock');
 
-    // ⚠️ E o degrau do lightbox é PREVISTO, nunca IMPLEMENTADO: a ação não existe.
-    assert.equal(Object.values(M_PAINEL.ACOES).includes('fechar-lightbox'), false, 'o lightbox da Fase 189 foi antecipado');
+    // ═══ ⚠️⚠️ REAPONTE COM VETO — Fase 189, plano 06 (D-189-3b), 20/10/2026 ═══
+    //
+    // ⚠️⚠️ **O QUE ESTAVA AQUI:** `includes('fechar-lightbox') === false` e a lista
+    // FECHADA com as QUATRO ações desta wave, num caso chamado *"o lightbox NÃO
+    // foi antecipado"*.
+    //
+    // **POR QUE PASSOU A REPROVAR TRABALHO CERTO:** o degrau do lightbox no
+    // `Escape` era *"PREVISTO e DECLARADO"* por esta própria wave (o docblock do
+    // teclado em `PainelDeRevisao.jsx` diz isso, e o `189-REGUA.md` §2 atribui o
+    // degrau ao **189-06**). ➡️ No dia em que o plano dono o implementou, esta
+    // asserção virou um número/conjunto que **o trabalho correto derruba** — a
+    // família com TREZE+ ocorrências nesta milestone, e a razão por que ela se
+    // conserta **na RAIZ** e não "subindo o número".
+    // ⚠️ O plano 189-06 autoriza exatamente isto: *"se outro gate da 188 também
+    // proíbe [o que esta fase entrega]: a mesma cirurgia, com a mesma
+    // disciplina"*. A premissa do `<behavior>` dele (*"todos os casos deste
+    // arquivo continuam passando sem alteração"*) foi MEDIDA e é FALSA; a
+    // medição ganha, e fica declarado.
+    //
+    // **POR QUE O QUE ENTROU NÃO É MAIS FRACO:**
+    //   · o conjunto continua **FECHADO** — uma SÉTIMA ação ainda REPROVA, e é
+    //     esse o veto que o `deepEqual` dava;
+    //   · as QUATRO ações desta wave continuam **EXIGIDAS** nominalmente: remover
+    //     ou renomear qualquer uma delas cai;
+    //   · as DUAS da Fase 189 ficam **NOMEADAS com a fase dona ao lado**, então o
+    //     acréscimo é diff VISÍVEL e não um número trocado em silêncio;
+    //   · e há **ISCA**: um conjunto sintético sem uma das quatro é ACUSADO.
+    // ⚠️ Nenhum `test()` foi acrescentado nem removido: a contagem do manifesto
+    // desta wave (`tests=45,41`) fica INALTERADA — reaponte não mexe em contagem.
+
+    /** As ações que a wave 188-07 criou — EXIGIDAS, uma por uma. */
+    const ACOES_DA_188_07 = ['FECHAR_MODAL', 'FECHAR_PAINEL', 'IR_PARA_OFERTA', 'TROCAR_IMAGEM'];
+
+    /** ⚠️ Ação acrescentada DEPOIS desta wave — uma linha por fase/plano dono. */
+    const ACOES_DEPOIS_DA_188_07 = [
+        'FECHAR_LIGHTBOX', // Fase 189, plano 06 — o degrau do `Escape` (D-189-3b)
+        'MOVER_LIGHTBOX', //  Fase 189, plano 06 — ←/→ do lightbox, que DÃO A VOLTA
+    ];
+
+    const faltantes = ACOES_DA_188_07.filter((chave) => !Object.keys(M_PAINEL.ACOES).includes(chave));
+    assert.deepEqual(faltantes, [], 'ação criada pela wave 188-07 desapareceu do resolvedor');
+
     assert.deepEqual(
         Object.keys(M_PAINEL.ACOES).sort(),
-        ['FECHAR_MODAL', 'FECHAR_PAINEL', 'IR_PARA_OFERTA', 'TROCAR_IMAGEM'],
-        'a lista de ações do resolvedor mudou — ela é FECHADA de propósito',
+        [...ACOES_DA_188_07, ...ACOES_DEPOIS_DA_188_07].sort(),
+        'a lista de ações do resolvedor mudou — ela é FECHADA de propósito: QUEM ACRESCENTAR AÇÃO '
+        + 'ACRESCENTA UMA LINHA EM `ACOES_DEPOIS_DA_188_07`, com a fase e o plano dono',
+    );
+
+    // ⚠️ ISCA NAS DUAS DIREÇÕES: a sonda das quatro ACUSA a falta de uma, e o
+    // conjunto fechado ACUSA a sétima.
+    assert.deepEqual(
+        ACOES_DA_188_07.filter((chave) => !['FECHAR_MODAL', 'IR_PARA_OFERTA', 'TROCAR_IMAGEM'].includes(chave)),
+        ['FECHAR_PAINEL'],
+        'a sonda das quatro ações está CEGA: ela não acusa a falta de uma',
+    );
+    assert.notDeepEqual(
+        [...ACOES_DA_188_07, ...ACOES_DEPOIS_DA_188_07, 'ACAO_INVENTADA'].sort(),
+        [...ACOES_DA_188_07, ...ACOES_DEPOIS_DA_188_07].sort(),
+        'o conjunto fechado deixou de acusar uma ação inventada',
     );
 
     // ⚠️ E o listener existe no composto (ele não é prova de runtime, mas a sua

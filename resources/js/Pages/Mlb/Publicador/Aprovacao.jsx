@@ -1,4 +1,4 @@
-import { isValidElement, useState } from 'react';
+import { isValidElement, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
@@ -13,7 +13,15 @@ import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
 import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
-import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import PainelDeRevisao, {
+    aoFecharOLightbox,
+    contextoDoLightbox,
+    escreverNoPainel,
+    fecharLightboxDevolvendoFoco,
+    indiceNoContexto,
+} from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import LightboxDaImagem, { ZOOM_NORMAL } from '@/Components/Mlb/Publicador/aprovacao/LightboxDaImagem';
+import LateralDoLightbox from '@/Components/Mlb/Publicador/aprovacao/LateralDoLightbox';
 import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
 import PendenciasDoPainel from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
@@ -315,6 +323,14 @@ export default function Aprovacao({
     lote = null,
     painel = null,
     painelNo = null,
+    // ⚠️ Fase 189, plano 02 — a prop-raiz `lightbox` (`{originais}`), recortada
+    // ao `?oferta=` pelo `MlbPublicadorAprovacaoController::index`. ⚠️ Ela é
+    // **DADO**, e não um slot de NÓ: o par nó × dado desta página
+    // (`painelNo`/`painel`, `proximo`/`proximo_a_revisar`,
+    // `filtros`/`filtros_ativos`, `tabela`/`grupos`) tem UM significado cada, e
+    // slot de NÓ novo obrigaria a acrescentar linha nas DUAS listas
+    // `SLOTS_DE_NO_*`, nos DOIS arquivos de gate que as conferem.
+    lightbox = null,
     flash = null,
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
@@ -348,6 +364,31 @@ export default function Aprovacao({
     // (`:914`). ⚠️ O par guarda a OFERTA junto do índice, para a troca de oferta
     // voltar à foto 1 **por derivação pura**, sem `useEffect` de sincronização.
     const [fotoAberta, setFotoAberta] = useState({ oferta: null, indice: 0 });
+
+    // ═══ ⚠️⚠️ Fase 189, plano 06 — O LIGHTBOX: ESTADO AQUI, TECLADO NO PAINEL ═══
+    //
+    // ⚠️⚠️ **POR QUE O ESTADO MORA NESTA PÁGINA, e é DIVERGÊNCIA DECLARADA da
+    // prosa do plano** (que dizia *"o estado do lightbox vive no painel"*):
+    // quem desenha o "⤢ Ampliar" é a `ColunaDeFotos`, e ela chega ao
+    // `PainelDeRevisao` como **NÓ PRONTO**, pelo slot `colunaDeFotos` — montado
+    // **aqui**. Um estado vivendo no painel **nunca alcançaria o botão**, porque
+    // o nó já foi construído antes de o painel existir. ⚠️ A RAZÃO que o plano
+    // deu para o estado morar lá está **preservada inteira**: o painel continua
+    // tendo o **ÚNICO** `keydown` da tela (dois ouvintes fechariam lightbox E
+    // painel no mesmo `Escape`), e as REGRAS PURAS moram no módulo dele.
+    //
+    // ⚠️ "O lightbox está aberto" é GESTO, não dado: **não** vai para a URL (a
+    // oferta vai, `?oferta=`) e **nada de `localStorage`** — ele é artefato do
+    // protótipo (`:914`) e o estado de revisão não mora no navegador (T-189-44).
+    // ⚠️ `origem` começa em `{x: 50, y: 50}` — medido em `:975`
+    // (`lbX: 50, lbY: 50`) — e **trocar de foto zera o zoom mas NÃO zera a
+    // origem** (`:1321`/`:1327`, que mexem só em `lbZoom`).
+    const [doLightbox, setDoLightbox] = useState(null);
+
+    // ⚠️ A `ref` do "⤢ Ampliar", para DEVOLVER O FOCO ao fechar (critério 7,
+    // PERGUNTA-189-C). ⚠️ `ref` nula ou sem `focus` **não lança** — a guarda está
+    // em `fecharLightboxDevolvendoFoco`.
+    const refDoAmpliar = useRef(null);
 
     // ═══ ⚠️⚠️ Fase 188, plano 11 — O ESTADO DOS MODAIS DO PAINEL ══════════
     //
@@ -850,6 +891,70 @@ export default function Aprovacao({
             setFotoAberta({ oferta: ofertaDoPainel, indice: alvo });
         };
 
+    // ═══ ⚠️⚠️ Fase 189, plano 06 — O CONTEXTO PRÓPRIO DO LIGHTBOX ════════════
+    //
+    // ⚠️⚠️ **DERIVAÇÃO PURA a cada render — sem `useEffect` de sincronização**, o
+    // mesmo contrato do `indiceDaFoto` acima. `contextoDoLightbox` refresca o
+    // contexto enquanto o painel mostra A MESMA oferta (é assim que a foto
+    // aprovada aparece aprovada) e devolve o GUARDADO, intacto, quando o painel
+    // mostra OUTRA — que é o caso do ↑/↓ com o lightbox aberto
+    // (PERGUNTA-189-B (b), T-189-42).
+    const contextoDoLb = doLightbox === null
+        ? null
+        : contextoDoLightbox(doLightbox.contexto, painelDeRevisao, lightbox);
+
+    // ⚠️ O índice é CLAMPADO contra as imagens do CONTEXTO, e `null` significa
+    // FECHAR (`:1324`: galeria vazia → `{open: false}`). ⚠️ Fiel ao protótipo, o
+    // ESTADO não é limpo aqui: o `lbVm` dele também só devolve `open: false`.
+    const indiceDoLb = doLightbox === null ? null : indiceNoContexto(doLightbox.indice, contextoDoLb);
+    const imagensDoLb = contextoDoLb === null ? [] : contextoDoLb.imagens;
+    const imagemDoLb = indiceDoLb === null ? null : objetoSeguro(imagensDoLb[indiceDoLb]);
+
+    // ⚠️ `originais` é indexado pelo **`id` da revisão** (`pub_aprovacao_imagens.id`),
+    // **não** por `imagem_id` — são tabelas diferentes, e confundi-las mostraria
+    // a original de OUTRA foto (189-05, §22).
+    const idDaRevisaoNoLb = imagemDoLb === null ? null : inteiroSeguro(imagemDoLb.id);
+    const originalDoLb = contextoDoLb === null || idDaRevisaoNoLb === null
+        ? null
+        : objetoSeguro(contextoDoLb.originais[idDaRevisaoNoLb]);
+
+    const lightboxAberto = imagemDoLb !== null;
+
+    // ⚠️ D4 — o botão não nasce sem destino: sem oferta no painel não há o que
+    // ampliar, e `onAmpliar` fica `null` (a `ImagemGrandeDoPainel` não desenha).
+    const abrirOLightbox = ofertaDoPainel === null
+        ? null
+        : (indice) => setDoLightbox({
+            indice,
+            zoom: ZOOM_NORMAL,
+            origem: { x: 50, y: 50 },
+            contexto: contextoDoLightbox(null, painelDeRevisao, lightbox),
+        });
+
+    // ⚠️⚠️ Fechar: **PERGUNTA-189-C** (mesma oferta) e o **DEFAULT da 189-D1**
+    // (oferta mudou — pergunta ABERTA, alternativa LOCAL). Em nenhum dos dois a
+    // foto do painel se mexe; `voltarParaAOferta` é sempre `null` no default.
+    const fecharOLightbox = () => {
+        aoFecharOLightbox({ contexto: contextoDoLb, painelAtual: painelDeRevisao });
+        fecharLightboxDevolvendoFoco({ ref: refDoAmpliar, fechar: () => setDoLightbox(null) });
+    };
+
+    // ⚠️ Trocar de foto no lightbox **zera o zoom e PRESERVA a origem**
+    // (`:1321`/`:1327`: os dois mexem só em `lbZoom`).
+    const moverOLightbox = (indice) => setDoLightbox((atual) => (atual === null
+        ? null
+        : { ...atual, indice, zoom: ZOOM_NORMAL }));
+
+    // ⚠️⚠️ `aoClicarNoZoom` da lateral (189-05) **ENTREGA O ZOOM NOVO** — ela já
+    // chamou `alternarZoom` (189-03). ➡️ **Aqui o zoom NÃO é recomputado**:
+    // recomputar criaria uma segunda regra de alternância, e a divergente deixaria
+    // o rótulo dizendo "Reduzir" com a imagem em 1×.
+    const alternarOZoom = (zoomNovo) => setDoLightbox((atual) => (atual === null
+        ? null
+        : { ...atual, zoom: zoomNovo }));
+
+    const moverAOrigem = (origem) => setDoLightbox((atual) => (atual === null ? null : { ...atual, origem }));
+
     const colunaDeFotos = fotosDoPainel === null
         ? null
         : (
@@ -864,6 +969,8 @@ export default function Aprovacao({
                 versao={versaoDoPainel}
                 onReprovar={abrirModalDeReprovar}
                 onConflito={registrarConflito}
+                onAmpliar={abrirOLightbox}
+                refDoAmpliar={refDoAmpliar}
             />
         );
 
@@ -1328,6 +1435,16 @@ export default function Aprovacao({
                 modais={noModaisDoPainel}
                 temModal={modalAberto !== null}
                 onFecharModal={fecharModalDoPainel}
+                // ⚠️⚠️ Fase 189, plano 06 — o DEGRAU do `Escape` e as ←/→ do
+                // lightbox. O painel tem o ÚNICO `keydown` da tela; o estado
+                // mora aqui. ⚠️ `imagemDoLightbox`/`totalDoLightbox` são do
+                // CONTEXTO do lightbox, que pode ser **outra oferta** que a do
+                // painel por baixo (PERGUNTA-189-B (b)).
+                temLightbox={lightboxAberto}
+                imagemDoLightbox={indiceDoLb}
+                totalDoLightbox={imagensDoLb.length}
+                onFecharLightbox={fecharOLightbox}
+                onMoverLightbox={moverOLightbox}
             />
         );
 
@@ -1488,6 +1605,47 @@ export default function Aprovacao({
                 abaixo do modal `z-[42]` e do toast `z-[45]` — a ORDEM travada do
                 projeto, nunca os números do protótipo (lá o header é 50). */}
             {noPainel}
+
+            {/* ═══ ⚠⚠ Fase 189 — O LIGHTBOX, `z-[41]`, POR PORTAL PRÓPRIO ═════
+                ⚠⚠ Ele tem o SEU `createPortal` para o `document.body` (189-03),
+                então **onde ele é montado nesta árvore não muda a camada**: o que
+                decide é a ORDEM dos `z` — header `30` < barra `35` < backdrop
+                `39` < painel `40` < **LIGHTBOX `41`** < modal `42` < toast `45`.
+                ⚠ O `90` do protótipo (`:727`) foi **RECUSADO por peça**: aqui se
+                preserva a ORDEM relativa, nunca os números de lá.
+                ⚠ O lightbox é **CONTROLADO**: `aberto`, `indice`, `zoom` e
+                `origem` vêm do estado desta página, e as setas/miniaturas/cursor
+                devolvem PEDIDOS por callback.
+                ⚠⚠ As ações da lateral (**Aprovar foto** e **Reprovar**) ficam
+                `null` NESTE plano, e isso é a FRONTEIRA declarada: o fio delas,
+                **usando o contexto do lightbox**, é do plano **189-07** — e a
+                lateral não desenha botão sem handler função (D4). ⚠ Aprovar
+                **ENFILEIRA**; a escrita no Mercado Livre é da **Fase 193**.
+                ⚠ "✦ Gerar novamente com IA" é da **Fase 192** (a ÚLTIMA desta
+                milestone) e **não** é antecipado; "Comparar lado a lado" ficou
+                **sem dono** (as Fases 190/191 saíram de escopo em 20/10/2026). */}
+            <LightboxDaImagem
+                aberto={lightboxAberto}
+                imagens={imagensDoLb}
+                indice={indiceDoLb}
+                zoom={doLightbox === null ? null : doLightbox.zoom}
+                origem={doLightbox === null ? null : doLightbox.origem}
+                onMover={moverOLightbox}
+                onSelecionar={moverOLightbox}
+                onMoverOrigem={moverAOrigem}
+                lateral={(
+                    <LateralDoLightbox
+                        imagem={imagemDoLb}
+                        original={originalDoLb}
+                        aoVivo={contextoDoLb === null ? null : contextoDoLb.ao_vivo}
+                        zoom={doLightbox === null ? null : doLightbox.zoom}
+                        onFechar={fecharOLightbox}
+                        onAlternarZoom={alternarOZoom}
+                        onAprovarFoto={null}
+                        onReprovar={null}
+                    />
+                )}
+            />
         </AppLayout>
     );
 }

@@ -4,6 +4,14 @@ import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import TopoDoPainel from './TopoDoPainel';
 import IdentificacaoDaOferta, { temIdentificacao } from './IdentificacaoDaOferta';
+// ⚠️⚠️ Fase 189, plano 06 — AS DUAS REGRAS DE ÍNDICE DO LIGHTBOX VÊM DO 189-03,
+// IMPORTADAS: `moverNoLightbox` DÁ A VOLTA (`:1321`, `(lb.i + d + n) % n`) e
+// `indiceNoLightbox` CLAMPA o teto (`:1324`). ⚠️ Reimplementá-las aqui criaria
+// uma segunda regra de volta, e a divergente leva a pessoa à FOTO ERRADA — numa
+// tela em que aprovar ENFILEIRA e não há desfazer. ⚠️ Não há ciclo de import:
+// `LightboxDaImagem` só importa de `ImagemGrandeDoPainel` e `GradeDeMiniaturas`,
+// e nenhum dos dois importa este arquivo (medido em 20/10/2026).
+import { indiceNoLightbox, moverNoLightbox } from './LightboxDaImagem';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 188, plano 07 — A CASCA DO PAINEL DE REVISÃO SIMPLES (critérios 1, 2, 3).
@@ -215,6 +223,22 @@ export function objetoDoPainel(valor) {
 /** Inteiro finito, ou `null`. ⚠️ Nunca `Number(valor)`: `Number('')` é **0**. */
 export function inteiroDoPainel(valor) {
     return typeof valor === 'number' && Number.isInteger(valor) ? valor : null;
+}
+
+/**
+ * ⚠️⚠️ Um ID/versão de verdade: inteiro **POSITIVO**, ou `null` (Fase 189, plano 06).
+ *
+ * ⚠️ `inteiroDoPainel` aceita `0`, e `0` é um id **plausível** para quem lê — com
+ * ele o contexto do lightbox sairia com `{oferta_id: 0}` e a escrita iria para
+ * uma rota que não existe. Numa tela em que **aprovar enfileira e não há
+ * desfazer**, escrita disparada sobre id inválido é pior que nenhuma: a pessoa vê
+ * a ação acontecer e nada muda. É a MESMA disciplina do `idDoPainel` que a
+ * `ColunaDeFotos` já aplica (conserto medido pelo gate do 188-08).
+ */
+export function idPositivoDoPainel(valor) {
+    const inteiro = inteiroDoPainel(valor);
+
+    return inteiro !== null && inteiro > 0 ? inteiro : null;
 }
 
 /**
@@ -475,10 +499,18 @@ export function ColunaDoPainel({ children = null, className = null }) {
 // cada tecla faz; o `addEventListener` do navegador **NÃO está provado**, e esta
 // fase não pode afirmar *"a tecla funciona"*.
 //
-// ⚠️ A ORDEM do `Escape` é LITERAL do protótipo (`:1014`, medido por `sed`):
-// `modal → lightbox → menu → painel`. ➡️ **O lightbox é da Fase 189 e o menu é da
-// 187**, então aqui a cadeia é `modal → painel` — **com o degrau da 189 PREVISTO
-// e DECLARADO**, nunca "esquecido". **Não antecipar o lightbox.**
+// ⚠️ A ORDEM do `Escape` é LITERAL do protótipo (`:1014`, medido por `sed` na
+// wave 188-07 e RECONFIRMADO em 20/10/2026): `modal → lightbox → menu → painel`.
+// ➡️ ⚠️⚠️ **O DEGRAU DO LIGHTBOX, que esta wave deixou "PREVISTO e DECLARADO",
+// ENTROU NO CÓDIGO pela Fase 189, plano 06** (ACHADO A7 do
+// `189-CONTRATO-188.md`): a cadeia agora é `modal → lightbox → painel`, pelo
+// parâmetro `temLightbox` do resolvedor (padrão `false`, então **todos** os casos
+// desta wave continuam valendo sem alteração). O `menu` é da Fase 187 e não vive
+// neste painel.
+// ⚠️⚠️ E É ESTE PAINEL QUE TEM O **ÚNICO** `keydown` DA TELA — dois ouvintes
+// fechariam lightbox **e** painel no MESMO `Escape`, e a pessoa perderia a
+// revisão inteira num toque. O lightbox é **CONTROLADO**: o estado dele mora na
+// página (ver o bloco do CONTEXTO, abaixo do resolvedor).
 //
 // ⚠️⚠️ **DIVERGÊNCIA DECLARADA DO PLANO, e o PROTÓTIPO GANHA.** O `<behavior>` do
 // plano diz *"os QUATRO atalhos não disparam quando o foco está em INPUT,
@@ -517,7 +549,24 @@ export const ACOES = {
     FECHAR_PAINEL: 'fechar-painel',
     IR_PARA_OFERTA: 'ir-para-oferta',
     TROCAR_IMAGEM: 'trocar-imagem',
+    // ⚠️ Fase 189, plano 06 — O DEGRAU que a 188-07 deixou "previsto e
+    // DECLARADO" (ACHADO A7 do `189-CONTRATO-188.md`), agora no código.
+    FECHAR_LIGHTBOX: 'fechar-lightbox',
+    MOVER_LIGHTBOX: 'mover-lightbox',
 };
+
+/**
+ * ⚠️⚠️ O DESTINO DO FOCO ao fechar o lightbox (critério 7, PERGUNTA-189-C).
+ *
+ * ⚠️⚠️ **POR QUE O TOKEN NÃO CITA O NOME DO BOTÃO.** A FONTE deste arquivo é
+ * varrida SEM COMENTÁRIO por `/Ampliar/` e `/⤢/` em
+ * `tests/js/publicador-painel-casca-188.test.js:1034`-`:1035` (ARMADILHA A2 do
+ * inventário). Um token `'ampliar'` **minúsculo** passaria — mas passaria **POR
+ * SORTE**, dependendo da CAIXA de uma única letra, e *"silêncio que depende de
+ * UMA LETRA é sorte"*. ➡️ Divergência DECLARADA do `focar: 'ampliar'` escrito na
+ * prosa do plano: o token é descritivo e não depende de caixa nenhuma.
+ */
+export const FOCO_NO_BOTAO_DE_ABRIR = 'botao-que-abriu';
 
 /**
  * ⚠️⚠️ **O RESOLVEDOR DE ATALHO — a FUNÇÃO PURA que os gates provam.**
@@ -544,6 +593,13 @@ export const ACOES = {
  * @param {unknown} [evento.proximaId] `navegacao.proxima_id` — `null` na última
  * @param {unknown} [evento.imagemAtual] o índice da imagem selecionada
  * @param {unknown} [evento.totalDeImagens] quantas imagens há na galeria
+ * @param {unknown} [evento.temLightbox] se o LIGHTBOX está aberto (Fase 189,
+ *   plano 06). ⚠️ Padrão `false`: **todos** os casos do 188-07 chamam o
+ *   resolvedor sem ele e continuam valendo sem alteração
+ * @param {unknown} [evento.imagemDoLightbox] o índice aberto NO LIGHTBOX — que é
+ *   do CONTEXTO DELE (PERGUNTA-189-B (b)), e **não** o do painel
+ * @param {unknown} [evento.totalDoLightbox] quantas imagens há na galeria DO
+ *   CONTEXTO DO LIGHTBOX (pode ser outra oferta que a do painel por baixo)
  * @returns {{acao: string, oferta: ?number, imagem: ?number}|null} `null` = a
  *   tecla não é desta peça e **não é consumida** (nada de `preventDefault`).
  */
@@ -556,11 +612,24 @@ export function resolverAtalhoDoPainel(evento = null) {
 
     const temModal = e.temModal === true;
 
+    // ⚠️ `=== true` ESTRITO: `1`, `'1'` e `{}` são **truthy** e fechariam o
+    // lightbox sobre um estado que não é o dele. É a mesma guarda do `aberto` do
+    // `LightboxDaImagem` (189-03).
+    const temLightbox = e.temLightbox === true;
+
     // ⚠️⚠️ `Escape` PRIMEIRO, e **ANTES da guarda de campo** — é a ordem medida em
-    // `:1014`/`:1015`. A cadeia é `modal → painel`, com o degrau do lightbox da
-    // Fase 189 declarado no bloco acima e NÃO antecipado.
+    // `:1014`/`:1015`. ⚠️⚠️ A cadeia COMPLETA do protótipo é
+    // `modal → lightbox → menu → painel`, e o DEGRAU DO LIGHTBOX entrou aqui no
+    // plano 189-06 (ele estava "previsto e declarado" desde o 188-07 — ACHADO A7).
+    // O `menu` é da Fase 187 e não vive neste painel.
+    // ⚠️ Sem o degrau, um `Escape` com o lightbox aberto fecharia o PAINEL
+    // INTEIRO, e a pessoa perderia a revisão num toque.
     if (tecla === TECLAS.FECHAR) {
-        return { acao: temModal ? ACOES.FECHAR_MODAL : ACOES.FECHAR_PAINEL, oferta: null, imagem: null };
+        const acao = temModal
+            ? ACOES.FECHAR_MODAL
+            : (temLightbox ? ACOES.FECHAR_LIGHTBOX : ACOES.FECHAR_PAINEL);
+
+        return { acao, oferta: null, imagem: null };
     }
 
     // ⚠️ Daqui para baixo, campo de texto engole a tecla (`:1015`). Sem isso,
@@ -572,6 +641,27 @@ export function resolverAtalhoDoPainel(evento = null) {
     // que o modal está confirmando.
     if (temModal) return null;
 
+    // ═══ ⚠️⚠️ O DEGRAU DE ←/→: O LIGHTBOX GANHA, E ELE DÁ A VOLTA ══════════
+    //
+    // ⚠️ Medido em `:1016`: o bloco do lightbox vem ANTES do `:1018` do painel e
+    // dá `return`, então com ele aberto as setas **não** chegam ao painel.
+    // ⚠️⚠️ **O LIGHTBOX DÁ A VOLTA e o PAINEL CLAMPA — são regras DIFERENTES de
+    // propósito, e o protótipo ganha. NÃO unifique.** A volta é
+    // `moverNoLightbox` (189-03), IMPORTADA: uma fonte só.
+    // ⚠️ O índice do PAINEL **não se mexe** aqui: trocar a foto por baixo
+    // deixaria a pessoa aprovando no lightbox uma foto e vendo outra no painel.
+    if (temLightbox && (tecla === TECLAS.IMAGEM_ANTERIOR || tecla === TECLAS.IMAGEM_PROXIMA)) {
+        const passo = tecla === TECLAS.IMAGEM_PROXIMA ? 1 : -1;
+        const destino = moverNoLightbox(e.imagemDoLightbox, passo, e.totalDoLightbox);
+
+        // ⚠️ Galeria vazia / entrada adversa → a tecla **não** é consumida.
+        return destino === null ? null : { acao: ACOES.MOVER_LIGHTBOX, oferta: null, imagem: destino };
+    }
+
+    // ⚠️⚠️ ↑/↓ CONTINUAM navegando a fila por baixo, COM o lightbox aberto —
+    // PERGUNTA-189-B (b), decisão do usuário de 19/10/2026, e é o que `:1017` faz
+    // (medido: ele **não** testa `!S.lb`). Quem guarda a oferta certa é o
+    // CONTEXTO do lightbox (`contextoDoLightbox`), não esta tecla.
     if (tecla === TECLAS.ANTERIOR || tecla === TECLAS.PROXIMA) {
         // ⚠️ O destino é **LIDO** do servidor. `null` na ponta → a tecla **não
         // navega** (e devolve `null`, então nem consome o evento).
@@ -601,6 +691,162 @@ export function resolverAtalhoDoPainel(evento = null) {
     }
 
     return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ O CONTEXTO PRÓPRIO DO LIGHTBOX — PERGUNTA-189-B (b), decisão do usuário
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️⚠️ **POR QUE ISTO EXISTE, e é T-189-42.** Com o lightbox aberto, ↑/↓
+// continuam navegando a fila por baixo (`:1017`). Se as ações do lightbox
+// lessem a oferta e a versão do PAINEL, uma pessoa que abrisse na oferta A e
+// descesse para a B aprovaria a foto da A **com a versão da B** — e
+// `AprovacaoDaOfertaService::exigirVersao()` ou recusaria por 422, ou (pior)
+// escreveria sobre uma composição que ela não viu. ➡️ O lightbox CAPTURA o
+// próprio contexto na ABERTURA e só o refresca enquanto o painel mostrar A
+// MESMA oferta.
+//
+// ⚠️ **ONDE O ESTADO MORA, e a divergência DECLARADA da prosa do plano.** O
+// plano dizia *"o estado do lightbox vive NO PAINEL"*. Medido: a coluna de
+// fotos — que é quem hospeda o "⤢ Ampliar" — chega a este painel como **NÓ
+// PRONTO**, pelo slot `colunaDeFotos` (`ColunasDoPainel`, e a página monta o nó
+// em `Pages/Mlb/Publicador/Aprovacao.jsx`). Um estado vivendo aqui **nunca
+// alcançaria o botão**, porque o nó já foi construído lá fora. ➡️ O estado mora
+// na PÁGINA (que já é a casa da foto selecionada, do modal aberto e do popover),
+// e o `LightboxDaImagem` é **CONTROLADO** — exatamente como o docblock dele
+// prescreve. ⚠️⚠️ **A RAZÃO que o plano deu para o estado morar aqui está
+// PRESERVADA INTEIRA: este painel continua tendo o ÚNICO `keydown`** (dois
+// ouvintes fechariam lightbox E painel no mesmo `Escape`), e as REGRAS PURAS
+// moram neste módulo, ao lado do resolvedor.
+
+/**
+ * ⚠️⚠️ O contexto do lightbox: capturado na ABERTURA, refrescado SÓ na MESMA oferta.
+ *
+ * @param {unknown} guardado o contexto já capturado, ou `null` (abertura)
+ * @param {unknown} painelAtual o `painel` do payload de AGORA
+ * @param {unknown} lightboxAtual a prop `lightbox` do payload de AGORA (189-02)
+ * @returns {?object} `{oferta_id, versao, ao_vivo, imagens, originais}`, ou `null`
+ *
+ * ⚠️⚠️ **COMPARAÇÃO ESTRITA de `oferta_id`** (inteiro com inteiro): `'501'` é
+ * OUTRA oferta, nunca "a mesma". Com `==` a string seria lida como o inteiro e o
+ * contexto se refrescaria com dado alheio.
+ * ⚠️ Sem oferta ou sem versão **não há contexto** (`null`): um contexto com
+ * `oferta_id` nula escreveria em `{oferta: null}`, uma rota que não existe. É a
+ * mesma disciplina do `idDoPainel` da coluna — inteiro **POSITIVO**, porque `0`
+ * é um id plausível para quem lê.
+ * ⚠️ `ao_vivo` sai de `rodape.botoes.salvar`, que **É** o `$aoVivo` byte a byte
+ * (`PainelDeRevisaoService.php:647`) — **uma definição só** de "ao vivo", nunca
+ * uma segunda inventada na tela.
+ * ⚠️ Nunca lança: `imagens` que não é lista cai em `[]` (`.map` em string LANÇA)
+ * e `originais` que não é objeto comum cai em `{}`.
+ */
+export function contextoDoLightbox(guardado, painelAtual, lightboxAtual) {
+    const atual = objetoDoPainel(painelAtual);
+    const antigo = objetoDoPainel(guardado);
+
+    const oferta = atual === null ? null : idPositivoDoPainel(atual.oferta_id);
+    const versao = atual === null ? null : idPositivoDoPainel(atual.versao);
+
+    // ⚠️ Payload sem oferta/versão: fica o GUARDADO (se houver) — nunca um
+    // contexto meio-feito, que é o que escreveria na oferta errada.
+    if (oferta === null || versao === null) return antigo;
+
+    // ⚠️⚠️ OUTRA oferta no painel → o GUARDADO, INTACTO. É aqui que a
+    // PERGUNTA-189-B (b) vive.
+    if (antigo !== null && antigo.oferta_id !== oferta) return antigo;
+
+    const fotos = objetoDoPainel(atual.fotos);
+    const rodape = objetoDoPainel(atual.rodape);
+    const botoes = rodape === null ? null : objetoDoPainel(rodape.botoes);
+    const doLightbox = objetoDoPainel(lightboxAtual);
+    const originais = doLightbox === null ? null : objetoDoPainel(doLightbox.originais);
+
+    return {
+        oferta_id: oferta,
+        versao,
+        ao_vivo: botoes !== null && botoes.salvar === true,
+        imagens: fotos === null || !Array.isArray(fotos.imagens) ? [] : fotos.imagens,
+        originais: originais === null ? {} : originais,
+    };
+}
+
+/**
+ * O índice válido DENTRO do contexto do lightbox — ou `null`, que é FECHAR.
+ *
+ * ⚠️ O clamp é `indiceNoLightbox` (189-03), IMPORTADO: `:1324` clampa o teto
+ * (`Math.min(lb.i, ord.length - 1)`) e `i < 0` devolve `{open: false}`.
+ * ⚠️ Reprovar tira a foto do conjunto final, então o payload seguinte pode vir
+ * com MENOS imagens — sem o clamp o lightbox apontaria para uma foto que já não
+ * existe.
+ */
+export function indiceNoContexto(indice, contexto) {
+    const dados = objetoDoPainel(contexto);
+    if (dados === null) return null;
+
+    const total = Array.isArray(dados.imagens) ? dados.imagens.length : 0;
+
+    return indiceNoLightbox(indice, total);
+}
+
+/**
+ * ⚠️ Fecha o lightbox e DEVOLVE O FOCO ao botão que o abriu (critério 7).
+ *
+ * @param {unknown} pedido `{ref, fechar}`
+ * @returns {boolean} `true` se fechou
+ *
+ * ⚠️⚠️ **FECHAR ACONTECE SEMPRE, mesmo sem foco a devolver.** Um fechamento que
+ * dependesse da `ref` deixaria o lightbox PRESO na tela quando o botão não
+ * existisse (galeria vazia, oferta sem imagem) — e aí a pessoa não tem como sair.
+ * ⚠️ `ref` nula, sem `current`, ou com `current.focus` que não é função **não
+ * lança**: `ref.current.focus()` cru é a mesma família da TELA PRETA.
+ * ⚠️ O que roda no NAVEGADOR não é provado por esta fase: o gate exercita um
+ * STUB que conta chamadas. **Não há navegador nesta máquina.**
+ */
+export function fecharLightboxDevolvendoFoco(pedido = null) {
+    const alvo = objetoDoPainel(pedido);
+    if (alvo === null || typeof alvo.fechar !== 'function') return false;
+
+    alvo.fechar();
+
+    const ref = objetoDoPainel(alvo.ref);
+    const no = ref === null ? null : objetoDoPainel(ref.current);
+    if (no !== null && typeof no.focus === 'function') no.focus();
+
+    return true;
+}
+
+/**
+ * ⚠️⚠️ O que acontece AO FECHAR — PERGUNTA-189-C e o DEFAULT da PERGUNTA-189-D1.
+ *
+ * @param {unknown} pedido `{contexto, painelAtual}`
+ * @returns {{mudarFotoDoPainel: boolean, focar: ?string, voltarParaAOferta: ?number}}
+ *
+ * ➡️ **189-C (a oferta por baixo NÃO mudou) — RESPONDIDA pelo usuário:** o painel
+ * volta à foto de onde o botão foi clicado (ou seja: **não se mexe**, porque ela
+ * nunca deixou de ser a selecionada) e o foco vai ao botão que abriu.
+ *
+ * ➡️ ⚠️⚠️ **189-D1 (a oferta MUDOU) — PERGUNTA ABERTA, DEFAULT APLICADO:** o
+ * painel **FICA na oferta nova**, porque a navegação ↑/↓ foi ação explícita da
+ * pessoa, na foto que aquela oferta já tinha selecionada; o foco vai ao botão do
+ * painel dela — ou a **nada**, sem lançar, se ela não tem imagem (a `ref` fica
+ * nula). ⚠️ A ALTERNATIVA (um `router.get` com `?oferta=A`, voltando o painel) é
+ * **local** e **NÃO** é o default: `voltarParaAOferta` sai `null` sempre, e é essa
+ * a asserção que distingue o default da alternativa.
+ * ⚠️ A foto "de onde se abriu" **não existe mais na tela**: era da oferta A.
+ */
+export function aoFecharOLightbox(pedido = null) {
+    const alvo = objetoDoPainel(pedido);
+    const painelAtual = alvo === null ? null : objetoDoPainel(alvo.painelAtual);
+    const fotos = painelAtual === null ? null : objetoDoPainel(painelAtual.fotos);
+    const temImagem = fotos !== null && Array.isArray(fotos.imagens) && fotos.imagens.length > 0;
+
+    return {
+        // ⚠️ Em NENHUM dos dois ramos o fechamento mexe na foto selecionada.
+        mudarFotoDoPainel: false,
+        focar: temImagem ? FOCO_NO_BOTAO_DE_ABRIR : null,
+        // ⚠️ O default NUNCA volta o painel para a oferta do lightbox.
+        voltarParaAOferta: null,
+    };
 }
 
 /**
@@ -732,6 +978,17 @@ export function RaizDoPainel({
  * @param {unknown} [props.totalDeImagens] quantas imagens há na galeria
  * @param {unknown} [props.onFecharModal] `() => void` — o `Esc` com modal aberto
  * @param {unknown} [props.onTrocarImagem] `(indice) => void` — as setas ←/→
+ * @param {unknown} [props.temLightbox] se o LIGHTBOX está aberto (Fase 189, plano
+ *   06). ⚠️⚠️ Este painel tem o **ÚNICO** `keydown` da tela: dois ouvintes
+ *   fechariam lightbox **e** painel no mesmo `Escape`
+ * @param {unknown} [props.imagemDoLightbox] o índice aberto no lightbox — do
+ *   CONTEXTO dele (PERGUNTA-189-B (b)), **não** o do painel
+ * @param {unknown} [props.totalDoLightbox] quantas imagens há no contexto do
+ *   lightbox (pode ser outra oferta que a do painel por baixo)
+ * @param {unknown} [props.onFecharLightbox] `() => void` — o degrau do `Escape`
+ * @param {unknown} [props.onMoverLightbox] `(indice) => void` — as setas ←/→ do
+ *   lightbox, que **DÃO A VOLTA** (e as do painel CLAMPAM: são regras diferentes
+ *   de propósito, e o protótipo ganha)
  * @param {unknown} [props.onTentarDeNovo] `() => void`, ou `null` (o normal hoje:
  *   a rota de `tentarDeNovo` **não existe** — ver `IdentificacaoDaOferta.jsx`)
  * @param {unknown} [props.colunaDeFotos] SLOT de NÓ — a coluna de fotos (plano 188-08)
@@ -767,10 +1024,15 @@ export default function PainelDeRevisao({
     temModal = false,
     imagemAtual = 0,
     totalDeImagens = 0,
+    temLightbox = false,
+    imagemDoLightbox = 0,
+    totalDoLightbox = 0,
     onIr = null,
     onFechar = null,
     onFecharModal = null,
     onTrocarImagem = null,
+    onFecharLightbox = null,
+    onMoverLightbox = null,
     onTentarDeNovo = null,
     colunaDeFotos = null,
     colunaDePreco = null,
@@ -812,6 +1074,12 @@ export default function PainelDeRevisao({
                 proximaId: navegacao === null ? null : navegacao.proxima_id,
                 imagemAtual,
                 totalDeImagens,
+                // ⚠️ Fase 189, plano 06 — o degrau. O estado mora na PÁGINA (ver
+                // o bloco do contexto acima); aqui só chega o booleano e os dois
+                // números do CONTEXTO do lightbox.
+                temLightbox: temLightbox === true,
+                imagemDoLightbox,
+                totalDoLightbox,
             });
 
             // ⚠️ `null` = a tecla **não é desta peça**: nada de `preventDefault`,
@@ -821,6 +1089,8 @@ export default function PainelDeRevisao({
             evento.preventDefault?.();
 
             if (decisao.acao === ACOES.FECHAR_MODAL && typeof onFecharModal === 'function') onFecharModal();
+            else if (decisao.acao === ACOES.FECHAR_LIGHTBOX && typeof onFecharLightbox === 'function') onFecharLightbox();
+            else if (decisao.acao === ACOES.MOVER_LIGHTBOX && typeof onMoverLightbox === 'function') onMoverLightbox(decisao.imagem);
             else if (decisao.acao === ACOES.FECHAR_PAINEL && typeof onFechar === 'function') onFechar();
             else if (decisao.acao === ACOES.IR_PARA_OFERTA && typeof onIr === 'function') onIr(decisao.oferta);
             else if (decisao.acao === ACOES.TROCAR_IMAGEM && typeof onTrocarImagem === 'function') onTrocarImagem(decisao.imagem);
