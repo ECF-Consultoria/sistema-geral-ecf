@@ -364,7 +364,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $antes = $marca();
         $this->assertNotNull($antes);
 
-        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        EditorEmUso::marcarEdicao((int) $this->pubDo($p)->id);
         $this->noPortal($p, 'BRAND', 'Outra Marca');
 
         $this->assertSame('ocupado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
@@ -606,13 +606,13 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
     // ═══ Editor aberto ═══════════════════════════════════════════════════════
 
-    public function test_editor_em_uso_adia_o_preparo_inteiro_e_depois_segue(): void
+    public function test_alguem_editando_adia_o_preparo_inteiro_e_depois_segue(): void
     {
         $p = $this->produtoDoPortal();
         $this->salvarERodar($p);
         $pub = $this->pubDo($p);
 
-        EditorEmUso::marcar((int) $pub->id);
+        EditorEmUso::marcarEdicao((int) $pub->id);
         $p->update(['descricao' => 'Mudou com o editor aberto.']);
         $this->descricaoIa = 'Descrição depois do editor fechar.';
         [$preparos, $ia] = $this->salvarERodar($p);
@@ -623,20 +623,20 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->adiamentos === 1
             && $j->delay !== null && now()->diffInMinutes($j->delay, true) >= 4);
 
-        Cache::forget(EditorEmUso::chave((int) $pub->id));
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
         $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
         $this->rodar(GerarPreparoIaJob::class);
         $this->assertSame('Descrição depois do editor fechar.', $this->rascunhoDo($p)->descricao);
     }
 
-    public function test_editor_aberto_no_meio_da_ia_adia_a_escrita_sem_gerar_de_novo(): void
+    public function test_alguem_editando_no_meio_da_ia_adia_a_escrita_sem_gerar_de_novo(): void
     {
         $p = $this->produtoDoPortal();
         $this->salvarNoPortal($p);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
         $pub = $this->pubDo($p);
 
-        EditorEmUso::marcar((int) $pub->id);
+        EditorEmUso::marcarEdicao((int) $pub->id);
         $this->assertSame(['adiado', 'adiado', 'adiado'], $this->rodar(GerarPreparoIaJob::class));
         $r = $this->rascunhoDo($p);
         $this->assertSame([], array_filter($this->titulos($r)));
@@ -644,20 +644,20 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushed(GerarPreparoIaJob::class, fn ($j) => $j->etapa === 'titulo' && $j->adiamentos === 1
             && json_decode((string) $j->valorPronto, true) === ['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa]);
 
-        Cache::forget(EditorEmUso::chave((int) $pub->id));
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
         $this->assertSame(['escrito', 'escrito', 'escrito'], $this->rodar(GerarPreparoIaJob::class));
         $this->assertSame($this->tituloIa, $this->titulos($r->fresh())['gold_special']);
         $this->assertCount(1, $this->chamadas['titulo'], 'a escrita adiada usa o valor já gerado');
         $this->assertCount(1, $this->chamadas['descricao']);
     }
 
-    public function test_editor_em_uso_desiste_depois_do_limite_de_esperas(): void
+    public function test_alguem_editando_desiste_depois_do_limite_de_esperas(): void
     {
         config(['publicador.preparo_ia.max_adiamentos' => 1]);
         $p = $this->produtoDoPortal();
         $this->salvarNoPortal($p);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
-        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        EditorEmUso::marcarEdicao((int) $this->pubDo($p)->id);
 
         $this->assertSame(['adiado', 'adiado', 'adiado'], $this->rodar(GerarPreparoIaJob::class));
         $this->assertSame(['desistiu', 'desistiu', 'desistiu'], $this->rodar(GerarPreparoIaJob::class));
@@ -672,9 +672,33 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Cache::forget(EditorEmUso::chave((int) $pub->id));
 
         $this->actingAs(User::factory()->create(['role' => 'admin']))
-            ->postJson(route('mlb.anuncios.publicador.presenca', $pub->id))->assertOk();
+            ->postJson(route('mlb.anuncios.publicador.presenca', $pub->id))->assertOk()
+            ->assertJsonStructure(['ok', 'ia', 'carimbo']);
 
         $this->assertTrue(EditorEmUso::emUso((int) $pub->id));
+        // 20/10/2026: olhar (presença, leituras) é "em uso" — a fila não publica por baixo —, mas não é "editando".
+        $this->assertFalse(EditorEmUso::editando((int) $pub->id), 'o sinal de presença não segura a IA');
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->putJson(route('mlb.anuncios.publicador.salvar', $pub->id), ['descricao' => 'Editada pela equipe.'])->assertOk();
+        $this->assertTrue(EditorEmUso::editando((int) $pub->id), 'o que grava é "editando"');
+    }
+
+    public function test_editor_so_aberto_nao_segura_a_ia(): void
+    {
+        // 20/10/2026, o usuário: "que salvar o produto com imagem, já gerar" — mesmo com o produto aberto para olhar.
+        $p = $this->produtoDoPortal();
+        $this->salvarERodar($p);
+        $pub = $this->pubDo($p);
+
+        EditorEmUso::marcar((int) $pub->id);
+        $p->update(['descricao' => 'Mudou com a tela só aberta.']);
+        $this->descricaoIa = 'Descrição escrita com a tela aberta.';
+        [$preparos] = $this->salvarERodar($p);
+
+        $this->assertSame(['pronto'], $preparos);
+        $this->rodar(GerarPreparoIaJob::class);
+        $this->assertSame('Descrição escrita com a tela aberta.', $this->rascunhoDo($p)->descricao);
+        $this->assertTrue(EditorEmUso::emUso((int) $pub->id), 'a fila de publicação segue esperando quem revisa (19/10)');
     }
 
     // ═══ Chave e custo ═══════════════════════════════════════════════════════

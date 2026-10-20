@@ -69,6 +69,15 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
     }
     useEffect(() => () => acompanhamento.current.cancelar(), []);
 
+    // 20/10/2026: com a IA atualizando algum cartão ("Atualizando…"), a vitrine se relê sozinha até ela terminar.
+    const iaTrabalhando = lista.some((c) => typeof c?.ia === 'string');
+    useEffect(() => {
+        if (! iaTrabalhando) return undefined;
+        const t = setInterval(() => router.reload({ only: ['cartoes', 'planejados', 'contagens'] }), 15 * 1000);
+
+        return () => clearInterval(t);
+    }, [iaTrabalhando]);
+
     function aoConcluirSync(json) {
         resumoPronto.current = false;
         if (json?.pedido) {

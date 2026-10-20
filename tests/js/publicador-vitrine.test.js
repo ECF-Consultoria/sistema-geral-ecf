@@ -244,7 +244,7 @@ test('página — publica a seleção pela fila em lote, um só botão amarelo n
     assert.doesNotMatch(f, /AvisoContaTravada|Confortável|Compacto|Buscar SKU/);
     assert.match(f, /<PublicadorHeader/);
     assert.match(f, /familiasDaVitrine\(lista, filtro, planejados\)/);
-    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 3, 'o recarregar traz as faces de espera junto');
+    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 4, 'o recarregar traz as faces de espera junto');
 });
 
 test('página — exclui a seleção pelo MESMO diálogo da lista (o servidor decide quem pode sair)', () => {
@@ -255,3 +255,11 @@ test('página — exclui a seleção pelo MESMO diálogo da lista (o servidor de
     assert.match(f, /<DialogoExcluirProdutos aberto=\{exclusao !== null\}/);
     assert.match(f, /onConcluido=\{aoConcluirExclusao\}/);
 });
+
+test('página — com a IA atualizando algum cartão, a vitrine se relê sozinha até ela terminar', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/ProdutosVitrine.jsx');
+    assert.match(f, /const iaTrabalhando = lista\.some\(\(c\) => typeof c\?\.ia === 'string'\)/);
+    assert.match(f, /if \(! iaTrabalhando\) return undefined;/);
+    assert.match(f, /setInterval\(\(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), 15 \* 1000\)/);
+});
+

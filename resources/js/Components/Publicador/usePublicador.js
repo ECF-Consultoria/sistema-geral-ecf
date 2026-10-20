@@ -40,8 +40,9 @@ const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim 
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
 const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
-// Sinal de editor aberto (09/10/2026): o preparo pela IA (salvar no Portal) não escreve por trás da tela.
-const SINAL_PRESENCA = 60 * 1000;
+// Sinal de editor aberto (09/10/2026), a cada 20 s desde 20/10/2026: a resposta diz se a IA está atualizando este
+// anúncio por fora (o cliente salvou no Portal) — com ela gravando, a mesa fica só leitura e relê no fim.
+const SINAL_PRESENCA = 20 * 1000;
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
@@ -61,9 +62,13 @@ const variantesDoEstado = (e) => Object.fromEntries((e.variantes ?? []).map((v) 
 /**
  * @param {{ produtoId: number, onPublicou?: Function, pausado?: boolean }} opcoes
  *   `pausado` = a IA está gravando este rascunho no servidor: mesa só leitura e nenhum
- *   salvamento sai até `recarregarDepoisDaIa` reler o que ela gravou (CR-F02).
+ *   salvamento sai até `recarregarDepoisDaIa` reler o que ela gravou (CR-F02). Desde 20/10/2026
+ *   a mesa também pausa sozinha com a IA do preparo (save no Portal) gravando por fora (`iaPorFora`).
  */
-export default function usePublicador({ produtoId, onPublicou, pausado = false }) {
+export default function usePublicador({ produtoId, onPublicou, pausado: pausadoDaIa = false }) {
+    // A IA do preparo gravando por fora: 'agendada' | 'escrevendo' | 'imagens', ou null (rota `presenca`).
+    const [iaPorFora, setIaPorFora] = useState(null);
+    const pausado = pausadoDaIa || iaPorFora !== null;
     const [estado, setEstado] = useState(null);
     const [rasc, setRasc] = useState(null);
     const [vars, setVars] = useState({});
@@ -317,17 +322,40 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         };
     }, [produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ── Editor aberto (09/10/2026) ──
-    // Um sinal por minuto enquanto a aba está visível. Com ele valendo, o preparo pela IA (o cliente
-    // salvou no Portal) espera e tenta de novo, em vez de gravar o rascunho por trás de quem edita.
+    // ── Editor aberto + IA por fora (09/10 e 20/10/2026) ──
+    // Um sinal a cada 20 s enquanto a aba está visível. A resposta diz se a IA do preparo (o cliente salvou
+    // no Portal) está gravando este anúncio e o carimbo do que ela já gravou. Com ela gravando, a mesa fica
+    // só leitura; quando termina — ou o carimbo muda —, a tela RELÊ antes de sair da pausa: a cópia daqui
+    // vai inteira por chave de topo, e salvar sem reler desfaria o que a IA escreveu (EditorEmUso).
+    const porFora = useRef({ carimbo: null, reler: null });
     useEffect(() => {
-        const t = setInterval(() => {
+        const t = setInterval(async () => {
             if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-            axios.post(rota('presenca', produtoId)).catch(() => {});
+            let r = null;
+            try {
+                r = (await axios.post(rota('presenca', produtoId)))?.data ?? null;
+            } catch {
+                return;
+            }
+            const ia = typeof r?.ia === 'string' ? r.ia : null;
+            const carimbo = typeof r?.carimbo === 'string' ? r.carimbo : null;
+            const antes = porFora.current;
+            if (ia === null && carimbo !== null && antes.carimbo !== null && carimbo !== antes.carimbo) {
+                antes.carimbo = carimbo;
+                await antes.reler?.();
+            } else if (carimbo !== null && antes.carimbo === null) {
+                antes.carimbo = carimbo;
+            }
+            setIaPorFora(ia);
         }, SINAL_PRESENCA);
 
         return () => clearInterval(t);
     }, [produtoId]);
+    // A carga (e cada releitura) traz o carimbo e o que a IA está fazendo: a tela já abre pausada se ela estiver gravando.
+    useEffect(() => {
+        if (typeof estado?.carimbo_por_fora === 'string') porFora.current.carimbo = estado.carimbo_por_fora;
+        if (estado) setIaPorFora(typeof estado.ia_por_fora === 'string' ? estado.ia_por_fora : null);
+    }, [estado?.carimbo_por_fora, estado?.ia_por_fora]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── IA gravando no servidor (CR-F02) ──
     // Saindo da pausa sem releitura (análise sumiu, prazo estourado): o pendente volta a ser salvo.
@@ -666,6 +694,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         if (leu) setRelendo(false);
         else setErro('Não foi possível ler o que a IA preencheu. Recarregue a página antes de continuar editando.');
     };
+    porFora.current.reler = recarregarDepoisDaIa;
 
     // ── Derivados ──
     const schema = estado?.schema ?? null;
@@ -765,5 +794,6 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         recarregar,
         recarregarDepoisDaIa,
         descarregar,
+        iaPorFora,
     };
 }

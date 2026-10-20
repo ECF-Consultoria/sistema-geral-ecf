@@ -137,10 +137,9 @@ return [
         // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
         // dentro da espera viram uma sincronização só.
         'sincronizar_atraso_s' => (int) env('PUBLICADOR_SINCRONIZAR_ATRASO_S', 15),
-        // Espera da IA (título, Modelo e, no fim, as imagens automáticas) depois do último save do produto; um save
-        // novo dentro dela adia (debounce). Decisão do usuário (20/10/2026): 20 SEGUNDOS — "que salvar o produto com
-        // imagem, já gerar" (era 2 minutos; antes, 10). Com espera curta, foto que o cliente sobe mais de 20 s
-        // depois da 1ª não entra no kit de imagens já gerado (um kit por grupo de fotos).
+        // Espera da IA (título, Modelo e, no fim, as imagens) depois do último save; um save novo dentro dela adia
+        // (debounce). Decisão do usuário (20/10/2026): 20 SEGUNDOS, "que salvar o produto com imagem, já gerar" (era
+        // 2 min; antes, 10). Foto subida mais de 20 s depois da 1ª não entra no kit já gerado (um kit por grupo).
         'atraso_s' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_S', 20),
         // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
         // Passou disso, o produto só é sincronizado e o log diz por quê.

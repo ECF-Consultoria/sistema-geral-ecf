@@ -164,6 +164,13 @@ function ResumoDosErros({ bloqueios }) {
     );
 }
 
+// O que a IA do preparo está fazendo por fora (rota `presenca`, `IaTrabalhando` no servidor).
+const TEXTO_DA_IA_POR_FORA = {
+    agendada: 'A IA começa em instantes: o cliente acabou de salvar no Portal.',
+    escrevendo: 'A IA está escrevendo o título, o Modelo e a descrição.',
+    imagens: 'A IA está gerando as imagens.',
+};
+
 export default function Editor({ produto, empresa, produtos = [], criativos_ia = false }) {
     // CR-F02: a IA grava o rascunho no servidor. Enquanto ela trabalha o editor é só leitura e o
     // salvamento automático para; quando ela termina (bem ou com erro), o hook relê o servidor
@@ -278,6 +285,13 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                 <div id="topo-do-editor" className="mx-auto w-full max-w-[1200px] scroll-mt-20 space-y-6 px-6 pt-6 max-sm:px-4" data-coluna-principal>
                     {/* Avisos do topo: IA, aviso do hook, erro, token expirado. */}
                     <div aria-live="polite" className="space-y-3 empty:hidden">
+                        {/* 20/10/2026: a IA do preparo (o cliente salvou no Portal) gravando por fora — a mesa espera e relê sozinha. */}
+                        {ia.estado !== 'andamento' && pub.iaPorFora && (
+                            <Faixa icone={Loader2} tom="azul">
+                                <p data-ia-por-fora={pub.iaPorFora}><span className="font-bold">Atualizando…</span> {TEXTO_DA_IA_POR_FORA[pub.iaPorFora] ?? 'A IA está preparando este anúncio.'}</p>
+                                <p className="mt-1">Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui sozinho.</p>
+                            </Faixa>
+                        )}
                         {ia.estado === 'andamento' && (
                             <Faixa icone={Loader2} tom="azul">
                                 <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>

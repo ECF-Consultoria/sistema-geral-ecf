@@ -9,6 +9,7 @@ use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\Eixo;
+use App\Support\Publicador\IaTrabalhando;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -97,9 +98,13 @@ final class VitrineDeProdutosService
         // O cliente excluiu no Portal: as duas ligações viraram NULL (FK `nullOnDelete`) e o produto ficou aqui. Sai
         // pela exclusão da vitrine (`ExcluirProdutoService`, que só exclui o que nunca foi publicado).
         $saiuDoPortal = $p !== null && $p->origem === PubProduto::ORIGEM_PORTAL && $p->estrutura_produto_id === null && $p->oferta_id === null;
-        $naoPronto = $publicado || $falhou ? null : ($saiuDoPortal
-            ? ['texto' => 'Saiu do Portal', 'tom' => 'vermelho', 'detalhe' => 'Marque e exclua daqui também']
-            : self::naoEstaPronto($r, $status, $temFoto, $faltam));
+        // A IA mexendo nele agora (20/10/2026): no lugar da pendência, "Atualizando…" — e a tela se relê sozinha.
+        $ia = $publicado || $saiuDoPortal ? null : IaTrabalhando::no($r, $p?->estrutura_produto_id !== null ? (int) $p->estrutura_produto_id : null);
+        $naoPronto = $publicado || $falhou ? null : match (true) {
+            $saiuDoPortal => ['texto' => 'Saiu do Portal', 'tom' => 'vermelho', 'detalhe' => 'Marque e exclua daqui também'],
+            $ia !== null => self::chipDaIa($ia),
+            default => self::naoEstaPronto($r, $status, $temFoto, $faltam),
+        };
         $grupo = $publicado ? self::PUBLICADOS
             : ($naoPronto !== null || $faltam > 0 || $falhou || ($l['bloqueios'] ?? []) !== [] ? self::PENDENCIA : self::PRONTOS);
         $familias = $f['familias'] ?? [(int) $l['produto_id']];
@@ -118,6 +123,7 @@ final class VitrineDeProdutosService
             'sku' => (string) $l['sku'],
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL && ! $saiuDoPortal,
             'saiu_do_portal' => $saiuDoPortal,
+            'ia' => $ia,
             'fase' => $f['selo'] ?? 'Fase 1',
             'grupo' => $grupo,
             'chip' => $naoPronto ?? self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
@@ -306,5 +312,15 @@ final class VitrineDeProdutosService
         return (int) ($resumo['revisao'] ?? -1) === (int) $r->revisao
             && array_key_exists('validado', $resumo)
             && ($resumo['versao'] ?? null) === EditorRascunhoService::VERSAO_DO_RESUMO;
+    }
+
+    /** O chip de quem a IA está atualizando agora: a pendência espera, e o detalhe diz o que ela faz. */
+    private static function chipDaIa(string $ia): array
+    {
+        return ['texto' => 'Atualizando…', 'tom' => 'azul', 'detalhe' => match ($ia) {
+            IaTrabalhando::AGENDADA => 'A IA começa em instantes',
+            IaTrabalhando::ESCREVENDO => 'A IA está escrevendo título e descrição',
+            default => 'A IA está gerando as imagens',
+        }];
     }
 }

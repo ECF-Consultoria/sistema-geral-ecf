@@ -1768,3 +1768,15 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   `estrutura_produto_id` nulos — o produto fica no Publicador. A vitrine mostra o chip vermelho e exclui pela seleção
   com o MESMO `DialogoExcluirProdutos`/`ExcluirProdutoService` da lista (só o que nunca foi publicado; o que ainda
   existe no Portal é recusado com EXC-01). Na #459, em 20/10, eram 22 assim.
+- **A IA do preparo não espera mais quem só OLHA** (20/10, "que salvar o produto com imagem, já gerar"; o TESTE-SKU
+  ficou sem título do Premium e sem imagens porque o editor estava aberto). `EditorEmUso` tem DOIS sinais: "em uso"
+  (toda rota do editor, inclusive a presença e a miniatura do painel — revisar é trabalhar no produto, a fila não
+  publica por baixo, decisão de 19/10) e "editando" (`editando()`/`marcarEdicao()`, só rota que GRAVA). Os três pontos
+  do preparo (`PreparoIaDoRascunhoService:131/180/366`, linhas que o portão da Fase 188 confere) esperam só "editando".
+  O risco que o "em uso" evitava continua real: o editor manda a chave de topo INTEIRA da cópia dele, e salvar sem
+  reler desfaz o que a IA gravou. Por isso a rota `presenca` (a cada 20 s) devolve `IaTrabalhando` — `ia`
+  (agendada/escrevendo/imagens) e o `carimbo` do que a automação gravou: com a IA trabalhando a mesa pausa (faixa
+  "Atualizando…"), e no fim RELÊ antes de sair da pausa (`recarregarDepoisDaIa`). A vitrine mostra "Atualizando…" no
+  lugar da pendência e se relê a cada 15 s enquanto houver cartão assim. Arquivos com linha apontada pelo portão
+  (`MlbPublicadorController:405`, `EditorRascunhoService:370`): mexer sem mudar a contagem de linhas antes delas —
+  daí o nome completo da classe em vez de `use` novo.

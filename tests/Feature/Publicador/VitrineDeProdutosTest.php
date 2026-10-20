@@ -234,6 +234,27 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertTrue($c['selecionavel'], 'marca-se para a exclusão da barra');
     }
 
+    public function test_com_a_ia_atualizando_o_cartao_diz_atualizando_no_lugar_da_pendencia(): void
+    {
+        // 20/10/2026, o usuário: "se estiver em pendência e a IA estiver trabalhando, sinalizar que está atualizando".
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+        $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
+        $estado = (array) $r->step_state;
+        $estado['ia_preparo']['etapas']['titulo'] = ['status' => 'rodando', 'em' => now()->toIso8601String()];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame('escrevendo', $c['ia']);
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertSame(['texto' => 'Atualizando…', 'tom' => 'azul', 'detalhe' => 'A IA está escrevendo título e descrição'], $c['chip']);
+
+        // O editor recebe o mesmo na carga: abre só leitura e relê quando o carimbo mudar.
+        $doEditor = $this->mesa()->getJson($this->rota('abrir'))->assertOk()->json();
+        $this->assertSame('escrevendo', $doEditor['ia_por_fora'] ?? null);
+        $this->assertIsString($doEditor['carimbo_por_fora'] ?? null);
+    }
+
     public function test_publicado_vai_para_o_grupo_dele_e_nao_se_marca(): void
     {
         $this->cadeiraPretaEAzulSemFotoNoAzul();

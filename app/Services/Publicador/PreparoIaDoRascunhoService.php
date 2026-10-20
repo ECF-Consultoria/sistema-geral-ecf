@@ -128,7 +128,7 @@ class PreparoIaDoRascunhoService
         // está) num rascunho deste produto → tudo espera.
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::editando((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id);
             }
         }
@@ -177,7 +177,7 @@ class PreparoIaDoRascunhoService
         }
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::editando((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 Log::info("[Publicador] Produto {$produto->id} do Portal não foi sincronizado logo após o save: o produto {$pub->id} está em uso no Publicador (o preparo tenta de novo).");
 
                 return 'ocupado';
@@ -363,7 +363,7 @@ class PreparoIaDoRascunhoService
 
         // Nunca por trás de gente: editor do produto em uso, "Anunciar por IA" gravando ou o produto na fila de
         // publicação (conferido; uma escrita agora o tiraria da fila como `precisa_revisar`) → espera.
-        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
+        if (EditorEmUso::editando((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
             if ($adiamentos >= $this->maxAdiamentos()) {
                 Log::info("[Publicador] Preparo pela IA ({$etapa}): o rascunho {$r->id} seguiu em uso; a escrita desistiu depois de {$adiamentos} espera(s).");
                 $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);

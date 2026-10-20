@@ -392,9 +392,9 @@ class MlbPublicadorController extends Controller
      */
     public function presenca(int $produto): JsonResponse
     {
-        $this->produto($produto);
+        $p = $this->produto($produto);
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true] + \App\Support\Publicador\IaTrabalhando::paraOEditor($p));
     }
 
     /** O produto autorizado: inexistente, de empresa arquivada ou sem dono → 404. Toda rota do editor marca o uso. */

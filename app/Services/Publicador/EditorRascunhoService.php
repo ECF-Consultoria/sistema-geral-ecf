@@ -622,6 +622,9 @@ class EditorRascunhoService
                 'fotos_por_variante' => (bool) $r->fotos_por_variante, 'incluir_geral' => (bool) $r->incluir_geral_nas_variantes,
                 'modelo' => $r->modelo_publicacao,
             ],
+            // 20/10/2026: o que a automação gravou por fora (o editor aberto relê quando muda) e se ela está gravando agora.
+            'carimbo_por_fora' => \App\Support\Publicador\IaTrabalhando::carimbo($r),
+            'ia_por_fora' => \App\Support\Publicador\IaTrabalhando::no($r, $r->produto?->estrutura_produto_id !== null ? (int) $r->produto->estrutura_produto_id : null),
             'alvos' => array_map(fn (Alvo $a, Alvo $ef) => [
                 'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
                 'mlb_na_regua' => $this->mlbDoTipo($r, $a->listingTypeId),

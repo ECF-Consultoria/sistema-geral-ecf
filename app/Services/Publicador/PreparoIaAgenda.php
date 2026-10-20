@@ -48,6 +48,12 @@ class PreparoIaAgenda
         return $fila !== '' ? $fila : 'publicador-ia';
     }
 
+    /** Salvou no Portal e o preparo ainda não começou (`IaTrabalhando::AGENDADA`, 20/10/2026). */
+    public static function chaveDoAgendado(int $estruturaProdutoId): string
+    {
+        return "publicador:preparo-ia:agendado:{$estruturaProdutoId}";
+    }
+
     public static function marcaAtual(int $estruturaProdutoId): ?string
     {
         $m = Cache::get(self::chaveDaMarca($estruturaProdutoId));
@@ -88,6 +94,9 @@ class PreparoIaAgenda
                 // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
                 Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
                 PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca)->delay(now()->addSeconds($atraso));
+                // 3. "A IA vem aí" para a vitrine e o editor aberto (`IaTrabalhando::AGENDADA`): a espera + 1 minuto,
+                //    o bastante para a 1ª etapa já estar `rodando` quando a marca vence.
+                Cache::put(self::chaveDoAgendado($id), now()->timestamp, now()->addSeconds($atraso + 60));
             }
         } catch (\Throwable $e) {
             Log::warning("[Publicador] Preparo pela IA: não foi possível agendar após o save no Portal (empresa {$companyId}): ".$e->getMessage());
