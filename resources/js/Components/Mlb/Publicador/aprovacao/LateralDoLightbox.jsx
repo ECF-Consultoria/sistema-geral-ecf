@@ -9,6 +9,19 @@ import {
     objetoDoPainel,
     textoDoPainel,
 } from './ImagemGrandeDoPainel';
+import {
+    APROVAR_FOTO,
+    CABECALHO_DAS_VERIFICACOES,
+    CLASSES_CABECALHO_VERIFICACOES,
+    CLASSES_GLIFO,
+    CLASSES_ORDINAL,
+    CLASSES_VERIFICACOES,
+    ESTADO_PENDENTE,
+    REPROVAR,
+    fundoDoGlifo,
+    verificacoesDesenhaveis,
+} from './BlocoDaImagemSelecionada';
+import { alternarZoom, rotuloDoZoom } from './LightboxDaImagem';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 189, plano 05 — A LATERAL DE 320px DO LIGHTBOX (`:744`-`:770` do
@@ -178,6 +191,36 @@ export const CLASSES_ROTULO_SEM_ORIGINAL = 'text-[12px] font-semibold text-pub-t
 /** §H4 — o apoio do estado, LIDO da prop. */
 export const CLASSES_APOIO_SEM_ORIGINAL = 'text-[11.5px] text-pub-txt-4';
 
+/**
+ * `:760#1` — §C12. O item de verificação.
+ *
+ * ⚠️⚠️ **SEM `items-start`, e isso foi MEDIDO nos dois lados.** O item do PAINEL
+ * (`:633`) **tem** `align-items:flex-start`; o do LIGHTBOX (`:760#1`) **não**.
+ * ➡️ Reusar `CLASSES_ITEM` do 188-08 cru traria o `items-start` de volta — é por
+ * isso que esta é a ÚNICA classe da lista que não vem importada, e há gate
+ * provando que as duas continuam DIFERENTES.
+ */
+export const CLASSES_ITEM_DA_VERIFICACAO = 'flex gap-[8px] text-[12px] leading-[1.4] text-pub-fase1';
+
+/**
+ * `:763` — §C14. O liga/desliga do zoom (D-189-3a).
+ *
+ * ⚠️ `whitespace-nowrap` é a **PRIMEIRA propriedade** da linha no protótipo.
+ */
+export const CLASSES_BOTAO_DE_ZOOM = 'h-[32px] cursor-pointer whitespace-nowrap rounded-[8px] border '
+    + 'border-pub-line-strong bg-pub-hover-2 text-[12.5px] text-pub-txt';
+
+/** `:765` — §C15. ⚠️ `mt-auto` empurra as ações para o PÉ da lateral rolável. */
+export const CLASSES_LINHA_DE_ACOES = 'mt-auto flex gap-[6px]';
+
+/** `:766` — §C16. ⚠️ `border-pub-danger/[0.45]`: token com opacidade, nunca hex. */
+export const CLASSES_REPROVAR = 'h-[36px] flex-1 cursor-pointer whitespace-nowrap rounded-[8px] border '
+    + 'border-pub-danger/[0.45] bg-transparent text-[13px] font-medium text-pub-danger-txt';
+
+/** `:767` — §C17. */
+export const CLASSES_APROVAR = 'h-[36px] flex-1 cursor-pointer whitespace-nowrap rounded-[8px] border-none '
+    + 'bg-pub-accent text-[13px] font-semibold text-pub-page';
+
 // ─── Os literais da §C ────────────────────────────────────────────────────
 
 /** `:745` — ⚠️ o `·` é **U+00B7**, não um ponto, e o `Esc` é maiúsculo só no E. */
@@ -244,6 +287,102 @@ export function aoClicarEmFechar(onFechar) {
 
     onFechar();
     return true;
+}
+
+/**
+ * `:1328` — o clique no botão de zoom.
+ *
+ * ⚠️⚠️ Ele entrega o **ZOOM NOVO**, calculado por `alternarZoom` **IMPORTADO do
+ * 189-03**: a lateral NÃO reimplementa o liga/desliga. Duas regras de alternância
+ * divergiriam, e a divergente deixaria o rótulo dizendo "Reduzir" com a imagem em
+ * 1×. É a mesma forma dos handlers do palco (189-03), que devolvem um PEDIDO.
+ * ⚠️ Isto é ACRÉSCIMO declarado sobre o `onAlternarZoom()` sem argumento do
+ * `<interfaces>` do plano: quem liga (189-06) recebe o valor pronto e não precisa
+ * de uma segunda cópia da regra.
+ *
+ * @param {unknown} zoom a escala atual
+ * @param {unknown} onAlternarZoom `(zoomNovo) => void`
+ * @returns {boolean} `true` se chamou
+ */
+export function aoClicarNoZoom(zoom, onAlternarZoom) {
+    if (typeof onAlternarZoom !== 'function') return false;
+
+    onAlternarZoom(alternarZoom(zoom));
+    return true;
+}
+
+/**
+ * `:766` — o clique em "Reprovar".
+ *
+ * ⚠️⚠️ O handler recebe a imagem **ATUAL DO LIGHTBOX** — não a selecionada no
+ * painel por baixo (PERGUNTA-189-B (b)). Imagem adversa **não chama** o handler:
+ * uma escrita com a imagem errada reprovaria a foto errada.
+ *
+ * @param {unknown} imagem a imagem aberta no lightbox
+ * @param {unknown} onReprovar `(imagem) => void`
+ * @returns {boolean} `true` se chamou
+ */
+export function aoClicarEmReprovar(imagem, onReprovar) {
+    const dados = objetoDoPainel(imagem);
+    if (dados === null || typeof onReprovar !== 'function') return false;
+
+    onReprovar(dados);
+    return true;
+}
+
+/**
+ * `:767` — o clique em "Aprovar foto".
+ *
+ * ⚠️ **APROVAR ENFILEIRA, NÃO PUBLICA** (a escrita no ML é da Fase 193) — e **não
+ * há desfazer**. É por isso que a trava é estrita e que a imagem vai pelo
+ * parâmetro, nunca lida de um estado por fora.
+ *
+ * @param {unknown} imagem a imagem aberta no lightbox
+ * @param {unknown} onAprovarFoto `(imagem) => void`
+ * @returns {boolean} `true` se chamou
+ */
+export function aoClicarEmAprovar(imagem, onAprovarFoto) {
+    const dados = objetoDoPainel(imagem);
+    if (dados === null || typeof onAprovarFoto !== 'function') return false;
+
+    onAprovarFoto(dados);
+    return true;
+}
+
+/**
+ * `:764`/`:1330` + IMG-09 — **A TRAVA DAS DUAS AÇÕES**, função pura.
+ *
+ * O `canAct` do protótipo é `!!liveO && im.isPending`. Aqui ele ganha **duas
+ * condições a mais**, e as duas são prescritas:
+ *   · `aceita_acao === true` — **IMG-09**: o servidor já diz que `regenerating`
+ *     não aceita (`PubAprovacaoImagem::aceitaAcao()`, Fase 186), e o 188-05
+ *     devolve **422**. Esta é a tela **não oferecendo** o que o servidor
+ *     recusaria — a trava REAL é do servidor.
+ *   · os dois handlers serem **função** — botão sem destino é D4 violado, e
+ *     `onClick` vazio e `disabled` decorativo são a mesma dívida.
+ *
+ * ⚠️⚠️ **COMPARAÇÃO ESTRITA nos três campos.** `'1'`, `1`, `{}` e `[]` são
+ * truthy e liberariam a ação numa foto que o servidor recusa — e **aprovar JÁ
+ * ENFILEIRA, sem desfazer**.
+ * ⚠️ A função recebe **UM** parâmetro e o saneia, em vez de desestruturar:
+ * `{a = null} = {}` só cobre `undefined`, **NÃO `null`** — e foi assim que uma
+ * função passou a LANÇAR no clique na 187-06.
+ *
+ * @param {unknown} contexto `{aoVivo, imagem, onAprovarFoto, onReprovar}`
+ * @returns {boolean}
+ */
+export function podeAgirNaFoto(contexto) {
+    const campos = objetoDoPainel(contexto);
+    if (campos === null) return false;
+
+    const dados = objetoDoPainel(campos.imagem);
+    if (dados === null) return false;
+
+    return campos.aoVivo === true
+        && dados.estado === ESTADO_PENDENTE
+        && dados.aceita_acao === true
+        && typeof campos.onAprovarFoto === 'function'
+        && typeof campos.onReprovar === 'function';
 }
 
 // ─── As peças, todas NAMED EXPORTS ───────────────────────────────────────
@@ -374,6 +513,69 @@ function EstadoDaOriginal({ bloco = null }) {
 }
 
 /**
+ * `:759`-`:761` + `:369` — §C12/§C13/§H3/§H5. AS VERIFICAÇÕES AUTOMÁTICAS.
+ *
+ * @param {object} props
+ * @param {unknown} [props.verificacoes] `imagem.verificacoes` do servidor
+ *
+ * ⚠️⚠️ **O CABEÇALHO `VERIFICAÇÃO AUTOMÁTICA · APOIO` ENTRA UMA VEZ**, acima dos
+ * itens — **PERGUNTA-189-A RESPONDIDA (a) SIM pelo usuário em 19/10/2026**, com
+ * as MESMAS classes do cabeçalho do 188-08 (`CLASSES_CABECALHO_VERIFICACOES`,
+ * INV-07, **IMPORTADO**; medida de origem `:369`).
+ * **Razão do usuário:** *"sem o cabeçalho a verificação pode ser lida como
+ * VEREDICTO"*.
+ * ⚠️ **É A QUARTA VEZ QUE O PROTÓTIPO PERDE NA MILESTONE, por decisão do
+ * usuário:** `:759`-`:761` **não tem** cabeçalho × `:369` **tem** o literal (que
+ * é o E4, a revisão detalhada). O literal em maiúsculas só existe em `:369`; o
+ * painel escreve minúsculo em `:633`.
+ *
+ * ⚠️⚠️ **O ORDINAL É O NÚMERO DO MARCADOR, LIDO DO SERVIDOR, NUNCA RECONTADO** —
+ * e o protótipo do lightbox **não o tem** (`:760` só desenha `a.glyph`). É
+ * **DIVERGÊNCIA PRESCRITA PELO REQUISITO** (AMPL-06 e o critério 2, §H3):
+ * requisito explícito ganha do protótipo. Se a lista contasse 1,2,3 enquanto o
+ * marcador diz 4, **a pessoa reprovaria a foto errada** — e aprovar JÁ ENFILEIRA.
+ * ⚠️ Ele é **ELEMENTO PRÓPRIO**, com as classes do ordinal do 188-08
+ * (`CLASSES_ORDINAL`, IMPORTADO), **nunca colado no texto**: `'…automática' +
+ * ordinal` é forma proibida, com gate.
+ * ⚠️ `ok` (ordinal `null`) **não traz número**. E `ordinal: 0` também **não**:
+ * `0` passa por `Number.isInteger` e viraria um "0" apontando para um marcador
+ * que não existe — a régua é inteiro **POSITIVO**.
+ *
+ * ⚠️ `verificacoes` vazia → **nem itens nem cabeçalho**. Cabeçalho sozinho é
+ * casca vazia (D4), e um "APOIO" sem nada embaixo não apoia nada.
+ * ⚠️ Toda flag computada **DENTRO do callback** do `.map()`: o Rollup elimina
+ * variável de escopo do componente usada dentro do mapa.
+ */
+export function VerificacoesDoLightbox({ verificacoes = null }) {
+    const itens = verificacoesDesenhaveis(verificacoes);
+
+    if (itens.length === 0) return null;
+
+    return (
+        <div className={CLASSES_VERIFICACOES}>
+            <span className={CLASSES_CABECALHO_VERIFICACOES}>{CABECALHO_DAS_VERIFICACOES}</span>
+            {itens.map((item, indice) => {
+                // ⚠️⚠️ TODAS as flags DENTRO do callback.
+                const corDoTexto = classeDaCor(TEXTO_DA_COR, item.cor);
+                const temOrdinal = typeof item.ordinal === 'number' && item.ordinal > 0;
+
+                return (
+                    <span key={`verificacao-do-lightbox-${indice}`} className={CLASSES_ITEM_DA_VERIFICACAO}>
+                        {item.glifo === null ? null : (
+                            <span className={cn(CLASSES_GLIFO, fundoDoGlifo(item.cor), corDoTexto)}>
+                                {item.glifo}
+                            </span>
+                        )}
+                        {temOrdinal ? <span className={cn(CLASSES_ORDINAL, corDoTexto)}>{item.ordinal}</span> : null}
+                        <span>{item.texto}</span>
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
+/**
  * A LATERAL de 320px do lightbox.
  *
  * @param {object} props
@@ -394,17 +596,28 @@ function EstadoDaOriginal({ bloco = null }) {
 export default function LateralDoLightbox({
     imagem = null,
     original = null,
+    aoVivo = null,
+    zoom = null,
     onFechar = null,
+    onAlternarZoom = null,
+    onAprovarFoto = null,
+    onReprovar = null,
 }) {
     const dados = objetoDoPainel(imagem);
     if (dados === null) return null;
 
     const fechar = typeof onFechar !== 'function' ? null : () => aoClicarEmFechar(onFechar);
+    const alternar = typeof onAlternarZoom !== 'function' ? null : () => aoClicarNoZoom(zoom, onAlternarZoom);
+
+    // ⚠️⚠️ A TRAVA, pela função pura — e ela exige os DOIS handlers função, então
+    // a linha de ações nasce inteira ou não nasce.
+    const podeAgir = podeAgirNaFoto({ aoVivo, imagem: dados, onAprovarFoto, onReprovar });
 
     return (
         <aside className={CLASSES_LATERAL}>
             {/* ⚠️ D4 — BOTÃO SEM DESTINO NÃO NASCE. `onClick` vazio e `disabled`
-                decorativo são a mesma dívida. */}
+                decorativo são a mesma dívida, e *"desabilitado com explicação"*
+                foi OFERECIDO ao usuário e RECUSADO. */}
             {fechar === null ? null : (
                 <div className={CLASSES_WRAPPER_DO_FECHAR}>
                     <button type="button" className={CLASSES_FECHAR} onClick={fechar}>
@@ -415,6 +628,37 @@ export default function LateralDoLightbox({
 
             <MetadadosDaImagem imagem={dados} />
             <OriginalDeReferencia imagem={dados} original={original} />
+            <VerificacoesDoLightbox verificacoes={dados.verificacoes} />
+
+            {/* ⚠️ `:763` — o liga/desliga do zoom (D-189-3a). Os dois rótulos saem
+                de `rotuloDoZoom`, IMPORTADO do 189-03: uma fonte só. */}
+            {alternar === null ? null : (
+                <button type="button" className={CLASSES_BOTAO_DE_ZOOM} onClick={alternar}>
+                    {rotuloDoZoom(zoom)}
+                </button>
+            )}
+
+            {/* ⚠️ `:764`-`:769` — as duas ações, só com a trava liberada (IMG-09).
+                Nada de "confirmar publicação", "desfazer" nem "segundo passo": o
+                vocabulário está vetado das Fases 187 a 194. */}
+            {podeAgir ? (
+                <div className={CLASSES_LINHA_DE_ACOES}>
+                    <button
+                        type="button"
+                        className={CLASSES_REPROVAR}
+                        onClick={() => aoClicarEmReprovar(dados, onReprovar)}
+                    >
+                        {REPROVAR}
+                    </button>
+                    <button
+                        type="button"
+                        className={CLASSES_APROVAR}
+                        onClick={() => aoClicarEmAprovar(dados, onAprovarFoto)}
+                    >
+                        {APROVAR_FOTO}
+                    </button>
+                </div>
+            ) : null}
         </aside>
     );
 }
