@@ -1,0 +1,133 @@
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { AlertTriangle, Info, Loader2, RefreshCw } from 'lucide-react';
+import { mensagemDe } from '../apoio';
+import { anuncioEscolhido, notasDaPrevia } from '../previa';
+import AnuncioNoMl from './AnuncioNoMl';
+import { LINK, Secao } from './comum';
+import { cn } from '@/lib/utils';
+
+// ─── Etapa 5 — Prévia (20/10/2026) ──────────────────────────────────────────
+//
+// Pedido do usuário depois da reunião de 19/10: antes de publicar, quem cuida
+// da publicação vê o anúncio como ele vai ficar no Mercado Livre — fotos na
+// ordem, título, preço com a promoção da Central, frete, ficha e descrição — e
+// publica DAQUI (Conferir e Publicar vieram da etapa 4). O agente revisor lê o
+// mesmo retrato pelo servidor (`PreviaDoAnuncioService`).
+//
+// Um anúncio por vez (Clássico | Premium no topo; a variação, no seletor da
+// própria página, como no ML). Ao abrir, salva o que estiver pendente e pede a
+// prévia; ela se refaz quando a revisão do rascunho muda.
+
+/** Pede a prévia ao servidor depois de descarregar o pendente; refaz a cada revisão nova ou a pedido. */
+function usePrevia({ pub, produtoId }) {
+    const [previa, setPrevia] = useState(null);
+    const [carregando, setCarregando] = useState(true);
+    const [erro, setErro] = useState(null);
+    const [vez, setVez] = useState(0);
+    const revisao = pub.m.estado?.rascunho?.revisao ?? null;
+
+    useEffect(() => {
+        let vivo = true;
+        (async () => {
+            setCarregando(true);
+            try {
+                await pub.descarregar();
+                const { data } = await axios.get(route('mlb.anuncios.publicador.previa', { produto: produtoId }));
+                if (vivo) {
+                    setPrevia(data);
+                    setErro(null);
+                }
+            } catch (e) {
+                if (vivo) setErro(mensagemDe(e));
+            } finally {
+                if (vivo) setCarregando(false);
+            }
+        })();
+
+        return () => { vivo = false; };
+    }, [produtoId, revisao, vez]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return { previa, carregando, erro, recarregar: () => setVez((n) => n + 1) };
+}
+
+export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
+    const { previa, carregando, erro, recarregar } = usePrevia({ pub, produtoId });
+    const [tipo, setTipo] = useState(null);
+    const [variante, setVariante] = useState(null);
+    const [comPromocao, setComPromocao] = useState(true);
+
+    const tipos = Array.isArray(previa?.tipos) ? previa.tipos : [];
+    const anuncio = anuncioEscolhido(previa, tipo ?? tipos[0]?.listing_type_id ?? null, variante);
+    const notas = notasDaPrevia(previa, anuncio, comPromocao);
+    const vendedor = empresa?.conta_nome ?? empresa?.nome ?? null;
+
+    return (
+        <div className="space-y-6" data-etapa-conteudo="previa">
+            <Secao
+                id="previa"
+                titulo="Prévia"
+                descricao="Assim o comprador vai ver o anúncio no Mercado Livre. É o mesmo conteúdo que vai na publicação: confira e publique logo abaixo."
+                acao={(
+                    <button type="button" onClick={recarregar} disabled={carregando} className={LINK} data-acao="atualizar-previa">
+                        {carregando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} Atualizar prévia
+                    </button>
+                )}
+            >
+                {previa?.pronta && anuncio && (
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            {tipos.length > 0 && (
+                                <div role="group" aria-label="Tipo de anúncio" className="inline-flex rounded-lg border border-white/[0.10] bg-white/[0.03] p-1" data-previa-tipos>
+                                    {tipos.map((t) => (
+                                        <button key={t.listing_type_id} type="button" onClick={() => setTipo(t.listing_type_id)}
+                                            aria-pressed={anuncio.listing_type_id === t.listing_type_id}
+                                            className={cn('h-8 rounded-md px-4 text-[13px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                                                anuncio.listing_type_id === t.listing_type_id ? 'bg-white/[0.12] text-white' : 'text-white/55 hover:text-white')}
+                                            data-previa-tipo={t.listing_type_id}>
+                                            {t.nome}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {anuncio.promocao && (
+                                <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/80">
+                                    <input type="checkbox" checked={comPromocao} onChange={(e) => setComPromocao(e.target.checked)}
+                                        className="h-4 w-4 rounded border-white/40 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-previa-com-promocao />
+                                    Com a promoção da Central
+                                </label>
+                            )}
+                        </div>
+                        {notas.length > 0 && (
+                            <ul className="space-y-1 text-[13px] text-white/60" data-previa-notas>
+                                {notas.map((n) => (
+                                    <li key={n} className="flex items-start gap-2"><Info size={14} className="mt-0.5 shrink-0 text-white/40" aria-hidden="true" /> <span>{n}</span></li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
+
+                {erro && (
+                    <p role="alert" className="flex items-start gap-2 text-[13px] text-red-300" data-previa-erro>
+                        <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> Não foi possível montar a prévia. {erro}
+                    </p>
+                )}
+                {! erro && previa && ! previa.pronta && (
+                    <p className="flex items-start gap-2 text-[15px] text-white/70" data-previa-motivo>
+                        <Info size={16} className="mt-0.5 shrink-0 text-white/45" aria-hidden="true" /> {previa.motivo ?? 'A prévia ainda não tem o que mostrar.'}
+                    </p>
+                )}
+                {! previa && carregando && <div aria-hidden="true" className="h-[480px] animate-pulse rounded-xl bg-white/[0.04]" data-previa-carregando />}
+            </Secao>
+
+            {previa?.pronta && anuncio && (
+                <div className={cn('transition-opacity', carregando && 'opacity-60')} aria-busy={carregando}>
+                    <AnuncioNoMl key={anuncio.indice} previa={previa} anuncio={anuncio} comPromocao={comPromocao} vendedor={vendedor} onVariante={setVariante} />
+                </div>
+            )}
+
+            {children}
+        </div>
+    );
+}

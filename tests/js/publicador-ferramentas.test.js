@@ -402,5 +402,5 @@ test('Formas de envio — explicação da escolhida embaixo; conferir aplica ant
     const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
     assert.match(hook, /const conferir = async \(\) => \{\s*await garantirFreteObrigatorio\(\);/);
     assert.match(hook, /if \(regra\?\.obrigatorio && ! rascRef\.current\?\.envio\?\.frete_gratis\)/);
-    assert.match(lerSemComentarios(`${BASE}/Mesa/Publicar.jsx`), /data-previa-frete/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/AnuncioNoMl.jsx`), /data-previa-frete/);
 });

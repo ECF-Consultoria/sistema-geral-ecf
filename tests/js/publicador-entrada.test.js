@@ -121,13 +121,13 @@ test('Tela A — troca de programa, filtro, busca e página por router.get na ro
     assert.match(fonte, /pagina/);
 });
 
-test('Tela A — a linha abre a Visão geral por clique e por Enter (focável)', () => {
+test('Tela A — a linha abre Produtos por clique e por Enter (focável)', () => {
     const fonte = lerSemComentarios(PAGINA_A);
-    // Fase 173, plano 03: abrir uma empresa leva à Visão geral, não mais
-    // direto a Produtos — a URL de Produtos não muda, só deixa de ser o
-    // destino do clique nesta tela.
-    assert.match(fonte, /mlb\.anuncios\.publicador\.visao-geral/);
-    assert.doesNotMatch(fonte, /mlb\.anuncios\.publicador\.produtos/);
+    // 20/10/2026: a conta mostra só a aba Produtos (`publicador.abas_ocultas`), então
+    // abrir uma empresa volta a levar direto a Produtos (de 173-03 até aqui era a Visão
+    // geral, que continua existindo pela URL).
+    assert.match(fonte, /mlb\.anuncios\.publicador\.produtos/);
+    assert.doesNotMatch(fonte, /mlb\.anuncios\.publicador\.visao-geral/);
     assert.match(fonte, /tabIndex=\{0\}/);
     assert.match(fonte, /onKeyDown/);
     assert.match(fonte, /'Enter'/);
@@ -199,9 +199,9 @@ test('Tela A — gravarRecente é chamado ANTES de navegar (ordem, não proximid
     // conta recém-aberta não entra em Recentes.
     const fonte = lerSemComentarios(PAGINA_A);
     const gravou = fonte.indexOf('gravarRecente(userId, item)');
-    const navegou = fonte.indexOf("router.get(route('mlb.anuncios.publicador.visao-geral'");
+    const navegou = fonte.indexOf("router.get(route('mlb.anuncios.publicador.produtos'");
     assert.ok(gravou !== -1, 'gravarRecente(userId, item) não foi encontrado');
-    assert.ok(navegou !== -1, 'a navegação para a Visão geral não foi encontrada');
+    assert.ok(navegou !== -1, 'a navegação para Produtos não foi encontrada');
     assert.ok(gravou < navegou, 'gravarRecente deveria ser chamado ANTES de navegar');
 });
 

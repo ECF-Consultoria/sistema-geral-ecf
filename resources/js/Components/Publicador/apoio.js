@@ -89,11 +89,14 @@ export const estadoDasSecoes = (problemas, schema) => Object.fromEntries(SECOES.
 /** Quantos bloqueios há numa lista de problemas. */
 export const contarBloqueios = (problemas) => (problemas ?? []).filter((p) => p.severidade === 'BLOCKER').length;
 
+// 20/10/2026 — quinta etapa "Prévia": o anúncio como o comprador vai ver no Mercado Livre,
+// e é nela que se confere e publica (decisão do usuário: "publica da prévia").
 export const ETAPAS = [
     { chave: 'produto', titulo: 'Produto' },
     { chave: 'detalhes', titulo: 'Detalhes' },
     { chave: 'imagens', titulo: 'Imagens' },
     { chave: 'condicoes', titulo: 'Condições de venda' },
+    { chave: 'previa', titulo: 'Prévia' },
 ];
 export const ETAPA_INICIAL = ETAPAS[0].chave;
 
@@ -107,7 +110,9 @@ export const tituloDaEtapa = (chave) => ETAPAS.find((e) => e.chave === chave)?.t
  * - Produto: categoria (E2), condição (E3 campo `condicao`) e títulos (E7);
  * - Detalhes: variações (E4, E5), ficha técnica (E3, E8) e descrição (E9);
  * - Imagens: fotos (`alvo.grupo`/`alvo.imagem`, E6) — todo problema de foto, com ou sem grupo/imagem;
- * - Condições de venda: preço, envio, garantia e embalagem (E10) e o que é da conta ou da conferência (E0, E11, E13, sem etapa).
+ * - Condições de venda: preço, envio, garantia e embalagem (E10);
+ * - Prévia: o que é da conta, da conferência ou da publicação (E0, E11, E13, sem etapa) — é lá que
+ *   ficam Conferir e Publicar (20/10/2026), e isso não impede de chegar à prévia.
  */
 export const etapaDoProblema = (p) => {
     const alvo = p.alvo ?? {};
@@ -115,8 +120,9 @@ export const etapaDoProblema = (p) => {
     if (alvo.grupo || alvo.imagem || e === 'E6') return 'imagens';
     if (e === 'E2' || e === 'E7' || (e === 'E3' && alvo.campo === 'condicao')) return 'produto';
     if (['E3', 'E4', 'E5', 'E8', 'E9'].includes(e)) return 'detalhes';
+    if (e === 'E10') return 'condicoes';
 
-    return 'condicoes';
+    return 'previa';
 };
 
 /**

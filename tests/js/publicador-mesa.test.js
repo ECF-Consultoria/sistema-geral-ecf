@@ -111,17 +111,19 @@ test('apoio.js — SECOES (8 chaves, em ordem) e secaoDoProblema seguem a fonte 
     assert.equal(estadoDasSecoes([], null).categoria.completo, true);
 });
 
-test('apoio.js — as 4 etapas, em ordem, e a navegação entre elas', () => {
-    assert.deepEqual(ETAPAS.map((e) => `${e.chave}:${e.titulo}`), ['produto:Produto', 'detalhes:Detalhes', 'imagens:Imagens', 'condicoes:Condições de venda']);
+test('apoio.js — as 5 etapas, em ordem, e a navegação entre elas', () => {
+    assert.deepEqual(ETAPAS.map((e) => `${e.chave}:${e.titulo}`), ['produto:Produto', 'detalhes:Detalhes', 'imagens:Imagens', 'condicoes:Condições de venda', 'previa:Prévia']);
     assert.equal(etapaValida('detalhes'), 'detalhes');
     assert.equal(etapaValida('ficha'), null);
     assert.equal(etapaValida(null), null);
     assert.equal(proximaEtapa('produto'), 'detalhes');
     assert.equal(proximaEtapa('detalhes'), 'imagens');
-    assert.equal(proximaEtapa('condicoes'), null);
+    assert.equal(proximaEtapa('condicoes'), 'previa');
+    assert.equal(proximaEtapa('previa'), null);
     assert.equal(etapaAnterior('produto'), null);
     assert.equal(etapaAnterior('imagens'), 'detalhes');
     assert.equal(etapaAnterior('condicoes'), 'imagens');
+    assert.equal(etapaAnterior('previa'), 'condicoes');
 });
 
 test('etapaDoProblema — cada pendência do servidor cai na etapa onde se resolve', () => {
@@ -141,8 +143,12 @@ test('etapaDoProblema — cada pendência do servidor cai na etapa onde se resol
     assert.equal(e({ etapa: 'E10', alvo: 'gold_special', variante: 'x', campo: 'preco' }), 'condicoes');
     assert.equal(e({ etapa: 'E10', campo: 'garantia' }), 'condicoes');
     assert.equal(e({ etapa: 'E10', atributo: 'SELLER_PACKAGE_WEIGHT' }), 'condicoes');
-    assert.equal(e({ etapa: 'E0' }), 'condicoes');
-    assert.equal(e({}), 'condicoes');
+    // 20/10/2026: conta, conferência e publicação vão para a Prévia, onde ficam Conferir/Publicar.
+    assert.equal(e({ etapa: 'E0' }), 'previa');
+    assert.equal(e({ etapa: 'E11' }), 'previa');
+    assert.equal(e({ etapa: 'E13' }), 'previa');
+    assert.equal(e({ etapa: 'OUTROS' }), 'previa');
+    assert.equal(e({}), 'previa');
 });
 
 test('bloqueiosDaEtapa — só BLOCKER da etapa; sem categoria, o aviso local vem primeiro', () => {
@@ -400,6 +406,7 @@ test('Publicar — situação, o que falta por etapa com "Corrigir em…", Confe
     assert.match(f, /<BotaoPublicar pub=\{pub\} primario=\{publicarPrimario\}/);
     assert.match(f, /AvisoContaTravada/);
     assert.match(f, /mlb\.anuncios\.publicador\.descricao/);
-    assert.match(f, /data-previa-titulo/);
+    // 20/10/2026: o cartãozinho "Como o comprador vê" saiu daqui — a Prévia inteira é a etapa 5 (AnuncioNoMl.jsx).
+    assert.doesNotMatch(f, /function Previa|data-previa/);
     assert.doesNotMatch(f, /vendidos|FULL|parcelas|12x/);
 });

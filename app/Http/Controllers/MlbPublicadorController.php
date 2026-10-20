@@ -412,4 +412,17 @@ class MlbPublicadorController extends Controller
         return PubRascunho::where('produto_id', $this->produto($produto)->id)->firstOrFail();
     }
 
+    /**
+     * A etapa 5 do editor (20/10/2026): o anúncio como o comprador vai ver no Mercado Livre, tirado do
+     * MESMO plano da publicação. Só leitura — nada é gravado nem enviado ao ML.
+     *
+     * No FIM da classe e com o nome completo, de propósito: os docblocks da Fase 188 apontam linhas
+     * deste arquivo (`MlbPublicadorController:405`, `FotosDoPainelServiceTest`), e método ou `use`
+     * novo acima delas desloca o ponteiro.
+     */
+    public function previa(int $produto, \App\Services\Publicador\PreviaDoAnuncioService $previa): JsonResponse
+    {
+        return response()->json($previa->montar($this->rascunho($produto)));
+    }
+
 }

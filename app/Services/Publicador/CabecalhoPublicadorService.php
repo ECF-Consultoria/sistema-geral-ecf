@@ -72,6 +72,7 @@ class CabecalhoPublicadorService
      *                             repetir a consulta
      * @return array{
      *     aba: string,
+     *     abas_ocultas: list<string>,
      *     empresa: array,
      *     company_id: ?int,
      *     contadores: array{produtos: int, publicacoes: ?int, publicacoes_pedem_acao: ?int, alavancas: int},
@@ -101,6 +102,8 @@ class CabecalhoPublicadorService
 
         return [
             'aba' => $aba,
+            // 20/10/2026: as abas que o header esconde (`publicador.abas_ocultas`). Produtos nunca some.
+            'abas_ocultas' => self::abasOcultas(),
             // Intacto: o header lê nome, chave, identificador, programa, token e portal daqui.
             'empresa' => $empresa,
             'company_id' => $c?->id,
@@ -139,6 +142,20 @@ class CabecalhoPublicadorService
                 ],
             ],
         ];
+    }
+
+    /**
+     * As abas que o header esconde (decisão do usuário, 20/10/2026: "vai ficar apenas Produtos").
+     * Só as três que podem sumir; chave desconhecida e 'produtos' são ignoradas — a conta sempre
+     * tem por onde entrar.
+     *
+     * @return list<string>
+     */
+    public static function abasOcultas(): array
+    {
+        $podemSumir = ['visao-geral', 'publicacoes', 'alavancas'];
+
+        return array_values(array_intersect($podemSumir, array_map('strval', (array) config('publicador.abas_ocultas', []))));
     }
 
     /**

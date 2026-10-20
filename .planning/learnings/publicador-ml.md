@@ -1578,3 +1578,37 @@ Detalhes em `portal-do-cliente.md` §52. Para quem mexe no Publicador: o título
 título de venda do Portal (`DadosEfetivosService::comTituloDoCadastro`); a IA nunca o sobrescreve e apaga o Clássico que
 ela mesma tinha escrito quando o cliente dá o título depois (`devolvidosAoPortal`); e todo título sai capitalizado pelo
 `Alvo` e pelo mutator de `PubRascunhoAlvo` — update por query precisa capitalizar à mão (`gravarTitulos`).
+
+## 37. A conta só com Produtos e a etapa 5 "Prévia" (20/10/2026)
+
+Pedido do usuário depois da reunião de 19/10 ("menos é mais").
+
+- **Abas:** `publicador.abas_ocultas` (config) → `cabecalho.abas_ocultas` → `AbasDoHeader` filtra (`abasVisiveis`).
+  Visão geral, Publicações e Alavancas seguem abrindo pela URL, e quem chega assim vê a própria aba. A entrada (lista de
+  empresas, acesso rápido, busca do header) abre Produtos. Para devolver uma aba: tirar a chave da config.
+- **Etapa 5 "Prévia"** (`EtapaPrevia` + `AnuncioNoMl`): Conferir/Publicar saíram do fim da etapa 4 para baixo dela.
+  Problema de conta, conferência e publicação (E0, E11, E13, OUTROS, sem etapa) cai em `previa` (`etapaDoProblema`), então
+  não trava o "Continuar" da 4.
+- **A prévia sai do MESMO plano da publicação.** `PreviaDoAnuncioService::montar` chama
+  `PayloadBuilderUserProducts::montar` com TODA foto marcada como enviada (id → id), para ter a ordem final, inclusive a da
+  foto que não subiu (url = `fotos.arquivo`). É também a leitura do agente revisor (números e textos, sem HTML).
+- **Parcelas do Premium:** o ML não informa antes de publicar. `publicador.previa.parcelas_premium` traz a regra
+  divulgada em 2022 (9x até 299,99; 10x até 1.499,99; 12x acima), e a tela a chama de estimativa. O Clássico mostra "Ver
+  os meios de pagamento". Título no ML = `family_name` + valores da variação (medido no §21).
+- **Achado da prévia (comportamento de publicação de hoje, NÃO mexido):** no Premium, a rotação D6
+  (`OrdemCapaPorAlvo`, gira 1 para a esquerda) manda a capa da COR para o FIM. Com 1 foto própria por cor, as duas
+  cores abrem com a mesma foto geral.
+- **Gates da Fase 188 que dependem da árvore:** os `TERR` de `publicador-painel-*-188.test.js` medem `git diff HEAD`. Eles
+  falham enquanto houver alteração não commitada em `PublicadorHeader.jsx` ou `.js` novo sob `resources/`, e limpam no
+  commit. O `FotosDoPainelServiceTest` confere ponteiro `arquivo:linha`: a linha 405 do `MlbPublicadorController` precisa
+  conter `EditorEmUso::`. Por isso método ou `use` novo nesse controller vai no FIM da classe, com nome completo. O
+  ponteiro `PreparoIaDoRascunhoService:131` já estava deslocado no `origin/main` de 20/10 (`e250f9fb`).
+- **Demonstração local sem MySQL e sem ML** (usada para o usuário acompanhar no Chrome de QA):
+  - banco: SQLite no scratchpad;
+  - rascunho: `rascunhoDoProduto` (não `abrir`), com `step_state.conta` preenchido e `conta_checada_em` no futuro, para o
+    editor não ir ao ML;
+  - ambiente: `PUBLICADOR_ML_API_BASE=http://127.0.0.1:9`, `MAIL_MAILER=log` e a conta fora de `contas_liberadas`;
+  - fotos: `ImagemAssetService::receber(..., enviar: false)`.
+  - O build do worktree com o `.env` copiado põe os chunks em `localhost/ecf_admin/public` (CORS na porta própria). Use o
+    Vite dev do worktree em outra porta (`npx vite --port 5174 --strictPort`), que escreve o `public/hot` DO worktree.
+  - O `php -S` com o `server.php` do framework roda de dentro de `public/`.

@@ -293,6 +293,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                         conta={conta}
                         companyId={cabecalho?.company_id ?? null}
                         contadores={cabecalho?.contadores ?? null}
+                        ocultas={cabecalho?.abas_ocultas ?? null}
                     />
 
                     {acoes !== null && <div className="flex flex-none items-center gap-2">{acoes}</div>}

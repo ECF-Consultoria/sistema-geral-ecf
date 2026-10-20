@@ -871,7 +871,13 @@ class EditorRascunhoService
     }
 
     /** @return array{0: ?SchemaClassificado, 1: ?string} */
-    private function schemaDe(PubRascunho $r, RascunhoSnapshot $s): array
+    /**
+     * O schema classificado do rascunho e, quando não sai, a mensagem do porquê. Pública desde
+     * 20/10/2026: a prévia do anúncio (`PreviaDoAnuncioService`) classifica pelo MESMO caminho da tela.
+     *
+     * @return array{0: ?SchemaClassificado, 1: ?string}
+     */
+    public function schemaDe(PubRascunho $r, RascunhoSnapshot $s): array
     {
         if (! $r->categoria_id) {
             return [null, null];

@@ -85,7 +85,7 @@ async function montarModulo(caminhoRelativo) {
 }
 
 // ─── REND-03: tudo montado aqui, no topo do módulo ───
-const { default: AbasDoHeader, ABAS } = await montarModulo('resources/js/Components/Mlb/Publicador/header/AbasDoHeader.jsx');
+const { default: AbasDoHeader, ABAS, abasVisiveis } = await montarModulo('resources/js/Components/Mlb/Publicador/header/AbasDoHeader.jsx');
 const FONTE = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/AbasDoHeader.jsx');
 
 const CONTA = 'company-459';
@@ -649,7 +649,9 @@ test('AbasDoHeader — REND-04 e a montagem na <nav> (asserções de fonte)', as
         // Variável de escopo do componente lida só dentro de um `.map()` já foi
         // eliminada pelo Rollup no bundle de produção deste projeto.
         assert.match(FONTE, /function pilula\(item\)/, 'a pílula deveria ser uma função que recebe o item');
-        assert.match(FONTE, /ABAS\.map\(\(item\) => pilula\(item\)\)/, 'o .map() deveria só delegar');
+        // 20/10/2026: o .map() roda sobre as abas VISÍVEIS (`abasVisiveis`, calculada fora dele).
+        assert.match(FONTE, /const visiveis = abasVisiveis\(ocultas, aba\);/, 'as visíveis deveriam sair de abasVisiveis, fora do .map()');
+        assert.match(FONTE, /visiveis\.map\(\(item\) => pilula\(item\)\)/, 'o .map() deveria só delegar');
         for (const flag of ['const ativa =', 'const desabilitada =', 'const alerta =', 'let contador =']) {
             const trecho = FONTE.slice(FONTE.indexOf('function pilula(item)'));
             assert.ok(trecho.includes(flag), `"${flag}" deveria ser calculada dentro de pilula()`);
@@ -677,5 +679,50 @@ test('AbasDoHeader — REND-04 e a montagem na <nav> (asserções de fonte)', as
         assert.match(header, /contadores=\{cabecalho\?\.contadores \?\? null\}/);
         // E as abas vêm ANTES do slot `acoes` dentro da <nav>.
         assert.ok(header.indexOf('<AbasDoHeader') < header.indexOf('acoes !== null'), 'as abas deveriam vir antes do slot de ações');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. 20/10/2026 — abas ocultas pelo servidor ("vai ficar apenas Produtos")
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `cabecalho.abas_ocultas` (config `publicador.abas_ocultas`) esconde Visão
+// geral, Publicações e Alavancas. As páginas seguem pela URL; quem chega nelas
+// assim vê a própria aba. Os blocos acima renderizam SEM `ocultas` de propósito:
+// o código das quatro pílulas continua inteiro para quando as abas voltarem.
+
+test('AbasDoHeader — 20/10/2026: `ocultas` do servidor deixa só Produtos', async (contexto) => {
+    const OCULTAS = ['visao-geral', 'publicacoes', 'alavancas'];
+
+    await contexto.test('abasVisiveis — com as três ocultas, sobra Produtos', () => {
+        assert.deepEqual(abasVisiveis(OCULTAS, 'produtos').map((a) => a.chave), ['produtos']);
+    });
+
+    await contexto.test('a aba da página aberta continua à vista, mesmo oculta (chegou pela URL)', () => {
+        assert.deepEqual(abasVisiveis(OCULTAS, 'alavancas').map((a) => a.chave), ['produtos', 'alavancas']);
+        assert.deepEqual(abasVisiveis(OCULTAS, 'configuracoes').map((a) => a.chave), ['produtos']);
+    });
+
+    await contexto.test('Produtos nunca some, e lista fora do formato não esconde nada', () => {
+        assert.deepEqual(abasVisiveis(['produtos'], 'visao-geral').map((a) => a.chave), ABAS.map((a) => a.chave));
+        for (const lixo of [null, undefined, 'visao-geral', { 0: 'alavancas' }, 42]) {
+            assert.equal(abasVisiveis(lixo, 'produtos').length, 4, `ocultas=${JSON.stringify(lixo)} deveria manter as 4`);
+        }
+    });
+
+    await contexto.test('o HTML com as três ocultas tem UMA pílula — Produtos, com o contador', () => {
+        const html = renderizar({ ocultas: OCULTAS });
+        assert.equal(pilulas(html).length, 1);
+        assert.ok(html.includes('>Produtos<'), html);
+        assert.ok(html.includes('>32</span>'), 'o contador de Produtos sumiu junto');
+        for (const rotulo of ['Visão geral', 'Publicações', 'Alavancas']) {
+            assert.ok(! html.includes(rotulo), `${rotulo} deveria estar oculta`);
+        }
+        assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
+    });
+
+    await contexto.test('o PublicadorHeader repassa `cabecalho.abas_ocultas` com ?? null', () => {
+        const header = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx');
+        assert.match(header, /ocultas=\{cabecalho\?\.abas_ocultas \?\? null\}/);
     });
 });

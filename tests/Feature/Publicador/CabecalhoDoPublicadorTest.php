@@ -244,6 +244,26 @@ class CabecalhoDoPublicadorTest extends TestCase
         $this->assertSame(['company_id' => $c->id], $abas);
     }
 
+    // ═══ 2b. Abas ocultas (20/10/2026) ═══════════════════════════════════════
+
+    /** "Vai ficar apenas Produtos": a lista vem da config, só as três podem sumir, e a página segue pela URL. */
+    public function test_abas_ocultas_vem_da_config_e_produtos_nunca_some(): void
+    {
+        [$e, $c] = $this->conta();
+        $this->produto($e, $c);
+        $base = '/mlb/anuncios/publicador/empresas/empresa-'.$e->id;
+
+        $this->assertSame(['visao-geral', 'publicacoes', 'alavancas'], $this->props($base)['cabecalho']['abas_ocultas']);
+        // A Visão geral continua abrindo pela URL, com a mesma lista (o header mostra a aba da página aberta).
+        $this->assertSame(['visao-geral', 'publicacoes', 'alavancas'], $this->props($base.'/visao-geral')['cabecalho']['abas_ocultas']);
+
+        config(['publicador.abas_ocultas' => ['produtos', 'alavancas', 'inventada']]);
+        $this->assertSame(['alavancas'], $this->props($base)['cabecalho']['abas_ocultas'], 'Produtos e chave desconhecida nunca somem');
+
+        config(['publicador.abas_ocultas' => []]);
+        $this->assertSame([], $this->props($base)['cabecalho']['abas_ocultas'], 'lista vazia devolve as quatro abas');
+    }
+
     // ═══ 3. `null` não é `0` ═════════════════════════════════════════════════
 
     public function test_acervo_nunca_coletado_devolve_null_e_nunca_zero(): void

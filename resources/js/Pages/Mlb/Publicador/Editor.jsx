@@ -14,6 +14,7 @@ import EtapaProduto from '@/Components/Publicador/Mesa/EtapaProduto';
 import EtapaDetalhes from '@/Components/Publicador/Mesa/EtapaDetalhes';
 import EtapaImagens from '@/Components/Publicador/Mesa/EtapaImagens';
 import EtapaCondicoes, { useEfeitosDoEnvio } from '@/Components/Publicador/Mesa/EtapaCondicoes';
+import EtapaPrevia from '@/Components/Publicador/Mesa/EtapaPrevia';
 import { useEfeitosDasVariacoes } from '@/Components/Publicador/Mesa/FotosEVariacoes';
 import Publicar from '@/Components/Publicador/Mesa/Publicar';
 import OQueCorrigir, { ID_DA_LISTA } from '@/Components/Publicador/Mesa/OQueCorrigir';
@@ -70,6 +71,11 @@ import { cn } from '@/lib/utils';
 // A etapa sobrevive ao F5 e à troca de produto: vai para `?etapa=` na URL
 // (`history.replaceState`, sem mexer no estado do Inertia) e para o
 // sessionStorage por produto.
+//
+// 20/10/2026 — quinta etapa "Prévia" (`EtapaPrevia`): o anúncio como o
+// comprador vê no Mercado Livre, e Conferir/Publicar saíram do fim de
+// Condições de venda para o fim dela ("publica da prévia", decisão do
+// usuário). Condições de venda passou a terminar em "Continuar".
 
 const PARAMETRO_ETAPA = 'etapa';
 const RESUMO_A_VISTA = 5;
@@ -363,10 +369,11 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
                                     {etapa === 'detalhes' && <EtapaDetalhes m={m} descricaoIa={descricaoIa} />}
                                     {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} empresa={empresa} />}
-                                    {etapa === 'condicoes' && (
-                                        <EtapaCondicoes m={m}>
+                                    {etapa === 'condicoes' && <EtapaCondicoes m={m} />}
+                                    {etapa === 'previa' && (
+                                        <EtapaPrevia pub={pub} empresa={empresa} produtoId={produto.id}>
                                             <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave, problema = null) => irPara(chave, { marcar: true, foco: problema })} />
-                                        </EtapaCondicoes>
+                                        </EtapaPrevia>
                                     )}
                                 </div>
                             </ErrosDaEtapa>

@@ -307,4 +307,38 @@ return [
         'retencao_geracoes_dias' => (int) env('ACERVO_RETENCAO_GERACOES_DIAS', 30),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Abas ocultas da conta (20/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | Pedido do usuário depois da reunião de 19/10 ("menos é mais"): na conta do
+    | Publicador fica só Produtos. As páginas continuam existindo e abrem pela
+    | URL; a aba some do header (`CabecalhoPublicadorService` manda a lista e o
+    | `AbasDoHeader` filtra). Para devolver uma aba, tire a chave daqui.
+    | Produtos nunca some: é a página de entrada da conta.
+    |
+    */
+    'abas_ocultas' => ['visao-geral', 'publicacoes', 'alavancas'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prévia do anúncio (etapa 5 do editor, 20/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | `parcelas_premium`: quantas parcelas SEM juros o Premium mostra, pela faixa
+    | de preço (o primeiro `ate` que cobre o preço; `null` = sem teto). É a regra
+    | que o Mercado Livre divulgou em 2022 (até R$ 299,99 → 9x; até R$ 1.499,99 →
+    | 10x; acima → 12x) e que não deu para conferir na API: a tela a chama de
+    | estimativa. Se o ML mudou, ajuste aqui. O Clássico não tem parcela sem juros.
+    |
+    */
+    'previa' => [
+        'parcelas_premium' => [
+            ['ate' => 299.99, 'vezes' => 9],
+            ['ate' => 1499.99, 'vezes' => 10],
+            ['ate' => null, 'vezes' => 12],
+        ],
+    ],
+
 ];

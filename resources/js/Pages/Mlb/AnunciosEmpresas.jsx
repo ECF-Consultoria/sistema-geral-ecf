@@ -181,14 +181,14 @@ export default function AnunciosEmpresas({
     const irParaPagina = (pagina) => visitar({ filtro: filtroAtual, busca: busca || undefined, pagina });
     const limparBusca = () => { setBusca(''); visitar({ filtro: filtroAtual }); };
 
-    // Abrir uma empresa (linha ou botão "Publicar →") leva à Visão geral —
-    // a URL de Produtos não muda, continua acessível pela aba Produtos de
-    // dentro da conta. Grava a conta em Recentes ANTES de navegar.
+    // Abrir uma empresa (linha ou botão "Publicar →") leva a Produtos — desde
+    // 20/10/2026 a conta mostra só a aba Produtos (`publicador.abas_ocultas`);
+    // a Visão geral segue pela URL. Grava a conta em Recentes ANTES de navegar.
     const abrirConta = (e) => {
         const item = { chave: e.chave, nome: e.nome, identificador: e.identificador, programa: e.programa ?? programa };
         const novaLista = gravarRecente(userId, item);
         if (novaLista !== null) setRecentes(novaLista);
-        router.get(route('mlb.anuncios.publicador.visao-geral', { conta: e.chave }));
+        router.get(route('mlb.anuncios.publicador.produtos', { conta: e.chave }));
     };
 
     function aoConcluirSync(e, json) {
@@ -321,7 +321,7 @@ export default function AnunciosEmpresas({
                                                 key={rc.chave}
                                                 item={rc.item}
                                                 dados={rc.dados}
-                                                onAbrir={() => router.get(route('mlb.anuncios.publicador.visao-geral', { conta: rc.chave }))}
+                                                onAbrir={() => router.get(route('mlb.anuncios.publicador.produtos', { conta: rc.chave }))}
                                             />
                                         ))}
                                     </div>

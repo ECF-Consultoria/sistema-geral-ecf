@@ -192,6 +192,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('descricao');
             Route::get('/simular', [MlbPublicadorController::class, 'simular'])
                 ->middleware('throttle:30,1,publicador.simular')->name('simular');
+            // 20/10/2026 — etapa 5 do editor: o anúncio como o comprador vai ver no Mercado Livre (só leitura).
+            Route::get('/previa', [MlbPublicadorController::class, 'previa'])
+                ->middleware('throttle:120,1,publicador.previa')->name('previa');
             // Melhoria de 03/10/2026: frete grátis obrigatório, termos mais buscados e a IA do Modelo/título.
             Route::get('/frete', [MlbPublicadorController::class, 'frete'])
                 ->middleware('throttle:60,1,publicador.frete')->name('frete');

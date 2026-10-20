@@ -106,6 +106,23 @@ export const ABAS = [
     { chave: 'alavancas', rotulo: 'Alavancas', rota: 'mlb.anuncios.publicador.alavancas.index', icone: Zap },
 ];
 
+/** As únicas abas que o servidor pode esconder: Produtos é a entrada da conta e nunca some. */
+const PODEM_SUMIR = ['visao-geral', 'publicacoes', 'alavancas'];
+
+/**
+ * 20/10/2026 — "vai ficar apenas Produtos" (usuário, depois da reunião de 19/10): as abas
+ * ocultas vêm do servidor (`cabecalho.abas_ocultas`, config `publicador.abas_ocultas`). A
+ * página continua existindo e abre pela URL; quem chega nela por lá vê a própria aba, para
+ * saber onde está. Lista ausente ou fora do formato = nenhuma oculta (as quatro, como antes).
+ *
+ * Função de módulo, chamada FORA do `.map()`, pelo mesmo motivo do REND-04 abaixo.
+ */
+export function abasVisiveis(ocultas, aba) {
+    const lista = Array.isArray(ocultas) ? ocultas.filter((c) => PODEM_SUMIR.includes(c)) : [];
+
+    return ABAS.filter((item) => item.chave === aba || ! lista.includes(item.chave));
+}
+
 /**
  * @param {object} props
  * @param {string} [props.aba] a chave da aba ativa ('visao-geral' | 'produtos'
@@ -120,8 +137,10 @@ export const ABAS = [
  *   o acervo nunca foi coletado — e `null` NÃO é zero: nesse caso não se
  *   desenha pílula nenhuma, porque um "0" afirmaria "esta conta não tem
  *   publicação", quando a verdade é "ninguém mediu ainda".
+ * @param {string[]|null} [props.ocultas] `cabecalho.abas_ocultas` (20/10/2026):
+ *   as chaves que não aparecem. Ver `abasVisiveis`.
  */
-export default function AbasDoHeader({ aba, conta = null, companyId = null, contadores = null }) {
+export default function AbasDoHeader({ aba, conta = null, companyId = null, contadores = null, ocultas = null }) {
     // `textoSeguro(..., null)` em vez de `String()`: a chave vai para `route()`
     // como parâmetro de URL e um objeto no lugar dela montaria um destino
     // inventado (`/publicador/empresas/[object Object]`).
@@ -247,9 +266,11 @@ export default function AbasDoHeader({ aba, conta = null, companyId = null, cont
     // (plano 177-04) — aqui sai só o grupo, com o gap de 2px do protótipo
     // (PublicadorHeader.dc.html:109). O `min-w-0` é o do ponto de montagem:
     // impede que o nome longo da empresa (plano 177-06) estoure a linha.
+    const visiveis = abasVisiveis(ocultas, aba);
+
     return (
         <div className="flex min-w-0 items-center gap-[2px]">
-            {ABAS.map((item) => pilula(item))}
+            {visiveis.map((item) => pilula(item))}
         </div>
     );
 }

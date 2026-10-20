@@ -621,7 +621,7 @@ test(`${PAGINA} — tipografia 24/15/13/11px, pesos 400/700, sem sombra, sem HTM
     assert.doesNotMatch(fonte, /from-\[#FFE600\]/);
 });
 
-test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções da etapa, Voltar/Continuar; etapa sobrevive ao F5', () => {
+test('Editor.jsx — 5 etapas: só os nomes no topo, uma coluna com as seções da etapa, Voltar/Continuar; etapa sobrevive ao F5', () => {
     const f = lerSemComentarios(PAGINA);
     assert.match(f, /usePublicador\(\{\s*produtoId: produto\.id/);
     assert.match(f, /useIaDoPublicador\(/);
@@ -631,8 +631,9 @@ test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções 
     // Fase 170 (D2, IDENT-01/04): ganhou `produtoId` para a identidade visual da conta (170-02).
     // Fase 173, plano 07: ganhou `empresa` para o link "Gerenciar em Configurações da conta".
     assert.match(f, /<EtapaImagens m=\{m\} produtoId=\{produto\.id\} empresa=\{empresa\} \/>/);
-    assert.match(f, /<EtapaCondicoes m=\{m\}>/);
-    assert.match(f, /<Publicar pub=\{pub\}/);
+    // 20/10/2026: Condições de venda termina em "Continuar"; Conferir/Publicar ficam embaixo da Prévia.
+    assert.match(f, /<EtapaCondicoes m=\{m\} \/>/);
+    assert.match(f, /<EtapaPrevia pub=\{pub\} empresa=\{empresa\} produtoId=\{produto\.id\}>\s*<Publicar pub=\{pub\}/);
     // Os desenhos recusados não voltam: árvore, inspetor, contador de estrutura, trilho, lateral.
     assert.doesNotMatch(f, /Arvore|Inspetor|ItemDoCentro|estadoDosItens|contarItensProntos|prontas=|LateralValidacao|EtapaRevisar|Trilho|PainelPublicar/);
     assert.doesNotMatch(f, /minmax\(0,800px\)|max-w-\[800px\]/);
@@ -645,7 +646,7 @@ test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções 
     assert.match(f, /<ErrosDaEtapa value=\{\{ mostrar, problemas: pub\.problemas \}\}>/);
     // "Corrigir em…" leva à etapa já marcada; a linha clicada vira o foco (10/10/2026, publicador-corrigir-acende.test.js).
     assert.match(f, /onIrPara=\{\(chave, problema = null\) => irPara\(chave, \{ marcar: true, foco: problema \}\)\}/);
-    // Um amarelo por tela: "Continuar" nas etapas 1 e 2; na 3, Conferir/Publicar (em Publicar.jsx).
+    // Um amarelo por tela: "Continuar" nas etapas 1 a 4; na 5 (Prévia), Conferir/Publicar (em Publicar.jsx).
     assert.equal((f.match(/BotaoAcao primario/g) ?? []).length, 1);
     assert.match(f, /\{proxima && \(/);
     assert.match(f, /sticky -bottom-6/);
