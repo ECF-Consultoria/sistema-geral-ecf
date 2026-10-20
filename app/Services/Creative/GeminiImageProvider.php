@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
  * Provedor Gemini (Interactions API) para o Creative Engine V0.1 — prova
  * técnica isolada de geração de imagem, antes de qualquer tabela/job/rota
  * (plano-incubadora-v1 §20). Reusa as lições pagas em produção pelo
- * `AnaliseAnuncioService` (texto, NVIDIA): sem retry no mesmo modelo, troca
+ * `AnaliseAnuncioService` (texto): sem retry no mesmo modelo, troca
  * de modelo em falha trocável, connectTimeout separado do timeout de
  * geração, mensagem amigável traduzida do status HTTP.
  *

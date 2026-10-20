@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * A IA monta o campo Modelo ou um título a partir dos termos mais buscados da
- * categoria (`PalavrasChaveService`). Em Job porque a NVIDIA leva de segundos
+ * categoria (`PalavrasChaveService`). Em Job porque a IA leva de segundos
  * a minutos; a tela acompanha o pedido pelo cache.
  *
  * Sem nova tentativa: o serviço da IA já troca de modelo quando o principal

@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
  * Publicador de 03/10/2026, `melhoria_publicador.docx` §2 e §3).
  *
  * Os termos vêm do `GET /trends/MLB/{categoria}` (o mesmo serviço da
- * Incubadora). A IA (NVIDIA, `AnaliseAnuncioService`) escolhe os coerentes
+ * Incubadora). A IA (`AnaliseAnuncioService`) escolhe os coerentes
  * com o produto; o corte no limite é daqui, porque o modelo erra contagem.
  *
  * A IA leva de segundos a minutos: roda em Job e o resultado fica no cache

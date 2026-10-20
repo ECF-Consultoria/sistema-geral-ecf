@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * A IA (MAG T8) escreve a descrição do anúncio a partir da ficha e da descrição do cliente
- * (`DescricaoIaService`). Em Job porque a NVIDIA leva de segundos a minutos; a tela acompanha o
+ * (`DescricaoIaService`). Em Job porque a IA leva de segundos a minutos; a tela acompanha o
  * pedido pelo cache. O Job nunca grava no rascunho.
  *
  * Sem nova tentativa; prazo abaixo do `timeout` para o pedido terminar em ERRO com mensagem

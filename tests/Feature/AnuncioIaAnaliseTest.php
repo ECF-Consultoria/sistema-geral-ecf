@@ -759,4 +759,194 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->assertTrue($job->failOnTimeout);
         $this->assertLessThan($job->timeout, GerarAnaliseAnuncioIaJob::PRAZO_S);
     }
+
+    // ═══ Gemini como provedor de texto (20/10/2026) ═════════════════════════
+
+    public function test_sem_env_a_ia_de_texto_e_o_gemini_com_a_chave_do_creative_engine(): void
+    {
+        $llm = $this->llmDoConfigCom(['GEMINI_API_KEY' => 'chave-gemini']);
+
+        $this->assertSame('https://generativelanguage.googleapis.com/v1beta/openai', $llm['base_url']);
+        $this->assertSame('chave-gemini', $llm['key'], 'sem LLM_API_KEY vale a do Gemini: uma chave só para cuidar');
+        $this->assertSame('gemini-3.5-flash-lite', $llm['model']);
+        $this->assertSame('gemini-3.8-flash', $llm['fallbacks']);
+        // Modelo e títulos por termos: o flash-lite não cumpre as regras de tamanho (medido em 8 rascunhos).
+        $this->assertSame(['model' => 'gemini-3.8-flash', 'reasoning_effort' => 'low'], $llm['termos']);
+    }
+
+    public function test_modelo_e_titulos_por_termos_vao_no_modelo_de_termos_com_o_esforco_dele(): void
+    {
+        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['modelo' => 'cadeira jantar', 'titulo' => 'Cadeira Jantar', 'classico' => 'A', 'premium' => 'B']))]);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+
+        $ia->modeloPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], 120);
+        $ia->tituloPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], [], 60);
+        $ia->titulosPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], [], 60);
+
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($req) => $req['model'] === 'modelo-termos' && $req['reasoning_effort'] === 'low');
+        Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-termos');
+    }
+
+    public function test_as_demais_etapas_seguem_no_principal_sem_esforco(): void
+    {
+        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['analise' => ['puv' => 'x'], 'descricao' => 'Olá!', 'titulo' => 'Kit 2 Cadeira']))]);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+
+        $ia->analise('Cadeira', 'Unity', '');
+        $ia->descricao('Cadeira', 'Unity', '', []);
+        $ia->textoDeKit('titulo', 'Cadeira', 'Cadeira Jantar', null, 2, 60);
+
+        Http::assertSentCount(3);
+        Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-de-teste' || isset($req['reasoning_effort']));
+    }
+
+    public function test_modelo_de_termos_fora_do_ar_cai_no_principal_sem_esforco(): void
+    {
+        // O 3.8-flash devolve 503 "high demand" em série (medido em 01/10): o Modelo sai do flash-lite.
+        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
+        Http::fake(fn ($req) => $req['model'] === 'modelo-termos'
+            ? Http::response(['error' => 'high demand'], 503)
+            : Http::response($this->resposta(['modelo' => 'cadeira jantar'])));
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->modeloPorTermos('Cadeira', 'Móveis', ['cadeira jantar'], 120);
+
+        $this->assertSame('cadeira jantar', $r['dados']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($req) => $req['model'] === 'modelo-de-teste' && ! isset($req['reasoning_effort']));
+    }
+
+    public function test_sem_modelo_de_termos_as_etapas_de_termos_usam_o_principal(): void
+    {
+        config(['services.llm.termos' => ['model' => '', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['modelo' => 'cadeira jantar']))]);
+
+        app(\App\Services\Ia\AnaliseAnuncioService::class)->modeloPorTermos('Cadeira', 'Móveis', ['cadeira jantar'], 120);
+
+        Http::assertSent(fn ($req) => $req['model'] === 'modelo-de-teste' && ! isset($req['reasoning_effort']));
+    }
+
+    public function test_llm_api_key_propria_ainda_vence_a_do_gemini(): void
+    {
+        // Voltar para outro provedor continua sendo só `.env`.
+        $llm = $this->llmDoConfigCom(['LLM_API_KEY' => 'nvapi-x', 'GEMINI_API_KEY' => 'chave-gemini']);
+
+        $this->assertSame('nvapi-x', $llm['key']);
+    }
+
+    public function test_folga_de_raciocinio_e_somada_ao_teto_de_cada_etapa(): void
+    {
+        // Medido no gemini-3.8-flash: o raciocínio CONTA no max_tokens. Teto de 2500 nos títulos = 2399
+        // pensando e o JSON cortado. A folga vai por cima do teto da etapa, não no lugar dele.
+        config(['services.llm.folga_raciocinio' => 8000]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['titulos' => []]))]);
+
+        app(\App\Services\Ia\AnaliseAnuncioService::class)->titulos('Cadeira', 'Unity', '', []);
+
+        Http::assertSent(fn ($req) => $req['max_tokens'] === 2500 + 8000);
+    }
+
+    public function test_resposta_cortada_pelo_limite_passa_para_o_reserva(): void
+    {
+        // O Gemini não manda `reasoning_content`: o raciocínio que come o teto aparece como JSON cortado com
+        // finish_reason "length" (forma medida em 20/10/2026).
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+        Http::fake(fn ($req) => $req['model'] === 'modelo-de-teste'
+            ? Http::response([
+                'model'   => 'modelo-de-teste',
+                'usage'   => ['completion_tokens' => 97, 'prompt_tokens' => 870, 'total_tokens' => 3366],
+                'choices' => [['finish_reason' => 'length', 'message' => ['content' => '{"titulos":[{"texto":"Mesa Jantar Redon']]],
+            ])
+            : Http::response($this->resposta(['titulos' => [['texto' => 'Mesa Jantar Redonda Oslo 80cm Madeira Pes Palito Nordica']]])));
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->titulos('Mesa', 'Unity', '', []);
+
+        $this->assertSame('Mesa Jantar Redonda Oslo 80cm Madeira Pes Palito Nordica', $r['dados'][0]['texto']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_resposta_cortada_pelo_limite_sem_reserva_diz_que_foi_o_limite(): void
+    {
+        Http::fake(['llm.teste/*' => Http::response([
+            'choices' => [['finish_reason' => 'length', 'message' => ['content' => '{"titulos":[{"texto":"Mesa']]],
+        ])]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/limite de tokens/i');
+
+        app(\App\Services\Ia\AnaliseAnuncioService::class)->titulos('Mesa', 'Unity', '', []);
+    }
+
+    public function test_tokens_de_saida_contam_o_raciocinio_que_o_gemini_so_soma_no_total(): void
+    {
+        // O Gemini cobra o raciocínio como saída, mas deixa ele FORA de completion_tokens.
+        Http::fake(['llm.teste/*' => Http::response([
+            'model'   => 'gemini-3.8-flash',
+            'usage'   => ['completion_tokens' => 97, 'prompt_tokens' => 870, 'total_tokens' => 3366],
+            'choices' => [['finish_reason' => 'stop', 'message' => ['content' => '{"descricao":"Olá!"}']]],
+        ])]);
+
+        $meta = app(\App\Services\Ia\AnaliseAnuncioService::class)->descricao('Mesa', 'Unity', '', [])['meta'];
+
+        $this->assertSame(870, $meta['tokens_entrada']);
+        $this->assertSame(3366 - 870, $meta['tokens_saida']);
+    }
+
+    public function test_tokens_de_saida_sem_total_continuam_sendo_o_completion(): void
+    {
+        // Provedor que não manda total_tokens (a `resposta()` deste teste é assim) não pode zerar a saída.
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['descricao' => 'Olá!']))]);
+
+        $meta = app(\App\Services\Ia\AnaliseAnuncioService::class)->descricao('Mesa', 'Unity', '', [])['meta'];
+
+        $this->assertSame(8797, $meta['tokens_saida']);
+    }
+
+    /**
+     * O bloco `llm` do config/services.php lido com SÓ estas variáveis de ambiente — as do `.env` da máquina
+     * saem durante a leitura e voltam depois, para o teste não depender de quem o roda.
+     *
+     * @param  array<string, string>  $vars
+     */
+    private function llmDoConfigCom(array $vars): array
+    {
+        $nomes = ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MODEL_FALLBACK', 'GEMINI_API_KEY'];
+        $antes = [];
+        foreach ($nomes as $n) {
+            $antes[$n] = [$_SERVER[$n] ?? null, $_ENV[$n] ?? null, getenv($n)];
+        }
+
+        $por = function (string $n, ?string $v): void {
+            if ($v === null) {
+                unset($_SERVER[$n], $_ENV[$n]);
+                putenv($n);
+            } else {
+                $_SERVER[$n] = $_ENV[$n] = $v;
+                putenv("{$n}={$v}");
+            }
+        };
+
+        try {
+            foreach ($nomes as $n) {
+                $por($n, $vars[$n] ?? null);
+            }
+
+            return (require base_path('config/services.php'))['llm'];
+        } finally {
+            foreach ($antes as $n => [$server, $env, $getenv]) {
+                $por($n, null);
+                if ($server !== null) {
+                    $_SERVER[$n] = $server;
+                }
+                if ($env !== null) {
+                    $_ENV[$n] = $env;
+                }
+                if ($getenv !== false) {
+                    putenv("{$n}={$getenv}");
+                }
+            }
+        }
+    }
 }

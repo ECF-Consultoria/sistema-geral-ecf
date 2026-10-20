@@ -122,6 +122,10 @@ class AnaliseAnuncioService
     // NÃO são MAG T8: a equipe pediu (melhoria_publicador.docx §2 e §3) que a
     // IA trabalhe em cima dos termos que o ML diz serem os mais buscados da
     // categoria, descartando os que não têm a ver com o produto.
+    //
+    // As três vão no modelo de `services.llm.termos` (20/10/2026): as regras de
+    // TAMANHO daqui (Modelo perto de 120, título de 58 a 60) o modelo barato não
+    // cumpre — medido em 8 rascunhos, ver config/services.php.
 
     /**
      * O campo Modelo como lista de buscas coerentes com o produto, separadas
@@ -136,7 +140,7 @@ class AnaliseAnuncioService
      */
     public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = '', string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500, termos: true);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -157,7 +161,7 @@ class AnaliseAnuncioService
      */
     public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500, termos: true);
 
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -173,7 +177,7 @@ class AnaliseAnuncioService
      */
     public function titulosPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500, termos: true);
 
         return ['dados' => [
             'classico' => trim((string) ($r['json']['classico'] ?? '')),
@@ -310,11 +314,15 @@ class AnaliseAnuncioService
      * gasta orçamento "pensando" antes de escrever, e teto apertado devolve
      * HTTP 200 com conteúdo VAZIO — sintoma que confunde quem depura.
      *
+     * `termos` = Modelo e títulos por termos: começam pelo modelo de `services.llm.termos`, com o esforço de
+     * raciocínio dele; o principal e os reservas vêm atrás SEM esse esforço (no flash-lite ele piorou os
+     * títulos, medido em 20/10/2026).
+     *
      * @return array{json: array, meta: array}
      *
      * @throws \RuntimeException
      */
-    private function chamar(string $prompt, int $maxTokens): array
+    private function chamar(string $prompt, int $maxTokens, bool $termos = false): array
     {
         $cfg = config('services.llm');
 
@@ -322,7 +330,10 @@ class AnaliseAnuncioService
             throw new \RuntimeException('[IA] LLM_BASE_URL não configurado.');
         }
 
-        $modelos = collect([$cfg['model'] ?? null])
+        $proprio = $termos ? trim((string) data_get($cfg, 'termos.model', '')) : '';
+        $esforcos = $proprio !== '' ? [$proprio => trim((string) data_get($cfg, 'termos.reasoning_effort', ''))] : [];
+
+        $modelos = collect([$proprio, $cfg['model'] ?? null])
             ->merge(explode(',', (string) ($cfg['fallbacks'] ?? '')))
             ->map(fn ($m) => trim((string) $m))
             ->filter()
@@ -345,7 +356,7 @@ class AnaliseAnuncioService
 
         foreach ($modelos as $i => $modelo) {
             try {
-                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens, $i < $modelos->count() - 1);
+                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens, $i < $modelos->count() - 1, $esforcos[$modelo] ?? '');
             } catch (FalhaTrocavel $e) {
                 // Guarda o erro e tenta o próximo; se todos falharem, é esta a
                 // mensagem que chega ao publicador.
@@ -365,7 +376,7 @@ class AnaliseAnuncioService
      * resolver (sobrecarga, timeout, modelo indisponível) e `RuntimeException`
      * quando não adianta trocar (chave recusada, prazo acabou).
      */
-    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens, bool $temReserva = false): array
+    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens, bool $temReserva = false, string $esforco = ''): array
     {
         $timeout = (int) $cfg['timeout'];
 
@@ -391,12 +402,14 @@ class AnaliseAnuncioService
                 // Conectar é rápido ou não é. Separar do tempo de geração evita
                 // esperar o timeout inteiro por um endpoint que está fora do ar.
                 ->connectTimeout(15)
-                ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', [
-                    'model'       => $modelo,
-                    'temperature' => 0.7,
-                    'max_tokens'  => $maxTokens,
-                    'messages'    => [['role' => 'user', 'content' => $prompt]],
-                ]);
+                ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', array_filter([
+                    'model'            => $modelo,
+                    'temperature'      => 0.7,
+                    'max_tokens'       => $maxTokens + max(0, (int) ($cfg['folga_raciocinio'] ?? 0)),
+                    'messages'         => [['role' => 'user', 'content' => $prompt]],
+                    // Só quando o modelo tem esforço configurado: sem o campo, vale o padrão do modelo.
+                    'reasoning_effort' => $esforco,
+                ], fn ($v) => $v !== ''));
         } catch (ConnectionException $e) {
             Log::warning('[IA] Provedor não respondeu', ['modelo' => $modelo, 'timeout_s' => $timeout, 'erro' => $e->getMessage()]);
 
@@ -428,7 +441,7 @@ class AnaliseAnuncioService
 
             throw new FalhaTrocavel(
                 $pensou > 0
-                    ? 'A IA gastou todo o orçamento de tokens raciocinando e não chegou a responder. Aumente LLM_MAX_TOKENS ou troque para um modelo sem raciocínio longo.'
+                    ? 'A IA gastou todo o orçamento de tokens raciocinando e não chegou a responder. Aumente LLM_FOLGA_RACIOCINIO ou troque para um modelo sem raciocínio longo.'
                     : 'A IA respondeu vazio. Tente novamente em alguns minutos.'
             );
         }
@@ -438,8 +451,14 @@ class AnaliseAnuncioService
         if ($dados === null) {
             Log::warning('[IA] Resposta não era JSON válido', ['inicio' => mb_substr($conteudo, 0, 300)]);
 
-            throw new FalhaTrocavel('A IA não devolveu um JSON válido. Tente gerar novamente.');
+            // O Gemini não devolve `reasoning_content`: o raciocínio que come o teto só aparece aqui, como
+            // resposta cortada no meio do JSON (medido em 20/10/2026 no gemini-3.8-flash).
+            throw new FalhaTrocavel(data_get($json, 'choices.0.finish_reason') === 'length'
+                ? 'A IA atingiu o limite de tokens antes de terminar a resposta. Aumente LLM_FOLGA_RACIOCINIO ou tente novamente.'
+                : 'A IA não devolveu um JSON válido. Tente gerar novamente.');
         }
+
+        $entrada = (int) data_get($json, 'usage.prompt_tokens', 0);
 
         return [
             'json' => $dados,
@@ -447,8 +466,13 @@ class AnaliseAnuncioService
                 // O modelo que RESPONDEU pode não ser o pedido: combo com
                 // fallback troca por baixo. Registrar o real.
                 'modelo'         => (string) ($json['model'] ?? $modelo),
-                'tokens_entrada' => (int) data_get($json, 'usage.prompt_tokens', 0),
-                'tokens_saida'   => (int) data_get($json, 'usage.completion_tokens', 0),
+                'tokens_entrada' => $entrada,
+                // O Gemini deixa o raciocínio FORA de `completion_tokens` e só o soma em `total_tokens` — mas
+                // cobra como saída. Sem isto a conta do gasto sai baixa.
+                'tokens_saida'   => max(
+                    (int) data_get($json, 'usage.completion_tokens', 0),
+                    (int) data_get($json, 'usage.total_tokens', 0) - $entrada,
+                ),
                 'duracao_ms'     => $duracaoMs,
             ],
         ];
