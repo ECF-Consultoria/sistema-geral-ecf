@@ -451,10 +451,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->rodar(GerarPreparoIaJob::class);
 
         $titulos = $this->titulos($r->fresh());
-        // 19/10/2026: o título da equipe também se grava com a 1ª letra maiúscula (o resto como ela escreveu).
-        $this->assertSame('Cadeira escritorio giratoria ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
+        // 20/10/2026: o título da equipe também se grava com a 1ª letra de cada palavra maiúscula (o resto como ela escreveu).
+        $this->assertSame('Cadeira Escritorio Giratoria Ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
         $this->assertSame('Cadeira Escritório Ergonômica Giratória', $titulos['gold_special'], 'o Clássico não repete o Premium (nem por caixa, acento ou plural)');
-        $this->assertStringContainsString('Cadeira escritorio giratoria ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
+        $this->assertStringContainsString('Cadeira Escritorio Giratoria Ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
     }
 
     // ═══ Hash dos fatos ══════════════════════════════════════════════════════
@@ -539,8 +539,8 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertSame(['pulado', 'escrito', 'pulado'], $ia, 'título e descrição da equipe: nada a gerar; o Modelo usa o título dela');
         $this->assertCount(1, $this->chamadas['titulo']);
         $this->assertCount(1, $this->chamadas['descricao']);
-        $this->assertSame('Título B da Equipe', $this->titulos($r->fresh())['gold_pro']);
-        $this->assertSame('Título A da Equipe / Título B da Equipe', $this->chamadas['modelo'][1][4]);
+        $this->assertSame('Título B Da Equipe', $this->titulos($r->fresh())['gold_pro']);
+        $this->assertSame('Título A Da Equipe / Título B Da Equipe', $this->chamadas['modelo'][1][4]);
         $this->assertSame('Descrição escrita pela equipe.', $r->fresh()->descricao);
     }
 

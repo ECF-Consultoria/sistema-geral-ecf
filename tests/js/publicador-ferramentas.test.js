@@ -85,9 +85,9 @@ test('daUnidadeMl / numeroDoAtributo / unidadeInicial — o gravado volta na uni
 // ── §3 termos no título ──
 
 test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e termoNoTitulo reconhece', () => {
-    assert.equal(juntarTermo('Cadeira Escritório', 'cadeira escritorio giratoria'), 'Cadeira Escritório giratoria');
-    // 19/10/2026: o título nasce com a 1ª letra maiúscula (lib/tituloDoProduto).
-    assert.equal(juntarTermo('', 'cadeira gamer'), 'Cadeira gamer');
+    assert.equal(juntarTermo('Cadeira Escritório', 'cadeira escritorio giratoria'), 'Cadeira Escritório Giratoria');
+    // 20/10/2026: toda palavra do título começa com maiúscula (lib/tituloDoProduto).
+    assert.equal(juntarTermo('', 'cadeira gamer'), 'Cadeira Gamer');
     assert.equal(juntarTermo('Cadeira Gamer', 'cadeira gamer'), 'Cadeira Gamer');
     assert.equal(termoNoTitulo('Cadeira Escritório Giratória', 'cadeira giratoria'), true);
     assert.equal(termoNoTitulo('Cadeira Escritório', 'cadeira gamer'), false);

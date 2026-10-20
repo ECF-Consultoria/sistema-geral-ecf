@@ -78,7 +78,7 @@ class ConferenciaTest extends TestCase
 
         $antes = $this->conferir();
         $this->assertSame(149.9, $antes->respostas_ml['itens'][0]['payload']['price']);
-        $this->assertSame('Cadeira Planejada na Aba Anúncios ECF', $antes->respostas_ml['itens'][0]['payload']['family_name']);
+        $this->assertSame('Cadeira Planejada Na Aba Anúncios ECF', $antes->respostas_ml['itens'][0]['payload']['family_name']);
 
         // A Precificação mudou: o plano muda — a publicação vai exigir conferir de novo (D6).
         $this->efetivos['precos']['gold_special'] = 159.9;

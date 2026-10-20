@@ -15,7 +15,7 @@ class PubRascunhoAlvo extends Model
 
     protected $casts = ['ativo' => 'boolean', 'posicao' => 'integer'];
 
-    /** O título se grava sempre com a 1ª letra maiúscula (19/10/2026, `TituloDoProduto`). */
+    /** O título se grava sempre com a 1ª letra de cada palavra maiúscula (19/10/2026, `TituloDoProduto`). */
     protected function titulo(): Attribute
     {
         return Attribute::make(set: fn (?string $valor) => TituloDoProduto::capitalizar($valor));

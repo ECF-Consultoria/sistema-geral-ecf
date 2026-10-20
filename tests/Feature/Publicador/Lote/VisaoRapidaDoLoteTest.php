@@ -115,7 +115,7 @@ class VisaoRapidaDoLoteTest extends TestCase
 
         $l = $this->linhaDe($grupo);
 
-        $this->assertSame('Cadeira de Jantar Estofada Preta', $l['titulos']['gold_special']['texto']);
+        $this->assertSame('Cadeira De Jantar Estofada Preta', $l['titulos']['gold_special']['texto']);
         $this->assertSame('digitado', $l['titulos']['gold_special']['origem']);
         $this->assertSame('Cadeira Jantar Estofada Premium', $l['titulos']['gold_pro']['texto']);
         $this->assertSame('portal', $l['titulos']['gold_pro']['origem']);

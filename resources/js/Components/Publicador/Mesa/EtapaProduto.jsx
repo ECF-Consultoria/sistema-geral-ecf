@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 // da categoria montam o título à mão ou pela IA (docx §3).
 //
 // 19/10/2026: o campo e os termos são os mesmos do cadastro do produto no Portal
-// (`Components/Titulo`): 1ª letra maiúscula, nada além do limite da categoria, e o
+// (`Components/Titulo`): 1ª letra de cada palavra maiúscula, nada além do limite da categoria, e o
 // clique no termo marcado o tira do título (antes só acrescentava).
 
 const CONDICOES = [['new', 'Novo'], ['used', 'Usado'], ['refurbished', 'Recondicionado']];

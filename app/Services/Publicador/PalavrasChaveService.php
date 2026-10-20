@@ -301,7 +301,7 @@ class PalavrasChaveService
     /**
      * Título limpo: sem os caracteres que o ruleset ECF proíbe, cortado na
      * última palavra inteira que cabe no máximo da categoria e com a 1ª letra
-     * maiúscula (19/10/2026, `TituloDoProduto`).
+     * de cada palavra maiúscula (20/10/2026, `TituloDoProduto`).
      */
     public static function ajustarTitulo(string $bruto, int $maximo): string
     {

@@ -1864,7 +1864,10 @@ varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
   trata o planejado como preenchido também quando o campo ainda tem o último texto da IA, e `devolvidosAoPortal` APAGA
   esse texto (para o efetivo do cliente aparecer). O hash dos fatos ganha `titulo_do_cliente` **só quando existe** —
   produto sem título mantém o hash de antes e nada é refeito por causa da chave nova.
-- **A 1ª letra maiúscula vale no servidor, em quatro pontos, porque há caminhos que pulam o model:** o `Alvo` (snapshot,
+- **TODA palavra começa com maiúscula ("Puff Pera Com Enchimento") — o usuário corrigiu em 20/10 a primeira versão, que só
+  capitalizava a 1ª letra do título: "tem que ser todos", inclusive as de ligação. Só a 1ª letra de cada palavra muda
+  ("MDF" fica); palavra que começa por número fica.** A regra vale no servidor, em quatro pontos, porque há caminhos
+  que pulam o model: o `Alvo` (snapshot,
   validação e `family_name` do payload), o mutator de `PubRascunhoAlvo` (Eloquent), o `RascunhoRepository::gravarTitulos`
   (update por query NÃO passa pelo mutator) e os títulos da IA DEPOIS do `RegrasDoTitulo::semRepetir` (a troca de ordem
   pode pôr palavra minúscula na frente). A memória da IA compara o último texto dela capitalizado, senão um título
@@ -1885,3 +1888,8 @@ varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
   (`termoNoTitulo`); o bug do produto 67 era o clique chamar só `juntarTermo`, que não faz nada quando o termo já está lá.
 - **Tarefa 4 (campo Modelo com ";") não foi feita:** não existe no código campo que exija ";" (o MODEL saiu da ficha do
   Portal em 09/10, e a IA do Publicador junta com vírgula). Esperando o usuário dizer onde vê a regra.
+- **Ponteiro "arquivo:linha" em teste do outro dev (20/10/2026).** `FotosDoPainelServiceTest` (Fase 188) confere que a
+  linha 131 de `PreparoIaDoRascunhoService.php` (e outras quatro) contém `EditorEmUso::`. O `use TituloDoProduto` que
+  este trabalho pôs no topo empurrou a linha para 132 e quebrou esse teste no `main`; a correção foi tirar o `use` e
+  escrever `\App\Support\TituloDoProduto::` nos três pontos. Acrescentar linha ACIMA desses pontos nesses cinco
+  arquivos quebra o gate dele — ajuste a tabela `$leitores` do teste junto, ou não desloque.

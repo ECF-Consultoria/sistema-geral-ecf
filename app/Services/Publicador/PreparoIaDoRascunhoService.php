@@ -23,7 +23,6 @@ use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
-use App\Support\TituloDoProduto;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -488,8 +487,8 @@ class PreparoIaDoRascunhoService
                     $this->titulosFixos($r, $livres, $planejados, $snap), [], 255,
                 );
                 foreach ($livres as $tipo) {
-                    // A memória guarda o que fica gravado: com a 1ª letra maiúscula (19/10/2026).
-                    $novo = (string) TituloDoProduto::capitalizar($finais[$tipo] ?? '');
+                    // A memória guarda o que fica gravado: com a 1ª letra de cada palavra maiúscula (19/10/2026).
+                    $novo = (string) \App\Support\TituloDoProduto::capitalizar($finais[$tipo] ?? '');
                     if ($novo === '') {
                         continue;
                     }
@@ -571,8 +570,8 @@ class PreparoIaDoRascunhoService
                 continue;
             }
             $atual = (string) ($alvo->titulo ?? '');
-            // O snapshot já traz o título com a 1ª letra maiúscula (`Alvo`, 19/10/2026); a memória antiga, não.
-            $daIa = TituloDoProduto::capitalizar($ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)));
+            // O snapshot já traz o título com a 1ª letra de cada palavra maiúscula (`Alvo`, 19/10/2026); a memória antiga, não.
+            $daIa = \App\Support\TituloDoProduto::capitalizar($ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)));
             // Título planejado (aba Anúncios, ou o título de venda do cadastro do Portal) conta como
             // preenchido — também quando o campo ainda tem o que a IA escreveu antes dele.
             if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== '' && (trim($atual) === '' || Memoria::aindaDaIa($atual, $daIa))) {
@@ -604,7 +603,7 @@ class PreparoIaDoRascunhoService
             }
             $ultimo = $escrito[Memoria::chaveDoTitulo($alvo->listingTypeId)] ?? null;
             if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== ''
-                && Memoria::aindaDaIa($alvo->titulo, is_string($ultimo) ? TituloDoProduto::capitalizar($ultimo) : null)) {
+                && Memoria::aindaDaIa($alvo->titulo, is_string($ultimo) ? \App\Support\TituloDoProduto::capitalizar($ultimo) : null)) {
                 $tipos[] = $alvo->listingTypeId;
             }
         }

@@ -1571,7 +1571,7 @@ Relato do usuário: num teste a IA gerou a descrição com emoji, e o Mercado Li
 - **Título:** o da IA nunca teve como levar emoji (`RegrasDoTitulo::limpar` troca por espaço tudo que não é letra ou
   número). O digitado não passa por limpeza nenhuma.
 
-## 36. Título do cliente como planejado do Clássico e a 1ª letra maiúscula (19/10/2026)
+## 36. Título do cliente como planejado do Clássico e maiúscula em toda palavra (19–20/10/2026)
 
 (§35 está reservado pelo commit local da planilha direta, `e87404db`, ainda fora do `main`.)
 Detalhes em `portal-do-cliente.md` §52. Para quem mexe no Publicador: o título planejado do Clássico agora pode vir do

@@ -32,7 +32,7 @@ class EstruturaProduto extends Model
 
     /**
      * Título de venda (19/10/2026): separado do nome, montado pelo cliente com os termos da
-     * categoria. Grava-se sempre com a 1ª letra maiúscula (`TituloDoProduto`); vazio é nulo.
+     * categoria. Grava-se sempre com a 1ª letra de cada palavra maiúscula (`TituloDoProduto`); vazio é nulo.
      */
     protected function titulo(): Attribute
     {

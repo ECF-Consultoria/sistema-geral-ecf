@@ -145,7 +145,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
 
-    /** Título de venda: do produto, como o nome, sempre com a 1ª letra maiúscula (o servidor confere). */
+    /** Título de venda: do produto, como o nome, sempre com a 1ª letra de cada palavra maiúscula (o servidor confere). */
     const alterarTitulo = (valor) => {
         const titulo = capitalizarTitulo(valor);
         setAlterado(true);

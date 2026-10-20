@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 // ─── O campo do título, comum ao cadastro do Portal e ao editor do Publicador ──
 //
-// Digitar passa pela regra da 1ª letra maiúscula (lib/tituloDoProduto). Trocar a 1ª
+// Digitar passa pela regra da 1ª letra de cada palavra maiúscula (lib/tituloDoProduto). Trocar a 1ª
 // letra num campo controlado mandaria o cursor para o fim; por isso a posição é
 // guardada antes e reposta depois (a troca não muda o tamanho do texto).
 // O campo não aceita passar do limite da categoria (`maxLength`): o que já veio

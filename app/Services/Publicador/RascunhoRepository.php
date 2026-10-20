@@ -179,7 +179,7 @@ class RascunhoRepository
     {
         DB::transaction(function () use ($r, $porTipo) {
             foreach ($porTipo as $tipo => $titulo) {
-                // Update pela query não passa pelo model: a 1ª letra maiúscula (19/10/2026) vai explícita.
+                // Update pela query não passa pelo model: a 1ª letra de cada palavra maiúscula (19/10/2026) vai explícita.
                 $r->alvos()->where('listing_type_id', $tipo)->update([
                     'titulo' => trim((string) $titulo) === '' ? null : TituloDoProduto::capitalizar(mb_substr(trim((string) $titulo), 0, 255)),
                 ]);
