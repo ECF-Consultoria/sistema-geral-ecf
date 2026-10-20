@@ -851,19 +851,37 @@ test('LB-189-16 — as CINCO peças internas são named exports, e a CONTRAPROVA
         'o composto NÃO saiu vazio: ou o portal foi removido, ou a guarda de ambiente mudou',
     );
 
-    // (b) ⚠️⚠️ **E A RAIZ, EXERCIDA DIRETAMENTE, SAI CHEIA.** Sem esta segunda
-    //     parte o `equal('')` acima seria **vazio por construção**: um arquivo que
-    //     não exporta nada, ou um componente que devolve `null` sempre, passaria
-    //     no (a) e o gate ficaria VERDE provando NADA — o furo mais perigoso desta
-    //     fase, porque não deixa sinal.
+    // (b) ⚠️⚠️ **E A RAIZ, EXERCIDA DIRETAMENTE COM O PALCO DE VERDADE DENTRO, SAI
+    //     CHEIA.** Sem esta segunda parte o `equal('')` acima seria **vazio por
+    //     construção**: um arquivo que não exporta nada, ou um componente que
+    //     devolve `null` sempre, passaria no (a) e o gate ficaria VERDE provando
+    //     NADA — o furo mais perigoso desta fase, porque não deixa sinal.
+    //
+    // ⚠️⚠️ **CONSERTO MEDIDO (20/10/2026), e a razão vale mais que o número:** a
+    // primeira redação deste caso montava a raiz com um filho-STUB
+    // (`<span>palco</span>`) e cobrava `> 200`. MEDIDO: **139 bytes** — e os 139
+    // eram quase todos a própria string de classes da raiz (102 bytes). Ou seja,
+    // o limiar media **o tamanho do literal `CLASSES_RAIZ`**, não a ÁRVORE
+    // portada. ➡️ A contraprova passa a montar o **palco DE VERDADE** dentro da
+    // raiz, que é o que o portal de fato carrega. O invariante não mudou ("o
+    // conteúdo portado existe quando exercido direto"); a sonda ficou mais FORTE,
+    // porque agora um palco que devolvesse `null` REPROVARIA aqui.
     const raiz = render(LIGHTBOX.RaizDoLightbox, {
-        children: React.createElement('span', null, 'palco'),
+        children: React.createElement(LIGHTBOX.PalcoDoLightbox, {
+            imagens: IMAGENS, indice: 0, zoom: 1, origem: null,
+            onMover: nada, onSelecionar: nada, onMoverOrigem: nada,
+        }),
         lateral: null,
     });
     assert.ok(
-        raiz.length > 200,
-        `a raiz do lightbox saiu com ${raiz.length} bytes (esperado > 200): a contraprova do portal está vazia`,
+        raiz.length > 1000,
+        `a raiz do lightbox com o palco dentro saiu com ${raiz.length} bytes (esperado > 1000):`
+        + ' a contraprova do portal está vazia',
     );
+    // ⚠️ E ela traz as peças de verdade — o tamanho sozinho ainda seria frouxo.
+    for (const marca of ['w-[min(78vh,100%)]', 'h-[26px]', 'h-[56px]', 'h-[44px]', 'z-[41]']) {
+        assert.ok(raiz.includes(marca), `a raiz portada não traz "${marca}": a contraprova mede HTML sem as peças`);
+    }
 });
 
 test('LB-189-17 — `CLASSES_RAIZ` por igualdade de CONJUNTO: `z-[41]`, o grid e o `font-pub` 189_03', () => {

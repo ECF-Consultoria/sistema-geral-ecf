@@ -194,7 +194,16 @@
 # ⚠️ `design_handoff_publicador/` **NÃO é versionado**: o caso que o lê degrada
 #    para `skip` **EXPLÍCITO e NOMEADO** (com o nome do arquivo ausente na
 #    mensagem), nunca para "conferido".
-lightbox-casca  js  tests/js/publicador-lightbox-casca-189.test.js  ::  tests=15
+#
+# ⚠️⚠️ CONTAGEM REMEDIDA NA TAREFA 2, ANTES DO VERIFY DELA: `tests=15` (tarefa 1)
+# → `tests=27` (os 12 casos da tarefa 2). Medido nesta máquina:
+#   · RED da tarefa 2 (teste commitado em `9e54a884`, SEM a implementação):
+#     `# tests 27 · # pass 15 · # fail 12` — falham EXATAMENTE os 12 novos, e os
+#     15 da tarefa 1 continuam passando. **O RED DISCRIMINA.**
+#   · GREEN (com a implementação): `# tests 27 · # pass 27 · # fail 0`.
+# ⚠️ **NÃO** é "subir número para passar": é o arquivo de gate ganhando 12 casos,
+# com o RED medido e commitado em separado como prova de que eles não são vazios.
+lightbox-casca  js  tests/js/publicador-lightbox-casca-189.test.js  ::  tests=27
 
 # ⚠️ GATE-03 (o `deepEqual` de `DIRETORIOS_FECHADOS` × os `.jsx` do disco) +
 #    FID-03/FID-04 sobre o arquivo novo. **Linha própria, forma `>=`, N MEDIDO.**
