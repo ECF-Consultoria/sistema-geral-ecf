@@ -19,12 +19,14 @@ use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\User;
+use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use App\Support\Publicador\Payload\Alvo;
+use App\Support\Publicador\Payload\OrdemCapaPorAlvo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -146,8 +148,8 @@ class CriativosAutomaticosTest extends TestCase
         $portador = MlAnuncioCriativo::query()->findOrFail($kit->criativo_referencia_id);
         $this->assertCount(2, (array) $portador->referencias, 'as duas fotos do cliente vão de referência');
         Queue::assertPushedWithChain(PlanejarKitCriativosJob::class, [GerarCriativosAutomaticosJob::class]);
-        // O MESMO kit do botão: sem tipos fixos, o planejador escolhe e a quantidade é a do sistema.
-        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === null);
+        // "3 imagens, 2 capas" (20/10/2026): Imagem principal, Ambientação e Textura, nessa ordem fora de móvel.
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === ['hero', 'lifestyle', 'detail_textura']);
         $this->assertSame($kit->id, (int) $r2->fresh()->step_state['criativos_auto']['kit_id']);
 
         // Um kit ativo por grupo (D-15) e a aprovação é de gente: nada planejado de novo.
@@ -173,6 +175,22 @@ class CriativosAutomaticosTest extends TestCase
         $portador = MlAnuncioCriativo::query()->findOrFail(MlAnuncioCriativoKit::query()->sole()->criativo_referencia_id);
         $this->assertCount(1, (array) $portador->referencias, 'só a foto do cliente vai de referência');
         $this->assertNotSame($daEquipe->id, $doCliente->id);
+    }
+
+    public function test_tres_imagens_duas_capas_e_em_movel_a_ambientacao_abre_o_classico(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(1, 'MOV');
+        $this->mock(CreativeCategoriaMobiliarioService::class, fn ($m) => $m->shouldReceive('ehMoveis')->andReturn(true));
+
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+
+        $tipos = ['lifestyle', 'hero', 'detail_textura'];
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->tiposFixos === $tipos);
+        // A ordem da galeria é a dos tipos; a rotação D6 só troca qual abre: nenhum dos dois abre com a Textura.
+        $this->assertSame('lifestyle', OrdemCapaPorAlvo::aplicar($tipos, 0)[0], 'o Clássico abre com a Ambientação');
+        $this->assertSame('hero', OrdemCapaPorAlvo::aplicar($tipos, 1)[0], 'o Premium abre com a Imagem principal');
+        $this->assertSame('lifestyle', OrdemCapaPorAlvo::aplicar(['hero', 'lifestyle', 'detail_textura'], 1)[0], 'fora de móvel, o Premium abre com a Ambientação');
     }
 
     public function test_cada_condicao_barra_o_gatilho(): void

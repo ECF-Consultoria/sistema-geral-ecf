@@ -220,10 +220,12 @@ return [
         'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
         // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
-        // Tipos FIXOS do kit automático, na ordem. Vazio (o padrão, desde 20/10/2026) = o MESMO kit do botão: o
-        // planejador escolhe os tipos e a quantidade é a do sistema (`services.creative.kit.slots`, env
-        // CREATIVE_KIT_SLOTS). A ordem do kit é a da galeria: o 1º vira a capa do Clássico; o 2º, a do Premium (D6).
-        'slots' => [],
+        // Tipos FIXOS do kit automático, na ordem da galeria — o 1º é a capa do Clássico e o 2º a do Premium (a rotação
+        // D6/CAPA-01 manda a 1ª para o fim). Decisão do usuário de 20/10/2026, "3 imagens, 2 capas": Imagem principal +
+        // Ambientação + Textura, e a textura nunca vira capa. Em MÓVEL a Ambientação vai para a frente (Quick
+        // 261007-amb, `CriativosAutomaticosService::tiposDoKit`). Vazio (`PUBLICADOR_CRIATIVOS_AUTO_SLOTS=`) = o kit do
+        // botão: o planejador escolhe e a quantidade é `services.creative.kit.slots`.
+        'slots' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_CRIATIVOS_AUTO_SLOTS', 'hero,lifestyle,detail_textura'))))),
         // true (o padrão desde 20/10/2026) = cada grupo de fotos — a galeria geral e cada cor — ganha o seu kit (custo
         // × grupos): com a foto do cliente só como referência, a cor sem kit ficaria com a foto do cliente no anúncio.
         // false = só a galeria geral, ou a 1ª cor.

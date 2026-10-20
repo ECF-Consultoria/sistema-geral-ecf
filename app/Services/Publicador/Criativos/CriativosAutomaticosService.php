@@ -14,6 +14,7 @@ use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\User;
+use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
@@ -60,9 +61,10 @@ use Illuminate\Support\Str;
  * Desde 20/10/2026 (decisões do usuário) as imagens do kit automático ENTRAM SOZINHAS no anúncio e passam a ser
  * AS fotos do grupo ({@see aplicar()}): "o preview é a única coisa que o colaborador confere; a IA faz o resto, e
  * se estiver errado a gente corrige" e "a imagem do cliente é usada apenas para referência de recriar igual". A
- * conferência é a Prévia (etapa 5). O kit é o MESMO do botão (o planejador escolhe os tipos; a quantidade é a do
- * sistema, `services.creative.kit.slots`). O kit pedido no botão segue com a aprovação de gente, e a imagem que o
- * juiz reprovou também.
+ * conferência é a Prévia (etapa 5). O kit tem 3 imagens de tipos fixos — Imagem principal, Ambientação e Textura
+ * ("3 imagens, 2 capas": o Clássico e o Premium abrem cada um com uma capa, e a textura nunca é capa); em móvel a
+ * Ambientação vem primeiro ({@see tiposDoKit()}). O kit pedido no botão segue com a aprovação de gente, e a imagem que
+ * o juiz reprovou também.
  *
  * Nunca lança para quem chama (o preparo): devolve o motivo, que vai para o log.
  */
@@ -383,7 +385,7 @@ final class CriativosAutomaticosService
             return 'erro';
         }
 
-        $slots = array_values(array_filter(array_map('strval', (array) config('publicador.criativos_auto.slots', []))));
+        $slots = $this->tiposDoKit($r);
         Bus::chain([
             new PlanejarKitCriativosJob($portador->id, $kit->id, $slots === [] ? null : $slots),
             new GerarCriativosAutomaticosJob($kit->id),
@@ -567,5 +569,25 @@ final class CriativosAutomaticosService
         }
 
         return $shas;
+    }
+
+    /**
+     * Os tipos do kit automático, na ordem da galeria (20/10/2026, decisão do usuário: "3 imagens, 2 capas"). A rotação
+     * D6/CAPA-01 manda a 1ª foto para o fim no Premium, então o 1º tipo é a capa do Clássico e o 2º a do Premium — os
+     * dois precisam servir de capa, e a Textura (detalhe) vai por último. Em MÓVEL a capa é a Ambientação (Quick
+     * 261007-amb, pedido do usuário de 07/10): com tipos fixos o planejador não faz essa troca sozinho, por isso a
+     * ordem já sai pronta daqui. Lista vazia = o kit do botão (o planejador escolhe tudo).
+     *
+     * @return list<string>
+     */
+    private function tiposDoKit(PubRascunho $r): array
+    {
+        $slots = array_values(array_filter(array_map('strval', (array) config('publicador.criativos_auto.slots', []))));
+        if (in_array('lifestyle', $slots, true) && $slots[0] !== 'lifestyle'
+            && app(CreativeCategoriaMobiliarioService::class)->ehMoveis($r->categoria_id)) {
+            $slots = ['lifestyle', ...array_values(array_diff($slots, ['lifestyle']))];
+        }
+
+        return $slots;
     }
 }

@@ -1687,9 +1687,13 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   apenas para referência de recriar igual". Ou seja: o grupo fica SÓ com as imagens do kit, na ordem dos slots (o
   Clássico abre com a 1ª e o Premium com a 2ª, pela rotação D6). "Como já é no sistema" = o assistente antigo, onde
   `CreativeKitPublicacao::aplicarPictures` monta as fotos do anúncio SÓ com os criativos aprovados do kit.
-- **O kit é o MESMO do botão:** `criativos_auto.slots` vazio (padrão) = sem tipos fixos; o planejador escolhe e a
-  quantidade é `services.creative.kit.slots` (env `CREATIVE_KIT_SLOTS`, **2 em produção** em 20/10/2026 — 3 é mudar
-  essa env, e vale para o botão também).
+- **O kit automático tem 3 imagens de tipos fixos** (decisão do usuário de 20/10, "3 imagens, 2 capas", depois de ver
+  o Premium do CAD-SP abrir com a TEXTURA): a rotação D6/CAPA-01 (pedido dele na Fase 168: capa diferente no Clássico e
+  no Premium) manda a 1ª foto para o fim no Premium — com 2 imagens [ambientada, textura] o Premium abria com o detalhe.
+  Agora `criativos_auto.slots` = Imagem principal (`hero`) + Ambientação (`lifestyle`) + Textura (`detail_textura`); em
+  MÓVEL a Ambientação vai para a frente (`tiposDoKit`, Quick 261007-amb — com tipos fixos o planejador não troca
+  sozinho). Clássico abre com uma capa, Premium com a outra, a textura nunca abre. ~US$ 0,30 por kit. Env
+  `PUBLICADOR_CRIATIVOS_AUTO_SLOTS` (vazio = o kit do botão, `services.creative.kit.slots`, 2 em prod).
 - **`CriativosAutomaticosService::aplicar`** (Job `AplicarCriativosAutomaticosJob`, fila `creative`, único por kit,
   20 s de espera para juntar os gatilhos): só o kit que a automação pediu (`step_state.criativos_auto.grupos[grupo]
   .kit_id`) — o do botão segue com aprovação de gente; entra pelo MESMO `aprovarSlot` do botão (que põe no FIM do
