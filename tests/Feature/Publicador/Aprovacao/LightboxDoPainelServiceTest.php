@@ -831,4 +831,293 @@ class LightboxDoPainelServiceTest extends TestCase
         ]);
         $this->assertTrue($certa['originais'][(int) $gerada->id]['disponivel'], 'ISCA CEGA: nem com os tipos certos sai bloco disponível — os casos adversos acima não provam nada');
     }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (3) A PROP `lightbox` NA ROTA, O TERRITÓRIO E A BIJEÇÃO DO MANIFESTO
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    public function test_a_rota_monta_a_prop_lightbox_so_com_oferta_valida_da_conta_189_02(): void
+    {
+        [$company, $mlbEmpresa, $admin] = $this->conta();
+        $cenario = $this->cenarioDasCincoFormas($company, $mlbEmpresa);
+        $oferta = $cenario['oferta'];
+
+        // ─── COM `?oferta=`: uma entrada por imagem de `painel.fotos.imagens` ───────────────
+        $props = $this->props($admin, $company, 'oferta='.$oferta->id);
+
+        $this->assertNotNull($props['painel'] ?? null, 'ISCA CEGA: o `painel` veio nulo — o `lightbox` abaixo seria nulo pelo motivo errado');
+        $this->assertIsArray($props['lightbox'] ?? null, 'a prop `lightbox` não chegou ao payload');
+        $this->assertArrayHasKey('originais', $props['lightbox']);
+
+        $idsDoPainel = array_map(static fn (array $i): int => (int) $i['id'], $props['painel']['fotos']['imagens']);
+        $this->assertSame(
+            $idsDoPainel,
+            array_map('intval', array_keys($props['lightbox']['originais'])),
+            'as chaves de `lightbox.originais` não casam com os `id` de `painel.fotos.imagens`',
+        );
+        $this->assertNotSame([], $idsDoPainel, 'ISCA CEGA: a galeria do painel veio vazia');
+
+        // ─── SEM `?oferta=`: `null`, e NENHUMA consulta a `pub_imagem_referencias` ──────────
+        $contarVinculo = function (?string $query) use ($admin, $company): array {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $props = $this->props($admin, $company, $query);
+            $doVinculo = array_values(array_filter(
+                DB::getQueryLog(),
+                static fn (array $q): bool => str_contains((string) $q['query'], 'pub_imagem_referencias'),
+            ));
+            DB::disableQueryLog();
+
+            return [$props, count($doVinculo)];
+        };
+
+        [$semOferta, $consultasSemOferta] = $contarVinculo(null);
+        $this->assertArrayHasKey('lightbox', $semOferta, 'a prop `lightbox` desapareceu do payload sem `?oferta=` — ela é `null`, não ausente');
+        $this->assertNull($semOferta['lightbox'], 'a prop `lightbox` foi montada SEM `?oferta=` — custo puro em toda abertura da fila');
+        $this->assertSame(0, $consultasSemOferta, 'sem `?oferta=` houve consulta a `pub_imagem_referencias`');
+
+        // ⚠️ ISCA DO CONTADOR, na direção oposta: COM `?oferta=` a consulta ACONTECE. Sem isto o
+        // zero acima seria indistinguível de sonda cega.
+        [, $consultasComOferta] = $contarVinculo('oferta='.$oferta->id);
+        $this->assertGreaterThan(0, $consultasComOferta, 'ISCA: a sonda não vê consulta a `pub_imagem_referencias` nem COM `?oferta=`');
+
+        // ─── Oferta de OUTRA conta: a MESMA resposta que o `painel` já dá — `null` em silêncio ─
+        [$outraCompany, $outraMlb] = $this->conta();
+        $alheia = $this->cenarioDasCincoFormas($outraCompany, $outraMlb)['oferta'];
+        $deOutraConta = $this->props($admin, $company, 'oferta='.$alheia->id);
+        $this->assertNull($deOutraConta['painel'], 'ISCA CEGA: o painel de outra conta foi montado — a trava da 188-02 mudou');
+        $this->assertNull($deOutraConta['lightbox'], 'oferta de OUTRA conta montou o `lightbox` — vazaria a original alheia');
+
+        // ─── E as props existentes NÃO mudaram de forma ─────────────────────────────────────
+        $this->assertIsArray($props['faixa'] ?? null);
+        $this->assertArrayHasKey('proximo_a_revisar', $props);
+        $this->assertArrayHasKey('contagem', $props);
+        // ⚠️ `faixa` e `proximo_a_revisar` continuam INLINE no literal — o texto que o
+        // `tests/js/publicador-fila-proximo-187.test.js` lê.
+        $this->assertSame(
+            1,
+            preg_match("/'faixa' => \\\$fila->faixa\\(\\\$base\\)/", $this->cru(self::CONTROLLER)),
+            'a `faixa` saiu de INLINE no literal — há gate em JS lendo esse texto',
+        );
+        $this->assertSame(
+            1,
+            preg_match("/'proximo_a_revisar' => \\\$proximo->para\\(\\\$base\\)/", $this->cru(self::CONTROLLER)),
+            'o `proximo_a_revisar` saiu de INLINE no literal — há gate em JS lendo esse texto',
+        );
+    }
+
+    public function test_a_prop_lightbox_nao_faz_requisicao_ao_mercado_livre_com_isca_189_02(): void
+    {
+        [$company, $mlbEmpresa, $admin] = $this->conta();
+        $cenario = $this->cenarioDasCincoFormas($company, $mlbEmpresa);
+
+        // ⚠️⚠️ **A RÉGUA HONESTA, E ELA TEM DUAS FORMAS.** O serviço do lightbox faz **zero
+        // requisição LITERAL**; a ROTA, não — abrir o painel LÊ a tarifa real do Mercado Livre
+        // (`BloqueiosDaOfertaService::para()` → `/sites/MLB/listing_prices`), decisão do usuário
+        // de 15/10/2026. ➡️ Prometer zero absoluto na rota seria gate que o desenho contradiz.
+        $props = $this->props($admin, $company, 'oferta='.$cenario['oferta']->id);
+        $this->assertIsArray($props['lightbox'] ?? null, 'ISCA CEGA: a prop não foi montada — a medição abaixo seria do caso errado');
+
+        $caminhosDoMl = array_values(array_unique(array_map(
+            static fn (array $c): string => $c['caminho'],
+            array_filter($this->chamadas, static fn (array $c): bool => str_contains($c['host'], 'mercadolibre') || str_contains($c['host'], 'mercadolivre')),
+        )));
+
+        // ⚠️ LISTA CONSTANTE, **MEDIDA** nesta máquina: o único caminho do ML nesta leitura é a
+        // tarifa. Endpoint novo aparecendo aqui REPROVA — é o invariante de verdade.
+        $permitidos = ['/sites/MLB/listing_prices'];
+        $this->assertSame(
+            [],
+            array_values(array_diff($caminhosDoMl, $permitidos)),
+            'apareceu caminho do Mercado Livre fora da lista medida: '.implode(', ', $caminhosDoMl),
+        );
+        $this->assertCount(1, $permitidos, 'a lista de caminhos permitidos mudou de tamanho — remeça e escreva a razão');
+
+        // ⚠️⚠️ **O SERVIÇO, SOZINHO, FAZ ZERO — e aqui o zero é LITERAL.**
+        $this->chamadas = [];
+        $this->servico()->para($cenario['oferta'], $this->galeria($cenario['oferta']));
+        $this->assertSame([], $this->chamadas, 'o `LightboxDoPainelService` fez requisição HTTP');
+
+        // ⚠️ ISCA DO GRAVADOR: uma requisição DELIBERADA tem de aparecer.
+        Http::get('https://api.mercadolibre.com/items/MLB1');
+        $this->assertNotSame([], $this->chamadas, 'ISCA: o gravador está CEGO — a prova por ausência não vale nada');
+
+        // ⚠️⚠️ **ISCA DA TRAVA:** `preventStrayRequests()` está ARMADO. Sem esta prova, o
+        // `Http::fake()` catch-all do `setUp()` faria a trava passar sem nunca ter sido exercida.
+        // ⚠️ Fica no FIM do caso de propósito: ela re-faqueia o cliente.
+        Http::fake(['api.mercadolibre.com/*' => Http::response([], 200)]);
+        $lancou = false;
+        try {
+            Http::get('https://nao-faqueado-189-02.test/x');
+        } catch (\Illuminate\Http\Client\StrayRequestException $e) {
+            $lancou = true;
+        }
+        $this->assertTrue($lancou, 'ISCA: `Http::preventStrayRequests()` não está armado — requisição não faqueada sairia de verdade');
+    }
+
+    public function test_territorio_e_bijecao_do_manifesto_do_lightbox_189_02(): void
+    {
+        $raiz = $this->raiz();
+
+        // ─── ⚠️ TERRITÓRIO: a LISTA CONSTANTE dos arquivos DESTE plano ──────────────────────
+        //
+        // ⚠️ Recortada, nunca `app/` inteiro: `lucro_liquido` é campo legítimo do Portal e varrer
+        // o diretório já BARROU UM DEPLOY na Fase 186.
+        $meusArquivos = [self::SERVICO, self::CONTROLLER];
+        foreach ($meusArquivos as $arquivo) {
+            // ⚠️ Flag DENTRO do laço — e `test -e` antes de acreditar em qualquer vazio.
+            $this->assertFileExists($raiz.'/'.$arquivo, "arquivo deste plano inexistente: {$arquivo}");
+        }
+
+        // ⚠️ O trecho NOVO do controller, recortado ao bloco deste plano: o arquivo inteiro é da
+        // 187/188 e varrê-lo cobraria ausências que não são deste plano.
+        $doServico = $this->semComentarios(self::SERVICO);
+        $doControllerInteiro = $this->semComentarios(self::CONTROLLER);
+        $trechoNovo = '';
+        foreach (explode("\n", str_replace("\r", '', $doControllerInteiro)) as $linha) {
+            // ⚠️ Flag DENTRO do laço.
+            if (str_contains($linha, 'lightbox') || str_contains($linha, 'Lightbox')) {
+                $trechoNovo .= $linha."\n";
+            }
+        }
+        $this->assertNotSame('', $trechoNovo, 'ISCA CEGA: o trecho novo do controller não foi achado — as ausências abaixo rodariam sobre vazio');
+
+        // ⚠️⚠️ AUSÊNCIA DE SEGUNDO PASSO (PUB-09/BLOQ-09): aprovar já enfileira, e não há
+        // "confirmar publicação", "desfazer", "segundo passo" nem "cancelar aprovação".
+        $proibidos = ['confirmar publica', 'desfazer', 'segundo passo', 'cancelar aprova'];
+        $achados = [];
+        foreach ($proibidos as $forma) {
+            // ⚠️ Flag DENTRO do laço.
+            foreach (['servico' => $doServico, 'controller(trecho)' => $trechoNovo] as $onde => $texto) {
+                if (stripos($texto, $forma) !== false) {
+                    $achados[] = $onde.' tem "'.$forma.'"';
+                }
+            }
+            // ⚠️ ISCA DE CADA FORMA: a sonda acha a forma num texto sintético.
+            $this->assertNotFalse(stripos('prefixo '.$forma.' sufixo', $forma), "ISCA CEGA: a sonda não acha a forma \"{$forma}\" nem no caso canônico");
+        }
+        $this->assertSame([], $achados, 'apareceu segundo passo de aprovação: '.implode(' | ', $achados));
+
+        // ⚠️⚠️ TERRITÓRIO VETADO — o acervo e o `App\Support\Publicador` ficam intocados (o
+        // bucket do R2 é PRIVADO desde 16/10/2026 e não serve URL pública; a rota serve BYTES).
+        $vetados = ['ArquivosDeImagem', 'ImagemAssetService', 'AcervoImagem', 'App\\Support\\Publicador'];
+        $encostados = [];
+        foreach ($vetados as $vetado) {
+            // ⚠️ Flag DENTRO do laço.
+            if (str_contains($doServico, $vetado)) {
+                $encostados[] = $vetado;
+            }
+        }
+        $this->assertSame([], $encostados, 'o serviço do lightbox encostou em território vetado: '.implode(', ', $encostados));
+        // ⚠️ ANTI-FANTASMA: os dois vetados que são ARQUIVO existem no disco — vetar o que não
+        // existe é gate sobre zero casos.
+        foreach ([
+            'app/Support/Publicador/Imagem/ArquivosDeImagem.php',
+            'app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php',
+        ] as $alvo) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertFileExists($raiz.'/'.$alvo, "alvo vetado FANTASMA: {$alvo}");
+        }
+        // ⚠️ ISCA DA SONDA DE VETADO: ela ACHA o nome num texto que o contém.
+        $this->assertTrue(str_contains('use App\\Support\\Publicador\\Imagem\\ArquivosDeImagem;', 'ArquivosDeImagem'), 'ISCA CEGA: a sonda de vetado não acha nem o caso canônico');
+
+        // ⚠️ TOK-15: nenhum hex sai do PHP (o `content` do Tailwind não varre `.php`).
+        $this->assertSame(0, preg_match('/#[0-9a-fA-F]{3,8}\b/', $doServico), 'apareceu hex no PHP do lightbox — TOK-15');
+
+        // ⚠️ E NENHUMA ESCRITA: o serviço só lê.
+        $sondaDeEscrita = '/\b(?:create|insert|insertGetId|updateOrCreate|firstOrCreate|upsert|forceCreate|update|save|delete|fill)\s*\(/';
+        $this->assertSame(0, preg_match($sondaDeEscrita, $doServico), 'apareceu forma de ESCRITA no serviço do lightbox — ele só lê');
+        $this->assertSame(1, preg_match($sondaDeEscrita, 'PubImagemReferencia::create([])'), 'ISCA CEGA: a sonda de escrita não acha nem o caso canônico');
+
+        // ─── ⚠️⚠️ BIJEÇÃO id ↔ MÉTODO, NOS DOIS SENTIDOS, COM O EXPANSOR DE ALTERNÂNCIA ────
+        $manifesto = $raiz.'/tests/gates/contagens-189-02.txt';
+        $this->assertFileExists($manifesto, 'o manifesto deste plano não existe — o harness ABORTARIA');
+        $linhas = array_values(array_filter(
+            explode("\n", str_replace("\r", '', (string) file_get_contents($manifesto))),
+            static fn (string $l): bool => trim($l) !== '' && ! str_starts_with(trim($l), '#'),
+        ));
+        $this->assertCount(3, $linhas, 'o manifesto deixou de ter os TRÊS ids deste plano');
+
+        /**
+         * ⚠️⚠️ **O EXPANSOR DE ALTERNÂNCIA, e ele não é zelo.** `/test_[A-Za-z0-9_]+/` casa
+         * **ZERO** num filtro `test_(a|b)`, porque depois de `test_` vem `(`. Medido: foi esse
+         * furo que produziu `SEM_ID=14` **acusando trabalho correto** na 189-01.
+         */
+        $expandir = static function (string $filtro): array {
+            if (preg_match('/^(.*)\(([^()]*)\)(.*)$/', $filtro, $m) === 1) {
+                return array_map(static fn (string $p): string => $m[1].$p.$m[3], explode('|', $m[2]));
+            }
+
+            return explode('|', $filtro);
+        };
+        // ⚠️ ISCA DO EXPANSOR, nas duas direções.
+        $this->assertSame(['test_a_189_02', 'test_b_189_02'], $expandir('test_(a_189_02|b_189_02)'), 'ISCA: o expansor não abre a alternância');
+        $this->assertSame(0, preg_match_all('/test_[A-Za-z0-9_]+/', 'test_(a_189_02|b_189_02)'), 'ISCA: a regex ingênua casaria a alternância — então o expansor não seria necessário');
+
+        $doManifesto = [];
+        foreach ($linhas as $linha) {
+            // ⚠️ Flag DENTRO do laço.
+            $this->assertSame(1, preg_match('/^(\S+)\s+php\s+(\S+)\s+::\s+tests=(\d+)\s+assertions=(\d+)$/', trim($linha), $m), "linha do manifesto fora da forma: {$linha}");
+            $metodos = $expandir($m[2]);
+            $this->assertLessThanOrEqual(3, count($metodos), "o id `{$m[1]}` tem mais de TRÊS métodos — alternância grande equivale a filtro de classe");
+            $this->assertSame((int) $m[3], count($metodos), "o id `{$m[1]}` declara tests={$m[3]} e tem ".count($metodos).' método(s)');
+            foreach ($metodos as $metodo) {
+                $doManifesto[] = $metodo;
+            }
+        }
+
+        $meusMetodos = [];
+        preg_match_all(
+            '/public function (test_[A-Za-z0-9_]*_189_02)\(/',
+            $this->cru('tests/Feature/Publicador/Aprovacao/LightboxDoPainelServiceTest.php'),
+            $achadosNoArquivo,
+        );
+        $meusMetodos = $achadosNoArquivo[1];
+        $this->assertNotSame([], $meusMetodos, 'ISCA CEGA: nenhum método `_189_02` foi achado no arquivo — a bijeção rodaria sobre vazio');
+
+        sort($doManifesto);
+        $ordenados = $meusMetodos;
+        sort($ordenados);
+        // ⚠️ UMA asserção por sentido, coletando os infratores.
+        $this->assertSame([], array_values(array_diff($ordenados, $doManifesto)), 'método `_189_02` SEM id no manifesto — ele NUNCA roda: '.implode(', ', array_diff($ordenados, $doManifesto)));
+        $this->assertSame([], array_values(array_diff($doManifesto, $ordenados)), 'id do manifesto SEM método — gate sobre ZERO casos: '.implode(', ', array_diff($doManifesto, $ordenados)));
+
+        // ─── ⚠️⚠️ HOMÔNIMO: `--filter` é regex NÃO ANCORADO, e 186/187/188 estão EM PRODUÇÃO ──
+        $todos = [];
+        $iterador = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($raiz.'/tests'));
+        foreach ($iterador as $arquivo) {
+            // ⚠️ Flag DENTRO do laço.
+            if (! $arquivo->isFile() || $arquivo->getExtension() !== 'php') {
+                continue;
+            }
+            preg_match_all('/function (test_[A-Za-z0-9_]+)\(/', (string) file_get_contents($arquivo->getPathname()), $m);
+            foreach ($m[1] as $nome) {
+                $todos[$nome] = true;
+            }
+        }
+        $todos = array_keys($todos);
+        $this->assertGreaterThan(5000, count($todos), 'ISCA CEGA: a varredura de `tests/` achou quase nada — o homônimo rodaria sobre lista vazia');
+
+        $colisoes = [];
+        foreach ($meusMetodos as $meu) {
+            // ⚠️ Flag DENTRO do laço — nas DUAS direções, incluindo PREFIXO.
+            foreach ($todos as $outro) {
+                if ($outro !== $meu && (str_contains($outro, $meu) || str_contains($meu, $outro))) {
+                    $colisoes[] = $meu.' x '.$outro;
+                }
+            }
+        }
+        $this->assertSame([], $colisoes, 'homônimo: o `--filter` casaria método de OUTRA fase e a contagem somaria: '.implode(' | ', $colisoes));
+
+        // ⚠️⚠️ **A ISCA QUE PROVA QUE A SONDA VÊ** — sem ela, `HOMONIMOS=0` é indistinguível de
+        // sonda cega. `test_territorio_e_ausencias_do_plano` é substring de métodos REAIS das
+        // Fases 187/188.
+        $iscaDoPrefixo = array_values(array_filter($todos, static fn (string $n): bool => str_contains($n, 'test_territorio_e_ausencias_do_plano')));
+        $this->assertGreaterThanOrEqual(5, count($iscaDoPrefixo), 'ISCA CEGA: a sonda de homônimo não acha os métodos `test_territorio_e_ausencias_do_plano` que EXISTEM no disco');
+        $this->assertSame([], array_values(array_filter($todos, static fn (string $n): bool => str_contains($n, 'test_metodo_que_ninguem_escreveu_189_02'))), 'controle do homônimo: o nome inventado casou algo');
+
+        // ⚠️ A PARTIDA desta wave é referência de LEITURA, e está declarada — nunca extremo de
+        // range (o território é provado pelo ESCOPO DO ASSUNTO, no `pi-189-02.sh`).
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{8}$/', self::PARTIDA);
+    }
 }
