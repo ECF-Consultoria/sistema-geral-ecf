@@ -10,7 +10,93 @@
 
 ---
 
-## D-189-07-A — ⚠️⚠️ **QUATRO USOS-ANTES-DA-DECLARAÇÃO (TDZ) no corpo do componente de `Aprovacao.jsx`**
+## D-189-07-A — ✅ **RESOLVIDO em 20/10/2026** · eram **CINCO** usos-antes-da-declaração (TDZ) em `Aprovacao.jsx`
+
+> ✅ **FECHADO pela quick `261020-tdz`** (autorizada pelo usuário), commits **`ee201392`** (o gate que
+> faltava) e **`85c3b46b`** (o conserto). ⚠️ **O título original dizia QUATRO; eram CINCO** — ver a
+> correção logo abaixo. O corpo original fica preservado adiante, como registro do que a 189-07 mediu.
+>
+> ### ⚠️⚠️ A CORREÇÃO: o QUINTO, e por que ele era invisível
+>
+> **`podeEscreverNoPainel`** — declarada em **`:1107`** e lida EAGER **QUATRO vezes**
+> (**`:1013`**, **`:1015`**, **`:1016`**, **`:1017`**), dentro do `const colunaDePreco`, na forma
+>
+> ```jsx
+> onConferirAlteracao={!podeEscreverNoPainel ? null : () => escreverDireto(…)}
+> ```
+>
+> — o **TESTE do ternário**, que é avaliado **na hora**. ⚠️ **Ele é TDZ por direito próprio**, não
+> "um dependente", como a redação original deste item supunha.
+>
+> ⚠️⚠️ **POR QUE NENHUMA SONDA O VIA, medido:** a regex da sonda da 189-07 é
+> `[A-Za-z_$][\w$]*=\{nome\}` ou `\{\.\.\.nome\}`. Rodada contra as três formas:
+>
+> | forma | a sonda |
+> |---|---|
+> | `onReprovar={abrirModalDeReprovar}` | **CASA** |
+> | `onConferirAlteracao={!podeEscreverNoPainel ? null : 1}` | **NÃO VÊ** |
+> | `onInformarFrete={abrirModalDoPainel === null ? 1 : 2}` | **NÃO VÊ** |
+>
+> ➡️ **O quinto era invisível para a sonda que achou os outros quatro.** ⚠️ **E pelo mesmo motivo,
+> `abrirModalDoPainel` tinha DUAS leituras eager** (`:1014`, antes da de `:1080` que o item original
+> cita) — a primeira também na forma de teste de ternário.
+>
+> ### ⚠️⚠️ A CAUSA RAIZ, e ela vale mais que o defeito
+>
+> **Nenhum gate deste projeto jamais instanciou o `default export` da página.** Todos montam a página
+> por esbuild e exercitam **só os named exports** — o componente nunca era renderizado. ➡️ **O defeito
+> morava no único lugar que nenhuma sonda olhava**, e foi por isso que **três waves** (188-09, 188-11,
+> 188-12) o publicaram sem que nada acusasse. ⚠️ **O gate que faltava agora existe:**
+> `tests/js/publicador-pagina-aprovacao-tdz-261020.test.js` (id `pagina-aprovacao-tdz`, manifesto
+> `tests/gates/contagens-261020-01.txt` — **o primeiro manifesto de QUICK do projeto**), com **7 casos**
+> que renderizam a página de verdade.
+>
+> ### O conserto, e a prova
+>
+> **Quatro blocos mudaram de lugar** (M1–M4), movendo as **declarações** para antes do primeiro
+> construtor de slot. ⚠️ **Mover os LEITORES foi medido e RECUSADO**: tocaria menos linhas (~83 contra
+> 126), mas deixaria a **ordem de declaração quebrada**, e a próxima wave que acrescentasse um atributo
+> eager perto dos slots **reintroduziria o defeito**.
+>
+> | prova | resultado |
+> |---|---|
+> | **RED antes** | `7 / 2 pass / 5 fail`, com a mensagem real do V8 para **cada um dos cinco** |
+> | o movimento é **permutação pura** | `sha256` do multiset de linhas **idêntico** antes e depois (`4a5a99fd…`) |
+> | **nenhuma TDZ nova** | para cada bloco movido, todo identificador que ele lê foi provado declarado **antes** da posição nova — **e o veredicto veio por RENDER**, não por leitura |
+> | render adverso | **88 renders** (10 campos × 8 valores + o `painel` inteiro), todos sem lançar |
+> | mutação | **6/6 MORTAS**, cada uma devolvendo UMA declaração à posição antiga, e o gate **nomeando o símbolo**; `# tests = 7` igual ao pristino nas seis |
+>
+> ⚠️ **A armadilha que quase fez o render adverso ser gate vazio:** `PainelDeRevisao` devolve
+> `createPortal(…)` e `renderToStaticMarkup` **não desenha portal** — medido, o HTML da página tem
+> **exatamente o mesmo tamanho** com `painel: null` e com payload cheio (`28119` nos dois). O gate
+> resolveu com **duas montagens**: a real (prova *"não lança"*) e um espão que desenha os slots inline,
+> com isca de não-vacuidade (`28167 → 30588`, **+2421 bytes de slot**).
+>
+> ### ⚠️ E o próprio veto deste item reprovou pelo conserto — consertado na raiz
+>
+> O caso `publicador-lightbox-acoes-189.test.js:1097` ficou **vermelho** (`25/24/1`) no instante do
+> conserto, porque provava não-cegueira **pela existência dos defeitos reais**
+> (`assert.ok(antesDaHora.length > 0)`). **Ele era membro da família que o próprio comentário dele dizia
+> evitar.** Corrigido pelo orquestrador no commit **`62e5efae`**, com **duas** mudanças de raiz:
+> a prova de não-cegueira foi para **cebo sintético** (não desaparece quando o código está certo), e
+> a **lista de permissão SAIU** — porque com os cinco consertados ela virava **ponto cego**, deixando
+> passar **regressão** em qualquer um dos cinco nomes. ⚠️ **O cebo foi provado por mutação nas duas
+> direções** (regex cega → morre; regex larga → morre), com `# tests = 25` nas duas.
+>
+> ⚠️ **LIMITE DA SONDA, registrado no próprio arquivo de gate:** ela é **por LINHA**, então não
+> distingue `prop={nome}` escrito **dentro de uma arrow na MESMA linha**. Medido: a página real não tem
+> essa forma, logo **hoje não há falso positivo**. A prova larga é a do gate da quick, que **renderiza**.
+>
+> ### ⚠️⚠️ O QUE MUDOU A URGÊNCIA — e não foi decisão nossa
+>
+> O commit **`c810a8ac`**, de **outra sessão** (quick `261020-oeg`, AG-03), entrou **durante** esta quick
+> e **liga o produtor que enfileira oferta na aprovação**. ➡️ **A primeira oferta real deixou de depender
+> só da Fase 194** — ou seja, o caminho que faria a tela ficar preta **deixou de ser hipotético**.
+> ⚠️ **O conserto está provado mas NÃO foi deployado.** A decisão de deploy é do usuário.
+
+<details>
+<summary>▶ o registro ORIGINAL da 189-07, preservado (dizia QUATRO)</summary>
+
 
 **Achado por:** plano **189-07**, 20/10/2026, por script (`tdz-real-189-07.cjs`).
 **Dono provável:** waves **188-08**, **188-09** e **188-12** (é delas cada um dos quatro fios).
@@ -66,6 +152,8 @@ um `painel` de payload — hoje **nada** o instancia.
 20/10/2026, e a 188 está encerrada).
 
 ---
+
+</details>
 
 ## D-189-07-B — gates da 188 que medem **WIP**, não território
 
