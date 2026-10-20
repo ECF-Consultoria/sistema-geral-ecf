@@ -1722,6 +1722,13 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   enviada do rascunho, com ou sem atribuição (os testes de `ImagensTest` contam com isso). Não é regressão (antes as
   mesmas fotos subiam por estarem na galeria), mas é envio inútil e disputa o limite por minuto do ML. Se aparecer
   "limitou o envio de fotos por minuto" em produto com muitas cores, filtrar ali por atribuição.
+- **NUNCA disparar a automação pelo tinker como root** (20/10, CAD-SP, kit 21): o `avaliar` cria a pasta
+  `storage/app/private/creative-referencias/{token}` com dono root e modo 0700; os workers (www-data) não a enxergam,
+  o `ReferenciaEfemeraService::bytesDe` devolve `[]` e a geração roda SÓ com o texto da ficha (o `CreativeContextBuilder`
+  confere o REGISTRO da referência, não o arquivo) — a imagem não é o produto do cliente, e o juiz diz "as fotos
+  originais já foram apagadas". Disparo manual: `runuser -u www-data -- env HOME=/tmp php artisan tinker`. Para refazer:
+  galeria de volta à foto do cliente (`trocarFotosDoGrupo`), kit antigo em `erro` e apagar
+  `step_state.criativos_auto.grupos[grupo]` (senão o hash diz "em dia").
 - **Para ligar em produção** (só com o ok do usuário): o deploy, `PUBLICADOR_CRIATIVOS_AUTO_ATIVO=true` + `config:cache`,
   `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` (ativo, com `mlb.criativos_ia`),
   `publicador_criativos_auto_companies` (começar pela #459), a chave do Creative Engine e `queue:restart`.
