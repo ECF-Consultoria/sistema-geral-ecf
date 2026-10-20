@@ -8,7 +8,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    FILTROS_DA_VITRINE, faixaDePreco, filtrar, filtroInicial, fotoDoCartao, reais, resumoDaSelecao, tempoDesde, textoDosAnuncios,
+    FILTROS_DA_VITRINE, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, reais, resumoDaSelecao, rotuloDaFase, tempoDesde, textoDosAnuncios,
 } from '../../resources/js/Components/Mlb/Publicador/vitrine/vitrine.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -145,6 +145,42 @@ test('cartão — marcado ganha a borda amarela; publicado não tem caixa de mar
         assert.doesNotThrow(() => { html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { cartao: estragado })); });
         assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
     }
+});
+
+// ─── Fase 2 e 3 no mesmo cartão (20/10/2026) ───
+
+const BASE = { ...MESA, produto_id: 10, familia_id: 10, fase_numero: 1, fase: 'Fase 1', grupo: 'prontos', nome: 'Cadeira' };
+const KIT2 = { ...MESA, produto_id: 11, familia_id: 10, fase_numero: 2, fase: 'Fase 2 · Kit 2', grupo: 'prontos', nome: 'Kit 2 Cadeiras' };
+const KIT3 = { ...MESA, produto_id: 12, familia_id: 10, fase_numero: 3, fase: 'Fase 3 · Kit 3', grupo: 'pendencia', nome: 'Kit 3 Cadeiras',
+    chip: { texto: 'Azul: falta foto', tom: 'ambar' } };
+
+test('famílias — o kit vai no cartão do produto base, em ordem de fase; o filtro abre na fase que entrou', () => {
+    const lista = [KIT3, POLTRONA, KIT2, BASE];
+    const todas = familiasDaVitrine(lista, 'todos');
+    assert.deepEqual(todas.map((f) => [f.id, f.fases.map((x) => x.produto_id), f.inicial]), [[10, [10, 11, 12], 0], [2, [2], 0]]);
+    // "Com pendência": a cadeira entra pelo Kit 3 e o cartão abre NELE.
+    const pendencia = familiasDaVitrine(lista, 'pendencia');
+    assert.deepEqual(pendencia.map((f) => [f.id, f.inicial]), [[10, 2], [2, 0]]);
+    assert.deepEqual(familiasDaVitrine(lista, 'publicados'), []);
+    assert.equal(rotuloDaFase(KIT2), 'Kit 2');
+    assert.equal(rotuloDaFase(BASE), 'Fase 1');
+    assert.equal(rotuloDaFase({}), 'Fase 1');
+});
+
+test('cartão da família — pílulas das fases, setas e o trilho na fase inicial; cada fase com a própria prévia', () => {
+    const html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [BASE, KIT2, KIT3], inicial: 2, selecao: new Set([11]) }));
+    assert.match(html, /data-fases="3"/);
+    assert.equal(contar(html, 'data-vitrine-pilula-fase='), 3);
+    assert.match(html, /aria-current="true"[^>]*data-vitrine-pilula-fase="2"/);
+    assert.match(html, />Kit 2</);
+    assert.match(html, /translateX\(calc\(-200% \+ 0px\)\)/, 'abre no Kit 3');
+    assert.equal(contar(html, 'data-vitrine-face='), 3);
+    assert.match(html, /data-vitrine-anterior/);
+    assert.match(html, /aria-label="marcada"/, 'o Kit 2 marcado aparece na pílula');
+    assert.match(html, /border-pub-accent shadow-pub-cta/, 'família com fase marcada ganha a borda');
+    // Um produto sem kit não tem pílula nem seta.
+    const so = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [BASE] }));
+    assert.doesNotMatch(so, /data-vitrine-pilula-fase|data-vitrine-anterior|data-vitrine-proxima/);
 });
 
 // ─── Fonte da página ───

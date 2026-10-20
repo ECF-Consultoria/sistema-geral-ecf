@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { Check, Eye, ImageOff, Link2 } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Eye, ImageOff, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { faixaDePreco, fotoDoCartao, tempoDesde, textoDosAnuncios } from './vitrine';
+import { faixaDePreco, fotoDoCartao, rotuloDaFase, tempoDesde, textoDosAnuncios } from './vitrine';
 
-// ─── Um cartão da vitrine (20/10/2026) ──────────────────────────────────────
+// ─── Um cartão da vitrine = uma FAMÍLIA (20/10/2026) ────────────────────────
 //
 // Foto grande em fundo branco (como no Mercado Livre), a caixa de marcar no
-// canto, o selo da fase no outro, e — quando o produto tem mais de uma cor —
-// uma bolinha por cor no pé da foto: passar o mouse troca a foto grande pela
+// canto, o selo da fase no outro, e — quando a fase tem mais de uma cor — uma
+// bolinha por cor no pé da foto: passar o mouse troca a foto grande pela
 // daquela cor. Embaixo: nome, SKU, o chip do que falta (dizendo QUAL cor quando
 // é uma só), os preços de cada tipo e "Ver prévia", que abre a etapa 5.
+//
+// Fase 2 e 3 (os kits) são anúncios próprios do MESMO produto (pedido do
+// usuário): ficam neste cartão, uma "face" por fase, e a pessoa passa de uma
+// para outra pelas setas, pelas pílulas "Fase 1 · Kit 2 · Kit 3" ou arrastando
+// para o lado. Cada face tem a própria caixa de marcar e a própria prévia.
 
 const TOM_DO_CHIP = {
     verde: 'border-pub-ok/30 bg-pub-ok/10 text-pub-ok-txt',
@@ -18,6 +23,9 @@ const TOM_DO_CHIP = {
     azul: 'border-sky-400/30 bg-sky-400/10 text-sky-300',
     vermelho: 'border-pub-danger/30 bg-pub-danger/10 text-pub-danger-txt',
 };
+
+/** Quanto o dedo/mouse tem de andar para trocar de fase. */
+const ARRASTE_MINIMO = 50;
 
 function Foto({ url, nome }) {
     if (! url) {
@@ -28,10 +36,11 @@ function Foto({ url, nome }) {
         );
     }
 
-    return <img src={url} alt={nome} loading="lazy" className="h-full w-full object-contain" />;
+    return <img src={url} alt={nome} loading="lazy" draggable={false} className="h-full w-full object-contain" />;
 }
 
-export default function CartaoDaVitrine({ cartao, marcado = false, onMarcar = () => {} }) {
+/** Uma fase do cartão (o produto base ou um kit): tudo o que a pessoa precisa para revisar e marcar. */
+function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
     const [corEmFoco, setCorEmFoco] = useState(null);
     const cores = Array.isArray(cartao?.cores) ? cartao.cores.filter((c) => c && typeof c.chave === 'string') : [];
     const { emFoco, url: foto } = fotoDoCartao(cartao, corEmFoco);
@@ -39,18 +48,15 @@ export default function CartaoDaVitrine({ cartao, marcado = false, onMarcar = ()
     const classico = faixaDePreco(cartao?.precos?.gold_special);
     const premium = faixaDePreco(cartao?.precos?.gold_pro);
     const atualizado = tempoDesde(cartao?.atualizado_em);
+    const foco = ativa ? undefined : -1;
 
     return (
-        <article
-            className={cn('flex flex-col overflow-hidden rounded-pub-panel border bg-pub-surface font-pub transition-colors',
-                marcado ? 'border-pub-accent shadow-pub-cta' : 'border-pub-line hover:border-pub-line-strong')}
-            data-vitrine-cartao={cartao?.produto_id} data-grupo={cartao?.grupo}
-        >
+        <div className="flex w-full shrink-0 flex-col" aria-hidden={ativa ? undefined : true} data-vitrine-face={cartao?.produto_id}>
             <div className="relative m-2 mb-0 aspect-[4/3] overflow-hidden rounded-pub-sub bg-white">
                 <Foto url={foto} nome={cartao?.nome ?? ''} />
 
                 {cartao?.selecionavel && (
-                    <button type="button" onClick={() => onMarcar(cartao.produto_id)} aria-pressed={marcado}
+                    <button type="button" onClick={() => onMarcar(cartao.produto_id)} aria-pressed={marcado} tabIndex={foco}
                         aria-label={marcado ? `Desmarcar ${cartao.nome}` : `Marcar ${cartao.nome} para publicar`}
                         className={cn('absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-pub-badge border shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                             marcado ? 'border-pub-accent bg-pub-accent text-pub-page' : 'border-zinc-300 bg-white/90 text-transparent hover:border-zinc-500')}
@@ -63,17 +69,32 @@ export default function CartaoDaVitrine({ cartao, marcado = false, onMarcar = ()
                     {cartao?.fase ?? 'Fase 1'}
                 </span>
 
+                {anterior && (
+                    <button type="button" onClick={anterior} tabIndex={foco} aria-label="Fase anterior"
+                        className="absolute left-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-pub-page/70 text-white hover:bg-pub-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
+                        data-vitrine-anterior>
+                        <ChevronLeft size={18} aria-hidden="true" />
+                    </button>
+                )}
+                {proxima && (
+                    <button type="button" onClick={proxima} tabIndex={foco} aria-label="Próxima fase"
+                        className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-pub-page/70 text-white hover:bg-pub-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
+                        data-vitrine-proxima>
+                        <ChevronRight size={18} aria-hidden="true" />
+                    </button>
+                )}
+
                 <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
                     {cores.length > 1 ? (
                         <div className="flex items-center gap-1.5" onMouseLeave={() => setCorEmFoco(null)} data-vitrine-cores>
                             {cores.map((c) => (
-                                <button key={c.chave} type="button" title={c.pendencias?.length ? `${c.rotulo}: ${c.pendencias.join(', ')}` : c.rotulo}
+                                <button key={c.chave} type="button" tabIndex={foco} title={c.pendencias?.length ? `${c.rotulo}: ${c.pendencias.join(', ')}` : c.rotulo}
                                     onMouseEnter={() => setCorEmFoco(c.chave)} onFocus={() => setCorEmFoco(c.chave)}
                                     aria-label={`Ver a cor ${c.rotulo}`}
                                     className={cn('relative h-7 w-7 overflow-hidden rounded-full border-2 bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                                         (emFoco ? emFoco.chave === c.chave : c === cores[0]) ? 'border-pub-accent' : 'border-white')}
                                     data-vitrine-cor={c.rotulo}>
-                                    {c.foto ? <img src={c.foto} alt="" className="h-full w-full object-cover" /> : <span className="grid h-full w-full place-items-center text-[9px] font-bold text-zinc-500">{c.rotulo.slice(0, 2)}</span>}
+                                    {c.foto ? <img src={c.foto} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="grid h-full w-full place-items-center text-[9px] font-bold text-zinc-500">{c.rotulo.slice(0, 2)}</span>}
                                     {c.pendencias?.length > 0 && <span aria-hidden="true" className="absolute right-0 top-0 h-2 w-2 rounded-full bg-pub-warn ring-1 ring-white" />}
                                 </button>
                             ))}
@@ -117,12 +138,95 @@ export default function CartaoDaVitrine({ cartao, marcado = false, onMarcar = ()
                 <div className="mt-auto space-y-2 pt-1">
                     {atualizado && <p className="text-[11px] text-pub-txt-4">Atualizado {atualizado}</p>}
                     {cartao?.url_previa && (
-                        <Link href={cartao.url_previa}
+                        <Link href={cartao.url_previa} tabIndex={foco} draggable={false}
                             className="flex h-9 w-full items-center justify-center gap-2 rounded-pub-control border border-pub-line-strong text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
                             data-vitrine-previa>
                             <Eye size={15} aria-hidden="true" /> Ver prévia
                         </Link>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * @param {object} props
+ * @param {object[]} [props.fases] as fases da família, em ordem (o produto base e os kits)
+ * @param {object} [props.cartao] uma fase só (atalho para produto sem kit)
+ * @param {number} [props.inicial] a fase em que o cartão abre (a 1ª que entrou no filtro)
+ * @param {Set<number>} [props.selecao] os produtos marcados (cada fase se marca sozinha)
+ */
+export default function CartaoDaVitrine({ fases = null, cartao = null, inicial = 0, selecao = null, marcado = false, onMarcar = () => {} }) {
+    const lista = (Array.isArray(fases) ? fases : (cartao ? [cartao] : [])).filter((f) => f && typeof f === 'object');
+    const [indice, setIndice] = useState(() => Math.min(Math.max(0, Number(inicial) || 0), Math.max(0, lista.length - 1)));
+    const [arraste, setArraste] = useState(null); // { x0, dx } enquanto o dedo/mouse arrasta
+    // Arrastou de verdade: o clique que o navegador dispara ao soltar não vale (não marca nem abre a prévia).
+    const arrastou = useRef(false);
+    if (lista.length === 0) return null;
+
+    const atual = Math.min(indice, lista.length - 1);
+    const estaMarcado = (f) => (selecao ? selecao.has(Number(f.produto_id)) : marcado);
+    const algumMarcado = lista.some(estaMarcado);
+    const varias = lista.length > 1;
+    const ir = (i) => setIndice(Math.max(0, Math.min(lista.length - 1, i)));
+
+    // Arrastar para o lado troca de fase. Sem `setPointerCapture`: com ele o clique da caixa de marcar e do
+    // "Ver prévia" iria para o cartão, e não para o botão.
+    const soltar = () => {
+        if (arraste) {
+            arrastou.current = Math.abs(arraste.dx) >= 8;
+            if (arraste.dx <= -ARRASTE_MINIMO) ir(atual + 1);
+            if (arraste.dx >= ARRASTE_MINIMO) ir(atual - 1);
+        }
+        setArraste(null);
+    };
+
+    return (
+        <article
+            className={cn('flex flex-col overflow-hidden rounded-pub-panel border bg-pub-surface font-pub transition-colors',
+                algumMarcado ? 'border-pub-accent shadow-pub-cta' : 'border-pub-line hover:border-pub-line-strong')}
+            data-vitrine-cartao={lista[atual].produto_id} data-grupo={lista[atual].grupo} data-fases={lista.length}
+            onKeyDown={varias ? (e) => {
+                if (e.key === 'ArrowRight') ir(atual + 1);
+                if (e.key === 'ArrowLeft') ir(atual - 1);
+            } : undefined}
+        >
+            {varias && (
+                <nav aria-label="Fases deste produto" className="flex gap-1 px-2 pt-2" data-vitrine-fases>
+                    {lista.map((f, i) => (
+                        <button key={f.produto_id} type="button" onClick={() => ir(i)} aria-current={i === atual ? 'true' : undefined}
+                            className={cn('relative inline-flex h-7 items-center rounded-pub-chip px-2.5 text-[11.5px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
+                                i === atual ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
+                            data-vitrine-pilula-fase={i}>
+                            {rotuloDaFase(f)}
+                            {f.grupo === 'pendencia' && <span aria-hidden="true" className="ml-1.5 h-1.5 w-1.5 rounded-full bg-pub-warn" />}
+                            {estaMarcado(f) && <Check size={11} strokeWidth={3} className="ml-1 text-pub-accent" aria-label="marcada" />}
+                        </button>
+                    ))}
+                </nav>
+            )}
+
+            <div className="relative overflow-hidden" data-vitrine-trilho
+                onPointerDown={varias ? (e) => setArraste({ x0: e.clientX, dx: 0 }) : undefined}
+                onPointerMove={varias ? (e) => setArraste((a) => (a ? { ...a, dx: e.clientX - a.x0 } : a)) : undefined}
+                onPointerUp={varias ? soltar : undefined}
+                onPointerLeave={varias ? soltar : undefined}
+                onClickCapture={varias ? (e) => {
+                    if (arrastou.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    arrastou.current = false;
+                } : undefined}
+            >
+                <div className={cn('flex select-none', ! arraste && 'transition-transform duration-300 ease-out')}
+                    style={{ transform: `translateX(calc(${-atual * 100}% + ${arraste?.dx ?? 0}px))` }}>
+                    {lista.map((f, i) => (
+                        <Face key={f.produto_id} cartao={f} marcado={estaMarcado(f)} onMarcar={onMarcar} ativa={i === atual}
+                            anterior={varias && i > 0 ? () => ir(i - 1) : null}
+                            proxima={varias && i < lista.length - 1 ? () => ir(i + 1) : null} />
+                    ))}
                 </div>
             </div>
         </article>

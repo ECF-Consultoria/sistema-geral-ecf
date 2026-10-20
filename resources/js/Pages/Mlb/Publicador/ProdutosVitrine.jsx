@@ -11,7 +11,7 @@ import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import AvisoDaFila from '@/Components/Mlb/Publicador/AvisoDaFila';
 import { destinoDoLote } from '@/Components/Mlb/Publicador/AcoesDaSelecaoEmLote';
 import CartaoDaVitrine from '@/Components/Mlb/Publicador/vitrine/CartaoDaVitrine';
-import { FILTROS_DA_VITRINE, filtrar, filtroInicial, listaSegura, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
+import { FILTROS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos da conta em VITRINE de cartões (20/10/2026) ───────────────────
@@ -40,6 +40,8 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
 
     const lista = listaSegura(cartoes);
     const visiveis = useMemo(() => filtrar(lista, filtro), [lista, filtro]);
+    // Um cartão por FAMÍLIA: o produto base e os kits dele (Fase 2, 3…), com as fases lado a lado.
+    const familias = useMemo(() => familiasDaVitrine(lista, filtro), [lista, filtro]);
     const selecionados = resumoDaSelecao(lista, selecao);
     const prontosAVista = visiveis.filter((c) => c.selecionavel && c.grupo === 'prontos');
     const skus = useMemo(() => lista.map((c) => c.sku).filter(Boolean), [lista]);
@@ -139,7 +141,7 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                     )}
                 </div>
 
-                {visiveis.length === 0 ? (
+                {familias.length === 0 ? (
                     <div className="rounded-pub-panel border border-pub-line bg-pub-surface p-10 text-center" data-vitrine-vazia>
                         <p className="text-[15px] font-semibold text-pub-txt">{lista.length === 0 ? 'Nenhum produto nesta conta ainda.' : 'Nenhum produto neste filtro.'}</p>
                         <p className="mt-1 text-[13px] text-pub-txt-3">
@@ -148,8 +150,8 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                     </div>
                 ) : (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4" data-vitrine-grade>
-                        {visiveis.map((c) => (
-                            <CartaoDaVitrine key={c.produto_id} cartao={c} marcado={selecao.has(Number(c.produto_id))} onMarcar={(id) => marcar(Number(id))} />
+                        {familias.map((f) => (
+                            <CartaoDaVitrine key={`${filtro}-${f.id}`} fases={f.fases} inicial={f.inicial} selecao={selecao} onMarcar={(id) => marcar(Number(id))} />
                         ))}
                     </div>
                 )}

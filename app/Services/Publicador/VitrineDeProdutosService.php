@@ -21,7 +21,8 @@ use Illuminate\Support\Collection;
  * (`ResolvedorGruposImagem`), e as pendências por cor que o editor grava no resumo (`step_state.resumo.por_cor`).
  *
  * Grupos (os filtros da tela): `prontos` (não publicado e sem bloqueio), `pendencia` (falta algo ou a publicação
- * falhou) e `publicados`. "Preparando" NÃO existe aqui de propósito: o preparo pela IA não grava início nem fim
+ * falhou) e `publicados`. Cada FASE é um cartão aqui (é um anúncio a publicar, com preço, foto e situação
+ * próprios); a tela junta a família (`familia_id`) num cartão só, com as fases lado a lado. "Preparando" NÃO existe aqui de propósito: o preparo pela IA não grava início nem fim
  * (a marca do `PreparoIaAgenda` fica 24 h no cache), e um filtro que adivinha mente.
  */
 final class VitrineDeProdutosService
@@ -76,6 +77,11 @@ final class VitrineDeProdutosService
 
         return [
             'produto_id' => (int) $l['produto_id'],
+            // A FAMÍLIA do cartão (20/10/2026, pedido do usuário): o kit da Fase 2/3 é outro anúncio, mas do MESMO
+            // produto — fica no cartão do produto base, e a pessoa passa de uma fase para outra pelo lado.
+            // Kit cujo base sumiu (`pubprod_base_fk` é SET NULL) fica sozinho.
+            'familia_id' => (int) ($p?->produto_base_id ?? $l['produto_id']),
+            'fase_numero' => $fase,
             'nome' => (string) $l['nome'],
             'sku' => (string) $l['sku'],
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL,

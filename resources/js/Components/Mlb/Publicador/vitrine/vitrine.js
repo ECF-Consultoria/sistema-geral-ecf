@@ -32,6 +32,39 @@ export function filtrar(cartoes, filtro) {
 
 const numero = (v) => (v === null || v === undefined || v === '' || ! Number.isFinite(Number(v)) ? null : Number(v));
 
+/**
+ * As FAMÍLIAS da vitrine (20/10/2026, pedido do usuário): o produto base e os kits dele (Fase 2, 3…) são anúncios
+ * diferentes do MESMO produto, então vão num cartão só, com as fases lado a lado. Com filtro, entra a família que
+ * tiver alguma fase nele, e `inicial` aponta a 1ª dessas fases (o cartão abre nela). A ordem é a do servidor.
+ *
+ * @return {Array<{id: number, fases: Array<object>, inicial: number}>}
+ */
+export function familiasDaVitrine(cartoes, filtro = 'todos') {
+    const porFamilia = new Map();
+    for (const c of listaSegura(cartoes)) {
+        const id = numero(c.familia_id) ?? Number(c.produto_id);
+        if (! porFamilia.has(id)) porFamilia.set(id, []);
+        porFamilia.get(id).push(c);
+    }
+
+    const saida = [];
+    for (const [id, fases] of porFamilia) {
+        fases.sort((a, b) => ((numero(a.fase_numero) ?? 1) - (numero(b.fase_numero) ?? 1)) || (Number(a.produto_id) - Number(b.produto_id)));
+        const inicial = filtro === 'todos' || ! CHAVES.includes(filtro) ? 0 : fases.findIndex((f) => f.grupo === filtro);
+        if (inicial !== -1) saida.push({ id, fases, inicial });
+    }
+
+    return saida;
+}
+
+/** O rótulo curto da fase na pílula do cartão: "Fase 1", "Kit 2"… (o que vem depois do "·" do selo). */
+export function rotuloDaFase(cartao) {
+    const selo = String(cartao?.fase ?? '');
+    const partes = selo.split('·').map((p) => p.trim()).filter(Boolean);
+
+    return partes.length > 1 ? partes[partes.length - 1] : (selo || 'Fase 1');
+}
+
 /** "R$ 1.234,56" */
 export function reais(valor) {
     const n = numero(valor);
