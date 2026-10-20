@@ -16,6 +16,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Publicador\Agente\EntradaDoPreparo;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
@@ -146,7 +147,9 @@ class PreparoIaDoRascunhoService
         foreach ($r['para_preencher'] as $id) {
             $pub = PubProduto::find($id);
             if ($pub !== null) {
-                $situacao = $this->avaliarIa($pub);
+                // AG-02 (20/10/2026): conta com o agente ligado passa pela entrada única dele (elegibilidade antes da
+                // IA, uma execução viva por produto); as outras seguem exatamente como antes.
+                $situacao = app(EntradaDoPreparo::class)->aoPreparar($alvo, $pub) ?? $this->avaliarIa($pub);
                 Log::info("[Publicador] Preparo pela IA: produto {$pub->id} ({$pub->nome}) da empresa {$company->id} — {$situacao}.");
                 $this->criativosSemCadeia($pub, $situacao);
             }
