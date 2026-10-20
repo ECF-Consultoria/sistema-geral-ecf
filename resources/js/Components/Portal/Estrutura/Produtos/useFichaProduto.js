@@ -6,7 +6,9 @@ import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
+import useTermosDoTitulo from '@/Components/Portal/Estrutura/Produtos/useTermosDoTitulo';
 import { eixosEmUso } from '@/lib/fichaTecnica';
+import { capitalizarTitulo, limiteDoTitulo } from '@/lib/tituloDoProduto';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -31,7 +33,7 @@ let contador = 0;
 const novaChave = () => `m${++contador}`;
 
 const linhaEmBranco = (produto) => ({
-    _k: novaChave(), codigo: '', nome: produto?.nome ?? '', eixo_rotulo: '', valor: '', familia: '', ambientes_texto: '',
+    _k: novaChave(), codigo: '', nome: produto?.nome ?? '', titulo: '', eixo_rotulo: '', valor: '', familia: '', ambientes_texto: '',
     categoria: '', volumes_texto: '', custo: '', estoque: '', volumes: [],
     ...(produto?.id ? { produto_id: produto.id } : {}),
 });
@@ -143,6 +145,16 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
 
+    /** Título de venda: do produto, como o nome, sempre com a 1ª letra maiúscula (o servidor confere). */
+    const alterarTitulo = (valor) => {
+        const titulo = capitalizarTitulo(valor);
+        setAlterado(true);
+        setVars((atual) => atual.map((v) => ({ ...v, titulo })));
+    };
+
+    // Termos da categoria e o limite do título: trocar a categoria relê, o título digitado fica.
+    const termosDoTitulo = useTermosDoTitulo({ categoria: primeira.categoria_ml_id, nome: primeira.nome });
+
     /**
      * Escolha num picker (vale para o produto inteiro). Fechar o picker sem mudar nada, ou escolher a
      * mesma família, não marca a ficha como alterada (revisão FE-IN-02).
@@ -238,6 +250,12 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             }
         });
         if (Object.keys(faltando).length) { setErros(faltando); return { ok: false, data: null }; }
+        const limiteTitulo = limiteDoTitulo(termosDoTitulo.limite);
+        if (String(vars[0].titulo ?? '').trim().length > limiteTitulo) {
+            setAviso(`O título passa de ${limiteTitulo} caracteres, o máximo desta categoria. Encurte o título e salve de novo.`);
+
+            return { ok: false, data: null };
+        }
 
         // Produto novo: a 1ª variação grava sozinha e SEM grupo; as demais vão com o produto_id que
         // voltou para ela (FE-CR-01 — a sequência mora em produtosGravacao, testada de verdade).
@@ -337,7 +355,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
-        alterarNome, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
+        alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
         tecnica, descricao,

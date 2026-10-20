@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { contatoDoAlvo, acessoComEmail, consumirEmpresaDaUrl } from '../../resources/js/lib/acessosPortal.js';
 
 test('o atalho de empresa é consumido: sai da URL, preserva o resto e não reabre', () => {
-    const primeira = consumirEmpresaDaUrl('https://admin.test/companies?tab=onboarding&sub=acessos&portal_company=42#topo');
+    const primeira = consumirEmpresaDaUrl('https://admin.test/companies?tab=portal&sub=acessos&portal_company=42#topo');
     assert.equal(primeira.id, '42');
     assert.equal(primeira.mudou, true);
-    assert.equal(primeira.url, '/companies?tab=onboarding&sub=acessos#topo');
+    assert.equal(primeira.url, '/companies?tab=portal&sub=acessos#topo');
 
     // É isto que a sub-aba relê ao ser montada de novo: nada para abrir.
     const segunda = consumirEmpresaDaUrl('https://admin.test' + primeira.url);
     assert.equal(segunda.id, null);
     assert.equal(segunda.mudou, false);
-    assert.equal(segunda.url, '/companies?tab=onboarding&sub=acessos#topo');
+    assert.equal(segunda.url, '/companies?tab=portal&sub=acessos#topo');
 });
 
 test('selecionar empresa aproveita contato; empresa vazia ou grupo não herda outro contato', () => {

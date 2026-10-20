@@ -24,6 +24,7 @@ import { IMaskInput } from 'react-imask';
 // Aba "Onboarding" — a leitura do painel /onboarding dentro da tela onde os
 // responsáveis já são atribuídos.
 import AbaOnboarding from './components/AbaOnboarding';
+import AbaPortal from './components/AbaPortal';
 
 // Quick task 260805-eqk — MARKETPLACES_EXTRAS removida junto com a coluna
 // companies.marketplaces_extras (substituida pela tabela company_marketplaces).
@@ -176,17 +177,32 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // render. Trocar de aba mudava a contagem e derrubava a tela.
     const portalAcessosTotal = usePage().props.portal_acessos_total ?? 0;
     const portalAcessos = usePage().props.portal_acessos;
+    // Aba Portal do cliente — a lista chega recortada do servidor (admin: todas
+    // as empresas; demais: a própria carteira). `?? false`/`?? []` pela mesma
+    // razão das flags acima: prop ausente esconde, nunca mostra.
+    const podeVerPortal = usePage().props.pode_ver_portal ?? false;
+    const portalEmpresas = usePage().props.portal_empresas ?? [];
 
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
     // Phase 37 Plan 37-06 (REQ-37-07) — aba 'grupos' removida; deep-links antigos
     // caem silenciosamente em 'empresas'. Gestao de grupos migrou para /comercial/empresas/listagem.
     const [tab, setTab] = useState(() => {
-        const t = new URLSearchParams(window.location.search).get('tab');
+        const params = new URLSearchParams(window.location.search);
+        let t = params.get('tab');
+        // "Acessos do portal" era sub-aba do Onboarding até 19/10/2026. O
+        // endereço antigo (que pode estar salvo ou num histórico) abre a
+        // sub-aba no lugar novo, em vez de cair no cockpit de onboardings.
+        if (t === 'onboarding' && params.get('sub') === 'acessos') t = 'portal';
         // ?tab=onboarding de quem não tem a permission cai em 'empresas': sem
         // isto o deep-link deixaria a pessoa numa tela em branco — a aba não
         // renderiza e nenhuma outra assume.
-        const abas = ['empresas', ...(pode_distribuir ? ['distribuicao'] : []), ...(podeVerOnboarding ? ['onboarding'] : [])];
+        const abas = [
+            'empresas',
+            ...(pode_distribuir ? ['distribuicao'] : []),
+            ...(podeVerOnboarding ? ['onboarding'] : []),
+            ...(podeVerPortal ? ['portal'] : []),
+        ];
         return abas.includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
@@ -462,6 +478,11 @@ export default function Companies({ companies, users, estrategistas = [], analis
         ...(podeVerOnboarding
             ? [{ key: 'onboarding', label: `Onboarding (${emOnboarding.length})` }]
             : []),
+        // Sem contagem no rótulo: o número seria o de empresas da página, e
+        // não diz nada que a aba Empresas já não diga.
+        ...(podeVerPortal
+            ? [{ key: 'portal', label: 'Portal do cliente' }]
+            : []),
     ];
 
     return (
@@ -717,6 +738,14 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         estrategistas={estrategistasOptions}
                         analistas={analistasOptions}
                         podeCadastrarEmpresa={podeCadastrarEmpresa}
+                        podeGerirPortal={podeGerirPortal}
+                    />
+                )}
+
+                {/* ══════════════ ABA PORTAL DO CLIENTE ══════════════ */}
+                {tab === 'portal' && podeVerPortal && (
+                    <AbaPortal
+                        empresas={portalEmpresas}
                         podeGerirPortal={podeGerirPortal}
                         portalAcessosTotal={portalAcessosTotal}
                         portalAcessos={portalAcessos}

@@ -363,7 +363,7 @@ class ChecklistEndpointsTest extends TestCase
         $empresa = $this->empresaComServico();
         $etapa = $this->etapaDe($empresa);
         $this->actingAs($this->admin())->post(route('admin.contratos.checklist.conexao-ecf', $empresa))
-            ->assertRedirect(route('companies.index', ['tab' => 'onboarding', 'sub' => 'acessos', 'portal_company' => $empresa->id]));
+            ->assertRedirect(route('companies.index', ['tab' => 'portal', 'sub' => 'acessos', 'portal_company' => $empresa->id]));
         $this->assertSame($etapa, $this->etapaDe($empresa));
         $this->assertDatabaseCount('onboarding_links', 0);
         $this->assertDatabaseCount('portal_usuarios', 0);

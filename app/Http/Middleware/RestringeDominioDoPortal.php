@@ -163,6 +163,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/categorias/sugerir',
         // 11/10/2026 — navegar pela árvore de categorias (além da busca).
         'portal/estrutura/produtos/categorias/arvore',
+        // 19/10/2026 — título de venda: termos da categoria e limite de caracteres.
+        'portal/estrutura/produtos/termos-titulo',
         // 09/10/2026 — planilha de produtos: baixar preenchida e sugestão por nome de categoria na prévia.
         'portal/estrutura/produtos/exportar',
         'portal/estrutura/produtos/categorias/sugerir-nomes',

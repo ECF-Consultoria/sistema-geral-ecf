@@ -250,4 +250,16 @@ class PubProduto extends Model
 
         return $nome !== '' ? $nome : ($this->oferta?->nome ?: ($this->oferta?->sku ?? $this->nome));
     }
+
+    /**
+     * O título de venda que o cliente deu no cadastro do Portal (19/10/2026), lido ao vivo como o
+     * nome: só no produto agrupado da MESMA empresa. Vazio = nulo. Quem o usa é o
+     * `DadosEfetivosService` (o título planejado do Clássico).
+     */
+    public function tituloDoCadastro(): ?string
+    {
+        $titulo = trim((string) $this->produtoDoGrupo()?->titulo);
+
+        return $titulo !== '' ? $titulo : null;
+    }
 }

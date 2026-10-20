@@ -23,6 +23,7 @@ use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
+use App\Support\TituloDoProduto;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -403,9 +404,15 @@ class PreparoIaDoRascunhoService
         // Custo: campo que a equipe já preencheu não recebe nada — então nem se chama a IA. A decisão
         // que vale é a da escrita, sob a trava; esta é só a economia.
         $planejados = $this->planejados($r, $etapa);
-        $livres = $this->livres($r, $etapa, $this->lerEstado($r->id), $planejados);
+        $estado = $this->lerEstado($r->id);
+        $livres = $this->livres($r, $etapa, $estado, $planejados);
         if ($livres === []) {
-            return null;
+            // Nada a gerar — mas o título que a IA escreveu antes de o cliente dar o dele ainda tem de
+            // sair (`devolvidosAoPortal`): segue para a escrita com nada gerado.
+            $devolver = $etapa === self::TITULO
+                && $this->devolvidosAoPortal($this->repo->snapshot($r), $planejados, (array) ($estado[Memoria::ESCRITO] ?? [])) !== [];
+
+            return $devolver ? '{}' : null;
         }
         $prazo = microtime(true) + self::PRAZO_S;
 
@@ -481,7 +488,8 @@ class PreparoIaDoRascunhoService
                     $this->titulosFixos($r, $livres, $planejados, $snap), [], 255,
                 );
                 foreach ($livres as $tipo) {
-                    $novo = $finais[$tipo] ?? '';
+                    // A memória guarda o que fica gravado: com a 1ª letra maiúscula (19/10/2026).
+                    $novo = (string) TituloDoProduto::capitalizar($finais[$tipo] ?? '');
                     if ($novo === '') {
                         continue;
                     }
@@ -489,6 +497,12 @@ class PreparoIaDoRascunhoService
                         $titulos[$tipo] = $novo;
                     }
                     $escrito[Memoria::chaveDoTitulo($tipo)] = $novo;
+                }
+                // O cliente deu o título de venda no Portal DEPOIS de a IA escrever o deste tipo: o da IA
+                // sai e passa a valer o do cliente (o planejado). O que a equipe digitou nunca sai.
+                foreach ($this->devolvidosAoPortal($snap, $planejados, $escrito) as $tipo) {
+                    $titulos[$tipo] = null;
+                    unset($escrito[Memoria::chaveDoTitulo($tipo)]);
                 }
                 if ($titulos !== []) {
                     $this->repo->gravarTitulos($r, $titulos);
@@ -557,10 +571,40 @@ class PreparoIaDoRascunhoService
                 continue;
             }
             $atual = (string) ($alvo->titulo ?? '');
-            if (trim($atual) === '' && trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== '') {
+            // O snapshot já traz o título com a 1ª letra maiúscula (`Alvo`, 19/10/2026); a memória antiga, não.
+            $daIa = TituloDoProduto::capitalizar($ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)));
+            // Título planejado (aba Anúncios, ou o título de venda do cadastro do Portal) conta como
+            // preenchido — também quando o campo ainda tem o que a IA escreveu antes dele.
+            if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== '' && (trim($atual) === '' || Memoria::aindaDaIa($atual, $daIa))) {
                 continue;
             }
-            if (Memoria::podeEscrever($atual, $ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)))) {
+            if (Memoria::podeEscrever($atual, $daIa)) {
+                $tipos[] = $alvo->listingTypeId;
+            }
+        }
+
+        return $tipos;
+    }
+
+    /**
+     * Os tipos cujo título ainda é o que a IA escreveu e que agora têm um planejado (o cliente deu o
+     * título de venda no Portal depois do preparo): o da IA sai para valer o do cliente. O que a
+     * equipe digitou (diferente do último da IA) nunca entra aqui.
+     *
+     * @param  array<string, ?string>  $planejados
+     * @param  array<string, mixed>  $escrito  a memória do que a automação escreveu
+     * @return list<string>
+     */
+    private function devolvidosAoPortal(RascunhoSnapshot $snap, array $planejados, array $escrito): array
+    {
+        $tipos = [];
+        foreach ($snap->alvos as $alvo) {
+            if (! in_array($alvo->listingTypeId, self::TIPOS_TITULO, true) || ! $alvo->ativo) {
+                continue;
+            }
+            $ultimo = $escrito[Memoria::chaveDoTitulo($alvo->listingTypeId)] ?? null;
+            if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== ''
+                && Memoria::aindaDaIa($alvo->titulo, is_string($ultimo) ? TituloDoProduto::capitalizar($ultimo) : null)) {
                 $tipos[] = $alvo->listingTypeId;
             }
         }
@@ -681,6 +725,10 @@ class PreparoIaDoRascunhoService
             'cliente' => $r->produto !== null ? $this->leitor->descricaoDoCliente($r->produto) : null,
             // O Modelo que o cliente gravou no Portal antes de o campo sair da ficha: é fato para a IA.
             'modelo_do_cliente' => $r->produto !== null ? $this->leitor->modeloDoCliente($r->produto) : null,
+            // 19/10/2026: o título de venda do cliente vira o planejado do Clássico — mudar ele refaz o
+            // Premium e o Modelo. Só entra quando existe: os produtos sem título guardam o hash de antes
+            // (nada é refeito só por causa desta chave nova).
+            ...(($titulo = $r->produto?->tituloDoCadastro()) !== null ? ['titulo_do_cliente' => $titulo] : []),
         ], JSON_UNESCAPED_UNICODE));
     }
 

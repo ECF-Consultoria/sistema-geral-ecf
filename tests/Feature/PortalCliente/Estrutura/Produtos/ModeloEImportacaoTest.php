@@ -144,15 +144,16 @@ class ModeloEImportacaoTest extends TestCase
 
     // ═══ Task 1: modelo e leitor ════════════════════════════════════════════
 
-    public function test_modelo_tem_as_14_colunas_na_ordem_exemplos_ficticios_e_tudo_texto(): void
+    public function test_modelo_tem_as_15_colunas_na_ordem_exemplos_ficticios_e_tudo_texto(): void
     {
         $planilha = ModeloProdutosXlsx::gerar();
 
         $this->assertSame(['Produtos', 'Instruções', 'Listas'], $planilha->getSheetNames());
         $folha = $planilha->getSheetByName('Produtos');
 
-        $this->assertCount(14, ModeloProdutosXlsx::CABECALHOS);
-        $this->assertCount(14, ModeloProdutosXlsx::CAMPOS);
+        // 19/10/2026: "Título" (o título de venda) entrou depois de "Nome do produto*" — eram 14.
+        $this->assertCount(15, ModeloProdutosXlsx::CABECALHOS);
+        $this->assertCount(15, ModeloProdutosXlsx::CAMPOS);
         foreach (ModeloProdutosXlsx::CABECALHOS as $i => $titulo) {
             $this->assertSame($titulo, $folha->getCell(Coordinate::stringFromColumnIndex($i + 1).'1')->getValue());
         }

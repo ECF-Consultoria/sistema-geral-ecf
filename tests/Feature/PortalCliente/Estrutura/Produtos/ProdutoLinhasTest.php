@@ -123,11 +123,12 @@ class ProdutoLinhasTest extends TestCase
         $this->variacao($p, 'A-1', 1, [[10, 10, 10, 1]]);
 
         $r = $this->linhas()->paraProdutos($empresa, [$p->id]);
-        $this->assertSame(['custo', 'categoria', 'familia', 'ambiente'], $r[0]['pendencias']);
+        // 19/10/2026: o título de venda entrou na lista, logo depois da categoria.
+        $this->assertSame(['custo', 'categoria', 'titulo', 'familia', 'ambiente'], $r[0]['pendencias']);
 
         $fam = EstruturaFamilia::create(['company_id' => $empresa->id, 'nome' => 'Farmhouse']);
         $amb = EstruturaAmbiente::create(['company_id' => $empresa->id, 'nome' => 'Sala']);
-        $p->update(['familia_id' => $fam->id, 'categoria_ml_id' => 'MLB1', 'categoria_ml_nome' => 'X']);
+        $p->update(['familia_id' => $fam->id, 'categoria_ml_id' => 'MLB1', 'categoria_ml_nome' => 'X', 'titulo' => 'Mesa de jantar']);
         $p->ambientes()->attach($amb->id);
         $p->variacoes()->first()->update(['custo' => 100]);
 

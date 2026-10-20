@@ -63,6 +63,7 @@ class DadosEfetivosService
         }
 
         $efetivos = $this->daOferta($produto->oferta);
+        $efetivos['titulos'] = self::comTituloDoCadastro($efetivos['titulos'], $produto->tituloDoCadastro());
 
         if ($produto->estrutura_produto_id !== null) {
             $porVariante = $this->precosPorVariante($produto);
@@ -294,6 +295,24 @@ class DadosEfetivosService
         }
 
         return $saida;
+    }
+
+    /**
+     * O título de venda do cadastro do Portal (19/10/2026) vale como o planejado do CLÁSSICO quando a
+     * aba Anúncios não planejou um: o Premium fica para a IA, que o faz diferente (o ML barra dois
+     * anúncios com o mesmo título — V-TIT-04). Como todo efetivo, só preenche o que a equipe deixou
+     * vazio no editor. Público: a visão em lote (`EfetivosEmLote`) aplica a mesma regra.
+     *
+     * @param  array<string, ?string>  $titulos  listing_type_id → título planejado
+     * @return array<string, ?string>
+     */
+    public static function comTituloDoCadastro(array $titulos, ?string $doCadastro): array
+    {
+        if ($doCadastro !== null && trim((string) ($titulos['gold_special'] ?? '')) === '') {
+            $titulos['gold_special'] = mb_substr($doCadastro, 0, 255);
+        }
+
+        return $titulos;
     }
 
     /**

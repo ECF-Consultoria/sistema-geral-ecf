@@ -1819,3 +1819,69 @@ mesmo card".
 - **Prova sem servidor:** `scratchpad/prova_linhas.mjs <pasta>` desenha a página no Puppeteer com o CSS do build e os
   números do print do usuário, abre o detalhe, usa o atalho, recolhe, edita os parâmetros, digita no frete único e
   confere o PUT que sairia (os dois tipos), e fotografa em 1440 e em 900 px.
+
+## 51. A porta da equipe virou aba de `/companies` — "Portal do cliente" (19/10/2026)
+
+Pedido do usuário: entrar no portal sem passar pelo Onboarding, porque o portal passou a ser usado sobretudo pelo
+Mapeamento Estrutural. Até aqui a única porta pela tela era o menu "…" de cada linha da aba Onboarding — **empresa sem
+onboarding não tinha como ser aberta** (o §49 ainda descreve esse estado).
+
+- **Onde ficou:** aba `?tab=portal` de `/companies`, ao lado de Onboarding. Sub-abas "Empresas" (todos que podem
+  entrar) e "Acessos do portal" (admin). **Acessos saiu do Onboarding** por decisão do usuário; os endereços velhos
+  continuam chegando: `?tab=onboarding&sub=acessos` é traduzido no `useState` da aba em `Companies/Index.jsx`, e
+  `/acessos-portal`, o checklist da Fase 152 e o "Sair do portal" já apontam para `tab=portal`.
+- **A lista é a régua de `PortalEquipeService::podeEntrar()`, montada no servidor** (`portal_empresas`): admin vê todas
+  as empresas da página, os demais só a carteira (`company_users`). O universo é o de `/companies` —
+  `EmpresasVisiveisService`: Performance com contrato ativo, **sem MlbEmpresa**. Empresa de Polos ou sem contrato
+  ativo continua sem porta pela tela; a rota `companies.portal.abrir` abre qualquer `Company`, só falta onde clicar.
+  `AbaPortalEmCompaniesTest::toda_empresa_listada_abre_pela_porta_da_equipe` clica em todas as linhas: se alguém
+  alargar a lista sem mexer em `podeEntrar()`, ele quebra (conferido por mutação: sem o filtro de carteira, 2 testes
+  caem).
+- **"Último login" é da PESSOA, não da empresa.** `portal_usuarios.ultimo_acesso_em` é carimbado no login
+  (`PortalLoginService`), e quem responde por um grupo carimba a mesma data em todas as empresas dele. Não existe
+  registro de "último acesso à empresa X" para o portal autenticado — `onboarding_links.ultimo_acesso` é do link por
+  token, aposentado em 15/09. Não renomeie a coluna para "último acesso" sem criar esse registro.
+- **A contagem é uma consulta só** (`AcessosDoPortalService::loginsPorEmpresa`, GROUP BY no pivot): acesso por GRUPO
+  vira uma linha por empresa no `portal_usuario_empresa`, então contar o pivot já cobre o grupo. Desativado não conta
+  nem empurra a data.
+- **Falhas que NÃO são desta mudança** (iguais no `origin/main@7791d7aa` sem ela):
+  `Phase18/CompaniesCustIdFilterTest` (2) — as empresas do teste não têm contrato, e a listagem exige contrato
+  Performance ativo — e `Phase14MlbControllerFiltroTest` (1), causa não investigada.
+
+## 52. Título de venda separado do nome, montado com os termos da categoria (19/10/2026)
+
+Pedido do usuário: o cliente dá o NOME do produto, escolhe a categoria e monta o TÍTULO clicando nos termos mais
+buscados (ou digitando). Trabalho direto, sem GSD, com autorização explícita para a migration (`estrutura_produtos.titulo`,
+varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
+
+- **"O mesmo registro" não existe.** O usuário pediu "o produto do Portal é o mesmo registro que o Publicador lê, sem
+  sincronização". Não é: `estrutura_produtos` × `pub_produtos` + `pub_rascunho_alvos` (um título POR TIPO, Clássico e
+  Premium). O que cumpre o pedido é LER ao vivo, como o nome já é lido: `PubProduto::tituloDoCadastro()` (só produto
+  agrupado da MESMA empresa) entra em `DadosEfetivosService::comTituloDoCadastro` como o **planejado do Clássico**, só
+  quando a aba Anúncios não planejou um. O Premium fica para a IA — o ML recusa dois títulos iguais (V-TIT-04). O que a
+  equipe digita no editor vence (efetivo só preenche vazio). `EfetivosEmLote` espelha a regra (teste de paridade).
+- **A IA não escreve por cima do título do cliente, nem quando escreveu antes dele.** `PreparoIaDoRascunhoService::livres`
+  trata o planejado como preenchido também quando o campo ainda tem o último texto da IA, e `devolvidosAoPortal` APAGA
+  esse texto (para o efetivo do cliente aparecer). O hash dos fatos ganha `titulo_do_cliente` **só quando existe** —
+  produto sem título mantém o hash de antes e nada é refeito por causa da chave nova.
+- **A 1ª letra maiúscula vale no servidor, em quatro pontos, porque há caminhos que pulam o model:** o `Alvo` (snapshot,
+  validação e `family_name` do payload), o mutator de `PubRascunhoAlvo` (Eloquent), o `RascunhoRepository::gravarTitulos`
+  (update por query NÃO passa pelo mutator) e os títulos da IA DEPOIS do `RegrasDoTitulo::semRepetir` (a troca de ordem
+  pode pôr palavra minúscula na frente). A memória da IA compara o último texto dela capitalizado, senão um título
+  antigo minúsculo pareceria "editado pela equipe" e a IA nunca mais o refaria. Portal: mutator de `EstruturaProduto` e
+  `NormalizadorDeLinha` (ficha e planilha).
+- **Limite (`LimiteDoTitulo`):** título de até 60 caracteres passa SEM consultar o schema — é o limite da imensa maioria
+  das categorias e nenhuma lida até hoje pede menos; assim Salvar e planilha não esperam o catálogo, e os testes não
+  fazem HTTP. Acima de 60 vale o `max_title_length` da categoria. Se aparecer categoria com limite < 60, isso tem de mudar.
+- **Pendência `titulo`:** todo produto sem título fica pendente — os que já existiam em produção também, então a contagem
+  "com pendência" do Mapeamento sobe de uma vez no deploy. É o comportamento pedido ("importa e fica pendente").
+- **Sigilo:** a rota `termos-titulo` repassa só termo/posição/grupo/relacionado/origem e o nome da categoria de cima — o
+  `/trends` traz `url` de `lista.mercadolivre.com.br` e o id `MLB…`, que NÃO podem chegar ao cliente. O componente comum
+  (`Components/Titulo/`) tem textos neutros; o editor do Publicador passa os dele (que citam o ML) por `textos`.
+- **Planilha:** coluna "Título" logo depois de "Nome do produto*" nos dois modelos. A linha de exemplo ganhou título; o
+  importador também reconhece o exemplo SEM título (modelo baixado antes), senão "Mesa de exemplo" viraria produto.
+- **Componente único:** `lib/tituloDoProduto.js` + `Components/Titulo/{CampoDoTitulo,TermosDaCategoria}.jsx`, usados pela
+  ficha (`FichaTitulo.jsx`) e pelo editor (`Mesa/TermosMaisBuscados.jsx` é casca). O chip marcado é DERIVADO do texto
+  (`termoNoTitulo`); o bug do produto 67 era o clique chamar só `juntarTermo`, que não faz nada quando o termo já está lá.
+- **Tarefa 4 (campo Modelo com ";") não foi feita:** não existe no código campo que exija ";" (o MODEL saiu da ficha do
+  Portal em 09/10, e a IA do Publicador junta com vírgula). Esperando o usuário dizer onde vê a regra.

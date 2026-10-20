@@ -347,7 +347,7 @@ export default function LinhaChecklistItem({
                                 {item.chave === 'conexao_ecf_gerada' && !concluido && (
                                     <Link
                                         href={route('companies.index', {
-                                            tab: 'onboarding',
+                                            tab: 'portal',
                                             sub: 'acessos',
                                             portal_company: companyId,
                                         })}

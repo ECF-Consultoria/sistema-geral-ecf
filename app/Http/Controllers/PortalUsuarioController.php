@@ -37,8 +37,9 @@ class PortalUsuarioController extends Controller
     }
 
     /**
-     * A tela mudou de casa em 25/08/2026: vive dentro da aba Onboarding de
-     * `/companies`. Aqui ficou o redirecionamento porque `/acessos-portal` foi
+     * A tela mudou de casa em 25/08/2026 (sub-aba do Onboarding de
+     * `/companies`) e de novo em 19/10/2026 (sub-aba da aba Portal do
+     * cliente). Aqui ficou o redirecionamento porque `/acessos-portal` foi
      * o endereço dela por um tempo — e porque manter duas telas iguais seria
      * manter duas fontes de verdade.
      *
@@ -47,7 +48,7 @@ class PortalUsuarioController extends Controller
      */
     public function index()
     {
-        return redirect()->route('companies.index', ['tab' => 'onboarding', 'sub' => 'acessos']);
+        return redirect()->route('companies.index', ['tab' => 'portal', 'sub' => 'acessos']);
     }
     public function store(Request $request)
     {

@@ -14,6 +14,10 @@ const ARQUIVOS = [
     'resources/js/lib/fichaTecnica.js',
     'resources/js/lib/estoqueDoProduto.js',
     'resources/js/lib/medidasDoProduto.js',
+    // 19/10/2026: o título de venda usa o componente comum ao editor da equipe — os textos dele são neutros.
+    'resources/js/lib/tituloDoProduto.js',
+    'resources/js/Components/Titulo/CampoDoTitulo.jsx',
+    'resources/js/Components/Titulo/TermosDaCategoria.jsx',
     ...readdirSync(PASTA).filter((f) => /\.(jsx|js)$/.test(f)).map((f) => `${PASTA}/${f}`),
 ];
 

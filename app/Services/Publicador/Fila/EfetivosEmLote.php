@@ -232,6 +232,19 @@ final class EfetivosEmLote
             }
         }
 
+        // ── O título de venda do cadastro do Portal (19/10/2026): UMA consulta, regra do `tituloDoCadastro()` ──
+        $doCadastro = [];
+        $agrupados = collect($comOferta)->filter(fn (PubProduto $p) => $p->estrutura_produto_id !== null);
+        if ($agrupados->isNotEmpty()) {
+            $titulos = EstruturaProduto::query()->whereIn('id', $agrupados->pluck('estrutura_produto_id')->unique()->values()->all())
+                ->get(['id', 'company_id', 'titulo'])->keyBy('id');
+            foreach ($agrupados as $p) {
+                $e = $titulos->get((int) $p->estrutura_produto_id);
+                $titulo = $e !== null && (int) $e->company_id === (int) $p->company_id ? trim((string) $e->titulo) : '';
+                $doCadastro[$p->id] = $titulo !== '' ? $titulo : null;
+            }
+        }
+
         // ── Montagem, no shape de `daProduto()` ──
         foreach ($comOferta as $p) {
             $companyId = (int) $p->oferta->company_id;
@@ -240,7 +253,7 @@ final class EfetivosEmLote
             $linha = $porOferta[(int) $p->oferta_id] ?? null;
             // A ordem das chaves é a do `daOferta()` (o teste de paridade compara o array inteiro).
             $efetivos = [
-                'titulos' => self::titulosPlanejados((array) $o['anuncios']),
+                'titulos' => DadosEfetivosService::comTituloDoCadastro(self::titulosPlanejados((array) $o['anuncios']), $doCadastro[$p->id] ?? null),
                 'precos' => DadosEfetivosService::precosAnunciados($linha),
                 'promocoes' => DadosEfetivosService::precosDePromocao($linha),
                 'sem_frete' => DadosEfetivosService::semFrete($linha),

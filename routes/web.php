@@ -252,6 +252,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // 11/10/2026 — navegar pela árvore de categorias, nível a nível (um clique = uma leitura).
     Route::get('/estrutura/produtos/categorias/arvore', [PortalEstruturaProdutosController::class, 'navegarCategorias'])
         ->middleware('throttle:180,1,estrutura.produtos.categorias.arvore')->name('portal.auth.estrutura.produtos.categorias.arvore');
+    // 19/10/2026 — título de venda: os termos mais buscados da categoria e o limite de caracteres.
+    Route::get('/estrutura/produtos/termos-titulo', [PortalEstruturaProdutosController::class, 'termosDoTitulo'])
+        ->middleware('throttle:60,1,estrutura.produtos.termos_titulo')->name('portal.auth.estrutura.produtos.termos_titulo');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
     // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.
@@ -1693,6 +1696,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/polos-painel', [PolosController::class, 'painel'])->name('polos-painel');
     // Camada financeira do Painel (JSON assíncrono, admin-only — gate em painelFinanceiro).
     Route::get('/polos-painel/financeiro', [PolosController::class, 'painelFinanceiro'])->name('polos-painel.financeiro');
+    // Lista enxuta dos sellers em JSON, sem a ficha (TKT-0022): leitura por máquina (ler_tela do
+    // MCP). Gate operacional do painel; financeiro só p/ quem abre /polos/empresas.
+    Route::get('/polos-painel/sellers', [PolosController::class, 'painelSellers'])->name('polos-painel.sellers');
     // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Baixar o Painel como planilha .xlsx (colunas + AutoFiltro). POST porque o front

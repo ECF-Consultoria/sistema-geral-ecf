@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\TituloDoProduto;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -24,9 +26,18 @@ class EstruturaProduto extends Model
     protected $table = 'estrutura_produtos';
 
     protected $fillable = [
-        'company_id', 'codigo', 'nome', 'familia_id',
+        'company_id', 'codigo', 'nome', 'titulo', 'familia_id',
         'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho', 'descricao',
     ];
+
+    /**
+     * Título de venda (19/10/2026): separado do nome, montado pelo cliente com os termos da
+     * categoria. Grava-se sempre com a 1ª letra maiúscula (`TituloDoProduto`); vazio é nulo.
+     */
+    protected function titulo(): Attribute
+    {
+        return Attribute::make(set: fn (?string $valor) => trim((string) $valor) === '' ? null : TituloDoProduto::capitalizar(trim((string) $valor)));
+    }
 
     public function company(): BelongsTo
     {

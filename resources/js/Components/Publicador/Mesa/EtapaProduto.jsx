@@ -4,7 +4,8 @@ import NavegadorDeCategorias from '@/Components/Categorias/NavegadorDeCategorias
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import { NOME_TIPO, mensagemDe } from '../apoio';
 import { mostraSeloDaIa } from '../derivados.js';
-import { juntarTermo, termoNoTitulo } from '../ferramentas';
+import { alternarTermo, termoNoTitulo } from '../ferramentas';
+import { CampoDoTitulo, ContadorDoTitulo } from '@/Components/Titulo/CampoDoTitulo';
 import { CAMPO, Campo, ErroDoCampo, GeradoPelaIa, INVALIDO, LINK, Secao, useErroDoCampo } from './comum';
 import TermosMaisBuscados from './TermosMaisBuscados';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,10 @@ import { cn } from '@/lib/utils';
 // o ML exige títulos diferentes); só aparecem os tipos ligados — liga-se e
 // desliga-se em "Condições de venda", junto do preço. Os termos mais buscados
 // da categoria montam o título à mão ou pela IA (docx §3).
+//
+// 19/10/2026: o campo e os termos são os mesmos do cadastro do produto no Portal
+// (`Components/Titulo`): 1ª letra maiúscula, nada além do limite da categoria, e o
+// clique no termo marcado o tira do título (antes só acrescentava).
 
 const CONDICOES = [['new', 'Novo'], ['used', 'Usado'], ['refurbished', 'Recondicionado']];
 const MAX_TITULO_PADRAO = 60;
@@ -230,9 +235,9 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
     return (
         <div data-alvo={lt}>
             <Campo rotulo={`Título do anúncio ${NOME_TIPO[lt]}`} htmlFor={id} erro={erro}
-                extra={<span className={cn('font-mono text-[13px] tabular-nums', tamanho > maxTitulo ? 'text-red-300' : 'text-white/45')} data-contador-titulo={lt}>{tamanho}/{maxTitulo}</span>}>
-                <input id={id} value={titulo} disabled={m.disabled || rodando} maxLength={255} placeholder={a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta'}
-                    onChange={(e) => mudar({ titulo: e.target.value })} aria-invalid={!! erro || undefined}
+                extra={<ContadorDoTitulo tamanho={tamanho} limite={maxTitulo} data-contador-titulo={lt} />}>
+                <CampoDoTitulo id={id} valor={titulo} limite={maxTitulo} disabled={m.disabled || rodando} placeholder={a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta'}
+                    onChange={(novo) => mudar({ titulo: novo })} aria-invalid={!! erro || undefined}
                     className={cn(CAMPO, (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} />
             </Campo>
             {seloIa && <GeradoPelaIa campo={`titulo-${lt}`} />}
@@ -248,7 +253,7 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
                         Copiar do {NOME_TIPO[outro.listing_type_id]}
                     </button>
                 )}
-                {! titulo && a.titulo_efetivo && m.estado.produto?.oferta_id && <span className="text-[13px] text-white/45">Veio da aba Anúncios — digite para trocar.</span>}
+                {! titulo && a.titulo_efetivo && m.estado.produto?.oferta_id && <span className="text-[13px] text-white/45">Veio do Portal — digite para trocar.</span>}
             </div>
             {ia.status === 'erro' && <p className="mt-1.5 text-[13px] text-amber-300">{ia.erro}</p>}
         </div>
@@ -266,13 +271,16 @@ function SecaoTitulo({ m }) {
     const destinoValido = editaveis.some((a) => a.listing_type_id === destino) ? destino : editaveis[0]?.listing_type_id ?? null;
     const termos = (m.termos?.dados?.termos ?? []).map((t) => t.termo);
 
-    /** Acrescenta o termo no título do tipo escolhido, partindo do título planejado quando ainda não há digitado. */
-    const usarTermo = (termo) => m.mudarRasc((r) => ({
+    /**
+     * O clique no termo, no título do tipo escolhido: acrescenta, ou tira se ele já está lá. Sem título
+     * digitado, parte do que veio do Portal.
+     */
+    const alternarTermoNoTitulo = (termo) => m.mudarRasc((r) => ({
         alvos: r.alvos.map((x) => {
             if (x.listing_type_id !== destinoValido) return x;
             const base = x.titulo || alvos.find((a) => a.listing_type_id === x.listing_type_id)?.titulo_efetivo || '';
 
-            return { ...x, titulo: juntarTermo(base, termo) };
+            return { ...x, titulo: alternarTermo(base, termo) };
         }),
     }));
 
@@ -289,7 +297,7 @@ function SecaoTitulo({ m }) {
                         {desligados.length > 0 && ligados.length > 0 && (
                             <p className="text-[13px] text-white/45">O anúncio {desligados.map((a) => NOME_TIPO[a.listing_type_id]).join(' e ')} está desligado; ligue em Condições de venda.</p>
                         )}
-                        {editaveis.length > 0 && <TermosMaisBuscados m={m} alvos={editaveis} destino={destinoValido} onDestino={setDestino} onUsar={usarTermo} />}
+                        {editaveis.length > 0 && <TermosMaisBuscados m={m} alvos={editaveis} destino={destinoValido} onDestino={setDestino} onAlternar={alternarTermoNoTitulo} limite={maxTitulo} />}
                     </div>
                 )}
         </Secao>

@@ -12,6 +12,7 @@ use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\CategorySchema;
 use App\Support\Publicador\Schema\ValorAtributo;
 use App\Support\Publicador\TermosVetados;
+use App\Support\TituloDoProduto;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -76,7 +77,25 @@ class PalavrasChaveService
     public function termos(PubRascunho $r): array
     {
         [$categoria, $caminho] = $this->categoria($r);
-        $produto = $r->produto->nomeExibido();
+
+        return $this->termosComCaminho($categoria, $caminho, $r->produto->nomeExibido());
+    }
+
+    /**
+     * Os mesmos termos de {@see termos()}, sem rascunho: a categoria e o nome do produto bastam.
+     * É o que o cadastro do produto no Portal usa para montar o título de venda (19/10/2026).
+     *
+     * @throws \App\Support\Publicador\RegraViolada categoria que não dá para ler
+     * @throws \RuntimeException quando o ML não responde
+     */
+    public function termosDaCategoria(string $categoria, string $produto): array
+    {
+        return $this->termosComCaminho($categoria, $this->schemas->obter($categoria)->caminho(), $produto);
+    }
+
+    /** @param  list<string>  $caminho */
+    private function termosComCaminho(string $categoria, array $caminho, string $produto): array
+    {
         $daCategoria = $this->trends->termos($categoria, $produto, $caminho);
         $termos = array_map(fn ($t) => [...$t, 'origem' => 'categoria'], $daCategoria['termos']);
 
@@ -280,18 +299,19 @@ class PalavrasChaveService
     }
 
     /**
-     * Título limpo: sem os caracteres que o ruleset ECF proíbe e cortado na
-     * última palavra inteira que cabe no máximo da categoria.
+     * Título limpo: sem os caracteres que o ruleset ECF proíbe, cortado na
+     * última palavra inteira que cabe no máximo da categoria e com a 1ª letra
+     * maiúscula (19/10/2026, `TituloDoProduto`).
      */
     public static function ajustarTitulo(string $bruto, int $maximo): string
     {
         $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N} ]+/u', ' ', $bruto)));
         if (mb_strlen($limpo) <= $maximo) {
-            return $limpo;
+            return (string) TituloDoProduto::capitalizar($limpo);
         }
         $cortado = mb_substr($limpo, 0, $maximo + 1);
 
-        return trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo));
+        return (string) TituloDoProduto::capitalizar(trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo)));
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
@@ -480,7 +500,8 @@ class PalavrasChaveService
             throw new \RuntimeException('A IA sugeriu o mesmo título do outro tipo de anúncio. Tente de novo.');
         }
 
-        return $titulo;
+        // A troca de ordem do `semRepetir` pode pôr uma palavra minúscula na frente.
+        return (string) TituloDoProduto::capitalizar($titulo);
     }
 
     /** O bruto da IA sem marca/"ECF"/número de especificação e cortado no máximo da categoria. */
@@ -553,11 +574,12 @@ class PalavrasChaveService
         $classico = $this->finalizarTitulo((string) ($dados['classico'] ?? ''), $c);
         $premium = $this->finalizarTitulo((string) ($dados['premium'] ?? ''), $c);
 
-        // Um só veio: ele vale para os dois e a diferença sai do servidor.
-        return RegrasDoTitulo::semRepetir(
+        // Um só veio: ele vale para os dois e a diferença sai do servidor. A troca de ordem do
+        // `semRepetir` pode pôr uma palavra minúscula na frente: a maiúscula vem depois dela.
+        return array_map(fn (string $t) => (string) TituloDoProduto::capitalizar($t), RegrasDoTitulo::semRepetir(
             ['gold_special' => $classico ?: $premium, 'gold_pro' => $premium ?: $classico],
             $evitar, $c['candidatos'], $c['maximo'],
-        );
+        ));
     }
 
     /**

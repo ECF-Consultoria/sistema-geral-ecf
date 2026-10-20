@@ -6,6 +6,7 @@ import { AvisoFlash } from '@/Components/Portal/Estrutura/comum';
 import FichaDadosGerais from '@/Components/Portal/Estrutura/Produtos/FichaDadosGerais';
 import FichaDescricao from '@/Components/Portal/Estrutura/Produtos/FichaDescricao';
 import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
+import FichaTitulo from '@/Components/Portal/Estrutura/Produtos/FichaTitulo';
 import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoProduto';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
@@ -272,6 +273,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
                 <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
+                    {/* O título logo depois do nome e da categoria: os termos dele dependem dos dois (19/10/2026). */}
+                    <FichaTitulo ficha={ficha} />
                 </fieldset>
 
                 {/* As medidas do produto fora da caixa vêm logo antes das Variações: o volume de cada

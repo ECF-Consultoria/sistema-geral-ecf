@@ -75,7 +75,7 @@ class ModeloCompleto
     private const SEM_CODIGO = '-';
 
     /** As colunas do produto antes e depois das medidas: o grupo na frente, sem a Categoria. */
-    public const CAMPOS_ANTES = ['grupo', 'codigo', 'eixo', 'variacao', 'nome', 'familia', 'ambientes'];
+    public const CAMPOS_ANTES = ['grupo', 'codigo', 'eixo', 'variacao', 'nome', 'titulo', 'familia', 'ambientes'];
     public const CAMPOS_DEPOIS = ['custo', 'estoque', 'descricao'];
 
     /** As quatro medidas de cada volume, na ordem das colunas (as chaves são as de {@see VolumesTexto}). */
@@ -122,6 +122,7 @@ class ModeloCompleto
         'eixo'      => 'Opcional. Por onde o produto varia. Escolha da lista; em branco se não varia.',
         'variacao'  => 'A variação desta linha (ex.: Preto). Em branco se o produto não varia.',
         'nome'      => 'Obrigatório. O nome do produto, igual em todas as linhas dele.',
+        'titulo'    => 'Opcional. Como o produto aparece para quem procura (até 60 caracteres na maioria das categorias). Em branco: complete depois no cadastro.',
         'familia'   => 'Opcional. A linha ou coleção do produto.',
         'ambientes' => 'Opcional. Onde o produto é usado. Mais de um: separe com /.',
         'custo'     => 'Opcional. Quanto custa uma unidade, em reais. Só o número.',
@@ -138,7 +139,7 @@ class ModeloCompleto
     /** O que nunca vai para uma célula ou nota: qualquer termo que conte para onde o cadastro vai. */
     private const NAO_VAI = '/mercado|an[uú]nci|publica|\bmlb|\bml\b/iu';
 
-    private const LARGURAS = ['grupo' => 18, 'codigo' => 14, 'eixo' => 17, 'variacao' => 18, 'nome' => 32, 'familia' => 24, 'ambientes' => 28,
+    private const LARGURAS = ['grupo' => 18, 'codigo' => 14, 'eixo' => 17, 'variacao' => 18, 'nome' => 32, 'titulo' => 40, 'familia' => 24, 'ambientes' => 28,
         'custo' => 13, 'estoque' => 13, 'descricao' => 50, 'categoria' => 28];
 
     public function __construct(
@@ -408,7 +409,7 @@ class ModeloCompleto
             return ['c' => 'comprimento', 'l' => 'largura', 'a' => 'altura', 'kg' => 'peso'][explode(':', $chave)[2]] ?? null;
         }
 
-        return ['codigo' => 'ref', 'eixo' => 'eixo', 'variacao' => 'valor', 'nome' => 'nome', 'familia' => 'familia', 'ambientes' => 'ambientes',
+        return ['codigo' => 'ref', 'eixo' => 'eixo', 'variacao' => 'valor', 'nome' => 'nome', 'titulo' => 'titulo', 'familia' => 'familia', 'ambientes' => 'ambientes',
             'custo' => 'custo', 'estoque' => 'estoque', 'descricao' => 'descricao', 'categoria' => 'categoria'][$chave] ?? null;
     }
 

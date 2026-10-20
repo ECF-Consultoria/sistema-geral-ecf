@@ -393,6 +393,34 @@ class CompanyController extends Controller
                 ...$this->onboardingDaEmpresa($c, $podeVerOnboarding, $empresasDaCarteira),
             ]);
 
+        // ─── Aba Portal do cliente ──────────────────────────────────────────
+        // A porta de entrada da equipe no portal, para QUALQUER empresa — antes
+        // ela só existia no menu de cada linha do Onboarding, e empresa sem
+        // onboarding ficava sem caminho pela tela.
+        //
+        // Mesma régua de `PortalEquipeService::podeEntrar()`, que é quem decide
+        // de verdade na hora do clique: `core.onboarding` e, para não-admin,
+        // só a própria carteira. Listar empresa em que a pessoa levaria 403
+        // seria prometer o que a rota nega.
+        $podeVerPortal  = $podeVerOnboarding;
+        $portalEmpresas = [];
+
+        if ($podeVerPortal) {
+            $linhasPortal = $companies
+                ->filter(fn ($c) => $empresasDaCarteira === null || in_array($c['id'], $empresasDaCarteira, true))
+                ->values();
+
+            $logins = $acessosPortal->loginsPorEmpresa($linhasPortal->pluck('id')->all());
+
+            $portalEmpresas = $linhasPortal->map(fn ($c) => [
+                'id'     => $c['id'],
+                'nome'   => $c['name'],
+                'ativa'  => (bool) $c['active'],
+                'grupo'  => $c['grupo'],
+                'logins' => $logins[$c['id']] ?? ['logins' => 0, 'nunca_entrou' => 0, 'ultimo_login' => null],
+            ])->all();
+        }
+
         $users = User::where('active', true)
             ->where('role', '!=', 'admin')
             ->get(['id', 'name', 'role']);
@@ -522,8 +550,15 @@ class CompanyController extends Controller
             // apareceria para quem leva 403 ao clicar.
             'pode_cadastrar_empresa' => $usuario->hasPermission(\App\Support\Permissions::COMERCIAL_CADASTRAR_EMPRESA),
 
+            // ─── Aba Portal do cliente (19/10/2026) ──────────────────
+            // Esconder no front é cosmético; o que protege é a lista montada
+            // vazia acima para quem não pode entrar.
+            'pode_ver_portal' => $podeVerPortal,
+            'portal_empresas' => $portalEmpresas,
+
             // ─── Acessos do Portal do Cliente ────────────────────────
-            // A tela mora na sub-aba "Acessos do portal" (25/08/2026).
+            // A tela mora na sub-aba "Acessos do portal" — da aba Onboarding
+            // (25/08/2026) passou para a aba Portal do cliente (19/10/2026).
             //
             // O total vem SEMPRE (é um COUNT, e o rótulo da sub-aba precisa
             // dele); a lista vem por `optional`, ou seja, só quando o front

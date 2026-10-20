@@ -421,7 +421,8 @@ class GravarLinhasTest extends TestCase
         $arquivo = $this->planilha([
             ModeloProdutosXlsx::CABECALHOS,
             ['N1', null, null, null, 'Novo Um'],
-            ['X9', null, null, null, 'Custo ruim', null, null, null, null, null, null, 'abc'],
+            // 19/10/2026: a coluna Título entrou depois do nome — o custo passou da 12ª para a 13ª.
+            ['X9', null, null, null, 'Custo ruim', null, null, null, null, null, null, null, 'abc'],
             ['n1', null, null, null, 'Repetido'],
         ]);
 

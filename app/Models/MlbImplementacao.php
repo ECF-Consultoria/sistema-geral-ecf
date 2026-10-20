@@ -922,6 +922,37 @@ class MlbImplementacao extends Model
     }
 
     /**
+     * Grafias de região que aparecem fora do select → nome oficial de ONB_POLO_OPCOES. A
+     * LOCALIDADE do CSV POLOS MENSAL (ECF Drive) usa "Rio Preto" e "Bento Goncalves", e o
+     * /polos/empresas a prefere ao cadastro (D-15) — por isso a mesma região aparece com
+     * dois nomes. Chave = chaveCatalogo().
+     */
+    public const POLO_DE_PARA = [
+        'ARAPONGAS'             => 'Arapongas',
+        'S. J. RIO PRETO'       => 'S. J. Rio Preto',
+        'S.J. RIO PRETO'        => 'S. J. Rio Preto',
+        'SJ RIO PRETO'          => 'S. J. Rio Preto',
+        'SAO JOSE DO RIO PRETO' => 'S. J. Rio Preto',
+        'RIO PRETO'             => 'S. J. Rio Preto',
+        'SERRA GAUCHA'          => 'Serra Gaúcha',
+        // Renomeado na planilha 2026-07 (ver ONB_POLO_OPCOES e SyncPolosPlanilha::POLO_MAP).
+        'BENTO GONCALVES'       => 'Serra Gaúcha',
+        'SAO BENTO DO SUL'      => 'São Bento do Sul',
+    ];
+
+    /**
+     * Região oficial (uma de ONB_POLO_OPCOES) de uma grafia qualquer. Ao contrário dos
+     * de-para acima, desconhecido vira null: quem pede a região padronizada conta com um
+     * dos 4 nomes, e um quinto nome quebraria o agrupamento por região sem aviso.
+     */
+    public static function poloOficial(?string $v): ?string
+    {
+        $v = trim((string) $v);
+
+        return $v === '' ? null : (self::POLO_DE_PARA[self::chaveCatalogo($v)] ?? null);
+    }
+
+    /**
      * Alinha um valor à GRAFIA do catálogo (só caixa e acento). Desconhecido passa verbatim.
      *
      * Existe porque o time digita esses valores à mão, no Painel e na planilha, muito antes

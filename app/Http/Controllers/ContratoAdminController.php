@@ -1080,7 +1080,7 @@ class ContratoAdminController extends Controller
         $this->guardaChecklist($request, null);
 
         return redirect()->route('companies.index', [
-            'tab' => 'onboarding', 'sub' => 'acessos', 'portal_company' => $company->id,
+            'tab' => 'portal', 'sub' => 'acessos', 'portal_company' => $company->id,
         ]);
     }
 
