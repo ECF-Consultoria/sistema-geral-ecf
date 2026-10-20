@@ -1612,3 +1612,22 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   - O build do worktree com o `.env` copiado põe os chunks em `localhost/ecf_admin/public` (CORS na porta própria). Use o
     Vite dev do worktree em outra porta (`npx vite --port 5174 --strictPort`), que escreve o `public/hot` DO worktree.
   - O `php -S` com o `server.php` do framework roda de dentro de `public/`.
+
+## 38. Vitrine de produtos (protótipo, 20/10/2026) e a pendência POR COR
+
+- **Atrás de `publicador.vitrine`** (env `PUBLICADOR_VITRINE`, desligada): com a chave ligada, `produtos()` do
+  `MlbPublicadorEntradaController` renderiza `Mlb/Publicador/ProdutosVitrine` (cartões) e não a lista. O
+  `VitrineDeProdutosService` parte do `ResumoRapidoService::linhas(..., comPublicados: true)` e acrescenta a 1ª foto de
+  cada cor (`ResolvedorGruposImagem::resolver`) e o chip. Hoje é um `RascunhoRepository::snapshot` por produto (~8
+  consultas cada); a visão rápida é de consulta fixa. Antes de ligar em conta grande, montar as fotos em lote.
+- **`step_state.resumo.por_cor`** (gravado pelo `gravarResumo` em todo `estado()`): variante → rótulos curtos ("falta
+  foto", "falta estoque"…). Vale pelo `alvo.variante` ou pelo `alvo.grupo` da foto (`chaveDoGrupo`); o que é do produto
+  inteiro não entra. Como a contagem de bloqueios, ele só é refeito quando alguém abre ou salva o editor.
+- **"Preparando" não existe** na vitrine de propósito: o preparo pela IA não grava início nem fim. A marca do
+  `PreparoIaAgenda` vive 24 h no cache e não é apagada ao terminar. Para ter o filtro, gravar início e fim da cadeia.
+- **`EditorRascunhoService::salvar(['atributos' => ...])` SUBSTITUI a ficha inteira.** Mandar só 4 campos apaga os
+  outros (isso apagou Marca e Modelo num script de demonstração). Script que mexe em ficha manda o conjunto completo.
+- **Tailwind no Vite dev não enxerga PASTA nova criada depois que o servidor subiu** (Windows): as classes arbitrárias
+  dos arquivos novos (`aspect-[4/3]`, `max-w-[1320px]`, a grade) não entram no CSS, e o cartão ocupa a tela inteira.
+  Reiniciar o Vite. Matar só a tarefa do terminal deixa o `node` ouvindo na porta: conferir o PID pela linha de comando
+  antes de encerrar.

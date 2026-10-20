@@ -321,6 +321,10 @@ return [
     */
     'abas_ocultas' => ['visao-geral', 'publicacoes', 'alavancas'],
 
+    // 20/10/2026 — a conta abre na VITRINE de cartões (`ProdutosVitrine`) em vez da lista. Protótipo para o
+    // usuário testar em localhost: desligada por padrão, até ele aprovar.
+    'vitrine' => (bool) env('PUBLICADOR_VITRINE', false),
+
     /*
     |--------------------------------------------------------------------------
     | Prévia do anúncio (etapa 5 do editor, 20/10/2026)

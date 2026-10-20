@@ -587,7 +587,7 @@ class EditorRascunhoService
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
 
-        $this->gravarResumo($r, count(array_filter($problemas, fn (Problema $p) => $p->bloqueia())));
+        $this->gravarResumo($r, array_values(array_filter($problemas, fn (Problema $p) => $p->bloqueia())), $snapshot);
 
         $eixos = Eixo::ordenar($snapshot->eixos);
         $grupos = $schema ? ResolvedorGruposImagem::resolver($snapshot->variantes, $eixos, $snapshot->imagens, new OpcoesImagem(
@@ -832,16 +832,65 @@ class EditorRascunhoService
     /**
      * Resumo de bloqueios para a lista de produtos e para a faixa do editor. Não é uma
      * edição: `DB::table` de propósito, para não subir `revisao` (a conferência continua
-     * valendo) nem mexer em `updated_at`. Só grava quando o número muda.
+     * valendo) nem mexer em `updated_at`. Só grava quando o número ou as cores mudam.
+     *
+     * `por_cor` (20/10/2026, vitrine): variante → o que falta NELA, em rótulo curto ("falta foto").
+     * É o que deixa o cartão dizer "Rosa: falta foto" em vez de só "1 de 2 cores com pendência".
+     *
+     * @param  list<Problema>  $bloqueios
      */
-    private function gravarResumo(PubRascunho $r, int $bloqueios): void
+    private function gravarResumo(PubRascunho $r, array $bloqueios, RascunhoSnapshot $s): void
     {
-        if ($bloqueios === ($r->step_state['resumo']['bloqueios'] ?? null)) {
+        $porCor = self::pendenciasPorCor($bloqueios, $s);
+        $antes = (array) ($r->step_state['resumo'] ?? []);
+        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? [])) {
             return;
         }
         $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
-        $atual['resumo'] = ['bloqueios' => $bloqueios, 'revisao' => $r->revisao];
+        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => $r->revisao, 'por_cor' => $porCor];
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    /**
+     * O que falta em CADA variante ativa, pelos bloqueios que apontam para ela: a variante (estoque, SKU,
+     * código, preço daquela cor) ou o grupo de fotos dela. O que é do produto inteiro não entra aqui.
+     *
+     * @param  list<Problema>  $bloqueios
+     * @return array<string, list<string>> chave da variante → rótulos curtos, sem repetir
+     */
+    public static function pendenciasPorCor(array $bloqueios, RascunhoSnapshot $s): array
+    {
+        $eixos = Eixo::ordenar($s->eixos);
+        $saida = [];
+        foreach ($s->variantesAtivas() as $v) {
+            $grupo = ResolvedorGruposImagem::chaveDoGrupo($v, $eixos, $s->fotosPorVariante);
+            foreach ($bloqueios as $p) {
+                $alvo = (array) $p->alvo;
+                $daCor = ($alvo['variante'] ?? null) === $v->chave
+                    || (($alvo['grupo'] ?? null) !== null && $alvo['grupo'] !== ResolvedorGruposImagem::GERAL && $alvo['grupo'] === $grupo);
+                if ($daCor) {
+                    $saida[$v->chave][self::rotuloCurto($alvo)] = true;
+                }
+            }
+        }
+
+        return array_map('array_keys', $saida);
+    }
+
+    /** "falta foto", "falta estoque"… — o rótulo do chip da vitrine, pelo alvo do problema. */
+    private static function rotuloCurto(array $alvo): string
+    {
+        $atributo = (string) ($alvo['atributo'] ?? '');
+
+        return match (true) {
+            ($alvo['etapa'] ?? null) === 'E6' || isset($alvo['grupo']) || isset($alvo['imagem']) => 'falta foto',
+            ($alvo['campo'] ?? null) === 'estoque' => 'falta estoque',
+            ($alvo['campo'] ?? null) === 'sku' || $atributo === 'SELLER_SKU' => 'falta SKU',
+            in_array($atributo, ['GTIN', 'EMPTY_GTIN_REASON'], true) => 'falta código de barras',
+            ($alvo['campo'] ?? null) === 'preco' => 'falta preço',
+            str_starts_with($atributo, 'SELLER_PACKAGE_') || ($alvo['campo'] ?? null) === 'embalagem' => 'falta medidas do pacote',
+            default => 'falta ficha técnica',
+        };
     }
 
     /**
@@ -870,7 +919,6 @@ class EditorRascunhoService
         };
     }
 
-    /** @return array{0: ?SchemaClassificado, 1: ?string} */
     /**
      * O schema classificado do rascunho e, quando não sai, a mensagem do porquê. Pública desde
      * 20/10/2026: a prévia do anúncio (`PreviaDoAnuncioService`) classifica pelo MESMO caminho da tela.
