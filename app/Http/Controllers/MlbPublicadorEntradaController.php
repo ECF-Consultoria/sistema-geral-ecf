@@ -22,6 +22,7 @@ use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Services\Publicador\ResumoDoSincronizar;
+use App\Services\Publicador\VitrineDeProdutosService;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\NaFilaDePublicacao;
 use Illuminate\Http\JsonResponse;
@@ -215,12 +216,12 @@ class MlbPublicadorEntradaController extends Controller
 
         $empresa = $this->programas->empresaParaTela($alvo);
 
-        // 20/10/2026 — protótipo da VITRINE de cartões (`publicador.vitrine`, desligada por padrão).
-        if (config('publicador.vitrine')) {
+        // 20/10/2026 — a VITRINE de cartões: para todas (`publicador.vitrine`) ou só as contas da lista.
+        if (VitrineDeProdutosService::ligadaPara($alvo['chave'])) {
             return Inertia::render('Mlb/Publicador/ProdutosVitrine', [
                 'empresa' => $empresa,
                 'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
-                ...app(\App\Services\Publicador\VitrineDeProdutosService::class)->montar($alvo),
+                ...app(VitrineDeProdutosService::class)->montar($alvo),
                 'cabecalho' => $cabecalhos->para($alvo, $empresa, 'produtos'),
                 'fila_publicacao' => $filas->aviso($alvo['chave']),
             ]);

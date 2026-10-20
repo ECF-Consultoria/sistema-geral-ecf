@@ -219,8 +219,9 @@ class VisaoGeralCockpitTest extends TestCase
             'ml_user_id' => '1555596317',
             'access_token' => 'APP_USR-segredo',
             'refresh_token' => 'TG-segredo',
-            'expires_at' => $tokenStatus === 'expired' ? now()->subHours(2) : now()->addHours(5),
-            'status' => $tokenStatus === 'expired' ? 'expired' : 'active',
+            // `expired` = o caso real das tardes: ainda ativo, só vencido; `revoked` = desconectado de verdade.
+            'expires_at' => $tokenStatus === 'active' ? now()->addHours(5) : now()->subHours(2),
+            'status' => $tokenStatus === 'revoked' ? 'revoked' : 'active',
         ]);
 
         return [$empresa->fresh(), $company];
@@ -492,9 +493,10 @@ class VisaoGeralCockpitTest extends TestCase
         $this->assertCount(14 + 9, $daAction, 'a action deixou de entregar uma das 23 props (14 de hoje + 9 novas)');
     }
 
-    public function test_banner_nasce_com_token_expirado_e_leva_o_link_de_reconexao(): void
+    public function test_banner_nasce_com_token_revogado_e_leva_o_link_de_reconexao(): void
     {
-        [$e, $c] = $this->conta(true, 'Polo expirado', 'expired');
+        // 20/10/2026: só o REVOGADO desconecta — o vencido renova sozinho na 1ª chamada.
+        [$e, $c] = $this->conta(true, 'Polo revogado', 'revoked');
         $this->produto($e, $c, 'CAD-01');
 
         $props = $this->props('empresa-'.$e->id);

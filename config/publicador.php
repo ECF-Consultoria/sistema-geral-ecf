@@ -327,9 +327,11 @@ return [
     */
     'abas_ocultas' => ['visao-geral', 'publicacoes', 'alavancas'],
 
-    // 20/10/2026 — a conta abre na VITRINE de cartões (`ProdutosVitrine`) em vez da lista. Protótipo para o
-    // usuário testar em localhost: desligada por padrão, até ele aprovar.
+    // 20/10/2026 — a conta abre na VITRINE de cartões (`ProdutosVitrine`) em vez da lista. `vitrine` liga para
+    // TODAS as contas; `vitrine_contas` liga só para as listadas, pela chave da URL da conta, separadas por vírgula
+    // (ex.: `company-459,empresa-12`) — "só na #459 primeiro", até o usuário aprovar para o time.
     'vitrine' => (bool) env('PUBLICADOR_VITRINE', false),
+    'vitrine_contas' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_VITRINE_CONTAS', ''))))),
 
     /*
     |--------------------------------------------------------------------------

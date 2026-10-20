@@ -217,4 +217,13 @@ final class VitrineDeProdutosService
     {
         return ['min' => isset($p['min']) ? (float) $p['min'] : null, 'max' => isset($p['max']) ? (float) $p['max'] : null];
     }
+
+    /**
+     * A vitrine vale para esta conta? `publicador.vitrine` liga para todas; `publicador.vitrine_contas` liga só para
+     * as contas listadas, pela chave da URL (20/10/2026: "só na #459 primeiro", até o usuário aprovar para o time).
+     */
+    public static function ligadaPara(string $chave): bool
+    {
+        return (bool) config('publicador.vitrine') || in_array($chave, (array) config('publicador.vitrine_contas', []), true);
+    }
 }

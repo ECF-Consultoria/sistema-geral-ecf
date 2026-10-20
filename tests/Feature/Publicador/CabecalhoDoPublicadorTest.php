@@ -374,7 +374,10 @@ class CabecalhoDoPublicadorTest extends TestCase
         $this->assertSame(['declarado' => null], $erp);
     }
 
-    /** O contrato não inventa prazo de renovação: só `ativo|expirado|sem_token`. */
+    /**
+     * O contrato não inventa prazo de renovação. Desde 20/10/2026 o token só VENCIDO é `ativo` (renova sozinho na
+     * 1ª chamada; a renovação diária roda às 08:00) e só o revogado derruba a conta para `sem_token`.
+     */
     public function test_integracao_do_ml_expoe_estado_e_nunca_prazo_de_renovacao(): void
     {
         [$e, $c] = $this->conta();
@@ -383,9 +386,13 @@ class CabecalhoDoPublicadorTest extends TestCase
         $ml = $this->props('/mlb/anuncios/publicador/empresas/empresa-'.$e->id.'/visao-geral')['cabecalho']['integracoes']['mercado_livre'];
 
         $this->assertSame(['estado', 'conta_nome', 'conta_ml_id', 'link_reconexao'], array_keys($ml));
-        $this->assertSame('expirado', $ml['estado']);
+        $this->assertSame('ativo', $ml['estado'], 'vencido renova sozinho: não é desconectado');
         $this->assertArrayNotHasKey('renova_em', $ml);
         $this->assertArrayNotHasKey('expires_at', $ml);
+
+        MlToken::where('company_id', $c->id)->update(['status' => 'revoked']);
+        $ml = $this->props('/mlb/anuncios/publicador/empresas/empresa-'.$e->id.'/visao-geral')['cabecalho']['integracoes']['mercado_livre'];
+        $this->assertSame('sem_token', $ml['estado'], 'revogado é desconectado de verdade');
     }
 
     // ═══ 6. O endpoint do seletor de empresa ═════════════════════════════════

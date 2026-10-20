@@ -1719,3 +1719,22 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` (ativo, com `mlb.criativos_ia`),
   `publicador_criativos_auto_companies` (começar pela #459), a chave do Creative Engine e `queue:restart`.
   Lembrar: foto desenhada já deu infração na #459 (10/10) — a Prévia passa a ser a única barreira.
+
+## 41. "Desconectado" era só o token vencido; vitrine por conta (20/10/2026)
+
+- O access token do ML dura 6 h e o `ml:refresh-tokens` roda UMA vez por dia (08:00, janela de 2 h). Às 15h40 de
+  20/10, **115 dos 139 tokens de produção estavam vencidos** — e o Publicador (pill do header, bolinha do seletor,
+  `SeloConta`, filtro "atenção" da entrada, Visão geral) pintava todos de "desconectado" / "Token expirado" /
+  "Reconectar". Não estavam: toda chamada renova sozinha (`MercadoLivreService::ensureValidToken`,
+  `ClienteMlPublicador::tokenValido`).
+- Decisão do usuário: vermelho só quando a conexão caiu de verdade. `ProgramasPublicadorService::estadoDoToken`: token
+  não revogado = `ativo` (vencido incluído); revogado ou nenhum = `sem_token`. O refresh token inválido
+  (`invalid_grant`) vira `revoked` na 1ª renovação (`MercadoLivreService::refreshToken`) — é aí que a conta aparece
+  desconectada, com o link de reconexão. `expirado` segue aceito pelas telas, mas não sai mais do servidor; o filtro
+  "atenção" da entrada passou a listar só quem precisa reconectar.
+- Segue valendo: a renovação das 08:00 dá 429 em rajada (vários "Falha ao renovar token … Erro 429 (transitório)" em
+  20/10) — esses tokens só renovam no próximo uso. O agendamento não mudou.
+- **Vitrine por conta:** `PUBLICADOR_VITRINE=true` liga para todas; `PUBLICADOR_VITRINE_CONTAS=company-459,…` (a chave
+  da URL) liga só nas listadas (`VitrineDeProdutosService::ligadaPara`). Em 20/10 ficou ligada só na #459 ("só na
+  #459 primeiro"); o time segue com a lista até o usuário aprovar. A vitrine NÃO tem "Editar em grade", a busca por
+  SKU, "Confortável/Compacto" nem o filtro "Com problema" — conferir com o usuário antes de ligar para todos.

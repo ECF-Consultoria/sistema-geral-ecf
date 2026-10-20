@@ -123,7 +123,8 @@ class CabecalhoPublicadorService
             ],
             'integracoes' => [
                 'mercado_livre' => [
-                    // O MESMO estado que o `SeloConta` mostra hoje: ativo / expirado / sem_token.
+                    // O MESMO estado que o `SeloConta` mostra hoje: ativo / sem_token (o token só vencido
+                    // conta como ativo desde 20/10/2026 — renova sozinho; ver `ProgramasPublicadorService::estadoDoToken`).
                     // Nenhuma chamada ao ML para descobrir isso (D-05) e nenhum prazo de
                     // renovação inventado: o contrato não sabe quando o token renova.
                     'estado' => (string) ($empresa['token'] ?? 'sem_token'),

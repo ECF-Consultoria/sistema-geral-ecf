@@ -90,20 +90,21 @@ class VisaoGeralTest extends TestCase
         $this->actingAs($this->admin())->get(self::BASE.'/empresas/company-999999/visao-geral')->assertNotFound();
     }
 
-    public function test_visao_geral_token_expirado_mostra_so_a_linha_de_reconexao(): void
+    public function test_visao_geral_token_revogado_mostra_so_a_linha_de_reconexao(): void
     {
-        $e = MlbEmpresa::create(['nome' => 'Expirada', 'projeto' => 'POLOS'])->fresh();
+        // 20/10/2026: só o token REVOGADO desconecta (o vencido renova sozinho).
+        $e = MlbEmpresa::create(['nome' => 'Revogada', 'projeto' => 'POLOS'])->fresh();
         MlToken::create([
             'mlb_empresa_id' => $e->id, 'ml_user_id' => '1', 'access_token' => 'x', 'refresh_token' => 'y',
-            'expires_at' => now()->subHour(), 'status' => 'active',
+            'expires_at' => now()->subHour(), 'status' => 'revoked',
         ]);
         PubProduto::create(['mlb_empresa_id' => $e->id, 'sku' => 'A', 'nome' => 'A', 'origem' => 'publicador']);
         $r = PubRascunho::create(['produto_id' => PubProduto::first()->id, 'status' => PubRascunho::FAILED]);
 
         $p = $this->pagina(self::BASE.'/empresas/empresa-'.$e->id.'/visao-geral')['props'];
 
-        $this->assertSame('expirado', $p['empresa']['token']);
-        $this->assertCount(1, $p['oQueFazerAgora'], 'token expirado — nenhuma outra linha, mesmo com produto com erro');
+        $this->assertSame('sem_token', $p['empresa']['token']);
+        $this->assertCount(1, $p['oQueFazerAgora'], 'conta desconectada — nenhuma outra linha, mesmo com produto com erro');
         $this->assertSame('Conta precisa de reconexão', $p['oQueFazerAgora'][0]['texto']);
     }
 

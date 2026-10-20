@@ -182,6 +182,22 @@ class VitrineDeProdutosTest extends TestCase
             ->has('cabecalho.abas_ocultas'));
     }
 
+    public function test_a_vitrine_liga_so_nas_contas_da_lista(): void
+    {
+        // "Só na #459 primeiro": a lista pela chave da URL; as outras contas seguem na lista de hoje.
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+        $chave = 'company-'.$this->empresa->id;
+        $url = route('mlb.anuncios.publicador.produtos', ['conta' => $chave]);
+
+        config(['publicador.vitrine' => false, 'publicador.vitrine_contas' => ['company-999999']]);
+        $this->mesa()->get($url)->assertOk()->assertInertia(fn (AssertableInertia $p) => $p->component('Mlb/Publicador/Produtos', false));
+
+        config(['publicador.vitrine_contas' => ['company-999999', $chave]]);
+        $this->mesa()->get($url)->assertOk()->assertInertia(fn (AssertableInertia $p) => $p->component('Mlb/Publicador/ProdutosVitrine', false));
+        $this->assertTrue(VitrineDeProdutosService::ligadaPara($chave));
+        $this->assertFalse(VitrineDeProdutosService::ligadaPara('company-999998'));
+    }
+
     public function test_pendencias_por_cor_pela_variante_ou_pelo_grupo_de_fotos_e_o_que_e_do_produto_nao_entra(): void
     {
         $eixos = [new Eixo('COLOR', 'Cor', 0, true, [new ValorEixo('1', 'Preto'), new ValorEixo('2', 'Rosa')])];
