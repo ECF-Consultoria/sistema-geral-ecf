@@ -127,13 +127,17 @@
 #      **string vazia** no caso `caminho === null` (`<img src="">` recarrega a
 #      própria página);
 #   8. ⚠️⚠️ **PERGUNTA-188-C** — o docblock **não nomeando** os 3 minutos
-#      (`config/publicador.php:148`), o ponto de gravação
-#      (`MlbPublicadorController:405`) e os **CINCO leitores**
-#      (`AgendadorDaFila:337`, `PreparoIaDoRascunhoService:131`/`:180`/`:366`,
-#      `GarantiaPadrao:192`, `ExcluirProdutoService:195`). **UMA** asserção
-#      coletando os ausentes, com **ISCA NAS DUAS DIREÇÕES** (o docblock completo
-#      PASSA; tirar um dos nomes REPROVA) e **anti-fantasma**: as cinco linhas
-#      citadas são lidas do disco e têm de conter `EditorEmUso::`;
+#      (`config/publicador.php`, `editor_em_uso_min`), o ponto de gravação
+#      (`MlbPublicadorController`, `EditorEmUso::marcar`) e os **CINCO leitores**
+#      (`AgendadorDaFila`, `PreparoIaDoRascunhoService` — e os TRÊS pontos dele
+#      por DESCRIÇÃO: *"no segundo laço"*, *"na escrita do rascunho"* —,
+#      `GarantiaPadrao`, `ExcluirProdutoService`). **UMA** asserção coletando os
+#      ausentes, com **ISCA NAS DUAS DIREÇÕES** (o docblock completo PASSA; tirar
+#      um dos nomes REPROVA) mais a isca do recorte (`assertCount(15)`, porque
+#      remover nome só afrouxa) e **anti-fantasma por NOME**: os cinco arquivos
+#      são varridos no disco e o conjunto `metodo::membro` de cada um tem de ser
+#      EXATAMENTE o declarado. ⚠️ **Nenhum número de linha entra neste gate** —
+#      ver a remedição de 20/10/2026 logo acima da linha do id;
 #   9. os marcadores existindo fora de `pending`/`rejected`, perdendo a numeração
 #      1..N **sobre os alertas**, ou aceitando percentual fora de 0–100.
 #
@@ -141,7 +145,58 @@
 # docblock **é** o artefato sob teste (razão: a causa do agendamento parado tem de
 # ser achável por `grep`, não por bisseção). A inversão está DECLARADA no arquivo
 # de teste; "consertá-lo" para `semComentarios()` faria o gate medir NADA.
-galeria-e-marcadores  php  test_(o_progresso_e_a_nota_de_conjunto_saem_de_UMA_contagem_so_188_03|a_galeria_final_ordenada_traz_url_do_arquivo_nos_DOIS_casos_188_03|os_marcadores_existem_em_DOIS_estados_numerados_e_saneados_188_03)  ::  tests=3 assertions=84
+# ⚠️ A inversão vale para o DOCBLOCK (item 8 acima). A varredura anti-fantasma dos
+# arquivos LEITORES, ao contrário, lê **sem** comentário — e a isca negativa prova
+# por que: o próprio `FotosDoPainelService` cita `EditorEmUso::marcar()` em prosa
+# e não chama nada.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ REMEDIDO EM 20/10/2026 — `assertions=84` → `91`. **NÃO É REGRESSÃO.**
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUEM QUEBROU: o commit **`cd582f83`, de OUTRA SESSÃO**, mexeu em
+# `app/Services/Publicador/PreparoIaDoRascunhoService.php` **acima** dos pontos
+# que liam o sinal `EditorEmUso`. As três chamadas desceram de 131/180/366 para
+# **132/181/367** (+1). O código do outro dev está CERTO; o gate, ancorado no
+# NÚMERO DE LINHA, reprovou trabalho correto e deixou a árvore VERMELHA no HEAD
+# (falhava **sozinho**, por `--filter` isolado — não era corrida de suíte).
+#
+# ⚠️ A CULPA É DA ANCORAGEM, NÃO DO OUTRO DEV. O briefing da wave 188-03 pediu
+# que o docblock nomeasse os cinco leitores **com número de linha**, para que
+# *"quem vir o agendamento parado ache a causa por grep, não por bissecção"*. A
+# intenção estava certa; a ancoragem, errada — linha muda legitimamente em TODA
+# edição acima dela, em qualquer fase, para sempre. E o conserto barato (subir
+# `131` para `132`) deixaria a mina armada para a edição seguinte, que é como se
+# ensina o executor a ajustar réguas quando elas incomodam
+# (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+#
+# POR QUE A CONTAGEM MUDOU — as 7 asserções, uma por uma (MEDIDAS, não estimadas:
+# uma invocação de `artisan test --filter=` para este id, `3 passed (91
+# assertions)`):
+#   −1  caiu o `assertSame([], $deslocados)` da tabela `arquivo => LINHA`;
+#   +1  `assertSame([], $divergentes)` — a varredura por NOME (arquivo + método
+#       envolvente + membro chamado), UMA asserção coletando os infratores;
+#   +1  `assertCount(5, $sinalPorArquivo)` — isca do recorte (lista vazia faria o
+#       laço não rodar e o `assertSame([], ...)` passar por construção);
+#   +1  `assertSame(8, ...)` — o total de pontos do sinal (8, não 6: o
+#       `ExcluirProdutoService::excluirUm` chama `EditorEmUso::chave` no
+#       `Cache::forget`, e declarar só o que confirma a tese é gate cego);
+#   +1  isca POSITIVA — os TRÊS pontos do `PreparoIaDoRascunhoService` em
+#       `preparar`/`sincronizarAgora`/`executarEtapa`. São estes três NOMES que
+#       substituem os `:131`/`:180`/`:366`;
+#   +1  isca NEGATIVA — o próprio `FotosDoPainelService` devolve `[]`, provando
+#       que a leitura sem comentário é CARGA (cru acharia 3 fantasmas);
+#   +1  `assertCount(15, $deveNomear)` — isca do recorte: tirar um nome da lista
+#       só AFROUXA o gate, então é a contagem que torna a remoção visível;
+#   +2  `assertFileExists` — `cru()` o faz a cada leitura, e a varredura passou de
+#       5 para 7 leituras de arquivo (os 5 + o PreparoIa de novo + a isca
+#       negativa).
+#   ➡️ 84 − 1 + 6 + 2 = **91**. Confere com o medido.
+#
+# ⚠️ O docblock de `app/.../FotosDoPainelService.php` **segue citando** `:148`,
+# `:405`, `:337`, `:131`, `:180`, `:366`, `:192` e `:195` como DOCUMENTAÇÃO — e
+# **este gate não cobre nenhum desses números**, de propósito. (`app/` não é
+# território deste conserto; o `:131` do docblock, aliás, já está desatualizado.)
+galeria-e-marcadores  php  test_(o_progresso_e_a_nota_de_conjunto_saem_de_UMA_contagem_so_188_03|a_galeria_final_ordenada_traz_url_do_arquivo_nos_DOIS_casos_188_03|os_marcadores_existem_em_DOIS_estados_numerados_e_saneados_188_03)  ::  tests=3 assertions=91
 
 # ⚠️⚠️ O QUE ESTE ID MEDE:
 #   1. a borda com menos de **CINCO** ramos — e a **precedência só se prova com

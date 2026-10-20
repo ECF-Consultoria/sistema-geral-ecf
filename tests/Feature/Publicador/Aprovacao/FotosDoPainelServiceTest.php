@@ -557,20 +557,47 @@ class FotosDoPainelServiceTest extends TestCase
 
         // ⚠️ **LISTA CONSTANTE**, e **UMA** asserção coletando os ausentes — nunca uma por nome,
         // que faria a contagem de asserções crescer com a lista (learnings §4b.2).
+        //
+        // ⚠️⚠️ **ÂNCORA POR NOME, NUNCA POR NÚMERO DE LINHA — e eis o que estava aqui:**
+        // `'config/publicador.php:148'`, `'MlbPublicadorController:405'`, `'AgendadorDaFila:337'`,
+        // `'PreparoIaDoRascunhoService:131'`, `':180'`, `':366'`, `'GarantiaPadrao:192'` e
+        // `'ExcluirProdutoService:195'` — OITO números de linha cobrados do docblock.
+        //   · ⚠️ A INTENÇÃO estava certa (foi pedida no briefing da wave 188-03: *"quem vir o
+        //     agendamento parado acha a causa por grep, não por bissecção"*); a ANCORAGEM é que
+        //     estava errada.
+        //   · Número de linha muda legitimamente em **toda** edição acima dele, em qualquer fase,
+        //     para sempre. ➡️ O docblock seguiria tendo de ser reescrito, e o gate seguiria
+        //     reprovando trabalho CORRETO até que alguém subisse o número — que é exatamente como
+        //     se ensina o executor seguinte a ajustar réguas quando elas incomodam
+        //     (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+        //
+        // ➡️ **O INVARIANTE VERDADEIRO:** *o docblock NOMEIA o efeito do sinal de forma achável* —
+        // o arquivo que grava, os cinco arquivos que leem, os TRÊS pontos do `PreparoIaDoRascunho`
+        // (agora por DESCRIÇÃO: *"no segundo laço"*, *"na escrita do rascunho"*), a origem dos 3
+        // minutos e a decisão datada. Nenhum desses fatos desloca quando alguém edita uma linha
+        // acima deles.
+        //
+        // ⚠️ O docblock **continua citando** `:148`/`:405`/`:337`/`:131`/`:180`/`:366`/`:192`/`:195`
+        // como DOCUMENTAÇÃO, e isso é bom para quem lê — `app/` não é território deste conserto.
+        // **Este gate não cobre nenhum desses números**, de propósito: cobri-los é o defeito que
+        // acabou de ser removido. (O `:131` do docblock, aliás, já está desatualizado — as três
+        // chamadas estão em 132/181/367 desde o commit `cd582f83`, de outra sessão.)
         $deveNomear = [
-            'config/publicador.php:148',            // os 3 minutos, e de onde vêm
+            'config/publicador.php',                 // de onde vêm os 3 minutos (SEM a linha)
             'editor_em_uso_min',
             '3 minutos',
-            'MlbPublicadorController:405',          // o ponto onde o sinal é GRAVADO
+            'MlbPublicadorController',               // o arquivo onde o sinal é GRAVADO
             'EditorEmUso::marcar',
-            'AgendadorDaFila:337',                  // os CINCO leitores, um por um
-            'PreparoIaDoRascunhoService:131',
-            ':180',
-            ':366',
-            'GarantiaPadrao:192',
-            'ExcluirProdutoService:195',
-            '19/10/2026',                           // a decisão, com a data
-            'RECUSADO',                             // e o que foi recusado
+            'AgendadorDaFila',                       // os CINCO arquivos leitores, por NOME
+            'EditorEmUso::emUso',
+            'PreparoIaDoRascunhoService',
+            'o preparo por IA do lote pula o produto', // e os TRÊS pontos dele, por DESCRIÇÃO
+            'no segundo laço',
+            'na escrita do rascunho',
+            'GarantiaPadrao',
+            'ExcluirProdutoService',
+            '19/10/2026',                            // a decisão, com a data
+            'RECUSADO',                              // e o que foi recusado
         ];
         $naoNomeados = array_values(array_filter(
             $deveNomear,
@@ -578,10 +605,15 @@ class FotosDoPainelServiceTest extends TestCase
         ));
         $this->assertSame([], $naoNomeados, 'PERGUNTA-188-C: o docblock não nomeia o efeito do `EditorEmUso` de forma ACHÁVEL');
 
+        // ⚠️ ISCA DO RECORTE: a lista constante não pode ENCOLHER sem ninguém ver. Tirar um nome
+        // daqui só AFROUXA o gate — o `assertSame([], $naoNomeados)` seguiria verde —, então é
+        // esta contagem que faz da remoção uma linha morta visível.
+        $this->assertCount(15, $deveNomear, 'a lista do que o docblock deve NOMEAR mudou de tamanho — remeça e escreva a razão');
+
         // ⚠️⚠️ **ISCA NAS DUAS DIREÇÕES, em memória** (nenhum arquivo do repo é tocado):
         //   · o docblock completo PASSA (é a asserção acima);
         //   · tirar UM dos nomes REPROVA — senão o gate seria "lista de nomes" sem prova.
-        $mutilado = str_replace('AgendadorDaFila:337', 'o agendamento', $docblock);
+        $mutilado = str_replace('AgendadorDaFila', 'o agendamento', $docblock);
         $this->assertNotSame($docblock, $mutilado, 'ISCA CEGA: o nome que a isca remove não estava no texto');
         $this->assertNotSame(
             [],
@@ -589,24 +621,114 @@ class FotosDoPainelServiceTest extends TestCase
             'ISCA: tirar um dos CINCO leitores do docblock NÃO reprova — o gate mede nada',
         );
 
-        // ⚠️ E os CINCO leitores EXISTEM no disco, nas linhas citadas — **anti-fantasma**, o gate
-        // PERENE desta milestone (NOVE caminhos fantasmas, três vindos de briefing).
-        $leitores = [
-            'app/Services/Publicador/Fila/AgendadorDaFila.php' => 337,
-            'app/Services/Publicador/PreparoIaDoRascunhoService.php' => 131,
-            'app/Support/Publicador/GarantiaPadrao.php' => 192,
-            'app/Services/Publicador/ExcluirProdutoService.php' => 195,
-            'app/Http/Controllers/MlbPublicadorController.php' => 405,
+        // ─── (c) ⚠️⚠️ OS CINCO LEITORES EXISTEM NO DISCO E CHAMAM O SINAL — anti-fantasma ────
+        //
+        // O gate PERENE desta milestone (NOVE caminhos fantasmas, três vindos de briefing).
+        //
+        // ⚠️⚠️ **O QUE ESTAVA AQUI, E POR QUE SAIU — e não porque incomodou:** uma tabela
+        // `arquivo => LINHA` (`AgendadorDaFila.php => 337`, `PreparoIaDoRascunhoService.php => 131`,
+        // `GarantiaPadrao.php => 192`, `ExcluirProdutoService.php => 195`,
+        // `MlbPublicadorController.php => 405`) que exigia `EditorEmUso::` **naquela linha exata**.
+        //   · Ela REPROVOU em 20/10/2026, e **sozinha** (não é corrida de suíte): o commit
+        //     `cd582f83`, de outra sessão, mexeu no `PreparoIaDoRascunhoService` **ACIMA** daqueles
+        //     pontos e as três chamadas desceram para 132/181/367. O código estava CERTO; o gate,
+        //     ancorado no número, morreu.
+        //   · E o conserto barato — subir `131` para `132` — deixaria a mina armada para a próxima
+        //     edição acima daquelas linhas, em qualquer fase, para sempre. É a família "gate
+        //     ancorado em número que muda legitimamente", com DOZE consertos nesta milestone.
+        //
+        // ➡️ **A ÂNCORA AGORA É O NOME:** arquivo + **método envolvente** + **membro chamado**.
+        // Nenhum número de linha entra neste gate. Mesma forma do reaponte do byte da wave 188-09
+        // (`a874fc00`, que trocou a ausência GLOBAL pelo byte do PRÓPRIO elemento).
+        // ⚠️ E é **mais forte** que a tabela de linhas, não só mais estável:
+        //   · a tabela provava *"a linha 131 tem a string `EditorEmUso::`"* — passaria com a chamada
+        //     num método COMPLETAMENTE diferente, desde que o deslocamento casasse por acidente;
+        //   · a varredura por nome prova QUAL método chama e QUAL membro, nos dois sentidos
+        //     (fantasma na lista **e** ponto novo no disco), e cobre os TRÊS pontos do
+        //     `PreparoIaDoRascunhoService` — que a tabela só cobria em UM.
+        //
+        // ⚠️ A varredura é a lista CONSTANTE dos cinco arquivos, **nunca um `grep` em `app/`**:
+        // varrer o diretório reprovaria leitor novo e legítimo de outra sessão — foi a 5ª ocorrência
+        // de "gate mais largo que o invariante" na Fase 186, e aquela **barrou um deploy**.
+
+        /**
+         * Para cada ocorrência de `EditorEmUso::` na fonte **SEM comentário**, o `function` mais
+         * próximo ACIMA dela e o membro chamado.
+         *
+         * ⚠️ SEM comentário porque prosa que explica a chamada casa com o gate que conta a chamada
+         * (learnings §4, regra 2) — e a ISCA NEGATIVA abaixo prova que isso importa aqui.
+         * ⚠️ `preg_match_all`, nunca `preg_match`: duas chamadas na MESMA linha devem contar duas.
+         *
+         * @return list<string> `metodo::membro`, na ordem do arquivo
+         */
+        $chamadasDoSinal = function (string $relativo): array {
+            $linhas = explode("\n", str_replace("\r", '', $this->semComentarios($relativo)));
+            $metodo = '(fora de metodo)';
+            $achadas = [];
+            foreach ($linhas as $linha) {
+                if (preg_match('/\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/', $linha, $m) === 1) {
+                    $metodo = $m[1];
+                }
+                preg_match_all('/EditorEmUso::([A-Za-z_][A-Za-z0-9_]*)/', $linha, $todos);
+                foreach ($todos[1] as $membro) {
+                    $achadas[] = $metodo.'::'.$membro;
+                }
+            }
+
+            return $achadas;
+        };
+
+        // ⚠️ MEDIDO por script nesta máquina em 20/10/2026, arquivo por arquivo — nunca estimado.
+        // ⚠️ `excluirUm::chave` é o 8º ponto e **NÃO é leitura do sinal**: é o
+        // `Cache::forget(EditorEmUso::chave($id))` que o APAGA ao excluir o produto. Está declarado
+        // aqui para a varredura ser **COMPLETA** — recortar só o que confirma a tese é como um gate
+        // passa pelo motivo errado —, e não porque o docblock tenha de nomeá-lo.
+        $sinalPorArquivo = [
+            'app/Services/Publicador/Fila/AgendadorDaFila.php' => ['checar::emUso'],
+            'app/Services/Publicador/PreparoIaDoRascunhoService.php' => ['preparar::emUso', 'sincronizarAgora::emUso', 'executarEtapa::emUso'],
+            'app/Support/Publicador/GarantiaPadrao.php' => ['aplicarNaConta::emUso'],
+            'app/Services/Publicador/ExcluirProdutoService.php' => ['impedimento::emUso', 'excluirUm::chave'],
+            'app/Http/Controllers/MlbPublicadorController.php' => ['produto::marcar'],
         ];
-        $deslocados = [];
-        foreach ($leitores as $arquivo => $linha) {
+        $divergentes = [];
+        foreach ($sinalPorArquivo as $arquivo => $esperadas) {
             // ⚠️ Flag DENTRO do laço.
-            $linhas = explode("\n", str_replace("\r", '', $this->cru($arquivo)));
-            if (! str_contains($linhas[$linha - 1] ?? '', 'EditorEmUso::')) {
-                $deslocados[] = $arquivo.':'.$linha.' => '.trim($linhas[$linha - 1] ?? '(fora do arquivo)');
+            $obtidas = $chamadasDoSinal($arquivo);
+            if ($obtidas !== $esperadas) {
+                $divergentes[] = $arquivo.' => esperado ['.implode(', ', $esperadas).'], obtido ['.implode(', ', $obtidas).']';
             }
         }
-        $this->assertSame([], $deslocados, 'ponteiro do docblock DESLOCADO — é como esta tabela mais erra (por REFERÊNCIA)');
+        // ⚠️ UMA asserção coletando os infratores: a contagem deste gate não cresce com a lista.
+        $this->assertSame([], $divergentes, 'leitor do sinal FANTASMA, renomeado ou acrescentado sem documentar (âncora por NOME, nunca por linha): '.implode(' | ', $divergentes));
+
+        // ⚠️ ISCA DO RECORTE, nas duas dimensões: a lista não pode esvaziar nem encolher sem
+        // ninguém ver — com ela vazia o laço acima não roda e o `assertSame([], ...)` passa por
+        // construção.
+        $this->assertCount(5, $sinalPorArquivo, 'a lista dos CINCO arquivos leitores mudou de tamanho — remeça por script e escreva a razão');
+        $this->assertSame(8, array_sum(array_map('count', $sinalPorArquivo)), 'o total de pontos do sinal mudou — remeça por script e escreva a razão');
+
+        // ⚠️⚠️ ISCA POSITIVA: a varredura ACHA os TRÊS pontos do `PreparoIaDoRascunhoService`,
+        // cada um no SEU método. ➡️ **São estes três NOMES que substituem os `:131`/`:180`/`:366`
+        // do docblock** — nome de método não desloca quando alguém edita acima dele.
+        $tresPontos = $chamadasDoSinal('app/Services/Publicador/PreparoIaDoRascunhoService.php');
+        $this->assertSame(
+            ['preparar', 'sincronizarAgora', 'executarEtapa'],
+            array_map(static fn (string $c): string => explode('::', $c)[0], $tresPontos),
+            'os TRÊS pontos do PreparoIaDoRascunhoService deixaram de estar em `preparar`/`sincronizarAgora`/`executarEtapa` — se foi de propósito, o docblock da PERGUNTA-188-C precisa ser reescrito',
+        );
+
+        // ⚠️⚠️ ISCA NEGATIVA, E ELA MEDE O QUE IMPORTA: o **próprio** `FotosDoPainelService` cita
+        // `EditorEmUso::marcar()` e `EditorEmUso::emUso()` em PROSA (`:65`, `:73`, `:595`) e **não
+        // chama nenhum dos dois**. ➡️ Se a varredura lesse o arquivo CRU, ela acharia três
+        // chamadas fantasmas aqui — então este `[]` é a prova de que a leitura SEM comentário é
+        // carga, e não zelo.
+        $this->assertSame(
+            [],
+            $chamadasDoSinal('app/Services/Publicador/Aprovacao/Painel/FotosDoPainelService.php'),
+            'a varredura achou chamada de `EditorEmUso` no PRÓPRIO serviço — ela voltou a casar o COMENTÁRIO, que cita o sinal em prosa',
+        );
+
+        // ⚠️ E os 3 minutos vêm do VALOR resolvido, não da linha do `config/publicador.php`.
         $this->assertSame(3, (int) config('publicador.preparo_ia.editor_em_uso_min'), 'os 3 minutos do docblock mudaram de valor');
     }
 
