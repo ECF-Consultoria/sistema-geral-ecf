@@ -417,7 +417,13 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame('nada_aprovavel', $this->servico()->aplicar($kit->id));
         $this->assertSame($doCliente, $this->galeria($r), 'o anúncio nunca fica sem foto por aqui');
         $this->assertNull($this->imagemDoSlot($kit, 'hero'));
-        $this->assertSame('ja_aplicado', $this->servico()->aplicar($kit->id));
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_ERRO, $kit->fresh()->status, 'o kit reprovado não segura o grupo');
+        $this->assertSame('nao_pronto', $this->servico()->aplicar($kit->id));
+
+        // Os mesmos fatos não geram de novo; a foto certa que o cliente sobe no Portal, sim.
+        $this->assertSame('em_dia', $this->servico()->avaliar($r->id));
+        $this->fotoNoRascunho($r->fresh(), 'a-certa', [90, 60, 30], EstruturaProduto::query()->findOrFail($r->produto->estrutura_produto_id));
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
     }
 
     public function test_kit_pedido_no_botao_nao_entra_sozinho(): void

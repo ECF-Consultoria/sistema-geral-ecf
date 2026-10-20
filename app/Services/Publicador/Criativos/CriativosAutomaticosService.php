@@ -247,6 +247,11 @@ final class CriativosAutomaticosService
             $boas = $prontos->reject(fn (MlAnuncioCriativo $s) => $s->validacao_status === MlAnuncioCriativo::VALIDACAO_REPROVADA)->values();
             if ($boas->isEmpty()) {
                 $this->marcarAplicado($r->id, $grupo, 0);
+                // Fecha o kit (20/10/2026, TESTE-SKU: a foto do Portal era de OUTRO produto e o juiz reprovou as 3). Parado em
+                // "pronto", ele seguraria o grupo (D-15) e a foto certa que o cliente subir depois não geraria nada. Com os
+                // mesmos fatos, o hash da memória segura a repetição (`em_dia`). Sem os ganchos: query, não modelo.
+                MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO, 'finished_at' => now(),
+                    'erro_mensagem' => 'Nenhuma imagem passou no juiz e a foto do cliente ficou. Uma foto ou ficha nova no Portal gera de novo.']);
                 Log::info("[Creative] Imagens automáticas: kit {$kit->id} sem imagem aprovável (o juiz reprovou); nada entrou no rascunho {$r->id}.");
 
                 return 'nada_aprovavel';
