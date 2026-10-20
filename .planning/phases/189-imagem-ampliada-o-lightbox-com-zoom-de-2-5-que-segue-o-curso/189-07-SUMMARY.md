@@ -68,19 +68,29 @@ c23bab8de78ac0be9e2138825b59e7443aa818bf   c23bab8d
 docs(189-06): a escrita concorrente se concretizou — o commit alheio entre os meus
 ```
 
-⚠️⚠️ **A ESCRITA CONCORRENTE SE CONCRETIZOU DE NOVO — e desta vez por TRÊS vias.** O histórico de
-`c23bab8d..HEAD`, medido:
+⚠️⚠️ **A ESCRITA CONCORRENTE SE CONCRETIZOU DE NOVO — e desta vez foram TRÊS commits alheios
+INTERCALADOS nos meus três, mais uma quarta via que entrou pela ÁRVORE.** O histórico de
+`c23bab8d..HEAD`, medido (mais recente no topo):
 
 ```
-dc8580c2  docs(coordenacao): a Fase 193 esta planejada — tres pontos a combinar com o Agente Publicador   <= ALHEIO
-42fc4752  feat(189-07): as acoes da foto com o CONTEXTO do lightbox — …                                   <= MEU (tarefa 1)
-1253cc86  feat(quick-261020-nsz): AG-01 do agente — configuracao, controle e execucao por loja            <= ALHEIO
-95fb404f  test(189-07): o furo que o DESENHO DA CAMPANHA DE MUTACAO achou — …                             <= MEU (tarefa 2)
+ec7b3c1a  docs(189-07): a SUMMARY das acoes pelo contexto — …                                            <= MEU (fechamento)
+1a823d6f  feat(quick-261020-nzr): AG-02 do agente — elegibilidade antes da IA e entrada unica do preparo <= ALHEIO
+95fb404f  test(189-07): o furo que o DESENHO DA CAMPANHA DE MUTACAO achou — …                            <= MEU (tarefa 2)
+1253cc86  feat(quick-261020-nsz): AG-01 do agente — configuracao, controle e execucao por loja           <= ALHEIO
+42fc4752  feat(189-07): as acoes da foto com o CONTEXTO do lightbox — …                                  <= MEU (tarefa 1)
+dc8580c2  docs(coordenacao): a Fase 193 esta planejada — tres pontos a combinar com o Agente Publicador  <= ALHEIO
 ```
 
-⚠️ **A prova de que `dc8580c2` e `1253cc86` não são meus é o ESCOPO DO ASSUNTO, nunca o autor** — as
-três máquinas desta árvore commitam com o MESMO `user.name` (`MB.ECF-100376`), que é por isso que
-conferir autor **não discriminaria nada** (a face 3 do limite).
+➡️ **Os seis commits ALTERNAM perfeitamente: alheio, meu, alheio, meu, alheio, meu.** A 189-05 teve
+UM commit alheio no meio, a 189-06 teve UM, e esta teve **TRÊS**.
+
+⚠️ **A prova de que `dc8580c2`, `1253cc86` e `1a823d6f` não são meus é o ESCOPO DO ASSUNTO, nunca o
+autor** — as três máquinas desta árvore commitam com o MESMO `user.name` (`MB.ECF-100376`), que é por
+isso que conferir autor **não discriminaria nada** (a face 3 do limite).
+
+⚠️ **E eles mexeram em DOIS números que eu tinha de medir:** a suíte PHP do recorte (§2.2, +14 pelo
+`1253cc86`, com o `1a823d6f` chegando **durante** a minha rodada de 16 minutos) e o gate `casca-188`
+(§1.1, reprovado pela migration untracked do `1253cc86` **antes** de ele commitá-la).
 
 ### §1.1 — ⚠️ E a escrita concorrente **REPROVOU UM GATE DA 188 NO MEIO DA MINHA WAVE**
 
@@ -197,8 +207,25 @@ o arquivo que a **outra sessão** acrescentou DENTRO do meu recorte no commit al
 ```
 
 **Medido:** aquele arquivo tem **14** métodos `test_*`, e `2595 + 14 = 2609`. **A soma fecha.**
-(O diretório `tests/Feature/Publicador/Agente/` tem **22** testes no total; os outros **8**, de
-`EntradaDoPreparoDoAgenteTest.php`, já estavam na baseline da PARTIDA.)
+
+⚠️⚠️ **ERRATA DA MINHA PRÓPRIA PRIMEIRA REDAÇÃO, corrigida por medição.** Eu escrevi que os outros
+**8** testes do diretório `tests/Feature/Publicador/Agente/` (de
+`EntradaDoPreparoDoAgenteTest.php`) *"já estavam na baseline da PARTIDA"*. **É FALSO**, e o `git
+cat-file -e` provou:
+
+```
+existia em c23bab8d (a PARTIDA)?
+  tests/Feature/Publicador/Agente/ConfiguracaoEExecucaoDoAgenteTest.php   NAO   (14 testes, veio em 1253cc86)
+  tests/Feature/Publicador/Agente/EntradaDoPreparoDoAgenteTest.php        NAO   ( 8 testes, veio em 1a823d6f)
+```
+
+➡️ **NENHUM dos dois existia na PARTIDA.** O que aconteceu é mais interessante e está medido: a minha
+rodada FINAL do recorte durou **981 s**, e o `EntradaDoPreparoDoAgenteTest.php` (do **TERCEIRO** commit
+alheio, `1a823d6f`) **chegou ao disco DEPOIS de o PHPUnit enumerar os arquivos** — por isso o total
+fechou em **2609** e não em **2617**. ⚠️ **Uma suíte de 16 minutos numa árvore compartilhada mede um
+alvo que se move**, e isso é dito em vez de escondido: uma re-execução agora daria **2617**, e o Δ
+continuaria **todo alheio**.
+
 ⚠️ **ZERO falhas nas duas pontas**, e **nenhuma falha nova dentro do recorte** — *"qualquer OUTRA
 falha no recorte é DA FASE"*, e não houve nenhuma.
 
