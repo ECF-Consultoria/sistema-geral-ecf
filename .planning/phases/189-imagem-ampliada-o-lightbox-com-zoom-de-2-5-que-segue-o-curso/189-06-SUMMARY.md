@@ -906,3 +906,32 @@ assertions / 0 falhas** — re-medido no FIM e **IDÊNTICO à PARTIDA**.
 `LIGHTBOX`, `FONTE_PAGINA`) e a tarefa 2 as trouxe de volta **junto com os casos que as
 USAM** — *entrada morta é linha morta*. No estado final, todos os imports e todos os
 `const` do gate são usados.
+
+---
+
+## §19 — ⚠️ A ESCRITA CONCORRENTE **SE CONCRETIZOU** durante esta wave
+
+O briefing avisava de **duas** fontes de escrita simultânea (outra sessão de dev + o
+planejador da Fase 193). **Aconteceu**, e fica medido e declarado:
+
+```
+c630ae90  docs(quick-261020-m6m): AG-00 do Agente ECF Publicador — baseline, entradas de publicacao e 193 x plano
+          .planning/STATE.md
+          .planning/quick/261020-m6m-ag-00-baseline-do-agente-publicador/{AG-00-BASELINE,PLAN,SUMMARY}.md
+```
+
+Ele entrou **ENTRE** os meus commits (`f11af1ac` ← `c630ae90` ← `c967c77b`) e **não
+tocou NENHUM** dos meus 8 caminhos.
+
+⚠️⚠️ **Ele TOCOU `.planning/STATE.md`, que está na lista de alvos da minha PI** — e a
+PI continua com **interseção VAZIA** porque ela mede **os commits do MEU escopo**
+(`(189-06)` no `%s`), não a árvore. ➡️ **Eu não toquei o `STATE.md`** (GATE-07), e a
+prova disso é o **ESCOPO**, não o autor: as três máquinas desta árvore commitam com o
+MESMO `user.name` (`MB.ECF-100376`), que é por isso que **conferir autor não
+discriminaria nada** (a face 3 do limite).
+
+⚠️ Antes de **cada** edição eu conferi `git diff HEAD -- <arquivo>` nos meus alvos, e
+**nenhuma** delas pegou WIP alheio (saída vazia em todas). Todos os commits foram por
+**pathspec** (`git commit -m … -- <caminho>`), com `-F <arquivo>` para a mensagem
+acentuada (⚠️ heredoc `<< 'FIM'` **falha por CRLF** nesta máquina), **sem `--amend`** e
+**sem `git add -A`**.
