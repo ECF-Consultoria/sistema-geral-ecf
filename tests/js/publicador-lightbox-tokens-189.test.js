@@ -397,24 +397,44 @@ test('TOK-189-3 — ESTE plano (189-01) não criou token: PI por ESCOPO DO ASSUN
     }
     assert.deepEqual(vazamento, [], 'o recorte por ASSUNTO não funcionou — commit de outro assunto entrou na PI');
 
-    // ⚠️⚠️ ISCA QUE PROVA QUE O RECORTE POR ASSUNTO MEDE ALGO — e ela é MEDIDA,
-    // não hipotética: hoje `(186-01)` tem DOIS commits que casam **só pelo
-    // CORPO** (`e1fa96d3` e `90dfa946`, de assunto `docs(188-13)`). Se esta isca
-    // passar a devolver zero, ou o histórico mudou, ou o recorte deixou de
-    // recortar — e aí o gate voltaria a poder reprovar trabalho correto de uma
-    // fase futura que apenas CITE `(189-01)` no corpo de um commit.
-    const soNoCorpoDeOutra = commitsSoNoCorpo('(186-01)');
+    // ⚠️⚠️⚠️ O RECORTE POR ASSUNTO, TRAVADO ONDE ELE É OBSERVÁVEL.
+    //
+    // ⚠️ **ACHADO DE MUTAÇÃO SOBREVIVENTE, investigado até a causa (20/10/2026):**
+    // apagar o filtro por assunto de `commitsDoEscopo()` **NÃO matava este gate**.
+    // A causa não é asserção fraca — é que **hoje nenhum commit cita `(189-01)`
+    // só no corpo**, então com e sem o filtro o conjunto é o MESMO. A proteção do
+    // recorte é **inobservável no escopo desta fase**.
+    //
+    // ⚠️ E *"premissa inobservável se TRAVA, não se descarta"*. ➡️ Ela é travada
+    // aqui **por COMPORTAMENTO**, num escopo onde a diferença EXISTE e é MEDIDA:
+    // `(186-01)` tem hoje **dois** commits que casam só pelo CORPO (`e1fa96d3` e
+    // `90dfa946`, de assunto `docs(188-13)`). O recorte TEM de excluí-los.
+    // ⚠️ Isto é prova de COMPORTAMENTO, não proxy de fonte — e com ela a mutação
+    // que apaga o filtro MORRE.
+    const ESCOPO_OBSERVAVEL = '(186-01)';
+    const brutos = git(['log', '--format=%h', '--grep=' + ESCOPO_OBSERVAVEL, '--fixed-strings'])
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== '');
+    const soNoCorpoDeOutra = commitsSoNoCorpo(ESCOPO_OBSERVAVEL);
+    const recortados = commitsDoEscopo(ESCOPO_OBSERVAVEL);
+
     assert.ok(
         soNoCorpoDeOutra.length > 0,
-        'a isca do recorte por assunto não achou nenhum commit que casa só pelo CORPO — ela não prova que `--grep` lê o corpo'
+        `nenhum commit de ${ESCOPO_OBSERVAVEL} casa só pelo CORPO — a trava perdeu o sujeito; reeleja um escopo observável`
     );
-    for (const h of soNoCorpoDeOutra) {
-        // ⚠️ Flag DENTRO do laço.
-        assert.ok(
-            !git(['log', '-1', '--format=%s', h]).includes('(186-01)'),
-            `${h} foi classificado como "só no corpo" mas o assunto tem o escopo — a classificação está errada`
-        );
-    }
+    assert.ok(brutos.length > recortados.length, '`--grep` cru e o recorte por assunto devolveram o MESMO tamanho — o recorte não recortou');
+    // ⚠️ E o conteúdo: cada commit "só no corpo" tem de estar FORA do recorte.
+    assert.deepEqual(
+        soNoCorpoDeOutra.filter((h) => recortados.includes(h)),
+        [],
+        'o recorte por assunto DEIXOU PASSAR commit que só cita o escopo no corpo — ele voltaria a reprovar trabalho correto'
+    );
+    // ⚠️ Direção contrária: o recorte não pode ter jogado fora quem TEM o escopo no assunto.
+    assert.deepEqual(
+        brutos.filter((h) => git(['log', '-1', '--format=%s', h]).includes(ESCOPO_OBSERVAVEL) && !recortados.includes(h)),
+        [],
+        'o recorte por assunto DESCARTOU commit cujo assunto TEM o escopo — ele é mais estreito que o invariante'
+    );
 
     // ⚠️ (6) E a prova de que o invariante é o CERTO, não o mais largo: este
     // gate NÃO afirma "a camada ficou idêntica para sempre". A camada TEM
