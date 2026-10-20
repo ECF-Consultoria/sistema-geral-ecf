@@ -10,6 +10,7 @@ use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\Eixo;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * A VITRINE de produtos da conta (20/10/2026, protótipo em localhost atrás de `publicador.vitrine`): um cartão
@@ -37,6 +38,9 @@ final class VitrineDeProdutosService
 
     private const ORDEM = [self::PRONTOS => 0, self::PENDENCIA => 1, self::PUBLICADOS => 2];
 
+    /** Quantos resumos do que falta a vitrine refaz por visita (~40 ms cada); o resto sai "A conferir" e vem na próxima. */
+    private const RESUMOS_POR_VISITA = 20;
+
     public function __construct(
         private ResumoRapidoService $resumo,
         private RascunhoRepository $repo,
@@ -51,6 +55,12 @@ final class VitrineDeProdutosService
     {
         $linhas = $this->resumo->linhas($alvo, null, true);
         $rascunhos = PubRascunho::query()->whereIn('id', array_values(array_filter(array_column($linhas, 'rascunho_id'))))->get()->keyBy('id');
+        // O "Pronto" sai do resumo do que falta: o rascunho que nunca o teve (planilha, kit, Portal sem abrir o
+        // editor) ou que mudou por fora ganha o resumo agora — e a visão rápida é relida com ele.
+        if ($this->refazerResumos($rascunhos) > 0) {
+            $linhas = $this->resumo->linhas($alvo, null, true);
+            $rascunhos = PubRascunho::query()->whereIn('id', array_values(array_filter(array_column($linhas, 'rascunho_id'))))->get()->keyBy('id');
+        }
         $produtos = PubProduto::query()->with('oferta:id,fase')->whereIn('id', array_column($linhas, 'produto_id'))->get()->keyBy('id');
         $fases = $this->fases->classificar($produtos);
 
@@ -83,7 +93,10 @@ final class VitrineDeProdutosService
         $publicado = in_array($status, [PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED, PubRascunho::PUBLISHING], true);
         $faltam = (int) ($l['faltam'] ?? 0);
         $falhou = ($l['situacao']['chave'] ?? null) === 'erro';
-        $grupo = $publicado ? self::PUBLICADOS : ($faltam > 0 || $falhou || ($l['bloqueios'] ?? []) !== [] ? self::PENDENCIA : self::PRONTOS);
+        $temFoto = $foto !== null || collect($cores)->contains(fn (array $c) => $c['foto'] !== null);
+        $naoPronto = $publicado || $falhou ? null : self::naoEstaPronto($r, $status, $temFoto, $faltam);
+        $grupo = $publicado ? self::PUBLICADOS
+            : ($naoPronto !== null || $faltam > 0 || $falhou || ($l['bloqueios'] ?? []) !== [] ? self::PENDENCIA : self::PRONTOS);
         $familias = $f['familias'] ?? [(int) $l['produto_id']];
 
         return [
@@ -101,7 +114,7 @@ final class VitrineDeProdutosService
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL,
             'fase' => $f['selo'] ?? 'Fase 1',
             'grupo' => $grupo,
-            'chip' => self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
+            'chip' => $naoPronto ?? self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
             // Só produto com mais de uma cor ativa ganha bolinhas; o de uma cor só não tem o que escolher.
             'cores' => count($cores) > 1 ? $cores : [],
             'foto' => $foto,
@@ -142,7 +155,7 @@ final class VitrineDeProdutosService
                 'pendencias' => array_values(array_map('strval', (array) ($porCor[$v->chave] ?? []))),
             ];
         }
-        $foto = $cores[0]['foto'] ?? null;
+        $foto = collect($cores)->first(fn (array $c) => $c['foto'] !== null)['foto'] ?? null;
         if ($foto === null) {
             // Sem cor com foto: a 1ª da galeria geral, se houver.
             $geral = collect($s->imagens)->where('grupo', ResolvedorGruposImagem::GERAL)->sortBy('posicao')->first();
@@ -225,5 +238,62 @@ final class VitrineDeProdutosService
     public static function ligadaPara(string $chave): bool
     {
         return (bool) config('publicador.vitrine') || in_array($chave, (array) config('publicador.vitrine_contas', []), true);
+    }
+
+    /**
+     * Por que o cartão NÃO está pronto, quando o resumo não basta para dizer — ou null. "Pronto" é afirmação
+     * (20/10/2026, o usuário: "está dizendo que está pronto, mas nem imagem tem"): sem foto nenhuma não é pronto;
+     * rascunho com o resumo de outra revisão (ou sem resumo) está "A conferir"; e sem categoria nada foi validado.
+     * O conferido (`validated`) já passou pelo Mercado Livre e só precisa da foto.
+     *
+     * @return ?array{texto: string, tom: string, detalhe: ?string}
+     */
+    private static function naoEstaPronto(?PubRascunho $r, ?string $status, bool $temFoto, int $faltam): ?array
+    {
+        if (! $temFoto) {
+            return ['texto' => 'Falta foto', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
+        }
+        if ($r === null || $status !== PubRascunho::DRAFT) {
+            return null;
+        }
+        $resumo = (array) ($r->step_state['resumo'] ?? []);
+        if ((int) ($resumo['revisao'] ?? -1) !== (int) $r->revisao || ! array_key_exists('validado', $resumo)) {
+            return ['texto' => 'A conferir', 'tom' => 'ambar', 'detalhe' => 'Abra a prévia para conferir'];
+        }
+        if ($resumo['validado'] !== true) {
+            return ['texto' => 'Falta categoria', 'tom' => 'ambar', 'detalhe' => null];
+        }
+
+        return null;
+    }
+
+    /**
+     * Refaz o resumo do que falta (o MESMO do editor, {@see EditorRascunhoService::estado()}) dos rascunhos em
+     * preenchimento que não o têm em dia — até {@see RESUMOS_POR_VISITA} por visita. Falhar num não derruba a tela:
+     * o cartão dele sai "A conferir".
+     *
+     * @param  Collection<int, PubRascunho>  $rascunhos
+     * @return int quantos foram refeitos
+     */
+    private function refazerResumos(Collection $rascunhos): int
+    {
+        $velhos = $rascunhos->filter(function (PubRascunho $r) {
+            $resumo = (array) ($r->step_state['resumo'] ?? []);
+
+            return $r->status === PubRascunho::DRAFT
+                && ((int) ($resumo['revisao'] ?? -1) !== (int) $r->revisao || ! array_key_exists('validado', $resumo));
+        })->take(self::RESUMOS_POR_VISITA);
+
+        $feitos = 0;
+        foreach ($velhos as $r) {
+            try {
+                app(EditorRascunhoService::class)->estado($r);
+                $feitos++;
+            } catch (\Throwable $e) {
+                Log::warning("[Publicador] Vitrine: o resumo do rascunho {$r->id} não foi refeito: {$e->getMessage()}");
+            }
+        }
+
+        return $feitos;
     }
 }

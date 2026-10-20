@@ -21,6 +21,7 @@ use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -153,6 +154,65 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertStringEndsWith('?etapa=previa', $c['url_previa']);
         // O produto do teste é o Combo 3 do gabarito à parte: Fase 2 na régua do Portal (as famílias estão no VitrineFasesTest).
         $this->assertSame(['combo', 2, 'Fase 2 · Combo 3 un'], [$c['tipo'], $c['fase_numero'], $c['fase']]);
+    }
+
+    /** Tira o resumo do rascunho, como nos que nasceram pela planilha, pelo kit ou pelo Portal sem abrir o editor. */
+    private function semResumo(): PubRascunho
+    {
+        $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
+        $estado = (array) $r->step_state;
+        unset($estado['resumo']);
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+
+        return $r->fresh();
+    }
+
+    public function test_sem_resumo_e_sem_foto_nao_e_pronto_e_a_visita_refaz_o_resumo(): void
+    {
+        // 20/10/2026, o usuário: "está dizendo que está pronto, mas nem imagem tem".
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->mesa()->putJson($this->rota('categoria'), ['categoria_id' => self::CADEIRA])->assertOk();
+        $r = $this->semResumo();
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertNull($c['foto']);
+        $this->assertSame('pendencia', $c['grupo'], 'resumo que não existe não é "nada falta"');
+        $this->assertSame('Falta foto', $c['chip']['texto']);
+        $resumo = (array) $r->fresh()->step_state['resumo'];
+        $this->assertSame((int) $r->fresh()->revisao, $resumo['revisao'], 'a visita refez o resumo nesta revisão');
+        $this->assertTrue($resumo['validado']);
+        $this->assertGreaterThanOrEqual(1, $resumo['bloqueios'], 'sem foto é bloqueio');
+    }
+
+    public function test_sem_categoria_nada_foi_validado_e_o_cartao_diz_falta_categoria(): void
+    {
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->mesa()->post($this->rota('fotos'), ['imagem' => UploadedFile::fake()->image('geral.jpg', 1200, 1200), 'grupo' => 'GENERAL'], ['Accept' => 'application/json'])->assertOk();
+        $this->semResumo();
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertNotNull($c['foto']);
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertSame('Falta categoria', $c['chip']['texto']);
+        $this->assertFalse(PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail()->step_state['resumo']['validado']);
+    }
+
+    public function test_resumo_de_outra_revisao_e_refeito_antes_de_dizer_pronto(): void
+    {
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+        // Um resumo velho dizendo "nada falta" — o rascunho mudou depois (Portal, IA) sem ninguém abrir o editor.
+        $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
+        $estado = (array) $r->step_state;
+        $estado['resumo'] = ['bloqueios' => 0, 'revisao' => (int) $r->revisao - 1, 'por_cor' => [], 'validado' => true];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertStringStartsWith('Azul: falta foto', $c['chip']['texto']);
+        $this->assertSame((int) $r->revisao, $r->fresh()->step_state['resumo']['revisao']);
     }
 
     public function test_publicado_vai_para_o_grupo_dele_e_nao_se_marca(): void

@@ -587,7 +587,7 @@ class EditorRascunhoService
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
 
-        $this->gravarResumo($r, array_values(array_filter($problemas, fn (Problema $p) => $p->bloqueia())), $snapshot);
+        $this->gravarResumo($r, array_values(array_filter($problemas, fn (Problema $p) => $p->bloqueia())), $snapshot, $schema !== null);
 
         $eixos = Eixo::ordenar($snapshot->eixos);
         $grupos = $schema ? ResolvedorGruposImagem::resolver($snapshot->variantes, $eixos, $snapshot->imagens, new OpcoesImagem(
@@ -837,17 +837,21 @@ class EditorRascunhoService
      * `por_cor` (20/10/2026, vitrine): variante → o que falta NELA, em rótulo curto ("falta foto").
      * É o que deixa o cartão dizer "Rosa: falta foto" em vez de só "1 de 2 cores com pendência".
      *
+     * `validado` e a `revisao` em dia (20/10/2026): o cartão da vitrine só diz "Pronto" com o resumo feito
+     * NESTA revisão e COM a categoria — sem ela nada é validado e "0 bloqueios" não quer dizer nada.
+     *
      * @param  list<Problema>  $bloqueios
      */
-    private function gravarResumo(PubRascunho $r, array $bloqueios, RascunhoSnapshot $s): void
+    private function gravarResumo(PubRascunho $r, array $bloqueios, RascunhoSnapshot $s, bool $validado = true): void
     {
         $porCor = self::pendenciasPorCor($bloqueios, $s);
         $antes = (array) ($r->step_state['resumo'] ?? []);
-        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? [])) {
+        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? [])
+            && $validado === ($antes['validado'] ?? null) && (int) $r->revisao === (int) ($antes['revisao'] ?? -1)) {
             return;
         }
         $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
-        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => $r->revisao, 'por_cor' => $porCor];
+        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor, 'validado' => $validado];
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
     }
 
