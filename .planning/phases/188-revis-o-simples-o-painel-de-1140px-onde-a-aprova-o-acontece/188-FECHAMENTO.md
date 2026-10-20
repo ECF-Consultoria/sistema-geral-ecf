@@ -762,26 +762,65 @@ script impresso antes do veredicto, porque o scratchpad é **COMPARTILHADO**.
 | **M2** | `CRIT-09: RESSALVA` vira **`CRIT-09: REPROVA`** | `fechamento-criterios` | **MORREU** — o fechamento **PARA** com `REPROVA`, não o "registra" |
 | **M3** | tirar o `dono:` da **`CRIT-02`** (a ressalva da decisão do usuário) | `fechamento-criterios` | **MORREU** |
 | **M4** | um `ALVO-INTOCADO:` aponta para `app/Mcp/NaoExiste9z7/` (**caminho fantasma**) | `fechamento-territorio` | **MORREU** |
-| **M5** | `FID-01-PLANO-09: SCRIPT` vira **`LEITURA-RAPIDA`** (veredicto fora da lista fechada) | `fechamento-territorio` | **MORREU** |
+| **M5** | a linha do plano 09 da FID-01 declara **`LEITURA-RAPIDA`** (veredicto fora da lista fechada) | `fechamento-territorio` | **MORREU** (na 2ª tentativa — ver abaixo) |
 | **M6** | tirar o `dono:` da **`PERGUNTA-17`** (a do bug latente da Fase 194) | `fechamento-criterios` | **MORREU** — ⚠️ é a mutação que **SOBREVIVEU na Fase 187** por o gate ser **PISO**; aqui a lista é **CONSTANTE** |
 | **M7** | o item **12** do roteiro da conta 459 vira **11** (numeração duplicada) | `fechamento-criterios` | **MORREU** — ⚠️ é a **M6b** da 187: **menção** a "conta 459" não prova **roteiro** |
 | **M8** | injetar no `contagens-188-13.txt` um id **sem `<verify>`** (id órfão) | `fechamento-manifestos` | **MORREU** |
 | **M9** | embutir `publicador-vocabulario-novo.test.js` num **segundo id** do manifesto | `fechamento-manifestos` | **MORREU** |
 
 ```
-CAMPANHA 188-13: 9 execucoes · 9 MORTAS na 1a tentativa · 0 sobreviventes
-sha256 do proprio script: impresso antes de cada veredicto
-sha256 arvore x `git show HEAD:` (com `tr -d '\r'` nos DOIS lados), antes e depois de CADA rodada:
-  OK  tests/Feature/Publicador/Aprovacao/FechamentoDaFase188Test.php
+RODADA 1  (mutar-188-13.php, sha256 14f8d2b5822e58e9)
+  M1  MORREU      linha  506   gate=fechamento-criterios
+  M2  MORREU      linha  502   gate=fechamento-criterios
+  M3  ABORTOU     ocorrencias=0   (a trava exige exatamente 1)
+  M4  MORREU      linha  410   gate=fechamento-territorio
+  M5  ABORTOU     ocorrencias=2   (a trava exige exatamente 1)
+  M6  MORREU      linha  924   gate=fechamento-criterios
+  M7  MORREU      linha 1084   gate=fechamento-criterios
+  M8  MORREU      linha   37   gate=fechamento-manifestos
+  M9  MORREU      linha   37   gate=fechamento-manifestos
+  -> 7 MORTAS · 0 SOBREVIVENTES · 2 ABORTOS DA TRAVA
+
+RODADA 2  (mutar-188-13-m3m5.php, sha256 d3c51c66efa4ce43, ancoras DESAMBIGUADAS)
+  M3  MORREU      linha  495   gate=fechamento-criterios
+  M5  MORREU      linha  562   gate=fechamento-territorio
+
+CAMPANHA 188-13: 9 mutacoes · 9 MORTAS · 0 SOBREVIVENTES
+sha256 do PROPRIO script impresso antes de cada veredicto (o scratchpad e COMPARTILHADO)
+sha256 arvore x `git show HEAD:` (normalizado nos DOIS lados), antes e depois de CADA rodada:
   OK  tests/gates/contagens-188-13.txt
   OK  .planning/phases/188-.../188-FECHAMENTO.md
-restauracao DA COPIA em `trap EXIT`  ·  `git checkout` NUNCA
+restauracao DA COPIA em `register_shutdown_function`  ·  `git checkout` NUNCA
 ```
 
 ⚠️ **Nenhuma sobrevivente para investigar nesta wave.** ⚠️ **E as M6 e M7 são as duas que a Fase 187
 mediu como SOBREVIVENTES**: elas morrem aqui porque o gate deste plano nasceu com o conserto delas
 embutido (**lista CONSTANTE** de perguntas obrigatórias; **roteiro numerado sem buraco** em vez de
 menção).
+
+#### ⚠️⚠️ OS DOIS ABORTOS DA TRAVA SÃO O COMPORTAMENTO CERTO — e o da M5 é um ACHADO
+
+| # | ocorrências | causa | leitura |
+|---|---|---|---|
+| **M3** | **0** | a âncora que eu escrevi **não existia** no documento — erro **meu** de transcrição | ⚠️ âncora que **não casa** mutaria **NADA**, e o `SOBREVIVEU` resultante **não valeria nada**. **A trava recusou antes de produzir um veredicto falso** |
+| **M5** | **2** | ⚠️⚠️ `FID-01-PLANO-09: SCRIPT` aparece **DUAS** vezes: na **linha de forma fixa** (§5) **e na TABELA DESTA PRÓPRIA CAMPANHA**, que a **DESCREVE** | ⚠️⚠️ **É a família *"o texto que EXPLICA casa com o padrão que ele explica"* acontecendo DENTRO da campanha de mutação.** Mutar as duas de uma vez **não diria qual delas o gate mediu** |
+
+➡️ **O conserto das duas foi ÂNCORA DESAMBIGUADA, nunca afrouxar a trava:** a M3 ganhou a âncora
+**real** e a M5 ganhou o **sufixo que a distingue** da tabela (`… — a coluna de preço na tela`).
+**Com elas, as duas MORREM.** ⚠️ **A trava de ocorrência (`== 1`) ficou INTACTA** — ela funcionou nos
+dois abortos, que é exatamente para isso que existe.
+
+#### ⚠️ E um defeito do MEU script, pego pela guarda de PARTIDA
+
+A primeira execução **abortou na PARTIDA**, dizendo que o disco divergia do `HEAD` num arquivo que
+`git status` e `git diff --numstat` reportavam **limpo**. ⚠️ **A causa era a FERRAMENTA, não o
+arquivo:** `exec()` do PHP devolve a saída em **LINHAS num array**, e o `implode("\n")` **PERDE o
+`\n` final** do arquivo — então o `sha256` do lado do `HEAD` **nunca** batia.
+➡️ **Conserto: normalização SIMÉTRICA nos dois lados** (`\r` removido **e** `rtrim` do `\n` final),
+com `shell_exec` em vez de `exec`. ⚠️ **Se eu tivesse "resolvido" afrouxando a guarda de partida, a
+campanha inteira teria rodado sem saber se o disco batia com o commit** — e é precisamente essa
+guarda que impede mutar sobre trabalho não commitado. **É a terceira vez nesta milestone que o
+defeito estava no mutador, e não na asserção.**
 
 ---
 
@@ -1123,6 +1162,15 @@ remoções** — pelas razões **MEDIDAS NESTE PROJETO**:
    ⚠️⚠️ **A forma é "Entregue no CÓDIGO (20/10/2026) — ⚠️ NÃO DEPLOYADO"**, e ela é
    **deliberadamente diferente** da das Fases 186 e 187 (*"em produção"*). **Copiar a forma delas
    afirmaria um deploy que não houve.**
+   ⚠️⚠️ **FEITO NESTA WAVE, POR INSTRUÇÃO EXPLÍCITA DO ORQUESTRADOR — e a contradição fica
+   DECLARADA, não escondida:** o `<verification>` item 5 do `188-13-PLAN.md` exige
+   `git diff --numstat` **VAZIO** em `.planning/ROADMAP.md` (GATE-07, *"não pertence a plano
+   nenhum"*), e o briefing do orquestrador **manda escrever** o Coverage Map e a linha `**Plans**:`,
+   com a forma exata. ➡️ **Segui a instrução do orquestrador e registro o conflito.**
+   **Medido:** `+73 / −1`, e a **única remoção é o placeholder `**Plans**: TBD`** — o bloco do
+   Coverage Map é **inteiramente ADITIVO, 0 remoções**, e **nada das duas tabelas anteriores foi
+   editado**. ⚠️ **Nenhum gate deste plano lê o `ROADMAP.md`**, então a edição não pode "fazer
+   passar" nada.
 2. **`.planning/REQUIREMENTS-v27.md`** — ⚠️ **MEDIDO: ele tem ZERO checkbox.** Os `✅` dele marcam
    **decisão respondida**, não requisito entregue. ➡️ **Quem rastreia entrega é o Coverage Map, à
    mão.** Não há checkbox a marcar ali.
@@ -1304,8 +1352,18 @@ exigindo que ele continue assim. `PERGUNTA-LER-SEM-COMENTARIOS`, §8.
   tinha um `noRodape`, o da tabela da fila, **em produção**) — o conserto é **sufixo nos NOVOS**,
   nunca renomear o da fila;
 - ⚠️ **heredoc colapsa `\\` em `\` mesmo com `<<'EOF'`** — ⚠️ **medido NESTA sessão**, no primeiro
-  script de homônimo, que saiu com erro de sintaxe. ➡️ **Regex em ARQUIVO escrito por ferramenta**,
-  nunca por heredoc, nunca por `node -e`.
+  script de homônimo, que saiu com erro de sintaxe (`unexpected token "%"`, por o `'\\'` ter virado
+  `'\'` e desalinhado o parser). ➡️ **Regex em ARQUIVO escrito por ferramenta**, nunca por heredoc,
+  nunca por `node -e`;
+- ⚠️ **`exec()` do PHP PERDE o `\n` final** (devolve linhas num array): comparar `sha256` do disco
+  com `git show HEAD:` por `exec` + `implode("\n")` **nunca bate**. ➡️ `shell_exec`, e normalização
+  **SIMÉTRICA** (`\r` fora **e** `rtrim` do `\n`) nos dois lados — medido NESTA sessão, na guarda de
+  partida da campanha de mutação;
+- ⚠️⚠️ **A TABELA QUE DESCREVE A MUTAÇÃO COLIDE COM A ÂNCORA DELA.** Medido nesta wave: a âncora da
+  **M5** casava **duas** vezes — a linha de forma fixa **e a linha da tabela desta campanha, que a
+  explica**. ➡️ É a família *"o texto que EXPLICA casa com o padrão que ele explica"*, agora **dentro
+  da própria campanha de mutação**. **A trava de ocorrência (`== 1`) é o que pegou** — e o conserto é
+  **âncora desambiguada**, nunca afrouxar a trava.
 
 ---
 

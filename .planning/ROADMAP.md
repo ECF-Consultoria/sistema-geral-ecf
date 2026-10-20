@@ -4665,7 +4665,20 @@ modais que o painel precisa (solicitar ajustes, solicitar exceção, informar fr
   20. O plano traz a tabela FID-01 do painel e dos 4 modais contra `Aprovacao.dc.html`, declarando
       como mediu (FID-01, FID-02)
 
-**Plans**: TBD
+**Plans**: **13 planos em 13 waves**, planejados 18/10/2026 e executados 19-20/10/2026 — 188-01
+baselines ANTES + o tamanho `21` liberado + a FID-01 re-medida por script (100/115 nos ponteiros, 33
+divergências); **188-02 a 188-06 o SERVIDOR** (view-model do painel e os 9 destinos; a coluna de
+fotos com a `url_arquivo` que já existia e os marcadores x/y em percentual; a coluna de preço com os
+3 KPIs, a composição com origem por linha e a simulação; a escrita de imagem + salvar revisão +
+**aprovar**; a escrita de preço/frete/ajuste/exceção + os 4 payloads dos modais); **188-07 a 188-12 a
+TELA** (a casca de 1140px **POR PORTAL** + teclado + duas colunas de mesmo peso; a coluna de fotos
+com o cabeçalho híbrido das verificações; a coluna de preço; pendências + rodapé com `disabled=`; os
+modais de ajuste e exceção; os modais de frete e reprovar + o aviso de concorrência); **188-13 o
+fechamento medido dos 20 critérios**. ⚠️ **Sem migration.** **13 waves SEQUENCIAIS, por dois motivos
+medidos:** `aprovacao/` está em `DIRETORIOS_FECHADOS` com `deepEqual` contra o disco (todo plano que
+cria `.jsx` edita o mesmo arquivo de gate, e **pré-declarar não é possível**), e os planos de
+servidor compartilham o controller e as rotas. ⚠️ **Planos menores e mais numerosos de propósito:**
+**três agentes caíram na Fase 187**, e um deixou 2/3 de um plano sem commit.
 **UI hint**: yes
 
 ### Phase 189: Imagem ampliada — o lightbox com zoom de 2,5× que segue o cursor
@@ -5068,6 +5081,65 @@ pendentes.
 | o que falta para ligar `publicador.criativos_auto.ativo` | **outro dev** → Fase 194 |
 | ancorar o relógio em `tests/Feature/Publicador/CockpitDaContaTest.php:966` e `:1318` (duas falhas de **fronteira de dia**, da Fase 179, que vão e voltam com a hora) | quem mantiver a **Fase 179** |
 | a **`CascaDeModal.jsx`** nasceu na 187 e a **Fase 188 tem de IMPORTÁ-LA, nunca recriar** (duas cascas divergiriam) | **Fase 188** |
+
+#### Coverage Map — Milestone v27.0: **ATUALIZAÇÃO DE 20/10/2026** (bloco ADITIVO)
+
+> ⚠️ **Bloco ADITIVO, 0 remoções.** As linhas das duas tabelas acima **não** foram editadas, de
+> propósito, e pelas razões **medidas neste projeto**: o `roadmap update-plan-progress` **reporta
+> sucesso e não escreve nada**; o `requirements.mark-complete` devolve **`not_found`** para IDs que só
+> existem em `REQUIREMENTS-vNN.md`; e o `state.advance-plan` já **corrompeu o `STATE.md` deste
+> projeto SEIS vezes**. ⚠️ **Medido também nesta rodada: `REQUIREMENTS-v27.md` tem ZERO checkbox** —
+> os `✅` dele marcam **decisão respondida**, não requisito entregue. ➡️ **Quem rastreia entrega é
+> este Coverage Map, à mão.** Este bloco **SUPERSEDE** o `Pending` das quatro linhas da Fase 188.
+> **Nada acima foi apagado.**
+>
+> ⚠️⚠️ **E A FORMA DA FASE 188 É DELIBERADAMENTE DIFERENTE DA DAS FASES 186 E 187.** As duas estão
+> **em produção**; a **188 NÃO foi deployada**. Copiar a forma *"em produção"* delas afirmaria um
+> deploy que não houve.
+
+| Requirement | Phase | Status medido em 20/10/2026 |
+|---|---|---|
+| **REVS-01..REVS-14** (14) | **Phase 188** | ⚠️ **Entregue no CÓDIGO (20/10/2026) — ⚠️ NÃO DEPLOYADO** — CRIT-01, 03, 04, 05, 06, 07, 08, 10 **OK**; **CRIT-02 RESSALVA** (o botão *"Abrir revisão detalhada ↗"* **NÃO é desenhado** — decisão do usuário em 18/10, PERGUNTA-188-B3; *"desabilitado com explicação"* foi **oferecido e RECUSADO**; **dono: Fase 190/191**) e **o RUNTIME do teclado não é provado** (não há navegador); **CRIT-09 RESSALVA** (os destinos de `ajuste_em_aberto` e `titulo_longo` são `null` **e sem botão** — PERGUNTA-188-B; **dono: Fase 190/191**) |
+| **MOD-01..MOD-05** (5) | **Phase 188** | ⚠️ **Entregue no CÓDIGO (20/10/2026) — ⚠️ NÃO DEPLOYADO** — CRIT-11, 12, 14, 15 **OK**. ⚠️ A **`CascaDeModal.jsx` da Fase 187 foi IMPORTADA, nunca recriada** (`numstat` ZERO nela, com gate de ausência de segunda casca): a dívida que o fechamento da 187 registrou para esta fase está **PAGA**. O submeter **vermelho** do MOD-04 saiu **compondo os named exports**, com as duas alternativas medidas e descartadas |
+| **IMG-01..IMG-06** (6) | **Phase 188** | ⚠️ **Entregue no CÓDIGO (20/10/2026) — ⚠️ NÃO DEPLOYADO** — CRIT-04, 05, 13 **OK**. ⚠️ **IMG-02 e IMG-03 são cobertos por GATE DE NÃO-REGRESSÃO** no servidor (`substituirPorOriginal`, `recolocarOriginal`, `concluirRegeneracao`), com **id próprio no manifesto**: o **caminho de tela** deles é das Fases **189/192** (MOD-06, MOD-07..10) e **não foi antecipado**, com gate de ausência |
+| **COL-01..COL-06** (6) | **Phase 188** | ⚠️ **Entregue no CÓDIGO (20/10/2026) — ⚠️ NÃO DEPLOYADO** — CRIT-16, 17 **OK**; **zero `localStorage`**, filtros/oferta/seleção na **URL**. ⚠️ **O CRIT-17 só existe por causa de um achado:** o **`onError` do Inertia NUNCA é chamado** para as recusas cruas em 422 deste painel (medido em `@inertiajs/core` 2.3.21) — **sem o conserto do cliente, o aviso de concorrência NUNCA acenderia** |
+| FID, GATE, REND, TERR (transversais) | Phase 188 (repetidos) | ⚠️ **CONFERIDOS nesta fase**: FID-01 consolidada com **12 de 13 planos por SCRIPT** e 1 SEM-PROTOTIPO (**zero por LEITURA**); território **por ESCOPO DO ASSUNTO** nos **53** alvos, **0 violações** em duas passadas independentes, `test -e` **antes** de todo diff (**0 fantasmas**) e isca nas **três** direções; **130 mutações** na fase, **0 sobreviventes ao fim** (5 eventos, 4 investigados até a causa); **53 ids** em 13 manifestos, **0 órfãos** nas três bijeções; `--autoteste` **20/0** |
+
+**Migration:** ⚠️ **a Fase 188 NÃO tem migration**, e `artisan migrate` **não foi rodado** (há
+pendente de **outra** milestone na árvore).
+
+**Baselines no fechamento** (commit `e7ad966b`, 20/10/2026): BUILD **exit 0 / 43 s** · MANIFEST
+**495 entradas / 202 páginas** (isca ausente, controle presente) · JS **5848 / 5847 pass / 1 fail /
+0 skipped** · PHP **2577 / 23666 / 2** · protótipo **1432 linhas, sha256 `68624883ce35547e`, não se
+moveu**. ⚠️ **As 3 falhas são TODAS ALHEIAS e atribuídas por execução ISOLADA:** 1 da **Fase 87**
+(JS) e 2 da **Fase 179** (PHP, **fronteira de dia** — e o dia virou entre a abertura e o fechamento).
+
+**⚠️ O que SEGUE PENDENTE na Fase 188, com dono:**
+
+| pendência | dono |
+|---|---|
+| ⚠️⚠️ a **conferência visual do painel**, em produção, na conta **459** — roteiro de **16 itens** em `188-FECHAMENTO.md` §11. ⚠️ **NENHUM executor desta fase viu tela renderizada**, e o roteiro só é executável **depois de um deploy que o usuário autorize** | **usuário** |
+| a **conferência visual da FILA (Fase 187)**, que continua **ABERTA e SEPARADA** — roteiro de 8 itens em `187-FECHAMENTO.md` §11 | **usuário** |
+| o **DEPLOY** da Fase 188, que **não aconteceu** | **usuário** |
+| ⚠️ **o pedido da outra sessão:** a **Fase 189 já está PLANEJADA** (8 planos em 7 waves, commit `44d67a46`) e há nota pedindo que ela seja executada **ao fechar a 188**. ⚠️ **Registrado; a decisão é do usuário** | **usuário** |
+| o botão *"Abrir revisão detalhada ↗"* e os destinos de `ajuste`/`titulo` (as **duas ressalvas**, e são a **mesma fronteira**) | **Fase 190/191** |
+| o **`✓ {quem}`** das fotos — precisa de `aprovada_por`/`aprovada_em`, que o serviço não expõe | **Fase 190/191** |
+| o **rótulo legível de variação** (`rotuloDoGrupo` é `private static` em território vetado) — ⚠️ **custo funcional real:** num produto com 3 cores, as fotos aparecem juntas **sem dizer qual é de qual cor** | fase que puder **coordenar com o outro dev** |
+| **PERGUNTA-188-E** — trocar `recusaDoPainel()` (**18 chamadas medidas**) por `back()->withErrors()`, a forma idiomática do Inertia. ⚠️ **Decidido MANTER o conserto do cliente**: risco sem ganho na última wave | fase futura / quick |
+| **PERGUNTA-188-F** — a fixture do gate `casca-do-painel` reflete o servidor (sem o id prefixado) | fase futura |
+| `lerSemComentarios` **destruindo 76%** de `publicador-fila-filtros-187.test.js` (62.656 → 15.249 bytes) — **não consertado porque dezenas de gates em produção dependem dele** | **orquestrador**, quick |
+| as **4 falhas que oscilam** sem mudança de código (2 da Fase 179, 2 do Portal) — ⚠️ **a hipótese do listener é HIPÓTESE**, os dois experimentos saíram verdes | quem mantiver cada suíte |
+| a **escrituração DUPLA** de `aprovacao/` (`ARQUIVOS_NOVOS` + `JSX_DEPOIS_DA_187`), **deliberadamente não unificada** | orquestrador / Fase 191 |
+| as **DUAS seções `§P`** do `188-FID01.md`, com o mesmo ordinal (a próxima letra livre é **`§S`**) | **Fase 189** |
+| a **PERGUNTA-17** (`mlb_empresa_id` anulável) e o **aviso da PERGUNTA-188-C** (`EditorEmUso` marcado por 3 min, lido por **5** consumidores) | **Fase 194** |
+| a **PERGUNTA-13** (editar foto de anúncio já no ar) | **Fase 193** |
+
+⚠️⚠️ **O MAIOR TEMA DA FASE, registrado aqui porque atravessa fases:** **DEZ gates de total fixo
+foram REAPONTADOS** — 5 da **187**, 2 da **186**, 1 da **188-08**, 1 da **180** e 1 da **188-01** — e
+⚠️ **NENHUM número foi subido**: todos viraram **lista CONSTANTE de nomes** ou **reaponte para a
+invariante**. ⚠️ **O gêmeo em PHP era MAIS FRACO que o de JS por motivo não óbvio:** ele contava
+`isValidElement(` **sem capturar o argumento** — era possível ter as 4 chamadas certas e um conjunto
+de slots **completamente diferente**. **Não era frágil; era CEGA.**
 
 #### Coverage Map — item do handoff × fase
 
