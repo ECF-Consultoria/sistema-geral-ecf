@@ -309,6 +309,31 @@ processo pai não o alcança. ➡️ **A régua desta fase é: MEÇA PELO RECORT
 medível.** É o que a linha `PHP:` deste documento declara, e é o que o `--suite php` do harness
 mede.
 
+## §2.7 — O RECORTE PHP RE-MEDIDO **DEPOIS** DO COMMIT — e a conta FECHA nas DUAS contagens
+
+⚠️ A §2.3 declarava `2631 + 9 = 2640` como **aritmética**. Aqui está a **medição**, no HEAD de depois
+do commit dos gates deste plano (`799f5d90`):
+
+```
+sh tests/gates/verificar-testes.sh --suite php
+→ PHP: 2640 / 24126 / 0
+→ EXIT_DO_HARNESS = 0      (medido na linha SEGUINTE, sem pipe)
+```
+
+| contagem | antes (`55d97241`) | o que este plano acrescenta | previsto | **MEDIDO** |
+|---|---|---|---|---|
+| **testes** | 2631 | **9** (3 por id, nos três ids) | 2640 | **2640** ✓ |
+| **asserções** | 24.041 | **85** (`32 + 32 + 21`) | 24.126 | **24.126** ✓ |
+| **falhas** | 0 | 0 | 0 | **0** ✓ |
+
+⚠️⚠️ **As DUAS contagens fecham EXATO** — e isso é mais forte do que fechar só os testes: se algum
+método do gate estivesse rodando asserção a mais (ou a menos) do que o manifesto declara, a segunda
+linha **não bateria**. ➡️ **A soma fechar nas duas é a prova de que o manifesto deste plano mede
+exatamente o que o gate executa**, e de que **nada alheio entrou** no recorte entre as duas medições.
+
+⚠️ **E as falhas seguem em ZERO**: a dupla de `CockpitDaContaTest` (fronteira de dia) **não oscilou**
+entre as duas medições, que estão ~40 min apartadas.
+
 ---
 
 ## §3 — O **TERRITÓRIO**, PELOS DOIS CAMINHOS

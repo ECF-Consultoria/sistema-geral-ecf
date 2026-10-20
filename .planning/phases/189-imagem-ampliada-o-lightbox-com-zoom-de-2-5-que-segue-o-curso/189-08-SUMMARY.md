@@ -112,6 +112,13 @@ cada arquivo** — ⚠️ **nunca por range** (o range englobaria os commits da 
 que a 189-07 caiu). **36 ALHEIOS** (as 4 quicks do Agente Publicador: `1253cc86`, `e20a7653`,
 `1a823d6f`, `c810a8ac`) + **12 desta fase** (`337f29c5` ×3, `95c4c12f` ×9). **36 + 12 = 48.** ✓
 
+**E o recorte RE-MEDIDO depois do commit dos gates deste plano: `2640 / 24126 / 0`** (`exit=0`).
+⚠️⚠️ **Fecha exato nas DUAS contagens:** `2631 + 9 = 2640` **e** `24041 + 85 = 24126`
+(`32 + 32 + 21 = 85`, as asserções dos três ids). ➡️ Fechar **nas duas** é mais forte que fechar só
+os testes: se algum método rodasse asserção a mais do que o manifesto declara, a segunda linha **não
+bateria**. **Falhas em 0 nas duas medições**, ~40 min apartadas (a dupla de `CockpitDaContaTest`
+**não oscilou**).
+
 ### ⚠️ A suíte PHP INTEIRA não é medível nesta máquina — **medido por mim**
 
 ```
