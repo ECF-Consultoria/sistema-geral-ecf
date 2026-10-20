@@ -1,0 +1,92 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates da QUICK `261020-tdz` — as TELAS PRETAS por
+# uso-antes-da-declaração (TDZ) no corpo de
+# `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 261020-01 <id-do-gate>`.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ POR QUE O PAR É NUMÉRICO (`261020-01`) E NÃO `261020-tdz` — MEDIDO
+# ═══════════════════════════════════════════════════════════════════════════════
+# `verificar-testes.sh:122` resolve o 1º argumento por
+#   sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'
+# — **dois grupos de DÍGITOS separados por UM hífen, e nada mais**. Qualquer
+# argumento com letra cai no ramo `else`, que monta `contagens-186-<arg>.txt`.
+#
+# MEDIDO nesta máquina em 20/10/2026, pela mensagem de abort (que imprime o
+# caminho que o harness montou):
+#   arg=261020-tdz → ABORTOU: manifesto nao existe: …/contagens-186-261020-tdz.txt
+#   arg=261020-01  → ABORTOU: manifesto nao existe: …/contagens-261020-01.txt
+#
+# ➡️ Nomear este arquivo `contagens-261020-tdz.txt` o deixaria **INALCANÇÁVEL**:
+# o harness procuraria `contagens-186-261020-tdz.txt` e ABORTARIA — ou, pior, se
+# alguém criasse ESSE nome, o manifesto desta quick passaria a viver sob um
+# prefixo de fase FALSO (`186-`), numa fase que está EM PRODUÇÃO.
+# ➡️ O par numérico `261020-01` casa a forma documentada `<fase>-<plano>` e o
+# harness monta EXATAMENTE este caminho. Nenhuma forma que ele ignore em silêncio.
+#
+# ⚠️ **ESTE É O PRIMEIRO MANIFESTO DE QUICK DO PROJETO.** Medido: todos os outros
+# `tests/gates/contagens-*.txt` são de FASE. A alternativa seria declarar o id
+# novo dentro de um manifesto de fase existente — recusada porque os manifestos
+# das Fases 186/187/188/189 são prova de fases EM PRODUÇÃO, e acrescentar id de
+# quick neles misturaria escopos que a verificação daquelas fases já fechou.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ O QUE ESTE GATE EXISTE PARA MATAR
+# ═══════════════════════════════════════════════════════════════════════════════
+# O corpo do componente da página lia CINCO `const` **antes** de elas serem
+# inicializadas, em posição EAGER (atributo de JSX dentro de ternário avaliado na
+# hora). Em JavaScript isso é TDZ: `ReferenceError: Cannot access 'X' before
+# initialization` → **TELA PRETA no instante em que o painel de revisão abre com
+# conteúdo**. Defeito EM PRODUÇÃO desde o deploy `e250f9fb` (20/10/2026),
+# inalcançável só porque `pub_aprovacao_ofertas` está vazia — a Fase 194 cria a
+# primeira oferta.
+#
+# ⚠️⚠️ **POR QUE NENHUM DOS ~30 GATES DO MÓDULO PEGOU:** medido, **nenhuma sonda
+# deste projeto nunca renderizou o `default export` da página**. Todos montam a
+# página por esbuild e exercitam só os named exports. ➡️ Este id é o primeiro que
+# INSTANCIA o componente da página.
+#
+# ⚠️ O veto da 189-07 (`publicador-lightbox-acoes-189.test.js:1097`) nomeia
+# QUATRO. O quinto, `podeEscreverNoPainel`, é invisível para aquela sonda porque
+# a forma da leitura é `prop={!nome ? … : …}` e ela só casa `prop={nome}` e
+# `{...nome}`. ➡️ A sonda deste arquivo é LARGA de propósito, e tem cebo
+# SINTÉTICO nas duas direções (o cebo da 189-07 provava cegueira pela existência
+# dos quatro no código — essa prova desaparece com o conserto).
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS ESCRITURAÇÕES CONFERIDAS E **NÃO TOCADAS**
+# ═══════════════════════════════════════════════════════════════════════════════
+#   · `ARQUIVOS_NOVOS` / `JSX_DEPOIS_DA_187` — medido que as duas são listas de
+#     arquivos sob `resources/js` (o GATE-03 de
+#     `publicador-vocabulario-novo.test.js:819` compara DISCO × LISTA nos
+#     diretórios `identidade/`, `visaogeral/`, `publicacoes/`, `aprovacao/`).
+#     Esta quick **não cria `.jsx` nenhum** — só um `.test.js` em `tests/js/`.
+#     ➡️ Nada a acrescentar, e o invariante *"nenhuma PEÇA nova sob `resources/`
+#     é `.js`"* fica intacto (os 9 `.js` de `tests/js` são todos testes).
+#   · `TAMANHOS_PERMITIDOS` / `vocabulario-tamanhos` — nenhum tamanho novo e
+#     nenhum `.jsx` novo: esta quick **move blocos de lugar**, não desenha nada.
+#   · `ESTADO_LOCAL_DA_PAGINA` — nenhum `useState` novo.
+#   · `SLOTS_DE_NO_DA_187` / `SLOTS_DE_NO_DEPOIS_DA_187` — nenhum slot novo.
+#   · `tests/js/publicador-lightbox-acoes-189.test.js` (o veto da 189-07) —
+#     **NÃO EDITADO**. O estado dele depois do conserto está medido e declarado
+#     na SUMMARY desta quick.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ BIJEÇÃO id ↔ `<verify>`: UM id, usado pelas três tarefas desta quick.
+#    ZERO id órfão (id no manifesto fora de todo `<verify>` = gate sobre zero
+#    casos) e ZERO verify sem id. No modo `js` o harness roda o ARQUIVO INTEIRO,
+#    então é **um id por arquivo de gate** — não é agregação por conveniência.
+#
+# ⚠️ NÃO HÁ id `php`: esta quick é só de ordem de declaração no cliente. Os nomes
+#    dos casos terminam em `_261020_tdz` de todo modo, porque o `--filter` do
+#    PHPUnit é regex NÃO ANCORADO e as Fases 186/187/188 estão EM PRODUÇÃO.
+#
+# ⚠️⚠️ OS DOIS REGIMES (`tests=<pristino>,<mutado>`): nenhuma camada deste
+#    arquivo depende de `mtime` nem degrada para `skip`, e `cp -p` preserva o
+#    `mtime`. ➡️ Os dois regimes COINCIDEM. **Confirmar que o `# tests` do MUTADO
+#    é IGUAL ao do pristino é obrigatório**: se cair, o arquivo não carregou e a
+#    morte não é da asserção.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+pagina-aprovacao-tdz  js  tests/js/publicador-pagina-aprovacao-tdz-261020.test.js  ::  tests=7,7
