@@ -121,6 +121,6 @@
 # obrigatório**: se cair, o arquivo não carregou e a morte **não é da asserção**.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-lightbox-no-painel  js  tests/js/publicador-lightbox-painel-189.test.js  ::  tests=11,11
+lightbox-no-painel  js  tests/js/publicador-lightbox-painel-189.test.js  ::  tests=22,22
 coluna-de-fotos-188  js  tests/js/publicador-painel-fotos-188.test.js  ::  tests=32,28
 vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=695

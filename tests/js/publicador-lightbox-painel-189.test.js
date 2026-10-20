@@ -161,6 +161,7 @@ const ISCA_AUSENTE = 'resources/js/Pages/Mlb/NaoExiste9z7.jsx';
 const FONTE_IMAGEM = lerSemComentarios(REL_IMAGEM);
 const FONTE_COLUNA = lerSemComentarios(REL_COLUNA);
 const FONTE_PAINEL = lerSemComentarios(REL_PAINEL);
+const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
 /** ⚠️ O CRU, para as iscas que provam que a leitura SEM comentário não é cega. */
 const CRU_PAINEL = fs.readFileSync(path.resolve(RAIZ, REL_PAINEL), 'utf8');
@@ -175,6 +176,8 @@ const render = (Componente, props) => renderToStaticMarkup(React.createElement(C
 // já matou um arquivo inteiro **sem nenhum teste falhar**.
 const IMAGEM = await montar(REL_IMAGEM);
 const COLUNA = await montar(REL_COLUNA);
+const PAINEL = await montar(REL_PAINEL);
+const LIGHTBOX = await montar(REL_LIGHTBOX);
 
 // ═══ OS LEITORES DE HTML ═══════════════════════════════════════════════════
 
@@ -311,7 +314,6 @@ const ADVERSOS = [
     [], [1, 2], {}, { toString: null }, { current: null }, () => {},
 ];
 
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. O "⤢ Ampliar" — A GEOMETRIA, A GUARDA E A ORDEM (tarefa 1)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -356,7 +358,6 @@ test('⚠️⚠️ D2 — o "⤢ Ampliar" por IGUALDADE DE CONJUNTO, com isca do
     assert.match(html, /⤢ Ampliar/, 'o texto do botão não saiu no HTML');
 });
 
-
 test('⚠️⚠️ D1/D4 — o wrapper de `:604` e a GUARDA DE FUNÇÃO nas duas direções 189_06', () => {
     // ⚠️ O wrapper é o named export que o 188-08 já tinha (INV-05/A5): o 189-06
     // AFROUXA A CONDIÇÃO dele, **não o recria**.
@@ -392,7 +393,6 @@ test('⚠️⚠️ D1/D4 — o wrapper de `:604` e a GUARDA DE FUNÇÃO nas duas
     assert.doesNotMatch('onClick={ampliar}', /onClick=\{\(\)\s*=>\s*\{\s*\}\}/, 'a sonda de `onClick` vazio acusa handler de VERDADE');
 });
 
-
 test('⚠️⚠️ O botão nasce nos TRÊS estados, e a ORDEM dentro de `:604` é `:605` → `:607` 189_06', () => {
     // ⚠️⚠️ **`regenerating` TAMBÉM tem o botão.** Medido em `:1319`: `P.onZoom` só
     // exige `rv.sel` — só o "Gerar novamente" é condicionado (`:1319`/`:606`).
@@ -424,7 +424,6 @@ test('⚠️⚠️ O botão nasce nos TRÊS estados, e a ORDEM dentro de `:604` 
     assert.doesNotMatch(pendente, /Gerando nova versão/, 'o aviso de `:605` saiu num estado que NÃO é `regenerating`');
     assert.match(pendente, /⤢ Ampliar/, 'o botão desapareceu fora de `regenerating`');
 });
-
 
 test('⚠️⚠️ `aoClicarEmAmpliar` — índice ADVERSO não abre a foto errada e NUNCA lança 189_06', () => {
     // ⚠️⚠️ **O LADO SEGURO É NÃO ABRIR.** Clampar para `0` abriria a FOTO 1
@@ -458,7 +457,6 @@ test('⚠️⚠️ `aoClicarEmAmpliar` — índice ADVERSO não abre a foto erra
     assert.deepEqual(chamadas, [0], 'o índice 0 não chegou ao handler');
 });
 
-
 test('⚠️ A `ref` do "⤢ Ampliar" — só forma que o React aceita, e nada lança 189_06', () => {
     // ⚠️⚠️ `ref` com valor que o React NÃO aceita (número, string, array)
     // **LANÇA** no cliente; aqui a guarda devolve `undefined` e o botão nasce
@@ -490,7 +488,6 @@ test('⚠️ A `ref` do "⤢ Ampliar" — só forma que o React aceita, e nada l
     );
 });
 
-
 test('⚠️⚠️ A COLUNA repassa `onAmpliar`/`refDoAmpliar` à imagem grande — e só com imagem 189_06', () => {
     const comum = { fotos: FOTOS, live: true, selecionada: 1, onSelecionar: nada, empresaId: 7, ofertaId: 12, versao: 3 };
 
@@ -518,7 +515,6 @@ test('⚠️⚠️ A COLUNA repassa `onAmpliar`/`refDoAmpliar` à imagem grande 
     IMAGEM.aoClicarEmAmpliar(COLUNA.indiceSelecionado(2, 3), (i) => pedidos.push(i));
     assert.deepEqual(pedidos, [2], 'o índice entregue ao handler não é o da foto SELECIONADA');
 });
-
 
 test('⚠️⚠️ T-189-40 — a inversão do 188-08 NÃO afrouxou a ausência de "Gerar novamente" 189_06', () => {
     const comum = { fotos: FOTOS, live: true, selecionada: 0, onSelecionar: nada, empresaId: 7, ofertaId: 12, versao: 3 };
@@ -554,7 +550,6 @@ test('⚠️⚠️ T-189-40 — a inversão do 188-08 NÃO afrouxou a ausência 
     assert.doesNotMatch('textoSeguro(x)', /\bString\(/, 'a sonda de `String(` casa nome de outra função — ela é mais larga que o invariante');
 });
 
-
 test('⚠️⚠️ O GATE DO 188-08 FOI REAPONTADO COM VETO, e a contagem alheia é CONFERIDA 189_06', () => {
     // ⚠️⚠️ *"Teste que para de provar algo é pior que teste ausente: cirurgia é
     // REAPONTE com veto, e CONTE TESTES, não linhas"* (`188-REGUA.md` §10).
@@ -586,6 +581,341 @@ test('⚠️⚠️ O GATE DO 188-08 FOI REAPONTADO COM VETO, e a contagem alheia
     assert.equal(daqui[1], do188[1], 'a contagem do manifesto da 188 foi SUBIDA para caber — reaponte não acrescenta nem remove teste');
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. O TECLADO — O DEGRAU DO `Escape`, ←/→ COM VOLTA E ↑/↓ POR BAIXO (tarefa 2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('⚠️⚠️ E12 — `Escape` na ordem modal → LIGHTBOX → painel, uma asserção por camada 189_06', () => {
+    const { resolverAtalhoDoPainel: res, ACOES } = PAINEL;
+
+    // ⚠️⚠️ As TRÊS camadas, e o degrau do meio é o que o 188-07 deixou "previsto
+    // e declarado" (ACHADO A7 do inventário). Sem ele o `Escape` com o lightbox
+    // aberto fecharia o PAINEL INTEIRO, e a pessoa perderia a revisão num toque.
+    assert.equal(res({ tecla: 'Escape', temModal: true, temLightbox: true })?.acao, ACOES.FECHAR_MODAL, 'com modal E lightbox, o `Escape` não fechou o MODAL primeiro');
+    assert.equal(res({ tecla: 'Escape', temModal: false, temLightbox: true })?.acao, ACOES.FECHAR_LIGHTBOX, 'com o lightbox aberto, o `Escape` não fechou o LIGHTBOX');
+    assert.equal(res({ tecla: 'Escape', temModal: false, temLightbox: false })?.acao, ACOES.FECHAR_PAINEL, 'sem modal e sem lightbox, o `Escape` não fechou o PAINEL');
+    assert.equal(res({ tecla: 'Escape', temModal: true, temLightbox: false })?.acao, ACOES.FECHAR_MODAL, 'com modal, o `Escape` não fechou o MODAL');
+
+    // ⚠️ `temLightbox` é `true` ESTRITO: `'1'`, `1` e `{}` são **truthy** e
+    // fechariam o lightbox sobre um estado que não é o dele.
+    for (const quase of [1, '1', 'true', {}, [], 'sim']) {
+        assert.equal(
+            res({ tecla: 'Escape', temModal: false, temLightbox: quase })?.acao,
+            ACOES.FECHAR_PAINEL,
+            `\`temLightbox\` truthy não-booleano foi lido como aberto (typeof ${typeof quase})`,
+        );
+    }
+
+    // ⚠️⚠️ O `Escape` dispara TAMBÉM dentro de campo de texto — medido em
+    // `:1014`/`:1015`: o `if (typing) return` está DEPOIS do bloco do `Escape`.
+    // O contrário TRANCARIA a pessoa dentro de um campo de modal.
+    assert.equal(res({ tecla: 'Escape', alvoEhCampo: true, temLightbox: true })?.acao, ACOES.FECHAR_LIGHTBOX, 'o `Escape` deixou de agir dentro de campo de texto');
+
+    // ⚠️ E o padrão de `temLightbox` é `false`: todos os casos do 188-07 chamam o
+    // resolvedor SEM ele e continuam valendo.
+    assert.equal(res({ tecla: 'Escape' })?.acao, ACOES.FECHAR_PAINEL, 'sem `temLightbox` o padrão deixou de ser `false`');
+});
+
+test('⚠️⚠️ E13 — ←/→ vão para o LIGHTBOX e DÃO A VOLTA; o índice do PAINEL não se mexe 189_06', () => {
+    const { resolverAtalhoDoPainel: res, ACOES } = PAINEL;
+    const base = { temModal: false, temLightbox: true, imagemDoLightbox: 0, totalDoLightbox: 4, imagemAtual: 2, totalDeImagens: 4 };
+
+    // ⚠️⚠️ **DÁ A VOLTA** (`:1321`, `(lb.i + d + n) % n`) — e isso é DIFERENTE do
+    // painel, que CLAMPA (`:1018` + `:1293`). **Não unifique as duas regras.**
+    const esquerdaNaPrimeira = res({ ...base, tecla: 'ArrowLeft' });
+    assert.equal(esquerdaNaPrimeira?.acao, ACOES.MOVER_LIGHTBOX, '← com o lightbox aberto não foi para o lightbox');
+    assert.equal(esquerdaNaPrimeira?.imagem, 3, '← na PRIMEIRA foto não deu a volta para a ÚLTIMA');
+
+    const direitaNaUltima = res({ ...base, tecla: 'ArrowRight', imagemDoLightbox: 3 });
+    assert.equal(direitaNaUltima?.acao, ACOES.MOVER_LIGHTBOX, '→ com o lightbox aberto não foi para o lightbox');
+    assert.equal(direitaNaUltima?.imagem, 0, '→ na ÚLTIMA foto não deu a volta para a PRIMEIRA');
+
+    assert.equal(res({ ...base, tecla: 'ArrowRight', imagemDoLightbox: 1 })?.imagem, 2, '→ no meio não andou uma foto');
+
+    // ⚠️⚠️ **O ÍNDICE DO PAINEL NÃO SE MEXE.** Com o lightbox aberto a ação é
+    // `mover-lightbox`, nunca `trocar-imagem`: trocar a foto por baixo deixaria a
+    // pessoa aprovando no lightbox uma foto e vendo outra no painel.
+    for (const tecla of ['ArrowLeft', 'ArrowRight']) {
+        assert.notEqual(res({ ...base, tecla })?.acao, ACOES.TROCAR_IMAGEM, `${tecla} mexeu no índice do PAINEL com o lightbox aberto`);
+    }
+
+    // ⚠️⚠️ E SEM o lightbox a regra ANTIGA continua inteira: CLAMPA nas DUAS
+    // pontas e **não consome** a tecla na ponta.
+    const semLb = { temModal: false, temLightbox: false, imagemAtual: 0, totalDeImagens: 4 };
+    assert.equal(res({ ...semLb, tecla: 'ArrowLeft' }), null, '← na primeira foto do PAINEL deixou de CLAMPAR (ele não dá a volta)');
+    assert.equal(res({ ...semLb, tecla: 'ArrowRight' })?.acao, ACOES.TROCAR_IMAGEM, '→ no painel deixou de trocar a imagem');
+    assert.equal(res({ ...semLb, tecla: 'ArrowRight', imagemAtual: 3 }), null, '→ na última foto do PAINEL deixou de CLAMPAR');
+
+    // ⚠️ A galeria do LIGHTBOX vazia → a tecla não é consumida (`preventDefault`
+    // numa tecla que não faz nada tira a rolagem da pessoa sem motivo).
+    for (const total of [0, -1, null, undefined, NaN, '4', {}, []]) {
+        assert.equal(
+            res({ ...base, tecla: 'ArrowRight', totalDoLightbox: total }),
+            null,
+            `← / → agiram com \`totalDoLightbox\` adverso (typeof ${typeof total})`,
+        );
+    }
+
+    // ⚠️⚠️ A VOLTA É A FUNÇÃO DO 189-03, IMPORTADA — uma fonte só. Duas regras de
+    // alternância divergiriam, e a divergente leva a pessoa à foto errada.
+    assert.equal(LIGHTBOX.moverNoLightbox(0, -1, 4), 3, 'a função do 189-03 deixou de dar a volta');
+    assert.equal(res({ ...base, tecla: 'ArrowLeft' })?.imagem, LIGHTBOX.moverNoLightbox(0, -1, 4), 'o resolvedor e `moverNoLightbox` divergiram — são DUAS regras de volta');
+    assert.match(FONTE_PAINEL, /from '\.\/LightboxDaImagem'/, 'o painel deixou de IMPORTAR a regra da volta do 189-03');
+});
+
+test('⚠️⚠️ E14 — ↑/↓ CONTINUAM navegando a fila com o lightbox aberto (PERGUNTA-189-B (b)) 189_06', () => {
+    const { resolverAtalhoDoPainel: res, ACOES } = PAINEL;
+    const base = { temModal: false, anteriorId: 501, proximaId: 502, imagemDoLightbox: 0, totalDoLightbox: 4 };
+
+    // ⚠️⚠️ **MEDIDO em `:1017`: o protótipo NÃO testa `!S.lb` ali.** A fila
+    // continua navegando por baixo, e o lightbox guarda o PRÓPRIO contexto. É a
+    // decisão (b) do usuário de 19/10/2026.
+    for (const temLightbox of [true, false]) {
+        assert.equal(res({ ...base, temLightbox, tecla: 'ArrowDown' })?.acao, ACOES.IR_PARA_OFERTA, `↓ ficou inerte com temLightbox=${temLightbox}`);
+        assert.equal(res({ ...base, temLightbox, tecla: 'ArrowDown' })?.oferta, 502, `↓ não foi para \`proxima_id\` com temLightbox=${temLightbox}`);
+        assert.equal(res({ ...base, temLightbox, tecla: 'ArrowUp' })?.oferta, 501, `↑ não foi para \`anterior_id\` com temLightbox=${temLightbox}`);
+    }
+
+    // ⚠️ Na ponta da fila (`null`) a tecla **não navega e não é consumida** — o
+    // destino é LIDO do servidor, nunca recalculado no cliente.
+    assert.equal(res({ ...base, temLightbox: true, tecla: 'ArrowUp', anteriorId: null }), null, '↑ na PRIMEIRA oferta inventou destino');
+    assert.equal(res({ ...base, temLightbox: true, tecla: 'ArrowDown', proximaId: null }), null, '↓ na ÚLTIMA oferta inventou destino');
+
+    // ⚠️ Em campo de texto NENHUMA seta age (`:1015`) — nem com o lightbox aberto.
+    for (const tecla of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+        assert.equal(res({ ...base, temLightbox: true, tecla, alvoEhCampo: true }), null, `${tecla} agiu dentro de campo de texto`);
+    }
+
+    // ⚠️ Com MODAL aberto as setas também não agem (`:1017`/`:1018` exigem
+    // `!S.modal`): navegar a fila atrás de um modal trocaria a oferta que o
+    // modal está confirmando.
+    for (const tecla of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+        assert.equal(res({ ...base, temLightbox: true, temModal: true, tecla }), null, `${tecla} agiu com MODAL aberto`);
+    }
+});
+
+test('⚠️⚠️ T-189-43 — tecla, índice e `evento` ADVERSOS não derrubam a página 189_06', () => {
+    const { resolverAtalhoDoPainel: res } = PAINEL;
+
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => res(adverso), `o resolvedor LANÇOU com evento adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(() => res({ tecla: adverso, temLightbox: true }), `o resolvedor LANÇOU com tecla adversa (typeof ${typeof adverso})`);
+        assert.doesNotThrow(
+            () => res({ tecla: 'ArrowRight', temLightbox: true, imagemDoLightbox: adverso, totalDoLightbox: adverso }),
+            `o resolvedor LANÇOU com índice/total adversos (typeof ${typeof adverso})`,
+        );
+    }
+
+    // ⚠️ Tecla que não é desta peça devolve `null` (sem `preventDefault`).
+    for (const tecla of ['a', 'Enter', 'Tab', ' ', 'F5', 'ArrowUpLeft']) {
+        assert.equal(res({ tecla, temLightbox: true, temModal: false }), null, `a tecla "${tecla}" foi consumida sem ser desta peça`);
+    }
+
+    // ⚠️ O resultado de um resolvedor adverso NUNCA leva `NaN`/`undefined` para a
+    // tela: ou é `null`, ou tem `acao` string e `imagem`/`oferta` inteiros ou nulos.
+    for (const adverso of ADVERSOS) {
+        const r = res({ tecla: 'ArrowRight', temLightbox: true, imagemDoLightbox: adverso, totalDoLightbox: 4 });
+        if (r === null) continue;
+        assert.equal(typeof r.acao, 'string', 'o resolvedor devolveu `acao` que não é string');
+        assert.ok(r.imagem === null || Number.isInteger(r.imagem), `o resolvedor devolveu índice ${String(r.imagem)} — ele iria para o estado`);
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. O CONTEXTO PRÓPRIO DO LIGHTBOX (PERGUNTA-189-B (b), T-189-42)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('⚠️⚠️ T-189-42 — abrir na A (v3) e ↓ para a B (v7): o contexto continua na A 189_06', () => {
+    const { contextoDoLightbox } = PAINEL;
+
+    // ⚠️ A ABERTURA captura o contexto do instante: `oferta_id`, `versao`,
+    // `ao_vivo`, as `imagens` e as `originais`.
+    const guardado = contextoDoLightbox(null, PAINEL_A, LIGHTBOX_A);
+    assert.equal(guardado?.oferta_id, 501, 'a abertura não capturou a `oferta_id`');
+    assert.equal(guardado?.versao, 3, 'a abertura não capturou a `versao`');
+    assert.equal(guardado?.ao_vivo, true, 'a abertura não capturou o `ao_vivo` (lido de `rodape.botoes.salvar`)');
+    assert.equal(guardado?.imagens.length, 4, 'a abertura não capturou as 4 imagens da oferta A');
+    assert.equal(guardado?.originais?.[41]?.disponivel, true, 'a abertura não capturou as `originais`');
+
+    // ⚠️⚠️ **O ↓ TROCA A OFERTA POR BAIXO E O CONTEXTO NÃO MUDA.** A fixtura
+    // DISCRIMINA nos TRÊS campos: versão 3 × 7, 4 imagens × 2, `ao_vivo` true ×
+    // false. Um contexto que lesse o painel por baixo escreveria na VERSÃO
+    // ERRADA — e, pior, na FOTO de outra oferta.
+    const depoisDoDown = contextoDoLightbox(guardado, PAINEL_B, LIGHTBOX_B);
+    assert.equal(depoisDoDown.oferta_id, 501, 'o contexto do lightbox seguiu a oferta do PAINEL (T-189-42)');
+    assert.equal(depoisDoDown.versao, 3, 'a VERSÃO do contexto virou a da oferta B — a escrita iria para a versão errada');
+    assert.equal(depoisDoDown.imagens.length, 4, 'as IMAGENS do contexto viraram as da oferta B');
+    assert.equal(depoisDoDown.ao_vivo, true, 'o `ao_vivo` do contexto virou o da oferta B');
+    assert.deepEqual(depoisDoDown, guardado, 'o contexto GUARDADO não saiu intacto com OUTRA oferta no painel');
+
+    // ⚠️⚠️ E na MESMA oferta ele REFRESCA — é assim que a foto aprovada aparece
+    // aprovada depois da ação.
+    const mesmaOfertaVersaoNova = {
+        ...PAINEL_A,
+        versao: 4,
+        fotos: { imagens: [FOTO_APROVADA, FOTO_PENDENTE] },
+        rodape: { botoes: { salvar: false } },
+    };
+    const refrescado = contextoDoLightbox(guardado, mesmaOfertaVersaoNova, LIGHTBOX_A);
+    assert.equal(refrescado.oferta_id, 501, 'o refresco perdeu a `oferta_id`');
+    assert.equal(refrescado.versao, 4, 'o refresco não trouxe a VERSÃO nova do payload');
+    assert.equal(refrescado.imagens.length, 2, 'o refresco não trouxe as IMAGENS novas do payload');
+    assert.equal(refrescado.ao_vivo, false, 'o refresco não trouxe o `ao_vivo` novo');
+
+    // ⚠️⚠️ COMPARAÇÃO ESTRITA de `oferta_id`: `'501'` é OUTRA oferta, nunca "a
+    // mesma". `==` leria a string como o inteiro e refrescaria com dado alheio.
+    for (const quase of ['501', 501.0000001, true, null, undefined, NaN, {}, []]) {
+        const r = contextoDoLightbox(guardado, { ...PAINEL_B, oferta_id: quase }, LIGHTBOX_B);
+        if (quase === 501.0000001) {
+            assert.equal(r.oferta_id, 501, 'id quase-igual foi lido como A MESMA oferta');
+            continue;
+        }
+        assert.deepEqual(r, guardado, `\`oferta_id\` adversa foi lida como A MESMA oferta (typeof ${typeof quase})`);
+    }
+});
+
+test('⚠️⚠️ O contexto CLAMPA o índice e FECHA com a galeria vazia (E3) 189_06', () => {
+    const { contextoDoLightbox, indiceNoContexto } = PAINEL;
+    const guardado = contextoDoLightbox(null, PAINEL_A, LIGHTBOX_A);
+
+    // ⚠️ Payload novo da MESMA oferta com MENOS imagens → o índice é CLAMPADO.
+    // Sem isso o lightbox apontaria para uma foto que não existe mais (reprovar
+    // tira a foto do conjunto final).
+    const menos = { ...PAINEL_A, fotos: { imagens: [FOTO_PENDENTE, FOTO_APROVADA] } };
+    const depois = contextoDoLightbox(guardado, menos, LIGHTBOX_A);
+    assert.equal(indiceNoContexto(3, depois), 1, 'o índice 3 não foi clampado para a última das 2 imagens');
+    assert.equal(indiceNoContexto(0, depois), 0, 'o índice 0 foi mexido sem motivo');
+
+    // ⚠️⚠️ ZERO imagens → `null`, e `null` é o sinal de FECHAR (`:1324`,
+    // `if (i < 0) return { open: false }`).
+    const zero = contextoDoLightbox(guardado, { ...PAINEL_A, fotos: { imagens: [] } }, LIGHTBOX_A);
+    assert.equal(indiceNoContexto(0, zero), null, 'galeria VAZIA não devolveu `null` (o lightbox ficaria aberto sobre nada)');
+    assert.equal(indiceNoContexto(0, null), null, 'contexto nulo não devolveu `null`');
+
+    // ⚠️ Índice e contexto adversos: nunca lança, nunca `NaN`.
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => indiceNoContexto(adverso, depois), `o clamp LANÇOU com índice adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(() => indiceNoContexto(0, adverso), `o clamp LANÇOU com contexto adverso (typeof ${typeof adverso})`);
+        const r = indiceNoContexto(adverso, depois);
+        assert.ok(r === null || Number.isInteger(r), `o clamp devolveu ${String(r)} — ele iria para o estado`);
+    }
+
+    // ⚠️ ISCA: o clamp do CONTEXTO é o do 189-03, IMPORTADO — uma fonte só.
+    assert.equal(indiceNoContexto(9, depois), LIGHTBOX.indiceNoLightbox(9, 2), 'o clamp do contexto e `indiceNoLightbox` divergiram');
+});
+
+test('⚠️⚠️ T-189-43/`contextoDoLightbox` — payload ADVERSO não derruba a página 189_06', () => {
+    const { contextoDoLightbox } = PAINEL;
+
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => contextoDoLightbox(adverso, adverso, adverso), `o contexto LANÇOU com tudo adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(() => contextoDoLightbox(null, adverso, null), `o contexto LANÇOU com painel adverso (typeof ${typeof adverso})`);
+        assert.doesNotThrow(
+            () => contextoDoLightbox(null, { oferta_id: adverso, versao: adverso, fotos: adverso, rodape: adverso }, { originais: adverso }),
+            `o contexto LANÇOU com campos adversos (typeof ${typeof adverso})`,
+        );
+    }
+
+    // ⚠️ Painel sem oferta → **não abre** (`null`): um lightbox sem oferta não
+    // tem o que aprovar, e um contexto com `oferta_id` nula escreveria em
+    // `{oferta: null}`, uma rota que não existe.
+    assert.equal(contextoDoLightbox(null, null, LIGHTBOX_A), null, 'painel nulo produziu contexto');
+    assert.equal(contextoDoLightbox(null, { ...PAINEL_A, oferta_id: null }, LIGHTBOX_A), null, 'oferta nula produziu contexto');
+    assert.equal(contextoDoLightbox(null, { ...PAINEL_A, oferta_id: 0 }, LIGHTBOX_A), null, '`oferta_id` 0 passou pela guarda de id POSITIVO');
+    assert.equal(contextoDoLightbox(null, { ...PAINEL_A, versao: 0 }, LIGHTBOX_A), null, '`versao` 0 passou pela guarda de id POSITIVO');
+
+    // ⚠️ `imagens` que não é lista → `[]`, nunca `.map` em string/número (LANÇA).
+    const semLista = contextoDoLightbox(null, { ...PAINEL_A, fotos: { imagens: { 0: FOTO_PENDENTE } } }, LIGHTBOX_A);
+    assert.deepEqual(semLista.imagens, [], '`imagens` objeto não caiu em lista vazia');
+
+    // ⚠️ `originais` que não é objeto comum → `{}`.
+    const semOriginais = contextoDoLightbox(null, PAINEL_A, { originais: [1, 2] });
+    assert.deepEqual(semOriginais.originais, {}, '`originais` array não caiu em objeto vazio');
+
+    // ⚠️ E o texto que sai do contexto nunca é `[object Object]`/`NaN`.
+    for (const adverso of ADVERSOS) {
+        const r = contextoDoLightbox(null, { ...PAINEL_A, oferta_id: 501, versao: 3, rodape: adverso }, LIGHTBOX_A);
+        if (r === null) continue;
+        assert.equal(typeof r.ao_vivo, 'boolean', '`ao_vivo` saiu do contexto sem ser booleano');
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. O FOCO AO FECHAR (critério 7, PERGUNTA-189-C e o DEFAULT da 189-D1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('⚠️⚠️ Critério 7 — fechar devolve o foco ao botão que abriu, e `ref` nula NÃO lança 189_06', () => {
+    const { fecharLightboxDevolvendoFoco } = PAINEL;
+
+    const chamadas = [];
+    const ref = { current: { focus: () => chamadas.push('focus') } };
+    const fechou = [];
+
+    assert.equal(fecharLightboxDevolvendoFoco({ ref, fechar: () => fechou.push(1) }), true, 'o fechamento com `ref` boa não devolveu `true`');
+    assert.deepEqual(fechou, [1], 'o lightbox não foi fechado');
+    assert.deepEqual(chamadas, ['focus'], 'o foco não voltou ao botão que abriu');
+
+    // ⚠️⚠️ **FECHAR SEMPRE ACONTECE, mesmo sem foco para devolver.** Um
+    // fechamento que dependesse da `ref` deixaria o lightbox preso na tela.
+    for (const adversa of [null, undefined, {}, { current: null }, { current: {} }, { current: { focus: 'nao-e-funcao' } }, [], 0, 'ref', NaN]) {
+        const fechados = [];
+        assert.doesNotThrow(
+            () => fecharLightboxDevolvendoFoco({ ref: adversa, fechar: () => fechados.push(1) }),
+            `LANÇOU com \`ref\` adversa (typeof ${typeof adversa})`,
+        );
+        assert.deepEqual(fechados, [1], `o lightbox NÃO fechou com \`ref\` adversa (typeof ${typeof adversa})`);
+    }
+
+    // ⚠️ Pedido inteiro adverso: nada lança, e sem `fechar` função devolve `false`.
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => fecharLightboxDevolvendoFoco(adverso), `LANÇOU com pedido adverso (typeof ${typeof adverso})`);
+    }
+    assert.equal(fecharLightboxDevolvendoFoco({ ref, fechar: null }), false, 'sem `fechar` função devolveu `true`');
+    assert.equal(fecharLightboxDevolvendoFoco(null), false, 'pedido nulo devolveu `true`');
+
+    // ⚠️ ISCA: o stub de foco CONTA de verdade (sonda que não conta nada é vazia
+    // por construção).
+    assert.equal(chamadas.length, 1, 'o stub de `focus` não contou a chamada — a sonda está CEGA');
+});
+
+test('⚠️⚠️ 189-C e o DEFAULT da 189-D1 — a foto do painel e o destino do foco 189_06', () => {
+    const { aoFecharOLightbox, contextoDoLightbox, FOCO_NO_BOTAO_DE_ABRIR } = PAINEL;
+    const contexto = contextoDoLightbox(null, PAINEL_A, LIGHTBOX_A);
+
+    // ➡️ **189-C (a oferta por baixo NÃO mudou):** o painel continua na foto de
+    // onde se abriu, e o foco volta ao botão que abriu.
+    const mesma = aoFecharOLightbox({ contexto, painelAtual: PAINEL_A });
+    assert.equal(mesma.mudarFotoDoPainel, false, '189-C: fechar mexeu na foto selecionada do painel');
+    assert.equal(mesma.focar, FOCO_NO_BOTAO_DE_ABRIR, '189-C: o foco não voltou ao botão que abriu');
+
+    // ➡️ ⚠️⚠️ **189-D1 (a oferta MUDOU) — DEFAULT APLICADO, pergunta ABERTA:** o
+    // painel FICA na oferta nova (a navegação foi ação explícita da pessoa), na
+    // foto que B já tinha, e o foco vai ao botão do painel de B. A alternativa
+    // (`router.get` de volta para a A) é LOCAL e **não** é o default.
+    const outra = aoFecharOLightbox({ contexto, painelAtual: PAINEL_B });
+    assert.equal(outra.mudarFotoDoPainel, false, '189-D1: fechar mexeu na foto que a oferta B já tinha');
+    assert.equal(outra.focar, FOCO_NO_BOTAO_DE_ABRIR, '189-D1: o foco não foi ao botão do painel de B');
+    assert.equal(outra.voltarParaAOferta, null, '189-D1: o default virou `router.get` de volta para a A — essa é a ALTERNATIVA, não o default');
+
+    // ⚠️ Oferta B SEM imagem: o foco vai a NADA, sem lançar (a `ref` fica nula).
+    const semImagem = aoFecharOLightbox({ contexto, painelAtual: { ...PAINEL_B, fotos: { imagens: [] } } });
+    assert.equal(semImagem.focar, null, 'o foco foi para um botão que não existe (a oferta B não tem imagem)');
+
+    // ⚠️ Pedido adverso: nunca lança, e o resultado é seguro.
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => aoFecharOLightbox(adverso), `LANÇOU com pedido adverso (typeof ${typeof adverso})`);
+        const r = aoFecharOLightbox({ contexto: adverso, painelAtual: adverso });
+        assert.equal(r.mudarFotoDoPainel, false, 'pedido adverso mandou mexer na foto do painel');
+        assert.ok(r.focar === null || r.focar === FOCO_NO_BOTAO_DE_ABRIR, `o destino do foco saiu ${String(r.focar)}`);
+    }
+
+    // ⚠️⚠️ O TOKEN DO FOCO **não** contém `Ampliar`: a FONTE de
+    // `PainelDeRevisao.jsx` é varrida por `/Ampliar/` em
+    // `publicador-painel-casca-188.test.js:1035`, e *"silêncio que depende de UMA
+    // LETRA é sorte"* — `'ampliar'` minúsculo passaria **por sorte**.
+    assert.equal(typeof FOCO_NO_BOTAO_DE_ABRIR, 'string', 'o token do foco não é string');
+    assert.doesNotMatch(FOCO_NO_BOTAO_DE_ABRIR, /ampliar/i, 'o token do foco cita "ampliar" — ele depende da CAIXA de uma letra para não reprovar o `casca-188:1035`');
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 5. A ARMADILHA A2 E O TERRITÓRIO DO PAINEL E DA PÁGINA
@@ -619,6 +949,56 @@ test('⚠️⚠️ ARMADILHA A2 — nem `⤢` nem `Ampliar` no CÓDIGO de `Paine
     }
 });
 
+test('⚠️⚠️ O painel compõe o LIGHTBOX e a LATERAL, e os três exports puros existem 189_06', () => {
+    // ⚠️ As três funções puras que a página consome — por NOME, nunca por linha
+    // (âncora em número que muda é frágil).
+    for (const nome of ['contextoDoLightbox', 'fecharLightboxDevolvendoFoco', 'aoFecharOLightbox', 'indiceNoContexto']) {
+        assert.equal(typeof PAINEL[nome], 'function', `\`${nome}\` não é named export de PainelDeRevisao.jsx`);
+        assert.match(FONTE_PAINEL, new RegExp(`export function ${nome}\\b`), `\`${nome}\` deixou de ser \`export function\``);
+    }
+    assert.equal(typeof PAINEL.FOCO_NO_BOTAO_DE_ABRIR, 'string', '`FOCO_NO_BOTAO_DE_ABRIR` não é named export');
+
+    // ⚠️ O degrau e as duas ações novas.
+    assert.equal(PAINEL.ACOES.FECHAR_LIGHTBOX, 'fechar-lightbox', 'a ação `fechar-lightbox` divergiu');
+    assert.equal(PAINEL.ACOES.MOVER_LIGHTBOX, 'mover-lightbox', 'a ação `mover-lightbox` divergiu');
+    assert.ok((FONTE_PAINEL.match(/temLightbox/g) ?? []).length >= 2, 'o parâmetro `temLightbox` aparece menos de 2 vezes no painel');
+
+    // ⚠️⚠️ As ações ANTIGAS do 188-07 continuam de pé — reaponte não apaga.
+    for (const [chave, valor] of [['FECHAR_MODAL', 'fechar-modal'], ['FECHAR_PAINEL', 'fechar-painel'], ['IR_PARA_OFERTA', 'ir-para-oferta'], ['TROCAR_IMAGEM', 'trocar-imagem']]) {
+        assert.equal(PAINEL.ACOES[chave], valor, `a ação \`${chave}\` do 188-07 mudou de valor`);
+    }
+
+    // ⚠️ O painel continua sendo PORTAL e os `z` continuam onde estavam: as duas
+    // âncoras de `publicador-lightbox-camadas-189.test.js` casam EXATAMENTE 1x.
+    assert.equal((FONTE_PAINEL.match(/const CLASSES_BACKDROP = 'fixed inset-0 z-\[39\] bg-black\//g) ?? []).length, 1, 'a âncora do backdrop `z-[39]` deixou de casar 1x');
+    assert.equal((FONTE_PAINEL.match(/'fixed inset-y-0 right-0 z-\[40\]/g) ?? []).length, 1, 'a âncora do painel `z-[40]` deixou de casar 1x');
+    assert.match(FONTE_PAINEL, /createPortal\(/, 'o painel deixou de ser portado');
+});
+
+test('⚠️⚠️ A PÁGINA repassa `lightbox` como DADO, sem `String(` e sem `localStorage` 189_06', () => {
+    // ⚠️ A prop-raiz do servidor (189-02) entra na assinatura da página.
+    assert.match(FONTE_PAGINA, /\blightbox = null\b/, 'a prop-raiz `lightbox` não entrou na assinatura da página');
+
+    // ⚠️⚠️ **UM SIGNIFICADO POR PROP:** `lightbox` é DADO, e não um slot de NÓ.
+    // Slot de NÓ novo obrigaria a acrescentar linha em DUAS listas, em DOIS
+    // arquivos de gate (`SLOTS_DE_NO_*`), e isto NÃO é um slot.
+    assert.doesNotMatch(FONTE_PAGINA, /isValidElement\(\s*lightbox\s*\)/, '`lightbox` virou slot de NÓ — ele é DADO (e as listas `SLOTS_DE_NO_*` não foram tocadas)');
+    assert.match(FONTE_PAGINA, /<LightboxDaImagem/, 'a página deixou de montar o lightbox');
+    assert.match(FONTE_PAGINA, /<LateralDoLightbox/, 'a página deixou de montar a lateral de 320px (189-05)');
+    assert.match(FONTE_PAGINA, /onAmpliar=/, 'a página deixou de ligar o "⤢ Ampliar" da coluna de fotos');
+
+    // ⚠️ Os gates da 187-04 e do 188-07 sobre a página continuam valendo, e os
+    // dois estão CERTOS.
+    assert.doesNotMatch(FONTE_PAGINA, /\bString\(/, '`String(` voltou à página — ele LANÇA com `{toString:null}`');
+    assert.doesNotMatch(FONTE_PAGINA, /localStorage|sessionStorage/, 'o estado do lightbox foi para o navegador — ele é memória do componente (T-189-44)');
+    assert.doesNotMatch(FONTE_PAGINA, /Gerar novamente/, 'a página antecipou a Fase 192');
+    assert.doesNotMatch(FONTE_PAGINA, /Comparar lado a lado/, 'a página antecipou as Fases 190/191, que estão FORA DE ESCOPO desde 20/10/2026');
+
+    // ⚠️ ISCA: a fonte da página foi lida de verdade (sonda de ausência sobre
+    // leitura quebrada passa CALADA).
+    assert.match(FONTE_PAGINA, /export default function Aprovacao\(/, 'a página desapareceu da fonte lida — os `doesNotMatch` acima seriam vazios');
+    assert.ok(FONTE_PAGINA.length > 10000, `a fonte da página veio com ${FONTE_PAGINA.length} bytes — a leitura está quebrada`);
+});
 
 test('⚠️ ANTI-FANTASMA e o MANIFESTO deste plano 189_06', () => {
     // ⚠️⚠️ `test -e` em CADA caminho citado: sonda de AUSÊNCIA sobre arquivo
@@ -650,7 +1030,6 @@ test('⚠️ ANTI-FANTASMA e o MANIFESTO deste plano 189_06', () => {
     const arquivos = [...TEXTO_MANIFESTO.matchAll(/^[a-z0-9-]+\s+js\s+(\S+)\s+::/gm)].map((m) => m[1]);
     assert.equal(new Set(arquivos).size, arquivos.length, 'um arquivo de gate aparece em DOIS ids do manifesto');
 });
-
 
 test('⚠️ FID-01 §D e §E — as linhas do protótipo, por SCRIPT (ou `skip` NOMEADO) 189_06', (t) => {
     // ⚠️⚠️ O protótipo **não é versionado** (D-189-2): sem ele o bloco degrada
