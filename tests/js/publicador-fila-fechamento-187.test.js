@@ -161,6 +161,14 @@ const JSX_DEPOIS_DA_187 = [
     // ⚠️ A lateral de 320px é o plano **189-05** (`LateralDoLightbox.jsx`), e
     // entra aqui naquela wave — não antes.
     `${DIR_APROV}/LightboxDaImagem.jsx`,
+    // Fase 189, plano 05 — a LATERAL de 320px do lightbox (a coluna 2 do grid
+    // `minmax(0,1fr) 320px`): "Fechar · Esc", os metadados, a original de
+    // referência (ou o estado IMG-13 LIDO do servidor), as verificações com o
+    // ordinal do marcador, o botão de zoom e Reprovar / Aprovar foto.
+    // ⚠️ São DUAS escriturações por `.jsx` novo, e é DELIBERADO: sem a linha
+    // aqui, o `deepEqual` deste gate REPROVA; sem a de `ARQUIVOS_NOVOS`, o
+    // GATE-03 passaria POR OMISSÃO (VOC-07).
+    `${DIR_APROV}/LateralDoLightbox.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

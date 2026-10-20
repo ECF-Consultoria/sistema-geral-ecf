@@ -563,6 +563,42 @@ const ARQUIVOS_NOVOS = [
     // hex cru: o gate de vocabulário proíbe `#[0-9a-fA-F]{3,8}`, e este valor é o
     // ÚNICO do lightbox SEM token (`189-FID01.md` §T).
     `${DIR_APROV}/LightboxDaImagem.jsx`,
+    // ═══ ⚠️⚠️ Fase 189, plano 05 — A LATERAL DE 320px DO LIGHTBOX ══════════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE O CRIA** (`188-REGUA.md` §13, herdada pela
+    // `189-REGUA.md`): `aprovacao/` está em `DIRETORIOS_FECHADOS` com
+    // `assert.deepEqual(noDisco, declarados)`, e `.jsx` no disco fora desta lista
+    // deixa o GATE-03 **VERMELHO no meio do plano**.
+    //
+    // ⚠️ **POR QUE `.jsx`**: o `content` do `tailwind.config.js` varre `*.jsx` e
+    // **não** `*.js`. Este arquivo é a única casa das classes da §C da
+    // `189-FID01.md` (a lateral, o "Fechar · Esc", a grade de metadados, a caixa
+    // da original, o botão de zoom e as duas ações). Num `.js` nenhuma geraria CSS
+    // e a lateral sairia sem geometria **com todo teste de render passando**.
+    //
+    // ⚠️ **FID-03 — os tamanhos usados e DE ONDE VÊM** (medidos por script na
+    // faixa `744`-`770`: `FONT_SIZES=9.5px 12px 12.5px 13px`):
+    //   · `text-[12px]`   — o "Fechar · Esc" (`:745#2`) e o título da original
+    //     (`:754`) e o item de verificação (`:760#1`);
+    //   · `text-[12.5px]` — a grade de metadados (`:746`) e o botão de zoom (`:763`);
+    //   · `text-[13px]`   — "Reprovar" (`:766`) e "Aprovar foto" (`:767`);
+    //   · `text-[11.5px]` — o APOIO do estado IMG-13 (§H4, **SEM medida no
+    //     protótipo**: ele ESCONDE o bloco em `:752`); escolhido DENTRO da lista.
+    //   · `text-[11px]`   — o cabeçalho APOIO, **IMPORTADO** do 188-08
+    //     (`CLASSES_CABECALHO_VERIFICACOES`), não redigitado aqui.
+    // ➡️ **Nenhum tamanho NOVO**: nada a liberar em `LIBERADOS_DEPOIS_DA_187`.
+    //
+    // ⚠️ **`font-[800]` e NÃO `font-extrabold`** no glifo da verificação: ele vem
+    // **IMPORTADO** de `BlocoDaImagemSelecionada.jsx` (`CLASSES_GLIFO`), e o
+    // sub-teste 2 do GATE-03 PROÍBE a escala nomeada
+    // (`/font-(thin|extralight|light|extrabold|black)\b/`). As duas formas
+    // entregam o MESMO `font-weight:800` — a `189-FID01.md` §C13 escreve
+    // `font-extrabold`, e esta é DIVERGÊNCIA de NOTAÇÃO, por valor idêntico.
+    //
+    // ⚠️ `border-pub-danger/[0.45]` (`:766`) e `bg-pub-accent` (`:767`) são token
+    // com modificador de opacidade, **não** hex cru — o gate proíbe
+    // `#[0-9a-fA-F]{3,8}`, e a §T da `189-FID01.md` mapeia os dois.
+    `${DIR_APROV}/LateralDoLightbox.jsx`,
 ];
 
 /**
