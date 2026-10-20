@@ -19,6 +19,7 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
+use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use App\Support\Publicador\Payload\Alvo;
@@ -121,7 +122,8 @@ class CriativosAutomaticosTest extends TestCase
         $portador = MlAnuncioCriativo::query()->findOrFail($kit->criativo_referencia_id);
         $this->assertCount(2, (array) $portador->referencias, 'as duas fotos do cliente vão de referência');
         Queue::assertPushedWithChain(PlanejarKitCriativosJob::class, [GerarCriativosAutomaticosJob::class]);
-        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === ['lifestyle', 'hero']);
+        // O MESMO kit do botão: sem tipos fixos, o planejador escolhe e a quantidade é a do sistema.
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === null);
         $this->assertSame($kit->id, (int) $r2->fresh()->step_state['criativos_auto']['kit_id']);
 
         // Um kit ativo por grupo (D-15) e a aprovação é de gente: nada planejado de novo.
@@ -236,7 +238,7 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame($antes + 1, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)), 'o texto estava em dia, as fotos podem ter chegado agora');
     }
 
-    // ═══ 20/10/2026: as imagens do kit automático entram SOZINHAS, na frente da galeria ═══
+    // ═══ 20/10/2026: as imagens do kit automático entram SOZINHAS e viram as fotos do grupo ═══
 
     /** Um JPEG de verdade (a foto passa pela mesma conferência de tamanho/formato de qualquer foto do Publicador). */
     private function jpeg(array $rgb): string
@@ -291,7 +293,7 @@ class CriativosAutomaticosTest extends TestCase
         return $id === null ? null : (int) $id;
     }
 
-    public function test_kit_automatico_pronto_entra_sozinho_na_frente_da_galeria_na_ordem_dos_slots(): void
+    public function test_kit_automatico_pronto_vira_as_fotos_do_grupo_e_a_do_cliente_fica_so_de_referencia(): void
     {
         $this->ligar();
         [, $r] = $this->produtoComFotos(2);
@@ -304,13 +306,59 @@ class CriativosAutomaticosTest extends TestCase
         $lifestyle = $this->imagemDoSlot($kit, 'lifestyle');
         $hero = $this->imagemDoSlot($kit, 'hero');
         $this->assertNotNull($lifestyle);
-        $this->assertSame([$lifestyle, $hero, ...$doCliente], $this->galeria($r), 'as duas da IA na frente (a 1ª é a capa), as do cliente depois, na ordem delas');
+        $this->assertSame([$lifestyle, $hero], $this->galeria($r), 'o grupo fica SÓ com as imagens do kit, na ordem dos slots (a 1ª é a capa)');
+        $this->assertSame(2, PubImagem::query()->whereIn('id', $doCliente)->count(), 'a foto do cliente sai da galeria, mas fica no rascunho como referência');
         $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->fresh()->status);
         $this->assertSame($this->sistema->id, (int) $kit->fresh()->aprovado_por);
         $memoria = $r->fresh()->step_state['criativos_auto']['grupos'][R::GERAL];
         $this->assertSame(2, $memoria['aplicadas']);
         $this->assertSame('nao_pronto', $this->servico()->aplicar($kit->id), 'o kit fechou (aprovado): não volta');
-        $this->assertSame([$lifestyle, $hero, ...$doCliente], $this->galeria($r));
+        $this->assertSame([$lifestyle, $hero], $this->galeria($r));
+
+        // O próximo preparo não gera de novo: o grupo agora só tem imagem por IA, e imagem por IA nunca é referência
+        // de outro kit — nem com o kit fora do caminho (erro, descartado).
+        $this->assertSame('sem_foto', $this->servico()->avaliar($r->id));
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
+        $this->assertSame('sem_foto', $this->servico()->avaliar($r->id));
+        $this->assertSame(1, MlAnuncioCriativoKit::query()->count());
+    }
+
+    public function test_trocar_fotos_do_grupo_so_mexe_no_grupo_pedido(): void
+    {
+        [, $r] = $this->produtoComFotos(2);
+        $geral = $this->galeria($r);
+        $cor = 'COLOR=id:52049';
+        $repo = new RascunhoRepository();
+        $daCor = $r->imagens()->create(['caminho' => 'publicador/cor.jpg', 'sha256' => hash('sha256', 'cor'), 'mime' => 'image/jpeg', 'bytes' => 1, 'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::PENDENTE]);
+        $daIa = $r->imagens()->create(['caminho' => 'publicador/ia.jpg', 'sha256' => hash('sha256', 'ia'), 'mime' => 'image/jpeg', 'bytes' => 1, 'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::PENDENTE]);
+        $repo->gravarAtribuicoes($r, [...$repo->snapshot($r->fresh())->imagens, ['imagem' => $daCor->id, 'grupo' => $cor, 'posicao' => 0]]);
+        $editor = app(EditorRascunhoService::class);
+
+        $editor->trocarFotosDoGrupo($r->fresh(), $cor, [$daIa->id]);
+        $this->assertSame([$daIa->id], $this->galeria($r, $cor));
+        $this->assertSame($geral, $this->galeria($r), 'a galeria geral fica como estava');
+        $this->assertNotNull(PubImagem::query()->find($daCor->id), 'a foto que sai do grupo não é apagada');
+
+        $revisao = (int) $r->fresh()->revisao;
+        $editor->trocarFotosDoGrupo($r->fresh(), $cor, [$daIa->id]);
+        $editor->trocarFotosDoGrupo($r->fresh(), $cor, []);
+        $this->assertSame($revisao, (int) $r->fresh()->revisao, 'a mesma lista e a lista vazia não gravam nada');
+        $this->assertSame([$daIa->id], $this->galeria($r, $cor));
+    }
+
+    public function test_nenhuma_imagem_aprovavel_as_fotos_do_cliente_ficam(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $doCliente = $this->galeria($r);
+        $kit = $this->kitPronto($r, ['reprovada', 'reprovada']);
+        // As duas já foram refeitas uma vez (VAL-05) e reprovaram de novo: não há outra tentativa.
+        MlAnuncioCriativo::query()->where('kit_id', $kit->id)->update(['regeneracao_automatica' => true]);
+
+        $this->assertSame('nada_aprovavel', $this->servico()->aplicar($kit->id));
+        $this->assertSame($doCliente, $this->galeria($r), 'o anúncio nunca fica sem foto por aqui');
+        $this->assertNull($this->imagemDoSlot($kit, 'hero'));
+        $this->assertSame('ja_aplicado', $this->servico()->aplicar($kit->id));
     }
 
     public function test_kit_pedido_no_botao_nao_entra_sozinho(): void
@@ -341,7 +389,8 @@ class CriativosAutomaticosTest extends TestCase
         // Já foi refeita uma vez e reprovou de novo: não há outra tentativa — entra só a boa.
         $lifestyle->update(['regeneracao_automatica' => true]);
         $this->assertSame('aplicado:1', $this->servico()->aplicar($kit->id));
-        $this->assertSame([$this->imagemDoSlot($kit, 'hero'), ...$doCliente], $this->galeria($r));
+        $this->assertSame([$this->imagemDoSlot($kit, 'hero')], $this->galeria($r), 'entra só a boa, no lugar das do cliente');
+        $this->assertNotSame([], $doCliente);
         $this->assertNull($this->imagemDoSlot($kit, 'lifestyle'), 'a reprovada fica no painel para alguém decidir');
         $this->assertSame(MlAnuncioCriativoKit::STATUS_PRONTO, $kit->fresh()->status, 'o kit não fecha com imagem de fora');
         $this->assertSame('ja_aplicado', $this->servico()->aplicar($kit->id), 'uma vez por kit, mesmo aberto');

@@ -72,13 +72,22 @@ código para o fluxo sem clique.
 ## Adendo de 20/10/2026 — as imagens entram SOZINHAS no anúncio
 
 Decisão do usuário: o colaborador só confere a Prévia (etapa 5); "a IA faz o resto, e se estiver errado a gente
-corrige". As 2 imagens do kit AUTOMÁTICO entram na galeria sozinhas, NA FRENTE (capa), na ordem dos `slots`.
+corrige". As imagens do kit AUTOMÁTICO entram sozinhas e passam a ser AS fotos do grupo, na ordem do kit: "a imagem
+do cliente é usada apenas para referência de recriar igual" (como no seu assistente antigo, onde
+`CreativeKitPublicacao::aplicarPictures` monta o anúncio só com os criativos aprovados). A foto do cliente sai da
+galeria e fica no rascunho como referência; se nenhuma imagem do kit for aprovável, as do cliente ficam.
+
+O kit automático agora é o MESMO do botão: sem tipos fixos (`criativos_auto.slots` vazio), o SEU planejador escolhe
+e a quantidade é `services.creative.kit.slots` (2 em produção). E cada cor ganha o seu kit
+(`criativos_auto.todas_as_cores` passou a `true`).
 
 **Nada do seu motor foi editado.** O que fizemos:
 - ganchos `updated` nos SEUS modelos (`MlAnuncioCriativoKit` e `MlAnuncioCriativo`), registrados no
   `AppServiceProvider`: só conferem a chave e o status e põem um Job na fila `creative`; nunca lançam;
 - o Job chama `CriativosAutomaticosService::aplicar`, que aprova pelo SEU `PublicadorCriativoAprovacaoService::aprovarSlot`
-  (como o botão) e depois reordena a galeria (`EditorRascunhoService::trazerParaFrente`);
+  (como o botão) e depois deixa o grupo só com elas (`EditorRascunhoService::trocarFotosDoGrupo`);
+- imagem por IA nunca é referência de outro kit automático: contam só as fotos do cliente (fora o ativo do acervo
+  `ia` e a foto ligada a criativo por `pub_imagem_id`, a mesma regra do `acervo:registrar-existentes`);
 - espera o juiz e a refação automática (VAL-05); imagem reprovada que não vai ser refeita NÃO entra (fica no painel);
 - o kit pedido no botão continua com aprovação de gente.
 

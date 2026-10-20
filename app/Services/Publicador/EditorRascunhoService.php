@@ -1027,40 +1027,36 @@ class EditorRascunhoService
     }
 
     /**
-     * Põe as fotos dadas na FRENTE do grupo, na ordem dada, e o resto do grupo depois, na ordem em que estava — as
-     * imagens por IA automáticas como capa (decisão do usuário de 20/10/2026). Sob a trava, como
-     * {@see colocarFotoNoGrupo()}: travar PRIMEIRO, ler DEPOIS. Só o grupo pedido é renumerado. Foto que não está no
-     * grupo é ignorada; ordem que já está assim não grava nada e não sobe a revisão.
+     * O grupo passa a ter SÓ estas fotos, nesta ordem — as imagens por IA automáticas no lugar das fotos do cliente
+     * (decisão do usuário de 20/10/2026: "a imagem do cliente é usada apenas para referência de recriar igual"; no
+     * assistente antigo o kit já era o dono das fotos do anúncio, `CreativeKitPublicacao::aplicarPictures`). Sob a
+     * trava, como {@see colocarFotoNoGrupo()}: travar PRIMEIRO, ler DEPOIS. Só o grupo pedido muda. A foto que sai
+     * da galeria NÃO é apagada: continua no rascunho, como referência. Lista vazia não faz nada (o grupo nunca fica
+     * sem foto por aqui); a mesma lista na mesma ordem não grava nada e não sobe a revisão.
      *
      * @param  list<int>  $imagemIds
      */
-    public function trazerParaFrente(PubRascunho $r, string $grupo, array $imagemIds): void
+    public function trocarFotosDoGrupo(PubRascunho $r, string $grupo, array $imagemIds): void
     {
-        DB::transaction(function () use ($r, $grupo, $imagemIds) {
+        $ids = array_values(array_unique(array_map('intval', $imagemIds)));
+        if ($ids === []) {
+            return;
+        }
+
+        DB::transaction(function () use ($r, $grupo, $ids) {
             $this->repo->travar($r);
             $atuais = $this->repo->snapshot($r)->imagens;
             $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
             usort($doGrupo, fn ($a, $b) => (int) $a['posicao'] <=> (int) $b['posicao']);
-            $ids = array_values(array_unique(array_map('strval', $imagemIds)));
-
-            $frente = [];
-            foreach ($ids as $id) {
-                foreach ($doGrupo as $a) {
-                    if ((string) $a['imagem'] === $id) {
-                        $frente[] = $a;
-                    }
-                }
-            }
-            $nova = [...$frente, ...array_values(array_filter($doGrupo, fn ($a) => ! in_array((string) $a['imagem'], $ids, true)))];
-            if ($frente === [] || array_map(fn ($a) => (string) $a['imagem'], $nova) === array_map(fn ($a) => (string) $a['imagem'], $doGrupo)) {
+            if (array_map(fn ($a) => (int) $a['imagem'], $doGrupo) === $ids) {
                 return;
             }
 
-            $renumerado = [];
-            foreach ($nova as $i => $a) {
-                $renumerado[] = [...$a, 'posicao' => $i];
+            $novas = [];
+            foreach ($ids as $i => $id) {
+                $novas[] = ['imagem' => $id, 'grupo' => $grupo, 'posicao' => $i];
             }
-            $this->repo->gravarAtribuicoes($r, [...array_values(array_filter($atuais, fn ($a) => $a['grupo'] !== $grupo)), ...$renumerado]);
+            $this->repo->gravarAtribuicoes($r, [...array_values(array_filter($atuais, fn ($a) => $a['grupo'] !== $grupo)), ...$novas]);
             $this->repo->tocar($r);
         });
     }

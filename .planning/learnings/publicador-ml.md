@@ -1678,29 +1678,43 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   servindo o build por outra porta, um chunk cai em CORS. Para provar o bundle de produção do worktree, basta
   renomear o `public/hot` DELE (não o do `ecf_admin`) e recarregar; o resto da página carrega do `/build`.
 
-## 40. As imagens por IA automáticas entram SOZINHAS, na frente da galeria (20/10/2026)
+## 40. As imagens por IA automáticas entram SOZINHAS e passam a ser AS fotos do grupo (20/10/2026)
 
 - **Decisão do usuário:** "quando salvo no Portal, o cliente coloca as imagens, o produto vai para o Publicador e,
   assim como título e Modelo, a imagem também é gerada pela IA; o preview é a única coisa que o colaborador confere —
-  se tiver errado a gente corrige". Respostas dele: a imagem entra sozinha (confere na Prévia) e as 2 da IA vão NA
-  FRENTE, como capa (o Clássico abre com a 1ª e o Premium com a 2ª, pela rotação D6). A geração já existia (§16, 10/10,
-  `CriativosAutomaticosService`, DESLIGADA); o que faltava era a aprovação sem gente.
+  se tiver errado a gente corrige". Depois de ver a 1ª versão (as da IA na frente, as do cliente atrás), corrigiu:
+  "não deve entrar apenas a capa, as imagens devem entrar, assim como é no sistema já; a imagem do cliente é usada
+  apenas para referência de recriar igual". Ou seja: o grupo fica SÓ com as imagens do kit, na ordem dos slots (o
+  Clássico abre com a 1ª e o Premium com a 2ª, pela rotação D6). "Como já é no sistema" = o assistente antigo, onde
+  `CreativeKitPublicacao::aplicarPictures` monta as fotos do anúncio SÓ com os criativos aprovados do kit.
+- **O kit é o MESMO do botão:** `criativos_auto.slots` vazio (padrão) = sem tipos fixos; o planejador escolhe e a
+  quantidade é `services.creative.kit.slots` (env `CREATIVE_KIT_SLOTS`, **2 em produção** em 20/10/2026 — 3 é mudar
+  essa env, e vale para o botão também).
 - **`CriativosAutomaticosService::aplicar`** (Job `AplicarCriativosAutomaticosJob`, fila `creative`, único por kit,
   20 s de espera para juntar os gatilhos): só o kit que a automação pediu (`step_state.criativos_auto.grupos[grupo]
-  .kit_id`) — o do botão segue com aprovação de gente; entra pelo MESMO `aprovarSlot` do botão e depois vai para a
-  frente (`EditorRascunhoService::trazerParaFrente`, no FIM da classe de propósito: os documentos da Fase 188 apontam
-  `EditorRascunhoService:370-372`).
+  .kit_id`) — o do botão segue com aprovação de gente; entra pelo MESMO `aprovarSlot` do botão (que põe no FIM do
+  grupo) e depois `EditorRascunhoService::trocarFotosDoGrupo` deixa o grupo só com elas (no FIM da classe de
+  propósito: os documentos da Fase 188 apontam `EditorRascunhoService:370-372`). A foto do cliente sai da galeria mas
+  NÃO é apagada: fica no rascunho (`pub_imagens`, sem atribuição) como referência. Nenhuma imagem aprovável (todas
+  reprovadas sem nova tentativa): as fotos do cliente FICAM — o anúncio nunca fica sem foto por aqui.
+- **IA nunca é referência de IA:** `grupos()` conta só a foto DO CLIENTE (fora ativo do acervo com origem `ia` e foto
+  ligada a criativo por `ml_anuncio_criativos.pub_imagem_id` — a mesma regra do `acervo:registrar-existentes`). O
+  grupo que ficou só com as imagens do kit sai da lista (`sem_foto`) e não gera de novo nem com o kit em erro.
 - **O gatilho é evento do Eloquent, não código do outro dev:** `MlAnuncioCriativoKit::updated` (o `recalcularStatus()`
   grava pelo modelo) e `MlAnuncioCriativo::updated` (o juiz grava `validacao_status` pelo modelo), registrados no
   `AppServiceProvider`. Os ganchos só conferem o barato e NUNCA lançam: rodam dentro dos Jobs do Creative Engine.
 - **Corrida do juiz:** o `ValidarCriativoIaJob` grava "reprovada", recalcula o kit e SÓ DEPOIS decide refazer a imagem
   (VAL-05, uma vez, dentro do orçamento do kit). Por isso o `aplicar` espera enquanto houver reprovada que ainda pode
   ser refeita (`regeneracao_automatica` falso e `podeRegenerarAsset`); a que não vai ser refeita NÃO entra (fica no
-  painel). Juiz `pendente` também faz esperar.
-- **Produto do Portal tem as fotos POR COR:** com `criativos_auto.todas_as_cores = false` (padrão), a galeria geral
-  costuma estar vazia e só a 1ª cor ganha kit — as outras cores seguem com a foto do cliente na capa. Para a IA fazer a
-  capa de todas as cores: `PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES=true` (custo ≈ US$ 0,20 × cores; o teto diário
-  conta kits).
+  painel; aprovada à mão depois, o `aprovarSlot` a põe no fim do grupo). Juiz `pendente` também faz esperar.
+- **Todas as cores (`criativos_auto.todas_as_cores`, padrão `true` desde a correção):** com a foto do cliente só de
+  referência, a cor sem kit ficaria com a foto do cliente no anúncio. Cada grupo com foto do cliente (a geral e cada
+  cor) ganha o seu kit: custo ≈ US$ 0,20 × grupos, e o teto diário (`limite_diario_por_empresa`) conta kits — produto
+  de muitas cores pode estourar o teto e ficar com parte das cores na foto do cliente.
+- **Foto de referência ainda sobe para o ML:** `ImagemAssetService::enviarPendentes` sobe TODA `pub_imagens` não
+  enviada do rascunho, com ou sem atribuição (os testes de `ImagensTest` contam com isso). Não é regressão (antes as
+  mesmas fotos subiam por estarem na galeria), mas é envio inútil e disputa o limite por minuto do ML. Se aparecer
+  "limitou o envio de fotos por minuto" em produto com muitas cores, filtrar ali por atribuição.
 - **Para ligar em produção** (só com o ok do usuário): o deploy, `PUBLICADOR_CRIATIVOS_AUTO_ATIVO=true` + `config:cache`,
   `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` (ativo, com `mlb.criativos_ia`),
   `publicador_criativos_auto_companies` (começar pela #459), a chave do Creative Engine e `queue:restart`.

@@ -213,18 +213,21 @@ return [
     // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
     // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
     // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
-    // (id) com a chave `mlb.criativos_ia`. Desde 20/10/2026 as imagens do kit automático entram SOZINHAS no anúncio,
-    // na frente do grupo (capa), e quem confere é a Prévia (etapa 5); a que o juiz reprovou fica para alguém decidir.
+    // (id) com a chave `mlb.criativos_ia`. Desde 20/10/2026 as imagens do kit automático entram SOZINHAS no anúncio e
+    // passam a ser AS fotos do grupo — a do cliente é só referência para a IA recriar o produto —, e quem confere é a
+    // Prévia (etapa 5); a que o juiz reprovou fica para alguém decidir.
     'criativos_auto' => [
         'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
         // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
-        // Os tipos de imagem do kit automático, na ordem — é também a ordem na frente da galeria (o 1º vira a capa
-        // do Clássico; o 2º, a do Premium, pela rotação D6). Os do catálogo do Creative Engine.
-        'slots' => ['lifestyle', 'hero'],
-        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores). Produto do
-        // Portal costuma ter as fotos POR COR: com false, só a 1ª cor ganha a capa por IA.
-        'todas_as_cores' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES', false),
+        // Tipos FIXOS do kit automático, na ordem. Vazio (o padrão, desde 20/10/2026) = o MESMO kit do botão: o
+        // planejador escolhe os tipos e a quantidade é a do sistema (`services.creative.kit.slots`, env
+        // CREATIVE_KIT_SLOTS). A ordem do kit é a da galeria: o 1º vira a capa do Clássico; o 2º, a do Premium (D6).
+        'slots' => [],
+        // true (o padrão desde 20/10/2026) = cada grupo de fotos — a galeria geral e cada cor — ganha o seu kit (custo
+        // × grupos): com a foto do cliente só como referência, a cor sem kit ficaria com a foto do cliente no anúncio.
+        // false = só a galeria geral, ou a 1ª cor.
+        'todas_as_cores' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES', true),
     ],
 
     // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.

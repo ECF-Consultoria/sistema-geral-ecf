@@ -5,6 +5,7 @@ namespace App\Services\Publicador\Criativos;
 use App\Jobs\PlanejarKitCriativosJob;
 use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
+use App\Models\AcervoImagem;
 use App\Models\Configuracao;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
@@ -39,8 +40,9 @@ use Illuminate\Support\Str;
  *  3. a ficha do Portal está completa (a MESMA régua da IA de texto, `fichaCompleta`);
  *  4. o usuário de sistema `configuracoes.publicador_criativos_auto_usuario` existe, está ativo e tem a chave
  *     `mlb.criativos_ia` (`CreativePermissao` — a mesma regra de quem clica);
- *  5. o grupo de fotos (galeria geral, senão a 1ª cor; todas as cores só com `todas_as_cores`) tem ≥ 1 foto com
- *     arquivo no disco;
+ *  5. o grupo de fotos (a galeria geral e cada cor; só a geral, ou a 1ª cor, com `todas_as_cores` = false) tem ≥ 1
+ *     foto DO CLIENTE com arquivo no disco — imagem por IA nunca é referência (o grupo que já recebeu o kit fica
+ *     só com imagens por IA e, por isso, não gera de novo);
  *  6. nenhum kit em andamento ou aprovado para o rascunho + grupo (D-15: um kit ativo por grupo);
  *  7. o hash das fotos + ficha é diferente do último pedido (`step_state.criativos_auto`): o mesmo produto não
  *     gera de novo a cada save;
@@ -50,10 +52,12 @@ use Illuminate\Support\Str;
  * Engine, intocado) e, encadeado, `GerarCriativosAutomaticosJob`, que despacha a geração pelo mesmo
  * `CreativeKitDespachante` do botão.
  *
- * Desde 20/10/2026 (decisões do usuário) as imagens do kit automático ENTRAM SOZINHAS no anúncio, na frente do
- * grupo, como capa ({@see aplicar()}): "o preview é a única coisa que o colaborador confere; a IA faz o resto, e
- * se estiver errado a gente corrige". A conferência é a Prévia (etapa 5). O kit pedido no botão segue com a
- * aprovação de gente, e a imagem que o juiz reprovou também.
+ * Desde 20/10/2026 (decisões do usuário) as imagens do kit automático ENTRAM SOZINHAS no anúncio e passam a ser
+ * AS fotos do grupo ({@see aplicar()}): "o preview é a única coisa que o colaborador confere; a IA faz o resto, e
+ * se estiver errado a gente corrige" e "a imagem do cliente é usada apenas para referência de recriar igual". A
+ * conferência é a Prévia (etapa 5). O kit é o MESMO do botão (o planejador escolhe os tipos; a quantidade é a do
+ * sistema, `services.creative.kit.slots`). O kit pedido no botão segue com a aprovação de gente, e a imagem que o
+ * juiz reprovou também.
  *
  * Nunca lança para quem chama (o preparo): devolve o motivo, que vai para o log.
  */
@@ -174,17 +178,19 @@ final class CriativosAutomaticosService
     }
 
     /**
-     * As imagens do kit AUTOMÁTICO pronto entram SOZINHAS no anúncio, na FRENTE do grupo (a capa), na ordem dos slots
-     * (decisões do usuário de 20/10/2026). Quem confere é a Prévia (etapa 5), não o painel de criativos.
+     * As imagens do kit AUTOMÁTICO pronto entram SOZINHAS no anúncio e passam a ser AS fotos do grupo, na ordem dos
+     * slots; as do cliente saem da galeria e ficam no rascunho só como referência (decisões do usuário de
+     * 20/10/2026 — como no assistente antigo, onde o kit é o dono das fotos). Quem confere é a Prévia (etapa 5).
      *
      * - Só o kit que ESTA automação pediu (`step_state.criativos_auto.grupos[grupo].kit_id`): o do botão segue com a
      *   aprovação de gente. Uma vez por kit (`aplicado_em`).
      * - Espera o juiz (validação da Fase 162): com algum slot pronto ainda `pendente`, sai — volta quando ele
      *   terminar. Imagem REPROVADA que o motor ainda vai refazer sozinho (VAL-05: uma vez, dentro do orçamento do kit)
      *   também faz esperar; a que não vai ser refeita não entra e fica no painel para alguém decidir.
-     * - Entra pelo MESMO `aprovarSlot` do botão (foto do Publicador, dedupe por sha256, disco) e depois vai para a
-     *   frente (`EditorRascunhoService::trazerParaFrente`). Na regra de hoje, o Clássico abre com a 1ª e o Premium
-     *   com a 2ª (rotação D6).
+     * - Entra pelo MESMO `aprovarSlot` do botão (foto do Publicador, dedupe por sha256, disco) e depois o grupo
+     *   fica só com elas (`EditorRascunhoService::trocarFotosDoGrupo`). Nenhuma imagem aprovável: as fotos do
+     *   cliente ficam — o anúncio nunca fica sem foto por aqui. Na regra de hoje, o Clássico abre com a 1ª e o
+     *   Premium com a 2ª (rotação D6).
      *
      * Nunca lança para quem chama (o Job): devolve o motivo, que vai para o log.
      *
@@ -251,14 +257,15 @@ final class CriativosAutomaticosService
             }
             $editor = app(EditorRascunhoService::class);
             if ($ids !== []) {
-                $editor->trazerParaFrente($r->fresh(), $grupo, $ids);
+                // A foto do cliente é só referência: o grupo fica com as imagens do kit.
+                $editor->trocarFotosDoGrupo($r->fresh(), $grupo, $ids);
             }
             if ($ids !== [] && count($ids) === $prontos->count()) {
                 // Como o "Aprovar kit": fecha o kit só quando TODA imagem pronta entrou.
                 $kit->update(['status' => MlAnuncioCriativoKit::STATUS_APROVADO, 'aprovado_por' => $usuario->id, 'aprovado_em' => now()]);
             }
             $this->marcarAplicado($r->id, $grupo, count($ids));
-            Log::info("[Creative] Imagens automáticas: kit {$kit->id} — ".count($ids)." imagem(ns) na frente do grupo {$grupo} do rascunho {$r->id}.");
+            Log::info("[Creative] Imagens automáticas: kit {$kit->id} — ".count($ids)." imagem(ns) no lugar das fotos do grupo {$grupo} do rascunho {$r->id}.");
 
             // O resumo do que falta (lista, vitrine): sem ele o rascunho mostraria o estado de antes das fotos.
             try {
@@ -371,7 +378,7 @@ final class CriativosAutomaticosService
             return 'erro';
         }
 
-        $slots = array_values(array_filter(array_map('strval', (array) config('publicador.criativos_auto.slots', ['lifestyle', 'hero']))));
+        $slots = array_values(array_filter(array_map('strval', (array) config('publicador.criativos_auto.slots', []))));
         Bus::chain([
             new PlanejarKitCriativosJob($portador->id, $kit->id, $slots === [] ? null : $slots),
             new GerarCriativosAutomaticosJob($kit->id),
@@ -393,8 +400,11 @@ final class CriativosAutomaticosService
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
 
     /**
-     * Os grupos de fotos que recebem imagens: a galeria geral, senão a 1ª cor (todas as cores com `todas_as_cores`),
-     * cada um com as fotos dele que têm arquivo no disco, na ordem do grupo.
+     * Os grupos de fotos que recebem imagens: a galeria geral e cada cor (só a geral, ou a 1ª cor, com
+     * `todas_as_cores` = false), cada um com as fotos DO CLIENTE que têm arquivo no disco, na ordem do grupo. A
+     * imagem por IA (ativo do acervo com origem `ia`, ou a foto de um criativo aprovado) não conta: referência é a
+     * foto real do produto, e o grupo que já ficou só com as imagens do kit sai da lista — o kit seguinte nunca é IA
+     * recriando IA.
      *
      * @return array<string, list<PubImagem>>
      */
@@ -403,8 +413,12 @@ final class CriativosAutomaticosService
         $ordem = $this->referencias->gruposValidos($r); // GENERAL primeiro, depois as cores na ordem do anúncio
         $atribuicoes = DB::table('pub_imagem_atribuicoes as a')
             ->join('pub_imagens as i', 'i.id', '=', 'a.imagem_id')
+            ->leftJoin('acervo_imagens as acv', 'acv.id', '=', 'i.acervo_imagem_id')
             ->where('i.rascunho_id', $r->id)
             ->whereNotNull('i.caminho')
+            ->where(fn ($q) => $q->whereNull('acv.origem')->orWhere('acv.origem', '!=', AcervoImagem::ORIGEM_IA))
+            // A mesma regra do `acervo:registrar-existentes`: foto que veio de criativo aprovado é imagem por IA.
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('ml_anuncio_criativos as c')->whereColumn('c.pub_imagem_id', 'i.id'))
             ->orderBy('a.posicao')->orderBy('i.id')
             ->get(['a.grupo_chave', 'i.id']);
         $imagens = PubImagem::query()->where('rascunho_id', $r->id)->whereNotNull('caminho')->get()->keyBy('id');
@@ -418,7 +432,7 @@ final class CriativosAutomaticosService
         }
 
         $saida = [];
-        $todas = (bool) config('publicador.criativos_auto.todas_as_cores', false);
+        $todas = (bool) config('publicador.criativos_auto.todas_as_cores', true);
         foreach ($ordem as $grupo) {
             $fotos = array_slice($porGrupo[$grupo] ?? [], 0, PublicadorCriativoReferenciaService::MAX);
             if ($fotos === []) {
