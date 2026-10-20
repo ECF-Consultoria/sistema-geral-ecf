@@ -195,7 +195,7 @@
 #    versionado): os `:NNN` do protótipo aparecem só como referência em
 #    comentário. A tabela FID-01 é conferida por SCRIPT na SUMMARY, não aqui.
 #
-# ⚠️⚠️ **OS DOIS REGIMES DE CONTAGEM (`tests=15,10`) não são enfeite.** A camada de
+# ⚠️⚠️ **OS DOIS REGIMES DE CONTAGEM (`tests=16,11`) não são enfeite.** A camada de
 # CSS cai em `skip` NOMEADO quando o CSS construído é mais velho que a fonte do
 # lightbox (`mtime`), e **`cp` ATUALIZA o `mtime`** — então a campanha de
 # mutação, que restaura DA CÓPIA, derruba a camada. É por isso que `npm run
@@ -205,10 +205,10 @@
 #
 #    OS DOIS REGIMES, MEDIDOS NESTA MÁQUINA EM 20/10/2026:
 #      · PRISTINO (CSS mais novo que a fonte, logo depois do `npm run build`):
-#        `# tests 15 · # pass 15 · # fail 0 · # skipped 0`
+#        `# tests 16 · # pass 16 · # fail 0 · # skipped 0`
 #      · MUTADO (fonte mais nova que o CSS — reproduzido por `touch` na fonte,
 #        com o `sha256` conferido IDÊNTICO antes e depois: `530a4d50e08f5382`):
-#        `# tests 10 · # pass  9 · # fail 0 · # skipped 1`
+#        `# tests 11 · # pass 10 · # fail 0 · # skipped 1`
 #    A diferença são exatamente os **5** sub-testes da camada de CSS (o caso pai
 #    conta nos dois regimes, como `skip` no segundo). ⚠️ `# skipped 1` **NÃO é
 #    regressão** — é o `skip` EXPLÍCITO e NOMEADO, com a mensagem dizendo qual
@@ -221,11 +221,30 @@
 #    porque mutar a fonte derruba a camada de CSS. ➡️ É ele que mata a mutação
 #    que tira o `font-pub` da raiz do portal (M2 da campanha).
 #
+# ⚠️⚠️ **O CASO QUE NASCEU DE UM SOBREVIVENTE DE MUTAÇÃO** (o 2º caso só-fonte):
+#    a mutação **M1** (`import { createPortal } from 'react-dom';` →
+#    `const createPortal = (filho) => filho;`) **SOBREVIVEU nos DOIS gates** na
+#    1ª rodada da campanha, e as duas razões foram MEDIDAS:
+#      (a) **nenhum render pode vê-la** — a guarda `typeof document ===
+#          'undefined'` dispara ANTES do `createPortal` no render de SERVIDOR, e
+#          o HTML é `''` com e sem portal (premissa inobservável sem navegador);
+#      (b) **a sonda de fonte que existia era mais LARGA que o invariante** — o
+#          189-03 cobra `includes('createPortal')`
+#          (`publicador-lightbox-casca-189.test.js:1352`), e o mutante MANTÉM o
+#          identificador: medido, `includes('createPortal')` → **`true`** no
+#          mutante. É a família da SUBSTRING.
+#    ➡️ O caso novo trava a premissa por **igualdade de FONTE**, com as formas
+#    EXATAS (import, chamada e destino), **declarando no próprio teste que é
+#    PROXY DE FONTE e NÃO prova comportamento** — que é o que a régua manda
+#    fazer com premissa inobservável. ⚠️ **NADA do 189-03 foi editado**: o
+#    achado sobre o `:1352` vai NOMEADO na SUMMARY, para o fechamento decidir.
+#
 # ⚠️⚠️ CONTAGEM REMEDIDA NA TAREFA 2, ANTES DO VERIFY DELA: `tests=8` (tarefa 1,
-# a cadeia e o GATE-09 na fonte, commitada em `06e6c206`) → `tests=15,10` (a
-# tarefa 2 acrescenta 1 caso de fonte + 1 caso pai de CSS + 5 sub-testes).
-# ⚠️ **NÃO é "subir número para passar"**: é o MESMO arquivo de gate ganhando
-# uma camada, e o RED dela foi MEDIDO
-# (`# tests 15 · # pass 13 · # fail 2`, com a camada de CSS falhando antes de o
-# número da lista constante ser remedido — 43, não 44).
-camadas-e-css  js  tests/js/publicador-lightbox-camadas-189.test.js  ::  tests=15,10
+# a cadeia e o GATE-09 na fonte, commitada em `06e6c206`) → `tests=16,11` (a
+# tarefa 2 acrescenta **2** casos só-de-fonte + 1 caso pai de CSS + 5
+# sub-testes de CSS). ⚠️ **NÃO é "subir número para passar"**: é o MESMO arquivo
+# de gate ganhando uma camada, e os dois REDs foram MEDIDOS —
+# `# tests 15 · # pass 13 · # fail 2` (a camada de CSS antes de o número da
+# lista constante ser remedido: 43, não 44) e a 1ª rodada da mutação, que
+# acusou o furo do portal.
+camadas-e-css  js  tests/js/publicador-lightbox-camadas-189.test.js  ::  tests=16,11

@@ -693,6 +693,82 @@ const ISCAS_AUSENTES = [
 ];
 
 /**
+ * ⚠️⚠️ **PROXY DE FONTE — ele NÃO prova comportamento, e está aqui por um
+ * SOBREVIVENTE DE MUTAÇÃO investigado nesta wave (20/10/2026).**
+ *
+ * **O que aconteceu, medido:** a mutação **M1** trocou
+ * `import { createPortal } from 'react-dom';` por
+ * `const createPortal = (filho) => filho;` — o lightbox deixa de PORTAR e volta
+ * a ficar preso ao contexto de empilhamento do header (`backdrop-blur-[14px]` +
+ * `backdrop-saturate-[1.4]` em `header/PublicadorHeader.jsx:174` criam
+ * `containing block`). ➡️ Ela **SOBREVIVEU nos DOIS gates**, e as duas razões
+ * são diferentes e as duas foram medidas:
+ *
+ *   1. **nenhum teste de RENDER pode vê-la.** O composto tem a guarda de
+ *      ambiente `if (typeof document === 'undefined') return null;`, que no
+ *      render de SERVIDOR dispara **ANTES** de o `createPortal` ser alcançado.
+ *      O HTML continua `''` com e sem portal — é *"premissa inobservável sem
+ *      navegador"*, e a régua manda **travá-la por igualdade de FONTE,
+ *      declarando que é proxy**;
+ *   2. **a sonda de fonte que existia era mais LARGA que o invariante:** o
+ *      189-03 cobra `FONTE_LIGHTBOX.includes('createPortal')`
+ *      (`publicador-lightbox-casca-189.test.js:1352`), e o mutante **mantém o
+ *      identificador** — MEDIDO: `includes('createPortal')` → **`true`** no
+ *      mutante. É a família da substring, que neste projeto já mordeu quatro
+ *      gates.
+ *
+ * ➡️ Aqui as agulhas são as **formas exatas** (import, chamada e destino), e a
+ * isca prova que o mutante M1 é ACUSADO e que o `includes` largo **não o
+ * acusaria**. ⚠️ **NADA do 189-03 foi editado** — o conserto certo ficou do
+ * lado deste plano, que é o dono da prova de camada; o achado sobre o `:1352`
+ * vai NOMEADO na SUMMARY para o fechamento (189-08) decidir.
+ */
+test('⚠️ PROXY DE FONTE (declarado: NÃO prova comportamento) — o lightbox PORTA para o `document.body` 189_04', () => {
+    const fonte = lerSemComentarios(REL_LIGHTBOX);
+
+    const AGULHAS = [
+        ["import { createPortal } from 'react-dom';", 'o import do `createPortal` do `react-dom`'],
+        ['return createPortal(', 'a chamada do portal no retorno do composto'],
+        ['document.body,', 'o DESTINO do portal (`document.body`)'],
+        ["typeof document === 'undefined'", 'a guarda de ambiente, sem a qual o render de SERVIDOR LANÇA'],
+    ];
+
+    assert.deepEqual(
+        AGULHAS.filter(([agulha]) => !fonte.includes(agulha)).map(([, nome]) => nome),
+        [],
+        'o lightbox deixou de PORTAR (ou perdeu a guarda de ambiente) — e NENHUM teste de render veria isso',
+    );
+
+    // ⚠️⚠️ A ISCA, construída com o MUTANTE M1 de verdade: as quatro agulhas
+    // têm de ACUSAR, e a sonda LARGA que existia tem de deixar passar. É a
+    // prova de que este caso não é cerimônia: ele fecha um furo MEDIDO.
+    const MUTANTE_M1 = fonte.replace(
+        "import { createPortal } from 'react-dom';",
+        'const createPortal = (filho) => filho;',
+    );
+    assert.notEqual(MUTANTE_M1, fonte, 'a construção do mutante não mudou nada — a isca está vazia');
+    assert.deepEqual(
+        AGULHAS.filter(([agulha]) => !MUTANTE_M1.includes(agulha)).map(([, nome]) => nome),
+        ['o import do `createPortal` do `react-dom`'],
+        'o mutante M1 não é acusado exatamente pela agulha do import — a sonda mudou de forma',
+    );
+    assert.equal(
+        MUTANTE_M1.includes('createPortal'),
+        true,
+        'MEDIDA QUE JUSTIFICA ESTE CASO: a sonda LARGA `includes("createPortal")` continua VERDADE no mutante',
+    );
+
+    // ⚠️ E as quatro agulhas casam EXATAMENTE uma vez na fonte sem comentário:
+    // duas ocorrências significariam peça duplicada (dois portais).
+    const contar = (texto, agulha) => texto.split(agulha).length - 1;
+    assert.deepEqual(
+        AGULHAS.filter(([agulha]) => contar(fonte, agulha) !== 1).map(([, nome]) => nome),
+        [],
+        'agulha do portal que não casa exatamente 1 vez — há peça duplicada ou a forma mudou',
+    );
+});
+
+/**
  * ⚠️⚠️ **ESTE CASO FICA FORA DA CAMADA DE CSS DE PROPÓSITO, e a razão é a
  * campanha de MUTAÇÃO.** Ele lê **só a FONTE**, então não tem por que depender
  * do `mtime` do bundle — e se morasse dentro do pai que faz `skip`, toda
