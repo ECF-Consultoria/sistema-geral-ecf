@@ -54,6 +54,28 @@ import { alternarZoom, rotuloDoZoom } from './LightboxDaImagem';
 // 190 — decisão do usuário de 19/10/2026 (precedente B3 da 188).**
 // ⚠️⚠️ **"✦ Gerar novamente com IA" (`:762`) NÃO É DESENHADO** — dono: **Fase
 // 192**. ➡️ **O trecho de AMPL-07 que fala dele sai com RESSALVA, dono Fase 192.**
+//
+// ⚠️⚠️ **MEDIDO DEPOIS, E MUDA A LEITURA DA RESSALVA DO CRITÉRIO 4:** em
+// 20/10/2026, **durante** esta wave, a sessão do orquestrador commitou
+// `0607f5a9` *("docs(v27): a revisao detalhada sai do escopo")* e as **Fases 190
+// e 191 passaram a ⛔ FORA DE ESCOPO**, por decisão do usuário (*"vamos descartar
+// a revisão completa do plano, vamos ficar apenas com a revisão simples"* —
+// decisão **20** do `ROADMAP.md`).
+// ➡️ **O dono da RESSALVA do critério 4 não é mais uma fase FUTURA: é uma fase
+// CANCELADA.** Quem ler isto depois **não deve esperar** a Fase 190 entregar o
+// *"Comparar lado a lado na revisão detalhada"*.
+// ⚠️ **E o que NÃO se perde é exatamente o que este arquivo entrega:** a própria
+// decisão registra *"NÃO se perde a comparação com o original de referência — ela
+// entra no lightbox, na Fase 189 (plano 189-05)"*. O que saiu foi a comparação
+// **lado a lado com zoom 1×–4× sincronizado** da página própria (`:317`-`:320`),
+// não o bloco da original daqui.
+// ⚠️ A decisão **cita este arquivo como prova de que o corte custou zero**
+// (*"e o 'Comparar lado a lado' do lightbox (`:756`) também não"*) — foi a régua
+// **"nada nasce decorativo"** que fez o corte sair de graça. A Fase 192 segue
+// viva, **reancorada no painel e movida para o fim** (`189→193→194→192`), então a
+// RESSALVA de AMPL-07 **continua com dono**.
+// ⚠️ **Nada do ROADMAP foi tocado por este plano** — a decisão é do orquestrador,
+// e aqui ela está apenas REGISTRADA.
 // ⚠️ O gate de ausência dos dois lê esta fonte **SEM COMENTÁRIO**: é por isso que
 // este docblock pode CITAR os dois literais (isca do leitor) e o gate fica verde.
 //
