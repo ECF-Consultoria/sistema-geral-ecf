@@ -257,7 +257,9 @@ export default function AcervoDaConta({ produtoId, m }) {
         }
     };
 
-    const filtrando = c.filtros.origem || c.filtros.so_este_produto || c.filtros.busca || c.filtros.de || c.filtros.ate;
+    // "Só deste produto" marcado é o padrão — filtrar é sair dele (desmarcar) ou usar os outros filtros.
+    const outrosFiltros = c.filtros.origem || c.filtros.busca || c.filtros.de || c.filtros.ate;
+    const filtrando = outrosFiltros || ! c.filtros.so_este_produto;
     const filtro = 'h-9 py-0 text-[13px]';
 
     return (
@@ -309,7 +311,7 @@ export default function AcervoDaConta({ produtoId, m }) {
                     {filtrando && (
                         <button type="button" onClick={() => { setBusca(''); c.limparFiltros(); }}
                             className="text-[12px] font-bold text-white/60 underline-offset-4 hover:text-ecf-yellow hover:underline">
-                            Limpar filtros
+                            {outrosFiltros ? 'Limpar filtros' : 'Voltar a só deste produto'}
                         </button>
                     )}
                 </div>
@@ -324,7 +326,9 @@ export default function AcervoDaConta({ produtoId, m }) {
                 </div>
             ) : c.itens.length === 0 ? (
                 <p className="mt-4 text-[13px] font-normal text-white/50">
-                    {filtrando ? 'Nenhuma imagem com esses filtros.' : 'Nenhuma imagem no acervo desta conta ainda.'}
+                    {! outrosFiltros && c.filtros.so_este_produto
+                        ? 'Este produto ainda não tem fotos no acervo. Desmarque "Só deste produto" para ver as fotos da conta inteira.'
+                        : filtrando ? 'Nenhuma imagem com esses filtros.' : 'Nenhuma imagem no acervo desta conta ainda.'}
                 </p>
             ) : (
                 <>

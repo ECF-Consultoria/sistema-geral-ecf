@@ -8,10 +8,13 @@ import { criarRota, mensagemDe } from './apoio.js';
 // APROVADAS. Endereçado por `{produto}` só para o servidor descobrir a CONTA; a lista é da conta
 // inteira, a não ser que "só deste produto" esteja marcado. Trocar de produto relê do zero com os
 // filtros limpos — nunca herda o estado do produto anterior (T-171-02-02).
+//
+// "Só deste produto" vem MARCADO por padrão (pedido do usuário, 20/10/2026): quem abre o acervo
+// quer primeiro as fotos do produto que está anunciando; a conta inteira fica a um clique.
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
-export const FILTROS_INICIAIS = { origem: '', so_este_produto: false, busca: '', de: '', ate: '', ordem: 'recentes' };
+export const FILTROS_INICIAIS = { origem: '', so_este_produto: true, busca: '', de: '', ate: '', ordem: 'recentes' };
 
 const numero = (v, padrao) => (Number.isFinite(v) ? v : padrao);
 
