@@ -1,0 +1,208 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-04 — A ORDEM DAS CAMADAS, o GATE-09
+# e o CSS CONSTRUÍDO do lightbox: a cadeia
+# `header < barra < backdrop < painel < LIGHTBOX < modal < toast` lida das SETE
+# fontes, o `90` do protótipo recusado, as três formas que NÃO COMPILAM
+# (`duration-[`/`delay-[`/`ease-[`) ausentes da fonte E do CSS com
+# `duration-200` como CONTROLE, e as classes arbitrárias do lightbox conferidas
+# PELO CORPO DA REGRA no bundle do `npm run build`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-04 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-04`, E NÃO `04`. O número NU resolve
+# `contagens-186-04.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    uma invocação por id, com o ANSI tirado ANTES de ler a linha `# tests`.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `camadas-e-css`, e **manifesto sem o id ABORTA**.
+# ➡️ A tarefa 2 **REMEDE** o `tests=` desse id (ela acrescenta a camada de CSS ao
+# MESMO arquivo) **antes do seu próprio verify**, nunca depois.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ NO MODO `js` O HARNESS RODA O ARQUIVO INTEIRO: **um id por arquivo de gate**.
+#    É por isso que `camadas-e-css` cobre as duas tarefas deste plano — não é
+#    agregação por conveniência, é o que o modo `js` permite.
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️⚠️ BIJEÇÃO id ↔ `<verify>`: o ÚNICO id abaixo é exatamente o usado pelos
+#    `<verify>` das duas tarefas deste plano. **ZERO id órfão** (id no manifesto
+#    fora de `<verify>` = gate sobre zero casos) e **ZERO verify sem id**.
+#      tarefa 1 → camadas-e-css
+#      tarefa 2 → camadas-e-css   (+ `186-09 transversais` e `--suite js`, que
+#                                  são id/modo de OUTROS manifestos, não deste)
+#
+# ⚠️ ESTE PLANO NÃO TEM id `php`, e está certo: ele é só de tela e de build. ➡️
+#    **Não há homônimo de `--filter` a conferir** (o `--filter` do PHPUnit não
+#    roda sobre arquivo de teste JS, e é ele que SOMA contagens). Os nomes dos
+#    casos terminam em `189_04` de todo modo, porque a régua do sufixo vale para
+#    o dia em que rodar.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ `vocabulario-tamanhos`: MEDIDO, DECLARADO — E SEM LINHA DE ID, COM RAZÃO
+# ═══════════════════════════════════════════════════════════════════════════════
+# A régua da fase (§5) pede esse id **em linha própria, forma `>=`, com N
+# medido, em todo manifesto QUE O RODA**. ⚠️ **Este plano NÃO o roda, e pôr uma
+# linha de id aqui criaria um ÓRFÃO** — id no manifesto fora de todo `<verify>`
+# é gate sobre ZERO casos, que a própria régua proíbe. ➡️ Então a declaração vem
+# em linha própria AQUI, como MEDIÇÃO:
+#
+#      vocabulario-tamanhos  →  MEDIDO 688  (forma `>=688`, dona: wave 189-03)
+#
+# **POR QUE ELE NÃO SE MOVE NESTE PLANO, medido e não presumido:**
+# `publicador-vocabulario-novo.test.js` faz 7 sub-testes por arquivo varrido nos
+# DIRETÓRIOS FECHADOS (`aprovacao/**/*.jsx`), e este plano **não cria nenhum
+# `.jsx`** — o único arquivo novo é
+# `tests/js/publicador-lightbox-camadas-189.test.js`, que é `.test.js` em
+# `tests/js/` e **não está em diretório varrido** (medido pelo 189-03: a lista
+# `VARRIDOS_DECLARADOS` cobre `publicacoes`, `identidade` e `visaogeral` sob
+# `Components/Mlb/Publicador/`, e não `tests/js`). ➡️ O piso continua **`>=688`**
+# sob a guarda da wave 189-03, e este plano o roda como NÃO-REGRESSÃO pelo
+# manifesto do dono (`sh tests/gates/verificar-testes.sh 189-03
+# vocabulario-tamanhos`), com o número que ELE declara.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS LISTAS CONSTANTES DAS FASES 186/187/188 QUE ESTE PLANO **NÃO** MEXEU, com
+#    a razão medida de cada uma (declarar por escrito é parte da régua):
+#      · `ARQUIVOS_NOVOS` (`tests/js/publicador-vocabulario-novo.test.js`) — este
+#        plano **não cria `.jsx`**. O `LightboxDaImagem.jsx` já entrou nela na
+#        wave 189-03. Acrescentar um `.test.js` ali seria entrada MORTA.
+#      · `JSX_DEPOIS_DA_187` (`tests/js/publicador-fila-fechamento-187.test.js`) —
+#        mesma razão. ⚠️ São **DUAS** escriturações por `.jsx` novo e isso é
+#        DELIBERADO (um conserto da 188 RECUSOU criar a terceira); sem `.jsx`
+#        novo, **nenhuma** das duas se move.
+#      · `LIBERADOS_DEPOIS_DA_187` (`tests/js/publicador-fila-tokens-187.test.js`) —
+#        o `18` (as setas ← →) **já foi liberado** pela wave 189-01, em linha
+#        própria com a medida, e **USADO** pela 189-03. Este plano só o CONFERE no
+#        CSS construído (`text-[18px]` → `font-size:18px`) e **não acrescenta
+#        nada**: `19`, `21.5`, `23`, `25` e `26` seguem BARRADOS, e liberar "por
+#        precaução" é o que a régua proíbe.
+#      · `SLOTS_DE_NO_DEPOIS_DA_187` e `ESTADO_LOCAL_DA_PAGINA` — este plano não
+#        toca `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` (só o LÊ, para
+#        conferir que a PÁGINA continua no manifest do Vite). Quem liga o lightbox
+#        à página é o **189-06**.
+#      · `QUEM_USA_SHADOW_PUB_PAINEL` — nenhum arquivo deste plano escreve
+#        `shadow-pub-painel`; o lightbox não tem sombra no protótipo (`:727` só
+#        declara `background`).
+#      · `VARRIDOS_DECLARADOS` (`tests/js/publicador-rename-em-analise-ml.test.js`) —
+#        não inclui `tests/js`; o `.test.js` novo não entra nela.
+#      · `FONTES_DO_PLANO` dos nove gates de ausência de "Ampliar" — nenhum deles
+#        lista um arquivo deste plano, e este plano **não escreve "Ampliar"** em
+#        código nenhum. As duas linhas a inverter (`publicador-painel-fotos-188`
+#        `:639`/`:640`) são do **189-06**.
+#    ➡️ **ZERO lista constante alheia tocada por este plano.** E **ZERO contagem
+#       de manifesto alheio remedida**: os gates vizinhos rodam com o `tests=` que
+#       eles já declaram.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ O QUE ESTE PLANO **NÃO** FAZ
+#      · não edita NENHUM dos sete `.jsx`/`.test.js` que lê — nem o
+#        `LightboxDaImagem.jsx` da wave 189-03. Ele só PROVA (PI(189-04));
+#      · não instala pacote (T-189-SC): `package.json` e `package-lock.json`
+#        ficam fora do escopo e entram na PI;
+#      · não toca `tests/js/publicador-header-zindex-ordem.test.js` (INTOCÁVEL,
+#        nasceu de bug relatado pelo usuário em 12/10/2026);
+#      · **não há migration nesta fase** — nada de `artisan migrate`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1 (a cadeia de camadas pelo COMPORTAMENTO + o GATE-09 na FONTE) e
+#    TAREFA 2 (o GATE-09 e as classes no CSS CONSTRUÍDO) — o MESMO arquivo ─────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **a cadeia INVERTIDA.** O caso caro é o lightbox ACIMA da casca de
+#      modal (`z-[42]`): a pessoa clica "Reprovar" dentro do lightbox e **nada
+#      aparece** (T-189-22). A cadeia é lida das SETE fontes, nunca escrita à mão
+#      aqui — número à mão viraria SEGUNDA VERDADE;
+#   2. ⚠️ **o `90` do protótipo** (`Aprovacao.dc.html:727`) copiado para o
+#      lightbox. O mapa é **POR PEÇA** (`DO_PROTOTIPO = { lightbox: 90 }`) e não
+#      uma lista larga: a 187-09 mediu que lista larga **REPROVA CÓDIGO CERTO**
+#      (`45` é o número que o protótipo deu ao POPOVER, e o toast legitimamente
+#      ficou em `z-[45]`). Essa família já barrou um deploy nesta milestone;
+#   3. ⚠️ `z-[41]` virando `z-41` **sem colchete**: 41 não existe na escala
+#      nomeada (0/10/20/30/40/50), a classe **não compila** e a peça fica SEM
+#      z-index, com todo render passando. Há isca nos DOIS lados (a forma sem
+#      colchete NÃO casa; a forma com colchete casa 1 vez);
+#   4. ⚠️⚠️ **INVERSÃO × TROCA DE NÚMERO.** Duas iscas opostas, e a segunda é a
+#      que falta na maioria dos gates de z: fonte sintética com o lightbox em
+#      `z-[43]` **REPROVA** (e a infração acusada é NOMEADAMENTE o elo
+#      lightbox→modal); fonte sintética com painel `z-[38]` e backdrop `z-[37]`
+#      **NÃO reprova**, porque a ordem se mantém. Sem a segunda, o gate estaria
+#      medindo a TABELA e ensinaria o executor seguinte a mexer na régua;
+#   5. ⚠️⚠️ **GATE-09, em DUAS camadas com papéis DIFERENTES que não se trocam:**
+#      na FONTE SEM COMENTÁRIO, o lightbox não escreve `duration-[`/`delay-[`/
+#      `ease-[` (as três **NÃO COMPILAM**: o `tailwindcss-animate` torna a classe
+#      ambígua, e a transição não acontece com o HTML "certo"); no CSS
+#      CONSTRUÍDO, **nenhuma** regra `.duration-[` existe e `.duration-200`
+#      **existe** — o CONTROLE, sem o qual a sonda não distingue "o arbitrário
+#      não compila" de "a sonda está cega".
+#      ⚠️⚠️ **A AUSÊNCIA É MEDIDA NA FONTE, NUNCA NO CSS**, e isso é medição de
+#      20/10/2026 (learnings §4d.1): o `content` do Tailwind varre o arquivo como
+#      TEXTO, e uma classe escrita na PROSA de um docblock **virou regra de CSS
+#      de verdade** (o bundle encolheu 7 bytes quando ela foi neutralizada). No
+#      CSS, o próprio comentário que PROÍBE a classe **a faz existir** — e o gate
+#      reprovaria o conserto. Há asserção exigindo que as três formas APAREÇAM no
+#      arquivo CRU (o docblock as cita), que é a prova de que ler sem comentário
+#      é obrigatório;
+#   6. ⚠️ a ausência sozinha seria satisfeita por um arquivo **SEM transição** →
+#      há asserção exigindo `transitionProperty`, `transitionDuration` e
+#      `transitionTimingFunction` presentes;
+#   7. ⚠️⚠️ **classe arbitrária que não gera CSS** — por ter ido para um módulo
+#      `.js` (o `content` varre só `*.jsx`), por ter sido montada por
+#      concatenação (o scanner não vê template literal), ou por ter espaço dentro
+#      do valor (`min(78vh, 100%)` quebra a classe). A conferência é PELO CORPO
+#      DA REGRA, com as OITO normalizações (token sólido sai `rgb(R G B /
+#      var(…))` DECIMAL; opacidade em `background`/`border` sai **hex de 8
+#      dígitos**; o cssnano **come o zero da frente**, inclusive depois do `-`; o
+#      seletor vem **escapado**; na variante o prefixo faz parte do nome; e o
+#      escape é **GERAL**, senão `grid-cols-[minmax(0,1fr)_320px]` sai AUSENTE
+#      estando presente);
+#   8. ⚠️ `font-[800]` — a wave 189-03 usou o ARBITRÁRIO e **não**
+#      `font-extrabold`, porque o GATE-03 fecha a escala nomeada em
+#      400/500/600/700. ⚠️ No CSS construído as DUAS formas dão
+#      `font-weight:800`: a sonda procura **a forma que está na FONTE**, senão
+#      reportaria AUSENTE uma regra que existe;
+#   9. ⚠️ o `npm run build` deixar de emitir CSS para `resources/js/app.jsx`, ou
+#      a PÁGINA `Pages/Mlb/Publicador/Aprovacao.jsx` sair do manifest — a tela
+#      desaparece sem erro. ⚠️ O que se confere no manifest é a **PÁGINA**:
+#      componente aninhado é FUNDIDO no chunk dela e **não aparece** (medido: a
+#      Fase 188 criou 19 `.jsx` e nenhum está no manifest). O manifest é lido
+#      **pelo JSON**, nunca por grep (o hash às vezes sai com HÍFEN);
+#  10. ⚠️ a ISCA de ausência tem de ser classe inexistente no projeto INTEIRO:
+#      `w-[13px]`, `h-[64px]`, `left-[30%]` e `z-[41]` **EXISTEM**, e
+#      `grid-cols-6` existe de OUTROS donos compilando para o MESMO valor. As
+#      iscas deste arquivo foram MEDIDAS contra o CSS de verdade.
+#
+# ⚠️ Este arquivo de gate **não lê** `design_handoff_publicador/` (que não é
+#    versionado): os `:NNN` do protótipo aparecem só como referência em
+#    comentário. A tabela FID-01 é conferida por SCRIPT na SUMMARY, não aqui.
+#
+# ⚠️⚠️ **OS DOIS REGIMES DE CONTAGEM (`tests=8,…`) não são enfeite.** A camada de
+# CSS cai em `skip` NOMEADO quando o CSS construído é mais velho que as fontes
+# (`mtime`), e **`cp` ATUALIZA o `mtime`** — então a campanha de mutação, que
+# restaura DA CÓPIA, derruba a camada. É por isso que `npm run build` roda
+# **DEPOIS** da mutação, e por isso o regime mutado está declarado aqui: sem ele
+# a campanha não rodaria sem mexer no gate, e mexer no gate durante a mutação
+# invalida a mutação.
+#
+# ⚠️⚠️ CONTAGEM REMEDIDA NA TAREFA 2, ANTES DO VERIFY DELA: `tests=8` (tarefa 1,
+# a cadeia e o GATE-09 na fonte) → `tests=<REMEDIDO NA TAREFA 2>`.
+camadas-e-css  js  tests/js/publicador-lightbox-camadas-189.test.js  ::  tests=8
