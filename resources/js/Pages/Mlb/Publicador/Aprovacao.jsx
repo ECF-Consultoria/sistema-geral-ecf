@@ -16,6 +16,8 @@ import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
 import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
 import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
+import PendenciasDoPainel from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
+import RodapeDoPainel from '@/Components/Mlb/Publicador/aprovacao/RodapeDoPainel';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -864,6 +866,89 @@ export default function Aprovacao({
             />
         );
 
+    // ═══ ⚠⚠ Fase 188, plano 10 — AS PENDÊNCIAS E O RODAPÉ NOS SLOTS ══════
+    //
+    // ⚠⚠ **DESVIO DECLARADO DO `files_modified` do 188-10-PLAN.md**, pelo MESMO
+    // precedente da wave **188-09**, que também não listava esta página e também
+    // a ligou: sem o fio, as duas peças da wave existiriam no disco e **não
+    // apareceriam na tela** — e os critérios 8, 9 e 10 falam do que a tela MOSTRA.
+    // ⚠ Nenhuma wave desta fase (11, 12 ou 13) tem esta página no `files`, então
+    // não há dono depois de mim. ➡️ O fio entra aqui, DECLARADO.
+    //
+    // ⚠ `onFocarFoto` recebe o **`imagem_id`** (a linha de REVISÃO,
+    // `pub_aprovacao_imagens.id`), que é o que `destino.imagem_id` traz — e a
+    // página o traduz para o ÍNDICE da galeria, porque é ela que guarda o índice.
+    // ⚠ A tradução lê `imagens[*].id`, que é o id da linha de revisão
+    // (`FotosDoPainelService.php:562`), e **não** `imagens[*].imagem_id`, que é o
+    // `pub_imagens.id` — são tabelas diferentes, e confundi-las abriria a foto
+    // errada. ⚠ Id que não está na galeria **não mexe o índice**: pular para uma
+    // foto que não existe daria bloco vazio.
+    //
+    // ⚠ `onAbrirModal` fica `null`: os modais são das waves **188-11** (ajuste e
+    // exceção) e **188-12** (frete e reprovar imagem). Sem handler o botão de
+    // correção **não é desenhado**, e o TEXTO da pendência continua aparecendo —
+    // o mesmo contrato de `onReprovar` (188-08) e `onInformarFrete` (188-09).
+    // ⚠ `onSolicitarAjustes` também é `null`, pelo mesmo motivo (B2 do 188-11).
+    // ⚠ **Nada de `onClick` vazio, nada de `disabled` decorativo** (D4).
+    //
+    // ⚠⚠ E o que **NÃO** foi religado aqui, de propósito: `onConferirAlteracao`,
+    // `onSimular`, `onDescartar`, `onSalvar` e `onInformarFrete` da **coluna de
+    // preço** seguem `null`. As rotas da wave 188-06 já existem, mas
+    // `ColunaDePreco.jsx` e `KpisDoPainel.jsx` **não estão no `files` deste
+    // plano** — religá-los é da wave **188-12**. ⚠ A pendência de
+    // `alteracao_nao_conferida`, que **é** deste plano, liga a MESMA rota pelo
+    // helper único: as duas chamam `AprovacaoDaOfertaService::conferirAlteracao()`,
+    // então não há duas verdades de COMPORTAMENTO — só de disponibilidade, e ela
+    // fica declarada aqui e na SUMMARY.
+    const pendenciasDoPainel = painelDeRevisao === null ? null : painelDeRevisao.pendencias;
+    const andamentoDoPainel = objetoSeguro(objetoSeguro(objetoSeguro(painelDeRevisao?.identificacao)?.chips)?.andamento);
+
+    const focarFoto = ofertaDoPainel === null || trocarFoto === null
+        ? null
+        : (imagemId) => {
+            const alvo = inteiroSeguro(imagemId);
+            if (alvo === null) return;
+
+            const imagens = Array.isArray(fotosDoPainel?.imagens) ? fotosDoPainel.imagens : [];
+            const indice = imagens.findIndex((imagem) => inteiroSeguro(objetoSeguro(imagem)?.id) === alvo);
+            if (indice < 0) return;
+
+            trocarFoto(indice);
+        };
+
+    const noPendenciasDoPainel = !Array.isArray(pendenciasDoPainel)
+        ? null
+        : (
+            <PendenciasDoPainel
+                key="pendencias-do-painel"
+                pendencias={pendenciasDoPainel}
+                live={painelAoVivo}
+                onFocarFoto={focarFoto}
+                onAbrirModal={null}
+                empresaId={empresaId}
+                ofertaId={ofertaDoPainel}
+                versao={versaoDoPainel}
+                onConflito={null}
+            />
+        );
+
+    const noRodapeDoPainel = rodapeDoPainel === null
+        ? null
+        : (
+            <RodapeDoPainel
+                key="rodape-do-painel"
+                rodape={rodapeDoPainel}
+                andamento={andamentoDoPainel?.chave ?? null}
+                proximaId={objetoSeguro(painelDeRevisao?.navegacao)?.proxima_id ?? null}
+                onIr={abrirOferta}
+                onSolicitarAjustes={null}
+                empresaId={empresaId}
+                ofertaId={ofertaDoPainel}
+                versao={versaoDoPainel}
+                onConflito={null}
+            />
+        );
+
     const noPainel = isValidElement(painelNo)
         ? painelNo
         : (
@@ -878,6 +963,8 @@ export default function Aprovacao({
                 onTentarDeNovo={tentarDeNovo}
                 colunaDeFotos={colunaDeFotos}
                 colunaDePreco={colunaDePreco}
+                pendencias={noPendenciasDoPainel}
+                rodape={noRodapeDoPainel}
             />
         );
 

@@ -451,6 +451,13 @@ const ARQUIVOS_NOVOS = [
     // entrega o MESMO peso computado (precedente de `AnelDeProgresso.jsx:67` e
     // de quatro outros arquivos em produção).
     `${DIR_APROV}/PendenciasDoPainel.jsx`,
+    // ⚠ Tarefa 2 do mesmo plano: o RODAPÉ FIXO de 66px de `:712`, com os dois
+    // secundários de `:714`/`:715`, o motivo de `:717` (`max-w-[420px]`, que é do
+    // PAINEL e NÃO os `560px` da fila), o "Aprovar para publicação" de `:719` com
+    // os QUATRO pares de cor de `:1307` e o "Próximo ↓" de `:721`.
+    // ⚠️ `text-[13.5px]` (o rótulo de aprovar) e `text-[12.5px]` (o motivo) são
+    // medidas do protótipo — `text-sm` é 14px e arredondar mudaria o layout.
+    `${DIR_APROV}/RodapeDoPainel.jsx`,
 ];
 
 /**

@@ -141,6 +141,7 @@ const JSX_DEPOIS_DA_187 = [
     // nove destinos LIDOS do servidor) e o RODAPÉ FIXO de 66px com os quatro
     // botões e o motivo, onde vive o `disabled=` de "Aprovar para publicação".
     `${DIR_APROV}/PendenciasDoPainel.jsx`,
+    `${DIR_APROV}/RodapeDoPainel.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

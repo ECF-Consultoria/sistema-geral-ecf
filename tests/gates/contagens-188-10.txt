@@ -102,8 +102,8 @@
 # e cada `.jsx` novo a aumenta. Os dez manifestos da 187 cravaram `>=443`; a
 # 188-01 mediu `>=548`; a 188-07, `>=569`; a 188-08, `>=597`; a 188-09, `>=632`.
 # **MEDIDO nesta máquina em 19/10/2026, nos DOIS pontos desta wave:**
-#   · **639** com o `.jsx` da tarefa 1 (632 + 1 × 7);
-#   · **646** com o `.jsx` da tarefa 2 (639 + 1 × 7) — e a soma fecha.
+#   · **639** com o `.jsx` da tarefa 1 (632 + 1 × 7) — MEDIDO;
+#   · **646** com o `.jsx` da tarefa 2 (639 + 1 × 7) — MEDIDO, e a soma fecha.
 # ➡️ O piso é o MEDIDO, e o `>=` existe porque teste novo só SOMA — o que o piso
 # pega é arquivo que não carrega, `SyntaxError`, ou teste que DESAPARECEU.
 # ⚠️ O que continua PROIBIDO é UMA coisa só: embuti-lo num id que também roda
@@ -265,17 +265,19 @@
 #      compila" de "a sonda está cega").
 #
 # OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026 por sonda de `mtime`:
-#   · **29** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
-#     os 25 testes de topo mais os 4 sub-testes da camada de CSS (ela entra com os
-#     seus 4, e o `test()` de topo dela não conta separado);
-#   · **25** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
-#     o `cp` atualiza o `mtime`): a camada cai em `skip` NOMEADO e os 4 sub-testes
+#   · **41** — CSS construído MAIS NOVO que os `.jsx` (depois de `npm run build`):
+#     os testes de topo mais os 5 sub-testes da camada de CSS;
+#   · **36** — CSS construído MAIS ANTIGO (durante a campanha de mutação, em que
+#     o `cp` atualiza o `mtime`): a camada cai em `skip` NOMEADO e os 5 sub-testes
 #     dela não entram na contagem (`1 skipped`, com a razão ESCRITA).
+#   ⚠️ MEDIDO pelas DUAS pontas: 41 depois do build, e 36 com o `mtime` da fonte
+#   adiantado por `touch` e devolvido com `touch -d` (o `mtime` original foi
+#   capturado por `stat -c %y` ANTES).
 #   ⚠️ `# tests` conta sub-teste, e é por isso que o número MUDA — não é teste que
 #   desapareceu. ⚠️ Os DOIS foram MEDIDOS antes da campanha, e o hash do CSS do
 #   manifest saiu `assets/app-*.css` lido **pelo JSON** e nunca por `grep` (o hash
 #   sai **com hífen**).
-pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  tests=29,25
+pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  tests=41,36
 
 
 # ── TAREFA 2: o GATE-03 (vocabulário novo fechado) ──────────────────────────
@@ -300,7 +302,7 @@ pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  test
 #   contagem **CRESCE POR CONSTRUÇÃO**: 7 sub-testes por arquivo varrido, e cada
 #   `.jsx` novo a aumenta. MEDIDO nesta máquina em 19/10/2026, nos DOIS pontos
 #   desta wave: **639** com o da tarefa 1 (632 + 7) e **646** com o da tarefa 2
-#   (639 + 7). A soma fecha.
+#   (639 + 7). A soma fecha, e o piso declarado é o SEGUNDO.
 #
 # ⚠️⚠️ **O QUE ESTE ID MEDE, nos DOIS `.jsx` deste plano:** FID-03 (nenhum
 #   `text-sm`/`text-xs`; os seis tamanhos usados já estavam na lista), **os 4
@@ -309,4 +311,4 @@ pendencias-e-rodape  js  tests/js/publicador-painel-rodape-188.test.js  ::  test
 #   zero `border-white/[0.08]`), **TOK-15** (nenhum hex literal no código),
 #   FID-05 (nenhum breakpoint) e o **`deepEqual` de `DIRETORIOS_FECHADOS`**, que é
 #   o que impede `.jsx` novo de entrar CALADO em `aprovacao/`.
-vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=639
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=646

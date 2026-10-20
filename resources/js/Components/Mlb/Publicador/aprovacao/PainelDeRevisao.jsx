@@ -515,6 +515,8 @@ export function RaizDoPainel({
     onTentarDeNovo = null,
     colunaDeFotos = null,
     colunaDePreco = null,
+    pendencias = null,
+    rodape = null,
     children = null,
 }) {
     // ⚠️⚠️ O corpo rolável de `:562` só existe COM CONTEÚDO, e a decisão é tomada
@@ -525,7 +527,25 @@ export function RaizDoPainel({
     const temColuna = filhosSeguros(colunaDeFotos) !== null || filhosSeguros(colunaDePreco) !== null;
     const extra = filhosSeguros(children);
 
-    const corpo = temIdentidade || temColuna || extra !== null
+    // ═══ ⚠️⚠️ Fase 188, plano 10 — DOIS SLOTS, E ELES NÃO SÃO IRMÃOS ══════
+    //
+    // ⚠️⚠️ **DIVERGÊNCIA DECLARADA DO `@param children` ESCRITO NA 188-07**, que
+    // dizia *"o resto do corpo (pendências e rodapé, plano 188-10)"*. **MEDIDO
+    // por script no protótipo:** `:562` (o corpo rolável) abre na profundidade
+    // 2→3 e **`:710` o FECHA**; `:699` (as Pendências) abre em 3→4, ou seja
+    // **DENTRO** do corpo, irmão do wrapper das colunas (`:586`, fechado por
+    // `:697`); e **`:712` (o rodapé) abre em 2→3 de novo**, ou seja **IRMÃO do
+    // corpo**, filho direto do `<aside>` que `:723` fecha.
+    //
+    // ➡️ **O rodapé NÃO pode entrar no `children`:** o corpo é
+    // `flex-1 overflow-y-auto`, e lá dentro o rodapé **ROLARIA PARA FORA DA
+    // TELA** — `flex:none` não o salvaria, porque ele seria item de um contêiner
+    // que rola, não do `<aside>`. É o oposto do critério 10, que o quer FIXO no
+    // pé dos 1140px. ⚠️ Com todo teste de render passando.
+    const noPendencias = filhosSeguros(pendencias);
+    const noRodape = filhosSeguros(rodape);
+
+    const corpo = temIdentidade || temColuna || noPendencias !== null || extra !== null
         ? (
             <CorpoDoPainel>
                 {[
@@ -535,6 +555,7 @@ export function RaizDoPainel({
                     temColuna
                         ? <ColunasDoPainel key="colunas" colunaDeFotos={colunaDeFotos} colunaDePreco={colunaDePreco} />
                         : null,
+                    noPendencias,
                     extra,
                 ]}
             </CorpoDoPainel>
@@ -547,6 +568,7 @@ export function RaizDoPainel({
             <aside className={CLASSES_PAINEL}>
                 <TopoDoPainel navegacao={navegacao} onIr={onIr} onFechar={onFechar} />
                 {corpo}
+                {noRodape}
             </aside>
         </>
     );
@@ -569,7 +591,16 @@ export function RaizDoPainel({
  *   a rota de `tentarDeNovo` **não existe** — ver `IdentificacaoDaOferta.jsx`)
  * @param {unknown} [props.colunaDeFotos] SLOT de NÓ — a coluna de fotos (plano 188-08)
  * @param {unknown} [props.colunaDePreco] SLOT de NÓ — a coluna de preço (plano 188-09)
- * @param {unknown} [props.children] o resto do corpo (pendências e rodapé, plano 188-10)
+ * @param {unknown} [props.pendencias] SLOT de NÓ — a seção de Pendências de
+ *   `:699` (plano 188-10). ⚠️ Ela vive **DENTRO** do corpo rolável, irmã do
+ *   wrapper das colunas — medido: `:699` abre dentro de `:562`
+ * @param {unknown} [props.rodape] SLOT de NÓ — o rodapé FIXO de 66px de `:712`
+ *   (plano 188-10). ⚠️⚠️ Ele é **IRMÃO do corpo**, não filho: dentro do corpo
+ *   (`overflow-y-auto`) ele ROLARIA PARA FORA DA TELA, e `flex:none` não o
+ *   salvaria. Medido por script no protótipo — ver o bloco em `RaizDoPainel`
+ * @param {unknown} [props.children] o resto do corpo rolável, depois das
+ *   pendências. ⚠️ A redação da 188-07 dizia *"pendências e rodapé"* aqui, e o
+ *   rodapé **saiu** para o slot próprio pela razão de geometria acima
  *
  * ⚠️ `aberto !== true` devolve `null`: **nada no DOM, nenhum backdrop fantasma**.
  * Backdrop invisível capturaria o clique da tela inteira sem ninguém ver por quê.
@@ -589,6 +620,8 @@ export default function PainelDeRevisao({
     onTentarDeNovo = null,
     colunaDeFotos = null,
     colunaDePreco = null,
+    pendencias = null,
+    rodape = null,
     children = null,
 }) {
     const dados = objetoDoPainel(painel);
@@ -661,6 +694,8 @@ export default function PainelDeRevisao({
             onTentarDeNovo={onTentarDeNovo}
             colunaDeFotos={colunaDeFotos}
             colunaDePreco={colunaDePreco}
+            pendencias={pendencias}
+            rodape={rodape}
         >
             {children}
         </RaizDoPainel>,

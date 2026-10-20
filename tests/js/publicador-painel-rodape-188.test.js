@@ -163,11 +163,14 @@ async function montar(caminhoRelativo) {
 
 const DIR_APROV = 'resources/js/Components/Mlb/Publicador/aprovacao';
 const REL_PENDENCIAS = `${DIR_APROV}/PendenciasDoPainel.jsx`;
+const REL_RODAPE = `${DIR_APROV}/RodapeDoPainel.jsx`;
+const REL_PAGINA = 'resources/js/Pages/Mlb/Publicador/Aprovacao.jsx';
 const REL_PAINEL = `${DIR_APROV}/PainelDeRevisao.jsx`;
 const REL_COLUNA_DE_FOTOS = `${DIR_APROV}/ColunaDeFotos.jsx`;
 const REL_KPIS = `${DIR_APROV}/KpisDoPainel.jsx`;
 const REL_VOCABULARIO = `${DIR_APROV}/vocabularioDoPortao.jsx`;
 const REL_RODAPE_DA_FILA = `${DIR_APROV}/RodapeDaFila.jsx`;
+const REL_ANDAMENTO = `${DIR_APROV}/andamentoDoPortao.jsx`;
 const REL_GATE_ZINDEX = 'tests/js/publicador-header-zindex-ordem.test.js';
 const REL_GATE_VOCABULARIO = 'tests/js/publicador-vocabulario-novo.test.js';
 const REL_GATE_FECHAMENTO = 'tests/js/publicador-fila-fechamento-187.test.js';
@@ -182,7 +185,8 @@ const PROTOTIPO = 'design_handoff_publicador/Aprovacao.dc.html';
 // fantasmas nesta milestone, TRÊS deles vindos de briefing do orquestrador.
 // Sonda de AUSÊNCIA sobre arquivo inexistente passa CALADA.
 const CAMINHOS_CITADOS = [
-    REL_PENDENCIAS, REL_PAINEL, REL_COLUNA_DE_FOTOS, REL_KPIS, REL_VOCABULARIO,
+    REL_PENDENCIAS, REL_RODAPE, REL_PAGINA, REL_PAINEL, REL_COLUNA_DE_FOTOS, REL_KPIS,
+    REL_VOCABULARIO, REL_ANDAMENTO,
     REL_RODAPE_DA_FILA, REL_GATE_ZINDEX, REL_GATE_VOCABULARIO, REL_GATE_FECHAMENTO,
     REL_SERVICO_PAINEL, REL_SERVICO_BLOQUEIOS, REL_VOCABULARIO_PHP, REL_ROTAS, REL_MANIFESTO,
 ];
@@ -191,6 +195,8 @@ const CAMINHOS_CITADOS = [
 // identificadores e os próprios literais, e **palavra no docblock reprova pelo
 // próprio conserto** (TRÊS mutações abortadas por isso na wave 187-04).
 const FONTE_PENDENCIAS = lerSemComentarios(REL_PENDENCIAS);
+const FONTE_RODAPE = lerSemComentarios(REL_RODAPE);
+const FONTE_PAGINA = lerSemComentarios(REL_PAGINA);
 
 /**
  * ⚠️⚠️ A LISTA CONSTANTE dos `.jsx` DESTE plano — o recorte de TODA sonda de
@@ -203,6 +209,7 @@ const FONTE_PENDENCIAS = lerSemComentarios(REL_PENDENCIAS);
  */
 const FONTES_DO_PLANO = [
     [REL_PENDENCIAS, FONTE_PENDENCIAS],
+    [REL_RODAPE, FONTE_RODAPE],
 ];
 
 const render = (Componente, props) => renderToStaticMarkup(React.createElement(Componente, props));
@@ -435,10 +442,40 @@ const ADVERSOS = [
 // ═══ OS BUNDLES — ⚠️ TODOS montados ANTES do primeiro `test()` ═════════════
 
 const M_PENDENCIAS = await montar(REL_PENDENCIAS);
+const M_RODAPE = await montar(REL_RODAPE);
 const M_VOCABULARIO = await montar(REL_VOCABULARIO);
+const M_ANDAMENTO = await montar(REL_ANDAMENTO);
 
 const PendenciasDoPainel = M_PENDENCIAS.default;
 const { ItemDePendencia, SemPendencia, acaoDoDestino, escritaDaPendencia } = M_PENDENCIAS;
+
+const RodapeDoPainel = M_RODAPE.default;
+const { BotaoDeAprovar, BotaoDoRodape, MotivoDoRodape, escritasDoRodape } = M_RODAPE;
+
+// ═══ ⚠️⚠️ A SONDA DO `disabled=`, ANCORADA NO BOTÃO DE APROVAR ════════════
+//
+// ⚠️⚠️ **`/disabled=/` e NUNCA `/disabled/`:** a segunda forma casa com a CLASSE
+// `disabled:opacity-40` e o gate passa com o botão **HABILITADO**. A armadilha
+// vem escrita no próprio critério 8, e é a mesma família do `/0%/` que casava
+// "100%" e do `includes('h-[64px]')` que casava `min-h-[64px]`.
+//
+// ⚠️⚠️ **E A REGEX SOZINHA NÃO BASTA.** Lida sobre o HTML do RODAPÉ INTEIRO ela é
+// gate LARGO: um `disabled=""` em **"Salvar revisão"** a satisfaria com o botão
+// de aprovar HABILITADO e bloqueio de pé. ➡️ O elemento é localizado por
+// **ÁRVORE COM ÍNDICE ABSOLUTO** de `<button>` e conferido pelo seu **RÓTULO
+// ÚNICO**, e só então o atributo é lido. ⚠️ `els[0]` mede o irmão errado — a wave
+// 188-08 caiu nisso, e QUATRO gates deste projeto mediam o irmão errado por
+// localizar o elemento pela lista de classes.
+/**
+ * O `<button>` de aprovar, pelo índice ABSOLUTO na árvore de botões, conferido
+ * pelo rótulo. `null` = ele não foi desenhado.
+ */
+function botaoDeAprovarEm(html) {
+    const todos = botoesDe(html);
+    const indice = todos.findIndex((b) => b.rotulo === 'Aprovar para publicação');
+
+    return indice < 0 ? null : { ...todos[indice], indice, total: todos.length };
+}
 
 /** As chamadas que o stub gravou — ⚠️ lidas do `globalThis`, não de um import. */
 const CHAMADAS = globalThis.CHAMADAS_RODAPE_188_10 ?? [];
@@ -1201,7 +1238,638 @@ test('⚠️ MANIFESTO: este arquivo está declarado em `contagens-188-10.txt`, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 7. O PROTÓTIPO — ⚠️ `skip` EXPLÍCITO e NOMEADO se o pacote não está no disco
+// 7. O RODAPÉ DE 66px — ⚠️⚠️ CRITÉRIOS 8, 10 E A METADE TELA DO 16
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Sem bloqueio e `live`: aprovável. ⚠️ O motivo é o LITERAL do vocabulário. */
+const R_SEM_BLOQUEIO = {
+    aprovavel: true,
+    motivo: M_VOCABULARIO.TUDO_CONFERIDO,
+    motivo_cor: 'verde',
+    botoes: { salvar: true, ajustes: true, aprovar: true, proximo: true },
+};
+
+/**
+ * Com bloqueio e `live`: **NÃO** aprovável.
+ *
+ * ⚠️⚠️ O motivo é o do PRODUTO (`resumoDoRodape()`): o PRIMEIRO abreviado + ` +N`
+ * dos DEMAIS. ⚠️ **NÃO** é o `join(' · ')` de TODAS as abreviações de `:1297`.
+ */
+const R_COM_BLOQUEIO = {
+    aprovavel: false,
+    motivo: `${M_VOCABULARIO.BLOQUEADO_PREFIXO}${M_VOCABULARIO.ABREVIACAO_DO_BLOQUEIO.frete_ausente} +2`,
+    motivo_cor: 'vermelho',
+    botoes: { salvar: true, ajustes: true, aprovar: true, proximo: true },
+};
+
+/**
+ * Fora do `live`: um dos 5 textos de `:1297`, e a cor é a do ANDAMENTO.
+ *
+ * ⚠️ `botoes.salvar/ajustes/aprovar` saem `false` e `proximo` sai `true` —
+ * `:721` está FORA dos dois `<sc-if value="{{ P.isLive }}">` (`:713` e **`:718`**).
+ */
+const R_FORA_DO_LIVE = {
+    aprovavel: false,
+    motivo: 'Aprovado na versão 4 por Marina · aguardando publicação',
+    motivo_cor: 'andamento',
+    botoes: { salvar: false, ajustes: false, aprovar: false, proximo: true },
+};
+
+/** Os props completos do rodapé, com empresa/oferta/versão de VERDADE. */
+function propsDoRodape(extra) {
+    return {
+        rodape: R_SEM_BLOQUEIO,
+        andamento: 'aguardando_aprovacao',
+        proximaId: 7702,
+        onIr: nada,
+        onSolicitarAjustes: nada,
+        empresaId: 459,
+        ofertaId: 7701,
+        versao: 4,
+        ...(extra ?? {}),
+    };
+}
+
+test('⚠️⚠️ CRITÉRIO 8: o `disabled=` é ATRIBUTO no botão de APROVAR, por índice ABSOLUTO 188_10', () => {
+    // ── A direção "bloqueado": o atributo ESTÁ lá. ───────────────────────────
+    const bloqueado = render(RodapeDoPainel, propsDoRodape({ rodape: R_COM_BLOQUEIO }));
+    const aprovarBloqueado = botaoDeAprovarEm(bloqueado);
+    assert.ok(aprovarBloqueado, 'o botão "Aprovar para publicação" não foi desenhado com a oferta `live`');
+    assert.equal(aprovarBloqueado.desabilitado, true, 'com bloqueio de pé o botão de APROVAR saiu SEM o atributo `disabled`');
+    assert.ok(/\bcursor-not-allowed\b/.test(aprovarBloqueado.classe), 'o botão bloqueado não tem `cursor-not-allowed` (`:1307`)');
+
+    // ── A direção "liberado": o atributo NÃO pode estar lá. ──────────────────
+    const liberado = render(RodapeDoPainel, propsDoRodape({ rodape: R_SEM_BLOQUEIO }));
+    const aprovarLiberado = botaoDeAprovarEm(liberado);
+    assert.ok(aprovarLiberado, 'o botão de aprovar não foi desenhado com zero bloqueios e `live`');
+    assert.equal(aprovarLiberado.desabilitado, false, 'com zero bloqueios e `live` o botão saiu `disabled` — ninguém conseguiria aprovar');
+    assert.ok(/\bcursor-pointer\b/.test(aprovarLiberado.classe), 'o botão habilitado não tem `cursor-pointer` (`:1307`)');
+
+    // ⚠️⚠️ ISCA (a) — um botão com a CLASSE `disabled:opacity-40` e **SEM** o
+    // atributo **não** pode ser lido como desabilitado. É literalmente a
+    // armadilha que o critério 8 traz escrita.
+    const comClasse = '<button type="button" class="h-[38px] disabled:opacity-40">Aprovar para publicação</button>';
+    assert.equal(botaoDeAprovarEm(comClasse).desabilitado, false, '⚠️ a sonda leu a CLASSE `disabled:opacity-40` como se fosse o atributo — é `/disabled=/`, nunca `/disabled/`');
+    // ⚠️ E a prova de que a armadilha é REAL: `/disabled/` casaria.
+    assert.ok(/disabled/.test(comClasse), 'a premissa caiu: `/disabled/` deixou de casar a classe — remeça a sonda');
+    assert.equal(/\bdisabled=/.test(comClasse), false, 'a premissa caiu: `/disabled=/` passou a casar a classe');
+
+    // ⚠️⚠️ ISCA (b) — o atributo no botão de aprovar É lido. Sem esta direção a
+    // sonda poderia estar simplesmente cega.
+    const comAtributo = '<button type="button" class="h-[38px]" disabled="">Aprovar para publicação</button>';
+    assert.equal(botaoDeAprovarEm(comAtributo).desabilitado, true, 'a sonda está cega: nem o atributo de verdade ela acha');
+
+    // ⚠️⚠️ ISCA (c) — **A QUE PROVA A ANCORAGEM.** Um `disabled=""` em OUTRO
+    // botão do rodapé **NÃO** pode satisfazer o gate. A redação anterior lia a
+    // regex sobre o HTML do rodapé INTEIRO, e este caso a satisfaria com o botão
+    // de aprovar HABILITADO e bloqueio de pé.
+    const noIrmao = '<div class="flex">'
+        + '<button type="button" class="h-[36px]" disabled="">Salvar revisão</button>'
+        + '<button type="button" class="h-[36px]">Solicitar ajustes</button>'
+        + '<span class="ml-auto">Bloqueado: frete pendente +2</span>'
+        + '<button type="button" class="h-[38px]">Aprovar para publicação</button>'
+        + '<button type="button" class="h-[38px]">Próximo ↓</button>'
+        + '</div>';
+    assert.ok(/\bdisabled=/.test(noIrmao), 'a premissa caiu: o HTML da isca (c) não tem `disabled=` em lugar nenhum');
+    assert.equal(
+        botaoDeAprovarEm(noIrmao).desabilitado,
+        false,
+        '⚠️⚠️ a sonda aceitou um `disabled=""` em OUTRO botão — ela NÃO está ancorada no botão de aprovar',
+    );
+    // ⚠️ E o índice ABSOLUTO dele é 2, não 0: `els[0]` mediria "Salvar revisão",
+    // que é EXATAMENTE o botão que carrega o `disabled=""` na isca (c).
+    assert.equal(botaoDeAprovarEm(noIrmao).indice, 2, 'o botão de aprovar não está no índice que a árvore diz — `els[0]` mediria o irmão errado');
+    assert.equal(botoesDe(noIrmao)[0].rotulo, 'Salvar revisão', 'a premissa do irmão errado caiu');
+    assert.equal(botoesDe(noIrmao)[0].desabilitado, true, 'a isca (c) perdeu o `disabled=""` no IRMÃO — ela não provaria a ancoragem');
+
+    // ⚠️ E no rodapé de VERDADE ele também não é o primeiro.
+    assert.equal(aprovarBloqueado.indice, 2, `o botão de aprovar mudou de posição na árvore: ${aprovarBloqueado.indice}`);
+    assert.equal(aprovarBloqueado.total, 4, `o rodapé não tem 4 botões: ${botoesDe(bloqueado).map((b) => b.rotulo).join(' | ')}`);
+    assert.equal(botoesDe(bloqueado)[0].rotulo, 'Salvar revisão', '`els[0]` do rodapé real deixou de ser "Salvar revisão" — remeça o índice');
+});
+
+test('⚠️⚠️ T-188-90: `aprovavel` NUNCA é calculado no cliente, e só `true` libera 188_10', () => {
+    // ⚠️⚠️ A trava REAL é `AprovacaoDaOfertaService::aprovar()` (plano 188-05,
+    // provado chamando a rota DIRETO). O `disabled=` é conforto.
+    //
+    // ⚠️⚠️ **CONSERTO MEDIDO NESTA EXECUÇÃO — a 1ª redação desta sonda era MAIS
+    // LARGA QUE O INVARIANTE e REPROVOU CÓDIGO CERTO**, nas DUAS pontas:
+    //   · `/\.length === 0/` sobre TODOS os arquivos do plano pegava o
+    //     `reais.length === 0` de `PendenciasDoPainel`, que é a decisão *"nenhuma
+    //     pendência"* — nada a ver com aprovabilidade;
+    //   · `/aprovavel\s*=\s*[^=]/` pegava o **default de parâmetro**
+    //     (`aprovavel = false,` na desestruturação), que é legítimo.
+    // ➡️ **ANCORADA NO COMPORTAMENTO, e recortada ao arquivo que DESENHA o
+    // botão** (a 11ª ocorrência da família "gate mais largo que o invariante"
+    // nesta milestone, e a 3ª que reprovou trabalho correto).
+    const infratores = [];
+
+    // (1) ⚠️ O arquivo que desenha o botão **não pode nem VER** a lista de
+    // bloqueios: sem a lista, não há do que derivar.
+    for (const palavra of ['pendencias', 'bloqueios', 'blocks', '.filter(', '.length']) {
+        if (FONTE_RODAPE.includes(palavra)) infratores.push(`${REL_RODAPE} lê \`${palavra}\``);
+    }
+
+    // (2) ⚠️⚠️ **LISTA CONSTANTE (ALLOW-LIST) das DUAS formas aceitas** — e ela é
+    // constante, não "piso", porque piso NÃO prova presença (learnings §4b.2,
+    // regra 5). As duas são de LEITURA; qualquer outro lado direito (`live &&
+    // zero`, `b.length === 0`, …) é DERIVAÇÃO e reprova.
+    //
+    // ⚠️ **As duas que a 1ª e a 2ª redação desta sonda acusaram por engano, e são
+    // legítimas:** o DEFAULT DE PARÂMETRO da desestruturação e a LEITURA por
+    // atributo JSX. A 2ª redação ainda falhava porque a desestruturação é numa
+    // LINHA SÓ (`{ aprovavel = false, onAprovar = null }`) e o atributo JSX casa
+    // o mesmo `=`.
+    const FORMAS_DE_LEITURA = [
+        'aprovavel = false',            // o default do parâmetro de `BotaoDeAprovar`
+        'aprovavel={dados.aprovavel}',  // a leitura do payload, por atributo JSX
+    ];
+    const ehLeitura = (trecho) => FORMAS_DE_LEITURA.some((ok) => trecho.replace(/\s+/g, ' ').startsWith(ok));
+    const derivacoes = [...FONTE_RODAPE.matchAll(/\baprovavel\s*=(?!=)[\s\S]{0,24}/g)]
+        .map((m) => m[0])
+        .filter((trecho) => !ehLeitura(trecho));
+    for (const valor of derivacoes) infratores.push(`${REL_RODAPE} deriva aprovavel de \`${valor.replace(/\s+/g, ' ')}\``);
+
+    // (3) ⚠️ E a seção de pendências nem nomeia `aprovavel`: ela não decide nada
+    // sobre publicar.
+    if (FONTE_PENDENCIAS.includes('aprovavel')) infratores.push(`${REL_PENDENCIAS} nomeia aprovavel`);
+
+    assert.deepEqual(infratores, [], 'a tela calcula `aprovavel` — duas verdades, e a divergente é descoberta por alguém CLICANDO e sendo recusado');
+
+    // ⚠️ ISCA NAS DUAS DIREÇÕES, cada uma testada contra a sonda DE VERDADE.
+    const derivacoesEm = (texto_) => [...texto_.matchAll(/\baprovavel\s*=(?!=)[\s\S]{0,24}/g)]
+        .map((m) => m[0])
+        .filter((trecho) => !ehLeitura(trecho));
+
+    // (a) A sonda PEGA as TRÊS formas de derivação que ela existe para pegar.
+    for (const cebo of [
+        'const aprovavel = live && bloqueios.length === 0;',
+        'const aprovavel = pendencias.length === 0;',
+        'aprovavel = inf.live && zero',
+    ]) {
+        assert.equal(derivacoesEm(cebo).length, 1, `a sonda da derivação está furada — ela não pega \`${cebo}\``);
+    }
+
+    // (b) ⚠️ E ela **NÃO** pega as formas LEGÍTIMAS — sem esta direção a sonda
+    // reprovaria o próprio conserto, e foi isso que ela fez DUAS vezes nesta
+    // execução antes de ser ancorada.
+    for (const legitimo of [
+        'export function BotaoDeAprovar({ aprovavel = false, onAprovar = null }) {',
+        '            <BotaoDeAprovar aprovavel={dados.aprovavel} onAprovar={aprovar} />',
+        'const liberado = aprovavel === true;',
+        'assert.equal(el.aprovavel, true);',
+    ]) {
+        assert.deepEqual(derivacoesEm(legitimo), [], `a sonda reprova a forma LEGÍTIMA \`${legitimo.trim()}\``);
+    }
+
+    // (c) E a sonda (1) PEGA quem lê a lista, e NÃO pega quem não lê.
+    assert.ok('const zero = bloqueios.length === 0;'.includes('bloqueios'), 'a sonda da lista está furada');
+    assert.equal('const liberado = dados.aprovavel === true;'.includes('bloqueios'), false, 'a sonda da lista pega a leitura legítima');
+
+    // ⚠️ E a tela LÊ `rodape.aprovavel` do servidor.
+    assert.match(FONTE_RODAPE, /aprovavel=\{dados\.aprovavel\}/, 'o rodapé deixou de LER `rodape.aprovavel` do servidor');
+    const doServico = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PAINEL), 'utf8');
+    assert.ok(doServico.includes("'aprovavel' =>"), '`aprovavel` saiu do payload do servidor — a tela leria o nada');
+    const dosBloqueios = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_BLOQUEIOS), 'utf8');
+    assert.ok(dosBloqueios.includes('aprovavel'), '`aprovavel` saiu de BloqueiosDaOfertaService — a trava real sumiu');
+
+    // ⚠️⚠️ Só `true` LIBERA. `'true'`, `1`, `{}` e `[]` são verdadeiros em JS e
+    // **não podem** acender um botão que PUBLICA sem desfazer.
+    for (const quase of ['true', 1, {}, [], 'sim', -1, 'false']) {
+        const el = botaoDeAprovarEm(render(BotaoDeAprovar, { aprovavel: quase, onAprovar: nada }));
+        assert.ok(el, `o botão não foi desenhado com \`aprovavel\` ${typeof quase}`);
+        assert.equal(el.desabilitado, true, `\`aprovavel\` aceitou um valor que não é \`true\` (${typeof quase}) e o botão ACENDEU`);
+    }
+    assert.equal(botaoDeAprovarEm(render(BotaoDeAprovar, { aprovavel: true, onAprovar: nada })).desabilitado, false, 'a isca falhou: nem com `true` o botão acende');
+
+    // ⚠️ D4 — SEM AÇÃO, SEM BOTÃO: `disabled` sem caminho nenhum é decorativo, e
+    // essa forma foi OFERECIDA e RECUSADA (PERGUNTA-188-B3).
+    for (const semAcao of [null, undefined, {}, 'x', 7]) {
+        assert.equal(render(BotaoDeAprovar, { aprovavel: false, onAprovar: semAcao }), '', `o botão nasceu com handler ${typeof semAcao} — \`disabled\` sem caminho é decorativo`);
+    }
+});
+
+test('⚠️⚠️ CRITÉRIO 10: o literal verde é LIDO do módulo, e o motivo vem do SERVIDOR 188_10', () => {
+    // ── Sem bloqueio: o literal VERDE. ──────────────────────────────────────
+    const verde = render(RodapeDoPainel, propsDoRodape({ rodape: R_SEM_BLOQUEIO }));
+    assert.ok(texto(verde).includes(M_VOCABULARIO.TUDO_CONFERIDO), 'o literal de "tudo conferido" não apareceu no rodapé');
+    assert.equal(M_VOCABULARIO.TUDO_CONFERIDO, 'Fotos, preço e conteúdo conferidos', 'o literal de `TUDO_CONFERIDO` mudou — remeça os dois lados');
+
+    const spanVerde = tagsDeAbertura(verde).find((e) => e.tag === 'span');
+    assert.ok(classesDe(spanVerde).has('text-pub-ok-txt'), 'o motivo sem bloqueio não saiu VERDE');
+
+    // ── Com bloqueio: o PRIMEIRO abreviado + ` +N`, em VERMELHO. ─────────────
+    const vermelho = render(RodapeDoPainel, propsDoRodape({ rodape: R_COM_BLOQUEIO }));
+    assert.ok(texto(vermelho).includes(R_COM_BLOQUEIO.motivo), 'o motivo com bloqueio não apareceu');
+    const spanVermelho = tagsDeAbertura(vermelho).find((e) => e.tag === 'span');
+    assert.ok(classesDe(spanVermelho).has('text-pub-danger-txt'), 'o motivo com bloqueio não saiu VERMELHO');
+
+    // ⚠️⚠️ **A DIVERGÊNCIA DECLARADA CONTRA `:1297`.** O protótipo junta TODAS as
+    // abreviações com `' · '`; o produto usa `resumoDoRodape()` (o PRIMEIRO +
+    // ` +N`). ➡️ A tela **EXIBE** `rodape.motivo` e não monta frase nenhuma:
+    // recopiar o `join` criaria a SEGUNDA VERDADE da mesma frase na MESMA tela.
+    const infratores = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        if (/join\(' · '\)|join\("\s·\s"\)/.test(fonte)) infratores.push(`${rel} join do motivo`);
+        // ⚠️ Os literais do motivo não podem ser escritos à mão na tela.
+        if (fonte.includes(M_VOCABULARIO.BLOQUEADO_PREFIXO)) infratores.push(`${rel} prefixo "Bloqueado: "`);
+        if (fonte.includes(M_VOCABULARIO.TUDO_CONFERIDO)) infratores.push(`${rel} literal de tudo conferido`);
+        if (/ \+' \+|'\s*\+\s*N/.test(fonte)) infratores.push(`${rel} monta o " +N"`);
+    }
+    assert.deepEqual(infratores, [], 'a tela MONTA o motivo em vez de exibir o do servidor — é a 2ª verdade da mesma frase');
+
+    // ⚠️ ISCA: as sondas PEGAM o que devem pegar.
+    assert.ok(/join\(' · '\)/.test("inf.B.map(b => SHORT[b.k]).join(' · ')"), 'a sonda do `join` está furada');
+    assert.ok('Bloqueado: frete pendente'.includes(M_VOCABULARIO.BLOQUEADO_PREFIXO), 'a sonda do prefixo está furada');
+
+    // ⚠️⚠️ E as DUAS formas existem NO PRÓPRIO PROTÓTIPO: `:1238` (a FILA) já é a
+    // forma do produto (`SHORT[b0.k] + ' +N'`) e `:1297` (o painel) é o `join`.
+    // ➡️ A divergência é INTERNA ao protótipo, e o produto escolheu a que o
+    // critério 10 manda. Isto fica asserido no bloco do protótipo, abaixo.
+    const doServidor = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_BLOQUEIOS), 'utf8');
+    assert.ok(doServidor.includes('resumoDoRodape'), '`resumoDoRodape()` saiu de BloqueiosDaOfertaService — o motivo perderia o dono');
+    assert.ok(doServidor.includes('TUDO_CONFERIDO'), 'o servidor deixou de usar `TUDO_CONFERIDO` — duas cópias divergiriam');
+
+    // ── Fora do `live`: um dos 5 textos, com a COR DO ANDAMENTO. ─────────────
+    const foraDoLive = render(RodapeDoPainel, propsDoRodape({ rodape: R_FORA_DO_LIVE, andamento: 'aprovado' }));
+    assert.ok(texto(foraDoLive).includes(R_FORA_DO_LIVE.motivo), 'o motivo fora do `live` não apareceu');
+    const spanAndamento = tagsDeAbertura(foraDoLive).find((e) => e.tag === 'span');
+    assert.ok(
+        classesDe(spanAndamento).has(M_ANDAMENTO.andamentoDe('aprovado').texto),
+        'a cor do motivo fora do `live` não é a do ANDAMENTO (`:1308`) — recopiar as 8 cores seria a 2ª verdade',
+    );
+    // ⚠️ E ela MUDA com o andamento: uma cor fixa passaria no caso de cima.
+    const comFalha = render(RodapeDoPainel, propsDoRodape({ rodape: { ...R_FORA_DO_LIVE, motivo: 'Falha na publicação · versão aprovada 4 preservada' }, andamento: 'falha_na_publicacao' }));
+    const spanFalha = tagsDeAbertura(comFalha).find((e) => e.tag === 'span');
+    assert.notDeepEqual(
+        [...classesDe(spanAndamento)].sort(),
+        [...classesDe(spanFalha)].sort(),
+        'a cor do motivo NÃO muda com o andamento — ela está cravada',
+    );
+    // ⚠️ E `andamentoDe()` NUNCA devolve `null`: chave adversa não apaga a cor.
+    for (const adverso of ADVERSOS) {
+        const h = render(MotivoDoRodape, { motivo: 'x', cor: 'andamento', andamento: adverso });
+        assert.notEqual(h, '', `o motivo desapareceu com andamento ${typeof adverso}`);
+        assert.ok(/class="[^"]*text-pub-/.test(h), `o motivo saiu SEM cor com andamento ${typeof adverso}`);
+    }
+
+    // ⚠️ Sem motivo, nenhum `<span>` vazio: um retângulo sem texto é invisível.
+    for (const vazio of [null, undefined, '', '   ', {}, [], 7, NaN]) {
+        assert.equal(render(MotivoDoRodape, { motivo: vazio, cor: 'verde' }), '', `o motivo ${typeof vazio} desenhou um span vazio`);
+    }
+});
+
+test('⚠️⚠️ `:713`/`:718`: os TRÊS botões só com `live`; "Próximo ↓" NÃO depende do `live` 188_10', () => {
+    // ── COM `live`: os quatro. ───────────────────────────────────────────────
+    const vivo = botoesDe(render(RodapeDoPainel, propsDoRodape({ rodape: R_SEM_BLOQUEIO })));
+    assert.deepEqual(
+        vivo.map((b) => b.rotulo),
+        ['Salvar revisão', 'Solicitar ajustes', 'Aprovar para publicação', 'Próximo ↓'],
+        'a ORDEM ou o conjunto dos botões do rodapé divergiu de `:714`/`:715`/`:719`/`:721`',
+    );
+
+    // ── FORA do `live`: SÓ o "Próximo ↓". ────────────────────────────────────
+    const parado = botoesDe(render(RodapeDoPainel, propsDoRodape({ rodape: R_FORA_DO_LIVE, andamento: 'aprovado' })));
+    assert.deepEqual(parado.map((b) => b.rotulo), ['Próximo ↓'], 'fora do `live` o rodapé não ficou só com "Próximo ↓"');
+
+    // ⚠️⚠️ E um gate que SÓ testasse o caso `live` passaria com um rodapé que
+    // nunca esconde nada — é por isso que os DOIS lados estão aqui.
+    assert.notDeepEqual(vivo.map((b) => b.rotulo), parado.map((b) => b.rotulo), 'os dois estados do rodapé saíram iguais — o `isLive` não governa nada');
+
+    // ⚠️ `botoes.X` **É** o `$aoVivo` do servidor, e só `true` vale.
+    for (const quase of ['true', 1, {}, [], 'sim']) {
+        const h = botoesDe(render(RodapeDoPainel, propsDoRodape({
+            rodape: { ...R_SEM_BLOQUEIO, botoes: { salvar: quase, ajustes: quase, aprovar: quase, proximo: true } },
+        })));
+        assert.deepEqual(h.map((b) => b.rotulo), ['Próximo ↓'], `\`botoes\` aceitou um valor que não é \`true\` (${typeof quase})`);
+    }
+
+    // ⚠️⚠️ "Existe SEMPRE" quer dizer "não depende do `live`" — e **não** "é
+    // desenhado sem destino". Sem `proxima_id` ou sem `onIr` ele some, pela MESMA
+    // régua do `SetaDoPainel` da 188-07: botão sem destino é D4 violado.
+    for (const semDestino of [null, undefined, 0, -1, '7702', 1.5, {}, NaN]) {
+        const h = botoesDe(render(RodapeDoPainel, propsDoRodape({ rodape: R_FORA_DO_LIVE, proximaId: semDestino })));
+        assert.equal(h.length, 0, `"Próximo ↓" foi desenhado sem destino válido (${typeof semDestino})`);
+    }
+    assert.equal(botoesDe(render(RodapeDoPainel, propsDoRodape({ rodape: R_FORA_DO_LIVE, onIr: null }))).length, 0, '"Próximo ↓" foi desenhado sem handler');
+
+    // ⚠️ B2 — "Solicitar ajustes" só com `live` **E** com handler: o modal é da
+    // wave **188-11**. ⚠️ **Nada de `onClick` vazio, nada de `disabled`
+    // decorativo** (D4).
+    const semAjuste = botoesDe(render(RodapeDoPainel, propsDoRodape({ onSolicitarAjustes: null })));
+    assert.equal(semAjuste.some((b) => b.rotulo === 'Solicitar ajustes'), false, '"Solicitar ajustes" foi desenhado sem handler — botão sem destino');
+    assert.equal(semAjuste.some((b) => b.rotulo === 'Salvar revisão'), true, 'a isca falhou: "Salvar revisão" também desapareceu');
+    for (const naoFuncao of ['x', 7, {}, [], true]) {
+        const h = botoesDe(render(RodapeDoPainel, propsDoRodape({ onSolicitarAjustes: naoFuncao })));
+        assert.equal(h.some((b) => b.rotulo === 'Solicitar ajustes'), false, `"Solicitar ajustes" aceitou um handler que não é função (${typeof naoFuncao})`);
+    }
+
+    // ⚠️ E nenhum dos botões do rodapé nasce `disabled` por decoração — só o de
+    // aprovar carrega o atributo, e ele carrega INFORMAÇÃO (o motivo ao lado).
+    const comBloqueio = botoesDe(render(RodapeDoPainel, propsDoRodape({ rodape: R_COM_BLOQUEIO })));
+    assert.deepEqual(
+        comBloqueio.filter((b) => b.desabilitado).map((b) => b.rotulo),
+        ['Aprovar para publicação'],
+        'outro botão do rodapé nasceu `disabled` — `disabled` decorativo é D4 violado',
+    );
+});
+
+test('⚠️⚠️ DECISÃO 1: APROVAR JÁ PUBLICA — os quatro rótulos proibidos, com isca 188_10', () => {
+    // ⚠️⚠️ O rótulo é **"Aprovar para publicação"**, INALTERADO. E **nada de
+    // "confirmar publicação", "desfazer", "segundo passo" nem "cancelar
+    // aprovação"**: as quatro foram OFERECIDAS e RECUSADAS, e o gate vale das
+    // Fases 187 a 194.
+    const VETADOS = [
+        'confirmar publicação', 'Confirmar publicação', 'confirmar a publicação',
+        'desfazer', 'Desfazer',
+        'segundo passo', 'Segundo passo',
+        'cancelar aprovação', 'Cancelar aprovação',
+    ];
+    const infratores = [];
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        for (const vetado of VETADOS) {
+            if (fonte.includes(vetado)) infratores.push(`${rel} ${vetado}`);
+        }
+    }
+    assert.deepEqual(infratores, [], 'rótulo de segundo passo/desfazer na tela — aprovar JÁ PUBLICA (decisão 1)');
+
+    // ⚠️⚠️ **E A LEITURA É SEM COMENTÁRIO, que é o que distingue o conserto do
+    // defeito:** o docblock deste arquivo CITA os quatro para explicar a decisão,
+    // e a leitura CRUA os acharia — reprovando pelo PRÓPRIO CONSERTO. Foram TRÊS
+    // mutações abortadas por isso na wave 187-04.
+    const cru = fs.readFileSync(path.resolve(RAIZ, REL_RODAPE), 'utf8');
+    const citadosNoDocblock = VETADOS.filter((v) => cru.includes(v));
+    assert.ok(citadosNoDocblock.length > 0, '⚠️ o docblock deixou de CITAR os rótulos vetados — a razão da ausência virou invisível, e a próxima pessoa a reintroduziria');
+    assert.ok(cru.includes('Fase 193'), 'o docblock deixou de declarar que aprovar ENFILEIRA e que a escrita no ML é da Fase 193');
+    assert.ok(cru.includes('não há desfazer'), 'o docblock deixou de declarar que não há desfazer');
+
+    // ⚠️ ISCA: a sonda PEGA o que ela deve pegar.
+    assert.ok('clique em confirmar publicação'.includes('confirmar publicação'), 'a sonda dos vetados está furada');
+
+    // ⚠️ E o rótulo CERTO está na tela, com o byte certo (o `ç` e o `ã`).
+    assert.equal(M_RODAPE.ROTULO_APROVAR, 'Aprovar para publicação', 'o rótulo de aprovar mudou — a decisão 1 o quer INALTERADO');
+    assert.equal(M_RODAPE.ROTULO_SALVAR, 'Salvar revisão', 'o rótulo de salvar mudou');
+    assert.equal(M_RODAPE.ROTULO_AJUSTES, 'Solicitar ajustes', 'o rótulo de ajustes mudou');
+    assert.equal(M_RODAPE.ROTULO_PROXIMO, 'Próximo ↓', 'o rótulo de "Próximo ↓" mudou — a seta é U+2193 e faz parte dele');
+});
+
+test('⚠️⚠️ CRITÉRIO 16/17: as DUAS escritas do rodapé passam pelo helper COM `versao_esperada` 188_10', () => {
+    CHAMADAS.length = 0;
+
+    const escritas = escritasDoRodape({ empresaId: 459, ofertaId: 7701, versao: 4 });
+    assert.equal(typeof escritas.salvar, 'function', '"Salvar revisão" não nasceu com empresa, oferta e versão');
+    assert.equal(typeof escritas.aprovar, 'function', '"Aprovar" não nasceu com empresa, oferta e versão');
+
+    assert.equal(escritas.salvar(), true, 'o helper recusou a escrita de "Salvar revisão"');
+    assert.equal(escritas.aprovar(), true, 'o helper recusou a escrita de "Aprovar"');
+    assert.equal(CHAMADAS.length, 2, `as duas escritas não saíram exatamente uma vez cada: ${CHAMADAS.length}`);
+
+    const [salvar, aprovar] = CHAMADAS;
+    assert.equal(salvar[0], 'post', '"Salvar revisão" saiu por outro verbo');
+    assert.ok(salvar[1].includes('salvar-revisao'), `"Salvar revisão" não chamou a rota do plano 188-05: ${salvar[1]}`);
+    assert.ok(aprovar[1].includes('aprovacao.painel.aprovar'), `"Aprovar" não chamou a rota de aprovação: ${aprovar[1]}`);
+
+    // ⚠️⚠️ `versao_esperada` SEMPRE no corpo, nas DUAS. OMITI-LA faz
+    // `exigirVersao()` receber `null` e **LIBERAR** a escrita — e numa tela em que
+    // aprovar JÁ PUBLICA e não há desfazer isso é o pior resultado possível.
+    assert.equal(salvar[2].versao_esperada, 4, '"Salvar revisão" saiu SEM `versao_esperada`');
+    assert.equal(aprovar[2].versao_esperada, 4, '"Aprovar" saiu SEM `versao_esperada` — é sobrescrever em silêncio');
+
+    // ⚠️ Sem os três dados **não há handler** — e sem handler o botão não é
+    // desenhado. ⚠️ `0` NÃO vale: é id plausível.
+    for (const faltando of [
+        { empresaId: null, ofertaId: 7701, versao: 4 },
+        { empresaId: 459, ofertaId: null, versao: 4 },
+        { empresaId: 459, ofertaId: 7701, versao: null },
+        { empresaId: 0, ofertaId: 7701, versao: 4 },
+        { empresaId: 459, ofertaId: 0, versao: 4 },
+        { empresaId: 459, ofertaId: 7701, versao: 0 },
+        { empresaId: 459, ofertaId: 7701, versao: '4' },
+    ]) {
+        const r = escritasDoRodape(faltando);
+        assert.equal(r.salvar, null, `"Salvar revisão" nasceu com dado inválido: ${Object.keys(faltando).join(',')}`);
+        assert.equal(r.aprovar, null, '"Aprovar" nasceu com dado inválido');
+    }
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => escritasDoRodape(adverso), `\`escritasDoRodape\` LANÇOU com ${typeof adverso}`);
+        assert.equal(escritasDoRodape(adverso).aprovar, null, `"Aprovar" nasceu com pedido ${typeof adverso}`);
+    }
+    assert.equal(CHAMADAS.length, 2, 'uma das recusas disparou escrita');
+
+    // ⚠️ E SEM os ids o botão de aprovar **não é desenhado** (D4): `disabled` sem
+    // caminho nenhum é decoração.
+    const semIds = botoesDe(render(RodapeDoPainel, propsDoRodape({ empresaId: null })));
+    assert.equal(semIds.some((b) => b.rotulo === 'Aprovar para publicação'), false, 'o botão de aprovar nasceu sem os ids — não haveria caminho nenhum');
+    assert.equal(semIds.some((b) => b.rotulo === 'Salvar revisão'), false, '"Salvar revisão" nasceu sem os ids');
+
+    // ⚠️⚠️ **ZERO `localStorage`** — o critério 16 é explícito: a revisão parcial
+    // fica no SERVIDOR, para outra pessoa continuar de onde a primeira parou.
+    for (const [rel, fonte] of FONTES_DO_PLANO) {
+        assert.doesNotMatch(fonte, /localStorage|ecf-aprovacao-v1/, `${rel} guarda revisão no cliente — o critério 16 a quer no SERVIDOR`);
+    }
+
+    // ⚠️ E o CLIQUE de verdade dispara a escrita: o `disabled` do DOM não é
+    // exercido por `renderToStaticMarkup`, então a ação é chamada DIRETO.
+    CHAMADAS.length = 0;
+    const doBotao = escritasDoRodape({ empresaId: 459, ofertaId: 7701, versao: 9 });
+    assert.doesNotThrow(() => doBotao.aprovar(), 'o CLIQUE de aprovar LANÇOU');
+    assert.equal(CHAMADAS[0][2].versao_esperada, 9, 'a versão do clique não é a que a tela viu');
+    CHAMADAS.length = 0;
+});
+
+test('⚠️ FID: a GEOMETRIA de `:712`-`:721`, por IGUALDADE e com isca do quase-igual 188_10', () => {
+    const html = render(RodapeDoPainel, propsDoRodape({ rodape: R_COM_BLOQUEIO }));
+    const arvore = tagsDeAbertura(html);
+
+    // ⚠️ ÍNDICE ABSOLUTO: 0 o `<div>` do rodapé.
+    assert.equal(arvore[0].tag, 'div', 'a raiz do rodapé não é um `<div>` (`:712`)');
+    assert.deepEqual(
+        [...classesDe(arvore[0])].sort(),
+        ['bg-pub-surface', 'border-pub-line-subtle', 'border-t', 'flex', 'flex-none', 'gap-[10px]', 'h-[66px]', 'items-center', 'px-[22px]'],
+        'as classes do rodapé de `:712` divergiram',
+    );
+
+    // ⚠️ `h-[66px]` e **não** `min-h-[66px]`: o protótipo mede `height:66px`. É a
+    // armadilha do `min-h-[64px]` da 187-08, pela outra ponta.
+    assert.ok(classesDe(arvore[0]).has('h-[66px]'), 'o rodapé perdeu o `height:66px`');
+    assert.equal(classesDe(arvore[0]).has('min-h-[66px]'), false, 'o rodapé ganhou `min-h-[66px]` — o protótipo mede ALTURA FIXA');
+    assert.ok(classesDe(arvore[0]).has('flex-none'), 'o rodapé perdeu o `flex:none` — ele encolheria junto com o corpo');
+
+    const porRotulo = (rotulo) => {
+        const todos = botoesDe(html);
+        const i = todos.findIndex((b) => b.rotulo === rotulo);
+        assert.ok(i >= 0, `o botão "${rotulo}" não está no rodapé`);
+
+        return new Set(todos[i].classe.split(/\s+/).filter((c) => c !== ''));
+    };
+
+    const SECUNDARIO = ['bg-pub-hover-2', 'border', 'border-pub-line-strong', 'cursor-pointer', 'font-medium', 'h-[36px]', 'hover:border-pub-line-off', 'px-[14px]', 'rounded-pub-control', 'text-[13px]', 'text-pub-txt', 'whitespace-nowrap'];
+    assert.deepEqual([...porRotulo('Salvar revisão')].sort(), SECUNDARIO, 'as classes de `:714` divergiram');
+    // ⚠️ `:715` é "idem E9" na §E — MEDIDO idêntico por `sed` nesta wave.
+    assert.deepEqual([...porRotulo('Solicitar ajustes')].sort(), SECUNDARIO, 'as classes de `:715` divergiram de `:714` — a §E diz "idem"');
+
+    assert.deepEqual(
+        [...porRotulo('Aprovar para publicação')].sort(),
+        ['bg-pub-line-subtle', 'border', 'border-pub-line-strong', 'cursor-not-allowed', 'font-semibold', 'h-[38px]', 'px-[18px]', 'rounded-pub-control', 'text-[13.5px]', 'text-pub-txt-4', 'whitespace-nowrap'],
+        'as classes do par NÃO APROVÁVEL de `:719`/`:1307` divergiram',
+    );
+    const liberado = render(RodapeDoPainel, propsDoRodape({ rodape: R_SEM_BLOQUEIO }));
+    const doLiberado = botoesDe(liberado).find((b) => b.rotulo === 'Aprovar para publicação');
+    assert.deepEqual(
+        [...new Set(doLiberado.classe.split(/\s+/).filter((c) => c !== ''))].sort(),
+        ['bg-pub-accent', 'border', 'border-pub-accent', 'cursor-pointer', 'font-semibold', 'h-[38px]', 'px-[18px]', 'rounded-pub-control', 'text-[13.5px]', 'text-pub-page', 'whitespace-nowrap'],
+        'as classes do par APROVÁVEL de `:719`/`:1307` divergiram',
+    );
+    // ⚠️⚠️ OS QUATRO PARES SÃO DISTINTOS AOS PARES: duas cores iguais apagariam a
+    // diferença entre "pode publicar" e "não pode".
+    assert.notDeepEqual(
+        [...porRotulo('Aprovar para publicação')].sort(),
+        [...new Set(doLiberado.classe.split(/\s+/))].sort(),
+        'os dois estados do botão de aprovar saíram com as MESMAS classes',
+    );
+    // ⚠️ E `:719` **não tem `style-hover`**: inventar um seria acrescentar o que o
+    // desenho não pediu (FID-02 pelo avesso).
+    assert.equal([...porRotulo('Aprovar para publicação')].some((c) => c.startsWith('hover:')), false, 'o botão de aprovar ganhou `hover:` — `:719` NÃO tem `style-hover`');
+
+    assert.deepEqual(
+        [...porRotulo('Próximo ↓')].sort(),
+        ['bg-transparent', 'border', 'border-pub-line-strong', 'cursor-pointer', 'h-[38px]', 'hover:bg-pub-hover-2', 'px-[14px]', 'rounded-pub-control', 'text-[13px]', 'text-pub-fase1', 'whitespace-nowrap'],
+        'as classes de `:721` divergiram',
+    );
+
+    // ⚠️⚠️ O MOTIVO (**`:717`**) — e `max-w-[420px]` é do PAINEL. O da FILA é
+    // `max-w-[560px]` (`:539`), e são medidas DIFERENTES de propósito:
+    // *"deixei igual à outra tela"* é FID-02 literal.
+    const motivo = tagsDeAbertura(html).find((e) => e.tag === 'span');
+    const doMotivo = classesDe(motivo);
+    assert.deepEqual(
+        [...doMotivo].sort(),
+        ['font-medium', 'leading-[1.35]', 'max-w-[420px]', 'ml-auto', 'text-[12.5px]', 'text-pub-danger-txt', 'text-right'],
+        'as classes do motivo de `:717` divergiram',
+    );
+    assert.equal(doMotivo.has('max-w-[560px]'), false, '⚠️ o motivo ganhou o `max-w-[560px]` da FILA — são medidas diferentes DE PROPÓSITO');
+    assert.ok(doMotivo.has('ml-auto'), 'o motivo perdeu o `margin-left:auto` — os quatro botões ficariam colados à esquerda');
+    // ⚠️ E a prova de que a fila mede OUTRO valor: um gate que exigisse o mesmo
+    // nos dois reprovaria código certo.
+    const daFila = fs.readFileSync(path.resolve(RAIZ, REL_RODAPE_DA_FILA), 'utf8');
+    assert.equal(daFila.includes('max-w-[420px]'), false, 'o rodapé da FILA passou a medir 420px — remeça os dois');
+});
+
+test('⚠️⚠️ REND: nenhum campo adverso do rodapé derruba a página, nem no CLIQUE 188_10', () => {
+    const SUJEIRA = /\[object Object\]|NaN|undefined|Invalid Date/;
+    const CAMPOS = ['aprovavel', 'motivo', 'motivo_cor', 'botoes'];
+
+    for (const campo of CAMPOS) {
+        for (const adverso of ADVERSOS) {
+            let html = '';
+            assert.doesNotThrow(
+                () => { html = render(RodapeDoPainel, propsDoRodape({ rodape: { ...R_COM_BLOQUEIO, [campo]: adverso } })); },
+                `o rodapé LANÇOU com \`${campo}\` do tipo ${typeof adverso}`,
+            );
+            assert.doesNotMatch(html, SUJEIRA, `o rodapé vazou sujeira com \`${campo}\` do tipo ${typeof adverso}`);
+        }
+    }
+
+    // ⚠️ Os quatro sub-campos de `botoes`, cada um adverso.
+    for (const chave of ['salvar', 'ajustes', 'aprovar', 'proximo']) {
+        for (const adverso of ADVERSOS) {
+            let html = '';
+            assert.doesNotThrow(
+                () => { html = render(RodapeDoPainel, propsDoRodape({ rodape: { ...R_SEM_BLOQUEIO, botoes: { ...R_SEM_BLOQUEIO.botoes, [chave]: adverso } } })); },
+                `o rodapé LANÇOU com \`botoes.${chave}\` do tipo ${typeof adverso}`,
+            );
+            assert.doesNotMatch(html, SUJEIRA, `o rodapé vazou sujeira com \`botoes.${chave}\` do tipo ${typeof adverso}`);
+        }
+    }
+
+    // ⚠️ A PROP INTEIRA adversa, e cada handler/id adverso.
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => render(RodapeDoPainel, { rodape: adverso }), `o rodapé LANÇOU com \`rodape\` ${typeof adverso}`);
+        assert.doesNotThrow(
+            () => render(RodapeDoPainel, propsDoRodape({ onIr: adverso, onSolicitarAjustes: adverso, empresaId: adverso, ofertaId: adverso, versao: adverso, onConflito: adverso, andamento: adverso, proximaId: adverso })),
+            `o rodapé LANÇOU com handlers/ids do tipo ${typeof adverso}`,
+        );
+    }
+    assert.doesNotThrow(() => render(RodapeDoPainel, {}), 'o rodapé LANÇOU sem prop nenhuma');
+    assert.equal(render(RodapeDoPainel, {}), '', 'o rodapé desenhou casca de 66px sem dado — D4 violado');
+
+    // ⚠️⚠️ **E NO CLIQUE.** `renderToStaticMarkup` **não dispara `onClick`**, e a
+    // última tela preta deste projeto foi NO CLIQUE.
+    CHAMADAS.length = 0;
+    const acoes = escritasDoRodape({ empresaId: 459, ofertaId: 7701, versao: 4 });
+    assert.doesNotThrow(() => acoes.salvar(), 'o CLIQUE de "Salvar revisão" LANÇOU');
+    assert.doesNotThrow(() => acoes.aprovar(), 'o CLIQUE de "Aprovar" LANÇOU');
+    for (const adverso of ADVERSOS) {
+        assert.doesNotThrow(() => render(BotaoDoRodape, { rotulo: adverso, classes: adverso, onClicar: adverso }), `\`BotaoDoRodape\` LANÇOU com ${typeof adverso}`);
+        assert.doesNotThrow(() => render(BotaoDeAprovar, { aprovavel: adverso, onAprovar: adverso }), `\`BotaoDeAprovar\` LANÇOU com ${typeof adverso}`);
+        assert.doesNotThrow(() => render(MotivoDoRodape, { motivo: adverso, cor: adverso, andamento: adverso }), `\`MotivoDoRodape\` LANÇOU com ${typeof adverso}`);
+    }
+    CHAMADAS.length = 0;
+
+    // ⚠️ E `String(`/`JSON.stringify(` não aparecem: os dois LANÇAM com
+    // `{toString: null}`, e há gate da 187-04 que já proíbe `String(` na página.
+    assert.doesNotMatch(FONTE_RODAPE, /\bString\(/, '`String(` no rodapé — ele LANÇA com `{toString: null}`');
+    assert.doesNotMatch(FONTE_RODAPE, /JSON\.stringify\(/, '`JSON.stringify(` no rodapé');
+});
+
+test('⚠️⚠️ O RODAPÉ É IRMÃO DO CORPO ROLÁVEL, não filho dele 188_10', () => {
+    // ⚠️⚠️ **MEDIDO por script no protótipo** (ver o bloco do protótipo abaixo):
+    // `:562` (o corpo) abre na profundidade 2→3 e **`:710` o FECHA**; `:712` (o
+    // rodapé) abre em 2→3 de novo, dentro do `<aside>`. ➡️ Dentro do corpo
+    // (`flex-1 overflow-y-auto`) o rodapé **ROLARIA PARA FORA DA TELA**, e
+    // `flex:none` não o salvaria — ele seria item de um contêiner que rola.
+    // ⚠️ Com todo teste de render passando.
+    const fontePainel = lerSemComentarios(REL_PAINEL);
+
+    // ⚠️ O slot do rodapé está FORA do `<CorpoDoPainel>`, e o das pendências
+    // DENTRO — provado pela POSIÇÃO no texto da fonte, entre marcas únicas.
+    const abreCorpo = fontePainel.indexOf('<CorpoDoPainel>');
+    const fechaCorpo = fontePainel.indexOf('</CorpoDoPainel>');
+    const noPendencias = fontePainel.indexOf('noPendencias,');
+    const noRodape = fontePainel.indexOf('{noRodape}');
+    assert.ok(abreCorpo > 0 && fechaCorpo > abreCorpo, 'não achei o `<CorpoDoPainel>` — a leitura está cega');
+    assert.ok(noPendencias > abreCorpo && noPendencias < fechaCorpo, 'as pendências saíram de DENTRO do corpo rolável — `:699` abre dentro de `:562`');
+    assert.ok(noRodape > fechaCorpo, '⚠️⚠️ o rodapé entrou DENTRO do corpo rolável — ele ROLARIA PARA FORA DA TELA');
+    // ⚠️ E ele vem DEPOIS do `{corpo}` dentro do `<aside>`, como em `:712` depois
+    // de `:710`.
+    assert.ok(fontePainel.indexOf('{corpo}') < noRodape, 'o rodapé subiu para cima do corpo — ele apareceria no topo do painel');
+    assert.ok(fontePainel.indexOf('</aside>') > noRodape, 'o rodapé saiu de dentro do `<aside>`');
+
+    // ⚠️ Os DOIS slots são de NÓ e passam por `filhosSeguros`: **prop de NÓ
+    // chegando objeto comum faz o React LANÇAR** e mata a página inteira.
+    assert.match(fontePainel, /const noPendencias = filhosSeguros\(pendencias\)/, 'o slot `pendencias` deixou de passar por `filhosSeguros`');
+    assert.match(fontePainel, /const noRodape = filhosSeguros\(rodape\)/, 'o slot `rodape` deixou de passar por `filhosSeguros`');
+
+    // ⚠️⚠️ E A PÁGINA LIGA OS DOIS. Sem o fio, as duas peças existiriam no disco e
+    // **não apareceriam na tela** — e os critérios 8, 9 e 10 falam do que a tela
+    // MOSTRA. ⚠️ Nenhuma wave desta fase (11, 12 ou 13) tem a página no `files`,
+    // então não há dono depois desta.
+    // ⚠️ Os nomes carregam o sufixo `DoPainel` porque a página JÁ TEM um
+    // `noRodape` — o da TABELA DA FILA (`RodapeDaFila`, Fase 187). ⚠️ O esbuild
+    // REPROVOU com *"The symbol 'noRodape' has already been declared"*, e o
+    // conserto é o sufixo, não renomear o da fila (que está NO AR).
+    assert.match(FONTE_PAGINA, /pendencias=\{noPendenciasDoPainel\}/, 'a página não liga o slot `pendencias` — a seção não apareceria na tela');
+    assert.match(FONTE_PAGINA, /rodape=\{noRodapeDoPainel\}/, 'a página não liga o slot `rodape` — o rodapé não apareceria na tela');
+    assert.match(FONTE_PAGINA, /const noRodape = isValidElement\(rodape\)/, 'o `noRodape` da TABELA DA FILA (Fase 187) foi renomeado — ele está NO AR');
+    assert.match(FONTE_PAGINA, /<PendenciasDoPainel/, 'a página não monta `PendenciasDoPainel`');
+    assert.match(FONTE_PAGINA, /<RodapeDoPainel/, 'a página não monta `RodapeDoPainel`');
+
+    // ⚠️ E os handlers das waves 11/12 ficam `null`, DECLARADOS: sem eles o botão
+    // não é desenhado (D4), e **nada de `onClick` vazio**.
+    assert.match(FONTE_PAGINA, /onAbrirModal=\{null\}/, 'a página passou a mandar um `onAbrirModal` — se a wave 188-11/12 fechou, religue pelo helper');
+    assert.match(FONTE_PAGINA, /onSolicitarAjustes=\{null\}/, 'a página passou a mandar um `onSolicitarAjustes` — se a wave 188-11 fechou, religue');
+
+    // ⚠️ A página traduz o `imagem_id` do destino para o ÍNDICE da galeria, e ela
+    // lê `imagens[*].id` (a linha de REVISÃO), **não** `imagens[*].imagem_id` (o
+    // `pub_imagens.id`): são tabelas diferentes, e confundi-las abriria a foto
+    // errada.
+    assert.match(FONTE_PAGINA, /onFocarFoto=\{focarFoto\}/, 'a página deixou de ligar `onFocarFoto`');
+    assert.match(FONTE_PAGINA, /imagens\.findIndex/, 'a página deixou de traduzir o `imagem_id` para o índice da galeria');
+    assert.doesNotMatch(FONTE_PAGINA, /objetoSeguro\(imagem\)\?\.imagem_id/, 'a página traduz pelo `pub_imagens.id` — ela abriria a foto errada');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. O PROTÓTIPO — ⚠️ `skip` EXPLÍCITO e NOMEADO se o pacote não está no disco
 // ═══════════════════════════════════════════════════════════════════════════
 
 test('⚠️ FID: os literais e os ponteiros de `:699`-`:721` medidos contra o protótipo 188_10', async (contexto) => {
@@ -1291,6 +1959,74 @@ test('⚠️ FID: os literais e os ponteiros de `:699`-`:721` medidos contra o p
         assert.ok(em(705).includes('cursor:'), 'a isca falhou: `:705` tem `cursor:` e a sonda não achou');
         assert.equal(em(699).includes('cursor:'), false, 'a isca falhou: `:699` NÃO tem `cursor:` e a sonda achou');
     });
+
+    await contexto.test('⚠️⚠️ os PONTEIROS do RODAPÉ (`:712`-`:721`) e as duas medidas do motivo', () => {
+        assert.match(em(712), /height:66px;padding:0 22px;border-top:1px solid #1F1F1F;background:#111111;flex:none/, '`:712` não é o rodapé de 66px');
+        assert.match(em(714), /height:36px;padding:0 14px/, '`:714` não é "Salvar revisão"');
+        assert.ok(em(714).includes('Salvar revisão'), '`:714` perdeu o rótulo "Salvar revisão"');
+        assert.ok(em(715).includes('Solicitar ajustes'), '`:715` perdeu o rótulo "Solicitar ajustes"');
+        // ⚠️ A §E diz "idem E9" para `:715` — MEDIDO: os dois `style` são iguais.
+        const estilo = (n) => (em(n).match(/ style="([^"]*)"/) || [])[1] ?? null;
+        assert.equal(estilo(715), estilo(714), '`:715` divergiu de `:714` — a §E diz "idem E9"');
+
+        // ⚠️⚠️ **E11 ESTÁ EM `:717`, NÃO EM `:718`** (divergência R8 da §I.1).
+        assert.match(em(717), /margin-left:auto;font-size:12\.5px;font-weight:500/, '`:717` não é o motivo');
+        assert.match(em(717), /max-width:420px;line-height:1\.35/, '`:717` perdeu o `max-width:420px` do PAINEL');
+        assert.match(em(718), /<sc-if value="\{\{ P\.isLive \}\}">/, '`:718` deixou de ser o `<sc-if>` do botão Aprovar — era ele que a tabela confundia com E11');
+        assert.match(em(716), /<\/sc-if>/, '`:716` deixou de ser o `</sc-if>` de FECHAMENTO — era ele que a prosa confundia com o 2º `isLive`');
+        assert.match(em(713), /<sc-if value="\{\{ P\.isLive \}\}">/, '`:713` não é o PRIMEIRO `<sc-if>` do rodapé');
+
+        // ⚠️ E o `max-width` da FILA é OUTRO: `:539` mede 560px, e um gate que
+        // exigisse o mesmo nos dois reprovaria código certo.
+        assert.match(em(539), /max-width:560px/, '`:539` (o motivo da FILA) deixou de medir 560px — remeça os dois');
+
+        assert.match(em(719), /height:38px;padding:0 18px/, '`:719` não é "Aprovar para publicação"');
+        assert.match(em(719), /disabled="\{\{ P\.notApprovable \}\}"/, '`:719` perdeu o `disabled=` — ele É o critério 8');
+        assert.ok(em(719).includes('Aprovar para publicação'), '`:719` perdeu o rótulo "Aprovar para publicação"');
+        assert.equal(em(719).includes('style-hover'), false, '`:719` ganhou `style-hover` — o protótipo NÃO dá hover a este botão');
+        assert.match(em(721), /background:transparent;color:#D4D4D8/, '`:721` não é "Próximo ↓"');
+        assert.ok(em(721).includes('Próximo ↓'), '`:721` perdeu o rótulo "Próximo ↓"');
+        assert.match(em(721), /style-hover="background:#161616"/, '`:721` perdeu o `style-hover` de FUNDO');
+
+        // ⚠️⚠️ **AS DUAS FORMAS DO MOTIVO EXISTEM NO PRÓPRIO PROTÓTIPO**, e é por
+        // isso que a divergência de E11 não é decisão de executor: `:1238` (a
+        // FILA) já é a forma do PRODUTO (o PRIMEIRO + ` +N`) e `:1297` (o painel)
+        // é o `join` de TODAS. O produto escolheu a que o critério 10 manda.
+        assert.match(em(1238), /this\.SHORT\[b0\.k\] \+ \(inf\.B\.length > 1 \? ' \+' \+ \(inf\.B\.length - 1\)/, '`:1238` deixou de trazer a forma do PRODUTO — a divergência interna do protótipo era a prova');
+        assert.match(em(1297), /inf\.B\.map\(b => this\.SHORT\[b\.k\]\)\.join\(' · '\)/, '`:1297` deixou de trazer o `join` — remeça a divergência');
+        assert.match(em(974), /SHORT = \{ photos:/, '`:974` não é o mapa `SHORT` das 9 abreviações');
+    });
+
+    await contexto.test('⚠️⚠️ O RODAPÉ É IRMÃO DO CORPO — profundidade MEDIDA por script', () => {
+        // ⚠️⚠️ A medição que justifica o slot `rodape` SEPARADO do `children`:
+        // conta tags de abertura menos as de fechamento, linha por linha, de
+        // `:547` até `:724`.
+        const TAGS = /<(div|aside|section|span|button|sc-if|sc-for)\b/g;
+        const FECHA = /<\/(div|aside|section|span|button|sc-if|sc-for)>/g;
+        const profundidade = {};
+        let d = 0;
+        for (let n = 547; n <= 724; n += 1) {
+            const linha = em(n);
+            const antes = d;
+            d += (linha.match(TAGS) ?? []).length - (linha.match(FECHA) ?? []).length;
+            profundidade[n] = { antes, depois: d };
+        }
+
+        // `:562` (o corpo) e `:712` (o rodapé) abrem na MESMA profundidade: são
+        // IRMÃOS, filhos do `<aside>` de `:550`.
+        assert.equal(profundidade[562].antes, 2, '`:562` (o corpo) não abre na profundidade 2 — a medição se moveu');
+        assert.equal(profundidade[712].antes, 2, '⚠️⚠️ `:712` (o rodapé) não abre na MESMA profundidade do corpo — ele deixou de ser IRMÃO dele');
+        assert.equal(profundidade[710].depois, 2, '`:710` não fecha o corpo — o rodapé estaria DENTRO dele');
+
+        // ⚠️ E `:699` (as Pendências) abre na profundidade 3: DENTRO do corpo,
+        // irmão do wrapper das colunas (`:586`, fechado por `:697`).
+        assert.equal(profundidade[699].antes, 3, '`:699` (as Pendências) não abre DENTRO do corpo');
+        assert.equal(profundidade[697].depois, 3, '`:697` não fecha o wrapper das colunas');
+
+        // ⚠️ ISCA: a sonda distingue as duas profundidades. Se tudo saísse igual,
+        // ela não mediria nada.
+        assert.notEqual(profundidade[699].antes, profundidade[712].antes, 'a sonda de profundidade NÃO distingue o corpo do rodapé — ela está cega');
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1317,7 +2053,7 @@ function seletorDe(classe) {
  * `skip`. ⚠️ E `cp` ATUALIZA o `mtime`, então `npm run build` vem DEPOIS da
  * mutação (`cp -p` preserva, e aí o regime pristino volta sem build).
  */
-const FONTES_DO_CSS = [REL_PENDENCIAS];
+const FONTES_DO_CSS = [REL_PENDENCIAS, REL_RODAPE];
 
 function carregarCssConstruido() {
     const manifestRel = 'public/build/manifest.json';
@@ -1432,5 +2168,49 @@ test('⚠️ FID: as classes das pendências GERAM CSS com o valor certo 188_10'
             'text-[10.5px]', 'text-[13px]', 'text-[15px]', 'text-[12px]',
         ].filter((c) => regraDe(c) === null);
         assert.deepEqual(semRegra, [], 'classe das pendências NÃO gerou CSS — num `.js` isso aconteceria com todo teste de render passando');
+    });
+
+    await contexto.test('⚠️⚠️ a GEOMETRIA do RODAPÉ e os QUATRO pares de cor de `:1307`', () => {
+        // ⚠️ 1ª/2ª — token SÓLIDO sai em `rgb(R G B / var(…))`, não em hex.
+        assert.match(regraDe('border-pub-line-subtle'), /rgb\(31 31 31/, '`border-pub-line-subtle` não é #1F1F1F (o `border-top` de `:712`)');
+        // ⚠️⚠️ O par NÃO APROVÁVEL: fundo `#1F1F1F` (um token de BORDA usado como
+        // FUNDO — precedente de `KpisDoPainel.jsx:243`, a trilha de `:645`) e
+        // texto `#71717A`.
+        assert.match(regraDe('bg-pub-line-subtle'), /rgb\(31 31 31/, 'o FUNDO do botão apagado não é #1F1F1F (`:1307`)');
+        assert.match(regraDe('text-pub-txt-4'), /rgb\(113 113 122/, 'o TEXTO do botão apagado não é #71717A (`:1307`)');
+        // ⚠️ O par APROVÁVEL: `#FACC15` no fundo E na borda, `#0A0A0A` no texto.
+        assert.match(regraDe('bg-pub-accent'), /rgb\(250 204 21/, 'o FUNDO do botão aprovável não é #FACC15 (`:1307`)');
+        assert.match(regraDe('border-pub-accent'), /rgb\(250 204 21/, 'a BORDA do botão aprovável não é #FACC15 (`:1307`)');
+        assert.match(regraDe('text-pub-fase1'), /rgb\(212 212 216/, '`text-pub-fase1` não é #D4D4D8 (o "Próximo ↓" de `:721`)');
+
+        // ⚠️ Os DOIS cursores do par de `:1307` — `pointer` e `not-allowed`.
+        assert.match(regraDe('cursor-not-allowed'), /cursor:\s*not-allowed/, '`cursor-not-allowed` não compilou — o botão apagado pareceria clicável');
+
+        // ⚠️ As medidas arbitrárias do rodapé, com o escape GERAL.
+        assert.match(regraDe('h-[66px]'), /height:\s*66px/, 'o `height:66px` de `:712` não compilou');
+        assert.match(regraDe('max-w-[420px]'), /max-width:\s*420px/, 'o `max-width:420px` de `:717` não compilou');
+        // ⚠️ 4ª normalização: o cssnano COME o zero da frente — `1.35` fica `1.35`
+        // mas um `0.x` sairia `.x`. Aqui o valor é > 1, e a sonda aceita as duas.
+        assert.match(regraDe('leading-[1.35]'), /line-height:\s*1\.35/, 'o `line-height:1.35` de `:717` não compilou');
+        assert.match(regraDe('text-[13.5px]'), /font-size:\s*13\.5px/, 'o `text-[13.5px]` de `:719` não compilou — `text-sm` é 14px e mudaria o layout');
+        assert.match(regraDe('text-[12.5px]'), /font-size:\s*12\.5px/, 'o `text-[12.5px]` de `:717` não compilou');
+
+        // ⚠️ E o `hover:` do "Próximo ↓" é de FUNDO, não de borda (`:721`).
+        assert.match(regraDe('hover:bg-pub-hover-2'), /rgb\(22 22 22/, 'o `style-hover` de FUNDO de `:721` não compilou');
+
+        const semRegra = [
+            'border-t', 'bg-transparent', 'ml-auto', 'text-right', 'font-medium',
+            'h-[36px]', 'h-[38px]', 'px-[14px]', 'px-[18px]', 'px-[22px]',
+            'rounded-pub-control', 'text-pub-page', 'text-pub-txt',
+        ].filter((c) => regraDe(c) === null);
+        assert.deepEqual(semRegra, [], 'classe do rodapé NÃO gerou CSS — num `.js` isso aconteceria com todo teste de render passando');
+
+        // ⚠️ ISCA DE AUSÊNCIA MEDIDA: o `max-w-[560px]` da FILA **existe** no CSS
+        // (outro dono: `RodapeDaFila`/`LinhaDaOferta`), então ele **não serve como
+        // isca** — e isso é exatamente o achado do `grid-cols-6` da 188-08: a
+        // sonda de CSS **não protege a fidelidade de UM arquivo**. ➡️ A prova de
+        // que o PAINEL não usa 560px mora na FONTE, não aqui.
+        assert.notEqual(regraDe('max-w-[560px]'), null, 'o `max-w-[560px]` saiu do CSS — a razão desta isca não valer era ele EXISTIR por outro dono');
+        assert.equal(FONTE_RODAPE.includes('max-w-[560px]'), false, 'o rodapé do PAINEL usa o `max-w-[560px]` da FILA — a prova está na FONTE');
     });
 });
