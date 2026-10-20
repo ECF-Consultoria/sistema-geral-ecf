@@ -834,8 +834,8 @@ class EditorRascunhoService
      * edição: `DB::table` de propósito, para não subir `revisao` (a conferência continua
      * valendo) nem mexer em `updated_at`. Só grava quando o número ou as cores mudam.
      *
-     * `por_cor` (20/10/2026, vitrine): variante → o que falta NELA, em rótulo curto ("falta foto").
-     * É o que deixa o cartão dizer "Rosa: falta foto" em vez de só "1 de 2 cores com pendência".
+     * `por_cor` (20/10/2026, vitrine): variante → o que falta NELA, em rótulo curto ("falta imagem").
+     * É o que deixa o cartão dizer "Rosa: falta imagem" em vez de só "1 de 2 cores com pendência".
      *
      * `validado` e a `revisao` em dia (20/10/2026): o cartão da vitrine só diz "Pronto" com o resumo feito
      * NESTA revisão e COM a categoria — sem ela nada é validado e "0 bloqueios" não quer dizer nada.
@@ -847,11 +847,13 @@ class EditorRascunhoService
         $porCor = self::pendenciasPorCor($bloqueios, $s);
         $antes = (array) ($r->step_state['resumo'] ?? []);
         if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? [])
-            && $validado === ($antes['validado'] ?? null) && (int) $r->revisao === (int) ($antes['revisao'] ?? -1)) {
+            && $validado === ($antes['validado'] ?? null) && (int) $r->revisao === (int) ($antes['revisao'] ?? -1)
+            && self::VERSAO_DO_RESUMO === ($antes['versao'] ?? null)) {
             return;
         }
         $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
-        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor, 'validado' => $validado];
+        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor, 'validado' => $validado,
+            'versao' => self::VERSAO_DO_RESUMO];
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
     }
 
@@ -881,13 +883,14 @@ class EditorRascunhoService
         return array_map('array_keys', $saida);
     }
 
-    /** "falta foto", "falta estoque"… — o rótulo do chip da vitrine, pelo alvo do problema. */
+    /** "falta imagem", "falta estoque"… — o rótulo do chip da vitrine, pelo alvo do problema. */
     private static function rotuloCurto(array $alvo): string
     {
         $atributo = (string) ($alvo['atributo'] ?? '');
 
         return match (true) {
-            ($alvo['etapa'] ?? null) === 'E6' || isset($alvo['grupo']) || isset($alvo['imagem']) => 'falta foto',
+            // "imagem", não "foto" (o usuário, 20/10/2026: "muda o nome de Falta foto para Falta imagem").
+            ($alvo['etapa'] ?? null) === 'E6' || isset($alvo['grupo']) || isset($alvo['imagem']) => 'falta imagem',
             ($alvo['campo'] ?? null) === 'estoque' => 'falta estoque',
             ($alvo['campo'] ?? null) === 'sku' || $atributo === 'SELLER_SKU' => 'falta SKU',
             in_array($atributo, ['GTIN', 'EMPTY_GTIN_REASON'], true) => 'falta código de barras',
@@ -1064,4 +1067,11 @@ class EditorRascunhoService
             $this->repo->tocar($r);
         });
     }
+
+    /**
+     * A versão do formato do resumo (`step_state.resumo`). Os rótulos do `por_cor` são texto de tela GRAVADO: mudou
+     * um rótulo (20/10/2026: "falta foto" → "falta imagem"), sobe a versão — a vitrine refaz o resumo de outra versão
+     * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela.
+     */
+    public const VERSAO_DO_RESUMO = 2;
 }

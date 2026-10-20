@@ -97,7 +97,7 @@ class VitrineDeProdutosTest extends TestCase
         return route("mlb.anuncios.publicador.{$nome}", ['produto' => $this->produto()->id, ...$extra]);
     }
 
-    /** A cadeira em Preto e Azul, com foto só no Preto: o Azul fica com "falta foto". */
+    /** A cadeira em Preto e Azul, com foto só no Preto: o Azul fica com "falta imagem". */
     private function cadeiraPretaEAzulSemFotoNoAzul(): void
     {
         $this->mesa()->getJson($this->rota('abrir'))->assertOk();
@@ -128,7 +128,7 @@ class VitrineDeProdutosTest extends TestCase
 
         $resumo = (array) PubRascunho::where('produto_id', $this->produto()->id)->value('step_state')['resumo'];
 
-        $this->assertSame(['COLOR=id:52028' => ['falta foto']], $resumo['por_cor']);
+        $this->assertSame(['COLOR=id:52028' => ['falta imagem']], $resumo['por_cor']);
         $this->assertGreaterThanOrEqual(1, $resumo['bloqueios']);
     }
 
@@ -141,10 +141,10 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertSame(['Preto', 'Azul'], array_column($c['cores'], 'rotulo'));
         $this->assertStringStartsWith('https://http2.mlstatic.com/', (string) $c['cores'][0]['foto'], 'o Preto mostra a foto dele');
         $this->assertSame([], $c['cores'][0]['pendencias']);
-        $this->assertSame(['falta foto'], $c['cores'][1]['pendencias']);
+        $this->assertSame(['falta imagem'], $c['cores'][1]['pendencias']);
         $this->assertSame($c['cores'][0]['foto'], $c['foto'], 'a capa do cartão é a 1ª cor');
         $this->assertSame('pendencia', $c['grupo']);
-        $this->assertStringStartsWith('Azul: falta foto', $c['chip']['texto']);
+        $this->assertStringStartsWith('Azul: falta imagem', $c['chip']['texto']);
         $this->assertSame('ambar', $c['chip']['tom']);
         // 2 cores × Clássico e Premium; preços mín–máx entre as cores.
         $this->assertSame(4, $c['anuncios']);
@@ -178,7 +178,7 @@ class VitrineDeProdutosTest extends TestCase
 
         $this->assertNull($c['foto']);
         $this->assertSame('pendencia', $c['grupo'], 'resumo que não existe não é "nada falta"');
-        $this->assertSame('Falta foto', $c['chip']['texto']);
+        $this->assertSame('Falta imagem', $c['chip']['texto']);
         $resumo = (array) $r->fresh()->step_state['resumo'];
         $this->assertSame((int) $r->fresh()->revisao, $resumo['revisao'], 'a visita refez o resumo nesta revisão');
         $this->assertTrue($resumo['validado']);
@@ -205,14 +205,33 @@ class VitrineDeProdutosTest extends TestCase
         // Um resumo velho dizendo "nada falta" — o rascunho mudou depois (Portal, IA) sem ninguém abrir o editor.
         $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
         $estado = (array) $r->step_state;
-        $estado['resumo'] = ['bloqueios' => 0, 'revisao' => (int) $r->revisao - 1, 'por_cor' => [], 'validado' => true];
+        $estado['resumo'] = ['bloqueios' => 0, 'revisao' => (int) $r->revisao - 1, 'por_cor' => [], 'validado' => true,
+            'versao' => EditorRascunhoService::VERSAO_DO_RESUMO];
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
 
         $c = $this->cartaoDaCadeira();
 
         $this->assertSame('pendencia', $c['grupo']);
-        $this->assertStringStartsWith('Azul: falta foto', $c['chip']['texto']);
+        $this->assertStringStartsWith('Azul: falta imagem', $c['chip']['texto']);
         $this->assertSame((int) $r->revisao, $r->fresh()->step_state['resumo']['revisao']);
+    }
+
+    public function test_produto_que_saiu_do_portal_avisa_e_pode_ser_marcado_para_excluir(): void
+    {
+        // O cliente excluiu no Portal: a FK `nullOnDelete` solta as duas ligações e o produto fica aqui.
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+        // O id ANTES de soltar: `produto()` acha o produto pela oferta, que deixa de existir aqui.
+        $id = $this->produto()->id;
+        PubProduto::whereKey($id)->update(['oferta_id' => null, 'estrutura_produto_id' => null]);
+
+        $alvo = app(ProgramasPublicadorService::class)->resolver('company-'.$this->empresa->id);
+        $c = collect(app(VitrineDeProdutosService::class)->montar($alvo)['cartoes'])->firstWhere('produto_id', $id);
+
+        $this->assertTrue($c['saiu_do_portal']);
+        $this->assertFalse($c['do_portal'], 'o selo "Portal" mentiria');
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertSame(['texto' => 'Saiu do Portal', 'tom' => 'vermelho', 'detalhe' => 'Marque e exclua daqui também'], $c['chip']);
+        $this->assertTrue($c['selecionavel'], 'marca-se para a exclusão da barra');
     }
 
     public function test_publicado_vai_para_o_grupo_dele_e_nao_se_marca(): void
@@ -272,6 +291,6 @@ class VitrineDeProdutosTest extends TestCase
             Problema::bloqueio('V-IMG-04', 'Galeria geral vazia.', ['etapa' => 'E6', 'grupo' => 'GENERAL']),
         ], $s);
 
-        $this->assertSame(['COLOR=id:2' => ['falta foto', 'falta estoque']], $porCor);
+        $this->assertSame(['COLOR=id:2' => ['falta imagem', 'falta estoque']], $porCor);
     }
 }

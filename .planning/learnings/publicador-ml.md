@@ -1745,3 +1745,15 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   da URL) liga só nas listadas (`VitrineDeProdutosService::ligadaPara`). Em 20/10 ficou ligada só na #459 ("só na
   #459 primeiro"); o time segue com a lista até o usuário aprovar. A vitrine NÃO tem "Editar em grade", a busca por
   SKU, "Confortável/Compacto" nem o filtro "Com problema" — conferir com o usuário antes de ligar para todos.
+- **"Pronto" é afirmação** (20/10, "está dizendo que está pronto, mas nem imagem tem"): o cartão lia
+  `step_state.resumo.bloqueios`, e rascunho que nunca teve resumo (planilha, kit, Portal sem abrir o editor — 9 dos 39
+  da #459) contava como "nada falta"; sem categoria o `estado()` nem valida e gravava 0. Agora "Pronto" exige foto e o
+  resumo em dia: mesma `revisao`, `validado` e a `versao` de hoje — senão a vitrine refaz (o `estado()` do editor,
+  ~40 ms, até 40 por visita) ou diz "A conferir"/"Falta categoria"/"Falta imagem".
+- **Os rótulos do `por_cor` são texto GRAVADO** no resumo ("Rosa: falta imagem"). Mudou um rótulo, sobe
+  `EditorRascunhoService::VERSAO_DO_RESUMO`: a vitrine refaz o resumo de outra versão e o texto velho sai da tela
+  (foi assim no "falta foto" → "falta imagem").
+- **"Saiu do Portal":** o cliente exclui no Portal (hard delete) e a FK `nullOnDelete` deixa `oferta_id` e
+  `estrutura_produto_id` nulos — o produto fica no Publicador. A vitrine mostra o chip vermelho e exclui pela seleção
+  com o MESMO `DialogoExcluirProdutos`/`ExcluirProdutoService` da lista (só o que nunca foi publicado; o que ainda
+  existe no Portal é recusado com EXC-01). Na #459, em 20/10, eram 22 assim.

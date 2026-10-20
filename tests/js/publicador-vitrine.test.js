@@ -51,10 +51,10 @@ const { default: CartaoDaVitrine } = await montarModulo('resources/js/Components
 
 const POLTRONA = {
     produto_id: 2, nome: 'Poltrona Decorativa Veludo', sku: 'POL-VEL-02', do_portal: true, fase: 'Fase 1', grupo: 'pendencia',
-    chip: { texto: 'Rosa: falta foto', tom: 'ambar', detalhe: 'Falta 1 item no total' },
+    chip: { texto: 'Rosa: falta imagem', tom: 'ambar', detalhe: 'Falta 1 item no total' },
     cores: [
         { chave: 'COLOR=txt:verde', rotulo: 'Verde', foto: '/fotos/verde.png', pendencias: [] },
-        { chave: 'COLOR=txt:rosa', rotulo: 'Rosa', foto: null, pendencias: ['falta foto'] },
+        { chave: 'COLOR=txt:rosa', rotulo: 'Rosa', foto: null, pendencias: ['falta imagem'] },
     ],
     foto: '/fotos/verde.png',
     precos: { gold_special: { min: 353.96, max: 353.96 }, gold_pro: { min: 381.4, max: 399.9 } },
@@ -119,9 +119,9 @@ test('cartão — foto, bolinhas por cor (a pendente marcada), chip com a cor, p
     assert.match(html, /data-vitrine-cartao="2"/);
     assert.match(html, /<img src="\/fotos\/verde.png" alt="Poltrona Decorativa Veludo"/);
     assert.equal(contar(html, 'data-vitrine-cor='), 2);
-    assert.match(html, /title="Rosa: falta foto"/);
+    assert.match(html, /title="Rosa: falta imagem"/);
     assert.match(html, /data-vitrine-anuncios="true">2 cores · 4 anúncios</);
-    assert.match(html, /data-vitrine-chip="ambar">Rosa: falta foto</);
+    assert.match(html, /data-vitrine-chip="ambar">Rosa: falta imagem</);
     assert.match(html, /title="Falta 1 item no total"/);
     assert.match(html, /data-vitrine-preco="gold_special">R\$ 353,96</);
     assert.match(html, /data-vitrine-preco="gold_pro">R\$ 381,40 – R\$ 399,90</);
@@ -154,7 +154,7 @@ const FACE = { ...MESA, url_previa: '/editor?etapa=previa' };
 const CADEIRA = { ...FACE, produto_id: 10, familias: [10], familia_id: 10, tipo: 'simples', fase_numero: 1, fase: 'Fase 1', grupo: 'prontos', nome: 'Cadeira' };
 const COMBO2 = { ...FACE, produto_id: 11, familias: [10], tipo: 'combo', fase_numero: 2, quantidade: 2, fase: 'Fase 2 · Combo 2 un', grupo: 'prontos', nome: 'Combo 2 Cadeiras' };
 const COMBO4 = { ...FACE, produto_id: 12, familias: [10], tipo: 'combo', fase_numero: 2, quantidade: 4, fase: 'Fase 2 · Combo 4 un', grupo: 'pendencia', nome: 'Combo 4 Cadeiras',
-    chip: { texto: 'Azul: falta foto', tom: 'ambar' } };
+    chip: { texto: 'Azul: falta imagem', tom: 'ambar' } };
 const MESA_RD = { ...FACE, produto_id: 20, familias: [20], tipo: 'simples', fase_numero: 1, fase: 'Fase 1', grupo: 'publicados', selecionavel: false, nome: 'Mesa Redonda' };
 const KIT = { ...FACE, produto_id: 30, familias: [20, 10], tipo: 'kit', fase_numero: 3, fase: 'Fase 3 · Kit', grupo: 'prontos', nome: 'Mesa + Cadeira', composicao: 'Mesa Redonda + Cadeira' };
 const COMBIT = { ...FACE, produto_id: 31, familias: [20, 10], tipo: 'combit', fase_numero: 4, fase: 'Fase 4 · Combit', grupo: 'pendencia', nome: 'Mesa + 4 Cadeiras',
@@ -193,13 +193,14 @@ test('pílulas — uma por fase, com as faces de cada uma e se alguma tem pendê
     assert.deepEqual(pilulasDasFases(null), []);
 });
 
-test('cartão da família — pílulas por fase, contagem na Fase 2, composição e a face de espera sem marcar nem prévia', () => {
+test('cartão da família — pílulas por fase (só o nome e a bolinha), composição e a face de espera sem marcar nem prévia', () => {
     const faces = familiasDaVitrine([CADEIRA, COMBO2, COMBO4, KIT, COMBIT], 'todos', [ESPERA3])[0].fases;
     const html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: faces, inicial: 3, selecao: new Set([11]) }));
     assert.match(html, /data-fases="6"/);
     assert.equal(contar(html, 'data-vitrine-pilula-fase='), 4);
     assert.match(html, /aria-current="true"[^>]*data-vitrine-pilula-fase="2"/, 'abre no Combo 4, da Fase 2');
-    assert.match(html, /data-vitrine-pilula-quantas="true">3</);
+    // A pílula é só o nome da fase e, se falta algo, a bolinha (o usuário, 20/10/2026: "é apenas o nome da fase ali").
+    assert.doesNotMatch(html, /data-vitrine-pilula-quantas/, 'sem o número de anúncios na pílula');
     assert.match(html, />Fase 4</);
     assert.match(html, />Fase 2 · Combo 4 un</);
     assert.match(html, /translateX\(calc\(-300% \+ 0px\)\)/, 'abre na 4ª face');
@@ -210,7 +211,7 @@ test('cartão da família — pílulas por fase, contagem na Fase 2, composiçã
     assert.match(html, /Mesa Redonda \+ 4× Cadeira/);
     assert.equal(contar(html, 'data-vitrine-previa'), 5, 'a face de espera não abre prévia');
     assert.equal(contar(html, 'data-vitrine-marcar'), 5, 'nem se marca');
-    assert.match(html, /aria-label="marcada"/, 'o Combo 2 marcado aparece na pílula da Fase 2');
+    assert.doesNotMatch(html, /aria-label="marcada"/, 'nem a marca de selecionado: a barra de baixo já conta');
     assert.match(html, /border-pub-accent shadow-pub-cta/, 'família com fase marcada ganha a borda');
     // Uma face só (20/10/2026): a linha das fases existe igual, só com a pílula da Fase 1 — a foto de todos os
     // cartões começa na mesma altura. Seta não há: não tem para onde passar.
@@ -243,5 +244,14 @@ test('página — publica a seleção pela fila em lote, um só botão amarelo n
     assert.doesNotMatch(f, /AvisoContaTravada|Confortável|Compacto|Buscar SKU/);
     assert.match(f, /<PublicadorHeader/);
     assert.match(f, /familiasDaVitrine\(lista, filtro, planejados\)/);
-    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 2, 'o recarregar traz as faces de espera junto');
+    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 3, 'o recarregar traz as faces de espera junto');
+});
+
+test('página — exclui a seleção pelo MESMO diálogo da lista (o servidor decide quem pode sair)', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/ProdutosVitrine.jsx');
+    assert.match(f, /import DialogoExcluirProdutos from '@\/Components\/Mlb\/Publicador\/DialogoExcluirProdutos'/);
+    assert.match(f, /data-acao="excluir-selecionados"/);
+    assert.match(f, /setExclusao\(\{ ids: selecionados\.ids \}\)/);
+    assert.match(f, /<DialogoExcluirProdutos aberto=\{exclusao !== null\}/);
+    assert.match(f, /onConcluido=\{aoConcluirExclusao\}/);
 });

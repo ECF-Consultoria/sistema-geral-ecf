@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
-import { CheckSquare, Plus, Send } from 'lucide-react';
+import { CheckSquare, Plus, Send, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
@@ -10,6 +10,7 @@ import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoD
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import AvisoDaFila from '@/Components/Mlb/Publicador/AvisoDaFila';
 import { destinoDoLote } from '@/Components/Mlb/Publicador/AcoesDaSelecaoEmLote';
+import DialogoExcluirProdutos from '@/Components/Mlb/Publicador/DialogoExcluirProdutos';
 import CartaoDaVitrine from '@/Components/Mlb/Publicador/vitrine/CartaoDaVitrine';
 import { FILTROS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
     const [status, setStatus] = useState(null);
     const [resumo, setResumo] = useState(null);
     const [acompanhando, setAcompanhando] = useState(false);
+    const [exclusao, setExclusao] = useState(null);
     const resumoPronto = useRef(false);
 
     const lista = listaSegura(cartoes);
@@ -90,6 +92,16 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
         return nova;
     });
     const marcarProntos = () => setSelecao(new Set(prontosAVista.map((c) => Number(c.produto_id))));
+
+    // 20/10/2026, o usuário: "exclui umas coisas no Portal mas continua no Publicador". A regra é do servidor:
+    // só sai o que nunca foi publicado e já saiu do Portal — o diálogo mostra a prévia antes de excluir.
+    function aoConcluirExclusao(resultado) {
+        const excluidos = Array.isArray(resultado?.excluidos) ? resultado.excluidos.map(Number) : [];
+        setExclusao(null);
+        setSelecao((atual) => new Set([...atual].filter((id) => ! excluidos.includes(Number(id)))));
+        setStatus({ tipo: 'ok', texto: typeof resultado?.texto === 'string' ? resultado.texto : 'Pronto.' });
+        router.reload({ only: ['cartoes', 'planejados', 'contagens'] });
+    }
 
     return (
         <AppLayout title={`Publicador — ${empresa?.nome ?? ''}`}>
@@ -167,16 +179,25 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                                 Limpar seleção
                             </button>
                         </p>
+                        <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => setExclusao({ ids: selecionados.ids })}
+                            className="inline-flex h-11 items-center gap-2 rounded-pub-control border border-pub-line px-4 text-[14px] font-medium text-pub-txt-2 hover:border-red-500/40 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
+                            data-acao="excluir-selecionados">
+                            <Trash2 size={16} aria-hidden="true" /> Excluir
+                        </button>
                         <Link href={destinoDoLote(empresa.chave, selecionados.ids)}
                             className="inline-flex h-11 items-center gap-2 rounded-pub-control bg-pub-accent px-5 text-[14px] font-semibold text-pub-page hover:bg-pub-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
                             data-acao="publicar-selecionados">
                             <Send size={16} aria-hidden="true" /> Publicar {selecionados.produtos} {selecionados.produtos === 1 ? 'produto' : 'produtos'}
                         </Link>
+                        </div>
                     </div>
                 </div>
             )}
 
             <ModalNovoProduto aberto={modal} onFechar={() => setModal(false)} conta={empresa?.chave} skusExistentes={skus} />
+            <DialogoExcluirProdutos aberto={exclusao !== null} onFechar={() => setExclusao(null)} conta={empresa?.chave}
+                ids={exclusao?.ids ?? []} onConcluido={aoConcluirExclusao} />
         </AppLayout>
     );
 }

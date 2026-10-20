@@ -234,10 +234,9 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
                                 className={cn('relative inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-pub-chip px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                                     naFase ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
                                 data-vitrine-pilula-fase={p.numero}>
+                                {/* Só o nome da fase e, se falta algo, a bolinha (o usuário, 20/10/2026: "é apenas o nome da fase ali"). */}
                                 {p.rotulo}
-                                {quantas > 1 && <span className="ml-1 rounded-full bg-pub-hover-2 px-1 text-[10px] tabular-nums text-pub-txt-2" data-vitrine-pilula-quantas>{quantas}</span>}
-                                {p.pendencia && <span aria-hidden="true" className="ml-1 h-1.5 w-1.5 rounded-full bg-pub-warn" />}
-                                {p.indices.some((i) => estaMarcado(lista[i])) && <Check size={11} strokeWidth={3} className="ml-0.5 text-pub-accent" aria-label="marcada" />}
+                                {p.pendencia && <span aria-hidden="true" className="ml-1 h-1.5 w-1.5 rounded-full bg-pub-warn" data-vitrine-pilula-pendencia />}
                             </button>
                         );
                     })}

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * A VITRINE de produtos da conta (20/10/2026, protótipo em localhost atrás de `publicador.vitrine`): um cartão
  * por produto, com a foto grande, uma bolinha por cor (a foto de cada uma), os preços, os anúncios previstos e
- * um chip que diz O QUE falta — e de QUAL cor, quando é uma só ("Rosa: falta foto").
+ * um chip que diz O QUE falta — e de QUAL cor, quando é uma só ("Rosa: falta imagem").
  *
  * Parte da visão rápida do lote (`ResumoRapidoService::linhas`, com os publicados): preços mín–máx por tipo,
  * anúncios, se está na fila. Acrescenta só o que ela não tem: as fotos de cada cor, na ordem final do plano
@@ -38,8 +38,8 @@ final class VitrineDeProdutosService
 
     private const ORDEM = [self::PRONTOS => 0, self::PENDENCIA => 1, self::PUBLICADOS => 2];
 
-    /** Quantos resumos do que falta a vitrine refaz por visita (~40 ms cada); o resto sai "A conferir" e vem na próxima. */
-    private const RESUMOS_POR_VISITA = 20;
+    /** Quantos resumos do que falta a vitrine refaz por visita (~40–80 ms cada); o resto sai "A conferir" e vem na próxima. */
+    private const RESUMOS_POR_VISITA = 40;
 
     public function __construct(
         private ResumoRapidoService $resumo,
@@ -94,7 +94,12 @@ final class VitrineDeProdutosService
         $faltam = (int) ($l['faltam'] ?? 0);
         $falhou = ($l['situacao']['chave'] ?? null) === 'erro';
         $temFoto = $foto !== null || collect($cores)->contains(fn (array $c) => $c['foto'] !== null);
-        $naoPronto = $publicado || $falhou ? null : self::naoEstaPronto($r, $status, $temFoto, $faltam);
+        // O cliente excluiu no Portal: as duas ligações viraram NULL (FK `nullOnDelete`) e o produto ficou aqui. Sai
+        // pela exclusão da vitrine (`ExcluirProdutoService`, que só exclui o que nunca foi publicado).
+        $saiuDoPortal = $p !== null && $p->origem === PubProduto::ORIGEM_PORTAL && $p->estrutura_produto_id === null && $p->oferta_id === null;
+        $naoPronto = $publicado || $falhou ? null : ($saiuDoPortal
+            ? ['texto' => 'Saiu do Portal', 'tom' => 'vermelho', 'detalhe' => 'Marque e exclua daqui também']
+            : self::naoEstaPronto($r, $status, $temFoto, $faltam));
         $grupo = $publicado ? self::PUBLICADOS
             : ($naoPronto !== null || $faltam > 0 || $falhou || ($l['bloqueios'] ?? []) !== [] ? self::PENDENCIA : self::PRONTOS);
         $familias = $f['familias'] ?? [(int) $l['produto_id']];
@@ -111,7 +116,8 @@ final class VitrineDeProdutosService
             'composicao' => $f['composicao'] ?? null,
             'nome' => (string) $l['nome'],
             'sku' => (string) $l['sku'],
-            'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL,
+            'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL && ! $saiuDoPortal,
+            'saiu_do_portal' => $saiuDoPortal,
             'fase' => $f['selo'] ?? 'Fase 1',
             'grupo' => $grupo,
             'chip' => $naoPronto ?? self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
@@ -251,16 +257,15 @@ final class VitrineDeProdutosService
     private static function naoEstaPronto(?PubRascunho $r, ?string $status, bool $temFoto, int $faltam): ?array
     {
         if (! $temFoto) {
-            return ['texto' => 'Falta foto', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
+            return ['texto' => 'Falta imagem', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
         }
         if ($r === null || $status !== PubRascunho::DRAFT) {
             return null;
         }
-        $resumo = (array) ($r->step_state['resumo'] ?? []);
-        if ((int) ($resumo['revisao'] ?? -1) !== (int) $r->revisao || ! array_key_exists('validado', $resumo)) {
+        if (! self::resumoEmDia($r)) {
             return ['texto' => 'A conferir', 'tom' => 'ambar', 'detalhe' => 'Abra a prévia para conferir'];
         }
-        if ($resumo['validado'] !== true) {
+        if (($r->step_state['resumo']['validado'] ?? null) !== true) {
             return ['texto' => 'Falta categoria', 'tom' => 'ambar', 'detalhe' => null];
         }
 
@@ -277,12 +282,8 @@ final class VitrineDeProdutosService
      */
     private function refazerResumos(Collection $rascunhos): int
     {
-        $velhos = $rascunhos->filter(function (PubRascunho $r) {
-            $resumo = (array) ($r->step_state['resumo'] ?? []);
-
-            return $r->status === PubRascunho::DRAFT
-                && ((int) ($resumo['revisao'] ?? -1) !== (int) $r->revisao || ! array_key_exists('validado', $resumo));
-        })->take(self::RESUMOS_POR_VISITA);
+        $velhos = $rascunhos->filter(fn (PubRascunho $r) => $r->status === PubRascunho::DRAFT && ! self::resumoEmDia($r))
+            ->take(self::RESUMOS_POR_VISITA);
 
         $feitos = 0;
         foreach ($velhos as $r) {
@@ -295,5 +296,15 @@ final class VitrineDeProdutosService
         }
 
         return $feitos;
+    }
+
+    /** O resumo do que falta foi feito NESTA revisão, no formato de hoje (com `validado`)? */
+    private static function resumoEmDia(PubRascunho $r): bool
+    {
+        $resumo = (array) ($r->step_state['resumo'] ?? []);
+
+        return (int) ($resumo['revisao'] ?? -1) === (int) $r->revisao
+            && array_key_exists('validado', $resumo)
+            && ($resumo['versao'] ?? null) === EditorRascunhoService::VERSAO_DO_RESUMO;
     }
 }
