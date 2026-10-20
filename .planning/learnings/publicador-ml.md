@@ -1631,3 +1631,29 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   dos arquivos novos (`aspect-[4/3]`, `max-w-[1320px]`, a grade) não entram no CSS, e o cartão ocupa a tela inteira.
   Reiniciar o Vite. Matar só a tarefa do terminal deixa o `node` ouvindo na porta: conferir o PID pela linha de comando
   antes de encerrar.
+
+## 39. "Fase" tem dois sentidos, e Combo/Kit/Combit nascem só no Planejamento (20/10/2026)
+
+- **Na metodologia do usuário, "Fase" é o TIPO da oferta:** Fase 1 Simples, Fase 2 Combo (o mesmo produto × N,
+  qualquer N), Fase 3 Kit (produtos diferentes), Fase 4 Combit (kit com algum item × N). É a régua do "Como funciona"
+  do Portal (`ComoFunciona.jsx`). **`pub_produtos.fase` é outra coisa:** a quantidade ("Kit N é a Fase N", decisão de
+  10/10, `faseDaQuantidade`). O Combo de 3 cadeiras é Fase 2 para o usuário e `fase = 3` na coluna; o Kit mesa +
+  cadeira é Fase 3 para ele e `fase = 1` (composto sem base) na coluna. A vitrine usa a régua do Portal
+  (`FasesDaVitrineService`) e NÃO lê a coluna; Visão geral, buckets `por_fase` e a tela do Produto seguem na
+  quantidade. Alinhar o resto é decisão do usuário, com o outro dev (o código é da Fase 175).
+- **O Combit é Fase 4.** Numa primeira pergunta o usuário pôs o Combit "na Fase 3, junto com o Kit"; quando viu que o
+  Portal já dizia Fase 4, escolheu "Fase 4 nos dois". Não mude o "Como funciona" do Portal.
+- **Decisão de 20/10: criar Combo, Kit e Combit é SÓ no Planejamento do Portal.** O Publicador monta o anúncio de cada
+  um sozinho. O combo planejado vira anúncio quando a Fase 1 for publicada (a regra do KIT-05 vira o gatilho). O
+  "Criar Fase N" sai do Publicador, menos onde não há Portal: conta de Polos sem empresa cadastrada e produto criado
+  direto no Publicador. **Ainda não implementado** (nota `.planning/coordenacao/261020-combo-kit-combit-so-no-planejamento.md`):
+  hoje o Combo do Portal continua "aguardando a Fase N" até alguém clicar.
+- **Na vitrine, o Kit e o Combit aparecem no cartão de CADA componente** que está no Publicador (a mesma face; marcar
+  num marca no outro, porque a seleção é pelo id). O componente se acha pela variação → produto do Portal → base
+  (`estrutura_produto_id`) ou, no legado de um produto por cor, pela oferta Simples (`oferta_id`). Composto sem
+  componente no Publicador fica no próprio cartão. A face de espera ("Espera a Fase 1 ser publicada") é o Combo do
+  Planejamento sem anúncio: `quantidadesDoPlanejamentoEmLote` faz em 3 consultas o que `quantidadesDoPlanejamento`
+  faz por produto, com a mesma régua de cores (`CoresDoGrupo`), e um teste compara os dois.
+- **Build local de worktree aponta os pedaços dinâmicos para o `ASSET_URL` do `.env`** (`localhost/ecf_admin/public`):
+  servindo o build por outra porta, um chunk cai em CORS. Para provar o bundle de produção do worktree, basta
+  renomear o `public/hot` DELE (não o do `ecf_admin`) e recarregar; o resto da página carrega do `/build`.
