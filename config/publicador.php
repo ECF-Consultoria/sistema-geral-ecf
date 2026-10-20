@@ -213,15 +213,18 @@ return [
     // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
     // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
     // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
-    // (id) com a chave `mlb.criativos_ia`. A aprovação das imagens continua sendo de gente.
+    // (id) com a chave `mlb.criativos_ia`. Desde 20/10/2026 as imagens do kit automático entram SOZINHAS no anúncio,
+    // na frente do grupo (capa), e quem confere é a Prévia (etapa 5); a que o juiz reprovou fica para alguém decidir.
     'criativos_auto' => [
         'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
         // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
-        // Os tipos de imagem do kit automático, na ordem (os do catálogo do Creative Engine).
+        // Os tipos de imagem do kit automático, na ordem — é também a ordem na frente da galeria (o 1º vira a capa
+        // do Clássico; o 2º, a do Premium, pela rotação D6). Os do catálogo do Creative Engine.
         'slots' => ['lifestyle', 'hero'],
-        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores).
-        'todas_as_cores' => false,
+        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores). Produto do
+        // Portal costuma ter as fotos POR COR: com false, só a 1ª cor ganha a capa por IA.
+        'todas_as_cores' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES', false),
     ],
 
     // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.

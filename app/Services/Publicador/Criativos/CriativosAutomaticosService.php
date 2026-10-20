@@ -3,6 +3,7 @@
 namespace App\Services\Publicador\Criativos;
 
 use App\Jobs\PlanejarKitCriativosJob;
+use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Models\Configuracao;
 use App\Models\MlAnuncioCriativo;
@@ -14,6 +15,7 @@ use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
+use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Bus;
@@ -46,8 +48,12 @@ use Illuminate\Support\Str;
  * Passando, planeja e gera na MESMA passada (as referências efêmeras somem em 48 h — `creative:limpar-referencias` —,
  * então planejar e esperar alguém clicar "Gerar" desperdiçaria o plano): `PlanejarKitCriativosJob` (o do Creative
  * Engine, intocado) e, encadeado, `GerarCriativosAutomaticosJob`, que despacha a geração pelo mesmo
- * `CreativeKitDespachante` do botão. A APROVAÇÃO continua de gente: o kit aparece no editor como qualquer kit do
- * Publicador, e a visão rápida do lote avisa "Imagens de IA prontas para revisar".
+ * `CreativeKitDespachante` do botão.
+ *
+ * Desde 20/10/2026 (decisões do usuário) as imagens do kit automático ENTRAM SOZINHAS no anúncio, na frente do
+ * grupo, como capa ({@see aplicar()}): "o preview é a única coisa que o colaborador confere; a IA faz o resto, e
+ * se estiver errado a gente corrige". A conferência é a Prévia (etapa 5). O kit pedido no botão segue com a
+ * aprovação de gente, e a imagem que o juiz reprovou também.
  *
  * Nunca lança para quem chama (o preparo): devolve o motivo, que vai para o log.
  */
@@ -165,6 +171,147 @@ final class CriativosAutomaticosService
         Log::info("[Creative] Imagens automáticas: kit {$kit->id} do rascunho {$r->id} — {$res['enfileirados']} imagem(ns) na fila.");
 
         return 'gerando:'.$res['enfileirados'];
+    }
+
+    /**
+     * As imagens do kit AUTOMÁTICO pronto entram SOZINHAS no anúncio, na FRENTE do grupo (a capa), na ordem dos slots
+     * (decisões do usuário de 20/10/2026). Quem confere é a Prévia (etapa 5), não o painel de criativos.
+     *
+     * - Só o kit que ESTA automação pediu (`step_state.criativos_auto.grupos[grupo].kit_id`): o do botão segue com a
+     *   aprovação de gente. Uma vez por kit (`aplicado_em`).
+     * - Espera o juiz (validação da Fase 162): com algum slot pronto ainda `pendente`, sai — volta quando ele
+     *   terminar. Imagem REPROVADA que o motor ainda vai refazer sozinho (VAL-05: uma vez, dentro do orçamento do kit)
+     *   também faz esperar; a que não vai ser refeita não entra e fica no painel para alguém decidir.
+     * - Entra pelo MESMO `aprovarSlot` do botão (foto do Publicador, dedupe por sha256, disco) e depois vai para a
+     *   frente (`EditorRascunhoService::trazerParaFrente`). Na regra de hoje, o Clássico abre com a 1ª e o Premium
+     *   com a 2ª (rotação D6).
+     *
+     * Nunca lança para quem chama (o Job): devolve o motivo, que vai para o log.
+     *
+     * @return string sem_kit, nao_pronto, desligado, nao_automatico, ja_aplicado, intocavel, sem_usuario,
+     *                esperando_juiz, esperando_regeneracao, nada_aprovavel, erro, aplicado:N
+     */
+    public function aplicar(int $kitId): string
+    {
+        try {
+            $kit = MlAnuncioCriativoKit::find($kitId);
+            if ($kit === null || $kit->pub_rascunho_id === null) {
+                return 'sem_kit';
+            }
+            if (! in_array($kit->status, [MlAnuncioCriativoKit::STATUS_PRONTO, MlAnuncioCriativoKit::STATUS_PARCIAL], true)) {
+                return 'nao_pronto';
+            }
+            if (! (bool) config('publicador.criativos_auto.ativo', false) || ! $this->chave->ativa()) {
+                return 'desligado';
+            }
+            $grupo = (string) $kit->pub_grupo;
+            $memoria = (array) ($this->lerEstado((int) $kit->pub_rascunho_id)[self::MEMORIA]['grupos'][$grupo] ?? []);
+            if ((int) ($memoria['kit_id'] ?? 0) !== (int) $kit->id) {
+                return 'nao_automatico';
+            }
+            if (isset($memoria['aplicado_em'])) {
+                return 'ja_aplicado';
+            }
+            $r = PubRascunho::find($kit->pub_rascunho_id);
+            if ($r === null || in_array($r->status, PublicadorCriativoAprovacaoService::INTOCAVEIS, true)) {
+                return 'intocavel';
+            }
+            $usuario = $this->usuario();
+            if ($usuario === null) {
+                return 'sem_usuario';
+            }
+
+            $prontos = $kit->slots()->where('status', MlAnuncioCriativo::STATUS_PRONTO)->orderBy('slot_indice')->get();
+            if ((bool) config('services.creative.validacao.ativa', true)
+                && $prontos->contains(fn (MlAnuncioCriativo $s) => $s->validacao_status === MlAnuncioCriativo::VALIDACAO_PENDENTE)) {
+                return 'esperando_juiz';
+            }
+            $reprovadas = $prontos->filter(fn (MlAnuncioCriativo $s) => $s->validacao_status === MlAnuncioCriativo::VALIDACAO_REPROVADA);
+            if ((bool) config('services.creative.validacao.regenerar_automatico', true)
+                && $reprovadas->contains(fn (MlAnuncioCriativo $s) => $s->regeneracao_automatica !== true && $kit->podeRegenerarAsset($s))) {
+                return 'esperando_regeneracao';
+            }
+            $boas = $prontos->reject(fn (MlAnuncioCriativo $s) => $s->validacao_status === MlAnuncioCriativo::VALIDACAO_REPROVADA)->values();
+            if ($boas->isEmpty()) {
+                $this->marcarAplicado($r->id, $grupo, 0);
+                Log::info("[Creative] Imagens automáticas: kit {$kit->id} sem imagem aprovável (o juiz reprovou); nada entrou no rascunho {$r->id}.");
+
+                return 'nada_aprovavel';
+            }
+
+            $aprovacao = app(PublicadorCriativoAprovacaoService::class);
+            $ids = [];
+            foreach ($boas as $slot) {
+                $res = $aprovacao->aprovarSlot($r->fresh(), $slot, $grupo, $usuario);
+                if ($res['ok'] && $res['imagem_id'] !== null) {
+                    $ids[] = (int) $res['imagem_id'];
+                } else {
+                    Log::warning("[Creative] Imagens automáticas: o slot {$slot->id} do kit {$kit->id} não entrou no rascunho {$r->id}: {$res['mensagem']}");
+                }
+            }
+            $editor = app(EditorRascunhoService::class);
+            if ($ids !== []) {
+                $editor->trazerParaFrente($r->fresh(), $grupo, $ids);
+            }
+            if ($ids !== [] && count($ids) === $prontos->count()) {
+                // Como o "Aprovar kit": fecha o kit só quando TODA imagem pronta entrou.
+                $kit->update(['status' => MlAnuncioCriativoKit::STATUS_APROVADO, 'aprovado_por' => $usuario->id, 'aprovado_em' => now()]);
+            }
+            $this->marcarAplicado($r->id, $grupo, count($ids));
+            Log::info("[Creative] Imagens automáticas: kit {$kit->id} — ".count($ids)." imagem(ns) na frente do grupo {$grupo} do rascunho {$r->id}.");
+
+            // O resumo do que falta (lista, vitrine): sem ele o rascunho mostraria o estado de antes das fotos.
+            try {
+                $editor->estado($r->fresh());
+            } catch (\Throwable $e) {
+                Log::warning("[Creative] Imagens automáticas: o resumo do rascunho {$r->id} não foi recalculado: {$e->getMessage()}");
+            }
+
+            return 'aplicado:'.count($ids);
+        } catch (\Throwable $e) {
+            Log::error("[Creative] Imagens automáticas: o kit {$kitId} não entrou no anúncio: {$e->getMessage()}");
+
+            return 'erro';
+        }
+    }
+
+    /**
+     * Gatilho do KIT (o `updated` do Eloquent, registrado no `AppServiceProvider`): o status virou pronto/parcial.
+     * Só o barato aqui — a chave e o kit ser do Publicador; quem confere o resto é o {@see aplicar()}, no Job. Roda
+     * dentro dos Jobs do Creative Engine: NUNCA lança.
+     */
+    public static function aoMudarKit(MlAnuncioCriativoKit $kit): void
+    {
+        try {
+            if ($kit->pub_rascunho_id !== null && $kit->wasChanged('status')
+                && in_array($kit->status, [MlAnuncioCriativoKit::STATUS_PRONTO, MlAnuncioCriativoKit::STATUS_PARCIAL], true)
+                && (bool) config('publicador.criativos_auto.ativo', false)) {
+                AplicarCriativosAutomaticosJob::dispatch((int) $kit->id)->afterCommit();
+            }
+        } catch (\Throwable $e) {
+            Log::warning("[Creative] Imagens automáticas: o gatilho do kit {$kit->id} falhou: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Gatilho do SLOT: o juiz terminou (a validação saiu de "pendente"). Com o kit já pronto, é a vez de aplicar.
+     * Mesmo cuidado do {@see aoMudarKit()}: barato e nunca lança.
+     */
+    public static function aoMudarSlot(MlAnuncioCriativo $slot): void
+    {
+        try {
+            if ($slot->kit_id === null || ! $slot->wasChanged('validacao_status') || $slot->validacao_status === MlAnuncioCriativo::VALIDACAO_PENDENTE
+                || ! (bool) config('publicador.criativos_auto.ativo', false)) {
+                return;
+            }
+            $kit = MlAnuncioCriativoKit::query()->whereKey($slot->kit_id)->first(['id', 'pub_rascunho_id', 'status']);
+            if ($kit !== null && $kit->pub_rascunho_id !== null
+                && in_array($kit->status, [MlAnuncioCriativoKit::STATUS_PRONTO, MlAnuncioCriativoKit::STATUS_PARCIAL], true)) {
+                AplicarCriativosAutomaticosJob::dispatch((int) $kit->id)->afterCommit();
+            }
+        } catch (\Throwable $e) {
+            Log::warning("[Creative] Imagens automáticas: o gatilho do slot {$slot->id} falhou: {$e->getMessage()}");
+        }
     }
 
     // ═══ Um grupo ════════════════════════════════════════════════════════════
@@ -338,6 +485,17 @@ final class CriativosAutomaticosService
     private function lerEstado(int $rascunhoId): array
     {
         return json_decode((string) DB::table('pub_rascunhos')->where('id', $rascunhoId)->value('step_state'), true) ?: [];
+    }
+
+    /** O kit automático deste grupo já passou pelo {@see aplicar()} (com N imagens, até zero): não volta. */
+    private function marcarAplicado(int $rascunhoId, string $grupo, int $n): void
+    {
+        $this->comEstado($rascunhoId, function (array $estado) use ($grupo, $n) {
+            $estado[self::MEMORIA]['grupos'][$grupo]['aplicado_em'] = now()->toIso8601String();
+            $estado[self::MEMORIA]['grupos'][$grupo]['aplicadas'] = $n;
+
+            return $estado;
+        });
     }
 
     /** Lê-muda-grava o `step_state` sob a trava da linha, sem subir a revisão (não é edição do anúncio). */

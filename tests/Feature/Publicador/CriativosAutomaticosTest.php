@@ -4,6 +4,7 @@ namespace Tests\Feature\Publicador;
 
 use App\Jobs\GerarCriativoIaJob;
 use App\Jobs\PlanejarKitCriativosJob;
+use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarPreparoIaJob;
@@ -22,6 +23,7 @@ use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use App\Support\Publicador\Payload\Alvo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Feature\Publicador\Lote\CenarioDoPreparo;
@@ -232,5 +234,159 @@ class CriativosAutomaticosTest extends TestCase
         $this->salvarERodar($p);
 
         $this->assertSame($antes + 1, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)), 'o texto estava em dia, as fotos podem ter chegado agora');
+    }
+
+    // ═══ 20/10/2026: as imagens do kit automático entram SOZINHAS, na frente da galeria ═══
+
+    /** Um JPEG de verdade (a foto passa pela mesma conferência de tamanho/formato de qualquer foto do Publicador). */
+    private function jpeg(array $rgb): string
+    {
+        $im = imagecreatetruecolor(1200, 1200);
+        imagefill($im, 0, 0, imagecolorallocate($im, ...$rgb));
+        ob_start();
+        imagejpeg($im, null, 90);
+        imagedestroy($im);
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * O kit automático como o Creative Engine o deixa: planejado pela automação (a memória no rascunho), os dois
+     * slots prontos com a imagem no disco e o veredito do juiz — e o status `pronto` gravado pelo modelo, como o
+     * `recalcularStatus()` faz (é o que dispara o gatilho).
+     *
+     * @param  list<string>  $vereditos  `validacao_status` de cada slot, na ordem
+     */
+    private function kitPronto(PubRascunho $r, array $vereditos = ['aprovada', 'aprovada']): MlAnuncioCriativoKit
+    {
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $kit = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $r->id)->sole();
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO, 'total_slots' => 2]);
+        foreach (['lifestyle', 'hero'] as $i => $tipo) {
+            $caminho = "creative/kit-{$kit->id}-{$tipo}.jpg";
+            Storage::disk('local')->put($caminho, $this->jpeg($i === 0 ? [180, 120, 60] : [60, 120, 180]));
+            MlAnuncioCriativo::create(['token' => str_repeat((string) $i, 32), 'company_id' => $kit->company_id, 'pub_rascunho_id' => null,
+                'user_id' => $this->sistema->id, 'kit_id' => $kit->id, 'slot' => $tipo, 'slot_indice' => $i, 'slot_plano' => ['tipo' => $tipo],
+                'status' => MlAnuncioCriativo::STATUS_PRONTO, 'imagem_path' => $caminho, 'imagem_mime' => 'image/jpeg', 'modelo' => 'gemini-teste',
+                'validacao_status' => $vereditos[$i]]);
+        }
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+
+        return $kit->fresh();
+    }
+
+    /** @return list<int> as fotos do grupo, na ordem da galeria */
+    private function galeria(PubRascunho $r, string $grupo = R::GERAL): array
+    {
+        $doGrupo = array_values(array_filter((new RascunhoRepository())->snapshot($r->fresh())->imagens, fn ($a) => $a['grupo'] === $grupo));
+        usort($doGrupo, fn ($a, $b) => (int) $a['posicao'] <=> (int) $b['posicao']);
+
+        return array_map(fn ($a) => (int) $a['imagem'], $doGrupo);
+    }
+
+    private function imagemDoSlot(MlAnuncioCriativoKit $kit, string $tipo): ?int
+    {
+        $id = MlAnuncioCriativo::query()->where('kit_id', $kit->id)->where('slot', $tipo)->value('pub_imagem_id');
+
+        return $id === null ? null : (int) $id;
+    }
+
+    public function test_kit_automatico_pronto_entra_sozinho_na_frente_da_galeria_na_ordem_dos_slots(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $doCliente = $this->galeria($r);
+        $kit = $this->kitPronto($r);
+
+        Queue::assertPushedOn('creative', AplicarCriativosAutomaticosJob::class, fn (AplicarCriativosAutomaticosJob $j) => $j->kitId === $kit->id);
+        $this->assertSame('aplicado:2', $this->servico()->aplicar($kit->id));
+
+        $lifestyle = $this->imagemDoSlot($kit, 'lifestyle');
+        $hero = $this->imagemDoSlot($kit, 'hero');
+        $this->assertNotNull($lifestyle);
+        $this->assertSame([$lifestyle, $hero, ...$doCliente], $this->galeria($r), 'as duas da IA na frente (a 1ª é a capa), as do cliente depois, na ordem delas');
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->fresh()->status);
+        $this->assertSame($this->sistema->id, (int) $kit->fresh()->aprovado_por);
+        $memoria = $r->fresh()->step_state['criativos_auto']['grupos'][R::GERAL];
+        $this->assertSame(2, $memoria['aplicadas']);
+        $this->assertSame('nao_pronto', $this->servico()->aplicar($kit->id), 'o kit fechou (aprovado): não volta');
+        $this->assertSame([$lifestyle, $hero, ...$doCliente], $this->galeria($r));
+    }
+
+    public function test_kit_pedido_no_botao_nao_entra_sozinho(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $kit = $this->kitPronto($r);
+        // O kit que alguém pediu no botão não está na memória da automação.
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode(['criativos_auto' => ['grupos' => [R::GERAL => ['kit_id' => 999999]]]])]);
+
+        $this->assertSame('nao_automatico', $this->servico()->aplicar($kit->id));
+        $this->assertNull($this->imagemDoSlot($kit, 'lifestyle'));
+    }
+
+    public function test_espera_o_juiz_e_a_refacao_e_a_reprovada_que_nao_vai_ser_refeita_nao_entra(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $doCliente = $this->galeria($r);
+        $kit = $this->kitPronto($r, ['pendente', 'aprovada']);
+
+        $this->assertSame('esperando_juiz', $this->servico()->aplicar($kit->id));
+
+        $lifestyle = MlAnuncioCriativo::query()->where('kit_id', $kit->id)->where('slot', 'lifestyle')->sole();
+        $lifestyle->update(['validacao_status' => MlAnuncioCriativo::VALIDACAO_REPROVADA]);
+        $this->assertSame('esperando_regeneracao', $this->servico()->aplicar($kit->id), 'o motor ainda refaz a reprovada uma vez (VAL-05)');
+
+        // Já foi refeita uma vez e reprovou de novo: não há outra tentativa — entra só a boa.
+        $lifestyle->update(['regeneracao_automatica' => true]);
+        $this->assertSame('aplicado:1', $this->servico()->aplicar($kit->id));
+        $this->assertSame([$this->imagemDoSlot($kit, 'hero'), ...$doCliente], $this->galeria($r));
+        $this->assertNull($this->imagemDoSlot($kit, 'lifestyle'), 'a reprovada fica no painel para alguém decidir');
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_PRONTO, $kit->fresh()->status, 'o kit não fecha com imagem de fora');
+        $this->assertSame('ja_aplicado', $this->servico()->aplicar($kit->id), 'uma vez por kit, mesmo aberto');
+    }
+
+    public function test_desligado_ou_rascunho_publicado_nada_entra(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $kit = $this->kitPronto($r);
+
+        config(['publicador.criativos_auto.ativo' => false]);
+        $this->assertSame('desligado', $this->servico()->aplicar($kit->id));
+        config(['publicador.criativos_auto.ativo' => true]);
+
+        PubRascunho::whereKey($r->id)->update(['status' => PubRascunho::PUBLISHED]);
+        $this->assertSame('intocavel', $this->servico()->aplicar($kit->id));
+        $this->assertNull($this->imagemDoSlot($kit, 'hero'));
+    }
+
+    public function test_os_gatilhos_so_disparam_com_o_kit_pronto_e_o_juiz_terminado(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(2);
+        $this->servico()->avaliar($r->id);
+        $kit = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $r->id)->sole();
+
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO]);
+        Queue::assertNotPushed(AplicarCriativosAutomaticosJob::class);
+
+        // Kit já pronto (sem passar pelo gatilho do kit) e o juiz terminando um slot: é a vez do gatilho do slot.
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+        $slot = MlAnuncioCriativo::create(['token' => str_repeat('9', 32), 'company_id' => $kit->company_id, 'pub_rascunho_id' => null,
+            'user_id' => $this->sistema->id, 'kit_id' => $kit->id, 'slot' => 'hero', 'slot_indice' => 0, 'slot_plano' => ['tipo' => 'hero'],
+            'status' => MlAnuncioCriativo::STATUS_PRONTO, 'validacao_status' => MlAnuncioCriativo::VALIDACAO_PENDENTE]);
+        $slot->update(['modelo' => 'outro']);
+        Queue::assertNotPushed(AplicarCriativosAutomaticosJob::class);
+        $slot->update(['validacao_status' => MlAnuncioCriativo::VALIDACAO_APROVADA]);
+        Queue::assertPushedOn('creative', AplicarCriativosAutomaticosJob::class, fn (AplicarCriativosAutomaticosJob $j) => $j->kitId === $kit->id);
+
+        // Desligado, nenhum gatilho põe nada na fila.
+        config(['publicador.criativos_auto.ativo' => false]);
+        $outro = MlAnuncioCriativoKit::query()->create(['token' => str_repeat('k', 32), 'company_id' => $kit->company_id, 'pub_rascunho_id' => $r->id,
+            'pub_grupo' => 'COLOR=id:1', 'user_id' => $this->sistema->id, 'status' => MlAnuncioCriativoKit::STATUS_GERANDO]);
+        $outro->update(['status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+        Queue::assertNotPushed(AplicarCriativosAutomaticosJob::class, fn (AplicarCriativosAutomaticosJob $j) => $j->kitId === $outro->id);
     }
 }

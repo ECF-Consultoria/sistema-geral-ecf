@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -255,6 +258,12 @@ class AppServiceProvider extends ServiceProvider
                 ->by('creative-regenerar:'.($request->user()?->id ?? $request->ip()))
                 ->response($this->respostaLimiteCriativo('gerar de novo uma imagem'));
         });
+
+        // 20/10/2026 — a imagem por IA automática entra sozinha no anúncio quando o kit fica pronto e o juiz termina
+        // (`CriativosAutomaticosService::aplicar`, num Job). Os dois ganchos só conferem o barato e nunca lançam:
+        // rodam dentro dos Jobs do Creative Engine.
+        MlAnuncioCriativoKit::updated(fn (MlAnuncioCriativoKit $kit) => CriativosAutomaticosService::aoMudarKit($kit));
+        MlAnuncioCriativo::updated(fn (MlAnuncioCriativo $slot) => CriativosAutomaticosService::aoMudarSlot($slot));
 
         Event::listen(Login::class, function (Login $event) {
             activity('auth')

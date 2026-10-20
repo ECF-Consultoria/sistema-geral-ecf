@@ -1025,4 +1025,43 @@ class EditorRascunhoService
     {
         return array_values(array_filter(array_map(fn (Eixo $e) => $e->attributeId(), $eixos)));
     }
+
+    /**
+     * Põe as fotos dadas na FRENTE do grupo, na ordem dada, e o resto do grupo depois, na ordem em que estava — as
+     * imagens por IA automáticas como capa (decisão do usuário de 20/10/2026). Sob a trava, como
+     * {@see colocarFotoNoGrupo()}: travar PRIMEIRO, ler DEPOIS. Só o grupo pedido é renumerado. Foto que não está no
+     * grupo é ignorada; ordem que já está assim não grava nada e não sobe a revisão.
+     *
+     * @param  list<int>  $imagemIds
+     */
+    public function trazerParaFrente(PubRascunho $r, string $grupo, array $imagemIds): void
+    {
+        DB::transaction(function () use ($r, $grupo, $imagemIds) {
+            $this->repo->travar($r);
+            $atuais = $this->repo->snapshot($r)->imagens;
+            $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
+            usort($doGrupo, fn ($a, $b) => (int) $a['posicao'] <=> (int) $b['posicao']);
+            $ids = array_values(array_unique(array_map('strval', $imagemIds)));
+
+            $frente = [];
+            foreach ($ids as $id) {
+                foreach ($doGrupo as $a) {
+                    if ((string) $a['imagem'] === $id) {
+                        $frente[] = $a;
+                    }
+                }
+            }
+            $nova = [...$frente, ...array_values(array_filter($doGrupo, fn ($a) => ! in_array((string) $a['imagem'], $ids, true)))];
+            if ($frente === [] || array_map(fn ($a) => (string) $a['imagem'], $nova) === array_map(fn ($a) => (string) $a['imagem'], $doGrupo)) {
+                return;
+            }
+
+            $renumerado = [];
+            foreach ($nova as $i => $a) {
+                $renumerado[] = [...$a, 'posicao' => $i];
+            }
+            $this->repo->gravarAtribuicoes($r, [...array_values(array_filter($atuais, fn ($a) => $a['grupo'] !== $grupo)), ...$renumerado]);
+            $this->repo->tocar($r);
+        });
+    }
 }
