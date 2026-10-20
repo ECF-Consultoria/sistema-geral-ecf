@@ -78,7 +78,8 @@ class AnaliseAnuncioService
     /** Etapa 2 — Títulos sob o ruleset ECF. */
     public function titulos(string $produto, string $loja, string $specs, array $analise): array
     {
-        $r = $this->chamar($this->promptTitulos($produto, $loja, $specs, $analise), 2500);
+        // Régua de 58-60: no flash-lite 11/26 títulos dentro, no modelo da régua 26/32 (8 rascunhos, 20/10/2026).
+        $r = $this->chamar($this->promptTitulos($produto, $loja, $specs, $analise), 2500, regua: true);
 
         return [
             'dados' => $this->normalizarTitulos($r['json']['titulos'] ?? [], $loja, $produto),
@@ -123,7 +124,7 @@ class AnaliseAnuncioService
     // IA trabalhe em cima dos termos que o ML diz serem os mais buscados da
     // categoria, descartando os que não têm a ver com o produto.
     //
-    // As três vão no modelo de `services.llm.termos` (20/10/2026): as regras de
+    // As três vão no modelo de `services.llm.regua` (20/10/2026): as regras de
     // TAMANHO daqui (Modelo perto de 120, título de 58 a 60) o modelo barato não
     // cumpre — medido em 8 rascunhos, ver config/services.php.
 
@@ -140,7 +141,7 @@ class AnaliseAnuncioService
      */
     public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = '', string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500, termos: true);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500, regua: true);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -161,7 +162,7 @@ class AnaliseAnuncioService
      */
     public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500, termos: true);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500, regua: true);
 
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -177,7 +178,7 @@ class AnaliseAnuncioService
      */
     public function titulosPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500, termos: true);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500, regua: true);
 
         return ['dados' => [
             'classico' => trim((string) ($r['json']['classico'] ?? '')),
@@ -210,6 +211,8 @@ class AnaliseAnuncioService
         $r = $this->chamar(
             $this->promptTextoDeKit($chave, $produto, $tituloBase, $descricaoBase, $unidades, $maximo),
             $chave === 'descricao' ? 3000 : 2500,
+            // O título do kit tem régua (máximo − 2 a máximo): no flash-lite 1/8 dentro, no da régua 7/8.
+            regua: $chave === 'titulo',
         );
 
         return ['dados' => trim((string) ($r['json'][$chave] ?? '')), 'meta' => $r['meta']];
@@ -314,15 +317,15 @@ class AnaliseAnuncioService
      * gasta orçamento "pensando" antes de escrever, e teto apertado devolve
      * HTTP 200 com conteúdo VAZIO — sintoma que confunde quem depura.
      *
-     * `termos` = Modelo e títulos por termos: começam pelo modelo de `services.llm.termos`, com o esforço de
-     * raciocínio dele; o principal e os reservas vêm atrás SEM esse esforço (no flash-lite ele piorou os
-     * títulos, medido em 20/10/2026).
+     * `regua` = etapa com régua de TAMANHO (Modelo e todo título): começa pelo modelo de `services.llm.regua`,
+     * com o esforço de raciocínio dele; o principal e os reservas vêm atrás SEM esse esforço (no flash-lite ele
+     * piorou os títulos, medido em 20/10/2026).
      *
      * @return array{json: array, meta: array}
      *
      * @throws \RuntimeException
      */
-    private function chamar(string $prompt, int $maxTokens, bool $termos = false): array
+    private function chamar(string $prompt, int $maxTokens, bool $regua = false): array
     {
         $cfg = config('services.llm');
 
@@ -330,8 +333,8 @@ class AnaliseAnuncioService
             throw new \RuntimeException('[IA] LLM_BASE_URL não configurado.');
         }
 
-        $proprio = $termos ? trim((string) data_get($cfg, 'termos.model', '')) : '';
-        $esforcos = $proprio !== '' ? [$proprio => trim((string) data_get($cfg, 'termos.reasoning_effort', ''))] : [];
+        $proprio = $regua ? trim((string) data_get($cfg, 'regua.model', '')) : '';
+        $esforcos = $proprio !== '' ? [$proprio => trim((string) data_get($cfg, 'regua.reasoning_effort', ''))] : [];
 
         $modelos = collect([$proprio, $cfg['model'] ?? null])
             ->merge(explode(',', (string) ($cfg['fallbacks'] ?? '')))

@@ -382,11 +382,13 @@ return [
     |   (`finish_reason: length`). É o que a `folga_raciocinio` abaixo resolve.
     |   Não aceita `reasoning_effort: minimal` (HTTP 400); o mínimo dele é `low`.
     |
-    | `termos` = Modelo e títulos por termos do Publicador. Medido em 8 rascunhos
-    | da #459, 32 chamadas cada: o flash-lite deixa o Modelo curto (média 58 de
-    | 120) e erra a faixa de 58-60 do título (3/32). O gemma da NVIDIA fazia 80 e
-    | 16/32; o `gemini-3.8-flash` com esforço `low` faz 104 e 18/32, em ~3 s e
-    | ~US$ 0,0016 por chamada. Vazio = essas etapas usam o principal.
+    | `regua` = toda etapa com régua de TAMANHO: o Modelo (perto de 120) e todo
+    | título (58-60) — por termos, do MAG T8 e do kit. Medido em 8 rascunhos da
+    | #459: o flash-lite deixa o Modelo curto (média 58 de 120) e erra a faixa
+    | do título (termos 3/32, MAG T8 11/26, kit 1/8). O gemma da NVIDIA fazia
+    | Modelo 80 e termos 16/32; o `gemini-3.8-flash` com esforço `low` faz 104,
+    | termos 18/32, MAG T8 26/32 e kit 7/8 — de 3 a 12 s e de US$ 0,0016 a
+    | 0,006 por chamada. Vazio = essas etapas usam o principal.
     |
     | `fallbacks`: lista separada por vírgula, tentada em ordem quando o modelo
     | principal está sobrecarregado, mudo ou saiu do ar.
@@ -407,9 +409,9 @@ return [
         // Somada ao teto de CADA etapa: modelo que pensa gasta o teto pensando e corta a resposta (ver acima).
         // Não custa nada a mais — o provedor cobra o que foi usado, não o teto.
         'folga_raciocinio' => (int) env('LLM_FOLGA_RACIOCINIO', 8000),
-        'termos' => [
-            'model'            => env('LLM_MODEL_TERMOS', 'gemini-3.8-flash'),
-            'reasoning_effort' => env('LLM_ESFORCO_TERMOS', 'low'),
+        'regua' => [
+            'model'            => env('LLM_MODEL_REGUA', 'gemini-3.8-flash'),
+            'reasoning_effort' => env('LLM_ESFORCO_REGUA', 'low'),
         ],
     ],
 

@@ -43,6 +43,8 @@ class AnuncioIaAnaliseTest extends TestCase
             'services.llm.fallbacks'  => '',
             'services.llm.timeout'    => 30,
             'services.llm.max_tokens' => 16000,
+            // Idem para o modelo da régua: quem testa a régua liga a sua.
+            'services.llm.regua'      => ['model' => '', 'reasoning_effort' => ''],
         ]);
     }
 
@@ -770,44 +772,47 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->assertSame('chave-gemini', $llm['key'], 'sem LLM_API_KEY vale a do Gemini: uma chave só para cuidar');
         $this->assertSame('gemini-3.5-flash-lite', $llm['model']);
         $this->assertSame('gemini-3.8-flash', $llm['fallbacks']);
-        // Modelo e títulos por termos: o flash-lite não cumpre as regras de tamanho (medido em 8 rascunhos).
-        $this->assertSame(['model' => 'gemini-3.8-flash', 'reasoning_effort' => 'low'], $llm['termos']);
+        // Modelo e todo título: o flash-lite não cumpre as regras de tamanho (medido em 8 rascunhos).
+        $this->assertSame(['model' => 'gemini-3.8-flash', 'reasoning_effort' => 'low'], $llm['regua']);
     }
 
-    public function test_modelo_e_titulos_por_termos_vao_no_modelo_de_termos_com_o_esforco_dele(): void
+    public function test_etapas_com_regua_de_tamanho_vao_no_modelo_da_regua_com_o_esforco_dele(): void
     {
-        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
-        Http::fake(['llm.teste/*' => Http::response($this->resposta(['modelo' => 'cadeira jantar', 'titulo' => 'Cadeira Jantar', 'classico' => 'A', 'premium' => 'B']))]);
+        config(['services.llm.regua' => ['model' => 'modelo-regua', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['modelo' => 'cadeira jantar', 'titulo' => 'Kit 2 Cadeira Jantar', 'classico' => 'A', 'premium' => 'B', 'titulos' => []]))]);
         $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
 
         $ia->modeloPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], 120);
         $ia->tituloPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], [], 60);
         $ia->titulosPorTermos('Cadeira', 'Móveis > Cadeiras', ['cadeira jantar'], [], 60);
+        $ia->titulos('Cadeira', 'Unity', '', []);
+        $ia->textoDeKit('titulo', 'Cadeira', 'Cadeira Jantar', null, 2, 60);
 
-        Http::assertSentCount(3);
-        Http::assertSent(fn ($req) => $req['model'] === 'modelo-termos' && $req['reasoning_effort'] === 'low');
-        Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-termos');
+        Http::assertSentCount(5);
+        Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-regua' || $req['reasoning_effort'] !== 'low');
     }
 
-    public function test_as_demais_etapas_seguem_no_principal_sem_esforco(): void
+    public function test_etapas_sem_regua_seguem_no_principal_sem_esforco(): void
     {
-        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
-        Http::fake(['llm.teste/*' => Http::response($this->resposta(['analise' => ['puv' => 'x'], 'descricao' => 'Olá!', 'titulo' => 'Kit 2 Cadeira']))]);
+        config(['services.llm.regua' => ['model' => 'modelo-regua', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['analise' => ['puv' => 'x'], 'descricao' => 'Olá!', 'atributos' => []]))]);
         $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
 
         $ia->analise('Cadeira', 'Unity', '');
         $ia->descricao('Cadeira', 'Unity', '', []);
-        $ia->textoDeKit('titulo', 'Cadeira', 'Cadeira Jantar', null, 2, 60);
+        $ia->ficha('Cadeira', '', 'Cadeira Jantar', 'Móveis', 'BRAND: texto');
+        $ia->textoDeKit('descricao', 'Cadeira', 'Cadeira Jantar', 'Cadeira boa.', 2, 60);
+        $ia->explicacoesDeAtributos([['id' => 'BRAND', 'nome' => 'Marca']]);
 
-        Http::assertSentCount(3);
+        Http::assertSentCount(5);
         Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-de-teste' || isset($req['reasoning_effort']));
     }
 
-    public function test_modelo_de_termos_fora_do_ar_cai_no_principal_sem_esforco(): void
+    public function test_modelo_da_regua_fora_do_ar_cai_no_principal_sem_esforco(): void
     {
         // O 3.8-flash devolve 503 "high demand" em série (medido em 01/10): o Modelo sai do flash-lite.
-        config(['services.llm.termos' => ['model' => 'modelo-termos', 'reasoning_effort' => 'low']]);
-        Http::fake(fn ($req) => $req['model'] === 'modelo-termos'
+        config(['services.llm.regua' => ['model' => 'modelo-regua', 'reasoning_effort' => 'low']]);
+        Http::fake(fn ($req) => $req['model'] === 'modelo-regua'
             ? Http::response(['error' => 'high demand'], 503)
             : Http::response($this->resposta(['modelo' => 'cadeira jantar'])));
 
@@ -818,9 +823,9 @@ class AnuncioIaAnaliseTest extends TestCase
         Http::assertSent(fn ($req) => $req['model'] === 'modelo-de-teste' && ! isset($req['reasoning_effort']));
     }
 
-    public function test_sem_modelo_de_termos_as_etapas_de_termos_usam_o_principal(): void
+    public function test_sem_modelo_da_regua_as_etapas_com_regua_usam_o_principal(): void
     {
-        config(['services.llm.termos' => ['model' => '', 'reasoning_effort' => 'low']]);
+        config(['services.llm.regua' => ['model' => '', 'reasoning_effort' => 'low']]);
         Http::fake(['llm.teste/*' => Http::response($this->resposta(['modelo' => 'cadeira jantar']))]);
 
         app(\App\Services\Ia\AnaliseAnuncioService::class)->modeloPorTermos('Cadeira', 'Móveis', ['cadeira jantar'], 120);
