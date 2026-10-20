@@ -219,8 +219,11 @@ desta fase**. ⚠️ **E o conserto de raiz `2444feea` NÃO acrescentou método 
 número.
 
 ⚠️ **O que ESTE plano acrescenta, medido separadamente e NÃO embutido na linha `PHP:`:** os **9**
-métodos `_189_08` do `FechamentoDaFase189Test.php` (3 por id, nos três ids). ➡️ Depois do commit
-deste plano, o recorte PHP passa a **2640**.
+métodos `_189_08` do `FechamentoDaFase189Test.php` (**3 por id, nos três ids**, medidos um a um:
+`3 passed (32)`, `3 passed (32)`, `3 passed (21)`).
+⚠️⚠️ **Portanto `2631 + 9 = 2640` é ARITMÉTICA, não medição** — e a §2.7 traz a **medição** do recorte
+no HEAD de **depois** do commit, que é o que fecha a conta. **Enquanto a §2.7 não existir, leia
+`2640` como PREVISÃO.**
 
 ## §2.4 — AS FALHAS QUE **NÃO SÃO DESTA FASE**, nomeadas por SEMÂNTICA e **NÃO corrigidas**
 
@@ -451,9 +454,33 @@ ALVO-INTOCADO: .planning/REQUIREMENTS-v27.md
 ALVO-INTOCADO: .planning/STATE.md
 ```
 
-⚠️ **Os TRÊS últimos são o GATE-07 e a verificação 4 do plano**, e a interseção é **VAZIA**: nenhum
-dos 8 planos desta fase tocou `ROADMAP.md`, `REQUIREMENTS-v27.md` ou `STATE.md`. ⚠️ **O
-`state.advance-plan` NÃO foi rodado** — ele corrompeu o `STATE.md` **seis** vezes.
+⚠️ **Os TRÊS últimos são o GATE-07**, e a **`PI(189-NN)` foi rodada PARA CADA NN de 01 a 08**
+(verificação 4 do plano), com a saída **colada**:
+
+```
+=== (0) ANTI-FANTASMA: os tres alvos existem? ===
+  OK .planning/ROADMAP.md     OK .planning/REQUIREMENTS-v27.md     OK .planning/STATE.md
+
+PI(189-01): commits=6  caminhos=9   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-02): commits=6  caminhos=5   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-03): commits=4  caminhos=6   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-04): commits=4  caminhos=3   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-05): commits=6  caminhos=6   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-06): commits=9  caminhos=10  INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-07): commits=4  caminhos=6   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+PI(189-08): commits=2  caminhos=5   INTERSECAO1=VAZIA  INTERSECAO2=VAZIA  CONJUNTOS_IGUAIS=SIM
+
+=== ISCA (a): um escopo que SABIDAMENTE tocou o ROADMAP.md ACUSA? ===
+  ISCA_A[(v27)]     x .planning/ROADMAP.md = 11 acerto(s)   (esperado >0: a sonda VE)
+  ISCA_A[(188-13)]  x .planning/ROADMAP.md =  1 acerto(s)   (esperado >0: a sonda VE)
+
+=== ISCA (b): o escopo 189-NN nao casa assunto de outra sessao ===
+  (188- = 0 · (190- = 0 · (261019- = 0 · (261020- = 0 · (v27) = 0 · (gates) = 0
+```
+
+⚠️ **Nenhum dos 8 planos tocou `ROADMAP.md`, `REQUIREMENTS-v27.md` ou `STATE.md`**, nas **duas**
+passadas, com **nenhum escopo vazio** e **as duas iscas exercidas**. ⚠️ **O `state.advance-plan` NÃO
+foi rodado** — ele corrompeu o `STATE.md` **seis** vezes.
 ⚠️ **`PreparadorDaAprovacao.php` e `PublicacaoService.php` entraram na lista NESTA wave:** o primeiro
 é código **novo de outra sessão** (`c810a8ac`), o segundo é o publicador **real** e alvo da **Fase
 193**. Os dois seguem intocados.
