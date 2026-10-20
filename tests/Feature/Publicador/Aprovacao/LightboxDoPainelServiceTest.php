@@ -892,18 +892,36 @@ class LightboxDoPainelServiceTest extends TestCase
         $this->assertIsArray($props['faixa'] ?? null);
         $this->assertArrayHasKey('proximo_a_revisar', $props);
         $this->assertArrayHasKey('contagem', $props);
-        // ⚠️ `faixa` e `proximo_a_revisar` continuam INLINE no literal — o texto que o
-        // `tests/js/publicador-fila-proximo-187.test.js` lê.
+        // ─── ⚠️⚠️ `faixa` e `proximo_a_revisar` CONTINUAM INLINE NO LITERAL ────────────────
+        //
+        // (é o TEXTO que o `tests/js/publicador-fila-proximo-187.test.js` lê.)
+        //
+        // ⚠️⚠️ **LIDO SEM COMENTÁRIO, E ISSO FOI MEDIDO NESTA WAVE — o critério de aceitação do
+        // plano está ERRADO, e errado JÁ NA PARTIDA.** O `189-02-PLAN.md` cobra
+        // `grep -c "'faixa' => $fila->faixa($base)"` devolvendo **1**; o valor REAL é **3**, e era
+        // **3 no commit de partida `2444feea`, antes desta wave**:
+        //   · `MlbPublicadorAprovacaoController.php:280` — COMENTÁRIO (wave 187);
+        //   · `:304` — COMENTÁRIO (*"a chamada fica ESCRITA como …"*, wave 187);
+        //   · `:385` — o CÓDIGO, o único que importa.
+        // ➡️ É a família *"comentário que explica X casa com o gate que conta X"* (learnings §4,
+        // regra 2): o `grep` cru é **mais largo que o invariante** e nenhum estado desta árvore o
+        // satisfaz. Medido sem comentário: **1 e 1**.
+        // ⚠️ E `preg_match` (que devolve 1 ao primeiro casamento) seria PIOR: ele passaria mesmo
+        // se o código INLINE fosse removido, porque os dois comentários contêm o texto.
+        $doControllerSemComentario = $this->semComentarios(self::CONTROLLER);
         $this->assertSame(
             1,
-            preg_match("/'faixa' => \\\$fila->faixa\\(\\\$base\\)/", $this->cru(self::CONTROLLER)),
-            'a `faixa` saiu de INLINE no literal — há gate em JS lendo esse texto',
+            substr_count($doControllerSemComentario, "'faixa' => \$fila->faixa(\$base)"),
+            'a `faixa` saiu de INLINE no literal (lido SEM comentário) — há gate em JS lendo esse texto',
         );
         $this->assertSame(
             1,
-            preg_match("/'proximo_a_revisar' => \\\$proximo->para\\(\\\$base\\)/", $this->cru(self::CONTROLLER)),
-            'o `proximo_a_revisar` saiu de INLINE no literal — há gate em JS lendo esse texto',
+            substr_count($doControllerSemComentario, "'proximo_a_revisar' => \$proximo->para(\$base)"),
+            'o `proximo_a_revisar` saiu de INLINE no literal (lido SEM comentário) — há gate em JS lendo esse texto',
         );
+        // ⚠️ ISCA DO LEITOR, nas duas direções: o arquivo CRU tem **3** de cada (dois são
+        // comentário), e é por isso que a leitura sem comentário é CARGA, não zelo.
+        $this->assertSame(3, substr_count($this->cru(self::CONTROLLER), "'faixa' => \$fila->faixa(\$base)"), 'ISCA: o CRU deixou de ter os dois comentários que explicam o inline — remeça e escreva a razão');
     }
 
     public function test_a_prop_lightbox_nao_faz_requisicao_ao_mercado_livre_com_isca_189_02(): void

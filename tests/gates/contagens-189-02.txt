@@ -253,4 +253,20 @@ estado-img13-e-recorte  php  test_(o_estado_img13_e_LIDO_das_constantes_do_model
 #      mais de TRÊS métodos, `tests=` casando a contagem de métodos, e o
 #      **HOMÔNIMO** contra todo `test_*` de `tests/` nas duas direções (com isca
 #      que ACUSA 7 métodos reais das Fases 187/188 e controle em 0).
-prop-lightbox-e-sem-http  php  test_(a_rota_monta_a_prop_lightbox_so_com_oferta_valida_da_conta_189_02|a_prop_lightbox_nao_faz_requisicao_ao_mercado_livre_com_isca_189_02|territorio_e_bijecao_do_manifesto_do_lightbox_189_02)  ::  tests=3 assertions=74
+prop-lightbox-e-sem-http  php  test_(a_rota_monta_a_prop_lightbox_so_com_oferta_valida_da_conta_189_02|a_prop_lightbox_nao_faz_requisicao_ao_mercado_livre_com_isca_189_02|territorio_e_bijecao_do_manifesto_do_lightbox_189_02)  ::  tests=3 assertions=75
+
+# ⚠️⚠️ REMEDIDO NA MESMA WAVE — `assertions=74` → `75`. **NÃO É REGRESSÃO, e a razão
+# importa mais que o número:** o critério de aceitação do `189-02-PLAN.md` cobrava
+# `grep -c "'faixa' => $fila->faixa($base)"` devolvendo **1**, e o valor REAL é **3**
+# — era **3 no commit de PARTIDA `2444feea`**, antes desta wave. Dois dos três
+# casamentos são COMENTÁRIO (`MlbPublicadorAprovacaoController.php:280` e `:304`,
+# da wave 187); só `:385` é CÓDIGO. É a família *"comentário que explica X casa com
+# o gate que conta X"*.
+# ⚠️ E a MINHA primeira redação era PIOR: `preg_match(...) === 1` devolve 1 ao
+# PRIMEIRO casamento, então passaria **mesmo se a linha de código fosse apagada** —
+# os comentários contêm o texto. ➡️ Trocado por leitura **SEM comentário** com
+# `substr_count(...) === 1` (medido: **1 e 1**), **+ isca do leitor** cobrando que o
+# CRU tenha os **3**. São +1 asserção.
+# ⚠️ O critério do plano NÃO foi "ajustado para passar": ele está DECLARADO como
+# falso-na-partida na `189-02-SUMMARY.md` §14/D1, e o invariante de verdade foi
+# provado.
