@@ -598,8 +598,28 @@ test('⚠️⚠️ O GATE DO 188-08 FOI REAPONTADO COM VETO, e a contagem alheia
     // ausência de "Gerar novamente" **não foi tocada**.
     assert.match(FONTE_GATE_FOTOS, /doesNotMatch\(completo, \/Ampliar\//, 'a ausência SEM handler saiu do gate do 188-08');
     assert.match(FONTE_GATE_FOTOS, /doesNotMatch\(completo, \/⤢\//, 'a ausência do GLIFO sem handler saiu do gate do 188-08');
-    assert.match(FONTE_GATE_FOTOS, /doesNotMatch\(completo, \/Gerar novamente\//, 'a ausência da Fase 192 saiu do gate do 188-08');
+    assert.match(FONTE_GATE_FOTOS, /doesNotMatch\(completo, \/Gerar novamente\//, 'a ausência da Fase 192 saiu do gate do 188-08 no regime SEM handler');
     assert.match(FONTE_GATE_FOTOS, /match\(comAmpliar, \/⤢ Ampliar\//, 'a EXIGÊNCIA de presença com handler não entrou no gate do 188-08');
+
+    // ⚠️⚠️ **FURO ACHADO PELA CAMPANHA DE MUTAÇÃO DESTA WAVE (mutação v), e
+    // consertado em vez de presumido equivalente.** A redação anterior deste
+    // bloco cobrava a ausência da Fase 192 **só no regime SEM handler**
+    // (`completo`) — então apagar a MESMA ausência no regime **COM** handler
+    // (`comAmpliar`) **SOBREVIVIA**. E é justamente o regime COM handler que o
+    // T-189-40 teme: é a inversão do "⤢ Ampliar" que poderia arrastar a ausência
+    // vizinha. ➡️ Os DOIS regimes são cobrados, um por asserção.
+    assert.match(FONTE_GATE_FOTOS, /doesNotMatch\(comAmpliar, \/Gerar novamente\//, 'a ausência da Fase 192 saiu do gate do 188-08 no regime COM handler (T-189-40)');
+    assert.equal(
+        (FONTE_GATE_FOTOS.match(/doesNotMatch\((?:completo|comAmpliar), \/Gerar novamente\//g) ?? []).length,
+        2,
+        'a ausência da Fase 192 deixou de ser cobrada nos DOIS regimes do gate do 188-08',
+    );
+    // ⚠️ ISCA: a sonda dos dois regimes ACUSA quando só um existe.
+    assert.equal(
+        ('assert.doesNotMatch(completo, /Gerar novamente/, 1);'.match(/doesNotMatch\((?:completo|comAmpliar), \/Gerar novamente\//g) ?? []).length,
+        1,
+        'a sonda dos DOIS regimes está CEGA: ela conta 2 numa fonte que só tem 1',
+    );
 
     // ⚠️ Quem reapontou, quando e por quê — a próxima pessoa tem de achar por
     // `grep`, não por bisseção. ⚠️ Leitura CRUA: é o COMENTÁRIO o artefato.
