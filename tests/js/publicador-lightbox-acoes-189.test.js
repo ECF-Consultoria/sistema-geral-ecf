@@ -1095,42 +1095,108 @@ test('⚠️⚠️ TERRITÓRIO: nada de segundo passo, nada da Fase 192 e nada s
 // ═══════════════════════════════════════════════════════════════════════════
 
 test('⚠️⚠️ TDZ: VETO contra um QUINTO uso-antes-da-declaração no corpo do componente da página 189_07', () => {
-    // ⚠️⚠️ **ACHADO DESTA WAVE, E ELE NÃO É DELA CONSERTAR.** O corpo do componente
-    // da página lê QUATRO `const` **antes** de elas serem inicializadas, em
-    // posições EAGER (prop de JSX atribuída direto a um `const` do corpo). Em
-    // JavaScript isso é TDZ: `ReferenceError: Cannot access 'X' before
-    // initialization` — ou seja, **TELA PRETA** no momento em que o painel tem
-    // payload. As quatro são das waves **188-08 / 188-09 / 188-12** e estão
-    // registradas em `deferred-items.md`.
+    // ⚠️⚠️ **ACHADO DESTA WAVE — JÁ CONSERTADO em 20/10/2026** pela quick
+    // `261020-tdz` (commit `85c3b46b`). O corpo do componente da página lia
+    // `const` **antes** de elas serem inicializadas, em posições EAGER (prop de
+    // JSX lida direto, ou **teste de ternário**). Em JavaScript isso é TDZ:
+    // `ReferenceError: Cannot access 'X' before initialization` — ou seja,
+    // **TELA PRETA** no instante em que o painel abre com payload.
     //
-    // ⚠️⚠️ **POR QUE SUBCONJUNTO E NÃO IGUALDADE:** âncora em número que muda é
-    // frágil, e gate que **reprova pelo próprio conserto** treina o executor
-    // seguinte a ajustar o número em vez de consertar o código (a família com
-    // QUATORZE ocorrências nesta milestone). ➡️ Este gate **ACUSA um quinto** e
-    // **fica verde quando as quatro forem consertadas**.
-    const HERDADOS = ['abrirModalDoPainel', 'abrirModalDeReprovar', 'registrarConflito', 'precoComSimulacao'];
+    // ⚠️⚠️ **ERAM CINCO, NÃO QUATRO — e o quinto era INVISÍVEL PARA A SONDA DAQUI.**
+    // Esta wave achou quatro (`abrirModalDoPainel`, `abrirModalDeReprovar`,
+    // `registrarConflito`, `precoComSimulacao`, das waves 188-09/11/12). O quinto,
+    // **`podeEscreverNoPainel`**, era declarado em `:1107` e lido EAGER **quatro
+    // vezes** (`:1013`, `:1015`, `:1016`, `:1017`) na forma
+    // `prop={!podeEscreverNoPainel ? null : …}` — o **teste** do ternário, que é
+    // avaliado na hora. ⚠️ **A regex abaixo NÃO casa essa forma** (medido: casa
+    // `prop={nome}` e `{...nome}`, e **não** casa `prop={!nome ? …}` nem
+    // `prop={nome === …}`). **A sonda LARGA e o render de verdade vivem em
+    // `tests/js/publicador-pagina-aprovacao-tdz-261020.test.js`**, que instancia o
+    // `default export` — coisa que **nenhum** gate deste projeto fazia, e foi por
+    // isso que quatro waves publicaram o defeito.
+    //
+    // ⚠️⚠️ **DUAS CORREÇÕES DE RAIZ EM 20/10/2026, e as duas eram desta família:**
+    //
+    // (1) **A LISTA DE PERMISSÃO SAIU.** Enquanto os defeitos existiam, um
+    //     `HERDADOS` mantinha o gate verde para eles e acusava só um "quinto".
+    //     Consertados os cinco, essa lista virava **PONTO CEGO**: reintroduzir o
+    //     defeito em qualquer um dos cinco nomes passaria **filtrado**. Agora a
+    //     asserção é `antesDaHora` **VAZIA, sem exceção** — e por isso ela também
+    //     pega **regressão** nos cinco, o que a forma antiga não pegava.
+    //
+    // (2) **A PROVA DE NÃO-CEGUEIRA SAIU DO DEFEITO REAL E FOI PARA CEBO SINTÉTICO.**
+    //     Ela era `assert.ok(antesDaHora.length > 0)`, isto é, *"a sonda enxerga
+    //     porque os defeitos ainda estão lá"* — logo o gate **REPROVAVA PELO
+    //     PRÓPRIO CONSERTO**, exatamente a família que o comentário antigo daqui
+    //     dizia evitar (e foi o que aconteceu: `25/24/1` no dia do conserto).
+    //     Agora a sonda roda sobre uma **fonte sintética** com um caso plantado, e
+    //     a prova **não desaparece quando o código está certo**.
+    //
+    // ⚠️ Os cinco nomes seguem listados **só como guarda de renome** (abaixo), nunca
+    // como permissão.
+    const CONSERTADOS_EM_20_10 = ['podeEscreverNoPainel', 'abrirModalDoPainel', 'abrirModalDeReprovar', 'registrarConflito', 'precoComSimulacao'];
 
-    const linhas = FONTE_PAGINA.split('\n');
-    const declaradoEm = new Map();
-    linhas.forEach((l, i) => {
-        const m = l.match(/^ {4}const ([A-Za-z_$][\w$]*) =/);
-        if (m !== null && !declaradoEm.has(m[1])) declaradoEm.set(m[1], i);
-    });
+    // ⚠️⚠️ UMA FUNÇÃO SÓ, usada na página REAL **e** no cebo sintético abaixo.
+    // Se houvesse duas cópias da regex, o cebo provaria *"uma regex desta forma
+    // funciona"* em vez de *"a regex que este gate usa funciona"* — e um conserto
+    // numa cópia só deixaria a outra mentindo. **Mesma função, uma verdade.**
+    const varrerUsoAntesDaDeclaracao = (fonte) => {
+        const linhasDaFonte = fonte.split('\n');
+        const declarado = new Map();
+        linhasDaFonte.forEach((l, i) => {
+            const m = l.match(/^ {4}const ([A-Za-z_$][\w$]*) =/);
+            if (m !== null && !declarado.has(m[1])) declarado.set(m[1], i);
+        });
+        const achados = [];
+        for (const [nome, linhaDecl] of declarado) {
+            const re = new RegExp(`(?:[A-Za-z_$][\\w$]*=\\{${nome}\\}|\\{\\.\\.\\.${nome}\\})`);
+            if (linhasDaFonte.slice(0, linhaDecl).some((l) => re.test(l))) achados.push(nome);
+        }
+        return { declarado, achados };
+    };
+
+    const { declarado: declaradoEm, achados: antesDaHora } = varrerUsoAntesDaDeclaracao(FONTE_PAGINA);
 
     assert.ok(declaradoEm.size > 50, `achei só ${declaradoEm.size} declarações no corpo do componente — a sonda está quebrada`);
 
-    const antesDaHora = [];
-    for (const [nome, linhaDecl] of declaradoEm) {
-        const re = new RegExp(`(?:[A-Za-z_$][\\w$]*=\\{${nome}\\}|\\{\\.\\.\\.${nome}\\})`);
-        if (linhas.slice(0, linhaDecl).some((l) => re.test(l))) antesDaHora.push(nome);
-    }
+    // ⚠️⚠️ A PROVA DE NÃO-CEGUEIRA, AGORA EM CEBO SINTÉTICO — e é esta troca que
+    // tira o gate da família "reprova pelo próprio conserto". A mesma varredura
+    // roda sobre uma fonte FABRICADA com UM caso plantado: se o mecanismo quebrar,
+    // ela devolve zero AQUI e o gate reprova, **mesmo com a página real correta**.
+    const CEBO = [
+        '    const leitorDoCebo = (',
+        '        <Peca cebo189={ceboEmTdz} />',
+        '    );',
+        '    const ceboEmTdz = 1;',
+        '    const leitorDiferido = (',
+        '        <Peca aoAgir={() => ceboLegitimo(1)} />',
+        '    );',
+        '    const ceboLegitimo = () => 2;',
+    ].join('\n');
+    const { achados: achadosNoCebo } = varrerUsoAntesDaDeclaracao(CEBO);
 
-    // ⚠️⚠️ A SONDA NÃO É CEGA, e a prova é que ela ACHA os quatro herdados. *"Isca
-    // que devolve ZERO é ACHADO"* — aqui ela devolve QUATRO, então ela enxerga.
-    assert.ok(antesDaHora.length > 0, 'a sonda de TDZ devolveu ZERO — ou os quatro herdados foram consertados (ótimo: tire-os de `HERDADOS` e da `deferred-items.md`), ou a sonda está CEGA');
+    // ⚠️ ISCA NAS DUAS DIREÇÕES, dentro do próprio cebo: `ceboEmTdz` é lido EAGER e
+    // **tem** de aparecer; `ceboLegitimo` é **chamado dentro de uma arrow** (diferido,
+    // legítimo) e **não** pode aparecer. Se a sonda ficar cega, o primeiro sai e isto
+    // reprova; se ficar larga, o segundo entra e isto reprova.
+    //
+    // ⚠️⚠️ **LIMITE MEDIDO DESTA SONDA, em 20/10/2026, e ele está aqui por escrito
+    // porque eu descobri tentando escrever a isca errada:** a varredura é **POR
+    // LINHA**, então ela **NÃO distingue** `prop={nome}` escrito **dentro de uma
+    // arrow na MESMA linha** — por exemplo
+    // `const a = () => <X y={nomeDeBaixo} />;` seria acusado como EAGER, embora
+    // seja diferido e legítimo. **Medido: a página real não tem essa forma** (a
+    // varredura devolve vazio), então hoje não há falso positivo. ⚠️ **Se algum dia
+    // houver, NÃO afrouxe esta sonda:** a prova larga e de verdade — que **instancia
+    // o `default export`** — mora em
+    // `tests/js/publicador-pagina-aprovacao-tdz-261020.test.js`, e é ela que decide.
+    // Esta aqui é a guarda **estática e barata** que roda junto do resto da wave.
+    assert.deepEqual(achadosNoCebo, ['ceboEmTdz'], 'o cebo sintético não deu o resultado exato: a sonda está CEGA (não achou o EAGER) ou LARGA (acusou o DIFERIDO)');
 
-    const novos = antesDaHora.filter((n) => !HERDADOS.includes(n));
-    assert.deepEqual(novos, [], '⚠️⚠️ uso-antes-da-declaração NOVO no corpo do componente — isso é TDZ (`ReferenceError`), ou seja TELA PRETA quando o painel tem payload');
+    // ⚠️⚠️ E AQUI NÃO HÁ LISTA DE PERMISSÃO: a página real tem de devolver VAZIO.
+    // Isso pega caso NOVO **e** regressão em qualquer um dos cinco de 20/10 — o
+    // que a forma com `HERDADOS` **não** pegava.
+    assert.deepEqual(antesDaHora, [], '⚠️⚠️ uso-antes-da-declaração no corpo do componente da página — isso é TDZ (`ReferenceError`), ou seja TELA PRETA quando o painel abre com payload. ⚠️ Se for um dos cinco de 20/10/2026, é REGRESSÃO do commit `85c3b46b`');
 
     // ⚠️ ISCA NAS DUAS DIREÇÕES: a sonda casa a leitura EAGER e **não** casa a
     // leitura DIFERIDA (dentro de arrow), que é legítima.
@@ -1139,11 +1205,13 @@ test('⚠️⚠️ TDZ: VETO contra um QUINTO uso-antes-da-declaração no corpo
     assert.ok(re.test('                {...alvo}'), 'a sonda de TDZ está CEGA para o espalhamento');
     assert.equal(re.test('                onReprovar={() => alvo(1)}'), false, 'a sonda de TDZ acusa leitura DIFERIDA (dentro de arrow) — ela é mais larga que o invariante');
 
-    // ⚠️ E os quatro nomes herdados continuam EXISTINDO na página: se um deles
-    // tivesse sido renomeado, a lista `HERDADOS` passaria a esconder um defeito
-    // novo com nome diferente.
-    const sumiram = HERDADOS.filter((n) => !declaradoEm.has(n));
-    assert.deepEqual(sumiram, [], 'nome da lista `HERDADOS` que não existe mais — reancore a lista em vez de deixá-la esconder um caso novo');
+    // ⚠️ GUARDA DE RENOME: os cinco consertados em 20/10 continuam EXISTINDO na
+    // página. Não é mais permissão — é que o conserto do `85c3b46b` foi mover
+    // **estes** cinco blocos, e se um deles for renomeado ou sumir, a mensagem de
+    // regressão acima passa a citar um nome que não existe, e quem ler não acha o
+    // caso. **Renomear é permitido; atualizar esta lista junto é obrigatório.**
+    const sumiram = CONSERTADOS_EM_20_10.filter((n) => !declaradoEm.has(n));
+    assert.deepEqual(sumiram, [], 'nome da lista `CONSERTADOS_EM_20_10` que não existe mais na página — reancore a lista (ela existe para a mensagem de regressão citar nome real)');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
