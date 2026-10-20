@@ -935,9 +935,40 @@ test('⚠️⚠️ FONTE: o modal aberto pelo lightbox busca a foto na galeria D
         '⚠️⚠️ a galeria do modal deixou de ser a do CONTEXTO quando ele foi aberto pelo lightbox',
     );
 
-    // ⚠️ E a escrita do modal usa a oferta/versão do contexto quando há contexto.
-    assert.ok(FONTE_PAGINA.includes('const ofertaDaEscritaDoModal'), 'a oferta da escrita do modal deixou de ser uma derivação própria');
-    assert.ok(FONTE_PAGINA.includes('const versaoDaEscritaDoModal'), 'a versão da escrita do modal deixou de ser uma derivação própria');
+    // ⚠️⚠️ E a escrita do modal usa a oferta/versão **DO CONTEXTO** quando há
+    // contexto, e a do painel quando não há.
+    // ⚠️⚠️ **FURO MEDIDO PELO DESENHO DA CAMPANHA DE MUTAÇÃO, e consertado:** a
+    // primeira redação cobrava só `includes('const ofertaDaEscritaDoModal')` — ou
+    // seja, a EXISTÊNCIA do nome. Uma mutação que trocasse o corpo por
+    // `= ofertaDoPainel` **SOBREVIVERIA**, e a escrita do modal iria com a oferta
+    // errada. ➡️ Agora a DERIVAÇÃO é cobrada, não o nome.
+    const DERIVACOES = [
+        [/ofertaDaEscritaDoModal = contextoDaFotoNoModal === null\s*\?\s*ofertaDoPainel\s*:\s*inteiroSeguro\(contextoDaFotoNoModal\.oferta\)/, 'a OFERTA'],
+        [/versaoDaEscritaDoModal = contextoDaFotoNoModal === null\s*\?\s*versaoDoPainel\s*:\s*inteiroSeguro\(contextoDaFotoNoModal\.versao\)/, 'a VERSÃO'],
+    ];
+    for (const [re, qual] of DERIVACOES) {
+        assert.ok(re.test(FONTE_PAGINA), `⚠️⚠️ ${qual} da escrita do modal deixou de ser DERIVADA do contexto do lightbox — T-189-50`);
+    }
+
+    // ⚠️ ISCA NAS DUAS DIREÇÕES de cada derivação.
+    assert.ok(
+        DERIVACOES[0][0].test('const ofertaDaEscritaDoModal = contextoDaFotoNoModal === null\n        ? ofertaDoPainel\n        : inteiroSeguro(contextoDaFotoNoModal.oferta);'),
+        'a sonda da derivação da OFERTA está CEGA',
+    );
+    assert.equal(
+        DERIVACOES[0][0].test('const ofertaDaEscritaDoModal = ofertaDoPainel;'),
+        false,
+        'a sonda da derivação da OFERTA casa o atalho que IGNORA o contexto — ela é mais larga que o invariante',
+    );
+    assert.ok(
+        DERIVACOES[1][0].test('const versaoDaEscritaDoModal = contextoDaFotoNoModal === null\n        ? versaoDoPainel\n        : inteiroSeguro(contextoDaFotoNoModal.versao);'),
+        'a sonda da derivação da VERSÃO está CEGA',
+    );
+    assert.equal(
+        DERIVACOES[1][0].test('const versaoDaEscritaDoModal = versaoDoPainel;'),
+        false,
+        'a sonda da derivação da VERSÃO casa o atalho que IGNORA o contexto',
+    );
     assert.ok(FONTE_PAGINA.includes('oferta: ofertaId, imagem: imagemId'), 'o ramo do LIGHTBOX deixou de levar a oferta derivada do contexto');
 
     // ⚠️⚠️ **E O CAMINHO DO PAINEL FICOU BYTE A BYTE**, que é o que o próprio plano
