@@ -89,3 +89,4 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 baselines-medidas  php  test_a_entrada_e_as_baselines_estao_medidas_e_nao_afirmadas_189_01  ::  tests=1 assertions=11
+contrato-188-inventariado  php  test_o_inventario_da_188_tem_os_treze_itens_e_aponta_para_o_disco_189_01  ::  tests=1 assertions=10

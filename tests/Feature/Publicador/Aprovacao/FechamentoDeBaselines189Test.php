@@ -295,4 +295,181 @@ class FechamentoDeBaselines189Test extends TestCase
 
         return $problemas;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // O INVENTÁRIO DO CONTRATO REAL DA 188
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Os treze itens do inventário, como lista **CONSTANTE**. ⚠️ Nunca contagem: com 13 itens
+     * obrigatórios, perder um deixaria 12 e um piso `>= 10` passaria — é a família de fragilidade
+     * com nove ocorrências nesta milestone, e *"piso NÃO prova PRESENÇA"*.
+     */
+    private const ITENS_DO_INVENTARIO = [
+        'INV-01', 'INV-02', 'INV-03', 'INV-04', 'INV-05', 'INV-06', 'INV-07',
+        'INV-08', 'INV-09', 'INV-10', 'INV-11', 'INV-12', 'INV-13',
+    ];
+
+    /** O tamanho medido do protótipo. Ponteiro nu `:N` acima disto é erro de REFERÊNCIA. */
+    private const LINHAS_DO_PROTOTIPO = 1432;
+
+    /**
+     * ⚠️⚠️ **POR QUE ESTE MÉTODO EXISTE.** Os planos 189-02..189-07 foram escritos contra os
+     * **planos** da 188, não contra o código. O `189-CONTRATO-188.md` é o único documento que diz
+     * o que de fato EXISTE — e um inventário que *"confirmasse o plano"* em vez de **medir o
+     * disco** seria pior que nenhum: faria cinco executores confiarem num nome errado.
+     *
+     * ⚠️ A pergunta do GATE-01, respondida: *o que precisaria estar errado para este gate falhar?*
+     *   · faltar um dos treze itens (ou ele aparecer **duas** vezes, com valores diferentes);
+     *   · o **INV-04** não trazer o veredicto `DENTRO`/`FORA` — ele é a armadilha do contexto de
+     *     empilhamento, e *"não medi"* é indistinguível de *"está fora"* sem a palavra escrita;
+     *   · um `arquivo:linha` apontar para **arquivo que não existe** (caminho fantasma: DEZ nesta
+     *     milestone, três vindos de briefing) ou para **linha fora do arquivo** (erro de
+     *     REFERÊNCIA, o modo como esta classe de documento mais erra);
+     *   · um ponteiro **nu** `:N` passar das 1432 linhas do protótipo;
+     *   · o inventário ser citado por NOME NU de arquivo, sem caminho — que é precisamente a
+     *     ambiguidade de onde saíram os caminhos fantasma. ⚠️ **Isto foi MEDIDO nesta wave:** a
+     *     primeira redação do documento citava 22 ponteiros por nome nu, e **este gate os acusou**.
+     *
+     * ⚠️⚠️ **ISCA NAS DUAS DIREÇÕES:** a mesma validação roda sobre o documento REAL (tem de
+     * PASSAR) e sobre cópias ADULTERADAS **em memória** (têm de REPROVAR).
+     */
+    public function test_o_inventario_da_188_tem_os_treze_itens_e_aponta_para_o_disco_189_01(): void
+    {
+        $caminho = base_path(self::DIR_FASE . '/189-CONTRATO-188.md');
+        $this->assertFileExists($caminho, 'o 189-CONTRATO-188.md não existe — os planos 02 a 07 leem dele');
+        $texto = (string) file_get_contents($caminho);
+
+        $this->assertGreaterThan(
+            5000,
+            strlen($texto),
+            'o 189-CONTRATO-188.md é curto demais para 13 itens medidos com arquivo:linha e os achados'
+        );
+
+        // ── 1. O documento REAL tem de PASSAR ───────────────────────────────────────────────────
+        $this->assertSame([], $this->problemasDoInventario($texto), 'o 189-CONTRATO-188.md real reprovou a própria validação');
+
+        // ── 2. ⚠️ ISCA INVERTIDA: SEM o INV-04 tem de REPROVAR ──────────────────────────────────
+        $semInv04 = (string) preg_replace('/^INV-04:/m', 'INV-04-APAGADO-PELA-ISCA:', $texto);
+        $this->assertNotSame($texto, $semInv04, 'a isca do INV-04 não alterou nada — ela não exerce a validação');
+        $this->assertNotSame(
+            [],
+            $this->problemasDoInventario($semInv04),
+            'a validação ACEITOU um inventário SEM o INV-04 — o item da armadilha do empilhamento não é cobrado'
+        );
+
+        // ── 3. ⚠️ ISCA INVERTIDA: ponteiro FORA do arquivo tem de REPROVAR ──────────────────────
+        $foraDoArquivo = $texto . "\n\nlinha inventada apontando para "
+            . '`resources/js/Components/Mlb/Publicador/aprovacao/PainelDeRevisao.jsx:99999`' . " fora do arquivo\n";
+        $this->assertNotSame(
+            [],
+            $this->problemasDoInventario($foraDoArquivo),
+            'a validação ACEITOU um ponteiro para além do fim do arquivo — erro de REFERÊNCIA passaria'
+        );
+
+        // ── 4. ⚠️ ISCA INVERTIDA: arquivo FANTASMA tem de REPROVAR ──────────────────────────────
+        $fantasma = $texto . "\n\ncaminho fantasma "
+            . '`tests/Feature/Publicador/Aprovacao/CockpitDaContaTest.php:10`' . " (ele vive FORA de Aprovacao/)\n";
+        $this->assertNotSame(
+            [],
+            $this->problemasDoInventario($fantasma),
+            'a validação ACEITOU um caminho FANTASMA — são dez nesta milestone, três vindos de briefing'
+        );
+
+        // ── 5. ⚠️ ISCA INVERTIDA: veredicto do INV-04 apagado tem de REPROVAR ───────────────────
+        $semVeredicto = (string) preg_replace('/^(INV-04:[^\n]*?)\bFORA\b/m', '$1(não medido)', $texto);
+        $this->assertNotSame($texto, $semVeredicto, 'a isca do veredicto não alterou nada');
+        $this->assertNotSame(
+            [],
+            $this->problemasDoInventario($semVeredicto),
+            'a validação ACEITOU um INV-04 sem veredicto DENTRO/FORA'
+        );
+
+        // ── 6. ⚠️ ISCA NÃO-CEGA: a leitura de ponteiros tem de VER algo ──────────────────────────
+        // Zero ponteiros significaria regex quebrada, e aí todos os itens de 3 a 5 passariam por
+        // construção. "Documento limpo" e "sonda cega" são indistinguíveis sem esta asserção.
+        $this->assertGreaterThan(
+            30,
+            preg_match_all(self::RX_PONTEIRO, $texto),
+            'o inventário tem menos de 30 ponteiros `arquivo:linha` — leitura suspeita de CEGA'
+        );
+    }
+
+    /** A forma de um ponteiro: caminho RELATIVO com barras + `:linha`, entre acentos graves. */
+    private const RX_PONTEIRO = '/`([A-Za-z0-9_\-.\/]+\.(?:jsx|js|php|md|txt)):(\d+)`/';
+
+    /**
+     * A validação de FORMA do `189-CONTRATO-188.md`. Devolve a lista de problemas — **vazia**
+     * quando está tudo certo. ⚠️ Devolve LISTA (não lança) para as cinco iscas exercê-la.
+     * ⚠️ **UMA** asserção coletando infratores no chamador, nunca uma por item.
+     *
+     * @return list<string>
+     */
+    private function problemasDoInventario(string $texto): array
+    {
+        $problemas = [];
+
+        // (a) Os treze itens, cada um EXATAMENTE uma vez, em início de linha.
+        foreach (self::ITENS_DO_INVENTARIO as $item) {
+            $quantas = preg_match_all('/^' . preg_quote($item, '/') . ':/m', $texto);
+            if ($quantas === 0) {
+                $problemas[] = "{$item} ausente do inventário";
+            } elseif ($quantas > 1) {
+                $problemas[] = "{$item} aparece {$quantas} vezes — duas medições do mesmo item divergem";
+            }
+        }
+
+        // (b) ⚠️ O INV-04 traz o VEREDICTO escrito. É o item da armadilha do contexto de
+        // empilhamento: sem a palavra, "não medi" passa por "está fora".
+        if (preg_match('/^INV-04:[^\n]*\b(DENTRO|FORA)\b/m', $texto) !== 1) {
+            $problemas[] = 'o INV-04 não traz o veredicto DENTRO ou FORA do `<aside>`';
+        }
+
+        // (c) ⚠️⚠️ Todo `arquivo:linha` aponta para arquivo que EXISTE, na linha que EXISTE.
+        // Ponteiro fora do arquivo é REFERÊNCIA; arquivo inexistente é FANTASMA.
+        preg_match_all(self::RX_PONTEIRO, $texto, $m, PREG_SET_ORDER);
+        $jaVistos = [];
+        foreach ($m as $achado) {
+            // ⚠️ Flag DENTRO do laço.
+            $chave = $achado[1] . ':' . $achado[2];
+            if (isset($jaVistos[$chave])) {
+                continue;
+            }
+            $jaVistos[$chave] = true;
+
+            $abs = base_path($achado[1]);
+            if (! file_exists($abs)) {
+                $problemas[] = "{$chave} => ARQUIVO NÃO EXISTE (caminho fantasma)";
+                continue;
+            }
+            $total = count(explode("\n", str_replace("\r", '', (string) file_get_contents($abs))));
+            $linha = (int) $achado[2];
+            if ($linha < 1 || $linha > $total) {
+                $problemas[] = "{$chave} => fora do arquivo (ele tem {$total} linhas) — erro de REFERÊNCIA";
+            }
+        }
+
+        // (d) ⚠️ Ponteiro NU `:N` (sem arquivo) é do PROTÓTIPO, e tem de cair dentro das 1432.
+        preg_match_all('/(?<![\w\/.])`:(\d+)`/', $texto, $mp);
+        $foraDoProto = array_values(array_unique(array_filter(
+            array_map('intval', $mp[1] ?? []),
+            fn (int $n) => $n < 1 || $n > self::LINHAS_DO_PROTOTIPO
+        )));
+        if ($foraDoProto !== []) {
+            $problemas[] = 'ponteiro nu fora do protótipo (> ' . self::LINHAS_DO_PROTOTIPO . '): ' . implode(', ', $foraDoProto);
+        }
+
+        // (e) ⚠️ O inventário declara que é MEDIÇÃO, não confirmação — e declara o que NÃO prova.
+        // Sem isso, o próximo executor lê "named export" como garantia de comportamento.
+        foreach ([
+            'por COMANDO' => 'o inventário não declara que foi medido POR COMANDO',
+            'não prova comportamento de navegador' => 'o inventário não declara que não há navegador',
+        ] as $agulha => $erro) {
+            if (! str_contains($texto, $agulha)) {
+                $problemas[] = $erro;
+            }
+        }
+
+        return $problemas;
+    }
 }
