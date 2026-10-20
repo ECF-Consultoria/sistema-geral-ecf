@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import { CheckSquare, Plus, Send } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -91,8 +91,6 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
 
     return (
         <AppLayout title={`Publicador — ${empresa?.nome ?? ''}`}>
-            <Head title={`Publicador — ${empresa?.nome ?? ''}`} />
-
             <PublicadorHeader
                 aba="produtos"
                 cabecalho={cabecalho ?? null}

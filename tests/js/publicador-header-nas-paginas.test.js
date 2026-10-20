@@ -179,6 +179,18 @@ const PAGINAS = [
         }),
     },
     {
+        // 20/10/2026 — a vitrine de cartões (protótipo atrás de `publicador.vitrine`): mesma aba Produtos.
+        arquivo: 'ProdutosVitrine.jsx',
+        aba: 'produtos',
+        props: () => ({
+            empresa: empresaBase(),
+            liberada: true,
+            cartoes: [],
+            contagens: { prontos: 0, pendencia: 0, publicados: 0, todos: 0 },
+            fila_publicacao: null,
+        }),
+    },
+    {
         arquivo: 'Produto.jsx',
         aba: 'produtos',
         props: () => ({
