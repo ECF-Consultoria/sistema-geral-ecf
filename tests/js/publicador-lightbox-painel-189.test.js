@@ -1044,6 +1044,46 @@ test('⚠️⚠️ O painel compõe o LIGHTBOX e a LATERAL, e os três exports p
     // ⚠️ ISCA: a leitura do gate vizinho não está cega.
     assert.match(FONTE_GATE_CASCA, /ACOES/, 'a fonte do `casca-188` veio sem `ACOES` — a leitura está quebrada');
 
+    // ═══ ⚠️⚠️ A PREMISSA INOBSERVÁVEL, TRAVADA COMO **PROXY DE FONTE** ═══════
+    //
+    // ⚠️⚠️ **O DESPACHO das duas ações novas SÓ RODA NO NAVEGADOR.** A DECISÃO
+    // (`resolverAtalhoDoPainel`) é função PURA e está provada acima, nos casos
+    // E12/E13/E14. A COMPOSIÇÃO — o `addEventListener('keydown')` e a cadeia de
+    // `else if` que chama `onFecharLightbox()` / `onMoverLightbox(indice)` —
+    // vive dentro do `useEffect` e **nenhum teste de comportamento a alcança
+    // aqui**: não há navegador nesta máquina, e `renderToStaticMarkup` não
+    // dispara evento nenhum. ➡️ Mutar o despacho **SOBREVIVERIA**.
+    // ⚠️ **Sobrevivente INOBSERVÁVEL não se descarta: TRAVA-SE.** Isto aqui é
+    // **PROXY DE FONTE** — e proxy de fonte **NÃO prova comportamento**. O que
+    // ele prova é que o despacho não foi SILENCIOSAMENTE desfeito; quem prova o
+    // comportamento é a conferência humana na conta 459 (PERGUNTA-VISUAL-189,
+    // ABERTA). **Está declarado para ninguém confundir as duas coisas.** É o
+    // mesmo molde que a 188-07 usou para a guarda de `tagName`.
+    assert.match(
+        FONTE_PAINEL,
+        /decisao\.acao === ACOES\.FECHAR_LIGHTBOX && typeof onFecharLightbox === 'function'\) onFecharLightbox\(\)/,
+        'PROXY DE FONTE: o despacho de `fechar-lightbox` saiu do `keydown` — a decisão certa não chegaria a ninguém',
+    );
+    assert.match(
+        FONTE_PAINEL,
+        /decisao\.acao === ACOES\.MOVER_LIGHTBOX && typeof onMoverLightbox === 'function'\) onMoverLightbox\(decisao\.imagem\)/,
+        'PROXY DE FONTE: o despacho de `mover-lightbox` saiu do `keydown`',
+    );
+    // ⚠️⚠️ E A ORDEM DO DESPACHO: `fechar-lightbox` tem de ser decidido ANTES de
+    // `fechar-painel` na cadeia (o resolvedor já devolve uma ação só, mas uma
+    // cadeia fora de ordem com um `if` solto fecharia os dois).
+    assert.ok(
+        FONTE_PAINEL.indexOf('ACOES.FECHAR_LIGHTBOX && typeof onFecharLightbox') < FONTE_PAINEL.indexOf('ACOES.FECHAR_PAINEL && typeof onFechar'),
+        'PROXY DE FONTE: o despacho de `fechar-painel` vem ANTES do de `fechar-lightbox`',
+    );
+    // ⚠️ E o ouvinte é ÚNICO e é removido (dois ouvintes fechariam lightbox E
+    // painel no mesmo `Escape`).
+    assert.equal((FONTE_PAINEL.match(/addEventListener\('keydown'/g) ?? []).length, 1, 'o painel passou a ter MAIS DE UM ouvinte de teclado');
+    assert.match(FONTE_PAINEL, /removeEventListener\('keydown'/, 'o ouvinte não é removido — cada abertura somaria um');
+    // ⚠️ ISCA das duas direções do proxy: ele acusa a forma desfeita.
+    assert.doesNotMatch('if (false) onFecharLightbox();', /ACOES\.FECHAR_LIGHTBOX && typeof onFecharLightbox === 'function'\) onFecharLightbox\(\)/, 'o proxy de fonte aceita a forma DESFEITA');
+    assert.match("if (decisao.acao === ACOES.FECHAR_LIGHTBOX && typeof onFecharLightbox === 'function') onFecharLightbox();", /ACOES\.FECHAR_LIGHTBOX && typeof onFecharLightbox === 'function'\) onFecharLightbox\(\)/, 'o proxy de fonte está CEGO para a forma CERTA');
+
     // ⚠️ O painel continua sendo PORTAL e os `z` continuam onde estavam: as duas
     // âncoras de `publicador-lightbox-camadas-189.test.js` casam EXATAMENTE 1x.
     assert.equal((FONTE_PAINEL.match(/const CLASSES_BACKDROP = 'fixed inset-0 z-\[39\] bg-black\//g) ?? []).length, 1, 'a âncora do backdrop `z-[39]` deixou de casar 1x');
