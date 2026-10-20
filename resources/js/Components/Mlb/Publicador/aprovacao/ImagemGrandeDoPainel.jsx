@@ -27,16 +27,24 @@ import { cn } from '@/lib/utils';
 // `PubAprovacaoImagem::alertas()` não tinha `orderBy`, e MariaDB × SQLite
 // devolviam ordens DIFERENTES (normalizado em `porId()`).
 //
-// ⚠️⚠️ DUAS AÇÕES DO PROTÓTIPO NÃO SÃO DESTA FASE, e isso é D4/D14:
-//   · "⤢ Ampliar" (`design_handoff_publicador/Aprovacao.dc.html:607`) abre o
-//     LIGHTBOX, que é a **Fase 189**;
+// ⚠️⚠️ DAS DUAS AÇÕES DO PROTÓTIPO NO CANTO INFERIOR-DIREITO, UMA É DESTA FASE
+// E A OUTRA NÃO — e isso é D4/D14:
+//   · ⚠️⚠️ **"⤢ Ampliar"** (`design_handoff_publicador/Aprovacao.dc.html:607`)
+//     abre o LIGHTBOX, e ele **É ENTREGUE pela Fase 189, plano 06** (decisão
+//     **D-189-3b**, 19/10/2026). O docblock desta wave dizia *"não é desenhado
+//     aqui (é a 189)"*; a frase foi **EDITADA**, não apagada em silêncio. O gate
+//     de ausência do 188-08 foi **REAPONTADO COM VETO**: sem `onAmpliar` o botão
+//     continua PROIBIDO, com `onAmpliar` função ele é EXIGIDO;
 //   · "✦ Gerar novamente com IA" (`:606`) abre o modal de regeneração, que é a
-//     **Fase 192**.
-// ➡️ Os dois **NÃO são desenhados aqui**, e há gate de AUSÊNCIA. ⚠️ Botão sem
-// destino é D4 violado, e `onClick` vazio é a mesma dívida com outra roupa.
+//     **Fase 192** — **continua AUSENTE**, com gate de ausência e isca.
+// ⚠️ Botão sem destino é D4 violado, e `onClick` vazio é a mesma dívida com
+// outra roupa: o "⤢ Ampliar" nasce **só** com `typeof onAmpliar === 'function'`,
+// e sem handler nem a casca de `:604` nasce (wrapper `flex gap-[6px]` vazio passa
+// em render e DESAPARECE na tela).
 // ⚠️ Os ponteiros do PLANO (`:607`/`:608`) estavam deslocados em +1: `:608` é um
 // `</span>` puro. Os corretos são `:606` e `:607`, medidos por `sed` nesta wave
-// e já corrigidos na `188-FID01.md` §C (C13/C14).
+// e já corrigidos na `188-FID01.md` §C (C13/C14) — **reconfirmados por `sed` em
+// 20/10/2026 pelo plano 189-06**.
 //
 // ⚠️ "Gerando nova versão…" (`:605`, era `:606` na prosa do plano) **SIM é desta
 // fase** — é ESTADO, não ação: a imagem pode chegar em `regenerating`, e não
@@ -214,6 +222,80 @@ export const CLASSES_SPINNER = 'h-[10px] w-[10px] animate-pub-spin rounded-full 
 /** `:605`, byte a byte — as reticências são `…` (U+2026), um caractere. */
 export const REGENERANDO = 'Gerando nova versão…';
 
+/**
+ * ⚠️⚠️ `:607` — o "⤢ Ampliar", **ENTREGUE pela Fase 189, plano 06** (D-189-3b).
+ *
+ * Medido por `sed -n '607p'` no `design_handoff_publicador/Aprovacao.dc.html` em
+ * 20/10/2026 (⚠️ **cito o diretório**: há outra cópia, `new_layout_publicador/`,
+ * com conteúdo diferente — e ela **não existe** nesta máquina):
+ * `white-space:nowrap;height:30px;padding:0 11px;border:none;border-radius:8px;
+ * background:rgba(10,10,10,0.85);color:#F4F4F5;font-size:12px;font-weight:500;
+ * cursor:pointer`.
+ *
+ * ⚠️ `white-space:nowrap` é a **PRIMEIRA** propriedade da linha e `cursor:pointer`
+ * a **ÚLTIMA** — as duas mais OMITIDAS desta milestone, e é por isso que a
+ * `189-FID01.md` as põe em COLUNA PRÓPRIA.
+ * ⚠️ `bg-pub-page/[0.85]` **é** `rgba(10,10,10,0.85)` (`pub.page` = `#0A0A0A`,
+ * `tailwind.config.js:112`) e `text-pub-txt` **é** `#F4F4F5` (`:186`): nenhum hex
+ * cru sai para a tela (TOK-15), e nenhum token novo foi criado.
+ * ⚠️ `text-[12px]` e **nunca** `text-sm` (FID-03).
+ */
+export const CLASSES_AMPLIAR = 'h-[30px] cursor-pointer whitespace-nowrap rounded-[8px] border-none '
+    + 'bg-pub-page/[0.85] px-[11px] text-[12px] font-medium text-pub-txt';
+
+/**
+ * `:607`, byte a byte — o `⤢` é **U+2922** (NORTH EAST AND SOUTH WEST ARROW),
+ * medido por `codePointAt` em 20/10/2026. Não é `↗` nem `⇱`.
+ */
+export const AMPLIAR = '⤢ Ampliar';
+
+/**
+ * ⚠️⚠️ `:1319` — o clique no "⤢ Ampliar", como FUNÇÃO EXPORTADA.
+ *
+ * NAMED EXPORT porque `renderToStaticMarkup` **não dispara `onClick`**, e a TELA
+ * PRETA desta milestone voltou SEIS vezes — uma delas **no clique**.
+ *
+ * ⚠️⚠️ **ÍNDICE ADVERSO NÃO ABRE NADA, e isso é DIVERGÊNCIA DECLARADA** da prosa
+ * do plano (*"devolvendo índice clampado **ou nada**"* — o plano já oferecia as
+ * duas). Clampar para `0` abriria a **FOTO 1** quando a pessoa clicou na foto 4,
+ * e dentro do lightbox ela **aprova ou reprova** — aprovar ENFILEIRA e **não há
+ * desfazer**. Entre "não acontece nada" e "a pessoa decide sobre a foto errada",
+ * o lado seguro é o primeiro. É a mesma disciplina do `idDoPainel` da coluna
+ * (*"escrita disparada sobre id inválido é pior que nenhuma"*).
+ * ⚠️ O `0` **é** índice válido (a primeira foto) e **não** é barrado junto com o
+ * lixo: a guarda de inteiro POSITIVO é de **id**, não de **índice**.
+ *
+ * @param {unknown} indice o índice da foto SELECIONADA no painel
+ * @param {unknown} onAmpliar `(indice) => void`
+ * @returns {boolean} `true` se chamou
+ */
+export function aoClicarEmAmpliar(indice, onAmpliar) {
+    if (typeof onAmpliar !== 'function') return false;
+
+    const alvo = inteiroDoPainel(indice);
+    if (alvo === null || alvo < 0) return false;
+
+    onAmpliar(alvo);
+    return true;
+}
+
+/**
+ * ⚠️ A `ref` do botão, só na forma que o React ACEITA.
+ *
+ * `ref` número, string ou array **LANÇA** no cliente (*"Expected ref to be a
+ * function, an object returned by React.createRef(), or undefined/null"*), e a
+ * `ref` chega aqui de **duas camadas acima** (a página cria, a coluna repassa).
+ * ⚠️ `objetoDoPainel` já recusa `null` e array — as duas armadilhas do
+ * `typeof === 'object'`.
+ * ⚠️ O que roda no NAVEGADOR não é provado por esta fase: `renderToStaticMarkup`
+ * **não anexa `ref`**. O que está provado é a FUNÇÃO e o render não quebrar.
+ */
+export function refDoBotao(ref) {
+    if (typeof ref === 'function') return ref;
+
+    return objetoDoPainel(ref) === null ? undefined : ref;
+}
+
 /** `:599`, byte a byte. */
 export const PRINCIPAL = '★ PRINCIPAL';
 
@@ -341,17 +423,33 @@ export function SeloDeEstado({ imagem = null }) {
  *
  * @param {object} props
  * @param {unknown} [props.imagem] uma entrada de `painel.fotos.imagens`
+ * @param {unknown} [props.indice] o índice da foto SELECIONADA (já clampado pela
+ *   `ColunaDeFotos`), que o "⤢ Ampliar" entrega ao abrir o lightbox
+ * @param {unknown} [props.onAmpliar] `(indice) => void`, ou `null` — a **Fase 189,
+ *   plano 06** (D-189-3b). ⚠️ Sem handler FUNÇÃO o botão **não nasce**
+ * @param {unknown} [props.refDoAmpliar] a `ref` que o painel pendura no botão
+ *   para **devolver o foco** quando o lightbox fecha (critério 7, PERGUNTA-189-C)
  *
  * ⚠️ `imagem` ausente → **nada**: caixa 1:1 vazia num painel sem foto
  * selecionada é D4 violado, e quem diz o vazio é a `ColunaDeFotos`.
  */
-export default function ImagemGrandeDoPainel({ imagem = null }) {
+export default function ImagemGrandeDoPainel({
+    imagem = null,
+    indice = null,
+    onAmpliar = null,
+    refDoAmpliar = null,
+}) {
     const dados = objetoDoPainel(imagem);
     if (dados === null) return null;
 
     const url = textoDoPainel(dados.url_arquivo);
     const rotulo = textoDoPainel(dados.rotulo) ?? textoDoPainel(dados.titulo);
     const regenerando = dados.estado === ESTADO_REGENERANDO;
+
+    // ⚠️ D4 — BOTÃO SEM DESTINO NÃO NASCE. `onClick` vazio e `disabled`
+    // decorativo são a mesma dívida, e *"desabilitado com explicação"* foi
+    // OFERECIDO ao usuário e RECUSADO.
+    const ampliar = typeof onAmpliar !== 'function' ? null : () => aoClicarEmAmpliar(indice, onAmpliar);
 
     return (
         <div className={CLASSES_CAIXA}>
@@ -366,15 +464,36 @@ export default function ImagemGrandeDoPainel({ imagem = null }) {
             <SelosDaImagem imagem={dados} />
             <SeloDeEstado imagem={dados} />
 
-            {/* ⚠️ `:604` — o wrapper do canto inferior-direito só existe COM
-                conteúdo. "⤢ Ampliar" (Fase 189) e "✦ Gerar novamente com IA"
-                (Fase 192) **não** nascem aqui. */}
-            {regenerando ? (
+            {/* ⚠️⚠️ `:604` — o wrapper do canto inferior-direito só existe COM
+                conteúdo, e agora ele tem DOIS inquilinos possíveis. A CONDIÇÃO
+                foi AFROUXADA (ela era só `regenerando`); o wrapper em si é o
+                named export do 188-08, **não** uma segunda cópia.
+                ⚠️ A ORDEM é a do protótipo: `:605` ("Gerando nova versão…")
+                ANTES de `:607` ("⤢ Ampliar") — e `:606` ("✦ Gerar novamente com
+                IA", Fase 192) continua **ausente** entre os dois.
+                ⚠️⚠️ O "⤢ Ampliar" nasce TAMBÉM em `regenerating`: medido em
+                `:1319`, `P.onZoom` só exige `rv.sel` — **só** o "Gerar
+                novamente" é condicionado ao estado. Condicioná-lo tiraria da
+                pessoa justamente a ampliação da foto que está sendo refeita. */}
+            {regenerando || ampliar !== null ? (
                 <span className={CLASSES_OVERLAY}>
-                    <span className={CLASSES_REGENERANDO}>
-                        <span className={CLASSES_SPINNER} style={{ animationDuration: DURACAO_DO_SPINNER }} />
-                        {REGENERANDO}
-                    </span>
+                    {regenerando ? (
+                        <span className={CLASSES_REGENERANDO}>
+                            <span className={CLASSES_SPINNER} style={{ animationDuration: DURACAO_DO_SPINNER }} />
+                            {REGENERANDO}
+                        </span>
+                    ) : null}
+
+                    {ampliar === null ? null : (
+                        <button
+                            type="button"
+                            ref={refDoBotao(refDoAmpliar)}
+                            className={CLASSES_AMPLIAR}
+                            onClick={ampliar}
+                        >
+                            {AMPLIAR}
+                        </button>
+                    )}
                 </span>
             ) : null}
         </div>

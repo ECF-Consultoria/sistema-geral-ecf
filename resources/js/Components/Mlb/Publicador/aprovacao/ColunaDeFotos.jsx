@@ -87,10 +87,20 @@ import BlocoDaImagemSelecionada from './BlocoDaImagemSelecionada';
 // ao EDITOR, que é território proibido nesta fase. A pendência do rodapé (plano
 // 188-10) faz o resto do trabalho.
 //
-// ⚠️ "⤢ Ampliar" (Fase 189) e "✦ Gerar novamente com IA" (Fase 192) **não** são
-// desenhados, com gate de ausência. A coluna de PREÇO é da wave 188-09, as
-// pendências e o rodapé da 188-10, os modais da 188-11/12 — **nada de provisório
-// de nenhuma delas**.
+// ⚠️⚠️ "⤢ Ampliar" é **DESTA FASE desde o plano 189-06** (decisão **D-189-3b**):
+// esta coluna **REPASSA** `onAmpliar` e `refDoAmpliar` à imagem grande, que é
+// quem desenha o botão de `:607` — e **só** quando o handler é FUNÇÃO. A frase
+// que estava aqui (*"não são desenhados"*) foi EDITADA, não apagada em silêncio,
+// e o gate de ausência do 188-08 foi REAPONTADO COM VETO (sem handler, proibido;
+// com handler, exigido).
+// ⚠️ "✦ Gerar novamente com IA" (Fase 192) **continua ausente**, com gate de
+// ausência e isca sintética. A coluna de PREÇO é da wave 188-09, as pendências e
+// o rodapé da 188-10, os modais da 188-11/12 — **nada de provisório de nenhuma
+// delas**.
+// ⚠️⚠️ **A COLUNA NÃO GUARDA ESTADO DE LIGHTBOX.** Ela não sabe se ele está
+// aberto, em que foto nem com que zoom: o estado mora na PÁGINA (que é quem já
+// guarda a foto selecionada) e o único `keydown` mora no `PainelDeRevisao`. Aqui
+// só passam DOIS fios opacos.
 // ⚠️ Nenhum `localStorage` e nenhum *"Restaurar dados de exemplo"*: são artefatos
 // do protótipo (`:914`).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -263,6 +273,11 @@ export function escritasDaColuna(pedido = null) {
  *   (plano 188-12 é o dono do aviso)
  * @param {unknown} [props.onReprovar] `(imagemId) => void`, ou `null` — o plano
  *   **188-12** é quem o fornece, junto com o modal (B2)
+ * @param {unknown} [props.onAmpliar] `(indice) => void`, ou `null` — o plano
+ *   **189-06** (D-189-3b). ⚠️ Ele recebe o ÍNDICE da foto selecionada, não o id:
+ *   é o índice que o lightbox abre (`:1319`)
+ * @param {unknown} [props.refDoAmpliar] a `ref` que o painel pendura no
+ *   "⤢ Ampliar" para devolver o foco ao fechar o lightbox (critério 7)
  */
 export default function ColunaDeFotos({
     fotos = null,
@@ -274,6 +289,8 @@ export default function ColunaDeFotos({
     versao = null,
     onConflito = null,
     onReprovar = null,
+    onAmpliar = null,
+    refDoAmpliar = null,
 }) {
     const dados = objetoDoPainel(fotos);
 
@@ -342,7 +359,16 @@ export default function ColunaDeFotos({
             {/* ⚠️ Galeria vazia: o vazio HONESTO, nunca blocos com buracos. */}
             {imagemAtual === null ? <span className={CLASSES_VAZIO}>{VAZIO}</span> : (
                 <>
-                    <ImagemGrandeDoPainel imagem={imagemAtual} />
+                    {/* ⚠️ `indice` aqui é o VIVO e já CLAMPADO por
+                        `indiceSelecionado` — o `selecionada_indice` do payload
+                        está preso no 0 (AVISO-189-1), e usá-lo abriria o
+                        lightbox sempre na primeira foto. */}
+                    <ImagemGrandeDoPainel
+                        imagem={imagemAtual}
+                        indice={indice}
+                        onAmpliar={onAmpliar}
+                        refDoAmpliar={refDoAmpliar}
+                    />
                     <GradeDeMiniaturas imagens={imagens} selecionada={indice} onSelecionar={onSelecionar} />
                     <BlocoDaImagemSelecionada
                         imagem={imagemAtual}
