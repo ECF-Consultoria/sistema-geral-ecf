@@ -313,7 +313,7 @@ for (const { arquivo, aba, props } of PAGINAS) {
             // ⚠️ `z-30` desde 12/10/2026 (261012-mbw), NÃO `z-50` — ver
             // `publicador-header-zindex-ordem.test.js`. A regex segue ancorada
             // em `^` (o header é o PRIMEIRO elemento), só o valor mudou.
-            assert.match(html, /^<div><header class="sticky top-0 z-30 -mx-6 -mt-6 /);
+            assert.match(html, /^<div><header class="sticky -top-6 z-30 -mx-6 -mt-6 /);
             // A identidade da conta (nome e chave) — REG-01, não pode se perder.
             assert.match(header, /Dev 02 Testes API/);
             assert.match(header, /company-459/);

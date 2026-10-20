@@ -506,8 +506,8 @@ test('tela — o bloco de filtros cola ABAIXO do header global (108px), nunca at
     const html = renderToStaticMarkup(React.createElement(paginaLote.default, propsDaTela()));
 
     // ⚠️ Colchetes escapados: `[108px]` cru seria classe de caracteres.
-    assert.match(html, /sticky top-\[108px\] z-10 rounded-t-xl bg-ecf-card/);
-    assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1, 'esperava UM bloco colado abaixo do header');
+    assert.match(html, /sticky top-\[84px\] z-10 rounded-t-xl bg-ecf-card/);
+    assert.equal((html.match(/sticky top-\[84px\]/g) ?? []).length, 1, 'esperava UM bloco colado abaixo do header');
     // E `top-0` não volta NESTE bloco. O ` z-10` à direita é o que impede o
     // casamento por prefixo (`top-0` casa dentro de `top-0.5`); o `class="` à
     // esquerda impede casar o header, que é legitimamente `sticky top-0 z-30`.
@@ -516,7 +516,7 @@ test('tela — o bloco de filtros cola ABAIXO do header global (108px), nunca at
     // ⚠️ `z-30` desde 12/10/2026 (261012-mbw): em `z-50` ele cobria o menu
     // lateral do sistema e o painel do produto (ambos `z-40`). A ordem entre os
     // três é provada em `publicador-header-zindex-ordem.test.js`.
-    assert.match(html, /<header class="sticky top-0 z-30/);
+    assert.match(html, /<header class="sticky -top-6 z-30/);
     assert.match(html, /class="flex h-\[60px\] items-center/);
     assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
 });

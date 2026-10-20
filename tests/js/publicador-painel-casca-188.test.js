@@ -478,7 +478,7 @@ function ordemOk(z) {
 
 test('⚠️⚠️ Z-INDEX: header < backdrop < painel < modal < toast, lidos DO CÓDIGO 188_07', () => {
     const z = {
-        header: zDe(lerSemComentarios(REL_HEADER), /<header className="sticky top-0 z-(\d+)(?=[\s"])/g, 'header'),
+        header: zDe(lerSemComentarios(REL_HEADER), /<header className="sticky -top-6 z-(\d+)(?=[\s"])/g, 'header'),
         backdrop: zDe(FONTE_PAINEL, /CLASSES_BACKDROP = 'fixed inset-0 z-\[(\d+)\]/g, 'backdrop do painel'),
         painel: zDe(FONTE_PAINEL, /CLASSES_PAINEL =\s*\n?\s*'fixed inset-y-0 right-0 z-\[(\d+)\]/g, 'painel'),
         modal: zDe(lerSemComentarios(REL_CASCA_MODAL), /CLASSES_BACKDROP = 'fixed inset-0 z-\[(\d+)\]/g, 'casca de modal'),

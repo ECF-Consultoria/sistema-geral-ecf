@@ -1283,7 +1283,7 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
     await contexto.test('UM bloco sticky logo abaixo do header, com filtros + cabeçalho das colunas, sem overflow-x', () => {
         let html;
         assert.doesNotThrow(() => { html = render(); });
-        // ⚠️ Fase 177, plano 07 — REAPONTE (`top-0` → `top-[108px]`), e a razão
+        // ⚠️ Fase 177, plano 07 — REAPONTE (`top-0` → `top-[84px]`), e a razão
         // é FUNCIONAL, não estética. O `PublicadorHeader` global passou a ser o
         // primeiro filho desta página e é `sticky top-0` no MESMO scrollport (o
         // `<main>` do `AppLayout`, que tem `overflow-y-auto`). Ele ocupa 108px
@@ -1292,7 +1292,7 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
         // perderia os filtros e os nomes das colunas, que é exatamente o
         // problema que este teste nasceu para impedir.
         // ⚠️ Colchetes escapados: `[108px]` cru seria classe de caracteres.
-        assert.match(html, /sticky top-\[108px\] z-10 rounded-t-xl bg-ecf-card/);
+        assert.match(html, /sticky top-\[84px\] z-10 rounded-t-xl bg-ecf-card/);
         // E `top-0` não volta NESTE bloco. ⚠️ O `z-10` à direita é o que impede
         // o casamento por prefixo (`top-0` casa dentro de `top-0.5`); o
         // `class="` à esquerda é o que impede casar o header, que é
@@ -1302,11 +1302,11 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
         // ⚠️ O header era `z-50` até 12/10/2026 (261012-mbw) — foi para `z-30`
         // para deixar de cobrir o menu lateral do sistema e o painel do produto
         // (ambos `z-40`). Segue ACIMA deste `z-10`, que é o que importa aqui.
-        assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1);
+        assert.equal((html.match(/sticky top-\[84px\]/g) ?? []).length, 1);
         // E o header global, que é o que justifica o 108: linha 1 de 60px +
-        // nav de 48px. Se uma das duas medidas mudar, o `top-[108px]` acima
+        // nav de 48px. Se uma das duas medidas mudar, o `top-[84px]` acima
         // passa a esconder (ou a sobrar) e esta asserção acusa.
-        assert.match(html, /<header class="sticky top-0 z-30/);
+        assert.match(html, /<header class="sticky -top-6 z-30/);
         assert.match(html, /class="flex h-\[60px\] items-center/);
         assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
         assert.doesNotMatch(html, /overflow-x-auto/);

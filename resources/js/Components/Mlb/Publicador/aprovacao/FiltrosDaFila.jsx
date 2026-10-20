@@ -52,14 +52,14 @@ import { ROTULO_DO_BLOQUEIO } from './vocabularioDoPortao';
 // ═══ ⚠️⚠️ NÃO HÁ STICKY NESTA LINHA, E ISSO É MEDIDO ══════════════════════
 //
 // O docblock da página (`Pages/Mlb/Publicador/Aprovacao.jsx`) antecipava
-// "sticky de filtros, quando chegar (187-06), é `top-[108px]`". ⚠️ **MEDIDO por
+// "sticky de filtros, quando chegar (187-06), é `top-[84px]`". ⚠️ **MEDIDO por
 // script: a linha `:66` do protótipo NÃO tem `position:sticky` nem `top:` nem
 // `z-index:`** — a varredura de propriedades do recorte `:66`-`:105` devolve
 // `position: absolute|relative` (a lupa e as âncoras dos popovers) e nada mais.
 // ➡️ **Não há sticky aqui**, porque inventá-lo seria efeito que o protótipo não
 // pede e que ninguém pode conferir nesta máquina (o banco local não tem empresa
 // com `ml_token`; a rota dá 404 aqui).
-// ⚠️ Se um dia ele for pedido, o valor é `sticky top-[108px] z-10` — `top-0`
+// ⚠️ Se um dia ele for pedido, o valor é `sticky top-[84px] z-10` — `top-0`
 // está ERRADO porque o header global ocupa 108px do scrollport (medido na Fase
 // 177) —, e o `z-10` é o MESMO nível do overlay do popover, abaixo do popover
 // `z-20` e do header `z-30`.

@@ -127,7 +127,7 @@ import AvisoDeVersaoMudou from '@/Components/Mlb/Publicador/aprovacao/AvisoDeVer
 // `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco e a fila é uma aba
 // INTERNA da tela de Publicações, não uma entrada nova do menu.
 //
-// ⚠️ Sticky de filtros, quando chegar (187-06), é `top-[108px]` e NÃO `top-0`:
+// ⚠️ Sticky de filtros, quando chegar (187-06), é `top-[84px]` e NÃO `top-0`:
 // o header global ocupa 108px do scrollport. Registrado aqui porque é esta
 // página que compõe.
 // ═══════════════════════════════════════════════════════════════════════════

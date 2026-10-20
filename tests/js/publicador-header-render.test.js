@@ -192,7 +192,7 @@ test('PublicadorHeader — FID-05 e FID-01 travados no HTML, elemento por elemen
             // `publicador-header-zindex-ordem.test.js`, lendo os valores do
             // código — aqui a lista continua sendo IGUALDADE DE CONJUNTO (classe
             // a mais reprova), o que mudou foi o valor, não o rigor do gate.
-            ['sticky', 'top-0', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]', 'border-b', 'border-pub-line-subtle-2',
+            ['sticky', '-top-6', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]', 'border-b', 'border-pub-line-subtle-2',
                 'bg-pub-page/[0.86]', 'backdrop-blur-[14px]', 'backdrop-saturate-[1.4]', 'font-pub ', 'text-pub-txt'],
             '<header>',
         );

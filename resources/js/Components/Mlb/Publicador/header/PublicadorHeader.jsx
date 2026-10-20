@@ -24,8 +24,11 @@ import { useAtalhosDoHeader } from './atalhosDoHeader';
 // (24px) e o header precisa encostar nas bordas para cumprir FID-05 (container
 // `min-width:1240px`, conteúdo `max-width:1600px`, `padding: 0 36px`). A margem
 // negativa resolve isso NO PRÓPRIO header, sem prop nova e sem alterar uma
-// única linha do `AppLayout` (D2). O `sticky top-0` continua valendo porque
-// quem rola é o `<main>` (`overflow-y-auto`), não a janela.
+// única linha do `AppLayout` (D2). Quem rola é o `<main>` (`overflow-y-auto`), não a janela.
+// ⚠️ `-top-6`, não `top-0` (20/10/2026): o sticky cola na borda do CONTEÚDO do
+// `<main>`, não do padding — com `top-0` sobrava uma faixa de 24px acima do header por
+// onde a página aparecia rolando. Mesma solução da `BarraDoEditor`. Os blocos que
+// colam logo abaixo dele usam `top-[84px]` (108px do header − os mesmos 24px).
 //
 // O MODAL "NOVA PUBLICAÇÃO" (Fase 178, plano 03) JÁ ESTÁ AQUI: é
 // `ModalNovaPublicacao`, montado no fim do `<header>`. ⚠️ O lugar do JSX só
@@ -159,7 +162,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
         // menu expandido no hover ficava atrás, e o painel do produto também.
         // `z-30` fica ACIMA do corpo das páginas (que vai até `z-20`: dropdown
         // de `Produtos.jsx` e rodapé do `Editor.jsx`; o bloco de filtros
-        // `sticky top-[108px]` é `z-10`), então o header continua cobrindo o
+        // `sticky top-[84px]` é `z-10`), então o header continua cobrindo o
         // conteúdo ao rolar — e ABAIXO dos dois `z-40`, que é o pedido.
         // ⚠️ O overlay `bg-black/50` do painel do produto passa a escurecer
         // este header. É o comportamento CORRETO e pedido ("o sidebar deveria
@@ -168,7 +171,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
         // o `document.body`: vivem na raiz e NÃO dependem deste valor.
         // ⚠️ HEAD-01 do `REQUIREMENTS-v26.md` ainda diz `z-index: 50` — foi
         // SUPERADO por este conflito medido com o layout do sistema.
-        <header className="sticky top-0 z-30 -mx-6 -mt-6 min-w-[1240px] border-b border-pub-line-subtle-2 bg-pub-page/[0.86] font-pub text-pub-txt backdrop-blur-[14px] backdrop-saturate-[1.4]">
+        <header className="sticky -top-6 z-30 -mx-6 -mt-6 min-w-[1240px] border-b border-pub-line-subtle-2 bg-pub-page/[0.86] font-pub text-pub-txt backdrop-blur-[14px] backdrop-saturate-[1.4]">
             <div className="mx-auto max-w-[1600px] px-[36px]">
                 {/* ─── Linha 1 (60px) ─── */}
                 <div className="flex h-[60px] items-center justify-between gap-5">

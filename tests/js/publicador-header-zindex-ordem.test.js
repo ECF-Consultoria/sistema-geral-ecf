@@ -54,7 +54,7 @@ import { lerSemComentarios } from './_fonte.js';
 const PONTOS = {
     header: {
         arquivo: 'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
-        ancora: /<header className="sticky top-0 z-(\d+)(?=[\s"])/g,
+        ancora: /<header className="sticky -top-6 z-(\d+)(?=[\s"])/g,
         descricao: 'o <header> sticky do Publicador',
     },
     menuLateral: {
@@ -69,7 +69,7 @@ const PONTOS = {
     },
     filtrosDaGrade: {
         arquivo: 'resources/js/Pages/Mlb/Publicador/Produtos.jsx',
-        ancora: /<div className="sticky top-\[108px\] z-(\d+)(?=[\s"])/g,
+        ancora: /<div className="sticky top-\[84px\] z-(\d+)(?=[\s"])/g,
         descricao: 'o bloco de filtros sticky da grade de Produtos (corpo da página)',
     },
 };
@@ -154,13 +154,13 @@ test('a extração não casa por PREFIXO (z-3 não casa dentro de z-30, z-30 nã
         return m.length === 1 ? Number(m[0][1]) : null;
     };
     // O caso real: termina em espaço.
-    assert.equal(pegar('<header className="sticky top-0 z-30 -mx-6">'), 30);
+    assert.equal(pegar('<header className="sticky -top-6 z-30 -mx-6">'), 30);
     // Termina em aspa (classe única no atributo).
-    assert.equal(pegar('<header className="sticky top-0 z-30"'), 30);
+    assert.equal(pegar('<header className="sticky -top-6 z-30"'), 30);
     // ⚠️ O caso que mata gate por substring: 300 NÃO pode ser lido como 30.
-    assert.equal(pegar('<header className="sticky top-0 z-300 -mx-6">'), 300);
+    assert.equal(pegar('<header className="sticky -top-6 z-300 -mx-6">'), 300);
     // E um valor de um dígito não "vira" o de dois.
-    assert.equal(pegar('<header className="sticky top-0 z-3 -mx-6">'), 3);
+    assert.equal(pegar('<header className="sticky -top-6 z-3 -mx-6">'), 3);
 });
 
 test('ISCA: âncora que eu sei que NÃO existe tem de dar 0 ocorrências (senão a sonda mente "presente" para tudo)', () => {
@@ -168,7 +168,7 @@ test('ISCA: âncora que eu sei que NÃO existe tem de dar 0 ocorrências (senão
     // Classe inventada, com a MESMA forma das âncoras de cima. Se isto casar,
     // o `matchAll` está achando qualquer coisa e os quatro testes acima estão
     // passando pelo motivo errado.
-    const isca = [...fonte.matchAll(/<header className="sticky top-0 zz-(\d+)(?=[\s"])/g)];
+    const isca = [...fonte.matchAll(/<header className="sticky -top-6 zz-(\d+)(?=[\s"])/g)];
     assert.equal(isca.length, 0, 'a isca casou — a extração deste arquivo está achando âncora que não existe');
 
     // E a contraprova: a âncora de verdade casa no MESMO arquivo. Sem esta
@@ -185,5 +185,5 @@ test('ISCA: os comentários são removidos antes de ler (a prosa cita os própri
     const bruta = PONTOS.header.arquivo;
     const semComentario = lerSemComentarios(bruta);
     assert.doesNotMatch(semComentario, /SUPERADO por este conflito medido/, 'os comentários NÃO foram removidos da fonte lida');
-    assert.match(semComentario, /<header className="sticky top-0 z-/, 'o <header> desapareceu da fonte lida');
+    assert.match(semComentario, /<header className="sticky -top-6 z-/, 'o <header> desapareceu da fonte lida');
 });
