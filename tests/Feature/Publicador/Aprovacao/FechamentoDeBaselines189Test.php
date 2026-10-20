@@ -472,4 +472,248 @@ class FechamentoDeBaselines189Test extends TestCase
 
         return $problemas;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // A TABELA FID-01 DO LIGHTBOX, RE-MEDIDA
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    /** As seções da `189-FID01.md` que são TABELA DE MEDIÇÃO e têm de declarar como foram medidas. */
+    private const SECOES_MEDIDAS = ['B', 'C', 'D', 'E', 'F'];
+
+    /** A lista FECHADA de classificações de divergência. Fora dela, reprova. */
+    private const CLASSIFICACOES = ['OMISSÃO', 'REFERÊNCIA', 'VALOR'];
+
+    /**
+     * ⚠️⚠️ **POR QUE ESTE MÉTODO EXISTE.** O `<verify>` da tarefa 3, na primeira redação do plano,
+     * rodava só os gates de TOKEN — que não medem **nada** da tabela: a `189-FID01.md` podia ficar
+     * **intocada** e o verify passava verde. É *"gate sobre zero casos"* com outra roupa, e é o
+     * mesmo defeito que o 188-01 já tinha corrigido no seu próprio plano.
+     *
+     * ⚠️ A pergunta do GATE-01, respondida: *o que precisaria estar errado para este gate falhar?*
+     *   · uma seção de medição **deixar de dizer** se foi medida por `SCRIPT` ou por `LEITURA` —
+     *     *"tabela derivada de SCRIPT é confiável; tabela derivada de LEITURA não é"*;
+     *   · a **§I** desaparecer, ou ficar **vazia por construção** (que é indistinguível de "não
+     *     re-mediu" — e foi exatamente o estado em que o documento chegou a esta wave);
+     *   · uma divergência ser classificada **fora da lista fechada** de três valores;
+     *   · uma das três classificações **nem ocorrer nem ser mencionada** — "não houve OMISSÃO"
+     *     tem de estar ESCRITO, porque silêncio aqui é indistinguível de "não procurei";
+     *   · um ponteiro nu `:N` apontar para **fora do protótipo** (> 1432) — e isso **pegou de
+     *     verdade nesta wave**: três citações do `ROADMAP.md` escritas com a notação do protótipo
+     *     (`:4717`, `:5025`) e a isca `:9999`. ⚠️ A notação `:N` é **EXCLUSIVA do protótipo** nesta
+     *     milestone; linha de outro arquivo vai como `L<N>`;
+     *   · a §A perder a declaração de que a tabela foi medida **por SCRIPT**.
+     *
+     * ⚠️⚠️ **RECORTE DE SEÇÃO SEM O PONTO SOB `/s`.** O cabeçalho usa classe negada de newline
+     * (`[^\n]*`) e o corpo é `(?:[^\n]*\n)*?` com lookahead — **nunca** `.*` sob `/s`, que **engole
+     * o documento inteiro** e devolve corpo VAZIO, fazendo toda asserção de ausência passar por
+     * construção. ⚠️ **E `\z`, nunca `$`:** sob `/m` o `$` casa **fim de linha** e o corpo sai
+     * vazio — medido nesta wave, na versão JS do mesmo recorte, e a isca pegou.
+     *
+     * ⚠️⚠️ **A DEGRADAÇÃO NÃO É `markTestSkipped`, por uma razão MEDIDA:** no modo `php` o harness
+     * exige a linha `Tests: N passed (A assertions)`; um teste **pulado** imprime `1 skipped` e o
+     * gate **REPROVARIA** — o "skip" derrubaria o gate em vez de degradá-lo. ➡️ A degradação é
+     * **razão NOMEADA registrada numa lista**. Nunca "conferido".
+     */
+    public function test_a_fid01_do_lightbox_declara_como_mediu_e_lista_as_divergencias_189_01(): void
+    {
+        $caminho = base_path(self::DIR_FASE . '/189-FID01.md');
+        $this->assertFileExists($caminho, 'o 189-FID01.md não existe — é o contrato de UI dos 8 planos desta fase');
+        $texto = (string) file_get_contents($caminho);
+
+        // ── 1. O documento REAL tem de PASSAR ───────────────────────────────────────────────────
+        $this->assertSame([], $this->problemasDaFid01($texto), 'o 189-FID01.md real reprovou a própria validação de forma');
+
+        // ── 2. ⚠️ ISCA INVERTIDA: §I **vazia por construção** tem de REPROVAR ───────────────────
+        $semDivergencias = (string) preg_replace('/^### §I\.\d+ — .*$/mu', '### §I.X — (apagado pela isca)', $texto);
+        $this->assertNotSame($texto, $semDivergencias, 'a isca da §I não alterou nada — ela não exerce a validação');
+        $this->assertNotSame(
+            [],
+            $this->problemasDaFid01($semDivergencias),
+            'a validação ACEITOU uma §I sem classificação nenhuma — ela não distingue "re-mediu" de "não re-mediu"'
+        );
+
+        // ── 2b. ⚠️⚠️ O CAMINHO DE ESCAPE TEM DE FUNCIONAR ───────────────────────────────────────
+        // Uma fase futura pode re-medir e **não achar divergência nenhuma** — e nesse caso ela
+        // escreve o cabeçalho de escape. Se o regex do escape estivesse errado, aquela fase seria
+        // **obrigada a inventar divergência** para o gate passar, que é a pior coisa que um gate
+        // pode induzir. ⚠️ O escape nunca é exercido pelo documento de hoje, então é exercido AQUI.
+        $soEscape = (string) preg_replace(
+            '/^### §I\.\d+ — .*$/mu',
+            '### §I.1 — NENHUMA DIVERGÊNCIA NESTA RE-MEDIÇÃO',
+            $texto
+        );
+        $this->assertNotContains(
+            'a §I não traz classificação nenhuma E não traz o cabeçalho explícito de "nenhuma divergência" — vazia por construção',
+            $this->problemasDaFid01($soEscape),
+            'o caminho de ESCAPE não funciona: uma re-medição sem divergências seria obrigada a inventar uma'
+        );
+
+        // ── 3. ⚠️ ISCA INVERTIDA: seção sem declarar SCRIPT/LEITURA tem de REPROVAR ─────────────
+        $semDeclaracao = (string) preg_replace('/\*\*COMO MEDIDA: `(SCRIPT|LEITURA)`\.\*\*/u', '(sem declarar)', $texto);
+        $this->assertNotSame($texto, $semDeclaracao, 'a isca da declaração não alterou nada');
+        $this->assertNotSame(
+            [],
+            $this->problemasDaFid01($semDeclaracao),
+            'a validação ACEITOU seções de medição que não dizem se foram medidas por SCRIPT ou por LEITURA'
+        );
+
+        // ── 4. ⚠️ ISCA INVERTIDA: ponteiro FORA do protótipo tem de REPROVAR ────────────────────
+        // ⚠️ Esta isca não é hipotética: ela PEGOU três citações reais nesta wave.
+        $this->assertNotSame(
+            [],
+            $this->problemasDaFid01($texto . "\n\nlinha inventada apontando para `:9999` fora do protótipo\n"),
+            'a validação ACEITOU um ponteiro para além das ' . self::LINHAS_DO_PROTOTIPO . ' linhas do protótipo'
+        );
+
+        // ── 5. ⚠️ ISCA INVERTIDA: classificação FORA da lista fechada tem de REPROVAR ───────────
+        $classeInventada = str_replace('### §I.2 — `VALOR`', '### §I.2 — `APROXIMADO`', $texto);
+        $this->assertNotSame($texto, $classeInventada, 'a isca da classificação não alterou nada');
+        $this->assertNotSame(
+            [],
+            $this->problemasDaFid01($classeInventada),
+            'a validação ACEITOU uma classificação fora da lista fechada OMISSÃO/REFERÊNCIA/VALOR'
+        );
+
+        // ── 6. ⚠️ A DEGRADAÇÃO NOMEADA (nunca "conferido", nunca markTestSkipped) ───────────────
+        $pulados = [];
+        $proto = base_path('design_handoff_publicador/Aprovacao.dc.html');
+        if (! file_exists($proto)) {
+            $pulados[] = 'SKIP NOMEADO: design_handoff_publicador/Aprovacao.dc.html não está no disco '
+                . '(pacote de handoff NÃO versionado, e a outra cópia — new_layout_publicador/ — NÃO '
+                . 'tem este arquivo). A conferência das 1432 linhas fica PULADA; a forma do documento '
+                . 'continua cobrada pelos itens 1 a 5.';
+        } else {
+            $this->assertSame(
+                self::LINHAS_DO_PROTOTIPO,
+                substr_count((string) file_get_contents($proto), "\n"),
+                'o protótipo mudou de tamanho — a tabela FID-01 inteira passaria a medir outro documento'
+            );
+        }
+        foreach ($pulados as $motivo) {
+            $this->assertStringContainsString('SKIP NOMEADO', $motivo, 'degradou sem nomear o skip');
+        }
+        $this->assertLessThanOrEqual(1, count($pulados), 'mais de uma degradação: o gate virou decorativo');
+    }
+
+    /**
+     * A validação de FORMA do `189-FID01.md`. Devolve a lista de problemas — **vazia** quando está
+     * tudo certo. ⚠️ Devolve LISTA (não lança) para as cinco iscas invertidas poderem exercê-la.
+     * ⚠️ **UMA** asserção coletando infratores no chamador, nunca uma por seção.
+     *
+     * @return list<string>
+     */
+    private function problemasDaFid01(string $texto): array
+    {
+        $problemas = [];
+
+        // (a) Toda seção de medição declara SCRIPT ou LEITURA.
+        foreach (self::SECOES_MEDIDAS as $letra) {
+            $rx = '/^## §' . $letra . ' [^\n]*\n((?:[^\n]*\n)*?)(?=^## |\z)/mu';
+            if (preg_match($rx, $texto, $m) !== 1) {
+                $problemas[] = "seção §{$letra} não encontrada (ou o recorte quebrou)";
+                continue;
+            }
+            if (trim($m[1]) === '') {
+                // ⚠️ Era exatamente este o sintoma do `.*` sob /s (e do `$` sob /m): corpo VAZIO, e
+                // toda asserção de ausência passando por construção.
+                $problemas[] = "o corpo da seção §{$letra} saiu VAZIO — o recorte está quebrado";
+                continue;
+            }
+            if (preg_match('/\*\*COMO MEDIDA: `(SCRIPT|LEITURA)`\.\*\*/u', $m[1]) !== 1) {
+                $problemas[] = "a seção §{$letra} não declara **COMO MEDIDA: `SCRIPT`** nem `LEITURA`";
+            }
+        }
+
+        // (b) A §I existe.
+        if (preg_match('/^## §I — [^\n]*\n((?:[^\n]*\n)*?)(?=^## |\z)/mu', $texto, $mi) !== 1) {
+            $problemas[] = 'a §I das divergências não existe';
+
+            return $problemas;
+        }
+        $corpoI = $mi[1];
+        if (trim($corpoI) === '') {
+            $problemas[] = 'o corpo da §I saiu VAZIO — o recorte está quebrado';
+
+            return $problemas;
+        }
+
+        // (c) ⚠️ A §I NÃO pode estar vazia por construção: ou traz as classificações, ou traz o
+        // CABEÇALHO explícito de "nenhuma divergência". §I vazia SEM ele é indistinguível de "não
+        // re-mediu" — é a ISCA INVERTIDA escrita como regra.
+        $usadas = [];
+        if (preg_match_all('/^### §I\.\d+ — `([^`]+)`/mu', $corpoI, $mc) >= 1) {
+            $usadas = $mc[1];
+        }
+        // ⚠️⚠️ O ESCAPE É ESTRUTURAL (um CABEÇALHO), e não uma frase — porque a própria prosa da §I
+        // que EXPLICA a regra cita a frase, e aí o escape ficaria ligado para sempre (é a regra 2 do
+        // learnings: *palavra que explica "não uso isso" casa com o gate que conta isso*).
+        $temEscape = (bool) preg_match('/^### §I\.\d+ — NENHUMA DIVERGÊNCIA NESTA RE-MEDIÇÃO/mu', $corpoI);
+        if ($usadas === [] && ! $temEscape) {
+            $problemas[] = 'a §I não traz classificação nenhuma E não traz o cabeçalho explícito de '
+                . '"nenhuma divergência" — vazia por construção';
+        }
+
+        // (d) Toda classificação usada está na lista FECHADA.
+        $fora = array_values(array_diff($usadas, self::CLASSIFICACOES));
+        if ($fora !== []) {
+            $problemas[] = 'classificação fora da lista fechada OMISSÃO/REFERÊNCIA/VALOR: ' . implode(', ', $fora);
+        }
+
+        // (e) Se há divergências, as três classificações têm de estar presentes OU mencionadas.
+        // ⚠️ "Não houve OMISSÃO" tem de estar ESCRITO: silêncio é indistinguível de "não procurei".
+        if ($usadas !== [] && ! $temEscape) {
+            foreach (array_diff(self::CLASSIFICACOES, $usadas) as $a) {
+                if (! str_contains($corpoI, $a)) {
+                    $problemas[] = "a §I não usa nem menciona a classificação '{$a}' — ou ela não ocorreu, e isso tem de estar escrito";
+                }
+            }
+        }
+
+        // (f) ⚠️ A §I declara QUANDO e COMO foi re-medida. "Re-medida" sem data e sem método é
+        // afirmação, não medição.
+        if (! preg_match('/RE-MEDIDA por SCRIPT em \d{2}\/\d{2}\/\d{4}/u', $corpoI)) {
+            $problemas[] = 'a §I não declara "RE-MEDIDA por SCRIPT em <data>"';
+        }
+
+        // (g) ⚠️⚠️ Todo ponteiro NU `:N` aponta para DENTRO do protótipo. A notação `:N` é
+        // EXCLUSIVA do protótipo nesta milestone; linha de outro arquivo vai como `L<N>`.
+        preg_match_all('/`:(\d+)`/u', $texto, $mp);
+        $foraDoArquivo = array_values(array_unique(array_filter(
+            array_map('intval', $mp[1] ?? []),
+            fn (int $n) => $n < 1 || $n > self::LINHAS_DO_PROTOTIPO
+        )));
+        if ($foraDoArquivo !== []) {
+            $problemas[] = 'ponteiros fora do protótipo (> ' . self::LINHAS_DO_PROTOTIPO . '): ' . implode(', ', $foraDoArquivo);
+        }
+        // ⚠️ E a leitura não pode ser cega: zero ponteiros significa regex quebrada, não documento limpo.
+        if (count($mp[1] ?? []) < 50) {
+            $problemas[] = 'o documento tem menos de 50 ponteiros `:N` — leitura suspeita de cega';
+        }
+
+        // (h) A §A declara que a tabela foi medida por SCRIPT, e o sha256 do protótipo está escrito.
+        foreach ([
+            'por SCRIPT' => 'a §A não declara que a tabela foi medida por SCRIPT',
+            self::SHA_PROTOTIPO => 'o sha256 do protótipo não está escrito no documento',
+            '1432' => 'o número de linhas do protótipo não está escrito',
+        ] as $agulha => $erro) {
+            if (! str_contains($texto, (string) $agulha)) {
+                $problemas[] = $erro;
+            }
+        }
+
+        // (i) ⚠️ As decisões TRAVADAS do usuário continuam nomeadas: sem elas, uma fase futura
+        // "conserta de volta" uma derrota do protótipo que foi DECISÃO.
+        foreach ([
+            'PERGUNTA-189-A' => 'a PERGUNTA-189-A não é nomeada',
+            'VERIFICAÇÃO AUTOMÁTICA · APOIO' => 'o literal decidido na 189-A não está escrito',
+            'D-189-3' => 'a decisão D-189-3 (o que NÃO é desenhado) não é nomeada',
+            'Ampliar 2,5×' => 'o literal do liga/desliga do zoom (D-189-3a) não está escrito',
+        ] as $agulha => $erro) {
+            if (! str_contains($texto, $agulha)) {
+                $problemas[] = $erro;
+            }
+        }
+
+        return $problemas;
+    }
 }

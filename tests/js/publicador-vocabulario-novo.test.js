@@ -639,9 +639,34 @@ const ARQUIVOS_NOVOS = [
  * `text-[20px]` ou `text-[22px]`, que já estão na lista — e é exatamente a
  * "aproximação porque o Tailwind não tem esse passo" que FID-02/FID-03
  * **vetam**. ⚠️ E **nada** foi acrescentado "por precaução": só o 21.
+ *
+ * ⚠️⚠️ Fase 189, plano 01 — **`18` entrou, e é o ÚNICO tamanho novo da fase.**
+ * Também é AMPLIAÇÃO: nenhum valor saiu.
+ *
+ *   Varredura de `font-size:` na faixa do LIGHTBOX (E3) de
+ *   `design_handoff_publicador/Aprovacao.dc.html` (POR SCRIPT, 19/10/2026, e
+ *   RE-MEDIDA em 20/10/2026 — ⚠️ CITE O DIRETÓRIO: a outra cópia do pacote
+ *   (`new_layout_publicador/`) **não tem** o `Aprovacao.dc.html`, medido):
+ *     lightbox (`:726`-`:772`): 9.5 11.5 12 12.5 13 18
+ *   Faltava na lista: **só o 18**. Os outros cinco já estavam — conferido por
+ *   script contra o literal desta própria lista, não de cabeça.
+ *
+ *   · `18px` — declarado **2 vezes**, e as duas são o GLIFO das setas de
+ *     navegação do lightbox (`:741` o `←` e `:742` o `→`), cada uma num círculo
+ *     de 44px com `border-radius:50%`, `background:#111111`,
+ *     `border:1px solid #2E2E2E`, `margin-top:-22px` e **`cursor:pointer`**.
+ *     ⚠️ O `cursor:pointer` vai escrito aqui de propósito: ele foi omitido
+ *     **onze** vezes numa fase deste projeto, e nestas duas linhas ele é a
+ *     última propriedade do `style`.
+ *
+ * ⚠️ Sem a liberação aqui, o lightbox teria de arredondar o glifo para
+ * `text-[17px]` ou `text-[20px]`, que já estão na lista — a mesma aproximação
+ * vetada. ⚠️ E **nada** foi acrescentado "por precaução": só o 18.
+ * ⚠️ Os tamanhos do estado IMG-13 (`189-FID01.md` §H4) foram escolhidos DENTRO
+ * da lista (`12`, `11.5`) — **não** são motivo para liberar nada.
  */
 const TAMANHOS_PERMITIDOS = new Set([
-    8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 20, 21, 22, 24, 28, 30, 32, 34,
+    8.5, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 17, 18, 20, 21, 22, 24, 28, 30, 32, 34,
 ]);
 
 /**

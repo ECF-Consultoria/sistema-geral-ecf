@@ -600,6 +600,19 @@ const LIBERADOS_DEPOIS_DA_187 = [
     // `design_handoff_publicador/Aprovacao.dc.html` (`:642`-`:644`), medidos por
     // script em 19/10/2026. Era o ÚNICO ausente da lista.
     21,
+    // Fase 189, plano 01 — as setas ← → do lightbox (Aprovacao.dc.html:741/:742),
+    // medidas por script em 19/10/2026 e RE-MEDIDAS em 20/10/2026.
+    // ⚠️ Era o ÚNICO ausente da lista: a varredura da faixa do lightbox
+    // (`sed -n '726,772p' design_handoff_publicador/Aprovacao.dc.html |
+    // grep -oE 'font-size:[0-9.]+px' | sort -u`) devolve
+    // `9.5 11.5 12 12.5 13 18`, e os outros cinco já estavam.
+    // ⚠️ As duas setas têm `font-size:18px` com `cursor:pointer`, num círculo de
+    // 44px (`border-radius:50%`, `background:#111111`, `border:1px solid #2E2E2E`).
+    // ⚠️ Sem esta liberação o lightbox teria de arredondar o glifo para 17px ou
+    // 20px — que é exatamente a aproximação "porque o Tailwind não tem esse
+    // passo" que FID-02/FID-03 VETAM.
+    // ⚠️ Nada foi acrescentado "por precaução": só o 18.
+    18,
 ];
 
 test('TAM-187 — 9.5 e 22 entraram, e é AMPLIAÇÃO: nada saiu da lista', () => {
