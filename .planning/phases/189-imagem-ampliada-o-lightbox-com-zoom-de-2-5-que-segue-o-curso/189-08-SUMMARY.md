@@ -50,7 +50,7 @@ decisions:
   - "`COMMIT` = `PARTIDA` (55d97241), declarado: as medições rodaram num estado COMMITADO e reproduzível, e o Δ deste plano foi medido SEPARADAMENTE em vez de embutido na linha `PHP:`"
 requirements-completed: [FID-01, FID-02, GATE-09, TERR-06, AMPL-01, AMPL-02, AMPL-03, AMPL-04, AMPL-05, AMPL-06, AMPL-07, IMG-09, IMG-13]
 metrics:
-  duration: "~1h50 (20/10/2026)"
+  duration: "1h10 (20/10/2026, 21:48:30Z a 22:58:42Z — MEDIDO por `date -u`, nao estimado)"
   completed: 2026-10-20
   tasks: 3
   commits: 2
@@ -68,7 +68,7 @@ achou DOIS furos nele ao ser rodado.**
 
 ## Performance
 
-- **Duração:** ~1h50
+- **Duração:** **1h10** (21:48:30Z → 22:58:42Z) — ⚠️ MEDIDO por `date -u`, não estimado
 - **Início:** 2026-10-20T21:48:30Z (PARTIDA `55d97241`, capturada na primeira ação)
 - **Tarefas:** 2 de 3 completas; a **3 é checkpoint humano BLOQUEANTE** e está aguardando o usuário
 - **Arquivos:** 4 (3 criados, 1 modificado)
