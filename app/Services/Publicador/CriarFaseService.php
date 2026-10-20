@@ -94,13 +94,18 @@ use Illuminate\Support\Facades\DB;
  * 9. **Planejamento × Fase N (decisões do usuário de 09/10/2026).** Para o base
  *    AGRUPADO (produto do Portal com cores), a decisão 5 cai: o Planejamento é a
  *    fonte das composições. Dentro da MESMA transação do kit,
- *    `PlanejamentoDaFaseService::garantirOfertas()` cria no Portal as ofertas
- *    Combo N das cores que ainda não têm (pela Lista SKUs) e o SELLER_SKU de cada
- *    cor passa a ser o da oferta — o que vier de quem chama para essas variantes
- *    é trocado. Se o kit não nascer, as ofertas também não. O `oferta_id` do kit
- *    continua NULL (são N ofertas, uma por cor; o vínculo é derivado pela cor) e o
- *    preço segue sem ser gravado: o `DadosEfetivosService` o lê da Precificação
- *    de cada oferta, na hora.
+ *    `PlanejamentoDaFaseService::skusDasOfertas()` lê as ofertas Combo N que o Portal
+ *    tem e o SELLER_SKU de cada cor passa a ser o da oferta — o que vier de quem
+ *    chama para essas variantes é trocado. O `oferta_id` do kit continua NULL (são N
+ *    ofertas, uma por cor; o vínculo é derivado pela cor) e o preço segue sem ser
+ *    gravado: o `DadosEfetivosService` o lê da Precificação de cada oferta, na hora.
+ *
+ * 10. **Combo só no Planejamento (decisão do usuário de 20/10/2026).** Nenhuma
+ *    oferta nasce no Portal por aqui (até então a que faltava era criada). Para o
+ *    produto do Portal quem chama este serviço é a criação automática
+ *    (`CombosDoPlanejamentoService`, quando a Fase 1 é publicada); o endpoint do
+ *    "Criar Fase N" o recusa (KIT-08). `variantes_ativas` deixa ativas só as cores
+ *    que quem chama escolheu — a automática liga só as que têm o Combo N no Portal.
  *
  * ⚠️ `pub_produtos.fase` é o NÚMERO da fase; `estrutura_ofertas.fase` é o TIPO da
  * oferta no Portal (`simples|combo|kit|combit`). Qualificar a tabela em todo SELECT.
@@ -162,8 +167,8 @@ class CriarFaseService
      * @param  array{quantidade: int, sku?: ?string, seller_skus?: array<string, ?string>,
      *     titulo_por_tipo?: array<string, ?string>, descricao?: ?string,
      *     estoque_por_variante?: array<string, array{estoque?: ?int, depositos?: ?array}>,
-     *     ator?: ?array, capa?: ?bool, user?: ?\App\Models\User}  $dados  tudo já
-     *     calculado por quem chama (a prévia do 175-05)
+     *     variantes_ativas?: ?list<string>, ator?: ?array, capa?: ?bool, user?: ?\App\Models\User}  $dados
+     *     tudo já calculado por quem chama (a prévia do 175-05); `variantes_ativas` nulo = as do base
      *
      * @throws RegraViolada KIT-06 (composto do Planejamento), KIT-01 (base sem rascunho),
      *                      KIT-02 (base que já é kit), KIT-03 (quantidade < 2), KIT-04 (Kit N já existe)
@@ -204,10 +209,9 @@ class CriarFaseService
                 // Relido sob a trava: a conferência de fora pode ter envelhecido.
                 $this->recusarQuantidadeRepetida($familia, $quantidade);
 
-                // Decisão 9: base agrupado — o SKU de cada cor é o da oferta Combo N do Portal, e a que
-                // falta nasce lá agora, nesta transação (idempotente, sob a trava da Company).
-                $user = ($dados['user'] ?? null) instanceof \App\Models\User ? $dados['user'] : null;
-                $doPlanejamento = $this->planejamento()->garantirOfertas($base, $quantidade, $user);
+                // Decisão 9: base agrupado — o SKU de cada cor é o da oferta Combo N que o Portal tem.
+                // Decisão 10: nada nasce no Portal por aqui; a cor sem Combo N fica com o SKU sugerido.
+                $doPlanejamento = $this->planejamento()->skusDasOfertas($base, $quantidade);
                 if ($doPlanejamento !== []) {
                     $dados['seller_skus'] = array_replace((array) ($dados['seller_skus'] ?? []), $doPlanejamento);
                 }
@@ -488,6 +492,8 @@ class CriarFaseService
     {
         $skus = (array) ($dados['seller_skus'] ?? []);
         $estoques = (array) ($dados['estoque_por_variante'] ?? []);
+        // Decisão 10: quem chama pode deixar só algumas cores ativas (nulo = as mesmas do base).
+        $ativas = isset($dados['variantes_ativas']) ? array_flip(array_map('strval', (array) $dados['variantes_ativas'])) : null;
 
         foreach ($base->variantes as $v) {
             $chave = $v->combinacao_chave;
@@ -496,7 +502,7 @@ class CriarFaseService
             $nova = $kit->variantes()->create([
                 'combinacao_chave' => $chave,
                 'combinacao_hash' => $v->combinacao_hash,
-                'ativa' => $v->ativa,
+                'ativa' => $v->ativa && ($ativas === null || isset($ativas[$chave])),
                 'orfa' => $v->orfa,
                 // O kit nunca foi publicado: nenhuma variante dele nasce publicada.
                 'publicada' => false,

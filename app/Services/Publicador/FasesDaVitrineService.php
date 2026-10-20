@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\DB;
  * no Publicador fica no próprio cartão.
  *
  * Criar Combo, Kit e Combit é só no Planejamento do Portal (decisão de 20/10/2026); o combo planejado que ainda não
- * tem anúncio entra como uma face de espera na Fase 2 ({@see planejados()}), porque ele nasce depois da Fase 1.
+ * tem anúncio entra como uma face de espera na Fase 2 ({@see planejados()}): ele nasce sozinho com a Fase 1 no ar.
  */
 final class FasesDaVitrineService
 {
@@ -133,11 +133,13 @@ final class FasesDaVitrineService
                         'nome' => (string) ($cartao['nome'] ?? $base->nome),
                         'composicao' => "{$n} unidades do mesmo produto",
                         'foto' => $cartao['foto'] ?? null,
+                        // Com a Fase 1 no ar o anúncio é criado sozinho (`CombosDoPlanejamentoService`): a face só
+                        // continua aqui se a criação não rodou ou foi pulada — o Sincronizar agenda de novo.
                         'chip' => $publicada
                             ? ['texto' => 'Planejado · ainda sem anúncio', 'tom' => 'ambar',
-                                'detalhe' => "O Combo de {$n} está no Planejamento do Portal e a Fase 1 já foi publicada."]
+                                'detalhe' => "A Fase 1 já está no ar e o anúncio do Combo de {$n} é criado sozinho. Se continuar aqui, use “Sincronizar do Portal”."]
                             : ['texto' => 'Espera a Fase 1 ser publicada', 'tom' => 'neutro',
-                                'detalhe' => "O Combo de {$n} está no Planejamento do Portal. O anúncio dele nasce depois da Fase 1."],
+                                'detalhe' => "O Combo de {$n} está no Planejamento do Portal. O anúncio dele nasce sozinho quando a Fase 1 for publicada."],
                     ];
                 }
             }

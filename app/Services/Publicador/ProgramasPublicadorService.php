@@ -1009,6 +1009,8 @@ class ProgramasPublicadorService
                 'rotulo_fase' => self::rotuloFase($p->quantidade_kit, $composto),
                 // `combo|kit|combit` (o TIPO da oferta do Portal) ou null — escalar, sempre.
                 'composto' => $composto,
+                // 20/10/2026: produto do Portal — o combo dele se cria no Planejamento, sem "Criar Fase N".
+                'combos_no_portal' => CombosDoPlanejamentoService::doPortal($p),
                 'url_produto' => $chaveConta === null ? null
                     : route('mlb.anuncios.publicador.produto', ['conta' => $chaveConta, 'produto' => $p->id]),
                 // Estruturas conhecidas (o 175-10 as lê campo por campo, nunca como texto):

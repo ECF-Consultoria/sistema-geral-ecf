@@ -267,23 +267,24 @@ test('ResumoDoSincronizar.jsx — a fonte não lê avisos nem lista', () => {
     assert.doesNotMatch(fonte, /\.avisos|avisosDoClique|<ul|<li/);
 });
 
-// ─── Planejamento × Fase N (09/10/2026): Combos de uma cor aguardando o "Criar Fase" ───
+// ─── Planejamento × Fase N (09/10/2026): Combos de uma cor ainda sem anúncio (nascem com a Fase 1 no ar, 20/10) ───
 
 test('textoDosCombosAguardando — singular, plural e nada quando zero', async () => {
     const { textoDosCombosAguardando } = await import('../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js');
-    assert.equal(textoDosCombosAguardando(1), '1 combo do Planejamento aguarda o "Criar Fase" do produto.');
-    assert.equal(textoDosCombosAguardando(3), '3 combos do Planejamento aguardam o "Criar Fase" do produto.');
+    assert.equal(textoDosCombosAguardando(1), '1 combo do Planejamento ainda sem anúncio: nasce quando a Fase 1 estiver publicada.');
+    assert.equal(textoDosCombosAguardando(3), '3 combos do Planejamento ainda sem anúncio: nascem quando a Fase 1 estiver publicada.');
+    assert.doesNotMatch(textoDosCombosAguardando(3), /Criar Fase/, 'o produto do Portal não tem mais "Criar Fase"');
     for (const n of [0, null, undefined, -2, 'x', {}, []]) assert.equal(textoDosCombosAguardando(n), null, JSON.stringify(n));
 });
 
 test('linhaDoResumo — os Combos aguardando entram na mesma linha, depois das linhas de cor; sem eles nada muda', () => {
     assert.equal(
         linhaDoResumo({ produtos: 1, variantes: 3, fotos_trazidas: 0 }, 0, 3),
-        'Sincronizado: 1 produto, 3 variações, 0 fotos. 3 combos do Planejamento aguardam o "Criar Fase" do produto.',
+        'Sincronizado: 1 produto, 3 variações, 0 fotos. 3 combos do Planejamento ainda sem anúncio: nascem quando a Fase 1 estiver publicada.',
     );
     assert.equal(
         linhaDoResumo({ so_avisos: true }, 2, 1),
-        '2 linhas antigas de cor foram juntadas ao produto. 1 combo do Planejamento aguarda o "Criar Fase" do produto.',
+        '2 linhas antigas de cor foram juntadas ao produto. 1 combo do Planejamento ainda sem anúncio: nasce quando a Fase 1 estiver publicada.',
     );
     assert.equal(linhaDoResumo({ so_avisos: true }, 0, 0), 'Sincronizado.');
     assert.equal(linhaDoResumo({ produtos: 2, variantes: 2, fotos_trazidas: 1 }), 'Sincronizado: 2 produtos, 2 variações, 1 foto.');

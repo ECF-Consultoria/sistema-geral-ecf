@@ -69,14 +69,15 @@ use Illuminate\Support\Facades\Log;
  * 7. **Planejamento × Fase N (decisões do usuário de 09/10/2026).** Quando o
  *    base é AGRUPADO (produto do Portal com cores), o Planejamento do Portal é a
  *    fonte das composições: cada variante que é cor do Portal recebe o SKU da
- *    oferta Combo N daquela cor (`-CB{N}`) — a que já existe, ou a que o Confirmar
- *    vai criar no Portal (`PlanejamentoDaFaseService::garantirOfertas`) — e o preço
+ *    oferta Combo N daquela cor (`-CB{N}`) — a que já existe, ou o SKU que ela teria
+ *    no padrão do Planejamento, quando a cor ainda não tem Combo N — e o preço
  *    vem da Precificação dela (lido na hora pelo `DadosEfetivosService`, nunca
  *    gravado). O SKU do kit passa a `{SKU do base}-CB{N}`. Isso SUBSTITUI a decisão
  *    5 só para o base agrupado; o resto (produto do Publicador, base sem Portal)
  *    segue `-KIT{N}` e o aviso `preco_vazio`, como antes. Cada linha de variante
  *    ganha a chave `planejamento` (aditiva) e os avisos novos são
- *    `preco_do_planejamento` e `ofertas_novas_no_portal`.
+ *    `preco_do_planejamento` e `cores_sem_combo` (desde 20/10/2026 nenhuma oferta
+ *    nasce no Portal pelo Publicador: Combo só no Planejamento).
  *
  * ⚠️ `pub_produtos.fase` é o NÚMERO da fase; `estrutura_ofertas.fase` é o TIPO
  * da oferta no Portal (`simples|combo|kit|combit`). Nada aqui faz JOIN entre as
@@ -311,7 +312,7 @@ class PreviaDaFaseService
 
     /**
      * Os avisos de preço com o Planejamento (decisão 7), no lugar do `preco_vazio` fixo:
-     * - `ofertas_novas_no_portal`: as ofertas Combo N que o Confirmar vai criar no Portal;
+     * - `cores_sem_combo`: as cores sem Combo N no Portal (ficam de fora do kit; nada é criado lá);
      * - `preco_do_planejamento`: o preço de cada cor vem da Precificação (nunca é copiado);
      * - `preco_vazio`: só as cores ATIVAS sem preço lá, e as variações que não são cor do Portal.
      *
@@ -322,12 +323,12 @@ class PreviaDaFaseService
     private static function avisosDoPlanejamento(array $doPlanejamento, array $variantes, int $n): array
     {
         $avisos = [];
-        $novas = [];
+        $semCombo = [];
         $comPreco = 0;
         $semPreco = [];
         foreach ($doPlanejamento['por_variante'] as $chave => $item) {
             if ($item['nova']) {
-                $novas[] = (string) $item['sku'];
+                $semCombo[] = (string) $item['cor'];
 
                 continue;
             }
@@ -341,9 +342,11 @@ class PreviaDaFaseService
             }
         }
 
-        if ($novas !== []) {
-            $avisos[] = self::aviso('ofertas_novas_no_portal', 'Ao confirmar, o Portal ganha '.count($novas)." oferta(s) Combo {$n}, uma por cor ("
-                .implode(', ', $novas).'), na Precificação do Portal. O preço do kit sai de lá: confira o custo e o frete delas.');
+        // 20/10/2026: o Publicador não cria oferta no Portal (Combo só no Planejamento) — a criação
+        // automática deixa essas cores de fora do kit.
+        if ($semCombo !== []) {
+            $avisos[] = self::aviso('cores_sem_combo', "Sem Combo {$n} no Planejamento do Portal: ".implode(', ', $semCombo)
+                .'. Essas cores ficam de fora do kit até o Combo delas ser planejado no Portal.');
         }
         if ($comPreco > 0) {
             $avisos[] = self::aviso('preco_do_planejamento', "O preço de cada cor vem da Precificação do Portal (Combo {$n}). Ele não é copiado para o kit: se mudar lá, muda aqui.");

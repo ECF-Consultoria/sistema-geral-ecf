@@ -501,10 +501,15 @@ class FamiliaDeFasesService
     private function proximaFase(Collection $familia, ?array $estadoDoBase, ?PubProduto $base = null): array
     {
         $composto = $base !== null ? PlanejamentoDaFaseService::tipoComposto($base) : null;
-        $habilitado = $composto === null && in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
+        $noAr = in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
+        // 20/10/2026: produto do Portal não tem "Criar Fase N" — o combo se cria no Planejamento e o anúncio
+        // dele nasce sozinho com a Fase 1 no ar (`CombosDoPlanejamentoService`).
+        $doPortal = $base !== null && $composto === null && CombosDoPlanejamentoService::doPortal($base);
+        $habilitado = $composto === null && ! $doPortal && $noAr;
         $doPlanejamento = $base !== null && $composto === null ? app(PlanejamentoDaFaseService::class)->quantidadesDoPlanejamento($base) : [];
 
-        $quantidadeSugerida = PlanejamentoDaFaseService::quantidadeSugerida($doPlanejamento, $familia->pluck('quantidade_kit')->all());
+        $quantidades = $familia->pluck('quantidade_kit')->map(fn ($q) => (int) $q)->all();
+        $quantidadeSugerida = PlanejamentoDaFaseService::quantidadeSugerida($doPlanejamento, $quantidades);
 
         return [
             'numero' => PubProduto::faseDaQuantidade($quantidadeSugerida),
@@ -512,10 +517,15 @@ class FamiliaDeFasesService
             'habilitado' => $habilitado,
             'motivo' => match (true) {
                 $composto !== null => PlanejamentoDaFaseService::motivoKit06($composto),
+                $doPortal => CombosDoPlanejamentoService::MOTIVO_PORTAL,
                 $habilitado => null,
                 default => self::MOTIVO_FASE_1,
             },
             'quantidades_do_planejamento' => $doPlanejamento,
+            'combos_no_portal' => $doPortal,
+            // Os Combos do Planejamento que ainda não têm anúncio na família.
+            'combos_esperando' => $doPortal ? array_values(array_diff($doPlanejamento, $quantidades)) : [],
+            'fase_1_no_ar' => $noAr,
         ];
     }
 

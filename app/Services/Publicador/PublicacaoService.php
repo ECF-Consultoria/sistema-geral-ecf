@@ -605,6 +605,24 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        $this->criarCombosDoPlanejamento($r);
+    }
+
+    /**
+     * 20/10/2026 — a Fase 1 de um produto do Portal foi ao ar: os Combos que o Planejamento tem para ele viram o
+     * anúncio deles sozinhos (decisão do usuário: combo, kit e combit se criam só no Portal). Aqui só se AGENDA;
+     * quem confere e cria é o `CombosDoPlanejamentoService`, num Job. Chamado de `concluir()` e de `encerrar()`,
+     * os dois fins de publicação. Falhar aqui NUNCA desfaz nem repete a publicação: o próximo Sincronizar agenda.
+     */
+    private function criarCombosDoPlanejamento(PubRascunho $r): void
+    {
+        try {
+            if (in_array((string) $r->fresh()?->status, CombosDoPlanejamentoService::PUBLICADO, true)) {
+                app(CombosDoPlanejamentoService::class)->agendar((int) $r->produto_id);
+            }
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] rascunho {$r->id} publicado, mas os combos do Planejamento não foram agendados: {$e->getMessage()}");
+        }
     }
 
     /**
@@ -745,6 +763,8 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        // Parte no ar ("Parte publicada") também é a Fase 1 no ar, como no gate do "Criar Fase N".
+        $this->criarCombosDoPlanejamento($r);
     }
 
     private function concluirParcialSeHouver(PubPublicacao $p, PubRascunho $r): void

@@ -18,6 +18,8 @@ import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 const TITLE_SEM_COMPANY = 'Disponível só para empresas cadastradas no sistema';
 
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+// O lugar do botão "Criar Fase N" no produto do Portal (20/10/2026): uma frase, não um botão travado.
+const NOTA_DO_PORTAL = 'inline-flex h-10 items-center whitespace-nowrap rounded-lg border border-white/[0.06] px-4 text-[13px] font-normal text-white/55';
 const BOTAO_TRAVADO = 'inline-flex h-10 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/40 opacity-60';
 // O botão miúdo que cabe AO LADO do "estoque próprio · calculado do base: N"
 // (quick 261009-uec, §6). Mesmas cores do secundário, na escala do texto de 11px.
@@ -166,6 +168,18 @@ function Fato({ rotulo, valor = null, motivo = '' }) {
  * família); o serviço devolve o mesmo objeto em `base` — os dois nomes são
  * aceitos aqui para que o payload cru do serviço também renderize.
  */
+/**
+ * O título do rodapé do produto do Portal (20/10/2026): os Combos do Planejamento que ainda não têm
+ * anúncio — "Combo de 3 unidades planejado no Portal", "Combos de 3 e 4 unidades planejados no Portal".
+ */
+export function tituloDosCombosDoPortal(esperando) {
+    const ns = Array.isArray(esperando) ? esperando.filter((n) => Number.isInteger(n) && n >= 2) : [];
+    if (ns.length === 0) return 'Combos se criam no Planejamento do Portal';
+    if (ns.length === 1) return `Combo de ${ns[0]} unidades planejado no Portal`;
+
+    return `Combos de ${ns.slice(0, -1).join(', ')} e ${ns[ns.length - 1]} unidades planejados no Portal`;
+}
+
 export default function PainelDoProduto({
     produto = null,
     base = null,
@@ -211,6 +225,11 @@ export default function PainelDoProduto({
     const proximaQuantidade = numeroSeguro(proxima.quantidade_sugerida);
     const proximaHabilitada = proxima.habilitado === true;
     const proximoMotivo = textoSeguro(proxima.motivo, '');
+    // 20/10/2026: o produto do Portal não tem "Criar Fase N" — o combo se cria no Planejamento do Portal e o
+    // anúncio dele nasce sozinho com a Fase 1 no ar. No lugar do botão, a frase; no rodapé, os combos que esperam.
+    const combosNoPortal = proxima.combos_no_portal === true;
+    const combosEsperando = listaSegura(proxima.combos_esperando).map((n) => numeroSeguro(n)).filter((n) => n !== null);
+    const fase1NoAr = proxima.fase_1_no_ar === true;
 
     // A conta e o id do produto que o painel "Criar Fase N" precisa para pedir a
     // prévia. Sem um dos dois não há a quem perguntar: o botão fica travado com
@@ -281,7 +300,9 @@ export default function PainelDoProduto({
      * mockup). Mesmo elemento, mesmo gatilho, mesmo painel — o rodapé REUSA a
      * ação, não cria um segundo caminho para ela.
      */
-    const acaoCriarFase = podeCriarFase ? (
+    const acaoCriarFase = combosNoPortal ? (
+        <span className={NOTA_DO_PORTAL} data-combos-no-portal>Nasce do Planejamento do Portal</span>
+    ) : podeCriarFase ? (
         <button type="button" onClick={() => setCriarFaseAberto(true)} className={BOTAO_SECUNDARIO}>
             Criar Fase {proximoNumero}
         </button>
@@ -847,14 +868,23 @@ export default function PainelDoProduto({
                 <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.04] p-4">
                     <div className="min-w-0">
                         <p className="font-display text-[15px] font-bold text-white">
-                            Pronto para a Fase {proximoNumero}{proximaQuantidade !== null ? `: Kit ${proximaQuantidade}` : ''}
+                            {combosNoPortal
+                                ? tituloDosCombosDoPortal(combosEsperando)
+                                : `Pronto para a Fase ${proximoNumero}${proximaQuantidade !== null ? `: Kit ${proximaQuantidade}` : ''}`}
                         </p>
                         <p className="mt-1 text-[13px] font-normal text-white/55">
-                            {totalDeImagens > 0
-                                ? 'As imagens aprovadas são copiadas para a fase nova a custo zero, junto com o título e a ficha técnica do base.'
-                                : 'A fase nova nasce com o título, a ficha técnica e as fotos do produto base.'}
+                            {combosNoPortal
+                                ? motivoDeNaoCriar
+                                : (totalDeImagens > 0
+                                    ? 'As imagens aprovadas são copiadas para a fase nova a custo zero, junto com o título e a ficha técnica do base.'
+                                    : 'A fase nova nasce com o título, a ficha técnica e as fotos do produto base.')}
                         </p>
-                        {!podeCriarFase && (
+                        {combosNoPortal && fase1NoAr && combosEsperando.length > 0 && (
+                            <p className="mt-1 text-[11px] font-normal text-white/40" data-combos-esperando>
+                                A Fase 1 já está no ar: o anúncio é criado em instantes. Se não aparecer, use “Sincronizar do Portal”.
+                            </p>
+                        )}
+                        {!podeCriarFase && !combosNoPortal && (
                             <p className="mt-1 text-[11px] font-normal text-white/40">{motivoDeNaoCriar}</p>
                         )}
                     </div>
