@@ -149,6 +149,12 @@ const JSX_DEPOIS_DA_187 = [
     // Tarefa 2: MOD-02 "Solicitar exceção autorizada" (caixa vermelha, responsável
     // do servidor, justificativa de >= 10 caracteres).
     `${DIR_APROV}/ModalDeExcecao.jsx`,
+    // Fase 188, plano 12 — os dois últimos modais (frete e reprovar imagem) e o
+    // aviso de concorrência (COL-04). ⚠️ O de reprovar COMPÕE a casca da Fase 187 a
+    // partir dos named exports dela (o submeter é VERMELHO, `:1403`), sem editá-la.
+    `${DIR_APROV}/ModalDeFrete.jsx`,
+    `${DIR_APROV}/ModalDeReprovarImagem.jsx`,
+    `${DIR_APROV}/AvisoDeVersaoMudou.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

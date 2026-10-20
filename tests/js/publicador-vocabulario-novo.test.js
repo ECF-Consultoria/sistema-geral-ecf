@@ -495,6 +495,41 @@ const ARQUIVOS_NOVOS = [
     // NÃO vai para a tela (D7: jargão, e fala SOBRE o protótipo); a nota do
     // produto a substitui, com a divergência DECLARADA.
     `${DIR_APROV}/ModalDeExcecao.jsx`,
+    // ═══ ⚠️⚠️ Fase 188, plano 12 — OS DOIS ÚLTIMOS MODAIS E O AVISO ════════
+    //
+    // ⚠️⚠️ **OS TRÊS ENTRAM JUNTOS, e isso é DESVIO DECLARADO da ordem mecânica
+    // da `188-REGUA.md` §13** (*"na MESMA tarefa que cria o arquivo"*): a única
+    // coisa que pega COLISÃO DE NOME de variável na página é o `npm run build`
+    // (medido na wave 188-10: `noRodape` já existia, e **nenhum teste** pegou —
+    // só o esbuild), e o build precisa da página INTEIRA fiada. ➡️ Os três `.jsx`
+    // nasceram juntos; **as três linhas do manifesto e os três gates continuam um
+    // por tarefa**, e o `deepEqual` de `DIRETORIOS_FECHADOS` fica VERDE do começo
+    // ao fim (que é o que a §13 existe para garantir).
+    //
+    // ⚠️ **FID-03:** `text-[11.5px]`, `text-[12px]`, `text-[12.5px]`, `text-[13px]`
+    // e `text-[14px]` (o input do frete, `:808`) — nenhum tamanho NOVO: os cinco já
+    // estão na lista.
+    // ⚠️ **`rounded-[8px]` é valor ARBITRÁRIO de propósito:** 8px **não existe** na
+    // escala `rounded-pub-*`, e *"usar o token parecido que já existe"* é
+    // justificativa **VETADA** (FID-02).
+    //
+    // Tarefa 1 — MOD-03 "Informar frete do vendedor": o `R$` absoluto de `:808`, as
+    // TRÊS origens (chave no corpo, rótulo na tela) e a PRÉVIA do servidor com as
+    // QUATRO cores distintas.
+    `${DIR_APROV}/ModalDeFrete.jsx`,
+    // ⚠ Tarefa 2 — MOD-04 "Reprovar imagem": a miniatura de 120px, os chips de
+    // defeito do SERVIDOR que CONCATENAM com `'; '`, o motivo com piso `> 2` e o
+    // botão de submeter **VERMELHO** (`:1403`, `#EF4444` = `pub-danger`), que é o
+    // ÚNICO dos quatro modais com cor de submissão diferente. ⚠️ A casca é
+    // **COMPOSTA** a partir dos named exports dela: toda a geometria é IMPORTADA, e
+    // nenhuma medida é redeclarada.
+    `${DIR_APROV}/ModalDeReprovarImagem.jsx`,
+    // ⚠ Tarefa 3 — COL-04: o aviso de concorrência, **caixa BLOQUEANTE e não
+    // toast** (toast tem vocabulário travado com gate e some em ~3,8 s). ⚠️ O molde
+    // visual é o do aviso de alteração de preço (`:649`-`:651`), **IMPORTADO** de
+    // `KpisDoPainel.jsx` e reusado por SEMELHANÇA DE FUNÇÃO — COL-04 **não tem
+    // elemento no protótipo**, e isso está DECLARADO.
+    `${DIR_APROV}/AvisoDeVersaoMudou.jsx`,
 ];
 
 /**
