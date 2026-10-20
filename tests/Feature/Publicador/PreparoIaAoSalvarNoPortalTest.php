@@ -250,10 +250,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
         Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
-        // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
-        $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
+        // Decisão do usuário (20/10/2026): a IA espera só 20 segundos sem save (era 2 minutos; antes, 10).
+        $this->assertSame(20, config('publicador.preparo_ia.atraso_s'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
-            && now()->diffInSeconds($j->delay, true) > 90 && now()->diffInSeconds($j->delay, true) <= 120);
+            && now()->diffInSeconds($j->delay, true) > 15 && now()->diffInSeconds($j->delay, true) <= 20);
 
         $jobs = Queue::pushed(PrepararProdutoNoPublicadorJob::class)->values();
         $this->rodados->attach($jobs[0]);
@@ -306,7 +306,9 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
             && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
-        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
+        // A IA vem DEPOIS do Sincronizar (20 s × 15 s): o produto já está no Publicador quando ela começa.
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
+            && now()->diffInSeconds($j->delay, true) > (int) config('publicador.preparo_ia.sincronizar_atraso_s'));
 
         Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
 
