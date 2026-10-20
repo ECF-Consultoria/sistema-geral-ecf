@@ -169,15 +169,15 @@ function Fato({ rotulo, valor = null, motivo = '' }) {
  * aceitos aqui para que o payload cru do serviço também renderize.
  */
 /**
- * O título do rodapé do produto do Portal (20/10/2026): os Combos do Planejamento que ainda não têm
- * anúncio — "Combo de 3 unidades planejado no Portal", "Combos de 3 e 4 unidades planejados no Portal".
+ * O título do rodapé do produto do Portal (20/10/2026): os Combos aceitos no Planejamento que ainda não são
+ * fase — "Combo de 3 unidades aceito no Planejamento", "Combos de 3 e 4 unidades aceitos no Planejamento".
  */
 export function tituloDosCombosDoPortal(esperando) {
     const ns = Array.isArray(esperando) ? esperando.filter((n) => Number.isInteger(n) && n >= 2) : [];
-    if (ns.length === 0) return 'Combos se criam no Planejamento do Portal';
-    if (ns.length === 1) return `Combo de ${ns[0]} unidades planejado no Portal`;
+    if (ns.length === 0) return 'Combo, kit e combit são decididos no Planejamento do Portal';
+    if (ns.length === 1) return `Combo de ${ns[0]} unidades aceito no Planejamento`;
 
-    return `Combos de ${ns.slice(0, -1).join(', ')} e ${ns[ns.length - 1]} unidades planejados no Portal`;
+    return `Combos de ${ns.slice(0, -1).join(', ')} e ${ns[ns.length - 1]} unidades aceitos no Planejamento`;
 }
 
 export default function PainelDoProduto({
@@ -225,8 +225,8 @@ export default function PainelDoProduto({
     const proximaQuantidade = numeroSeguro(proxima.quantidade_sugerida);
     const proximaHabilitada = proxima.habilitado === true;
     const proximoMotivo = textoSeguro(proxima.motivo, '');
-    // 20/10/2026: o produto do Portal não tem "Criar Fase N" — o combo se cria no Planejamento do Portal e o
-    // anúncio dele nasce sozinho com a Fase 1 no ar. No lugar do botão, a frase; no rodapé, os combos que esperam.
+    // 20/10/2026: o produto do Portal não tem "Criar Fase N" — o combo é decidido (aceito) no Planejamento do
+    // Portal e vira fase sozinho com a Fase 1 no ar. No lugar do botão, a frase; no rodapé, os aceitos que esperam.
     const combosNoPortal = proxima.combos_no_portal === true;
     const combosEsperando = listaSegura(proxima.combos_esperando).map((n) => numeroSeguro(n)).filter((n) => n !== null);
     const fase1NoAr = proxima.fase_1_no_ar === true;
@@ -301,7 +301,7 @@ export default function PainelDoProduto({
      * ação, não cria um segundo caminho para ela.
      */
     const acaoCriarFase = combosNoPortal ? (
-        <span className={NOTA_DO_PORTAL} data-combos-no-portal>Nasce do Planejamento do Portal</span>
+        <span className={NOTA_DO_PORTAL} data-combos-no-portal>Vem do Planejamento do Portal</span>
     ) : podeCriarFase ? (
         <button type="button" onClick={() => setCriarFaseAberto(true)} className={BOTAO_SECUNDARIO}>
             Criar Fase {proximoNumero}
@@ -881,7 +881,7 @@ export default function PainelDoProduto({
                         </p>
                         {combosNoPortal && fase1NoAr && combosEsperando.length > 0 && (
                             <p className="mt-1 text-[11px] font-normal text-white/40" data-combos-esperando>
-                                A Fase 1 já está no ar: o anúncio é criado em instantes. Se não aparecer, use “Sincronizar do Portal”.
+                                A Fase 1 já está no ar: a fase é criada em instantes. Se não aparecer, use “Sincronizar do Portal”.
                             </p>
                         )}
                         {!podeCriarFase && !combosNoPortal && (

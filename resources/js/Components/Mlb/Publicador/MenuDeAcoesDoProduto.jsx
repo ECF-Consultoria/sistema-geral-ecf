@@ -51,8 +51,8 @@ export function itensDoMenu(produto, sugestao) {
     // "Criar Fase 2" só faz sentido num BASE que já está no ar: a Fase 2 nasce
     // clonando a Fase 1 publicada. Num kit, não existe fase a criar a partir dele —
     // nem num composto do Planejamento (Combo/Kit/Combit do Portal, KIT-06 no servidor),
-    // nem no produto do Portal (20/10/2026: o combo se cria no Planejamento e o anúncio
-    // nasce sozinho com a Fase 1 no ar — KIT-08 no servidor).
+    // nem no produto do Portal (20/10/2026: o combo é decidido no Planejamento e, aceito lá,
+    // vira fase sozinho com a Fase 1 no ar — KIT-08 no servidor).
     const chave = objetoSeguro(p.status).chave;
     const composto = typeof p.composto === 'string' && p.composto !== '';
     if ((chave === 'publicado' || chave === 'parcial') && p.eh_kit !== true && !composto && p.combos_no_portal !== true) {

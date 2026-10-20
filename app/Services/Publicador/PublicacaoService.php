@@ -609,8 +609,8 @@ class PublicacaoService
     }
 
     /**
-     * 20/10/2026 — a Fase 1 de um produto do Portal foi ao ar: os Combos que o Planejamento tem para ele viram o
-     * anúncio deles sozinhos (decisão do usuário: combo, kit e combit se criam só no Portal). Aqui só se AGENDA;
+     * 20/10/2026 — a Fase 1 de um produto do Portal foi ao ar: os Combos ACEITOS no Planejamento para ele viram fase
+     * sozinhos (decisão do usuário: combo, kit e combit são decididos só no Portal). Aqui só se AGENDA;
      * quem confere e cria é o `CombosDoPlanejamentoService`, num Job. Chamado de `concluir()` e de `encerrar()`,
      * os dois fins de publicação. Falhar aqui NUNCA desfaz nem repete a publicação: o próximo Sincronizar agenda.
      */

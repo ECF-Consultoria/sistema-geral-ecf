@@ -206,7 +206,7 @@ test('cartão da família — pílulas por fase, contagem na Fase 2, composiçã
     assert.equal(contar(html, 'data-vitrine-face='), 6);
     assert.equal(contar(html, 'data-vitrine-planejada="true"'), 1);
     assert.match(html, /Espera a Fase 1 ser publicada/);
-    assert.match(html, /Planejado no Portal/);
+    assert.match(html, /Aceito no Planejamento/);
     assert.match(html, /Mesa Redonda \+ 4× Cadeira/);
     assert.equal(contar(html, 'data-vitrine-previa'), 5, 'a face de espera não abre prévia');
     assert.equal(contar(html, 'data-vitrine-marcar'), 5, 'nem se marca');

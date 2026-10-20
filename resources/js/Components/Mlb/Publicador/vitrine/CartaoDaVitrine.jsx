@@ -17,7 +17,7 @@ import { faixaDePreco, fotoDoCartao, pilulasDasFases, tempoDesde, textoDosAnunci
 // levam. Ficam neste cartão, uma "face" cada, e a pessoa passa de uma para
 // outra pelas setas, pelas pílulas "Fase 1 · Fase 2 · Fase 3 · Fase 4" ou
 // arrastando para o lado. Cada face tem a própria caixa de marcar e a própria
-// prévia; o combo só planejado no Portal é uma face de espera, sem nenhuma das
+// prévia; o combo aceito no Planejamento que ainda não é fase é uma face de espera, sem nenhuma das
 // duas.
 
 const TOM_DO_CHIP = {
@@ -45,7 +45,7 @@ function Foto({ url, nome }) {
 
 /**
  * Uma fase do cartão (o produto, um combo, um kit ou um combit): tudo o que a pessoa precisa para revisar e marcar.
- * A face de espera (combo planejado no Portal, sem anúncio) mostra só a foto do produto apagada, o selo e o chip.
+ * A face de espera (combo aceito no Planejamento, ainda não é fase) mostra só a foto do produto apagada, o selo e o chip.
  */
 function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
     const [corEmFoco, setCorEmFoco] = useState(null);
@@ -113,7 +113,7 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                         </div>
                     ) : <span />}
                     {planejada ? (
-                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700">Planejado no Portal</span>
+                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700">Aceito no Planejamento</span>
                     ) : (
                         <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700" data-vitrine-anuncios>{textoDosAnuncios(cartao)}</span>
                     )}
@@ -144,7 +144,7 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                 )}
 
                 {planejada ? (
-                    <p className="text-[12px] leading-snug text-pub-txt-3">{chip?.detalhe ?? 'Planejado no Portal, ainda sem anúncio no Publicador.'}</p>
+                    <p className="text-[12px] leading-snug text-pub-txt-3">{chip?.detalhe ?? 'Aceito no Planejamento, ainda não é fase no Publicador.'}</p>
                 ) : (
                     <dl className="grid grid-cols-2 gap-2 text-[11px]">
                         <div>

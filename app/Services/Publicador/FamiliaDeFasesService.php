@@ -502,8 +502,8 @@ class FamiliaDeFasesService
     {
         $composto = $base !== null ? PlanejamentoDaFaseService::tipoComposto($base) : null;
         $noAr = in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
-        // 20/10/2026: produto do Portal não tem "Criar Fase N" — o combo se cria no Planejamento e o anúncio
-        // dele nasce sozinho com a Fase 1 no ar (`CombosDoPlanejamentoService`).
+        // 20/10/2026: produto do Portal não tem "Criar Fase N" — o combo é decidido (aceito) no Planejamento e vira
+        // fase sozinho com a Fase 1 no ar (`CombosDoPlanejamentoService`).
         $doPortal = $base !== null && $composto === null && CombosDoPlanejamentoService::doPortal($base);
         $habilitado = $composto === null && ! $doPortal && $noAr;
         $doPlanejamento = $base !== null && $composto === null ? app(PlanejamentoDaFaseService::class)->quantidadesDoPlanejamento($base) : [];

@@ -9,13 +9,18 @@ use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Log;
 
 /**
- * O combo planejado no Portal vira anúncio sozinho (decisões do usuário de 20/10/2026).
+ * O combo ACEITO no Planejamento do Portal vira fase no Publicador sozinho (decisões do usuário de 20/10/2026).
  *
- * Criar Combo, Kit e Combit é SÓ no Planejamento do Portal; o Publicador monta o anúncio de cada um. O Combo N
+ * As fases são DECIDIDAS no Planejamento: lá a equipe analisa se faz sentido um produto ter combo de 2, 3 ou outra
+ * quantidade, e só o que ela ACEITA vira oferta (aceitar sugestão, "Montar kit", "dá combo?"). Sugestão não aceita
+ * nunca vira fase, e nada aqui escolhe quantidade: o automático é só o passo DEPOIS do aceite, para ninguém ter de
+ * clicar em "Criar Fase N" no Publicador. O Publicador monta o anúncio de cada um. O Combo N
  * (o mesmo produto × N) vai ao ML como o Kit N da família — UM anúncio com as cores como variação — e nasce
  * quando a Fase 1 do produto está publicada (a regra do KIT-05 virou gatilho). Dois caminhos chegam aqui:
- * o fim da publicação da Fase 1 (`PublicacaoService`) e o Sincronizar, quando o Combo é planejado depois de a
- * Fase 1 já estar no ar (`PublicadorSincronizaPortalService`). Os dois só AGENDAM ({@see agendar()}); o Job
+ * o fim da publicação da Fase 1 (`PublicacaoService`) e o Sincronizar, quando o Combo é aceito depois de a
+ * Fase 1 já estar no ar (`PublicadorSincronizaPortalService`) — o caminho normal da metodologia: a Fase 1 vai ao ar,
+ * a equipe analisa no Planejamento e aceita. Aceito antes da Fase 1 no ar, espera por ela (confirmado pelo usuário
+ * em 20/10/2026). Os dois só AGENDAM ({@see agendar()}); o Job
  * confere tudo de novo e cria ({@see criarOsQueFaltam()}).
  *
  * O kit nasce como o "Criar Fase N" o criava — o MESMO `CriarFaseService`, com o que a `PreviaDaFaseService`
@@ -37,8 +42,8 @@ final class CombosDoPlanejamentoService
     public const PUBLICADO = [PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED];
 
     /** Por que o "Criar Fase N" não existe para o produto do Portal (KIT-08 e a tela do Produto). */
-    public const MOTIVO_PORTAL = 'Este produto vem do Portal: combo, kit e combit se criam no Planejamento do Portal, '
-        .'e o anúncio do combo nasce sozinho quando a Fase 1 é publicada.';
+    public const MOTIVO_PORTAL = 'Este produto vem do Portal: combo, kit e combit são decididos no Planejamento do Portal. '
+        .'O combo aceito lá vira fase aqui sozinho, depois que a Fase 1 é publicada.';
 
     /** Quem criou o rascunho do kit (`pub_rascunhos.ator`): ninguém clicou, foi o Planejamento. */
     public const ATOR = ['origem' => 'planejamento_do_portal', 'nome' => 'Automático (Planejamento do Portal)'];
@@ -123,12 +128,12 @@ final class CombosDoPlanejamentoService
 
             $this->calcularEstado($kit);
             $saida['criados'][] = ['quantidade' => $n, 'produto_id' => (int) $kit->id, 'cores' => $cores];
-            Log::info("[Publicador] Combo {$n} do Planejamento virou o Kit {$n} (produto {$kit->id}) do produto {$base->id} ({$base->nome}), com "
+            Log::info("[Publicador] Combo {$n} aceito no Planejamento virou o Kit {$n} (produto {$kit->id}) do produto {$base->id} ({$base->nome}), com "
                 .count($cores).' cor(es): '.implode(', ', $cores).($noAr !== [] ? '; fora, já no ar como avulso: '.implode(', ', $noAr) : '').'.');
         }
 
         foreach ($saida['pulados'] as $p) {
-            Log::info("[Publicador] Combo {$p['quantidade']} do Planejamento do produto {$base->id} não virou kit: {$p['motivo']}.");
+            Log::info("[Publicador] Combo {$p['quantidade']} aceito no Planejamento do produto {$base->id} não virou kit: {$p['motivo']}.");
         }
 
         return $saida;

@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  * (a mesma face nos dois — marcar num marca no outro, porque a seleção é pelo id). Composto sem nenhum componente
  * no Publicador fica no próprio cartão.
  *
- * Criar Combo, Kit e Combit é só no Planejamento do Portal (decisão de 20/10/2026); o combo planejado que ainda não
- * tem anúncio entra como uma face de espera na Fase 2 ({@see planejados()}): ele nasce sozinho com a Fase 1 no ar.
+ * Combo, Kit e Combit são decididos no Planejamento do Portal (decisão de 20/10/2026); o combo ACEITO lá que ainda não
+ * é fase entra como uma face de espera na Fase 2 ({@see planejados()}): vira fase sozinho com a Fase 1 no ar.
  */
 final class FasesDaVitrineService
 {
@@ -87,7 +87,7 @@ final class FasesDaVitrineService
     }
 
     /**
-     * Os Combos planejados no Portal que ainda não têm anúncio na família: uma face de ESPERA na Fase 2 do cartão
+     * Os Combos ACEITOS no Planejamento que ainda não são fase na família: uma face de ESPERA na Fase 2 do cartão
      * do produto. Família que já tem um combo com aquele N (kit do Publicador ou Combo do Planejamento à parte)
      * não ganha a face. Três consultas por empresa, qualquer que seja o número de produtos.
      *
@@ -136,10 +136,10 @@ final class FasesDaVitrineService
                         // Com a Fase 1 no ar o anúncio é criado sozinho (`CombosDoPlanejamentoService`): a face só
                         // continua aqui se a criação não rodou ou foi pulada — o Sincronizar agenda de novo.
                         'chip' => $publicada
-                            ? ['texto' => 'Planejado · ainda sem anúncio', 'tom' => 'ambar',
-                                'detalhe' => "A Fase 1 já está no ar e o anúncio do Combo de {$n} é criado sozinho. Se continuar aqui, use “Sincronizar do Portal”."]
+                            ? ['texto' => 'Aceito · ainda não é fase', 'tom' => 'ambar',
+                                'detalhe' => "O Combo de {$n} foi aceito no Planejamento e a Fase 1 já está no ar: a fase é criada sozinha. Se continuar aqui, use “Sincronizar do Portal”."]
                             : ['texto' => 'Espera a Fase 1 ser publicada', 'tom' => 'neutro',
-                                'detalhe' => "O Combo de {$n} está no Planejamento do Portal. O anúncio dele nasce sozinho quando a Fase 1 for publicada."],
+                                'detalhe' => "O Combo de {$n} foi aceito no Planejamento do Portal. Ele vira fase aqui quando a Fase 1 for publicada."],
                     ];
                 }
             }

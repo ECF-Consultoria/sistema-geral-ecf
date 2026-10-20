@@ -504,7 +504,7 @@ class MlbPublicadorFaseController extends Controller
 
     /**
      * KIT-08 (decisão do usuário de 20/10/2026): o produto do Portal não tem "Criar Fase N" — combo, kit e
-     * combit se criam no Planejamento do Portal, e o anúncio do combo nasce sozinho quando a Fase 1 é
+     * combit são decididos no Planejamento do Portal, e o combo aceito lá vira fase sozinho quando a Fase 1 é
      * publicada (`CombosDoPlanejamentoService`). A tela já não mostra o botão; isto é o servidor recusando.
      */
     private function recusarProdutoDoPortal(PubProduto $base): ?JsonResponse

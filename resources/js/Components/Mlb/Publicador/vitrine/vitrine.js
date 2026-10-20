@@ -64,7 +64,7 @@ const ordemDasFaces = (a, b) => (numeroDaFase(a) - numeroDaFase(b))
  * As FAMÍLIAS da vitrine (20/10/2026, decisões do usuário): um cartão por produto, com as fases dele lado a lado —
  * Fase 1 (o produto), Fase 2 (cada combo: o mesmo produto × N), Fase 3 (cada kit que o leva) e Fase 4 (cada
  * combit). O Kit e o Combit chegam com o cartão de CADA componente em `familias`, então a mesma face aparece nos
- * dois. `planejados` são os combos do Portal ainda sem anúncio: entram como face de espera só em família que está
+ * dois. `planejados` são os combos ACEITOS no Planejamento que ainda não são fase: entram como face de espera só em família que está
  * na tela. Com filtro, entra a família que tiver alguma fase REAL nele, e `inicial` aponta a 1ª dessas fases (o
  * cartão abre nela). A ordem das famílias é a do servidor.
  *

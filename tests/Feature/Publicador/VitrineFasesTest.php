@@ -21,7 +21,7 @@ use Tests\TestCase;
 /**
  * As fases na vitrine (20/10/2026, decisões do usuário): a régua do "Como funciona" do Portal — Fase 1 Simples,
  * Fase 2 Combo (todo combo, qualquer N), Fase 3 Kit, Fase 4 Combit. O combo fica no cartão do produto; o Kit e o
- * Combit, no cartão de CADA componente. O combo planejado no Portal sem anúncio vira uma face de espera na Fase 2.
+ * Combit, no cartão de CADA componente. O combo aceito no Planejamento que ainda não é fase vira uma face de espera na Fase 2.
  */
 class VitrineFasesTest extends TestCase
 {
@@ -149,7 +149,7 @@ class VitrineFasesTest extends TestCase
         PubRascunho::where('produto_id', $grupo->id)->update(['status' => PubRascunho::PUBLISHED]);
         $publicada = $this->vitrine()['planejados'][0];
 
-        $this->assertSame(['Planejado · ainda sem anúncio', 'ambar'], [$publicada['chip']['texto'], $publicada['chip']['tom']]);
+        $this->assertSame(['Aceito · ainda não é fase', 'ambar'], [$publicada['chip']['texto'], $publicada['chip']['tom']]);
     }
 
     public function test_quantidades_em_lote_sao_as_mesmas_de_um_produto_por_vez(): void

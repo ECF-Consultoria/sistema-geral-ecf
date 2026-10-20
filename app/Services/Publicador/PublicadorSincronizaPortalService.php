@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\Schema;
  * - a família já tem o Kit N → a oferta é a variante daquela cor no kit (vínculo derivado pela cor,
  *   `PlanejamentoDaFaseService`); o kit entra em `para_preencher` e o preenchimento leva o SKU da
  *   oferta à variante (só no vazio ou no que o Portal escreveu — D-05 refinado);
- * - não tem → o anúncio nasce sozinho quando a Fase 1 estiver publicada (20/10/2026: combo só no
+ * - não tem → vira fase sozinho quando a Fase 1 estiver publicada (20/10/2026: combo decidido só no
  *   Planejamento) — com a Fase 1 já no ar, o `CombosDoPlanejamentoService` é agendado aqui mesmo
  *   (log, `combos_aguardando_fase` e `combos_agendados`);
  * - o avulso que o Sincronizar de antes criou para ela: sem rascunho, sem vínculo de kit e sem kits
@@ -216,7 +216,7 @@ class PublicadorSincronizaPortalService
 
         // ── Planejamento × Fase N: o Combo de cada cor é a variante dela no Kit N da família ──
         $fase = $this->combosNaFase($combosDaFamilia, $gruposPorProduto, $company, $empresa, $jaTem, $produtos);
-        // 20/10/2026: o Combo planejado depois de a Fase 1 estar no ar vira o anúncio agora (Job, depois do commit).
+        // 20/10/2026: o Combo aceito depois de a Fase 1 estar no ar vira fase agora (Job, depois do commit).
         $agendados = 0;
         foreach ($fase['grupos_aguardando'] as $grupoId) {
             $agendados += (int) app(CombosDoPlanejamentoService::class)->agendar($grupoId);
@@ -367,8 +367,8 @@ class PublicadorSincronizaPortalService
                 $aguardando[$c['n']][] = (string) $c['oferta']->sku;
             }
             foreach ($aguardando as $n => $skus) {
-                $saida['avisos'][] = "{$nome}: o Combo {$n} de ".count($skus).' cor(es) ('.implode(', ', $skus).") ainda não tem anúncio — "
-                    ."ele nasce sozinho quando a Fase 1 do produto #{$grupo->id} estiver publicada.";
+                $saida['avisos'][] = "{$nome}: o Combo {$n} aceito no Planejamento (".count($skus).' cor(es): '.implode(', ', $skus).') ainda não é fase — '
+                    ."vira fase sozinho quando a Fase 1 do produto #{$grupo->id} estiver publicada.";
             }
             if ($aguardando !== []) {
                 $saida['grupos_aguardando'][] = (int) $grupo->id;

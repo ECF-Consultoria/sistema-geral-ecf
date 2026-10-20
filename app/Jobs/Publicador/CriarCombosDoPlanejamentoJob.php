@@ -12,8 +12,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * A Fase 1 de um produto do Portal está no ar: os Combos do Planejamento dele viram o anúncio (o Kit N da
- * família) sozinhos — decisão do usuário de 20/10/2026. Quem decide o que nasce é o
+ * A Fase 1 de um produto do Portal está no ar: os Combos ACEITOS no Planejamento para ele viram fase (o Kit N da
+ * família) sozinhos — decisão do usuário de 20/10/2026. Sugestão não aceita nunca entra. Quem decide o que nasce é o
  * `CombosDoPlanejamentoService`, que confere tudo de novo aqui (o produto pode ter mudado desde o agendamento).
  *
  * Fila `high`, como o resto do fluxo Portal → Publicador. Sem nova tentativa: o próximo Sincronizar agenda de

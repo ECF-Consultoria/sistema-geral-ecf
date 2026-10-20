@@ -342,11 +342,11 @@ class PreviaDaFaseService
             }
         }
 
-        // 20/10/2026: o Publicador não cria oferta no Portal (Combo só no Planejamento) — a criação
+        // 20/10/2026: o Publicador não cria oferta no Portal (Combo é decidido só no Planejamento) — a criação
         // automática deixa essas cores de fora do kit.
         if ($semCombo !== []) {
-            $avisos[] = self::aviso('cores_sem_combo', "Sem Combo {$n} no Planejamento do Portal: ".implode(', ', $semCombo)
-                .'. Essas cores ficam de fora do kit até o Combo delas ser planejado no Portal.');
+            $avisos[] = self::aviso('cores_sem_combo', "Sem Combo {$n} aceito no Planejamento do Portal: ".implode(', ', $semCombo)
+                .'. Essas cores ficam de fora do kit até o Combo delas ser aceito no Planejamento.');
         }
         if ($comPreco > 0) {
             $avisos[] = self::aviso('preco_do_planejamento', "O preço de cada cor vem da Precificação do Portal (Combo {$n}). Ele não é copiado para o kit: se mudar lá, muda aqui.");
