@@ -77,7 +77,32 @@ vocabulario-render   js  tests/js/publicador-aprovacao-vocabulario.test.js  ::  
 #   = 55, e 344 + 55 = 399.
 #
 # Este arquivo NÃO tem sonda com `skip` por `mtime`, então pristino e mutado dão
-# o MESMO número — o segundo valor está escrito de propósito, para deixar
-# explícito que a coincidência foi MEDIDA e não que o regime mutado ficou sem
-# medir.
-voc-07-gate-03  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=399,399
+# o MESMO número — e a coincidência foi MEDIDA, não presumida.
+#
+# ⚠️⚠️ CORRIGIDO EM 20/10/2026 — A IGUALDADE `tests=399,399` APODRECEU, E O MOTIVO
+# É ESTRUTURAL, NÃO UM ERRO DA FASE 186.
+#
+# `publicador-vocabulario-novo.test.js` é COMPARTILHADO: ele varre `aprovacao/`
+# por `readdirSync` e ganha ~7 sub-testes a cada `.jsx` novo que qualquer fase
+# acrescenta. Em 20/10 ele mede **695**, contra os **399** que a Fase 186 mediu
+# — então este id REPROVAVA com os 695 testes PASSANDO (conferido: exit 1,
+# *"nenhuma das contagens aceitas (399,399) casou"*). Acusação falsa contra
+# trabalho correto, esperando quem reverificasse a Fase 186.
+#
+# ⚠️ O CONSERTO NÃO É SUBIR O NÚMERO para 695 — isso apodreceria outra vez na
+# próxima peça, e faria este gate afirmar algo que a Fase 186 nunca mediu.
+# O conserto é a forma `>=`, acrescentada ao harness em **16/10/2026**
+# exatamente para "crescimento estrutural" (ver `verificar-testes.sh:146-167`),
+# e que TODO manifesto a partir do `contagens-187-01.txt` usa NESTE MESMO
+# ARQUIVO (`>=443`, `>=548`, `>=569`, `>=597`, `>=632`, `>=646`, `>=695`).
+# A Fase 186 é anterior à forma, e por isso ficou com a igualdade.
+#
+# ⚠️ O MÍNIMO FICA EM **399**, o número que a Fase 186 REALMENTE MEDIU — não o
+# de hoje. Assim o id segue provando o que a 186 quis provar (o arquivo carrega
+# e não encolheu abaixo do que ela cobria) e **nunca mais apodrece**. As iscas
+# do `--autoteste` (`verificar-testes.sh:259-269`) garantem que o `>=` mede algo:
+# abaixo do mínimo REPROVA, e falha de teste NÃO é perdoada pelo `>=`.
+#
+# ⚠️ Achado da wave 189-05 (prova aritmética: 688 ≠ 399), conferido e corrigido
+# pelo orquestrador — a wave NÃO mexeu, porque é manifesto de fase em produção.
+voc-07-gate-03  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=399
