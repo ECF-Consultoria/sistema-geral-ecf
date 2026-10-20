@@ -5,6 +5,7 @@ namespace App\Services\Publicador\Agente;
 use App\Models\PubAgenteConfiguracao;
 use App\Models\PubAgenteExecucao;
 use App\Models\PubProduto;
+use App\Models\PubRascunho;
 use App\Services\Publicador\ProgramasPublicadorService;
 use Illuminate\Support\Carbon;
 
@@ -65,6 +66,22 @@ class PoliticaDoAgente
         $cfg = PubAgenteConfiguracao::query()->where('conta_chave', $execucao->conta_chave)->first();
 
         return $this->recusaDoControle($cfg);
+    }
+
+    /**
+     * O worker da cadeia de texto pergunta pelo RASCUNHO (AG-06): se há execução viva do agente para o produto
+     * dele, vale o controle da loja; sem execução viva o rascunho não é do agente e nada muda (preparo antigo).
+     *
+     * @return array{regra: string, mensagem: string}|null
+     */
+    public function recusaParaRascunho(PubRascunho $r): ?array
+    {
+        $viva = PubAgenteExecucao::query()
+            ->where('produto_id', $r->produto_id)
+            ->whereIn('estado', PubAgenteExecucao::VIVAS)
+            ->first();
+
+        return $viva === null ? null : $this->recusaParaSeguir($viva);
     }
 
     /** @return array{regra: string, mensagem: string}|null */

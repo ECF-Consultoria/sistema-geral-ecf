@@ -613,6 +613,15 @@ Schedule::command('publicador:agente-encaminhar')
     ->withoutOverlapping(5)
     ->onOneServer();
 
+// Agente (AG-06): a varredura limitada — produto novo nas lojas com o agente ligado e ativo, no máximo 5 por loja
+// por passada, dentro da janela, do limite diário e do teto da fila da loja. Também retoma execução `admitida`
+// que parou. A IA só é chamada pelo preparo de sempre (fila `publicador-ia`).
+Schedule::command('publicador:agente-varrer')
+    ->everyFifteenMinutes()
+    ->name('publicador-agente-varrer')
+    ->withoutOverlapping(15)
+    ->onOneServer();
+
 // Fase 184 (BLING-13) — keep-alive ESPALHADO dos tokens do Bling. De hora em
 // hora, e NUNCA uma rajada diária: o access_token do Bling dura ~6h e o
 // refresh_token 30 dias, então uma rodada por hora já espalha a carga

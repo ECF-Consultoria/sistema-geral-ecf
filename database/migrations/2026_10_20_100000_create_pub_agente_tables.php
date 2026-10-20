@@ -55,6 +55,7 @@ use Illuminate\Support\Facades\Schema;
  * | etapa, motivo        | string NULL             |                                                             |
  * | bloqueios            | json NULL               | pendências objetivas (AG-02)                                 |
  * | solicitada_por       | unsignedBigInteger NULL | FK SET NULL -> users; NULL = automática                      |
+ * | tentativas           | unsignedTinyInteger 0   | quantas vezes a AG-06 repediu a cadeia de texto que morreu    |
  * | heartbeat_em         | dateTime NULL           | AG-06 recupera execução parada                               |
  * | iniciada_em, concluida_em | dateTime NULL      |                                                             |
  *
@@ -133,6 +134,7 @@ return new class extends Migration
                 $t->string('motivo', 500)->nullable();
                 $t->json('bloqueios')->nullable();
                 $t->unsignedBigInteger('solicitada_por')->nullable();
+                $t->unsignedTinyInteger('tentativas')->default(0);
                 $t->dateTime('heartbeat_em')->nullable();
                 $t->dateTime('iniciada_em')->nullable();
                 $t->dateTime('concluida_em')->nullable();

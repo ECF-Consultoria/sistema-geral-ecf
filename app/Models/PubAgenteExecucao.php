@@ -41,6 +41,7 @@ class PubAgenteExecucao extends Model
 
     protected $casts = [
         'configuracao_versao' => 'integer',
+        'tentativas' => 'integer',
         'bloqueios' => 'array',
         'heartbeat_em' => 'datetime',
         'iniciada_em' => 'datetime',

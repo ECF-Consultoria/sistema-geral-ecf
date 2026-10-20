@@ -17,6 +17,7 @@ use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
+use App\Services\Publicador\Agente\PoliticaDoAgente;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
@@ -332,6 +333,13 @@ class PreparoIaDoRascunhoService
 
             return self::INTOCAVEL;
         }
+        // AG-06 (20/10/2026): o agente desta loja foi pausado/suspenso depois de a cadeia entrar na fila → não
+        // chama a IA. `desistiu` faz o "Retomar" refazer só esta etapa (as que já deram `ok` não gastam de novo).
+        if ($valorPronto === null && $this->agenteParado($r)) {
+            $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);
+
+            return self::DESISTIU;
+        }
 
         $valor = $valorPronto;
         if ($valor === null) {
@@ -367,7 +375,8 @@ class PreparoIaDoRascunhoService
 
         // Nunca por trás de gente: editor do produto em uso, "Anunciar por IA" gravando ou o produto na fila de
         // publicação (conferido; uma escrita agora o tiraria da fila como `precisa_revisar`) → espera.
-        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
+        // AG-06: o valor que voltou da IA com o agente parado espera do mesmo jeito (guardado no Job, sem nova chamada).
+        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r) || $this->agenteParado($r)) {
             if ($adiamentos >= $this->maxAdiamentos()) {
                 Log::info("[Publicador] Preparo pela IA ({$etapa}): o rascunho {$r->id} seguiu em uso; a escrita desistiu depois de {$adiamentos} espera(s).");
                 $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);
@@ -884,24 +893,36 @@ class PreparoIaDoRascunhoService
     }
 
     /**
-     * AG-03 (20/10/2026): a cadeia de texto destes fatos ainda está rodando (alguma etapa `rodando`/`adiada`
-     * recente)? O agente só encaminha o rascunho à Aprovação quando não está — senão a pessoa revisaria um
-     * título que a IA ainda vai trocar. Fatos novos sem cadeia começada contam como "não está rodando".
+     * AG-03/AG-06 (20/10/2026): onde está a cadeia de texto DESTES fatos — o agente só encaminha o rascunho à
+     * Aprovação com ela `completo`, senão a pessoa revisaria um título que a IA ainda vai trocar.
+     *
+     * @return string rodando (alguma etapa `rodando`/`adiada` recente), completo (as três ok/puladas/intocáveis),
+     *                incompleto (erro, desistiu ou rodando velho = Job que morreu) ou sem_preparo (fatos sem cadeia)
      */
-    public function textoEmAndamento(PubRascunho $r): bool
+    public function situacaoDoTexto(PubRascunho $r): string
     {
         $preparo = (array) ($this->lerEstado($r->id)[Memoria::PREPARO] ?? []);
         if (($preparo['hash'] ?? null) !== $this->hashDosFatos($r)) {
-            return false;
+            return 'sem_preparo';
         }
-        foreach ((array) ($preparo['etapas'] ?? []) as $s) {
+        $completo = true;
+        foreach (self::ETAPAS as $e) {
+            $s = (array) ($preparo['etapas'][$e] ?? []);
+            $status = $s['status'] ?? null;
             $recente = isset($s['em']) && now()->diffInMinutes(Carbon::parse($s['em']), true) < self::EM_ANDAMENTO_VALE_MIN;
-            if (in_array($s['status'] ?? null, [self::RODANDO, self::ADIADO], true) && $recente) {
-                return true;
+            if (in_array($status, [self::RODANDO, self::ADIADO], true) && $recente) {
+                return 'rodando';
             }
+            $completo = $completo && in_array($status, [self::OK, self::PULADO, self::INTOCAVEL], true);
         }
 
-        return false;
+        return $completo ? 'completo' : 'incompleto';
+    }
+
+    /** AG-06: o agente da loja deste rascunho está parado (pausado/suspenso/desligado) com execução viva? */
+    private function agenteParado(PubRascunho $r): bool
+    {
+        return app(PoliticaDoAgente::class)->recusaParaRascunho($r) !== null;
     }
 
     // ═══ step_state (sempre relido do banco; gravado sem subir a revisão) ════

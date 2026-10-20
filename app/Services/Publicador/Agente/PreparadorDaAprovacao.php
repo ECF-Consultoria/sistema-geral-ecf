@@ -34,15 +34,19 @@ use Illuminate\Support\Facades\Log;
  */
 class PreparadorDaAprovacao
 {
+    /** Quantas vezes a cadeia de texto que morreu é pedida de novo antes de bloquear (AG-06). */
+    public const MAX_TENTATIVAS = 2;
+
     public function __construct(
         private ProgramasPublicadorService $programas,
         private AndamentoDaOfertaService $andamento,
         private ElegibilidadeDoAgente $elegibilidade,
         private ExecucoesDoAgente $execucoes,
+        private PoliticaDoAgente $politica,
     ) {}
 
     /**
-     * @return string o que aconteceu: encaminhada, aguardando_texto, bloqueada, nao_viva
+     * @return string o que aconteceu: encaminhada, aguardando_texto, recuperando, pausada, bloqueada, nao_viva
      */
     public function encaminhar(PubAgenteExecucao $execucao): string
     {
@@ -65,10 +69,19 @@ class PreparadorDaAprovacao
 
             return $this->bloquear($execucao, null, implode(' ', array_column($eleg['pendencias'], 'mensagem')));
         }
-        if ($this->preparo()->textoEmAndamento($r)) {
+        // AG-06: loja pausada/suspensa não anda — a execução fica viva e o "Retomar" continua de onde parou.
+        if ($this->politica->recusaParaSeguir($execucao) !== null) {
+            return 'pausada';
+        }
+
+        $texto = $this->preparo()->situacaoDoTexto($r);
+        if ($texto === 'rodando') {
             $execucao->update(['etapa' => 'gerando_texto', 'heartbeat_em' => now()]);
 
             return 'aguardando_texto';
+        }
+        if ($texto !== 'completo') {
+            return $this->recuperarTexto($execucao, $pub, $texto);
         }
 
         $conta = $this->programas->resolver($execucao->conta_chave);
@@ -100,15 +113,17 @@ class PreparadorDaAprovacao
      * As execuções em `preparando` (de uma conta ou de todas) que já podem ir à Aprovação. Para o comando
      * agendado: uma falha numa execução não segura as outras.
      *
-     * @return array{encaminhada: int, aguardando_texto: int, bloqueada: int, nao_viva: int, erro: int}
+     * A mais esquecida primeiro (`heartbeat_em`): 50 execuções paradas no topo não escondem as de trás.
+     *
+     * @return array{encaminhada: int, aguardando_texto: int, recuperando: int, pausada: int, bloqueada: int, nao_viva: int, erro: int}
      */
     public function encaminharProntas(?string $contaChave = null, int $limite = 50): array
     {
-        $resumo = ['encaminhada' => 0, 'aguardando_texto' => 0, 'bloqueada' => 0, 'nao_viva' => 0, 'erro' => 0];
+        $resumo = ['encaminhada' => 0, 'aguardando_texto' => 0, 'recuperando' => 0, 'pausada' => 0, 'bloqueada' => 0, 'nao_viva' => 0, 'erro' => 0];
         PubAgenteExecucao::query()
             ->where('estado', PubAgenteExecucao::PREPARANDO)
             ->when($contaChave !== null, fn ($q) => $q->where('conta_chave', $contaChave))
-            ->orderBy('id')->limit($limite)->get()
+            ->orderBy('heartbeat_em')->orderBy('id')->limit($limite)->get()
             ->each(function (PubAgenteExecucao $e) use (&$resumo) {
                 try {
                     $resumo[$this->encaminhar($e)]++;
@@ -171,6 +186,30 @@ class PreparadorDaAprovacao
                 $conjunto->update(['principal_imagem_id' => $doGrupo->first()->imagem_id]);
             }
         }
+    }
+
+    /**
+     * A cadeia de texto morreu (Job perdido, erro da IA, desistiu de esperar) ou nunca começou para estes fatos:
+     * pede o preparo de novo — `avaliarIa` refaz só as etapas que não deram certo — até `MAX_TENTATIVAS` vezes.
+     * Depois disso bloqueia com o motivo: a pessoa escreve o texto no editor e pede "Preparar agora".
+     */
+    private function recuperarTexto(PubAgenteExecucao $execucao, PubProduto $pub, string $texto): string
+    {
+        if ($execucao->tentativas >= self::MAX_TENTATIVAS) {
+            return $this->bloquear($execucao, 'texto_nao_concluido',
+                'A IA não concluiu o texto depois de '.self::MAX_TENTATIVAS.' tentativa(s). Escreva no editor e peça "Preparar agora".');
+        }
+
+        $situacao = $this->preparo()->avaliarIa($pub);
+        $execucao->update(['tentativas' => $execucao->tentativas + 1, 'etapa' => 'recuperando_texto', 'heartbeat_em' => now()]);
+        Log::info("[Publicador Agente] Execução {$execucao->id} ({$execucao->conta_chave}): texto {$texto}, preparo pedido de novo — {$situacao}.");
+        if (in_array($situacao, ['limite', 'desligado'], true)) {
+            return $this->bloquear($execucao, 'ia_indisponivel', $situacao === 'limite'
+                ? 'Limite diário de gerações de texto da empresa atingido.'
+                : 'O preparo pela IA está desligado no sistema.');
+        }
+
+        return 'recuperando';
     }
 
     private function bloquear(PubAgenteExecucao $execucao, ?string $codigo, string $motivo): string

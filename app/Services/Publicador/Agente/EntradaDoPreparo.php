@@ -85,6 +85,24 @@ class EntradaDoPreparo
         }
     }
 
+    /**
+     * Continua uma execução viva que parou (AG-06): o "Retomar" da loja e a recuperação de execução `admitida`
+     * que nunca chegou a pedir o preparo (processo morreu entre a admissão e a IA). Não cria execução nova e não
+     * repete gasto: `avaliarIa` refaz só as etapas que não deram certo para estes fatos.
+     */
+    public function continuar(PubAgenteExecucao $execucao): void
+    {
+        $execucao->refresh();
+        $pub = $execucao->produto_id !== null ? PubProduto::find($execucao->produto_id) : null;
+        if (! $execucao->viva() || $pub === null) {
+            return;
+        }
+        $cfg = PubAgenteConfiguracao::query()->where('conta_chave', $execucao->conta_chave)->first();
+        $eleg = $this->elegibilidade->avaliar($pub, $cfg);
+        $execucao->update(['heartbeat_em' => now()]);
+        $this->seguir($execucao, $pub, $eleg);
+    }
+
     private function seguir(PubAgenteExecucao $execucao, PubProduto $pub, array $eleg): void
     {
         if (! $eleg['elegivel']) {
