@@ -485,6 +485,115 @@ Fase 187 mediu, no **próprio** gate recém-escrito, os **dois** lados no mesmo 
 **`/s` muda o significado de `.` e portanto o de `$`** — num recorte de seção, use `[^\n]*` para a
 linha do cabeçalho e `[\s\S]*?` para o corpo, **nunca `.` com `/s`**.
 
+## 4d. Os quatro achados da Fase 188 (19-20/10/2026) — dois sobre a FERRAMENTA, dois sobre o PARALELISMO
+
+> ⚠️ Os quatro foram **medidos**, não deduzidos, durante o painel de revisão de 1140px. Dois deles
+> **não são sobre gate**: são sobre o **build** e sobre a **orquestração**.
+
+### ⚠️⚠️ 4d.1 — O SCANNER DO TAILWIND LÊ COMENTÁRIO: a classe no docblock virou CSS de verdade
+
+**Medido na wave 188-08.** O executor escreveu, **na PROSA de um docblock**, um exemplo de classe
+(`left-[37.5%]`) — justamente no comentário que explicava **por que NÃO** usá-la (a coordenada x/y
+tem de ir por `style`, não por classe arbitrária). ➡️ **O `content` do Tailwind varre o arquivo como
+TEXTO, não como código:** a classe do comentário **virou regra de CSS de verdade** no build.
+
+| medida | valor |
+|---|---|
+| `.left-\[37\.5\%\]{left:37.5%}` no CSS construído | **presente** |
+| CSS construído com o exemplo literal | **233.029 bytes** |
+| CSS construído com o exemplo neutralizado (`left-[…%]`) | **233.022 bytes** — **−7 bytes** |
+
+➡️ ⚠️⚠️ **A CONSEQUÊNCIA, e ela inverte onde a sonda pode morar: SONDA DE AUSÊNCIA DE CLASSE TEM DE
+SER NA FONTE SEM COMENTÁRIO, NUNCA NO CSS CONSTRUÍDO.** No CSS, **o próprio docblock que PROÍBE a
+classe a faz EXISTIR** — e o gate **reprovaria o conserto**. É a família da regra 2 deste arquivo
+(*"palavra no docblock reprova pelo próprio conserto"*) reprovando agora **pelo BUILD**, e não pelo
+`grep`.
+
+⚠️ **E a escolha da ISCA de ausência ficou mais difícil.** Além de `h-[64px]` e `left-[30%]`, que já
+se sabia existirem, foi **medido** que **`grid-cols-6` EXISTE** no CSS construído (de outros donos) e
+**compila para o MESMO valor** que `grid-cols-[repeat(6,minmax(0,1fr))]`. ➡️ **A isca do quase-igual
+da grade mora na FONTE.** As quatro iscas confirmadas ausentes naquela wave:
+`bg-pub-isca-188-08`, `text-[97.5px]`, `w-[1993px]`, `top-[62.5%]`.
+
+### ⚠️⚠️ 4d.2 — A TAUTOLOGIA DE LITERAL: a asserção que compara o módulo com ele mesmo
+
+**Achada por mutação SOBREVIVENTE, na wave 188-10.** A mutação trocou o literal verde do rodapé por
+um **sinônimo** e o gate continuou **VERDE**. A causa:
+
+```js
+assert.ok(texto(html).includes(M_PENDENCIAS.SEM_PENDENCIA_TEXTO))
+```
+
+— a asserção lia o literal **do MESMO módulo** que renderizou o HTML. ⚠️ **Trocar o literal muda os
+DOIS lados juntos.** A pergunta desta régua — *"o que precisaria estar errado no mundo para este gate
+falhar?"* — tinha a resposta **"nada"**. ⚠️ **E o mesmo furo estava em SEIS outros literais da mesma
+tela, por omissão.**
+
+⚠️⚠️ **E ISTO É A FRONTEIRA FINA DE UMA RÉGUA DESTE PROJETO, que vale escrita:** espelhar rótulos
+**lendo o módulo** prova **sincronia PHP ↔ tela** — é legítimo, é o que os gates de vocabulário
+fazem, e há gate exigindo isso. ➡️ **Mas NÃO prova fidelidade ao protótipo.** As duas coisas parecem
+a mesma e não são.
+
+➡️ **O conserto é em DUAS camadas, e as duas são necessárias:**
+1. **a expectativa CONGELADA no gate**, por **igualdade de STRING** (nunca `includes`, que casa
+   prefixo **e** sufixo e já mordeu cinco vezes), com **isca do quase-igual** — incluindo o sinônimo
+   exato da mutação, o literal com ponto final, o truncado e a versão sem cedilha;
+2. **o cruzamento com o protótipo** onde ele é o **DONO** do literal (literal sem dono no servidor).
+
+⚠️ **A camada 1 NÃO pode depender do protótipo:** ele **não é versionado**, e um gate que só vivesse
+lá voltaria a ser tautológico no dia em que o pacote de handoff não estivesse no disco.
+⚠️ **Regra curta:** *literal de tela que NÃO tem dono no servidor precisa de expectativa CONGELADA no
+gate; ler o literal do módulo que você está testando não prova nada.*
+
+### ⚠️⚠️ 4d.3 — Estrutura que NENHUM teste de render pega: meça PROFUNDIDADE, não aparência
+
+**Medido na wave 188-10, por contagem de profundidade de tag (abre − fecha), linha por linha.** No
+protótipo, **`:710` fecha o corpo rolável e `:712` reabre**: o **rodapé é IRMÃO do corpo**, não filho.
+
+⚠️⚠️ **O `@param children` escrito pela wave anterior dizia *"o resto do corpo (pendências e
+rodapé)"* — e isso estaria ERRADO de um jeito que NENHUM teste pegaria:** dentro do `children`, o
+rodapé seria item do contêiner `overflow-y-auto` e **ROLARIA PARA FORA DA TELA** (`flex:none` não o
+salvaria), **com TODO teste de render passando**. ➡️ O painel ganhou **DOIS** slots (`pendencias`
+dentro do corpo, `rodape` irmão dele).
+
+⚠️ **Mesmo padrão, medido na wave 188-12:** o `ModalDeReprovarImagem` é **IRMÃO do `<aside>`**, não
+filho — montá-lo dentro deixaria o `z-[42]` dele valendo **só dentro do painel**, e o modal aberto a
+partir de uma peça de `z` maior ficaria **escondido atrás**.
+
+➡️ ⚠️ **A CLASSE DO ERRO: medir APARÊNCIA (quais classes, quais textos) NÃO PEGA ESTRUTURA (quem é
+filho de quem).** Quando a geometria depende de aninhamento — `overflow`, `position:fixed`,
+containing block, `z-index` —, **meça PROFUNDIDADE**: conte `<`/`</` por linha e compare com a árvore
+que você montou. É a única sonda que distingue *irmão* de *filho*.
+
+### ⚠️⚠️ 4d.4 — DOIS PERIGOS DO PARALELISMO, e os dois são erro do ORQUESTRADOR
+
+**Quarta e quinta lições do orquestrador nesta milestone.** Lancei waves em paralelo outra vez, e
+duas coisas quebraram que **não** são erro do executor.
+
+**(a) ⚠️⚠️ `tests/gates/verificar-testes.sh:507` escreve o log da suíte num caminho FIXO E
+COMPARTILHADO** — `${TMPDIR:-/tmp}/ultima-suite-php.log`. A wave **188-07** leu aquele arquivo
+**DURANTE** a execução, pegou **estado parcial** e reportou **`0 falhas` quando eram 11**.
+
+➡️ ⚠️ **É a disciplina *"conferir por RECONSULTA ao banco, nunca por stdout"* violada por quem a
+conhecia** — e a violação é especialmente fácil aqui, porque o arquivo **existe**, **tem conteúdo
+plausível** e **não diz que está incompleto**.
+⚠️ **A regra: NUNCA ler `ultima-suite-php.log` enquanto uma suíte roda.** Espere o processo terminar
+e leia a saída **dele**, não o arquivo compartilhado. Em paralelismo, **dois executores escrevem no
+mesmo caminho** e o segundo apaga o primeiro.
+
+**(b) ⚠️⚠️ Duas suítes PHPUnit simultâneas disputam `storage/framework/testing`** → falhas que
+**PASSAM EM ISOLAMENTO**. Medido na mesma wave: **10 das 11** falhas daquela rodada passavam quando o
+arquivo rodava **sozinho**. ➡️ **Atribuição de falha exige execução ISOLADA**, sempre; contagem de
+suíte feita com outra suíte rodando ao lado **não é medição**.
+
+⚠️⚠️ **E um corolário que custou uma hipótese errada:** **`$this->setUp()` chamado no meio de um caso
+derruba o `RefreshDatabase`**. ➡️ **Falha de ordem NEM SEMPRE é sensibilidade de listener.** A
+hipótese do listener (*três arquivos registram, só um chama `flushEventListeners()`*) **segue sendo
+HIPÓTESE**: os **dois** experimentos que a testariam saíram **VERDES**. ⚠️ **Não afirme diagnóstico
+que o experimento não confirmou — registre a hipótese COMO hipótese.**
+
+---
+
 ## 5. Asserção negativa exige medir se o literal é EXCLUSIVO
 
 Ao proibir um texto na tela, confira que ele não é legítimo em outro lugar. Medido na Fase 179,
