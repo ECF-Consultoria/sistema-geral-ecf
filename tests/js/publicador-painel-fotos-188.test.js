@@ -61,9 +61,19 @@ import { lerSemComentarios } from './_fonte.js';
 //                   inteira nula/string/número, **e no CLIQUE**: a TELA PRETA
 //                   voltou SEIS vezes, e uma foi NO CLIQUE (187-06).
 //                   `renderToStaticMarkup` **não dispara `onClick`**.
-// 13. FASES        → "⤢ Ampliar" (189) e "✦ Gerar novamente com IA" (192)
-//                   antecipadas; a coluna de preço (188-09), as pendências
-//                   (188-10) ou os modais (188-11/12) aparecendo como provisório.
+// 13. FASES        → "✦ Gerar novamente com IA" (192) antecipada; a coluna de
+//                   preço (188-09), as pendências (188-10) ou os modais
+//                   (188-11/12) aparecendo como provisório.
+//                   ⚠️⚠️ **REAPONTADO COM VETO pela Fase 189, plano 06
+//                   (D-189-3b), em 20/10/2026.** O "⤢ Ampliar" (`:607`) É da
+//                   Fase 189 e passou a ser ENTREGUE: o veto virou CONDICIONAL —
+//                   **sem** `onAmpliar` ele continua PROIBIDO (botão sem destino
+//                   é D4 violado), **com** `onAmpliar` função ele é EXIGIDO. A
+//                   ausência de "Gerar novamente" **não foi tocada**, e há isca
+//                   sintética provando que ela continua acusando.
+//                   (O critério de aceitação do plano dono escreveu "Fase 189,
+//                   plano 05" por engano de dígito; o dono do reaponte é o
+//                   **06**, e esta linha diz a verdade.)
 // 14. TERRITÓRIO   → `localStorage`, `String(`, peça nova em `.js`, hex cru, e os
 //                   arquivos INTOCÁVEIS tocados.
 //
@@ -618,7 +628,7 @@ test('⚠️⚠️ SELO DE ESTADO: TEXTO NÃO-VAZIO nos 6 estados, e chave desco
     assert.notEqual(render(M_IMAGEM.SeloDeEstado, { imagem: FOTO_APROVADA }), '', 'a sonda está cega: nem o controle desenha');
 });
 
-test('⚠️ `:605` "Gerando nova versão…" é ESTADO e nasce; `:606`/`:607` são de OUTRAS FASES e NÃO nascem 188_08', () => {
+test('⚠️ `:605` "Gerando nova versão…" é ESTADO e nasce; `:606` é de OUTRA FASE e NÃO nasce; `:607` nasce SÓ COM HANDLER 188_08', () => {
     const regenerando = render(M_IMAGEM.default, { imagem: FOTO_REGENERANDO });
     assert.match(regenerando, /Gerando nova versão…/, 'o aviso de `:605` não saiu em `regenerating`');
     assert.match(regenerando, /animate-pub-spin/, 'o spinner de `:605` não saiu');
@@ -629,16 +639,49 @@ test('⚠️ `:605` "Gerando nova versão…" é ESTADO e nasce; `:606`/`:607` s
     const pendente = render(M_IMAGEM.default, { imagem: FOTO_PENDENTE_COM_ALERTA });
     assert.doesNotMatch(pendente, /Gerando nova versão/, 'o aviso de `:605` saiu num estado que NÃO é `regenerating`');
 
-    // ⚠️⚠️ GATE DE AUSÊNCIA das DUAS FASES — rodado com as props PREENCHIDAS, para
-    // não ser gate sobre zero casos.
+    // ⚠️⚠️ GATE DE AUSÊNCIA — rodado com as props PREENCHIDAS, para não ser gate
+    // sobre zero casos.
     const completo = render(M_COLUNA.default, {
         fotos: FOTOS, live: true, selecionada: 0, onSelecionar: nada,
         empresaId: 7, ofertaId: 12, versao: 3,
     });
     assert.ok(completo.length > 1000, `a coluna saiu curta demais (${completo.length} bytes) — a sonda de ausência mediria zero casos`);
-    assert.doesNotMatch(completo, /Ampliar/, '"⤢ Ampliar" é da Fase 189 e foi ANTECIPADO');
-    assert.doesNotMatch(completo, /⤢/, 'o glifo de "⤢ Ampliar" (Fase 189) apareceu');
+
+    // ═══ ⚠️⚠️ REAPONTE COM VETO — Fase 189, plano 06 (D-189-3b), 20/10/2026 ═══
+    //
+    // *"Teste que para de provar algo é pior que teste ausente: cirurgia é
+    // REAPONTE com veto, e CONTE TESTES, não linhas"* (`188-REGUA.md` §10).
+    // ➡️ As DUAS asserções de ausência de `:607` **não foram apagadas**: elas
+    // passaram a medir o regime **SEM handler**, que é a parte que continua
+    // verdadeira — botão sem destino é D4 violado, e `onClick` vazio é a mesma
+    // dívida com outra roupa. A exigência de PRESENÇA com handler entrou LOGO
+    // ABAIXO, no mesmo caso (acrescentar `test()` mudaria a contagem do manifesto
+    // da 188-08, e reaponte não acrescenta nem remove teste).
+    //
+    // ⚠️⚠️ **A AUSÊNCIA DA FASE 192 NÃO FOI AFROUXADA** (T-189-40): ela é cobrada
+    // nos DOIS regimes, e a isca sintética abaixo prova que a sonda dela continua
+    // acusando. *"Nunca afrouxe a ausência de Gerar novamente"* — D-189-3.
+    //
+    // (O critério de aceitação do 189-06 escreveu "Fase 189, plano 05" por engano
+    // de dígito; o dono do reaponte é o **06**.)
+    assert.doesNotMatch(completo, /Ampliar/, 'o "⤢ Ampliar" nasceu SEM `onAmpliar` — botão sem destino (D4)');
+    assert.doesNotMatch(completo, /⤢/, 'o glifo do "⤢ Ampliar" nasceu SEM `onAmpliar`');
     assert.doesNotMatch(completo, /Gerar novamente/, '"✦ Gerar novamente com IA" é da Fase 192 e foi ANTECIPADO');
+
+    // ➡️ E COM `onAmpliar` função ele é **EXIGIDO** (Fase 189, plano 06).
+    const comAmpliar = render(M_COLUNA.default, {
+        fotos: FOTOS, live: true, selecionada: 0, onSelecionar: nada,
+        empresaId: 7, ofertaId: 12, versao: 3, onAmpliar: nada,
+    });
+    assert.match(comAmpliar, /⤢ Ampliar/, 'o "⤢ Ampliar" NÃO nasceu com `onAmpliar` função — a Fase 189 o entrega (D-189-3b)');
+    assert.doesNotMatch(comAmpliar, /Gerar novamente/, 'a inversão do "⤢ Ampliar" AFROUXOU a ausência da Fase 192 (T-189-40)');
+
+    // ⚠️⚠️ ISCA SINTÉTICA NAS DUAS DIREÇÕES: as duas sondas enxergam o que devem
+    // enxergar, e **não** uma a outra. Sem isto, "nenhum achado" não prova nada.
+    assert.match('<button>✦ Gerar novamente com IA</button>', /Gerar novamente/, 'a sonda da Fase 192 está CEGA');
+    assert.doesNotMatch('<button>⤢ Ampliar</button>', /Gerar novamente/, 'a sonda da Fase 192 acusa o "⤢ Ampliar" — ela é mais larga que o invariante');
+    assert.match('<button>⤢ Ampliar</button>', /⤢ Ampliar/, 'a sonda do "⤢ Ampliar" está CEGA');
+    assert.doesNotMatch('<button>✦ Gerar novamente com IA</button>', /⤢/, 'a sonda do glifo `⤢` acusa a Fase 192 — ela é mais larga que o invariante');
 
     // ⚠️ `onClick` vazio é a mesma dívida que botão sem destino, com outra roupa.
     const semDestino = FONTES_DO_PLANO.filter(([, fonte]) => /onClick=\{\(\)\s*=>\s*\{\s*\}\}/.test(fonte)).map(([rel]) => rel);
