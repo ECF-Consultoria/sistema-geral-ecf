@@ -1,0 +1,138 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-07 — AS AÇÕES DA FOTO DENTRO DO
+# LIGHTBOX, COM O CONTEXTO DELE: "Aprovar foto" e "Reprovar" escrevendo com a
+# oferta, a VERSÃO e a foto que o lightbox capturou na ABERTURA
+# (PERGUNTA-189-B (b), decisão do usuário de 19/10/2026); o modal de reprovar
+# acima do lightbox pelo CONTEXTO DE EMPILHAMENTO; o `Escape` fechando só o
+# modal; e o DEFAULT do D2 da PERGUNTA-189-D (que segue ABERTA).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-07 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-07`, E NÃO `07`. O número NU resolve
+# `contagens-186-07.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os ids dos nove manifestos da
+# Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    uma invocação por id, com o ANSI tirado ANTES de ler a linha `# tests`.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `acoes-do-lightbox` E `vocabulario-tamanhos`, e
+# **manifesto sem o id ABORTA**. ➡️ A tarefa 2 **REMEDE** o `tests=` de
+# `acoes-do-lightbox` (ela acrescenta casos ao MESMO arquivo de gate) **antes do
+# seu próprio verify**, nunca depois.
+#
+# ⚠️⚠️ **ESTE PLANO NÃO CRIA `.jsx` NENHUM** — ele cria UM arquivo de teste
+# (`.test.js`) e edita dois `.jsx` que já existem (a página da 187-04 e o painel
+# da 188-07..12). ➡️ Não há nada a acrescentar em `ARQUIVOS_NOVOS`
+# (`tests/js/publicador-vocabulario-novo.test.js`) nem em `JSX_DEPOIS_DA_187`
+# (`tests/js/publicador-fila-fechamento-187.test.js`), e **as duas listas ficam
+# INTOCADAS** — provado pela PI(189-07) da SUMMARY.
+# ⚠️ Um conserto anterior nesta milestone RECUSOU criar a TERCEIRA escrituração
+# das peças novas. **Não crie.**
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ AS LISTAS CONSTANTES: este plano NÃO TOCOU NENHUMA — e a razão de cada uma
+# ═══════════════════════════════════════════════════════════════════════════════
+#   · `ARQUIVOS_NOVOS` / `JSX_DEPOIS_DA_187` — **este plano não cria `.jsx`**;
+#   · `TAMANHOS_PERMITIDOS` / `LIBERADOS_DEPOIS_DA_187` — **nenhum tamanho novo**:
+#     este plano não desenha elemento nenhum, ele LIGA handlers que já existem.
+#     Medido: `vocabulario-tamanhos` 695 (igual ao que o 189-05 e o 189-06
+#     mediram);
+#   · `ESTADO_LOCAL_DA_PAGINA` (`publicador-fila-filtros-187.test.js`) — **nenhum
+#     `useState` novo na página**: o estado `doLightbox` já foi escriturado pelo
+#     189-06, e `contextoDaFoto` é CAMPO do estado `modalDoPainel`, que já estava
+#     na lista. Medido: `filtros-render` 29/29/0 (`29,19` INALTERADO);
+#   · `ACOES` / `ACOES_DEPOIS_DA_188_07` (`publicador-painel-casca-188.test.js`) —
+#     **nenhuma ação nova de teclado**: o degrau do `Escape` é do 189-06 e este
+#     plano só o EXERCE. Medido: `casca-do-painel` 45/45/0 (`45,41` INALTERADO);
+#   · `SLOTS_DE_NO_DA_187` / `SLOTS_DE_NO_DEPOIS_DA_187` — **nenhum slot de NÓ
+#     novo**: a lateral continua entrando pelo slot `lateral` que o 189-03 criou;
+#   · `FONTES_DO_PLANO` de `publicador-painel-modal-reprovar-188.test.js` (o gate
+#     de `/Ampliar/` sobre a FONTE do `ModalDeReprovarImagem.jsx`) — **este plano
+#     NÃO TOCOU o modal**: medido que ele já recebe a imagem por prop e **não
+#     escreve** (quem escreve é a página). O manifesto da 188-12 fica INTACTO;
+#   · `QUEM_USA_SHADOW_PUB_PAINEL`, `DA_FASE_180`, `DO_PORTAO_DA_FASE_186` —
+#     nenhuma sombra, token ou frase nova;
+#   · `contagens-186-02.txt:83` (`voc-07-gate-03 … tests=399,399`) — achado
+#     HERDADO e já estourado antes desta fase; manifesto de fase EM PRODUÇÃO,
+#     **não é deste plano consertar**, e nada aqui depende dele.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ARMADILHA A2, CONFERIDA E NÃO TOCADA
+# ═══════════════════════════════════════════════════════════════════════════════
+# `publicador-painel-casca-188.test.js:1035` varre a FONTE de `PainelDeRevisao.jsx`
+# **SEM COMENTÁRIO** por `/Ampliar/` e `/⤢/`. Este plano acrescenta TRÊS named
+# exports àquele arquivo, e **nenhum dos nomes cita "Ampliar"**: eles são
+# `acaoDoLightbox`, `depoisDaAcaoNoLightbox` e `propsDaLateralDoLightbox`. ⚠️ Uma
+# prop chamada `onAmpliar` ali REPROVARIA — medido ANTES e DEPOIS: `Ampliar=0`,
+# glifo `=0` na fonte sem comentário, e `casca-do-painel` 45/45/0 nas duas pontas.
+# ⚠️ `publicador-painel-fotos-188.test.js:639`/`:640` (o reaponte com veto do
+# 189-06) e os outros SETE gates JS + DOIS PHP de ausência de "Ampliar" ficam
+# **VERDES e INTOCADOS** — este plano não encosta em nenhum deles.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ NO MODO `js` O HARNESS RODA O ARQUIVO INTEIRO: **um id por arquivo de gate**.
+#    É por isso que `acoes-do-lightbox` cobre as duas tarefas deste plano — não é
+#    agregação por conveniência, é o que o modo `js` permite. Há asserção neste
+#    plano cobrando que nenhum arquivo apareça em dois ids daqui.
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️⚠️ BIJEÇÃO id ↔ `<verify>`: os DOIS ids abaixo são exatamente os usados pelos
+#    `<verify>` deste plano. **ZERO id órfão** (id no manifesto fora de
+#    `<verify>` = gate sobre zero casos) e **ZERO verify sem id**.
+#      tarefa 1 → acoes-do-lightbox + vocabulario-tamanhos
+#      tarefa 2 → acoes-do-lightbox (+ `--suite js`, que não é id)
+#
+# ⚠️ ESTE PLANO NÃO TEM id `php`, e está certo: ele é só de tela, de teclado e de
+#    fio de escrita no cliente. ➡️ **Não há homônimo de `--filter` a conferir** (o
+#    `--filter` do PHPUnit não roda sobre arquivo de teste JS, e é ele que SOMA
+#    contagens). Os nomes dos casos terminam em `189_07` de todo modo, porque a
+#    régua do sufixo vale para o dia em que rodar — e porque as Fases 186/187/188
+#    numeram de 01 em diante e estão EM PRODUÇÃO (o `--filter` é regex NÃO
+#    ANCORADO).
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ `vocabulario-tamanhos`: EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AGORA
+# ═══════════════════════════════════════════════════════════════════════════════
+# MEDIDO em 20/10/2026, no commit de partida `c23bab8d`: **695 / 695 pass / 0
+# fail / 0 skipped** (`node --test --test-reporter=tap`, ANSI tirado ANTES de ler
+# `# tests`).
+#   · o 189-05 remediu para 695 e o 189-06 re-mediu 695; **este plano não cria
+#     `.jsx`**, então o número NÃO sobe (o arquivo faz um lote de sub-testes POR
+#     ARQUIVO varrido). A contagem CRESCE POR CONSTRUÇÃO, e é por isso que a forma
+#     é `>=` e nunca `=`.
+#   · ⚠️ **ESTE PLANO RODA O ID** (está no `<verify>` da tarefa 1), então ele TEM
+#     linha de id. (Quando um plano apenas MEDE sem rodar, a forma certa é
+#     registrar a medição em COMENTÁRIO, sem linha de id — id fora de todo
+#     `<verify>` é ÓRFÃO, e gate sobre zero casos não prova nada.)
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ OS DOIS REGIMES de `acoes-do-lightbox` (`tests=<pristino>,<mutado>`)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Este arquivo tem TRÊS blocos que degradam para `skip` EXPLÍCITO e NOMEADO:
+#   · o do protótipo (`design_handoff_publicador/Aprovacao.dc.html`, que **não é
+#     versionado** — D-189-2);
+#   · o do CSS construído (`public/build/assets`);
+#   · o do `manifest.json` do Vite.
+# Nesta máquina os três existem, então os três RODAM; e `skip` **conta como
+# teste** no `# tests` do TAP, então o total não muda nem sem eles. **Nenhuma
+# camada deste gate depende de `mtime`**, e `cp -p` atualiza o `mtime` sem mexer
+# na contagem — por isso os dois regimes coincidem.
+# ⚠️⚠️ E **confirmar que o `# tests` do MUTADO é IGUAL ao do pristino é
+# obrigatório**: se cair, o arquivo não carregou e a morte **não é da asserção**.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+acoes-do-lightbox  js  tests/js/publicador-lightbox-acoes-189.test.js  ::  tests=25,25
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=695

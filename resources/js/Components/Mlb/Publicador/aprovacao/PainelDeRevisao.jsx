@@ -849,6 +849,228 @@ export function aoFecharOLightbox(pedido = null) {
     };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️⚠️ Fase 189, plano 07 — AS AÇÕES DA FOTO **COM O CONTEXTO DO LIGHTBOX**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️⚠️ **PERGUNTA-189-B (b), decisão do usuário de 19/10/2026.** Com o lightbox
+// aberto, ↑/↓ continuam navegando a fila por baixo. ➡️ Aprovar a foto e reprovar
+// usam a oferta, a VERSÃO e a foto **que o lightbox capturou na abertura**, nunca
+// as do painel por baixo. Sem isso, quem abre na oferta A e desce para a B
+// aprovaria a foto da A **com a versão da B**: no melhor caso o servidor recusa
+// (422 de `versao_esperada`); no pior, uma regra de versão mal casada passa — e
+// **aprovar ENFILEIRA, sem desfazer** (T-189-50/T-189-51).
+//
+// ⚠️⚠️ **DIVERGÊNCIA DECLARADA DA PROSA DO PLANO 189-07, e a MEDIÇÃO É A RAZÃO.**
+// O plano prescrevia que `acaoDoLightbox` montasse ela mesma
+// `{rota, parametros, corpo, versao}` e entregasse a `escreverNoPainel`. ⚠️ Medido
+// (`189-CONTRATO-188.md` INV-03 / ACHADO A6): `escritasDaColuna({empresaId,
+// ofertaId, versao, onConflito})` — named export de `ColunaDeFotos.jsx:209` — já
+// recebe os três **POR PARÂMETRO** e já monta a rota `ROTA_APROVAR_IMAGEM` do
+// 188-05 com `{company, oferta, imagem}`. ➡️ Remontar a rota aqui seria a
+// **SEGUNDA CÓPIA** da mesma verdade, que a régua §2 proíbe sem teste de
+// igualdade — e o plano autoriza literalmente o caminho medido: *"Se o INV-03
+// mediu que o handler do painel JÁ recebe `{oferta, versao, imagem}` por
+// parâmetro, use-o passando o contexto — e declare"*. ⚠️ A escrita continua
+// passando pelo **helper único** `escreverNoPainel` (é ele que põe
+// `versao_esperada` SEMPRE e não engole o 422), e **nenhuma rota nova nasce**.
+// ➡️ O que esta camada faz é o que só ela pode fazer: **LER a oferta, a versão e
+// a foto DO CONTEXTO** e entregá-las ao caminho de escrita que já existe.
+//
+// ⚠️ **ONDE A LATERAL É MONTADA, e a segunda divergência declarada.** O plano diz
+// *"o JSX do painel faz `<LateralDoLightbox {...propsDaLateralDoLightbox(…)} />`"*.
+// Medido pelo 189-06: o lightbox (e a lateral dele) são montados **na PÁGINA**,
+// porque a coluna que hospeda o botão de abrir chega a este painel como **NÓ
+// PRONTO** pelo slot `colunaDeFotos`. ➡️ A FUNÇÃO vive aqui (a casa das regras
+// puras, ao lado do resolvedor de atalho, e este painel segue com o ÚNICO
+// `keydown`); o JSX que a espalha vive em `Pages/Mlb/Publicador/Aprovacao.jsx`.
+
+/** Os DOIS tipos de ação do lightbox. ⚠️ Lista FECHADA: o resto não escreve. */
+export const TIPOS_DA_ACAO_DO_LIGHTBOX = {
+    APROVAR: 'aprovar',
+    REPROVAR: 'reprovar',
+};
+
+/**
+ * ⚠️⚠️ A FONTE DA OFERTA, DA VERSÃO E DA FOTO É O CONTEXTO — PERGUNTA-189-B (b).
+ *
+ * @param {object} [pedido]
+ * @param {unknown} [pedido.tipo] `'aprovar'` ou `'reprovar'` (lista FECHADA)
+ * @param {unknown} [pedido.contexto] o contexto do lightbox (`contextoDoLightbox`)
+ * @param {unknown} [pedido.indice] o índice da foto ABERTA no lightbox
+ * @param {unknown} [pedido.escrever] `({tipo, oferta, versao, imagem, imagemId}) =>
+ *   boolean` — no componente é o adaptador que chama `escritasDaColuna` com a
+ *   oferta e a versão **recebidas aqui**, e daí o helper único `escreverNoPainel`
+ * @returns {boolean} se a ação foi disparada
+ *
+ * ⚠️⚠️ **NENHUMA ESCRITA COM `undefined`.** Contexto nulo, contexto sem oferta ou
+ * sem versão, `indice` fora da lista, imagem que não é objeto comum e imagem sem
+ * `id` positivo → **nada é chamado** e a função devolve `false`. Numa tela em que
+ * aprovar enfileira e não há como voltar atrás, escrita disparada sobre id
+ * inválido é **pior** que nenhuma: a pessoa vê a ação acontecer e nada muda.
+ * ⚠️ `idPositivoDoPainel` e não `inteiroDoPainel`: `0` é um id plausível para
+ * quem lê e sairia numa rota que não existe.
+ * ⚠️ A função recebe **UM** parâmetro e o saneia, em vez de desestruturar:
+ * `{a = null} = {}` só cobre `undefined`, **NÃO `null`** — e foi assim que uma
+ * função passou a LANÇAR NO CLIQUE na wave 187-06.
+ * ⚠️ `=== true` ESTRITO no retorno de `escrever`: um adaptador que devolvesse
+ * `undefined` faria o degrau seguinte (o D2) rodar sobre uma escrita que não
+ * aconteceu.
+ */
+export function acaoDoLightbox(pedido = null) {
+    const alvo = objetoDoPainel(pedido);
+    if (alvo === null) return false;
+
+    const tipo = typeof alvo.tipo === 'string' ? alvo.tipo : null;
+    if (tipo !== TIPOS_DA_ACAO_DO_LIGHTBOX.APROVAR && tipo !== TIPOS_DA_ACAO_DO_LIGHTBOX.REPROVAR) return false;
+
+    const escrever = typeof alvo.escrever === 'function' ? alvo.escrever : null;
+    if (escrever === null) return false;
+
+    const contexto = objetoDoPainel(alvo.contexto);
+    if (contexto === null) return false;
+
+    // ⚠️⚠️ AQUI está a decisão inteira: os dois saem do CONTEXTO, nunca do painel.
+    const oferta = idPositivoDoPainel(contexto.oferta_id);
+    const versao = idPositivoDoPainel(contexto.versao);
+    if (oferta === null || versao === null) return false;
+
+    // ⚠️ `imagens` que não é lista cai em `[]` — `.length` em string mentiria e o
+    // índice passaria pela guarda.
+    const imagens = Array.isArray(contexto.imagens) ? contexto.imagens : [];
+    const indice = inteiroDoPainel(alvo.indice);
+    if (indice === null || indice < 0 || indice >= imagens.length) return false;
+
+    const imagem = objetoDoPainel(imagens[indice]);
+    if (imagem === null) return false;
+
+    const imagemId = idPositivoDoPainel(imagem.id);
+    if (imagemId === null) return false;
+
+    return escrever({ tipo, oferta, versao, imagem, imagemId }) === true;
+}
+
+/**
+ * ⚠️⚠️ O **D2 da PERGUNTA-189-D** — ABERTA, DEFAULT APLICADO E DECLARADO.
+ *
+ * @param {unknown} pedido `{contexto, painelAtual}`
+ * @returns {{fechar: boolean, recarregarNaOferta: ?number}}
+ *
+ * ➡️ **O caso:** a pessoa abriu o lightbox na oferta **A**, navegou ↓ para a **B**
+ * e agiu na foto da A. O recarregamento parcial do Inertia traz o painel **da B**,
+ * e o contexto da A no lightbox fica **VELHO**: a foto que ela acabou de aprovar
+ * continuaria aparecendo "A conferir", **com os botões**, e um segundo clique
+ * tentaria aprovar o que já está aprovado.
+ *
+ * ➡️ **DEFAULT APLICADO:** o lightbox **FECHA** depois da ação quando a oferta do
+ * contexto difere da do painel (o foco segue a regra do D1, `aoFecharOLightbox`).
+ * Com a **MESMA** oferta ele continua aberto, e o contexto se refresca sozinho
+ * (`contextoDoLightbox`) — é assim que a foto aprovada aparece aprovada.
+ *
+ * ⚠️⚠️ **A ALTERNATIVA NÃO FOI IMPLEMENTADA, de propósito:** recarregar o painel
+ * na oferta A (um `router.get` com `?oferta=A`) e manter o lightbox aberto,
+ * atualizado. Ela **move o painel por baixo da pessoa** sem ela ter pedido, e
+ * desfaz a navegação ↑/↓ que foi ação explícita dela. ➡️ `recarregarNaOferta` sai
+ * **`null` sempre**, e é essa a asserção que distingue o default da alternativa —
+ * o mesmo contrato do `voltarParaAOferta` do D1.
+ *
+ * ⚠️ Sem oferta no contexto ou sem oferta no payload **não há o que comparar** e o
+ * lightbox **não fecha**: fechar por dado faltando tiraria a pessoa da tela sem
+ * motivo, e o clamp do índice já resolve a galeria que esvaziou.
+ * ⚠️ Comparação ESTRITA de inteiros: `'501'` é OUTRA oferta, nunca "a mesma".
+ */
+export function depoisDaAcaoNoLightbox(pedido = null) {
+    const alvo = objetoDoPainel(pedido);
+    const contexto = alvo === null ? null : objetoDoPainel(alvo.contexto);
+    const painelAtual = alvo === null ? null : objetoDoPainel(alvo.painelAtual);
+
+    const doLightbox = contexto === null ? null : idPositivoDoPainel(contexto.oferta_id);
+    const doPainel = painelAtual === null ? null : idPositivoDoPainel(painelAtual.oferta_id);
+
+    return {
+        fechar: doLightbox !== null && doPainel !== null && doLightbox !== doPainel,
+        recarregarNaOferta: null,
+    };
+}
+
+/**
+ * ⚠️⚠️ **A ÚNICA FONTE DAS PROPS DA LATERAL DO LIGHTBOX — e por que ela existe.**
+ *
+ * @param {object} [pedido]
+ * @param {unknown} [pedido.contexto] o contexto do lightbox
+ * @param {unknown} [pedido.indice] o índice da foto aberta
+ * @param {unknown} [pedido.zoom] o zoom atual (a lateral o usa no rótulo)
+ * @param {unknown} [pedido.onFechar] `() => void`
+ * @param {unknown} [pedido.onAlternarZoom] `(zoomNovo) => void`
+ * @param {unknown} [pedido.escrever] o adaptador de escrita (ver `acaoDoLightbox`)
+ * @returns {object} as props de `<LateralDoLightbox>`, prontas
+ *
+ * ⚠️⚠️ **O ACHADO DO PLAN-CHECKER DE 19/10/2026 QUE ESTA FUNÇÃO FECHA.** O 189-06
+ * montou a lateral com os dois handlers de ação em `null`, e a `podeAgirNaFoto`
+ * (189-05) **só desenha com handler FUNÇÃO**. Se este plano apenas provasse as
+ * funções puras, **todo teste passaria e o botão nunca nasceria**. ⚠️ E o lightbox
+ * é **portal**: o renderizador de SERVIDOR do React **não o desenha**, então um
+ * teste do composto passaria **por OMISSÃO**. ➡️ Por isso o fio atravessa uma
+ * função **exportada**, que o gate renderiza direto com a lateral de verdade.
+ *
+ * ⚠️⚠️ **ESTA FUNÇÃO NÃO REPETE A REGRA DE "PODE AGIR".** Quem decide se o botão
+ * nasce é `podeAgirNaFoto` (`ao_vivo` **e** `pending` **e** `aceita_acao` **e** os
+ * dois handlers função) — **uma regra só**, no arquivo do 189-05. Aqui se decide
+ * outra coisa: **se existe DESTINO** (contexto com oferta e versão, foto com id,
+ * adaptador de escrita). Duplicar `estado`/`aceita_acao` aqui seria a segunda
+ * verdade que a régua §2 proíbe, e a divergente deixaria a tela oferecendo o que
+ * o servidor recusa.
+ *
+ * ⚠️ Os handlers **IGNORAM o argumento** que a lateral lhes passa e leem a foto do
+ * CONTEXTO pelo índice. A lateral passa a imagem que ESTÁ desenhando — que é a
+ * mesma —, mas confiar no argumento tornaria o nó desenhado a fonte da verdade, e
+ * é justamente a fonte da verdade que a PERGUNTA-189-B decide.
+ * ⚠️ `originais` é indexado pelo **`id` da revisão** (`pub_aprovacao_imagens.id`),
+ * **não** por `imagem_id`: são tabelas diferentes e confundi-las mostraria a
+ * original de OUTRA foto.
+ */
+export function propsDaLateralDoLightbox(pedido = null) {
+    const alvo = objetoDoPainel(pedido);
+    const contexto = alvo === null ? null : objetoDoPainel(alvo.contexto);
+
+    const imagens = contexto !== null && Array.isArray(contexto.imagens) ? contexto.imagens : [];
+    const indice = alvo === null ? null : inteiroDoPainel(alvo.indice);
+    const imagem = indice === null || indice < 0 || indice >= imagens.length
+        ? null
+        : objetoDoPainel(imagens[indice]);
+
+    const originais = contexto === null ? null : objetoDoPainel(contexto.originais);
+    const idDaRevisao = imagem === null ? null : idPositivoDoPainel(imagem.id);
+    const original = originais === null || idDaRevisao === null
+        ? null
+        : objetoDoPainel(originais[idDaRevisao]);
+
+    const escrever = alvo !== null && typeof alvo.escrever === 'function' ? alvo.escrever : null;
+    const oferta = contexto === null ? null : idPositivoDoPainel(contexto.oferta_id);
+    const versao = contexto === null ? null : idPositivoDoPainel(contexto.versao);
+
+    // ⚠️ TEM DESTINO = há para onde escrever e o que escrever. O resto é da
+    // `podeAgirNaFoto`, e é lá que fica.
+    const temDestino = escrever !== null && oferta !== null && versao !== null && idDaRevisao !== null;
+
+    return {
+        imagem,
+        original,
+        // ⚠️ `ao_vivo` é o do CONTEXTO (capturado na abertura, refrescado só na
+        // mesma oferta) — nunca o `rodape.botoes.salvar` do painel de baixo.
+        aoVivo: contexto === null ? null : contexto.ao_vivo,
+        zoom: alvo === null ? null : alvo.zoom,
+        onFechar: alvo !== null && typeof alvo.onFechar === 'function' ? alvo.onFechar : null,
+        onAlternarZoom: alvo !== null && typeof alvo.onAlternarZoom === 'function' ? alvo.onAlternarZoom : null,
+        onAprovarFoto: !temDestino
+            ? null
+            : () => acaoDoLightbox({ tipo: TIPOS_DA_ACAO_DO_LIGHTBOX.APROVAR, contexto, indice, escrever }),
+        onReprovar: !temDestino
+            ? null
+            : () => acaoDoLightbox({ tipo: TIPOS_DA_ACAO_DO_LIGHTBOX.REPROVAR, contexto, indice, escrever }),
+    };
+}
+
 /**
  * ⚠️⚠️ **A RAIZ DO QUE É PORTADO — e é ELA que os gates conferem.**
  *
