@@ -151,24 +151,8 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertSame(['min' => 214.9, 'max' => 234.9], $c['precos']['gold_pro']);
         $this->assertTrue($c['selecionavel']);
         $this->assertStringEndsWith('?etapa=previa', $c['url_previa']);
-        $this->assertSame('Fase 1', $c['fase']);
-    }
-
-    public function test_o_kit_da_fase_2_entra_na_familia_do_produto_base(): void
-    {
-        $this->cadeiraPretaEAzulSemFotoNoAzul();
-        $base = $this->produto();
-        $kit = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-01-CB3-KIT2', 'nome' => 'Kit 2 Cadeiras',
-            'origem' => PubProduto::ORIGEM_PUBLICADOR, 'produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
-
-        $alvo = app(ProgramasPublicadorService::class)->resolver('company-'.$this->empresa->id);
-        $cartoes = collect(app(VitrineDeProdutosService::class)->montar($alvo)['cartoes'])->keyBy('produto_id');
-
-        $this->assertSame($base->id, $cartoes[$base->id]['familia_id']);
-        $this->assertSame(1, $cartoes[$base->id]['fase_numero']);
-        $this->assertSame($base->id, $cartoes[$kit->id]['familia_id'], 'o kit vai no cartão do produto base');
-        $this->assertSame(2, $cartoes[$kit->id]['fase_numero']);
-        $this->assertSame('Fase 2 · Kit 2', $cartoes[$kit->id]['fase']);
+        // O produto do teste é o Combo 3 do gabarito à parte: Fase 2 na régua do Portal (as famílias estão no VitrineFasesTest).
+        $this->assertSame(['combo', 2, 'Fase 2 · Combo 3 un'], [$c['tipo'], $c['fase_numero'], $c['fase']]);
     }
 
     public function test_publicado_vai_para_o_grupo_dele_e_nao_se_marca(): void

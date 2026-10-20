@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
-export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [], contagens = {}, cabecalho = null, fila_publicacao = null }) {
+export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [], planejados = [], contagens = {}, cabecalho = null, fila_publicacao = null }) {
     const [filtro, setFiltro] = useState(() => filtroInicial(contagens));
     const [selecao, setSelecao] = useState(() => new Set());
     const [modal, setModal] = useState(false);
@@ -40,8 +40,8 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
 
     const lista = listaSegura(cartoes);
     const visiveis = useMemo(() => filtrar(lista, filtro), [lista, filtro]);
-    // Um cartão por FAMÍLIA: o produto base e os kits dele (Fase 2, 3…), com as fases lado a lado.
-    const familias = useMemo(() => familiasDaVitrine(lista, filtro), [lista, filtro]);
+    // Um cartão por produto, com as fases lado a lado: Fase 1, os combos (2), os kits (3) e os combits (4) que o levam.
+    const familias = useMemo(() => familiasDaVitrine(lista, filtro, planejados), [lista, filtro, planejados]);
     const selecionados = resumoDaSelecao(lista, selecao);
     const prontosAVista = visiveis.filter((c) => c.selecionavel && c.grupo === 'prontos');
     const skus = useMemo(() => lista.map((c) => c.sku).filter(Boolean), [lista]);
@@ -58,7 +58,7 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                 setResumo(r);
                 if (r?.status === 'pronto' && ! resumoPronto.current) {
                     resumoPronto.current = true;
-                    router.reload({ only: ['cartoes', 'contagens'] });
+                    router.reload({ only: ['cartoes', 'planejados', 'contagens'] });
                 }
             },
             aoMudar: setAcompanhando,
@@ -76,7 +76,7 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
             setResumo(null);
         }
         setStatus({ tipo: 'ok', texto: json?.criados > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.' });
-        router.reload({ only: ['cartoes', 'contagens', 'empresa'] });
+        router.reload({ only: ['cartoes', 'planejados', 'contagens', 'empresa'] });
     }
 
     const marcar = (id) => setSelecao((s) => {

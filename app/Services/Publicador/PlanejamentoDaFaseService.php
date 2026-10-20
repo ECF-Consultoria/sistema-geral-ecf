@@ -22,6 +22,7 @@ use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -158,18 +159,8 @@ class PlanejamentoDaFaseService
             ->whereIn('variacao_id', $variacoes->pluck('id'))->orderBy('id')->get(['id', 'variacao_id', 'sku'])
             ->unique('variacao_id')->keyBy('variacao_id');
 
-        $comOferta = $variacoes->filter(fn (EstruturaProdutoVariacao $v) => $ofertas->has($v->id))->values();
-        $separacao = CoresDoGrupo::separar($comOferta->map(fn (EstruturaProdutoVariacao $v) => [
-            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
-        ])->all());
-        $entram = array_flip($separacao['agrupaveis']);
-
         $cores = [];
-        foreach ($comOferta as $v) {
-            if (! isset($entram[(int) $v->id])) {
-                continue;
-            }
-            $oferta = $ofertas->get($v->id);
+        foreach (self::coresQueEntram($variacoes, $ofertas) as [$v, $oferta]) {
             $cores[(int) $v->id] = [
                 'valor' => trim((string) $v->valor),
                 'oferta_id' => (int) $oferta->id,
@@ -179,6 +170,79 @@ class PlanejamentoDaFaseService
         }
 
         return $cores;
+    }
+
+    /**
+     * {@see quantidadesDoPlanejamento()} de VÁRIOS produtos do Portal da mesma Company numa leva só (a vitrine,
+     * 20/10/2026): as mesmas regras — só as cores que entram no grupo (`CoresDoGrupo`) e Combo de UM componente
+     * com quantidade 2 ou mais — em três consultas, qualquer que seja o número de produtos.
+     *
+     * @param  list<int>  $produtoIds  produtos do Portal (`estrutura_produtos.id`)
+     * @return array<int, list<int>> produto do Portal → as quantidades, em ordem (produto sem Combo não entra)
+     */
+    public function quantidadesDoPlanejamentoEmLote(int $companyId, array $produtoIds): array
+    {
+        $produtoIds = array_values(array_unique(array_map('intval', $produtoIds)));
+        if ($produtoIds === []) {
+            return [];
+        }
+
+        $variacoes = EstruturaProdutoVariacao::query()->where('company_id', $companyId)->whereIn('produto_id', $produtoIds)
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'eixo', 'valor', 'codigo', 'ordem']);
+        if ($variacoes->isEmpty()) {
+            return [];
+        }
+
+        $ofertas = EstruturaOferta::query()->where('company_id', $companyId)->where('fase', EstruturaOferta::FASE_SIMPLES)
+            ->whereIn('variacao_id', $variacoes->pluck('id'))->orderBy('id')->get(['id', 'variacao_id', 'sku'])
+            ->unique('variacao_id')->keyBy('variacao_id');
+
+        $produtoDaOferta = [];
+        foreach ($variacoes->groupBy('produto_id') as $produtoId => $doProduto) {
+            foreach (self::coresQueEntram($doProduto->values(), $ofertas) as [, $oferta]) {
+                $produtoDaOferta[(int) $oferta->id] = (int) $produtoId;
+            }
+        }
+        if ($produtoDaOferta === []) {
+            return [];
+        }
+
+        $porProduto = [];
+        foreach ($this->linhasDeCombo($companyId, array_keys($produtoDaOferta)) as $l) {
+            $porProduto[$produtoDaOferta[(int) $l->componente_id]][(int) $l->quantidade] = true;
+        }
+
+        return array_map(function (array $quantidades) {
+            $lista = array_keys($quantidades);
+            sort($lista);
+
+            return $lista;
+        }, $porProduto);
+    }
+
+    /**
+     * As variações de UM produto que entram no grupo (a régua do Sincronizar, `CoresDoGrupo`), na ordem
+     * recebida, cada uma com a sua oferta Simples. Variação sem oferta Simples nem entra na conta.
+     *
+     * @param  Collection<int, EstruturaProdutoVariacao>  $variacoes  as do produto, em ordem
+     * @param  Collection<int, EstruturaOferta>  $ofertas  variacao_id → a oferta Simples
+     * @return list<array{0: EstruturaProdutoVariacao, 1: EstruturaOferta}>
+     */
+    private static function coresQueEntram(Collection $variacoes, Collection $ofertas): array
+    {
+        $comOferta = $variacoes->filter(fn (EstruturaProdutoVariacao $v) => $ofertas->has($v->id))->values();
+        $entram = array_flip(CoresDoGrupo::separar($comOferta->map(fn (EstruturaProdutoVariacao $v) => [
+            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
+        ])->all())['agrupaveis']);
+
+        $saida = [];
+        foreach ($comOferta as $v) {
+            if (isset($entram[(int) $v->id])) {
+                $saida[] = [$v, $ofertas->get($v->id)];
+            }
+        }
+
+        return $saida;
     }
 
     /**
@@ -199,20 +263,8 @@ class PlanejamentoDaFaseService
             return [];
         }
 
-        $linhas = DB::table('estrutura_oferta_componentes as c')
-            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
-            ->where('o.company_id', $companyId)
-            ->where('o.fase', EstruturaOferta::FASE_COMBO)
-            ->whereIn('c.componente_id', array_keys($corDaOferta))
-            ->where('c.quantidade', '>=', 2)
-            // Combo é UM componente; composição montada à mão com dois não é o combo de uma cor.
-            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('estrutura_oferta_componentes as c2')
-                ->whereColumn('c2.oferta_id', 'c.oferta_id')->whereColumn('c2.id', '<>', 'c.id'))
-            ->orderBy('o.id')
-            ->get(['c.oferta_id', 'c.componente_id', 'c.quantidade', 'o.sku', 'o.nome']);
-
         $saida = [];
-        foreach ($linhas as $l) {
+        foreach ($this->linhasDeCombo($companyId, array_keys($corDaOferta)) as $l) {
             $variacaoId = $corDaOferta[(int) $l->componente_id];
             $saida[(int) $l->quantidade][$variacaoId] ??= [
                 'oferta_id' => (int) $l->oferta_id,
@@ -224,6 +276,28 @@ class PlanejamentoDaFaseService
         ksort($saida);
 
         return $saida;
+    }
+
+    /**
+     * Os componentes de Combo (da MESMA Company) entre as ofertas Simples dadas: um componente só, de
+     * quantidade 2 ou mais, na ordem das ofertas Combo (a mais antiga primeiro).
+     *
+     * @param  list<int>  $componenteIds  ids de ofertas Simples
+     * @return Collection<int, object{oferta_id: int, componente_id: int, quantidade: int, sku: string, nome: ?string}>
+     */
+    private function linhasDeCombo(int $companyId, array $componenteIds): Collection
+    {
+        return DB::table('estrutura_oferta_componentes as c')
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
+            ->where('o.company_id', $companyId)
+            ->where('o.fase', EstruturaOferta::FASE_COMBO)
+            ->whereIn('c.componente_id', $componenteIds)
+            ->where('c.quantidade', '>=', 2)
+            // Combo é UM componente; composição montada à mão com dois não é o combo de uma cor.
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('estrutura_oferta_componentes as c2')
+                ->whereColumn('c2.oferta_id', 'c.oferta_id')->whereColumn('c2.id', '<>', 'c.id'))
+            ->orderBy('o.id')
+            ->get(['c.oferta_id', 'c.componente_id', 'c.quantidade', 'o.sku', 'o.nome']);
     }
 
     // ═══ Casamento com o rascunho ════════════════════════════════════════════

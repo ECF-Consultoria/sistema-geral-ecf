@@ -21,9 +21,13 @@ use Illuminate\Support\Collection;
  * (`ResolvedorGruposImagem`), e as pendências por cor que o editor grava no resumo (`step_state.resumo.por_cor`).
  *
  * Grupos (os filtros da tela): `prontos` (não publicado e sem bloqueio), `pendencia` (falta algo ou a publicação
- * falhou) e `publicados`. Cada FASE é um cartão aqui (é um anúncio a publicar, com preço, foto e situação
- * próprios); a tela junta a família (`familia_id`) num cartão só, com as fases lado a lado. "Preparando" NÃO existe aqui de propósito: o preparo pela IA não grava início nem fim
+ * falhou) e `publicados`. "Preparando" NÃO existe aqui de propósito: o preparo pela IA não grava início nem fim
  * (a marca do `PreparoIaAgenda` fica 24 h no cache), e um filtro que adivinha mente.
+ *
+ * Cada produto é um cartão aqui (é um anúncio a publicar, com preço, foto e situação próprios); a tela junta as
+ * FASES de um produto num cartão só, lado a lado: Fase 1 Simples, Fase 2 Combo, Fase 3 Kit, Fase 4 Combit
+ * ({@see FasesDaVitrineService}, que diz em quais cartões cada um aparece). `planejados` são os combos do Portal
+ * que ainda não têm anúncio, uma face de espera na Fase 2.
  */
 final class VitrineDeProdutosService
 {
@@ -36,25 +40,29 @@ final class VitrineDeProdutosService
     public function __construct(
         private ResumoRapidoService $resumo,
         private RascunhoRepository $repo,
+        private FasesDaVitrineService $fases,
     ) {}
 
     /**
      * @param  array  $alvo  saída de `ProgramasPublicadorService::resolver`
-     * @return array{cartoes: list<array<string, mixed>>, contagens: array{prontos: int, pendencia: int, publicados: int, todos: int}}
+     * @return array{cartoes: list<array<string, mixed>>, planejados: list<array<string, mixed>>, contagens: array{prontos: int, pendencia: int, publicados: int, todos: int}}
      */
     public function montar(array $alvo): array
     {
         $linhas = $this->resumo->linhas($alvo, null, true);
         $rascunhos = PubRascunho::query()->whereIn('id', array_values(array_filter(array_column($linhas, 'rascunho_id'))))->get()->keyBy('id');
-        $produtos = PubProduto::query()->whereIn('id', array_column($linhas, 'produto_id'))->get()->keyBy('id');
+        $produtos = PubProduto::query()->with('oferta:id,fase')->whereIn('id', array_column($linhas, 'produto_id'))->get()->keyBy('id');
+        $fases = $this->fases->classificar($produtos);
 
-        $cartoes = array_map(fn (array $l) => $this->cartao($l, $rascunhos->get($l['rascunho_id']), $produtos->get($l['produto_id'])), $linhas);
+        $cartoes = array_map(fn (array $l) => $this->cartao($l, $rascunhos->get($l['rascunho_id']), $produtos->get($l['produto_id']),
+            $fases[(int) $l['produto_id']] ?? null), $linhas);
         usort($cartoes, fn (array $a, array $b) => [self::ORDEM[$a['grupo']], $b['atualizado_em'] ?? ''] <=> [self::ORDEM[$b['grupo']], $a['atualizado_em'] ?? '']);
 
         $contar = fn (string $g) => count(array_filter($cartoes, fn (array $c) => $c['grupo'] === $g));
 
         return [
             'cartoes' => $cartoes,
+            'planejados' => $this->fases->planejados($produtos, $fases, array_column($cartoes, null, 'produto_id')),
             'contagens' => [
                 self::PRONTOS => $contar(self::PRONTOS),
                 self::PENDENCIA => $contar(self::PENDENCIA),
@@ -64,8 +72,11 @@ final class VitrineDeProdutosService
         ];
     }
 
-    /** @param  array<string, mixed>  $l  uma linha da visão rápida */
-    private function cartao(array $l, ?PubRascunho $r, ?PubProduto $p): array
+    /**
+     * @param  array<string, mixed>  $l  uma linha da visão rápida
+     * @param  array{tipo: string, numero: int, quantidade: ?int, familias: list<int>, composicao: ?string, selo: string}|null  $f  a fase do produto
+     */
+    private function cartao(array $l, ?PubRascunho $r, ?PubProduto $p, ?array $f): array
     {
         [$cores, $foto] = $r !== null ? $this->coresEFoto($r) : [[], null];
         $status = $l['status_rascunho'] ?? null;
@@ -73,19 +84,22 @@ final class VitrineDeProdutosService
         $faltam = (int) ($l['faltam'] ?? 0);
         $falhou = ($l['situacao']['chave'] ?? null) === 'erro';
         $grupo = $publicado ? self::PUBLICADOS : ($faltam > 0 || $falhou || ($l['bloqueios'] ?? []) !== [] ? self::PENDENCIA : self::PRONTOS);
-        $fase = max(1, (int) ($p?->fase ?? 1));
+        $familias = $f['familias'] ?? [(int) $l['produto_id']];
 
         return [
             'produto_id' => (int) $l['produto_id'],
-            // A FAMÍLIA do cartão (20/10/2026, pedido do usuário): o kit da Fase 2/3 é outro anúncio, mas do MESMO
-            // produto — fica no cartão do produto base, e a pessoa passa de uma fase para outra pelo lado.
-            // Kit cujo base sumiu (`pubprod_base_fk` é SET NULL) fica sozinho.
-            'familia_id' => (int) ($p?->produto_base_id ?? $l['produto_id']),
-            'fase_numero' => $fase,
+            // As FAMÍLIAS do cartão (20/10/2026, decisões do usuário): o combo fica no cartão do produto; o Kit e o
+            // Combit, no de cada componente. A pessoa passa de uma fase para outra pelo lado.
+            'familia_id' => $familias[0],
+            'familias' => $familias,
+            'tipo' => $f['tipo'] ?? FasesDaVitrineService::SIMPLES,
+            'fase_numero' => $f['numero'] ?? 1,
+            'quantidade' => $f['quantidade'] ?? null,
+            'composicao' => $f['composicao'] ?? null,
             'nome' => (string) $l['nome'],
             'sku' => (string) $l['sku'],
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL,
-            'fase' => $fase >= 2 ? "Fase {$fase} · ".$l['rotulo_fase'] : 'Fase 1',
+            'fase' => $f['selo'] ?? 'Fase 1',
             'grupo' => $grupo,
             'chip' => self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
             // Só produto com mais de uma cor ativa ganha bolinhas; o de uma cor só não tem o que escolher.

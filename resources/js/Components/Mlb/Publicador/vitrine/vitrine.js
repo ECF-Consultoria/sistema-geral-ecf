@@ -3,8 +3,9 @@
 // ESM puro (sem JSX) para o `node --test` importar. O servidor
 // (`VitrineDeProdutosService`) manda um cartão por produto já com o grupo
 // (prontos | pendencia | publicados), o chip, as cores com a foto de cada uma,
-// os preços mín–máx por tipo e se dá para marcar. Aqui moram só as contas da
-// tela: o filtro, o preço escrito, o "há quanto tempo" e o resumo da seleção.
+// os preços mín–máx por tipo, a fase e se dá para marcar. Aqui moram só as
+// contas da tela: o filtro, as famílias, o preço escrito, o "há quanto tempo"
+// e o resumo da seleção.
 
 export const FILTROS_DA_VITRINE = [
     { chave: 'prontos', rotulo: 'Prontos para revisar' },
@@ -32,37 +33,87 @@ export function filtrar(cartoes, filtro) {
 
 const numero = (v) => (v === null || v === undefined || v === '' || ! Number.isFinite(Number(v)) ? null : Number(v));
 
+/** O número da fase (1 Simples, 2 Combo, 3 Kit, 4 Combit): o do servidor, ou o que o selo "Fase N · …" diz. */
+export function numeroDaFase(cartao) {
+    const n = numero(cartao?.fase_numero);
+    if (n !== null && n >= 1) return Math.floor(n);
+    const doSelo = /^Fase\s+(\d+)/.exec(String(cartao?.fase ?? ''));
+
+    return doSelo ? Number(doSelo[1]) : 1;
+}
+
+/** O rótulo da pílula: "Fase 1", "Fase 2"… */
+export const rotuloDaFase = (cartao) => `Fase ${numeroDaFase(cartao)}`;
+
+const ehPlanejada = (face) => face?.planejado === true;
+
+/** A face aparece em quais cartões: `familias` do servidor (o Kit e o Combit, em cada componente), senão o próprio. */
+function familiasDaFace(face) {
+    const ids = (Array.isArray(face.familias) ? face.familias : [face.familia_id]).map(numero).filter((n) => n !== null);
+
+    return ids.length > 0 ? [...new Set(ids)] : [Number(face.produto_id)];
+}
+
+/** Fase 1, 2, 3, 4; no combo, o de menos unidades primeiro; a face de espera depois da real de mesmo N. */
+const ordemDasFaces = (a, b) => (numeroDaFase(a) - numeroDaFase(b))
+    || ((numero(a.quantidade) ?? 0) - (numero(b.quantidade) ?? 0))
+    || (Number(ehPlanejada(a)) - Number(ehPlanejada(b)))
+    || ((numero(a.produto_id) ?? 0) - (numero(b.produto_id) ?? 0));
+
 /**
- * As FAMÍLIAS da vitrine (20/10/2026, pedido do usuário): o produto base e os kits dele (Fase 2, 3…) são anúncios
- * diferentes do MESMO produto, então vão num cartão só, com as fases lado a lado. Com filtro, entra a família que
- * tiver alguma fase nele, e `inicial` aponta a 1ª dessas fases (o cartão abre nela). A ordem é a do servidor.
+ * As FAMÍLIAS da vitrine (20/10/2026, decisões do usuário): um cartão por produto, com as fases dele lado a lado —
+ * Fase 1 (o produto), Fase 2 (cada combo: o mesmo produto × N), Fase 3 (cada kit que o leva) e Fase 4 (cada
+ * combit). O Kit e o Combit chegam com o cartão de CADA componente em `familias`, então a mesma face aparece nos
+ * dois. `planejados` são os combos do Portal ainda sem anúncio: entram como face de espera só em família que está
+ * na tela. Com filtro, entra a família que tiver alguma fase REAL nele, e `inicial` aponta a 1ª dessas fases (o
+ * cartão abre nela). A ordem das famílias é a do servidor.
  *
  * @return {Array<{id: number, fases: Array<object>, inicial: number}>}
  */
-export function familiasDaVitrine(cartoes, filtro = 'todos') {
+export function familiasDaVitrine(cartoes, filtro = 'todos', planejados = []) {
     const porFamilia = new Map();
-    for (const c of listaSegura(cartoes)) {
-        const id = numero(c.familia_id) ?? Number(c.produto_id);
+    const juntar = (id, face) => {
         if (! porFamilia.has(id)) porFamilia.set(id, []);
-        porFamilia.get(id).push(c);
+        porFamilia.get(id).push(face);
+    };
+    for (const c of listaSegura(cartoes)) {
+        for (const id of familiasDaFace(c)) juntar(id, c);
+    }
+    for (const p of Array.isArray(planejados) ? planejados : []) {
+        const id = p && typeof p === 'object' ? numero(p.familia_id) : null;
+        if (id !== null && porFamilia.has(id)) juntar(id, { ...p, planejado: true });
     }
 
     const saida = [];
     for (const [id, fases] of porFamilia) {
-        fases.sort((a, b) => ((numero(a.fase_numero) ?? 1) - (numero(b.fase_numero) ?? 1)) || (Number(a.produto_id) - Number(b.produto_id)));
-        const inicial = filtro === 'todos' || ! CHAVES.includes(filtro) ? 0 : fases.findIndex((f) => f.grupo === filtro);
+        fases.sort(ordemDasFaces);
+        const inicial = filtro === 'todos' || ! CHAVES.includes(filtro) ? 0 : fases.findIndex((f) => ! ehPlanejada(f) && f.grupo === filtro);
         if (inicial !== -1) saida.push({ id, fases, inicial });
     }
 
     return saida;
 }
 
-/** O rótulo curto da fase na pílula do cartão: "Fase 1", "Kit 2"… (o que vem depois do "·" do selo). */
-export function rotuloDaFase(cartao) {
-    const selo = String(cartao?.fase ?? '');
-    const partes = selo.split('·').map((p) => p.trim()).filter(Boolean);
+/**
+ * As pílulas do cartão: uma por fase (Fase 1, Fase 2…), na ordem das faces, com a 1ª face de cada uma, quantas faces
+ * ela tem (o Combo de 2 e o de 4 são duas faces da Fase 2) e se alguma está com pendência.
+ *
+ * @return {Array<{numero: number, rotulo: string, primeira: number, indices: number[], pendencia: boolean}>}
+ */
+export function pilulasDasFases(faces) {
+    const saida = [];
+    (Array.isArray(faces) ? faces : []).forEach((f, i) => {
+        const n = numeroDaFase(f);
+        const ultima = saida[saida.length - 1];
+        if (ultima && ultima.numero === n) {
+            ultima.indices.push(i);
+            ultima.pendencia = ultima.pendencia || f?.grupo === 'pendencia';
+        } else {
+            saida.push({ numero: n, rotulo: `Fase ${n}`, primeira: i, indices: [i], pendencia: f?.grupo === 'pendencia' });
+        }
+    });
 
-    return partes.length > 1 ? partes[partes.length - 1] : (selo || 'Fase 1');
+    return saida;
 }
 
 /** "R$ 1.234,56" */

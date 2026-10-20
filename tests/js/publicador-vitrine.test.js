@@ -8,7 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    FILTROS_DA_VITRINE, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, reais, resumoDaSelecao, rotuloDaFase, tempoDesde, textoDosAnuncios,
+    FILTROS_DA_VITRINE, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, numeroDaFase, pilulasDasFases, reais, resumoDaSelecao, rotuloDaFase,
+    tempoDesde, textoDosAnuncios,
 } from '../../resources/js/Components/Mlb/Publicador/vitrine/vitrine.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -147,40 +148,79 @@ test('cartão — marcado ganha a borda amarela; publicado não tem caixa de mar
     }
 });
 
-// ─── Fase 2 e 3 no mesmo cartão (20/10/2026) ───
+// ─── As fases no mesmo cartão (20/10/2026): 1 Simples, 2 Combo, 3 Kit, 4 Combit ───
 
-const BASE = { ...MESA, produto_id: 10, familia_id: 10, fase_numero: 1, fase: 'Fase 1', grupo: 'prontos', nome: 'Cadeira' };
-const KIT2 = { ...MESA, produto_id: 11, familia_id: 10, fase_numero: 2, fase: 'Fase 2 · Kit 2', grupo: 'prontos', nome: 'Kit 2 Cadeiras' };
-const KIT3 = { ...MESA, produto_id: 12, familia_id: 10, fase_numero: 3, fase: 'Fase 3 · Kit 3', grupo: 'pendencia', nome: 'Kit 3 Cadeiras',
+const FACE = { ...MESA, url_previa: '/editor?etapa=previa' };
+const CADEIRA = { ...FACE, produto_id: 10, familias: [10], familia_id: 10, tipo: 'simples', fase_numero: 1, fase: 'Fase 1', grupo: 'prontos', nome: 'Cadeira' };
+const COMBO2 = { ...FACE, produto_id: 11, familias: [10], tipo: 'combo', fase_numero: 2, quantidade: 2, fase: 'Fase 2 · Combo 2 un', grupo: 'prontos', nome: 'Combo 2 Cadeiras' };
+const COMBO4 = { ...FACE, produto_id: 12, familias: [10], tipo: 'combo', fase_numero: 2, quantidade: 4, fase: 'Fase 2 · Combo 4 un', grupo: 'pendencia', nome: 'Combo 4 Cadeiras',
     chip: { texto: 'Azul: falta foto', tom: 'ambar' } };
+const MESA_RD = { ...FACE, produto_id: 20, familias: [20], tipo: 'simples', fase_numero: 1, fase: 'Fase 1', grupo: 'publicados', selecionavel: false, nome: 'Mesa Redonda' };
+const KIT = { ...FACE, produto_id: 30, familias: [20, 10], tipo: 'kit', fase_numero: 3, fase: 'Fase 3 · Kit', grupo: 'prontos', nome: 'Mesa + Cadeira', composicao: 'Mesa Redonda + Cadeira' };
+const COMBIT = { ...FACE, produto_id: 31, familias: [20, 10], tipo: 'combit', fase_numero: 4, fase: 'Fase 4 · Combit', grupo: 'pendencia', nome: 'Mesa + 4 Cadeiras',
+    composicao: 'Mesa Redonda + 4× Cadeira' };
+const ESPERA3 = { chave: 'planejado-10-3', planejado: true, familia_id: 10, familias: [10], tipo: 'combo', fase_numero: 2, quantidade: 3, fase: 'Fase 2 · Combo 3 un',
+    nome: 'Cadeira', composicao: '3 unidades do mesmo produto', foto: null,
+    chip: { texto: 'Espera a Fase 1 ser publicada', tom: 'neutro', detalhe: 'O Combo de 3 está no Planejamento do Portal.' } };
+const ESPERA_ORFA = { ...ESPERA3, chave: 'planejado-99-2', familia_id: 99, familias: [99] };
+const verFamilias = (familias) => familias.map((f) => [f.id, f.fases.map((x) => x.produto_id ?? x.chave), f.inicial]);
 
-test('famílias — o kit vai no cartão do produto base, em ordem de fase; o filtro abre na fase que entrou', () => {
-    const lista = [KIT3, POLTRONA, KIT2, BASE];
-    const todas = familiasDaVitrine(lista, 'todos');
-    assert.deepEqual(todas.map((f) => [f.id, f.fases.map((x) => x.produto_id), f.inicial]), [[10, [10, 11, 12], 0], [2, [2], 0]]);
-    // "Com pendência": a cadeira entra pelo Kit 3 e o cartão abre NELE.
-    const pendencia = familiasDaVitrine(lista, 'pendencia');
-    assert.deepEqual(pendencia.map((f) => [f.id, f.inicial]), [[10, 2], [2, 0]]);
-    assert.deepEqual(familiasDaVitrine(lista, 'publicados'), []);
-    assert.equal(rotuloDaFase(KIT2), 'Kit 2');
-    assert.equal(rotuloDaFase(BASE), 'Fase 1');
+test('famílias — todo combo é Fase 2 do produto; kit e combit vão no cartão de CADA componente; espera só em família da tela', () => {
+    const lista = [COMBIT, POLTRONA, COMBO4, KIT, MESA_RD, COMBO2, CADEIRA];
+    const todas = familiasDaVitrine(lista, 'todos', [ESPERA3, ESPERA_ORFA, null, 'x']);
+    assert.deepEqual(verFamilias(todas), [
+        [20, [20, 30, 31], 0],
+        [10, [10, 11, 'planejado-10-3', 12, 30, 31], 0],
+        [2, [2], 0],
+    ]);
+    // O kit é o MESMO objeto nos dois cartões: a seleção é pelo id, marcar num marca no outro.
+    assert.equal(todas[0].fases[1], todas[1].fases[4]);
+    // "Com pendência": a mesa entra pelo Combit e a cadeira pelo Combo 4 (a face de espera não conta).
+    assert.deepEqual(familiasDaVitrine(lista, 'pendencia', [ESPERA3]).map((f) => [f.id, f.inicial]), [[20, 2], [10, 3], [2, 0]]);
+    assert.deepEqual(familiasDaVitrine(lista, 'publicados', [ESPERA3]).map((f) => [f.id, f.inicial]), [[20, 0]]);
+    assert.deepEqual(familiasDaVitrine(lista, 'todos', 'lixo').map((f) => f.id), [20, 10, 2]);
+    assert.equal(rotuloDaFase(COMBO4), 'Fase 2');
+    assert.equal(rotuloDaFase(COMBIT), 'Fase 4');
+    assert.equal(rotuloDaFase({ fase: 'Fase 3 · Kit' }), 'Fase 3');
     assert.equal(rotuloDaFase({}), 'Fase 1');
+    assert.equal(numeroDaFase({ fase_numero: 'x', fase: 'lixo' }), 1);
 });
 
-test('cartão da família — pílulas das fases, setas e o trilho na fase inicial; cada fase com a própria prévia', () => {
-    const html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [BASE, KIT2, KIT3], inicial: 2, selecao: new Set([11]) }));
-    assert.match(html, /data-fases="3"/);
-    assert.equal(contar(html, 'data-vitrine-pilula-fase='), 3);
-    assert.match(html, /aria-current="true"[^>]*data-vitrine-pilula-fase="2"/);
-    assert.match(html, />Kit 2</);
-    assert.match(html, /translateX\(calc\(-200% \+ 0px\)\)/, 'abre no Kit 3');
-    assert.equal(contar(html, 'data-vitrine-face='), 3);
-    assert.match(html, /data-vitrine-anterior/);
-    assert.match(html, /aria-label="marcada"/, 'o Kit 2 marcado aparece na pílula');
+test('pílulas — uma por fase, com as faces de cada uma e se alguma tem pendência', () => {
+    const faces = familiasDaVitrine([CADEIRA, COMBO2, COMBO4, KIT, COMBIT], 'todos', [ESPERA3])[0].fases;
+    assert.deepEqual(pilulasDasFases(faces).map((p) => [p.rotulo, p.primeira, p.indices.length, p.pendencia]),
+        [['Fase 1', 0, 1, false], ['Fase 2', 1, 3, true], ['Fase 3', 4, 1, false], ['Fase 4', 5, 1, true]]);
+    assert.deepEqual(pilulasDasFases(null), []);
+});
+
+test('cartão da família — pílulas por fase, contagem na Fase 2, composição e a face de espera sem marcar nem prévia', () => {
+    const faces = familiasDaVitrine([CADEIRA, COMBO2, COMBO4, KIT, COMBIT], 'todos', [ESPERA3])[0].fases;
+    const html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: faces, inicial: 3, selecao: new Set([11]) }));
+    assert.match(html, /data-fases="6"/);
+    assert.equal(contar(html, 'data-vitrine-pilula-fase='), 4);
+    assert.match(html, /aria-current="true"[^>]*data-vitrine-pilula-fase="2"/, 'abre no Combo 4, da Fase 2');
+    assert.match(html, /data-vitrine-pilula-quantas="true">3</);
+    assert.match(html, />Fase 4</);
+    assert.match(html, />Fase 2 · Combo 4 un</);
+    assert.match(html, /translateX\(calc\(-300% \+ 0px\)\)/, 'abre na 4ª face');
+    assert.equal(contar(html, 'data-vitrine-face='), 6);
+    assert.equal(contar(html, 'data-vitrine-planejada="true"'), 1);
+    assert.match(html, /Espera a Fase 1 ser publicada/);
+    assert.match(html, /Planejado no Portal/);
+    assert.match(html, /Mesa Redonda \+ 4× Cadeira/);
+    assert.equal(contar(html, 'data-vitrine-previa'), 5, 'a face de espera não abre prévia');
+    assert.equal(contar(html, 'data-vitrine-marcar'), 5, 'nem se marca');
+    assert.match(html, /aria-label="marcada"/, 'o Combo 2 marcado aparece na pílula da Fase 2');
     assert.match(html, /border-pub-accent shadow-pub-cta/, 'família com fase marcada ganha a borda');
-    // Um produto sem kit não tem pílula nem seta.
-    const so = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [BASE] }));
+    // Uma face só: nada de pílula nem seta.
+    const so = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [CADEIRA] }));
     assert.doesNotMatch(so, /data-vitrine-pilula-fase|data-vitrine-anterior|data-vitrine-proxima/);
+    // Face de espera estragada não quebra o cartão.
+    for (const estragada of [{ planejado: true }, { ...ESPERA3, chip: null, nome: null, composicao: { x: 1 }, fase_numero: 'x' }]) {
+        let h = '';
+        assert.doesNotThrow(() => { h = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [CADEIRA, estragada] })); });
+        assert.doesNotMatch(h, /undefined|NaN|\[object Object\]/);
+    }
 });
 
 // ─── Fonte da página ───
@@ -193,4 +233,6 @@ test('página — publica a seleção pela fila em lote, um só botão amarelo n
     assert.equal((f.match(/bg-pub-accent px-5/g) ?? []).length, 1, 'o botão amarelo é só o de publicar');
     assert.doesNotMatch(f, /AvisoContaTravada|Confortável|Compacto|Buscar SKU/);
     assert.match(f, /<PublicadorHeader/);
+    assert.match(f, /familiasDaVitrine\(lista, filtro, planejados\)/);
+    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 2, 'o recarregar traz as faces de espera junto');
 });

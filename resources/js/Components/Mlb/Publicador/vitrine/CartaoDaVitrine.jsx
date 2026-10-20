@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { Check, ChevronLeft, ChevronRight, Eye, ImageOff, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { faixaDePreco, fotoDoCartao, rotuloDaFase, tempoDesde, textoDosAnuncios } from './vitrine';
+import { faixaDePreco, fotoDoCartao, pilulasDasFases, tempoDesde, textoDosAnuncios } from './vitrine';
 
 // ─── Um cartão da vitrine = uma FAMÍLIA (20/10/2026) ────────────────────────
 //
@@ -12,16 +12,20 @@ import { faixaDePreco, fotoDoCartao, rotuloDaFase, tempoDesde, textoDosAnuncios 
 // daquela cor. Embaixo: nome, SKU, o chip do que falta (dizendo QUAL cor quando
 // é uma só), os preços de cada tipo e "Ver prévia", que abre a etapa 5.
 //
-// Fase 2 e 3 (os kits) são anúncios próprios do MESMO produto (pedido do
-// usuário): ficam neste cartão, uma "face" por fase, e a pessoa passa de uma
-// para outra pelas setas, pelas pílulas "Fase 1 · Kit 2 · Kit 3" ou arrastando
-// para o lado. Cada face tem a própria caixa de marcar e a própria prévia.
+// As fases do produto são anúncios próprios (decisões do usuário): Fase 1 o
+// produto, Fase 2 cada combo, Fase 3 cada kit e Fase 4 cada combit que o
+// levam. Ficam neste cartão, uma "face" cada, e a pessoa passa de uma para
+// outra pelas setas, pelas pílulas "Fase 1 · Fase 2 · Fase 3 · Fase 4" ou
+// arrastando para o lado. Cada face tem a própria caixa de marcar e a própria
+// prévia; o combo só planejado no Portal é uma face de espera, sem nenhuma das
+// duas.
 
 const TOM_DO_CHIP = {
     verde: 'border-pub-ok/30 bg-pub-ok/10 text-pub-ok-txt',
     ambar: 'border-pub-warn/30 bg-pub-warn/10 text-pub-warn-txt',
     azul: 'border-sky-400/30 bg-sky-400/10 text-sky-300',
     vermelho: 'border-pub-danger/30 bg-pub-danger/10 text-pub-danger-txt',
+    neutro: 'border-pub-line bg-pub-hover-2 text-pub-txt-2',
 };
 
 /** Quanto o dedo/mouse tem de andar para trocar de fase. */
@@ -39,23 +43,31 @@ function Foto({ url, nome }) {
     return <img src={url} alt={nome} loading="lazy" draggable={false} className="h-full w-full object-contain" />;
 }
 
-/** Uma fase do cartão (o produto base ou um kit): tudo o que a pessoa precisa para revisar e marcar. */
+/**
+ * Uma fase do cartão (o produto, um combo, um kit ou um combit): tudo o que a pessoa precisa para revisar e marcar.
+ * A face de espera (combo planejado no Portal, sem anúncio) mostra só a foto do produto apagada, o selo e o chip.
+ */
 function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
     const [corEmFoco, setCorEmFoco] = useState(null);
-    const cores = Array.isArray(cartao?.cores) ? cartao.cores.filter((c) => c && typeof c.chave === 'string') : [];
+    const planejada = cartao?.planejado === true;
+    const cores = ! planejada && Array.isArray(cartao?.cores) ? cartao.cores.filter((c) => c && typeof c.chave === 'string') : [];
     const { emFoco, url: foto } = fotoDoCartao(cartao, corEmFoco);
     const chip = cartao?.chip ?? null;
     const classico = faixaDePreco(cartao?.precos?.gold_special);
     const premium = faixaDePreco(cartao?.precos?.gold_pro);
     const atualizado = tempoDesde(cartao?.atualizado_em);
+    const composicao = typeof cartao?.composicao === 'string' && cartao.composicao !== '' ? cartao.composicao : null;
     const foco = ativa ? undefined : -1;
 
     return (
-        <div className="flex w-full shrink-0 flex-col" aria-hidden={ativa ? undefined : true} data-vitrine-face={cartao?.produto_id}>
+        <div className="flex w-full shrink-0 flex-col" aria-hidden={ativa ? undefined : true} data-vitrine-face={cartao?.produto_id ?? cartao?.chave}
+            data-vitrine-planejada={planejada ? 'true' : undefined}>
             <div className="relative m-2 mb-0 aspect-[4/3] overflow-hidden rounded-pub-sub bg-white">
-                <Foto url={foto} nome={cartao?.nome ?? ''} />
+                <div className={cn('h-full w-full', planejada && 'opacity-40 grayscale')}>
+                    <Foto url={foto} nome={cartao?.nome ?? ''} />
+                </div>
 
-                {cartao?.selecionavel && (
+                {! planejada && cartao?.selecionavel && (
                     <button type="button" onClick={() => onMarcar(cartao.produto_id)} aria-pressed={marcado} tabIndex={foco}
                         aria-label={marcado ? `Desmarcar ${cartao.nome}` : `Marcar ${cartao.nome} para publicar`}
                         className={cn('absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-pub-badge border shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
@@ -100,20 +112,27 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                             ))}
                         </div>
                     ) : <span />}
-                    <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700" data-vitrine-anuncios>{textoDosAnuncios(cartao)}</span>
+                    {planejada ? (
+                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700">Planejado no Portal</span>
+                    ) : (
+                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700" data-vitrine-anuncios>{textoDosAnuncios(cartao)}</span>
+                    )}
                 </div>
             </div>
 
             <div className="flex flex-1 flex-col gap-2 p-3">
                 <div>
                     <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug text-pub-txt" title={cartao?.nome}>{cartao?.nome}</h3>
+                    {composicao && <p className="line-clamp-2 text-[12px] text-pub-txt-2" title={composicao} data-vitrine-composicao>{composicao}</p>}
                     {emFoco && <p className="text-[12px] text-pub-txt-3" data-vitrine-cor-em-foco>{emFoco.rotulo}</p>}
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="font-pub-mono text-[11px] text-pub-txt-3">{cartao?.sku}</span>
-                        {cartao?.do_portal && (
-                            <span className="inline-flex items-center gap-1 rounded-pub-badge border border-pub-line px-1.5 text-[10.5px] text-pub-txt-2"><Link2 size={10} aria-hidden="true" /> Portal</span>
-                        )}
-                    </div>
+                    {! planejada && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="font-pub-mono text-[11px] text-pub-txt-3">{cartao?.sku}</span>
+                            {cartao?.do_portal && (
+                                <span className="inline-flex items-center gap-1 rounded-pub-badge border border-pub-line px-1.5 text-[10.5px] text-pub-txt-2"><Link2 size={10} aria-hidden="true" /> Portal</span>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {chip && (
@@ -124,20 +143,24 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                     </span>
                 )}
 
-                <dl className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                        <dt className="text-pub-txt-4">Clássico</dt>
-                        <dd className={cn('tabular-nums', classico ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_special">{classico ?? 'sem preço'}</dd>
-                    </div>
-                    <div>
-                        <dt className="text-pub-txt-4">Premium</dt>
-                        <dd className={cn('tabular-nums', premium ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_pro">{premium ?? 'sem preço'}</dd>
-                    </div>
-                </dl>
+                {planejada ? (
+                    <p className="text-[12px] leading-snug text-pub-txt-3">{chip?.detalhe ?? 'Planejado no Portal, ainda sem anúncio no Publicador.'}</p>
+                ) : (
+                    <dl className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                            <dt className="text-pub-txt-4">Clássico</dt>
+                            <dd className={cn('tabular-nums', classico ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_special">{classico ?? 'sem preço'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-pub-txt-4">Premium</dt>
+                            <dd className={cn('tabular-nums', premium ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_pro">{premium ?? 'sem preço'}</dd>
+                        </div>
+                    </dl>
+                )}
 
                 <div className="mt-auto space-y-2 pt-1">
-                    {atualizado && <p className="text-[11px] text-pub-txt-4">Atualizado {atualizado}</p>}
-                    {cartao?.url_previa && (
+                    {! planejada && atualizado && <p className="text-[11px] text-pub-txt-4">Atualizado {atualizado}</p>}
+                    {! planejada && cartao?.url_previa && (
                         <Link href={cartao.url_previa} tabIndex={foco} draggable={false}
                             className="flex h-9 w-full items-center justify-center gap-2 rounded-pub-control border border-pub-line-strong text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
                             data-vitrine-previa>
@@ -152,10 +175,10 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
 
 /**
  * @param {object} props
- * @param {object[]} [props.fases] as fases da família, em ordem (o produto base e os kits)
- * @param {object} [props.cartao] uma fase só (atalho para produto sem kit)
- * @param {number} [props.inicial] a fase em que o cartão abre (a 1ª que entrou no filtro)
- * @param {Set<number>} [props.selecao] os produtos marcados (cada fase se marca sozinha)
+ * @param {object[]} [props.fases] as faces da família, em ordem (o produto, os combos, os kits e os combits)
+ * @param {object} [props.cartao] uma face só (atalho para produto sem outra fase)
+ * @param {number} [props.inicial] a face em que o cartão abre (a 1ª que entrou no filtro)
+ * @param {Set<number>} [props.selecao] os produtos marcados (cada face se marca sozinha)
  */
 export default function CartaoDaVitrine({ fases = null, cartao = null, inicial = 0, selecao = null, marcado = false, onMarcar = () => {} }) {
     const lista = (Array.isArray(fases) ? fases : (cartao ? [cartao] : [])).filter((f) => f && typeof f === 'object');
@@ -166,10 +189,12 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
     if (lista.length === 0) return null;
 
     const atual = Math.min(indice, lista.length - 1);
-    const estaMarcado = (f) => (selecao ? selecao.has(Number(f.produto_id)) : marcado);
+    const estaMarcado = (f) => f.planejado !== true && (selecao ? selecao.has(Number(f.produto_id)) : marcado);
     const algumMarcado = lista.some(estaMarcado);
     const varias = lista.length > 1;
+    const pilulas = pilulasDasFases(lista);
     const ir = (i) => setIndice(Math.max(0, Math.min(lista.length - 1, i)));
+    const chaveDa = (f, i) => f.produto_id ?? f.chave ?? `face-${i}`;
 
     // Arrastar para o lado troca de fase. Sem `setPointerCapture`: com ele o clique da caixa de marcar e do
     // "Ver prévia" iria para o cartão, e não para o botão.
@@ -186,24 +211,31 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
         <article
             className={cn('flex flex-col overflow-hidden rounded-pub-panel border bg-pub-surface font-pub transition-colors',
                 algumMarcado ? 'border-pub-accent shadow-pub-cta' : 'border-pub-line hover:border-pub-line-strong')}
-            data-vitrine-cartao={lista[atual].produto_id} data-grupo={lista[atual].grupo} data-fases={lista.length}
+            data-vitrine-cartao={chaveDa(lista[atual], atual)} data-grupo={lista[atual].grupo} data-fases={lista.length}
             onKeyDown={varias ? (e) => {
                 if (e.key === 'ArrowRight') ir(atual + 1);
                 if (e.key === 'ArrowLeft') ir(atual - 1);
             } : undefined}
         >
             {varias && (
-                <nav aria-label="Fases deste produto" className="flex gap-1 px-2 pt-2" data-vitrine-fases>
-                    {lista.map((f, i) => (
-                        <button key={f.produto_id} type="button" onClick={() => ir(i)} aria-current={i === atual ? 'true' : undefined}
-                            className={cn('relative inline-flex h-7 items-center rounded-pub-chip px-2.5 text-[11.5px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
-                                i === atual ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
-                            data-vitrine-pilula-fase={i}>
-                            {rotuloDaFase(f)}
-                            {f.grupo === 'pendencia' && <span aria-hidden="true" className="ml-1.5 h-1.5 w-1.5 rounded-full bg-pub-warn" />}
-                            {estaMarcado(f) && <Check size={11} strokeWidth={3} className="ml-1 text-pub-accent" aria-label="marcada" />}
-                        </button>
-                    ))}
+                <nav aria-label="Fases deste produto" className="flex flex-wrap gap-0.5 px-2 pt-2" data-vitrine-fases>
+                    {pilulas.map((p) => {
+                        const naFase = p.indices.includes(atual);
+                        const quantas = p.indices.length;
+
+                        return (
+                            <button key={p.numero} type="button" onClick={() => ir(naFase ? atual : p.primeira)} aria-current={naFase ? 'true' : undefined}
+                                title={quantas > 1 ? `${p.rotulo}: ${quantas} anúncios — passe pelo lado` : undefined}
+                                className={cn('relative inline-flex h-7 items-center whitespace-nowrap rounded-pub-chip px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
+                                    naFase ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
+                                data-vitrine-pilula-fase={p.numero}>
+                                {p.rotulo}
+                                {quantas > 1 && <span className="ml-1 rounded-full bg-pub-hover-2 px-1 text-[10px] tabular-nums text-pub-txt-2" data-vitrine-pilula-quantas>{quantas}</span>}
+                                {p.pendencia && <span aria-hidden="true" className="ml-1 h-1.5 w-1.5 rounded-full bg-pub-warn" />}
+                                {p.indices.some((i) => estaMarcado(lista[i])) && <Check size={11} strokeWidth={3} className="ml-0.5 text-pub-accent" aria-label="marcada" />}
+                            </button>
+                        );
+                    })}
                 </nav>
             )}
 
@@ -222,10 +254,11 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
             >
                 <div className={cn('flex select-none', ! arraste && 'transition-transform duration-300 ease-out')}
                     style={{ transform: `translateX(calc(${-atual * 100}% + ${arraste?.dx ?? 0}px))` }}>
-                    {lista.map((f, i) => (
-                        <Face key={f.produto_id} cartao={f} marcado={estaMarcado(f)} onMarcar={onMarcar} ativa={i === atual}
-                            anterior={varias && i > 0 ? () => ir(i - 1) : null}
-                            proxima={varias && i < lista.length - 1 ? () => ir(i + 1) : null} />
+                    {/* Sem flag do componente aqui dentro: o Rollup já sumiu com uma no bundle de produção (learnings). */}
+                    {lista.map((f, i, todas) => (
+                        <Face key={chaveDa(f, i)} cartao={f} marcado={estaMarcado(f)} onMarcar={onMarcar} ativa={i === atual}
+                            anterior={i > 0 ? () => ir(i - 1) : null}
+                            proxima={i < todas.length - 1 ? () => ir(i + 1) : null} />
                     ))}
                 </div>
             </div>
