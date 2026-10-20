@@ -530,6 +530,39 @@ const ARQUIVOS_NOVOS = [
     // `KpisDoPainel.jsx` e reusado por SEMELHANÇA DE FUNÇÃO — COL-04 **não tem
     // elemento no protótipo**, e isso está DECLARADO.
     `${DIR_APROV}/AvisoDeVersaoMudou.jsx`,
+    // ═══ ⚠️⚠️ Fase 189, plano 03 — O LIGHTBOX DA IMAGEM (E3) ═══════════════
+    //
+    // ⚠️⚠️ **MESMA TAREFA QUE O CRIA** (`188-REGUA.md` §13, herdada pela
+    // `189-REGUA.md`): `aprovacao/` está em `DIRETORIOS_FECHADOS` com
+    // `assert.deepEqual(noDisco, declarados)`, e `.jsx` no disco fora desta lista
+    // deixa o GATE-03 **VERMELHO no meio do plano** — árvore vermelha no HEAD
+    // pode BARRAR DEPLOY.
+    //
+    // ⚠️ **POR QUE `.jsx` E NÃO `.js`**, embora a tarefa 1 só traga funções puras:
+    // o `content` do `tailwind.config.js` varre `*.jsx` e **não** `*.js`, e a
+    // tarefa 2 põe neste MESMO arquivo as classes da casca, do palco, dos
+    // marcadores, das miniaturas e das setas. Num `.js` nenhuma delas geraria CSS
+    // e o lightbox abriria **sem geometria, com todo teste de render passando**.
+    //
+    // ⚠️ **FID-03 — os tamanhos usados e DE ONDE VÊM** (medidos por
+    // `sed -n '726,772p' design_handoff_publicador/Aprovacao.dc.html | grep -oE
+    // 'font-size:[0-9.]+px' | sort -u` → `9.5 11.5 12 12.5 13 18`):
+    //   · `text-[13px]`   — a linha do título do palco (`:729#1`);
+    //   · `text-[11.5px]` — o número dentro do marcador (`:733`);
+    //   · `text-[18px]`   — o glifo das setas ← → (`:741`/`:742`). ⚠️ É o ÚNICO
+    //     tamanho NOVO da fase, liberado pela via canônica na wave **189-01**
+    //     (`LIBERADOS_DEPOIS_DA_187`, `tests/js/publicador-fila-tokens-187.test.js`),
+    //     numa linha própria com a medida. Sem ele o glifo teria de ser arredondado
+    //     para 17px ou 20px — a aproximação que FID-02/FID-03 VETAM.
+    // ⚠️ **`font-[800]` e NÃO `font-extrabold`** no marcador (`:733`,
+    // `font-weight:800`): o sub-teste 2 do GATE-03 PROÍBE a escala nomeada
+    // (`/font-(thin|extralight|light|extrabold|black)\b/`), e o valor arbitrário
+    // entrega o MESMO peso computado — precedente de `ImagemGrandeDoPainel.jsx:170`
+    // (188-08) e de `AnelDeProgresso.jsx`, os dois em produção.
+    // ⚠️ `bg-[rgba(5,5,5,0.94)]` (o fundo de `:727`) é **rgba arbitrário** e não
+    // hex cru: o gate de vocabulário proíbe `#[0-9a-fA-F]{3,8}`, e este valor é o
+    // ÚNICO do lightbox SEM token (`189-FID01.md` §T).
+    `${DIR_APROV}/LightboxDaImagem.jsx`,
 ];
 
 /**

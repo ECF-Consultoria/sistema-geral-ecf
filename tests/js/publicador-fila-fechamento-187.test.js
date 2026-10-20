@@ -155,6 +155,12 @@ const JSX_DEPOIS_DA_187 = [
     `${DIR_APROV}/ModalDeFrete.jsx`,
     `${DIR_APROV}/ModalDeReprovarImagem.jsx`,
     `${DIR_APROV}/AvisoDeVersaoMudou.jsx`,
+    // Fase 189, plano 03 — o LIGHTBOX da imagem (E3), montado POR PORTAL em
+    // `z-[41]`: as funções puras do zoom, o palco 1:1 de até 78vh, os marcadores
+    // numerados, a faixa de miniaturas e as setas ← → de 18px.
+    // ⚠️ A lateral de 320px é o plano **189-05** (`LateralDoLightbox.jsx`), e
+    // entra aqui naquela wave — não antes.
+    `${DIR_APROV}/LightboxDaImagem.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

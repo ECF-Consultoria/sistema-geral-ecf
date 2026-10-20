@@ -1,0 +1,201 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-03 — O LIGHTBOX DA IMAGEM:
+# `LightboxDaImagem.jsx` com as FUNÇÕES PURAS (origem do zoom pelo cursor, mover
+# dando a volta, clamp, rótulo, cursor, contagem) e a casca POR PORTAL em
+# `z-[41]`, o palco 1:1 de até 78vh, a camada do zoom, os marcadores numerados,
+# a faixa de miniaturas e as setas ← →.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-03 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-03`, E NÃO `03`. O número NU resolve
+# `contagens-186-03.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 11 e 12 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    uma invocação por id, com o ANSI tirado ANTES de ler a linha `# tests`.
+#    Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `lightbox-casca` e `vocabulario-tamanhos`, e
+# **manifesto sem o id ABORTA**. ➡️ A tarefa 2 **REMEDE** o `tests=` de
+# `lightbox-casca` (ela acrescenta casos ao MESMO arquivo) **antes do seu próprio
+# verify**, nunca depois.
+# ⚠️ **Pré-declarar o `.jsx` é impossível**: a lista `FONTES` de alguns gates
+# LANÇA com arquivo inexistente. Por isso o arquivo nasce na tarefa 1, já com as
+# funções, e entra em `ARQUIVOS_NOVOS` na MESMA tarefa.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ NO MODO `js` O HARNESS RODA O ARQUIVO INTEIRO: **um id por arquivo de gate**.
+#    É por isso que `lightbox-casca` cobre as duas tarefas deste plano — não é
+#    agregação por conveniência, é o que o modo `js` permite.
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️⚠️ BIJEÇÃO id ↔ `<verify>`: os DOIS ids abaixo são exatamente os usados pelos
+#    `<verify>` das duas tarefas deste plano. **ZERO id órfão** (id no manifesto
+#    fora de `<verify>` = gate sobre zero casos) e **ZERO verify sem id**.
+#      tarefa 1 → lightbox-casca · vocabulario-tamanhos
+#      tarefa 2 → lightbox-casca
+#
+# ⚠️ ESTE PLANO NÃO TEM id `php`, e está certo: ele é só de tela. ➡️ **Não há
+#    homônimo de `--filter` a conferir** (o `--filter` não roda sobre arquivo de
+#    teste JS). Os nomes dos casos terminam em `189_03` de todo modo, porque a
+#    régua do sufixo vale para o dia em que rodar.
+#
+# ⚠️⚠️ `vocabulario-tamanhos` EM LINHA PRÓPRIA, FORMA `>=`, N MEDIDO AQUI.
+#    Aquele arquivo (`publicador-vocabulario-novo.test.js`) faz **7 sub-testes por
+#    arquivo varrido** nos diretórios fechados, então a contagem dele CRESCE POR
+#    CONSTRUÇÃO a cada componente novo em `aprovacao/`. A forma `>=` é o conserto
+#    de RAIZ (o invariante é *"zero falhas E a varredura não ENCOLHEU"*), e
+#    **nunca** se eleva o piso por conveniência.
+#    ⚠️ **MEDIDO NESTA WAVE:** o piso era `>=681` (189-01/189-02, e INV-12 do
+#    `189-CONTRATO-188.md`). Este plano cria **UM** `.jsx` (`LightboxDaImagem.jsx`),
+#    e a contagem medida subiu para **688** — exatamente `681 + 7`, que é o passo
+#    estrutural de 7 sub-testes por arquivo. ➡️ O piso vai a **`>=688`**, e isso
+#    **não** é "subir a régua por conveniência": é a varredura cobrindo um arquivo
+#    a mais. O número foi medido ANTES e DEPOIS da adição:
+#      `node --test --test-reporter=tap tests/js/publicador-vocabulario-novo.test.js`
+#      → `# tests 681` antes · `# tests 688` depois · `# fail 0` nos dois.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS LISTAS CONSTANTES DAS FASES 186/187/188 QUE ESTE PLANO **NÃO** MEXEU, com
+#    a razão medida de cada uma (declarar por escrito é parte da régua):
+#      · `SLOTS_DE_NO_DEPOIS_DA_187` (3 pontas, com anti-deriva) — este plano não
+#        abre slot de NÓ na página: ele **não toca**
+#        `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` (quem liga o lightbox ao
+#        painel é o **189-06**). O slot `lateral` deste componente é prop LOCAL,
+#        não slot da página.
+#      · `ESTADO_LOCAL_DA_PAGINA` (`tests/js/publicador-fila-filtros-187.test.js`) —
+#        este plano não acrescenta `useState` à página. O lightbox é **CONTROLADO**
+#        (recebe `aberto`/`indice`/`zoom`/`origem` e devolve por callback); o estado
+#        mora no painel, e é o **189-06** quem o cria.
+#      · `QUEM_USA_SHADOW_PUB_PAINEL` (`tests/js/publicador-fila-tokens-187.test.js`) —
+#        nenhum arquivo deste plano escreve `shadow-pub-painel`. O lightbox não tem
+#        sombra no protótipo (`:727` só declara `background`).
+#      · `LIBERADOS_DEPOIS_DA_187` (mesmo arquivo) — o `18` já foi liberado pela
+#        wave **189-01**, em linha própria com a medida. Este plano é o primeiro a
+#        **USAR** o valor (as setas de `:741`/`:742`) e **não** acrescenta nada:
+#        liberar "por precaução" é o que a régua proíbe.
+#      · `VARRIDOS_DECLARADOS` (`tests/js/publicador-rename-em-analise-ml.test.js`) —
+#        MEDIDO: ela declara TRÊS diretórios sob
+#        `resources/js/Components/Mlb/Publicador/` (`publicacoes`, `identidade`,
+#        `visaogeral`) e **não** inclui `tests/js` nem `aprovacao/`. O `.test.js`
+#        novo deste plano não entra nela.
+#    ➡️ As DUAS listas constantes que este plano TOCA, e são **DUAS escriturações
+#       DELIBERADAS** (um conserto da 188 RECUSOU criar a terceira — este plano não
+#       a cria):
+#      · `ARQUIVOS_NOVOS` (`tests/js/publicador-vocabulario-novo.test.js`) — uma
+#        entrada para `LightboxDaImagem.jsx`, com o bloco de comentário no padrão
+#        dos outros (por que `.jsx`, os tamanhos usados e de onde vêm).
+#      · `JSX_DEPOIS_DA_187` (`tests/js/publicador-fila-fechamento-187.test.js`) —
+#        ⚠️⚠️ **MEDIDO em 20/10/2026, e a primeira redação deste manifesto estava
+#        ERRADA:** aquela lista **INCLUI** os 19 `.jsx` que a Fase 188 criou, e o
+#        `deepEqual` dela varre `readdirSync(aprovacao/)` contra as TRÊS listas
+#        (`JSX_DA_FASE_187` + `JSX_DA_FASE_186` + `JSX_DEPOIS_DA_187`). ➡️ **NÃO
+#        declarar o `.jsx` ali REPROVA aquele gate na hora**, e o docblock dele
+#        (`:113`-`:115`) prescreve exatamente isto: *"QUEM CRIAR `.jsx` EM
+#        `aprovacao/` ACRESCENTA UMA LINHA ABAIXO … e também a `ARQUIVOS_NOVOS`.
+#        Faltando um dos dois, o gate REPROVA"*. A entrada é **uma linha** com a
+#        fase e o plano dono; a lateral de 320px (`LateralDoLightbox.jsx`) entra na
+#        wave **189-05**, não aqui.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ O QUE ESTE PLANO **NÃO** FAZ (é o plano **189-04**, dividido daqui a pedido
+#    do plan-checker de 19/10/2026 para caber no orçamento de contexto):
+#      · a ORDEM DE CAMADAS provada pelo comportamento (T-189-22);
+#      · o GATE-09 no CSS CONSTRUÍDO (aqui ele é provado na FONTE);
+#      · `npm run build`;
+#      · a campanha de MUTAÇÃO deste arquivo.
+# ⚠️ E **não há migration nesta fase** — nada de `artisan migrate`.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1 (funções puras) + TAREFA 2 (a casca, o palco, os marcadores, as
+#    miniaturas e as setas) — o MESMO arquivo de gate ──────────────────────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **`moverNoLightbox` "unificado" com a navegação do PAINEL**, que
+#      CLAMPA (`:1018`, 188-07). O lightbox DÁ A VOLTA (`:1321`), e a asserção
+#      **RECUSA explicitamente o `0`** que um clamp devolveria em
+#      `moverNoLightbox(0, -1, 5)` — é a isca que distingue INVERSÃO de TROCA DE
+#      NÚMERO, não um valor decorativo;
+#   2. `indiceNoLightbox` devolvendo `0` em vez de `null` com total `0`: o `null` é
+#      o que FECHA o lightbox (`:1324`), e um `0` deixaria a casca de tela cheia
+#      aberta **sobre nada** — e reprovar uma foto TIRA ela do conjunto final;
+#   3. ⚠️ `origemDoZoom` dividindo por `width` `0` (dá `Infinity`) ou deixando
+#      passar `NaN`. ⚠️ `typeof NaN === 'number'`: guarda por `typeof` desenharia
+#      `transformOrigin: 'NaN% NaN%'`, que **não lança** e é o caminho da TELA
+#      PRETA (voltou SEIS vezes, a última NO CLIQUE). Há **isca do mesmo lado**:
+#      a MESMA forma com tipos certos PRODUZ origem — sem ela, "caixa inválida →
+#      null" seria satisfeito por uma função que devolve `null` sempre;
+#   4. ⚠️⚠️ **GATE-09** — `duration-[150ms]`, `delay-[…]` ou `ease-[…]` na fonte:
+#      eles **NÃO COMPILAM** (o `tailwindcss-animate` torna a classe ambígua) e a
+#      transição sairia SEM duração, com todo render passando. O controle é
+#      `duration-200` (a escala NOMEADA, que compila) e há isca sintética exigindo
+#      que as QUATRO regexes VEJAM as formas erradas.
+#      ⚠️⚠️ **E a leitura é SEM COMENTÁRIO**: o docblock do `.jsx` CITA as três
+#      formas proibidas para explicar por que não as usa. Ler o cru reprovaria o
+#      próprio conserto;
+#   5. a classe `transition-transform` do Tailwind em vez do `style`: ela traz
+#      `cubic-bezier(0.4,0,0.2,1)` e o protótipo (`:731`) é `transition:transform
+#      .15s`, curva padrão `ease`. Trocar a curva é FID-02;
+#   6. as duas classes de cursor CONCATENADAS (`cursor-${…}`), e as coordenadas por
+#      classe (`left-[${x}%]`): o scanner do Tailwind **não vê** classe montada por
+#      template literal — o marcador não sai do canto e o cursor sai o do
+#      navegador, **com o HTML "certo"**;
+#   7. ⚠️⚠️ **O PORTAL** — o renderizador de SERVIDOR do React **não renderiza
+#      portal**: um teste do composto veria HTML VAZIO e **passaria por omissão**.
+#      A contraprova é DUPLA e obrigatória: `render(composto) === ''` **E**
+#      `render(RaizDoLightbox).length > 200`. Sem a segunda, o `equal('')` seria
+#      vazio por construção. A lista de named exports é **CONSTANTE** (nunca
+#      `>= N`: piso não prova presença);
+#   8. ⚠️ `font-pub` saindo da RAIZ do portado: conteúdo portado **não herda a
+#      fonte** (REND-05) e o lightbox perderia a Geist **em silêncio**;
+#   9. ⚠️⚠️ **o número do marcador ≠ o número da lista de verificações** — é
+#      *"a pessoa reprova a foto errada"*. Os dois são lidos do MESMO `ordinal` do
+#      servidor e comparados **no HTML**, na mesma ordem, e o ordinal **nunca é
+#      recontado**;
+#  10. `url_arquivo` nula virando `<img src="">` (string vazia num `src` faz o
+#      navegador **recarregar a própria página**) em vez do estado declarado do
+#      188-08 (INV-11);
+#  11. a borda da miniatura lendo o `borda` CRU do servidor: ele marca a imagem
+#      **0** sempre (AVISO-189-1), e o anel amarelo ficaria na primeira miniatura
+#      para sempre. A precedência é provada **COM CONFLITO** (selecionada **E** com
+#      alerta → amarela) e com o **5º ramo**;
+#  12. ⚠️ `z-[41]` virando o `90` que o protótipo deu A ESTA peça, ou saindo da
+#      faixa entre o painel (`z-[40]`) e a casca de modal (`z-[42]`);
+#  13. ⚠️⚠️ **ADVERSO** — campo objeto/nulo/ausente/`NaN`/array, `{toString:null}`,
+#      a prop inteira nula, **e no CLIQUE e no MOVIMENTO** (handlers exportados: o
+#      `renderToStaticMarkup` **não dispara `onClick`**, e a tela preta da 187-06
+#      foi NO CLIQUE);
+#  14. ⚠️ TERRITÓRIO — `String(` (há gate da 187-04 proibindo nesta região),
+#      `localStorage`, hex cru, `text-sm`, `ecf-*`, `font-extrabold` (o GATE-03
+#      fecha a escala nomeada), e o `.jsx` fora de `ARQUIVOS_NOVOS`;
+#  15. ⚠️ a RESSALVA saindo do docblock: afirmar *"o zoom segue o cursor"* sem
+#      declarar que o MOVIMENTO não é provado é o que esta fase não pode fazer.
+#      ⚠️ Esta é a ÚNICA sonda do arquivo que lê o CRU de propósito (o docblock
+#      **é** o artefato sob teste), e a inversão está declarada lá; há isca do
+#      leitor exigindo que a ressalva **não** apareça na fonte sem comentário.
+#
+# ⚠️ `design_handoff_publicador/` **NÃO é versionado**: o caso que o lê degrada
+#    para `skip` **EXPLÍCITO e NOMEADO** (com o nome do arquivo ausente na
+#    mensagem), nunca para "conferido".
+lightbox-casca  js  tests/js/publicador-lightbox-casca-189.test.js  ::  tests=15
+
+# ⚠️ GATE-03 (o `deepEqual` de `DIRETORIOS_FECHADOS` × os `.jsx` do disco) +
+#    FID-03/FID-04 sobre o arquivo novo. **Linha própria, forma `>=`, N MEDIDO.**
+vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=688
