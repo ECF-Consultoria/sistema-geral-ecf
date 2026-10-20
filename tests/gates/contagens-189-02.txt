@@ -1,0 +1,205 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 189-02 — O SERVIDOR DO LIGHTBOX:
+# `LightboxDoPainelService` (a ORIGINAL DE REFERÊNCIA de cada imagem de IA, o
+# ESTADO DECLARADO de IMG-13 lido do modelo, o recorte ao rascunho e o custo
+# fixo) mais a prop `lightbox` no `MlbPublicadorAprovacaoController::index`,
+# recortada ao `?oferta=`.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 189-02 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `189-02`, E NÃO `02`. O número NU resolve
+# `contagens-186-02.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# silêncio. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os
+# casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: **nenhum id deste plano tem mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A ORDEM MECÂNICA — ESTE ARQUIVO NASCE NA TAREFA 1
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `<verify>` da tarefa 1 usa `original-de-referencia` e `estado-img13-e-recorte`,
+# e **manifesto sem o id ABORTA**. ➡️ A tarefa 2 ACRESCENTA
+# `prop-lightbox-e-sem-http` **antes do seu próprio verify**, nunca depois.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A BIJEÇÃO, NOS TRÊS SENTIDOS
+# ═══════════════════════════════════════════════════════════════════════════════
+#   (1) todo MÉTODO `_189_02` do arquivo de teste casa ALGUM id daqui — método sem
+#       id **NUNCA RODA** (foi o sobrevivente da mutação do 186-03);
+#   (2) todo id daqui casa ALGUM método — id órfão roda sobre **ZERO casos** e é
+#       indistinguível de gate verde;
+#   (3) todo id daqui aparece em ALGUM `<verify>` do `189-02-PLAN.md`, e todo id
+#       usado num `<verify>` está declarado aqui.
+# ➡️ (1) e (2) são provados por `test_territorio_e_bijecao_do_manifesto_do_lightbox_189_02`,
+#    por script, nos dois sentidos, **com o EXPANSOR DE ALTERNÂNCIA**.
+#    ⚠️⚠️ O expansor não é zelo: `/test_[A-Za-z0-9_]+/` casa **ZERO** num filtro
+#    `test_(a|b)` (depois de `test_` vem `(`), e foi esse furo que produziu
+#    `SEM_ID=14` **acusando trabalho correto** na wave 189-01. Há isca medindo os
+#    dois lados (o expansor abre a alternância; a regex ingênua devolve 0).
+#
+# O MAPA id → `<verify>` do plano (conferido linha a linha em 20/10/2026):
+#   tarefa 1 (`189-02-PLAN.md`, `<verify>` da tarefa 1) → original-de-referencia ·
+#     estado-img13-e-recorte
+#   tarefa 2 (`<verify>` da tarefa 2) → prop-lightbox-e-sem-http
+# ⚠️ Nenhum id a mais, nenhum a menos. **Zero órfão.** Os outros ids rodados pelas
+#    duas tarefas (`186-09 andamento-um-lugar-so`, `186-09 transversais`,
+#    `186-06 dado-15-sem-escrita`, `188-02 painel-na-rota`, `188-02 custo-do-painel`,
+#    `188-03 galeria-e-marcadores`, `187-04 pagina-rota`) são **NÃO-REGRESSÃO de
+#    manifesto ALHEIO** e por isso **não** entram aqui — remedi-los para caber
+#    seria exatamente o que a régua proíbe.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ HOMÔNIMO — CONFERIDO POR SCRIPT, NAS DUAS DIREÇÕES, INCLUINDO PREFIXO
+# ═══════════════════════════════════════════════════════════════════════════════
+# O `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as Fases **186, 187 e 188**
+# numeram planos de 01 em diante e estão **TODAS EM PRODUÇÃO**: método superstring
+# de uma delas faz o id daquela fase **SOMAR** e reprovar.
+#
+# MEDIDO em 20/10/2026 por script, sobre todo `test_*` de `tests/`:
+#   (os números medidos estão na `189-02-SUMMARY.md`; a conferência é parte do
+#   caso `test_territorio_e_bijecao_do_manifesto_do_lightbox_189_02`, que roda a
+#   varredura inteira em TODA execução do gate — não é medição de uma vez só.)
+#
+# ⚠️ E a sonda tem ISCA nas DUAS direções, também dentro do caso:
+#   · direção 1 (a sonda VÊ): `test_territorio_e_ausencias_do_plano` acusa **>= 5**
+#     métodos que EXISTEM no disco (Fases 187/188) — é por isso que o sufixo
+#     `_189_02` não é zelo;
+#   · controle: `test_metodo_que_ninguem_escreveu_189_02` → 0.
+#
+# ⚠️ O conserto de colisão é **sufixo no método NOVO**, NUNCA levantar a contagem
+#    do manifesto alheio.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (GATE-03), E ESTÁ CERTO:
+#    ele é **só de servidor** e **não cria `.jsx` nenhum**, então não roda aquele
+#    gate. A regra é **quem roda, declara** — não *todos declaram*. Os precedentes
+#    são `contagens-187-02.txt` e `contagens-188-03.txt` (também só de servidor),
+#    e as duas fases estão no ar.
+#
+# ⚠️ E não há linha `js` neste manifesto: a casca do lightbox é do plano **189-03**
+#    e a lateral é do **189-05**.
+#
+# ⚠️ AS LISTAS CONSTANTES DAS FASES 186/187/188 QUE ESTE PLANO **NÃO** MEXEU, com
+#    a razão de cada uma (declarar por escrito é parte da régua):
+#      · `ARQUIVOS_NOVOS` e `JSX_DEPOIS_DA_187` — este plano **não cria `.jsx`**
+#        (é só PHP). As DUAS escriturações ficam byte a byte; um conserto da 188
+#        RECUSOU criar uma terceira, e este plano não a cria.
+#      · `LIBERADOS_DEPOIS_DA_187` (`publicador-fila-tokens-187.test.js`) — nenhum
+#        tamanho novo aqui; o `18` é da wave **189-01** e o `21` é da 188-01.
+#      · `SLOTS_DE_NO_DEPOIS_DA_187` e `ESTADO_LOCAL_DA_PAGINA` — este plano não
+#        toca `resources/js/Pages/Mlb/Publicador/Aprovacao.jsx` (quem repassa a
+#        prop ao painel é o **189-06**).
+#      · `QUEM_USA_SHADOW_PUB_PAINEL` — nenhum arquivo deste plano escreve classe
+#        de Tailwind (TOK-15: nenhum hex nem classe sai do PHP).
+#      · os EXPOSITORES de `andamento` (`contagens-186-09.txt`) — este serviço
+#        **não é expositor**: o payload dele não tem chave de andamento, e há
+#        asserção cobrando o `0` no arquivo lido sem comentário.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ AS BASELINES RE-MEDIDAS NESTA WAVE (os números e as falhas nomeadas estão na
+#    `189-02-SUMMARY.md`)
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ A suíte PHP **COMPLETA não é medível nesta máquina** (Fatal por memória em
+#    `Illuminate\Http\Testing\FileFactory`, em processo FILHO, e
+#    `-d memory_limit=-1` não resolve). A medida é o **RECORTE**
+#    (`tests/Unit/Publicador` + `tests/Feature/Publicador`), que é o que o
+#    `--suite php` do harness roda.
+# ⚠️ Falhas conhecidas FORA do recorte, nenhuma desta fase e nenhuma corrigida:
+#    `Tests\Unit\CalcularFaixaTest` (9), `CompanyServiceTypeTest::test_service_type_aceita_polo`
+#    (1, a armadilha enum+CHECK do SQLite), `Phase39\MercadoLivreSugadoresProviderTest` (2).
+#    ⚠️ **NÃO existe `REF_PHP_FALHAS` e ele NÃO deve passar a existir** — o próprio
+#    `verificar-testes.sh` declara isso na fonte.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── TAREFA 1: a original de referência, a URL reusada e o custo fixo ─────────
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **a URL da lateral sendo a da PRÓPRIA imagem de IA** — é a afirmação
+#      falsa que IMG-13 proíbe em palavras. A prova é dupla: o parâmetro `imagem`
+#      da URL é o id da ORIGINAL, e a URL da revisão de IA (que EXISTE na fixture,
+#      com isca) é DIFERENTE;
+#   2. a ORDEM das originais: a fixture insere a `posicao` 1 **ANTES** da
+#      `posicao` 0 — sem `orderBy('posicao')` o serviço mostraria a segunda;
+#   3. `quantas` ausente ou errado (com 2 originais a lateral diria que há 1);
+#   4. a URL deixando de ser a da rota `mlb.anuncios.publicador.fotos.arquivo`
+#      (comparação com o `route()` montado no teste, não com string escrita à mão);
+#   5. `caminho === null` virando **string vazia** — `<img src="">` recarrega a
+#      própria página;
+#   6. a forma do bloco disponível mudando (é o contrato que a **189-05** lê:
+#      `disponivel`/`url_arquivo`/`quantas`), ou o JSON virando **lista
+#      posicional** em vez de objeto por id (a tela leria `originais[0]` e pegaria
+#      o bloco da foto ERRADA);
+#   7. ⚠️ **T-189-13 (N+1)** — o custo medido por contagem de consultas é IDÊNTICO
+#      com 3 e com 8 imagens, com ISCA provando que o contador não está cego, e
+#      **zero** consulta quando não há imagem de IA (com isca do mesmo lado);
+#   8. ⚠️ as DUAS leituras da mesma verdade divergindo: o `whereIn` do serviço é
+#      comparado com `PubImagemReferencia::originaisDe()` **imagem por imagem**, e
+#      há isca provando que o laço rodou sobre as QUATRO imagens de IA;
+#   9. ⚠️⚠️ **PERGUNTA-188-C** — o docblock não nomeando os 3 minutos
+#      (`config/publicador.php`, `editor_em_uso_min`), o ponto de gravação
+#      (`MlbPublicadorController`, `EditorEmUso::marcar`) e os **CINCO arquivos
+#      leitores** (`AgendadorDaFila`, `PreparoIaDoRascunhoService` — e os TRÊS
+#      pontos dele por DESCRIÇÃO —, `GarantiaPadrao`, `ExcluirProdutoService`).
+#      **UMA** asserção coletando os ausentes, `assertCount(18)` como isca do
+#      recorte (remover nome só AFROUXA), isca nas duas direções e **anti-fantasma
+#      por NOME** (arquivo + método envolvente);
+#  10. ⚠️⚠️ **um ponteiro de LINHA voltando ao docblock** — é a ancoragem que
+#      REPROVOU TRABALHO CORRETO em 20/10/2026 (o commit `cd582f83`, de outra
+#      sessão, desceu as três chamadas do `PreparoIaDoRascunhoService` para
+#      132/181/367). A sonda recusa `Nome:123` e tem isca que acha a forma
+#      proibida num texto sintético;
+#  11. nada vai ao Mercado Livre nesta leitura — aqui o zero é **LITERAL**, e a
+#      isca é uma requisição **DELIBERADA** que TEM de aparecer no gravador.
+#
+# ⚠️⚠️ ESTE É O ÚNICO GATE DESTE PLANO QUE **LÊ COMENTÁRIO DE PROPÓSITO** (o
+# docblock **é** o artefato sob teste). A inversão está DECLARADA no arquivo de
+# teste; "consertá-lo" para `semComentarios()` faria o gate medir NADA. ⚠️ A
+# varredura anti-fantasma dos arquivos LEITORES, ao contrário, lê **sem**
+# comentário — e a isca negativa prova por quê: o próprio serviço do lightbox cita
+# `EditorEmUso::marcar` em prosa e **não chama nada**.
+original-de-referencia  php  test_(a_original_sai_pela_MESMA_rota_na_ordem_de_posicao_e_NUNCA_e_a_de_ia_189_02|a_leitura_em_UMA_consulta_bate_com_originaisDe_e_o_custo_e_FIXO_189_02|o_docblock_nomeia_o_efeito_do_EditorEmUso_por_NOME_e_nao_por_linha_189_02)  ::  tests=3 assertions=45
+
+# ⚠️⚠️ O QUE ESTE ID MEDE, E O QUE PRECISARIA ESTAR ERRADO PARA ELE FALHAR:
+#   1. ⚠️⚠️ **o estado IMG-13 escrito à mão** em vez de LIDO de
+#      `PubImagemReferencia` — a asserção é de IGUALDADE com as quatro constantes,
+#      e a **ISCA DA CÓPIA COM UMA LETRA TROCADA** é o que separa "o teste lê da
+#      constante" de "o teste repete o literal que o serviço escreveu";
+#   2. o estado virando vazio, `0` ou a própria imagem de IA — os três que IMG-13
+#      proíbe em palavras —, ou a chave de dado virando rótulo de tela (VOC-06);
+#   3. o bloco COM vínculo trazendo `estado` também (aí o estado declarado seria
+#      constante e não mediria nada) — isca do outro lado;
+#   4. ⚠️⚠️ **T-189-10** — a original de OUTRO rascunho (de OUTRA empresa) virando
+#      URL, ou o **id** dela aparecendo no payload. A ausência é provada por
+#      STRING **e** por ESTRUTURA, com isca do mesmo lado (a original legítima
+#      APARECE) e com `originaisDe()` cru provando que o vínculo EXISTE — é o
+#      recorte do serviço que o remove, não a ausência do dado.
+#      ⚠️ **ACHADO desta wave:** `json_encode` escapa a barra (`\/`), então a
+#      sonda literal `/fotos/N/arquivo` **não casa** no JSON cru. Foi a ISCA DO
+#      MESMO LADO que reprovou e achou isso — sem ela a asserção de AUSÊNCIA teria
+#      passado por nunca casar nada (gate vazio por construção);
+#   5. entrada adversa lançando, ou gerando bloco: item sem `id`, `id` string
+#      `'7'`, `de_ia` string `'1'`, `de_ia` inteiro `1`, `imagem_id` string, item
+#      que não é array, e `$imagens` vazio — com **ISCA** de que a MESMA forma com
+#      os tipos CERTOS produz bloco disponível (senão "não gera bloco" seria
+#      satisfeito por um serviço que nunca gera nada).
+estado-img13-e-recorte  php  test_(o_estado_img13_e_LIDO_das_constantes_do_modelo_189_02|a_original_de_OUTRO_rascunho_fica_FORA_do_payload_189_02|a_entrada_adversa_nao_lanca_e_nao_gera_bloco_189_02)  ::  tests=3 assertions=32
