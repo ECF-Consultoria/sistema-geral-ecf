@@ -142,6 +142,44 @@ baselines-medidas  php  test_as_baselines_da_fase_188_estao_medidas_e_nao_afirma
 # ⚠️ RANGE CRU NÃO SERVE (§6, regra 9: 111 commits, 43 da sessão paralela, 12 dos
 # 60 alvos vetados acusados pelo diff cru) e ⚠️ o AUTOR não discrimina nada (as
 # três máquinas desta árvore commitam com o mesmo `user.name`).
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ REMEDIDO EM 20/10/2026 — E A CONTAGEM **NÃO MUDOU**: segue `tests=9`.
+# ═══════════════════════════════════════════════════════════════════════════════
+# Está escrito aqui porque a FORMA do bloco 1 mudou, e manifesto desta árvore
+# declara cada divergência — inclusive a ausência dela. ⚠️ Medido por
+# `sh tests/gates/verificar-testes.sh 188-01 tokens-e-tamanhos`: `# tests 9`,
+# `# pass 9`, `# fail 0`. Nenhum `test()` entrou nem saiu (as asserções foram
+# reorganizadas DENTRO do primeiro caso), e este id não tem regime mutado — é
+# `tests=9` e não `tests=9,N`, porque não há camada de CSS a pular.
+#
+# QUEM QUEBROU: o plano **189-01**, e **NÃO É REGRESSÃO** — é liberação LEGÍTIMA.
+# O bloco 1 trazia uma BLOCKLIST de seis números literais
+# (`[18, 19, 21.5, 23, 25, 26]`). A wave 189-01 liberou o `18` MEDINDO (as setas
+# ← → do lightbox, `Aprovacao.dc.html:741/:742`, glifo de 18px num círculo de
+# 44px; arredondar para 17/20px é vetado por FID-02/FID-03) e DECLAROU a medida
+# em `LIBERADOS_DEPOIS_DA_187`. ➡️ O `18` deixou de ser "sem medição", mas o
+# literal não tinha como saber: o gate reprovou trabalho CORRETO e ficou 8/9.
+#
+# ⚠️ O CONSERTO NÃO FOI TIRAR O `18` DA LINHA. Isso resolveria o `18` e deixaria
+# `19`, `21.5`, `23`, `25` e `26` como minas para as Fases 190-194 — cada uma
+# reprovando no dia em que medisse o seu valor. ➡️ A blocklist agora **DERIVA**
+# da FONTE ÚNICA de régua ampliada desta milestone: o literal
+# `LIBERADOS_DEPOIS_DA_187` de `tests/js/publicador-fila-tokens-187.test.js`
+# (criado pela wave 188-01, commit `61e84710`), lido **SEM COMENTÁRIO**.
+#   · O invariante passou a ser o VERDADEIRO — *nenhum tamanho entra em
+#     `TAMANHOS_PERMITIDOS` sem estar DECLARADO como medido* — em vez de *"estes
+#     seis números nunca aparecem"*. Mesma forma do próprio
+#     `LIBERADOS_DEPOIS_DA_187` e do `JSX_DEPOIS_DA_187` (`b10c19cc`).
+#   · ⚠️ A leitura SEM comentário é CARGA, não zelo: medido nesta máquina, a
+#     leitura CRUA daquele literal **trunca no `]` de `[0-9.]`** (a prosa do `18`
+#     cita `grep -oE 'font-size:[0-9.]+px'`) e devolve 552 bytes, 7
+#     pseudo-valores, `NaN` entre eles e **sem o `18`** — erraria em silêncio, e
+#     para o lado de barrar trabalho correto.
+#   · ⚠️ E `19`/`21.5`/`23`/`25`/`26` **seguem barrados**, provado por ISCA
+#     INVERTIDA DE CINCO PONTAS contra dado REAL (cada um, SE entrasse na régua
+#     sem declaração, é acusado), e não por snapshot do tipo "os barrados são
+#     exatamente estes cinco" — que seria o mesmo defeito de novo.
 tokens-e-tamanhos  js  tests/js/publicador-painel-tokens-188.test.js  ::  tests=9
 
 # ⚠️⚠️ ID PRÓPRIO, EM LINHA PRÓPRIA — e isto foi MEDIDO, não deduzido:

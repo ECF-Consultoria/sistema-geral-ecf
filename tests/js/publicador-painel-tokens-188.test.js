@@ -77,6 +77,7 @@ const CONFIG = (await import('../../tailwind.config.js')).default;
 const EXT = CONFIG.theme.extend;
 
 const REL_VOCABULARIO = 'tests/js/publicador-vocabulario-novo.test.js';
+const REL_FILA_187 = 'tests/js/publicador-fila-tokens-187.test.js';
 
 /**
  * Os arquivos que ESTE PLANO escreve ou altera. ⚠️ Lista **CONSTANTE**, nunca
@@ -97,11 +98,57 @@ function tamanhosPermitidos() {
     return m[1].split(',').map((t) => t.trim()).filter(Boolean).map(Number);
 }
 
+/**
+ * Os tamanhos que as fases DEPOIS da 187 liberaram **com a medida escrita ao
+ * lado**, lidos do literal `LIBERADOS_DEPOIS_DA_187` de
+ * `publicador-fila-tokens-187.test.js` — a ÚNICA escrituração de régua ampliada
+ * desta milestone (criada pela wave 188-01, commit `61e84710`). ⚠️ **FONTE
+ * ÚNICA, de propósito:** copiar a lista para cá recriaria o problema que ela
+ * resolve — cada lugar esquecido é uma reprovação de trabalho legítimo.
+ *
+ * ⚠️⚠️ **LEITURA SEM COMENTÁRIO, e isto NÃO é zelo: é medição.** Aquele literal
+ * carrega a medição de cada valor em `//` **DENTRO** do array, e a prosa do `18`
+ * cita `grep -oE 'font-size:[0-9.]+px'`. ➡️ Lido CRU, o `[^\]]*` **TRUNCA no `]`
+ * de `[0-9.]`**: medido nesta máquina em 20/10/2026, o corpo sai com **552
+ * bytes**, **7 pseudo-valores**, **`NaN` entre eles** e **sem o `18`**. Ou seja,
+ * a leitura crua erraria em SILÊNCIO — e para o lado de barrar trabalho correto.
+ *
+ * @returns {number[]} os tamanhos DECLARADOS como medidos depois da 187
+ */
+function liberadosDepoisDa187() {
+    const fonte = lerSemComentarios(REL_FILA_187);
+    const m = fonte.match(/const\s+LIBERADOS_DEPOIS_DA_187\s*=\s*\[([^\]]*)\]/);
+    assert.ok(m, `não achei o literal de LIBERADOS_DEPOIS_DA_187 em ${REL_FILA_187} (fonte SEM comentários)`);
+    return m[1].split(',').map((t) => t.trim()).filter(Boolean).map(Number);
+}
+
+/**
+ * Os vizinhos de régua que este gate VIGIA: os passos de `font-size` que
+ * aparecem "por precaução" quando alguém arredonda em vez de medir. Lista
+ * CONSTANTE — e ela **não é** a lista dos proibidos, é a dos vigiados.
+ */
+const VIZINHOS_VIGIADOS = [18, 19, 21.5, 23, 25, 26];
+
+/**
+ * ⚠️⚠️ **O CONSERTO DA RAIZ, e é uma função PURA de propósito:** devolve os
+ * vigiados que entraram em `TAMANHOS_PERMITIDOS` **sem estar DECLARADOS** como
+ * medidos. Pura é o que permite exercê-la nas DUAS direções com dado sintético,
+ * sem depender de a árvore estar num estado particular.
+ *
+ * @param {number[]} permitidos a régua de hoje (`TAMANHOS_PERMITIDOS`)
+ * @param {number[]} declarados a escrituração (`LIBERADOS_DEPOIS_DA_187`)
+ * @param {number[]} vigiados os vizinhos sob vigília
+ * @returns {number[]} os infratores
+ */
+function entraramSemDeclaracao(permitidos, declarados, vigiados = VIZINHOS_VIGIADOS) {
+    return vigiados.filter((v) => permitidos.includes(v) && !declarados.includes(v));
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
 // BLOCO 1 — O `21` ENTROU, E **NADA ALÉM DELE**
 // ───────────────────────────────────────────────────────────────────────────────
 
-test('TOK-188-01 — `21` está em TAMANHOS_PERMITIDOS, e `23` NÃO está (isca invertida)', () => {
+test('TOK-188-01 — `21` está em TAMANHOS_PERMITIDOS, e nada entra sem DECLARAÇÃO (isca invertida)', () => {
     const lista = tamanhosPermitidos();
 
     // ⚠️ Leitura cega primeiro: sem isto, "23 não está" seria verdade sobre uma
@@ -116,15 +163,103 @@ test('TOK-188-01 — `21` está em TAMANHOS_PERMITIDOS, e `23` NÃO está (isca 
     );
 
     // ⚠️⚠️ A ISCA INVERTIDA, e ela é o único motivo de este bloco medir algo: se o
-    // gate só cobrasse "21 está lá", liberar a lista inteira passaria. `23` é um
-    // valor que NINGUÉM mediu em nenhum protótipo desta milestone.
+    // gate só cobrasse "21 está lá", liberar a lista inteira passaria.
+    //
+    // ⚠️⚠️ **O QUE ESTAVA AQUI, E POR QUE SAIU — e não porque incomodou:**
+    //   `assert.ok(!lista.includes(23))` mais
+    //   `[18, 19, 21.5, 23, 25, 26].filter((v) => lista.includes(v))` — uma
+    //   BLOCKLIST de seis números LITERAIS.
+    //   · Ela REPROVOU em 20/10/2026, pelo `18`: o plano **189-01** liberou o
+    //     `18` MEDINDO (as setas ← → do lightbox, `Aprovacao.dc.html:741/:742`,
+    //     glifo de 18px num círculo de 44px) e DECLAROU a medida em
+    //     `LIBERADOS_DEPOIS_DA_187`. Arredondar para 17px/20px é vetado por
+    //     FID-02/FID-03. ➡️ O `18` deixou de ser *"sem medição"*, mas o LITERAL
+    //     não tinha como saber: ele reprovou **trabalho correto**.
+    //   · E o conserto barato — tirar o `18` da linha — resolveria o `18` e
+    //     deixaria `19`, `21.5`, `23`, `25` e `26` como minas para as Fases
+    //     190-194, cada uma reprovando no dia em que medisse o seu valor.
+    //   · ⚠️ Número que muda quando o trabalho CERTO é feito **ensina o executor
+    //     seguinte a ajustar a régua quando ela incomoda**, e um dia ele ajusta
+    //     uma que importava (`feedback_gate_que_reprova_pelo_proprio_conserto`).
+    //     É a família "gate ancorado em número que muda legitimamente", com DOZE
+    //     consertos anteriores nesta milestone.
+    //
+    // ➡️ **O INVARIANTE VERDADEIRO, e é ele que está escrito agora:** *nenhum
+    // tamanho entra em `TAMANHOS_PERMITIDOS` sem estar DECLARADO como medido* —
+    // e **não** *"estes seis números nunca aparecem"*. A blocklist **DERIVA** da
+    // escrituração: vigiado presente na régua e ausente da declaração REPROVA;
+    // vigiado presente nas DUAS passa. Mesma forma do próprio
+    // `LIBERADOS_DEPOIS_DA_187` (`61e84710`) e do `JSX_DEPOIS_DA_187`
+    // (`b10c19cc`, que reapontou para a invariante em vez de criar lista nova).
+    //
+    // ⚠️ E ela é **MAIS FORTE** que a blocklist, não só mais estável:
+    //   · a blocklist cobria SEIS valores; a derivação cobre os seis **e** diz o
+    //     que fazer com qualquer outro — quem liberar um valor fora da vigília
+    //     cai no `TAM-187` da MESMA escrituração, que compara o conjunto INTEIRO;
+    //   · a blocklist aceitava liberação sem medida desde que o número não
+    //     estivesse nos seis; a derivação exige a **linha declarada com o plano e
+    //     a medida ao lado**, que é diff VISÍVEL em vez de número trocado em
+    //     silêncio;
+    //   · e ela deixa de reprovar as Fases 190-194 por fazerem o certo.
+    const declarados = liberadosDepoisDa187();
+
+    // ⚠️ SONDA NÃO-CEGA **antes** da subtração: declaração vazia faria
+    // `entraramSemDeclaracao` acusar TODOS os vigiados (falha pelo motivo
+    // errado), e uma que casasse tudo não acusaria ninguém. "Lista vazia casa com
+    // lista vazia" — learnings §4b.1.
     assert.ok(
-        !lista.includes(23),
-        '23 entrou em TAMANHOS_PERMITIDOS e ninguém o mediu — régua aberta sem medição treina o executor seguinte a abri-la de novo (T-188-01)',
+        declarados.length >= 2,
+        `leitura suspeita de cega: ${declarados.length} valores em LIBERADOS_DEPOIS_DA_187 — esperados ao menos o 21 (188-01) e o 18 (189-01)`,
     );
-    // E os outros vizinhos que também não foram medidos.
-    const naoMedidos = [18, 19, 21.5, 23, 25, 26].filter((v) => lista.includes(v));
-    assert.deepEqual(naoMedidos, [], `valores sem medição em TAMANHOS_PERMITIDOS: ${naoMedidos.join(', ')}`);
+    assert.ok(
+        declarados.every((v) => Number.isFinite(v) && v > 0),
+        `valor não-numérico na declaração (a leitura voltou a ser crua?): ${declarados.join(', ')}`,
+    );
+    assert.ok(
+        declarados.includes(21),
+        'o `21` da 188-01 saiu de LIBERADOS_DEPOIS_DA_187 — a escrituração de que este gate deriva foi reescrita',
+    );
+
+    const semDeclaracao = entraramSemDeclaracao(lista, declarados);
+    assert.deepEqual(
+        semDeclaracao,
+        [],
+        `valores em TAMANHOS_PERMITIDOS sem medição DECLARADA: ${semDeclaracao.join(', ')} — régua aberta sem medição treina o executor seguinte a abri-la de novo (T-188-01). Mediu? Acrescente o valor a LIBERADOS_DEPOIS_DA_187 (${REL_FILA_187}), com o plano dono e a medida ao lado.`,
+    );
+
+    // ⚠️⚠️ ISCA INVERTIDA, CINCO PONTAS, CONTRA DADO **REAL** — é esta que prova
+    // que derivar NÃO afrouxou nada: cada vigiado que HOJE não está declarado,
+    // **se** entrasse na régua, SERIA acusado. ⚠️ E de propósito não é um
+    // snapshot do tipo *"os barrados são exatamente estes cinco"*, que voltaria a
+    // reprovar a fase que medir o `19` — o mesmo erro, de novo.
+    const aindaNaoDeclarados = VIZINHOS_VIGIADOS.filter((v) => !declarados.includes(v));
+    assert.ok(
+        aindaNaoDeclarados.length >= 1,
+        'TODOS os vigiados viraram declarados — este recorte deixou de medir; remeça os vizinhos contra o `188-REGUA.md` §3',
+    );
+    const seriamAcusados = aindaNaoDeclarados.filter((v) => entraramSemDeclaracao([...lista, v], declarados).includes(v));
+    assert.deepEqual(
+        seriamAcusados,
+        aindaNaoDeclarados,
+        `estes vigiados NÃO seriam acusados se entrassem na régua sem declaração: ${aindaNaoDeclarados.filter((v) => !seriamAcusados.includes(v)).join(', ')} — a derivação AFROUXOU o gate`,
+    );
+
+    // ⚠️ ISCA DO QUE **NÃO** DEVE ACUSAR: vigiado presente nas DUAS listas passa.
+    // Sem este lado, um `entraramSemDeclaracao` que acusasse tudo pareceria
+    // perfeito — e reprovaria a Fase 190 no dia em que ela medisse o `19`.
+    assert.deepEqual(
+        entraramSemDeclaracao([...lista, 19], [...declarados, 19]),
+        [],
+        'a derivação acusou um valor DECLARADO — ela reprovaria a fase que medir o 19',
+    );
+
+    // ⚠️ ISCA DO RECORTE: a lista de vigiados não pode esvaziar sem ninguém ver —
+    // com ela vazia, as subtrações acima passariam sem provar nada.
+    assert.equal(
+        VIZINHOS_VIGIADOS.length,
+        6,
+        'a lista constante de vizinhos vigiados mudou de tamanho — remeça e escreva a razão',
+    );
 });
 
 test('TOK-188-01 — a lista está em ORDEM NUMÉRICA e sem duplicata', () => {
