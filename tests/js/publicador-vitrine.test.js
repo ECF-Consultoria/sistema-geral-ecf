@@ -212,9 +212,18 @@ test('cartão da família — pílulas por fase, contagem na Fase 2, composiçã
     assert.equal(contar(html, 'data-vitrine-marcar'), 5, 'nem se marca');
     assert.match(html, /aria-label="marcada"/, 'o Combo 2 marcado aparece na pílula da Fase 2');
     assert.match(html, /border-pub-accent shadow-pub-cta/, 'família com fase marcada ganha a borda');
-    // Uma face só: nada de pílula nem seta.
+    // Uma face só (20/10/2026): a linha das fases existe igual, só com a pílula da Fase 1 — a foto de todos os
+    // cartões começa na mesma altura. Seta não há: não tem para onde passar.
     const so = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { fases: [CADEIRA] }));
-    assert.doesNotMatch(so, /data-vitrine-pilula-fase|data-vitrine-anterior|data-vitrine-proxima/);
+    assert.equal(contar(so, 'data-vitrine-pilula-fase='), 1);
+    assert.match(so, /aria-current="true"[^>]*data-vitrine-pilula-fase="1"/);
+    assert.match(so, />Fase 1</);
+    assert.doesNotMatch(so, /data-vitrine-anterior|data-vitrine-proxima/);
+    // Um cartão simples (sem `fases`) também ganha a linha: é o caminho do produto sem nenhuma outra fase.
+    assert.equal(contar(renderToStaticMarkup(React.createElement(CartaoDaVitrine, { cartao: MESA })), 'data-vitrine-pilula-fase='), 1);
+    // A linha tem altura fixa e não quebra: num cartão estreito as pílulas rolam de lado.
+    assert.match(html, /data-vitrine-fases/);
+    assert.match(html, /class="flex h-9 shrink-0 flex-nowrap[^"]*overflow-x-auto/);
     // Face de espera estragada não quebra o cartão.
     for (const estragada of [{ planejado: true }, { ...ESPERA3, chip: null, nome: null, composicao: { x: 1 }, fase_numero: 'x' }]) {
         let h = '';

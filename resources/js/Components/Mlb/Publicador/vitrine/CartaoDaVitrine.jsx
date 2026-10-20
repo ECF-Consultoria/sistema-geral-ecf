@@ -217,8 +217,13 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
                 if (e.key === 'ArrowLeft') ir(atual - 1);
             } : undefined}
         >
-            {varias && (
-                <nav aria-label="Fases deste produto" className="flex flex-wrap gap-0.5 px-2 pt-2" data-vitrine-fases>
+            {/* A linha das fases existe em TODO cartão (pedido do usuário, 20/10/2026): o produto só com a Fase 1
+                mostra só a pílula dela, e a foto de todos começa na mesma altura. Altura fixa, sem quebrar linha: num
+                cartão estreito as pílulas rolam de lado em vez de empurrar a foto para baixo. */}
+            {pilulas.length > 0 && (
+                <nav aria-label="Fases deste produto"
+                    className="flex h-9 shrink-0 flex-nowrap items-end gap-0.5 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    data-vitrine-fases>
                     {pilulas.map((p) => {
                         const naFase = p.indices.includes(atual);
                         const quantas = p.indices.length;
@@ -226,7 +231,7 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
                         return (
                             <button key={p.numero} type="button" onClick={() => ir(naFase ? atual : p.primeira)} aria-current={naFase ? 'true' : undefined}
                                 title={quantas > 1 ? `${p.rotulo}: ${quantas} anúncios — passe pelo lado` : undefined}
-                                className={cn('relative inline-flex h-7 items-center whitespace-nowrap rounded-pub-chip px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
+                                className={cn('relative inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-pub-chip px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                                     naFase ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
                                 data-vitrine-pilula-fase={p.numero}>
                                 {p.rotulo}
