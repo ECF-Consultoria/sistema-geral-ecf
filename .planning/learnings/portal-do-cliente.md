@@ -1893,3 +1893,12 @@ varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
   este trabalho pôs no topo empurrou a linha para 132 e quebrou esse teste no `main`; a correção foi tirar o `use` e
   escrever `\App\Support\TituloDoProduto::` nos três pontos. Acrescentar linha ACIMA desses pontos nesses cinco
   arquivos quebra o gate dele — ajuste a tabela `$leitores` do teste junto, ou não desloque.
+
+## Mapeamento oculto do Portal por CONFIGURAÇÃO, não por código (20/10/2026)
+
+Pedido do usuário: "oculta a parte 4 do portal. Mapeamento". Em produção,
+`configuracoes.portal_estrutura_submodulos_cliente` = `produtos,sugestoes,precificacao` — vale para todas as empresas,
+cliente e equipe (`VisibilidadeDoMapeamento`). O `PADRAO_CLIENTE` do código continua com `mapeamento`: quem procurar
+"por que o Mapeamento sumiu" no código não acha — está no banco. Esconder não remove: a rota abre por link direto e,
+nela, o item aparece no menu marcado `oculto`. Para voltar: apagar a chave (ou incluir `mapeamento` na lista). Uma
+empresa com `portal_estrutura_submodulos_empresa_{id}` vence a padrão — em 20/10 nenhuma tinha.
