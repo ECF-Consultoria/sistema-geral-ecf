@@ -18,6 +18,9 @@ import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
 import PendenciasDoPainel from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
 import RodapeDoPainel from '@/Components/Mlb/Publicador/aprovacao/RodapeDoPainel';
+import { MODAL_AJUSTES, MODAL_EXCECAO } from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
+import ModalDeAjuste from '@/Components/Mlb/Publicador/aprovacao/ModalDeAjuste';
+import ModalDeExcecao from '@/Components/Mlb/Publicador/aprovacao/ModalDeExcecao';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -342,6 +345,24 @@ export default function Aprovacao({
     // (`:914`). ⚠️ O par guarda a OFERTA junto do índice, para a troca de oferta
     // voltar à foto 1 **por derivação pura**, sem `useEffect` de sincronização.
     const [fotoAberta, setFotoAberta] = useState({ oferta: null, indice: 0 });
+
+    // ═══ ⚠️⚠️ Fase 188, plano 11 — O ESTADO DOS MODAIS DO PAINEL ══════════
+    //
+    // ⚠️⚠️ **"O MODAL ESTÁ ABERTO" É GESTO, NÃO DADO — e NÃO vai para a URL.**
+    // Pôr isso na querystring faria um link compartilhado abrir um modal de
+    // exceção na cara de outra pessoa, numa tela em que **aprovar JÁ PUBLICA e não
+    // há desfazer**. É a MESMA decisão já tomada para o modal de lote
+    // (`modalDoLoteAberto`, acima) e para a foto aberta (`fotoAberta`). A OFERTA,
+    // que é dado, continua na URL (`?oferta=`).
+    //
+    // ⚠️ **UM `useState` SÓ, com o formulário dentro**, e a razão é mecânica: os
+    // modais desta fase são PUROS e CONTROLADOS (o mesmo contrato de
+    // `SimulacaoDePreco.jsx`, que não guarda estado nenhum), então alguém precisa
+    // ser o dono dos campos — e `ESTADO_LOCAL_DA_PAGINA`
+    // (`tests/js/publicador-fila-filtros-187.test.js`) é uma lista CONSTANTE de
+    // NOMES: cada `useState` novo é diff VISÍVEL lá. Um por campo seria cinco
+    // entradas para um gesto só.
+    const [modalDoPainel, setModalDoPainel] = useState(null);
 
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
@@ -924,13 +945,85 @@ export default function Aprovacao({
                 pendencias={pendenciasDoPainel}
                 live={painelAoVivo}
                 onFocarFoto={focarFoto}
-                onAbrirModal={null}
+                onAbrirModal={abrirModalDoPainel}
                 empresaId={empresaId}
                 ofertaId={ofertaDoPainel}
                 versao={versaoDoPainel}
                 onConflito={null}
             />
         );
+
+    // ===== Fase 188, plano 11 - OS DOIS PRIMEIROS MODAIS, LIGADOS =====
+    //
+    // ⚠️⚠️ **DESVIO DECLARADO DO `files_modified` do 188-11-PLAN.md**, pelo MESMO
+    // precedente das waves **188-09** e **188-10**, que também não listavam esta
+    // página e também a ligaram: **NENHUMA wave de 11 a 13 tem esta página no
+    // `files`**, e sem o fio os modais existiriam no disco e **não apareceriam na
+    // tela** - e os critérios 11 e 12 falam do que a tela MOSTRA. Logo: o fio entra
+    // aqui, DECLARADO, e nada mais desta página é tocado.
+    //
+    // ⚠️ **Derivação PURA, sem `useEffect`:** modal guardado para OUTRA oferta é
+    // descartado. Sem isto, navegar com as setas levaria o modal aberto para a
+    // oferta seguinte - e o ajuste iria para a oferta errada.
+    const modalAberto = modalDoPainel !== null && objetoSeguro(modalDoPainel)?.oferta === ofertaDoPainel
+        ? modalDoPainel
+        : null;
+
+    // ⚠️ Sem empresa, sem oferta ou sem versão **não há handler** - e sem handler o
+    // botão **não é desenhado** (D4). É a mesma régua do "Revisar agora": nunca uma
+    // rota inventada, nunca uma escrita sobre versão que a tela não viu.
+    const podeEscreverNoPainel = empresaId !== null && ofertaDoPainel !== null && versaoDoPainel !== null;
+
+    // ⚠️ `({ excecao = null } = {})` só cobre `undefined`, **NÃO `null`** - e foi
+    // assim que uma função passou a LANÇAR NO CLIQUE na wave 188-08. A guarda é
+    // explícita.
+    const abrirModalDoPainel = !podeEscreverNoPainel
+        ? null
+        : (modal, excecao) => setModalDoPainel({
+            modal: typeof modal === 'string' ? modal : null,
+            oferta: ofertaDoPainel,
+            excecao: typeof excecao === 'string' ? excecao : null,
+            item: 0,
+            texto: '',
+            responsavelId: null,
+            justificativa: '',
+        });
+
+    const fecharModalDoPainel = () => setModalDoPainel(null);
+
+    // ⚠️ Atualização de UM campo do formulário, preservando o resto.
+    const mudarCampoDoModal = (campo, valor) => setModalDoPainel((anterior) => {
+        const atual = objetoSeguro(anterior);
+        if (atual === null) return anterior;
+
+        return { ...atual, [campo]: valor };
+    });
+
+    // ⚠️⚠️ **TODA ESCRITA PELO HELPER ÚNICO `escreverNoPainel`** (W11 / COL-04 /
+    // critério 17): ele acrescenta `versao_esperada` **SEMPRE** e **não engole** o
+    // 422 de versão divergente. ⚠️ `versao_esperada` é OPCIONAL no corpo da action,
+    // então omiti-la faz `exigirVersao()` receber `null` e **LIBERAR** a escrita -
+    // literalmente "sobrescrever em silêncio", que é o que o critério 17 proíbe.
+    // ⚠️ **Nunca `router.post` direto** (há gate com lista CONSTANTE, plano 188-12).
+    //
+    // ⚠️ `onConflito` fica `null` aqui: o **AVISO na tela** é do plano **188-12**
+    // (tarefa 3), que é o dono dele. O helper registra o tratamento de erro de
+    // todo jeito e **nada é engolido**.
+    const escreverDoModal = (rota, corpo) => {
+        if (!podeEscreverNoPainel) return;
+
+        const disparou = escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: null,
+        });
+
+        // ⚠️ O modal só fecha se a escrita SAIU. Fechar antes faria a pessoa achar
+        // que pediu o ajuste quando nada foi enviado.
+        if (disparou) fecharModalDoPainel();
+    };
 
     const noRodapeDoPainel = rodapeDoPainel === null
         ? null
@@ -941,13 +1034,60 @@ export default function Aprovacao({
                 andamento={andamentoDoPainel?.chave ?? null}
                 proximaId={objetoSeguro(painelDeRevisao?.navegacao)?.proxima_id ?? null}
                 onIr={abrirOferta}
-                onSolicitarAjustes={null}
+                onSolicitarAjustes={abrirModalDoPainel === null ? null : () => abrirModalDoPainel(MODAL_AJUSTES, null)}
                 empresaId={empresaId}
                 ofertaId={ofertaDoPainel}
                 versao={versaoDoPainel}
                 onConflito={null}
             />
         );
+
+    // ⚠️ O payload dos modais vem do SERVIDOR (`modais.*`, plano 188-06): a tela
+    // **não** monta a tabela de escopos, nem a lista de autorizadores, nem os
+    // chips de defeito. Montá-los aqui seria a SEGUNDA VERDADE de cada um.
+    const modaisDoPainel = painelDeRevisao === null ? null : objetoSeguro(painelDeRevisao.modais);
+    const tituloDaOferta = objetoSeguro(painelDeRevisao?.identificacao)?.titulo ?? null;
+
+    // ⚠️ O DETALHE do motivo da exceção é o **TEXTO QUE O SERVIDOR ESCREVEU** para
+    // aquele bloqueio (`BloqueiosDaOfertaService` monta "Margem de X% abaixo do
+    // mínimo de Y%" com o mínimo REAL). ⚠️ Remontá-lo aqui faria o 12% do
+    // protótipo virar literal na tela.
+    const detalheDaExcecao = modalAberto === null
+        ? null
+        : (Array.isArray(pendenciasDoPainel) ? pendenciasDoPainel : [])
+            .map((pendencia) => objetoSeguro(pendencia))
+            .find((pendencia) => pendencia !== null && pendencia.chave === modalAberto.excecao)?.texto ?? null;
+
+    const noModaisDoPainel = modalAberto === null || !podeEscreverNoPainel
+        ? null
+        : [
+            <ModalDeAjuste
+                key="modal-de-ajuste"
+                aberto={modalAberto.modal === MODAL_AJUSTES}
+                sub={tituloDaOferta}
+                itens={objetoSeguro(modaisDoPainel?.ajuste)?.itens ?? null}
+                indice={modalAberto.item}
+                texto={modalAberto.texto}
+                onItem={(indice) => mudarCampoDoModal('item', indice)}
+                onTexto={(valor) => mudarCampoDoModal('texto', valor)}
+                onFechar={fecharModalDoPainel}
+                onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.ajuste', pedido)}
+            />,
+            <ModalDeExcecao
+                key="modal-de-excecao"
+                aberto={modalAberto.modal === MODAL_EXCECAO}
+                tipo={modalAberto.excecao}
+                sub={tituloDaOferta}
+                detalhe={detalheDaExcecao}
+                autorizadores={objetoSeguro(modaisDoPainel?.excecao)?.autorizadores ?? null}
+                responsavelId={modalAberto.responsavelId}
+                justificativa={modalAberto.justificativa}
+                onResponsavel={(id) => mudarCampoDoModal('responsavelId', id)}
+                onJustificativa={(valor) => mudarCampoDoModal('justificativa', valor)}
+                onFechar={fecharModalDoPainel}
+                onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.excecao', pedido)}
+            />,
+        ];
 
     const noPainel = isValidElement(painelNo)
         ? painelNo
@@ -965,6 +1105,9 @@ export default function Aprovacao({
                 colunaDePreco={colunaDePreco}
                 pendencias={noPendenciasDoPainel}
                 rodape={noRodapeDoPainel}
+                modais={noModaisDoPainel}
+                temModal={modalAberto !== null}
+                onFecharModal={fecharModalDoPainel}
             />
         );
 

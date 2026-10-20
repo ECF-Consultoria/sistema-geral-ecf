@@ -1006,7 +1006,18 @@ test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09',
         `${DIR_APROV}/ToastDaFila.jsx`,
         `${DIR_APROV}/BarraDeMargem.jsx`,
         `${DIR_APROV}/ColunaDeFotos.jsx`,
-        `${DIR_APROV}/PainelDeRevisao.jsx`,
+        // ⚠️⚠️ `PainelDeRevisao.jsx` SAIU desta lista na wave 188-11, e a razão é a
+        // mesma que o comentário de `SOMENTE_POR_CONTRATO` abaixo já declarava: ele
+        // é arquivo de WAVE IRMÃ, está no `files_modified` dos planos **188-11** e
+        // **188-12** (o slot `modais` dos quatro modais nasce lá), e manter o
+        // `numstat` dele aqui fazia esta sonda **reprovar trabalho CORRETO de outra
+        // wave** — a 9ª ocorrência da família "gate mais largo que o invariante"
+        // nesta milestone, e exatamente o que o `colididos` logo abaixo existe para
+        // impedir. ⚠️ O que esta coluna precisa dele é o **CONTRATO**
+        // (`ColunaDoPainel`, `escreverNoPainel`), e é isso que passou a ser medido.
+        // ⚠️ **Nenhuma contagem foi subida para calar o gate:** o caso continua
+        // com as mesmas asserções, e `SOMENTE_POR_CONTRATO` passou de 3 para 4
+        // **com a prova do contrato acrescentada junto**.
         `${DIR_APROV}/TopoDoPainel.jsx`,
         'resources/js/Layouts/AppLayout.jsx',
         'resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx',
@@ -1024,13 +1035,21 @@ test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09',
 
     // ⚠️⚠️ OS QUE A SONDA DE DIFF **NÃO PODE** MEDIR, e por quê — declarado em
     // vez de silenciosamente omitido. A prova deles é o CONTRATO.
-    const SOMENTE_POR_CONTRATO = [REL_SERVICO_PRECO, REL_SERVICO_PAINEL, REL_ROTAS];
+    const SOMENTE_POR_CONTRATO = [REL_SERVICO_PRECO, REL_SERVICO_PAINEL, REL_ROTAS, REL_PAINEL];
     const colididos = SOMENTE_POR_CONTRATO.filter((rel) => INTOCAVEIS.includes(rel));
     assert.deepEqual(colididos, [], 'arquivo de wave irmã entrou na lista de diff — a sonda voltaria a reprovar trabalho correto de outra sessão');
     // ⚠️ E o contrato que esta coluna LÊ continua de pé, nos três:
     const doPreco = fs.readFileSync(path.resolve(RAIZ, REL_SERVICO_PRECO), 'utf8');
     for (const contrato of ['KPIS_EM_ORDEM', 'ORDEM_DAS_LINHAS', 'NOTA_DO_FRETE_DO_COMPRADOR', 'FRETE_ROTULO_ACAO', "COR_NEUTRA = 'neutro'"]) {
         assert.ok(doPreco.includes(contrato), `o contrato \`${contrato}\` saiu de PrecoDoPainelService — a coluna leria o nada`);
+    }
+    // ⚠️ E o contrato que esta coluna lê de `PainelDeRevisao.jsx` (que agora é
+    // medido por CONTRATO, e não por diff — ver o bloco acima): ele é a casa do
+    // slot da coluna e do helper único de escrita. Se qualquer um dos dois sair,
+    // esta coluna fica sem casa ou sem transporte, e aí sim é regressão.
+    const doPainel = fs.readFileSync(path.resolve(RAIZ, REL_PAINEL), 'utf8');
+    for (const contrato of ['export function ColunaDoPainel', 'export function escreverNoPainel', "CHAVE_DA_VERSAO = 'versao_esperada'"]) {
+        assert.ok(doPainel.includes(contrato), `o contrato \`${contrato}\` saiu de PainelDeRevisao.jsx — a coluna de preço ficaria sem casa ou sem transporte`);
     }
 
     // ⚠️ ANTI-FANTASMA antes do diff: `numstat` de caminho inexistente sai VAZIO
@@ -1052,7 +1071,9 @@ test('⚠️ TERR: os INTOCÁVEIS não foram tocados, com isca da sonda 188_09',
     // e ela já está no laço acima; aqui fica a razão escrita: install que falha
     // pode ser pacote slopsquatted, e o conserto NÃO é trocar o nome.
     assert.ok(INTOCAVEIS.includes('package-lock.json'), 'o lockfile saiu da lista de intocáveis (T-188-SC)');
-    assert.ok(SOMENTE_POR_CONTRATO.length === 3, 'a lista dos medidos por CONTRATO mudou de tamanho — declare por quê');
+    // ⚠️ 3 → 4 na wave 188-11, com a razão escrita no bloco de `INTOCAVEIS` acima e
+    // a prova do contrato de `PainelDeRevisao.jsx` acrescentada junto.
+    assert.ok(SOMENTE_POR_CONTRATO.length === 4, 'a lista dos medidos por CONTRATO mudou de tamanho — declare por quê');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

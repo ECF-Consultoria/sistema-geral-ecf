@@ -517,6 +517,7 @@ export function RaizDoPainel({
     colunaDePreco = null,
     pendencias = null,
     rodape = null,
+    modais = null,
     children = null,
 }) {
     // ⚠️⚠️ O corpo rolável de `:562` só existe COM CONTEÚDO, e a decisão é tomada
@@ -545,6 +546,28 @@ export function RaizDoPainel({
     const noPendencias = filhosSeguros(pendencias);
     const noRodape = filhosSeguros(rodape);
 
+    // ═══ ⚠️⚠️ Fase 188, plano 11 — O TERCEIRO SLOT: `modais` ═════════════
+    //
+    // ⚠️⚠️ **ELE É IRMÃO DO `<aside>`, NÃO FILHO — e isso é a MESMA classe de erro
+    // que fez o rodapé ganhar slot próprio na 188-10.** Medido na mesma contagem
+    // de profundidade de tag do protótipo: `:775` (o backdrop do modal) abre **na
+    // raiz da página**, FORA do `<aside>` de `:550`-`:723`, e com `position:fixed`
+    // + `z-index` acima do painel.
+    // ➡️ Dentro do `children` ou do slot `pendencias` o modal seria item do
+    // contêiner `overflow-y-auto` de `:562` e **ROLARIA COM O CORPO**; dentro do
+    // `<aside>` ele ficaria limitado aos 1140px do painel em vez de cobrir a tela.
+    // ⚠️ **E as duas coisas aconteceriam com TODO teste de render passando** —
+    // exatamente como o rodapé na wave anterior.
+    // ⚠️ Aviso de outra sessão, CONFIRMADO aqui: o `ModalDeReprovarImagem` (plano
+    // 188-12) tem de ser **IRMÃO** do `<aside>`, não filho. Este slot é a casa dos
+    // quatro modais do painel.
+    //
+    // ⚠️ O Z-INDEX continua sendo o da casca (`CascaDeModal.jsx:54`, `z-[42]`), e
+    // a ORDEM TRAVADA segue preservada:
+    //   header(30) < backdrop do painel(39) < painel(40) < modal(42) < toast(45).
+    // **Nada é remapeado aqui.**
+    const noModais = filhosSeguros(modais);
+
     const corpo = temIdentidade || temColuna || noPendencias !== null || extra !== null
         ? (
             <CorpoDoPainel>
@@ -570,6 +593,8 @@ export function RaizDoPainel({
                 {corpo}
                 {noRodape}
             </aside>
+            {/* ⚠️⚠️ IRMÃO do `<aside>`, e o motivo está no bloco acima. */}
+            {noModais}
         </>
     );
 }
@@ -598,6 +623,12 @@ export function RaizDoPainel({
  *   (plano 188-10). ⚠️⚠️ Ele é **IRMÃO do corpo**, não filho: dentro do corpo
  *   (`overflow-y-auto`) ele ROLARIA PARA FORA DA TELA, e `flex:none` não o
  *   salvaria. Medido por script no protótipo — ver o bloco em `RaizDoPainel`
+ * @param {unknown} [props.modais] SLOT de NÓ — os modais do painel (planos
+ *   188-11 e 188-12). ⚠️⚠️ Eles são **IRMÃOS do `<aside>`**, não filhos: no
+ *   protótipo o backdrop do modal (`:775`) abre **na raiz da página**, fora do
+ *   `<aside>` de `:550`. Dentro do corpo eles ROLARIAM; dentro do `<aside>`
+ *   ficariam limitados aos 1140px. **As duas coisas com todo teste de render
+ *   passando** — é a mesma classe de erro do rodapé na 188-10
  * @param {unknown} [props.children] o resto do corpo rolável, depois das
  *   pendências. ⚠️ A redação da 188-07 dizia *"pendências e rodapé"* aqui, e o
  *   rodapé **saiu** para o slot próprio pela razão de geometria acima
@@ -622,6 +653,7 @@ export default function PainelDeRevisao({
     colunaDePreco = null,
     pendencias = null,
     rodape = null,
+    modais = null,
     children = null,
 }) {
     const dados = objetoDoPainel(painel);
@@ -696,6 +728,7 @@ export default function PainelDeRevisao({
             colunaDePreco={colunaDePreco}
             pendencias={pendencias}
             rodape={rodape}
+            modais={modais}
         >
             {children}
         </RaizDoPainel>,

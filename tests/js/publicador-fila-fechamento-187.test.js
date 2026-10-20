@@ -146,6 +146,9 @@ const JSX_DEPOIS_DA_187 = [
     // Fase 187 (`CascaDeModal.jsx`, IMPORTADA e nunca recriada). Tarefa 1: MOD-01
     // "Solicitar ajustes" (item, destino por escopo, comentário e sugestões).
     `${DIR_APROV}/ModalDeAjuste.jsx`,
+    // Tarefa 2: MOD-02 "Solicitar exceção autorizada" (caixa vermelha, responsável
+    // do servidor, justificativa de >= 10 caracteres).
+    `${DIR_APROV}/ModalDeExcecao.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

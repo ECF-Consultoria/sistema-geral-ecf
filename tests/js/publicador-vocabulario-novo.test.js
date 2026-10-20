@@ -487,6 +487,14 @@ const ARQUIVOS_NOVOS = [
     // **só** no produto, `:1397`), o comentário de `rows="3"` e os chips de
     // sugestão que **CONCATENAM e acrescentam um PONTO**.
     `${DIR_APROV}/ModalDeAjuste.jsx`,
+    // ⚠ Tarefa 2 do mesmo plano: MOD-02 "Solicitar exceção autorizada" — a caixa
+    // VERMELHA do motivo (`bg-pub-danger/[0.08]` + `border-pub-danger/[0.35]`, a
+    // 3ª normalização do CSS construído), o `<select>` de responsável vindo do
+    // SERVIDOR (os nomes de `:1399` são DADO DE EXEMPLO e não entram) e a
+    // justificativa de **>= 10** caracteres. ⚠️ A prosa do protótipo de `:804`
+    // NÃO vai para a tela (D7: jargão, e fala SOBRE o protótipo); a nota do
+    // produto a substitui, com a divergência DECLARADA.
+    `${DIR_APROV}/ModalDeExcecao.jsx`,
 ];
 
 /**

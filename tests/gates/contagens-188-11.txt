@@ -305,8 +305,31 @@ modal-de-ajuste  js  tests/js/publicador-painel-modais-a-188.test.js  ::  tests=
 #   I. ⚠️ **`Escape` FECHA O MODAL ANTES DO PAINEL** (`:1014`) — pela função pura
 #      `resolverAtalhoDoPainel()` do plano 188-07, testada na COMPOSIÇÃO.
 #
-# OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026.
-modal-de-excecao  js  tests/js/publicador-painel-modal-excecao-188.test.js  ::  tests=22,18
+# OS DOIS REGIMES, MEDIDOS nesta máquina em 19/10/2026 pelas DUAS pontas (o
+# `mtime` da fonte adiantado por `touch` e devolvido por `touch -d`, com o
+# original capturado por `stat -c %y` ANTES):
+#   · **23** — CSS construído MAIS NOVO que o `.jsx` (depois de `npm run build`);
+#   · **20** — CSS construído MAIS ANTIGO (durante a campanha de mutação): a
+#     camada cai em `skip` NOMEADO e os 3 sub-testes dela saem da contagem.
+#
+# ⚠️⚠️ E DOIS ACHADOS DE FERRAMENTA SAÍRAM DESTE GATE, os dois pegos pela própria
+# asserção NÃO-CEGA (*"não achei o literal — a leitura está cega"*):
+#   (1) **`lerSemComentarios` DESTRÓI 76% de
+#       `tests/js/publicador-fila-filtros-187.test.js`** — aquele arquivo tem
+#       `'date-fns/*'` na lista `external` do esbuild (`:118`), o stripper de bloco
+#       do helper lê aquele `/`+`*` como ABERTURA de comentário e fecha no
+#       fechamento do próximo JSDoc, comendo `:118`-`:816`. **MEDIDO: 62656 bytes
+#       crus → 15249 depois do helper**, e `ESTADO_LOCAL_DA_PAGINA` (`:716`)
+#       DESAPARECE. ➡️ Este gate lê AQUELE arquivo por leitura CRUA sem linha de
+#       comentário. ⚠️ `_fonte.js` **não** foi consertado: ele é usado por dezenas
+#       de gates EM PRODUÇÃO, e mexer nele mudaria o que todos eles medem.
+#   (2) **SONDA MAIS ESTREITA QUE O INVARIANTE** (a 13ª ocorrência da família
+#       nesta milestone, e a primeira na direção ESTREITA desta fase): a 1ª
+#       redação cravava `['filtros', 'painelNo']` como o conjunto de slots de NÓ
+#       da página e **reprovava `proximo`/`rodape`/`tabela`, que estão NO AR desde
+#       a Fase 187**. ➡️ Consertada na RAIZ: a comparação é contra a UNIÃO das
+#       DUAS listas declaradas no gate da 187, lida do literal.
+modal-de-excecao  js  tests/js/publicador-painel-modal-excecao-188.test.js  ::  tests=23,20
 
 
 # ── TAREFA 2: o GATE-03 (vocabulário novo fechado) ──────────────────────────

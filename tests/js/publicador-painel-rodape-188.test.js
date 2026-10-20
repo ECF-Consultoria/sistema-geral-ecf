@@ -1927,10 +1927,44 @@ test('⚠️⚠️ O RODAPÉ É IRMÃO DO CORPO ROLÁVEL, não filho dele 188_10
     assert.match(FONTE_PAGINA, /<PendenciasDoPainel/, 'a página não monta `PendenciasDoPainel`');
     assert.match(FONTE_PAGINA, /<RodapeDoPainel/, 'a página não monta `RodapeDoPainel`');
 
-    // ⚠️ E os handlers das waves 11/12 ficam `null`, DECLARADOS: sem eles o botão
-    // não é desenhado (D4), e **nada de `onClick` vazio**.
-    assert.match(FONTE_PAGINA, /onAbrirModal=\{null\}/, 'a página passou a mandar um `onAbrirModal` — se a wave 188-11/12 fechou, religue pelo helper');
-    assert.match(FONTE_PAGINA, /onSolicitarAjustes=\{null\}/, 'a página passou a mandar um `onSolicitarAjustes` — se a wave 188-11 fechou, religue');
+    // ⚠️⚠️ **RELIGADOS PELA WAVE 188-11, E AS DUAS ASSERÇÕES FORAM REMEDIDAS EM
+    // VEZ DE AFROUXADAS.** A redação original cobrava `onAbrirModal={null}` e
+    // `onSolicitarAjustes={null}` na página, com a mensagem *"se a wave 188-11/12
+    // fechou, religue"*. ⚠️ **A 188-11 FECHOU** (os modais `ModalDeAjuste.jsx` e
+    // `ModalDeExcecao.jsx` existem, e a página os monta no slot `modais`), então o
+    // `null` deixou de ser o estado certo — e manter a cobrança faria o executor
+    // seguinte **DESLIGAR o handler para o gate passar**, que é exatamente o
+    // anti-padrão *"gate que reprova pelo próprio conserto"*.
+    // ➡️ O INVARIANTE que importa continua medido, e em TRÊS lugares:
+    //   (a) **D4 — botão sem destino não é desenhado**: os casos de `hasFix`/`live`
+    //       deste mesmo arquivo provam que, SEM handler, a pendência sai **sem
+    //       botão** e o TEXTO continua aparecendo. Aquela prova é por PROP DIRETA,
+    //       não pela página, e por isso **não** depende deste religamento;
+    //   (b) **critério 17** — o handler ligado escreve pelo **helper único**
+    //       `escreverNoPainel`, nunca por `router.post` direto;
+    //   (c) **D4 de novo** — os handlers só existem com empresa, oferta E versão
+    //       (`podeEscreverNoPainel`): sem os três eles saem `null` e o botão não
+    //       nasce.
+    // ⚠️ **Nenhuma contagem foi subida para calar gate:** o caso é o mesmo, com as
+    // asserções apontando para o estado MEDIDO depois do religamento.
+    assert.doesNotMatch(FONTE_PAGINA, /onAbrirModal=\{null\}/, 'a página voltou a mandar `onAbrirModal={null}` — a wave 188-11 religou o handler; se o desligamento foi deliberado, declare a razão e remeça este caso');
+    assert.match(FONTE_PAGINA, /onAbrirModal=\{abrirModalDoPainel\}/, 'a página parou de ligar `onAbrirModal` — sem ele a pendência fica sem botão de correção');
+    assert.doesNotMatch(FONTE_PAGINA, /onSolicitarAjustes=\{null\}/, 'a página voltou a mandar `onSolicitarAjustes={null}` — a wave 188-11 religou o handler');
+    assert.match(FONTE_PAGINA, /onSolicitarAjustes=\{abrirModalDoPainel === null \? null :/, 'o "Solicitar ajustes" do rodapé deixou de nascer do handler com guarda — sem empresa/oferta/versão ele TEM de sair `null` (D4)');
+    // ⚠️ E a escrita do PAINEL continua passando pelo helper único.
+    assert.match(FONTE_PAGINA, /escreverNoPainel\(/, 'a página parou de escrever pelo helper único `escreverNoPainel` — `versao_esperada` deixaria de viajar, e omiti-la LIBERA a escrita');
+    // ⚠️⚠️ **E A SONDA NÃO PODE SER "ZERO `router.post` NA PÁGINA": ISSO SERIA MAIS
+    // LARGO QUE O INVARIANTE — a 14ª ocorrência da família nesta milestone, e ela
+    // foi MEDIDA na wave 188-11.** A página TEM um `router.post` legítimo em
+    // `:690`: a **APROVAÇÃO EM LOTE da Fase 187**, que está EM PRODUÇÃO e manda o
+    // seu próprio mapa `versoes` (o mecanismo de concorrência DELE). Uma sonda por
+    // ausência global reprovaria aquele código.
+    // ➡️ O gate de "nenhum `router.post` direto" mora no plano **188-12**, com
+    // **LISTA CONSTANTE dos 11 componentes de `aprovacao/` que escrevem** — e a
+    // página **não** está nela. Aqui mede-se o que é verdade aqui: a escrita do
+    // PAINEL passa pelo helper, e o `router.post` que existe é o do LOTE.
+    const postsDaPagina = [...FONTE_PAGINA.matchAll(/router\s*\.\s*post\(\s*\n?\s*route\('([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(postsDaPagina, ['mlb.anuncios.meus.aprovacao.lote'], 'a página passou a chamar `router.post` para rota do PAINEL — toda escrita do painel vai pelo helper (critério 17). O único `router.post` legítimo aqui é o da aprovação em LOTE da Fase 187.');
 
     // ⚠️ A página traduz o `imagem_id` do destino para o ÍNDICE da galeria, e ela
     // lê `imagens[*].id` (a linha de REVISÃO), **não** `imagens[*].imagem_id` (o

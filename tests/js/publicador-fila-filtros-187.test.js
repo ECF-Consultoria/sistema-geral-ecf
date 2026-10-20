@@ -728,6 +728,22 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
         // é `0` — `borda`/`anel`/`selecionada_indice` do payload estão presos na
         // foto 0, e a borda de seleção ficaria na primeira miniatura para sempre.
         'fotoAberta',
+        // ⚠️⚠️ Fase 188, plano 11 — QUAL MODAL DO PAINEL está aberto, e o
+        // formulário dele (item/texto/responsável/justificativa, mais os campos
+        // que o plano 188-12 acrescenta).
+        //
+        // **É GESTO, não DADO, e por isso NÃO vai para a URL:** pôr "o modal está
+        // aberto" na querystring faria um link compartilhado abrir um modal de
+        // exceção na cara de outra pessoa, numa tela em que **aprovar JÁ PUBLICA e
+        // não há desfazer**. É a MESMA decisão já tomada para `modalDoLoteAberto`
+        // e para `fotoAberta`; a OFERTA, que é dado, continua na URL (`?oferta=`).
+        //
+        // ⚠️ **UM `useState` SÓ, com o formulário dentro**, e a razão é mecânica:
+        // os modais desta fase são PUROS e CONTROLADOS (o contrato de
+        // `SimulacaoDePreco.jsx`, que não guarda estado nenhum), então alguém
+        // precisa ser o dono dos campos — e esta lista é de NOMES: um `useState`
+        // por campo seria cinco entradas aqui para um gesto só.
+        'modalDoPainel',
     ];
 
     const naPagina = [...FONTE_PAGINA.matchAll(/const \[([A-Za-z_$][\w$]*),\s*[A-Za-z_$][\w$]*\] = useState\(/g)].map((m) => m[1]);
