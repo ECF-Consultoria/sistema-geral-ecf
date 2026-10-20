@@ -99,5 +99,5 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-lateral-do-lightbox  js  tests/js/publicador-lightbox-lateral-189.test.js  ::  tests=18,18
+lateral-do-lightbox  js  tests/js/publicador-lightbox-lateral-189.test.js  ::  tests=27,27
 vocabulario-tamanhos  js  tests/js/publicador-vocabulario-novo.test.js  ::  tests=>=695

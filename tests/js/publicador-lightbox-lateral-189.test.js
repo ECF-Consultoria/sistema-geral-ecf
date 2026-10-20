@@ -992,3 +992,448 @@ test('LAT-189-18 — adverso NO CLIQUE do "Fechar" (o handler exportado) 189_05'
     assert.equal(LATERAL.aoClicarEmFechar(espiao), true, 'o clique em Fechar não chamou o handler função');
     assert.equal(chamadas, 1, 'o handler de Fechar foi chamado um número errado de vezes');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAREFA 2 — AS VERIFICAÇÕES NUMERADAS, O BOTÃO DE ZOOM E AS DUAS AÇÕES
+//
+// ⚠️⚠️ GATE DE ENTRADA DESTA TAREFA, conferido por COMANDO antes de ela começar:
+// `grep -c "PERGUNTA-189-A: RESPONDIDA" …/189-REGUA.md` → **1**.
+// ➡️ RESPONDIDA (a) SIM pelo usuário em 19/10/2026: o cabeçalho
+// `VERIFICAÇÃO AUTOMÁTICA · APOIO` entra **UMA vez**, acima dos itens, com as
+// MESMAS classes do cabeçalho do 188-08. Razão do usuário: *"sem o cabeçalho a
+// verificação pode ser lida como VEREDICTO"*.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os NÚMEROS dos marcadores do PALCO (189-03), na ordem do HTML. */
+function numerosDosMarcadores(html) {
+    return [...html.matchAll(/<span[^>]*class="[^"]*h-\[26px\][^"]*"[^>]*>(\d+)<\/span>/g)].map((m) => Number(m[1]));
+}
+
+/** Os NÚMEROS dos ordinais da LATERAL, na ordem do HTML. */
+function numerosDosOrdinais(html) {
+    return [...html.matchAll(/<span[^>]*class="[^"]*font-bold[^"]*"[^>]*>(\d+)<\/span>/g)].map((m) => Number(m[1]));
+}
+
+test('LAT-189-19 — o cabeçalho APOIO entra UMA vez (PERGUNTA-189-A (a)), e ZERO com `verificacoes` vazia 189_05', () => {
+    const CABECALHO = BLOCO.CABECALHO_DAS_VERIFICACOES;
+
+    // ⚠️⚠️ O LITERAL É **IMPORTADO** do 188-08 (INV-07), nunca redigitado: duas
+    // cópias do mesmo rótulo divergem, e a divergente é descoberta por alguém
+    // vendo dois textos diferentes na mesma tela.
+    assert.equal(CABECALHO, 'VERIFICAÇÃO AUTOMÁTICA · APOIO', 'o literal do cabeçalho do 188-08 mudou');
+    assert.ok(
+        !FONTE_LATERAL.includes(CABECALHO),
+        'o literal do cabeçalho foi REDIGITADO na lateral — tem de vir IMPORTADO (INV-07)',
+    );
+    // ⚠️ A ISCA DO LEITOR: o docblock CITA o literal, e o gate acima lê SEM comentário.
+    assert.ok(CRU_LATERAL.includes(CABECALHO), 'o docblock parou de CITAR o literal do cabeçalho');
+
+    const contar = (html) => html.split(CABECALHO).length - 1;
+
+    // ⚠️⚠️ CONTAGEM EXATA DE **UMA** OCORRÊNCIA — o gate lê o HTML RENDERIZADO,
+    // não a fonte. DUAS reprovam (o cabeçalho repetido por item), ZERO reprova.
+    const comItens = render(LATERAL.VerificacoesDoLightbox, { verificacoes: VERIFICACOES });
+    assert.equal(contar(comItens), 1, 'o cabeçalho APOIO não aparece EXATAMENTE uma vez');
+
+    // ⚠️ E no componente INTEIRO também — o cabeçalho não pode nascer duas vezes
+    // por alguém desenhá-lo fora da peça.
+    assert.equal(contar(comProps({})), 1, 'o cabeçalho APOIO aparece mais de uma vez na lateral inteira');
+
+    // ⚠️⚠️ `verificacoes` VAZIA → nem itens nem cabeçalho. Um cabeçalho que diz
+    // "APOIO" sem nada embaixo não apoia nada (D4, casca vazia).
+    for (const vazia of [[], null, undefined, 'x', 42, {}, [null], [{}], [{ texto: '  ' }]]) {
+        const html = render(LATERAL.VerificacoesDoLightbox, { verificacoes: vazia });
+        assert.equal(contar(html), 0, 'o cabeçalho APOIO nasceu sem nenhum item');
+        assert.equal(html, '', 'a lista de verificações nasceu como casca vazia');
+    }
+
+    // ⚠️ AS DUAS ISCAS DA SONDA DE CONTAGEM, nas duas direções.
+    assert.equal(contar(`<p>${CABECALHO}</p><p>${CABECALHO}</p>`), 2, 'a sonda de contagem está CEGA para a duplicata');
+    assert.equal(contar('<p>outra coisa</p>'), 0, 'a sonda de contagem acusou um HTML sem o literal');
+
+    // ⚠️ As classes do cabeçalho são as do 188-08 (render CRUZADO com a peça dele).
+    const doPainel = render(BLOCO.VerificacoesAutomaticas, { verificacoes: VERIFICACOES });
+    const classeNoPainel = arvore(doPainel).filter((n) => classesDe(n).has('tracking-[0.08em]'));
+    const classeNaLateral = arvore(comItens).filter((n) => classesDe(n).has('tracking-[0.08em]'));
+    assert.equal(classeNoPainel.length, 1, 'o cabeçalho do 188-08 não é EXATAMENTE um elemento');
+    assert.equal(classeNaLateral.length, 1, 'o cabeçalho da lateral não é EXATAMENTE um elemento');
+    assert.deepEqual(
+        classesDe(classeNaLateral[0]),
+        classesDe(classeNoPainel[0]),
+        '§H5 — as classes do cabeçalho divergiram das do 188-08',
+    );
+});
+
+test('LAT-189-20 — o ordinal é ELEMENTO PRÓPRIO, `ok` NÃO tem número, e a forma COLADA é acusada 189_05', () => {
+    const html = render(LATERAL.VerificacoesDoLightbox, { verificacoes: VERIFICACOES });
+
+    // ⚠️⚠️ OS NÚMEROS SÃO OS `ordinal` DA PROP — **4 e 2**, não 1 e 2. "Contar"
+    // daria 1,2 (o item `ok` é o primeiro da lista) e esta asserção o pegaria.
+    assert.deepEqual(numerosDosOrdinais(html), [4, 2], 'os ordinais da lateral foram RECONTADOS');
+
+    // ⚠️ `ok` (ordinal `null`) NÃO traz número — nunca `0`, nunca vazio.
+    assert.equal(numerosDosOrdinais(html).length, 2, 'o item `ok` ganhou número');
+    const spans = spansDeTexto(html);
+    assert.ok(spans.includes('Fundo limpo e sem ruído'), 'o texto do item `ok` mudou');
+
+    // ⚠️⚠️ A FORMA COLADA É PROIBIDA (`'…canto' + ordinal`): o texto do item tem
+    // de sair EXATAMENTE como veio do servidor.
+    for (const item of VERIFICACOES) {
+        assert.ok(spans.includes(item.texto), `o texto "${item.texto}" mudou — número colado?`);
+    }
+    // ⚠️ A ISCA: a MESMA sonda acusa a forma colada, e NÃO acusa o número separado.
+    assert.ok(
+        !spansDeTexto('<span>Texto sobreposto ilegível no canto4</span>').includes('Texto sobreposto ilegível no canto'),
+        'a sonda da forma COLADA está CEGA',
+    );
+    assert.ok(
+        spansDeTexto('<span>4</span><span>Texto sobreposto ilegível no canto</span>').includes('Texto sobreposto ilegível no canto'),
+        'a sonda acusa o número desenhado SEPARADO — ela está invertida',
+    );
+
+    // ⚠️ `ordinal: 0` NÃO desenha: `0` passa por `Number.isInteger` e viraria um
+    // marcador "0" que não existe sobre a foto. A régua é inteiro POSITIVO.
+    const comZero = render(LATERAL.VerificacoesDoLightbox, {
+        verificacoes: [{ texto: 'Teste de ordinal zero', glifo: '!', cor: 'ambar', ordinal: 0 }],
+    });
+    assert.deepEqual(numerosDosOrdinais(comZero), [], '`ordinal: 0` foi desenhado');
+    assert.ok(spansDeTexto(comZero).includes('Teste de ordinal zero'), '`ordinal: 0` apagou o texto do item');
+
+    // ⚠️ As classes do ordinal são as do 188-08 (INV-07), IMPORTADAS.
+    const ordinais = arvore(html).filter((n) => classesDe(n).has('font-bold'));
+    assert.equal(ordinais.length, 2, 'o ordinal não é EXATAMENTE um elemento por item de alerta');
+    for (const no of ordinais) {
+        for (const classe of conjunto(BLOCO.CLASSES_ORDINAL)) {
+            assert.ok(classesDe(no).has(classe), `o ordinal perdeu a classe do 188-08: ${classe}`);
+        }
+    }
+
+    // ⚠️ E a COR do ordinal é a da SEVERIDADE — é ela que o liga ao marcador.
+    assert.ok(classesDe(ordinais[0]).has('text-pub-danger-txt'), 'o ordinal `vermelho` perdeu a cor');
+    assert.ok(classesDe(ordinais[1]).has('text-pub-warn-txt'), 'o ordinal `ambar` perdeu a cor');
+});
+
+test('LAT-189-21 — os NÚMEROS da lateral COINCIDEM com os dos marcadores do PALCO (critério 2) 189_05', () => {
+    // ⚠️⚠️ É O CRITÉRIO 2 LITERALMENTE: *"os marcadores numerados coincidem com os
+    // pontos listados na lateral"*. Se divergirem, **a pessoa reprova a foto
+    // errada** — e aprovar JÁ ENFILEIRA, sem desfazer.
+    const doPalco = render(LIGHTBOX.MarcadoresDoLightbox, { marcadores: IA_PENDENTE.marcadores });
+    const daLateral = render(LATERAL.VerificacoesDoLightbox, { verificacoes: IA_PENDENTE.verificacoes });
+
+    const numerosDoPalco = numerosDosMarcadores(doPalco);
+    const numerosDaLateral = numerosDosOrdinais(daLateral);
+
+    // ⚠️ SONDA NÃO-CEGA ANTES do `deepEqual`: os dois conjuntos têm de ter
+    // conteúdo, senão `[] === []` passaria com os dois componentes mortos.
+    assert.equal(numerosDoPalco.length, 2, 'o palco não desenhou os DOIS marcadores');
+    assert.equal(numerosDaLateral.length, 2, 'a lateral não desenhou os DOIS ordinais');
+
+    // ⚠️ IGUAIS **e NA MESMA ORDEM**.
+    assert.deepEqual(numerosDaLateral, numerosDoPalco, 'os números da lateral divergiram dos do palco');
+    assert.deepEqual(numerosDoPalco, [4, 2], 'os números não são os `ordinal` do servidor');
+
+    // ⚠️ A ISCA: uma lateral que RECONTASSE daria [1, 2] — e o `deepEqual` acima
+    // reprovaria. Aqui a prova de que a sonda distingue as duas coisas.
+    assert.notDeepEqual([1, 2], numerosDoPalco, 'a sonda não distingue "ler o ordinal" de "contar"');
+});
+
+test('LAT-189-22 — o item do LIGHTBOX NÃO tem `items-start`; o do PAINEL tem (§C12 × `:633`) 189_05', () => {
+    const esperado = conjunto('flex gap-[8px] text-[12px] leading-[1.4] text-pub-fase1');
+    assert.equal(esperado.size, 5, 'o conjunto esperado da §C12 encolheu');
+    assert.deepEqual(conjunto(LATERAL.CLASSES_ITEM_DA_VERIFICACAO), esperado, '§C12 — `:760#1` divergiu');
+
+    // ⚠️⚠️ **NÃO REUSAR `CLASSES_ITEM` CRU** (INV-07): o item do PAINEL (`:633`)
+    // TEM `align-items:flex-start` e o do LIGHTBOX (`:760#1`) **NÃO**. Medido nos
+    // dois lados nesta wave, por `sed`.
+    assert.ok(!esperado.has('items-start'), '§C12 — o item do lightbox GANHOU `items-start`');
+    assert.ok(
+        conjunto(BLOCO.CLASSES_ITEM).has('items-start'),
+        'o item do PAINEL perdeu `items-start` — a diferença medida deixou de existir',
+    );
+    assert.notDeepEqual(
+        conjunto(BLOCO.CLASSES_ITEM),
+        esperado,
+        'as duas classes de item ficaram IGUAIS: alguém reusou a do painel',
+    );
+
+    // ⚠️ E no HTML: cada item leva a classe do LIGHTBOX.
+    const html = render(LATERAL.VerificacoesDoLightbox, { verificacoes: VERIFICACOES });
+    const itens = arvore(html).filter((n) => n.profundidade === 1);
+    assert.equal(itens.length, 4, 'a lista não tem o cabeçalho + os TRÊS itens');
+    for (const item of itens.slice(1)) {
+        assert.deepEqual(classesDe(item), esperado, 'um item não leva `CLASSES_ITEM_DA_VERIFICACAO`');
+    }
+
+    // ⚠️ O glifo é o IMPORTADO do 188-08 (`font-[800]`, nunca `font-extrabold`).
+    const glifos = arvore(html).filter((n) => classesDe(n).has('h-[16px]') && classesDe(n).has('rounded-full'));
+    assert.equal(glifos.length, 3, 'não há EXATAMENTE um glifo por item');
+    for (const classe of conjunto(BLOCO.CLASSES_GLIFO)) {
+        assert.ok(classesDe(glifos[0]).has(classe), `o glifo perdeu a classe do 188-08: ${classe}`);
+    }
+    assert.ok(conjunto(BLOCO.CLASSES_GLIFO).has('font-[800]'), 'o glifo do 188-08 deixou de ser `font-[800]`');
+});
+
+test('LAT-189-23 — o botão de zoom: §C14, os DOIS rótulos IMPORTADOS, e só com handler FUNÇÃO 189_05', () => {
+    const esperado = conjunto(
+        'h-[32px] cursor-pointer whitespace-nowrap rounded-[8px] border border-pub-line-strong '
+        + 'bg-pub-hover-2 text-[12.5px] text-pub-txt',
+    );
+    assert.equal(esperado.size, 9, 'o conjunto esperado da §C14 encolheu');
+    assert.deepEqual(conjunto(LATERAL.CLASSES_BOTAO_DE_ZOOM), esperado, '§C14 — `:763` divergiu');
+
+    // ⚠️⚠️ OS DOIS LITERAIS VÊM DE `LightboxDaImagem.jsx` (189-03) — **UMA fonte
+    // só**. A lateral NÃO os redigita: segunda cópia divergiria, e a divergente é
+    // descoberta por alguém vendo dois textos na mesma tela.
+    assert.equal(LIGHTBOX.ROTULO_AMPLIAR, 'Ampliar 2,5×', 'o rótulo do 189-03 mudou');
+    assert.equal(LIGHTBOX.ROTULO_REDUZIR, 'Reduzir', 'o rótulo do 189-03 mudou');
+    assert.equal(LIGHTBOX.rotuloDoZoom(1), LIGHTBOX.ROTULO_AMPLIAR);
+    assert.equal(LIGHTBOX.rotuloDoZoom(2.5), LIGHTBOX.ROTULO_REDUZIR);
+
+    for (const literal of [LIGHTBOX.ROTULO_AMPLIAR, LIGHTBOX.ROTULO_REDUZIR]) {
+        assert.ok(
+            !FONTE_LATERAL.includes(literal),
+            `o literal "${literal}" foi REDIGITADO na lateral — tem de vir de rotuloDoZoom`,
+        );
+    }
+    // ⚠️ E a prova de que a lateral IMPORTA as DUAS funções do 189-03 (não uma
+    // terceira regra): `rotuloDoZoom` para o texto, `alternarZoom` para o clique.
+    assert.match(FONTE_LATERAL, /from '\.\/LightboxDaImagem'/, 'a lateral não importa do LightboxDaImagem');
+    for (const simbolo of ['rotuloDoZoom', 'alternarZoom']) {
+        assert.ok(FONTE_LATERAL.includes(simbolo), `a lateral não usa ${simbolo} do 189-03`);
+    }
+
+    // ⚠️ O HTML traz o rótulo CERTO para cada escala.
+    assert.ok(comProps({ zoom: 1 }).includes(LIGHTBOX.ROTULO_AMPLIAR), 'com 1x o botão não diz "Ampliar 2,5×"');
+    assert.ok(comProps({ zoom: 2.5 }).includes(LIGHTBOX.ROTULO_REDUZIR), 'com 2,5x o botão não diz "Reduzir"');
+    assert.ok(!comProps({ zoom: 2.5 }).includes(LIGHTBOX.ROTULO_AMPLIAR), 'com 2,5x sobrou o rótulo de ampliar');
+
+    const botoes = arvore(comProps({ zoom: 1 })).filter((e) => e.tag === 'button' && classesDe(e).has('h-[32px]'));
+    assert.equal(botoes.length, 1, 'o botão de zoom não é EXATAMENTE um');
+    assert.deepEqual(classesDe(botoes[0]), esperado, 'o botão de zoom não leva CLASSES_BOTAO_DE_ZOOM');
+
+    // ⚠️ D4 — sem handler função, o botão NÃO nasce.
+    for (const handler of [null, undefined, 'x', 42, {}, []]) {
+        const html = comProps({ onAlternarZoom: handler });
+        assert.ok(!html.includes(LIGHTBOX.ROTULO_AMPLIAR), 'o botão de zoom nasceu SEM handler função');
+        assert.doesNotMatch(html, /disabled/, 'apareceu `disabled` decorativo no botão de zoom');
+    }
+    assert.ok(comProps({ onAlternarZoom: nada }).includes(LIGHTBOX.ROTULO_AMPLIAR), 'a sonda do zoom está CEGA');
+
+    // ⚠️ O CLIQUE entrega o ZOOM NOVO, calculado por `alternarZoom` do 189-03 —
+    // a lateral não reimplementa o liga/desliga.
+    const vistos = [];
+    assert.equal(LATERAL.aoClicarNoZoom(1, (z) => vistos.push(z)), true);
+    assert.equal(LATERAL.aoClicarNoZoom(2.5, (z) => vistos.push(z)), true);
+    assert.deepEqual(vistos, [LIGHTBOX.ZOOM_AMPLIADO, LIGHTBOX.ZOOM_NORMAL], 'o clique no zoom não alterna como o 189-03');
+    for (const handler of [null, undefined, 'x', 42, {}, []]) {
+        assert.doesNotThrow(() => LATERAL.aoClicarNoZoom(1, handler), 'o clique no zoom LANÇOU com handler adverso');
+        assert.equal(LATERAL.aoClicarNoZoom(1, handler), false);
+    }
+});
+
+test('LAT-189-24 — `podeAgirNaFoto`: a matriz, a comparação ESTRITA e o CONFLITO (IMG-09) 189_05', () => {
+    const ESTADOS = ['pending', 'approved', 'rejected', 'regenerating', 'replaced', 'removed'];
+
+    // ⚠️⚠️ T-189-30 — A MATRIZ COMPLETA: 6 estados × `aoVivo` × `aceita_acao` ×
+    // handler. Só UM ponto da matriz libera a ação.
+    let liberados = 0;
+    for (const estado of ESTADOS) {
+        for (const aoVivo of [true, false]) {
+            for (const aceita of [true, false]) {
+                for (const handler of [nada, null]) {
+                    const pode = LATERAL.podeAgirNaFoto({
+                        aoVivo,
+                        imagem: { ...IA_PENDENTE, estado, aceita_acao: aceita },
+                        onAprovarFoto: handler,
+                        onReprovar: handler,
+                    });
+                    const deveria = estado === 'pending' && aoVivo === true && aceita === true && handler === nada;
+                    assert.equal(pode, deveria, `matriz: estado=${estado} aoVivo=${aoVivo} aceita=${aceita}`);
+                    if (pode) liberados += 1;
+                }
+            }
+        }
+    }
+    // ⚠️ SONDA NÃO-CEGA: a matriz tem de ter liberado EXATAMENTE um ponto.
+    assert.equal(liberados, 1, 'a matriz liberou um número errado de pontos');
+    assert.equal(ESTADOS.length, 6, 'a lista de estados encolheu');
+
+    // ⚠️⚠️ O CONFLITO: `pending` **com** `aceita_acao: false` → SEM botões. É o
+    // caso de IMG-09 (o servidor já diz que `regenerating` não aceita, e o 188-05
+    // devolve **422**); esta é a tela **não oferecendo** o que o servidor recusaria.
+    assert.equal(
+        LATERAL.podeAgirNaFoto({ aoVivo: true, imagem: { ...IA_PENDENTE, aceita_acao: false }, onAprovarFoto: nada, onReprovar: nada }),
+        false,
+        'o conflito `pending` + `aceita_acao: false` liberou a ação',
+    );
+
+    // ⚠️⚠️ TRUTHINESS GENÉRICA É RECUSADA nos três campos.
+    for (const valor of ['1', 1, {}, [], 'true', 'pending ', 'PENDING']) {
+        assert.equal(
+            LATERAL.podeAgirNaFoto({ aoVivo: valor, imagem: IA_PENDENTE, onAprovarFoto: nada, onReprovar: nada }),
+            false,
+            '`aoVivo` liberou por truthiness',
+        );
+        assert.equal(
+            LATERAL.podeAgirNaFoto({ aoVivo: true, imagem: { ...IA_PENDENTE, aceita_acao: valor }, onAprovarFoto: nada, onReprovar: nada }),
+            false,
+            '`aceita_acao` liberou por truthiness',
+        );
+        assert.equal(
+            LATERAL.podeAgirNaFoto({ aoVivo: true, imagem: { ...IA_PENDENTE, estado: valor }, onAprovarFoto: nada, onReprovar: nada }),
+            false,
+            '`estado` liberou por truthiness',
+        );
+    }
+
+    // ⚠️ `{a = null} = {}` só cobre `undefined`, **NÃO `null`**: a função recebe UM
+    // parâmetro e o saneia, em vez de desestruturar.
+    for (const contexto of [null, undefined, 'x', 42, [], true]) {
+        assert.doesNotThrow(() => LATERAL.podeAgirNaFoto(contexto), 'podeAgirNaFoto LANÇOU com contexto adverso');
+        assert.equal(LATERAL.podeAgirNaFoto(contexto), false);
+    }
+
+    // ⚠️ A ISCA POSITIVA: o ponto bom da matriz libera — senão tudo acima seria
+    // "a função devolve `false` sempre".
+    assert.equal(
+        LATERAL.podeAgirNaFoto({ aoVivo: true, imagem: IA_PENDENTE, onAprovarFoto: nada, onReprovar: nada }),
+        true,
+        'a sonda da trava está CEGA: nem o caso bom libera',
+    );
+
+    // ⚠️ E o `ESTADO_PENDENTE` é o IMPORTADO do 188-08 — não uma segunda cópia.
+    assert.equal(BLOCO.ESTADO_PENDENTE, 'pending', 'o ESTADO_PENDENTE do 188-08 mudou');
+    assert.ok(FONTE_LATERAL.includes('ESTADO_PENDENTE'), 'a lateral redigitou `pending` em vez de importar');
+});
+
+test('LAT-189-25 — Reprovar / Aprovar foto: §C16/§C17, rótulos IMPORTADOS e a imagem ATUAL no clique 189_05', () => {
+    const espReprovar = conjunto(
+        'h-[36px] flex-1 cursor-pointer whitespace-nowrap rounded-[8px] border border-pub-danger/[0.45] '
+        + 'bg-transparent text-[13px] font-medium text-pub-danger-txt',
+    );
+    const espAprovar = conjunto(
+        'h-[36px] flex-1 cursor-pointer whitespace-nowrap rounded-[8px] border-none bg-pub-accent '
+        + 'text-[13px] font-semibold text-pub-page',
+    );
+    assert.equal(espReprovar.size, 11, 'o conjunto esperado da §C16 encolheu');
+    assert.equal(espAprovar.size, 10, 'o conjunto esperado da §C17 encolheu');
+    assert.deepEqual(conjunto(LATERAL.CLASSES_REPROVAR), espReprovar, '§C16 — `:766` divergiu');
+    assert.deepEqual(conjunto(LATERAL.CLASSES_APROVAR), espAprovar, '§C17 — `:767` divergiu');
+    assert.deepEqual(conjunto(LATERAL.CLASSES_LINHA_DE_ACOES), conjunto('mt-auto flex gap-[6px]'), '§C15 — `:765` divergiu');
+
+    // ⚠️ Os dois rótulos vêm IMPORTADOS do 188-08 — uma fonte só.
+    assert.equal(BLOCO.REPROVAR, 'Reprovar');
+    assert.equal(BLOCO.APROVAR_FOTO, 'Aprovar foto');
+
+    const html = comProps({});
+    assert.ok(html.includes(BLOCO.REPROVAR), '"Reprovar" não foi para a tela na foto `pending` ao vivo');
+    assert.ok(html.includes(BLOCO.APROVAR_FOTO), '"Aprovar foto" não foi para a tela');
+
+    const reprovar = arvore(html).filter((e) => e.tag === 'button' && classesDe(e).has('text-pub-danger-txt'));
+    const aprovar = arvore(html).filter((e) => e.tag === 'button' && classesDe(e).has('bg-pub-accent'));
+    assert.equal(reprovar.length, 1, '"Reprovar" não é EXATAMENTE um botão');
+    assert.equal(aprovar.length, 1, '"Aprovar foto" não é EXATAMENTE um botão');
+    assert.deepEqual(classesDe(reprovar[0]), espReprovar);
+    assert.deepEqual(classesDe(aprovar[0]), espAprovar);
+
+    // ⚠️⚠️ `regenerating` (e tudo que a matriz recusa) → **SEM** os dois botões.
+    for (const imagem of [IA_REGENERANDO, ORIGINAL_APROVADA]) {
+        const bloqueado = comProps({ imagem, original: null });
+        assert.ok(!bloqueado.includes(BLOCO.APROVAR_FOTO), `"Aprovar foto" nasceu em ${imagem.estado}`);
+        assert.ok(!bloqueado.includes(BLOCO.REPROVAR), `"Reprovar" nasceu em ${imagem.estado}`);
+        assert.doesNotMatch(bloqueado, /disabled/, 'apareceu `disabled` decorativo em vez da ausência');
+    }
+    // ⚠️ Oferta fora do `live` → idem, mesmo com a foto `pending`.
+    const foraDoLive = comProps({ aoVivo: false });
+    assert.ok(!foraDoLive.includes(BLOCO.APROVAR_FOTO), '"Aprovar foto" nasceu com a oferta fora do `live`');
+
+    // ⚠️⚠️ OS HANDLERS RECEBEM A IMAGEM **ATUAL** DO LIGHTBOX — e a TELA PRETA da
+    // 187-06 foi **NO CLIQUE**.
+    const vistas = [];
+    assert.equal(LATERAL.aoClicarEmReprovar(IA_PENDENTE, (i) => vistas.push(i)), true);
+    assert.equal(LATERAL.aoClicarEmAprovar(IA_REGENERANDO, (i) => vistas.push(i)), true);
+    assert.deepEqual(vistas.map((i) => i.id), [11, 13], 'os handlers não receberam a imagem ATUAL');
+});
+
+test('LAT-189-26 — ausências da Fase 192 e de ESCRITA, com ISCA nas duas direções 189_05', () => {
+    // ⚠️ Recortado à lista CONSTANTE dos arquivos DESTE plano: gate largo
+    // reprovaria código certo (`lucro_liquido` é campo legítimo do Portal).
+    const PROIBIDOS = [
+        ['Gerar novamente com IA', '`:762` é da Fase 192 (D-189-3)'],
+        ['✦', 'o glifo do "Gerar novamente com IA" (Fase 192)'],
+        ['router.post(', 'a escrita é do painel, pelo escreverNoPainel (188-07)'],
+        ['axios.', 'idem'],
+        ['fetch(', 'idem'],
+        ['desfazer', 'aprovar JÁ ENFILEIRA e NÃO há desfazer'],
+        ['confirmar publicação', 'vocabulário vetado das Fases 187 a 194'],
+        ['cancelar aprovação', 'idem'],
+        ['segundo passo', 'idem'],
+        ['lucro líquido', 'o vocabulário travado é "Resultado estimado por venda"'],
+        ['localStorage', 'decisão do usuário'],
+    ];
+
+    const infratores = PROIBIDOS.filter(([literal]) => FONTE_LATERAL.includes(literal));
+    assert.deepEqual(infratores.map(([l, r]) => `${l} (${r})`), [], 'literal de outra fase ou de escrita no código');
+
+    // ⚠️ SONDA NÃO-CEGA: a lista tem conteúdo e uma fonte SINTÉTICA é acusada.
+    assert.equal(PROIBIDOS.length, 11, 'a lista CONSTANTE de literais proibidos encolheu');
+    const sintetica = 'const b = "✦ Gerar novamente com IA"; router.post(rota); axios.get(x); fetch(y);';
+    const acusados = PROIBIDOS.filter(([literal]) => sintetica.includes(literal));
+    assert.equal(acusados.length, 5, 'a sonda de ausência está CEGA: ela não acusou a fonte sintética');
+
+    // ⚠️ A ISCA DO LEITOR nos dois literais que o docblock CITA de propósito.
+    for (const literal of ['Gerar novamente com IA', 'desfazer']) {
+        assert.ok(CRU_LATERAL.includes(literal), `o docblock parou de CITAR "${literal}"`);
+    }
+
+    // ⚠️ E no HTML, em TODOS os estados de foto.
+    for (const imagem of [IA_PENDENTE, ORIGINAL_APROVADA, IA_REGENERANDO]) {
+        const html = comProps({ imagem });
+        assert.doesNotMatch(html, /Gerar novamente/, 'o botão da Fase 192 foi desenhado');
+        assert.doesNotMatch(html, /✦/, 'o glifo da Fase 192 apareceu');
+    }
+});
+
+test('LAT-189-27 — adverso NO CLIQUE das TRÊS ações (os handlers exportados) 189_05', () => {
+    // ⚠️⚠️ `renderToStaticMarkup` **NÃO DISPARA EVENTO**. A TELA PRETA voltou SEIS
+    // vezes nesta milestone, a última **NO CLIQUE**: `String(valor)`,
+    // `hasOwnProperty` e qualquer `obj[chave]` LANÇAM com `{toString: null}`.
+    const IMAGENS_ADVERSAS = [
+        null, undefined, 'x', 42, [], {}, { toString: null }, { valueOf: null },
+        Object.create(null), { ...IA_PENDENTE, estado_rotulo: { toString: null } },
+        { ...IA_PENDENTE, id: NaN }, { ...IA_PENDENTE, verificacoes: 'x' },
+    ];
+    const HANDLERS_ADVERSOS = [null, undefined, 'x', 42, {}, [], false];
+
+    for (const imagem of IMAGENS_ADVERSAS) {
+        for (const handler of [...HANDLERS_ADVERSOS, nada]) {
+            for (const fn of [LATERAL.aoClicarEmReprovar, LATERAL.aoClicarEmAprovar]) {
+                assert.doesNotThrow(() => fn(imagem, handler), 'o clique na ação LANÇOU com entrada adversa');
+            }
+        }
+        // ⚠️ Imagem adversa NÃO chama o handler: a escrita iria para o lugar errado.
+        let chamou = 0;
+        LATERAL.aoClicarEmReprovar(imagem, () => { chamou += 1; });
+        const valida = imagem !== null && typeof imagem === 'object' && !Array.isArray(imagem);
+        assert.equal(chamou, valida ? 1 : 0, 'o clique chamou (ou não) o handler na hora errada');
+    }
+
+    // ⚠️ SONDA NÃO-CEGA: a imagem BOA chama exatamente uma vez.
+    let boas = 0;
+    assert.equal(LATERAL.aoClicarEmAprovar(IA_PENDENTE, () => { boas += 1; }), true);
+    assert.equal(boas, 1, 'a sonda do clique está CEGA: nem a imagem boa chama o handler');
+
+    // ⚠️ E o RENDER adverso da lateral inteira, com todos os handlers em jogo.
+    for (const imagem of IMAGENS_ADVERSAS) {
+        for (const zoom of [null, undefined, NaN, 'x', {}, 2.5, 1]) {
+            const html = comProps({ imagem, zoom });
+            assert.doesNotMatch(
+                html,
+                /\[object Object\]|NaN|undefined|Invalid Date/,
+                'entrada adversa vazou para o HTML da lateral',
+            );
+        }
+    }
+    assert.equal(IMAGENS_ADVERSAS.length, 12, 'a lista de imagens adversas encolheu');
+    assert.equal(HANDLERS_ADVERSOS.length, 7, 'a lista de handlers adversos encolheu');
+});
