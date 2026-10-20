@@ -108,7 +108,8 @@ class ElegibilidadeDoAgente
             $add('ficha_incompleta', 'Preencha os campos obrigatórios da ficha técnica no cadastro do produto.', 'cadastro');
         }
 
-        $fotos = $r->imagens()->where('upload_status', '!=', PubImagem::FALHOU)->count();
+        // Foto que conta é a que vai ao anúncio: atribuída a um grupo (é de lá que nascem os conjuntos da revisão).
+        $fotos = $r->imagens()->where('upload_status', '!=', PubImagem::FALHOU)->whereHas('atribuicoes')->count();
         if ($fotos === 0) {
             $add('sem_fotos', 'O produto não tem foto utilizável.', 'publicador', $editor);
         }

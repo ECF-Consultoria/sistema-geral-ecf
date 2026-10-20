@@ -3,21 +3,15 @@
 namespace Tests\Feature\Publicador\Agente;
 
 use App\Jobs\Publicador\GerarPreparoIaJob;
-use App\Models\EstruturaProduto;
 use App\Models\PubAgenteExecucao;
-use App\Models\PubImagem;
-use App\Models\PubProduto;
 use App\Models\PubRascunho;
-use App\Models\User;
 use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
-use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
-use Tests\Feature\Publicador\Lote\CenarioDoPreparo;
 use Tests\TestCase;
 
 /**
@@ -27,44 +21,13 @@ use Tests\TestCase;
  */
 class EntradaDoPreparoDoAgenteTest extends TestCase
 {
-    use CenarioDoPreparo;
+    use CenarioDoAgente;
     use RefreshDatabase;
-
-    private User $admin;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->montarPreparo();
-        $this->admin = User::factory()->create(['role' => 'admin']);
-    }
-
-    private function conta(): array
-    {
-        return app(ProgramasPublicadorService::class)->resolver("company-{$this->empresa->id}");
-    }
-
-    private function ligar(array $dados = []): void
-    {
-        app(ConfiguracaoDoAgenteService::class)->salvar($this->conta(), ['habilitado' => true, 'modalidade' => 'gold_special', ...$dados], 0, $this->admin);
-    }
-
-    /** O produto do Portal já no Publicador, como o save deixa, com o recorte do piloto: só o Clássico, com foto e preço. */
-    private function noPublicador(?EstruturaProduto $p = null): PubProduto
-    {
-        $p ??= $this->produtoDoPortal();
-        $this->preparo()->sincronizarAgora((int) $this->empresa->id, (int) $p->id);
-        $pub = $this->pubDo($p);
-        $r = $this->rascunhoDo($p);
-        $repo = app(RascunhoRepository::class);
-        $repo->gravarAlvos($r, array_map(fn (Alvo $a) => new Alvo($a->listingTypeId, $a->titulo, $a->listingTypeId === 'gold_special'), $repo->snapshot($r)->alvos));
-        $snap = $repo->snapshot($r->fresh());
-        $variante = $snap->variantesAtivas()[0];
-        $repo->gravarVariacao($r->fresh(), $snap->eixos, [$variante->comDados([...$variante->dados, 'estoque' => 5, 'precos' => ['gold_special' => 199.9]])]);
-        $r->imagens()->create(['caminho' => 'publicador/cad.jpg', 'sha256' => str_repeat('a', 64), 'mime' => 'image/jpeg', 'bytes' => 800_000,
-            'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::ENVIADA]);
-
-        return $pub->fresh();
+        $this->montarAgente();
     }
 
     public function test_produto_completo_prepara_pela_cadeia_de_sempre(): void

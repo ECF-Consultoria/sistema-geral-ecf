@@ -112,8 +112,12 @@ class EntradaDoPreparo
             return;
         }
 
-        // Pronto para o encaminhamento à Aprovação (AG-03), que lê `etapa = texto_pronto` ou acompanha a cadeia.
         $execucao->update(['estado' => PubAgenteExecucao::PREPARANDO, 'etapa' => $etapa, 'bloqueios' => null, 'heartbeat_em' => now()]);
+
+        // Texto já em dia: vai à Aprovação agora. Cadeia rodando: o `publicador:agente-encaminhar` leva quando terminar.
+        if ($etapa === 'texto_pronto') {
+            app(PreparadorDaAprovacao::class)->encaminhar($execucao);
+        }
     }
 
     private function preparo(): PreparoIaDoRascunhoService

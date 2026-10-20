@@ -604,6 +604,15 @@ Schedule::command('publicador:fila-publicacao')
     ->withoutOverlapping(10)
     ->onOneServer();
 
+// Agente ECF Publicador (AG-03, 20/10/2026): o que o agente terminou de preparar entra na fila de Aprovação.
+// Só lê o banco e cria a oferta `aguardando_aprovacao` — não aprova, não publica, não chama IA nem ML. Sem conta
+// com o agente ligado, não há execução `preparando` e a passada não faz nada.
+Schedule::command('publicador:agente-encaminhar')
+    ->everyMinute()
+    ->name('publicador-agente-encaminhar')
+    ->withoutOverlapping(5)
+    ->onOneServer();
+
 // Fase 184 (BLING-13) — keep-alive ESPALHADO dos tokens do Bling. De hora em
 // hora, e NUNCA uma rajada diária: o access_token do Bling dura ~6h e o
 // refresh_token 30 dias, então uma rodada por hora já espalha a carga

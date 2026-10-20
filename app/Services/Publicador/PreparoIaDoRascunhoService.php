@@ -883,6 +883,27 @@ class PreparoIaDoRascunhoService
         return (int) Cache::increment($chave) <= $limite;
     }
 
+    /**
+     * AG-03 (20/10/2026): a cadeia de texto destes fatos ainda está rodando (alguma etapa `rodando`/`adiada`
+     * recente)? O agente só encaminha o rascunho à Aprovação quando não está — senão a pessoa revisaria um
+     * título que a IA ainda vai trocar. Fatos novos sem cadeia começada contam como "não está rodando".
+     */
+    public function textoEmAndamento(PubRascunho $r): bool
+    {
+        $preparo = (array) ($this->lerEstado($r->id)[Memoria::PREPARO] ?? []);
+        if (($preparo['hash'] ?? null) !== $this->hashDosFatos($r)) {
+            return false;
+        }
+        foreach ((array) ($preparo['etapas'] ?? []) as $s) {
+            $recente = isset($s['em']) && now()->diffInMinutes(Carbon::parse($s['em']), true) < self::EM_ANDAMENTO_VALE_MIN;
+            if (in_array($s['status'] ?? null, [self::RODANDO, self::ADIADO], true) && $recente) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ═══ step_state (sempre relido do banco; gravado sem subir a revisão) ════
 
     private function lerEstado(int $rascunhoId): array
