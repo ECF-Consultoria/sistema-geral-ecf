@@ -186,6 +186,27 @@ export const CHAVE_DA_VERSAO = 'versao_esperada';
  */
 export const REGRA_VERSAO_DIVERGENTE = 'COL-04-VERSAO-DIVERGENTE';
 
+/**
+ * COL-04 — a CHAVE em que o servidor manda o **id estável da regra**.
+ *
+ * ⚠️⚠️ **MEDIDO na wave 188-12, e é o conserto de um DESCASAMENTO DE FORMATO que a
+ * wave 188-06 declarou e passou adiante.** A recusa do painel é
+ * `MlbPublicadorAprovacaoController::recusaDoPainel()`:
+ *
+ * ```php
+ * return response()->json(['message' => $e->getMessage(), 'regra' => $e->regra], 422);
+ * ```
+ *
+ * ⚠️ **O id da regra NÃO está dentro da mensagem** — ele está num CAMPO PRÓPRIO, e
+ * o docblock daquele método diz por quê: *"é por ele que a tela decide onde marcar
+ * o erro… Devolver só a mensagem obrigaria a tela a casar texto em português"*.
+ * ➡️ **Ler o CAMPO é o certo; procurar substring na mensagem quebra no dia em que
+ * alguém reescrever o texto** — e este projeto já tem cinco casos de `includes`
+ * casando prefixo errado. A busca por substring continua como **fallback
+ * declarado**, para a sacola `errors` do Inertia (que não tem `regra`).
+ */
+export const CHAVE_DA_REGRA = 'regra';
+
 /** Objeto comum de verdade, ou `null`. ⚠️ `null` e array são os dois `typeof 'object'`. */
 export function objetoDoPainel(valor) {
     return valor !== null && typeof valor === 'object' && !Array.isArray(valor) ? valor : null;
@@ -194,6 +215,17 @@ export function objetoDoPainel(valor) {
 /** Inteiro finito, ou `null`. ⚠️ Nunca `Number(valor)`: `Number('')` é **0**. */
 export function inteiroDoPainel(valor) {
     return typeof valor === 'number' && Number.isInteger(valor) ? valor : null;
+}
+
+/**
+ * Texto não-vazio de uma recusa do servidor, ou `null`.
+ *
+ * ⚠️ **Nunca `String(valor)`:** ele **LANÇA** com `{toString: null}`, e o corpo de
+ * uma recusa vem da rede. ⚠️ E `typeof NaN === 'number'`, então número também não
+ * passa: a mensagem que a tela mostra é SEMPRE string do servidor.
+ */
+export function textoDaRecusa(valor) {
+    return typeof valor === 'string' && valor.trim() !== '' ? valor : null;
 }
 
 /**
@@ -213,6 +245,38 @@ export function inteiroDoPainel(valor) {
  *   3. ⚠️⚠️ no erro de versão divergente chama `onConflito`, **NUNCA ENGOLE**. Um
  *      `catch` silencioso aqui é pior que o bug: deixaria a pessoa achando que
  *      aprovou — e **aprovar JÁ PUBLICA, sem desfazer**.
+ *
+ * ═══ ⚠️⚠️ OS DOIS CAMINHOS DO 422, E POR QUE O `onError` NÃO BASTA ═══════
+ *
+ * **MEDIDO na wave 188-12, em `@inertiajs/core` 2.3.21:**
+ *   · `Response.process()` (`dist/index.esm.js:1912`-`:1913`) desvia para
+ *     `handleNonInertiaResponse()` quando a resposta **não tem o header
+ *     `x-inertia`**;
+ *   · `handleNonInertiaResponse()` (`:1947`-`:1959`) dispara o evento
+ *     **`inertia:invalid`** e, se ninguém o cancelar, **mostra o MODAL de erro**;
+ *   · `onError` só é chamado **dentro** do ramo Inertia, a partir de
+ *     `page.props.errors` (`:1916`-`:1922`).
+ *
+ * ⚠️⚠️ **E as recusas deste painel são `response()->json([...], 422)` CRUAS** —
+ * não são resposta Inertia. ➡️ **Pelo `onError` elas NUNCA chegariam**, e a pessoa
+ * veria o modal de erro bruto do Inertia em cima do painel. Isso é *"engolir"* com
+ * outra roupa: o aviso de concorrência nunca acenderia.
+ *
+ * ➡️ **A saída, e ela é 100% do lado do CLIENTE — o servidor da wave 188-05 NÃO
+ * foi tocado:** o helper registra um ouvinte de `invalid` **só pela duração da
+ * requisição** (removido no `onFinish`), lê o campo **`regra`** do corpo,
+ * chama `onConflito(message)` e **cancela o modal** devolvendo `false`. ⚠️ Quando
+ * a recusa **não** traz `regra`, o modal **continua aparecendo**: erro inesperado
+ * não pode virar silêncio.
+ * ⚠️ **As duas saídas de SERVIDOR foram consideradas e NÃO aplicadas:** trocar a
+ * recusa por `back()->withErrors([...])` faria o `onError` funcionar, mas é
+ * **editar um controller da wave 188-05 que já está commitado** — e o formato
+ * `{message, regra}` é o que o módulo inteiro já usa (`recusaDoPainel` é chamado
+ * por **nove** actions). **Fica DECLARADO como pergunta no fechamento, não
+ * decidido aqui.**
+ * ⚠️ `typeof router.on !== 'function'` é tolerado (devolve `undefined`): o dublê de
+ * `@inertiajs/react` de gates mais antigos não tem `on`, e o helper não pode
+ * LANÇAR por causa disso.
  *
  * ⚠️ **Sem `versao` inteira, NADA é enviado** e a função devolve `false`: é a
  * mesma régua do botão sem destino — não se escreve sobre uma oferta cuja versão
@@ -245,6 +309,33 @@ export function escreverNoPainel(pedido = null) {
     const parametros = objetoDoPainel(alvo.parametros) ?? {};
     const aoConflitar = typeof alvo.onConflito === 'function' ? alvo.onConflito : null;
 
+    // ⚠️⚠️ O CAMINHO REAL do 422 deste painel (ver o docblock): a recusa é
+    // `response()->json([...], 422)` CRUA, então o Inertia desvia para
+    // `handleNonInertiaResponse()` e dispara `inertia:invalid`. **Sem este ouvinte
+    // o `onConflito` nunca seria chamado**, e a pessoa veria o modal de erro bruto
+    // em cima do painel — *"engolir"* com outra roupa.
+    // ⚠️ `typeof router.on !== 'function'` é tolerado: dublê de gate antigo não o
+    // tem, e o helper não pode LANÇAR por isso.
+    const desinscrever = aoConflitar === null || typeof router.on !== 'function'
+        ? null
+        : router.on('invalid', (evento) => {
+            // ⚠️ Flag DENTRO do callback. E guarda de tipo ANTES de qualquer
+            // acesso: `evento.detail.response.data` vem da rede.
+            const dados = objetoDoPainel(objetoDoPainel(objetoDoPainel(evento?.detail)?.response)?.data);
+            const regra = dados === null ? null : textoDaRecusa(dados[CHAVE_DA_REGRA]);
+
+            // ⚠️ Recusa SEM `regra` NÃO é cancelada: erro inesperado não pode
+            // virar silêncio, e o modal do Inertia é o sinal certo para ele.
+            if (regra === null) return undefined;
+
+            aoConflitar(textoDaRecusa(dados.message) ?? regra);
+
+            // ⚠️ `false` CANCELA o modal de erro do Inertia (`onGlobalEvent`,
+            // `dist/index.esm.js:1373`-`:1381`): o aviso da tela é o sinal, e dois
+            // sinais para o mesmo fato treinam a pessoa a ignorar os dois.
+            return false;
+        });
+
     router.post(
         route(nomeDaRota, parametros),
         // ⚠️⚠️ A versão entra DEPOIS do espalhamento, de propósito: um `corpo` que
@@ -259,17 +350,33 @@ export function escreverNoPainel(pedido = null) {
                 // ⚠️ A mensagem é a do SERVIDOR (ela diz as DUAS versões). Aqui só
                 // se procura a regra; o texto nunca é remontado no cliente.
                 const sacola = objetoDoPainel(erros) ?? {};
+
+                // ⚠️⚠️ **O CAMPO `regra` PRIMEIRO** (é o formato que o servidor
+                // devolve, medido), e a busca por SUBSTRING só como **fallback** —
+                // a sacola `errors` do Inertia não tem `regra`, e ali a mensagem é
+                // o único sinal. ⚠️ Substring em mensagem de erro quebra quando
+                // alguém reescreve o texto.
+                const regra = textoDaRecusa(sacola[CHAVE_DA_REGRA]);
+
                 const mensagens = Object.keys(sacola)
+                    .filter((chave) => chave !== CHAVE_DA_REGRA)
                     .map((chave) => sacola[chave])
                     .filter((texto) => typeof texto === 'string' && texto.trim() !== '');
 
-                const conflito = mensagens.find((texto) => texto.includes(REGRA_VERSAO_DIVERGENTE));
+                const conflito = regra === REGRA_VERSAO_DIVERGENTE
+                    ? (textoDaRecusa(sacola.message) ?? mensagens[0] ?? null)
+                    : (mensagens.find((texto) => texto.includes(REGRA_VERSAO_DIVERGENTE)) ?? null);
 
                 // ⚠️ `onConflito` é chamado com a mensagem do conflito quando ela
                 // vier, e com a PRIMEIRA mensagem quando não vier — **nunca em
                 // silêncio**, porque o pior resultado aqui é a pessoa achar que
                 // aprovou.
                 aoConflitar(conflito ?? mensagens[0] ?? null);
+            },
+            // ⚠️⚠️ O ouvinte vive só pela DURAÇÃO da requisição. Ouvinte global
+            // permanente pegaria o `invalid` de QUALQUER outra tela.
+            onFinish: () => {
+                if (typeof desinscrever === 'function') desinscrever();
             },
         },
     );
@@ -515,6 +622,7 @@ export function RaizDoPainel({
     onTentarDeNovo = null,
     colunaDeFotos = null,
     colunaDePreco = null,
+    aviso = null,
     pendencias = null,
     rodape = null,
     modais = null,
@@ -568,10 +676,22 @@ export function RaizDoPainel({
     // **Nada é remapeado aqui.**
     const noModais = filhosSeguros(modais);
 
-    const corpo = temIdentidade || temColuna || noPendencias !== null || extra !== null
+    // ═══ ⚠️⚠️ Fase 188, plano 12 — O QUARTO SLOT: `aviso` (COL-04) ════════
+    //
+    // ⚠️ Ele é o **PRIMEIRO filho do corpo rolável**, ANTES da identificação: um
+    // aviso de concorrência que aparece depois de duas colunas e de uma seção de
+    // pendências é um aviso que a pessoa lê **depois de clicar**.
+    // ⚠️ **Dentro do corpo, e não irmão do `<aside>`:** ele rola com o conteúdo de
+    // propósito — ele não é modal, não cobre a tela e não bloqueia o resto da
+    // revisão; o que ele bloqueia é **a ação que falhou** (quem recusa é o
+    // servidor, pelo `versao_esperada`).
+    const noAviso = filhosSeguros(aviso);
+
+    const corpo = temIdentidade || temColuna || noAviso !== null || noPendencias !== null || extra !== null
         ? (
             <CorpoDoPainel>
                 {[
+                    noAviso,
                     temIdentidade
                         ? <IdentificacaoDaOferta key="identificacao" identificacao={identificacao} falha={falha} onTentarDeNovo={onTentarDeNovo} />
                         : null,
@@ -616,6 +736,9 @@ export function RaizDoPainel({
  *   a rota de `tentarDeNovo` **não existe** — ver `IdentificacaoDaOferta.jsx`)
  * @param {unknown} [props.colunaDeFotos] SLOT de NÓ — a coluna de fotos (plano 188-08)
  * @param {unknown} [props.colunaDePreco] SLOT de NÓ — a coluna de preço (plano 188-09)
+ * @param {unknown} [props.aviso] SLOT de NÓ — o aviso de concorrência (COL-04,
+ *   plano 188-12). ⚠️ Ele é o **PRIMEIRO filho do corpo rolável**: aviso que
+ *   aparece depois de duas colunas é aviso lido DEPOIS do clique
  * @param {unknown} [props.pendencias] SLOT de NÓ — a seção de Pendências de
  *   `:699` (plano 188-10). ⚠️ Ela vive **DENTRO** do corpo rolável, irmã do
  *   wrapper das colunas — medido: `:699` abre dentro de `:562`
@@ -651,6 +774,7 @@ export default function PainelDeRevisao({
     onTentarDeNovo = null,
     colunaDeFotos = null,
     colunaDePreco = null,
+    aviso = null,
     pendencias = null,
     rodape = null,
     modais = null,
@@ -726,6 +850,7 @@ export default function PainelDeRevisao({
             onTentarDeNovo={onTentarDeNovo}
             colunaDeFotos={colunaDeFotos}
             colunaDePreco={colunaDePreco}
+            aviso={aviso}
             pendencias={pendencias}
             rodape={rodape}
             modais={modais}

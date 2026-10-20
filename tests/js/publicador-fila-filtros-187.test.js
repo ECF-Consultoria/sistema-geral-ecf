@@ -744,6 +744,23 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
         // precisa ser o dono dos campos — e esta lista é de NOMES: um `useState`
         // por campo seria cinco entradas aqui para um gesto só.
         'modalDoPainel',
+        // ⚠️⚠️ Fase 188, plano 12 — a MENSAGEM do 422 de versão divergente (COL-04 /
+        // critério 17).
+        //
+        // **Ela TEM de viver na tela**, e o motivo é o critério inteiro: o 422 **não
+        // pode ser engolido**. Um `catch` silencioso ali é literalmente
+        // *"sobrescrever em silêncio"* com outra roupa — e, pior, **deixaria a
+        // pessoa achando que aprovou**, numa tela em que **aprovar JÁ PUBLICA e não
+        // há desfazer**.
+        //
+        // ⚠️ É GESTO de uma SESSÃO de revisão, não dado: não vai para a URL (um link
+        // compartilhado abriria um aviso de conflito que não é da pessoa). E guarda a
+        // OFERTA junto, para o aviso não vazar para a oferta seguinte no ↑/↓.
+        // ⚠️ **Por que NÃO é toast:** toast tem vocabulário TRAVADO com gate (VOC-08,
+        // SEIS frases fechadas, e o usuário RECUSOU o sétimo em 19/10) e **some em
+        // ~3,8 s** — *"um aviso de concorrência que desaparece é um aviso que não
+        // houve"*.
+        'conflitoDoPainel',
     ];
 
     const naPagina = [...FONTE_PAGINA.matchAll(/const \[([A-Za-z_$][\w$]*),\s*[A-Za-z_$][\w$]*\] = useState\(/g)].map((m) => m[1]);

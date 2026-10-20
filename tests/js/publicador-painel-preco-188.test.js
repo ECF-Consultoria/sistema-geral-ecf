@@ -1759,7 +1759,42 @@ test('⚠️⚠️ D4: sem o transporte da wave 188-06 a caixa de simulação N�
     // um `onClick` vazio. ⚠️ A leitura é do arquivo CRU: o docblock é o artefato.
     const paginaCrua = fs.readFileSync(path.resolve(RAIZ, REL_PAGINA), 'utf8');
     assert.match(paginaCrua, /O TRANSPORTE DA SIMULAÇÃO E DO "CONFERIR ALTERAÇÃO" É DA WAVE/, 'a página não DECLARA de quem é o transporte — a próxima pessoa teria de achar por bisseção');
-    assert.match(FONTE_PAGINA, /onSimular=\{null\}/, 'a página passou a mandar um `onSimular` — se a wave 188-06 fechou, religue pelo helper `escreverNoPainel`');
+    // ⚠️⚠️ **RELIGADO PELA WAVE 188-12, E A ASSERÇÃO FOI REMEDIDA EM VEZ DE
+    // AFROUXADA.** A redação original cobrava `onSimular={null}` na página, com a
+    // mensagem *"se a wave 188-06 fechou, religue pelo helper"*. ⚠️ **A 188-06
+    // FECHOU** (as rotas `…painel.preco` e `…painel.preco.simular` estão
+    // commitadas desde `1f2dbe44`) e a wave **188-12** religou os cinco handlers da
+    // coluna de preço. ➡️ O `null` deixou de ser o estado certo, e **manter a
+    // cobrança faria o executor seguinte DESLIGAR o handler para o gate passar** —
+    // o anti-padrão *"gate que reprova pelo próprio conserto"*.
+    //
+    // ⚠️ **O INVARIANTE QUE IMPORTA CONTINUA MEDIDO, em TRÊS lugares:**
+    //   (a) **D4** — o caso logo acima (`semTransporte`) prova que, **SEM** o
+    //       handler, a caixa de simulação **NÃO é desenhada**. Aquela prova é por
+    //       PROP DIRETA, não pela página, e por isso **não** depende do
+    //       religamento;
+    //   (b) **critério 17** — o handler ligado escreve pelo **helper único**
+    //       `escreverNoPainel`, e a página **não** chama `router.post` para rota do
+    //       painel (o único `router.post` dela é o do LOTE da Fase 187, EM
+    //       PRODUÇÃO, que manda o próprio mapa `versoes`);
+    //   (c) **D4 de novo** — os cinco handlers só existem com empresa, oferta **E**
+    //       versão (`podeEscreverNoPainel`): sem os três eles saem `null` e o
+    //       controle não nasce.
+    // ⚠️ **Nenhuma contagem foi subida para calar gate:** o caso é o mesmo, com as
+    // asserções apontando para o estado MEDIDO depois do religamento.
+    assert.doesNotMatch(FONTE_PAGINA, /onSimular=\{null\}/, 'a página voltou a mandar `onSimular={null}` — a wave 188-12 religou o handler; se o desligamento foi deliberado, declare a razão e remeça este caso');
+    assert.match(FONTE_PAGINA, /onSimular=\{!podeEscreverNoPainel \? null :/, 'o `onSimular` deixou de nascer do handler COM A GUARDA — sem empresa/oferta/versão ele TEM de sair `null` (D4)');
+    assert.match(FONTE_PAGINA, /onConferirAlteracao=\{!podeEscreverNoPainel \? null :/, 'o `onConferirAlteracao` não foi religado com a guarda');
+    assert.match(FONTE_PAGINA, /onSalvar=\{!podeEscreverNoPainel \? null :/, 'o `onSalvar` não foi religado com a guarda');
+    assert.match(FONTE_PAGINA, /onDescartar=\{!podeEscreverNoPainel \? null :/, 'o `onDescartar` não foi religado com a guarda');
+    assert.match(FONTE_PAGINA, /onInformarFrete=\{abrirModalDoPainel === null \? null :/, 'o `onInformarFrete` não foi religado com a guarda');
+    assert.match(FONTE_PAGINA, /escreverNoPainel\(/, 'a página parou de escrever pelo helper único — `versao_esperada` deixaria de viajar, e omiti-la LIBERA a escrita');
+    // ⚠️⚠️ E a sonda do `router.post` é ANCORADA NA ROTA, não na ausência global: a
+    // página TEM um `router.post` legítimo (o LOTE da Fase 187). Uma sonda de "zero
+    // `router.post` na página" REPROVA código certo — a 14ª ocorrência da família
+    // nesta milestone, medida na wave 188-11.
+    const postsDaPagina = [...FONTE_PAGINA.matchAll(/router\s*\.\s*post\(\s*\n?\s*route\('([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(postsDaPagina, ['mlb.anuncios.meus.aprovacao.lote'], 'a página passou a chamar `router.post` para rota do PAINEL — toda escrita do painel vai pelo helper (critério 17)');
     assert.match(FONTE_PAGINA, /colunaDePreco=\{colunaDePreco\}/, 'a página não ligou o slot `colunaDePreco`');
 });
 
