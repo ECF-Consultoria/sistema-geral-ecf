@@ -11,6 +11,8 @@ use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Models\Configuracao;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
+use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubImagem;
@@ -64,23 +66,45 @@ class CriativosAutomaticosTest extends TestCase
         return app(CriativosAutomaticosService::class);
     }
 
-    /** O produto do Portal preparado uma vez (rascunho existe) e com `$n` fotos do cliente na galeria geral. */
+    /** O produto do Portal preparado uma vez (rascunho existe) e com `$n` fotos que o cliente pôs no Portal, já na galeria geral. */
     private function produtoComFotos(int $n = 2, string $codigo = 'CAD'): array
     {
         $p = $this->produtoDoPortal($codigo);
         $this->salvarERodar($p);
         $r = $this->rascunhoDo($p);
-        $atribuicoes = [];
         for ($i = 0; $i < $n; $i++) {
-            $caminho = "publicador/{$codigo}-{$i}.jpg";
-            Storage::disk('local')->put($caminho, 'jpeg-'.$i);
-            $foto = $r->imagens()->create(['caminho' => $caminho, 'sha256' => hash('sha256', $codigo.$i), 'mime' => 'image/jpeg', 'bytes' => 1000,
-                'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::PENDENTE]);
-            $atribuicoes[] = ['imagem' => $foto->id, 'grupo' => R::GERAL, 'posicao' => $i];
+            $this->fotoNoRascunho($r, "{$codigo}-{$i}", [20 + $i * 40, crc32($codigo) % 200, 90], $p);
         }
-        (new RascunhoRepository())->gravarAtribuicoes($r, $atribuicoes);
 
         return [$p, $r->fresh()];
+    }
+
+    /**
+     * Uma foto no fim da galeria geral do rascunho. Com `$doPortal`, é a foto que o CLIENTE pôs no Portal: o mesmo
+     * arquivo fica em `estrutura_produto_variacao_imagens` (como o Sincronizar a copia, mesmo sha256); sem ele, é foto
+     * que a equipe subiu no Publicador.
+     */
+    private function fotoNoRascunho(PubRascunho $r, string $nome, array $rgb, ?EstruturaProduto $doPortal = null): PubImagem
+    {
+        $conteudo = $this->jpeg($rgb);
+        if ($doPortal !== null) {
+            $caminhoPortal = "estrutura/{$this->empresa->id}/produtos/{$nome}.jpg";
+            Storage::disk('local')->put($caminhoPortal, $conteudo);
+            EstruturaProdutoVariacaoImagem::create(['company_id' => $this->empresa->id, 'produto_id' => $doPortal->id,
+                'variacao_id' => EstruturaProdutoVariacao::where('produto_id', $doPortal->id)->value('id'), 'caminho' => $caminhoPortal,
+                'nome_original' => "{$nome}.jpg", 'mime' => 'image/jpeg', 'tamanho' => strlen($conteudo), 'largura' => 1200, 'altura' => 1200,
+                'ordem' => EstruturaProdutoVariacaoImagem::where('produto_id', $doPortal->id)->count()]);
+        }
+        $caminho = "publicador/{$r->id}/{$nome}.jpg";
+        Storage::disk('local')->put($caminho, $conteudo);
+        $foto = $r->imagens()->create(['caminho' => $caminho, 'sha256' => hash('sha256', $conteudo), 'mime' => 'image/jpeg', 'bytes' => strlen($conteudo),
+            'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::PENDENTE]);
+        $repo = new RascunhoRepository();
+        $atuais = $repo->snapshot($r->fresh())->imagens;
+        $naGeral = count(array_filter($atuais, fn ($a) => $a['grupo'] === R::GERAL));
+        $repo->gravarAtribuicoes($r, [...$atuais, ['imagem' => $foto->id, 'grupo' => R::GERAL, 'posicao' => $naGeral]]);
+
+        return $foto;
     }
 
     public function test_desligado_por_padrao_nada_entra_na_cadeia_nem_e_planejado(): void
@@ -129,6 +153,26 @@ class CriativosAutomaticosTest extends TestCase
         // Um kit ativo por grupo (D-15) e a aprovação é de gente: nada planejado de novo.
         $this->assertSame('kit_existente', $this->servico()->avaliar($r2->id));
         $this->assertSame(1, MlAnuncioCriativoKit::query()->count());
+    }
+
+    public function test_so_a_foto_que_o_cliente_pos_no_portal_dispara_a_geracao(): void
+    {
+        // 20/10/2026, o usuário: "a imagem só deve ser gerada automaticamente, assim como os títulos, se o cliente puser
+        // uma imagem real do produto dele no Portal".
+        $this->ligar();
+        $p = $this->produtoDoPortal('EQP');
+        $this->salvarERodar($p);
+        $r = $this->rascunhoDo($p);
+        $daEquipe = $this->fotoNoRascunho($r, 'da-equipe', [10, 10, 200]);
+
+        $this->assertSame('sem_foto', $this->servico()->avaliar($r->id), 'foto que a equipe subiu no Publicador não é a do cliente');
+        $this->assertSame(0, MlAnuncioCriativoKit::query()->count());
+
+        $doCliente = $this->fotoNoRascunho($r, 'do-cliente', [10, 200, 10], $p);
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $portador = MlAnuncioCriativo::query()->findOrFail(MlAnuncioCriativoKit::query()->sole()->criativo_referencia_id);
+        $this->assertCount(1, (array) $portador->referencias, 'só a foto do cliente vai de referência');
+        $this->assertNotSame($daEquipe->id, $doCliente->id);
     }
 
     public function test_cada_condicao_barra_o_gatilho(): void
@@ -188,11 +232,8 @@ class CriativosAutomaticosTest extends TestCase
         // O kit deu erro (o operador o descartaria): com os MESMOS fatos, não gera de novo.
         MlAnuncioCriativoKit::query()->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
         $this->assertSame('em_dia', $this->servico()->avaliar($r->id));
-        // Foto nova = fatos novos = gera.
-        $foto = $r->imagens()->create(['caminho' => 'publicador/nova.jpg', 'sha256' => hash('sha256', 'nova'), 'mime' => 'image/jpeg', 'bytes' => 1, 'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::PENDENTE]);
-        Storage::disk('local')->put('publicador/nova.jpg', 'x');
-        $atuais = (new RascunhoRepository())->snapshot($r->fresh())->imagens;
-        (new RascunhoRepository())->gravarAtribuicoes($r, [...$atuais, ['imagem' => $foto->id, 'grupo' => R::GERAL, 'posicao' => 9]]);
+        // Foto nova do cliente no Portal = fatos novos = gera.
+        $this->fotoNoRascunho($r, 'nova', [200, 30, 30], EstruturaProduto::query()->findOrFail($p->id));
         config(['publicador.criativos_auto.limite_diario_por_empresa' => 1]);
         $this->assertSame('limite', $this->servico()->avaliar($r->id), 'o teto do dia já foi gasto pelo primeiro');
         config(['publicador.criativos_auto.limite_diario_por_empresa' => 5]);

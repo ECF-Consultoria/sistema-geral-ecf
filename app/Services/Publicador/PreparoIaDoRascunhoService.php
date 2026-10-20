@@ -764,7 +764,7 @@ class PreparoIaDoRascunhoService
     }
 
     /** Os ids dos produtos do Portal por trás do pub_produto: o do grupo, ou os componentes da composta. @return list<int> */
-    private function produtosDoPortal(PubProduto $pub): array
+    public function produtosDoPortal(PubProduto $pub): array
     {
         if ($pub->estrutura_produto_id !== null) {
             return [(int) $pub->estrutura_produto_id];

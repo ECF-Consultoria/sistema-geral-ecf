@@ -1697,6 +1697,13 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   propósito: os documentos da Fase 188 apontam `EditorRascunhoService:370-372`). A foto do cliente sai da galeria mas
   NÃO é apagada: fica no rascunho (`pub_imagens`, sem atribuição) como referência. Nenhuma imagem aprovável (todas
   reprovadas sem nova tentativa): as fotos do cliente FICAM — o anúncio nunca fica sem foto por aqui.
+- **Só a foto que o CLIENTE pôs no Portal dispara e serve de referência** (o usuário, 20/10: "a imagem só deve ser
+  gerada automaticamente, assim como os títulos, se o cliente puser uma imagem real do produto dele no Portal"). Não
+  há marca de origem em `pub_imagens`: `CriativosAutomaticosService::shasDoCliente` lê as fotos do Portal
+  (`estrutura_produto_variacao_imagens`), passa pelo MESMO `ConversorParaJpg` do Sincronizar (JPEG/PNG inteiros, o resto
+  vira JPEG) e compara o sha256 com o da foto no rascunho — vale também para rascunho sincronizado antes da regra (o
+  Sincronizar só copia para grupo VAZIO, D-05, então uma marca gravada na cópia nunca chegaria a eles). Foto que a
+  equipe subiu no Publicador não dispara. "Real" não dá para provar: a regra garante só que é a foto do cliente.
 - **IA nunca é referência de IA:** `grupos()` conta só a foto DO CLIENTE (fora ativo do acervo com origem `ia` e foto
   ligada a criativo por `ml_anuncio_criativos.pub_imagem_id` — a mesma regra do `acervo:registrar-existentes`). O
   grupo que ficou só com as imagens do kit sai da lista (`sem_foto`) e não gera de novo nem com o kit em erro.

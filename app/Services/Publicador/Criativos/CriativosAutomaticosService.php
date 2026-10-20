@@ -7,6 +7,7 @@ use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Models\AcervoImagem;
 use App\Models\Configuracao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubImagem;
@@ -17,7 +18,9 @@ use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\PortalProdutoLeitor;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
+use App\Support\Publicador\Imagem\ConversorParaJpg;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -41,8 +44,10 @@ use Illuminate\Support\Str;
  *  4. o usuário de sistema `configuracoes.publicador_criativos_auto_usuario` existe, está ativo e tem a chave
  *     `mlb.criativos_ia` (`CreativePermissao` — a mesma regra de quem clica);
  *  5. o grupo de fotos (a galeria geral e cada cor; só a geral, ou a 1ª cor, com `todas_as_cores` = false) tem ≥ 1
- *     foto DO CLIENTE com arquivo no disco — imagem por IA nunca é referência (o grupo que já recebeu o kit fica
- *     só com imagens por IA e, por isso, não gera de novo);
+ *     foto que o CLIENTE pôs no Portal, com arquivo no disco (20/10/2026, o usuário: "a imagem só deve ser gerada
+ *     automaticamente, assim como os títulos, se o cliente puser uma imagem real do produto dele no Portal") —
+ *     foto que a equipe subiu no Publicador e imagem por IA nunca são referência (o grupo que já recebeu o kit
+ *     fica só com imagens por IA e, por isso, não gera de novo);
  *  6. nenhum kit em andamento ou aprovado para o rascunho + grupo (D-15: um kit ativo por grupo);
  *  7. o hash das fotos + ficha é diferente do último pedido (`step_state.criativos_auto`): o mesmo produto não
  *     gera de novo a cada save;
@@ -123,7 +128,7 @@ final class CriativosAutomaticosService
             }
 
             $resultados = [];
-            foreach ($this->grupos($r) as $grupo => $fotos) {
+            foreach ($this->grupos($r, $pub) as $grupo => $fotos) {
                 $resultados[] = $this->planejarGrupo($r, $pub, $grupo, $fotos, $usuario);
             }
             if ($resultados === []) {
@@ -401,15 +406,19 @@ final class CriativosAutomaticosService
 
     /**
      * Os grupos de fotos que recebem imagens: a galeria geral e cada cor (só a geral, ou a 1ª cor, com
-     * `todas_as_cores` = false), cada um com as fotos DO CLIENTE que têm arquivo no disco, na ordem do grupo. A
-     * imagem por IA (ativo do acervo com origem `ia`, ou a foto de um criativo aprovado) não conta: referência é a
-     * foto real do produto, e o grupo que já ficou só com as imagens do kit sai da lista — o kit seguinte nunca é IA
-     * recriando IA.
+     * `todas_as_cores` = false), cada um com as fotos que o CLIENTE pôs no Portal ({@see shasDoCliente()}) e que
+     * têm arquivo no disco, na ordem do grupo. Foto que a equipe subiu no Publicador não conta, e imagem por IA
+     * (ativo do acervo com origem `ia`, ou a foto de um criativo aprovado) também não: referência é a foto real do
+     * produto, e o grupo que já ficou só com as imagens do kit sai da lista — o kit seguinte nunca é IA recriando IA.
      *
      * @return array<string, list<PubImagem>>
      */
-    private function grupos(PubRascunho $r): array
+    private function grupos(PubRascunho $r, PubProduto $pub): array
     {
+        $doCliente = $this->shasDoCliente($pub);
+        if ($doCliente === []) {
+            return [];
+        }
         $ordem = $this->referencias->gruposValidos($r); // GENERAL primeiro, depois as cores na ordem do anúncio
         $atribuicoes = DB::table('pub_imagem_atribuicoes as a')
             ->join('pub_imagens as i', 'i.id', '=', 'a.imagem_id')
@@ -426,7 +435,7 @@ final class CriativosAutomaticosService
         $porGrupo = [];
         foreach ($atribuicoes as $a) {
             $img = $imagens->get($a->id);
-            if ($img !== null && ArquivosDeImagem::existe($img->caminho)) {
+            if ($img !== null && isset($doCliente[(string) $img->sha256]) && ArquivosDeImagem::existe($img->caminho)) {
                 $porGrupo[(string) $a->grupo_chave][] = $img;
             }
         }
@@ -520,5 +529,43 @@ final class CriativosAutomaticosService
             DB::table('pub_rascunhos')->where('id', $rascunhoId)
                 ->update(['step_state' => json_encode($mudar($this->lerEstado($rascunhoId)), JSON_UNESCAPED_UNICODE)]);
         });
+    }
+
+    /**
+     * O sha256 das fotos que o CLIENTE pôs no Portal para este produto (20/10/2026, o usuário: "a imagem só deve ser
+     * gerada automaticamente, assim como os títulos, se o cliente puser uma imagem real do produto dele no Portal").
+     * A foto do Portal entra no rascunho pelo `PortalParaRascunhoService::copiarFoto`, com o sha256 do que o
+     * `ConversorParaJpg` devolve (JPEG e PNG inteiros; o resto vira JPEG) — o mesmo cálculo aqui reconhece a foto do
+     * cliente no rascunho, inclusive a trazida antes desta regra. Foto que a equipe subiu no Publicador e imagem por IA
+     * não estão aqui. Cada arquivo é lido uma vez (cache pela foto + caminho + tamanho).
+     *
+     * @return array<string, true>
+     */
+    private function shasDoCliente(PubProduto $pub): array
+    {
+        $ids = app(PreparoIaDoRascunhoService::class)->produtosDoPortal($pub);
+        if ($ids === []) {
+            return [];
+        }
+
+        $shas = [];
+        $fotos = EstruturaProdutoVariacaoImagem::query()->where('company_id', $pub->company_id)->whereIn('produto_id', $ids)
+            ->get(['id', 'caminho', 'tamanho']);
+        foreach ($fotos as $foto) {
+            $chave = 'publicador:criativos-auto:sha-do-portal:'.$foto->id.':'.md5($foto->caminho.'|'.$foto->tamanho);
+            $sha = Cache::get($chave);
+            if (! is_string($sha)) {
+                $conteudo = app(PortalProdutoLeitor::class)->lerImagem((int) $pub->company_id, (string) $foto->caminho);
+                $convertida = $conteudo === null ? null : ConversorParaJpg::converter($conteudo)['conteudo'];
+                if ($convertida === null) {
+                    continue; // arquivo sumido ou formato que nem entra no rascunho: não é referência
+                }
+                $sha = hash('sha256', $convertida);
+                Cache::put($chave, $sha, now()->addDays(30));
+            }
+            $shas[$sha] = true;
+        }
+
+        return $shas;
     }
 }
