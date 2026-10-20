@@ -4367,8 +4367,8 @@ a Visão Geral (179) e o corpo de Publicações (180) além da seção A.
 | **187** | **A fila existe e é alcançável:** a aba leva a ela, dá para ver o que está esperando aprovação, filtrar e aprovar em lote | não |
 | **188** | **APROVAR DE VERDADE** — conferir fotos e preço e liberar a oferta. É o coração do pedido da gestão | não |
 | **189** | Conferir a foto **de perto**, com zoom e marcadores, e agir dali | não |
-| **190** | Comparar a imagem de IA **lado a lado com a original**, com checklist de fidelidade e defeitos | não |
-| **191** | Conferir **preço, conteúdo do anúncio e o histórico** na mesma página, com a prévia do que vai ser enviado | não |
+| ~~**190**~~ | ~~Comparar a imagem de IA lado a lado com a original, com checklist de fidelidade e defeitos~~ · ⚠️ **FORA DE ESCOPO — decisão do usuário em 20/10/2026** | — |
+| ~~**191**~~ | ~~Conferir preço, conteúdo do anúncio e o histórico na mesma página, com a prévia do que vai ser enviado~~ · ⚠️ **FORA DE ESCOPO — decisão do usuário em 20/10/2026** | — |
 | **192** | **Corrigir a foto errada sem sair da revisão** — regenerar só aquela imagem, com problemas, instrução e referências | não |
 | **193** | **O portão fecha o ciclo:** aprovar faz publicar, e falha preserva a revisão com "Tentar de novo" | provável (1 coluna de ligação) |
 | **194** | **A automação ligada atrás do portão** — a decisão da gestão de 14/10 entregue | não |
@@ -4718,6 +4718,28 @@ o cursor, marcadores numerados batendo com as verificações automáticas, minia
 
 ### Phase 190: Revisão detalhada — a página, e a aba Fotos com a comparação lado a lado
 
+⛔⛔ **FORA DE ESCOPO — decisão do usuário em 20/10/2026.** A milestone fica **só com a revisão
+simples** (o painel da Fase 188), para encurtar o caminho até o portão publicar de verdade.
+
+⚠️ **O corte é limpo, e isso foi MEDIDO antes de decidir:** a rota `.../aprovacao/{oferta}/{aba}`
+nunca nasceu (`routes/mlb_anuncios.php:491`); o botão *"Abrir revisão detalhada"* do protótipo
+(`:558`) **nunca foi desenhado** (`TopoDoPainel.jsx:8-17`, PERGUNTA-188-B3 — *"desabilitado com
+explicação"* foi oferecido e **RECUSADO**); e o *"Comparar lado a lado na revisão detalhada"* do
+lightbox (`:756`) também não (`LateralDoLightbox.jsx:37`). **Nenhum link quebrado, nenhum conserto.**
+
+⚠️ **A comparação com o original de referência NÃO se perde** — ela entra no **lightbox**, na
+Fase 189 (plano 189-05), que é da revisão simples.
+
+⚠️ **Sai de capacidade:** 26 REQ-IDs (REVD-01..18, IMG-07..13, MOD-06) — página própria com 4 abas,
+seletor Clássico | Premium, checklist de fidelidade, defeitos por coordenada, tabela de campos com
+contador /60 e "Comentar" por campo, prévia do que vai ao ML e linha do tempo de versões.
+
+⚠️ **DÍVIDA REGISTRADA:** as tabelas de **checklist** e **defeitos** (DADO-07/08/15) existem em
+produção desde a Fase 186 e ficam **sem tela que as preencha**. Não quebra nada — é dado que
+ninguém escreve. **Nada aqui foi apagado: reabrir esta fase ressuscita o escopo inteiro.**
+
+─── *o escopo original fica registrado abaixo, intacto* ───
+
 **Goal**: existe uma página própria de revisão, com a barra fixa que volta **para a mesma posição da
 fila com os filtros mantidos**, o seletor Clássico | Premium, as quatro abas com badge e o resumo de
 aprovação — e a **aba Fotos** completa: galeria arrastável, "Fora da publicação" e "Originais
@@ -4779,6 +4801,11 @@ imagem e o rodapé) e 189 (o lightbox, que esta página também abre).
 
 ### Phase 191: Revisão detalhada — Preço e custos, Conteúdo do anúncio, Pendências e histórico
 
+⛔⛔ **FORA DE ESCOPO — decisão do usuário em 20/10/2026,** junto com a Fase 190: ela era a casca
+desta, e sem a página as abas não têm onde morar. **Nada foi apagado; reabrir restaura o escopo.**
+
+─── *o escopo original fica registrado abaixo, intacto* ───
+
 **Goal**: as outras três abas da revisão detalhada: os **dois cards Clássico × Premium** com a tabela
 "Composição | Origem e atualização | Valor", a **tabela de campos do anúncio** com contador /60 e
 "Comentar" em cada campo mais a **prévia do que será enviado**, e os **ajustes + a linha do tempo de
@@ -4834,8 +4861,16 @@ cada campo).
 revisão: chips de problema, instrução livre, referências originais já marcadas e **envio de até 6
 fotos na hora** — chamando o Creative Engine que **já existe**, nunca reimplementando.
 
-**Depends on**: Fases 188 (o painel e as ações de imagem), 190 (a aba Fotos, de onde também se
-regenera) e 186 (o vínculo durável de referência, que esta fase passa a **escrever**).
+**Depends on**: Fases 188 (o painel e as ações de imagem) e 186 (o vínculo durável de referência,
+que esta fase passa a **escrever**).
+
+⚠️ **A dependência da Fase 190 CAIU em 20/10/2026** — a revisão detalhada saiu do escopo, e a
+regeneração passa a nascer **só no painel**, na coluna de Fotos. ⚠️ **Sem a detalhada ela fica
+MAIS valiosa**, porque o painel passa a ser o único lugar de revisão.
+
+⚠️ **E esta fase é a ÚLTIMA da milestone, por decisão do usuário em 20/10/2026:** a ordem passa a ser
+**189 → 193 → 194 → 192**. A razão é que ela já está bloqueada por duas respostas do outro dev, e
+deixá-la no caminho crítico faria a publicação esperar por alguém de fora do time.
 
 ⚠️ **BLOQUEADA por duas respostas do outro dev** (ver "Decisões em aberto"): como os **chips
 estruturados** se encontram com o `$ajusteOperador` de **texto livre** (IA-03), e se ele pretende
@@ -4954,7 +4989,9 @@ disciplina MIG-01..09. O planejamento decide se a ligação é coluna nova ou de
 as sete condições de segurança intactas, **uma empresa por vez** — e a imagem automática entra na
 **fila de aprovação** em vez de ir ao ar.
 
-**Depends on**: Fases 186-193 — a fila, a revisão, a regeneração e o caminho da publicação.
+**Depends on**: Fases 186, 187, 188, 189 e 193 — a fila, a revisão simples, o lightbox e o caminho
+da publicação. ⚠️ **NÃO depende mais da 190/191** (fora de escopo em 20/10/2026) **nem da 192**,
+reposicionada para **depois** desta fase.
 
 ⚠️ **BLOQUEADA por uma resposta do outro dev:** o que falta do lado dele para destravar
 (`AUTO-07`). A fase **não liga nada** sem a resposta registrada em `.planning/coordenacao/`.
@@ -4999,16 +5036,22 @@ as sete condições de segurança intactas, **uma empresa por vez** — e a imag
  └── 187 (fila "Aguardando aprovação" + as abas da seção A)
        └── 188 (revisão simples: painel 1140px + 4 modais)  ← o portão passa a ser USÁVEL
              ├── 189 (lightbox com zoom 2,5×)
-             │     └── 190 (revisão detalhada: casca + aba Fotos + comparação lado a lado)
-             │           ├── 191 (abas Preço e custos · Conteúdo · Pendências e histórico)
-             │           └── 192 (Gerar novamente com IA) ── BLOQUEADA: 2 respostas do outro dev
-             └── 193 (do aprovado ao ar) ── BLOQUEADA: 1 decisão do usuário (enfileirar automático?)
+             └── 193 (do aprovado ao ar) ── ✅ DESBLOQUEADA (usuário, 14/10: aprovar JÁ publica)
                    └── 194 (ligar a automação + fechamento) ── BLOQUEADA: 1 resposta do outro dev
+                         └── 192 (Gerar novamente com IA, agora a partir do PAINEL)
+                               ── BLOQUEADA: 2 respostas do outro dev
+                               ── ÚLTIMA da fila, fora do caminho crítico (usuário, 20/10/2026)
+
+⚠️ 190 e 191 (revisão detalhada em página própria) — FORA DE ESCOPO em 20/10/2026, por
+   decisão do usuário. Nada ficou órfão: o botão "Abrir revisão detalhada" nunca foi
+   desenhado (PERGUNTA-188-B3, 18/10), a rota nunca nasceu, e a 193 nunca dependeu delas.
 ```
 
 **Onde se pode parar sem deixar nada pela metade:** depois da **188** (dá para aprovar de verdade,
-com a fila e o painel), depois da **191** (a revisão completa) e depois da **193** (o ciclo fechado).
-Parar na **189** ou na **192** também é íntegro — são acréscimos à revisão que já funciona.
+com a fila e o painel) e depois da **193** (o ciclo fechado). Parar na **189** também é íntegro — é
+acréscimo à revisão que já funciona. ⚠️ **Com a 190/191 fora de escopo (20/10/2026), a revisão
+simples é a Única revisão**, e o caminho até o portão fechar é **189 → 193 → 194**, com a **192**
+por último.
 
 #### Coverage Map — Milestone v27.0 (REQ-ID × fase)
 
@@ -5033,10 +5076,10 @@ Parar na **189** ou na **192** também é íntegro — são acréscimos à revis
 | IMG-01..IMG-06 (6) | Phase 188 | Pending |
 | COL-01..COL-06 (6) | Phase 188 | Pending |
 | AMPL-01..AMPL-07 (7) | Phase 189 | Pending |
-| REVD-01..REVD-09 (9) | Phase 190 | Pending |
-| IMG-07..IMG-13 (7) | Phase 190 | Pending |
-| MOD-06 (1) | Phase 190 | Pending |
-| REVD-10..REVD-18 (9) | Phase 191 | Pending |
+| REVD-01..REVD-09 (9) | ~~Phase 190~~ | ⛔ **Fora de escopo (20/10/2026)** |
+| IMG-07..IMG-13 (7) | ~~Phase 190~~ | ⛔ **Fora de escopo (20/10/2026)** |
+| MOD-06 (1) | ~~Phase 190~~ | ⛔ **Fora de escopo (20/10/2026)** |
+| REVD-10..REVD-18 (9) | ~~Phase 191~~ | ⛔ **Fora de escopo (20/10/2026)** |
 | IA-01..IA-10 (10) | Phase 192 | Pending |
 | MOD-07..MOD-10 (4) | Phase 192 | Pending |
 | PUB-01..PUB-10 (10) | Phase 193 | Pending |
@@ -5120,16 +5163,16 @@ moveu**. ⚠️ **As 3 falhas são TODAS ALHEIAS e atribuídas por execução IS
 |---|---|
 | ⚠️⚠️ a **conferência visual do painel**, em produção, na conta **459** — roteiro de **16 itens** em `188-FECHAMENTO.md` §11. ⚠️ **NENHUM executor desta fase viu tela renderizada**, e o roteiro só é executável **depois de um deploy que o usuário autorize** | **usuário** |
 | a **conferência visual da FILA (Fase 187)**, que continua **ABERTA e SEPARADA** — roteiro de 8 itens em `187-FECHAMENTO.md` §11 | **usuário** |
-| o **DEPLOY** da Fase 188, que **não aconteceu** | **usuário** |
+| ~~o **DEPLOY** da Fase 188~~ — ✅ **FEITO em 20/10/2026**: `e250f9fb`, hoje em `origin/main` (conferido por `git branch -r --contains`) | — |
 | ⚠️ **o pedido da outra sessão:** a **Fase 189 já está PLANEJADA** (8 planos em 7 waves, commit `44d67a46`) e há nota pedindo que ela seja executada **ao fechar a 188**. ⚠️ **Registrado; a decisão é do usuário** | **usuário** |
-| o botão *"Abrir revisão detalhada ↗"* e os destinos de `ajuste`/`titulo` (as **duas ressalvas**, e são a **mesma fronteira**) | **Fase 190/191** |
-| o **`✓ {quem}`** das fotos — precisa de `aprovada_por`/`aprovada_em`, que o serviço não expõe | **Fase 190/191** |
+| ~~o botão *"Abrir revisão detalhada ↗"* e os destinos de `ajuste`/`titulo`~~ — ✅ **DEIXARAM DE SER PENDÊNCIA em 20/10/2026**: com a 190/191 fora de escopo o botão simplesmente **não existe**, e as duas ressalvas do fechamento da 188 (CRIT-02 e CRIT-09) viram **decisão registrada** em vez de dívida | — |
+| o **`✓ {quem}`** das fotos — precisa de `aprovada_por`/`aprovada_em`, que o serviço não expõe | ⚠️ **sem dono desde 20/10/2026** (era da 190/191, fora de escopo) — fase futura / quick |
 | o **rótulo legível de variação** (`rotuloDoGrupo` é `private static` em território vetado) — ⚠️ **custo funcional real:** num produto com 3 cores, as fotos aparecem juntas **sem dizer qual é de qual cor** | fase que puder **coordenar com o outro dev** |
 | **PERGUNTA-188-E** — trocar `recusaDoPainel()` (**18 chamadas medidas**) por `back()->withErrors()`, a forma idiomática do Inertia. ⚠️ **Decidido MANTER o conserto do cliente**: risco sem ganho na última wave | fase futura / quick |
 | **PERGUNTA-188-F** — a fixture do gate `casca-do-painel` reflete o servidor (sem o id prefixado) | fase futura |
 | `lerSemComentarios` **destruindo 76%** de `publicador-fila-filtros-187.test.js` (62.656 → 15.249 bytes) — **não consertado porque dezenas de gates em produção dependem dele** | **orquestrador**, quick |
 | as **4 falhas que oscilam** sem mudança de código (2 da Fase 179, 2 do Portal) — ⚠️ **a hipótese do listener é HIPÓTESE**, os dois experimentos saíram verdes | quem mantiver cada suíte |
-| a **escrituração DUPLA** de `aprovacao/` (`ARQUIVOS_NOVOS` + `JSX_DEPOIS_DA_187`), **deliberadamente não unificada** | orquestrador / Fase 191 |
+| a **escrituração DUPLA** de `aprovacao/` (`ARQUIVOS_NOVOS` + `JSX_DEPOIS_DA_187`), **deliberadamente não unificada** | orquestrador / quick (era "Fase 191", fora de escopo em 20/10/2026) |
 | as **DUAS seções `§P`** do `188-FID01.md`, com o mesmo ordinal (a próxima letra livre é **`§S`**) | **Fase 189** |
 | a **PERGUNTA-17** (`mlb_empresa_id` anulável) e o **aviso da PERGUNTA-188-C** (`EditorEmUso` marcado por 3 min, lido por **5** consumidores) | **Fase 194** |
 | a **PERGUNTA-13** (editar foto de anúncio já no ar) | **Fase 193** |
@@ -5155,10 +5198,10 @@ de slots **completamente diferente**. **Não era frágil; era CEGA.**
 | E1 · fila (cabeçalho, faixa de 9, próximo a revisar, filtros, tabela em 3 níveis, lote, rodapé) | **187** (FILA-01..16) |
 | E2 · revisão simples (painel 1140px, 2 colunas, pendências, rodapé) | **188** (REVS-01..14) |
 | E3 · imagem ampliada (lightbox, zoom 2,5×, lateral 320px) | **189** (AMPL-01..07) |
-| E4 · revisão detalhada — barra, abas, resumo, aba Fotos | **190** (REVD-01..09) |
-| E4 · abas Preço e custos · Conteúdo · Pendências e histórico | **191** (REVD-10..18) |
+| ~~E4 · revisão detalhada — barra, abas, resumo, aba Fotos~~ | ⛔ **fora de escopo (20/10/2026)** |
+| ~~E4 · abas Preço e custos · Conteúdo · Pendências e histórico~~ | ⛔ **fora de escopo (20/10/2026)** |
 | E5 · modais Solicitar ajustes · exceção · frete · reprovar imagem · casca comum | **188** (MOD-01..05) |
-| E5 · modal Substituir por foto original | **190** (MOD-06) |
+| ~~E5 · modal Substituir por foto original~~ | ⛔ **fora de escopo (20/10/2026)** |
 | E5 · modal Gerar novamente com IA (chips, instrução, referências, envio de fotos) | **192** (MOD-07..10, IA-01..10) |
 | E5 · modal Aprovar em lote · Toasts | **187** (MOD-11, MOD-12) |
 | F · os 10 estados de exemplo | **186** (conferência de `fin()`/`info()`) + 187 (render da fila) |
@@ -5213,6 +5256,7 @@ de slots **completamente diferente**. **Não era frágil; era CEGA.**
 | ~~18~~ | ✅ **RESOLVIDA POR LEITURA DA ESPECIFICAÇÃO em 15/10/2026 — o D2 é REGRA DE DADO, não de ARQUIVO.** O executor do 187-03 parou e devolveu; a resposta estava no próprio texto e **não precisou do usuário**. `REQUIREMENTS-v27.md:51-53` diz: *"o andamento interno nunca aparece **na lista de Publicadas**"* e termina com *"**Isto é regra de dado, não de tela**"*. O gate da Fase 186 implementou isso por um **proxy de LOCALIZAÇÃO** (*"em nenhum arquivo de `publicacoes/`"*), e o proxy ficou **mais largo que o invariante** — **sétima ocorrência dessa família na milestone**. ⚠️ **E a causa raiz é que nenhum gate de localização poderia funcionar:** `'Aguardando aprovação'` é **a MESMA string em DOIS papéis** — rótulo do estado interno (`andamentoDoPortao.jsx:84`, `:249`) **e** rótulo que o **ABA-02 EXIGE** para a aba (`AbasDaPagina.jsx:73`). Mesma string, significados diferentes; só regra de **dado** distingue. ⚠️ **E o desenho está certo:** a aba se chama como aquilo que ela contém — e mostrá-la no cabeçalho é justamente o que **SEPARA** os dois eixos, em vez de misturar. ➡️ **A cirurgia do executor ENDURECEU o gate**: onde havia UMA asserção agora há **TRÊS** — a exceção de **um arquivo e um rótulo** com o veto escrito; os **outros 7** rótulos internos **seguem proibidos** naquele arquivo, com controle positivo; e **"Aguardando aprovação" segue proibida nos outros 15** arquivos de `publicacoes/`. ⚠️ **Mover o componente de diretório foi considerado e NÃO feito** — seria decisão estrutural para satisfazer um proxy errado | leitura da spec | **nada** |
 
 | ~~19~~ | ✅ **RESOLVIDA POR MEDIÇÃO em 15/10/2026 — o `?etapa=publicado` recorta "Publicado HOJE", o mesmo critério que a faixa conta.** O executor do 187-04 parou e devolveu; **não precisou do usuário**. **Duas medidas decidem:** (1) no protótipo, **conta e filtra usam o MESMO predicado** — `base.forEach(o => cnt[o.status]++)` e `base.filter(o => o.status === S.stage)` (`Aprovacao.dc.html:1213-1214`); (2) a Fase 186 **já corta por dia** na contagem: `->where('andamento', PUBLICADO)->whereDate('updated_at', now()->toDateString())` (`AndamentoDaOfertaService:294-295`), com o rótulo **"Publicado hoje"** (`:292`). ➡️ Logo o filtro **herda o corte do dia**, porque o invariante que importa é **o número do card bater com a lista**. ⚠️ A alternativa (filtrar **todos** os publicados) faria card e lista mostrarem **números diferentes para o mesmo card** — exatamente a divergência que o usuário recusou **duas vezes** nesta milestone (decisões 9 e 16). **Vale para as waves 187-06/07/08** | medição | **nada** |
+| ~~20~~ | ✅ **DECIDIDA 20/10/2026 — a REVISÃO DETALHADA SAI DO ESCOPO: a milestone fica só com a REVISÃO SIMPLES.** Palavras do usuário: *"vamos descartar a revisão completa do plano, vamos ficar apenas com a revisão simples, isso acho que pode acelerar o plano"*. ⚠️ **Saem as Fases 190 e 191** (26 REQ-IDs: REVD-01..18, IMG-07..13, MOD-06). ⚠️ **O corte foi MEDIDO ANTES de decidir, e é limpo:** a rota `.../aprovacao/{oferta}/{aba}` nunca nasceu (`routes/mlb_anuncios.php:491`); o botão *"Abrir revisão detalhada"* (`:558`) **nunca foi desenhado** (`TopoDoPainel.jsx:8-17`), por decisão do próprio usuário em 18/10 (PERGUNTA-188-B3, *"sem botão, porque não há o que fazer com ele"* — e *"desabilitado com explicação"* foi oferecido e **RECUSADO**); e o *"Comparar lado a lado"* do lightbox (`:756`) também não (`LateralDoLightbox.jsx:37`). ➡️ **Nenhum link órfão, nenhum conserto** — a régua "nada nasce decorativo", exercida na 188, é exatamente o que fez o corte sair de graça. ⚠️ **GANHO REAL medido:** a **Fase 193 nunca dependeu da 190/191** (depende de 186/187/188), então o caminho até publicar de verdade era `189→190→191→192→193→194` e passa a ser **`189→193→194`** — **seis fases restantes viram três**. ⚠️ **A 192 é reancorada no PAINEL e vai para o FIM** (`189→193→194→192`): ela já está bloqueada por duas respostas do outro dev, e no caminho crítico faria a publicação esperar por alguém de fora. ⚠️ **NÃO se perde a comparação com o original de referência** — ela entra no lightbox, na Fase 189 (plano 189-05). ⚠️ **DÍVIDA REGISTRADA:** checklist de fidelidade e defeitos por coordenada (DADO-07/08/15) existem em produção desde a Fase 186 e ficam **sem tela que os preencha** — dado que ninguém escreve, não defeito. ⚠️ **Nada foi apagado:** as duas fases seguem no ROADMAP com o escopo original intacto, marcadas ⛔ FORA DE ESCOPO; reabrir restaura tudo | usuário | **190 e 191 fora; 192 reancorada na 188 e movida para o fim; 194 deixa de depender de 190-192; duas ressalvas do fechamento da 188 (CRIT-02, CRIT-09) viram decisão** |
 
 **⚠️ RESPONDIDAS por medição em 14/10/2026, não reabrir:**
 

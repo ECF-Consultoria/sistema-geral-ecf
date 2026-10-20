@@ -4432,3 +4432,70 @@ escreve no lugar errado.**
 arquivo marcam **decisão respondida**, não requisito entregue. Quem rastreia é o **Coverage Map** do
 `ROADMAP.md`, escrito no fechamento. **`requirements.mark-complete` dá `not_found` para IDs de
 `REQUIREMENTS-vNN.md`.**
+
+---
+
+## ⛔ MUDANÇA DE ESCOPO DA v27.0 — 20/10/2026: só a REVISÃO SIMPLES
+
+**Decisão do usuário, nas palavras dele:** *"vamos descartar a revisão completa do plano, vamos
+ficar apenas com a revisão simples, isso acho que pode acelerar o plano"*.
+
+**Fases 190 e 191 (revisão detalhada em página própria) — FORA DE ESCOPO.** Registradas como
+decisão **20** no `ROADMAP.md`. ⚠️ **Nada foi apagado:** as duas entradas seguem no ROADMAP com os
+**29 critérios de sucesso intactos**, marcadas ⛔; reabrir restaura o escopo inteiro.
+
+### ⚠️ Por que o corte saiu de graça — MEDIDO ANTES de decidir, não depois
+
+| o que poderia ficar órfão | medição |
+|---|---|
+| a rota `.../aprovacao/{oferta}/{aba}` | **nunca nasceu** — `routes/mlb_anuncios.php:491` diz que é da 190/191 e *"não nasce aqui"* |
+| o botão *"Abrir revisão detalhada"* do protótipo (`:558`) | **nunca foi desenhado** — `TopoDoPainel.jsx:8-17`, por decisão do usuário em 18/10 (PERGUNTA-188-B3): *"sem botão, porque não há o que fazer com ele"*; *"desabilitado com explicação"* foi oferecido e **RECUSADO** |
+| *"Comparar lado a lado na revisão detalhada"* (`:756`) | **não desenhado** — `LateralDoLightbox.jsx:37` |
+| quem cria a oferta na fila | **ninguém, ainda** — varri `app/`: dos 27 arquivos que tocam `PubAprovacaoOferta`, **nenhum a cria**; quem cria é a **Fase 194** |
+
+➡️ **Nenhum link quebrado, nenhum conserto.** ⚠️ **E a lição para a próxima mudança de escopo:**
+foi a régua **"nada nasce decorativo"** — exercida cinco vezes nesta milestone, sempre recusando
+botão sem destino, `onClick` vazio e `disabled` decorativo — que fez este corte custar **zero
+conserto**. Tela que nasce com link para fase futura cobra o preço justamente aqui.
+
+### O ganho, medido
+
+A **Fase 193 nunca dependeu da 190/191** (depende de 186, 187 e 188). Logo:
+
+| | antes | depois |
+|---|---|---|
+| caminho até publicar de verdade | `189 → 190 → 191 → 192 → 193 → 194` | **`189 → 193 → 194`** |
+| fases restantes na milestone | 6 | **3** (+ a 192 ao final) |
+
+### O que muda no plano
+
+- **192** reancorada: depende de **188** (o painel), não mais da 190. Regenerar nasce **só no
+  painel**, na coluna de Fotos. ⚠️ **E ela vai para o FIM:** ordem `189 → 193 → 194 → 192`, porque
+  está **bloqueada por duas respostas do outro dev** e no caminho crítico faria a publicação esperar
+  por alguém de fora. ⚠️ **Sem a detalhada ela fica MAIS valiosa**, não menos: o painel passa a ser
+  o único lugar de revisão.
+- **194** deixa de depender de 190, 191 e 192.
+- **26 REQ-IDs** saem do Coverage Map como ⛔ Fora de escopo: **REVD-01..18, IMG-07..13, MOD-06**.
+- ✅ **Duas ressalvas do fechamento da 188 deixam de ser pendência e viram decisão:** CRIT-02 (o
+  botão da detalhada) e CRIT-09 (os destinos de `ajuste_em_aberto` e `titulo_longo`). Eram a **mesma
+  fronteira**, e a fronteira foi fechada por decisão em vez de por código.
+- ⚠️ **A comparação com o original de referência NÃO se perde** — entra no **lightbox**, na Fase
+  189, plano **189-05** (que estava em execução quando esta decisão foi tomada, e **não foi afetado**:
+  o lightbox é da revisão simples).
+
+### ⚠️ DÍVIDA REGISTRADA — dado em produção que fica sem tela
+
+As tabelas de **checklist de fidelidade** e **defeitos por coordenada** (DADO-07, DADO-08, DADO-15)
+existem em produção desde a Fase 186 e ficam **sem nenhuma tela que as preencha**. ⚠️ **Não quebra
+nada e não é defeito** — é dado que ninguém escreve. `PubAprovacaoDefeito` e o checklist seguem
+alcançáveis por `PainelDeRevisaoService`. **Se a 190 for reaberta, o dado já está lá.**
+
+### ⚠️ Duas defasagens factuais corrigidas de passagem
+
+1. A tabela de pendências dizia *"o **DEPLOY** da Fase 188, que **não aconteceu**"*. **Aconteceu:**
+   `e250f9fb` está em `origin/main` (conferido por `git branch -r --contains`), e a 187 também
+   (`7791d7aa`). ⚠️ **Mas "deployado" não é "usável":** a fila nasce **vazia** porque nada cria
+   oferta, e **as conferências visuais das Fases 187 e 188 pelo usuário seguem ABERTAS**.
+2. O diagrama de dependências dizia que a **193** estava *"BLOQUEADA: 1 decisão do usuário"*. Ela
+   está **DESBLOQUEADA desde 14/10** (aprovar JÁ publica) — o próprio bloco da fase já dizia isso, e
+   só o diagrama ficou para trás.
