@@ -1881,3 +1881,10 @@ Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.
 - **Promoção automática pegou** em anúncio novo da #459 em 21/10 (16% OFF), ao contrário do "No candidates" de 10/10.
 - **O tipo "Criado-mudo" do Planejamento** é termo vetado pelo ML; o rótulo vem da TABELA do catálogo (semeada por
   `config/estrutura_geracao.php`, mantida pela tela admin) — renomear lá, não na config.
+- **Tempo do preparo, medido em produção (21/10, produto A da #459):** título 10 s, Modelo 7 s, descrição 4 s (os modelos
+  já são `flash-lite`/`flash` — trocar de modelo não é a alavanca), imagens 58 s (planejar 16 s, gerar as 3 em paralelo
+  ~14 s, juiz ~5 s, espera do `AplicarCriativosAutomaticosJob`, aplicar 4 s). Desde 21/10 são DUAS cadeias
+  (`despacharCadeias`): [título → Modelo] e [descrição → imagens] — as imagens seguem depois da descrição da IA por
+  decisão do usuário (elas leem a descrição do rascunho). O aplicar espera 5 s (era 20) e a tela consulta a cada 5 s só
+  enquanto a IA trabalha. O planejamento do kit (16–19 s, uma chamada de LLM) é do Creative Engine: combinar com o dono
+  antes de mexer.

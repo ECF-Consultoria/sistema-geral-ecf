@@ -18,6 +18,7 @@ branch: fix/demo-23-10
 | N16 | Vitrine abre em "Todos"; erro do Sincronizar pelo `mensagemDe`. |
 | N11/H3 | `salvandoRef` impede 3 POST; aviso repetido junto do Salvar; PickerLista sem `message` cru. |
 | H7 | Aceitar ocupa a linha; Descartar é link com 2º clique. |
+| Velocidade | Preparo em duas cadeias paralelas ([título → Modelo] e [descrição → imagens]); aplicar as imagens espera 5 s (era 20); editor e vitrine consultam a cada 5 s enquanto a IA trabalha. Medido antes em produção: ~80 s de trabalho em sequência + ~14 s parados + até 20 s até a tela ver. |
 
 ## Gates
 - PHP: 182 testes do recorte (DescricaoIa, IaParaRascunho, PreviaDoAnuncio, AnuncioIa, PalavrasChave,
