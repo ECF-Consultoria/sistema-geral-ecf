@@ -323,7 +323,32 @@ vazia, as 9 normalizações do CSS, §4b, §4c — incluindo **§4c.3, o scratch
 glob **não é recursivo**: um serviço em `Aprovacao/Publicacao/` **não seria varrido** e o gate da
 única porta **passaria por omissão** para ele. O lugar não é estilo; é cobertura.
 
-**NÃO MEXE (e tem de continuar com a contagem IDÊNTICA — mudou, **PARE e devolva**):**
+**NÃO MEXE — ⚠️ e o invariante NÃO é "contagem idêntica", é "contagem não mudada POR VOCÊ":**
+
+> ⚠️⚠️ **CORRIGIDO EM 20/10/2026 pelo orquestrador, e a correção veio de um achado do executor do
+> `193-01`.** A redação original dizia *"tem de continuar com a contagem IDÊNTICA — mudou, PARE e
+> devolva"*. **Ela já estava obsoleta quando foi escrita**, e um executor que a seguisse ao pé da letra
+> **PARARIA POR NADA.**
+>
+> **MEDIDO:** o commit **`56ade5f0`** (AG-07, de **outra sessão**) acrescentou um expositor só-leitura
+> (`LeituraDoAgente`) à lista do `andamento-um-lugar-so`, **com a prova que a estrutura do gate cobra**,
+> e remediu o manifesto: **`assertions=20 → 21`** e, no composto que inclui aquele filtro,
+> **`assertions=258 → 259`**. ⚠️ **O próprio `contagens-186-09.txt` declara a razão EM LINHA**, com as
+> palavras *"Remedido, nao ajustado"* — que é exatamente a disciplina certa.
+>
+> ➡️ **A pergunta que o executor faz NÃO é *"o número é o mesmo?"*, e sim *"o número mudou por causa
+> do MEU trabalho?"*.** Se mudou por commit alheio **com a razão escrita no manifesto**, isso **não é
+> regressão da 193** e **não é motivo de parada**: meça, atribua por **`git show --name-only` do commit
+> que criou/alterou o arquivo** (⚠️ **nunca por range** — o range engloba os seus próprios commits, e a
+> 189-07 caiu nisso), **registre na SUMMARY** e siga. ⚠️ **Se mudou por causa do SEU trabalho, aí sim:
+> PARE e devolva**, porque a Fase 186 está **em produção** e a decisão dela foi *"arquivo novo no portão
+> NÃO entra aqui sozinho"*.
+>
+> ⚠️ **E não fixe os números aqui de novo.** Escrever `21`/`259` nesta régua recriaria o mesmo defeito
+> daqui a um commit alheio — é a família *"âncora em número que muda legitimamente"*, com **QUINZE**
+> ocorrências consertadas na raiz nesta milestone e **zero** por elevação de número. **A fonte do número
+> é o manifesto; esta régua só diz de quem ele pode mudar.**
+
 
 - `contagens-186-09.txt` (`transversais`, `sem-segundo-passo`, `andamento-um-lugar-so`, …) —
   ⚠️ o docblock de `PRODUCAO_PHP_DO_PORTAO` diz, textualmente: *"**Arquivo novo no portão NÃO entra

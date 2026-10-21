@@ -4511,7 +4511,7 @@ alcançáveis por `PainelDeRevisaoService`. **Se a 190 for reaberta, o dado já 
 
 ## ✅ FASE 189 FECHADA — 20/10/2026 · `PLACAR-189: OK=5 · RESSALVA=3 · REPROVA=0`
 
-**8 planos em 7 waves.** Fechamento medido em `189-FECHAMENTO.md` (1407 linhas) + `FechamentoDaFase189Test.php`
+**8 planos em 7 waves.** Fechamento medido em `189-FECHAMENTO.md` (**1432 linhas** — ⚠️ eu escrevi **1407**, que era a medida do primeiro commit do fechamento; os três `docs(189-08)` seguintes o cresceram, e o executor do 193-01 pegou a divergência) + `FechamentoDaFase189Test.php`
 (9 métodos / 3 ids). **Baselines no fechamento:** BUILD **exit 0 / 44 s** · MANIFEST **498 / 203** · JS
 **6012 / 6011 pass / 1 fail / 0 skipped** · PHP **RECORTE 2631 / 24.041 / 0** · protótipo **1432 linhas,
 `sha256 68624883ce35547e`, não se moveu**. ⚠️ **NÃO DEPLOYADA.**
