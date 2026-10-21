@@ -526,6 +526,36 @@ class EnfileirarAoAprovarTest extends TestCase
             $this->assertSame((int) $item->id, (int) $oferta->fila_item_id, "a oferta não foi anexada ao item `{$vivo}` que já existia");
         }
 
+        // ═══ ⚠⚠ O CASO QUE A MUTAÇÃO M1 ME OBRIGOU A ESCREVER ══════════════════════
+        //
+        // ⚠⚠ **A mutação que alarga a sonda de item vivo para TAMBÉM aceitar os 4 estados terminados
+        // SOBREVIVEU** aos dois laços acima — e a causa é medida: naquelas fixtures o item terminado
+        // tem `produto_ativo` **NULO**, então quem o descarta é o `where('produto_ativo')` e **não** o
+        // filtro de `status`. ➡ **Os dois laços provavam o `produto_ativo`, não o `status`** — para o
+        // teste, o filtro de `status` era invisível.
+        //
+        // ⚠ O estado em que ele É o único discriminador é o **INCONSISTENTE**: item terminado que
+        // ainda OCUPA o produto (`produto_ativo` preenchido). Ele é possível — escrita parcial,
+        // defeito em outro lugar — e o dano é preciso: sem o filtro de `status` a oferta seria ligada
+        // a um item **que nunca vai publicar**, o painel leria as 4 colunas de um item morto e o
+        // reconciliador acharia que há publicação em voo. ➡ O invariante de verdade é **a oferta
+        // NUNCA ser ligada a item fora de `VIVOS`**, e é isso que se assevera.
+        $incoerente = $this->cenario($company);
+        $zumbi = $this->itemManual($incoerente, PubFilaPublicacaoItem::FALHOU, viva: true);
+        $this->assertSame((int) $incoerente['produto']->id, (int) $zumbi->produto_ativo, 'a fixture do estado incoerente não ficou incoerente: o caso mediria outra coisa');
+        $this->assertSame(PubFilaPublicacaoItem::FALHOU, $zumbi->status);
+
+        $daOferta = $this->aprovarAsDuas($incoerente, $admin, enfileirar: false);
+
+        $this->assertNotSame((int) $zumbi->id, (int) $daOferta->fila_item_id, 'a oferta foi ligada a um item FORA de `VIVOS`: ele nunca vai publicar, e o painel leria a conferência de um item morto');
+
+        // ⚠ SEM `if`, de propósito: asserção dentro de ramo faz a CONTAGEM do manifesto depender do
+        // comportamento medido, e aí o número muda quando o comportamento muda — a mesma família que
+        // já me custou um 26 → 27 nesta wave. `null` (nenhuma ligação) também satisfaz a negativa, e
+        // está certo: não ligar é melhor que ligar a item morto.
+        $statusLigado = $daOferta->fila_item_id === null ? null : $daOferta->filaItem?->status;
+        $this->assertNotContains($statusLigado, PubFilaPublicacaoItem::SEM_PUBLICAR, 'a oferta ficou ligada a item que já terminou sem publicar');
+
         $this->assertSame([], Http::recorded()->all(), 'enfileirar não faz requisição nenhuma');
     }
 
@@ -773,13 +803,26 @@ class EnfileirarAoAprovarTest extends TestCase
         };
         $this->app->instance(PublicacaoDoPortaoService::class, $espiao);
 
+        // ⚠⚠ O NÍVEL DE REFERÊNCIA, MEDIDO FORA DE `mover()` — CONSERTO DE UM FURO QUE A CAMPANHA DE
+        // MUTAÇÃO ACHOU NA MINHA PRÓPRIA SONDA, não zelo. A primeira redação asseverava
+        // `assertGreaterThan(0, $nivel)`, e a mutação que troca a `DB::transaction` de `mover()` por
+        // uma função anónima executada na hora **SOBREVIVEU**: o `RefreshDatabase` abre uma transação
+        // própria em volta de **cada caso**, então `transactionLevel()` já vem **1** sem `mover()` abrir
+        // nada — a asserção era **vazia por construção**, satisfeita pelo próprio arcabouço de teste.
+        // ➡ O que discrimina é **estritamente maior que a referência**.
+        $referencia = \Illuminate\Support\Facades\DB::transactionLevel();
+
         $movida = app(AndamentoDaOfertaService::class)->mover($c['classico'], PubAprovacaoOferta::APROVADO, $admin);
 
         // ⚠️ UM CAMINHO SÓ (PUB-09): exatamente UMA chamada ao enfileiramento por aprovação.
         $this->assertSame(1, $espiao->chamadas, 'o gancho chamou o enfileiramento mais de uma vez — ou nenhuma');
 
-        // ⚠️ DENTRO da transação: `transactionLevel()` > 0 no instante da chamada.
-        $this->assertGreaterThan(0, $espiao->nivelDeTransacao, 'o gancho roda FORA da transação: enfileirar poderia sobreviver a um rollback da aprovação');
+        // ⚠⚠ DENTRO da transação QUE `mover()` ABRIU: nível **estritamente maior** que o de fora.
+        $this->assertGreaterThan(
+            $referencia,
+            $espiao->nivelDeTransacao,
+            "o gancho roda FORA da transação que `mover()` abre (nível {$espiao->nivelDeTransacao} contra referência {$referencia}): enfileirar sobreviveria a um rollback da aprovação"
+        );
 
         // ⚠️ E DEPOIS dos três campos: a prova do que foi aprovado já estava na linha.
         $this->assertSame(PubAprovacaoOferta::APROVADO, $espiao->jaGravado['andamento']);
