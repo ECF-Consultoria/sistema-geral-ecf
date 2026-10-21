@@ -15,15 +15,48 @@ preenche este arquivo. ⚠️ **Nenhum plano "ajusta" baseline: ACIMA é esperad
 ## §1 — A FORMA FIXA (o `193-01` preenche o que está como `A MEDIR`)
 
 ```
-PARTIDA:   A MEDIR    <- `git rev-parse --short HEAD`, a PRIMEIRA acao do 193-01, antes de qualquer leitura
-COMMIT:    A MEDIR
-BUILD:     A MEDIR    <- so para NAO-REGRESSAO: esta fase nao edita .jsx
-MANIFEST:  A MEDIR
-JS:        A MEDIR
-PHP:       A MEDIR    <- o RECORTE (tests/Unit/Publicador + tests/Feature/Publicador), pelo --suite php
-RECORTE:   A MEDIR    <- tests/Feature/Publicador/Aprovacao, medido separadamente
+PARTIDA:   c4529cca   <- capturada na PRIMEIRA acao do 193-01, antes de qualquer leitura
+COMMIT:    7a29677c   <- o commit da tarefa 2 (o de docs desta wave vem depois dele)
+BUILD:     exit 0 · 121 s · "built in 1m 53s"
+MANIFEST:  498 entradas / 203 paginas  (pelo JSON; controle `Aprovacao.jsx` PRESENTE, isca `NaoExiste9z7.jsx` AUSENTE)
+JS:        6012 / 6011 pass / 1 fail / 0 skipped   (exit 0 — a falha e a pre-existente da Fase 87)
+PHP:       2650 / 24278 / 0                        (exit 0 — o RECORTE, pelo --suite php)
+RECORTE:   353 / 6035 / 0                          (exit 0 — tests/Feature/Publicador/Aprovacao)
 PROTOTIPO: design_handoff_publicador/Aprovacao.dc.html · 1432 linhas · sha256 68624883ce35547e
 ```
+
+⚠️⚠️ **COMO ESTAS LINHAS FORAM MEDIDAS — e por que a PRIMEIRA tentativa foi DESCARTADA**
+
+Todas medidas em **20-21/10/2026**, **em ISOLAMENTO**, e o isolamento foi **provado por linha de
+comando, nao por nome de processo**: dos 22 `node.exe` vivos na maquina, **zero** era
+`node --test`, `vite` ou `npm` (eram Adobe CC, runtimes do Codex e servidores MCP), e `php.exe`
+estava em **0** antes de cada rodada de PHP. **Nao houve build nem outra suite concorrente.**
+
+⚠️⚠️ **A PRIMEIRA MEDICAO DO `--suite php` FOI INVALIDADA, E A CAUSA E MEDIDA:** ela rodou
+19 min (23:26:41 → 23:45:48 UTC) e devolveu `2640 / 24105 / **4**`. As 4 falhas nao eram as
+previstas na §4. ⚠️ **Durante aquela rodada, OUTRA SESSAO commitou `56ade5f0`** (AG-07 do Agente
+ECF Publicador), que **criou** `app/Services/Publicador/Agente/LeituraDoAgente.php` e
+**acrescentou 10 linhas** a `FechamentoDaFase186Test.php`, pondo aquele arquivo na lista de
+expositores do gate `andamento-um-lugar-so`. ➡️ **A suite mediu uma arvore que se moveu por baixo
+dela** — *"suite longa em arvore compartilhada mede um alvo que se move"*, agora com o alvo sendo
+um **commit alheio no meio da rodada**. A prova de que era isso: o *stack trace* da falha aponta
+`assertSame` na linha **903**, e o arquivo em HEAD tem a mesma linha na **913**.
+
+➡️ **A medicao valida e a SEGUNDA**, com `HEAD` **conferido no inicio E no fim** (`7a29677c` nas
+duas pontas, logo a arvore **nao** se moveu): `2650 / 24278 / **0**`, 861 s, `exit` real `0`.
+
+⚠️ **O `exit` foi lido de `$?` IMEDIATAMENTE, nunca de um `tail`/pipe na frente** — e isso nao e
+zelo: na primeira rodada o harness saiu **1** e a notificacao do processo em background reportou
+**"exit code 0"**, porque o ultimo comando do composto era um `tail`, que sai sempre 0.
+
+### A aritmetica do Δ — fechada, e cada parcela atribuida pelo commit que CRIOU o arquivo
+
+| parcela | testes | atribuicao (`git log --diff-filter=A`, **nunca por range**) |
+|---|---|---|
+| fechamento da Fase 189 | **2640** | a medicao dele, em `189-FECHAMENTO.md` |
+| `tests/Feature/Publicador/Agente/TelaDoAgenteTest.php` | **+6** | ⚠️ **ALHEIO** — criado por `56ade5f0` (AG-07, outra sessao) |
+| `tests/Feature/Publicador/Aprovacao/SchemaDoPortaoDaPublicacaoTest.php` | **+4** | **MEU** — `7a29677c` |
+| **esperado** | **2650** | **MEDIDO: 2650** ✅ |
 
 **A procedência de cada linha — o comando exato:**
 
@@ -109,4 +142,50 @@ que o controle positivo é a `Aprovacao.jsx`, com a **isca** `resources/js/Pages
 ao lado.
 
 ⚠️ **E esta fase NÃO edita `.jsx` nenhum** (§1-M6 da `193-REGUA.md`): o `build` aqui é **só** prova
-de não-regressão, e o número do manifest tem de ficar **IGUAL**.
+de não-regressão, e o número do manifest tem de ficar **IGUAL**. ⚠️ **Medido e IGUAL: 498 / 203.**
+
+---
+
+## §6 — ⚠️ AS FALHAS ATRIBUÍDAS POR EXECUÇÃO ISOLADA (preenchido pelo `193-01`)
+
+⚠️ **A §4 previa falhas que NÃO apareceram** (`CalcularFaixaTest`, `CompanyServiceTypeTest` e
+`Phase39` ficam fora do recorte; os dois de `CockpitDaContaTest` e os dois de
+`SincronizaPortalCompletoTest` **passaram**). As que apareceram na rodada **descartada** são
+outras, e cada uma foi atribuída **rodando o arquivo SOZINHO**:
+
+| falha (por SEMÂNTICA, nunca por linha) | isolado | atribuição |
+|---|---|---|
+| `FechamentoDaFase186Test > a escrita de andamento mora num lugar so em app inteiro com isca` | **PASSA** (`1 passed / 21 assertions`, em **2** rodadas) | ⚠️ **ALHEIA:** acusava `app/Services/Publicador/Agente/LeituraDoAgente.php`, que era **untracked WIP de outra sessão** (`git status` → `??`) na hora da varredura. Quem a resolveu foi o commit **`56ade5f0`** daquela sessão, acrescentando o arquivo à lista de expositores **com prova**. É a família *"o gate é mais largo que o invariante"*, e o remédio aplicado foi o que o próprio docblock do gate prescreve |
+| `PortalFotosTest > arquivo sumido e contado com o motivo` | **PASSA** | ordem / corrida de `storage/framework/testing` |
+| `PortalFotosTest > arquivo que nao e imagem e contado como formato` | **PASSA** (os três no mesmo run isolado: `13 passed / 36 assertions`) | idem |
+| `PortalFotosTest > publicacao que comeca durante a copia impede a atribuicao da foto` | **PASSA** | idem |
+
+➡️ **Nenhuma é regressão desta fase**, e **nenhum `REF_PHP_FALHAS` foi criado**. ⚠️ Na medição
+**válida** (HEAD estável nas duas pontas) o recorte deu **0 falhas** — não há nada a tolerar.
+
+| JS — a única falha aceitável | isolado | atribuição |
+|---|---|---|
+| `estrutura-grade-glide.test.js` → *"Características secundárias nasce recolhido (é o grupo que mais infla)"* | **19 / 18 pass / 1 fail / 0 skipped** | **pré-existente, Fase 87.** O código tem `RECOLHIDOS_INICIAIS = []` e o teste espera `[G_SECUND]`. ⚠️ **NÃO corrigida** |
+
+⚠️ **`0 skipped` nas duas pontas do JS** — a degradação para `skip` por `public/build/` ausente
+**não** ocorreu, porque o `build` rodou **antes** e **sozinho**.
+
+---
+
+## §7 — ⚠️⚠️ AVISO PARA AS WAVES `193-02` A `193-05`: DOIS NÚMEROS DA RÉGUA FICARAM OBSOLETOS
+
+A `193-REGUA.md` §5 manda conferir que `contagens-186-09.txt` **não mude**, com a instrução
+*"mudou, PARE e devolva"*. ⚠️ **Ele mudou — e NÃO foi por trabalho desta fase.** O commit
+**`56ade5f0`** (AG-07, outra sessão, 20/10/2026) remediu dois ids daquele manifesto, declarando
+textualmente *"Remedido, nao ajustado"*:
+
+| id de `contagens-186-09.txt` | antes | **agora** |
+|---|---|---|
+| `andamento-um-lugar-so` | `tests=1 assertions=20` | `tests=1` · **`assertions=21`** |
+| `transversais` | `tests=12 assertions=258` | `tests=12` · **`assertions=259`** |
+
+➡️ **A mudança é legítima** (o `+1` é o `assertFileExists` do **terceiro** expositor, que a própria
+estrutura do gate cobra por expositor). ⚠️ **O que a próxima wave NÃO deve fazer é tratar
+`21`/`259` como regressão** — o que está velho é a referência da régua, não o gate. ⚠️ **E não
+deve "consertar" a régua tampouco:** `193-REGUA.md` e os `193-NN-PLAN.md` não pertencem a plano
+nenhum. **Dono: usuário/orquestrador.**
