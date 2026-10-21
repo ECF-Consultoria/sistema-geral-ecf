@@ -205,19 +205,50 @@ class PublicacaoDoPortaoService
 
     /**
      * Os andamentos em que a oferta **já passou pelo portão**: irmã nestes estados **não** barra o
-     * enfileiramento, porque alguém já a conferiu.
+     * enfileiramento, porque **uma pessoa já a aprovou**.
      *
-     * ⚠️ Lista **por significado, não por exclusão**. `falha` fica **FORA de propósito**: ela já foi
-     * aprovada uma vez (`mover(FALHA)` preserva `versao_aprovada`/`aprovado_por`/`aprovado_em`), mas
-     * quem está em `falha` **não está indo ao ar agora** — e "Tentar de novo" é o caminho próprio
-     * dela (193-04). Incluí-la aqui faria uma oferta que falhou arrastar a irmã para a fila sem a
-     * irmã ter sido reconferida. ⚠️ `aguardando_aprovacao`, `em_revisao_ecf`, `ajustes_solicitados`
-     * e `preparando` ficam fora pelo motivo direto: **ninguém terminou de revisar**.
+     * ⚠️ Lista **por significado, não por exclusão** — e o significado é exatamente este: *"alguém
+     * aprovou esta modalidade"*. `aguardando_aprovacao`, `em_revisao_ecf`, `ajustes_solicitados` e
+     * `preparando` ficam **fora** pelo motivo direto: **ninguém terminou de revisar**.
+     *
+     * ═══ ⚠️⚠️ `falha` ENTROU — **DECISÃO 25 DO USUÁRIO (21/10/2026)**, e a razão é MEDIDA ════════
+     *
+     * ⚠️⚠️ **A RAZÃO ANTIGA ESTAVA ESCRITA AQUI E ERA FALSA PARA ESTE ESTADO.** Ela dizia que
+     * incluir `falha` *"faria uma oferta que falhou arrastar a irmã para a fila sem a irmã ter sido
+     * reconferida"*. ➡️ **MEDIDO em `PubAprovacaoOferta::TRANSICOES`, por alcançabilidade:**
+     *
+     *   · quem aponta para `falha`      → **só** `publicando`     (`PUBLICANDO => [PUBLICADO, FALHA]`)
+     *   · quem aponta para `publicando` → `aprovado` e `falha`     (`FALHA => [PUBLICANDO]`)
+     *   · logo o **único** caminho de entrada no ciclo `{publicando, falha}` vindo de fora é
+     *     **`aprovado`** — e `aprovado` só se alcança por `mover(APROVADO)`, o ato de aprovar.
+     *
+     * ➡️ **Tudo que está em `falha` JÁ FOI APROVADO POR UMA PESSOA**, e `mover(FALHA)` **preserva**
+     * `versao_aprovada`/`aprovado_por`/`aprovado_em` (medido em `mover()`). A irmã em `falha` **não
+     * é "modalidade que ninguém revisou"** — a objeção antiga simplesmente **não se aplica** a ela.
+     * ⚠️ Há asserção neste plano que mede a alcançabilidade **no próprio grafo**, para que a razão
+     * acima deixe de valer no instante em que o grafo mudar.
+     *
+     * ═══ ⚠️⚠️ O BECO QUE A DECISÃO 25 FECHA (medido pelo plano 193-04, item `193-I`) ════════════
+     *
+     * A fila publica o **produto inteiro**, então num produto com **dois alvos ativos** uma
+     * publicação que falha deixa as **DUAS** ofertas em `falha` ao mesmo tempo. Com `falha` fora
+     * desta lista, o *"Tentar de novo"* de **cada** uma recusava **nomeando a outra** — e
+     * `TRANSICOES[falha] = [publicando]` é a **única** saída de `falha`. ➡️ **Nenhuma das duas podia
+     * ser retentada pela tela**: um beco sem mensagem que a pessoa pudesse resolver.
+     *
+     * ═══ ⚠️⚠️ E ISTO **NÃO** AFROUXA A DECISÃO 23 ═════════════════════════════════════════════
+     *
+     * **NÃO SE PUBLICA O QUE NINGUÉM REVISOU** continua valendo inteiro: irmã em
+     * `aguardando_aprovacao`, `em_revisao_ecf`, `ajustes_solicitados` ou `preparando` **CONTINUA
+     * BARRANDO**, com o motivo nomeando a modalidade. O que mudou é só o reconhecimento de que
+     * `falha` **é** um estado pós-aprovação. ⚠️ A prova é por **IGUALDADE DE CONJUNTO** desta
+     * constante — nunca por piso —, para que incluir um quinto estado por descuido **reprove**.
      */
     public const JA_PASSARAM_PELO_PORTAO = [
         PubAprovacaoOferta::APROVADO,
         PubAprovacaoOferta::PUBLICANDO,
         PubAprovacaoOferta::PUBLICADO,
+        PubAprovacaoOferta::FALHA,
     ];
 
     /**
@@ -575,6 +606,48 @@ class PublicacaoDoPortaoService
             'motivo' => null,
             'irmas_ativas_nao_aprovadas' => [],
         ];
+    }
+
+    /**
+     * ⚠️⚠️ **DECISÃO 26 DO USUÁRIO (21/10/2026) — O MOTIVO DA RECUSA PARA DE VOLTAR ATRÁS.**
+     *
+     * **O problema, medido pelo plano 193-04 (pergunta `193-04/B`):** a action do *"Tentar de
+     * novo"* roda `enfileirar()` e `tentarDeNovo()` **numa transação só** — o que **está certo** e
+     * **elimina por construção** o estado *"`publicando` com o item terminado"*. ⚠️ **Mas na recusa
+     * o `rollback` leva embora a linha de histórico** que o {@see self::recusar()} acabou de
+     * escrever. A pessoa via o motivo no `422` e **nada ficava registrado** — justamente no caso em
+     * que a oferta **fica parada**, que é quando alguém vai perguntar *"por que isto não saiu?"*.
+     *
+     * ➡️ **A decisão do usuário:** *"o motivo real fica REGISTRADO, não só num aviso que passa"*.
+     * ⚠️⚠️ **E A TRANSAÇÃO NÃO MUDA:** ela não é removida nem dividida — a razão dela está escrita
+     * no docblock da action e é o que torna um estado impossível. O que muda é **onde** a linha é
+     * escrita: **FORA** da transação que voltou atrás, pela action, **depois** do `rollback`.
+     *
+     * ⚠️ **Nada novo é cunhado.** É o **mesmo mecanismo** das decisões 21, 23 e 24: linha de
+     * histórico com **ator Sistema**, pelo {@see self::registrarUmaVez()}, com o **mesmo**
+     * {@see self::PREFIXO_NAO_ENFILEIRADA} — porque o fato é exatamente o mesmo (*"ainda não foi
+     * para a fila"*). Nenhum 7º toast (os 6 de VOC-08 são fechados), nenhum estado, nenhum rótulo e
+     * nenhuma rota nascem daqui.
+     *
+     * ⚠️ **A de-duplicação continua sendo contra a ÚLTIMA linha**, nunca contra todo o histórico
+     * (item `193-H`, fechado pelo orquestrador): o mesmo motivo voltando **depois de outro fato** é
+     * informação nova e **entra**.
+     *
+     * @return PubAprovacaoEvento|null `null` quando a última linha já era exatamente este texto
+     */
+    public function registrarRecusaForaDaTransacao(PubAprovacaoOferta $oferta, string $motivo): ?PubAprovacaoEvento
+    {
+        $evento = $this->registrarUmaVez($oferta, self::PREFIXO_NAO_ENFILEIRADA . $motivo);
+
+        Log::warning(self::TAG . ' a fila recusou o "Tentar de novo" (motivo registrado no histórico)', [
+            'oferta_id' => $oferta->id,
+            'produto' => $oferta->produto?->sku . ' (' . $oferta->produto?->nome . ')',
+            'alvo_id' => $oferta->alvo_id,
+            'motivo' => $motivo,
+            'evento_id' => $evento?->id,
+        ]);
+
+        return $evento;
     }
 
     /**
