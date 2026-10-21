@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Publicador\Aprovacao;
 
+use App\Http\Controllers\MlbPublicadorAprovacaoController;
 use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
@@ -799,5 +800,486 @@ class ComandoDoPortaoDaPublicacaoTest extends TestCase
         foreach (['publicador:agente-encaminhar', 'publicador:agente-varrer'] as $alheio) {
             $this->assertSame(1, substr_count($limpo, "Schedule::command('" . $alheio . "')"), "o bloco alheio `{$alheio}` foi mexido — ele é de outra sessão");
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (3) "TENTAR DE NOVO" QUE REPUBLICA — ENFILEIRAR **ANTES** DE MOVER
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * A oferta levada a `falha` **pelo caminho de verdade**: aprovada, enfileirada, o item da fila
+     * terminando sem anúncio criado, e o **passo do minuto** fechando o desfecho.
+     *
+     * ⚠️ Montar `falha` à mão pularia o `fila_item_id` apontando para o item **TERMINADO**, que é
+     * **exatamente o estado** que a ordem desta action existe para resolver.
+     *
+     * @param  array<string, mixed>  $c
+     */
+    private function levarAFalhaPelaFila(array $c, User $admin, string $motivoDaConta): PubAprovacaoOferta
+    {
+        $oferta = $this->levarPara($c['classico'], PubAprovacaoOferta::APROVADO, $admin);
+        $item = $this->itemDaAprovacao($oferta, PubFilaPublicacaoItem::PUBLICANDO);
+
+        $p = $this->publicacao($c, PubPublicacao::FAILED, [
+            ['tipo' => self::CLASSICO, 'status' => PubPublicacaoItem::FAILED, 'indice' => 0],
+        ], $motivoDaConta);
+        $item->update(['status' => PubFilaPublicacaoItem::PARCIAL, 'produto_ativo' => null, 'publicacao_id' => $p->id]);
+
+        [$codigo, ] = $this->rodarOComando();
+        $this->assertSame(0, $codigo);
+
+        $emFalha = $oferta->fresh();
+        $this->assertSame(PubAprovacaoOferta::FALHA, $emFalha->andamento, 'a fixture não chegou a `falha` pelo caminho de verdade: o caso mediria outra coisa');
+
+        return $emFalha;
+    }
+
+    /** O POST da rota do retry, chamada DIRETO (sem a tela). */
+    private function postarRetry(Company $company, PubAprovacaoOferta $oferta, User $quem): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($quem)->postJson(
+            route('mlb.anuncios.meus.aprovacao.painel.tentar-de-novo', ['company' => $company->id, 'oferta' => $oferta->id])
+        );
+    }
+
+    /**
+     * ⚠️⚠️ **O RETRY REPUBLICA DE VERDADE (T-193-33): `enfileirar()` ANTES de `tentarDeNovo()`.**
+     *
+     * **Por que a ordem não é estilo:** se o retry movesse primeiro, a oferta ficaria em
+     * `publicando` com `fila_item_id` apontando para o item **TERMINADO** da tentativa anterior, e
+     * o reconciliador do minuto seguinte **não teria como distinguir** *"acabou de falhar, feche"*
+     * de *"acabou de ser retentada, espere"* — ele fecharia a oferta como `falha` **sem ela nunca
+     * ter tentado**. ➡️ É a **ISCA INVERTIDA** deste caso, e ela é medida: a ligação ANTES do
+     * clique aponta para item **FORA de `VIVOS`**, e DEPOIS para um item **DENTRO** dele. Sem essa
+     * medição, *"ficou em `publicando`"* seria verdade **com e sem** o enfileiramento.
+     */
+    public function test_o_retry_enfileira_antes_de_mover_e_a_oferta_aponta_para_item_vivo_193_04(): void
+    {
+        [$company, $admin] = $this->conta();
+        $c = $this->cenario($company);
+        $emFalha = $this->levarAFalhaPelaFila($c, $admin, 'O Mercado Livre recusou o anúncio: categoria incompatível.');
+
+        // ─── ⚠️ O ESTADO DE PARTIDA, que é o sujeito da isca invertida ──────────────────────
+        $itemVelhoId = (int) $emFalha->fila_item_id;
+        $this->assertNotSame(0, $itemVelhoId, 'a oferta em falha perdeu a ligação com o item da fila: a isca invertida perdeu o sujeito');
+        $itemVelho = PubFilaPublicacaoItem::findOrFail($itemVelhoId);
+        $this->assertNotContains($itemVelho->status, PubFilaPublicacaoItem::VIVOS, 'ISCA INVERTIDA: o item velho ainda está VIVO — "apontar para item terminado" não é o estado de partida');
+        // ⚠️ MEDIDO: o erro gravado é o REAL **mais** a cláusula do protótipo (nada do tipo desta
+        // oferta foi criado), que é do plano 193-03. ➡️ A asserção é de **começo**, não de
+        // igualdade: exigir igualdade aqui mediria a cláusula daquele plano, não o retry deste.
+        $this->assertStringStartsWith('O Mercado Livre recusou o anúncio: categoria incompatível.', (string) $emFalha->erro_publicacao, 'o erro REAL não foi gravado: a fixture não exercita o retry que importa');
+
+        $provaAntes = $this->provaDaAprovacao($emFalha);
+
+        // ─── O CLIQUE ───────────────────────────────────────────────────────────────────────
+        $resposta = $this->postarRetry($company, $emFalha, $admin);
+
+        // ⚠️ MEDIDO pelo 193-03: `->json('regra')` numa resposta de REDIRECIONAMENTO falha como
+        // asserção ("a resposta não é JSON válido"). ➡️ A aceitação é o **STATUS** `302`
+        // (`back()->with(...)`), e a recusa é `422`.
+        $this->assertSame(302, $resposta->status(), 'o retry foi recusado: ' . (string) $resposta->getContent());
+
+        $depois = $emFalha->fresh();
+
+        // ─── ⚠️⚠️ AS DUAS METADES JUNTAS: `publicando` **E** ligada a item VIVO ─────────────
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $depois->andamento, 'o retry não levou a oferta a `publicando`');
+        $this->assertNotSame($itemVelhoId, (int) $depois->fila_item_id, 'T-193-33: a ligação continuou no item TERMINADO da tentativa anterior — o reconciliador a fecharia como falha sem ela nunca ter tentado');
+
+        $itemNovo = PubFilaPublicacaoItem::findOrFail((int) $depois->fila_item_id);
+        $this->assertContains($itemNovo->status, PubFilaPublicacaoItem::VIVOS, 'o item novo do retry não está VIVO: a oferta está "em voo" sem nada em voo');
+        $this->assertSame((int) $c['produto']->id, (int) $itemNovo->produto_ativo, 'o item novo não ocupa o produto (a coluna-sombra do unique `pubfilai_produto_ativo_uq`)');
+
+        // ─── A REVISÃO APROVADA, INTACTA, E O ERRO VELHO FORA DA TELA ───────────────────────
+        $this->assertNull($depois->erro_publicacao, 'o erro da tentativa que já passou ficou na tela da nova');
+        $this->assertSame($provaAntes, $this->provaDaAprovacao($depois), 'T-193-25: o retry mexeu em `versao`/`versao_aprovada`/`aprovado_por`/`aprovado_em` — a revisão aprovada é a que vai ser retentada');
+
+        // ─── ⚠️ E O PASSO DO MINUTO SEGUINTE NÃO A DERRUBA (é o defeito que a ordem evita) ──
+        [$codigo, ] = $this->rodarOComando();
+        $this->assertSame(0, $codigo);
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $depois->fresh()->andamento, 'T-193-33: o reconciliador fechou como falha a oferta que acabou de ser retentada');
+
+        Queue::assertNothingPushed();
+        $this->assertSame([], $this->escritasEDesvios(), 'a action do retry escreveu no Mercado Livre dentro do request');
+    }
+
+    /**
+     * ⚠️⚠️ **A GUARDA "SÓ A PARTIR DE `falha`" É DA ACTION, E ELA CONTINUA VALENDO (T-193-34).**
+     *
+     * ⚠️ **ISCA MEDIDA, e é ela que mostra por que a guarda não pode sair:**
+     * `PubAprovacaoOferta::TRANSICOES[aprovado]` **INCLUI** `publicando` — então
+     * `AprovacaoDaOfertaService::tentarDeNovo()` **não recusaria** uma oferta recém-aprovada, e sem
+     * esta guarda o botão a empurraria para `publicando` sem nenhuma falha ter acontecido. A trava
+     * é **da action**, não do serviço, e a asserção da lista fechada prova isso.
+     *
+     * ⚠️ E conta alheia dá **404, nunca 403** (um 403 confirmaria que o id existe — T-188-44).
+     */
+    public function test_a_guarda_de_so_a_partir_de_falha_continua_valendo_com_isca_193_04(): void
+    {
+        [$company, $admin] = $this->conta();
+
+        // ⚠️⚠️ A ISCA DA LISTA FECHADA — sem isto a guarda pareceria redundante.
+        $this->assertContains(
+            PubAprovacaoOferta::PUBLICANDO,
+            PubAprovacaoOferta::TRANSICOES[PubAprovacaoOferta::APROVADO],
+            'ISCA: `aprovado → publicando` deixou de ser transição legal — a guarda da action perdeu a razão de existir, e ela é justamente o que impede publicar sem falha nenhuma'
+        );
+
+        // ─── Os estados de onde o retry NÃO pode sair, por IGUALDADE DE CONJUNTO ────────────
+        //
+        // ⚠️ Piso `>= N` não prova presença: perder um estado deixaria os outros recusando e o
+        // gate verde. `preparando` fica fora porque não há como chegar nele por `mover()`.
+        $recusas = [];
+        foreach ([PubAprovacaoOferta::AGUARDANDO_APROVACAO, PubAprovacaoOferta::APROVADO, PubAprovacaoOferta::PUBLICANDO] as $estado) {
+            $c = $this->cenario($company);
+            $oferta = $estado === PubAprovacaoOferta::AGUARDANDO_APROVACAO
+                ? $c['classico']
+                : $this->levarPara($c['classico'], $estado, $admin);
+
+            $antes = $this->linhaCrua($oferta);
+            $resposta = $this->postarRetry($company, $oferta, $admin);
+            $recusas[$estado] = $resposta->status() . ' ' . (string) ($resposta->json('regra') ?? '(sem regra)');
+
+            // ⚠️ RECUSA = NO-OP COMPLETO: a linha inteira, byte a byte, inclusive `updated_at`.
+            $this->assertSame($antes, $this->linhaCrua($oferta), "a recusa a partir de `{$estado}` mexeu na linha da oferta");
+        }
+
+        $esperado = '422 ' . AndamentoDaOfertaService::REGRA_TRANSICAO_ILEGAL;
+        $this->assertSame([
+            PubAprovacaoOferta::AGUARDANDO_APROVACAO => $esperado,
+            PubAprovacaoOferta::APROVADO => $esperado,
+            PubAprovacaoOferta::PUBLICANDO => $esperado,
+        ], $recusas, 'T-193-34: a guarda "só a partir de `falha`" foi enfraquecida — o serviço NÃO recusaria `aprovado → publicando`');
+
+        // ─── ⚠️ ISCA (+): a MESMA rota, com a oferta em `falha`, ACEITA ─────────────────────
+        $cFalha = $this->cenario($company);
+        $emFalha = $this->levarAFalhaPelaFila($cFalha, $admin, 'O Mercado Livre não respondeu.');
+        $this->assertSame(302, $this->postarRetry($company, $emFalha, $admin)->status(), 'ISCA: a rota recusa até a partir de `falha` — "tudo 422" era indistinguível de "a rota recusa sempre"');
+
+        // ─── ⚠️ CONTA ALHEIA: 404, NUNCA 403 ───────────────────────────────────────────────
+        [$outra, $outroAdmin] = $this->conta();
+        $cAlheia = $this->cenario($outra);
+        $daOutra = $this->levarAFalhaPelaFila($cAlheia, $outroAdmin, 'O Mercado Livre recusou.');
+
+        $cruzada = $this->postarRetry($company, $daOutra, $admin);
+        $this->assertSame(404, $cruzada->status(), 'oferta de outra conta não deu 404 — e 403 confirmaria que o id existe');
+        $this->assertSame(PubAprovacaoOferta::FALHA, $daOutra->fresh()->andamento, 'a oferta alheia se moveu');
+
+        Queue::assertNothingPushed();
+        $this->assertSame([], $this->escritasEDesvios());
+    }
+
+    /**
+     * ⚠️⚠️ **O BOTÃO NÃO FINGE QUE TENTOU (T-193-35).** Enfileiramento recusado ⇒ a oferta **NÃO**
+     * vai para `publicando` e a recusa chega com o **MOTIVO REAL** da fila.
+     *
+     * ⚠️ **A recusa escolhida é a da conta NÃO liberada** (`ContasLiberadas` é **fail-closed**:
+     * lista vazia = NINGUÉM), e isso é deliberado: é uma recusa que o **admin pode resolver**
+     * (liberando a conta), o que permite a **isca (+)** no fim — sem ela, *"recusou"* seria
+     * indistinguível de *"recusa sempre"*.
+     *
+     * ⚠️ **CONSEQUÊNCIA MEDIDA E DECLARADA:** como o enfileiramento e o `mover()` estão na MESMA
+     * transação, a linha que o `enfileirar()` escreve no histórico **volta atrás** com o rollback.
+     * O canal que importa num clique é a **resposta**, e ela leva o motivo real; gravar o histórico
+     * fora da transação deixaria registro de uma tentativa que não aconteceu. O caso **mede** isso
+     * em vez de deixar o leitor supor.
+     */
+    public function test_retry_com_enfileiramento_recusado_nao_move_e_traz_o_motivo_real_193_04(): void
+    {
+        [$company, $admin] = $this->conta();
+        $c = $this->cenario($company);
+        $emFalha = $this->levarAFalhaPelaFila($c, $admin, 'O Mercado Livre recusou o anúncio: título longo.');
+
+        $antes = $this->linhaCrua($emFalha);
+        $eventosAntes = $this->eventos($emFalha);
+
+        // ⚠️ FAIL-CLOSED: lista vazia = NINGUÉM. É a trava de "ligar publicar" do PUB-06, e **não
+        // há feature-flag novo** nesta fase — um segundo interruptor faria duas verdades.
+        config(['publicador.contas_liberadas.companies' => []]);
+
+        $resposta = $this->postarRetry($company, $emFalha, $admin);
+
+        $this->assertSame(422, $resposta->status());
+        $this->assertSame(MlbPublicadorAprovacaoController::REGRA_FILA_RECUSOU_O_RETRY, (string) $resposta->json('regra'), 'a recusa não traz o id estável da regra — a tela não sabe onde marcar');
+
+        $mensagem = (string) $resposta->json('message');
+        $this->assertStringContainsString('fila de publicação', $mensagem);
+        $this->assertStringContainsString('liberada', $mensagem, 'a recusa não traz o MOTIVO REAL da fila — "algo deu errado" é o que PUB-05 proíbe');
+
+        // ─── A OFERTA NÃO SE MOVEU: a linha inteira, byte a byte, crua do banco ────────────
+        $this->assertSame($antes, $this->linhaCrua($emFalha), 'T-193-35: a oferta se moveu (ou perdeu o erro) numa tentativa que a fila recusou');
+        $this->assertSame(PubAprovacaoOferta::FALHA, $emFalha->fresh()->andamento);
+        $this->assertSame(0, PubFilaPublicacaoItem::query()->where('produto_ativo', $c['produto']->id)->count(), 'nasceu item de fila VIVO numa tentativa recusada');
+
+        // ⚠️ A consequência DECLARADA do rollback, medida: o histórico volta atrás junto.
+        $this->assertSame($eventosAntes, $this->eventos($emFalha), 'o histórico guardou uma tentativa que a transação desfez');
+
+        // ─── ⚠️ ISCA (+): liberada a conta, o MESMO clique passa ───────────────────────────
+        config(['publicador.contas_liberadas.companies' => [(int) $company->id]]);
+        $segunda = $this->postarRetry($company, $emFalha->fresh(), $admin);
+        $this->assertSame(302, $segunda->status(), 'ISCA: o retry recusa até com a conta liberada — "recusou" era indistinguível de "recusa sempre"');
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $emFalha->fresh()->andamento);
+
+        Queue::assertNothingPushed();
+        $this->assertSame([], $this->escritasEDesvios());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (4) NENHUMA ROTA NOVA, ZERO ESCRITA NO ML, E A FRONTEIRA D-11 / D-22
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **NENHUMA ROTA NOVA NESTA FASE (PUB-10 / critério 9), POR IGUALDADE DE CONJUNTO.**
+     *
+     * ⚠️ **Resolvido PELO ROUTER, nunca por `grep` no arquivo de rotas:** o que vale é o que o
+     * framework registrou. ⚠️ **Piso `>= N` NÃO prova presença** — com 13 perguntas, perder uma
+     * deixava 12 e o piso passava. São as **16** rotas das Fases 187/188 e **mais nenhuma**: esta
+     * fase **completou uma action** e **não criou rota**.
+     */
+    public function test_o_conjunto_de_rotas_de_aprovacao_e_identico_ao_da_fase_188_193_04(): void
+    {
+        $esperadas = [
+            'mlb.anuncios.meus.aprovacao',
+            'mlb.anuncios.meus.aprovacao.lote',
+            'mlb.anuncios.meus.aprovacao.painel.ajuste',
+            'mlb.anuncios.meus.aprovacao.painel.ajuste.resolver',
+            'mlb.anuncios.meus.aprovacao.painel.aprovar',
+            'mlb.anuncios.meus.aprovacao.painel.conferir-alteracao',
+            'mlb.anuncios.meus.aprovacao.painel.excecao',
+            'mlb.anuncios.meus.aprovacao.painel.fotos.sem-alerta',
+            'mlb.anuncios.meus.aprovacao.painel.frete',
+            'mlb.anuncios.meus.aprovacao.painel.frete.previa',
+            'mlb.anuncios.meus.aprovacao.painel.imagem.aprovar',
+            'mlb.anuncios.meus.aprovacao.painel.imagem.reprovar',
+            'mlb.anuncios.meus.aprovacao.painel.preco',
+            'mlb.anuncios.meus.aprovacao.painel.preco.simular',
+            'mlb.anuncios.meus.aprovacao.painel.salvar-revisao',
+            'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo',
+        ];
+
+        $medidas = [];
+        foreach (Rotas::getRoutes() as $rota) {
+            $nome = (string) $rota->getName();
+            if ($nome !== '' && str_starts_with($nome, 'mlb.anuncios.meus.aprovacao')) {
+                $medidas[] = $nome;
+            }
+        }
+        $medidas = array_values(array_unique($medidas));
+        sort($medidas);
+
+        $this->assertSame($esperadas, $medidas, 'PUB-10 / critério 9: nasceu (ou morreu) rota de aprovação nesta fase — o caminho tem de ser UM só');
+
+        // ⚠️ ISCA: a sonda não está cega (o prefixo casa algo) e a rota do retry é da Fase **188**,
+        // com o throttle e o nome dela — esta fase **não** a redeclarou.
+        $this->assertCount(16, $medidas);
+        $this->assertContains('mlb.anuncios.meus.aprovacao.painel.tentar-de-novo', $medidas);
+        $this->assertSame([], array_values(array_filter($medidas, static fn (string $n) => str_contains($n, '193'))), 'apareceu rota batizada com o número desta fase');
+
+        // ⚠️ E o arquivo de rotas NÃO foi tocado por este plano: a rota do retry, o `whereNumber` e
+        // o `throttle` nomeado são da 188, e o comentário dela é a declaração de posse que
+        // autorizou completar a action.
+        $rotas = self::semComentarios((string) file_get_contents(base_path('routes/mlb_anuncios.php')));
+        $this->assertSame(1, substr_count($rotas, "'tentarDeNovo'"), 'a action do retry é apontada por um número diferente de 1 rota');
+        $this->assertSame(1, substr_count($rotas, 'publicador.aprovacao.painel.retry'), 'o throttle nomeado do retry (Fase 188) mudou');
+    }
+
+    /**
+     * ⚠️⚠️ **ZERO ESCRITA NO MERCADO LIVRE DENTRO DO REQUEST, E A FRONTEIRA D-11 / D-22.**
+     *
+     * **O D-11 diz que a tela de Publicações (Meus Anúncios) NUNCA escreve.** Esta fase leva oferta
+     * ao ar — logo a fronteira tem de ficar **explícita**:
+     *
+     *   · **o portão / a fila (o lado desta fase):** a action é **SÓ BANCO** (enfileirar é só
+     *     banco), e quem escreve no ML é o `PublicarRascunhoJob`, na fila **`high`**, minutos
+     *     depois. O único `POST /items` do sistema é `PublicacaoService::executarFatia()`,
+     *     **reusado INTOCADO**;
+     *   · **a lista de Publicadas (D-11/D-22):** nada — o gate dela **não foi estendido** à área
+     *     nova, e a área nova tem gate de escrita próprio (este).
+     *
+     * ⚠️ A régua é **zero ESCRITA**, nunca "zero requisição": prometer zero absoluto seria gate que
+     * o próprio desenho contradiz, porque **aprovar** (Fase 188) lê a tarifa real no GET público
+     * `/sites/MLB/listing_prices` (decisão 9 do usuário). A leitura autorizada está em **lista
+     * CONSTANTE nomeada**, e a sonda é **iscada nas duas pontas**.
+     */
+    public function test_a_action_do_retry_nao_escreve_no_mercado_livre_nem_despacha_job_193_04(): void
+    {
+        [$company, $admin] = $this->conta();
+        $c = $this->cenario($company);
+        $emFalha = $this->levarAFalhaPelaFila($c, $admin, 'O Mercado Livre recusou o anúncio.');
+
+        $this->assertSame(302, $this->postarRetry($company, $emFalha, $admin)->status());
+        $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $emFalha->fresh()->andamento);
+
+        $this->assertSame([], $this->escritasEDesvios(), 'a action do retry fez requisição de ESCRITA (ou leitura fora da lista) ao Mercado Livre');
+        Queue::assertNothingPushed();
+
+        // ─── ⚠️ ISCA (+) nas DUAS pontas: a sonda não está cega ────────────────────────────
+        Http::post('https://api.mercadolibre.com/items', ['x' => 1]);
+        $this->assertSame(['POST https://api.mercadolibre.com/items'], $this->escritasEDesvios(), 'ISCA 1: a sonda não pega um POST ao ML');
+        Http::get('https://api.mercadolibre.com/users/me');
+        $this->assertContains('GET https://api.mercadolibre.com/users/me', $this->escritasEDesvios(), 'ISCA 2: GET fora da lista autorizada passou');
+
+        // ─── ⚠️ A FILA DA PUBLICAÇÃO É `high`, LIDA DO CÓDIGO — não afirmada na prosa ──────
+        $job = 'app/Jobs/Publicador/PublicarRascunhoJob.php';
+        $this->assertFileExists(base_path($job), "caminho fantasma: {$job}");
+        $jobLimpo = self::semComentarios((string) file_get_contents(base_path($job)));
+        $this->assertGreaterThanOrEqual(1, substr_count($jobLimpo, "onQueue('high')"), 'a publicação saiu da fila `high`: ela não espera atrás do sync do acervo (179 jobs na `default` seguraram um webhook por horas em 16/09/2026)');
+        // ⚠️ Piso e não igualdade, de propósito: o número de chamadas de uma mesma guarda cresce
+        // legitimamente, e ancorar no exato é a família "âncora em número que muda".
+        $this->assertSame(0, substr_count($jobLimpo, "onQueue('default')") + substr_count($jobLimpo, "onQueue('creative')"), 'a publicação foi para `default` ou para `creative` (a fila do outro dev, onde roda geração paga)');
+
+        // ─── ⚠️ O CONTROLLER NÃO FALA COM O ML NEM DESPACHA JOB, lido SEM COMENTÁRIO ───────
+        $controller = self::semComentarios((string) file_get_contents(base_path(self::ARQUIVO_DO_CONTROLLER)));
+        $this->assertSame(0, substr_count($controller, 'Http::'), 'o controller do painel ganhou requisição direta ao Mercado Livre');
+        $this->assertSame(0, substr_count($controller, 'dispatch('), 'o controller do painel ganhou despacho de job');
+        // ⚠️ ISCA do leitor: o leitor leu código de verdade (o arquivo é grande e muito comentado).
+        $this->assertGreaterThan(600, substr_count($controller, "\n"), 'gate sobre quase nada: o leitor não leu o controller');
+
+        // ─── ⚠️ A FRONTEIRA D-11 / D-22: o gate daquela tela está INTACTO e não foi estendido ─
+        $d11 = 'tests/js/estrutura-meus-anuncios.test.js';
+        $this->assertFileExists(base_path($d11), "caminho fantasma: {$d11}");
+        $daLista = (string) file_get_contents(base_path($d11));
+        $this->assertStringNotContainsString(self::COMANDO, $daLista, 'o gate do D-11 foi ESTENDIDO à área nova — ele é da tela de Publicações, que nunca escreve');
+        $this->assertStringNotContainsString('portao-publicacao', $daLista);
+        $this->assertStringNotContainsString('tentarDeNovo', $daLista, 'o gate do D-11 passou a falar da action do retry — a fronteira é o contrário: ele não se estende');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (5) A BIJEÇÃO ids ↔ MÉTODOS ↔ `<verify>`, COM EXPANSOR DE ALTERNÂNCIA
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **MÉTODO SEM id NUNCA RODA** (foi o sobrevivente da mutação do plano 186-03), e **id
+     * órfão não falha: ele simplesmente nunca roda**. As duas formas de "passar por omissão" são
+     * conferidas aqui, por teste **durável** e não por rascunho de scratchpad.
+     *
+     * ⚠️⚠️ **O EXPANSOR DE ALTERNÂNCIA, ISCADO NAS DUAS DIREÇÕES ANTES DE VALER:** a regex ingênua
+     * `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)` — o furo que deu `SEM_ID=14`
+     * **acusando trabalho correto**.
+     *
+     * ⚠️ E o **homônimo**: o `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as Fases 186/187/188
+     * estão **em produção**. Método de outra fase que seja superstring de um meu faria o id SOMAR
+     * e reprovar.
+     */
+    public function test_o_manifesto_tem_bijecao_com_os_metodos_e_nenhum_id_orfao_193_04(): void
+    {
+        $manifesto = base_path('tests/gates/contagens-193-04.txt');
+        $this->assertFileExists($manifesto, 'o manifesto deste plano não existe — o harness ABORTA sem ele');
+
+        $linhas = array_values(array_filter(
+            array_map('trim', explode("\n", (string) file_get_contents($manifesto))),
+            static fn (string $l) => $l !== '' && ! str_starts_with($l, '#')
+        ));
+        $this->assertGreaterThanOrEqual(5, count($linhas), 'o manifesto tem menos ids do que este plano declara');
+
+        // ─── O EXPANSOR, iscado NAS DUAS DIREÇÕES antes de valer ───────────────────────────
+        $expandir = static function (string $filtro): array {
+            if (preg_match('/^test_\((.+)\)$/', $filtro, $m) === 1) {
+                return array_map(static fn (string $p) => 'test_' . $p, explode('|', $m[1]));
+            }
+
+            return [$filtro];
+        };
+        $this->assertSame(['test_a', 'test_b', 'test_c'], $expandir('test_(a|b|c)'), 'ISCA (+): o expansor não abre a alternância');
+        $this->assertSame(['test_abc'], $expandir('test_abc'), 'ISCA (−): o expansor inventou nomes num filtro sem alternância');
+        // ⚠️ E a prova de que o furo que o expansor conserta é REAL, medida nas duas pontas.
+        $this->assertSame(0, preg_match_all('/test_[A-Za-z0-9_]+/', 'test_(a|b|c)'), 'a regex ingênua passou a casar alternância: a razão do expansor mudou');
+        $this->assertSame(1, preg_match_all('/test_[A-Za-z0-9_]+/', 'test_abc'), 'a regex ingênua deixou de casar nome simples: a isca perdeu o sujeito');
+
+        // ─── id → método ───────────────────────────────────────────────────────────────────
+        $doManifesto = [];
+        $ids = [];
+        foreach ($linhas as $linha) {
+            $partes = preg_split('/\s+::\s+/', $linha);
+            $cabeca = preg_split('/\s+/', trim((string) $partes[0]));
+            $ids[] = $cabeca[0];
+
+            if (($cabeca[1] ?? '') !== 'php') {
+                continue;
+            }
+
+            $metodos = $expandir(trim((string) $cabeca[2]));
+            $this->assertLessThanOrEqual(3, count($metodos), "o id `{$cabeca[0]}` tem mais de TRÊS métodos: alternância grande equivale a filtro de classe e passa dos 120 s");
+
+            $esperado = (int) (preg_match('/tests=(\d+)/', (string) ($partes[1] ?? ''), $m) === 1 ? $m[1] : 0);
+            $this->assertSame(count($metodos), $esperado, "o id `{$cabeca[0]}` declara `tests={$esperado}` com " . count($metodos) . ' método(s) no filtro');
+
+            foreach ($metodos as $metodo) {
+                $doManifesto[] = $metodo;
+            }
+        }
+
+        $this->assertSame(array_values(array_unique($ids)), $ids, 'id repetido no manifesto');
+
+        $daClasse = array_values(array_filter(
+            get_class_methods($this),
+            static fn (string $m) => str_starts_with($m, 'test_')
+        ));
+        sort($daClasse);
+        $doManifestoOrdenado = array_values(array_unique($doManifesto));
+        sort($doManifestoOrdenado);
+
+        // ⚠️ MÉTODO SEM id (nunca roda) e id ÓRFÃO (nunca roda), nos DOIS sentidos.
+        $this->assertSame($daClasse, $doManifestoOrdenado, 'bijeção quebrada: há método sem id no manifesto (ele NUNCA roda) ou id apontando para método que não existe (ele também nunca roda)');
+
+        // ⚠️ SUFIXO `_193_04` em TODO método, por asserção COLETORA (nunca `grep -c`, que conta LINHAS).
+        $semSufixo = array_values(array_filter($daClasse, static fn (string $m) => ! str_ends_with($m, '_193_04')));
+        $this->assertSame([], $semSufixo, 'método sem o sufixo `_193_04`: o `--filter` do PHPUnit é regex NÃO ANCORADO e as Fases 186/187/188 estão em produção');
+
+        // ─── HOMÔNIMO em toda a suíte, com isca nas duas direções ─────────────────────────
+        $homonimos = [];
+        foreach (self::arquivosDeTeste() as $arquivo) {
+            if (str_contains($arquivo, 'ComandoDoPortaoDaPublicacaoTest')) {
+                continue;
+            }
+            $texto = (string) file_get_contents($arquivo);
+            foreach ($daClasse as $meu) {
+                if (preg_match('/function\s+([A-Za-z0-9_]*' . preg_quote($meu, '/') . '[A-Za-z0-9_]*)\s*\(/', $texto, $m) === 1) {
+                    $homonimos[] = basename($arquivo) . '::' . $m[1];
+                }
+            }
+        }
+        $this->assertSame([], $homonimos, 'há método de outra suíte que o `--filter` NÃO ANCORADO deste plano também casaria');
+
+        // ⚠️ ISCA (+): o varredor de homônimo PEGA uma superstring de um nome meu.
+        $umMeu = 'test_o_retry_enfileira_antes_de_mover_e_a_oferta_aponta_para_item_vivo_193_04';
+        $this->assertContains($umMeu, $daClasse, 'o nome usado na isca do homônimo deixou de existir — a isca perdeu o sujeito');
+        $this->assertSame(1, preg_match('/function\s+([A-Za-z0-9_]*' . preg_quote($umMeu, '/') . '[A-Za-z0-9_]*)\s*\(/', 'public function ' . $umMeu . '_extra() {}'), 'ISCA (+): o varredor de homônimo não pega superstring');
+        // ⚠️ ISCA (−): e NÃO acusa um nome REAL de outra fase.
+        //
+        // ⚠️⚠️ **O NOME ALHEIO ENTRA POR VARIÁVEL, E ISSO FOI MEDIDO — NÃO É ESTILO.** Escrito como
+        // literal (`'public function test_..._188_05() {}'`), o texto deste arquivo passa a ter a
+        // FORMA DE UMA DECLARAÇÃO, e o gate alheio `186-09 bijecao-e-homonimo` — cuja sonda é
+        // `/public function (test_[A-Za-z0-9_]+)\s*\(/` sobre o código SEM COMENTÁRIO — o leu como
+        // *"este arquivo declara um método que já existe em `SalvarEAprovarDoPainelTest`"* e
+        // REPROVOU (`1 failed, 11 passed`). ➡️ Era **falso positivo do invariante dele** (eu não
+        // declaro esse método: é dado de teste), e o conserto é na RAIZ: tirar a forma de
+        // declaração do texto, sem enfraquecer a isca e **sem tocar no gate da 186**, que está em
+        // produção. ⚠️ O nome continua sendo o **REAL** de outra fase, que é o que faz a isca valer.
+        $alheioDeVerdade = 'test_tentar_de_novo_nao_publica_no_mercado_livre_com_isca_188_05';
+        $this->assertSame(0, preg_match('/function\s+([A-Za-z0-9_]*' . preg_quote($umMeu, '/') . '[A-Za-z0-9_]*)\s*\(/', 'public function ' . $alheioDeVerdade . '() {}'), 'ISCA (−): o varredor acusa nome legítimo de outra fase');
+
+        // ─── id → `<verify>` do plano: id órfão de `<verify>` nunca roda ─────────────────
+        $plano = base_path('.planning/phases/193-do-aprovado-ao-ar-o-portao-fecha-o-ciclo/193-04-PLAN.md');
+        $this->assertFileExists($plano);
+        $texto = (string) file_get_contents($plano);
+        $foraDoVerify = array_values(array_filter(
+            $ids,
+            static fn (string $id) => ! str_contains($texto, '193-04 ' . $id) && ! str_starts_with($id, 'bijecao-')
+        ));
+        $this->assertSame([], $foraDoVerify, 'id do manifesto que o `<verify>` do plano nunca invoca: ele não falha, ele simplesmente NUNCA RODA');
+    }
+
+    /** @return list<string> todo `*Test.php` da suíte */
+    private static function arquivosDeTeste(): array
+    {
+        $saida = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(base_path('tests'), \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $arquivo) {
+            if ($arquivo->isFile() && str_ends_with($arquivo->getFilename(), 'Test.php')) {
+                $saida[] = $arquivo->getPathname();
+            }
+        }
+
+        return $saida;
     }
 }

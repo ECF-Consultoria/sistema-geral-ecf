@@ -23,6 +23,7 @@ use App\Services\Publicador\Aprovacao\HistoricoDaOfertaService;
 use App\Services\Publicador\Aprovacao\Painel\LightboxDoPainelService;
 use App\Services\Publicador\Aprovacao\Painel\PainelDeRevisaoService;
 use App\Services\Publicador\Aprovacao\Painel\PrecoDoPainelService;
+use App\Services\Publicador\Aprovacao\PublicacaoDoPortaoService;
 use App\Services\Publicador\Aprovacao\RevisaoDeImagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -1026,6 +1027,17 @@ class MlbPublicadorAprovacaoController extends Controller
     }
 
     /**
+     * **PUB-02** — a fila de publicação recusou pôr o produto desta oferta na fila **agora**.
+     *
+     * ⚠️ **id NOVO porque a recusa é NOVA, e não havia equivalente**: `REGRA_FORA_DO_AO_VIVO` é
+     * *"não está aberta para revisão"* e `REGRA_TRANSICAO_ILEGAL` é *"este par de estados não
+     * existe"* — nenhuma das duas diz *"a fila não aceitou"*, e reusá-las faria a tela marcar o erro
+     * no lugar errado. ⚠️ Segue o padrão `<REQ>-<SLUG>` dos outros 21 ids do módulo, e o
+     * `recusaDoPainel()` o devolve no campo `regra`, ao lado da `message` com o motivo REAL.
+     */
+    public const REGRA_FILA_RECUSOU_O_RETRY = 'PUB-02-FILA-RECUSOU';
+
+    /**
      * **REVS-05 / BLOQ-11 / AND-10** — "Tentar publicar novamente", da caixa de falha.
      *
      * ⚠️ Chama {@see AprovacaoDaOfertaService::tentarDeNovo()} e **nada mais**: `falha →
@@ -1042,6 +1054,35 @@ class MlbPublicadorAprovacaoController extends Controller
      * `publicando` sem nenhuma falha ter acontecido — e aí a Fase 193 publicaria por cima.
      * ⚠️ Reusa `REGRA_FORA_DO_AO_VIVO`? **Não** — aqui o destino legítimo não é `live`, é `falha`.
      * O id é o do serviço de andamento para transição recusada, e a mensagem nomeia o estado.
+     *
+     * ═══ ⚠️⚠️ A FASE 193 COMPLETOU ESTA ACTION (plano 193-04): AGORA ELA REPUBLICA ════════════
+     *
+     * ⚠️⚠️ **A ORDEM É `enfileirar()` → `tentarDeNovo()`, E ELA RESOLVE UMA AMBIGUIDADE REAL — NÃO
+     * É ESTILO.** Se o retry movesse primeiro, a oferta ficaria em `publicando` com `fila_item_id`
+     * apontando para o item **TERMINADO** da tentativa anterior — e o reconciliador do portão, na
+     * passada do minuto seguinte, **não teria como distinguir** *"acabou de falhar, feche"* de
+     * *"acabou de ser retentada, espere"*: ele leria o item terminado e fecharia a oferta como
+     * `falha` **sem ela nunca ter tentado de novo** (T-193-33).
+     * ➡️ **Enfileirar antes elimina o estado ambíguo POR CONSTRUÇÃO**, e é exatamente por isso que
+     * o plano 193-03 pôde tratar *"`publicando` com `fila_item_id` nulo"* como **impossível**, com
+     * um `Log::warning` e **nada mais** — observabilidade, não ramo de produto. Inverter a ordem
+     * aqui reintroduz o estado que aquele serviço declarou impossível.
+     *
+     * ⚠️ **AS DUAS EM UMA TRANSAÇÃO SÓ:** recusa do enfileiramento ⇒ **não move** e a resposta leva
+     * o **motivo REAL** da fila (o botão não finge que tentou — T-193-35); e falha do `mover()`
+     * (corrida: alguém tirou a oferta de `falha` entre a guarda e aqui) ⇒ a ligação nova **volta
+     * atrás**, em vez de deixar o produto na fila com a oferta parada em `falha`, que o
+     * reconciliador **não** olha (`RECONCILIAVEIS` não tem `falha`, de propósito: sair de `falha` é
+     * ato de PESSOA).
+     * ⚠️ **CONSEQUÊNCIA MEDIDA E ACEITA:** na recusa, a linha que o `enfileirar()` escreve no
+     * histórico volta atrás com a transação. O canal que importa num clique é a **resposta**, e ela
+     * leva o motivo real; gravar o histórico fora da transação deixaria registro de uma tentativa
+     * que não aconteceu.
+     *
+     * ⚠️ **ESTA ACTION NÃO ESCREVE NO MERCADO LIVRE, e isso continua verdade:** enfileirar é **só
+     * banco**. Quem publica é o `PublicarRascunhoJob`, na fila **`high`**, minutos depois — e essa
+     * fila **já era assim** (a de produção é Redis; em 16/09/2026 179 jobs de acervo na `default`
+     * seguraram um webhook por horas). ⚠️ Nenhum job é despachado daqui.
      */
     public function tentarDeNovo(
         Request $request,
@@ -1050,6 +1091,7 @@ class MlbPublicadorAprovacaoController extends Controller
         FilaDeAprovacaoService $fila,
         ProgramasPublicadorService $programas,
         AprovacaoDaOfertaService $aprovacao,
+        PublicacaoDoPortaoService $portao,
     ) {
         $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
 
@@ -1062,7 +1104,24 @@ class MlbPublicadorAprovacaoController extends Controller
         }
 
         try {
-            $retentada = $aprovacao->tentarDeNovo($daConta, $request->user());
+            $retentada = DB::transaction(function () use ($daConta, $request, $aprovacao, $portao) {
+                // ⚠️ PRIMEIRO a fila, depois o andamento — ver o docblock.
+                $naFila = $portao->enfileirar($daConta, $request->user());
+
+                if (! $naFila['enfileirada']) {
+                    // ⚠️ O MOTIVO REAL da fila (uma das 11 frases da prontidão, ou o da guarda da
+                    // decisão 23), nunca um "algo deu errado": é o que a pessoa precisa para
+                    // resolver. O `regra` é o id ESTÁVEL que a tela usa para saber onde marcar.
+                    throw new RegraViolada(
+                        self::REGRA_FILA_RECUSOU_O_RETRY,
+                        'Não foi possível pôr este produto na fila de publicação agora: '
+                            . ($naFila['motivo'] ?? 'a fila de publicação não aceitou este produto agora.'),
+                        ['oferta_id' => (int) $daConta->id]
+                    );
+                }
+
+                return $aprovacao->tentarDeNovo($daConta->fresh(), $request->user());
+            });
         } catch (RegraViolada $e) {
             return $this->recusaDoPainel($e);
         }
