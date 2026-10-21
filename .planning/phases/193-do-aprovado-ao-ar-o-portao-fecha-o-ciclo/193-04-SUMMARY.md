@@ -645,8 +645,13 @@ rastreados modificados na arvore (git diff HEAD, NUNCA git status): (vazio)
 27 stashes: APENAS CONTADOS
 ```
 
-**Os únicos 5 arquivos que os meus commits tocam** — e os cinco são **exatamente** o `files_modified`
-do plano:
+⚠️ **RE-MEDIDO DEPOIS do commit desta SUMMARY** (que o range acima, por construção, não podia conter):
+`8c54a5d8..a7bdb00e` tem **3** commits, `TOTAL_A = TOTAL_B = 3`, **os três MEUS**
+(`c47aad5d`, `dbbbbaf2`, `a7bdb00e`), **zero vizinho alheio**, e os arquivos do range são os **5** do
+`files_modified` **mais** este `193-04-SUMMARY.md`. **FACE 2 vazia nas duas medições.**
+
+**Os únicos 5 arquivos de código que os meus commits tocam** — e os cinco são **exatamente** o
+`files_modified` do plano:
 
 ```
 app/Console/Commands/PublicadorPortaoPublicacao.php
