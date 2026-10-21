@@ -1,0 +1,198 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 193-03 — DO APROVADO AO AR: o
+# `reconciliar()` do portão (`publicando` / `publicado` SÓ com MLB confirmado /
+# `falha` com o erro REAL + a cláusula condicional), `publicando` bloqueando
+# edição, `publicado` terminal, e o PUB-06 provado por NÃO-REGRESSÃO.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 193-03 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `193-03`, E NÃO `03`. O número NU resolve
+# `contagens-186-03.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# SILÊNCIO. Medido no código: `verificar-testes.sh:120-129` resolve por
+# `sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'` (dois grupos de DÍGITOS); qualquer
+# outra forma cai no `else` e monta `contagens-186-<arg>.txt`. Essa
+# compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos da Fase 186 são
+# chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os casos 15 e 16 do
+# `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os métodos deste plano estão
+#    quebrados em ids com **no máximo TRÊS métodos** cada.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 21/10/2026,
+#    uma invocação de `artisan test --filter=` por id, com `php.exe` em 0 antes
+#    de cada rodada. Nenhuma é chute e nenhum id foi escrito antes de ter sido
+#    medido.
+#
+# ⚠️ `php` não está no PATH desta máquina: `C:/xampp/php/php.exe`.
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: ele
+#    é **só de servidor** e não roda aquele gate — nenhum `.jsx` é dele. A regra é
+#    **quem roda, declara**, não *todos declaram*.
+#
+# ⚠️⚠️ OS IDS ALHEIOS, E A DISCIPLINA: este plano **NÃO cria arquivo novo** em
+#    `app/Services/Publicador/Aprovacao/` (ele acrescenta métodos ao serviço que o
+#    193-02 criou), então os ids `unica-porta` (43) e `oferta-do-portao` (67) do
+#    `contagens-186-04.txt` — que são **por glob, com 2 asserções POR ARQUIVO** —
+#    têm de ficar com a contagem **IDÊNTICA**. ⚠️ `contagens-186-09.txt` e
+#    `contagens-188-05.txt` também **não** mudam: o primeiro usa lista CONSTANTE
+#    de 25 arquivos e varre `app/` sem acusar este serviço (a sonda larga de
+#    andamento dá **zero** nele — e para isso a chave literal de andamento foi
+#    tirada do contexto de log, em vez de o arquivo entrar na lista de
+#    expositores ou de a chave ser renomeada para fugir do gate); o segundo mede
+#    comportamento de rota, e o reconciliador **não faz requisição nenhuma**.
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# reconciliar-publicando-e-publicado
+#   · item de fila `publicando` → `mover(PUBLICANDO)` pela ÚNICA PORTA, com
+#     `erro_publicacao` **limpo** e edição **bloqueada**; e a **2ª passada é
+#     NO-OP** (idempotência: o comando roda todo minuto, e a lista fechada
+#     `TRANSICOES` não tem `publicando → publicando`);
+#   · ⚠️⚠️ **`publicado` SÓ COM MLB CONFIRMADO** (AND-04 / T-193-21): o
+#     `ml_item_id` é gravado **ANTES** e a **própria porta recusa** sem ele
+#     (`REGRA_SEM_MLB`) — a trava está no CÓDIGO, não só no teste, e a recusa é
+#     **no-op completo** (nem `updated_at`);
+#   · ⚠️ o MLB é o do `listing_type_id` **DESTA** oferta, pela MESMA regra de
+#     `cadastrarNaRegua()` (`sortBy('indice')` → `groupBy` → `first()`), com
+#     **duas iscas**: CREATED de OUTRO tipo **não** publica (T-193-22), e com dois
+#     CREATED do mesmo tipo e os **índices trocados** o escolhido muda;
+#   · ⚠️⚠️ **ITEM `193-G`, devolvido pelo 193-02:** com a guarda da decisão 23
+#     quem agenda é a **última** aprovação, e a irmã já aprovada fica **sem**
+#     `fila_item_id`. O reconciliador a liga pelo **ANEXO**, e as DUAS ficam no
+#     **MESMO** item (o unique `pubfilai_produto_ativo_uq` garante um por
+#     produto). As 4 colunas de conferência seguem sendo **LIDAS** pelo item.
+#
+# reconciliar-falha-e-clausula
+#   · o motivo é o **erro REAL** (PUB-05), pela precedência de
+#     `AgendadorDaFila::fechar()` — `conta_snapshot['motivo']` **antes** de
+#     `avisos['mensagem']`, com os **dois presentes** como isca; e entre os itens
+#     FAILED ganha o do **meu** `listing_type_id` (o Premium não recebe o erro do
+#     Clássico);
+#   · ⚠️ a **revisão aprovada é preservada** (T-193-25): `versao`,
+#     `versao_aprovada`, `aprovado_por` e `aprovado_em` lidos **CRUS do banco**,
+#     idênticos depois de `FALHA` **e** depois do retry — que **limpa**
+#     `erro_publicacao`;
+#   · a **caixa de falha do painel** traz a mensagem REAL gravada (payload de
+#     `PainelDeRevisaoService`), não um texto genérico;
+#   · ⚠️⚠️ **A CLÁUSULA DO PROTÓTIPO SÓ QUANDO É VERDADE**, com o literal
+#     **CONGELADO no teste** (anti-tautologia: ler a constante do módulo que
+#     produziu o texto passa mesmo trocando o literal pelo sinônimo — furo que
+#     estava em SETE lugares desta milestone) e **cinco iscas de quase-igual**
+#     (sinônimo, sem ponto final, truncada, sem cedilha, com vírgula);
+#   · ⚠️ o **PARCIAL** de ponta a ponta (Clássico CREATED + Premium FAILED): uma
+#     vai a `publicado`, a outra a `falha` **com** a cláusula. ⚠️ E a isca
+#     invertida FORTE, porque aquela ponta é fraca por construção (a publicada nem
+#     tem erro para comparar): `CREATED` do MEU tipo **sem MLB legível** → vai a
+#     `falha` e a cláusula fica **FORA**, porque o anúncio **foi** criado;
+#   · ⚠️⚠️ **DECISÃO 24 DO USUÁRIO (21/10/2026):** os **avisos do Mercado Livre
+#     aceitos** vão para o histórico, nomeados, lidos da conferência que o item da
+#     fila guarda (`validacao_id`) e **só** onde `ciente` é verdadeiro. Com isca
+#     nas duas direções (sem aviso → **nenhum** evento), de-duplicação de aviso
+#     repetido, e **zero jargão** no texto (nem id de regra, nem causa crua do ML,
+#     nem chave de modalidade) — o histórico é texto de TELA.
+#
+# reconciliar-nao-toca-em-voo
+#   · ⚠️⚠️ **RN-93 / T-193-23: item `PENDING`/`SENT`/`UNKNOWN` NUNCA é tocado.**
+#     Nada se move, nada é registrado e **nada é reenviado** (os itens da
+#     publicação são comparados **byte a byte** antes e depois), e `Http::recorded()`
+#     sai **vazio**;
+#   · ⚠️ **ISCA INVERTIDA, e é ela que faz o caso valer:** a fixture tem o
+#     `UNKNOWN` **ao lado de um `CREATED` do mesmo tipo** — sem ele, *"a oferta não
+#     se moveu"* seria verdade por não haver nada para mover (gate vazio por
+#     construção). Resolvido o item em voo, a oferta **vai** a `publicado`;
+#   · item que saiu da fila **sem publicar** (os **4** de `SEM_PUBLICAR`, um por
+#     um): o motivo REAL vai ao histórico, a oferta **não sai** de `aprovado` e a
+#     ligação com o item morto é **desfeita** (invariante do 193-02: oferta que
+#     espera publicação nunca aponta para item fora de `VIVOS`);
+#   · ⚠️ valor **adverso** do banco (`conta_snapshot` string, `avisos` string,
+#     `resumo` lista, `listing_type_id` vazio) **não quebra a passada do minuto**
+#     (`erros = 0`), e o estado **impossível** (`publicando` com `fila_item_id`
+#     nulo) é só `Log::warning` — observabilidade, **não** ramo de produto.
+#
+# bloqueios-e-terminal
+#   · ⚠️⚠️ **`publicando` BLOQUEIA EDIÇÃO PELOS DOIS LADOS** (T-193-26):
+#     `podeEditar()`/`abreRevisao()` falsos **com isca** (os três `live` são
+#     verdadeiros), e as **5 rotas de escrita** do painel **chamadas DIRETO, sem a
+#     tela**, recusadas por **igualdade de CONJUNTO** com o id estável da regra.
+#     ⚠️ Os payloads são VÁLIDOS de propósito: com corpo inválido duas rotas
+#     devolviam `422` da VALIDAÇÃO e o caso mediria o validador, não a trava;
+#   · ⚠️ ISCA: a MESMA rota com a oferta ao vivo **aceita** (`302`) — sem ela,
+#     *"tudo 422"* é indistinguível de *"a rota recusa sempre"*;
+#   · ⚠️ **`publicado` é TERMINAL POR ESTRUTURA** (`TRANSICOES[PUBLICADO] === []`):
+#     os **8** destinos enumerados, **todos** recusados com
+#     `REGRA_TRANSICAO_ILEGAL`, por **igualdade de CONJUNTO** (piso `>= N` **não
+#     prova presença**);
+#   · ⚠️⚠️ e a medição que sustenta a **PERGUNTA-193-B** (editar foto de anúncio
+#     JÁ NO AR, decisão 13): **não existe `PUT /items/{id}` em todo o Publicador**.
+#     ⚠️ A sonda larga (`'PUT'`) acusava **quatro** arquivos legítimos de
+#     `Alavancas/` que fazem `PUT /seller-promotions/*` — família *"gate mais largo
+#     que o invariante"* —, e a âncora é o **começo** do caminho, porque
+#     `/seller-promotions/items/` **contém** `/items/`;
+#   · o toast *"Publicado e confirmado"* é asserção de **AUSÊNCIA** no payload da
+#     oferta em voo, **com isca** (com a oferta publicada o MLB aparece).
+#
+# pub06-sem-regressao
+#   · ⚠️⚠️ **esta fase NÃO reimplementa a disciplina de escrita no ML** — ela já
+#     está em `PublicacaoService`/`PublicarRascunhoJob`, em produção. O que se
+#     prova é **não-regressão**, por **CONTAGEM DE OCORRÊNCIAS** (`substr_count`)
+#     no código **SEM COMENTÁRIO** (`token_get_all`): `ContasLiberadas::exigir`
+#     antes de qualquer gravação, `SENT`, `FAILED`, `UNKNOWN`,
+#     `reconciliar_apos_segundos`, a trava por publicação, `retryUntil` e a fila
+#     **`high`**. ⚠️ Nunca `preg_match(...) === 1` (passa com a linha de código
+#     APAGADA quando o texto também vive em comentário) e **nunca `grep -c`**, que
+#     conta LINHAS;
+#   · ⚠️ lista **CONSTANTE** de 3 arquivos com `assertFileExists` em cada um
+#     (DEZOITO fantasmas nesta milestone) e **UMA** asserção coletora — uma por
+#     arquivo faria a contagem subir com a lista;
+#   · ⚠️ a prova de que o leitor **lê**: no texto CRU `SENT` aparece MAIS vezes que
+#     no limpo (os docblocks o citam). Sem essa ponta, as contagens poderiam estar
+#     lendo comentário;
+#   · o serviço do portão: **zero** chave literal de `andamento`, **zero**
+#     `Http::`/`ClienteMlPublicador`/`dispatch(` (com isca sintética), e as **TRÊS**
+#     transições (`PUBLICANDO`, `PUBLICADO`, `FALHA`) saindo por `mover()`, por
+#     igualdade de CONJUNTO dos destinos — **não** por contagem de call-sites, que
+#     muda legitimamente (eu havia escrito um piso de 4 onde são 3);
+#   · ⚠️ o **ciclo de construtor**, MEDIDO: a porta recebe o portão; o portão **não**
+#     pode receber a porta, senão o container recursa até estourar a memória
+#     (medido num container limpo: `Container.php:864`, `exit 255`). Com **controle
+#     positivo**, senão seria "não achei nada";
+#   · ⚠️ **conta NÃO liberada não publica** (`ContasLiberadas` fail-closed, lista
+#     vazia = NINGUÉM), o motivo vai ao histórico **uma vez só** mesmo com o
+#     reconciliador rodando de novo (sem isso, 1.440 linhas iguais por dia), e a
+#     **isca** mostra que liberar a conta faz a oferta entrar.
+#
+# bijecao-manifesto-193-03
+#   · **método sem id NUNCA RODA** (foi o sobrevivente da mutação do 186-03) e **id
+#     órfão não falha: ele simplesmente nunca roda**. As duas formas de "passar por
+#     omissão", conferidas por teste DURÁVEL e não por rascunho de scratchpad;
+#   · ⚠️⚠️ **EXPANSOR DE ALTERNÂNCIA, iscado nas duas direções ANTES de valer:** a
+#     regex ingênua `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)` —
+#     remedido aqui, e o furo já deu `SEM_ID=14` **acusando trabalho correto**;
+#   · sufixo `_193_03` em TODO método por asserção **coletora**; **nenhum id com
+#     mais de TRÊS métodos**; `tests=` conferido contra o número de métodos do
+#     filtro; **homônimo** varrido em toda a suíte com isca (+) de superstring e
+#     isca (−) de um nome REAL de outra fase; e a **terceira bijeção** id ↔
+#     `<verify>` do plano.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+reconciliar-publicando-e-publicado  php  test_(item_publicando_move_a_oferta_e_a_segunda_passada_e_no_op_193_03|publicado_so_com_mlb_confirmado_e_pelo_listing_type_da_oferta_193_03|as_irmas_aprovadas_ficam_ligadas_ao_mesmo_item_apos_reconciliar_193_03)  ::  tests=3 assertions=38
+reconciliar-falha-e-clausula  php  test_(falha_guarda_o_erro_real_e_preserva_a_revisao_aprovada_193_03|a_clausula_entra_so_quando_nada_do_tipo_da_oferta_foi_criado_193_03|avisos_do_ml_aceitos_vao_para_o_historico_193_03)  ::  tests=3 assertions=50
+reconciliar-nao-toca-em-voo  php  test_(item_em_voo_no_mercado_livre_nunca_e_tocado_com_isca_invertida_193_03|item_que_saiu_da_fila_sem_publicar_mantem_a_oferta_em_aprovado_193_03|valor_adverso_do_banco_e_estado_impossivel_nao_quebram_a_passada_193_03)  ::  tests=3 assertions=39
+bloqueios-e-terminal  php  test_(publicando_bloqueia_edicao_pelas_rotas_chamadas_direto_193_03|publicado_e_terminal_nos_oito_destinos_por_igualdade_de_conjunto_193_03|mover_para_publicado_sem_mlb_e_no_op_completo_e_sem_toast_193_03)  ::  tests=3 assertions=31
+pub06-sem-regressao  php  test_(a_disciplina_do_pub06_continua_de_pe_no_codigo_sem_comentario_193_03|conta_nao_liberada_nao_publica_e_o_motivo_chega_ao_historico_193_03)  ::  tests=2 assertions=22
+bijecao-manifesto-193-03  php  test_o_manifesto_tem_bijecao_com_os_metodos_e_nenhum_id_orfao_193_03  ::  tests=1 assertions=33   # ⚠ CONTAGEM DEPENDENTE DO PROPRIO MANIFESTO, declarada: o caso faz 2 assercoes por id php e 1 por metodo do filtro, logo id novo AQUI move este numero. Ela e estavel porque este manifesto pertence SO ao plano 193-03 e os planos 193-01/02/04/05 tem os seus proprios. Se algum dia alguem acrescentar id aqui, REMEDIR (medir as duas pontas e colar), nunca ajustar para passar.
