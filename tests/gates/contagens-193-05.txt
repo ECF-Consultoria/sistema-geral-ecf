@@ -1,0 +1,128 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 193-05 — O FECHAMENTO MEDIDO DA FASE 193:
+# o território pelos dois caminhos, a FRONTEIRA DO D-11, o diff vazio do
+# MlPublicacaoService (medido em linha de comando e COLADO no 193-FECHAMENTO.md),
+# nada sem destino, a bijeção dos CINCO manifestos, e a forma fixa do fechamento.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 193-05 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `193-05`, E NÃO `05`. O número NU resolve
+# `contagens-186-05.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# SILÊNCIO. E esse arquivo EXISTE, então o erro não aborta: ele roda o gate de
+# outra fase e fica verde. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos
+# nove manifestos da Fase 186 são chamados pelo número nu, e aquela fase está EM
+# PRODUÇÃO).
+# ⚠️ MEDIDO no harness: `verificar-testes.sh:122` resolve o 1º argumento por
+# `sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'` — DOIS grupos de DÍGITOS separados
+# por UM hífen. Qualquer outra forma (letra, três grupos) cai no `else` e monta
+# `contagens-186-<arg>.txt`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: por isso **nenhum id deste plano tem mais de TRÊS métodos**.
+#
+# ⚠️ O `--filter` do PHPUnit é regex NÃO ANCORADO e as Fases 186/187/188 estão em
+# PRODUÇÃO: todo método deste plano leva o sufixo `_193_05`, e o gate
+# `bijecao-dos-cinco-manifestos` confere homônimo por SUPERSTRING nas duas
+# direções.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 21/10/2026,
+# com isolamento provado por LINHA DE COMANDO (`php.exe` = 0 antes de cada
+# rodada) e o `EXIT_REAL` do harness lido de `$?` NA LINHA SEGUINTE — nunca
+# depois de um pipe, porque o último comando de um composto com `tail`/`grep`
+# sai 0 SEMPRE e já reportou "exit code 0" com o harness saindo 1.
+#
+# ⚠️ NENHUM gate deste plano chama GIT. A razão é medida e está escrita no
+# docblock do `FechamentoDaFase193Test`: um gate `PARTIDA..HEAD` sobre um arquivo
+# é AUTO-INVALIDANTE (base fixa, range que cresce para sempre), e é a família
+# consertada DEZESSETE vezes nesta milestone na RAIZ e ZERO por elevação de
+# número. O `numstat` foi medido em linha de comando e está COLADO no
+# `193-FECHAMENTO.md` como MEDIÇÃO DATADA — a mesma decisão dos fechamentos das
+# Fases 188 e 189.
+#
+# ── TAREFA 1: território, fronteira D-11/D-22, gate de escrita próprio ───────
+#
+#   territorio-e-d11
+#     (1) os alvos da fase existem no disco (ANTI-FANTASMA: 18 fantasmas nesta
+#         milestone; o fechamento da 189 pegou 6 de 32 = 19%, TODOS de NOMES) e o
+#         MlPublicacaoService fica FORA do caminho, pela versão COMPORTAMENTAL do
+#         diff vazio, com a isca do leitor (cru > 0, limpo = 0);
+#     (2) o D-11 e o D-22 INTACTOS por igualdade de CONJUNTO (24 + 7 nomes,
+#         97 + 15 asserções) e o gate NÃO ESTENDIDO à área nova, com isca que
+#         ACUSA um sintético. ⚠️ O D-22 é achado pelo PREFIXO do nome: há um
+#         "(D22)" num teste de ABAS que uma sonda /D-?22/ engoliria;
+#     (3) a área nova com gate de escrita PRÓPRIO: zero rede nos 5 arquivos lidos
+#         sem comentário, controle positivo do POST /items no serviço reusado, a
+#         fila `high` lida do código, e a sonda ESTREITA de `PUT '/items`
+#         (a LARGA acusaria o `PUT /seller-promotions/items/`, que é LEGÍTIMO).
+#
+# ── TAREFA 1: nada sem destino ───────────────────────────────────────────────
+#
+#   nada-sem-destino
+#     (1) o conjunto de 16 rotas `aprovacao*` pelo ROUTER, por igualdade de
+#         CONJUNTO. ⚠️ A `193-COBERTURA.md` diz "as 6+5 da 188" (= 11): o número
+#         do artefato está ERRADO e o do ROUTER é o que vale;
+#     (2) zero migration, zero `.jsx`, e os três do GATE-07 fora do território,
+#         com CONTROLE POSITIVO das 5 naturezas (senão os assertSame([], …)
+#         seriam vazios por construção);
+#     (3) as 9 formas de segundo passo AUSENTES na UNIÃO dos 5 arquivos — e este
+#         é o único lugar que roda a sonda sobre os cinco juntos (cada wave rodou
+#         só a SUA lista). A sonda é a UNIÃO das duas formas que já existem: a do
+#         `186-09` não casa a prosa acentuada ("Confirmar publicação") e a do
+#         `188-05` faz o INVERSO.
+#
+# ── TAREFA 1: a bijeção dos cinco manifestos ─────────────────────────────────
+#
+#   bijecao-dos-cinco-manifestos
+#     id ↔ método ↔ `<verify>`, nos DOIS sentidos, com EXPANSOR DE ALTERNÂNCIA
+#     (`/test_[A-Za-z0-9_]+/` casa ZERO em `test_(a|b|c)` — o furo que deu
+#     SEM_ID=14 ACUSANDO trabalho correto) e homônimo por SUPERSTRING.
+#     ⚠️ O conjunto de ids ÓRFÃOS de `<verify>` é CONGELADO e DECLARADO (os 4
+#     `bijecao-manifesto-193-0N`, por auto-referência, e o `guarda-modalidade-irma`,
+#     que é órfão DE VERDADE — nasceu no meio da wave 02 com a decisão 23, e o
+#     PLAN.md é artefato do PLANEJADOR). Órfão NOVO reprova; apagar um da lista
+#     para passar é o conserto que o learnings proíbe.
+#     ⚠️ CONTAGEM DEPENDENTE DOS CINCO MANIFESTOS? NÃO: todas as asserções deste
+#     método são COLETORAS (uma por categoria, com os infratores juntos), logo a
+#     contagem é a MESMA com 5 ou com 500 ids.
+#
+# ── TAREFA 2: a forma fixa do fechamento ─────────────────────────────────────
+#
+#   fechamento-de-forma-fixa
+#     (1) o documento existe, não é esqueleto, traz as 6 linhas de baseline em
+#         forma fixa ancoradas em INÍCIO DE LINHA (com isca de linha inventada) e
+#         declara que a suíte PHP COMPLETA não é medível nesta máquina;
+#     (2) os 10 critérios em `CRIT-NN: VEREDICTO — … prova: …`, numerados 01..10
+#         sem buraco, veredicto na lista FECHADA OK/RESSALVA/REPROVA, nenhum
+#         REPROVA, toda RESSALVA com DONO na própria linha, o CRIT-10 obrigatoriamente
+#         RESSALVA, e o PLACAR-193 FECHANDO em 10. ⚠️ 20 é a Fase 188, 17 a 186,
+#         15 a 187 — um `awk` errado traz a fase errada EM SILÊNCIO;
+#     (3) as perguntas com DONO ("a definir" NÃO é dono), as 7 decisões do usuário
+#         (20..26) com `onde:`, os 7 itens devolvidos com `destino:`, a declaração
+#         de que NENHUM EXECUTOR viu tela renderizada (com isca que ACUSA a
+#         afirmação proibida), as conferências visuais 187/188/189 ainda ABERTAS,
+#         e o ROTEIRO da conta 459 recortado à SUA seção, numerado sem buraco.
+#         ⚠️ Recorte à seção porque contar itens numerados no documento inteiro
+#         mediu 23 em vez de 8 na Fase 187 e REPROVOU trabalho certo.
+#
+# ⚠️ A contagem de asserções deste plano NÃO depende de quantos commits há no
+# escopo, de quantos ids há nos manifestos, nem de quantos arquivos existem no
+# repositório: toda lista é CONSTANTE e todo infrator é COLETADO.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+territorio-e-d11  php  test_(os_alvos_da_fase_existem_e_o_mlpublicacaoservice_fica_fora_do_caminho_193_05|o_d11_e_o_d22_estao_intactos_e_o_gate_nao_foi_estendido_193_05|a_area_nova_nao_escreve_no_mercado_livre_fora_do_caminho_da_fila_193_05)  ::  tests=3 assertions=43
+nada-sem-destino  php  test_(o_conjunto_de_rotas_de_aprovacao_nao_cresceu_nem_encolheu_193_05|nenhuma_coluna_nova_nenhum_jsx_e_o_gate07_fora_do_territorio_193_05|nao_existe_segundo_passo_em_nenhum_arquivo_da_fase_193_05)  ::  tests=3 assertions=15
+bijecao-dos-cinco-manifestos  php  test_a_bijecao_dos_cinco_manifestos_nos_dois_sentidos_com_homonimo_193_05  ::  tests=1 assertions=21
+fechamento-de-forma-fixa  php  test_(o_fechamento_193_existe_e_tem_as_seis_linhas_de_baseline_193_05|os_dez_criterios_193_estao_em_forma_fixa_com_placar_que_fecha_193_05|as_perguntas_193_tem_dono_e_o_roteiro_da_conta_459_e_roteiro_193_05)  ::  tests=3 assertions=49
