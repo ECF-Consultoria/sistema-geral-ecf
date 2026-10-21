@@ -10,6 +10,7 @@ use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
 use App\Services\Publicador\DadosEfetivosService;
@@ -234,6 +235,55 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
         $this->assertNull($p[$unidade->id]['envio']['declarada']);
         $this->assertNull($p[$solta->id]['envio']['chave']);
         $this->assertNull($p[$solta->id]['envio']['pacote']);
+    }
+
+    /**
+     * 21/10/2026 — fora do Mercado Envios o Mercado Livre não cobra frete, e o destino depende da conta: com ME1,
+     * a transportadora do vendedor; sem ME1, "Combine a entrega" (a Poltrona Opala da #459). A conta é lida pelo
+     * "Cotar agora" e fica no cache; antes disso (ou com a leitura de antes desta data), não se sabe.
+     */
+    public function test_o_que_nao_cabe_diz_se_vai_pela_transportadora_ou_a_combinar_pela_conta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $grande = $this->ligada($empresa, 'OPALA', ['c' => 70, 'l' => 85, 'a' => 90, 'kg' => 12], '400');
+        $pequena = $this->ligada($empresa, 'BANQ', self::MEIO_QUILO, '45');
+        $envio = fn () => $this->pagina($empresa, [$grande->id, $pequena->id])['por_oferta'];
+
+        $this->assertSame(ModalidadeDeEnvio::FORA_SEM_SABER, $envio()[$grande->id]['envio']['fora'], 'conta não lida');
+        Cache::put(ModalidadeDeEnvio::chave((int) $empresa->id), ['tipo' => 'drop_off', 'lido_em' => now()->toIso8601String()], now()->addDay());
+        $this->assertSame(ModalidadeDeEnvio::FORA_SEM_SABER, $envio()[$grande->id]['envio']['fora'], 'leitura de antes de 21/10');
+
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'drop_off', null, false);
+        $p = $envio();
+        $this->assertSame(ModalidadeDeEnvio::FORA_COMBINAR, $p[$grande->id]['envio']['fora'], 'a #459: Correios e sem ME1');
+        $this->assertNull($p[$pequena->id]['envio']['fora'], 'o que cabe não tem destino "fora"');
+
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'drop_off', null, true);
+        $this->assertSame(ModalidadeDeEnvio::FORA_ME1, $envio()[$grande->id]['envio']['fora']);
+
+        // Na Coleta (soma até 300 cm) a mesma poltrona cabe: vira Mercado Envios, com frete do Mercado Livre.
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'cross_docking', null, true);
+        $p = $envio();
+        $this->assertContains($p[$grande->id]['envio']['chave'], [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL]);
+        $this->assertNull($p[$grande->id]['envio']['fora']);
+    }
+
+    /** A preferência de envio da conta diz se ela tem ME1 — corpos medidos em produção em 21/10/2026. */
+    public function test_a_preferencia_da_conta_diz_se_ela_tem_me1(): void
+    {
+        $da459 = json_decode(file_get_contents(base_path('tests/fixtures-ml/sondagem/conta/shipping_preferences.json')), true)['resposta'];
+        $this->assertFalse(ModalidadeDeEnvio::temMe1($da459), 'a #459: custom, not_specified e me2');
+
+        // A LOJA SHEEP (#165): me1 em `modes` e o bloco `logistics[mode=me1]`.
+        $comMe1 = ['modes' => ['custom', 'not_specified', 'me2', 'me1'], 'logistics' => [
+            ['mode' => 'me1', 'types' => [['type' => 'default', 'default' => true, 'status' => 'active']]],
+            ['mode' => 'me2', 'types' => [['type' => 'cross_docking', 'default' => true, 'status' => 'active'], ['type' => 'fulfillment', 'default' => false, 'status' => 'active']]],
+        ]];
+        $this->assertTrue(ModalidadeDeEnvio::temMe1($comMe1));
+        $this->assertSame('cross_docking', ModalidadeDeEnvio::daPreferencia($comMe1));
+        $this->assertTrue(ModalidadeDeEnvio::temMe1(['modes' => ['me2'], 'logistics' => [['mode' => 'me1', 'types' => [['type' => 'default', 'status' => 'active']]]]]));
+        $this->assertFalse(ModalidadeDeEnvio::temMe1(['modes' => ['me2'], 'logistics' => [['mode' => 'me1', 'types' => [['type' => 'default', 'status' => 'inactive']]]]]));
+        $this->assertFalse(ModalidadeDeEnvio::temMe1([]));
     }
 
     public function test_os_limites_do_envio_seguem_a_modalidade_da_conta(): void

@@ -34,8 +34,15 @@ test('sem sugestão, o frete do outro tipo aparece como "mesmo do"', () => {
 });
 
 test('digitado: a sugestão aparece ao lado só quando é diferente', () => {
+    // 21/10/2026, "digitado R$ 200, o ML cobra R$ 262,85": a cotação da conta é o que o Mercado Livre cobra.
     assert.deepEqual(rotuloDoFrete({ frete_origem: 'digitado', frete: 20, frete_sugerido: sugestao('conta', 8.45) }, 'Premium', fmt),
-        { texto: 'sugerido pela sua conta: R$ 8,45', tipo: 'sugestao', fonte: 'conta' });
+        { texto: 'o ML cobra R$ 8,45', tipo: 'sugestao', fonte: 'conta', alerta: false });
+    // O ML cobra MAIS do que entrou no preço: a legenda acende (a margem fica menor). O digitado não é trocado.
+    assert.deepEqual(rotuloDoFrete({ frete_origem: 'digitado', frete: 200, frete_sugerido: sugestao('conta', 262.85) }, 'Premium', fmt),
+        { texto: 'o ML cobra R$ 262,85', tipo: 'sugestao', fonte: 'conta', alerta: true });
+    // Pela tabela (sem cotação da conta) continua "estimado".
+    assert.deepEqual(rotuloDoFrete({ frete_origem: 'digitado', frete: 20, frete_sugerido: sugestao('tabela', 30) }, 'Premium', fmt),
+        { texto: 'estimado pela tabela: R$ 30,00', tipo: 'sugestao', fonte: 'tabela', alerta: true });
     assert.equal(rotuloDoFrete({ frete_origem: 'digitado', frete: 8.45, frete_sugerido: sugestao('conta', 8.45) }, 'Premium', fmt), null);
     assert.equal(rotuloDoFrete({ frete_origem: 'digitado', frete: 20, frete_sugerido: null }, 'Premium', fmt), null);
     assert.equal(rotuloDoFrete({ frete_origem: null, frete: null, frete_sugerido: null }, 'Premium', fmt), null);
@@ -94,7 +101,7 @@ test('a legenda do campo único: a origem do valor, nunca "mesmo do outro tipo"'
     assert.equal(legendaDoFreteUnico({ classico: tipo('sugerido', 111.65, 'tabela'), premium: tipo('sugerido', 111.65, 'tabela') }, fmt).texto, 'estimado pela tabela');
     assert.equal(legendaDoFreteUnico({ classico: tipo('sugerido', 14.45, 'conta'), premium: tipo('sugerido', 14.45, 'conta') }, fmt).texto, 'sugerido pela sua conta');
     // Digitado por cima de uma sugestão diferente: a sugestão fica à vista, para comparar.
-    assert.equal(legendaDoFreteUnico({ classico: { frete_origem: 'digitado', frete: 20, frete_sugerido: sugestao('conta', 8.45) }, premium: tipo('digitado', 20) }, fmt).texto, 'sugerido pela sua conta: R$ 8,45');
+    assert.equal(legendaDoFreteUnico({ classico: { frete_origem: 'digitado', frete: 20, frete_sugerido: sugestao('conta', 8.45) }, premium: tipo('digitado', 20) }, fmt).texto, 'o ML cobra R$ 8,45');
     // ME1 (sem sugestão): o Clássico digitado e o Premium herdando dizem só "digitado".
     assert.deepEqual(legendaDoFreteUnico({ classico: tipo('digitado', 200), premium: tipo('outro_tipo', 200) }, fmt), { texto: 'digitado', tipo: 'digitado' });
     // Em branco e sem nada a sugerir: quem fala é o aviso de "sem tabela", não esta legenda.

@@ -39,9 +39,15 @@ export function rotuloDoFrete(calculo, outroTipo, fmt) {
             return s ? { texto: origem, tipo: 'sugerido', fonte: s.fonte } : null;
         case 'outro_tipo':
             return { texto: `mesmo do ${outroTipo}`, tipo: 'herdado' };
+        // Digitado diferente do Mercado Livre (21/10/2026, "digitado R$ 200, o ML cobra R$ 262,85"): o valor
+        // digitado nunca é trocado; a legenda diz o do ML e acende (`alerta`) quando ele cobra MAIS do que entrou
+        // no preço — aí a margem é menor que a planejada. Só existe sugestão dentro do Mercado Envios.
         case 'digitado':
             return s && Number(s.valor) !== Number(calculo.frete)
-                ? { texto: `${origem}: ${fmt(s.valor)}`, tipo: 'sugestao', fonte: s.fonte }
+                ? {
+                    texto: s.fonte === 'conta' ? `o ML cobra ${fmt(s.valor)}` : `${origem}: ${fmt(s.valor)}`,
+                    tipo: 'sugestao', fonte: s.fonte, alerta: Number(s.valor) > Number(calculo.frete),
+                }
                 : null;
         default:
             return null;

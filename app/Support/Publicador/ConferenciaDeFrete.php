@@ -95,4 +95,21 @@ final class ConferenciaDeFrete
 
         return in_array(null, $partes, true) ? null : "{$partes[0]}x{$partes[1]}x{$partes[2]},{$partes[3]}";
     }
+
+    /**
+     * O mesmo pacote no formato do `LogisticaProduto` (cm e kg), para saber se ele cabe no Mercado Envios da conta
+     * (21/10/2026). Uma leitura só das medidas: sai do mesmo texto do `dimensions()`.
+     *
+     * @param  array<string, array>  $atributos
+     * @return array{c: float, l: float, a: float, peso_real: float}|null
+     */
+    public static function pacote(array $atributos): ?array
+    {
+        $d = self::dimensions($atributos);
+        if ($d === null || ! preg_match('/^(\d+)x(\d+)x(\d+),(\d+)$/', $d, $m)) {
+            return null;
+        }
+
+        return ['c' => (float) $m[3], 'l' => (float) $m[2], 'a' => (float) $m[1], 'peso_real' => (int) $m[4] / 1000];
+    }
 }

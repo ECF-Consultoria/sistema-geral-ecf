@@ -6,7 +6,6 @@ use App\Models\EstruturaOferta;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
-use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
 use App\Support\Publicador\ConferenciaDeFrete;
 use App\Support\Publicador\ContasLiberadas;
@@ -77,6 +76,7 @@ class ConferenciaService
         private ClienteMlPublicador $cliente,
         private ImagemAssetService $imagens,
         private DadosEfetivosService $efetivos,
+        private EnvioDoRascunhoService $envios,
     ) {}
 
     public function conferir(PubRascunho $r): PubValidacao
@@ -461,7 +461,6 @@ class ConferenciaService
             }
         }
 
-        $fretes = $this->efetivos->fretesDoProduto($r->produto);
         $pacote = ConferenciaDeFrete::dimensions($s->atributos);
         if ($pacote === null) {
             $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'sem_pacote'];
@@ -469,8 +468,18 @@ class ConferenciaService
             return [];
         }
 
-        $empresa = $r->produto->company;
-        $logistica = ($empresa !== null ? ModalidadeDeEnvio::emCache($empresa) : null) ?? (string) config('estrutura_produtos.modalidade_padrao');
+        // O pacote que passa do limite do Mercado Envios da conta também não tem frete do ML para conferir
+        // (21/10/2026): o `shipping_options/free` responde com um número teórico, e compará-lo acusaria diferença
+        // de frete que o Mercado Livre nunca vai cobrar. Vale mesmo sem o aviso `lost_me2` do validate.
+        $envio = $this->envios->avaliar($r, $s->atributos, $conta->sellerId);
+        if (EnvioDoRascunhoService::fora($envio['destino'])) {
+            $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'fora_do_me2', 'destino' => $envio['destino']];
+
+            return [];
+        }
+
+        $fretes = $this->efetivos->fretesDoProduto($r->produto);
+        $logistica = $envio['modalidade'] ?? (string) config('estrutura_produtos.modalidade_padrao');
         $teto = max(1, (int) config('publicador.frete_conferencia.max_cotacoes', 6));
         $nomes = ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'];
 

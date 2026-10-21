@@ -55,10 +55,11 @@ class RecebimentoAbaixoDoCustoTest extends TestCase
             new Alvo('gold_special', 'Poltrona Beny Decorativa Pés Madeira Veludo'),
             new Alvo('gold_pro', 'Poltrona Beny Decorativa Veludo Base Giratória'),
         ]);
-        // As medidas do pacote fechado: sem elas o `simular` nem consulta o frete.
+        // As medidas do pacote fechado: sem elas o `simular` nem consulta o frete. Cabem nos Correios da #459
+        // (soma 190 cm, máx. 200): desde 21/10/2026 o pacote que passa do limite não usa o frete do ML.
         $this->repo->gravarAtributos($this->r, [...self::ATRIBUTOS,
-            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '70 cm'],
-            'SELLER_PACKAGE_LENGTH' => ['value_name' => '80 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '12000 g'],
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '50 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '12000 g'],
         ]);
         $this->r->update(['step_state' => ['conta' => ['sellerId' => '1555596317']]]);
 
@@ -121,6 +122,39 @@ class RecebimentoAbaixoDoCustoTest extends TestCase
         $this->assertFalse($s['prejuizo_com_imposto'], 'o aviso de cima já cobre este tipo');
         $this->assertTrue($s['preco_do_portal']);
         $this->assertFalse($s['portal_sem_frete']);
+        $this->assertSame('me2', $s['envio'], 'o pacote cabe nos Correios da conta: o frete é o do Mercado Livre');
+        $this->assertFalse($s['frete_da_precificacao']);
+    }
+
+    /**
+     * 21/10/2026 — o pacote que passa do limite do Mercado Envios da conta não tem frete do Mercado Livre. A #459
+     * despacha pelos Correios (soma até 200 cm) e não tem ME1: a Poltrona Opala (70 × 85 × 90 cm) saiu
+     * "Combine a entrega", e o card descontava o número teórico do `shipping_options/free`. Agora usa o frete
+     * que entrou no preço da Precificação, diz para onde vai o envio e nem pergunta o frete ao ML.
+     */
+    public function test_pacote_fora_do_mercado_envios_da_conta_usa_o_frete_da_precificacao(): void
+    {
+        $this->repo->gravarAtributos($this->r, [...self::ATRIBUTOS,
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '90 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '85 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '12000 g'],
+        ]);
+        $oferta = (int) $this->produto->oferta_id;
+        $this->fretes = ['por_tipo' => [
+            'gold_special' => ['valor' => 147.85, 'origem' => 'digitado', 'oferta_id' => $oferta],
+            'gold_pro' => ['valor' => 147.85, 'origem' => 'outro_tipo', 'oferta_id' => $oferta],
+        ], 'por_variante' => []];
+
+        $sim = $this->simular();
+
+        foreach (['gold_special', 'gold_pro'] as $lt) {
+            $this->assertSame('combinar', $sim[$lt]['envio'], 'a #459 não tem ME1');
+            $this->assertTrue($sim[$lt]['frete_da_precificacao']);
+            $this->assertSame(147.85, $sim[$lt]['frete']);
+            $this->assertSame(round(self::PRECOS[$lt] - self::TARIFA[$lt] - 147.85, 2), $sim[$lt]['voce_recebe']);
+        }
+        Http::assertNotSent(fn (Request $q) => str_contains($q->url(), 'shipping_options/free'));
+        $this->assertSame(['conhecido' => true, 'obrigatorio' => false, 'parcial' => false, 'por_tipo' => []],
+            app(EditorRascunhoService::class)->freteGratis($this->r->fresh()), 'sem Mercado Envios não há frete grátis obrigatório');
     }
 
     /** O conserto D: o Premium PARECE sobrar R$ 1,75 e está R$ 97,22 no vermelho. */

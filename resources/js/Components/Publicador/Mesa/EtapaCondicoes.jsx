@@ -110,6 +110,30 @@ const EXPLICACAO_MARGEM = 'Margem estimada = (o que você recebe − custo − i
 const NOTA_DO_IMPOSTO = 'O Mercado Livre não desconta imposto: o que você recebe ainda tem imposto a pagar. '
     + 'O preço do Portal já reserva uma parte para isso — é a linha "Imposto reservado".';
 
+// O pacote que passa do limite do Mercado Envios da conta (21/10/2026): o Mercado Livre não cobra frete, e o
+// número que ele devolve para esse pacote é teórico (a Poltrona Opala da #459 mostrava R$ 147,85 e saiu
+// "Combine a entrega"). O servidor usa o frete da Precificação; aqui só se diz para onde vai o envio.
+const ENVIO_FORA = {
+    me1: {
+        rotulo: 'Frete (sua transportadora)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta: o envio é pela sua transportadora (ME1) e o Mercado Livre '
+            + 'não cobra frete. A conta usa o frete da Precificação do Portal: confira se ele cobre a transportadora.',
+    },
+    combinar: {
+        rotulo: 'Frete (a combinar)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta, e ela não tem ME1: o anúncio sai «Combine a entrega» '
+            + 'e o Mercado Livre não cobra frete. A conta usa o frete da Precificação do Portal.',
+    },
+    fora: {
+        rotulo: 'Frete (fora do Mercado Envios)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta: o Mercado Livre não cobra frete (o envio vai pela sua '
+            + 'transportadora, ME1, ou sai «Combine a entrega»). A conta usa o frete da Precificação do Portal.',
+    },
+};
+
+/** Fora do Mercado Envios da conta, com o frete tirado da Precificação: `{ rotulo, aviso }`; senão null. */
+export const envioForaDoMe2 = (s) => (s?.frete_da_precificacao ? (ENVIO_FORA[s.envio] ?? ENVIO_FORA.fora) : null);
+
 /**
  * Os avisos de um tipo de anúncio, em ordem de leitura. Cada frase é UMA string (sem interpolação
  * dentro do JSX), para o HTML não sair picado por comentários entre nós de texto.
@@ -126,7 +150,11 @@ function avisosDoRecebimento(s) {
         avisos.push(['portal_sem_frete', 'alerta', 'O preço sugerido pela Precificação do Portal foi calculado SEM frete: '
             + 'este número não é uma recomendação confiável. Informe o frete na Precificação do Portal ou digite o preço aqui.']);
     }
-    if (s.frete_conhecido === false) {
+    const fora = envioForaDoMe2(s);
+    if (fora) {
+        avisos.push(['fora_do_me2', 'alerta', fora.aviso + (s.frete_conhecido ? '' : ' A Precificação não tem frete desta oferta: '
+            + 'o que você recebe está otimista.')]);
+    } else if (s.frete_conhecido === false) {
         avisos.push(['frete_conhecido', 'alerta', 'Sem as medidas do pacote o frete do Mercado Livre não entra nesta conta: '
             + 'o que você recebe está otimista.']);
     }
@@ -204,6 +232,7 @@ export function QuantoRecebo({ m }) {
                         const depois = num(s.lucro_depois_do_imposto);
                         const impostoPct = num(s.imposto_pct);
                         const desconto = textoDoDescontoAutomatico(s.promocao);
+                        const fora = envioForaDoMe2(s);
                         // Prejuízo em vermelho; o que sobra segue o tom do card.
                         const tom = (v) => (v !== null && v < 0 ? 'text-red-300' : 'text-white');
 
@@ -213,7 +242,7 @@ export function QuantoRecebo({ m }) {
                                     <div className="flex justify-between font-bold text-white"><dt>{NOME_TIPO[lt]}</dt><dd /></div>
                                     <div className="flex justify-between text-white/80"><dt>Preço de venda</dt><dd>{brl(s.preco)}</dd></div>
                                     <div className="flex justify-between text-white/55"><dt>Tarifa do Mercado Livre</dt><dd>{`− ${brl(s.tarifa)}`}</dd></div>
-                                    <div className="flex justify-between text-white/55"><dt>Frete</dt><dd>{s.frete_conhecido ? `− ${brl(s.frete)}` : 'informe o pacote'}</dd></div>
+                                    <div className="flex justify-between text-white/55" data-frete-envio={s.envio ?? ''}><dt>{fora ? fora.rotulo : 'Frete'}</dt><dd>{s.frete_conhecido ? `− ${brl(s.frete)}` : (fora ? 'sem frete na Precificação' : 'informe o pacote')}</dd></div>
                                     <div className="flex items-baseline justify-between border-t border-white/[0.08] pt-1.5 text-white"><dt className="font-bold">Você recebe</dt><dd className="text-[15px] font-bold text-emerald-400">{brl(s.voce_recebe)}</dd></div>
                                     <div className="flex justify-between text-white/55"><dt>Custo</dt><dd>{brl(s.custo)}</dd></div>
                                     <div className={cn('flex justify-between', tom(lucro))}><dt className="text-white/55">Lucro antes do imposto</dt><dd>{brl(s.lucro)}</dd></div>

@@ -132,11 +132,6 @@ class FreteMe2Service
             return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => false, 'falhou' => false];
         }
 
-        // Nada que caiba no Mercado Envios em modalidade nenhuma: nem a preferência da conta é lida.
-        if (! $this->algumCabeNoMe2($itens)) {
-            return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => true, 'falhou' => false];
-        }
-
         $cfg        = config('estrutura_produtos.frete');
         $parametros = EstruturaPrecificacaoParametros::daEmpresa($empresa->id);
         $sellerId   = (string) $empresa->mlToken->ml_user_id;
@@ -152,6 +147,19 @@ class FreteMe2Service
 
             return $token;
         };
+
+        // Nada que caiba no Mercado Envios em modalidade nenhuma: não há o que cotar. A preferência da conta
+        // é lida mesmo assim (uma vez, e fica no cache): é dela que a tela tira se o que não cabe vai pela
+        // transportadora (ME1) ou sai "Combine a entrega" (21/10/2026).
+        if (! $this->algumCabeNoMe2($itens)) {
+            try {
+                $this->modalidadeDaConta($empresa, $sellerId, $comToken);
+            } catch (\RuntimeException $e) {
+                Log::warning("[Estrutura Produtos] preferência de envio sem leitura empresa {$empresa->id}: ".$e->getMessage());
+            }
+
+            return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => true, 'falhou' => false];
+        }
 
         try {
             $modalidade = $this->modalidadeDaConta($empresa, $sellerId, $comToken);
@@ -425,7 +433,8 @@ class FreteMe2Service
     private function modalidadeDaConta(Company $empresa, string $sellerId, callable $comToken): ?string
     {
         $guardado = Cache::get(ModalidadeDeEnvio::chave((int) $empresa->id));
-        if (is_array($guardado)) {
+        // Leitura de antes de 21/10/2026 não guardava se a conta tem ME1: relê uma vez.
+        if (is_array($guardado) && array_key_exists('me1', $guardado)) {
             return ModalidadeDeEnvio::doGuardado($guardado);
         }
 
@@ -444,7 +453,8 @@ class FreteMe2Service
         }
 
         $tipo = $r->successful() ? ModalidadeDeEnvio::daPreferencia((array) $r->json()) : null;
-        ModalidadeDeEnvio::guardar((int) $empresa->id, $tipo, $r->successful() ? null : 1);
+        ModalidadeDeEnvio::guardar((int) $empresa->id, $tipo, $r->successful() ? null : 1,
+            $r->successful() ? ModalidadeDeEnvio::temMe1((array) $r->json()) : null);
 
         return $tipo;
     }

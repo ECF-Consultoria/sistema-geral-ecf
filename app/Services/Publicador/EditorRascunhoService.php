@@ -66,6 +66,7 @@ class EditorRascunhoService
         private PublicacaoService $publicacoes,
         private PortalProdutoLeitor $leitor,
         private ExplicacaoDeAtributos $explicacoes,
+        private EnvioDoRascunhoService $envios,
     ) {}
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
@@ -403,6 +404,16 @@ class EditorRascunhoService
             ?? $s->atributos['SELLER_SKU']['value_name'] ?? null);
         $custo = ($sku === null ? null : ($custos['por_variante'][$sku] ?? null)) ?? $custos['custo'];
 
+        // Para onde vai o envio na conta (21/10/2026). Fora do Mercado Envios o Mercado Livre não cobra frete — o
+        // número do `shipping_options/free` para esse pacote é teórico (a Poltrona Opala da #459 mostrava R$ 147,85
+        // e saiu "Combine a entrega"). Ali a conta usa o frete que entrou no preço da Precificação: é o que o
+        // vendedor paga à transportadora (ME1) ou para entregar (a combinar). Dentro, a cotação segue a modalidade
+        // da conta (antes, Correios fixo).
+        $envio = $pacote === null ? null : $this->envios->avaliar($r, $s->atributos);
+        $logistica = $envio['modalidade'] ?? 'drop_off';
+        $fora = EnvioDoRascunhoService::fora($envio['destino'] ?? null);
+        $doPortal = $fora ? $this->efetivos->fretesDoProduto($r->produto) : null;
+
         $saida = [];
         foreach ($s->alvosAtivos() as $alvo) {
             $preco = (float) ($primeira?->dados['precos'][$alvo->listingTypeId] ?? 0);
@@ -410,16 +421,19 @@ class EditorRascunhoService
                 continue;
             }
             $tarifa = $this->cliente->publico('/sites/MLB/listing_prices', ['price' => $preco, 'category_id' => $r->categoria_id,
-                'listing_type_id' => $alvo->listingTypeId, 'currency_id' => 'BRL', 'logistic_type' => 'drop_off', 'shipping_mode' => 'me2']);
+                'listing_type_id' => $alvo->listingTypeId, 'currency_id' => 'BRL', 'logistic_type' => $logistica, 'shipping_mode' => 'me2']);
             if (! $tarifa->ok() || ! isset($tarifa->corpo['sale_fee_amount'])) {
                 continue;
             }
 
             $frete = null;
-            if (isset($conta['sellerId']) && $pacote !== null) {
+            if ($fora) {
+                $ref = ($sku !== null ? ($doPortal['por_variante'][$sku][$alvo->listingTypeId] ?? null) : null) ?? ($doPortal['por_tipo'][$alvo->listingTypeId] ?? null);
+                $frete = isset($ref['valor']) ? (float) $ref['valor'] : null;
+            } elseif (isset($conta['sellerId']) && $pacote !== null) {
                 $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
                     'item_price' => $preco, 'listing_type_id' => $alvo->listingTypeId, 'mode' => 'me2', 'condition' => $s->condicao === 'used' ? 'used' : 'new',
-                    'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+                    'logistic_type' => $logistica, 'dimensions' => $pacote, 'verbose' => 'true',
                 ]);
                 $frete = $f->ok() && isset($f->corpo['coverage']['all_country']['list_cost']) ? (float) $f->corpo['coverage']['all_country']['list_cost'] : null;
             }
@@ -433,6 +447,10 @@ class EditorRascunhoService
                 ...$this->recebimentoVsCusto($preco, $simulacao['voce_recebe'], $custo, $custos['origem'], $custos['imposto']),
                 'preco_do_portal' => (bool) ($primeira?->dados['preco_do_portal'][$alvo->listingTypeId] ?? false),
                 'portal_sem_frete' => (bool) ($portal['sem_frete'] ?? false),
+                // `me2`, `me1`, `combinar`, `fora` ou null (sem pacote ou sem a conta lida); fora do Mercado
+                // Envios, o frete é o da Precificação (`frete_da_precificacao`).
+                'envio' => $envio['destino'] ?? null,
+                'frete_da_precificacao' => $fora,
                 'promocao' => [
                     ...$promocao,
                     'motivo_texto' => $promocao['motivo'] === null ? null : (PrecoDaPromocao::MOTIVOS[$promocao['motivo']] ?? null),
@@ -505,6 +523,13 @@ class EditorRascunhoService
             return ['conhecido' => true] + $saida;
         }
         $pacote = $this->dimensoes($s->atributos);
+        // Nem quando o pacote passa do limite do Mercado Envios da conta (21/10/2026): o anúncio sai pela
+        // transportadora (ME1) ou "Combine a entrega", e o frete grátis marcado some sem erro (publicador-ml §25).
+        $envio = $pacote === null ? null : $this->envios->avaliar($r, $s->atributos);
+        if (EnvioDoRascunhoService::fora($envio['destino'] ?? null)) {
+            return ['conhecido' => true] + $saida;
+        }
+        $logistica = $envio['modalidade'] ?? 'drop_off';
 
         foreach ($s->alvosAtivos() as $alvo) {
             $precos = array_values(array_filter(array_map(
@@ -515,7 +540,7 @@ class EditorRascunhoService
             }
             $menor = min($precos);
             $maior = max($precos);
-            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote);
+            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote, $logistica);
             $doMenor = $consulta($menor);
             $doMaior = $maior === $menor ? $doMenor : $consulta($maior);
             if ($doMenor === null || $doMaior === null) {
@@ -535,11 +560,11 @@ class EditorRascunhoService
     }
 
     /** Nulo = o ML não respondeu (a tela segue sem a regra, como antes). */
-    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote): ?bool
+    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote, string $logistica = 'drop_off'): ?bool
     {
         $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/shipping_options/free", array_filter([
             'item_price' => $preco, 'listing_type_id' => $listingType, 'mode' => 'me2', 'condition' => $condicao === 'used' ? 'used' : 'new',
-            'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+            'logistic_type' => $logistica, 'dimensions' => $pacote, 'verbose' => 'true',
         ], fn ($x) => $x !== null));
         $cobertura = $f->ok() && is_array($f->corpo) ? ($f->corpo['coverage']['all_country'] ?? null) : null;
         if (! is_array($cobertura)) {

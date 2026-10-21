@@ -58,6 +58,7 @@ class EstruturaPrecificacaoService
         // tabela — o resumo só precisa saber SE há sugestão, e a tabela sempre responde.
         $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        $temMe1 = ModalidadeDeEnvio::me1EmCache($empresa);
         ['pagina' => $itensDaPagina, 'resto' => $itensDoResto] = $this->itensDeFrete($empresa, $base, $daPagina, logisticas: $logisticas);
         $sugeridos = ($itensDaPagina === [] ? [] : $this->frete->estimar($empresa, $itensDaPagina))
             + ($itensDoResto === [] ? [] : $this->frete->estimar($empresa, $itensDoResto, false));
@@ -77,7 +78,7 @@ class EstruturaPrecificacaoService
             };
 
             if (isset($daPagina[$o['id']])) {
-                $porOferta[$o['id']] = $calculo + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade)];
+                $porOferta[$o['id']] = $calculo + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade, $temMe1)];
             }
         }
 
@@ -119,6 +120,7 @@ class EstruturaPrecificacaoService
 
         $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        $temMe1 = ModalidadeDeEnvio::me1EmCache($empresa);
         $itens = $this->itensDeFrete($empresa, $base, $ids, logisticas: $logisticas)['pagina'];
         $sugeridos = $itens === [] ? [] : $this->frete->estimar($empresa, $itens);
 
@@ -129,7 +131,7 @@ class EstruturaPrecificacaoService
                 continue;
             }
             $calculo = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null)
-                + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade)];
+                + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade, $temMe1)];
 
             $resumo['total']++;
             $resumo[$calculo['pendencia'] === null ? 'precificadas' : 'pendentes']++;
@@ -438,9 +440,13 @@ class EstruturaPrecificacaoService
      * nada, e o usuário não tinha como saber se era ME1, falta de medida ou defeito.
      *
      * @param  ?array  $log  retorno de {@see self::logisticas()} para a oferta
-     * @return array{chave: ?string, pacote: ?array{c: float, l: float, a: float, peso: float}, somado: bool, volumes: int, estouros: list<array>, sem_medida: list<string>, declarada: ?string, modalidade: ?string}
+     * `fora` (21/10/2026): para onde vai a oferta que passa do limite do Mercado Envios da conta — `me1` (a
+     * transportadora do vendedor), `combinar` (conta sem ME1: "Combine a entrega") ou `fora` (a preferência da
+     * conta ainda não foi lida). Nos dois primeiros o Mercado Livre não cobra frete nenhum.
+     *
+     * @return array{chave: ?string, pacote: ?array{c: float, l: float, a: float, peso: float}, somado: bool, volumes: int, estouros: list<array>, sem_medida: list<string>, declarada: ?string, modalidade: ?string, fora: ?string}
      */
-    private static function envio(array $oferta, ?array $log, ?string $modalidade): array
+    private static function envio(array $oferta, ?array $log, ?string $modalidade, ?bool $temMe1 = null): array
     {
         $pacote = $log['pacote'] ?? null;
         $volumes = 0;
@@ -459,6 +465,7 @@ class EstruturaPrecificacaoService
             // Logística declarada na Lista SKUs que tira a oferta do Mercado Envios, se houver.
             'declarada'  => in_array($oferta['logistica'], self::FORA_DO_ME2, true) ? $oferta['logistica'] : null,
             'modalidade' => $modalidade,
+            'fora'       => ($log['logistica'] ?? null) === LogisticaProduto::ME1 ? ModalidadeDeEnvio::destinoFora($temMe1) : null,
         ];
     }
 

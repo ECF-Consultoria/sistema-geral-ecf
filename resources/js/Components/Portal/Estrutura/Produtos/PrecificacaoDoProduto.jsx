@@ -101,7 +101,8 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
 
     const t = c[tipo];
     const placeholderFrete = freteEmBranco(t) ? reaisParaTexto(t.frete) : '0,00';
-    const origem = c[freteK] == null ? rotuloDoFrete(t, tipo === 'classico' ? 'Premium' : 'Clássico', fmtReais) : null;
+    // Com frete digitado, a legenda só aparece quando o Mercado Livre cobra outro valor (21/10/2026).
+    const origem = rotuloDoFrete(t, tipo === 'classico' ? 'Premium' : 'Clássico', fmtReais);
     const semFrete = !! t?.sem_frete;
     const semSugestao = avisoSemSugestao(c.envio, t);
     const corTipo = tipo === 'classico' ? 'text-blue-300' : 'text-violet-300';
@@ -120,7 +121,7 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
                 <CampoReais rotulo={`Frete (${nomeDoTipo(tipo)})`} dica="Quanto custa enviar. Em branco vale o sugerido."
                     valor={texto.frete} onChange={(v) => mudar('frete', v)} onBlur={() => gravar('frete', freteK, c[freteK])}
                     placeholder={placeholderFrete} invalido={semFrete} data-campo={`frete-${tipo}`} />
-                {origem && <p className="mt-1.5 text-[11.5px] text-white/45" data-frete-origem={origem.tipo}>{origem.texto}</p>}
+                {origem && <p className={cn('mt-1.5 text-[11.5px]', origem.alerta ? 'text-amber-300' : 'text-white/45')} data-frete-origem={origem.tipo} data-frete-alerta={origem.alerta ? 'sim' : undefined}>{origem.texto}</p>}
                 {semFrete && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-red-400">
                         <AlertCircle size={13} className="shrink-0" />

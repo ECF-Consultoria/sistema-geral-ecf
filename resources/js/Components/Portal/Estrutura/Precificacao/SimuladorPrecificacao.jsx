@@ -249,7 +249,7 @@ function EntradaDaOferta({ membro, tipo, parametros, freteTabela, onSalvar }) {
                     valor={fretes[tipo]} onChange={(v) => setFretes((f) => ({ ...f, [tipo]: v }))}
                     onBlur={() => salvar()} placeholder={freteEmBranco(t) ? reaisParaTexto(t.frete) : '0,00'} invalido={semFrete}
                     data-campo={`frete-${tipo}`} />
-                {origem && <p className="mt-1.5 text-[11.5px] text-white/45" title={origem.fonte === 'tabela' ? `Estimado pela tabela de custos de envio${vigencia}.` : undefined} data-frete-origem={origem.tipo}>{origem.texto}</p>}
+                {origem && <p className={cn('mt-1.5 text-[11.5px]', origem.alerta ? 'text-amber-300' : 'text-white/45')} title={origem.fonte === 'tabela' ? `Estimado pela tabela de custos de envio${vigencia}.` : undefined} data-frete-origem={origem.tipo} data-frete-alerta={origem.alerta ? 'sim' : undefined}>{origem.texto}</p>}
                 {semFrete && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-red-400">
                         <AlertCircle size={13} className="shrink-0" />

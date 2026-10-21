@@ -153,6 +153,26 @@ class FreteNaConferenciaTest extends TestCase
         $this->assertSame([], $this->cotacoes());
     }
 
+    /**
+     * 21/10/2026 — o pacote que passa do limite do Mercado Envios da conta (a #459 despacha pelos Correios: soma até
+     * 200 cm) não tem frete do Mercado Livre para conferir, mesmo sem o aviso `lost_me2` no validate: o
+     * `shipping_options/free` responderia um número teórico, e a conferência acusaria diferença que nunca é cobrada.
+     */
+    public function test_pacote_fora_do_mercado_envios_da_conta_nao_compara_frete_teorico(): void
+    {
+        $this->freteDoMl = 147.85;
+        $this->repo->gravarAtributos($this->r, [...self::ATRIBUTOS,
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '90 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '85 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '12000 g'],
+        ]);
+
+        $v = $this->conferir();
+
+        $this->assertSame([], self::doFrete($v));
+        $this->assertSame(['aplicavel' => false, 'motivo' => 'fora_do_me2', 'destino' => 'combinar'], $v->respostas_ml['frete'], 'a #459 não tem ME1');
+        $this->assertSame([], $this->cotacoes(), 'nem pergunta o frete');
+    }
+
     public function test_cotacao_que_falha_nao_derruba_a_conferencia_nem_inventa_aviso(): void
     {
         $this->freteDoMl = null;

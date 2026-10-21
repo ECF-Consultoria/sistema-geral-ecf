@@ -243,3 +243,31 @@ test('simulação vazia, nula e com tipo sem número seguem como antes', () => {
     assert.match(card({}), /Sem preço para simular/);
     assert.doesNotMatch(card({ gold_special: {} }), /\[object Object\]|NaN|undefined/);
 });
+
+// ─── 21/10/2026: o pacote que passa do limite do Mercado Envios da conta ─────
+// A Poltrona Opala da #459 (Correios, sem ME1) saiu "Combine a entrega", e o card descontava o frete teórico que o
+// `shipping_options/free` devolve para esse pacote. O servidor passa a usar o frete da Precificação e diz para onde
+// vai o envio; o card só troca o rótulo e explica.
+
+test('fora do Mercado Envios: o rótulo do frete e o aviso dizem para onde vai o envio', () => {
+    const combinar = card({ gold_special: { ...CLASSICO, frete: 147.85, envio: 'combinar', frete_da_precificacao: true } });
+    assert.match(combinar, /<dt[^>]*>Frete \(a combinar\)/);
+    assert.match(combinar, aviso('gold_special', 'fora_do_me2'));
+    assert.match(combinar, /ela não tem ME1: o anúncio sai «Combine a entrega» e o Mercado Livre não cobra frete/);
+    assert.match(combinar, /147,85/);
+
+    const me1 = card({ gold_special: { ...CLASSICO, envio: 'me1', frete_da_precificacao: true } });
+    assert.match(me1, /<dt[^>]*>Frete \(sua transportadora\)/);
+    assert.match(me1, /o envio é pela sua transportadora \(ME1\)/);
+
+    // Sem frete na Precificação: nada de "informe o pacote" (o pacote existe), e o aviso diz o que falta.
+    const semFrete = card({ gold_special: { ...CLASSICO, frete: null, frete_conhecido: false, envio: 'combinar', frete_da_precificacao: true } });
+    assert.match(semFrete, /sem frete na Precificação/);
+    assert.doesNotMatch(semFrete, /informe o pacote/);
+    assert.doesNotMatch(semFrete, aviso('gold_special', 'frete_conhecido'), 'um aviso só sobre o frete');
+
+    // Dentro do Mercado Envios, o card de sempre.
+    const dentro = card({ gold_special: { ...CLASSICO, envio: 'me2', frete_da_precificacao: false } });
+    assert.match(dentro, /<dt[^>]*>Frete<\/dt>/);
+    assert.doesNotMatch(dentro, aviso('gold_special', 'fora_do_me2'));
+});

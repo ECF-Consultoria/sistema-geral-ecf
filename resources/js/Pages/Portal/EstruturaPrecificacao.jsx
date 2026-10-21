@@ -367,13 +367,14 @@ function OrigemDoFrete({ calculo, de, freteTabela }) {
     const reputacao = freteTabela?.reputacao ? `, reputação ${freteTabela.reputacao}` : '';
     const dica = r.tipo === 'herdado'
         ? `Sem frete do Mercado Envios para sugerir: vale o que você digitou no ${de}.`
-        : s?.fonte === 'conta'
+        : (s?.fonte === 'conta'
             ? 'Cotado na sua conta do Mercado Livre, no preço deste tipo de anúncio.'
-            : `Tabela de custos de envio do Mercado Livre${vigencia}${reputacao}.`;
+            : `Tabela de custos de envio do Mercado Livre${vigencia}${reputacao}.`)
+            + (r.alerta ? ' O Mercado Livre cobra mais do que o frete digitado: a margem fica menor que a planejada. O valor digitado não é trocado.' : '');
 
     return (
-        <span className={cn(LEGENDA, 'text-white/45')} title={dica}
-            data-frete-origem={r.tipo} data-frete-fonte={r.fonte ?? ''}>
+        <span className={cn(LEGENDA, r.alerta ? 'text-amber-300' : 'text-white/45')} title={dica}
+            data-frete-origem={r.tipo} data-frete-fonte={r.fonte ?? ''} data-frete-alerta={r.alerta ? 'sim' : undefined}>
             {r.texto}
         </span>
     );
@@ -419,7 +420,12 @@ function SemSugestaoDeFrete({ envio, tipo }) {
 /** Sob o campo ÚNICO de frete da linha: a origem do valor ou, sem nada a sugerir, por que está em branco. */
 function LegendaDoFreteUnico({ calculo }) {
     const r = legendaDoFreteUnico(calculo, fmtReais);
-    if (r) return <span className={cn(LEGENDA, 'truncate text-white/45')} title={r.texto} data-frete-origem={r.tipo}>{r.texto}</span>;
+    if (r) {
+        return (
+            <span className={cn(LEGENDA, 'truncate', r.alerta ? 'text-amber-300' : 'text-white/45')} title={r.texto}
+                data-frete-origem={r.tipo} data-frete-alerta={r.alerta ? 'sim' : undefined}>{r.texto}</span>
+        );
+    }
 
     const aviso = avisoSemSugestao(calculo.envio, calculo.classico) ?? avisoSemSugestao(calculo.envio, calculo.premium);
 

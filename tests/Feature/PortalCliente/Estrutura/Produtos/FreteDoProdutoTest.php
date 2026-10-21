@@ -269,18 +269,30 @@ class FreteDoProdutoTest extends TestCase
         Http::assertSent(fn (Request $req) => str_contains($req->url(), '/users/436501796/shipping_preferences'));
     }
 
-    public function test_cotar_o_que_nao_cabe_em_modalidade_nenhuma_e_pendente_nao_gera_requisicao(): void
+    /**
+     * O que não cabe em modalidade nenhuma não é cotado. Desde 21/10/2026 a preferência da conta é lida mesmo
+     * assim — UMA vez, e fica no cache: é dela que a tela tira se o pacote vai pela transportadora (ME1) ou sai
+     * "Combine a entrega" (a conta sem ME1, como a #459).
+     */
+    public function test_cotar_o_que_nao_cabe_em_modalidade_nenhuma_nao_cota_mas_le_a_conta_uma_vez(): void
     {
         $empresa = $this->empresaDoGabarito();
         $this->conectar($empresa);
-        Http::fake();
+        Http::fake(['*/shipping_preferences*' => Http::response(['modes' => ['custom', 'not_specified', 'me2', 'me1'], 'logistics' => [
+            ['mode' => 'me2', 'types' => [['type' => 'cross_docking', 'default' => true, 'status' => 'active']]],
+            ['mode' => 'me1', 'types' => [['type' => 'default', 'default' => true, 'status' => 'active']]],
+        ]])]);
         $me1 = $this->item(250, 44, 12, 60, 100);   // lado 250 e 60 kg: fora até da Coleta
         $pendente = ['pacote' => null, 'peso_faturado' => null, 'logistica' => LogisticaProduto::PENDENTE, 'custo' => 100];
 
         $r = $this->svc()->cotar($empresa, ['a' => $me1, 'b' => $pendente]);
+        $this->svc()->cotar($empresa, ['a' => $me1, 'b' => $pendente]);
 
-        Http::assertNothingSent();
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $q) => str_contains($q->url(), 'shipping_options'));
         $this->assertNull($r['fretes']['a']['valor']);
+        $this->assertSame('cross_docking', ModalidadeDeEnvio::emCache($empresa));
+        $this->assertTrue(ModalidadeDeEnvio::me1EmCache($empresa), 'a conta tem ME1: o que não cabe vai pela transportadora');
     }
 
     /** A conta despacha pela Coleta: o que nos Correios seria ME1 cabe no ME2 e é cotado como cross_docking. */
