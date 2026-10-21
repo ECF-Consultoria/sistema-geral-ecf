@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Check, Plus } from 'lucide-react';
 import { Checkbox } from '@/Components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { mensagemDeFalha } from '@/lib/produtosGravacao';
 
 // ─── Família (escolha única) e Ambiente (múltipla) na própria célula ─────────
 //
@@ -111,7 +112,9 @@ export default function PickerLista({ tipo, multiplo = false, opcoes = [], valor
             if (data.listas) onListas?.(data.listas);
             escolher(data.item?.nome ?? nome);
         } catch (e) {
-            setErro(e.response?.data?.errors?.nome?.[0] ?? e.response?.data?.message ?? 'Não foi possível criar agora. Tente de novo.');
+            // Demo 23/10: fora do 422 o `message` do Laravel vem em inglês ("Server Error", "Too Many Attempts.").
+            setErro(e.response?.data?.errors?.nome?.[0] ?? (e.response?.status === 422 ? e.response?.data?.message : null)
+                ?? (e.response?.status === 419 || e.response?.status === 429 ? mensagemDeFalha(e) : 'Não foi possível criar agora. Tente de novo.'));
         } finally {
             setCriando(false);
         }

@@ -86,6 +86,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const [erros, setErros] = useState({});          // { _k: mensagem }
     const [aviso, setAviso] = useState(null);
     const [salvando, setSalvando] = useState(false);
+    // Demo 23/10 (N11): três cliques rápidos passavam pelo `salvando` antes do re-render e mandavam três
+    // POST ("o código já existe em outro produto" junto de "Produto salvo."). A ref trava na hora.
+    const salvandoRef = useRef(false);
     const [alterado, setAlterado] = useState(false);   // há algo digitado ainda não salvo
     const [rascunho, setRascunho] = useState(inicio.oferecer);   // { em, vars } à espera de Recuperar/Descartar
     const varsRef = useRef(vars);
@@ -236,6 +239,16 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     /** Devolve { ok, data }; quem chama decide o que fazer (a página volta para a lista). */
     const salvar = async () => {
+        if (salvandoRef.current) return { ok: false, data: null };
+        salvandoRef.current = true;
+        try {
+            return await salvarUmaVez();
+        } finally {
+            salvandoRef.current = false;
+        }
+    };
+
+    const salvarUmaVez = async () => {
         if (salvando) return { ok: false, data: null };
         setAviso(null);
         if (tecnica.carregando) {

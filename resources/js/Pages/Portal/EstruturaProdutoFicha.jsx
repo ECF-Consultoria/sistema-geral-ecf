@@ -319,6 +319,14 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
                 <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
 
+                {/* Demo 23/10 (H3): o aviso do topo e o erro da variação ficam longe do botão — clicar em Salvar
+                    parecia não fazer nada. O resumo repete aqui, colado aos botões. */}
+                {(ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
+                    <p role="status" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar>
+                        {ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.'}
+                    </p>
+                )}
+
                 {/* Cancelar/Salvar saíram de dentro de Variações: com a Ficha técnica depois dela,
                     ali os botões ficariam no meio da página. As margens negativas acompanham o
                     padding da página (px-4 / sm:px-6) para a barra encostada do celular. */}
