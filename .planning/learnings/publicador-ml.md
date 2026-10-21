@@ -1789,3 +1789,23 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   `etapaDoProblema` do front) — por etapa e não "os 5 primeiros", senão 12 campos da ficha escondiam a foto que
   faltava. O chip vira botão com a lista; cada item vai a `editor?etapa=X&corrigir=1`, e o editor abre a etapa com o
   "O que corrigir" marcado (`irPara(etapa, { marcar: true })`) e tira o `corrigir` da URL.
+
+## 42. A capa da fase N nasce com a fase, por cor, com a foto REAL do cliente (21/10/2026)
+
+Pedido do usuário: "atualmente vai automático apenas a fase 1 nas imagens — qual sua sugestão para um gatilho da fase 2?".
+Decidido: o gatilho é o **nascimento** do Kit N pelo Planejamento (`CombosDoPlanejamentoService::pedirCapa`), que só
+acontece com a Fase 1 publicada — a foto de base já foi conferida e não se gasta com combo que não vai existir. O que
+não se deduz do código:
+
+- **A foto do cliente da Fase 1 continua no rascunho, sem grupo**, depois que as imagens por IA tomam o lugar dela (§40),
+  e o clone da fase copia TODAS as `pub_imagens` do base. É dessa cópia que sai a referência — nunca da imagem por IA
+  (cópia de cópia perde fidelidade). Sem a foto no grupo, a cor dela vem do Portal: o `valor` da variação = o rótulo do
+  grupo ("Cinza"). A galeria geral só entra em produto SEM cor.
+- **Por cor que vai ao ar:** a cor inativa no kit (sem o Combo N no Portal) não gera. A Opala12 (Cinza e Bordô) gera
+  duas capas por fase — 4 imagens.
+- **Tipos fixos `hero`, `lifestyle`** (fundo limpo abre o anúncio, a ambientada vem em 2º). O combo não rotaciona a
+  capa, então a do Clássico e a do Premium são a mesma. Com tipos fixos e `quantidade_kit` ≥ 2 o
+  `PlanejarKitCriativosJob` põe as N unidades na cena (`unidades_da_composicao`).
+- **Entra na frente das herdadas** (`aplicar()` com `capa` na memória): `aprovarSlot` já põe cada uma na frente, mas
+  na ordem inversa — por isso o grupo é reordenado depois. Reprovada pelo juiz: o kit segue com as fotos da Fase 1.
+- A fase criada à mão ("Criar Fase N", produto fora do Portal) continua com a capa do botão (`kit_da_fase`).

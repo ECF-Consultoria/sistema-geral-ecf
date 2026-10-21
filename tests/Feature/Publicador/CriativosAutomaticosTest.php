@@ -22,12 +22,18 @@ use App\Models\User;
 use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
+use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use App\Support\Publicador\ImagensReprovadas;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\OrdemCapaPorAlvo;
+use App\Support\Publicador\Variacao\ChaveCanonica;
+use App\Support\Publicador\Variacao\Eixo;
+use App\Support\Publicador\Variacao\GeradorCombinacoes;
+use App\Support\Publicador\Variacao\ValorEixo;
+use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -245,7 +251,13 @@ class CriativosAutomaticosTest extends TestCase
         $kit = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-KIT2', 'nome' => 'Kit 2 Cadeira', 'origem' => PubProduto::ORIGEM_PUBLICADOR,
             'produto_base_id' => $base->id, 'fase' => 2, 'quantidade_kit' => 2]);
         $rk = (new RascunhoRepository())->criar($kit, [new Alvo('gold_special', null)]);
-        $this->assertSame('kit_da_fase', $this->servico()->avaliar($rk->id), 'o kit da Fase N tem a capa própria');
+        // 21/10/2026: o kit da fase do produto do Portal pede a capa do conjunto — este, sem a cópia da foto do cliente, não tem de onde.
+        $this->assertSame('sem_foto', $this->servico()->avaliar($rk->id));
+        $avulso = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'AVULSO', 'nome' => 'Avulso', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $kitAvulso = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'AVULSO-KIT2', 'nome' => 'Kit 2 Avulso', 'origem' => PubProduto::ORIGEM_PUBLICADOR,
+            'produto_base_id' => $avulso->id, 'fase' => 2, 'quantidade_kit' => 2]);
+        $rka = (new RascunhoRepository())->criar($kitAvulso, [new Alvo('gold_special', null)]);
+        $this->assertSame('kit_da_fase', $this->servico()->avaliar($rka->id), 'a fase de produto fora do Portal segue com a capa do botão');
 
         $this->assertSame('planejando', $this->servico()->avaliar($r->id));
         // O kit deu erro (o operador o descartaria): com os MESMOS fatos, não gera de novo.
@@ -322,13 +334,19 @@ class CriativosAutomaticosTest extends TestCase
     private function kitPronto(PubRascunho $r, array $vereditos = ['aprovada', 'aprovada']): MlAnuncioCriativoKit
     {
         $this->assertSame('planejando', $this->servico()->avaliar($r->id));
-        $kit = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $r->id)->sole();
-        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO, 'total_slots' => 2]);
-        foreach (['lifestyle', 'hero'] as $i => $tipo) {
+
+        return $this->slotsProntos(MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $r->id)->sole(), ['lifestyle', 'hero'], $vereditos);
+    }
+
+    /** Os slots do kit prontos, com a imagem no disco e o veredito do juiz, e o kit `pronto` (o gatilho). */
+    private function slotsProntos(MlAnuncioCriativoKit $kit, array $tipos, array $vereditos, array $plano = []): MlAnuncioCriativoKit
+    {
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO, 'total_slots' => count($tipos)]);
+        foreach ($tipos as $i => $tipo) {
             $caminho = "creative/kit-{$kit->id}-{$tipo}.jpg";
             Storage::disk('local')->put($caminho, $this->jpeg($i === 0 ? [180, 120, 60] : [60, 120, 180]));
             MlAnuncioCriativo::create(['token' => str_repeat((string) $i, 32), 'company_id' => $kit->company_id, 'pub_rascunho_id' => null,
-                'user_id' => $this->sistema->id, 'kit_id' => $kit->id, 'slot' => $tipo, 'slot_indice' => $i, 'slot_plano' => ['tipo' => $tipo],
+                'user_id' => $this->sistema->id, 'kit_id' => $kit->id, 'slot' => $tipo, 'slot_indice' => $i, 'slot_plano' => ['tipo' => $tipo] + $plano,
                 'status' => MlAnuncioCriativo::STATUS_PRONTO, 'imagem_path' => $caminho, 'imagem_mime' => 'image/jpeg', 'modelo' => 'gemini-teste',
                 'validacao_status' => $vereditos[$i]]);
         }
@@ -381,6 +399,68 @@ class CriativosAutomaticosTest extends TestCase
         MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
         $this->assertSame('sem_foto', $this->servico()->avaliar($r->id));
         $this->assertSame(1, MlAnuncioCriativoKit::query()->count());
+    }
+
+    /**
+     * 21/10/2026 — a capa da fase N: o kit que nasce do base do Portal pede a capa do conjunto POR COR, com a foto REAL
+     * do cliente daquela cor — mesmo depois de a Fase 1 ter trocado as fotos pelas da IA (a do cliente fica no rascunho
+     * sem grupo, e o clone a copia) —, e as duas imagens entram NA FRENTE das que o kit herdou da Fase 1.
+     */
+    public function test_capa_da_fase_n_por_cor_com_a_foto_real_do_cliente_e_na_frente_das_herdadas(): void
+    {
+        $this->ligar();
+        [$p, $r] = $this->produtoComFotos(1);
+        $doCliente = PubImagem::query()->findOrFail($this->galeria($r)[0]);
+        // A Fase 1 tem Azul e Preto (a cor define a foto); o Portal só tem foto do Azul. As imagens por IA já tomaram o
+        // lugar da foto do cliente: ela não está em grupo nenhum.
+        $eixos = [new Eixo('COLOR', 'Cor', 0, definesPicture: true, valores: [new ValorEixo('52028', 'Azul'), new ValorEixo('52049', 'Preto')])];
+        (new RascunhoRepository())->gravarVariacao($r->fresh(), $eixos, array_map(fn ($c) => Variante::daCombinacao($c), GeradorCombinacoes::gerar($eixos)));
+        $azul = ChaveCanonica::combinacao(['COLOR' => 'id:52028']);
+        $ia = $this->fotoNoRascunho($r, 'ia-da-fase-1', [10, 200, 10]);
+        $editor = app(EditorRascunhoService::class);
+        $editor->trocarFotosDoGrupo($r->fresh(), $azul, [$ia->id]);
+        $editor->trocarFotosDoGrupo($r->fresh(), R::GERAL, [$ia->id]);
+
+        $kit = app(CriarFaseService::class)->criar($this->pubDo($p)->fresh(), ['quantidade' => 2, 'sku' => 'CAD-KIT2']);
+        $rk = $kit->rascunho;
+        $this->assertSame('planejando', $this->servico()->avaliar($rk->id));
+
+        $kitIa = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $rk->id)->sole();
+        $this->assertSame($azul, $kitIa->pub_grupo, 'uma capa por cor com foto do cliente: o Preto não tem, e a galeria geral não entra em produto com cor');
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kitIa->id && $j->tiposFixos === ['hero', 'lifestyle']);
+        $portador = MlAnuncioCriativo::query()->findOrFail($kitIa->criativo_referencia_id);
+        $this->assertCount(1, (array) $portador->referencias, 'a referência é a foto do cliente, nunca a imagem por IA da Fase 1');
+        $this->assertSame(sha1_file(Storage::disk('local')->path($doCliente->caminho)), $portador->referencias[0]['hash']);
+        $this->assertTrue($rk->fresh()->step_state['criativos_auto']['grupos'][$azul]['capa']);
+
+        $herdadas = $this->galeria($rk, $azul);
+        $this->assertCount(1, $herdadas, 'o kit herdou a imagem por IA da Fase 1 no Azul');
+        $this->slotsProntos($kitIa, ['hero', 'lifestyle'], ['aprovada', 'aprovada'], ['unidades_da_composicao' => 2]);
+        $this->assertSame('aplicado:2', $this->servico()->aplicar($kitIa->id));
+        $this->assertSame([$this->imagemDoSlot($kitIa, 'hero'), $this->imagemDoSlot($kitIa, 'lifestyle'), ...$herdadas], $this->galeria($rk, $azul),
+            'a capa do conjunto na frente (fundo limpo, depois ambientada) e a foto herdada da Fase 1 depois');
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kitIa->fresh()->status);
+        $this->assertSame('kit_existente', $this->servico()->avaliar($rk->id), 'a fase não pede outra capa');
+    }
+
+    /** Capa reprovada pelo juiz: o kit da fase segue com as fotos da Fase 1, e o kit fecha com o motivo. */
+    public function test_capa_da_fase_reprovada_o_kit_segue_com_as_fotos_da_fase_1(): void
+    {
+        $this->ligar();
+        [$p, $r] = $this->produtoComFotos(1);
+        $kit = app(CriarFaseService::class)->criar($this->pubDo($p)->fresh(), ['quantidade' => 3, 'sku' => 'CAD-KIT3']);
+        $rk = $kit->rascunho;
+        $antes = $this->galeria($rk);
+        $this->assertSame('planejando', $this->servico()->avaliar($rk->id), 'produto sem cor: a galeria geral, com a foto do cliente que está nela');
+        $kitIa = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $rk->id)->sole();
+        $this->assertSame(R::GERAL, $kitIa->pub_grupo);
+        $this->slotsProntos($kitIa, ['hero', 'lifestyle'], ['reprovada', 'reprovada'], ['unidades_da_composicao' => 3]);
+        MlAnuncioCriativo::query()->where('kit_id', $kitIa->id)->whereNotNull('slot_indice')->update(['regeneracao_automatica' => true]);
+
+        $this->assertSame('nada_aprovavel', $this->servico()->aplicar($kitIa->id));
+        $this->assertSame($antes, $this->galeria($rk), 'o anúncio nunca fica sem foto por aqui');
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_ERRO, $kitIa->fresh()->status);
+        $this->assertStringContainsString('fotos da Fase 1', (string) $kitIa->fresh()->erro_mensagem);
     }
 
     public function test_trocar_fotos_do_grupo_so_mexe_no_grupo_pedido(): void

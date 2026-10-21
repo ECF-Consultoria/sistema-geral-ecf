@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Publicador;
 
+use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\CriarCombosDoPlanejamentoJob;
+use App\Models\Configuracao;
 use App\Models\EstruturaOferta;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Publicador\CombosDoPlanejamentoService;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
@@ -84,6 +88,29 @@ class CombosDoPlanejamentoTest extends TestCase
         }
         $this->assertSame(5, $kit2->rascunho->variantes()->first()->estoque, 'estoque do base (10) ÷ 2');
         $this->assertArrayHasKey('resumo', (array) $kit2->rascunho->fresh()->step_state, 'o que falta já está calculado para a lista');
+    }
+
+    /**
+     * 21/10/2026 — a capa do conjunto nasce com a fase: com as imagens automáticas ligadas para a empresa, o kit que
+     * nasce já tem o pedido da capa na fila `creative`; desligadas, nada (a capa segue no botão do editor do kit).
+     */
+    public function test_a_fase_que_nasce_pede_a_capa_do_conjunto_so_com_as_imagens_automaticas_ligadas(): void
+    {
+        $grupo = $this->grupoComRascunho();
+        $this->aceitarCombos(2);
+        $this->servico()->criarOsQueFaltam($grupo->fresh());
+        $this->assertNotNull($this->kit($grupo, 2));
+        Queue::assertNotPushed(AvaliarCriativosAutomaticosJob::class);
+
+        config(['publicador.criativos_auto.ativo' => true]);
+        Configuracao::set(CreativeEngineAtivo::CHAVE, '1');
+        Configuracao::set(CriativosAutomaticosService::CHAVE_EMPRESAS, (string) $grupo->company_id);
+        $this->aceitarCombos(3);
+        $this->servico()->criarOsQueFaltam($grupo->fresh());
+
+        $kit3 = $this->kit($grupo, 3);
+        Queue::assertPushedOn('creative', AvaliarCriativosAutomaticosJob::class, fn (AvaliarCriativosAutomaticosJob $j) => $j->rascunhoId === (int) $kit3->rascunho->id);
+        Queue::assertPushed(AvaliarCriativosAutomaticosJob::class, 1);
     }
 
     public function test_so_as_cores_com_o_combo_no_portal_ficam_ativas(): void

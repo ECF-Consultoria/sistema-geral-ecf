@@ -7,6 +7,7 @@ use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Models\AcervoImagem;
 use App\Models\Configuracao;
+use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
@@ -18,10 +19,12 @@ use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
+use App\Services\Publicador\CombosDoPlanejamentoService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PortalProdutoLeitor;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -66,6 +69,13 @@ use Illuminate\Support\Str;
  * Ambientação vem primeiro ({@see tiposDoKit()}). O kit pedido no botão segue com a aprovação de gente, e a imagem que
  * o juiz reprovou também.
  *
+ * 21/10/2026 — A CAPA DA FASE N (decisão do usuário, "vamos fazer assim"): o kit da fase 2 em diante que o
+ * Planejamento cria sozinho ({@see CombosDoPlanejamentoService}) pede a capa do conjunto — as N unidades juntas —
+ * no mesmo passo em que nasce. A fase só nasce com a Fase 1 publicada, então a foto de base já foi conferida. Dois
+ * tipos fixos, fundo limpo e ambientada ({@see self::TIPOS_DA_CAPA}), por cor que vai ao ar, com a foto REAL do
+ * cliente daquela cor como referência ({@see gruposDaCapa()}); entram NA FRENTE das fotos que o kit herdou da Fase 1.
+ * A fase criada à mão ("Criar Fase N", produto fora do Portal) segue com a capa do botão.
+ *
  * Nunca lança para quem chama (o preparo): devolve o motivo, que vai para o log.
  */
 final class CriativosAutomaticosService
@@ -76,6 +86,12 @@ final class CriativosAutomaticosService
 
     /** Onde a memória do último pedido mora no rascunho. */
     public const MEMORIA = 'criativos_auto';
+
+    /**
+     * A capa do conjunto da fase N, na ordem da galeria: o fundo limpo abre o anúncio (Clássico e Premium — o combo não
+     * rotaciona a capa) e a ambientada vem em 2º. Os mesmos dois tipos da capa do botão ({@see \App\Services\Publicador\CapaDoKitService}).
+     */
+    public const TIPOS_DA_CAPA = ['hero', 'lifestyle'];
 
     /** O que a automação escreve ou não descreve o produto: fora do hash (como no preparo de texto). */
     private const FORA_DO_HASH = ['MODEL', 'GTIN', 'SELLER_SKU', 'EMPTY_GTIN_REASON'];
@@ -99,7 +115,8 @@ final class CriativosAutomaticosService
      * Todas as condições e, passando, o kit planejado + a geração encadeada.
      *
      * @return string desligado, sem_rascunho, kit_da_fase, intocavel, incompleto, sem_usuario, sem_permissao, sem_foto,
-     *                kit_existente, em_dia, limite, ocupado, erro, planejando (um ou mais grupos)
+     *                kit_existente, em_dia, limite, ocupado, erro, planejando (um ou mais grupos). No kit da fase N
+     *                vindo do Planejamento, a capa do conjunto ({@see capaDaFase()}).
      */
     public function avaliar(int $rascunhoId): string
     {
@@ -113,7 +130,7 @@ final class CriativosAutomaticosService
                 return 'desligado';
             }
             if ($pub->produto_base_id !== null) {
-                return 'kit_da_fase';
+                return $this->capaDaFase($r, $pub);
             }
             if (in_array($r->status, PublicadorCriativoAprovacaoService::INTOCAVEIS, true)) {
                 return 'intocavel';
@@ -251,7 +268,9 @@ final class CriativosAutomaticosService
                 // "pronto", ele seguraria o grupo (D-15) e a foto certa que o cliente subir depois não geraria nada. Com os
                 // mesmos fatos, o hash da memória segura a repetição (`em_dia`). Sem os ganchos: query, não modelo.
                 MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO, 'finished_at' => now(),
-                    'erro_mensagem' => 'Nenhuma imagem passou no juiz e a foto do cliente ficou. Uma foto ou ficha nova no Portal gera de novo.']);
+                    'erro_mensagem' => ! empty($memoria['capa'])
+                        ? 'Nenhuma capa do conjunto passou no juiz; o kit seguiu com as fotos da Fase 1.'
+                        : 'Nenhuma imagem passou no juiz e a foto do cliente ficou. Uma foto ou ficha nova no Portal gera de novo.']);
                 Log::info("[Creative] Imagens automáticas: kit {$kit->id} sem imagem aprovável (o juiz reprovou); nada entrou no rascunho {$r->id}.");
 
                 return 'nada_aprovavel';
@@ -268,7 +287,11 @@ final class CriativosAutomaticosService
                 }
             }
             $editor = app(EditorRascunhoService::class);
-            if ($ids !== []) {
+            if ($ids !== [] && ! empty($memoria['capa'])) {
+                // A capa do conjunto da fase N vai NA FRENTE, na ordem dos slots (fundo limpo, depois ambientada); as
+                // fotos que o kit herdou da Fase 1 seguem depois.
+                $editor->trocarFotosDoGrupo($r->fresh(), $grupo, [...$ids, ...array_values(array_diff($this->galeriaDoGrupo($r->id, $grupo), $ids))]);
+            } elseif ($ids !== []) {
                 // A foto do cliente é só referência: o grupo fica com as imagens do kit.
                 $editor->trocarFotosDoGrupo($r->fresh(), $grupo, $ids);
             }
@@ -335,8 +358,11 @@ final class CriativosAutomaticosService
 
     // ═══ Um grupo ════════════════════════════════════════════════════════════
 
-    /** @param list<PubImagem> $fotos */
-    private function planejarGrupo(PubRascunho $r, PubProduto $pub, string $grupo, array $fotos, User $usuario): string
+    /**
+     * @param  list<PubImagem>  $fotos
+     * @param  bool  $capa  a capa do conjunto da fase N ({@see capaDaFase()}): tipos fixos e as imagens entram na frente
+     */
+    private function planejarGrupo(PubRascunho $r, PubProduto $pub, string $grupo, array $fotos, User $usuario, bool $capa = false): string
     {
         if (MlAnuncioCriativoKit::retomavelDoPublicador($r->id, $grupo) !== null || MlAnuncioCriativoKit::ultimoAprovadoDoPublicador($r->id, $grupo) !== null) {
             return 'kit_existente';
@@ -390,14 +416,15 @@ final class CriativosAutomaticosService
             return 'erro';
         }
 
-        $slots = $this->tiposDoKit($r);
+        $slots = $capa ? self::TIPOS_DA_CAPA : $this->tiposDoKit($r);
         Bus::chain([
             new PlanejarKitCriativosJob($portador->id, $kit->id, $slots === [] ? null : $slots),
             new GerarCriativosAutomaticosJob($kit->id),
         ])->dispatch();
 
-        $this->comEstado($r->id, function (array $estado) use ($grupo, $hash, $kit) {
-            $estado[self::MEMORIA]['grupos'][$grupo] = ['hash' => $hash, 'kit_id' => (int) $kit->id, 'em' => now()->toIso8601String()];
+        $this->comEstado($r->id, function (array $estado) use ($grupo, $hash, $kit, $capa) {
+            $estado[self::MEMORIA]['grupos'][$grupo] = ['hash' => $hash, 'kit_id' => (int) $kit->id, 'em' => now()->toIso8601String()]
+                + ($capa ? ['capa' => true] : []);
             // O kit mais recente: é ele que a visão rápida do lote olha para o aviso "prontas para revisar".
             $estado[self::MEMORIA]['kit_id'] = (int) $kit->id;
 
@@ -407,6 +434,107 @@ final class CriativosAutomaticosService
         Log::info("[Creative] Imagens automáticas: kit {$kit->id} planejando (rascunho {$r->id}, produto {$pub->id})", ['slots' => $slots, 'user_id' => $usuario->id]);
 
         return 'planejando';
+    }
+
+    // ═══ A capa da fase N ════════════════════════════════════════════════════
+
+    /**
+     * A capa do conjunto do kit da fase N que o Planejamento criou (21/10/2026). Só o kit cujo produto base é do Portal
+     * (a fase criada à mão segue com o botão) e de 2 unidades para cima; rascunho não publicado; o usuário de sistema
+     * com a permissão; a foto REAL do cliente de cada cor que vai ao ar. Mesmos fatos não geram de novo e o teto do dia
+     * vale ({@see planejarGrupo()}).
+     */
+    private function capaDaFase(PubRascunho $r, PubProduto $kit): string
+    {
+        $base = PubProduto::find($kit->produto_base_id);
+        if ($base === null || ! CombosDoPlanejamentoService::doPortal($base) || (int) $kit->quantidade_kit < 2) {
+            return 'kit_da_fase';
+        }
+        if (in_array($r->status, PublicadorCriativoAprovacaoService::INTOCAVEIS, true)) {
+            return 'intocavel';
+        }
+        $usuario = $this->usuario();
+        if ($usuario === null) {
+            return 'sem_usuario';
+        }
+        if (! $this->permissao->podePlanejar($usuario) || ! $this->permissao->podeGerar($usuario)) {
+            return 'sem_permissao';
+        }
+
+        $resultados = [];
+        foreach ($this->gruposDaCapa($r, $base) as $grupo => $fotos) {
+            $resultados[] = $this->planejarGrupo($r, $kit, $grupo, $fotos, $usuario, capa: true);
+        }
+        if ($resultados === []) {
+            return 'sem_foto';
+        }
+
+        return in_array('planejando', $resultados, true) ? 'planejando' : $resultados[0];
+    }
+
+    /**
+     * Os grupos da capa e a foto REAL do cliente de cada um. O kit nasceu com cópia de TODAS as fotos do rascunho do
+     * base ({@see \App\Services\Publicador\CriarFaseService::copiarImagens()}), inclusive a do cliente que a Fase 1
+     * tirou da galeria ao trocar pelas imagens por IA — ela segue no rascunho, sem grupo. Por isso: a foto do cliente
+     * que está no grupo; sem ela, a do cliente da MESMA cor (o valor da variação no Portal = o rótulo do grupo); na
+     * galeria geral de produto sem cor, qualquer foto do cliente. Imagem por IA nunca é referência (cópia de cópia perde
+     * fidelidade). Só os grupos de variante ATIVA: a cor sem o Combo N no Portal não vai ao ar.
+     *
+     * @return array<string, list<PubImagem>>
+     */
+    private function gruposDaCapa(PubRascunho $r, PubProduto $base): array
+    {
+        $doCliente = $this->fotosDoCliente($base);
+        if ($doCliente === []) {
+            return [];
+        }
+        $imagens = PubImagem::query()->where('rascunho_id', $r->id)->whereNotNull('caminho')->orderBy('id')->get()
+            ->filter(fn (PubImagem $i) => array_key_exists((string) $i->sha256, $doCliente) && ArquivosDeImagem::existe($i->caminho))
+            ->keyBy('id');
+        if ($imagens->isEmpty()) {
+            return [];
+        }
+        $atribuicoes = DB::table('pub_imagem_atribuicoes')->whereIn('imagem_id', $imagens->keys()->all())
+            ->orderBy('posicao')->orderBy('imagem_id')->get(['imagem_id', 'grupo_chave']);
+
+        $grupos = $this->referencias->gruposComRotulo($r);
+        $soGeral = count($grupos) === 1;
+        $todas = (bool) config('publicador.criativos_auto.todas_as_cores', true);
+        $saida = [];
+        foreach ($grupos as $chave => $g) {
+            if (! $g['ativo'] || ($chave === ResolvedorGruposImagem::GERAL && ! $soGeral)) {
+                continue;
+            }
+            $fotos = $atribuicoes->where('grupo_chave', $chave)->map(fn ($a) => $imagens->get($a->imagem_id))->filter()->values()->all();
+            if ($fotos === []) {
+                $cor = self::normalizarCor($g['rotulo']);
+                $fotos = $imagens->filter(fn (PubImagem $i) => $soGeral || ($cor !== '' && $doCliente[(string) $i->sha256] === $cor))->values()->all();
+            }
+            $fotos = array_slice($fotos, 0, PublicadorCriativoReferenciaService::MAX);
+            if ($fotos === []) {
+                continue;
+            }
+            $saida[$chave] = $fotos;
+            if (! $todas) {
+                break;
+            }
+        }
+
+        return $saida;
+    }
+
+    /** @return list<int> as fotos do grupo, na ordem da galeria */
+    private function galeriaDoGrupo(int $rascunhoId, string $grupo): array
+    {
+        return DB::table('pub_imagem_atribuicoes as a')->join('pub_imagens as i', 'i.id', '=', 'a.imagem_id')
+            ->where('i.rascunho_id', $rascunhoId)->where('a.grupo_chave', $grupo)
+            ->orderBy('a.posicao')->orderBy('i.id')->pluck('i.id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /** "Cinza" e " cinza " são a mesma cor; "Bordô" acha "bordo". */
+    private static function normalizarCor(?string $cor): string
+    {
+        return Str::lower(Str::ascii(trim((string) $cor)));
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
@@ -550,6 +678,17 @@ final class CriativosAutomaticosService
      */
     private function shasDoCliente(PubProduto $pub): array
     {
+        return array_map(fn () => true, $this->fotosDoCliente($pub));
+    }
+
+    /**
+     * As fotos do cliente no Portal ({@see shasDoCliente()}), cada uma com a cor da variação dela, normalizada (null
+     * sem valor) — a capa da fase N acha por ela a foto da cor ({@see gruposDaCapa()}).
+     *
+     * @return array<string, ?string> sha256 => cor
+     */
+    private function fotosDoCliente(PubProduto $pub): array
+    {
         $ids = app(PreparoIaDoRascunhoService::class)->produtosDoPortal($pub);
         if ($ids === []) {
             return [];
@@ -557,7 +696,8 @@ final class CriativosAutomaticosService
 
         $shas = [];
         $fotos = EstruturaProdutoVariacaoImagem::query()->where('company_id', $pub->company_id)->whereIn('produto_id', $ids)
-            ->get(['id', 'caminho', 'tamanho']);
+            ->get(['id', 'caminho', 'tamanho', 'variacao_id']);
+        $cores = EstruturaProdutoVariacao::query()->whereIn('id', $fotos->pluck('variacao_id')->filter()->unique()->all())->pluck('valor', 'id');
         foreach ($fotos as $foto) {
             $chave = 'publicador:criativos-auto:sha-do-portal:'.$foto->id.':'.md5($foto->caminho.'|'.$foto->tamanho);
             $sha = Cache::get($chave);
@@ -570,7 +710,8 @@ final class CriativosAutomaticosService
                 $sha = hash('sha256', $convertida);
                 Cache::put($chave, $sha, now()->addDays(30));
             }
-            $shas[$sha] = true;
+            $cor = self::normalizarCor($cores[$foto->variacao_id] ?? null);
+            $shas[$sha] ??= $cor !== '' ? $cor : null;
         }
 
         return $shas;

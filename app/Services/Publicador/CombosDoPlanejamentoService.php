@@ -2,9 +2,11 @@
 
 namespace App\Services\Publicador;
 
+use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\CriarCombosDoPlanejamentoJob;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Log;
 
@@ -29,7 +31,10 @@ use Illuminate\Support\Facades\Log;
  *   Combo N fica inativa no kit, e nada é criado no Portal);
  * - **cor cujo Combo N já está no ar como produto avulso fica de fora** (o Sincronizar de antes criava um
  *   produto por oferta; o kit com a mesma cor duplicaria o anúncio no ML);
- * - **sem capa do conjunto** (a imagem por IA tem custo e é da equipe pedir, no editor do kit).
+ * - **a capa do conjunto é pedida sozinha** (21/10/2026, decisão do usuário: o gatilho das imagens da fase 2 em diante
+ *   é o nascimento dela) quando as imagens por IA automáticas estão ligadas para a empresa — ver
+ *   {@see \App\Services\Publicador\Criativos\CriativosAutomaticosService} ("A CAPA DA FASE N"). Até 21/10 a capa era
+ *   da equipe pedir, no editor do kit; o botão continua lá.
  * Depois de criar, o estado do editor é calculado uma vez, para a lista e a vitrine já mostrarem o que falta
  * (sem isso o kit que ninguém abriu apareceria "Pronto").
  *
@@ -127,6 +132,7 @@ final class CombosDoPlanejamentoService
             }
 
             $this->calcularEstado($kit);
+            $this->pedirCapa($kit);
             $saida['criados'][] = ['quantidade' => $n, 'produto_id' => (int) $kit->id, 'cores' => $cores];
             Log::info("[Publicador] Combo {$n} aceito no Planejamento virou o Kit {$n} (produto {$kit->id}) do produto {$base->id} ({$base->nome}), com "
                 .count($cores).' cor(es): '.implode(', ', $cores).($noAr !== [] ? '; fora, já no ar como avulso: '.implode(', ', $noAr) : '').'.');
@@ -137,6 +143,27 @@ final class CombosDoPlanejamentoService
         }
 
         return $saida;
+    }
+
+    /**
+     * A capa do conjunto nasce com a fase (21/10/2026). Só põe na fila (`creative`) quando as imagens automáticas estão
+     * ligadas para a empresa; quem confere o resto (foto do cliente, permissão, teto do dia) é o
+     * {@see \App\Services\Publicador\Criativos\CriativosAutomaticosService::avaliar()}. Depois do commit: o Job lê o
+     * kit que acabou de nascer. Nunca derruba a criação do kit.
+     */
+    private function pedirCapa(PubProduto $kit): void
+    {
+        try {
+            if (! app(CriativosAutomaticosService::class)->ligadoPara($kit->company_id !== null ? (int) $kit->company_id : null)) {
+                return;
+            }
+            $rascunhoId = PubRascunho::where('produto_id', $kit->id)->value('id');
+            if ($rascunhoId !== null) {
+                AvaliarCriativosAutomaticosJob::dispatch((int) $rascunhoId)->afterCommit();
+            }
+        } catch (\Throwable $e) {
+            Log::warning("[Publicador] A capa automática do kit {$kit->id} não foi pedida: {$e->getMessage()}");
+        }
     }
 
     /**

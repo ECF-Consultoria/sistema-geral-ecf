@@ -62,6 +62,30 @@ class PublicadorCriativoReferenciaService
     }
 
     /**
+     * Os grupos de foto do rascunho com o rótulo (a cor, "Cinza") e se alguma variante ATIVA os usa. A capa
+     * automática da fase N (21/10/2026) gera só para a cor que vai ao ar e acha a foto do cliente pela cor.
+     *
+     * @return array<string, array{rotulo: string, ativo: bool}> a galeria geral primeiro, depois as cores na ordem do anúncio
+     */
+    public function gruposComRotulo(PubRascunho $r): array
+    {
+        $s = $this->repo->snapshot($r);
+        $grupos = ResolvedorGruposImagem::resolver(
+            $s->variantes,
+            Eixo::ordenar($s->eixos),
+            $s->imagens,
+            new OpcoesImagem(OpcoesImagem::UP, null, null, $s->fotosPorVariante, $s->incluirGeral),
+        )->grupos;
+
+        $saida = [ResolvedorGruposImagem::GERAL => ['rotulo' => '', 'ativo' => true]];
+        foreach ($grupos as $g) {
+            $saida[(string) $g['chave']] = ['rotulo' => (string) $g['rotulo'], 'ativo' => $g['variantes'] !== []];
+        }
+
+        return $saida;
+    }
+
+    /**
      * As `pub_imagens` pedidas, na ordem dos ids — só as que têm arquivo em
      * disco (T-165-07: busca só em `$r->imagens()`, id de outro rascunho
      * nunca é achado e vira 422 explícito).
