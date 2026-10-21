@@ -142,6 +142,50 @@ class FechamentoDaFase193Test extends TestCase
      */
     private const FANTASMA_DO_MLPUBLICACAO = 'app/Services/Mlb/MlPublicacaoService.php';
 
+    /**
+     * ⚠️⚠️ **OS ALVOS QUE NÃO PODEM SAIR DA LISTA `ALVO-INTOCADO:` — E ISTO É O CONSERTO DE UMA
+     * SOBREVIVENTE DA CAMPANHA DE MUTAÇÃO DESTA WAVE.**
+     *
+     * A primeira redação do gate media a lista por **PISO**
+     * (`assertGreaterThanOrEqual(20, count($alvos))`) mais a varredura de fantasmas. ⚠️ A mutação
+     * **m9** — que **REMOVEU** uma linha `ALVO-INTOCADO:` — **SOBREVIVEU**: com 32 alvos, apagar um
+     * deixa 31, **acima do piso**. ➡️ É a família ***"piso `>= N` NÃO prova PRESENÇA"***, a mesma
+     * da sobrevivente **M5** do fechamento da Fase 187 (lá, com 13 perguntas, perder **uma**
+     * deixava 12 e todos os pisos passavam — e a que se perdeu era justamente a do bug latente).
+     *
+     * ⚠️ **E o risco é concreto, não teórico:** *"tirar alvo da lista"* é exatamente **o conserto
+     * barato** que o learnings manda evitar — quem for incomodado por um alvo o apaga, e o gate
+     * continua verde.
+     *
+     * ➡️ **A lista abaixo é o SUBCONJUNTO CRÍTICO, congelado:** cada um destes carrega um critério
+     * desta fase (PUB-03, o D-11/D-22, o GATE-07, a trava de conta, a fila `high`, a decisão 22).
+     * ⚠️ **Subconjunto, e não a lista inteira, de propósito:** recopiar os 32 criaria **duas
+     * verdades livres para divergir**, e manter o par sincronizado viraria trabalho sem prova. O
+     * **tamanho exato** cuida da remoção de qualquer um; esta lista cuida de **quais** nunca podem
+     * sair.
+     */
+    private const ALVOS_CRITICOS = [
+        'app/Services/Mlb/Publicacao/MlPublicacaoService.php',
+        'app/Services/Publicador/PublicacaoService.php',
+        'app/Jobs/Publicador/PublicarRascunhoJob.php',
+        'app/Services/Publicador/Alavancas/Acoes/AlterarNoConvite.php',
+        'tests/js/estrutura-meus-anuncios.test.js',
+        'tests/js/publicador-header-zindex-ordem.test.js',
+        '.planning/ROADMAP.md',
+        '.planning/STATE.md',
+        '.planning/REQUIREMENTS-v27.md',
+    ];
+
+    /**
+     * O tamanho **EXATO** da lista `ALVO-INTOCADO:`, **MEDIDO**.
+     *
+     * ⚠️ **Contagem frágil por construção, DECLARADA** — igual ao que o `contagens-186-04.txt` faz
+     * com os ids por glob. É assim de propósito: **remoção** é a ameaça que este número pega, e
+     * **acrescentar** alvo é ato deliberado de quem o acrescenta, que então **remede o número com a
+     * razão escrita**. ⚠️ **Baixar este número para "passar" é o conserto proibido.**
+     */
+    private const ALVOS_INTOCADOS = 32;
+
     /** Os dois arquivos de teste **INTOCÁVEIS** por decisão das Fases 187/188/189. */
     private const INTOCAVEL_D11 = 'tests/js/estrutura-meus-anuncios.test.js';
 
@@ -520,11 +564,19 @@ class FechamentoDaFase193Test extends TestCase
         preg_match_all('/^ALVO-INTOCADO: (.+)$/m', $texto, $m);
         $alvos = array_map('trim', $m[1]);
 
-        $this->assertGreaterThanOrEqual(
-            20,
-            count($alvos),
-            'a lista de alvos vetados encolheu — tirar alvo da lista é o conserto barato que o learnings manda evitar'
+        // ⚠️⚠️ TAMANHO EXATO, nunca piso — ver o docblock de `ALVOS_INTOCADOS`: a mutação **m9**
+        // (remover UMA linha `ALVO-INTOCADO:`) **SOBREVIVEU** ao piso, porque 31 ≥ 20.
+        $this->assertCount(
+            self::ALVOS_INTOCADOS,
+            $alvos,
+            'a lista de alvos vetados mudou de tamanho — tirar alvo da lista é o conserto barato que o learnings manda evitar, e ACRESCENTAR exige remedir este número COM A RAZÃO ESCRITA'
         );
+
+        // ⚠️ E o SUBCONJUNTO CRÍTICO, por presença explícita: cada um destes carrega um critério
+        // desta fase, e nenhum pode sair nem que o tamanho total seja "consertado" por troca.
+        $criticosFora = array_values(array_diff(self::ALVOS_CRITICOS, $alvos));
+        $this->assertSame([], $criticosFora, 'alvo CRÍTICO saiu da lista de intocados (PUB-03 / D-11 / GATE-07 / trava de conta / fila high / decisão 22)');
+
         $fantasmas = array_values(array_filter($alvos, static fn (string $a) => ! file_exists(base_path($a))));
         $this->assertSame([], $fantasmas, 'alvos citados que NÃO existem no disco — "diff vazio" neles não prova nada');
 
