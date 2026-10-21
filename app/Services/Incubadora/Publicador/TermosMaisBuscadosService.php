@@ -71,6 +71,11 @@ class TermosMaisBuscadosService
         $termos = [];
         foreach ($brutos as $i => $t) {
             $posicao = $i + 1;
+            // Demo 23/10 (N3): o ML devolve termo sexual ("poltrona erotica para motel") em Sofás e
+            // Poltronas, e a lista aparece na tela do cliente. Sai daqui, com a posição dos outros intacta.
+            if (self::improprio($t['termo'])) {
+                continue;
+            }
             $emComum = array_values(array_intersect_key($doProduto, $this->palavras($t['termo'])));
 
             $termos[] = [
@@ -126,6 +131,30 @@ class TermosMaisBuscadosService
         Cache::put($chave, $lista, self::TTL);
 
         return $lista;
+    }
+
+    /** Começos de palavra de conteúdo sexual (comparados sem acento e em minúsculas). */
+    private const IMPROPRIOS_PREFIXO = ['erot', 'sexu', 'porn', 'fetich', 'bdsm', 'sadomaso', 'kamasutra', 'tantra', 'tantric', 'sensual'];
+
+    /** Palavras inteiras de conteúdo sexual — inteiras porque "sex" e "motel" são começo de outras palavras. */
+    private const IMPROPRIOS_PALAVRA = ['sex', 'sexo', 'sexshop', 'motel', 'moteis', 'swing', 'kama'];
+
+    /** O termo tem conteúdo sexual e não deve aparecer para o cliente nem ir ao título. */
+    public static function improprio(string $termo): bool
+    {
+        $palavras = preg_split('/[^a-z0-9]+/', Str::lower(Str::ascii($termo)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach ($palavras as $p) {
+            if (in_array($p, self::IMPROPRIOS_PALAVRA, true)) {
+                return true;
+            }
+            foreach (self::IMPROPRIOS_PREFIXO as $prefixo) {
+                if (str_starts_with($p, $prefixo)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function grupo(int $posicao): string
