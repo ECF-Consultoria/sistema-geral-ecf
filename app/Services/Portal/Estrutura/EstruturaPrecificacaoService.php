@@ -67,7 +67,7 @@ class EstruturaPrecificacaoService
         $porOferta = [];
 
         foreach ($base['ofertas'] as $o) {
-            $calculo = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null);
+            $calculo = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null, self::foraDoMe2($o, $logisticas[$o['id']] ?? null));
 
             $resumo['total']++;
             match ($calculo['pendencia']) {
@@ -130,7 +130,7 @@ class EstruturaPrecificacaoService
             if (! isset($ids[$o['id']])) {
                 continue;
             }
-            $calculo = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null)
+            $calculo = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null, self::foraDoMe2($o, $logisticas[$o['id']] ?? null))
                 + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade, $temMe1)];
 
             $resumo['total']++;
@@ -159,12 +159,13 @@ class EstruturaPrecificacaoService
     public function pendencias(Company $empresa): array
     {
         $base = $this->preparar($empresa);
-        $itens = $this->itensDeFrete($empresa, $base, [])['resto'];
+        $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
+        $itens = $this->itensDeFrete($empresa, $base, [], $logisticas)['resto'];
         $sugeridos = $itens === [] ? [] : $this->frete->estimar($empresa, $itens, false);
 
         $r = [];
         foreach ($base['ofertas'] as $o) {
-            $r[$o['id']] = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null)['pendencia'];
+            $r[$o['id']] = $this->calcular($base['contas'][$o['id']], $sugeridos[$o['id']] ?? null, self::foraDoMe2($o, $logisticas[$o['id']] ?? null))['pendencia'];
         }
 
         return $r;
@@ -186,7 +187,7 @@ class EstruturaPrecificacaoService
 
         $base = $this->preparar($empresa);
         $itens = [];
-        foreach ($this->itensDeFrete($empresa, $base, array_flip($idsDaPagina), comMe1: true)['pagina'] as $id => $item) {
+        foreach ($this->itensDeFrete($empresa, $base, array_flip($idsDaPagina))['pagina'] as $id => $item) {
             $linha = $base['contas'][$id]['linha'];
             // O digitado vence a sugestão: não se gasta cotação com ele.
             $tipos = array_values(array_filter(FreteMe2Service::TIPOS, fn ($t) => $linha?->{"frete_{$t}"} === null));
@@ -352,22 +353,20 @@ class EstruturaPrecificacaoService
     }
 
     /**
-     * Os itens do frete sugerido, no contrato do {@see FreteMe2Service}: só ofertas com
-     * pacote no Mercado Envios (`$comMe1` inclui as ME1 com pacote, para a cotação real
-     * reavaliar pelos limites da modalidade da conta).
+     * Os itens do frete sugerido, no contrato do {@see FreteMe2Service}: as ofertas com pacote — dentro do
+     * Mercado Envios e, desde 21/10/2026, também as de fora (`fora_do_me2`), com a referência do ML para a caixa.
+     * A cotação real reavalia o dentro/fora pelos limites da modalidade da conta.
      *
      * @return array{pagina: array<int, array>, resto: array<int, array>}
      */
-    private function itensDeFrete(Company $empresa, array $base, array $daPagina, bool $comMe1 = false, ?array $logisticas = null): array
+    private function itensDeFrete(Company $empresa, array $base, array $daPagina, ?array $logisticas = null): array
     {
         $logisticas ??= $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
-        $aceitas = [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL, ...($comMe1 ? [LogisticaProduto::ME1] : [])];
         $saida = ['pagina' => [], 'resto' => []];
 
         foreach ($base['contas'] as $id => $conta) {
             $log = $logisticas[$id] ?? null;
-            if ($log === null || $log['pacote'] === null || ! in_array($log['logistica'], $aceitas, true)
-                || in_array($conta['oferta']['logistica'], self::FORA_DO_ME2, true)) {
+            if ($log === null || $log['pacote'] === null || ! in_array($log['logistica'], [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL, LogisticaProduto::ME1], true)) {
                 continue;
             }
 
@@ -377,6 +376,9 @@ class EstruturaPrecificacaoService
                 'logistica'     => $log['logistica'],
                 'custo'         => $conta['custo']['valor'],
                 'parametros'    => $conta['p'],
+                // Fora do Mercado Envios (pelo tamanho ou declarada na Lista SKUs) também tem frete sugerido: a
+                // referência do ML para a caixa (21/10/2026, "mesmo a combinar, ainda pagaremos um frete").
+                'fora_do_me2'   => self::foraDoMe2($conta['oferta'], $log),
             ];
         }
 
@@ -433,6 +435,12 @@ class EstruturaPrecificacaoService
         return $saida;
     }
 
+    /** A oferta está fora do Mercado Envios: pelo tamanho (ME1 na modalidade da conta) ou declarada na Lista SKUs. */
+    private static function foraDoMe2(array $oferta, ?array $log): bool
+    {
+        return ($log['logistica'] ?? null) === LogisticaProduto::ME1 || in_array($oferta['logistica'] ?? null, self::FORA_DO_ME2, true);
+    }
+
     /**
      * O ENVIO de uma oferta, para a tela dizer o que ela é e por que há (ou não há) frete sugerido
      * (11/10/2026). Até aqui a Precificação só mostrava o valor: a oferta fora do Mercado Envios —
@@ -475,7 +483,7 @@ class EstruturaPrecificacaoService
      * @param  array{oferta: array, linha: ?EstruturaPrecificacao, excecoes: array, p: array<string, float>, custo: array, ligada: bool}  $conta
      * @param  ?array  $frete  o frete sugerido da oferta (contrato do FreteMe2Service), ou null
      */
-    private function calcular(array $conta, ?array $frete): array
+    private function calcular(array $conta, ?array $frete, bool $foraDoMe2 = false): array
     {
         $p = $conta['p'];
         $custo = $conta['custo'];
@@ -490,11 +498,13 @@ class EstruturaPrecificacaoService
                 'cotado_em'          => $f['cotado_em'],
                 'gratis_obrigatorio' => (bool) $f['gratis_obrigatorio'],
                 'instavel'           => (bool) $f['instavel'],
+                // Fora do Mercado Envios o ML não cobra este valor: é a referência dele para a caixa (21/10/2026).
+                'fora_do_me2'        => $foraDoMe2,
             ] : null;
         }
 
         $fretes = PrecificacaoEstrutura::fretes($linha?->frete_classico, $linha?->frete_premium,
-            array_map(fn ($s) => $s['valor'] ?? null, $sugestoes));
+            array_map(fn ($s) => $s['valor'] ?? null, $sugestoes), $foraDoMe2);
 
         $tipos = [];
         foreach ($fretes as $tipo => $f) {

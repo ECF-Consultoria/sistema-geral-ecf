@@ -140,3 +140,17 @@ test('"Cotar agora" visita a própria página com cotar=1, sem sujar o endereço
     assert.match(pagina, /only: \['precificacao', 'cotacao'\]/);
     assert.match(pagina, /deveCotarDeNovo\(c, voltas\)/);
 });
+
+// 21/10/2026 — fora do Mercado Envios o ML não cobra frete, mas o vendedor paga um: a sugestão é a referência do ML
+// para a caixa e nunca aparece como "o ML cobra", nem acende.
+test('fora do Mercado Envios: o sugerido é a referência do ML para a caixa, e o digitado só a mostra ao lado', () => {
+    const fora = (fonte, valor) => ({ ...sugestao(fonte, valor), fora_do_me2: true });
+    assert.deepEqual(rotuloDoFrete({ frete_origem: 'sugerido', frete: 147.85, frete_sugerido: fora('tabela', 147.85) }, 'Premium', fmt),
+        { texto: 'referência do ML para a caixa', tipo: 'sugerido', fonte: 'tabela', fora: true });
+    assert.deepEqual(rotuloDoFrete({ frete_origem: 'digitado', frete: 200, frete_sugerido: fora('conta', 262.85) }, 'Premium', fmt),
+        { texto: 'referência do ML: R$ 262,85', tipo: 'sugestao', fonte: 'conta', fora: true, alerta: false });
+    assert.equal(rotuloDoFrete({ frete_origem: 'digitado', frete: 262.85, frete_sugerido: fora('conta', 262.85) }, 'Premium', fmt), null);
+    // O Premium herdando o digitado do Clássico continua "mesmo do Clássico".
+    assert.deepEqual(rotuloDoFrete({ frete_origem: 'outro_tipo', frete: 200, frete_sugerido: fora('tabela', 262.85) }, 'Clássico', fmt),
+        { texto: 'mesmo do Clássico', tipo: 'herdado' });
+});

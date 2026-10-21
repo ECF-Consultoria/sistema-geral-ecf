@@ -89,13 +89,19 @@ final class PrecificacaoEstrutura
      *     Clássico R$ 131,22, o inverso do que a comissão maior do Premium garante (30/09);
      *  4. nada (a pendência "sem frete").
      *
+     * Fora do Mercado Envios (`$foraDoMe2`, 21/10/2026) a oferta passou a ter sugestão — a referência do ML para a
+     * caixa, porque o frete é pago mesmo assim (ME1 ou "a combinar") —, e o digitado do OUTRO tipo vem ANTES dela:
+     * a transportadora não cobra conforme o tipo de anúncio, e o valor que a pessoa digitou é mais fiel que a
+     * referência. De quebra, quem já tinha digitado só um tipo não vê o preço do outro mudar.
+     *
      * @param  array{classico?: ?float, premium?: ?float}  $sugeridos  o frete sugerido de cada tipo (null = sem sugestão)
      * @return array{classico: array{valor: ?float, origem: ?string}, premium: array{valor: ?float, origem: ?string}}
      */
-    public static function fretes(?float $classico, ?float $premium, array $sugeridos = []): array
+    public static function fretes(?float $classico, ?float $premium, array $sugeridos = [], bool $foraDoMe2 = false): array
     {
         $efetivo = fn (?float $proprio, ?float $sugerido, ?float $outro) => match (true) {
             $proprio !== null  => ['valor' => $proprio, 'origem' => 'digitado'],
+            $foraDoMe2 && $outro !== null => ['valor' => $outro, 'origem' => 'outro_tipo'],
             $sugerido !== null => ['valor' => $sugerido, 'origem' => 'sugerido'],
             $outro !== null    => ['valor' => $outro, 'origem' => 'outro_tipo'],
             default            => ['valor' => null, 'origem' => null],

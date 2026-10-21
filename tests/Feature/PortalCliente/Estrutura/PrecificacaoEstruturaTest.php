@@ -55,6 +55,14 @@ class PrecificacaoEstruturaTest extends TestCase
         $this->assertSame(['valor' => 0.0, 'origem' => 'digitado'], PrecificacaoEstrutura::fretes(32.0, 0.0)['premium']);
         $this->assertSame(['valor' => null, 'origem' => null], PrecificacaoEstrutura::fretes(null, null)['premium']);
 
+        // 21/10/2026 — fora do Mercado Envios o digitado do outro tipo vem antes da sugestão (a referência do ML);
+        // dentro, a sugestão do próprio tipo vem antes.
+        $sugeridos = ['classico' => 147.85, 'premium' => 147.85];
+        $this->assertSame(['valor' => 200.0, 'origem' => 'outro_tipo'], PrecificacaoEstrutura::fretes(200.0, null, $sugeridos, true)['premium']);
+        $this->assertSame(['valor' => 147.85, 'origem' => 'sugerido'], PrecificacaoEstrutura::fretes(200.0, null, $sugeridos)['premium']);
+        $this->assertSame(['valor' => 147.85, 'origem' => 'sugerido'], PrecificacaoEstrutura::fretes(null, null, $sugeridos, true)['classico'], 'sem digitado, a referência');
+        $this->assertSame(['valor' => 180.0, 'origem' => 'digitado'], PrecificacaoEstrutura::fretes(200.0, 180.0, $sugeridos, true)['premium']);
+
         $empresa = $this->empresaDoGabarito();
         $o = $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);

@@ -16,6 +16,10 @@ export const ORIGEM_DO_SUGERIDO = {
     tabela: 'estimado pela tabela',
 };
 
+// Fora do Mercado Envios (21/10/2026): o ML não cobra frete, mas o vendedor paga um (transportadora ou entrega
+// combinada). O sugerido é o que o ML calcula para a caixa — a referência, nunca "o ML cobra".
+export const REFERENCIA_FORA_DO_ME2 = 'referência do ML para a caixa';
+
 /** Visitas do "Cotar agora" num clique, enquanto o servidor devolve pendência (o lote é por chamada). */
 export const VOLTAS_DA_COTACAO = 4;
 
@@ -36,13 +40,22 @@ export function rotuloDoFrete(calculo, outroTipo, fmt) {
 
     switch (calculo?.frete_origem) {
         case 'sugerido':
-            return s ? { texto: origem, tipo: 'sugerido', fonte: s.fonte } : null;
+            if (! s) return null;
+            return s.fora_do_me2
+                ? { texto: REFERENCIA_FORA_DO_ME2, tipo: 'sugerido', fonte: s.fonte, fora: true }
+                : { texto: origem, tipo: 'sugerido', fonte: s.fonte };
         case 'outro_tipo':
             return { texto: `mesmo do ${outroTipo}`, tipo: 'herdado' };
         // Digitado diferente do Mercado Livre (21/10/2026, "digitado R$ 200, o ML cobra R$ 262,85"): o valor
         // digitado nunca é trocado; a legenda diz o do ML e acende (`alerta`) quando ele cobra MAIS do que entrou
         // no preço — aí a margem é menor que a planejada. Só existe sugestão dentro do Mercado Envios.
         case 'digitado':
+            // Fora do Mercado Envios a referência só aparece ao lado, sem acender: o ML não cobra esse valor.
+            if (s?.fora_do_me2) {
+                return Number(s.valor) !== Number(calculo.frete)
+                    ? { texto: `referência do ML: ${fmt(s.valor)}`, tipo: 'sugestao', fonte: s.fonte, fora: true, alerta: false }
+                    : null;
+            }
             return s && Number(s.valor) !== Number(calculo.frete)
                 ? {
                     texto: s.fonte === 'conta' ? `o ML cobra ${fmt(s.valor)}` : `${origem}: ${fmt(s.valor)}`,

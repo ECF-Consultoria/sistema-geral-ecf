@@ -54,7 +54,8 @@ test('o Combo 2 diz que está fora do Mercado Envios, com o pacote somado e os l
     assert.match(r.dica, /na modalidade da sua conta \(Correios\)/);
     // Sem a conta lida, não se sabe se vai pela transportadora ou sai "a combinar" (21/10/2026).
     assert.match(r.dica, /o envio vai pela sua transportadora \(ME1\), se a conta tiver, ou sai «Combine a entrega»\./);
-    assert.match(r.dica, /O frete é o que você digitar\./);
+    // E o frete sugerido é a referência do ML para a caixa ("mesmo a combinar, pagaremos um frete").
+    assert.match(r.dica, /O frete sugerido é a referência do Mercado Livre para a caixa\./);
     assert.match(r.dica, /As medidas são a soma das caixas de cada unidade: para mudar, altere as medidas do produto\./);
 });
 

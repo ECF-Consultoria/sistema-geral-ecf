@@ -20,16 +20,16 @@ const NOME_DA_MODALIDADE = { drop_off: 'Correios', xd_drop_off: 'Agências', cro
 const FORA_DO_ME2 = {
     me1: {
         rotulo: 'ME1 · sua transportadora', selo: 'ME1',
-        dica: 'O envio é pela sua transportadora (ME1) e o Mercado Livre não cobra frete deste anúncio. O frete é o que você digitar: o que a transportadora cobra.',
+        dica: 'O envio é pela sua transportadora (ME1) e o Mercado Livre não cobra frete deste anúncio. O frete sugerido é a referência do Mercado Livre para a caixa; digite o que a transportadora cobra, se souber.',
     },
     combinar: {
         rotulo: 'A combinar com o comprador', selo: 'A combinar',
-        dica: 'Sua conta não tem ME1: o anúncio sai «Combine a entrega» e o Mercado Livre não cobra frete. O frete é o que você digitar: o que vai gastar para entregar.',
+        dica: 'Sua conta não tem ME1: o anúncio sai «Combine a entrega» e o Mercado Livre não cobra frete. O frete sugerido é a referência do Mercado Livre para a caixa; digite o que vai gastar para entregar, se souber.',
     },
     fora: {
         rotulo: 'Fora do Mercado Envios (ME1)', selo: 'ME1',
         dica: 'O Mercado Livre não cobra frete deste anúncio: o envio vai pela sua transportadora (ME1), se a conta tiver, ou sai «Combine a entrega». '
-            + 'O frete é o que você digitar. «Cotar agora» lê a sua conta e diz qual dos dois.',
+            + 'O frete sugerido é a referência do Mercado Livre para a caixa. «Cotar agora» lê a sua conta e diz qual dos dois.',
     },
 };
 
@@ -70,9 +70,9 @@ export function resumoDoEnvio(envio) {
 
     if (envio.declarada) {
         return {
-            chave: 'declarada', tom: 'neutro', pacote, motivo: 'digite o frete',
+            chave: 'declarada', tom: 'neutro', pacote, motivo: null,
             rotulo: envio.declarada === 'combinar' ? 'A combinar com o comprador' : 'Transportadora (ME1)',
-            dica: 'A logística desta oferta foi declarada fora do Mercado Envios: não há frete do Mercado Livre a sugerir. Digite o valor do frete.',
+            dica: 'A logística desta oferta foi declarada fora do Mercado Envios: o Mercado Livre não cobra frete. O frete sugerido é a referência dele para a caixa; digite o valor real, se souber.',
         };
     }
 

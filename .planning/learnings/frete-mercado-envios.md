@@ -75,6 +75,9 @@ volumoso faturava errado (20×20×20 com 500 g: 0,5 kg na planilha, 1,33 kg no M
   de propósito**, só para quando não há sugestão (ME1, logística declarada fora do ME2, oferta sem
   medidas): tirá-lo devolve o PUFF-AZ (Premium mais barato que o Clássico) às ofertas antigas sem
   produto. Se alguém pedir "sugerido → nulo" ao pé da letra, mostre este caso antes.
+- **Desde 21/10/2026 o ME1 e a logística declarada fora do ME2 TÊM sugestão** (§9): a referência do ML para a
+  caixa. Fora do ME2 a ordem é digitado → digitado do outro tipo → sugerido (`PrecificacaoEstrutura::fretes`,
+  `$foraDoMe2`). O "outro tipo" antes do sugerido segue protegendo o PUFF-AZ e não muda preço de quem digitou um tipo só.
 - Composta usa o pacote SOMADO dos componentes (`ConjuntoLogistico`) — provisório.
 - Carregar a página não chama o ML; o "Cotar agora" é a própria rota com `?cotar=1` (sem rota nova).
 - O Publicador herda (`DadosEfetivosService` lê `EstruturaPrecificacaoService::pagina`): o preço
@@ -161,3 +164,12 @@ A régua do `LogisticaProduto` (limites por modalidade no config) bate com o ML.
 
 **O que continua sem resposta do ML:** o frete do ME1 é a tabela do vendedor por destino (§8). O sistema não cota; o
 valor é o digitado. "A combinar": o comprador combina com o vendedor; se o preço tem frete embutido, é decisão comercial.
+
+**Atualização (mesmo dia, pedido do usuário):** "o frete tem que ser grátis acima de 79, porém pagamos por esse frete; e
+mesmo a combinar, ainda pagaremos um frete". Cotar ME1 de caixa que ainda não é anúncio dá 404 em toda conta com ME1
+(`/users/{id}/shipping_options`, testado com e sem `mode=me1`, preço e frete grátis); ME1 de anúncio existente varia
+com a transportadora, a cidade da loja e o destino (Poltrona Prada da VIGGORE: SP 137,95, RJ 89,88, Manaus sem
+cobertura). Decisão do usuário: o frete sugerido fora do ME2 é o que o ML calcula para a caixa — a TABELA pelo peso
+cubado dá o mesmo que a cotação (147,85 na faixa 80–90 kg; 262,85 acima de 150 kg). Só a Precificação pede isso
+(`fora_do_me2` no item do `FreteMe2Service`); Produtos, Planejamento e montagem seguem sem. Na tela: "referência do ML
+para a caixa", nunca "o ML cobra", e não acende.

@@ -365,8 +365,11 @@ function OrigemDoFrete({ calculo, de, freteTabela }) {
     const s = calculo.frete_sugerido;
     const vigencia = freteTabela?.vigente_desde ? ` vigente desde ${dataBr(freteTabela.vigente_desde)}` : '';
     const reputacao = freteTabela?.reputacao ? `, reputação ${freteTabela.reputacao}` : '';
-    const dica = r.tipo === 'herdado'
-        ? `Sem frete do Mercado Envios para sugerir: vale o que você digitou no ${de}.`
+    const dica = r.fora
+        ? 'Fora do Mercado Envios o Mercado Livre não cobra frete, mas você paga um (transportadora ou entrega combinada). '
+            + 'Este é o valor que ele calcula para esta caixa e este preço: a referência que entra no preço. Digite o valor real, se souber.'
+        : r.tipo === 'herdado'
+        ? `Vale o que você digitou no ${de}.`
         : (s?.fonte === 'conta'
             ? 'Cotado na sua conta do Mercado Livre, no preço deste tipo de anúncio.'
             : `Tabela de custos de envio do Mercado Livre${vigencia}${reputacao}.`)

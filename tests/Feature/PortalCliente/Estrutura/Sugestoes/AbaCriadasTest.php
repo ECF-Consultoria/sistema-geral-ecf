@@ -89,7 +89,9 @@ class AbaCriadasTest extends TestCase
         // O envio é o da Precificação: as duas caixas somadas passam do limite e viram ME1.
         $this->assertSame(LogisticaProduto::ME1, $doCombo['envio']['chave']);
         $this->assertSame(['c' => 53.0, 'l' => 60.0, 'a' => 160.0, 'peso' => 16.0], $doCombo['envio']['pacote']);
-        $this->assertSame('sem_frete', $doCombo['pendencia'], 'fora do envio padrão não há frete a sugerir');
+        // Desde 21/10/2026 o que fica fora do Mercado Envios tem frete sugerido (a referência do ML para a caixa): o
+        // combo deixa de ficar "sem frete" e sai com preço.
+        $this->assertNull($doCombo['pendencia'], 'fora do Mercado Envios: a referência do ML entra no preço');
 
         $doKit = $r['grupos'][1]['itens'][0];
         $this->assertSame($kit->id, $doKit['id']);
@@ -103,8 +105,8 @@ class AbaCriadasTest extends TestCase
 
     /**
      * 16/10/2026 — "deveria ter filtros, modo lista também". Tipo, situação do preço, envio e busca; cada filtro
-     * conta as suas opções com os OUTROS aplicados. No cenário: o combo está sem frete (ME1); kit e combit, sem
-     * custo (a mesa não tem).
+     * conta as suas opções com os OUTROS aplicados. No cenário: o combo é ME1 e, desde 21/10, sai com a referência do
+     * ML para a caixa (com preço); kit e combit, sem custo (a mesa não tem).
      */
     public function test_filtros_e_contagens_de_cada_opcao_com_os_outros_filtros_aplicados(): void
     {
@@ -114,13 +116,13 @@ class AbaCriadasTest extends TestCase
 
         $tudo = $svc->listar($empresa);
         $this->assertSame(['todas' => 3, 'combo' => 1, 'kit' => 1, 'combit' => 1], $tudo['contagens']['fase']);
-        $this->assertSame(['todas' => 3, 'com_preco' => 0, 'pendente' => 3, 'sem_custo' => 2, 'sem_frete' => 1, 'impossivel' => 0], $tudo['contagens']['situacao']);
+        $this->assertSame(['todas' => 3, 'com_preco' => 1, 'pendente' => 2, 'sem_custo' => 2, 'sem_frete' => 0, 'impossivel' => 0], $tudo['contagens']['situacao'], 'o combo ME1 tem a referência do ML (21/10)');
         $this->assertSame(3, $tudo['contagens']['envio']['todas']);
 
         $this->assertSame([$kit->id], $ids($svc->listar($empresa, ['fase' => 'kit'])));
         $this->assertSame([$kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'sem_custo'])), 'kit e combit, na ordem dos tipos');
-        $this->assertSame([$combo->id, $kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'pendente'])));
-        $this->assertSame([], $ids($svc->listar($empresa, ['situacao' => 'com_preco'])));
+        $this->assertSame([$kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'pendente'])));
+        $this->assertSame([$combo->id], $ids($svc->listar($empresa, ['situacao' => 'com_preco'])));
         $this->assertSame([$combo->id], $ids($svc->listar($empresa, ['envio' => LogisticaProduto::ME1, 'fase' => 'combo'])));
 
         // Com o tipo Kit ligado, a situação conta só o kit; o tipo continua contando todos (é ele o filtro).
