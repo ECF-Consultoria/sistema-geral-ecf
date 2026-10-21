@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CheckCircle2, Loader2, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Lock } from 'lucide-react';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
+import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 import { ETAPAS, NOME_TIPO, etapaDoProblema, mensagemDe } from '../apoio';
 import { BotaoConferir, BotaoPublicar, publicarEhOProximoPasso } from './AcoesDePublicacao';
+import { BASE_BOTAO, PRIMARIO } from './botoes';
 import { LINK, Secao } from './comum';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -33,7 +35,8 @@ export function situacaoDaConferencia(pub) {
     const conf = pub.conferencia.estado;
     if (conf === 'conferindo') return { tom: 'neutro', texto: 'Conferindo…' };
     if (conf === 'ok') return { tom: 'completo', texto: 'Conferido: pronto para publicar' };
-    if (conf === 'avisos') return { tom: 'completo', texto: 'Conferido, com avisos' };
+    // Demo 23/10 (N13): com aviso não é verde — o aviso pode ser perder o frete grátis.
+    if (conf === 'avisos') return { tom: 'aviso', texto: 'Conferido, com avisos: leia antes de publicar' };
     if (conf === 'bloqueado' || conf === 'local_bloqueado') return { tom: 'falta', texto: 'A conferência encontrou o que corrigir' };
     if (conf === 'editado') return { tom: 'neutro', texto: 'Editado: confira de novo' };
     if (conf === 'local') return { tom: 'neutro', texto: 'Conferido aqui (conta não liberada)' };
@@ -53,6 +56,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
     const andamento = publicacao?.status === 'RUNNING';
     const variantes = m.estado?.variantes ?? [];
     const situacao = situacaoDaConferencia(pub);
+    const ambar = situacao.tom === 'falta' || situacao.tom === 'aviso';
     const local = pub.conferencia.local;
     const estadoConf = pub.conferencia.estado;
     const publicarPrimario = publicarEhOProximoPasso(pub);
@@ -112,13 +116,17 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         <Secao id="publicar" titulo="Revisar e publicar" descricao="O Mercado Livre confere o anúncio antes de publicar. Se algo faltar, a gente mostra onde corrigir.">
             <div data-publicar data-conferencia={estadoConf}>
                 <div className="min-w-0 space-y-5">
-                    <div className={cn('flex items-center gap-3 rounded-lg border p-4', situacao.tom === 'completo' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : (situacao.tom === 'falta' ? 'border-amber-400/25 bg-amber-400/[0.05]' : 'border-white/[0.10] bg-white/[0.02]'))}
+                    <div className={cn('flex items-center gap-3 rounded-lg border p-4', situacao.tom === 'completo' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : (ambar ? 'border-amber-400/25 bg-amber-400/[0.05]' : 'border-white/[0.10] bg-white/[0.02]'))}
                         data-situacao={situacao.tom} aria-live="polite">
                         {local
                             ? <Lock size={16} className="shrink-0 text-white/55" aria-hidden="true" />
-                            : (situacao.tom === 'completo' ? <CheckCircle2 size={16} className="shrink-0 text-emerald-400" aria-hidden="true" /> : <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', situacao.tom === 'falta' ? 'bg-amber-400' : 'bg-white/30')} aria-hidden="true" />)}
+                            : (situacao.tom === 'completo'
+                                ? <CheckCircle2 size={16} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                                : (situacao.tom === 'aviso'
+                                    ? <AlertTriangle size={16} className="shrink-0 text-amber-300" aria-hidden="true" />
+                                    : <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', ambar ? 'bg-amber-400' : 'bg-white/30')} aria-hidden="true" />))}
                         <div className="min-w-0">
-                            <p className={cn('text-[15px] font-bold', situacao.tom === 'completo' ? 'text-emerald-400' : (situacao.tom === 'falta' ? 'text-amber-300' : 'text-white'))}>{situacao.texto}</p>
+                            <p className={cn('text-[15px] font-bold', situacao.tom === 'completo' ? 'text-emerald-400' : (ambar ? 'text-amber-300' : 'text-white'))}>{situacao.texto}</p>
                             {detalhe && <p className="text-[13px] text-white/55">{detalhe}</p>}
                         </div>
                     </div>
@@ -170,7 +178,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                 <BotaoConferir pub={pub} primario={! publicarPrimario} className="h-11 px-5" />
                                 <BotaoPublicar pub={pub} primario={publicarPrimario} className="h-11 px-5" />
                             </div>
-                            {motivoDoPublicar() && <p className="text-[13px] text-white/55" data-motivo-publicar>{motivoDoPublicar()}</p>}
+                            {motivoDoPublicar() && <p className="text-[15px] text-amber-300" data-motivo-publicar>{motivoDoPublicar()}</p>}
                             {! pub.liberada && <AvisoContaTravada variante="nota" />}
                             {pub.liberada && (empresa.conta_nome ?? empresa.nome) && <p className="text-[13px] text-white/45">Publica na conta {empresa.conta_nome ?? empresa.nome}{empresa.conta_ml_id ? ` · ML ${empresa.conta_ml_id}` : ''}.</p>}
                         </div>
@@ -185,6 +193,22 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                 {STATUS_PUBLICACAO[publicacao.status]}
                             </p>
                             {publicacao.motivo && <p className="text-[13px] text-red-300">{publicacao.motivo}</p>}
+                            {/* Demo 23/10 (H20): o anúncio no ar é o fim do fluxo — botão grande, não só o código MLB. */}
+                            {(publicacao.itens ?? []).some((i) => i.ml_item_id) && (
+                                <div className="flex flex-wrap gap-3 pt-1" data-ver-no-ml>
+                                    {(publicacao.itens ?? []).filter((i) => i.ml_item_id && linkAnuncioMl(i.ml_item_id)).map((i) => {
+                                        const rotulo = variantes.length > 1 ? variantes.find((v) => v.chave === i.variante_chave)?.rotulo : null;
+
+                                        return (
+                                            <a key={i.id} href={linkAnuncioMl(i.ml_item_id)} target="_blank" rel="noopener noreferrer"
+                                                className={cn(BASE_BOTAO, PRIMARIO, 'h-11 px-5 text-[15px]')}>
+                                                Ver o {NOME_TIPO[i.listing_type_id] ?? 'anúncio'}{rotulo ? ` ${rotulo}` : ''} no Mercado Livre
+                                                <ExternalLink size={16} aria-hidden="true" />
+                                            </a>
+                                        );
+                                    })}
+                                </div>
+                            )}
                             <ul className="space-y-1.5 text-[13px]">
                                 {(publicacao.itens ?? []).map((i) => (
                                     <li key={i.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70" data-item-publicacao={i.status}>
