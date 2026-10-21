@@ -119,13 +119,14 @@ class AcessoAsSugestoesTest extends TestCase
         [$empresa] = $this->cenario();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
+        // 21/10/2026: a tela não tem abas; `?aba=` de link antigo é ignorado e os outros filtros seguem.
         $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
-                ->where('filtros', ['aba' => 'criadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+                ->where('filtros', ['aba' => 'sugestoes', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
 
-        // 21/10/2026: a tela ficou só com Pendentes e Criadas; link antigo para as abas que saíram cai em Pendentes.
+        // Link antigo para as abas que saíram (Sem tipo, Descartadas) abre a tela de sempre.
         foreach (['sem_tipo', 'descartadas'] as $antiga) {
             $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => $antiga]))
                 ->assertOk()

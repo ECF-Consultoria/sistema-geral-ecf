@@ -37,8 +37,8 @@ const ROTULO = 'text-[10.5px] font-semibold uppercase tracking-wider text-white/
 const CHIP = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] transition-colors';
 const SELECT = 'h-9 rounded-lg border border-white/[0.10] bg-ecf-card px-3 text-[12.5px] text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40';
 
-// A identidade de cada tipo: a MESMA cor e o MESMO ícone dos cartões de resumo da aba Pendentes
-// (ResumoSugestoes). Classes literais: o Tailwind só gera o que aparece escrito por inteiro.
+// A identidade de cada tipo: a mesma cor e o mesmo ícone nos cartões das criadas e das sugestões
+// (CartaoSugestao usa esta vitrine). Classes literais: o Tailwind só gera o que aparece escrito por inteiro.
 const TIPO = {
     combo: { Icone: Box, nome: 'Combo', explica: 'o mesmo produto em mais unidades', cor: 'bg-violet-500/15 text-violet-300' },
     kit: { Icone: Package, nome: 'Kit', explica: 'produtos diferentes juntos', cor: 'bg-emerald-500/15 text-emerald-300' },
@@ -101,15 +101,21 @@ const MAIS = (
     </span>
 );
 
-/** A vitrine do cartão: em linha com "+" entre produtos diferentes até 3; mosaico 2×2 a partir de 4. */
-function Vitrine({ item }) {
+/**
+ * A vitrine do cartão: em linha com "+" entre produtos diferentes até 3; mosaico 2×2 a partir de 4.
+ * Também é a do cartão da sugestão (21/10/2026), que passa o selo "Sugestão" em `selo`.
+ */
+export function Vitrine({ item, selo = null }) {
     const tipo = TIPO[item.fase] ?? TIPO_NEUTRO;
     const { modo, pecas, resto, tamanho } = layoutDaVitrine(item.composicao);
 
     return (
         <div className="relative flex h-[196px] items-center justify-center bg-gradient-to-b from-white/[0.05] to-white/[0.015] px-5 pt-4" data-vitrine={modo}>
-            <span className={cn('absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tipo.cor)} data-tipo>
-                <tipo.Icone size={12} aria-hidden="true" /> {tipo.nome}
+            <span className="absolute left-3 top-3 flex items-center gap-1.5">
+                <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', tipo.cor)} data-tipo>
+                    <tipo.Icone size={12} aria-hidden="true" /> {tipo.nome}
+                </span>
+                {selo}
             </span>
             {pecas.length === 0 && <span className="text-[12px] text-white/45">Sem composição</span>}
             {modo === 'linha' ? (
@@ -355,7 +361,11 @@ function BarraDeFiltros({ filtros, contagens, ocupado, modo, onModo, onFiltro, b
 
 // ─── O painel ────────────────────────────────────────────────────────────────
 
-export default function PainelCriadas({ criadas, filtros: filtrosDoServidor = null }) {
+/**
+ * `outrosParams`: os parâmetros das sugestões na URL (21/10/2026: as duas listas na mesma tela), para
+ * a visita das criadas não apagá-los.
+ */
+export default function PainelCriadas({ criadas, filtros: filtrosDoServidor = null, outrosParams = {} }) {
     const filtros = { fase: null, situacao: null, envio: null, ordem: 'recentes', q: '', ...(filtrosDoServidor ?? {}) };
     const [modo, setModo] = useState(() => lerModoCriadas());
     const [busca, setBusca] = useState(filtros.q ?? '');
@@ -364,7 +374,7 @@ export default function PainelCriadas({ criadas, filtros: filtrosDoServidor = nu
     const primeira = useRef(true);
 
     const ir = (mudancas, { rolar = false } = {}) => {
-        router.get(route('portal.auth.estrutura.sugestoes'), paramsDaCriadas(filtros, mudancas), {
+        router.get(route('portal.auth.estrutura.sugestoes'), { ...outrosParams, ...paramsDaCriadas(filtros, mudancas) }, {
             preserveState: true, preserveScroll: true, replace: true, only: ['criadas', 'filtros_criadas'],
             onStart: () => setOcupado(true),
             onFinish: () => {
@@ -398,7 +408,7 @@ export default function PainelCriadas({ criadas, filtros: filtrosDoServidor = nu
             <div className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-10 text-center" data-criadas-vazio>
                 <p className="text-[15px] font-semibold text-white">Nada criado ainda</p>
                 <p className="mx-auto mt-1 max-w-md text-[13px] text-white/60">
-                    Os combos, kits e combits que você aceitar em Pendentes ou montar à mão ficam aqui.
+                    Os combos, kits e combits que você aceitar nas sugestões ou montar à mão ficam aqui.
                 </p>
             </div>
         );

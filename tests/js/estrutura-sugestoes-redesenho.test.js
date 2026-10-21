@@ -107,17 +107,15 @@ const semProibidos = (texto, nome) => {
 };
 const ocorrencias = (texto, trecho) => texto.split(trecho).length - 1;
 
-test('LinhaSugestao: contrato, comportamento do cartão e visual da referência', () => {
-    const t = fonte('LinhaSugestao.jsx');
+test('CartaoSugestao: o cartão das Criadas, tracejado e com o selo Sugestão, com as regras da linha antiga (21/10/2026)', () => {
+    const t = fonte('CartaoSugestao.jsx');
     contem(t, [
+        '<Vitrine', 'composicaoDaSugestao(', 'data-selo-sugestao', 'Sugestão', 'border-dashed',
         '<CaixaDeSelecao', 'data-sugestao', 'data-chave', 'aria-labelledby', 'podeAceitar(', 'valorDoCampo(', 'avisosDoCartao(',
-        'Não aceitamos esta sugestão', 'Desfazer edição', 'data-acao="aceitar"', 'data-acao="descartar"', 'Motivo da sugestão',
-        'Composição', 'sugestao.porque', 'bg-ecf-yellow', 'xl:grid-cols-[',
-    ], 'LinhaSugestao');
-    for (const col of ['selecao', 'imagens', 'tipo', 'nome', 'composicao', 'motivo', 'acoes']) {
-        assert.ok(t.includes(`data-col="${col}"`), `falta data-col ${col}`);
-    }
-    semProibidos(t, 'LinhaSugestao');
+        '<CampoEmLinha', 'Nome sugerido', 'SKU sugerido', 'Desfazer edição', 'Não aceitamos esta sugestão',
+        'data-acao="aceitar"', 'data-acao="descartar"', 'sugestao.porque', '<LogisticaEFrete', '<TiposDaSugestao', 'bg-ecf-yellow',
+    ], 'CartaoSugestao');
+    semProibidos(t, 'CartaoSugestao');
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });
 
@@ -144,13 +142,6 @@ test('PecasDoProduto: as 4 entradas antigas não mudam e as 3 novas existem', ()
     for (const novo of ['sugestao:', 'miniatura:', 'icone:']) assert.ok(t.includes(novo), `falta tamanho ${novo}`);
 });
 
-test('ResumoSugestoes: 4 cartões com o texto e as funções do redesenho', () => {
-    const t = fonte('ResumoSugestoes.jsx');
-    contem(t, ['data-cartao-resumo', 'percentualDoTotal(', 'rotuloDaFase(', 'Total de combinações encontradas'], 'ResumoSugestoes');
-    semProibidos(t, 'ResumoSugestoes');
-    assert.equal(ocorrencias(t, 'uppercase'), 0);
-});
-
 test('BarraDeFiltros: Tipo de produto no lugar do Ambiente e Atualizar só com contorno', () => {
     const t = fonte('BarraDeFiltros.jsx');
     contem(t, [
@@ -174,14 +165,14 @@ test('GrupoFamilia: container, recolher e frase do grupo sem família', () => {
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });
 
-test('AbasDasSugestoes: abas e seleção à direita, sem o Restaurar (a aba Descartadas saiu em 21/10/2026)', () => {
-    const t = fonte('AbasDasSugestoes.jsx');
+test('CabecalhoDasSugestoes: título da seção e seleção à direita, sem abas (21/10/2026)', () => {
+    const t = fonte('CabecalhoDasSugestoes.jsx');
     contem(t, [
-        '<CaixaDeSelecao', 'aria-label="Seções"', 'Pendentes', 'data-aba', 'data-contagem',
-        'data-acao="aceitar-selecionadas"', 'data-acao="marcar-pagina"', 'textoSelecionadas(', 'lg:hidden',
-    ], 'AbasDasSugestoes');
-    assert.ok(! t.includes('restaurar-selecionadas') && ! t.includes("'sem_tipo'") && ! t.includes("'descartadas'"));
-    semProibidos(t, 'AbasDasSugestoes');
+        '<CaixaDeSelecao', 'Sugestões para revisar', 'id="titulo-sugestoes"', 'data-contagem',
+        'data-acao="aceitar-selecionadas"', 'data-acao="marcar-pagina"', 'data-acao="descartar-selecionadas"', 'textoSelecionadas(', 'lg:hidden',
+    ], 'CabecalhoDasSugestoes');
+    assert.ok(! t.includes('data-aba') && ! t.includes('restaurar-selecionadas'), 'sem abas e sem o Restaurar');
+    semProibidos(t, 'CabecalhoDasSugestoes');
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });
 

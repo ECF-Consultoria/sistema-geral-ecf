@@ -1902,3 +1902,20 @@ cliente e equipe (`VisibilidadeDoMapeamento`). O `PADRAO_CLIENTE` do código con
 "por que o Mapeamento sumiu" no código não acha — está no banco. Esconder não remove: a rota abre por link direto e,
 nela, o item aparece no menu marcado `oculto`. Para voltar: apagar a chave (ou incluir `mapeamento` na lista). Uma
 empresa com `portal_estrutura_submodulos_empresa_{id}` vence a padrão — em 20/10 nenhuma tinha.
+
+## Planejamento sem abas: sugestões em cima, criados embaixo (21/10/2026)
+
+Pedido do usuário: "em Criadas fica muito oculto, então parece que não tem nada"; ele escolheu, entre mockups, a
+tela com as duas seções. O que não se deduz de olhar a tela:
+
+- **Duas listas, duas URLs.** As criadas usam `criadas_fase`, `criadas_q` e `criadas_pagina` (mais `situacao`, `envio`,
+  `ordem`); as sugestões seguem com `fase`, `q`, `pagina`. Cada visita parcial carrega os parâmetros da outra, senão um
+  filtro apaga o outro da URL. `?aba=` de link antigo é ignorado (a `aba` do serviço é sempre `sugestoes`).
+- **As duas props são preguiçosas** (closures no `Inertia::render`): o filtro das criadas não regera as sugestões, e
+  vice-versa. O aceite recarrega `sugestoes` + `criadas` juntas — é assim que o cartão "desce" para Criados.
+- **A prévia** (`sugestoes.previa`, 4 itens, Kits e Combits na frente) é do conjunto inteiro, sem filtro e sem Combos
+  recolhidos: com os Combos recolhidos por família, a página 1 de quem só tem Combos não traz item nenhum.
+- **Frete estimado continua UMA chamada por listagem** (`LogisticaDoConjuntoTest`): página e prévia passam juntas pelo
+  `enriquecer`. Chamar duas vezes reprova o teste.
+- **Produto sem tipo** não tem mais aba: o cartão mostra "Sem tipo" (âmbar) e abre a `JanelaTipo`. Descartada só volta
+  pelo "Desfazer" do aviso; a rota `restaurar` continua existindo.

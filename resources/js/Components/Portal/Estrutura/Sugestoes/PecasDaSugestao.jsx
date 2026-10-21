@@ -148,19 +148,26 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
     );
 }
 
-/** Tipos distintos dos componentes: botão de texto que abre a escolha do tipo do produto. */
+/**
+ * Tipos distintos dos componentes: botão de texto que abre a escolha do tipo do produto. 21/10/2026: o
+ * produto sem tipo aparece como "Sem tipo" (âmbar) — a aba Sem tipo saiu, e é por aqui que ele ganha um.
+ */
 export function TiposDaSugestao({ itens = [], onTipo }) {
     const tipos = [];
     for (const i of itens) {
-        if (i.tipo_nome && ! tipos.some((t) => t.tipo === i.tipo)) tipos.push({ tipo: i.tipo, nome: i.tipo_nome, produtoId: i.produto_id, produtoNome: i.produto_nome });
+        const semTipo = ! i.tipo;
+        const chave = semTipo ? `sem-${i.produto_id}` : i.tipo;
+        if ((semTipo || i.tipo_nome) && ! tipos.some((t) => t.tipo === chave)) {
+            tipos.push({ tipo: chave, nome: semTipo ? 'Sem tipo' : i.tipo_nome, semTipo, produtoId: i.produto_id, produtoNome: i.produto_nome });
+        }
     }
 
     return (
         <div className="flex flex-wrap gap-x-2">
             {tipos.map((t) => (onTipo ? (
-                <button key={t.tipo} type="button" onClick={() => onTipo(t.produtoId)} title="Mudar o tipo deste produto"
-                    aria-label={`Mudar o tipo de ${t.produtoNome} (${t.nome})`}
-                    className={cn('inline-flex min-h-[44px] items-center gap-1 text-[12px] text-white/55 hover:text-white xl:min-h-0', FOCO)}>
+                <button key={t.tipo} type="button" onClick={() => onTipo(t.produtoId)} title={t.semTipo ? 'Escolher o tipo deste produto' : 'Mudar o tipo deste produto'}
+                    aria-label={t.semTipo ? `Escolher o tipo de ${t.produtoNome}` : `Mudar o tipo de ${t.produtoNome} (${t.nome})`} data-sem-tipo={t.semTipo || undefined}
+                    className={cn('inline-flex min-h-[44px] items-center gap-1 text-[12px] xl:min-h-0', t.semTipo ? 'text-amber-300/90 hover:text-amber-200' : 'text-white/55 hover:text-white', FOCO)}>
                     {t.nome} <Pencil size={10} aria-hidden="true" />
                 </button>
             ) : (

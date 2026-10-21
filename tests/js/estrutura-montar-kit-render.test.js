@@ -163,7 +163,7 @@ const SUGESTOES = {
     por_fase: { todas: 1, combo: 0, kit: 1, combit: 0 }, por_status: { todas: 1, prontas: 1, com_aviso: 0 },
     resumo: { total: 1, combo: 0, kit: 1, combit: 0 }, familia_ambientes: { 1: ['Sala de jantar'] }, gerado_em: '2026-10-09T12:00:00-03:00',
     familias: [{ valor: '1', nome: 'Polo', total: 1 }], tipos: [{ id: 1, slug: 'mesa', nome: 'Mesa', plural: 'Mesas', qtd_combo: '0', qtd_combit: '0' }],
-    itens: [ITEM_SUGESTAO], produtos_sem_tipo: [],
+    itens: [ITEM_SUGESTAO], previa: [ITEM_SUGESTAO], produtos_sem_tipo: [],
     produtos: { 1: { id: 1, nome: 'Mesa Polo', tipo: 'mesa', tipo_nome: 'Mesa', candidatos: [], familia: 'Polo', ambientes: [], categoria: null } },
     familia_totais: { 1: 1 }, familia_continua: null,
     paginacao: { pagina: 1, paginas: 1, total: 1, blocos: 1, linhas: 1, por_pagina: 20 },
@@ -275,10 +275,13 @@ test('a página do Planejamento desenha com o Montar kit e a Lista só para quem
     assert.match(saida, /Mesa Polo \+ Cadeira Polo/);
 
     // Tudo revisado: o cliente vai à Precificação; quem vê a Lista, à Lista.
-    const vazia = { ...SUGESTOES, itens: [], grupos: [], contagens: { sugestoes: 0, sem_tipo: 0, descartadas: 2 }, resumo: { total: 0, combo: 0, kit: 0, combit: 0 } };
+    const vazia = { ...SUGESTOES, itens: [], previa: [], grupos: [], contagens: { sugestoes: 0, sem_tipo: 0, descartadas: 2 }, resumo: { total: 0, combo: 0, kit: 0, combit: 0 } };
     global.__PROPS__ = { ...props, sugestoes: vazia };
     const cliente = html(h(Pagina, { ...props, sugestoes: vazia }));
-    assert.ok(cliente.includes('As ofertas aceitas já estão na Precificação.') && cliente.includes('Precificar agora') && cliente.includes('data-acao="montar-kit-vazio"'));
+    // 21/10/2026: a faixa vira uma linha, e as aceitas aparecem em Criados logo abaixo.
+    assert.ok(cliente.includes('Você revisou todas as sugestões. As aceitas aparecem em Criados, logo abaixo, e já estão na Precificação.')
+        && cliente.includes('Precificar agora') && cliente.includes('data-acao="montar-kit-vazio"'));
+    assert.ok(cliente.includes('data-secao-criadas'), 'os criados ficam na mesma tela');
     assert.ok(! cliente.includes('portal.auth.estrutura.lista'));
 
     // Só ofertas importadas (sem produto): sem sugestões, mas dá para montar à mão.
@@ -292,7 +295,7 @@ test('a página do Planejamento desenha com o Montar kit e a Lista só para quem
     const comLista = [{ chave: 'estrutura', submodulos: [SUB('produtos', 'Produtos'), SUB('sugestoes', 'Planejamento', { ativo: true }), SUB('lista', 'Lista SKUs')] }];
     global.__PROPS__ = { ...props, modulos: comLista, sugestoes: vazia };
     const equipe = html(h(Pagina, { ...props, modulos: comLista, sugestoes: vazia }));
-    assert.ok(equipe.includes('As ofertas aceitas já estão na Lista SKUs.') && equipe.includes('href="/portal.auth.estrutura.lista"'));
+    assert.ok(equipe.includes('e já estão na Lista SKUs.') && equipe.includes('href="/portal.auth.estrutura.lista"'));
 });
 
 test('a página do Mapeamento desenha o funil adiado e não leva o cliente a telas escondidas', async () => {

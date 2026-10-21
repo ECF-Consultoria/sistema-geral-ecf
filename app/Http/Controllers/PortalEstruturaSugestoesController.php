@@ -47,10 +47,6 @@ use Inertia\Inertia;
  */
 class PortalEstruturaSugestoesController extends Controller
 {
-    /** `criadas` (13/10/2026) não é uma lista de sugestões: são as ofertas compostas que já existem ({@see OfertasCriadas}). */
-    private const ABA_CRIADAS = 'criadas';
-    /** 21/10/2026: a tela ficou só com Pendentes e Criadas; link antigo para "Sem tipo" ou "Descartadas" cai em Pendentes. */
-    private const ABAS = ['sugestoes', self::ABA_CRIADAS];
     private const FASES = ['combo', 'kit', 'combit'];
 
     public function __construct(
@@ -70,28 +66,23 @@ class PortalEstruturaSugestoesController extends Controller
 
     // ═══ Visão ══════════════════════════════════════════════════════════════
 
-    /** A tela de sugestões: painel sobre o conjunto, página no servidor. Nenhuma chamada ao ML. */
+    /**
+     * A tela do Planejamento. 21/10/2026 — sem abas: as sugestões para revisar em cima e os combos, kits e
+     * combits criados embaixo, na mesma tela ("em Criadas fica muito oculto, então parece que não tem nada").
+     * Cada lista tem filtros e página próprios na URL (`criadas_*` para as criadas) e se recarrega sozinha:
+     * as duas são preguiçosas, e a visita parcial de uma não refaz a conta da outra. Nenhuma chamada ao ML.
+     */
     public function index(Request $request)
     {
         $empresa = PortalContexto::empresa();
         $filtros = $this->filtros($request);
-        $naAbaCriadas = $filtros['aba'] === self::ABA_CRIADAS;
-
-        // Na aba Criadas o painel (contagens, famílias, tipos) continua o das sugestões; só a lista é outra.
-        // A busca e o tipo da aba Criadas são dela: o painel das sugestões é montado sem eles.
-        $sugestoes = $this->lista->listar($empresa, $naAbaCriadas ? ['aba' => 'sugestoes', 'fase' => null, 'q' => ''] + $filtros : $filtros,
-            $naAbaCriadas ? 1 : (int) $request->query('pagina', 1));
-        $sugestoes['contagens'][self::ABA_CRIADAS] = $this->criadas->contar($empresa);
-        if ($naAbaCriadas) {
-            $sugestoes['aba'] = self::ABA_CRIADAS;
-        }
-        $filtrosCriadas = $naAbaCriadas ? $this->filtrosCriadas($request, $filtros) : null;
+        $filtrosCriadas = $this->filtrosCriadas($request);
 
         return Inertia::render('Portal/EstruturaSugestoes', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.sugestoes', PortalContexto::ator()),
-            'sugestoes'    => $sugestoes,
-            // Os combos, kits e combits que já existem; só quando a aba está aberta. Filtros e página próprios (16/10).
-            'criadas'      => $naAbaCriadas ? $this->criadas->listar($empresa, $filtrosCriadas, (int) $request->query('pagina', 1)) : null,
+            'sugestoes'    => fn () => $this->lista->listar($empresa, $filtros, (int) $request->query('pagina', 1)),
+            // Os combos, kits e combits que já existem, com filtros e página próprios (16/10).
+            'criadas'      => fn () => $this->criadas->listar($empresa, $filtrosCriadas, (int) $request->query('criadas_pagina', 1)),
             'filtros_criadas' => $filtrosCriadas,
             'filtros'      => $filtros,
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
@@ -252,14 +243,13 @@ class PortalEstruturaSugestoesController extends Controller
     }
 
     /**
-     * Filtros da URL contra listas fechadas: valor desconhecido vira "sem filtro"
-     * (a aba, que sempre existe, volta para 'sugestoes').
+     * Filtros da URL contra listas fechadas: valor desconhecido vira "sem filtro". A `aba` é sempre
+     * 'sugestoes' desde 21/10/2026 (a tela não tem mais abas; `?aba=` de link antigo é ignorado).
      *
      * @return array{aba: string, fase: ?string, familia: ?string, tipo: ?string, status: ?string, q: string}
      */
     private function filtros(Request $request): array
     {
-        $aba = (string) $request->query('aba', '');
         $fase = (string) $request->query('fase', '');
         $familia = trim((string) $request->query('familia', ''));
         $tipo = (string) $request->query('tipo', '');
@@ -272,7 +262,7 @@ class PortalEstruturaSugestoesController extends Controller
         )), 0, 50);
 
         return [
-            'aba'     => in_array($aba, self::ABAS, true) ? $aba : 'sugestoes',
+            'aba'     => 'sugestoes',
             'fase'    => in_array($fase, self::FASES, true) ? $fase : null,
             'familia' => $familia !== '' && mb_strlen($familia) <= 20 ? $familia : null,
             'tipo'    => preg_match('/^[a-z0-9-]{2,40}$/D', $tipo) === 1 ? $tipo : null,
@@ -283,19 +273,21 @@ class PortalEstruturaSugestoesController extends Controller
     }
 
     /**
-     * Os filtros da aba Criadas (16/10/2026): `fase` e `q` são os mesmos da URL das outras abas; `situacao`,
-     * `envio` e `ordem` só valem aqui. O que não está na lista vira "sem filtro" (nunca 422 por URL estranha).
+     * Os filtros das criadas (16/10/2026). Desde 21/10/2026 as criadas dividem a tela com as sugestões, então
+     * o tipo, a busca e a página delas vêm com prefixo (`criadas_fase`, `criadas_q`, `criadas_pagina`) para não
+     * pisar nos das sugestões; `situacao`, `envio` e `ordem` só existem aqui. O que não está na lista vira
+     * "sem filtro" (nunca 422 por URL estranha).
      */
-    private function filtrosCriadas(Request $request, array $filtros): array
+    private function filtrosCriadas(Request $request): array
     {
         $escolha = fn (string $chave, array $validos) => in_array($v = (string) $request->query($chave, ''), $validos, true) ? $v : null;
 
         return [
-            'fase'     => $filtros['fase'],
+            'fase'     => $escolha('criadas_fase', self::FASES),
             'situacao' => $escolha('situacao', OfertasCriadas::SITUACOES),
             'envio'    => $escolha('envio', OfertasCriadas::ENVIOS),
             'ordem'    => $escolha('ordem', OfertasCriadas::ORDENS) ?? 'recentes',
-            'q'        => $filtros['q'],
+            'q'        => mb_substr(trim((string) $request->query('criadas_q', '')), 0, 100),
         ];
     }
 }

@@ -38,9 +38,19 @@ class ListaDeSugestoes
     /** Valores aceitos do filtro Status (D-28); qualquer outro vira "sem filtro". */
     public const STATUS = ['prontas', 'com_aviso'];
 
+    /**
+     * 21/10/2026 — a faixa "Sugestões para revisar" (sugestões e criadas na mesma tela): as primeiras do
+     * conjunto inteiro, Kits e Combits na frente, sem filtro e sem Combos recolhidos.
+     */
+    public const PREVIA = 4;
+
+    /** Ordem da prévia: o que junta produtos diferentes vale mais de ver primeiro. */
+    private const ORDEM_DA_PREVIA = ['kit' => 0, 'combit' => 1, 'combo' => 2];
+
     public function __construct(
         private SugestoesService $sugestoes,
         private FreteMe2Service $frete,
+        private FotosDasVariacoes $fotos,
     ) {}
 
     /**
@@ -185,6 +195,7 @@ class ListaDeSugestoes
         }
 
         $itens = [];
+        $previa = [];
         $produtosSemTipo = [];
         $produtos = [];
 
@@ -197,7 +208,18 @@ class ListaDeSugestoes
                 $itens[] = $this->paraPagina($s, $detalhes, $skus);
             }
             if ($f['aba'] === 'sugestoes') {
-                $itens = $this->enriquecer($empresa, $itens, $detalhes);
+                // A página e a prévia numa avaliação só: o frete estimado continua UMA chamada por listagem.
+                $daPrevia = $this->daPrevia($vigentes);
+                $juntos = $this->enriquecer($empresa, [...$itens, ...array_map(fn ($s) => $this->paraPagina($s, $detalhes, $skus), $daPrevia)], $detalhes);
+                $previa = array_slice($juntos, count($itens));
+                $itens = array_slice($juntos, 0, count($itens));
+                $recorte = [...$recorte, ...$daPrevia];
+
+                // A foto de cada componente, para os cartões (uma consulta para a página e a prévia juntas).
+                $fotos = $this->fotos->capas($empresa, array_merge(...array_map(fn ($s) => array_column($s['itens'], 'variacao_id'), [...$itens, ...$previa, ['itens' => []]])));
+                $comFoto = fn (array $s) => ['itens' => array_map(fn ($i) => $i + ['foto' => $fotos[(int) $i['variacao_id']] ?? null], $s['itens'])] + $s;
+                $itens = array_map($comFoto, $itens);
+                $previa = array_map($comFoto, $previa);
             }
             foreach ($recorte as $s) {
                 foreach ($s['itens'] as $i) {
@@ -232,6 +254,7 @@ class ListaDeSugestoes
             'familias'          => $familias,
             'tipos'             => $this->tiposParaPagina($detalhes),
             'itens'             => $itens,
+            'previa'            => $previa,
             'produtos_sem_tipo' => $produtosSemTipo,
             'produtos'          => $produtos,
             'familia_totais'    => $familiaTotais,
@@ -585,6 +608,20 @@ class ListaDeSugestoes
         }
 
         return $saida;
+    }
+
+    /**
+     * As primeiras {@see self::PREVIA} vigentes, Kits e Combits na frente; dentro de cada fase, a ordem do gerador.
+     *
+     * @param  list<array<string,mixed>>  $vigentes
+     * @return list<array<string,mixed>>
+     */
+    private function daPrevia(array $vigentes): array
+    {
+        $ordem = array_keys($vigentes);
+        usort($ordem, fn ($a, $b) => [self::ORDEM_DA_PREVIA[$vigentes[$a]['fase']] ?? 9, $a] <=> [self::ORDEM_DA_PREVIA[$vigentes[$b]['fase']] ?? 9, $b]);
+
+        return array_map(fn ($k) => $vigentes[$k], array_slice($ordem, 0, self::PREVIA));
     }
 
     // ═══ Item da página (único ponto de tradução do gerador para a tela) ═══

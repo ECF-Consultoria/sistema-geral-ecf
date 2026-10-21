@@ -49,7 +49,8 @@ test('Os textos literais da UI-SPEC estão em uso', () => {
     assert.ok(pagina.includes('titulo="Planejamento"'));
     assert.ok(pagina.includes('leading-tight text-white">Planejamento</h1>'));
     assert.ok(! pagina.includes('Sugestões de ofertas'));
-    assert.ok(pagina.includes('O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.'));
+    // 21/10/2026: sugestões e criadas na mesma tela.
+    assert.ok(pagina.includes('O que o sistema sugere e o que você já criou.'));
     assert.ok(pagina.includes('descricao="Elas saem da lista e não voltam sozinhas."'), 'sem citar a aba Descartadas, que saiu (21/10/2026)');
     for (const proibida of ['algoritmo', 'gerador', ' IA ']) {
         assert.ok(! pagina.toLowerCase().includes(proibida.toLowerCase()), `não escrever "${proibida.trim()}" na tela`);
@@ -98,7 +99,7 @@ test('A página liga a guarda de saída nas três portas', () => {
 
 test('Quem chega pelo histórico recarrega as sugestões (o Inertia devolve as props da data da visita)', () => {
     assert.ok(pagina.includes('chegouPeloHistorico('), 'a tela pergunta se veio do voltar do navegador');
-    assert.match(pagina, /if \(chegouPeloHistorico\(\)\) router\.reload\(\{ only: \['sugestoes'\]/);
+    assert.match(pagina, /if \(chegouPeloHistorico\(\)\) router\.reload\(\{ only: \['sugestoes', 'criadas'\]/);
 });
 
 test('O frete da página vai pela rota .frete e os estados vazios usam qualEstadoVazio', () => {
@@ -111,15 +112,19 @@ test('O frete da página vai pela rota .frete e os estados vazios usam qualEstad
 
 // ─── Redesenho pela referência (168-19, D-24..D-31) ─────────────────────
 
-test('A página monta o desenho da referência', () => {
+test('A página monta o desenho da referência: sugestões em cartões em cima e criados embaixo (21/10/2026)', () => {
     for (const trecho of [
-        '<ResumoSugestoes', '<BarraDeFiltros', '<AbasDasSugestoes', '<GrupoFamilia', '<LinhaSugestao',
-        'textoAtualizado(', 'filtrosDaAba(', 'data-atualizado', 'data-trilha', 'data-acao="voltar-produtos"', 'clearInterval(',
-        'onAtualizar=', 'familia_ambientes', 'sugestoes.resumo',
+        '<CabecalhoDasSugestoes', '<BarraDeFiltros', '<GrupoFamilia', '<CartaoSugestao', '<PainelCriadas',
+        'data-secao-sugestoes', 'data-previa-sugestoes', 'data-acao="ver-todas-sugestoes"', 'data-acao="recolher-sugestoes"',
+        'data-secao-criadas', 'Criados', 'sugestoes.previa',
+        'textoAtualizado(', 'data-atualizado', 'data-trilha', 'data-acao="voltar-produtos"', 'clearInterval(',
+        'onAtualizar=', 'familia_ambientes',
     ]) {
         assert.ok(pagina.includes(trecho), `a página deve conter ${trecho}`);
     }
-    for (const antigo of ['CartaoSugestao', 'FiltrosSugestoes', 'CabecalhoFamilia', 'ExplicacaoDasOfertas']) {
+    // Saíram: as abas, a linha compacta e os 4 cartões de resumo.
+    for (const antigo of ['<AbasDasSugestoes', '<LinhaSugestao', '<ResumoSugestoes', 'filtrosDaAba(', 'hrefAba(', 'ehAbaCriadas',
+        'FiltrosSugestoes', 'CabecalhoFamilia', 'ExplicacaoDasOfertas']) {
         assert.ok(! pagina.includes(antigo), `${antigo} saiu do desenho`);
     }
 });
