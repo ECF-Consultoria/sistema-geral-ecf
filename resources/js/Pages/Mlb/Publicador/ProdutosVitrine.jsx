@@ -73,7 +73,8 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
     const iaTrabalhando = lista.some((c) => typeof c?.ia === 'string');
     useEffect(() => {
         if (! iaTrabalhando) return undefined;
-        const t = setInterval(() => router.reload({ only: ['cartoes', 'planejados', 'contagens'] }), 15 * 1000);
+        // 21/10/2026: era 15 s — a tela demorava a mostrar o que a IA já tinha terminado.
+        const t = setInterval(() => router.reload({ only: ['cartoes', 'planejados', 'contagens'] }), 5 * 1000);
 
         return () => clearInterval(t);
     }, [iaTrabalhando]);

@@ -36,7 +36,9 @@ class AplicarCriativosAutomaticosJob implements ShouldBeUnique, ShouldQueue
     public function __construct(public int $kitId)
     {
         $this->onQueue('creative');
-        $this->delay(now()->addSeconds(20));
+        // 21/10/2026: era 20 s. Medido em produção, os vereditos do juiz chegam com 1–2 s de diferença, e o `aplicar`
+        // confere de novo (juiz pendente ou reprovada ainda refeita → espera o próximo gatilho). 5 s bastam para juntar.
+        $this->delay(now()->addSeconds(5));
     }
 
     public function uniqueId(): string

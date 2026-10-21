@@ -8,6 +8,7 @@ use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
 use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarPreparoIaJob;
+use App\Services\Publicador\PreparoIaDoRascunhoService;
 use App\Models\Configuracao;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaOfertaComponente;
@@ -129,7 +130,9 @@ class CriativosAutomaticosTest extends TestCase
 
         [$p, $r] = $this->produtoComFotos();
 
-        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
+        // 21/10/2026: [título → Modelo] e [descrição], sem o elo das imagens.
+        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class], fn ($j) => $j->etapa === PreparoIaDoRascunhoService::TITULO);
+        Queue::assertPushedWithoutChain(GerarPreparoIaJob::class, fn ($j) => $j->etapa === PreparoIaDoRascunhoService::DESCRICAO);
         Queue::assertNotPushed(AvaliarCriativosAutomaticosJob::class);
         $this->assertSame('desligado', $this->servico()->avaliar($r->id));
         $this->assertSame(0, MlAnuncioCriativoKit::query()->count());
@@ -141,9 +144,11 @@ class CriativosAutomaticosTest extends TestCase
         $this->ligar();
         $p = $this->produtoDoPortal();
         $this->salvarERodar($p);
-        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class, AvaliarCriativosAutomaticosJob::class]);
-        $this->assertSame('creative', collect(Queue::pushed(GerarPreparoIaJob::class))->first()->chained === [] ? null
-            : unserialize(collect(Queue::pushed(GerarPreparoIaJob::class))->first()->chained[2])->queue, 'o elo das imagens fica na fila `creative`');
+        // 21/10/2026: as imagens são o último elo da cadeia da DESCRIÇÃO, que roda em paralelo com [título → Modelo].
+        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class], fn ($j) => $j->etapa === PreparoIaDoRascunhoService::TITULO);
+        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [AvaliarCriativosAutomaticosJob::class], fn ($j) => $j->etapa === PreparoIaDoRascunhoService::DESCRICAO);
+        $daDescricao = collect(Queue::pushed(GerarPreparoIaJob::class))->firstWhere('etapa', PreparoIaDoRascunhoService::DESCRICAO);
+        $this->assertSame('creative', unserialize($daDescricao->chained[0])->queue, 'o elo das imagens fica na fila `creative`');
 
         [, $r] = [$p, $this->rascunhoDo($p)];
         $this->assertSame('sem_foto', $this->servico()->avaliar($r->id), 'sem foto do cliente, nada');

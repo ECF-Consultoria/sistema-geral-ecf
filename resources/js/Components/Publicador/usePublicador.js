@@ -43,6 +43,8 @@ const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
 // Sinal de editor aberto (09/10/2026), a cada 20 s desde 20/10/2026: a resposta diz se a IA está atualizando este
 // anúncio por fora (o cliente salvou no Portal) — com ela gravando, a mesa fica só leitura e relê no fim.
 const SINAL_PRESENCA = 20 * 1000;
+// 21/10/2026: com a IA do preparo gravando por fora, o sinal fica mais curto — a mesa sai da pausa logo que ela termina.
+const SINAL_PRESENCA_COM_IA = 5 * 1000;
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
@@ -347,10 +349,10 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
                 antes.carimbo = carimbo;
             }
             setIaPorFora(ia);
-        }, SINAL_PRESENCA);
+        }, iaPorFora !== null ? SINAL_PRESENCA_COM_IA : SINAL_PRESENCA);
 
         return () => clearInterval(t);
-    }, [produtoId]);
+    }, [produtoId, iaPorFora !== null]); // eslint-disable-line react-hooks/exhaustive-deps
     // A carga (e cada releitura) traz o carimbo e o que a IA está fazendo: a tela já abre pausada se ela estiver gravando.
     useEffect(() => {
         if (typeof estado?.carimbo_por_fora === 'string') porFora.current.carimbo = estado.carimbo_por_fora;

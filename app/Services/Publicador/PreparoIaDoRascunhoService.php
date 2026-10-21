@@ -285,17 +285,17 @@ class PreparoIaDoRascunhoService
             return $estado;
         });
 
-        $jobs = [];
-        foreach ($etapas as $i => $e) {
-            $jobs[] = new GerarPreparoIaJob((int) $r->id, $e, $hash, restantes: array_values(array_slice($etapas, $i + 1)));
-        }
-        // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): com o texto pronto, o último elo avalia.
-        if ($this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
-            $jobs[] = new AvaliarCriativosAutomaticosJob((int) $r->id);
-        }
+        // 21/10/2026 (pedido do usuário, "dar um jeito de ser mais rápida a geração"): DUAS cadeias em paralelo,
+        // [título → Modelo] e [descrição → imagens], em vez de uma só — o tempo passa a ser o da mais lenta.
+        // Detalhes em `despacharCadeias` (no FIM da classe: o portão da Fase 188 confere linhas deste arquivo).
+        $this->despacharCadeias(
+            (int) $r->id,
+            $etapas,
+            $hash,
+            $this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null),
+        );
         // Fila do preparo (10/10/2026, learnings publicador-ml §22): nem a `default` (Adman/Acervo) nem a `high`
         // (publicação, código de acesso do Portal). Cada elo também a declara; o das imagens fica na `creative`.
-        Bus::chain($jobs)->onQueue(PreparoIaAgenda::fila())->dispatch();
 
         return 'gerando ('.implode(', ', $etapas).')';
     }
@@ -913,5 +913,33 @@ class PreparoIaDoRascunhoService
     private function adiarMin(): int
     {
         return max(1, (int) config('publicador.preparo_ia.adiar_min', 5));
+    }
+
+    /**
+     * As cadeias do preparo (21/10/2026): só o Modelo depende do título, e as imagens leem a descrição do rascunho
+     * (`ContextoCriativoDoPublicador`) — por decisão do usuário elas seguem DEPOIS da descrição da IA. As escritas no
+     * `step_state` já são sob a trava da linha (`comEstado`/`escrever`): duas etapas ao mesmo tempo não se apagam.
+     *
+     * @param  list<string>  $etapas
+     */
+    private function despacharCadeias(int $rascunhoId, array $etapas, string $hash, bool $comImagens): void
+    {
+        $cadeias = [
+            array_values(array_intersect($etapas, [self::TITULO, self::MODELO])),
+            array_values(array_intersect($etapas, [self::DESCRICAO])),
+        ];
+        foreach ($cadeias as $i => $daCadeia) {
+            $jobs = [];
+            foreach ($daCadeia as $j => $e) {
+                $jobs[] = new GerarPreparoIaJob($rascunhoId, $e, $hash, restantes: array_values(array_slice($daCadeia, $j + 1)));
+            }
+            // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): o último elo da cadeia da descrição.
+            if ($i === 1 && $comImagens) {
+                $jobs[] = new AvaliarCriativosAutomaticosJob($rascunhoId);
+            }
+            if ($jobs !== []) {
+                Bus::chain($jobs)->onQueue(PreparoIaAgenda::fila())->dispatch();
+            }
+        }
     }
 }

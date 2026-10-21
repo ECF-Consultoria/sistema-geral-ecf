@@ -262,7 +262,7 @@ test('página — com a IA atualizando algum cartão, a vitrine se relê sozinha
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/ProdutosVitrine.jsx');
     assert.match(f, /const iaTrabalhando = lista\.some\(\(c\) => typeof c\?\.ia === 'string'\)/);
     assert.match(f, /if \(! iaTrabalhando\) return undefined;/);
-    assert.match(f, /setInterval\(\(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), 15 \* 1000\)/);
+    assert.match(f, /setInterval\(\(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), 5 \* 1000\)/);
 });
 
 // ─── 21/10/2026: o que falta é clicável, e as imagens da IA reprovadas aparecem com o motivo ───

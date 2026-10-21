@@ -278,9 +278,12 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
-        $cadeia = Queue::pushed(GerarPreparoIaJob::class)->sole();
-        $this->assertSame('publicador-ia', $cadeia->queue);
-        $this->assertSame(['publicador-ia', 'publicador-ia'], array_map(fn ($s) => unserialize($s)->queue, $cadeia->chained),
+        // 21/10/2026: duas cadeias em paralelo — [título → Modelo] e [descrição].
+        $cadeias = Queue::pushed(GerarPreparoIaJob::class);
+        $this->assertCount(2, $cadeias);
+        $this->assertSame(['publicador-ia', 'publicador-ia'], $cadeias->map(fn ($j) => $j->queue)->values()->all());
+        $titulo = $cadeias->firstWhere('etapa', PreparoIaDoRascunhoService::TITULO);
+        $this->assertSame(['publicador-ia'], array_map(fn ($s) => unserialize($s)->queue, $titulo->chained),
             'cada elo declara a fila: o onQueue do Bus::chain não move elo que já tem fila');
     }
 
@@ -395,7 +398,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         [, $ia] = $this->salvarERodar($p);
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
-        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
+        // 21/10/2026: [título → Modelo] e a descrição sozinha, em paralelo.
+        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class],
+            fn ($j) => $j->etapa === PreparoIaDoRascunhoService::TITULO);
+        Queue::assertPushedWithoutChain(GerarPreparoIaJob::class, fn ($j) => $j->etapa === PreparoIaDoRascunhoService::DESCRICAO);
         Queue::assertPushedOn('publicador-ia', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
@@ -585,7 +591,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         (new RascunhoRepository())->criar($kit, [new Alvo('gold_special', null), new Alvo('gold_pro', null)]);
 
         $this->assertSame('kit_da_fase', $this->servico()->avaliarIa($kit));
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        Queue::assertPushed(GerarPreparoIaJob::class, 2); // as duas cadeias do produto base, nenhuma do kit
     }
 
     public function test_anunciar_por_ia_rodando_adia_o_preparo(): void
@@ -726,7 +732,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->salvarNoPortal($b);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
 
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        Queue::assertPushed(GerarPreparoIaJob::class, 2); // as duas cadeias de UM produto
         $this->rodar(GerarPreparoIaJob::class);
         $this->assertNotSame([], array_filter($this->titulos($this->rascunhoDo($a))));
         $this->assertSame([], array_filter($this->titulos($this->rascunhoDo($b))), 'o 2º só foi sincronizado');
