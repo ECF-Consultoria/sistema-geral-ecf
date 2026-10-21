@@ -1074,10 +1074,28 @@ class MlbPublicadorAprovacaoController extends Controller
      * atrás**, em vez de deixar o produto na fila com a oferta parada em `falha`, que o
      * reconciliador **não** olha (`RECONCILIAVEIS` não tem `falha`, de propósito: sair de `falha` é
      * ato de PESSOA).
-     * ⚠️ **CONSEQUÊNCIA MEDIDA E ACEITA:** na recusa, a linha que o `enfileirar()` escreve no
-     * histórico volta atrás com a transação. O canal que importa num clique é a **resposta**, e ela
-     * leva o motivo real; gravar o histórico fora da transação deixaria registro de uma tentativa
-     * que não aconteceu.
+     * ═══ ⚠️⚠️ DECISÃO 26 DO USUÁRIO (21/10/2026): O MOTIVO DA RECUSA **PARA DE VOLTAR ATRÁS** ══
+     *
+     * ⚠️ **O que estava medido e declarado como consequência aceita (pergunta `193-04/B`):** na
+     * recusa, a linha que o `enfileirar()` escreve no histórico **voltava atrás** com a transação.
+     * A pessoa via o motivo no `422` e **nada ficava registrado** — e isso acontecia justamente no
+     * caso em que a oferta **fica parada**, que é quando alguém vai perguntar *"por que isto não
+     * saiu?"*.
+     *
+     * ➡️ **A decisão do usuário:** *"o motivo real fica REGISTRADO, não só num aviso que passa"*.
+     * ⚠️⚠️ **E A TRANSAÇÃO NÃO MUDOU: ela não foi removida nem dividida em duas.** A razão dela está
+     * escrita acima e é o que torna *"`publicando` com o item terminado"* impossível. O que mudou é
+     * **onde** a linha é escrita: no `catch`, **FORA** da transação, **depois** de o `rollback` já
+     * ter acontecido — por {@see PublicacaoDoPortaoService::registrarRecusaForaDaTransacao()}, que é
+     * o **mesmo mecanismo** das decisões 21, 23 e 24 (linha de histórico com **ator Sistema**, com
+     * o mesmo prefixo e a mesma de-duplicação **contra a última linha**).
+     * ⚠️ **O `422` continua saindo** — o registro **acrescenta** um canal, não troca o que existia.
+     * ⚠️ **Nenhum toast novo** (os 6 de VOC-08 são fechados), nenhum estado, rótulo ou rota novos.
+     *
+     * ⚠️ O motivo REAL é capturado **por referência** antes do `throw`: `$motivoDaFila` é memória do
+     * processo, não linha de banco, então ele **sobrevive ao `rollback`**. ⚠️ E ele fica **nulo**
+     * quando quem lançou foi o `tentarDeNovo()` (a corrida de andamento) — aí **não** se grava
+     * recusa de fila, porque não houve recusa de fila.
      *
      * ⚠️ **ESTA ACTION NÃO ESCREVE NO MERCADO LIVRE, e isso continua verdade:** enfileirar é **só
      * banco**. Quem publica é o `PublicarRascunhoJob`, na fila **`high`**, minutos depois — e essa
@@ -1103,8 +1121,12 @@ class MlbPublicadorAprovacaoController extends Controller
             ));
         }
 
+        // ⚠️ DECISÃO 26 — capturado por REFERÊNCIA de dentro da transação: é memória do processo,
+        // logo **sobrevive ao `rollback`** que apaga a linha de histórico.
+        $motivoDaFila = null;
+
         try {
-            $retentada = DB::transaction(function () use ($daConta, $request, $aprovacao, $portao) {
+            $retentada = DB::transaction(function () use ($daConta, $request, $aprovacao, $portao, &$motivoDaFila) {
                 // ⚠️ PRIMEIRO a fila, depois o andamento — ver o docblock.
                 $naFila = $portao->enfileirar($daConta, $request->user());
 
@@ -1112,10 +1134,11 @@ class MlbPublicadorAprovacaoController extends Controller
                     // ⚠️ O MOTIVO REAL da fila (uma das 11 frases da prontidão, ou o da guarda da
                     // decisão 23), nunca um "algo deu errado": é o que a pessoa precisa para
                     // resolver. O `regra` é o id ESTÁVEL que a tela usa para saber onde marcar.
+                    $motivoDaFila = (string) ($naFila['motivo'] ?? 'a fila de publicação não aceitou este produto agora.');
+
                     throw new RegraViolada(
                         self::REGRA_FILA_RECUSOU_O_RETRY,
-                        'Não foi possível pôr este produto na fila de publicação agora: '
-                            . ($naFila['motivo'] ?? 'a fila de publicação não aceitou este produto agora.'),
+                        'Não foi possível pôr este produto na fila de publicação agora: ' . $motivoDaFila,
                         ['oferta_id' => (int) $daConta->id]
                     );
                 }
@@ -1123,6 +1146,12 @@ class MlbPublicadorAprovacaoController extends Controller
                 return $aprovacao->tentarDeNovo($daConta->fresh(), $request->user());
             });
         } catch (RegraViolada $e) {
+            // ⚠️⚠️ DECISÃO 26 DO USUÁRIO — ver o docblock. Aqui o `rollback` **já aconteceu**, e é
+            // por isso que a linha sobrevive. ⚠️ **A transação acima não foi dividida nem removida.**
+            if ($motivoDaFila !== null) {
+                $portao->registrarRecusaForaDaTransacao($daConta, $motivoDaFila);
+            }
+
             return $this->recusaDoPainel($e);
         }
 

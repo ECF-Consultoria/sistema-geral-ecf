@@ -977,11 +977,14 @@ class ComandoDoPortaoDaPublicacaoTest extends TestCase
      * (liberando a conta), o que permite a **isca (+)** no fim — sem ela, *"recusou"* seria
      * indistinguível de *"recusa sempre"*.
      *
-     * ⚠️ **CONSEQUÊNCIA MEDIDA E DECLARADA:** como o enfileiramento e o `mover()` estão na MESMA
-     * transação, a linha que o `enfileirar()` escreve no histórico **volta atrás** com o rollback.
-     * O canal que importa num clique é a **resposta**, e ela leva o motivo real; gravar o histórico
-     * fora da transação deixaria registro de uma tentativa que não aconteceu. O caso **mede** isso
-     * em vez de deixar o leitor supor.
+     * ⚠️⚠️ **ATUALIZADO EM 21/10/2026 PELA QUICK `261021-fix` — DECISÃO 26 DO USUÁRIO.** Este caso
+     * media a consequência que esta wave **declarou e devolveu** (pergunta `193-04/B`): a linha que
+     * o `enfileirar()` escrevia no histórico **voltava atrás** com o rollback, e o único canal era a
+     * resposta. ➡️ **O usuário decidiu que o motivo real fica REGISTRADO**, pelo mesmo mecanismo das
+     * decisões 21, 23 e 24, gravado **FORA** da transação (no `catch`, depois do `rollback`).
+     * ⚠️ **A transação em si NÃO mudou**, e o caso continua provando isso: a oferta não se move
+     * **byte a byte** e **nenhum** item de fila vivo nasce. ⚠️ **E o `422` continua saindo** — o
+     * registro acrescenta um canal, não troca o que existia.
      */
     public function test_retry_com_enfileiramento_recusado_nao_move_e_traz_o_motivo_real_193_04(): void
     {
@@ -1010,8 +1013,29 @@ class ComandoDoPortaoDaPublicacaoTest extends TestCase
         $this->assertSame(PubAprovacaoOferta::FALHA, $emFalha->fresh()->andamento);
         $this->assertSame(0, PubFilaPublicacaoItem::query()->where('produto_ativo', $c['produto']->id)->count(), 'nasceu item de fila VIVO numa tentativa recusada');
 
-        // ⚠️ A consequência DECLARADA do rollback, medida: o histórico volta atrás junto.
-        $this->assertSame($eventosAntes, $this->eventos($emFalha), 'o histórico guardou uma tentativa que a transação desfez');
+        // ═══ ⚠️⚠️ DECISÃO 26 DO USUÁRIO (21/10/2026) — O MOTIVO **PARA DE VOLTAR ATRÁS** ══════
+        //
+        // ⚠️ **Esta asserção SUBSTITUI a que estava aqui**, e a troca é de EXPECTATIVA, não de
+        // comportamento acidental: até 21/10 este caso media a consequência declarada pelo plano
+        // 193-04 (*"o histórico volta atrás junto com o rollback"*), que a própria SUMMARY daquela
+        // wave **devolveu ao usuário** como pergunta `193-04/B`. ➡️ **O usuário decidiu o oposto:**
+        // *"o motivo real fica REGISTRADO, não só num aviso que passa"* — e justamente no caso em
+        // que a oferta **fica parada**, que é quando alguém vai perguntar *"por que isto não saiu?"*.
+        //
+        // ⚠️⚠️ **A TRANSAÇÃO NÃO MUDOU** (as duas asserções acima continuam provando que a oferta
+        // não se moveu **byte a byte** e que nenhum item de fila vivo nasceu): o que mudou é que a
+        // linha é escrita **FORA** dela, no `catch`, **depois** do `rollback`.
+        //
+        // ⚠️⚠️ **FORMA COLETORA, DERIVADA DE `$eventosAntes` — nunca contagem de eventos.** O
+        // número de eventos depende de quantas vezes o enfileiramento foi tentado, e o 193-02 o
+        // mediu subindo **26 → 27 sem defeito nenhum**. ➡️ Asseverar *"a lista de antes MAIS
+        // exatamente esta linha, nesta posição"* prova as quatro coisas de uma vez (a linha existe ·
+        // é **uma** só · é a **última** · nada mais mudou) e **não depende de contagem**.
+        $this->assertSame(
+            [...$eventosAntes, PublicacaoDoPortaoService::PREFIXO_NAO_ENFILEIRADA.'A publicação ainda não foi liberada para esta conta.'],
+            $this->eventos($emFalha),
+            'decisão 26: o motivo REAL da recusa do retry não sobreviveu ao rollback (ou entrou duplicado, ou veio com outro texto)'
+        );
 
         // ─── ⚠️ ISCA (+): liberada a conta, o MESMO clique passa ───────────────────────────
         config(['publicador.contas_liberadas.companies' => [(int) $company->id]]);
