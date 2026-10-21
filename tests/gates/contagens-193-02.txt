@@ -1,0 +1,102 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 193-02 — APROVAR ENFILEIRA: o gancho
+# `aoAprovar()` ligado, a fila REUSADA (`FilaPublicacaoService::agendar()`), a
+# granularidade oferta × produto resolvida (N ofertas → UM item de fila) e a
+# GUARDA DA MODALIDADE IRMÃ (decisão 23 do usuário, 21/10/2026).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 193-02 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `193-02`, E NÃO `02`. O número NU resolve
+# `contagens-186-02.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# SILÊNCIO. Medido no código: `verificar-testes.sh:120-129` resolve por
+# `sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'` (dois grupos de DÍGITOS); qualquer
+# outra forma cai no `else` e monta `contagens-186-<arg>.txt`. Essa
+# compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos da Fase 186 são
+# chamados pelo número nu e aquela fase está EM PRODUÇÃO), e os casos 15 e 16 do
+# `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os métodos deste plano estão
+#    quebrados em ids com **no máximo TRÊS métodos** cada.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 21/10/2026,
+#    uma invocação de `artisan test --filter=` por id, com `php.exe` em 0 antes
+#    de cada rodada. Nenhuma é chute e nenhum id foi escrito antes de ter sido
+#    medido.
+#
+# ⚠️ `php` não está no PATH desta máquina: `C:/xampp/php/php.exe`.
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: ele
+#    é **só de servidor** e não roda aquele gate — nenhum `.jsx` é dele. A regra é
+#    **quem roda, declara**, não *todos declaram*.
+#
+# ⚠️⚠️ OS IDS ALHEIOS QUE ESTE PLANO MEXE, E A DISCIPLINA: `contagens-186-04.txt`
+#    (`unica-porta` e `oferta-do-portao`) foi **REMEDIDO**, não ajustado — a
+#    camada B daquele gate percorre `glob('app/Services/Publicador/Aprovacao/
+#    *.php')` com **2 asserções POR ARQUIVO**, e este plano cria **um** arquivo
+#    naquele diretório. As duas medições (antes e depois) estão coladas na
+#    `193-02-SUMMARY.md`, e o próprio `contagens-186-04.txt` declara a
+#    fragilidade em linha. ⚠️ `contagens-186-09.txt` e `contagens-188-05.txt`
+#    **NÃO** mudam: o primeiro usa lista CONSTANTE de 25 arquivos (a Fase 186 já
+#    decidiu que arquivo novo no portão não entra ali sozinho) e o segundo mede
+#    comportamento de rota.
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# enfileirar-anexa-ou-agenda
+#   · ⚠️⚠️ **N ofertas → UM item de fila por PRODUTO** (DADO-03 / PUB-02): a fila
+#     publica o produto inteiro e um produto está em UMA fila por vez (unique
+#     `pubfilai_produto_ativo_uq`), então a segunda oferta **ANEXA**. A fixture tem
+#     DUAS ofertas porque **com uma só isso é inobservável**;
+#   · item que terminou SEM publicar não conta como vivo — **isca nas duas
+#     direções**, com os **4** valores de `SEM_PUBLICAR` e os **2** de `VIVOS`,
+#     lidos das CONSTANTES do modelo e não de literais;
+#   · as **4** colunas de conferência (`validacao_id`, `plano_hash`, `revisao`,
+#     `ciente`) **LIDAS pelo item** e **ausentes da oferta**, com **isca
+#     invertida** (elas EXISTEM na tabela da fila — sem isso, "não foram
+#     copiadas" é verde numa varredura cega); e `precisa_revisar` provado **não
+#     ser coluna em lugar nenhum**;
+#   · a recusa da fila **não é engolida** (T-193-15): o MOTIVO REAL de
+#     `prontidaoDoLote()` vai ao histórico como ator **Sistema**, a oferta
+#     continua em `aprovado` e `fila_item_id` continua nulo;
+#   · ⚠️ e enfileirar é **SÓ BANCO**: `Http::recorded()` **vazio**, com
+#     `preventStrayRequests()` de pé.
+#
+# guarda-modalidade-irma
+#   · ⚠️⚠️ **DECISÃO 23 DO USUÁRIO (21/10/2026): não se publica o que ninguém
+#     revisou.** Sem todos os alvos ATIVOS aprovados, a oferta NÃO entra na fila:
+#     ela fica em `aprovado` (rótulo do protótipo *"aguardando publicação"*, que
+#     já é a verdade), **sem** `fila_item_id`, com o motivo real no histórico
+#     **nomeando a modalidade que falta**, e o reconciliador reavalia;
+#   · o defeito que fecha, medido em TRÊS pontos: a fila publica o PRODUTO,
+#     `PayloadBuilderUserProducts:60` monta um anúncio por **alvo ATIVO**, e
+#     `pub_rascunho_alvos.ativo` é boolean **default true**;
+#   · ⚠️ **ISCA NAS DUAS DIREÇÕES:** com um só aprovado **não nasce** item; com os
+#     dois **nasce**. Só com a primeira metade, um `enfileirar()` que recusasse
+#     sempre passaria;
+#   · ⚠️⚠️ e a guarda **não quebra o caminho que existe**: produto com **UM** alvo
+#     ativo (o único que o agente encaminha) e produto com a irmã **INATIVA**
+#     continuam enfileirando — porque a âncora é `pub_rascunho_alvos.ativo`, nunca
+#     uma contagem fixa de alvos. ⚠️ Com a isca (−): **ativar** o alvo inverte o
+#     veredicto, o que prova que a guarda lê `ativo` de verdade;
+#   · o **jargão não vai para a tela**: nenhum texto de evento contém `gold_pro` —
+#     o nome pt-BR sai de `PubAprovacaoAjuste::MODALIDADES`, o mapa que o próprio
+#     painel do portão já usa.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+enfileirar-anexa-ou-agenda  php  test_(enfileirar_agenda_uma_vez_e_anexa_na_segunda_oferta_do_produto_193_02|item_terminado_sem_publicar_nao_conta_como_vivo_com_isca_nos_dois_lados_193_02|as_quatro_colunas_vem_do_item_e_a_recusa_registra_o_motivo_real_193_02)  ::  tests=3 assertions=67
+guarda-modalidade-irma  php  test_(modalidade_irma_ativa_nao_aprovada_barra_a_entrada_na_fila_193_02|um_alvo_ativo_so_e_alvo_inativo_nao_barram_o_enfileiramento_193_02)  ::  tests=2 assertions=26
