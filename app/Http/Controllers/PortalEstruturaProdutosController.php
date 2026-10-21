@@ -7,6 +7,7 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
+use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\ExclusaoDeProdutos;
@@ -96,6 +97,7 @@ class PortalEstruturaProdutosController extends Controller
         private PlanilhaDasFichasTecnicas $planilhaDasFichas,
         private ImportadorFichasTecnicas $importadorDeFichas,
         private ExclusaoDeProdutos $exclusao,
+        private EstruturaPrecificacaoService $precificacao,
     ) {
     }
 
@@ -136,6 +138,31 @@ class PortalEstruturaProdutosController extends Controller
             ->findOrFail($produto);
 
         return $this->renderFicha($p);
+    }
+
+    /**
+     * A precificação deste produto, para a seção da ficha (20/10/2026): a oferta de cada variação, com a
+     * conta pronta do servidor (combos e kits ficam na Precificação). `custos[variacao_id]` é o custo
+     * que a ficha tem digitado e ainda não salvou — a prévia recalcula com ele e não grava nada (vazio =
+     * sem custo). O frete e os percentuais gravam pela rota da Precificação, como na tela dela.
+     */
+    public function precificacao(Request $request, int $produto)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $dados = $request->validate([
+            'custos'   => ['nullable', 'array', 'max:'.ProdutoCadastroService::MAX_GRADE],
+            'custos.*' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+        ]);
+        $custos = [];
+        foreach ($dados['custos'] ?? [] as $variacao => $custo) {
+            if (is_int($variacao) || ctype_digit((string) $variacao)) {
+                $custos[(int) $variacao] = $custo === null ? null : round((float) $custo, 2);
+            }
+        }
+
+        return response()->json($this->precificacao->doProduto($empresa, (int) $p->id, $custos));
     }
 
     // ═══ Escritas por JSON ══════════════════════════════════════════════════

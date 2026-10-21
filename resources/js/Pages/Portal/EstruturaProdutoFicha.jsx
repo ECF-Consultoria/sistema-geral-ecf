@@ -11,6 +11,7 @@ import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoPr
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
+import PrecificacaoDoProduto from '@/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
@@ -310,6 +311,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         </button>
                     </fieldset>
                 </section>
+
+                {/* A Precificação logo depois das Variações (20/10/2026): o custo é delas, e o preço sai daqui
+                    mesmo, sem trocar de tela. Só as variações deste produto; o frete grava na hora e o custo, com "Salvar produto". */}
+                <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas} />
 
                 <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
                 <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />

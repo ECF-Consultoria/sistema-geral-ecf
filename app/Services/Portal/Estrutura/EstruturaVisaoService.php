@@ -39,9 +39,10 @@ class EstruturaVisaoService
     /**
      * `$opcoes` (11/10/2026, só a Precificação usa): `fase` deixa passar um tipo só (simples, combo, kit ou
      * combit) e `por_familia` ordena os blocos por família e diz a de cada um (`FamiliasDasOfertas`). Sem
-     * opções, a página sai exatamente como antes, na ordem de vendas.
+     * opções, a página sai exatamente como antes, na ordem de vendas. `pendentes` (oferta_id → true, 20/10/2026)
+     * põe na frente as famílias e os blocos que ainda faltam precificar ({@see FamiliasDasOfertas::ordenar}).
      *
-     * @param  array{fase?: ?string, por_familia?: bool}  $opcoes
+     * @param  array{fase?: ?string, por_familia?: bool, pendentes?: array<int, true>}  $opcoes
      */
     public function paginaOfertas(Company $empresa, string $filtro, string $busca, int $pagina, array $opcoes = []): array
     {
@@ -82,7 +83,7 @@ class EstruturaVisaoService
         $familias = [];
         if ($porFamilia) {
             $familias = FamiliasDasOfertas::daEmpresa($empresa, $conjunto);
-            $blocos = FamiliasDasOfertas::ordenar($blocos, $familias);
+            $blocos = FamiliasDasOfertas::ordenar($blocos, $familias, $opcoes['pendentes'] ?? []);
         }
 
         $total = count($blocos);

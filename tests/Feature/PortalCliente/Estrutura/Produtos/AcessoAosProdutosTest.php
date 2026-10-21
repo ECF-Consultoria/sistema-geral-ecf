@@ -174,7 +174,7 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(36, $achadas); // 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
+        $this->assertSame(37, $achadas); // 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
@@ -204,6 +204,8 @@ class AcessoAosProdutosTest extends TestCase
                 'portal/estrutura/produtos/{id}',
                 'portal/estrutura/produtos/{id}/ficha-tecnica',
                 'portal/estrutura/produtos/{id}/descricao',
+                // 20/10/2026: a Precificação dentro da ficha do produto.
+                'portal/estrutura/produtos/{id}/precificacao',
                 'portal/estrutura/sugestoes/produtos/{id}/geracao',
                 // Imagens por variação: os dois ids (variação e imagem) só dígitos.
                 'portal/estrutura/produtos/variacao/{id}/imagens',

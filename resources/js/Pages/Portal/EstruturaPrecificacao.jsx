@@ -1,13 +1,15 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, List, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, Target, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import SimuladorPrecificacao from '@/Components/Portal/Estrutura/Precificacao/SimuladorPrecificacao';
 import { avisoSemSugestao, resumoDoEnvio, seloDoEnvio } from '@/lib/precificacaoEnvio';
 import { deveCotarDeNovo, freteEmBranco, freteUnico, legendaDoFreteUnico, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
 import { cartoesDaFamilia, filtrosDeTipo, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia, rotuloDaFase } from '@/lib/precificacaoPorFamilia';
+import { cartoesDasFamilias } from '@/lib/precificacaoSimulador';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +57,31 @@ import { cn } from '@/lib/utils';
 //   no detalhe da linha;
 // - os parâmetros da empresa ficam numa linha, com "Editar".
 // Nenhuma conta mudou e nada novo vem do servidor.
+//
+// ### Simulador, como no onboarding de Polos (20/10/2026)
+// O usuário pediu a tela "igual à do onboarding": a vista padrão virou o SIMULADOR
+// (`SimuladorPrecificacao`) — cartões em cima, uma oferta por vez embaixo, o preço em
+// destaque e para onde vai cada real. A lista de antes continua como "Lista", o
+// "Lote" do onboarding. E o que falta preço vem primeiro: o servidor põe na frente,
+// antes de paginar, as famílias com pendência; o simulador recolhe o que já tem preço
+// em "Já precificados", e na Lista a linha pronta fica apagada.
+//
+// `?vista=lista|simulador` abre direto numa das duas; a escolha fica no navegador.
+
+const VISTAS = [['simulador', 'Simulador', Target], ['lista', 'Lista', List]];
+const CHAVE_VISTA = 'ecf.portal.precificacao.vista';
+const vistaGuardada = () => {
+    try {
+        const v = window.localStorage.getItem(CHAVE_VISTA);
+
+        return VISTAS.some(([k]) => k === v) ? v : null;
+    } catch {
+        return null;
+    }
+};
+const guardarVista = (v) => {
+    try { window.localStorage.setItem(CHAVE_VISTA, v); } catch { /* sem armazenamento: vale só nesta visita */ }
+};
 
 const PARAMETROS = [
     ['comissao_classico', 'Comissão Clássico', 'Comissão Clássico'],
@@ -506,7 +533,9 @@ function LinhaOferta({ oferta, calculo, onAjustar, freteTabela, filho = false, t
             : 'falta o custo de um componente';
 
     return (
-        <div id={`oferta-${oferta.id}`} className={cn('scroll-mt-24 border-white/[0.06] [&:not(:first-child)]:border-t', filho && 'bg-white/[0.018]')}
+        // Pronta, a linha fica apagada (20/10/2026): o olho vai para o que falta. Volta inteira ao passar o mouse ou editar.
+        <div id={`oferta-${oferta.id}`} className={cn('scroll-mt-24 border-white/[0.06] transition-opacity [&:not(:first-child)]:border-t', filho && 'bg-white/[0.018]',
+            ! calculo.pendencia && ! salvando && 'opacity-60 focus-within:opacity-100 hover:opacity-100')}
             data-linha-preco={oferta.id} data-pendencia={calculo.pendencia ?? 'ok'} data-nivel={filho ? 'combo' : 'produto'}>
             <div className={cn(COLUNAS, 'py-3')}>
                 <div className={cn('min-w-0', filho && 'pl-4')}>
@@ -757,11 +786,24 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const [cotando, setCotando] = useState(false);
     const [avisoCotacao, setAvisoCotacao] = useState(null);
     const [fechadas, setFechadas] = useState({});     // família → fechada
+    const [vista, setVista] = useState(() => filtros.vista ?? vistaGuardada() ?? 'simulador');
+    const trocarVista = (v) => { setVista(v); guardarVista(v); };
 
     const { painel, blocos, paginacao } = estrutura;
     const { parametros, padroes, resumo, por_oferta: porOferta } = precificacao;
     const tipo = filtros.tipo ?? null;
     const familias = montarFamilias(blocos, (id) => !! porOferta[id]);
+    const cartoesDoSimulador = cartoesDasFamilias(familias, porOferta, cartoesDaFamilia);
+
+    // O simulador grava como a linha da Lista: a linha inteira, e a página volta com a conta nova.
+    const salvarOferta = (oferta, dados) => new Promise((resolve) => {
+        let erro = null;
+        router.put(route('portal.auth.estrutura.precificacao.oferta', oferta.id), dados, {
+            preserveScroll: true, preserveState: true,
+            onError: (e) => { erro = Object.values(e)[0] ?? 'Não foi possível salvar.'; },
+            onFinish: () => resolve(erro ? { erro } : null),
+        });
+    });
     const onde = ondeEstaCadaOferta(familias);
     const nOfertas = Object.keys(onde).length;
     // Com busca ou tipo escolhido as famílias ficam todas abertas: o que casou aparece direto.
@@ -878,7 +920,17 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
-                                {familias.length > 0 && (
+                                {/* Simulador (uma oferta por vez, como no onboarding) ou Lista (todas em linhas). */}
+                                <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Como ver" data-vistas>
+                                    {VISTAS.map(([k, l, Icone]) => (
+                                        <button key={k} type="button" onClick={() => trocarVista(k)} aria-pressed={vista === k} data-vista={k}
+                                            className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition',
+                                                vista === k ? 'bg-white/[0.1] text-white' : 'text-white/45 hover:text-white/75')}>
+                                            <Icone size={13} /> {l}
+                                        </button>
+                                    ))}
+                                </div>
+                                {vista === 'lista' && familias.length > 0 && (
                                     <div className="flex items-center gap-3 text-[12px] text-white/50">
                                         <span data-resumo-da-pagina>
                                             {nOfertas} {nOfertas === 1 ? 'oferta' : 'ofertas'} · {familias.length} {familias.length === 1 ? 'grupo' : 'grupos'}{paginacao.paginas > 1 ? ' nesta página' : ''}
@@ -908,6 +960,11 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                             </div>
                         )}
 
+                        {vista === 'simulador' ? (
+                            familias.length === 0
+                                ? <p className="rounded-2xl border border-white/[0.08] bg-ecf-card py-10 text-center text-[13px] text-white/50">Nenhuma oferta com esse filtro.</p>
+                                : <SimuladorPrecificacao cartoes={cartoesDoSimulador} parametros={parametros} freteTabela={frete_tabela} onSalvar={salvarOferta} />
+                        ) : (
                         <div className="overflow-x-auto pb-1">
                             <div className="min-w-[1120px] space-y-2.5" data-lista-precos>
                                 <div className={cn(COLUNAS, ROTULO, 'pt-1')} data-colunas>
@@ -950,6 +1007,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                                 <p className="rounded-2xl border border-white/[0.08] bg-ecf-card py-10 text-center text-[13px] text-white/50">Nenhuma oferta com esse filtro.</p>
                             )}
                         </div>
+                        )}
 
                         {paginacao.paginas > 1 && (
                             <Paginacao paginacao={paginacao} onIr={(pagina) => visitar({ q: busca || undefined, tipo: tipo || undefined, pagina })} />

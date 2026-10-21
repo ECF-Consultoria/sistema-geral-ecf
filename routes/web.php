@@ -257,6 +257,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.termos_titulo')->name('portal.auth.estrutura.produtos.termos_titulo');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
+    // 20/10/2026 — a Precificação dentro da ficha: a conta das ofertas do produto (e a prévia com o custo digitado).
+    Route::get('/estrutura/produtos/{produto}/precificacao', [PortalEstruturaProdutosController::class, 'precificacao'])
+        ->whereNumber('produto')->middleware('throttle:240,1,estrutura.produtos.precificacao')->name('portal.auth.estrutura.produtos.precificacao');
     // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.
     Route::post('/estrutura/produtos/categorias/sugerir-nomes', [PortalEstruturaProdutosController::class, 'sugerirCategoriasPorNome'])
         ->middleware('throttle:60,1,estrutura.produtos.categorias.sugerir_nomes')->name('portal.auth.estrutura.produtos.categorias.sugerir_nomes');

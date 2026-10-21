@@ -51,6 +51,32 @@ final class PrecificacaoEstrutura
     }
 
     /**
+     * Para onde vai cada real do preço da promoção (20/10/2026) — o "Para onde vai cada real" do
+     * simulador do onboarding de Polos, agora também no Portal. Só reparte o `minimo` que a
+     * {@see self::preco()} já calculou: custo e frete entram como estão, e cada percentual vira
+     * `mínimo × %`. Sem preço não há o que repartir.
+     *
+     * @return ?array{custo: float, frete: float, comissao: float, imposto: float, margem_contribuicao: float, lucro_liquido: float}
+     */
+    public static function partes(?float $minimo, ?float $custo, ?float $frete, float $comissao, float $imposto, float $mc, float $ll): ?array
+    {
+        if ($minimo === null || $custo === null) {
+            return null;
+        }
+
+        $de = fn (float $pct) => round($minimo * $pct / 100, 2);
+
+        return [
+            'custo'               => round($custo, 2),
+            'frete'               => round($frete ?? 0, 2),
+            'comissao'            => $de($comissao),
+            'imposto'             => $de($imposto),
+            'margem_contribuicao' => $de($mc),
+            'lucro_liquido'       => $de($ll),
+        ];
+    }
+
+    /**
      * O frete que a conta usa em cada tipo, nesta ordem:
      *
      *  1. o DIGITADO — zero digitado é escolha do cliente e fica;

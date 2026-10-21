@@ -74,17 +74,36 @@ final class FamiliasDasOfertas
      * Os blocos na ordem da tela por família: famílias pelo nome, "sem família" por último; dentro da família,
      * os produtos (com os combos) antes dos conjuntos; e, entre iguais, a ordem que já vinha (a de vendas).
      *
-     * @param  array<int, array{principal: array{id: int, fase: string}}>  $blocos
+     * `$pendentes` (oferta_id → true, 20/10/2026): o que ainda falta precificar vem na frente — a família com
+     * alguma oferta pendente antes das que já estão prontas, e dentro dela o bloco pendente antes do pronto.
+     * A família continua inteira e na mesma página; só muda a ordem. Vazio = a ordem de antes.
+     *
+     * @param  array<int, array{principal: array{id: int, fase: string}, ofertas?: array}>  $blocos
      * @param  array<int, array{id: int, nome: string}|null>  $familias
+     * @param  array<int, true>  $pendentes
      * @return array<int, array>
      */
-    public static function ordenar(array $blocos, array $familias): array
+    public static function ordenar(array $blocos, array $familias, array $pendentes = []): array
     {
+        $blocoPendente = [];
+        $familiaPendente = [];
+        foreach (array_values($blocos) as $i => $b) {
+            $f = $familias[$b['principal']['id']] ?? null;
+            $blocoPendente[$i] = $pendentes !== [] && array_filter($b['ofertas'] ?? [], fn ($o) => isset($pendentes[$o['id']])) !== [];
+            if ($blocoPendente[$i]) {
+                $familiaPendente[$f['id'] ?? 0] = true;
+            }
+        }
+
         $chaves = [];
         foreach (array_values($blocos) as $i => $b) {
             $f = $familias[$b['principal']['id']] ?? null;
             $conjunto = in_array($b['principal']['fase'], ['kit', 'combit'], true);
-            $chaves[$i] = [$f === null ? 1 : 0, $f === null ? '' : mb_strtolower($f['nome']), $f['id'] ?? 0, $conjunto ? 1 : 0, $i];
+            $chaves[$i] = [
+                isset($familiaPendente[$f['id'] ?? 0]) ? 0 : 1,
+                $f === null ? 1 : 0, $f === null ? '' : mb_strtolower($f['nome']), $f['id'] ?? 0,
+                $conjunto ? 1 : 0, $blocoPendente[$i] ? 0 : 1, $i,
+            ];
         }
 
         $blocos = array_values($blocos);
