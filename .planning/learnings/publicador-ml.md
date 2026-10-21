@@ -1871,8 +1871,8 @@ Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.
 - **A descrição da IA saudava com o NOME CADASTRADO da empresa** ("Seja bem-vindo à Dev 02 Testes API"), não com
   o apelido que o comprador vê (MGSTOREL). Decisão do usuário: **sem saudação** — o prompt não pede e
   `DescricaoIaService::semSaudacao` limpa a saída. Não volte a pôr "saudação citando a loja" no prompt.
-- **O `/trends` do ML devolve termo sexual** em Sofás/Poltronas ("poltrona erotica para motel"). O filtro mora em
-  `TermosMaisBuscadosService::improprio` — um ponto só, por onde passam Portal, planilha e Publicador.
+- **O `/trends` do ML devolve termo sexual** em Sofás/Poltronas ("poltrona erotica para motel"). Um filtro chegou a
+  ser feito e foi desfeito a pedido do usuário (21/10): a lista segue como o ML entrega. Não refiltre por conta própria.
 - **A Prévia não sabe do aviso 4057:** promete "Frete grátis" e a categoria fora do Mercado Envios da conta sai
   "Entrega a combinar". Para demonstrar, use produto de categoria que a conta aceita (a conferência sem o aviso
   "vai tirar o Mercado Envios"). Poltrona na #459 não serve.

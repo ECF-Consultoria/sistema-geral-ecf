@@ -12,16 +12,16 @@ branch: fix/demo-23-10
 | Item | O que mudou |
 |---|---|
 | N2 | Prompt da descrição sem saudação e sem nome de loja; `DescricaoIaService::semSaudacao` tira a frase de saudação do começo e a linha que cita a loja (preparo do Portal e Anunciar por IA). |
-| N3 | `TermosMaisBuscadosService::improprio` — termo sexual sai da lista (Portal, planilha e Publicador), posições dos outros intactas. |
+| N3 | **Desfeito** a pedido do usuário (`067218c2`): a lista de termos segue como o ML entrega. |
 | H20/N13/H18 | Botão "Ver o Clássico/Premium no Mercado Livre" por anúncio publicado; "Conferido, com avisos: leia antes de publicar" em âmbar; motivo do Publicar em âmbar/15px. |
-| Textos | "Costuma levar de 1 a 5 minutos" nas faixas da IA; "conferência automática" no lugar de "juiz da IA"; Prévia manda a Condições de venda (H16). |
+| Textos | Prévia manda a Condições de venda (H16). O texto das faixas da IA (tempo estimado, "juiz da IA") foi **desfeito** a pedido do usuário — a resposta à espera é acelerar a geração. |
 | N16 | Vitrine abre em "Todos"; erro do Sincronizar pelo `mensagemDe`. |
 | N11/H3 | `salvandoRef` impede 3 POST; aviso repetido junto do Salvar; PickerLista sem `message` cru. |
 | H7 | Aceitar ocupa a linha; Descartar é link com 2º clique. |
 
 ## Gates
 - PHP: 182 testes do recorte (DescricaoIa, IaParaRascunho, PreviaDoAnuncio, AnuncioIa, PalavrasChave,
-  Termos*, TituloDeVenda, PreparoIa) + 5 novos (`DemoDescricaoETermosTest`) — verdes.
+  Termos*, TituloDeVenda, PreparoIa) + 4 novos (`DescricaoSemSaudacaoTest`) — verdes.
 - JS: 5.559 testes, 8 falhas, todas pré-existentes: 5 `*-187` (pacote `design_handoff_publicador/` fora do
   git), `estrutura-grade-glide` (teste velho), TERRITÓRIO 188 (mede `git status` — passa depois do
   commit) e **sigilo da ficha: `PrecificacaoDoProduto.jsx` (commit `a75261da`, do outro dev) mostra
