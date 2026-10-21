@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { avisosDoCartao, foiEditada, podeAceitar, valorDoCampo } from '@/lib/sugestoesSelecao';
@@ -39,6 +40,15 @@ export default function CartaoSugestao({
     const aceitavel = podeAceitar(sugestao, estado, limites);
     const editada = foiEditada(estado, chave);
     const razao = avisos.skuLongo ? msgSkuLongo(limites.max_sku) : (aceitavel ? undefined : 'Preencha o nome e o código para aceitar.');
+    // Demo 23/10 (H7): o Descartar ficava colado ao Aceitar, do mesmo tamanho, e descartava no 1º clique
+    // (o Desfazer some em segundos). Agora é discreto e pede o 2º clique; a confirmação some sozinha.
+    const [confirmarDescarte, setConfirmarDescarte] = useState(false);
+    useEffect(() => {
+        if (! confirmarDescarte) return undefined;
+        const t = setTimeout(() => setConfirmarDescarte(false), 5000);
+
+        return () => clearTimeout(t);
+    }, [confirmarDescarte]);
 
     return (
         <li aria-labelledby={`nome-${chave}`} data-sugestao data-chave={chave} data-fase={sugestao.fase}
@@ -88,17 +98,19 @@ export default function CartaoSugestao({
                     <LogisticaEFrete sugestao={sugestao} freteCotado={freteCotado} vocabulario={vocabulario} />
                 )}
 
-                <div className="mt-auto grid grid-cols-2 gap-2 border-t border-white/[0.06] pt-3" data-col="acoes">
-                    <button type="button" onClick={() => onDescartar(chave)} disabled={aceitando || bloqueado}
-                        aria-label={`Descartar sugestão ${nome}`} data-acao="descartar"
-                        className={cn(BOTAO, 'border border-white/[0.12] bg-white/[0.02] font-medium text-white/85 hover:bg-white/[0.06]', FOCO)}>
-                        Descartar
-                    </button>
+                <div className="mt-auto flex flex-col gap-2 border-t border-white/[0.06] pt-3" data-col="acoes">
                     <button type="button" onClick={() => onAceitar(chave)} disabled={! aceitavel || aceitando || bloqueado} title={aceitavel ? undefined : razao}
                         aria-label={`Aceitar sugestão ${nome}`} data-acao="aceitar"
-                        className={cn(BOTAO, 'bg-ecf-yellow font-semibold text-black hover:bg-ecf-yellow/90', FOCO)}>
+                        className={cn(BOTAO, 'w-full bg-ecf-yellow font-semibold text-black hover:bg-ecf-yellow/90', FOCO)}>
                         {aceitando && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
                         {aceitando ? 'Aceitando…' : 'Aceitar'}
+                    </button>
+                    <button type="button" disabled={aceitando || bloqueado}
+                        onClick={() => { if (confirmarDescarte) { setConfirmarDescarte(false); onDescartar(chave); } else { setConfirmarDescarte(true); } }}
+                        aria-label={confirmarDescarte ? `Confirmar o descarte da sugestão ${nome}` : `Descartar sugestão ${nome}`} data-acao="descartar"
+                        className={cn('self-center rounded px-2 py-1 text-[13px] underline underline-offset-2 disabled:pointer-events-none disabled:opacity-40',
+                            confirmarDescarte ? 'font-semibold text-red-300 hover:text-red-200' : 'text-white/55 hover:text-white/80', FOCO)}>
+                        {confirmarDescarte ? 'Clique de novo para descartar' : 'Descartar'}
                     </button>
                 </div>
             </div>
