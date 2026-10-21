@@ -33,9 +33,21 @@ commitou" ≠ "não está trabalhando"* — ver a ressalva da FACE 2 em §3.
 
 | commit | tarefa | assunto |
 |---|---|---|
-| `COMMIT-193-05-T1` | 1 | `test(193-05)`: os gates transversais do fechamento |
-| `COMMIT-193-05-T2` | 2 | `docs(193-05)`: o fechamento medido |
-| `COMMIT-193-05-T3` | 3 | `docs(193-05)`: o checkpoint humano |
+| `2f888014` | 2 (parte) | `docs(193-05)`: o fechamento medido — território, PUB-03, a fronteira D-11 e os 10 critérios |
+| `73bcac1c` | 1 | `test(193-05)`: os gates transversais do fechamento — e **nenhum deles chama git** |
+| `602b4d62` | 1 (conserto) | `fix(193-05)`: a suíte COMPLETA achou **1 regressão MINHA** — o docblock com forma de declaração |
+| `87f29f2e` | 2 | `docs(193-05)`: as dívidas da fase, cada uma com DONO |
+| (o seguinte) | 2 (fecho) | `docs(193-05)`: as baselines re-medidas e o self-check |
+| (o último) | — | `docs(193-05)`: a SUMMARY |
+
+⚠️⚠️ **O DOCUMENTO FOI COMMITADO ANTES DO GATE, E A ORDEM É DELIBERADA — DIVERGÊNCIA DECLARADA DO
+PLANO.** O `193-05-PLAN.md` põe o gate na tarefa 1 e o documento na tarefa 2, **mas o próprio
+`<behavior>` da tarefa 1 exige asseverar sobre o `193-FECHAMENTO.md`**: um gate cujo **sujeito não
+existe** não é mensurável, e commitar o gate primeiro deixaria um commit na história **com o gate
+vermelho por ausência do alvo**. ➡️ Documento primeiro (`2f888014`), gate depois (`73bcac1c`).
+⚠️ **Commit atômico por unidade coerente foi preservado**, e nada ficou sem commit em nenhum momento
+(⚠️ **três agentes caíram na Fase 187**, um deixando 2/3 de um plano sem commit). ⚠️ O `193-01` fez a
+mesma troca de ordem, com razão medida.
 
 ---
 
@@ -43,13 +55,70 @@ commitou" ≠ "não está trabalhando"* — ver a ressalva da FACE 2 em §3.
 
 ```
 PARTIDA:   0b9c51e0
-COMMIT:    A MEDIR na §2.1 (o HEAD do commit da tarefa 1 — o de docs vem depois)
-BUILD:     A MEDIR na §2.1
+COMMIT:    87f29f2e   (o HEAD das duas pontas da rodada valida; os commits de docs vem depois)
+BUILD:     exit REAL 0 · 98 s · "built in 1m 32s"      HEAD 73bcac1c nas DUAS pontas
 MANIFEST:  500 entradas / 204 paginas   (controle Aprovacao.jsx PRESENTE, isca NaoExiste9z7.jsx AUSENTE)
-JS:        A MEDIR na §2.1
-PHP:       A MEDIR na §2.1   (o RECORTE, pelo --suite php — a suite COMPLETA nao e medivel nesta maquina)
+JS:        6031 / 6030 pass / 1 fail / 0 skipped       (exit REAL 0)  HEAD 73bcac1c nas DUAS pontas
+PHP:       2702 / 25119 / 0                            (exit REAL 0, 954 s)  HEAD 87f29f2e nas DUAS pontas
+                                                       ^ o RECORTE, pelo --suite php: a suite PHP
+                                                         COMPLETA NAO E MEDIVEL nesta maquina
 PROTOTIPO: design_handoff_publicador/Aprovacao.dc.html · 1432 linhas · sha256 68624883ce35547e
 ```
+
+### §2.1 — ⚠️⚠️ A PRIMEIRA RODADA DO `--suite php` FOI DESCARTADA — E A CAUSA FUI **EU**
+
+```
+rodada 1:  HEAD 73bcac1c nas duas pontas · T0 19:16:26 · T1 19:35:33 UTC · 1122 s
+           PHP: 2702 / 25112 / 1          EXIT_REAL = 1
+           ⨯ 193-03 > o manifesto tem bijecao com os metodos e nenhum id orfao 193 03
+rodada 2:  HEAD 87f29f2e nas duas pontas · T0 19:44:21 · T1 20:00:15 UTC ·  954 s
+           PHP: 2702 / 25119 / 0          EXIT_REAL = 0      <- A MEDICAO QUE VALE
+```
+
+⚠️⚠️ **A falha NÃO era corrida nem commit alheio: era MINHA**, e está contada no §15, FURO 6. ➡️ **A
+medição válida é a SEGUNDA**, depois do conserto (`602b4d62`), e ela tem `EXIT_REAL` **0** com o
+HEAD conferido no **início e no fim**.
+
+⚠️ **O `EXIT_REAL` foi gravado DENTRO do script de medição, de `$?` na linha seguinte ao harness** —
+e isso não é zelo: a notificação do processo em background reportou *"failed with exit code 1"* na
+rodada 1 e *"completed (exit code 0)"* na rodada 2, mas **CINCO waves** desta milestone já leram
+`exit 0` de um `tail` com o harness saindo **1**. ⚠️ **Quem mede o exit é `$?`, não a notificação.**
+
+### ⚠️ A aritmética do Δ — cada parcela atribuída pelo commit que **CRIOU** o arquivo
+
+⚠️ **Por `git log --diff-filter=A` do arquivo, NUNCA por range** — o range engloba os meus próprios
+commits, e a 189-07 caiu exatamente nisso.
+
+| linha | referência anterior | medido agora | Δ | atribuição / veredicto |
+|---|---|---|---|---|
+| **BUILD** | `exit 0 · 86 s` (wave 04) | **exit 0 · 98 s** | +12 s | ⚠️ **INFORMATIVO** — tempo de build nesta máquina não é invariante (cache do Vite, carga). O que importa é o `exit 0` |
+| **MANIFEST** | 500 / 204 | **500 / 204** | **0** | ✅ **IGUAL**, e o invariante **real** provado: `numstat` **VAZIO** em `resources/js/` nos commits do escopo |
+| **JS testes** | 6031 (wave 04 e quick) | **6031** | **0** | ✅ **IGUAL.** Os meus commits tocam **ZERO** teste JS |
+| **JS falhas** | 1 | **1** | **0** | **pré-existente, Fase 87**, identificada por **SEMÂNTICA**: *"Características secundárias nasce recolhido (é o grupo que mais infla)"*. ⚠️ **ATRIBUÍDA POR EXECUÇÃO ISOLADA:** `estrutura-grade-glide.test.js` sozinho dá **19 / 18 pass / 1 fail / 0 skipped**, `EXIT_REAL=1`. **NÃO corrigida** |
+| **JS skipped** | 0 | **0** | 0 | ✅ e isso é consequência do método: o `build` rodou **antes e sozinho**, então os blocos que degradam para `skip` por `public/build/` ausente **não** degradaram |
+| **PHP testes** (o RECORTE) | **2692** (quick `261021-fix`) | **2702** | **+10** | ⚠️ **MEUS, e a aritmética fecha NA VÍRGULA:** os **10** métodos de `FechamentoDaFase193Test.php`, **criado por `73bcac1c`** (`git log --diff-filter=A` → só o meu commit). ⚠️ **Nenhum teste alheio entrou** — a FACE 2 do território veio **vazia** |
+| **PHP falhas** | 0 (quick) | **0** | **0** | ✅ e a rodada 1 (que deu **1**) foi **descartada com a causa identificada e consertada** — ver §15 FURO 6 |
+| **PHP asserções** | 24.988 (quick) | **25.119** | +131 | ⚠️ **INFORMATIVO**, não comparável: o harness tem `REF_PHP_TESTS` e **não** tem referência de asserções. ⚠️ E o `+7` entre as duas rodadas (25.112 → 25.119) é o meu gate novo com as duas iscas |
+| **PROTÓTIPO** | 1432 l. / `68624883ce35547e` | **idem** | 0 | ✅ |
+
+⚠️⚠️ **NENHUM `REF_PHP_FALHAS` FOI CRIADO, em nenhuma das cinco waves nem aqui.** Um limiar de
+falhas aceito seria **a porta dos fundos que o harness existe para fechar**.
+
+⚠️ As falhas que a `193-BASELINES.md` §4 prevê (`CalcularFaixaTest`, `CompanyServiceTypeTest`,
+`Phase39`) ficam **FORA** do recorte; as de `CockpitDaContaTest` (que **oscilam com a hora do dia**) e
+as de `SincronizaPortalCompletoTest`/`PortalFotosTest` (corrida de `storage/framework/testing`)
+**passaram** nas duas rodadas. ⚠️ **A hipótese do listener continua HIPÓTESE** — os dois experimentos
+que a testariam saíram verdes.
+
+### ⚠️ Uma contaminação MEDIDA e DECLARADA, em vez de omitida
+
+Na **rodada 1** o script gravou `PHP_EXE_VIVOS_ANTES=1`: havia **um** `php.exe` vivo no instante
+`T0`, embora eu tivesse medido **0** por PowerShell poucos segundos antes de lançar o processo.
+⚠️ **Não identifiquei a origem** (provável resíduo de um `verificar-testes.sh`/`php -l` meu que
+ainda não havia encerrado). ➡️ Na **rodada 2** — a que vale — o script gravou
+**`PHP_EXE_VIVOS_ANTES=0`**. ⚠️ **Registro isto porque "isolamento provado" não pode ser slogan:**
+a quick de ontem mediu **SETE `php.exe` de outra sessão** rodando **o mesmo recorte** nesta árvore,
+e *"contagem de suíte com outra suíte ao lado não é medição"*.
 
 ### ⚠️ O isolamento, **PROVADO POR LINHA DE COMANDO** — não por nome de processo
 
@@ -493,6 +562,95 @@ code 0"*. ⚠️ **E eu caí nisso uma vez nesta própria wave:** a primeira lei
 com `| grep` na frente e reportou `EXIT_REAL=0` — que era o **exit do `grep`**. Refiz sem pipe. **O
 erro é tão barato de cometer que ele merece estar escrito aqui.**
 
+### As cinco bijeções, RE-MEDIDAS **depois** do conserto da minha regressão (`602b4d62`)
+
+| gate | medido | esperado | |
+|---|---|---|---|
+| `193-01 bijecao-manifesto-193-01` | **1 / 20** | 20 | ✅ |
+| `193-02 bijecao-manifesto-193-02` | **1 / 32** | 32 | ✅ |
+| `193-03 bijecao-manifesto-193-03` | **1 / 33** | 33 | ✅ ⚠️ **era este o VERMELHO da rodada 1** — ver §15 FURO 6 |
+| `193-04 bijecao-manifesto-193-04` | **1 / 31** | 31 | ✅ |
+| `186-09 bijecao-e-homonimo` (alheio) | **1 / 31** | 31 | ✅ |
+
+### Os QUATRO ids DESTA wave
+
+| id | medido | manifesto | |
+|---|---|---|---|
+| `193-05 territorio-e-d11` | **3 / 43**, `EXIT_REAL=0` | `tests=3 assertions=43` | ✅ |
+| `193-05 nada-sem-destino` | **3 / 15**, `EXIT_REAL=0` | `tests=3 assertions=15` | ✅ |
+| `193-05 bijecao-dos-cinco-manifestos` | **1 / 24**, `EXIT_REAL=0` | `tests=1 assertions=24` | ✅ ⚠️ **REMEDIDO 21 → 24**, com a razão **em linha** no manifesto: o conserto do FURO 6 **ACRESCENTOU prova** (um gate novo + duas iscas). **Não é elevação de régua** |
+| `193-05 fechamento-de-forma-fixa` | **3 / 49**, `EXIT_REAL=0` | `tests=3 assertions=49` | ✅ |
+
+⚠️⚠️ **E OS MEUS GATES REPROVARAM SEIS VEZES DURANTE A CONSTRUÇÃO — isso é a resposta medida à
+pergunta *"o que precisaria estar errado no mundo para este gate falhar?"***:
+
+| # | o gate reprovou porque | e isso prova |
+|---|---|---|
+| 1 | o manifesto `contagens-193-05.txt` **não existia** | o anti-fantasma do manifesto não é decorativo |
+| 2 | o meu conjunto de **órfãos** tinha **5** e são **4** (o `193-01` declara o dele) | a lista congelada acusa a divergência **nomeando-a** |
+| 3 | o varredor de homônimo lia o **texto cru** e acusou a isca legítima da wave 03 | *"gate mais largo que o invariante"*, pego pelo próprio gate |
+| 4 | a sonda de *"a suíte PHP não é medível"* exigia **minúscula** e vizinhança imediata, e o documento escreve **maiúscula** com `**COMPLETA**` no meio | o lado **ESTREITO** da família *"a frase quebra no markdown e a sonda não"* |
+| 5 | o gate novo do FURO 6 varria helpers de nome comum e acusou **14** declarações **minhas** | a mesma família, de novo, em cinco minutos |
+| 6 | ⚠️⚠️ a **suíte completa** achou a regressão que **nenhum dos 4 ids pegaria** | *"rode a suíte completa"* **não é formalidade** |
+
+### A isca do 1º argumento, medida **AO VIVO** (não citada de briefing)
+
+```
+sh tests/gates/verificar-testes.sh 05 territorio-e-d11
+  ->  EXIT_REAL=2   ABORTOU: id 'territorio-e-d11' nao esta em …/contagens-186-05.txt
+sh tests/gates/verificar-testes.sh 193-5 territorio-e-d11
+  ->  EXIT_REAL=2   ABORTOU: manifesto nao existe: …/contagens-193-5.txt
+```
+
+⚠️⚠️ **E repare no que isso significa:** o número **NU** resolveu `contagens-186-05.txt`, que
+**EXISTE** — ele só abortou porque o **id** não está lá. ➡️ **Se o nome do id coincidisse, o harness
+rodaria o gate da fase ERRADA, em SILÊNCIO, e ficaria VERDE.** É compatibilidade **deliberada** (os
+163 ids da Fase 186 são chamados pelo número nu, e aquela fase está em produção).
+
+### `--autoteste`: **20 casos, 0 divergência**, `EXIT_REAL=0` (colado integralmente)
+
+```
+== JS: saida REAL de 'node --test --test-reporter=tap' ==
+  OK   caso 1: 2 verdes, N=2 -> PASSA (como esperado)
+  OK   caso 2: 1 de 2 falhando -> REPROVA (como esperado)
+  OK   caso 3: 2 verdes mas N=344 (arquivo nao carregou) -> REPROVA (como esperado)
+  OK   caso 4: ISCA >=: 2 verdes com >=2 (igual ao minimo) -> PASSA (como esperado)
+  OK   caso 5: ISCA >=: 2 verdes com >=1 (acima do minimo, teste novo so soma) -> PASSA (como esperado)
+  OK   caso 6: ISCA >=: 2 verdes com >=5 (encolheu ou nao carregou) -> REPROVA (como esperado)
+  OK   caso 7: ISCA >=: falha nao e perdoada pelo >= (o '# fail 0' vem ANTES) -> REPROVA (como esperado)
+  OK   caso 8: ISCA G1: 2 verdes com reporter PADRAO (sem tap) -> REPROVA (como esperado)
+== PHP: shape ANSI REAL do Collision, so a linha 'Tests:' variada ==
+  OK   caso 9: Tests: 1 passed (22 assertions), N=1 A=22 -> PASSA (como esperado)
+  OK   caso 10: Tests: 2 failed, 1 passed (9 assertions) -> REPROVA (como esperado)
+  OK   caso 11: Tests: 1 error, 1 passed (3 assertions) -> REPROVA (como esperado)
+  OK   caso 12: Tests: 1 passed (5 assertions) com A=22 esperado -> REPROVA (como esperado)
+  OK   caso 13: No tests found. -> REPROVA (como esperado)
+  OK   caso 14: ISCA ANSI: o caso que passa limpo, SEM limpar_ansi -> REPROVA (como esperado)
+== MANIFESTO: a resolucao por fase (187-NN) e a compatibilidade com a 186 ==
+  OK   caso 15: '187-01' resolve contagens-187-01.txt E o arquivo existe -> PASSA (como esperado)
+  OK   caso 16: ISCA: '01' e '186-01' no MESMO caminho (186), e '187-01' no OUTRO -> PASSA (como esperado)
+== MANIFESTO: incompleto tem de ABORTAR ==
+  OK   caso 17: manifesto 'g js a.test.js :: tests=0' -> ABORTOU (como esperado)
+  OK   caso 18: manifesto 'g js a.test.js ::' -> ABORTOU (como esperado)
+  OK   caso 19: manifesto 'g php test_x :: tests=1' -> ABORTOU (como esperado)
+  OK   caso 20: id ausente no manifesto -> ABORTOU (como esperado)
+---
+AUTOTESTE: 20 casos, 0 divergencia. As duas formas REPROVAM quando devem.
+```
+
+### A bijeção dos CINCO manifestos, medida
+
+```
+ids declarados nos 5 manifestos        ->  22      (2 + 5 + 6 + 5 + 4)
+metodos `_193_0N` declarados na suite  ->  50      (4 + 10 + 15 + 11 + 10)
+SEM_ID = 0   ORFAOS = 4 (CONGELADOS e DECLARADOS)   IDS_REPETIDOS = 0   HOMONIMOS = 0
+nenhum id com mais de TRES metodos  ·  sufixo `_193_0N` em TODOS os 50
+```
+
+⚠️ **E o `tests=` de cada id bate com a quantidade de métodos do filtro**, asseverado por asserção
+coletora — um id que declarasse `tests=3` com 2 métodos passaria pelo harness e **mentiria** sobre o
+que mede.
+
 ---
 
 ## §13 — A CAMPANHA DE MUTAÇÃO CONSOLIDADA: **36 MUTAÇÕES, 2 SOBREVIVENTES, 2 CONSERTOS NA RAIZ**
@@ -583,6 +741,49 @@ declaração.** São **24 declarações** que rodam **30 testes** (as seis prime
 dois caminhos). ➡️ Congelei a de **declaração**, que mede o mesmo invariante **sem** depender de rodar
 `node` de dentro do PHPUnit — e escrevi a aritmética (`6 × 2 + 18 = 30`) para o leitor seguinte não
 "consertar" o número.
+
+**FURO 6 — ⚠️⚠️ EU CAUSEI UMA REGRESSÃO, E QUEM A ACHOU FOI A SUÍTE COMPLETA.** O
+`193-03 bijecao-manifesto-193-03` ficou **VERMELHO** na rodada 1 do `--suite php`:
+
+```
+⨯ 193-03 > o manifesto tem bijecao com os metodos e nenhum id orfao 193 03
+  há método de outra suíte que o `--filter` NÃO ANCORADO deste plano também casaria
+  + 0 => 'FechamentoDaFase193Test.php::test_avisos_do_ml_aceitos_vao_para_o_historico_193_03_extra'
+```
+
+**A CAUSA, medida:** o varredor de homônimo daquela wave lê o **TEXTO CRU** do arquivo — **comentário
+incluído** — com `/function\s+([A-Za-z0-9_]*<nome>[A-Za-z0-9_]*)\s*\(/`, e a primeira redação do meu
+docblock **citava o literal inteiro** da isca da wave 03, com a palavra-chave de declaração **colada
+ao nome** e o parêntese em seguida. ➡️ Ele leu o meu **comentário** como *"este arquivo declara um
+método que já existe em `ReconciliarPublicacaoDoPortaoTest`"*.
+
+⚠️⚠️ **É o FURO 1 DA WAVE 04 AO CONTRÁRIO:** lá o nome alheio estava numa **asserção**; aqui, na
+**PROSA**. Eu obedeci a regra *"o nome alheio entra por VARIÁVEL"* nas asserções **e a violei no
+docblock**. ➡️ **A regra vale para comentário também**, e agora está escrita.
+
+**CONSERTO NA RAIZ, em DOIS movimentos** (`602b4d62`):
+1. a prosa deixou de escrever a forma de declaração — o nome **segue citado**, porque citar é
+   necessário para o caso ser nomeável;
+2. nasceu um **gate PRÓPRIO** que proíbe essa forma **neste arquivo**, para o próximo executor não
+   repetir, com **isca nas duas pontas**: ele pega `function <nome>(` e **não** pega a **citação** do
+   nome sozinho.
+
+⚠️ **E o conserto errado, que eu NÃO fiz:** pôr o meu arquivo numa lista de exceção do gate da wave
+03, ou alterar aquele gate. ⚠️ Ele **é** mais largo que o invariante dele (lê comentário e string) —
+isso está registrado no `deferred-items.md` item 8 —, **mas é gate de wave fechada**, e o meu texto
+é que estava errado.
+
+⚠️ **O custo medido:** 1122 s de suíte descartados. ⚠️ **E o ganho:** foi a **suíte COMPLETA** que
+achou — nenhum dos meus 4 ids pegaria isto, porque o invariante violado era de **outra** wave. ➡️
+***"Rode a suíte completa"* não é formalidade.**
+
+**FURO 7 — e o gate que eu criei no FURO 6 nasceu MAIS LARGO QUE O INVARIANTE.** A primeira redação
+dele varria **todas** as declarações da suíte, inclusive helpers de nome comum em pt-BR
+(`linha`, `service`, `nomes`, `passo`, `gate`, `rota`, `pub`, `ler`, `coluna`, `linhas`, `ids`,
+`publicacao`, `conta`, `publicar`). Como esses nomes são **substring dos MEUS PRÓPRIOS métodos**, ele
+acusou **14 nomes — e todos eram as minhas próprias declarações**. ➡️ **Estreitado para nomes
+`test_`**, que são os únicos que o `--filter` roda. ⚠️ **Dois furos da mesma família em cinco
+minutos**, e os dois achados por **rodar**, não por reler.
 
 **FURO 6 — o gate dos órfãos ia REPROVAR por trabalho de outras waves.** Medindo os cinco pares
 plano × manifesto, achei **5 ids órfãos de `<verify>`** — os quatro `bijecao-manifesto-193-0N`
