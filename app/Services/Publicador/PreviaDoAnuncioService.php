@@ -106,7 +106,7 @@ final class PreviaDoAnuncioService
 
         if ($itens === []) {
             return [...$base, 'motivo' => $snapshot->alvosAtivos() === []
-                ? 'Nenhum tipo de anúncio ligado: ligue o Clássico ou o Premium na etapa Produto.'
+                ? 'Nenhum tipo de anúncio ligado: ligue o Clássico ou o Premium em Condições de venda.'
                 : 'Nenhuma variação ativa: ative ao menos uma na etapa Detalhes.'];
         }
 

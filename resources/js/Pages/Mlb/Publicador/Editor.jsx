@@ -309,12 +309,12 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                         {ia.estado !== 'andamento' && pub.iaPorFora && (
                             <Faixa icone={Loader2} tom="azul">
                                 <p data-ia-por-fora={pub.iaPorFora}><span className="font-bold">Atualizando…</span> {TEXTO_DA_IA_POR_FORA[pub.iaPorFora] ?? 'A IA está preparando este anúncio.'}</p>
-                                <p className="mt-1">Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui sozinho.</p>
+                                <p className="mt-1">Costuma levar de 1 a 5 minutos. Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui sozinho.</p>
                             </Faixa>
                         )}
                         {avisoReprovada && ! pub.iaPorFora && ! reprovadaFechada && (
                             <Faixa icone={AlertTriangle} tom="ambar" onFechar={() => setReprovadaFechada(true)}>
-                                <p data-ia-reprovada><span className="font-bold">{avisoReprovada.titulo}.</span> {avisoReprovada.todas ? 'O juiz da IA não aprovou nenhuma imagem, e o anúncio ficou com a foto do cliente.' : 'Elas ficaram de fora; as outras entraram no anúncio.'}</p>
+                                <p data-ia-reprovada><span className="font-bold">{avisoReprovada.titulo}.</span> {avisoReprovada.todas ? 'A conferência automática recusou as imagens geradas, e o anúncio ficou com a foto do cliente.' : 'Elas ficaram de fora; as outras entraram no anúncio.'}</p>
                                 {avisoReprovada.motivos.length > 0 && (
                                     <ul className="mt-1 space-y-0.5 pl-5">
                                         {avisoReprovada.motivos.map((m) => <li key={m} className="list-disc">{m}</li>)}
@@ -326,7 +326,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                         {ia.estado === 'andamento' && (
                             <Faixa icone={Loader2} tom="azul">
                                 <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>
-                                <p className="mt-1">Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
+                                <p className="mt-1">Costuma levar de 1 a 5 minutos. Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
                             </Faixa>
                         )}
                         {/* WR-F04: `secoes` é número; o aviso e o "só o vazio" vêm do servidor. */}
