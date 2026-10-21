@@ -5,22 +5,35 @@ namespace Tests\Feature\Publicador\Aprovacao;
 use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
+use App\Models\PubAprovacaoConjunto;
 use App\Models\PubAprovacaoEvento;
+use App\Models\PubAprovacaoImagem;
+use App\Models\PubAprovacaoImagemAlerta;
 use App\Models\PubAprovacaoOferta;
 use App\Models\PubFilaPublicacao;
 use App\Models\PubFilaPublicacaoItem;
+use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubRascunhoAlvo;
 use App\Models\PubValidacao;
 use App\Models\User;
+use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
+use App\Services\Publicador\Aprovacao\HistoricoDaOfertaService;
 use App\Services\Publicador\Aprovacao\PublicacaoDoPortaoService;
+use App\Services\Publicador\ClienteMlPublicador;
 use App\Services\Publicador\ConferenciaService;
+use App\Services\Publicador\DadosEfetivosService;
+use App\Services\Publicador\Fila\FilaPublicacaoService;
+use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\Variacao\ChaveCanonica;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -77,6 +90,8 @@ class EnfileirarAoAprovarTest extends TestCase
 
     private int $sequencia = 0;
 
+    private ?DadosEfetivosService $efetivos = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -85,6 +100,11 @@ class EnfileirarAoAprovarTest extends TestCase
         // ⚠️ De pé em TODOS os casos: é ele que transforma "o enfileiramento é só banco" de
         // afirmação de docblock em medição.
         Http::preventStrayRequests();
+
+        // ⚠️ A receita MEDIDA do 188-05: sem o app token pré-aquecido, `ComposicaoFinanceiraService`
+        // chama `MlColetaService::getAppToken()` e a rota de aprovar devolve **500** — e o caso mediria
+        // um erro de fixture em vez do comportamento.
+        Cache::put('ml_app_token_coleta', 'fake-app-token', 3600);
 
         Http::fake(function (Request $req) {
             $caminho = (string) parse_url($req->url(), PHP_URL_PATH);
@@ -101,6 +121,12 @@ class EnfileirarAoAprovarTest extends TestCase
 
             return Http::response(['message' => 'sem stub no teste'], 404);
         });
+
+        $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(
+            app(\App\Services\MercadoLivreService::class),
+            app(\App\Services\MlColetaService::class),
+            function (int $s) {}
+        ));
     }
 
     protected function tearDown(): void
@@ -227,6 +253,95 @@ class EnfileirarAoAprovarTest extends TestCase
             'classico' => $ofertas[self::CLASSICO]->fresh(),
             'premium' => isset($ofertas[self::PREMIUM]) ? $ofertas[self::PREMIUM]->fresh() : null,
         ];
+    }
+
+    /**
+     * O mesmo cenário, mas **APROVÁVEL pela rota** (zero bloqueios de `BloqueiosDaOfertaService`):
+     * galeria com 3 fotos **todas aprovadas** e a conta do dinheiro fechando com custo, frete e a
+     * tarifa REAL da fixture.
+     *
+     * ⚠️ O dublê de `DadosEfetivosService` é **POR PRODUTO**, e isso é conserto de um falso negativo
+     * medido na Fase 186: com um conjunto único de custos, o ÚLTIMO cenário montado sobrescrevia os
+     * anteriores e a oferta "com bloqueio" era avaliada com a conta da oferta limpa — virava apta, e
+     * o gate ficava vermelho estando certo.
+     *
+     * @param  array<string, mixed>  $o
+     * @return array<string, mixed>
+     */
+    private function cenarioAprovavel(Company $company, array $o = []): array
+    {
+        $c = $this->cenario($company, $o);
+
+        $conjunto = PubAprovacaoConjunto::create([
+            'rascunho_id' => $c['rascunho']->id,
+            'grupo_chave' => PubAprovacaoConjunto::GERAL,
+            'grupo_hash' => ChaveCanonica::hash(PubAprovacaoConjunto::GERAL . '-' . $c['rascunho']->id),
+        ]);
+
+        $primeira = null;
+        for ($i = 0; $i < 3; $i++) {
+            $crua = PubImagem::create([
+                'rascunho_id' => $c['rascunho']->id,
+                'caminho' => 'fotos/foto-' . (PubImagem::count() + 1) . '.jpg',
+            ]);
+            $img = PubAprovacaoImagem::create([
+                'conjunto_id' => $conjunto->id,
+                'imagem_id' => $crua->id,
+                'tipo' => PubAprovacaoImagem::TIPO_ORIGINAL,
+                'estado' => PubAprovacaoImagem::APROVADA,
+                'posicao' => $i,
+            ]);
+            PubAprovacaoImagemAlerta::create([
+                'aprovacao_imagem_id' => $img->id,
+                'severidade' => PubAprovacaoImagemAlerta::OK,
+                'texto' => 'Formato e cor compatíveis',
+            ]);
+            $primeira ??= $img;
+        }
+        $conjunto->update(['principal_imagem_id' => $primeira?->imagem_id]);
+
+        if ($this->efetivos === null) {
+            $this->efetivos = new class(app(EstruturaPrecificacaoService::class)) extends DadosEfetivosService
+            {
+                /** @var array<int, array<string, mixed>> */
+                public array $custosPorProduto = [];
+
+                /** @var array<int, array<string, mixed>> */
+                public array $fretesPorProduto = [];
+
+                /** @var array<int, array<string, mixed>> */
+                public array $precosPorProduto = [];
+
+                public function custosDoProduto(PubProduto $produto): array
+                {
+                    return $this->custosPorProduto[(int) $produto->id] ?? ['custo' => null, 'origem' => null, 'imposto' => null, 'por_variante' => []];
+                }
+
+                public function fretesDoProduto(PubProduto $produto): array
+                {
+                    return $this->fretesPorProduto[(int) $produto->id] ?? ['por_tipo' => [], 'por_variante' => []];
+                }
+
+                public function daProduto(PubProduto $produto): array
+                {
+                    return $this->precosPorProduto[(int) $produto->id] ?? ['precos' => []];
+                }
+            };
+            $this->app->instance(DadosEfetivosService::class, $this->efetivos);
+        }
+
+        $id = (int) $c['produto']->id;
+        $this->efetivos->custosPorProduto[$id] = ['custo' => 20.0, 'origem' => 'digitado', 'imposto' => 10.0, 'por_variante' => []];
+        $porTipo = [];
+        $precos = [];
+        foreach ([self::CLASSICO, self::PREMIUM] as $tipo) {
+            $porTipo[$tipo] = ['valor' => 10.0, 'origem' => 'tabela', 'oferta_id' => null];
+            $precos[$tipo] = 100.0;
+        }
+        $this->efetivos->fretesPorProduto[$id] = ['por_tipo' => $porTipo, 'por_variante' => []];
+        $this->efetivos->precosPorProduto[$id] = ['precos' => $precos];
+
+        return $c + ['conjunto' => $conjunto->refresh()];
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
@@ -542,9 +657,23 @@ class EnfileirarAoAprovarTest extends TestCase
             'o histórico não registra a recusa da decisão 23 nomeando a modalidade que falta'
         );
         // ⚠️ E o JARGÃO NÃO vai para a tela: `gold_pro` em nenhum texto de evento.
+        //
+        // ⚠⚠ **ASSERÇÃO COLETORA, E ISSO É CONSERTO DE UM FURO QUE EU MEDI NA MINHA PRÓPRIA
+        // SONDA, não zelo.** A primeira redação fazia UMA asserção POR EVENTO, dentro de um
+        // `foreach` sobre a lista de eventos — e o número de eventos depende de **quantas vezes o
+        // enfileiramento foi tentado**, que muda entre a tarefa 1 e a tarefa 2 deste plano (o
+        // gancho passa a tentar antes da chamada explícita do teste). **MEDIDO: a contagem do
+        // manifesto foi de 26 para 27 asserções sem nenhum defeito ter aparecido.** É a família
+        // *"âncora em número que muda legitimamente"*, e o conserto errado seria **elevar o
+        // número** — o hábito que esta milestone já pagou dezesseis vezes. ➡ Coletar e asseverar
+        // **uma vez** prova exatamente o mesmo e não depende de quantos eventos existem.
+        $comJargao = [];
         foreach ($this->eventos($classico) as $texto) {
-            $this->assertStringNotContainsString(self::PREMIUM, $texto, 'o jargão `gold_pro` foi para o histórico, que é texto de tela');
+            if (str_contains($texto, self::PREMIUM)) {
+                $comJargao[] = $texto;
+            }
         }
+        $this->assertSame([], $comJargao, 'o jargão `gold_pro` foi para o histórico, que é texto de tela');
 
         // ── ISCA (+): com os DOIS aprovados, nasce UM item ──────────────────────────────────
         $premium = $this->aprovar($c['premium'], $admin);
@@ -601,9 +730,496 @@ class EnfileirarAoAprovarTest extends TestCase
         $this->assertSame([], Http::recorded()->all());
     }
 
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (6) O GANCHO LIGADO: ATÔMICO, DENTRO DA TRANSAÇÃO, E DEPOIS DOS TRÊS CAMPOS
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **O que precisaria estar errado:** o enfileiramento acontecer **FORA** da transação que
+     * gravou `aprovado_por`/`aprovado_em`/`versao_aprovada`. Aprovar publica e **não há desfazer** —
+     * uma publicação enfileirada sem a prova de quem aprovou e em que versão é repúdio puro
+     * (T-193-12).
+     *
+     * ⚠️ **PROVADO POR OBSERVAÇÃO DE DENTRO, não por leitura de código:** um dublê do serviço do
+     * portão registra, **no instante em que é chamado**, o `DB::transactionLevel()` e o que já
+     * estava gravado na oferta. Ler o diff e concluir "está dentro" seria afirmação; isto é medição.
+     */
+    public function test_o_gancho_enfileira_dentro_da_transacao_e_depois_dos_tres_campos_193_02(): void
+    {
+        [$company, , $admin] = $this->conta();
+        $c = $this->cenario($company, ['so_classico' => true]);
+
+        $espiao = new class(app(FilaPublicacaoService::class), app(ProgramasPublicadorService::class), app(HistoricoDaOfertaService::class)) extends PublicacaoDoPortaoService
+        {
+            public int $chamadas = 0;
+
+            public int $nivelDeTransacao = -1;
+
+            /** @var array<string, mixed> */
+            public array $jaGravado = [];
+
+            public function enfileirar(PubAprovacaoOferta $oferta, ?User $quem = null): array
+            {
+                $this->chamadas++;
+                $this->nivelDeTransacao = \Illuminate\Support\Facades\DB::transactionLevel();
+                // ⚠️ RELIDO DO BANCO, não do objeto em memória: a pergunta é se o COMMIT ainda não
+                // aconteceu e os campos já estão na linha — ler do objeto não distinguiria nada.
+                $this->jaGravado = (array) \Illuminate\Support\Facades\DB::table('pub_aprovacao_ofertas')
+                    ->where('id', $oferta->id)
+                    ->first(['andamento', 'aprovado_por', 'aprovado_em', 'versao_aprovada', 'fila_item_id']);
+
+                return parent::enfileirar($oferta, $quem);
+            }
+        };
+        $this->app->instance(PublicacaoDoPortaoService::class, $espiao);
+
+        $movida = app(AndamentoDaOfertaService::class)->mover($c['classico'], PubAprovacaoOferta::APROVADO, $admin);
+
+        // ⚠️ UM CAMINHO SÓ (PUB-09): exatamente UMA chamada ao enfileiramento por aprovação.
+        $this->assertSame(1, $espiao->chamadas, 'o gancho chamou o enfileiramento mais de uma vez — ou nenhuma');
+
+        // ⚠️ DENTRO da transação: `transactionLevel()` > 0 no instante da chamada.
+        $this->assertGreaterThan(0, $espiao->nivelDeTransacao, 'o gancho roda FORA da transação: enfileirar poderia sobreviver a um rollback da aprovação');
+
+        // ⚠️ E DEPOIS dos três campos: a prova do que foi aprovado já estava na linha.
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $espiao->jaGravado['andamento']);
+        $this->assertSame((int) $admin->id, (int) $espiao->jaGravado['aprovado_por'], 'enfileirou ANTES de gravar quem aprovou');
+        $this->assertNotNull($espiao->jaGravado['aprovado_em']);
+        $this->assertSame(1, (int) $espiao->jaGravado['versao_aprovada']);
+        $this->assertNull($espiao->jaGravado['fila_item_id'], 'a ligação já existia antes de enfileirar — o caso não mede nada');
+
+        // E o resultado final: os três campos E a ligação, tudo de pé.
+        $this->assertNotNull($movida->fresh()->fila_item_id);
+        $this->assertSame((int) $admin->id, (int) $movida->fresh()->aprovado_por);
+    }
+
+    /**
+     * ⚠️⚠️ **A FALHA DO GANCHO NÃO DERRUBA A APROVAÇÃO — e o custo está declarado.** Falha de
+     * INFRAESTRUTURA no caminho da fila deixa a oferta em `aprovado` (*"aguardando publicação"*,
+     * que é a verdade) para o reconciliador tentar de novo. ⚠️ **A aprovação NÃO fica
+     * meio-gravada:** os três campos **e** o evento do histórico estão todos lá.
+     *
+     * ⚠️ E a outra ponta, que é o que impede o `catch` de virar silêncio: **nenhum job é
+     * despachado** durante a aprovação (T-193-16) — job despachado antes do commit rodaria sem ver
+     * os dados.
+     */
+    public function test_falha_do_gancho_nao_derruba_a_aprovacao_e_nenhum_job_e_despachado_193_02(): void
+    {
+        [$company, , $admin] = $this->conta();
+        $c = $this->cenario($company, ['so_classico' => true]);
+
+        Queue::fake();
+
+        $explode = new class(app(FilaPublicacaoService::class), app(ProgramasPublicadorService::class), app(HistoricoDaOfertaService::class)) extends PublicacaoDoPortaoService
+        {
+            public function enfileirar(PubAprovacaoOferta $oferta, ?User $quem = null): array
+            {
+                throw new \RuntimeException('banco indisponível no caminho da fila');
+            }
+        };
+        $this->app->instance(PublicacaoDoPortaoService::class, $explode);
+
+        $movida = app(AndamentoDaOfertaService::class)->mover($c['classico'], PubAprovacaoOferta::APROVADO, $admin);
+
+        // ⚠️ A aprovação FICOU, inteira.
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $movida->fresh()->andamento);
+        $this->assertSame((int) $admin->id, (int) $movida->fresh()->aprovado_por, 'a aprovação ficou meio-gravada: sem quem aprovou');
+        $this->assertNotNull($movida->fresh()->aprovado_em);
+        $this->assertSame(1, (int) $movida->fresh()->versao_aprovada, 'a aprovação ficou meio-gravada: sem a versão');
+        $this->assertContains('Aprovou para publicação (versão 1)', $this->eventos($movida), 'a aprovação ficou sem prova no histórico');
+
+        // ⚠️ E o que falta é SÓ a ligação da fila — o reconciliador tenta de novo.
+        $this->assertNull($movida->fresh()->fila_item_id);
+        $this->assertSame(0, $this->itensDoProduto($c['produto']));
+
+        // ⚠️ ZERO job despachado, e a ISCA prova que o espião não está cego.
+        Queue::assertNothingPushed();
+
+        // ⚠️ ISCA: o espão da fila NÃO está cego — um job despachado agora É visto por ele. Sem
+        // ela, `assertNothingPushed()` seria indistinguível de "o `Queue::fake()` não registra nada".
+        Queue::push('IscaDeJobDoGate19302');
+        Queue::assertPushed('IscaDeJobDoGate19302');
+
+        $this->assertSame([], Http::recorded()->all(), 'a aprovação tocou a rede');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (7) PELA ROTA: APROVAR ENFILEIRA, EM LOTE TAMBÉM, E ZERO ESCRITA NO MERCADO LIVRE
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **O caminho COMPLETO, pela rota, com o gancho ligado** — é o único jeito de provar que a
+     * ligação não depende de o teste chamar o serviço na mão.
+     *
+     * ⚠️ **ZERO ESCRITA ao Mercado Livre, não zero requisição**, e isso é medido: `aprovar()` LÊ a
+     * tarifa real no GET `/sites/MLB/listing_prices` (decisão 9 do usuário). A leitura permitida
+     * está em **lista CONSTANTE nomeada**, e há **isca nas duas pontas** — um POST é pego, e um GET
+     * **fora** da lista também.
+     *
+     * ⚠️ E o lote (BLOQ-10): a apta aprova **e enfileira**; a inapta sai com o **motivo** e **não**
+     * enfileira. Com uma só no lote isso seria inobservável.
+     */
+    public function test_aprovar_pela_rota_e_em_lote_enfileira_sem_escrever_no_mercado_livre_193_02(): void
+    {
+        [$company, , $admin] = $this->conta();
+        $c = $this->cenarioAprovavel($company, ['so_classico' => true]);
+
+        $resposta = $this->actingAs($admin)->post(route('mlb.anuncios.meus.aprovacao.painel.aprovar', [
+            'company' => $company->id,
+            'oferta' => $c['classico']->id,
+        ]));
+        $resposta->assertRedirect();
+
+        $aprovada = $c['classico']->fresh();
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $aprovada->andamento, 'gate sobre zero casos: a aprovação pela rota nem aconteceu');
+        $this->assertNotNull($aprovada->fila_item_id, 'aprovar pela rota NÃO enfileirou — o gancho não está ligado no caminho real');
+        $this->assertSame(1, $this->itensDoProduto($c['produto']));
+        // ⚠️ E nenhum `MLB…` gravado: quem confirma é o ML, depois (AND-04).
+        $this->assertNull($aprovada->ml_item_id);
+
+        // ── O LOTE: uma apta e uma INAPTA (sem conferência L3 → a fila recusa) ──────────────
+        $apta = $this->cenarioAprovavel($company, ['so_classico' => true]);
+        $inapta = $this->cenarioAprovavel($company, ['so_classico' => true, 'conferida' => false]);
+
+        $this->actingAs($admin)->post(route('mlb.anuncios.meus.aprovacao.lote', ['company' => $company->id]), [
+            'ofertas' => [$apta['classico']->id, $inapta['classico']->id],
+        ])->assertRedirect();
+
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $apta['classico']->fresh()->andamento);
+        $this->assertNotNull($apta['classico']->fresh()->fila_item_id, 'a apta do lote não enfileirou');
+        $this->assertSame(1, $this->itensDoProduto($apta['produto']));
+
+        // ⚠️ A outra foi APROVADA (ela não tem bloqueio do portão) mas a FILA a recusou — e é esse
+        // o mecanismo da decisão 21: fica em `aprovado`, com o motivo real no histórico.
+        $this->assertSame(PubAprovacaoOferta::APROVADO, $inapta['classico']->fresh()->andamento);
+        $this->assertNull($inapta['classico']->fresh()->fila_item_id);
+        $this->assertSame(0, $this->itensDoProduto($inapta['produto']));
+        $this->assertContains(
+            PublicacaoDoPortaoService::PREFIXO_NAO_ENFILEIRADA . 'Confira no Mercado Livre antes de agendar.',
+            $this->eventos($inapta['classico']->fresh()),
+            'a recusa da fila no LOTE foi engolida em silêncio'
+        );
+
+        // ── ⚠️⚠️ ZERO ESCRITA, com a leitura autorizada nomeada ────────────────────────────
+        $this->assertSame([], $this->escritasEDesvios(), 'saiu escrita ao Mercado Livre da aprovação — enfileirar é só banco');
+
+        // ⚠️ E a prova de que a rede FOI tocada em LEITURA (senão o `assertSame([])` acima é
+        // verdadeiro por o fake nem ter sido consultado — a outra face do gate vazio).
+        $lidas = Http::recorded()
+            ->map(static fn ($par) => (string) parse_url($par[0]->url(), PHP_URL_PATH))
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertSame(self::LEITURAS_AUTORIZADAS, $lidas, 'apareceu endpoint do ML fora da lista autorizada, ou a tarifa nem foi consultada');
+
+        // ⚠️ ISCA 1 — a sonda não está cega: um POST ao ML é PEGO.
+        Http::post('https://api.mercadolibre.com/items', ['title' => 'x']);
+        $this->assertSame(['POST https://api.mercadolibre.com/items'], $this->escritasEDesvios(), 'ISCA 1: a sonda não pega um POST ao ML');
+
+        // ⚠️ ISCA 2 — e um GET FORA da lista constante também: a autorização é por caminho nomeado.
+        Http::get('https://api.mercadolibre.com/users/me');
+        $this->assertContains('GET https://api.mercadolibre.com/users/me', $this->escritasEDesvios(), 'ISCA 2: GET fora da lista autorizada passou');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (8) ⚠️⚠️ NÃO EXISTE SEGUNDO PASSO, E O GANCHO TEM **UM CAMINHO SÓ** (PUB-09)
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **DECISÃO 1 DO USUÁRIO: APROVAR JÁ PUBLICA, SEM SEGUNDO CLIQUE**, com o rótulo
+     * *"Aprovar para publicação"* inalterado. As alternativas — publicar em dois atos, publicar com
+     * janela para voltar atrás, botão separado de publicar — foram **oferecidas e RECUSADAS**.
+     *
+     * ⚠️⚠️ **O GATE LÊ O CÓDIGO SEM COMENTÁRIO** (`token_get_all`, nunca regex sobre o texto cru), e
+     * isso **não** é zelo: os docblocks dos DOIS arquivos deste plano citam as nove formas
+     * proibidas **de propósito**, para explicar que não existem. Um gate que lesse os comentários
+     * **reprovaria pelo próprio conserto** — foi o que abortou TRÊS mutações da wave 187-04. ⚠️ E a
+     * **isca do leitor** está medida nas duas pontas: no texto CRU a sonda acha; no código limpo,
+     * zero.
+     *
+     * ⚠️ **A SONDA É A UNIÃO DAS DUAS FORMAS QUE JÁ EXISTEM, e isso foi MEDIDO:** a `sondaPub09` do
+     * gate 186-09 **não** casa a forma pt-BR acentuada com espaço (*"confirmar publicação"*), e a
+     * sonda do 188-05 **não** casa `undo` nem `publicar_aprovado`. A união é estritamente mais forte
+     * que qualquer uma das duas.
+     *
+     * ⚠️ **BORDA À ESQUERDA SÓ** em `desfazer`/`undo`, e é medição, não gosto: `undo` é substring de
+     * *"segundo"*, *"fundo"* e *"profundo"* (três arquivos corretos já foram acusados por isso), e
+     * borda nos DOIS lados cega a sonda para `desfazerAprovacao`, que é a forma que o defeito teria.
+     *
+     * ⚠️ **O recorte é a LISTA CONSTANTE dos arquivos deste plano**, nunca o projeto inteiro:
+     * "cancelar" e a forma de voltar atrás são palavras comuns do português, e varrer `app/` é a
+     * família de gate que já **barrou um deploy** nesta milestone.
+     */
+    public function test_nao_existe_segundo_passo_e_o_gancho_tem_um_caminho_so_193_02(): void
+    {
+        // ⚠️ LISTA CONSTANTE — os arquivos de produção que ESTE plano escreve.
+        $arquivos = [
+            'app/Services/Publicador/Aprovacao/PublicacaoDoPortaoService.php',
+            'app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php',
+        ];
+
+        // ⚠️ ANTI-FANTASMA: `test -e` em CADA caminho ANTES de medir. Caminho inexistente faria o
+        // laço rodar sobre nada e o gate ficaria verde sem ler uma linha — são DEZOITO fantasmas
+        // nesta milestone, vários vindos de briefing.
+        foreach ($arquivos as $rel) {
+            $this->assertFileExists(base_path($rel), "caminho fantasma no gate de ausência: {$rel}");
+        }
+
+        $sonda = '/(confirmar[\s_\-]*publica(?:ção|cao|tion)|confirmarPublicacao'
+            . '|segundo[\s_\-]*passo|segundoPasso|second[\s_\-]*step'
+            . '|(?<![\p{L}\p{N}])desfazer|(?<![\p{L}\p{N}])undo'
+            . '|publicar[\s_\-]*aprovado|publicarAprovado'
+            . '|cancelar[\s_\-]*(?:a[\s_\-]*)?aprova(?:ção|cao)|cancelarAprovacao)/ui';
+
+        // ⚠️⚠️ ISCA (+) — a sonda TEM de pegar cada uma das nove formas, e ela vem ANTES da
+        // varredura, porque sonda furada torna o `assertSame([], …)` vazio por construção.
+        $devemCasar = [
+            'confirmar publicação (prosa acentuada)' => "'rotulo' => 'Confirmar publicação'",
+            'confirmarPublicacao (camelCase)' => 'public function confirmarPublicacao() {}',
+            'segundo_passo (snake_case)' => "const SEGUNDO_PASSO = 'x';",
+            'segundoPasso (camelCase)' => 'private bool $segundoPasso = true;',
+            'a forma de voltar atrás (camelCase)' => 'function desfazerAprovacao() {}',
+            'undo com _ em volta' => 'const JANELA_DE_UNDO = 5;',
+            'publicar_aprovado' => "Route::post('/publicar_aprovado');",
+            'publicarAprovado' => 'public function publicarAprovado() {}',
+            'cancelar aprovação (prosa acentuada)' => "'rotulo' => 'Cancelar aprovação'",
+            'cancelarAprovacao (camelCase)' => 'public function cancelarAprovacao() {}',
+        ];
+        foreach ($devemCasar as $comoSeChama => $texto) {
+            $this->assertSame(1, preg_match($sonda, $texto), "ISCA (+): a sonda não casa `{$comoSeChama}`, que é a forma que ela existe para pegar");
+        }
+
+        // ⚠️⚠️ ISCA (−) — e o que ela NÃO pode pegar: o rótulo LEGÍTIMO (inalterado por decisão) e
+        // as palavras pt-BR comuns que contêm `undo`.
+        foreach (['Aprovar para publicação', 'o segundo passo da conta', 'o fundo do card', 'de forma mais profunda'] as $legitimo) {
+            $naoPode = $legitimo === 'o segundo passo da conta' ? '/(?<![\p{L}\p{N}])undo/ui' : $sonda;
+            $this->assertSame(0, preg_match($naoPode, $legitimo), "ISCA (−): a sonda reprovaria `{$legitimo}`, que é legítimo");
+        }
+
+        // ─── A VARREDURA, no código SEM COMENTÁRIO ──────────────────────────────────────────
+        $infratores = [];
+        $iscaDoLeitor = 0;
+        $linhasLidas = 0;
+        foreach ($arquivos as $rel) {
+            $cru = (string) file_get_contents(base_path($rel));
+            $limpo = self::semComentarios($cru);
+            $linhasLidas += substr_count($limpo, "\n");
+
+            // ⚠️ CONTAGEM DE OCORRÊNCIAS, nunca `preg_match(...) === 1`: ele PASSA com a linha de
+            // código apagada quando o texto também existe em comentário.
+            if (preg_match_all($sonda, $limpo) > 0) {
+                $infratores[] = $rel;
+            }
+            $iscaDoLeitor += preg_match_all($sonda, $cru);
+        }
+        $this->assertGreaterThan(400, $linhasLidas, 'gate sobre quase nada: os dois leitores não leram código');
+        $this->assertSame([], $infratores, 'PUB-09 / decisão 1: o segundo passo da aprovação reapareceu em código');
+
+        // ⚠️⚠️ A PROVA DE QUE O GATE LÊ SEM COMENTÁRIO: no texto CRU a sonda acha (a prosa cita as
+        // nove formas de propósito), e no limpo ela não acha nada. Sem esta ponta, "zero
+        // infratores" seria indistinguível de "a sonda não lê nada".
+        $this->assertGreaterThan(0, $iscaDoLeitor, 'a prosa dos dois arquivos deixou de citar as formas proibidas — a isca do leitor perdeu o sujeito e o gate não prova mais que lê sem comentário');
+
+        // ─── ⚠️⚠️ UM CAMINHO SÓ (PUB-09): nunca os dois ao mesmo tempo ─────────────────────
+        $gancho = self::semComentarios((string) file_get_contents(
+            base_path('app/Services/Publicador/Aprovacao/AndamentoDaOfertaService.php')
+        ));
+        $this->assertSame(1, substr_count($gancho, '->enfileirar('), 'a única porta chama o enfileiramento mais de uma vez (ou nenhuma) — "nunca os dois caminhos ao mesmo tempo"');
+        $this->assertTrue(method_exists(AndamentoDaOfertaService::class, 'aoAprovar'), 'o ponto de extensão da Fase 193 desapareceu — a asserção viva da 186-04 morreria');
+
+        // ⚠️ E o gancho segue sendo chamado de UM lugar só dentro de `mover()`.
+        $this->assertSame(1, substr_count($gancho, '$this->aoAprovar('));
+
+        // ⚠️⚠️ NENHUMA ROTA NOVA, por IGUALDADE DE CONJUNTO (piso `>= N` NÃO prova presença): são
+        // as 16 rotas de `aprovacao` das Fases 187/188, e **mais nenhuma**. Esta fase não cria rota.
+        $esperadas = [
+            'mlb.anuncios.meus.aprovacao',
+            'mlb.anuncios.meus.aprovacao.lote',
+            'mlb.anuncios.meus.aprovacao.painel.ajuste',
+            'mlb.anuncios.meus.aprovacao.painel.ajuste.resolver',
+            'mlb.anuncios.meus.aprovacao.painel.aprovar',
+            'mlb.anuncios.meus.aprovacao.painel.conferir-alteracao',
+            'mlb.anuncios.meus.aprovacao.painel.excecao',
+            'mlb.anuncios.meus.aprovacao.painel.fotos.sem-alerta',
+            'mlb.anuncios.meus.aprovacao.painel.frete',
+            'mlb.anuncios.meus.aprovacao.painel.frete.previa',
+            'mlb.anuncios.meus.aprovacao.painel.imagem.aprovar',
+            'mlb.anuncios.meus.aprovacao.painel.imagem.reprovar',
+            'mlb.anuncios.meus.aprovacao.painel.preco',
+            'mlb.anuncios.meus.aprovacao.painel.preco.simular',
+            'mlb.anuncios.meus.aprovacao.painel.salvar-revisao',
+            'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo',
+        ];
+        $medidas = [];
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $rota) {
+            $nome = (string) $rota->getName();
+            if ($nome !== '' && str_starts_with($nome, 'mlb.anuncios.meus.aprovacao')) {
+                $medidas[] = $nome;
+            }
+        }
+        $medidas = array_values(array_unique($medidas));
+        sort($medidas);
+        $this->assertSame($esperadas, $medidas, 'PUB-09/PUB-10: nasceu (ou morreu) rota de aprovação nesta fase — o caminho tem de ser UM só');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+    // (9) A BIJEÇÃO ids ↔ MÉTODOS ↔ `<verify>`, COM EXPANSOR DE ALTERNÂNCIA
+    // ═════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * ⚠️⚠️ **MÉTODO SEM id NUNCA RODA** (foi o sobrevivente da mutação do plano 186-03), e **id
+     * órfão não falha: ele simplesmente nunca roda**. As duas formas de "passar por omissão" são
+     * conferidas aqui, por script durável e não por rascunho de scratchpad.
+     *
+     * ⚠️⚠️ **O EXPANSOR DE ALTERNÂNCIA, ISCADO NAS DUAS DIREÇÕES ANTES DE VALER:** a regex ingênua
+     * `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)` — o furo que deu `SEM_ID=14`
+     * **acusando trabalho correto**.
+     *
+     * ⚠️ E o **homônimo**: o `--filter` do PHPUnit é regex **NÃO ANCORADO**, e as Fases 186/187/188
+     * estão **em produção**. Método de outra fase que seja superstring de um meu faria o id SOMAR e
+     * reprovar.
+     */
+    public function test_o_manifesto_tem_bijecao_com_os_metodos_e_nenhum_id_orfao_193_02(): void
+    {
+        $manifesto = base_path('tests/gates/contagens-193-02.txt');
+        $meuArquivo = base_path('tests/Feature/Publicador/Aprovacao/EnfileirarAoAprovarTest.php');
+        $this->assertFileExists($manifesto);
+        $this->assertFileExists($meuArquivo);
+
+        // ─── Os ids e os filtros do manifesto ───────────────────────────────────────────────
+        $ids = [];
+        foreach (preg_split('/\R/', (string) file_get_contents($manifesto)) ?: [] as $linha) {
+            if (trim($linha) === '' || str_starts_with(ltrim($linha), '#')) {
+                continue;
+            }
+            if (preg_match('/^(\S+)\s+php\s+(\S+)\s+::\s+tests=(\d+)\s+assertions=(\d+)/', $linha, $m) === 1) {
+                $ids[$m[1]] = ['filtro' => $m[2], 'tests' => (int) $m[3], 'assertions' => (int) $m[4]];
+            }
+        }
+        $this->assertNotEmpty($ids, 'o manifesto não tem nenhum id php — a varredura está cega');
+        $this->assertSame(count($ids), count(array_unique(array_keys($ids))), 'IDS_REPETIDOS: id duplicado no manifesto');
+
+        // ─── ⚠️ O EXPANSOR DE ALTERNÂNCIA, ISCADO ANTES DE VALER ───────────────────────────
+        $this->assertSame(['test_a', 'test_b', 'test_c'], self::expandir('test_(a|b|c)'), 'ISCA (+): o expansor não abre a alternância — a bijeção acusaria trabalho correto');
+        $this->assertSame(['test_sozinho'], self::expandir('test_sozinho'), 'ISCA (−): o expansor quebra o filtro sem alternância');
+        // ⚠⚠ E A PROVA DE QUE O FURO QUE O EXPANSOR CONSERTA É REAL, MEDIDA nas duas pontas em
+        // 21/10/2026: a regex INGÊNUA casa **ZERO** num filtro com alternância e casa normalmente
+        // num filtro sem ela. Sem estas duas linhas, o expansor seria zelo sem sujeito.
+        preg_match_all('/test_[A-Za-z0-9_]+/', 'test_(a|b|c)', $cega);
+        $this->assertSame([], $cega[0], 'a regex ingênua deixou de ser cega para a alternância — o furo que o expansor conserta desapareceu, e o expansor virou zelo sem sujeito');
+        preg_match_all('/test_[A-Za-z0-9_]+/', 'test_abc', $enxerga);
+        $this->assertSame(['test_abc'], $enxerga[0], 'a regex ingênua não casa nem o caso simples — a comparação acima não prova nada');
+
+        // ─── Os métodos do meu arquivo, lidos SEM COMENTÁRIO ───────────────────────────────
+        $limpo = self::semComentarios((string) file_get_contents($meuArquivo));
+        preg_match_all('/function\s+(test_[A-Za-z0-9_]+)\s*\(/', $limpo, $m);
+        $metodos = $m[1];
+        sort($metodos);
+        $this->assertGreaterThanOrEqual(5, count($metodos), 'gate sobre quase nada: os métodos não foram lidos');
+
+        // ⚠️ SUFIXO `_193_02` em TODOS, por asserção COLETORA (nunca `grep -c`, que conta LINHAS).
+        $semSufixo = array_values(array_filter($metodos, static fn (string $x) => ! str_ends_with($x, '_193_02')));
+        $this->assertSame([], $semSufixo, 'método sem o sufixo `_193_02`: o `--filter` do PHPUnit não é ancorado e as Fases 186/187/188 estão em produção');
+
+        // ─── Bijeção nos DOIS sentidos ──────────────────────────────────────────────────────
+        $cobertos = [];
+        $orfaos = [];
+        foreach ($ids as $id => $dados) {
+            $nomes = self::expandir($dados['filtro']);
+            $this->assertLessThanOrEqual(3, count($nomes), "o id `{$id}` tem mais de TRÊS métodos: alternância grande equivale a filtro de classe e passa dos 120 s");
+            $this->assertSame(count($nomes), $dados['tests'], "o id `{$id}` declara `tests=` diferente do número de métodos do filtro");
+            foreach ($nomes as $nome) {
+                if (! in_array($nome, $metodos, true)) {
+                    $orfaos[] = $id . ' -> ' . $nome;
+
+                    continue;
+                }
+                $cobertos[] = $nome;
+            }
+        }
+        $this->assertSame([], $orfaos, 'ORFAOS: id apontando para método que não existe — id órfão não falha, ele simplesmente NUNCA RODA');
+
+        $semId = array_values(array_diff($metodos, $cobertos));
+        $this->assertSame([], $semId, 'SEM_ID: método sem id no manifesto — ele NUNCA RODA em gate nenhum (o sobrevivente da mutação do 186-03)');
+
+        // ─── ⚠️ HOMÔNIMO em toda a suíte, com isca nas duas direções ───────────────────────
+        $homonimos = [];
+        foreach (self::todosOsTestes() as $arquivo => $conteudo) {
+            if (realpath($arquivo) === realpath($meuArquivo)) {
+                continue;
+            }
+            foreach ($metodos as $meu) {
+                if (str_contains($conteudo, $meu)) {
+                    $homonimos[] = basename($arquivo) . ' :: ' . $meu;
+                }
+            }
+        }
+        $this->assertSame([], $homonimos, 'HOMONIMOS: outro arquivo tem método que o meu `--filter` casaria — o id somaria e reprovaria');
+
+        // ⚠️ ISCA (+) do varredor: um nome SUPERSTRING do meu TEM de ser detectado.
+        $sintetico = 'public function ' . $metodos[0] . '_extra(): void {}';
+        $this->assertTrue(str_contains($sintetico, $metodos[0]), 'ISCA (+): o varredor de homônimo não acha um superstring do meu nome');
+
+        // ⚠️ ISCA (−): um nome REAL de outra fase NÃO pode ser acusado.
+        $this->assertFalse(in_array('test_aprovar_e_enfileirar_188_05', $metodos, true));
+        $alheio = 'test_aprovar_enfileira_e_nao_escreve_no_mercado_livre_com_isca_188_05';
+        $acusaria = array_values(array_filter($metodos, static fn (string $x) => str_contains($alheio, $x)));
+        $this->assertSame([], $acusaria, 'ISCA (−): o varredor acusaria um método real de outra fase');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // Apoio dos casos
     // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    /** O código PHP **sem comentário**, por `token_get_all` — nunca por regex (armadilha 7). */
+    private static function semComentarios(string $codigo): string
+    {
+        $saida = '';
+        foreach (token_get_all($codigo) as $t) {
+            if (is_array($t)) {
+                if (in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    // Preserva as quebras de linha: a contagem de linhas continua honesta.
+                    $saida .= str_repeat("\n", substr_count($t[1], "\n"));
+
+                    continue;
+                }
+                $saida .= $t[1];
+
+                continue;
+            }
+            $saida .= $t;
+        }
+
+        return $saida;
+    }
+
+    /**
+     * Abre `test_(a|b|c)` em `['test_a','test_b','test_c']` — o EXPANSOR DE ALTERNÂNCIA.
+     *
+     * @return list<string>
+     */
+    private static function expandir(string $filtro): array
+    {
+        if (preg_match('/^(.*)\(([^)]*)\)(.*)$/', $filtro, $m) !== 1) {
+            return [$filtro];
+        }
+
+        return array_map(static fn (string $meio) => $m[1] . $meio . $m[3], explode('|', $m[2]));
+    }
+
+    /** @return array<string, string> caminho => conteúdo de cada `*Test.php` da suíte */
+    private static function todosOsTestes(): array
+    {
+        $saida = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(base_path('tests'), \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $arquivo) {
+            if ($arquivo->isFile() && str_ends_with($arquivo->getFilename(), 'Test.php')) {
+                $saida[$arquivo->getPathname()] = (string) file_get_contents($arquivo->getPathname());
+            }
+        }
+
+        return $saida;
+    }
 
     /**
      * Aprova as DUAS ofertas do cenário pela única porta e devolve a que agendou (a última).

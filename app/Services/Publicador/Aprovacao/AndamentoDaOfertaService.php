@@ -80,8 +80,14 @@ class AndamentoDaOfertaService
     /** O prefixo de módulo do log (convenção do projeto). */
     private const TAG = '[Publicador Aprovação]';
 
-    /** ⚠️ LIGAÇÃO DO PLANO 186-05 — a dependência do gancho `registrar()`. Ver aquele método. */
-    public function __construct(private HistoricoDaOfertaService $historico) {}
+    /**
+     * ⚠️ LIGAÇÃO DO PLANO 186-05 — a dependência do gancho `registrar()`. Ver aquele método.
+     * ⚠️ LIGAÇÃO DA FASE 193 (plano 193-02) — a dependência do gancho `aoAprovar()`. Idem.
+     */
+    public function __construct(
+        private HistoricoDaOfertaService $historico,
+        private PublicacaoDoPortaoService $portao,
+    ) {}
 
     /**
      * Move a oferta de andamento, gravando a transição, **e devolve a oferta nova**.
@@ -329,9 +335,47 @@ class AndamentoDaOfertaService
      * ⚠️ Este gancho **não** é um "segundo passo" nem uma confirmação: não existe estado
      * intermediário entre `aprovado` e `publicando`, e o rótulo do botão segue "Aprovar para
      * publicação".
+     *
+     * ⚠️⚠️ **LIGADO PELO PLANO 193-02 em 21/10/2026**, exatamente como o 186-05 fez com
+     * `registrar()`: o diff deste arquivo é **só** o corpo deste gancho mais a dependência do
+     * construtor. **`mover()`, a lista fechada `TRANSICOES` e a `DB::transaction` única ficaram
+     * INTACTOS**, e o gancho segue sendo chamado **dentro** daquela transação. Toda a lógica de
+     * "como se entra na fila" mora em {@see PublicacaoDoPortaoService}, não aqui — pôr aquele
+     * caminho neste arquivo faria a 193 reescrever a máquina de estado, que é o que o acordo evita.
+     *
+     * ═══ ⚠️⚠️ O LIMITE EXATO DO `try/catch`, E ELE É DECISÃO COM CUSTO DECLARADO ═══════════════
+     *
+     * O `catch (\Throwable)` existe **apenas** para que uma falha de **INFRAESTRUTURA** (banco
+     * indisponível, erro de programação no caminho da fila) não derrube uma aprovação que já foi
+     * conferida por uma pessoa e já gravou `aprovado_por`/`aprovado_em`/`versao_aprovada`.
+     *
+     * ⚠️ **O CUSTO, dito em vez de escondido:** nesse caso a oferta fica em `aprovado` — cujo
+     * rótulo é *"aguardando publicação"*, **que é a verdade** — e o reconciliador da 193-03/04
+     * tenta de novo. **A aprovação não fica meio-gravada:** os três campos e o evento do histórico
+     * estão todos lá, e o que falta é só a ligação da fila.
+     *
+     * ⚠️⚠️ **E ELE NÃO ENGOLE RECUSA DE NEGÓCIO.** Recusa da fila (produto não pronto, conferência
+     * velha, modalidade irmã sem revisão) **não é exceção**: ela volta pelo RETORNO de
+     * `enfileirar()` e **já foi registrada no histórico** por ele, com o motivo REAL. Se a recusa
+     * viesse por exceção, este `catch` a transformaria em silêncio — e seria a pilha de "aprovados
+     * que ninguém publicou" (T-193-15) com um `Log::error` no lugar do histórico.
      */
     protected function aoAprovar(PubAprovacaoOferta $oferta, ?User $quem): void
     {
-        // Vazio de propósito — ver o docblock. A publicação é ligada na Fase 193.
+        try {
+            // ⚠️ UM CAMINHO SÓ (PUB-09): esta é a ÚNICA chamada do gancho, e não existe rota,
+            // action nem estado que enfileire por fora. Aprovar já publica.
+            $this->portao->enfileirar($oferta, $quem);
+        } catch (\Throwable $e) {
+            // ⚠️ Rastreio com id + NOME da entidade (convenção do projeto). `Log::error` porque
+            // isto é falha de infraestrutura, não decisão de negócio — negócio vai ao histórico.
+            Log::error(self::TAG . ' falha ao enfileirar a oferta aprovada (a aprovação FICOU de pé)', [
+                'oferta_id' => $oferta->id,
+                'produto' => $oferta->produto?->sku . ' (' . $oferta->produto?->nome . ')',
+                'alvo_id' => $oferta->alvo_id,
+                'quem_id' => $quem?->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
     }
 }

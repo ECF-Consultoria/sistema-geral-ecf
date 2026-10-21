@@ -96,7 +96,66 @@
 #     o nome pt-BR sai de `PubAprovacaoAjuste::MODALIDADES`, o mapa que o próprio
 #     painel do portão já usa.
 #
+# aprovar-enfileira-atomico
+#   · ⚠️⚠️ **o gancho `aoAprovar()` ligado, PROVADO DE DENTRO:** um dublê do serviço
+#     do portão registra, **no instante em que é chamado**, o
+#     `DB::transactionLevel()` (> 0 = dentro da transação) e o que **já estava
+#     gravado na linha** — `andamento`, `aprovado_por`, `aprovado_em`,
+#     `versao_aprovada` presentes e `fila_item_id` ainda nulo. Ler o diff e
+#     concluir "está dentro" seria afirmação; isto é medição;
+#   · **UM CAMINHO SÓ** (PUB-09): exatamente **uma** chamada por aprovação;
+#   · a **falha do gancho NÃO derruba a aprovação**, e a aprovação **não fica
+#     meio-gravada**: os três campos **e** o evento do histórico ficam de pé, e o
+#     que falta é só a ligação da fila (o reconciliador tenta de novo);
+#   · **ZERO job despachado** durante a aprovação (T-193-16), **com isca** — sem
+#     ela, `assertNothingPushed()` é indistinguível de "o fake não registra nada";
+#   · ⚠️ e o caminho **COMPLETO pela ROTA**, inclusive o **LOTE** (BLOQ-10): a apta
+#     aprova **e enfileira**, a que a fila recusa fica em `aprovado` **sem**
+#     `fila_item_id` e com o motivo real no histórico. ⚠️ **ZERO ESCRITA ao Mercado
+#     Livre, não zero requisição**: `aprovar()` LÊ a tarifa real no GET
+#     `/sites/MLB/listing_prices` (decisão 9), e essa leitura está em **lista
+#     CONSTANTE nomeada**, com **isca nas duas pontas** (um POST é pego, e um GET
+#     fora da lista também).
+#
+# ausencia-de-segundo-passo-193
+#   · ⚠️⚠️ decisão 1 do usuário: **aprovar já publica, sem segundo clique**. Gate de
+#     AUSÊNCIA das **nove** formas proibidas sobre a **lista CONSTANTE** dos dois
+#     arquivos de produção deste plano, lido **SEM COMENTÁRIO** (`token_get_all`,
+#     nunca regex) — a prosa dos dois cita as nove **de propósito**, e um gate que
+#     lesse comentários **reprovaria pelo próprio conserto**;
+#   · ⚠️ **A SONDA É A UNIÃO DAS DUAS QUE JÁ EXISTEM, e isso foi MEDIDO:** a
+#     `sondaPub09` do 186-09 **não** casa a forma pt-BR acentuada com espaço
+#     (*"confirmar publicação"*), e a sonda do 188-05 **não** casa `undo` nem
+#     `publicar_aprovado`. A união é estritamente mais forte que as duas;
+#   · **borda à ESQUERDA só** em `desfazer`/`undo` (medido: `undo` é substring de
+#     *segundo/fundo/profundo*, e borda nos dois lados cegaria para
+#     `desfazerAprovacao`), com **isca nas duas direções**;
+#   · ⚠️ a **isca do leitor** medida nas duas pontas: no texto **CRU** a sonda acha;
+#     no código **limpo**, zero. Sem essa ponta, "zero infratores" seria
+#     indistinguível de "a sonda não lê nada";
+#   · **UM CAMINHO SÓ:** `substr_count` (nunca `grep -c`, que conta LINHAS, nem
+#     `preg_match(...) === 1`, que passa com a linha de código apagada) provando
+#     **uma** chamada a `->enfileirar(` na única porta, e **IGUALDADE DE CONJUNTO**
+#     das **16** rotas de `aprovacao` — esta fase **não cria rota** (piso `>= N`
+#     NÃO prova presença).
+#
+# bijecao-manifesto-193-02
+#   · **método sem id NUNCA RODA** (foi o sobrevivente da mutação do 186-03) e **id
+#     órfão não falha: ele simplesmente nunca roda**. As duas formas de "passar por
+#     omissão", conferidas por teste DURÁVEL e não por rascunho de scratchpad;
+#   · ⚠️⚠️ **EXPANSOR DE ALTERNÂNCIA, iscado nas duas direções ANTES de valer:** a
+#     regex ingênua `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)` —
+#     MEDIDO em 21/10/2026 — e esse furo já deu `SEM_ID=14` **acusando trabalho
+#     correto**;
+#   · sufixo `_193_02` em TODO método, por asserção **coletora**; **nenhum id com
+#     mais de TRÊS métodos**; `tests=` conferido contra o número de métodos do
+#     filtro; e **homônimo** varrido em toda a suíte, com isca (+) de superstring e
+#     isca (−) de um nome REAL de outra fase.
+#
 # ═══════════════════════════════════════════════════════════════════════════════
 
 enfileirar-anexa-ou-agenda  php  test_(enfileirar_agenda_uma_vez_e_anexa_na_segunda_oferta_do_produto_193_02|item_terminado_sem_publicar_nao_conta_como_vivo_com_isca_nos_dois_lados_193_02|as_quatro_colunas_vem_do_item_e_a_recusa_registra_o_motivo_real_193_02)  ::  tests=3 assertions=67
-guarda-modalidade-irma  php  test_(modalidade_irma_ativa_nao_aprovada_barra_a_entrada_na_fila_193_02|um_alvo_ativo_so_e_alvo_inativo_nao_barram_o_enfileiramento_193_02)  ::  tests=2 assertions=26
+guarda-modalidade-irma  php  test_(modalidade_irma_ativa_nao_aprovada_barra_a_entrada_na_fila_193_02|um_alvo_ativo_so_e_alvo_inativo_nao_barram_o_enfileiramento_193_02)  ::  tests=2 assertions=25   # 26 -> 25 em 21/10/2026, e NAO e afrouxamento: a primeira redacao fazia UMA assercao POR EVENTO do historico, e o numero de eventos depende de quantas vezes o enfileiramento foi tentado (a tarefa 2 liga o gancho e acrescenta uma tentativa) — MEDIDO subindo 26 -> 27 sem defeito nenhum. Trocada por assercao COLETORA (coletar os textos com jargao e asseverar `[]` uma vez), que prova o MESMO e nao depende da contagem. Consertado na RAIZ, nunca elevando o numero.
+aprovar-enfileira-atomico  php  test_(o_gancho_enfileira_dentro_da_transacao_e_depois_dos_tres_campos_193_02|falha_do_gancho_nao_derruba_a_aprovacao_e_nenhum_job_e_despachado_193_02|aprovar_pela_rota_e_em_lote_enfileira_sem_escrever_no_mercado_livre_193_02)  ::  tests=3 assertions=36
+ausencia-de-segundo-passo-193  php  test_nao_existe_segundo_passo_e_o_gancho_tem_um_caminho_so_193_02  ::  tests=1 assertions=23
+bijecao-manifesto-193-02  php  test_o_manifesto_tem_bijecao_com_os_metodos_e_nenhum_id_orfao_193_02  ::  tests=1 assertions=32   # ⚠ CONTAGEM DEPENDENTE DO PROPRIO MANIFESTO, declarada: o caso faz 2 assercoes por id e 1 por metodo do filtro, logo id novo AQUI move este numero. Ela e estavel porque este manifesto pertence SO ao plano 193-02 e os planos 193-03..05 tem os seus proprios. Se algum dia alguem acrescentar id aqui, REMEDIR (medir as duas pontas e colar), nunca ajustar para passar.

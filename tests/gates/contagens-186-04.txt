@@ -54,7 +54,7 @@
 # é a granularidade que diz QUAL dos três caiu quando este gate composto reprova.
 # Nenhum método do plano fica sem id próprio (ver o aviso do topo).
 # 3 / 39 MEDIDO em 14/10/2026.
-oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=65   # 57 -> 65 em 15/10/2026 pelo MESMO motivo da linha "unica-porta", que este filtro inclui: +4 arquivos no diretorio do portao x 2 asserçoes da camada B.
+oferta-do-portao  php  test_(as_quatro_colunas_de_conferencia_da_fila_nao_estao_na_oferta_com_isca|terr_07_o_gate_d11_de_meus_anuncios_nao_foi_tocado_por_este_plano|o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados)  ::  tests=3 assertions=67   # 65 -> 67 em 21/10/2026 (plano 193-02): REMEDIDO, nao ajustado -- este filtro INCLUI o metodo da linha `unica-porta`, logo ele carrega o mesmo +2 do arquivo novo no diretorio do portao. As duas medicoes coladas na 193-02-SUMMARY.md. # 57 -> 65 em 15/10/2026 pelo MESMO motivo da linha "unica-porta", que este filtro inclui: +4 arquivos no diretorio do portao x 2 asserçoes da camada B.
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 2 — O MODELO: os 8 estados, as transições, LIVE, ORDEM e cta
@@ -263,7 +263,7 @@ aprovar-na-transacao  php  test_aprovar_grava_os_tres_campos_de_aprovacao_na_mes
 #    ⚠️ O furo real era outro: ENTRAR NA LISTA não era conferido por nada, então quem
 #    acrescentasse um arquivo ali passava a poder ESCREVER sem gate notar. A lista
 #    protegia a porta por NOME, não por COMPORTAMENTO. A camada B fecha isso.
-unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=41   # 33 -> 41 em 15/10/2026. NAO e mudanca de comportamento: a camada B percorre glob(app/Services/Publicador/Aprovacao/*.php) e faz 2 asserçoes POR ARQUIVO, e o plano 186-08 criou 4 arquivos novos naquele diretorio. CONTAGEM FRAGIL POR CONSTRUCAO, declarada: todo arquivo novo no portao move este numero.
+unica-porta  php  test_o_servico_e_a_unica_porta_e_expoe_os_pontos_de_extensao_declarados  ::  tests=1 assertions=43   # 41 -> 43 em 21/10/2026 (plano 193-02): REMEDIDO, nao ajustado. Medido ANTES (43 medido contra 41 declarado, harness exit 1) e DEPOIS (43 = 43, exit 0), as duas saidas coladas na 193-02-SUMMARY.md. A causa e a MESMA que esta escrita abaixo: a camada B percorre glob(app/Services/Publicador/Aprovacao/*.php) com 2 assercoes POR ARQUIVO, e o 193-02 criou PublicacaoDoPortaoService.php naquele diretorio -- de proposito, porque o glob NAO e recursivo e um servico em Aprovacao/Publicacao/ passaria por omissao. Se este numero NAO tivesse subido, era PARADA. # 33 -> 41 em 15/10/2026. NAO e mudanca de comportamento: a camada B percorre glob(app/Services/Publicador/Aprovacao/*.php) e faz 2 asserçoes POR ARQUIVO, e o plano 186-08 criou 4 arquivos novos naquele diretorio. CONTAGEM FRAGIL POR CONSTRUCAO, declarada: todo arquivo novo no portao move este numero.
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Task 3 — A OFERTA NO GRAFO REAL e a disciplina da migration
