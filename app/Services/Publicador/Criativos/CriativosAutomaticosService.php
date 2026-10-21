@@ -23,6 +23,8 @@ use App\Services\Publicador\CombosDoPlanejamentoService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PortalProdutoLeitor;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
+use App\Services\Publicador\PlanejamentoDaFaseService;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -76,6 +78,11 @@ use Illuminate\Support\Str;
  * cliente daquela cor como referência ({@see gruposDaCapa()}); entram NA FRENTE das fotos que o kit herdou da Fase 1.
  * A fase criada à mão ("Criar Fase N", produto fora do Portal) segue com a capa do botão.
  *
+ * 21/10/2026 (teste do usuário) — em MÓVEL a capa é a AMBIENTADA ("ficou bom, mas deveria ser assim porém
+ * ambientada"), como já era na Fase 1 ({@see tiposDaCapa()}). E o COMPOSTO do Planejamento (o Kit/Combo/Combit do
+ * Portal que é produto próprio no Publicador, ex.: 1 poltrona Cinza + 1 Bordô) gera as mesmas duas imagens com o
+ * CONJUNTO junto na mesma imagem ({@see comComposicao()}): antes saía uma poltrona por imagem.
+ *
  * Nunca lança para quem chama (o preparo): devolve o motivo, que vai para o log.
  */
 final class CriativosAutomaticosService
@@ -88,8 +95,9 @@ final class CriativosAutomaticosService
     public const MEMORIA = 'criativos_auto';
 
     /**
-     * A capa do conjunto da fase N, na ordem da galeria: o fundo limpo abre o anúncio (Clássico e Premium — o combo não
-     * rotaciona a capa) e a ambientada vem em 2º. Os mesmos dois tipos da capa do botão ({@see \App\Services\Publicador\CapaDoKitService}).
+     * A capa do conjunto (fase N e composto), na ordem da galeria: a 1ª abre o anúncio no Clássico E no Premium (o kit
+     * não rotaciona a capa). Fora de móvel, o fundo limpo abre; em móvel, a ambientada ({@see tiposDaCapa()}). Os mesmos
+     * dois tipos da capa do botão ({@see \App\Services\Publicador\CapaDoKitService}).
      */
     public const TIPOS_DA_CAPA = ['hero', 'lifestyle'];
 
@@ -193,6 +201,11 @@ final class CriativosAutomaticosService
         MlAnuncioCriativoKit::whereKey($kit->id)->update(['created_at' => now()]);
         if ($pendentes !== []) {
             MlAnuncioCriativo::whereIn('id', $pendentes)->update(['created_at' => now()]);
+        }
+
+        $composicao = ComposicaoDoComposto::doProduto($r->produto);
+        if ($composicao !== null && $composicao->total() >= 2) {
+            $this->comComposicao($kit, $composicao);
         }
 
         $res = app(CreativeKitDespachante::class)->despachar($kit->fresh());
@@ -416,7 +429,7 @@ final class CriativosAutomaticosService
             return 'erro';
         }
 
-        $slots = $capa ? self::TIPOS_DA_CAPA : $this->tiposDoKit($r);
+        $slots = $capa || PlanejamentoDaFaseService::tipoComposto($pub) !== null ? $this->tiposDaCapa($r) : $this->tiposDoKit($r);
         Bus::chain([
             new PlanejarKitCriativosJob($portador->id, $kit->id, $slots === [] ? null : $slots),
             new GerarCriativosAutomaticosJob($kit->id),
@@ -521,6 +534,29 @@ final class CriativosAutomaticosService
         }
 
         return $saida;
+    }
+
+    /**
+     * As duas capas do composto mostram o CONJUNTO (21/10/2026): a frase da composição entra na cena de cada slot de
+     * capa — depois do enquadramento dele, que fica —, e `unidades_da_composicao` leva o total (a aprovação põe a capa
+     * de kit na frente). Só nos slots ainda não gerados; idempotente. Feito aqui, com o plano já gravado e antes de
+     * gerar, para não mexer no planejador do Creative Engine: o fato de quantas peças o kit tem já chega a ele pela ficha
+     * (`PIECES_NUMBER`, {@see \App\Services\Publicador\PortalParaRascunhoService}).
+     */
+    private function comComposicao(MlAnuncioCriativoKit $kit, ComposicaoDoComposto $composicao): void
+    {
+        $frase = $composicao->fraseDaCena();
+        $slots = MlAnuncioCriativo::query()->where('kit_id', $kit->id)->whereNotNull('slot_indice')
+            ->whereIn('slot', self::TIPOS_DA_CAPA)->whereIn('status', [MlAnuncioCriativo::STATUS_PENDENTE, MlAnuncioCriativo::STATUS_ERRO])->get();
+        foreach ($slots as $s) {
+            $plano = (array) $s->slot_plano;
+            $cena = rtrim((string) ($plano['cena'] ?? ''));
+            if (! str_contains($cena, $frase)) {
+                $plano['cena'] = $cena === '' ? $frase : $cena.(preg_match('/[.!?]$/u', $cena) ? ' ' : '. ').$frase;
+            }
+            $plano['unidades_da_composicao'] = $composicao->total();
+            $s->update(['slot_plano' => $plano]);
+        }
     }
 
     /** @return list<int> as fotos do grupo, na ordem da galeria */
@@ -715,6 +751,19 @@ final class CriativosAutomaticosService
         }
 
         return $shas;
+    }
+
+    /**
+     * Os tipos da capa de kit (fase N e composto), na ordem da galeria: em MÓVEL a ambientada abre (21/10/2026, o
+     * usuário no teste do Kit 2: "deveria ser assim porém ambientada" — a mesma regra da Fase 1); fora, o fundo limpo.
+     *
+     * @return list<string>
+     */
+    private function tiposDaCapa(PubRascunho $r): array
+    {
+        return app(CreativeCategoriaMobiliarioService::class)->ehMoveis($r->categoria_id)
+            ? array_values(array_reverse(self::TIPOS_DA_CAPA))
+            : self::TIPOS_DA_CAPA;
     }
 
     /**

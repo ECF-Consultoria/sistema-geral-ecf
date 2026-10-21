@@ -103,6 +103,34 @@ class PubProduto extends Model
         return $this->hasMany(self::class, 'produto_base_id')->orderBy('fase')->orderBy('id');
     }
 
+    /** Memória da soma dos componentes do composto (uma consulta por instância). */
+    private ?int $unidadesDoComposto = null;
+
+    /**
+     * Quantas unidades a oferta deste produto leva: o `quantidade_kit` do kit da fase N; no COMPOSTO do Planejamento
+     * (Kit/Combo/Combit do Portal que virou produto próprio), a soma dos componentes (21/10/2026: o kit "1 Cinza +
+     * 1 Bordô" alternava a capa entre Clássico e Premium porque só o `quantidade_kit` contava); senão 1. Uma consulta,
+     * e só para quem tem oferta e não é kit da fase.
+     */
+    public function unidadesDaOferta(): int
+    {
+        if ((int) $this->quantidade_kit >= 2) {
+            return (int) $this->quantidade_kit;
+        }
+        // O grupo do Portal (`estrutura_produto_id`) nunca é composto; com a oferta já carregada, a fase dela decide sem consulta.
+        if ($this->produto_base_id !== null || $this->oferta_id === null || $this->estrutura_produto_id !== null
+            || ($this->relationLoaded('oferta') && ! in_array($this->oferta?->fase, \App\Services\Publicador\PlanejamentoDaFaseService::TIPOS_COMPOSTOS, true))) {
+            return 1;
+        }
+        $this->unidadesDoComposto ??= (int) \Illuminate\Support\Facades\DB::table('estrutura_oferta_componentes as c')
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
+            ->where('c.oferta_id', $this->oferta_id)
+            ->whereIn('o.fase', \App\Services\Publicador\PlanejamentoDaFaseService::TIPOS_COMPOSTOS)
+            ->sum('c.quantidade');
+
+        return max(1, $this->unidadesDoComposto);
+    }
+
     /** Kit = aponta para um base E leva 2 ou mais unidades. Só `produto_base_id` não basta. */
     public function ehKit(): bool
     {

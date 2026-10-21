@@ -4,16 +4,19 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\MlCategoriaSchema;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\GarantiaPadrao;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
 use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
+use App\Support\Publicador\QuantidadesDoKit;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
@@ -324,7 +327,14 @@ class PortalParaRascunhoService
             'produto_id' => $i['produto']['produto_id'], 'produto_nome' => $i['produto']['nome'], 'quantidade' => $i['quantidade'],
             'volumes' => $i['produto']['variacoes'][0]['volumes'] ?? [], 'custo' => $i['custo'],
         ], $itens));
-        if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo)) {
+        // 21/10/2026: a ficha do principal é a de UMA peça. Os campos de quantidade saem do tamanho do kit
+        // (`QuantidadesDoKit`, como na fase N): o kit "1 Cinza + 1 Bordô" dizia "Quantidade de peças: 1", e o gerador
+        // de imagens desenhou uma poltrona por imagem. Produtos diferentes (mesa + cadeiras): só peças e unidades.
+        $composicao = ComposicaoDoComposto::doProduto($produto);
+        $doKit = $composicao !== null && $composicao->total() >= 2
+            ? ['quantidade' => $composicao->total(), 'campos' => $composicao->mesmoProduto() ? QuantidadesDoKit::CAMPOS : ['PIECES_NUMBER', 'UNITS_PER_PACK']]
+            : null;
+        if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo, $doKit)) {
             return $this->parou($resumo);
         }
 
@@ -559,9 +569,13 @@ class PortalParaRascunhoService
      * @param  list<array>  $atributosPortal
      * @return bool false = o rascunho ficou intocável
      */
-    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo): bool
+    /**
+     * @param  array{quantidade: int, campos: list<string>}|null  $doKit  composto do Planejamento: os campos de quantidade
+     *                                                                    da ficha valem o kit, não a peça (21/10/2026)
+     */
+    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo, ?array $doKit = null): bool
     {
-        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo) {
+        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo, $doKit) {
             $schema = $this->schemaQueVale($schema, $r);
             if ($schema === null) {
                 return false;
@@ -593,7 +607,21 @@ class PortalParaRascunhoService
                 if ($res['aviso'] !== null) {
                     $resumo['avisos'][] = $res['aviso'];
                 }
-                $this->decidir($id, $atual, $res['valor'], $novos, $remover, $resumo);
+                $valor = $res['valor'];
+                if ($doKit !== null && in_array($id, $doKit['campos'], true)) {
+                    $valor = $this->valorDoKit($r, $id, $valor, $doKit['quantidade']);
+                }
+                $this->decidir($id, $atual, $valor, $novos, $remover, $resumo);
+            }
+
+            // O campo de quantidade que a categoria tem e a peça nunca preencheu: no kit ele é o total.
+            foreach ($doKit['campos'] ?? [] as $id) {
+                $def = $schema->atributo($id);
+                if (isset($noPortal[$id]) || $def === null || $this->daEquipe($snap->atributos[$id] ?? null)) {
+                    continue;
+                }
+                $noPortal[$id] = true;
+                $this->decidir($id, $snap->atributos[$id] ?? null, $this->valorDoKit($r, $id, null, $doKit['quantidade']), $novos, $remover, $resumo);
             }
 
             // O cliente apagou o campo no Portal: o que o PORTAL tinha escrito sai junto.
@@ -681,6 +709,27 @@ class PortalParaRascunhoService
      *
      * @param  ?array  $valor  o que o Portal pede hoje, já convertido; null = nada
      */
+    /**
+     * O valor de um campo de quantidade no kit (`QuantidadesDoKit`, a régua da fase N), a partir do da peça. Sem como
+     * calcular (texto que não é número, lista sem a opção do total), fica o da peça, marcado para revisão.
+     */
+    private function valorDoKit(PubRascunho $r, string $id, ?array $daPeca, int $quantidade): ?array
+    {
+        $definicao = null;
+        foreach ((array) (MlCategoriaSchema::find($r->categoria_id)?->atributos ?? []) as $a) {
+            if (is_array($a) && (string) ($a['id'] ?? '') === $id) {
+                $definicao = $a;
+                break;
+            }
+        }
+        $total = QuantidadesDoKit::doKit((array) ($daPeca ?? []), $quantidade, $definicao);
+        if ($total === null) {
+            return $daPeca === null ? null : ['revisar' => true] + $daPeca;
+        }
+
+        return array_filter($total, fn ($v) => $v !== null) + ['origem' => 'portal', 'revisar' => false];
+    }
+
     private function decidir(string $id, ?array $atual, ?array $valor, array &$novos, array &$remover, array &$resumo): void
     {
         if (! $this->preenchido($atual)) {

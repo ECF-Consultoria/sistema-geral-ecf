@@ -115,8 +115,9 @@ class RascunhoRepository
             // `loadMissing`, nunca `load`: o `snapshot()` roda em quase toda leitura
             // do módulo e o produto costuma já vir carregado por quem chamou —
             // `load()` refaria a consulta em todas elas. Produto nulo é caso real
-            // (D27: rascunho solto de oferta apagada) e vale 1 unidade.
-            unidadesPorOferta: max(1, (int) ($r->loadMissing('produto')->produto->quantidade_kit ?? 1)),
+            // (D27: rascunho solto de oferta apagada) e vale 1 unidade. O composto do Planejamento conta a soma
+            // dos componentes (21/10/2026: a capa dele não alterna entre Clássico e Premium, como a do combo).
+            unidadesPorOferta: $r->loadMissing('produto')->produto?->unidadesDaOferta() ?? 1,
         );
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Jobs\Publicador\GerarPalavrasChaveIaJob;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
@@ -507,7 +508,23 @@ class PalavrasChaveService
     /** O bruto da IA sem marca/"ECF"/número de especificação e cortado no máximo da categoria. */
     private function finalizarTitulo(string $bruto, array $c): string
     {
-        return self::ajustarTitulo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $c['maximo']);
+        return self::ajustarTitulo(self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), (string) ($c['prefixo'] ?? '')), $c['maximo']);
+    }
+
+    /**
+     * O título do composto do Planejamento COMEÇA pelo prefixo do kit ("Kit 2", ou "Kit" com produtos diferentes) —
+     * 21/10/2026: o kit "1 Cinza + 1 Bordô" saiu "Poltrona Decorativa Sala…", sem dizer que é kit. O "Kit"/"Kit N"
+     * que a IA já tenha posto no começo sai antes, para não repetir. Sem prefixo, o título fica como veio.
+     */
+    public static function comPrefixo(string $titulo, string $prefixo): string
+    {
+        $prefixo = trim($prefixo);
+        if ($prefixo === '') {
+            return $titulo;
+        }
+        $sem = trim((string) preg_replace('/^\s*kit(\s+\d+)?\b/iu', '', $titulo));
+
+        return trim($prefixo.' '.$sem);
     }
 
     /**
@@ -515,14 +532,16 @@ class PalavrasChaveService
      * marca), a marca (BRAND), a referência das medidas (nome do produto + termos) e as palavras que
      * podem diferenciar dois títulos.
      *
-     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>}
+     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>, prefixo: string}
      */
     private function contextoDoTitulo(PubRascunho $r): array
     {
         [$categoria, $caminho] = $this->categoria($r);
         $schema = $this->schemas->obter($categoria);
         $termos = $this->termosParaIa($categoria, $r, $caminho);
-        $produto = $r->produto->nomeExibido();
+        // O composto do Planejamento é um KIT: o nome que a IA recebe diz o que ele junta, e o título começa por "Kit".
+        $composicao = ComposicaoDoComposto::doProduto($r->produto);
+        $produto = $composicao?->nomeDoKit() ?? $r->produto->nomeExibido();
         $fatos = $this->fatos($r, $schema, $produto, implode(' > ', $caminho), semMarca: true);
         $marca = $r->atributos()->where('attribute_id', self::ID_MARCA)->first();
         $marca = $marca ? self::valorDoAtributo($marca->value_id, $marca->value_name, null, null, $marca->values_multi) : '';
@@ -537,6 +556,7 @@ class PalavrasChaveService
             'marcas' => $marcas,
             'referencia' => $produto.' '.implode(' ', $termos),
             'candidatos' => RegrasDoTitulo::candidatos($termos, $produto, $fatos, $marcas),
+            'prefixo' => $composicao?->prefixoDoTitulo() ?? '',
         ];
     }
 

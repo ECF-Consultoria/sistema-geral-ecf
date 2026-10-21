@@ -1803,9 +1803,30 @@ não se deduz do código:
   grupo ("Cinza"). A galeria geral só entra em produto SEM cor.
 - **Por cor que vai ao ar:** a cor inativa no kit (sem o Combo N no Portal) não gera. A Opala12 (Cinza e Bordô) gera
   duas capas por fase — 4 imagens.
-- **Tipos fixos `hero`, `lifestyle`** (fundo limpo abre o anúncio, a ambientada vem em 2º). O combo não rotaciona a
+- **Tipos fixos `hero`, `lifestyle`** — em MÓVEL a ambientada abre (§43, teste do usuário); fora, o fundo limpo. O combo não rotaciona a
   capa, então a do Clássico e a do Premium são a mesma. Com tipos fixos e `quantidade_kit` ≥ 2 o
   `PlanejarKitCriativosJob` põe as N unidades na cena (`unidades_da_composicao`).
 - **Entra na frente das herdadas** (`aplicar()` com `capa` na memória): `aprovarSlot` já põe cada uma na frente, mas
   na ordem inversa — por isso o grupo é reordenado depois. Reprovada pelo juiz: o kit segue com as fotos da Fase 1.
 - A fase criada à mão ("Criar Fase N", produto fora do Portal) continua com a capa do botão (`kit_da_fase`).
+
+## 43. O kit misto do Portal é um COMPOSTO, não uma fase — e herdava "1 peça" (21/10/2026)
+
+No teste do usuário, o "Kit 1 poltrona Cinza + 1 Bordô" montado no Planejamento NÃO virou fase N: virou produto
+próprio no Publicador (`oferta_id` → oferta `kit`, `PlanejamentoDaFaseService::tipoComposto`), com `quantidade_kit` 1.
+Por isso passou pelo regime da Fase 1, e três coisas saíram erradas — todas pela mesma raiz, a composição não ser lida:
+
+- **Imagens de uma poltrona só.** A ficha do composto vinha do componente principal (UMA peça): `PIECES_NUMBER` "1".
+  O Creative Engine trata isso como fato do cadastro ("peças do kit: 1", `ProductTruthBuilder`) e obedece. Corrigido
+  na origem — `PortalParaRascunhoService::preencherComposta` aplica a `QuantidadesDoKit` (a régua da fase N) com o total
+  da composição; produtos diferentes (mesa + cadeiras) só em peças e unidades — e nas capas do composto a cena ganha a
+  frase do conjunto (`CriativosAutomaticosService::comComposicao`, no passo `gerar`, com o plano já gravado). O
+  planejador do Creative Engine (do outro dev) não foi tocado.
+- **Capa diferente no Clássico e no Premium.** A regra "kit não alterna a capa" lia só `quantidade_kit` ≥ 2. Agora
+  `PubProduto::unidadesDaOferta()` soma os componentes do composto (snapshot e resumo rápido).
+- **Título sem "Kit".** O composto usa o título comum de produto; a IA recebia o nome "X + X — Cinza / Bordô". Agora
+  recebe o nome do kit (`ComposicaoDoComposto::nomeDoKit`) e o título começa pelo prefixo ("Kit 2" num produto só,
+  "Kit" com produtos diferentes — `PalavrasChaveService::comPrefixo`).
+
+E a capa de kit (fase N e composto) em MÓVEL abre com a AMBIENTADA (o usuário: "deveria ser assim porém ambientada"),
+a mesma regra da Fase 1. `ComposicaoDoComposto` é o lugar único dessas contas.

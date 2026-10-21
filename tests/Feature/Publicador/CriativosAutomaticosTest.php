@@ -9,6 +9,8 @@ use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Models\Configuracao;
+use App\Models\EstruturaOferta;
+use App\Models\EstruturaOfertaComponente;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
@@ -38,6 +40,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Feature\Publicador\Lote\CenarioDoPreparo;
 use Tests\TestCase;
 
@@ -441,6 +444,57 @@ class CriativosAutomaticosTest extends TestCase
             'a capa do conjunto na frente (fundo limpo, depois ambientada) e a foto herdada da Fase 1 depois');
         $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kitIa->fresh()->status);
         $this->assertSame('kit_existente', $this->servico()->avaliar($rk->id), 'a fase não pede outra capa');
+    }
+
+    /** 21/10/2026 (teste do usuário no Kit 2): em MÓVEL a capa do Kit N abre com a AMBIENTADA. */
+    public function test_capa_da_fase_em_movel_abre_com_a_ambientada(): void
+    {
+        $this->ligar();
+        $this->mock(CreativeCategoriaMobiliarioService::class, fn ($m) => $m->shouldReceive('ehMoveis')->andReturn(true));
+        [$p] = $this->produtoComFotos(1);
+        $kit = app(CriarFaseService::class)->criar($this->pubDo($p)->fresh(), ['quantidade' => 2, 'sku' => 'CAD-KIT2']);
+
+        $this->assertSame('planejando', $this->servico()->avaliar($kit->rascunho->id));
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->tiposFixos === ['lifestyle', 'hero']);
+    }
+
+    /**
+     * 21/10/2026 — o COMPOSTO do Planejamento (o Kit/Combo do Portal que é produto próprio no Publicador) gera as duas
+     * capas com o CONJUNTO na mesma imagem: a frase da composição entra na cena de cada capa, depois do enquadramento.
+     */
+    public function test_composto_gera_as_duas_capas_com_o_conjunto_na_mesma_imagem(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos(1);
+        $simples = EstruturaOferta::query()->where('company_id', $this->empresa->id)->where('fase', 'simples')->firstOrFail();
+        $doPortal = EstruturaOferta::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-CB2', 'fase' => 'combo', 'nome' => 'Combo 2 Cadeira']);
+        EstruturaOfertaComponente::create(['oferta_id' => $doPortal->id, 'componente_id' => $simples->id, 'quantidade' => 2]);
+        $composto = PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $doPortal->id, 'sku' => 'CAD-CB2', 'nome' => 'Combo 2 Cadeira',
+            'origem' => PubProduto::ORIGEM_PORTAL]);
+        $rc = (new RascunhoRepository())->criar($composto, [new Alvo('gold_special', null), new Alvo('gold_pro', null)]);
+        DB::table('pub_rascunhos')->where('id', $rc->id)->update(['categoria_id' => $r->categoria_id]);
+        // A cópia da foto do cliente (o Sincronizar a traz com o mesmo sha256).
+        $this->fotoNoRascunho($rc->fresh(), 'CAD-0-copia', [20, crc32('CAD') % 200, 90]);
+
+        $this->assertSame('planejando', $this->servico()->avaliar($rc->id));
+        $kit = MlAnuncioCriativoKit::query()->where('pub_rascunho_id', $rc->id)->sole();
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === ['hero', 'lifestyle']);
+
+        // O plano como o Creative Engine o grava; a textura (se houvesse) não entraria na composição.
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_PLANEJADO, 'total_slots' => 2]);
+        foreach (['hero' => 'Cadeira isolada em fundo branco.', 'lifestyle' => 'Cadeira numa sala clara'] as $tipo => $cena) {
+            MlAnuncioCriativo::create(['token' => Str::random(32), 'company_id' => $kit->company_id, 'user_id' => $this->sistema->id, 'kit_id' => $kit->id,
+                'slot' => $tipo, 'slot_indice' => $tipo === 'hero' ? 1 : 2, 'slot_plano' => ['tipo' => $tipo, 'cena' => $cena], 'status' => MlAnuncioCriativo::STATUS_PENDENTE]);
+        }
+        $this->assertStringStartsWith('gerando:', $this->servico()->gerar($kit->id));
+
+        $planos = MlAnuncioCriativo::query()->where('kit_id', $kit->id)->whereNotNull('slot_indice')->orderBy('slot_indice')->get()->map(fn ($s) => (array) $s->slot_plano)->all();
+        foreach ($planos as $plano) {
+            $this->assertStringContainsString('exatamente 2 peças: 2 Cadeira Executiva Azul', $plano['cena']);
+            $this->assertSame(2, $plano['unidades_da_composicao']);
+        }
+        $this->assertStringStartsWith('Cadeira isolada em fundo branco. Mostre JUNTAS', $planos[0]['cena'], 'o enquadramento do slot fica; a composição vem depois');
+        $this->assertStringStartsWith('Cadeira numa sala clara. Mostre JUNTAS', $planos[1]['cena']);
     }
 
     /** Capa reprovada pelo juiz: o kit da fase segue com as fotos da Fase 1, e o kit fecha com o motivo. */

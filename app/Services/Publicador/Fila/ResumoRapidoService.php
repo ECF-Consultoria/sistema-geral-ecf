@@ -558,6 +558,8 @@ final class ResumoRapidoService
             eixos: $eixos,
             variantes: $variantes,
             alvos: $r->alvos->map(fn ($a) => new Alvo($a->listing_type_id, $a->titulo, (bool) $a->ativo))->all(),
+            // Só a montagem do payload lê isto (a capa do kit não alterna); a visão rápida não monta payload, então a soma do
+            // composto (`PubProduto::unidadesDaOferta`, uma consulta por linha) fica de fora daqui.
             unidadesPorOferta: max(1, (int) ($p->quantidade_kit ?? 1)),
         );
     }
