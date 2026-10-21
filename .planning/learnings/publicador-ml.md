@@ -1865,3 +1865,19 @@ está no ar — sem tipo ligado nada sai, então não há escolha da pessoa a de
 continua dizendo "ativo" (o `conta()` só exclui `inativo`).
 
 Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.
+
+## 45. Demo pública de 23/10: o que o teste no navegador mostrou e o código não dizia (21/10/2026)
+
+- **A descrição da IA saudava com o NOME CADASTRADO da empresa** ("Seja bem-vindo à Dev 02 Testes API"), não com
+  o apelido que o comprador vê (MGSTOREL). Decisão do usuário: **sem saudação** — o prompt não pede e
+  `DescricaoIaService::semSaudacao` limpa a saída. Não volte a pôr "saudação citando a loja" no prompt.
+- **O `/trends` do ML devolve termo sexual** em Sofás/Poltronas ("poltrona erotica para motel"). O filtro mora em
+  `TermosMaisBuscadosService::improprio` — um ponto só, por onde passam Portal, planilha e Publicador.
+- **A Prévia não sabe do aviso 4057:** promete "Frete grátis" e a categoria fora do Mercado Envios da conta sai
+  "Entrega a combinar". Para demonstrar, use produto de categoria que a conta aceita (a conferência sem o aviso
+  "vai tirar o Mercado Envios"). Poltrona na #459 não serve.
+- **Abrir o editor grava** (EAN gerado, cor principal, frete grátis obrigatório): a 1ª abertura invalida a conferência.
+  O usuário decidiu manter o EAN gerado; para demo, abrir cada produto uma vez na véspera e conferir depois.
+- **Promoção automática pegou** em anúncio novo da #459 em 21/10 (16% OFF), ao contrário do "No candidates" de 10/10.
+- **O tipo "Criado-mudo" do Planejamento** é termo vetado pelo ML; o rótulo vem da TABELA do catálogo (semeada por
+  `config/estrutura_geracao.php`, mantida pela tela admin) — renomear lá, não na config.
