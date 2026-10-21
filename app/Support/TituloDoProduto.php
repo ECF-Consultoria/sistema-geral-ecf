@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Str;
+
 /**
  * A regra do título do produto que vale no SERVIDOR: TODA palavra começa com letra maiúscula,
  * inclusive acentuada ("puff pera com enchimento" → "Puff Pera Com Enchimento", "ébano" → "Ébano").
@@ -26,5 +28,29 @@ final class TituloDoProduto
         }
 
         return (string) preg_replace_callback('/(^|\s)(\p{Ll})/u', fn (array $m) => $m[1].mb_strtoupper($m[2], 'UTF-8'), $titulo);
+    }
+
+    /**
+     * Acrescenta ao título as palavras do termo que ele ainda não tem, no fim e sem repetir palavra
+     * ("Poltrona Opala" + "poltrona para sala" → "Poltrona Opala Para Sala"). É o clique no termo da
+     * tela (`juntarTermo` em `resources/js/lib/tituloDoProduto.js`), no servidor: a planilha usa para
+     * montar os títulos prontos da seta da célula (21/10/2026).
+     *
+     * A palavra se compara sem caixa, sem acento e sem pontuação nas pontas ("Gamer," = "gamer").
+     */
+    public static function juntarTermo(string $titulo, string $termo): string
+    {
+        $atual = trim($titulo);
+        $palavras = fn (string $s) => preg_split('/\s+/u', trim($s), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $tem = array_flip(array_map(self::comparavel(...), $palavras($atual)));
+        $novas = array_filter($palavras($termo), fn (string $p) => ! isset($tem[self::comparavel($p)]));
+
+        return (string) self::capitalizar(trim($atual.' '.implode(' ', $novas)));
+    }
+
+    /** A forma de comparar uma palavra: minúscula, sem acento e sem pontuação nas pontas. */
+    private static function comparavel(string $palavra): string
+    {
+        return (string) preg_replace('/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/u', '', Str::lower(Str::ascii($palavra)));
     }
 }

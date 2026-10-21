@@ -1919,3 +1919,23 @@ tela com as duas seções. O que não se deduz de olhar a tela:
   `enriquecer`. Chamar duas vezes reprova o teste.
 - **Produto sem tipo** não tem mais aba: o cartão mostra "Sem tipo" (âmbar) e abre a `JanelaTipo`. Descartada só volta
   pelo "Desfazer" do aviso; a rota `restaurar` continua existindo.
+
+## Termos mais buscados na célula do Título da planilha (21/10/2026)
+
+Pedido do usuário: levar os termos da categoria para a planilha, "apenas na célula da coluna do Título" — ele recusou
+colunas de termo separadas. Código: `TermosDoTituloNaPlanilha` + `ModeloCompleto::setaDoTitulo()`. O que não se deduz:
+
+- **Lista que só sugere, e não soma.** A validação "Lista" do Excel escolhe UM valor e troca o que estava na célula.
+  Somar termos como os chips da ficha só com macro — que o Excel bloqueia em arquivo baixado e o Google Planilhas não
+  roda. Por isso: no modelo vazio a seta traz os termos (escolhe um e completa com F2); no "meus produtos", onde o
+  nome já existe, traz TÍTULOS PRONTOS (nome + palavras novas de cada termo, `TituloDoProduto::juntarTermo`, a mesma
+  regra do clique na tela), com o título de hoje em primeiro. `showErrorMessage=false`: o título digitado vale.
+- **Google Planilhas** pode marcar com aviso o título digitado que não está na lista. Não bloqueia; já acontecia nos
+  campos da ficha que aceitam "Outro".
+- **Prazo de 20 s por arquivo** para ler os termos, e para na 1ª falha: o "meus produtos" pode ter até 60 categorias,
+  e cada leitura tem timeout de 15 s. Categoria que fica sem termos sai sem a seta, igual a antes.
+- **Teste:** os termos leem o schema INTEIRO da categoria (`CategorySchemaRepository::obter`), que pede também
+  `technical_specs/input` e `sale_terms`. Com o falso respondendo 404 nesses dois, a leitura falha calada e a planilha
+  sai sem seta — o teste parece de código quebrado. O `ModeloCompletoTest` responde `[]` 200 para os dois.
+- **Memória:** a pasta `tests/Feature/PortalCliente/Estrutura/Produtos` inteira num processo passa de 512 MB (só o
+  `ModeloCompletoTest` usa ~470 MB). Rodar com `php -d memory_limit=3G`.

@@ -47,6 +47,11 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  * opções) e "Categorias" (qual categoria é cada aba). No exportado, o produto que ainda não tem categoria
  * vai para a aba "Sem categoria": só as colunas do produto, mais a "Categoria" por escrito.
  *
+ * ### O título de venda (21/10/2026)
+ * A célula do "Título de venda" de cada aba traz, numa lista que só sugere, os termos mais buscados da
+ * categoria — no "meus produtos", títulos prontos com o nome de cada produto ({@see self::setaDoTitulo()},
+ * {@see TermosDoTituloNaPlanilha}). Sem coluna nova: a importação lê o título como sempre leu.
+ *
  * ### Sigilo
  * Nada cita a plataforma. A aba "Categorias" guarda só os NÚMEROS do código da categoria (sem as
  * letras do prefixo) e o nome dela; {@see self::categoriasDoArquivo()} devolve o código inteiro.
@@ -148,6 +153,7 @@ class ModeloCompleto
         private PlanilhaDasFichasTecnicas $fichas,
         private PlanilhaDosProdutos $produtos,
         private ExplicacaoDeAtributos $explicacoes,
+        private TermosDoTituloNaPlanilha $termosDoTitulo,
     ) {}
 
     /** "Volume 2: largura (cm)" — o cabeçalho de uma medida de um volume. */
@@ -298,7 +304,8 @@ class ModeloCompleto
                         $ficha[$campo['id']] = PlanilhaDasFichasTecnicas::textoDaCelula($campo, $salvos[(int) $produto->id][$campo['id']] ?? null);
                     }
                 }
-                $porCategoria[$id]['linhas'][] = ['produto' => $linha, 'ficha' => $ficha];
+                // O id junta as variações do produto: é por ele que a seta do título vale nas linhas dele.
+                $porCategoria[$id]['linhas'][] = ['produto' => $linha, 'ficha' => $ficha, 'produto_id' => (int) $produto->id];
             }
         }
         uasort($porCategoria, fn ($a, $b) => strnatcasecmp($a['nome'], $b['nome']));
@@ -429,7 +436,7 @@ class ModeloCompleto
      * @param  list<array<string, mixed>>  $campos
      * @return list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>
      */
-    private function colunasDaAba(array $doProduto, array $campos): array
+    private function colunasDaAba(array $doProduto, array $campos, ?string $ajudaDoTitulo = null): array
     {
         $glossario = $this->explicacoes->camposDoPortal();
         $saida = [];
@@ -442,7 +449,7 @@ class ModeloCompleto
                 'grupo'       => str_starts_with($c['chave'], 'vol:') ? 'Volume '.explode(':', $c['chave'])[1] : '',
                 'titulo'      => $c['titulo'],
                 'obrigatorio' => str_contains($c['titulo'], '*'),
-                'ajuda'       => self::ajudaDoProduto($c['chave']),
+                'ajuda'       => $c['chave'] === 'titulo' && $ajudaDoTitulo !== null ? $ajudaDoTitulo : self::ajudaDoProduto($c['chave']),
                 'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
                 'opcoes'      => $c['chave'] === 'eixo' ? implode(' · ', array_values(EstruturaProdutoVariacao::EIXOS)) : '',
             ];
@@ -501,6 +508,7 @@ class ModeloCompleto
         $abas = [];
         $mapa = [];
         $guia = [];
+        $comSeta = false;                    // alguma aba ganhou a seta no título? (as instruções explicam)
         $salto = self::PRIMEIRA_LINHA - 1;   // quantas linhas há acima do primeiro produto
         // Quantos volumes o produto com mais caixas de uma aba usa: são os que ficam abertos nela.
         $maisVolumes = fn (array $linhas) => array_reduce($linhas,
@@ -518,6 +526,8 @@ class ModeloCompleto
             if ($c['campos'] !== []) {
                 $this->fichas->colunasDaFicha($aba, $c['campos'], $primeiraDaFicha, $fim, $listas, $colunaDaLista, self::LINHA_DO_CABECALHO, self::PRIMEIRA_LINHA);
             }
+            $doTitulo = $this->termosDoTitulo->daCategoria($c['id'], self::podeIr(...));
+            $comSeta = self::setaDoTitulo($aba, $doProduto, $c['linhas'], $doTitulo, $fim, $listas, $colunaDaLista) || $comSeta;
             foreach ($c['linhas'] as $n => $linha) {
                 self::linhaDoProduto($aba, $doProduto, $n + self::PRIMEIRA_LINHA, $linha['produto']);
                 foreach ($c['campos'] as $i => $campo) {
@@ -527,7 +537,7 @@ class ModeloCompleto
                     }
                 }
             }
-            $colunas = $this->colunasDaAba($doProduto, $c['campos']);
+            $colunas = $this->colunasDaAba($doProduto, $c['campos'], self::ajudaDoTitulo($doTitulo, $preenchido));
             $abertos = max(1, $maisVolumes($c['linhas']));
             self::apresentar($aba, $colunas, $abertos);
             self::recolherVolumes($aba, $doProduto, $abertos);
@@ -554,7 +564,7 @@ class ModeloCompleto
 
         $instrucoes = new Worksheet($planilha, self::ABA_INSTRUCOES);
         $planilha->addSheet($instrucoes);
-        self::preencherInstrucoes($instrucoes, count($categorias), $preenchido, $semCategoria !== []);
+        self::preencherInstrucoes($instrucoes, count($categorias), $preenchido, $semCategoria !== [], $comSeta);
 
         $doGuia = new Worksheet($planilha, PlanilhaDasFichasTecnicas::ABA_GUIA);
         $planilha->addSheet($doGuia);
@@ -735,6 +745,76 @@ class ModeloCompleto
         $aba->getColumnDimension(Coordinate::stringFromColumnIndex($primeira))->setCollapsed(true);
     }
 
+    // ═══ A seta do Título de venda (21/10/2026) ═══════════════════════════════
+
+    /**
+     * Põe na célula do Título de venda a lista que só sugere ({@see TermosDoTituloNaPlanilha}): nas linhas
+     * de cada produto do "meus produtos", os títulos prontos dele (as variações de um produto são linhas
+     * seguidas, com o mesmo `produto_id`); nas linhas livres — todas, no modelo vazio —, os termos da
+     * categoria. As listas vão para a aba oculta, cada uma na sua coluna. Categoria sem termos: sem seta.
+     *
+     * @param  list<array{chave: string}>  $colunas  as colunas do produto, na ordem
+     * @param  list<array{produto: array<string, string>, produto_id?: int}>  $linhas  os produtos da aba, na ordem
+     * @param  array{limite: ?int, termos: list<string>, caminho: list<string>}  $doTitulo
+     * @return bool  a aba ganhou a seta
+     */
+    private static function setaDoTitulo(Worksheet $aba, array $colunas, array $linhas, array $doTitulo, int $fim, Worksheet $listas, int &$colunaDaLista): bool
+    {
+        $indice = array_search('titulo', array_column($colunas, 'chave'), true);
+        if ($doTitulo['termos'] === [] || $indice === false) {
+            return false;
+        }
+        $coluna = Coordinate::stringFromColumnIndex($indice + 1);
+        $limite = $doTitulo['limite'];
+
+        $total = count($linhas);
+        for ($n = 0; $n < $total; $n = $ate + 1) {
+            $id = $linhas[$n]['produto_id'] ?? null;
+            $ate = $n;
+            while ($id !== null && $ate + 1 < $total && ($linhas[$ate + 1]['produto_id'] ?? null) === $id) {
+                $ate++;
+            }
+            $produto = $linhas[$n]['produto'];
+            $prontos = TermosDoTituloNaPlanilha::titulosProntos((string) ($produto['nome'] ?? ''), (string) ($produto['titulo'] ?? ''), $doTitulo);
+            if ($prontos !== []) {
+                $origem = self::novaLista($listas, $colunaDaLista, $aba->getTitle().' · '.($produto['nome'] ?? '').' · títulos', $prontos);
+                $area = $coluna.(self::PRIMEIRA_LINHA + $n).($ate > $n ? ':'.$coluna.(self::PRIMEIRA_LINHA + $ate) : '');
+                $aba->setDataValidation($area, TermosDoTituloNaPlanilha::validacao($origem, true, $limite));
+            }
+        }
+
+        $de = self::PRIMEIRA_LINHA + $total;
+        if ($de <= $fim) {
+            $origem = self::novaLista($listas, $colunaDaLista, $aba->getTitle().' · Título de venda', $doTitulo['termos']);
+            $aba->setDataValidation("{$coluna}{$de}:{$coluna}{$fim}", TermosDoTituloNaPlanilha::validacao($origem, false, $limite));
+        }
+
+        return true;
+    }
+
+    /** A linha de ajuda do Título na aba de uma categoria com a seta (nulo = a de sempre). */
+    private static function ajudaDoTitulo(array $doTitulo, bool $preenchido): ?string
+    {
+        return $doTitulo['termos'] === [] ? null : 'Opcional. '.TermosDoTituloNaPlanilha::comoUsarASeta($preenchido, $doTitulo['limite']);
+    }
+
+    /**
+     * Escreve uma lista numa coluna nova da aba oculta e devolve a fórmula que aponta para ela.
+     *
+     * @param  list<string>  $opcoes
+     */
+    private static function novaLista(Worksheet $listas, int &$colunaDaLista, string $rotulo, array $opcoes): string
+    {
+        $colunaDaLista++;
+        $coluna = Coordinate::stringFromColumnIndex($colunaDaLista);
+        self::texto($listas, "{$coluna}1", mb_substr($rotulo, 0, 200));
+        foreach (array_values($opcoes) as $i => $opcao) {
+            self::texto($listas, $coluna.($i + 2), $opcao);
+        }
+
+        return "'".PlanilhaDasFichasTecnicas::ABA_LISTAS."'!\${$coluna}\$2:\${$coluna}\$".(count($opcoes) + 1);
+    }
+
     /**
      * A aba "Guia dos campos": uma linha por coluna das outras abas, dizendo o que é, como preencher e
      * quais são as opções da lista. As colunas do produto vêm uma vez (valem para todas as abas).
@@ -796,8 +876,11 @@ class ModeloCompleto
         return $v;
     }
 
-    private static function preencherInstrucoes(Worksheet $aba, int $categorias, bool $preenchido, bool $temSemCategoria): void
+    private static function preencherInstrucoes(Worksheet $aba, int $categorias, bool $preenchido, bool $temSemCategoria, bool $comSeta = false): void
     {
+        $doTitulo = $preenchido
+            ? 'TÍTULO DE VENDA: clique na célula do título e abra a seta. Ela traz títulos prontos com o nome do produto e os termos mais buscados da categoria (nas linhas novas, os termos). Escolha um e ajuste se quiser, ou escreva o seu título.'
+            : 'TÍTULO DE VENDA: clique na célula do título e abra a seta. Ela traz os termos mais buscados da categoria: escolha um para começar e complete escrevendo (F2 ou duplo clique na célula), ou escreva o seu título.';
         $linhas = [
             'Como preencher',
             $preenchido
@@ -814,6 +897,7 @@ class ModeloCompleto
             'MEDIDAS DO PRODUTO FORA DA CAIXA: o produto montado, sem a embalagem. São diferentes das medidas do volume, que é a caixa.',
             'FICHA TÉCNICA: as características do produto. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',
             'Onde houver lista, escolha uma opção pela seta da célula; em algumas listas você também pode escrever o seu valor. Para marcar mais de uma opção num campo, separe com | .',
+            ...($comSeta ? [$doTitulo] : []),
             'Não se aplica: quando o produto não tem o que a coluna pede (por exemplo, a medida do colchão numa poltrona que não vira cama), escreva Não se aplica na célula. A linha 3 diz em quais colunas isso vale. Em branco quer dizer que você não informou.',
             'A aba "'.PlanilhaDasFichasTecnicas::ABA_GUIA.'" explica cada coluna: o que é, como preencher e as opções de cada lista. A mesma explicação aparece ao passar o mouse no nome da coluna.',
             'Célula em branco não apaga nada do que já está cadastrado. Enviar de novo atualiza pelo código da variação.',

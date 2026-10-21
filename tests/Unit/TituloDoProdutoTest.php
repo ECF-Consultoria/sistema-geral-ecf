@@ -32,6 +32,26 @@ class TituloDoProdutoTest extends TestCase
         $this->assertNull(TituloDoProduto::capitalizar(null));
     }
 
+    /**
+     * Juntar um termo ao título: entram no fim só as palavras que ele ainda não tem (21/10/2026). Os mesmos
+     * casos do clique no termo da tela (`tests/js/titulo-do-produto.test.js`).
+     */
+    public function test_juntar_termo_acrescenta_so_as_palavras_novas_como_a_tela(): void
+    {
+        $this->assertSame('Cadeira Escritório Gamer', TituloDoProduto::juntarTermo('Cadeira escritório', 'cadeira gamer'));
+        $this->assertSame('Cadeira Gamer', TituloDoProduto::juntarTermo('', 'cadeira gamer'));
+        $this->assertSame('Cadeira Gamer', TituloDoProduto::juntarTermo('Cadeira', 'cadeira gamer'));
+        $this->assertSame('Cadeira Gamer', TituloDoProduto::juntarTermo('Cadeira Gamer', 'cadeira gamer'), 'nada novo: o título fica');
+        $this->assertSame('Poltrona Opala Para Sala', TituloDoProduto::juntarTermo('Poltrona Opala', 'poltrona para sala'));
+    }
+
+    public function test_juntar_termo_compara_sem_acento_caixa_ou_pontuacao(): void
+    {
+        $this->assertSame('Cadeira Ergonomica Preta', TituloDoProduto::juntarTermo('Cadeira Ergonomica', 'cadeira ergonômica preta'));
+        $this->assertSame('Cadeira Gamer, Reclinável', TituloDoProduto::juntarTermo('Cadeira Gamer,', 'GAMER reclinável'));
+        $this->assertSame('Mesa MDF 160x90 Redonda', TituloDoProduto::juntarTermo('  mesa MDF 160x90 ', 'mesa  redonda'), 'espaços sobrando somem');
+    }
+
     public function test_o_alvo_do_publicador_sai_sempre_com_a_maiuscula_em_toda_palavra(): void
     {
         $this->assertSame('Cadeira Gamer', (new Alvo('gold_special', 'cadeira gamer'))->titulo);

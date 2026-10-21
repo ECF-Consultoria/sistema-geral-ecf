@@ -7,6 +7,7 @@ use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\Produtos\ImportadorModeloCompleto;
+use App\Services\Portal\Estrutura\Produtos\LeitorPlanilhaProdutos;
 use App\Services\Portal\Estrutura\Produtos\ModeloCompleto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -46,6 +47,14 @@ class ModeloCompletoTest extends TestCase
     /** @var list<string> */
     private array $temporarios = [];
 
+    /**
+     * Os termos mais buscados de mentira, por categoria: [corpo, status]. Categoria fora daqui responde 404
+     * (sem lista na semana), como a de verdade.
+     *
+     * @var array<string, array{0: mixed, 1: int}>
+     */
+    private array $trends = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -54,6 +63,13 @@ class ModeloCompletoTest extends TestCase
         Queue::fake();
 
         Http::fake(function (Request $r) {
+            if (preg_match('#/trends/MLB/(MLB\d+)$#', $r->url(), $m) && isset($this->trends[$m[1]])) {
+                return Http::response(...$this->trends[$m[1]]);
+            }
+            // O resto do schema da categoria, que os termos do título leem (o limite e o caminho).
+            if (preg_match('#/categories/MLB\d+/(technical_specs/input|sale_terms)$#', $r->url())) {
+                return Http::response([], 200);
+            }
             if (preg_match('#/categories/(MLB\d+)/attributes$#', $r->url(), $m)) {
                 return Http::response(match ($m[1]) {
                     'MLB1' => $this->fichaDaCadeira(),
@@ -660,6 +676,131 @@ class ModeloCompletoTest extends TestCase
         $de_novo = app(ImportadorModeloCompleto::class)->aplicar($empresa, $caminho, $ator);
         $this->assertSame([0, 0, 0], [$de_novo['novos'], $de_novo['atualizados'], $de_novo['ficha']['campos']]);
         $this->assertSame($antes, EstruturaProdutoAtributo::count());
+    }
+
+    // ═══ A seta do Título de venda (21/10/2026) ════════════════════════════════
+
+    /** As opções de uma lista da aba oculta, pela fórmula da validação ('Listas'!$C$2:$C$5). */
+    private function opcoes(Spreadsheet $planilha, string $formula): array
+    {
+        $this->assertSame(1, preg_match('/^\'Listas\'!\$([A-Z]+)\$(\d+):\$\1\$(\d+)$/', $formula, $m), "a lista vem da aba oculta: {$formula}");
+        $listas = $planilha->getSheetByName('Listas');
+
+        return array_map(fn (int $l) => (string) $listas->getCell($m[1].$l)->getValue(), range((int) $m[2], (int) $m[3]));
+    }
+
+    private function exportar(Company $empresa): Spreadsheet
+    {
+        $r = $this->entrarNoPortal($empresa)->get(route('portal.auth.estrutura.produtos.exportar_completo'))->assertOk();
+        $caminho = tempnam(sys_get_temp_dir(), 'mp').'.xlsx';
+        $this->temporarios[] = $caminho;
+        file_put_contents($caminho, $r->streamedContent());
+
+        return IOFactory::load($caminho);
+    }
+
+    /**
+     * 21/10/2026, o usuário: como o cliente já escolhe a categoria para baixar a planilha, levar os termos
+     * mais buscados dela "apenas na célula da coluna do Título" — sem coluna nova. A célula ganha uma lista
+     * que só sugere: a seta traz os termos, e o título digitado continua valendo.
+     */
+    public function test_a_celula_do_titulo_traz_os_termos_da_categoria_numa_lista_que_so_sugere(): void
+    {
+        $this->trends['MLB1'] = [[['keyword' => 'cadeira gamer'], ['keyword' => 'cadeira de escritório'],
+            ['keyword' => 'cadeira gamer mercado livre'], ['keyword' => 'Cadeira  Gamer']], 200];
+        $planilha = $this->baixar($this->empresaDoGabarito(), ['MLB1', 'MLB2']);
+
+        $cadeiras = $planilha->getSheetByName('Cadeiras');
+        $titulo = $this->coluna($cadeiras, 'Título');
+        $v = $cadeiras->getDataValidation($titulo.self::L1);
+        $this->assertSame('list', $v->getType());
+        $this->assertFalse($v->getShowErrorMessage(), 'só sugere: o título que a pessoa escreve também vale');
+        $this->assertStringContainsString('termos mais buscados', $v->getPrompt());
+        $this->assertSame(['Cadeira Gamer', 'Cadeira De Escritório'], $this->opcoes($planilha, $v->getFormula1()),
+            'com a maiúscula de cada palavra (o que se escolhe é o que se grava), sem repetir e sem o termo que cita a plataforma');
+        $this->assertSame($v->getFormula1(), $cadeiras->getDataValidation($titulo.(LeitorPlanilhaProdutos::MAX_LINHAS + 1))->getFormula1(), 'vale na coluna inteira');
+        $this->assertNotSame('list', $cadeiras->getDataValidation($titulo.ModeloCompleto::LINHA_DA_AJUDA)->getType(), 'a linha de ajuda fica fora');
+        $this->assertStringContainsString('A seta da célula traz os termos mais buscados', $this->ajuda($cadeiras, 'Título'));
+        $instrucoes = implode("\n", array_map('strval', array_column($planilha->getSheetByName('Instruções')->toArray(), 0)));
+        $this->assertStringContainsString('TÍTULO DE VENDA', $instrucoes);
+
+        // Mesas de Jantar não tem lista na semana: a célula segue sem seta, como antes.
+        $mesas = $planilha->getSheetByName('Mesas de Jantar');
+        $this->assertNotSame('list', $mesas->getDataValidation($this->coluna($mesas, 'Título').self::L1)->getType());
+        $this->assertStringNotContainsString('seta', $this->ajuda($mesas, 'Título'));
+    }
+
+    /** O termo escolhido na seta e completado à mão entra como qualquer título digitado. */
+    public function test_o_titulo_montado_a_partir_da_seta_entra_pela_importacao(): void
+    {
+        $this->trends['MLB1'] = [[['keyword' => 'cadeira gamer']], 200];
+        $empresa = $this->empresaDoGabarito();
+        $planilha = $this->baixar($empresa, ['MLB1']);
+        $cadeiras = $planilha->getSheetByName('Cadeiras');
+        $this->linha($cadeiras, self::L1, ['Produto (grupo)*' => 'ZETA', 'Ref*' => 'ZETA-1', 'Nome do produto*' => 'Cadeira Zeta',
+            'Título' => 'Cadeira Gamer zeta preta', 'Marca*' => 'Bela Casa', 'Material*' => 'Metal']);
+
+        app(ImportadorModeloCompleto::class)->aplicar($empresa, $this->gravar($planilha), $this->atorCliente($empresa));
+
+        $this->assertSame('Cadeira Gamer Zeta Preta', EstruturaProduto::where('company_id', $empresa->id)->where('nome', 'Cadeira Zeta')->value('titulo'));
+    }
+
+    /**
+     * No "meus produtos" a planilha já sabe o nome: a seta de cada produto traz títulos prontos (o nome com
+     * as palavras novas de cada termo), com o título de hoje em primeiro; as variações do produto dividem a
+     * mesma lista, e as linhas livres embaixo ficam com os termos. E o arquivo volta sem mudar nada.
+     */
+    public function test_meus_produtos_traz_titulos_prontos_na_seta_de_cada_produto(): void
+    {
+        $this->trends['MLB1'] = [[['keyword' => 'cadeira gamer'], ['keyword' => 'cadeira beta reclinável'], ['keyword' => 'cadeira de escritório']], 200];
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        app(ImportadorModeloCompleto::class)->aplicar($empresa, $this->preenchida($empresa), $ator);
+        EstruturaProduto::where('company_id', $empresa->id)->where('nome', 'Cadeira Alfa')->update(['titulo' => 'Cadeira Alfa Preta Metal']);
+
+        $planilha = $this->exportar($empresa);
+        $cadeiras = $planilha->getSheetByName('Cadeiras');
+        $titulo = $this->coluna($cadeiras, 'Título');
+        $ref = $this->coluna($cadeiras, 'Ref*');
+        $this->assertSame(['ALFA-PT', 'ALFA-BR', 'BETA-1'], array_map(fn ($l) => (string) $cadeiras->getCell($ref.$l)->getValue(), [self::L1, self::L1 + 1, self::L1 + 2]));
+
+        $alfa = $cadeiras->getDataValidation($titulo.self::L1);
+        $this->assertStringContainsString('títulos prontos', $alfa->getPrompt());
+        $this->assertFalse($alfa->getShowErrorMessage());
+        $this->assertSame(['Cadeira Alfa Preta Metal', 'Cadeira Alfa Gamer', 'Cadeira Alfa Beta Reclinável', 'Cadeira Alfa De Escritório'],
+            $this->opcoes($planilha, $alfa->getFormula1()), 'o título de hoje primeiro; depois o nome com cada termo, na ordem da lista');
+        $this->assertSame($alfa->getFormula1(), $cadeiras->getDataValidation($titulo.(self::L1 + 1))->getFormula1(), 'as duas cores da Alfa dividem a lista');
+        $this->assertSame('Cadeira Alfa Preta Metal', (string) $cadeiras->getCell($titulo.self::L1)->getValue(), 'a célula continua com o título de hoje');
+
+        $this->assertSame(['Cadeira Beta Reclinável', 'Cadeira Beta Gamer', 'Cadeira Beta De Escritório'],
+            $this->opcoes($planilha, $cadeiras->getDataValidation($titulo.(self::L1 + 2))->getFormula1()), 'o termo com palavra do nome ("beta") sobe');
+
+        $livre = $cadeiras->getDataValidation($titulo.(self::L1 + 3));
+        $this->assertSame(['Cadeira Gamer', 'Cadeira Beta Reclinável', 'Cadeira De Escritório'], $this->opcoes($planilha, $livre->getFormula1()), 'linha nova: os termos');
+
+        $caminho = $this->gravar($planilha);
+        $previa = app(ImportadorModeloCompleto::class)->previa($empresa, $caminho);
+        $this->assertSame(['novos' => 0, 'atualizados' => 0, 'erros' => 0], array_intersect_key($previa['totais'], array_flip(['novos', 'atualizados', 'erros'])));
+    }
+
+    /**
+     * Os termos são um extra: com o serviço fora do ar a planilha sai do mesmo jeito, sem a seta, e as
+     * outras categorias do arquivo não esperam por ele.
+     */
+    public function test_com_os_termos_fora_do_ar_a_planilha_sai_sem_a_seta_e_sem_esperar(): void
+    {
+        $this->trends['MLB1'] = [['message' => 'erro'], 500];
+        $this->trends['MLB2'] = [[['keyword' => 'mesa redonda']], 200];
+
+        $planilha = $this->baixar($this->empresaDoGabarito(), ['MLB1', 'MLB2']);
+
+        foreach (['Cadeiras', 'Mesas de Jantar'] as $nome) {
+            $aba = $planilha->getSheetByName($nome);
+            $this->assertNotSame('list', $aba->getDataValidation($this->coluna($aba, 'Título').self::L1)->getType(), $nome);
+        }
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/trends/MLB/MLB2'));
+        $instrucoes = implode("\n", array_map('strval', array_column($planilha->getSheetByName('Instruções')->toArray(), 0)));
+        $this->assertStringNotContainsString('TÍTULO DE VENDA', $instrucoes);
     }
 
     public function test_meus_produtos_sem_nenhum_produto_responde_404_e_exige_sessao(): void
