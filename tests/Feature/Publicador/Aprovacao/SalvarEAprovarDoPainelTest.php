@@ -16,11 +16,13 @@ use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubRascunhoAlvo;
+use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\Publicador\Aprovacao\AjustesDaOfertaService;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
 use App\Services\Publicador\Aprovacao\AprovacaoDaOfertaService;
 use App\Services\Publicador\Aprovacao\BloqueiosDaOfertaService;
+use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\DadosEfetivosService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Publicador\ClienteMlPublicador;
@@ -351,6 +353,72 @@ class SalvarEAprovarDoPainelTest extends TestCase
         }
 
         return $oferta;
+    }
+
+    /**
+     * ═══ ⚠️⚠️ CONSERTO DA QUICK `261021-fix`: TORNAR **ESTA** FIXTURE PUBLICÁVEL ═══════════════
+     *
+     * ⚠️⚠️ **POR QUE ISTO EXISTE, E POR QUE ELE NÃO ESTÁ NO `cenario()`.**
+     *
+     * O `cenario()` deste arquivo é **compartilhado por 9 métodos** de um teste de fase **EM
+     * PRODUÇÃO**, e ele nunca foi publicável: nasce com as **DUAS** modalidades **ATIVAS**, com o
+     * **mesmo título** nos dois alvos, **sem** conferência L3 e **sem** a conta em
+     * `publicador.contas_liberadas` (que é **fail-closed**: lista vazia = NINGUÉM). Isso era
+     * invisível enquanto o *"Tentar de novo"* era só uma transição de estado — a rota
+     * **redirecionava**. ⚠️ Depois de a Fase 193 (plano 04) fazer o retry **enfileirar de verdade**,
+     * a mesma fixture passou a **recusar (422)** onde os dois casos esperavam **302**, e os dois
+     * ficaram **VERMELHOS**.
+     *
+     * ⚠️⚠️ **RECUSAR É O COMPORTAMENTO CERTO**, e por isso o conserto é da fixture e não do código:
+     * mover sem enfileirar deixaria a oferta `publicando` com a ligação no item **terminado**, e o
+     * reconciliador do portão a fecharia como `falha` no minuto seguinte — `publicando → falha` a
+     * cada minuto, com a edição bloqueada. ➡️ **O que ficou obsoleto foi o `assertRedirect()`, não
+     * as asserções de invariante** (*"zero escrita no Mercado Livre"*, *"sem MLB"*), que seguem
+     * valendo inteiras e **não foram tocadas**.
+     *
+     * ⚠️ **Mexer no `cenario()` moveria os outros 7 métodos de uma só vez.** ➡️ Este auxiliar é
+     * chamado **só** pelos **dois** métodos de *"Tentar de novo"*.
+     *
+     * **Os quatro ingredientes, cada um com a razão MEDIDA:**
+     *
+     *  1. `publicador.contas_liberadas.companies` — `ContasLiberadas` é **fail-closed**; sem isto a
+     *     prontidão da fila recusa com *"A publicação ainda não foi liberada para esta conta"*;
+     *  2. a **irmã sai do caminho** desativando o **alvo** (`pub_rascunho_alvos.ativo = false`) —
+     *     que é **a própria âncora** da guarda da decisão 23 (`alvosAtivos()` é a lista que o
+     *     payload percorre, logo alvo inativo **não vai ao ar** e não há o que revisar). ⚠️ A
+     *     alternativa (aprovar a irmã) dispararia o gancho `aoAprovar()` dela e meteria uma segunda
+     *     aprovação na fixture — mais efeito colateral para o mesmo fim;
+     *  3. **títulos distintos** — título igual nos dois tipos é o bloqueio **V-TIT-04** da
+     *     prontidão, e a fila recusaria pelo motivo **errado**;
+     *  4. a conferência **L3** `OK` — sem ela a prontidão recusa com *"Confira no Mercado Livre
+     *     antes de agendar."* ⚠️ `revisao` lida do rascunho **RELIDO**: o Eloquent **não** lê o
+     *     default do banco, e `revisao` nula em memória criaria a validação com `revisao = 0`,
+     *     fazendo a prontidão recusar com *"O produto mudou depois da conferência"*.
+     *
+     * @param  array<string, mixed>  $c  o retorno do `cenario()`
+     */
+    private function tornarPublicavel_261021_fix(Company $company, array $c): void
+    {
+        config(['publicador.contas_liberadas.companies' => [(int) $company->id]]);
+
+        PubRascunhoAlvo::query()
+            ->where('id', (int) $c['premium']->alvo_id)
+            ->update(['ativo' => false]);
+
+        PubRascunhoAlvo::query()
+            ->where('id', (int) $c['classico']->alvo_id)
+            ->update(['titulo' => 'Poltrona Beny clássica veludo cinza '.$this->sequencia]);
+
+        $rascunho = $c['rascunho']->fresh();
+
+        PubValidacao::create([
+            'rascunho_id' => $rascunho->id,
+            'revisao' => (int) $rascunho->revisao,
+            'camada' => 'L3',
+            'resultado' => ConferenciaService::OK,
+            'plano_hash' => str_repeat('a', 64),
+            'issues' => [],
+        ]);
     }
 
     private function eventos(PubAprovacaoOferta $oferta): array
@@ -905,6 +973,10 @@ class SalvarEAprovarDoPainelTest extends TestCase
     {
         [$company, $empresa, $admin] = $this->conta();
         $c = $this->cenario(['company' => $company, 'empresa' => $empresa]);
+        // ⚠️ Quick `261021-fix`: o retry da Fase 193 ENFILEIRA de verdade, então a fixture tem de
+        // ser publicável — ver {@see self::tornarPublicavel_261021_fix()}. ⚠️ Chamado AQUI, por
+        // método: o `cenario()` é compartilhado por 9 métodos desta classe, em produção.
+        $this->tornarPublicavel_261021_fix($company, $c);
         $oferta = $this->levarAo($c['classico'], PubAprovacaoOferta::FALHA, $admin);
 
         $versaoAntes = (int) $oferta->versao;
@@ -970,6 +1042,9 @@ class SalvarEAprovarDoPainelTest extends TestCase
     {
         [$company, $empresa, $admin] = $this->conta();
         $c = $this->cenario(['company' => $company, 'empresa' => $empresa]);
+        // ⚠️ Quick `261021-fix`: idem ao caso (8) — a fixture tem de ser publicável para o retry
+        // chegar ao `302`, e isso é POR MÉTODO, nunca no `cenario()` compartilhado.
+        $this->tornarPublicavel_261021_fix($company, $c);
         $comFalha = $this->levarAo($c['classico'], PubAprovacaoOferta::FALHA, $admin);
 
         // ⚠️ A MEDIÇÃO VEM PRIMEIRO, A ISCA DEPOIS — ver a razão medida no caso (6).

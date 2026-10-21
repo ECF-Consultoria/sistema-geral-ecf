@@ -1,0 +1,144 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates da QUICK `261021-fix` — o BECO DO RETRY
+# (decisão 25) e o MOTIVO QUE VOLTAVA ATRÁS (decisão 26), as duas decisões que o
+# usuário tomou em 21/10/2026 antes do fechamento da Fase 193.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 261021-01 <id-do-gate>`.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ POR QUE O PAR É NUMÉRICO (`261021-01`) E NÃO `261021-fix` — MEDIDO
+# ═══════════════════════════════════════════════════════════════════════════════
+# `verificar-testes.sh:122` resolve o 1º argumento por
+#   sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'
+# — **dois grupos de DÍGITOS separados por UM hífen, e nada mais**. Qualquer
+# argumento com LETRA cai no ramo `else`, que monta `contagens-186-<arg>.txt`.
+#
+# ➡️ Nomear este arquivo `contagens-261021-fix.txt` o deixaria **INALCANÇÁVEL**:
+# o harness procuraria `contagens-186-261021-fix.txt` e abortaria — ou, pior, se
+# alguém criasse ESSE nome, o manifesto desta quick passaria a viver sob um
+# prefixo de fase FALSO (`186-`), e a Fase 186 está EM PRODUÇÃO.
+#
+# ⚠️ A FORMA SEGUIDA é a da quick de 20/10 (`contagens-261020-01.txt`, chamada
+# `261020-01`), que foi o **primeiro manifesto de QUICK do projeto**. Medido: é o
+# único outro `contagens-*` que não é de fase. ⚠️ **A aceitação pelo harness foi
+# PROVADA ao vivo, nas duas pontas** — ver a SUMMARY desta quick.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ O QUE CADA ID EXISTE PARA MATAR
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# irma-em-falha-conta  (DECISÃO 25)
+#   · ⚠️⚠️ **O BECO:** a fila publica o PRODUTO inteiro, então num produto com
+#     dois alvos ativos uma publicação que falha deixa as DUAS ofertas em
+#     `falha`. Com `falha` fora de `JA_PASSARAM_PELO_PORTAO`, o "Tentar de novo"
+#     de CADA uma recusava NOMEANDO A OUTRA, e `TRANSICOES[falha] =
+#     [publicando]` é a ÚNICA saída de `falha`. ➡️ Nenhuma das duas podia ser
+#     retentada pela tela.
+#   · ⚠️ **IGUALDADE DE CONJUNTO** da constante, nunca piso: com
+#     `assertContains(FALHA, …)` um quinto estado entraria por descuido e a
+#     decisão 23 seria afrouxada **sem nenhum gate acusar**.
+#   · ⚠️⚠️ **A RAZÃO DO DOCBLOCK É MEDIDA NO GRAFO**, não lida da prosa: quem
+#     chega em `falha` (só `publicando`), quem chega em `publicando` (`aprovado`
+#     e `falha`), e logo o único portão de entrada do ciclo vindo de FORA é
+#     `aprovado`. ➡️ Se o grafo mudar, a asserção cai no MESMO instante em que a
+#     razão deixa de valer. A razão ANTIGA (*"arrastaria a irmã sem ela ter sido
+#     reconferida"*) era FALSA para este estado, e isso está asseverado: ela tem
+#     de aparecer UMA vez, marcada como falsa — deixá-la solta faria o próximo
+#     executor "consertar" a lista de volta.
+#   · ⚠️ **A DECISÃO 23 NÃO FOI AFROUXADA:** os QUATRO estados não-aprovados
+#     (`preparando`, `aguardando_aprovacao`, `em_revisao_ecf`,
+#     `ajustes_solicitados`) são exercitados UM POR UM, de ponta a ponta, e a
+#     isca (+) prova que produto de UM alvo ativo — o único que o agente
+#     encaminha hoje — continua enfileirando.
+#
+# motivo-da-recusa-registrado  (DECISÃO 26)
+#   · ⚠️⚠️ a action do retry roda `enfileirar()` e `tentarDeNovo()` numa
+#     transação SÓ (o que ESTÁ CERTO: elimina por construção "publicando com o
+#     item terminado"), e o `rollback` da recusa **levava embora** a linha de
+#     histórico que explicava o motivo. ➡️ O motivo agora é gravado **FORA** da
+#     transação, no `catch`, pelo MESMO mecanismo das decisões 21, 23 e 24.
+#   · ⚠️⚠️ **FORMA COLETORA, derivada da lista de antes** — nunca contagem de
+#     eventos: o nº de eventos depende de quantas vezes o enfileiramento foi
+#     tentado, e o 193-02 o mediu subindo **26 → 27 sem defeito nenhum**.
+#   · ⚠️ **A TRANSAÇÃO NÃO MUDOU**, e há asserção disso: UMA `DB::transaction(`
+#     no RECORTE DO MÉTODO (ver abaixo), com a gravação em POSIÇÃO posterior ao
+#     `catch`. ⚠️ **E o `422` continua saindo** — o registro acrescenta um canal.
+#   · ⚠️ A de-duplicação segue **contra a ÚLTIMA linha** (item `193-H`): clique
+#     repetido não escreve linha igual, mas o mesmo motivo DEPOIS de outro fato
+#     é informação nova e ENTRA. As duas metades são medidas.
+#   · ⚠️ ISCA (−) obrigatória: no retry que PASSA **não existe** linha de recusa.
+#
+# bijecao-manifesto-261021-01
+#   · método sem id NUNCA RODA (foi o sobrevivente da mutação do 186-03) e id
+#     órfão também nunca roda. Os dois sentidos + a terceira bijeção id ↔
+#     `<verify>` do artefato desta quick.
+#   · ⚠️ EXPANSOR DE ALTERNÂNCIA iscado nas DUAS direções antes de valer: a
+#     regex ingênua `/test_[A-Za-z0-9_]+/` casa ZERO em `test_(a|b|c)` — o furo
+#     que deu `SEM_ID=14` ACUSANDO TRABALHO CORRETO.
+#   · ⚠️ O nome alheio da isca (−) entra por **VARIÁVEL**: escrito como literal,
+#     o texto ganha a FORMA DE DECLARAÇÃO e o gate alheio
+#     `186-09 bijecao-e-homonimo` REPROVA (foi o FURO 1 da wave 193-04).
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ UM FURO ACHADO POR RODAR, E CONSERTADO NA RAIZ (fica registrado aqui
+#     porque é a razão de um helper existir)
+# ═══════════════════════════════════════════════════════════════════════════════
+# A 1ª redação da sonda da transação usava
+#   strstr($limpo, 'public function tentarDeNovo(')
+# que devolve **tudo da assinatura até o FIM DO ARQUIVO** — e `tentarDeNovo`
+# **não é o último método** do controller (vêm `salvarPreco`, `simularPreco`,
+# `conferirAlteracao`, `confirmarFrete`, `previaDoFrete`…). ➡️ Ela contava **3**
+# `DB::transaction(` e acusava *"a transação foi dividida"* **no trabalho
+# correto**: a família *"gate mais largo que o invariante"*, com QUATORZE
+# ocorrências nesta milestone e uma que BARROU UM DEPLOY.
+# ➡️ Conserto: `trechoDoMetodo()` recorta da assinatura até a assinatura
+# SEGUINTE, com isca (+) *"o recorte contém o que é deste método"* e isca (−)
+# *"o recorte NÃO contém o método seguinte"*. ⚠️ O conserto errado seria elevar
+# o esperado de 1 para 3 — número que mudaria sozinho no próximo método que
+# outra sessão acrescentasse ao controller.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️ OS MANIFESTOS ALHEIOS QUE ESTA QUICK **NÃO** MEXEU — e o invariante é
+#     "a contagem não mudou POR MIM", nunca "a contagem é N"
+# ═══════════════════════════════════════════════════════════════════════════════
+#   · `contagens-188-05.txt` — ⚠️⚠️ **NÃO EDITADO, e isso é MEDIÇÃO.** O id
+#     `tentar-de-novo` estava VERMELHO (`EXIT_REAL=1`, `2 failed (2 assertions)`)
+#     e voltou a `2 passed (32 assertions)`, que é EXATAMENTE o valor que o
+#     manifesto já declarava — medido em 19/10/2026, quando aquele gate estava
+#     verde. ➡️ O conserto desta quick é **só de FIXTURE** e acrescenta **ZERO
+#     asserção**, logo o número é idêntico **por construção**. Remedir aqui seria
+#     escrever o mesmo número de volta.
+#   · `contagens-193-04.txt` — ⚠️ **NÃO EDITADO.** O id `retry-republica`
+#     reprovou (`1 failed, 2 passed (44 assertions)`) porque uma asserção daquele
+#     plano media a consequência que a **decisão 26 inverte** — e aquela própria
+#     wave a DEVOLVEU como pergunta `193-04/B`. A troca foi **1 asserção por 1**,
+#     e o id voltou a `3 passed (48 assertions)`, o valor já declarado.
+#   · `contagens-186-04.txt` (`unica-porta` 43 · `oferta-do-portao` 67) —
+#     **IDÊNTICOS**: esta quick **não cria arquivo** em
+#     `app/Services/Publicador/Aprovacao/` (o glob daquele gate, não recursivo).
+#   · `contagens-186-09.txt` (`transversais` 259 · `sem-segundo-passo` 53 ·
+#     `andamento-um-lugar-so` 21 · `bijecao-e-homonimo` 31) — **IDÊNTICOS**.
+#   · `contagens-193-01/02/03.txt` — **IDÊNTICOS** em todos os ids.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 21/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`. Nenhuma foi chutada nem copiada de outra fase.
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO: `--filter=<Classe>` passa dos
+#    120 s do shell deste ambiente e o helper RECUSA filtro de classe. ⚠️ E
+#    alternância GRANDE equivale a filtro de classe (medido no 186-07): por isso
+#    **nenhum id tem mais de TRÊS métodos**.
+#
+# ⚠️ **SUFIXO `_261021_fix` em TODOS os 6 métodos**: o `--filter` do PHPUnit é
+#    regex **NÃO ANCORADO** e as Fases 186/187/188 estão **EM PRODUÇÃO** —
+#    método superstring de um delas faria o id daquela fase SOMAR e reprovar.
+#
+# ⚠️ **NÃO HÁ id `js`**: esta quick não toca `.jsx` nenhum (`numstat` VAZIO em
+#    todo `resources/js/`). A régua é **quem roda, declara** — não *todos
+#    declaram*.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+irma-em-falha-conta  php  test_(a_constante_do_portao_por_igualdade_de_conjunto_e_o_grafo_261021_fix|irma_em_falha_enfileira_e_irma_aguardando_barra_261021_fix|a_decisao_23_segue_barrando_os_quatro_estados_sem_aprovacao_261021_fix)  ::  tests=3 assertions=61
+motivo-da-recusa-registrado  php  test_(a_recusa_do_retry_fica_no_historico_depois_do_rollback_261021_fix|o_retry_que_passa_nao_grava_recusa_e_a_transacao_continua_uma_261021_fix)  ::  tests=2 assertions=41
+bijecao-manifesto-261021-01  php  test_o_manifesto_da_quick_tem_bijecao_e_nenhum_id_orfao_261021_fix  ::  tests=1 assertions=25   # ⚠ CONTAGEM DEPENDENTE DO PROPRIO MANIFESTO, declarada: o caso faz 2 assercoes por id `php` e 1 por metodo do filtro, logo id novo AQUI move este numero. Ela e estavel porque este manifesto pertence SO a esta quick. Se alguem acrescentar id, REMEDIR (medir as duas pontas e colar), nunca ajustar para passar.
