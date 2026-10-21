@@ -101,6 +101,9 @@ final class CriativosAutomaticosService
      */
     public const TIPOS_DA_CAPA = ['hero', 'lifestyle'];
 
+    /** O teto de fotos da galeria do composto: as do conjunto + as da Fase 1 de cada peça (um teto seguro: o limite do ML por item muda com a categoria). */
+    private const MAX_FOTOS_DO_COMPOSTO = 10;
+
     /** O que a automação escreve ou não descreve o produto: fora do hash (como no preparo de texto). */
     private const FORA_DO_HASH = ['MODEL', 'GTIN', 'SELLER_SKU', 'EMPTY_GTIN_REASON'];
 
@@ -305,8 +308,10 @@ final class CriativosAutomaticosService
                 // fotos que o kit herdou da Fase 1 seguem depois.
                 $editor->trocarFotosDoGrupo($r->fresh(), $grupo, [...$ids, ...array_values(array_diff($this->galeriaDoGrupo($r->id, $grupo), $ids))]);
             } elseif ($ids !== []) {
-                // A foto do cliente é só referência: o grupo fica com as imagens do kit.
-                $editor->trocarFotosDoGrupo($r->fresh(), $grupo, $ids);
+                // A foto do cliente é só referência: o grupo fica com as imagens do kit. No composto, depois delas, as
+                // fotos da Fase 1 de cada peça (21/10/2026, o usuário: "capa ambientada e mais imagens do produto, como
+                // detalhes — reutilizar o que foi feito na Fase 1"), como o kit da fase N, que já nasce com elas.
+                $editor->trocarFotosDoGrupo($r->fresh(), $grupo, [...$ids, ...$this->fotosDaFase1DoComposto($r->fresh(), count($ids))]);
             }
             if ($ids !== [] && count($ids) === $prontos->count()) {
                 // Como o "Aprovar kit": fecha o kit só quando TODA imagem pronta entrou.
@@ -556,6 +561,60 @@ final class CriativosAutomaticosService
             }
             $plano['unidades_da_composicao'] = $composicao->total();
             $s->update(['slot_plano' => $plano]);
+        }
+    }
+
+    /**
+     * As fotos da Fase 1 de cada peça do composto, trazidas para o rascunho dele (21/10/2026). Para cada componente, na
+     * ordem da composição: a Fase 1 do produto do Portal no Publicador e, nela, o grupo da cor da peça (sem ele, a
+     * galeria geral), na ordem da galeria — a foto real, a ambientada e o detalhe que já foram feitos lá. Vêm do acervo
+     * da conta, sem cópia de arquivo (`ImagemAssetService::usarDoAcervo`); foto sem ativo no acervo fica de fora.
+     * Respeita o teto de fotos da galeria ({@see self::MAX_FOTOS_DO_COMPOSTO}). Nada disso derruba o `aplicar`.
+     *
+     * @return list<int> ids de `pub_imagens` do rascunho do composto
+     */
+    private function fotosDaFase1DoComposto(PubRascunho $r, int $jaNaGaleria): array
+    {
+        try {
+            $pub = $r->produto;
+            $composicao = ComposicaoDoComposto::doProduto($pub);
+            if ($composicao === null) {
+                return [];
+            }
+            $acervo = app(\App\Services\Publicador\ImagemAssetService::class);
+            $saida = [];
+            $vagas = self::MAX_FOTOS_DO_COMPOSTO - $jaNaGaleria;
+            foreach ($composicao->itens as $item) {
+                if ($item['produto_id'] === null || $vagas <= count($saida)) {
+                    continue;
+                }
+                $fase1 = PubProduto::query()->where('company_id', $pub->company_id)->where('estrutura_produto_id', $item['produto_id'])
+                    ->whereNull('produto_base_id')->first();
+                $rf = $fase1?->rascunho;
+                if ($rf === null) {
+                    continue;
+                }
+                $cor = self::normalizarCor($item['cor']);
+                $grupos = $this->referencias->gruposComRotulo($rf);
+                $grupo = collect(array_keys($grupos))->first(fn ($k) => $k !== ResolvedorGruposImagem::GERAL && $cor !== ''
+                    && self::normalizarCor($grupos[$k]['rotulo']) === $cor) ?? ResolvedorGruposImagem::GERAL;
+                foreach ($this->galeriaDoGrupo($rf->id, $grupo) as $imagemId) {
+                    $ativo = PubImagem::query()->find($imagemId)?->acervoImagem;
+                    if ($ativo === null || $vagas <= count($saida)) {
+                        continue;
+                    }
+                    $id = (int) $acervo->usarDoAcervo($r, $ativo)['imagem']->id;
+                    if (! in_array($id, $saida, true)) {
+                        $saida[] = $id;
+                    }
+                }
+            }
+
+            return $saida;
+        } catch (\Throwable $e) {
+            Log::warning("[Creative] Imagens automáticas: as fotos da Fase 1 não entraram no composto (rascunho {$r->id}): {$e->getMessage()}");
+
+            return [];
         }
     }
 

@@ -1830,3 +1830,15 @@ Por isso passou pelo regime da Fase 1, e três coisas saíram erradas — todas 
 
 E a capa de kit (fase N e composto) em MÓVEL abre com a AMBIENTADA (o usuário: "deveria ser assim porém ambientada"),
 a mesma regra da Fase 1. `ComposicaoDoComposto` é o lugar único dessas contas.
+
+**Segunda rodada do teste (21/10/2026):**
+- **"A categoria mudou no Mercado Livre desde o rascunho" (V-CAT-03) no Kit N recém-criado:** o ML mudou a ficha de
+  Poltronas em 20/10, e o clone copiava o `schema_hash` do BASE (de antes). Agora o kit nasce com o hash do schema de
+  hoje (`CriarFaseService`); os campos já são validados contra o schema de hoje, então o que faltar aparece campo a
+  campo. O V-CAT-03 continua valendo para o rascunho que de fato foi preenchido antes da mudança.
+- **«Cor» obrigatório no composto:** variante única, e a cor de cada peça mora na variação do Portal. A Cor sai das
+  cores da composição, sem IA ("Bordô e Cinza"; "Unica"/"Padrão" não contam) — `ComposicaoDoComposto::textoDaCor`.
+- **V-ATT-09** ("Confira «X»: o valor foi sugerido ou veio de outra categoria") **saiu** a pedido do usuário. A marca
+  `revisar` do valor fica no rascunho.
+- **Galeria do composto:** depois das duas imagens do conjunto, entram as fotos da Fase 1 de cada peça (o grupo da cor
+  dela), do acervo da conta, sem cópia — como o Kit N, que já nasce com as fotos da Fase 1 depois da capa.

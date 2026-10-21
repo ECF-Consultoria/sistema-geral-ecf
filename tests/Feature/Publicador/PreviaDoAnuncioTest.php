@@ -174,9 +174,10 @@ class PreviaDoAnuncioTest extends TestCase
         $this->assertSame('o preço do Portal foi calculado sem frete', $premium['sem_promocao']);
         $this->assertSame(['sem_promocao' => ['vezes' => 9, 'valor' => 25.61], 'com_promocao' => null], $premium['parcelas']);
 
-        // Fotos na ordem do plano: o Premium começa pela 2ª (D6, a capa não se repete).
+        // Fotos na ordem do plano. 21/10/2026: o produto é o Combo 3 do Portal (um composto, CAD-01-CB3) — é kit, e a capa
+        // de kit é a MESMA no Clássico e no Premium (sem a rotação D6, que vale para o produto de 1 unidade).
         $this->assertSame([$capa, $lado], array_column($classico['fotos'], 'id'));
-        $this->assertSame([$lado, $capa], array_column($premium['fotos'], 'id'));
+        $this->assertSame([$capa, $lado], array_column($premium['fotos'], 'id'));
         $this->assertStringStartsWith('https://http2.mlstatic.com/', $classico['fotos'][0]['url']);
         $this->assertTrue($classico['fotos'][0]['no_ml']);
 

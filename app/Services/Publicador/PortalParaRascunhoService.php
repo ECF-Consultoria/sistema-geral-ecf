@@ -332,7 +332,10 @@ class PortalParaRascunhoService
         // de imagens desenhou uma poltrona por imagem. Produtos diferentes (mesa + cadeiras): só peças e unidades.
         $composicao = ComposicaoDoComposto::doProduto($produto);
         $doKit = $composicao !== null && $composicao->total() >= 2
-            ? ['quantidade' => $composicao->total(), 'campos' => $composicao->mesmoProduto() ? QuantidadesDoKit::CAMPOS : ['PIECES_NUMBER', 'UNITS_PER_PACK']]
+            ? ['quantidade' => $composicao->total(), 'campos' => $composicao->mesmoProduto() ? QuantidadesDoKit::CAMPOS : ['PIECES_NUMBER', 'UNITS_PER_PACK'],
+                // A Cor (21/10/2026): o composto é de variante única, e a cor de cada peça mora na variação do Portal — ninguém
+                // a preenchia ("«Cor» é obrigatório"). Sai das cores da composição, sem IA: "Bordô e Cinza".
+                'cor' => $composicao->textoDaCor()]
             : null;
         if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo, $doKit)) {
             return $this->parou($resumo);
@@ -612,6 +615,20 @@ class PortalParaRascunhoService
                     $valor = $this->valorDoKit($r, $id, $valor, $doKit['quantidade']);
                 }
                 $this->decidir($id, $atual, $valor, $novos, $remover, $resumo);
+            }
+
+            // A Cor do kit, das cores da composição (o composto não tem eixo: a cor é do produto).
+            $corDoKit = trim((string) ($doKit['cor'] ?? ''));
+            $defCor = $schema->atributo('COLOR');
+            if ($corDoKit !== '' && $defCor !== null && $snap->eixos === [] && ! $this->daEquipe($snap->atributos['COLOR'] ?? null)) {
+                $res = PortalValorDeAtributo::resolver($defCor, ['valor' => $corDoKit]);
+                if ($res['aviso'] !== null) {
+                    $resumo['avisos'][] = $res['aviso'];
+                }
+                if ($res['valor'] !== null) {
+                    $noPortal['COLOR'] = true;
+                    $this->decidir('COLOR', $snap->atributos['COLOR'] ?? null, $res['valor'], $novos, $remover, $resumo);
+                }
             }
 
             // O campo de quantidade que a categoria tem e a peça nunca preencheu: no kit ele é o total.

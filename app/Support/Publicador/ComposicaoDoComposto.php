@@ -65,12 +65,41 @@ final class ComposicaoDoComposto
         return array_sum(array_column($this->itens, 'quantidade'));
     }
 
-    /** Um produto só (em uma ou mais cores) — e não produtos diferentes, como mesa + cadeiras. */
+    /**
+     * Um produto só (em uma ou mais cores) — e não produtos diferentes, como mesa + cadeiras. Um componente só (o combo:
+     * N do mesmo item) é sempre um produto só, tenha ou não produto do Portal por trás.
+     */
     public function mesmoProduto(): bool
     {
-        $produtos = array_unique(array_column($this->itens, 'produto_id'));
+        if (count($this->itens) === 1) {
+            return true;
+        }
+        $produtos = array_values(array_unique(array_column($this->itens, 'produto_id')));
 
         return count($produtos) === 1 && $produtos[0] !== null;
+    }
+
+    /** O que a variação chama de cor quando não tem cor nenhuma: não entra na Cor do kit. */
+    private const SEM_COR = ['unica', 'única', 'padrao', 'padrão', 'sem cor', 'u', '-'];
+
+    /** As cores do kit, sem repetir, na ordem da composição ("Bordô", "Cinza"). */
+    public function cores(): array
+    {
+        $cores = [];
+        foreach ($this->itens as $i) {
+            $cor = trim((string) $i['cor']);
+            if ($cor !== '' && ! in_array(mb_strtolower($cor), self::SEM_COR, true) && ! in_array($cor, $cores, true)) {
+                $cores[] = $cor;
+            }
+        }
+
+        return $cores;
+    }
+
+    /** A Cor do anúncio do kit: "Cinza", "Bordô e Cinza" — vazio sem cor nenhuma. */
+    public function textoDaCor(): string
+    {
+        return self::juntar($this->cores());
     }
 
     /** "1 Poltrona Decorativa Opala Cinza e 1 Poltrona Decorativa Opala Bordô". */

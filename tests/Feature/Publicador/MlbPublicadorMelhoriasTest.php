@@ -404,7 +404,8 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $maximo = (int) (self::schema(self::CADEIRA)->settings()['max_title_length'] ?? 60);
         $this->assertLessThanOrEqual($maximo, mb_strlen($valor));
         $this->assertDoesNotMatchRegularExpression('/[()\-]/', $valor);
-        $this->assertStringStartsWith('Cadeira Escritório Giratória Ergonômica', $valor);
+        // 21/10/2026: o produto é o Combo 3 do Portal (composto, CAD-01-CB3): o título de kit começa por "Kit 3".
+        $this->assertStringStartsWith('Kit 3 Cadeira Escritório Giratória Ergonômica', $valor);
         $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
         $this->assertStringContainsString('priorize', $prompt, 'os termos escolhidos na tela vão para a IA');
     }

@@ -435,7 +435,8 @@ class ValidadorRascunhoTest extends TestCase
     {
         $r = self::completo(['atributos' => [...self::completo()->atributos, 'MODEL' => ['value_name' => 'Executiva', 'origem' => 'migrated', 'revisar' => true]]]);
 
-        $this->assertContains('V-ATT-09', self::regras(self::validar($r), Problema::AVISO));
+        // 21/10/2026: o aviso V-ATT-09 saiu (o usuário: "tira isso, não faz sentido"); o valor marcado não vira aviso.
+        $this->assertNotContains('V-ATT-09', self::regras(self::validar($r), Problema::AVISO));
     }
 
     public function test_problemas_agrupados_por_etapa(): void

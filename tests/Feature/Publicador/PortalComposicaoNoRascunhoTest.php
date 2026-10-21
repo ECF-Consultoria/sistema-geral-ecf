@@ -214,6 +214,7 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $s = $this->snap($pub);
         $this->assertSame('2', $s->atributos['UNITS_PER_PACK']['value_name'] ?? null, 'a categoria tem o campo e a peça não o preencheu: no kit, o total');
         $this->assertSame(2, $s->unidadesPorOferta, 'a capa do kit não alterna entre Clássico e Premium');
+        $this->assertSame('Cinza e Bordô', $s->atributos['COLOR']['value_name'] ?? null, 'a Cor do kit sai das cores da composição, sem IA');
         $c = ComposicaoDoComposto::doProduto($pub->fresh());
         $this->assertSame(2, $c->total());
         $this->assertTrue($c->mesmoProduto());
@@ -239,6 +240,8 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $this->assertSame('Kit', $c->prefixoDoTitulo());
         $this->assertSame('Kit 4 Cadeira + Mesa', $c->nomeDoKit());
         $this->assertSame(5, $pub->fresh()->unidadesDaOferta());
+        $this->assertSame([], $c->cores(), '"Unica" não é cor');
+        $this->assertSame('', $c->textoDaCor());
         $avulso = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'AVULSO', 'nome' => 'Avulso', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
         $this->assertNull(ComposicaoDoComposto::doProduto($avulso), 'produto que não é composto');
         $this->assertSame(1, $avulso->unidadesDaOferta());

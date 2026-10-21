@@ -495,6 +495,21 @@ class CriativosAutomaticosTest extends TestCase
         }
         $this->assertStringStartsWith('Cadeira isolada em fundo branco. Mostre JUNTAS', $planos[0]['cena'], 'o enquadramento do slot fica; a composição vem depois');
         $this->assertStringStartsWith('Cadeira numa sala clara. Mostre JUNTAS', $planos[1]['cena']);
+
+        // 21/10/2026 — prontas e aprovadas, as do conjunto abrem a galeria e as fotos da Fase 1 da peça vêm depois (do
+        // acervo da conta, sem cópia de arquivo): "capa ambientada e mais imagens do produto, como detalhes".
+        $daFase1 = PubImagem::query()->where('rascunho_id', $r->id)->orderBy('id')->firstOrFail();
+        $ativo = \App\Models\AcervoImagem::create(['company_id' => $this->empresa->id, 'dono_chave' => 'company-'.$this->empresa->id, 'disco' => 'local',
+            'caminho' => $daFase1->caminho, 'sha256' => $daFase1->sha256, 'mime' => 'image/jpeg', 'bytes' => (int) $daFase1->bytes, 'origem' => 'upload']);
+        $daFase1->update(['acervo_imagem_id' => $ativo->id]);
+        MlAnuncioCriativo::query()->where('kit_id', $kit->id)->delete();
+        $this->slotsProntos($kit->fresh(), ['hero', 'lifestyle'], ['aprovada', 'aprovada'], ['unidades_da_composicao' => 2]);
+        $this->assertSame('aplicado:2', $this->servico()->aplicar($kit->id));
+        $galeria = $this->galeria($rc);
+        $this->assertSame([$this->imagemDoSlot($kit, 'hero'), $this->imagemDoSlot($kit, 'lifestyle')], array_slice($galeria, 0, 2));
+        $this->assertCount(3, $galeria, 'a foto da Fase 1 da peça entra depois das do conjunto');
+        // O composto já tinha a cópia da foto (mesmo sha256): ela é reaproveitada, sem linha nova.
+        $this->assertSame($daFase1->sha256, PubImagem::query()->findOrFail($galeria[2])->sha256, 'a foto da Fase 1 da peça');
     }
 
     /** Capa reprovada pelo juiz: o kit da fase segue com as fotos da Fase 1, e o kit fecha com o motivo. */

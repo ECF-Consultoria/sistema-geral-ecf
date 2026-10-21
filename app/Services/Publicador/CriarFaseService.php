@@ -329,9 +329,12 @@ class CriarFaseService
 
             // Conteúdo copiado do base.
             'categoria_id' => $base->categoria_id,
-            // Sem estes dois o kit renegocia o schema da categoria na primeira abertura.
+            // Sem estes dois o kit renegocia o schema da categoria na primeira abertura. O hash é o do schema de HOJE
+            // (21/10/2026): o do base pode ser de antes de o ML mudar a ficha da categoria, e o kit que acabou de nascer
+            // abria com o V-CAT-03 ("A categoria mudou no Mercado Livre desde o rascunho") — os campos do kit são
+            // validados contra o schema de hoje de qualquer jeito, então o que de fato faltar aparece campo a campo.
             'dominio_id' => $base->dominio_id,
-            'schema_hash' => $base->schema_hash,
+            'schema_hash' => MlCategoriaSchema::query()->whereKey($base->categoria_id)->value('schema_hash') ?? $base->schema_hash,
             'condicao' => $base->condicao,
             'envio' => $base->envio,
             'garantia' => $base->garantia,

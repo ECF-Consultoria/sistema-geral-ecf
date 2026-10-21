@@ -130,9 +130,8 @@ final class ValidadorRascunho
                 if ($prob = ValorAtributo::problema($a, $valor)) {
                     $this->p[] = Problema::bloqueio($prob['regra'], $prob['mensagem'], $alvo, 'L1');
                 }
-                if (! empty($valor['revisar'])) {
-                    $this->p[] = Problema::aviso('V-ATT-09', "Confira «{$a->nome}»: o valor foi sugerido ou veio de outra categoria.", $alvo);
-                }
+                // O V-ATT-09 ("Confira «X»: o valor foi sugerido ou veio de outra categoria") saiu em 21/10/2026 — o usuário:
+                // "tira isso, não faz sentido". A marca `revisar` do valor continua no rascunho; só não vira aviso.
 
                 continue;
             }

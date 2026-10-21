@@ -90,6 +90,23 @@ class CriarFaseCloneTest extends TestCase
 
     // ═══ As fotos ════════════════════════════════════════════════════════════
 
+    /**
+     * 21/10/2026 — o kit nasce com o hash do schema de HOJE da categoria (o do base pode ser de antes de o ML mudar a
+     * ficha): sem isso, a fase recém-criada abria com o V-CAT-03. Sem schema guardado, fica o do base.
+     */
+    public function test_kit_nasce_com_o_schema_de_hoje_da_categoria(): void
+    {
+        [$base] = $this->baseCheio();
+        $kit = $this->servico()->criar($base->fresh(), $this->dados(2));
+        $this->assertSame(str_repeat('b', 64), $kit->rascunho->schema_hash, 'sem schema guardado: o do base');
+
+        \App\Models\MlCategoriaSchema::query()->insert(['category_id' => 'MLB1234', 'domain_id' => 'MLB-CHAIRS', 'categoria' => json_encode([]),
+            'atributos' => json_encode([]), 'technical_specs' => json_encode([]), 'sale_terms' => json_encode([]), 'schema_hash' => str_repeat('c', 64),
+            'fetched_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $kit3 = $this->servico()->criar($base->fresh(), $this->dados(3));
+        $this->assertSame(str_repeat('c', 64), $kit3->rascunho->schema_hash);
+    }
+
     public function test_foto_do_kit_tem_caminho_proprio_com_os_mesmos_bytes_e_os_ids_do_ml(): void
     {
         [$base, $fotos] = $this->baseCheio();
