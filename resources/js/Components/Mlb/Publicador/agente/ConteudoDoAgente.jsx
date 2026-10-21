@@ -212,7 +212,7 @@ function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
                 <input type="checkbox" checked={form.habilitado} onChange={campo('habilitado')} />
                 Ligar o agente nesta loja
             </label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
                 <label className="text-[12px] text-pub-txt-3">
                     Modalidade que ele prepara
                     <select value={form.modalidade} onChange={campo('modalidade')} className={entrada}>
@@ -262,6 +262,8 @@ export default function ConteudoDoAgente({ agente, produtos = [], processando = 
     const emCurso = fila.filter((e) => ['admitida', 'preparando', 'bloqueada'].includes(e?.estado));
     const [produtoId, setProdutoId] = useState('');
     const ligado = Boolean(configuracao?.existe && configuracao?.habilitado);
+    // Pausado/suspenso o servidor recusa o "Preparar agora" (AG-01-CONTROLE): o botão não promete o que não faz.
+    const ativo = ligado && configuracao?.controle === 'ativo';
 
     return (
         <div className="space-y-5">
@@ -317,23 +319,24 @@ export default function ConteudoDoAgente({ agente, produtos = [], processando = 
                             ))}
                         </select>
                     </label>
-                    <Botao principal disabled={processando || !ligado || produtoId === ''} onClick={() => onExecutar?.(Number(produtoId))}>
+                    <Botao principal disabled={processando || !ativo || produtoId === ''} onClick={() => onExecutar?.(Number(produtoId))}>
                         Preparar agora
                     </Botao>
                     {!ligado && <span className="text-[12px] text-pub-txt-4">Ligue o agente na configuração para preparar.</span>}
+                    {ligado && !ativo && <span className="text-[12px] text-pub-txt-4">Retome o agente para preparar.</span>}
                 </div>
                 <TabelaDeExecucoes linhas={emCurso} vazio="Nada em preparo nem esperando dados agora." />
             </Cartao>
 
-            <div className="grid grid-cols-[minmax(0,1fr)_380px] gap-5">
-                <Cartao titulo="Atividade">
-                    <p className="mt-1 text-[12px] text-pub-txt-3">Os {fila.length} registros mais recentes desta loja.</p>
-                    <TabelaDeExecucoes linhas={fila} vazio="O agente ainda não fez nada nesta loja." />
-                </Cartao>
-                <Cartao titulo="Configuração essencial">
-                    <FormularioDaConfiguracao configuracao={configuracao} processando={processando} onSalvar={onSalvar} />
-                </Cartao>
-            </div>
+            {/* Largura toda nos dois: a tabela da Atividade tem 6 colunas e o motivo é texto longo — numa coluna
+                estreita ao lado do formulário ela cortava o motivo (visto no screenshot de 20/10/2026). */}
+            <Cartao titulo="Configuração essencial">
+                <FormularioDaConfiguracao configuracao={configuracao} processando={processando} onSalvar={onSalvar} />
+            </Cartao>
+            <Cartao titulo="Atividade">
+                <p className="mt-1 text-[12px] text-pub-txt-3">Os {fila.length} registros mais recentes desta loja.</p>
+                <TabelaDeExecucoes linhas={fila} vazio="O agente ainda não fez nada nesta loja." />
+            </Cartao>
         </div>
     );
 }

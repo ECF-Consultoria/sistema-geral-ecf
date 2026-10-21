@@ -22,3 +22,13 @@ status: complete
 **Gate da Fase 186 que cobrou a tela (e a resposta certa):** `FechamentoDaFase186Test::test_a_escrita_de_andamento_mora_num_lugar_so_em_app_inteiro_com_isca` acusou `LeituraDoAgente` como escritor de `andamento` — falso positivo (a sonda larga casa `'andamento' =>` em array de SAÍDA). Entrou na lista de EXPOSITORES com prova (o próprio laço exige que case a sonda e não tenha nenhuma forma de escrita), sem renomear a chave e sem afrouxar a sonda. `contagens-186-09.txt` REMEDIDO: `andamento-um-lugar-so` 20→21 e `transversais` 258→259 (o +1 é o `assertFileExists` por expositor, já documentado no manifesto); `verificar-testes.sh 186-09` passou nos dois.
 
 **Suíte PHP do Publicador inteira (antes deste ajuste):** 1972 passaram, 2 falharam — a do gate acima (resolvida) e `CapaDoKitTest::capa_cria_o_kit_de_criativos_com_a_copia_da_foto_do_proprio_kit`, que passa 15/15 isolada: dependência de ordem na suíte completa, sem relação com o agente (registrada, não investigada).
+
+## Conferido no navegador (20/10/2026, depois do fechamento)
+
+App local pelo Apache do XAMPP + MariaDB, headless (puppeteer do projeto), logado com um admin TEMPORÁRIO, na conta `company-24` (redirecionou para a canônica `empresa-5`, como deve). Três estados: desligado; ligado com fila (uma execução `preparando` e três `bloqueada` com os motivos REAIS da elegibilidade sobre os produtos de demonstração do banco local); pausado. Nenhum erro de JS no console (os 404 são ícones quebrados da barra lateral, do layout geral).
+
+Dois defeitos achados no screenshot e corrigidos: (1) a Atividade numa coluna estreita ao lado do formulário cortava a coluna Motivo → Configuração e Atividade em largura total, formulário em 3 colunas; (2) pausado, o "Preparar agora" parecia disponível e o servidor recusaria → só habilita com o agente ligado E ativo, com "Retome o agente para preparar." (teste novo no render: 6/6).
+
+Ambiente local, achado de passagem (NÃO é do agente): `npm run build` lê o `.env.production` e grava a `ASSET_URL` de produção no bundle — localmente as páginas carregadas sob demanda vêm de `admin.ecfconsultoria.com.br` e o navegador barra por CORS. Para olhar no XAMPP usei `npx vite build --mode development`. O `public/build` não é versionado e a VPS faz o próprio build, então o deploy não é afetado.
+
+Dados descartáveis (admin temporário, configuração e execuções da `empresa-5`) apagados e reconferidos: 0 linhas.

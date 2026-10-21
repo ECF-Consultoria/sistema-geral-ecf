@@ -139,6 +139,20 @@ test('ConteudoDoAgente: loja desligada não oferece pausar nem preparar', async 
     assert.match(html, /Ainda não configurado/);
 });
 
+test('ConteudoDoAgente: pausado oferece Retomar e não promete o Preparar agora', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, controle: 'pausado', motivo_controle: 'Conferindo as fotos.' } },
+        produtos: [{ id: 10, nome: 'Cadeira Executiva', sku: 'CAD-AZ' }],
+    }));
+
+    assert.match(html, />Pausado</);
+    assert.match(html, />Retomar</);
+    assert.doesNotMatch(html, />Pausar</);
+    assert.match(html, /Motivo: Conferindo as fotos\./);
+    assert.match(html, /Retome o agente para preparar\./);
+});
+
 test('ConteudoDoAgente: lixo nas props não derruba a tela', async () => {
     const { default: ConteudoDoAgente } = await montar(CONTEUDO);
     for (const agente of [null, undefined, {}, { configuracao: null, contadores: 'x', fila: 'nao-e-lista' },
