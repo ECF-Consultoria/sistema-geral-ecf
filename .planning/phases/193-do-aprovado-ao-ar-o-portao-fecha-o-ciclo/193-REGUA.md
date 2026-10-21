@@ -456,12 +456,44 @@ decidir se a fila atualiza sozinha.
 | o que falta | medição |
 |---|---|
 | navegador | não há |
-| banco local | ⚠️ `tasklist \| grep mysqld` → **vazio** (MariaDB **parado**; já esteve corrompido) |
+| banco local | ⚠️⚠️ **CORRIGIDO EM 21/10/2026 — esta linha ficou FALSA: o MariaDB local está DE PÉ** (PID **30496**, ligado por **outra sessão** às 21:45 a pedido do usuário). ⚠️ **E ele NÃO afeta nenhuma medição:** `phpunit.xml:27-28` fixa `DB_CONNECTION=sqlite` e `DB_DATABASE=:memory:`, então **a suíte não toca o MariaDB** — o `.env` aponta para `mysql` só para a **aplicação**. ➡️ **Se uma baseline divergir, a causa NÃO é o banco ter subido:** é commit alheio, ou **concorrência de suíte**. ⚠️ Ele já esteve **corrompido** uma vez. |
 | empresa com `ml_token` | nenhuma → a rota dá **404** |
 | `pub_aprovacao_ofertas` | **VAZIA** |
 | quem cria oferta | ⚠️⚠️ **CORRIGIDO EM 21/10/2026 — esta linha ficou FALSA.** **`app/Services/Publicador/Agente/PreparadorDaAprovacao.php:148` chama `PubAprovacaoOferta::create([…])`** (quick `261020-oeg`, de **outra sessão**) — é o **primeiro código de produção que CRIA oferta**, com `origem` automática e andamento **só via `AndamentoDaOfertaService::mover()`**. ⚠️ **Nenhuma loja tem o agente ligado, então `pub_aprovacao_ofertas` SEGUE VAZIA em produção.** ➡️ **Consequência para o critério 10: ele passa a ser executável depois do PILOTO DO AGENTE, não só depois da Fase 194** — e isso **antecipa** a prova de ponta a ponta. ⚠️ **O `193-05-PLAN.md:201-202` repete a afirmação antiga e NÃO foi editado** (plano é artefato do planejador): **esta linha o SUPERSEDE**, e quem executar o 193-05 recebe o aviso no briefing. |
 
 ➡️ **A prova desta fase é TESTE com `Http::fake` + `preventStrayRequests()`**, nunca tela.
+
+### ⚠️⚠️ IDS QUE TODA VARREDURA DE REGRESSÃO DESTA FASE TEM DE RODAR — porque um deles É ÓRFÃO
+
+> ⚠️⚠️ **ACHADO DO FECHAMENTO (`193-05`) E CONFERIDO PELO ORQUESTRADOR EM 21/10/2026.** Dos **22** ids
+> declarados nos cinco manifestos da fase, **18 são invocados por algum `<verify>` de plano e QUATRO NÃO SÃO.**
+> ➡️ **Id declarado que nenhum plano invoca é a versão invertida do defeito que esta milestone persegue:** *"teste
+> sem id nunca roda"* → aqui, **id sem invocação nunca roda**. **Ele não falha — ele simplesmente não acontece.**
+>
+> | id órfão | manifesto | o que ele protege | gravidade |
+> |---|---|---|---|
+> | **`guarda-modalidade-irma`** | `contagens-193-02.txt` | ⚠️⚠️ **A GUARDA DA DECISÃO 23 DO USUÁRIO** — que aprovar **uma** modalidade não enfileira o produto, impedindo que a irmã **não revisada** vá ao ar | ⚠️⚠️ **ALTA: é gate de COMPORTAMENTO, e de uma decisão do usuário** |
+> | `bijecao-manifesto-193-02` | idem | a bijeição do próprio manifesto | baixa (escrituração) |
+> | `bijecao-manifesto-193-03` | `contagens-193-03.txt` | idem | baixa |
+> | `bijecao-manifesto-193-04` | `contagens-193-04.txt` | idem | baixa |
+>
+> ⚠️ **MEDIDO: o `guarda-modalidade-irma` FUNCIONA** — `verificar-testes.sh 193-02 guarda-modalidade-irma` sai
+> **`exit 0`, `PASSOU`**. O problema **não é o gate**; é que **ninguém o chama**.
+>
+> ➡️⚠️ **QUEM FIZER VARREDURA DE REGRESSÃO NESTA ÁREA — e a Fase 194 vai fazer, porque é ela que cria a
+> primeira oferta — TEM DE RODAR ESTES QUATRO à MÃO**, em especial o primeiro:
+>
+> ```
+> sh tests/gates/verificar-testes.sh 193-02 guarda-modalidade-irma
+> sh tests/gates/verificar-testes.sh 193-02 bijecao-manifesto-193-02
+> sh tests/gates/verificar-testes.sh 193-03 bijecao-manifesto-193-03
+> sh tests/gates/verificar-testes.sh 193-04 bijecao-manifesto-193-04
+> ```
+>
+> ⚠️ **Os planos NÃO foram editados para corrigir isso** — são artefatos de uma fase **FECHADA**, e mexer neles
+> reescreveria o registro do que foi planejado. **A régua é o lugar certo**, porque é o que os executores leem.
+> ⚠️ **E a lição para quem planejar as Fases 194 e 192: todo id declarado precisa de um `<verify>` que o invoque,**
+> **e a bijeção id ↔ `<verify>` tem de ser uma das provas do plano** — não só a bijeção id ↔ método.
 
 ### ⚠️⚠️ AS DECISÕES DO USUÁRIO QUE MANDAM NESTA FASE — e ONDE elas moram
 

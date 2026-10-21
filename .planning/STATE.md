@@ -4686,3 +4686,149 @@ cenário ruim seria um deploy PARCIAL que levasse o produtor sem o conserto.**
 
 **189 ✅ → 193 (planejada, 5 planos) → 194 → 192 (última).** As **190 e 191** estão **⛔ fora de escopo**.
 ⚠️ **O `193-01` tem portão de entrada que PARA se a 189 não estiver fechada** — agora está.
+
+---
+
+## ✅ FASE 193 FECHADA — 21/10/2026 · `PLACAR-193: OK=9 · RESSALVA=1 · REPROVA=0`
+
+**5 planos + a quick `261021-fix`.** `193-FECHAMENTO.md` (1055 l.), `193-05-SUMMARY.md` (617 l.),
+`deferred-items.md` (227 l.), `FechamentoDaFase193Test.php` (1356 l.). **O portão fecha o ciclo: aprovar
+enfileira, `publicando` bloqueia edição, `publicado` só com MLB confirmado, e a falha preserva a revisão.**
+⚠️ **NÃO DEPLOYADA.**
+
+**Baselines no fechamento** (HEAD nas duas pontas, isolamento provado por **linha de comando**): BUILD
+**exit 0 / 98 s** · MANIFEST **500 / 204** · JS **6031 / 6030 pass / 1 fail / 0 skipped** · PHP **RECORTE
+2702 / 25.119 / 0** · protótipo **1432 l. / `68624883ce35547e`**. **Δ PHP +10 EXATO** = os 10 métodos do
+fechamento, por `--diff-filter=A`. ⚠️ **A suíte PHP completa segue NÃO MEDÍVEL nesta máquina.**
+
+### ⚠️⚠️ O ACHADO QUE VALE MAIS QUE QUALQUER CRITÉRIO
+
+**A SUÍTE COMPLETA pegou uma regressão do próprio fechamento que NENHUM dos 4 ids dele pegaria**, porque o
+invariante violado era **de outra wave**: o docblock **citava o literal de declaração** da isca da wave 03, e o
+varredor dela lê **TEXTO CRU, comentário incluído**. ⚠️ **É o furo da wave 04 AO CONTRÁRIO** — lá numa
+asserção, aqui na **PROSA**.
+
+➡️ **A regra *"o nome alheio entra por VARIÁVEL"* vale para COMENTÁRIO também.** Custo: **1122 s de suíte
+descartados**. ⚠️ ***"Rode a suíte completa" não é formalidade.***
+
+⚠️ **E um achado de QUARTA ordem:** o gate **reprovou o próprio fechamento DUAS vezes** — ao **descrever** a
+mutação e depois ao **citar a mensagem de erro do gate**. ⚠️ **Aqui o GATE está certo e a PROSA se adapta**
+(abrir exceção para "a tabela de mutação" seria porta dos fundos). **A distinção é a lição:** prosa que
+**CITA** o literal para explicar o acerto → *ler sem comentário*; prosa que **AFIRMA** a coisa proibida →
+*não afirmar* — **e markdown não tem comentário.**
+
+### ⚠️⚠️ ID ÓRFÃO: um gate que FUNCIONA e que NINGUÉM CHAMA — e ele protege uma DECISÃO DO USUÁRIO
+
+Dos **22** ids declarados nos cinco manifestos da fase, **18 são invocados por `<verify>` de plano e QUATRO
+NÃO SÃO** (conferido pelo orquestrador por `comm` entre os declarados e os invocados).
+
+➡️ **É a versão INVERTIDA do defeito que esta milestone persegue:** *"teste sem id nunca roda"* → aqui,
+**id sem invocação nunca roda**. **Ele não falha — ele simplesmente não acontece.**
+
+⚠️⚠️ **E o pior dos quatro é COMPORTAMENTAL: `guarda-modalidade-irma`** — o gate da **decisão 23**, que
+impede que aprovar **uma** modalidade mande ao ar a irmã **não revisada**. **Medido: ele FUNCIONA** (`exit 0`,
+`PASSOU`). **O problema não é o gate; é que ninguém o chama.** Os outros três são bijeções do próprio
+manifesto (escrituração, gravidade baixa).
+
+➡️ **Conserto escolhido: a lista dos quatro foi escrita na `193-REGUA.md`**, com os comandos e a razão.
+⚠️ **Os PLANOS não foram editados** — são artefatos de uma fase **fechada**, e mexer neles reescreveria o
+registro do que foi planejado. **A régua é o lugar certo, porque é o que os executores leem.**
+⚠️⚠️ **LIÇÃO PARA QUEM PLANEJAR AS FASES 194 E 192: a bijeção `id ↔ <verify>` tem de ser UMA DAS PROVAS DO
+PLANO — não só a bijeção `id ↔ método`.** As waves provaram a segunda com rigor e **a primeira ninguém
+provava.**
+
+### O CRIT-04 foi o único que exigiu julgamento — e saiu OK, não "OK com ressalva"
+
+O critério original (20/10) dizia *"'Tentar de novo' muda direto para `publicando`"*. As **decisões
+21/23/25/26 vieram DEPOIS** e refinaram: quando a fila **recusa**, o retry **não move** (`422` + motivo no
+histórico). ➡️ **OK com o refinamento escrito** — não `OK com ressalva` (**que a forma fixa PROÍBE**) e não
+RESSALVA, porque **não há entrega faltando nem dono pendente**: a autoridade são as decisões do usuário,
+registradas no ROADMAP. ⚠️ **A alternativa — mover mesmo com a fila recusando — produziria `publicando`
+ligado a item terminado: flapping com a edição bloqueada.**
+
+### ⚠️ O CRIT-10 é a única RESSALVA, e a razão dele MUDOU — para melhor
+
+A prova de ponta a ponta é **impossível nesta máquina**: sem navegador, nenhuma empresa com `ml_token`
+(**404**), `pub_aprovacao_ofertas` **vazia em produção**, **sem deploy autorizado**.
+
+⚠️⚠️ **MAS ela deixou de depender só da Fase 194:** basta o **PILOTO DO AGENTE**, porque
+`app/Services/Publicador/Agente/PreparadorDaAprovacao.php:148` (**outra sessão**) **já cria oferta**.
+➡️ **Isso ANTECIPA a prova.** ⚠️ **Nenhuma loja tem o agente ligado, então a tabela segue vazia em produção.**
+
+### Mutação na fase: **45**, com **3 sobreviventes — DUAS eram furo REAL**
+
+| wave | mutações | sobreviventes |
+|---|---|---|
+| 193-01 | **0** (declarado: nada de produção para mutar) | — |
+| 193-02 | 5 | **2, as duas furo REAL** |
+| 193-03 | 13 | 0 |
+| 193-04 | 9 | 0 |
+| `261021-fix` | 9 | 0 |
+| 193-05 | 9 | **3** |
+
+**Os dois furos reais do fechamento:** uma sonda `/dono:\s*\S/` casava **`dono:` NO MEIO DA PALAVRA**, logo
+**uma RESSALVA SEM DONO passaria** escrita como `sem-dono:` — consertada com borda à esquerda **e o hífen na
+classe de exclusão**; e um **piso `>= 20` com 32 alvos**, em que apagar um deixava 31 — trocado por **tamanho
+EXATO + subconjunto CRÍTICO**. ⚠️ **O terceiro "sobrevivente" era ERRO DE MEDIÇÃO do próprio executor** (rodou
+o gate errado): contra o id certo, **morreu**. ➡️ *"Sobrevivente é investigada"* serviu aqui para **absolver**
+a sonda, não para acusá-la.
+
+### ⚠️ Um `key_link` do próprio plano foi RECUSADO, e com razão
+
+Ele pedia **`git diff --numstat` DENTRO do teste**. ⚠️ Isso seria **auto-invalidante**: base fixa e range que
+**cresce para sempre** → vermelho por trabalho **alheio e correto**. ➡️ **Nenhum gate da fase chama `git`**; o
+`numstat` está **colado no documento como medição datada**. ⚠️ **Os fechamentos das Fases 188 e 189 já haviam
+tomado a mesma decisão** — e o **17º** conserto de raiz da milestone, feito pelo orquestrador **no dia
+anterior**, foi exatamente um gate que **se auto-invalidava por janela de `git log -80`**.
+
+### Quatro afirmações de artefato que ficaram FALSAS, e foram corrigidas
+
+1. *"nada em `app/` cria oferta"* (`193-05-PLAN:201`) → **FALSO**: o `PreparadorDaAprovacao` cria. **A régua
+   SUPERSEDE o plano, que não foi editado.**
+2. **manifest "498/203"** → reancorado em *"a 193 não mexe no manifest"*; está **500/204**, `+2/+1` **alheio**.
+3. **`contagens-186-09.txt` "contagem idêntica"** → *"não mudada POR VOCÊ"*; **259/53/21/31**, remedido por
+   commit **alheio** com a razão **em linha**.
+4. *"as 6+5 rotas da 188"* (`193-COBERTURA.md`) → o **ROUTER mede 16**. **Corrigido pelo orquestrador.**
+
+⚠️ **E a `193-REGUA.md` dizia *"o MariaDB local está PARADO"*** — ele está **DE PÉ** (PID 30496, ligado por
+outra sessão) **e não afeta nenhuma medição** (`phpunit.xml:27-28` fixa `sqlite :memory:`). **Corrigido.**
+
+### ⚠️⚠️ DOZE erros de briefing do orquestrador — TODOS achados por medição de executor
+
+Registrados no `193-FECHAMENTO.md` §10. Os dois desta fase: *"reusar o `MlPublicacaoService`"* (ele recebe o
+rascunho do assistente **antigo**) e *"migration provável"* (**não tem** — as colunas existem desde a 186).
+⚠️ **E dois foram RE-MEDIDOS nesta wave:** o do **autor** (são **CINCO** identidades, não duas — eu afirmei
+"duas" e errei **duas vezes**) e o do **`PUT`** (existem **TRÊS** no Publicador, e `AlterarNoConvite:155` usa
+`PUT /seller-promotions/items/`, que **CONTÉM** `/items/` — ⚠️ **logo a sonda por substring acusa trabalho
+certo**; o invariante verdadeiro, *"nenhum `PUT` que COMEÇA em `/items`"*, é **VERDADEIRO** e sustenta a
+**decisão 22**).
+
+### ⚠️ QUATRO itens com dono USUÁRIO / ORQUESTRADOR — registrados, NÃO consertados
+
+1. ⚠️⚠️ **A família *"gate mede WIP, não território"*: 24 pontos em 7 arquivos** — comparam a **ÁRVORE** em
+   vez de um range, logo **reprovam ANTES do commit e ficam VERDES depois**: não protegem nada e **acusam
+   trabalho certo no meio de uma wave**. ⚠️ **O conserto de raiz JÁ EXISTE no código** (o helper **aceita** a
+   base; um dos gates **já usa range**).
+2. ⚠️ **O `186-09 sem-segundo-passo` não pega a prosa acentuada** (*"Confirmar publicação"*) — só as formas
+   `snake`/`camel`; e a sonda do `188-05` faz o **inverso**. **Nenhuma das duas, isolada, cobre as nove
+   formas** — os gates da 193 usam a **UNIÃO**. ⚠️ **Alargá-lo é delicado: ele varre `app/` inteiro, e um
+   gate dessa natureza JÁ BARROU UM DEPLOY.**
+3. ⚠️ **Os ponteiros do `189-FID01.md` §G apodreceram TRÊS vezes**, e um atribui **MOD-06 à Fase 190, que foi
+   CANCELADA** — mudou **de verdade**, não só de linha.
+4. ⚠️ **O id órfão `guarda-modalidade-irma`** (acima) — mitigado pela lista na régua.
+
+### ⚠️⚠️ A CONFERÊNCIA VISUAL — AGORA SÃO QUATRO, ABERTAS E SEPARADAS
+
+`PERGUNTA-VISUAL-193: ABERTA — dono: usuário`, com roteiro de **8 passos** no `193-FECHAMENTO.md`, e o passo
+**6** dizendo **com todas as letras que "Publicado" sem o MLB é REPROVA**. ⚠️ **As das Fases 187, 188 e 189
+seguem ABERTAS e SEPARADAS** — esta não as substitui.
+⚠️⚠️ **NENHUM EXECUTOR DE NENHUMA DAS QUATRO FASES VIU TELA RENDERIZADA, E NENHUM AFIRMA QUE VIU.**
+⚠️ **O roteiro só é executável depois de (a) DEPLOY AUTORIZADO e (b) existir a primeira oferta — e para (b)
+agora basta o piloto do agente.**
+
+### A ordem da milestone
+
+**186 ✅ · 187 ✅ · 188 ✅ · 189 ✅ · 193 ✅ → 194 → 192 (última).** As **190/191** estão **⛔ fora de escopo**.
+⚠️⚠️ **E A OUTRA SESSÃO ESTÁ LIBERADA:** ela **esperou** este fechamento para começar o **AG-05b**, que precisa
+de patch em `PublicacaoService::iniciar()` e `abrirTarefaPosPublicacao()` — o gate de `numstat` do **PUB-03**
+reprovaria se ela tivesse começado antes. **Com a fase fechada, o range do gate não a alcança mais.**
