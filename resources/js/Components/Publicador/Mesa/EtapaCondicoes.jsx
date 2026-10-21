@@ -267,6 +267,9 @@ export function QuantoRecebo({ m }) {
     );
 }
 
+// O anúncio da régua que existe no ML mas não está no ar (21/10/2026): não trava o tipo, só avisa.
+const SITUACAO_NO_ML = { paused: 'pausado', under_review: 'em revisão', closed: 'encerrado', inactive: 'inativo', nao_encontrado: 'não encontrado' };
+
 function SecaoPreco({ m }) {
     const alvos = m.alvos ?? [];
     const ligados = alvos.filter((a) => a.ativo);
@@ -301,6 +304,11 @@ function SecaoPreco({ m }) {
                                         <span className="block text-[15px] font-bold text-white">{NOME_TIPO[lt]}</span>
                                         <span className="block text-[13px] text-white/55">{NOTA_TIPO[lt]}{lt === 'gold_pro' ? ' (se a conta oferecer)' : ''}</span>
                                         {noAr && <span className="mt-1 inline-flex items-center gap-2 text-[13px] font-bold text-emerald-400">No ar <LinkMl mlb={noAr} className="text-[13px] font-normal text-white/70" /></span>}
+                                        {! noAr && a.mlb_existente?.mlb && (
+                                            <span className="mt-1 block text-[13px] text-amber-300" data-mlb-existente={lt}>
+                                                Já existe o <LinkMl mlb={a.mlb_existente.mlb} className="text-[13px] text-amber-200" /> ({SITUACAO_NO_ML[a.mlb_existente.status] ?? 'fora do ar'}) no Mercado Livre: publicar cria outro anúncio.
+                                            </span>
+                                        )}
                                     </span>
                                 </label>
                             );

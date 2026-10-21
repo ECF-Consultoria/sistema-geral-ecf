@@ -1842,3 +1842,26 @@ a mesma regra da Fase 1. `ComposicaoDoComposto` é o lugar único dessas contas.
   `revisar` do valor fica no rascunho.
 - **Galeria do composto:** depois das duas imagens do conjunto, entram as fotos da Fase 1 de cada peça (o grupo da cor
   dela), do acervo da conta, sem cópia — como o Kit N, que já nasce com as fotos da Fase 1 depois da capa.
+
+## 44. O SKU recriado herda os anúncios antigos como "ativo" — e o editor travava os dois tipos (21/10/2026)
+
+**O que o usuário viu:** o Sofá Chesterfield (SFCHST) da #459 já tinha sido publicado e foi excluído do sistema.
+Recriado, saiu do Portal, chegou ao Publicador e, na hora de publicar: "Não há o que publicar: escolha Clássico,
+Premium ou os dois" — com os dois tipos desmarcados, travados e marcados "No ar".
+
+**A causa, em três camadas:**
+- Excluir a oferta devolve os anúncios dela para a ESPERA, presos ao SKU (`EstruturaOfertaService`, como na planilha:
+  apagar a linha da Lista deixa a aba Anúncios intacta). Criar oferta com o mesmo SKU normalizado os PROMOVE de volta
+  (`varrerEspera` → `promover`) com o status guardado ("ativo"), sem ler o ML.
+- No ML, um estava `under_review` (`waiting_for_patch`) e o outro `paused`. Nenhum no ar.
+- O rascunho nasce com o tipo desligado quando a régua tem MLB (`rascunhoDoProduto`, sem HTTP), e o editor trava o tipo
+  com `mlb_na_regua`. Dois tipos desligados = D1 "Não há o que publicar".
+
+**O que mudou (decisão do usuário: "liberar e publicar novo"):** `EditorRascunhoService::reguaNoMl` lê o `status` de
+cada MLB da régua (`GET /items?ids=`, cache 10 min; falha guardada 1 min e trava como antes). Só `active` trava
+(`mlb_na_regua`); o resto vai como `mlb_existente` (aviso "Já existe o MLB… (pausado): publicar cria outro anúncio").
+Ao ABRIR (`ligarTiposForaDoAr`), o rascunho sem nenhum tipo ligado e sem nada publicado liga o tipo cujo anúncio não
+está no ar — sem tipo ligado nada sai, então não há escolha da pessoa a desfazer. O Portal não foi tocado: a régua
+continua dizendo "ativo" (o `conta()` só exclui `inativo`).
+
+Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.

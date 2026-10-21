@@ -40,6 +40,7 @@ use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -77,8 +78,52 @@ class EditorRascunhoService
         $r = $this->rascunhoDoProduto($produto);
 
         $this->lerContaSeVencida($r);
+        $this->ligarTiposForaDoAr($r->fresh());
 
         return $r->fresh();
+    }
+
+    /**
+     * O rascunho que nasceu sem nenhum tipo ligado por causa dos anúncios da régua liga o tipo cujo anúncio NÃO está
+     * no ar no Mercado Livre (21/10/2026, decisão do usuário: "liberar e publicar novo"). O rascunho nasce sem ler o
+     * ML (o Sincronizar do Portal não faz HTTP); é aqui, ao abrir, que dá para conferir. Só quando NENHUM tipo está
+     * ligado e nada foi publicado por este rascunho: sem tipo ligado nada sai, então não há escolha da pessoa a
+     * desfazer.
+     */
+    private function ligarTiposForaDoAr(PubRascunho $r): void
+    {
+        $s = $this->repo->snapshot($r);
+        if ($s->alvosAtivos() !== [] || $r->produto?->oferta_id === null) {
+            return;
+        }
+        $publicou = PubPublicacaoItem::query()->whereIn('publicacao_id', $r->publicacoes()->select('id'))
+            ->where('status', PubPublicacaoItem::CREATED)->exists();
+        if ($publicou) {
+            return;
+        }
+
+        $regua = $this->reguaNoMl($r);
+        $doTipo = array_flip(EstruturaPublicacao::LISTING_TYPES);
+        $ligar = [];
+        foreach ($s->alvos as $a) {
+            $g = $regua[$doTipo[$a->listingTypeId] ?? ''] ?? null;
+            if ($g !== null && $g['mlb'] !== null && ! $g['no_ar']) {
+                $ligar[] = $a->listingTypeId;
+            }
+        }
+        if ($ligar === []) {
+            return;
+        }
+
+        DB::transaction(function () use ($r, $ligar) {
+            $this->repo->travar($r);
+            $this->repo->gravarAlvos($r, array_map(
+                fn (Alvo $a) => in_array($a->listingTypeId, $ligar, true) ? new Alvo($a->listingTypeId, $a->titulo, true) : $a,
+                $this->repo->snapshot($r)->alvos,
+            ));
+            $this->repo->tocar($r);
+        });
+        Log::info("[Publicador] rascunho {$r->id}: tipos ligados — o anúncio da régua não está no ar no ML: ".implode(', ', $ligar));
     }
 
     /**
@@ -632,6 +677,8 @@ class EditorRascunhoService
             ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
             ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all();
 
+        $regua = $this->reguaNoMl($r);
+
         return [
             'produto' => [
                 'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
@@ -647,10 +694,16 @@ class EditorRascunhoService
                 'fotos_por_variante' => (bool) $r->fotos_por_variante, 'incluir_geral' => (bool) $r->incluir_geral_nas_variantes,
                 'modelo' => $r->modelo_publicacao,
             ],
-            'alvos' => array_map(fn (Alvo $a, Alvo $ef) => [
-                'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
-                'mlb_na_regua' => $this->mlbDoTipo($r, $a->listingTypeId),
-            ], $digitado->alvos, $snapshot->alvos),
+            'alvos' => array_map(function (Alvo $a, Alvo $ef) use ($regua) {
+                // Só o anúncio ATIVO no ML trava o tipo; o que existe e está parado vai como aviso (21/10/2026).
+                $g = $this->daRegua($regua, $a->listingTypeId);
+
+                return [
+                    'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
+                    'mlb_na_regua' => $g['no_ar'] ? $g['mlb'] : null,
+                    'mlb_existente' => ! $g['no_ar'] && $g['mlb'] !== null ? ['mlb' => $g['mlb'], 'status' => $g['status']] : null,
+                ];
+            }, $digitado->alvos, $snapshot->alvos),
             'atributos' => $digitado->atributos,
             'eixos' => array_map(fn (Eixo $x) => [
                 'chave' => $x->chave, 'nome' => $x->nome, 'defines_picture' => $x->definesPicture, 'customizado' => $x->ehCustomizado(),
@@ -1059,11 +1112,89 @@ class EditorRascunhoService
         return $r;
     }
 
-    private function mlbDoTipo(PubRascunho $r, string $listingType): ?string
+    /** @return array{mlb: ?string, no_ar: bool, status: ?string} o da régua para o `listing_type_id` */
+    private function daRegua(array $regua, string $listingType): array
     {
         $tipo = array_flip(EstruturaPublicacao::LISTING_TYPES)[$listingType] ?? null;
 
-        return $tipo ? $this->mlbsDaRegua($r->produto)[$tipo] ?? null : null;
+        return $regua[$tipo] ?? ['mlb' => null, 'no_ar' => false, 'status' => null];
+    }
+
+    /**
+     * Os anúncios da régua do Portal (a aba Anúncios da oferta) de cada tipo, com o estado de HOJE no Mercado Livre
+     * (21/10/2026). O Sofá Chesterfield da #459: o produto foi excluído e recriado, e o Portal religou à oferta nova
+     * os dois anúncios antigos do SKU (a espera, como na planilha) guardados como "ativo" — no ML, um pausado e o
+     * outro em revisão. O editor travava os dois tipos e a publicação parava em "Não há o que publicar". Agora só o
+     * anúncio ATIVO no ML trava o tipo; sem resposta do ML, vale a régua (trava), como antes.
+     *
+     * @return array<string, array{mlb: ?string, no_ar: bool, status: ?string}> classico|premium →
+     */
+    private function reguaNoMl(PubRascunho $r): array
+    {
+        $porTipo = ['classico' => [], 'premium' => []];
+        $produto = $r->produto;
+        if ($produto?->oferta_id !== null && $produto->oferta !== null) {
+            $o = EstruturaConjunto::daEmpresa($produto->oferta->company)->oferta($produto->oferta_id) ?? ['anuncios' => []];
+            foreach ((array) $o['anuncios'] as $a) {
+                if (isset($porTipo[$a['tipo']]) && EstruturaAnuncio::conta($a['status'], $a['codigo_mlb'])) {
+                    $porTipo[$a['tipo']][] = (string) $a['codigo_mlb'];
+                }
+            }
+        }
+        $todos = array_values(array_unique(array_merge(...array_values($porTipo))));
+        $status = $todos === [] ? [] : $this->statusNoMl($r, $todos);
+
+        $saida = [];
+        foreach ($porTipo as $tipo => $mlbs) {
+            $ativo = $status === null ? null : collect($mlbs)->first(fn ($m) => ($status[$m] ?? null) === 'active');
+            $saida[$tipo] = match (true) {
+                $mlbs === [] => ['mlb' => null, 'no_ar' => false, 'status' => null],
+                $status === null => ['mlb' => $mlbs[0], 'no_ar' => true, 'status' => null],
+                $ativo !== null => ['mlb' => $ativo, 'no_ar' => true, 'status' => 'active'],
+                default => ['mlb' => $mlbs[0], 'no_ar' => false, 'status' => $status[$mlbs[0]] ?? 'nao_encontrado'],
+            };
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O `status` de cada MLB no Mercado Livre (`GET /items?ids=`, só leitura), guardado 10 minutos: o estado do editor
+     * é pedido a cada gravação. Falha fica guardada 1 minuto, sem repetir (o cliente dorme entre tentativas).
+     *
+     * @param  list<string>  $mlbs
+     * @return ?array<string, string>  MLB → status; null = o ML não respondeu
+     */
+    private function statusNoMl(PubRascunho $r, array $mlbs): ?array
+    {
+        sort($mlbs);
+        $chave = 'publicador:status-no-ml:v1:'.md5(implode(',', $mlbs));
+        $guardado = Cache::get($chave);
+        if (is_array($guardado) || $guardado === 'falhou') {
+            return is_array($guardado) ? $guardado : null;
+        }
+
+        try {
+            $resp = $this->cliente->daConta($r->conta(), 'GET', '/items', ['ids' => implode(',', array_slice($mlbs, 0, 20)), 'attributes' => 'id,status'], repetir: false);
+        } catch (\Throwable $e) {
+            $resp = null;
+        }
+        if ($resp === null || ! $resp->ok() || ! is_array($resp->corpo)) {
+            Cache::put($chave, 'falhou', now()->addMinute());
+
+            return null;
+        }
+
+        $status = [];
+        foreach ($resp->corpo as $x) {
+            $b = is_array($x) ? (array) ($x['body'] ?? []) : [];
+            if ((int) ($x['code'] ?? 0) === 200 && isset($b['id'])) {
+                $status[(string) $b['id']] = (string) ($b['status'] ?? '');
+            }
+        }
+        Cache::put($chave, $status, now()->addMinutes(10));
+
+        return $status;
     }
 
     /** @param list<Eixo> $eixos @return list<string> */
