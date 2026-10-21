@@ -459,9 +459,29 @@ decidir se a fila atualiza sozinha.
 | banco local | ⚠️ `tasklist \| grep mysqld` → **vazio** (MariaDB **parado**; já esteve corrompido) |
 | empresa com `ml_token` | nenhuma → a rota dá **404** |
 | `pub_aprovacao_ofertas` | **VAZIA** |
-| quem cria oferta | ⚠️ **ninguém em `app/`**: dos 27 arquivos que tocam `PubAprovacaoOferta`, **nenhum a cria** — quem cria é a **Fase 194** |
+| quem cria oferta | ⚠️⚠️ **CORRIGIDO EM 21/10/2026 — esta linha ficou FALSA.** **`app/Services/Publicador/Agente/PreparadorDaAprovacao.php:148` chama `PubAprovacaoOferta::create([…])`** (quick `261020-oeg`, de **outra sessão**) — é o **primeiro código de produção que CRIA oferta**, com `origem` automática e andamento **só via `AndamentoDaOfertaService::mover()`**. ⚠️ **Nenhuma loja tem o agente ligado, então `pub_aprovacao_ofertas` SEGUE VAZIA em produção.** ➡️ **Consequência para o critério 10: ele passa a ser executável depois do PILOTO DO AGENTE, não só depois da Fase 194** — e isso **antecipa** a prova de ponta a ponta. ⚠️ **O `193-05-PLAN.md:201-202` repete a afirmação antiga e NÃO foi editado** (plano é artefato do planejador): **esta linha o SUPERSEDE**, e quem executar o 193-05 recebe o aviso no briefing. |
 
 ➡️ **A prova desta fase é TESTE com `Http::fake` + `preventStrayRequests()`**, nunca tela.
+
+### ⚠️⚠️ AS DECISÕES DO USUÁRIO QUE MANDAM NESTA FASE — e ONDE elas moram
+
+> ⚠️ **Posto aqui porque o executor do `193-01` procurou a decisão 21 e NÃO a achou em artefato da fase** —
+> ela está no `ROADMAP.md`, na tabela de decisões, e a régua não apontava para lá.
+>
+> | decisão | o quê | onde ler |
+> |---|---|---|
+> | **1** | **aprovar JÁ PUBLICA**, sem segundo clique, e o rótulo **não muda** (*"Aprovar para publicação"*) | `ROADMAP.md`, tabela de decisões |
+> | **5** | o bloqueio de fotos cobre **TODOS** os grupos; **aprovação cor por cor foi RECUSADA** | idem |
+> | **20** | ⛔ a **revisão detalhada saiu do escopo** (Fases 190/191 **canceladas**); ordem **189→193→194→192** | idem (commit `0607f5a9`) |
+> | **21** | a oferta que a **fila recusa** fica `aprovado`, motivo no histórico, reconciliador repete. **O 9º bloqueio foi OFERECIDO e RECUSADO** | idem (commit `838d1d57`) |
+> | **22** | editar foto de anúncio **já no ar** fica **diferida** para fase própria (medido: `PUBLICADO => []` terminal, e **nenhum `PUT /items/{id}` em todo o Publicador**) | idem |
+> | **23** | ⚠️ **aprovar UMA modalidade NÃO enfileira o produto**: sem **todos** os alvos ativos aprovados, a oferta fica `aprovado` **sem `fila_item_id`**, com o motivo no histórico — **mesmo mecanismo da 21**. A guarda vive no `enfileirar()` do **193-02** | idem |
+>
+> ⚠️ **A decisão 23 nasceu de um risco que OUTRA SESSÃO levantou e o orquestrador CONFIRMOU por medição:**
+> a fila publica **todos os alvos ativos de uma vez** (`PayloadBuilderUserProducts.php:60`), e um produto está
+> em **uma fila por vez** com **as duas ofertas apontando para o MESMO item** — logo enfileirar "o produto"
+> na aprovação do Clássico **publicaria o Premium sem revisão**. ⚠️ **Produto com UM alvo ativo segue
+> enfileirando normalmente** — é o caminho do agente hoje. **Ancorar em `pub_rascunho_alvos.ativo`.**
 ⚠️⚠️ **NENHUM EXECUTOR AFIRMA TER VISTO TELA RENDERIZADA** nem publicação real.
 ➡️ O **critério 10** (medir o caminho completo numa oferta real, em produção, conta 459) é
 **`checkpoint:human-verify` no `193-05`**, e ele só é executável **depois da Fase 194** (que cria a
