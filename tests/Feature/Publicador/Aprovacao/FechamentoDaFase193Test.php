@@ -278,6 +278,24 @@ class FechamentoDaFase193Test extends TestCase
     private const VEREDICTOS = ['OK', 'RESSALVA', 'REPROVA'];
 
     /**
+     * A sonda de *"esta linha nomeia um DONO"*, **com borda à ESQUERDA**.
+     *
+     * ⚠️⚠️ **A BORDA NÃO É ZELO: ELA É O CONSERTO DE UMA SOBREVIVENTE DA MINHA PRÓPRIA CAMPANHA DE
+     * MUTAÇÃO.** A primeira redação era `/dono:\s*\S/u`, e a mutação **m3** — que trocou
+     * `· dono: **usuário**` por `· prova-no-dono: **usuário**` na linha do `CRIT-10` —
+     * **SOBREVIVEU**: a sonda casava `dono:` **no meio** de outra palavra. ➡️ Família *"gate mais
+     * largo que o invariante"*, e o efeito prático era grave: uma **RESSALVA sem dono** passaria
+     * se a linha contivesse qualquer palavra terminada em `dono:` (`sem-dono:`, `prova-no-dono:`,
+     * `codono:`).
+     *
+     * ⚠️ **Borda à ESQUERDA só**, e isso também é medido: à direita vem obrigatoriamente `:`, e
+     * exigir borda **dos dois lados** não acrescenta nada — mas incluir o hífen na classe de
+     * exclusão **é** necessário, porque foi exatamente um hífen (`prova-no-dono`) que a mutação
+     * usou.
+     */
+    private const SONDA_DO_DONO = '/(?<![\p{L}\p{N}\-])dono:\s*\S/u';
+
+    /**
      * ⚠️ **LISTA CONSTANTE das perguntas obrigatórias, nunca piso** — piso **NÃO prova PRESENÇA**
      * (sobrevivente M5 da Fase 187: com 13 perguntas, perder **uma** deixava 12, acima de todos os
      * pisos, e a que se perdeu era justamente a do bug latente).
@@ -1156,7 +1174,7 @@ class FechamentoDaFase193Test extends TestCase
             if (preg_match('/prova:\s*\S/u', $m[3][$i]) !== 1) {
                 $semProva[] = $numero;
             }
-            if ($m[2][$i] === 'RESSALVA' && preg_match('/dono:\s*\S/u', $m[3][$i]) !== 1) {
+            if ($m[2][$i] === 'RESSALVA' && preg_match(self::SONDA_DO_DONO, $m[3][$i]) !== 1) {
                 $ressalvaSemDono[] = $numero;
             }
             if ($m[2][$i] === 'REPROVA') {
@@ -1206,13 +1224,18 @@ class FechamentoDaFase193Test extends TestCase
 
         $semDono = [];
         foreach ($m[1] as $i => $id) {
-            if (preg_match('/dono:\s*\S/u', $m[3][$i]) !== 1) {
+            if (preg_match(self::SONDA_DO_DONO, $m[3][$i]) !== 1) {
                 $semDono[] = $id;
             } elseif (preg_match('/dono:\s*a\s+definir/iu', $m[3][$i]) === 1) {
                 $semDono[] = $id . ' (a definir NÃO é dono)';
             }
         }
         $this->assertSame([], $semDono, 'perguntas sem dono — ou com "a definir", que NÃO é dono');
+
+        // ⚠️⚠️ ISCA (+) E (−) DA SONDA DO DONO, nas duas direções — ver o docblock de
+        // `SONDA_DO_DONO`: a primeira redação sem borda deixou a mutação **m3 SOBREVIVER**.
+        $this->assertSame(1, preg_match(self::SONDA_DO_DONO, 'texto · dono: **usuário**'), 'ISCA (+): a sonda do dono não vê um dono legítimo');
+        $this->assertSame(0, preg_match(self::SONDA_DO_DONO, 'texto · prova-no-dono: **usuário**'), 'ISCA (−): a sonda do dono casa `dono:` no MEIO de outra palavra — foi a sobrevivente m3 da campanha de mutação desta wave');
 
         // ⚠️ LISTA CONSTANTE, nunca piso: piso NÃO prova PRESENÇA.
         $faltando = array_values(array_diff(self::PERGUNTAS_OBRIGATORIAS, $m[1]));
