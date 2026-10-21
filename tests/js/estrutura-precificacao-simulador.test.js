@@ -264,3 +264,22 @@ test('a fiação: a página abre no Simulador, a ficha tem a seção, e nenhum d
         assert.equal(/1\s*-\s*\(?\s*comiss/i.test(fonte) || /\/\s*divisor/.test(fonte), false, `${nome} refaz a conta do preço`);
     }
 });
+
+// 21/10/2026 — "só atualiza o frete quando salva o produto" / "já deveria aparecer aqui e não salvar para depois
+// voltar": a caixa digitada entra na prévia, e o produto novo tem preço antes do primeiro "Salvar produto".
+test('a ficha calcula com a caixa digitada e o produto novo tem preço antes de salvar', () => {
+    const secao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto.jsx');
+    // A prévia leva as caixas digitadas ("CxLxAxKG|…"), além do custo.
+    assert.match(secao, /params: \{ custos, caixas \}/);
+    assert.match(secao, /r\[chaveDe\(v\)\] = medidas\.map\(\(m\) => m\.join\('x'\)\)\.join\('\|'\)/);
+    // O produto novo vai à prévia sem produto, pela chave da variação na tela, e não grava frete nem percentual.
+    assert.match(secao, /novo \? route\('portal\.auth\.estrutura\.produtos\.precificacao\.previa'\)/);
+    assert.match(secao, /const chaveDe = \(v\) => \(novo \? v\._k : v\.id\)/);
+    assert.match(secao, /const gravar = \(alvos, mudanca\) => \(novo \? undefined : salvarVarias/);
+    assert.match(secao, /bloqueado=\{novo\}/);
+    assert.equal(secao.includes('Salve o produto para ver o preço'), false, 'o produto novo não pede mais para salvar antes');
+
+    // A faixa da variação diz que os números dela são da caixa salva, e que a Precificação já usa a digitada.
+    const faixa = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FaixaCalculados.jsx');
+    assert.match(faixa, /data-caixa-mexida/);
+});

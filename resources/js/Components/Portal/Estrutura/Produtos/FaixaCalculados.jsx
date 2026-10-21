@@ -15,7 +15,8 @@ const VALOR = 'mt-0.5 block text-[16px] font-semibold tabular-nums text-white';
 
 export default function FaixaCalculados({ variacao, ficha, vocabulario }) {
     const gravada = !! variacao.id;
-    const mexida = gravada && (Array.isArray(variacao.volumes_digitados) || String(variacao.custo) !== String(variacao._base?.custo ?? ''));
+    const caixaMexida = gravada && Array.isArray(variacao.volumes_digitados);
+    const mexida = caixaMexida || (gravada && String(variacao.custo) !== String(variacao._base?.custo ?? ''));
     const traco = <span className="text-white/45">—</span>;
 
     const celulas = [
@@ -38,12 +39,15 @@ export default function FaixaCalculados({ variacao, ficha, vocabulario }) {
                 {celulas.map(([chave, rotulo, conteudo]) => (
                     <div key={chave} className={cn(CELULA)} data-calculado={chave}>
                         <span className={ROTULO}>{rotulo}{chave === 'frete' ? ' (estimativa)' : ''}</span>
-                        <span className={cn(VALOR, chave === 'frete' && '[&>span]:flex-row [&>span]:items-baseline [&>span]:gap-1.5')}>{conteudo ?? traco}</span>
+                        <span className={cn(VALOR, chave === 'frete' && '[&>span]:flex-row [&>span]:items-baseline [&>span]:gap-1.5', caixaMexida && 'opacity-40')}>{conteudo ?? traco}</span>
                     </div>
                 ))}
             </div>
-            {! gravada && <p className="mt-2 text-[12px] text-white/45">Os calculados aparecem ao salvar.</p>}
-            {mexida && <p className="mt-2 text-[12px] text-white/45">Recalcula ao salvar.</p>}
+            {! gravada && <p className="mt-2 text-[12px] text-white/45">Os calculados aparecem ao salvar. O frete e o preço já aparecem na Precificação, abaixo.</p>}
+            {/* 21/10/2026: com a caixa mexida, estes números ainda são os da caixa salva; o frete e o preço da
+                Precificação deste produto já usam a caixa digitada (a prévia). */}
+            {caixaMexida && <p className="mt-2 text-[12px] text-white/55" data-caixa-mexida>Estes números são da caixa salva e recalculam ao salvar. O frete e o preço da Precificação deste produto já usam as medidas digitadas.</p>}
+            {mexida && ! caixaMexida && <p className="mt-2 text-[12px] text-white/45">Recalcula ao salvar.</p>}
         </div>
     );
 }

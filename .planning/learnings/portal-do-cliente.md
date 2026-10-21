@@ -1939,3 +1939,23 @@ colunas de termo separadas. Código: `TermosDoTituloNaPlanilha` + `ModeloComplet
   sai sem seta — o teste parece de código quebrado. O `ModeloCompletoTest` responde `[]` 200 para os dois.
 - **Memória:** a pasta `tests/Feature/PortalCliente/Estrutura/Produtos` inteira num processo passa de 512 MB (só o
   `ModeloCompletoTest` usa ~470 MB). Rodar com `php -d memory_limit=3G`.
+
+## A ficha do produto precifica ANTES de salvar — custo e caixa digitados (21/10/2026)
+
+O usuário: "só atualiza o frete quando salva o produto" e, no produto novo ("Salve o produto para ver o preço"), "já
+deveria aparecer aqui e não salvar para depois voltar; a usabilidade fica horrível".
+
+- **Produto salvo:** a prévia da Precificação (`GET produtos/{id}/precificacao`) já levava `custos[variacao_id]`; agora
+  leva também `caixas[variacao_id] = "CxLxAxKG|…"` (ponto decimal). `doProduto(..., $caixasDeVariacao)` troca as
+  caixas da variação dentro de `logisticas()` — nada é gravado. Caixa com medida em branco ou ≤ 0 não vai (vale a salva).
+- **Produto novo:** `GET produtos/precificacao-previa` → `previaSemProduto()`, por chave da variação na TELA (`_k`), com
+  os percentuais da EMPRESA e o frete pela caixa (mesmo `calcular()`/`envio()`/`FreteMe2Service`, sem chamar o ML). Na
+  tela, frete e percentuais próprios ficam travados (`bloqueado`) até salvar: eles gravam na oferta, que só nasce ao
+  salvar. O custo é o campo da variação, como sempre.
+- **Rota nova no domínio do cliente** = linha na allowlist (`RestringeDominioDoPortal::PERMITIDO`) e as contagens do
+  `AcessoAosProdutosTest` (rotas com throttle `estrutura.produtos` e linhas da allowlist). Esquecer a allowlist dá 404 só
+  em `cliente.`, e os testes do Admin passam.
+- A faixa de calculados da variação (peso cubado, "Frete ME2") continua vindo do servidor ao salvar (D-28: a conta não
+  vai para o JS); com a caixa mexida ela fica apagada e diz que a Precificação já usa as medidas digitadas.
+- Conferido no servidor local de demonstração (Chrome sem janela): produto novo, custo 270 e caixa 120 × 50 × 91 cm com
+  10 kg → frete R$ 168,85 ("referência do ML para a caixa") e preço na hora, sem salvar.

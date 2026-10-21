@@ -176,6 +176,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/fichas/previa',
         'portal/estrutura/produtos/fichas/importacao',
         'portal/estrutura/produtos/fretes',
+        // 21/10/2026 — a precificação do produto que ainda não foi salvo (custo e caixa digitados, nada gravado).
+        'portal/estrutura/produtos/precificacao-previa',
         // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/campos-categoria',
         // Fase 168 (07/10/2026) — Sugestões de ofertas. Uma linha por rota. NUNCA

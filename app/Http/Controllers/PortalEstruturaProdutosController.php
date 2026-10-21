@@ -144,7 +144,9 @@ class PortalEstruturaProdutosController extends Controller
      * A precificação deste produto, para a seção da ficha (20/10/2026): a oferta de cada variação, com a
      * conta pronta do servidor (combos e kits ficam na Precificação). `custos[variacao_id]` é o custo
      * que a ficha tem digitado e ainda não salvou — a prévia recalcula com ele e não grava nada (vazio =
-     * sem custo). O frete e os percentuais gravam pela rota da Precificação, como na tela dela.
+     * sem custo). `caixas[variacao_id]` é o mesmo para a caixa embalada (21/10/2026): o frete e o preço saem com a
+     * caixa digitada antes do "Salvar produto". O frete e os percentuais gravam pela rota da Precificação, como na
+     * tela dela.
      */
     public function precificacao(Request $request, int $produto)
     {
@@ -154,6 +156,8 @@ class PortalEstruturaProdutosController extends Controller
         $dados = $request->validate([
             'custos'   => ['nullable', 'array', 'max:'.ProdutoCadastroService::MAX_GRADE],
             'custos.*' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+            'caixas'   => ['nullable', 'array', 'max:'.ProdutoCadastroService::MAX_GRADE],
+            'caixas.*' => ['nullable', 'string', 'max:500'],
         ]);
         $custos = [];
         foreach ($dados['custos'] ?? [] as $variacao => $custo) {
@@ -161,8 +165,73 @@ class PortalEstruturaProdutosController extends Controller
                 $custos[(int) $variacao] = $custo === null ? null : round((float) $custo, 2);
             }
         }
+        $caixas = [];
+        foreach ($dados['caixas'] ?? [] as $variacao => $texto) {
+            $lista = self::caixasDoTexto((string) $texto);
+            if ((is_int($variacao) || ctype_digit((string) $variacao)) && $lista !== null) {
+                $caixas[(int) $variacao] = $lista;
+            }
+        }
 
-        return response()->json($this->precificacao->doProduto($empresa, (int) $p->id, $custos));
+        return response()->json($this->precificacao->doProduto($empresa, (int) $p->id, $custos, $caixas));
+    }
+
+    /**
+     * A precificação do produto que AINDA NÃO FOI SALVO (21/10/2026, o usuário: "já deveria aparecer aqui e não
+     * salvar para depois voltar"). Por variação digitada (a chave dela na tela): o custo e as caixas; a conta é a
+     * mesma da Precificação, com os percentuais da empresa e o frete pela caixa. Nada é gravado.
+     */
+    public function precificacaoPrevia(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $dados = $request->validate([
+            'custos'   => ['nullable', 'array', 'max:'.ProdutoCadastroService::MAX_GRADE],
+            'custos.*' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+            'caixas'   => ['nullable', 'array', 'max:'.ProdutoCadastroService::MAX_GRADE],
+            'caixas.*' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $chaves = array_unique([...array_keys($dados['custos'] ?? []), ...array_keys($dados['caixas'] ?? [])]);
+        $variacoes = [];
+        foreach (array_slice($chaves, 0, ProdutoCadastroService::MAX_GRADE) as $chave) {
+            $custo = $dados['custos'][$chave] ?? null;
+            $variacoes[] = [
+                'chave'  => mb_substr((string) $chave, 0, 64),
+                'custo'  => $custo === null || $custo === '' ? null : round((float) $custo, 2),
+                'caixas' => self::caixasDoTexto((string) ($dados['caixas'][$chave] ?? '')) ?? [],
+            ];
+        }
+
+        return response()->json($this->precificacao->previaSemProduto($empresa, $variacoes));
+    }
+
+    /**
+     * As caixas digitadas na ficha, como a prévia as manda: "CxLxAxKG" por caixa, separadas por "|" (cm e kg, ponto
+     * decimal). Null quando alguma medida falta ou não é número positivo — aí vale a caixa salva. No máximo 20 caixas.
+     *
+     * @return ?list<array{c: float, l: float, a: float, kg: float}>
+     */
+    private static function caixasDoTexto(string $texto): ?array
+    {
+        $partes = array_filter(explode('|', $texto), fn ($x) => trim($x) !== '');
+        if ($partes === [] || count($partes) > 20) {
+            return null;
+        }
+        $caixas = [];
+        foreach ($partes as $parte) {
+            $n = explode('x', trim($parte));
+            if (count($n) !== 4) {
+                return null;
+            }
+            foreach ($n as $valor) {
+                if (! is_numeric($valor) || (float) $valor <= 0 || (float) $valor > 100000) {
+                    return null;
+                }
+            }
+            $caixas[] = ['c' => (float) $n[0], 'l' => (float) $n[1], 'a' => (float) $n[2], 'kg' => (float) $n[3]];
+        }
+
+        return $caixas;
     }
 
     // ═══ Escritas por JSON ══════════════════════════════════════════════════

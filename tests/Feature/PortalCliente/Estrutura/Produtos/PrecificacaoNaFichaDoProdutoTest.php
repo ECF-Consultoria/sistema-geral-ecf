@@ -210,8 +210,74 @@ class PrecificacaoNaFichaDoProdutoTest extends TestCase
         $this->assertNull($sessao->get(route('portal.auth.estrutura.precificacao', ['vista' => 'outra']))->viewData('page')['props']['filtros']['vista']);
     }
 
+    /**
+     * 21/10/2026 — "só atualiza o frete quando salva o produto": a caixa digitada e ainda não salva já muda o frete e
+     * o preço da prévia, sem gravar nada. Caixa incompleta não vale (fica a salva).
+     */
+    public function test_a_previa_usa_a_caixa_digitada_sem_gravar(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa, 'P', ['P-1' => '270']);
+        $variacao = EstruturaProdutoVariacao::where('codigo', 'P-1')->firstOrFail();
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+        $url = fn (array $q = []) => route('portal.auth.estrutura.produtos.precificacao', ['produto' => $produto, ...$q]);
+
+        $salvo = $sessao->getJson($url())->assertOk()->json('ofertas.0.calculo');
+        // A caixa da banqueta: 120 × 50 × 91 cm, 10 kg — fatura 91 kg cubados, fora dos Correios.
+        $previa = $sessao->getJson($url(['caixas' => [$variacao->id => '120x50x91x10']]))->assertOk()->json('ofertas.0.calculo');
+
+        // JSON devolve 50.0 como 50: comparar por valor.
+        $this->assertEquals(['c' => 50, 'l' => 40, 'a' => 10, 'peso' => 5], $salvo['envio']['pacote']);
+        $this->assertEquals(['c' => 120, 'l' => 50, 'a' => 91, 'peso' => 10], $previa['envio']['pacote']);
+        $this->assertSame('me1', $previa['envio']['chave']);
+        $this->assertGreaterThan($salvo['classico']['frete'], $previa['classico']['frete'], 'o frete já é o da caixa digitada');
+        $this->assertGreaterThan($salvo['classico']['minimo'], $previa['classico']['minimo']);
+        $this->assertSame(1, $variacao->fresh()->volumes()->count(), 'a prévia não grava a caixa');
+        $this->assertEquals(50, $variacao->fresh()->volumes()->first()->comprimento);
+
+        // Caixa com medida faltando ou inválida: vale a salva.
+        foreach (['120x50x91', '120x0x91x10', 'abc'] as $ruim) {
+            $this->assertEquals($salvo['envio']['pacote'], $sessao->getJson($url(['caixas' => [$variacao->id => $ruim]]))->assertOk()->json('ofertas.0.calculo.envio.pacote'), $ruim);
+        }
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'mercadolibre.com'));
+    }
+
+    /**
+     * 21/10/2026 — o produto NOVO ("Salve o produto para ver o preço" — "já deveria aparecer aqui e não salvar para
+     * depois voltar"): a prévia sem produto calcula com o custo e a caixa digitados e os percentuais da empresa.
+     */
+    public function test_produto_novo_tem_preco_e_frete_antes_de_salvar(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+        $antes = EstruturaOferta::where('company_id', $empresa->id)->count();
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.produtos.precificacao.previa', [
+            'custos' => ['k1' => '270', 'k2' => '270'],
+            'caixas' => ['k1' => '120x50x91x10'],
+        ]))->assertOk()->json();
+
+        $porChave = array_column(array_map(fn ($x) => ['k' => $x['oferta']['chave'], 'x' => $x], $r['ofertas']), 'x', 'k');
+        $this->assertSame(['k1', 'k2'], array_keys($porChave));
+        $c = $porChave['k1']['calculo'];
+        $this->assertNull($c['pendencia'], 'custo e caixa: já tem preço');
+        $this->assertEquals(270, $c['custo']['valor']);
+        $this->assertSame('sugerido', $c['classico']['frete_origem']);
+        $this->assertTrue($c['classico']['frete_sugerido']['fora_do_me2'], 'fora do Mercado Envios: a referência do ML para a caixa');
+        $this->assertEqualsWithDelta($c['classico']['minimo'], array_sum($c['classico']['partes']), 0.05);
+        // Sem caixa: não há frete a sugerir.
+        $this->assertSame('sem_frete', $porChave['k2']['calculo']['pendencia']);
+        $this->assertSame(['total' => 2, 'precificadas' => 1, 'pendentes' => 1], $r['resumo']);
+        // Os percentuais são os da empresa, e nada foi gravado.
+        $this->assertEquals($r['parametros']['imposto'], $c['percentuais']['imposto']);
+        $this->assertSame($antes, EstruturaOferta::where('company_id', $empresa->id)->count());
+        $sessao->getJson(route('portal.auth.estrutura.produtos.precificacao.previa', ['custos' => ['k1' => '-5']]))->assertStatus(422);
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'mercadolibre.com'));
+    }
+
     public function test_a_rota_nova_existe_no_dominio_do_cliente_so_com_id_numerico(): void
     {
+        $this->assertTrue(RestringeDominioDoPortal::liberado('portal/estrutura/produtos/precificacao-previa'));
         $this->assertTrue(RestringeDominioDoPortal::liberado('portal/estrutura/produtos/18/precificacao'));
         $this->assertFalse(RestringeDominioDoPortal::liberado('portal/estrutura/produtos/abc/precificacao'));
         $this->assertFalse(RestringeDominioDoPortal::liberado('portal/estrutura/produtos/18/precificacao/x'));

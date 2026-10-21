@@ -98,16 +98,19 @@ class EstruturaPrecificacaoService
      *
      * `$custosDeVariacao` (variacao_id → ?float) é o custo que a ficha tem DIGITADO e ainda não salvou:
      * a prévia recalcula com ele e não grava nada. Variação ausente = o custo salvo; null = sem custo.
+     * `$caixasDeVariacao` (variacao_id → caixas) é o mesmo para as medidas da caixa embalada (21/10/2026): o frete e
+     * o preço já saem com a caixa digitada, sem gravar.
      *
      * @param  array<int, ?float>  $custosDeVariacao
      * @return array{parametros: array<string, float>, padroes: array<string, float>, resumo: array{total: int, precificadas: int, pendentes: int}, ofertas: list<array>}
      */
-    public function doProduto(Company $empresa, int $produtoId, array $custosDeVariacao = []): array
+    public function doProduto(Company $empresa, int $produtoId, array $custosDeVariacao = [], array $caixasDeVariacao = []): array
     {
         $variacoes = EstruturaProdutoVariacao::query()
             ->where('company_id', $empresa->id)->where('produto_id', $produtoId)
             ->pluck('id')->map(fn ($id) => (int) $id)->flip()->all();
         $custosDeVariacao = array_intersect_key($custosDeVariacao, $variacoes);
+        $caixasDeVariacao = array_intersect_key($caixasDeVariacao, $variacoes);
 
         $base = $this->preparar($empresa, $custosDeVariacao);
 
@@ -118,7 +121,7 @@ class EstruturaPrecificacaoService
             }
         }
 
-        $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
+        $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas'], $caixasDeVariacao);
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
         $temMe1 = ModalidadeDeEnvio::me1EmCache($empresa);
         $itens = $this->itensDeFrete($empresa, $base, $ids, logisticas: $logisticas)['pagina'];
@@ -143,6 +146,62 @@ class EstruturaPrecificacaoService
 
         return [
             'parametros' => $base['parametros'],
+            'padroes'    => EstruturaPrecificacaoParametros::PADROES,
+            'resumo'     => $resumo,
+            'ofertas'    => $ofertas,
+        ];
+    }
+
+    /**
+     * A precificação de um produto que ainda NÃO existe (21/10/2026): o cadastro novo mostra o preço enquanto se
+     * digita, sem salvar. Cada variação vem com o custo e as caixas digitados; valem os percentuais da EMPRESA (o
+     * produto ainda não tem exceção) e o frete sugerido pela caixa, pela mesma conta de `pagina()`/`doProduto()` —
+     * `calcular()`, `envio()` e o FreteMe2Service. Nada é gravado e o ML não é chamado (o frete vem da cotação já
+     * guardada daquela caixa ou da tabela).
+     *
+     * @param  list<array{chave: string, custo: ?float, caixas: list<array{c: float, l: float, a: float, kg: float}>}>  $variacoes
+     * @return array{parametros: array<string, float>, padroes: array<string, float>, resumo: array{total: int, precificadas: int, pendentes: int}, ofertas: list<array>}
+     */
+    public function previaSemProduto(Company $empresa, array $variacoes): array
+    {
+        $parametros = EstruturaPrecificacaoParametros::daEmpresa($empresa->id);
+        $semExcecao = array_fill_keys(EstruturaPrecificacao::EXCECOES, null);
+        $p = PrecificacaoEstrutura::parametros($parametros, $semExcecao);
+        $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        $temMe1 = ModalidadeDeEnvio::me1EmCache($empresa);
+
+        $contas = [];
+        $itens = [];
+        foreach (array_values($variacoes) as $i => $v) {
+            $log = LogisticaProduto::daVolumes($v['caixas'], $modalidade);
+            $oferta = ['id' => null, 'sku' => null, 'nome' => null, 'fase' => 'simples', 'variacao_id' => null, 'logistica' => null, 'componentes' => []];
+            $custo = $v['custo'];
+            $contas[$i] = [
+                'chave' => (string) $v['chave'], 'oferta' => $oferta, 'log' => $log,
+                'conta' => ['oferta' => $oferta, 'linha' => null, 'excecoes' => $semExcecao, 'p' => $p, 'ligada' => true,
+                    'custo' => ['valor' => $custo, 'origem' => $custo === null ? null : 'produto', 'calculado' => null]],
+            ];
+            if ($log['pacote'] !== null && $log['logistica'] !== LogisticaProduto::PENDENTE) {
+                $itens[$i] = [
+                    'pacote' => $log['pacote'], 'peso_faturado' => $log['peso_faturado'], 'logistica' => $log['logistica'],
+                    'custo' => $custo, 'parametros' => $p, 'fora_do_me2' => $log['logistica'] === LogisticaProduto::ME1,
+                ];
+            }
+        }
+        $sugeridos = $itens === [] ? [] : $this->frete->estimar($empresa, $itens);
+
+        $resumo = ['total' => 0, 'precificadas' => 0, 'pendentes' => 0];
+        $ofertas = [];
+        foreach ($contas as $i => $x) {
+            $calculo = $this->calcular($x['conta'], $sugeridos[$i] ?? null, $x['log']['logistica'] === LogisticaProduto::ME1)
+                + ['envio' => self::envio($x['oferta'], $x['log'], $modalidade, $temMe1)];
+            $resumo['total']++;
+            $resumo[$calculo['pendencia'] === null ? 'precificadas' : 'pendentes']++;
+            $ofertas[] = ['oferta' => [...$x['oferta'], 'id' => $x['chave'], 'chave' => $x['chave']], 'calculo' => $calculo];
+        }
+
+        return [
+            'parametros' => $parametros,
             'padroes'    => EstruturaPrecificacaoParametros::PADROES,
             'resumo'     => $resumo,
             'ofertas'    => $ofertas,
@@ -392,7 +451,11 @@ class EstruturaPrecificacaoService
      *
      * @return array<int, ?array> oferta_id => retorno de LogisticaProduto (null = sem variação nem componentes)
      */
-    private function logisticas(Company $empresa, EstruturaConjunto $conjunto, array $ofertas): array
+    /**
+     * @param  array<int, list<array{c: float, l: float, a: float, kg: float}>>  $caixasDigitadas  variacao_id → as caixas que a
+     *                                                                       ficha tem digitadas e ainda não salvou (a prévia)
+     */
+    private function logisticas(Company $empresa, EstruturaConjunto $conjunto, array $ofertas, array $caixasDigitadas = []): array
     {
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
         $variacoes = array_values(array_unique(array_filter(array_column($ofertas, 'variacao_id'))));
@@ -408,6 +471,11 @@ class EstruturaPrecificacaoService
                 ->each(function ($x) use (&$volumes) {
                     $volumes[(int) $x->variacao_id][] = ['c' => (float) $x->comprimento, 'l' => (float) $x->largura, 'a' => (float) $x->altura, 'kg' => (float) $x->peso];
                 });
+        }
+
+        // A prévia da ficha (21/10/2026, "só atualiza o frete quando salva o produto"): a caixa digitada vale no lugar da salva.
+        foreach ($caixasDigitadas as $variacaoId => $caixas) {
+            $volumes[(int) $variacaoId] = $caixas;
         }
 
         $saida = [];

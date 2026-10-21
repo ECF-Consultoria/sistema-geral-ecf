@@ -39,7 +39,9 @@ import { cn } from '@/lib/utils';
 // - o CUSTO é o da variação — o mesmo campo do cartão dela, acima. Digitar aqui
 //   muda o formulário da ficha e grava com "Salvar produto"; enquanto isso o
 //   preço já sai com ele (a prévia vai ao servidor com `custos`, que recalcula
-//   sem gravar);
+//   sem gravar). A CAIXA embalada também (21/10/2026, "só atualiza o frete
+//   quando salva o produto"): a prévia leva `caixas`, e o frete e o preço
+//   saem com a caixa digitada;
 // - o FRETE e os PERCENTUAIS gravam na hora, pela rota da Precificação, por
 //   JSON: recarregar a página apagaria o formulário aberto.
 //
@@ -66,7 +68,7 @@ const gravadoComoTexto = (c) => ({
  * variação; em "Só esta", a escolhida). Grava só o que mudou em relação ao que aparece — e quem decide em
  * quantas variações é o `onGravar` de quem chama ("Todas" iguala o conjunto inteiro).
  */
-function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, onCustoBlur, onGravar }) {
+function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, onCustoBlur, onGravar, bloqueado = false }) {
     const freteK = `frete_${tipo}`;
     const c = referencia.calculo;
     const inicial = () => ({
@@ -117,6 +119,13 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
             <CampoReais rotulo="Custo do produto" dica={dicaDoCusto} valor={custo} onChange={onCusto} onBlur={onCustoBlur}
                 invalido={c.pendencia === 'sem_custo'} data-campo="custo" />
 
+            {/* Produto novo (21/10/2026): frete e percentuais próprios gravam na oferta, que só nasce ao salvar. */}
+            <fieldset disabled={bloqueado} className="min-w-0 space-y-4 border-0 p-0">
+            {bloqueado && (
+                <p className="text-[12px] text-white/50" data-entrada-bloqueada>
+                    Frete e percentuais próprios deste produto se ajustam depois de salvar. Até lá valem o frete sugerido pela caixa e os percentuais da empresa.
+                </p>
+            )}
             <div>
                 <CampoReais rotulo={`Frete (${nomeDoTipo(tipo)})`} dica="Quanto custa enviar. Em branco vale o sugerido."
                     valor={texto.frete} onChange={(v) => mudar('frete', v)} onBlur={() => gravar('frete', freteK, c[freteK])}
@@ -155,6 +164,7 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
                     </div>
                 </div>
             )}
+            </fieldset>
         </div>
     );
 }
@@ -171,31 +181,53 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
     const pedido = useRef(0);
     const custoMexido = useRef(false);   // o custo foi digitado em "Todas" desde o último sair do campo
 
+    // Produto que ainda não foi salvo (21/10/2026, "já deveria aparecer aqui e não salvar para depois voltar"): a
+    // conta vem da prévia sem produto, por variação digitada (a chave dela na tela), com os percentuais da empresa.
+    const novo = ! produtoId;
+    const chaveDe = (v) => (novo ? v._k : v.id);
+
     // O custo que a ficha tem agora, de cada variação já gravada. Texto que não é número fica de fora (vale o salvo).
     const custos = useMemo(() => {
         const r = {};
         for (const v of ficha.vars) {
-            if (! v.id) continue;
+            if (! chaveDe(v)) continue;
             const n = paraNumero(v.custo);
-            if (n === '') r[v.id] = '';
-            else if (Number.isFinite(Number(n)) && Number(n) >= 0) r[v.id] = n;
+            if (n === '') { if (! novo) r[v.id] = ''; } else if (Number.isFinite(Number(n)) && Number(n) >= 0) r[chaveDe(v)] = n;
         }
 
         return r;
     }, [ficha.vars]);
-    const assinatura = JSON.stringify(custos);
+
+    // As caixas digitadas e ainda não salvas, de cada variação gravada: "CxLxAxKG|…" (ponto decimal). Caixa com
+    // medida em branco ou que não é número positivo fica de fora (vale a salva) — a conta é do servidor.
+    const caixas = useMemo(() => {
+        const r = {};
+        for (const v of ficha.vars) {
+            if (! chaveDe(v) || ! Array.isArray(v.volumes_digitados) || v.volumes_digitados.length === 0) continue;
+            const medidas = v.volumes_digitados.map((c) => ['c', 'l', 'a', 'kg'].map((k) => Number(paraNumero(c[k]))));
+            if (medidas.some((m) => m.some((n) => ! Number.isFinite(n) || n <= 0))) continue;
+            r[chaveDe(v)] = medidas.map((m) => m.join('x')).join('|');
+        }
+
+        return r;
+    }, [ficha.vars]);
+    const assinatura = JSON.stringify([custos, caixas]);
 
     // O custo digitado e ainda não salvo muda o preço já, mas só grava com "Salvar produto": a tela avisa.
     const salvos = useMemo(() => new Map(linhas.map((l) => [l.id, l.custo])), [linhas]);
     const custoPorSalvar = Object.entries(custos).some(([id, n]) => salvos.has(Number(id)) && norma(n) !== norma(salvos.get(Number(id))));
+    const caixaPorSalvar = ! novo && Object.keys(caixas).length > 0;
+    const porSalvar = [custoPorSalvar && 'o custo', caixaPorSalvar && 'as medidas da caixa'].filter(Boolean);
+    // Produto novo sem custo nem caixa digitados: não há o que calcular ainda.
+    const semNada = novo && Object.keys(custos).length === 0 && Object.keys(caixas).length === 0;
 
     const carregar = async () => {
-        if (! produtoId) return;
+        if (semNada) { setDados(null); return; }
         const meu = ++pedido.current;
         setCarregando(true);
         try {
-            const r = await axios.get(route('portal.auth.estrutura.produtos.precificacao', produtoId), {
-                params: { custos }, headers: { Accept: 'application/json' },
+            const r = await axios.get(novo ? route('portal.auth.estrutura.produtos.precificacao.previa') : route('portal.auth.estrutura.produtos.precificacao', produtoId), {
+                params: { custos, caixas }, headers: { Accept: 'application/json' },
             });
             if (meu === pedido.current) {
                 setDados(r.data);
@@ -210,8 +242,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
 
     // Abre já com a conta; depois, cada custo digitado recalcula com uma pausa curta.
     useEffect(() => {
-        if (! produtoId) return undefined;
-        const t = setTimeout(carregar, dados ? 400 : 0);
+        const t = setTimeout(carregar, dados || novo ? 400 : 0);
 
         return () => clearTimeout(t);
     }, [produtoId, assinatura]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -237,19 +268,20 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
     };
 
     /** Aplica `mudanca` (campo do servidor → texto) sobre o que cada alvo tem gravado e grava só quem mudou. */
-    const gravar = (alvos, mudanca) => salvarVarias(alvos.flatMap((i) => {
+    const gravar = (alvos, mudanca) => (novo ? undefined : salvarVarias(alvos.flatMap((i) => {
         const novo = { ...gravadoComoTexto(i.calculo), ...mudanca };
         const valores = dadosParaGravar({ doProduto: true, freteClassico: novo.frete_classico, fretePremium: novo.frete_premium, excecoes: novo });
         const antes = { frete_classico: i.calculo.frete_classico, frete_premium: i.calculo.frete_premium, ...i.calculo.excecoes };
 
         return mudouDoGravado(valores, antes) ? [{ oferta: i.oferta, dados: valores }] : [];
-    }));
+    })));
 
     const itens = useMemo(() => pendentesPrimeiro(dados?.ofertas ?? []), [dados]);
     const resumo = dados?.resumo;
     const parametros = dados?.parametros;
-    const porVariacao = new Map(ficha.vars.filter((v) => v.id).map((v) => [v.id, v]));
-    const nomeDaVariacao = (i) => porVariacao.get(i.oferta.variacao_id)?.valor || (itens.length > 1 ? i.oferta.sku : 'Variação única');
+    const porVariacao = new Map(ficha.vars.filter((v) => chaveDe(v)).map((v) => [chaveDe(v), v]));
+    const varDe = (i) => porVariacao.get(novo ? i?.oferta.chave : i?.oferta.variacao_id);
+    const nomeDaVariacao = (i) => varDe(i)?.valor || (itens.length > 1 ? (i.oferta.sku ?? varDe(i)?.codigo ?? 'Variação') : 'Variação única');
 
     // A variação aberta em "Só esta": a escolhida, ou a primeira sem preço (a lista já vem com elas na frente).
     const selecionado = itens.find((i) => i.oferta.id === selId) ?? itens[0] ?? null;
@@ -257,7 +289,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
     const emMassa = varias && modo === 'todas';
     // A referência de "Todas": a primeira variação do produto (a ordem do cadastro, não a de pendência).
     const referencia = dados?.ofertas?.[0] ?? null;
-    const custoDe = (i) => porVariacao.get(i?.oferta.variacao_id)?.custo ?? '';
+    const custoDe = (i) => varDe(i)?.custo ?? '';
 
     /**
      * "Todas" = TODAS IGUAIS: o custo da referência vai para o campo de cada variação do formulário, e o
@@ -276,7 +308,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
         if (! selecionado) return;
         const outras = itens.filter((i) => i !== selecionado);
         const custoDaOrigem = custoDe(selecionado);
-        outras.forEach((i) => { const v = porVariacao.get(i.oferta.variacao_id); if (v) ficha.alterar(v._k, 'custo', custoDaOrigem); });
+        outras.forEach((i) => { const v = varDe(i); if (v) ficha.alterar(v._k, 'custo', custoDaOrigem); });
         gravar(outras, gravadoComoTexto(selecionado.calculo));
     };
 
@@ -300,7 +332,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
         referencia: selecionado,
         custo: custoDe(selecionado),
         dicaDoCusto: 'O custo desta variação (o mesmo campo de Variações, acima). Grava com "Salvar produto".',
-        onCusto: (texto) => { const v = porVariacao.get(selecionado?.oferta.variacao_id); if (v) ficha.alterar(v._k, 'custo', texto); },
+        onCusto: (texto) => { const v = varDe(selecionado); if (v) ficha.alterar(v._k, 'custo', texto); },
         onCustoBlur: () => {},
         onGravar: (mudanca) => gravar([selecionado], mudanca),
     };
@@ -323,7 +355,9 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                             ? <><Loader2 size={11} className="animate-spin text-ecf-yellow" /> {salvando > 0 ? 'Salvando…' : 'Calculando…'}</>
                             : erro
                                 ? <span className="text-red-300">{erro}</span>
-                                : dados && <><span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Salvo automaticamente</>}
+                                : dados && (novo
+                                    ? <span data-estado-previa>Prévia · grava com "Salvar produto"</span>
+                                    : <><span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Salvo automaticamente</>)}
                     </span>
                     {dados && itens.length > 0 && (
                         <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Tipo de anúncio">
@@ -337,17 +371,18 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                     )}
                 </div>
             </div>
-            {custoPorSalvar && (
-                <p className="mt-2 rounded-lg border border-ecf-yellow/25 bg-ecf-yellow/[0.06] px-3 py-1.5 text-[12.5px] text-ecf-yellow/90" data-custo-por-salvar>
-                    Os preços já usam o custo que você digitou — ele só fica gravado quando você clicar em "Salvar produto".
+            {porSalvar.length > 0 && (
+                <p className="mt-2 rounded-lg border border-ecf-yellow/25 bg-ecf-yellow/[0.06] px-3 py-1.5 text-[12.5px] text-ecf-yellow/90"
+                    data-custo-por-salvar={custoPorSalvar ? '' : undefined} data-caixa-por-salvar={caixaPorSalvar ? '' : undefined}>
+                    {`Os preços já usam ${porSalvar.join(' e ')} que você digitou — só fica gravado quando você clicar em "Salvar produto".`}
                 </p>
             )}
 
             {/* Durante o "Salvando…" do produto nada se edita aqui (mesma regra dos outros blocos da ficha). */}
             <fieldset disabled={ficha.salvando} className="mt-3 min-w-0 border-0 p-0" data-campos-precificacao>
-                {! produtoId ? (
+                {semNada ? (
                     <p className="rounded-xl border border-dashed border-white/[0.12] px-4 py-4 text-center text-[13px] text-white/50" data-precificacao-sem-produto>
-                        Salve o produto para ver o preço de cada variação aqui.
+                        Digite o custo e as medidas da caixa embalada da variação para ver o preço aqui.
                     </p>
                 ) : ! dados ? (
                     falhou ? (
@@ -429,7 +464,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                         )}
 
                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                            <Entrada key={`${emMassa ? 'todas' : aberta.oferta.id}-${tipo}`} tipo={tipo} parametros={parametros} {...entrada} />
+                            <Entrada key={`${emMassa ? 'todas' : aberta.oferta.id}-${tipo}`} tipo={tipo} parametros={parametros} bloqueado={novo} {...entrada} />
                             <ResultadoDaOferta membro={aberta} tipo={tipo}
                                 titulo={emMassa ? `Todas as ${itens.length} variações` : (varias ? nomeDaVariacao(aberta) : null)}
                                 proxima={proxima} onProxima={() => proxima !== null && setSelId(proxima)}
