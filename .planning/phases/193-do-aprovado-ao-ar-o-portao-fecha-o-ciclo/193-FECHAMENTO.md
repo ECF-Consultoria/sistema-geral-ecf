@@ -60,6 +60,13 @@ BUILD:     exit REAL 0 · 98 s · "built in 1m 32s"      HEAD 73bcac1c nas DUAS 
 MANIFEST:  500 entradas / 204 paginas   (controle Aprovacao.jsx PRESENTE, isca NaoExiste9z7.jsx AUSENTE)
 JS:        6031 / 6030 pass / 1 fail / 0 skipped       (exit REAL 0)  HEAD 73bcac1c nas DUAS pontas
 PHP:       2702 / 25119 / 0                            (exit REAL 0, 954 s)  HEAD 87f29f2e nas DUAS pontas
+                                                       ^ MEDIDO em 87f29f2e; depois dele vieram DOIS
+                                                         commits de conserto (761ab6a4, bd0574ba) que
+                                                         so ACRESCENTAM assercao a metodos que ja
+                                                         existiam -- a contagem de TESTES nao pode ter
+                                                         mudado (nenhum metodo novo), e os gates que
+                                                         LEEM este arquivo foram TODOS re-rodados no
+                                                         HEAD final bd0574ba, verdes e IDENTICOS
                                                        ^ o RECORTE, pelo --suite php: a suite PHP
                                                          COMPLETA NAO E MEDIVEL nesta maquina
 PROTOTIPO: design_handoff_publicador/Aprovacao.dc.html · 1432 linhas · sha256 68624883ce35547e
@@ -662,7 +669,73 @@ que mede.
 | `193-03` | **13** | **0** | `aoAprovar` vazio · `enfileirar` sempre agenda · `publicado` antes do MLB · MLB sem filtrar `listing_type_id` · `last()` em vez de `first()` · cláusula SEMPRE · cláusula NUNCA · `UNKNOWN` tratado como terminado · motivo genérico · guarda de tipo removida · `is_array($issues)` removida · de-dup desligada · decisão 24 desligada |
 | `193-04` | **9** | **0** | retry move sem enfileirar · guarda *"só a partir de falha"* removida · `everyMinute→hourly` · `withoutOverlapping(10)` removido · `onOneServer()` removido · Command chamando `mover()` direto · portão agendado ANTES da fila · comando imprimindo sempre · a recusa não lança (o botão finge que tentou) |
 | `261021-fix` (quick) | **9** | **0** | `FALHA` sai da constante · um 5º estado entra · gravação volta para dentro da transação · gravação removida · de-dup contra todo o histórico · conta não liberada · irmã volta a ficar ativa · conferência L3 sai · o recorte volta a ser a cauda do arquivo |
-| **TOTAL** | **36** | **2** | ⚠️ **e as duas foram INVESTIGADAS, nunca presumidas equivalentes** |
+| **`193-05` (esta)** | **9** | ⚠️ **3** | ver a tabela abaixo — **duas eram furo REAL** e uma era **erro de medição meu** |
+| **TOTAL** | **45** | **5** | ⚠️ **e as CINCO foram INVESTIGADAS, nunca presumidas equivalentes** |
+
+### ⚠️ A CAMPANHA DESTA WAVE: o alvo é o **documento**, porque é ele que os gates protegem
+
+⚠️ **Mutar o próprio arquivo de teste não provaria nada** (o teste **é** o gate). ➡️ O alvo é o
+`193-FECHAMENTO.md`. ⚠️ **Commit ANTES** (`eb1dc77f` na rodada 1, `761ab6a4` na rodada 2);
+`mutar-193-05.sh` com `sha256 72c27f96c9407572…` **impresso antes do veredicto e RECONFERIDO igual no
+fim**; `mutar-193-05-rodada2.sh` com `sha256 3ed4dfd124ecf39f…`, idem; **validação seca das 8 âncoras
+antes** (aplicar → restaurar **sem** rodar gate: todas **VIVAS**); ocorrência **travada em 1** por
+string exata; aplicação por **divergência de `sha256`**; **qual linha mudou** impressa depois;
+restauração **DA CÓPIA** em `trap EXIT`; `sha256` final contra `git show HEAD:` com `tr -d '\r'` nos
+dois lados — **OK nas duas rodadas**. ⚠️⚠️ **`git checkout` NUNCA.**
+
+| # | mutação no documento | gate | veredicto |
+|---|---|---|---|
+| **m1** | um **critério inteiro desaparece** (`CRIT-07` → `CRIT-X7`) | `fechamento-de-forma-fixa` | **MORREU** `1 failed, 2 passed` |
+| **m2** | **veredicto inventado** (`CRIT-05: OK` → `QUASE`) | idem | **MORREU** |
+| **m3** | a **RESSALVA perde o dono** (`· dono:` → `· prova-no-dono:`) | idem | ⚠️⚠️ **SOBREVIVEU** → furo REAL, **consertado na raiz** (`761ab6a4`); re-rodada: **MORREU** |
+| **m4** | uma pergunta ganha **`dono: a definir`** | idem | **MORREU** |
+| **m5** | um `ALVO-INTOCADO:` vira um **caminho FANTASMA** | `territorio-e-d11` | ⚠️ "sobreviveu" na rodada 1 **porque eu rodei o gate ERRADO**; contra o id certo: **MORREU** |
+| **m6** | a **numeração do roteiro** quebra (passo `6` → `9`) | `fechamento-de-forma-fixa` | **MORREU** |
+| **m7** | o documento passa a **AFIRMAR TER VISTO A TELA** (a forma exata está no script de mutação, **não aqui** — ver abaixo) | idem | **MORREU** |
+| **m8** | um veredicto **válido** que faz o **placar não fechar** (`CRIT-01: OK` → `RESSALVA`) | idem | **MORREU** |
+| **m9** | um `ALVO-INTOCADO:` é **REMOVIDO** (não trocado) | `territorio-e-d11` | ⚠️⚠️ **SOBREVIVEU** → furo REAL do **PISO**, **consertado na raiz** (`bd0574ba`); re-rodada: **MORREU** |
+
+### ⚠️⚠️ AS TRÊS SOBREVIVENTES DESTA WAVE, INVESTIGADAS
+
+| sobrevivente | o que revelou | conserto |
+|---|---|---|
+| **m3** | ⚠️ a sonda era `/dono:\s*\S/u` e casava `dono:` **no MEIO de outra palavra**. ➡️ Uma **RESSALVA SEM DONO** passaria com qualquer palavra terminada em `dono:` (`sem-dono:`, `prova-no-dono:`, `codono:`) — e *"ressalva sem dono é dívida que ninguém herda"* é **exatamente** o que o gate existe para impedir | **NA RAIZ:** constante `SONDA_DO_DONO` com **borda à ESQUERDA** `(?<![\p{L}\p{N}\-])`, **com o HÍFEN na classe de exclusão** (foi um hífen que a mutação usou), aplicada nos **dois** pontos que leem dono, mais **as duas iscas**. Manifesto **REMEDIDO** 49 → 51, razão **em linha** |
+| **m5** | ⚠️ **não era furo: era erro de MEDIÇÃO meu.** O anti-fantasma mora no id `territorio-e-d11`, e eu rodei a mutação contra o `fechamento-de-forma-fixa`. ➡️ *"Sobrevivente é investigada"* valeu aqui para **absolver** a sonda | nenhum — re-rodada contra o id certo: **MORREU**. ⚠️ **Registrado como erro meu**, não como propriedade do gate |
+| **m9** | ⚠️ o gate media a lista por **PISO** (`>= 20`), e com **32** alvos apagar um deixa **31**. ➡️ Família ***"piso `>= N` NÃO prova PRESENÇA"***, a mesma da sobrevivente **M5** do fechamento da 187. ⚠️ O risco é concreto: *"tirar alvo da lista"* é **o conserto barato** que o learnings manda evitar | **NA RAIZ, em duas camadas:** `ALVOS_INTOCADOS = 32` por **tamanho EXATO** (frágil por construção, **declarado**) **+** `ALVOS_CRITICOS` (**9** caminhos) por **presença explícita**, para que nem uma **troca** que preserve o total possa tirar um crítico. ⚠️ **Subconjunto, e não a lista inteira**, para não criar duas verdades livres para divergir |
+
+⚠️ **E uma medição que eu não consegui explicar, declarada em vez de omitida:** o conserto da m9
+acrescentou **uma** chamada de asserção ao método 1 (12 → 13), e **a contagem total do id ficou em 43
+nas duas medições**. A soma por método fecha (**16 + 14 + 13 = 43**) e o manifesto bate com a medição.
+➡️ **Eu NÃO ajustei nada**, e a prova do conserto é a **MUTAÇÃO** (m9 passou a MORRER), **não** a
+contagem.
+
+⚠️⚠️ **Em todas as 9 o `# tests` do mutado bate com o do pristino** (`1 failed, 2 passed` = **3** =
+pristino, e `3 passed` = **3** nas sobreviventes), logo **cada arquivo CARREGOU** e cada morte é **da
+asserção**, não de falha de **boot** — uma mutação desta milestone já morreu por boot e **não provava
+nada**.
+
+### ⚠️⚠️ E UM ACHADO DE QUARTA ORDEM: O GATE PEGOU A MINHA PRÓPRIA PROSA
+
+Ao escrever a tabela acima, eu descrevi a mutação **m7** com **a forma exata que ela injeta** — e o
+gate `fechamento-de-forma-fixa` **REPROVOU o próprio fechamento** (`1 failed, 2 passed`), acusando a
+asserção da **afirmação proibida** — a de que nenhum executor pode dizer ter visto a tela.
+
+⚠️ **E ele reprovou DUAS vezes:** na primeira eu reescrevi a descrição da mutação, e na segunda ele
+pegou a minha **citação da mensagem de erro do próprio gate**. ➡️ *A forma proibida não pode aparecer
+no documento nem como **relato de que ela foi pega***.
+
+⚠️ **É a família *"gate que reprova pelo próprio conserto"*** — a prosa que **explica** a proibição
+casa com a sonda que a **mede**. Mas aqui, diferente dos outros casos da milestone, ⚠️⚠️ **o GATE
+ESTÁ CERTO E A PROSA É QUE SE ADAPTA:** o invariante é *"este documento não AFIRMA ter visto tela"*, e
+uma sonda que abrisse exceção para *"a tabela de mutação"* viraria uma porta dos fundos de uma linha.
+➡️ **A forma proibida vive no script de mutação** (`mutar-193-05.sh`, fora do repositório), **não**
+aqui; a tabela a descreve por **paráfrase**.
+
+⚠️ **E a distinção é a lição:** quando a prosa precisa citar o literal proibido **para explicar o
+acerto** (como fazem os cinco arquivos desta fase com as nove formas de segundo passo), o conserto é
+**ler sem comentário**. Quando a prosa **afirma** a coisa proibida, o conserto é **não afirmar**. ⚠️
+*"Ler sem comentário" não serviria aqui*, porque markdown não tem comentário — e é por isso que o
+gate deste documento é por **forma fixa de linha**, não por tokenizador.
 
 ### ⚠️⚠️ AS DUAS SOBREVIVENTES, INVESTIGADAS — e as duas eram furo REAL
 
@@ -927,6 +1000,56 @@ pegar `ecf-worker-high` **sem matar job em andamento**.
 
 ---
 
-## §19 — Self-Check
+## §19 — ⚠️ A RE-MEDIÇÃO NO HEAD FINAL (`bd0574ba`), depois dos dois consertos de mutação
 
-A ser preenchido na tarefa 2, depois da medição das baselines.
+⚠️ **A linha `PHP:` foi medida em `87f29f2e`.** Os dois commits de conserto da campanha de mutação
+(`761ab6a4`, `bd0574ba`) vieram **depois** e **só acrescentam asserção a métodos que já existiam** —
+logo **a contagem de TESTES não pode ter mudado** (nenhum método novo). ⚠️ **Em vez de supor**, eu
+re-rodei, no HEAD final, **todos** os gates que **leem** o meu arquivo:
+
+| gate | no HEAD final `bd0574ba` | esperado | |
+|---|---|---|---|
+| `193-05 territorio-e-d11` | **3 / 43**, `EXIT_REAL=0` | 43 | ✅ |
+| `193-05 nada-sem-destino` | **3 / 15**, `EXIT_REAL=0` | 15 | ✅ |
+| `193-05 bijecao-dos-cinco-manifestos` | **1 / 24**, `EXIT_REAL=0` | 24 | ✅ |
+| `193-05 fechamento-de-forma-fixa` | **3 / 51**, `EXIT_REAL=0` | 51 | ✅ |
+| `193-01 bijecao-manifesto-193-01` | **1 / 20**, `EXIT_REAL=0` | 20 | ✅ |
+| `193-02 bijecao-manifesto-193-02` | **1 / 32**, `EXIT_REAL=0` | 32 | ✅ |
+| `193-03 bijecao-manifesto-193-03` | **1 / 33**, `EXIT_REAL=0` | 33 | ✅ ⚠️ **era o vermelho da rodada 1** |
+| `193-04 bijecao-manifesto-193-04` | **1 / 31**, `EXIT_REAL=0` | 31 | ✅ |
+| `186-09 bijecao-e-homonimo` (alheio) | **1 / 31**, `EXIT_REAL=0` | 31 | ✅ |
+| `186-09 transversais` (alheio) | **12 / 259**, `EXIT_REAL=0` | 259 | ✅ |
+
+⚠️⚠️ **O QUE EU NÃO FIZ, E DIGO:** **não** rodei uma TERCEIRA vez o `--suite php` inteiro (cada
+rodada custa ~16-19 min). ➡️ **O que está provado é o que está escrito:** a contagem de **testes** não
+pode ter mudado, e **todos** os gates que leem o arquivo alterado estão **verdes e idênticos** no HEAD
+final. ⚠️ **Quem quiser o número do HEAD final, mede o HEAD final** — é a regra deste documento, e ela
+vale para mim também.
+
+---
+
+## §20 — Self-Check
+
+**Arquivos criados/alterados por esta wave, conferidos no disco:**
+
+```
+OK   .planning/phases/193-…/193-FECHAMENTO.md
+OK   .planning/phases/193-…/deferred-items.md
+OK   .planning/phases/193-…/193-05-SUMMARY.md
+OK   tests/Feature/Publicador/Aprovacao/FechamentoDaFase193Test.php
+OK   tests/gates/contagens-193-05.txt
+```
+
+**Commits, conferidos por `git log --oneline --all | grep`:**
+
+```
+OK   2f888014  docs(193-05)  o fechamento medido
+OK   73bcac1c  test(193-05)  os gates transversais
+OK   602b4d62  fix(193-05)   a regressão achada pela suíte completa
+OK   87f29f2e  docs(193-05)  as dívidas com dono
+OK   eb1dc77f  docs(193-05)  as baselines re-medidas
+OK   761ab6a4  fix(193-05)   a sobrevivente m3 (a borda do dono)
+OK   bd0574ba  fix(193-05)   a sobrevivente m9 (o piso)
+```
+
+## Self-Check: PASSED
