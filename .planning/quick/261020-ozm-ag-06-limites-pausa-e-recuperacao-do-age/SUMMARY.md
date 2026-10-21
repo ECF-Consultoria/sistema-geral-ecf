@@ -18,3 +18,12 @@ status: complete
 - Concorrência real (dois workers) não foi exercitada: SQLite dos testes ignora `lockForUpdate`. A garantia é o lock da linha da configuração no MariaDB; provar no MariaDB local junto da migration.
 - Pausado e suspenso param o preparo do mesmo jeito; a parada de PUBLICAÇÃO é controle da fila de publicação (fora do agente).
 - A migration `2026_10_20_100000` foi EDITADA (coluna `tentativas`) — só é seguro porque nunca rodou fora do SQLite dos testes (nem MariaDB local, nem produção).
+
+## Prova no MariaDB local (20/10/2026, depois do fechamento)
+
+- **Migration:** `migrate --path` só de `2026_10_20_100000_create_pub_agente_tables.php` → `rollback --path` → `migrate --path` de novo, no MariaDB do XAMPP. Índices com os nomes à mão (`pubagcfg_*`, `pubagver_*`, `pubagexe_*`), FKs `SET NULL`/`CASCADE` como desenhadas, sem 1059/1830/1553. As outras 3 migrations pendentes do banco local (de outras frentes) NÃO foram aplicadas.
+- **Concorrência real** (`lockForUpdate` que o SQLite ignora): processos PHP disparados no mesmo instante contra o MariaDB, 5 rodadas por cenário. Por um erro do script de prova eram TRÊS processos por rodada (não dois) — prova mais forte, não mais fraca.
+  - mesmo produto: 5/5 rodadas terminaram com **1** execução no banco; todos os processos devolveram o MESMO id.
+  - `limite_diario = 1` com dois produtos: 5/5 rodadas com **1** execução; o outro recebeu `AG-06-LIMITE-DIARIO`.
+- Dados descartáveis (Company "ZZ Teste concorrência agente", produtos `ZZ-CONC-*`, configuração e execuções) apagados e reconferidos por consulta: 0 linhas restantes nas três tabelas do agente.
+- O script fica fora do repositório (scratchpad da sessão); a evidência é esta seção.
