@@ -68,13 +68,14 @@ const contar = (html, agulha) => html.split(agulha).length - 1;
 
 // ─── vitrine.js ───
 
-test('filtros — prontos primeiro quando há; todos, quando não; chave desconhecida não vale', () => {
+test('filtros — entra em Todos; o pedido na URL vale; chave desconhecida não vale', () => {
     assert.deepEqual(FILTROS_DA_VITRINE.map((f) => f.chave), ['prontos', 'pendencia', 'publicados', 'todos']);
-    assert.equal(filtroInicial({ prontos: 2 }), 'prontos');
+    // Demo 23/10 (N16): sempre "Todos" na entrada — o produto que acabou de chegar do Portal aparece.
+    assert.equal(filtroInicial({ prontos: 2 }), 'todos');
     assert.equal(filtroInicial({ prontos: 0 }), 'todos');
     assert.equal(filtroInicial(null), 'todos');
     assert.equal(filtroInicial({ prontos: 3 }, 'publicados'), 'publicados');
-    assert.equal(filtroInicial({ prontos: 3 }, 'inventado'), 'prontos');
+    assert.equal(filtroInicial({ prontos: 3 }, 'inventado'), 'todos');
     const lista = [POLTRONA, MESA, BANQUETA, null, { nome: 'sem id' }];
     assert.deepEqual(filtrar(lista, 'prontos').map((c) => c.produto_id), [3]);
     assert.deepEqual(filtrar(lista, 'pendencia').map((c) => c.produto_id), [2]);

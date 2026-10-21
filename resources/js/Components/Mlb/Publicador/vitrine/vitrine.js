@@ -16,11 +16,13 @@ export const FILTROS_DA_VITRINE = [
 
 const CHAVES = FILTROS_DA_VITRINE.map((f) => f.chave);
 
-/** O filtro de entrada: os prontos, se houver; senão todos. Chave desconhecida também cai em "todos". */
+/**
+ * O filtro de entrada: "Todos", ou o pedido na URL. Demo 23/10 (N16): abrir em "Prontos para revisar"
+ * escondia o produto que acabou de chegar do Portal (ele nasce "Com pendência" enquanto a IA prepara).
+ * `contagens` fica na assinatura para quem já chama assim.
+ */
 export function filtroInicial(contagens, pedido = null) {
-    if (CHAVES.includes(pedido)) return pedido;
-
-    return Number(contagens?.prontos) > 0 ? 'prontos' : 'todos';
+    return CHAVES.includes(pedido) ? pedido : 'todos';
 }
 
 export const listaSegura = (cartoes) => (Array.isArray(cartoes) ? cartoes.filter((c) => c && typeof c === 'object' && Number.isFinite(Number(c.produto_id))) : []);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { Loader2, RefreshCw } from 'lucide-react';
+import { mensagemDe } from '@/Components/Publicador/apoio';
 import { cn } from '@/lib/utils';
 
 const ERRO_PADRAO = 'Não foi possível buscar do Portal. Nada foi alterado. Tente de novo em instantes.';
@@ -22,7 +23,9 @@ export default function BotaoSincronizarPortal({ conta, onConcluido, onErro, des
             const { data } = await axios.post(route('mlb.anuncios.publicador.sincronizar', { conta }));
             onConcluido?.(data);
         } catch (e) {
-            onErro?.(e.response?.data?.message ?? ERRO_PADRAO);
+            // Demo 23/10: o `message` cru do Laravel chegava em inglês ("Server Error", "CSRF token mismatch.").
+            // 500/419/429 viram português pelo `mensagemDe`; sem resposta, o texto daqui.
+            onErro?.(e?.response ? mensagemDe(e) : ERRO_PADRAO);
         } finally {
             setOcupado(false);
         }
