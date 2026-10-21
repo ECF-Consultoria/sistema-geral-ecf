@@ -1105,12 +1105,44 @@ test('⚠️ TERRITÓRIO: o ESCOPO DO ASSUNTO `(188-07)`, em duas passadas 188_0
     // máquinas desta árvore commitam com o MESMO `user.name` (`MB.ECF-100376`).
     // ➡️ A prova é por **ESCOPO DO ASSUNTO**: só os commits cujo assunto traz
     // `(188-07)`.
+    // ⚠️⚠️ **CONSERTADO EM 21/10/2026 — ESTE GATE ERA AUTO-INVALIDANTE POR JANELA
+    // DESLIZANTE, e ele mesmo acusou.** A varredura era `git log -80`, e o commit
+    // `(188-0N)` mais recente foi andando para trás conforme a árvore recebia
+    // commits de TODAS as sessões: medido em **posição 77** (margem de 3) e, quatro
+    // commits depois, **81 — FORA da janela**.
+    //
+    // ⚠️⚠️ **E o vermelho era o MENOR dos problemas.** Com a janela passando dos
+    // commits da fase, **`meus` ficava VAZIO** e as duas passadas abaixo passavam a
+    // asseverar `[] === []`: **as provas de território ficavam VAZIAS POR
+    // CONSTRUÇÃO**, verdes e sem medir nada. **Foi a isca de não-cegueira no fim
+    // deste caso que pegou** — e é exatamente para isso que ela existe.
+    //
+    // ⚠️ **O conserto NÃO é alargar a janela** (`-80` → `-300`): isso seria elevar um
+    // número, o hábito que esta milestone consertou **dezesseis** vezes na raiz e
+    // **zero** por elevação, e **só adiaria** a mesma falha para a próxima centena de
+    // commits. ➡️ **A fonte dos commits do assunto passa a ser `--grep` SEM JANELA**,
+    // que **não pode deslizar**.
+    //
+    // ⚠️ **O `--grep` lê a MENSAGEM INTEIRA e por isso SOBRE-CAPTURA** (limite medido
+    // várias vezes nesta milestone) — e aqui isso é **inofensivo de propósito**: o
+    // filtro seguinte é por **`%s`** (`assunto.includes('(188-07)')`), então commit
+    // que só cita o escopo no CORPO é descartado. **A sobre-captura amplia o
+    // candidato, nunca o veredicto.**
+    const doAssunto = execFileSync('git', ['log', '--grep=(188-0', '--format=%H%x09%s'], { cwd: RAIZ, encoding: 'utf8' })
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== '')
+        .map((l) => { const [h, ...s] = l.split('\t'); return { hash: h, assunto: s.join('\t') }; });
+
+    // ⚠️ A janela segue existindo **SÓ** para a isca de não-cegueira geral abaixo
+    // (*"o `git log` não veio vazio"*), que é sobre o repositório e **não** sobre esta
+    // fase — para essa pergunta, janela recente é adequada e não desliza para fora de
+    // nada.
     const log = execFileSync('git', ['log', '--format=%H%x09%s', '-80'], { cwd: RAIZ, encoding: 'utf8' })
         .split(/\r?\n/)
         .filter((l) => l.trim() !== '')
         .map((l) => { const [h, ...s] = l.split('\t'); return { hash: h, assunto: s.join('\t') }; });
 
-    const meus = log.filter((c) => c.assunto.includes('(188-07)'));
+    const meus = doAssunto.filter((c) => c.assunto.includes('(188-07)'));
 
     // ⚠️ PASSADA 1: cada commit do assunto só toca arquivo deste plano.
     const PERMITIDOS = [
@@ -1145,10 +1177,21 @@ test('⚠️ TERRITÓRIO: o ESCOPO DO ASSUNTO `(188-07)`, em duas passadas 188_0
     // vazio). Direção 2: um assunto que não existe dá ZERO.
     assert.ok(log.length > 10, `o \`git log\` devolveu ${log.length} commits — a sonda está cega`);
     assert.equal(log.filter((c) => c.assunto.includes('(188-zz)')).length, 0, 'a isca do escopo casou um assunto que não existe');
+    // ⚠️⚠️ A PROVA DE NÃO-CEGUEIRA LÊ O `doAssunto`, NÃO A JANELA — e é esta troca
+    // que tira o caso da família *"gate que se auto-invalida com o tempo"*. Lendo a
+    // janela, ela reprovava quando o repositório andava 4 commits; lendo o `--grep`,
+    // ela só reprova se os commits da fase **deixarem de existir** — que é o
+    // invariante de verdade. ⚠️ **E ela guarda as duas passadas acima:** se `meus`
+    // ficar vazio, elas viram `[] === []` e param de medir, e é ESTA asserção que
+    // acusa.
     assert.ok(
-        log.filter((c) => /\(188-0\d\)/.test(c.assunto)).length >= 1,
-        'nenhum commit desta FASE no log — a sonda do escopo não discrimina nada',
+        doAssunto.filter((c) => /\(188-0\d\)/.test(c.assunto)).length >= 1,
+        'nenhum commit desta FASE achado por `--grep` — a sonda do escopo não discrimina nada',
     );
+
+    // ⚠️ E o sujeito DESTE caso tem de existir, não só a família: sem commit
+    // `(188-07)`, as duas passadas acima são vazias por construção.
+    assert.ok(meus.length >= 1, 'nenhum commit `(188-07)` achado — as duas passadas de território acima estariam VAZIAS POR CONSTRUÇÃO');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
