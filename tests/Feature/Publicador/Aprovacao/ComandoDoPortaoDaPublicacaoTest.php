@@ -1110,6 +1110,13 @@ class ComandoDoPortaoDaPublicacaoTest extends TestCase
         $this->assertSame(PubAprovacaoOferta::PUBLICANDO, $emFalha->fresh()->andamento);
 
         $this->assertSame([], $this->escritasEDesvios(), 'a action do retry fez requisição de ESCRITA (ou leitura fora da lista) ao Mercado Livre');
+        // ⚠️ MEDIDO (e mais forte do que o invariante exige): neste caminho a action faz **ZERO**
+        // requisição — nem a leitura autorizada da tarifa. ⚠️ A asserção **continua** sendo "zero
+        // ESCRITA com lista constante de leituras autorizadas", de propósito: `agendar()` passa
+        // pela prontidão, que em outro cenário PODE ler a tarifa real (decisão 9 do usuário), e
+        // prometer "zero requisição" aqui seria gate que o próprio desenho pode contradizer — o
+        // executor seguinte o "consertaria" pré-aquecendo cache. ➡️ A medição fica REGISTRADA aqui;
+        // **congelá-la numa asserção seria a armadilha que este próprio comentário descreve.**
         Queue::assertNothingPushed();
 
         // ─── ⚠️ ISCA (+) nas DUAS pontas: a sonda não está cega ────────────────────────────
