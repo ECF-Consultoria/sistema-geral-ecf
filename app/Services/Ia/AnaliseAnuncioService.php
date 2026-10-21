@@ -682,15 +682,17 @@ class AnaliseAnuncioService
         return <<<TXT
         Escreva a descrição do anúncio do produto **{$produto}** no Mercado Livre.
 
-        Nome da Empresa: **{$loja}**{$bloco}{$ctx}
+        {$bloco}{$ctx}
 
         ESTRUTURA OBRIGATÓRIA:
-        - Saudação amigável citando "{$loja}".
         - Parágrafo 1 (Problema): reconheça a necessidade do cliente de forma empática, usando o JTBD.
         - Parágrafo 2 (Solução): apresente o produto como solução ideal, destacando a PUV.
         - Parágrafo 3 (Oferta): chamada para ação clara e direta.
         - Lista de 3 a 5 especificações técnicas mais importantes, limpa e direta.
-        - Despedida cordial.
+        - Despedida cordial curta.
+
+        SEM SAUDAÇÃO E SEM NOME DE LOJA: comece direto pelo Parágrafo 1 — nada de "Olá", "Seja bem-vindo"
+        ou parecido. Não cite o nome da loja, da empresa ou do vendedor em parte alguma do texto.
 
         SEM EMOJIS: o Mercado Livre recusa a descrição que tenha emoji. Não use emojis, ícones nem
         símbolos decorativos em parte alguma do texto — nem na saudação, nem na lista.

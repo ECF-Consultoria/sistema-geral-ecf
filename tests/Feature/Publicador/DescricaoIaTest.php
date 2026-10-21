@@ -318,7 +318,8 @@ class DescricaoIaTest extends TestCase
         $this->servico()->executar($this->r, 'p-1');
 
         $this->assertSame(
-            "Olá! Bem-vindo à Polo IA\n\nCadeira firme e confortável.\n\nEncosto em tela\nBase giratória\n1 Monte em 10 minutos\n\nAté logo!",
+            // Demo 23/10: e sem a saudação com o nome da loja.
+            "Cadeira firme e confortável.\n\nEncosto em tela\nBase giratória\n1 Monte em 10 minutos\n\nAté logo!",
             Cache::get(DescricaoIaService::chave($this->r->id))['valor'],
         );
     }

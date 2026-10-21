@@ -263,7 +263,8 @@ class IaParaRascunhoTest extends TestCase
         ]));
 
         $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
-        $this->assertSame("Olá! Cadeira executiva giratória\nEncosto alto\nBase cromada", $r->descricao);
+        // Demo 23/10: a saudação sai, o resto da linha fica.
+        $this->assertSame("Cadeira executiva giratória\nEncosto alto\nBase cromada", $r->descricao);
     }
 
     public function test_rodar_de_novo_nao_reaplica(): void

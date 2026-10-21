@@ -155,7 +155,8 @@ class IaParaRascunhoService
         $idsDeVariacao = $this->idsDeVariacao($ficha);
         // Termo que o ML veta ("criado-mudo", 10/10/2026) vira o aceito no título e na descrição da IA.
         $titulo = TermosVetados::trocar(trim((string) ($ficha['titulo'] ?? ($a->titulos()[0]['texto'] ?? ''))));
-        $descricao = TermosVetados::trocar($this->limparDescricao($a->descricao()));
+        // Demo 23/10 (N2): sem saudação nem nome da loja, como no preparo pelo Portal.
+        $descricao = DescricaoIaService::semSaudacao(TermosVetados::trocar($this->limparDescricao($a->descricao())), (string) $a->loja);
         $textoGarantia = trim((string) ($ficha['garantia'] ?? ''));
 
         $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($schema, $ficha, $idsDeVariacao, $titulo, $descricao, $textoGarantia, &$secoes, &$avisos) {

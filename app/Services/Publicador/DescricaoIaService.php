@@ -116,6 +116,10 @@ class DescricaoIaService
         // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
         // Sem emoji, sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
         $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados'])));
+        // Demo 23/10 (N2): o anúncio da #459 saiu com "Olá! Seja bem-vindo à Dev 02 Testes API." — o nome
+        // cadastrado não é o que o comprador vê (o ML mostra o apelido da conta). Decisão do usuário: sem
+        // saudação. O prompt já pede; isto garante quando o modelo escapa.
+        $texto = self::semSaudacao($texto, $loja);
         if ($texto === '') {
             throw new \RuntimeException(self::ERRO_VAZIA);
         }
@@ -241,6 +245,28 @@ class DescricaoIaService
      * A IA escreve em HTML simples e põe emoji por conta própria; a descrição do anúncio é texto puro e o ML recusa
      * emoji (13/10/2026). Mesma regra do IaParaRascunhoService.
      */
+    /**
+     * Tira as frases de saudação do começo ("Olá!", "Seja bem-vindo à X.") — só a frase, o resto da linha
+     * fica ("Olá! Cadeira executiva" vira "Cadeira executiva") — e toda linha que cita o nome da
+     * loja/empresa: "Obrigado por escolher a X!" sem o X fica sem sentido.
+     */
+    public static function semSaudacao(string $texto, string $loja): string
+    {
+        // Saudação só no começo do texto: "olá" no meio de um parágrafo não é saudação.
+        $saudacao = '/^\s*(ol[áa]|oi|seja\s+(muito\s+)?bem[\s-]?vind[oa](\(a\))?|bem[\s-]?vind[oa](\(a\))?)\b[^.!?\n]*[.!?]*[ \t]*/iu';
+        do {
+            $antes = $texto;
+            $texto = ltrim((string) preg_replace($saudacao, '', $texto, 1));
+        } while ($texto !== $antes);
+        $linhas = preg_split('/\n/', $texto) ?: [];
+        $loja = trim($loja);
+        if (mb_strlen($loja) >= 3) {
+            $linhas = array_values(array_filter($linhas, fn ($l) => mb_stripos($l, $loja) === false));
+        }
+
+        return trim((string) preg_replace("/\n{3,}/", "\n\n", implode("\n", $linhas)));
+    }
+
     private function limparDescricao(?string $html): string
     {
         $texto = preg_replace('~</(p|li|h[1-6]|div)>|<br\s*/?>~i', "\n", (string) $html);
