@@ -8,7 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    FILTROS_DA_VITRINE, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, numeroDaFase, pilulasDasFases, reais, resumoDaSelecao, rotuloDaFase,
+    FILTROS_DA_VITRINE, avisoDaIa, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, itensParaResolver, numeroDaFase, pilulasDasFases, reais,
+    resumoDaSelecao, rotuloDaFase,
     tempoDesde, textoDosAnuncios,
 } from '../../resources/js/Components/Mlb/Publicador/vitrine/vitrine.js';
 
@@ -261,5 +262,47 @@ test('página — com a IA atualizando algum cartão, a vitrine se relê sozinha
     assert.match(f, /const iaTrabalhando = lista\.some\(\(c\) => typeof c\?\.ia === 'string'\)/);
     assert.match(f, /if \(! iaTrabalhando\) return undefined;/);
     assert.match(f, /setInterval\(\(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), 15 \* 1000\)/);
+});
+
+// ─── 21/10/2026: o que falta é clicável, e as imagens da IA reprovadas aparecem com o motivo ───
+
+test('o que falta — só itens com texto e link, no máximo 5; dado estragado não quebra', () => {
+    const r = [{ texto: ' Preencha «Modelo». ', url: '/e?etapa=detalhes&corrigir=1' }, { texto: '', url: '/x' }, { texto: 'sem link' }, null, 7];
+    assert.deepEqual(itensParaResolver({ resolver: r }), [{ texto: 'Preencha «Modelo».', url: '/e?etapa=detalhes&corrigir=1' }]);
+    assert.deepEqual(itensParaResolver({ resolver: 'x' }), []);
+    assert.equal(itensParaResolver({ resolver: Array.from({ length: 9 }, (_, i) => ({ texto: `t${i}`, url: `/u${i}` })) }).length, 5);
+});
+
+test('aviso da IA — todas ou parte reprovadas, com os motivos; nada a avisar dá nulo', () => {
+    assert.equal(avisoDaIa(null), null);
+    assert.equal(avisoDaIa({ reprovadas: 0 }), null);
+    assert.equal(avisoDaIa([1]), null);
+    const todas = avisoDaIa({ todas: true, reprovadas: 3, geradas: 3, motivos: ['A foto do Portal é de outro produto.', 4, ''] });
+    assert.equal(todas.titulo, 'Imagens da IA reprovadas');
+    assert.deepEqual(todas.motivos, ['A foto do Portal é de outro produto.']);
+    assert.equal(avisoDaIa({ todas: false, reprovadas: 1, geradas: 3, motivos: [] }).titulo, '1 imagem da IA reprovada');
+});
+
+test('cartão — o chip do que falta vira botão (fechado) e o aviso da IA mostra o motivo', () => {
+    const cartao = { ...MESA, grupo: 'pendencia', chip: { texto: 'Faltam 2 itens', tom: 'ambar' },
+        resolver: [{ texto: 'Condições de venda: 2 itens — O preço do Clássico veio sem frete.', url: '/editor?etapa=condicoes&corrigir=1' }],
+        ia_reprovada: { todas: true, reprovadas: 3, geradas: 3, motivos: ['A foto do Portal é de outro produto.'] } };
+    const html = renderToStaticMarkup(React.createElement(CartaoDaVitrine, { cartao }));
+    assert.match(html, /<button[^>]*aria-expanded="false"[^>]*data-vitrine-chip="ambar"[^>]*data-vitrine-resolver-abrir/);
+    assert.match(html, />Faltam 2 itens</);
+    assert.doesNotMatch(html, /data-vitrine-resolver>/, 'a lista só abre no clique');
+    assert.match(html, /data-vitrine-ia-reprovada/);
+    assert.match(html, /Imagens da IA reprovadas:<\/span> A foto do Portal é de outro produto\./);
+    // Sem `resolver`, o chip segue texto (o Pronto, o Publicado).
+    assert.doesNotMatch(renderToStaticMarkup(React.createElement(CartaoDaVitrine, { cartao: MESA })), /data-vitrine-resolver-abrir/);
+});
+
+test('editor — vindo da vitrine com `corrigir=1`, abre a etapa com os campos marcados; e a faixa da IA reprovada', () => {
+    const editor = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
+    assert.match(editor, /get\('corrigir'\) === '1'/);
+    assert.match(editor, /irPara\(etapa, \{ marcar: true \}\)/);
+    assert.match(editor, /url\.searchParams\.delete\('corrigir'\)/);
+    assert.match(editor, /tom="ambar"/);
+    assert.match(editor, /data-ia-reprovada/);
 });
 

@@ -430,6 +430,9 @@ class EstoqueDoKitTest extends TestCase
             // `promocao_automatica` (10/10/2026): se a conta cria a promoção de 14 dias sozinha depois de
             // publicar (a frase embaixo do preço). ADITIVA, no fim.
             'promocao_automatica',
+            // 20–21/10/2026: o carimbo do que a automação gravou, se ela está gravando agora (o editor aberto pausa e
+            // relê) e as imagens dela que o juiz reprovou (a faixa com o motivo). ADITIVAS, no fim.
+            'carimbo_por_fora', 'ia_por_fora', 'ia_reprovada',
         ], array_keys($e));
     }
 

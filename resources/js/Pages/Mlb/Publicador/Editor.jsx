@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Info, Loader2, Sparkles, X } from 'lucide-react';
+import { avisoDaIa } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
 import useDescricaoIa from '@/Components/Publicador/useDescricaoIa';
@@ -130,6 +131,7 @@ function Esqueleto() {
 function Faixa({ tom = 'azul', icone: Icone, children, acao, onFechar }) {
     const TOM = {
         azul: 'border-sky-400/25 bg-sky-400/10 text-sky-200',
+        ambar: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
         vermelho: 'border-red-500/30 bg-red-500/10 text-red-300',
         neutro: 'border-white/[0.08] bg-white/[0.03] text-white/70',
     };
@@ -210,6 +212,9 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     const [avancando, setAvancando] = useState(false);
     const [verificar, setVerificar] = useState(0);
     const [iaFechada, setIaFechada] = useState(false);
+    // 21/10/2026: as imagens da IA que o juiz reprovou, com o motivo (fecha só nesta visita).
+    const [reprovadaFechada, setReprovadaFechada] = useState(false);
+    const avisoReprovada = avisoDaIa(estado?.ia_reprovada);
 
     // Troca de produto pela barra: a etapa é a da URL nova (ou a guardada para aquele produto).
     useEffect(() => {
@@ -239,6 +244,21 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
         }
         setTimeout(() => document.getElementById('topo-do-editor')?.scrollIntoView({ block: 'start' }), 50);
     }, [produto.id]);
+
+    // 21/10/2026: vindo da vitrine pelo "o que falta" (`?corrigir=1`), a etapa já abre com os campos marcados.
+    const corrigirDaUrl = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('corrigir') === '1');
+    useEffect(() => {
+        if (! estado || ! corrigirDaUrl.current) return;
+        corrigirDaUrl.current = false;
+        irPara(etapa, { marcar: true });
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('corrigir');
+            window.history.replaceState(window.history.state, '', url);
+        } catch {
+            // sem history: a etapa já abriu marcada, a URL só fica com o parâmetro
+        }
+    }, [estado]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const paraCorrigir = estado && corrigindo?.etapa === etapa ? problemasParaCorrigir(pub.problemas, etapa) : [];
     useAcender({ problemas: paraCorrigir, vez: corrigindo?.vez ?? 0, foco: corrigindo?.foco ?? null, listaId: ID_DA_LISTA });
@@ -290,6 +310,17 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                             <Faixa icone={Loader2} tom="azul">
                                 <p data-ia-por-fora={pub.iaPorFora}><span className="font-bold">Atualizando…</span> {TEXTO_DA_IA_POR_FORA[pub.iaPorFora] ?? 'A IA está preparando este anúncio.'}</p>
                                 <p className="mt-1">Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui sozinho.</p>
+                            </Faixa>
+                        )}
+                        {avisoReprovada && ! pub.iaPorFora && ! reprovadaFechada && (
+                            <Faixa icone={AlertTriangle} tom="ambar" onFechar={() => setReprovadaFechada(true)}>
+                                <p data-ia-reprovada><span className="font-bold">{avisoReprovada.titulo}.</span> {avisoReprovada.todas ? 'O juiz da IA não aprovou nenhuma imagem, e o anúncio ficou com a foto do cliente.' : 'Elas ficaram de fora; as outras entraram no anúncio.'}</p>
+                                {avisoReprovada.motivos.length > 0 && (
+                                    <ul className="mt-1 space-y-0.5 pl-5">
+                                        {avisoReprovada.motivos.map((m) => <li key={m} className="list-disc">{m}</li>)}
+                                    </ul>
+                                )}
+                                <p className="mt-1">Confira se a foto no Portal é deste produto e se a ficha está certa. Salvando no Portal com foto ou ficha nova, a IA gera as imagens de novo.</p>
                             </Faixa>
                         )}
                         {ia.estado === 'andamento' && (

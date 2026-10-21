@@ -10,6 +10,7 @@ use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\IaTrabalhando;
+use App\Support\Publicador\ImagensReprovadas;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -38,6 +39,9 @@ final class VitrineDeProdutosService
     public const PUBLICADOS = 'publicados';
 
     private const ORDEM = [self::PRONTOS => 0, self::PENDENCIA => 1, self::PUBLICADOS => 2];
+
+    /** As etapas do editor, como a tela as chama (o "o que falta" do cartão). */
+    private const NOME_DA_ETAPA = ['produto' => 'Produto', 'detalhes' => 'Detalhes', 'imagens' => 'Imagens', 'condicoes' => 'Condições de venda', 'previa' => 'Prévia'];
 
     /** Quantos resumos do que falta a vitrine refaz por visita (~40–80 ms cada); o resto sai "A conferir" e vem na próxima. */
     private const RESUMOS_POR_VISITA = 40;
@@ -124,6 +128,10 @@ final class VitrineDeProdutosService
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL && ! $saiuDoPortal,
             'saiu_do_portal' => $saiuDoPortal,
             'ia' => $ia,
+            // As imagens da IA que o juiz reprovou, com o motivo (21/10/2026) — só depois que ela terminou.
+            'ia_reprovada' => $publicado || $ia !== null ? null : ImagensReprovadas::do($r),
+            // 21/10/2026: o chip de pendência abre O QUE falta, cada item levando à etapa do editor onde se resolve.
+            'resolver' => $grupo === self::PENDENCIA && ! $saiuDoPortal && $ia === null ? self::oQueResolver($l, $r, $naoPronto, $falhou) : [],
             'fase' => $f['selo'] ?? 'Fase 1',
             'grupo' => $grupo,
             'chip' => $naoPronto ?? self::chip($grupo, $status, $l, $cores, $faltam, $falhou),
@@ -322,5 +330,57 @@ final class VitrineDeProdutosService
             IaTrabalhando::ESCREVENDO => 'A IA está escrevendo título e descrição',
             default => 'A IA está gerando as imagens',
         }];
+    }
+
+    /**
+     * O que falta, item por item, com o link para a etapa do editor onde se resolve (21/10/2026, o usuário: "nesses que
+     * falam que faltam algum item, tem que ser clicável me induzindo a resolver"). `corrigir=1` faz o editor abrir a
+     * etapa com os campos marcados. Os itens vêm do resumo (até 5); sem ele, o motivo do chip.
+     *
+     * @return list<array{texto: string, url: string}>
+     */
+    private static function oQueResolver(array $l, ?PubRascunho $r, ?array $naoPronto, bool $falhou): array
+    {
+        $editor = (string) ($l['url_editor'] ?? '');
+        if ($editor === '') {
+            return [];
+        }
+        $em = fn (string $etapa) => $editor.'?etapa='.$etapa.'&corrigir=1';
+        if ($falhou) {
+            return [['texto' => 'A publicação não foi concluída: veja o motivo na Prévia.', 'url' => $editor.'?etapa=previa']];
+        }
+        $chip = $naoPronto['texto'] ?? null;
+        if ($chip === 'A conferir') {
+            return [['texto' => 'Abra o anúncio para o sistema conferir o que falta.', 'url' => $editor.'?etapa=previa']];
+        }
+        if ($chip === 'Falta categoria') {
+            return [['texto' => 'Escolha a categoria do produto.', 'url' => $em('produto')]];
+        }
+
+        $itens = [];
+        foreach ((array) ($r?->step_state['resumo']['itens'] ?? []) as $i) {
+            $texto = trim((string) ($i['mensagem'] ?? ''));
+            $etapa = (string) ($i['etapa'] ?? 'previa');
+            $total = (int) ($i['total'] ?? 1);
+            if ($texto !== '') {
+                // Uma linha por etapa: o item, ou "Detalhes: 12 itens — o 1º".
+                $itens[] = ['texto' => $total > 1 ? (self::NOME_DA_ETAPA[$etapa] ?? 'Prévia').": {$total} itens — {$texto}" : $texto, 'url' => $em($etapa)];
+            }
+        }
+        if ($itens !== []) {
+            return $itens;
+        }
+        if ($chip === 'Falta imagem') {
+            return [['texto' => 'Adicione ao menos uma imagem do produto.', 'url' => $em('imagens')]];
+        }
+        // Bloqueio conhecido antes de conferir (título igual, preço sem frete), da visão rápida.
+        foreach (array_slice((array) ($l['bloqueios'] ?? []), 0, 5) as $b) {
+            $texto = trim((string) ($b['mensagem'] ?? ''));
+            if ($texto !== '') {
+                $itens[] = ['texto' => $texto, 'url' => $em('previa')];
+            }
+        }
+
+        return $itens !== [] ? $itens : [['texto' => 'Ver o que falta no anúncio.', 'url' => $em('previa')]];
     }
 }

@@ -25,6 +25,7 @@ use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
+use App\Support\Publicador\ImagensReprovadas;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\OrdemCapaPorAlvo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -412,18 +413,32 @@ class CriativosAutomaticosTest extends TestCase
         $doCliente = $this->galeria($r);
         $kit = $this->kitPronto($r, ['reprovada', 'reprovada']);
         // As duas já foram refeitas uma vez (VAL-05) e reprovaram de novo: não há outra tentativa.
-        MlAnuncioCriativo::query()->where('kit_id', $kit->id)->update(['regeneracao_automatica' => true]);
+        MlAnuncioCriativo::query()->where('kit_id', $kit->id)->update(['regeneracao_automatica' => true, 'validacao' => json_encode([
+            'status' => 'reprovada', 'mensagem' => 'Risco: A foto original mostra uma banqueta, e o cadastro é de uma poltrona.. Confira antes de aprovar.',
+        ])]);
 
         $this->assertSame('nada_aprovavel', $this->servico()->aplicar($kit->id));
         $this->assertSame($doCliente, $this->galeria($r), 'o anúncio nunca fica sem foto por aqui');
         $this->assertNull($this->imagemDoSlot($kit, 'hero'));
         $this->assertSame(MlAnuncioCriativoKit::STATUS_ERRO, $kit->fresh()->status, 'o kit reprovado não segura o grupo');
         $this->assertSame('nao_pronto', $this->servico()->aplicar($kit->id));
+        // 21/10/2026: "tem que ter o aviso quando for reprovado, e o motivo".
+        $this->assertSame(['todas' => true, 'reprovadas' => 2, 'geradas' => 2,
+            'motivos' => ['A foto original mostra uma banqueta, e o cadastro é de uma poltrona.']], ImagensReprovadas::do($r->fresh()));
 
         // Os mesmos fatos não geram de novo; a foto certa que o cliente sobe no Portal, sim.
         $this->assertSame('em_dia', $this->servico()->avaliar($r->id));
         $this->fotoNoRascunho($r->fresh(), 'a-certa', [90, 60, 30], EstruturaProduto::query()->findOrFail($r->produto->estrutura_produto_id));
         $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $this->assertNull(ImagensReprovadas::do($r->fresh()), 'o kit novo do grupo apaga o aviso do velho');
+    }
+
+    public function test_o_motivo_do_aviso_e_a_mensagem_do_juiz_sem_o_que_fala_com_quem_aprova(): void
+    {
+        $this->assertSame('A imagem gerada mostra uma banqueta.', ImagensReprovadas::motivo('Risco: A imagem gerada mostra uma banqueta.. Confira antes de aprovar.'));
+        $this->assertNull(ImagensReprovadas::motivo('   '));
+        $this->assertNull(ImagensReprovadas::motivo(null));
+        $this->assertSame('Kit … falhou.', ImagensReprovadas::motivo('Kit '.str_repeat('a', 32).' falhou.'), 'nada com cara de token vai para a tela');
     }
 
     public function test_kit_pedido_no_botao_nao_entra_sozinho(): void
@@ -455,6 +470,9 @@ class CriativosAutomaticosTest extends TestCase
         $lifestyle->update(['regeneracao_automatica' => true]);
         $this->assertSame('aplicado:1', $this->servico()->aplicar($kit->id));
         $this->assertSame([$this->imagemDoSlot($kit, 'hero')], $this->galeria($r), 'entra só a boa, no lugar das do cliente');
+        $aviso = ImagensReprovadas::do($r->fresh());
+        $this->assertFalse($aviso['todas'], 'uma entrou: o aviso fala só da que ficou de fora');
+        $this->assertSame([1, 2], [$aviso['reprovadas'], $aviso['geradas']]);
         $this->assertNotSame([], $doCliente);
         $this->assertNull($this->imagemDoSlot($kit, 'lifestyle'), 'a reprovada fica no painel para alguém decidir');
         $this->assertSame(MlAnuncioCriativoKit::STATUS_PRONTO, $kit->fresh()->status, 'o kit não fecha com imagem de fora');

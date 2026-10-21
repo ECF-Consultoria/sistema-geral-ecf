@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { Check, ChevronLeft, ChevronRight, Eye, ImageOff, Link2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ImageOff, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { faixaDePreco, fotoDoCartao, pilulasDasFases, tempoDesde, textoDosAnuncios } from './vitrine';
+import { avisoDaIa, faixaDePreco, fotoDoCartao, itensParaResolver, pilulasDasFases, tempoDesde, textoDosAnuncios } from './vitrine';
 
 // ─── Um cartão da vitrine = uma FAMÍLIA (20/10/2026) ────────────────────────
 //
@@ -53,6 +53,9 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
     const cores = ! planejada && Array.isArray(cartao?.cores) ? cartao.cores.filter((c) => c && typeof c.chave === 'string') : [];
     const { emFoco, url: foto } = fotoDoCartao(cartao, corEmFoco);
     const chip = cartao?.chip ?? null;
+    const aviso = planejada ? null : avisoDaIa(cartao?.ia_reprovada);
+    const resolver = planejada ? [] : itensParaResolver(cartao);
+    const [resolvendo, setResolvendo] = useState(false);
     const classico = faixaDePreco(cartao?.precos?.gold_special);
     const premium = faixaDePreco(cartao?.precos?.gold_pro);
     const atualizado = tempoDesde(cartao?.atualizado_em);
@@ -135,12 +138,40 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                     )}
                 </div>
 
-                {chip && (
+                {chip && resolver.length > 0 && (
+                    // 21/10/2026: "tem que ser clicável me induzindo a resolver isso que falta".
+                    <button type="button" onClick={() => setResolvendo((a) => ! a)} aria-expanded={resolvendo} tabIndex={foco}
+                        title={chip.detalhe ?? 'Ver o que falta e resolver'}
+                        className={cn('inline-flex w-fit max-w-full items-center gap-1 rounded-pub-chip border px-2 py-0.5 text-[11.5px] font-medium hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
+                        data-vitrine-chip={chip.tom} data-vitrine-resolver-abrir>
+                        <span className="truncate">{chip.texto}</span>
+                        <ChevronDown size={12} className={cn('shrink-0 transition-transform', resolvendo && 'rotate-180')} aria-hidden="true" />
+                    </button>
+                )}
+                {chip && resolver.length > 0 && resolvendo && (
+                    <ul className="space-y-0.5 rounded-pub-control border border-pub-line bg-pub-surface p-1.5" data-vitrine-resolver>
+                        {resolver.map((r, i) => (
+                            <li key={`${i}-${r.url}`}>
+                                <Link href={r.url} tabIndex={foco} className="flex items-start gap-1.5 rounded px-1.5 py-1 text-[12px] leading-snug text-pub-txt-2 hover:bg-pub-hover-2 hover:text-pub-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent">
+                                    <ArrowRight size={12} className="mt-[3px] shrink-0 text-pub-warn-txt" aria-hidden="true" />
+                                    <span className="line-clamp-2">{r.texto}</span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {chip && resolver.length === 0 && (
                     <span title={chip.detalhe ?? undefined}
                         className={cn('inline-flex w-fit max-w-full items-center truncate rounded-pub-chip border px-2 py-0.5 text-[11.5px] font-medium', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
                         data-vitrine-chip={chip.tom}>
                         {chip.texto}
                     </span>
+                )}
+                {aviso && (
+                    <p title={[aviso.titulo, ...aviso.motivos].join('\n')} className="flex items-start gap-1.5 text-[11.5px] leading-snug text-pub-warn-txt" data-vitrine-ia-reprovada>
+                        <AlertTriangle size={12} className="mt-[3px] shrink-0" aria-hidden="true" />
+                        <span className="line-clamp-2"><span className="font-semibold">{aviso.titulo}:</span> {aviso.motivos[0] ?? aviso.resumo}</span>
+                    </p>
                 )}
 
                 {planejada ? (

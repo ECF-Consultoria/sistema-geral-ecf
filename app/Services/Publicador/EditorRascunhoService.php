@@ -622,9 +622,6 @@ class EditorRascunhoService
                 'fotos_por_variante' => (bool) $r->fotos_por_variante, 'incluir_geral' => (bool) $r->incluir_geral_nas_variantes,
                 'modelo' => $r->modelo_publicacao,
             ],
-            // 20/10/2026: o que a automação gravou por fora (o editor aberto relê quando muda) e se ela está gravando agora.
-            'carimbo_por_fora' => \App\Support\Publicador\IaTrabalhando::carimbo($r),
-            'ia_por_fora' => \App\Support\Publicador\IaTrabalhando::no($r, $r->produto?->estrutura_produto_id !== null ? (int) $r->produto->estrutura_produto_id : null),
             'alvos' => array_map(fn (Alvo $a, Alvo $ef) => [
                 'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
                 'mlb_na_regua' => $this->mlbDoTipo($r, $a->listingTypeId),
@@ -706,6 +703,11 @@ class EditorRascunhoService
                 'automatica' => AlavancasLiberadas::libera($r->produto->contaOuNula()),
                 'dias' => PrecoDaPromocao::DIAS,
             ],
+            // 20/10/2026, ADITIVAS e no fim (o portão do `EstoqueDoKitTest`): o que a automação gravou por fora (o editor
+            // aberto relê quando muda), se ela está gravando agora e (21/10) as imagens dela que o juiz reprovou.
+            'carimbo_por_fora' => \App\Support\Publicador\IaTrabalhando::carimbo($r),
+            'ia_por_fora' => \App\Support\Publicador\IaTrabalhando::no($r, $r->produto?->estrutura_produto_id !== null ? (int) $r->produto->estrutura_produto_id : null),
+            'ia_reprovada' => \App\Support\Publicador\ImagensReprovadas::do($r),
         ];
     }
 
@@ -848,15 +850,24 @@ class EditorRascunhoService
     private function gravarResumo(PubRascunho $r, array $bloqueios, RascunhoSnapshot $s, bool $validado = true): void
     {
         $porCor = self::pendenciasPorCor($bloqueios, $s);
+        // 21/10/2026: o que falta POR ETAPA da tela (na ordem do editor), com quantos e o 1º — a vitrine leva a pessoa
+        // direto a cada lugar onde há o que resolver.
+        $porEtapa = [];
+        foreach ($bloqueios as $p) {
+            $etapa = self::etapaDaTela($p);
+            $porEtapa[$etapa] ??= ['etapa' => $etapa, 'total' => 0, 'mensagem' => $p->mensagem];
+            $porEtapa[$etapa]['total']++;
+        }
+        $itens = array_values(array_filter(array_map(fn (string $e) => $porEtapa[$e] ?? null, ['produto', 'detalhes', 'imagens', 'condicoes', 'previa'])));
         $antes = (array) ($r->step_state['resumo'] ?? []);
-        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? [])
+        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? []) && $itens === ($antes['itens'] ?? null)
             && $validado === ($antes['validado'] ?? null) && (int) $r->revisao === (int) ($antes['revisao'] ?? -1)
             && self::VERSAO_DO_RESUMO === ($antes['versao'] ?? null)) {
             return;
         }
         $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
         $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor, 'validado' => $validado,
-            'versao' => self::VERSAO_DO_RESUMO];
+            'itens' => $itens, 'versao' => self::VERSAO_DO_RESUMO];
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
     }
 
@@ -1074,7 +1085,27 @@ class EditorRascunhoService
     /**
      * A versão do formato do resumo (`step_state.resumo`). Os rótulos do `por_cor` são texto de tela GRAVADO: mudou
      * um rótulo (20/10/2026: "falta foto" → "falta imagem"), sobe a versão — a vitrine refaz o resumo de outra versão
-     * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela.
+     * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela. 3 (21/10/2026): o resumo
+     * ganhou `itens` (o que falta, com a etapa da tela).
      */
-    public const VERSAO_DO_RESUMO = 2;
+    public const VERSAO_DO_RESUMO = 3;
+
+    /**
+     * Em que etapa da TELA o problema se resolve — a mesma régua de `etapaDoProblema` (`Components/Publicador/apoio.js`):
+     * fotos em Imagens; categoria, condição e títulos em Produto; variações, ficha e descrição em Detalhes; preço,
+     * envio, garantia e embalagem em Condições de venda; o resto (conta, conferência, publicação) na Prévia.
+     */
+    public static function etapaDaTela(Problema $p): string
+    {
+        $alvo = $p->alvo;
+        $e = $alvo['etapa'] ?? null;
+
+        return match (true) {
+            isset($alvo['grupo']) || isset($alvo['imagem']) || $e === 'E6' => 'imagens',
+            $e === 'E2' || $e === 'E7' || ($e === 'E3' && ($alvo['campo'] ?? null) === 'condicao') => 'produto',
+            in_array($e, ['E3', 'E4', 'E5', 'E8', 'E9'], true) => 'detalhes',
+            $e === 'E10' => 'condicoes',
+            default => 'previa',
+        };
+    }
 }

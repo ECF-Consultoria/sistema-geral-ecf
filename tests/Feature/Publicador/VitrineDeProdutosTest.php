@@ -19,6 +19,9 @@ use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
+use Illuminate\Support\Str;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -253,6 +256,44 @@ class VitrineDeProdutosTest extends TestCase
         $doEditor = $this->mesa()->getJson($this->rota('abrir'))->assertOk()->json();
         $this->assertSame('escrevendo', $doEditor['ia_por_fora'] ?? null);
         $this->assertIsString($doEditor['carimbo_por_fora'] ?? null);
+    }
+
+    public function test_o_chip_do_que_falta_leva_a_etapa_do_editor_onde_se_resolve(): void
+    {
+        // 21/10/2026, o usuário: "nesses que falam que faltam algum item, tem que ser clicável me induzindo a resolver".
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertNotEmpty($c['resolver']);
+        $foto = collect($c['resolver'])->first(fn ($i) => str_contains($i['url'], 'etapa=imagens'));
+        $this->assertNotNull($foto, 'a falta de foto do Azul leva à etapa de Imagens');
+        $this->assertStringEndsWith('&corrigir=1', $foto['url'], 'e abre com os campos marcados');
+        $this->assertStringContainsString('Azul', $foto['texto']);
+        $detalhes = collect($c['resolver'])->first(fn ($i) => str_contains($i['url'], 'etapa=detalhes'));
+        $this->assertMatchesRegularExpression('/^Detalhes: \d+ itens — /u', $detalhes['texto'], 'uma linha por etapa, com quantos faltam');
+        $this->assertSame(EditorRascunhoService::VERSAO_DO_RESUMO, PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail()->step_state['resumo']['versao']);
+    }
+
+    public function test_imagens_da_ia_reprovadas_aparecem_no_cartao_com_o_motivo(): void
+    {
+        $this->cadeiraPretaEAzulSemFotoNoAzul();
+        $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
+        $kit = MlAnuncioCriativoKit::create(['token' => Str::random(32), 'company_id' => $this->empresa->id, 'pub_rascunho_id' => $r->id,
+            'pub_grupo' => 'GENERAL', 'status' => MlAnuncioCriativoKit::STATUS_ERRO]);
+        MlAnuncioCriativo::create(['token' => Str::random(32), 'company_id' => $this->empresa->id, 'kit_id' => $kit->id, 'slot' => 'hero',
+            'slot_indice' => 0, 'status' => MlAnuncioCriativo::STATUS_PRONTO, 'validacao_status' => MlAnuncioCriativo::VALIDACAO_REPROVADA,
+            'validacao' => ['status' => 'reprovada', 'mensagem' => 'Risco: A foto do Portal é de outro produto.. Confira antes de aprovar.']]);
+        $estado = (array) $r->step_state;
+        $estado['criativos_auto']['grupos']['GENERAL'] = ['kit_id' => $kit->id, 'aplicadas' => 0, 'aplicado_em' => now()->toIso8601String()];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame(['todas' => true, 'reprovadas' => 1, 'geradas' => 1, 'motivos' => ['A foto do Portal é de outro produto.']], $c['ia_reprovada']);
+        $doEditor = $this->mesa()->getJson($this->rota('abrir'))->assertOk()->json();
+        $this->assertSame(['A foto do Portal é de outro produto.'], $doEditor['ia_reprovada']['motivos'] ?? null, 'o editor recebe o mesmo aviso');
     }
 
     public function test_publicado_vai_para_o_grupo_dele_e_nao_se_marca(): void

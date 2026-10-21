@@ -1780,3 +1780,12 @@ Pedido do usuário depois da reunião de 19/10 ("menos é mais").
   lugar da pendência e se relê a cada 15 s enquanto houver cartão assim. Arquivos com linha apontada pelo portão
   (`MlbPublicadorController:405`, `EditorRascunhoService:370`): mexer sem mudar a contagem de linhas antes delas —
   daí o nome completo da classe em vez de `use` novo.
+- **Aviso de imagem reprovada e "o que falta" clicável** (21/10, "tem que ter o aviso quando for reprovado, e o
+  motivo" e "nesses que falam que faltam algum item, tem que ser clicável me induzindo a resolver"):
+  `ImagensReprovadas::do($r)` lê o kit que a automação JÁ aplicou (memória `criativos_auto.grupos[*].aplicado_em`) e
+  devolve as reprovadas que ninguém aprovou à mão, com o motivo da `validacaoMensagem()` limpa do "Risco:"/"Confira
+  antes de aprovar." — nunca do json cru (T-162-18). Vitrine: linha âmbar no cartão; editor: faixa âmbar. O resumo
+  (`VERSAO_DO_RESUMO` = 3) guarda `itens` POR ETAPA da tela (`EditorRascunhoService::etapaDaTela`, a mesma régua do
+  `etapaDoProblema` do front) — por etapa e não "os 5 primeiros", senão 12 campos da ficha escondiam a foto que
+  faltava. O chip vira botão com a lista; cada item vai a `editor?etapa=X&corrigir=1`, e o editor abre a etapa com o
+  "O que corrigir" marcado (`irPara(etapa, { marcar: true })`) e tira o `corrigir` da URL.

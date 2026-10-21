@@ -175,3 +175,32 @@ export function textoDosAnuncios(cartao) {
 
     return cores > 1 ? `${cores} cores · ${anuncios}` : anuncios;
 }
+
+/**
+ * O aviso das imagens da IA que o juiz reprovou (21/10/2026, o usuário: "tem que ter o aviso quando for reprovado, e o
+ * motivo"). `valor` é o `ia_reprovada` do servidor; nulo quando não há o que avisar ou o dado veio estragado.
+ */
+export function avisoDaIa(valor) {
+    if (! valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
+    const reprovadas = numero(valor.reprovadas) ?? 0;
+    if (reprovadas <= 0) return null;
+    const todas = valor.todas === true;
+    const motivos = (Array.isArray(valor.motivos) ? valor.motivos : []).filter((m) => typeof m === 'string' && m.trim() !== '').map((m) => m.trim());
+
+    return {
+        todas,
+        motivos,
+        titulo: todas ? 'Imagens da IA reprovadas' : (reprovadas === 1 ? '1 imagem da IA reprovada' : `${reprovadas} imagens da IA reprovadas`),
+        resumo: todas ? 'O anúncio ficou com a foto do cliente.' : 'As outras entraram no anúncio.',
+    };
+}
+
+/** O que falta resolver no cartão (`resolver` do servidor): só itens com texto e link; no máximo 5. */
+export function itensParaResolver(cartao) {
+    const lista = Array.isArray(cartao?.resolver) ? cartao.resolver : [];
+
+    return lista
+        .filter((r) => r && typeof r.texto === 'string' && r.texto.trim() !== '' && typeof r.url === 'string' && r.url !== '')
+        .slice(0, 5)
+        .map((r) => ({ texto: r.texto.trim(), url: r.url }));
+}
