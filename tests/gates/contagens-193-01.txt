@@ -1,0 +1,125 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 193-01 — A ABERTURA DA FASE 193:
+# o gate de entrada da Fase 189, as baselines medidas em isolamento, e — o que
+# importa de verdade — A PROVA, POR ASSERÇÃO SOBRE O SCHEMA VIVO, DE QUE ESTA
+# FASE NÃO TEM MIGRATION.
+#
+# Lido por `sh tests/gates/verificar-testes.sh 193-01 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `193-01`, E NÃO `01`. O número NU resolve
+# `contagens-186-01.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# SILÊNCIO. Essa compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos
+# da Fase 186 são chamados pelo número nu e aquela fase está EM PRODUÇÃO).
+# ⚠️ MEDIDO no harness: `verificar-testes.sh:122` resolve o 1º argumento por
+# `sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'` — DOIS grupos de DÍGITOS separados
+# por UM hífen. Qualquer outra forma (letra, três grupos) cai no `else` e monta
+# `contagens-186-<arg>.txt`.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe: por isso **nenhum id deste plano tem mais de TRÊS métodos**.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 20/10/2026,
+#    **uma invocação de `artisan test --filter=` por id**, com o ANSI tirado
+#    ANTES de ler a linha `Tests:`, e com o `exit` lido de `$?` **imediatamente**
+#    — nunca de um `tail`/pipe na frente, que devolve sempre 0. Nenhuma foi
+#    chutada nem copiada de outra fase.
+#
+# ⚠️⚠️ SUFIXO `_193_01` EM TODO MÉTODO. O `--filter` do PHPUnit é regex **NÃO
+#    ANCORADO** e as Fases 186, 187 e 188 estão **EM PRODUÇÃO**: método
+#    superstring de uma delas faria o id DAQUELA fase SOMAR e reprovar. ➡️ O
+#    conserto de colisão é sufixo no método NOVO — NUNCA levantar a contagem do
+#    manifesto alheio.
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: a
+#    Fase 193 é **só de servidor** e este plano **não tem `.jsx` nenhum** (§1-M6
+#    da `193-REGUA.md`). A regra é **quem roda, declara** — não *todos declaram*.
+#    É o mesmo caso de `contagens-187-02.txt` e `contagens-188-05.txt`.
+#
+# ⚠️ ESTE PLANO NÃO MEXE em `contagens-186-04.txt` (os ids `unica-porta` e
+#    `oferta-do-portao`, que são POR GLOB de `app/Services/Publicador/Aprovacao/`)
+#    porque ele **não cria arquivo em `app/`**. Quem os remede é o `193-02`.
+#    ⚠️ E não mexe em `contagens-186-09.txt`: a Fase 186 JÁ DECIDIU que arquivo
+#    novo no portão não entra naquela lista sozinho.
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# schema-sem-migration
+#   · ⚠️⚠️ **A PROVA DE QUE A FASE 193 NÃO TEM MIGRATION**, e ela é ASSERÇÃO
+#     sobre o **SCHEMA VIVO**, não afirmação de planejador: `fila_item_id`,
+#     `ml_item_id` e `erro_publicacao` existem, são **NULLABLE**, **sem default**
+#     no banco e **fora de `$attributes`** do model (o Eloquent não lê default do
+#     banco — defeito real medido em 14/10/2026);
+#   · as armadilhas de migration, uma por uma: **1059** por asserção COLETORA
+#     reportando o MAIOR nome de índice medido · **1830** pelo **par**
+#     (`nullable()` + `nullOnDelete`) ancorado na **CADEIA EXATA** da FK ·
+#     **enum + CHECK do SQLite** (`andamento` é string) · **`up()` idempotente**
+#     (`Schema::hasTable`). ⚠️ **1553 NÃO ENTRA e isso é declarado**: esta fase
+#     não dropa índice nenhum, então o gate seria sobre **ZERO casos**;
+#   · **DADO-03**: as **4** colunas de conferência da fila (`validacao_id`,
+#     `plano_hash`, `revisao`, `ciente`) **não foram copiadas** para a oferta —
+#     são LIDAS por `fila_item_id`; e `precisa_revisar` **não é coluna em lugar
+#     nenhum**, é VALOR do `status` da fila;
+#   · ⚠️⚠️ **A ARMADILHA DO DOCBLOCK, VIRADA EM ASSERÇÃO em vez de suposta:**
+#     `grep -rln pub_aprovacao_ofertas database/migrations/` devolve **CINCO**
+#     arquivos, e um é `2026_10_20_100000_create_pub_agente_tables.php`, de
+#     **outra sessão** — que **não toca a tabela**: as menções estão no
+#     **docblock**. O caso mede as DUAS pontas (texto cru **tem**, código
+#     **ZERO**), que é o que separa *"o programa faz"* de *"a prosa diz"*;
+#   · **ISCA INVERTIDA em TODA negativa**: nulabilidade (há colunas NOT NULL na
+#     mesma tabela) · default (há colunas COM default) · `$attributes` (semeia
+#     `andamento`) · colunas da fila (elas EXISTEM na fila) · glob de migrations
+#     (NÃO-vazio) · a sonda de `Schema::table(` **ACUSA** texto sintético e
+#     **NÃO acusa** outra tabela · índice sintético não é "encontrado" · a cadeia
+#     da FK com `cascadeOnDelete` dá ZERO (isca do quase-igual).
+#
+#   ⚠️⚠️ DOIS FUROS FORAM ACHADOS **NESTE PRÓPRIO GATE**, POR RODÁ-LO, E
+#   CONSERTADOS NA **RAIZ** — nenhum por elevação de número:
+#     (1) `substr_count(..., 'nullOnDelete') === 1` **REPROVOU: o medido é 4**
+#         (`produto_fk`, `responsavel_fk`, `aprovado_por_fk`, `fila_item_fk`).
+#         Era âncora em número que **cresce legitimamente** a cada FK nova. ➡️
+#         reancorado na **CADEIA EXATA** da FK de `fila_item_id`, que não se move
+#         quando outra FK nasce e se move quando o invariante é violado.
+#     (2) a contagem de asserções era **REFÉM DO TAMANHO DO REPOSITÓRIO**:
+#         o helper de leitura carregava um `assertFileExists` e era chamado no
+#         laço em massa — **413 asserções, das quais 363 eram as migrations do
+#         repo**, e o caso da bijeção somaria mais **1208** (os `*Test.php`).
+#         Toda migration/teste novo de QUALQUER sessão mudaria o número e o
+#         manifesto reprovaria trabalho correto. ➡️ separado em leitor **com**
+#         asserção (só para caminho de lista CONSTANTE, onde fantasma é risco
+#         real) e leitor **sem** asserção (laço em massa, onde o arquivo existe
+#         por construção). **MEDIDO depois do conserto: 413 → 50.**
+#
+# bijecao-manifesto-193-01
+#   · ⚠️⚠️ **teste sem id NUNCA RODA** e **id órfão não falha: ele simplesmente
+#     não existe** — as duas falhas são SILENCIOSAS e as duas já aconteceram
+#     nesta milestone (um método sem id foi o sobrevivente da mutação do 186-03;
+#     dois ids nasceram órfãos no 188-05);
+#   · as **TRÊS** bijeções, por script: método→id (`SEM_ID=0`), id→método
+#     (`ORFAOS=0`) e id→`<verify>` do plano, nos dois sentidos; mais
+#     `IDS_REPETIDOS=0` e `HOMONIMOS=0` sobre os **1208** `*Test.php` da suíte;
+#   · ⚠️⚠️ **o EXPANSOR DE ALTERNÂNCIA é o ponto do caso**: a regex ingênua
+#     `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)`, e esse furo exato
+#     deu `SEM_ID=14` **ACUSANDO TRABALHO CORRETO** numa wave desta milestone.
+#     O expansor é **iscado nas duas direções ANTES de valer**;
+#   · e o varredor de homônimo também: um nome **superstring** do meu TEM de ser
+#     detectado, e um método **real de outra fase** NÃO pode ser acusado;
+#   · `tests=N` do manifesto é conferido contra o número de métodos do id, e
+#     **nenhum id pode ter mais de TRÊS** métodos.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+schema-sem-migration  php  test_(as_tres_colunas_de_ligacao_existem_nullable_e_sem_default_193_01|o_indice_e_a_fk_de_fila_item_id_estao_de_pe_e_nenhum_indice_passa_de_64_193_01|nenhuma_migration_nova_mexe_na_tabela_do_portao_193_01)  ::  tests=3 assertions=50
+bijecao-manifesto-193-01  php  test_o_manifesto_tem_bijecao_com_os_metodos_e_nenhum_id_orfao_193_01  ::  tests=1 assertions=20
