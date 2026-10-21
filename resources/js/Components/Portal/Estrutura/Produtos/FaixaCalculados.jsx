@@ -19,7 +19,7 @@ export default function FaixaCalculados({ variacao, ficha, vocabulario }) {
     const traco = <span className="text-white/45">—</span>;
 
     const celulas = [
-        ['n_volumes', 'Nº de volumes', gravada ? variacao.n_volumes : null],
+        ['n_volumes', 'Nº de caixas', gravada ? variacao.n_volumes : null],
         ['peso_total', 'Peso total', gravada && variacao.peso_total != null ? fmtKg(variacao.peso_total) : null],
         ['logistica', 'Logística provável', gravada
             ? <PilulaLogistica chave={variacao.logistica ?? 'pendente'} rotulos={vocabulario?.logisticas} ponto />
@@ -33,7 +33,7 @@ export default function FaixaCalculados({ variacao, ficha, vocabulario }) {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-[164px_repeat(5,minmax(0,1fr))] lg:items-center lg:gap-0">
                 <button type="button" onClick={() => ficha.adicionarVolume(variacao)} data-acao="adicionar-volume"
                     className="col-span-2 inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[14px] text-white hover:bg-white/[0.07] lg:col-span-1 lg:h-9">
-                    <Plus size={14} /> Adicionar volume
+                    <Plus size={14} /> Adicionar caixa
                 </button>
                 {celulas.map(([chave, rotulo, conteudo]) => (
                     <div key={chave} className={cn(CELULA)} data-calculado={chave}>

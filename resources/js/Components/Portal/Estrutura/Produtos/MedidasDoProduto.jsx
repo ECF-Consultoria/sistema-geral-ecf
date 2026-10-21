@@ -22,7 +22,7 @@ export default function MedidasDoProduto({ ficha }) {
                 <h2 className="text-[20px] font-bold text-white">Medidas do produto (fora da caixa)</h2>
                 <Explicacao texto={ficha.explicacoes?.medidas_produto} nome="Medidas do produto" />
             </div>
-            <p className="mt-1 text-[14px] text-white/70">O produto sozinho, sem caixa nem embalagem. As medidas da caixa ficam no volume de cada variação.</p>
+            <p className="mt-1 text-[14px] text-white/70">O produto sozinho, sem caixa nem embalagem. Não entram no frete: o frete usa a caixa embalada de cada variação.</p>
 
             {/* Durante o "Salvando…" nada se edita (mesma regra dos outros blocos da ficha). */}
             <fieldset disabled={ficha.salvando} className="mt-3 min-w-0 border-0 p-0" data-campos-medidas-do-produto>

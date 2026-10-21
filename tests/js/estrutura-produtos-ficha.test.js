@@ -96,7 +96,8 @@ test('Dados gerais: nome, família, ambientes e categoria nos pickers do projeto
 });
 
 test('Variação: Ref · Eixo · Valor · Custo, eixo nativo, valor livre e só a Ref obrigatória (D-20)', () => {
-    for (const t of ['Ref', 'Eixo', 'Valor', 'Custo (R$)', 'Excluir variação', 'Volumes']) {
+    // 21/10/2026: "Volumes" virou "Caixa embalada" (o usuário não distinguia a medida do produto da do embalado).
+    for (const t of ['Ref', 'Eixo', 'Valor', 'Custo (R$)', 'Excluir variação', 'Caixa embalada', 'é a que calcula o frete']) {
         assert.ok(variacao.includes(t), `faltou: ${t}`);
     }
     assert.ok(variacao.includes('<select') && variacao.includes('<option value="">'));
@@ -110,13 +111,13 @@ test('Variação: Ref · Eixo · Valor · Custo, eixo nativo, valor livre e só 
 });
 
 test('Volume: cartão com as quatro medidas do hook e a lixeira', () => {
-    for (const t of ['Volume ', 'Trash2', 'Remover volume', 'inputMode="decimal"', 'data-volume-cartao', 'MEDIDAS']) {
+    for (const t of ['Caixa ', 'Trash2', 'Remover caixa', 'inputMode="decimal"', 'data-volume-cartao', 'MEDIDAS']) {
         assert.ok(volume.includes(t), `faltou: ${t}`);
     }
 });
 
 test('Calculados: só leitura, vindos do servidor (D-28)', () => {
-    for (const t of ['Nº de volumes', 'Peso total', 'Logística provável', 'Peso cubado', 'Frete ME2', 'Adicionar volume', '.n_volumes', '.peso_total',
+    for (const t of ['Nº de caixas', 'Peso total', 'Logística provável', 'Peso cubado', 'Frete ME2', 'Adicionar caixa', '.n_volumes', '.peso_total',
         'renderPesoCubado(', 'renderFrete(', "'pilha'", 'data-calculado=', 'Os calculados aparecem ao salvar.', 'Recalcula ao salvar.']) {
         assert.ok(calculados.includes(t), `faltou: ${t}`);
     }

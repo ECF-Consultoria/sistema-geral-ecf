@@ -345,7 +345,7 @@ test('Gate: "Nova variação" não herda as imagens da 1ª, e o salvar parcial n
 });
 
 test('Gate: o cartão continua tendo Volumes, calculados, excluir variação e o erro da variação', () => {
-    for (const trecho of ['<CartaoVolume', '<FaixaCalculados', 'data-acao="excluir-variacao"', 'data-erro-variacao', 'Volumes']) {
+    for (const trecho of ['<CartaoVolume', '<FaixaCalculados', 'data-acao="excluir-variacao"', 'data-erro-variacao', 'Caixa embalada']) {
         assert.ok(cartao.includes(trecho), trecho);
     }
 });

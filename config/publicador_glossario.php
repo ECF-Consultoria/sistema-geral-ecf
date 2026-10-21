@@ -130,14 +130,14 @@ return [
         'eixo' => 'O que muda de uma variação para outra: cor, tamanho, voltagem, material ou sabor. Use Outro se não for nenhum desses.',
         'valor' => 'Como é esta variação no eixo escolhido. Ex.: com o eixo Cor, o valor é Natural, Preto ou Branco.',
         'custo' => 'Quanto uma unidade desta variação custa para você (compra ou produção), em reais.',
-        'volumes' => 'Cada volume é uma caixa em que o produto vai embalado. Produto que vai em mais de uma caixa tem um volume para cada.',
+        'volumes' => 'A caixa fechada, com o produto embalado dentro, do jeito que é despachada. É com as medidas e o peso dela que calculamos o frete. Produto que vai em mais de uma caixa tem uma caixa para cada.',
         'comprimento' => 'Comprimento da caixa com o produto embalado, em centímetros.',
         'largura' => 'Largura da caixa com o produto embalado, em centímetros.',
         'altura' => 'Altura da caixa com o produto embalado, em centímetros.',
         'peso' => 'Peso da caixa com o produto embalado, em quilos. É com ele que calculamos o frete e a forma de envio, por isso é pedido sempre, mesmo que o produto não tenha campo de peso.',
         // Bloco "Medidas do produto (fora da caixa)" (09/10/2026). A caixa "Usar as mesmas medidas…" do volume, e a
         // explicação dela (`mesmas_medidas`), saíram em 14/10/2026 a pedido do usuário.
-        'medidas_produto' => 'As medidas e o peso do produto sozinho, montado e sem caixa nem embalagem. São diferentes das do volume, que é a caixa com o produto dentro.',
+        'medidas_produto' => 'As medidas e o peso do produto sozinho, montado e sem caixa nem embalagem. Não entram no frete: o frete usa a caixa embalada de cada variação.',
         'descricao' => 'Texto livre sobre o produto: para que serve, os diferenciais, os cuidados e o que acompanha.',
         // Topo da ficha: com uma variação é o estoque dela; com várias, a soma (só leitura).
         'estoque_produto' => 'Quantas unidades você tem do produto. Com uma variação, informe aqui; com várias, é a soma do estoque de cada variação. Vazio é não informado; 0 é sem estoque.',
