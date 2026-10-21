@@ -412,10 +412,19 @@ class FechamentoDaFase193Test extends TestCase
      * ⚠️⚠️ **ESTE HELPER É UM CONSERTO DE RAIZ, E A RAZÃO FOI MEDIDA NESTA WAVE.** A primeira
      * redação do varredor de homônimo usava
      * `/function\s+([A-Za-z0-9_]*<meu>[A-Za-z0-9_]+)\s*\(/` sobre o **texto cru** do arquivo, e ela
-     * **ACUSOU TRABALHO CERTO**: `ReconciliarPublicacaoDoPortaoTest.php:1569` contém
-     * `'public function test_avisos_do_ml_aceitos_vao_para_o_historico_193_03_extra() {}'` **dentro
-     * de uma string** — é a **isca (+) da própria wave 03**, e **não existe método com esse nome**
-     * (medido por token: os métodos reais `_193_03` são exatamente **15**, os do manifesto).
+     * **ACUSOU TRABALHO CERTO**: a **isca (+) da própria wave 03**
+     * (`ReconciliarPublicacaoDoPortaoTest.php:1569`) monta, **dentro de uma string**, a forma de
+     * declaração do nome `…_193_03_extra` — e **não existe método com esse nome** (medido por
+     * token: os métodos reais `_193_03` são exatamente **15**, os do manifesto).
+     *
+     * ⚠️⚠️ **E ESTE DOCBLOCK NÃO ESCREVE A FORMA DE UMA DECLARAÇÃO — DE PROPÓSITO, E EU PAGUEI PARA
+     * APRENDER NESTA PRÓPRIA WAVE.** A primeira redação dele **citava o literal inteiro**, com a
+     * palavra-chave de declaração colada ao nome e o parêntese em seguida. Resultado: a suíte
+     * completa acusou **1 regressão MINHA** — o gate `193-03` da bijeção, cujo varredor lê o
+     * **texto CRU** (comentário incluído), leu o meu comentário como *"este arquivo declara um
+     * método que já existe em `ReconciliarPublicacaoDoPortaoTest`"*. ⚠️ É **o furo 1 da wave 04 ao
+     * contrário**: lá o nome alheio estava numa asserção; aqui, na **prosa**. ➡️ A regra vale para
+     * **comentário também**: nome alheio **nunca** ao lado da palavra-chave de declaração.
      *
      * ➡️ Família ***"gate mais largo que o invariante"*** (quatorze ocorrências nesta milestone, uma
      * delas **barrou um deploy**). ⚠️ **O conserto errado seria pôr o arquivo da wave 03 numa lista
@@ -1029,6 +1038,43 @@ class FechamentoDaFase193Test extends TestCase
             )),
             'ISCA (−): o varredor acusa nome legítimo de outra fase como se fosse meu'
         );
+
+        // ─── ⚠️⚠️ O GATE QUE EU PAGUEI PARA APRENDER: ESTE ARQUIVO NÃO ESCREVE A FORMA DE UMA
+        //           DECLARAÇÃO DE NOME ALHEIO — NEM EM COMENTÁRIO ───────────────────────────
+        //
+        // Os varredores de homônimo das waves 02/03/04 e o gate alheio `186-09 bijecao-e-homonimo`
+        // leem o **TEXTO CRU** do arquivo com `/function\s+([A-Za-z0-9_]*<nome>[A-Za-z0-9_]*)\s*\(/`.
+        // ⚠️ MEDIDO nesta wave: a primeira redação do docblock de `declaracoesDeMetodo()` **citava o
+        // literal inteiro** da isca da wave 03, e a suíte completa acusou **1 regressão MINHA** —
+        // aquele gate leu o meu COMENTÁRIO como declaração. ⚠️ É o **furo 1 da wave 04 ao
+        // contrário** (lá, numa asserção; aqui, na prosa). ➡️ Gate PRÓPRIO, para o próximo executor
+        // não repetir: **nome alheio nunca ao lado da palavra-chave de declaração, nem em
+        // comentário** — ele entra por VARIÁVEL.
+        // ⚠️⚠️ SÓ NOMES DE **TESTE** (`test_…`), e isto é conserto de um furo que eu cometi e medi
+        // no mesmo minuto: a primeira redação varria **todas** as declarações da suíte, inclusive
+        // helpers de nome comum em pt-BR (`linha`, `gate`, `rota`, `conta`, `ler`, `passo`…). Como
+        // eles são **substring dos MEUS PRÓPRIOS nomes de método**, o gate acusou **14 nomes** — e
+        // todos eram as minhas próprias declarações. ➡️ É a família *"gate mais largo que o
+        // invariante"* (quatorze ocorrências nesta milestone, uma delas **barrou um deploy**), e o
+        // invariante de verdade é estreito: o `--filter` do PHPUnit só colide com **métodos de
+        // teste**, que são os únicos que ele roda.
+        $meuTextoCru = (string) file_get_contents(__FILE__);
+        $formaDeDeclaracao = [];
+        foreach (array_keys($todasAsDeclaracoes) as $nome) {
+            if (! str_starts_with($nome, 'test_') || isset($meus[$nome]) || ! str_contains($meuTextoCru, $nome)) {
+                continue;
+            }
+            if (preg_match('/function\s+[A-Za-z0-9_]*' . preg_quote($nome, '/') . '[A-Za-z0-9_]*\s*\(/', $meuTextoCru) === 1) {
+                $formaDeDeclaracao[] = $nome;
+            }
+        }
+        $this->assertSame([], $formaDeDeclaracao, 'este arquivo escreve a FORMA DE UMA DECLARAÇÃO de um método de outra suíte (mesmo em comentário ou string): os varredores de homônimo das outras waves leem o TEXTO CRU e vão acusar isto como declaração duplicada');
+
+        // ⚠️ ISCA (+) do gate acima, nas duas pontas: ele PEGA a forma proibida e NÃO pega a citação
+        // do nome sozinho (que é legítima e necessária — a prosa precisa poder nomear o caso).
+        $sondaAlheia = '/function\s+[A-Za-z0-9_]*' . preg_quote($alheio, '/') . '[A-Za-z0-9_]*\s*\(/';
+        $this->assertSame(1, preg_match($sondaAlheia, 'public ' . 'function ' . $alheio . '_x() {}'), 'ISCA (+): a sonda da forma de declaração está cega');
+        $this->assertSame(0, preg_match($sondaAlheia, 'o caso ' . $alheio . ' da Fase 188 mede a ausência de escrita'), 'ISCA (−): a sonda proíbe CITAR o nome, e citar é legítimo — ela está mais larga que o invariante');
     }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════
