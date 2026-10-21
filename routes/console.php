@@ -604,6 +604,43 @@ Schedule::command('publicador:fila-publicacao')
     ->withoutOverlapping(10)
     ->onOneServer();
 
+// ═══ Publicador — o portão de Aprovação espelha o que a fila FEZ (Fase 193, plano 04) ═══
+//
+// Todo minuto, LOGO DEPOIS do `publicador:fila-publicacao`: a oferta aprovada que ainda não entrou na fila
+// entra (a 2ª chance das decisões 21 e 23); item `publicando` leva a oferta a "publicando" (e aí a edição
+// fica bloqueada); item terminado com o anúncio criado grava o MLB e só então leva a "publicado"; sem nada
+// criado, leva a "falha" com o erro REAL, preservando a revisão aprovada. Item em voo no ML
+// (`PENDING`/`SENT`/`UNKNOWN`) NÃO é tocado — RN-93, mexer nele duplicaria anúncio.
+//
+// ⚠️⚠️ EM QUE FILA ISSO RODA, E POR QUÊ — a resposta, com a medição que a sustenta:
+//
+//  · ESTE COMANDO NÃO É FILA. É passo de minuto, idempotente, que só LÊ o banco e move andamento pela
+//    única porta (`AndamentoDaOfertaService::mover()`). Zero job despachado, zero requisição ao Mercado
+//    Livre — nem leitura. `withoutOverlapping(10)`: uma passada lenta não se sobrepõe à seguinte (duas
+//    simultâneas poderiam mover a mesma oferta duas vezes); `onOneServer`: um servidor só anda o portão.
+//
+//  · A PUBLICAÇÃO EM SI roda no `PublicarRascunhoJob`, fila `high`, e JÁ ERA ASSIM — esta fase não muda a
+//    fila de ninguém. A razão está medida no projeto: a fila de produção é REDIS (a tabela `jobs` dá 0 e
+//    ENGANA quem a consulta), e em 16/09/2026 179 jobs de acervo do ML na `default` seguraram um webhook da
+//    Clicksign POR HORAS. Publicação disparada por quem acabou de aprovar não espera atrás do sync do
+//    acervo. Não é `creative` (a fila do outro dev, onde roda geração paga) e não é `default`.
+//
+//  · DEPOIS DO DEPLOY: o `deploy.sh` só reinicia `ecf-worker:*`. Para pegar `ecf-worker-high` SEM MATAR job
+//    em andamento é obrigatório `sudo -u www-data php artisan queue:restart` — `supervisorctl restart`
+//    mataria uma publicação (ou uma geração paga) no meio.
+//
+//  · A ORDEM IMPORTA, e é barata: o portão vem DEPOIS da fila para espelhar o que aquela passada acabou de
+//    fechar. Por ser idempotente, inverter a ordem só atrasa um minuto — nunca corrompe.
+//
+// Rodar à mão é seguro (é o mesmo passo): sem oferta esperando a fila, não faz nada e não imprime nada.
+// A trava de "ligar publicar" continua sendo `publicador.contas_liberadas.*` (fail-closed, lista vazia =
+// ninguém) — nenhum interruptor novo, que faria duas verdades sobre quem pode publicar.
+Schedule::command('publicador:portao-publicacao')
+    ->everyMinute()
+    ->name('publicador-portao-publicacao')
+    ->withoutOverlapping(10)
+    ->onOneServer();
+
 // Agente ECF Publicador (AG-03, 20/10/2026): o que o agente terminou de preparar entra na fila de Aprovação.
 // Só lê o banco e cria a oferta `aguardando_aprovacao` — não aprova, não publica, não chama IA nem ML. Sem conta
 // com o agente ligado, não há execução `preparando` e a passada não faz nada.

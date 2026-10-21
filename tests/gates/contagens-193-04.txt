@@ -1,0 +1,175 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Contagens esperadas dos gates do plano 193-04 — DO APROVADO AO AR: o COMANDO
+# do minuto (`publicador:portao-publicacao`), o AGENDAMENTO ao lado do que já
+# existe, e o "Tentar de novo" que REPUBLICA de verdade (enfileira ANTES de
+# mover).
+#
+# Lido por `sh tests/gates/verificar-testes.sh 193-04 <id-do-gate>`.
+#
+# ⚠️⚠️ O 1º ARGUMENTO É `193-04`, E NÃO `04`. O número NU resolve
+# `contagens-186-04.txt` — o manifesto da fase ERRADA, com o mesmo número, em
+# SILÊNCIO, e ele EXISTE (é o do `unica-porta`/`oferta-do-portao`, de uma fase
+# EM PRODUÇÃO). Medido no código: `verificar-testes.sh:120-129` resolve por
+# `sed -nE 's/^([0-9]+)-([0-9]+)$/\1-\2/p'` (dois grupos de DÍGITOS); qualquer
+# outra forma cai no `else` e monta `contagens-186-<arg>.txt`. Essa
+# compatibilidade é DE PROPÓSITO (os 163 ids dos nove manifestos da Fase 186 são
+# chamados pelo número nu), e os casos 15 e 16 do `--autoteste` a guardam.
+#
+# POR QUE A CONTAGEM MORA AQUI e não dentro do comando do gate (learnings §4,
+# casos 12 e 13):
+#   · mudar um número fica **diff visível**, em vez de `grep` apagado em silêncio;
+#   · **manifesto incompleto ABORTA** (id ausente, `tests=` ausente, `tests=0`),
+#     então não dá para "deixar o número para depois";
+#   · o mesmo arquivo guarda os dois regimes de contagem (pristino e mutado).
+#
+# FORMATO (uma linha por gate):
+#   <id>  js   <arquivos separados por espaco>  ::  tests=<N>[,<N-mutado>]
+#   <id>  php  <filtro-por-metodo>              ::  tests=<N> assertions=<A>
+#
+# ⚠️ No modo php só é aceito filtro por MÉTODO (nome começando com `test_`):
+#    `artisan test --filter=<Classe>` passa dos 120 s do shell deste ambiente e o
+#    helper RECUSA o filtro de classe. ⚠️ E alternância GRANDE equivale a filtro
+#    de classe (medido no plano 186-07): por isso os métodos deste plano estão
+#    quebrados em ids com **no máximo TRÊS métodos** cada.
+#
+# ⚠️⚠️ TODAS as contagens abaixo foram **MEDIDAS** nesta máquina em 21/10/2026,
+#    uma invocação de `artisan test --filter=` por id, com `php.exe` em 0 antes
+#    de cada rodada. Nenhuma é chute e nenhum id foi escrito antes de ter sido
+#    medido.
+#
+# ⚠️ `php` não está no PATH desta máquina: `C:/xampp/php/php.exe`.
+#
+# ⚠️ ESTE PLANO NÃO DECLARA `vocabulario-tamanhos` (o GATE-03), e está CERTO: ele
+#    é **só de servidor** e não roda aquele gate — nenhum `.jsx` é dele.  A regra
+#    é **quem roda, declara**, não *todos declaram*.
+#
+# ⚠️⚠️ OS IDS ALHEIOS, E A TRAVA DESTE PLANO — QUE É A **INVERSA** DA DO 193-02:
+#    este plano **NÃO cria arquivo** em `app/Services/Publicador/Aprovacao/` (o
+#    Command vive em `app/Console/Commands/`, que **não cai no glob** do
+#    `186-04 unica-porta`/`oferta-do-portao` — ele é
+#    `glob('app/Services/Publicador/Aprovacao/*.php')`, **não recursivo**, com
+#    **2 asserções POR ARQUIVO**). ➡️ Os dois ids têm de ficar **IDÊNTICOS**
+#    (`unica-porta` 43, `oferta-do-portao` 67). ⚠️ **Se SUBIREM, é PARADA:**
+#    significaria que nasceu arquivo na raiz do portão sem declaração.
+#    ⚠️ `contagens-186-09.txt` também não muda: as listas dele são CONSTANTES (22
+#    PHP + 3 JSX) e nem o Command nem o controller estão nelas; e a sonda larga de
+#    `andamento` (que varre `app/` INTEIRO) dá **zero** no Command — a chave
+#    literal de andamento é proibida ali pelo gate `comando-sem-logica` deste
+#    plano.
+#    ⚠️ `contagens-188-05.txt` idem: os ids `tentar-de-novo` e
+#    `aprovar-e-enfileirar` asseveram **zero ESCRITA no Mercado Livre**, e
+#    enfileirar é **só banco** — a escrita acontece minutos depois, no
+#    `PublicarRascunhoJob` da fila `high`.
+#
+# ═══ O QUE CADA ID PROVA ═══════════════════════════════════════════════════════
+#
+# comando-sem-logica
+#   · `artisan publicador:portao-publicacao` **existe**, sai **0** e, sem nada
+#     esperando a fila, **não faz nada e não imprime nada** — rodar à mão é
+#     seguro. ⚠️ Com **ISCA**: com uma oferta de verdade esperando, o resumo
+#     **aparece** (senão "não imprimiu" seria verdade por o comando não existir);
+#   · ⚠️⚠️ **ZERO LÓGICA PRÓPRIA (T-193-31)**, lido **SEM COMENTÁRIO**
+#     (`token_get_all`) e contado por `substr_count` — **nunca** `grep -c`, que
+#     conta LINHAS, e **nunca** `preg_match(...) === 1`, que passa com a linha de
+#     código APAGADA quando o texto também vive em comentário. ⚠️ **Por que aqui
+#     importa mais que em qualquer lugar:** o `186-04 unica-porta` é por **glob**
+#     de `app/Services/Publicador/Aprovacao/*.php` e **não alcança**
+#     `app/Console/Commands/` — lógica de andamento no Command ficaria fora de
+#     todo gate do portão. ⚠️ A sonda é **iscada antes de valer** (texto sintético
+#     com as 11 formas) e **NÃO** proíbe os nomes dos estados: eles são **chaves
+#     do resumo que o serviço devolve**, e proibi-los seria sonda **mais larga que
+#     o invariante** — ela reprovaria o comando por imprimir corretamente o que
+#     leu (a família que já barrou um deploy nesta milestone). ➡️ O comando
+#     imprime as chaves **sem escrevê-las**;
+#   · as **4 formas proibidas** (*"confirmar publicação"*, *"segundo passo"*, a de
+#     voltar atrás, *"cancelar aprovação"*) ausentes nos **dois** arquivos deste
+#     plano, pela **UNIÃO** das duas sondas que existem — ⚠️ medido pelas waves 02
+#     e 03: a do `186-09` **não** casa a forma pt-BR acentuada com espaço e a do
+#     `188-05` **não** casa `undo` nem `publicar_aprovado`; **nenhuma das duas,
+#     isolada, cobre as nove formas**. ⚠️ Borda à ESQUERDA só (`undo` é substring
+#     de *segundo/fundo/profundo*; borda nos dois lados cegaria para
+#     `desfazerAprovacao`), com **isca do leitor** nas duas pontas;
+#   · ⚠️⚠️ **IDEMPOTÊNCIA (T-193-32): o comando roda 60 VEZES POR HORA.** Duas
+#     passadas seguidas dão o **MESMO** estado — a linha da oferta comparada **byte
+#     a byte, crua do banco, inclusive `updated_at`**, e **nunca por stdout** —,
+#     sem evento de histórico novo e sem o item da fila se mover. ⚠️ Com **isca**:
+#     a 1ª passada **move de verdade**, senão *"nada mudou na 2ª"* seria verdade
+#     por nada ter mudado nunca. E a 3ª/4ª passadas fecham o ciclo
+#     (`publicado` com MLB) e provam idempotência no estado terminal.
+#
+# agendamento-do-minuto
+#   · o comando está no `Schedule` do container, achado **PELO NOME** e nunca por
+#     número de linha (um gate ancorado em `'Servico:131'` quebrou nesta base
+#     quando outro dev deslocou a linha em +1), com **igualdade de CONJUNTO** da
+#     forma: `* * * * *`, `name('publicador-portao-publicacao')`,
+#     `withoutOverlapping(10)` e `onOneServer()` — piso `>= N` não prova presença;
+#   · ⚠️⚠️ **A PROVA DE QUE `10` E `true` NÃO SÃO DEFAULT DO FRAMEWORK**, por
+#     reflexão na própria classe `Event` (`expiresAt` default **1440**,
+#     `onOneServer` e `withoutOverlapping` default **false**). Sem ela as duas
+#     asserções seriam **vazias por construção**: um `everyMinute()` pelado
+#     passaria;
+#   · ⚠️ **ISCA nas duas direções:** o controle positivo
+#     (`publicador:fila-publicacao`, que **já existe**) é achado pela MESMA sonda,
+#     e um nome sintético inexistente **não** é;
+#   · a **ordem relativa** no arquivo (o portão **depois** da fila) por **posição
+#     de ocorrência** no código **sem comentário** — ler o texto cru casaria a
+#     prosa do bloco novo, que cita o vizinho de propósito (há isca do leitor
+#     medindo cru × limpo). ⚠️ **UMA** ocorrência de cada no código: duas seriam
+#     agendamento duplicado; zero, bloco ausente. ⚠️ E os **dois blocos de OUTRA
+#     SESSÃO** que vivem no arquivo (`publicador:agente-encaminhar` e
+#     `publicador:agente-varrer`) são conferidos como **intactos**;
+#   · ⚠️⚠️ **O QUE ESTE ID NÃO PROVA, declarado:** o cron do sistema operacional
+#     **não é exercido nesta máquina**. Mede-se o **registro** e a **ordem**;
+#     rodar o minuto de verdade é prova de produção.
+#
+# retry-republica
+#   · ⚠️⚠️ **O "TENTAR DE NOVO" REPUBLICA DE VERDADE (T-193-33):** a action chama
+#     `enfileirar()` **ANTES** de `tentarDeNovo()`, e ao fim a oferta está em
+#     `publicando` **com `fila_item_id` apontando para um item VIVO**. ⚠️ **ISCA
+#     INVERTIDA, que é o que faz o caso valer:** sem o enfileiramento prévio a
+#     ligação continuaria no item **TERMINADO** da tentativa anterior, e o
+#     reconciliador a fecharia como `falha` na passada seguinte — *"falhou"* **sem
+#     nunca ter tentado**. O caso mede o `fila_item_id` ANTES e DEPOIS e exige que
+#     ele **mude** e que o novo esteja em `VIVOS`;
+#   · a **revisão aprovada preservada**: `versao`, `versao_aprovada`,
+#     `aprovado_por` e `aprovado_em` lidos **CRUS do banco**, idênticos; e
+#     `erro_publicacao` **limpo** pela própria porta;
+#   · ⚠️ a guarda **"só a partir de `falha`"** continua valendo (T-193-34), com
+#     **isca**: a partir de `aprovado` a action **recusa**, mesmo que
+#     `TRANSICOES[aprovado]` **inclua** `publicando` e o serviço **não** recusasse
+#     — a trava é da ACTION. E conta alheia dá **404, nunca 403**;
+#   · ⚠️ enfileiramento **recusado** (conta NÃO liberada — `ContasLiberadas` é
+#     fail-closed) → a oferta **NÃO** vai para `publicando`, a linha fica
+#     **intacta byte a byte** e a recusa chega com o **motivo REAL** no campo
+#     `regra` + `message` (o padrão `recusaDoPainel` do módulo, 422): o botão
+#     **não finge que tentou** (T-193-35).
+#
+# nenhuma-rota-nova
+#   · **NENHUMA ROTA NOVA** nesta fase (PUB-10 / critério 9), por **IGUALDADE DE
+#     CONJUNTO** das 16 rotas `mlb.anuncios.meus.aprovacao*`, resolvidas **PELO
+#     ROUTER** e nunca por `grep` no arquivo de rotas. ⚠️ Piso `>= N` **não prova
+#     presença**: com 13 perguntas, perder uma deixava 12 e o piso passava;
+#   · ⚠️ **ZERO ESCRITA no Mercado Livre dentro do request** e **ZERO job
+#     despachado** pela action, com **isca nas duas pontas** (um `POST /items`
+#     sintético **é** pego pela sonda, e um GET fora da lista constante também);
+#   · ⚠️ a **fronteira D-11/D-22** declarada: a tela de **Publicações** nunca
+#     escreve, e quem escreve no ML é o `PublicarRascunhoJob` (fila **`high`**) —
+#     asseverado por leitura do job, não por afirmação de prosa.
+#
+# bijecao-manifesto-193-04
+#   · **método sem id NUNCA RODA** (foi o sobrevivente da mutação do 186-03) e **id
+#     órfão não falha: ele simplesmente nunca roda**. As duas formas de "passar por
+#     omissão", conferidas por teste DURÁVEL e não por rascunho de scratchpad;
+#   · ⚠️⚠️ **EXPANSOR DE ALTERNÂNCIA, iscado nas duas direções ANTES de valer:** a
+#     regex ingênua `/test_[A-Za-z0-9_]+/` casa **ZERO** em `test_(a|b|c)` — o furo
+#     que já deu `SEM_ID=14` **acusando trabalho correto**;
+#   · sufixo `_193_04` em TODO método por asserção **coletora**; **nenhum id com
+#     mais de TRÊS métodos**; `tests=` conferido contra o número de métodos do
+#     filtro; **homônimo** varrido em toda a suíte com isca (+) de superstring e
+#     isca (−) de um nome REAL de outra fase; e a **terceira bijeção** id ↔
+#     `<verify>` do plano.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+comando-sem-logica  php  test_(o_comando_do_minuto_roda_sem_fila_viva_e_nao_faz_nada_193_04|o_comando_nao_tem_logica_propria_lido_sem_comentario_com_isca_193_04|duas_passadas_do_comando_dao_o_mesmo_estado_sem_evento_novo_193_04)  ::  tests=3 assertions=53
+agendamento-do-minuto  php  test_(o_agendamento_esta_no_scheduler_por_nome_com_overlapping_e_um_servidor_193_04|a_ordem_relativa_no_arquivo_poe_o_portao_depois_da_fila_193_04)  ::  tests=2 assertions=19
