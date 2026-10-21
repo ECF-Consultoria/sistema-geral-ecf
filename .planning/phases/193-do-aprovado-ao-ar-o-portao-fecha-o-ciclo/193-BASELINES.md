@@ -144,6 +144,24 @@ ao lado.
 ⚠️ **E esta fase NÃO edita `.jsx` nenhum** (§1-M6 da `193-REGUA.md`): o `build` aqui é **só** prova
 de não-regressão, e o número do manifest tem de ficar **IGUAL**. ⚠️ **Medido e IGUAL: 498 / 203.**
 
+> ⚠️⚠️ **ATUALIZADO EM 21/10/2026 pelo orquestrador — O NÚMERO MUDOU, E NÃO FOI A 193.**
+>
+> **Medido agora: `500 entradas / 204 páginas`.** O `+2 / +1` é **TODO ALHEIO**, do Agente ECF Publicador de
+> outra sessão: `resources/js/Pages/Mlb/Publicador/Agente.jsx`, **criado por `56ade5f0`**, explica **+1 entrada
+> e +1 página**. ⚠️ **A 2ª entrada não foi isolada** — isolar exigiria o `manifest.json` antigo, e obtê-lo
+> pediria `git checkout`, que é **proibido** nesta árvore. O que **está provado** é que **não é da 193**: os
+> commits das waves tocam **zero** `resources/js/`, **zero** `.jsx` e **zero** `package*`/`vite.config.js`.
+>
+> ➡️ **A regra para as waves 03, 04 e 05 passa a ser:** o invariante **NÃO é** *"o manifest tem de ser
+> 498/203"*, e sim **"a 193 não mexe no manifest"** — prove por **`numstat` vazio em `resources/js/`
+> no SEU range**, não pelo número absoluto. ⚠️ **NÃO suba o número aqui para 500/204:** ele mudaria de novo
+> no próximo `.jsx` que a outra sessão criar, e isso é a família *"âncora em número que muda legitimamente"*,
+> com **dezesseis** ocorrências consertadas na raiz nesta milestone e **zero** por elevação de número.
+>
+> ⚠️ **E o controle que IMPORTA continua valendo e tem de ser rodado:** `Aprovacao.jsx` **PRESENTE** no
+> manifest e a isca `NaoExiste9z7.jsx` **AUSENTE** — *"página fora do manifest SOME"* é o invariante real,
+> e ele **não depende** da contagem total.
+
 ---
 
 ## §6 — ⚠️ AS FALHAS ATRIBUÍDAS POR EXECUÇÃO ISOLADA (preenchido pelo `193-01`)
