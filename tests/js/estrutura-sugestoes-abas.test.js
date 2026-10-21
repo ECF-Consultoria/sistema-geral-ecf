@@ -6,9 +6,9 @@ import {
 } from '../../resources/js/lib/sugestoesEstrutura.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Abas "Sem tipo" e "Descartadas", janela de tipo e entradas (Fase 168-15).
+// Janela de tipo e entradas (Fase 168-15). As abas "Sem tipo" e "Descartadas" saíram da tela em 21/10/2026.
 //
-// POR QUE EXISTE: o tipo do produto é escolhido AQUI (D-12), não na ficha da 167. O erro
+// POR QUE EXISTE: o tipo do produto é escolhido AQUI (D-12, pela pílula de tipo da linha), não na ficha da 167. O erro
 // que custa é "quantidade nenhuma" virar "herda o padrão" (T-168-49): vazio = null (herda),
 // '0' = não gera. As regras de formatação têm teste comportamental; as telas, gate.
 // ═══════════════════════════════════════════════════════════════════════
@@ -51,24 +51,12 @@ test('textos: pode ser (2 e 3+ candidatos) e tipo definido', () => {
     assert.equal(textoTipoDefinido('Cadeira'), 'Tipo definido: Cadeira. As sugestões de Kit e Combit foram atualizadas.');
 });
 
-// ─── Gate: Sem tipo e JanelaTipo ────────────────────────────────────────────
+// ─── Gate: JanelaTipo ───────────────────────────────────────────────────────
 
 const dir = 'resources/js/Components/Portal/Estrutura/Sugestoes';
-const semTipo = lerSemComentarios(`${dir}/PainelSemTipo.jsx`);
 const janela = lerSemComentarios(`${dir}/JanelaTipo.jsx`);
-const descartadas = lerSemComentarios(`${dir}/ListaDescartadas.jsx`);
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaSugestoes.jsx');
 const barraDeMarcadas = lerSemComentarios(`${dir}/BarraDeMarcadas.jsx`);
-
-test('PainelSemTipo: introdução, seletor, botão que só grava no clique e estado vazio', () => {
-    assert.match(semTipo, /export default function /);
-    assert.ok(semTipo.includes('Para sugerir Kit e Combit, precisamos saber o que cada produto é. Escolha o tipo dos produtos abaixo. Quem fica sem tipo continua podendo ter Combo.'));
-    for (const t of ['Escolha o tipo…', 'Definir tipo', 'Ajustar quantidades', 'Todos os produtos têm tipo', 'opcoesDeTipo(', 'textoPodeSer(', 'rotulo="produtos"', 'Tipo do produto']) {
-        assert.ok(semTipo.includes(t), `faltou: ${t}`);
-    }
-    assert.match(semTipo, /disabled=\{[^}]*(! ?escolha|! ?valor|! ?tipo)/, 'Definir tipo desabilitado sem escolha');
-    assert.ok(! semTipo.includes('SpreadsheetGrid') && ! semTipo.includes('<table'));
-});
 
 test('JanelaTipo: grava por PUT com corpoDaGeracao, dicas literais e erro do servidor só depois de tentar', () => {
     assert.match(janela, /export default function /);
@@ -83,34 +71,14 @@ test('JanelaTipo: grava por PUT com corpoDaGeracao, dicas literais e erro do ser
     assert.ok(! janela.includes('SpreadsheetGrid'));
 });
 
-test('página: monta PainelSemTipo na aba sem_tipo e abre a JanelaTipo pelo onTipo do cartão', () => {
-    assert.ok(pagina.includes("sugestoes.aba === 'sem_tipo'"));
-    assert.ok(pagina.includes('<PainelSemTipo') && pagina.includes('<JanelaTipo'));
-    assert.ok(pagina.includes('onTipo='));
+test('página: só Pendentes e Criadas (21/10/2026), e a JanelaTipo abre pelo onTipo do cartão', () => {
+    assert.ok(! pagina.includes('<PainelSemTipo') && ! pagina.includes('<ListaDescartadas'), 'as abas Sem tipo e Descartadas saíram');
+    assert.ok(! pagina.includes("sugestoes.aba === 'sem_tipo'") && ! pagina.includes("sugestoes.aba === 'descartadas'"));
+    assert.ok(! pagina.includes('variante="descartadas"'));
+    assert.ok(pagina.includes('<JanelaTipo') && pagina.includes('onTipo='));
     assert.ok(pagina.includes('sugestoes.produtos'));
-});
-
-// ─── Gate: Descartadas ──────────────────────────────────────────────────────
-
-test('ListaDescartadas: introdução, data, Restaurar com Undo2, estado vazio e sem amarelo', () => {
-    assert.match(descartadas, /export default function /);
-    assert.ok(descartadas.includes('Estas sugestões saíram da lista e não voltam sozinhas. Restaure as que quiser rever.'));
-    for (const t of ['Descartada em', 'Restaurar', 'Undo2', 'Nenhuma sugestão descartada', 'composicaoEmLinha(']) {
-        assert.ok(descartadas.includes(t), `faltou: ${t}`);
-    }
-    assert.ok(! descartadas.includes('SpreadsheetGrid') && ! descartadas.includes('bg-ecf-yellow'));
-    assert.ok(descartadas.includes('SeloFase') && descartadas.includes('<CaixaDeSelecao'), 'linha com o selo e a caixa da referência (168-19)');
-});
-
-test('PainelSemTipo: linha única a partir de xl, dentro de um container (168-19)', () => {
-    assert.ok(semTipo.includes('xl:grid-cols-['));
-});
-
-test('página: monta ListaDescartadas, barra variante descartadas e restaura por POST com chaves', () => {
-    assert.ok(pagina.includes('<ListaDescartadas'));
-    assert.ok(pagina.includes('variante="descartadas"'));
-    assert.ok(pagina.includes("sugestoes.restaurar'") && pagina.includes('{ chaves'));
-    assert.ok(pagina.includes('textoRestauracao('));
+    // O "Desfazer" do descarte de uma continua devolvendo a sugestão por POST.
+    assert.ok(pagina.includes("sugestoes.restaurar'") && pagina.includes('textoRestauracao('));
 });
 
 test('barra da aba Descartadas: o ramo restaurar não usa amarelo', () => {

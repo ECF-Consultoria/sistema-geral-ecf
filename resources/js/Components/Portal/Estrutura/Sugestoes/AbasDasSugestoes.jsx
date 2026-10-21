@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { Check, Loader2, Undo2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { rotuloAceitarSelecionadas, textoSelecionadas } from '@/lib/sugestoesEstrutura';
 import { CaixaDeSelecao } from './PecasDaSugestao';
@@ -9,22 +9,21 @@ import { CaixaDeSelecao } from './PecasDaSugestao';
 // As contagens e o `hrefAba` vêm da página. No computador a seleção e o CTA ficam na linha
 // das abas; no celular, só a caixa da página (as ações ficam na barra fixa).
 
+// 21/10/2026: "deixa apenas Pendentes e Criadas" — as abas Sem tipo e Descartadas saíram da tela.
 const ABAS = [
     { chave: 'sugestoes', rotulo: 'Pendentes' },
-    { chave: 'sem_tipo', rotulo: 'Sem tipo' },
-    { chave: 'descartadas', rotulo: 'Descartadas' },
     // 13/10/2026 — o que já foi aceito ou montado: os combos, kits e combits que existem.
     { chave: 'criadas', rotulo: 'Criadas' },
 ];
 /** Abas que não têm seleção em lote (nada para marcar). */
-const SEM_SELECAO = ['sem_tipo', 'criadas'];
+const SEM_SELECAO = ['criadas'];
 const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40';
 const SECUNDARIO = 'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-medium text-white/85 hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-40';
 const LINK_TEXTO = 'min-h-[44px] text-[13px] text-white/75 underline-offset-2 hover:text-white hover:underline lg:min-h-0';
 
 export default function AbasDasSugestoes({
     aba, contagens, hrefAba, selecionadas = 0, naPagina = 0, todasDaPagina = false, onMarcarPagina, onLimpar,
-    ocupada = false, onAceitar, onDescartar, onRestaurar, filtroAtivo = false, totalDoFiltro = 0, limiteDoLote = 100, onMarcarFiltro,
+    ocupada = false, onAceitar, onDescartar, filtroAtivo = false, totalDoFiltro = 0, limiteDoLote = 100, onMarcarFiltro,
 }) {
     const marcaFiltro = aba === 'sugestoes' && filtroAtivo && totalDoFiltro > 0;
     const caixaPagina = (
@@ -43,7 +42,7 @@ export default function AbasDasSugestoes({
     return (
         <div>
             <div className="flex items-end justify-between gap-4 border-b border-white/[0.08]">
-                <nav aria-label="Seções" className="grid min-w-0 flex-1 grid-cols-4 lg:flex lg:flex-none lg:gap-6">
+                <nav aria-label="Seções" className="grid min-w-0 flex-1 grid-cols-2 lg:flex lg:flex-none lg:gap-6">
                     {ABAS.map(({ chave, rotulo }) => {
                         const ativa = aba === chave;
 
@@ -86,12 +85,6 @@ export default function AbasDasSugestoes({
                                 className={cn('inline-flex h-[38px] items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-5 text-[13.5px] font-semibold text-black hover:bg-ecf-yellow/90 disabled:pointer-events-none disabled:opacity-40', FOCO)}>
                                 {ocupada ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Check size={16} strokeWidth={3} aria-hidden="true" />}
                                 {ocupada ? 'Aceitando…' : 'Aceitar selecionadas'}
-                            </button>
-                        )}
-                        {aba === 'descartadas' && (
-                            <button type="button" data-acao="restaurar-selecionadas" onClick={onRestaurar} disabled={selecionadas === 0 || ocupada} className={SECUNDARIO}>
-                                <Undo2 size={15} aria-hidden="true" />
-                                Restaurar selecionadas
                             </button>
                         )}
                     </div>

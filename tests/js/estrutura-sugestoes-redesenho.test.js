@@ -174,15 +174,13 @@ test('GrupoFamilia: container, recolher e frase do grupo sem família', () => {
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });
 
-test('AbasDasSugestoes: abas, seleção à direita e Restaurar sem amarelo', () => {
+test('AbasDasSugestoes: abas e seleção à direita, sem o Restaurar (a aba Descartadas saiu em 21/10/2026)', () => {
     const t = fonte('AbasDasSugestoes.jsx');
     contem(t, [
         '<CaixaDeSelecao', 'aria-label="Seções"', 'Pendentes', 'data-aba', 'data-contagem',
-        'data-acao="aceitar-selecionadas"', 'data-acao="marcar-pagina"', 'data-acao="restaurar-selecionadas"', 'textoSelecionadas(', 'lg:hidden',
+        'data-acao="aceitar-selecionadas"', 'data-acao="marcar-pagina"', 'textoSelecionadas(', 'lg:hidden',
     ], 'AbasDasSugestoes');
-    const inicio = t.indexOf('restaurar-selecionadas');
-    const trecho = t.slice(inicio, t.indexOf('</button>', inicio));
-    assert.ok(! trecho.includes('bg-ecf-yellow'), 'Restaurar não cria nada: sem amarelo');
+    assert.ok(! t.includes('restaurar-selecionadas') && ! t.includes("'sem_tipo'") && ! t.includes("'descartadas'"));
     semProibidos(t, 'AbasDasSugestoes');
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });

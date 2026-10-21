@@ -49,7 +49,8 @@ class PortalEstruturaSugestoesController extends Controller
 {
     /** `criadas` (13/10/2026) não é uma lista de sugestões: são as ofertas compostas que já existem ({@see OfertasCriadas}). */
     private const ABA_CRIADAS = 'criadas';
-    private const ABAS = ['sugestoes', 'sem_tipo', 'descartadas', self::ABA_CRIADAS];
+    /** 21/10/2026: a tela ficou só com Pendentes e Criadas; link antigo para "Sem tipo" ou "Descartadas" cai em Pendentes. */
+    private const ABAS = ['sugestoes', self::ABA_CRIADAS];
     private const FASES = ['combo', 'kit', 'combit'];
 
     public function __construct(

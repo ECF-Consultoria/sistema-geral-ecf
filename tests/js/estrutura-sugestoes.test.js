@@ -50,7 +50,7 @@ test('Os textos literais da UI-SPEC estão em uso', () => {
     assert.ok(pagina.includes('leading-tight text-white">Planejamento</h1>'));
     assert.ok(! pagina.includes('Sugestões de ofertas'));
     assert.ok(pagina.includes('O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.'));
-    assert.ok(pagina.includes('Elas saem da lista e não voltam sozinhas. Você pode restaurá-las na aba Descartadas.'));
+    assert.ok(pagina.includes('descricao="Elas saem da lista e não voltam sozinhas."'), 'sem citar a aba Descartadas, que saiu (21/10/2026)');
     for (const proibida of ['algoritmo', 'gerador', ' IA ']) {
         assert.ok(! pagina.toLowerCase().includes(proibida.toLowerCase()), `não escrever "${proibida.trim()}" na tela`);
     }

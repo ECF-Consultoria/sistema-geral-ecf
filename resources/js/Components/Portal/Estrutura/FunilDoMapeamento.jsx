@@ -77,7 +77,7 @@ export default function FunilDoMapeamento({ funil }) {
                     numero={planejamento.sugestoes} rotulo={planejamento.sugestoes === 1 ? 'combinação para revisar' : 'combinações para revisar'}
                     emDia={planejamento.sugestoes === 0 && planejamento.sem_tipo === 0}
                     detalhes={planejamento.sem_tipo > 0 ? [plural(planejamento.sem_tipo, 'produto sem tipo', 'produtos sem tipo')] : []}
-                    href={ver('sugestoes', 'portal.auth.estrutura.sugestoes', planejamento.sugestoes === 0 && planejamento.sem_tipo > 0 ? { aba: 'sem_tipo' } : undefined)}
+                    href={ver('sugestoes', 'portal.auth.estrutura.sugestoes')}
                     acao="Abrir o Planejamento" />
 
                 <Cartao etapa="precificacao" icone={Tag} titulo="Precificação"

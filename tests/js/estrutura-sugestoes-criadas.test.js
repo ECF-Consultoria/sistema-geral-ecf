@@ -278,16 +278,17 @@ test('PainelCriadas: a paginação aparece só com mais de uma página', async (
     assert.match(render(3), /data-paginacao[\s\S]*130 criadas · 60 por página/);
 });
 
-test('AbasDasSugestoes: quarta aba "Criadas" com a contagem, e sem seleção em lote nela', async () => {
+test('AbasDasSugestoes: só Pendentes e Criadas (21/10/2026), com a contagem, e sem seleção em lote em Criadas', async () => {
     const { default: AbasDasSugestoes } = await montar(`${DIR}/AbasDasSugestoes.jsx`);
     const render = (aba) => renderToStaticMarkup(React.createElement(AbasDasSugestoes, {
         aba, contagens: { sugestoes: 12, sem_tipo: 1, descartadas: 0, criadas: 8 }, hrefAba: (a) => `/planejamento?aba=${a}`, naPagina: 5,
     }));
 
     const criadas = render('criadas');
-    assert.deepEqual([...criadas.matchAll(/data-aba="([a-z_]+)"/g)].map((m) => m[1]), ['sugestoes', 'sem_tipo', 'descartadas', 'criadas']);
+    assert.deepEqual([...criadas.matchAll(/data-aba="([a-z_]+)"/g)].map((m) => m[1]), ['sugestoes', 'criadas']);
     assert.match(criadas, /<a href="\/planejamento\?aba=criadas"[^>]*aria-current="page"[^>]*>Criadas<span[^>]*>8<\/span>/);
-    assert.match(criadas, /grid-cols-4/);
+    assert.match(criadas, /grid-cols-2/);
+    assert.doesNotMatch(criadas, />(Sem tipo|Descartadas)</);
     assert.doesNotMatch(criadas, /data-selecao-topo|data-selecao-celular|data-acao="marcar-pagina"/, 'nada para marcar em Criadas');
 
     assert.match(render('sugestoes'), /data-selecao-topo/, 'em Pendentes a seleção continua');

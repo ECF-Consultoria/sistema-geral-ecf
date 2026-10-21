@@ -13,9 +13,7 @@ import GrupoFamilia from '@/Components/Portal/Estrutura/Sugestoes/GrupoFamilia';
 import AbasDasSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AbasDasSugestoes';
 import BarraDeMarcadas from '@/Components/Portal/Estrutura/Sugestoes/BarraDeMarcadas';
 import PainelCriadas from '@/Components/Portal/Estrutura/Sugestoes/PainelCriadas';
-import PainelSemTipo from '@/Components/Portal/Estrutura/Sugestoes/PainelSemTipo';
 import JanelaTipo from '@/Components/Portal/Estrutura/Sugestoes/JanelaTipo';
-import ListaDescartadas from '@/Components/Portal/Estrutura/Sugestoes/ListaDescartadas';
 import AvisoSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AvisoSugestoes';
 import MontarKitAMao from '@/Components/Portal/Estrutura/Sugestoes/MontarKitAMao';
 import { destinoDaOfertaCriada } from '@/lib/portalSubmodulos';
@@ -25,7 +23,7 @@ import {
 } from '@/lib/sugestoesSelecao';
 import {
     MSG_FALHA_REDE, MSG_GUARDA, msgLimiteDoLote, msgMarcamosPrimeiras, qualEstadoVazio, textoDescarte, textoRestauracao, textoResultadoAceite,
-    corpoDaGeracao, textoTipoDefinido, textoAtualizado, filtroAtivo, filtrosDaAba,
+    textoAtualizado, filtroAtivo, filtrosDaAba,
     montarGrupos, alternarCombos, textoVerCombos, textoCombosCortados,
 } from '@/lib/sugestoesEstrutura';
 import { chegouPeloHistorico, definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
@@ -45,7 +43,7 @@ import { cn } from '@/lib/utils';
 // vão ao servidor (learnings §25/§27). A marcação e as edições ficam em `estado`, que
 // sobrevive a trocar de filtro, aba e página (preserveState). Toda a lógica (marcar, editar,
 // montar o pedido de aceite, aplicar o resultado) está em `sugestoesSelecao.js`: aqui só se
-// liga a lib à tela. As abas "Sem tipo" e "Descartadas" têm o corpo no 168-15.
+// liga a lib à tela.
 //
 // Guarda de saída (learnings §32): nome ou código editado e ainda não aceito segura a saída
 // da tela pelo fechar da aba (beforeunload), por link (router 'before') e pelo voltar do
@@ -54,14 +52,13 @@ import { cn } from '@/lib/utils';
 // conta como edição.
 //
 // Redesenho pela referência (168-19, D-24..D-31): trilha, título e "Atualizado agora"; quatro cartões
-// de resumo; barra de filtros num container; abas Pendentes · Sem tipo · Descartadas com a seleção e
+// de resumo; barra de filtros num container; abas com a seleção e
 // "Aceitar selecionadas" à direita (a barra fixa só existe no celular); famílias em container, com
 // cada sugestão em UMA linha. Só a apresentação mudou: a lógica e a guarda de saída são as mesmas.
 //
-// Fase 168-15: a aba "Sem tipo" (PainelSemTipo, D-12) grava o tipo por botão; a pílula de
-// tipo da linha e o "Ajustar quantidades" abrem a mesma JanelaTipo (D-07). A aba
-// "Descartadas" tem marcação PRÓPRIA (outra instância de estadoInicial) e a barra sem
-// amarelo: restaurar não cria nada, só devolve à lista (D-01).
+// 21/10/2026: só as abas Pendentes e Criadas ("deixa apenas Pendentes e Criadas"). As abas Sem tipo e
+// Descartadas saíram; o tipo do produto segue pela pílula de tipo da linha (JanelaTipo, D-07), e o
+// descarte de uma ainda tem o "Desfazer" do aviso.
 //
 // 09/10/2026: "Montar kit" (MontarKitAMao) — a pessoa junta os produtos à mão, com a prévia do
 // servidor; `?montar=<produto>` abre a janela com o produto já escolhido (vindo de Produtos).
@@ -128,11 +125,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
     const [consultando, setConsultando] = useState(false);
     const [aceitouNaSessao, setAceitouNaSessao] = useState(false);
     const [saida, setSaida] = useState(null);                       // pergunta de saída aberta: { visita } ou { voltar: true }
-    const [estadoDesc, setEstadoDesc] = useState(estadoInicial);    // marcação própria da aba Descartadas
     const [tipoAberto, setTipoAberto] = useState(null);             // produto da JanelaTipo (null = fechada)
-    const [gravandoTipo, setGravandoTipo] = useState(() => new Set());
-    const [restaurando, setRestaurando] = useState(() => new Set());
-    const [restaurandoLote, setRestaurandoLote] = useState(false);
     const [agora, setAgora] = useState(() => Date.now());             // relógio do "Atualizado há N min"
     const [atualizando, setAtualizando] = useState(false);
     const [recolhidos, setRecolhidos] = useState(() => new Set());       // famílias recolhidas (só em memória)
@@ -141,15 +134,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
     const liberado = useRef(false);                                 // "Sair sem aceitar" já confirmado
 
     const ehAbaSugestoes = sugestoes.aba === 'sugestoes';
-    const ehAbaSemTipo = sugestoes.aba === 'sem_tipo';
-    const ehAbaDescartadas = sugestoes.aba === 'descartadas';
     // 13/10/2026 — os combos, kits e combits que já existem: não é lista de sugestões, não tem filtro nem seleção.
     const ehAbaCriadas = sugestoes.aba === 'criadas';
     const itens = sugestoes.itens ?? [];
     const grupos = useMemo(() => montarGrupos(itens, sugestoes.grupos), [itens, sugestoes.grupos]);
     const marcadas = estado.marcadas;
-    const marcadasDesc = estadoDesc.marcadas;
-    const barraVisivel = ehAbaDescartadas ? marcadasDesc.length > 0 : (ehAbaSugestoes && marcadas.length > 0);
+    const barraVisivel = ehAbaSugestoes && marcadas.length > 0;
     // `produtos` chega indexado por id (objeto) ou como lista, conforme o JSON do servidor.
     const produtoDaPagina = (id) => Object.values(sugestoes.produtos ?? {}).find((p) => p.id === id) ?? null;
 
@@ -363,85 +353,10 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
         }
     };
 
-    // ─── Sem tipo: definir o tipo e ajustar quantidades (D-07, D-12) ────────
-
-    /** "Definir tipo" do cartão: grava só o tipo, mantendo as quantidades que o produto já tinha. */
-    const definirTipo = async (produto, slug) => {
-        if (! slug || gravandoTipo.has(produto.id)) return;
-        setGravandoTipo((s) => new Set(s).add(produto.id));
-        setAviso(null);
-        try {
-            await axios.put(route('portal.auth.estrutura.sugestoes.geracao', produto.id),
-                corpoDaGeracao({ tipo: slug, qtdCombo: produto.qtd_combo ?? '', qtdCombit: produto.qtd_combit ?? '' }, sugestoes.tipos ?? []));
-            const nome = (sugestoes.tipos ?? []).find((t) => t.slug === slug)?.nome ?? '';
-            setAviso({ texto: textoTipoDefinido(nome) });
-            recarregar();
-        } catch (e) {
-            const erros = e?.response?.data?.errors;
-            const primeiro = erros ? Object.values(erros).flat()[0] : null;
-            setAviso({ erro: true, texto: primeiro ?? MSG_FALHA_REDE });
-        } finally {
-            setGravandoTipo((s) => { const n = new Set(s); n.delete(produto.id); return n; });
-        }
-    };
-
     const tipoSalvo = (texto) => {
         setTipoAberto(null);
         setAviso({ texto });
         recarregar();
-    };
-
-    // ─── Descartadas: marcar e restaurar (D-01) ─────────────────────────────
-
-    const marcarDescartada = (chave) => {
-        const r = alternarMarca(estadoDesc, chave, limites.lote);
-        setEstadoDesc(r.estado);
-        if (r.recusou) setAviso({ texto: msgLimiteDoLote(limites.lote) });
-    };
-
-    /** Restaura uma ou várias; as que já viraram oferta não voltam e a pessoa é avisada. */
-    const restaurar = async (chaves) => {
-        setAviso(null);
-        try {
-            const { data } = await axios.post(route('portal.auth.estrutura.sugestoes.restaurar'), { chaves });
-            setAviso({ texto: textoRestauracao(data?.restauradas ?? 0, data?.ja_existem ?? 0) });
-            setEstadoDesc((e) => desmarcarVarias(e, chaves));
-            recarregar();
-        } catch {
-            setAviso({ erro: true, texto: MSG_FALHA_REDE });
-        }
-    };
-
-    const restaurarUma = async (chave) => {
-        setRestaurando((s) => new Set(s).add(chave));
-        try {
-            await restaurar([chave]);
-        } finally {
-            setRestaurando((s) => { const n = new Set(s); n.delete(chave); return n; });
-        }
-    };
-
-    /** Marca (ou desmarca, se já estão todas) as descartadas desta página, com o mesmo teto. */
-    const alternarPaginaDescartadas = () => {
-        const chaves = itens.map((i) => i.chave);
-        if (chaves.length === 0) return;
-        if (chaves.every((c) => marcadasDesc.includes(c))) {
-            setEstadoDesc(desmarcarVarias(estadoDesc, chaves));
-
-            return;
-        }
-        const r = marcarVarias(estadoDesc, chaves, limites.lote);
-        setEstadoDesc(r.estado);
-        if (r.recusadas.length > 0) setAviso({ texto: msgMarcamosPrimeiras(limites.lote) });
-    };
-
-    const restaurarMarcadas = async () => {
-        setRestaurandoLote(true);
-        try {
-            await restaurar(marcadasDesc);
-        } finally {
-            setRestaurandoLote(false);
-        }
     };
 
     // ─── Guarda de saída (learnings §32) ────────────────────────────────────
@@ -578,7 +493,6 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
     const comFiltro = filtroAtivo(filtros);
     const naPagina = itens.filter((i) => podeAceitar(i, estado, limites));
     const todasDaPaginaMarcadas = naPagina.length > 0 && naPagina.every((i) => marcadas.includes(i.chave));
-    const todasDescPaginaMarcadas = itens.length > 0 && itens.every((i) => marcadasDesc.includes(i.chave));
     const vazio = ehAbaSugestoes
         // Um bloco de Combos recolhido também é conteúdo da página.
         ? qualEstadoVazio({ temProdutos: sugestoes.tem_produtos, contagens: sugestoes.contagens, filtroAtivo: comFiltro, aceitouNaSessao, qtdItens: itens.length + grupos.filter((g) => g.bloco).length })
@@ -651,19 +565,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                 )}
 
                 <div className="mt-4">
-                    {ehAbaDescartadas ? (
-                        <AbasDasSugestoes aba={sugestoes.aba} contagens={sugestoes.contagens} hrefAba={hrefAba}
-                            selecionadas={marcadasDesc.length} naPagina={itens.length} todasDaPagina={todasDescPaginaMarcadas}
-                            onMarcarPagina={alternarPaginaDescartadas} onLimpar={() => setEstadoDesc(limparMarcacao(estadoDesc))}
-                            ocupada={restaurandoLote} onRestaurar={restaurarMarcadas} />
-                    ) : (
-                        <AbasDasSugestoes aba={sugestoes.aba} contagens={sugestoes.contagens} hrefAba={hrefAba}
-                            selecionadas={marcadas.length} naPagina={naPagina.length} todasDaPagina={todasDaPaginaMarcadas}
-                            onMarcarPagina={() => alternarVarias(itens.map((i) => i.chave))} onLimpar={() => setEstado(limparMarcacao(estado))}
-                            ocupada={emLote} onAceitar={aceitarMarcadasEmLote} onDescartar={descartarMarcadas}
-                            filtroAtivo={comFiltro} totalDoFiltro={(sugestoes.chaves_filtradas ?? []).length}
-                            limiteDoLote={limites.lote} onMarcarFiltro={marcarDoFiltro} />
-                    )}
+                    <AbasDasSugestoes aba={sugestoes.aba} contagens={sugestoes.contagens} hrefAba={hrefAba}
+                        selecionadas={marcadas.length} naPagina={naPagina.length} todasDaPagina={todasDaPaginaMarcadas}
+                        onMarcarPagina={() => alternarVarias(itens.map((i) => i.chave))} onLimpar={() => setEstado(limparMarcacao(estado))}
+                        ocupada={emLote} onAceitar={aceitarMarcadasEmLote} onDescartar={descartarMarcadas}
+                        filtroAtivo={comFiltro} totalDoFiltro={(sugestoes.chaves_filtradas ?? []).length}
+                        limiteDoLote={limites.lote} onMarcarFiltro={marcarDoFiltro} />
                 </div>
 
                 {ehAbaSugestoes && sugestoes.tem_produtos && (
@@ -728,10 +635,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                         )}
                         {vazio === 'sem_sugestoes' && (
                             <EstadoVazio titulo="Ainda não há sugestões novas"
-                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Veja a aba Sem tipo, cadastre mais produtos ou monte você mesmo o combo, o kit ou o combit.">
-                                {(sugestoes.contagens?.sem_tipo ?? 0) > 0 && (
-                                    <Link href={hrefAba('sem_tipo')} className={LINK_SECUNDARIO} data-acao="ver-sem-tipo">Ver Sem tipo</Link>
-                                )}
+                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Cadastre mais produtos ou monte você mesmo o combo, o kit ou o combit.">
                                 <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar combo, kit ou combit</button>
                             </EstadoVazio>
                         )}
@@ -756,33 +660,11 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                 )}
 
                 {ehAbaCriadas && <PainelCriadas criadas={criadas} filtros={filtros_criadas} />}
-
-                {ehAbaSemTipo && sugestoes.tem_produtos && (
-                    <PainelSemTipo produtos={sugestoes.produtos_sem_tipo ?? []} tipos={sugestoes.tipos ?? []} paginacao={sugestoes.paginacao}
-                        gravando={gravandoTipo} visitando={visitando} onDefinir={definirTipo}
-                        onAjustar={(produto) => setTipoAberto(produto)} onIr={(pagina) => visitar({ pagina })} />
-                )}
-
-                {ehAbaDescartadas && sugestoes.tem_produtos && (
-                    <>
-                        <ListaDescartadas itens={itens} marcadas={marcadasDesc} restaurando={restaurando} bloqueado={restaurandoLote}
-                            visitando={visitando} onMarcar={marcarDescartada} onRestaurar={restaurarUma} />
-                        {sugestoes.paginacao.paginas > 1 && (
-                            <div className="mt-6">
-                                <Paginacao rotulo="sugestões" paginacao={sugestoes.paginacao} onIr={(pagina) => visitar({ pagina })} />
-                            </div>
-                        )}
-                    </>
-                )}
             </div>
 
             {ehAbaSugestoes && (
                 <BarraDeMarcadas total={marcadas.length} ocupada={emLote} onLimpar={() => setEstado(limparMarcacao(estado))}
                     onAceitar={aceitarMarcadasEmLote} onDescartar={descartarMarcadas} />
-            )}
-            {ehAbaDescartadas && (
-                <BarraDeMarcadas variante="descartadas" total={marcadasDesc.length} ocupada={restaurandoLote}
-                    onLimpar={() => setEstadoDesc(limparMarcacao(estadoDesc))} onRestaurar={restaurarMarcadas} />
             )}
 
             <JanelaTipo produto={tipoAberto} tipos={sugestoes.tipos ?? []} onFechar={() => setTipoAberto(null)} onSalvo={tipoSalvo} />
@@ -791,7 +673,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, c
                 onCarregar={carregarCatalogo} produtoInicial={produtoMontar} vocabulario={vocabulario} onCriada={montagemCriada} />
 
             <Janela aberta={confirmaDescarte} onFechar={() => setConfirmaDescarte(false)} titulo={`Descartar ${marcadas.length} sugestões?`}
-                descricao="Elas saem da lista e não voltam sozinhas. Você pode restaurá-las na aba Descartadas.">
+                descricao="Elas saem da lista e não voltam sozinhas.">
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <Botao variante="secundario" onClick={() => setConfirmaDescarte(false)} className="h-11">Cancelar</Botao>
                     <Botao variante="primario" onClick={confirmarDescarte} className="h-11" data-acao="confirmar-descarte">Descartar {marcadas.length}</Botao>

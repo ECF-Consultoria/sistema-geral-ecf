@@ -119,11 +119,18 @@ class AcessoAsSugestoesTest extends TestCase
         [$empresa] = $this->cenario();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
-                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+                ->where('filtros', ['aba' => 'criadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+
+        // 21/10/2026: a tela ficou só com Pendentes e Criadas; link antigo para as abas que saíram cai em Pendentes.
+        foreach (['sem_tipo', 'descartadas'] as $antiga) {
+            $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => $antiga]))
+                ->assertOk()
+                ->assertInertia(fn ($page) => $page->where('filtros.aba', 'sugestoes')->where('sugestoes.aba', 'sugestoes'));
+        }
 
         // 08/10: famílias com Combos expandidos, "12,sem"; lixo fica de fora.
         $sessao->get(route('portal.auth.estrutura.sugestoes', ['combos' => '12,sem,../x,9999999999999']))
