@@ -669,33 +669,49 @@ class AnaliseAnuncioService
         TXT;
     }
 
+    /**
+     * A descrição pela ESTRUTURA ECF (22/10/2026, prompt mandado pelo usuário: "o prompt para ser usado para criar
+     * descrição deveria ser esse"). Produto = o nome do produto; Loja = o nome do CADASTRO da empresa (decisão do
+     * usuário no mesmo dia); especificações = o que o cliente preencheu (`DescricaoIaService::specs`). O texto do
+     * usuário vai como está; só o pedido de JSON no fim é nosso, para a resposta ser lida. A análise (JTBD/PUV) não
+     * entra mais aqui — o parâmetro fica pela assinatura do assistente antigo.
+     */
     private function promptDescricao(string $produto, string $loja, string $specs, array $analise): string
     {
-        $bloco = $this->blocoSpecs($specs);
-        $jtbd  = (string) ($analise['jtbd'] ?? '');
-        $puv   = (string) ($analise['puv'] ?? '');
-
-        $ctx = '';
-        if ($jtbd !== '') { $ctx .= "\n\nJTBD (use no parágrafo do problema): {$jtbd}"; }
-        if ($puv !== '')  { $ctx .= "\nPUV (use no parágrafo da solução): {$puv}"; }
+        $especificacoes = trim($specs) !== '' ? trim($specs) : 'Nenhuma especificação técnica foi fornecida.';
 
         return <<<TXT
-        Escreva a descrição do anúncio do produto **{$produto}** no Mercado Livre.
+        Você é especialista em redação para e-commerce. Crie uma descrição completa de produto para anúncio no Mercado Livre seguindo exatamente a estrutura ECF abaixo.
 
-        {$bloco}{$ctx}
+        PRODUTO: "{$produto}"
+        LOJA: "{$loja}"
+        ESPECIFICAÇÕES TÉCNICAS REAIS:
+        {$especificacoes}
 
-        ESTRUTURA OBRIGATÓRIA:
-        - Parágrafo 1 (Problema): reconheça a necessidade do cliente de forma empática, usando o JTBD.
-        - Parágrafo 2 (Solução): apresente o produto como solução ideal, destacando a PUV.
-        - Parágrafo 3 (Oferta): chamada para ação clara e direta.
-        - Lista de 3 a 5 especificações técnicas mais importantes, limpa e direta.
-        - Despedida cordial curta.
+        ESTRUTURA OBRIGATÓRIA — gere cada seção na ordem abaixo:
 
-        SEM SAUDAÇÃO E SEM NOME DE LOJA: comece direto pelo Parágrafo 1 — nada de "Olá", "Seja bem-vindo"
-        ou parecido. Não cite o nome da loja, da empresa ou do vendedor em parte alguma do texto.
+        SEÇÃO 1 — SAUDAÇÃO:
+        Uma frase de boas-vindas calorosa ao comprador, mencionando o nome da loja. Ex: "Olá! Seja bem-vindo(a) à {$loja}!"
 
-        SEM EMOJIS: o Mercado Livre recusa a descrição que tenha emoji. Não use emojis, ícones nem
-        símbolos decorativos em parte alguma do texto — nem na saudação, nem na lista.
+        SEÇÃO 2 — BENEFÍCIOS E USO (2 parágrafos):
+        Parágrafo 1: destaque o benefício principal e o diferencial do produto. Por que o comprador deve escolhê-lo?
+        Parágrafo 2: explique o uso ideal, ambientes de uso, público-alvo e situações do dia a dia em que o produto resolve um problema.
+
+        SEÇÃO 3 — ESPECIFICAÇÕES TÉCNICAS:
+        Liste as especificações técnicas reais fornecidas acima. Não invente dados. Formate como lista com cada item em uma linha.
+
+        SEÇÃO 4 — CUIDADOS E RECOMENDAÇÕES:
+        Liste em tópicos os cuidados de uso, manutenção, armazenamento e quaisquer avisos de segurança relevantes.
+
+        SEÇÃO 5 — FECHAMENTO:
+        Uma frase de incentivo à compra que destaque o valor do produto na rotina do cliente, seguida de agradecimento cordial.
+
+        REGRAS DE FORMATO:
+        - Linguagem amigável, profissional e voltada ao consumidor final
+        - Sem emojis
+        - Sem HTML
+        - Sem caracteres especiais (parênteses duplos, asteriscos decorativos, etc.)
+        - Sem jargão técnico excessivo — escreva para o comprador leigo
 
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}

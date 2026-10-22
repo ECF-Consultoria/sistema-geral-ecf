@@ -108,18 +108,15 @@ class DescricaoIaService
         $produto = $r->produto;
         // O nome também vem do cliente: sem link nem e-mail (WR-10).
         $nome = self::semContato($produto->nomeExibido(), telefones: false);
-        // Loja como no "Anunciar por IA".
+        // A loja é o nome do CADASTRO da empresa (22/10/2026, decisão do usuário ao mandar a estrutura ECF da
+        // descrição: a saudação volta, com o nome da loja — o N2 da véspera, "sem saudação", ficou para trás).
         $loja = $produto->contaOuNula()?->nomeContaMl() ?? ($produto->mlbEmpresa?->nome ?? $produto->company?->name ?? '');
         $specs = $this->specs($r);
 
-        $analise = $ia->analise($nome, $loja, $specs)['dados'];
+        // Uma chamada só: a estrutura ECF não usa a análise (JTBD/PUV) do assistente antigo.
         // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
         // Sem emoji, sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
-        $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados'])));
-        // Demo 23/10 (N2): o anúncio da #459 saiu com "Olá! Seja bem-vindo à Dev 02 Testes API." — o nome
-        // cadastrado não é o que o comprador vê (o ML mostra o apelido da conta). Decisão do usuário: sem
-        // saudação. O prompt já pede; isto garante quando o modelo escapa.
-        $texto = self::semSaudacao($texto, $loja);
+        $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, [])['dados'])));
         if ($texto === '') {
             throw new \RuntimeException(self::ERRO_VAZIA);
         }
@@ -146,7 +143,13 @@ class DescricaoIaService
         $nomes = $this->nomesDoSchema($r);
         $linhas = [];
         $medidas = [];
-        foreach ($r->atributos()->get() as $a) {
+        // O que o CLIENTE preencheu do produto — características e especificações técnicas (22/10/2026, o usuário:
+        // "especificações técnicas devem ser pegas de acordo com o que o cliente preencheu do produto"). O que a IA
+        // ou a equipe pôs (o "Modelo" cheio de termos de busca, por exemplo) fica de fora, assim como SKU, código de
+        // barras e a caixa. Produto sem nada do cliente (nasceu no Publicador): vale a ficha inteira, como antes.
+        $atributos = $r->atributos()->get()->reject(fn ($a) => preg_match(self::FORA_DAS_SPECS, (string) $a->attribute_id) === 1);
+        $doCliente = $atributos->filter(fn ($a) => in_array($a->origem, self::ORIGENS_DO_CLIENTE, true));
+        foreach ($doCliente->isNotEmpty() ? $doCliente : $atributos as $a) {
             $valor = trim((string) ($a->value_name ?? ''));
             if ($valor === '' && $a->value_number !== null) {
                 $valor = rtrim(rtrim(number_format((float) $a->value_number, 4, '.', ''), '0'), '.').($a->value_unit ? ' '.$a->value_unit : '');
@@ -185,6 +188,12 @@ class DescricaoIaService
 
         return mb_substr($texto, 0, self::LIMITE_SPECS);
     }
+
+    /** De onde vem o que o cliente preencheu: a ficha do Portal e o Planejamento dele. */
+    private const ORIGENS_DO_CLIENTE = ['portal', 'planejamento_do_portal'];
+
+    /** Campos que não são especificação do produto para o comprador: códigos e a caixa de envio. */
+    private const FORA_DAS_SPECS = '/^(SELLER_SKU|GTIN|EMPTY_GTIN_REASON|SELLER_PACKAGE_.*|PACKAGE_.*|ITEM_CONDITION)$/';
 
     /** Delimitador do texto do cliente nas especificações. */
     public const DELIMITADOR = 'DESCRICAO_DO_CLIENTE';

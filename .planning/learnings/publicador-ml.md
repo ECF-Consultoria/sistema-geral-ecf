@@ -1978,3 +1978,19 @@ outros produtos também não pode acontecer".
   `PalavrasChaveService::comTermosDoKit` inserem "com 4 Cadeiras" LOGO DEPOIS do nome do produto principal quando a IA não
   pôs — o corte (`ajustarTitulo`) e a diferenciação do Premium (`RegrasDoTitulo::diferenciar`) só mexem no fim.
 - Não refeito sozinho: o título e a galeria do rascunho #105 e a ambientada da mesa #95 (já publicada no ML).
+
+## 52. A descrição segue a estrutura ECF do usuário — e a saudação com o nome da loja VOLTOU (22/10/2026)
+
+O usuário mandou o prompt ("o prompt para ser usado para criar descrição deveria ser esse"): saudação com o nome da
+loja, 2 parágrafos de benefício e uso, especificações reais em lista, cuidados, fechamento; sem emoji, HTML nem
+caracteres especiais. Está em `AnaliseAnuncioService::promptDescricao` (vale para o Publicador e para o assistente
+antigo); só o pedido de JSON no fim é nosso.
+
+- **Loja = nome do CADASTRO** (`nomeContaMl()`), decisão do usuário no mesmo dia, mesmo depois de ver os apelidos no ML
+  (#459 = MGSTOREL, #167 VIGGORE = HOMEDESIGNER). Isso desfaz o N2 da véspera (§46/§47, "sem saudação nem nome da
+  loja"): `DescricaoIaService::gerar` não chama mais `semSaudacao` (a função ficou, com o teste dela).
+- **Uma chamada só:** a análise (JTBD/PUV) não entra mais na descrição do Publicador.
+- **Especificações = o que o CLIENTE preencheu:** `specs()` usa os atributos com origem `portal`/`planejamento_do_portal`,
+  sem SKU, GTIN e caixa de envio; o que a IA ou a equipe pôs fica de fora (o "Modelo" cheio de termos de busca). Sem nada
+  do cliente (produto que nasceu no Publicador), vale a ficha inteira. A descrição do cliente continua no bloco
+  delimitado, como DADO.
