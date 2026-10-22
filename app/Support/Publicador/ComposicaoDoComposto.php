@@ -123,6 +123,22 @@ final class ComposicaoDoComposto
         return 'Kit '.implode(' + ', array_map(fn (array $i) => trim(($i['quantidade'] > 1 ? $i['quantidade'].' ' : '').$i['nome']), $this->itens));
     }
 
+    /**
+     * O nome que as telas mostram para um produto/oferta deste composto. O kit do MESMO produto em cores diferentes
+     * nascia no Planejamento como "Poltrona Decorativa Opala + Poltrona Decorativa Opala — Cinza / Bordô" (teste da
+     * empresa #459, 22/10/2026): esse nome vira o do kit ({@see nomeDoKit()}). Só troca o nome que repete o do produto
+     * e não começa por Kit/Combo/Combit — o nome que a pessoa escreveu fica como está.
+     */
+    public function nomeParaMostrar(string $nome): string
+    {
+        if (count($this->itens) < 2 || ! $this->mesmoProduto() || preg_match('/^\s*(kit|combo|combit)\b/iu', $nome) === 1) {
+            return $nome;
+        }
+        $doProduto = mb_strtolower(trim($this->itens[0]['nome']));
+
+        return $doProduto !== '' && mb_substr_count(mb_strtolower($nome), $doProduto) >= 2 ? $this->nomeDoKit() : $nome;
+    }
+
     /** Como o título TEM de começar: "Kit 2" num produto só; "Kit" com produtos diferentes. */
     public function prefixoDoTitulo(): string
     {

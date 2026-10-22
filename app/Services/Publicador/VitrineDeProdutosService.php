@@ -9,6 +9,7 @@ use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\Eixo;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\IaTrabalhando;
 use App\Support\Publicador\ImagensReprovadas;
 use Illuminate\Support\Collection;
@@ -123,7 +124,7 @@ final class VitrineDeProdutosService
             'fase_numero' => $f['numero'] ?? 1,
             'quantidade' => $f['quantidade'] ?? null,
             'composicao' => $f['composicao'] ?? null,
-            'nome' => (string) $l['nome'],
+            'nome' => self::nomeDoCartao((string) $l['nome'], $p, $f['tipo'] ?? null),
             'sku' => (string) $l['sku'],
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL && ! $saiuDoPortal,
             'saiu_do_portal' => $saiuDoPortal,
@@ -208,6 +209,19 @@ final class VitrineDeProdutosService
      * @param  list<array{rotulo: string, pendencias: list<string>}>  $cores
      * @return array{texto: string, tom: string, detalhe: ?string}
      */
+    /**
+     * O kit do MESMO produto em cores diferentes que nasceu no Planejamento com o nome antigo aparece com o nome do kit
+     * (teste da empresa #459, 22/10/2026; a regra em {@see ComposicaoDoComposto::nomeParaMostrar()}). Nada é gravado.
+     */
+    private static function nomeDoCartao(string $nome, ?PubProduto $p, ?string $tipo): string
+    {
+        if (! in_array($tipo, [FasesDaVitrineService::KIT, FasesDaVitrineService::COMBIT], true)) {
+            return $nome;
+        }
+
+        return ComposicaoDoComposto::doProduto($p)?->nomeParaMostrar($nome) ?? $nome;
+    }
+
     private static function chip(string $grupo, ?string $status, array $l, array $cores, int $faltam, bool $falhou): array
     {
         if ($grupo === self::PUBLICADOS) {
