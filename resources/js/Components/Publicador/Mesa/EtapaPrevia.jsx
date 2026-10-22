@@ -62,7 +62,9 @@ export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
     const tipos = Array.isArray(previa?.tipos) ? previa.tipos : [];
     const anuncio = anuncioEscolhido(previa, tipo ?? tipos[0]?.listing_type_id ?? null, variante);
     const notas = notasDaPrevia(previa, anuncio, comPromocao);
-    const vendedor = empresa?.conta_nome ?? empresa?.nome ?? null;
+    // Demo 23/10 (A9): o comprador vê o APELIDO da conta ("MGSTOREL"), não o nome cadastrado da empresa;
+    // sem o apelido lido (conta lida antes de 23/10, ou leitura falhou), o nome cadastrado.
+    const vendedor = pub.m.estado?.conta?.nickname || empresa?.conta_nome || empresa?.nome || null;
 
     return (
         <div className="space-y-6" data-etapa-conteudo="previa">

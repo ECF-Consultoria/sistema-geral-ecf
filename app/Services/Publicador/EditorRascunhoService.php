@@ -734,6 +734,8 @@ class EditorRascunhoService
                 'depositos' => $conta['depositos'] ?? null,
                 'modos_envio' => $conta['modosEnvio'] ?? null,
                 'erro' => $conta['erro'] ?? null,
+                // Demo 23/10 (A9): o apelido da conta no ML (o "Vendido por" da Prévia); nulo na conta lida antes disto.
+                'nickname' => $conta['nickname'] ?? null,
             ] : null,
             'efetivos' => ['titulos' => $e['titulos'], 'precos' => $e['precos']],
             'problemas' => array_map([self::class, 'problemaParaTela'], $problemas),

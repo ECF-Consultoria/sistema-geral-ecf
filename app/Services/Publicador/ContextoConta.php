@@ -14,6 +14,7 @@ final class ContextoConta
      * @param  list<string>  $tags
      * @param  list<string>|null  $modosEnvio  nulo = não deu para ler (não se cobra)
      * @param  list<array{store_id: string, nome: string, network_node_id: ?string}>|null  $depositos  nulo = conta sem depósitos, ou leitura falhou
+     * @param  ?string  $nickname  o apelido que o comprador vê no ML ("Vendido por MGSTOREL", demo 23/10); nulo = não veio
      */
     public function __construct(
         public readonly string $sellerId,
@@ -22,6 +23,7 @@ final class ContextoConta
         public readonly ?array $modosEnvio,
         public readonly ?array $depositos,
         public readonly string $lidaEm,
+        public readonly ?string $nickname = null,
     ) {}
 
     public function multiDeposito(): bool

@@ -249,3 +249,8 @@ test('EtapaPrevia — salva o pendente ANTES de pedir a prévia, refaz por revis
     assert.match(f, /Com a promoção da Central/);
     assert.match(f, /data-acao="atualizar-previa"/);
 });
+
+test('A9 — "Vendido por" usa o apelido da conta no ML; o nome cadastrado só de reserva', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/Mesa/EtapaPrevia.jsx');
+    assert.match(f, /const vendedor = pub\.m\.estado\?\.conta\?\.nickname \|\| empresa\?\.conta_nome \|\| empresa\?\.nome \|\| null;/);
+});
