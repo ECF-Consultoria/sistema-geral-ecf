@@ -139,10 +139,10 @@ const PREVIA = {
 const CATALOGO = {
     max_componentes: 6,
     produtos: [
-        { produto_id: 1, nome: 'Mesa Polo', familia: 'Polo', tipo_nome: 'Mesa', variacoes: [{ variacao_id: 1, valor: 'Natural', sku: 'V101', estoque: 3 }, { variacao_id: 2, valor: 'Preto', sku: 'V102', estoque: null }] },
-        { produto_id: 2, nome: 'Cadeira Polo', familia: 'Polo', tipo_nome: 'Cadeira', variacoes: [{ variacao_id: 3, valor: 'Natural', sku: 'V201', estoque: 10 }] },
+        { produto_id: 1, nome: 'Mesa Polo', familia: 'Polo', tipo_nome: 'Mesa', foto: 'https://cdn/v1.jpg', variacoes: [{ variacao_id: 1, valor: 'Natural', sku: 'V101', estoque: 3, foto: 'https://cdn/v1.jpg' }, { variacao_id: 2, valor: 'Preto', sku: 'V102', estoque: null, foto: null }] },
+        { produto_id: 2, nome: 'Cadeira Polo', familia: 'Polo', tipo_nome: 'Cadeira', foto: null, variacoes: [{ variacao_id: 3, valor: 'Natural', sku: 'V201', estoque: 10, foto: null }] },
     ],
-    avulsas: [{ oferta_id: 55, sku: 'AV-B', nome: 'Banco Antigo' }],
+    avulsas: [{ oferta_id: 55, sku: 'AV-B', nome: 'Banco Antigo', foto: 'https://cdn/av.jpg' }],
 };
 
 const ITEM_SUGESTAO = {
@@ -197,6 +197,16 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
     }
     assert.equal(comCatalogo.match(PROIBIDO), null);
     assert.equal(html(h(MontarKitAMao, { aberta: false, catalogo: CATALOGO, onFechar: () => {} })), '');
+
+    // 22/10/2026 — "tem que ser a imagem do produto", não as siglas: cada cor com a sua foto (a Preto, sem
+    // foto própria, mostra a do produto), a oferta avulsa com a dela, e quem não tem nenhuma fica só com o
+    // ícone de caixa — sem as iniciais.
+    const lista = html(h(MontarKitAMao, { aberta: true, catalogo: CATALOGO, onFechar: () => {}, vocabulario: VOCAB_SUG }));
+    assert.equal((lista.match(/<img src="https:\/\/cdn\/v1\.jpg"/g) ?? []).length, 2, 'Natural e Preto da mesa');
+    assert.equal((lista.match(/<img src="https:\/\/cdn\/av\.jpg"/g) ?? []).length, 1, 'a oferta avulsa');
+    const semFoto = lista.match(/data-quadro-foto="sem-foto"[\s\S]*?<\/div>/g) ?? [];
+    assert.equal(semFoto.length, 1, 'só a cadeira, que não tem foto');
+    assert.ok(semFoto.every((q) => ! q.includes('<span')), 'sem as siglas no lugar da foto');
 
     // A metodologia sempre à vista (10/10/2026): os três tipos na janela, nenhum aceso antes de escolher…
     for (const t of ['Combo', 'Fase 2', 'Mesmo produto, mais unidades', 'Kit', 'Fase 3', 'Produtos diferentes juntos', 'Combit', 'Fase 4', 'Kit com mais unidades de um item']) {

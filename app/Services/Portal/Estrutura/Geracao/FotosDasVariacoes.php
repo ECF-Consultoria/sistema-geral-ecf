@@ -50,18 +50,57 @@ class FotosDasVariacoes
             ->where('fase', EstruturaOferta::FASE_SIMPLES)
             ->whereIn('variacao_id', $semGaleria)
             ->pluck('variacao_id', 'id');
-        if ($variacaoDaOferta->isEmpty()) {
-            return $fotos;
+
+        foreach ($this->miniaturasDosAnuncios($empresa, $variacaoDaOferta->keys()->all()) as $oferta => $miniatura) {
+            $variacao = (int) ($variacaoDaOferta[$oferta] ?? 0);
+            if ($variacao > 0 && ! isset($fotos[$variacao])) {
+                $fotos[$variacao] = $miniatura;
+            }
+        }
+
+        return $fotos;
+    }
+
+    /**
+     * A foto das ofertas simples sem produto cadastrado (as "avulsas" da janela de montar, 22/10/2026): não há
+     * galeria, então vale só a miniatura do acervo do primeiro anúncio ativo com MLB. Sem ela, fica de fora.
+     *
+     * @param  list<int>  $ofertas
+     * @return array<int, string> oferta_id => URL
+     */
+    public function capasDasOfertas(Company $empresa, array $ofertas): array
+    {
+        $ofertas = array_values(array_unique(array_filter(array_map('intval', $ofertas))));
+        if ($ofertas === []) {
+            return [];
+        }
+
+        // Só as da empresa: o id veio de fora deste serviço.
+        $daEmpresa = EstruturaOferta::query()->where('company_id', $empresa->id)->whereIn('id', $ofertas)->pluck('id')->all();
+
+        return $this->miniaturasDosAnuncios($empresa, $daEmpresa);
+    }
+
+    /**
+     * Oferta → primeiro anúncio não inativo com MLB → miniatura do acervo, já em https.
+     *
+     * @param  list<int>  $ofertas
+     * @return array<int, string> oferta_id => URL
+     */
+    private function miniaturasDosAnuncios(Company $empresa, array $ofertas): array
+    {
+        if ($ofertas === []) {
+            return [];
         }
 
         $anuncios = EstruturaAnuncio::query()
-            ->whereIn('oferta_id', $variacaoDaOferta->keys()->all())
+            ->whereIn('oferta_id', $ofertas)
             ->where('status', '!=', EstruturaAnuncio::STATUS_INATIVO)
             ->whereNotNull('codigo_mlb')
             ->orderBy('id')
             ->get(['oferta_id', 'codigo_mlb']);
         if ($anuncios->isEmpty()) {
-            return $fotos;
+            return [];
         }
 
         $miniaturas = MlAcervoItem::query()
@@ -70,11 +109,11 @@ class FotosDasVariacoes
             ->whereNotNull('thumbnail')
             ->pluck('thumbnail', 'ml_item_id');
 
+        $fotos = [];
         foreach ($anuncios as $a) {
-            $variacao = (int) ($variacaoDaOferta[$a->oferta_id] ?? 0);
             $miniatura = $miniaturas[$a->codigo_mlb] ?? null;
-            if ($variacao > 0 && $miniatura && ! isset($fotos[$variacao])) {
-                $fotos[$variacao] = preg_replace('#^http://#', 'https://', $miniatura);
+            if ($miniatura && ! isset($fotos[(int) $a->oferta_id])) {
+                $fotos[(int) $a->oferta_id] = preg_replace('#^http://#', 'https://', $miniatura);
             }
         }
 

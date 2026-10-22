@@ -146,7 +146,7 @@ export function itemInicialDoProduto(catalogo, produtoId) {
     const p = (catalogo?.produtos ?? []).find((x) => String(x.produto_id) === String(produtoId));
     const v = p?.variacoes?.[0];
 
-    return v ? { variacao_id: v.variacao_id, nome: rotuloDaVariacao(p, v), sku: v.sku, quantidade: 1 } : null;
+    return v ? { variacao_id: v.variacao_id, nome: rotuloDaVariacao(p, v), sku: v.sku, foto: v.foto ?? p.foto ?? null, quantidade: 1 } : null;
 }
 
 /** "Cadeira Polo — Natural" (o mesmo separador do nome da oferta simples). */

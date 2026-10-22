@@ -3,16 +3,21 @@
 namespace Tests\Feature\PortalCliente\Estrutura\Sugestoes;
 
 use App\Models\Company;
+use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
+use App\Models\MlAcervoItem;
 use App\Models\PubProduto;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\Geracao\ChaveDeComposicao;
 use App\Services\Portal\Estrutura\Geracao\ConjuntoLogistico;
+use App\Services\Portal\Estrutura\Geracao\MontagemManualDeOferta;
 use App\Services\Portal\Estrutura\Geracao\SugestoesService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
+use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalEquipeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -477,5 +482,38 @@ class MontarKitAMaoTest extends TestCase
         $this->assertSame('Cadeira', $porNome['Cadeira Polo']['tipo_nome']);
         $this->assertSame(['AV-1'], array_column($montagem['avulsas'], 'sku'));
         $this->assertArrayNotHasKey('sugestoes', $r->json('props'));
+    }
+
+    /**
+     * 22/10/2026 — "aqui deveria mostrar os produtos, no caso a imagem; não quero essas siglas". Cada cor leva a
+     * foto (capa da galeria; sem galeria, a miniatura do anúncio ativo), o produto leva a da primeira cor que
+     * tiver, e a oferta sem produto, a do anúncio dela. Tudo do banco: nenhuma chamada ao Mercado Livre.
+     */
+    public function test_o_catalogo_traz_a_foto_de_cada_cor_do_produto_e_da_oferta_avulsa(): void
+    {
+        $ator = $this->atorCliente($this->empresa);
+        $v201 = EstruturaProdutoVariacao::findOrFail($this->cat['variacoes']['V201']);
+        $v202 = EstruturaProdutoVariacao::findOrFail($this->cat['variacoes']['V202']);
+        $capa = EstruturaProdutoVariacaoImagem::create([
+            'company_id' => $this->empresa->id, 'produto_id' => $v202->produto_id, 'variacao_id' => $v202->id,
+            'caminho' => 'teste/0.jpg', 'nome_original' => '0.jpg', 'mime' => 'image/jpeg', 'tamanho' => 10, 'ordem' => 0,
+        ]);
+
+        [$avulsa] = app(EstruturaOfertaService::class)->criar($this->empresa, ['sku' => 'AV-1', 'fase' => 'simples', 'nome' => 'Importada'], $ator);
+        EstruturaAnuncio::create(['oferta_id' => $avulsa->id, 'tipo' => 'classico', 'status' => 'ativo', 'codigo_mlb' => 'MLB77', 'titulo' => 'x']);
+        MlAcervoItem::create(['company_id' => $this->empresa->id, 'ml_item_id' => 'MLB77', 'title' => 'Importada', 'listing_type_id' => 'gold_special',
+            'status' => 'active', 'thumbnail' => 'http://http2.mlstatic.com/D_77-I.jpg']);
+
+        $c = app(MontagemManualDeOferta::class)->catalogo($this->empresa);
+
+        $cadeira = collect($c['produtos'])->firstWhere('nome', 'Cadeira Polo');
+        $urlDaCapa = VariacaoImagensService::urlMiniatura($v202->id, $capa->id);
+        $porSku = collect($cadeira['variacoes'])->keyBy('sku');
+        $this->assertNull($porSku['V201']['foto'], 'a Natural não tem galeria nem anúncio: fica sem foto');
+        $this->assertSame($urlDaCapa, $porSku['V202']['foto']);
+        $this->assertSame($urlDaCapa, $cadeira['foto'], 'o produto mostra a primeira cor que tem foto');
+        $this->assertSame((int) $v201->id, (int) $porSku['V201']['variacao_id']);
+
+        $this->assertSame(['https://http2.mlstatic.com/D_77-I.jpg'], array_column($c['avulsas'], 'foto'), 'a avulsa leva a do anúncio, em https');
     }
 }
