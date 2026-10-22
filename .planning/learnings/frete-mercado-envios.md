@@ -173,3 +173,17 @@ cobertura). Decisão do usuário: o frete sugerido fora do ME2 é o que o ML cal
 cubado dá o mesmo que a cotação (147,85 na faixa 80–90 kg; 262,85 acima de 150 kg). Só a Precificação pede isso
 (`fora_do_me2` no item do `FreteMe2Service`); Produtos, Planejamento e montagem seguem sem. Na tela: "referência do ML
 para a caixa", nunca "o ML cobra", e não acende.
+
+## 10. "Frete grátis" é o CLIENTE não pagar — o vendedor paga sempre (22/10/2026)
+
+O usuário, sobre o aviso da prévia "a entrega fica a combinar e o frete grátis não vale": "outro aviso nada a ver. Frete
+grátis é para o CLIENTE; ainda assim a gente paga o frete se for acima de 79. Oferecer frete grátis quer dizer o cliente
+não pagar o frete."
+
+- Frete grátis é uma promessa ao comprador, não uma regra do ML que "deixa de valer". Fora do Mercado Envios (ME1 ou "a
+  combinar") o vendedor continua entregando sem cobrar do comprador, e paga a entrega — por isso o preço leva o frete
+  (§9: a referência do ML para a caixa).
+- O ML derrubar a flag `free_shipping` do anúncio "a combinar" (publicador-ml §25) é um fato do anúncio, não do negócio.
+  Não escreva para o usuário que "o frete grátis não vale" nem "sem frete grátis".
+- Saíram por isso: o `aviso` da prévia (`PreviaDoAnuncioService::envioQueVaiValer`) e o "sem frete grátis" do texto do
+  4057 (`config/publicador_erros.php`). O aviso 350 já tinha virado ruído (publicador-ml §46).

@@ -267,7 +267,8 @@ class PreviaDoAnuncioTest extends TestCase
 
         $this->assertSame('not_specified', $envio['modo']);
         $this->assertFalse($envio['frete_gratis']);
-        $this->assertStringContainsString('tirar o Mercado Envios', (string) $envio['aviso']);
+        // 22/10/2026: sem aviso — "frete grátis é para o cliente; ainda assim a gente paga o frete".
+        $this->assertNull($envio['aviso']);
     }
 
     public function test_pacote_fora_do_me2_com_transportadora_vira_envio_pelo_vendedor_e_conferencia_limpa_nao_muda_nada(): void

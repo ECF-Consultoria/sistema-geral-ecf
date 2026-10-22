@@ -72,7 +72,8 @@ function Galeria({ fotos, ativa, onAtiva }) {
 /**
  * O frete na caixa de compra, pelo que vai no `shipping` do plano. Prazo e valor só o ML sabe (pelo CEP).
  * N1 (23/10): quando a última conferência disse que o ML vai tirar o Mercado Envios, o servidor já manda o
- * envio que vai valer ("a combinar", sem frete grátis) e o `aviso` que explica a troca.
+ * envio que vai valer ("a combinar"). Desde 22/10 sem `aviso`: frete grátis é o cliente não pagar a entrega, e o
+ * vendedor continua pagando fora do Mercado Envios — dizer "o frete grátis não vale" estava errado.
  */
 function Frete({ envio }) {
     const modo = envio?.modo ?? 'me2';

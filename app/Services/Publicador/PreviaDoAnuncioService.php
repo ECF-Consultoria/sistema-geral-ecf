@@ -343,7 +343,7 @@ final class PreviaDoAnuncioService
      * de frete grava (`ConferenciaService::freteContraAPrecificacao`, com o `destino` do `EnvioDoRascunhoService`).
      * Destino `me1` = a conta tem a transportadora do vendedor; o resto (`combinar`, `fora`) = "a combinar".
      *
-     * @return ?array{modo: string, aviso: string}
+     * @return ?array{modo: string, aviso: null}
      */
     private function envioQueVaiValer(PubRascunho $r): ?array
     {
@@ -364,10 +364,14 @@ final class PreviaDoAnuncioService
             return null;
         }
 
+        // Sem aviso (22/10/2026). O usuário, sobre "a entrega fica a combinar e o frete grátis não vale": "outro aviso
+        // nada a ver — frete grátis é para o CLIENTE; ainda assim a gente paga o frete se for acima de 79". Frete grátis
+        // é o cliente não pagar a entrega, e isso continua valendo fora do Mercado Envios: quem paga é o vendedor. A
+        // prévia só mostra a entrega como o Mercado Livre vai exibi-la.
         if (($frete['destino'] ?? null) === 'me1') {
-            return ['modo' => 'me1', 'aviso' => 'Pela última conferência, este anúncio não cabe no Mercado Envios da conta: vai pela transportadora do vendedor, sem frete grátis.'];
+            return ['modo' => 'me1', 'aviso' => null];
         }
 
-        return ['modo' => 'not_specified', 'aviso' => 'Pela última conferência, o Mercado Livre vai tirar o Mercado Envios deste anúncio: a entrega fica a combinar e o frete grátis não vale.'];
+        return ['modo' => 'not_specified', 'aviso' => null];
     }
 }
