@@ -496,6 +496,16 @@ class PerformanceController extends Controller
         $companies = $user->companies()->with('mlToken')->where('active', true)->get();
         $companyIds = $companies->pluck('id');
         $companiesById = $companies->keyBy('id');
+
+        // Conta vinculada = loja que o sistema consegue ler: tem CUST (adman_account_id
+        // ou ml_store_id) ou conexão ML ativa. Antes o card contava `marketplace = 'meli'`,
+        // que é o padrão da coluna — toda loja aparecia "conectada", com ou sem conta
+        // (TKT-0025 / DEV-51: 5 lojas sem CUST contadas como conectadas).
+        $contaVinculadaPorEmpresa = $companies->mapWithKeys(fn ($c) => [
+            $c->id => ! empty($c->cust_id) || ($c->mlToken && $c->mlToken->status === 'active'),
+        ]);
+        $empresasContaVinculada = $contaVinculadaPorEmpresa->filter()->count();
+
         // Janela rolling 30d ainda usada nas queries de metrics por empresa
         // (independente do compute — a tabela do dashboard mostra "atividade
         // recente" da carteira, não a estatística mensal fechada).
@@ -536,7 +546,7 @@ class PerformanceController extends Controller
             ->map(fn ($group) => $group->first());
 
         // Monta lista de empresas pra tabela
-        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany) {
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $contaVinculadaPorEmpresa) {
             $row = $metricsByCompany->get($c->id);
             $rev     = (float) ($row->rev ?? 0);
             $revPrev = (float) ($row->rev_prev ?? 0);
@@ -574,6 +584,15 @@ class PerformanceController extends Controller
             elseif (! $c->marketplace || $c->marketplace !== 'meli') $acao = 'Conectar ML';
             else                                            $acao = 'Manter ritmo';
 
+            // Loja sem nenhum faturamento na janela (nem atual nem anterior) não é
+            // "Saudável / Manter ritmo": não há dado para julgar. Sem conta vinculada,
+            // o caminho é vincular; com conta, é conferir por que não chega dado.
+            $contaVinculada = (bool) $contaVinculadaPorEmpresa->get($c->id);
+            if ($rev <= 0 && $revPrev <= 0) {
+                $status = 'sem_dados';
+                $acao   = $contaVinculada ? 'Conferir dados' : 'Vincular conta';
+            }
+
             return [
                 'id'          => $c->id,
                 'nome'        => $c->name,
@@ -588,6 +607,7 @@ class PerformanceController extends Controller
                 'nps'         => $nps,          // null se sem resposta
                 'ads'         => $ads,
                 'acao'        => $acao,
+                'conta_vinculada' => $contaVinculada,
             ];
         })->values();
 
@@ -686,9 +706,6 @@ class PerformanceController extends Controller
         $totalRevenue = (float) $companies->sum(function ($c) use ($metricsByCompany) {
             return (float) ($metricsByCompany->get($c->id)?->rev ?? 0);
         });
-        $totalRevenuePrev = (float) $companies->sum(function ($c) use ($metricsByCompany) {
-            return (float) ($metricsByCompany->get($c->id)?->rev_prev ?? 0);
-        });
         $emCrescimentoCount = $companies->filter(function ($c) use ($metricsByCompany) {
             $row = $metricsByCompany->get($c->id);
             if (! $row) return false;
@@ -738,8 +755,26 @@ class PerformanceController extends Controller
             }
         }
 
-        // Delta faturamento vs mês anterior — usa componente do compute (var_faturamento_pct).
-        $varFatPct = $componentes['var_faturamento_pct'] ?? null;
+        // Card "Crescimento vs mês anterior" — o % é a MEDIANA por loja do score
+        // (var_faturamento_pct), só das lojas com base no período anterior, e compara
+        // o período atual com o mesmo intervalo do mês anterior. O card passa a dizer
+        // isso: o período e "X de Y lojas com base" (TKT-0025 / DEV-51).
+        // O valor em R$ que ficava ao lado SAIU: era a soma de 30 dias de adman_metrics
+        // menos a soma do campo `revenue_prev_period` de cada dia — outra janela e outras
+        // lojas. Por isso a tela mostrava "-27,82%" em vermelho ao lado de "+R$ 435K".
+        $varFatPct    = $componentes['var_faturamento_pct'] ?? null;
+        $periodoScore = $data['periodo'] ?? [];
+        $intervalo    = function (?string $inicio, ?string $fim): ?string {
+            if (! $inicio || ! $fim) {
+                return null;
+            }
+
+            return Carbon::parse($inicio)->format('d/m') . '–' . Carbon::parse($fim)->format('d/m');
+        };
+        $crescimentoPeriodo = [
+            'atual'    => $intervalo($periodoScore['current_start'] ?? null, $periodoScore['current_end'] ?? null),
+            'anterior' => $intervalo($periodoScore['baseline_start'] ?? null, $periodoScore['baseline_end'] ?? null),
+        ];
 
         return Inertia::render('Performance/Dashboard', [
             'pessoa' => [
@@ -755,10 +790,12 @@ class PerformanceController extends Controller
             'kpis' => [
                 'faturamento_total'       => $totalRevenue,
                 'empresas_em_carteira'    => $data['empresas_carteira'] ?? 0,
-                'empresas_conectadas_ml'  => (int) $companies->where('marketplace', 'meli')->count(),
+                'empresas_ativas'         => $companies->count(),
+                'empresas_conta_vinculada' => $empresasContaVinculada,
+                'empresas_sem_conta'      => $companies->count() - $empresasContaVinculada,
                 'crescimento_percent'     => $varFatPct,
-                'crescimento_delta_valor' => $totalRevenue - $totalRevenuePrev,
-                'crescimento_mediana'     => $varFatPct,
+                'crescimento_empresas_com_base' => (int) ($data['empresas_com_baseline'] ?? 0),
+                'crescimento_periodo'     => $crescimentoPeriodo,
                 'nota_final'              => $data['nota_final'] ?? null,
                 'faixa_bonus'             => $data['faixa_bonus'] ?? null,
                 'faixa_promovida'         => (bool) ($data['faixa_promovida'] ?? false),

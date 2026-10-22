@@ -56,6 +56,8 @@ const statusClasse = {
     saudavel: { classes: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300', label: 'Saudável' },
     atencao:  { classes: 'bg-amber-500/15 border-amber-500/30 text-amber-300',       label: 'Atenção' },
     critico:  { classes: 'bg-rose-500/15 border-rose-500/30 text-rose-300',           label: 'Crítico' },
+    // Loja sem faturamento na janela (sem conta vinculada ou sem dado chegando).
+    sem_dados: { classes: 'bg-white/[0.04] border-white/[0.10] text-white/60',        label: 'Sem dados' },
 };
 
 // Phase 73 Plan 03 (SC#1) — sem classificação legada de 3 buckets (herança do
@@ -495,7 +497,10 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                             </div>
                         </div>
                         <p className="relative text-xs text-white/50">
-                            {kpis.empresas_conectadas_ml} empresas conectadas ao Mercado Livre.
+                            {kpis.empresas_conta_vinculada} de {kpis.empresas_ativas} com conta do Mercado Livre vinculada
+                            {kpis.empresas_sem_conta > 0 && (
+                                <span className="text-amber-300/80"> · {kpis.empresas_sem_conta} sem conta</span>
+                            )}.
                         </p>
                     </div>
 
@@ -507,35 +512,33 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                         <GrowthBackground />
                         <div className="relative">
                             <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">
-                                Crescimento vs anterior
+                                Crescimento vs mês anterior
                             </span>
                             <div className="flex items-baseline gap-3 mt-3 flex-wrap">
                                 {kpis.crescimento_percent !== null ? (
-                                    <>
-                                        <strong className={cn(
-                                            'text-4xl font-black tabular-nums leading-none',
-                                            kpis.crescimento_percent >= 0 ? 'text-white' : 'text-rose-300'
-                                        )}>
-                                            {kpis.crescimento_percent >= 0 ? '+' : ''}{kpis.crescimento_percent}%
-                                        </strong>
-                                        <span className={cn(
-                                            'text-xs px-2 py-0.5 rounded-full border font-semibold',
-                                            kpis.crescimento_delta_valor >= 0
-                                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                                                : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
-                                        )}>
-                                            {kpis.crescimento_delta_valor >= 0 ? '+' : ''}{fmtBRLCompact(kpis.crescimento_delta_valor)}
-                                        </span>
-                                    </>
+                                    <strong className={cn(
+                                        'text-4xl font-black tabular-nums leading-none',
+                                        kpis.crescimento_percent >= 0 ? 'text-white' : 'text-rose-300'
+                                    )}>
+                                        {kpis.crescimento_percent >= 0 ? '+' : ''}{kpis.crescimento_percent}%
+                                    </strong>
                                 ) : (
                                     <span className="text-2xl font-bold text-white/40">Sem base comparativa</span>
                                 )}
                             </div>
                         </div>
+                        {/* O % é a mediana por loja do cálculo da nota, só das lojas com base
+                            no mês anterior — o texto diz o período e quantas lojas entraram. */}
                         <p className="relative text-xs text-white/50">
-                            {kpis.crescimento_mediana !== null
-                                ? <>Comparado aos 30 dias anteriores. Mediana por empresa: {kpis.crescimento_mediana >= 0 ? '+' : ''}{kpis.crescimento_mediana}%.</>
-                                : 'Base insuficiente pra comparar com o período anterior.'}
+                            {kpis.crescimento_percent !== null ? (
+                                <>
+                                    Mediana por loja
+                                    {kpis.crescimento_periodo?.atual && kpis.crescimento_periodo?.anterior
+                                        ? `, ${kpis.crescimento_periodo.atual} vs ${kpis.crescimento_periodo.anterior}`
+                                        : ''}
+                                    {' · '}{kpis.crescimento_empresas_com_base} de {kpis.empresas_em_carteira} lojas com base.
+                                </>
+                            ) : 'Base insuficiente pra comparar com o mês anterior.'}
                         </p>
                     </Link>
 
@@ -669,6 +672,7 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                 <option value="saudavel">Saudável</option>
                                 <option value="atencao">Atenção</option>
                                 <option value="critico">Crítico</option>
+                                <option value="sem_dados">Sem dados</option>
                             </select>
                         </div>
 
