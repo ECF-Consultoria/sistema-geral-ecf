@@ -1006,6 +1006,9 @@ class PortalEstruturaProdutosController extends Controller
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => $this->freteTabela(),
             'limites'      => self::LIMITES,
+            // A empresa separa, no navegador, o rascunho do produto novo (localStorage por empresa —
+            // o mesmo navegador entra em várias). Só o id: nada mais da empresa vai para a chave.
+            'escopo_rascunho' => (int) $empresa->id,
         ]);
     }
 

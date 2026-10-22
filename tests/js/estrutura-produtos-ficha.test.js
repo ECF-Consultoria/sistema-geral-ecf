@@ -197,7 +197,7 @@ test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a f
 // perguntando. (Provado no Chrome sem janela: recarregar avisa, o nome volta, "Começar do zero" limpa.)
 test('Rascunho: produto novo recupera sozinho e oferece começar do zero (N12)', () => {
     assert.match(hook, /useEffect\(\(\) => \{\s*if \(produto\?\.id \|\| ! inicio\.oferecer\) return;\s*recuperarRascunho\(\);\s*setRecuperado\(true\);/);
-    assert.match(hook, /const recomecar = \(\) => \{\s*apagarRascunho\(null\);[\s\S]*?setAlterado\(false\);/);
+    assert.match(hook, /const recomecar = \(\) => \{\s*apagarRascunho\(null, noEscopo\);[\s\S]*?setAlterado\(false\);/);
     for (const t of ['data-rascunho-recuperado', 'onClick={ficha.recomecar}', 'Começar do zero']) {
         assert.ok(pagina.includes(t), `faltou na página: ${t}`);
     }
@@ -233,8 +233,8 @@ test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salva
     for (const t of ['gravarRascunho(', 'lerRascunho(', 'apagarRascunho(', 'recuperarRascunho', 'descartarRascunho', 'esquecerRascunho']) {
         assert.ok(hook.includes(t), `faltou no hook: ${t}`);
     }
-    assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId\)/, 'salvo por inteiro apaga o rascunho');
-    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars, \{ descricao: descricao\.texto \}\)/, 'grava só com alteração');
+    assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId, noEscopo\)/, 'salvo por inteiro apaga o rascunho');
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars, \{ descricao: descricao\.texto, escopo: escopoRascunho \}\)/, 'grava só com alteração');
     // Review 172 WR-06: a descrição entra no rascunho, conta na comparação e volta ao recuperar.
     assert.match(hook, /\}, \[vars, alterado, descricao\.texto\]\);/);
     assert.match(hook, /assinatura\(guardado\.vars, descricaoGuardada\) !== assinatura\(iniciais, descricaoInicial\)/);

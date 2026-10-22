@@ -57,12 +57,15 @@ class FichaDoProdutoTest extends TestCase
 
     public function test_o_cliente_abre_a_ficha_de_produto_novo(): void
     {
-        $this->withoutVite()->entrarNoPortal($this->empresaDoGabarito())
+        $empresa = $this->empresaDoGabarito();
+        $this->withoutVite()->entrarNoPortal($empresa)
             ->get(route('portal.auth.estrutura.produtos.novo'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaProdutoFicha')
                 ->where('produto', null)
+                // A5: o rascunho do produto novo fica no navegador numa chave por empresa.
+                ->where('escopo_rascunho', (int) $empresa->id)
                 ->where('linhas', [])
                 ->has('listas.familias')
                 ->has('listas.ambientes')

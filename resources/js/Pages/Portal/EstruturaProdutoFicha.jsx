@@ -34,8 +34,8 @@ import {
 
 const CONFIRMA_SAIR = 'Há alterações não salvas neste produto. Sair sem salvar?';
 
-export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica, descricao, explicacoes_campos: explicacoes }) {
-    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes });
+export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica, descricao, explicacoes_campos: explicacoes, escopo_rascunho: escopoRascunho = null }) {
+    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes, escopoRascunho });
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
     const [excluindoProduto, setExcluindoProduto] = useState(false);   // janela "Excluir produto" (o produto inteiro, 10/10/2026)

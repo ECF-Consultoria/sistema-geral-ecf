@@ -71,17 +71,19 @@ const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id 
 /** Variações e descrição juntas: mudar só a descrição também conta como rascunho (review 172 WR-06). */
 const assinatura = (lista, descricao) => `${conteudo(lista)}|${String(descricao ?? '').trim()}`;
 
-export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null }) {
-    // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
+export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null, escopoRascunho = null }) {
+    // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu. A
+    // empresa (`escopoRascunho`) separa o rascunho do produto novo, que também fica no localStorage (A5).
+    const noEscopo = { escopo: escopoRascunho };
     const [inicio] = useState(() => {
         const iniciais = linhas.length
             ? linhas.map((l) => linhaDoServidor(l, vocabulario?.pendencias))
             : [linhaEmBranco(produto)];
-        const guardado = lerRascunho(produto?.id ?? null);
+        const guardado = lerRascunho(produto?.id ?? null, noEscopo);
         // Rascunho antigo, sem a chave `descricao`, vale como "descrição não mexida".
         const descricaoGuardada = typeof guardado?.descricao === 'string' ? guardado.descricao : (descricaoInicial ?? '');
         const oferecer = guardado && assinatura(guardado.vars, descricaoGuardada) !== assinatura(iniciais, descricaoInicial) ? guardado : null;
-        if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null);
+        if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null, noEscopo);
 
         return { iniciais, oferecer };
     });
@@ -106,8 +108,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     useEffect(() => {
         if (! alterado) return;
         const id = idDoProduto(vars, produto);
-        if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current);
-        gravarRascunho(id, vars, { descricao: descricao.texto });
+        if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current, noEscopo);
+        gravarRascunho(id, vars, { descricao: descricao.texto, escopo: escopoRascunho });
         chaveGravada.current = id;
     }, [vars, alterado, descricao.texto]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -123,10 +125,10 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     };
 
     const descartarRascunho = () => {
-        apagarRascunho(produto?.id ?? null);
+        apagarRascunho(produto?.id ?? null, noEscopo);
         setRascunho(null);
         // O que já foi digitado nesta visita continua protegido.
-        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto });
+        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto, escopo: escopoRascunho });
     };
 
     // Produto NOVO (demo 23/10, N12): digitar o nome e recarregar a página parecia perder tudo — o
@@ -142,7 +144,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     /** "Começar do zero" depois da recuperação automática: a ficha em branco e o rascunho fora. */
     const recomecar = () => {
-        apagarRascunho(null);
+        apagarRascunho(null, noEscopo);
         setVars([linhaEmBranco(produto)]);
         descricao.alterar('');
         setErros({});
@@ -151,7 +153,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     };
 
     /** Sair confirmado, produto excluído ou salvo: o rascunho deixa de valer. */
-    const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto));
+    const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto), noEscopo);
 
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
@@ -382,8 +384,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         if (ok) {
             setAlterado(false);
             // Salvo por inteiro: o rascunho (do produto e, se ele nasceu agora, o "novo") deixa de valer.
-            apagarRascunho(r.produtoId);
-            if (! produto?.id) apagarRascunho(null);
+            apagarRascunho(r.produtoId, noEscopo);
+            if (! produto?.id) apagarRascunho(null, noEscopo);
             setRascunho(null);
         } else {
             // Parcial: o que gravou volta com os ids do servidor; o que falhou fica como está, com o motivo.
