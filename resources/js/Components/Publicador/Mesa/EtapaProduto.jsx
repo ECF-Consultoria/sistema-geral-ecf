@@ -218,6 +218,10 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
     const seloIa = mostraSeloDaIa(m.estado.preparo_ia?.titulos?.[lt], titulo, doServidor);
 
     const mudar = (patch) => m.mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, ...patch } : x)) }));
+    // N21 (23/10): o título que veio do Portal (o planejado do Clássico, §36) aparece como TEXTO do campo, com
+    // o selo "do Portal" — antes era o placeholder cinza, com cara de campo vazio. Nada é gravado só por olhar:
+    // o rascunho segue sem título próprio (segue o Portal) até a pessoa digitar.
+    const doPortal = ! titulo && !! (a.titulo_efetivo && m.estado.produto?.oferta_id);
 
     if (noAr) {
         return (
@@ -236,9 +240,15 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
         <div data-alvo={lt}>
             <Campo rotulo={`Título do anúncio ${NOME_TIPO[lt]}`} htmlFor={id} erro={erro}
                 extra={<ContadorDoTitulo tamanho={tamanho} limite={maxTitulo} data-contador-titulo={lt} />}>
-                <CampoDoTitulo id={id} valor={titulo} limite={maxTitulo} disabled={m.disabled || rodando} placeholder={a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta'}
-                    onChange={(novo) => mudar({ titulo: novo })} aria-invalid={!! erro || undefined}
-                    className={cn(CAMPO, (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} />
+                <div className="relative">
+                    <CampoDoTitulo id={id} valor={doPortal ? a.titulo_efetivo : titulo} limite={maxTitulo} disabled={m.disabled || rodando}
+                        placeholder={doPortal ? undefined : (a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta')}
+                        onChange={(novo) => mudar({ titulo: novo })} aria-invalid={!! erro || undefined}
+                        className={cn(CAMPO, doPortal && 'pr-24', (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} data-titulo-origem={doPortal ? 'portal' : undefined} />
+                    {doPortal && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold text-emerald-400" data-selo-titulo-portal={lt}>do Portal</span>
+                    )}
+                </div>
             </Campo>
             {seloIa && <GeradoPelaIa campo={`titulo-${lt}`} />}
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">

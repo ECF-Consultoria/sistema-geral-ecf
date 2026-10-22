@@ -23,3 +23,13 @@ test('N15 — a falha diz a foto pela miniatura e pela posição, não pelo id i
     assert.match(f, /`\$\{posicao\}ª foto`/);
     assert.match(f, /posicao=\{indice >= 0 \? indice \+ 1 : null\}/);
 });
+
+// ─── N21: título do Portal como texto, com selo ─────────────────────────────
+
+test('N21 — o título do Portal é o valor do campo (não placeholder), com o selo "do Portal"', () => {
+    const f = semComentarios(ler(`${BASE}/Mesa/EtapaProduto.jsx`));
+    assert.match(f, /const doPortal = ! titulo && !! \(a\.titulo_efetivo && m\.estado\.produto\?\.oferta_id\)/);
+    assert.match(f, /valor=\{doPortal \? a\.titulo_efetivo : titulo\}/);
+    assert.match(f, /placeholder=\{doPortal \? undefined :/);
+    assert.match(f, /data-selo-titulo-portal=\{lt\}>do Portal</);
+});
