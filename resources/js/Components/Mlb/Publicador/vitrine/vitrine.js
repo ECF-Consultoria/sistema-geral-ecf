@@ -49,6 +49,9 @@ export const rotuloDaFase = (cartao) => `Fase ${numeroDaFase(cartao)}`;
 
 const ehPlanejada = (face) => face?.planejado === true;
 
+/** Quem a face é: o produto do Publicador, ou a chave da face de espera (o combo planejado ainda não tem produto). */
+const chaveDaFace = (face) => (ehPlanejada(face) ? `espera:${face?.chave ?? ''}` : `produto:${numero(face?.produto_id) ?? ''}`);
+
 /** A face aparece em quais cartões: `familias` do servidor (o Kit e o Combit, em cada componente), senão o próprio. */
 function familiasDaFace(face) {
     const ids = (Array.isArray(face.familias) ? face.familias : [face.familia_id]).map(numero).filter((n) => n !== null);
@@ -86,11 +89,20 @@ export function familiasDaVitrine(cartoes, filtro = 'todos', planejados = []) {
         if (id !== null && porFamilia.has(id)) juntar(id, { ...p, planejado: true });
     }
 
+    // Dois cartões nunca abrem na MESMA face (22/10/2026, o usuário: "por que veio dois?"). Com o filtro "Prontos", a
+    // mesa e a cadeira sozinhas não estavam prontas, e os dois cartões abriam no mesmo Combit da Mesa + 4 Cadeiras.
+    // O cartão abre na 1ª face que serve e que nenhum cartão anterior abriu; sem nenhuma, ele não entra (a face já
+    // está à vista no outro). Sem filtro, a 1ª face é o próprio produto — muda só a família que não o tem.
+    const abertas = new Set();
     const saida = [];
     for (const [id, fases] of porFamilia) {
         fases.sort(ordemDasFaces);
-        const inicial = filtro === 'todos' || ! CHAVES.includes(filtro) ? 0 : fases.findIndex((f) => ! ehPlanejada(f) && f.grupo === filtro);
-        if (inicial !== -1) saida.push({ id, fases, inicial });
+        const serve = (f) => filtro === 'todos' || ! CHAVES.includes(filtro) || (! ehPlanejada(f) && f.grupo === filtro);
+        const inicial = fases.findIndex((f) => serve(f) && ! abertas.has(chaveDaFace(f)));
+        if (inicial !== -1) {
+            abertas.add(chaveDaFace(fases[inicial]));
+            saida.push({ id, fases, inicial });
+        }
     }
 
     return saida;

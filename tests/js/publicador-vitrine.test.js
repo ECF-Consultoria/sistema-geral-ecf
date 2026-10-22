@@ -188,6 +188,23 @@ test('famílias — todo combo é Fase 2 do produto; kit e combit vão no cartã
     assert.equal(numeroDaFase({ fase_numero: 'x', fase: 'lixo' }), 1);
 });
 
+// 22/10/2026, o usuário: "por que veio dois?" — com o filtro "Prontos", a mesa e a cadeira sozinhas não estavam
+// prontas e os dois cartões abriam no MESMO Combit (Mesa Aurora + 4 Cadeiras), que parecia duplicado.
+test('famílias — dois cartões nunca abrem na mesma face; sem outra que sirva, o cartão não entra', () => {
+    const mesa = { ...MESA_RD, grupo: 'pendencia' };
+    const cadeira = { ...CADEIRA, grupo: 'pendencia' };
+    const combitPronto = { ...COMBIT, grupo: 'prontos' };
+    assert.deepEqual(familiasDaVitrine([mesa, cadeira, combitPronto], 'prontos').map((f) => [f.id, f.fases[f.inicial].produto_id]), [[20, 31]],
+        'o Combit pronto aparece uma vez só');
+    // Com outra face pronta, o 2º cartão abre nela.
+    const combo2 = { ...COMBO2, grupo: 'prontos' };
+    assert.deepEqual(familiasDaVitrine([mesa, cadeira, combo2, combitPronto], 'prontos').map((f) => [f.id, f.fases[f.inicial].produto_id]), [[20, 31], [10, 11]]);
+    // Sem filtro, cada cartão abre no próprio produto, como antes.
+    assert.deepEqual(familiasDaVitrine([mesa, cadeira, combitPronto], 'todos').map((f) => [f.id, f.inicial]), [[20, 0], [10, 0]]);
+    // A família que só tem a face compartilhada (o componente não está no Publicador) não repete o cartão.
+    assert.deepEqual(familiasDaVitrine([combitPronto], 'todos').map((f) => [f.id, f.fases[f.inicial].produto_id]), [[20, 31]]);
+});
+
 test('pílulas — uma por fase, com as faces de cada uma e se alguma tem pendência', () => {
     const faces = familiasDaVitrine([CADEIRA, COMBO2, COMBO4, KIT, COMBIT], 'todos', [ESPERA3])[0].fases;
     assert.deepEqual(pilulasDasFases(faces).map((p) => [p.rotulo, p.primeira, p.indices.length, p.pendencia]),

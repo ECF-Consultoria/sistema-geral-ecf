@@ -1949,3 +1949,12 @@ de móvel (ambientada abre), a 2ª foto — o fundo branco — virava a capa do 
 
 **Armadilha:** a ordem das fotos entra no `plano_hash`. Rascunho conferido ANTES desta mudança pede nova conferência na
 hora de publicar (o Premium mudou de ordem). Anúncio já publicado não muda sozinho.
+
+## 50. A vitrine mostrava o mesmo Combit em dois cartões (22/10/2026)
+
+"Por que veio dois?": com o filtro "Prontos", o Combit Mesa Aurora + 4 Cadeiras (oferta 673, Publicador #111 — UM
+produto só no banco) aparecia em dois cartões iguais. Por desenho (20/10), kit e combit entram na família de CADA
+componente, e com filtro o cartão abre na 1ª face que bate; a mesa e a cadeira sozinhas não estavam prontas, então os
+dois abriam no Combit. `familiasDaVitrine` agora não deixa dois cartões abrirem na mesma face (`chaveDaFace`): o 2º
+abre em outra face que sirva, ou sai da lista. O "produtos em DOBRO" de 19/10 (Q-01) era outro caso: dois
+`pub_produtos` de verdade.
