@@ -2007,3 +2007,21 @@ antigo); só o pedido de JSON no fim é nosso.
   (marca de 60 s à parte). A aba "Navegar" da categoria (árvore) seguiu funcionando — é o plano B.
 - **Promoção automática em anúncio novo:** todas as de 22/10 voltaram "No candidates found for item". A de 21/10 que
   "pegou" foi exceção. A Prévia deixou de prometer o desconto e a lista publicada mostra o que o ML fez.
+
+## 54. O limite diário de imagens por IA barrava em silêncio — e o produto ficava "Pronto" (22/10/2026)
+
+- **O caso:** combit CT-POLTRONA-OPALA12x2-POLTRONA-OPALA-21x2 (oferta 674, pub 112, rascunho 106 da #459), criado às
+  16:31 pelo "Montar combo, kit ou combit". O preparo de texto rodou e o `AvaliarCriativosAutomaticosJob` também, mas
+  a #459 já tinha 10 kits automáticos no dia (kits 36–45, testes) e o teto é `PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO`
+  = 10 por empresa (cache `publicador:criativos-auto:cota:{empresa}:{Y-m-d}`, que ficou em 11). O `avaliar` devolveu
+  `limite` e não gravou nada no `step_state`.
+- **Por que ninguém viu:** produção roda com `LOG_LEVEL=error` — o `Log::warning` do limite e os `Log::info` do preparo
+  e das imagens NÃO vão para o `laravel.log`. Para reconstruir, use o `worker-ia.log`/`worker-creative.log` (horários
+  dos Jobs) e o estado no banco (`step_state.ia_preparo`, `ml_anuncio_criativo_kits`, a cota no cache).
+- **Por que "Pronto":** o chip só exige ALGUMA foto + resumo validado; o composto tinha as 2 fotos do cliente (Cinza e
+  Bordô, origem `upload`), sem a foto do conjunto.
+- **Desde 22/10:** o teto grava `step_state.criativos_auto.adiado = {dia, motivo: limite}`; a vitrine mostra
+  "Imagens amanhã" no lugar de "Pronto" (leva à etapa Imagens); o `publicador:imagens-adiadas` (06:00 de São Paulo)
+  manda de novo para a avaliação o que foi barrado em dia anterior — o teto segue valendo. Qualquer outro desfecho
+  da avaliação apaga a marca, menos `ocupado`/`erro`. Decisão do usuário: o limite continua 10 e nada é gerado
+  por fora dele.

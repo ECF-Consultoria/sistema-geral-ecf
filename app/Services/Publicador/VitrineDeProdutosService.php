@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
@@ -38,6 +39,9 @@ final class VitrineDeProdutosService
     public const PRONTOS = 'prontos';
     public const PENDENCIA = 'pendencia';
     public const PUBLICADOS = 'publicados';
+
+    /** O chip de quem o limite diário de imagens por IA barrou (22/10/2026). */
+    public const IMAGENS_AMANHA = 'Imagens amanhã';
 
     private const ORDEM = [self::PRONTOS => 0, self::PENDENCIA => 1, self::PUBLICADOS => 2];
 
@@ -287,6 +291,10 @@ final class VitrineDeProdutosService
         if (! $temFoto) {
             return ['texto' => 'Falta imagem', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
         }
+        // 22/10/2026: o limite diário barrou as imagens por IA — só com as fotos do cliente, ainda não está pronto.
+        if (CriativosAutomaticosService::adiadoPeloLimite($r)) {
+            return ['texto' => self::IMAGENS_AMANHA, 'tom' => 'ambar', 'detalhe' => 'O limite de imagens por IA de hoje acabou'];
+        }
         if ($r === null || $status !== PubRascunho::DRAFT) {
             return null;
         }
@@ -369,6 +377,9 @@ final class VitrineDeProdutosService
         }
         if ($chip === 'Falta categoria') {
             return [['texto' => 'Escolha a categoria do produto.', 'url' => $em('produto')]];
+        }
+        if ($chip === self::IMAGENS_AMANHA) {
+            return [['texto' => 'O limite diário de imagens por IA acabou: o sistema pede de novo amanhã cedo. Para não esperar, gere na etapa Imagens.', 'url' => $em('imagens')]];
         }
 
         $itens = [];

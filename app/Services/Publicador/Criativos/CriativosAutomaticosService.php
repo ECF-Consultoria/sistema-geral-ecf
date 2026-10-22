@@ -4,6 +4,7 @@ namespace App\Services\Publicador\Criativos;
 
 use App\Jobs\PlanejarKitCriativosJob;
 use App\Jobs\Publicador\AplicarCriativosAutomaticosJob;
+use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Models\AcervoImagem;
 use App\Models\Configuracao;
@@ -95,6 +96,15 @@ final class CriativosAutomaticosService
     public const MEMORIA = 'criativos_auto';
 
     /**
+     * A marca do teto do dia (22/10/2026), em `step_state.criativos_auto.adiado`: `{dia, motivo}`. Ver
+     * {@see lembrarAdiamento()} e {@see retomarAdiados()}.
+     */
+    public const ADIADO = 'adiado';
+
+    /** O {@see planejarGrupo()} desta avaliação esbarrou no teto do dia (mesmo que outro grupo tenha planejado). */
+    private bool $barradoPeloLimite = false;
+
+    /**
      * A capa do conjunto (fase N e composto), na ordem da galeria: a 1ª abre o anúncio no Clássico E no Premium (o kit
      * não rotaciona a capa). Fora de móvel, o fundo limpo abre; em móvel, a ambientada ({@see tiposDaCapa()}). Os mesmos
      * dois tipos da capa do botão ({@see \App\Services\Publicador\CapaDoKitService}).
@@ -133,6 +143,16 @@ final class CriativosAutomaticosService
      *                vindo do Planejamento, a capa do conjunto ({@see capaDaFase()}).
      */
     public function avaliar(int $rascunhoId): string
+    {
+        $this->barradoPeloLimite = false;
+        $resultado = $this->avaliarAgora($rascunhoId);
+        $this->lembrarAdiamento($rascunhoId, $resultado);
+
+        return $resultado;
+    }
+
+    /** As condições do {@see avaliar()}, sem a marca do teto do dia. */
+    private function avaliarAgora(int $rascunhoId): string
     {
         try {
             $r = PubRascunho::find($rascunhoId);
@@ -394,6 +414,7 @@ final class CriativosAutomaticosService
         }
         if (! $this->consumirCota((int) $pub->company_id)) {
             Log::warning("[Publicador] Imagens automáticas: limite diário da empresa {$pub->company_id} atingido; o rascunho {$r->id} ficou sem.");
+            $this->barradoPeloLimite = true;
 
             return 'limite';
         }
@@ -455,6 +476,81 @@ final class CriativosAutomaticosService
         Log::info("[Creative] Imagens automáticas: kit {$kit->id} planejando (rascunho {$r->id}, produto {$pub->id})", ['slots' => $slots, 'user_id' => $usuario->id]);
 
         return 'planejando';
+    }
+
+    // ═══ O teto do dia ═══════════════════════════════════════════════════════
+
+    /**
+     * O teto do dia barrou as imagens (22/10/2026: o combit CT-POLTRONA-OPALA12x2-POLTRONA-OPALA-21x2 da #459 foi o 11º
+     * pedido do dia e ficou sem imagem nenhuma, como "Pronto", e ninguém pedia de novo — em produção o aviso nem chega ao
+     * log, que guarda só erro). Fica a marca com o dia: a vitrine mostra "Imagens amanhã" no lugar de "Pronto"
+     * ({@see adiadoPeloLimite()}) e o `publicador:imagens-adiadas` da manhã seguinte avalia de novo. Qualquer outro
+     * desfecho apaga a marca, menos os passageiros (`ocupado`, `erro`), que a deixam como estava.
+     */
+    private function lembrarAdiamento(int $rascunhoId, string $resultado): void
+    {
+        if (in_array($resultado, ['ocupado', 'erro', 'sem_rascunho'], true)) {
+            return;
+        }
+        try {
+            $adiado = $this->barradoPeloLimite;
+            if (! $adiado && ! isset($this->lerEstado($rascunhoId)[self::MEMORIA][self::ADIADO])) {
+                return;
+            }
+            $this->comEstado($rascunhoId, function (array $estado) use ($adiado) {
+                if ($adiado) {
+                    $estado[self::MEMORIA][self::ADIADO] = ['dia' => now()->toDateString(), 'motivo' => 'limite'];
+                } else {
+                    unset($estado[self::MEMORIA][self::ADIADO]);
+                }
+
+                return $estado;
+            });
+        } catch (\Throwable $e) {
+            Log::warning("[Publicador] Imagens automáticas: a marca do limite do dia do rascunho {$rascunhoId} não foi gravada: {$e->getMessage()}");
+        }
+    }
+
+    /** O rascunho está esperando o dia seguinte porque o teto do dia barrou as imagens ({@see lembrarAdiamento()}). */
+    public static function adiadoPeloLimite(?PubRascunho $r): bool
+    {
+        return $r !== null && isset(((array) $r->step_state)[self::MEMORIA][self::ADIADO]);
+    }
+
+    /**
+     * Os rascunhos que o teto barrou num dia ANTERIOR voltam para a avaliação pelo mesmo Job do preparo (fila `creative`),
+     * do dia mais antigo para o mais novo. O teto continua valendo: quem passar dele ganha a marca de hoje e volta amanhã.
+     * Com a automação desligada, nada sai daqui (as marcas ficam).
+     *
+     * @return array{pedidos: int, de_hoje: int}
+     */
+    public function retomarAdiados(): array
+    {
+        if (! (bool) config('publicador.criativos_auto.ativo', false)) {
+            return ['pedidos' => 0, 'de_hoje' => 0];
+        }
+        $hoje = now()->toDateString();
+        $adiados = [];
+        PubRascunho::query()->where('step_state', 'like', '%"'.self::ADIADO.'"%')->select(['id', 'step_state'])
+            ->chunkById(200, function ($rascunhos) use (&$adiados) {
+                foreach ($rascunhos as $r) {
+                    $dia = ((array) $r->step_state)[self::MEMORIA][self::ADIADO]['dia'] ?? null;
+                    if (is_string($dia)) {
+                        $adiados[] = ['id' => (int) $r->id, 'dia' => $dia];
+                    }
+                }
+            });
+        usort($adiados, fn ($a, $b) => [$a['dia'], $a['id']] <=> [$b['dia'], $b['id']]);
+
+        $pedidos = 0;
+        foreach ($adiados as $a) {
+            if ($a['dia'] < $hoje) {
+                AvaliarCriativosAutomaticosJob::dispatch($a['id']);
+                $pedidos++;
+            }
+        }
+
+        return ['pedidos' => $pedidos, 'de_hoje' => count($adiados) - $pedidos];
     }
 
     // ═══ A capa da fase N ════════════════════════════════════════════════════

@@ -202,6 +202,33 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertFalse(PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail()->step_state['resumo']['validado']);
     }
 
+    /**
+     * 22/10/2026, o usuário: "por que não gerou as imagens e ainda deixou como Pronto". O limite diário de imagens por IA
+     * barrou o produto: com só as fotos do cliente, o cartão diz "Imagens amanhã" e leva à etapa Imagens.
+     */
+    public function test_barrado_pelo_limite_de_imagens_da_ia_o_cartao_diz_imagens_amanha(): void
+    {
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->mesa()->putJson($this->rota('categoria'), ['categoria_id' => self::CADEIRA])->assertOk();
+        $this->mesa()->post($this->rota('fotos'), ['imagem' => UploadedFile::fake()->image('geral.jpg', 1200, 1200), 'grupo' => 'GENERAL'], ['Accept' => 'application/json'])->assertOk();
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->assertNotSame(VitrineDeProdutosService::IMAGENS_AMANHA, $this->cartaoDaCadeira()['chip']['texto']);
+
+        $r = PubRascunho::where('produto_id', $this->produto()->id)->firstOrFail();
+        $estado = (array) $r->step_state;
+        $estado['criativos_auto']['adiado'] = ['dia' => '2026-10-22', 'motivo' => 'limite'];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame('pendencia', $c['grupo'], 'não é pronto');
+        $this->assertSame('Imagens amanhã', $c['chip']['texto']);
+        $this->assertCount(1, $c['resolver']);
+        $this->assertStringContainsString('etapa=imagens', $c['resolver'][0]['url']);
+        $this->assertStringContainsString('amanhã cedo', $c['resolver'][0]['texto']);
+        $this->assertSame(['dia' => '2026-10-22', 'motivo' => 'limite'], $r->fresh()->step_state['criativos_auto']['adiado'], 'a visita não apaga a marca');
+    }
+
     public function test_resumo_de_outra_revisao_e_refeito_antes_de_dizer_pronto(): void
     {
         $this->cadeiraPretaEAzulSemFotoNoAzul();

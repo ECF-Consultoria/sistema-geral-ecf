@@ -321,6 +321,77 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame($antes + 1, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)), 'o texto estava em dia, as fotos podem ter chegado agora');
     }
 
+    /**
+     * 22/10/2026 — o combit CT-POLTRONA-OPALA12x2-POLTRONA-OPALA-21x2 da #459 foi o 11º pedido do dia: ficou sem imagem,
+     * como "Pronto", e ninguém pedia de novo. O teto marca o rascunho com o dia; no mesmo dia a retomada não pede nada;
+     * na manhã seguinte o `publicador:imagens-adiadas` pede de novo (fila `creative`) e, passando, a marca sai.
+     */
+    public function test_limite_do_dia_marca_o_rascunho_e_a_manha_seguinte_pede_de_novo(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-22 16:31:00', 'America/Sao_Paulo'));
+        config(['publicador.criativos_auto.limite_diario_por_empresa' => 10]);
+        \Illuminate\Support\Facades\Cache::put("publicador:criativos-auto:cota:{$this->empresa->id}:2026-10-22", 10, now()->addDays(2));
+
+        $this->assertSame('limite', $this->servico()->avaliar($r->id));
+        $this->assertSame(['dia' => '2026-10-22', 'motivo' => 'limite'], $r->fresh()->step_state['criativos_auto']['adiado']);
+        $this->assertTrue(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
+        $this->assertSame(0, MlAnuncioCriativoKit::count(), 'nada foi planejado');
+        $antes = count(Queue::pushed(AvaliarCriativosAutomaticosJob::class));
+
+        $this->artisan('publicador:imagens-adiadas')->assertSuccessful();
+        $this->assertSame($antes, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)), 'no mesmo dia o teto continua gasto');
+
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-23 06:00:00', 'America/Sao_Paulo'));
+        $this->artisan('publicador:imagens-adiadas')->assertSuccessful();
+        $novos = array_slice(Queue::pushed(AvaliarCriativosAutomaticosJob::class)->all(), $antes);
+        $this->assertCount(1, $novos);
+        $this->assertSame($r->id, $novos[0]->rascunhoId);
+        $this->assertSame('creative', $novos[0]->queue);
+
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id), 'o teto de hoje está livre');
+        $this->assertArrayNotHasKey('adiado', $r->fresh()->step_state['criativos_auto']);
+        $this->assertFalse(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
+    }
+
+    public function test_desfecho_que_nao_e_o_limite_apaga_a_marca_e_o_passageiro_a_mantem(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $marcar = function () use ($r) {
+            $estado = (array) $r->fresh()->step_state;
+            $estado['criativos_auto']['adiado'] = ['dia' => '2026-10-21', 'motivo' => 'limite'];
+            DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+        };
+
+        // Desligada para a empresa: o pedido de amanhã não tem o que fazer — a marca sai (e a vitrine para de prometer).
+        $marcar();
+        Configuracao::set(CriativosAutomaticosService::CHAVE_EMPRESAS, '');
+        $this->assertSame('desligado', $this->servico()->avaliar($r->id));
+        $this->assertFalse(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
+
+        // Com a automação desligada de vez, a retomada não pede nada e as marcas ficam.
+        $marcar();
+        config(['publicador.criativos_auto.ativo' => false]);
+        $antes = count(Queue::pushed(AvaliarCriativosAutomaticosJob::class));
+        $this->artisan('publicador:imagens-adiadas')->assertSuccessful();
+        $this->assertSame($antes, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)));
+        $this->assertTrue(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
+    }
+
+    public function test_a_retomada_e_agendada_as_6h_de_sao_paulo_sem_sobrepor(): void
+    {
+        $eventos = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->filter(fn ($e) => str_contains((string) $e->command, 'publicador:imagens-adiadas'));
+
+        $this->assertCount(1, $eventos);
+        $e = $eventos->first();
+        $this->assertSame('0 6 * * *', $e->expression);
+        $this->assertSame('America/Sao_Paulo', $e->timezone);
+        $this->assertTrue($e->withoutOverlapping);
+    }
+
     // ═══ 20/10/2026: as imagens do kit automático entram SOZINHAS e viram as fotos do grupo ═══
 
     /** Um JPEG de verdade (a foto passa pela mesma conferência de tamanho/formato de qualquer foto do Publicador). */

@@ -590,6 +590,15 @@ Schedule::command('publicador:promocoes-renovar')
     ->name('publicador-promocoes-renovar')
     ->withoutOverlapping();
 
+// Publicador — imagens por IA automáticas que o limite diário barrou (22/10/2026): o rascunho marcado num dia
+// anterior volta para a avaliação (fila `creative`). 06:00 de São Paulo: o limite do dia já zerou e as imagens
+// ficam prontas antes de o time chegar.
+Schedule::command('publicador:imagens-adiadas')
+    ->dailyAt('06:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('publicador-imagens-adiadas')
+    ->withoutOverlapping();
+
 // ═══ Publicador — fila de publicação em lote (10/10/2026, learnings publicador-ml §20) ═══
 //
 // Todo minuto: fecha o produto que terminou de publicar e começa os próximos de cada fila ativa — em rodadas
