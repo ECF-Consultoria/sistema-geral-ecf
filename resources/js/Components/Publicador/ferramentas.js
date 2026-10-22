@@ -8,6 +8,9 @@ import { valorVazio } from './apoio.js';
 // ── Código universal (EAN-13) ──
 // Mesmo gerador do assistente antigo (AnunciarML.jsx) e do RascunhoAnuncioIaService:
 // prefixo 789 (Brasil) + 9 dígitos + verificador (posição ímpar ×1, par ×3).
+// N9 (22/10/2026): EAN, `variantesSemGtin`, `tomDaCor` e `nomeDaCor` têm gêmeo no servidor
+// (`App\Support\Publicador\PadroesDoEditor`), provado pela fixture
+// `tests/fixtures-ml/padroes-do-editor-paridade.json`. Mudou aqui, mude lá.
 
 export const digitoEan13 = (base12) => {
     let soma = 0;
