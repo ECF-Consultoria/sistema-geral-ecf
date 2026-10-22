@@ -841,6 +841,13 @@ final class CriativosAutomaticosService
             && app(CreativeCategoriaMobiliarioService::class)->ehMoveis($r->categoria_id)) {
             $slots = ['lifestyle', ...array_values(array_diff($slots, ['lifestyle']))];
         }
+        // A capa do Premium (22/10/2026, o usuário: "a foto principal do Premium pode ser diferente, porém não uma com
+        // fundo branco — só a foto 1"): uma 2ª ambientada, no FIM da galeria. O Premium troca a capa com ela e o resto
+        // da sequência fica igual à do Clássico (`OrdemCapaPorAlvo`).
+        $capaDoPremium = (string) config('publicador.criativos_auto.capa_premium', '');
+        if ($slots !== [] && $capaDoPremium !== '' && ! in_array($capaDoPremium, $slots, true)) {
+            $slots[] = $capaDoPremium;
+        }
 
         return $slots;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\MlAnuncioCriativo;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
 use App\Models\PubImagemAtribuicao;
@@ -92,10 +93,15 @@ class RascunhoRepository
             ], fn ($x) => $x !== null && $x !== []), $v->publicada);
         })->all();
 
+        // O tipo do criativo que gerou cada foto (ambientada, fundo branco, textura…), quando foi a IA: é o que diz qual
+        // pode ser a capa do Premium (`OrdemCapaPorAlvo`, 22/10/2026). Foto do cliente não leva tipo.
+        $tipoDaFoto = $r->imagens->isEmpty() ? [] : MlAnuncioCriativo::query()
+            ->whereIn('pub_imagem_id', $r->imagens->pluck('id'))->pluck('slot', 'pub_imagem_id')->all();
         $imagens = [];
         foreach ($r->imagens as $img) {
             foreach ($img->atribuicoes as $at) {
-                $imagens[] = ['imagem' => (string) $img->id, 'grupo' => $at->grupo_chave, 'posicao' => $at->posicao];
+                $imagens[] = ['imagem' => (string) $img->id, 'grupo' => $at->grupo_chave, 'posicao' => $at->posicao]
+                    + (isset($tipoDaFoto[$img->id]) ? ['tipo' => (string) $tipoDaFoto[$img->id]] : []);
             }
         }
 

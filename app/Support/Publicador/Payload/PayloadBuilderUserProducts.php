@@ -55,12 +55,19 @@ final class PayloadBuilderUserProducts
         // precisar de ramo dentro do `OrdemCapaPorAlvo`, que segue puro e intacto.
         // Na Fase 1 (`unidadesPorOferta = 1`) nada muda: o CAPA-01 vale inteiro.
         $combo = $r->unidadesPorOferta >= 2;
+        // O tipo de cada foto gerada pela IA: só a ambientada pode virar a capa do Premium (22/10/2026).
+        $tipos = [];
+        foreach ($r->imagens as $i) {
+            if (isset($i['tipo'])) {
+                $tipos[(string) $i['imagem']] = (string) $i['tipo'];
+            }
+        }
 
         $itens = [];
         foreach ($r->alvosAtivos() as $indiceAlvo => $alvo) {
             $indiceParaCapa = $combo ? 0 : $indiceAlvo;
             foreach ($r->variantesAtivas() as $v) {
-                $daVariante = OrdemCapaPorAlvo::aplicar($fotos[$v->chave] ?? [], $indiceParaCapa);
+                $daVariante = OrdemCapaPorAlvo::aplicar($fotos[$v->chave] ?? [], $indiceParaCapa, $tipos);
                 $pendentes = array_values(array_filter($daVariante, fn ($id) => ! isset($fotosMl[$id])));
 
                 $payload = array_filter([

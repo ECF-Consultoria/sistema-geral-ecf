@@ -1926,3 +1926,26 @@ precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_ship
 `tests/js/publicador-painel-casca-188.test.js` procura commits `(188-07)` em `git log -80`. Com o histórico crescendo
 (22/10: as correções da demo), eles saíram da janela e o teste falha com "nenhum commit desta FASE no log" — sem
 nada errado no código. Não "conserte" mudando commits: ou se aumenta a janela, ou se busca por `--grep="(188-07)"`.
+
+## 49. Premium: mesma sequência do Clássico, só a capa muda — e nunca para fundo branco (22/10/2026)
+
+**O que o usuário viu:** nos 6 produtos publicados na #459 em 21/10, o Clássico saía [ambientada, fundo branco, textura]
+e o Premium [fundo branco, textura, ambientada]; numa cor da POL-CON com 2 fotos, o Premium abria com a TEXTURA. Pedido:
+"a foto principal do Premium pode ser diferente, porém não uma com fundo branco — só a foto 1 principal".
+
+**Causa:** a rotação D6/CAPA-01 (Fase 168) girava a lista INTEIRA para a esquerda no Premium. Com a galeria automática
+de móvel (ambientada abre), a 2ª foto — o fundo branco — virava a capa do Premium, e a ordem toda mudava.
+
+**O que mudou:**
+- `OrdemCapaPorAlvo::aplicar($fotos, $indiceAlvo, $tipos)`: o Clássico fica igual; o Premium TROCA a 1ª foto com uma capa
+  sem fundo branco (`CAPAS_DO_PREMIUM` = composicao, lifestyle_uso, lifestyle; a preferida primeiro). Só as duas
+  posições trocam. Sem candidata (foto do cliente não tem tipo; ou a única ambientada já é a capa) → igual ao Clássico.
+- O tipo de cada foto vem do criativo que a gerou: `RascunhoRepository::snapshot` põe `tipo` em `imagens[]`
+  (`ml_anuncio_criativos.slot` por `pub_imagem_id`) e o `PayloadBuilderUserProducts` o passa à regra.
+- O kit automático da Fase 1 ganha a 4ª imagem, `publicador.criativos_auto.capa_premium` (= `composicao`, no FIM): a
+  capa do Premium. Decisão do usuário: "gerar 2ª ambientada" (+1 imagem, ~US$ 0,10 por grupo). Clássico [L, H, T, C],
+  Premium [C, H, T, L].
+- Composto e kit da fase (unidades ≥ 2) seguem com a MESMA capa nos dois — a regra nem roda.
+
+**Armadilha:** a ordem das fotos entra no `plano_hash`. Rascunho conferido ANTES desta mudança pede nova conferência na
+hora de publicar (o Premium mudou de ordem). Anúncio já publicado não muda sozinho.

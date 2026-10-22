@@ -163,8 +163,9 @@ class CriativosAutomaticosTest extends TestCase
         $portador = MlAnuncioCriativo::query()->findOrFail($kit->criativo_referencia_id);
         $this->assertCount(2, (array) $portador->referencias, 'as duas fotos do cliente vão de referência');
         Queue::assertPushedWithChain(PlanejarKitCriativosJob::class, [GerarCriativosAutomaticosJob::class]);
-        // "3 imagens, 2 capas" (20/10/2026): Imagem principal, Ambientação e Textura, nessa ordem fora de móvel.
-        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === ['hero', 'lifestyle', 'detail_textura']);
+        // "3 imagens, 2 capas" (20/10/2026): Imagem principal, Ambientação e Textura, nessa ordem fora de móvel — e, desde
+        // 22/10/2026, a 2ª ambientada (`composicao`) no fim, a capa do Premium.
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->kitId === $kit->id && $j->tiposFixos === ['hero', 'lifestyle', 'detail_textura', 'composicao']);
         $this->assertSame($kit->id, (int) $r2->fresh()->step_state['criativos_auto']['kit_id']);
 
         // Um kit ativo por grupo (D-15) e a aprovação é de gente: nada planejado de novo.
@@ -200,12 +201,14 @@ class CriativosAutomaticosTest extends TestCase
 
         $this->assertSame('planejando', $this->servico()->avaliar($r->id));
 
-        $tipos = ['lifestyle', 'hero', 'detail_textura'];
+        // 22/10/2026: a 4ª imagem é a 2ª ambientada (`composicao`), a capa do Premium, no fim da galeria.
+        $tipos = ['lifestyle', 'hero', 'detail_textura', 'composicao'];
         Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($j) => $j->tiposFixos === $tipos);
-        // A ordem da galeria é a dos tipos; a rotação D6 só troca qual abre: nenhum dos dois abre com a Textura.
-        $this->assertSame('lifestyle', OrdemCapaPorAlvo::aplicar($tipos, 0)[0], 'o Clássico abre com a Ambientação');
-        $this->assertSame('hero', OrdemCapaPorAlvo::aplicar($tipos, 1)[0], 'o Premium abre com a Imagem principal');
-        $this->assertSame('lifestyle', OrdemCapaPorAlvo::aplicar(['hero', 'lifestyle', 'detail_textura'], 1)[0], 'fora de móvel, o Premium abre com a Ambientação');
+        // A ordem da galeria é a dos tipos; o Premium só troca a capa — nunca abre com fundo branco nem com a Textura.
+        $porTipo = array_combine($tipos, $tipos);
+        $this->assertSame($tipos, OrdemCapaPorAlvo::aplicar($tipos, 0, $porTipo), 'o Clássico abre com a Ambientação');
+        $this->assertSame(['composicao', 'hero', 'detail_textura', 'lifestyle'], OrdemCapaPorAlvo::aplicar($tipos, 1, $porTipo),
+            'o Premium abre com a 2ª ambientada, e o meio é o mesmo do Clássico');
     }
 
     public function test_cada_condicao_barra_o_gatilho(): void

@@ -226,6 +226,10 @@ return [
         // 261007-amb, `CriativosAutomaticosService::tiposDoKit`). Vazio (`PUBLICADOR_CRIATIVOS_AUTO_SLOTS=`) = o kit do
         // botão: o planejador escolhe e a quantidade é `services.creative.kit.slots`.
         'slots' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_CRIATIVOS_AUTO_SLOTS', 'hero,lifestyle,detail_textura'))))),
+        // A 4ª imagem do kit automático (22/10/2026): uma 2ª ambientada, a capa do Premium. Vai no FIM da galeria, e o
+        // Premium só troca a 1ª foto com ela — a sequência é a mesma do Clássico, e a capa do Premium nunca é fundo
+        // branco (`OrdemCapaPorAlvo`). Vazio = sem 4ª imagem (o Premium fica igual ao Clássico em móvel).
+        'capa_premium' => (string) env('PUBLICADOR_CRIATIVOS_AUTO_CAPA_PREMIUM', 'composicao'),
         // true (o padrão desde 20/10/2026) = cada grupo de fotos — a galeria geral e cada cor — ganha o seu kit (custo
         // × grupos): com a foto do cliente só como referência, a cor sem kit ficaria com a foto do cliente no anúncio.
         // false = só a galeria geral, ou a 1ª cor.
