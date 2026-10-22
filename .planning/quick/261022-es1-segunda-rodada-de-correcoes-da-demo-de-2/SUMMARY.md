@@ -18,7 +18,7 @@ branch: fix/demo-23-10-b
 | N15 | A faixa "ainda não subiu" só para foto usada no anúncio, por miniatura e posição. |
 | N21 | Título do Clássico vindo do Portal como texto normal com selo "do Portal". |
 | N1 | Prévia mostra "Entrega a combinar com o vendedor" quando a última conferência trouxe o aviso de tirar o Mercado Envios / `fora_do_me2`. Sem conferência, ainda promete frete grátis — conferir antes. |
-| N9 | **Não feito** de propósito: gravar os padrões sem subir a revisão liberaria publicar sem conferir. Desenho no learnings publicador-ml §46. |
+| N9 | **Não feito** de propósito: gravar os padrões sem subir a revisão liberaria publicar sem conferir. Desenho no learnings publicador-ml §47. |
 | N8, N22, N12, N10, N19 | Estoque seleciona ao focar; escolhidos da ficha técnica em selos; produto novo recupera sozinho o digitado; busca de categoria seleciona ao focar, ignora clique logo após a lista mudar e confirma troca com ficha preenchida; um campo de estoque só com uma variação. |
 | N20 | Vitrine: preço, fase, chip e "Atualizado" a 12–14 px, contraste ≥ 4,5:1. |
 | N26 | Kit do mesmo produto em duas cores com o nome do kit ("Kit 2 Poltrona Decorativa Opala Cinza e Bordô"); kits antigos corrigidos só na exibição. |
