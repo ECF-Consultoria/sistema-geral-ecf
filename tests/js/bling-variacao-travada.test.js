@@ -140,28 +140,23 @@ test('os textos novos não têm jargão (ERP/integração/sincronizado/API/token
     }
 });
 
-// ─── 6. EstoqueDoProduto: com UMA variação travada, vai para o ramo de só-leitura ──
+// ─── 6. EstoqueDoProduto: com UMA variação o topo não mostra estoque nenhum ──
+// Demo 23/10 (N19): o bloco do topo repetia o estoque da única variação (dois campos para o mesmo
+// dado). Agora some com uma variação — travada pelo Bling ou não; o cartão da variação mostra o
+// estoque travado com o texto do Bling (seção acima).
 
-test('EstoqueDoProduto: uma variação travada pelo Bling vai para o ramo de só-leitura, com o mesmo texto', async () => {
+test('EstoqueDoProduto: uma variação travada pelo Bling não repete o estoque no topo', async () => {
     const { default: EstoqueDoProduto } = await montar(`${DIR}/EstoqueDoProduto.jsx`, 'estoque-produto-travado');
     const variacao = variacaoMock({ vinculado: true, removido: false, estoque_travado: true, sku_travado: true, saldo_lido_em: null });
     const ficha = { vars: [variacao], explicacoes: {}, alterar: () => assert.fail('travado pelo Bling não se edita aqui') };
 
-    const saida = html(h(EstoqueDoProduto, { ficha }));
-
-    assert.doesNotMatch(saida, /<input/);
-    assert.match(saida, /data-estoque-produto="bling"/);
-    assert.ok(saida.includes('vem do Bling'));
+    assert.equal(html(h(EstoqueDoProduto, { ficha })), '');
 });
 
-test('EstoqueDoProduto: uma variação SEM trava continua editável (par positivo)', async () => {
+test('EstoqueDoProduto: uma variação SEM trava também não repete o estoque no topo (par)', async () => {
     const { default: EstoqueDoProduto } = await montar(`${DIR}/EstoqueDoProduto.jsx`, 'estoque-produto-editavel');
     const variacao = variacaoMock(undefined);
-    const chamadas = [];
-    const ficha = { vars: [variacao], explicacoes: {}, alterar: (...a) => chamadas.push(a) };
+    const ficha = { vars: [variacao], explicacoes: {}, alterar: () => assert.fail('o topo não grava') };
 
-    const saida = html(h(EstoqueDoProduto, { ficha }));
-
-    assert.match(saida, /<input[^>]*id="ficha-estoque"/);
-    assert.doesNotMatch(saida, /data-estoque-produto="bling"/);
+    assert.equal(html(h(EstoqueDoProduto, { ficha })), '');
 });

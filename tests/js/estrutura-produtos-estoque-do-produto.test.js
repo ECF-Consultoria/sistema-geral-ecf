@@ -115,21 +115,15 @@ test('troca 1 → 2 variações: o valor fica na 1ª e o topo vira a soma', () =
     assert.equal(duas[0].estoque, '8', 'a 1ª variação continua com o valor');
 });
 
-test('componente: uma variação → campo que grava no estoque da única variação', async () => {
+// Demo 23/10 (N19): o cliente via dois campos de estoque no produto novo ("Estoque do produto" e o
+// "Estoque (un.)" da variação), que eram o MESMO dado. Com uma variação o bloco do topo some e fica só o
+// campo do cartão da variação; antes este teste cobrava o campo editável aqui.
+test('componente: uma variação → nada no topo (o estoque fica só no cartão da variação)', async () => {
     const { default: EstoqueDoProduto } = await montar(`${DIR}/EstoqueDoProduto.jsx`);
-    const chamadas = [];
-    const ficha = { vars: [v('v5', '3')], explicacoes: { estoque_produto: 'Quantas unidades.' }, alterar: (...a) => chamadas.push(a) };
+    const ficha = { vars: [v('v5', '3')], explicacoes: { estoque_produto: 'Quantas unidades.' }, alterar: () => assert.fail('o topo não grava') };
 
-    const html = renderToStaticMarkup(React.createElement(EstoqueDoProduto, { ficha }));
-    assert.match(html, /data-estoque-produto="unica"/);
-    assert.match(html, /<input[^>]*id="ficha-estoque"[^>]*value="3"/);
-    assert.match(html, /Estoque do produto/);
-    assert.ok(html.includes('Quantas unidades.'), 'leva o "o que é isto?" do glossário');
-
-    const arvore = EstoqueDoProduto({ ficha });
-    const input = achar(arvore, (n) => n.type === 'input');
-    input.props.onChange({ target: { value: '0' } });
-    assert.deepEqual(chamadas, [['v5', 'estoque', '0']], 'grava na variação, não numa coluna nova');
+    assert.equal(renderToStaticMarkup(React.createElement(EstoqueDoProduto, { ficha })), '');
+    assert.equal(renderToStaticMarkup(React.createElement(EstoqueDoProduto, { ficha: { ...ficha, vars: [] } })), '');
 });
 
 test('componente: várias variações → soma só leitura, sem campo, com a ajuda e o parcial', async () => {
@@ -157,5 +151,7 @@ test('gate: a ficha usa o componente nos dados gerais e o texto é neutro (sigil
         assert.doesNotMatch(fonte, /mercado|an[uú]ncio|public(ar|a[cç][aã]o|ador)|\bMLB?\b/i);
     }
     assert.match(componente, /explicacoes\?\.estoque_produto/);
-    assert.match(componente, /ficha\.alterar\(estoque\.chave, 'estoque', e\.target\.value\)/);
+    // N19: o topo não grava mais nada; uma variação = sem bloco.
+    assert.doesNotMatch(componente, /ficha\.alterar\(/);
+    assert.match(componente, /if \(estoque\.total <= 1\) return null;/);
 });
