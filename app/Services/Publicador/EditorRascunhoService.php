@@ -759,6 +759,8 @@ class EditorRascunhoService
                     'plano_b' => isset($i->avisos['plano_b']),
                     // 11/10/2026: a terceira conferência de frete — o que o ML cobra do anúncio publicado.
                     'frete' => is_array($i->avisos['frete'] ?? null) ? FreteDoPublicadoService::paraTela((int) $i->id, $i->avisos['frete']) : null,
+                    // Demo 23/10 (N17): o frete com que o anúncio saiu, lido na criação — inclusive "a combinar" (aviso 4057).
+                    'envio' => \App\Support\Publicador\SituacaoDoAnuncioMl::envio($i->avisos['estado'] ?? null, (array) $i->resposta),
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,

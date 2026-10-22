@@ -222,7 +222,9 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         {i.plano_b && <span className="text-sky-200">· confira o estoque por depósito no ML</span>}
                                         {i.mensagem && <span className="w-full text-amber-300">{i.mensagem}</span>}
                                         {/* 11/10/2026: o frete que o Mercado Livre cobra deste anúncio, contra o da Precificação. */}
-                                        {i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
+                                        {/* Demo 23/10 (N17): o frete com que saiu, lido na criação — o "a combinar" do aviso 4057 em âmbar. */}
+                                        {i.envio && <span className={i.envio.a_combinar ? 'text-amber-300' : 'text-white/45'} data-envio-do-anuncio={i.envio.modo}>· {i.envio.texto}</span>}
+                                        {! i.envio && i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
                                         {i.frete?.aplicavel && i.frete.nivel === 'igual' && <span className="text-white/45" data-frete-do-anuncio="igual">· frete de {formatCurrency(i.frete.ml)} conferido com a Precificação</span>}
                                         {/* Sem frete na Precificação não há com o que comparar, mas o que o ML cobra já é informação. */}
                                         {i.frete?.aplicavel && i.frete.nivel === null && i.frete.ml !== null && (

@@ -26,6 +26,7 @@ use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
+use App\Support\Publicador\SituacaoDoAnuncioMl;
 use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Support\Facades\DB;
@@ -546,13 +547,9 @@ class PublicacaoService
         // E14: o estado real logo depois de criar (under_review, pausado, qualidade) — da conta fixada.
         $empresa = $this->contaFixada($p, $r);
         $estado = $this->cliente->daConta($empresa, 'GET', "/items/{$item->ml_item_id}");
+        // Demo 23/10 (N17): o modo de envio vem no mesmo corpo e vai junto — é o frete com que o anúncio saiu.
         if ($estado->ok() && is_array($estado->corpo)) {
-            $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'estado' => [
-                'status' => $estado->corpo['status'] ?? null,
-                'sub_status' => $estado->corpo['sub_status'] ?? [],
-                'tags' => array_values(array_intersect((array) ($estado->corpo['tags'] ?? []), ['poor_quality_thumbnail', 'incomplete_technical_specs'])),
-                'permalink' => $estado->corpo['permalink'] ?? null,
-            ]]]);
+            $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'estado' => SituacaoDoAnuncioMl::doCorpo($estado->corpo)]]);
         }
     }
 
