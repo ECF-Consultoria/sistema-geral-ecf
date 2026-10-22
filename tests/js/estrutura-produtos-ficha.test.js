@@ -192,6 +192,19 @@ test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a f
     assert.ok(pagina.includes('useEffect(() => () => marcarUltimoProduto(ultimoRef.current), [])'));
 });
 
+// Demo 23/10 (N12): no produto NOVO, digitar o nome e recarregar parecia perder tudo — o rascunho ficava à
+// espera do "Recuperar" discreto. Sem nada no servidor para concorrer, ele volta sozinho; o já salvo segue
+// perguntando. (Provado no Chrome sem janela: recarregar avisa, o nome volta, "Começar do zero" limpa.)
+test('Rascunho: produto novo recupera sozinho e oferece começar do zero (N12)', () => {
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(produto\?\.id \|\| ! inicio\.oferecer\) return;\s*recuperarRascunho\(\);\s*setRecuperado\(true\);/);
+    assert.match(hook, /const recomecar = \(\) => \{\s*apagarRascunho\(null\);[\s\S]*?setAlterado\(false\);/);
+    for (const t of ['data-rascunho-recuperado', 'onClick={ficha.recomecar}', 'Começar do zero']) {
+        assert.ok(pagina.includes(t), `faltou na página: ${t}`);
+    }
+    // A guarda de fechar/recarregar a aba vale também para o produto novo (não depende de id).
+    assert.match(pagina, /if \(liberado\.current \|\| ! alteradoRef\.current\) return undefined;/);
+});
+
 test('Salvando: campos, Nova variação, Excluir e pickers ficam travados durante o POST (FE-WR-02)', () => {
     assert.equal(contar(pagina, /<fieldset disabled=\{ficha\.salvando\}/g), 2, 'dados gerais e variações');
     // Nova variação e os cartões (com Excluir e volumes) estão dentro do fieldset das variações.

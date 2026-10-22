@@ -267,6 +267,14 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </div>
                 )}
 
+                {/* Produto novo: o que estava digitado antes de recarregar voltou sozinho (demo 23/10, N12). */}
+                {ficha.recuperado && (
+                    <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-[13px] text-white/85" data-rascunho-recuperado>
+                        <span>Recuperamos o que você tinha digitado neste produto. Ele ainda não foi salvo.</span>
+                        <button type="button" onClick={ficha.recomecar} disabled={ficha.salvando} data-acao="comecar-do-zero" className="text-white/60 hover:text-white hover:underline">Começar do zero</button>
+                    </div>
+                )}
+
                 {ficha.aviso && (
                     <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
                 )}

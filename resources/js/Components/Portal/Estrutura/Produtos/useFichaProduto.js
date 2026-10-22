@@ -126,6 +126,27 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto });
     };
 
+    // Produto NOVO (demo 23/10, N12): digitar o nome e recarregar a página parecia perder tudo — o
+    // rascunho ficava à espera de um "Recuperar" discreto no topo. Aqui nada no servidor concorre com
+    // ele, então volta sozinho; a faixa avisa e oferece começar do zero. Produto já salvo segue
+    // perguntando (o servidor pode ter coisa mais nova que o rascunho).
+    const [recuperado, setRecuperado] = useState(false);
+    useEffect(() => {
+        if (produto?.id || ! inicio.oferecer) return;
+        recuperarRascunho();
+        setRecuperado(true);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** "Começar do zero" depois da recuperação automática: a ficha em branco e o rascunho fora. */
+    const recomecar = () => {
+        apagarRascunho(null);
+        setVars([linhaEmBranco(produto)]);
+        descricao.alterar('');
+        setErros({});
+        setAlterado(false);
+        setRecuperado(false);
+    };
+
     /** Sair confirmado, produto excluído ou salvo: o rascunho deixa de valer. */
     const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto));
 
@@ -370,7 +391,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
-        rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
+        rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho, recuperado, recomecar,
         tecnica, descricao,
         // O "o que é isto?" dos campos fixos (nome, família, Ref, custo, volumes…), do servidor.
         explicacoes: explicacoes ?? {},
