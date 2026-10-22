@@ -34,7 +34,7 @@ export default function EstoqueDoProduto({ ficha }) {
             <div className="mt-3 max-w-[240px]" data-estoque-produto="unica">
                 <RotuloComExplicacao className={ROTULO} htmlFor="ficha-estoque" explicacao={explicacao} nome="Estoque do produto">Estoque do produto (un.)</RotuloComExplicacao>
                 <input id="ficha-estoque" className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={estoque.valor}
-                    onChange={(e) => ficha.alterar(estoque.chave, 'estoque', e.target.value)} placeholder="0" />
+                    onFocus={(e) => e.target.select()} onChange={(e) => ficha.alterar(estoque.chave, 'estoque', e.target.value)} placeholder="0" />
             </div>
         );
     }

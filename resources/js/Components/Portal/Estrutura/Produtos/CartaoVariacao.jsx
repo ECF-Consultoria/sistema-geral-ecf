@@ -104,7 +104,9 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                                 </p>
                             </>
                         ) : (
-                            <input id={`estoque-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={variacao.estoque ?? ''} onChange={(e) => ficha.alterar(k, 'estoque', e.target.value)} placeholder="0" />
+                            // Demo 23/10 (N8): o número que já está no campo fica selecionado ao focar — clicar e
+                            // digitar "1" sobre um "1" dava "11".
+                            <input id={`estoque-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={variacao.estoque ?? ''} onFocus={(e) => e.target.select()} onChange={(e) => ficha.alterar(k, 'estoque', e.target.value)} placeholder="0" />
                         )}
                     </div>
                 </div>
