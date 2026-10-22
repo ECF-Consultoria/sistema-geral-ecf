@@ -767,6 +767,8 @@ class EditorRascunhoService
                     'rotulo' => \App\Support\Publicador\SituacaoDoAnuncioMl::rotulo(
                         collect($digitado->variantes)->first(fn (Variante $v) => $v->chave === $i->variante_chave)?->rotulo($eixos), (array) $i->payload,
                         fn (string $atributo, string $id) => collect($schema?->atributo($atributo)?->valores ?? [])->firstWhere('id', $id)['name'] ?? null),
+                    // Demo 23/10 (A1): o que aconteceu com a promoção automática deste anúncio (o ML recusa a do anúncio novo).
+                    'promocao' => \App\Support\Publicador\PromocaoDoPublicado::do($i->ml_item_id),
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,

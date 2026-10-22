@@ -95,10 +95,11 @@ export function notasDaPrevia(previa, anuncio, comPromocao) {
 
     if (anuncio.promocao) {
         const dias = numero(previa?.dias_da_promocao);
+        // Demo 23/10 (A1): o sistema TENTA — em 22/10 o ML recusou a promoção de todo anúncio novo ("No candidates").
         const quando = previa?.promocao_automatica
-            ? `O sistema cria a promoção da Central sozinho depois de publicar${dias ? `, por ${dias} dias` : ''}.`
+            ? `O sistema tenta criar a promoção da Central depois de publicar${dias ? `, por ${dias} dias` : ''}, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado: o resultado aparece na lista depois de publicar.`
             : 'Nesta conta a promoção da Central não é criada sozinha: a tarefa pós-publicação orienta a criar no Seller Center.';
-        notas.push(comPromocao ? quando : `${quando} Desligada aqui, a prévia mostra o preço cheio.`);
+        notas.push(comPromocao ? quando : `${quando} A prévia mostra o preço cheio; marque «Com a promoção da Central» para ver com o desconto.`);
     } else if (anuncio.sem_promocao) {
         notas.push(`Sem promoção da Central: ${anuncio.sem_promocao}.`);
     }

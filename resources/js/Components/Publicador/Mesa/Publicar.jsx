@@ -29,6 +29,8 @@ const STATUS_PUBLICACAO = { RUNNING: 'Publicando…', PUBLISHED: 'Publicado no M
 const COR_PUBLICACAO = { RUNNING: 'text-white/70', PUBLISHED: 'text-emerald-400', PARTIALLY_PUBLISHED: 'text-amber-300', FAILED: 'text-red-300', PUBLICADO_RETIDO: 'text-amber-300' };
 const STATUS_ITEM = { PENDING: 'na fila', SENT: 'enviando', UNKNOWN: 'confirmando…', FAILED: 'não publicado' };
 const POR_ETAPA_A_VISTA = 4;
+// A situação da promoção automática de cada anúncio (`PromocaoDoPublicado::paraTela`).
+const COR_PROMOCAO = { ok: 'text-emerald-400', aviso: 'text-amber-300', neutro: 'text-white/45' };
 
 /** Tom e texto curto da situação da conferência. */
 export function situacaoDaConferencia(pub) {
@@ -237,6 +239,12 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         {i.ml_item_id && i.situacao_ml && (
                                             <span className="w-full text-amber-300" data-situacao-ml={i.situacao_ml.status}>
                                                 {i.situacao_ml.texto}{i.situacao_ml.motivo ? `: ${i.situacao_ml.motivo}` : ''}. Veja o anúncio no Mercado Livre.
+                                            </span>
+                                        )}
+                                        {/* Demo 23/10 (A1): o que aconteceu com a promoção automática — o ML costuma recusar a do anúncio novo. */}
+                                        {i.ml_item_id && i.promocao && (
+                                            <span className={cn('w-full', COR_PROMOCAO[i.promocao.tom] ?? 'text-white/45')} data-promocao-do-anuncio={i.promocao.status}>
+                                                {i.promocao.texto}.
                                             </span>
                                         )}
                                         {i.descricao_status === 'FAILED' && (

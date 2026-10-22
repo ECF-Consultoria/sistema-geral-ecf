@@ -55,7 +55,9 @@ export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
     const { previa, carregando, erro, recarregar } = usePrevia({ pub, produtoId });
     const [tipo, setTipo] = useState(null);
     const [variante, setVariante] = useState(null);
-    const [comPromocao, setComPromocao] = useState(true);
+    // Demo 23/10 (A1): DESMARCADA de início — em 22/10 o ML recusou a promoção de todo anúncio novo
+    // ("No candidates"); mostrar o preço riscado por padrão prometia um desconto que não sai.
+    const [comPromocao, setComPromocao] = useState(false);
 
     const tipos = Array.isArray(previa?.tipos) ? previa.tipos : [];
     const anuncio = anuncioEscolhido(previa, tipo ?? tipos[0]?.listing_type_id ?? null, variante);

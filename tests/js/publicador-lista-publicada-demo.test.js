@@ -39,3 +39,17 @@ test('H21 — depois de publicar, a tela relê só a publicação por alguns min
     assert.match(f, /const RELER_DEPOIS_DE_PUBLICAR = 8 \* 60 \* 1000;/);
     assert.match(f, /setEstado\(\(e\) => \(e && e\.publicacao\?\.id === data\.publicacao\.id \? \{ \.\.\.e, publicacao: data\.publicacao \} : e\)\)/);
 });
+
+test('A1 — cada anúncio diz o que aconteceu com a promoção automática (o ML recusa a do anúncio novo)', () => {
+    const f = lerSemComentarios(PUBLICAR);
+    assert.match(f, /const COR_PROMOCAO = \{ ok: 'text-emerald-400', aviso: 'text-amber-300', neutro: 'text-white\/45' \};/);
+    assert.match(f, /\{i\.ml_item_id && i\.promocao && \(/);
+    assert.match(f, /data-promocao-do-anuncio=\{i\.promocao\.status\}>\s*\{i\.promocao\.texto\}\./);
+});
+
+test('A1 — a Prévia abre SEM a promoção: a caixa vem desmarcada', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/Mesa/EtapaPrevia.jsx');
+    assert.match(f, /const \[comPromocao, setComPromocao\] = useState\(false\);/);
+    const a = lerSemComentarios('resources/js/Components/Publicador/Mesa/AnuncioNoMl.jsx');
+    assert.match(a, /comPromocao = false,/);
+});

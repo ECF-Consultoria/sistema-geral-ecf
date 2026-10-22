@@ -120,7 +120,11 @@ test('notasDaPrevia — o que a página do ML não diz: cor no título, capa tro
     assert.ok(classico.some((n) => n.includes('acrescenta «Preto» ao fim do título')), classico.join(' | '));
     assert.ok(classico.some((n) => n.startsWith('A capa muda entre Clássico e Premium')), classico.join(' | '));
     assert.ok(classico.includes('1 foto ainda não subiu ao Mercado Livre: aparece pela cópia guardada aqui e sobe na publicação.'));
-    assert.ok(classico.some((n) => n.includes('cria a promoção da Central sozinho depois de publicar, por 14 dias')));
+    // Demo 23/10 (A1): o sistema TENTA — o ML costuma recusar a promoção do anúncio novo.
+    assert.ok(classico.some((n) => n.includes('tenta criar a promoção da Central depois de publicar, por 14 dias')
+        && n.includes('costuma não oferecer desconto para anúncio recém-criado')));
+    assert.ok(! classico.some((n) => n.includes('sozinho')), 'não promete a promoção');
+    assert.ok(notasDaPrevia(PREVIA, PREVIA.anuncios[0], false).some((n) => n.includes('preço cheio') && n.includes('«Com a promoção da Central»')));
     assert.ok(! classico.some((n) => n.includes('parcelas')), 'Clássico não tem nota de parcelas');
 
     assert.ok(notasDaPrevia(PREVIA, PREVIA.anuncios[2], true).some((n) => n.includes('parcelas sem juros do Premium são estimadas')));

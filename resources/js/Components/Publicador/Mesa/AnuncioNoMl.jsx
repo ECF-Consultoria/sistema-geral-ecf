@@ -185,7 +185,7 @@ function Caracteristicas({ grupos }) {
  * @param {?string} props.vendedor o nome da conta no ML
  * @param {(chave: string) => void} props.onVariante troca a variação (como o seletor do ML)
  */
-export default function AnuncioNoMl({ previa, anuncio, comPromocao = true, vendedor = null, onVariante = () => {} }) {
+export default function AnuncioNoMl({ previa, anuncio, comPromocao = false, vendedor = null, onVariante = () => {} }) {
     const [fotoAtiva, setFotoAtiva] = useState(0);
     const fotos = Array.isArray(anuncio?.fotos) ? anuncio.fotos.filter((f) => f && typeof f.url === 'string') : [];
     const titulo = anuncio?.titulo_no_ml || anuncio?.titulo || '';
