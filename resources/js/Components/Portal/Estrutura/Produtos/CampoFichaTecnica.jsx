@@ -58,16 +58,23 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
         setEscrevendo(false);
     };
 
+    // Demo 23/10 (N22): depois de escolher, o select volta a "Adicionar outra…" e a escolha só aparecia
+    // num chip cinza quase da cor do fundo — parecia que nada tinha sido escolhido. Os escolhidos viram
+    // selos em destaque e o select diz quantos já estão escolhidos.
+    const rotuloDoSelect = restantes.length === 0 && ! comOutro
+        ? 'Todas as opções já escolhidas'
+        : (escolhidos.length ? `Adicionar outra… (${escolhidos.length} ${escolhidos.length === 1 ? 'escolhida' : 'escolhidas'})` : 'Selecione');
+
     return (
         <div data-multivalor className={cn('min-w-0 rounded-lg border bg-black/40 p-1.5', invalido ? 'border-red-400/50' : 'border-white/20')}>
             {escolhidos.length > 0 && (
-                <ul className="mb-1.5 flex flex-wrap gap-1.5">
+                <ul className="mb-1.5 flex flex-wrap gap-1.5" aria-label={`Escolhidos em ${campo.nome}`} data-escolhidos>
                     {escolhidos.map((v) => (
                         <li key={v} data-chip={v}
-                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.06] pl-2.5 pr-1 text-[14px] text-white">
+                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-ecf-yellow/40 bg-ecf-yellow/15 pl-2.5 pr-1 text-[14px] font-medium text-white">
                             <span className="truncate">{nomePorId.get(v) ?? v}</span>
                             <button type="button" onClick={() => tirar(v)} aria-label={`Tirar ${nomePorId.get(v) ?? v} de ${campo.nome}`}
-                                className="grid h-5 w-5 shrink-0 place-items-center rounded text-white/60 hover:bg-white/10 hover:text-white">
+                                className="grid h-5 w-5 shrink-0 place-items-center rounded text-white/70 hover:bg-white/10 hover:text-white">
                                 <X size={13} />
                             </button>
                         </li>
@@ -79,9 +86,7 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
                 aria-invalid={invalido || undefined} aria-describedby={descricao}
                 onChange={(e) => somar(e.target.value)}
                 className="h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-1.5 text-[14px] text-white focus:outline-none focus:ring-0 disabled:text-white/30 lg:h-7">
-                <option value="">
-                    {restantes.length === 0 && ! comOutro ? 'Todas as opções já escolhidas' : (escolhidos.length ? 'Adicionar outra…' : 'Selecione')}
-                </option>
+                <option value="">{rotuloDoSelect}</option>
                 {restantes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
                 {comOutro && <option value={OPCAO_OUTRO}>Outro (escrever)</option>}
             </select>
