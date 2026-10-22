@@ -7,9 +7,9 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\PadroesDoRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\NaFilaDePublicacao;
-use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -19,10 +19,10 @@ use Illuminate\Support\Facades\Log;
  *
  * Um `ConferirEmLoteJob` por produto, espaçados (`publicador.fila_publicacao.conferir_espaco_s`, 10 s) na fila
  * `high` — a conferência são várias chamadas ao ML por produto e 30 de uma vez seriam uma rajada. Cada Job faz o
- * que a tela faz antes de conferir: abre o rascunho (lê a conta se a leitura passou de 10 min), aplica a regra
- * do frete grátis obrigatório IGUAL à do editor (`usePublicador.garantirFreteObrigatorio`, aqui no servidor) e
- * confere; no fim recalcula o resumo de pendências que a lista de Produtos mostra (`estado()`). O resultado
- * aparece na linha da visão rápida pelo polling.
+ * que a tela faz antes de conferir: abre o rascunho (lê a conta se a leitura passou de 10 min), aplica os padrões
+ * que o editor aplicaria ao abrir — EAN, Cor principal, fotos por variação e a regra do frete grátis obrigatório
+ * IGUAL à do editor (`PadroesDoRascunhoService`, N9 de 22/10/2026) — e confere; no fim recalcula o resumo de
+ * pendências que a lista de Produtos mostra (`estado()`). O resultado aparece na linha da visão rápida pelo polling.
  */
 final class ConferenciaEmLoteService
 {
@@ -30,6 +30,7 @@ final class ConferenciaEmLoteService
         private ProgramasPublicadorService $programas,
         private EditorRascunhoService $editor,
         private ConferenciaService $conferencia,
+        private PadroesDoRascunhoService $padroes,
     ) {}
 
     /**
@@ -76,7 +77,7 @@ final class ConferenciaEmLoteService
     }
 
     /**
-     * Um produto: abrir → frete grátis obrigatório → conferir → resumo. Nunca publica.
+     * Um produto: abrir → padrões do editor (com o frete grátis obrigatório) → conferir → resumo. Nunca publica.
      *
      * @return string o que aconteceu (log e testes): sumiu, na_fila, intocavel, conferido:<RESULTADO>
      */
@@ -96,7 +97,11 @@ final class ConferenciaEmLoteService
             }
 
             $r = $this->editor->abrir($p);
-            $this->garantirFreteObrigatorio($r);
+            try {
+                $this->padroes->aplicar($r, comFrete: true);
+            } catch (\Throwable $e) {
+                Log::warning("[Publicador] Lote: padrões do editor no rascunho {$r->id} antes da conferência: {$e->getMessage()}");
+            }
             $v = $this->conferencia->conferir($r->fresh());
 
             try {
@@ -113,30 +118,11 @@ final class ConferenciaEmLoteService
     }
 
     /**
-     * A regra do editor antes de conferir (learnings §11): Mercado Envios, frete grátis desmarcado, conta lida e
-     * categoria escolhida → pergunta ao ML se a faixa de preço exige frete grátis do vendedor e, se exigir, liga.
-     * Sem resposta do ML, segue como está (a conferência ainda avisa com o 350).
+     * A regra do editor antes de conferir (learnings §11), hoje no `PadroesDoRascunhoService` (o mesmo que roda no
+     * Sincronizar, no preparo pela IA e no `ConferirRascunhoJob`). Fica aqui pelo nome que o lote sempre teve.
      */
     public function garantirFreteObrigatorio(PubRascunho $r): bool
     {
-        $envio = (array) ($r->envio ?? []);
-        $conta = (array) ($r->step_state['conta'] ?? []);
-        if (($envio['modo'] ?? 'me2') !== 'me2' || ! empty($envio['frete_gratis']) || $conta === [] || isset($conta['erro']) || ! $r->categoria_id) {
-            return false;
-        }
-        try {
-            $regra = $this->editor->freteGratis($r);
-        } catch (RegraViolada $e) {
-            Log::info("[Publicador] Lote: frete grátis do rascunho {$r->id} sem consulta ({$e->regra}).");
-
-            return false;
-        }
-        if (! ($regra['obrigatorio'] ?? false)) {
-            return false;
-        }
-        $this->editor->salvar($r, ['envio' => [...$envio, 'frete_gratis' => true]]);
-        Log::info("[Publicador] Lote: frete grátis ligado no rascunho {$r->id} — a faixa de preço exige (mesma regra do editor).");
-
-        return true;
+        return $this->padroes->garantirFreteObrigatorio($r);
     }
 }

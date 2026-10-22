@@ -139,7 +139,7 @@ class PreparoIaDoRascunhoService
         foreach ($r['para_preencher'] as $id) {
             $pub = PubProduto::find($id);
             if ($pub !== null) {
-                $this->preencher($pub);
+                $this->preencher($pub, comFrete: true);
             }
         }
         foreach ($r['para_preencher'] as $id) {
@@ -837,8 +837,16 @@ class PreparoIaDoRascunhoService
         return collect($schema->atributos)->contains(fn ($a) => is_array($a) && ($a['id'] ?? null) === 'MODEL');
     }
 
-    /** Preenche o rascunho pelo Portal com a MESMA trava do Job do botão (nunca dois ao mesmo tempo). */
-    private function preencher(PubProduto $pub): void
+    /**
+     * Preenche o rascunho pelo Portal com a MESMA trava do Job do botão (nunca dois ao mesmo tempo) e grava os padrões
+     * que o editor aplicaria ao abrir (N9, 22/10/2026: EAN, Cor principal, fotos por variação — sem HTTP).
+     *
+     * `comFrete` (só o `preparar`, que já é o trabalho de fundo de 2 min depois do save): lê a conta do ML se o
+     * rascunho ainda não a tem (o mesmo que o editor faz ao abrir) e liga o frete grátis que a faixa de preço exige
+     * (`EditorRascunhoService::freteGratis`). Assim quem só ABRE o editor de um produto preparado não grava nada. O
+     * `sincronizarAgora` (15 s depois do save, um por empresa de cada vez) não vai ao ML.
+     */
+    private function preencher(PubProduto $pub, bool $comFrete = false): void
     {
         $trava = Cache::lock(PreencherRascunhoDoPortalJob::chaveDaTrava((int) $pub->id), 330);
         if (! $trava->get()) {
@@ -847,9 +855,27 @@ class PreparoIaDoRascunhoService
             return;
         }
         try {
-            $this->portal->preencher($pub);
+            $resumo = $this->portal->preencher($pub);
         } finally {
             $trava->release();
+        }
+
+        $r = ! empty($resumo['intocavel']) ? null : PubRascunho::find($resumo['rascunho_id'] ?? 0);
+        if ($r === null) {
+            return;
+        }
+        try {
+            $padroes = app(PadroesDoRascunhoService::class);
+            $padroes->aplicar($r);
+            $envio = (array) ($r->fresh()->envio ?? []);
+            // Só vai ao ML quando o frete grátis pode faltar: Mercado Envios, desmarcado e com categoria.
+            if ($comFrete && ($envio['modo'] ?? 'me2') === 'me2' && empty($envio['frete_gratis']) && $r->categoria_id) {
+                app(EditorRascunhoService::class)->lerContaParaOsPadroes($r->fresh());
+                $padroes->garantirFreteObrigatorio($r->fresh());
+            }
+        } catch (\Throwable $e) {
+            // Os padrões são conforto (a tela e a conferência ainda os aplicam): nunca derrubam o preparo.
+            Log::warning("[Publicador] Preparo pela IA: padrões do editor no rascunho {$r->id}: {$e->getMessage()}");
         }
     }
 

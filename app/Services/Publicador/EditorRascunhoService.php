@@ -1276,4 +1276,14 @@ class EditorRascunhoService
             default => 'previa',
         };
     }
+
+    /**
+     * A leitura da conta que o `abrir` faz (a mesma, com a mesma validade de 10 min), para o preparo pela IA saber o
+     * vendedor ANTES de alguém abrir o editor: sem ela o frete grátis obrigatório não é perguntado e a tela o grava
+     * ao abrir (N9, 22/10/2026). No FIM da classe de propósito: os documentos da Fase 188 apontam linhas deste arquivo.
+     */
+    public function lerContaParaOsPadroes(PubRascunho $r): void
+    {
+        $this->lerContaSeVencida($r);
+    }
 }

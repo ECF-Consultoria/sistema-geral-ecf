@@ -4,6 +4,7 @@ namespace App\Jobs\Publicador;
 
 use App\Models\PubRascunho;
 use App\Services\Publicador\ConferenciaService;
+use App\Services\Publicador\PadroesDoRascunhoService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -46,7 +47,7 @@ class ConferirRascunhoJob implements ShouldQueue, ShouldBeUnique
         return (string) $this->rascunhoId;
     }
 
-    public function handle(ConferenciaService $conferencia): void
+    public function handle(ConferenciaService $conferencia, ?PadroesDoRascunhoService $padroes = null): void
     {
         $r = PubRascunho::find($this->rascunhoId);
         if (! $r) {
@@ -55,7 +56,16 @@ class ConferirRascunhoJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $v = $conferencia->conferir($r);
+        // N9 (22/10/2026): rede de segurança — o que o editor aplicaria sozinho ao abrir (EAN, Cor principal, fotos
+        // por variação, frete grátis obrigatório) entra ANTES de conferir, então a conferência vê o payload com eles.
+        // Falhar aqui não impede a conferência: ela confere o rascunho como está.
+        try {
+            ($padroes ?? app(PadroesDoRascunhoService::class))->aplicar($r, comFrete: true);
+        } catch (\Throwable $e) {
+            Log::warning("[Publicador] padrões do editor no rascunho {$r->id} antes da conferência: {$e->getMessage()}");
+        }
+
+        $v = $conferencia->conferir($r->fresh());
         $itens = count((array) ($v->respostas_ml['itens'] ?? []));
         Log::info("[Publicador] conferência do rascunho {$r->id} (revisão {$v->revisao}): {$v->resultado}, {$itens} validate(s), ".count((array) $v->issues).' problema(s).');
     }

@@ -3,6 +3,8 @@
 namespace App\Jobs\Publicador;
 
 use App\Models\PubProduto;
+use App\Models\PubRascunho;
+use App\Services\Publicador\PadroesDoRascunhoService;
 use App\Services\Publicador\PortalParaRascunhoService;
 use App\Services\Publicador\ResumoDoSincronizar;
 use Illuminate\Bus\Queueable;
@@ -64,8 +66,26 @@ class PreencherRascunhoDoPortalJob implements ShouldQueue
         } finally {
             $trava->release();
         }
+        $this->aplicarPadroes($r);
         $resumo->registrar($this->pedido, $this->produtoId, $r);
         Log::info("[Publicador] Produto {$produto->id} ({$produto->nome}) preenchido pelo Portal: {$r['campos_preenchidos']} campo(s), {$r['fotos_trazidas']} foto(s).");
+    }
+
+    /**
+     * N9 (22/10/2026): os padrões que o editor aplicaria ao abrir (EAN, Cor principal, fotos por variação) entram já
+     * aqui, sem HTTP — quem abre o editor do produto sincronizado não grava nada. Nunca derruba o Sincronizar.
+     */
+    private function aplicarPadroes(array $resumo): void
+    {
+        $rascunho = ! empty($resumo['intocavel']) ? null : PubRascunho::find($resumo['rascunho_id'] ?? 0);
+        if ($rascunho === null) {
+            return;
+        }
+        try {
+            app(PadroesDoRascunhoService::class)->aplicar($rascunho);
+        } catch (\Throwable $e) {
+            Log::warning("[Publicador] Sincronizar: padrões do editor no rascunho {$rascunho->id}: {$e->getMessage()}");
+        }
     }
 
     public static function chaveDaTrava(int $produtoId): string

@@ -859,5 +859,37 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
             array_intersect_key($this->modelo($r), array_flip(['value_name', 'origem'])));
         $this->assertCount(0, $this->chamadas['modelo']);
     }
+
+    // ═══ N9: abrir o editor não grava (22/10/2026) ═════════════════════════════
+
+    public function test_o_preparo_grava_os_padroes_do_editor_e_quem_so_abre_nao_grava(): void
+    {
+        // O editor gravava o EAN gerado ao abrir (PUT das variantes) e o "editando" adiava esta mesma IA em 5 min.
+        $p = $this->produtoDoPortal();
+        $this->salvarERodar($p);
+        $r = $this->rascunhoDo($p);
+        $pub = $this->pubDo($p);
+
+        $variantes = (new RascunhoRepository())->snapshot($r->fresh())->variantes;
+        $this->assertNotSame([], $variantes);
+        foreach ($variantes as $v) {
+            $gtin = (string) ($v->dados['atributos']['GTIN']['value_name'] ?? '');
+            $this->assertTrue(\App\Support\Publicador\PadroesDoEditor::eanValido($gtin), "a variação {$v->chave} chega com o código gerado ({$gtin})");
+        }
+
+        // Um save a mais no Portal sem mudança: o preparo roda de novo e não troca o código nem sobe a revisão.
+        $revisao = $r->fresh()->revisao;
+        $gtins = array_map(fn ($v) => $v->dados['atributos']['GTIN']['value_name'], $variantes);
+        $this->salvarERodar($p);
+        $this->assertSame($gtins, array_map(fn ($v) => $v->dados['atributos']['GTIN']['value_name'], (new RascunhoRepository())->snapshot($r->fresh())->variantes));
+        $this->assertSame($revisao, $r->fresh()->revisao, 'nada faltava: nada gravado');
+
+        // Abrir o editor (a leitura do estado) não grava e não segura a IA.
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->getJson(route('mlb.anuncios.publicador.abrir', $pub->id))->assertOk();
+        $this->assertSame($revisao, $r->fresh()->revisao);
+        $this->assertFalse(EditorEmUso::editando((int) $pub->id));
+    }
 }
 

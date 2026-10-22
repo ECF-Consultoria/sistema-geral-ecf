@@ -28,6 +28,12 @@ import { LINK, Secao } from './comum';
 // Os EFEITOS (ligar "fotos por variação" sem eixo de foto; EAN-13 automático,
 // docx §4) ficam em `useEfeitosDasVariacoes`, que a página chama sempre — o EAN
 // precisa nascer ao abrir o editor, em qualquer etapa.
+//
+// N9 (22/10/2026, "abrir o editor grava"): o servidor aplica os MESMOS padrões
+// antes da 1ª conferência (`PadroesDoEditor.php`, no Sincronizar, no preparo
+// pela IA e no início da conferência). Com o rascunho em dia estes efeitos não
+// têm o que gravar; só gravam o que de fato falta. Mudou uma regra aqui, mude lá
+// e na fixture `tests/fixtures-ml/padroes-do-editor-paridade.json`.
 
 /** "fundo branco, {largura}×{altura}px no mínimo" — os números só aparecem se o schema os trouxer. */
 export const regraDaFoto = (limites) => {

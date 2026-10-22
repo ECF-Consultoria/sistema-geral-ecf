@@ -23,7 +23,10 @@ import { cn, formatCurrency } from '@/lib/utils';
 // produto fora da caixa ao lado só para comparar; o frete grátis obrigatório
 // pela faixa de preço vem do ML (`m.consultarFrete`). Os efeitos ficam em
 // `useEfeitosDoEnvio`, que a página chama sempre: a regra do frete depende de
-// preços e pacote, e precisa rodar em qualquer etapa.
+// preços e pacote, e precisa rodar em qualquer etapa. Desde 22/10/2026 (N9) o
+// servidor liga o frete grátis obrigatório e acerta a forma de envio antes da
+// 1ª conferência (`PadroesDoRascunhoService`): ao abrir, os efeitos só gravam
+// o que de fato falta.
 
 export const ENVIOS = { me2: 'Mercado Envios', custom: 'Envio próprio', not_specified: 'A combinar com o comprador' };
 // O que cada forma de envio quer dizer (análise do Publicador, 04/10/2026).
