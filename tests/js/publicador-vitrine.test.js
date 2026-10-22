@@ -8,8 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    FILTROS_DA_VITRINE, avisoDaIa, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, itensParaResolver, numeroDaFase, pilulasDasFases, reais,
-    resumoDaSelecao, rotuloDaFase,
+    FILTROS_DA_VITRINE, RELEITURA_OCIOSA_MS, avisoDaIa, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, itensParaResolver, numeroDaFase, pilulasDasFases, reais,
+    releituraEnquantoVisivel, resumoDaSelecao, rotuloDaFase,
     tempoDesde, textoDosAnuncios,
 } from '../../resources/js/Components/Mlb/Publicador/vitrine/vitrine.js';
 
@@ -263,7 +263,10 @@ test('página — publica a seleção pela fila em lote, um só botão amarelo n
     assert.doesNotMatch(f, /AvisoContaTravada|Confortável|Compacto|Buscar SKU/);
     assert.match(f, /<PublicadorHeader/);
     assert.match(f, /familiasDaVitrine\(lista, filtro, planejados\)/);
-    assert.equal((f.match(/only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, 4, 'o recarregar traz as faces de espera junto');
+    // 22/10/2026: era "4" fixo; a releitura ociosa (R4) é o 5º recarregar. A regra é TODO recarregar trazer as faces de espera.
+    const recargas = (f.match(/router\.reload\(\{ only: \[/g) ?? []).length;
+    assert.equal(recargas, 5);
+    assert.equal((f.match(/router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'/g) ?? []).length, recargas, 'o recarregar traz as faces de espera junto');
 });
 
 test('página — exclui a seleção pelo MESMO diálogo da lista (o servidor decide quem pode sair)', () => {
@@ -280,6 +283,82 @@ test('página — com a IA atualizando algum cartão, a vitrine se relê sozinha
     assert.match(f, /const iaTrabalhando = lista\.some\(\(c\) => typeof c\?\.ia === 'string'\)/);
     assert.match(f, /if \(! iaTrabalhando\) return undefined;/);
     assert.match(f, /setInterval\(\(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), 5 \* 1000\)/);
+});
+
+// ─── 22/10/2026 (demo, R4): produto novo do Portal aparece sem F5 ───
+
+function documentoFalso(estado = 'visible') {
+    const ouvintes = new Set();
+    return {
+        visibilityState: estado,
+        addEventListener: (nome, fn) => { if (nome === 'visibilitychange') ouvintes.add(fn); },
+        removeEventListener: (nome, fn) => { if (nome === 'visibilitychange') ouvintes.delete(fn); },
+        mudar(novo) { this.visibilityState = novo; ouvintes.forEach((fn) => fn()); },
+        get ouvintes() { return ouvintes.size; },
+    };
+}
+
+function relogioFalso() {
+    const ativos = new Map();
+    let seq = 0;
+    return {
+        agendar: (fn, ms) => { seq += 1; ativos.set(seq, { fn, ms }); return seq; },
+        cancelar: (id) => { ativos.delete(id); },
+        tique() { [...ativos.values()].forEach((a) => a.fn()); },
+        ativos,
+    };
+}
+
+test('releitura ociosa — 25 s com a aba visível (nem mais rápido que 20 s, nem mais lento que 30 s)', () => {
+    assert.ok(RELEITURA_OCIOSA_MS >= 20 * 1000 && RELEITURA_OCIOSA_MS <= 30 * 1000);
+    const doc = documentoFalso();
+    const rel = relogioFalso();
+    let lidas = 0;
+    const desligar = releituraEnquantoVisivel({ reler: () => { lidas += 1; }, documento: doc, agendar: rel.agendar, cancelar: rel.cancelar });
+    assert.equal(rel.ativos.size, 1);
+    assert.equal([...rel.ativos.values()][0].ms, RELEITURA_OCIOSA_MS);
+    assert.equal(lidas, 0, 'não relê ao montar: a página acabou de chegar');
+    rel.tique();
+    assert.equal(lidas, 1);
+    desligar();
+    assert.equal(rel.ativos.size, 0);
+    assert.equal(doc.ouvintes, 0);
+});
+
+test('releitura ociosa — pausa com a aba oculta e, ao voltar, relê na hora e religa', () => {
+    const doc = documentoFalso();
+    const rel = relogioFalso();
+    let lidas = 0;
+    releituraEnquantoVisivel({ reler: () => { lidas += 1; }, documento: doc, agendar: rel.agendar, cancelar: rel.cancelar });
+    doc.mudar('hidden');
+    assert.equal(rel.ativos.size, 0);
+    rel.tique();
+    assert.equal(lidas, 0);
+    doc.mudar('visible');
+    assert.equal(lidas, 1);
+    assert.equal(rel.ativos.size, 1);
+    doc.mudar('visible');
+    assert.equal(lidas, 1, 'evento repetido com a aba já visível não relê de novo');
+    assert.equal(rel.ativos.size, 1);
+});
+
+test('releitura ociosa — aberta com a aba oculta não liga; sem documento ou sem reler não quebra', () => {
+    const doc = documentoFalso('hidden');
+    const rel = relogioFalso();
+    releituraEnquantoVisivel({ reler: () => {}, documento: doc, agendar: rel.agendar, cancelar: rel.cancelar });
+    assert.equal(rel.ativos.size, 0);
+    assert.doesNotThrow(() => releituraEnquantoVisivel({ reler: () => {}, documento: null })());
+    assert.doesNotThrow(() => releituraEnquantoVisivel({ reler: null, documento: documentoFalso() })());
+});
+
+test('página — sem "Atualizando…" a vitrine se relê com a aba visível, só os cartões, e espera o diálogo fechar', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/ProdutosVitrine.jsx');
+    assert.match(f, /const dialogoAberto = modal \|\| exclusao !== null;/);
+    assert.match(f, /if \(iaTrabalhando \|\| dialogoAberto \|\| typeof document === 'undefined'\) return undefined;/);
+    assert.match(f, /releituraEnquantoVisivel\(\{ reler: \(\) => router\.reload\(\{ only: \['cartoes', 'planejados', 'contagens'\] \}\), documento: document \}\)/);
+    assert.match(f, /\}, \[iaTrabalhando, dialogoAberto\]\);/);
+    // A releitura não pode trocar a página nem zerar o estado: `reload` (preserva estado), nunca `router.get`/`visit`.
+    assert.doesNotMatch(f, /router\.(get|visit)\(/);
 });
 
 // ─── 21/10/2026: o que falta é clicável, e as imagens da IA reprovadas aparecem com o motivo ───

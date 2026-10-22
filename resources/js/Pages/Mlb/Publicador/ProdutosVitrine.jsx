@@ -12,7 +12,7 @@ import AvisoDaFila from '@/Components/Mlb/Publicador/AvisoDaFila';
 import { destinoDoLote } from '@/Components/Mlb/Publicador/AcoesDaSelecaoEmLote';
 import DialogoExcluirProdutos from '@/Components/Mlb/Publicador/DialogoExcluirProdutos';
 import CartaoDaVitrine from '@/Components/Mlb/Publicador/vitrine/CartaoDaVitrine';
-import { FILTROS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
+import { FILTROS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, releituraEnquantoVisivel, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos da conta em VITRINE de cartões (20/10/2026) ───────────────────
@@ -78,6 +78,16 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
 
         return () => clearInterval(t);
     }, [iaTrabalhando]);
+
+    // 22/10/2026 (demo, R4): sem "Atualizando…", a vitrine se relê a cada 25 s com a aba visível, para o produto
+    // que acabou de chegar do Portal aparecer sem F5. O `reload` do Inertia preserva o estado (filtro, seleção,
+    // rolagem); com diálogo aberto ("+ Produto", "Excluir") a releitura espera ele fechar.
+    const dialogoAberto = modal || exclusao !== null;
+    useEffect(() => {
+        if (iaTrabalhando || dialogoAberto || typeof document === 'undefined') return undefined;
+
+        return releituraEnquantoVisivel({ reler: () => router.reload({ only: ['cartoes', 'planejados', 'contagens'] }), documento: document });
+    }, [iaTrabalhando, dialogoAberto]);
 
     function aoConcluirSync(json) {
         resumoPronto.current = false;

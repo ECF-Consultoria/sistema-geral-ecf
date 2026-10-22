@@ -218,3 +218,41 @@ export function itensParaResolver(cartao) {
         .slice(0, 5)
         .map((r) => ({ texto: r.texto.trim(), url: r.url }));
 }
+
+// 22/10/2026 (demo, R4): o produto que acabou de chegar do Portal só aparecia com F5 — a vitrine só se relia
+// enquanto algum cartão estava "Atualizando…". Fora isso ela passa a se reler a cada 25 s, e não mais rápido: o
+// servidor refaz até 40 resumos por visita.
+export const RELEITURA_OCIOSA_MS = 25 * 1000;
+
+/**
+ * Releitura da vitrine enquanto a aba está VISÍVEL: liga o relógio, pausa quando a aba fica oculta e, ao voltar,
+ * relê na hora e religa. `documento` = o `document` do navegador (injetado para o teste). Devolve o desligar.
+ */
+export function releituraEnquantoVisivel({ reler, documento, intervaloMs = RELEITURA_OCIOSA_MS, agendar = setInterval, cancelar = clearInterval }) {
+    if (typeof reler !== 'function' || ! documento) return () => {};
+    let relogio = null;
+    const oculta = () => documento.visibilityState === 'hidden';
+    const ligar = () => {
+        if (relogio === null && ! oculta()) relogio = agendar(reler, intervaloMs);
+    };
+    const parar = () => {
+        if (relogio !== null) cancelar(relogio);
+        relogio = null;
+    };
+    const aoMudar = () => {
+        if (oculta()) {
+            parar();
+        } else if (relogio === null) {
+            reler();
+            ligar();
+        }
+    };
+
+    ligar();
+    documento.addEventListener('visibilitychange', aoMudar);
+
+    return () => {
+        parar();
+        documento.removeEventListener('visibilitychange', aoMudar);
+    };
+}
