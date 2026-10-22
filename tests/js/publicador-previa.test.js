@@ -206,9 +206,23 @@ test('AnuncioNoMl — campo do servidor em formato inesperado não derruba a tel
     assert.doesNotThrow(() => { html = render({ previa: { ...PREVIA, categoria: { caminho: 'Cadeiras' }, variantes: 'x', eixos: null }, anuncio: estragado }); });
     assert.equal(contar(html, 'data-previa-miniatura='), 1);
     assert.match(html, /data-previa-frete="not_specified"/);
-    assert.match(html, /Frete a combinar com o vendedor/);
+    assert.match(html, /Entrega a combinar com o vendedor/);
     assert.doesNotMatch(html, /undefined|NaN|\[object Object\]/);
     assert.doesNotThrow(() => renderToStaticMarkup(React.createElement(AnuncioNoMl, { previa: null, anuncio: null })));
+});
+
+test('AnuncioNoMl — N1: fora do Mercado Envios, "Entrega a combinar" com o aviso, nunca "Frete grátis"', () => {
+    const aviso = 'Pela última conferência, o Mercado Livre vai tirar o Mercado Envios deste anúncio.';
+    const html = render({ anuncio: anuncio({ envio: { modo: 'not_specified', frete_gratis: false, retirada: false, aviso } }) });
+    assert.match(html, /data-previa-frete="not_specified"/);
+    assert.match(html, /Entrega a combinar com o vendedor/);
+    assert.match(html, /data-previa-frete-aviso/);
+    assert.ok(html.includes(aviso));
+    assert.doesNotMatch(html, /Frete grátis/);
+
+    const me1 = render({ anuncio: anuncio({ envio: { modo: 'me1', frete_gratis: false, retirada: false, aviso: 'x' } }) });
+    assert.match(me1, /data-previa-frete="me1"/);
+    assert.match(me1, /Envio pelo vendedor/);
 });
 
 // ─── Fonte ───

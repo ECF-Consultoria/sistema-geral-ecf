@@ -69,7 +69,11 @@ function Galeria({ fotos, ativa, onAtiva }) {
     );
 }
 
-/** O frete na caixa de compra, pelo que vai no `shipping` do plano. Prazo e valor só o ML sabe (pelo CEP). */
+/**
+ * O frete na caixa de compra, pelo que vai no `shipping` do plano. Prazo e valor só o ML sabe (pelo CEP).
+ * N1 (23/10): quando a última conferência disse que o ML vai tirar o Mercado Envios, o servidor já manda o
+ * envio que vai valer ("a combinar", sem frete grátis) e o `aviso` que explica a troca.
+ */
 function Frete({ envio }) {
     const modo = envio?.modo ?? 'me2';
     let principal;
@@ -87,11 +91,18 @@ function Frete({ envio }) {
                 <p className="mt-0.5 text-[14px] text-black/55">O comprador paga o frete, calculado pelo CEP.</p>
             </div>
         );
+    } else if (modo === 'custom' || modo === 'me1') {
+        principal = (
+            <div data-previa-frete={modo}>
+                <p className="flex items-center gap-2 text-[16px] text-black/90"><Truck size={18} aria-hidden="true" /> Envio pelo vendedor</p>
+                <p className="mt-0.5 text-[14px] text-black/55">{modo === 'me1' ? 'Pela transportadora do vendedor, com o custo que ele define.' : 'O vendedor define o custo do frete.'}</p>
+            </div>
+        );
     } else {
         principal = (
             <div data-previa-frete={modo}>
-                <p className="flex items-center gap-2 text-[16px] text-black/90"><Truck size={18} aria-hidden="true" /> {modo === 'custom' ? 'Envio pelo vendedor' : 'Frete a combinar com o vendedor'}</p>
-                <p className="mt-0.5 text-[14px] text-black/55">{modo === 'custom' ? 'O vendedor define o custo do frete.' : 'O valor e a entrega são combinados depois da compra.'}</p>
+                <p className="flex items-center gap-2 text-[16px] text-black/90"><Truck size={18} aria-hidden="true" /> Entrega a combinar com o vendedor</p>
+                <p className="mt-0.5 text-[14px] text-black/55">O valor e a entrega são combinados depois da compra.</p>
             </div>
         );
     }
@@ -99,6 +110,9 @@ function Frete({ envio }) {
     return (
         <div className="space-y-3">
             {principal}
+            {typeof envio?.aviso === 'string' && envio.aviso !== '' && (
+                <p className="rounded-md bg-amber-100 px-2 py-1.5 text-[13px] text-amber-900" data-previa-frete-aviso>{envio.aviso}</p>
+            )}
             {envio?.retirada && (
                 <p className="flex items-center gap-2 text-[14px] text-black/90" data-previa-retirada><MapPin size={16} aria-hidden="true" /> Retirada no endereço do vendedor</p>
             )}

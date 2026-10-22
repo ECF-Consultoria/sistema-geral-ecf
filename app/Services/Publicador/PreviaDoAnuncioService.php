@@ -111,11 +111,12 @@ final class PreviaDoAnuncioService
         }
 
         $variantes = collect($snapshot->variantesAtivas())->keyBy(fn (Variante $v) => $v->chave);
+        $envioQueVale = $this->envioQueVaiValer($r);
 
         return [
             ...$base,
             'pronta' => true,
-            'anuncios' => array_map(fn (ItemPlano $i) => $this->anuncio($r, $i, $variantes->get($i->varianteChave), $eixos, $schema, $snapshot, $imagens), $itens),
+            'anuncios' => array_map(fn (ItemPlano $i) => $this->anuncio($r, $i, $variantes->get($i->varianteChave), $eixos, $schema, $snapshot, $imagens, $envioQueVale), $itens),
         ];
     }
 
@@ -124,8 +125,9 @@ final class PreviaDoAnuncioService
      *
      * @param  list<Eixo>  $eixos
      * @param  Collection<string, PubImagem>  $imagens
+     * @param  ?array{modo: string, aviso: string}  $envioQueVale  o envio que o ML vai aplicar no lugar do plano ({@see envioQueVaiValer})
      */
-    private function anuncio(PubRascunho $r, ItemPlano $i, ?Variante $v, array $eixos, SchemaClassificado $schema, RascunhoSnapshot $s, Collection $imagens): array
+    private function anuncio(PubRascunho $r, ItemPlano $i, ?Variante $v, array $eixos, SchemaClassificado $schema, RascunhoSnapshot $s, Collection $imagens, ?array $envioQueVale = null): array
     {
         $p = $i->payload;
         $titulo = isset($p['family_name']) ? trim((string) $p['family_name']) : null;
@@ -161,10 +163,13 @@ final class PreviaDoAnuncioService
             ))),
             'caracteristicas' => $this->caracteristicas((array) ($p['attributes'] ?? []), $schema, $s, $v),
             'garantia' => $this->garantia($s->garantia, $schema),
+            // N1 (23/10): fora do Mercado Envios o ML publica "a combinar" e tira o frete grátis sem erro (§25):
+            // a prévia mostra o que vai valer, não o que o plano pede.
             'envio' => [
-                'modo' => (string) ($p['shipping']['mode'] ?? 'me2'),
-                'frete_gratis' => (bool) ($p['shipping']['free_shipping'] ?? false),
+                'modo' => $envioQueVale['modo'] ?? (string) ($p['shipping']['mode'] ?? 'me2'),
+                'frete_gratis' => $envioQueVale === null && (bool) ($p['shipping']['free_shipping'] ?? false),
                 'retirada' => (bool) ($p['shipping']['local_pick_up'] ?? false),
+                'aviso' => $envioQueVale['aviso'] ?? null,
             ],
         ];
     }
@@ -326,5 +331,43 @@ final class PreviaDoAnuncioService
         }
 
         return $nome.': '.((int) $g['tempo']).' '.($g['unidade'] ?? 'dias');
+    }
+
+    /**
+     * N1 (demo de 23/10/2026): o envio que o Mercado Livre vai aplicar quando ele difere do plano — nulo quando vale
+     * o plano.
+     *
+     * Só lê o que a última conferência GRAVOU (nenhuma chamada ao ML, nenhum cálculo de frete aqui): o aviso
+     * `shipping.lost_me2*` do validate (o 4057 da Poltrona Opala, §25: o anúncio sai "a combinar" e o frete grátis
+     * some sem erro) ou o `respostas_ml.frete` com `motivo` `sem_mercado_envios`/`fora_do_me2` que a conferência
+     * de frete grava (`ConferenciaService::freteContraAPrecificacao`, com o `destino` do `EnvioDoRascunhoService`).
+     * Destino `me1` = a conta tem a transportadora do vendedor; o resto (`combinar`, `fora`) = "a combinar".
+     *
+     * @return ?array{modo: string, aviso: string}
+     */
+    private function envioQueVaiValer(PubRascunho $r): ?array
+    {
+        /** @var ?\App\Models\PubValidacao $v */
+        $v = $r->validacoes()->latest('id')->first();
+        if ($v === null) {
+            return null;
+        }
+
+        $frete = (array) ($v->respostas_ml['frete'] ?? []);
+        $perdeMe2 = in_array($frete['motivo'] ?? null, ['sem_mercado_envios', 'fora_do_me2'], true);
+        foreach ((array) $v->issues as $issue) {
+            if (str_starts_with((string) ($issue['ml_causa']['code'] ?? ''), 'shipping.lost_me2')) {
+                $perdeMe2 = true;
+            }
+        }
+        if (! $perdeMe2) {
+            return null;
+        }
+
+        if (($frete['destino'] ?? null) === 'me1') {
+            return ['modo' => 'me1', 'aviso' => 'Pela última conferência, este anúncio não cabe no Mercado Envios da conta: vai pela transportadora do vendedor, sem frete grátis.'];
+        }
+
+        return ['modo' => 'not_specified', 'aviso' => 'Pela última conferência, o Mercado Livre vai tirar o Mercado Envios deste anúncio: a entrega fica a combinar e o frete grátis não vale.'];
     }
 }

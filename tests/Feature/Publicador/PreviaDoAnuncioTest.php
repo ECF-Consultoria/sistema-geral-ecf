@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubProduto;
+use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -188,7 +189,7 @@ class PreviaDoAnuncioTest extends TestCase
         $this->assertFalse($itens->contains(fn ($i) => preg_match('/sku|embalagem|pacote/i', $i['nome']) === 1), json_encode($itens));
 
         $this->assertStringEndsWith(': 90 dias', (string) $classico['garantia']);
-        $this->assertSame(['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false], $classico['envio']);
+        $this->assertSame(['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false, 'aviso' => null], $classico['envio']);
         $this->assertSame(4, $classico['estoque']);
         $this->assertSame('Novo', $classico['condicao']);
     }
@@ -242,6 +243,46 @@ class PreviaDoAnuncioTest extends TestCase
         $this->assertFalse($foto['no_ml']);
         $this->assertSame($this->rota('fotos.arquivo', ['imagem' => $id]), $foto['url']);
         $this->assertSame(0, $this->fotosEnviadas, 'a prévia nunca envia foto ao ML');
+    }
+
+    /** A última conferência do rascunho, gravada como a `ConferenciaService` grava. */
+    private function conferenciaGravada(array $issues, array $respostas): void
+    {
+        $r = PubProduto::daOferta($this->ofertas['CAD-01-CB3'])->rascunho()->firstOrFail();
+        PubValidacao::create(['rascunho_id' => $r->id, 'revisao' => $r->revisao, 'camada' => 'L3', 'resultado' => 'AVISOS', 'plano_hash' => str_repeat('a', 64),
+            'issues' => $issues, 'respostas_ml' => $respostas]);
+    }
+
+    /** N1 (demo de 23/10): o aviso 4057 tira o Mercado Envios; a prévia não pode prometer frete grátis (§25). */
+    public function test_conferencia_que_tira_o_mercado_envios_vira_entrega_a_combinar(): void
+    {
+        $this->portalPadrao();
+        $this->rascunhoPreenchido();
+        $this->conferenciaGravada([[
+            'regra' => 'ML', 'severidade' => 'aviso', 'mensagem' => 'User/Catalog has not intersected me2 logistics', 'camada' => 'L3', 'alvo' => [],
+            'ml_causa' => ['code' => 'shipping.lost_me2_by_intersected_logistics', 'cause_id' => 4057],
+        ]], ['frete' => ['aplicavel' => false, 'motivo' => 'sem_mercado_envios']]);
+
+        $envio = $this->mesa()->getJson($this->rota('previa'))->assertOk()->json('anuncios.0.envio');
+
+        $this->assertSame('not_specified', $envio['modo']);
+        $this->assertFalse($envio['frete_gratis']);
+        $this->assertStringContainsString('tirar o Mercado Envios', (string) $envio['aviso']);
+    }
+
+    public function test_pacote_fora_do_me2_com_transportadora_vira_envio_pelo_vendedor_e_conferencia_limpa_nao_muda_nada(): void
+    {
+        $this->portalPadrao();
+        $this->rascunhoPreenchido();
+        $this->conferenciaGravada([], ['frete' => ['aplicavel' => false, 'motivo' => 'fora_do_me2', 'destino' => 'me1']]);
+
+        $envio = $this->mesa()->getJson($this->rota('previa'))->assertOk()->json('anuncios.0.envio');
+        $this->assertSame('me1', $envio['modo']);
+        $this->assertFalse($envio['frete_gratis']);
+
+        $this->conferenciaGravada([], ['frete' => ['aplicavel' => true, 'linhas' => []]]);
+        $envio = $this->mesa()->getJson($this->rota('previa'))->assertOk()->json('anuncios.0.envio');
+        $this->assertSame(['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false, 'aviso' => null], $envio, 'vale a ÚLTIMA conferência');
     }
 
     public function test_sem_categoria_a_previa_diz_o_que_falta(): void
