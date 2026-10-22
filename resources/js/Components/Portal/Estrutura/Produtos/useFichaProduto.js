@@ -7,7 +7,7 @@ import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNaveg
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
 import useTermosDoTitulo from '@/Components/Portal/Estrutura/Produtos/useTermosDoTitulo';
-import { eixosEmUso } from '@/lib/fichaTecnica';
+import { camposPreenchidos, eixosEmUso } from '@/lib/fichaTecnica';
 import { capitalizarTitulo, limiteDoTitulo } from '@/lib/tituloDoProduto';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
@@ -27,6 +27,9 @@ export const MEDIDAS = [
 ];
 
 /** Campos que valem para o produto inteiro: a escolha vai para todas as variações do formulário. */
+/** A pergunta antes de trocar (ou tirar) a categoria de uma ficha técnica já preenchida (demo 23/10, N10). */
+export const CONFIRMA_TROCAR_CATEGORIA = 'Trocar a categoria muda os campos da ficha técnica. O que você já preencheu e não existir na nova categoria será apagado ao salvar. Trocar mesmo assim?';
+
 export const CAMPOS_DO_PRODUTO = ['familia', 'ambientes_texto', 'categoria', 'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho', '_categoriaEscolhida'];
 
 let contador = 0;
@@ -187,6 +190,11 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         const parte = Object.fromEntries(Object.entries(patch).filter(([c]) => CAMPOS_DO_PRODUTO.includes(c)));
         const muda = varsRef.current.some((v) => Object.entries(parte).some(([c, valor]) => comoTexto(v[c], c) !== comoTexto(valor, c)));
         if (! muda) return;
+        // Trocar (ou tirar) a categoria com a ficha técnica preenchida pede confirmação: o que a nova
+        // categoria não tiver sai no próximo salvar. Desistir deixa tudo como estava.
+        const categoriaAntes = varsRef.current[0]?.categoria_ml_id ?? null;
+        const trocaCategoria = 'categoria_ml_id' in parte && categoriaAntes && String(parte.categoria_ml_id ?? '') !== String(categoriaAntes);
+        if (trocaCategoria && camposPreenchidos(tecnica.valores) > 0 && ! window.confirm(CONFIRMA_TROCAR_CATEGORIA)) return;
         setAlterado(true);
         setVars((atual) => atual.map((v) => ({ ...v, ...parte })));
     };

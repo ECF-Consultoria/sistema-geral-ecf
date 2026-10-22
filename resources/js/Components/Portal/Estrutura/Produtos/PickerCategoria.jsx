@@ -23,6 +23,10 @@ const MAXIMO_ITENS = 8;
 // disso o 422 parecia "o Mercado Livre caiu" e "Tentar de novo" repetia o mesmo erro (revisão FE-WR-08).
 const MINIMO_BUSCA = 2;
 const MAXIMO_BUSCA = 120;
+// Demo 23/10 (N10): a lista de sugestões chegou no instante do clique e o clique mirado em "Poltronas"
+// caiu em "Sofás", que tomou o lugar dela. Clique que começa até este tempo depois de a lista mudar
+// é ignorado — a pessoa mirou na lista de antes.
+const LISTA_ESTAVEL_MS = 300;
 
 export default function PickerCategoria({ row, textoInicial, onCommit, onClose, largo = false }) {
     const [busca, setBusca] = useState(() => String(textoInicial ?? row?.nome ?? '').slice(0, MAXIMO_BUSCA));
@@ -32,8 +36,16 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose, 
     const [tentativa, setTentativa] = useState(0);
     const [modo, setModo] = useState('buscar');           // buscar | navegar
     const campo = useRef(null);
+    const listaMudouEm = useRef(0);       // quando a lista de sugestões foi trocada pela última vez
+    const pressionado = useRef(null);     // { id, em } do item em que o botão do mouse desceu
 
-    useEffect(() => { if (modo === 'buscar') campo.current?.focus(); }, [modo]);
+    // A busca abre com o nome do produto: o texto vem SELECIONADO, para quem digita trocar em vez de
+    // emendar no fim ("Poltrona Rodrigues Marrompoltrona decorativa", demo 23/10 N10).
+    useEffect(() => {
+        if (modo !== 'buscar') return;
+        campo.current?.focus();
+        campo.current?.select();
+    }, [modo]);
 
     const buscarNivel = useCallback(async (pai) => (
         await axios.get(route('portal.auth.estrutura.produtos.categorias.arvore'), { params: pai ? { pai } : {} })
@@ -50,6 +62,7 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose, 
             try {
                 const { data } = await axios.get(route('portal.auth.estrutura.produtos.categorias'), { params: { q: q.slice(0, MAXIMO_BUSCA) } });
                 if (! vivo) return;
+                listaMudouEm.current = Date.now();
                 setItens((data.categorias ?? []).slice(0, MAXIMO_ITENS));
                 setEstado(data.indisponivel && (data.categorias ?? []).length === 0 ? 'indisponivel' : 'pronto');
                 setAtivo(0);
@@ -75,6 +88,18 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose, 
         });
         onClose();
     }, [onCommit, onClose]);
+
+    /**
+     * Clique num item: só vale se começou no MESMO item e com a lista já parada (N10). Clique sem o
+     * mouse descer antes (leitor de tela) conta a partir de agora.
+     */
+    const aoClicarItem = (item) => {
+        const p = pressionado.current;
+        pressionado.current = null;
+        if (p && p.id !== item.id) return;
+        if ((p?.em ?? Date.now()) - listaMudouEm.current < LISTA_ESTAVEL_MS) return;
+        escolher(item);
+    };
 
     const aoTecla = (e) => {
         if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo((a) => Math.min(a + 1, Math.max(itens.length - 1, 0))); }
@@ -149,7 +174,8 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose, 
                         return (
                             <li key={item.id} role="option" aria-selected={n === ativo} aria-disabled={! folha}
                                 onMouseEnter={() => setAtivo(n)}
-                                onClick={() => escolher(item)}
+                                onMouseDown={() => { pressionado.current = { id: item.id, em: Date.now() }; }}
+                                onClick={() => aoClicarItem(item)}
                                 className={cn('rounded-lg px-2 py-2', folha ? 'cursor-pointer' : 'cursor-not-allowed', n === ativo && folha && 'bg-white/[0.06]')}>
                                 <p className={cn('text-[13px] font-semibold', folha ? 'text-white/85' : 'text-white/35')}>{item.nome}</p>
                                 <p className={cn('line-clamp-2 text-[12px]', folha ? 'text-white/45' : 'text-white/35')}>{item.caminho_texto}</p>

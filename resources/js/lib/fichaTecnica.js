@@ -24,6 +24,21 @@ export const NAO_SE_APLICA = '-1';
 /** O campo oferece "Não se aplica"? (só quando o servidor marcou). */
 export const aceitaNaoSeAplica = (campo) => !! campo?.nao_se_aplica;
 
+/**
+ * Quantos campos da ficha técnica têm algo preenchido (valor, opções escolhidas ou "Não se aplica").
+ * Serve para perguntar antes de trocar a categoria (demo 23/10, N10): os campos que a nova categoria
+ * não tiver não vão no próximo salvar, e gravar substitui a ficha inteira.
+ */
+export function camposPreenchidos(valores) {
+    return Object.values(valores ?? {}).filter((v) => {
+        if (! v) return false;
+        if (v.naoSeAplica) return true;
+        if (Array.isArray(v.valor)) return v.valor.length > 0;
+
+        return String(v.valor ?? '').trim() !== '';
+    }).length;
+}
+
 /** Os campos da definição numa lista só, na ordem em que a tela os mostra. */
 export function camposDaDefinicao(grupos) {
     return (Array.isArray(grupos) ? grupos : []).flatMap((g) => (Array.isArray(g?.campos) ? g.campos : []));
