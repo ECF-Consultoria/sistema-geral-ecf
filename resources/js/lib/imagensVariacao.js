@@ -12,6 +12,15 @@ export const LIMITE_IMAGENS = 12;
 export const EXTENSOES_ACEITAS = ['jpg', 'jpeg', 'png', 'webp'];
 export const ACEITA_NO_INPUT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
 
+/**
+ * Teto de tamanho por imagem, em MB — o mesmo `estrutura_produtos.imagens.max_kb` (10240 KB) do
+ * servidor, que não chega à página. Mudar lá exige mudar aqui (e conferir `upload_max_filesize`/
+ * `post_max_size` do PHP-FPM). Barrar na escolha evita que a foto grande só seja recusada no
+ * "Salvar produto", depois de quase um minuto de envio (teste da demo 23/10, A4).
+ */
+export const LIMITE_MB = 10;
+const LIMITE_BYTES = LIMITE_MB * 1024 * 1024;
+
 export const AVISO_AGUARDANDO_SALVAR = 'Estas sobem junto com o “Salvar produto”.';
 export const AVISO_GRANDE_DEMAIS = 'A imagem é grande demais para enviar; tente uma menor.';
 export const AVISO_FALHA_GERAL = 'Não foi possível concluir agora. Tente de novo.';
@@ -57,18 +66,51 @@ export function separarArquivos(arquivos) {
     return { aceitos, recusados };
 }
 
+/** Tamanho legível em MB, em pt-BR ("44,5 MB"; sem ",0"). */
+export function emMb(bytes) {
+    const mb = Math.round((Number(bytes) || 0) / 1024 / 1024 * 10) / 10;
+
+    return `${String(mb).replace('.', ',')} MB`;
+}
+
+/**
+ * Separa as que passam do teto de tamanho. Arquivo sem `size` conhecido segue (o servidor confere).
+ * @returns {{ cabem: Array, grandes: Array }}
+ */
+export function separarGrandes(arquivos, limiteBytes = LIMITE_BYTES) {
+    const cabem = [];
+    const grandes = [];
+    Array.from(arquivos ?? []).forEach((a) => {
+        (Number(a?.size) > limiteBytes ? grandes : cabem).push(a);
+    });
+
+    return { cabem, grandes };
+}
+
+/** O aviso das fotos acima do teto, dito na hora da escolha. */
+export function avisoDeGrandes(grandes, limiteMb = LIMITE_MB) {
+    if (! grandes?.length) return null;
+    if (grandes.length === 1) return `“${grandes[0].name}” tem ${emMb(grandes[0].size)}; o limite é ${limiteMb} MB. Escolha uma foto menor.`;
+
+    return `${grandes.length} fotos passam do limite de ${limiteMb} MB (${grandes.map((g) => `“${g.name}”`).join(', ')}). Escolha fotos menores.`;
+}
+
 /**
  * Confere a remessa antes de enviar. O servidor é "tudo ou nada": se não cabe, nada entra;
  * a tela avisa antes, com quantas ainda cabem. Devolve { arquivos, avisos } — `arquivos` vazio = não envia.
  */
 export function prepararRemessa(escolhidos, total, limite = LIMITE_IMAGENS) {
-    const { aceitos, recusados } = separarArquivos(escolhidos);
+    const { aceitos: noFormato, recusados } = separarArquivos(escolhidos);
     const avisos = [];
     if (recusados.length) {
         avisos.push(recusados.length === 1
             ? `"${recusados[0].name}" não está num formato aceito. Envie JPG, PNG ou WebP.`
             : `${recusados.length} arquivos não estão num formato aceito. Envie JPG, PNG ou WebP.`);
     }
+    // Acima do teto nem entra na ficha: o servidor recusaria só no envio (A4).
+    const { cabem: aceitos, grandes } = separarGrandes(noFormato);
+    const avisoGrandes = avisoDeGrandes(grandes);
+    if (avisoGrandes) avisos.push(avisoGrandes);
     if (aceitos.length === 0) return { arquivos: [], avisos };
 
     const cabem = quantasCabem(total, limite);

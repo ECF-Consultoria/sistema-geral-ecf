@@ -275,9 +275,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </div>
                 )}
 
-                {ficha.aviso && (
-                    <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
-                )}
+                {/* O aviso do Salvar mora só junto do botão (H3, mais abaixo): repetido aqui no topo, a mesma
+                    frase aparecia duas vezes na tela (teste da demo 23/10, A4). */}
 
                 {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
                 <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
@@ -328,9 +327,9 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
 
                 {/* Demo 23/10 (H3): o aviso do topo e o erro da variação ficam longe do botão — clicar em Salvar
-                    parecia não fazer nada. O resumo repete aqui, colado aos botões. */}
+                    parecia não fazer nada. O aviso fica aqui, colado aos botões (e só aqui). */}
                 {(ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
-                    <p role="status" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar>
+                    <p role="alert" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar>
                         {ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.'}
                     </p>
                 )}

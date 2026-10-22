@@ -7,6 +7,7 @@ import {
     aplicarImagens, avisosDoErro, decidirEnvio, enviadasDe, enviarPendentes, fotoDoProduto, imagemPendente,
     imagensDaResposta, manterImagensAtuais, montarEnvio, moverImagem, mudouAOrdem, ordemDeIds, pendentesDe,
     prepararRemessa, primeiraFoto, quantasCabem, separarArquivos, soltarSobre,
+    LIMITE_MB, emMb, separarGrandes,
 } from '../../resources/js/lib/imagensVariacao.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -357,4 +358,38 @@ test('Gate de sigilo: nada de marketplace, anúncio, publicação ou MLB nos arq
         assert.ok(! /mercado|an[uú]ncio|public(ar|a[cç][aã]o|ador)|\bMLB\b|\bML\b|marketplace/i.test(cru), `${caminho} cita algo que a tela não pode citar`);
     }
     assert.ok(! /mercado|an[uú]ncio|publicar|\bMLB\b/i.test(galeriaFonte + lib));
+});
+
+// ─── Tamanho (teste da demo 23/10, A4) ──────────────────────────────────
+
+const pesado = (name, mb) => ({ name, size: Math.round(mb * 1024 * 1024) });
+
+test('Tamanho: o teto do JS é o mesmo `max_kb` da config do servidor', () => {
+    const cfg = lerCru('config/estrutura_produtos.php');
+    const kb = Number(/'max_kb'\s*=>\s*(\d+)/.exec(cfg)?.[1]);
+    assert.equal(LIMITE_MB * 1024, kb);
+});
+
+test('Tamanho: foto acima de 10 MB é barrada na escolha, com nome, tamanho e limite', () => {
+    const r = prepararRemessa([pesado('foto-grande.jpg', 44.5), pesado('ok.jpg', 2)], 0);
+    assert.deepEqual(r.arquivos.map((a) => a.name), ['ok.jpg']);
+    assert.deepEqual(r.avisos, ['“foto-grande.jpg” tem 44,5 MB; o limite é 10 MB. Escolha uma foto menor.']);
+    assert.deepEqual(prepararRemessa([pesado('a.jpg', 44.5)], 0).arquivos, [], 'só a grande: nada entra');
+    assert.equal(prepararRemessa([pesado('exata.jpg', 10)], 0).arquivos.length, 1, '10 MB exatos passam, como no servidor');
+    assert.match(prepararRemessa([pesado('a.jpg', 11), pesado('b.png', 12)], 0).avisos[0], /2 fotos passam do limite de 10 MB \(“a\.jpg”, “b\.png”\)/);
+    assert.deepEqual(separarGrandes([{ name: 'sem-size.jpg' }]).grandes, [], 'sem size conhecido segue para o servidor');
+    assert.equal(emMb(10 * 1024 * 1024), '10 MB');
+});
+
+test('Tamanho: a galeria barra antes de guardar a pendente e diz o limite', () => {
+    const g = lerCru('resources/js/Components/Portal/Estrutura/Produtos/GaleriaVariacao.jsx');
+    assert.ok(g.indexOf('prepararRemessa(') < g.indexOf('imagemPendente(a)'), 'a remessa é conferida antes de guardar');
+    assert.ok(g.includes('Até {LIMITE_MB} MB cada.'));
+});
+
+test('Aviso do Salvar aparece UMA vez na ficha (antes saía no topo e junto do botão)', () => {
+    const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
+    assert.equal((pagina.match(/data-aviso-junto-do-salvar/g) ?? []).length, 1);
+    assert.equal((pagina.match(/\{ficha\.aviso\}/g) ?? []).length, 0, 'nenhuma segunda caixa com o mesmo aviso');
+    assert.ok(pagina.includes('{ficha.aviso ??'), 'o aviso segue junto do botão');
 });
