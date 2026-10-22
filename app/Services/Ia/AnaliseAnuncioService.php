@@ -698,7 +698,7 @@ class AnaliseAnuncioService
         Parágrafo 2: explique o uso ideal, ambientes de uso, público-alvo e situações do dia a dia em que o produto resolve um problema.
 
         SEÇÃO 3 — ESPECIFICAÇÕES TÉCNICAS:
-        A ficha técnica dos dados acima já aparece no anúncio, ao lado da descrição: NÃO a copie aqui — repetir o que o Mercado Livre já mostra é desperdício de caracteres. Liste só os detalhes técnicos que o comprador não encontra na ficha, tirados da descrição do cliente e dos itens do kit: construção e materiais internos, espuma e enchimento, mecanismo, fixação, acabamento, garantia, itens inclusos. Não invente dados. Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas, e abaixo um item por linha no formato "Rótulo: valor", sem hífen, sem marcador e sem numeração. Sem nenhum detalhe além da ficha, não escreva esta seção.
+        A ficha técnica dos dados acima já aparece no anúncio, ao lado da descrição: NÃO a copie aqui — repetir o que o Mercado Livre já mostra é desperdício de caracteres. Liste só os detalhes técnicos que o comprador não encontra na ficha, tirados da descrição do cliente e dos itens do kit: construção e materiais internos, espuma e enchimento, mecanismo, fixação, acabamento, garantia, itens inclusos. Não invente dados. Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas, e abaixo um item por linha no formato "Rótulo: valor" — o rótulo curto, dois-pontos e o valor (ex.: "Estrutura: madeira de eucalipto de reflorestamento") —, sem hífen, sem marcador e sem numeração. Junte num item só o que é da mesma parte do produto. Sem nenhum detalhe além da ficha, não escreva esta seção.
 
         SEÇÃO 4 — CUIDADOS E RECOMENDAÇÕES:
         Os cuidados de uso, limpeza, conservação e os avisos de segurança relevantes para este produto. Escreva o título CUIDADOS E RECOMENDAÇÕES, em maiúsculas, e abaixo um cuidado por linha no formato "Rótulo: frase" (ex.: "Limpeza: use pano levemente umedecido em água e sabão neutro."), sem hífen nem marcador.
@@ -710,7 +710,7 @@ class AnaliseAnuncioService
         - Linguagem amigável, profissional e voltada ao consumidor final
         - Sem emojis
         - Sem HTML
-        - Sem caracteres especiais (parênteses duplos, asteriscos decorativos, hífens de lista, etc.)
+        - Sem asteriscos, hashtags, símbolos decorativos nem hífens de lista; use a pontuação normal do português — vírgulas, pontos, dois-pontos, acentos e crase
         - Sem jargão técnico excessivo — escreva para o comprador leigo
         - Separe as seções com uma linha em branco; só as seções 3 e 4 têm título
 

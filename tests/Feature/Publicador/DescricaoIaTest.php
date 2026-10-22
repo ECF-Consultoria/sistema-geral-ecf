@@ -365,7 +365,9 @@ class DescricaoIaTest extends TestCase
             // 22/10/2026, o usuário: "não faz sentido ter [a ficha] na descrição se o Mercado Livre já dá essa informação",
             // e o exemplo dele: títulos em maiúsculas, "Rótulo: valor" sem hífen, fechamento agradecendo a visita à loja.
             'NÃO a copie aqui', 'desperdício de caracteres', 'construção e materiais internos', 'garantia, itens inclusos',
-            'Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas', '"Rótulo: valor", sem hífen',
+            'Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas', '"Rótulo: valor" — o rótulo curto, dois-pontos e o valor',
+            // A regra "sem caracteres especiais" fazia a IA tirar dois-pontos, vírgulas e o "(a)" (teste no rascunho 106).
+            'use a pontuação normal do português — vírgulas, pontos, dois-pontos, acentos e crase',
             'Sem nenhum detalhe além da ficha, não escreva esta seção.',
             'Escreva o título CUIDADOS E RECOMENDAÇÕES, em maiúsculas', '"Rótulo: frase"',
             'Agradecemos pela visita à Dev 02 Testes API e permanecemos à disposição para tirar qualquer dúvida!',
@@ -374,6 +376,7 @@ class DescricaoIaTest extends TestCase
         }
         $this->assertStringNotContainsString('SEM SAUDAÇÃO', $prompt);
         $this->assertStringNotContainsString('Liste as especificações técnicas reais fornecidas acima', $prompt, 'a lista da ficha saiu');
+        $this->assertStringNotContainsString('Sem caracteres especiais', $prompt);
     }
 
     /**
