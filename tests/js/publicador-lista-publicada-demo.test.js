@@ -19,3 +19,10 @@ test('N17 — o frete com que o anúncio saiu aparece na hora; "a combinar" em �
     // A linha antiga do frete do publicado só aparece quando o envio não foi lido (itens de antes).
     assert.match(f, /\{! i\.envio && i\.frete\?\.aplicavel === false && <span/);
 });
+
+test('N23 — o nome da variação vem do servidor e "Único" não aparece', () => {
+    const f = lerSemComentarios(PUBLICAR);
+    assert.match(f, /const r = i\.rotulo \?\? variantes\.find\(\(v\) => v\.chave === i\.variante_chave\)\?\.rotulo \?\? null;/);
+    assert.match(f, /return r && r !== 'Único' \? r : null;/);
+    assert.doesNotMatch(f, /\?\.rotulo \?\? '—'/, 'nem o travessão de antes');
+});

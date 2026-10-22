@@ -98,4 +98,13 @@ class SituacaoDoPublicadoTest extends TestCase
             SituacaoDoAnuncioMl::envio(['status' => 'active'], ['status' => 201, 'corpo' => ['shipping' => ['mode' => 'me2', 'free_shipping' => false]]])['texto']);
         $this->assertNull(SituacaoDoAnuncioMl::envio(null, null), 'sem leitura nenhuma, não inventa');
     }
+
+    public function test_n23_variacao_sem_eixo_mostra_a_cor_que_foi_enviada_e_nao_unico(): void
+    {
+        $this->publicar();
+
+        $this->assertSame('Marrom', $this->itemNaTela()['rotulo']);
+        $this->assertSame('Marrom / G', SituacaoDoAnuncioMl::rotulo('Marrom / G', []), 'com eixo, vale o rótulo da variação');
+        $this->assertSame('Único', SituacaoDoAnuncioMl::rotulo('Único', ['attributes' => [['id' => 'BRAND', 'value_name' => 'ECF']]]), 'sem cor, segue como era');
+    }
 }

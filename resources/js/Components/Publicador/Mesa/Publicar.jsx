@@ -55,6 +55,14 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
     const publicado = m.estado?.rascunho?.status === 'PUBLISHED';
     const andamento = publicacao?.status === 'RUNNING';
     const variantes = m.estado?.variantes ?? [];
+    const itensPublicados = publicacao?.itens ?? [];
+    // "Único" não diz nada a quem vê o anúncio: sem nome de verdade, a linha mostra só o tipo.
+    const rotuloDoItem = (i) => {
+        const r = i.rotulo ?? variantes.find((v) => v.chave === i.variante_chave)?.rotulo ?? null;
+
+        return r && r !== 'Único' ? r : null;
+    };
+    const maisDeUmPorTipo = itensPublicados.some((i, n) => itensPublicados.findIndex((o) => o.listing_type_id === i.listing_type_id) !== n);
     const situacao = situacaoDaConferencia(pub);
     const ambar = situacao.tom === 'falta' || situacao.tom === 'aviso';
     const local = pub.conferencia.local;
@@ -197,7 +205,8 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                             {(publicacao.itens ?? []).some((i) => i.ml_item_id) && (
                                 <div className="flex flex-wrap gap-3 pt-1" data-ver-no-ml>
                                     {(publicacao.itens ?? []).filter((i) => i.ml_item_id && linkAnuncioMl(i.ml_item_id)).map((i) => {
-                                        const rotulo = variantes.length > 1 ? variantes.find((v) => v.chave === i.variante_chave)?.rotulo : null;
+                                        // Demo 23/10 (N23): o nome vem do servidor (a cor de verdade, também na variação sem eixo).
+                                        const rotulo = maisDeUmPorTipo ? rotuloDoItem(i) : null;
 
                                         return (
                                             <a key={i.id} href={linkAnuncioMl(i.ml_item_id)} target="_blank" rel="noopener noreferrer"
@@ -212,7 +221,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                             <ul className="space-y-1.5 text-[13px]">
                                 {(publicacao.itens ?? []).map((i) => (
                                     <li key={i.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70" data-item-publicacao={i.status}>
-                                        <span className="text-white/55">{NOME_TIPO[i.listing_type_id]} · {variantes.find((v) => v.chave === i.variante_chave)?.rotulo ?? '—'}</span>
+                                        <span className="text-white/55">{NOME_TIPO[i.listing_type_id]}{rotuloDoItem(i) ? ` · ${rotuloDoItem(i)}` : ''}</span>
                                         {i.ml_item_id
                                             ? <LinkMl mlb={i.ml_item_id} />
                                             : <span className={i.status === 'FAILED' ? 'text-red-300' : 'text-white/55'}>{STATUS_ITEM[i.status] ?? i.status}</span>}
