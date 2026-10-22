@@ -359,4 +359,34 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Releitura do estado dos anúncios publicados (R17, 22/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | O ML pausa ou põe em revisão DEPOIS de criar, e a lista final do editor
+    | seguia dizendo "Publicado". Logo depois de publicar, o
+    | `RelerEstadoDoPublicadoJob` relê duas vezes; o que foi publicado antes dele
+    | (ou mudou depois) é relido pela rodada diária `publicador:reler-publicados
+    | --aplicar` (`routes/console.php`). Só `GET /items/{id}` — um por anúncio —,
+    | só nas contas liberadas e com o mesmo vendedor que publicou.
+    |
+    | `dias`: publicados nos últimos N dias. `horas`: não relê o que foi lido há
+    | menos disso. `teto`: no máximo N anúncios (= N GETs) por rodada. `lote` e
+    | `intervalo_s`: Jobs de até `lote` anúncios, um a cada `intervalo_s`
+    | segundos, para não fazer rajada no limite do ML. `horario`: São Paulo,
+    | depois da renovação de tokens das 08:00 (§32/§41 — fora da janela as
+    | contas de Polos estão com o token vencido e cada leitura renovaria um).
+    |
+    */
+    'releitura_publicados' => [
+        'ativo' => (bool) env('PUBLICADOR_RELEITURA_ATIVO', true),
+        'horario' => (string) env('PUBLICADOR_RELEITURA_HORARIO', '09:20'),
+        'dias' => (int) env('PUBLICADOR_RELEITURA_DIAS', 30),
+        'horas' => (int) env('PUBLICADOR_RELEITURA_HORAS', 24),
+        'teto' => (int) env('PUBLICADOR_RELEITURA_TETO', 300),
+        'lote' => (int) env('PUBLICADOR_RELEITURA_LOTE', 20),
+        'intervalo_s' => (int) env('PUBLICADOR_RELEITURA_INTERVALO_S', 60),
+    ],
+
 ];

@@ -599,6 +599,19 @@ Schedule::command('publicador:imagens-adiadas')
     ->name('publicador-imagens-adiadas')
     ->withoutOverlapping();
 
+// Publicador — releitura diária do estado dos anúncios publicados (R17, 22/10/2026). O ML pausa ou põe em
+// revisão DEPOIS de criar, e a lista final do editor seguia "Publicado". Uma vez por dia: os publicados nos
+// últimos `dias` que não foram lidos nas últimas `horas`, até `teto` anúncios, em Jobs de `lote` espaçados
+// (`publicador.releitura_publicados`). Só GET no ML, só conta liberada do mesmo vendedor. Depois da renovação
+// de tokens das 08:00 (fora da janela os tokens dos Polos estão vencidos). `PUBLICADOR_RELEITURA_ATIVO=false` desliga.
+Schedule::command('publicador:reler-publicados --aplicar')
+    ->dailyAt((string) config('publicador.releitura_publicados.horario', '09:20'))
+    ->timezone('America/Sao_Paulo')
+    ->name('publicador-reler-publicados')
+    ->when(fn () => (bool) config('publicador.releitura_publicados.ativo', true))
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // ═══ Publicador — fila de publicação em lote (10/10/2026, learnings publicador-ml §20) ═══
 //
 // Todo minuto: fecha o produto que terminou de publicar e começa os próximos de cada fila ativa — em rodadas

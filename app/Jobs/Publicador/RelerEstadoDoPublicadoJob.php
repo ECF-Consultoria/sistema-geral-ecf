@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Publicador;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
@@ -28,6 +29,10 @@ use Illuminate\Support\Facades\Log;
  * Só leitura, e só na conta liberada do MESMO vendedor que publicou. Uma leitura que falha não quebra nada:
  * fica no log e o próximo anúncio segue. Fila `high`, como os outros Jobs de pós-publicação do Publicador
  * (acervo, promoção, combos): a `default` já segurou job por horas em produção.
+ *
+ * R17 (pós-demo): os anúncios publicados ANTES de 22/10 nunca tiveram este Job e seguiam "Publicado" pausados
+ * no ML. O comando `publicador:reler-publicados` (e a rodada diária do `routes/console.php`) agenda este mesmo
+ * Job com a lista de itens a reler (`$itens`): aí é UMA leitura só — quem lê de novo é a rodada seguinte.
  */
 class RelerEstadoDoPublicadoJob implements ShouldQueue
 {
@@ -47,7 +52,11 @@ class RelerEstadoDoPublicadoJob implements ShouldQueue
 
     public int $timeout = 60;
 
-    public function __construct(public readonly int $publicacaoId)
+    /**
+     * @param  list<int>|null  $itens  os `pub_publicacao_itens.id` a reler (releitura em lote, uma leitura só);
+     *                                 nulo = todos os criados da publicação, com a 2ª leitura (logo depois de publicar)
+     */
+    public function __construct(public readonly int $publicacaoId, public readonly ?array $itens = null)
     {
         // No construtor porque `Queueable` já declara `$queue`.
         $this->onQueue('high');
@@ -61,7 +70,8 @@ class RelerEstadoDoPublicadoJob implements ShouldQueue
             Log::warning("[Publicador] estado do publicado: publicação {$this->publicacaoId} não foi relida: {$e->getMessage()}");
         }
 
-        if ($this->attempts() < $this->tries) {
+        // A releitura em lote é de uma leitura só: a 2ª fica para a rodada seguinte.
+        if ($this->itens === null && $this->attempts() < $this->tries) {
             $this->release(self::ESPERA_SEGUNDA);
         }
     }
@@ -70,20 +80,19 @@ class RelerEstadoDoPublicadoJob implements ShouldQueue
     public function reler(ClienteMlPublicador $cliente): int
     {
         $p = PubPublicacao::find($this->publicacaoId);
-        $r = $p === null ? null : PubRascunho::find($p->rascunho_id);
-        $produto = $r === null ? null : PubProduto::with(['mlbEmpresa.mlToken', 'company.mlToken'])->find($r->produto_id);
-        $conta = $produto?->contaOuNula();
-        $seller = (string) ($p?->ator['conta']['seller'] ?? '');
+        $conta = $p === null ? null : self::contaQueLe($p);
 
         // A mesma conta que publicou, e liberada: fora disso não se lê nada (D26).
-        if ($conta === null || $seller === '' || ! ContasLiberadas::libera($conta) || (string) ($conta->mlToken?->ml_user_id ?? '') !== $seller) {
+        if ($conta === null) {
             Log::info("[Publicador] estado do publicado: publicação {$this->publicacaoId} sem conta liberada do mesmo vendedor — nada relido.");
 
             return 0;
         }
 
         $relidos = 0;
-        foreach ($p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')->orderBy('id')->get() as $item) {
+        $itens = $p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')
+            ->when($this->itens !== null, fn ($q) => $q->whereIn('id', array_map('intval', $this->itens)));
+        foreach ($itens->orderBy('id')->get() as $item) {
             try {
                 $resp = $cliente->daConta($conta, 'GET', "/items/{$item->ml_item_id}", ['attributes' => 'id,status,sub_status,tags,permalink,shipping']);
                 if (! $resp->ok() || ! is_array($resp->corpo)) {
@@ -103,6 +112,25 @@ class RelerEstadoDoPublicadoJob implements ShouldQueue
         }
 
         return $relidos;
+    }
+
+    /**
+     * A conta que pode reler os anúncios da publicação: a do produto, liberada e com o MESMO vendedor que publicou
+     * (`ator.conta.seller`, fixado no clique em Publicar). Nula = nada se lê. O `publicador:reler-publicados` usa
+     * a mesma régua para dizer, na simulação, o que fica de fora.
+     */
+    public static function contaQueLe(PubPublicacao $p): ?ContaMercadoLivre
+    {
+        $r = PubRascunho::find($p->rascunho_id);
+        $produto = $r === null ? null : PubProduto::with(['mlbEmpresa.mlToken', 'company.mlToken'])->find($r->produto_id);
+        $conta = $produto?->contaOuNula();
+        $seller = (string) ($p->ator['conta']['seller'] ?? '');
+
+        if ($conta === null || $seller === '' || ! ContasLiberadas::libera($conta) || (string) ($conta->mlToken?->ml_user_id ?? '') !== $seller) {
+            return null;
+        }
+
+        return $conta;
     }
 
     public function failed(\Throwable $e): void
