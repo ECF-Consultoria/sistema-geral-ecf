@@ -37,34 +37,36 @@ export const fotosDoGrupo = (imagens, atribuicoes, grupo) => {
 /** Falha = não subiu E (há erro OU a conta envia ao ML). Pendente sem erro em conta não liberada é só "guardada". */
 const falhasDe = (imagens, envioAoMl) => (imagens ?? []).filter((i) => i.upload_status !== 'uploaded').filter((i) => i.erro || envioAoMl);
 
-function Falha({ f, disabled, onReenviar }) {
+// N15 (23/10): a foto é dita pela miniatura e pela posição no bloco ("2ª foto"), não pelo id
+// interno ("Foto 220"), que não diz nada a quem olha a tela.
+function Falha({ f, posicao = null, disabled, onReenviar }) {
     return (
         <p className="flex flex-wrap items-center gap-2 text-[13px] text-amber-200" data-foto-falha={f.id}>
-            <AlertTriangle size={14} className="shrink-0" /> Foto {f.id}: {f.erro ?? 'ainda não subiu para o Mercado Livre.'}
+            <AlertTriangle size={14} className="shrink-0" />
+            {f.url && <img src={f.url} alt="" className="h-8 w-8 shrink-0 rounded border border-white/10 object-cover" data-foto-falha-miniatura />}
+            {posicao ? `${posicao}ª foto` : 'Uma foto'}: {f.erro ?? 'ainda não subiu para o Mercado Livre.'}
             {! disabled && <Botao variante="fantasma" className="py-1" onClick={() => onReenviar(f.id)}><RefreshCw size={12} /> enviar de novo</Botao>}
         </p>
     );
 }
 
-/** Avisos que não são de um grupo: fotos guardadas (D26) e falhas de foto que não está em grupo nenhum. */
-export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true, disabled, onReenviar }) {
-    const guardadas = envioAoMl ? [] : (imagens ?? []).filter((i) => i.upload_status === 'pending' && ! i.erro);
-    const soltas = falhasDe(imagens, envioAoMl).filter((f) => ! (atribuicoes ?? []).some((a) => String(a.imagem) === String(f.id)));
+/**
+ * Avisos que não são de um grupo: as fotos guardadas (D26).
+ *
+ * N15 (23/10): só conta foto USADA no anúncio (com atribuição). Desde 20/10 as imagens por IA
+ * substituem as do cliente, que ficam no rascunho sem atribuição, só como referência (§40) — a
+ * faixa "ainda não subiu" sobre elas assustava sem motivo: foto fora de todo grupo não vai ao
+ * anúncio, e o V-IMG-08 só olha as atribuídas. Falha de foto usada aparece no bloco do grupo.
+ */
+export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true }) {
+    const usada = (i) => (atribuicoes ?? []).some((a) => String(a.imagem) === String(i.id));
+    const guardadas = envioAoMl ? [] : (imagens ?? []).filter((i) => i.upload_status === 'pending' && ! i.erro).filter(usada);
 
-    return (
-        <>
-            {guardadas.length > 0 && (
-                <p className="flex items-start gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[13px] text-white/55" data-fotos-guardadas={guardadas.length}>
-                    <Lock size={14} className="mt-0.5 shrink-0" /> As fotos ficam guardadas aqui e sobem para o Mercado Livre quando a publicação for liberada para esta conta.
-                </p>
-            )}
-            {soltas.length > 0 && (
-                <div className="space-y-1 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3" data-fotos-falhas={soltas.length}>
-                    {soltas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}
-                </div>
-            )}
-        </>
-    );
+    return guardadas.length > 0 ? (
+        <p className="flex items-start gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[13px] text-white/55" data-fotos-guardadas={guardadas.length}>
+            <Lock size={14} className="mt-0.5 shrink-0" /> As fotos ficam guardadas aqui e sobem para o Mercado Livre quando a publicação for liberada para esta conta.
+        </p>
+    ) : null;
 }
 
 /**
@@ -148,7 +150,11 @@ export function BlocoDeFotos({
                 <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
                     onReordenar={reordenar} onRemover={remover}
                     onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
-                {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}</div>}
+                {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => {
+                    const indice = fotos.findIndex((x) => x.id === String(f.id));
+
+                    return <Falha key={f.id} f={{ ...f, url: fotos[indice]?.url ?? f.url }} posicao={indice >= 0 ? indice + 1 : null} disabled={disabled} onReenviar={onReenviar} />;
+                })}</div>}
                 <ErroDoCampo>{erro}</ErroDoCampo>
                 {children}
                 <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos" data-campo-fotos={grupo}
