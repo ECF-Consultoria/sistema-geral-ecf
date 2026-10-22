@@ -2068,3 +2068,20 @@ falta). O frete grátis obrigatório é o `EditorRascunhoService::freteGratis` d
   nenhum tipo está ligado e o da régua saiu do ar (`ligarTiposForaDoAr`, §44) — caso raro, fora deste conserto.
 - **Custo no preparo:** até 3 GETs de conta (só se a leitura passou de 10 min) + 1 a 4 de `shipping_options/free` por
   produto preparado, enquanto o frete grátis não está marcado.
+
+## 56. Releitura do estado dos anúncios JÁ publicados (R17, pós-demo, 22/10/2026)
+
+- O `RelerEstadoDoPublicadoJob` só nasce no fim de publicação NOVA: tudo o que foi publicado antes dele seguia
+  "Publicado" na lista final mesmo pausado/em revisão no ML. `publicador:reler-publicados` agenda o MESMO Job com a
+  lista de itens (`$itens` → uma leitura só, sem o `release` da 2ª). **Simulação por padrão**; `--aplicar` agenda.
+- Régua da conta: `RelerEstadoDoPublicadoJob::contaQueLe` (liberada + `ator.conta.seller` = token de hoje). Conta
+  fora da liberação aparece como "fora" e não é lida — para reler a de um cliente, ela precisa estar em
+  `publicador.contas_liberadas`.
+- Quem entra: CREATED com `ml_item_id`, `criado_em` nos últimos `--dias`, `avisos.estado.lido_em` mais velho que
+  `--horas` (nunca lidos primeiro), e não `closed` no ML (encerrado não volta). O mesmo MLB em duas publicações
+  é lido uma vez (o item mais novo). Teto por rodada (= GETs) e Jobs de `lote` espaçados `intervalo_s`.
+- Rodada diária às **09:20 de São Paulo**, de propósito depois do `ml:refresh-tokens` das 08:00 (§32/§41: de
+  madrugada os tokens dos Polos estão vencidos e cada leitura renovaria um — rajada de renovação dá 429).
+  Config `publicador.releitura_publicados` / `PUBLICADOR_RELEITURA_*`; `PUBLICADOR_RELEITURA_ATIVO=false` desliga.
+- 1ª rodada em produção: `php artisan publicador:reler-publicados --dias=60 --horas=0` (simulação, conferir o
+  número por conta) → mesma linha com `--aplicar`. Fila `high`: precisa de worker vivo nela.
