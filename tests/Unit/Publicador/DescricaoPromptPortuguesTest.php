@@ -28,13 +28,12 @@ class DescricaoPromptPortuguesTest extends TestCase
         $this->assertStringContainsString('Garanta já a sua', $p);
     }
 
-    public function test_regras_de_21_10_e_formato_da_resposta_continuam(): void
+    public function test_formato_da_resposta_continua(): void
     {
         $p = $this->prompt();
 
-        // Sem saudação nem nome de loja (§45) — não desfazer.
-        $this->assertStringContainsString('SEM SAUDAÇÃO E SEM NOME DE LOJA', $p);
-        $this->assertStringNotContainsString('Loja X', $p);
+        // 22/10/2026: a saudação com o nome da loja VOLTOU por decisão do usuário (estrutura ECF, commit dd7dc0ad,
+        // desfaz o N2 de 21/10) — este teste não cobra mais "sem saudação"; só o formato da resposta.
         $this->assertStringContainsString('{"descricao":"..."}', $p);
     }
 }
