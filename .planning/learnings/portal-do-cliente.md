@@ -1959,3 +1959,16 @@ deveria aparecer aqui e não salvar para depois voltar; a usabilidade fica horr�
   vai para o JS); com a caixa mexida ela fica apagada e diz que a Precificação já usa as medidas digitadas.
 - Conferido no servidor local de demonstração (Chrome sem janela): produto novo, custo 270 e caixa 120 × 50 × 91 cm com
   10 kg → frete R$ 168,85 ("referência do ML para a caixa") e preço na hora, sem salvar.
+
+## Poltrona sem Combo nem Kit no Planejamento é DADO, não código (22/10/2026)
+
+Teste da empresa #459: duas poltronas completas e publicadas (mesma família, ambiente Sala, tipo Poltrona) sem
+nenhuma sugestão, e uma mesa de cabeceira incompleta com Combo. O gerador está certo:
+
+- A semente (`config/estrutura_geracao.php`) dá ao tipo **Poltrona** `qtd_combo = null` e nenhum par de tipos tem
+  Poltrona — nem **Poltrona + Poltrona** (como o Cama + Cama). Kit entre dois produtos do MESMO tipo só sai com o par
+  do tipo com ele mesmo. O criado-mudo ("mesa de cabeceira") nasce com Combo de 2.
+- Completude e "já publicado" não entram na regra: basta a variação ter oferta simples ligada (D-09).
+- Kit de duas cores do MESMO produto nunca é sugerido (o par é entre produtos); sai pelo "Montar kit".
+- O conserto é na tela admin `/dev/estrutura-geracao`: Combo "2" no tipo Poltrona e o par Poltrona + Poltrona
+  ("Combit: não"). `PoltronasNaSementeTest` prova os dois lados.
