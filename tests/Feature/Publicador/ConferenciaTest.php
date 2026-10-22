@@ -50,7 +50,9 @@ class ConferenciaTest extends TestCase
     {
         $v = $this->conferir();
 
-        $this->assertSame(ConferenciaService::AVISOS, $v->resultado, 'o 400 só com avisos é aprovação (N-16)');
+        // O 400 só com avisos é aprovação (N-16). A resposta capturada traz só o 4053 e o 350, os dois ruído desde
+        // 22/10/2026 ("esse aviso nem precisa"): sem aviso de verdade, a conferência sai OK.
+        $this->assertSame(ConferenciaService::OK, $v->resultado, 'o 400 só com avisos de ruído é aprovação limpa (N-16)');
         $this->assertSame('L3', $v->camada);
         $this->assertSame($this->r->revisao, $v->revisao);
         $this->assertSame(PubRascunho::VALIDATED, $this->r->fresh()->status);
@@ -105,7 +107,7 @@ class ConferenciaTest extends TestCase
         $v = $this->conferir();
 
         $this->assertNotContains('V-ATT-08', self::regras($v));
-        $this->assertSame(ConferenciaService::AVISOS, $v->resultado);
+        $this->assertSame(ConferenciaService::OK, $v->resultado, 'só os avisos de ruído (4053 e 350)');
         $this->assertSame(1, $this->chamadas('/items/validate'));
     }
 
@@ -236,7 +238,7 @@ class ConferenciaTest extends TestCase
 
         $v = $this->conferir();
 
-        $this->assertSame(ConferenciaService::AVISOS, $v->resultado);
+        $this->assertSame(ConferenciaService::OK, $v->resultado, 'só os avisos de ruído (4053 e 350)');
         $this->assertSame(PubRascunho::DRAFT, $this->r->fresh()->status, 'a conferência vale para a revisão antiga');
         $this->assertSame($this->r->revisao, $v->revisao);
     }
@@ -249,7 +251,7 @@ class ConferenciaTest extends TestCase
 
             $v = $this->conferir();
 
-            $this->assertSame(ConferenciaService::AVISOS, $v->resultado, 'a conferência continua sendo gravada');
+            $this->assertSame(ConferenciaService::OK, $v->resultado, 'a conferência continua sendo gravada');
             $this->assertSame($status, $this->r->fresh()->status, "{$status} não pode virar VALIDATED");
         }
 
@@ -272,7 +274,7 @@ class ConferenciaTest extends TestCase
     public function test_job_roda_a_conferencia_e_falha_vira_erro_na_tela(): void
     {
         (new ConferirRascunhoJob($this->r->id))->handle(app(ConferenciaService::class));
-        $this->assertSame(ConferenciaService::AVISOS, $this->r->validacoes()->latest('id')->first()->resultado);
+        $this->assertSame(ConferenciaService::OK, $this->r->validacoes()->latest('id')->first()->resultado, 'só os avisos de ruído (4053 e 350)');
 
         (new ConferirRascunhoJob($this->r->id))->failed(new \RuntimeException('boom'));
         $ultima = $this->r->validacoes()->latest('id')->first();

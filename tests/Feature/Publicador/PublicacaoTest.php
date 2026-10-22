@@ -180,6 +180,7 @@ class PublicacaoTest extends TestCase
 
         $this->assertStringStartsWith('RN-90', $tenta(), 'sem conferência');
 
+        $this->validateComAviso();
         $this->conferir();
         $this->assertStringContainsString('Estou ciente', $tenta(false), 'avisos do ML precisam do "Estou ciente"');
 

@@ -165,6 +165,18 @@ trait CenarioCadeira
         ]);
     }
 
+    /**
+     * O validate com um aviso que NÃO é ruído. Desde 22/10/2026 o 4053 e o 350 da resposta capturada são ruído, e a
+     * conferência dela sai OK — quem testa o "Estou ciente" (que só existe com aviso) precisa de um aviso de verdade.
+     */
+    protected function validateComAviso(): void
+    {
+        $corpo = self::fixture('conta/categorias/MLB193945/validate_base_up');
+        $corpo['cause'][] = ['department' => 'items', 'cause_id' => 469, 'type' => 'warning', 'code' => 'item.available_quantity.ignored',
+            'references' => [], 'message' => 'Available quantity is managed by stock locations'];
+        $this->validate = fn (array $dados) => Http::response($corpo, 400);
+    }
+
     protected static function fixture(string $relativo): array
     {
         return json_decode(file_get_contents(base_path("tests/fixtures-ml/sondagem/{$relativo}.json")), true)['resposta'];

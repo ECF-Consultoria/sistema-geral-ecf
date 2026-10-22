@@ -1888,3 +1888,16 @@ Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.
   decisão do usuário (elas leem a descrição do rascunho). O aplicar espera 5 s (era 20) e a tela consulta a cada 5 s só
   enquanto a IA trabalha. O planejamento do kit (16–19 s, uma chamada de LLM) é do Creative Engine: combinar com o dono
   antes de mexer.
+
+## 46. O aviso 350 ("frete grátis obrigatório") virou ruído, como o 4053 (22/10/2026)
+
+O usuário, sobre "Neste preço o frete grátis é obrigatório: o Mercado Livre vai ativá-lo": "acredito que esse aviso nem
+precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_shipping` (só quando vem como `warning`).
+
+- A regra continua valendo; só o aviso sai. O frete grátis acima de R$ 79 já entra no preço da Precificação (o vendedor
+  paga), e o editor liga o frete grátis sozinho (`EditorRascunhoService::freteGratis`).
+- **Efeito colateral medido:** a resposta capturada `validate_base_up` só tem 4053 + 350. Com os dois como ruído, a
+  conferência dessa resposta sai `OK`, não mais `AVISOS` — os testes que esperavam `AVISOS` foram ajustados
+  (`ConferenciaTest`). Quem precisar de um aviso "de verdade" em teste use outro código (o 469, por exemplo).
+- Conferência gravada antes continua com o 350 no banco; a tela filtra na leitura (`estado()` e `ResumoRapidoService`
+  já passam tudo por `ehRuido`).

@@ -42,8 +42,12 @@ final class MapeadorErrosMl
      * o anúncio (N-16): `4053 shipping.lost_me1_by_user` = a conta não usa o
      * Mercado Envios 1. A equipe pediu para não vê-los (docx §5, 03/10/2026);
      * a resposta crua continua guardada na conferência.
+     *
+     * 22/10/2026: também o `350 item.shipping.mandatory_free_shipping` ("Neste preço o frete grátis é obrigatório:
+     * o Mercado Livre vai ativá-lo") — o usuário: "esse aviso nem precisa". A regra continua valendo: o frete grátis
+     * acima de R$ 79 já entra no preço (o vendedor paga) e o editor já liga o frete grátis sozinho.
      */
-    private const RUIDO = ['4053' => 'shipping.lost_me1_by_user'];
+    private const RUIDO = ['4053' => 'shipping.lost_me1_by_user', '350' => 'item.shipping.mandatory_free_shipping'];
 
     /** @param array{cause_id?: ?int, code?: string, type?: string} $causa */
     public static function ehRuido(array $causa): bool

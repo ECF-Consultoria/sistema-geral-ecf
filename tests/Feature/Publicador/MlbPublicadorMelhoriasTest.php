@@ -539,11 +539,12 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $r = $this->comCategoria();
         $aviso = fn (int $id, string $code) => ['regra' => 'V-REM-01', 'severidade' => 'WARNING', 'mensagem' => $code, 'camada' => 'L3', 'alvo' => ['etapa' => 'E10'],
             'ml_causa' => ['cause_id' => $id, 'code' => $code, 'type' => 'warning', 'message' => $code]];
+        // 22/10/2026: o 350 (frete grátis obrigatório nesta faixa) também saiu da tela — "esse aviso nem precisa".
         $r->validacoes()->create(['revisao' => $r->revisao, 'camada' => 'L3', 'resultado' => ConferenciaService::AVISOS,
-            'issues' => [$aviso(4053, 'shipping.lost_me1_by_user'), $aviso(350, 'item.shipping.mandatory_free_shipping')]]);
+            'issues' => [$aviso(4053, 'shipping.lost_me1_by_user'), $aviso(350, 'item.shipping.mandatory_free_shipping'), $aviso(469, 'item.available_quantity.ignored')]]);
 
         $issues = $this->mesa()->getJson($this->rota('abrir'))->assertOk()->json('conferencia.issues');
 
-        $this->assertSame(['item.shipping.mandatory_free_shipping'], array_column(array_column($issues, 'ml_causa'), 'code'));
+        $this->assertSame(['item.available_quantity.ignored'], array_column(array_column($issues, 'ml_causa'), 'code'));
     }
 }
