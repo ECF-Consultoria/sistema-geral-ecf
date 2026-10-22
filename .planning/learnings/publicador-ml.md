@@ -1920,3 +1920,9 @@ precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_ship
   `gerarEan13`/`variantesSemGtin`, `tomDaCor`/`nomeDaCor` e a regra de `fotos_por_variante` para PHP, e o frete grátis
   obrigatório pelo `EditorRascunhoService` (linha ~553, já calcula `obrigatorio`, mas consulta o ML). Com isso os
   `useEffect` do editor deixam de disparar (o valor já está certo). O "editando" que adia o preparo da IA some junto.
+
+## 47. O portão "TERRITÓRIO … ESCOPO DO ASSUNTO (188-07)" lê só os últimos 80 commits (22/10/2026)
+
+`tests/js/publicador-painel-casca-188.test.js` procura commits `(188-07)` em `git log -80`. Com o histórico crescendo
+(22/10: as correções da demo), eles saíram da janela e o teste falha com "nenhum commit desta FASE no log" — sem
+nada errado no código. Não "conserte" mudando commits: ou se aumenta a janela, ou se busca por `--grep="(188-07)"`.
