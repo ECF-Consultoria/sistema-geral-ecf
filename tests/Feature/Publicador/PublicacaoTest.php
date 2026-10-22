@@ -149,7 +149,11 @@ class PublicacaoTest extends TestCase
         $this->assertSame('Cadeira Escritório Executiva ECF Giratória', $item->payload['family_name'], 'o payload enviado fica guardado');
         $this->assertSame('OK', $item->descricao_status);
         $this->assertSame(['plain_text' => 'Cadeira executiva giratória.'], collect(Http::recorded(fn (Request $q) => str_ends_with($q->url(), '/description')))->first()[0]->data());
-        $this->assertSame(['status' => 'active', 'sub_status' => [], 'tags' => ['incomplete_technical_specs'], 'permalink' => 'https://produto.mercadolivre.com.br/x'], $item->avisos['estado']);
+        $this->assertSame(['status' => 'active', 'sub_status' => [], 'tags' => ['incomplete_technical_specs'], 'permalink' => 'https://produto.mercadolivre.com.br/x'],
+            array_intersect_key($item->avisos['estado'], array_flip(['status', 'sub_status', 'tags', 'permalink'])));
+        // Demo 23/10 (N17/H21): o estado também guarda o envio (aqui o ML não mandou `shipping`) e quando foi lido.
+        $this->assertNull($item->avisos['estado']['envio']);
+        $this->assertNotEmpty($item->avisos['estado']['lido_em']);
 
         $this->assertSame(PubPublicacao::PUBLISHED, $p->fresh()->status);
         $this->assertSame(PubRascunho::PUBLISHED, $this->r->fresh()->status);
