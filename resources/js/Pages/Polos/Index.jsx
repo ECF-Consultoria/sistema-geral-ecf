@@ -16,6 +16,7 @@ import SparkSemanal from './components/SparkSemanal';
 import AdsCard from './components/AdsCard';
 import M1Card from './components/M1Card';
 import { montarCorDoPolo } from './components/poloCores';
+import { SeloFonteFaturamento, LancarFaturamentoManual } from './components/FaturamentoManual';
 
 // Chrome do card de seção do Cockpit (com inner-glow sutil no topo).
 const CARD = cn(
@@ -48,6 +49,8 @@ export default function PolosIndex({
     metricaFaturamento = 'moveis',
     adsLimites       = { teto: 3000, alerta1: 1000, alerta2: 2000 },
     m1               = { total: 0, faturando: 0, nao: 0, faturamento: 0, empresas: [], polos: [] },
+    // Só cargo Dev, conta Admin e Débora Lima (gate no servidor; aqui só esconde o lápis).
+    podeLancarFaturamento = false,
     erro             = null,
 }) {
     // Cor estável por polo (ordem alfabética que o backend já entrega)
@@ -103,6 +106,10 @@ export default function PolosIndex({
     };
 
     const fecharDrawer = () => { setPoloAberto(null); setEmpresaSel(null); };
+
+    // O drawer guarda o objeto do polo do clique. Depois de um lançamento manual a página
+    // recarrega as props com o número novo — relê o polo pelo nome para o drawer acompanhar.
+    const poloDoDrawer = poloAberto ? (polos.find((p) => p.polo === poloAberto.polo) ?? poloAberto) : null;
 
     // ── Agregados do Cockpit (recalculados sobre os polos VISÍVEIS — respeitam os chips) ──
     const totalFat    = visiveis.reduce((acc, p) => acc + (p.faturamento ?? 0), 0);
@@ -384,11 +391,13 @@ export default function PolosIndex({
             </div>
 
             {/* Painel lateral: empresas do polo + faturamento semanal sob demanda */}
-            {poloAberto && (
+            {poloDoDrawer && (
                 <PoloDrawer
-                    polo={poloAberto}
-                    cor={corDoPolo[poloAberto.polo]}
+                    polo={poloDoDrawer}
+                    cor={corDoPolo[poloDoDrawer.polo]}
+                    mes={mesSelecionado}
                     mesRefLabel={mesRefLabel}
+                    podeLancarFaturamento={podeLancarFaturamento}
                     fechado={fechado}
                     empresaSel={empresaSel}
                     semanal={semanal}
@@ -405,7 +414,7 @@ export default function PolosIndex({
  * status, faturamento vs meta (%), ads ligado/desligado e problema. Ao clicar,
  * expande o faturamento semanal (Adman, carregado sob demanda) como área neon.
  */
-function PoloDrawer({ polo, cor, mesRefLabel, fechado, empresaSel, semanal, onEmpresa, onClose }) {
+function PoloDrawer({ polo, cor, mes, mesRefLabel, podeLancarFaturamento, fechado, empresaSel, semanal, onEmpresa, onClose }) {
     const empresas = polo.empresas ?? [];
     const [filtro, setFiltro] = useState('todas');
 
@@ -512,6 +521,7 @@ function PoloDrawer({ polo, cor, mesRefLabel, fechado, empresaSel, semanal, onEm
                                     {/* Faturamento + barra % da meta */}
                                     <div className="mt-2 flex items-center gap-3">
                                         <span className="text-white font-semibold text-sm tabular-nums w-28 shrink-0">{formatCurrency(e.faturamento)}</span>
+                                        <SeloFonteFaturamento empresa={e} />
                                         <div className="flex-1 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
                                             <div className="h-full rounded-full" style={{ width: `${pctBar}%`, background: statusCor }} />
                                         </div>
@@ -537,6 +547,10 @@ function PoloDrawer({ polo, cor, mesRefLabel, fechado, empresaSel, semanal, onEm
                                         )}
                                     </div>
                                 </button>
+
+                                {/* Lançamento manual — fora do <button> da empresa (botão não aninha botão). */}
+                                <LancarFaturamentoManual empresa={e} mes={mes} mesLabel={mesRefLabel}
+                                                         podeLancar={podeLancarFaturamento} className="mt-1.5" />
 
                                 {/* Detalhe semanal (sob demanda) — área neon */}
                                 {expandida && (

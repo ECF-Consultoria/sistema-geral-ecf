@@ -1675,6 +1675,10 @@ Route::middleware(['auth', 'verified'])
          Route::patch('/empresas/{empresa}/ads', [PolosController::class, 'marcarAds'])->name('empresas.ads');
          // Check "reunião do mês feita" por empresa/mês (gaveta de /polos/empresas — TKT-0004).
          Route::post('/reunioes', [PolosController::class, 'reuniaoMarcar'])->name('reunioes.marcar');
+         // Faturamento lançado à mão por empresa/mês, só onde a Adman não tem dado (22/10/2026).
+         // Só cargo Dev, conta Admin e Débora Lima — gate em podeLancarFaturamentoManual().
+         Route::post('/faturamento-manual', [PolosController::class, 'faturamentoManualSalvar'])->name('faturamento-manual.salvar');
+         Route::delete('/faturamento-manual/{lancamento}', [PolosController::class, 'faturamentoManualRemover'])->name('faturamento-manual.remover');
          // Baixar /polos/empresas em .xlsx (TKT-0018). POST: leva os cust_id das linhas visíveis.
          Route::post('/empresas/exportar', [PolosController::class, 'exportarEmpresas'])->name('empresas.exportar');
      });

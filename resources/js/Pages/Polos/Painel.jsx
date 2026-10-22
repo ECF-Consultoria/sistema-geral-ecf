@@ -32,6 +32,7 @@ import PpasDaEmpresa from './components/PpasDaEmpresa';
 import { montarCorDoPolo } from './components/poloCores';
 import { corEstagio } from './components/estagioBadge';
 import { corAds } from './components/adsCor';
+import { SeloFonteFaturamento } from './components/FaturamentoManual';
 import OperacoesPanel from './components/OperacoesPanel';
 import MetasPanel from './components/MetasPanel';
 import EntrantesM0Panel from './components/EntrantesM0Panel';
@@ -2363,7 +2364,15 @@ function CelulaFinanceira({ campo, fin, finLoaded, td, adsLimites = { teto: 3000
         return vazio();
     }
 
-    if (campo === 'fin_faturamento') return <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>;
+    if (campo === 'fin_faturamento') return (
+        <td className={cn(td, 'text-right')}>
+            <span className="inline-flex items-center justify-end gap-1.5">
+                {/* Lançado à mão no Faturamento Polos (a Adman não tem dado do mês). */}
+                {fin.faturamento_fonte === 'manual' && <SeloFonteFaturamento empresa={fin} />}
+                <span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span>
+            </span>
+        </td>
+    );
     if (campo === 'fin_meta') return <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>;
     if (campo === 'fin_pct') {
         const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';

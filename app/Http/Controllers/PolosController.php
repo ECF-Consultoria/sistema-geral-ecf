@@ -16,6 +16,7 @@ use App\Models\Configuracao;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PoloFaturamentoManual;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloAdsBonificacao;
 use App\Models\PoloAdsStatus;
@@ -175,7 +176,8 @@ class PolosController extends Controller
             // Mês corrente/parcial → Adman (gross_billing, mais fresco). Mês fechado
             // → TGMV_LC oficial do CSV: mesma métrica da planilha e cobre empresas
             // que já saíram do programa (a Adman não guarda histórico delas, daria R$0).
-            [$fatMes, $fonteFaturamento] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
+            // $manuais = lançamentos à mão do mês (só valem onde a Adman não tem dado).
+            [$fatMes, $fonteFaturamento, $manuais] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
 
             // ─── 7b. Gasto de ADS (investment Adman) do mês corrente, por cust_id ──
             // SÓ-CACHE (sem HTTP). Mês fechado → cache frio → [] (ADS=R$0; sem fonte
@@ -191,7 +193,7 @@ class PolosController extends Controller
             ];
 
             // ─── 8. Agregar por polo (com ADS) e calcular distribuição de status ──
-            $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes);
+            $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes, $manuais);
             $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
 
             // ─── 9. Empresas M1 (onboarding) — FORA da meta; visão própria ────
@@ -220,6 +222,8 @@ class PolosController extends Controller
                 'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
                 'm1'               => $m1,
                 'faturamentoPorFase' => $porFase,
+                // Libera o lápis de faturamento manual na tela (ver podeLancarFaturamentoManual).
+                'podeLancarFaturamento' => $this->podeLancarFaturamentoManual(auth()->user()),
                 'erro'             => null,
             ];
         } catch (\Throwable $e) {
@@ -605,6 +609,9 @@ class PolosController extends Controller
                 }
                 $fin[$k] = [
                     'faturamento' => $emp['faturamento'],
+                    // Origem do número (Adman / manual / sem dado) — a célula marca o manual.
+                    'faturamento_fonte'  => $emp['faturamento_fonte'] ?? null,
+                    'faturamento_manual' => $emp['faturamento_manual'] ?? null,
                     'meta'        => $emp['meta'],
                     'pct'         => $emp['pct'],
                     'status'      => $emp['status'],
@@ -1587,6 +1594,7 @@ class PolosController extends Controller
             // Check "reunião do mês feita" por cust_id (TKT-0004).
             'reunioes'       => (object) [],
             'statusInicial'  => $statusInicial,
+            'podeLancarFaturamento' => $this->podeLancarFaturamentoManual($request->user()),
             'erro'           => null,
         ];
 
@@ -1627,6 +1635,8 @@ class PolosController extends Controller
                 'erro'           => null,
                 // Check "reunião do mês feita" do mês selecionado, por cust_id (TKT-0004).
                 'reunioes'       => (object) $this->reunioesDoMes($d['mesSel']),
+                // Libera o lançamento de faturamento manual (só Dev, conta Admin e Débora).
+                'podeLancarFaturamento' => $this->podeLancarFaturamentoManual($request->user()),
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -1733,6 +1743,7 @@ class PolosController extends Controller
             ['key' => 'fase',          'label' => 'Fase',        'tipo' => 'texto'],
             ['key' => 'status',        'label' => 'Status',      'tipo' => 'texto'],
             ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (móveis)', 'tipo' => 'dinheiro'],
+            ['key' => 'faturamento_fonte', 'label' => 'Fonte do faturamento', 'tipo' => 'texto', 'largura' => 34],
             ['key' => 'meta',          'label' => 'Meta',        'tipo' => 'dinheiro'],
             ['key' => 'pct',           'label' => '% da meta',   'tipo' => 'percentual'],
             ['key' => 'ads',           'label' => 'ADS',         'tipo' => 'dinheiro'],
@@ -1767,6 +1778,7 @@ class PolosController extends Controller
                 'fase'          => $e['fase'],
                 'status'        => self::EMPRESAS_STATUS_LABEL[$e['status']] ?? $e['status'],
                 'faturamento'   => $e['faturamento'],
+                'faturamento_fonte' => $this->fonteFaturamentoParaCelula($e),
                 'meta'          => $e['meta'],
                 'pct'           => $e['pct'],
                 'ads'           => $e['ads'],
@@ -1792,6 +1804,19 @@ class PolosController extends Controller
             'faturamento-polos-' . ($d['mesSel'] ?? 'sem-mes') . '-' . now()->format('Y-m-d') . '.xlsx',
             'Faturamento Polos'
         );
+    }
+
+    /** "Adman", "Manual (Fulano, 22/10/2026 14:30)" ou "Sem dado da Adman" — coluna da planilha. */
+    private function fonteFaturamentoParaCelula(array $e): string
+    {
+        return match ($e['faturamento_fonte'] ?? null) {
+            'adman'  => 'Adman',
+            'manual' => 'Manual (' . implode(', ', array_filter([
+                $e['faturamento_manual']['por'] ?? null,
+                $e['faturamento_manual']['em'] ?? null,
+            ])) . ')',
+            default  => 'Sem dado da Adman',
+        };
     }
 
     /**
@@ -1991,6 +2016,192 @@ class PolosController extends Controller
         return back()->with('success', $feita ? 'Reunião do mês marcada como feita.' : 'Reunião do mês marcada como não feita.');
     }
 
+    // ═══ Faturamento manual (pedido de 22/10/2026) ═══
+
+    /**
+     * Quem lança faturamento manual, ALÉM do cargo Dev: a conta "Admin" e a Débora Lima.
+     *
+     * Por e-mail porque o sistema não tem permissão por pessoa (só por setor) e o pedido foi
+     * nominal. NÃO é "qualquer admin": em 22/10/2026 havia 12 admins em produção (a Débora é
+     * um deles) e a decisão foi restringir a estas pessoas — os demais veem o valor, mas não
+     * editam. Mudou o e-mail de alguém da lista? Atualizar aqui.
+     */
+    public const LANCADORES_FATURAMENTO_MANUAL = [
+        'admin@ecfconsultoria.com.br',        // conta "Admin"
+        'consultor.04@ecfconsultoria.com.br', // Débora Lima
+    ];
+
+    /** Cargo Dev (users.is_dev) ou um dos e-mails de LANCADORES_FATURAMENTO_MANUAL. */
+    private function podeLancarFaturamentoManual(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        if ($user->isAdminDev()) {
+            return true;
+        }
+
+        return in_array(mb_strtolower(trim((string) $user->email)), self::LANCADORES_FATURAMENTO_MANUAL, true);
+    }
+
+    /**
+     * Lança (ou corrige) o faturamento de UMA empresa dos Polos num mês, à mão.
+     *
+     * Só para empresa sem dado da Adman no mês (a Adman prevalece — ver
+     * faturamentoVigenteDoMes): com dado da Adman, recusa e diz o valor que ela tem.
+     * Qualquer mês até o corrente. Histórico de valores no activity_log (log `polos`).
+     */
+    public function faturamentoManualSalvar(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $user = $request->user();
+        abort_unless(
+            $this->podeLancarFaturamentoManual($user),
+            403,
+            'Só o cargo Dev, a conta Admin e a Débora Lima lançam faturamento manual.'
+        );
+
+        $dados = $request->validate([
+            'cust_id'    => ['required', 'string', 'max:50'],
+            'mes'        => ['required', 'string', 'regex:/^[0-9]{4}(0[1-9]|1[0-2])$/'],
+            'valor'      => ['required', 'numeric', 'min:0', 'max:999999999.99'],
+            'observacao' => ['nullable', 'string', 'max:500'],
+        ], [
+            'mes.regex'      => 'Mês inválido.',
+            'valor.required' => 'Informe o valor.',
+            'valor.numeric'  => 'Valor inválido — use só números, ex.: 12.500,00.',
+            'valor.min'      => 'O valor não pode ser negativo.',
+            'valor.max'      => 'Valor alto demais — confira os dígitos.',
+        ]);
+
+        // Normaliza na escrita: o mapa de faturamento é por cust normalizado.
+        $cust = CustId::normaliza($dados['cust_id']);
+        if ($cust === '') {
+            return back()->withErrors(['cust_id' => 'Empresa sem cust_id.']);
+        }
+
+        $mes = $dados['mes'];
+        if ((int) $mes > (int) now()->format('Ym')) {
+            return back()->withErrors(['mes' => 'Não dá para lançar faturamento de um mês que ainda não começou.']);
+        }
+
+        $empresa = $this->empresaPolosDoCust($cust);
+        if ($empresa === null) {
+            return back()->withErrors(['cust_id' => 'Esta empresa não está no projeto Polos.']);
+        }
+
+        // A Adman prevalece: com dado dela no mês, o manual não valeria — recusa em vez de
+        // gravar um número que ninguém veria.
+        $adman = $this->faturamentoAdmanDoMes([['cust_id' => $cust]], $mes);
+        if (array_key_exists($cust, $adman)) {
+            return back()->withErrors(['valor' => sprintf(
+                'A Adman já tem o faturamento de %s em %s (%s). O lançamento manual só vale para empresa sem dado da Adman.',
+                $empresa->nome,
+                $this->mesLabel($mes),
+                $this->brl($adman[$cust]),
+            )]);
+        }
+
+        $valor      = round((float) $dados['valor'], 2);
+        $observacao = trim((string) ($dados['observacao'] ?? '')) ?: null;
+
+        $registro = PoloFaturamentoManual::firstOrNew(['cust_id' => $cust, 'mes' => $mes]);
+        $antes    = $registro->exists ? (float) $registro->valor : null;
+
+        $registro->fill([
+            'valor'            => $valor,
+            'observacao'       => $observacao,
+            'user_id'          => $user->id,
+            'lancado_por_nome' => $user->name,
+        ]);
+
+        if (! $registro->exists || $registro->isDirty()) {
+            $registro->save();
+
+            activity('polos')
+                ->causedBy($user)
+                ->performedOn($registro)
+                ->withProperties([
+                    'cust_id'    => $cust,
+                    'mes'        => $mes,
+                    'empresa'    => $empresa->nome,
+                    'antes'      => $antes,
+                    'depois'     => $valor,
+                    'observacao' => $observacao,
+                ])
+                ->log(sprintf(
+                    '[Polos] Faturamento manual de %s (cust %s) em %s: %s%s',
+                    $empresa->nome,
+                    $cust,
+                    $mes,
+                    $antes === null ? '' : $this->brl($antes) . ' → ',
+                    $this->brl($valor),
+                ));
+        }
+
+        return back()->with('success', sprintf(
+            'Faturamento de %s em %s lançado à mão: %s.',
+            $empresa->nome,
+            $this->mesLabel($mes),
+            $this->brl($valor),
+        ));
+    }
+
+    /** Remove o lançamento manual: a empresa volta a depender só da Adman (ou R$ 0 sem dado). */
+    public function faturamentoManualRemover(Request $request, PoloFaturamentoManual $lancamento): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $user = $request->user();
+        abort_unless(
+            $this->podeLancarFaturamentoManual($user),
+            403,
+            'Só o cargo Dev, a conta Admin e a Débora Lima lançam faturamento manual.'
+        );
+
+        $props = [
+            'cust_id' => $lancamento->cust_id,
+            'mes'     => $lancamento->mes,
+            'antes'   => (float) $lancamento->valor,
+            'depois'  => null,
+        ];
+
+        $lancamento->delete();
+
+        activity('polos')
+            ->causedBy($user)
+            ->performedOn($lancamento)
+            ->withProperties($props)
+            ->log(sprintf(
+                '[Polos] Faturamento manual removido (cust %s, %s): era %s',
+                $props['cust_id'],
+                $props['mes'],
+                $this->brl($props['antes']),
+            ));
+
+        return back()->with('success', 'Lançamento manual removido — a empresa volta a depender só da Adman.');
+    }
+
+    /**
+     * Empresa do projeto Polos dona do cust (arquivadas incluídas: mês fechado ainda conta
+     * quem foi arquivada depois — mesmo recorte de montarAtivosDoMes).
+     */
+    private function empresaPolosDoCust(string $cust): ?MlbEmpresa
+    {
+        return MlbEmpresa::where('projeto', 'POLOS')
+            ->whereNotNull('cust_id')
+            ->get(['id', 'nome', 'cust_id'])
+            ->first(fn (MlbEmpresa $e) => CustId::normaliza((string) $e->cust_id) === $cust);
+    }
+
+    /** "R$ 12.345,67" — para mensagens e log. */
+    private function brl(float $valor): string
+    {
+        return 'R$ ' . number_format($valor, 2, ',', '.');
+    }
+
     // ═══ ADS ligado/desligado (/polos/empresas) ═══
 
     /**
@@ -2143,8 +2354,8 @@ class PolosController extends Controller
 
         // Mês corrente = MlbEmpresa ao vivo; mês fechado = reconstrução do CSV.
         $ativos = $this->montarAtivosDoMes($mesSel, $parcial, $linhasMes);
-        // Faturamento: Adman no corrente, TGMV_LC do CSV no mês fechado.
-        [$fatMes] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
+        // Faturamento: Adman (snapshot), completado pelo lançamento manual onde a Adman não tem dado.
+        [$fatMes, , $manuais] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
 
         // ADS do mês corrente via Adman (SÓ-CACHE). Mês fechado → cache frio → [].
         // ADS = R$0 em mês fechado — sem fonte CSV para ADS (limitação documentada).
@@ -2157,7 +2368,7 @@ class PolosController extends Controller
             'alerta2' => (float) Configuracao::get('polo_ads_alerta2', 2000),
         ];
 
-        $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes);
+        $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes, $manuais);
         $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
 
         $metricaFaturamento = $this->metricaFaturamento();
@@ -2280,6 +2491,7 @@ class PolosController extends Controller
             'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
             'faturamentoPorFase' => [],
+            'podeLancarFaturamento' => $this->podeLancarFaturamentoManual(auth()->user()),
             'erro'             => $mensagem,
         ];
     }
@@ -2385,6 +2597,83 @@ class PolosController extends Controller
             : 'faturamento_moveis';
 
         return $this->colunaDoSnapshot($ativos, $mesSel, $coluna);
+    }
+
+    /**
+     * Faturamento que o painel USA: o da Adman, completado pelo lançamento manual
+     * (pedido de 22/10/2026) nas empresas em que a Adman não tem dado no mês.
+     *
+     * É o ÚNICO ponto que decide entre os dois — meta, status, totais por polo e por fase,
+     * coorte M1, /polos/empresas, Painel e exportações passam por aqui. Não leia
+     * `polos_faturamento_manual` direto em outro lugar, ou o mesmo número sai diferente
+     * em duas telas.
+     *
+     * Regra (decisão do usuário): **a Adman prevalece**. "Não tem dado" é ausência no mapa
+     * de faturamentoAdmanDoMes() — sem snapshot no mês, ou snapshot com a coluna da métrica
+     * vigente NULL. Snapshot com R$ 0 é dado (a loja não vendeu) e não é sobrescrito. Se a
+     * Adman voltar a responder, o lançamento fica registrado com `aplicado = false` e a tela
+     * avisa que ele deixou de valer.
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array{valores: array<string,float>, manuais: array<string, array{id:int, valor:float, aplicado:bool, observacao:?string, por:string, em:?string}>}
+     */
+    private function faturamentoVigenteDoMes(array $ativos, string $mesSel): array
+    {
+        $valores = $this->faturamentoAdmanDoMes($ativos, $mesSel);
+        $manuais = [];
+
+        foreach ($this->lancamentosManuaisDoMes($ativos, $mesSel) as $cust => $l) {
+            $aplicado = ! array_key_exists($cust, $valores);
+            if ($aplicado) {
+                $valores[$cust] = (float) $l->valor;
+            }
+
+            $manuais[$cust] = [
+                'id'         => $l->id,
+                'valor'      => (float) $l->valor,
+                'aplicado'   => $aplicado,
+                'observacao' => $l->observacao,
+                'por'        => $l->lancadoPorNome(),
+                'em'         => $l->updated_at?->format('d/m/Y H:i'),
+            ];
+        }
+
+        return ['valores' => $valores, 'manuais' => $manuais];
+    }
+
+    /**
+     * Lançamentos manuais do mês para os cust_ids dos ativos, por cust_id normalizado.
+     * Defensiva como colunaDoSnapshot(): falha de leitura (ex.: tabela ainda não migrada
+     * na janela do deploy) devolve [] e o painel segue só com a Adman.
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array<string, PoloFaturamentoManual>
+     */
+    private function lancamentosManuaisDoMes(array $ativos, string $mesSel): array
+    {
+        try {
+            $custIds = collect($ativos)
+                ->map(fn ($a) => CustId::normaliza((string) ($a['cust_id'] ?? '')))
+                ->filter(fn ($id) => $id !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($custIds)) {
+                return [];
+            }
+
+            return PoloFaturamentoManual::with('lancadoPor:id,name')
+                ->where('mes', $mesSel)
+                ->whereIn('cust_id', $custIds)
+                ->get()
+                ->keyBy('cust_id')
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('[Polos] Falha ao ler o faturamento manual: ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     /**
@@ -2685,10 +2974,10 @@ class PolosController extends Controller
             }
         }
 
-        // Faturamento M1 via Adman (gross_billing, só-cache + snapshot) — igual aos
-        // ativos M2–M4; NÃO usa TGMV do CSV. O CSV serve só p/ localidade (abaixo).
-        $m1Ativos = array_map(fn ($id) => ['cust_id' => $id], array_keys($roster));
-        $fatMap   = $mesSel !== null ? $this->faturamentoAdmanDoMes($m1Ativos, $mesSel) : [];
+        // Faturamento M1 via Adman (snapshot) + lançamento manual onde a Adman não tem dado —
+        // igual aos ativos M2–M4; NÃO usa TGMV do CSV. O CSV serve só p/ localidade (abaixo).
+        $m1Ativos = array_map(fn ($id) => ['cust_id' => (string) $id], array_keys($roster));
+        $fatMap   = $mesSel !== null ? $this->faturamentoVigenteDoMes($m1Ativos, $mesSel)['valores'] : [];
 
         // ── Agregação: faturando = gross_billing (Adman) > 0 ──
         $empresas  = [];
@@ -2805,18 +3094,23 @@ class PolosController extends Controller
      * @param  bool                          $parcial    true = mês ainda enchendo (corrente)
      * @param  array<array<string,mixed>>    $ativos     Ativos do mês (p/ a busca Adman)
      * @param  array<array<string,mixed>>    $linhasMes  Linhas do CSV do mês selecionado
-     * @return array{0: array<string,float>, 1: string}  [mapa cust_id=>fat, fonte('adman'|'csv')]
+     * @return array{0: array<string,float>, 1: string, 2: array<string,array<string,mixed>>}
+     *         [mapa cust_id=>fat, fonte('adman'), lançamentos manuais do mês por cust_id]
      */
     private function faturamentoDoMes(?string $mesSel, bool $parcial, array $ativos, array $linhasMes): array
     {
-        // Faturamento 100% da Adman (gross_billing) — SÓ-CACHE + fallback no snapshot
-        // mensal. NUNCA do CSV (decisão de produto: faturamento só via API). O mês
-        // fechado lê do snapshot capturado quando aquele mês era corrente; cust_id sem
-        // cache nem snapshot → R$0. O CSV segue apenas para lista de meses e localidade
-        // ($parcial/$linhasMes mantidos na assinatura por compatibilidade dos callers).
-        $fat = $mesSel !== null ? $this->faturamentoAdmanDoMes($ativos, $mesSel) : [];
+        // Faturamento da Adman (snapshot mensal), completado pelo lançamento manual onde a
+        // Adman não tem dado (ver faturamentoVigenteDoMes). NUNCA do CSV (decisão de produto:
+        // faturamento só via API ou à mão). cust_id sem snapshot nem lançamento → R$0. O CSV
+        // segue apenas para lista de meses e localidade ($parcial/$linhasMes mantidos na
+        // assinatura por compatibilidade dos callers).
+        if ($mesSel === null) {
+            return [[], 'adman', []];
+        }
 
-        return [$fat, 'adman'];
+        $v = $this->faturamentoVigenteDoMes($ativos, $mesSel);
+
+        return [$v['valores'], 'adman', $v['manuais']];
     }
 
     /**
@@ -2946,9 +3240,10 @@ class PolosController extends Controller
      * @param  array<string,float>         $limiares   ['M2'=>1000, 'M3'=>4000, 'M4'=>8000]
      * @param  array<string,float>         $fatAdman   [cust_id => gross_billing] do mês corrente (vazio em mês fechado)
      * @param  array<string,float>         $adsAdman   [cust_id => investment ADS] do mês corrente (vazio quando sem cache)
+     * @param  array<string,array>         $manuais    Lançamentos manuais do mês (saída de faturamentoVigenteDoMes)
      * @return array<array<string,mixed>>              Polos agregados, ordenados por nome
      */
-    private function agregarPorPolo(array $ativos, array $linhasMes, array $limiares, array $fatAdman = [], array $adsAdman = []): array
+    private function agregarPorPolo(array $ativos, array $linhasMes, array $limiares, array $fatAdman = [], array $adsAdman = [], array $manuais = []): array
     {
         $lookup = $this->montarLookup($linhasMes);
         $grupos = []; // polo → { fat[], limiar[], statuses[] }
@@ -2973,6 +3268,14 @@ class PolosController extends Controller
             $limiar = (float) ($limiares[$ativo['fase']] ?? 0);
             $status = $this->calcularStatus($this->desconsideraDaMeta($ativo), $tgmv, $limiar);
 
+            // De onde veio o número: o manual só entra onde a Adman não tem dado, então
+            // "está no mapa e não é manual aplicado" = Adman. Fora do mapa = sem dado (R$ 0
+            // por ausência, não por venda zero — learnings painel-polos §18).
+            $manual = $id !== '' ? ($manuais[$id] ?? null) : null;
+            $fonte  = ($manual['aplicado'] ?? false)
+                ? 'manual'
+                : (($id !== '' && array_key_exists($id, $fatAdman)) ? 'adman' : 'sem_dado');
+
             if (! isset($grupos[$localidade])) {
                 $grupos[$localidade] = ['faturamentos' => [], 'limiares' => [], 'statuses' => [], 'empresas' => []];
             }
@@ -2990,6 +3293,10 @@ class PolosController extends Controller
                 'nome'          => $ativo['nome'] ?? "Empresa {$id}",
                 'fase'          => $ativo['fase'],
                 'faturamento'   => $tgmv,
+                // 'adman' | 'manual' | 'sem_dado' — e o lançamento manual do mês, se houver
+                // (inclusive o que deixou de valer porque a Adman voltou a responder).
+                'faturamento_fonte'  => $fonte,
+                'faturamento_manual' => $manual,
                 'meta'          => $limiar,
                 'pct'           => $limiar > 0 ? round($tgmv / $limiar * 100, 1) : 0.0,
                 'status'        => $status,
