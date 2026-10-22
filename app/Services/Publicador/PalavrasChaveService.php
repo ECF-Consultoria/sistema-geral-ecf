@@ -508,7 +508,54 @@ class PalavrasChaveService
     /** O bruto da IA sem marca/"ECF"/número de especificação e cortado no máximo da categoria. */
     private function finalizarTitulo(string $bruto, array $c): string
     {
-        return self::ajustarTitulo(self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), (string) ($c['prefixo'] ?? '')), $c['maximo']);
+        $prefixo = (string) ($c['prefixo'] ?? '');
+
+        return self::ajustarTitulo(self::comTermosDoKit(self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $prefixo),
+            (array) ($c['termos_do_kit'] ?? []), $prefixo), $c['maximo']);
+    }
+
+    /**
+     * O título do kit de produtos diferentes DIZ a composição (22/10/2026): "Kit Mesa Jantar 120x80 Retangular…" saiu do
+     * combit Mesa + 4 Cadeiras sem as cadeiras — a IA as cortou para caber nos 60 caracteres. O termo que falta
+     * ("4 Cadeiras") entra LOGO DEPOIS do nome do produto principal ("Kit Mesa Jantar com 4 Cadeiras 120x80…"), para o
+     * corte do fim (`ajustarTitulo`) e a diferenciação do Premium (`RegrasDoTitulo::diferenciar`, que só mexe no fim)
+     * nunca o tirarem. O que a IA já escreveu ("4 Cadeiras", "4 cadeira") fica como está.
+     *
+     * @param  list<array{texto: string, palavra: string, plural: string, quantidade: int}>  $termos  `ComposicaoDoComposto::termosDoTitulo()`
+     */
+    public static function comTermosDoKit(string $titulo, array $termos, string $prefixo = ''): string
+    {
+        $normal = fn (string $t) => mb_strtolower(Str::ascii($t));
+        $doTitulo = ' '.$normal($titulo).' ';
+        $faltam = [];
+        foreach ($termos as $t) {
+            $palavras = '(?:'.preg_quote($normal((string) $t['palavra']), '/').'|'.preg_quote($normal((string) $t['plural']), '/').')';
+            $padrao = (int) $t['quantidade'] > 1 ? '/\b'.(int) $t['quantidade'].'\s+'.$palavras.'/u' : '/\b'.$palavras.'/u';
+            if (preg_match($padrao, $doTitulo) !== 1) {
+                $faltam[] = (string) $t['texto'];
+            }
+        }
+        if ($faltam === []) {
+            return $titulo;
+        }
+
+        $prefixo = trim($prefixo);
+        $resto = $prefixo !== '' && str_starts_with($titulo, $prefixo) ? trim(mb_substr($titulo, mb_strlen($prefixo))) : $titulo;
+        $tokens = preg_split('/\s+/u', trim($resto), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // O nome do produto principal: a 1ª palavra e, se vier, "de Jantar" ou um qualificador ("Jantar", "Retangular").
+        $fim = min(1, count($tokens));
+        if (isset($tokens[1])) {
+            $segunda = $normal($tokens[1]);
+            if (in_array($segunda, ['de', 'da', 'do', 'das', 'dos', 'para'], true) && isset($tokens[2])) {
+                $fim = 3;
+            } elseif (preg_match('/^\p{L}+$/u', $tokens[1]) === 1 && ! in_array($segunda, ['com', 'e'], true)) {
+                $fim = 2;
+            }
+        }
+        $com = 'com '.(count($faltam) === 1 ? $faltam[0] : implode(', ', array_slice($faltam, 0, -1)).' e '.end($faltam));
+        $novo = trim(implode(' ', [...array_slice($tokens, 0, $fim), $com, ...array_slice($tokens, $fim)]));
+
+        return trim(($prefixo !== '' && $resto !== $titulo ? $prefixo.' ' : '').$novo);
     }
 
     /**
@@ -532,7 +579,7 @@ class PalavrasChaveService
      * marca), a marca (BRAND), a referência das medidas (nome do produto + termos) e as palavras que
      * podem diferenciar dois títulos.
      *
-     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>, prefixo: string}
+     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>, prefixo: string, termos_do_kit: list<array>}
      */
     private function contextoDoTitulo(PubRascunho $r): array
     {
@@ -557,6 +604,7 @@ class PalavrasChaveService
             'referencia' => $produto.' '.implode(' ', $termos),
             'candidatos' => RegrasDoTitulo::candidatos($termos, $produto, $fatos, $marcas),
             'prefixo' => $composicao?->prefixoDoTitulo() ?? '',
+            'termos_do_kit' => $composicao?->termosDoTitulo() ?? [],
         ];
     }
 

@@ -100,7 +100,28 @@ class ProductTruthBuilder
             // atributo (nunca por rótulo traduzido). Fica FORA de
             // paraPrompt()/paraAuditoria() (não é material de prompt).
             atributosIds: $contexto->atributos,
+            lugares: $this->lugares($contexto),
         );
+    }
+
+    /** Ids FECHADOS de "quantas pessoas o produto acomoda" — só do cadastro, nunca do título (TRUTH-02). */
+    private const IDS_DE_LUGARES = ['MAX_PEOPLE_CAPACITY', 'SEATS_NUMBER', 'SEATING_CAPACITY'];
+
+    /**
+     * Quantas pessoas o produto acomoda (22/10/2026): a mesa de jantar Aurora "4 Lugares" (`MAX_PEOPLE_CAPACITY = 4`) saiu
+     * ambientada com SEIS cadeiras, e a imagem entrou também no combit Mesa + 4 Cadeiras. O número limita os assentos
+     * que a CENA pode ter em volta do produto (`CreativePromptBuilder::linhasLugares`). Só número inteiro positivo.
+     */
+    private function lugares(CreativeContext $contexto): ?int
+    {
+        foreach (self::IDS_DE_LUGARES as $id) {
+            $valor = trim((string) ($contexto->atributos[$id] ?? ''));
+            if (preg_match('/^(\d{1,2})\b/', $valor, $m) === 1 && (int) $m[1] > 0) {
+                return (int) $m[1];
+            }
+        }
+
+        return null;
     }
 
     /**

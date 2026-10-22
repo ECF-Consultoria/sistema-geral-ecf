@@ -204,6 +204,12 @@ class CreativePromptBuilder
         array_push($linhas, ...$this->linhasContagens($truth));
         $linhas[] = '';
 
+        $blocoLugares = $this->linhasLugares($truth, $tipo);
+        array_push($linhas, ...$blocoLugares);
+        if ($blocoLugares !== []) {
+            $linhas[] = '';
+        }
+
         array_push($linhas, ...$this->linhasClaimsProibidas($this->claimsDoSlot($truth, $slotPlano, $temTexto)));
 
         return implode("\n", $linhas);
@@ -510,6 +516,24 @@ class CreativePromptBuilder
 
         return ['CONTAGENS: mantenha exatamente a quantidade de peças visível nas fotos de '
             .'referência e não declare número algum.'];
+    }
+
+    /**
+     * Bloco LUGARES (22/10/2026) — só nos slots AMBIENTADOS, quando o cadastro diz quantas pessoas o produto acomoda.
+     * A mesa Aurora "4 Lugares" saiu ambientada com seis cadeiras: o bloco AMBIENTE deixa a IA montar a cena em volta,
+     * e ela pôs assentos a mais. O número vem do cadastro (`ProductTruth::lugares`), nunca do título.
+     */
+    private function linhasLugares(ProductTruth $truth, string $tipo): array
+    {
+        if ($truth->lugares === null || ! in_array($tipo, self::AMBIENTADOS, true)) {
+            return [];
+        }
+
+        return [
+            'LUGARES: o produto acomoda no máximo '.$truth->lugares.' pessoas (confirmado no cadastro).',
+            'Se a cena tiver cadeiras, bancos, banquetas ou outros assentos junto do produto, use NO MÁXIMO '.$truth->lugares
+                .' — nunca mais assentos do que isso.',
+        ];
     }
 
     /** Bloco CLAIMS PROIBIDAS — lista literal recebida, uma claim por linha. */

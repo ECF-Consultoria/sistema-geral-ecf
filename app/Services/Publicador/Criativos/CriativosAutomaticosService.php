@@ -104,6 +104,9 @@ final class CriativosAutomaticosService
     /** O teto de fotos da galeria do composto: as do conjunto + as da Fase 1 de cada peça (um teto seguro: o limite do ML por item muda com a categoria). */
     private const MAX_FOTOS_DO_COMPOSTO = 10;
 
+    /** Os tipos de imagem que são CENA (o produto num ambiente): no composto, a do componente não entra. */
+    private const CENAS = ['lifestyle', 'lifestyle_uso', 'composicao'];
+
     /** O que a automação escreve ou não descreve o produto: fora do hash (como no preparo de texto). */
     private const FORA_DO_HASH = ['MODEL', 'GTIN', 'SELLER_SKU', 'EMPTY_GTIN_REASON'];
 
@@ -598,8 +601,13 @@ final class CriativosAutomaticosService
                 $grupos = $this->referencias->gruposComRotulo($rf);
                 $grupo = collect(array_keys($grupos))->first(fn ($k) => $k !== ResolvedorGruposImagem::GERAL && $cor !== ''
                     && self::normalizarCor($grupos[$k]['rotulo']) === $cor) ?? ResolvedorGruposImagem::GERAL;
+                // As CENAS do componente ficam de fora (22/10/2026): a ambientada da mesa Aurora sozinha tinha 6 cadeiras
+                // de outro modelo e entrou no combit Mesa + 4 Cadeiras. A cena do kit é a dele (o conjunto, com as peças
+                // certas); do componente vêm só o fundo branco e os detalhes.
+                $cenas = MlAnuncioCriativo::query()->whereIn('pub_imagem_id', $this->galeriaDoGrupo($rf->id, $grupo))
+                    ->whereIn('slot', self::CENAS)->pluck('pub_imagem_id')->map(fn ($id) => (int) $id)->all();
                 foreach ($this->galeriaDoGrupo($rf->id, $grupo) as $imagemId) {
-                    $ativo = PubImagem::query()->find($imagemId)?->acervoImagem;
+                    $ativo = in_array((int) $imagemId, $cenas, true) ? null : PubImagem::query()->find($imagemId)?->acervoImagem;
                     if ($ativo === null || $vagas <= count($saida)) {
                         continue;
                     }

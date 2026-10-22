@@ -1958,3 +1958,23 @@ componente, e com filtro o cartão abre na 1ª face que bate; a mesa e a cadeira
 dois abriam no Combit. `familiasDaVitrine` agora não deixa dois cartões abrirem na mesma face (`chaveDaFace`): o 2º
 abre em outra face que sirva, ou sai da lista. O "produtos em DOBRO" de 19/10 (Q-01) era outro caso: dois
 `pub_produtos` de verdade.
+
+## 51. Combit Mesa + 4 Cadeiras: título sem as cadeiras e cena com 6 cadeiras (22/10/2026)
+
+O usuário testou o combit CT4-MESA-AUR-120-CAD-AUR-CIN (Publicador #111, rascunho #105): "no título não gerou quantas
+cadeiras tem, acho importante"; e "Capacidade máxima de pessoas: 4, mas gerou imagem com a mesa com 6 cadeiras — em
+outros produtos também não pode acontecer".
+
+- **A imagem de 6 cadeiras não era do combit:** era a ambientada da MESA sozinha (Fase 1, rascunho #95), reaproveitada
+  na galeria do combit por `fotosDaFase1DoComposto`. A cena do próprio combit dizia certo ("exatamente 5 peças").
+- **Capacidade na cena:** `ProductTruthBuilder::lugares` lê `MAX_PEOPLE_CAPACITY` (lista fechada, só número do cadastro,
+  nunca do título — TRUTH-02) e o `CreativePromptBuilder` põe o bloco LUGARES só nos slots AMBIENTADOS ("se a cena tiver
+  cadeiras, bancos… use NO MÁXIMO N"). `ProductTruth::lugares` só entra no `paraPrompt()` quando existe (forma antiga
+  intacta).
+- **Composto sem as cenas dos componentes:** `fotosDaFase1DoComposto` pula as imagens cujo criativo é cena (lifestyle,
+  lifestyle_uso, composicao); do componente vêm só fundo branco e detalhes.
+- **Título:** a IA recebe "Kit Mesa de Jantar Aurora … + 4 Cadeira de Jantar Aurora…" e corta as cadeiras para caber
+  nos 60. `ComposicaoDoComposto::termosDoTitulo()` ("4 Cadeiras", pela 1ª palavra do nome + plural) e
+  `PalavrasChaveService::comTermosDoKit` inserem "com 4 Cadeiras" LOGO DEPOIS do nome do produto principal quando a IA não
+  pôs — o corte (`ajustarTitulo`) e a diferenciação do Premium (`RegrasDoTitulo::diferenciar`) só mexem no fim.
+- Não refeito sozinho: o título e a galeria do rascunho #105 e a ambientada da mesa #95 (já publicada no ML).

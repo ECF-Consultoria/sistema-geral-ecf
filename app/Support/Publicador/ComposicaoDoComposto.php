@@ -155,6 +155,45 @@ final class ComposicaoDoComposto
             .', lado a lado, cada uma igual à sua foto de referência (cor, forma e acabamento).';
     }
 
+    /**
+     * O que o título do kit de produtos DIFERENTES tem de dizer (22/10/2026, o usuário, sobre "Kit Mesa Jantar 120x80
+     * Retangular…" do combit Mesa + 4 Cadeiras: "no título não gerou quantas cadeiras tem, acho importante"): cada item
+     * além do principal (o 1º), pela 1ª palavra do nome, com a quantidade quando passa de 1 — "4 Cadeiras", "Banqueta".
+     * O kit do mesmo produto já diz pelo prefixo ("Kit 2").
+     *
+     * @return list<array{texto: string, palavra: string, plural: string, quantidade: int}>
+     */
+    public function termosDoTitulo(): array
+    {
+        if (count($this->itens) < 2 || $this->mesmoProduto()) {
+            return [];
+        }
+        $termos = [];
+        foreach (array_slice($this->itens, 1) as $i) {
+            $palavra = mb_convert_case((string) (preg_split('/\s+/u', trim((string) $i['nome']))[0] ?? ''), MB_CASE_TITLE);
+            if ($palavra === '') {
+                continue;
+            }
+            $plural = self::plural($palavra);
+            $quantidade = (int) $i['quantidade'];
+            $termos[] = ['texto' => $quantidade > 1 ? $quantidade.' '.$plural : $palavra, 'palavra' => $palavra, 'plural' => $plural, 'quantidade' => $quantidade];
+        }
+
+        return $termos;
+    }
+
+    /** O plural de UMA palavra do nome de um móvel (Cadeira → Cadeiras, Colchão → Colchões, Puff → Puffs). */
+    public static function plural(string $palavra): string
+    {
+        return match (true) {
+            (bool) preg_match('/ão$/u', $palavra) => (string) preg_replace('/ão$/u', 'ões', $palavra),
+            (bool) preg_match('/[rz]$/iu', $palavra) => $palavra.'es',
+            (bool) preg_match('/m$/iu', $palavra) => (string) preg_replace('/m$/iu', 'ns', $palavra),
+            (bool) preg_match('/s$/iu', $palavra) => $palavra,
+            default => $palavra.'s',
+        };
+    }
+
     /** "a", "a e b", "a, b e c". */
     private static function juntar(array $partes): string
     {

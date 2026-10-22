@@ -510,12 +510,21 @@ class CriativosAutomaticosTest extends TestCase
         $ativo = \App\Models\AcervoImagem::create(['company_id' => $this->empresa->id, 'dono_chave' => 'company-'.$this->empresa->id, 'disco' => 'local',
             'caminho' => $daFase1->caminho, 'sha256' => $daFase1->sha256, 'mime' => 'image/jpeg', 'bytes' => (int) $daFase1->bytes, 'origem' => 'upload']);
         $daFase1->update(['acervo_imagem_id' => $ativo->id]);
+        // 22/10/2026: a AMBIENTADA da peça sozinha não entra no conjunto — a da mesa Aurora tinha 6 cadeiras de outro
+        // modelo e foi parar no combit Mesa + 4 Cadeiras. Do componente vêm só o fundo branco e os detalhes.
+        $cenaDaFase1 = $this->fotoNoRascunho($r->fresh(), 'CAD-cena-da-fase-1', [200, 30, 30]);
+        $cenaDaFase1->update(['acervo_imagem_id' => \App\Models\AcervoImagem::create(['company_id' => $this->empresa->id,
+            'dono_chave' => 'company-'.$this->empresa->id, 'disco' => 'local', 'caminho' => $cenaDaFase1->caminho, 'sha256' => $cenaDaFase1->sha256,
+            'mime' => 'image/jpeg', 'bytes' => (int) $cenaDaFase1->bytes, 'origem' => 'ia'])->id]);
+        MlAnuncioCriativo::create(['token' => Str::random(32), 'company_id' => $this->empresa->id, 'user_id' => $this->sistema->id, 'slot' => 'lifestyle',
+            'slot_plano' => ['tipo' => 'lifestyle'], 'status' => MlAnuncioCriativo::STATUS_APROVADO, 'pub_imagem_id' => $cenaDaFase1->id]);
         MlAnuncioCriativo::query()->where('kit_id', $kit->id)->delete();
         $this->slotsProntos($kit->fresh(), ['hero', 'lifestyle'], ['aprovada', 'aprovada'], ['unidades_da_composicao' => 2]);
         $this->assertSame('aplicado:2', $this->servico()->aplicar($kit->id));
         $galeria = $this->galeria($rc);
         $this->assertSame([$this->imagemDoSlot($kit, 'hero'), $this->imagemDoSlot($kit, 'lifestyle')], array_slice($galeria, 0, 2));
-        $this->assertCount(3, $galeria, 'a foto da Fase 1 da peça entra depois das do conjunto');
+        $this->assertCount(3, $galeria, 'a foto da Fase 1 da peça entra depois das do conjunto — a ambientada dela, não');
+        $this->assertNotContains($cenaDaFase1->sha256, PubImagem::query()->whereIn('id', $galeria)->pluck('sha256')->all());
         // O composto já tinha a cópia da foto (mesmo sha256): ela é reaproveitada, sem linha nova.
         $this->assertSame($daFase1->sha256, PubImagem::query()->findOrFail($galeria[2])->sha256, 'a foto da Fase 1 da peça');
     }

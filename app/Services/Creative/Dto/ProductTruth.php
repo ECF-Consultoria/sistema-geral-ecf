@@ -35,6 +35,9 @@ final readonly class ProductTruth
         public array $claimsProibidas,
         public array $referenciasMeta,
         public array $atributosIds = [],
+        // 22/10/2026: quantas pessoas o produto acomoda, do atributo do cadastro (`MAX_PEOPLE_CAPACITY`). A mesa
+        // "4 Lugares" saiu ambientada com 6 cadeiras. Nulo = o cadastro não diz.
+        public ?int $lugares = null,
     ) {}
 
     /**
@@ -52,6 +55,7 @@ final readonly class ProductTruth
             'contagens'               => $this->contagens,
             'beneficios_verificados'  => $this->beneficiosVerificados,
             'claims_proibidas'        => $this->claimsProibidas,
+            ...($this->lugares !== null ? ['lugares' => $this->lugares] : []),
         ];
     }
 
