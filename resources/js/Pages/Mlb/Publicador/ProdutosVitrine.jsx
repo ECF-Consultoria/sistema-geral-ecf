@@ -151,7 +151,7 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                                         ativo ? 'border-pub-accent bg-pub-accent text-pub-page' : 'border-pub-line bg-pub-surface text-pub-txt-2 hover:bg-pub-hover-2 hover:text-pub-txt')}
                                     data-vitrine-filtro={f.chave}>
                                     {f.rotulo}
-                                    <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', ativo ? 'bg-pub-page/15' : 'bg-pub-hover-3')}>{n}</span>
+                                    <span className={cn('rounded-full px-1.5 text-[12px] tabular-nums', ativo ? 'bg-pub-page/15' : 'bg-pub-hover-3')}>{n}</span>
                                 </button>
                             );
                         })}

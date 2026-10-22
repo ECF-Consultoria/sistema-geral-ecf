@@ -80,7 +80,7 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                     </button>
                 )}
 
-                <span className="absolute right-2 top-2 rounded-pub-badge bg-pub-page/85 px-2 py-0.5 text-[11px] font-semibold text-pub-txt" data-vitrine-fase>
+                <span className="absolute right-2 top-2 rounded-pub-badge bg-pub-page/85 px-2 py-0.5 text-[12.5px] font-semibold text-pub-txt" data-vitrine-fase>
                     {cartao?.fase ?? 'Fase 1'}
                 </span>
 
@@ -109,16 +109,16 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                                     className={cn('relative h-7 w-7 overflow-hidden rounded-full border-2 bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                                         (emFoco ? emFoco.chave === c.chave : c === cores[0]) ? 'border-pub-accent' : 'border-white')}
                                     data-vitrine-cor={c.rotulo}>
-                                    {c.foto ? <img src={c.foto} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="grid h-full w-full place-items-center text-[9px] font-bold text-zinc-500">{c.rotulo.slice(0, 2)}</span>}
+                                    {c.foto ? <img src={c.foto} alt="" draggable={false} className="h-full w-full object-cover" /> : <span className="grid h-full w-full place-items-center text-[10px] font-bold text-zinc-700">{c.rotulo.slice(0, 2)}</span>}
                                     {c.pendencias?.length > 0 && <span aria-hidden="true" className="absolute right-0 top-0 h-2 w-2 rounded-full bg-pub-warn ring-1 ring-white" />}
                                 </button>
                             ))}
                         </div>
                     ) : <span />}
                     {planejada ? (
-                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700">Aceito no Planejamento</span>
+                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[12px] font-medium text-zinc-800">Aceito no Planejamento</span>
                     ) : (
-                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700" data-vitrine-anuncios>{textoDosAnuncios(cartao)}</span>
+                        <span className="rounded-pub-badge bg-white/90 px-1.5 py-0.5 text-[12px] font-medium text-zinc-800" data-vitrine-anuncios>{textoDosAnuncios(cartao)}</span>
                     )}
                 </div>
             </div>
@@ -130,9 +130,9 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                     {emFoco && <p className="text-[12px] text-pub-txt-3" data-vitrine-cor-em-foco>{emFoco.rotulo}</p>}
                     {! planejada && (
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span className="font-pub-mono text-[11px] text-pub-txt-3">{cartao?.sku}</span>
+                            <span className="font-pub-mono text-[12px] text-pub-txt-3">{cartao?.sku}</span>
                             {cartao?.do_portal && (
-                                <span className="inline-flex items-center gap-1 rounded-pub-badge border border-pub-line px-1.5 text-[10.5px] text-pub-txt-2"><Link2 size={10} aria-hidden="true" /> Portal</span>
+                                <span className="inline-flex items-center gap-1 rounded-pub-badge border border-pub-line px-1.5 text-[12px] text-pub-txt-2"><Link2 size={10} aria-hidden="true" /> Portal</span>
                             )}
                         </div>
                     )}
@@ -142,7 +142,7 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                     // 21/10/2026: "tem que ser clicável me induzindo a resolver isso que falta".
                     <button type="button" onClick={() => setResolvendo((a) => ! a)} aria-expanded={resolvendo} tabIndex={foco}
                         title={chip.detalhe ?? 'Ver o que falta e resolver'}
-                        className={cn('inline-flex w-fit max-w-full items-center gap-1 rounded-pub-chip border px-2 py-0.5 text-[11.5px] font-medium hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
+                        className={cn('inline-flex w-fit max-w-full items-center gap-1 rounded-pub-chip border px-2 py-0.5 text-[13px] font-medium hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
                         data-vitrine-chip={chip.tom} data-vitrine-resolver-abrir>
                         <span className="truncate">{chip.texto}</span>
                         <ChevronDown size={12} className={cn('shrink-0 transition-transform', resolvendo && 'rotate-180')} aria-hidden="true" />
@@ -162,13 +162,13 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                 )}
                 {chip && resolver.length === 0 && (
                     <span title={chip.detalhe ?? undefined}
-                        className={cn('inline-flex w-fit max-w-full items-center truncate rounded-pub-chip border px-2 py-0.5 text-[11.5px] font-medium', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
+                        className={cn('inline-flex w-fit max-w-full items-center truncate rounded-pub-chip border px-2 py-0.5 text-[13px] font-medium', TOM_DO_CHIP[chip.tom] ?? TOM_DO_CHIP.ambar)}
                         data-vitrine-chip={chip.tom}>
                         {chip.texto}
                     </span>
                 )}
                 {aviso && (
-                    <p title={[aviso.titulo, ...aviso.motivos].join('\n')} className="flex items-start gap-1.5 text-[11.5px] leading-snug text-pub-warn-txt" data-vitrine-ia-reprovada>
+                    <p title={[aviso.titulo, ...aviso.motivos].join('\n')} className="flex items-start gap-1.5 text-[12.5px] leading-snug text-pub-warn-txt" data-vitrine-ia-reprovada>
                         <AlertTriangle size={12} className="mt-[3px] shrink-0" aria-hidden="true" />
                         <span className="line-clamp-2"><span className="font-semibold">{aviso.titulo}:</span> {aviso.motivos[0] ?? aviso.resumo}</span>
                     </p>
@@ -177,20 +177,20 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                 {planejada ? (
                     <p className="text-[12px] leading-snug text-pub-txt-3">{chip?.detalhe ?? 'Aceito no Planejamento, ainda não é fase no Publicador.'}</p>
                 ) : (
-                    <dl className="grid grid-cols-2 gap-2 text-[11px]">
+                    <dl className="grid grid-cols-2 gap-2 text-[12.5px]">
                         <div>
-                            <dt className="text-pub-txt-4">Clássico</dt>
-                            <dd className={cn('tabular-nums', classico ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_special">{classico ?? 'sem preço'}</dd>
+                            <dt className="text-pub-txt-2">Clássico</dt>
+                            <dd className={cn('tabular-nums', classico ? 'text-[14px] font-semibold text-pub-txt' : 'text-[13px] text-pub-txt-3')} data-vitrine-preco="gold_special">{classico ?? 'sem preço'}</dd>
                         </div>
                         <div>
-                            <dt className="text-pub-txt-4">Premium</dt>
-                            <dd className={cn('tabular-nums', premium ? 'text-[13px] font-semibold text-pub-txt' : 'text-pub-txt-off')} data-vitrine-preco="gold_pro">{premium ?? 'sem preço'}</dd>
+                            <dt className="text-pub-txt-2">Premium</dt>
+                            <dd className={cn('tabular-nums', premium ? 'text-[14px] font-semibold text-pub-txt' : 'text-[13px] text-pub-txt-3')} data-vitrine-preco="gold_pro">{premium ?? 'sem preço'}</dd>
                         </div>
                     </dl>
                 )}
 
                 <div className="mt-auto space-y-2 pt-1">
-                    {! planejada && atualizado && <p className="text-[11px] text-pub-txt-4">Atualizado {atualizado}</p>}
+                    {! planejada && atualizado && <p className="text-[12.5px] text-pub-txt-3">Atualizado {atualizado}</p>}
                     {! planejada && cartao?.url_previa && (
                         <Link href={cartao.url_previa} tabIndex={foco} draggable={false}
                             className="flex h-9 w-full items-center justify-center gap-2 rounded-pub-control border border-pub-line-strong text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
@@ -262,7 +262,7 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
                         return (
                             <button key={p.numero} type="button" onClick={() => ir(naFase ? atual : p.primeira)} aria-current={naFase ? 'true' : undefined}
                                 title={quantas > 1 ? `${p.rotulo}: ${quantas} anúncios — passe pelo lado` : undefined}
-                                className={cn('relative inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-pub-chip px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
+                                className={cn('relative inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-pub-chip px-2 text-[12.5px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent',
                                     naFase ? 'bg-pub-hover-3 text-pub-txt' : 'text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt')}
                                 data-vitrine-pilula-fase={p.numero}>
                                 {/* Só o nome da fase e, se falta algo, a bolinha (o usuário, 20/10/2026: "é apenas o nome da fase ali"). */}
