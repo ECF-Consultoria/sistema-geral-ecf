@@ -3,6 +3,10 @@
 namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\GerarDescricaoIaJob;
+use App\Models\EstruturaOferta;
+use App\Models\EstruturaOfertaComponente;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\User;
@@ -354,14 +358,53 @@ class DescricaoIaTest extends TestCase
             'Você é especialista em redação para e-commerce.',
             'PRODUTO: "Mesa de Jantar Aurora"',
             'LOJA: "Dev 02 Testes API"',
-            "ESPECIFICAÇÕES TÉCNICAS REAIS:\nMaterial: Madeira\nLargura: 120 cm",
-            'SEÇÃO 1 — SAUDAÇÃO:', 'Olá! Seja bem-vindo(a) à Dev 02 Testes API!',
+            "DADOS DO PRODUTO:\nMaterial: Madeira\nLargura: 120 cm",
+            'SEÇÃO 1 — SAUDAÇÃO:', 'Olá! Seja muito bem-vindo(a) à Dev 02 Testes API!',
             'SEÇÃO 2 — BENEFÍCIOS E USO (2 parágrafos):', 'SEÇÃO 3 — ESPECIFICAÇÕES TÉCNICAS:', 'SEÇÃO 4 — CUIDADOS E RECOMENDAÇÕES:',
             'SEÇÃO 5 — FECHAMENTO:', '- Sem emojis', '- Sem HTML', '{"descricao":"..."}',
+            // 22/10/2026, o usuário: "não faz sentido ter [a ficha] na descrição se o Mercado Livre já dá essa informação",
+            // e o exemplo dele: títulos em maiúsculas, "Rótulo: valor" sem hífen, fechamento agradecendo a visita à loja.
+            'NÃO a copie aqui', 'desperdício de caracteres', 'construção e materiais internos', 'garantia, itens inclusos',
+            'Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas', '"Rótulo: valor", sem hífen',
+            'Sem nenhum detalhe além da ficha, não escreva esta seção.',
+            'Escreva o título CUIDADOS E RECOMENDAÇÕES, em maiúsculas', '"Rótulo: frase"',
+            'Agradecemos pela visita à Dev 02 Testes API e permanecemos à disposição para tirar qualquer dúvida!',
         ] as $trecho) {
             $this->assertStringContainsString($trecho, $prompt, $trecho);
         }
         $this->assertStringNotContainsString('SEM SAUDAÇÃO', $prompt);
+        $this->assertStringNotContainsString('Liste as especificações técnicas reais fornecidas acima', $prompt, 'a lista da ficha saiu');
+    }
+
+    /**
+     * 22/10/2026 — a descrição do combit da Opala listava os 26 campos da ficha ("É kit: Não", "Quantidade de lugares: 4"…):
+     * a ficha segue indo para a IA, mas marcada como o que o comprador já vê; o kit diz o que leva (a ficha é a de UMA peça).
+     */
+    public function test_a_ficha_vai_marcada_e_o_kit_diz_o_que_leva(): void
+    {
+        $this->r->atributos()->updateOrCreate(['attribute_id' => 'MATERIAL'], ['value_name' => 'Madeira maciça', 'origem' => 'portal']);
+
+        $specs = $this->servico()->specs($this->r->fresh());
+        $this->assertStringStartsWith(DescricaoIaService::CABECALHO_FICHA."\n", $specs);
+        $this->assertStringContainsString('Madeira maciça', $specs);
+        $this->assertStringNotContainsString('Itens do kit', $specs, 'produto avulso não é kit');
+
+        $empresa = (int) $this->empresa->id;
+        $poltrona = EstruturaProduto::create(['company_id' => $empresa, 'codigo' => 'OPALA', 'nome' => 'Poltrona Decorativa Opala']);
+        $componentes = [];
+        foreach (['Cinza', 'Bordô'] as $i => $cor) {
+            $v = EstruturaProdutoVariacao::create(['produto_id' => $poltrona->id, 'company_id' => $empresa, 'ordem' => $i, 'codigo' => "OPALA-{$i}",
+                'eixo' => 'cor', 'valor' => $cor, 'custo' => 100, 'estoque' => 4]);
+            $componentes[] = EstruturaOferta::create(['company_id' => $empresa, 'variacao_id' => $v->id, 'sku' => "OPALA-{$i}", 'fase' => 'simples', 'nome' => "Opala {$cor}"]);
+        }
+        $kit = EstruturaOferta::create(['company_id' => $empresa, 'sku' => 'CT-OPALA', 'fase' => 'combit', 'nome' => 'Kit 4 Poltrona Decorativa Opala']);
+        foreach ($componentes as $c) {
+            EstruturaOfertaComponente::create(['oferta_id' => $kit->id, 'componente_id' => $c->id, 'quantidade' => 2]);
+        }
+        $this->r->produto->update(['oferta_id' => $kit->id]);
+
+        $specs = $this->servico()->specs($this->r->fresh());
+        $this->assertStringContainsString("\n\nItens do kit: 2 Poltrona Decorativa Opala Cinza e 2 Poltrona Decorativa Opala Bordô", $specs);
     }
 
     public function test_corte_no_limite_mantem_o_delimitador_de_fechamento(): void

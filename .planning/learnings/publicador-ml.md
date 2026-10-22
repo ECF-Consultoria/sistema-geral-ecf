@@ -2025,3 +2025,15 @@ antigo); só o pedido de JSON no fim é nosso.
   manda de novo para a avaliação o que foi barrado em dia anterior — o teto segue valendo. Qualquer outro desfecho
   da avaliação apaga a marca, menos `ocupado`/`erro`. Decisão do usuário: o limite continua 10 e nada é gerado
   por fora dele.
+
+## 55. A descrição não repete a ficha técnica (22/10/2026)
+
+- O usuário, sobre a descrição do combit da Opala (rascunho 106 da #459), que listava os 26 campos da ficha ("É kit:
+  Não", "Quantidade de lugares: 4"…): "não faz sentido ter isso na descrição se o Mercado Livre já dá essa informação; é
+  desperdício de caracteres". A IA recebia a ficha como "ESPECIFICAÇÕES TÉCNICAS REAIS" e o prompt mandava listá-la.
+- Agora a ficha vai marcada (`DescricaoIaService::CABECALHO_FICHA`) e a seção 3 leva só o que a ficha NÃO mostra — o
+  texto livre do cliente (espuma, estrutura, fixação, garantia…) e "Itens do kit" do composto. Formato do exemplo
+  dele: títulos ESPECIFICAÇÕES TÉCNICAS / CUIDADOS E RECOMENDAÇÕES em maiúsculas, linhas "Rótulo: valor" sem hífen,
+  fechamento agradecendo a visita à loja. Sem nada além da ficha, a seção 3 não sai.
+- O texto do cliente do composto do MESMO produto (2 Cinza + 2 Bordô) ia duas vezes; agora uma por produto.
+- Não mexido (oferecido): a ficha do composto diz "É kit: Não" (`IS_KIT` é copiado da peça) — ela vai ao ML.

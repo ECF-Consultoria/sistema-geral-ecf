@@ -6,6 +6,7 @@ use App\Jobs\Publicador\GerarDescricaoIaJob;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\Emojis;
 use App\Support\Publicador\TermosVetados;
 use Illuminate\Support\Facades\Cache;
@@ -171,8 +172,21 @@ class DescricaoIaService
         foreach ($medidas as $rotulo => $valor) {
             $linhas[] = "{$rotulo}: {$valor}";
         }
+        // 22/10/2026, o usuário, sobre a descrição do combit da Opala que listava os 26 campos da ficha: "não faz sentido
+        // ter isso na descrição se o Mercado Livre já dá essa informação; é desperdício de caracteres". A ficha segue
+        // indo para a IA (é dela que vêm os benefícios), mas marcada — o prompt manda não copiá-la.
+        $partes = [];
+        if ($linhas !== []) {
+            $partes[] = self::CABECALHO_FICHA."\n".implode("\n", $linhas);
+        }
+        // O que o kit leva ("2 Poltrona Decorativa Opala Cinza e 2 Poltrona Decorativa Opala Bordô"): a ficha é a de UMA
+        // peça, e é daqui que sai o "Itens inclusos".
+        $composicao = ComposicaoDoComposto::doProduto($r->produto);
+        if ($composicao !== null && $composicao->total() >= 2) {
+            $partes[] = 'Itens do kit: '.$composicao->descricao();
+        }
 
-        $texto = mb_substr(implode("\n", $linhas), 0, self::LIMITE_SPECS);
+        $texto = mb_substr(implode("\n\n", $partes), 0, self::LIMITE_SPECS);
         $cliente = $this->descricaoDoCliente($r);
         if ($cliente !== null) {
             // O delimitador não pode aparecer dentro do texto (fecharia o bloco antes da hora).
@@ -194,6 +208,9 @@ class DescricaoIaService
 
     /** Campos que não são especificação do produto para o comprador: códigos e a caixa de envio. */
     private const FORA_DAS_SPECS = '/^(SELLER_SKU|GTIN|EMPTY_GTIN_REASON|SELLER_PACKAGE_.*|PACKAGE_.*|ITEM_CONDITION)$/';
+
+    /** O cabeçalho da ficha técnica nos dados que a IA recebe: o comprador já a vê, a descrição não a repete. */
+    public const CABECALHO_FICHA = 'Ficha técnica do anúncio (o Mercado Livre já mostra estes campos ao comprador, ao lado da descrição — não os copie):';
 
     /** Delimitador do texto do cliente nas especificações. */
     public const DELIMITADOR = 'DESCRICAO_DO_CLIENTE';

@@ -685,33 +685,34 @@ class AnaliseAnuncioService
 
         PRODUTO: "{$produto}"
         LOJA: "{$loja}"
-        ESPECIFICAÇÕES TÉCNICAS REAIS:
+        DADOS DO PRODUTO:
         {$especificacoes}
 
         ESTRUTURA OBRIGATÓRIA — gere cada seção na ordem abaixo:
 
         SEÇÃO 1 — SAUDAÇÃO:
-        Uma frase de boas-vindas calorosa ao comprador, mencionando o nome da loja. Ex: "Olá! Seja bem-vindo(a) à {$loja}!"
+        Uma frase de boas-vindas calorosa ao comprador, mencionando o nome da loja. Ex: "Olá! Seja muito bem-vindo(a) à {$loja}!"
 
         SEÇÃO 2 — BENEFÍCIOS E USO (2 parágrafos):
         Parágrafo 1: destaque o benefício principal e o diferencial do produto. Por que o comprador deve escolhê-lo?
         Parágrafo 2: explique o uso ideal, ambientes de uso, público-alvo e situações do dia a dia em que o produto resolve um problema.
 
         SEÇÃO 3 — ESPECIFICAÇÕES TÉCNICAS:
-        Liste as especificações técnicas reais fornecidas acima. Não invente dados. Formate como lista com cada item em uma linha.
+        A ficha técnica dos dados acima já aparece no anúncio, ao lado da descrição: NÃO a copie aqui — repetir o que o Mercado Livre já mostra é desperdício de caracteres. Liste só os detalhes técnicos que o comprador não encontra na ficha, tirados da descrição do cliente e dos itens do kit: construção e materiais internos, espuma e enchimento, mecanismo, fixação, acabamento, garantia, itens inclusos. Não invente dados. Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas, e abaixo um item por linha no formato "Rótulo: valor", sem hífen, sem marcador e sem numeração. Sem nenhum detalhe além da ficha, não escreva esta seção.
 
         SEÇÃO 4 — CUIDADOS E RECOMENDAÇÕES:
-        Liste em tópicos os cuidados de uso, manutenção, armazenamento e quaisquer avisos de segurança relevantes.
+        Os cuidados de uso, limpeza, conservação e os avisos de segurança relevantes para este produto. Escreva o título CUIDADOS E RECOMENDAÇÕES, em maiúsculas, e abaixo um cuidado por linha no formato "Rótulo: frase" (ex.: "Limpeza: use pano levemente umedecido em água e sabão neutro."), sem hífen nem marcador.
 
         SEÇÃO 5 — FECHAMENTO:
-        Uma frase de incentivo à compra que destaque o valor do produto na rotina do cliente, seguida de agradecimento cordial.
+        Uma frase de incentivo à compra que destaque o valor do produto na rotina do cliente, seguida de agradecimento cordial pela visita. Ex: "Agradecemos pela visita à {$loja} e permanecemos à disposição para tirar qualquer dúvida!"
 
         REGRAS DE FORMATO:
         - Linguagem amigável, profissional e voltada ao consumidor final
         - Sem emojis
         - Sem HTML
-        - Sem caracteres especiais (parênteses duplos, asteriscos decorativos, etc.)
+        - Sem caracteres especiais (parênteses duplos, asteriscos decorativos, hífens de lista, etc.)
         - Sem jargão técnico excessivo — escreva para o comprador leigo
+        - Separe as seções com uma linha em branco; só as seções 3 e 4 têm título
 
         PORTUGUÊS DO BRASIL CORRETO: escreva em português do Brasil, com ortografia e concordância corretas e sem
         gírias. Na chamada para ação use o imperativo afirmativo correto, tratando o cliente por "você": "garanta",
