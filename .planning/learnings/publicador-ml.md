@@ -1994,3 +1994,16 @@ antigo); só o pedido de JSON no fim é nosso.
   sem SKU, GTIN e caixa de envio; o que a IA ou a equipe pôs fica de fora (o "Modelo" cheio de termos de busca). Sem nada
   do cliente (produto que nasceu no Publicador), vale a ficha inteira. A descrição do cliente continua no bloco
   delimitado, como DADO.
+
+## 53. Peso CUBADO tira o Mercado Envios sem aviso no validate; o preditor de categoria pode devolver vazio (22/10/2026)
+
+- **Poltrona Donatella (produto 108 da #459):** caixa 70×65×60 cm, 24,3 kg reais — soma 195 cm e maior lado 70 cm
+  passam no drop_off, mas o peso faturado é 45,5 kg (cubado, `respostas_ml.frete.peso_faturado = 45500`), acima dos 30 kg.
+  O `/items/validate` devolveu só o 4053 (ruído), o `shipping_options` cotou R$ 111,65, e o anúncio NASCEU "a combinar".
+  Só o 4057 da Opala (soma 245 cm) avisava. Quem prevê "fora do ME2" tem de usar o peso faturado (maior entre real e
+  cubado), não só o real. Área de frete do outro dev; registrado para ele.
+- **`/sites/MLB/domain_discovery/search` devolveu 200 `[]` para QUALQUER termo** a partir de ~13h57 de 22/10 (até
+  "celular"). Não é erro HTTP: o código antigo cacheava o vazio por 1 h. Desde 22/10 vazio/falha não entram no cache
+  (marca de 60 s à parte). A aba "Navegar" da categoria (árvore) seguiu funcionando — é o plano B.
+- **Promoção automática em anúncio novo:** todas as de 22/10 voltaram "No candidates found for item". A de 21/10 que
+  "pegou" foi exceção. A Prévia deixou de prometer o desconto e a lista publicada mostra o que o ML fez.

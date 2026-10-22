@@ -30,3 +30,22 @@ branch: fix/demo-23-10-b
 - PHP: Feature/Publicador 1.994 (5 falhas conhecidas do pacote de protótipo), Unit/Publicador 680 (4 conhecidas:
   ProximoARevisar ×2 e MontadorDePlano ×2), Unit/PortalEstrutura 257 OK, Portal (filtro do que mudou) 252 OK.
 - `npm run build` OK.
+
+## Terceira rodada (22/10 à tarde, depois do reteste do Cowork) — branch `fix/demo-23-10-c`
+
+Decisão do usuário: corrigir RG2, A1 e os menores; RG1 (peso cubado) fica com o outro dev; a demo mantém a poltrona
+(o apresentador não fala de frete nem de desconto).
+
+| Item | Resultado |
+|---|---|
+| RG2 busca de categoria | `MlCatalogoMetaService` só cacheia 2xx não vazio (preditor, categoria, atributos, tipos); `[]` já cacheado conta como ausente; preditor vazio/falha marca 60 s à parte. Medido em produção: o `domain_discovery` do ML devolvia 200 `[]` para qualquer termo e o vazio ficava 1 h no cache (o detalhe de categoria com falha, 7 dias). |
+| A1 promoção | Caixa "Com a promoção da Central" desmarcada; nota diz que o sistema TENTA; lista publicada mostra o estado da promoção por MLB (`PromocaoDoPublicado`). Medido: todas as promoções automáticas de 22/10 foram recusadas com "No candidates found for item". |
+| A9 | "Vendido por" usa o apelido da conta no ML (MGSTOREL). |
+| A8 | Prompt da descrição pede imperativo correto ("Garanta"). |
+| R4 | Vitrine relê a cada 25 s com a aba visível (5 s com IA trabalhando), sem diálogo aberto. |
+| A4 | Foto > 10 MB barrada na escolha; aviso do Salvar uma vez só. |
+| A5 | Rascunho do produto novo também em localStorage, por empresa, 24 h. |
+| RG1 | **Não feito (frete do outro dev):** a caixa 70×65×60 dá 45,5 kg de peso cubado, acima dos 30 kg do drop_off; o `/items/validate` não devolveu 4057 e o ML criou "a combinar". O sistema precisa comparar o peso faturado (maior entre real e cubado) com o limite da modalidade. |
+
+Gates: JS 5.594 (8 falhas conhecidas), Feature/Publicador 2.007 (5 conhecidas do pacote de protótipo), filtro das
+áreas tocadas 236 OK, build OK.
