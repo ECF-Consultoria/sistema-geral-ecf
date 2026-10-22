@@ -713,6 +713,11 @@ class AnaliseAnuncioService
         - Sem caracteres especiais (parênteses duplos, asteriscos decorativos, etc.)
         - Sem jargão técnico excessivo — escreva para o comprador leigo
 
+        PORTUGUÊS DO BRASIL CORRETO: escreva em português do Brasil, com ortografia e concordância corretas e sem
+        gírias. Na chamada para ação use o imperativo afirmativo correto, tratando o cliente por "você": "garanta",
+        "aproveite", "compre", "leve", "escolha" — nunca "garante", "aproveita", "compra", "leva" (essas são a
+        forma do "tu"/presente e saem erradas no anúncio, ex.: "Garanta já a sua", e não "Garante já a sua").
+
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}
         TXT;
