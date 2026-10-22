@@ -2069,7 +2069,7 @@ falta). O frete grátis obrigatório é o `EditorRascunhoService::freteGratis` d
 - **Custo no preparo:** até 3 GETs de conta (só se a leitura passou de 10 min) + 1 a 4 de `shipping_options/free` por
   produto preparado, enquanto o frete grátis não está marcado.
 
-## 56. Releitura do estado dos anúncios JÁ publicados (R17, pós-demo, 22/10/2026)
+## 57. Releitura do estado dos anúncios JÁ publicados (R17, pós-demo, 22/10/2026)
 
 - O `RelerEstadoDoPublicadoJob` só nasce no fim de publicação NOVA: tudo o que foi publicado antes dele seguia
   "Publicado" na lista final mesmo pausado/em revisão no ML. `publicador:reler-publicados` agenda o MESMO Job com a
