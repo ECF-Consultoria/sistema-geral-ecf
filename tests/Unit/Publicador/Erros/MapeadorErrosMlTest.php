@@ -149,7 +149,15 @@ class MapeadorErrosMlTest extends TestCase
 
         $this->assertSame('V-REM-01', $p->regra);
         $this->assertSame(['etapa' => 'OUTROS'], $p->alvo);
-        $this->assertSame('Some NEW rule about VALUES', $p->mensagem);
+        // Demo 23/10: em português na frente, o código do ML entre parênteses e o original no fim (para o suporte).
+        $this->assertSame('O Mercado Livre apontou um problema que ainda não sabemos traduzir (código 99999): “Some NEW rule about VALUES”.', $p->mensagem);
+        $this->assertSame('Some NEW rule about VALUES', $p->mlCausa['message'], 'a causa crua continua guardada');
+
+        // Sem `cause_id`, o código textual; sem código nenhum, sem parênteses.
+        $semId = MapeadorErrosMl::problema(['code' => 'item.something.new', 'message' => 'Other thing'], null, null, self::$dicionario);
+        $this->assertSame('O Mercado Livre apontou um problema que ainda não sabemos traduzir (código item.something.new): “Other thing”.', $semId->mensagem);
+        $semCodigo = MapeadorErrosMl::problema(['message' => 'Bare'], null, null, self::$dicionario);
+        $this->assertSame('O Mercado Livre apontou um problema que ainda não sabemos traduzir: “Bare”.', $semCodigo->mensagem);
     }
 
     public function test_erro_de_corpo_sem_cause(): void
@@ -204,8 +212,10 @@ class MapeadorErrosMlTest extends TestCase
         $comAtributos = ['mensagem' => 'The attributes [BRAND] are required', 'ml_causa' => ['cause_id' => 147, 'message' => 'The attributes [BRAND] are required']];
         $this->assertSame($comAtributos, MapeadorErrosMl::comTraducaoDeHoje($comAtributos, self::$dicionario));
         // Código que o dicionário não conhece, e problema local (sem causa do ML).
+        // Demo 23/10: o código desconhecido gravado cru também aparece em português (o gravado não muda).
         $desconhecido = ['mensagem' => 'Something new', 'ml_causa' => ['cause_id' => 999999, 'code' => 'x.y', 'message' => 'Something new']];
-        $this->assertSame($desconhecido, MapeadorErrosMl::comTraducaoDeHoje($desconhecido, self::$dicionario));
+        $this->assertSame('O Mercado Livre apontou um problema que ainda não sabemos traduzir (código 999999): “Something new”.',
+            MapeadorErrosMl::comTraducaoDeHoje($desconhecido, self::$dicionario)['mensagem']);
         $local = ['mensagem' => 'Preencha o título.', 'ml_causa' => null];
         $this->assertSame($local, MapeadorErrosMl::comTraducaoDeHoje($local, self::$dicionario));
     }
