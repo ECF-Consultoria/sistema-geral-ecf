@@ -1901,3 +1901,22 @@ precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_ship
   (`ConferenciaTest`). Quem precisar de um aviso "de verdade" em teste use outro código (o 469, por exemplo).
 - Conferência gravada antes continua com o 350 no banco; a tela filtra na leitura (`estado()` e `ResumoRapidoService`
   já passam tudo por `ehRuido`).
+
+## 47. Correções da véspera da demo (22/10/2026, branch `demo/frente-b`)
+
+- **Prévia × 4057 (N1):** `PreviaDoAnuncioService::envioQueVaiValer` lê a ÚLTIMA conferência gravada — aviso
+  `shipping.lost_me2*` em `issues` ou `respostas_ml.frete.motivo` ∈ {`sem_mercado_envios`, `fora_do_me2`} — e troca o
+  envio da prévia para "Entrega a combinar" (ou "Envio pelo vendedor" com `destino = me1`), com `envio.aviso`. Sem
+  conferência a prévia segue o plano (pode prometer frete grátis que o ML vai tirar). Não lê o ML nem o
+  `EnvioDoRascunhoService` (frete é do outro dev). Isto supera o item "A Prévia não sabe do aviso 4057" do §45.
+- **Faixa "ainda não subiu" (N15):** só para foto COM atribuição (a usada no anúncio), no bloco do grupo, dita pela
+  miniatura e pela posição. A foto do cliente que ficou só de referência (§40) não avisa mais nada.
+- **Título do Portal (N21):** com `titulo` vazio e oferta do Portal, o campo EXIBE o `titulo_efetivo` com o selo
+  "do Portal" (não grava nada; apagar tudo volta a seguir o Portal).
+- **"Abrir o editor grava" (N9) NÃO foi corrigido** — desenho para depois: três dos quatro padrões (EAN, `MAIN_COLOR`,
+  `fotos_por_variante`) MUDAM o payload, então gravá-los sem subir a `revisao` deixaria uma conferência "valendo" para
+  um payload que o ML não viu (e o "Publicar" passaria). O caminho certo é aplicá-los no SERVIDOR antes da 1ª
+  conferência — ao nascer/preparar o rascunho e no início do `ConferirRascunhoJob`/conferência em lote: portar
+  `gerarEan13`/`variantesSemGtin`, `tomDaCor`/`nomeDaCor` e a regra de `fotos_por_variante` para PHP, e o frete grátis
+  obrigatório pelo `EditorRascunhoService` (linha ~553, já calcula `obrigatorio`, mas consulta o ML). Com isso os
+  `useEffect` do editor deixam de disparar (o valor já está certo). O "editando" que adia o preparo da IA some junto.
