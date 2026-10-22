@@ -26,3 +26,16 @@ test('N23 — o nome da variação vem do servidor e "Único" não aparece', () 
     assert.match(f, /return r && r !== 'Único' \? r : null;/);
     assert.doesNotMatch(f, /\?\.rotulo \?\? '—'/, 'nem o travessão de antes');
 });
+
+test('H21 — o que o Mercado Livre segurou aparece no item e tira o "Publicado" do topo', () => {
+    const f = lerSemComentarios(PUBLICAR);
+    assert.match(f, /PUBLICADO_RETIDO: 'Criado no Mercado Livre, mas nem tudo está no ar'/);
+    assert.match(f, /\{i\.situacao_ml\.texto\}\{i\.situacao_ml\.motivo \? `: \$\{i\.situacao_ml\.motivo\}` : ''\}/);
+    assert.match(f, /\? \{ tom: 'aviso', texto: 'Criado no Mercado Livre, mas nem tudo está no ar: veja abaixo' \}/);
+});
+
+test('H21 — depois de publicar, a tela relê só a publicação por alguns minutos', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/usePublicador.js');
+    assert.match(f, /const RELER_DEPOIS_DE_PUBLICAR = 8 \* 60 \* 1000;/);
+    assert.match(f, /setEstado\(\(e\) => \(e && e\.publicacao\?\.id === data\.publicacao\.id \? \{ \.\.\.e, publicacao: data\.publicacao \} : e\)\)/);
+});

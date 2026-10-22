@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Publicador;
 
+use App\Jobs\Publicador\RelerEstadoDoPublicadoJob;
 use App\Models\PubPublicacao;
 use App\Models\User;
+use App\Services\Publicador\ClienteMlPublicador;
 use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PublicacaoService;
@@ -106,5 +108,65 @@ class SituacaoDoPublicadoTest extends TestCase
         $this->assertSame('Marrom', $this->itemNaTela()['rotulo']);
         $this->assertSame('Marrom / G', SituacaoDoAnuncioMl::rotulo('Marrom / G', []), 'com eixo, vale o rótulo da variação');
         $this->assertSame('Único', SituacaoDoAnuncioMl::rotulo('Único', ['attributes' => [['id' => 'BRAND', 'value_name' => 'ECF']]]), 'sem cor, segue como era');
+    }
+
+    public function test_h21_publicar_agenda_a_releitura_do_estado_na_fila_high(): void
+    {
+        $p = $this->publicar();
+
+        $jobs = Queue::pushed(RelerEstadoDoPublicadoJob::class);
+        $this->assertCount(1, $jobs);
+        $this->assertSame($p->id, $jobs->first()->publicacaoId);
+        $this->assertSame('high', $jobs->first()->queue);
+        $this->assertNotNull($jobs->first()->delay);
+    }
+
+    public function test_h21_ml_pausou_depois_de_criar_a_lista_deixa_de_dizer_so_publicado(): void
+    {
+        $p = $this->publicar();
+        $this->assertNull($this->itemNaTela()['situacao_ml'], 'na criação estava no ar');
+
+        // Minutos depois: o ML pôs em revisão, esperando correção.
+        $this->noMl = ['status' => 'under_review', 'sub_status' => ['waiting_for_patch'], 'shipping' => ['mode' => 'me2', 'free_shipping' => true]];
+        $relidos = (new RelerEstadoDoPublicadoJob($p->id))->reler(app(ClienteMlPublicador::class));
+
+        $this->assertSame(1, $relidos);
+        $this->assertSame([
+            'status' => 'under_review',
+            'texto' => 'Em revisão no Mercado Livre',
+            'motivo' => 'o Mercado Livre pede correção no anúncio (título, fotos ou dados do produto)',
+        ], $this->itemNaTela()['situacao_ml']);
+
+        // Pausado pelo ML, sem motivo conhecido: diz o estado e não mostra termo em inglês.
+        $this->noMl = ['status' => 'paused', 'sub_status' => ['algo_novo'], 'shipping' => ['mode' => 'me2']];
+        (new RelerEstadoDoPublicadoJob($p->id))->handle(app(ClienteMlPublicador::class));
+        $this->assertSame(['status' => 'paused', 'texto' => 'Pausado pelo Mercado Livre', 'motivo' => null], $this->itemNaTela()['situacao_ml']);
+
+        // Voltou ao ar: some o aviso.
+        $this->noMl = ['status' => 'active', 'sub_status' => [], 'shipping' => ['mode' => 'me2']];
+        (new RelerEstadoDoPublicadoJob($p->id))->handle(app(ClienteMlPublicador::class));
+        $this->assertNull($this->itemNaTela()['situacao_ml']);
+    }
+
+    public function test_h21_leitura_que_falha_nao_quebra_nem_apaga_o_que_ja_se_sabia(): void
+    {
+        $p = $this->publicar();
+        $this->mlResponde = false;
+
+        (new RelerEstadoDoPublicadoJob($p->id))->handle(app(ClienteMlPublicador::class));
+
+        $i = $this->itemNaTela();
+        $this->assertNull($i['situacao_ml']);
+        $this->assertSame('frete grátis pelo Mercado Envios', $i['envio']['texto'], 'o estado da criação continua');
+    }
+
+    public function test_h21_conta_que_deixou_de_ser_liberada_nao_le_nada(): void
+    {
+        $p = $this->publicar();
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+        $antes = $this->chamadas('/items/MLB');
+
+        $this->assertSame(0, (new RelerEstadoDoPublicadoJob($p->id))->reler(app(ClienteMlPublicador::class)));
+        $this->assertSame($antes, $this->chamadas('/items/MLB'));
     }
 }

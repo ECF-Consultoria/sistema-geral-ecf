@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
 use App\Jobs\Publicador\ConferirFreteDoPublicadoJob;
+use App\Jobs\Publicador\RelerEstadoDoPublicadoJob;
 use App\Jobs\Publicador\SincronizarAcervoDoPublicadoJob;
 use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
@@ -602,6 +603,7 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        $this->relerEstadoDoPublicado($p);
         $this->criarCombosDoPlanejamento($r);
     }
 
@@ -702,6 +704,23 @@ class PublicacaoService
         }
     }
 
+    /**
+     * Demo 23/10/2026 (H21) — publicou: o Mercado Livre pode pausar ou pôr em revisão LOGO DEPOIS de criar, e a
+     * leitura do `depoisDeCriar` chega antes disso. O `RelerEstadoDoPublicadoJob` relê cada anúncio criado um
+     * pouco depois (e de novo alguns minutos depois). Mesmo molde fail-open dos outros ganchos: falhar aqui
+     * nunca desfaz nem repete a publicação.
+     */
+    private function relerEstadoDoPublicado(PubPublicacao $p): void
+    {
+        try {
+            if ($p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')->exists()) {
+                RelerEstadoDoPublicadoJob::dispatch((int) $p->id)->delay(now()->addSeconds(RelerEstadoDoPublicadoJob::ESPERA_PRIMEIRA));
+            }
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas a releitura do estado no ML não foi agendada: {$e->getMessage()}");
+        }
+    }
+
     /** O MLB volta para a linha dele na aba Anúncios: o 1º item criado de cada tipo completa o planejado. */
     private function cadastrarNaRegua(PubPublicacao $p, PubRascunho $r, $criados): void
     {
@@ -760,6 +779,7 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        $this->relerEstadoDoPublicado($p);
         // Parte no ar ("Parte publicada") também é a Fase 1 no ar, como no gate do "Criar Fase N".
         $this->criarCombosDoPlanejamento($r);
     }

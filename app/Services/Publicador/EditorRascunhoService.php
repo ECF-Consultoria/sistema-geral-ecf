@@ -761,6 +761,8 @@ class EditorRascunhoService
                     'frete' => is_array($i->avisos['frete'] ?? null) ? FreteDoPublicadoService::paraTela((int) $i->id, $i->avisos['frete']) : null,
                     // Demo 23/10 (N17): o frete com que o anúncio saiu, lido na criação — inclusive "a combinar" (aviso 4057).
                     'envio' => \App\Support\Publicador\SituacaoDoAnuncioMl::envio($i->avisos['estado'] ?? null, (array) $i->resposta),
+                    // Demo 23/10 (H21): o ML pausou ou pôs em revisão depois de criar (relido pelo `RelerEstadoDoPublicadoJob`).
+                    'situacao_ml' => \App\Support\Publicador\SituacaoDoAnuncioMl::situacao($i->avisos['estado'] ?? null),
                     // Demo 23/10 (N23): o nome da variação; a sem eixo era "Único" mesmo saindo "Marrom" (a cor do que foi enviado).
                     'rotulo' => \App\Support\Publicador\SituacaoDoAnuncioMl::rotulo(
                         collect($digitado->variantes)->first(fn (Variante $v) => $v->chave === $i->variante_chave)?->rotulo($eixos), (array) $i->payload,

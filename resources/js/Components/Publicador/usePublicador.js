@@ -39,6 +39,9 @@ const ESPERA_SALVAR = 900;
 const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim e perdê-las?';
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
+// Demo 23/10 (H21): depois de publicar, o servidor relê o estado no ML em 1,5 e ~6,5 min e o frete em 1 min.
+const RELER_DEPOIS_DE_PUBLICAR = 8 * 60 * 1000;
+const INTERVALO_DEPOIS_DE_PUBLICAR = 20 * 1000;
 const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
 // Sinal de editor aberto (09/10/2026), a cada 20 s desde 20/10/2026: a resposta diz se a IA está atualizando este
 // anúncio por fora (o cliente salvou no Portal) — com ela gravando, a mesa fica só leitura e relê no fim.
@@ -439,6 +442,32 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
 
         return () => clearInterval(t);
     }, [aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Depois de publicar ──
+    // Demo 23/10 (H21/N17): o Mercado Livre pode pausar ou pôr em revisão minutos depois, e o frete do publicado
+    // chega um minuto depois. Enquanto a publicação for recente, relê de vez em quando SÓ a publicação: o resto do
+    // estado (o que a pessoa ainda edita) não é trocado.
+    const concluidaEm = estado?.publicacao && estado.publicacao.status !== 'RUNNING' ? estado.publicacao.concluida_em : null;
+    useEffect(() => {
+        if (! concluidaEm || aguardando) return undefined;
+        const fim = Date.parse(concluidaEm) + RELER_DEPOIS_DE_PUBLICAR;
+        if (! (fim > Date.now())) return undefined;
+        const t = setInterval(async () => {
+            if (Date.now() > fim) {
+                clearInterval(t);
+
+                return;
+            }
+            try {
+                const { data } = await axios.get(rota('abrir', produtoId));
+                if (data?.publicacao?.id) setEstado((e) => (e && e.publicacao?.id === data.publicacao.id ? { ...e, publicacao: data.publicacao } : e));
+            } catch {
+                // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
+            }
+        }, INTERVALO_DEPOIS_DE_PUBLICAR);
+
+        return () => clearInterval(t);
+    }, [concluidaEm, aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Ações ──
     /**

@@ -24,14 +24,20 @@ import { cn, formatCurrency } from '@/lib/utils';
 // 3. Conferir e Publicar — o único amarelo desta etapa: Conferir até o Mercado
 //    Livre aprovar, Publicar depois; desabilitado, diz o motivo.
 
-const STATUS_PUBLICACAO = { RUNNING: 'Publicando…', PUBLISHED: 'Publicado no Mercado Livre', PARTIALLY_PUBLISHED: 'Parte foi publicada', FAILED: 'Não foi publicado' };
-const COR_PUBLICACAO = { RUNNING: 'text-white/70', PUBLISHED: 'text-emerald-400', PARTIALLY_PUBLISHED: 'text-amber-300', FAILED: 'text-red-300' };
+const STATUS_PUBLICACAO = { RUNNING: 'Publicando…', PUBLISHED: 'Publicado no Mercado Livre', PARTIALLY_PUBLISHED: 'Parte foi publicada', FAILED: 'Não foi publicado',
+    PUBLICADO_RETIDO: 'Criado no Mercado Livre, mas nem tudo está no ar' };
+const COR_PUBLICACAO = { RUNNING: 'text-white/70', PUBLISHED: 'text-emerald-400', PARTIALLY_PUBLISHED: 'text-amber-300', FAILED: 'text-red-300', PUBLICADO_RETIDO: 'text-amber-300' };
 const STATUS_ITEM = { PENDING: 'na fila', SENT: 'enviando', UNKNOWN: 'confirmando…', FAILED: 'não publicado' };
 const POR_ETAPA_A_VISTA = 4;
 
 /** Tom e texto curto da situação da conferência. */
 export function situacaoDaConferencia(pub) {
-    if (pub.m.estado?.rascunho?.status === 'PUBLISHED') return { tom: 'completo', texto: 'Publicado no Mercado Livre' };
+    if (pub.m.estado?.rascunho?.status === 'PUBLISHED') {
+        // Demo 23/10 (H21): o ML pausou ou pôs em revisão algum dos anúncios criados.
+        return (pub.publicacao?.itens ?? []).some((i) => i.ml_item_id && i.situacao_ml)
+            ? { tom: 'aviso', texto: 'Criado no Mercado Livre, mas nem tudo está no ar: veja abaixo' }
+            : { tom: 'completo', texto: 'Publicado no Mercado Livre' };
+    }
     const conf = pub.conferencia.estado;
     if (conf === 'conferindo') return { tom: 'neutro', texto: 'Conferindo…' };
     if (conf === 'ok') return { tom: 'completo', texto: 'Conferido: pronto para publicar' };
@@ -63,6 +69,9 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         return r && r !== 'Único' ? r : null;
     };
     const maisDeUmPorTipo = itensPublicados.some((i, n) => itensPublicados.findIndex((o) => o.listing_type_id === i.listing_type_id) !== n);
+    // Demo 23/10 (H21): o ML pausou ou pôs em revisão depois de criar — "Publicado" sozinho seria mentira.
+    const foraDoAr = itensPublicados.filter((i) => i.ml_item_id && i.situacao_ml);
+    const statusDaPublicacao = publicacao?.status === 'PUBLISHED' && foraDoAr.length > 0 ? 'PUBLICADO_RETIDO' : publicacao?.status;
     const situacao = situacaoDaConferencia(pub);
     const ambar = situacao.tom === 'falta' || situacao.tom === 'aviso';
     const local = pub.conferencia.local;
@@ -194,11 +203,11 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
 
                     {publicacao && (
                         <div className="space-y-2" data-publicacao={publicacao.status} aria-live="polite">
-                            <p className={cn('flex items-center gap-2 text-[15px] font-bold', COR_PUBLICACAO[publicacao.status])}>
+                            <p className={cn('flex items-center gap-2 text-[15px] font-bold', COR_PUBLICACAO[statusDaPublicacao])}>
                                 {andamento
                                     ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                                    : (publicacao.status === 'PUBLISHED' ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />)}
-                                {STATUS_PUBLICACAO[publicacao.status]}
+                                    : (statusDaPublicacao === 'PUBLISHED' ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />)}
+                                {STATUS_PUBLICACAO[statusDaPublicacao]}
                             </p>
                             {publicacao.motivo && <p className="text-[13px] text-red-300">{publicacao.motivo}</p>}
                             {/* Demo 23/10 (H20): o anúncio no ar é o fim do fluxo — botão grande, não só o código MLB. */}
@@ -225,6 +234,11 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         {i.ml_item_id
                                             ? <LinkMl mlb={i.ml_item_id} />
                                             : <span className={i.status === 'FAILED' ? 'text-red-300' : 'text-white/55'}>{STATUS_ITEM[i.status] ?? i.status}</span>}
+                                        {i.ml_item_id && i.situacao_ml && (
+                                            <span className="w-full text-amber-300" data-situacao-ml={i.situacao_ml.status}>
+                                                {i.situacao_ml.texto}{i.situacao_ml.motivo ? `: ${i.situacao_ml.motivo}` : ''}. Veja o anúncio no Mercado Livre.
+                                            </span>
+                                        )}
                                         {i.descricao_status === 'FAILED' && (
                                             <button type="button" onClick={() => reenviarDescricao(i.id)} className={LINK}>reenviar descrição</button>
                                         )}
