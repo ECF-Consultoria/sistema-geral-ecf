@@ -1913,7 +1913,7 @@ precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_ship
   miniatura e pela posição. A foto do cliente que ficou só de referência (§40) não avisa mais nada.
 - **Título do Portal (N21):** com `titulo` vazio e oferta do Portal, o campo EXIBE o `titulo_efetivo` com o selo
   "do Portal" (não grava nada; apagar tudo volta a seguir o Portal).
-- **"Abrir o editor grava" (N9) NÃO foi corrigido** — desenho para depois: três dos quatro padrões (EAN, `MAIN_COLOR`,
+- **"Abrir o editor grava" (N9) NÃO foi corrigido na véspera** (corrigido depois, ver §54) — desenho: três dos quatro padrões (EAN, `MAIN_COLOR`,
   `fotos_por_variante`) MUDAM o payload, então gravá-los sem subir a `revisao` deixaria uma conferência "valendo" para
   um payload que o ML não viu (e o "Publicar" passaria). O caminho certo é aplicá-los no SERVIDOR antes da 1ª
   conferência — ao nascer/preparar o rascunho e no início do `ConferirRascunhoJob`/conferência em lote: portar
@@ -2037,3 +2037,34 @@ antigo); só o pedido de JSON no fim é nosso.
   fechamento agradecendo a visita à loja. Sem nada além da ficha, a seção 3 não sai.
 - O texto do cliente do composto do MESMO produto (2 Cinza + 2 Bordô) ia duas vezes; agora uma por produto.
 - Não mexido (oferecido): a ficha do composto diz "É kit: Não" (`IS_KIT` é copiado da peça) — ela vai ao ML.
+
+## 56. "Abrir o editor grava" (N9) corrigido: os padrões do editor nascem no servidor (22/10/2026, branch `pos-demo/n9`)
+
+O desenho do §47, feito. `App\Support\Publicador\PadroesDoEditor` (puro) é o gêmeo PHP dos efeitos da tela —
+`gerarEan13`/`variantesSemGtin`, `tomDaCor`/`nomeDaCor`, "fotos por variação" sem eixo que defina a foto e a forma de
+envio que a conta não tem — e `PadroesDoRascunhoService` grava (trava do rascunho, `tocar()` uma vez, nada quando nada
+falta). O frete grátis obrigatório é o `EditorRascunhoService::freteGratis` de sempre (pergunta ao ML), só com `comFrete`.
+
+- **Onde roda:** Sincronizar do botão (`PreencherRascunhoDoPortalJob`) e logo após o save (`sincronizarAgora`), sem HTTP;
+  preparo pela IA (`preparar` → `preencher(comFrete: true)`), que LÊ A CONTA se o rascunho ainda não a tem (o mesmo
+  `lerContaSeVencida` do `abrir`, via `lerContaParaOsPadroes` no fim da classe) e liga o frete; e, como rede de
+  segurança, no início do `ConferirRascunhoJob` e da conferência em lote (que já ligava o frete — a regra foi para o
+  serviço e `ConferenciaEmLoteService::garantirFreteObrigatorio` só delega). `ConferenciaService::conferir` NÃO aplica:
+  os testes que conferem rascunho sem GTIN (TC-32) contam com isso.
+- **Por que subir a revisão aqui é certo:** tudo roda ANTES de conferir, então a conferência seguinte é da revisão com
+  os padrões. Rascunho antigo com conferência "valendo" e sem os padrões perde a conferência na próxima sincronização ou
+  conferência — é o certo: aquela conferência era de um payload sem o EAN que o editor ia gravar.
+- **A tela não mudou:** os `useEffect` continuam e só gravam o que falta. `MAIN_COLOR` gravado não tem `origem` (o
+  atributo de variante não guarda a coluna), e a tela só troca o que tem `origem: 'auto'` — então o tom do servidor nunca
+  é retrocado ao abrir. O Sincronizar já gravava o tom por casamento EXATO (`tomDaVariante`); o padrão completa com
+  sinônimo/prefixo ("Grafite" → Cinza) onde o Portal deixou vazio.
+- **Paridade provada pelos dois lados:** `tests/fixtures-ml/padroes-do-editor-paridade.json` (gerada do JS, tons reais
+  do MAIN_COLOR da cadeira) é lida por `PadroesDoEditorTest` e por `tests/js/publicador-padroes-do-editor.test.js`. O
+  teste JS também roda os efeitos REAIS (React trocado por um stand-in que roda cada `useEffect` na hora) com o estado
+  completo e afirma zero `mudarVar`/`mudarRasc` — os únicos caminhos do PUT —, e uma contraprova por padrão.
+- **O que sobra:** produto que nasce por outro caminho (planilha, kit da fase, Anunciar por IA) e é aberto ANTES de
+  qualquer Sincronizar/preparo/conferência ainda grava ao abrir, como antes (sem conferência para invalidar). Conta
+  sem token: o preparo não sabe o vendedor e o frete fica para a tela. O `abrir` ainda pode subir a revisão quando
+  nenhum tipo está ligado e o da régua saiu do ar (`ligarTiposForaDoAr`, §44) — caso raro, fora deste conserto.
+- **Custo no preparo:** até 3 GETs de conta (só se a leitura passou de 10 min) + 1 a 4 de `shipping_options/free` por
+  produto preparado, enquanto o frete grátis não está marcado.
