@@ -57,10 +57,10 @@ test('sem promoção: os mesmos motivos do PHP', () => {
     }
 });
 
-test('a frase embaixo do preço: automática, da Central (conta sem promoção automática), digitado e no mínimo', () => {
-    assert.equal(textoDaPromocao(207.19, PORTAL, true), 'Promoção automática: R$ 172,66 (−16,67%) por 14 dias depois de publicar.');
-    assert.equal(textoDaPromocao(250, PORTAL, true), 'Promoção automática: R$ 208,34 (−16,66%) por 14 dias depois de publicar. Mesmo desconto do Portal sobre este preço, nunca abaixo de R$ 172,66.');
-    assert.equal(textoDaPromocao(195, PORTAL, true), 'Promoção automática: R$ 172,66 (−11,46%) por 14 dias depois de publicar. Fica no mínimo do Portal (R$ 172,66).');
+test('a frase embaixo do preço: o sistema TENTA (não promete), da Central (conta sem promoção automática), digitado e no mínimo', () => {
+    assert.equal(textoDaPromocao(207.19, PORTAL, true), 'O sistema tenta criar a promoção da Central de R$ 172,66 (−16,67%) por 14 dias depois de publicar, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado.');
+    assert.equal(textoDaPromocao(250, PORTAL, true), 'O sistema tenta criar a promoção da Central de R$ 208,34 (−16,66%) por 14 dias depois de publicar, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado. Mesmo desconto do Portal sobre este preço, nunca abaixo de R$ 172,66.');
+    assert.equal(textoDaPromocao(195, PORTAL, true), 'O sistema tenta criar a promoção da Central de R$ 172,66 (−11,46%) por 14 dias depois de publicar, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado. Fica no mínimo do Portal (R$ 172,66).');
     assert.match(textoDaPromocao(207.19, PORTAL, false), /^Promoção da Central: R\$ 172,66 \(−16,67%\)\. Nesta conta ela não é criada sozinha/);
     assert.equal(textoDaPromocao(180, PORTAL, true), 'Sem promoção automática: o desconto ficaria abaixo de 5%.');
     // Preço do Portal sem frete: quem fala é o V-SAL-08 embaixo do campo; digitado, a frase explica.
@@ -129,7 +129,7 @@ test('CampoPreco — render real da promoção embaixo do preço', async (contex
 
     await contexto.test('preço do Portal: a promoção é o mínimo, por 14 dias', () => {
         const h = html({ portal: PORTAL, promocaoAutomatica: true });
-        assert.match(h, /data-promocao-automatica="__single__\|gold_special"[^>]*>Promoção automática: R\$ 172,66 \(−16,67%\) por 14 dias depois de publicar\.</);
+        assert.match(h, /data-promocao-automatica="__single__\|gold_special"[^>]*>O sistema tenta criar a promoção da Central de R\$ 172,66 \(−16,67%\) por 14 dias depois de publicar, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado\.</);
         assert.match(h, /do Portal/);
     });
 

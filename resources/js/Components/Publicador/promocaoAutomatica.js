@@ -62,7 +62,8 @@ export function promocaoDoPreco(preco, portal) {
 
 /**
  * A frase embaixo do preço (13px, sem amarelo). `automatica` = a conta tem as Alavancas liberadas
- * (o sistema cria sozinho); senão a tarefa pós-publicação orienta a criar à mão. Nulo = nada a dizer:
+ * (o sistema TENTA criar — pós-demo 22/10: o ML costuma recusar a do anúncio recém-criado, "No candidates",
+ * mesmo tom da Prévia em `previa.js`); senão a tarefa pós-publicação orienta a criar à mão. Nulo = nada a dizer:
  * produto sem Portal, sem preço, ou preço do Portal sem frete (o V-SAL-08 já fala embaixo do campo).
  */
 export function textoDaPromocao(preco, portal, automatica) {
@@ -79,7 +80,7 @@ export function textoDaPromocao(preco, portal, automatica) {
 
     const valor = `R$ ${paraTexto(r.preco)} (−${pct(r.percentual)}%)`;
     const base = automatica
-        ? `Promoção automática: ${valor} por ${DIAS_DA_PROMOCAO} dias depois de publicar.`
+        ? `O sistema tenta criar a promoção da Central de ${valor} por ${DIAS_DA_PROMOCAO} dias depois de publicar, mas o Mercado Livre costuma não oferecer desconto para anúncio recém-criado.`
         : `Promoção da Central: ${valor}. Nesta conta ela não é criada sozinha: a tarefa pós-publicação orienta a criar no Seller Center.`;
     if (r.ajustadaAoMinimo) return `${base} Fica no mínimo do Portal (R$ ${paraTexto(r.minimo)}).`;
     if (outroPreco) return `${base} Mesmo desconto do Portal sobre este preço, nunca abaixo de R$ ${paraTexto(r.minimo)}.`;

@@ -182,8 +182,9 @@ function avisosDoRecebimento(s) {
 }
 
 /**
- * A que preço o desconto automático leva o anúncio nos primeiros 14 dias (acréscimo pedido pelo
- * usuário em 10/10/2026). O número vem PRONTO do servidor (`PrecoDaPromocao`, a mesma função pura do
+ * A que preço a promoção da Central leva o anúncio nos primeiros 14 dias (acréscimo pedido pelo
+ * usuário em 10/10/2026) — SE o Mercado Livre oferecer o desconto: pós-demo 22/10, ele costuma recusar a
+ * do anúncio recém-criado (mesmo tom da Prévia). O número vem PRONTO do servidor (`PrecoDaPromocao`, a mesma função pura do
  * gatilho pós-publicação e do espelho em JS): aqui não se recalcula nada. Quando não há desconto, o
  * motivo é informação valiosa — sem frete cadastrado, por exemplo, não há desconto automático nenhum.
  */
@@ -194,7 +195,7 @@ function textoDoDescontoAutomatico(promocao) {
     const percentual = num(promocao.percentual);
 
     if (promocao.calculavel && preco !== null && percentual !== null) {
-        return `Desconto automático nos primeiros ${dias} dias: ${brl(preco)} (−${pctTexto(percentual)}%).`;
+        return `Com a promoção da Central, nos primeiros ${dias} dias: ${brl(preco)} (−${pctTexto(percentual)}%), se o Mercado Livre oferecer o desconto (costuma não oferecer para anúncio recém-criado).`;
     }
 
     const motivo = typeof promocao.motivo_texto === 'string' && promocao.motivo_texto.trim() !== '' ? promocao.motivo_texto : null;

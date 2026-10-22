@@ -91,7 +91,7 @@ function LinhaDoTipo({ rotulo, titulo, preco, margem, promocao }) {
             </span>
             <span
                 className={cn('whitespace-nowrap text-right font-mono text-[13px] tabular-nums', promo.calculavel === true ? 'text-sky-200' : 'font-sans text-[11px] text-white/45')}
-                title="Promoção automática depois de publicar: o preço mínimo da Precificação do Portal (ou o mesmo desconto sobre o preço digitado)"
+                title="Promoção da Central que o sistema tenta criar depois de publicar (o Mercado Livre costuma não oferecer desconto para anúncio recém-criado): o preço mínimo da Precificação do Portal, ou o mesmo desconto sobre o preço digitado"
             >
                 {textoDaPromocaoDoTipo(promo)}
                 {promo.calculavel === true && semPromocao > 0 && (

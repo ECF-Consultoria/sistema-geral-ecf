@@ -180,7 +180,8 @@ test('sem custo no Portal: lucro e margem com travessão, nenhum aviso de preju�
 test('o card diz a que preço o desconto automático leva o anúncio nos primeiros 14 dias', () => {
     const h = card({ gold_special: CLASSICO });
     assert.match(h, /data-promocao-do-card="gold_special"/);
-    assert.match(h, /Desconto automático nos primeiros 14 dias/);
+    assert.match(h, /Com a promoção da Central, nos primeiros 14 dias/);
+    assert.match(h, /se o Mercado Livre oferecer o desconto \(costuma não oferecer para anúncio recém-criado\)/, 'não promete');
     assert.match(h, /402,88/);
     assert.match(h, /−16,67%/);
 });
@@ -190,7 +191,7 @@ test('sem desconto automático: o card diz o motivo em português', () => {
         promocao: { calculavel: false, motivo: 'sem_frete', motivo_texto: 'o preço do Portal foi calculado sem frete', preco: null, percentual: null, minimo: 402.88, ajustada_ao_minimo: false, dias: 14 } };
     const h = card({ gold_special: semFrete });
     assert.match(h, /Sem desconto automático nos primeiros 14 dias: o preço do Portal foi calculado sem frete\./);
-    assert.doesNotMatch(h, /Desconto automático nos primeiros 14 dias:/);
+    assert.doesNotMatch(h, /Com a promoção da Central, nos primeiros 14 dias:/);
 
     const noMinimo = { ...CLASSICO, promocao: { ...semFrete.promocao, motivo: 'no_minimo', motivo_texto: 'o preço publicado já está no preço mínimo do Portal (ou abaixo)' } };
     assert.match(card({ gold_special: noMinimo }), /Sem desconto automático nos primeiros 14 dias: o preço publicado já está no preço mínimo do Portal \(ou abaixo\)\./);

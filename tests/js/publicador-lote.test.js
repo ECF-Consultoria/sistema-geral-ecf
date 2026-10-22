@@ -246,7 +246,7 @@ test('regras — promoção do tipo, frase da promoção e selos dos bloqueios',
     assert.equal(regras.textoDaPromocaoDoTipo({ calculavel: false, motivo: null }), '—', 'sem Portal não há o que dizer');
     assert.equal(regras.textoDaPromocaoDoTipo(null), '—');
 
-    assert.equal(regras.fraseDaPromocao(linhaBase()), 'Promoção automática por 14 dias depois de publicar.');
+    assert.equal(regras.fraseDaPromocao(linhaBase()), 'O sistema tenta criar a promoção da Central por 14 dias depois de publicar; o Mercado Livre costuma não oferecer desconto para anúncio recém-criado.');
     assert.match(regras.fraseDaPromocao(linhaBase({ promocao_automatica: { automatica: false, dias: 14 } })), /^Promoção não será criada: conta não liberada para as Alavancas/);
     assert.equal(regras.fraseDaPromocao(linhaBase({ promocao: { gold_special: { calculavel: false } } })), null, 'nenhuma promoção, nenhuma frase');
 
@@ -273,7 +273,7 @@ test('linha — coluna da promoção, frase "automática por 14 dias" e os bloqu
     }));
     assert.match(html, /R\$ 86,33 – R\$ 100,00 \(−16,67%\)/, 'a promoção do Clássico, faixa entre as cores');
     assert.match(html, /sem promoção: o preço do Portal foi calculado sem frete/);
-    assert.match(html, /Promoção automática por 14 dias depois de publicar\./);
+    assert.match(html, /O sistema tenta criar a promoção da Central por 14 dias depois de publicar; o Mercado Livre costuma não oferecer desconto para anúncio recém-criado\./);
     assert.match(html, />Títulos iguais</);
     assert.match(html, />Preço sem frete</);
     assert.match(html, /aria-label="Bloqueios antes de conferir"/);

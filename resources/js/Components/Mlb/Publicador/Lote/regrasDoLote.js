@@ -177,7 +177,10 @@ export function textoDaPromocaoDoTipo(promocao) {
     return `${faixaBRL(p)} (${faixa})`;
 }
 
-/** A frase da linha sobre a promoção pós-publicação: automática por N dias, ou "não será criada" (conta fora das Alavancas). */
+/**
+ * A frase da linha sobre a promoção pós-publicação: o sistema TENTA criar por N dias (pós-demo 22/10: o ML costuma
+ * recusar a do anúncio recém-criado — mesmo tom da Prévia), ou "não será criada" (conta fora das Alavancas).
+ */
 export function fraseDaPromocao(linha) {
     const l = comoObjeto(linha);
     const algumaPromocao = Object.values(comoObjeto(l.promocao)).some((p) => p && p.calculavel === true);
@@ -186,7 +189,7 @@ export function fraseDaPromocao(linha) {
     const dias = numeroSeguro(auto.dias) ?? 14;
 
     return auto.automatica === true
-        ? `Promoção automática por ${dias} dias depois de publicar.`
+        ? `O sistema tenta criar a promoção da Central por ${dias} dias depois de publicar; o Mercado Livre costuma não oferecer desconto para anúncio recém-criado.`
         : 'Promoção não será criada: conta não liberada para as Alavancas (a tarefa pós-publicação orienta a criar no Seller Center).';
 }
 
