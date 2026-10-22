@@ -1,5 +1,9 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as esbuild from 'esbuild';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -12,6 +16,8 @@ import { lerSemComentarios } from './_fonte.js';
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PUBLICAR = 'resources/js/Components/Publicador/Mesa/Publicar.jsx';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RAIZ = path.resolve(__dirname, '../..');
 
 test('N17 — o frete com que o anúncio saiu aparece na hora; "a combinar" em âmbar', () => {
     const f = lerSemComentarios(PUBLICAR);
@@ -52,4 +58,56 @@ test('A1 — a Prévia abre SEM a promoção: a caixa vem desmarcada', () => {
     assert.match(f, /const \[comPromocao, setComPromocao\] = useState\(false\);/);
     const a = lerSemComentarios('resources/js/Components/Publicador/Mesa/AnuncioNoMl.jsx');
     assert.match(a, /comPromocao = false,/);
+});
+
+// ─── "Publica na conta …": o apelido no ML, não o nome cadastrado (pós-demo, 22/10) ────────────
+
+const STUB_INERTIA = path.join(__dirname, `.lista-publicada-inertia-stub-${process.pid}.mjs`);
+fs.writeFileSync(STUB_INERTIA, `
+import React from 'react';
+export function Link({ href, children, className, ...props }) {
+    return React.createElement('a', { href, className, ...props }, children);
+}
+export const router = { get: () => {}, post: () => {}, put: () => {}, reload: () => {} };
+export function usePage() { return { props: {} }; }
+`, 'utf8');
+after(() => fs.rmSync(STUB_INERTIA, { force: true }));
+
+async function montarPublicar() {
+    const resultado = await esbuild.build({
+        entryPoints: [path.resolve(RAIZ, PUBLICAR)],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        jsx: 'automatic',
+        write: false,
+        logLevel: 'silent',
+        alias: { '@': path.resolve(RAIZ, 'resources/js'), '@inertiajs/react': STUB_INERTIA },
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/*'],
+    });
+    const outfile = path.join(__dirname, `.lista-publicada-render-${process.pid}-${Date.now()}.mjs`);
+    fs.writeFileSync(outfile, resultado.outputFiles[0].text, 'utf8');
+    try {
+        return await import(pathToFileURL(outfile).href);
+    } finally {
+        fs.rmSync(outfile, { force: true });
+    }
+}
+
+test('"Publica na conta" usa o apelido da conta no ML, com o nome cadastrado de reserva, e mantém o id do ML', async () => {
+    const { contaQuePublica } = await montarPublicar();
+    const empresa = { nome: 'Dev 02 Testes API', conta_nome: 'Dev 02 Testes API', conta_ml_id: '1555596317' };
+    const pub = (conta) => ({ m: { estado: { conta } } });
+
+    assert.deepEqual(contaQuePublica(pub({ nickname: 'MGSTOREL' }), empresa), { nome: 'MGSTOREL', mlId: '1555596317' });
+    // Conta lida antes de 22/10 (sem apelido) ou apelido em formato estranho: o nome cadastrado.
+    assert.deepEqual(contaQuePublica(pub({ nickname: null }), empresa), { nome: 'Dev 02 Testes API', mlId: '1555596317' });
+    assert.equal(contaQuePublica(pub({ nickname: { x: 1 } }), empresa).nome, 'Dev 02 Testes API');
+    assert.equal(contaQuePublica(pub({ nickname: '  ' }), { nome: 'Loja X' }).nome, 'Loja X');
+    assert.equal(contaQuePublica({ m: {} }, { nome: 'Loja X', conta_ml_id: 123 }).mlId, '123');
+    assert.deepEqual(contaQuePublica({}, {}), { nome: null, mlId: null }, 'sem nada, não diz nada');
+
+    const f = lerSemComentarios(PUBLICAR);
+    assert.match(f, /const conta = contaQuePublica\(pub, empresa\);/);
+    assert.match(f, /\{pub\.liberada && conta\.nome && <p className="text-\[13px\] text-white\/45" data-conta-que-publica>Publica na conta \{conta\.nome\}\{conta\.mlId \? ` · ML \$\{conta\.mlId\}` : ''\}\.<\/p>\}/);
 });

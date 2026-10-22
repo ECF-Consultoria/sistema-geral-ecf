@@ -54,6 +54,19 @@ export function situacaoDaConferencia(pub) {
 }
 
 /**
+ * Em que conta do Mercado Livre o anúncio sai: o APELIDO da conta no ML (`estado().conta.nickname`, o mesmo
+ * "Vendido por" da Prévia — é o que o comprador vê), com o nome cadastrado da empresa como reserva (conta lida
+ * antes de 22/10, sem o apelido); e o id do ML. Nome nulo = não se diz nada.
+ */
+export function contaQuePublica(pub, empresa) {
+    const texto = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+    const nome = texto(pub?.m?.estado?.conta?.nickname) ?? texto(empresa?.conta_nome) ?? texto(empresa?.nome);
+    const mlId = texto(empresa?.conta_ml_id) ?? (typeof empresa?.conta_ml_id === 'number' ? String(empresa.conta_ml_id) : null);
+
+    return { nome, mlId };
+}
+
+/**
  * `onIrPara(etapa, problema?)` leva à etapa com os campos marcados e acesos; com `problema`, direto ao campo dele.
  * `produtoId` é para reenviar a descrição.
  */
@@ -75,6 +88,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
     const foraDoAr = itensPublicados.filter((i) => i.ml_item_id && i.situacao_ml);
     const statusDaPublicacao = publicacao?.status === 'PUBLISHED' && foraDoAr.length > 0 ? 'PUBLICADO_RETIDO' : publicacao?.status;
     const situacao = situacaoDaConferencia(pub);
+    const conta = contaQuePublica(pub, empresa);
     const ambar = situacao.tom === 'falta' || situacao.tom === 'aviso';
     const local = pub.conferencia.local;
     const estadoConf = pub.conferencia.estado;
@@ -199,7 +213,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                             </div>
                             {motivoDoPublicar() && <p className="text-[15px] text-amber-300" data-motivo-publicar>{motivoDoPublicar()}</p>}
                             {! pub.liberada && <AvisoContaTravada variante="nota" />}
-                            {pub.liberada && (empresa.conta_nome ?? empresa.nome) && <p className="text-[13px] text-white/45">Publica na conta {empresa.conta_nome ?? empresa.nome}{empresa.conta_ml_id ? ` · ML ${empresa.conta_ml_id}` : ''}.</p>}
+                            {pub.liberada && conta.nome && <p className="text-[13px] text-white/45" data-conta-que-publica>Publica na conta {conta.nome}{conta.mlId ? ` · ML ${conta.mlId}` : ''}.</p>}
                         </div>
                     )}
 
