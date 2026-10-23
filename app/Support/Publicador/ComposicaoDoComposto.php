@@ -47,7 +47,8 @@ final class ComposicaoDoComposto
             if ($nome === '') {
                 continue;
             }
-            $cor = trim((string) ($variacao?->valor ?? ''));
+            // Só o eixo de cor é cor (23/10/2026, P-11): mesa "120x80" + cadeiras Cinza ia ao ML como cor "120x80 e Cinza".
+            $cor = mb_strtolower(trim((string) ($variacao?->eixo ?? ''))) === 'cor' ? trim((string) ($variacao?->valor ?? '')) : '';
             $itens[] = [
                 'quantidade' => max(1, (int) $c->quantidade),
                 'nome'       => $nome,

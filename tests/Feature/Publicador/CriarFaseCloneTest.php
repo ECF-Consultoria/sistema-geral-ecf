@@ -107,6 +107,28 @@ class CriarFaseCloneTest extends TestCase
         $this->assertSame(str_repeat('c', 64), $kit3->rascunho->schema_hash);
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-12): o "É kit" era copiado da unidade, e todo kit ia ao ML com "Não" — inclusive
+     * o Kit 2 publicado. O kit da fase nasce com "Sim" (o `value_id` do Sim na categoria); sem o atributo, nada muda.
+     */
+    public function test_kit_da_fase_nasce_com_e_kit_sim(): void
+    {
+        [$base] = $this->baseCheio();
+        $base->rascunho->atributos()->create(['attribute_id' => 'IS_KIT', 'value_id' => '242084', 'value_name' => 'Não', 'origem' => 'portal']);
+        \App\Models\MlCategoriaSchema::query()->insert(['category_id' => 'MLB1234', 'domain_id' => 'MLB-CHAIRS', 'categoria' => json_encode([]),
+            'atributos' => json_encode([['id' => 'IS_KIT', 'name' => 'É kit', 'value_type' => 'boolean', 'tags' => ['hidden' => true],
+                'values' => [['id' => '242084', 'name' => 'Não'], ['id' => '242085', 'name' => 'Sim']]]]),
+            'technical_specs' => json_encode([]), 'sale_terms' => json_encode([]), 'schema_hash' => str_repeat('c', 64),
+            'fetched_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+
+        $kit = $this->servico()->criar($base->fresh(), $this->dados(2));
+
+        $eKit = $kit->rascunho->atributos()->where('attribute_id', 'IS_KIT')->get();
+        $this->assertCount(1, $eKit, 'um só, sem o "Não" copiado da unidade');
+        $this->assertSame(['242085', 'Sim'], [$eKit[0]->value_id, $eKit[0]->value_name]);
+        $this->assertSame('Não', $base->rascunho->atributos()->where('attribute_id', 'IS_KIT')->value('value_name'), 'o base continua unidade');
+    }
+
     public function test_foto_do_kit_tem_caminho_proprio_com_os_mesmos_bytes_e_os_ids_do_ml(): void
     {
         [$base, $fotos] = $this->baseCheio();

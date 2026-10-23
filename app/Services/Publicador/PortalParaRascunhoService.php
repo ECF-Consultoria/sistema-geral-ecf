@@ -588,11 +588,21 @@ class PortalParaRascunhoService
             $novos = [];
             $remover = [];
             $noPortal = []; // ids que o Portal informa hoje
+            // Com a Cor do kit (as cores da composição), a Cor da ficha da peça principal fica de fora (23/10/2026, P-11):
+            // os dois decidiam a COLOR com o mesmo valor antigo e ela trocava a cada Sincronizar (Natural ↔ Cinza),
+            // subindo a revisão e invalidando a conferência.
+            $corDoKitVale = trim((string) ($doKit['cor'] ?? '')) !== '';
             foreach ($atributosPortal as $salvo) {
                 $id = (string) ($salvo['id'] ?? '');
                 $def = $schema->atributo($id);
                 if (! $this->daFicha($def, $id, $chaveEixo)) {
                     continue;
+                }
+                if ($id === 'COLOR' && $corDoKitVale) {
+                    continue;
+                }
+                if ($id === QuantidadesDoKit::E_KIT && $doKit !== null) {
+                    continue; // o "É kit" do kit é Sim (abaixo), não o "Não" da peça
                 }
                 if (isset($noPortal[$id])) {
                     $resumo['campos_mantidos']++;
@@ -628,6 +638,16 @@ class PortalParaRascunhoService
                 if ($res['valor'] !== null) {
                     $noPortal['COLOR'] = true;
                     $this->decidir('COLOR', $snap->atributos['COLOR'] ?? null, $res['valor'], $novos, $remover, $resumo);
+                }
+            }
+
+            // "É kit: Sim" (23/10/2026, P-12): era o "Não" da ficha da peça principal.
+            $defKit = $doKit !== null ? $schema->atributo(QuantidadesDoKit::E_KIT) : null;
+            if ($defKit !== null && ! $this->daEquipe($snap->atributos[QuantidadesDoKit::E_KIT] ?? null)) {
+                $res = PortalValorDeAtributo::resolver($defKit, ['valor' => 'Sim']);
+                if ($res['valor'] !== null) {
+                    $noPortal[QuantidadesDoKit::E_KIT] = true;
+                    $this->decidir(QuantidadesDoKit::E_KIT, $snap->atributos[QuantidadesDoKit::E_KIT] ?? null, $res['valor'], $novos, $remover, $resumo);
                 }
             }
 

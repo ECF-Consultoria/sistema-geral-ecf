@@ -227,6 +227,47 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $this->assertSame('2', $this->snap($pub)->atributos['UNITS_PER_PACK']['value_name'], 'rodar de novo não desfaz');
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-11 e P-12): a Cor da ficha da peça principal e a Cor do kit decidiam a COLOR
+     * com o mesmo valor antigo — ela trocava a cada Sincronizar —, e o "É kit" vinha "Não" da peça. Agora a Cor é a do
+     * kit, estável, e o "É kit" é "Sim".
+     */
+    public function test_cor_do_kit_estavel_e_e_kit_sim(): void
+    {
+        [$cinza, $bordo] = $this->poltronaDeDuasCores();
+        $produto = EstruturaOferta::findOrFail($cinza->id)->variacao->produto_id;
+        foreach (['COLOR' => 'Preto', 'IS_KIT' => 'Não'] as $id => $valor) {
+            EstruturaProdutoAtributo::create(['company_id' => $this->empresa->id, 'produto_id' => $produto, 'atributo_id' => $id, 'atributo_nome' => $id, 'valor' => $valor]);
+        }
+        $pub = $this->composta('kit', [[$cinza, 1], [$bordo, 1]], 'KT-OPALA');
+
+        $this->servico->preencher($pub);
+        $this->assertSame('Cinza e Bordô', $this->snap($pub)->atributos['COLOR']['value_name'] ?? null);
+        $this->assertSame('242085', $this->snap($pub)->atributos['IS_KIT']['value_id'] ?? null, 'É kit: Sim');
+        $revisao = $this->rascunho($pub)->revisao;
+
+        foreach ([1, 2] as $vez) {
+            $this->servico->preencher($pub->fresh());
+            $this->assertSame('Cinza e Bordô', $this->snap($pub)->atributos['COLOR']['value_name'] ?? null, "a Cor não troca no {$vez}º Sincronizar de novo");
+            $this->assertSame('242085', $this->snap($pub)->atributos['IS_KIT']['value_id'] ?? null);
+        }
+        $this->assertSame($revisao, $this->rascunho($pub)->revisao, 'Sincronizar de novo sem mudança não sobe a revisão');
+    }
+
+    /** 23/10/2026 (P-11): só o eixo de cor é cor — mesa "120x80" + cadeira Cinza ia ao ML como "120x80 e Cinza". */
+    public function test_so_o_eixo_de_cor_entra_na_cor_do_kit(): void
+    {
+        [$mesa] = $this->componente('Mesa', self::CADEIRA, 5, 400);
+        EstruturaProdutoVariacao::whereKey(EstruturaOferta::findOrFail($mesa->id)->variacao_id)->update(['eixo' => 'tamanho', 'valor' => '120x80']);
+        [$cadeira] = $this->componente('Cadeira', self::CADEIRA, 20, 100);
+        EstruturaProdutoVariacao::whereKey(EstruturaOferta::findOrFail($cadeira->id)->variacao_id)->update(['valor' => 'Cinza']);
+        $pub = $this->composta('combit', [[$mesa, 1], [$cadeira, 4]], 'CT-MESA');
+
+        $c = ComposicaoDoComposto::doProduto($pub->fresh());
+        $this->assertSame(['Cinza'], $c->cores());
+        $this->assertSame('1 Mesa e 4 Cadeira Cinza', $c->descricao(), 'o tamanho não vira cor na descrição do kit');
+    }
+
     /** Produtos diferentes (mesa + 4 cadeiras): as peças somam, o título começa só por "Kit". */
     public function test_kit_de_produtos_diferentes_soma_as_pecas_e_o_prefixo_e_so_kit(): void
     {

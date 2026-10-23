@@ -389,11 +389,16 @@ class CriarFaseService
     protected function copiarAtributos(PubRascunho $base, PubRascunho $kit, int $quantidade = 1): void
     {
         $deQuantidade = $quantidade >= 2 ? $this->camposDeQuantidadeDaCategoria($base->categoria_id) : [];
+        // "É kit: Sim" no kit de 2 unidades para cima (23/10/2026, P-12) — era copiado da unidade ("Não").
+        $eKit = $quantidade >= 2 ? QuantidadesDoKit::eKit($this->definicaoNaCategoria($base->categoria_id, QuantidadesDoKit::E_KIT)) : null;
         $copiados = [];
 
         foreach ($base->atributos as $a) {
             if ($a->attribute_id === self::GTIN) {
                 continue;
+            }
+            if ($eKit !== null && $a->attribute_id === QuantidadesDoKit::E_KIT) {
+                continue; // entra abaixo, com o Sim
             }
 
             $cresce = PacoteDoKit::cresce($a->attribute_id);
@@ -423,6 +428,24 @@ class CriarFaseService
                 $kit->atributos()->create(['attribute_id' => $id, ...$doKit, 'origem' => 'user', 'revisar' => false]);
             }
         }
+        if ($eKit !== null) {
+            $kit->atributos()->create(['attribute_id' => QuantidadesDoKit::E_KIT, ...$eKit, 'origem' => 'user', 'revisar' => false]);
+        }
+    }
+
+    /** A definição de UM atributo no schema já guardado da categoria (sem HTTP); nula sem schema ou sem o atributo. */
+    protected function definicaoNaCategoria(?string $categoriaId, string $atributo): ?array
+    {
+        if ($categoriaId === null || $categoriaId === '') {
+            return null;
+        }
+        foreach ((array) (MlCategoriaSchema::find($categoriaId)?->atributos ?? []) as $a) {
+            if (is_array($a) && (string) ($a['id'] ?? '') === $atributo) {
+                return $a;
+            }
+        }
+
+        return null;
     }
 
     /**
