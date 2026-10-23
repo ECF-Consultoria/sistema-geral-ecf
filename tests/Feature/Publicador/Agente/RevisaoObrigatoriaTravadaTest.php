@@ -5,6 +5,7 @@ namespace Tests\Feature\Publicador\Agente;
 use App\Models\PubAgenteConfiguracao;
 use App\Models\PubAprovacaoOferta;
 use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -244,5 +245,74 @@ class RevisaoObrigatoriaTravadaTest extends TestCase
         // ⚠️ ISCA: uma chave LEGÍTIMA passa pelo mesmo caminho. Sem ela, um `salvar()` que não
         // gravasse nada faria todas as asserções acima passarem por engano.
         $this->assertTrue((bool) $depois->habilitado, 'o `salvar()` não gravou nem a chave legítima — as ausências acima passariam por engano');
+    }
+
+    public function test_o_agente_segue_fechado_em_role_admin_por_decisao_travada_e1(): void
+    {
+        // ⚠️⚠️ **DECISÃO DO USUÁRIO, 23/10/2026:** *"sobre pessoas vamos manter a decisão que já
+        // estava em vigor no publicador"* — o módulo inteiro continua `role:admin`, **sem** a troca
+        // para `permission:mlb.anunciar`.
+        //
+        // O cabeçalho de `routes/mlb_anuncios.php` já descrevia o plano: *"TUDO admin-only
+        // (role:admin) — módulo 'em Dev', acessado por URL, sem menu. (…) Quando o módulo abrir à
+        // equipe de publicação, trocar role:admin → permission:mlb.anunciar aqui"*. A E1 do Agente
+        // pedia *"usuários/permissões reais"*, e a resposta foi **manter o que vale** — não há
+        // camada de permissão por loja a construir, e abrir o módulo contrariaria também a
+        // restrição de acesso *"só pelo link direto, sem link à mostra"*.
+        //
+        // ⚠️⚠️ **POR QUE ESTE CASO EXISTE, SE `TelaDoAgenteTest::test_so_admin_entra` JÁ PASSA:**
+        // são DUAS PERGUNTAS DIFERENTES. Aquele caso prova o COMPORTAMENTO hoje (consultor 403,
+        // admin 200). Mas se alguém trocasse o middleware para `permission:mlb.anunciar`, o
+        // consultor **continuaria** tomando 403 — ele não tem a permissão — e aquele teste poderia
+        // seguir **verde com o módulo ABERTO** para quem tivesse. Este caso pergunta a outra coisa:
+        // **qual middleware está ali**.
+        //
+        // ⚠️ Por NOME DE ROTA + `gatherMiddleware()`, nunca pelo texto do arquivo de rotas: aquele
+        // arquivo é editado por outras sessões (acabou de receber a Jardinagem), e sonda textual
+        // reprovaria trabalho correto — ou passaria por um grupo reescrito.
+        $NOMES = [
+            'mlb.anuncios.publicador.agente',
+            'mlb.anuncios.publicador.agente.configuracao',
+            'mlb.anuncios.publicador.agente.executar',
+            'mlb.anuncios.publicador.agente.pausar',
+            'mlb.anuncios.publicador.agente.suspender',
+            'mlb.anuncios.publicador.agente.retomar',
+        ];
+
+        $semRoleAdmin = [];
+        $comPermissao = [];
+        foreach ($NOMES as $nome) {
+            // ⚠️ Flag DENTRO do laço.
+            $rota = Route::getRoutes()->getByName($nome);
+            $this->assertNotNull($rota, "a rota `{$nome}` desapareceu — sem ela este caso mediria NADA");
+
+            $middleware = $rota->gatherMiddleware();
+            if (! in_array('role:admin', $middleware, true)) {
+                $semRoleAdmin[] = $nome;
+            }
+            foreach ($middleware as $m) {
+                if (is_string($m) && str_starts_with($m, 'permission:')) {
+                    $comPermissao[] = "{$nome} => {$m}";
+                }
+            }
+        }
+
+        $this->assertSame([], $semRoleAdmin, '⚠️⚠️ rota do Agente sem `role:admin` — o módulo foi aberto, e a decisão de 23/10/2026 é manter fechado: '.implode(', ', $semRoleAdmin));
+        $this->assertSame([], $comPermissao, '⚠️⚠️ rota do Agente passou a usar `permission:` — é exatamente a troca que a decisão de 23/10/2026 NÃO autorizou: '.implode(' | ', $comPermissao));
+
+        // ⚠️ ISCA, nas duas direções: a sonda do `permission:` **acha** quando existe, senão o
+        // `assertSame([], ...)` acima seria vazio por construção; e `gatherMiddleware()` devolveu
+        // algo de verdade.
+        $CEBO = ['auth', 'verified', 'role:admin', 'permission:mlb.anunciar'];
+        $this->assertSame(
+            ['permission:mlb.anunciar'],
+            array_values(array_filter($CEBO, fn (string $m) => str_starts_with($m, 'permission:'))),
+            'a sonda de `permission:` está CEGA',
+        );
+        $this->assertContains(
+            'role:admin',
+            Route::getRoutes()->getByName('mlb.anuncios.publicador.agente')->gatherMiddleware(),
+            '`gatherMiddleware()` não devolveu os middlewares do grupo — as asserções acima seriam vazias',
+        );
     }
 }
