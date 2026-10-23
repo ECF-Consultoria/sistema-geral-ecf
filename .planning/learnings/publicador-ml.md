@@ -2090,3 +2090,29 @@ falta). O frete grátis obrigatório é o `EditorRascunhoService::freteGratis` d
   Config `publicador.releitura_publicados` / `PUBLICADOR_RELEITURA_*`; `PUBLICADOR_RELEITURA_ATIVO=false` desliga.
 - 1ª rodada em produção: `php artisan publicador:reler-publicados --dias=60 --horas=0` (simulação, conferir o
   número por conta) → mesma linha com `--aplicar`. Fila `high`: precisa de worker vivo nela.
+
+## 58. Teste completo e correção dos 31 achados P-01..P-31 (23/10/2026)
+
+Relatório do teste (privado): https://claude.ai/artifact/FugibU3JY1dmopMLbtHjLW. O que não se deduz do código:
+- **`step_state` só pela porta `EstadoDoRascunho::gravar/alterar`** (relê sob trava, grava uma chave, não toca
+  `updated_at`). `$r->update(['step_state' => [...$r->step_state, …]])` regrava o JSON INTEIRO a partir da cópia lida
+  no começo da requisição — com chamada ao ML no meio, apagava o `kit_id` das imagens automáticas, o `portal_escrito`
+  e a marca de adiado. E o `updated_at` é o "Atualizado há…" e a ORDEM da vitrine: só abrir o editor mexia nos dois.
+- **Linhas citadas pelos gates da Fase 188** (`FotosDoPainelServiceTest`, hoje vermelho por falta do protótipo, mas
+  o gate é perene): `EditorRascunhoService:370`, `GarantiaPadrao:192`, `PreparoIaDoRascunhoService:131/180/366`,
+  `AgendadorDaFila:337`, `ExcluirProdutoService:195`, `MlbPublicadorController:405`, `config/publicador.php:148`. Um
+  `use` novo no topo desloca o arquivo inteiro: nesses arquivos, nome completo da classe na linha (`\App\…`) e
+  edição que não muda a contagem de linhas antes da citada. Conferir com `git show <base>:arquivo | sed -n Np`.
+- **`PubProduto::skuExibido()` é o código do PRODUTO do Portal** no produto agrupado (o Sofá: SFCHST), e o anúncio
+  leva o SKU da variação (SFCHST-2). Ele entra em lógica (SKU dos kits, troca de SKU no Sincronizar): não mudar. A
+  vitrine mostra `sku_do_anuncio` (variação única) e a busca do cabeçalho procura em `busca` (MLBs + SKUs das variações).
+- **"É kit" (`IS_KIT`, oculto na categoria)** era copiado da peça: todo kit ia "Não". Desde ec4aca43, kit/composto de
+  2+ unidades nasce "Sim" (value_id do Sim no schema). O Kit 2 Opala JÁ publicado segue "Não" no ML (não reescrito).
+- **Imagens automáticas**: falha técnica (kit ERRO sem `aplicado_em`) ganha 1 nova tentativa (`TENTATIVAS` = 2); a
+  reprovação do juiz marca `aplicado_em` e é final. O `publicador:imagens-adiadas` (06:05) também encerra kit parado
+  há mais de 1 dia e reaplica kit pronto que não entrou. O Job de aplicar é `ShouldBeUniqueUntilProcessing` + trava.
+- **Suíte PHP em paralelo**: `Storage::fake('local')` apaga `storage/framework/testing/disks/local` ao iniciar —
+  dois processos com ele se derrubam (`SincronizaPortalCompletoTest`). Separe num grupo só os que usam o disco
+  falso (direto ou pelos traits `CenarioDoPreparo`/`CenarioCriativoDoPublicador`).
+- Ficou de fora (decisão do usuário pendente): `Pages/Desempenho/MetricasManuais.jsx` tem a mesma regra de número
+  do P-02 ("1.299" vira 1,299) — zona de Desempenho/bônus, exige GSD.
