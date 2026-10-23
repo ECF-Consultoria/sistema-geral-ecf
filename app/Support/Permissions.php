@@ -80,6 +80,12 @@ class Permissions
      * alavanca. ESCREVER no Mercado Livre pelas Alavancas continua só para admin (grupo `role:admin`).
      */
     public const MLB_ALAVANCAS             = 'mlb.alavancas';
+    /**
+     * 23/10/2026 — ver e operar a Jardinagem dos publicados (análise mensal pela árvore do MAG): marcar o
+     * checklist, concluir, pedir outro título para a nova oferta. Chave PRÓPRIA: a Jardinagem não escreve
+     * nada no Mercado Livre, e quem cuida dela pode não ser quem publica nem quem usa as alavancas.
+     */
+    public const MLB_JARDINAGEM            = 'mlb.jardinagem';
     /** Ver o Faturamento Polos (dados financeiros por polo). Escopado ao setor Polos — não vaza via mlb.projetos. */
     public const MLB_FATURAMENTO_POLOS     = 'mlb.faturamento_polos';
 
@@ -205,6 +211,7 @@ class Permissions
                 ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
                 ['key' => self::MLB_CRIATIVOS_IA,  'label' => 'Pub · Criativos por IA', 'description' => 'Planejar, gerar, regenerar e aprovar criativos de imagem por IA (consome cota paga)'],
                 ['key' => self::MLB_ALAVANCAS,     'label' => 'Pub · Alavancas pós-publicação', 'description' => 'Ver e operar a fila de publicados aguardando alavancas (pegar, marcar o checklist, concluir); escrever no Mercado Livre segue só para admin'],
+                ['key' => self::MLB_JARDINAGEM,    'label' => 'Pub · Jardinagem',     'description' => 'Ver e operar a Jardinagem mensal dos publicados (árvore do MAG): checklist do diagnóstico e título da nova oferta; nada é escrito no Mercado Livre'],
                 ['key' => self::MLB_FATURAMENTO_POLOS, 'label' => 'Pub · Faturamento Polos', 'description' => 'Ver a página Faturamento Polos (financeiro por polo) — libera o setor Polos sem depender de admin'],
             ],
             'Shopee' => [

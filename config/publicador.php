@@ -391,4 +391,40 @@ return [
         'intervalo_s' => (int) env('PUBLICADOR_RELEITURA_INTERVALO_S', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Jardinagem dos publicados — a árvore do MAG (23/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | Análise MENSAL de cada anúncio criado pelo Publicador ("fazer que nem a
+    | MAG", Turma 8, aula de 27/11/2025): visitas e vendas dos últimos
+    | `dias_do_ciclo` dias → um dos quatro ramos (`ReguaDaJardinagem`). A
+    | rodada diária `publicador:jardinagem --aplicar` (`routes/console.php`)
+    | analisa só o anúncio cujo ciclo fechou hoje — cada um, uma vez por mês.
+    | Só GET no ML, só conta liberada do mesmo vendedor que publicou.
+    |
+    | `visitas_corte`: abaixo disto, sem venda = sem tração (nova oferta).
+    | `conversao_corte`: em %, o MAG dá 2,00% como EXEMPLO. `teto`: anúncios
+    | por rodada (cada um = 2 GETs). `termos_priorizados`: quantos termos novos
+    | da semana a IA recebe como prioridade no título da nova oferta.
+    | `horario`: São Paulo, depois da releitura das 09:20 e longe da cascata de
+    | ML das 11h.
+    |
+    | `ativo` nasce DESLIGADO (pedido do usuário em 23/10/2026: "não quero ele
+    | funcionando por enquanto, quero ver como ficou antes"). Desligado, a
+    | rodada diária não roda e o `--aplicar` à mão se recusa a gravar; a tela
+    | abre (só pela URL, sem item no menu) e o `--ler` continua só lendo.
+    | Ligar = `PUBLICADOR_JARDINAGEM_ATIVO=true` no `.env` + `config:cache`.
+    |
+    */
+    'jardinagem' => [
+        'ativo' => (bool) env('PUBLICADOR_JARDINAGEM_ATIVO', false),
+        'horario' => (string) env('PUBLICADOR_JARDINAGEM_HORARIO', '09:40'),
+        'dias_do_ciclo' => (int) env('PUBLICADOR_JARDINAGEM_DIAS', 30),
+        'visitas_corte' => (int) env('PUBLICADOR_JARDINAGEM_VISITAS_CORTE', 100),
+        'conversao_corte' => (float) env('PUBLICADOR_JARDINAGEM_CONVERSAO_CORTE', 2.0),
+        'teto' => (int) env('PUBLICADOR_JARDINAGEM_TETO', 300),
+        'termos_priorizados' => (int) env('PUBLICADOR_JARDINAGEM_TERMOS', 8),
+    ],
+
 ];
