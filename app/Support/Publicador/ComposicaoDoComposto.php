@@ -168,15 +168,23 @@ final class ComposicaoDoComposto
         if (count($this->itens) < 2 || $this->mesmoProduto()) {
             return [];
         }
-        $termos = [];
+        // A mesma peça em cores diferentes (2 Cadeiras Cinza + 2 Bordô) é UM termo com a soma: o título dizia "Com 2
+        // Cadeiras E 2 Cadeiras" (23/10/2026, P-21).
+        $porPeca = [];
         foreach (array_slice($this->itens, 1) as $i) {
             $palavra = mb_convert_case((string) (preg_split('/\s+/u', trim((string) $i['nome']))[0] ?? ''), MB_CASE_TITLE);
             if ($palavra === '') {
                 continue;
             }
-            $plural = self::plural($palavra);
-            $quantidade = (int) $i['quantidade'];
-            $termos[] = ['texto' => $quantidade > 1 ? $quantidade.' '.$plural : $palavra, 'palavra' => $palavra, 'plural' => $plural, 'quantidade' => $quantidade];
+            $chave = $i['produto_id'] !== null ? 'p'.$i['produto_id'] : 'n'.mb_strtolower(trim((string) $i['nome']));
+            $porPeca[$chave] ??= ['palavra' => $palavra, 'quantidade' => 0];
+            $porPeca[$chave]['quantidade'] += (int) $i['quantidade'];
+        }
+        $termos = [];
+        foreach ($porPeca as $p) {
+            $plural = self::plural($p['palavra']);
+            $termos[] = ['texto' => $p['quantidade'] > 1 ? $p['quantidade'].' '.$plural : $p['palavra'], 'palavra' => $p['palavra'],
+                'plural' => $plural, 'quantidade' => $p['quantidade']];
         }
 
         return $termos;
@@ -185,7 +193,15 @@ final class ComposicaoDoComposto
     /** O plural de UMA palavra do nome de um móvel (Cadeira → Cadeiras, Colchão → Colchões, Puff → Puffs). */
     public static function plural(string $palavra): string
     {
+        // -el/-al/-ol/-ul/-il (23/10/2026, P-21: saíam "Painels", "Móvels"): móvel → móveis (já tem acento), painel → painéis.
+        $acentuada = preg_match('/[áéíóúâêôãõ]/iu', mb_substr($palavra, 0, -2)) === 1;
+
         return match (true) {
+            (bool) preg_match('/el$/iu', $palavra) => mb_substr($palavra, 0, -2).($acentuada ? 'eis' : 'éis'),
+            (bool) preg_match('/al$/iu', $palavra) => mb_substr($palavra, 0, -1).'is',
+            (bool) preg_match('/ol$/iu', $palavra) => mb_substr($palavra, 0, -2).'óis',
+            (bool) preg_match('/ul$/iu', $palavra) => mb_substr($palavra, 0, -1).'is',
+            (bool) preg_match('/il$/iu', $palavra) => mb_substr($palavra, 0, -2).($acentuada ? 'eis' : 'is'),
             (bool) preg_match('/ão$/u', $palavra) => (string) preg_replace('/ão$/u', 'ões', $palavra),
             (bool) preg_match('/[rz]$/iu', $palavra) => $palavra.'es',
             (bool) preg_match('/m$/iu', $palavra) => (string) preg_replace('/m$/iu', 'ns', $palavra),

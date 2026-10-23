@@ -308,11 +308,22 @@ class PalavrasChaveService
     {
         $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N} ]+/u', ' ', $bruto)));
         if (mb_strlen($limpo) <= $maximo) {
-            return (string) TituloDoProduto::capitalizar($limpo);
+            return (string) TituloDoProduto::capitalizar(self::semLigacaoNoFim($limpo));
         }
         $cortado = mb_substr($limpo, 0, $maximo + 1);
 
-        return (string) TituloDoProduto::capitalizar(trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo)));
+        return (string) TituloDoProduto::capitalizar(self::semLigacaoNoFim(trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo))));
+    }
+
+    /**
+     * O corte no limite deixava palavra de ligação solta no fim — "Kit Mesa De Jantar Com 2 Cadeiras Aurora Com"
+     * (23/10/2026, P-21). Sai do fim; a que estiver no meio fica.
+     */
+    private static function semLigacaoNoFim(string $titulo): string
+    {
+        $sem = trim((string) preg_replace('/(?:\s+(?:de|da|do|das|dos|com|e|em|para|sem|a|o))+$/iu', '', $titulo));
+
+        return $sem !== '' ? $sem : $titulo;
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
@@ -509,9 +520,14 @@ class PalavrasChaveService
     private function finalizarTitulo(string $bruto, array $c): string
     {
         $prefixo = (string) ($c['prefixo'] ?? '');
+        // 23/10/2026 (P-03): sem nada além do prefixo, não há título. Antes, a IA que devolvia um dos dois vazio virava
+        // "Kit 2" (ou "Kit Com 4 Cadeiras"), não-vazio, e o Premium não herdava o Clássico — ia assim ao ML.
+        $comPrefixo = self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $prefixo);
+        if ($comPrefixo === '') {
+            return '';
+        }
 
-        return self::ajustarTitulo(self::comTermosDoKit(self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $prefixo),
-            (array) ($c['termos_do_kit'] ?? []), $prefixo), $c['maximo']);
+        return self::ajustarTitulo(self::comTermosDoKit($comPrefixo, (array) ($c['termos_do_kit'] ?? []), $prefixo), $c['maximo']);
     }
 
     /**
@@ -570,6 +586,14 @@ class PalavrasChaveService
             return $titulo;
         }
         $sem = trim((string) preg_replace('/^\s*kit(\s+\d+)?\b/iu', '', $titulo));
+        // A IA que começa pela quantidade ("2 Poltronas…") não repete o número do prefixo: era "Kit 2 2 Poltronas" (P-21).
+        if (preg_match('/(\d+)$/u', $prefixo, $n) === 1) {
+            $sem = trim((string) preg_replace('/^'.$n[1].'\s+/u', '', $sem));
+        }
+        // Só o prefixo não é título (P-03): vazio, para o outro tipo de anúncio valer no lugar.
+        if ($sem === '') {
+            return '';
+        }
 
         return trim($prefixo.' '.$sem);
     }

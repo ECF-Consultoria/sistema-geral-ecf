@@ -70,4 +70,42 @@ class PrefixoDoTituloDoKitTest extends TestCase
             $this->assertSame($varios, ComposicaoDoComposto::plural($um), $um);
         }
     }
+
+    /**
+     * 23/10/2026 (teste do Publicador, P-03): a IA devolveu um dos dois títulos vazio e o prefixo virou o título —
+     * "Kit 2", não-vazio, e o Premium não herdava o Clássico. Sem nada além do prefixo, não há título.
+     */
+    public function test_so_o_prefixo_nao_e_titulo(): void
+    {
+        $this->assertSame('', PalavrasChaveService::comPrefixo('', 'Kit 2'));
+        $this->assertSame('', PalavrasChaveService::comPrefixo('   ', 'Kit'));
+        $this->assertSame('', PalavrasChaveService::comPrefixo('Kit 2', 'Kit 2'), 'a IA que devolve só "Kit 2"');
+        $this->assertSame('', PalavrasChaveService::comPrefixo('kit', 'Kit 2'));
+        $this->assertSame('', PalavrasChaveService::comPrefixo('', ''), 'sem prefixo, vazio continua vazio');
+    }
+
+    /** 23/10/2026 (P-21): os acabamentos do título do combit que saíam errados. */
+    public function test_acabamentos_do_titulo_do_combit(): void
+    {
+        // A mesma cadeira em duas cores é UM termo com a soma — saía "Com 2 Cadeiras E 2 Cadeiras".
+        $combit = new ComposicaoDoComposto([
+            ['quantidade' => 1, 'nome' => 'Mesa de Jantar Aurora', 'cor' => 'Natural', 'produto_id' => 1],
+            ['quantidade' => 2, 'nome' => 'Cadeira Aurora', 'cor' => 'Cinza', 'produto_id' => 2],
+            ['quantidade' => 2, 'nome' => 'Cadeira Aurora', 'cor' => 'Bordô', 'produto_id' => 2],
+        ]);
+        $this->assertSame(['4 Cadeiras'], array_column($combit->termosDoTitulo(), 'texto'));
+
+        // A IA que começa pela quantidade não repete o número: era "Kit 2 2 Poltronas…".
+        $this->assertSame('Kit 2 Poltronas Opala Cinza', PalavrasChaveService::comPrefixo('2 Poltronas Opala Cinza', 'Kit 2'));
+        $this->assertSame('Kit 2 4 Almofadas Extras', PalavrasChaveService::comPrefixo('4 Almofadas Extras', 'Kit 2'), 'outro número fica');
+
+        // O corte no limite não deixa palavra de ligação no fim.
+        $this->assertSame('Kit Mesa De Jantar Com 4 Cadeiras Aurora', PalavrasChaveService::ajustarTitulo('Kit Mesa de Jantar com 4 Cadeiras Aurora com Madeira', 45));
+        $this->assertSame('Poltrona Opala Linho', PalavrasChaveService::ajustarTitulo('Poltrona Opala Linho de', 60), 'mesmo sem corte');
+
+        // Plurais em -el/-al/-ol/-ul/-il saíam "Painels" e "Móvels".
+        foreach (['Painel' => 'Painéis', 'Móvel' => 'Móveis', 'Varal' => 'Varais', 'Lençol' => 'Lençóis', 'Baú' => 'Baús', 'Funil' => 'Funis'] as $um => $varios) {
+            $this->assertSame($varios, ComposicaoDoComposto::plural($um), $um);
+        }
+    }
 }

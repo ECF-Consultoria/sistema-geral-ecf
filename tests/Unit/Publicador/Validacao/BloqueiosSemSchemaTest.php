@@ -137,6 +137,31 @@ class BloqueiosSemSchemaTest extends TestCase
         $this->assertSame(['etapa' => 'E9', 'campo' => 'descricao'], $semSchema[1]['alvo']);
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-03): a IA devolveu o Premium vazio e o prefixo virou o título — "Kit 2" passava
+     * na conferência (o V-TIT-01 só olhava vazio e limite). Título que é só o prefixo trava, nos dois caminhos.
+     */
+    public function test_titulo_so_com_o_prefixo_do_kit_trava(): void
+    {
+        $r = self::cadeira([new Alvo('gold_special', 'Kit 2 Cadeira Executiva Giratória'), new Alvo('gold_pro', 'Kit 2')], [
+            new Variante(ChaveCanonica::UNICA, [], dados: ['estoque' => 3, 'precos' => [], 'atributos' => ['SELLER_SKU' => ['value_name' => 'CAD'], 'GTIN' => ['value_name' => '7896553367645']]]),
+        ])->comEfetivosDe(['titulos' => [], 'precos' => ['gold_special' => 150.0, 'gold_pro' => 165.0], 'mlbs' => [],
+            'promocoes' => ['gold_special' => 125.0, 'gold_pro' => 137.5], 'sem_frete' => ['gold_special' => false, 'gold_pro' => false]]);
+
+        $semSchema = self::comoArray(ValidadorRascunho::bloqueiosSemSchema($r));
+        $this->assertSame(['V-TIT-01'], array_column($semSchema, 'regra'));
+        $this->assertStringContainsString('é só «Kit 2»', $semSchema[0]['mensagem']);
+        $this->assertSame('gold_pro', $semSchema[0]['alvo']['alvo']);
+
+        $schema = (new ClassificadorAtributos())->classificar(self::schema($r->categoriaId), new ContextoClassificacao(condicao: $r->condicao, eixos: []));
+        $ctx = new ContextoValidacao(modelo: MontadorDePlano::UP, imagens: [], modosEnvio: ['me2']);
+        $daConferencia = array_values(array_filter((new ValidadorRascunho())->validar($r, $schema, $ctx)->problemas,
+            fn (Problema $p) => $p->regra === 'V-TIT-01'));
+        $this->assertCount(1, $daConferencia, 'a conferência também trava');
+        $this->assertSame(Problema::BLOQUEIO, $daConferencia[0]->severidade);
+        $this->assertSame('gold_pro', $daConferencia[0]->alvo['alvo']);
+    }
+
     public function test_preco_invalido_e_titulo_vazio_ficam_para_a_conferencia(): void
     {
         // Sem preço nenhum (V-SAL-02) e sem título no Premium (V-TIT-01): nenhum dos dois é "sem schema".

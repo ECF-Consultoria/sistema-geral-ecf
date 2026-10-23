@@ -370,6 +370,11 @@ final class ValidadorRascunho
 
                 continue;
             }
+            if ($soPrefixo = self::tituloSoComPrefixo($nome, $titulo, $onde)) {
+                $this->p[] = $soPrefixo;
+
+                continue;
+            }
             if ($limite !== null && mb_strlen($titulo) > $limite) {
                 $this->p[] = Problema::bloqueio('V-TIT-01', "O título do {$nome} tem ".mb_strlen($titulo)." caracteres; o limite desta categoria é {$limite}.", $onde, 'L1');
             }
@@ -404,6 +409,19 @@ final class ValidadorRascunho
         }
 
         return null;
+    }
+
+    /**
+     * Título que é só o prefixo do kit ("Kit 2", "Combo 3") não diz o que o produto é (23/10/2026, P-03: a IA devolveu
+     * um título vazio e o prefixo virou o título do Premium). Bloqueio, como o título vazio.
+     *
+     * @param  array<string, mixed>  $onde
+     */
+    private static function tituloSoComPrefixo(string $nome, string $titulo, array $onde): ?Problema
+    {
+        return preg_match('/^(kit|combo|combit)(\s+\d+)?$/iu', trim($titulo)) === 1
+            ? Problema::bloqueio('V-TIT-01', "O título do {$nome} é só «".trim($titulo)."»: escreva o que o produto é.", $onde, 'L1')
+            : null;
     }
 
     /**
@@ -453,6 +471,9 @@ final class ValidadorRascunho
             }
             $nome = self::nomeDoTipo($alvo);
             $onde = ['etapa' => 'E7', 'alvo' => $alvo->listingTypeId];
+            if ($soPrefixo = self::tituloSoComPrefixo($nome, $titulo, $onde)) {
+                $saida[] = $soPrefixo;
+            }
             if ($vetado = self::termoVetadoNoTitulo($nome, $titulo, $onde)) {
                 $saida[] = $vetado;
             }
