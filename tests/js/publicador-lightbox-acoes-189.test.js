@@ -858,167 +858,78 @@ test('⚠️⚠️ ESCRITA: a contagem de `router.post(` NÃO subiu — o helper
     assert.equal(ocorrencias('escreverNoPainel({ rota, versao })', 'router.post('), 0, 'a sonda de `router.post(` acusa o helper único — ela é mais larga que o invariante');
 });
 
-test('⚠️⚠️ FONTE: o fio do lightbox chama `escritasDaColuna` com o CONTEXTO, nunca com `ofertaDoPainel` 189_07', () => {
-    // ⚠️⚠️ O recorte é o CORPO do adaptador, achado por **ÂNCORA DE TEXTO** (nunca
-    // por número de linha: ponteiros apodrecem, e nesta própria fase um commit
-    // alheio deslocou três).
-    const ABRE = 'const escreverPeloLightbox = (pedido) => {';
-    const inicio = FONTE_PAGINA.indexOf(ABRE);
-    assert.notEqual(inicio, -1, 'o adaptador de escrita do lightbox desapareceu da página (ou foi renomeado)');
+test('⚠️⚠️ TOMBADO: a página de revisão NÃO liga mais o fio do lightbox — e isso é DELIBERADO 189_07', () => {
+    // ⚠️⚠️ **GATE INVERTIDO EM 23/10/2026, e a razão fica aqui para ninguém "consertar" de volta.**
+    //
+    // Este caso provava que o adaptador `escreverPeloLightbox` da PÁGINA chamava
+    // `escritasDaColuna` com a oferta/versão **do contexto do lightbox**, nunca com
+    // `ofertaDoPainel` — a decisão T-189-50. ⚠️ **Essa prova morreu porque o SUJEITO dela
+    // saiu**, não porque o invariante ficou errado:
+    //
+    //   1. **decisão 27 (23/10)** — o usuário TOMBOU a revisão como jornada de interface: a
+    //      revisão passa a acontecer na **Prévia** que o outro dev pôs em produção;
+    //   2. **merge do E0 (`42c1bd66`)** — `Aprovacao.jsx` ficou com a versão do remoto, que
+    //      **não tem** o lightbox. ⚠️ **Medido antes de tomar:** a versão deles **não tem** o
+    //      defeito de TDZ das cinco telas pretas, logo nada de segurança se perdeu;
+    //   3. **§2.2 e §10 do plano do Agente** — *"não concluir a antiga jornada como
+    //      pré-requisito"* e *"atualizar teste acoplado à tela tombada com cobertura
+    //      equivalente, registrando a mudança, em vez de perpetuar UI obsoleta"*.
+    //
+    // ➡️ **O invariante NOVO é o próprio tombamento:** a página **não** monta o fio. Se alguém
+    // reintroduzir, este gate acusa e manda ler a decisão — em vez de ressuscitar a jornada
+    // em silêncio. ⚠️ **NÃO é gate sobre zero casos:** a isca abaixo prova que a sonda acha o
+    // fio quando ele existe.
+    const DO_FIO = ['const escreverPeloLightbox', 'escritasDaColuna(', 'propsDaLateralDoLightbox('];
+    const achados = DO_FIO.filter((m) => FONTE_PAGINA.includes(m));
+    assert.deepEqual(achados, [], '⚠️⚠️ o fio do lightbox VOLTOU para a página de revisão, que foi TOMBADA (decisão 27). Se isso é intenção nova, mude a decisão primeiro — não o teste');
 
-    const fim = FONTE_PAGINA.indexOf('\n    };', inicio);
-    assert.notEqual(fim, -1, 'não achei o fim do adaptador — o recorte sairia vazio, e gate sobre zero casos não prova nada');
-
-    const corpo = FONTE_PAGINA.slice(inicio, fim);
-    assert.ok(corpo.length > 200, `o recorte do adaptador saiu curto demais (${corpo.length} bytes)`);
-
-    // ⚠️⚠️ A ASSERÇÃO CENTRAL DA DECISÃO DO USUÁRIO.
-    assert.ok(corpo.includes('ofertaId: alvo.oferta'), '⚠️⚠️ a oferta da escrita do lightbox deixou de vir do contexto');
-    assert.ok(corpo.includes('versao: alvo.versao'), '⚠️⚠️ a VERSÃO da escrita do lightbox deixou de vir do contexto — T-189-50');
-    assert.ok(corpo.includes('escritasDaColuna('), 'o adaptador deixou de reusar `escritasDaColuna` (INV-03/A6) — remontar a rota aqui é a SEGUNDA cópia da escrita');
-    assert.equal(corpo.includes('ofertaDoPainel'), false, '⚠️⚠️ `ofertaDoPainel` entrou no fio do lightbox — depois de um ↑/↓ ela é de OUTRA oferta');
-    assert.equal(corpo.includes('versaoDoPainel'), false, '⚠️⚠️ `versaoDoPainel` entrou no fio do lightbox — T-189-50');
-
-    // ⚠️ ISCA NAS DUAS DIREÇÕES do recorte.
-    assert.ok('x ofertaId: alvo.oferta y'.includes('ofertaId: alvo.oferta'), 'a sonda do contexto está CEGA');
-    assert.equal('ofertaId: ofertaDoPainel'.includes('ofertaId: alvo.oferta'), false, 'a sonda do contexto casa a fonte ERRADA');
-    assert.ok('ofertaId: ofertaDoPainel'.includes('ofertaDoPainel'), 'a sonda de `ofertaDoPainel` está CEGA');
-
-    // ⚠️ E o restante da página CONTINUA usando `ofertaDoPainel` (as escritas do
-    // painel não mudaram) — se não usasse, a asserção de ausência acima seria
-    // **vazia por construção**.
-    assert.ok(ocorrencias(FONTE_PAGINA, 'ofertaDoPainel') > 10, 'a página parou de usar `ofertaDoPainel` — a asserção de ausência no recorte viraria vazia por construção');
+    // ⚠️ ISCA: a sonda NÃO está cega — com o fio presente, ela acha os três.
+    const SINTETICA = 'x const escreverPeloLightbox = (p) => { escritasDaColuna({}); propsDaLateralDoLightbox({}); };';
+    assert.deepEqual(DO_FIO.filter((m) => SINTETICA.includes(m)), DO_FIO, 'a sonda do fio está CEGA: nem na fonte sintética ela acha');
 });
 
-test('⚠️⚠️ FONTE: a lateral é montada com `propsDaLateralDoLightbox(`, e NÃO com handler `null` 189_07', () => {
-    // ⚠️⚠️ **Gate de fonte, e ele é o que fecha o achado do plan-checker:** um
-    // plano que esquecesse de ligar os handlers passaria todo teste puro, e o botão
-    // nunca nasceria. A lateral tem de ser montada ESPALHANDO a função.
-    assert.ok(FONTE_PAGINA.includes('propsDaLateralDoLightbox('), '`propsDaLateralDoLightbox(` não é chamada na página');
-    assert.ok(
-        /<LateralDoLightbox\s*\{\.\.\.propsDaLateralDoLightbox\(/.test(FONTE_PAGINA),
-        '⚠️⚠️ a `<LateralDoLightbox>` deixou de ser montada espalhando `propsDaLateralDoLightbox(…)` — props montadas à mão furam a ÚNICA fonte',
-    );
+test('⚠️⚠️ TOMBADO: os COMPONENTES do lightbox ficaram no disco, reaproveitáveis 189_07', () => {
+    // ⚠️ A contrapartida da inversão acima, e a parte que PROTEGE trabalho: o que saiu foi a
+    // **integração** na página tombada — **os componentes NÃO foram apagados**. Se a Prévia
+    // quiser zoom de imagem, eles estão lá, com os named exports das funções puras.
+    // ⚠️ Isto é *cobertura equivalente* no sentido da §10: a prova deixou de ser *"a página
+    // usa"* e passou a ser *"o trabalho não foi perdido"*.
+    const DO_DISCO = [`${DIR_APROV}/LightboxDaImagem.jsx`, `${DIR_APROV}/LateralDoLightbox.jsx`];
+    const sumiram = DO_DISCO.filter((rel) => !fs.existsSync(path.resolve(RAIZ, rel)));
+    assert.deepEqual(sumiram, [], '⚠️ componente do lightbox APAGADO — o tombamento retirou a integração, NÃO os componentes');
 
-    // ⚠️⚠️ E os handlers não voltaram a `null` (era o estado do 189-06).
-    assert.equal(FONTE_PAGINA.includes('onAprovarFoto={null}'), false, '⚠️⚠️ `onAprovarFoto={null}` voltou — o botão não nasce (D4) e esta wave existe para ligá-lo');
-    assert.equal(FONTE_PAGINA.includes('onReprovar={null}'), false, '⚠️⚠️ `onReprovar={null}` voltou na página');
+    // ⚠️ ISCA do `existsSync`: caminho inventado TEM de faltar, senão a sonda passaria sempre.
+    assert.equal(fs.existsSync(path.resolve(RAIZ, `${DIR_APROV}/NaoExiste9z7.jsx`)), false, 'a sonda do disco está CEGA: achou um caminho inventado');
 
-    // ⚠️ ISCA NAS DUAS DIREÇÕES: uma fonte sintética com handler `null` é ACUSADA,
-    // e o espalhamento de verdade NÃO é.
-    const SINTETICA_RUIM = '<LateralDoLightbox imagem={x} onAprovarFoto={null} onReprovar={null} />';
-    assert.ok(SINTETICA_RUIM.includes('onAprovarFoto={null}'), 'a sonda do handler `null` está CEGA');
-    assert.equal(
-        /<LateralDoLightbox\s*\{\.\.\.propsDaLateralDoLightbox\(/.test(SINTETICA_RUIM),
-        false,
-        'a sonda do espalhamento casa uma montagem À MÃO — ela está mais larga que o invariante',
-    );
-    assert.ok(
-        /<LateralDoLightbox\s*\{\.\.\.propsDaLateralDoLightbox\(/.test('<LateralDoLightbox {...propsDaLateralDoLightbox({ contexto })} />'),
-        'a sonda do espalhamento está CEGA',
-    );
-
-    // ⚠️ `lerSemComentarios` NÃO é cega: o CRU tem o que a fonte sem comentário não
-    // tem. Sem esta prova, toda sonda de ausência acima poderia estar lendo vazio.
-    assert.ok(CRU_PAGINA.includes('PERGUNTA-189-B'), 'o CRU da página não tem a citação da pergunta — a prova de que a leitura sem comentário corta algo não existe');
-    assert.equal(FONTE_PAGINA.includes('PERGUNTA-189-B'), false, '`lerSemComentarios` deixou de tirar o comentário — toda sonda deste arquivo passaria pelo motivo errado');
-});
-
-test('⚠️⚠️ FONTE: o modal aberto pelo lightbox busca a foto na galeria DO CONTEXTO 189_07', () => {
-    // ⚠️⚠️ **O defeito que esta asserção impede:** depois de um ↑/↓ a foto da oferta
-    // A **não está** em `painel.fotos.imagens` (já é da B). Buscar lá devolveria
-    // `null`, o modal abriria **sem a foto** — rótulo sem valor é casca vazia (D4) —
-    // e a pessoa confirmaria a reprovação **sem ver o que reprova**.
-    assert.ok(FONTE_PAGINA.includes('const galeriaDoModal'), 'a galeria do modal deixou de ser uma derivação própria');
-    assert.ok(
-        /galeriaDoModal = contextoDaFotoNoModal !== null\s*\?\s*imagensDoLb/.test(FONTE_PAGINA),
-        '⚠️⚠️ a galeria do modal deixou de ser a do CONTEXTO quando ele foi aberto pelo lightbox',
-    );
-
-    // ⚠️⚠️ E a escrita do modal usa a oferta/versão **DO CONTEXTO** quando há
-    // contexto, e a do painel quando não há.
-    // ⚠️⚠️ **FURO MEDIDO PELO DESENHO DA CAMPANHA DE MUTAÇÃO, e consertado:** a
-    // primeira redação cobrava só `includes('const ofertaDaEscritaDoModal')` — ou
-    // seja, a EXISTÊNCIA do nome. Uma mutação que trocasse o corpo por
-    // `= ofertaDoPainel` **SOBREVIVERIA**, e a escrita do modal iria com a oferta
-    // errada. ➡️ Agora a DERIVAÇÃO é cobrada, não o nome.
-    const DERIVACOES = [
-        [/ofertaDaEscritaDoModal = contextoDaFotoNoModal === null\s*\?\s*ofertaDoPainel\s*:\s*inteiroSeguro\(contextoDaFotoNoModal\.oferta\)/, 'a OFERTA'],
-        [/versaoDaEscritaDoModal = contextoDaFotoNoModal === null\s*\?\s*versaoDoPainel\s*:\s*inteiroSeguro\(contextoDaFotoNoModal\.versao\)/, 'a VERSÃO'],
-    ];
-    for (const [re, qual] of DERIVACOES) {
-        assert.ok(re.test(FONTE_PAGINA), `⚠️⚠️ ${qual} da escrita do modal deixou de ser DERIVADA do contexto do lightbox — T-189-50`);
+    // ⚠️ E as funções puras do zoom seguem exportadas — é o que torna o reuso possível.
+    const fonteLb = fs.readFileSync(path.resolve(RAIZ, `${DIR_APROV}/LightboxDaImagem.jsx`), 'utf8');
+    for (const nome of ['rotuloDoZoom', 'alternarZoom']) {
+        assert.ok(fonteLb.includes(`export const ${nome}`) || fonteLb.includes(`export function ${nome}`), `o named export \`${nome}\` saiu do lightbox — sem ele o reuso pela Prévia fica mais caro`);
     }
-
-    // ⚠️ ISCA NAS DUAS DIREÇÕES de cada derivação.
-    assert.ok(
-        DERIVACOES[0][0].test('const ofertaDaEscritaDoModal = contextoDaFotoNoModal === null\n        ? ofertaDoPainel\n        : inteiroSeguro(contextoDaFotoNoModal.oferta);'),
-        'a sonda da derivação da OFERTA está CEGA',
-    );
-    assert.equal(
-        DERIVACOES[0][0].test('const ofertaDaEscritaDoModal = ofertaDoPainel;'),
-        false,
-        'a sonda da derivação da OFERTA casa o atalho que IGNORA o contexto — ela é mais larga que o invariante',
-    );
-    assert.ok(
-        DERIVACOES[1][0].test('const versaoDaEscritaDoModal = contextoDaFotoNoModal === null\n        ? versaoDoPainel\n        : inteiroSeguro(contextoDaFotoNoModal.versao);'),
-        'a sonda da derivação da VERSÃO está CEGA',
-    );
-    assert.equal(
-        DERIVACOES[1][0].test('const versaoDaEscritaDoModal = versaoDoPainel;'),
-        false,
-        'a sonda da derivação da VERSÃO casa o atalho que IGNORA o contexto',
-    );
-    assert.ok(FONTE_PAGINA.includes('oferta: ofertaId, imagem: imagemId'), 'o ramo do LIGHTBOX deixou de levar a oferta derivada do contexto');
-
-    // ⚠️⚠️ **E O CAMINHO DO PAINEL FICOU BYTE A BYTE**, que é o que o próprio plano
-    // manda (*"sem mudar nada para quem abre pelo painel"*) e o que
-    // `publicador-painel-modal-reprovar-188.test.js:581` cobra LITERALMENTE. ⚠️ A
-    // primeira redação desta wave trocou esta linha por uma derivação e aquele gate
-    // REPROVOU — **e ele estava CERTO**. Nenhum gate alheio foi editado.
-    assert.ok(
-        FONTE_PAGINA.includes('parametros: { company: empresaId, oferta: ofertaDoPainel, imagem: imagemId }'),
-        '⚠️⚠️ o caminho do PAINEL deixou de escrever com `oferta: ofertaDoPainel` — o gate do 188-12 REPROVA, e com razão',
-    );
-
-    // ⚠️⚠️ **SEGUNDA CÓPIA DO LITERAL DA ROTA, COM TESTE DE IGUALDADE** (régua §2:
-    // *"nunca uma segunda regra sem teste de igualdade"*). O ramo do lightbox e o
-    // do painel repetem o NOME da rota; se um divergir, um dos dois aponta para o
-    // nada e **só um** deles seria descoberto em produção.
-    const nomesDaRota = [...FONTE_PAGINA.matchAll(/rota: '(mlb\.anuncios\.meus\.aprovacao\.painel\.imagem\.reprovar)'/g)].map((m) => m[1]);
-    assert.equal(nomesDaRota.length, 2, `esperava as DUAS cópias do nome da rota de reprovar (painel e lightbox), achei ${nomesDaRota.length}`);
-    assert.equal(new Set(nomesDaRota).size, 1, 'as duas cópias do nome da rota de reprovar DIVERGIRAM — uma delas aponta para o nada');
-
-    // ⚠️ E a rota EXISTE pelo nome, no arquivo de rotas (anti-fantasma de ROTA).
-    const rotas = fs.readFileSync(path.resolve(RAIZ, 'routes/mlb_anuncios.php'), 'utf8');
-    assert.ok(rotas.includes("name('meus.aprovacao.painel.imagem.reprovar')"), 'a rota de reprovar imagem NÃO existe — os dois ramos apontariam para o nada');
-
-    // ⚠️⚠️ **E o `oferta` do ESTADO do modal continua sendo o do PAINEL** — medido,
-    // não escolhido: `modalAberto` é `modalDoPainel.oferta === ofertaDoPainel ?
-    // modalDoPainel : null` (188-12). Gravar ali a oferta do lightbox faria
-    // `modalAberto` sair `null` com o painel em outra oferta, e **o modal não seria
-    // desenhado** — exatamente no caso que esta wave resolve.
-    assert.ok(
-        /modalAberto = modalDoPainel !== null && objetoSeguro\(modalDoPainel\)\?\.oferta === ofertaDoPainel/.test(FONTE_PAGINA),
-        'a derivação de `modalAberto` do 188-12 mudou — a decisão de guardar `oferta: ofertaDoPainel` depende dela',
-    );
-
-    // ⚠️ ISCA das duas direções para a sonda da galeria.
-    assert.ok(
-        /galeriaDoModal = contextoDaFotoNoModal !== null\s*\?\s*imagensDoLb/.test('const galeriaDoModal = contextoDaFotoNoModal !== null\n        ? imagensDoLb'),
-        'a sonda da galeria está CEGA',
-    );
-    assert.equal(
-        /galeriaDoModal = contextoDaFotoNoModal !== null\s*\?\s*imagensDoLb/.test('const galeriaDoModal = fotosDoPainel.imagens;'),
-        false,
-        'a sonda da galeria casa a galeria ERRADA',
-    );
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 8. ⚠️ O TERRITÓRIO: AS AUSÊNCIAS, RECORTADAS À LISTA CONSTANTE DESTA FASE
-// ═══════════════════════════════════════════════════════════════════════════
+test('⚠️⚠️ VIVO: a página de revisão segue SEM `String(` e SEM `localStorage` 189_07', () => {
+    // ⚠️⚠️ **ESTA É A PROTEÇÃO QUE SOBREVIVE AO TOMBAMENTO, e por isso ela NÃO foi aposentada.**
+    // Ela não fala do lightbox: fala da PÁGINA, que **continua em produção**.
+    //
+    // ⚠️ `String(valor)` na página é a TELA PRETA: com `{toString: null}` ele **lança**, e
+    // isso voltou **seis vezes** nesta milestone (a última no clique). O gate da 187-04 que
+    // proíbe `String(` aqui está CERTO e segue valendo.
+    // ⚠️ `localStorage` é estado de negócio no navegador — recusado pelo usuário desde a 187.
+    // ⚠️ `FONTE_PAGINA` JÁ vem sem comentário, pelo `lerSemComentarios` do próprio projeto
+    // (`:161`) — não escrevo um segundo tira-comentário aqui. Duas cópias divergiriam, e o
+    // `CRU_PAGINA` existe para quando o cru é que importa.
+    const semComent = FONTE_PAGINA;
+    assert.ok(semComent.length > 1000, `o leitor sem comentário devolveu ${semComent.length} bytes — recorte vazio não prova nada`);
+    assert.ok(CRU_PAGINA.length > semComent.length, 'o leitor sem comentário NÃO tirou nada — então as asserções de ausência abaixo poderiam passar por comentário');
+    assert.equal(semComent.includes('String('), false, '⚠️⚠️ `String(` entrou na página — com `{toString: null}` ele LANÇA e a tela fica PRETA');
+    assert.equal(semComent.includes('localStorage'), false, '⚠️ `localStorage` entrou na página — estado de negócio no navegador foi RECUSADO pelo usuário');
 
+    // ⚠️ ISCA nas duas direções: o leitor acha o que ESTÁ lá, e o removedor de comentário
+    // NÃO engole código — sem isso, `includes(...) === false` passaria por recorte vazio.
+    assert.ok(semComent.includes('export default'), 'o leitor sem comentário comeu o código da página');
+    assert.ok('a String( b'.includes('String('), 'a sonda de `String(` está CEGA');
+});
 test('⚠️⚠️ TERRITÓRIO: nada de segundo passo, nada da Fase 192 e nada sem dono — com ISCA 189_07', () => {
     // ⚠️⚠️ **GATE MAIS LARGO QUE O INVARIANTE — QUATORZE ocorrências nesta
     // milestone**, e uma **BARROU UM DEPLOY** (`lucro_liquido` é campo LEGÍTIMO do

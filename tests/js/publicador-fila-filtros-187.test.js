@@ -761,28 +761,28 @@ test('nenhum FILTRO mora em `useState`; o único estado local é o menu aberto 1
         // ~3,8 s** — *"um aviso de concorrência que desaparece é um aviso que não
         // houve"*.
         'conflitoDoPainel',
-        // ⚠️⚠️ Fase 189, plano 06 — O LIGHTBOX: `{indice, zoom, origem, contexto}`.
+        // ⚠️⚠️ **`doLightbox` SAIU DESTA LISTA EM 23/10/2026 — e o registro fica aqui.**
         //
-        // **É GESTO, não DADO, e por isso NÃO vai para a URL:** um link
-        // compartilhado abriria a foto ampliada de outra pessoa, numa tela em que
-        // **aprovar ENFILEIRA e não há desfazer**. É a MESMA decisão já tomada
-        // para `modalDoLoteAberto`, `fotoAberta`, `modalDoPainel` e
-        // `conflitoDoPainel`; a OFERTA, que é dado, continua na URL (`?oferta=`).
-        // ⚠️ E **nada de `localStorage`** (T-189-44): o estado de revisão não mora
-        // no navegador, e há gate de ausência na página.
+        // A Fase 189 (plano 06) pôs aqui o estado do LIGHTBOX (`{indice, zoom, origem, contexto}`).
+        // Ele saiu por DUAS razões combinadas, nenhuma delas afrouxamento:
         //
-        // ⚠️⚠️ **UM `useState` SÓ, com o contexto dentro**, e a razão é mecânica —
-        // a mesma do `modalDoPainel`: o `LightboxDaImagem` (189-03) e a
-        // `LateralDoLightbox` (189-05) são **CONTROLADOS** e não guardam estado,
-        // então alguém precisa ser o dono. Um `useState` por campo seria QUATRO
-        // entradas aqui para um gesto só.
+        //   1. **decisão 27 (23/10)** — o usuário TOMBOU a revisão como jornada de interface: ela
+        //      passa a acontecer na **Prévia** que o outro dev já pôs em produção;
+        //   2. **merge do E0 (`42c1bd66`)** — `Aprovacao.jsx` ficou com a versão do remoto, que
+        //      **não monta o lightbox**. ⚠️ **Medido antes de tomar:** a versão deles **não tem** o
+        //      defeito de TDZ das cinco telas pretas, logo nada de segurança se perdeu.
         //
-        // ⚠️ **Por que ele vive na PÁGINA e não no `PainelDeRevisao`:** quem
-        // desenha o "⤢ Ampliar" é a `ColunaDeFotos`, e ela chega ao painel como
-        // **NÓ PRONTO** pelo slot `colunaDeFotos`, montado aqui — estado no painel
-        // nunca alcançaria o botão. O painel continua com o **ÚNICO** `keydown`
-        // da tela, que é o que o degrau do `Escape` exige.
-        'doLightbox',
+        // ⚠️⚠️ **E este gate ACUSOU, exatamente como foi desenhado.** O comentário da lista diz, com
+        // todas as letras, que *"entrada da lista que não existe mais na página também reprova —
+        // entrada morta é linha morta"*, e que isso é o que o TOTAL antigo **não** cobria.
+        // ➡️ Logo o conserto certo é **tirar a ENTRADA**, nunca mexer na asserção: a lista volta a
+        // descrever o que a página tem, e o próximo `useState` não-declarado continua reprovando.
+        // Se o lightbox voltar (pela Prévia, por exemplo), a entrada volta junto — **com a fase dona
+        // ao lado**, que é a disciplina desta lista desde o início.
+        //
+        // ⚠️ **Os COMPONENTES ficaram no disco** (`LightboxDaImagem.jsx`, `LateralDoLightbox.jsx`),
+        // reaproveitáveis — e há gate nomeando os dois em
+        // `tests/js/publicador-lightbox-painel-189.test.js`. O que saiu foi a INTEGRAÇÃO.
     ];
 
     const naPagina = [...FONTE_PAGINA.matchAll(/const \[([A-Za-z_$][\w$]*),\s*[A-Za-z_$][\w$]*\] = useState\(/g)].map((m) => m[1]);

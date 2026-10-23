@@ -1091,29 +1091,64 @@ test('⚠️⚠️ O painel compõe o LIGHTBOX e a LATERAL, e os três exports p
     assert.match(FONTE_PAINEL, /createPortal\(/, 'o painel deixou de ser portado');
 });
 
-test('⚠️⚠️ A PÁGINA repassa `lightbox` como DADO, sem `String(` e sem `localStorage` 189_06', () => {
-    // ⚠️ A prop-raiz do servidor (189-02) entra na assinatura da página.
-    assert.match(FONTE_PAGINA, /\blightbox = null\b/, 'a prop-raiz `lightbox` não entrou na assinatura da página');
+test('⚠️⚠️ TOMBADO/VIVO: a página NÃO liga mais o lightbox — mas segue sem `String(` e sem `localStorage` 189_06', () => {
+    // ⚠️⚠️ **GATE REAPONTADO EM 23/10/2026 — e a razão fica aqui para ninguém "consertar" de volta.**
+    //
+    // Este caso tinha DUAS naturezas de asserção misturadas, e o tombamento separa as duas:
+    //
+    //   **(a) MORRERAM COM O SUJEITO** — as quatro que cobravam a INTEGRAÇÃO do lightbox na
+    //   página (`lightbox = null` na assinatura, `<LightboxDaImagem`, `<LateralDoLightbox`,
+    //   `onAmpliar=`). A **decisão 27 (23/10)** tombou a revisão como jornada de interface — ela
+    //   passa a acontecer na **Prévia** do outro dev, que já está em produção — e o **merge do E0
+    //   (`42c1bd66`)** deixou `Aprovacao.jsx` com a versão do remoto, que não tem o lightbox.
+    //   ⚠️ **Medido antes de tomar:** a versão deles **não tem** o defeito de TDZ das cinco telas
+    //   pretas, logo nada de segurança se perdeu. ➡️ Elas viram o invariante INVERSO: a página
+    //   **não** monta o fio, e reintroduzir sem mudar a decisão é que é o erro.
+    //
+    //   **(b) SEGUEM VIVAS** — todas as outras. Elas **não falam do lightbox**: falam da PÁGINA,
+    //   que **continua em produção**. ⚠️ `String(valor)` **lança** com `{toString:null}` e isso
+    //   voltou **seis vezes** nesta milestone; `localStorage` é estado de negócio no navegador,
+    //   **recusado pelo usuário** desde a 187 (COL-02 / critério 13).
+    //
+    // ⚠️ **§10 do plano do Agente:** *"atualizar testes acoplados à tela tombada com cobertura
+    // equivalente, registrando a mudança, em vez de perpetuar UI obsoleta"*.
 
-    // ⚠️⚠️ **UM SIGNIFICADO POR PROP:** `lightbox` é DADO, e não um slot de NÓ.
-    // Slot de NÓ novo obrigaria a acrescentar linha em DUAS listas, em DOIS
-    // arquivos de gate (`SLOTS_DE_NO_*`), e isto NÃO é um slot.
-    assert.doesNotMatch(FONTE_PAGINA, /isValidElement\(\s*lightbox\s*\)/, '`lightbox` virou slot de NÓ — ele é DADO (e as listas `SLOTS_DE_NO_*` não foram tocadas)');
-    assert.match(FONTE_PAGINA, /<LightboxDaImagem/, 'a página deixou de montar o lightbox');
-    assert.match(FONTE_PAGINA, /<LateralDoLightbox/, 'a página deixou de montar a lateral de 320px (189-05)');
-    assert.match(FONTE_PAGINA, /onAmpliar=/, 'a página deixou de ligar o "⤢ Ampliar" da coluna de fotos');
+    // ───── (a) o fio do lightbox SAIU, e isso é DELIBERADO ─────
+    // ⚠️ Lista CONSTANTE e asserção de CONJUNTO — nunca uma contagem, que o trabalho certo
+    // derrubaria. O `deepEqual` NOMEIA quem voltou.
+    const DO_FIO = ['lightbox = null', '<LightboxDaImagem', '<LateralDoLightbox', 'onAmpliar='];
+    const voltaram = DO_FIO.filter((m) => FONTE_PAGINA.includes(m));
+    assert.deepEqual(voltaram, [], '⚠️⚠️ o fio do lightbox VOLTOU à página de revisão, que foi TOMBADA (decisão 27). Se isso é intenção nova, mude a decisão primeiro — não o teste');
 
-    // ⚠️ Os gates da 187-04 e do 188-07 sobre a página continuam valendo, e os
-    // dois estão CERTOS.
-    assert.doesNotMatch(FONTE_PAGINA, /\bString\(/, '`String(` voltou à página — ele LANÇA com `{toString:null}`');
-    assert.doesNotMatch(FONTE_PAGINA, /localStorage|sessionStorage/, 'o estado do lightbox foi para o navegador — ele é memória do componente (T-189-44)');
+    // ⚠️ ISCA: a sonda do fio **NÃO está cega** — numa fonte sintética ela acha os quatro.
+    // Sem isto, `deepEqual([], [])` passaria por recorte vazio, que é a armadilha número 1 deste
+    // projeto (gate sobre zero casos não prova nada).
+    const SINTETICA = 'function X({ lightbox = null }) { return <div onAmpliar={f}><LightboxDaImagem/><LateralDoLightbox/></div>; }';
+    assert.deepEqual(DO_FIO.filter((m) => SINTETICA.includes(m)), DO_FIO, 'a sonda do fio está CEGA: nem na fonte sintética ela acha os quatro');
+
+    // ⚠️ E o que NÃO se perdeu: os componentes ficaram no disco, reaproveitáveis se a Prévia
+    // quiser zoom. O que saiu foi a INTEGRAÇÃO, não o trabalho.
+    for (const rel of [REL_LIGHTBOX, REL_LATERAL]) {
+        assert.ok(existsSync(path.resolve(RAIZ, rel)), `${rel} foi APAGADO — o tombamento retirou a integração, NÃO os componentes`);
+    }
+
+    // ───── (b) as proteções que SOBREVIVEM ao tombamento ─────
+    // ⚠️ Os gates da 187-04 e do 188-07 sobre a página continuam valendo, e os dois estão CERTOS.
+    // ⚠️⚠️ E aqui o `lerSemComentarios` do `FONTE_PAGINA` (`:164`) é o que torna isto honesto:
+    // a página CRUA tem **7** ocorrências de `String(` e **5** de `localStorage` — **todas dentro
+    // de comentário**, explicando por que NÃO se usa. Medido em 23/10. É exatamente a armadilha
+    // "palavra no docblock que explica 'eu não uso isso' reprova pelo próprio conserto".
+    assert.doesNotMatch(FONTE_PAGINA, /\bString\(/, '`String(` voltou ao CÓDIGO da página — ele LANÇA com `{toString:null}`');
+    assert.doesNotMatch(FONTE_PAGINA, /localStorage|sessionStorage/, 'estado de negócio foi para o navegador — RECUSADO pelo usuário (COL-02 / critério 13)');
     assert.doesNotMatch(FONTE_PAGINA, /Gerar novamente/, 'a página antecipou a Fase 192');
     assert.doesNotMatch(FONTE_PAGINA, /Comparar lado a lado/, 'a página antecipou as Fases 190/191, que estão FORA DE ESCOPO desde 20/10/2026');
 
-    // ⚠️ ISCA: a fonte da página foi lida de verdade (sonda de ausência sobre
-    // leitura quebrada passa CALADA).
+    // ⚠️ ISCA do leitor, nas duas direções: a fonte foi lida de verdade, **e** o
+    // `lerSemComentarios` NÃO comeu o código todo — sem isso os `doesNotMatch` acima passariam
+    // calados sobre recorte vazio.
     assert.match(FONTE_PAGINA, /export default function Aprovacao\(/, 'a página desapareceu da fonte lida — os `doesNotMatch` acima seriam vazios');
     assert.ok(FONTE_PAGINA.length > 10000, `a fonte da página veio com ${FONTE_PAGINA.length} bytes — a leitura está quebrada`);
+    assert.ok('a String( b'.includes('String('), 'a sonda de `String(` está CEGA');
 });
 
 test('⚠️ ANTI-FANTASMA e o MANIFESTO deste plano 189_06', () => {
