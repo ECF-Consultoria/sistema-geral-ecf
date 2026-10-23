@@ -153,7 +153,8 @@ class RecebimentoAbaixoDoCustoTest extends TestCase
             $this->assertSame(round(self::PRECOS[$lt] - self::TARIFA[$lt] - 147.85, 2), $sim[$lt]['voce_recebe']);
         }
         Http::assertNotSent(fn (Request $q) => str_contains($q->url(), 'shipping_options/free'));
-        $this->assertSame(['conhecido' => true, 'obrigatorio' => false, 'parcial' => false, 'por_tipo' => []],
+        // 23/10/2026 (P-25): e diz para onde o envio vai, para a dica do frete grátis na tela.
+        $this->assertSame(['conhecido' => true, 'envio' => 'combinar', 'obrigatorio' => false, 'parcial' => false, 'por_tipo' => []],
             app(EditorRascunhoService::class)->freteGratis($this->r->fresh()), 'sem Mercado Envios não há frete grátis obrigatório');
     }
 

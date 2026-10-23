@@ -573,7 +573,9 @@ class EditorRascunhoService
         // transportadora (ME1) ou "Combine a entrega", e o frete grátis marcado some sem erro (publicador-ml §25).
         $envio = $pacote === null ? null : $this->envios->avaliar($r, $s->atributos);
         if (EnvioDoRascunhoService::fora($envio['destino'] ?? null)) {
-            return ['conhecido' => true] + $saida;
+            // O destino vai junto (23/10/2026, P-25): a dica do frete grátis diz se sai pela transportadora (ME1) ou
+            // "Combine a entrega" sem depender do "Calcular".
+            return ['conhecido' => true, 'envio' => $envio['destino']] + $saida;
         }
         $logistica = $envio['modalidade'] ?? 'drop_off';
 
@@ -773,7 +775,10 @@ class EditorRascunhoService
                     // Demo 23/10 (A1): o que aconteceu com a promoção automática deste anúncio (o ML recusa a do anúncio novo).
                     'promocao' => \App\Support\Publicador\PromocaoDoPublicado::do($i->ml_item_id),
                 ])->all(),
-                'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
+                // A recusa só vale para a revisão que foi publicada (23/10/2026, P-13): depois de corrigir, a recusa antiga
+                // bloqueava o "Continuar", deixava o campo corrigido vermelho e a Prévia pedia "Corrija o que está acima".
+                'problemas' => $p->status === PubPublicacao::RUNNING || (int) $p->revisao !== (int) $r->revisao
+                    ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,
             // RN-94: a MESMA query de antes, só extraída para `$jaPublicados` acima — ela
             // virou também a base da comparação com o acervo (175-09, `estoqueDivergeDoMl`).

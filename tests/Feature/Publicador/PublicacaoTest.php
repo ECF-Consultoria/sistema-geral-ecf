@@ -269,6 +269,13 @@ class PublicacaoTest extends TestCase
         $this->assertSame('MODEL', $problema->alvo['atributo']);
         $this->assertSame('Preencha os atributos obrigatórios: «Modelo».', $problema->mensagem);
         $this->assertSame(0, EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->count());
+
+        // 23/10/2026 (teste do Publicador, P-13): a recusa aparece no editor enquanto nada mudou; corrigido (a revisão
+        // subiu), ela deixa de bloquear — antes travava o "Continuar" e a Prévia mesmo depois de conferido de novo.
+        $editor = app(\App\Services\Publicador\EditorRascunhoService::class);
+        $this->assertNotSame([], $editor->estado($this->r->fresh())['publicacao']['problemas']);
+        $this->r->fresh()->increment('revisao');
+        $this->assertSame([], $editor->estado($this->r->fresh())['publicacao']['problemas'], 'a recusa da revisão antiga não bloqueia mais');
     }
 
     /**
