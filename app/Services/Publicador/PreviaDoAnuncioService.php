@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\ContasLiberadas;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
 use App\Support\Publicador\AlavancasLiberadas;
@@ -111,7 +112,9 @@ final class PreviaDoAnuncioService
         }
 
         $variantes = collect($snapshot->variantesAtivas())->keyBy(fn (Variante $v) => $v->chave);
-        $envioQueVale = $this->envioQueVaiValer($r);
+        // Sem conferência nenhuma, valem as medidas do pacote (23/10/2026, P-08): o combit da Opala (pacote 360 cm) já
+        // dizia "Combine a entrega" em Condições e a Prévia ainda mostrava "O comprador paga o frete, calculado pelo CEP".
+        $envioQueVale = $this->envioQueVaiValer($r) ?? ($r->validacoes()->exists() ? null : $this->envioPelasMedidas($r, $snapshot));
 
         return [
             ...$base,
@@ -345,6 +348,31 @@ final class PreviaDoAnuncioService
      *
      * @return ?array{modo: string, aviso: null}
      */
+    /**
+     * O envio pelas medidas do pacote, a mesma régua das Condições ({@see EnvioDoRascunhoService::avaliar}: modalidade e
+     * ME1 da conta do cache do Portal, sem cálculo de frete). Só quando o plano é Mercado Envios e a conta é liberada
+     * (fora da lista, nada é lido no ML); sem saber a modalidade, nulo — vale o plano.
+     *
+     * @return ?array{modo: string, aviso: null}
+     */
+    private function envioPelasMedidas(PubRascunho $r, RascunhoSnapshot $s): ?array
+    {
+        if (($s->envio['modo'] ?? 'me2') !== 'me2' || ! ContasLiberadas::libera($r->produto->contaOuNula())) {
+            return null;
+        }
+        try {
+            $destino = app(EnvioDoRascunhoService::class)->avaliar($r, $s->atributos)['destino'] ?? null;
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return match (true) {
+            $destino === 'me1' => ['modo' => 'me1', 'aviso' => null],
+            EnvioDoRascunhoService::fora($destino) => ['modo' => 'not_specified', 'aviso' => null],
+            default => null,
+        };
+    }
+
     private function envioQueVaiValer(PubRascunho $r): ?array
     {
         /** @var ?\App\Models\PubValidacao $v */

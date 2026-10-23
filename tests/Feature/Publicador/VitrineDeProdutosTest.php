@@ -229,6 +229,20 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertSame(['dia' => '2026-10-22', 'motivo' => 'limite'], $r->fresh()->step_state['criativos_auto']['adiado'], 'a visita não apaga a marca');
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-10): o cartão do Sofá mostrava SFCHST (o código do produto no Portal) e o anúncio
+     * levava SFCHST-2 (o SKU da variação). Com UMA variação, o cartão mostra o SKU que vai ao anúncio.
+     */
+    public function test_com_uma_variacao_o_cartao_mostra_o_sku_do_anuncio(): void
+    {
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->mesa()->putJson($this->rota('variantes'), ['variantes' => [
+            '__single__' => ['estoque' => 2, 'atributos' => ['SELLER_SKU' => ['value_name' => 'CB3-ANUNCIO']]],
+        ]])->assertOk();
+
+        $this->assertSame('CB3-ANUNCIO', $this->cartaoDaCadeira()['sku']);
+    }
+
     public function test_resumo_de_outra_revisao_e_refeito_antes_de_dizer_pronto(): void
     {
         $this->cadeiraPretaEAzulSemFotoNoAzul();

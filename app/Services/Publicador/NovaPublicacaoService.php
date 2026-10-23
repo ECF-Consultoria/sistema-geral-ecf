@@ -203,7 +203,29 @@ class NovaPublicacaoService
             'nota' => $nota,
             'capa' => is_string($capa) && $capa !== '' ? $capa : null,
             'url' => $url,
+            // 23/10/2026 (P-09/P-10): "Buscar produto ou MLB" não achava pelo MLB nem pelo SKU da variação. Só texto.
+            'busca' => self::busca($p),
         ];
+    }
+
+    /** Os códigos dos anúncios publicados (com e sem "MLB") e os SKUs das variações, separados por espaço. */
+    private static function busca(array $p): string
+    {
+        $termos = [];
+        foreach ((array) ($p['anuncios'] ?? []) as $a) {
+            $mlb = is_array($a) ? trim((string) ($a['ml_item_id'] ?? '')) : '';
+            if ($mlb !== '') {
+                $termos[] = $mlb;
+                $termos[] = (string) preg_replace('/^MLB/i', '', $mlb);
+            }
+        }
+        foreach ((array) ($p['skus_das_variantes'] ?? []) as $sku) {
+            if (is_string($sku) && trim($sku) !== '') {
+                $termos[] = trim($sku);
+            }
+        }
+
+        return implode(' ', array_values(array_unique($termos)));
     }
 
     /** O editor do rascunho — o destino de `sem_publicacao` e de `rascunhos`. */

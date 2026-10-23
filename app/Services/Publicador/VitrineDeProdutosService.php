@@ -132,7 +132,7 @@ final class VitrineDeProdutosService
             'quantidade' => $f['quantidade'] ?? null,
             'composicao' => $f['composicao'] ?? null,
             'nome' => self::nomeDoCartao((string) $l['nome'], $p, $f['tipo'] ?? null),
-            'sku' => (string) $l['sku'],
+            'sku' => (string) ($l['sku_do_anuncio'] ?? $l['sku']),
             'do_portal' => $p?->origem === PubProduto::ORIGEM_PORTAL && ! $saiuDoPortal,
             'saiu_do_portal' => $saiuDoPortal,
             'ia' => $ia,

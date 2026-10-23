@@ -120,7 +120,8 @@ export function normalizarPayload(dados) {
  * nome→sku igual ao protótipo quando os dois são texto.
  */
 function palheiro(item) {
-    return `${normalizar(item?.nome)} ${normalizar(item?.sku)}`;
+    // 23/10/2026 (P-09/P-10): e os códigos MLB e SKUs das variações que o servidor manda em `busca`.
+    return `${normalizar(item?.nome)} ${normalizar(item?.sku)} ${normalizar(item?.busca)}`;
 }
 
 /**

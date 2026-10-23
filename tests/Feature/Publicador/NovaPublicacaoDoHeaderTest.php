@@ -85,7 +85,8 @@ class NovaPublicacaoDoHeaderTest extends TestCase
     use RefreshDatabase;
 
     /** As chaves do item, em ORDEM. Campo a mais aqui é convite a inventar tela na wave 2. */
-    private const CAMPOS_DO_ITEM = ['produto_id', 'nome', 'sku', 'nota', 'capa', 'url'];
+    /** 23/10/2026 (P-09/P-10): + `busca` (MLBs e SKUs das variações, texto) — "Buscar produto ou MLB" não achava pelo MLB. */
+    private const CAMPOS_DO_ITEM = ['produto_id', 'nome', 'sku', 'nota', 'capa', 'url', 'busca'];
 
     /** A ordem dos grupos é contrato: a wave 2 renderiza nesta sequência. */
     private const ORDEM_DOS_GRUPOS = ['prontos_fase2', 'sem_publicacao', 'rascunhos'];
@@ -499,6 +500,27 @@ class NovaPublicacaoDoHeaderTest extends TestCase
     }
 
     // ═══ 5. O item: seis campos, todos escalares, destino real ═══════════════
+
+    /**
+     * 23/10/2026 (teste do Publicador, P-09 e P-10): "Buscar produto ou MLB" não achava pelo MLB de um anúncio publicado
+     * (MLB5446974315 do QA22A) nem pelo SKU da variação (o Sofá: SFCHST × SFCHST-2). O item leva os dois, em texto.
+     */
+    public function test_item_leva_os_mlbs_e_os_skus_das_variacoes_para_a_busca(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'SFCHST');
+        $r = $this->rascunho($base, PubRascunho::PUBLISHED);
+        $this->anuncios($r, 2);
+        $v = $r->variantes()->first() ?? $r->variantes()->create(['combinacao_chave' => ChaveCanonica::UNICA, 'combinacao_hash' => hash('sha256', ChaveCanonica::UNICA), 'ativa' => true, 'estoque' => 1]);
+        $v->atributos()->create(['attribute_id' => 'SELLER_SKU', 'value_name' => 'SFCHST-2']);
+
+        $item = $this->itens($this->grupos($e), 'prontos_fase2')[0];
+
+        $this->assertIsString($item['busca']);
+        foreach (['MLB7770000', '7770000', 'MLB7770001', 'SFCHST-2'] as $termo) {
+            $this->assertStringContainsString($termo, $item['busca'], $termo);
+        }
+    }
 
     public function test_item_tem_exatamente_seis_campos_e_nenhum_e_array_ou_objeto(): void
     {

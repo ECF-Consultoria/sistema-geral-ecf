@@ -286,6 +286,31 @@ class PreviaDoAnuncioTest extends TestCase
         $this->assertSame(['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false, 'aviso' => null], $envio, 'vale a ÚLTIMA conferência');
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-08): o combit da Opala (pacote 360 cm, conta sem ME1) dizia "Combine a entrega"
+     * em Condições e a Prévia, ainda sem conferência, mostrava "O comprador paga o frete, calculado pelo CEP". Sem
+     * conferência, valem as medidas do pacote; com conferência, vale ela.
+     */
+    public function test_sem_conferencia_o_pacote_fora_do_me2_ja_aparece_a_combinar(): void
+    {
+        $this->portalPadrao();
+        $this->rascunhoPreenchido();
+        // O pacote do combit da Opala: 4 caixas empilhadas.
+        $this->mesa()->putJson($this->rota('salvar'), ['atributos' => [
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '360 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '85 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '48000 g'],
+        ]])->assertOk();
+        \App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio::guardar((int) $this->empresa->id, 'drop_off', me1: false);
+
+        $envio = $this->mesa()->getJson($this->rota('previa'))->assertOk()->json('anuncios.0.envio');
+        $this->assertSame('not_specified', $envio['modo'], 'a combinar, sem precisar conferir');
+        $this->assertFalse($envio['frete_gratis']);
+
+        // A conferência diz que o Mercado Envios vale: vale ela.
+        $this->conferenciaGravada([], ['frete' => ['aplicavel' => true, 'linhas' => []]]);
+        $this->assertSame('me2', $this->mesa()->getJson($this->rota('previa'))->assertOk()->json('anuncios.0.envio.modo'));
+    }
+
     public function test_sem_categoria_a_previa_diz_o_que_falta(): void
     {
         $this->portalPadrao();

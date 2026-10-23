@@ -867,6 +867,19 @@ test('E — o vazio aparece UMA vez e sem título de grupo nenhum (NOVA-05)', as
 
 const SUJEIRA = /\[object Object\]|NaN|undefined/;
 
+test('P-09/P-10 (23/10/2026) — a busca acha pelo código MLB e pelo SKU da variação que vêm em `busca`', () => {
+    const sofa = { produto_id: 94, nome: 'Sofá Chesterfield', sku: 'SFCHST', nota: 'x', capa: null, url: '/p/94',
+        busca: 'MLB5446974315 5446974315 SFCHST-2' };
+    const achados = (consulta) => filtrarGrupos({ grupos: [{ chave: 'rascunhos', itens: [sofa] }], consulta }).flatMap((g) => g.itens.map((i) => i.produto_id));
+    for (const consulta of ['MLB5446974315', '5446974315', 'mlb5446974315', 'SFCHST-2', 'Chesterfield']) {
+        assert.deepEqual(achados(consulta), [94], consulta);
+    }
+    assert.deepEqual(achados('MLB999'), []);
+    // Item sem `busca` (shape antigo) continua buscável por nome e SKU, sem "undefined" no palheiro.
+    const antigo = { ...sofa, busca: undefined };
+    assert.deepEqual(filtrarGrupos({ grupos: [{ chave: 'rascunhos', itens: [antigo] }], consulta: 'undefined' }).length, 0);
+});
+
 test('F — campo objeto, nulo e ausente em qualquer item não derruba nem suja a tela', async (contexto) => {
     const umItem = (item) => renderizar({
         grupos: filtrarGrupos({ grupos: [{ chave: 'rascunhos', itens: [item] }], consulta: '' }),

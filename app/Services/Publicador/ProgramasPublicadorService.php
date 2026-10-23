@@ -915,6 +915,21 @@ class ProgramasPublicadorService
         $rascunhos = $rascunhos->groupBy('produto_id')->map(fn ($g) => $g->last());
         $rascunhoIds = $rascunhos->pluck('id')->all();
 
+        // Os SKUs das variações (23/10/2026, P-09/P-10): o "SKU" da lista é o código do produto do Portal, e o que vai ao
+        // anúncio é o da variação (o Sofá: SFCHST × SFCHST-2) — a busca acha pelos dois.
+        $skusDasVariantes = [];
+        foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
+            DB::table('pub_variante_atributos as a')->join('pub_variantes as v', 'v.id', '=', 'a.variante_id')
+                ->whereIn('v.rascunho_id', $lote)->where('a.attribute_id', 'SELLER_SKU')->whereNotNull('a.value_name')
+                ->orderBy('v.id')->get(['v.rascunho_id', 'a.value_name'])
+                ->each(function ($l) use (&$skusDasVariantes) {
+                    $sku = trim((string) $l->value_name);
+                    if ($sku !== '') {
+                        $skusDasVariantes[(int) $l->rascunho_id][$sku] = true;
+                    }
+                });
+        }
+
         foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
             // Última validação por rascunho (maior id).
             PubValidacao::query()->whereIn('rascunho_id', $lote)->orderBy('id')->get()
@@ -956,7 +971,7 @@ class ProgramasPublicadorService
                 });
         }
 
-        return $produtos->map(function (PubProduto $p) use ($capas, $rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta) {
+        return $produtos->map(function (PubProduto $p) use ($capas, $rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta, $skusDasVariantes) {
             $r = $rascunhos[$p->id] ?? null;
             $conta = $p->contaOuNula();
             $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
@@ -992,6 +1007,7 @@ class ProgramasPublicadorService
                 'status' => $status,
                 'status_rascunho' => $r?->status,
                 'anuncios' => $r ? array_values($anuncios[$r->id] ?? []) : [],
+                'skus_das_variantes' => $r ? array_keys($skusDasVariantes[$r->id] ?? []) : [],
                 'parcial' => $parcial,
                 'atualizado_em' => $atualizado?->toIso8601String(),
                 // WR-B01: a conta do PRODUTO (a que confere e publica) e se ela difere da do cabeçalho.
