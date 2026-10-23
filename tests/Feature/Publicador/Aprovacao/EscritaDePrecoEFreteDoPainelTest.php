@@ -945,6 +945,15 @@ class EscritaDePrecoEFreteDoPainelTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('painel_simulacao');
 
+        // 23/10/2026 (teste do Publicador, P-05): o `flash` compartilhado não repassava a chave e a simulação nunca
+        // chegava à tela. Agora chega, marcada com a oferta que a pediu (a tela só a mostra nela).
+        $this->actingAs($admin)->post($this->url('preco.simular', $company, $oferta), ['preco' => '149,90'])->assertRedirect();
+        $this->withoutVite()->actingAs($admin)->get(route('mlb.anuncios.meus.aprovacao', $company).'?oferta='.$oferta->id)
+            ->assertInertia(fn ($pagina) => $pagina->where('flash.painel_simulacao.oferta_id', $oferta->id));
+        $this->actingAs($admin)->post($this->url('frete.previa', $company, $oferta), ['valor' => '10,00']);
+        $this->withoutVite()->actingAs($admin)->get(route('mlb.anuncios.meus.aprovacao', $company).'?oferta='.$oferta->id)
+            ->assertInertia(fn ($pagina) => $pagina->where('flash.painel_frete_previa.oferta_id', $oferta->id));
+
         // ⚠️⚠️ **ISCA DO CONTADOR:** salvar o preço MEXE nos mesmos números.
         $this->actingAs($admin)->post($this->url('preco', $company, $oferta), ['preco' => '149,90'])->assertRedirect();
         $this->assertNotSame($antes, $this->contadoresDeEscrita($oferta), 'o contador de escrita está CEGO');

@@ -1192,7 +1192,9 @@ class MlbPublicadorAprovacaoController extends Controller
     ) {
         $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
 
-        $simulacao = $preco->simular($daConta, $request->input('preco'));
+        // A oferta vai junto (23/10/2026, P-05): pelo flash, depois do recarregamento parcial, a tela só mostra a
+        // simulação na oferta que a pediu.
+        $simulacao = ['oferta_id' => $oferta] + $preco->simular($daConta, $request->input('preco'));
 
         return $request->expectsJson()
             ? response()->json($simulacao)
@@ -1353,7 +1355,7 @@ class MlbPublicadorAprovacaoController extends Controller
     ) {
         $daConta = $this->ofertaDoPainel($company, $oferta, $fila, $programas);
 
-        $previa = $preco->previaDoFrete($daConta, $request->input('valor'));
+        $previa = ['oferta_id' => $oferta] + $preco->previaDoFrete($daConta, $request->input('valor'));
 
         return $request->expectsJson()
             ? response()->json($previa)

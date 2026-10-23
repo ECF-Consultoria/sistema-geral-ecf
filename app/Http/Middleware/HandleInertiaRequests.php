@@ -95,6 +95,12 @@ class HandleInertiaRequests extends Middleware
                 // resposta ESPERADA que não é sucesso nem erro (o 429 do
                 // reenvio de aviso da Clicksign).
                 'aviso'         => $request->session()->get('aviso'),
+                // 23/10/2026 (teste do Publicador, P-05) — a fila de aprovação (Fase 188) grava estas três e a tela as
+                // lê, mas elas morriam aqui, como `nps_link_existente` acima: o lote aprovado fechava sem aviso, a
+                // simulação de preço voltava vazia e a prévia do frete não aparecia.
+                'lote_aprovado'       => $request->session()->get('lote_aprovado'),
+                'painel_simulacao'    => $request->session()->get('painel_simulacao'),
+                'painel_frete_previa' => $request->session()->get('painel_frete_previa'),
             ],
             'asset_url'  => rtrim(asset(''), '/'),
             'csrf_token' => csrf_token(),
