@@ -4,11 +4,12 @@ namespace App\Jobs\Publicador;
 
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -20,11 +21,18 @@ use Illuminate\Support\Facades\Log;
  * chegam quase juntos, e enquanto um está na fila os outros pedidos são descartados — ele roda com o estado mais
  * novo. A espera curta junta esses gatilhos. Sem nova tentativa: o `aplicar` nunca lança.
  */
-class AplicarCriativosAutomaticosJob implements ShouldBeUnique, ShouldQueue
+class AplicarCriativosAutomaticosJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    /**
+     * 23/10/2026 (P-07): `ShouldBeUnique` só soltava a reserva DEPOIS do `handle()` — o veredito do juiz que chegasse no
+     * meio era descartado e o kit ficava pronto sem nunca entrar. Agora a reserva sai quando a execução começa, e duas
+     * execuções do mesmo kit não andam juntas (a 2ª volta para a fila em 10 s). Tentativas só para essa espera.
+     */
+    public int $tries = 6;
+
+    public int $maxExceptions = 1;
 
     public int $timeout = 300;
 
@@ -48,7 +56,17 @@ class AplicarCriativosAutomaticosJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(CriativosAutomaticosService $criativos): void
     {
-        $resultado = $criativos->aplicar($this->kitId);
+        $trava = Cache::lock('aplicar-criativos-auto:execucao:'.$this->kitId, $this->timeout);
+        if (! $trava->get()) {
+            $this->release(10);
+
+            return;
+        }
+        try {
+            $resultado = $criativos->aplicar($this->kitId);
+        } finally {
+            $trava->release();
+        }
         if (! in_array($resultado, ['nao_pronto', 'esperando_juiz', 'esperando_regeneracao', 'nao_automatico', 'desligado'], true)) {
             Log::info("[Creative] Imagens automáticas: aplicar o kit {$this->kitId} → {$resultado}.");
         }

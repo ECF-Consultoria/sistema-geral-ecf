@@ -21,7 +21,8 @@ class PublicadorImagensAdiadas extends Command
     {
         $r = $criativos->retomarAdiados();
 
-        $this->info("Pedidas de novo: {$r['pedidos']} · barradas hoje (ficam para amanhã): {$r['de_hoje']}");
+        $this->info("Pedidas de novo: {$r['pedidos']} · barradas hoje (ficam para amanhã): {$r['de_hoje']}"
+            ." · kits prontos aplicados: {$r['reaplicados']} · kits parados encerrados: {$r['encerrados']}");
 
         return self::SUCCESS;
     }

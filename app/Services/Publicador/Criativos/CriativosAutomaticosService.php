@@ -105,6 +105,15 @@ final class CriativosAutomaticosService
     private bool $barradoPeloLimite = false;
 
     /**
+     * Quantas vezes o MESMO grupo, com os MESMOS fatos, é planejado quando o kit falha por erro técnico (23/10/2026,
+     * P-06): a 1ª e uma nova tentativa. A reprovação do juiz não conta — ela marca `aplicado_em` e é final.
+     */
+    public const TENTATIVAS = 2;
+
+    /** Kit em planejamento/geração sem andamento há mais que isto está parado (23/10/2026, P-29). */
+    public const HORAS_PARADO = 6;
+
+    /**
      * A capa do conjunto (fase N e composto), na ordem da galeria: a 1ª abre o anúncio no Clássico E no Premium (o kit
      * não rotaciona a capa). Fora de móvel, o fundo limpo abre; em móvel, a ambientada ({@see tiposDaCapa()}). Os mesmos
      * dois tipos da capa do botão ({@see \App\Services\Publicador\CapaDoKitService}).
@@ -405,11 +414,20 @@ final class CriativosAutomaticosService
      */
     private function planejarGrupo(PubRascunho $r, PubProduto $pub, string $grupo, array $fotos, User $usuario, bool $capa = false): string
     {
-        if (MlAnuncioCriativoKit::retomavelDoPublicador($r->id, $grupo) !== null || MlAnuncioCriativoKit::ultimoAprovadoDoPublicador($r->id, $grupo) !== null) {
+        $memoria = (array) ($this->lerEstado($r->id)[self::MEMORIA]['grupos'][$grupo] ?? []);
+        $retomavel = MlAnuncioCriativoKit::retomavelDoPublicador($r->id, $grupo);
+        // Kit parado (23/10/2026, P-29: o kit 12 ficou "gerando" desde 13/10) não segura o grupo para sempre: é encerrado.
+        if ($retomavel !== null && self::parado($retomavel, (int) ($memoria['kit_id'] ?? 0) === (int) $retomavel->id)) {
+            self::encerrarParado($retomavel);
+            $retomavel = null;
+        }
+        if ($retomavel !== null || MlAnuncioCriativoKit::ultimoAprovadoDoPublicador($r->id, $grupo) !== null) {
             return 'kit_existente';
         }
         $hash = $this->hash($r, $grupo, $fotos);
-        if ((($this->lerEstado($r->id)[self::MEMORIA]['grupos'][$grupo]['hash']) ?? null) === $hash) {
+        $mesmosFatos = ($memoria['hash'] ?? null) === $hash;
+        // Mesmos fatos não geram de novo — menos o kit que falhou por erro técnico, que ganha uma nova tentativa (P-06).
+        if ($mesmosFatos && ! self::podeTentarDeNovo($memoria, self::statusDoKit($memoria))) {
             return 'em_dia';
         }
         if (! $this->consumirCota((int) $pub->company_id)) {
@@ -464,8 +482,9 @@ final class CriativosAutomaticosService
             new GerarCriativosAutomaticosJob($kit->id),
         ])->dispatch();
 
-        $this->comEstado($r->id, function (array $estado) use ($grupo, $hash, $kit, $capa) {
-            $estado[self::MEMORIA]['grupos'][$grupo] = ['hash' => $hash, 'kit_id' => (int) $kit->id, 'em' => now()->toIso8601String()]
+        $tentativa = $mesmosFatos ? max(1, (int) ($memoria['tentativas'] ?? 1)) + 1 : 1;
+        $this->comEstado($r->id, function (array $estado) use ($grupo, $hash, $kit, $capa, $tentativa) {
+            $estado[self::MEMORIA]['grupos'][$grupo] = ['hash' => $hash, 'kit_id' => (int) $kit->id, 'em' => now()->toIso8601String(), 'tentativas' => $tentativa]
                 + ($capa ? ['capa' => true] : []);
             // O kit mais recente: é ele que a visão rápida do lote olha para o aviso "prontas para revisar".
             $estado[self::MEMORIA]['kit_id'] = (int) $kit->id;
@@ -489,7 +508,9 @@ final class CriativosAutomaticosService
      */
     private function lembrarAdiamento(int $rascunhoId, string $resultado): void
     {
-        if (in_array($resultado, ['ocupado', 'erro', 'sem_rascunho'], true)) {
+        // Barrado pelo teto, a marca entra mesmo que outro grupo tenha dado erro/ocupado (23/10/2026, P-20: a cor barrada
+        // ficava com a foto do cliente e o pedido das 06:05 nunca a via).
+        if (! $this->barradoPeloLimite && in_array($resultado, ['ocupado', 'erro', 'sem_rascunho'], true)) {
             return;
         }
         try {
@@ -527,7 +548,7 @@ final class CriativosAutomaticosService
     public function retomarAdiados(): array
     {
         if (! (bool) config('publicador.criativos_auto.ativo', false)) {
-            return ['pedidos' => 0, 'de_hoje' => 0];
+            return ['pedidos' => 0, 'de_hoje' => 0, 'reaplicados' => 0, 'encerrados' => 0];
         }
         $hoje = now()->toDateString();
         $adiados = [];
@@ -543,14 +564,120 @@ final class CriativosAutomaticosService
         usort($adiados, fn ($a, $b) => [$a['dia'], $a['id']] <=> [$b['dia'], $b['id']]);
 
         $pedidos = 0;
+        $pedidosPorRascunho = [];
         foreach ($adiados as $a) {
             if ($a['dia'] < $hoje) {
                 AvaliarCriativosAutomaticosJob::dispatch($a['id']);
+                $pedidosPorRascunho[$a['id']] = true;
                 $pedidos++;
             }
         }
 
-        return ['pedidos' => $pedidos, 'de_hoje' => count($adiados) - $pedidos];
+        // 23/10/2026 (P-06/P-07/P-29): a rede da madrugada para o que não aparece nem no log. Kit parado há mais de um dia
+        // é encerrado; kit automático que falhou por erro técnico ganha a nova tentativa; kit automático pronto que
+        // nunca entrou (o gatilho do juiz se perdeu) é aplicado.
+        $encerrados = 0;
+        MlAnuncioCriativoKit::query()->whereIn('status', MlAnuncioCriativoKit::STATUS_EM_ANDAMENTO)->where('updated_at', '<', now()->subDay())
+            ->get()->each(function (MlAnuncioCriativoKit $k) use (&$encerrados) {
+                self::encerrarParado($k);
+                $encerrados++;
+            });
+        $reaplicados = 0;
+        PubRascunho::query()->where('step_state', 'like', '%"'.self::MEMORIA.'"%')->select(['id', 'step_state'])
+            ->chunkById(200, function ($rascunhos) use (&$pedidos, &$pedidosPorRascunho, &$reaplicados) {
+                foreach ($rascunhos as $r) {
+                    foreach ((array) (((array) $r->step_state)[self::MEMORIA]['grupos'] ?? []) as $memoria) {
+                        $memoria = (array) $memoria;
+                        if (isset($memoria['aplicado_em']) || empty($memoria['kit_id'])) {
+                            continue;
+                        }
+                        $kit = MlAnuncioCriativoKit::find((int) $memoria['kit_id']);
+                        if ($kit !== null && in_array($kit->status, [MlAnuncioCriativoKit::STATUS_PRONTO, MlAnuncioCriativoKit::STATUS_PARCIAL], true)
+                            && $kit->updated_at->lt(now()->subMinutes(30))) {
+                            AplicarCriativosAutomaticosJob::dispatch((int) $kit->id);
+                            $reaplicados++;
+                        } elseif (self::podeTentarDeNovo($memoria, $kit?->status) && ! isset($pedidosPorRascunho[(int) $r->id])) {
+                            AvaliarCriativosAutomaticosJob::dispatch((int) $r->id);
+                            $pedidosPorRascunho[(int) $r->id] = true;
+                            $pedidos++;
+                        }
+                    }
+                }
+            });
+
+        return ['pedidos' => $pedidos, 'de_hoje' => count($adiados) - count(array_filter($adiados, fn ($a) => $a['dia'] < $hoje)),
+            'reaplicados' => $reaplicados, 'encerrados' => $encerrados];
+    }
+
+    /**
+     * O kit automático do grupo falhou por erro técnico (status ERRO sem `aplicado_em` — a reprovação do juiz marca
+     * `aplicado_em`) e ainda cabe uma tentativa com os mesmos fatos ({@see TENTATIVAS}).
+     *
+     * @param  array<string, mixed>  $memoria  `criativos_auto.grupos[grupo]`
+     */
+    public static function podeTentarDeNovo(array $memoria, ?string $statusDoKit): bool
+    {
+        return ! empty($memoria['kit_id']) && ! isset($memoria['aplicado_em'])
+            && $statusDoKit === MlAnuncioCriativoKit::STATUS_ERRO
+            && (int) ($memoria['tentativas'] ?? 1) < self::TENTATIVAS;
+    }
+
+    /** @param  array<string, mixed>  $memoria */
+    private static function statusDoKit(array $memoria): ?string
+    {
+        return empty($memoria['kit_id']) ? null : MlAnuncioCriativoKit::query()->whereKey((int) $memoria['kit_id'])->value('status');
+    }
+
+    /**
+     * Como estão as imagens automáticas do rascunho, para a vitrine não dizer "Pronto" quando elas não vieram (23/10/2026,
+     * P-06): `adiado` (teto do dia), `nova_tentativa` (falhou por erro técnico; a madrugada tenta de novo), `falhou` (as
+     * tentativas acabaram) ou null.
+     */
+    public static function situacaoDasImagens(?PubRascunho $r): ?string
+    {
+        if ($r === null) {
+            return null;
+        }
+        if (self::adiadoPeloLimite($r)) {
+            return 'adiado';
+        }
+        $grupos = array_filter((array) (((array) $r->step_state)[self::MEMORIA]['grupos'] ?? []),
+            fn ($m) => is_array($m) && ! empty($m['kit_id']) && ! isset($m['aplicado_em']));
+        if ($grupos === []) {
+            return null;
+        }
+        $status = MlAnuncioCriativoKit::query()->whereIn('id', array_map(fn ($m) => (int) $m['kit_id'], $grupos))->pluck('status', 'id');
+        $saida = null;
+        foreach ($grupos as $m) {
+            if (($status[(int) $m['kit_id']] ?? null) !== MlAnuncioCriativoKit::STATUS_ERRO) {
+                continue;
+            }
+            if (self::podeTentarDeNovo($m, MlAnuncioCriativoKit::STATUS_ERRO)) {
+                return 'nova_tentativa';
+            }
+            $saida = 'falhou';
+        }
+
+        return $saida;
+    }
+
+    /**
+     * Em planejamento ou geração sem andamento há mais de {@see HORAS_PARADO} horas — ou, o kit desta automação,
+     * planejado e nunca gerado (o Job de gerar se perdeu). O planejado do botão espera a pessoa clicar e não é parado.
+     */
+    private static function parado(MlAnuncioCriativoKit $kit, bool $daAutomacao): bool
+    {
+        $andando = in_array($kit->status, MlAnuncioCriativoKit::STATUS_EM_ANDAMENTO, true)
+            || ($daAutomacao && $kit->status === MlAnuncioCriativoKit::STATUS_PLANEJADO);
+
+        return $andando && $kit->updated_at !== null && $kit->updated_at->lt(now()->subHours(self::HORAS_PARADO));
+    }
+
+    private static function encerrarParado(MlAnuncioCriativoKit $kit): void
+    {
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO, 'finished_at' => now(),
+            'erro_mensagem' => 'O kit parou no meio (sem andamento por horas) e foi encerrado; pode gerar de novo.']);
+        Log::warning("[Creative] Imagens automáticas: kit {$kit->id} parado em {$kit->status} desde {$kit->updated_at} foi encerrado.");
     }
 
     // ═══ A capa da fase N ════════════════════════════════════════════════════

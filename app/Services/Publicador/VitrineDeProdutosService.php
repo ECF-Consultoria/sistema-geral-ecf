@@ -43,6 +43,9 @@ final class VitrineDeProdutosService
     /** O chip de quem o limite diário de imagens por IA barrou (22/10/2026). */
     public const IMAGENS_AMANHA = 'Imagens amanhã';
 
+    /** O chip de quem a geração automática de imagens falhou e as tentativas acabaram (23/10/2026, P-06). */
+    public const IMAGENS_NAO_GERADAS = 'Imagens não geradas';
+
     private const ORDEM = [self::PRONTOS => 0, self::PENDENCIA => 1, self::PUBLICADOS => 2];
 
     /** As etapas do editor, como a tela as chama (o "o que falta" do cartão). */
@@ -291,9 +294,17 @@ final class VitrineDeProdutosService
         if (! $temFoto) {
             return ['texto' => 'Falta imagem', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
         }
-        // 22/10/2026: o limite diário barrou as imagens por IA — só com as fotos do cliente, ainda não está pronto.
-        if (CriativosAutomaticosService::adiadoPeloLimite($r)) {
+        // 22/10/2026: o limite diário barrou as imagens por IA — só com as fotos do cliente, ainda não está pronto. 23/10
+        // (P-06): nem quando a geração falhou por erro técnico.
+        $imagens = CriativosAutomaticosService::situacaoDasImagens($r);
+        if ($imagens === 'adiado') {
             return ['texto' => self::IMAGENS_AMANHA, 'tom' => 'ambar', 'detalhe' => 'O limite de imagens por IA de hoje acabou'];
+        }
+        if ($imagens === 'nova_tentativa') {
+            return ['texto' => self::IMAGENS_AMANHA, 'tom' => 'ambar', 'detalhe' => 'A geração das imagens falhou; o sistema tenta de novo amanhã cedo'];
+        }
+        if ($imagens === 'falhou') {
+            return ['texto' => self::IMAGENS_NAO_GERADAS, 'tom' => 'ambar', 'detalhe' => 'A geração automática falhou duas vezes'];
         }
         if ($r === null || $status !== PubRascunho::DRAFT) {
             return null;
@@ -377,6 +388,9 @@ final class VitrineDeProdutosService
         }
         if ($chip === 'Falta categoria') {
             return [['texto' => 'Escolha a categoria do produto.', 'url' => $em('produto')]];
+        }
+        if ($chip === self::IMAGENS_NAO_GERADAS) {
+            return [['texto' => 'A geração automática das imagens falhou duas vezes. Gere na etapa Imagens.', 'url' => $em('imagens')]];
         }
         if ($chip === self::IMAGENS_AMANHA) {
             return [['texto' => 'O limite diário de imagens por IA acabou: o sistema pede de novo amanhã cedo. Para não esperar, gere na etapa Imagens.', 'url' => $em('imagens')]];

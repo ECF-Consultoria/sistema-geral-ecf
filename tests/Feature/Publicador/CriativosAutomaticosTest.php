@@ -271,9 +271,11 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame('kit_da_fase', $this->servico()->avaliar($rka->id), 'a fase de produto fora do Portal segue com a capa do botão');
 
         $this->assertSame('planejando', $this->servico()->avaliar($r->id));
-        // O kit deu erro (o operador o descartaria): com os MESMOS fatos, não gera de novo.
+        // O kit deu erro técnico (23/10/2026, P-06): com os MESMOS fatos, UMA nova tentativa; falhou de novo, não gera mais.
         MlAnuncioCriativoKit::query()->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
-        $this->assertSame('em_dia', $this->servico()->avaliar($r->id));
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id), 'a nova tentativa');
+        MlAnuncioCriativoKit::query()->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
+        $this->assertSame('em_dia', $this->servico()->avaliar($r->id), 'as tentativas acabaram');
         // Foto nova do cliente no Portal = fatos novos = gera.
         $this->fotoNoRascunho($r, 'nova', [200, 30, 30], EstruturaProduto::query()->findOrFail($p->id));
         config(['publicador.criativos_auto.limite_diario_por_empresa' => 1]);
@@ -353,6 +355,90 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame('planejando', $this->servico()->avaliar($r->id), 'o teto de hoje está livre');
         $this->assertArrayNotHasKey('adiado', $r->fresh()->step_state['criativos_auto']);
         $this->assertFalse(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
+    }
+
+    /**
+     * 23/10/2026 (teste do Publicador, P-06): o kit que falha por erro técnico (sem o juiz) deixava o produto sem imagens
+     * para sempre — mesmos fatos = `em_dia` — e a vitrine dizia "Pronto". Agora ganha uma nova tentativa (a madrugada pede),
+     * e a vitrine diz "Imagens amanhã" e, esgotadas as tentativas, "Imagens não geradas". A reprovação do juiz é final.
+     */
+    public function test_falha_tecnica_ganha_uma_nova_tentativa_e_a_reprovacao_do_juiz_nao(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $this->assertNull(CriativosAutomaticosService::situacaoDasImagens($r->fresh()));
+
+        MlAnuncioCriativoKit::query()->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
+        $this->assertSame('nova_tentativa', CriativosAutomaticosService::situacaoDasImagens($r->fresh()));
+        $antes = count(Queue::pushed(AvaliarCriativosAutomaticosJob::class));
+        $this->assertSame(1, $this->servico()->retomarAdiados()['pedidos'], 'a madrugada pede a nova tentativa');
+        $this->assertSame($antes + 1, count(Queue::pushed(AvaliarCriativosAutomaticosJob::class)));
+
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $this->assertSame(2, $r->fresh()->step_state['criativos_auto']['grupos'][R::GERAL]['tentativas']);
+        MlAnuncioCriativoKit::query()->update(['status' => MlAnuncioCriativoKit::STATUS_ERRO]);
+        $this->assertSame('falhou', CriativosAutomaticosService::situacaoDasImagens($r->fresh()));
+        $this->assertSame(0, $this->servico()->retomarAdiados()['pedidos'], 'sem terceira tentativa');
+
+        // O juiz que reprova tudo marca `aplicado_em`: não é falha técnica e não volta.
+        $estado = (array) $r->fresh()->step_state;
+        $estado['criativos_auto']['grupos'][R::GERAL]['aplicado_em'] = now()->toIso8601String();
+        $estado['criativos_auto']['grupos'][R::GERAL]['tentativas'] = 1;
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado)]);
+        $this->assertNull(CriativosAutomaticosService::situacaoDasImagens($r->fresh()));
+        $this->assertSame('em_dia', $this->servico()->avaliar($r->id));
+    }
+
+    /** 23/10/2026 (P-29): o kit 12 ficou "gerando" desde 13/10 — kit parado não segura o grupo para sempre. */
+    public function test_kit_parado_e_encerrado_e_nao_segura_o_grupo(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $kit = MlAnuncioCriativoKit::query()->latest('id')->firstOrFail();
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO]);
+        $this->assertSame('kit_existente', $this->servico()->avaliar($r->id), 'gerando agora: espera');
+
+        // Foto nova (fatos novos) com o kit parado há 7 h: é encerrado e o grupo gera de novo.
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['updated_at' => now()->subHours(7)]);
+        $this->fotoNoRascunho($r, 'outra', [10, 200, 30], EstruturaProduto::query()->findOrFail($r->produto->estrutura_produto_id));
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_ERRO, $kit->fresh()->status);
+        $this->assertStringContainsString('parou no meio', (string) $kit->fresh()->erro_mensagem);
+
+        // A madrugada encerra o que está parado há mais de um dia, de qualquer kit.
+        $outro = MlAnuncioCriativoKit::query()->latest('id')->firstOrFail();
+        MlAnuncioCriativoKit::whereKey($outro->id)->update(['status' => MlAnuncioCriativoKit::STATUS_PLANEJANDO, 'updated_at' => now()->subDays(2)]);
+        $this->assertSame(1, $this->servico()->retomarAdiados()['encerrados']);
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_ERRO, $outro->fresh()->status);
+    }
+
+    /** 23/10/2026 (P-07): kit automático pronto que nunca entrou (o gatilho do juiz se perdeu) é aplicado pela madrugada. */
+    public function test_kit_pronto_nao_aplicado_e_aplicado_pela_madrugada(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+        $kit = MlAnuncioCriativoKit::query()->latest('id')->firstOrFail();
+        MlAnuncioCriativoKit::whereKey($kit->id)->update(['status' => MlAnuncioCriativoKit::STATUS_PRONTO, 'updated_at' => now()->subHour()]);
+
+        $this->assertSame(1, $this->servico()->retomarAdiados()['reaplicados']);
+        Queue::assertPushed(AplicarCriativosAutomaticosJob::class, fn ($j) => $j->kitId === (int) $kit->id);
+        $this->assertInstanceOf(\Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing::class, new AplicarCriativosAutomaticosJob((int) $kit->id),
+            'a reserva sai quando a execução começa: o veredito do juiz que chega no meio não se perde');
+    }
+
+    /** 23/10/2026 (P-20): barrado pelo teto, a marca entra mesmo que outro grupo tenha dado erro. */
+    public function test_barrado_pelo_limite_marca_mesmo_com_erro_em_outro_grupo(): void
+    {
+        $this->ligar();
+        [, $r] = $this->produtoComFotos();
+        $servico = $this->servico();
+        (new \ReflectionProperty($servico, 'barradoPeloLimite'))->setValue($servico, true);
+        (new \ReflectionMethod($servico, 'lembrarAdiamento'))->invoke($servico, $r->id, 'erro');
+
+        $this->assertTrue(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
     }
 
     public function test_desfecho_que_nao_e_o_limite_apaga_a_marca_e_o_passageiro_a_mantem(): void
