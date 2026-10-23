@@ -868,8 +868,11 @@ class PreparoIaDoRascunhoService
             $padroes = app(PadroesDoRascunhoService::class);
             $padroes->aplicar($r);
             $envio = (array) ($r->fresh()->envio ?? []);
-            // Só vai ao ML quando o frete grátis pode faltar: Mercado Envios, desmarcado e com categoria.
-            if ($comFrete && ($envio['modo'] ?? 'me2') === 'me2' && empty($envio['frete_gratis']) && $r->categoria_id) {
+            // Só vai ao ML quando o frete grátis pode faltar: Mercado Envios, desmarcado e com categoria — e só em conta
+            // liberada (23/10/2026, P-17, D26): o preparo roda para toda empresa que salva no Portal, e lia a conta e
+            // cotava o frete com o token do cliente sem ninguém abrir nada.
+            if ($comFrete && ($envio['modo'] ?? 'me2') === 'me2' && empty($envio['frete_gratis']) && $r->categoria_id
+                && \App\Support\Publicador\ContasLiberadas::libera($r->produto?->contaOuNula())) {
                 app(EditorRascunhoService::class)->lerContaParaOsPadroes($r->fresh());
                 $padroes->garantirFreteObrigatorio($r->fresh());
             }

@@ -167,8 +167,7 @@ final class GarantiaPadrao
             return false;
         }
         $r->forceFill(['garantia' => $g])->save();
-        // A marca no estado relido sob trava (23/10/2026, P-04), não na cópia em memória do `$r`.
-        EstadoDoRascunho::gravar($r, self::MARCA, $g);
+        EstadoDoRascunho::gravar($r, self::MARCA, $g); // a marca no estado relido sob trava, não na cópia do $r (23/10/2026, P-04)
         if ($mudou) {
             $r->increment('revisao');
         }

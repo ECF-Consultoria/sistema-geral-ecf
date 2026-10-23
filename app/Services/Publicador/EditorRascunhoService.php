@@ -2,7 +2,6 @@
 
 namespace App\Services\Publicador;
 
-use App\Support\Publicador\EstadoDoRascunho;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
@@ -962,7 +961,7 @@ class EditorRascunhoService
             return;
         }
         // Relido e gravado sob trava (23/10/2026, P-04): entre a leitura e a escrita um Job podia gravar outra chave.
-        EstadoDoRascunho::gravar($r, 'resumo', ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor,
+        \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'resumo', ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor,
             'validado' => $validado, 'itens' => $itens, 'versao' => self::VERSAO_DO_RESUMO]);
     }
 
@@ -1104,12 +1103,12 @@ class EditorRascunhoService
             // 23/10/2026 (P-04): só a chave `conta`, relida sob trava — o `[...$r->step_state, …]` de antes regravava o
             // estado inteiro lido ANTES desta chamada ao ML e apagava o que um Job gravou no meio. E sem tocar o
             // `updated_at`: reler a conta não é editar o anúncio (o "Atualizado há…" da vitrine mudava só por abrir).
-            EstadoDoRascunho::gravar($r, 'conta', $conta->paraSnapshot());
+            \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'conta', $conta->paraSnapshot());
             $colunas = ['modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo, 'conta_checada_em' => now()];
             DB::table('pub_rascunhos')->where('id', $r->id)->update($colunas);
             $r->forceFill($colunas)->syncOriginalAttributes(array_keys($colunas));
         } catch (RegraViolada $e) {
-            EstadoDoRascunho::gravar($r, 'conta', ['erro' => $e->getMessage()]);
+            \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'conta', ['erro' => $e->getMessage()]);
         }
     }
 

@@ -109,6 +109,19 @@ class AbrirOEditorNaoGravaTest extends TestCase
         $this->assertTrue($this->r->fresh()->envio['frete_gratis']);
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-17, D26): conta fora da lista de liberadas não tem chamada ao ML — o preparo e
+     * a conferência cotavam o frete com o token do cliente sem ninguém abrir nada.
+     */
+    public function test_conta_nao_liberada_nao_cota_o_frete_gratis(): void
+    {
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+
+        $this->assertFalse($this->padroes()->garantirFreteObrigatorio($this->r->fresh()));
+        $this->assertSame(0, $this->chamadas('/shipping_options/free'), 'nada vai ao ML');
+        $this->assertFalse((bool) ($this->r->fresh()->envio['frete_gratis'] ?? false));
+    }
+
     public function test_conferencia_do_editor_aplica_os_padroes_antes_e_vale_para_o_payload_que_o_ml_viu(): void
     {
         // A categoria pede o GTIN nesta revisão: sem o padrão, a conferência bloquearia (V-ATT-08).

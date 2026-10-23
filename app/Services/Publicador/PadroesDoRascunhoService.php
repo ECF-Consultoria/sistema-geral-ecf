@@ -97,6 +97,11 @@ class PadroesDoRascunhoService
             || $conta === [] || isset($conta['erro']) || ! $r->categoria_id) {
             return false;
         }
+        // Conta fora da lista não tem chamada ao ML (23/10/2026, P-17, D26): o "Conferir" dela é local, e esta consulta
+        // do frete saía antes com o token do cliente.
+        if (! \App\Support\Publicador\ContasLiberadas::libera($r->produto?->contaOuNula())) {
+            return false;
+        }
         try {
             $regra = $this->editor->freteGratis($r);
         } catch (RegraViolada $e) {
