@@ -675,6 +675,41 @@ class PalavrasChaveService
     }
 
     /**
+     * Os títulos da NOVA OFERTA da Jardinagem (23/10/2026, árvore do MAG: anúncio sem tração → "exclui e
+     * cria uma nova oferta"). O mesmo prompt e as mesmas regras do {@see gerarTitulos()}, com os termos
+     * mais buscados DESTA semana; o que muda é a entrada:
+     * - `priorizar` vai como os termos "que a equipe marcou" — os da lista da semana que trazem palavra
+     *   que o título antigo não tinha (quem escolhe é a Jardinagem);
+     * - `evitar` são TODOS os títulos que o produto já usou (o anúncio de agora, os de meses anteriores, o
+     *   do outro tipo): a IA recebe como "não repita" e o servidor garante (`RegrasDoTitulo::semRepetir`).
+     *
+     * Devolve os dois tipos; um que não deu para diferenciar volta VAZIO. Nunca grava nada.
+     *
+     * @param  list<string>  $evitar
+     * @param  list<string>  $priorizar
+     * @return array{gold_special: string, gold_pro: string}
+     *
+     * @throws RegraViolada sem categoria
+     */
+    public function gerarTitulosDaJardinagem(PubRascunho $r, array $evitar, array $priorizar, ?float $prazo = null): array
+    {
+        $c = $this->contextoDoTitulo($r);
+        $evitar = array_values(array_unique(array_filter(array_map(fn ($t) => trim((string) $t), $evitar))));
+        $priorizar = array_values(array_filter(array_map(fn ($t) => trim((string) $t), $priorizar)));
+        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+
+        $dados = $ia->titulosPorTermos($c['produto'], $c['caminho'], $c['termos'], $priorizar, $c['maximo'], $c['fatos']->paraPrompt(),
+            implode(', ', $c['marcas']), implode(' / ', $evitar))['dados'];
+        $classico = $this->finalizarTitulo((string) ($dados['classico'] ?? ''), $c);
+        $premium = $this->finalizarTitulo((string) ($dados['premium'] ?? ''), $c);
+
+        return array_map(fn (string $t) => $t === '' ? '' : (string) TituloDoProduto::capitalizar($t), RegrasDoTitulo::semRepetir(
+            ['gold_special' => $classico ?: $premium, 'gold_pro' => $premium ?: $classico],
+            $evitar, $c['candidatos'], $c['maximo'],
+        ));
+    }
+
+    /**
      * O Modelo para o rascunho, devolvido direto. `titulo` = o(s) título(s) que acabaram de ser
      * gerados (somam-se aos ativos gravados, como o da tela).
      *

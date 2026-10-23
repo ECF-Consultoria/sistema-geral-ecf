@@ -613,6 +613,18 @@ Schedule::command('publicador:reler-publicados --aplicar')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Publicador — Jardinagem mensal dos publicados pela árvore do MAG (23/10/2026). Todo dia, analisa só o
+// anúncio cujo mês FECHOU hoje (`publicador.jardinagem.dias_do_ciclo`): cada um uma vez por mês, no seu dia.
+// Só GET no ML (visitas da janela + `sold_quantity`), só conta liberada do mesmo vendedor. Depois da releitura
+// das 09:20 (que diz quem está pausado/encerrado). `PUBLICADOR_JARDINAGEM_ATIVO=false` desliga.
+Schedule::command('publicador:jardinagem --aplicar')
+    ->dailyAt((string) config('publicador.jardinagem.horario', '09:40'))
+    ->timezone('America/Sao_Paulo')
+    ->name('publicador-jardinagem')
+    ->when(fn () => (bool) config('publicador.jardinagem.ativo', true))
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // ═══ Publicador — fila de publicação em lote (10/10/2026, learnings publicador-ml §20) ═══
 //
 // Todo minuto: fecha o produto que terminou de publicar e começa os próximos de cada fila ativa — em rodadas

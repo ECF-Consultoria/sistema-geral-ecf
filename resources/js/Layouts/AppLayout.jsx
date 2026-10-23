@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound, Ticket, Megaphone, Zap, Truck,
+    MessageSquareText, UsersRound, Ticket, Megaphone, Zap, Truck, Sprout,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
@@ -179,6 +179,17 @@ const NAV_TREE = [
         icon: Zap,
         permission: 'mlb.alavancas',
         showBadge: 'tarefas_alavancas',
+    },
+
+    // ── Item de topo: Jardinagem dos publicados (23/10/2026) ──────────────
+    // A análise mensal pela árvore do MAG: gate pela chave PRÓPRIA
+    // `mlb.jardinagem` (admin tem todas). Sem badge por enquanto.
+    {
+        label: 'Jardinagem',
+        routeName: 'mlb.anuncios.publicador.jardinagem.index',
+        page: 'Mlb/Jardinagem',
+        icon: Sprout,
+        permission: 'mlb.jardinagem',
     },
 
     // ── Stubs marketplaces em desenvolvimento (Phase 58 v13.0) ──────────────

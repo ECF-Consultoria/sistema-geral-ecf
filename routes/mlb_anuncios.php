@@ -925,3 +925,33 @@ Route::middleware(['auth', 'verified', 'permission:'.Permissions::MLB_ALAVANCAS]
         Route::put('{tarefa}/observacao', [MlbPublicadorTarefasController::class, 'observacao'])
             ->whereNumber('tarefa')->middleware('throttle:120,1,publicador.tarefas.acao')->name('observacao');
     });
+
+/*
+|--------------------------------------------------------------------------
+| Jardinagem dos publicados — a árvore do MAG (23/10/2026)
+|--------------------------------------------------------------------------
+|
+| Fora do `role:admin`, como a fila das alavancas: quem cuida da Jardinagem
+| pode não ser admin. A chave própria `mlb.jardinagem` dá VER e OPERAR —
+| marcar o checklist do diagnóstico, concluir, observação e pedir outro título
+| para a nova oferta. Nada aqui escreve no Mercado Livre (a análise é o
+| comando diário `publicador:jardinagem`). Nomes completos de classe de
+| propósito: um `use` novo no topo deslocaria as linhas que os testes da
+| Fase 187/188 citam neste arquivo.
+|
+*/
+Route::middleware(['auth', 'verified', 'permission:'.Permissions::MLB_JARDINAGEM])
+    ->prefix('mlb/anuncios/publicador/jardinagem')
+    ->name('mlb.anuncios.publicador.jardinagem.')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'index'])->name('index');
+        Route::put('{jardinagem}/itens/{chave}', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'marcar'])
+            ->whereNumber('jardinagem')->whereIn('chave', \App\Models\PubJardinagem::CHAVES_DO_CHECKLIST)
+            ->middleware('throttle:120,1,publicador.jardinagem.acao')->name('marcar');
+        Route::post('{jardinagem}/concluir', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'concluir'])
+            ->whereNumber('jardinagem')->middleware('throttle:120,1,publicador.jardinagem.acao')->name('concluir');
+        Route::put('{jardinagem}/observacao', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'observacao'])
+            ->whereNumber('jardinagem')->middleware('throttle:120,1,publicador.jardinagem.acao')->name('observacao');
+        Route::post('{jardinagem}/proposta', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'proposta'])
+            ->whereNumber('jardinagem')->middleware('throttle:20,1,publicador.jardinagem.proposta')->name('proposta');
+    });
