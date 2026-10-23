@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Info, Loader2, Sparkles, X } from 'lucide-react';
+import { avisoDaIa } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
 import useDescricaoIa from '@/Components/Publicador/useDescricaoIa';
@@ -14,6 +15,7 @@ import EtapaProduto from '@/Components/Publicador/Mesa/EtapaProduto';
 import EtapaDetalhes from '@/Components/Publicador/Mesa/EtapaDetalhes';
 import EtapaImagens from '@/Components/Publicador/Mesa/EtapaImagens';
 import EtapaCondicoes, { useEfeitosDoEnvio } from '@/Components/Publicador/Mesa/EtapaCondicoes';
+import EtapaPrevia from '@/Components/Publicador/Mesa/EtapaPrevia';
 import { useEfeitosDasVariacoes } from '@/Components/Publicador/Mesa/FotosEVariacoes';
 import Publicar from '@/Components/Publicador/Mesa/Publicar';
 import OQueCorrigir, { ID_DA_LISTA } from '@/Components/Publicador/Mesa/OQueCorrigir';
@@ -70,6 +72,11 @@ import { cn } from '@/lib/utils';
 // A etapa sobrevive ao F5 e à troca de produto: vai para `?etapa=` na URL
 // (`history.replaceState`, sem mexer no estado do Inertia) e para o
 // sessionStorage por produto.
+//
+// 20/10/2026 — quinta etapa "Prévia" (`EtapaPrevia`): o anúncio como o
+// comprador vê no Mercado Livre, e Conferir/Publicar saíram do fim de
+// Condições de venda para o fim dela ("publica da prévia", decisão do
+// usuário). Condições de venda passou a terminar em "Continuar".
 
 const PARAMETRO_ETAPA = 'etapa';
 const RESUMO_A_VISTA = 5;
@@ -124,6 +131,7 @@ function Esqueleto() {
 function Faixa({ tom = 'azul', icone: Icone, children, acao, onFechar }) {
     const TOM = {
         azul: 'border-sky-400/25 bg-sky-400/10 text-sky-200',
+        ambar: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
         vermelho: 'border-red-500/30 bg-red-500/10 text-red-300',
         neutro: 'border-white/[0.08] bg-white/[0.03] text-white/70',
     };
@@ -157,6 +165,13 @@ function ResumoDosErros({ bloqueios }) {
         </div>
     );
 }
+
+// O que a IA do preparo está fazendo por fora (rota `presenca`, `IaTrabalhando` no servidor).
+const TEXTO_DA_IA_POR_FORA = {
+    agendada: 'A IA começa em instantes: o cliente acabou de salvar no Portal.',
+    escrevendo: 'A IA está escrevendo o título, o Modelo e a descrição.',
+    imagens: 'A IA está gerando as imagens.',
+};
 
 export default function Editor({ produto, empresa, produtos = [], criativos_ia = false }) {
     // CR-F02: a IA grava o rascunho no servidor. Enquanto ela trabalha o editor é só leitura e o
@@ -197,6 +212,9 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     const [avancando, setAvancando] = useState(false);
     const [verificar, setVerificar] = useState(0);
     const [iaFechada, setIaFechada] = useState(false);
+    // 21/10/2026: as imagens da IA que o juiz reprovou, com o motivo (fecha só nesta visita).
+    const [reprovadaFechada, setReprovadaFechada] = useState(false);
+    const avisoReprovada = avisoDaIa(estado?.ia_reprovada);
 
     // Troca de produto pela barra: a etapa é a da URL nova (ou a guardada para aquele produto).
     useEffect(() => {
@@ -226,6 +244,21 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
         }
         setTimeout(() => document.getElementById('topo-do-editor')?.scrollIntoView({ block: 'start' }), 50);
     }, [produto.id]);
+
+    // 21/10/2026: vindo da vitrine pelo "o que falta" (`?corrigir=1`), a etapa já abre com os campos marcados.
+    const corrigirDaUrl = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('corrigir') === '1');
+    useEffect(() => {
+        if (! estado || ! corrigirDaUrl.current) return;
+        corrigirDaUrl.current = false;
+        irPara(etapa, { marcar: true });
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('corrigir');
+            window.history.replaceState(window.history.state, '', url);
+        } catch {
+            // sem history: a etapa já abriu marcada, a URL só fica com o parâmetro
+        }
+    }, [estado]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const paraCorrigir = estado && corrigindo?.etapa === etapa ? problemasParaCorrigir(pub.problemas, etapa) : [];
     useAcender({ problemas: paraCorrigir, vez: corrigindo?.vez ?? 0, foco: corrigindo?.foco ?? null, listaId: ID_DA_LISTA });
@@ -272,6 +305,24 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                 <div id="topo-do-editor" className="mx-auto w-full max-w-[1200px] scroll-mt-20 space-y-6 px-6 pt-6 max-sm:px-4" data-coluna-principal>
                     {/* Avisos do topo: IA, aviso do hook, erro, token expirado. */}
                     <div aria-live="polite" className="space-y-3 empty:hidden">
+                        {/* 20/10/2026: a IA do preparo (o cliente salvou no Portal) gravando por fora — a mesa espera e relê sozinha. */}
+                        {ia.estado !== 'andamento' && pub.iaPorFora && (
+                            <Faixa icone={Loader2} tom="azul">
+                                <p data-ia-por-fora={pub.iaPorFora}><span className="font-bold">Atualizando…</span> {TEXTO_DA_IA_POR_FORA[pub.iaPorFora] ?? 'A IA está preparando este anúncio.'}</p>
+                                <p className="mt-1">Enquanto ela trabalha, o anúncio fica só para leitura. O que ela preencher aparece aqui sozinho.</p>
+                            </Faixa>
+                        )}
+                        {avisoReprovada && ! pub.iaPorFora && ! reprovadaFechada && (
+                            <Faixa icone={AlertTriangle} tom="ambar" onFechar={() => setReprovadaFechada(true)}>
+                                <p data-ia-reprovada><span className="font-bold">{avisoReprovada.titulo}.</span> {avisoReprovada.todas ? 'O juiz da IA não aprovou nenhuma imagem, e o anúncio ficou com a foto do cliente.' : 'Elas ficaram de fora; as outras entraram no anúncio.'}</p>
+                                {avisoReprovada.motivos.length > 0 && (
+                                    <ul className="mt-1 space-y-0.5 pl-5">
+                                        {avisoReprovada.motivos.map((m) => <li key={m} className="list-disc">{m}</li>)}
+                                    </ul>
+                                )}
+                                <p className="mt-1">Confira se a foto no Portal é deste produto e se a ficha está certa. Salvando no Portal com foto ou ficha nova, a IA gera as imagens de novo.</p>
+                            </Faixa>
+                        )}
                         {ia.estado === 'andamento' && (
                             <Faixa icone={Loader2} tom="azul">
                                 <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>
@@ -309,7 +360,8 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                             </Faixa>
                         )}
                         {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}
-                        {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
+                        {/* P-15 (23/10/2026): várias fotos recusadas no mesmo envio vêm uma por linha. */}
+                        {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}><p className="whitespace-pre-line" data-faixa-erro>{pub.erro}</p></Faixa>}
                         {/* Quick 261016-imr: a faixa dizia "precisa ser reconectada" para QUALQUER falha ao
                             ler a conta — inclusive o ML fora do ar com o token bom, enquanto o selo do topo
                             (que lê o token) mostrava "ML conectado". Agora mostra o motivo real que o
@@ -363,10 +415,11 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
                                     {etapa === 'detalhes' && <EtapaDetalhes m={m} descricaoIa={descricaoIa} />}
                                     {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} empresa={empresa} />}
-                                    {etapa === 'condicoes' && (
-                                        <EtapaCondicoes m={m}>
+                                    {etapa === 'condicoes' && <EtapaCondicoes m={m} />}
+                                    {etapa === 'previa' && (
+                                        <EtapaPrevia pub={pub} empresa={empresa} produtoId={produto.id}>
                                             <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave, problema = null) => irPara(chave, { marcar: true, foco: problema })} />
-                                        </EtapaCondicoes>
+                                        </EtapaPrevia>
                                     )}
                                 </div>
                             </ErrosDaEtapa>

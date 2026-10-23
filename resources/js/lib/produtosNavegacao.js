@@ -213,9 +213,15 @@ export function mostrarCartao(produtoId) {
 // "novo" — e, ao abrir de novo, oferece recuperar. Some ao salvar com sucesso,
 // ao excluir o produto e ao sair confirmando "Sair sem salvar?". Vale por
 // algumas horas: rascunho de ontem não reaparece por cima do produto.
+//
+// Produto NOVO (teste da demo 23/10, A5): o sessionStorage morre com a aba, e fechar a aba ou o
+// navegador perdia tudo o que foi digitado num produto que ainda não existe no servidor. Ele vai
+// TAMBÉM para o localStorage, numa chave POR EMPRESA (o mesmo navegador entra em várias empresas
+// do portal), por 24 h. Produto já salvo segue só no sessionStorage: o servidor tem a versão dele.
 
 const PREFIXO_RASCUNHO = 'ecf.produtos.rascunho.';
 const RASCUNHO_VALE_MS = 6 * 60 * 60 * 1000;
+const RASCUNHO_NOVO_LOCAL_VALE_MS = 24 * 60 * 60 * 1000;
 
 const chaveRascunho = (produtoId) => {
     const id = Number(produtoId);
@@ -223,31 +229,94 @@ const chaveRascunho = (produtoId) => {
     return PREFIXO_RASCUNHO + (produtoId && Number.isInteger(id) && id > 0 ? id : 'novo');
 };
 
+const ehNovo = (produtoId) => chaveRascunho(produtoId) === PREFIXO_RASCUNHO + 'novo';
+
+/** A empresa do rascunho do produto novo (inteiro positivo), ou null. */
+const escopoValido = (escopo) => {
+    const n = Number(escopo);
+
+    return escopo != null && Number.isInteger(n) && n > 0 ? n : null;
+};
+
+/** Chave do rascunho do produto novo no localStorage, por empresa; null sem empresa conhecida. */
+const chaveLocalDoNovo = (escopo) => {
+    const e = escopoValido(escopo);
+
+    return e ? `${PREFIXO_RASCUNHO}novo.empresa.${e}` : null;
+};
+
+const lerLocal = (chave) => {
+    try {
+        const bruto = window.localStorage.getItem(chave);
+
+        return bruto ? JSON.parse(bruto) : null;
+    } catch (e) {
+        return null;
+    }
+};
+
+const gravarLocal = (chave, valor) => {
+    try {
+        window.localStorage.setItem(chave, JSON.stringify(valor));
+    } catch (e) {
+        // sem storage (ou cheio): fica só o da aba
+    }
+};
+
+const apagarLocal = (chave) => {
+    try {
+        window.localStorage.removeItem(chave);
+    } catch (e) {
+        // idem
+    }
+};
+
+const valido = (r, validade) => r && typeof r.em === 'number' && Date.now() - r.em <= validade && Array.isArray(r.vars) && r.vars.length > 0;
+
 /**
  * Grava o rascunho das variações da ficha (produtoId null = produto novo). `extra` leva o que a ficha
- * tem fora das variações — hoje a descrição do produto (review 172 WR-06), o texto mais longo da ficha.
+ * tem fora das variações — hoje a descrição do produto (review 172 WR-06), o texto mais longo da ficha
+ * — e `escopo`, a empresa: com ela o rascunho do produto novo vai também para o localStorage.
  */
 export function gravarRascunho(produtoId, vars, extra = {}) {
     const descricao = typeof extra?.descricao === 'string' ? { descricao: extra.descricao } : {};
-    gravar(chaveRascunho(produtoId), { em: Date.now(), vars, ...descricao });
+    const escopo = escopoValido(extra?.escopo);
+    const registro = { em: Date.now(), vars, ...descricao, ...(escopo ? { escopo } : {}) };
+    gravar(chaveRascunho(produtoId), registro);
+    const local = ehNovo(produtoId) ? chaveLocalDoNovo(escopo) : null;
+    if (local) gravarLocal(local, registro);
 }
 
-/** O rascunho guardado e ainda válido ({ em, vars }), ou null. Vencido ou estranho é apagado. */
-export function lerRascunho(produtoId) {
+/**
+ * O rascunho guardado e ainda válido ({ em, vars }), ou null. Vencido ou estranho é apagado. Produto
+ * novo: o da aba primeiro; sem ele (aba fechada), o do localStorage da empresa. O da aba gravado em
+ * OUTRA empresa (troca de empresa na mesma aba) não vale aqui.
+ */
+export function lerRascunho(produtoId, { escopo = null } = {}) {
     const chave = chaveRascunho(produtoId);
+    const e = escopoValido(escopo);
     const r = ler(chave);
-    if (! r) return null;
-    if (typeof r.em !== 'number' || Date.now() - r.em > RASCUNHO_VALE_MS || ! Array.isArray(r.vars) || r.vars.length === 0) {
-        apagar(chave);
+    if (r && ! valido(r, RASCUNHO_VALE_MS)) apagar(chave);
+    else if (r && ! (e && r.escopo && r.escopo !== e)) return r;
+
+    const local = ehNovo(produtoId) ? chaveLocalDoNovo(e) : null;
+    if (! local) return null;
+    const l = lerLocal(local);
+    if (! l) return null;
+    if (! valido(l, RASCUNHO_NOVO_LOCAL_VALE_MS)) {
+        apagarLocal(local);
 
         return null;
     }
 
-    return r;
+    return l;
 }
 
-export function apagarRascunho(produtoId) {
+/** Apaga o rascunho nos dois armazenamentos (o do localStorage só existe para o produto novo). */
+export function apagarRascunho(produtoId, { escopo = null } = {}) {
     apagar(chaveRascunho(produtoId));
+    const local = ehNovo(produtoId) ? chaveLocalDoNovo(escopo) : null;
+    if (local) apagarLocal(local);
 }
 
 // ─── Voltar do navegador com a ficha alterada (revisão FE-CR-02) ────────────

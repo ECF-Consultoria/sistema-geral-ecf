@@ -52,8 +52,34 @@ test('o Combo 2 diz que está fora do Mercado Envios, com o pacote somado e os l
     assert.equal(r.pacote, 'Pacote somado (2 caixas): 53 × 60 × 160 cm · 16 kg');
     assert.equal(r.motivo, 'passa do limite: maior lado 160 cm (máx. 100) · soma dos lados 273 cm (máx. 200)');
     assert.match(r.dica, /na modalidade da sua conta \(Correios\)/);
-    assert.match(r.dica, /o envio é pela sua transportadora, e o frete é o que você digitar\./);
+    // Sem a conta lida, não se sabe se vai pela transportadora ou sai "a combinar" (21/10/2026).
+    assert.match(r.dica, /o envio vai pela sua transportadora \(ME1\), se a conta tiver, ou sai «Combine a entrega»\./);
+    // E o frete sugerido é a referência do ML para a caixa ("mesmo a combinar, pagaremos um frete").
+    assert.match(r.dica, /O frete sugerido é a referência do Mercado Livre para a caixa\./);
     assert.match(r.dica, /As medidas são a soma das caixas de cada unidade: para mudar, altere as medidas do produto\./);
+});
+
+// 21/10/2026: fora do Mercado Envios o Mercado Livre não cobra frete, e o destino depende da conta. A Poltrona
+// Opala da #459 (Correios, sem ME1) saiu "Combine a entrega"; a tela dizia "sua transportadora".
+test('fora do Mercado Envios, a conta diz se vai pela transportadora (ME1) ou sai a combinar', () => {
+    const comMe1 = resumoDoEnvio({ ...COMBO_2, fora: 'me1' });
+    assert.equal(comMe1.rotulo, 'ME1 · sua transportadora');
+    assert.match(comMe1.dica, /O envio é pela sua transportadora \(ME1\) e o Mercado Livre não cobra frete deste anúncio\./);
+    assert.equal(seloDoEnvio({ ...COMBO_2, fora: 'me1' }).texto, 'ME1');
+
+    const semMe1 = resumoDoEnvio({ ...COMBO_2, fora: 'combinar' });
+    assert.equal(semMe1.rotulo, 'A combinar com o comprador');
+    assert.equal(semMe1.tom, 'alerta');
+    assert.match(semMe1.dica, /Sua conta não tem ME1: o anúncio sai «Combine a entrega» e o Mercado Livre não cobra frete\./);
+    assert.match(semMe1.dica, /As medidas são a soma das caixas/);
+    assert.equal(seloDoEnvio({ ...COMBO_2, fora: 'combinar' }).texto, 'A combinar');
+    assert.equal(avisoSemSugestao({ ...COMBO_2, fora: 'combinar' }, { frete_origem: null }), 'sem tabela: digite');
+
+    // Servidor antigo (sem `fora`) ou valor desconhecido: o texto de antes, que não promete nenhum dos dois.
+    for (const fora of [undefined, null, 'fora', 'outro']) {
+        assert.equal(resumoDoEnvio({ ...COMBO_2, fora }).rotulo, 'Fora do Mercado Envios (ME1)', String(fora));
+        assert.equal(seloDoEnvio({ ...COMBO_2, fora }).texto, 'ME1', String(fora));
+    }
 });
 
 test('a unidade cabe: diz o envio e o pacote, sem motivo nenhum', () => {

@@ -40,6 +40,7 @@ use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -66,6 +67,7 @@ class EditorRascunhoService
         private PublicacaoService $publicacoes,
         private PortalProdutoLeitor $leitor,
         private ExplicacaoDeAtributos $explicacoes,
+        private EnvioDoRascunhoService $envios,
     ) {}
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
@@ -76,8 +78,52 @@ class EditorRascunhoService
         $r = $this->rascunhoDoProduto($produto);
 
         $this->lerContaSeVencida($r);
+        $this->ligarTiposForaDoAr($r->fresh());
 
         return $r->fresh();
+    }
+
+    /**
+     * O rascunho que nasceu sem nenhum tipo ligado por causa dos anúncios da régua liga o tipo cujo anúncio NÃO está
+     * no ar no Mercado Livre (21/10/2026, decisão do usuário: "liberar e publicar novo"). O rascunho nasce sem ler o
+     * ML (o Sincronizar do Portal não faz HTTP); é aqui, ao abrir, que dá para conferir. Só quando NENHUM tipo está
+     * ligado e nada foi publicado por este rascunho: sem tipo ligado nada sai, então não há escolha da pessoa a
+     * desfazer.
+     */
+    private function ligarTiposForaDoAr(PubRascunho $r): void
+    {
+        $s = $this->repo->snapshot($r);
+        if ($s->alvosAtivos() !== [] || $r->produto?->oferta_id === null) {
+            return;
+        }
+        $publicou = PubPublicacaoItem::query()->whereIn('publicacao_id', $r->publicacoes()->select('id'))
+            ->where('status', PubPublicacaoItem::CREATED)->exists();
+        if ($publicou) {
+            return;
+        }
+
+        $regua = $this->reguaNoMl($r);
+        $doTipo = array_flip(EstruturaPublicacao::LISTING_TYPES);
+        $ligar = [];
+        foreach ($s->alvos as $a) {
+            $g = $regua[$doTipo[$a->listingTypeId] ?? ''] ?? null;
+            if ($g !== null && $g['mlb'] !== null && ! $g['no_ar']) {
+                $ligar[] = $a->listingTypeId;
+            }
+        }
+        if ($ligar === []) {
+            return;
+        }
+
+        DB::transaction(function () use ($r, $ligar) {
+            $this->repo->travar($r);
+            $this->repo->gravarAlvos($r, array_map(
+                fn (Alvo $a) => in_array($a->listingTypeId, $ligar, true) ? new Alvo($a->listingTypeId, $a->titulo, true) : $a,
+                $this->repo->snapshot($r)->alvos,
+            ));
+            $this->repo->tocar($r);
+        });
+        Log::info("[Publicador] rascunho {$r->id}: tipos ligados — o anúncio da régua não está no ar no ML: ".implode(', ', $ligar));
     }
 
     /**
@@ -403,6 +449,16 @@ class EditorRascunhoService
             ?? $s->atributos['SELLER_SKU']['value_name'] ?? null);
         $custo = ($sku === null ? null : ($custos['por_variante'][$sku] ?? null)) ?? $custos['custo'];
 
+        // Para onde vai o envio na conta (21/10/2026). Fora do Mercado Envios o Mercado Livre não cobra frete — o
+        // número do `shipping_options/free` para esse pacote é teórico (a Poltrona Opala da #459 mostrava R$ 147,85
+        // e saiu "Combine a entrega"). Ali a conta usa o frete que entrou no preço da Precificação: é o que o
+        // vendedor paga à transportadora (ME1) ou para entregar (a combinar). Dentro, a cotação segue a modalidade
+        // da conta (antes, Correios fixo).
+        $envio = $pacote === null ? null : $this->envios->avaliar($r, $s->atributos);
+        $logistica = $envio['modalidade'] ?? 'drop_off';
+        $fora = EnvioDoRascunhoService::fora($envio['destino'] ?? null);
+        $doPortal = $fora ? $this->efetivos->fretesDoProduto($r->produto) : null;
+
         $saida = [];
         foreach ($s->alvosAtivos() as $alvo) {
             $preco = (float) ($primeira?->dados['precos'][$alvo->listingTypeId] ?? 0);
@@ -410,16 +466,19 @@ class EditorRascunhoService
                 continue;
             }
             $tarifa = $this->cliente->publico('/sites/MLB/listing_prices', ['price' => $preco, 'category_id' => $r->categoria_id,
-                'listing_type_id' => $alvo->listingTypeId, 'currency_id' => 'BRL', 'logistic_type' => 'drop_off', 'shipping_mode' => 'me2']);
+                'listing_type_id' => $alvo->listingTypeId, 'currency_id' => 'BRL', 'logistic_type' => $logistica, 'shipping_mode' => 'me2']);
             if (! $tarifa->ok() || ! isset($tarifa->corpo['sale_fee_amount'])) {
                 continue;
             }
 
             $frete = null;
-            if (isset($conta['sellerId']) && $pacote !== null) {
+            if ($fora) {
+                $ref = ($sku !== null ? ($doPortal['por_variante'][$sku][$alvo->listingTypeId] ?? null) : null) ?? ($doPortal['por_tipo'][$alvo->listingTypeId] ?? null);
+                $frete = isset($ref['valor']) ? (float) $ref['valor'] : null;
+            } elseif (isset($conta['sellerId']) && $pacote !== null) {
                 $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
                     'item_price' => $preco, 'listing_type_id' => $alvo->listingTypeId, 'mode' => 'me2', 'condition' => $s->condicao === 'used' ? 'used' : 'new',
-                    'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+                    'logistic_type' => $logistica, 'dimensions' => $pacote, 'verbose' => 'true',
                 ]);
                 $frete = $f->ok() && isset($f->corpo['coverage']['all_country']['list_cost']) ? (float) $f->corpo['coverage']['all_country']['list_cost'] : null;
             }
@@ -433,6 +492,10 @@ class EditorRascunhoService
                 ...$this->recebimentoVsCusto($preco, $simulacao['voce_recebe'], $custo, $custos['origem'], $custos['imposto']),
                 'preco_do_portal' => (bool) ($primeira?->dados['preco_do_portal'][$alvo->listingTypeId] ?? false),
                 'portal_sem_frete' => (bool) ($portal['sem_frete'] ?? false),
+                // `me2`, `me1`, `combinar`, `fora` ou null (sem pacote ou sem a conta lida); fora do Mercado
+                // Envios, o frete é o da Precificação (`frete_da_precificacao`).
+                'envio' => $envio['destino'] ?? null,
+                'frete_da_precificacao' => $fora,
                 'promocao' => [
                     ...$promocao,
                     'motivo_texto' => $promocao['motivo'] === null ? null : (PrecoDaPromocao::MOTIVOS[$promocao['motivo']] ?? null),
@@ -505,6 +568,15 @@ class EditorRascunhoService
             return ['conhecido' => true] + $saida;
         }
         $pacote = $this->dimensoes($s->atributos);
+        // Nem quando o pacote passa do limite do Mercado Envios da conta (21/10/2026): o anúncio sai pela
+        // transportadora (ME1) ou "Combine a entrega", e o frete grátis marcado some sem erro (publicador-ml §25).
+        $envio = $pacote === null ? null : $this->envios->avaliar($r, $s->atributos);
+        if (EnvioDoRascunhoService::fora($envio['destino'] ?? null)) {
+            // O destino vai junto (23/10/2026, P-25): a dica do frete grátis diz se sai pela transportadora (ME1) ou
+            // "Combine a entrega" sem depender do "Calcular".
+            return ['conhecido' => true, 'envio' => $envio['destino']] + $saida;
+        }
+        $logistica = $envio['modalidade'] ?? 'drop_off';
 
         foreach ($s->alvosAtivos() as $alvo) {
             $precos = array_values(array_filter(array_map(
@@ -515,7 +587,7 @@ class EditorRascunhoService
             }
             $menor = min($precos);
             $maior = max($precos);
-            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote);
+            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote, $logistica);
             $doMenor = $consulta($menor);
             $doMaior = $maior === $menor ? $doMenor : $consulta($maior);
             if ($doMenor === null || $doMaior === null) {
@@ -535,11 +607,11 @@ class EditorRascunhoService
     }
 
     /** Nulo = o ML não respondeu (a tela segue sem a regra, como antes). */
-    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote): ?bool
+    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote, string $logistica = 'drop_off'): ?bool
     {
         $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/shipping_options/free", array_filter([
             'item_price' => $preco, 'listing_type_id' => $listingType, 'mode' => 'me2', 'condition' => $condicao === 'used' ? 'used' : 'new',
-            'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+            'logistic_type' => $logistica, 'dimensions' => $pacote, 'verbose' => 'true',
         ], fn ($x) => $x !== null));
         $cobertura = $f->ok() && is_array($f->corpo) ? ($f->corpo['coverage']['all_country'] ?? null) : null;
         if (! is_array($cobertura)) {
@@ -587,7 +659,7 @@ class EditorRascunhoService
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
 
-        $this->gravarResumo($r, count(array_filter($problemas, fn (Problema $p) => $p->bloqueia())));
+        $this->gravarResumo($r, array_values(array_filter($problemas, fn (Problema $p) => $p->bloqueia())), $snapshot, $schema !== null);
 
         $eixos = Eixo::ordenar($snapshot->eixos);
         $grupos = $schema ? ResolvedorGruposImagem::resolver($snapshot->variantes, $eixos, $snapshot->imagens, new OpcoesImagem(
@@ -607,6 +679,8 @@ class EditorRascunhoService
             ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
             ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all();
 
+        $regua = $this->reguaNoMl($r);
+
         return [
             'produto' => [
                 'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
@@ -622,10 +696,16 @@ class EditorRascunhoService
                 'fotos_por_variante' => (bool) $r->fotos_por_variante, 'incluir_geral' => (bool) $r->incluir_geral_nas_variantes,
                 'modelo' => $r->modelo_publicacao,
             ],
-            'alvos' => array_map(fn (Alvo $a, Alvo $ef) => [
-                'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
-                'mlb_na_regua' => $this->mlbDoTipo($r, $a->listingTypeId),
-            ], $digitado->alvos, $snapshot->alvos),
+            'alvos' => array_map(function (Alvo $a, Alvo $ef) use ($regua) {
+                // Só o anúncio ATIVO no ML trava o tipo; o que existe e está parado vai como aviso (21/10/2026).
+                $g = $this->daRegua($regua, $a->listingTypeId);
+
+                return [
+                    'listing_type_id' => $a->listingTypeId, 'titulo' => $a->titulo, 'titulo_efetivo' => $ef->titulo, 'ativo' => $a->ativo,
+                    'mlb_na_regua' => $g['no_ar'] ? $g['mlb'] : null,
+                    'mlb_existente' => ! $g['no_ar'] && $g['mlb'] !== null ? ['mlb' => $g['mlb'], 'status' => $g['status']] : null,
+                ];
+            }, $digitado->alvos, $snapshot->alvos),
             'atributos' => $digitado->atributos,
             'eixos' => array_map(fn (Eixo $x) => [
                 'chave' => $x->chave, 'nome' => $x->nome, 'defines_picture' => $x->definesPicture, 'customizado' => $x->ehCustomizado(),
@@ -656,6 +736,8 @@ class EditorRascunhoService
                 'depositos' => $conta['depositos'] ?? null,
                 'modos_envio' => $conta['modosEnvio'] ?? null,
                 'erro' => $conta['erro'] ?? null,
+                // Demo 23/10 (A9): o apelido da conta no ML (o "Vendido por" da Prévia); nulo na conta lida antes disto.
+                'nickname' => $conta['nickname'] ?? null,
             ] : null,
             'efetivos' => ['titulos' => $e['titulos'], 'precos' => $e['precos']],
             'problemas' => array_map([self::class, 'problemaParaTela'], $problemas),
@@ -681,8 +763,21 @@ class EditorRascunhoService
                     'plano_b' => isset($i->avisos['plano_b']),
                     // 11/10/2026: a terceira conferência de frete — o que o ML cobra do anúncio publicado.
                     'frete' => is_array($i->avisos['frete'] ?? null) ? FreteDoPublicadoService::paraTela((int) $i->id, $i->avisos['frete']) : null,
+                    // Demo 23/10 (N17): o frete com que o anúncio saiu, lido na criação — inclusive "a combinar" (aviso 4057).
+                    'envio' => \App\Support\Publicador\SituacaoDoAnuncioMl::envio($i->avisos['estado'] ?? null, (array) $i->resposta),
+                    // Demo 23/10 (H21): o ML pausou ou pôs em revisão depois de criar (relido pelo `RelerEstadoDoPublicadoJob`).
+                    'situacao_ml' => \App\Support\Publicador\SituacaoDoAnuncioMl::situacao($i->avisos['estado'] ?? null),
+                    // Demo 23/10 (N23): o nome da variação; a sem eixo era "Único" mesmo saindo "Marrom" (a cor do que foi enviado).
+                    'rotulo' => \App\Support\Publicador\SituacaoDoAnuncioMl::rotulo(
+                        collect($digitado->variantes)->first(fn (Variante $v) => $v->chave === $i->variante_chave)?->rotulo($eixos), (array) $i->payload,
+                        fn (string $atributo, string $id) => collect($schema?->atributo($atributo)?->valores ?? [])->firstWhere('id', $id)['name'] ?? null),
+                    // Demo 23/10 (A1): o que aconteceu com a promoção automática deste anúncio (o ML recusa a do anúncio novo).
+                    'promocao' => \App\Support\Publicador\PromocaoDoPublicado::do($i->ml_item_id),
                 ])->all(),
-                'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
+                // A recusa só vale para a revisão que foi publicada (23/10/2026, P-13): depois de corrigir, a recusa antiga
+                // bloqueava o "Continuar", deixava o campo corrigido vermelho e a Prévia pedia "Corrija o que está acima".
+                'problemas' => $p->status === PubPublicacao::RUNNING || (int) $p->revisao !== (int) $r->revisao
+                    ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,
             // RN-94: a MESMA query de antes, só extraída para `$jaPublicados` acima — ela
             // virou também a base da comparação com o acervo (175-09, `estoqueDivergeDoMl`).
@@ -703,6 +798,11 @@ class EditorRascunhoService
                 'automatica' => AlavancasLiberadas::libera($r->produto->contaOuNula()),
                 'dias' => PrecoDaPromocao::DIAS,
             ],
+            // 20/10/2026, ADITIVAS e no fim (o portão do `EstoqueDoKitTest`): o que a automação gravou por fora (o editor
+            // aberto relê quando muda), se ela está gravando agora e (21/10) as imagens dela que o juiz reprovou.
+            'carimbo_por_fora' => \App\Support\Publicador\IaTrabalhando::carimbo($r),
+            'ia_por_fora' => \App\Support\Publicador\IaTrabalhando::no($r, $r->produto?->estrutura_produto_id !== null ? (int) $r->produto->estrutura_produto_id : null),
+            'ia_reprovada' => \App\Support\Publicador\ImagensReprovadas::do($r),
         ];
     }
 
@@ -832,16 +932,80 @@ class EditorRascunhoService
     /**
      * Resumo de bloqueios para a lista de produtos e para a faixa do editor. Não é uma
      * edição: `DB::table` de propósito, para não subir `revisao` (a conferência continua
-     * valendo) nem mexer em `updated_at`. Só grava quando o número muda.
+     * valendo) nem mexer em `updated_at`. Só grava quando o número ou as cores mudam.
+     *
+     * `por_cor` (20/10/2026, vitrine): variante → o que falta NELA, em rótulo curto ("falta imagem").
+     * É o que deixa o cartão dizer "Rosa: falta imagem" em vez de só "1 de 2 cores com pendência".
+     *
+     * `validado` e a `revisao` em dia (20/10/2026): o cartão da vitrine só diz "Pronto" com o resumo feito
+     * NESTA revisão e COM a categoria — sem ela nada é validado e "0 bloqueios" não quer dizer nada.
+     *
+     * @param  list<Problema>  $bloqueios
      */
-    private function gravarResumo(PubRascunho $r, int $bloqueios): void
+    private function gravarResumo(PubRascunho $r, array $bloqueios, RascunhoSnapshot $s, bool $validado = true): void
     {
-        if ($bloqueios === ($r->step_state['resumo']['bloqueios'] ?? null)) {
+        $porCor = self::pendenciasPorCor($bloqueios, $s);
+        // 21/10/2026: o que falta POR ETAPA da tela (na ordem do editor), com quantos e o 1º — a vitrine leva a pessoa
+        // direto a cada lugar onde há o que resolver.
+        $porEtapa = [];
+        foreach ($bloqueios as $p) {
+            $etapa = self::etapaDaTela($p);
+            $porEtapa[$etapa] ??= ['etapa' => $etapa, 'total' => 0, 'mensagem' => $p->mensagem];
+            $porEtapa[$etapa]['total']++;
+        }
+        $itens = array_values(array_filter(array_map(fn (string $e) => $porEtapa[$e] ?? null, ['produto', 'detalhes', 'imagens', 'condicoes', 'previa'])));
+        $antes = (array) ($r->step_state['resumo'] ?? []);
+        if (count($bloqueios) === ($antes['bloqueios'] ?? null) && $porCor === ($antes['por_cor'] ?? []) && $itens === ($antes['itens'] ?? null)
+            && $validado === ($antes['validado'] ?? null) && (int) $r->revisao === (int) ($antes['revisao'] ?? -1)
+            && self::VERSAO_DO_RESUMO === ($antes['versao'] ?? null)) {
             return;
         }
-        $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
-        $atual['resumo'] = ['bloqueios' => $bloqueios, 'revisao' => $r->revisao];
-        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
+        // Relido e gravado sob trava (23/10/2026, P-04): entre a leitura e a escrita um Job podia gravar outra chave.
+        \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'resumo', ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor,
+            'validado' => $validado, 'itens' => $itens, 'versao' => self::VERSAO_DO_RESUMO]);
+    }
+
+    /**
+     * O que falta em CADA variante ativa, pelos bloqueios que apontam para ela: a variante (estoque, SKU,
+     * código, preço daquela cor) ou o grupo de fotos dela. O que é do produto inteiro não entra aqui.
+     *
+     * @param  list<Problema>  $bloqueios
+     * @return array<string, list<string>> chave da variante → rótulos curtos, sem repetir
+     */
+    public static function pendenciasPorCor(array $bloqueios, RascunhoSnapshot $s): array
+    {
+        $eixos = Eixo::ordenar($s->eixos);
+        $saida = [];
+        foreach ($s->variantesAtivas() as $v) {
+            $grupo = ResolvedorGruposImagem::chaveDoGrupo($v, $eixos, $s->fotosPorVariante);
+            foreach ($bloqueios as $p) {
+                $alvo = (array) $p->alvo;
+                $daCor = ($alvo['variante'] ?? null) === $v->chave
+                    || (($alvo['grupo'] ?? null) !== null && $alvo['grupo'] !== ResolvedorGruposImagem::GERAL && $alvo['grupo'] === $grupo);
+                if ($daCor) {
+                    $saida[$v->chave][self::rotuloCurto($alvo)] = true;
+                }
+            }
+        }
+
+        return array_map('array_keys', $saida);
+    }
+
+    /** "falta imagem", "falta estoque"… — o rótulo do chip da vitrine, pelo alvo do problema. */
+    private static function rotuloCurto(array $alvo): string
+    {
+        $atributo = (string) ($alvo['atributo'] ?? '');
+
+        return match (true) {
+            // "imagem", não "foto" (o usuário, 20/10/2026: "muda o nome de Falta foto para Falta imagem").
+            ($alvo['etapa'] ?? null) === 'E6' || isset($alvo['grupo']) || isset($alvo['imagem']) => 'falta imagem',
+            ($alvo['campo'] ?? null) === 'estoque' => 'falta estoque',
+            ($alvo['campo'] ?? null) === 'sku' || $atributo === 'SELLER_SKU' => 'falta SKU',
+            in_array($atributo, ['GTIN', 'EMPTY_GTIN_REASON'], true) => 'falta código de barras',
+            ($alvo['campo'] ?? null) === 'preco' => 'falta preço',
+            str_starts_with($atributo, 'SELLER_PACKAGE_') || ($alvo['campo'] ?? null) === 'embalagem' => 'falta medidas do pacote',
+            default => 'falta ficha técnica',
+        };
     }
 
     /**
@@ -870,8 +1034,13 @@ class EditorRascunhoService
         };
     }
 
-    /** @return array{0: ?SchemaClassificado, 1: ?string} */
-    private function schemaDe(PubRascunho $r, RascunhoSnapshot $s): array
+    /**
+     * O schema classificado do rascunho e, quando não sai, a mensagem do porquê. Pública desde
+     * 20/10/2026: a prévia do anúncio (`PreviaDoAnuncioService`) classifica pelo MESMO caminho da tela.
+     *
+     * @return array{0: ?SchemaClassificado, 1: ?string}
+     */
+    public function schemaDe(PubRascunho $r, RascunhoSnapshot $s): array
     {
         if (! $r->categoria_id) {
             return [null, null];
@@ -931,13 +1100,15 @@ class EditorRascunhoService
         // A conta vem do produto (Company ou MlbEmpresa); sem token, `conta()` lança V-ACC-01 e o erro fica no estado.
         try {
             $conta = $this->contas->contexto($r->conta());
-            $r->update([
-                'step_state' => [...(array) $r->step_state, 'conta' => $conta->paraSnapshot()],
-                'modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo,
-                'conta_checada_em' => now(),
-            ]);
+            // 23/10/2026 (P-04): só a chave `conta`, relida sob trava — o `[...$r->step_state, …]` de antes regravava o
+            // estado inteiro lido ANTES desta chamada ao ML e apagava o que um Job gravou no meio. E sem tocar o
+            // `updated_at`: reler a conta não é editar o anúncio (o "Atualizado há…" da vitrine mudava só por abrir).
+            \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'conta', $conta->paraSnapshot());
+            $colunas = ['modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo, 'conta_checada_em' => now()];
+            DB::table('pub_rascunhos')->where('id', $r->id)->update($colunas);
+            $r->forceFill($colunas)->syncOriginalAttributes(array_keys($colunas));
         } catch (RegraViolada $e) {
-            $r->update(['step_state' => [...(array) $r->step_state, 'conta' => ['erro' => $e->getMessage()]]]);
+            \App\Support\Publicador\EstadoDoRascunho::gravar($r, 'conta', ['erro' => $e->getMessage()]);
         }
     }
 
@@ -959,16 +1130,166 @@ class EditorRascunhoService
         return $r;
     }
 
-    private function mlbDoTipo(PubRascunho $r, string $listingType): ?string
+    /** @return array{mlb: ?string, no_ar: bool, status: ?string} o da régua para o `listing_type_id` */
+    private function daRegua(array $regua, string $listingType): array
     {
         $tipo = array_flip(EstruturaPublicacao::LISTING_TYPES)[$listingType] ?? null;
 
-        return $tipo ? $this->mlbsDaRegua($r->produto)[$tipo] ?? null : null;
+        return $regua[$tipo] ?? ['mlb' => null, 'no_ar' => false, 'status' => null];
+    }
+
+    /**
+     * Os anúncios da régua do Portal (a aba Anúncios da oferta) de cada tipo, com o estado de HOJE no Mercado Livre
+     * (21/10/2026). O Sofá Chesterfield da #459: o produto foi excluído e recriado, e o Portal religou à oferta nova
+     * os dois anúncios antigos do SKU (a espera, como na planilha) guardados como "ativo" — no ML, um pausado e o
+     * outro em revisão. O editor travava os dois tipos e a publicação parava em "Não há o que publicar". Agora só o
+     * anúncio ATIVO no ML trava o tipo; sem resposta do ML, vale a régua (trava), como antes.
+     *
+     * @return array<string, array{mlb: ?string, no_ar: bool, status: ?string}> classico|premium →
+     */
+    private function reguaNoMl(PubRascunho $r): array
+    {
+        $porTipo = ['classico' => [], 'premium' => []];
+        $produto = $r->produto;
+        if ($produto?->oferta_id !== null && $produto->oferta !== null) {
+            $o = EstruturaConjunto::daEmpresa($produto->oferta->company)->oferta($produto->oferta_id) ?? ['anuncios' => []];
+            foreach ((array) $o['anuncios'] as $a) {
+                if (isset($porTipo[$a['tipo']]) && EstruturaAnuncio::conta($a['status'], $a['codigo_mlb'])) {
+                    $porTipo[$a['tipo']][] = (string) $a['codigo_mlb'];
+                }
+            }
+        }
+        $todos = array_values(array_unique(array_merge(...array_values($porTipo))));
+        $status = $todos === [] ? [] : $this->statusNoMl($r, $todos);
+
+        $saida = [];
+        foreach ($porTipo as $tipo => $mlbs) {
+            $ativo = $status === null ? null : collect($mlbs)->first(fn ($m) => ($status[$m] ?? null) === 'active');
+            $saida[$tipo] = match (true) {
+                $mlbs === [] => ['mlb' => null, 'no_ar' => false, 'status' => null],
+                $status === null => ['mlb' => $mlbs[0], 'no_ar' => true, 'status' => null],
+                $ativo !== null => ['mlb' => $ativo, 'no_ar' => true, 'status' => 'active'],
+                default => ['mlb' => $mlbs[0], 'no_ar' => false, 'status' => $status[$mlbs[0]] ?? 'nao_encontrado'],
+            };
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O `status` de cada MLB no Mercado Livre (`GET /items?ids=`, só leitura), guardado 10 minutos: o estado do editor
+     * é pedido a cada gravação. Falha fica guardada 1 minuto, sem repetir (o cliente dorme entre tentativas).
+     *
+     * @param  list<string>  $mlbs
+     * @return ?array<string, string>  MLB → status; null = o ML não respondeu
+     */
+    private function statusNoMl(PubRascunho $r, array $mlbs): ?array
+    {
+        sort($mlbs);
+        $chave = 'publicador:status-no-ml:v1:'.md5(implode(',', $mlbs));
+        $guardado = Cache::get($chave);
+        if (is_array($guardado) || $guardado === 'falhou') {
+            return is_array($guardado) ? $guardado : null;
+        }
+
+        try {
+            $resp = $this->cliente->daConta($r->conta(), 'GET', '/items', ['ids' => implode(',', array_slice($mlbs, 0, 20)), 'attributes' => 'id,status'], repetir: false);
+        } catch (\Throwable $e) {
+            $resp = null;
+        }
+        if ($resp === null || ! $resp->ok() || ! is_array($resp->corpo)) {
+            Cache::put($chave, 'falhou', now()->addMinute());
+
+            return null;
+        }
+
+        $status = [];
+        foreach ($resp->corpo as $x) {
+            $b = is_array($x) ? (array) ($x['body'] ?? []) : [];
+            if ((int) ($x['code'] ?? 0) === 200 && isset($b['id'])) {
+                $status[(string) $b['id']] = (string) ($b['status'] ?? '');
+            }
+        }
+        Cache::put($chave, $status, now()->addMinutes(10));
+
+        return $status;
     }
 
     /** @param list<Eixo> $eixos @return list<string> */
     private function idsDeEixo(array $eixos): array
     {
         return array_values(array_filter(array_map(fn (Eixo $e) => $e->attributeId(), $eixos)));
+    }
+
+    /**
+     * O grupo passa a ter SÓ estas fotos, nesta ordem — as imagens por IA automáticas no lugar das fotos do cliente
+     * (decisão do usuário de 20/10/2026: "a imagem do cliente é usada apenas para referência de recriar igual"; no
+     * assistente antigo o kit já era o dono das fotos do anúncio, `CreativeKitPublicacao::aplicarPictures`). Sob a
+     * trava, como {@see colocarFotoNoGrupo()}: travar PRIMEIRO, ler DEPOIS. Só o grupo pedido muda. A foto que sai
+     * da galeria NÃO é apagada: continua no rascunho, como referência. Lista vazia não faz nada (o grupo nunca fica
+     * sem foto por aqui); a mesma lista na mesma ordem não grava nada e não sobe a revisão.
+     *
+     * @param  list<int>  $imagemIds
+     */
+    public function trocarFotosDoGrupo(PubRascunho $r, string $grupo, array $imagemIds): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $imagemIds)));
+        if ($ids === []) {
+            return;
+        }
+
+        DB::transaction(function () use ($r, $grupo, $ids) {
+            $this->repo->travar($r);
+            $atuais = $this->repo->snapshot($r)->imagens;
+            $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
+            usort($doGrupo, fn ($a, $b) => (int) $a['posicao'] <=> (int) $b['posicao']);
+            if (array_map(fn ($a) => (int) $a['imagem'], $doGrupo) === $ids) {
+                return;
+            }
+
+            $novas = [];
+            foreach ($ids as $i => $id) {
+                $novas[] = ['imagem' => $id, 'grupo' => $grupo, 'posicao' => $i];
+            }
+            $this->repo->gravarAtribuicoes($r, [...array_values(array_filter($atuais, fn ($a) => $a['grupo'] !== $grupo)), ...$novas]);
+            $this->repo->tocar($r);
+        });
+    }
+
+    /**
+     * A versão do formato do resumo (`step_state.resumo`). Os rótulos do `por_cor` são texto de tela GRAVADO: mudou
+     * um rótulo (20/10/2026: "falta foto" → "falta imagem"), sobe a versão — a vitrine refaz o resumo de outra versão
+     * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela. 3 (21/10/2026): o resumo
+     * ganhou `itens` (o que falta, com a etapa da tela).
+     */
+    public const VERSAO_DO_RESUMO = 3;
+
+    /**
+     * Em que etapa da TELA o problema se resolve — a mesma régua de `etapaDoProblema` (`Components/Publicador/apoio.js`):
+     * fotos em Imagens; categoria, condição e títulos em Produto; variações, ficha e descrição em Detalhes; preço,
+     * envio, garantia e embalagem em Condições de venda; o resto (conta, conferência, publicação) na Prévia.
+     */
+    public static function etapaDaTela(Problema $p): string
+    {
+        $alvo = $p->alvo;
+        $e = $alvo['etapa'] ?? null;
+
+        return match (true) {
+            isset($alvo['grupo']) || isset($alvo['imagem']) || $e === 'E6' => 'imagens',
+            $e === 'E2' || $e === 'E7' || ($e === 'E3' && ($alvo['campo'] ?? null) === 'condicao') => 'produto',
+            in_array($e, ['E3', 'E4', 'E5', 'E8', 'E9'], true) => 'detalhes',
+            $e === 'E10' => 'condicoes',
+            default => 'previa',
+        };
+    }
+
+    /**
+     * A leitura da conta que o `abrir` faz (a mesma, com a mesma validade de 10 min), para o preparo pela IA saber o
+     * vendedor ANTES de alguém abrir o editor: sem ela o frete grátis obrigatório não é perguntado e a tela o grava
+     * ao abrir (N9, 22/10/2026). No FIM da classe de propósito: os documentos da Fase 188 apontam linhas deste arquivo.
+     */
+    public function lerContaParaOsPadroes(PubRascunho $r): void
+    {
+        $this->lerContaSeVencida($r);
     }
 }

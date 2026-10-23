@@ -96,7 +96,8 @@ test('Dados gerais: nome, família, ambientes e categoria nos pickers do projeto
 });
 
 test('Variação: Ref · Eixo · Valor · Custo, eixo nativo, valor livre e só a Ref obrigatória (D-20)', () => {
-    for (const t of ['Ref', 'Eixo', 'Valor', 'Custo (R$)', 'Excluir variação', 'Volumes']) {
+    // 21/10/2026: "Volumes" virou "Caixa embalada" (o usuário não distinguia a medida do produto da do embalado).
+    for (const t of ['Ref', 'Eixo', 'Valor', 'Custo (R$)', 'Excluir variação', 'Caixa embalada', 'é a que calcula o frete']) {
         assert.ok(variacao.includes(t), `faltou: ${t}`);
     }
     assert.ok(variacao.includes('<select') && variacao.includes('<option value="">'));
@@ -110,13 +111,13 @@ test('Variação: Ref · Eixo · Valor · Custo, eixo nativo, valor livre e só 
 });
 
 test('Volume: cartão com as quatro medidas do hook e a lixeira', () => {
-    for (const t of ['Volume ', 'Trash2', 'Remover volume', 'inputMode="decimal"', 'data-volume-cartao', 'MEDIDAS']) {
+    for (const t of ['Caixa ', 'Trash2', 'Remover caixa', 'inputMode="decimal"', 'data-volume-cartao', 'MEDIDAS']) {
         assert.ok(volume.includes(t), `faltou: ${t}`);
     }
 });
 
 test('Calculados: só leitura, vindos do servidor (D-28)', () => {
-    for (const t of ['Nº de volumes', 'Peso total', 'Logística provável', 'Peso cubado', 'Frete ME2', 'Adicionar volume', '.n_volumes', '.peso_total',
+    for (const t of ['Nº de caixas', 'Peso total', 'Logística provável', 'Peso cubado', 'Frete ME2', 'Adicionar caixa', '.n_volumes', '.peso_total',
         'renderPesoCubado(', 'renderFrete(', "'pilha'", 'data-calculado=', 'Os calculados aparecem ao salvar.', 'Recalcula ao salvar.']) {
         assert.ok(calculados.includes(t), `faltou: ${t}`);
     }
@@ -191,6 +192,19 @@ test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a f
     assert.ok(pagina.includes('useEffect(() => () => marcarUltimoProduto(ultimoRef.current), [])'));
 });
 
+// Demo 23/10 (N12): no produto NOVO, digitar o nome e recarregar parecia perder tudo — o rascunho ficava à
+// espera do "Recuperar" discreto. Sem nada no servidor para concorrer, ele volta sozinho; o já salvo segue
+// perguntando. (Provado no Chrome sem janela: recarregar avisa, o nome volta, "Começar do zero" limpa.)
+test('Rascunho: produto novo recupera sozinho e oferece começar do zero (N12)', () => {
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(produto\?\.id \|\| ! inicio\.oferecer\) return;\s*recuperarRascunho\(\);\s*setRecuperado\(true\);/);
+    assert.match(hook, /const recomecar = \(\) => \{\s*apagarRascunho\(null, noEscopo\);[\s\S]*?setAlterado\(false\);/);
+    for (const t of ['data-rascunho-recuperado', 'onClick={ficha.recomecar}', 'Começar do zero']) {
+        assert.ok(pagina.includes(t), `faltou na página: ${t}`);
+    }
+    // A guarda de fechar/recarregar a aba vale também para o produto novo (não depende de id).
+    assert.match(pagina, /if \(liberado\.current \|\| ! alteradoRef\.current\) return undefined;/);
+});
+
 test('Salvando: campos, Nova variação, Excluir e pickers ficam travados durante o POST (FE-WR-02)', () => {
     assert.equal(contar(pagina, /<fieldset disabled=\{ficha\.salvando\}/g), 2, 'dados gerais e variações');
     // Nova variação e os cartões (com Excluir e volumes) estão dentro do fieldset das variações.
@@ -219,8 +233,8 @@ test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salva
     for (const t of ['gravarRascunho(', 'lerRascunho(', 'apagarRascunho(', 'recuperarRascunho', 'descartarRascunho', 'esquecerRascunho']) {
         assert.ok(hook.includes(t), `faltou no hook: ${t}`);
     }
-    assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId\)/, 'salvo por inteiro apaga o rascunho');
-    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars, \{ descricao: descricao\.texto \}\)/, 'grava só com alteração');
+    assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId, noEscopo\)/, 'salvo por inteiro apaga o rascunho');
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars, \{ descricao: descricao\.texto, escopo: escopoRascunho \}\)/, 'grava só com alteração');
     // Review 172 WR-06: a descrição entra no rascunho, conta na comparação e volta ao recuperar.
     assert.match(hook, /\}, \[vars, alterado, descricao\.texto\]\);/);
     assert.match(hook, /assinatura\(guardado\.vars, descricaoGuardada\) !== assinatura\(iniciais, descricaoInicial\)/);

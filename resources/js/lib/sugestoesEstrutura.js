@@ -15,7 +15,8 @@ export const MSG_GUARDA = 'Há nomes ou códigos editados que ainda não foram a
 export const msgLimiteDoLote = (limite) => `Você pode aceitar até ${limite} de uma vez. Aceite estas e marque as próximas.`;
 export const msgMarcamosPrimeiras = (limite) => `Marcamos as primeiras ${limite}. Aceite e marque as próximas.`;
 export const msgSkuLongo = (max) => `O código passa de ${max} caracteres. Encurte para poder aceitar.`;
-export const textoTituloLongo = (n, max) => `O título passa de ${max} caracteres (${n}). O Mercado Livre pode cortar.`;
+// 23/10/2026 (P-26): o Planejamento é do cliente e não cita a plataforma (sigilo) — mesmo tom da janela de montar.
+export const textoTituloLongo = (n, max) => `O nome tem ${n} caracteres; o ideal é até ${max}.`;
 
 
 /**

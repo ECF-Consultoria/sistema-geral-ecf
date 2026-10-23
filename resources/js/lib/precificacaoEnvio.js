@@ -13,6 +13,26 @@
 
 const NOME_DA_MODALIDADE = { drop_off: 'Correios', xd_drop_off: 'Agências', cross_docking: 'Coleta', fulfillment: 'Full' };
 
+// Para onde vai o pacote que passa do limite do Mercado Envios da conta (`envio.fora`, 21/10/2026). Nos dois casos
+// conhecidos o Mercado Livre não cobra frete: com ME1, é a transportadora do vendedor; sem ME1, o anúncio sai
+// "Combine a entrega" — foi o que aconteceu com a Poltrona Opala na #459. Sem a preferência da conta lida
+// ("Cotar agora" a lê), não se sabe qual dos dois.
+const FORA_DO_ME2 = {
+    me1: {
+        rotulo: 'ME1 · sua transportadora', selo: 'ME1',
+        dica: 'O envio é pela sua transportadora (ME1) e o Mercado Livre não cobra frete deste anúncio. O frete sugerido é a referência do Mercado Livre para a caixa; digite o que a transportadora cobra, se souber.',
+    },
+    combinar: {
+        rotulo: 'A combinar com o comprador', selo: 'A combinar',
+        dica: 'Sua conta não tem ME1: o anúncio sai «Combine a entrega» e o Mercado Livre não cobra frete. O frete sugerido é a referência do Mercado Livre para a caixa; digite o que vai gastar para entregar, se souber.',
+    },
+    fora: {
+        rotulo: 'Fora do Mercado Envios (ME1)', selo: 'ME1',
+        dica: 'O Mercado Livre não cobra frete deste anúncio: o envio vai pela sua transportadora (ME1), se a conta tiver, ou sai «Combine a entrega». '
+            + 'O frete sugerido é a referência do Mercado Livre para a caixa. «Cotar agora» lê a sua conta e diz qual dos dois.',
+    },
+};
+
 /** 53 → "53"; 12.5 → "12,5"; sem zeros à toa. */
 const num = (v) => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
 
@@ -50,21 +70,22 @@ export function resumoDoEnvio(envio) {
 
     if (envio.declarada) {
         return {
-            chave: 'declarada', tom: 'neutro', pacote, motivo: 'digite o frete',
+            chave: 'declarada', tom: 'neutro', pacote, motivo: null,
             rotulo: envio.declarada === 'combinar' ? 'A combinar com o comprador' : 'Transportadora (ME1)',
-            dica: 'A logística desta oferta foi declarada fora do Mercado Envios: não há frete do Mercado Livre a sugerir. Digite o valor do frete.',
+            dica: 'A logística desta oferta foi declarada fora do Mercado Envios: o Mercado Livre não cobra frete. O frete sugerido é a referência dele para a caixa; digite o valor real, se souber.',
         };
     }
 
     if (envio.chave === 'me1') {
         const estouros = (Array.isArray(envio.estouros) ? envio.estouros : []).map(textoDoEstouro).filter(Boolean);
         const modalidade = NOME_DA_MODALIDADE[envio.modalidade] ?? NOME_DA_MODALIDADE.drop_off;
+        const fora = FORA_DO_ME2[envio.fora] ?? FORA_DO_ME2.fora;
 
         return {
-            chave: 'me1', tom: 'alerta', pacote, rotulo: 'Fora do Mercado Envios (ME1)',
+            chave: 'me1', tom: 'alerta', pacote, rotulo: fora.rotulo, fora: FORA_DO_ME2[envio.fora] ? envio.fora : 'fora',
             motivo: estouros.length ? `passa do limite: ${estouros.join(' · ')}` : 'passa do limite do Mercado Envios',
             dica: `O pacote passa do limite do Mercado Envios na modalidade da sua conta (${modalidade})${estouros.length ? `: ${estouros.join('; ')}` : ''}. `
-                + `Por isso não há frete do Mercado Livre a sugerir: o envio é pela sua transportadora, e o frete é o que você digitar.${daSoma}`,
+                + `${fora.dica}${daSoma}`,
         };
     }
 
@@ -96,7 +117,8 @@ export function seloDoEnvio(envio) {
     const r = resumoDoEnvio(envio);
     if (! r) return null;
 
-    const texto = r.chave === 'declarada' ? (envio.declarada === 'combinar' ? 'A combinar' : 'Transportadora') : (SELO[r.chave] ?? r.rotulo);
+    const texto = r.chave === 'declarada' ? (envio.declarada === 'combinar' ? 'A combinar' : 'Transportadora')
+        : r.chave === 'me1' ? FORA_DO_ME2[r.fora].selo : (SELO[r.chave] ?? r.rotulo);
     const dica = [r.rotulo, r.pacote, r.motivo && r.tom === 'alerta' ? r.motivo : null].filter(Boolean).join(' · ');
 
     return { chave: r.chave, texto, tom: r.tom, dica };

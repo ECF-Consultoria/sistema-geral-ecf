@@ -17,7 +17,7 @@ use Tests\TestCase;
 
 /**
  * Título de venda no cadastro do produto do Portal (19/10/2026): separado do nome, com a 1ª letra
- * maiúscula, limitado pelo `max_title_length` da categoria, montado com os termos mais buscados (a
+ * de cada palavra maiúscula (20/10/2026), limitado pelo `max_title_length` da categoria, montado com os termos mais buscados (a
  * rota não cita a plataforma) e, na planilha, título e categoria vazios não bloqueiam — o produto
  * entra pendente. Nenhuma chamada real: o schema da categoria já está guardado e o resto é fake.
  */
@@ -98,12 +98,12 @@ class TituloDeVendaTest extends TestCase
 
         $produto = EstruturaProduto::where('company_id', $empresa->id)->firstOrFail();
         $this->assertSame('Cadeira Gamer Azul', $produto->nome);
-        $this->assertSame('Cadeira gamer reclinável azul', $produto->titulo, 'maiúscula na 1ª letra e espaços juntados; o resto como veio');
-        $this->assertSame('Cadeira gamer reclinável azul', $r->json('linhas.0.titulo'));
+        $this->assertSame('Cadeira Gamer Reclinável Azul', $produto->titulo, 'maiúscula em toda palavra e espaços juntados; o resto como veio');
+        $this->assertSame('Cadeira Gamer Reclinável Azul', $r->json('linhas.0.titulo'));
         $this->assertNotContains(PendenciasDoProduto::TITULO, $r->json('linhas.0.pendencias'));
 
         $this->gravar($sessao, ['id' => $r->json('linhas.0.id'), 'titulo' => 'ébano poltrona'])->assertOk();
-        $this->assertSame('Ébano poltrona', $produto->fresh()->titulo);
+        $this->assertSame('Ébano Poltrona', $produto->fresh()->titulo);
     }
 
     public function test_sem_titulo_o_produto_salva_e_fica_pendente_e_null_explicito_limpa(): void
@@ -147,7 +147,7 @@ class TituloDeVendaTest extends TestCase
 
         $sessao->get(route('portal.auth.estrutura.produtos.ficha', $produto->id))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->where('linhas.0.titulo', 'Cadeira gamer')->where('linhas.0.nome', 'Cadeira Gamer Azul'));
+            ->assertInertia(fn ($page) => $page->where('linhas.0.titulo', 'Cadeira Gamer')->where('linhas.0.nome', 'Cadeira Gamer Azul'));
     }
 
     // ─── Termos da categoria ────────────────────────────────────────────────
@@ -228,7 +228,7 @@ class TituloDeVendaTest extends TestCase
         $this->assertSame(0, $res['erros']);
         $poltrona = EstruturaProduto::where('company_id', $empresa->id)->where('codigo', 'P')->firstOrFail();
         $this->assertNull($poltrona->titulo);
-        $this->assertSame('Cadeira gamer reclinável', EstruturaProduto::where('company_id', $empresa->id)->where('codigo', 'C')->value('titulo'));
+        $this->assertSame('Cadeira Gamer Reclinável', EstruturaProduto::where('company_id', $empresa->id)->where('codigo', 'C')->value('titulo'));
 
         $this->withoutVite()->entrarNoPortal($empresa)
             ->get(route('portal.auth.estrutura.produtos.ficha', $poltrona->id))

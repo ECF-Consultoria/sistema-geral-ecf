@@ -89,8 +89,9 @@ class SincronizarCombosDaFamiliaTest extends TestCase
         $this->assertSame(0, $r['combos_na_fase']);
         $grupo = PubProduto::where('estrutura_produto_id', $this->produtoP->id)->firstOrFail();
         $this->assertSame([$grupo->id], $r['para_preencher']);
+        // 20/10/2026: o anúncio do combo nasce sozinho com a Fase 1 no ar (não há mais "Criar Fase" para o Portal).
         Log::shouldHaveReceived('info')->withArgs(fn ($msg, $ctx = []) => $msg === '[Publicador] Sincronizar avisos'
-            && collect($ctx['avisos'] ?? [])->contains(fn ($a) => str_contains($a, 'Combo 2') && str_contains($a, 'aguardando')));
+            && collect($ctx['avisos'] ?? [])->contains(fn ($a) => str_contains($a, 'Combo 2 aceito no Planejamento') && str_contains($a, 'vira fase sozinho quando a Fase 1')));
 
         $this->assertSame(0, $this->sinc()['criados'], 'reexecutar não cria nada');
         $this->assertSame(1, PubProduto::count());

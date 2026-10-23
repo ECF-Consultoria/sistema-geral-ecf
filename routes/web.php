@@ -257,6 +257,12 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.termos_titulo')->name('portal.auth.estrutura.produtos.termos_titulo');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
+    // 20/10/2026 — a Precificação dentro da ficha: a conta das ofertas do produto (e a prévia com o custo digitado).
+    Route::get('/estrutura/produtos/{produto}/precificacao', [PortalEstruturaProdutosController::class, 'precificacao'])
+        ->whereNumber('produto')->middleware('throttle:240,1,estrutura.produtos.precificacao')->name('portal.auth.estrutura.produtos.precificacao');
+    // 21/10/2026 — a mesma conta para o produto que ainda não foi salvo: custo e caixa digitados, nada gravado.
+    Route::get('/estrutura/produtos/precificacao-previa', [PortalEstruturaProdutosController::class, 'precificacaoPrevia'])
+        ->middleware('throttle:240,1,estrutura.produtos.precificacao')->name('portal.auth.estrutura.produtos.precificacao.previa');
     // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.
     Route::post('/estrutura/produtos/categorias/sugerir-nomes', [PortalEstruturaProdutosController::class, 'sugerirCategoriasPorNome'])
         ->middleware('throttle:60,1,estrutura.produtos.categorias.sugerir_nomes')->name('portal.auth.estrutura.produtos.categorias.sugerir_nomes');
@@ -1669,6 +1675,10 @@ Route::middleware(['auth', 'verified'])
          Route::patch('/empresas/{empresa}/ads', [PolosController::class, 'marcarAds'])->name('empresas.ads');
          // Check "reunião do mês feita" por empresa/mês (gaveta de /polos/empresas — TKT-0004).
          Route::post('/reunioes', [PolosController::class, 'reuniaoMarcar'])->name('reunioes.marcar');
+         // Faturamento lançado à mão por empresa/mês, só onde a Adman não tem dado (22/10/2026).
+         // Só cargo Dev, conta Admin e Débora Lima — gate em podeLancarFaturamentoManual().
+         Route::post('/faturamento-manual', [PolosController::class, 'faturamentoManualSalvar'])->name('faturamento-manual.salvar');
+         Route::delete('/faturamento-manual/{lancamento}', [PolosController::class, 'faturamentoManualRemover'])->name('faturamento-manual.remover');
          // Baixar /polos/empresas em .xlsx (TKT-0018). POST: leva os cust_id das linhas visíveis.
          Route::post('/empresas/exportar', [PolosController::class, 'exportarEmpresas'])->name('empresas.exportar');
      });

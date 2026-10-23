@@ -27,6 +27,30 @@ final class QuantidadesDoKit
     /** O `value_id` do "não se aplica" do Mercado Livre. */
     private const NAO_SE_APLICA = '-1';
 
+    /**
+     * "É kit" (23/10/2026, teste do Publicador, P-12): era copiado da peça e todo kit, combo e composto ia ao ML com
+     * "Não" — inclusive o Kit 2 publicado. Num kit de 2 unidades para cima, é "Sim".
+     */
+    public const E_KIT = 'IS_KIT';
+
+    /**
+     * O valor "Sim" do "É kit", pela definição da categoria (o `value_id` do Sim). Nulo quando a categoria não tem o
+     * atributo ou a lista dele não tem "Sim".
+     *
+     * @param  ?array  $definicao  o atributo `IS_KIT` no schema da categoria
+     * @return array{value_id: ?string, value_name: string, value_number: null}|null
+     */
+    public static function eKit(?array $definicao): ?array
+    {
+        foreach ((array) ($definicao['values'] ?? []) as $opcao) {
+            if (mb_strtolower(trim((string) ($opcao['name'] ?? ''))) === 'sim') {
+                return ['value_id' => isset($opcao['id']) ? (string) $opcao['id'] : null, 'value_name' => (string) $opcao['name'], 'value_number' => null];
+            }
+        }
+
+        return null;
+    }
+
     public static function ehCampo(string $atributo): bool
     {
         return in_array($atributo, self::CAMPOS, true);

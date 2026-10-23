@@ -315,6 +315,8 @@ export function escritasDoRodape(pedido = null) {
         }),
         // ⚠️⚠️ UM clique, e ele JÁ PUBLICA (enfileira). Não há segundo passo nem
         // desfazer — é a decisão 1, e é por isso que a trava do SERVIDOR existe.
+        // 23/10/2026 (P-18e): e o segundo clique não sai — o helper recusa
+        // escrita com outra em voo.
         aprovar: () => escreverNoPainel({
             rota: ROTA_APROVAR, parametros, versao: versaoVista, onConflito,
         }),
@@ -371,8 +373,10 @@ export function MotivoDoRodape({ motivo = null, cor = null, andamento = null }) 
  * @param {object} props
  * @param {unknown} [props.aprovavel] `rodape.aprovavel` — do SERVIDOR
  * @param {unknown} [props.onAprovar] `() => void`, ou `null` (sem ids não há botão)
+ * @param {unknown} [props.enviando] `true` com uma escrita do painel em voo
+ *   (23/10/2026, P-18e): o botão trava até o servidor responder
  */
-export function BotaoDeAprovar({ aprovavel = false, onAprovar = null }) {
+export function BotaoDeAprovar({ aprovavel = false, onAprovar = null, enviando = false }) {
     const acao = typeof onAprovar === 'function' ? onAprovar : null;
 
     // ⚠️ Sem ação não há botão: aí sim não haveria caminho nenhum, e `disabled`
@@ -382,7 +386,8 @@ export function BotaoDeAprovar({ aprovavel = false, onAprovar = null }) {
 
     // ⚠️ Flag DENTRO do componente: só `true` libera. `'true'`, `1` e `{}` são
     // verdadeiros em JS e **não podem** acender um botão de publicar.
-    const liberado = aprovavel === true;
+    // 23/10/2026 (P-18e): e nada libera enquanto o envio anterior não voltou.
+    const liberado = aprovavel === true && enviando !== true;
 
     return (
         <button
@@ -401,15 +406,19 @@ export function BotaoDeAprovar({ aprovavel = false, onAprovar = null }) {
  *
  * ⚠️ NAMED EXPORT pelo mesmo motivo (o portal).
  */
-export function BotaoDoRodape({ rotulo = null, classes = null, onClicar = null }) {
+export function BotaoDoRodape({ rotulo = null, classes = null, onClicar = null, desabilitado = false }) {
     const texto = textoDoPainel(rotulo);
     const acao = typeof onClicar === 'function' ? onClicar : null;
     const classe = textoDoPainel(classes);
 
     if (texto === null || acao === null || classe === null) return null;
 
+    // 23/10/2026 (P-18e): `desabilitado` é a escrita do painel em voo — o atributo
+    // trava o clique, e o `onClick` nem é ligado.
+    const travado = desabilitado === true;
+
     return (
-        <button type="button" className={classe} onClick={() => acao()}>
+        <button type="button" className={classe} disabled={travado} onClick={travado ? undefined : () => acao()}>
             {texto}
         </button>
     );
@@ -434,6 +443,8 @@ export function BotaoDoRodape({ rotulo = null, classes = null, onClicar = null }
  * @param {unknown} [props.versao] `painel.versao` — a versão que a pessoa VIU
  * @param {unknown} [props.onConflito] `(mensagem) => void` — o 422 de COL-04
  *   (plano **188-12** é o dono do AVISO na tela)
+ * @param {unknown} [props.enviando] `true` com uma escrita do painel em voo
+ *   (23/10/2026, P-18e): "Salvar revisão" e "Aprovar" travam até a resposta
  */
 export default function RodapeDoPainel({
     rodape = null,
@@ -445,6 +456,7 @@ export default function RodapeDoPainel({
     ofertaId = null,
     versao = null,
     onConflito = null,
+    enviando = false,
 }) {
     const dados = objetoDoPainel(rodape);
 
@@ -454,6 +466,7 @@ export default function RodapeDoPainel({
 
     const botoes = objetoDoPainel(dados.botoes) ?? {};
     const escritas = escritasDoRodape({ empresaId, ofertaId, versao, onConflito });
+    const emVoo = enviando === true;
 
     // ⚠️⚠️ `botoes.X` **É** o `$aoVivo` do servidor
     // (`PainelDeRevisaoService.php:647`-`:650`) — uma definição só de "ao vivo",
@@ -473,10 +486,10 @@ export default function RodapeDoPainel({
 
     return (
         <div className={CLASSES_RODAPE}>
-            <BotaoDoRodape rotulo={ROTULO_SALVAR} classes={CLASSES_SECUNDARIO} onClicar={salvar} />
+            <BotaoDoRodape rotulo={ROTULO_SALVAR} classes={CLASSES_SECUNDARIO} onClicar={salvar} desabilitado={emVoo} />
             <BotaoDoRodape rotulo={ROTULO_AJUSTES} classes={CLASSES_SECUNDARIO} onClicar={ajustes} />
             <MotivoDoRodape motivo={dados.motivo} cor={dados.motivo_cor} andamento={andamento} />
-            <BotaoDeAprovar aprovavel={dados.aprovavel} onAprovar={aprovar} />
+            <BotaoDeAprovar aprovavel={dados.aprovavel} onAprovar={aprovar} enviando={emVoo} />
             <BotaoDoRodape rotulo={ROTULO_PROXIMO} classes={CLASSES_PROXIMO} onClicar={proximo} />
         </div>
     );

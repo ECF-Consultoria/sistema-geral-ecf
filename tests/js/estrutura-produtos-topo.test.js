@@ -53,9 +53,11 @@ test('modo: chave no localStorage só dentro de try, padrão grande, só grande|
     assert.ok(nav.includes('export function lerModo') && nav.includes('export function gravarModo'));
     assert.ok(nav.includes("'ecf.produtos.modo'"));
     assert.ok(nav.includes("['grande', 'lista']") && nav.includes("return 'grande'"));
-    const iLocal = nav.indexOf('localStorage');
-    assert.ok(iLocal > nav.lastIndexOf('try {', iLocal) && nav.lastIndexOf('try {', iLocal) > nav.indexOf('export function lerModo') - 1);
-    assert.equal((nav.match(/localStorage/g) ?? []).length, (nav.match(/try \{\s*(const m = )?window\.localStorage/g) ?? []).length, 'localStorage fora do try');
+    const lerModo = nav.slice(nav.indexOf('export function lerModo'));
+    const iLocal = lerModo.indexOf('localStorage');
+    assert.ok(iLocal > lerModo.lastIndexOf('try {', iLocal) && lerModo.lastIndexOf('try {', iLocal) >= 0);
+    // Todo acesso ao localStorage do arquivo (o modo e, desde a A5 de 23/10, o rascunho do produto novo) mora num try.
+    assert.equal((nav.match(/localStorage/g) ?? []).length, (nav.match(/try \{\s*(const \w+ = )?window\.localStorage/g) ?? []).length, 'localStorage fora do try');
 });
 
 test('sem select nativo, HTML cru, sino nem avatar (D-30)', () => {

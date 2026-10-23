@@ -7,7 +7,7 @@ import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNaveg
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
 import useTermosDoTitulo from '@/Components/Portal/Estrutura/Produtos/useTermosDoTitulo';
-import { eixosEmUso } from '@/lib/fichaTecnica';
+import { camposPreenchidos, eixosEmUso } from '@/lib/fichaTecnica';
 import { capitalizarTitulo, limiteDoTitulo } from '@/lib/tituloDoProduto';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
@@ -27,6 +27,9 @@ export const MEDIDAS = [
 ];
 
 /** Campos que valem para o produto inteiro: a escolha vai para todas as variações do formulário. */
+/** A pergunta antes de trocar (ou tirar) a categoria de uma ficha técnica já preenchida (demo 23/10, N10). */
+export const CONFIRMA_TROCAR_CATEGORIA = 'Trocar a categoria muda os campos da ficha técnica. O que você já preencheu e não existir na nova categoria será apagado ao salvar. Trocar mesmo assim?';
+
 export const CAMPOS_DO_PRODUTO = ['familia', 'ambientes_texto', 'categoria', 'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho', '_categoriaEscolhida'];
 
 let contador = 0;
@@ -68,17 +71,19 @@ const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id 
 /** Variações e descrição juntas: mudar só a descrição também conta como rascunho (review 172 WR-06). */
 const assinatura = (lista, descricao) => `${conteudo(lista)}|${String(descricao ?? '').trim()}`;
 
-export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null }) {
-    // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
+export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null, escopoRascunho = null }) {
+    // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu. A
+    // empresa (`escopoRascunho`) separa o rascunho do produto novo, que também fica no localStorage (A5).
+    const noEscopo = { escopo: escopoRascunho };
     const [inicio] = useState(() => {
         const iniciais = linhas.length
             ? linhas.map((l) => linhaDoServidor(l, vocabulario?.pendencias))
             : [linhaEmBranco(produto)];
-        const guardado = lerRascunho(produto?.id ?? null);
+        const guardado = lerRascunho(produto?.id ?? null, noEscopo);
         // Rascunho antigo, sem a chave `descricao`, vale como "descrição não mexida".
         const descricaoGuardada = typeof guardado?.descricao === 'string' ? guardado.descricao : (descricaoInicial ?? '');
         const oferecer = guardado && assinatura(guardado.vars, descricaoGuardada) !== assinatura(iniciais, descricaoInicial) ? guardado : null;
-        if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null);
+        if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null, noEscopo);
 
         return { iniciais, oferecer };
     });
@@ -86,6 +91,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const [erros, setErros] = useState({});          // { _k: mensagem }
     const [aviso, setAviso] = useState(null);
     const [salvando, setSalvando] = useState(false);
+    // Demo 23/10 (N11): três cliques rápidos passavam pelo `salvando` antes do re-render e mandavam três
+    // POST ("o código já existe em outro produto" junto de "Produto salvo."). A ref trava na hora.
+    const salvandoRef = useRef(false);
     const [alterado, setAlterado] = useState(false);   // há algo digitado ainda não salvo
     const [rascunho, setRascunho] = useState(inicio.oferecer);   // { em, vars } à espera de Recuperar/Descartar
     const varsRef = useRef(vars);
@@ -100,8 +108,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     useEffect(() => {
         if (! alterado) return;
         const id = idDoProduto(vars, produto);
-        if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current);
-        gravarRascunho(id, vars, { descricao: descricao.texto });
+        if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current, noEscopo);
+        gravarRascunho(id, vars, { descricao: descricao.texto, escopo: escopoRascunho });
         chaveGravada.current = id;
     }, [vars, alterado, descricao.texto]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,14 +125,35 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     };
 
     const descartarRascunho = () => {
-        apagarRascunho(produto?.id ?? null);
+        apagarRascunho(produto?.id ?? null, noEscopo);
         setRascunho(null);
         // O que já foi digitado nesta visita continua protegido.
-        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto });
+        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto, escopo: escopoRascunho });
+    };
+
+    // Produto NOVO (demo 23/10, N12): digitar o nome e recarregar a página parecia perder tudo — o
+    // rascunho ficava à espera de um "Recuperar" discreto no topo. Aqui nada no servidor concorre com
+    // ele, então volta sozinho; a faixa avisa e oferece começar do zero. Produto já salvo segue
+    // perguntando (o servidor pode ter coisa mais nova que o rascunho).
+    const [recuperado, setRecuperado] = useState(false);
+    useEffect(() => {
+        if (produto?.id || ! inicio.oferecer) return;
+        recuperarRascunho();
+        setRecuperado(true);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** "Começar do zero" depois da recuperação automática: a ficha em branco e o rascunho fora. */
+    const recomecar = () => {
+        apagarRascunho(null, noEscopo);
+        setVars([linhaEmBranco(produto)]);
+        descricao.alterar('');
+        setErros({});
+        setAlterado(false);
+        setRecuperado(false);
     };
 
     /** Sair confirmado, produto excluído ou salvo: o rascunho deixa de valer. */
-    const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto));
+    const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto), noEscopo);
 
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
@@ -145,7 +174,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
 
-    /** Título de venda: do produto, como o nome, sempre com a 1ª letra maiúscula (o servidor confere). */
+    /** Título de venda: do produto, como o nome, sempre com a 1ª letra de cada palavra maiúscula (o servidor confere). */
     const alterarTitulo = (valor) => {
         const titulo = capitalizarTitulo(valor);
         setAlterado(true);
@@ -163,6 +192,11 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         const parte = Object.fromEntries(Object.entries(patch).filter(([c]) => CAMPOS_DO_PRODUTO.includes(c)));
         const muda = varsRef.current.some((v) => Object.entries(parte).some(([c, valor]) => comoTexto(v[c], c) !== comoTexto(valor, c)));
         if (! muda) return;
+        // Trocar (ou tirar) a categoria com a ficha técnica preenchida pede confirmação: o que a nova
+        // categoria não tiver sai no próximo salvar. Desistir deixa tudo como estava.
+        const categoriaAntes = varsRef.current[0]?.categoria_ml_id ?? null;
+        const trocaCategoria = 'categoria_ml_id' in parte && categoriaAntes && String(parte.categoria_ml_id ?? '') !== String(categoriaAntes);
+        if (trocaCategoria && camposPreenchidos(tecnica.valores) > 0 && ! window.confirm(CONFIRMA_TROCAR_CATEGORIA)) return;
         setAlterado(true);
         setVars((atual) => atual.map((v) => ({ ...v, ...parte })));
     };
@@ -236,6 +270,16 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     /** Devolve { ok, data }; quem chama decide o que fazer (a página volta para a lista). */
     const salvar = async () => {
+        if (salvandoRef.current) return { ok: false, data: null };
+        salvandoRef.current = true;
+        try {
+            return await salvarUmaVez();
+        } finally {
+            salvandoRef.current = false;
+        }
+    };
+
+    const salvarUmaVez = async () => {
         if (salvando) return { ok: false, data: null };
         setAviso(null);
         if (tecnica.carregando) {
@@ -340,8 +384,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         if (ok) {
             setAlterado(false);
             // Salvo por inteiro: o rascunho (do produto e, se ele nasceu agora, o "novo") deixa de valer.
-            apagarRascunho(r.produtoId);
-            if (! produto?.id) apagarRascunho(null);
+            apagarRascunho(r.produtoId, noEscopo);
+            if (! produto?.id) apagarRascunho(null, noEscopo);
             setRascunho(null);
         } else {
             // Parcial: o que gravou volta com os ids do servidor; o que falhou fica como está, com o motivo.
@@ -357,7 +401,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
-        rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
+        rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho, recuperado, recomecar,
         tecnica, descricao,
         // O "o que é isto?" dos campos fixos (nome, família, Ref, custo, volumes…), do servidor.
         explicacoes: explicacoes ?? {},

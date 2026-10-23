@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import axios from 'axios';
 import { ImagePlus, X } from 'lucide-react';
 import {
-    ACEITA_NO_INPUT, LIMITE_IMAGENS, avisosDoErro, decidirEnvio, imagemPendente, imagensDaResposta, montarEnvio,
+    ACEITA_NO_INPUT, LIMITE_IMAGENS, LIMITE_MB, avisosDoErro, decidirEnvio, imagemPendente, imagensDaResposta, montarEnvio,
     prepararRemessa, revogar,
 } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
@@ -109,6 +109,7 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
                     </button>
                     <span className="text-[13px] tabular-nums text-white/60" data-contador-imagens>{imagens.length}/{LIMITE_IMAGENS}</span>
                     <span className="text-[12px] text-white/40">JPG, PNG ou WebP.</span>
+                    <span className="text-[12px] text-white/40" data-limite-tamanho>Até {LIMITE_MB} MB cada.</span>
                 </div>
 
                 {/* A dica só vale quando há foto guardada: sem nenhuma, não há o que subir no Salvar. */}

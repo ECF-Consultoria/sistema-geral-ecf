@@ -135,6 +135,10 @@ test('MenuDeAcoesDoProduto — composto publicado não oferece "Criar Fase 2"', 
     assert.ok(!chaves(produto({ composto: 'combo' })).includes('fase2'));
     assert.ok(!chaves(produto({ composto: 'kit', status: { chave: 'parcial' } })).includes('fase2'));
     assert.ok(chaves(produto()).includes('fase2'), 'o base de verdade publicado continua oferecendo');
+    // 20/10/2026: o produto do Portal não tem "Criar Fase" — o combo nasce do Planejamento (KIT-08 no servidor).
+    assert.ok(!chaves(produto({ combos_no_portal: true })).includes('fase2'));
+    assert.ok(chaves(produto({ combos_no_portal: false })).includes('fase2'), 'produto sem Portal segue com o botão');
+    assert.ok(chaves(produto({ combos_no_portal: 'sim' })).includes('fase2'), 'só o booleano true esconde');
     for (const lixo of LIXO) {
         assert.ok(chaves(produto({ composto: lixo })).includes('fase2'), JSON.stringify(lixo));
     }

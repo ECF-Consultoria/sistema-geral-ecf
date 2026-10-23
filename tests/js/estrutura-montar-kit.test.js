@@ -100,7 +100,12 @@ test('a lista de escolha busca por nome, cor e SKU, tira os escolhidos e corta n
     assert.equal(cortado.cortados, 2);
     assert.equal(cortado.produtos.reduce((s, p) => s + p.variacoes.length, 0) + cortado.avulsas.length, 2);
 
-    assert.deepEqual(itemInicialDoProduto(catalogo, '2'), { variacao_id: 12, nome: 'Cadeira Polo — Natural', sku: 'CAD-NT', quantidade: 1 });
+    assert.deepEqual(itemInicialDoProduto(catalogo, '2'), { variacao_id: 12, nome: 'Cadeira Polo — Natural', sku: 'CAD-NT', foto: null, quantidade: 1 });
+    // 22/10/2026: o item que já entra escolhido leva a foto da cor (ou a do produto) para a composição.
+    const comFoto = { produtos: [{ produto_id: 9, nome: 'Banco', foto: 'https://cdn/banco.jpg', variacoes: [{ variacao_id: 90, valor: null, sku: 'B1' }] }] };
+    assert.equal(itemInicialDoProduto(comFoto, 9).foto, 'https://cdn/banco.jpg');
+    comFoto.produtos[0].variacoes[0].foto = 'https://cdn/b1.jpg';
+    assert.equal(itemInicialDoProduto(comFoto, 9).foto, 'https://cdn/b1.jpg');
     assert.equal(itemInicialDoProduto(catalogo, 999), null);
     assert.equal(rotuloDaVariacao({ nome: 'Mesa' }, { valor: null }), 'Mesa');
 });

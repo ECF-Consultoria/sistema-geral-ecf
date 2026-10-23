@@ -29,7 +29,8 @@ const ESPERA_MS = 300;
 export function destinoParaItem(item) {
     const rotaAtual = route().current();
     const temCompany = item?.company_id !== null && item?.company_id !== undefined;
-    const PADRAO = { rota: 'mlb.anuncios.publicador.visao-geral', parametros: { conta: item?.chave ?? null } };
+    // 20/10/2026: a conta abre em Produtos — é a única aba à vista (`publicador.abas_ocultas`).
+    const PADRAO = { rota: 'mlb.anuncios.publicador.produtos', parametros: { conta: item?.chave ?? null } };
 
     if (rotaAtual === 'mlb.anuncios.publicador.produtos') {
         return { rota: 'mlb.anuncios.publicador.produtos', parametros: { conta: item?.chave ?? null } };
@@ -43,7 +44,7 @@ export function destinoParaItem(item) {
     }
 
     if (rotaAtual === 'mlb.anuncios.meus' || rotaAtual === 'mlb.anuncios.historico') {
-        // Publicações não existe sem Company (D23) — cai pra Visão geral.
+        // Publicações não existe sem Company (D23) — cai no padrão (Produtos).
         return temCompany ? { rota: rotaAtual, parametros: { company: item.company_id } } : PADRAO;
     }
 

@@ -173,6 +173,18 @@ final class ResumoRapidoService
 
     // ═══ Uma linha ═══════════════════════════════════════════════════════════
 
+    /** O SELLER_SKU da variação quando há UMA ativa; nulo com várias ou sem SKU. */
+    private static function skuDaVarianteUnica(?RascunhoSnapshot $s): ?string
+    {
+        $ativas = array_values($s?->variantesAtivas() ?? []);
+        if (count($ativas) !== 1) {
+            return null;
+        }
+        $sku = trim((string) ($ativas[0]->dados['atributos']['SELLER_SKU']['value_name'] ?? ''));
+
+        return $sku !== '' ? $sku : null;
+    }
+
     private function linha(PubProduto $p, ?PubRascunho $r, ?RascunhoSnapshot $digitado, array $ef, int $id, ?PubValidacao $v, int $fotos, ?array $naFila, bool $conferindo, ?string $statusKitAuto): array
     {
         $conta = $p->contaOuNula();
@@ -184,6 +196,9 @@ final class ResumoRapidoService
             'produto_id' => (int) $p->id,
             'rascunho_id' => $r?->id,
             'sku' => $p->skuExibido(),
+            // O SKU que vai ao anúncio quando há UMA variação ativa (23/10/2026, P-10): o "SKU" acima é o código do
+            // produto no Portal — o Sofá mostrava SFCHST e anunciava SFCHST-2.
+            'sku_do_anuncio' => self::skuDaVarianteUnica($digitado),
             'nome' => $p->nomeExibido(),
             'rotulo_fase' => ProgramasPublicadorService::rotuloFase($p->quantidade_kit, $composto),
             'eh_kit' => $p->ehKit(),
@@ -558,6 +573,8 @@ final class ResumoRapidoService
             eixos: $eixos,
             variantes: $variantes,
             alvos: $r->alvos->map(fn ($a) => new Alvo($a->listing_type_id, $a->titulo, (bool) $a->ativo))->all(),
+            // Só a montagem do payload lê isto (a capa do kit não alterna); a visão rápida não monta payload, então a soma do
+            // composto (`PubProduto::unidadesDaOferta`, uma consulta por linha) fica de fora daqui.
             unidadesPorOferta: max(1, (int) ($p->quantidade_kit ?? 1)),
         );
     }

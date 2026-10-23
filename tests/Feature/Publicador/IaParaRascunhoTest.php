@@ -88,7 +88,7 @@ class IaParaRascunhoTest extends TestCase
     {
         return $extra + [
             'category_id' => self::CADEIRA,
-            'titulo' => 'Cadeira de Escritório Executiva Giratória Ergonômica',
+            'titulo' => 'Cadeira De Escritório Executiva Giratória Ergonômica',
             'atributos' => [
                 ['id' => 'BRAND', 'value_name' => 'ECF'],
                 ['id' => 'MODEL', 'value_name' => 'Executiva'],
@@ -230,8 +230,8 @@ class IaParaRascunhoTest extends TestCase
         $this->assertSame('70 cm', $s->atributos['SELLER_PACKAGE_LENGTH']['value_name']);
         $this->assertSame('12000 g', $s->atributos['SELLER_PACKAGE_WEIGHT']['value_name']);
         // Título nos dois tipos, descrição sem HTML, garantia pelos ids do schema.
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_special'));
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_special'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
         $this->assertStringNotContainsString('<', (string) $r->descricao);
         $this->assertStringContainsString('Cadeira executiva giratória.', (string) $r->descricao);
         $this->assertStringContainsString('Encosto alto.', (string) $r->descricao);
@@ -263,7 +263,8 @@ class IaParaRascunhoTest extends TestCase
         ]));
 
         $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
-        $this->assertSame("Olá! Cadeira executiva giratória\nEncosto alto\nBase cromada", $r->descricao);
+        // Demo 23/10: a saudação sai, o resto da linha fica.
+        $this->assertSame("Cadeira executiva giratória\nEncosto alto\nBase cromada", $r->descricao);
     }
 
     public function test_rodar_de_novo_nao_reaplica(): void
@@ -297,8 +298,8 @@ class IaParaRascunhoTest extends TestCase
         $r = $r->fresh();
         $this->assertSame(self::FURADEIRA, $r->categoria_id);
         $this->assertSame('Descrição da equipe', $r->descricao);
-        $this->assertSame('Título da equipe', $this->titulo('gold_special'));
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame('Título Da Equipe', $this->titulo('gold_special'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
         $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $r->garantia);
         $this->assertFalse($a->resultado['publicador']['sobrescreveu']);
         $this->afirmarSemRedeSemWizardAntigo();
@@ -336,8 +337,8 @@ class IaParaRascunhoTest extends TestCase
         $this->assertTrue($a->resultado['publicador']['sobrescreveu']);
         $this->assertSame(self::CADEIRA, $r->categoria_id);
         $this->assertSame('ECF', $this->snap()->atributos['BRAND']['value_name']);
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_special'));
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_special'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
         $this->assertStringContainsString('Cadeira executiva giratória.', (string) $r->descricao);
         $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $r->garantia);
     }
@@ -440,12 +441,12 @@ class IaParaRascunhoTest extends TestCase
 
         $s = $this->snap();
         $this->assertSame('Marca da equipe', $s->atributos['BRAND']['value_name'], 'digitado vence: a IA não sobrescreve');
-        $this->assertSame('Título da equipe', $this->titulo('gold_special'));
+        $this->assertSame('Título Da Equipe', $this->titulo('gold_special'));
         $this->assertSame('Descrição da equipe', $r->fresh()->descricao);
         // O que estava vazio a IA preencheu.
         $this->assertSame(self::CADEIRA, $r->fresh()->categoria_id);
         $this->assertSame('Executiva', $s->atributos['MODEL']['value_name']);
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
         $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $r->fresh()->garantia);
         $this->assertFalse($a->resultado['publicador']['sobrescreveu']);
         $this->afirmarSemRedeSemWizardAntigo();
@@ -565,8 +566,8 @@ class IaParaRascunhoTest extends TestCase
         $this->assertSame('Modelo B', $s->atributos['MODEL']['value_name']);
         $this->assertSame('Linha da equipe', $s->atributos['LINE']['value_name']);
         $this->assertSame('ECF', $s->atributos['BRAND']['value_name'], 'o vazio a IA preencheu');
-        $this->assertSame('Título B da equipe', $this->titulo('gold_special'));
-        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame('Título B Da Equipe', $this->titulo('gold_special'));
+        $this->assertSame('Cadeira De Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
         $alvo = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail()->alvos()->where('listing_type_id', 'gold_pro')->firstOrFail();
         $this->assertFalse((bool) $alvo->ativo, 'o título não liga o tipo que a pessoa desligou');
     }

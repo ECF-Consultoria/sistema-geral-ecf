@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Jobs\Publicador\GerarPalavrasChaveIaJob;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
@@ -21,7 +22,7 @@ use Illuminate\Support\Str;
  * Publicador de 03/10/2026, `melhoria_publicador.docx` §2 e §3).
  *
  * Os termos vêm do `GET /trends/MLB/{categoria}` (o mesmo serviço da
- * Incubadora). A IA (NVIDIA, `AnaliseAnuncioService`) escolhe os coerentes
+ * Incubadora). A IA (`AnaliseAnuncioService`) escolhe os coerentes
  * com o produto; o corte no limite é daqui, porque o modelo erra contagem.
  *
  * A IA leva de segundos a minutos: roda em Job e o resultado fica no cache
@@ -301,17 +302,28 @@ class PalavrasChaveService
     /**
      * Título limpo: sem os caracteres que o ruleset ECF proíbe, cortado na
      * última palavra inteira que cabe no máximo da categoria e com a 1ª letra
-     * maiúscula (19/10/2026, `TituloDoProduto`).
+     * de cada palavra maiúscula (20/10/2026, `TituloDoProduto`).
      */
     public static function ajustarTitulo(string $bruto, int $maximo): string
     {
         $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N} ]+/u', ' ', $bruto)));
         if (mb_strlen($limpo) <= $maximo) {
-            return (string) TituloDoProduto::capitalizar($limpo);
+            return (string) TituloDoProduto::capitalizar(self::semLigacaoNoFim($limpo));
         }
         $cortado = mb_substr($limpo, 0, $maximo + 1);
 
-        return (string) TituloDoProduto::capitalizar(trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo)));
+        return (string) TituloDoProduto::capitalizar(self::semLigacaoNoFim(trim(mb_substr($cortado, 0, (int) mb_strrpos($cortado, ' ')) ?: mb_substr($limpo, 0, $maximo))));
+    }
+
+    /**
+     * O corte no limite deixava palavra de ligação solta no fim — "Kit Mesa De Jantar Com 2 Cadeiras Aurora Com"
+     * (23/10/2026, P-21). Sai do fim; a que estiver no meio fica.
+     */
+    private static function semLigacaoNoFim(string $titulo): string
+    {
+        $sem = trim((string) preg_replace('/(?:\s+(?:de|da|do|das|dos|com|e|em|para|sem|a|o))+$/iu', '', $titulo));
+
+        return $sem !== '' ? $sem : $titulo;
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
@@ -507,7 +519,83 @@ class PalavrasChaveService
     /** O bruto da IA sem marca/"ECF"/número de especificação e cortado no máximo da categoria. */
     private function finalizarTitulo(string $bruto, array $c): string
     {
-        return self::ajustarTitulo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $c['maximo']);
+        $prefixo = (string) ($c['prefixo'] ?? '');
+        // 23/10/2026 (P-03): sem nada além do prefixo, não há título. Antes, a IA que devolvia um dos dois vazio virava
+        // "Kit 2" (ou "Kit Com 4 Cadeiras"), não-vazio, e o Premium não herdava o Clássico — ia assim ao ML.
+        $comPrefixo = self::comPrefixo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $prefixo);
+        if ($comPrefixo === '') {
+            return '';
+        }
+
+        return self::ajustarTitulo(self::comTermosDoKit($comPrefixo, (array) ($c['termos_do_kit'] ?? []), $prefixo), $c['maximo']);
+    }
+
+    /**
+     * O título do kit de produtos diferentes DIZ a composição (22/10/2026): "Kit Mesa Jantar 120x80 Retangular…" saiu do
+     * combit Mesa + 4 Cadeiras sem as cadeiras — a IA as cortou para caber nos 60 caracteres. O termo que falta
+     * ("4 Cadeiras") entra LOGO DEPOIS do nome do produto principal ("Kit Mesa Jantar com 4 Cadeiras 120x80…"), para o
+     * corte do fim (`ajustarTitulo`) e a diferenciação do Premium (`RegrasDoTitulo::diferenciar`, que só mexe no fim)
+     * nunca o tirarem. O que a IA já escreveu ("4 Cadeiras", "4 cadeira") fica como está.
+     *
+     * @param  list<array{texto: string, palavra: string, plural: string, quantidade: int}>  $termos  `ComposicaoDoComposto::termosDoTitulo()`
+     */
+    public static function comTermosDoKit(string $titulo, array $termos, string $prefixo = ''): string
+    {
+        $normal = fn (string $t) => mb_strtolower(Str::ascii($t));
+        $doTitulo = ' '.$normal($titulo).' ';
+        $faltam = [];
+        foreach ($termos as $t) {
+            $palavras = '(?:'.preg_quote($normal((string) $t['palavra']), '/').'|'.preg_quote($normal((string) $t['plural']), '/').')';
+            $padrao = (int) $t['quantidade'] > 1 ? '/\b'.(int) $t['quantidade'].'\s+'.$palavras.'/u' : '/\b'.$palavras.'/u';
+            if (preg_match($padrao, $doTitulo) !== 1) {
+                $faltam[] = (string) $t['texto'];
+            }
+        }
+        if ($faltam === []) {
+            return $titulo;
+        }
+
+        $prefixo = trim($prefixo);
+        $resto = $prefixo !== '' && str_starts_with($titulo, $prefixo) ? trim(mb_substr($titulo, mb_strlen($prefixo))) : $titulo;
+        $tokens = preg_split('/\s+/u', trim($resto), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // O nome do produto principal: a 1ª palavra e, se vier, "de Jantar" ou um qualificador ("Jantar", "Retangular").
+        $fim = min(1, count($tokens));
+        if (isset($tokens[1])) {
+            $segunda = $normal($tokens[1]);
+            if (in_array($segunda, ['de', 'da', 'do', 'das', 'dos', 'para'], true) && isset($tokens[2])) {
+                $fim = 3;
+            } elseif (preg_match('/^\p{L}+$/u', $tokens[1]) === 1 && ! in_array($segunda, ['com', 'e'], true)) {
+                $fim = 2;
+            }
+        }
+        $com = 'com '.(count($faltam) === 1 ? $faltam[0] : implode(', ', array_slice($faltam, 0, -1)).' e '.end($faltam));
+        $novo = trim(implode(' ', [...array_slice($tokens, 0, $fim), $com, ...array_slice($tokens, $fim)]));
+
+        return trim(($prefixo !== '' && $resto !== $titulo ? $prefixo.' ' : '').$novo);
+    }
+
+    /**
+     * O título do composto do Planejamento COMEÇA pelo prefixo do kit ("Kit 2", ou "Kit" com produtos diferentes) —
+     * 21/10/2026: o kit "1 Cinza + 1 Bordô" saiu "Poltrona Decorativa Sala…", sem dizer que é kit. O "Kit"/"Kit N"
+     * que a IA já tenha posto no começo sai antes, para não repetir. Sem prefixo, o título fica como veio.
+     */
+    public static function comPrefixo(string $titulo, string $prefixo): string
+    {
+        $prefixo = trim($prefixo);
+        if ($prefixo === '') {
+            return $titulo;
+        }
+        $sem = trim((string) preg_replace('/^\s*kit(\s+\d+)?\b/iu', '', $titulo));
+        // A IA que começa pela quantidade ("2 Poltronas…") não repete o número do prefixo: era "Kit 2 2 Poltronas" (P-21).
+        if (preg_match('/(\d+)$/u', $prefixo, $n) === 1) {
+            $sem = trim((string) preg_replace('/^'.$n[1].'\s+/u', '', $sem));
+        }
+        // Só o prefixo não é título (P-03): vazio, para o outro tipo de anúncio valer no lugar.
+        if ($sem === '') {
+            return '';
+        }
+
+        return trim($prefixo.' '.$sem);
     }
 
     /**
@@ -515,14 +603,16 @@ class PalavrasChaveService
      * marca), a marca (BRAND), a referência das medidas (nome do produto + termos) e as palavras que
      * podem diferenciar dois títulos.
      *
-     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>}
+     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>, prefixo: string, termos_do_kit: list<array>}
      */
     private function contextoDoTitulo(PubRascunho $r): array
     {
         [$categoria, $caminho] = $this->categoria($r);
         $schema = $this->schemas->obter($categoria);
         $termos = $this->termosParaIa($categoria, $r, $caminho);
-        $produto = $r->produto->nomeExibido();
+        // O composto do Planejamento é um KIT: o nome que a IA recebe diz o que ele junta, e o título começa por "Kit".
+        $composicao = ComposicaoDoComposto::doProduto($r->produto);
+        $produto = $composicao?->nomeDoKit() ?? $r->produto->nomeExibido();
         $fatos = $this->fatos($r, $schema, $produto, implode(' > ', $caminho), semMarca: true);
         $marca = $r->atributos()->where('attribute_id', self::ID_MARCA)->first();
         $marca = $marca ? self::valorDoAtributo($marca->value_id, $marca->value_name, null, null, $marca->values_multi) : '';
@@ -537,6 +627,8 @@ class PalavrasChaveService
             'marcas' => $marcas,
             'referencia' => $produto.' '.implode(' ', $termos),
             'candidatos' => RegrasDoTitulo::candidatos($termos, $produto, $fatos, $marcas),
+            'prefixo' => $composicao?->prefixoDoTitulo() ?? '',
+            'termos_do_kit' => $composicao?->termosDoTitulo() ?? [],
         ];
     }
 

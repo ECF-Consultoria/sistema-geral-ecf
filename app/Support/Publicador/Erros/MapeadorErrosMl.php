@@ -42,8 +42,12 @@ final class MapeadorErrosMl
      * o anúncio (N-16): `4053 shipping.lost_me1_by_user` = a conta não usa o
      * Mercado Envios 1. A equipe pediu para não vê-los (docx §5, 03/10/2026);
      * a resposta crua continua guardada na conferência.
+     *
+     * 22/10/2026: também o `350 item.shipping.mandatory_free_shipping` ("Neste preço o frete grátis é obrigatório:
+     * o Mercado Livre vai ativá-lo") — o usuário: "esse aviso nem precisa". A regra continua valendo: o frete grátis
+     * acima de R$ 79 já entra no preço (o vendedor paga) e o editor já liga o frete grátis sozinho.
      */
-    private const RUIDO = ['4053' => 'shipping.lost_me1_by_user'];
+    private const RUIDO = ['4053' => 'shipping.lost_me1_by_user', '350' => 'item.shipping.mandatory_free_shipping'];
 
     /** @param array{cause_id?: ?int, code?: string, type?: string} $causa */
     public static function ehRuido(array $causa): bool
@@ -71,14 +75,20 @@ final class MapeadorErrosMl
     {
         $causa = (array) ($issue['ml_causa'] ?? []);
         $crua = (string) ($causa['message'] ?? '');
-        if ($crua === '' || ($issue['mensagem'] ?? null) !== $crua) {
+        $id = isset($causa['cause_id']) ? (string) $causa['cause_id'] : '';
+        // Desde a demo de 23/10 o gravado é "…ainda não sabemos traduzir (código N)…", e não mais a crua: esse também
+        // ganha a tradução que entrar depois no dicionário (23/10/2026, P-23 — a regra tinha morrido para eles).
+        $gravada = $issue['mensagem'] ?? null;
+        if ($crua === '' || ($gravada !== $crua && $gravada !== self::semTraducao($id, (string) ($causa['code'] ?? ''), $crua))) {
             return $issue;
         }
 
-        $id = isset($causa['cause_id']) ? (string) $causa['cause_id'] : '';
         $modelo = ($id !== '' ? ($dicionario['por_codigo'][$id] ?? null) : null) ?? $dicionario['por_codigo'][(string) ($causa['code'] ?? '')] ?? null;
         if (is_string($modelo) && ! str_contains($modelo, '{')) {
             $issue['mensagem'] = $modelo;
+        } elseif ($modelo === null && self::trecho((string) ($causa['code'] ?? ''), $crua, $dicionario) === null) {
+            // Demo 23/10: código que o dicionário não conhece também não aparece mais só em inglês.
+            $issue['mensagem'] = self::semTraducao($id, (string) ($causa['code'] ?? ''), $crua);
         }
 
         return $issue;
@@ -245,17 +255,9 @@ final class MapeadorErrosMl
     private static function mensagem(string $id, string $code, string $msg, array $atributos, ?SchemaClassificado $schema, array $dicionario): string
     {
         $modelo = ($id !== '' ? ($dicionario['por_codigo'][$id] ?? null) : null) ?? $dicionario['por_codigo'][$code] ?? null;
+        $modelo ??= self::trecho($code, $msg, $dicionario);
         if ($modelo === null) {
-            $palheiro = mb_strtolower($code.' '.$msg);
-            foreach ((array) ($dicionario['por_trecho'] ?? []) as $trecho => $traducao) {
-                if (str_contains($palheiro, mb_strtolower($trecho))) {
-                    $modelo = $traducao;
-                    break;
-                }
-            }
-        }
-        if ($modelo === null) {
-            return $msg !== '' ? $msg : 'O Mercado Livre recusou o anúncio sem dizer o motivo.';
+            return $msg !== '' ? self::semTraducao($id, $code, $msg) : 'O Mercado Livre recusou o anúncio sem dizer o motivo.';
         }
 
         $nomes = $atributos !== []
@@ -266,5 +268,32 @@ final class MapeadorErrosMl
         $texto = str_replace(['{atributos}', ' ({valor})', '{valor}'], [$nomes, $valor !== '' ? " ({$valor})" : '', $valor], $modelo);
 
         return mb_strtoupper(mb_substr($texto, 0, 1)).mb_substr($texto, 1);
+    }
+
+    /** A tradução por trecho da mensagem (`por_trecho` do dicionário), quando o código não tem modelo. */
+    private static function trecho(string $code, string $msg, array $dicionario): ?string
+    {
+        $palheiro = mb_strtolower($code.' '.$msg);
+        foreach ((array) ($dicionario['por_trecho'] ?? []) as $trecho => $traducao) {
+            if (str_contains($palheiro, mb_strtolower($trecho))) {
+                return $traducao;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Demo 23/10/2026: o código que o dicionário ainda não conhece. Antes a tela mostrava a mensagem do Mercado
+     * Livre como veio, em inglês e em vermelho. Agora vem em português na frente, com o código do ML entre
+     * parênteses; o texto original fica no fim, entre aspas, porque é ele que o suporte usa para pôr o código
+     * no dicionário (`config/publicador_erros.php`). A causa crua inteira continua guardada em `ml_causa`.
+     */
+    private static function semTraducao(string $id, string $code, string $msg): string
+    {
+        $codigo = $id !== '' ? $id : $code;
+
+        return 'O Mercado Livre apontou um problema que ainda não sabemos traduzir'
+            .($codigo !== '' ? " (código {$codigo})" : '').': “'.trim($msg).'”.';
     }
 }

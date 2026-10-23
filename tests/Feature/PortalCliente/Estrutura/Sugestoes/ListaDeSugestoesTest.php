@@ -388,11 +388,12 @@ class ListaDeSugestoesTest extends TestCase
         $this->assertSame(['id', 'nome'], $this->chavesOrdenadas($item['familia']));
         foreach ($item['itens'] as $i) {
             $this->assertSame(
-                ['produto_id', 'produto_nome', 'quantidade', 'sku', 'tipo', 'tipo_nome', 'valor', 'variacao_id'],
+                ['foto', 'produto_id', 'produto_nome', 'quantidade', 'sku', 'tipo', 'tipo_nome', 'valor', 'variacao_id'],
                 $this->chavesOrdenadas($i)
             );
         }
-        $this->assertSame(['chave', 'pacote', 'peso_faturado', 'sem_medida'], $this->chavesOrdenadas($item['logistica']));
+        // 23/10/2026 (P-27): + destino (fora do ME2: transportadora ou a combinar).
+        $this->assertSame(['chave', 'destino', 'pacote', 'peso_faturado', 'sem_medida'], $this->chavesOrdenadas($item['logistica']));
         $this->assertNull($item['descartada_em']);
 
         EstruturaSugestaoDescartada::create(['company_id' => $empresa->id, 'chave' => $item['chave'], 'fase' => $item['fase']]);
@@ -437,7 +438,7 @@ class ListaDeSugestoesTest extends TestCase
         [$empresa] = $this->cenario();
 
         $esperado = ['aba', 'chaves_filtradas', 'combos_recolhidos', 'contagens', 'excedeu_teto', 'familia_ambientes', 'familia_continua', 'familia_totais',
-            'familias', 'gerado_em', 'grupos', 'itens', 'limites', 'paginacao', 'por_fase', 'por_status', 'produtos', 'produtos_sem_tipo',
+            'familias', 'gerado_em', 'grupos', 'itens', 'limites', 'paginacao', 'por_fase', 'por_status', 'previa', 'produtos', 'produtos_sem_tipo',
             'resumo', 'tem_produtos', 'teto', 'tipos'];
 
         foreach (['sugestoes', 'sem_tipo', 'descartadas'] as $aba) {
@@ -446,6 +447,36 @@ class ListaDeSugestoesTest extends TestCase
             $this->assertSame(['combit', 'combo', 'kit', 'total'], $this->chavesOrdenadas($r['resumo']));
             $this->assertSame(['com_aviso', 'prontas', 'todas'], $this->chavesOrdenadas($r['por_status']));
         }
+    }
+
+    /**
+     * 21/10/2026 — a faixa "Sugestões para revisar": as primeiras do conjunto inteiro, Kits e Combits na frente,
+     * com o mesmo contrato do item da página (foto, logística e frete inclusos), sem seguir o filtro.
+     */
+    public function test_previa_traz_as_primeiras_com_kits_e_combits_na_frente(): void
+    {
+        [$empresa] = $this->cenario();
+        $r = $this->listar($empresa);
+
+        $this->assertCount(ListaDeSugestoes::PREVIA, $r['previa']);
+        $peso = ['kit' => 0, 'combit' => 1, 'combo' => 2];
+        $fases = array_map(fn ($s) => $peso[$s['fase']], $r['previa']);
+        $emOrdem = $fases;
+        sort($emOrdem);
+        $this->assertSame($emOrdem, $fases, 'Kits, depois Combits, depois Combos');
+        $this->assertSame(0, $fases[0], 'o catálogo tem Kit: ele abre a prévia');
+        $this->assertSame($this->chavesOrdenadas($r['itens'][0]), $this->chavesOrdenadas($r['previa'][0]), 'mesmo contrato do item da página');
+        foreach ($r['previa'] as $s) {
+            $this->assertNotNull($s['logistica']);
+            foreach ($s['itens'] as $i) {
+                $this->assertArrayHasKey('foto', $i);
+                $this->assertArrayHasKey($i['produto_id'], $r['produtos'], 'o produto da prévia vem junto (a janela de tipo)');
+            }
+        }
+
+        $this->assertSame(array_column($r['previa'], 'chave'), array_column($this->listar($empresa, ['fase' => 'combo', 'q' => 'zzz'])['previa'], 'chave'),
+            'a prévia não segue o filtro');
+        $this->assertSame([], $this->listar($empresa, ['aba' => 'descartadas'])['previa']);
     }
 
     /** @return array<string,int> variações por código */

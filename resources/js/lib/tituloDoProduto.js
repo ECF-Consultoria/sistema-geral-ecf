@@ -3,9 +3,11 @@
 // Uma regra só para o cadastro do produto no Portal e para o editor do Publicador.
 // Sem React e sem rota: testadas em tests/js/titulo-do-produto.test.js.
 //
-// - A 1ª letra do título é sempre maiúscula, inclusive acentuada (é → É); o resto
-//   fica como a pessoa escreveu. Quem garante é o servidor (`TituloDoProduto`); a
-//   tela só espelha, para o que se vê ser o que se grava.
+// - TODA palavra começa com maiúscula, inclusive acentuada e as de ligação
+//   ("puff pera com enchimento" → "Puff Pera Com Enchimento"; correção do usuário em
+//   20/10/2026 — antes era só a 1ª do título). Só a 1ª letra de cada palavra muda; o
+//   resto fica como a pessoa escreveu. Quem garante é o servidor (`TituloDoProduto`);
+//   a tela só espelha, para o que se vê ser o que se grava.
 // - O termo está "no título" quando todas as palavras dele estão lá, sem caixa,
 //   sem acento e sem pontuação nas pontas. É isso que marca o chip: o estado vem do
 //   TEXTO, então apagar o termo digitando desmarca o chip sozinho.
@@ -24,15 +26,8 @@ const palavrasDe = (s) => String(s ?? '').split(/\s+/).filter(Boolean);
 /** O limite que vale: o da categoria, ou o padrão enquanto ela não disse. */
 export const limiteDoTitulo = (limite) => (Number(limite) > 0 ? Math.trunc(Number(limite)) : LIMITE_TITULO_PADRAO);
 
-/** A 1ª letra em maiúscula; nada mais muda (nem os espaços). Começar por número não muda nada. */
-export function capitalizarTitulo(texto) {
-    const t = String(texto ?? '');
-    const i = t.search(/\S/);
-    if (i < 0) return t;
-    const maiuscula = t[i].toLocaleUpperCase('pt-BR');
-
-    return maiuscula === t[i] ? t : `${t.slice(0, i)}${maiuscula}${t.slice(i + 1)}`;
-}
+/** A 1ª letra de cada palavra em maiúscula; nada mais muda (nem os espaços). Palavra que começa por número fica. */
+export const capitalizarTitulo = (texto) => String(texto ?? '').replace(/(^|\s)(\p{Ll})/gu, (_, antes, letra) => `${antes}${letra.toLocaleUpperCase('pt-BR')}`);
 
 /** O termo já está inteiro no título? (é o que deixa o chip marcado) */
 export function termoNoTitulo(titulo, termo) {

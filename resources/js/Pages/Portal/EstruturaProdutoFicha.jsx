@@ -11,6 +11,7 @@ import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoPr
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
+import PrecificacaoDoProduto from '@/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
@@ -33,8 +34,8 @@ import {
 
 const CONFIRMA_SAIR = 'Há alterações não salvas neste produto. Sair sem salvar?';
 
-export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica, descricao, explicacoes_campos: explicacoes }) {
-    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes });
+export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica, descricao, explicacoes_campos: explicacoes, escopo_rascunho: escopoRascunho = null }) {
+    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes, escopoRascunho });
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
     const [excluindoProduto, setExcluindoProduto] = useState(false);   // janela "Excluir produto" (o produto inteiro, 10/10/2026)
@@ -266,9 +267,16 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </div>
                 )}
 
-                {ficha.aviso && (
-                    <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
+                {/* Produto novo: o que estava digitado antes de recarregar voltou sozinho (demo 23/10, N12). */}
+                {ficha.recuperado && (
+                    <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/20 bg-white/[0.06] px-3 py-2 text-[13px] text-white/85" data-rascunho-recuperado>
+                        <span>Recuperamos o que você tinha digitado neste produto. Ele ainda não foi salvo.</span>
+                        <button type="button" onClick={ficha.recomecar} disabled={ficha.salvando} data-acao="comecar-do-zero" className="text-white/60 hover:text-white hover:underline">Começar do zero</button>
+                    </div>
                 )}
+
+                {/* O aviso do Salvar mora só junto do botão (H3, mais abaixo): repetido aqui no topo, a mesma
+                    frase aparecia duas vezes na tela (teste da demo 23/10, A4). */}
 
                 {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
                 <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
@@ -311,8 +319,20 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </fieldset>
                 </section>
 
+                {/* A Precificação logo depois das Variações (20/10/2026): o custo é delas, e o preço sai daqui
+                    mesmo, sem trocar de tela. Só as variações deste produto; o frete grava na hora e o custo, com "Salvar produto". */}
+                <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas} />
+
                 <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
                 <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
+
+                {/* Demo 23/10 (H3): o aviso do topo e o erro da variação ficam longe do botão — clicar em Salvar
+                    parecia não fazer nada. O aviso fica aqui, colado aos botões (e só aqui). */}
+                {(ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
+                    <p role="alert" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar>
+                        {ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.'}
+                    </p>
+                )}
 
                 {/* Cancelar/Salvar saíram de dentro de Variações: com a Ficha técnica depois dela,
                     ali os botões ficariam no meio da página. As margens negativas acompanham o

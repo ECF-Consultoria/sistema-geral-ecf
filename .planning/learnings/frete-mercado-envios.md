@@ -75,6 +75,9 @@ volumoso faturava errado (20×20×20 com 500 g: 0,5 kg na planilha, 1,33 kg no M
   de propósito**, só para quando não há sugestão (ME1, logística declarada fora do ME2, oferta sem
   medidas): tirá-lo devolve o PUFF-AZ (Premium mais barato que o Clássico) às ofertas antigas sem
   produto. Se alguém pedir "sugerido → nulo" ao pé da letra, mostre este caso antes.
+- **Desde 21/10/2026 o ME1 e a logística declarada fora do ME2 TÊM sugestão** (§9): a referência do ML para a
+  caixa. Fora do ME2 a ordem é digitado → digitado do outro tipo → sugerido (`PrecificacaoEstrutura::fretes`,
+  `$foraDoMe2`). O "outro tipo" antes do sugerido segue protegendo o PUFF-AZ e não muda preço de quem digitou um tipo só.
 - Composta usa o pacote SOMADO dos componentes (`ConjuntoLogistico`) — provisório.
 - Carregar a página não chama o ML; o "Cotar agora" é a própria rota com `?cotar=1` (sem rota nova).
 - O Publicador herda (`DadosEfetivosService` lê `EstruturaPrecificacaoService::pagina`): o preço
@@ -127,3 +130,60 @@ de cada conta. Confirma a hipótese do usuário sobre a conta de teste.
   A #459 é uma das duas em Correios — os limites mais estreitos (100 / 200 cm). Nas contas dos clientes vale 200 / 300.
 - **Polos não foi conferido:** nenhum dos 44 tokens de Polos estava válido na hora (ver publicador-ml §32, janela das
   08h às 14h). As 63 lidas são da carteira de Performance, muitas de móveis.
+
+## 9. O pacote que não cabe: transportadora (ME1) ou "Combine a entrega" — e o número teórico que enganou (21/10/2026)
+
+**O que aconteceu:** o usuário perguntou "qual frete vamos pagar, e é o mesmo que precificamos?". A cotação da #459
+devolveu R$ 147,85 para a poltrona (70×85×90, 12 kg) e R$ 262,85 para o kit (70×85×180, 24 kg), e a primeira leitura
+foi "o limite do sistema está travando o automático". **Errado** — é a armadilha do §8: o `shipping_options/free`
+responde até para pacote fora do ME2. A #459 despacha pelos Correios (soma até 200) e não tem ME1: a poltrona (soma
+245) saiu "Combine a entrega", e o ML não cobra frete nenhum dela.
+
+**Medido de novo (só GET, tokens válidos, sem renovar):** 26 tokens válidos; 4 contas com ME1 (#165 LOJA SHEEP,
+#161, #167, #298 — `scratchpad/me1_anuncios.php` da sessão). Nos 481 anúncios ativos delas:
+
+| Modo no ML | Cabe no limite da modalidade da conta | Não cabe |
+|---|---|---|
+| `me2` | 421 | **0** |
+| `me1` | 32 (tag `optional_me1_chosen`: o vendedor escolheu) | 84 |
+| `not_specified` | 0 | 10 |
+
+A régua do `LogisticaProduto` (limites por modalidade no config) bate com o ML. Não troque por "cotar sempre".
+
+**O que o sistema passou a fazer:**
+- `ModalidadeDeEnvio` guarda, da MESMA leitura de `shipping_preferences`, se a conta tem ME1 (`me1` no cache;
+  `temMe1()`, `destinoFora()`). Leitura antiga (sem a chave `me1`) é relida no próximo "Cotar agora", que agora lê a
+  preferência mesmo quando nada da página cabe no ME2.
+- Precificação: o `envio.fora` diz `me1` ("ME1 · sua transportadora"), `combinar` ("A combinar com o comprador") ou
+  `fora` (conta não lida — o texto de antes). Digitado ≠ cotação da conta: a legenda diz "o ML cobra R$ X" e acende
+  quando o ML cobra MAIS que o digitado. O digitado nunca é trocado.
+- Publicador (`EnvioDoRascunhoService`, pacote do RASCUNHO): o "Calcular" usa a modalidade da conta (antes Correios
+  fixo) e, fora do ME2, desconta o frete da Precificação em vez do número teórico; frete grátis obrigatório não se
+  aplica fora do ME2; a conferência marca `fora_do_me2` e não compara frete (mesmo sem o aviso `lost_me2` do validate).
+  Sem a modalidade da conta lida, nada é julgado — segue como antes.
+
+**O que continua sem resposta do ML:** o frete do ME1 é a tabela do vendedor por destino (§8). O sistema não cota; o
+valor é o digitado. "A combinar": o comprador combina com o vendedor; se o preço tem frete embutido, é decisão comercial.
+
+**Atualização (mesmo dia, pedido do usuário):** "o frete tem que ser grátis acima de 79, porém pagamos por esse frete; e
+mesmo a combinar, ainda pagaremos um frete". Cotar ME1 de caixa que ainda não é anúncio dá 404 em toda conta com ME1
+(`/users/{id}/shipping_options`, testado com e sem `mode=me1`, preço e frete grátis); ME1 de anúncio existente varia
+com a transportadora, a cidade da loja e o destino (Poltrona Prada da VIGGORE: SP 137,95, RJ 89,88, Manaus sem
+cobertura). Decisão do usuário: o frete sugerido fora do ME2 é o que o ML calcula para a caixa — a TABELA pelo peso
+cubado dá o mesmo que a cotação (147,85 na faixa 80–90 kg; 262,85 acima de 150 kg). Só a Precificação pede isso
+(`fora_do_me2` no item do `FreteMe2Service`); Produtos, Planejamento e montagem seguem sem. Na tela: "referência do ML
+para a caixa", nunca "o ML cobra", e não acende.
+
+## 10. "Frete grátis" é o CLIENTE não pagar — o vendedor paga sempre (22/10/2026)
+
+O usuário, sobre o aviso da prévia "a entrega fica a combinar e o frete grátis não vale": "outro aviso nada a ver. Frete
+grátis é para o CLIENTE; ainda assim a gente paga o frete se for acima de 79. Oferecer frete grátis quer dizer o cliente
+não pagar o frete."
+
+- Frete grátis é uma promessa ao comprador, não uma regra do ML que "deixa de valer". Fora do Mercado Envios (ME1 ou "a
+  combinar") o vendedor continua entregando sem cobrar do comprador, e paga a entrega — por isso o preço leva o frete
+  (§9: a referência do ML para a caixa).
+- O ML derrubar a flag `free_shipping` do anúncio "a combinar" (publicador-ml §25) é um fato do anúncio, não do negócio.
+  Não escreva para o usuário que "o frete grátis não vale" nem "sem frete grátis".
+- Saíram por isso: o `aviso` da prévia (`PreviaDoAnuncioService::envioQueVaiValer`) e o "sem frete grátis" do texto do
+  4057 (`config/publicador_erros.php`). O aviso 350 já tinha virado ruído (publicador-ml §46).

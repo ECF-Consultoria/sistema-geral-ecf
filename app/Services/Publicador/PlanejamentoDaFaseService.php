@@ -10,21 +10,16 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaTipoProduto;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
-use App\Models\User;
-use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\Geracao\NomesSugeridos;
 use App\Services\Portal\Estrutura\Geracao\TipoDoProduto;
-use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Portal\VariantesPorCor;
 use App\Support\Publicador\RascunhoSnapshot;
-use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Planejamento do Portal × Fase N do Publicador (decisões do usuário de 09/10/2026).
@@ -158,18 +153,8 @@ class PlanejamentoDaFaseService
             ->whereIn('variacao_id', $variacoes->pluck('id'))->orderBy('id')->get(['id', 'variacao_id', 'sku'])
             ->unique('variacao_id')->keyBy('variacao_id');
 
-        $comOferta = $variacoes->filter(fn (EstruturaProdutoVariacao $v) => $ofertas->has($v->id))->values();
-        $separacao = CoresDoGrupo::separar($comOferta->map(fn (EstruturaProdutoVariacao $v) => [
-            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
-        ])->all());
-        $entram = array_flip($separacao['agrupaveis']);
-
         $cores = [];
-        foreach ($comOferta as $v) {
-            if (! isset($entram[(int) $v->id])) {
-                continue;
-            }
-            $oferta = $ofertas->get($v->id);
+        foreach (self::coresQueEntram($variacoes, $ofertas) as [$v, $oferta]) {
             $cores[(int) $v->id] = [
                 'valor' => trim((string) $v->valor),
                 'oferta_id' => (int) $oferta->id,
@@ -179,6 +164,79 @@ class PlanejamentoDaFaseService
         }
 
         return $cores;
+    }
+
+    /**
+     * {@see quantidadesDoPlanejamento()} de VÁRIOS produtos do Portal da mesma Company numa leva só (a vitrine,
+     * 20/10/2026): as mesmas regras — só as cores que entram no grupo (`CoresDoGrupo`) e Combo de UM componente
+     * com quantidade 2 ou mais — em três consultas, qualquer que seja o número de produtos.
+     *
+     * @param  list<int>  $produtoIds  produtos do Portal (`estrutura_produtos.id`)
+     * @return array<int, list<int>> produto do Portal → as quantidades, em ordem (produto sem Combo não entra)
+     */
+    public function quantidadesDoPlanejamentoEmLote(int $companyId, array $produtoIds): array
+    {
+        $produtoIds = array_values(array_unique(array_map('intval', $produtoIds)));
+        if ($produtoIds === []) {
+            return [];
+        }
+
+        $variacoes = EstruturaProdutoVariacao::query()->where('company_id', $companyId)->whereIn('produto_id', $produtoIds)
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'eixo', 'valor', 'codigo', 'ordem']);
+        if ($variacoes->isEmpty()) {
+            return [];
+        }
+
+        $ofertas = EstruturaOferta::query()->where('company_id', $companyId)->where('fase', EstruturaOferta::FASE_SIMPLES)
+            ->whereIn('variacao_id', $variacoes->pluck('id'))->orderBy('id')->get(['id', 'variacao_id', 'sku'])
+            ->unique('variacao_id')->keyBy('variacao_id');
+
+        $produtoDaOferta = [];
+        foreach ($variacoes->groupBy('produto_id') as $produtoId => $doProduto) {
+            foreach (self::coresQueEntram($doProduto->values(), $ofertas) as [, $oferta]) {
+                $produtoDaOferta[(int) $oferta->id] = (int) $produtoId;
+            }
+        }
+        if ($produtoDaOferta === []) {
+            return [];
+        }
+
+        $porProduto = [];
+        foreach ($this->linhasDeCombo($companyId, array_keys($produtoDaOferta)) as $l) {
+            $porProduto[$produtoDaOferta[(int) $l->componente_id]][(int) $l->quantidade] = true;
+        }
+
+        return array_map(function (array $quantidades) {
+            $lista = array_keys($quantidades);
+            sort($lista);
+
+            return $lista;
+        }, $porProduto);
+    }
+
+    /**
+     * As variações de UM produto que entram no grupo (a régua do Sincronizar, `CoresDoGrupo`), na ordem
+     * recebida, cada uma com a sua oferta Simples. Variação sem oferta Simples nem entra na conta.
+     *
+     * @param  Collection<int, EstruturaProdutoVariacao>  $variacoes  as do produto, em ordem
+     * @param  Collection<int, EstruturaOferta>  $ofertas  variacao_id → a oferta Simples
+     * @return list<array{0: EstruturaProdutoVariacao, 1: EstruturaOferta}>
+     */
+    private static function coresQueEntram(Collection $variacoes, Collection $ofertas): array
+    {
+        $comOferta = $variacoes->filter(fn (EstruturaProdutoVariacao $v) => $ofertas->has($v->id))->values();
+        $entram = array_flip(CoresDoGrupo::separar($comOferta->map(fn (EstruturaProdutoVariacao $v) => [
+            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
+        ])->all())['agrupaveis']);
+
+        $saida = [];
+        foreach ($comOferta as $v) {
+            if (isset($entram[(int) $v->id])) {
+                $saida[] = [$v, $ofertas->get($v->id)];
+            }
+        }
+
+        return $saida;
     }
 
     /**
@@ -199,20 +257,8 @@ class PlanejamentoDaFaseService
             return [];
         }
 
-        $linhas = DB::table('estrutura_oferta_componentes as c')
-            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
-            ->where('o.company_id', $companyId)
-            ->where('o.fase', EstruturaOferta::FASE_COMBO)
-            ->whereIn('c.componente_id', array_keys($corDaOferta))
-            ->where('c.quantidade', '>=', 2)
-            // Combo é UM componente; composição montada à mão com dois não é o combo de uma cor.
-            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('estrutura_oferta_componentes as c2')
-                ->whereColumn('c2.oferta_id', 'c.oferta_id')->whereColumn('c2.id', '<>', 'c.id'))
-            ->orderBy('o.id')
-            ->get(['c.oferta_id', 'c.componente_id', 'c.quantidade', 'o.sku', 'o.nome']);
-
         $saida = [];
-        foreach ($linhas as $l) {
+        foreach ($this->linhasDeCombo($companyId, array_keys($corDaOferta)) as $l) {
             $variacaoId = $corDaOferta[(int) $l->componente_id];
             $saida[(int) $l->quantidade][$variacaoId] ??= [
                 'oferta_id' => (int) $l->oferta_id,
@@ -224,6 +270,28 @@ class PlanejamentoDaFaseService
         ksort($saida);
 
         return $saida;
+    }
+
+    /**
+     * Os componentes de Combo (da MESMA Company) entre as ofertas Simples dadas: um componente só, de
+     * quantidade 2 ou mais, na ordem das ofertas Combo (a mais antiga primeiro).
+     *
+     * @param  list<int>  $componenteIds  ids de ofertas Simples
+     * @return Collection<int, object{oferta_id: int, componente_id: int, quantidade: int, sku: string, nome: ?string}>
+     */
+    private function linhasDeCombo(int $companyId, array $componenteIds): Collection
+    {
+        return DB::table('estrutura_oferta_componentes as c')
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
+            ->where('o.company_id', $companyId)
+            ->where('o.fase', EstruturaOferta::FASE_COMBO)
+            ->whereIn('c.componente_id', $componenteIds)
+            ->where('c.quantidade', '>=', 2)
+            // Combo é UM componente; composição montada à mão com dois não é o combo de uma cor.
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('estrutura_oferta_componentes as c2')
+                ->whereColumn('c2.oferta_id', 'c.oferta_id')->whereColumn('c2.id', '<>', 'c.id'))
+            ->orderBy('o.id')
+            ->get(['c.oferta_id', 'c.componente_id', 'c.quantidade', 'o.sku', 'o.nome']);
     }
 
     // ═══ Casamento com o rascunho ════════════════════════════════════════════
@@ -306,15 +374,16 @@ class PlanejamentoDaFaseService
     /**
      * O que o Planejamento diz sobre a Fase N deste base: para cada variante do rascunho do base que é
      * uma cor do Portal, a oferta Combo N daquela cor — a que já existe (SKU e preço da Precificação) ou
-     * a que vai nascer no Portal ao confirmar (SKU e nome no padrão do Planejamento, `NomesSugeridos`).
+     * o SKU e o nome que ela teria (padrão do Planejamento, `NomesSugeridos`), com `nova` — a cor ainda sem
+     * Combo N no Portal. O Publicador não cria essa oferta (20/10/2026): ela nasce só no Planejamento.
      *
      * Null quando o base não é agrupado, não tem rascunho ou nenhuma variante dele é cor do Portal: aí o
      * "Criar Fase N" segue a regra de antes (decisão 5 do outro dev — SKU `-KIT{N}` só no Publicador).
      * Nada é gravado aqui.
      *
-     * `$comPrecos = false` pula a Precificação (os preços saem nulos): é o que `garantirOfertas` usa,
-     * dentro da transação do kit, para não segurar as travas do rascunho e da Company montando o
-     * conjunto da empresa inteira por um número que ninguém grava.
+     * `$comPrecos = false` pula a Precificação (os preços saem nulos): é o que `skusDasOfertas` usa,
+     * dentro da transação do kit, para não segurar a trava do rascunho montando o conjunto da
+     * empresa inteira por um número que ninguém grava.
      *
      * @return ?array{produto_id: int, quantidade: int,
      *     por_variante: array<string, array{variacao_id: int, cor: string, oferta_id: ?int, sku: string, nome: string, componente_id: int, nova: bool, precos: array<string, ?float>}>,
@@ -383,75 +452,22 @@ class PlanejamentoDaFaseService
     }
 
     /**
-     * Garante no Portal as ofertas Combo N de cada cor do base e devolve o SKU de cada variante que é
-     * cor do Portal — o que a Fase N grava como SELLER_SKU (o Planejamento é a fonte do SKU).
+     * O SKU das ofertas Combo N que o Portal JÁ tem para as cores do base: chave da variante → SKU da
+     * oferta. É o que a Fase N grava como SELLER_SKU (o Planejamento é a fonte do SKU).
      *
-     * Roda DENTRO da transação do `CriarFaseService` (a mesma transação lógica do kit): se o kit não
-     * nascer, as ofertas também não. Idempotente: relê os Combos sob a trava da Company (a mesma do
-     * "Aceitar" do Planejamento, `DecisoesDasSugestoes`) e só cria a cor que ainda não tem — a que o
-     * cliente aceitou entre a prévia e o Confirmar é usada como está. Cria pelo caminho da Lista SKUs
-     * (`EstruturaOfertaService::criar`, regra de composição e registro no histórico do Portal, como
-     * equipe), e varre a espera de anúncios uma vez no fim, com os SKUs novos.
-     *
-     * Sem `$user` (chamada direta, sem pessoa) nada é criado: só as cores que já têm Combo N recebem o SKU.
+     * Só lê. Desde 20/10/2026 (decisão do usuário) Combo, Kit e Combit nascem SÓ no Planejamento do
+     * Portal: o Publicador não cria oferta lá — antes daquele dia, o "Criar Fase N" criava aqui as
+     * ofertas das cores que faltavam. A cor sem Combo N no Portal não entra no mapa (quem decide se
+     * ela fica no kit é quem cria a fase; a criação automática a deixa de fora).
      *
      * @return array<string, string> chave da variante do base → SKU da oferta Combo N daquela cor
-     *
-     * @throws RegraViolada KIT-07 quando o Portal recusa criar uma oferta
      */
-    public function garantirOfertas(PubProduto $base, int $n, ?User $user): array
+    public function skusDasOfertas(PubProduto $base, int $n): array
     {
         $plano = $this->daFase($base, $n, comPrecos: false);
-        if ($plano === null) {
-            return [];
-        }
-
-        $porVariante = $plano['por_variante'];
-        $novas = array_filter($porVariante, fn (array $i) => $i['nova']);
-        if ($novas !== [] && $user === null) {
-            Log::warning("[Publicador] Criar Fase {$n} do produto {$base->id} sem pessoa: as ofertas Combo {$n} que faltam no Portal não foram criadas.");
-        } elseif ($novas !== []) {
-            $empresa = Company::query()->whereKey($base->company_id)->lockForUpdate()->first();
-            if ($empresa === null) {
-                return [];
-            }
-            $agora = $this->combosPorQuantidade((int) $base->company_id, $this->coresDoProduto((int) $base->company_id, (int) $plano['produto_id']))[$n] ?? [];
-            $ator = AtorDoPortal::daEquipe($user);
-            $ofertas = app(EstruturaOfertaService::class);
-            $criados = [];
-
-            foreach ($novas as $chave => $item) {
-                $existente = $agora[$item['variacao_id']] ?? null;
-                if ($existente !== null) {
-                    $porVariante[$chave] = [...$item, ...$existente, 'nova' => false];
-
-                    continue;
-                }
-                try {
-                    [$oferta] = $ofertas->criar($empresa, [
-                        'sku' => $item['sku'],
-                        'fase' => EstruturaOferta::FASE_COMBO,
-                        'nome' => $item['nome'],
-                        'componentes' => [['id' => $item['componente_id'], 'quantidade' => $n]],
-                    ], $ator, varrerEspera: false);
-                } catch (ValidationException $e) {
-                    $motivo = (string) collect($e->errors())->flatten()->first();
-                    throw new RegraViolada('KIT-07', "O Portal não aceitou criar a oferta Combo {$n} da cor \"{$item['cor']}\" ({$item['sku']}): {$motivo}");
-                }
-                $porVariante[$chave] = [...$item, 'oferta_id' => (int) $oferta->id, 'sku' => (string) $oferta->sku, 'nova' => false];
-                $criados[] = (string) $oferta->sku;
-            }
-
-            if ($criados !== []) {
-                $ofertas->varrerEspera($empresa, $criados);
-                Log::info("[Publicador] Criar Fase {$n} do produto {$base->id}: ".count($criados)." oferta(s) Combo {$n} criada(s) no Portal da empresa {$empresa->id} ("
-                    .implode(', ', $criados).').');
-            }
-        }
-
         $skus = [];
-        foreach ($porVariante as $chave => $item) {
-            if ($item['oferta_id'] !== null) {
+        foreach ($plano['por_variante'] ?? [] as $chave => $item) {
+            if (! $item['nova'] && $item['oferta_id'] !== null) {
                 $skus[$chave] = $item['sku'];
             }
         }

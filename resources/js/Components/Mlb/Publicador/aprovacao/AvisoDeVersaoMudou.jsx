@@ -6,6 +6,13 @@ import {
     CLASSES_TEXTO_DO_AVISO,
 } from './KpisDoPainel';
 import { inteiroDoPainel, textoDoPainel } from './ImagemGrandeDoPainel';
+import {
+    CLASSES_FALHA,
+    CLASSES_FALHA_MENSAGEM,
+    CLASSES_FALHA_TEXTO,
+    CLASSES_GLIFO_FALHA,
+    GLIFO_FALHA,
+} from './IdentificacaoDaOferta';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 188, plano 12 — COL-04 / critério 17: O AVISO DE CONCORRÊNCIA.
@@ -124,6 +131,39 @@ export function avisoDeVersao(versaoVista, versaoAtual, mensagem) {
 
     // ⚠️ O número é INTEIRO PROVADO e entra por concatenação. **Nunca `String()`.**
     return { texto: TEXTO_PREFIXO + atual + TEXTO_SUFIXO, mensagemDoServidor: null };
+}
+
+// ═══ ⚠️⚠️ 23/10/2026 (P-18d) — A RECUSA QUE NÃO É CONFLITO ══════════════════
+//
+// Antes, TODO 422 do painel que trazia `regra` acendia o aviso acima ("↻ …
+// Recarregar a revisão"): um frete recusado (MOD-03) virava "a oferta mudou",
+// que é mentira. ➡️ Só o COL-04 de VERSÃO é conflito; as outras recusas são
+// erro da própria ação e aparecem AQUI, com a mensagem do SERVIDOR e sem o
+// botão de recarregar (recarregar não conserta um valor recusado).
+// ⚠️ O molde é o da "Falha na publicação" (`IdentificacaoDaOferta.jsx`, caixa
+// vermelha com o glifo `!`), IMPORTADO e reusado por SEMELHANÇA DE FUNÇÃO — "a
+// ação não passou" —, sem redeclarar medida nenhuma. O TEXTO do servidor é o sinal.
+
+/**
+ * A recusa do servidor que NÃO é conflito de versão (23/10/2026, P-18d).
+ *
+ * Usada no painel (ação fora de modal) e DENTRO dos modais, onde o que a pessoa
+ * digitou continua na tela para corrigir e reenviar.
+ *
+ * @param {object} props
+ * @param {unknown} [props.mensagem] a mensagem do servidor; sem ela, nada é desenhado
+ */
+export function AvisoDeRecusa({ mensagem = null }) {
+    const texto = textoDoPainel(mensagem);
+
+    if (texto === null) return null;
+
+    return (
+        <div role="alert" className={CLASSES_FALHA}>
+            <span className={CLASSES_GLIFO_FALHA}>{GLIFO_FALHA}</span>
+            <span className={cn(CLASSES_FALHA_TEXTO, CLASSES_FALHA_MENSAGEM)}>{texto}</span>
+        </div>
+    );
 }
 
 /**

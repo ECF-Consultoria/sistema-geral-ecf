@@ -129,6 +129,21 @@ export const mostraSeloDaIa = (marca, valorNaTela, valorNoServidor) => marca ===
     && String(valorNaTela ?? '').trim() !== ''
     && String(valorNaTela ?? '') === String(valorNoServidor ?? '');
 
+/**
+ * O que o campo do título de um tipo mostra (N21 e P-31d, 23/10/2026). Sem título próprio, o título que veio do
+ * Portal aparece como TEXTO do campo (`doPortal`). Apagar tudo volta a seguir o Portal (decisão §47), mas só quando a
+ * pessoa sai do campo: enquanto ela está nele, o campo que ELA esvaziou (`esvaziado`) fica vazio — antes ele voltava
+ * na hora com o título do Portal inteiro, e a letra seguinte ia para o fim dele ("… PretaM", gravado assim).
+ *
+ * @returns {{ valor: string, doPortal: boolean }}
+ */
+export const tituloNoCampo = ({ titulo = '', efetivo = null, comPortal = false, esvaziado = false } = {}) => {
+    const proprio = titulo ?? '';
+    if (proprio === '' && efetivo && comPortal && ! esvaziado) return { valor: efetivo, doPortal: true };
+
+    return { valor: proprio, doPortal: false };
+};
+
 // ─── Salvamento automático que falha (WR-F02) ───────────────────────────────
 
 /** Espera antes de cada nova tentativa de um salvamento que falhou (curta, poucas vezes). */
@@ -240,6 +255,23 @@ export const textoDaConferencia = (estado, nPendencias = 0, liberada = true, doM
     };
 
     return textos[estado] ?? textos.nao_conferido;
+};
+
+/**
+ * O selo do anúncio publicado na barra do editor (P-28, 23/10/2026). Dizia "Publicado no Mercado Livre" com o
+ * anúncio pausado ou em revisão: lê a mesma fonte da lista final da Prévia (`situacao_ml` de cada item criado,
+ * desde o R17/H21). Um anúncio fora do ar (ou todos do mesmo jeito) diz como está — "Pausado pelo Mercado Livre",
+ * "Em revisão no Mercado Livre", o texto que o servidor manda; mistura diz que nem tudo está no ar.
+ *
+ * @returns {{ tom: 'completo'|'aviso', texto: string }}
+ */
+export const situacaoDoPublicado = (publicacao) => {
+    const criados = (Array.isArray(publicacao?.itens) ? publicacao.itens : []).filter((i) => i?.ml_item_id);
+    const fora = criados.filter((i) => i.situacao_ml);
+    if (fora.length === 0) return { tom: 'completo', texto: 'Publicado no Mercado Livre' };
+    const textos = [...new Set(fora.map((i) => (typeof i.situacao_ml.texto === 'string' && i.situacao_ml.texto.trim() !== '' ? i.situacao_ml.texto : 'Fora do ar no Mercado Livre')))];
+
+    return { tom: 'aviso', texto: textos.length === 1 && fora.length === criados.length ? textos[0] : 'Nem tudo está no ar no Mercado Livre' };
 };
 
 /** Quantas das 8 seções estão prontas (sem BLOCKER; sem schema só a categoria pode estar). */

@@ -15,22 +15,24 @@ import { lerSemComentarios } from './_fonte.js';
 // painel de termos, da ficha do Portal e do painel do editor.
 //
 // Critérios de aceite cobertos aqui: o termo seleciona e desseleciona; apagar o termo à
-// mão desmarca o chip; "cadeira gamer" → "Cadeira gamer"; "ébano" → "Ébano"; tirar a 1ª
+// mão desmarca o chip; "cadeira gamer" → "Cadeira Gamer"; "ébano" → "Ébano"; tirar a 1ª
 // palavra capitaliza a seguinte; contador e trava no limite; a lista aparece inteira por
 // padrão; falha dos termos não impede digitar.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Regras puras ───────────────────────────────────────────────────────
 
-test('1ª letra maiúscula, inclusive acentuada; o resto do texto não muda', () => {
-    assert.equal(capitalizarTitulo('cadeira gamer'), 'Cadeira gamer');
+test('toda palavra começa com maiúscula, inclusive acentuada e as de ligação; o resto de cada palavra fica', () => {
+    // O exemplo do usuário (20/10/2026: "tem que ser todos").
+    assert.equal(capitalizarTitulo('Puff pera com enchimento'), 'Puff Pera Com Enchimento');
+    assert.equal(capitalizarTitulo('cadeira gamer'), 'Cadeira Gamer');
     assert.equal(capitalizarTitulo('ébano'), 'Ébano');
-    assert.equal(capitalizarTitulo('ônix preto'), 'Ônix preto');
-    assert.equal(capitalizarTitulo('Cadeira GAMER pRETA'), 'Cadeira GAMER pRETA');
+    assert.equal(capitalizarTitulo('poltrona ônix de veludo'), 'Poltrona Ônix De Veludo');
+    assert.equal(capitalizarTitulo('Cadeira GAMER pRETA'), 'Cadeira GAMER PRETA');
     assert.equal(capitalizarTitulo('mesa 160x90 MDF'), 'Mesa 160x90 MDF');
-    // Começar por número não muda nada; espaço na frente fica (quem apara é o servidor).
-    assert.equal(capitalizarTitulo('2 cadeiras'), '2 cadeiras');
-    assert.equal(capitalizarTitulo('  poltrona'), '  Poltrona');
+    // Palavra que começa por número não muda; os espaços ficam (quem apara é o servidor).
+    assert.equal(capitalizarTitulo('2 cadeiras'), '2 Cadeiras');
+    assert.equal(capitalizarTitulo('  poltrona  azul'), '  Poltrona  Azul');
     assert.equal(capitalizarTitulo(''), '');
     assert.equal(capitalizarTitulo(null), '');
 });
@@ -45,7 +47,7 @@ test('termo no título: todas as palavras, sem caixa, acento nem pontuação nas
 
 test('clicar acrescenta o termo; clicar de novo tira só ele e limpa os espaços', () => {
     const com = alternarTermo('Cadeira escritório', 'cadeira gamer');
-    assert.equal(com, 'Cadeira escritório gamer');
+    assert.equal(com, 'Cadeira Escritório Gamer');
     assert.equal(termoNoTitulo(com, 'cadeira gamer'), true);
 
     const sem = alternarTermo(com, 'cadeira gamer');
@@ -53,22 +55,23 @@ test('clicar acrescenta o termo; clicar de novo tira só ele e limpa os espaços
     assert.equal(sem, 'Escritório');
 
     // A sequência junta sai inteira e o resto fica como estava.
-    assert.equal(tirarTermo('Poltrona   decorativa sala  de estar  azul', 'sala de estar'), 'Poltrona decorativa azul');
+    assert.equal(tirarTermo('Poltrona   decorativa sala  de estar  azul', 'sala de estar'), 'Poltrona Decorativa Azul');
     // Termo espalhado: sai a 1ª ocorrência de cada palavra.
-    assert.equal(tirarTermo('Mesa jantar redonda madeira', 'mesa redonda'), 'Jantar madeira');
-    // Do zero: o título nasce com a 1ª letra maiúscula.
-    assert.equal(alternarTermo('', 'cadeira gamer'), 'Cadeira gamer');
+    assert.equal(tirarTermo('Mesa jantar redonda madeira', 'mesa redonda'), 'Jantar Madeira');
+    // Do zero: o título nasce com maiúscula em toda palavra.
+    assert.equal(alternarTermo('', 'cadeira gamer'), 'Cadeira Gamer');
 });
 
 test('tirar a 1ª palavra capitaliza a seguinte', () => {
-    assert.equal(tirarTermo('Cadeira gamer reclinável', 'cadeira'), 'Gamer reclinável');
-    assert.equal(tirarTermo('Puff ébano redondo', 'puff'), 'Ébano redondo');
+    assert.equal(tirarTermo('Cadeira gamer reclinável', 'cadeira'), 'Gamer Reclinável');
+    assert.equal(tirarTermo('Puff ébano redondo', 'puff'), 'Ébano Redondo');
 });
 
 test('apagar o termo à mão desmarca: o estado é do texto, não de uma marca guardada', () => {
     const titulo = alternarTermo('Cadeira', 'cadeira gamer');
+    assert.equal(titulo, 'Cadeira Gamer');
     assert.equal(termoNoTitulo(titulo, 'cadeira gamer'), true);
-    const digitado = titulo.replace(' gamer', '');
+    const digitado = titulo.replace(' Gamer', '');
     assert.equal(termoNoTitulo(digitado, 'cadeira gamer'), false);
 });
 

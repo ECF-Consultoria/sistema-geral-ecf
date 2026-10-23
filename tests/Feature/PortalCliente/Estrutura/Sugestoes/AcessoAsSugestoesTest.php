@@ -119,11 +119,19 @@ class AcessoAsSugestoesTest extends TestCase
         [$empresa] = $this->cenario();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
+        // 21/10/2026: a tela não tem abas; `?aba=` de link antigo é ignorado e os outros filtros seguem.
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
-                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+                ->where('filtros', ['aba' => 'sugestoes', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+
+        // Link antigo para as abas que saíram (Sem tipo, Descartadas) abre a tela de sempre.
+        foreach (['sem_tipo', 'descartadas'] as $antiga) {
+            $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => $antiga]))
+                ->assertOk()
+                ->assertInertia(fn ($page) => $page->where('filtros.aba', 'sugestoes')->where('sugestoes.aba', 'sugestoes'));
+        }
 
         // 08/10: famílias com Combos expandidos, "12,sem"; lixo fica de fora.
         $sessao->get(route('portal.auth.estrutura.sugestoes', ['combos' => '12,sem,../x,9999999999999']))

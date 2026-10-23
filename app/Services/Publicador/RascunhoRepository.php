@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\MlAnuncioCriativo;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
 use App\Models\PubImagemAtribuicao;
@@ -92,10 +93,15 @@ class RascunhoRepository
             ], fn ($x) => $x !== null && $x !== []), $v->publicada);
         })->all();
 
+        // O tipo do criativo que gerou cada foto (ambientada, fundo branco, textura…), quando foi a IA: é o que diz qual
+        // pode ser a capa do Premium (`OrdemCapaPorAlvo`, 22/10/2026). Foto do cliente não leva tipo.
+        $tipoDaFoto = $r->imagens->isEmpty() ? [] : MlAnuncioCriativo::query()
+            ->whereIn('pub_imagem_id', $r->imagens->pluck('id'))->pluck('slot', 'pub_imagem_id')->all();
         $imagens = [];
         foreach ($r->imagens as $img) {
             foreach ($img->atribuicoes as $at) {
-                $imagens[] = ['imagem' => (string) $img->id, 'grupo' => $at->grupo_chave, 'posicao' => $at->posicao];
+                $imagens[] = ['imagem' => (string) $img->id, 'grupo' => $at->grupo_chave, 'posicao' => $at->posicao]
+                    + (isset($tipoDaFoto[$img->id]) ? ['tipo' => (string) $tipoDaFoto[$img->id]] : []);
             }
         }
 
@@ -115,8 +121,9 @@ class RascunhoRepository
             // `loadMissing`, nunca `load`: o `snapshot()` roda em quase toda leitura
             // do módulo e o produto costuma já vir carregado por quem chamou —
             // `load()` refaria a consulta em todas elas. Produto nulo é caso real
-            // (D27: rascunho solto de oferta apagada) e vale 1 unidade.
-            unidadesPorOferta: max(1, (int) ($r->loadMissing('produto')->produto->quantidade_kit ?? 1)),
+            // (D27: rascunho solto de oferta apagada) e vale 1 unidade. O composto do Planejamento conta a soma
+            // dos componentes (21/10/2026: a capa dele não alterna entre Clássico e Premium, como a do combo).
+            unidadesPorOferta: $r->loadMissing('produto')->produto?->unidadesDaOferta() ?? 1,
         );
     }
 
@@ -179,7 +186,7 @@ class RascunhoRepository
     {
         DB::transaction(function () use ($r, $porTipo) {
             foreach ($porTipo as $tipo => $titulo) {
-                // Update pela query não passa pelo model: a 1ª letra maiúscula (19/10/2026) vai explícita.
+                // Update pela query não passa pelo model: a 1ª letra de cada palavra maiúscula (19/10/2026) vai explícita.
                 $r->alvos()->where('listing_type_id', $tipo)->update([
                     'titulo' => trim((string) $titulo) === '' ? null : TituloDoProduto::capitalizar(mb_substr(trim((string) $titulo), 0, 255)),
                 ]);

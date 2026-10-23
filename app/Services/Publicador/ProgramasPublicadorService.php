@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Cada linha devolvida por `empresas()`:
  * `{ chave, tipo: 'mlb_empresa'|'company', id, nome, identificador, company_id,
- *    tem_token, token_expirado, token: 'ativo'|'expirado'|'sem_token', link_reconexao,
+ *    tem_token, token_expirado, token: 'ativo'|'expirado'|'sem_token' ({@see estadoDoToken()}), link_reconexao,
  *    portal: { situacao, novas, sincronizado_em }, produtos, publicados, prontos,
  *    liberada, publicados_mes, erp: { nome }, fases: { kits } }`
  * (`publicados_mes` é extra, alimenta os indicadores; `erp` e `fases` entraram no
@@ -238,7 +238,7 @@ class ProgramasPublicadorService
             $meus = $meusProdutos->pluck('id');
 
             $ancora = $l['ancora'];
-            $token = $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo');
+            $token = self::estadoDoToken($ancora);
 
             $companyId = $l['company_id'];
             $totalOfertas = (int) ($companyId ? ($ofertasPor[$companyId] ?? 0) : 0);
@@ -595,7 +595,7 @@ class ProgramasPublicadorService
                     'company_id' => $l['company_id'],
                     'programa' => $programa,
                     // Mesmo cálculo de `empresas()` e de `empresaParaTela()` — um só vocabulário de estado.
-                    'token' => $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo'),
+                    'token' => self::estadoDoToken($ancora),
                 ];
             }))
             ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
@@ -796,7 +796,7 @@ class ProgramasPublicadorService
         $c = $alvo['company'];
 
         $ancora = $produto !== null ? $produto->contaOuNula() : PubProduto::ancoraComToken($e, $c);
-        $token = $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo');
+        $token = self::estadoDoToken($ancora);
 
         // A reconexão é a da MlbEmpresa que daria a conta: a da tela ou, no editor, a do próprio produto
         // (reconectar uma MlbEmpresa que o produto não tem não mudaria a conta dele).
@@ -915,6 +915,21 @@ class ProgramasPublicadorService
         $rascunhos = $rascunhos->groupBy('produto_id')->map(fn ($g) => $g->last());
         $rascunhoIds = $rascunhos->pluck('id')->all();
 
+        // Os SKUs das variações (23/10/2026, P-09/P-10): o "SKU" da lista é o código do produto do Portal, e o que vai ao
+        // anúncio é o da variação (o Sofá: SFCHST × SFCHST-2) — a busca acha pelos dois.
+        $skusDasVariantes = [];
+        foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
+            DB::table('pub_variante_atributos as a')->join('pub_variantes as v', 'v.id', '=', 'a.variante_id')
+                ->whereIn('v.rascunho_id', $lote)->where('a.attribute_id', 'SELLER_SKU')->whereNotNull('a.value_name')
+                ->orderBy('v.id')->get(['v.rascunho_id', 'a.value_name'])
+                ->each(function ($l) use (&$skusDasVariantes) {
+                    $sku = trim((string) $l->value_name);
+                    if ($sku !== '') {
+                        $skusDasVariantes[(int) $l->rascunho_id][$sku] = true;
+                    }
+                });
+        }
+
         foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
             // Última validação por rascunho (maior id).
             PubValidacao::query()->whereIn('rascunho_id', $lote)->orderBy('id')->get()
@@ -956,7 +971,7 @@ class ProgramasPublicadorService
                 });
         }
 
-        return $produtos->map(function (PubProduto $p) use ($capas, $rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta) {
+        return $produtos->map(function (PubProduto $p) use ($capas, $rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta, $skusDasVariantes) {
             $r = $rascunhos[$p->id] ?? null;
             $conta = $p->contaOuNula();
             $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
@@ -992,6 +1007,7 @@ class ProgramasPublicadorService
                 'status' => $status,
                 'status_rascunho' => $r?->status,
                 'anuncios' => $r ? array_values($anuncios[$r->id] ?? []) : [],
+                'skus_das_variantes' => $r ? array_keys($skusDasVariantes[$r->id] ?? []) : [],
                 'parcial' => $parcial,
                 'atualizado_em' => $atualizado?->toIso8601String(),
                 // WR-B01: a conta do PRODUTO (a que confere e publica) e se ela difere da do cabeçalho.
@@ -1009,6 +1025,8 @@ class ProgramasPublicadorService
                 'rotulo_fase' => self::rotuloFase($p->quantidade_kit, $composto),
                 // `combo|kit|combit` (o TIPO da oferta do Portal) ou null — escalar, sempre.
                 'composto' => $composto,
+                // 20/10/2026: produto do Portal — o combo dele se cria no Planejamento, sem "Criar Fase N".
+                'combos_no_portal' => CombosDoPlanejamentoService::doPortal($p),
                 'url_produto' => $chaveConta === null ? null
                     : route('mlb.anuncios.publicador.produto', ['conta' => $chaveConta, 'produto' => $p->id]),
                 // Estruturas conhecidas (o 175-10 as lê campo por campo, nunca como texto):
@@ -1021,5 +1039,21 @@ class ProgramasPublicadorService
                 'sugestao_kit' => $sugestoes[(int) $p->id] ?? null,
             ];
         })->sortByDesc('atualizado_em')->values()->all();
+    }
+
+    /**
+     * O estado da conexão com o Mercado Livre que as telas mostram: `sem_token` sem token utilizável (nenhum, ou
+     * revogado — {@see PubProduto::ancoraComToken()} já descarta o revogado) e `ativo` com token.
+     *
+     * Desde 20/10/2026 (decisão do usuário) o token VENCIDO conta como ativo: o access token do ML dura 6 h, o
+     * `ml:refresh-tokens` roda só às 08:00, e toda chamada renova sozinha (`MercadoLivreService::ensureValidToken`,
+     * `ClienteMlPublicador::tokenValido`). O "expirado" pintava de vermelho, toda tarde, conta que não estava
+     * desconectada (115 de 139 tokens às 15h40 daquele dia). Refresh token inválido vira `revoked` na 1ª renovação
+     * (`MercadoLivreService::refreshToken`), e aí a conta cai para `sem_token`, com o link de reconexão. O valor
+     * `expirado` segue aceito pelas telas, mas não sai mais daqui.
+     */
+    private static function estadoDoToken(?ContaMercadoLivre $ancora): string
+    {
+        return $ancora === null ? 'sem_token' : 'ativo';
     }
 }

@@ -16,6 +16,7 @@ use App\Models\PubRascunho;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PortalParaRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -116,6 +117,32 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         return PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $oferta->id, 'sku' => $sku, 'nome' => $sku, 'origem' => PubProduto::ORIGEM_PORTAL]);
     }
 
+    /**
+     * Uma poltrona em DUAS cores (Cinza e Bordô) — um produto só —, cada cor com a oferta simples e uma foto.
+     *
+     * @return array{0: EstruturaOferta, 1: EstruturaOferta}
+     */
+    private function poltronaDeDuasCores(): array
+    {
+        $p = EstruturaProduto::create(['company_id' => $this->empresa->id, 'codigo' => 'OPALA', 'nome' => 'Poltrona Opala',
+            'categoria_ml_id' => self::CADEIRA, 'categoria_ml_nome' => 'Categoria']);
+        EstruturaProdutoAtributo::create(['company_id' => $this->empresa->id, 'produto_id' => $p->id, 'atributo_id' => 'BRAND',
+            'atributo_nome' => 'Marca', 'valor' => 'ECF']);
+        $ofertas = [];
+        foreach (['Cinza', 'Bordô'] as $i => $cor) {
+            $v = EstruturaProdutoVariacao::create(['produto_id' => $p->id, 'company_id' => $this->empresa->id, 'ordem' => $i,
+                'codigo' => "OPALA-{$i}", 'eixo' => 'cor', 'valor' => $cor, 'custo' => 300, 'estoque' => 6]);
+            EstruturaProdutoVolume::create(['variacao_id' => $v->id, 'ordem' => 0, 'comprimento' => 70, 'largura' => 70, 'altura' => 80, 'peso' => 9]);
+            $ofertas[] = EstruturaOferta::create(['company_id' => $this->empresa->id, 'variacao_id' => $v->id, 'sku' => "OPALA-{$i}", 'fase' => 'simples', 'nome' => "Poltrona Opala {$cor}"]);
+            $caminho = "estrutura/{$this->empresa->id}/produtos/{$p->id}/variacoes/{$v->id}/foto.jpg";
+            Storage::disk('local')->put($caminho, $this->bytes());
+            EstruturaProdutoVariacaoImagem::create(['company_id' => $this->empresa->id, 'produto_id' => $p->id, 'variacao_id' => $v->id,
+                'caminho' => $caminho, 'nome_original' => 'foto', 'mime' => 'image/jpeg', 'tamanho' => 1000, 'largura' => 800, 'altura' => 800, 'ordem' => 0]);
+        }
+
+        return $ofertas;
+    }
+
     private function rascunho(PubProduto $pub): PubRascunho
     {
         return PubRascunho::where('produto_id', $pub->id)->firstOrFail();
@@ -169,6 +196,96 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $this->assertSame(2, $resumo['fotos_trazidas']);
         $this->assertFalse($resumo['intocavel']);
         Http::assertNothingSent();
+    }
+
+    /**
+     * 21/10/2026 — o kit "1 poltrona Cinza + 1 Bordô" (um produto em duas cores) herdava da peça "1" nos campos de
+     * quantidade, e o gerador de imagens desenhava uma poltrona por imagem; a capa alternava entre Clássico e Premium.
+     * Agora os campos de quantidade valem o kit, o snapshot conta 2 unidades (a capa não alterna) e a composição dá o
+     * nome do kit, o prefixo do título e a frase da cena.
+     */
+    public function test_kit_de_um_produto_em_duas_cores_conta_2_pecas_e_a_capa_nao_alterna(): void
+    {
+        [$cinza, $bordo] = $this->poltronaDeDuasCores();
+        $pub = $this->composta('kit', [[$cinza, 1], [$bordo, 1]], 'KT-OPALA');
+
+        $this->servico->preencher($pub);
+
+        $s = $this->snap($pub);
+        $this->assertSame('2', $s->atributos['UNITS_PER_PACK']['value_name'] ?? null, 'a categoria tem o campo e a peça não o preencheu: no kit, o total');
+        $this->assertSame(2, $s->unidadesPorOferta, 'a capa do kit não alterna entre Clássico e Premium');
+        $this->assertSame('Cinza e Bordô', $s->atributos['COLOR']['value_name'] ?? null, 'a Cor do kit sai das cores da composição, sem IA');
+        $c = ComposicaoDoComposto::doProduto($pub->fresh());
+        $this->assertSame(2, $c->total());
+        $this->assertTrue($c->mesmoProduto());
+        $this->assertSame('Kit 2 Poltrona Opala Cinza e Bordô', $c->nomeDoKit());
+        $this->assertSame('Kit 2', $c->prefixoDoTitulo());
+        $this->assertSame('1 Poltrona Opala Cinza e 1 Poltrona Opala Bordô', $c->descricao());
+        $this->assertStringContainsString('JUNTAS, na mesma imagem, exatamente 2 peças: 1 Poltrona Opala Cinza e 1 Poltrona Opala Bordô', $c->fraseDaCena());
+
+        $this->servico->preencher($pub->fresh());
+        $this->assertSame('2', $this->snap($pub)->atributos['UNITS_PER_PACK']['value_name'], 'rodar de novo não desfaz');
+    }
+
+    /**
+     * 23/10/2026 (teste do Publicador, P-11 e P-12): a Cor da ficha da peça principal e a Cor do kit decidiam a COLOR
+     * com o mesmo valor antigo — ela trocava a cada Sincronizar —, e o "É kit" vinha "Não" da peça. Agora a Cor é a do
+     * kit, estável, e o "É kit" é "Sim".
+     */
+    public function test_cor_do_kit_estavel_e_e_kit_sim(): void
+    {
+        [$cinza, $bordo] = $this->poltronaDeDuasCores();
+        $produto = EstruturaOferta::findOrFail($cinza->id)->variacao->produto_id;
+        foreach (['COLOR' => 'Preto', 'IS_KIT' => 'Não'] as $id => $valor) {
+            EstruturaProdutoAtributo::create(['company_id' => $this->empresa->id, 'produto_id' => $produto, 'atributo_id' => $id, 'atributo_nome' => $id, 'valor' => $valor]);
+        }
+        $pub = $this->composta('kit', [[$cinza, 1], [$bordo, 1]], 'KT-OPALA');
+
+        $this->servico->preencher($pub);
+        $this->assertSame('Cinza e Bordô', $this->snap($pub)->atributos['COLOR']['value_name'] ?? null);
+        $this->assertSame('242085', $this->snap($pub)->atributos['IS_KIT']['value_id'] ?? null, 'É kit: Sim');
+        $revisao = $this->rascunho($pub)->revisao;
+
+        foreach ([1, 2] as $vez) {
+            $this->servico->preencher($pub->fresh());
+            $this->assertSame('Cinza e Bordô', $this->snap($pub)->atributos['COLOR']['value_name'] ?? null, "a Cor não troca no {$vez}º Sincronizar de novo");
+            $this->assertSame('242085', $this->snap($pub)->atributos['IS_KIT']['value_id'] ?? null);
+        }
+        $this->assertSame($revisao, $this->rascunho($pub)->revisao, 'Sincronizar de novo sem mudança não sobe a revisão');
+    }
+
+    /** 23/10/2026 (P-11): só o eixo de cor é cor — mesa "120x80" + cadeira Cinza ia ao ML como "120x80 e Cinza". */
+    public function test_so_o_eixo_de_cor_entra_na_cor_do_kit(): void
+    {
+        [$mesa] = $this->componente('Mesa', self::CADEIRA, 5, 400);
+        EstruturaProdutoVariacao::whereKey(EstruturaOferta::findOrFail($mesa->id)->variacao_id)->update(['eixo' => 'tamanho', 'valor' => '120x80']);
+        [$cadeira] = $this->componente('Cadeira', self::CADEIRA, 20, 100);
+        EstruturaProdutoVariacao::whereKey(EstruturaOferta::findOrFail($cadeira->id)->variacao_id)->update(['valor' => 'Cinza']);
+        $pub = $this->composta('combit', [[$mesa, 1], [$cadeira, 4]], 'CT-MESA');
+
+        $c = ComposicaoDoComposto::doProduto($pub->fresh());
+        $this->assertSame(['Cinza'], $c->cores());
+        $this->assertSame('1 Mesa e 4 Cadeira Cinza', $c->descricao(), 'o tamanho não vira cor na descrição do kit');
+    }
+
+    /** Produtos diferentes (mesa + 4 cadeiras): as peças somam, o título começa só por "Kit". */
+    public function test_kit_de_produtos_diferentes_soma_as_pecas_e_o_prefixo_e_so_kit(): void
+    {
+        [$cadeira] = $this->componente('Cadeira', self::CADEIRA, 9, 150, 1);
+        [$mesa] = $this->componente('Mesa', self::PASTILHA, 3, 800, 1);
+        $pub = $this->composta('kit', [[$cadeira, 4], [$mesa, 1]]);
+
+        $c = ComposicaoDoComposto::doProduto($pub);
+        $this->assertSame(5, $c->total());
+        $this->assertFalse($c->mesmoProduto());
+        $this->assertSame('Kit', $c->prefixoDoTitulo());
+        $this->assertSame('Kit 4 Cadeira + Mesa', $c->nomeDoKit());
+        $this->assertSame(5, $pub->fresh()->unidadesDaOferta());
+        $this->assertSame([], $c->cores(), '"Unica" não é cor');
+        $this->assertSame('', $c->textoDaCor());
+        $avulso = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'AVULSO', 'nome' => 'Avulso', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $this->assertNull(ComposicaoDoComposto::doProduto($avulso), 'produto que não é composto');
+        $this->assertSame(1, $avulso->unidadesDaOferta());
     }
 
     public function test_kit_de_mesa_com_4_cadeiras_usa_categoria_e_ficha_da_mesa_e_fotos_dos_dois(): void

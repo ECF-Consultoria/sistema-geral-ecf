@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 // ─── Um bloco por variação (REF-2, 167-19) ──────────────────────────────────
 //
 // Miniatura, Ref + selo de logística, Ref · Eixo · Valor · Custo · Estoque em linha,
-// "Excluir variação" à direita, os volumes em cartões (2 por linha) e a faixa de
+// "Excluir variação" à direita, as caixas (volumes) em cartões (2 por linha) e a faixa de
 // calculados (só leitura). Só a Ref e o nome do produto são obrigatórios; o
 // Eixo é lista fechada e o Valor é texto livre (D-20). Cada rótulo leva o "o que é
 // isto?" (`ficha.explicacoes`, textos do servidor).
@@ -104,7 +104,9 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                                 </p>
                             </>
                         ) : (
-                            <input id={`estoque-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={variacao.estoque ?? ''} onChange={(e) => ficha.alterar(k, 'estoque', e.target.value)} placeholder="0" />
+                            // Demo 23/10 (N8): o número que já está no campo fica selecionado ao focar — clicar e
+                            // digitar "1" sobre um "1" dava "11".
+                            <input id={`estoque-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={variacao.estoque ?? ''} onFocus={(e) => e.target.select()} onChange={(e) => ficha.alterar(k, 'estoque', e.target.value)} placeholder="0" />
                         )}
                     </div>
                 </div>
@@ -123,10 +125,16 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                 </p>
             )}
 
-            <div className="mt-3 lg:mt-1 lg:grid lg:grid-cols-[84px_minmax(0,1fr)]">
-                <span className="mb-2 flex items-center gap-1 text-[15px] font-semibold text-white lg:mb-0 lg:items-start lg:pt-2.5">
-                    Volumes <Explicacao texto={explicacoes.volumes} nome="Volumes" />
-                </span>
+            {/* 21/10/2026, o usuário: "não deixa claro qual é a medida do produto e qual é a do produto embalado". O
+                volume é a caixa com o produto dentro, e é ele que calcula o frete; as medidas do produto sozinho
+                ficam no bloco "Medidas do produto (fora da caixa)". */}
+            <div className="mt-3 lg:mt-1 lg:grid lg:grid-cols-[150px_minmax(0,1fr)] lg:gap-3" data-caixas-da-variacao>
+                <div className="mb-2 lg:mb-0 lg:pt-2">
+                    <span className="flex items-center gap-1 text-[15px] font-semibold text-white">
+                        Caixa embalada <Explicacao texto={explicacoes.volumes} nome="Caixa embalada" />
+                    </span>
+                    <span className="block text-[12px] leading-4 text-white/55">com o produto dentro · é a que calcula o frete</span>
+                </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {caixas.map((caixa, i) => (
                         <CartaoVolume key={i} variacao={variacao} indice={i} caixa={caixa} ficha={ficha} />

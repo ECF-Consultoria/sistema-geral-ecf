@@ -487,6 +487,32 @@ test('tela 04 — próxima fase travada: cartão roadmap com o motivo do servido
     assert.match(tagDoBotao(html, 'Criar Fase 2'), /disabled=/);
 });
 
+test('tela 04 — produto do Portal (20/10/2026): no lugar do "Criar Fase", a frase e os combos que esperam', () => {
+    const motivo = 'Este produto vem do Portal: combo, kit e combit são decididos no Planejamento do Portal. O combo aceito lá vira fase aqui sozinho, depois que a Fase 1 é publicada.';
+    const html = desenhar(props({
+        proxima_fase: { numero: 3, quantidade_sugerida: 3, habilitado: false, motivo, combos_no_portal: true, combos_esperando: [3, 4], fase_1_no_ar: true },
+    }));
+    const texto = semTags(html);
+
+    assert.doesNotMatch(html, />\s*Criar Fase 3\s*</, 'nenhum botão "Criar Fase", nem travado');
+    assert.match(html, /data-combos-no-portal/);
+    assert.match(texto, /Vem do Planejamento do Portal/);
+    assert.match(texto, /Combos de 3 e 4 unidades aceitos no Planejamento/);
+    assert.match(texto, /combo, kit e combit são decididos no Planejamento do Portal/);
+    assert.match(html, /data-combos-esperando/, 'com a Fase 1 no ar, diz que o anúncio está sendo criado');
+    assert.doesNotMatch(texto, /Pronto para a Fase/);
+
+    // Fase 1 ainda não publicada: sem a linha de "criado em instantes".
+    const antes = desenhar(props({ proxima_fase: { numero: 2, habilitado: false, motivo, combos_no_portal: true, combos_esperando: [2], fase_1_no_ar: false } }));
+    assert.doesNotMatch(antes, /data-combos-esperando/);
+    assert.match(semTags(antes), /Combo de 2 unidades aceito no Planejamento/);
+
+    const { tituloDosCombosDoPortal } = painelModulo;
+    assert.equal(tituloDosCombosDoPortal([]), 'Combo, kit e combit são decididos no Planejamento do Portal');
+    assert.equal(tituloDosCombosDoPortal([2, 3, 6]), 'Combos de 2, 3 e 6 unidades aceitos no Planejamento');
+    for (const lixo of [null, 'x', [1, 'a', 2.5, null]]) assert.equal(tituloDosCombosDoPortal(lixo), 'Combo, kit e combit são decididos no Planejamento do Portal', JSON.stringify(lixo));
+});
+
 test('tela 04 — tabela de ofertas mostra o TIPO sem percentual de comissão (mockup desatualizado)', () => {
     const html = desenhar(props({
         ofertas: [ofertaBase({ tipo_rotulo: 'Premium' }), ofertaBase({ ml_item_id: 'MLB2222', tipo_rotulo: 'Clássico', preco: 169.9 })],

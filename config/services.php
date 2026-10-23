@@ -363,35 +363,56 @@ return [
     |--------------------------------------------------------------------------
     |
     | Proposital: NÃO amarrado a um provedor. Qualquer endpoint compatível com
-    | a API da OpenAI serve. Desde 29/09/2026: NVIDIA (build.nvidia.com), tier
-    | gratuito. Trocar é mudar `.env`, não código.
+    | a API da OpenAI serve. Trocar é mudar `.env`, não código.
     |
-    | Modelo: comparados em 29/09/2026 com os prompts reais do MAG T8. O
-    | `kimi-k3` acertou 4/4 títulos na régua ECF (58-60 caracteres, sem
-    | preposição) e escreveu a melhor descrição, em ~3 min as três etapas. O
-    | `gemma-4-31b-it` é o reserva: estável, mas tira acento dos títulos. O
-    | `nemotron-3-super` foi o mais rápido e quebrou o JSON dos títulos.
+    | Desde 20/10/2026: Gemini, pelo endpoint compatível com OpenAI, com a MESMA
+    | chave do Creative Engine (sem `LLM_API_KEY`, vale a `GEMINI_API_KEY`). De
+    | 29/09 a 19/10 foi a NVIDIA grátis: o `kimi-k3` saiu do ar lá em 15/10
+    | (HTTP 410) e tudo passou a sair do reserva `gemma-4-31b-it`, que tira acento.
+    |
+    | Medido em 20/10/2026 na produção, com 2 rascunhos reais da #459 e os
+    | caminhos do sistema (Modelo, títulos, preparo, MAG T8, ficha, kit,
+    | explicações), 22 chamadas por modelo:
+    | - `gemini-3.5-flash-lite` (principal): 22/22, ~1 s cada, sem raciocínio no
+    |   padrão, ~US$ 0,008 por produto com TODAS as etapas. Com
+    |   `reasoning_effort: low` custou 2,4× e os títulos saíram PIORES (1/6 na
+    |   régua 58-60 contra 5/7) — por isso nada de `reasoning_effort` aqui.
+    | - `gemini-3.8-flash` (reserva): pensa por padrão, e o raciocínio CONTA no
+    |   `max_tokens` — nos títulos (teto 2500) pensou 2399 e cortou o JSON
+    |   (`finish_reason: length`). É o que a `folga_raciocinio` abaixo resolve.
+    |   Não aceita `reasoning_effort: minimal` (HTTP 400); o mínimo dele é `low`.
+    |
+    | `regua` = toda etapa com régua de TAMANHO: o Modelo (perto de 120) e todo
+    | título (58-60) — por termos, do MAG T8 e do kit. Medido em 8 rascunhos da
+    | #459: o flash-lite deixa o Modelo curto (média 58 de 120) e erra a faixa
+    | do título (termos 3/32, MAG T8 11/26, kit 1/8). O gemma da NVIDIA fazia
+    | Modelo 80 e termos 16/32; o `gemini-3.8-flash` com esforço `low` faz 104,
+    | termos 18/32, MAG T8 26/32 e kit 7/8 — de 3 a 12 s e de US$ 0,0016 a
+    | 0,006 por chamada. Vazio = essas etapas usam o principal.
     |
     | `fallbacks`: lista separada por vírgula, tentada em ordem quando o modelo
-    | principal está sobrecarregado, mudo ou saiu do ar — na NVIDIA isso é
-    | rotina (deepseek-v4.1-flash e glm-5.3-flash ficaram 150s sem responder).
+    | principal está sobrecarregado, mudo ou saiu do ar.
     |
     | `timeout` é POR CHAMADA e o job ainda impõe um prazo total por cima (ver
-    | `GerarAnaliseAnuncioIaJob::PRAZO_S`). Os títulos do kimi levaram 106s.
+    | `GerarAnaliseAnuncioIaJob::PRAZO_S`).
     |
     */
     'llm' => [
-        'base_url'  => env('LLM_BASE_URL', 'https://integrate.api.nvidia.com/v1'),
-        'key'       => env('LLM_API_KEY'),
-        'model'     => env('LLM_MODEL', 'moonshotai/kimi-k3'),
-        'fallbacks' => env('LLM_MODEL_FALLBACK', 'google/gemma-4-31b-it'),
+        'base_url'  => env('LLM_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'),
+        'key'       => env('LLM_API_KEY') ?: env('GEMINI_API_KEY'),
+        'model'     => env('LLM_MODEL', 'gemini-3.5-flash-lite'),
+        'fallbacks' => env('LLM_MODEL_FALLBACK', 'gemini-3.8-flash'),
         'timeout'   => (int) env('LLM_TIMEOUT', 180),
         // Modelo que acabou de falhar (mudo, vazio, sobrecarregado) vai para o fim da fila por este tempo, e as
         // próximas chamadas começam pelo reserva (10/10/2026). 0 desliga.
         'quarentena_s' => (int) env('LLM_QUARENTENA_S', 600),
-        // Generoso porque modelo de raciocínio gasta orçamento "pensando" antes
-        // de responder — com teto curto ele devolve conteúdo VAZIO com HTTP 200.
-        'max_tokens' => (int) env('LLM_MAX_TOKENS', 16000),
+        // Somada ao teto de CADA etapa: modelo que pensa gasta o teto pensando e corta a resposta (ver acima).
+        // Não custa nada a mais — o provedor cobra o que foi usado, não o teto.
+        'folga_raciocinio' => (int) env('LLM_FOLGA_RACIOCINIO', 8000),
+        'regua' => [
+            'model'            => env('LLM_MODEL_REGUA', 'gemini-3.8-flash'),
+            'reasoning_effort' => env('LLM_ESFORCO_REGUA', 'low'),
+        ],
     ],
 
     /*

@@ -166,6 +166,11 @@ test('CampoFichaTecnica: a lista que aceita ganha "Outro" e a caixa para escreve
         assert.match(html, /aria-label="Tirar Bambu de Materiais da estrutura"/);
         assert.match(html, />Outro \(escrever\)</);
         assert.doesNotMatch(html, />Madeira<\/option>/, 'a opção já escolhida sai da lista');
+        // Demo 23/10 (N22): o select volta a "Adicionar outra…" depois de escolher; os escolhidos ficam à
+        // vista em selos destacados e o próprio select diz quantos já estão escolhidos.
+        assert.match(html, /data-escolhidos="true"/);
+        assert.match(html, /<option value=""[^>]*>Adicionar outra… \(2 escolhidas\)<\/option>/);
+        assert.match(html, /data-chip="2431881"[^>]*class="[^"]*border-ecf-yellow\/40/);
 
         const fechada = render(FORMATO, { valor: ['1', 'Curvo'] });
         assert.doesNotMatch(fechada, /Outro \(escrever\)|data-chip="Curvo"/);

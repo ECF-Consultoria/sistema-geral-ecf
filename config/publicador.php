@@ -137,10 +137,10 @@ return [
         // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
         // dentro da espera viram uma sincronização só.
         'sincronizar_atraso_s' => (int) env('PUBLICADOR_SINCRONIZAR_ATRASO_S', 15),
-        // Espera da IA depois do último save do produto; um save novo dentro dela adia (debounce). Decisão do
-        // usuário (10/10/2026): 2 minutos — "se não mexer lá novamente, espera dois minutos e já pode ir gerando
-        // tudo" (era 10; 10 perdia eficiência).
-        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 2),
+        // Espera da IA (título, Modelo e, no fim, as imagens) depois do último save; um save novo dentro dela adia
+        // (debounce). Decisão do usuário (20/10/2026): 20 SEGUNDOS, "que salvar o produto com imagem, já gerar" (era
+        // 2 min; antes, 10). Foto subida mais de 20 s depois da 1ª não entra no kit já gerado (um kit por grupo).
+        'atraso_s' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_S', 20),
         // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
         // Passou disso, o produto só é sincronizado e o log diz por quê.
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_PREPARO_IA_LIMITE_DIARIO', 60),
@@ -213,15 +213,27 @@ return [
     // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
     // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
     // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
-    // (id) com a chave `mlb.criativos_ia`. A aprovação das imagens continua sendo de gente.
+    // (id) com a chave `mlb.criativos_ia`. Desde 20/10/2026 as imagens do kit automático entram SOZINHAS no anúncio e
+    // passam a ser AS fotos do grupo — a do cliente é só referência para a IA recriar o produto —, e quem confere é a
+    // Prévia (etapa 5); a que o juiz reprovou fica para alguém decidir.
     'criativos_auto' => [
         'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
         // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
-        // Os tipos de imagem do kit automático, na ordem (os do catálogo do Creative Engine).
-        'slots' => ['lifestyle', 'hero'],
-        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores).
-        'todas_as_cores' => false,
+        // Tipos FIXOS do kit automático, na ordem da galeria — o 1º é a capa do Clássico e o 2º a do Premium (a rotação
+        // D6/CAPA-01 manda a 1ª para o fim). Decisão do usuário de 20/10/2026, "3 imagens, 2 capas": Imagem principal +
+        // Ambientação + Textura, e a textura nunca vira capa. Em MÓVEL a Ambientação vai para a frente (Quick
+        // 261007-amb, `CriativosAutomaticosService::tiposDoKit`). Vazio (`PUBLICADOR_CRIATIVOS_AUTO_SLOTS=`) = o kit do
+        // botão: o planejador escolhe e a quantidade é `services.creative.kit.slots`.
+        'slots' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_CRIATIVOS_AUTO_SLOTS', 'hero,lifestyle,detail_textura'))))),
+        // A 4ª imagem do kit automático (22/10/2026): uma 2ª ambientada, a capa do Premium. Vai no FIM da galeria, e o
+        // Premium só troca a 1ª foto com ela — a sequência é a mesma do Clássico, e a capa do Premium nunca é fundo
+        // branco (`OrdemCapaPorAlvo`). Vazio = sem 4ª imagem (o Premium fica igual ao Clássico em móvel).
+        'capa_premium' => (string) env('PUBLICADOR_CRIATIVOS_AUTO_CAPA_PREMIUM', 'composicao'),
+        // true (o padrão desde 20/10/2026) = cada grupo de fotos — a galeria geral e cada cor — ganha o seu kit (custo
+        // × grupos): com a foto do cliente só como referência, a cor sem kit ficaria com a foto do cliente no anúncio.
+        // false = só a galeria geral, ou a 1ª cor.
+        'todas_as_cores' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_TODAS_AS_CORES', true),
     ],
 
     // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.
@@ -305,6 +317,78 @@ return [
     */
     'acervo' => [
         'retencao_geracoes_dias' => (int) env('ACERVO_RETENCAO_GERACOES_DIAS', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Abas ocultas da conta (20/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | Pedido do usuário depois da reunião de 19/10 ("menos é mais"): na conta do
+    | Publicador fica só Produtos. As páginas continuam existindo e abrem pela
+    | URL; a aba some do header (`CabecalhoPublicadorService` manda a lista e o
+    | `AbasDoHeader` filtra). Para devolver uma aba, tire a chave daqui.
+    | Produtos nunca some: é a página de entrada da conta.
+    |
+    */
+    'abas_ocultas' => ['visao-geral', 'publicacoes', 'alavancas'],
+
+    // 20/10/2026 — a conta abre na VITRINE de cartões (`ProdutosVitrine`) em vez da lista. `vitrine` liga para
+    // TODAS as contas; `vitrine_contas` liga só para as listadas, pela chave da URL da conta, separadas por vírgula
+    // (ex.: `company-459,empresa-12`) — "só na #459 primeiro", até o usuário aprovar para o time.
+    'vitrine' => (bool) env('PUBLICADOR_VITRINE', false),
+    'vitrine_contas' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_VITRINE_CONTAS', ''))))),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prévia do anúncio (etapa 5 do editor, 20/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | `parcelas_premium`: quantas parcelas SEM juros o Premium mostra, pela faixa
+    | de preço (o primeiro `ate` que cobre o preço; `null` = sem teto). É a regra
+    | que o Mercado Livre divulgou em 2022 (até R$ 299,99 → 9x; até R$ 1.499,99 →
+    | 10x; acima → 12x) e que não deu para conferir na API: a tela a chama de
+    | estimativa. Se o ML mudou, ajuste aqui. O Clássico não tem parcela sem juros.
+    |
+    */
+    'previa' => [
+        'parcelas_premium' => [
+            ['ate' => 299.99, 'vezes' => 9],
+            ['ate' => 1499.99, 'vezes' => 10],
+            ['ate' => null, 'vezes' => 12],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Releitura do estado dos anúncios publicados (R17, 22/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | O ML pausa ou põe em revisão DEPOIS de criar, e a lista final do editor
+    | seguia dizendo "Publicado". Logo depois de publicar, o
+    | `RelerEstadoDoPublicadoJob` relê duas vezes; o que foi publicado antes dele
+    | (ou mudou depois) é relido pela rodada diária `publicador:reler-publicados
+    | --aplicar` (`routes/console.php`). Só `GET /items/{id}` — um por anúncio —,
+    | só nas contas liberadas e com o mesmo vendedor que publicou.
+    |
+    | `dias`: publicados nos últimos N dias. `horas`: não relê o que foi lido há
+    | menos disso. `teto`: no máximo N anúncios (= N GETs) por rodada. `lote` e
+    | `intervalo_s`: Jobs de até `lote` anúncios, um a cada `intervalo_s`
+    | segundos, para não fazer rajada no limite do ML. `horario`: São Paulo,
+    | depois da renovação de tokens das 08:00 (§32/§41 — fora da janela as
+    | contas de Polos estão com o token vencido e cada leitura renovaria um).
+    |
+    */
+    'releitura_publicados' => [
+        'ativo' => (bool) env('PUBLICADOR_RELEITURA_ATIVO', true),
+        'horario' => (string) env('PUBLICADOR_RELEITURA_HORARIO', '09:20'),
+        'dias' => (int) env('PUBLICADOR_RELEITURA_DIAS', 30),
+        // 20, não 24 (23/10/2026, P-22): a rodada de ontem leu às 09:2x, e às 09:20 de hoje isso ainda contava como
+        // "recente" — cada anúncio era relido só a cada 2 dias.
+        'horas' => (int) env('PUBLICADOR_RELEITURA_HORAS', 20),
+        'teto' => (int) env('PUBLICADOR_RELEITURA_TETO', 300),
+        'lote' => (int) env('PUBLICADOR_RELEITURA_LOTE', 20),
+        'intervalo_s' => (int) env('PUBLICADOR_RELEITURA_INTERVALO_S', 60),
     ],
 
 ];

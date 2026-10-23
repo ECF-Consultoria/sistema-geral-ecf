@@ -227,7 +227,7 @@ const props = (mais = {}) => ({
             5: calculo(400, null, KIT_AJUSTADO), 6: calculo(null, 'sem_custo'),
         },
     },
-    filtros: { q: '', tipo: null },
+    filtros: { q: '', tipo: null, vista: 'lista' },   // 20/10/2026: o padrão virou o Simulador; aqui se desenha a Lista
     ml_conectado: false,
     frete_tabela: null,
     ...mais,
@@ -345,7 +345,7 @@ test('a página por família: títulos, um cartão por produto com os combos den
 test('com filtro, as famílias ficam abertas e sem "recolher"; os combos sem o produto ficam juntos no cartão', async () => {
     const Pagina = await montarPagina();
     const soCombos = props({
-        filtros: { q: '', tipo: 'combo' },
+        filtros: { q: '', tipo: 'combo', vista: 'lista' },
         estrutura: { painel: { ofertas: 6, por_fase: { simples: 3, combo: 2, kit: 1, combit: 0 } }, paginacao: { pagina: 1, paginas: 1 },
             blocos: [{ chave: 1, familia: SALA, ofertas: [CB2, CB4], tambem_em: [resumoKit] }] },
     });

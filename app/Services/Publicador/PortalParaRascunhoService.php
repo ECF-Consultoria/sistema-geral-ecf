@@ -4,16 +4,19 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\MlCategoriaSchema;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\GarantiaPadrao;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
 use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
+use App\Support\Publicador\QuantidadesDoKit;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
@@ -324,7 +327,17 @@ class PortalParaRascunhoService
             'produto_id' => $i['produto']['produto_id'], 'produto_nome' => $i['produto']['nome'], 'quantidade' => $i['quantidade'],
             'volumes' => $i['produto']['variacoes'][0]['volumes'] ?? [], 'custo' => $i['custo'],
         ], $itens));
-        if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo)) {
+        // 21/10/2026: a ficha do principal é a de UMA peça. Os campos de quantidade saem do tamanho do kit
+        // (`QuantidadesDoKit`, como na fase N): o kit "1 Cinza + 1 Bordô" dizia "Quantidade de peças: 1", e o gerador
+        // de imagens desenhou uma poltrona por imagem. Produtos diferentes (mesa + cadeiras): só peças e unidades.
+        $composicao = ComposicaoDoComposto::doProduto($produto);
+        $doKit = $composicao !== null && $composicao->total() >= 2
+            ? ['quantidade' => $composicao->total(), 'campos' => $composicao->mesmoProduto() ? QuantidadesDoKit::CAMPOS : ['PIECES_NUMBER', 'UNITS_PER_PACK'],
+                // A Cor (21/10/2026): o composto é de variante única, e a cor de cada peça mora na variação do Portal — ninguém
+                // a preenchia ("«Cor» é obrigatório"). Sai das cores da composição, sem IA: "Bordô e Cinza".
+                'cor' => $composicao->textoDaCor()]
+            : null;
+        if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo, $doKit)) {
             return $this->parou($resumo);
         }
 
@@ -559,9 +572,13 @@ class PortalParaRascunhoService
      * @param  list<array>  $atributosPortal
      * @return bool false = o rascunho ficou intocável
      */
-    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo): bool
+    /**
+     * @param  array{quantidade: int, campos: list<string>}|null  $doKit  composto do Planejamento: os campos de quantidade
+     *                                                                    da ficha valem o kit, não a peça (21/10/2026)
+     */
+    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo, ?array $doKit = null): bool
     {
-        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo) {
+        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo, $doKit) {
             $schema = $this->schemaQueVale($schema, $r);
             if ($schema === null) {
                 return false;
@@ -571,11 +588,21 @@ class PortalParaRascunhoService
             $novos = [];
             $remover = [];
             $noPortal = []; // ids que o Portal informa hoje
+            // Com a Cor do kit (as cores da composição), a Cor da ficha da peça principal fica de fora (23/10/2026, P-11):
+            // os dois decidiam a COLOR com o mesmo valor antigo e ela trocava a cada Sincronizar (Natural ↔ Cinza),
+            // subindo a revisão e invalidando a conferência.
+            $corDoKitVale = trim((string) ($doKit['cor'] ?? '')) !== '';
             foreach ($atributosPortal as $salvo) {
                 $id = (string) ($salvo['id'] ?? '');
                 $def = $schema->atributo($id);
                 if (! $this->daFicha($def, $id, $chaveEixo)) {
                     continue;
+                }
+                if ($id === 'COLOR' && $corDoKitVale) {
+                    continue;
+                }
+                if ($id === QuantidadesDoKit::E_KIT && $doKit !== null) {
+                    continue; // o "É kit" do kit é Sim (abaixo), não o "Não" da peça
                 }
                 if (isset($noPortal[$id])) {
                     $resumo['campos_mantidos']++;
@@ -593,7 +620,45 @@ class PortalParaRascunhoService
                 if ($res['aviso'] !== null) {
                     $resumo['avisos'][] = $res['aviso'];
                 }
-                $this->decidir($id, $atual, $res['valor'], $novos, $remover, $resumo);
+                $valor = $res['valor'];
+                if ($doKit !== null && in_array($id, $doKit['campos'], true)) {
+                    $valor = $this->valorDoKit($r, $id, $valor, $doKit['quantidade']);
+                }
+                $this->decidir($id, $atual, $valor, $novos, $remover, $resumo);
+            }
+
+            // A Cor do kit, das cores da composição (o composto não tem eixo: a cor é do produto).
+            $corDoKit = trim((string) ($doKit['cor'] ?? ''));
+            $defCor = $schema->atributo('COLOR');
+            if ($corDoKit !== '' && $defCor !== null && $snap->eixos === [] && ! $this->daEquipe($snap->atributos['COLOR'] ?? null)) {
+                $res = PortalValorDeAtributo::resolver($defCor, ['valor' => $corDoKit]);
+                if ($res['aviso'] !== null) {
+                    $resumo['avisos'][] = $res['aviso'];
+                }
+                if ($res['valor'] !== null) {
+                    $noPortal['COLOR'] = true;
+                    $this->decidir('COLOR', $snap->atributos['COLOR'] ?? null, $res['valor'], $novos, $remover, $resumo);
+                }
+            }
+
+            // "É kit: Sim" (23/10/2026, P-12): era o "Não" da ficha da peça principal.
+            $defKit = $doKit !== null ? $schema->atributo(QuantidadesDoKit::E_KIT) : null;
+            if ($defKit !== null && ! $this->daEquipe($snap->atributos[QuantidadesDoKit::E_KIT] ?? null)) {
+                $res = PortalValorDeAtributo::resolver($defKit, ['valor' => 'Sim']);
+                if ($res['valor'] !== null) {
+                    $noPortal[QuantidadesDoKit::E_KIT] = true;
+                    $this->decidir(QuantidadesDoKit::E_KIT, $snap->atributos[QuantidadesDoKit::E_KIT] ?? null, $res['valor'], $novos, $remover, $resumo);
+                }
+            }
+
+            // O campo de quantidade que a categoria tem e a peça nunca preencheu: no kit ele é o total.
+            foreach ($doKit['campos'] ?? [] as $id) {
+                $def = $schema->atributo($id);
+                if (isset($noPortal[$id]) || $def === null || $this->daEquipe($snap->atributos[$id] ?? null)) {
+                    continue;
+                }
+                $noPortal[$id] = true;
+                $this->decidir($id, $snap->atributos[$id] ?? null, $this->valorDoKit($r, $id, null, $doKit['quantidade']), $novos, $remover, $resumo);
             }
 
             // O cliente apagou o campo no Portal: o que o PORTAL tinha escrito sai junto.
@@ -681,6 +746,27 @@ class PortalParaRascunhoService
      *
      * @param  ?array  $valor  o que o Portal pede hoje, já convertido; null = nada
      */
+    /**
+     * O valor de um campo de quantidade no kit (`QuantidadesDoKit`, a régua da fase N), a partir do da peça. Sem como
+     * calcular (texto que não é número, lista sem a opção do total), fica o da peça, marcado para revisão.
+     */
+    private function valorDoKit(PubRascunho $r, string $id, ?array $daPeca, int $quantidade): ?array
+    {
+        $definicao = null;
+        foreach ((array) (MlCategoriaSchema::find($r->categoria_id)?->atributos ?? []) as $a) {
+            if (is_array($a) && (string) ($a['id'] ?? '') === $id) {
+                $definicao = $a;
+                break;
+            }
+        }
+        $total = QuantidadesDoKit::doKit((array) ($daPeca ?? []), $quantidade, $definicao);
+        if ($total === null) {
+            return $daPeca === null ? null : ['revisar' => true] + $daPeca;
+        }
+
+        return array_filter($total, fn ($v) => $v !== null) + ['origem' => 'portal', 'revisar' => false];
+    }
+
     private function decidir(string $id, ?array $atual, ?array $valor, array &$novos, array &$remover, array &$resumo): void
     {
         if (! $this->preenchido($atual)) {

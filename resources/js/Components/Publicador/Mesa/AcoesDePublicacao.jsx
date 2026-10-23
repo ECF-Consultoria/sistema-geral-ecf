@@ -25,7 +25,8 @@ export function rotuloDoPublicar(pub) {
 export const publicarEhOProximoPasso = (pub) => ! pub.conferencia.local && ['ok', 'avisos'].includes(pub.conferencia.estado);
 
 export function BotaoConferir({ pub, primario, className }) {
-    const conferindo = pub.aguardando?.tipo === 'conferencia';
+    // P-31b (23/10/2026): "Conferindo…" desde o clique — antes do POST o frete ainda é consultado no ML.
+    const conferindo = pub.aguardando?.tipo === 'conferencia' || pub.pedindoConferencia === true;
 
     return (
         <BotaoAcao

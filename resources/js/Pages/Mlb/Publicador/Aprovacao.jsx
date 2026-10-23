@@ -1,4 +1,4 @@
-import { isValidElement, useRef, useState } from 'react';
+import { isValidElement, useState } from 'react';
 import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
@@ -13,24 +13,8 @@ import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
 import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
-import PainelDeRevisao, {
-    aoFecharOLightbox,
-    contextoDoLightbox,
-    depoisDaAcaoNoLightbox,
-    escreverNoPainel,
-    fecharLightboxDevolvendoFoco,
-    indiceNoContexto,
-    propsDaLateralDoLightbox,
-    TIPOS_DA_ACAO_DO_LIGHTBOX,
-} from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
-import LightboxDaImagem, { ZOOM_NORMAL } from '@/Components/Mlb/Publicador/aprovacao/LightboxDaImagem';
-import LateralDoLightbox from '@/Components/Mlb/Publicador/aprovacao/LateralDoLightbox';
-// ⚠️⚠️ Fase 189, plano 07 — `escritasDaColuna` é o named export que já recebe a
-// oferta e a versão POR PARÂMETRO (`189-CONTRATO-188.md` INV-03 / A6) e já monta a
-// rota do 188-05 pelo helper único `escreverNoPainel`. ➡️ As ações do lightbox o
-// CHAMAM com a oferta e a versão **do contexto do lightbox** — nenhuma rota nova,
-// nenhuma segunda cópia da escrita.
-import ColunaDeFotos, { escritasDaColuna } from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
+import PainelDeRevisao, { escreverNoPainel, useEscritaDoPainelEmVoo } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
 import PendenciasDoPainel from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
 import RodapeDoPainel from '@/Components/Mlb/Publicador/aprovacao/RodapeDoPainel';
@@ -39,7 +23,7 @@ import ModalDeAjuste from '@/Components/Mlb/Publicador/aprovacao/ModalDeAjuste';
 import ModalDeExcecao from '@/Components/Mlb/Publicador/aprovacao/ModalDeExcecao';
 import ModalDeFrete from '@/Components/Mlb/Publicador/aprovacao/ModalDeFrete';
 import ModalDeReprovarImagem, { MODAL_REPROVAR } from '@/Components/Mlb/Publicador/aprovacao/ModalDeReprovarImagem';
-import AvisoDeVersaoMudou from '@/Components/Mlb/Publicador/aprovacao/AvisoDeVersaoMudou';
+import AvisoDeVersaoMudou, { AvisoDeRecusa } from '@/Components/Mlb/Publicador/aprovacao/AvisoDeVersaoMudou';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -193,13 +177,35 @@ function chaveSegura(valor) {
  * ⚠️ A `etapa` viaja junto para o filtro em que a pessoa está NÃO ser apagado
  * pelo clique. O servidor a saneia contra a lista fechada das 9 chaves.
  */
+/**
+ * A querystring da URL ATUAL, sem `oferta` — 23/10/2026 (P-18b).
+ *
+ * Abrir uma oferta pela linha ou pelo "Revisar agora" mandava só `{etapa, oferta}`:
+ * a fila atrás do painel perdia a busca, os filtros e a seleção (`?sel=`). Como a
+ * URL É a fonte do recorte e da seleção (COL-03), e `irParaOferta` é de módulo (não
+ * enxerga as props), ela carrega adiante o que a URL já tem. Sem `window` (render
+ * de servidor, gates) devolve `{}` — o comportamento de antes.
+ */
+function consultaDaUrlAtual() {
+    if (typeof window === 'undefined' || typeof window.location?.search !== 'string') return {};
+
+    const consulta = {};
+
+    for (const [chave, valor] of new URLSearchParams(window.location.search)) {
+        if (chave !== 'oferta' && valor !== '') consulta[chave] = valor;
+    }
+
+    return consulta;
+}
+
 function irParaOferta(empresaId, etapaAtiva) {
     if (empresaId === null) return null;
 
     return (ofertaId) => {
         router.get(
             route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-            { etapa: etapaAtiva, oferta: ofertaId },
+            // 23/10/2026 (P-18b): recorte e seleção da URL viajam junto.
+            { ...consultaDaUrlAtual(), etapa: etapaAtiva, oferta: ofertaId },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -331,14 +337,6 @@ export default function Aprovacao({
     lote = null,
     painel = null,
     painelNo = null,
-    // ⚠️ Fase 189, plano 02 — a prop-raiz `lightbox` (`{originais}`), recortada
-    // ao `?oferta=` pelo `MlbPublicadorAprovacaoController::index`. ⚠️ Ela é
-    // **DADO**, e não um slot de NÓ: o par nó × dado desta página
-    // (`painelNo`/`painel`, `proximo`/`proximo_a_revisar`,
-    // `filtros`/`filtros_ativos`, `tabela`/`grupos`) tem UM significado cada, e
-    // slot de NÓ novo obrigaria a acrescentar linha nas DUAS listas
-    // `SLOTS_DE_NO_*`, nos DOIS arquivos de gate que as conferem.
-    lightbox = null,
     flash = null,
 }) {
     const empresaId = inteiroSeguro(objetoSeguro(empresa)?.id);
@@ -373,31 +371,6 @@ export default function Aprovacao({
     // voltar à foto 1 **por derivação pura**, sem `useEffect` de sincronização.
     const [fotoAberta, setFotoAberta] = useState({ oferta: null, indice: 0 });
 
-    // ═══ ⚠️⚠️ Fase 189, plano 06 — O LIGHTBOX: ESTADO AQUI, TECLADO NO PAINEL ═══
-    //
-    // ⚠️⚠️ **POR QUE O ESTADO MORA NESTA PÁGINA, e é DIVERGÊNCIA DECLARADA da
-    // prosa do plano** (que dizia *"o estado do lightbox vive no painel"*):
-    // quem desenha o "⤢ Ampliar" é a `ColunaDeFotos`, e ela chega ao
-    // `PainelDeRevisao` como **NÓ PRONTO**, pelo slot `colunaDeFotos` — montado
-    // **aqui**. Um estado vivendo no painel **nunca alcançaria o botão**, porque
-    // o nó já foi construído antes de o painel existir. ⚠️ A RAZÃO que o plano
-    // deu para o estado morar lá está **preservada inteira**: o painel continua
-    // tendo o **ÚNICO** `keydown` da tela (dois ouvintes fechariam lightbox E
-    // painel no mesmo `Escape`), e as REGRAS PURAS moram no módulo dele.
-    //
-    // ⚠️ "O lightbox está aberto" é GESTO, não dado: **não** vai para a URL (a
-    // oferta vai, `?oferta=`) e **nada de `localStorage`** — ele é artefato do
-    // protótipo (`:914`) e o estado de revisão não mora no navegador (T-189-44).
-    // ⚠️ `origem` começa em `{x: 50, y: 50}` — medido em `:975`
-    // (`lbX: 50, lbY: 50`) — e **trocar de foto zera o zoom mas NÃO zera a
-    // origem** (`:1321`/`:1327`, que mexem só em `lbZoom`).
-    const [doLightbox, setDoLightbox] = useState(null);
-
-    // ⚠️ A `ref` do "⤢ Ampliar", para DEVOLVER O FOCO ao fechar (critério 7,
-    // PERGUNTA-189-C). ⚠️ `ref` nula ou sem `focus` **não lança** — a guarda está
-    // em `fecharLightboxDevolvendoFoco`.
-    const refDoAmpliar = useRef(null);
-
     // ═══ ⚠️⚠️ Fase 188, plano 11 — O ESTADO DOS MODAIS DO PAINEL ══════════
     //
     // ⚠️⚠️ **"O MODAL ESTÁ ABERTO" É GESTO, NÃO DADO — e NÃO vai para a URL.**
@@ -430,6 +403,11 @@ export default function Aprovacao({
     // ⚠️ É GESTO de uma SESSÃO de revisão, não dado: não vai para a URL. E guarda a
     // OFERTA junto, para o aviso não vazar para a oferta seguinte no ↑/↓.
     const [conflitoDoPainel, setConflitoDoPainel] = useState(null);
+
+    // 23/10/2026 (P-18e): se há uma escrita do painel em voo. NÃO é estado desta
+    // página: a trava mora no helper único `escreverNoPainel` (é ele que recusa o
+    // segundo envio); aqui ela só é LIDA para travar os botões e os modais.
+    const enviandoNoPainel = useEscritaDoPainelEmVoo();
 
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
@@ -514,6 +492,27 @@ export default function Aprovacao({
         etapa: etapaAtiva,
     };
 
+    // ⚠️ A SELEÇÃO do lote (`?sel=`), já SANEADA pelo servidor — ver o bloco "O
+    // LOTE" mais abaixo. 23/10/2026 (P-18b): declarada aqui, antes dos handlers
+    // que a carregam adiante.
+    const idsSelecionados = (Array.isArray(selecionados) ? selecionados : [])
+        .map((id) => inteiroSeguro(id))
+        .filter((id) => id !== null);
+
+    // 23/10/2026 (P-18b): o recorte E a seleção numa querystring só. Filtrar, trocar
+    // de etapa, abrir e fechar a oferta perdiam o `?sel=` — a barra de seleção
+    // sumia —, contra o que o bloco do lote promete (a seleção sobrevive a voltar do
+    // painel, e a de outro recorte não se perde).
+    const consultaDaFila = (mudanca = {}) => {
+        const query = querystringDe({ ...recorteAtual, ...mudanca });
+
+        if (idsSelecionados.length > 0) {
+            query.sel = idsSelecionados.join(',');
+        }
+
+        return query;
+    };
+
     // ⚠️ Sem id de empresa não há destino: o clique NÃO é oferecido, em vez de
     // montar uma rota inventada. É a mesma regra do "Revisar agora".
     const navegar = empresaId === null
@@ -524,7 +523,7 @@ export default function Aprovacao({
             setMenuAberto(null);
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                querystringDe({ ...recorteAtual, ...mudanca }),
+                consultaDaFila(mudanca),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -600,7 +599,9 @@ export default function Aprovacao({
         : (chave) => {
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                { etapa: chave },
+                // 23/10/2026 (P-18b): trocar de etapa não apaga busca, filtros e
+                // seleção (as contagens da faixa já são sobre os DEMAIS filtros).
+                consultaDaFila({ etapa: chave }),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -615,9 +616,7 @@ export default function Aprovacao({
     // ⚠️ Os ids vêm do servidor **JÁ SANEADOS** contra as ofertas da conta
     // (`selecaoSaneada()`): id de outra empresa na querystring é DESCARTADO. A tela
     // nunca pinta como selecionada uma oferta que o POST depois recusaria.
-    const idsSelecionados = (Array.isArray(selecionados) ? selecionados : [])
-        .map((id) => inteiroSeguro(id))
-        .filter((id) => id !== null);
+    // (23/10/2026: `idsSelecionados` é declarado lá em cima, junto do recorte.)
 
     // Navega mantendo o recorte e trocando só a seleção.
     const irParaSelecao = empresaId === null
@@ -677,6 +676,20 @@ export default function Aprovacao({
             irParaSelecao(proximos);
         };
 
+    // 23/10/2026 (P-18c): o checkbox de CADA LINHA. `LinhaDaOferta` sempre soube
+    // desenhá-lo, mas a página nunca passava `onMarcar` — só dava para marcar todas
+    // as visíveis pelo cabeçalho. Marca/desmarca UMA, mantendo as outras.
+    const marcarOferta = irParaSelecao === null
+        ? null
+        : (id) => {
+            const alvo = inteiroSeguro(id);
+            if (alvo === null) return;
+
+            irParaSelecao(idsSelecionados.includes(alvo)
+                ? idsSelecionados.filter((x) => x !== alvo)
+                : idsSelecionados.concat(alvo));
+        };
+
     // ⚠️⚠️ **OS DOIS VAZIOS HONESTOS** (decisão 16 do usuário, 15/10/2026). O
     // `algum_filtro` é o MESMO booleano do servidor que a linha de filtros usa — ele
     // é **LIDO**, nunca recalculado aqui: duas respostas para "há filtro?"
@@ -716,7 +729,7 @@ export default function Aprovacao({
     const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila
         grupos={grupos}
         linhaDaOferta={(oferta) => (
-            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} />
+            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} onMarcar={marcarOferta} marcada={idsSelecionados.includes(inteiroSeguro(objetoSeguro(oferta)?.id))} />
         )}
         onMarcarVisiveis={marcarVisiveis}
         visiveisMarcadas={todasVisiveisMarcadas}
@@ -802,7 +815,8 @@ export default function Aprovacao({
 
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                { ...querystringDe(recorteAtual), oferta: id },
+                // 23/10/2026 (P-18b): com a seleção (`?sel=`) junto.
+                { ...consultaDaFila(), oferta: id },
                 { only: ['painel'], preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -814,7 +828,8 @@ export default function Aprovacao({
         : () => {
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                querystringDe(recorteAtual),
+                // 23/10/2026 (P-18b): fechar a oferta não derruba a seleção.
+                consultaDaFila(),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -862,6 +877,8 @@ export default function Aprovacao({
             rota: 'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo',
             parametros: { company: empresaId, oferta: ofertaDoPainel },
             versao: versaoDoPainel,
+            // 23/10/2026 (P-18d): a recusa daqui também aparece na tela.
+            onConflito: registrarConflito,
         });
 
     // ═══ ⚠⚠ Fase 188, plano 08 — A COLUNA DE FOTOS NO SLOT ═══════════════
@@ -899,102 +916,31 @@ export default function Aprovacao({
             setFotoAberta({ oferta: ofertaDoPainel, indice: alvo });
         };
 
-    // ═══ ⚠️⚠️ Fase 189, plano 06 — O CONTEXTO PRÓPRIO DO LIGHTBOX ════════════
+    // ═══ ⚠️⚠️ 23/10/2026 (P-01) — DECLARADO ANTES DO PRIMEIRO USO ═══════════
     //
-    // ⚠️⚠️ **DERIVAÇÃO PURA a cada render — sem `useEffect` de sincronização**, o
-    // mesmo contrato do `indiceDaFoto` acima. `contextoDoLightbox` refresca o
-    // contexto enquanto o painel mostra A MESMA oferta (é assim que a foto
-    // aprovada aparece aprovada) e devolve o GUARDADO, intacto, quando o painel
-    // mostra OUTRA — que é o caso do ↑/↓ com o lightbox aberto
-    // (PERGUNTA-189-B (b), T-189-42).
-    const contextoDoLb = doLightbox === null
-        ? null
-        : contextoDoLightbox(doLightbox.contexto, painelDeRevisao, lightbox);
+    // Os dois blocos abaixo (modais/escritas do painel e simulação/prévia do
+    // flash) moravam DEPOIS das colunas e das pendências, que os leem já no
+    // render. `const` lido antes da declaração é zona morta temporal: com o
+    // painel chegando com fotos, preço ou pendências a página LANÇAVA
+    // (`Cannot access 'abrirModalDeReprovar' before initialization`) e a tela
+    // ficava preta. Só a ORDEM mudou aqui. Gate:
+    // `tests/js/publicador-aprovacao-correcoes.test.js`.
 
-    // ⚠️ O índice é CLAMPADO contra as imagens do CONTEXTO, e `null` significa
-    // FECHAR (`:1324`: galeria vazia → `{open: false}`). ⚠️ Fiel ao protótipo, o
-    // ESTADO não é limpo aqui: o `lbVm` dele também só devolve `open: false`.
-    const indiceDoLb = doLightbox === null ? null : indiceNoContexto(doLightbox.indice, contextoDoLb);
-    const imagensDoLb = contextoDoLb === null ? [] : contextoDoLb.imagens;
-    const imagemDoLb = indiceDoLb === null ? null : objetoSeguro(imagensDoLb[indiceDoLb]);
-
-    // ⚠️⚠️ Fase 189, plano 07 — **`idDaRevisaoNoLb` e `originalDoLb` SAÍRAM DAQUI**,
-    // e não foram apagados: a MESMA regra (a `originais` indexada pelo `id` da
-    // REVISÃO, `pub_aprovacao_imagens.id`, e **não** por `imagem_id` — tabelas
-    // diferentes, e confundi-las mostraria a original de OUTRA foto, 189-05 §22)
-    // mora agora dentro de `propsDaLateralDoLightbox`, que passou a ser a **ÚNICA**
-    // fonte das props da lateral. ➡️ Deixá-las aqui seria *entrada morta, que é
-    // linha morta* — e duas leituras da mesma `originais` divergiriam.
-    const lightboxAberto = imagemDoLb !== null;
-
-    // ⚠️ D4 — o botão não nasce sem destino: sem oferta no painel não há o que
-    // ampliar, e `onAmpliar` fica `null` (a `ImagemGrandeDoPainel` não desenha).
-    const abrirOLightbox = ofertaDoPainel === null
-        ? null
-        : (indice) => setDoLightbox({
-            indice,
-            zoom: ZOOM_NORMAL,
-            origem: { x: 50, y: 50 },
-            contexto: contextoDoLightbox(null, painelDeRevisao, lightbox),
-        });
-
-    // ⚠️⚠️ Fechar: **PERGUNTA-189-C** (mesma oferta) e o **DEFAULT da 189-D1**
-    // (oferta mudou — pergunta ABERTA, alternativa LOCAL). Em nenhum dos dois a
-    // foto do painel se mexe; `voltarParaAOferta` é sempre `null` no default.
-    const fecharOLightbox = () => {
-        aoFecharOLightbox({ contexto: contextoDoLb, painelAtual: painelDeRevisao });
-        fecharLightboxDevolvendoFoco({ ref: refDoAmpliar, fechar: () => setDoLightbox(null) });
-    };
-
-    // ⚠️ Trocar de foto no lightbox **zera o zoom e PRESERVA a origem**
-    // (`:1321`/`:1327`: os dois mexem só em `lbZoom`).
-    const moverOLightbox = (indice) => setDoLightbox((atual) => (atual === null
-        ? null
-        : { ...atual, indice, zoom: ZOOM_NORMAL }));
-
-    // ⚠️⚠️ `aoClicarNoZoom` da lateral (189-05) **ENTREGA O ZOOM NOVO** — ela já
-    // chamou `alternarZoom` (189-03). ➡️ **Aqui o zoom NÃO é recomputado**:
-    // recomputar criaria uma segunda regra de alternância, e a divergente deixaria
-    // o rótulo dizendo "Reduzir" com a imagem em 1×.
-    const alternarOZoom = (zoomNovo) => setDoLightbox((atual) => (atual === null
-        ? null
-        : { ...atual, zoom: zoomNovo }));
-
-    const moverAOrigem = (origem) => setDoLightbox((atual) => (atual === null ? null : { ...atual, origem }));
-
-    // ═══ ⚠️⚠️ QUICK 261020-tdz — OS HANDLERS VÊM ANTES DOS SLOTS, E ISSO É
-    //         CORRETUDE, NÃO ARRUMAÇÃO ════════════════════════════════════════
+    // ===== Fase 188, plano 11 - OS DOIS PRIMEIROS MODAIS, LIGADOS =====
     //
-    // ⚠️⚠️ **NÃO MOVA NADA DAQUI PARA BAIXO DOS CONSTRUTORES DE SLOT.** Os três
-    // construtores logo abaixo (`colunaDeFotos`, `colunaDePreco` e
-    // `noPendenciasDoPainel`) são TERNÁRIOS AVALIADOS NA HORA: no ramo com
-    // payload a JSX **É avaliada durante a execução deste corpo**, e cada
-    // atributo `prop={nome}` lê o binding IMEDIATAMENTE. ➡️ Declaração que viva
-    // depois deles é lida em TDZ (*temporal dead zone*), o que lança
-    // `ReferenceError: Cannot access 'X' before initialization` — ou seja,
-    // **TELA PRETA no instante em que o painel de revisão abre com conteúdo**.
+    // ⚠️⚠️ **DESVIO DECLARADO DO `files_modified` do 188-11-PLAN.md**, pelo MESMO
+    // precedente das waves **188-09** e **188-10**, que também não listavam esta
+    // página e também a ligaram: **NENHUMA wave de 11 a 13 tem esta página no
+    // `files`**, e sem o fio os modais existiriam no disco e **não apareceriam na
+    // tela** - e os critérios 11 e 12 falam do que a tela MOSTRA. Logo: o fio entra
+    // aqui, DECLARADO, e nada mais desta página é tocado.
     //
-    // ⚠️ Foi exatamente isso que aconteceu: CINCO destas `const` estavam
-    // declaradas depois, e a página morria com payload. Medido por RENDER do
-    // `default export` (não por leitura de fonte, que é o que falhou cinco
-    // vezes): `podeEscreverNoPainel`, `abrirModalDoPainel`,
-    // `abrirModalDeReprovar`, `registrarConflito` e `precoComSimulacao`.
-    // ⚠️ `simulacaoDoFlash` e `previaDoFrete` subiram junto porque
-    // `precoComSimulacao` **depende** da primeira.
-    //
-    // ⚠️⚠️ **A ORDEM INTERNA DESTE TRECHO TAMBÉM IMPORTA:**
-    // `podeEscreverNoPainel` antes de `abrirModalDoPainel` e de
-    // `abrirModalDeReprovar` (as duas a leem EAGER, no teste do ternário), e
-    // `simulacaoDoFlash` antes de `precoComSimulacao`.
-    //
-    // ⚠️ Leitura DIFERIDA (dentro de `() => …`) é legítima em qualquer posição —
-    // é por isso que `escreverDireto`, `lerDoPainel` e `precoSimulado` seguem
-    // declarados abaixo dos slots sem problema nenhum.
-    //
-    // ➡️ O gate que prova tudo isto é
-    // `tests/js/publicador-pagina-aprovacao-tdz-261020.test.js`, o PRIMEIRO
-    // deste projeto a instanciar o componente desta página.
-    // ═══════════════════════════════════════════════════════════════════════════
+    // ⚠️ **Derivação PURA, sem `useEffect`:** modal guardado para OUTRA oferta é
+    // descartado. Sem isto, navegar com as setas levaria o modal aberto para a
+    // oferta seguinte - e o ajuste iria para a oferta errada.
+    const modalAberto = modalDoPainel !== null && objetoSeguro(modalDoPainel)?.oferta === ofertaDoPainel
+        ? modalDoPainel
+        : null;
 
     // ⚠️ Sem empresa, sem oferta ou sem versão **não há handler** - e sem handler o
     // botão **não é desenhado** (D4). É a mesma régua do "Revisar agora": nunca uma
@@ -1028,13 +974,11 @@ export default function Aprovacao({
             origem: null,
             imagemId: null,
             motivo: '',
-            // ⚠️⚠️ Fase 189, plano 07 — O CONTEXTO DO LIGHTBOX, quando o modal foi
-            // aberto A PARTIR DELE (PERGUNTA-189-B (b)). ⚠️ `null` significa
-            // *"aberto pelo PAINEL"*, e aí **nada muda** para quem não usa o
-            // lightbox: a escrita continua com a oferta e a versão do painel,
-            // exatamente como o 188-12 entregou.
-            contextoDaFoto: null,
+            // 23/10/2026 (P-18e): a recusa do servidor ao último envio deste modal.
+            erro: null,
         });
+
+    const fecharModalDoPainel = () => setModalDoPainel(null);
 
     // ⚠️⚠️ Fase 188, plano 12 — o MOD-04 é aberto pelo BLOCO DA IMAGEM
     // SELECIONADA (plano 188-08), que manda o `imagem_id` (a linha de REVISÃO,
@@ -1042,44 +986,12 @@ export default function Aprovacao({
     // dos destinos de pendência) de propósito: nenhum bloqueio leva a ele.
     // ⚠️ `inteiroSeguro` **mais** `> 0`: `id = 0` é plausível e sairia numa rota
     // que não existe.
-    //
-    // ⚠️⚠️ Fase 189, plano 07 — O SEGUNDO PARÂMETRO, `contexto`, é O MÍNIMO que a
-    // PERGUNTA-189-B (b) exige, e ele é **OPCIONAL**: sem ele (todo caminho do
-    // PAINEL) a função se comporta byte a byte como o 188-12 a entregou. Com ele
-    // (o caminho do LIGHTBOX) o modal guarda a oferta e a versão **do contexto**,
-    // e é com elas que o envio escreve.
-    // ⚠️ `versaoVista` **continua sendo a do PAINEL** de propósito: ela é a entrada
-    // do aviso de concorrência (COL-04), que compara o que a TELA viu com o
-    // payload que chegou. Trocá-la pela do contexto faria o aviso acender sozinho
-    // sempre que a oferta de baixo fosse outra — uma segunda regra para o mesmo
-    // aviso, e a divergente mente para quem lê.
-    // ⚠️ `ModalDeReprovarImagem.jsx` **não foi tocado**: ele já recebe a imagem por
-    // prop e **não** escreve (quem escreve é esta página, `onSubmeter`). Medido.
     const abrirModalDeReprovar = !podeEscreverNoPainel
         ? null
-        : (imagemId, contexto) => {
+        : (imagemId) => {
             const alvo = inteiroSeguro(imagemId);
             if (alvo === null || alvo <= 0) return;
 
-            // ⚠️ Guarda de OBJETO antes de tudo: `{a = null} = {}` só cobre
-            // `undefined`, **NÃO `null`**, e foi assim que uma função passou a
-            // LANÇAR NO CLIQUE na wave 188-08.
-            const doLightbox = objetoSeguro(contexto);
-            const ofertaDoLb = doLightbox === null ? null : inteiroSeguro(doLightbox.oferta);
-            const versaoDoLb = doLightbox === null ? null : inteiroSeguro(doLightbox.versao);
-            const contextoDaFoto = ofertaDoLb === null || ofertaDoLb <= 0 || versaoDoLb === null || versaoDoLb <= 0
-                ? null
-                : { oferta: ofertaDoLb, versao: versaoDoLb };
-
-            // ⚠️⚠️ **`oferta` CONTINUA SENDO A DO PAINEL, e isso foi MEDIDO, não
-            // escolhido por gosto.** `modalAberto` é a derivação pura
-            // `modalDoPainel.oferta === ofertaDoPainel ? modalDoPainel : null`
-            // (188-12): gravar aqui a oferta do LIGHTBOX faria `modalAberto` sair
-            // `null` quando o painel estivesse em OUTRA oferta — e o modal **não
-            // seria desenhado**, exatamente no caso que esta wave existe para
-            // resolver. ➡️ A oferta do lightbox viaja em `contextoDaFoto`, e é de
-            // lá que a ESCRITA a lê. A regra de descarte do 188-12 fica byte a
-            // byte como estava, e com `temModal` as teclas ↑/↓ nem navegam.
             setModalDoPainel({
                 modal: MODAL_REPROVAR,
                 oferta: ofertaDoPainel,
@@ -1093,21 +1005,134 @@ export default function Aprovacao({
                 origem: null,
                 imagemId: alvo,
                 motivo: '',
-                contextoDaFoto,
+                erro: null,
             });
         };
 
+    // ⚠️ Atualização de UM campo do formulário, preservando o resto.
+    const mudarCampoDoModal = (campo, valor) => setModalDoPainel((anterior) => {
+        const atual = objetoSeguro(anterior);
+        if (atual === null) return anterior;
+
+        return { ...atual, [campo]: valor };
+    });
+
+    // ⚠️⚠️ **TODA ESCRITA PELO HELPER ÚNICO `escreverNoPainel`** (W11 / COL-04 /
+    // critério 17): ele acrescenta `versao_esperada` **SEMPRE** e **não engole** o
+    // 422 de versão divergente. ⚠️ `versao_esperada` é OPCIONAL no corpo da action,
+    // então omiti-la faz `exigirVersao()` receber `null` e **LIBERAR** a escrita -
+    // literalmente "sobrescrever em silêncio", que é o que o critério 17 proíbe.
+    // ⚠️ **Nunca `router.post` direto** (há gate com lista CONSTANTE, plano 188-12).
+    //
+    // ⚠️⚠️ **Fase 188, plano 12 — O AVISO DE CONCORRÊNCIA ACENDE AQUI.** O helper
+    // chama `onConflito` com a mensagem do SERVIDOR (ela diz as DUAS versões), e
+    // ela **nunca é remontada no cliente**.
+    // ⚠️ Derivação PURA: conflito guardado para OUTRA oferta é descartado — sem
+    // isso, navegar com ↑/↓ levaria o aviso para a oferta seguinte.
+    const conflitoAberto = conflitoDoPainel !== null && objetoSeguro(conflitoDoPainel)?.oferta === ofertaDoPainel
+        ? conflitoDoPainel
+        : null;
+
+    // ⚠️⚠️ 23/10/2026 (P-18d): o helper manda TODA recusa por aqui, e o 2º argumento
+    // diz se ela é o 422 de VERSÃO divergente. Antes, qualquer recusa com `regra`
+    // virava "a oferta mudou — Recarregar a revisão" (um frete recusado, MOD-03,
+    // inclusive). Agora a recusa comum fica marcada (`recusa: true`) e aparece como
+    // `AvisoDeRecusa`, com a mensagem do servidor e sem o botão de recarregar. Ela
+    // guarda a VERSÃO em que nasceu e some quando a versão muda (a ação seguinte
+    // passou) ou quando a oferta muda.
     const registrarConflito = ofertaDoPainel === null
         ? null
-        : (mensagem) => setConflitoDoPainel({
+        : (mensagem, ehConflito) => setConflitoDoPainel({
             oferta: ofertaDoPainel,
             // ⚠️ Guarda de tipo: a mensagem vem da REDE. ⚠️ E NUNCA `String(…)`.
             mensagem: typeof mensagem === 'string' && mensagem.trim() !== '' ? mensagem : null,
+            recusa: ehConflito === false,
+            versao: versaoDoPainel,
         });
 
-    // ⚠️ O payload dos modais vem do SERVIDOR (`modais.*`, plano 188-06): a tela
-    // **não** monta a tabela de escopos, nem a lista de autorizadores, nem os
-    // chips de defeito. Montá-los aqui seria a SEGUNDA VERDADE de cada um.
+    // 23/10/2026 (P-18d): uma escrita da página que PASSOU apaga a recusa anterior.
+    const limparRecusa = () => setConflitoDoPainel((anterior) => (objetoSeguro(anterior)?.recusa === true ? null : anterior));
+
+    // ⚠️⚠️ 23/10/2026 (P-18e) — O DESFECHO DE UM ENVIO DE MODAL.
+    //
+    // Antes o modal fechava quando o envio SAÍA: com o servidor recusando (frete
+    // inválido, motivo curto, versão mudou), o modal já tinha fechado e o que a
+    // pessoa digitou (valor do frete, motivo, justificativa) se perdia. Agora ele
+    // fecha só no SUCESSO; na recusa fica aberto, com o texto, e mostra a mensagem
+    // do servidor dentro dele (a recusa também vai para o painel, para não sumir
+    // se a pessoa fechar o modal). As guardas olham o TIPO do modal e a oferta: a
+    // resposta de um envio não fecha nem marca outro modal aberto depois.
+    const desfechoDoModal = (qual) => {
+        const esteModal = (atual) => objetoSeguro(atual)?.modal === qual && objetoSeguro(atual)?.oferta === ofertaDoPainel;
+        const marcarErro = (erro) => setModalDoPainel((atual) => (esteModal(atual) ? { ...atual, erro } : atual));
+
+        return {
+            onConflito: (mensagem, ehConflito) => {
+                if (registrarConflito !== null) registrarConflito(mensagem, ehConflito);
+                marcarErro(typeof mensagem === 'string' && mensagem.trim() !== '' ? mensagem : null);
+            },
+            onSucesso: () => {
+                limparRecusa();
+                setModalDoPainel((atual) => (esteModal(atual) ? null : atual));
+            },
+            // O erro do envio anterior sai quando um novo envio SAI.
+            limparErro: () => marcarErro(null),
+        };
+    };
+
+    const escreverDoModal = (rota, corpo) => {
+        if (!podeEscreverNoPainel || modalAberto === null) return;
+
+        const desfecho = desfechoDoModal(modalAberto.modal);
+        const disparou = escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: desfecho.onConflito,
+            onSucesso: desfecho.onSucesso,
+        });
+
+        if (disparou) desfecho.limparErro();
+    };
+
+    // ⚠️⚠️ A PRÉVIA DO FRETE e a SIMULAÇÃO DE PREÇO são LEITURAS que o servidor
+    // devolve pelo **FLASH**, e não por `axios`. ⚠️ **MEDIDO:** as duas actions são
+    // dual-path (`$request->expectsJson() ? json : back()->with(...)`), e o Inertia
+    // manda `Accept: text/html, application/xhtml+xml` — então `expectsJson()` é
+    // **falso** e o ramo é o `back()->with('painel_frete_previa' | 'painel_simulacao', …)`.
+    // ⚠️ E `router.post` tem `preserveState: true` por DEFAULT, então o estado local
+    // do modal **sobrevive** à volta e o campo digitado não é zerado.
+    // ➡️ **Zero `axios`, zero `fetch`, zero estado novo para a prévia.**
+    const lerDoPainel = (rota, corpo) => {
+        if (!podeEscreverNoPainel) return;
+
+        escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: registrarConflito,
+            // 23/10/2026 (P-18e): leitura não liga a trava de escrita.
+            leitura: true,
+        });
+    };
+
+    // ⚠️⚠️ **A ESCRITA DIRETA, SEM MODAL** (o "Conferir alteração" dos KPIs, o
+    // salvar/descartar da simulação). ⚠️ Ela NÃO fecha modal nenhum.
+    const escreverDireto = (rota, corpo) => {
+        if (!podeEscreverNoPainel) return;
+
+        escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: registrarConflito,
+            onSucesso: limparRecusa,
+        });
+    };
+
     // ⚠️⚠️ Fase 188, plano 12 — A SIMULAÇÃO e a PRÉVIA DO FRETE chegam pelo FLASH
     // (ver o bloco `lerDoPainel` acima): as duas actions são DUAL-PATH, e pelo
     // Inertia o ramo é o `back()->with(...)`. ➡️ A tela SUBSTITUI o bloco neutro
@@ -1115,12 +1140,27 @@ export default function Aprovacao({
     // ⚠️ **A FORMA é a MESMA** (`PrecoDoPainelService::simular()` e
     // `simulacaoNeutra()` devolvem as mesmas chaves): a tela não remonta nada, ela
     // troca o bloco inteiro.
-    const simulacaoDoFlash = objetoSeguro(objetoSeguro(flash)?.painel_simulacao);
-    const previaDoFrete = objetoSeguro(objetoSeguro(flash)?.painel_frete_previa);
+    // ⚠️⚠️ 23/10/2026 (P-05): o servidor marca as duas com `oferta_id`, e a tela só
+    // as usa na oferta ABERTA. O flash sobrevive ao recarregamento parcial do ↑/↓
+    // (`only: ['painel']` não o recarrega): sem a guarda, a simulação da oferta A
+    // aparecia — e podia ser SALVA — na oferta B.
+    const daOfertaAberta = (cru) => {
+        const bloco = objetoSeguro(cru);
+
+        return bloco !== null && ofertaDoPainel !== null && inteiroSeguro(bloco.oferta_id) === ofertaDoPainel ? bloco : null;
+    };
+    const simulacaoDoFlash = daOfertaAberta(objetoSeguro(flash)?.painel_simulacao);
+    const previaDoFrete = daOfertaAberta(objetoSeguro(flash)?.painel_frete_previa);
 
     const precoComSimulacao = precoDoPainel === null || simulacaoDoFlash === null
         ? precoDoPainel
         : { ...precoDoPainel, simulacao: simulacaoDoFlash };
+
+    // ⚠️ O que "Salvar no anúncio" manda é o TEXTO do campo (23/10/2026, P-05: o
+    // valor digitado é estado da caixa) e, sem ele, o valor DIGITÁVEL que o servidor
+    // devolveu (`preenche`) — a tela não reformata número, e sanear aqui criaria a
+    // SEGUNDA leitura do mesmo campo (a canônica é `PrecoDoPainelService::sanear`).
+    const precoSimulado = chaveSegura(objetoSeguro(precoComSimulacao?.simulacao)?.preenche) ?? '';
 
     const colunaDeFotos = fotosDoPainel === null
         ? null
@@ -1136,8 +1176,6 @@ export default function Aprovacao({
                 versao={versaoDoPainel}
                 onReprovar={abrirModalDeReprovar}
                 onConflito={registrarConflito}
-                onAmpliar={abrirOLightbox}
-                refDoAmpliar={refDoAmpliar}
             />
         );
 
@@ -1168,13 +1206,15 @@ export default function Aprovacao({
         ? null
         : (
             <ColunaDePreco
-                key="coluna-de-preco"
+                // 23/10/2026 (P-05): `key` por oferta — o valor digitado na
+                // simulação é estado da caixa e volta ao do servidor ao trocar de oferta.
+                key={'coluna-de-preco-' + ofertaDoPainel}
                 preco={precoComSimulacao}
                 onConferirAlteracao={!podeEscreverNoPainel ? null : () => escreverDireto('mlb.anuncios.meus.aprovacao.painel.conferir-alteracao', {})}
                 onInformarFrete={abrirModalDoPainel === null ? null : () => abrirModalDoPainel(MODAL_FRETE, null)}
                 onSimular={!podeEscreverNoPainel ? null : (digitado) => lerDoPainel('mlb.anuncios.meus.aprovacao.painel.preco.simular', { preco: typeof digitado === 'string' ? digitado : '' })}
                 onDescartar={!podeEscreverNoPainel ? null : () => lerDoPainel('mlb.anuncios.meus.aprovacao.painel.preco.simular', { preco: '' })}
-                onSalvar={!podeEscreverNoPainel ? null : () => escreverDireto('mlb.anuncios.meus.aprovacao.painel.preco', { preco: precoSimulado })}
+                onSalvar={!podeEscreverNoPainel ? null : (digitado) => escreverDireto('mlb.anuncios.meus.aprovacao.painel.preco', { preco: typeof digitado === 'string' && digitado.trim() !== '' ? digitado : precoSimulado })}
                 onAbrirIrma={abrirOferta}
             />
         );
@@ -1245,152 +1285,6 @@ export default function Aprovacao({
             />
         );
 
-    // ===== Fase 188, plano 11 - OS DOIS PRIMEIROS MODAIS, LIGADOS =====
-    //
-    // ⚠️⚠️ **DESVIO DECLARADO DO `files_modified` do 188-11-PLAN.md**, pelo MESMO
-    // precedente das waves **188-09** e **188-10**, que também não listavam esta
-    // página e também a ligaram: **NENHUMA wave de 11 a 13 tem esta página no
-    // `files`**, e sem o fio os modais existiriam no disco e **não apareceriam na
-    // tela** - e os critérios 11 e 12 falam do que a tela MOSTRA. Logo: o fio entra
-    // aqui, DECLARADO, e nada mais desta página é tocado.
-    //
-    // ⚠️ **Derivação PURA, sem `useEffect`:** modal guardado para OUTRA oferta é
-    // descartado. Sem isto, navegar com as setas levaria o modal aberto para a
-    // oferta seguinte - e o ajuste iria para a oferta errada.
-    const modalAberto = modalDoPainel !== null && objetoSeguro(modalDoPainel)?.oferta === ofertaDoPainel
-        ? modalDoPainel
-        : null;
-
-    const fecharModalDoPainel = () => setModalDoPainel(null);
-
-    // ⚠️ Atualização de UM campo do formulário, preservando o resto.
-    const mudarCampoDoModal = (campo, valor) => setModalDoPainel((anterior) => {
-        const atual = objetoSeguro(anterior);
-        if (atual === null) return anterior;
-
-        return { ...atual, [campo]: valor };
-    });
-
-    // ⚠️⚠️ **TODA ESCRITA PELO HELPER ÚNICO `escreverNoPainel`** (W11 / COL-04 /
-    // critério 17): ele acrescenta `versao_esperada` **SEMPRE** e **não engole** o
-    // 422 de versão divergente. ⚠️ `versao_esperada` é OPCIONAL no corpo da action,
-    // então omiti-la faz `exigirVersao()` receber `null` e **LIBERAR** a escrita -
-    // literalmente "sobrescrever em silêncio", que é o que o critério 17 proíbe.
-    // ⚠️ **Nunca `router.post` direto** (há gate com lista CONSTANTE, plano 188-12).
-    //
-    // ⚠️⚠️ **Fase 188, plano 12 — O AVISO DE CONCORRÊNCIA ACENDE AQUI.** O helper
-    // chama `onConflito` com a mensagem do SERVIDOR (ela diz as DUAS versões), e
-    // ela **nunca é remontada no cliente**.
-    // ⚠️ Derivação PURA: conflito guardado para OUTRA oferta é descartado — sem
-    // isso, navegar com ↑/↓ levaria o aviso para a oferta seguinte.
-    const conflitoAberto = conflitoDoPainel !== null && objetoSeguro(conflitoDoPainel)?.oferta === ofertaDoPainel
-        ? conflitoDoPainel
-        : null;
-
-    const escreverDoModal = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        const disparou = escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-
-        // ⚠️ O modal só fecha se a escrita SAIU. Fechar antes faria a pessoa achar
-        // que pediu o ajuste quando nada foi enviado.
-        if (disparou) fecharModalDoPainel();
-    };
-
-    // ⚠️⚠️ A PRÉVIA DO FRETE e a SIMULAÇÃO DE PREÇO são LEITURAS que o servidor
-    // devolve pelo **FLASH**, e não por `axios`. ⚠️ **MEDIDO:** as duas actions são
-    // dual-path (`$request->expectsJson() ? json : back()->with(...)`), e o Inertia
-    // manda `Accept: text/html, application/xhtml+xml` — então `expectsJson()` é
-    // **falso** e o ramo é o `back()->with('painel_frete_previa' | 'painel_simulacao', …)`.
-    // ⚠️ E `router.post` tem `preserveState: true` por DEFAULT, então o estado local
-    // do modal **sobrevive** à volta e o campo digitado não é zerado.
-    // ➡️ **Zero `axios`, zero `fetch`, zero estado novo para a prévia.**
-    const lerDoPainel = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-    };
-
-    // ⚠️⚠️ **A ESCRITA DIRETA, SEM MODAL** (o "Conferir alteração" dos KPIs, o
-    // salvar/descartar da simulação). ⚠️ Ela NÃO fecha modal nenhum.
-    const escreverDireto = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-    };
-
-    // ═══ ⚠️⚠️ Fase 189, plano 07 — A ESCRITA DO LIGHTBOX, PELO CONTEXTO DELE ══
-    //
-    // ⚠️⚠️ **PERGUNTA-189-B (b), decisão do usuário de 19/10/2026.** Este é o
-    // adaptador que `acaoDoLightbox` chama, e ele recebe a oferta e a versão **já
-    // lidas do contexto do lightbox** — por isso o `escritasDaColuna` abaixo é
-    // chamado com `alvo.oferta`/`alvo.versao` e **NUNCA** com
-    // `ofertaDoPainel`/`versaoDoPainel`. Depois de um ↑/↓ as duas DIVERGEM, e usar
-    // as do painel aprovaria a foto da oferta A com a versão da B (T-189-50).
-    //
-    // ⚠️⚠️ **REUSO DO CAMINHO, NÃO SEGUNDA CÓPIA.** `escritasDaColuna`
-    // (`ColunaDeFotos.jsx`, named export medido no `189-CONTRATO-188.md` INV-03 /
-    // A6) já monta a rota `ROTA_APROVAR_IMAGEM` do 188-05 com
-    // `{company, oferta, imagem}` e já escreve pelo helper ÚNICO
-    // `escreverNoPainel` — `versao_esperada` SEMPRE, 422 NUNCA engolido. ➡️ Nenhuma
-    // rota nova, nenhum `router.post` novo e nenhuma segunda regra de escrita.
-    //
-    // ⚠️ **Reprovar ABRE O MODAL e o lightbox CONTINUA ABERTO** (protótipo `:1330`:
-    // `openModal('reject', {set: lb.set, img: ord[i]})` com o lightbox vivo). A
-    // escrita acontece no envio do modal, com o MESMO contexto.
-    // ⚠️ **Aprovar ENFILEIRA** — a escrita no Mercado Livre é da **Fase 193**.
-    const escreverPeloLightbox = (pedido) => {
-        const alvo = objetoSeguro(pedido);
-        if (alvo === null || empresaId === null) return false;
-
-        if (alvo.tipo === TIPOS_DA_ACAO_DO_LIGHTBOX.REPROVAR) {
-            if (abrirModalDeReprovar === null) return false;
-
-            abrirModalDeReprovar(alvo.imagemId, { oferta: alvo.oferta, versao: alvo.versao });
-
-            return true;
-        }
-
-        const escritas = escritasDaColuna({
-            empresaId,
-            ofertaId: alvo.oferta,
-            versao: alvo.versao,
-            onConflito: registrarConflito,
-        });
-
-        if (escritas.aprovarImagem === null) return false;
-
-        const disparou = escritas.aprovarImagem(alvo.imagemId);
-
-        // ⚠️⚠️ O **D2 da PERGUNTA-189-D** (ABERTA, default aplicado e declarado):
-        // com a oferta do painel diferente da do contexto, o recarregamento traz a
-        // outra oferta e o contexto da A ficaria VELHO — a foto aprovada apareceria
-        // "A conferir", com botões. ➡️ O lightbox FECHA, com o foco do D1.
-        if (disparou && depoisDaAcaoNoLightbox({ contexto: contextoDoLb, painelAtual: painelDeRevisao }).fechar) {
-            fecharOLightbox();
-        }
-
-        return disparou;
-    };
-
     const noRodapeDoPainel = rodapeDoPainel === null
         ? null
         : (
@@ -1405,46 +1299,24 @@ export default function Aprovacao({
                 ofertaId={ofertaDoPainel}
                 versao={versaoDoPainel}
                 onConflito={registrarConflito}
+                // 23/10/2026 (P-18e): "Salvar revisão" e "Aprovar" travam com uma
+                // escrita em voo — o duplo clique mandava dois pedidos.
+                enviando={enviandoNoPainel}
             />
         );
 
-    // ⚠️ O que "Salvar no anúncio" manda é o valor DIGITÁVEL que o servidor
-    // devolveu (`preenche`) — a tela não reformata número, e sanear aqui criaria a
-    // SEGUNDA leitura do mesmo campo (a canônica é `PrecoDoPainelService::sanear`).
-    const precoSimulado = chaveSegura(objetoSeguro(precoComSimulacao?.simulacao)?.preenche) ?? '';
-
+    // ⚠️ O payload dos modais vem do SERVIDOR (`modais.*`, plano 188-06): a tela
+    // **não** monta a tabela de escopos, nem a lista de autorizadores, nem os
+    // chips de defeito. Montá-los aqui seria a SEGUNDA VERDADE de cada um.
     // ⚠️ A imagem que vai ser reprovada é a entrada de `painel.fotos.imagens` com o
     // `id` que o bloco mandou — e é dela que saem a URL (`url_arquivo`, a MESMA
     // fonte da coluna de fotos do plano 188-08), o rótulo e o `tipo_rotulo`.
     // ⚠️ `url_arquivo` é da rota `mlb.anuncios.publicador.fotos.arquivo`, que serve
     // **BYTES**: o acervo (`Acervo*`, `ImagemAssetService`) é território PROIBIDO, e
     // o R2 privado **não serve URL pública**. **Nenhum caminho montado à mão.**
-    //
-    // ═══ ⚠️⚠️ Fase 189, plano 07 — O MODAL ABERTO PELO LIGHTBOX ═════════════
-    //
-    // ⚠️⚠️ `contextoDaFoto` não-nulo significa *"aberto a partir do lightbox"*, e
-    // aí a oferta e a versão da ESCRITA são as **DELE** (PERGUNTA-189-B (b)).
-    // ⚠️⚠️ **E A GALERIA DA BUSCA TAMBÉM É A DELE.** Depois de um ↑/↓ a foto da
-    // oferta A **não está** em `painel.fotos.imagens` (que já é da B): procurar lá
-    // devolveria `null`, o modal abriria **sem a foto** — rótulo sem valor é casca
-    // vazia (D4) — e a pessoa confirmaria a reprovação **sem ver o que reprova**.
-    // ⚠️ Sem contexto (todo caminho do PAINEL) a busca continua em
-    // `painel.fotos.imagens`, byte a byte como o 188-12 a entregou.
-    const contextoDaFotoNoModal = modalAberto === null ? null : objetoSeguro(modalAberto.contextoDaFoto);
-    const ofertaDaEscritaDoModal = contextoDaFotoNoModal === null
-        ? ofertaDoPainel
-        : inteiroSeguro(contextoDaFotoNoModal.oferta);
-    const versaoDaEscritaDoModal = contextoDaFotoNoModal === null
-        ? versaoDoPainel
-        : inteiroSeguro(contextoDaFotoNoModal.versao);
-
-    const galeriaDoModal = contextoDaFotoNoModal !== null
-        ? imagensDoLb
-        : (Array.isArray(fotosDoPainel?.imagens) ? fotosDoPainel.imagens : []);
-
     const imagemDoModal = modalAberto === null
         ? null
-        : galeriaDoModal
+        : (Array.isArray(fotosDoPainel?.imagens) ? fotosDoPainel.imagens : [])
             .map((imagem) => objetoSeguro(imagem))
             .find((imagem) => imagem !== null && inteiroSeguro(imagem.id) === inteiroSeguro(modalAberto.imagemId)) ?? null;
 
@@ -1475,6 +1347,8 @@ export default function Aprovacao({
                 onTexto={(valor) => mudarCampoDoModal('texto', valor)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.ajuste', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeExcecao
                 key="modal-de-excecao"
@@ -1489,6 +1363,8 @@ export default function Aprovacao({
                 onJustificativa={(valor) => mudarCampoDoModal('justificativa', valor)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.excecao', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeFrete
                 key="modal-de-frete"
@@ -1509,6 +1385,8 @@ export default function Aprovacao({
                 onOrigem={(chave) => mudarCampoDoModal('origem', chave)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.frete', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeReprovarImagem
                 key="modal-de-reprovar"
@@ -1526,62 +1404,21 @@ export default function Aprovacao({
                     const imagemId = inteiroSeguro(modalAberto.imagemId);
                     if (!podeEscreverNoPainel || imagemId === null || imagemId <= 0) return;
 
-                    // ═══ ⚠️⚠️ Fase 189, plano 07 — O RAMO DO LIGHTBOX, SEPARADO ══
-                    //
-                    // ⚠️⚠️ **POR QUE RAMO SEPARADO, e isto foi MEDIDO POR GATE.** A
-                    // primeira redação desta wave trocou a oferta/versão do bloco
-                    // ABAIXO por derivações, e
-                    // `publicador-painel-modal-reprovar-188.test.js:581` REPROVOU —
-                    // ele cobra, LITERALMENTE, que o caminho do PAINEL escreva com
-                    // `{ company: empresaId, oferta: ofertaDoPainel, imagem:
-                    // imagemId }`. ⚠️ **E o gate está CERTO:** o próprio plano desta
-                    // wave manda *"sem mudar NADA para quem abre pelo painel"*. ➡️ O
-                    // caminho do painel fica **byte a byte** como o 188-12 o
-                    // entregou, e o do lightbox é um ramo à parte, ANTES dele.
-                    // ⚠️ **Nenhum gate alheio foi editado e nenhuma contagem alheia
-                    // foi remedida** (`modal-de-reprovar` 19/17, `modal-de-frete`
-                    // 22/18 e `aviso-de-versao` 12/10 INALTERADOS).
-                    // ⚠️ O literal da rota aparece nos DOIS ramos, e há asserção no
-                    // gate desta wave exigindo que os dois sejam **IDÊNTICOS** —
-                    // segunda cópia só com teste de igualdade (régua §2).
-                    if (contextoDaFotoNoModal !== null) {
-                        const ofertaId = inteiroSeguro(ofertaDaEscritaDoModal);
-                        const versaoId = inteiroSeguro(versaoDaEscritaDoModal);
-                        if (ofertaId === null || ofertaId <= 0 || versaoId === null || versaoId <= 0) return;
-
-                        const foi = escreverNoPainel({
-                            rota: 'mlb.anuncios.meus.aprovacao.painel.imagem.reprovar',
-                            parametros: { company: empresaId, oferta: ofertaId, imagem: imagemId },
-                            corpo: pedido,
-                            versao: versaoId,
-                            onConflito: registrarConflito,
-                        });
-
-                        if (!foi) return;
-
-                        fecharModalDoPainel();
-
-                        // ⚠️⚠️ O **D2** vale também por aqui: reprovar tira a foto do
-                        // conjunto final, e com o painel em OUTRA oferta o contexto
-                        // da A ficaria velho (a foto sairia "A conferir", com
-                        // botões). ⚠️ Com a MESMA oferta `fechar` sai `false`.
-                        if (depoisDaAcaoNoLightbox({ contexto: contextoDoLb, painelAtual: painelDeRevisao }).fechar) {
-                            fecharOLightbox();
-                        }
-
-                        return;
-                    }
-
+                    // 23/10/2026 (P-18e): fecha só no SUCESSO; a recusa aparece no modal.
+                    const desfecho = desfechoDoModal(MODAL_REPROVAR);
                     const disparou = escreverNoPainel({
                         rota: 'mlb.anuncios.meus.aprovacao.painel.imagem.reprovar',
                         parametros: { company: empresaId, oferta: ofertaDoPainel, imagem: imagemId },
                         corpo: pedido,
                         versao: versaoDoPainel,
-                        onConflito: registrarConflito,
+                        onConflito: desfecho.onConflito,
+                        onSucesso: desfecho.onSucesso,
                     });
 
-                    if (disparou) fecharModalDoPainel();
+                    if (disparou) desfecho.limparErro();
                 }}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
         ];
 
@@ -1605,18 +1442,27 @@ export default function Aprovacao({
     // aviso NÃO é desenhado). ⚠️ O que **não** está provado é o RUNTIME do
     // recarregamento parcial — **não há navegador nesta máquina**. O que os gates
     // provam é a função PURA `avisoDeVersao()`, nos DOIS gatilhos.
-    const noAvisoDoPainel = (
+    //
+    // ⚠️⚠️ 23/10/2026 (P-18d): a recusa que NÃO é conflito de versão não acende este
+    // aviso ("a oferta mudou — Recarregar") — ela aparece no `AvisoDeRecusa`, com a
+    // mensagem do servidor, enquanto a oferta estiver na versão em que ela nasceu.
+    const recusaAberta = objetoSeguro(conflitoAberto)?.recusa === true;
+    const noAvisoDoPainel = [
         <AvisoDeVersaoMudou
             key="aviso-de-versao"
             versaoVista={objetoSeguro(modalAberto)?.versaoVista ?? versaoDoPainel}
             versaoAtual={versaoDoPainel}
-            mensagem={objetoSeguro(conflitoAberto)?.mensagem ?? null}
+            mensagem={recusaAberta ? null : (objetoSeguro(conflitoAberto)?.mensagem ?? null)}
             onRecarregar={ofertaDoPainel === null || abrirOferta === null ? null : () => {
                 setConflitoDoPainel(null);
                 abrirOferta(ofertaDoPainel);
             }}
-        />
-    );
+        />,
+        <AvisoDeRecusa
+            key="aviso-de-recusa"
+            mensagem={recusaAberta && conflitoAberto.versao === versaoDoPainel ? conflitoAberto.mensagem : null}
+        />,
+    ];
 
     const noPainel = isValidElement(painelNo)
         ? painelNo
@@ -1638,16 +1484,6 @@ export default function Aprovacao({
                 modais={noModaisDoPainel}
                 temModal={modalAberto !== null}
                 onFecharModal={fecharModalDoPainel}
-                // ⚠️⚠️ Fase 189, plano 06 — o DEGRAU do `Escape` e as ←/→ do
-                // lightbox. O painel tem o ÚNICO `keydown` da tela; o estado
-                // mora aqui. ⚠️ `imagemDoLightbox`/`totalDoLightbox` são do
-                // CONTEXTO do lightbox, que pode ser **outra oferta** que a do
-                // painel por baixo (PERGUNTA-189-B (b)).
-                temLightbox={lightboxAberto}
-                imagemDoLightbox={indiceDoLb}
-                totalDoLightbox={imagensDoLb.length}
-                onFecharLightbox={fecharOLightbox}
-                onMoverLightbox={moverOLightbox}
             />
         );
 
@@ -1808,54 +1644,6 @@ export default function Aprovacao({
                 abaixo do modal `z-[42]` e do toast `z-[45]` — a ORDEM travada do
                 projeto, nunca os números do protótipo (lá o header é 50). */}
             {noPainel}
-
-            {/* ═══ ⚠⚠ Fase 189 — O LIGHTBOX, `z-[41]`, POR PORTAL PRÓPRIO ═════
-                ⚠⚠ Ele tem o SEU `createPortal` para o `document.body` (189-03),
-                então **onde ele é montado nesta árvore não muda a camada**: o que
-                decide é a ORDEM dos `z` — header `30` < barra `35` < backdrop
-                `39` < painel `40` < **LIGHTBOX `41`** < modal `42` < toast `45`.
-                ⚠ O `90` do protótipo (`:727`) foi **RECUSADO por peça**: aqui se
-                preserva a ORDEM relativa, nunca os números de lá.
-                ⚠ O lightbox é **CONTROLADO**: `aberto`, `indice`, `zoom` e
-                `origem` vêm do estado desta página, e as setas/miniaturas/cursor
-                devolvem PEDIDOS por callback.
-                ⚠⚠ **Fase 189, plano 07 — AS AÇÕES DA LATERAL ESTÃO LIGADAS, e
-                todas as props dela saem de UMA função só**,
-                `propsDaLateralDoLightbox` (named export de `PainelDeRevisao.jsx`).
-                ⚠ A razão de ser função exportada é que o lightbox é **portal** e o
-                renderizador de SERVIDOR do React **não desenha portal**: um teste
-                do composto passaria **por OMISSÃO**, e o botão poderia nunca
-                nascer. O gate renderiza a lateral com ESTAS props.
-                ⚠⚠ A oferta, a versão e a foto das ações saem do **CONTEXTO DO
-                LIGHTBOX** (PERGUNTA-189-B (b)) — nunca de `ofertaDoPainel` /
-                `versaoDoPainel`, que depois de um ↑/↓ são de OUTRA oferta.
-                ⚠ Aprovar **ENFILEIRA**; a escrita no Mercado Livre é da **Fase
-                193**. ⚠ "✦ Gerar novamente com IA" é da **Fase 192** (a ÚLTIMA
-                desta milestone) e **não** é antecipado; "Comparar lado a lado"
-                ficou **sem dono** (as Fases 190/191 saíram de escopo em
-                20/10/2026). */}
-            <LightboxDaImagem
-                aberto={lightboxAberto}
-                imagens={imagensDoLb}
-                indice={indiceDoLb}
-                zoom={doLightbox === null ? null : doLightbox.zoom}
-                origem={doLightbox === null ? null : doLightbox.origem}
-                onMover={moverOLightbox}
-                onSelecionar={moverOLightbox}
-                onMoverOrigem={moverAOrigem}
-                lateral={(
-                    <LateralDoLightbox
-                        {...propsDaLateralDoLightbox({
-                            contexto: contextoDoLb,
-                            indice: indiceDoLb,
-                            zoom: doLightbox === null ? null : doLightbox.zoom,
-                            onFechar: fecharOLightbox,
-                            onAlternarZoom: alternarOZoom,
-                            escrever: escreverPeloLightbox,
-                        })}
-                    />
-                )}
-            />
         </AppLayout>
     );
 }

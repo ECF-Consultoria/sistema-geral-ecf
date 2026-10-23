@@ -194,11 +194,25 @@ final class FilaPublicacaoService
     /** Sem nada agendado nem publicando, a fila viva termina (e a conta fica livre para outra). */
     public function concluirSeVazia(?PubFilaPublicacao $fila): void
     {
-        if ($fila === null || ! $fila->viva() || $fila->itens()->whereIn('status', PubFilaPublicacaoItem::VIVOS)->exists()) {
+        if ($fila === null) {
             return;
         }
-        $fila->update(['status' => PubFilaPublicacao::CONCLUIDA, 'conta_ativa' => null, 'concluida_em' => now()]);
-        Log::info("[Publicador] Fila de publicação {$fila->id} da conta {$fila->conta_chave} concluída.");
+        // Sob a trava da linha da fila, a mesma que o "Agendar" segura enquanto insere (23/10/2026, P-24): sem ela, o
+        // `exists()` não via os itens que estavam entrando e a fila fechava com eles dentro — presos, sem caminho pela
+        // tela. Relida também porque quem chama pode ter uma cópia velha (pausada ou cancelada no meio).
+        $concluida = DB::transaction(function () use ($fila) {
+            $viva = PubFilaPublicacao::query()->whereKey($fila->id)->lockForUpdate()->first();
+            if ($viva === null || ! $viva->viva() || $viva->itens()->whereIn('status', PubFilaPublicacaoItem::VIVOS)->exists()) {
+                return false;
+            }
+            $viva->update(['status' => PubFilaPublicacao::CONCLUIDA, 'conta_ativa' => null, 'concluida_em' => now()]);
+
+            return true;
+        });
+        if ($concluida) {
+            $fila->refresh();
+            Log::info("[Publicador] Fila de publicação {$fila->id} da conta {$fila->conta_chave} concluída.");
+        }
     }
 
     // ═══ O painel ════════════════════════════════════════════════════════════

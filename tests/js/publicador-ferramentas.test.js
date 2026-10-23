@@ -85,9 +85,9 @@ test('daUnidadeMl / numeroDoAtributo / unidadeInicial — o gravado volta na uni
 // ── §3 termos no título ──
 
 test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e termoNoTitulo reconhece', () => {
-    assert.equal(juntarTermo('Cadeira Escritório', 'cadeira escritorio giratoria'), 'Cadeira Escritório giratoria');
-    // 19/10/2026: o título nasce com a 1ª letra maiúscula (lib/tituloDoProduto).
-    assert.equal(juntarTermo('', 'cadeira gamer'), 'Cadeira gamer');
+    assert.equal(juntarTermo('Cadeira Escritório', 'cadeira escritorio giratoria'), 'Cadeira Escritório Giratoria');
+    // 20/10/2026: toda palavra do título começa com maiúscula (lib/tituloDoProduto).
+    assert.equal(juntarTermo('', 'cadeira gamer'), 'Cadeira Gamer');
     assert.equal(juntarTermo('Cadeira Gamer', 'cadeira gamer'), 'Cadeira Gamer');
     assert.equal(termoNoTitulo('Cadeira Escritório Giratória', 'cadeira giratoria'), true);
     assert.equal(termoNoTitulo('Cadeira Escritório', 'cadeira gamer'), false);
@@ -400,7 +400,8 @@ test('Formas de envio — explicação da escolhida embaixo; conferir aplica ant
     assert.match(envio, /me2: 'Logística do Mercado Livre/);
     assert.match(envio, /dica=\{EXPLICACAO_ENVIO\[modo\] \?\? null\}/);
     const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
-    assert.match(hook, /const conferir = async \(\) => \{\s*await garantirFreteObrigatorio\(\);/);
+    // P-31b (23/10/2026): o clique trava o botão antes; a regra do frete continua sendo o primeiro passo do pedido.
+    assert.match(hook, /const conferir = async \(\) => \{[\s\S]*?try \{\s*await garantirFreteObrigatorio\(\);/);
     assert.match(hook, /if \(regra\?\.obrigatorio && ! rascRef\.current\?\.envio\?\.frete_gratis\)/);
-    assert.match(lerSemComentarios(`${BASE}/Mesa/Publicar.jsx`), /data-previa-frete/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/AnuncioNoMl.jsx`), /data-previa-frete/);
 });

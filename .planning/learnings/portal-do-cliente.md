@@ -1864,7 +1864,10 @@ varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
   trata o planejado como preenchido também quando o campo ainda tem o último texto da IA, e `devolvidosAoPortal` APAGA
   esse texto (para o efetivo do cliente aparecer). O hash dos fatos ganha `titulo_do_cliente` **só quando existe** —
   produto sem título mantém o hash de antes e nada é refeito por causa da chave nova.
-- **A 1ª letra maiúscula vale no servidor, em quatro pontos, porque há caminhos que pulam o model:** o `Alvo` (snapshot,
+- **TODA palavra começa com maiúscula ("Puff Pera Com Enchimento") — o usuário corrigiu em 20/10 a primeira versão, que só
+  capitalizava a 1ª letra do título: "tem que ser todos", inclusive as de ligação. Só a 1ª letra de cada palavra muda
+  ("MDF" fica); palavra que começa por número fica.** A regra vale no servidor, em quatro pontos, porque há caminhos
+  que pulam o model: o `Alvo` (snapshot,
   validação e `family_name` do payload), o mutator de `PubRascunhoAlvo` (Eloquent), o `RascunhoRepository::gravarTitulos`
   (update por query NÃO passa pelo mutator) e os títulos da IA DEPOIS do `RegrasDoTitulo::semRepetir` (a troca de ordem
   pode pôr palavra minúscula na frente). A memória da IA compara o último texto dela capitalizado, senão um título
@@ -1885,3 +1888,87 @@ varchar 255 NULL, aditiva, sem backfill). O que não se deduz do código:
   (`termoNoTitulo`); o bug do produto 67 era o clique chamar só `juntarTermo`, que não faz nada quando o termo já está lá.
 - **Tarefa 4 (campo Modelo com ";") não foi feita:** não existe no código campo que exija ";" (o MODEL saiu da ficha do
   Portal em 09/10, e a IA do Publicador junta com vírgula). Esperando o usuário dizer onde vê a regra.
+- **Ponteiro "arquivo:linha" em teste do outro dev (20/10/2026).** `FotosDoPainelServiceTest` (Fase 188) confere que a
+  linha 131 de `PreparoIaDoRascunhoService.php` (e outras quatro) contém `EditorEmUso::`. O `use TituloDoProduto` que
+  este trabalho pôs no topo empurrou a linha para 132 e quebrou esse teste no `main`; a correção foi tirar o `use` e
+  escrever `\App\Support\TituloDoProduto::` nos três pontos. Acrescentar linha ACIMA desses pontos nesses cinco
+  arquivos quebra o gate dele — ajuste a tabela `$leitores` do teste junto, ou não desloque.
+
+## Mapeamento oculto do Portal por CONFIGURAÇÃO, não por código (20/10/2026)
+
+Pedido do usuário: "oculta a parte 4 do portal. Mapeamento". Em produção,
+`configuracoes.portal_estrutura_submodulos_cliente` = `produtos,sugestoes,precificacao` — vale para todas as empresas,
+cliente e equipe (`VisibilidadeDoMapeamento`). O `PADRAO_CLIENTE` do código continua com `mapeamento`: quem procurar
+"por que o Mapeamento sumiu" no código não acha — está no banco. Esconder não remove: a rota abre por link direto e,
+nela, o item aparece no menu marcado `oculto`. Para voltar: apagar a chave (ou incluir `mapeamento` na lista). Uma
+empresa com `portal_estrutura_submodulos_empresa_{id}` vence a padrão — em 20/10 nenhuma tinha.
+
+## Planejamento sem abas: sugestões em cima, criados embaixo (21/10/2026)
+
+Pedido do usuário: "em Criadas fica muito oculto, então parece que não tem nada"; ele escolheu, entre mockups, a
+tela com as duas seções. O que não se deduz de olhar a tela:
+
+- **Duas listas, duas URLs.** As criadas usam `criadas_fase`, `criadas_q` e `criadas_pagina` (mais `situacao`, `envio`,
+  `ordem`); as sugestões seguem com `fase`, `q`, `pagina`. Cada visita parcial carrega os parâmetros da outra, senão um
+  filtro apaga o outro da URL. `?aba=` de link antigo é ignorado (a `aba` do serviço é sempre `sugestoes`).
+- **As duas props são preguiçosas** (closures no `Inertia::render`): o filtro das criadas não regera as sugestões, e
+  vice-versa. O aceite recarrega `sugestoes` + `criadas` juntas — é assim que o cartão "desce" para Criados.
+- **A prévia** (`sugestoes.previa`, 4 itens, Kits e Combits na frente) é do conjunto inteiro, sem filtro e sem Combos
+  recolhidos: com os Combos recolhidos por família, a página 1 de quem só tem Combos não traz item nenhum.
+- **Frete estimado continua UMA chamada por listagem** (`LogisticaDoConjuntoTest`): página e prévia passam juntas pelo
+  `enriquecer`. Chamar duas vezes reprova o teste.
+- **Produto sem tipo** não tem mais aba: o cartão mostra "Sem tipo" (âmbar) e abre a `JanelaTipo`. Descartada só volta
+  pelo "Desfazer" do aviso; a rota `restaurar` continua existindo.
+
+## Termos mais buscados na célula do Título da planilha (21/10/2026)
+
+Pedido do usuário: levar os termos da categoria para a planilha, "apenas na célula da coluna do Título" — ele recusou
+colunas de termo separadas. Código: `TermosDoTituloNaPlanilha` + `ModeloCompleto::setaDoTitulo()`. O que não se deduz:
+
+- **Lista que só sugere, e não soma.** A validação "Lista" do Excel escolhe UM valor e troca o que estava na célula.
+  Somar termos como os chips da ficha só com macro — que o Excel bloqueia em arquivo baixado e o Google Planilhas não
+  roda. Por isso: no modelo vazio a seta traz os termos (escolhe um e completa com F2); no "meus produtos", onde o
+  nome já existe, traz TÍTULOS PRONTOS (nome + palavras novas de cada termo, `TituloDoProduto::juntarTermo`, a mesma
+  regra do clique na tela), com o título de hoje em primeiro. `showErrorMessage=false`: o título digitado vale.
+- **Google Planilhas** pode marcar com aviso o título digitado que não está na lista. Não bloqueia; já acontecia nos
+  campos da ficha que aceitam "Outro".
+- **Prazo de 20 s por arquivo** para ler os termos, e para na 1ª falha: o "meus produtos" pode ter até 60 categorias,
+  e cada leitura tem timeout de 15 s. Categoria que fica sem termos sai sem a seta, igual a antes.
+- **Teste:** os termos leem o schema INTEIRO da categoria (`CategorySchemaRepository::obter`), que pede também
+  `technical_specs/input` e `sale_terms`. Com o falso respondendo 404 nesses dois, a leitura falha calada e a planilha
+  sai sem seta — o teste parece de código quebrado. O `ModeloCompletoTest` responde `[]` 200 para os dois.
+- **Memória:** a pasta `tests/Feature/PortalCliente/Estrutura/Produtos` inteira num processo passa de 512 MB (só o
+  `ModeloCompletoTest` usa ~470 MB). Rodar com `php -d memory_limit=3G`.
+
+## A ficha do produto precifica ANTES de salvar — custo e caixa digitados (21/10/2026)
+
+O usuário: "só atualiza o frete quando salva o produto" e, no produto novo ("Salve o produto para ver o preço"), "já
+deveria aparecer aqui e não salvar para depois voltar; a usabilidade fica horrível".
+
+- **Produto salvo:** a prévia da Precificação (`GET produtos/{id}/precificacao`) já levava `custos[variacao_id]`; agora
+  leva também `caixas[variacao_id] = "CxLxAxKG|…"` (ponto decimal). `doProduto(..., $caixasDeVariacao)` troca as
+  caixas da variação dentro de `logisticas()` — nada é gravado. Caixa com medida em branco ou ≤ 0 não vai (vale a salva).
+- **Produto novo:** `GET produtos/precificacao-previa` → `previaSemProduto()`, por chave da variação na TELA (`_k`), com
+  os percentuais da EMPRESA e o frete pela caixa (mesmo `calcular()`/`envio()`/`FreteMe2Service`, sem chamar o ML). Na
+  tela, frete e percentuais próprios ficam travados (`bloqueado`) até salvar: eles gravam na oferta, que só nasce ao
+  salvar. O custo é o campo da variação, como sempre.
+- **Rota nova no domínio do cliente** = linha na allowlist (`RestringeDominioDoPortal::PERMITIDO`) e as contagens do
+  `AcessoAosProdutosTest` (rotas com throttle `estrutura.produtos` e linhas da allowlist). Esquecer a allowlist dá 404 só
+  em `cliente.`, e os testes do Admin passam.
+- A faixa de calculados da variação (peso cubado, "Frete ME2") continua vindo do servidor ao salvar (D-28: a conta não
+  vai para o JS); com a caixa mexida ela fica apagada e diz que a Precificação já usa as medidas digitadas.
+- Conferido no servidor local de demonstração (Chrome sem janela): produto novo, custo 270 e caixa 120 × 50 × 91 cm com
+  10 kg → frete R$ 168,85 ("referência do ML para a caixa") e preço na hora, sem salvar.
+
+## Poltrona sem Combo nem Kit no Planejamento é DADO, não código (22/10/2026)
+
+Teste da empresa #459: duas poltronas completas e publicadas (mesma família, ambiente Sala, tipo Poltrona) sem
+nenhuma sugestão, e uma mesa de cabeceira incompleta com Combo. O gerador está certo:
+
+- A semente (`config/estrutura_geracao.php`) dá ao tipo **Poltrona** `qtd_combo = null` e nenhum par de tipos tem
+  Poltrona — nem **Poltrona + Poltrona** (como o Cama + Cama). Kit entre dois produtos do MESMO tipo só sai com o par
+  do tipo com ele mesmo. O criado-mudo ("mesa de cabeceira") nasce com Combo de 2.
+- Completude e "já publicado" não entram na regra: basta a variação ter oferta simples ligada (D-09).
+- Kit de duas cores do MESMO produto nunca é sugerido (o par é entre produtos); sai pelo "Montar kit".
+- O conserto é na tela admin `/dev/estrutura-geracao`: Combo "2" no tipo Poltrona e o par Poltrona + Poltrona
+  ("Combit: não"). `PoltronasNaSementeTest` prova os dois lados.

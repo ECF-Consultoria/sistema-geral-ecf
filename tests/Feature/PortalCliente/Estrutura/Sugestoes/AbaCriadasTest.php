@@ -9,6 +9,7 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAcervoItem;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
+use App\Services\Portal\Estrutura\Geracao\FotosDasVariacoes;
 use App\Services\Portal\Estrutura\Geracao\OfertasCriadas;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
@@ -88,7 +89,9 @@ class AbaCriadasTest extends TestCase
         // O envio é o da Precificação: as duas caixas somadas passam do limite e viram ME1.
         $this->assertSame(LogisticaProduto::ME1, $doCombo['envio']['chave']);
         $this->assertSame(['c' => 53.0, 'l' => 60.0, 'a' => 160.0, 'peso' => 16.0], $doCombo['envio']['pacote']);
-        $this->assertSame('sem_frete', $doCombo['pendencia'], 'fora do envio padrão não há frete a sugerir');
+        // Desde 21/10/2026 o que fica fora do Mercado Envios tem frete sugerido (a referência do ML para a caixa): o
+        // combo deixa de ficar "sem frete" e sai com preço.
+        $this->assertNull($doCombo['pendencia'], 'fora do Mercado Envios: a referência do ML entra no preço');
 
         $doKit = $r['grupos'][1]['itens'][0];
         $this->assertSame($kit->id, $doKit['id']);
@@ -102,8 +105,8 @@ class AbaCriadasTest extends TestCase
 
     /**
      * 16/10/2026 — "deveria ter filtros, modo lista também". Tipo, situação do preço, envio e busca; cada filtro
-     * conta as suas opções com os OUTROS aplicados. No cenário: o combo está sem frete (ME1); kit e combit, sem
-     * custo (a mesa não tem).
+     * conta as suas opções com os OUTROS aplicados. No cenário: o combo é ME1 e, desde 21/10, sai com a referência do
+     * ML para a caixa (com preço); kit e combit, sem custo (a mesa não tem).
      */
     public function test_filtros_e_contagens_de_cada_opcao_com_os_outros_filtros_aplicados(): void
     {
@@ -113,13 +116,13 @@ class AbaCriadasTest extends TestCase
 
         $tudo = $svc->listar($empresa);
         $this->assertSame(['todas' => 3, 'combo' => 1, 'kit' => 1, 'combit' => 1], $tudo['contagens']['fase']);
-        $this->assertSame(['todas' => 3, 'com_preco' => 0, 'pendente' => 3, 'sem_custo' => 2, 'sem_frete' => 1, 'impossivel' => 0], $tudo['contagens']['situacao']);
+        $this->assertSame(['todas' => 3, 'com_preco' => 1, 'pendente' => 2, 'sem_custo' => 2, 'sem_frete' => 0, 'impossivel' => 0], $tudo['contagens']['situacao'], 'o combo ME1 tem a referência do ML (21/10)');
         $this->assertSame(3, $tudo['contagens']['envio']['todas']);
 
         $this->assertSame([$kit->id], $ids($svc->listar($empresa, ['fase' => 'kit'])));
         $this->assertSame([$kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'sem_custo'])), 'kit e combit, na ordem dos tipos');
-        $this->assertSame([$combo->id, $kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'pendente'])));
-        $this->assertSame([], $ids($svc->listar($empresa, ['situacao' => 'com_preco'])));
+        $this->assertSame([$kit->id, $combit->id], $ids($svc->listar($empresa, ['situacao' => 'pendente'])));
+        $this->assertSame([$combo->id], $ids($svc->listar($empresa, ['situacao' => 'com_preco'])));
         $this->assertSame([$combo->id], $ids($svc->listar($empresa, ['envio' => LogisticaProduto::ME1, 'fase' => 'combo'])));
 
         // Com o tipo Kit ligado, a situação conta só o kit; o tipo continua contando todos (é ele o filtro).
@@ -216,38 +219,77 @@ class AbaCriadasTest extends TestCase
         $this->assertSame([$urlDaCapa, 'https://http2.mlstatic.com/D_2-I.jpg'], array_column($r['grupos'][2]['itens'][0]['composicao'], 'foto'), 'Combit: as mesmas');
     }
 
-    public function test_a_pagina_traz_a_contagem_em_toda_aba_e_a_lista_so_na_aba_criadas(): void
+    /**
+     * 21/10/2026 — "em Criadas fica muito oculto, então parece que não tem nada": sem abas, as criadas vêm sempre,
+     * embaixo das sugestões, com tipo, busca e página próprios (`criadas_*`), que não mexem nos das sugestões.
+     */
+    public function test_a_pagina_traz_sempre_as_criadas_com_filtros_proprios(): void
     {
         [$empresa] = $this->cenario();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        // Nas outras abas: a contagem aparece, a lista não é montada.
         $sessao->get(route('portal.auth.estrutura.sugestoes'))->assertOk()
             ->assertInertia(fn ($page) => $page->component('Portal/EstruturaSugestoes', false)
-                ->where('sugestoes.aba', 'sugestoes')->where('sugestoes.contagens.criadas', 3)->where('criadas', null));
-
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas']))->assertOk()
-            ->assertInertia(fn ($page) => $page->component('Portal/EstruturaSugestoes', false)
-                ->where('sugestoes.aba', 'criadas')->where('filtros.aba', 'criadas')
-                ->where('sugestoes.contagens.criadas', 3)
+                ->where('sugestoes.aba', 'sugestoes')
                 ->has('sugestoes.contagens.sugestoes')
+                ->has('sugestoes.previa')
                 ->where('criadas.total', 3)
                 ->where('criadas.grupos.0.fase', 'combo')
                 ->where('criadas.grupos.0.itens.0.sku', 'NINA-CB2')
                 ->where('criadas.grupos.2.itens.0.composicao.0.quantidade', 4)
                 ->where('filtros_criadas', ['fase' => null, 'situacao' => null, 'envio' => null, 'ordem' => 'recentes', 'q' => '']));
 
-        // Os filtros pela URL; o que não está na lista vira "sem filtro".
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas', 'fase' => 'kit', 'situacao' => 'sem_custo', 'envio' => 'drone', 'ordem' => 'nome', 'q' => 'nina']))->assertOk()
+        // Os filtros das criadas pela URL, com prefixo; o que não está na lista vira "sem filtro". Os das sugestões
+        // (`fase`, `q`) não mexem nas criadas, e os das criadas não mexem nas sugestões.
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['criadas_fase' => 'kit', 'situacao' => 'sem_custo', 'envio' => 'drone',
+            'ordem' => 'nome', 'criadas_q' => 'nina', 'fase' => 'combo', 'q' => 'zzz']))->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('filtros_criadas', ['fase' => 'kit', 'situacao' => 'sem_custo', 'envio' => null, 'ordem' => 'nome', 'q' => 'nina'])
                 ->where('criadas.filtrado', 1)
                 ->where('criadas.grupos.0.itens.0.sku', 'NINA+MESA')
-                // A busca e o tipo da aba Criadas não mexem nas contagens das outras abas.
-                ->where('sugestoes.contagens.criadas', 3));
+                ->where('filtros.fase', 'combo')->where('filtros.q', 'zzz'));
+
+        // A recarga parcial de uma lista não traz a outra (as duas são preguiçosas).
+        $sessao->get(route('portal.auth.estrutura.sugestoes'))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->reloadOnly(['criadas', 'filtros_criadas'], fn ($r) => $r->missing('sugestoes')->where('criadas.total', 3))
+                ->reloadOnly(['sugestoes', 'filtros'], fn ($r) => $r->missing('criadas')->has('sugestoes.previa')));
+
+        // `?aba=criadas` de link antigo só abre a tela.
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'criadas']))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('filtros.aba', 'sugestoes')->where('criadas.total', 3));
 
         // A página não consulta o Mercado Livre (o que sai é só o aviso interno do layout, de outro serviço).
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'mercadolibre') || str_contains($req->url(), 'mercadolivre'));
+    }
+
+    /** 21/10/2026 — o cartão da sugestão mostra a foto de cada produto pela mesma régua das criadas. */
+    public function test_a_foto_da_variacao_no_cartao_da_sugestao_segue_a_regua_das_criadas(): void
+    {
+        [$empresa, $nina, $mesa] = $this->cenario();
+        $variacao = EstruturaProdutoVariacao::findOrFail($nina->variacao_id);
+        $imagem = fn (int $ordem) => EstruturaProdutoVariacaoImagem::create([
+            'company_id' => $empresa->id, 'produto_id' => $variacao->produto_id, 'variacao_id' => $variacao->id,
+            'caminho' => "teste/{$ordem}.jpg", 'nome_original' => "{$ordem}.jpg", 'mime' => 'image/jpeg', 'tamanho' => 10, 'ordem' => $ordem,
+        ]);
+        $imagem(1);
+        $capa = $imagem(0);
+        // A mesa não tem galeria: vale a miniatura do anúncio ativo da oferta simples dela; a do inativo, não.
+        EstruturaAnuncio::create(['oferta_id' => $mesa->id, 'tipo' => 'classico', 'status' => 'inativo', 'codigo_mlb' => 'MLB9', 'titulo' => 'x']);
+        EstruturaAnuncio::create(['oferta_id' => $mesa->id, 'tipo' => 'premium', 'status' => 'ativo', 'codigo_mlb' => 'MLB2', 'titulo' => 'x']);
+        foreach (['MLB9' => 'velha', 'MLB2' => 'D_2-I'] as $mlb => $arquivo) {
+            MlAcervoItem::create(['company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => 'Mesa', 'listing_type_id' => 'gold_special',
+                'status' => 'active', 'thumbnail' => "http://http2.mlstatic.com/{$arquivo}.jpg"]);
+        }
+
+        $fotos = app(FotosDasVariacoes::class)->capas($empresa, [$nina->variacao_id, $mesa->variacao_id, $nina->variacao_id, 999999]);
+
+        $this->assertSame([
+            (int) $nina->variacao_id => VariacaoImagensService::urlMiniatura($variacao->id, $capa->id),
+            (int) $mesa->variacao_id => 'https://http2.mlstatic.com/D_2-I.jpg',
+        ], $fotos, 'a capa da galeria; sem galeria, a miniatura do anúncio ativo, já em https; quem não tem nada fica de fora');
+        $this->assertSame([], app(FotosDasVariacoes::class)->capas($empresa, []));
+        $this->assertSame([], app(FotosDasVariacoes::class)->capas($this->empresaDoGabarito(), [$nina->variacao_id]), 'a galeria é da empresa');
     }
 
     public function test_empresa_sem_nada_criado_e_escopo_por_empresa(): void

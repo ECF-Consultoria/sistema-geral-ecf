@@ -16,8 +16,8 @@ const inteiro = (v) => {
  *
  * `so_avisos` = o clique não tinha nada a preencher; sobra só o que foi juntado (ou "Sincronizado.").
  *
- * `aguardando` (Planejamento × Fase N, 09/10/2026): os Combos de uma cor do Planejamento que ainda
- * esperam o "Criar Fase" do produto — também na mesma linha, só quando houver.
+ * `aguardando` (Planejamento × Fase N, 09/10/2026): os Combos de uma cor aceitos no Planejamento que
+ * ainda não são fase (viram fase com a Fase 1 no ar, desde 20/10/2026) — também na mesma linha, só quando houver.
  */
 export function linhaDoResumo(resumo, absorvidos = 0, aguardando = 0) {
     const r = resumo ?? {};
@@ -61,7 +61,8 @@ export function textoDosCombosAguardando(n) {
     if (! Number.isFinite(total) || total <= 0) return null;
     const inteiro = Math.trunc(total);
 
+    // 20/10/2026: o combo aceito no Planejamento vira fase sozinho com a Fase 1 no ar (não há mais "Criar Fase" para o Portal).
     return inteiro === 1
-        ? '1 combo do Planejamento aguarda o "Criar Fase" do produto.'
-        : `${inteiro} combos do Planejamento aguardam o "Criar Fase" do produto.`;
+        ? '1 combo aceito no Planejamento ainda não é fase: vira fase quando a Fase 1 estiver publicada.'
+        : `${inteiro} combos aceitos no Planejamento ainda não são fase: viram fase quando a Fase 1 estiver publicada.`;
 }

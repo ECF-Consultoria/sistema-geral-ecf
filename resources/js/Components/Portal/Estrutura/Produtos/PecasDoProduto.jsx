@@ -20,6 +20,8 @@ const TAMANHOS_QUADRO = {
     sugestao:  { caixa: 'h-[64px] w-[100px]', iniciais: 'text-[18px]', icone: 30 },
     miniatura: { caixa: 'h-[30px] w-[34px]', iniciais: 'text-[11px]', icone: 16 },
     icone:     { caixa: 'h-[20px] w-[20px] rounded-[5px]', iniciais: 'text-[9px]', icone: 12 },
+    // Janela de montar combo/kit/combit (22/10/2026): a foto de cada cor na lista e na composição.
+    escolha:   { caixa: 'h-10 w-10 rounded-lg', iniciais: 'text-[12px]', icone: 18 },
 };
 
 /** Quadro da foto (D-29): existe, mas sem upload — ícone apagado e as iniciais do produto. */
@@ -51,7 +53,7 @@ export function EtiquetaUltimoAberto({ destaque }) {
  * Continua SEM upload (D-29) — quem envia é a galeria da variação. Aqui a foto só
  * aparece: assim que a primeira imagem entra, o quadro deixa de ser um retângulo vazio.
  */
-export function QuadroFotoProduto({ nome, foto = null, tamanho = 'grande', className }) {
+export function QuadroFotoProduto({ nome, foto = null, tamanho = 'grande', comIniciais = true, className }) {
     const t = TAMANHOS_QUADRO[tamanho] ?? TAMANHOS_QUADRO.grande;
     const caixa = cn('relative grid shrink-0 place-items-center overflow-hidden rounded-[10px] border border-white/[0.06] bg-white/[0.04]', t.caixa, className);
 
@@ -69,7 +71,7 @@ export function QuadroFotoProduto({ nome, foto = null, tamanho = 'grande', class
         <div role="img" aria-label={`Sem foto de ${nome || 'produto novo'}`} data-quadro-foto="sem-foto"
             className={caixa}>
             <Package size={t.icone} strokeWidth={1.25} className="text-white/15" aria-hidden="true" />
-            <span className={cn('absolute font-display font-semibold text-white/45', t.iniciais)}>{iniciais(nome)}</span>
+            {comIniciais && <span className={cn('absolute font-display font-semibold text-white/45', t.iniciais)}>{iniciais(nome)}</span>}
         </div>
     );
 }

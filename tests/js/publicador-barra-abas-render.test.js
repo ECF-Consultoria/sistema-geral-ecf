@@ -327,17 +327,17 @@ test('SeletorEmpresaBusca — render real (esbuild + react-dom/server), não só
         assert.deepEqual(r.parametros, { company: 12 });
     });
 
-    await contexto.test('destinoParaItem — a partir de Publicações (histórico), conta nova SEM company_id cai pra Visão geral (D23)', () => {
+    await contexto.test('destinoParaItem — a partir de Publicações (histórico), conta nova SEM company_id cai em Produtos (D23)', () => {
         definirRotaAtual('mlb.anuncios.historico');
         const r = destinoParaItem({ chave: 'company-13', company_id: null });
-        assert.equal(r.rota, 'mlb.anuncios.publicador.visao-geral');
+        assert.equal(r.rota, 'mlb.anuncios.publicador.produtos');
         assert.deepEqual(r.parametros, { conta: 'company-13' });
     });
 
-    await contexto.test('destinoParaItem — a partir de AnunciarMassa, conta nova SEM company_id cai pra Visão geral', () => {
+    await contexto.test('destinoParaItem — a partir de AnunciarMassa, conta nova SEM company_id cai em Produtos', () => {
         definirRotaAtual('mlb.anuncios.massa');
         const r = destinoParaItem({ chave: 'company-14', company_id: undefined });
-        assert.equal(r.rota, 'mlb.anuncios.publicador.visao-geral');
+        assert.equal(r.rota, 'mlb.anuncios.publicador.produtos');
         assert.deepEqual(r.parametros, { conta: 'company-14' });
     });
 
@@ -348,10 +348,10 @@ test('SeletorEmpresaBusca — render real (esbuild + react-dom/server), não só
         assert.deepEqual(r.parametros, { company: 15 });
     });
 
-    await contexto.test('destinoParaItem — rota fora do mapa (ex.: já estava na Visão geral) — default seguro é Visão geral', () => {
+    await contexto.test('destinoParaItem — rota fora do mapa (ex.: já estava na Visão geral) — default seguro é Produtos (20/10/2026)', () => {
         definirRotaAtual('mlb.anuncios.publicador.configuracoes');
         const r = destinoParaItem({ chave: 'company-16', company_id: null });
-        assert.equal(r.rota, 'mlb.anuncios.publicador.visao-geral');
+        assert.equal(r.rota, 'mlb.anuncios.publicador.produtos');
         assert.deepEqual(r.parametros, { conta: 'company-16' });
     });
 

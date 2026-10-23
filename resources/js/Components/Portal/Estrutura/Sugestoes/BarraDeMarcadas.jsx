@@ -4,7 +4,7 @@ import { rotuloAceitarSelecionadas, textoSelecionadas } from '@/lib/sugestoesEst
 
 // ─── Barra fixa das marcadas, SÓ NO CELULAR (UI-SPEC; 168-19, D-31) ─────────
 //
-// No computador as ações vivem na linha das abas (AbasDasSugestoes) e esta barra some (`lg:hidden`).
+// No computador as ações vivem no cabeçalho da seção (CabecalhoDasSugestoes) e esta barra some (`lg:hidden`).
 // `variante` 'sugestoes' (Descartar N + Aceitar N marcadas, amarelo) ou 'descartadas'
 // (Restaurar N, SEM amarelo; reaproveitada pelo 168-15). Só visível com 1 ou mais marcadas.
 // A página injeta as ações; aqui só se desenha.

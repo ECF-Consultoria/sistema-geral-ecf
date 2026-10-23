@@ -51,6 +51,7 @@ use Illuminate\Support\Facades\Log;
  * Contrato de item (chave = id da variação ou da oferta):
  *   ['pacote' => ?array, 'peso_faturado' => ?float, 'logistica' => string, 'custo' => ?float,
  *    'parametros' => ?array (percentuais da oferta; sem eles, os da empresa),
+ *    'fora_do_me2' => ?bool (o item ME1 entra também: a referência do ML para a caixa, 21/10/2026),
  *    'tipos' => ?list<'classico'|'premium'> (quais a cotação real pergunta ao ML; padrão, os dois)]
  * Contrato de frete devolvido: o Clássico no topo (o que Produtos e Sugestões mostram) e os
  * dois tipos em `por_tipo`, na mesma forma:
@@ -110,7 +111,7 @@ class FreteMe2Service
 
         $saida = [];
         foreach ($itens as $id => $item) {
-            $saida[$id] = $this->ehMe2($item)
+            $saida[$id] = $this->cotavel($item)
                 ? $this->resultado($item, $parametros, $mapas[self::dimensions($item['pacote'])] ?? [], $modalidade)
                 : $this->vazio();
         }
@@ -132,11 +133,6 @@ class FreteMe2Service
             return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => false, 'falhou' => false];
         }
 
-        // Nada que caiba no Mercado Envios em modalidade nenhuma: nem a preferência da conta é lida.
-        if (! $this->algumCabeNoMe2($itens)) {
-            return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => true, 'falhou' => false];
-        }
-
         $cfg        = config('estrutura_produtos.frete');
         $parametros = EstruturaPrecificacaoParametros::daEmpresa($empresa->id);
         $sellerId   = (string) $empresa->mlToken->ml_user_id;
@@ -152,6 +148,19 @@ class FreteMe2Service
 
             return $token;
         };
+
+        // Nada que caiba no Mercado Envios em modalidade nenhuma (nem item de fora pedido): não há o que cotar. A
+        // preferência da conta é lida mesmo assim (uma vez, e fica no cache): é dela que a tela tira se o que não
+        // cabe vai pela transportadora (ME1) ou sai "Combine a entrega" (21/10/2026).
+        if (! $this->algumCotavel($itens)) {
+            try {
+                $this->modalidadeDaConta($empresa, $sellerId, $comToken);
+            } catch (\RuntimeException $e) {
+                Log::warning("[Estrutura Produtos] preferência de envio sem leitura empresa {$empresa->id}: ".$e->getMessage());
+            }
+
+            return ['fretes' => $this->estimar($empresa, $itens), 'pendentes' => 0, 'conectado' => true, 'falhou' => false];
+        }
 
         try {
             $modalidade = $this->modalidadeDaConta($empresa, $sellerId, $comToken);
@@ -178,7 +187,7 @@ class FreteMe2Service
 
         $abertos = [];
         foreach ($itens as $id => $item) {
-            if ($this->ehMe2($item)) {
+            if ($this->cotavel($item)) {
                 foreach (array_intersect(self::TIPOS, (array) ($item['tipos'] ?? self::TIPOS)) as $tipo) {
                     $abertos[] = [$id, $tipo];
                 }
@@ -259,7 +268,7 @@ class FreteMe2Service
         $fretes = [];
         $pendentes = 0;
         foreach ($itens as $id => $item) {
-            if (! $this->ehMe2($item)) {
+            if (! $this->cotavel($item)) {
                 $fretes[$id] = $this->vazio();
                 continue;
             }
@@ -425,7 +434,8 @@ class FreteMe2Service
     private function modalidadeDaConta(Company $empresa, string $sellerId, callable $comToken): ?string
     {
         $guardado = Cache::get(ModalidadeDeEnvio::chave((int) $empresa->id));
-        if (is_array($guardado)) {
+        // Leitura de antes de 21/10/2026 não guardava se a conta tem ME1: relê uma vez.
+        if (is_array($guardado) && array_key_exists('me1', $guardado)) {
             return ModalidadeDeEnvio::doGuardado($guardado);
         }
 
@@ -444,7 +454,8 @@ class FreteMe2Service
         }
 
         $tipo = $r->successful() ? ModalidadeDeEnvio::daPreferencia((array) $r->json()) : null;
-        ModalidadeDeEnvio::guardar((int) $empresa->id, $tipo, $r->successful() ? null : 1);
+        ModalidadeDeEnvio::guardar((int) $empresa->id, $tipo, $r->successful() ? null : 1,
+            $r->successful() ? ModalidadeDeEnvio::temMe1((array) $r->json()) : null);
 
         return $tipo;
     }
@@ -525,7 +536,7 @@ class FreteMe2Service
     {
         $chaves = [];
         foreach ($itens as $item) {
-            if ($this->ehMe2($item)) {
+            if ($this->cotavel($item)) {
                 $dims = self::dimensions($item['pacote']);
                 $chaves[$dims] = $this->chaveDoPacote($empresa, $dims);
             }
@@ -566,12 +577,18 @@ class FreteMe2Service
         return \Illuminate\Support\Carbon::parse($entrada['cotado_em'])->greaterThan($limite) ? $entrada : null;
     }
 
-    /** Algum item com pacote cabe no ME2 de alguma modalidade (a da conta ainda pode não ter sido lida)? */
-    private function algumCabeNoMe2(array $itens): bool
+    /**
+     * Algum item com pacote vai à cotação: o que cabe no ME2 de alguma modalidade (a da conta ainda pode não ter
+     * sido lida) ou o de fora que quem chama pediu (`fora_do_me2`).
+     */
+    private function algumCotavel(array $itens): bool
     {
         foreach ($itens as $item) {
             if (empty($item['pacote'])) {
                 continue;
+            }
+            if (! empty($item['fora_do_me2'])) {
+                return true;
             }
             foreach (array_keys((array) config('estrutura_produtos.modalidades')) as $modalidade) {
                 if (in_array(LogisticaProduto::avaliar($item['pacote'], null, $modalidade)['logistica'], [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL], true)) {
@@ -583,9 +600,18 @@ class FreteMe2Service
         return false;
     }
 
-    private function ehMe2(array $item): bool
+    /**
+     * Entra na estimativa e na cotação: o item dentro do Mercado Envios e, quando quem chama pede (`fora_do_me2`),
+     * o de fora (21/10/2026). Fora do ME2 o ML não cobra frete, mas o vendedor paga um — transportadora (ME1) ou
+     * entrega combinada —, e o que o ML calcula para a caixa (tabela pelo peso cubado; a cotação da conta dá o
+     * mesmo) é a referência que vai ao preço. Quem não pede (Produtos, Planejamento, montagem) segue como antes.
+     */
+    private function cotavel(array $item): bool
     {
-        return in_array($item['logistica'] ?? null, [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL], true)
+        $logistica = $item['logistica'] ?? null;
+        $dentro = in_array($logistica, [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL], true);
+
+        return ($dentro || (! empty($item['fora_do_me2']) && $logistica === LogisticaProduto::ME1))
             && ! empty($item['pacote']) && isset($item['peso_faturado']);
     }
 

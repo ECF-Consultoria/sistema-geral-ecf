@@ -139,10 +139,10 @@ const PREVIA = {
 const CATALOGO = {
     max_componentes: 6,
     produtos: [
-        { produto_id: 1, nome: 'Mesa Polo', familia: 'Polo', tipo_nome: 'Mesa', variacoes: [{ variacao_id: 1, valor: 'Natural', sku: 'V101', estoque: 3 }, { variacao_id: 2, valor: 'Preto', sku: 'V102', estoque: null }] },
-        { produto_id: 2, nome: 'Cadeira Polo', familia: 'Polo', tipo_nome: 'Cadeira', variacoes: [{ variacao_id: 3, valor: 'Natural', sku: 'V201', estoque: 10 }] },
+        { produto_id: 1, nome: 'Mesa Polo', familia: 'Polo', tipo_nome: 'Mesa', foto: 'https://cdn/v1.jpg', variacoes: [{ variacao_id: 1, valor: 'Natural', sku: 'V101', estoque: 3, foto: 'https://cdn/v1.jpg' }, { variacao_id: 2, valor: 'Preto', sku: 'V102', estoque: null, foto: null }] },
+        { produto_id: 2, nome: 'Cadeira Polo', familia: 'Polo', tipo_nome: 'Cadeira', foto: null, variacoes: [{ variacao_id: 3, valor: 'Natural', sku: 'V201', estoque: 10, foto: null }] },
     ],
-    avulsas: [{ oferta_id: 55, sku: 'AV-B', nome: 'Banco Antigo' }],
+    avulsas: [{ oferta_id: 55, sku: 'AV-B', nome: 'Banco Antigo', foto: 'https://cdn/av.jpg' }],
 };
 
 const ITEM_SUGESTAO = {
@@ -163,7 +163,7 @@ const SUGESTOES = {
     por_fase: { todas: 1, combo: 0, kit: 1, combit: 0 }, por_status: { todas: 1, prontas: 1, com_aviso: 0 },
     resumo: { total: 1, combo: 0, kit: 1, combit: 0 }, familia_ambientes: { 1: ['Sala de jantar'] }, gerado_em: '2026-10-09T12:00:00-03:00',
     familias: [{ valor: '1', nome: 'Polo', total: 1 }], tipos: [{ id: 1, slug: 'mesa', nome: 'Mesa', plural: 'Mesas', qtd_combo: '0', qtd_combit: '0' }],
-    itens: [ITEM_SUGESTAO], produtos_sem_tipo: [],
+    itens: [ITEM_SUGESTAO], previa: [ITEM_SUGESTAO], produtos_sem_tipo: [],
     produtos: { 1: { id: 1, nome: 'Mesa Polo', tipo: 'mesa', tipo_nome: 'Mesa', candidatos: [], familia: 'Polo', ambientes: [], categoria: null } },
     familia_totais: { 1: 1 }, familia_continua: null,
     paginacao: { pagina: 1, paginas: 1, total: 1, blocos: 1, linhas: 1, por_pagina: 20 },
@@ -197,6 +197,16 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
     }
     assert.equal(comCatalogo.match(PROIBIDO), null);
     assert.equal(html(h(MontarKitAMao, { aberta: false, catalogo: CATALOGO, onFechar: () => {} })), '');
+
+    // 22/10/2026 — "tem que ser a imagem do produto", não as siglas: cada cor com a sua foto (a Preto, sem
+    // foto própria, mostra a do produto), a oferta avulsa com a dela, e quem não tem nenhuma fica só com o
+    // ícone de caixa — sem as iniciais.
+    const lista = html(h(MontarKitAMao, { aberta: true, catalogo: CATALOGO, onFechar: () => {}, vocabulario: VOCAB_SUG }));
+    assert.equal((lista.match(/<img src="https:\/\/cdn\/v1\.jpg"/g) ?? []).length, 2, 'Natural e Preto da mesa');
+    assert.equal((lista.match(/<img src="https:\/\/cdn\/av\.jpg"/g) ?? []).length, 1, 'a oferta avulsa');
+    const semFoto = lista.match(/data-quadro-foto="sem-foto"[\s\S]*?<\/div>/g) ?? [];
+    assert.equal(semFoto.length, 1, 'só a cadeira, que não tem foto');
+    assert.ok(semFoto.every((q) => ! q.includes('<span')), 'sem as siglas no lugar da foto');
 
     // A metodologia sempre à vista (10/10/2026): os três tipos na janela, nenhum aceso antes de escolher…
     for (const t of ['Combo', 'Fase 2', 'Mesmo produto, mais unidades', 'Kit', 'Fase 3', 'Produtos diferentes juntos', 'Combit', 'Fase 4', 'Kit com mais unidades de um item']) {
@@ -237,6 +247,24 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
 
 // ─── Funil do Mapeamento ────────────────────────────────────────────────
 
+test('P-27 (23/10/2026) — fora do ME2 numa conta sem ME1, a prévia diz "A combinar", não "Frete pela sua transportadora"', async () => {
+    const mod = await montar('resources/js/Components/Portal/Estrutura/Sugestoes/MontarKitAMao.jsx', 'montar-kit-p27');
+    const fora = (destino) => texto(html(h(mod.PreviaDoKit, {
+        previa: { ...PREVIA, logistica: { chave: 'me1', pacote: { c: 160, l: 90, a: 35, peso_real: 46 }, peso_faturado: 84, sem_medida: [], destino } },
+        calculando: false, nome: null, sku: null, onNome: () => {}, onSku: () => {}, vocabulario: VOCAB_SUG,
+    })));
+
+    const semMe1 = fora('combinar');
+    assert.ok(semMe1.includes('A combinar') && semMe1.includes('Entrega combinada com o comprador'), semMe1);
+    assert.ok(! semMe1.includes('Frete pela sua transportadora') && ! semMe1.includes('ME1'));
+    assert.equal(semMe1.match(PROIBIDO), null);
+
+    const comMe1 = fora('me1');
+    assert.ok(comMe1.includes('ME1') && comMe1.includes('Frete pela sua transportadora'));
+    // Sem saber o destino (preferência não lida), vale o de antes.
+    assert.ok(fora(undefined).includes('Frete pela sua transportadora'));
+});
+
 test('FunilDoMapeamento: quatro cartões e só os links das telas que a pessoa vê', async () => {
     const { default: Funil, FunilCarregando } = await montar('resources/js/Components/Portal/Estrutura/FunilDoMapeamento.jsx', 'funil');
 
@@ -275,10 +303,13 @@ test('a página do Planejamento desenha com o Montar kit e a Lista só para quem
     assert.match(saida, /Mesa Polo \+ Cadeira Polo/);
 
     // Tudo revisado: o cliente vai à Precificação; quem vê a Lista, à Lista.
-    const vazia = { ...SUGESTOES, itens: [], grupos: [], contagens: { sugestoes: 0, sem_tipo: 0, descartadas: 2 }, resumo: { total: 0, combo: 0, kit: 0, combit: 0 } };
+    const vazia = { ...SUGESTOES, itens: [], previa: [], grupos: [], contagens: { sugestoes: 0, sem_tipo: 0, descartadas: 2 }, resumo: { total: 0, combo: 0, kit: 0, combit: 0 } };
     global.__PROPS__ = { ...props, sugestoes: vazia };
     const cliente = html(h(Pagina, { ...props, sugestoes: vazia }));
-    assert.ok(cliente.includes('As ofertas aceitas já estão na Precificação.') && cliente.includes('Precificar agora') && cliente.includes('data-acao="montar-kit-vazio"'));
+    // 21/10/2026: a faixa vira uma linha, e as aceitas aparecem em Criados logo abaixo.
+    assert.ok(cliente.includes('Você revisou todas as sugestões. As aceitas aparecem em Criados, logo abaixo, e já estão na Precificação.')
+        && cliente.includes('Precificar agora') && cliente.includes('data-acao="montar-kit-vazio"'));
+    assert.ok(cliente.includes('data-secao-criadas'), 'os criados ficam na mesma tela');
     assert.ok(! cliente.includes('portal.auth.estrutura.lista'));
 
     // Só ofertas importadas (sem produto): sem sugestões, mas dá para montar à mão.
@@ -292,7 +323,7 @@ test('a página do Planejamento desenha com o Montar kit e a Lista só para quem
     const comLista = [{ chave: 'estrutura', submodulos: [SUB('produtos', 'Produtos'), SUB('sugestoes', 'Planejamento', { ativo: true }), SUB('lista', 'Lista SKUs')] }];
     global.__PROPS__ = { ...props, modulos: comLista, sugestoes: vazia };
     const equipe = html(h(Pagina, { ...props, modulos: comLista, sugestoes: vazia }));
-    assert.ok(equipe.includes('As ofertas aceitas já estão na Lista SKUs.') && equipe.includes('href="/portal.auth.estrutura.lista"'));
+    assert.ok(equipe.includes('e já estão na Lista SKUs.') && equipe.includes('href="/portal.auth.estrutura.lista"'));
 });
 
 test('a página do Mapeamento desenha o funil adiado e não leva o cliente a telas escondidas', async () => {

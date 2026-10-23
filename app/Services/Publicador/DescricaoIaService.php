@@ -6,6 +6,7 @@ use App\Jobs\Publicador\GerarDescricaoIaJob;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\Emojis;
 use App\Support\Publicador\TermosVetados;
 use Illuminate\Support\Facades\Cache;
@@ -108,14 +109,15 @@ class DescricaoIaService
         $produto = $r->produto;
         // O nome também vem do cliente: sem link nem e-mail (WR-10).
         $nome = self::semContato($produto->nomeExibido(), telefones: false);
-        // Loja como no "Anunciar por IA".
+        // A loja é o nome do CADASTRO da empresa (22/10/2026, decisão do usuário ao mandar a estrutura ECF da
+        // descrição: a saudação volta, com o nome da loja — o N2 da véspera, "sem saudação", ficou para trás).
         $loja = $produto->contaOuNula()?->nomeContaMl() ?? ($produto->mlbEmpresa?->nome ?? $produto->company?->name ?? '');
         $specs = $this->specs($r);
 
-        $analise = $ia->analise($nome, $loja, $specs)['dados'];
+        // Uma chamada só: a estrutura ECF não usa a análise (JTBD/PUV) do assistente antigo.
         // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
         // Sem emoji, sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
-        $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados'])));
+        $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, [])['dados'])));
         if ($texto === '') {
             throw new \RuntimeException(self::ERRO_VAZIA);
         }
@@ -142,7 +144,13 @@ class DescricaoIaService
         $nomes = $this->nomesDoSchema($r);
         $linhas = [];
         $medidas = [];
-        foreach ($r->atributos()->get() as $a) {
+        // O que o CLIENTE preencheu do produto — características e especificações técnicas (22/10/2026, o usuário:
+        // "especificações técnicas devem ser pegas de acordo com o que o cliente preencheu do produto"). O que a IA
+        // ou a equipe pôs (o "Modelo" cheio de termos de busca, por exemplo) fica de fora, assim como SKU, código de
+        // barras e a caixa. Produto sem nada do cliente (nasceu no Publicador): vale a ficha inteira, como antes.
+        $atributos = $r->atributos()->get()->reject(fn ($a) => preg_match(self::FORA_DAS_SPECS, (string) $a->attribute_id) === 1);
+        $doCliente = $atributos->filter(fn ($a) => in_array($a->origem, self::ORIGENS_DO_CLIENTE, true));
+        foreach ($doCliente->isNotEmpty() ? $doCliente : $atributos as $a) {
             $valor = trim((string) ($a->value_name ?? ''));
             if ($valor === '' && $a->value_number !== null) {
                 $valor = rtrim(rtrim(number_format((float) $a->value_number, 4, '.', ''), '0'), '.').($a->value_unit ? ' '.$a->value_unit : '');
@@ -164,8 +172,21 @@ class DescricaoIaService
         foreach ($medidas as $rotulo => $valor) {
             $linhas[] = "{$rotulo}: {$valor}";
         }
+        // 22/10/2026, o usuário, sobre a descrição do combit da Opala que listava os 26 campos da ficha: "não faz sentido
+        // ter isso na descrição se o Mercado Livre já dá essa informação; é desperdício de caracteres". A ficha segue
+        // indo para a IA (é dela que vêm os benefícios), mas marcada — o prompt manda não copiá-la.
+        $partes = [];
+        if ($linhas !== []) {
+            $partes[] = self::CABECALHO_FICHA."\n".implode("\n", $linhas);
+        }
+        // O que o kit leva ("2 Poltrona Decorativa Opala Cinza e 2 Poltrona Decorativa Opala Bordô"): a ficha é a de UMA
+        // peça, e é daqui que sai o "Itens inclusos".
+        $composicao = ComposicaoDoComposto::doProduto($r->produto);
+        if ($composicao !== null && $composicao->total() >= 2) {
+            $partes[] = 'Itens do kit: '.$composicao->descricao();
+        }
 
-        $texto = mb_substr(implode("\n", $linhas), 0, self::LIMITE_SPECS);
+        $texto = mb_substr(implode("\n\n", $partes), 0, self::LIMITE_SPECS);
         $cliente = $this->descricaoDoCliente($r);
         if ($cliente !== null) {
             // O delimitador não pode aparecer dentro do texto (fecharia o bloco antes da hora).
@@ -181,6 +202,15 @@ class DescricaoIaService
 
         return mb_substr($texto, 0, self::LIMITE_SPECS);
     }
+
+    /** De onde vem o que o cliente preencheu: a ficha do Portal e o Planejamento dele. */
+    private const ORIGENS_DO_CLIENTE = ['portal', 'planejamento_do_portal'];
+
+    /** Campos que não são especificação do produto para o comprador: códigos e a caixa de envio. */
+    private const FORA_DAS_SPECS = '/^(SELLER_SKU|GTIN|EMPTY_GTIN_REASON|SELLER_PACKAGE_.*|PACKAGE_.*|ITEM_CONDITION)$/';
+
+    /** O cabeçalho da ficha técnica nos dados que a IA recebe: o comprador já a vê, a descrição não a repete. */
+    public const CABECALHO_FICHA = 'Ficha técnica do anúncio (o Mercado Livre já mostra estes campos ao comprador, ao lado da descrição — não os copie):';
 
     /** Delimitador do texto do cliente nas especificações. */
     public const DELIMITADOR = 'DESCRICAO_DO_CLIENTE';
@@ -241,6 +271,28 @@ class DescricaoIaService
      * A IA escreve em HTML simples e põe emoji por conta própria; a descrição do anúncio é texto puro e o ML recusa
      * emoji (13/10/2026). Mesma regra do IaParaRascunhoService.
      */
+    /**
+     * Tira as frases de saudação do começo ("Olá!", "Seja bem-vindo à X.") — só a frase, o resto da linha
+     * fica ("Olá! Cadeira executiva" vira "Cadeira executiva") — e toda linha que cita o nome da
+     * loja/empresa: "Obrigado por escolher a X!" sem o X fica sem sentido.
+     */
+    public static function semSaudacao(string $texto, string $loja): string
+    {
+        // Saudação só no começo do texto: "olá" no meio de um parágrafo não é saudação.
+        $saudacao = '/^\s*(ol[áa]|oi|seja\s+(muito\s+)?bem[\s-]?vind[oa](\(a\))?|bem[\s-]?vind[oa](\(a\))?)\b[^.!?\n]*[.!?]*[ \t]*/iu';
+        do {
+            $antes = $texto;
+            $texto = ltrim((string) preg_replace($saudacao, '', $texto, 1));
+        } while ($texto !== $antes);
+        $linhas = preg_split('/\n/', $texto) ?: [];
+        $loja = trim($loja);
+        if (mb_strlen($loja) >= 3) {
+            $linhas = array_values(array_filter($linhas, fn ($l) => mb_stripos($l, $loja) === false));
+        }
+
+        return trim((string) preg_replace("/\n{3,}/", "\n\n", implode("\n", $linhas)));
+    }
+
     private function limparDescricao(?string $html): string
     {
         $texto = preg_replace('~</(p|li|h[1-6]|div)>|<br\s*/?>~i', "\n", (string) $html);

@@ -1,16 +1,20 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CheckCircle2, ImageOff, Loader2, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, Lock } from 'lucide-react';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
-import { fotosDoGrupo } from '../FotosPorGrupo';
-import { ETAPAS, GERAL, NOME_TIPO, etapaDoProblema, mensagemDe } from '../apoio';
+import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
+import { ETAPAS, NOME_TIPO, etapaDoProblema, mensagemDe } from '../apoio';
 import { BotaoConferir, BotaoPublicar, publicarEhOProximoPasso } from './AcoesDePublicacao';
-import { fotosDaVariante } from './FotosEVariacoes';
+import { BASE_BOTAO, PRIMARIO } from './botoes';
 import { LINK, Secao } from './comum';
 import { cn, formatCurrency } from '@/lib/utils';
 
-// ─── Fim da etapa "Condições de venda": revisar e publicar ──────────────────
+// ─── Fim da etapa "Prévia": revisar e publicar ──────────────────────────────
+//
+// 20/10/2026: era o fim de "Condições de venda"; foi para baixo da Prévia
+// (`EtapaPrevia`), que mostra o anúncio inteiro como no Mercado Livre — por
+// isso o cartãozinho "Como o comprador vê" que ficava ao lado saiu daqui.
 //
 // 1. A situação da conferência (D26: local em tom calmo, com cadeado).
 // 2. O que ainda falta, por etapa, com "Corrigir em …" — que leva à etapa já
@@ -19,22 +23,28 @@ import { cn, formatCurrency } from '@/lib/utils';
 //    para o campo dela. Sem contador de progresso.
 // 3. Conferir e Publicar — o único amarelo desta etapa: Conferir até o Mercado
 //    Livre aprovar, Publicar depois; desabilitado, diz o motivo.
-// 4. Ao lado, a prévia do anúncio como o comprador vê — só com o que o
-//    estado tem: capa, título, preço, condição. Nada inventado.
 
-const CONDICAO = { new: 'Novo', used: 'Usado', refurbished: 'Recondicionado' };
-const STATUS_PUBLICACAO = { RUNNING: 'Publicando…', PUBLISHED: 'Publicado no Mercado Livre', PARTIALLY_PUBLISHED: 'Parte foi publicada', FAILED: 'Não foi publicado' };
-const COR_PUBLICACAO = { RUNNING: 'text-white/70', PUBLISHED: 'text-emerald-400', PARTIALLY_PUBLISHED: 'text-amber-300', FAILED: 'text-red-300' };
+const STATUS_PUBLICACAO = { RUNNING: 'Publicando…', PUBLISHED: 'Publicado no Mercado Livre', PARTIALLY_PUBLISHED: 'Parte foi publicada', FAILED: 'Não foi publicado',
+    PUBLICADO_RETIDO: 'Criado no Mercado Livre, mas nem tudo está no ar' };
+const COR_PUBLICACAO = { RUNNING: 'text-white/70', PUBLISHED: 'text-emerald-400', PARTIALLY_PUBLISHED: 'text-amber-300', FAILED: 'text-red-300', PUBLICADO_RETIDO: 'text-amber-300' };
 const STATUS_ITEM = { PENDING: 'na fila', SENT: 'enviando', UNKNOWN: 'confirmando…', FAILED: 'não publicado' };
 const POR_ETAPA_A_VISTA = 4;
+// A situação da promoção automática de cada anúncio (`PromocaoDoPublicado::paraTela`).
+const COR_PROMOCAO = { ok: 'text-emerald-400', aviso: 'text-amber-300', neutro: 'text-white/45' };
 
 /** Tom e texto curto da situação da conferência. */
 export function situacaoDaConferencia(pub) {
-    if (pub.m.estado?.rascunho?.status === 'PUBLISHED') return { tom: 'completo', texto: 'Publicado no Mercado Livre' };
+    if (pub.m.estado?.rascunho?.status === 'PUBLISHED') {
+        // Demo 23/10 (H21): o ML pausou ou pôs em revisão algum dos anúncios criados.
+        return (pub.publicacao?.itens ?? []).some((i) => i.ml_item_id && i.situacao_ml)
+            ? { tom: 'aviso', texto: 'Criado no Mercado Livre, mas nem tudo está no ar: veja abaixo' }
+            : { tom: 'completo', texto: 'Publicado no Mercado Livre' };
+    }
     const conf = pub.conferencia.estado;
     if (conf === 'conferindo') return { tom: 'neutro', texto: 'Conferindo…' };
     if (conf === 'ok') return { tom: 'completo', texto: 'Conferido: pronto para publicar' };
-    if (conf === 'avisos') return { tom: 'completo', texto: 'Conferido, com avisos' };
+    // Demo 23/10 (N13): com aviso não é verde — o aviso pode ser perder o frete grátis.
+    if (conf === 'avisos') return { tom: 'aviso', texto: 'Conferido, com avisos: leia antes de publicar' };
     if (conf === 'bloqueado' || conf === 'local_bloqueado') return { tom: 'falta', texto: 'A conferência encontrou o que corrigir' };
     if (conf === 'editado') return { tom: 'neutro', texto: 'Editado: confira de novo' };
     if (conf === 'local') return { tom: 'neutro', texto: 'Conferido aqui (conta não liberada)' };
@@ -43,37 +53,32 @@ export function situacaoDaConferencia(pub) {
     return { tom: 'neutro', texto: 'Ainda não conferido' };
 }
 
-function Previa({ m }) {
-    const { estado, rasc } = m;
-    const rascunho = estado.rascunho;
-    const v = m.variantes.find((x) => ! x.orfa && x.ativa) ?? null;
-    const ligados = (m.alvos ?? []).filter((x) => x.ativo);
-    const a = ligados.find((x) => x.listing_type_id === 'gold_special') ?? ligados[0] ?? null;
-    const titulo = a ? (a.titulo || a.titulo_efetivo || '') : '';
-    const preco = v && a ? (v.precos?.[a.listing_type_id] ?? v.precos_efetivos?.[a.listing_type_id] ?? null) : null;
-    const grupo = v ? fotosDaVariante(estado, v).grupo : GERAL;
-    const proprias = grupo ? fotosDoGrupo(estado.imagens, estado.atribuicoes, grupo) : [];
-    const gerais = fotosDoGrupo(estado.imagens, estado.atribuicoes, GERAL);
-    const capa = (proprias[0] ?? ((grupo === GERAL || (rasc?.incluir_geral ?? rascunho.incluir_geral)) ? gerais[0] : null)) ?? null;
-    const temVariacoes = (estado.eixos ?? []).some((e) => e.valores.length > 0);
+/**
+ * Em que conta do Mercado Livre o anúncio sai: o APELIDO da conta no ML (`estado().conta.nickname`, o mesmo
+ * "Vendido por" da Prévia — é o que o comprador vê), com o nome cadastrado da empresa como reserva (conta lida
+ * antes de 22/10, sem o apelido); e o id do ML. Nome nulo = não se diz nada.
+ */
+export function contaQuePublica(pub, empresa) {
+    const texto = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+    const nome = texto(pub?.m?.estado?.conta?.nickname) ?? texto(empresa?.conta_nome) ?? texto(empresa?.nome);
+    const mlId = texto(empresa?.conta_ml_id) ?? (typeof empresa?.conta_ml_id === 'number' ? String(empresa.conta_ml_id) : null);
+
+    return { nome, mlId };
+}
+
+/**
+ * P-14 (23/10/2026): a recusa ao lado do botão que a causou. Conferir, Publicar, "Levar o frete" e "reenviar
+ * descrição" ficam no fim da Prévia, e a faixa vermelha do topo da coluna fica centenas de pixels acima: o botão
+ * voltava ao normal e nada mudava perto dele.
+ */
+function ErroDaAcao({ acao, children }) {
+    if (! children) return null;
 
     return (
-        <div data-previa>
-            <p className="mb-2 text-[13px] font-bold text-white/70">Como o comprador vê{a ? ` (${NOME_TIPO[a.listing_type_id]})` : ''}</p>
-            {/* O cartão branco é o anúncio no Mercado Livre: só o que já está preenchido. */}
-            <div className="rounded-lg bg-white p-4 text-neutral-900" data-previa-cartao>
-                <div className="grid aspect-square w-full place-items-center overflow-hidden rounded border border-neutral-200 bg-neutral-50" data-previa-capa={capa ? 'sim' : 'nao'}>
-                    {capa?.url ? <img src={capa.url} alt="" className="h-full w-full object-contain" /> : <ImageOff size={28} className="text-neutral-400" aria-label="Sem foto" />}
-                </div>
-                <p className="mt-3 text-[11px] text-neutral-500">{CONDICAO[rasc?.condicao ?? rascunho.condicao] ?? 'Novo'}</p>
-                <p className={cn('mt-0.5 line-clamp-2 text-[15px] leading-snug', titulo ? 'text-neutral-900' : 'text-neutral-400')} data-previa-titulo>{titulo || 'Sem título'}</p>
-                <p className={cn('mt-2 font-display text-[24px] leading-none tabular-nums', preco !== null ? 'text-neutral-950' : 'text-neutral-400')} data-previa-preco>
-                    {preco !== null ? formatCurrency(preco) : 'Sem preço'}
-                </p>
-                {(rasc?.envio?.modo ?? 'me2') === 'me2' && rasc?.envio?.frete_gratis && <p className="mt-2 text-[13px] font-bold text-emerald-600" data-previa-frete>Frete grátis</p>}
-                {temVariacoes && v && <p className="mt-2 text-[13px] text-neutral-600" data-previa-variacao>{v.rotulo}</p>}
-            </div>
-        </div>
+        <p className="flex w-full items-start gap-1.5 whitespace-pre-line text-[13px] text-red-300" data-erro-da-acao={acao}>
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{children}</span>
+        </p>
     );
 }
 
@@ -87,7 +92,20 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
     const publicado = m.estado?.rascunho?.status === 'PUBLISHED';
     const andamento = publicacao?.status === 'RUNNING';
     const variantes = m.estado?.variantes ?? [];
+    const itensPublicados = publicacao?.itens ?? [];
+    // "Único" não diz nada a quem vê o anúncio: sem nome de verdade, a linha mostra só o tipo.
+    const rotuloDoItem = (i) => {
+        const r = i.rotulo ?? variantes.find((v) => v.chave === i.variante_chave)?.rotulo ?? null;
+
+        return r && r !== 'Único' ? r : null;
+    };
+    const maisDeUmPorTipo = itensPublicados.some((i, n) => itensPublicados.findIndex((o) => o.listing_type_id === i.listing_type_id) !== n);
+    // Demo 23/10 (H21): o ML pausou ou pôs em revisão depois de criar — "Publicado" sozinho seria mentira.
+    const foraDoAr = itensPublicados.filter((i) => i.ml_item_id && i.situacao_ml);
+    const statusDaPublicacao = publicacao?.status === 'PUBLISHED' && foraDoAr.length > 0 ? 'PUBLICADO_RETIDO' : publicacao?.status;
     const situacao = situacaoDaConferencia(pub);
+    const conta = contaQuePublica(pub, empresa);
+    const ambar = situacao.tom === 'falta' || situacao.tom === 'aviso';
     const local = pub.conferencia.local;
     const estadoConf = pub.conferencia.estado;
     const publicarPrimario = publicarEhOProximoPasso(pub);
@@ -112,11 +130,18 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         return null;
     };
 
+    // A mensagem da recusa desta ação, enquanto a faixa do topo a mostra (`usePublicador`, P-14).
+    const erroDe = (acao) => (pub.erroDaAcao?.acao === acao ? pub.erroDaAcao.mensagem : null);
+    // Tentar de novo a mesma ação limpa a recusa anterior dela (as outras mensagens da faixa ficam).
+    const limparErroDe = (acao) => { if (erroDe(acao)) pub.setErro(null); };
+
     // 11/10/2026 — a conferência compara o frete do Mercado Livre com o da Precificação (V-FRT-01). Quando
     // diverge, este botão leva o do Mercado Livre para lá: o preço do Portal é refeito e pede conferir de novo.
     const [levandoFrete, setLevandoFrete] = useState(false);
     // Com `itemId`, é a terceira conferência: o frete que o Mercado Livre cobra de UM anúncio já publicado.
     const levarFrete = async (itemId = null) => {
+        const acao = itemId === null ? 'levar-frete' : `levar-frete:${itemId}`;
+        limparErroDe(acao);
         setLevandoFrete(true);
         try {
             const { data } = itemId === null
@@ -128,32 +153,37 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                 : 'Frete do anúncio levado para a Precificação. O preço do Portal foi refeito: atualize o preço deste anúncio no Mercado Livre.');
             pub.recarregar();
         } catch (e) {
-            pub.setErro(mensagemDe(e));
+            pub.falhouNaAcao(acao, mensagemDe(e));
         } finally {
             setLevandoFrete(false);
         }
     };
 
     const reenviarDescricao = async (itemId) => {
+        limparErroDe(`descricao:${itemId}`);
         try {
             await axios.post(route('mlb.anuncios.publicador.descricao', { produto: produtoId, item: itemId }));
             pub.recarregar();
         } catch (e) {
-            pub.setErro(mensagemDe(e));
+            pub.falhouNaAcao(`descricao:${itemId}`, mensagemDe(e));
         }
     };
 
     return (
         <Secao id="publicar" titulo="Revisar e publicar" descricao="O Mercado Livre confere o anúncio antes de publicar. Se algo faltar, a gente mostra onde corrigir.">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]" data-publicar data-conferencia={estadoConf}>
+            <div data-publicar data-conferencia={estadoConf}>
                 <div className="min-w-0 space-y-5">
-                    <div className={cn('flex items-center gap-3 rounded-lg border p-4', situacao.tom === 'completo' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : (situacao.tom === 'falta' ? 'border-amber-400/25 bg-amber-400/[0.05]' : 'border-white/[0.10] bg-white/[0.02]'))}
+                    <div className={cn('flex items-center gap-3 rounded-lg border p-4', situacao.tom === 'completo' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : (ambar ? 'border-amber-400/25 bg-amber-400/[0.05]' : 'border-white/[0.10] bg-white/[0.02]'))}
                         data-situacao={situacao.tom} aria-live="polite">
                         {local
                             ? <Lock size={16} className="shrink-0 text-white/55" aria-hidden="true" />
-                            : (situacao.tom === 'completo' ? <CheckCircle2 size={16} className="shrink-0 text-emerald-400" aria-hidden="true" /> : <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', situacao.tom === 'falta' ? 'bg-amber-400' : 'bg-white/30')} aria-hidden="true" />)}
+                            : (situacao.tom === 'completo'
+                                ? <CheckCircle2 size={16} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                                : (situacao.tom === 'aviso'
+                                    ? <AlertTriangle size={16} className="shrink-0 text-amber-300" aria-hidden="true" />
+                                    : <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', ambar ? 'bg-amber-400' : 'bg-white/30')} aria-hidden="true" />))}
                         <div className="min-w-0">
-                            <p className={cn('text-[15px] font-bold', situacao.tom === 'completo' ? 'text-emerald-400' : (situacao.tom === 'falta' ? 'text-amber-300' : 'text-white'))}>{situacao.texto}</p>
+                            <p className={cn('text-[15px] font-bold', situacao.tom === 'completo' ? 'text-emerald-400' : (ambar ? 'text-amber-300' : 'text-white'))}>{situacao.texto}</p>
                             {detalhe && <p className="text-[13px] text-white/55">{detalhe}</p>}
                         </div>
                     </div>
@@ -184,6 +214,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                                 {levandoFrete && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Levar o frete do Mercado Livre para a Precificação
                                             </button>
                                             <span className="text-[13px] text-white/45">O preço do Portal é refeito com ele; depois, confira de novo.</span>
+                                            <ErroDaAcao acao="levar-frete">{erroDe('levar-frete')}</ErroDaAcao>
                                         </div>
                                     )}
                                 </div>
@@ -205,35 +236,68 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                 <BotaoConferir pub={pub} primario={! publicarPrimario} className="h-11 px-5" />
                                 <BotaoPublicar pub={pub} primario={publicarPrimario} className="h-11 px-5" />
                             </div>
-                            {motivoDoPublicar() && <p className="text-[13px] text-white/55" data-motivo-publicar>{motivoDoPublicar()}</p>}
+                            <ErroDaAcao acao="conferir">{erroDe('conferir')}</ErroDaAcao>
+                            <ErroDaAcao acao="publicar">{erroDe('publicar')}</ErroDaAcao>
+                            {motivoDoPublicar() && <p className="text-[15px] text-amber-300" data-motivo-publicar>{motivoDoPublicar()}</p>}
                             {! pub.liberada && <AvisoContaTravada variante="nota" />}
-                            {pub.liberada && (empresa.conta_nome ?? empresa.nome) && <p className="text-[13px] text-white/45">Publica na conta {empresa.conta_nome ?? empresa.nome}{empresa.conta_ml_id ? ` · ML ${empresa.conta_ml_id}` : ''}.</p>}
+                            {pub.liberada && conta.nome && <p className="text-[13px] text-white/45" data-conta-que-publica>Publica na conta {conta.nome}{conta.mlId ? ` · ML ${conta.mlId}` : ''}.</p>}
                         </div>
                     )}
 
                     {publicacao && (
                         <div className="space-y-2" data-publicacao={publicacao.status} aria-live="polite">
-                            <p className={cn('flex items-center gap-2 text-[15px] font-bold', COR_PUBLICACAO[publicacao.status])}>
+                            <p className={cn('flex items-center gap-2 text-[15px] font-bold', COR_PUBLICACAO[statusDaPublicacao])}>
                                 {andamento
                                     ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                                    : (publicacao.status === 'PUBLISHED' ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />)}
-                                {STATUS_PUBLICACAO[publicacao.status]}
+                                    : (statusDaPublicacao === 'PUBLISHED' ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />)}
+                                {STATUS_PUBLICACAO[statusDaPublicacao]}
                             </p>
                             {publicacao.motivo && <p className="text-[13px] text-red-300">{publicacao.motivo}</p>}
+                            {/* Demo 23/10 (H20): o anúncio no ar é o fim do fluxo — botão grande, não só o código MLB. */}
+                            {(publicacao.itens ?? []).some((i) => i.ml_item_id) && (
+                                <div className="flex flex-wrap gap-3 pt-1" data-ver-no-ml>
+                                    {(publicacao.itens ?? []).filter((i) => i.ml_item_id && linkAnuncioMl(i.ml_item_id)).map((i) => {
+                                        // Demo 23/10 (N23): o nome vem do servidor (a cor de verdade, também na variação sem eixo).
+                                        const rotulo = maisDeUmPorTipo ? rotuloDoItem(i) : null;
+
+                                        return (
+                                            <a key={i.id} href={linkAnuncioMl(i.ml_item_id)} target="_blank" rel="noopener noreferrer"
+                                                className={cn(BASE_BOTAO, PRIMARIO, 'h-11 px-5 text-[15px]')}>
+                                                Ver o {NOME_TIPO[i.listing_type_id] ?? 'anúncio'}{rotulo ? ` ${rotulo}` : ''} no Mercado Livre
+                                                <ExternalLink size={16} aria-hidden="true" />
+                                            </a>
+                                        );
+                                    })}
+                                </div>
+                            )}
                             <ul className="space-y-1.5 text-[13px]">
                                 {(publicacao.itens ?? []).map((i) => (
                                     <li key={i.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70" data-item-publicacao={i.status}>
-                                        <span className="text-white/55">{NOME_TIPO[i.listing_type_id]} · {variantes.find((v) => v.chave === i.variante_chave)?.rotulo ?? '—'}</span>
+                                        <span className="text-white/55">{NOME_TIPO[i.listing_type_id]}{rotuloDoItem(i) ? ` · ${rotuloDoItem(i)}` : ''}</span>
                                         {i.ml_item_id
                                             ? <LinkMl mlb={i.ml_item_id} />
                                             : <span className={i.status === 'FAILED' ? 'text-red-300' : 'text-white/55'}>{STATUS_ITEM[i.status] ?? i.status}</span>}
+                                        {i.ml_item_id && i.situacao_ml && (
+                                            <span className="w-full text-amber-300" data-situacao-ml={i.situacao_ml.status}>
+                                                {i.situacao_ml.texto}{i.situacao_ml.motivo ? `: ${i.situacao_ml.motivo}` : ''}. Veja o anúncio no Mercado Livre.
+                                            </span>
+                                        )}
+                                        {/* Demo 23/10 (A1): o que aconteceu com a promoção automática — o ML costuma recusar a do anúncio novo. */}
+                                        {i.ml_item_id && i.promocao && (
+                                            <span className={cn('w-full', COR_PROMOCAO[i.promocao.tom] ?? 'text-white/45')} data-promocao-do-anuncio={i.promocao.status}>
+                                                {i.promocao.texto}.
+                                            </span>
+                                        )}
                                         {i.descricao_status === 'FAILED' && (
                                             <button type="button" onClick={() => reenviarDescricao(i.id)} className={LINK}>reenviar descrição</button>
                                         )}
+                                        <ErroDaAcao acao={`descricao:${i.id}`}>{erroDe(`descricao:${i.id}`)}</ErroDaAcao>
                                         {i.plano_b && <span className="text-sky-200">· confira o estoque por depósito no ML</span>}
                                         {i.mensagem && <span className="w-full text-amber-300">{i.mensagem}</span>}
                                         {/* 11/10/2026: o frete que o Mercado Livre cobra deste anúncio, contra o da Precificação. */}
-                                        {i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
+                                        {/* Demo 23/10 (N17): o frete com que saiu, lido na criação — o "a combinar" do aviso 4057 em âmbar. */}
+                                        {i.envio && <span className={i.envio.a_combinar ? 'text-amber-300' : 'text-white/45'} data-envio-do-anuncio={i.envio.modo}>· {i.envio.texto}</span>}
+                                        {! i.envio && i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
                                         {i.frete?.aplicavel && i.frete.nivel === 'igual' && <span className="text-white/45" data-frete-do-anuncio="igual">· frete de {formatCurrency(i.frete.ml)} conferido com a Precificação</span>}
                                         {/* Sem frete na Precificação não há com o que comparar, mas o que o ML cobra já é informação. */}
                                         {i.frete?.aplicavel && i.frete.nivel === null && i.frete.ml !== null && (
@@ -250,14 +314,13 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                                 {i.frete.levado_em && <span className="text-white/45">já levado para a Precificação</span>}
                                             </span>
                                         )}
+                                        <ErroDaAcao acao={`levar-frete:${i.id}`}>{erroDe(`levar-frete:${i.id}`)}</ErroDaAcao>
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
                 </div>
-
-                <Previa m={m} />
             </div>
         </Secao>
     );

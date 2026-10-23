@@ -343,15 +343,26 @@ class MontadorDePlanoTest extends TestCase
         $this->assertNotSame($this->montar($r)->hash(), $this->montar($outro)->hash());
     }
 
-    /** D6/CAPA-01: com 2 alvos ativos e 2+ fotos aprovadas, a capa do Premium nunca repete a do Clássico. */
-    public function test_capa01_premium_nunca_repete_a_capa_do_classico_com_duas_fotos_aprovadas(): void
+    /**
+     * D6/CAPA-01, refeito em 22/10/2026: a capa do Premium só muda para uma AMBIENTADA (o tipo do criativo vem no
+     * retrato do rascunho), e só a 1ª foto troca. Foto do cliente, sem tipo, não vira capa do Premium: ele fica igual.
+     */
+    public function test_capa01_premium_troca_so_a_capa_e_so_por_uma_ambientada(): void
     {
-        $plano = $this->montar(self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)]));
+        $alvos = [new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)];
 
-        [$classico, $premium] = array_map(fn ($i) => $i->payload, $plano->itens);
-        $this->assertSame(['id' => 'ML-A1'], $classico['pictures'][0], 'Clássico mantém a capa de hoje');
-        $this->assertSame(['id' => 'ML-A2'], $premium['pictures'][0], 'Premium rotaciona para a 2ª foto como capa');
-        $this->assertNotSame($classico['pictures'][0], $premium['pictures'][0]);
+        [$classico, $premium] = array_map(fn ($i) => $i->payload, $this->montar(self::rascunhoSimples($alvos))->itens);
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($classico['pictures'])->pluck('id')->all(), 'Clássico mantém a capa de hoje');
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($premium['pictures'])->pluck('id')->all(), 'fotos do cliente: o Premium fica igual');
+
+        // a1 = fundo branco, a2 = ambientada: o Premium abre com a ambientada.
+        $comTipos = self::rascunhoSimples($alvos, ['imagens' => [
+            ['imagem' => 'a1', 'grupo' => R::GERAL, 'posicao' => 0, 'tipo' => 'hero'],
+            ['imagem' => 'a2', 'grupo' => R::GERAL, 'posicao' => 1, 'tipo' => 'lifestyle'],
+        ]]);
+        [$classico, $premium] = array_map(fn ($i) => $i->payload, $this->montar($comTipos)->itens);
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($classico['pictures'])->pluck('id')->all());
+        $this->assertSame(['ML-A2', 'ML-A1'], collect($premium['pictures'])->pluck('id')->all());
     }
 
     /**

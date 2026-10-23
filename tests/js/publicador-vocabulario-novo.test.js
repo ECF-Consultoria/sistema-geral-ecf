@@ -599,6 +599,9 @@ const ARQUIVOS_NOVOS = [
     // com modificador de opacidade, **não** hex cru — o gate proíbe
     // `#[0-9a-fA-F]{3,8}`, e a §T da `189-FID01.md` mapeia os dois.
     `${DIR_APROV}/LateralDoLightbox.jsx`,
+    // 23/10/2026 (P-18a, correções da fila) — o campo de busca com rascunho local e
+    // atraso. Ele não declara classe nenhuma (o `className` vem de `FiltrosDaFila`).
+    `${DIR_APROV}/CampoDeBuscaDaFila.jsx`,
 ];
 
 /**
@@ -1313,6 +1316,8 @@ const CONTAINER_POR_PAGINA = new Map([
     // uma harmonização que o FID-02 veta — em vez de só achar "um container".
     ['Aprovacao.jsx', 'mx-auto flex max-w-[1600px] min-w-[1240px] flex-col gap-[16px]'],
     ['Produtos.jsx', 'mx-auto max-w-[1240px]'],
+    // 20/10/2026 — a vitrine de cartões (protótipo atrás de `publicador.vitrine`): mais larga, 4 cartões por linha.
+    ['ProdutosVitrine.jsx', 'mx-auto max-w-[1320px]'],
     ['Produto.jsx', 'mx-auto max-w-[1240px]'],
     ['Alavancas.jsx', 'mx-auto max-w-[1240px]'],
     ['Configuracoes.jsx', 'mx-auto max-w-[1240px]'],
@@ -1331,6 +1336,8 @@ const ABA_POR_PAGINA = new Map([
     // 187 não possui. É o mesmo caso declarado de `Produto.jsx` → `produtos`.
     ['Aprovacao.jsx', 'publicacoes'],
     ['Produtos.jsx', 'produtos'],
+    // 20/10/2026 — a vitrine é a MESMA página Produtos em outro formato (`publicador.vitrine`).
+    ['ProdutosVitrine.jsx', 'produtos'],
     ['Produto.jsx', 'produtos'],
     ['Alavancas.jsx', 'alavancas'],
     ['Configuracoes.jsx', 'configuracoes'],

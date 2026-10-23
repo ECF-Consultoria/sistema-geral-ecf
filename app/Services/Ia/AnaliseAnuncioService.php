@@ -78,7 +78,8 @@ class AnaliseAnuncioService
     /** Etapa 2 — Títulos sob o ruleset ECF. */
     public function titulos(string $produto, string $loja, string $specs, array $analise): array
     {
-        $r = $this->chamar($this->promptTitulos($produto, $loja, $specs, $analise), 2500);
+        // Régua de 58-60: no flash-lite 11/26 títulos dentro, no modelo da régua 26/32 (8 rascunhos, 20/10/2026).
+        $r = $this->chamar($this->promptTitulos($produto, $loja, $specs, $analise), 2500, regua: true);
 
         return [
             'dados' => $this->normalizarTitulos($r['json']['titulos'] ?? [], $loja, $produto),
@@ -122,6 +123,10 @@ class AnaliseAnuncioService
     // NÃO são MAG T8: a equipe pediu (melhoria_publicador.docx §2 e §3) que a
     // IA trabalhe em cima dos termos que o ML diz serem os mais buscados da
     // categoria, descartando os que não têm a ver com o produto.
+    //
+    // As três vão no modelo de `services.llm.regua` (20/10/2026): as regras de
+    // TAMANHO daqui (Modelo perto de 120, título de 58 a 60) o modelo barato não
+    // cumpre — medido em 8 rascunhos, ver config/services.php.
 
     /**
      * O campo Modelo como lista de buscas coerentes com o produto, separadas
@@ -136,7 +141,7 @@ class AnaliseAnuncioService
      */
     public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = '', string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500, regua: true);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -157,7 +162,7 @@ class AnaliseAnuncioService
      */
     public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500, regua: true);
 
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -173,7 +178,7 @@ class AnaliseAnuncioService
      */
     public function titulosPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500, regua: true);
 
         return ['dados' => [
             'classico' => trim((string) ($r['json']['classico'] ?? '')),
@@ -206,6 +211,8 @@ class AnaliseAnuncioService
         $r = $this->chamar(
             $this->promptTextoDeKit($chave, $produto, $tituloBase, $descricaoBase, $unidades, $maximo),
             $chave === 'descricao' ? 3000 : 2500,
+            // O título do kit tem régua (máximo − 2 a máximo): no flash-lite 1/8 dentro, no da régua 7/8.
+            regua: $chave === 'titulo',
         );
 
         return ['dados' => trim((string) ($r['json'][$chave] ?? '')), 'meta' => $r['meta']];
@@ -310,11 +317,15 @@ class AnaliseAnuncioService
      * gasta orçamento "pensando" antes de escrever, e teto apertado devolve
      * HTTP 200 com conteúdo VAZIO — sintoma que confunde quem depura.
      *
+     * `regua` = etapa com régua de TAMANHO (Modelo e todo título): começa pelo modelo de `services.llm.regua`,
+     * com o esforço de raciocínio dele; o principal e os reservas vêm atrás SEM esse esforço (no flash-lite ele
+     * piorou os títulos, medido em 20/10/2026).
+     *
      * @return array{json: array, meta: array}
      *
      * @throws \RuntimeException
      */
-    private function chamar(string $prompt, int $maxTokens): array
+    private function chamar(string $prompt, int $maxTokens, bool $regua = false): array
     {
         $cfg = config('services.llm');
 
@@ -322,7 +333,10 @@ class AnaliseAnuncioService
             throw new \RuntimeException('[IA] LLM_BASE_URL não configurado.');
         }
 
-        $modelos = collect([$cfg['model'] ?? null])
+        $proprio = $regua ? trim((string) data_get($cfg, 'regua.model', '')) : '';
+        $esforcos = $proprio !== '' ? [$proprio => trim((string) data_get($cfg, 'regua.reasoning_effort', ''))] : [];
+
+        $modelos = collect([$proprio, $cfg['model'] ?? null])
             ->merge(explode(',', (string) ($cfg['fallbacks'] ?? '')))
             ->map(fn ($m) => trim((string) $m))
             ->filter()
@@ -345,7 +359,7 @@ class AnaliseAnuncioService
 
         foreach ($modelos as $i => $modelo) {
             try {
-                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens, $i < $modelos->count() - 1);
+                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens, $i < $modelos->count() - 1, $esforcos[$modelo] ?? '');
             } catch (FalhaTrocavel $e) {
                 // Guarda o erro e tenta o próximo; se todos falharem, é esta a
                 // mensagem que chega ao publicador.
@@ -365,7 +379,7 @@ class AnaliseAnuncioService
      * resolver (sobrecarga, timeout, modelo indisponível) e `RuntimeException`
      * quando não adianta trocar (chave recusada, prazo acabou).
      */
-    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens, bool $temReserva = false): array
+    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens, bool $temReserva = false, string $esforco = ''): array
     {
         $timeout = (int) $cfg['timeout'];
 
@@ -391,12 +405,14 @@ class AnaliseAnuncioService
                 // Conectar é rápido ou não é. Separar do tempo de geração evita
                 // esperar o timeout inteiro por um endpoint que está fora do ar.
                 ->connectTimeout(15)
-                ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', [
-                    'model'       => $modelo,
-                    'temperature' => 0.7,
-                    'max_tokens'  => $maxTokens,
-                    'messages'    => [['role' => 'user', 'content' => $prompt]],
-                ]);
+                ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', array_filter([
+                    'model'            => $modelo,
+                    'temperature'      => 0.7,
+                    'max_tokens'       => $maxTokens + max(0, (int) ($cfg['folga_raciocinio'] ?? 0)),
+                    'messages'         => [['role' => 'user', 'content' => $prompt]],
+                    // Só quando o modelo tem esforço configurado: sem o campo, vale o padrão do modelo.
+                    'reasoning_effort' => $esforco,
+                ], fn ($v) => $v !== ''));
         } catch (ConnectionException $e) {
             Log::warning('[IA] Provedor não respondeu', ['modelo' => $modelo, 'timeout_s' => $timeout, 'erro' => $e->getMessage()]);
 
@@ -428,7 +444,7 @@ class AnaliseAnuncioService
 
             throw new FalhaTrocavel(
                 $pensou > 0
-                    ? 'A IA gastou todo o orçamento de tokens raciocinando e não chegou a responder. Aumente LLM_MAX_TOKENS ou troque para um modelo sem raciocínio longo.'
+                    ? 'A IA gastou todo o orçamento de tokens raciocinando e não chegou a responder. Aumente LLM_FOLGA_RACIOCINIO ou troque para um modelo sem raciocínio longo.'
                     : 'A IA respondeu vazio. Tente novamente em alguns minutos.'
             );
         }
@@ -438,8 +454,14 @@ class AnaliseAnuncioService
         if ($dados === null) {
             Log::warning('[IA] Resposta não era JSON válido', ['inicio' => mb_substr($conteudo, 0, 300)]);
 
-            throw new FalhaTrocavel('A IA não devolveu um JSON válido. Tente gerar novamente.');
+            // O Gemini não devolve `reasoning_content`: o raciocínio que come o teto só aparece aqui, como
+            // resposta cortada no meio do JSON (medido em 20/10/2026 no gemini-3.8-flash).
+            throw new FalhaTrocavel(data_get($json, 'choices.0.finish_reason') === 'length'
+                ? 'A IA atingiu o limite de tokens antes de terminar a resposta. Aumente LLM_FOLGA_RACIOCINIO ou tente novamente.'
+                : 'A IA não devolveu um JSON válido. Tente gerar novamente.');
         }
+
+        $entrada = (int) data_get($json, 'usage.prompt_tokens', 0);
 
         return [
             'json' => $dados,
@@ -447,8 +469,13 @@ class AnaliseAnuncioService
                 // O modelo que RESPONDEU pode não ser o pedido: combo com
                 // fallback troca por baixo. Registrar o real.
                 'modelo'         => (string) ($json['model'] ?? $modelo),
-                'tokens_entrada' => (int) data_get($json, 'usage.prompt_tokens', 0),
-                'tokens_saida'   => (int) data_get($json, 'usage.completion_tokens', 0),
+                'tokens_entrada' => $entrada,
+                // O Gemini deixa o raciocínio FORA de `completion_tokens` e só o soma em `total_tokens` — mas
+                // cobra como saída. Sem isto a conta do gasto sai baixa.
+                'tokens_saida'   => max(
+                    (int) data_get($json, 'usage.completion_tokens', 0),
+                    (int) data_get($json, 'usage.total_tokens', 0) - $entrada,
+                ),
                 'duracao_ms'     => $duracaoMs,
             ],
         ];
@@ -642,31 +669,55 @@ class AnaliseAnuncioService
         TXT;
     }
 
+    /**
+     * A descrição pela ESTRUTURA ECF (22/10/2026, prompt mandado pelo usuário: "o prompt para ser usado para criar
+     * descrição deveria ser esse"). Produto = o nome do produto; Loja = o nome do CADASTRO da empresa (decisão do
+     * usuário no mesmo dia); especificações = o que o cliente preencheu (`DescricaoIaService::specs`). O texto do
+     * usuário vai como está; só o pedido de JSON no fim é nosso, para a resposta ser lida. A análise (JTBD/PUV) não
+     * entra mais aqui — o parâmetro fica pela assinatura do assistente antigo.
+     */
     private function promptDescricao(string $produto, string $loja, string $specs, array $analise): string
     {
-        $bloco = $this->blocoSpecs($specs);
-        $jtbd  = (string) ($analise['jtbd'] ?? '');
-        $puv   = (string) ($analise['puv'] ?? '');
-
-        $ctx = '';
-        if ($jtbd !== '') { $ctx .= "\n\nJTBD (use no parágrafo do problema): {$jtbd}"; }
-        if ($puv !== '')  { $ctx .= "\nPUV (use no parágrafo da solução): {$puv}"; }
+        $especificacoes = trim($specs) !== '' ? trim($specs) : 'Nenhuma especificação técnica foi fornecida.';
 
         return <<<TXT
-        Escreva a descrição do anúncio do produto **{$produto}** no Mercado Livre.
+        Você é especialista em redação para e-commerce. Crie uma descrição completa de produto para anúncio no Mercado Livre seguindo exatamente a estrutura ECF abaixo.
 
-        Nome da Empresa: **{$loja}**{$bloco}{$ctx}
+        PRODUTO: "{$produto}"
+        LOJA: "{$loja}"
+        DADOS DO PRODUTO:
+        {$especificacoes}
 
-        ESTRUTURA OBRIGATÓRIA:
-        - Saudação amigável citando "{$loja}".
-        - Parágrafo 1 (Problema): reconheça a necessidade do cliente de forma empática, usando o JTBD.
-        - Parágrafo 2 (Solução): apresente o produto como solução ideal, destacando a PUV.
-        - Parágrafo 3 (Oferta): chamada para ação clara e direta.
-        - Lista de 3 a 5 especificações técnicas mais importantes, limpa e direta.
-        - Despedida cordial.
+        ESTRUTURA OBRIGATÓRIA — gere cada seção na ordem abaixo:
 
-        SEM EMOJIS: o Mercado Livre recusa a descrição que tenha emoji. Não use emojis, ícones nem
-        símbolos decorativos em parte alguma do texto — nem na saudação, nem na lista.
+        SEÇÃO 1 — SAUDAÇÃO:
+        Uma frase de boas-vindas calorosa ao comprador, mencionando o nome da loja. Ex: "Olá! Seja muito bem-vindo(a) à {$loja}!"
+
+        SEÇÃO 2 — BENEFÍCIOS E USO (2 parágrafos):
+        Parágrafo 1: destaque o benefício principal e o diferencial do produto. Por que o comprador deve escolhê-lo?
+        Parágrafo 2: explique o uso ideal, ambientes de uso, público-alvo e situações do dia a dia em que o produto resolve um problema.
+
+        SEÇÃO 3 — ESPECIFICAÇÕES TÉCNICAS:
+        A ficha técnica dos dados acima já aparece no anúncio, ao lado da descrição: NÃO a copie aqui — repetir o que o Mercado Livre já mostra é desperdício de caracteres. Liste só os detalhes técnicos que o comprador não encontra na ficha, tirados da descrição do cliente e dos itens do kit: construção e materiais internos, espuma e enchimento, mecanismo, fixação, acabamento, garantia, itens inclusos. Não invente dados. Escreva o título ESPECIFICAÇÕES TÉCNICAS, em maiúsculas, e abaixo um item por linha no formato "Rótulo: valor" — o rótulo curto, dois-pontos e o valor (ex.: "Estrutura: madeira de eucalipto de reflorestamento") —, sem hífen, sem marcador e sem numeração. Junte num item só o que é da mesma parte do produto. Sem nenhum detalhe além da ficha, não escreva esta seção.
+
+        SEÇÃO 4 — CUIDADOS E RECOMENDAÇÕES:
+        Os cuidados de uso, limpeza, conservação e os avisos de segurança relevantes para este produto. Escreva o título CUIDADOS E RECOMENDAÇÕES, em maiúsculas, e abaixo um cuidado por linha no formato "Rótulo: frase" (ex.: "Limpeza: use pano levemente umedecido em água e sabão neutro."), sem hífen nem marcador.
+
+        SEÇÃO 5 — FECHAMENTO:
+        Uma frase de incentivo à compra que destaque o valor do produto na rotina do cliente, seguida de agradecimento cordial pela visita. Ex: "Agradecemos pela visita à {$loja} e permanecemos à disposição para tirar qualquer dúvida!"
+
+        REGRAS DE FORMATO:
+        - Linguagem amigável, profissional e voltada ao consumidor final
+        - Sem emojis
+        - Sem HTML
+        - Sem asteriscos, hashtags, símbolos decorativos nem hífens de lista; use a pontuação normal do português — vírgulas, pontos, dois-pontos, acentos e crase
+        - Sem jargão técnico excessivo — escreva para o comprador leigo
+        - Separe as seções com uma linha em branco; só as seções 3 e 4 têm título
+
+        PORTUGUÊS DO BRASIL CORRETO: escreva em português do Brasil, com ortografia e concordância corretas e sem
+        gírias. Na chamada para ação use o imperativo afirmativo correto, tratando o cliente por "você": "garanta",
+        "aproveite", "compre", "leve", "escolha" — nunca "garante", "aproveita", "compra", "leva" (essas são a
+        forma do "tu"/presente e saem erradas no anúncio, ex.: "Garanta já a sua", e não "Garante já a sua").
 
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}

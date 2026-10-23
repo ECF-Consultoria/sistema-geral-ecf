@@ -25,7 +25,6 @@ use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
-use App\Support\TituloDoProduto;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -131,7 +130,7 @@ class PreparoIaDoRascunhoService
         // está) num rascunho deste produto → tudo espera.
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::editando((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id);
             }
         }
@@ -142,7 +141,7 @@ class PreparoIaDoRascunhoService
         foreach ($r['para_preencher'] as $id) {
             $pub = PubProduto::find($id);
             if ($pub !== null) {
-                $this->preencher($pub);
+                $this->preencher($pub, comFrete: true);
             }
         }
         foreach ($r['para_preencher'] as $id) {
@@ -182,7 +181,7 @@ class PreparoIaDoRascunhoService
         }
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::editando((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 Log::info("[Publicador] Produto {$produto->id} do Portal não foi sincronizado logo após o save: o produto {$pub->id} está em uso no Publicador (o preparo tenta de novo).");
 
                 return 'ocupado';
@@ -290,17 +289,17 @@ class PreparoIaDoRascunhoService
             return $estado;
         });
 
-        $jobs = [];
-        foreach ($etapas as $i => $e) {
-            $jobs[] = new GerarPreparoIaJob((int) $r->id, $e, $hash, restantes: array_values(array_slice($etapas, $i + 1)));
-        }
-        // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): com o texto pronto, o último elo avalia.
-        if ($this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
-            $jobs[] = new AvaliarCriativosAutomaticosJob((int) $r->id);
-        }
+        // 21/10/2026 (pedido do usuário, "dar um jeito de ser mais rápida a geração"): DUAS cadeias em paralelo,
+        // [título → Modelo] e [descrição → imagens], em vez de uma só — o tempo passa a ser o da mais lenta.
+        // Detalhes em `despacharCadeias` (no FIM da classe: o portão da Fase 188 confere linhas deste arquivo).
+        $this->despacharCadeias(
+            (int) $r->id,
+            $etapas,
+            $hash,
+            $this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null),
+        );
         // Fila do preparo (10/10/2026, learnings publicador-ml §22): nem a `default` (Adman/Acervo) nem a `high`
         // (publicação, código de acesso do Portal). Cada elo também a declara; o das imagens fica na `creative`.
-        Bus::chain($jobs)->onQueue(PreparoIaAgenda::fila())->dispatch();
 
         return 'gerando ('.implode(', ', $etapas).')';
     }
@@ -376,7 +375,14 @@ class PreparoIaDoRascunhoService
         // Nunca por trás de gente: editor do produto em uso, "Anunciar por IA" gravando ou o produto na fila de
         // publicação (conferido; uma escrita agora o tiraria da fila como `precisa_revisar`) → espera.
         // AG-06: o valor que voltou da IA com o agente parado espera do mesmo jeito (guardado no Job, sem nova chamada).
-        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r) || $this->agenteParado($r)) {
+        // ⚠️ MERGE 23/10 — resolvido com a mudança DOS DOIS LADOS, e a razão foi MEDIDA:
+        // ⚠️ NÃO é rename. `EditorEmUso` tem os DOIS métodos, e são sinais DIFERENTES:
+        // `marcar()`/`emUso()` usam `chave()`, e `marcarEdicao()`/`editando()` usam `chaveDaEdicao()`.
+        // O remoto ACRESCENTOU o segundo sinal e trocou ESTE ponto para `editando` de propósito —
+        // logo as outras chamadas a `emUso()` no projeto seguem legítimas, não quebradas.
+        // ➡️ Fica a ESCOLHA DELES (`editando`) com o GANCHO NOSSO (`agenteParado`), no MESMO ponto
+        // lógico — antes de gravar —, que é a regra que a sessão do agente pediu por escrito.
+        if (EditorEmUso::editando((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r) || $this->agenteParado($r)) {
             if ($adiamentos >= $this->maxAdiamentos()) {
                 Log::info("[Publicador] Preparo pela IA ({$etapa}): o rascunho {$r->id} seguiu em uso; a escrita desistiu depois de {$adiamentos} espera(s).");
                 $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);
@@ -500,8 +506,8 @@ class PreparoIaDoRascunhoService
                     $this->titulosFixos($r, $livres, $planejados, $snap), [], 255,
                 );
                 foreach ($livres as $tipo) {
-                    // A memória guarda o que fica gravado: com a 1ª letra maiúscula (19/10/2026).
-                    $novo = (string) TituloDoProduto::capitalizar($finais[$tipo] ?? '');
+                    // A memória guarda o que fica gravado: com a 1ª letra de cada palavra maiúscula (19/10/2026).
+                    $novo = (string) \App\Support\TituloDoProduto::capitalizar($finais[$tipo] ?? '');
                     if ($novo === '') {
                         continue;
                     }
@@ -583,8 +589,8 @@ class PreparoIaDoRascunhoService
                 continue;
             }
             $atual = (string) ($alvo->titulo ?? '');
-            // O snapshot já traz o título com a 1ª letra maiúscula (`Alvo`, 19/10/2026); a memória antiga, não.
-            $daIa = TituloDoProduto::capitalizar($ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)));
+            // O snapshot já traz o título com a 1ª letra de cada palavra maiúscula (`Alvo`, 19/10/2026); a memória antiga, não.
+            $daIa = \App\Support\TituloDoProduto::capitalizar($ultimo(Memoria::chaveDoTitulo($alvo->listingTypeId)));
             // Título planejado (aba Anúncios, ou o título de venda do cadastro do Portal) conta como
             // preenchido — também quando o campo ainda tem o que a IA escreveu antes dele.
             if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== '' && (trim($atual) === '' || Memoria::aindaDaIa($atual, $daIa))) {
@@ -616,7 +622,7 @@ class PreparoIaDoRascunhoService
             }
             $ultimo = $escrito[Memoria::chaveDoTitulo($alvo->listingTypeId)] ?? null;
             if (trim((string) ($planejados[$alvo->listingTypeId] ?? '')) !== ''
-                && Memoria::aindaDaIa($alvo->titulo, is_string($ultimo) ? TituloDoProduto::capitalizar($ultimo) : null)) {
+                && Memoria::aindaDaIa($alvo->titulo, is_string($ultimo) ? \App\Support\TituloDoProduto::capitalizar($ultimo) : null)) {
                 $tipos[] = $alvo->listingTypeId;
             }
         }
@@ -777,7 +783,7 @@ class PreparoIaDoRascunhoService
     }
 
     /** Os ids dos produtos do Portal por trás do pub_produto: o do grupo, ou os componentes da composta. @return list<int> */
-    private function produtosDoPortal(PubProduto $pub): array
+    public function produtosDoPortal(PubProduto $pub): array
     {
         if ($pub->estrutura_produto_id !== null) {
             return [(int) $pub->estrutura_produto_id];
@@ -850,8 +856,16 @@ class PreparoIaDoRascunhoService
         return collect($schema->atributos)->contains(fn ($a) => is_array($a) && ($a['id'] ?? null) === 'MODEL');
     }
 
-    /** Preenche o rascunho pelo Portal com a MESMA trava do Job do botão (nunca dois ao mesmo tempo). */
-    private function preencher(PubProduto $pub): void
+    /**
+     * Preenche o rascunho pelo Portal com a MESMA trava do Job do botão (nunca dois ao mesmo tempo) e grava os padrões
+     * que o editor aplicaria ao abrir (N9, 22/10/2026: EAN, Cor principal, fotos por variação — sem HTTP).
+     *
+     * `comFrete` (só o `preparar`, que já é o trabalho de fundo de 2 min depois do save): lê a conta do ML se o
+     * rascunho ainda não a tem (o mesmo que o editor faz ao abrir) e liga o frete grátis que a faixa de preço exige
+     * (`EditorRascunhoService::freteGratis`). Assim quem só ABRE o editor de um produto preparado não grava nada. O
+     * `sincronizarAgora` (15 s depois do save, um por empresa de cada vez) não vai ao ML.
+     */
+    private function preencher(PubProduto $pub, bool $comFrete = false): void
     {
         $trava = Cache::lock(PreencherRascunhoDoPortalJob::chaveDaTrava((int) $pub->id), 330);
         if (! $trava->get()) {
@@ -860,9 +874,30 @@ class PreparoIaDoRascunhoService
             return;
         }
         try {
-            $this->portal->preencher($pub);
+            $resumo = $this->portal->preencher($pub);
         } finally {
             $trava->release();
+        }
+
+        $r = ! empty($resumo['intocavel']) ? null : PubRascunho::find($resumo['rascunho_id'] ?? 0);
+        if ($r === null) {
+            return;
+        }
+        try {
+            $padroes = app(PadroesDoRascunhoService::class);
+            $padroes->aplicar($r);
+            $envio = (array) ($r->fresh()->envio ?? []);
+            // Só vai ao ML quando o frete grátis pode faltar: Mercado Envios, desmarcado e com categoria — e só em conta
+            // liberada (23/10/2026, P-17, D26): o preparo roda para toda empresa que salva no Portal, e lia a conta e
+            // cotava o frete com o token do cliente sem ninguém abrir nada.
+            if ($comFrete && ($envio['modo'] ?? 'me2') === 'me2' && empty($envio['frete_gratis']) && $r->categoria_id
+                && \App\Support\Publicador\ContasLiberadas::libera($r->produto?->contaOuNula())) {
+                app(EditorRascunhoService::class)->lerContaParaOsPadroes($r->fresh());
+                $padroes->garantirFreteObrigatorio($r->fresh());
+            }
+        } catch (\Throwable $e) {
+            // Os padrões são conforto (a tela e a conferência ainda os aplicam): nunca derrubam o preparo.
+            Log::warning("[Publicador] Preparo pela IA: padrões do editor no rascunho {$r->id}: {$e->getMessage()}");
         }
     }
 
@@ -959,5 +994,33 @@ class PreparoIaDoRascunhoService
     private function adiarMin(): int
     {
         return max(1, (int) config('publicador.preparo_ia.adiar_min', 5));
+    }
+
+    /**
+     * As cadeias do preparo (21/10/2026): só o Modelo depende do título, e as imagens leem a descrição do rascunho
+     * (`ContextoCriativoDoPublicador`) — por decisão do usuário elas seguem DEPOIS da descrição da IA. As escritas no
+     * `step_state` já são sob a trava da linha (`comEstado`/`escrever`): duas etapas ao mesmo tempo não se apagam.
+     *
+     * @param  list<string>  $etapas
+     */
+    private function despacharCadeias(int $rascunhoId, array $etapas, string $hash, bool $comImagens): void
+    {
+        $cadeias = [
+            array_values(array_intersect($etapas, [self::TITULO, self::MODELO])),
+            array_values(array_intersect($etapas, [self::DESCRICAO])),
+        ];
+        foreach ($cadeias as $i => $daCadeia) {
+            $jobs = [];
+            foreach ($daCadeia as $j => $e) {
+                $jobs[] = new GerarPreparoIaJob($rascunhoId, $e, $hash, restantes: array_values(array_slice($daCadeia, $j + 1)));
+            }
+            // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): o último elo da cadeia da descrição.
+            if ($i === 1 && $comImagens) {
+                $jobs[] = new AvaliarCriativosAutomaticosJob($rascunhoId);
+            }
+            if ($jobs !== []) {
+                Bus::chain($jobs)->onQueue(PreparoIaAgenda::fila())->dispatch();
+            }
+        }
     }
 }

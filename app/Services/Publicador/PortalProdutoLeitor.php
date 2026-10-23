@@ -214,8 +214,10 @@ class PortalProdutoLeitor
                 || $produto === null || (int) $produto->company_id !== $empresaId) {
                 continue;
             }
-            $partes[] = ['nome' => (string) $produto->nome, 'descricao' => $produto->descricao];
+            // Uma vez por produto (22/10/2026): o kit "2 Cinza + 2 Bordô" da mesma poltrona mandava o texto dela duas vezes.
+            $partes[(int) $produto->id] ??= ['nome' => (string) $produto->nome, 'descricao' => $produto->descricao];
         }
+        $partes = array_values($partes);
 
         return ComposicaoDoPortal::descricoes($partes);
     }

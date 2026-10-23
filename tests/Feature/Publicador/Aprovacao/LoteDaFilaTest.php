@@ -746,6 +746,8 @@ class LoteDaFilaTest extends TestCase
         $this->assertSame(1, session('lote_aprovado')['aprovadas']);
         $this->assertSame(1, session('lote_aprovado')['selecionadas'], 'a oferta alheia entrou no lote (devia nem chegar lá)');
         $this->assertSame(2, session('lote_aprovado')['pedidas']);
+        // 23/10/2026 (P-05): e chega à tela pelo `flash` compartilhado (antes morria no HandleInertiaRequests).
+        $this->assertSame(1, app(\App\Http\Middleware\HandleInertiaRequests::class)->share(request())['flash']['lote_aprovado']['aprovadas']);
     }
 
     /**

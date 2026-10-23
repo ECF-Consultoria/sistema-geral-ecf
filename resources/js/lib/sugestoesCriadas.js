@@ -123,20 +123,22 @@ export function filtroLigado(f) {
 }
 
 /**
- * Os parâmetros da URL da aba: só o que difere do padrão (sem `ordem=recentes`, sem `pagina=1`), para a
- * URL de "sem filtro" ser só `?aba=criadas`. Mudar qualquer filtro volta à página 1.
+ * Os parâmetros das criadas na URL: só o que difere do padrão (sem `ordem=recentes`, sem `criadas_pagina=1`),
+ * para "sem filtro" não deixar nada na URL. Mudar qualquer filtro volta à página 1.
  */
 export function paramsDaCriadas(atuais, mudancas = {}) {
     const juntos = { ...(atuais ?? {}), ...mudancas };
     if (! ('pagina' in mudancas)) juntos.pagina = 1;
 
-    const params = { aba: 'criadas' };
-    for (const chave of ['fase', 'situacao', 'envio', 'q']) {
+    // 21/10/2026: as criadas dividem a tela (e a URL) com as sugestões. Tipo, busca e página levam o
+    // prefixo `criadas_`; situação, envio e ordem só existem aqui.
+    const params = {};
+    for (const [chave, nome] of [['fase', 'criadas_fase'], ['situacao', 'situacao'], ['envio', 'envio'], ['q', 'criadas_q']]) {
         const v = typeof juntos[chave] === 'string' ? juntos[chave].trim() : juntos[chave];
-        if (v) params[chave] = v;
+        if (v) params[nome] = v;
     }
     if (juntos.ordem && juntos.ordem !== 'recentes') params.ordem = juntos.ordem;
-    if (Number(juntos.pagina) > 1) params.pagina = Number(juntos.pagina);
+    if (Number(juntos.pagina) > 1) params.criadas_pagina = Number(juntos.pagina);
 
     return params;
 }

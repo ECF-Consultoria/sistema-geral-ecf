@@ -176,6 +176,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/fichas/previa',
         'portal/estrutura/produtos/fichas/importacao',
         'portal/estrutura/produtos/fretes',
+        // 21/10/2026 — a precificação do produto que ainda não foi salvo (custo e caixa digitados, nada gravado).
+        'portal/estrutura/produtos/precificacao-previa',
         // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/campos-categoria',
         // Fase 168 (07/10/2026) — Sugestões de ofertas. Uma linha por rota. NUNCA
@@ -233,6 +235,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/{id}/ficha-tecnica',
         // Descrição do produto (Fase 172): id numérico no meio, só o PUT existe nessa URL.
         'portal/estrutura/produtos/{id}/descricao',
+        // A Precificação na ficha do produto (20/10/2026): id numérico no meio, só o GET existe nessa URL.
+        'portal/estrutura/produtos/{id}/precificacao',
         // Fase 168: o id do produto no meio, só dígitos (a página de sugestões define tipo e quantidades).
         'portal/estrutura/sugestoes/produtos/{id}/geracao',
         // Imagens por variação: cada `{id}` casa SÓ dígitos (o 1º é a variação, o 2º a imagem) e o

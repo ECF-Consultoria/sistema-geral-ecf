@@ -3,6 +3,7 @@
 namespace App\Services\Portal\Estrutura\Geracao;
 
 use App\Models\EstruturaOferta;
+use App\Support\Publicador\ComposicaoDoComposto;
 
 /**
  * As regras do "Montar kit" do Planejamento (09/10/2026), em funções puras: sem banco,
@@ -81,10 +82,42 @@ final class RegrasDaMontagem
     /**
      * Nome e SKU sugeridos para a composição, pelo padrão do Planejamento.
      *
-     * @param  list<array{produto_nome: string, sku: string, valor: ?string, quantidade: int, tipo_nome?: ?string, tipo_plural?: ?string}>  $itens  já ordenados
+     * @param  list<array{produto_nome: string, sku: string, valor: ?string, quantidade: int, produto_id?: ?int, tipo_nome?: ?string, tipo_plural?: ?string}>  $itens  já ordenados
      * @return array{nome: string, sku: string}|null  null quando a composição não tem fase
      */
     public static function nomeado(array $itens): ?array
+    {
+        $nomeado = self::nomeadoPeloPadrao($itens);
+
+        // O MESMO produto em cores diferentes (22/10/2026, teste da empresa #459): o padrão de Kit dava
+        // "Poltrona Decorativa Opala + Poltrona Decorativa Opala — Cinza / Bordô". O nome passa a ser o do kit,
+        // o mesmo que o Publicador põe no título ({@see ComposicaoDoComposto::nomeDoKit()}):
+        // "Kit 2 Poltrona Decorativa Opala Cinza e Bordô". O SKU segue o padrão da fase.
+        if ($nomeado !== null && self::mesmoProduto($itens)) {
+            $nomeado['nome'] = (new ComposicaoDoComposto(array_map(fn (array $i) => [
+                'quantidade' => max(1, (int) $i['quantidade']),
+                'nome'       => (string) $i['produto_nome'],
+                'cor'        => ($i['valor'] ?? null) !== null && trim((string) $i['valor']) !== '' ? trim((string) $i['valor']) : null,
+                'produto_id' => (int) $i['produto_id'],
+            ], $itens)))->nomeDoKit();
+        }
+
+        return $nomeado;
+    }
+
+    /** Dois ou mais itens, todos variações do MESMO produto do Portal (o avulso, sem produto, nunca conta). */
+    private static function mesmoProduto(array $itens): bool
+    {
+        if (count($itens) < 2) {
+            return false;
+        }
+        $produtos = array_unique(array_map(fn (array $i) => $i['produto_id'] ?? null, $itens));
+
+        return count($produtos) === 1 && reset($produtos) !== null;
+    }
+
+    /** O nome e o SKU pelo padrão de cada fase ({@see NomesSugeridos}). */
+    private static function nomeadoPeloPadrao(array $itens): ?array
     {
         $fase = self::fase(array_map(fn ($i) => (int) $i['quantidade'], $itens));
         $paraNome = fn (array $i) => ['produto_nome' => $i['produto_nome'], 'sku' => $i['sku'], 'valor' => $i['valor'] ?? null];

@@ -52,6 +52,8 @@ class ContaMlService
             modosEnvio: $modos,
             depositos: $depositos,
             lidaEm: now()->toIso8601String(),
+            // Demo 23/10 (A9): a Prévia mostra "Vendido por" com o apelido da conta, não o nome cadastrado.
+            nickname: is_string($eu->corpo['nickname'] ?? null) && trim($eu->corpo['nickname']) !== '' ? trim($eu->corpo['nickname']) : null,
         );
     }
 }

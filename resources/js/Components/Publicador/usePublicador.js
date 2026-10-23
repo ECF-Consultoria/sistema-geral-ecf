@@ -39,9 +39,15 @@ const ESPERA_SALVAR = 900;
 const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim e perdê-las?';
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
+// Demo 23/10 (H21): depois de publicar, o servidor relê o estado no ML em 1,5 e ~6,5 min e o frete em 1 min.
+const RELER_DEPOIS_DE_PUBLICAR = 8 * 60 * 1000;
+const INTERVALO_DEPOIS_DE_PUBLICAR = 20 * 1000;
 const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
-// Sinal de editor aberto (09/10/2026): o preparo pela IA (salvar no Portal) não escreve por trás da tela.
-const SINAL_PRESENCA = 60 * 1000;
+// Sinal de editor aberto (09/10/2026), a cada 20 s desde 20/10/2026: a resposta diz se a IA está atualizando este
+// anúncio por fora (o cliente salvou no Portal) — com ela gravando, a mesa fica só leitura e relê no fim.
+const SINAL_PRESENCA = 20 * 1000;
+// 21/10/2026: com a IA do preparo gravando por fora, o sinal fica mais curto — a mesa sai da pausa logo que ela termina.
+const SINAL_PRESENCA_COM_IA = 5 * 1000;
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
@@ -61,9 +67,13 @@ const variantesDoEstado = (e) => Object.fromEntries((e.variantes ?? []).map((v) 
 /**
  * @param {{ produtoId: number, onPublicou?: Function, pausado?: boolean }} opcoes
  *   `pausado` = a IA está gravando este rascunho no servidor: mesa só leitura e nenhum
- *   salvamento sai até `recarregarDepoisDaIa` reler o que ela gravou (CR-F02).
+ *   salvamento sai até `recarregarDepoisDaIa` reler o que ela gravou (CR-F02). Desde 20/10/2026
+ *   a mesa também pausa sozinha com a IA do preparo (save no Portal) gravando por fora (`iaPorFora`).
  */
-export default function usePublicador({ produtoId, onPublicou, pausado = false }) {
+export default function usePublicador({ produtoId, onPublicou, pausado: pausadoDaIa = false }) {
+    // A IA do preparo gravando por fora: 'agendada' | 'escrevendo' | 'imagens', ou null (rota `presenca`).
+    const [iaPorFora, setIaPorFora] = useState(null);
+    const pausado = pausadoDaIa || iaPorFora !== null;
     const [estado, setEstado] = useState(null);
     const [rasc, setRasc] = useState(null);
     const [vars, setVars] = useState({});
@@ -88,6 +98,17 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const palavrasRef = useRef({});
     // Frete grátis obrigatório pela faixa de preço (resposta do servidor), nulo = não consultado.
     const [frete, setFrete] = useState(null);
+    // P-31c (23/10/2026): número da última consulta do frete — só a resposta dela vale. Uma consulta lenta de um
+    // preço antigo (89) chegando depois da do preço novo (69) marcava e travava o frete grátis abaixo de R$ 79.
+    const consultaFrete = useRef(0);
+    // P-14 (23/10/2026): a recusa de uma ação do fim da Prévia, para aparecer também AO LADO do botão que a causou
+    // (a faixa do topo fica centenas de pixels acima). `{ acao, mensagem }`; `acao` = 'conferir' | 'publicar' |
+    // 'levar-frete' | 'levar-frete:<item>' | 'descricao:<item>'.
+    const [erroDaAcao, setErroDaAcao] = useState(null);
+    // P-31b (23/10/2026): o clique em Conferir já trava o botão e diz "Conferindo…" enquanto o frete é consultado
+    // (antes do POST); sem isso o segundo clique disparava outra conferência no ML.
+    const [pedindoConferencia, setPedindoConferencia] = useState(false);
+    const conferindoAgora = useRef(false);
     const pausadoRef = useRef(pausado);
     pausadoRef.current = pausado;
     const emVoo = useRef(0);
@@ -138,14 +159,18 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
     /**
      * Chamada que devolve o estado (nulo se falhou). `tudo` = ação de estrutura (troca também as
-     * cópias locais, mesclando). `fundo` = salvamento automático: não mexe na faixa de erro (quem
-     * avisa é o indicador da barra) e entrega a mensagem a `aoFalhar`.
+     * cópias locais, mesclando). `fundo` = não mexe na faixa de erro e entrega a mensagem a `aoFalhar`
+     * (o salvamento automático, que avisa pelo indicador da barra, e o envio de várias fotos, que junta
+     * as recusas). Sem `fundo`, `aoFalhar` recebe a mensagem além da faixa.
      */
     const chamar = async (promessa, { tudo = false, fundo = false, aoFalhar } = {}) => {
         const n = ++ordem.current.enviada;
         emVoo.current += 1;
         setSalvando((s) => s + 1);
-        if (! fundo) setErro(null);
+        if (! fundo) {
+            setErro(null);
+            setErroDaAcao(null);
+        }
         try {
             const { data } = await promessa();
             // Uma resposta mais velha que a última aplicada não volta o estado no tempo.
@@ -157,7 +182,8 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             return data;
         } catch (e) {
             const mensagem = mensagemDe(e);
-            if (fundo) aoFalhar?.(mensagem); else setErro(mensagem);
+            if (! fundo) setErro(mensagem);
+            aoFalhar?.(mensagem);
 
             return null;
         } finally {
@@ -287,6 +313,9 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         palavrasRef.current = {};
         setPalavrasIa({});
         setFrete(null);
+        // A consulta do frete do produto que saiu não vale para este (P-31c).
+        consultaFrete.current += 1;
+        setErroDaAcao(null);
         enfileirar(async () => {
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
@@ -317,17 +346,40 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         };
     }, [produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ── Editor aberto (09/10/2026) ──
-    // Um sinal por minuto enquanto a aba está visível. Com ele valendo, o preparo pela IA (o cliente
-    // salvou no Portal) espera e tenta de novo, em vez de gravar o rascunho por trás de quem edita.
+    // ── Editor aberto + IA por fora (09/10 e 20/10/2026) ──
+    // Um sinal a cada 20 s enquanto a aba está visível. A resposta diz se a IA do preparo (o cliente salvou
+    // no Portal) está gravando este anúncio e o carimbo do que ela já gravou. Com ela gravando, a mesa fica
+    // só leitura; quando termina — ou o carimbo muda —, a tela RELÊ antes de sair da pausa: a cópia daqui
+    // vai inteira por chave de topo, e salvar sem reler desfaria o que a IA escreveu (EditorEmUso).
+    const porFora = useRef({ carimbo: null, reler: null });
     useEffect(() => {
-        const t = setInterval(() => {
+        const t = setInterval(async () => {
             if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-            axios.post(rota('presenca', produtoId)).catch(() => {});
-        }, SINAL_PRESENCA);
+            let r = null;
+            try {
+                r = (await axios.post(rota('presenca', produtoId)))?.data ?? null;
+            } catch {
+                return;
+            }
+            const ia = typeof r?.ia === 'string' ? r.ia : null;
+            const carimbo = typeof r?.carimbo === 'string' ? r.carimbo : null;
+            const antes = porFora.current;
+            if (ia === null && carimbo !== null && antes.carimbo !== null && carimbo !== antes.carimbo) {
+                antes.carimbo = carimbo;
+                await antes.reler?.();
+            } else if (carimbo !== null && antes.carimbo === null) {
+                antes.carimbo = carimbo;
+            }
+            setIaPorFora(ia);
+        }, iaPorFora !== null ? SINAL_PRESENCA_COM_IA : SINAL_PRESENCA);
 
         return () => clearInterval(t);
-    }, [produtoId]);
+    }, [produtoId, iaPorFora !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+    // A carga (e cada releitura) traz o carimbo e o que a IA está fazendo: a tela já abre pausada se ela estiver gravando.
+    useEffect(() => {
+        if (typeof estado?.carimbo_por_fora === 'string') porFora.current.carimbo = estado.carimbo_por_fora;
+        if (estado) setIaPorFora(typeof estado.ia_por_fora === 'string' ? estado.ia_por_fora : null);
+    }, [estado?.carimbo_por_fora, estado?.ia_por_fora]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── IA gravando no servidor (CR-F02) ──
     // Saindo da pausa sem releitura (análise sumiu, prazo estourado): o pendente volta a ser salvo.
@@ -385,42 +437,96 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     }, []);
 
     // ── Andamento da fila (conferência e publicação) ──
+    // P-16 (23/10/2026): a leitura seguinte só sai DEPOIS que a anterior voltou (sem leituras sobrepostas), cada uma
+    // tem número na mesma conta do `chamar` e a mais velha que a última aplicada é descartada, e nada é aplicado
+    // depois de o acompanhamento acabar (`vivo`). Antes, com `setInterval`, a leitura N-1 lenta chegava depois da N
+    // que encerrou a espera e voltava a tela a "Publicando…" (para sempre) ou a "Confira de novo".
     useEffect(() => {
         if (! aguardando) return undefined;
-        const t = setInterval(async () => {
+        let vivo = true;
+        let relogio = null;
+        const ler = async () => {
+            if (! vivo) return;
             if (Date.now() - aguardando.desde > LIMITE_ANDAMENTO) {
                 setAguardando(null);
                 setAviso('Ainda processando no servidor. Recarregue a página em alguns minutos para ver o resultado.');
 
                 return;
             }
+            const n = ++ordem.current.enviada;
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
-                setEstado(data);
-                if (aguardando.tipo === 'conferencia' && conferenciaChegou(aguardando, data)) setAguardando(null);
-                if (aguardando.tipo === 'publicacao' && data.publicacao?.status !== 'RUNNING') {
-                    setAguardando(null);
-                    onPublicou?.();
+                if (! vivo) return;
+                if (n >= ordem.current.aplicada) {
+                    ordem.current.aplicada = n;
+                    setEstado(data);
+                    if (aguardando.tipo === 'conferencia' && conferenciaChegou(aguardando, data)) {
+                        setAguardando(null);
+
+                        return;
+                    }
+                    if (aguardando.tipo === 'publicacao' && data.publicacao?.status !== 'RUNNING') {
+                        setAguardando(null);
+                        onPublicou?.();
+
+                        return;
+                    }
                 }
             } catch {
                 // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
             }
-        }, INTERVALO_ANDAMENTO);
+            if (vivo) relogio = setTimeout(ler, INTERVALO_ANDAMENTO);
+        };
+        relogio = setTimeout(ler, INTERVALO_ANDAMENTO);
 
-        return () => clearInterval(t);
+        return () => {
+            vivo = false;
+            clearTimeout(relogio);
+        };
     }, [aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Depois de publicar ──
+    // Demo 23/10 (H21/N17): o Mercado Livre pode pausar ou pôr em revisão minutos depois, e o frete do publicado
+    // chega um minuto depois. Enquanto a publicação for recente, relê de vez em quando SÓ a publicação: o resto do
+    // estado (o que a pessoa ainda edita) não é trocado.
+    const concluidaEm = estado?.publicacao && estado.publicacao.status !== 'RUNNING' ? estado.publicacao.concluida_em : null;
+    // P-16 (23/10/2026): também encadeada (a próxima leitura só depois da anterior) e sem aplicar nada depois do fim.
+    useEffect(() => {
+        if (! concluidaEm || aguardando) return undefined;
+        const fim = Date.parse(concluidaEm) + RELER_DEPOIS_DE_PUBLICAR;
+        if (! (fim > Date.now())) return undefined;
+        let vivo = true;
+        let relogio = null;
+        const ler = async () => {
+            if (! vivo || Date.now() > fim) return;
+            try {
+                const { data } = await axios.get(rota('abrir', produtoId));
+                if (vivo && data?.publicacao?.id) setEstado((e) => (e && e.publicacao?.id === data.publicacao.id ? { ...e, publicacao: data.publicacao } : e));
+            } catch {
+                // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
+            }
+            if (vivo) relogio = setTimeout(ler, INTERVALO_DEPOIS_DE_PUBLICAR);
+        };
+        relogio = setTimeout(ler, INTERVALO_DEPOIS_DE_PUBLICAR);
+
+        return () => {
+            vivo = false;
+            clearTimeout(relogio);
+        };
+    }, [concluidaEm, aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Ações ──
     /**
      * Ação de estrutura (CR-F01): na fila, salva antes o que estava pendente e, na volta,
      * troca o estado inteiro mesclando — o que for digitado enquanto ela corre fica na tela
-     * e segue por salvar. `antes` roda logo antes do pedido (depois do salvamento).
+     * e segue por salvar. `antes` roda logo antes do pedido (depois do salvamento); `fundo` e
+     * `aoFalhar` são os do `chamar`.
      */
-    const estruturar = (fazer, { antes } = {}) => enfileirar(async () => {
+    const estruturar = (fazer, { antes, fundo = false, aoFalhar } = {}) => enfileirar(async () => {
         await salvarTudoAgora();
         antes?.();
 
-        return chamar(fazer, { tudo: true });
+        return chamar(fazer, { tudo: true, fundo, aoFalhar });
     });
 
     const escolherCategoria = async (id) => {
@@ -456,44 +562,78 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         return data;
     };
     const enviarFotos = async (arquivos, grupo) => {
+        // P-15 (23/10/2026): cada foto é um pedido, e cada pedido limpava a faixa — a recusa de uma (12 MB, por
+        // exemplo) sumia quando a próxima começava a subir. As recusas se juntam, uma por arquivo, e ficam na faixa
+        // até a pessoa fechar ou mandar fotos de novo.
+        const recusas = [];
+        setErro(null);
+        setErroDaAcao(null);
         // Uma volta da fila por arquivo: o que se digita enquanto as fotos sobem é salvo entre elas.
-        for (const arquivo of arquivos) {
+        for (const arquivo of Array.from(arquivos ?? [])) {
             const fd = new FormData();
             fd.append('imagem', arquivo);
             fd.append('grupo', grupo);
             setEnviandoFoto(grupo);
-            const data = await estruturar(() => axios.post(rota('fotos', produtoId), fd));
+            let falha = null;
+            const data = await estruturar(() => axios.post(rota('fotos', produtoId), fd), { fundo: true, aoFalhar: (m) => { falha = m; } });
             setEnviandoFoto(null);
             const bloqueio = data?.foto?.problemas?.find((p) => p.severidade === 'BLOCKER');
-            if (bloqueio) setErro(`${arquivo.name}: ${bloqueio.mensagem}`);
+            const motivo = falha ?? bloqueio?.mensagem ?? null;
+            if (motivo) {
+                recusas.push(`${arquivo.name}: ${motivo}`);
+                setErro(recusas.join('\n'));
+            }
         }
+        // De novo no fim: um salvamento entre as fotos que volta a dar certo limpa a faixa (`salvamentoEmDia`).
+        if (recusas.length) setErro(recusas.join('\n'));
     };
     const atribuirFotos = async (atribuicoes) => {
         // A nova ordem aparece na hora e de novo depois do salvamento (que devolve a ordem anterior).
         const otimista = (e) => ({ ...e, atribuicoes });
+        const anteriores = estado?.atribuicoes;
         setEstado(otimista);
-        await estruturar(
+        const data = await estruturar(
             () => axios.put(rota('fotos.atribuir', produtoId), { atribuicoes: atribuicoes.map((a) => ({ ...a, imagem: Number(a.imagem) })) }),
             { antes: () => setEstado(otimista) },
         );
+        // P-31a (23/10/2026): o servidor recusou (ou a rede caiu): a grade volta à ordem gravada — senão ela mostrava a
+        // ordem nova que não entrou, e a Prévia (do servidor) a antiga. Só se a tela ainda está na ordem que esta troca pôs.
+        if (! data) setEstado((e) => (e && e.atribuicoes === atribuicoes ? { ...e, atribuicoes: anteriores } : e));
     };
     const removerFoto = (imagemId) => estruturar(() => axios.delete(rota('fotos.remover', produtoId, { imagem: imagemId })));
     const reenviarFoto = (imagemId) => estruturar(() => axios.post(rota('fotos.reenviar', produtoId, { imagem: imagemId })));
 
-    const conferir = async () => {
-        await garantirFreteObrigatorio();
-        const data = await enfileirar(async () => {
-            await salvarTudoAgora();
+    /** A recusa de uma ação do fim da Prévia: na faixa do topo e ao lado do botão dela (P-14). */
+    const falhouNaAcao = (acao, mensagem) => {
+        setErro(mensagem);
+        setErroDaAcao({ acao, mensagem });
+    };
 
-            return chamar(() => axios.post(rota('conferir', produtoId)));
-        });
-        if (data) {
-            setCiente(false);
-            setAguardando({ tipo: 'conferencia', conferencia: estado?.conferencia?.id ?? null, desde: Date.now() });
+    const conferir = async () => {
+        // P-31b: um clique por vez — o segundo, enquanto o frete é consultado, não sai.
+        if (conferindoAgora.current) return;
+        conferindoAgora.current = true;
+        setPedindoConferencia(true);
+        try {
+            await garantirFreteObrigatorio();
+            const data = await enfileirar(async () => {
+                await salvarTudoAgora();
+
+                return chamar(() => axios.post(rota('conferir', produtoId)), { aoFalhar: (m) => setErroDaAcao({ acao: 'conferir', mensagem: m }) });
+            });
+            if (data) {
+                setCiente(false);
+                setAguardando({ tipo: 'conferencia', conferencia: estado?.conferencia?.id ?? null, desde: Date.now() });
+            }
+        } finally {
+            conferindoAgora.current = false;
+            setPedindoConferencia(false);
         }
     };
     const publicar = async () => {
-        const data = await enfileirar(() => chamar(() => axios.post(rota('publicar', produtoId), { ciente })));
+        const data = await enfileirar(() => chamar(() => axios.post(rota('publicar', produtoId), { ciente }), {
+            aoFalhar: (m) => setErroDaAcao({ acao: 'publicar', mensagem: m }),
+        }));
         if (data) setAguardando({ tipo: 'publicacao', desde: Date.now() });
     };
     const simular = async () => {
@@ -594,15 +734,17 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
     /** Frete grátis obrigatório pela faixa de preço: salva o pendente antes (o servidor lê preço e pacote gravados). */
     const consultarFrete = async () => {
+        // P-31c: só a resposta da última consulta vai para a tela; quem pediu recebe a da sua.
+        const n = ++consultaFrete.current;
         await descarregar();
         try {
             const { data } = await axios.get(rota('frete', produtoId));
-            setFrete(data.frete_gratis ?? null);
+            if (n === consultaFrete.current) setFrete(data.frete_gratis ?? null);
 
             return data.frete_gratis ?? null;
         } catch {
             // Sem a resposta do ML a tela segue como antes: a escolha do frete grátis fica com a pessoa.
-            setFrete(null);
+            if (n === consultaFrete.current) setFrete(null);
 
             return null;
         }
@@ -666,6 +808,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         if (leu) setRelendo(false);
         else setErro('Não foi possível ler o que a IA preencheu. Recarregue a página antes de continuar editando.');
     };
+    porFora.current.reler = recarregarDepoisDaIa;
 
     // ── Derivados ──
     const schema = estado?.schema ?? null;
@@ -703,11 +846,12 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const problemasDoAtributo = (id, variante = null) => todos.filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
     const bloqueiosLocais = locais.filter((p) => p.severidade === 'BLOCKER').length;
 
-    const estadoConf = estadoDaConferencia({ conf, aguardando, sujo: editando });
+    // P-31b: do clique em Conferir até o POST voltar (o frete é consultado antes), a conferência já está "conferindo".
+    const estadoConf = estadoDaConferencia({ conf, aguardando: pedindoConferencia && ! aguardando ? { tipo: 'conferencia' } : aguardando, sujo: editando });
     const nPendencias = conf?.local ? locais.filter((p) => p.severidade === 'BLOCKER').length : daConferencia.bloqueios.length;
     // O texto só diz "o Mercado Livre apontou" quando tudo veio dele (camada L3).
     const conferenciaDoMl = estadoConf === 'avisos' ? daConferencia.avisosDoMl : daConferencia.bloqueiosDoMl;
-    const podeConferir = calcularPodeConferir({ disabled, bloqueiosLocais, salvando, schema });
+    const podeConferir = calcularPodeConferir({ disabled: disabled || pedindoConferencia, bloqueiosLocais, salvando, schema });
     const podePublicar = calcularPodePublicar({ disabled, conf, sujo: editando, ciente, salvando, liberada });
 
     const m = {
@@ -736,6 +880,11 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             mensagem: falhaSalvar?.mensagem ?? null,
         },
         aguardando,
+        // P-31b: o clique em Conferir já saiu (consultando o frete ou pedindo a conferência).
+        pedindoConferencia,
+        // P-14: a recusa da última ação do fim da Prévia, enquanto a faixa do topo ainda mostra a mesma mensagem.
+        erroDaAcao: erroDaAcao && erroDaAcao.mensagem === erro ? erroDaAcao : null,
+        falhouNaAcao,
         ciente,
         setCiente,
         conferir,
@@ -765,5 +914,6 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         recarregar,
         recarregarDepoisDaIa,
         descarregar,
+        iaPorFora,
     };
 }

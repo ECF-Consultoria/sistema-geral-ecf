@@ -138,13 +138,15 @@ test('a vitrine: em linha até 3 produtos, mosaico 2×2 a partir de 4 (em linha 
     assert.equal(layoutDaVitrine(undefined).pecas.length, 0);
 });
 
-test('os parâmetros da URL: só o que difere do padrão, e mudar filtro volta à página 1', () => {
+test('os parâmetros da URL: só o que difere do padrão, com prefixo criadas_, e mudar filtro volta à página 1', () => {
+    // 21/10/2026: as criadas dividem a URL com as sugestões; tipo, busca e página levam o prefixo.
     const atuais = { fase: 'kit', situacao: null, envio: null, ordem: 'recentes', q: '' };
-    assert.deepEqual(paramsDaCriadas(atuais), { aba: 'criadas', fase: 'kit' });
-    assert.deepEqual(paramsDaCriadas(atuais, { pagina: 3 }), { aba: 'criadas', fase: 'kit', pagina: 3 });
-    assert.deepEqual(paramsDaCriadas({ ...atuais, pagina: 3 }, { situacao: 'sem_custo' }), { aba: 'criadas', fase: 'kit', situacao: 'sem_custo' }, 'filtro novo: página 1');
-    assert.deepEqual(paramsDaCriadas(atuais, { q: '  nina ', ordem: 'nome' }), { aba: 'criadas', fase: 'kit', q: 'nina', ordem: 'nome' });
-    assert.deepEqual(paramsDaCriadas(atuais, { fase: null }), { aba: 'criadas' });
+    assert.deepEqual(paramsDaCriadas(atuais), { criadas_fase: 'kit' });
+    assert.deepEqual(paramsDaCriadas(atuais, { pagina: 3 }), { criadas_fase: 'kit', criadas_pagina: 3 });
+    assert.deepEqual(paramsDaCriadas({ ...atuais, pagina: 3 }, { situacao: 'sem_custo' }), { criadas_fase: 'kit', situacao: 'sem_custo' }, 'filtro novo: página 1');
+    assert.deepEqual(paramsDaCriadas(atuais, { q: '  nina ', ordem: 'nome' }), { criadas_fase: 'kit', criadas_q: 'nina', ordem: 'nome' });
+    assert.deepEqual(paramsDaCriadas(atuais, { fase: null }), {});
+    assert.ok(! ('aba' in paramsDaCriadas(atuais)), 'a tela não tem mais abas');
 });
 
 test('o total diz "N de M" quando há filtro', () => {
@@ -265,7 +267,7 @@ test('PainelCriadas vazio: diz que o que for aceito ou montado fica ali', async 
     for (const criadas of [null, undefined, { total: 0, filtrado: 0, grupos: [], contagens: {} }]) {
         const html = renderToStaticMarkup(React.createElement(PainelCriadas, { criadas }));
         assert.match(html, /data-criadas-vazio/);
-        assert.match(html, /Os combos, kits e combits que você aceitar em Pendentes ou montar à mão ficam aqui\./);
+        assert.match(html, /Os combos, kits e combits que você aceitar nas sugestões ou montar à mão ficam aqui\./);
     }
 });
 
@@ -278,29 +280,34 @@ test('PainelCriadas: a paginação aparece só com mais de uma página', async (
     assert.match(render(3), /data-paginacao[\s\S]*130 criadas · 60 por página/);
 });
 
-test('AbasDasSugestoes: quarta aba "Criadas" com a contagem, e sem seleção em lote nela', async () => {
-    const { default: AbasDasSugestoes } = await montar(`${DIR}/AbasDasSugestoes.jsx`);
-    const render = (aba) => renderToStaticMarkup(React.createElement(AbasDasSugestoes, {
-        aba, contagens: { sugestoes: 12, sem_tipo: 1, descartadas: 0, criadas: 8 }, hrefAba: (a) => `/planejamento?aba=${a}`, naPagina: 5,
-    }));
+test('CabecalhoDasSugestoes: título com a contagem; a seleção só com a lista aberta ou com alguma marcada (21/10/2026)', async () => {
+    const { default: Cabecalho } = await montar(`${DIR}/CabecalhoDasSugestoes.jsx`);
+    const render = (props) => renderToStaticMarkup(React.createElement(Cabecalho, { total: 12, naPagina: 5, ...props }));
 
-    const criadas = render('criadas');
-    assert.deepEqual([...criadas.matchAll(/data-aba="([a-z_]+)"/g)].map((m) => m[1]), ['sugestoes', 'sem_tipo', 'descartadas', 'criadas']);
-    assert.match(criadas, /<a href="\/planejamento\?aba=criadas"[^>]*aria-current="page"[^>]*>Criadas<span[^>]*>8<\/span>/);
-    assert.match(criadas, /grid-cols-4/);
-    assert.doesNotMatch(criadas, /data-selecao-topo|data-selecao-celular|data-acao="marcar-pagina"/, 'nada para marcar em Criadas');
+    const previa = render({});
+    assert.match(previa, /Sugestões para revisar<span data-contagem="true"[^>]*>12<\/span>/);
+    assert.doesNotMatch(previa, /data-selecao-topo|data-aba=/, 'na prévia sem nada marcado não há seleção nem abas');
 
-    assert.match(render('sugestoes'), /data-selecao-topo/, 'em Pendentes a seleção continua');
+    const marcadas = render({ selecionadas: 2 });
+    assert.match(marcadas, /data-selecao-topo/);
+    assert.match(marcadas, /data-acao="aceitar-selecionadas"/);
+    assert.doesNotMatch(marcadas, /data-acao="marcar-pagina"/, 'marcar a página só com a lista inteira aberta');
+
+    const aberta = render({ aberta: true, filtroAtivo: true, totalDoFiltro: 30 });
+    assert.match(aberta, /data-acao="marcar-pagina"/);
+    assert.match(aberta, /Marcar todas as 30 do filtro/);
 });
 
-test('a página liga a aba: recebe `criadas` e os filtros dela, e saindo dela os filtros ficam para trás', () => {
+test('a página junta as duas listas: as criadas sempre embaixo, cada lista com os seus parâmetros na URL (21/10/2026)', () => {
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaSugestoes.jsx');
     assert.match(pagina, /sugestoes, criadas = null, filtros_criadas = null, filtros/);
-    assert.match(pagina, /const ehAbaCriadas = sugestoes\.aba === 'criadas';/);
-    assert.match(pagina, /\{sugestoes\.tem_produtos && ! ehAbaCriadas && \(/);
-    assert.match(pagina, /\{ehAbaCriadas && <PainelCriadas criadas=\{criadas\} filtros=\{filtros_criadas\} \/>\}/);
-    assert.match(pagina, /filtrosDaAba\(ehAbaCriadas \? \{\} : filtros, aba\)/);
-    // 16/10: o subtítulo fala do que está na aba, e o "Atualizado" (das sugestões) sai dela.
-    assert.match(pagina, /ehAbaCriadas\s*\?\s*'Os combos, kits e combits que você já criou, com o preço e o que falta em cada um\.'/);
-    assert.match(pagina, /\{textoDeAtualizacao && ! ehAbaCriadas && \(/);
+    assert.match(pagina, /<PainelCriadas criadas=\{criadas\} filtros=\{filtros_criadas\} outrosParams=\{paramsDasSugestoes\} \/>/);
+    assert.match(pagina, /paramsDaCriadas\(filtros_criadas \?\? \{\}, \{ pagina: criadas\?\.paginacao\?\.pagina \?\? 1 \}\)/,
+        'a visita das sugestões não apaga os parâmetros das criadas');
+    assert.match(pagina, /const recarregar = \(\) => router\.reload\(\{ only: \['sugestoes', 'criadas', 'montar_disponivel'\]/,
+        'a sugestão aceita desce para Criados na mesma recarga');
+    assert.ok(! pagina.includes('ehAbaCriadas') && ! pagina.includes('hrefAba'), 'sem abas');
+    const painel = lerSemComentarios(`${DIR}/PainelCriadas.jsx`);
+    assert.match(painel, /\{ \.\.\.outrosParams, \.\.\.paramsDaCriadas\(filtros, mudancas\) \}/, 'a visita das criadas não apaga os parâmetros das sugestões');
 });
+

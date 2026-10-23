@@ -139,10 +139,9 @@ class CategoriaSugestaoService
      * cache compartilhado. Oito sugestões em série custavam ~1,5 s; em
      * paralelo, o tempo de uma.
      *
-     * Falha de uma entra vazia e NÃO é cacheada. Por isso nem a leitura de
-     * uma categoria só passa por `MlCatalogoMetaService::categoria()`: lá o
-     * `Cache::remember` guarda o `[]` de uma falha passageira por 7 dias.
-     * Pelo mesmo motivo, `[]` encontrado no cache conta como ausente.
+     * Falha de uma entra vazia e NÃO é cacheada. `[]` encontrado no cache
+     * conta como ausente (sobra de quando `MlCatalogoMetaService::categoria()`
+     * guardava a falha por 7 dias; desde 22/10/2026 ele segue esta mesma regra).
      *
      * @param  array<int, string>  $ids
      * @return array<string, array>

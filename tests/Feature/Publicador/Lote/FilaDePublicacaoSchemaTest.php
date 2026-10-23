@@ -35,6 +35,33 @@ class FilaDePublicacaoSchemaTest extends TestCase
         return PubProduto::create(['company_id' => $c->id, 'sku' => $sku, 'nome' => $sku, 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-24): concluir a fila relê a linha sob trava — a cópia que quem chama tem pode
+     * estar velha (cancelada no meio, ou com um item recém-agendado), e ela fechava assim mesmo.
+     */
+    public function test_concluir_relê_a_fila_e_nao_fecha_com_item_vivo_nem_a_cancelada(): void
+    {
+        $c = Company::factory()->create();
+        $servico = app(\App\Services\Publicador\Fila\FilaPublicacaoService::class);
+
+        $velha = $this->fila('company-'.$c->id);
+        PubFilaPublicacao::whereKey($velha->id)->update(['status' => PubFilaPublicacao::CANCELADA, 'conta_ativa' => null]);
+        $servico->concluirSeVazia($velha);
+        $this->assertSame(PubFilaPublicacao::CANCELADA, $velha->fresh()->status, 'a cancelada não vira concluída pela cópia velha');
+
+        $viva = $this->fila('company-'.$c->id);
+        $p = $this->produto($c, 'SKU-1');
+        PubFilaPublicacaoItem::create(['fila_id' => $viva->id, 'produto_id' => $p->id, 'produto_ativo' => $p->id, 'posicao' => 1,
+            'status' => PubFilaPublicacaoItem::AGENDADO]);
+        $servico->concluirSeVazia($viva);
+        $this->assertSame(PubFilaPublicacao::ATIVA, $viva->fresh()->status, 'item agendado: a fila segue');
+
+        PubFilaPublicacaoItem::query()->update(['status' => PubFilaPublicacaoItem::PUBLICADO, 'produto_ativo' => null]);
+        $servico->concluirSeVazia($viva);
+        $this->assertSame(PubFilaPublicacao::CONCLUIDA, $viva->fresh()->status);
+        $this->assertNull($viva->fresh()->conta_ativa);
+    }
+
     public function test_as_colunas_do_desenho_existem(): void
     {
         $this->assertTrue(Schema::hasColumns('pub_filas_publicacao', [

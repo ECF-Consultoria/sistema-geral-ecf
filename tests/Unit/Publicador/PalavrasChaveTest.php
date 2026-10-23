@@ -158,7 +158,9 @@ class PalavrasChaveTest extends TestCase
         $this->assertTrue(MapeadorErrosMl::ehRuido(['code' => 'shipping.lost_me1_by_user', 'type' => 'warning']));
         // Se um dia o ML voltar a mandar como erro (bloqueava em 10/07, N-16), aparece.
         $this->assertFalse(MapeadorErrosMl::ehRuido(['cause_id' => 4053, 'code' => 'shipping.lost_me1_by_user', 'type' => 'error']));
-        $this->assertFalse(MapeadorErrosMl::ehRuido(['cause_id' => 350, 'code' => 'item.shipping.mandatory_free_shipping', 'type' => 'warning']));
+        // 22/10/2026: o 350 (frete grátis obrigatório nesta faixa) também virou ruído — "esse aviso nem precisa".
+        $this->assertTrue(MapeadorErrosMl::ehRuido(['cause_id' => 350, 'code' => 'item.shipping.mandatory_free_shipping', 'type' => 'warning']));
+        $this->assertFalse(MapeadorErrosMl::ehRuido(['cause_id' => 469, 'code' => 'item.available_quantity.ignored', 'type' => 'warning']));
         $this->assertFalse(MapeadorErrosMl::ehRuido([]));
     }
 }

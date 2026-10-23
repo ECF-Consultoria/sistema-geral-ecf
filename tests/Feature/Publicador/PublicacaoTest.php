@@ -149,7 +149,11 @@ class PublicacaoTest extends TestCase
         $this->assertSame('Cadeira Escritório Executiva ECF Giratória', $item->payload['family_name'], 'o payload enviado fica guardado');
         $this->assertSame('OK', $item->descricao_status);
         $this->assertSame(['plain_text' => 'Cadeira executiva giratória.'], collect(Http::recorded(fn (Request $q) => str_ends_with($q->url(), '/description')))->first()[0]->data());
-        $this->assertSame(['status' => 'active', 'sub_status' => [], 'tags' => ['incomplete_technical_specs'], 'permalink' => 'https://produto.mercadolivre.com.br/x'], $item->avisos['estado']);
+        $this->assertSame(['status' => 'active', 'sub_status' => [], 'tags' => ['incomplete_technical_specs'], 'permalink' => 'https://produto.mercadolivre.com.br/x'],
+            array_intersect_key($item->avisos['estado'], array_flip(['status', 'sub_status', 'tags', 'permalink'])));
+        // Demo 23/10 (N17/H21): o estado também guarda o envio (aqui o ML não mandou `shipping`) e quando foi lido.
+        $this->assertNull($item->avisos['estado']['envio']);
+        $this->assertNotEmpty($item->avisos['estado']['lido_em']);
 
         $this->assertSame(PubPublicacao::PUBLISHED, $p->fresh()->status);
         $this->assertSame(PubRascunho::PUBLISHED, $this->r->fresh()->status);
@@ -180,6 +184,7 @@ class PublicacaoTest extends TestCase
 
         $this->assertStringStartsWith('RN-90', $tenta(), 'sem conferência');
 
+        $this->validateComAviso();
         $this->conferir();
         $this->assertStringContainsString('Estou ciente', $tenta(false), 'avisos do ML precisam do "Estou ciente"');
 
@@ -264,6 +269,13 @@ class PublicacaoTest extends TestCase
         $this->assertSame('MODEL', $problema->alvo['atributo']);
         $this->assertSame('Preencha os atributos obrigatórios: «Modelo».', $problema->mensagem);
         $this->assertSame(0, EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->count());
+
+        // 23/10/2026 (teste do Publicador, P-13): a recusa aparece no editor enquanto nada mudou; corrigido (a revisão
+        // subiu), ela deixa de bloquear — antes travava o "Continuar" e a Prévia mesmo depois de conferido de novo.
+        $editor = app(\App\Services\Publicador\EditorRascunhoService::class);
+        $this->assertNotSame([], $editor->estado($this->r->fresh())['publicacao']['problemas']);
+        $this->r->fresh()->increment('revisao');
+        $this->assertSame([], $editor->estado($this->r->fresh())['publicacao']['problemas'], 'a recusa da revisão antiga não bloqueia mais');
     }
 
     /**

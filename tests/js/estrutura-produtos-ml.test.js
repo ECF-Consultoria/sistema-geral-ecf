@@ -64,7 +64,10 @@ test('PickerCategoria: só Enter ou clique num item chamam onCommit (nada é ace
     const usos = picker.match(/escolher\(/g) ?? [];
     assert.equal(usos.length, 2);
     assert.match(picker, /e\.key === 'Enter'[^}]*escolher\(itens\[ativo\]\)/);
-    assert.match(picker, /onClick=\{\(\) => escolher\(item\)\}/);
+    // Demo 23/10 (N10): o clique passa por `aoClicarItem`, que ignora o clique dado logo depois de a
+    // lista mudar sob o mouse (ver estrutura-categoria-n10.test.js) e então chama `escolher(item)`.
+    assert.match(picker, /onClick=\{\(\) => aoClicarItem\(item\)\}/);
+    assert.match(picker, /const aoClicarItem = \(item\) => \{[\s\S]*?escolher\(item\);/);
 });
 
 test('JanelaSugestoesCategoria: nasce sem nenhuma caixa marcada e tem os textos do UI-SPEC', () => {

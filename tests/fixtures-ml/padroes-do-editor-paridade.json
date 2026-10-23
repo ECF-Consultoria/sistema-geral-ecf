@@ -1,0 +1,453 @@
+{
+  "_leia": "Paridade JS × PHP dos padrões que o editor do Publicador aplicava ao abrir (N9, 22/10/2026). Gerado a partir do JS (ferramentas.js) e conferido pelos dois lados: tests/js/publicador-padroes-do-editor.test.js e tests/Unit/Publicador/PadroesDoEditorTest.php. Os tons são o MAIN_COLOR real da cadeira MLB193945.",
+  "tons": [
+    {
+      "id": "2450295",
+      "name": "Preto"
+    },
+    {
+      "id": "2450293",
+      "name": "Azul"
+    },
+    {
+      "id": "2450307",
+      "name": "Vermelho"
+    },
+    {
+      "id": "2450311",
+      "name": "Violeta"
+    },
+    {
+      "id": "2450291",
+      "name": "Marrom"
+    },
+    {
+      "id": "2450314",
+      "name": "Verde"
+    },
+    {
+      "id": "2450327",
+      "name": "Laranja"
+    },
+    {
+      "id": "2450278",
+      "name": "Azul celeste"
+    },
+    {
+      "id": "2450312",
+      "name": "Rosa"
+    },
+    {
+      "id": "2450289",
+      "name": "Dourado"
+    },
+    {
+      "id": "2450303",
+      "name": "Prateado"
+    },
+    {
+      "id": "2450296",
+      "name": "Amarelo"
+    },
+    {
+      "id": "2450294",
+      "name": "Cinza"
+    },
+    {
+      "id": "2450308",
+      "name": "Branco"
+    },
+    {
+      "id": "46671867",
+      "name": "Multicolorido"
+    },
+    {
+      "id": "2450281",
+      "name": "Bege"
+    }
+  ],
+  "cores": [
+    {
+      "nome": "Azul",
+      "tom": "2450293"
+    },
+    {
+      "nome": "azul",
+      "tom": "2450293"
+    },
+    {
+      "nome": "AZUL",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Azul-petróleo",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Azul celeste",
+      "tom": "2450278"
+    },
+    {
+      "nome": "Azul-celeste",
+      "tom": "2450278"
+    },
+    {
+      "nome": "Azul-marinho",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Azul_Royal",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Grafite",
+      "tom": "2450294"
+    },
+    {
+      "nome": "Chumbo",
+      "tom": "2450294"
+    },
+    {
+      "nome": "Vinho",
+      "tom": "2450307"
+    },
+    {
+      "nome": "Bordô",
+      "tom": "2450307"
+    },
+    {
+      "nome": "Off White",
+      "tom": "2450308"
+    },
+    {
+      "nome": "Off-white",
+      "tom": "2450308"
+    },
+    {
+      "nome": "Gelo",
+      "tom": "2450308"
+    },
+    {
+      "nome": "Café",
+      "tom": "2450291"
+    },
+    {
+      "nome": "Caramelo",
+      "tom": "2450291"
+    },
+    {
+      "nome": "Mel",
+      "tom": null
+    },
+    {
+      "nome": "Madeira",
+      "tom": null
+    },
+    {
+      "nome": "Rosa-chiclete",
+      "tom": "2450312"
+    },
+    {
+      "nome": "Verde-limão",
+      "tom": "2450314"
+    },
+    {
+      "nome": "Limão",
+      "tom": "2450314"
+    },
+    {
+      "nome": "Marrom-claro",
+      "tom": "2450291"
+    },
+    {
+      "nome": "Cinza-escuro",
+      "tom": "2450294"
+    },
+    {
+      "nome": "Preto fosco",
+      "tom": "2450295"
+    },
+    {
+      "nome": "Fosco preto",
+      "tom": "2450295"
+    },
+    {
+      "nome": "Natural",
+      "tom": null
+    },
+    {
+      "nome": "",
+      "tom": null
+    },
+    {
+      "nome": "  Branco  ",
+      "tom": "2450308"
+    },
+    {
+      "nome": "Água",
+      "tom": "2450278"
+    },
+    {
+      "nome": "Lilás",
+      "tom": "2450311"
+    },
+    {
+      "nome": "Índigo",
+      "tom": "2450311"
+    },
+    {
+      "nome": "Prata",
+      "tom": "2450303"
+    },
+    {
+      "nome": "Ouro velho",
+      "tom": "2450289"
+    },
+    {
+      "nome": "Café com leite",
+      "tom": "2450291"
+    },
+    {
+      "nome": "Multicolorido",
+      "tom": "46671867"
+    },
+    {
+      "nome": "Nogueira",
+      "tom": null
+    },
+    {
+      "nome": "Amadeirado",
+      "tom": null
+    },
+    {
+      "nome": "Coral",
+      "tom": "2450327"
+    },
+    {
+      "nome": "Terracota",
+      "tom": "2450327"
+    },
+    {
+      "nome": "Creme",
+      "tom": "2450281"
+    },
+    {
+      "nome": "Nude",
+      "tom": "2450281"
+    },
+    {
+      "nome": "Bege/Areia",
+      "tom": "2450281"
+    },
+    {
+      "nome": "Cinza   chumbo",
+      "tom": "2450294"
+    },
+    {
+      "nome": "Verde Musgo",
+      "tom": "2450314"
+    },
+    {
+      "nome": "Tabaco",
+      "tom": "2450291"
+    },
+    {
+      "nome": "Champagne",
+      "tom": null
+    },
+    {
+      "nome": "Rosê",
+      "tom": null
+    },
+    {
+      "nome": "Petróleo",
+      "tom": "2450293"
+    }
+  ],
+  "tons_sem_celeste": [
+    {
+      "id": "2450295",
+      "name": "Preto"
+    },
+    {
+      "id": "2450293",
+      "name": "Azul"
+    },
+    {
+      "id": "2450307",
+      "name": "Vermelho"
+    },
+    {
+      "id": "2450311",
+      "name": "Violeta"
+    },
+    {
+      "id": "2450291",
+      "name": "Marrom"
+    },
+    {
+      "id": "2450314",
+      "name": "Verde"
+    },
+    {
+      "id": "2450327",
+      "name": "Laranja"
+    },
+    {
+      "id": "2450312",
+      "name": "Rosa"
+    },
+    {
+      "id": "2450289",
+      "name": "Dourado"
+    },
+    {
+      "id": "2450303",
+      "name": "Prateado"
+    },
+    {
+      "id": "2450296",
+      "name": "Amarelo"
+    },
+    {
+      "id": "2450294",
+      "name": "Cinza"
+    },
+    {
+      "id": "2450308",
+      "name": "Branco"
+    },
+    {
+      "id": "46671867",
+      "name": "Multicolorido"
+    },
+    {
+      "id": "2450281",
+      "name": "Bege"
+    }
+  ],
+  "cores_sem_celeste": [
+    {
+      "nome": "Água",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Celeste",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Azul celeste",
+      "tom": "2450293"
+    },
+    {
+      "nome": "Ciano",
+      "tom": "2450293"
+    }
+  ],
+  "digitos": [
+    {
+      "base": "789000000000",
+      "digito": 0
+    },
+    {
+      "base": "789123456789",
+      "digito": 5
+    },
+    {
+      "base": "789999999999",
+      "digito": 9
+    },
+    {
+      "base": "789555000111",
+      "digito": 8
+    },
+    {
+      "base": "789013572468",
+      "digito": 0
+    }
+  ],
+  "codigos": [
+    {
+      "codigo": "7896553367645",
+      "valido": true
+    },
+    {
+      "codigo": "7896553367646",
+      "valido": false
+    },
+    {
+      "codigo": "789655336764",
+      "valido": false
+    },
+    {
+      "codigo": "78965533676450",
+      "valido": false
+    },
+    {
+      "codigo": "abcdefghijklm",
+      "valido": false
+    },
+    {
+      "codigo": "7890000000000",
+      "valido": true
+    }
+  ],
+  "sorteios": [
+    {
+      "sorteio": [
+        0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8
+      ],
+      "existentes": [],
+      "ean": "7890123456784"
+    },
+    {
+      "sorteio": [
+        0.99,
+        0.05,
+        0.55,
+        0.42,
+        0.31,
+        0.77,
+        0.68,
+        0.12,
+        0.09
+      ],
+      "existentes": [],
+      "ean": "7899054376109"
+    },
+    {
+      "sorteio": [
+        0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        0.9,
+        0.9,
+        0.9,
+        0.9,
+        0.9,
+        0.9,
+        0.9,
+        0.9
+      ],
+      "existentes": [
+        "7890123456784"
+      ],
+      "ean": "7899999999999"
+    }
+  ]
+}

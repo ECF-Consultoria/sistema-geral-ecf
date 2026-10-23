@@ -7,6 +7,7 @@ use App\Models\PubRascunho;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\CabecalhoPublicadorService;
+use App\Services\Publicador\CombosDoPlanejamentoService;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PlanejamentoDaFaseService;
@@ -177,6 +178,9 @@ class MlbPublicadorFaseController extends Controller
         $dados = $request->validate([
             'quantidade' => ['required', 'integer', 'min:2', 'max:'.PreviaDaFaseService::MAX_QUANTIDADE],
         ]);
+        if (($recusa = $this->recusarProdutoDoPortal($base)) !== null) {
+            return $recusa;
+        }
 
         return response()->json($this->previas->previa($base, (int) $dados['quantidade']));
     }
@@ -216,6 +220,9 @@ class MlbPublicadorFaseController extends Controller
             $this->clone->recusarComposto($base);
         } catch (RegraViolada $e) {
             return $this->recusa($e);
+        }
+        if (($recusa = $this->recusarProdutoDoPortal($base)) !== null) {
+            return $recusa;
         }
 
         // Gate da §4 ("Abrir: só com base Publicado, inclui parcial") conferido no
@@ -289,6 +296,9 @@ class MlbPublicadorFaseController extends Controller
             'alvo' => ['required', 'string', Rule::in(SugestaoKitIaService::ALVOS)],
             'quantidade' => ['required', 'integer', 'min:2', 'max:'.PreviaDaFaseService::MAX_QUANTIDADE],
         ]);
+        if (($recusa = $this->recusarProdutoDoPortal($base)) !== null) {
+            return $recusa;
+        }
 
         $rascunhoDoBase = $base->rascunho;
         if ($rascunhoDoBase === null) {
@@ -490,6 +500,18 @@ class MlbPublicadorFaseController extends Controller
             'kit_sugestao_recusada_em' => $p->kit_sugestao_recusada_em?->toIso8601String(),
             'sugestao_kit' => $this->sugestoesDeKit->sugerirPara($p),
         ];
+    }
+
+    /**
+     * KIT-08 (decisão do usuário de 20/10/2026): o produto do Portal não tem "Criar Fase N" — combo, kit e
+     * combit são decididos no Planejamento do Portal, e o combo aceito lá vira fase sozinho quando a Fase 1 é
+     * publicada (`CombosDoPlanejamentoService`). A tela já não mostra o botão; isto é o servidor recusando.
+     */
+    private function recusarProdutoDoPortal(PubProduto $base): ?JsonResponse
+    {
+        return CombosDoPlanejamentoService::doPortal($base)
+            ? $this->recusa(new RegraViolada('KIT-08', CombosDoPlanejamentoService::MOTIVO_PORTAL))
+            : null;
     }
 
     /**

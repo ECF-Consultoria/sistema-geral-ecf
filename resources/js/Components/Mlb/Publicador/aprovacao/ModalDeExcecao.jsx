@@ -1,4 +1,5 @@
 import CascaDeModal from './CascaDeModal';
+import { AvisoDeRecusa } from './AvisoDeVersaoMudou';
 import { ROTULO_DO_BLOQUEIO } from './vocabularioDoPortao';
 import {
     inteiroDoPainel,
@@ -343,6 +344,10 @@ export function CorpoDaExcecao({
  * @param {unknown} [props.onFechar] `() => void`
  * @param {unknown} [props.onSubmeter] `({tipo, justificativa, responsavel_id}) => void`
  *   — ⚠️ a escrita é do CHAMADOR, pelo helper único `escreverNoPainel`
+ * @param {unknown} [props.erro] a recusa do servidor ao último envio (23/10/2026,
+ *   P-18e): o modal fica aberto, com o que foi digitado, e diz o porquê
+ * @param {unknown} [props.enviando] `true` enquanto o envio não voltou: o botão
+ *   de enviar trava (23/10/2026, P-18e — o duplo clique mandava dois pedidos)
  */
 export default function ModalDeExcecao({
     aberto = false,
@@ -356,13 +361,16 @@ export default function ModalDeExcecao({
     onJustificativa = null,
     onFechar = null,
     onSubmeter = null,
+    erro = null,
+    enviando = false,
 }) {
     // ⚠️⚠️ CRITÉRIO 11 — tipo fora dos DOIS: o modal **NÃO ABRE**, nem com casca
     // vazia. Abrir e recusar no clique treinaria a pessoa a tentar.
     if (aberto !== true || !tipoLiberado(tipo)) return null;
 
     const escolhido = responsavelEscolhido(autorizadores, responsavelId);
-    const pode = escolhido !== null && justificativaValida(justificativa);
+    const emVoo = enviando === true;
+    const pode = escolhido !== null && justificativaValida(justificativa) && !emVoo;
     const enviar = typeof onSubmeter === 'function' ? onSubmeter : null;
 
     return (
@@ -378,20 +386,24 @@ export default function ModalDeExcecao({
                 // botão, mas a régua é "o clique NÃO chama a rota", não "o botão
                 // está cinza". ⚠️ Sem autorizador NADA é enviado.
                 const quem = responsavelEscolhido(autorizadores, responsavelId);
-                if (quem === null || !justificativaValida(justificativa)) return;
+                if (emVoo || quem === null || !justificativaValida(justificativa)) return;
 
                 enviar({ tipo, justificativa, responsavel_id: quem.id });
             }}
         >
-            <CorpoDaExcecao
-                tipo={tipo}
-                detalhe={detalhe}
-                autorizadores={autorizadores}
-                responsavelId={responsavelId}
-                justificativa={justificativa}
-                onResponsavel={onResponsavel}
-                onJustificativa={onJustificativa}
-            />
+            {[
+                <CorpoDaExcecao
+                    key="corpo"
+                    tipo={tipo}
+                    detalhe={detalhe}
+                    autorizadores={autorizadores}
+                    responsavelId={responsavelId}
+                    justificativa={justificativa}
+                    onResponsavel={onResponsavel}
+                    onJustificativa={onJustificativa}
+                />,
+                <AvisoDeRecusa key="erro" mensagem={erro} />,
+            ]}
         </CascaDeModal>
     );
 }

@@ -119,8 +119,10 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->assertEqualsCanonicalizing(['Token Proprio', 'Token Na Company', 'Token Vencido', 'So Carimbo'], $linhas->keys()->all());
         $this->assertSame('ativo', $linhas['Token Proprio']['token']);
         $this->assertSame('ativo', $linhas['Token Na Company']['token']);
-        $this->assertSame('expirado', $linhas['Token Vencido']['token']);
-        $this->assertTrue($linhas['Token Vencido']['token_expirado']);
+        // 20/10/2026: vencido renova sozinho na 1ª chamada — a conta não aparece desconectada.
+        $this->assertSame('ativo', $linhas['Token Vencido']['token']);
+        $this->assertFalse($linhas['Token Vencido']['token_expirado']);
+        $this->assertNull($linhas['Token Vencido']['link_reconexao']);
         $this->assertSame('sem_token', $linhas['So Carimbo']['token']);
         $this->assertFalse($linhas['So Carimbo']['tem_token']);
         $this->assertStringContainsString('tok-abc', (string) $linhas['So Carimbo']['link_reconexao']);
@@ -262,19 +264,22 @@ class MlbPublicadorEntradaTest extends TestCase
             $this->empresa(sprintf('Loja %02d', $i), [], []);
         }
         $this->empresa('Vencida Especial', [], ['expires_at' => now()->subHour()]);
+        $carimbo = $this->empresa('Falta Reconectar');
+        MlbImplementacao::create(['empresa_id' => $carimbo->id, 'token' => 'tok-esp', 'dados' => ['ml_oauth' => ['autorizado_em' => '2026-08-12T14:03:00Z']]]);
 
         $p = $this->props();
         $this->assertCount(50, $p['empresas']);
-        $this->assertSame(56, $p['paginacao']['total']);
+        $this->assertSame(57, $p['paginacao']['total']);
         $this->assertSame([1, 50], [$p['paginacao']['de'], $p['paginacao']['ate']]);
         $this->assertSame(50, $p['paginacao']['por_pagina']);
 
         $p2 = $this->props('?pagina=2');
-        $this->assertCount(6, $p2['empresas']);
-        $this->assertSame([51, 56], [$p2['paginacao']['de'], $p2['paginacao']['ate']]);
+        $this->assertCount(7, $p2['empresas']);
+        $this->assertSame([51, 57], [$p2['paginacao']['de'], $p2['paginacao']['ate']]);
 
         $this->assertSame(['Loja 07'], $this->nomes('?busca=loja 07'));
-        $this->assertSame(['Vencida Especial'], $this->nomes('?filtro=atencao'));
+        // 20/10/2026: a vencida renova sozinha — atenção é só a conta que precisa reconectar.
+        $this->assertSame(['Falta Reconectar'], $this->nomes('?filtro=atencao'));
         $this->assertSame([], $this->nomes('?filtro=prontos'));
         $this->assertSame([], $this->nomes('?filtro=nunca'));
     }

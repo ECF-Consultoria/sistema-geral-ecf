@@ -6,11 +6,13 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
-use App\Services\Portal\Estrutura\Geracao\SugestoesService;
+use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\DadosEfetivosService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PlanejamentoDaFaseService;
+use App\Services\Publicador\PreviaDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\RegraViolada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -19,12 +21,15 @@ use Tests\Feature\Publicador\Concerns\CenarioPlanejamentoDaFase;
 use Tests\TestCase;
 
 /**
- * Planejamento × Fase N, item D (decisões do usuário de 09/10/2026): o "Criar Fase N" do Publicador
- * puxa do Planejamento do Portal. Com as ofertas Combo N de cada cor, a prévia mostra e a criação
- * grava o SKU de cada cor = o da oferta (`-CB{N}`), o preço vem da Precificação delas e a quantidade
- * sugerida vem dos Combos aceitos. Sem as ofertas, a criação as CRIA no Portal (Combo por cor, pelo
- * caminho da Lista SKUs), na mesma transação do kit: idempotente e escopado pela empresa.
- * Base que não é agrupado segue a regra de antes (`-KIT{N}`, sem Portal).
+ * Planejamento × Fase N, item D (decisões do usuário de 09/10/2026): a Fase N do produto do Portal
+ * puxa do Planejamento. Com as ofertas Combo N de cada cor, a prévia mostra e a criação grava o SKU
+ * de cada cor = o da oferta (`-CB{N}`), o preço vem da Precificação delas e a quantidade sugerida vem
+ * dos Combos aceitos. Base que não é agrupado segue a regra de antes (`-KIT{N}`, sem Portal).
+ *
+ * Desde 20/10/2026 (decisão do usuário) Combo, Kit e Combit nascem SÓ no Planejamento: o Publicador
+ * não cria oferta no Portal (a cor sem Combo N só ganha o SKU sugerido) e o "Criar Fase N" por HTTP
+ * recusa produto do Portal (KIT-08) — quem cria a fase dele é a criação automática
+ * (`CombosDoPlanejamentoTest`). Por isso a prévia e a criação aqui são chamadas no serviço.
  */
 class CriarFaseDoPlanejamentoTest extends TestCase
 {
@@ -39,34 +44,23 @@ class CriarFaseDoPlanejamentoTest extends TestCase
         $this->montarPlanejamento();
     }
 
-    private function urlPrevia(PubProduto $p, int $n = 2): string
-    {
-        return "/mlb/anuncios/publicador/empresas/empresa-{$this->mlbP->id}/produtos/{$p->id}/fases/previa?quantidade={$n}";
-    }
-
-    private function urlCriar(PubProduto $p): string
-    {
-        return "/mlb/anuncios/publicador/empresas/empresa-{$this->mlbP->id}/produtos/{$p->id}/fases";
-    }
-
     private function previa(PubProduto $p, int $n = 2): array
     {
-        return $this->actingAs($this->equipeP)->getJson($this->urlPrevia($p, $n))->assertOk()->json();
+        return app(PreviaDaFaseService::class)->previa($p->fresh(), $n);
     }
 
-    /** O Confirmar do painel: manda o que a prévia sugeriu, como `PainelCriarFase` faz. */
+    /** A fase com o que a prévia sugeriu — o que o Confirmar do painel mandava e o que a criação automática manda. */
     private function criar(PubProduto $p, int $n = 2): PubProduto
     {
         $previa = $this->previa($p, $n);
-        $seller = [];
-        foreach ($previa['variantes'] as $chave => $v) {
-            $seller[$chave] = $v['seller_sku'];
-        }
-        $id = $this->actingAs($this->equipeP)->postJson($this->urlCriar($p), [
-            'quantidade' => $n, 'sku' => $previa['sku'], 'titulo' => null, 'descricao' => null, 'seller_skus' => $seller,
-        ])->assertCreated()->json('produto.id');
 
-        return PubProduto::findOrFail($id);
+        return app(CriarFaseService::class)->criar($p->fresh(), [
+            'quantidade' => $n, 'sku' => $previa['sku'], 'titulo_por_tipo' => $previa['titulo_por_tipo'], 'descricao' => $previa['descricao'],
+            'seller_skus' => array_map(fn (array $v) => $v['seller_sku'], $previa['variantes']),
+            'estoque_por_variante' => array_map(fn (array $v) => ['estoque' => $v['estoque'], 'depositos' => $v['depositos']], $previa['variantes']),
+            // Mesmo COM pessoa nada nasce no Portal (20/10/2026).
+            'user' => $this->equipeP,
+        ]);
     }
 
     private function combos(?Company $empresa = null): \Illuminate\Support\Collection
@@ -130,58 +124,39 @@ class CriarFaseDoPlanejamentoTest extends TestCase
         );
     }
 
-    // ═══ Sem as ofertas: a Fase N cria no Portal ═════════════════════════════
+    // ═══ Sem as ofertas: o Publicador NÃO cria no Portal (20/10/2026) ═══════════
 
-    public function test_previa_sem_combos_anuncia_as_ofertas_que_vao_nascer_no_portal(): void
+    public function test_previa_sem_combos_avisa_as_cores_que_ficam_de_fora_e_nao_promete_oferta_nova(): void
     {
         $grupo = $this->grupoComRascunho();
         $this->precificacaoPorSku([]);
 
         $p = $this->previa($grupo);
 
-        $this->assertSame(['Preto' => 'CAD-PT-CB2', 'Azul' => 'CAD-AZ-CB2', 'Branco' => 'CAD-BR-CB2'], $this->skusDaPrevia($p));
+        $this->assertSame(['Preto' => 'CAD-PT-CB2', 'Azul' => 'CAD-AZ-CB2', 'Branco' => 'CAD-BR-CB2'], $this->skusDaPrevia($p), 'o SKU no padrão do Planejamento');
         $this->assertTrue(collect($p['variantes'])->every(fn ($v) => $v['planejamento']['nova'] === true && $v['planejamento']['oferta_id'] === null));
-        $aviso = collect($p['avisos'])->firstWhere('chave', 'ofertas_novas_no_portal');
+        $chaves = array_column($p['avisos'], 'chave');
+        $this->assertNotContains('ofertas_novas_no_portal', $chaves, 'nenhuma oferta nasce no Portal pelo Publicador');
+        $aviso = collect($p['avisos'])->firstWhere('chave', 'cores_sem_combo');
         $this->assertNotNull($aviso);
-        $this->assertStringContainsString('CAD-AZ-CB2', $aviso['mensagem']);
-        $this->assertCount(0, $this->combos(), 'a prévia não grava nada');
+        $this->assertStringContainsString('Azul', $aviso['mensagem']);
+        $this->assertCount(0, $this->combos());
     }
 
-    public function test_criar_sem_combos_cria_as_ofertas_combo_por_cor_no_portal_na_lista_skus(): void
+    public function test_criar_sem_combos_nao_cria_oferta_no_portal_nem_com_pessoa(): void
     {
         $grupo = $this->grupoComRascunho();
         $this->precificacaoPorSku([]);
-        // O que o Planejamento do Portal sugere hoje para o Combo 2 de cada cor (nome e SKU).
-        $sugeridas = [];
-        foreach (app(SugestoesService::class)->gerar($this->empresaP)['sugestoes'] as $s) {
-            if ($s['fase'] === 'combo' && $s['itens'][0]['quantidade'] === 2) {
-                $sugeridas[$s['itens'][0]['variacao_id']] = ['nome' => $s['nome'], 'sku' => $s['sku']];
-            }
-        }
-        $this->assertCount(3, $sugeridas, 'a cadeira tem Combo 2 no vocabulário da ECF');
 
         $kit = $this->criar($grupo);
 
-        $combos = $this->combos();
-        $this->assertSame(['CAD-PT-CB2', 'CAD-AZ-CB2', 'CAD-BR-CB2'], $combos->pluck('sku')->all());
-        foreach (['Preto', 'Azul', 'Branco'] as $i => $cor) {
-            $oferta = $combos[$i];
-            $this->assertSame($sugeridas[$this->variacoesP[$cor]->id], ['nome' => $oferta->nome, 'sku' => $oferta->sku],
-                'nome e SKU no padrão do Planejamento: o mesmo que a tela de sugestões mostraria');
-            $this->assertNull($oferta->variacao_id, 'combo nunca é ligado a variação');
-            $comp = $oferta->componentes()->get();
-            $this->assertCount(1, $comp);
-            $this->assertSame($this->simplesP[$cor]->id, $comp[0]->componente_id);
-            $this->assertSame(2, $comp[0]->quantidade);
-            $this->assertSame($oferta->sku, $this->skuDaCor($kit, $cor), 'a variante usa o SKU da oferta criada');
-        }
-        // O histórico do Portal registra a criação como da equipe (não do cliente).
-        $registros = DB::table('activity_log')->where('log_name', 'portal')->where('description', 'like', 'Oferta CAD-%-CB2 criada%')->get();
-        $this->assertCount(3, $registros);
-        $this->assertTrue($registros->every(fn ($r) => json_decode($r->properties, true)['origem'] === 'interno'));
+        $this->assertCount(0, $this->combos(), 'Combo nasce só no Planejamento do Portal');
+        $this->assertSame(0, DB::table('activity_log')->where('log_name', 'portal')->where('description', 'like', 'Oferta %criada%')->count());
+        $this->assertSame('CAD-CB2', $kit->sku);
+        $this->assertSame('CAD-PT-CB2', $this->skuDaCor($kit, 'Preto'), 'a cor sem Combo fica com o SKU que a oferta teria');
     }
 
-    public function test_criar_cria_so_a_cor_que_falta_e_usa_a_que_o_cliente_ja_aceitou(): void
+    public function test_criar_usa_a_oferta_que_o_cliente_aceitou_e_nao_cria_as_outras(): void
     {
         $grupo = $this->grupoComRascunho();
         $this->precificacaoPorSku([]);
@@ -194,58 +169,58 @@ class CriarFaseDoPlanejamentoTest extends TestCase
 
         $kit = $this->criar($grupo);
 
-        $this->assertCount(3, $this->combos(), 'só Preto e Branco nasceram');
+        $this->assertCount(1, $this->combos(), 'só a do cliente existe: Preto e Branco não nasceram');
         $this->assertSame('AZUL-DO-CLIENTE', $this->skuDaCor($kit, 'Azul'));
         $this->assertSame($azul->id, EstruturaOferta::where('sku', 'AZUL-DO-CLIENTE')->value('id'));
     }
 
-    public function test_garantir_ofertas_nao_le_a_precificacao_com_as_travas_seguradas(): void
+    public function test_skus_das_ofertas_so_le_as_que_existem_e_nao_le_a_precificacao(): void
     {
         $grupo = $this->grupoComRascunho();
         $this->aceitarCombos(2, ['Azul']);
         $this->mock(\App\Services\Portal\Estrutura\EstruturaPrecificacaoService::class, fn ($m) => $m->shouldNotReceive('pagina'));
 
-        $skus = DB::transaction(fn () => app(PlanejamentoDaFaseService::class)->garantirOfertas($grupo->fresh(), 2, $this->equipeP));
+        $skus = app(PlanejamentoDaFaseService::class)->skusDasOfertas($grupo->fresh(), 2);
 
-        $valores = array_values($skus);
-        sort($valores);
-        $this->assertSame(['CAD-AZ-CB2', 'CAD-BR-CB2', 'CAD-PT-CB2'], $valores);
-        $this->assertCount(3, $this->combos());
+        $this->assertSame(['CAD-AZ-CB2'], array_values($skus));
+        $this->assertCount(1, $this->combos());
     }
 
-    public function test_segunda_criacao_do_mesmo_kit_e_recusada_e_nao_cria_oferta(): void
+    public function test_segunda_criacao_do_mesmo_kit_e_recusada(): void
     {
         $grupo = $this->grupoComRascunho();
-        $this->precificacaoPorSku([]);
+        $this->aceitarCombos(2);
         $this->criar($grupo);
 
-        $this->actingAs($this->equipeP)->postJson($this->urlCriar($grupo), ['quantidade' => 2, 'sku' => 'CAD-CB2'])
-            ->assertStatus(422)->assertJsonPath('regra', 'KIT-04');
+        try {
+            $this->criar($grupo);
+            $this->fail('a segunda criação devia ser recusada');
+        } catch (RegraViolada $e) {
+            $this->assertSame('KIT-04', $e->regra);
+        }
 
         $this->assertCount(3, $this->combos());
         $this->assertSame(1, PubProduto::where('produto_base_id', $grupo->id)->count());
     }
 
-    public function test_se_o_kit_nao_nasce_as_ofertas_tambem_nao(): void
+    public function test_se_o_kit_nao_nasce_nada_fica(): void
     {
         $grupo = $this->grupoComRascunho();
-        $this->precificacaoPorSku([]);
+        $this->aceitarCombos(2);
         PubProduto::creating(function (PubProduto $p) {
             if ($p->produto_base_id !== null) {
                 throw new \RuntimeException('falha simulada ao criar o kit');
             }
         });
 
-        $previa = $this->previa($grupo);
-        $this->withoutExceptionHandling();
         try {
-            $this->actingAs($this->equipeP)->postJson($this->urlCriar($grupo), ['quantidade' => 2, 'sku' => $previa['sku']]);
+            $this->criar($grupo);
             $this->fail('a criação devia falhar');
         } catch (\RuntimeException $e) {
             $this->assertSame('falha simulada ao criar o kit', $e->getMessage());
         }
 
-        $this->assertCount(0, $this->combos(), 'mesma transação: o rollback leva as ofertas do Portal junto');
+        $this->assertCount(3, $this->combos());
         $this->assertSame(0, PubProduto::where('produto_base_id', $grupo->id)->count());
     }
 
@@ -319,16 +294,18 @@ class CriarFaseDoPlanejamentoTest extends TestCase
         $this->assertTrue(collect($p['variantes'])->every(fn ($v) => ! array_key_exists('planejamento', $v)));
     }
 
-    public function test_cria_ofertas_so_na_empresa_do_produto(): void
+    public function test_le_ofertas_so_da_empresa_do_produto(): void
     {
         $outra = Company::factory()->create();
         $grupo = $this->grupoComRascunho();
-        $this->precificacaoPorSku([]);
+        // Combo de OUTRA empresa apontando para a cor desta (não passa pelo serviço, que recusaria).
+        EstruturaOferta::create(['company_id' => $outra->id, 'sku' => 'INTRUSO-CB2', 'fase' => 'combo', 'nome' => 'Intruso'])
+            ->componentes()->create(['componente_id' => $this->simplesP['Preto']->id, 'quantidade' => 2]);
 
-        $this->criar($grupo);
+        $this->assertSame([], app(PlanejamentoDaFaseService::class)->skusDasOfertas($grupo->fresh(), 2));
+        $kit = $this->criar($grupo);
 
-        $this->assertCount(3, $this->combos());
-        $this->assertCount(0, $this->combos($outra));
-        $this->assertSame(0, EstruturaOferta::where('company_id', '!=', $this->empresaP->id)->count());
+        $this->assertSame('CAD-PT-CB2', $this->skuDaCor($kit, 'Preto'), 'o SKU sugerido, nunca o da outra empresa');
+        $this->assertCount(1, $this->combos($outra));
     }
 }

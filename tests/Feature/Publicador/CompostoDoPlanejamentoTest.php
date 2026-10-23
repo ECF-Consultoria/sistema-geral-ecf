@@ -246,15 +246,24 @@ class CompostoDoPlanejamentoTest extends TestCase
         $this->assertSame('Combo do Planejamento', $tela['fases'][0]['rotulo']);
     }
 
-    public function test_base_simples_publicado_continua_habilitado(): void
+    public function test_base_simples_publicado_nao_cai_no_kit06(): void
     {
         $grupo = $this->grupoComRascunho();
         $alvo = $this->programas()->resolver('empresa-'.$this->mlbP->id);
 
         $tela = app(FamiliaDeFasesService::class)->paraTela($grupo, $alvo, $this->programas()->empresaParaTela($alvo, $grupo));
 
-        $this->assertTrue($tela['proxima_fase']['habilitado']);
-        $this->assertNull($tela['proxima_fase']['motivo']);
+        // 20/10/2026: o produto do Portal não tem "Criar Fase N" (o combo nasce do Planejamento) — mas o motivo é
+        // esse, nunca o do composto.
+        $this->assertFalse($tela['proxima_fase']['habilitado']);
+        $this->assertSame(\App\Services\Publicador\CombosDoPlanejamentoService::MOTIVO_PORTAL, $tela['proxima_fase']['motivo']);
         $this->assertSame('1 unidade', $tela['fases'][0]['rotulo']);
+
+        // O base sem Portal publicado segue com o botão.
+        $avulso = $this->avulso('CAD-MANUAL');
+        PubRascunho::create(['produto_id' => $avulso->id, 'status' => PubRascunho::PUBLISHED, 'revisao' => 1]);
+        $doAvulso = app(FamiliaDeFasesService::class)->paraTela($avulso->fresh(), $alvo, $this->programas()->empresaParaTela($alvo, $avulso));
+        $this->assertTrue($doAvulso['proxima_fase']['habilitado']);
+        $this->assertNull($doAvulso['proxima_fase']['motivo']);
     }
 }

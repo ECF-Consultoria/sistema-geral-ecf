@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import NavegadorDeCategorias from '@/Components/Categorias/NavegadorDeCategorias';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import { NOME_TIPO, mensagemDe } from '../apoio';
-import { mostraSeloDaIa } from '../derivados.js';
+import { mostraSeloDaIa, tituloNoCampo } from '../derivados.js';
 import { alternarTermo, termoNoTitulo } from '../ferramentas';
 import { CampoDoTitulo, ContadorDoTitulo } from '@/Components/Titulo/CampoDoTitulo';
 import { CAMPO, Campo, ErroDoCampo, GeradoPelaIa, INVALIDO, LINK, Secao, useErroDoCampo } from './comum';
@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 // da categoria montam o título à mão ou pela IA (docx §3).
 //
 // 19/10/2026: o campo e os termos são os mesmos do cadastro do produto no Portal
-// (`Components/Titulo`): 1ª letra maiúscula, nada além do limite da categoria, e o
+// (`Components/Titulo`): 1ª letra de cada palavra maiúscula, nada além do limite da categoria, e o
 // clique no termo marcado o tira do título (antes só acrescentava).
 
 const CONDICOES = [['new', 'Novo'], ['used', 'Usado'], ['refurbished', 'Recondicionado']];
@@ -218,6 +218,12 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
     const seloIa = mostraSeloDaIa(m.estado.preparo_ia?.titulos?.[lt], titulo, doServidor);
 
     const mudar = (patch) => m.mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, ...patch } : x)) }));
+    // N21 (23/10): o título que veio do Portal (o planejado do Clássico, §36) aparece como TEXTO do campo, com
+    // o selo "do Portal" — antes era o placeholder cinza, com cara de campo vazio. Nada é gravado só por olhar:
+    // o rascunho segue sem título próprio (segue o Portal) até a pessoa digitar.
+    // P-31d (23/10): apagar tudo e digitar começa um título do zero; o do Portal só volta quando ela sai do campo.
+    const [esvaziado, setEsvaziado] = useState(false);
+    const { valor: valorNoCampo, doPortal } = tituloNoCampo({ titulo, efetivo: a.titulo_efetivo, comPortal: !! m.estado.produto?.oferta_id, esvaziado });
 
     if (noAr) {
         return (
@@ -236,9 +242,19 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
         <div data-alvo={lt}>
             <Campo rotulo={`Título do anúncio ${NOME_TIPO[lt]}`} htmlFor={id} erro={erro}
                 extra={<ContadorDoTitulo tamanho={tamanho} limite={maxTitulo} data-contador-titulo={lt} />}>
-                <CampoDoTitulo id={id} valor={titulo} limite={maxTitulo} disabled={m.disabled || rodando} placeholder={a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta'}
-                    onChange={(novo) => mudar({ titulo: novo })} aria-invalid={!! erro || undefined}
-                    className={cn(CAMPO, (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} />
+                <div className="relative">
+                    <CampoDoTitulo id={id} valor={valorNoCampo} limite={maxTitulo} disabled={m.disabled || rodando}
+                        placeholder={doPortal ? undefined : (a.titulo_efetivo ?? 'Ex.: Cadeira Gamer Reclinável com Apoio de Braço Preta')}
+                        onChange={(novo) => {
+                            if (novo === '') setEsvaziado(true);
+                            mudar({ titulo: novo });
+                        }}
+                        onBlur={() => setEsvaziado(false)} aria-invalid={!! erro || undefined}
+                        className={cn(CAMPO, doPortal && 'pr-24', (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} data-titulo-origem={doPortal ? 'portal' : undefined} />
+                    {doPortal && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold text-emerald-400" data-selo-titulo-portal={lt}>do Portal</span>
+                    )}
+                </div>
             </Campo>
             {seloIa && <GeradoPelaIa campo={`titulo-${lt}`} />}
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">

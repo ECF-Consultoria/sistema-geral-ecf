@@ -343,3 +343,30 @@ Medido verificando a "Planilha" de `/polos/empresas` (TKT-0018) na receita do §
   `Browser.setDownloadBehavior`. Renomeie o 1º arquivo antes do 2º, que vem com o
   mesmo nome. O `php -S` não registra o status de rota PHP no log — a prova é o
   arquivo na pasta, aberto e comparado com a lista que a tela mostrava.
+
+## 14. `artisan serve` JOGA FORA as variáveis do processo; e um banco clonado em vez do SQLite (20/10/2026)
+
+Medido verificando a Precificação na ficha do produto, num worktree em `origin/main`
+servido por `php artisan serve --port=8123`.
+
+- **O §12 ("variável do processo vence o `.env`") vale para `php -S`, NÃO para
+  `artisan serve`.** Com `.env` presente e sem `--no-reload`, o `ServeCommand` sobe o
+  `php -S` filho só com `ServeCommand::$passthroughVariables` (`APP_ENV`, `PATH`,
+  `XDEBUG_*`…): `APP_URL=… ASSET_URL=… DB_DATABASE=… php artisan serve` é ignorado
+  em silêncio, e cada requisição lê o `.env`. Saídas: `--no-reload` (aí o ambiente
+  passa inteiro) ou editar o `.env` **do próprio worktree** — é uma cópia que só ele
+  usa; a proibição de editar `.env` é a da árvore principal, compartilhada.
+- **E o `ASSET_URL` vai gravado no bundle** (os chunks dinâmicos): corrigir o `.env`
+  sem refazer o `npm run build` continua puxando `localhost/ecf_admin/public/build/…`
+  — a árvore principal, com o JS ANTIGO. O sintoma é CORS no console; sem ele (mesma
+  origem) seria pior: a tela abre com o código velho. Prova de 2 segundos depois do
+  build: `grep -o "127.0.0.1:<porta>/build" public/build/assets/app-*.js`.
+- **Banco: clonar o MariaDB local em vez de SQLite.** O `ecf_admin` local tem ~18 MB
+  e estava 39 migrations atrás; `mysqldump ecf_admin | mysql ecf_admin_<assunto>` +
+  `artisan migrate` no clone leva menos de um minuto, mantém usuários e empresas de
+  verdade (o login `admin@ecfconsultoria.com.br` funciona) e não toca no banco que as
+  outras sessões usam. Já há clones assim (`ecf_admin_auditoria`, `ecf_admin_metasdev`).
+- **O Chrome de QA da porta 9223 pode estar com OUTRA sessão** (abas num `artisan serve`
+  alheio): o `connectOverCDP` conecta e estoura em 30 s. Suba um Chrome próprio, outro
+  perfil e outra porta (`--remote-debugging-port=9224
+  --user-data-dir=%LOCALAPPDATA%\ECF-QA\ChromePerfil<assunto>`), em vez de disputar.

@@ -404,7 +404,8 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $maximo = (int) (self::schema(self::CADEIRA)->settings()['max_title_length'] ?? 60);
         $this->assertLessThanOrEqual($maximo, mb_strlen($valor));
         $this->assertDoesNotMatchRegularExpression('/[()\-]/', $valor);
-        $this->assertStringStartsWith('Cadeira Escritório Giratória Ergonômica', $valor);
+        // 21/10/2026: o produto é o Combo 3 do Portal (composto, CAD-01-CB3): o título de kit começa por "Kit 3".
+        $this->assertStringStartsWith('Kit 3 Cadeira Escritório Giratória Ergonômica', $valor);
         $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
         $this->assertStringContainsString('priorize', $prompt, 'os termos escolhidos na tela vão para a IA');
     }
@@ -538,11 +539,12 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $r = $this->comCategoria();
         $aviso = fn (int $id, string $code) => ['regra' => 'V-REM-01', 'severidade' => 'WARNING', 'mensagem' => $code, 'camada' => 'L3', 'alvo' => ['etapa' => 'E10'],
             'ml_causa' => ['cause_id' => $id, 'code' => $code, 'type' => 'warning', 'message' => $code]];
+        // 22/10/2026: o 350 (frete grátis obrigatório nesta faixa) também saiu da tela — "esse aviso nem precisa".
         $r->validacoes()->create(['revisao' => $r->revisao, 'camada' => 'L3', 'resultado' => ConferenciaService::AVISOS,
-            'issues' => [$aviso(4053, 'shipping.lost_me1_by_user'), $aviso(350, 'item.shipping.mandatory_free_shipping')]]);
+            'issues' => [$aviso(4053, 'shipping.lost_me1_by_user'), $aviso(350, 'item.shipping.mandatory_free_shipping'), $aviso(469, 'item.available_quantity.ignored')]]);
 
         $issues = $this->mesa()->getJson($this->rota('abrir'))->assertOk()->json('conferencia.issues');
 
-        $this->assertSame(['item.shipping.mandatory_free_shipping'], array_column(array_column($issues, 'ml_causa'), 'code'));
+        $this->assertSame(['item.available_quantity.ignored'], array_column(array_column($issues, 'ml_causa'), 'code'));
     }
 }

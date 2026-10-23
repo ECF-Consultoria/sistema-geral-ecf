@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
  *    `publicador.preparo_ia.sincronizar_atraso_s` segundos, sem IA. Saves seguidos dentro dessa
  *    espera viram uma sincronização só (`chaveDoSincronizar`; o Job a apaga ao começar);
  * 2. marca no cache o instante do último save e agenda `PrepararProdutoNoPublicadorJob` para daqui a
- *    `publicador.preparo_ia.atraso_min` — a IA. O Job que acorda e acha uma marca mais nova sai sem
+ *    `publicador.preparo_ia.atraso_s` (20 s desde 20/10/2026) — a IA. O Job que acorda e acha uma marca mais nova sai sem
  *    fazer nada (debounce): numa sequência de saves, só o último chama a IA.
  *
  * Nada aqui pode quebrar o save do cliente: qualquer erro vira log. E o cliente não vê nada
@@ -48,6 +48,12 @@ class PreparoIaAgenda
         return $fila !== '' ? $fila : 'publicador-ia';
     }
 
+    /** Salvou no Portal e o preparo ainda não começou (`IaTrabalhando::AGENDADA`, 20/10/2026). */
+    public static function chaveDoAgendado(int $estruturaProdutoId): string
+    {
+        return "publicador:preparo-ia:agendado:{$estruturaProdutoId}";
+    }
+
     public static function marcaAtual(int $estruturaProdutoId): ?string
     {
         $m = Cache::get(self::chaveDaMarca($estruturaProdutoId));
@@ -68,7 +74,7 @@ class PreparoIaAgenda
                 return;
             }
 
-            $atraso = max(0, (int) config('publicador.preparo_ia.atraso_min', 2));
+            $atraso = max(0, (int) config('publicador.preparo_ia.atraso_s', 20));
             $atrasoSincronizar = max(0, (int) config('publicador.preparo_ia.sincronizar_atraso_s', 15));
             $ids = [];
             foreach ($produtoIds as $id) {
@@ -87,7 +93,10 @@ class PreparoIaAgenda
                 $marca = (string) Str::uuid();
                 // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
                 Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
-                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca)->delay(now()->addMinutes($atraso));
+                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca)->delay(now()->addSeconds($atraso));
+                // 3. "A IA vem aí" para a vitrine e o editor aberto (`IaTrabalhando::AGENDADA`): a espera + 1 minuto,
+                //    o bastante para a 1ª etapa já estar `rodando` quando a marca vence.
+                Cache::put(self::chaveDoAgendado($id), now()->timestamp, now()->addSeconds($atraso + 60));
             }
         } catch (\Throwable $e) {
             Log::warning("[Publicador] Preparo pela IA: não foi possível agendar após o save no Portal (empresa {$companyId}): ".$e->getMessage());

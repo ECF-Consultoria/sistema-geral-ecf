@@ -72,7 +72,8 @@ use Illuminate\Support\Collection;
  *
  *   1. **`AgendadorDaFila:337`** — `EditorEmUso::emUso()` ⇒ `['tipo' => 'esperar']`: o produto não
  *      é agendado nesta passada;
- *   2. **`PreparoIaDoRascunhoService:131`** — o preparo por IA do lote pula o produto;
+ *   2. **`PreparoIaDoRascunhoService:131`** — o preparo por IA do lote pula o produto — ⚠️ desde 20/10/2026 só
+ *      com alguém EDITANDO (`EditorEmUso::editando`, marcado só por rota que grava): a miniatura não o segura mais;
  *   3. **`PreparoIaDoRascunhoService:180`** — idem, no segundo laço;
  *   4. **`PreparoIaDoRascunhoService:366`** — idem, na escrita do rascunho;
  *   5. **`GarantiaPadrao:192`** — a garantia padrão não é escrita por baixo de quem edita;

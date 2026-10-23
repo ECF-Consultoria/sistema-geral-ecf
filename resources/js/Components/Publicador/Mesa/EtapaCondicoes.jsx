@@ -23,7 +23,10 @@ import { cn, formatCurrency } from '@/lib/utils';
 // produto fora da caixa ao lado só para comparar; o frete grátis obrigatório
 // pela faixa de preço vem do ML (`m.consultarFrete`). Os efeitos ficam em
 // `useEfeitosDoEnvio`, que a página chama sempre: a regra do frete depende de
-// preços e pacote, e precisa rodar em qualquer etapa.
+// preços e pacote, e precisa rodar em qualquer etapa. Desde 22/10/2026 (N9) o
+// servidor liga o frete grátis obrigatório e acerta a forma de envio antes da
+// 1ª conferência (`PadroesDoRascunhoService`): ao abrir, os efeitos só gravam
+// o que de fato falta.
 
 export const ENVIOS = { me2: 'Mercado Envios', custom: 'Envio próprio', not_specified: 'A combinar com o comprador' };
 // O que cada forma de envio quer dizer (análise do Publicador, 04/10/2026).
@@ -110,6 +113,55 @@ const EXPLICACAO_MARGEM = 'Margem estimada = (o que você recebe − custo − i
 const NOTA_DO_IMPOSTO = 'O Mercado Livre não desconta imposto: o que você recebe ainda tem imposto a pagar. '
     + 'O preço do Portal já reserva uma parte para isso — é a linha "Imposto reservado".';
 
+// O pacote que passa do limite do Mercado Envios da conta (21/10/2026): o Mercado Livre não cobra frete, e o
+// número que ele devolve para esse pacote é teórico (a Poltrona Opala da #459 mostrava R$ 147,85 e saiu
+// "Combine a entrega"). O servidor usa o frete da Precificação; aqui só se diz para onde vai o envio.
+const ENVIO_FORA = {
+    me1: {
+        rotulo: 'Frete (sua transportadora)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta: o envio é pela sua transportadora (ME1) e o Mercado Livre '
+            + 'não cobra frete. A conta usa o frete da Precificação do Portal: confira se ele cobre a transportadora.',
+    },
+    combinar: {
+        rotulo: 'Frete (a combinar)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta, e ela não tem ME1: o anúncio sai «Combine a entrega» '
+            + 'e o Mercado Livre não cobra frete. A conta usa o frete da Precificação do Portal.',
+    },
+    fora: {
+        rotulo: 'Frete (fora do Mercado Envios)',
+        aviso: 'O pacote passa do limite do Mercado Envios da sua conta: o Mercado Livre não cobra frete (o envio vai pela sua '
+            + 'transportadora, ME1, ou sai «Combine a entrega»). A conta usa o frete da Precificação do Portal.',
+    },
+};
+
+/** Fora do Mercado Envios da conta, com o frete tirado da Precificação: `{ rotulo, aviso }`; senão null. */
+export const envioForaDoMe2 = (s) => (s?.frete_da_precificacao ? (ENVIO_FORA[s.envio] ?? ENVIO_FORA.fora) : null);
+
+// P-25 (23/10/2026): o anúncio que sai fora do Mercado Envios mostrava "Oferecer frete grátis · Opcional nesta faixa
+// de preço" — lá não há faixa nenhuma. A dica diz para onde vai o envio. Regra do usuário: frete grátis é o COMPRADOR
+// não pagar e o vendedor paga sempre; nunca escrever que "o frete grátis não vale" (learnings frete-mercado-envios §10).
+export const DICA_FORA_DO_ME2 = {
+    combinar: 'Este anúncio sai «Combine a entrega»: o frete é acertado com o comprador.',
+    me1: 'Este anúncio sai pela sua transportadora (ME1), fora do Mercado Envios: a entrega é feita por ela.',
+    fora: 'Este anúncio sai fora do Mercado Envios (pela sua transportadora ou «Combine a entrega»).',
+};
+
+/**
+ * Para onde vai o envio quando o pacote passa do limite do Mercado Envios da conta: 'combinar' | 'me1' | 'fora';
+ * null dentro dele ou sem consulta. Quem decide é a consulta do frete (`m.frete`): fora do ME2 o servidor responde
+ * `conhecido` SEM nenhum tipo (`EditorRascunhoService::freteGratis`), o que dentro dele nunca acontece — ou diz o
+ * destino em `envio`, se mandar. "Quanto você recebe" (`m.simulacao`) só diz QUAL dos dois foras é.
+ */
+export const destinoForaDoMe2 = (frete, simulacao = null) => {
+    if (! frete || typeof frete !== 'object') return null;
+    if (typeof frete.envio === 'string') return ['combinar', 'me1', 'fora'].includes(frete.envio) ? frete.envio : null;
+    const tipos = frete.por_tipo && typeof frete.por_tipo === 'object' ? Object.keys(frete.por_tipo) : [];
+    if (frete.conhecido !== true || tipos.length > 0) return null;
+    const daSimulacao = Object.values(simulacao ?? {}).find((s) => s?.frete_da_precificacao)?.envio;
+
+    return daSimulacao === 'combinar' || daSimulacao === 'me1' ? daSimulacao : 'fora';
+};
+
 /**
  * Os avisos de um tipo de anúncio, em ordem de leitura. Cada frase é UMA string (sem interpolação
  * dentro do JSX), para o HTML não sair picado por comentários entre nós de texto.
@@ -126,7 +178,11 @@ function avisosDoRecebimento(s) {
         avisos.push(['portal_sem_frete', 'alerta', 'O preço sugerido pela Precificação do Portal foi calculado SEM frete: '
             + 'este número não é uma recomendação confiável. Informe o frete na Precificação do Portal ou digite o preço aqui.']);
     }
-    if (s.frete_conhecido === false) {
+    const fora = envioForaDoMe2(s);
+    if (fora) {
+        avisos.push(['fora_do_me2', 'alerta', fora.aviso + (s.frete_conhecido ? '' : ' A Precificação não tem frete desta oferta: '
+            + 'o que você recebe está otimista.')]);
+    } else if (s.frete_conhecido === false) {
         avisos.push(['frete_conhecido', 'alerta', 'Sem as medidas do pacote o frete do Mercado Livre não entra nesta conta: '
             + 'o que você recebe está otimista.']);
     }
@@ -151,8 +207,9 @@ function avisosDoRecebimento(s) {
 }
 
 /**
- * A que preço o desconto automático leva o anúncio nos primeiros 14 dias (acréscimo pedido pelo
- * usuário em 10/10/2026). O número vem PRONTO do servidor (`PrecoDaPromocao`, a mesma função pura do
+ * A que preço a promoção da Central leva o anúncio nos primeiros 14 dias (acréscimo pedido pelo
+ * usuário em 10/10/2026) — SE o Mercado Livre oferecer o desconto: pós-demo 22/10, ele costuma recusar a
+ * do anúncio recém-criado (mesmo tom da Prévia). O número vem PRONTO do servidor (`PrecoDaPromocao`, a mesma função pura do
  * gatilho pós-publicação e do espelho em JS): aqui não se recalcula nada. Quando não há desconto, o
  * motivo é informação valiosa — sem frete cadastrado, por exemplo, não há desconto automático nenhum.
  */
@@ -163,7 +220,7 @@ function textoDoDescontoAutomatico(promocao) {
     const percentual = num(promocao.percentual);
 
     if (promocao.calculavel && preco !== null && percentual !== null) {
-        return `Desconto automático nos primeiros ${dias} dias: ${brl(preco)} (−${pctTexto(percentual)}%).`;
+        return `Com a promoção da Central, nos primeiros ${dias} dias: ${brl(preco)} (−${pctTexto(percentual)}%), se o Mercado Livre oferecer o desconto (costuma não oferecer para anúncio recém-criado).`;
     }
 
     const motivo = typeof promocao.motivo_texto === 'string' && promocao.motivo_texto.trim() !== '' ? promocao.motivo_texto : null;
@@ -204,6 +261,7 @@ export function QuantoRecebo({ m }) {
                         const depois = num(s.lucro_depois_do_imposto);
                         const impostoPct = num(s.imposto_pct);
                         const desconto = textoDoDescontoAutomatico(s.promocao);
+                        const fora = envioForaDoMe2(s);
                         // Prejuízo em vermelho; o que sobra segue o tom do card.
                         const tom = (v) => (v !== null && v < 0 ? 'text-red-300' : 'text-white');
 
@@ -213,7 +271,7 @@ export function QuantoRecebo({ m }) {
                                     <div className="flex justify-between font-bold text-white"><dt>{NOME_TIPO[lt]}</dt><dd /></div>
                                     <div className="flex justify-between text-white/80"><dt>Preço de venda</dt><dd>{brl(s.preco)}</dd></div>
                                     <div className="flex justify-between text-white/55"><dt>Tarifa do Mercado Livre</dt><dd>{`− ${brl(s.tarifa)}`}</dd></div>
-                                    <div className="flex justify-between text-white/55"><dt>Frete</dt><dd>{s.frete_conhecido ? `− ${brl(s.frete)}` : 'informe o pacote'}</dd></div>
+                                    <div className="flex justify-between text-white/55" data-frete-envio={s.envio ?? ''}><dt>{fora ? fora.rotulo : 'Frete'}</dt><dd>{s.frete_conhecido ? `− ${brl(s.frete)}` : (fora ? 'sem frete na Precificação' : 'informe o pacote')}</dd></div>
                                     <div className="flex items-baseline justify-between border-t border-white/[0.08] pt-1.5 text-white"><dt className="font-bold">Você recebe</dt><dd className="text-[15px] font-bold text-emerald-400">{brl(s.voce_recebe)}</dd></div>
                                     <div className="flex justify-between text-white/55"><dt>Custo</dt><dd>{brl(s.custo)}</dd></div>
                                     <div className={cn('flex justify-between', tom(lucro))}><dt className="text-white/55">Lucro antes do imposto</dt><dd>{brl(s.lucro)}</dd></div>
@@ -237,6 +295,9 @@ export function QuantoRecebo({ m }) {
         </div>
     );
 }
+
+// O anúncio da régua que existe no ML mas não está no ar (21/10/2026): não trava o tipo, só avisa.
+const SITUACAO_NO_ML = { paused: 'pausado', under_review: 'em revisão', closed: 'encerrado', inactive: 'inativo', nao_encontrado: 'não encontrado' };
 
 function SecaoPreco({ m }) {
     const alvos = m.alvos ?? [];
@@ -272,6 +333,11 @@ function SecaoPreco({ m }) {
                                         <span className="block text-[15px] font-bold text-white">{NOME_TIPO[lt]}</span>
                                         <span className="block text-[13px] text-white/55">{NOTA_TIPO[lt]}{lt === 'gold_pro' ? ' (se a conta oferecer)' : ''}</span>
                                         {noAr && <span className="mt-1 inline-flex items-center gap-2 text-[13px] font-bold text-emerald-400">No ar <LinkMl mlb={noAr} className="text-[13px] font-normal text-white/70" /></span>}
+                                        {! noAr && a.mlb_existente?.mlb && (
+                                            <span className="mt-1 block text-[13px] text-amber-300" data-mlb-existente={lt}>
+                                                Já existe o <LinkMl mlb={a.mlb_existente.mlb} className="text-[13px] text-amber-200" /> ({SITUACAO_NO_ML[a.mlb_existente.status] ?? 'fora do ar'}) no Mercado Livre: publicar cria outro anúncio.
+                                            </span>
+                                        )}
                                     </span>
                                 </label>
                             );
@@ -341,6 +407,7 @@ function SecaoEnvio({ m }) {
     const modo = rasc.envio?.modo ?? 'me2';
     const frete = modo === 'me2' ? m.frete : null;
     const freteObrigatorio = !! frete?.obrigatorio;
+    const foraDoMe2 = destinoForaDoMe2(frete, m.simulacao);
     const erroEnvio = useErroDoCampo((x) => x.campo === 'envio');
 
     return (
@@ -373,7 +440,13 @@ function SecaoEnvio({ m }) {
                                 className="h-4 w-4 rounded border-white/40 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-campo="frete-gratis" />
                             <span className="text-[15px] text-white">Oferecer frete grátis</span>
                         </label>
-                        {frete?.conhecido && (
+                        {foraDoMe2 && (
+                            <p className="ml-7 mt-1.5 flex items-start gap-1.5 text-[13px] text-white/50" data-frete-regra="fora-do-me2" data-envio-fora={foraDoMe2}>
+                                <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                {DICA_FORA_DO_ME2[foraDoMe2]}
+                            </p>
+                        )}
+                        {frete?.conhecido && ! foraDoMe2 && (
                             <p className={cn('ml-7 mt-1.5 flex items-start gap-1.5 text-[13px]', freteObrigatorio ? 'text-emerald-300' : 'text-white/50')} data-frete-regra={freteObrigatorio ? 'obrigatorio' : (frete.parcial ? 'parcial' : 'opcional')}>
                                 <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
                                 {freteObrigatorio

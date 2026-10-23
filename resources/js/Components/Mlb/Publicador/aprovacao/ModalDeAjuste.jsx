@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import CascaDeModal from './CascaDeModal';
+import { AvisoDeRecusa } from './AvisoDeVersaoMudou';
 import {
     inteiroDoPainel,
     listaDoPainel,
@@ -364,6 +365,10 @@ export function CorpoDoAjuste({
  * @param {unknown} [props.onFechar] `() => void`
  * @param {unknown} [props.onSubmeter] `({escopo, item, texto}) => void` — ⚠️ a
  *   escrita é do CHAMADOR, pelo helper único `escreverNoPainel`
+ * @param {unknown} [props.erro] a recusa do servidor ao último envio (23/10/2026,
+ *   P-18e): o modal fica aberto, com o que foi digitado, e diz o porquê
+ * @param {unknown} [props.enviando] `true` enquanto o envio não voltou: o botão
+ *   de enviar trava (23/10/2026, P-18e — o duplo clique mandava dois pedidos)
  */
 export default function ModalDeAjuste({
     aberto = false,
@@ -375,6 +380,8 @@ export default function ModalDeAjuste({
     onTexto = null,
     onFechar = null,
     onSubmeter = null,
+    erro = null,
+    enviando = false,
 }) {
     const escolha = itemEscolhido(itens, indice);
 
@@ -382,7 +389,8 @@ export default function ModalDeAjuste({
     // Um `<select>` sem opção é um botão sem destino disfarçado.
     if (aberto !== true || escolha === null) return null;
 
-    const pode = comentarioValido(texto);
+    const emVoo = enviando === true;
+    const pode = comentarioValido(texto) && !emVoo;
     const enviar = typeof onSubmeter === 'function' ? onSubmeter : null;
 
     return (
@@ -397,7 +405,7 @@ export default function ModalDeAjuste({
                 // ⚠️ A guarda é REPETIDA aqui de propósito: a casca já desabilita o
                 // botão, mas `onSubmeter` é named export e pode ser chamado direto —
                 // e a régua é "o clique NÃO chama a rota", não "o botão está cinza".
-                if (!comentarioValido(texto)) return;
+                if (emVoo || !comentarioValido(texto)) return;
 
                 enviar({
                     escopo: escolha.item.escopo,
@@ -406,13 +414,17 @@ export default function ModalDeAjuste({
                 });
             }}
         >
-            <CorpoDoAjuste
-                itens={itens}
-                indice={indice}
-                texto={texto}
-                onItem={onItem}
-                onTexto={onTexto}
-            />
+            {[
+                <CorpoDoAjuste
+                    key="corpo"
+                    itens={itens}
+                    indice={indice}
+                    texto={texto}
+                    onItem={onItem}
+                    onTexto={onTexto}
+                />,
+                <AvisoDeRecusa key="erro" mensagem={erro} />,
+            ]}
         </CascaDeModal>
     );
 }

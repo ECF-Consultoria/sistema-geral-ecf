@@ -10,6 +10,7 @@ use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
 use App\Services\Publicador\DadosEfetivosService;
@@ -227,13 +228,64 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
             ['medida' => 'maior', 'valor' => 160.0, 'limite' => 100.0],
             ['medida' => 'soma', 'valor' => 273.0, 'limite' => 200.0],
         ], $envio['estouros'], 'o peso (16 kg) cabe: não entra');
-        $this->assertNull($p[$combo->id]['classico']['frete_sugerido'], 'ME1 não tem frete do Mercado Livre a sugerir');
+        // Desde 21/10/2026 o que fica fora também tem sugestão: a referência do ML para a caixa, marcada.
+        $this->assertTrue($p[$combo->id]['classico']['frete_sugerido']['fora_do_me2']);
+        $this->assertFalse($p[$unidade->id]['classico']['frete_sugerido']['fora_do_me2']);
 
         // A logística declarada fora do Mercado Envios também se explica; a oferta sem produto não tem o que dizer.
         $this->assertSame('combinar', $p[$declarada->id]['envio']['declarada']);
         $this->assertNull($p[$unidade->id]['envio']['declarada']);
         $this->assertNull($p[$solta->id]['envio']['chave']);
         $this->assertNull($p[$solta->id]['envio']['pacote']);
+    }
+
+    /**
+     * 21/10/2026 — fora do Mercado Envios o Mercado Livre não cobra frete, e o destino depende da conta: com ME1,
+     * a transportadora do vendedor; sem ME1, "Combine a entrega" (a Poltrona Opala da #459). A conta é lida pelo
+     * "Cotar agora" e fica no cache; antes disso (ou com a leitura de antes desta data), não se sabe.
+     */
+    public function test_o_que_nao_cabe_diz_se_vai_pela_transportadora_ou_a_combinar_pela_conta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $grande = $this->ligada($empresa, 'OPALA', ['c' => 70, 'l' => 85, 'a' => 90, 'kg' => 12], '400');
+        $pequena = $this->ligada($empresa, 'BANQ', self::MEIO_QUILO, '45');
+        $envio = fn () => $this->pagina($empresa, [$grande->id, $pequena->id])['por_oferta'];
+
+        $this->assertSame(ModalidadeDeEnvio::FORA_SEM_SABER, $envio()[$grande->id]['envio']['fora'], 'conta não lida');
+        Cache::put(ModalidadeDeEnvio::chave((int) $empresa->id), ['tipo' => 'drop_off', 'lido_em' => now()->toIso8601String()], now()->addDay());
+        $this->assertSame(ModalidadeDeEnvio::FORA_SEM_SABER, $envio()[$grande->id]['envio']['fora'], 'leitura de antes de 21/10');
+
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'drop_off', null, false);
+        $p = $envio();
+        $this->assertSame(ModalidadeDeEnvio::FORA_COMBINAR, $p[$grande->id]['envio']['fora'], 'a #459: Correios e sem ME1');
+        $this->assertNull($p[$pequena->id]['envio']['fora'], 'o que cabe não tem destino "fora"');
+
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'drop_off', null, true);
+        $this->assertSame(ModalidadeDeEnvio::FORA_ME1, $envio()[$grande->id]['envio']['fora']);
+
+        // Na Coleta (soma até 300 cm) a mesma poltrona cabe: vira Mercado Envios, com frete do Mercado Livre.
+        ModalidadeDeEnvio::guardar((int) $empresa->id, 'cross_docking', null, true);
+        $p = $envio();
+        $this->assertContains($p[$grande->id]['envio']['chave'], [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL]);
+        $this->assertNull($p[$grande->id]['envio']['fora']);
+    }
+
+    /** A preferência de envio da conta diz se ela tem ME1 — corpos medidos em produção em 21/10/2026. */
+    public function test_a_preferencia_da_conta_diz_se_ela_tem_me1(): void
+    {
+        $da459 = json_decode(file_get_contents(base_path('tests/fixtures-ml/sondagem/conta/shipping_preferences.json')), true)['resposta'];
+        $this->assertFalse(ModalidadeDeEnvio::temMe1($da459), 'a #459: custom, not_specified e me2');
+
+        // A LOJA SHEEP (#165): me1 em `modes` e o bloco `logistics[mode=me1]`.
+        $comMe1 = ['modes' => ['custom', 'not_specified', 'me2', 'me1'], 'logistics' => [
+            ['mode' => 'me1', 'types' => [['type' => 'default', 'default' => true, 'status' => 'active']]],
+            ['mode' => 'me2', 'types' => [['type' => 'cross_docking', 'default' => true, 'status' => 'active'], ['type' => 'fulfillment', 'default' => false, 'status' => 'active']]],
+        ]];
+        $this->assertTrue(ModalidadeDeEnvio::temMe1($comMe1));
+        $this->assertSame('cross_docking', ModalidadeDeEnvio::daPreferencia($comMe1));
+        $this->assertTrue(ModalidadeDeEnvio::temMe1(['modes' => ['me2'], 'logistics' => [['mode' => 'me1', 'types' => [['type' => 'default', 'status' => 'active']]]]]));
+        $this->assertFalse(ModalidadeDeEnvio::temMe1(['modes' => ['me2'], 'logistics' => [['mode' => 'me1', 'types' => [['type' => 'default', 'status' => 'inactive']]]]]));
+        $this->assertFalse(ModalidadeDeEnvio::temMe1([]));
     }
 
     public function test_os_limites_do_envio_seguem_a_modalidade_da_conta(): void
@@ -253,7 +305,13 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
         $this->assertSame([['medida' => 'peso', 'valor' => 40.0, 'limite' => 30.0]], LogisticaProduto::estouros($pesado, 'drop_off'));
     }
 
-    public function test_me1_e_logistica_declarada_fora_do_me2_nao_tem_sugestao(): void
+    /**
+     * 21/10/2026 — "mesmo quando está a combinar, ainda sim pagaremos um frete": o que fica fora do Mercado Envios
+     * (pelo tamanho ou declarado na Lista SKUs) deixa de ficar sem frete. A sugestão é o que o ML calcula para a caixa
+     * (a tabela pelo peso cubado — a cotação da conta dá o mesmo), marcada como fora do Mercado Envios: o ML não a
+     * cobra, é a referência do que se paga à transportadora ou para entregar.
+     */
+    public function test_me1_e_logistica_declarada_fora_do_me2_tem_a_referencia_do_ml_para_a_caixa(): void
     {
         $empresa = $this->empresaDoGabarito();
         $me1 = $this->ligada($empresa, 'LIG-4', ['c' => 250, 'l' => 44, 'a' => 12, 'kg' => 60], '300');
@@ -264,10 +322,37 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
 
         foreach ([$me1->id, $declarada->id] as $id) {
             $r = $p['por_oferta'][$id];
-            $this->assertNull($r['classico']['frete_sugerido']);
-            $this->assertNull($r['classico']['frete']);
-            $this->assertSame('sem_frete', $r['pendencia'], '"Sem frete" continua pendência');
+            $this->assertNotNull($r['classico']['frete_sugerido'], 'fora do Mercado Envios também tem sugestão');
+            $this->assertTrue($r['classico']['frete_sugerido']['fora_do_me2']);
+            $this->assertSame('tabela', $r['classico']['frete_sugerido']['fonte']);
+            $this->assertSame('sugerido', $r['classico']['frete_origem']);
+            $this->assertSame($r['classico']['frete_sugerido']['valor'], $r['classico']['frete'], 'entra no preço');
+            $this->assertNull($r['pendencia'], 'deixou de ser "sem frete"');
         }
+        // 250 × 44 × 12 ÷ 6000 = 22 kg cubados, contra 60 kg reais: fatura 60 kg (faixa de 60 a 70 kg da tabela).
+        $preco = $p['por_oferta'][$me1->id]['classico']['minimo'];
+        $this->assertSame(TabelaFreteEcf::valor(60.0, (float) $preco), $p['por_oferta'][$me1->id]['classico']['frete']);
+    }
+
+    /**
+     * Fora do Mercado Envios, o frete digitado num tipo vale para o outro ANTES da referência do ML: a transportadora
+     * não cobra conforme o tipo de anúncio. Dentro, cada tipo segue com o sugerido do próprio preço.
+     */
+    public function test_fora_do_me2_o_digitado_do_outro_tipo_vem_antes_da_referencia(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $me1 = $this->ligada($empresa, 'LIG-6', ['c' => 250, 'l' => 44, 'a' => 12, 'kg' => 60], '300');
+        $dentro = $this->ligada($empresa, 'LIG-7', self::MEIO_QUILO, '45');
+        foreach ([$me1, $dentro] as $o) {
+            EstruturaPrecificacao::updateOrCreate(['oferta_id' => $o->id], ['frete_classico' => 200]);
+        }
+
+        $p = $this->pagina($empresa, [$me1->id, $dentro->id])['por_oferta'];
+
+        $this->assertSame(['digitado', 200.0], [$p[$me1->id]['classico']['frete_origem'], (float) $p[$me1->id]['classico']['frete']]);
+        $this->assertSame(['outro_tipo', 200.0], [$p[$me1->id]['premium']['frete_origem'], (float) $p[$me1->id]['premium']['frete']], 'o Premium usa o digitado do Clássico');
+        $this->assertNotNull($p[$me1->id]['premium']['frete_sugerido'], 'a referência continua ali, para comparar');
+        $this->assertSame('sugerido', $p[$dentro->id]['premium']['frete_origem'], 'dentro do Mercado Envios, o sugerido do próprio tipo');
     }
 
     /** Oferta sem produto (a Lista SKUs antiga, sem medidas) continua com o frete do outro tipo (PUFF-AZ, 30/09). */

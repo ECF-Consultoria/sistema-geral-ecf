@@ -528,8 +528,8 @@ class CriarFaseEndpointTest extends TestCase
         ]))->assertStatus(201);
 
         $rk = PubProduto::where('produto_base_id', $base->id)->firstOrFail()->rascunho;
-        $this->assertSame('Kit 2 Cadeira Mandada à Mão', $rk->alvos->firstWhere('listing_type_id', 'gold_special')->titulo);
-        $this->assertSame('Kit 2 Cadeira Mandada à Mão', $rk->alvos->firstWhere('listing_type_id', 'gold_pro')->titulo, 'um campo de título no painel vale para todos os tipos');
+        $this->assertSame('Kit 2 Cadeira Mandada À Mão', $rk->alvos->firstWhere('listing_type_id', 'gold_special')->titulo);
+        $this->assertSame('Kit 2 Cadeira Mandada À Mão', $rk->alvos->firstWhere('listing_type_id', 'gold_pro')->titulo, 'um campo de título no painel vale para todos os tipos');
         $this->assertSame('Descrição escrita à mão.', $rk->descricao);
 
         $corpo = $this->corpo(['quantidade' => 3, 'sku' => 'CAD-KIT3']);

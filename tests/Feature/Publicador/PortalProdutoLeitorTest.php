@@ -228,6 +228,20 @@ class PortalProdutoLeitorTest extends TestCase
         $this->assertSame("Mesa: Mesa de madeira\n\nCadeira: Cadeira macia", $this->leitor->descricaoDoCliente($kit));
     }
 
+    /** 22/10/2026 — o kit "2 Cinza + 2 Bordô" da MESMA poltrona mandava o texto dela duas vezes para a IA. */
+    public function test_descricao_da_composta_do_mesmo_produto_vem_uma_vez(): void
+    {
+        $c = Company::factory()->create();
+        [, , $ofertas] = $this->produto($c, 'OPALA', 'Poltrona Opala', 2, ['descricao' => 'Estrutura em eucalipto, espuma D-23']);
+        $oferta = EstruturaOferta::create(['company_id' => $c->id, 'sku' => 'CT-OPALA', 'fase' => 'combit', 'nome' => 'Kit 4']);
+        foreach ($ofertas as $o) {
+            EstruturaOfertaComponente::create(['oferta_id' => $oferta->id, 'componente_id' => $o->id, 'quantidade' => 2]);
+        }
+        $kit = PubProduto::create(['company_id' => $c->id, 'oferta_id' => $oferta->id, 'sku' => 'CT-OPALA', 'nome' => 'Kit 4', 'origem' => 'portal']);
+
+        $this->assertSame('Poltrona Opala: Estrutura em eucalipto, espuma D-23', $this->leitor->descricaoDoCliente($kit));
+    }
+
     public function test_descricao_sem_portal_e_null(): void
     {
         $c = Company::factory()->create();

@@ -169,6 +169,10 @@ const JSX_DEPOIS_DA_187 = [
     // aqui, o `deepEqual` deste gate REPROVA; sem a de `ARQUIVOS_NOVOS`, o
     // GATE-03 passaria POR OMISSÃO (VOC-07).
     `${DIR_APROV}/LateralDoLightbox.jsx`,
+    // 23/10/2026 (P-18a, correções da fila) — o campo de busca com rascunho local e
+    // atraso: `FiltrosDaFila` é SEM ESTADO por gate, e a busca controlada pela URL
+    // comia letras e o espaço.
+    `${DIR_APROV}/CampoDeBuscaDaFila.jsx`,
 ];
 
 /** O gate que fecha o conjunto do diretório contra a conferência de vocabulário. */

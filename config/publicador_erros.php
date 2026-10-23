@@ -59,8 +59,9 @@ return [
         '4053' => 'A conta não usa Mercado Envios 1 — aviso do Mercado Livre, não impede a publicação.',
         '4056' => 'Este produto de catálogo não aceita Mercado Envios 2 nesta conta.',
         // `shipping.lost_me2_by_intersected_logistics` (10/10/2026, produto 41 da #459): chegava cru, em inglês.
-        // Medido na mesma conta e categoria: o anúncio publica, mas sai como "a combinar", sem frete grátis.
-        '4057' => 'O Mercado Livre vai tirar o Mercado Envios deste anúncio: a forma de postagem desta conta não é aceita nesta categoria (costuma ser produto grande ou pesado). Publicado assim, ele sai como «A combinar com o comprador», sem frete grátis.',
+        // Medido na mesma conta e categoria: o anúncio publica, mas sai como "a combinar". 22/10/2026: sem o "sem frete
+        // grátis" — frete grátis é o CLIENTE não pagar a entrega, e o vendedor continua pagando fora do Mercado Envios.
+        '4057' => 'O Mercado Livre vai tirar o Mercado Envios deste anúncio: a forma de postagem desta conta não é aceita nesta categoria (costuma ser produto grande ou pesado). Publicado assim, ele sai como «A combinar com o comprador».',
         '4029' => 'A conta precisa adotar o Mercado Envios 2.',
 
         // Sem cause_id (só `error`).

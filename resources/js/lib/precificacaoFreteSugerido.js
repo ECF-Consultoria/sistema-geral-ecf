@@ -11,10 +11,16 @@
 // de custos do Mercado Livre.
 // ═══════════════════════════════════════════════════════════════════════
 
+import { normalizarNumeroBr } from './numeroBr.js';
+
 export const ORIGEM_DO_SUGERIDO = {
     conta: 'sugerido pela sua conta',
     tabela: 'estimado pela tabela',
 };
+
+// Fora do Mercado Envios (21/10/2026): o ML não cobra frete, mas o vendedor paga um (transportadora ou entrega
+// combinada). O sugerido é o que o ML calcula para a caixa — a referência, nunca "o ML cobra".
+export const REFERENCIA_FORA_DO_ME2 = 'referência do ML para a caixa';
 
 /** Visitas do "Cotar agora" num clique, enquanto o servidor devolve pendência (o lote é por chamada). */
 export const VOLTAS_DA_COTACAO = 4;
@@ -36,12 +42,27 @@ export function rotuloDoFrete(calculo, outroTipo, fmt) {
 
     switch (calculo?.frete_origem) {
         case 'sugerido':
-            return s ? { texto: origem, tipo: 'sugerido', fonte: s.fonte } : null;
+            if (! s) return null;
+            return s.fora_do_me2
+                ? { texto: REFERENCIA_FORA_DO_ME2, tipo: 'sugerido', fonte: s.fonte, fora: true }
+                : { texto: origem, tipo: 'sugerido', fonte: s.fonte };
         case 'outro_tipo':
             return { texto: `mesmo do ${outroTipo}`, tipo: 'herdado' };
+        // Digitado diferente do Mercado Livre (21/10/2026, "digitado R$ 200, o ML cobra R$ 262,85"): o valor
+        // digitado nunca é trocado; a legenda diz o do ML e acende (`alerta`) quando ele cobra MAIS do que entrou
+        // no preço — aí a margem é menor que a planejada. Só existe sugestão dentro do Mercado Envios.
         case 'digitado':
+            // Fora do Mercado Envios a referência só aparece ao lado, sem acender: o ML não cobra esse valor.
+            if (s?.fora_do_me2) {
+                return Number(s.valor) !== Number(calculo.frete)
+                    ? { texto: `referência do ML: ${fmt(s.valor)}`, tipo: 'sugestao', fonte: s.fonte, fora: true, alerta: false }
+                    : null;
+            }
             return s && Number(s.valor) !== Number(calculo.frete)
-                ? { texto: `${origem}: ${fmt(s.valor)}`, tipo: 'sugestao', fonte: s.fonte }
+                ? {
+                    texto: s.fonte === 'conta' ? `o ML cobra ${fmt(s.valor)}` : `${origem}: ${fmt(s.valor)}`,
+                    tipo: 'sugestao', fonte: s.fonte, alerta: Number(s.valor) > Number(calculo.frete),
+                }
                 : null;
         default:
             return null;
@@ -57,11 +78,11 @@ export const freteEmBranco = (calculo) => calculo?.frete_origem === 'sugerido' |
 // origem dele, ficam no detalhe. Digitar no campo único grava nos dois tipos. Nada aqui calcula frete: só decide
 // o que a linha desenha a partir do que foi digitado e do que o servidor mandou.
 
-/** "200", "200,00" e " 200,0 " são o mesmo frete; vazio é vazio. */
+/** "200", "200,00" e " 200,0 " são o mesmo frete; vazio é vazio. "1.200" é 1200 (pt-BR, `numeroBr.js`, 23/10/2026). */
 const mesmoTexto = (texto) => {
     const t = String(texto ?? '').trim().replace(/\s|R\$/g, '');
     if (t === '') return '';
-    const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+    const n = Number(normalizarNumeroBr(t));
 
     return Number.isFinite(n) ? String(n) : t;
 };

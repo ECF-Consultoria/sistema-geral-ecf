@@ -174,14 +174,16 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(36, $achadas); // 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
+        $this->assertSame(38, $achadas); // 21/10: + precificacao.previa (produto ainda não salvo); 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
     {
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
-        $this->assertCount(28, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        $this->assertCount(29, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        // 21/10/2026 — a precificação do produto que ainda não foi salvo.
+        $this->assertContains('portal/estrutura/produtos/precificacao-previa', $permitido);
         // 19/10/2026 — os termos e o limite do título de venda.
         $this->assertContains('portal/estrutura/produtos/termos-titulo', $permitido);
         // 13/10/2026 — o modelo completo da planilha.
@@ -204,6 +206,8 @@ class AcessoAosProdutosTest extends TestCase
                 'portal/estrutura/produtos/{id}',
                 'portal/estrutura/produtos/{id}/ficha-tecnica',
                 'portal/estrutura/produtos/{id}/descricao',
+                // 20/10/2026: a Precificação dentro da ficha do produto.
+                'portal/estrutura/produtos/{id}/precificacao',
                 'portal/estrutura/sugestoes/produtos/{id}/geracao',
                 // Imagens por variação: os dois ids (variação e imagem) só dígitos.
                 'portal/estrutura/produtos/variacao/{id}/imagens',

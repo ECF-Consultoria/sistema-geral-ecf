@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
 use App\Jobs\Publicador\ConferirFreteDoPublicadoJob;
+use App\Jobs\Publicador\RelerEstadoDoPublicadoJob;
 use App\Jobs\Publicador\SincronizarAcervoDoPublicadoJob;
 use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
@@ -26,6 +27,7 @@ use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
+use App\Support\Publicador\SituacaoDoAnuncioMl;
 use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Support\Facades\DB;
@@ -546,13 +548,9 @@ class PublicacaoService
         // E14: o estado real logo depois de criar (under_review, pausado, qualidade) — da conta fixada.
         $empresa = $this->contaFixada($p, $r);
         $estado = $this->cliente->daConta($empresa, 'GET', "/items/{$item->ml_item_id}");
+        // Demo 23/10 (N17): o modo de envio vem no mesmo corpo e vai junto — é o frete com que o anúncio saiu.
         if ($estado->ok() && is_array($estado->corpo)) {
-            $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'estado' => [
-                'status' => $estado->corpo['status'] ?? null,
-                'sub_status' => $estado->corpo['sub_status'] ?? [],
-                'tags' => array_values(array_intersect((array) ($estado->corpo['tags'] ?? []), ['poor_quality_thumbnail', 'incomplete_technical_specs'])),
-                'permalink' => $estado->corpo['permalink'] ?? null,
-            ]]]);
+            $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'estado' => SituacaoDoAnuncioMl::doCorpo($estado->corpo)]]);
         }
     }
 
@@ -605,6 +603,25 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        $this->relerEstadoDoPublicado($p);
+        $this->criarCombosDoPlanejamento($r);
+    }
+
+    /**
+     * 20/10/2026 — a Fase 1 de um produto do Portal foi ao ar: os Combos ACEITOS no Planejamento para ele viram fase
+     * sozinhos (decisão do usuário: combo, kit e combit são decididos só no Portal). Aqui só se AGENDA;
+     * quem confere e cria é o `CombosDoPlanejamentoService`, num Job. Chamado de `concluir()` e de `encerrar()`,
+     * os dois fins de publicação. Falhar aqui NUNCA desfaz nem repete a publicação: o próximo Sincronizar agenda.
+     */
+    private function criarCombosDoPlanejamento(PubRascunho $r): void
+    {
+        try {
+            if (in_array((string) $r->fresh()?->status, CombosDoPlanejamentoService::PUBLICADO, true)) {
+                app(CombosDoPlanejamentoService::class)->agendar((int) $r->produto_id);
+            }
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] rascunho {$r->id} publicado, mas os combos do Planejamento não foram agendados: {$e->getMessage()}");
+        }
     }
 
     /**
@@ -687,6 +704,23 @@ class PublicacaoService
         }
     }
 
+    /**
+     * Demo 23/10/2026 (H21) — publicou: o Mercado Livre pode pausar ou pôr em revisão LOGO DEPOIS de criar, e a
+     * leitura do `depoisDeCriar` chega antes disso. O `RelerEstadoDoPublicadoJob` relê cada anúncio criado um
+     * pouco depois (e de novo alguns minutos depois). Mesmo molde fail-open dos outros ganchos: falhar aqui
+     * nunca desfaz nem repete a publicação.
+     */
+    private function relerEstadoDoPublicado(PubPublicacao $p): void
+    {
+        try {
+            if ($p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')->exists()) {
+                RelerEstadoDoPublicadoJob::dispatch((int) $p->id)->delay(now()->addSeconds(RelerEstadoDoPublicadoJob::ESPERA_PRIMEIRA));
+            }
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas a releitura do estado no ML não foi agendada: {$e->getMessage()}");
+        }
+    }
+
     /** O MLB volta para a linha dele na aba Anúncios: o 1º item criado de cada tipo completa o planejado. */
     private function cadastrarNaRegua(PubPublicacao $p, PubRascunho $r, $criados): void
     {
@@ -745,6 +779,9 @@ class PublicacaoService
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
         $this->conferirFreteDoPublicado($p);
+        $this->relerEstadoDoPublicado($p);
+        // Parte no ar ("Parte publicada") também é a Fase 1 no ar, como no gate do "Criar Fase N".
+        $this->criarCombosDoPlanejamento($r);
     }
 
     private function concluirParcialSeHouver(PubPublicacao $p, PubRascunho $r): void

@@ -60,6 +60,7 @@ class FilaDePublicacaoTest extends TestCase
     public function test_agenda_so_os_prontos_e_diz_por_que_os_outros_ficaram(): void
     {
         [$a, $b, $c] = $this->cadeiras;
+        $this->validateComAviso();   // o "Estou ciente" só existe com aviso de verdade (o 4053 e o 350 são ruído)
         $this->conferirTodas([$a, $c]);
         $this->repo->tocar($this->rascunhoDe($c)); // editado depois da conferência
 

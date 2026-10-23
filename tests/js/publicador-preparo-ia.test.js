@@ -40,3 +40,19 @@ test('o editor manda o sinal de aberto só com a aba visível', () => {
     assert.match(hook, /document\.visibilityState !== 'visible'/);
     assert.match(hook, /clearInterval\(t\)/);
 });
+
+test('20/10/2026: com a IA do preparo gravando por fora, a mesa pausa e RELÊ antes de sair da pausa', () => {
+    const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
+    assert.match(hook, /const SINAL_PRESENCA = 20 \* 1000/);
+    assert.match(hook, /const pausado = pausadoDaIa \|\| iaPorFora !== null/);
+    // A cópia daqui vai inteira por chave de topo: reler ANTES de liberar o salvamento (EditorEmUso).
+    const relendo = hook.indexOf('await antes.reler?.()');
+    const liberando = hook.indexOf('setIaPorFora(ia)');
+    assert.ok(relendo > 0 && liberando > relendo, 'relê antes de sair da pausa');
+    assert.match(hook, /porFora\.current\.reler = recarregarDepoisDaIa/);
+    assert.match(hook, /estado\.ia_por_fora/);
+    const editor = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
+    assert.match(editor, /pub\.iaPorFora && \(/);
+    assert.match(editor, /Atualizando…/);
+});
+

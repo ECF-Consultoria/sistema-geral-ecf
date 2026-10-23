@@ -51,6 +51,32 @@ final class PrecificacaoEstrutura
     }
 
     /**
+     * Para onde vai cada real do preço da promoção (20/10/2026) — o "Para onde vai cada real" do
+     * simulador do onboarding de Polos, agora também no Portal. Só reparte o `minimo` que a
+     * {@see self::preco()} já calculou: custo e frete entram como estão, e cada percentual vira
+     * `mínimo × %`. Sem preço não há o que repartir.
+     *
+     * @return ?array{custo: float, frete: float, comissao: float, imposto: float, margem_contribuicao: float, lucro_liquido: float}
+     */
+    public static function partes(?float $minimo, ?float $custo, ?float $frete, float $comissao, float $imposto, float $mc, float $ll): ?array
+    {
+        if ($minimo === null || $custo === null) {
+            return null;
+        }
+
+        $de = fn (float $pct) => round($minimo * $pct / 100, 2);
+
+        return [
+            'custo'               => round($custo, 2),
+            'frete'               => round($frete ?? 0, 2),
+            'comissao'            => $de($comissao),
+            'imposto'             => $de($imposto),
+            'margem_contribuicao' => $de($mc),
+            'lucro_liquido'       => $de($ll),
+        ];
+    }
+
+    /**
      * O frete que a conta usa em cada tipo, nesta ordem:
      *
      *  1. o DIGITADO — zero digitado é escolha do cliente e fica;
@@ -63,13 +89,19 @@ final class PrecificacaoEstrutura
      *     Clássico R$ 131,22, o inverso do que a comissão maior do Premium garante (30/09);
      *  4. nada (a pendência "sem frete").
      *
+     * Fora do Mercado Envios (`$foraDoMe2`, 21/10/2026) a oferta passou a ter sugestão — a referência do ML para a
+     * caixa, porque o frete é pago mesmo assim (ME1 ou "a combinar") —, e o digitado do OUTRO tipo vem ANTES dela:
+     * a transportadora não cobra conforme o tipo de anúncio, e o valor que a pessoa digitou é mais fiel que a
+     * referência. De quebra, quem já tinha digitado só um tipo não vê o preço do outro mudar.
+     *
      * @param  array{classico?: ?float, premium?: ?float}  $sugeridos  o frete sugerido de cada tipo (null = sem sugestão)
      * @return array{classico: array{valor: ?float, origem: ?string}, premium: array{valor: ?float, origem: ?string}}
      */
-    public static function fretes(?float $classico, ?float $premium, array $sugeridos = []): array
+    public static function fretes(?float $classico, ?float $premium, array $sugeridos = [], bool $foraDoMe2 = false): array
     {
         $efetivo = fn (?float $proprio, ?float $sugerido, ?float $outro) => match (true) {
             $proprio !== null  => ['valor' => $proprio, 'origem' => 'digitado'],
+            $foraDoMe2 && $outro !== null => ['valor' => $outro, 'origem' => 'outro_tipo'],
             $sugerido !== null => ['valor' => $sugerido, 'origem' => 'sugerido'],
             $outro !== null    => ['valor' => $outro, 'origem' => 'outro_tipo'],
             default            => ['valor' => null, 'origem' => null],

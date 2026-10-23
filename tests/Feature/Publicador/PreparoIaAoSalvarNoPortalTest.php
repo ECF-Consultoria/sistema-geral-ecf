@@ -250,10 +250,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
         Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
-        // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
-        $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
+        // Decisão do usuário (20/10/2026): a IA espera só 20 segundos sem save (era 2 minutos; antes, 10).
+        $this->assertSame(20, config('publicador.preparo_ia.atraso_s'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
-            && now()->diffInSeconds($j->delay, true) > 90 && now()->diffInSeconds($j->delay, true) <= 120);
+            && now()->diffInSeconds($j->delay, true) > 15 && now()->diffInSeconds($j->delay, true) <= 20);
 
         $jobs = Queue::pushed(PrepararProdutoNoPublicadorJob::class)->values();
         $this->rodados->attach($jobs[0]);
@@ -278,9 +278,12 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
-        $cadeia = Queue::pushed(GerarPreparoIaJob::class)->sole();
-        $this->assertSame('publicador-ia', $cadeia->queue);
-        $this->assertSame(['publicador-ia', 'publicador-ia'], array_map(fn ($s) => unserialize($s)->queue, $cadeia->chained),
+        // 21/10/2026: duas cadeias em paralelo — [título → Modelo] e [descrição].
+        $cadeias = Queue::pushed(GerarPreparoIaJob::class);
+        $this->assertCount(2, $cadeias);
+        $this->assertSame(['publicador-ia', 'publicador-ia'], $cadeias->map(fn ($j) => $j->queue)->values()->all());
+        $titulo = $cadeias->firstWhere('etapa', PreparoIaDoRascunhoService::TITULO);
+        $this->assertSame(['publicador-ia'], array_map(fn ($s) => unserialize($s)->queue, $titulo->chained),
             'cada elo declara a fila: o onQueue do Bus::chain não move elo que já tem fila');
     }
 
@@ -306,7 +309,9 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
             && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
-        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
+        // A IA vem DEPOIS do Sincronizar (20 s × 15 s): o produto já está no Publicador quando ela começa.
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
+            && now()->diffInSeconds($j->delay, true) > (int) config('publicador.preparo_ia.sincronizar_atraso_s'));
 
         Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
 
@@ -362,7 +367,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $antes = $marca();
         $this->assertNotNull($antes);
 
-        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        EditorEmUso::marcarEdicao((int) $this->pubDo($p)->id);
         $this->noPortal($p, 'BRAND', 'Outra Marca');
 
         $this->assertSame('ocupado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
@@ -393,7 +398,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         [, $ia] = $this->salvarERodar($p);
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
-        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
+        // 21/10/2026: [título → Modelo] e a descrição sozinha, em paralelo.
+        Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class],
+            fn ($j) => $j->etapa === PreparoIaDoRascunhoService::TITULO);
+        Queue::assertPushedWithoutChain(GerarPreparoIaJob::class, fn ($j) => $j->etapa === PreparoIaDoRascunhoService::DESCRICAO);
         Queue::assertPushedOn('publicador-ia', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
@@ -451,10 +459,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->rodar(GerarPreparoIaJob::class);
 
         $titulos = $this->titulos($r->fresh());
-        // 19/10/2026: o título da equipe também se grava com a 1ª letra maiúscula (o resto como ela escreveu).
-        $this->assertSame('Cadeira escritorio giratoria ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
+        // 20/10/2026: o título da equipe também se grava com a 1ª letra de cada palavra maiúscula (o resto como ela escreveu).
+        $this->assertSame('Cadeira Escritorio Giratoria Ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
         $this->assertSame('Cadeira Escritório Ergonômica Giratória', $titulos['gold_special'], 'o Clássico não repete o Premium (nem por caixa, acento ou plural)');
-        $this->assertStringContainsString('Cadeira escritorio giratoria ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
+        $this->assertStringContainsString('Cadeira Escritorio Giratoria Ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
     }
 
     // ═══ Hash dos fatos ══════════════════════════════════════════════════════
@@ -539,8 +547,8 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertSame(['pulado', 'escrito', 'pulado'], $ia, 'título e descrição da equipe: nada a gerar; o Modelo usa o título dela');
         $this->assertCount(1, $this->chamadas['titulo']);
         $this->assertCount(1, $this->chamadas['descricao']);
-        $this->assertSame('Título B da Equipe', $this->titulos($r->fresh())['gold_pro']);
-        $this->assertSame('Título A da Equipe / Título B da Equipe', $this->chamadas['modelo'][1][4]);
+        $this->assertSame('Título B Da Equipe', $this->titulos($r->fresh())['gold_pro']);
+        $this->assertSame('Título A Da Equipe / Título B Da Equipe', $this->chamadas['modelo'][1][4]);
         $this->assertSame('Descrição escrita pela equipe.', $r->fresh()->descricao);
     }
 
@@ -583,7 +591,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         (new RascunhoRepository())->criar($kit, [new Alvo('gold_special', null), new Alvo('gold_pro', null)]);
 
         $this->assertSame('kit_da_fase', $this->servico()->avaliarIa($kit));
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        Queue::assertPushed(GerarPreparoIaJob::class, 2); // as duas cadeias do produto base, nenhuma do kit
     }
 
     public function test_anunciar_por_ia_rodando_adia_o_preparo(): void
@@ -604,13 +612,13 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
     // ═══ Editor aberto ═══════════════════════════════════════════════════════
 
-    public function test_editor_em_uso_adia_o_preparo_inteiro_e_depois_segue(): void
+    public function test_alguem_editando_adia_o_preparo_inteiro_e_depois_segue(): void
     {
         $p = $this->produtoDoPortal();
         $this->salvarERodar($p);
         $pub = $this->pubDo($p);
 
-        EditorEmUso::marcar((int) $pub->id);
+        EditorEmUso::marcarEdicao((int) $pub->id);
         $p->update(['descricao' => 'Mudou com o editor aberto.']);
         $this->descricaoIa = 'Descrição depois do editor fechar.';
         [$preparos, $ia] = $this->salvarERodar($p);
@@ -621,20 +629,20 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->adiamentos === 1
             && $j->delay !== null && now()->diffInMinutes($j->delay, true) >= 4);
 
-        Cache::forget(EditorEmUso::chave((int) $pub->id));
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
         $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
         $this->rodar(GerarPreparoIaJob::class);
         $this->assertSame('Descrição depois do editor fechar.', $this->rascunhoDo($p)->descricao);
     }
 
-    public function test_editor_aberto_no_meio_da_ia_adia_a_escrita_sem_gerar_de_novo(): void
+    public function test_alguem_editando_no_meio_da_ia_adia_a_escrita_sem_gerar_de_novo(): void
     {
         $p = $this->produtoDoPortal();
         $this->salvarNoPortal($p);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
         $pub = $this->pubDo($p);
 
-        EditorEmUso::marcar((int) $pub->id);
+        EditorEmUso::marcarEdicao((int) $pub->id);
         $this->assertSame(['adiado', 'adiado', 'adiado'], $this->rodar(GerarPreparoIaJob::class));
         $r = $this->rascunhoDo($p);
         $this->assertSame([], array_filter($this->titulos($r)));
@@ -642,20 +650,20 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushed(GerarPreparoIaJob::class, fn ($j) => $j->etapa === 'titulo' && $j->adiamentos === 1
             && json_decode((string) $j->valorPronto, true) === ['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa]);
 
-        Cache::forget(EditorEmUso::chave((int) $pub->id));
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
         $this->assertSame(['escrito', 'escrito', 'escrito'], $this->rodar(GerarPreparoIaJob::class));
         $this->assertSame($this->tituloIa, $this->titulos($r->fresh())['gold_special']);
         $this->assertCount(1, $this->chamadas['titulo'], 'a escrita adiada usa o valor já gerado');
         $this->assertCount(1, $this->chamadas['descricao']);
     }
 
-    public function test_editor_em_uso_desiste_depois_do_limite_de_esperas(): void
+    public function test_alguem_editando_desiste_depois_do_limite_de_esperas(): void
     {
         config(['publicador.preparo_ia.max_adiamentos' => 1]);
         $p = $this->produtoDoPortal();
         $this->salvarNoPortal($p);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
-        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        EditorEmUso::marcarEdicao((int) $this->pubDo($p)->id);
 
         $this->assertSame(['adiado', 'adiado', 'adiado'], $this->rodar(GerarPreparoIaJob::class));
         $this->assertSame(['desistiu', 'desistiu', 'desistiu'], $this->rodar(GerarPreparoIaJob::class));
@@ -670,9 +678,33 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Cache::forget(EditorEmUso::chave((int) $pub->id));
 
         $this->actingAs(User::factory()->create(['role' => 'admin']))
-            ->postJson(route('mlb.anuncios.publicador.presenca', $pub->id))->assertOk();
+            ->postJson(route('mlb.anuncios.publicador.presenca', $pub->id))->assertOk()
+            ->assertJsonStructure(['ok', 'ia', 'carimbo']);
 
         $this->assertTrue(EditorEmUso::emUso((int) $pub->id));
+        // 20/10/2026: olhar (presença, leituras) é "em uso" — a fila não publica por baixo —, mas não é "editando".
+        $this->assertFalse(EditorEmUso::editando((int) $pub->id), 'o sinal de presença não segura a IA');
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->putJson(route('mlb.anuncios.publicador.salvar', $pub->id), ['descricao' => 'Editada pela equipe.'])->assertOk();
+        $this->assertTrue(EditorEmUso::editando((int) $pub->id), 'o que grava é "editando"');
+    }
+
+    public function test_editor_so_aberto_nao_segura_a_ia(): void
+    {
+        // 20/10/2026, o usuário: "que salvar o produto com imagem, já gerar" — mesmo com o produto aberto para olhar.
+        $p = $this->produtoDoPortal();
+        $this->salvarERodar($p);
+        $pub = $this->pubDo($p);
+
+        EditorEmUso::marcar((int) $pub->id);
+        $p->update(['descricao' => 'Mudou com a tela só aberta.']);
+        $this->descricaoIa = 'Descrição escrita com a tela aberta.';
+        [$preparos] = $this->salvarERodar($p);
+
+        $this->assertSame(['pronto'], $preparos);
+        $this->rodar(GerarPreparoIaJob::class);
+        $this->assertSame('Descrição escrita com a tela aberta.', $this->rascunhoDo($p)->descricao);
+        $this->assertTrue(EditorEmUso::emUso((int) $pub->id), 'a fila de publicação segue esperando quem revisa (19/10)');
     }
 
     // ═══ Chave e custo ═══════════════════════════════════════════════════════
@@ -700,7 +732,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->salvarNoPortal($b);
         $this->rodar(PrepararProdutoNoPublicadorJob::class);
 
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        Queue::assertPushed(GerarPreparoIaJob::class, 2); // as duas cadeias de UM produto
         $this->rodar(GerarPreparoIaJob::class);
         $this->assertNotSame([], array_filter($this->titulos($this->rascunhoDo($a))));
         $this->assertSame([], array_filter($this->titulos($this->rascunhoDo($b))), 'o 2º só foi sincronizado');
@@ -826,6 +858,38 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertSame(['value_name' => 'Linha Executiva', 'origem' => 'user'],
             array_intersect_key($this->modelo($r), array_flip(['value_name', 'origem'])));
         $this->assertCount(0, $this->chamadas['modelo']);
+    }
+
+    // ═══ N9: abrir o editor não grava (22/10/2026) ═════════════════════════════
+
+    public function test_o_preparo_grava_os_padroes_do_editor_e_quem_so_abre_nao_grava(): void
+    {
+        // O editor gravava o EAN gerado ao abrir (PUT das variantes) e o "editando" adiava esta mesma IA em 5 min.
+        $p = $this->produtoDoPortal();
+        $this->salvarERodar($p);
+        $r = $this->rascunhoDo($p);
+        $pub = $this->pubDo($p);
+
+        $variantes = (new RascunhoRepository())->snapshot($r->fresh())->variantes;
+        $this->assertNotSame([], $variantes);
+        foreach ($variantes as $v) {
+            $gtin = (string) ($v->dados['atributos']['GTIN']['value_name'] ?? '');
+            $this->assertTrue(\App\Support\Publicador\PadroesDoEditor::eanValido($gtin), "a variação {$v->chave} chega com o código gerado ({$gtin})");
+        }
+
+        // Um save a mais no Portal sem mudança: o preparo roda de novo e não troca o código nem sobe a revisão.
+        $revisao = $r->fresh()->revisao;
+        $gtins = array_map(fn ($v) => $v->dados['atributos']['GTIN']['value_name'], $variantes);
+        $this->salvarERodar($p);
+        $this->assertSame($gtins, array_map(fn ($v) => $v->dados['atributos']['GTIN']['value_name'], (new RascunhoRepository())->snapshot($r->fresh())->variantes));
+        $this->assertSame($revisao, $r->fresh()->revisao, 'nada faltava: nada gravado');
+
+        // Abrir o editor (a leitura do estado) não grava e não segura a IA.
+        Cache::forget(EditorEmUso::chaveDaEdicao((int) $pub->id));
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->getJson(route('mlb.anuncios.publicador.abrir', $pub->id))->assertOk();
+        $this->assertSame($revisao, $r->fresh()->revisao);
+        $this->assertFalse(EditorEmUso::editando((int) $pub->id));
     }
 }
 

@@ -13,7 +13,7 @@ use App\Support\TituloDoProduto;
  * `ativo = false`: o tipo já está no ar (importado ou publicado) e não se
  * publica de novo — é a régua do Mapeamento que diz.
  *
- * 19/10/2026: o título sai daqui sempre com a 1ª letra maiúscula (`TituloDoProduto`).
+ * 19/10/2026: o título sai daqui sempre com a 1ª letra de cada palavra maiúscula (`TituloDoProduto`).
  * Todo caminho passa por este objeto — o que o editor grava, o que se confere, o
  * planejado que vem do Portal e o `family_name` do payload —, por isso a regra mora nele.
  */

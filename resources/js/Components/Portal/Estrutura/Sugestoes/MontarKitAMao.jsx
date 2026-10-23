@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Minus, Package, Plus, Search, Tra
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import { Botao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import { PilulaLogistica, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { SeloFase } from './PecasDaSugestao';
+import { rotulosDoDestino, SeloFase, TextoForaDoMe2 } from './PecasDaSugestao';
 import {
     MAX_COMPONENTES_PADRAO, METODOLOGIA, ROTULO_FASE_MONTAGEM, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo,
     itemInicialDoProduto, mudarQuantidade, removerItem, rotuloDaVariacao, textoDaCriada, textoDoCriar, textoDoEstoque,
@@ -96,12 +96,16 @@ export function LegendaDaMetodologia({ fase = null }) {
     );
 }
 
-/** Uma linha da lista de escolha: clicar acrescenta o item à composição. */
+/**
+ * Uma linha da lista de escolha: clicar acrescenta o item à composição. A foto é a da cor (22/10/2026: "tem que
+ * ser a imagem do produto", não as siglas); sem foto, só o ícone de caixa.
+ */
 function BotaoDoItem({ item, titulo, sub, estoque, cheio, onAdicionar }) {
     return (
         <button type="button" onClick={() => onAdicionar(item)} disabled={cheio} data-acao="adicionar-item"
             aria-label={`Adicionar ${titulo}`}
             className={cn('flex min-h-[44px] w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.05] disabled:opacity-40 lg:min-h-9', FOCO)}>
+            <QuadroFotoProduto nome={item.nome} foto={item.foto} tamanho="escolha" comIniciais={false} />
             <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] text-white/90">{titulo}</span>
                 <span className="block truncate font-mono text-[11.5px] text-white/45">{sub}</span>
@@ -133,14 +137,13 @@ function ListaDeEscolha({ catalogo, busca, escolhidos, cheio, onAdicionar }) {
                 {lista.produtos.map((p) => (
                     <li key={p.produto_id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-1.5">
                         <p className="flex items-center gap-2 px-1.5 pb-1 pt-0.5">
-                            <QuadroFotoProduto nome={p.nome} tamanho="icone" />
                             <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-white">{p.nome}</span>
                             {p.tipo_nome && <span className="shrink-0 text-[11.5px] text-white/45">{p.tipo_nome}</span>}
                         </p>
                         <ul>
                             {p.variacoes.map((v) => (
                                 <li key={v.variacao_id}>
-                                    <BotaoDoItem item={{ variacao_id: v.variacao_id, nome: rotuloDaVariacao(p, v), sku: v.sku }}
+                                    <BotaoDoItem item={{ variacao_id: v.variacao_id, nome: rotuloDaVariacao(p, v), sku: v.sku, foto: v.foto ?? p.foto ?? null }}
                                         titulo={v.valor ?? 'Variação única'} sub={v.sku} estoque={v.estoque} cheio={cheio} onAdicionar={onAdicionar} />
                                 </li>
                             ))}
@@ -153,7 +156,7 @@ function ListaDeEscolha({ catalogo, busca, escolhidos, cheio, onAdicionar }) {
                         <ul>
                             {lista.avulsas.map((o) => (
                                 <li key={o.oferta_id}>
-                                    <BotaoDoItem item={{ oferta_id: o.oferta_id, nome: o.nome || o.sku, sku: o.sku }} titulo={o.nome || o.sku} sub={o.sku}
+                                    <BotaoDoItem item={{ oferta_id: o.oferta_id, nome: o.nome || o.sku, sku: o.sku, foto: o.foto ?? null }} titulo={o.nome || o.sku} sub={o.sku}
                                         cheio={cheio} onAdicionar={onAdicionar} />
                                 </li>
                             ))}
@@ -222,7 +225,7 @@ export function PreviaDoKit({ previa, calculando, nome, sku, onNome, onSku, voca
                 {logistica && (
                     <span className="inline-flex items-center gap-1.5">
                         <Package size={14} aria-hidden="true" />
-                        <PilulaLogistica chave={logistica.chave} rotulos={vocabulario?.logisticas} className="h-auto bg-transparent px-0" />
+                        <PilulaLogistica chave={logistica.chave} rotulos={rotulosDoDestino(vocabulario?.logisticas, logistica)} className="h-auto bg-transparent px-0" />
                     </span>
                 )}
                 {temFrete && (
@@ -230,7 +233,7 @@ export function PreviaDoKit({ previa, calculando, nome, sku, onNome, onSku, voca
                         <Truck size={14} aria-hidden="true" /> Frete estimado <strong className="tabular-nums text-white">{fmtReais(previa.frete.valor)}</strong>
                     </span>
                 )}
-                {logistica?.chave === 'me1' && <span data-frete>Frete pela sua transportadora</span>}
+                {logistica?.chave === 'me1' && <TextoForaDoMe2 destino={logistica.destino} />}
                 <span data-custo>Custo do conjunto <strong className="tabular-nums text-white">{fmtReais(previa.custo)}</strong></span>
             </div>
             {logistica?.chave === 'pendente' && semMedida.length > 0 && (
@@ -411,7 +414,7 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
 
                                     return (
                                         <li key={chave} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-2.5 py-2" data-item={chave}>
-                                            <QuadroFotoProduto nome={i.nome} tamanho="miniatura" />
+                                            <QuadroFotoProduto nome={i.nome} foto={i.foto} tamanho="escolha" comIniciais={false} />
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate text-[13px] text-white">{i.nome}</span>
                                                 <span className="block truncate font-mono text-[11.5px] text-white/45">{i.sku}</span>

@@ -1374,7 +1374,11 @@ test('a PÁGINA preencheu o slot `linhaDaOferta`, e o destino é o FOCO da ofert
     // e nenhum outro gate desta wave pegaria isso, porque os casos que rodam o
     // COMPONENTE provam "sem handler não há checkbox", não "a página o liga".
     assert.match(FONTE_PAGINA, /onMarcarVisiveis=\{marcarVisiveis\}/, 'a página deixou de ligar a seleção em lote (plano 187-09)');
-    assert.doesNotMatch(FONTE_PAGINA, /onMarcar=/, 'o checkbox da LINHA é do plano 187-09');
+    // ⚠️⚠️ 23/10/2026 (P-18c) — e esta negativa foi INVERTIDA pelo mesmo motivo da
+    // de cima: ela nomeava o plano 187-09, que fechou SEM ligar o checkbox da
+    // linha (o `LinhaDaOferta` sabia desenhá-lo; a página nunca passava
+    // `onMarcar`). A positiva prova que a página o liga.
+    assert.match(FONTE_PAGINA, /onMarcar=\{marcarOferta\}/, 'a página deixou de ligar o checkbox da LINHA (seleção uma a uma)');
     assert.doesNotMatch(FONTE_PAGINA, /onRevisarFotos=/, 'o painel de revisão é a Fase 188');
 
     // ⚠️ Zero `localStorage` e zero `String(` na página (gate da wave 4, e está certo).

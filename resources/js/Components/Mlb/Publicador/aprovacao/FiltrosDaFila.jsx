@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import PopoverDeFiltro from './PopoverDeFiltro';
+import CampoDeBuscaDaFila from './CampoDeBuscaDaFila';
 import { ROTULO_DO_BLOQUEIO } from './vocabularioDoPortao';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -77,8 +78,10 @@ import { ROTULO_DO_BLOQUEIO } from './vocabularioDoPortao';
 // O `KEY='ecf-aprovacao-v1'` do protótipo (`:914`) é artefato dele. **Todo
 // filtro vive na URL** (COL-03): este componente é SEM ESTADO — recebe os
 // valores por prop e devolve os handlers que a página traduz em `router.get`.
-// ⚠️ Nem `useState`: a busca é um input CONTROLADO pela prop, e debounce/estado
-// local aqui faria a URL e a tela divergirem por um instante.
+// ⚠️ Nem `useState` AQUI. ⚠️ 23/10/2026 (P-18a): a busca deixou de ser input
+// controlado pela prop — ela perdia letras e não aceitava espaço (o servidor faz
+// `trim` e cada tecla era uma visita). O rascunho da digitação, com o atraso,
+// mora em `CampoDeBuscaDaFila.jsx`; o filtro continua na URL.
 //
 // ⚠️ TODA classe mora NESTE `.jsx`: o `content` do `tailwind.config.js` varre
 // `./resources/js/**/*.jsx` e **NÃO** `*.js`.
@@ -329,13 +332,13 @@ export default function FiltrosDaFila({
                     <circle cx="7" cy="7" r="4.5" />
                     <path d="M10.5 10.5L14 14" />
                 </svg>
-                <input
-                    type="search"
-                    value={busca}
-                    onChange={podeMudarBusca ? (evento) => onBusca(evento.target.value) : undefined}
-                    readOnly={!podeMudarBusca}
+                {/* 23/10/2026 (P-18a): o input guarda o que está sendo digitado e
+                    só mexe na URL quando a pessoa para (ver `CampoDeBuscaDaFila`).
+                    Controlado pela busca do servidor, ele comia letras e o espaço. */}
+                <CampoDeBuscaDaFila
+                    valor={busca}
+                    onBusca={podeMudarBusca ? onBusca : null}
                     placeholder={PLACEHOLDER_DA_BUSCA}
-                    aria-label={PLACEHOLDER_DA_BUSCA}
                     className={CLASSES_INPUT}
                 />
             </div>

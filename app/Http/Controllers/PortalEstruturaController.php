@@ -137,7 +137,10 @@ class PortalEstruturaController extends Controller
         // 11/10/2026: a lista vem agrupada por família, e `?tipo=` deixa passar um tipo só de oferta.
         $tipo = (string) $request->query('tipo', '');
         $tipo = array_key_exists($tipo, EstruturaOferta::FASES) ? $tipo : null;
-        $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1), ['por_familia' => true, 'fase' => $tipo]);
+        // 20/10/2026: o que falta precificar vem na frente, antes de paginar — o pronto fica para o fim.
+        $pendentes = array_filter($this->precificacao->pendencias($empresa), fn ($p) => $p !== null);
+        $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1),
+            ['por_familia' => true, 'fase' => $tipo, 'pendentes' => array_fill_keys(array_keys($pendentes), true)]);
         $ids = array_merge(...array_map(fn ($b) => array_column($b['ofertas'], 'id'), $estrutura['blocos'] ?: [['ofertas' => []]]));
 
         $cotacao = null;
@@ -156,7 +159,8 @@ class PortalEstruturaController extends Controller
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.precificacao', PortalContexto::ator()),
             'estrutura'    => $estrutura,
             'precificacao' => $this->precificacao->pagina($empresa, $ids),
-            'filtros'      => ['q' => $busca, 'tipo' => $tipo],
+            // `vista` (20/10/2026): o link pode abrir direto no Simulador ou na Lista; sem ela, vale a do navegador.
+            'filtros'      => ['q' => $busca, 'tipo' => $tipo, 'vista' => in_array($request->query('vista'), ['simulador', 'lista'], true) ? $request->query('vista') : null],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => [
@@ -180,6 +184,12 @@ class PortalEstruturaController extends Controller
         $this->precificacao->salvarOferta($registro, $request->only([
             'custo', 'frete_classico', 'frete_premium', ...EstruturaPrecificacao::EXCECOES,
         ]), PortalContexto::ator());
+
+        // A ficha do produto (20/10/2026) grava por JSON: ela não pode recarregar a página, que tem o
+        // formulário do produto aberto. A tela da Precificação segue com o `back()` do Inertia.
+        if ($request->wantsJson() && ! $request->header('X-Inertia')) {
+            return response()->json(['mensagem' => "Preço de {$registro->sku} salvo."]);
+        }
 
         return back()->with('success', "Preço de {$registro->sku} salvo.");
     }

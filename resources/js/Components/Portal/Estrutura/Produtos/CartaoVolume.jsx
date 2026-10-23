@@ -22,8 +22,8 @@ export default function CartaoVolume({ variacao, indice, caixa, ficha }) {
     return (
         <div className="rounded-[10px] border border-white/[0.08] bg-black/20 px-3 py-2.5 lg:py-2" data-volume-cartao>
             <div className="mb-1.5 flex items-center justify-between lg:mb-0.5">
-                <span className="text-[15px] font-semibold text-white">Volume {indice + 1}</span>
-                <button type="button" onClick={() => ficha.removerCaixa(variacao, indice)} aria-label={`Remover volume ${indice + 1}`}
+                <span className="text-[15px] font-semibold text-white">Caixa {indice + 1}</span>
+                <button type="button" onClick={() => ficha.removerCaixa(variacao, indice)} aria-label={`Remover caixa ${indice + 1}`}
                     className="grid h-8 w-8 place-items-center rounded-lg lg:-my-1 text-red-300/80 hover:bg-white/[0.06] hover:text-red-200">
                     <Trash2 size={16} />
                 </button>

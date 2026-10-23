@@ -1571,10 +1571,548 @@ Relato do usuário: num teste a IA gerou a descrição com emoji, e o Mercado Li
 - **Título:** o da IA nunca teve como levar emoji (`RegrasDoTitulo::limpar` troca por espaço tudo que não é letra ou
   número). O digitado não passa por limpeza nenhuma.
 
-## 36. Título do cliente como planejado do Clássico e a 1ª letra maiúscula (19/10/2026)
+## 36. Título do cliente como planejado do Clássico e maiúscula em toda palavra (19–20/10/2026)
 
 (§35 está reservado pelo commit local da planilha direta, `e87404db`, ainda fora do `main`.)
 Detalhes em `portal-do-cliente.md` §52. Para quem mexe no Publicador: o título planejado do Clássico agora pode vir do
 título de venda do Portal (`DadosEfetivosService::comTituloDoCadastro`); a IA nunca o sobrescreve e apaga o Clássico que
 ela mesma tinha escrito quando o cliente dá o título depois (`devolvidosAoPortal`); e todo título sai capitalizado pelo
 `Alvo` e pelo mutator de `PubRascunhoAlvo` — update por query precisa capitalizar à mão (`gravarTitulos`).
+
+## 37. A conta só com Produtos e a etapa 5 "Prévia" (20/10/2026)
+
+Pedido do usuário depois da reunião de 19/10 ("menos é mais").
+
+- **Abas:** `publicador.abas_ocultas` (config) → `cabecalho.abas_ocultas` → `AbasDoHeader` filtra (`abasVisiveis`).
+  Visão geral, Publicações e Alavancas seguem abrindo pela URL, e quem chega assim vê a própria aba. A entrada (lista de
+  empresas, acesso rápido, busca do header) abre Produtos. Para devolver uma aba: tirar a chave da config.
+- **Etapa 5 "Prévia"** (`EtapaPrevia` + `AnuncioNoMl`): Conferir/Publicar saíram do fim da etapa 4 para baixo dela.
+  Problema de conta, conferência e publicação (E0, E11, E13, OUTROS, sem etapa) cai em `previa` (`etapaDoProblema`), então
+  não trava o "Continuar" da 4.
+- **A prévia sai do MESMO plano da publicação.** `PreviaDoAnuncioService::montar` chama
+  `PayloadBuilderUserProducts::montar` com TODA foto marcada como enviada (id → id), para ter a ordem final, inclusive a da
+  foto que não subiu (url = `fotos.arquivo`). É também a leitura do agente revisor (números e textos, sem HTML).
+- **Parcelas do Premium:** o ML não informa antes de publicar. `publicador.previa.parcelas_premium` traz a regra
+  divulgada em 2022 (9x até 299,99; 10x até 1.499,99; 12x acima), e a tela a chama de estimativa. O Clássico mostra "Ver
+  os meios de pagamento". Título no ML = `family_name` + valores da variação (medido no §21).
+- **Achado da prévia (comportamento de publicação de hoje, NÃO mexido):** no Premium, a rotação D6
+  (`OrdemCapaPorAlvo`, gira 1 para a esquerda) manda a capa da COR para o FIM. Com 1 foto própria por cor, as duas
+  cores abrem com a mesma foto geral.
+- **Gates da Fase 188 que dependem da árvore:** os `TERR` de `publicador-painel-*-188.test.js` medem `git diff HEAD`. Eles
+  falham enquanto houver alteração não commitada em `PublicadorHeader.jsx` ou `.js` novo sob `resources/`, e limpam no
+  commit. O `FotosDoPainelServiceTest` confere ponteiro `arquivo:linha`: a linha 405 do `MlbPublicadorController` precisa
+  conter `EditorEmUso::`. Por isso método ou `use` novo nesse controller vai no FIM da classe, com nome completo. O
+  ponteiro `PreparoIaDoRascunhoService:131` já estava deslocado no `origin/main` de 20/10 (`e250f9fb`).
+- **Demonstração local sem MySQL e sem ML** (usada para o usuário acompanhar no Chrome de QA):
+  - banco: SQLite no scratchpad;
+  - rascunho: `rascunhoDoProduto` (não `abrir`), com `step_state.conta` preenchido e `conta_checada_em` no futuro, para o
+    editor não ir ao ML;
+  - ambiente: `PUBLICADOR_ML_API_BASE=http://127.0.0.1:9`, `MAIL_MAILER=log` e a conta fora de `contas_liberadas`;
+  - fotos: `ImagemAssetService::receber(..., enviar: false)`.
+  - O build do worktree com o `.env` copiado põe os chunks em `localhost/ecf_admin/public` (CORS na porta própria). Use o
+    Vite dev do worktree em outra porta (`npx vite --port 5174 --strictPort`), que escreve o `public/hot` DO worktree.
+  - O `php -S` com o `server.php` do framework roda de dentro de `public/`.
+
+## 38. Vitrine de produtos (protótipo, 20/10/2026) e a pendência POR COR
+
+- **Atrás de `publicador.vitrine`** (env `PUBLICADOR_VITRINE`, desligada): com a chave ligada, `produtos()` do
+  `MlbPublicadorEntradaController` renderiza `Mlb/Publicador/ProdutosVitrine` (cartões) e não a lista. O
+  `VitrineDeProdutosService` parte do `ResumoRapidoService::linhas(..., comPublicados: true)` e acrescenta a 1ª foto de
+  cada cor (`ResolvedorGruposImagem::resolver`) e o chip. Hoje é um `RascunhoRepository::snapshot` por produto (~8
+  consultas cada); a visão rápida é de consulta fixa. Antes de ligar em conta grande, montar as fotos em lote.
+- **`step_state.resumo.por_cor`** (gravado pelo `gravarResumo` em todo `estado()`): variante → rótulos curtos ("falta
+  foto", "falta estoque"…). Vale pelo `alvo.variante` ou pelo `alvo.grupo` da foto (`chaveDoGrupo`); o que é do produto
+  inteiro não entra. Como a contagem de bloqueios, ele só é refeito quando alguém abre ou salva o editor.
+- **"Preparando" não existe** na vitrine de propósito: o preparo pela IA não grava início nem fim. A marca do
+  `PreparoIaAgenda` vive 24 h no cache e não é apagada ao terminar. Para ter o filtro, gravar início e fim da cadeia.
+- **`EditorRascunhoService::salvar(['atributos' => ...])` SUBSTITUI a ficha inteira.** Mandar só 4 campos apaga os
+  outros (isso apagou Marca e Modelo num script de demonstração). Script que mexe em ficha manda o conjunto completo.
+- **Tailwind no Vite dev não enxerga PASTA nova criada depois que o servidor subiu** (Windows): as classes arbitrárias
+  dos arquivos novos (`aspect-[4/3]`, `max-w-[1320px]`, a grade) não entram no CSS, e o cartão ocupa a tela inteira.
+  Reiniciar o Vite. Matar só a tarefa do terminal deixa o `node` ouvindo na porta: conferir o PID pela linha de comando
+  antes de encerrar.
+
+## 39. "Fase" tem dois sentidos, e Combo/Kit/Combit nascem só no Planejamento (20/10/2026)
+
+- **Na metodologia do usuário, "Fase" é o TIPO da oferta:** Fase 1 Simples, Fase 2 Combo (o mesmo produto × N,
+  qualquer N), Fase 3 Kit (produtos diferentes), Fase 4 Combit (kit com algum item × N). É a régua do "Como funciona"
+  do Portal (`ComoFunciona.jsx`). **`pub_produtos.fase` é outra coisa:** a quantidade ("Kit N é a Fase N", decisão de
+  10/10, `faseDaQuantidade`). O Combo de 3 cadeiras é Fase 2 para o usuário e `fase = 3` na coluna; o Kit mesa +
+  cadeira é Fase 3 para ele e `fase = 1` (composto sem base) na coluna. A vitrine usa a régua do Portal
+  (`FasesDaVitrineService`) e NÃO lê a coluna; Visão geral, buckets `por_fase` e a tela do Produto seguem na
+  quantidade. Alinhar o resto é decisão do usuário, com o outro dev (o código é da Fase 175).
+- **O Combit é Fase 4.** Numa primeira pergunta o usuário pôs o Combit "na Fase 3, junto com o Kit"; quando viu que o
+  Portal já dizia Fase 4, escolheu "Fase 4 nos dois". Não mude o "Como funciona" do Portal.
+- **Decisão de 20/10: criar Combo, Kit e Combit é SÓ no Planejamento do Portal** — implementada no mesmo dia (nota ao
+  outro dev: `.planning/coordenacao/261020-combo-kit-combit-so-no-planejamento.md`). O que não se deduz do código:
+  - **A fase nasce do ACEITE no Planejamento, nunca de uma regra do Publicador.** Correção do usuário no mesmo dia:
+    "o certo não é criar outras fases automaticamente; essas fases são decididas no Planejamento" — lá a equipe
+    analisa se faz sentido combo de 2, 3 ou outra quantidade, e o que ela aceita vai ao Publicador e vira fase. A
+    metodologia: anuncia o produto unitário (Fase 1) e DEPOIS vê o que mais dá para fazer (2 cadeiras; mesa + 4
+    cadeiras). Sugestão não aceita nunca vira fase; o Publicador não escolhe quantidade. **Diga "aceito no
+    Planejamento", nunca "planejado"**: "planejado" foi lido como sugestão e gerou a correção. Combo aceito ANTES de
+    a Fase 1 ir ao ar espera por ela (confirmado pelo usuário).
+  - **O combo aceito vira fase sozinho com a Fase 1 no ar** (`CombosDoPlanejamentoService` + `CriarCombosDoPlanejamentoJob`,
+    fila `high`). Dois gatilhos, que só AGENDAM: o fim da publicação (`PublicacaoService::concluir` e `encerrar` — "Parte
+    publicada" conta, como no KIT-05) e o Sincronizar (o Combo aceito DEPOIS de a Fase 1 estar no ar — o caminho normal;
+    `combos_agendados` no resumo). O deploy NÃO cria nada sozinho: base já publicada com combo esperando ganha o kit no
+    próximo "Sincronizar do Portal" ou no próximo save daquele produto no Portal. Job novo na `high` → `queue:restart`.
+  - **O kit sai só com as cores que têm o Combo N no Portal** (`variantes_ativas` no `CriarFaseService`; a cor sem
+    Combo N fica INATIVA no kit). A cor cujo Combo N já está no ar como produto avulso (o Sincronizar de antes criava um
+    por oferta) também fica de fora — publicar o kit com ela duplicaria o anúncio. Sem capa por IA (custo; a equipe pede
+    no editor). Depois de criar, roda o `estado()` do editor: sem ele o kit que ninguém abriu aparecia "Pronto".
+  - **O Publicador não cria oferta no Portal nem com pessoa:** o `garantirOfertas` virou `skusDasOfertas` (só lê). O
+    aviso `ofertas_novas_no_portal` da prévia virou `cores_sem_combo`.
+  - **"Do Portal" = `estrutura_produto_id` preenchido e não ser kit** (`CombosDoPlanejamentoService::doPortal`). Esses
+    não têm "Criar Fase N": o endpoint recusa com KIT-08 (prévia, criar e IA), a lista manda `combos_no_portal` (o
+    menu esconde) e a tela do Produto troca o botão por "Nasce do Planejamento do Portal" (`proxima_fase.combos_no_portal`,
+    `combos_esperando`, `fase_1_no_ar`). Produto sem esse vínculo — Polos sem empresa cadastrada, produto criado no
+    Publicador, legado de um produto por oferta — segue com o "Criar Fase N" de sempre.
+- **Na vitrine, o Kit e o Combit aparecem no cartão de CADA componente** que está no Publicador (a mesma face; marcar
+  num marca no outro, porque a seleção é pelo id). O componente se acha pela variação → produto do Portal → base
+  (`estrutura_produto_id`) ou, no legado de um produto por cor, pela oferta Simples (`oferta_id`). Composto sem
+  componente no Publicador fica no próprio cartão. A face de espera ("Espera a Fase 1 ser publicada") é o Combo do
+  Planejamento sem anúncio: `quantidadesDoPlanejamentoEmLote` faz em 3 consultas o que `quantidadesDoPlanejamento`
+  faz por produto, com a mesma régua de cores (`CoresDoGrupo`), e um teste compara os dois.
+- **Build local de worktree aponta os pedaços dinâmicos para o `ASSET_URL` do `.env`** (`localhost/ecf_admin/public`):
+  servindo o build por outra porta, um chunk cai em CORS. Para provar o bundle de produção do worktree, basta
+  renomear o `public/hot` DELE (não o do `ecf_admin`) e recarregar; o resto da página carrega do `/build`.
+
+## 40. As imagens por IA automáticas entram SOZINHAS e passam a ser AS fotos do grupo (20/10/2026)
+
+- **Decisão do usuário:** "quando salvo no Portal, o cliente coloca as imagens, o produto vai para o Publicador e,
+  assim como título e Modelo, a imagem também é gerada pela IA; o preview é a única coisa que o colaborador confere —
+  se tiver errado a gente corrige". Depois de ver a 1ª versão (as da IA na frente, as do cliente atrás), corrigiu:
+  "não deve entrar apenas a capa, as imagens devem entrar, assim como é no sistema já; a imagem do cliente é usada
+  apenas para referência de recriar igual". Ou seja: o grupo fica SÓ com as imagens do kit, na ordem dos slots (o
+  Clássico abre com a 1ª e o Premium com a 2ª, pela rotação D6). "Como já é no sistema" = o assistente antigo, onde
+  `CreativeKitPublicacao::aplicarPictures` monta as fotos do anúncio SÓ com os criativos aprovados do kit.
+- **O kit automático tem 3 imagens de tipos fixos** (decisão do usuário de 20/10, "3 imagens, 2 capas", depois de ver
+  o Premium do CAD-SP abrir com a TEXTURA): a rotação D6/CAPA-01 (pedido dele na Fase 168: capa diferente no Clássico e
+  no Premium) manda a 1ª foto para o fim no Premium — com 2 imagens [ambientada, textura] o Premium abria com o detalhe.
+  Agora `criativos_auto.slots` = Imagem principal (`hero`) + Ambientação (`lifestyle`) + Textura (`detail_textura`); em
+  MÓVEL a Ambientação vai para a frente (`tiposDoKit`, Quick 261007-amb — com tipos fixos o planejador não troca
+  sozinho). Clássico abre com uma capa, Premium com a outra, a textura nunca abre. ~US$ 0,30 por kit. Env
+  `PUBLICADOR_CRIATIVOS_AUTO_SLOTS` (vazio = o kit do botão, `services.creative.kit.slots`, 2 em prod).
+- **`CriativosAutomaticosService::aplicar`** (Job `AplicarCriativosAutomaticosJob`, fila `creative`, único por kit,
+  20 s de espera para juntar os gatilhos): só o kit que a automação pediu (`step_state.criativos_auto.grupos[grupo]
+  .kit_id`) — o do botão segue com aprovação de gente; entra pelo MESMO `aprovarSlot` do botão (que põe no FIM do
+  grupo) e depois `EditorRascunhoService::trocarFotosDoGrupo` deixa o grupo só com elas (no FIM da classe de
+  propósito: os documentos da Fase 188 apontam `EditorRascunhoService:370-372`). A foto do cliente sai da galeria mas
+  NÃO é apagada: fica no rascunho (`pub_imagens`, sem atribuição) como referência. Nenhuma imagem aprovável (todas
+  reprovadas sem nova tentativa): as fotos do cliente FICAM — o anúncio nunca fica sem foto por aqui.
+- **Só a foto que o CLIENTE pôs no Portal dispara e serve de referência** (o usuário, 20/10: "a imagem só deve ser
+  gerada automaticamente, assim como os títulos, se o cliente puser uma imagem real do produto dele no Portal"). Não
+  há marca de origem em `pub_imagens`: `CriativosAutomaticosService::shasDoCliente` lê as fotos do Portal
+  (`estrutura_produto_variacao_imagens`), passa pelo MESMO `ConversorParaJpg` do Sincronizar (JPEG/PNG inteiros, o resto
+  vira JPEG) e compara o sha256 com o da foto no rascunho — vale também para rascunho sincronizado antes da regra (o
+  Sincronizar só copia para grupo VAZIO, D-05, então uma marca gravada na cópia nunca chegaria a eles). Foto que a
+  equipe subiu no Publicador não dispara. "Real" não dá para provar: a regra garante só que é a foto do cliente.
+- **IA nunca é referência de IA:** `grupos()` conta só a foto DO CLIENTE (fora ativo do acervo com origem `ia` e foto
+  ligada a criativo por `ml_anuncio_criativos.pub_imagem_id` — a mesma regra do `acervo:registrar-existentes`). O
+  grupo que ficou só com as imagens do kit sai da lista (`sem_foto`) e não gera de novo nem com o kit em erro.
+- **O gatilho é evento do Eloquent, não código do outro dev:** `MlAnuncioCriativoKit::updated` (o `recalcularStatus()`
+  grava pelo modelo) e `MlAnuncioCriativo::updated` (o juiz grava `validacao_status` pelo modelo), registrados no
+  `AppServiceProvider`. Os ganchos só conferem o barato e NUNCA lançam: rodam dentro dos Jobs do Creative Engine.
+- **Corrida do juiz:** o `ValidarCriativoIaJob` grava "reprovada", recalcula o kit e SÓ DEPOIS decide refazer a imagem
+  (VAL-05, uma vez, dentro do orçamento do kit). Por isso o `aplicar` espera enquanto houver reprovada que ainda pode
+  ser refeita (`regeneracao_automatica` falso e `podeRegenerarAsset`); a que não vai ser refeita NÃO entra (fica no
+  painel; aprovada à mão depois, o `aprovarSlot` a põe no fim do grupo). Juiz `pendente` também faz esperar.
+- **Todas as cores (`criativos_auto.todas_as_cores`, padrão `true` desde a correção):** com a foto do cliente só de
+  referência, a cor sem kit ficaria com a foto do cliente no anúncio. Cada grupo com foto do cliente (a geral e cada
+  cor) ganha o seu kit: custo ≈ US$ 0,20 × grupos, e o teto diário (`limite_diario_por_empresa`) conta kits — produto
+  de muitas cores pode estourar o teto e ficar com parte das cores na foto do cliente.
+- **Foto de referência ainda sobe para o ML:** `ImagemAssetService::enviarPendentes` sobe TODA `pub_imagens` não
+  enviada do rascunho, com ou sem atribuição (os testes de `ImagensTest` contam com isso). Não é regressão (antes as
+  mesmas fotos subiam por estarem na galeria), mas é envio inútil e disputa o limite por minuto do ML. Se aparecer
+  "limitou o envio de fotos por minuto" em produto com muitas cores, filtrar ali por atribuição.
+- **NUNCA disparar a automação pelo tinker como root** (20/10, CAD-SP, kit 21): o `avaliar` cria a pasta
+  `storage/app/private/creative-referencias/{token}` com dono root e modo 0700; os workers (www-data) não a enxergam,
+  o `ReferenciaEfemeraService::bytesDe` devolve `[]` e a geração roda SÓ com o texto da ficha (o `CreativeContextBuilder`
+  confere o REGISTRO da referência, não o arquivo) — a imagem não é o produto do cliente, e o juiz diz "as fotos
+  originais já foram apagadas". Disparo manual: `runuser -u www-data -- env HOME=/tmp php artisan tinker`. Para refazer:
+  galeria de volta à foto do cliente (`trocarFotosDoGrupo`), kit antigo em `erro` e apagar
+  `step_state.criativos_auto.grupos[grupo]` (senão o hash diz "em dia").
+- **Para ligar em produção** (só com o ok do usuário): o deploy, `PUBLICADOR_CRIATIVOS_AUTO_ATIVO=true` + `config:cache`,
+  `Configuracao::set('publicador_criativos_auto_usuario', '<id>')` (ativo, com `mlb.criativos_ia`),
+  `publicador_criativos_auto_companies` (começar pela #459), a chave do Creative Engine e `queue:restart`.
+  Lembrar: foto desenhada já deu infração na #459 (10/10) — a Prévia passa a ser a única barreira.
+
+## 41. "Desconectado" era só o token vencido; vitrine por conta (20/10/2026)
+
+- O access token do ML dura 6 h e o `ml:refresh-tokens` roda UMA vez por dia (08:00, janela de 2 h). Às 15h40 de
+  20/10, **115 dos 139 tokens de produção estavam vencidos** — e o Publicador (pill do header, bolinha do seletor,
+  `SeloConta`, filtro "atenção" da entrada, Visão geral) pintava todos de "desconectado" / "Token expirado" /
+  "Reconectar". Não estavam: toda chamada renova sozinha (`MercadoLivreService::ensureValidToken`,
+  `ClienteMlPublicador::tokenValido`).
+- Decisão do usuário: vermelho só quando a conexão caiu de verdade. `ProgramasPublicadorService::estadoDoToken`: token
+  não revogado = `ativo` (vencido incluído); revogado ou nenhum = `sem_token`. O refresh token inválido
+  (`invalid_grant`) vira `revoked` na 1ª renovação (`MercadoLivreService::refreshToken`) — é aí que a conta aparece
+  desconectada, com o link de reconexão. `expirado` segue aceito pelas telas, mas não sai mais do servidor; o filtro
+  "atenção" da entrada passou a listar só quem precisa reconectar.
+- Segue valendo: a renovação das 08:00 dá 429 em rajada (vários "Falha ao renovar token … Erro 429 (transitório)" em
+  20/10) — esses tokens só renovam no próximo uso. O agendamento não mudou.
+- **Vitrine por conta:** `PUBLICADOR_VITRINE=true` liga para todas; `PUBLICADOR_VITRINE_CONTAS=company-459,…` (a chave
+  da URL) liga só nas listadas (`VitrineDeProdutosService::ligadaPara`). Em 20/10 ficou ligada só na #459 ("só na
+  #459 primeiro"); o time segue com a lista até o usuário aprovar. A vitrine NÃO tem "Editar em grade", a busca por
+  SKU, "Confortável/Compacto" nem o filtro "Com problema" — conferir com o usuário antes de ligar para todos.
+- **"Pronto" é afirmação** (20/10, "está dizendo que está pronto, mas nem imagem tem"): o cartão lia
+  `step_state.resumo.bloqueios`, e rascunho que nunca teve resumo (planilha, kit, Portal sem abrir o editor — 9 dos 39
+  da #459) contava como "nada falta"; sem categoria o `estado()` nem valida e gravava 0. Agora "Pronto" exige foto e o
+  resumo em dia: mesma `revisao`, `validado` e a `versao` de hoje — senão a vitrine refaz (o `estado()` do editor,
+  ~40 ms, até 40 por visita) ou diz "A conferir"/"Falta categoria"/"Falta imagem".
+- **Os rótulos do `por_cor` são texto GRAVADO** no resumo ("Rosa: falta imagem"). Mudou um rótulo, sobe
+  `EditorRascunhoService::VERSAO_DO_RESUMO`: a vitrine refaz o resumo de outra versão e o texto velho sai da tela
+  (foi assim no "falta foto" → "falta imagem").
+- **"Saiu do Portal":** o cliente exclui no Portal (hard delete) e a FK `nullOnDelete` deixa `oferta_id` e
+  `estrutura_produto_id` nulos — o produto fica no Publicador. A vitrine mostra o chip vermelho e exclui pela seleção
+  com o MESMO `DialogoExcluirProdutos`/`ExcluirProdutoService` da lista (só o que nunca foi publicado; o que ainda
+  existe no Portal é recusado com EXC-01). Na #459, em 20/10, eram 22 assim.
+- **A IA do preparo não espera mais quem só OLHA** (20/10, "que salvar o produto com imagem, já gerar"; o TESTE-SKU
+  ficou sem título do Premium e sem imagens porque o editor estava aberto). `EditorEmUso` tem DOIS sinais: "em uso"
+  (toda rota do editor, inclusive a presença e a miniatura do painel — revisar é trabalhar no produto, a fila não
+  publica por baixo, decisão de 19/10) e "editando" (`editando()`/`marcarEdicao()`, só rota que GRAVA). Os três pontos
+  do preparo (`PreparoIaDoRascunhoService:131/180/366`, linhas que o portão da Fase 188 confere) esperam só "editando".
+  O risco que o "em uso" evitava continua real: o editor manda a chave de topo INTEIRA da cópia dele, e salvar sem
+  reler desfaz o que a IA gravou. Por isso a rota `presenca` (a cada 20 s) devolve `IaTrabalhando` — `ia`
+  (agendada/escrevendo/imagens) e o `carimbo` do que a automação gravou: com a IA trabalhando a mesa pausa (faixa
+  "Atualizando…"), e no fim RELÊ antes de sair da pausa (`recarregarDepoisDaIa`). A vitrine mostra "Atualizando…" no
+  lugar da pendência e se relê a cada 15 s enquanto houver cartão assim. Arquivos com linha apontada pelo portão
+  (`MlbPublicadorController:405`, `EditorRascunhoService:370`): mexer sem mudar a contagem de linhas antes delas —
+  daí o nome completo da classe em vez de `use` novo.
+- **Aviso de imagem reprovada e "o que falta" clicável** (21/10, "tem que ter o aviso quando for reprovado, e o
+  motivo" e "nesses que falam que faltam algum item, tem que ser clicável me induzindo a resolver"):
+  `ImagensReprovadas::do($r)` lê o kit que a automação JÁ aplicou (memória `criativos_auto.grupos[*].aplicado_em`) e
+  devolve as reprovadas que ninguém aprovou à mão, com o motivo da `validacaoMensagem()` limpa do "Risco:"/"Confira
+  antes de aprovar." — nunca do json cru (T-162-18). Vitrine: linha âmbar no cartão; editor: faixa âmbar. O resumo
+  (`VERSAO_DO_RESUMO` = 3) guarda `itens` POR ETAPA da tela (`EditorRascunhoService::etapaDaTela`, a mesma régua do
+  `etapaDoProblema` do front) — por etapa e não "os 5 primeiros", senão 12 campos da ficha escondiam a foto que
+  faltava. O chip vira botão com a lista; cada item vai a `editor?etapa=X&corrigir=1`, e o editor abre a etapa com o
+  "O que corrigir" marcado (`irPara(etapa, { marcar: true })`) e tira o `corrigir` da URL.
+
+## 42. A capa da fase N nasce com a fase, por cor, com a foto REAL do cliente (21/10/2026)
+
+Pedido do usuário: "atualmente vai automático apenas a fase 1 nas imagens — qual sua sugestão para um gatilho da fase 2?".
+Decidido: o gatilho é o **nascimento** do Kit N pelo Planejamento (`CombosDoPlanejamentoService::pedirCapa`), que só
+acontece com a Fase 1 publicada — a foto de base já foi conferida e não se gasta com combo que não vai existir. O que
+não se deduz do código:
+
+- **A foto do cliente da Fase 1 continua no rascunho, sem grupo**, depois que as imagens por IA tomam o lugar dela (§40),
+  e o clone da fase copia TODAS as `pub_imagens` do base. É dessa cópia que sai a referência — nunca da imagem por IA
+  (cópia de cópia perde fidelidade). Sem a foto no grupo, a cor dela vem do Portal: o `valor` da variação = o rótulo do
+  grupo ("Cinza"). A galeria geral só entra em produto SEM cor.
+- **Por cor que vai ao ar:** a cor inativa no kit (sem o Combo N no Portal) não gera. A Opala12 (Cinza e Bordô) gera
+  duas capas por fase — 4 imagens.
+- **Tipos fixos `hero`, `lifestyle`** — em MÓVEL a ambientada abre (§43, teste do usuário); fora, o fundo limpo. O combo não rotaciona a
+  capa, então a do Clássico e a do Premium são a mesma. Com tipos fixos e `quantidade_kit` ≥ 2 o
+  `PlanejarKitCriativosJob` põe as N unidades na cena (`unidades_da_composicao`).
+- **Entra na frente das herdadas** (`aplicar()` com `capa` na memória): `aprovarSlot` já põe cada uma na frente, mas
+  na ordem inversa — por isso o grupo é reordenado depois. Reprovada pelo juiz: o kit segue com as fotos da Fase 1.
+- A fase criada à mão ("Criar Fase N", produto fora do Portal) continua com a capa do botão (`kit_da_fase`).
+
+## 43. O kit misto do Portal é um COMPOSTO, não uma fase — e herdava "1 peça" (21/10/2026)
+
+No teste do usuário, o "Kit 1 poltrona Cinza + 1 Bordô" montado no Planejamento NÃO virou fase N: virou produto
+próprio no Publicador (`oferta_id` → oferta `kit`, `PlanejamentoDaFaseService::tipoComposto`), com `quantidade_kit` 1.
+Por isso passou pelo regime da Fase 1, e três coisas saíram erradas — todas pela mesma raiz, a composição não ser lida:
+
+- **Imagens de uma poltrona só.** A ficha do composto vinha do componente principal (UMA peça): `PIECES_NUMBER` "1".
+  O Creative Engine trata isso como fato do cadastro ("peças do kit: 1", `ProductTruthBuilder`) e obedece. Corrigido
+  na origem — `PortalParaRascunhoService::preencherComposta` aplica a `QuantidadesDoKit` (a régua da fase N) com o total
+  da composição; produtos diferentes (mesa + cadeiras) só em peças e unidades — e nas capas do composto a cena ganha a
+  frase do conjunto (`CriativosAutomaticosService::comComposicao`, no passo `gerar`, com o plano já gravado). O
+  planejador do Creative Engine (do outro dev) não foi tocado.
+- **Capa diferente no Clássico e no Premium.** A regra "kit não alterna a capa" lia só `quantidade_kit` ≥ 2. Agora
+  `PubProduto::unidadesDaOferta()` soma os componentes do composto (snapshot e resumo rápido).
+- **Título sem "Kit".** O composto usa o título comum de produto; a IA recebia o nome "X + X — Cinza / Bordô". Agora
+  recebe o nome do kit (`ComposicaoDoComposto::nomeDoKit`) e o título começa pelo prefixo ("Kit 2" num produto só,
+  "Kit" com produtos diferentes — `PalavrasChaveService::comPrefixo`).
+
+E a capa de kit (fase N e composto) em MÓVEL abre com a AMBIENTADA (o usuário: "deveria ser assim porém ambientada"),
+a mesma regra da Fase 1. `ComposicaoDoComposto` é o lugar único dessas contas.
+
+**Segunda rodada do teste (21/10/2026):**
+- **"A categoria mudou no Mercado Livre desde o rascunho" (V-CAT-03) no Kit N recém-criado:** o ML mudou a ficha de
+  Poltronas em 20/10, e o clone copiava o `schema_hash` do BASE (de antes). Agora o kit nasce com o hash do schema de
+  hoje (`CriarFaseService`); os campos já são validados contra o schema de hoje, então o que faltar aparece campo a
+  campo. O V-CAT-03 continua valendo para o rascunho que de fato foi preenchido antes da mudança.
+- **«Cor» obrigatório no composto:** variante única, e a cor de cada peça mora na variação do Portal. A Cor sai das
+  cores da composição, sem IA ("Bordô e Cinza"; "Unica"/"Padrão" não contam) — `ComposicaoDoComposto::textoDaCor`.
+- **V-ATT-09** ("Confira «X»: o valor foi sugerido ou veio de outra categoria") **saiu** a pedido do usuário. A marca
+  `revisar` do valor fica no rascunho.
+- **Galeria do composto:** depois das duas imagens do conjunto, entram as fotos da Fase 1 de cada peça (o grupo da cor
+  dela), do acervo da conta, sem cópia — como o Kit N, que já nasce com as fotos da Fase 1 depois da capa.
+
+## 44. O SKU recriado herda os anúncios antigos como "ativo" — e o editor travava os dois tipos (21/10/2026)
+
+**O que o usuário viu:** o Sofá Chesterfield (SFCHST) da #459 já tinha sido publicado e foi excluído do sistema.
+Recriado, saiu do Portal, chegou ao Publicador e, na hora de publicar: "Não há o que publicar: escolha Clássico,
+Premium ou os dois" — com os dois tipos desmarcados, travados e marcados "No ar".
+
+**A causa, em três camadas:**
+- Excluir a oferta devolve os anúncios dela para a ESPERA, presos ao SKU (`EstruturaOfertaService`, como na planilha:
+  apagar a linha da Lista deixa a aba Anúncios intacta). Criar oferta com o mesmo SKU normalizado os PROMOVE de volta
+  (`varrerEspera` → `promover`) com o status guardado ("ativo"), sem ler o ML.
+- No ML, um estava `under_review` (`waiting_for_patch`) e o outro `paused`. Nenhum no ar.
+- O rascunho nasce com o tipo desligado quando a régua tem MLB (`rascunhoDoProduto`, sem HTTP), e o editor trava o tipo
+  com `mlb_na_regua`. Dois tipos desligados = D1 "Não há o que publicar".
+
+**O que mudou (decisão do usuário: "liberar e publicar novo"):** `EditorRascunhoService::reguaNoMl` lê o `status` de
+cada MLB da régua (`GET /items?ids=`, cache 10 min; falha guardada 1 min e trava como antes). Só `active` trava
+(`mlb_na_regua`); o resto vai como `mlb_existente` (aviso "Já existe o MLB… (pausado): publicar cria outro anúncio").
+Ao ABRIR (`ligarTiposForaDoAr`), o rascunho sem nenhum tipo ligado e sem nada publicado liga o tipo cujo anúncio não
+está no ar — sem tipo ligado nada sai, então não há escolha da pessoa a desfazer. O Portal não foi tocado: a régua
+continua dizendo "ativo" (o `conta()` só exclui `inativo`).
+
+Testes: `tests/Feature/Publicador/ReguaForaDoArTest.php`.
+
+## 45. Demo pública de 23/10: o que o teste no navegador mostrou e o código não dizia (21/10/2026)
+
+- **A descrição da IA saudava com o NOME CADASTRADO da empresa** ("Seja bem-vindo à Dev 02 Testes API"), não com
+  o apelido que o comprador vê (MGSTOREL). Decisão do usuário: **sem saudação** — o prompt não pede e
+  `DescricaoIaService::semSaudacao` limpa a saída. Não volte a pôr "saudação citando a loja" no prompt.
+- **O `/trends` do ML devolve termo sexual** em Sofás/Poltronas ("poltrona erotica para motel"). Um filtro chegou a
+  ser feito e foi desfeito a pedido do usuário (21/10): a lista segue como o ML entrega. Não refiltre por conta própria.
+- **A Prévia não sabe do aviso 4057:** promete "Frete grátis" e a categoria fora do Mercado Envios da conta sai
+  "Entrega a combinar". Para demonstrar, use produto de categoria que a conta aceita (a conferência sem o aviso
+  "vai tirar o Mercado Envios"). Poltrona na #459 não serve.
+- **Abrir o editor grava** (EAN gerado, cor principal, frete grátis obrigatório): a 1ª abertura invalida a conferência.
+  O usuário decidiu manter o EAN gerado; para demo, abrir cada produto uma vez na véspera e conferir depois.
+- **Promoção automática pegou** em anúncio novo da #459 em 21/10 (16% OFF), ao contrário do "No candidates" de 10/10.
+- **O tipo "Criado-mudo" do Planejamento** é termo vetado pelo ML; o rótulo vem da TABELA do catálogo (semeada por
+  `config/estrutura_geracao.php`, mantida pela tela admin) — renomear lá, não na config.
+- **Tempo do preparo, medido em produção (21/10, produto A da #459):** título 10 s, Modelo 7 s, descrição 4 s (os modelos
+  já são `flash-lite`/`flash` — trocar de modelo não é a alavanca), imagens 58 s (planejar 16 s, gerar as 3 em paralelo
+  ~14 s, juiz ~5 s, espera do `AplicarCriativosAutomaticosJob`, aplicar 4 s). Desde 21/10 são DUAS cadeias
+  (`despacharCadeias`): [título → Modelo] e [descrição → imagens] — as imagens seguem depois da descrição da IA por
+  decisão do usuário (elas leem a descrição do rascunho). O aplicar espera 5 s (era 20) e a tela consulta a cada 5 s só
+  enquanto a IA trabalha. O planejamento do kit (16–19 s, uma chamada de LLM) é do Creative Engine: combinar com o dono
+  antes de mexer.
+
+## 46. O aviso 350 ("frete grátis obrigatório") virou ruído, como o 4053 (22/10/2026)
+
+O usuário, sobre "Neste preço o frete grátis é obrigatório: o Mercado Livre vai ativá-lo": "acredito que esse aviso nem
+precisa". `MapeadorErrosMl::RUIDO` ganhou `350 item.shipping.mandatory_free_shipping` (só quando vem como `warning`).
+
+- A regra continua valendo; só o aviso sai. O frete grátis acima de R$ 79 já entra no preço da Precificação (o vendedor
+  paga), e o editor liga o frete grátis sozinho (`EditorRascunhoService::freteGratis`).
+- **Efeito colateral medido:** a resposta capturada `validate_base_up` só tem 4053 + 350. Com os dois como ruído, a
+  conferência dessa resposta sai `OK`, não mais `AVISOS` — os testes que esperavam `AVISOS` foram ajustados
+  (`ConferenciaTest`). Quem precisar de um aviso "de verdade" em teste use outro código (o 469, por exemplo).
+- Conferência gravada antes continua com o 350 no banco; a tela filtra na leitura (`estado()` e `ResumoRapidoService`
+  já passam tudo por `ehRuido`).
+
+## 47. Correções da véspera da demo (22/10/2026, branch `demo/frente-b`)
+
+- **Prévia × 4057 (N1):** `PreviaDoAnuncioService::envioQueVaiValer` lê a ÚLTIMA conferência gravada — aviso
+  `shipping.lost_me2*` em `issues` ou `respostas_ml.frete.motivo` ∈ {`sem_mercado_envios`, `fora_do_me2`} — e troca o
+  envio da prévia para "Entrega a combinar" (ou "Envio pelo vendedor" com `destino = me1`), com `envio.aviso`. Sem
+  conferência a prévia segue o plano (pode prometer frete grátis que o ML vai tirar). Não lê o ML nem o
+  `EnvioDoRascunhoService` (frete é do outro dev). Isto supera o item "A Prévia não sabe do aviso 4057" do §45.
+- **Faixa "ainda não subiu" (N15):** só para foto COM atribuição (a usada no anúncio), no bloco do grupo, dita pela
+  miniatura e pela posição. A foto do cliente que ficou só de referência (§40) não avisa mais nada.
+- **Título do Portal (N21):** com `titulo` vazio e oferta do Portal, o campo EXIBE o `titulo_efetivo` com o selo
+  "do Portal" (não grava nada; apagar tudo volta a seguir o Portal).
+- **"Abrir o editor grava" (N9) NÃO foi corrigido na véspera** (corrigido depois, ver §54) — desenho: três dos quatro padrões (EAN, `MAIN_COLOR`,
+  `fotos_por_variante`) MUDAM o payload, então gravá-los sem subir a `revisao` deixaria uma conferência "valendo" para
+  um payload que o ML não viu (e o "Publicar" passaria). O caminho certo é aplicá-los no SERVIDOR antes da 1ª
+  conferência — ao nascer/preparar o rascunho e no início do `ConferirRascunhoJob`/conferência em lote: portar
+  `gerarEan13`/`variantesSemGtin`, `tomDaCor`/`nomeDaCor` e a regra de `fotos_por_variante` para PHP, e o frete grátis
+  obrigatório pelo `EditorRascunhoService` (linha ~553, já calcula `obrigatorio`, mas consulta o ML). Com isso os
+  `useEffect` do editor deixam de disparar (o valor já está certo). O "editando" que adia o preparo da IA some junto.
+
+## 48. O portão "TERRITÓRIO … ESCOPO DO ASSUNTO (188-07)" lê só os últimos 80 commits (22/10/2026)
+
+`tests/js/publicador-painel-casca-188.test.js` procura commits `(188-07)` em `git log -80`. Com o histórico crescendo
+(22/10: as correções da demo), eles saíram da janela e o teste falha com "nenhum commit desta FASE no log" — sem
+nada errado no código. Não "conserte" mudando commits: ou se aumenta a janela, ou se busca por `--grep="(188-07)"`.
+
+## 49. Premium: mesma sequência do Clássico, só a capa muda — e nunca para fundo branco (22/10/2026)
+
+**O que o usuário viu:** nos 6 produtos publicados na #459 em 21/10, o Clássico saía [ambientada, fundo branco, textura]
+e o Premium [fundo branco, textura, ambientada]; numa cor da POL-CON com 2 fotos, o Premium abria com a TEXTURA. Pedido:
+"a foto principal do Premium pode ser diferente, porém não uma com fundo branco — só a foto 1 principal".
+
+**Causa:** a rotação D6/CAPA-01 (Fase 168) girava a lista INTEIRA para a esquerda no Premium. Com a galeria automática
+de móvel (ambientada abre), a 2ª foto — o fundo branco — virava a capa do Premium, e a ordem toda mudava.
+
+**O que mudou:**
+- `OrdemCapaPorAlvo::aplicar($fotos, $indiceAlvo, $tipos)`: o Clássico fica igual; o Premium TROCA a 1ª foto com uma capa
+  sem fundo branco (`CAPAS_DO_PREMIUM` = composicao, lifestyle_uso, lifestyle; a preferida primeiro). Só as duas
+  posições trocam. Sem candidata (foto do cliente não tem tipo; ou a única ambientada já é a capa) → igual ao Clássico.
+- O tipo de cada foto vem do criativo que a gerou: `RascunhoRepository::snapshot` põe `tipo` em `imagens[]`
+  (`ml_anuncio_criativos.slot` por `pub_imagem_id`) e o `PayloadBuilderUserProducts` o passa à regra.
+- O kit automático da Fase 1 ganha a 4ª imagem, `publicador.criativos_auto.capa_premium` (= `composicao`, no FIM): a
+  capa do Premium. Decisão do usuário: "gerar 2ª ambientada" (+1 imagem, ~US$ 0,10 por grupo). Clássico [L, H, T, C],
+  Premium [C, H, T, L].
+- Composto e kit da fase (unidades ≥ 2) seguem com a MESMA capa nos dois — a regra nem roda.
+
+**Armadilha:** a ordem das fotos entra no `plano_hash`. Rascunho conferido ANTES desta mudança pede nova conferência na
+hora de publicar (o Premium mudou de ordem). Anúncio já publicado não muda sozinho.
+
+## 50. A vitrine mostrava o mesmo Combit em dois cartões (22/10/2026)
+
+"Por que veio dois?": com o filtro "Prontos", o Combit Mesa Aurora + 4 Cadeiras (oferta 673, Publicador #111 — UM
+produto só no banco) aparecia em dois cartões iguais. Por desenho (20/10), kit e combit entram na família de CADA
+componente, e com filtro o cartão abre na 1ª face que bate; a mesa e a cadeira sozinhas não estavam prontas, então os
+dois abriam no Combit. `familiasDaVitrine` agora não deixa dois cartões abrirem na mesma face (`chaveDaFace`): o 2º
+abre em outra face que sirva, ou sai da lista. O "produtos em DOBRO" de 19/10 (Q-01) era outro caso: dois
+`pub_produtos` de verdade.
+
+## 51. Combit Mesa + 4 Cadeiras: título sem as cadeiras e cena com 6 cadeiras (22/10/2026)
+
+O usuário testou o combit CT4-MESA-AUR-120-CAD-AUR-CIN (Publicador #111, rascunho #105): "no título não gerou quantas
+cadeiras tem, acho importante"; e "Capacidade máxima de pessoas: 4, mas gerou imagem com a mesa com 6 cadeiras — em
+outros produtos também não pode acontecer".
+
+- **A imagem de 6 cadeiras não era do combit:** era a ambientada da MESA sozinha (Fase 1, rascunho #95), reaproveitada
+  na galeria do combit por `fotosDaFase1DoComposto`. A cena do próprio combit dizia certo ("exatamente 5 peças").
+- **Capacidade na cena:** `ProductTruthBuilder::lugares` lê `MAX_PEOPLE_CAPACITY` (lista fechada, só número do cadastro,
+  nunca do título — TRUTH-02) e o `CreativePromptBuilder` põe o bloco LUGARES só nos slots AMBIENTADOS ("se a cena tiver
+  cadeiras, bancos… use NO MÁXIMO N"). `ProductTruth::lugares` só entra no `paraPrompt()` quando existe (forma antiga
+  intacta).
+- **Composto sem as cenas dos componentes:** `fotosDaFase1DoComposto` pula as imagens cujo criativo é cena (lifestyle,
+  lifestyle_uso, composicao); do componente vêm só fundo branco e detalhes.
+- **Título:** a IA recebe "Kit Mesa de Jantar Aurora … + 4 Cadeira de Jantar Aurora…" e corta as cadeiras para caber
+  nos 60. `ComposicaoDoComposto::termosDoTitulo()` ("4 Cadeiras", pela 1ª palavra do nome + plural) e
+  `PalavrasChaveService::comTermosDoKit` inserem "com 4 Cadeiras" LOGO DEPOIS do nome do produto principal quando a IA não
+  pôs — o corte (`ajustarTitulo`) e a diferenciação do Premium (`RegrasDoTitulo::diferenciar`) só mexem no fim.
+- Não refeito sozinho: o título e a galeria do rascunho #105 e a ambientada da mesa #95 (já publicada no ML).
+
+## 52. A descrição segue a estrutura ECF do usuário — e a saudação com o nome da loja VOLTOU (22/10/2026)
+
+O usuário mandou o prompt ("o prompt para ser usado para criar descrição deveria ser esse"): saudação com o nome da
+loja, 2 parágrafos de benefício e uso, especificações reais em lista, cuidados, fechamento; sem emoji, HTML nem
+caracteres especiais. Está em `AnaliseAnuncioService::promptDescricao` (vale para o Publicador e para o assistente
+antigo); só o pedido de JSON no fim é nosso.
+
+- **Loja = nome do CADASTRO** (`nomeContaMl()`), decisão do usuário no mesmo dia, mesmo depois de ver os apelidos no ML
+  (#459 = MGSTOREL, #167 VIGGORE = HOMEDESIGNER). Isso desfaz o N2 da véspera (§46/§47, "sem saudação nem nome da
+  loja"): `DescricaoIaService::gerar` não chama mais `semSaudacao` (a função ficou, com o teste dela).
+- **Uma chamada só:** a análise (JTBD/PUV) não entra mais na descrição do Publicador.
+- **Especificações = o que o CLIENTE preencheu:** `specs()` usa os atributos com origem `portal`/`planejamento_do_portal`,
+  sem SKU, GTIN e caixa de envio; o que a IA ou a equipe pôs fica de fora (o "Modelo" cheio de termos de busca). Sem nada
+  do cliente (produto que nasceu no Publicador), vale a ficha inteira. A descrição do cliente continua no bloco
+  delimitado, como DADO.
+
+## 53. Peso CUBADO tira o Mercado Envios sem aviso no validate; o preditor de categoria pode devolver vazio (22/10/2026)
+
+- **Poltrona Donatella (produto 108 da #459):** caixa 70×65×60 cm, 24,3 kg reais — soma 195 cm e maior lado 70 cm
+  passam no drop_off, mas o peso faturado é 45,5 kg (cubado, `respostas_ml.frete.peso_faturado = 45500`), acima dos 30 kg.
+  O `/items/validate` devolveu só o 4053 (ruído), o `shipping_options` cotou R$ 111,65, e o anúncio NASCEU "a combinar".
+  Só o 4057 da Opala (soma 245 cm) avisava. Quem prevê "fora do ME2" tem de usar o peso faturado (maior entre real e
+  cubado), não só o real. Área de frete do outro dev; registrado para ele.
+- **`/sites/MLB/domain_discovery/search` devolveu 200 `[]` para QUALQUER termo** a partir de ~13h57 de 22/10 (até
+  "celular"). Não é erro HTTP: o código antigo cacheava o vazio por 1 h. Desde 22/10 vazio/falha não entram no cache
+  (marca de 60 s à parte). A aba "Navegar" da categoria (árvore) seguiu funcionando — é o plano B.
+- **Promoção automática em anúncio novo:** todas as de 22/10 voltaram "No candidates found for item". A de 21/10 que
+  "pegou" foi exceção. A Prévia deixou de prometer o desconto e a lista publicada mostra o que o ML fez.
+
+## 54. O limite diário de imagens por IA barrava em silêncio — e o produto ficava "Pronto" (22/10/2026)
+
+- **O caso:** combit CT-POLTRONA-OPALA12x2-POLTRONA-OPALA-21x2 (oferta 674, pub 112, rascunho 106 da #459), criado às
+  16:31 pelo "Montar combo, kit ou combit". O preparo de texto rodou e o `AvaliarCriativosAutomaticosJob` também, mas
+  a #459 já tinha 10 kits automáticos no dia (kits 36–45, testes) e o teto é `PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO`
+  = 10 por empresa (cache `publicador:criativos-auto:cota:{empresa}:{Y-m-d}`, que ficou em 11). O `avaliar` devolveu
+  `limite` e não gravou nada no `step_state`.
+- **Por que ninguém viu:** produção roda com `LOG_LEVEL=error` — o `Log::warning` do limite e os `Log::info` do preparo
+  e das imagens NÃO vão para o `laravel.log`. Para reconstruir, use o `worker-ia.log`/`worker-creative.log` (horários
+  dos Jobs) e o estado no banco (`step_state.ia_preparo`, `ml_anuncio_criativo_kits`, a cota no cache).
+- **Por que "Pronto":** o chip só exige ALGUMA foto + resumo validado; o composto tinha as 2 fotos do cliente (Cinza e
+  Bordô, origem `upload`), sem a foto do conjunto.
+- **Desde 22/10:** o teto grava `step_state.criativos_auto.adiado = {dia, motivo: limite}`; a vitrine mostra
+  "Imagens amanhã" no lugar de "Pronto" (leva à etapa Imagens); o `publicador:imagens-adiadas` (06:00 de São Paulo)
+  manda de novo para a avaliação o que foi barrado em dia anterior — o teto segue valendo. Qualquer outro desfecho
+  da avaliação apaga a marca, menos `ocupado`/`erro`. Decisão do usuário: o limite continua 10 e nada é gerado
+  por fora dele.
+- **23/10, a 1ª retomada funcionou** (kit 46 do rascunho 106: ambientada + fundo limpo com as 4 poltronas, aprovadas
+  pelo juiz, aplicadas; cartão voltou a "Pronto"), mas às 07:13, não às 06:00: o `adman:warm-diff` das 06:00 roda em
+  PRIMEIRO plano e o `schedule:run` daquele minuto executa os eventos em fila — tudo marcado para 06:00 esperou 1h13.
+  Por isso o comando foi para 06:05. Regra geral: comando curto não divide minuto com job longo sem `runInBackground`
+  (o histórico fica em `/var/log/laravel-scheduler.log`, "... 1h 13min DONE ⇂ warm-adman-diff-manha").
+
+## 55. A descrição não repete a ficha técnica (22/10/2026)
+
+- O usuário, sobre a descrição do combit da Opala (rascunho 106 da #459), que listava os 26 campos da ficha ("É kit:
+  Não", "Quantidade de lugares: 4"…): "não faz sentido ter isso na descrição se o Mercado Livre já dá essa informação; é
+  desperdício de caracteres". A IA recebia a ficha como "ESPECIFICAÇÕES TÉCNICAS REAIS" e o prompt mandava listá-la.
+- Agora a ficha vai marcada (`DescricaoIaService::CABECALHO_FICHA`) e a seção 3 leva só o que a ficha NÃO mostra — o
+  texto livre do cliente (espuma, estrutura, fixação, garantia…) e "Itens do kit" do composto. Formato do exemplo
+  dele: títulos ESPECIFICAÇÕES TÉCNICAS / CUIDADOS E RECOMENDAÇÕES em maiúsculas, linhas "Rótulo: valor" sem hífen,
+  fechamento agradecendo a visita à loja. Sem nada além da ficha, a seção 3 não sai.
+- O texto do cliente do composto do MESMO produto (2 Cinza + 2 Bordô) ia duas vezes; agora uma por produto.
+- Não mexido (oferecido): a ficha do composto diz "É kit: Não" (`IS_KIT` é copiado da peça) — ela vai ao ML.
+
+## 56. "Abrir o editor grava" (N9) corrigido: os padrões do editor nascem no servidor (22/10/2026, branch `pos-demo/n9`)
+
+O desenho do §47, feito. `App\Support\Publicador\PadroesDoEditor` (puro) é o gêmeo PHP dos efeitos da tela —
+`gerarEan13`/`variantesSemGtin`, `tomDaCor`/`nomeDaCor`, "fotos por variação" sem eixo que defina a foto e a forma de
+envio que a conta não tem — e `PadroesDoRascunhoService` grava (trava do rascunho, `tocar()` uma vez, nada quando nada
+falta). O frete grátis obrigatório é o `EditorRascunhoService::freteGratis` de sempre (pergunta ao ML), só com `comFrete`.
+
+- **Onde roda:** Sincronizar do botão (`PreencherRascunhoDoPortalJob`) e logo após o save (`sincronizarAgora`), sem HTTP;
+  preparo pela IA (`preparar` → `preencher(comFrete: true)`), que LÊ A CONTA se o rascunho ainda não a tem (o mesmo
+  `lerContaSeVencida` do `abrir`, via `lerContaParaOsPadroes` no fim da classe) e liga o frete; e, como rede de
+  segurança, no início do `ConferirRascunhoJob` e da conferência em lote (que já ligava o frete — a regra foi para o
+  serviço e `ConferenciaEmLoteService::garantirFreteObrigatorio` só delega). `ConferenciaService::conferir` NÃO aplica:
+  os testes que conferem rascunho sem GTIN (TC-32) contam com isso.
+- **Por que subir a revisão aqui é certo:** tudo roda ANTES de conferir, então a conferência seguinte é da revisão com
+  os padrões. Rascunho antigo com conferência "valendo" e sem os padrões perde a conferência na próxima sincronização ou
+  conferência — é o certo: aquela conferência era de um payload sem o EAN que o editor ia gravar.
+- **A tela não mudou:** os `useEffect` continuam e só gravam o que falta. `MAIN_COLOR` gravado não tem `origem` (o
+  atributo de variante não guarda a coluna), e a tela só troca o que tem `origem: 'auto'` — então o tom do servidor nunca
+  é retrocado ao abrir. O Sincronizar já gravava o tom por casamento EXATO (`tomDaVariante`); o padrão completa com
+  sinônimo/prefixo ("Grafite" → Cinza) onde o Portal deixou vazio.
+- **Paridade provada pelos dois lados:** `tests/fixtures-ml/padroes-do-editor-paridade.json` (gerada do JS, tons reais
+  do MAIN_COLOR da cadeira) é lida por `PadroesDoEditorTest` e por `tests/js/publicador-padroes-do-editor.test.js`. O
+  teste JS também roda os efeitos REAIS (React trocado por um stand-in que roda cada `useEffect` na hora) com o estado
+  completo e afirma zero `mudarVar`/`mudarRasc` — os únicos caminhos do PUT —, e uma contraprova por padrão.
+- **O que sobra:** produto que nasce por outro caminho (planilha, kit da fase, Anunciar por IA) e é aberto ANTES de
+  qualquer Sincronizar/preparo/conferência ainda grava ao abrir, como antes (sem conferência para invalidar). Conta
+  sem token: o preparo não sabe o vendedor e o frete fica para a tela. O `abrir` ainda pode subir a revisão quando
+  nenhum tipo está ligado e o da régua saiu do ar (`ligarTiposForaDoAr`, §44) — caso raro, fora deste conserto.
+- **Custo no preparo:** até 3 GETs de conta (só se a leitura passou de 10 min) + 1 a 4 de `shipping_options/free` por
+  produto preparado, enquanto o frete grátis não está marcado.
+
+## 57. Releitura do estado dos anúncios JÁ publicados (R17, pós-demo, 22/10/2026)
+
+- O `RelerEstadoDoPublicadoJob` só nasce no fim de publicação NOVA: tudo o que foi publicado antes dele seguia
+  "Publicado" na lista final mesmo pausado/em revisão no ML. `publicador:reler-publicados` agenda o MESMO Job com a
+  lista de itens (`$itens` → uma leitura só, sem o `release` da 2ª). **Simulação por padrão**; `--aplicar` agenda.
+- Régua da conta: `RelerEstadoDoPublicadoJob::contaQueLe` (liberada + `ator.conta.seller` = token de hoje). Conta
+  fora da liberação aparece como "fora" e não é lida — para reler a de um cliente, ela precisa estar em
+  `publicador.contas_liberadas`.
+- Quem entra: CREATED com `ml_item_id`, `criado_em` nos últimos `--dias`, `avisos.estado.lido_em` mais velho que
+  `--horas` (nunca lidos primeiro), e não `closed` no ML (encerrado não volta). O mesmo MLB em duas publicações
+  é lido uma vez (o item mais novo). Teto por rodada (= GETs) e Jobs de `lote` espaçados `intervalo_s`.
+- Rodada diária às **09:20 de São Paulo**, de propósito depois do `ml:refresh-tokens` das 08:00 (§32/§41: de
+  madrugada os tokens dos Polos estão vencidos e cada leitura renovaria um — rajada de renovação dá 429).
+  Config `publicador.releitura_publicados` / `PUBLICADOR_RELEITURA_*`; `PUBLICADOR_RELEITURA_ATIVO=false` desliga.
+- 1ª rodada em produção: `php artisan publicador:reler-publicados --dias=60 --horas=0` (simulação, conferir o
+  número por conta) → mesma linha com `--aplicar`. Fila `high`: precisa de worker vivo nela.
+
+## 58. Teste completo e correção dos 31 achados P-01..P-31 (23/10/2026)
+
+Relatório do teste (privado): https://claude.ai/artifact/FugibU3JY1dmopMLbtHjLW. O que não se deduz do código:
+- **`step_state` só pela porta `EstadoDoRascunho::gravar/alterar`** (relê sob trava, grava uma chave, não toca
+  `updated_at`). `$r->update(['step_state' => [...$r->step_state, …]])` regrava o JSON INTEIRO a partir da cópia lida
+  no começo da requisição — com chamada ao ML no meio, apagava o `kit_id` das imagens automáticas, o `portal_escrito`
+  e a marca de adiado. E o `updated_at` é o "Atualizado há…" e a ORDEM da vitrine: só abrir o editor mexia nos dois.
+- **Linhas citadas pelos gates da Fase 188** (`FotosDoPainelServiceTest`, hoje vermelho por falta do protótipo, mas
+  o gate é perene): `EditorRascunhoService:370`, `GarantiaPadrao:192`, `PreparoIaDoRascunhoService:131/180/366`,
+  `AgendadorDaFila:337`, `ExcluirProdutoService:195`, `MlbPublicadorController:405`, `config/publicador.php:148`. Um
+  `use` novo no topo desloca o arquivo inteiro: nesses arquivos, nome completo da classe na linha (`\App\…`) e
+  edição que não muda a contagem de linhas antes da citada. Conferir com `git show <base>:arquivo | sed -n Np`.
+- **`PubProduto::skuExibido()` é o código do PRODUTO do Portal** no produto agrupado (o Sofá: SFCHST), e o anúncio
+  leva o SKU da variação (SFCHST-2). Ele entra em lógica (SKU dos kits, troca de SKU no Sincronizar): não mudar. A
+  vitrine mostra `sku_do_anuncio` (variação única) e a busca do cabeçalho procura em `busca` (MLBs + SKUs das variações).
+- **"É kit" (`IS_KIT`, oculto na categoria)** era copiado da peça: todo kit ia "Não". Desde ec4aca43, kit/composto de
+  2+ unidades nasce "Sim" (value_id do Sim no schema). O Kit 2 Opala JÁ publicado segue "Não" no ML (não reescrito).
+- **Imagens automáticas**: falha técnica (kit ERRO sem `aplicado_em`) ganha 1 nova tentativa (`TENTATIVAS` = 2); a
+  reprovação do juiz marca `aplicado_em` e é final. O `publicador:imagens-adiadas` (06:05) também encerra kit parado
+  há mais de 1 dia e reaplica kit pronto que não entrou. O Job de aplicar é `ShouldBeUniqueUntilProcessing` + trava.
+- **Suíte PHP em paralelo**: `Storage::fake('local')` apaga `storage/framework/testing/disks/local` ao iniciar —
+  dois processos com ele se derrubam (`SincronizaPortalCompletoTest`). Separe num grupo só os que usam o disco
+  falso (direto ou pelos traits `CenarioDoPreparo`/`CenarioCriativoDoPublicador`).
+- Ficou de fora (decisão do usuário pendente): `Pages/Desempenho/MetricasManuais.jsx` tem a mesma regra de número
+  do P-02 ("1.299" vira 1,299) — zona de Desempenho/bônus, exige GSD.

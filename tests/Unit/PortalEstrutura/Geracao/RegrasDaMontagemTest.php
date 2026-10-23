@@ -114,4 +114,20 @@ class RegrasDaMontagemTest extends TestCase
             ])
         );
     }
+    public function test_o_mesmo_produto_em_cores_diferentes_vira_kit_n_com_as_cores(): void
+    {
+        // Teste da empresa #459 (22/10/2026): saía "Poltrona Decorativa Opala + Poltrona Decorativa Opala — Cinza / Bordô".
+        $opala = fn (string $cor, string $sku, int $q = 1) => ['produto_id' => 7] + self::item('Poltrona Decorativa Opala', $sku, $q, $cor, 'Poltrona', 'Poltronas');
+
+        $this->assertSame(['nome' => 'Kit 2 Poltrona Decorativa Opala Cinza e Bordô', 'sku' => 'KT-OP-CZ-OP-BD'],
+            RegrasDaMontagem::nomeado([$opala('Cinza', 'OP-CZ'), $opala('Bordô', 'OP-BD')]));
+        $this->assertSame('Kit 3 Poltrona Decorativa Opala Cinza e Bordô',
+            RegrasDaMontagem::nomeado([$opala('Cinza', 'OP-CZ', 2), $opala('Bordô', 'OP-BD')])['nome'], 'combit do mesmo produto soma as peças');
+
+        // Produtos diferentes (ou o avulso, sem produto) seguem o padrão de sempre.
+        $outra = ['produto_id' => 8] + self::item('Poltrona Rodrigues', 'ROD', 1, 'Marrom', 'Poltrona', 'Poltronas');
+        $this->assertSame('Poltrona Decorativa Opala + Poltrona Rodrigues — Cinza / Marrom', RegrasDaMontagem::nomeado([$opala('Cinza', 'OP-CZ'), $outra])['nome']);
+        $this->assertSame('Poltrona Decorativa Opala + Poltrona Decorativa Opala — Cinza / Bordô',
+            RegrasDaMontagem::nomeado([self::item('Poltrona Decorativa Opala', 'A', 1, 'Cinza'), self::item('Poltrona Decorativa Opala', 'B', 1, 'Bordô')])['nome']);
+    }
 }

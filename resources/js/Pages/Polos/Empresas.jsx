@@ -5,6 +5,7 @@ import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown,
          MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download, Gift } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { corAds } from './components/adsCor';
+import { SeloFonteFaturamento, LancarFaturamentoManual } from './components/FaturamentoManual';
 
 const STATUS_META = {
     'Sim':          { cor: '#22c55e', label: 'No alvo' },
@@ -63,8 +64,13 @@ export default function PolosEmpresas({
     comentarios    = {},
     reunioes       = {},
     statusInicial  = null,
+    // Só cargo Dev, conta Admin e Débora Lima (gate no servidor; aqui só esconde o lápis).
+    podeLancarFaturamento = false,
     erro           = null,
 }) {
+    // Quantas empresas do mês estão com faturamento lançado à mão (rótulo do KPI).
+    const nManuais = empresas.filter((e) => e.faturamento_fonte === 'manual').length;
+
     // Chegando do clique numa fatia da "Distribuição de status", a lista já abre filtrada
     // naquele status. O backend valida a chave (ver todasEmpresas) — aqui ela só vira o chip.
     const [filtro, setFiltro]   = useState(statusInicial ?? 'todas');
@@ -224,7 +230,8 @@ export default function PolosEmpresas({
                 {/* KPIs */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <Kpi label="Empresas ativas" value={totais.ativos} />
-                    <Kpi label="Faturamento (Adman)" value={formatCurrency(totais.faturamento)} accent />
+                    <Kpi label={nManuais > 0 ? `Faturamento (Adman + ${nManuais} manual)` : 'Faturamento (Adman)'}
+                         value={formatCurrency(totais.faturamento)} accent />
                     <Kpi label="Meta total" value={formatCurrency(totais.meta)} />
                     <Kpi label="% da meta" value={`${totais.pct}%`} />
                 </div>
@@ -305,7 +312,18 @@ export default function PolosEmpresas({
                                             <td className="px-4 py-3 text-white/60">{e.polo}</td>
                                             <td className="px-4 py-3 text-white/40 text-xs">{e.fase}</td>
                                             <td className="px-4 py-3"><StatusBadge status={e.status} /></td>
-                                            <td className="px-4 py-3 text-right text-white font-semibold tabular-nums">{formatCurrency(e.faturamento)}</td>
+                                            {/* Faturamento + origem do número (Adman / manual / sem dado) e,
+                                                para quem pode, o lápis do lançamento manual. */}
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <SeloFonteFaturamento empresa={e} />
+                                                        <span className="text-white font-semibold tabular-nums">{formatCurrency(e.faturamento)}</span>
+                                                    </div>
+                                                    <LancarFaturamentoManual empresa={e} mes={mesSelecionado} mesLabel={mesRefLabel}
+                                                                             podeLancar={podeLancarFaturamento} />
+                                                </div>
+                                            </td>
                                             {/* % da meta TRAVADO em 100: a meta é um limiar de entrada
                                                 (M2=1k, M3=4k, M4=8k), não um alvo proporcional — quem
                                                 fatura R$ 101 mil sobre limiar de R$ 10 mil marcava

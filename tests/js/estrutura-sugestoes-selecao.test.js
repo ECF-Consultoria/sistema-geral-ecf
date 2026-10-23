@@ -267,7 +267,9 @@ test('textos: composição em linha', () => {
 });
 
 test('textos: avisos com limite vindo do servidor', () => {
-    assert.equal(T.textoTituloLongo(61, 60), 'O título passa de 60 caracteres (61). O Mercado Livre pode cortar.');
+    // 23/10/2026 (P-26): sem citar a plataforma — o cliente lê este aviso no Planejamento.
+    assert.equal(T.textoTituloLongo(61, 60), 'O nome tem 61 caracteres; o ideal é até 60.');
+    assert.doesNotMatch(T.textoTituloLongo(120, 60), /Mercado Livre|anúncio|\bML\b/);
     assert.equal(T.msgSkuLongo(120), 'O código passa de 120 caracteres. Encurte para poder aceitar.');
     assert.equal(T.msgLimiteDoLote(100), 'Você pode aceitar até 100 de uma vez. Aceite estas e marque as próximas.');
     assert.equal(T.msgMarcamosPrimeiras(100), 'Marcamos as primeiras 100. Aceite e marque as próximas.');

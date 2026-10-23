@@ -2,11 +2,11 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\EstadoDoRascunho;
 use App\Models\EstruturaOferta;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
-use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
 use App\Support\Publicador\ConferenciaDeFrete;
 use App\Support\Publicador\ContasLiberadas;
@@ -77,6 +77,7 @@ class ConferenciaService
         private ClienteMlPublicador $cliente,
         private ImagemAssetService $imagens,
         private DadosEfetivosService $efetivos,
+        private EnvioDoRascunhoService $envios,
     ) {}
 
     public function conferir(PubRascunho $r): PubValidacao
@@ -161,7 +162,7 @@ class ConferenciaService
                     }
                 }
             }
-            $problemas = [...$problemas, ...MapeadorErrosMl::agrupar($doMl)];
+            $problemas = [...$problemas, ...$this->causaDoMercadoEnvios(MapeadorErrosMl::agrupar($doMl), $r, $prep['snapshot'], $conta)];
 
             // 9. Frete contra a Precificação. Com bloqueio não se gasta cotação: há coisa mais séria a corrigir.
             if (! (new ResultadoValidacao($problemas))->temBloqueio()) {
@@ -346,7 +347,9 @@ class ConferenciaService
         $ids = array_values(array_unique(array_filter(array_map(
             fn ($a) => is_array($a) ? ($a['id'] ?? null) : null, (array) ($resp->corpo['required_attributes'] ?? []),
         ))));
-        $r->update(['step_state' => [...(array) $r->step_state, 'condicionais' => ['revisao' => $r->revisao, 'ids' => $ids, 'em' => now()->toIso8601String()]]]);
+        // Só a chave (23/10/2026, P-04): o `$r` foi lido antes da conta, do schema, dos uploads e deste POST — regravar o
+        // estado inteiro apagava o que a automação de imagens gravou no meio (o `kit_id` sumia e as imagens nunca entravam).
+        EstadoDoRascunho::gravar($r, 'condicionais', ['revisao' => $r->revisao, 'ids' => $ids, 'em' => now()->toIso8601String()]);
 
         return ['ids' => $ids, 'bruta' => $bruta];
     }
@@ -444,6 +447,45 @@ class ConferenciaService
      * @param  list<Problema>  $doMl  o que o validate apontou (para saber se o anúncio perde o Mercado Envios)
      * @return list<Problema>
      */
+    /**
+     * O aviso de que o Mercado Livre vai tirar o Mercado Envios (`shipping.lost_me2*`, o 4057) diz a causa quando é o
+     * PACOTE (23/10/2026, P-19): o texto fixo culpava "a forma de postagem desta conta nesta categoria", e no combit da
+     * Opala a causa era o pacote das 4 caixas empilhadas (360 cm). Com as medidas e os limites da conta, e para onde
+     * o anúncio vai (transportadora ou a combinar). Sem pacote fora do limite, fica o texto de sempre.
+     *
+     * @param  list<Problema>  $problemas
+     * @return list<Problema>
+     */
+    private function causaDoMercadoEnvios(array $problemas, PubRascunho $r, RascunhoSnapshot $s, ContextoConta $conta): array
+    {
+        $doEnvio = fn (Problema $p) => str_starts_with((string) ($p->mlCausa['code'] ?? ''), 'shipping.lost_me2');
+        if (array_filter($problemas, $doEnvio) === []) {
+            return $problemas;
+        }
+        try {
+            $envio = $this->envios->avaliar($r, $s->atributos, $conta->sellerId);
+        } catch (\Throwable) {
+            return $problemas;
+        }
+        if ($envio['estouros'] === []) {
+            return $problemas;
+        }
+        $nomes = ['maior' => 'maior lado', 'soma' => 'soma dos lados', 'peso' => 'peso'];
+        $partes = array_map(fn (array $e) => $e['medida'] === 'peso'
+            ? 'peso '.self::numero($e['valor']).' kg (máx. '.self::numero($e['limite']).' kg)'
+            : ($nomes[$e['medida']] ?? $e['medida']).' '.self::numero($e['valor']).' cm (máx. '.self::numero($e['limite']).' cm)', $envio['estouros']);
+        $sai = $envio['destino'] === 'me1' ? 'sai pela sua transportadora (ME1)' : 'sai como «A combinar com o comprador»';
+        $texto = 'O pacote passa do limite do Mercado Envios desta conta — '.implode(', ', $partes)
+            .": o Mercado Livre vai tirar o Mercado Envios deste anúncio e ele {$sai}.";
+
+        return array_map(fn (Problema $p) => $doEnvio($p) ? new Problema($p->regra, $p->severidade, $texto, $p->camada, $p->alvo, $p->mlCausa) : $p, $problemas);
+    }
+
+    private static function numero(float $n): string
+    {
+        return rtrim(rtrim(number_format($n, 1, ',', '.'), '0'), ',');
+    }
+
     private function freteContraAPrecificacao(PubRascunho $r, mixed $ancora, ContextoConta $conta, RascunhoSnapshot $s, array $doMl, array &$brutas): array
     {
         $modo = (string) ($s->envio['modo'] ?? 'me2');
@@ -461,7 +503,6 @@ class ConferenciaService
             }
         }
 
-        $fretes = $this->efetivos->fretesDoProduto($r->produto);
         $pacote = ConferenciaDeFrete::dimensions($s->atributos);
         if ($pacote === null) {
             $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'sem_pacote'];
@@ -469,8 +510,18 @@ class ConferenciaService
             return [];
         }
 
-        $empresa = $r->produto->company;
-        $logistica = ($empresa !== null ? ModalidadeDeEnvio::emCache($empresa) : null) ?? (string) config('estrutura_produtos.modalidade_padrao');
+        // O pacote que passa do limite do Mercado Envios da conta também não tem frete do ML para conferir
+        // (21/10/2026): o `shipping_options/free` responde com um número teórico, e compará-lo acusaria diferença
+        // de frete que o Mercado Livre nunca vai cobrar. Vale mesmo sem o aviso `lost_me2` do validate.
+        $envio = $this->envios->avaliar($r, $s->atributos, $conta->sellerId);
+        if (EnvioDoRascunhoService::fora($envio['destino'])) {
+            $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'fora_do_me2', 'destino' => $envio['destino']];
+
+            return [];
+        }
+
+        $fretes = $this->efetivos->fretesDoProduto($r->produto);
+        $logistica = $envio['modalidade'] ?? (string) config('estrutura_produtos.modalidade_padrao');
         $teto = max(1, (int) config('publicador.frete_conferencia.max_cotacoes', 6));
         $nomes = ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'];
 

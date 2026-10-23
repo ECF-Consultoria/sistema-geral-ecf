@@ -114,7 +114,7 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/60">
             <span data-logistica className="inline-flex items-center gap-1.5">
                 <Package size={14} className="text-white/60" aria-hidden="true" />
-                <PilulaLogistica chave={logistica.chave} rotulos={vocabulario?.logisticas}
+                <PilulaLogistica chave={logistica.chave} rotulos={rotulosDoDestino(vocabulario?.logisticas, logistica)}
                     className="h-auto bg-transparent px-0" />
             </span>
             {logistica.chave === 'pendente' && semMedida.length > 0 && (
@@ -129,9 +129,7 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
                     . Complete na ficha.
                 </span>
             )}
-            {logistica.chave === 'me1' && (
-                <span data-frete title="Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora.">Frete pela sua transportadora</span>
-            )}
+            {logistica.chave === 'me1' && <TextoForaDoMe2 destino={logistica.destino} />}
             {temFrete && (
                 <>
                     <span className="hidden h-8 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
@@ -148,19 +146,26 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
     );
 }
 
-/** Tipos distintos dos componentes: botão de texto que abre a escolha do tipo do produto. */
+/**
+ * Tipos distintos dos componentes: botão de texto que abre a escolha do tipo do produto. 21/10/2026: o
+ * produto sem tipo aparece como "Sem tipo" (âmbar) — a aba Sem tipo saiu, e é por aqui que ele ganha um.
+ */
 export function TiposDaSugestao({ itens = [], onTipo }) {
     const tipos = [];
     for (const i of itens) {
-        if (i.tipo_nome && ! tipos.some((t) => t.tipo === i.tipo)) tipos.push({ tipo: i.tipo, nome: i.tipo_nome, produtoId: i.produto_id, produtoNome: i.produto_nome });
+        const semTipo = ! i.tipo;
+        const chave = semTipo ? `sem-${i.produto_id}` : i.tipo;
+        if ((semTipo || i.tipo_nome) && ! tipos.some((t) => t.tipo === chave)) {
+            tipos.push({ tipo: chave, nome: semTipo ? 'Sem tipo' : i.tipo_nome, semTipo, produtoId: i.produto_id, produtoNome: i.produto_nome });
+        }
     }
 
     return (
         <div className="flex flex-wrap gap-x-2">
             {tipos.map((t) => (onTipo ? (
-                <button key={t.tipo} type="button" onClick={() => onTipo(t.produtoId)} title="Mudar o tipo deste produto"
-                    aria-label={`Mudar o tipo de ${t.produtoNome} (${t.nome})`}
-                    className={cn('inline-flex min-h-[44px] items-center gap-1 text-[12px] text-white/55 hover:text-white xl:min-h-0', FOCO)}>
+                <button key={t.tipo} type="button" onClick={() => onTipo(t.produtoId)} title={t.semTipo ? 'Escolher o tipo deste produto' : 'Mudar o tipo deste produto'}
+                    aria-label={t.semTipo ? `Escolher o tipo de ${t.produtoNome}` : `Mudar o tipo de ${t.produtoNome} (${t.nome})`} data-sem-tipo={t.semTipo || undefined}
+                    className={cn('inline-flex min-h-[44px] items-center gap-1 text-[12px] xl:min-h-0', t.semTipo ? 'text-amber-300/90 hover:text-amber-200' : 'text-white/55 hover:text-white', FOCO)}>
                     {t.nome} <Pencil size={10} aria-hidden="true" />
                 </button>
             ) : (
@@ -168,4 +173,19 @@ export function TiposDaSugestao({ itens = [], onTipo }) {
             )))}
         </div>
     );
+}
+
+/**
+ * Fora do tamanho do envio ME2, a conta SEM transportadora própria combina a entrega com o comprador (23/10/2026, P-27):
+ * a #459 não tem ME1 e a tela dizia "ME1 · Frete pela sua transportadora". `destino` vem do servidor ('me1', 'combinar'
+ * ou 'fora' = ainda não se sabe); sem ele, vale o de antes.
+ */
+export function rotulosDoDestino(rotulos, logistica) {
+    return logistica?.chave === 'me1' && logistica?.destino === 'combinar' ? { ...(rotulos ?? {}), me1: 'A combinar' } : rotulos;
+}
+
+export function TextoForaDoMe2({ destino }) {
+    return destino === 'combinar'
+        ? <span data-frete title="Fora do tamanho do envio ME2. A entrega é combinada com o comprador.">Entrega combinada com o comprador</span>
+        : <span data-frete title="Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora.">Frete pela sua transportadora</span>;
 }

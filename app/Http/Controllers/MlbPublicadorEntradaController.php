@@ -22,6 +22,7 @@ use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Services\Publicador\ResumoDoSincronizar;
+use App\Services\Publicador\VitrineDeProdutosService;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\NaFilaDePublicacao;
 use Illuminate\Http\JsonResponse;
@@ -214,6 +215,18 @@ class MlbPublicadorEntradaController extends Controller
         }
 
         $empresa = $this->programas->empresaParaTela($alvo);
+
+        // 20/10/2026 — a VITRINE de cartões: para todas (`publicador.vitrine`) ou só as contas da lista.
+        if (VitrineDeProdutosService::ligadaPara($alvo['chave'])) {
+            return Inertia::render('Mlb/Publicador/ProdutosVitrine', [
+                'empresa' => $empresa,
+                'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
+                ...app(VitrineDeProdutosService::class)->montar($alvo),
+                'cabecalho' => $cabecalhos->para($alvo, $empresa, 'produtos'),
+                'fila_publicacao' => $filas->aviso($alvo['chave']),
+            ]);
+        }
+
         // A chave da conta vai para `url_produto` de cada linha (§7, plano 175-08):
         // é com ela que a coluna Fases abre a tela do Produto.
         $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company'], $alvo['chave']);

@@ -132,8 +132,9 @@ class CockpitDaContaTest extends TestCase
             'ml_user_id' => '1555596317',
             'access_token' => 'APP_USR-segredo',
             'refresh_token' => 'TG-segredo',
-            'expires_at' => $tokenStatus === 'expired' ? now()->subHours(2) : now()->addHours(5),
-            'status' => $tokenStatus === 'expired' ? 'expired' : 'active',
+            // `expired` = o caso real das tardes: ainda ativo, só vencido; `revoked` = desconectado de verdade.
+            'expires_at' => $tokenStatus === 'active' ? now()->addHours(5) : now()->subHours(2),
+            'status' => $tokenStatus === 'revoked' ? 'revoked' : 'active',
         ]);
 
         return [$empresa->fresh(), $company];
@@ -298,7 +299,8 @@ class CockpitDaContaTest extends TestCase
      */
     private function cockpitCompleto(): array
     {
-        [$e, $c] = $this->conta(tokenStatus: 'expired', nome: 'Conta cheia');
+        // Revogado = o problema do ML de verdade (o vencido renova sozinho desde 20/10/2026): é ele que dá banner.
+        [$e, $c] = $this->conta(tokenStatus: 'revoked', nome: 'Conta cheia');
         $this->erpDeclarado($e, 'Bling');
         foreach (range(1, 4) as $i) {
             $this->acervo($c, 'MLBX'.$i, $i === 2 ? 'paused' : ($i === 3 ? 'under_review' : 'active'), $i, $i === 1 ? [
@@ -536,9 +538,15 @@ class CockpitDaContaTest extends TestCase
         $this->assertFalse($this->linha($saude, 'mercado_livre')['problema']);
     }
 
-    public function test_token_expirado_abre_o_banner_do_ml_e_a_saude_requer_acao(): void
+    public function test_token_vencido_renova_sozinho_e_so_o_revogado_abre_o_banner_do_ml(): void
     {
+        // 20/10/2026: vencido (o caso de toda tarde) não é desconectado — a 1ª chamada renova.
         [$e, $c] = $this->conta(tokenStatus: 'expired');
+        $this->assertNull($this->servico()->banner($this->empresa($e)));
+        $this->assertSame('ativo', $this->linha($this->saude($e, $c), 'mercado_livre')['estado']);
+        $this->assertFalse($this->linha($this->saude($e, $c), 'mercado_livre')['problema']);
+
+        MlToken::query()->update(['status' => 'revoked']);
         $this->erpDeclarado($e, 'Bling');
         $this->acervo($c, 'MLB1');
         // O link de reconexão REAL é o da ficha de implementação da empresa.
@@ -553,7 +561,7 @@ class CockpitDaContaTest extends TestCase
         $saude = $this->saude($e, $c);
         $this->assertSame('requer_acao', $saude['geral']);
         $linha = $this->linha($saude, 'mercado_livre');
-        $this->assertSame('expirado', $linha['estado']);
+        $this->assertSame('sem_token', $linha['estado']);
         $this->assertTrue($linha['problema']);
         $this->assertSame($empresa['link_reconexao'], $linha['link_reconexao']);
     }
@@ -632,7 +640,7 @@ class CockpitDaContaTest extends TestCase
 
     public function test_o_problema_do_ml_vence_a_defasagem_no_status_geral(): void
     {
-        [$e, $c] = $this->conta(tokenStatus: 'expired');
+        [$e, $c] = $this->conta(tokenStatus: 'revoked');
         $this->acervo($c, 'MLB1', 'active', 0, ['coletado_em' => now()->subHours(72)]);
 
         $this->assertSame('requer_acao', $this->saude($e, $c)['geral']);

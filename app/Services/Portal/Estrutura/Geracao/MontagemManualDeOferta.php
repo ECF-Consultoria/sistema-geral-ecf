@@ -44,6 +44,7 @@ class MontagemManualDeOferta
         private RetratoDoCatalogo $retrato,
         private EstruturaOfertaService $ofertas,
         private FreteMe2Service $frete,
+        private FotosDasVariacoes $fotos,
     ) {}
 
     // ═══ O que a janela lista ═══════════════════════════════════════════════
@@ -91,6 +92,22 @@ class MontagemManualDeOferta
         }
         usort($produtos, fn ($x, $y) => [TipoDoProduto::normalizar($x['nome']), $x['produto_id']] <=> [TipoDoProduto::normalizar($y['nome']), $y['produto_id']]);
 
+        // 22/10/2026 — "tem que ser a imagem do produto", não as iniciais: cada cor leva a sua foto (a mesma régua
+        // dos cartões do Planejamento) e o produto, a da primeira cor que tiver. Sem foto, a tela mostra as iniciais.
+        $idsDasVariacoes = [];
+        foreach ($produtos as $p) {
+            array_push($idsDasVariacoes, ...array_column($p['variacoes'], 'variacao_id'));
+        }
+        $fotos = $this->fotos->capas($empresa, $idsDasVariacoes);
+        foreach ($produtos as &$p) {
+            foreach ($p['variacoes'] as &$v) {
+                $v['foto'] = $fotos[$v['variacao_id']] ?? null;
+            }
+            unset($v);
+            $p['foto'] = collect($p['variacoes'])->pluck('foto')->filter()->first();
+        }
+        unset($p);
+
         $avulsas = EstruturaOferta::query()
             ->where('company_id', $empresa->id)
             ->where('fase', EstruturaOferta::FASE_SIMPLES)
@@ -100,6 +117,11 @@ class MontagemManualDeOferta
             ->map(fn (EstruturaOferta $o) => ['oferta_id' => (int) $o->id, 'sku' => $o->sku, 'nome' => $o->nome])
             ->values()
             ->all();
+        $fotosDasAvulsas = $this->fotos->capasDasOfertas($empresa, array_column($avulsas, 'oferta_id'));
+        foreach ($avulsas as &$o) {
+            $o['foto'] = $fotosDasAvulsas[$o['oferta_id']] ?? null;
+        }
+        unset($o);
 
         return ['produtos' => $produtos, 'avulsas' => $avulsas, 'max_componentes' => ChaveDeComposicao::MAXIMO_COMPONENTES];
     }
@@ -137,6 +159,8 @@ class MontagemManualDeOferta
                 'pacote'        => $av['pacote'],
                 'peso_faturado' => $av['peso_faturado'],
                 'sem_medida'    => $av['sem_medida'],
+                // Fora do ME2: a transportadora (a conta tem ME1) ou "a combinar" (23/10/2026, P-27).
+                'destino'       => $av['logistica'] === 'me1' ? ModalidadeDeEnvio::destinoFora(ModalidadeDeEnvio::me1EmCache($empresa)) : null,
             ];
             $frete = $this->frete->estimar($empresa, ['montagem' => [
                 'pacote'        => $av['pacote'],

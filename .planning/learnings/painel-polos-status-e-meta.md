@@ -671,3 +671,29 @@ O que não é dedutível do código:
 - Worktree novo: o `node_modules` do checkout principal pode estar atrás do `package.json` do
   `origin/main` (em 14/10 faltava o `jsqr`) e o `vite build` falha em `Autenticadores/Index.jsx`.
   Aponte a junction para um `node_modules` de árvore com o mesmo `package-lock.json` (`cmp -s`).
+
+## 18. Faturamento manual: só onde a Adman não tem dado, e só 4 pessoas lançam (22/10/2026)
+
+Pedido: "colocar o faturamento de uma empresa polos manualmente; só Dev, admin e a Débora".
+Existe para as empresas que a Adman recusa ("Customer not found", "not mentored by agency"
+— §15 e §16; o `polos-warm.log` lista quem fica de fora) e que entravam com R$ 0 mudo. Três decisões do usuário que **não** se deduzem lendo o código:
+
+- **"admin" era a CONTA Admin, não o perfil.** A Débora Lima (`consultor.04@`, user 12) já
+  tem `role=admin` em produção, junto com outras 11 pessoas. O pedido foi restringir:
+  cargo Dev (`is_dev`) + `admin@ecfconsultoria.com.br` + Débora, por e-mail, em
+  `PolosController::LANCADORES_FATURAMENTO_MANUAL`. O sistema não tem permissão por pessoa
+  (só por setor) — não "simplifique" para `isAdmin()`.
+- **A Adman prevalece.** O manual só vale quando a empresa está FORA do mapa da Adman no mês
+  (sem snapshot, ou coluna da métrica vigente NULL). Snapshot com R$ 0 é dado e não é
+  sobrescrito. A Adman voltando a responder, o lançamento fica com `aplicado=false` e a tela
+  mostra "manual" riscado. O servidor recusa lançar quando a Adman já tem dado.
+- **Qualquer mês até o corrente**, inclusive fechado e empresa arquivada (o roster de mês
+  fechado inclui arquivadas de propósito — caso Spinella, §11.1).
+
+O único ponto de decisão é `faturamentoVigenteDoMes()`; `faturamentoAdmanDoMes()` segue
+sendo a leitura CRUA da Adman de propósito (a auditoria `polos:audit-faturamento` compara
+Adman × CSV e não pode misturar número digitado). Tabela própria `polos_faturamento_manual`
+em vez de coluna no snapshot porque a ausência de linha no snapshot é sinal usado pelo warm
+(ordem por `synced_at`, §15) e pela trava do `--arquivar-ausentes` (§11.1). Cada linha de empresa leva
+`faturamento_fonte` (`adman` | `manual` | `sem_dado`): pela primeira vez a tela distingue
+"sem dado" de "vendeu zero".
