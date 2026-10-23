@@ -105,12 +105,40 @@ test('Agente.jsx: a página inteira (com o header) renderiza com o JSON do contr
     assert.match(html, /Agente da loja/);
     assert.match(html, /Rotina e fila/);
     assert.match(html, /Configuração essencial/);
-    assert.match(html, /Atividade/);
+    // 23/10/2026 (E1): o cartao deixou de se chamar "Atividade" e passou a ser o "Registro de
+    // atividade" — a peca nova projeta as TRES fontes, em vez de repetir a tabela da fila.
+    assert.match(html, /Registro de atividade/);
 });
+
+// ⚠️⚠️ **REAPONTADO EM 23/10/2026, e o link NÃO se perdeu — mudou de cartão.**
+//
+// Antes, a linha da fila em `aguardando_aprovacao` aparecia no cartão "Atividade", que
+// renderizava a fila INTEIRA. O cartão "Rotina e fila" mostra só `admitida`/`preparando`/
+// `bloqueada`, então aquela linha **não** sai mais por ali.
+// ➡️ Ela sai pelo **Registro de atividade** (E1), com o link vindo do servidor — e é o que
+// este caso passa a provar, por isso ele agora monta a prop `atividade`. Reapontar e deixar
+// de provar são coisas diferentes: aqui o invariante *"o destino real chega à pessoa"* continua
+// cobrado, no lugar onde ele agora vive.
+const ATIVIDADE_COM_OFERTA = {
+    dias: [{
+        dia: '2026-10-20', rotulo: 'Hoje', linhas: [{
+            id: 'aprovacao-7', fonte: 'aprovacao', fonte_rotulo: 'Aprovação', origem: 'manual',
+            origem_rotulo: 'Uma pessoa', quando: '2026-10-20T13:05:00-03:00', hora: '13:05', dia: '2026-10-20',
+            titulo: 'Aprovação', resultado: 'aprovado', resultado_rotulo: null, motivo: null, versao: 1,
+            autor: 'Vitória', produto: { id: 10, nome: 'Cadeira Executiva', sku: 'CAD-AZ' },
+            links: { produto: '/editor/10', previa: '/previa/10', oferta: '/meus/1/aprovacao?oferta=7' },
+        }],
+    }],
+    pagina: 1, paginas: 1, total: 1, por_pagina: 25,
+    filtros: { de: null, ate: null, fonte: null, origem: null, resultado: null, produto_id: null },
+    opcoes: { fontes: [], origens: [], resultados: [] },
+};
 
 test('ConteudoDoAgente: estados, unidades dos contadores e os destinos reais', async () => {
     const { default: ConteudoDoAgente } = await montar(CONTEUDO);
-    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente: AGENTE, produtos: [] }));
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: AGENTE, produtos: [], atividade: ATIVIDADE_COM_OFERTA,
+    }));
 
     assert.match(html, />Ligado</);
     assert.match(html, /Prepara: Clássico/);
@@ -120,6 +148,7 @@ test('ConteudoDoAgente: estados, unidades dos contadores e os destinos reais', a
     assert.match(html, /produtos · últimas 24 h/);
     assert.match(html, />ofertas</);
     // Destinos reais vindos do servidor, nunca montados na tela.
+    // ⚠️ O link da oferta agora vem pelo Registro de atividade, montado pelo SERVIDOR.
     assert.match(html, /href="\/meus\/1\/aprovacao\?oferta=7"/);
     assert.match(html, /href="\/editor\/11"[^>]*>corrigir</);
     assert.match(html, /Faltam dados/);
@@ -155,8 +184,14 @@ test('ConteudoDoAgente: pausado oferece Retomar e não promete o Preparar agora'
 
 test('ConteudoDoAgente: lixo nas props não derruba a tela', async () => {
     const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    // 23/10/2026: o caso do VENENO entrou. `Number({toString:null})` LANCA, e o `numero()`
+    // deste arquivo convertia sem guarda de tipo desde 20/10 — os casos abaixo nunca punham
+    // objeto num campo NUMERICO (`contadores`, `versao`), entao o defeito passava calado.
+    const VENENO = { toString: null };
     for (const agente of [null, undefined, {}, { configuracao: null, contadores: 'x', fila: 'nao-e-lista' },
-        { fila: [null, { estado: 'estado-novo', bloqueios: 'x', produto: 5, oferta: { url: null } }] }]) {
+        { fila: [null, { estado: 'estado-novo', bloqueios: 'x', produto: 5, oferta: { url: null } }] },
+        { contadores: { aguardando_dados: VENENO, preparando: VENENO }, configuracao: { versao: VENENO, existe: true }, fila: [] },
+        { contadores: VENENO, configuracao: VENENO, fila: [{ tentativas: VENENO, produto: VENENO }] }]) {
         assert.doesNotThrow(() => renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente, produtos: 'x' })));
     }
 });

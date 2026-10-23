@@ -685,7 +685,20 @@ class FotosDoPainelServiceTest extends TestCase
         // passa pelo motivo errado —, e não porque o docblock tenha de nomeá-lo.
         $sinalPorArquivo = [
             'app/Services/Publicador/Fila/AgendadorDaFila.php' => ['checar::emUso'],
-            'app/Services/Publicador/PreparoIaDoRascunhoService.php' => ['preparar::emUso', 'sincronizarAgora::emUso', 'executarEtapa::emUso'],
+            // ⚠️⚠️ **MUDOU DE `emUso` PARA `editando` EM 23/10/2026, e este é o registro que o
+            // próprio gate cobra** (a mensagem dele diz *"renomeado ou acrescentado **sem
+            // documentar**"*). O gate acusou e está CERTO; o conserto é documentar, nunca afrouxar.
+            //
+            // ⚠️ **NÃO É RENAME DO MÉTODO.** `EditorEmUso` tem os DOIS, e são **sinais
+            // DIFERENTES**: `marcar()`/`emUso()` usam `chave()`, e `marcarEdicao()`/`editando()`
+            // usam `chaveDaEdicao()`. O remoto **ACRESCENTOU** o segundo sinal e trocou **estes
+            // três pontos** de propósito — por isso as outras quatro linhas desta lista seguem em
+            // `emUso` e **continuam legítimas**.
+            //
+            // ⚠️ Medido: `git show ed8fdc15:…` já tinha `editando` nos **três** pontos **antes** do
+            // merge do E0 (`42c1bd66`) — a mudança é **deles**; a resolução preservou a escolha
+            // deles e só acrescentou o gancho `agenteParado` do Agente no terceiro ponto.
+            'app/Services/Publicador/PreparoIaDoRascunhoService.php' => ['preparar::editando', 'sincronizarAgora::editando', 'executarEtapa::editando'],
             'app/Support/Publicador/GarantiaPadrao.php' => ['aplicarNaConta::emUso'],
             'app/Services/Publicador/ExcluirProdutoService.php' => ['impedimento::emUso', 'excluirUm::chave'],
             'app/Http/Controllers/MlbPublicadorController.php' => ['produto::marcar'],

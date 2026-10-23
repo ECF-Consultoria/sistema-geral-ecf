@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatarDataHora } from '@/lib/dataHora';
+import RegistroDeAtividade from './RegistroDeAtividade';
 
 // ─── Agente ECF Publicador — o conteúdo da tela (AG-07, 20/10/2026) ──────────
 //
@@ -51,7 +52,27 @@ const ANDAMENTOS = {
 
 const texto = (v, padrao = '—') => (typeof v === 'string' && v.trim() !== '' ? v : padrao);
 const lista = (v) => (Array.isArray(v) ? v : []);
-const numero = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+// ⚠️⚠️ **`Number(valor)` LANÇA com `{toString: null}`** — *"Cannot convert object to
+// primitive value"* —, porque o ToPrimitive tenta `valueOf` e `toString` e nenhum
+// dos dois é chamável. É a MESMA assinatura das seis telas pretas desta milestone,
+// por um caminho novo: não é `String(` nem `obj[chave]`, é `Number(`.
+// ➡️ Então a guarda é de **TIPO antes da conversão**: objeto nunca chega ao `Number`.
+// Achado pelo render adverso em 23/10/2026.
+// ⚠️ Este `numero()` tinha o defeito desde 20/10 e **o teste de lixo não o pegava**:
+// ele nunca pôs objeto num campo numérico (`contadores`, `versao`). Consertado junto
+// porque é a mesma linha de uma falha e o arquivo já estava aberto.
+const numero = (v) => {
+    if (typeof v === 'number') {
+        return Number.isFinite(v) ? v : 0;
+    }
+    if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v);
+
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    return 0;
+};
 
 function Cartao({ titulo, children, className = '' }) {
     return (
@@ -255,7 +276,7 @@ function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
     );
 }
 
-export default function ConteudoDoAgente({ agente, produtos = [], processando = false, mensagem = null, erro = null, onSalvar, onExecutar, onControle }) {
+export default function ConteudoDoAgente({ agente, produtos = [], atividade = null, processando = false, mensagem = null, erro = null, onSalvar, onExecutar, onControle, onFiltrarAtividade }) {
     const configuracao = agente?.configuracao ?? {};
     const contadores = agente?.contadores ?? {};
     const fila = lista(agente?.fila);
@@ -333,9 +354,18 @@ export default function ConteudoDoAgente({ agente, produtos = [], processando = 
             <Cartao titulo="Configuração essencial">
                 <FormularioDaConfiguracao configuracao={configuracao} processando={processando} onSalvar={onSalvar} />
             </Cartao>
-            <Cartao titulo="Atividade">
-                <p className="mt-1 text-[12px] text-pub-txt-3">Os {fila.length} registros mais recentes desta loja.</p>
-                <TabelaDeExecucoes linhas={fila} vazio="O agente ainda não fez nada nesta loja." />
+            {/* ⚠️⚠️ **ANTES ESTE CARTÃO MOSTRAVA A MESMA TABELA DA FILA, com outro título** —
+                as execuções mais recentes. Não era registro de atividade: era a fila repetida, e
+                o docblock do `LeituraDoAgente` já prometia "atividade" que não existia.
+                ➡️ Agora é a **projeção das três fontes** que o agente e o portão já persistem
+                (preparo, configuração e aprovação), agrupada por dia, filtrável e paginada —
+                **sem tabela nova** (§5.5 do plano). */}
+            <Cartao titulo="Registro de atividade">
+                <RegistroDeAtividade
+                    atividade={atividade}
+                    processando={processando}
+                    onFiltrar={onFiltrarAtividade}
+                />
             </Cartao>
         </div>
     );

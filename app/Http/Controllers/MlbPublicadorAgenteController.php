@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PubAgenteExecucao;
 use App\Models\PubProduto;
+use App\Services\Publicador\Agente\AtividadeDoAgente;
 use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
 use App\Services\Publicador\Agente\ControleDoAgente;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
@@ -31,8 +32,13 @@ class MlbPublicadorAgenteController extends Controller
 {
     public function __construct(private ProgramasPublicadorService $programas) {}
 
-    public function mostrar(string $conta, LeituraDoAgente $leitura, CabecalhoPublicadorService $cabecalhos): Response|RedirectResponse
-    {
+    public function mostrar(
+        string $conta,
+        Request $request,
+        LeituraDoAgente $leitura,
+        AtividadeDoAgente $atividade,
+        CabecalhoPublicadorService $cabecalhos,
+    ): Response|RedirectResponse {
         $alvo = $this->conta($conta);
         if ($alvo['chave'] !== $conta) {
             return redirect()->route('mlb.anuncios.publicador.agente', ['conta' => $alvo['chave']]);
@@ -41,13 +47,30 @@ class MlbPublicadorAgenteController extends Controller
 
         return Inertia::render('Mlb/Publicador/Agente', [
             'empresa' => $empresa,
-            'agente' => $leitura->paraConta($alvo),
+            // ⚠️⚠️ **AS TRÊS PROPS PESADAS SÃO CLOSURES, e isso é o "carregamento por aba" da E1.**
+            // O Inertia **não avalia** closure de prop que a recarga parcial não pediu, então
+            // paginar a Atividade (`only: ['atividade']`) deixa de reconsultar configuração,
+            // contadores, fila e os até 500 produtos do seletor. Valor direto seria recalculado
+            // em TODA paginação — a tela ficaria lenta justamente no gesto mais repetido.
+            'agente' => fn () => $leitura->paraConta($alvo),
             // Conta travada para publicar: o header mostra o selo, como nas outras telas da conta. O agente segue
             // preparando para a Aprovação; quem barra o envio é o `ContasLiberadas` na publicação.
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
-            'produtos' => $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])
+            'produtos' => fn () => $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])
                 ->whereNull('produto_base_id')->orderBy('nome')->limit(500)->get(['id', 'nome', 'sku'])
                 ->map(fn (PubProduto $p) => ['id' => $p->id, 'nome' => $p->nome, 'sku' => $p->sku])->values(),
+            // O Registro de atividade (E1, 23/10/2026) — PROJEÇÃO das três tabelas que o agente e o
+            // portão já escrevem, sem tabela nova (§5.5 do plano: *"dados novos apenas onde há
+            // lacuna"*). Os filtros chegam pela URL, e filtro forjado é **descartado em silêncio**
+            // no serviço — a mesma regra dos filtros da fila de Aprovação (187-06).
+            'atividade' => fn () => $atividade->paraConta($alvo, [
+                'de' => $request->query('de'),
+                'ate' => $request->query('ate'),
+                'fonte' => $request->query('fonte'),
+                'origem' => $request->query('origem'),
+                'resultado' => $request->query('resultado'),
+                'produto_id' => $request->query('produto_id'),
+            ], (int) $request->query('pagina', 1)),
             // `CabecalhoPublicadorService::ABAS` é lista FECHADA de cinco: o agente não é uma delas. `configuracoes`
             // é o valor que a casa usa para tela fora das quatro abas (nenhuma fica ativa) — mesmo papel que em
             // Configurações da conta.
