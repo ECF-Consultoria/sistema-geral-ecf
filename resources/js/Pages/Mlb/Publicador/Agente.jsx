@@ -59,6 +59,23 @@ export default function Agente({ empresa, agente, produtos = [], atividade = nul
         });
     };
 
+    // ⚠️⚠️ **COPIAR DE OUTRA LOJA VIAJA PELA URL, E NÃO ESCREVE NADA.**
+    //
+    // `?copiar_de=` faz o servidor LER a outra loja e devolver os valores compatíveis como
+    // rascunho; quem grava é o "Salvar configuração", com a `versao_esperada` que a pessoa viu.
+    // ➡️ Na URL porque aí recarregar, voltar no navegador ou compartilhar o link mostram **o
+    // mesmo rascunho**, e **nenhum** desses gestos muda loja nenhuma. Um POST para uma operação
+    // que não escreve seria uma escrita aparente.
+    // ⚠️ `only: ['agente']`: o rascunho vem dentro da prop `agente`, e o resto da tela não precisa
+    // ser reconsultado.
+    const copiarDe = (chave) => {
+        router.get(route('mlb.anuncios.publicador.agente', { conta }), chave === null ? {} : { copiar_de: chave }, {
+            ...opcoes,
+            only: ['agente'],
+            preserveState: true,
+        });
+    };
+
     return (
         <AppLayout title={`Agente — ${empresa?.nome ?? ''}`}>
             <PublicadorHeader aba="configuracoes" cabecalho={cabecalho ?? null} liberada={Boolean(liberada)} />
@@ -75,6 +92,7 @@ export default function Agente({ empresa, agente, produtos = [], atividade = nul
                     onExecutar={(produtoId) => router.post(route('mlb.anuncios.publicador.agente.executar', { conta }), { produto_id: produtoId }, opcoes)}
                     onControle={(acao) => router.post(route(`mlb.anuncios.publicador.agente.${acao}`, { conta }), {}, opcoes)}
                     onFiltrarAtividade={filtrarAtividade}
+                    onCopiarDe={copiarDe}
                 />
             </div>
         </AppLayout>

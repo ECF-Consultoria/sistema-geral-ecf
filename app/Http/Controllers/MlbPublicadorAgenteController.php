@@ -6,6 +6,7 @@ use App\Models\PubAgenteExecucao;
 use App\Models\PubProduto;
 use App\Services\Publicador\Agente\AtividadeDoAgente;
 use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
+use App\Services\Publicador\Agente\CopiaDeConfiguracaoDoAgente;
 use App\Services\Publicador\Agente\ControleDoAgente;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
 use App\Services\Publicador\Agente\LeituraDoAgente;
@@ -37,6 +38,7 @@ class MlbPublicadorAgenteController extends Controller
         Request $request,
         LeituraDoAgente $leitura,
         AtividadeDoAgente $atividade,
+        CopiaDeConfiguracaoDoAgente $copia,
         CabecalhoPublicadorService $cabecalhos,
     ): Response|RedirectResponse {
         $alvo = $this->conta($conta);
@@ -52,7 +54,20 @@ class MlbPublicadorAgenteController extends Controller
             // paginar a Atividade (`only: ['atividade']`) deixa de reconsultar configuração,
             // contadores, fila e os até 500 produtos do seletor. Valor direto seria recalculado
             // em TODA paginação — a tela ficaria lenta justamente no gesto mais repetido.
-            'agente' => fn () => $leitura->paraConta($alvo),
+            'agente' => fn () => [
+                ...$leitura->paraConta($alvo),
+                // ⚠️⚠️ **COPIAR DE OUTRA LOJA É RASCUNHO, e por isso chega como PROP, não como
+                // escrita.** `?copiar_de=` só faz o servidor LER a outra loja e devolver os valores
+                // compatíveis; **nada é gravado**. Quem salva é a pessoa, com a `versao_esperada`
+                // que ela viu — logo a cópia herda a trava de concorrência de sempre.
+                //
+                // ⚠️ **Por que na URL e não num POST:** assim recarregar, voltar no navegador ou
+                // compartilhar o link mostra **o mesmo rascunho**, e **nenhum** desses gestos muda
+                // loja nenhuma. Um POST que devolvesse o rascunho seria uma escrita aparente para
+                // uma operação que não escreve.
+                'copia' => $copia->rascunho($alvo, $request->query('copiar_de')),
+                'origens_de_copia' => $copia->origensPossiveis($alvo),
+            ],
             // Conta travada para publicar: o header mostra o selo, como nas outras telas da conta. O agente segue
             // preparando para a Aprovação; quem barra o envio é o `ContasLiberadas` na publicação.
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),

@@ -198,7 +198,12 @@ test('ConteudoDoAgente: lixo nas props não derruba a tela', async () => {
     for (const agente of [null, undefined, {}, { configuracao: null, contadores: 'x', fila: 'nao-e-lista' },
         { fila: [null, { estado: 'estado-novo', bloqueios: 'x', produto: 5, oferta: { url: null } }] },
         { contadores: { aguardando_dados: VENENO, preparando: VENENO }, configuracao: { versao: VENENO, existe: true }, fila: [] },
-        { contadores: VENENO, configuracao: VENENO, fila: [{ tentativas: VENENO, produto: VENENO }] }]) {
+        { contadores: VENENO, configuracao: VENENO, fila: [{ tentativas: VENENO, produto: VENENO }] },
+        // 23/10/2026: o caminho DIRETO do defeito que a copia revelou — `modalidade` e as janelas
+        // iam para o `value=` de um `<select>`/`<input>` sem guarda, e o React LANCA ao converter
+        // `{toString:null}`. `configuracao: VENENO` NAO exercitava o campo (as chaves vinham
+        // `undefined`); este caso poe o veneno NO CAMPO.
+        { configuracao: { existe: true, modalidade: VENENO, janela_inicio: VENENO, janela_fim: VENENO }, contadores: {}, fila: [] }]) {
         assert.doesNotThrow(() => renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente, produtos: 'x' })));
     }
 });
@@ -336,4 +341,135 @@ test('o calendário viaja na gravacão, e a tela não tem lista de dias própria
 
     // ⚠️ ISCA do leitor: a fonte foi lida de verdade.
     assert.match(conteudo, /diasOpcoes/, 'a fonte lida não é a do componente — as asserções acima seriam vazias');
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// COPIAR DE OUTRA LOJA, COMO RASCUNHO (E1, 23/10/2026)
+//
+// ⚠️ DE CADA CASO, A PERGUNTA RESPONDIDA ANTES DELE EXISTIR:
+//  1. AVISO    → a pessoa achar que a loja ficou IGUAL à outra. O escopo de
+//                produtos e o liga/desliga **não vieram**, e **nada foi salvo**.
+//                Sem a frase, "copiar" parece "configurar".
+//  2. DESLIGADA → o formulário marcar "ligar o agente" porque a loja de ORIGEM
+//                estava ligada. A cópia nasce inativa, e a tela é a segunda guarda
+//                (o servidor já força `false`).
+//  3. VAZIO    → um seletor que não faz nada: sem loja de onde copiar, o controle
+//                não nasce.
+//  4. LIXO     → `copia`/`origens_de_copia` em formato torto derrubando a tela.
+//  5. URL      → copiar virar ESCRITA. Ele viaja em `?copiar_de=`, com recarga
+//                parcial, e **nada é gravado** até a pessoa salvar.
+// ════════════════════════════════════════════════════════════════════════
+
+const COPIA = {
+    valores: {
+        modalidade: 'gold_pro', estoque_minimo: 4, limite_diario: 9, teto_fila: 21,
+        janela_inicio: '08:30', janela_fim: '19:45', dias_semana: [2, 4, 6], habilitado: false,
+    },
+    origem: { chave: 'company-7', nome: 'Loja Vizinha' },
+    nao_copiados: [
+        'o escopo de produtos (os ids s\u00e3o da outra loja)',
+        'o liga/desliga (a c\u00f3pia nasce desligada)',
+        'a pausa ou suspens\u00e3o e o motivo dela',
+    ],
+};
+const ORIGENS = [{ chave: 'company-7', nome: 'Loja Vizinha' }, { chave: 'empresa-3', nome: 'Loja do Polo' }];
+
+test('a cópia AVISA que nada foi salvo e o que NÃO veio 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, copia: COPIA, origens_de_copia: ORIGENS }, produtos: [],
+    }));
+
+    // ⚠⚠ A PARTE QUE PROTEGE: sem ela, "copiar" parece "configurar".
+    assert.match(html, /Nada foi salvo ainda/, 'a tela não diz que nada foi salvo');
+    assert.match(html, /Loja Vizinha/, 'a tela não diz de qual loja os valores vieram');
+    assert.match(html, /Não veio:/, 'a tela não lista o que ficou de fora');
+    assert.match(html, /escopo de produtos/, 'o aviso não menciona o escopo — é o que mais engana');
+    assert.match(html, /nasce desligada/, 'o aviso não menciona que a cópia vem desligada');
+
+    // Os valores da origem estão no formulário.
+    assert.match(html, /value="08:30"/, 'a janela da origem não entrou no formulário');
+    assert.match(html, /value="21"/, 'o teto da fila da origem não entrou no formulário');
+    assert.match(html, /aria-pressed="true"[^>]*>Ter</, 'o calendário da origem não entrou no formulário');
+
+    // ⚠️ As duas lojas de origem aparecem no seletor, e a escolhida está selecionada.
+    for (const nome of ['Loja Vizinha', 'Loja do Polo']) {
+        assert.ok(html.includes(`>${nome}<`), `a loja "${nome}" não apareceu no seletor`);
+    }
+});
+
+test('⚠⚠ a cópia nasce DESLIGADA mesmo com a configuração atual ligada 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    // ⚠️ `AGENTE.configuracao.habilitado` é `true`. Com um rascunho na tela, o campo tem de vir
+    // DESMARCADO — *"regras copiadas começam inativas"*. O servidor já força `false`; isto é a
+    // segunda guarda, e ela existe porque o formulário tem estado próprio.
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, copia: COPIA, origens_de_copia: ORIGENS }, produtos: [],
+    }));
+
+    // O checkbox do "Ligar o agente nesta loja" NÃO está marcado.
+    const ligar = html.match(/<input type="checkbox"[^>]*\/>\s*Ligar o agente nesta loja/);
+    assert.notEqual(ligar, null, 'não achei o campo "Ligar o agente nesta loja" — a asserção abaixo mediria NADA');
+    assert.doesNotMatch(ligar[0], /checked/, '⚠⚠ a cópia veio com o agente LIGADO — ela tem de nascer inativa');
+
+    // ⚠️ ISCA: SEM rascunho, o mesmo campo vem MARCADO (porque a configuração está ligada). Sem
+    // esta linha, um `doesNotMatch(/checked/)` passaria mesmo que o campo nunca nascesse marcado.
+    const semCopia = renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente: AGENTE, produtos: [] }));
+    const ligarSemCopia = semCopia.match(/<input type="checkbox"[^>]*\/>\s*Ligar o agente nesta loja/);
+    assert.match(ligarSemCopia[0], /checked/, 'o campo não nasce marcado nem com a configuração ligada — a asserção acima é vazia');
+});
+
+test('sem loja de onde copiar, o seletor NÃO nasce 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, copia: null, origens_de_copia: [] }, produtos: [],
+    }));
+
+    // ⚠️ Controle que não faz nada é dívida (decisão D4: "botão sem destino não nasce").
+    assert.doesNotMatch(html, /Começar a partir de outra loja/, 'o seletor de cópia apareceu sem nenhuma loja de origem');
+    assert.doesNotMatch(html, /Nada foi salvo ainda/, 'o aviso da cópia apareceu sem cópia');
+});
+
+test('⚠️ lixo na cópia não derruba a tela 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const VENENO = { toString: null };
+    const CASOS = [
+        { copia: 'x', origens_de_copia: 'y' },
+        { copia: VENENO, origens_de_copia: VENENO },
+        { copia: { valores: VENENO, origem: VENENO, nao_copiados: VENENO }, origens_de_copia: [null, 'x', 42, { chave: VENENO, nome: VENENO }] },
+        { copia: { valores: { estoque_minimo: VENENO, dias_semana: VENENO, janela_inicio: VENENO } }, origens_de_copia: ORIGENS },
+        { copia: { valores: {}, origem: {}, nao_copiados: [] }, origens_de_copia: [{ chave: '', nome: '' }] },
+    ];
+
+    for (const caso of CASOS) {
+        assert.doesNotThrow(
+            () => renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente: { ...AGENTE, ...caso }, produtos: [] })),
+            // ⚠️ NUNCA `String(caso)`: `{toString:null}` lançaria DENTRO da mensagem.
+            'um formato torto da cópia derrubou a tela',
+        );
+    }
+
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, copia: { valores: { teto_fila: VENENO }, origem: { nome: VENENO }, nao_copiados: [VENENO] }, origens_de_copia: ORIGENS },
+    }));
+    assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, 'formato inesperado da cópia vazou para a tela');
+    assert.ok(html.length > 500, `o HTML veio com ${html.length} bytes — render vazio não prova nada`);
+});
+
+test('⚠⚠ copiar NÃO escreve: viaja em `?copiar_de=` com recarga parcial 23_10', () => {
+    const pagina = lerSemComentarios(PAGINA);
+    const conteudo = lerSemComentarios(CONTEUDO);
+
+    // ⚠⚠ **É UM GET.** Um `router.post`/`put` aqui faria de "me dê um ponto de partida" uma
+    // ESCRITA aparente, numa tela em que a configuração decide o que o agente prepara sozinho.
+    assert.match(pagina, /router\.get\(route\('mlb\.anuncios\.publicador\.agente', \{ conta \}\), chave === null \? \{\} : \{ copiar_de: chave \}/, 'copiar deixou de viajar por `?copiar_de=` num GET');
+    assert.match(pagina, /only: \['agente'\]/, 'a recarga da cópia não é parcial');
+
+    // ⚠️ E NÃO existe rota de escrita para copiar: se existir, alguém fez a cópia gravar.
+    assert.doesNotMatch(pagina, /agente\.copiar|copiar'\)/, 'apareceu uma rota de escrita para copiar — a cópia é RASCUNHO');
+    assert.doesNotMatch(conteudo, /router\.(post|put)/, 'o componente passou a escrever direto — quem fala com o servidor é a página');
+
+    // ⚠️ ISCA do leitor, nas duas pontas.
+    assert.match(pagina, /const copiarDe = \(chave\)/, 'a fonte lida não é a da página — as asserções acima seriam vazias');
+    assert.match(conteudo, /origensDeCopia/, 'a fonte lida não é a do componente');
 });

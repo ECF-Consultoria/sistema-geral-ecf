@@ -197,21 +197,36 @@ function TabelaDeExecucoes({ linhas, vazio }) {
 }
 
 /** O formulário da configuração essencial. Envia a versão que a pessoa VIU (`versao_esperada`). */
-function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], processando, onSalvar }) {
+function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], copia = null, origensDeCopia = [], processando, onSalvar, onCopiarDe }) {
+    // ⚠️⚠️ **O RASCUNHO DA CÓPIA SOBREPÕE O FORMULÁRIO, MAS NÃO O BANCO.** O servidor só LEU a
+    // outra loja; nada foi gravado. Quem salva é a pessoa, com a `versao_esperada` que ela viu —
+    // então a cópia herda a trava de concorrência de sempre.
+    const doRascunho = typeof copia?.valores === 'object' && copia?.valores !== null ? copia.valores : null;
     const inicial = () => ({
-        habilitado: Boolean(configuracao?.habilitado),
-        modalidade: configuracao?.modalidade ?? '',
-        estoque_minimo: numero(configuracao?.estoque_minimo ?? 1),
-        limite_diario: numero(configuracao?.limite_diario ?? 5),
-        teto_fila: numero(configuracao?.teto_fila ?? 10),
-        janela_inicio: configuracao?.janela_inicio ?? '',
-        janela_fim: configuracao?.janela_fim ?? '',
+        // ⚠️ O rascunho da cópia vence a configuração gravada **no formulário**. `habilitado` NÃO
+        // entra nessa regra de propósito: a cópia nasce DESLIGADA (*"regras copiadas começam
+        // inativas"*), e o servidor já força `false` — isto aqui é a segunda guarda.
+        habilitado: doRascunho !== null ? false : Boolean(configuracao?.habilitado),
+        // ⚠️⚠️ **`texto()` NOS TRÊS CAMPOS DE STRING, e isto consertou um defeito LATENTE do
+        // formulário original.** Eles iam direto para o `value=` de um `<select>`/`<input>`; com
+        // `{toString: null}` o React **LANÇA** ao converter, e a página fica PRETA. O teste de lixo
+        // antigo nunca punha objeto em `modalidade` nem nas janelas, então passava calado — e a
+        // cópia de outra loja abriu um caminho novo para o mesmo campo. Achado pelo render adverso
+        // em 23/10/2026, mesma família do `Number(` consertado mais cedo.
+        modalidade: texto(doRascunho?.modalidade ?? configuracao?.modalidade, ''),
+        estoque_minimo: numero(doRascunho?.estoque_minimo ?? configuracao?.estoque_minimo ?? 1),
+        limite_diario: numero(doRascunho?.limite_diario ?? configuracao?.limite_diario ?? 5),
+        teto_fila: numero(doRascunho?.teto_fila ?? configuracao?.teto_fila ?? 10),
+        janela_inicio: texto(doRascunho?.janela_inicio ?? configuracao?.janela_inicio, ''),
+        janela_fim: texto(doRascunho?.janela_fim ?? configuracao?.janela_fim, ''),
         // ⚠️ ISO: 1 = segunda … 7 = domingo. Vazio = todo dia (o servidor normaliza para `null`).
-        dias_semana: lista(configuracao?.dias_semana).map((d) => numero(d)).filter((d) => d >= 1 && d <= 7),
+        dias_semana: lista(doRascunho?.dias_semana ?? configuracao?.dias_semana).map((d) => numero(d)).filter((d) => d >= 1 && d <= 7),
     });
     const [form, setForm] = useState(inicial);
     // Outra versão chegou do servidor (salvou, ou recarregou depois de um conflito): o formulário a acompanha.
-    useEffect(() => setForm(inicial()), [configuracao?.versao]); // eslint-disable-line react-hooks/exhaustive-deps
+    // ⚠️ E a CHAVE DA ORIGEM entra na dependência: sem ela, pedir a cópia de outra loja chegaria
+    // nas props e **o formulário não se mexeria**, porque `versao` do destino não mudou.
+    useEffect(() => setForm(inicial()), [configuracao?.versao, copia?.origem?.chave]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const campo = (nome) => (ev) => setForm((f) => ({ ...f, [nome]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value }));
     const enviar = (ev) => {
@@ -232,6 +247,50 @@ function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], processando, 
 
     return (
         <form onSubmit={enviar} className="mt-4 space-y-4">
+            {/* ⚠️ COPIAR DE OUTRA LOJA (E1). Só aparece quando existe de onde copiar — seletor
+                vazio seria um controle que não faz nada. */}
+            {lista(origensDeCopia).length > 0 && (
+                <div className="rounded-lg border border-pub-line-subtle bg-pub-sunken px-3 py-2.5">
+                    <div className="flex flex-wrap items-end gap-3">
+                        <label className="text-[12px] text-pub-txt-3">
+                            Começar a partir de outra loja
+                            <select
+                                value={texto(copia?.origem?.chave)} disabled={processando}
+                                onChange={(ev) => onCopiarDe?.(ev.target.value === '' ? null : ev.target.value)}
+                                className="mt-1 block w-[320px] max-w-full rounded-md border border-pub-line-strong bg-pub-surface px-2.5 py-1.5 text-[13px] text-pub-txt"
+                            >
+                                <option value="">Escolha uma loja…</option>
+                                {lista(origensDeCopia).map((o) => {
+                                    // ⚠️ DENTRO do callback (Rollup).
+                                    const chave = texto(o?.chave);
+                                    const nome = texto(o?.nome, chave);
+
+                                    return chave === '' ? null : <option key={chave} value={chave}>{nome}</option>;
+                                })}
+                            </select>
+                        </label>
+                    </div>
+
+                    {/* ⚠️⚠️ **O AVISO É A PARTE QUE PROTEGE.** Sem ele a pessoa acha que a loja ficou
+                        igual à outra — e o escopo de produtos e o liga/desliga NÃO vieram. A lista do
+                        que faltou vem do SERVIDOR, para não divergir do que ele de fato copiou. */}
+                    {doRascunho !== null && (
+                        <div className="mt-2 text-[12px] text-pub-warn-txt">
+                            <p>
+                                Valores de <strong>{texto(copia?.origem?.nome, 'outra loja')}</strong> carregados no
+                                formulário. <strong>Nada foi salvo ainda</strong> — confira e clique em
+                                "Salvar configuração".
+                            </p>
+                            {lista(copia?.nao_copiados).length > 0 && (
+                                <p className="mt-0.5 text-pub-txt-3">
+                                    Não veio: {lista(copia?.nao_copiados).map((n) => texto(n)).filter((n) => n !== '').join('; ')}.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <label className="flex items-center gap-2 text-[13px] text-pub-txt">
                 <input type="checkbox" checked={form.habilitado} onChange={campo('habilitado')} />
                 Ligar o agente nesta loja
@@ -331,7 +390,7 @@ function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], processando, 
     );
 }
 
-export default function ConteudoDoAgente({ agente, produtos = [], atividade = null, processando = false, mensagem = null, erro = null, onSalvar, onExecutar, onControle, onFiltrarAtividade }) {
+export default function ConteudoDoAgente({ agente, produtos = [], atividade = null, processando = false, mensagem = null, erro = null, onSalvar, onExecutar, onControle, onFiltrarAtividade, onCopiarDe }) {
     const configuracao = agente?.configuracao ?? {};
     const contadores = agente?.contadores ?? {};
     const fila = lista(agente?.fila);
@@ -348,8 +407,20 @@ export default function ConteudoDoAgente({ agente, produtos = [], atividade = nu
                     <div className="flex items-center gap-3">
                         <h1 className="text-[18px] font-semibold text-pub-txt">Agente da loja</h1>
                         <SituacaoDoAgente configuracao={configuracao} />
-                        {configuracao?.modalidade && (
-                            <span className="text-[12px] text-pub-txt-3">Prepara: {MODALIDADES[configuracao.modalidade] ?? configuracao.modalidade}</span>
+                        {/* ⚠️⚠️ **GUARDA DE TIPO, e aqui havia DOIS defeitos**, latentes desde 20/10 e
+                            achados pelo render adverso em 23/10:
+                              1. `MODALIDADES[configuracao.modalidade]` — **`obj[chave]` LANÇA** com
+                                 `{toString: null}`, porque converter a chave em nome de propriedade
+                                 chama o ToPrimitive. É a armadilha de tela preta mais citada deste
+                                 projeto, e estava aqui;
+                              2. o fallback `?? configuracao.modalidade` renderizaria o **objeto cru**,
+                                 e prop de nó chegando objeto comum faz o React lançar.
+                            ➡️ `texto()` resolve os dois: a chave vira string antes do `[]`, e o
+                            fallback é string. O teste de lixo antigo não pegava porque
+                            `configuracao: VENENO` deixava as chaves `undefined` — nunca punha o
+                            veneno NO CAMPO. */}
+                        {texto(configuracao?.modalidade) !== '' && (
+                            <span className="text-[12px] text-pub-txt-3">Prepara: {MODALIDADES[texto(configuracao?.modalidade)] ?? texto(configuracao?.modalidade)}</span>
                         )}
                     </div>
                     {ligado && (
@@ -410,8 +481,11 @@ export default function ConteudoDoAgente({ agente, produtos = [], atividade = nu
                 <FormularioDaConfiguracao
                     configuracao={configuracao}
                     diasOpcoes={lista(agente?.dias_opcoes)}
+                    copia={agente?.copia ?? null}
+                    origensDeCopia={lista(agente?.origens_de_copia)}
                     processando={processando}
                     onSalvar={onSalvar}
+                    onCopiarDe={onCopiarDe}
                 />
             </Cartao>
             {/* ⚠️⚠️ **ANTES ESTE CARTÃO MOSTRAVA A MESMA TABELA DA FILA, com outro título** —
