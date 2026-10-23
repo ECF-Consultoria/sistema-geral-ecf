@@ -383,7 +383,9 @@ return [
         'ativo' => (bool) env('PUBLICADOR_RELEITURA_ATIVO', true),
         'horario' => (string) env('PUBLICADOR_RELEITURA_HORARIO', '09:20'),
         'dias' => (int) env('PUBLICADOR_RELEITURA_DIAS', 30),
-        'horas' => (int) env('PUBLICADOR_RELEITURA_HORAS', 24),
+        // 20, não 24 (23/10/2026, P-22): a rodada de ontem leu às 09:2x, e às 09:20 de hoje isso ainda contava como
+        // "recente" — cada anúncio era relido só a cada 2 dias.
+        'horas' => (int) env('PUBLICADOR_RELEITURA_HORAS', 20),
         'teto' => (int) env('PUBLICADOR_RELEITURA_TETO', 300),
         'lote' => (int) env('PUBLICADOR_RELEITURA_LOTE', 20),
         'intervalo_s' => (int) env('PUBLICADOR_RELEITURA_INTERVALO_S', 60),

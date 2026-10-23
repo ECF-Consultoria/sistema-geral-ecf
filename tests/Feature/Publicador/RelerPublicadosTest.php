@@ -133,12 +133,21 @@ class RelerPublicadosTest extends TestCase
 
         $this->artisan('publicador:reler-publicados --aplicar')
             ->expectsOutputToContain('a reler: 0 anúncio(s)')
-            ->expectsOutputToContain('lidos há menos de 24 h: 1 · encerrados no ML: 1')
+            ->expectsOutputToContain('lidos há menos de 20 h: 1 · encerrados no ML: 1')
             ->assertSuccessful();
         Queue::assertNothingPushed();
 
         $this->artisan('publicador:reler-publicados --aplicar --horas=0')->assertSuccessful();
         $this->assertSame([$this->item->id], Queue::pushed(RelerEstadoDoPublicadoJob::class)->first()->itens, 'o encerrado não volta nunca');
+    }
+
+    /** 23/10/2026 (P-22): o que a rodada de ontem leu (há ~23 h) é relido hoje — com 24 h, só a cada 2 dias. */
+    public function test_o_lido_na_rodada_de_ontem_e_relido_hoje(): void
+    {
+        $this->item->update(['avisos' => ['estado' => ['status' => 'active', 'lido_em' => now()->subHours(23)->subMinutes(55)->toIso8601String()]]]);
+
+        $this->artisan('publicador:reler-publicados --aplicar')->expectsOutputToContain('a reler: 1 anúncio(s)')->assertSuccessful();
+        Queue::assertPushed(RelerEstadoDoPublicadoJob::class);
     }
 
     public function test_publicado_antes_da_janela_de_dias_nao_entra(): void

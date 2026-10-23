@@ -218,6 +218,13 @@ class MapeadorErrosMlTest extends TestCase
             MapeadorErrosMl::comTraducaoDeHoje($desconhecido, self::$dicionario)['mensagem']);
         $local = ['mensagem' => 'Preencha o título.', 'ml_causa' => null];
         $this->assertSame($local, MapeadorErrosMl::comTraducaoDeHoje($local, self::$dicionario));
+
+        // 23/10/2026 (P-23): o gravado desde a demo é o "ainda não sabemos traduzir (código N)": quando o código entra no
+        // dicionário, ele também ganha a tradução (antes só a mensagem crua ganhava).
+        $gravadoSemTraducao = ['mensagem' => 'O Mercado Livre apontou um problema que ainda não sabemos traduzir (código 4057): “User/Catalog has not intersected me2 logistics”.',
+            'ml_causa' => ['cause_id' => 4057, 'code' => 'shipping.lost_me2_by_intersected_logistics', 'type' => 'warning', 'message' => 'User/Catalog has not intersected me2 logistics']];
+        $this->assertStringContainsString('vai tirar o Mercado Envios deste anúncio',
+            MapeadorErrosMl::comTraducaoDeHoje($gravadoSemTraducao, self::$dicionario)['mensagem']);
     }
 
     public function test_o_mesmo_erro_em_varios_itens_vira_um_so(): void

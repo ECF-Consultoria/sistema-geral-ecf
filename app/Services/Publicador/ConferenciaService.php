@@ -162,7 +162,7 @@ class ConferenciaService
                     }
                 }
             }
-            $problemas = [...$problemas, ...MapeadorErrosMl::agrupar($doMl)];
+            $problemas = [...$problemas, ...$this->causaDoMercadoEnvios(MapeadorErrosMl::agrupar($doMl), $r, $prep['snapshot'], $conta)];
 
             // 9. Frete contra a Precificação. Com bloqueio não se gasta cotação: há coisa mais séria a corrigir.
             if (! (new ResultadoValidacao($problemas))->temBloqueio()) {
@@ -447,6 +447,45 @@ class ConferenciaService
      * @param  list<Problema>  $doMl  o que o validate apontou (para saber se o anúncio perde o Mercado Envios)
      * @return list<Problema>
      */
+    /**
+     * O aviso de que o Mercado Livre vai tirar o Mercado Envios (`shipping.lost_me2*`, o 4057) diz a causa quando é o
+     * PACOTE (23/10/2026, P-19): o texto fixo culpava "a forma de postagem desta conta nesta categoria", e no combit da
+     * Opala a causa era o pacote das 4 caixas empilhadas (360 cm). Com as medidas e os limites da conta, e para onde
+     * o anúncio vai (transportadora ou a combinar). Sem pacote fora do limite, fica o texto de sempre.
+     *
+     * @param  list<Problema>  $problemas
+     * @return list<Problema>
+     */
+    private function causaDoMercadoEnvios(array $problemas, PubRascunho $r, RascunhoSnapshot $s, ContextoConta $conta): array
+    {
+        $doEnvio = fn (Problema $p) => str_starts_with((string) ($p->mlCausa['code'] ?? ''), 'shipping.lost_me2');
+        if (array_filter($problemas, $doEnvio) === []) {
+            return $problemas;
+        }
+        try {
+            $envio = $this->envios->avaliar($r, $s->atributos, $conta->sellerId);
+        } catch (\Throwable) {
+            return $problemas;
+        }
+        if ($envio['estouros'] === []) {
+            return $problemas;
+        }
+        $nomes = ['maior' => 'maior lado', 'soma' => 'soma dos lados', 'peso' => 'peso'];
+        $partes = array_map(fn (array $e) => $e['medida'] === 'peso'
+            ? 'peso '.self::numero($e['valor']).' kg (máx. '.self::numero($e['limite']).' kg)'
+            : ($nomes[$e['medida']] ?? $e['medida']).' '.self::numero($e['valor']).' cm (máx. '.self::numero($e['limite']).' cm)', $envio['estouros']);
+        $sai = $envio['destino'] === 'me1' ? 'sai pela sua transportadora (ME1)' : 'sai como «A combinar com o comprador»';
+        $texto = 'O pacote passa do limite do Mercado Envios desta conta — '.implode(', ', $partes)
+            .": o Mercado Livre vai tirar o Mercado Envios deste anúncio e ele {$sai}.";
+
+        return array_map(fn (Problema $p) => $doEnvio($p) ? new Problema($p->regra, $p->severidade, $texto, $p->camada, $p->alvo, $p->mlCausa) : $p, $problemas);
+    }
+
+    private static function numero(float $n): string
+    {
+        return rtrim(rtrim(number_format($n, 1, ',', '.'), '0'), ',');
+    }
+
     private function freteContraAPrecificacao(PubRascunho $r, mixed $ancora, ContextoConta $conta, RascunhoSnapshot $s, array $doMl, array &$brutas): array
     {
         $modo = (string) ($s->envio['modo'] ?? 'me2');

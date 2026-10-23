@@ -75,11 +75,14 @@ final class MapeadorErrosMl
     {
         $causa = (array) ($issue['ml_causa'] ?? []);
         $crua = (string) ($causa['message'] ?? '');
-        if ($crua === '' || ($issue['mensagem'] ?? null) !== $crua) {
+        $id = isset($causa['cause_id']) ? (string) $causa['cause_id'] : '';
+        // Desde a demo de 23/10 o gravado é "…ainda não sabemos traduzir (código N)…", e não mais a crua: esse também
+        // ganha a tradução que entrar depois no dicionário (23/10/2026, P-23 — a regra tinha morrido para eles).
+        $gravada = $issue['mensagem'] ?? null;
+        if ($crua === '' || ($gravada !== $crua && $gravada !== self::semTraducao($id, (string) ($causa['code'] ?? ''), $crua))) {
             return $issue;
         }
 
-        $id = isset($causa['cause_id']) ? (string) $causa['cause_id'] : '';
         $modelo = ($id !== '' ? ($dicionario['por_codigo'][$id] ?? null) : null) ?? $dicionario['por_codigo'][(string) ($causa['code'] ?? '')] ?? null;
         if (is_string($modelo) && ! str_contains($modelo, '{')) {
             $issue['mensagem'] = $modelo;

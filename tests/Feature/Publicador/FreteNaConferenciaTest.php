@@ -173,6 +173,33 @@ class FreteNaConferenciaTest extends TestCase
         $this->assertSame([], $this->cotacoes(), 'nem pergunta o frete');
     }
 
+    /**
+     * 23/10/2026 (teste do Publicador, P-19): o aviso 4057 culpava "a forma de postagem desta conta nesta categoria"
+     * quando a causa era o pacote (o combit da Opala: 4 caixas empilhadas, 360 cm). Com pacote fora do limite, o aviso
+     * diz o que passou e para onde o anúncio vai.
+     */
+    public function test_aviso_de_mercado_envios_diz_que_e_o_pacote_quando_e(): void
+    {
+        $this->validate = fn (array $corpo) => Http::response(['message' => 'Validation error', 'error' => 'validation_error', 'status' => 400, 'cause' => [
+            ['cause_id' => 4057, 'code' => 'shipping.lost_me2_by_intersected_logistics', 'type' => 'warning',
+                'message' => 'User/Catalog has not intersected me2 logistics', 'references' => ['catalog.shipping_preferences.modes']],
+        ]], 400);
+        $this->repo->gravarAtributos($this->r, [...self::ATRIBUTOS,
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '360 cm'], 'SELLER_PACKAGE_WIDTH' => ['value_name' => '85 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'], 'SELLER_PACKAGE_WEIGHT' => ['value_name' => '48000 g'],
+        ]);
+
+        $v = $this->conferir();
+
+        $aviso = collect($v->issues)->first(fn ($i) => ($i['ml_causa']['cause_id'] ?? null) === 4057);
+        $this->assertNotNull($aviso);
+        $this->assertStringStartsWith('O pacote passa do limite do Mercado Envios desta conta — ', $aviso['mensagem']);
+        $this->assertStringContainsString('maior lado 360 cm', $aviso['mensagem']);
+        $this->assertStringContainsString('peso 48 kg', $aviso['mensagem']);
+        $this->assertStringContainsString('«A combinar com o comprador»', $aviso['mensagem'], 'a #459 não tem ME1');
+        $this->assertStringNotContainsString('forma de postagem', $aviso['mensagem']);
+    }
+
     public function test_cotacao_que_falha_nao_derruba_a_conferencia_nem_inventa_aviso(): void
     {
         $this->freteDoMl = null;
