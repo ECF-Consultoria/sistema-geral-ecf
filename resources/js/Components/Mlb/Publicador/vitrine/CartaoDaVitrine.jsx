@@ -274,13 +274,19 @@ export default function CartaoDaVitrine({ fases = null, cartao = null, inicial =
                 </nav>
             )}
 
+            {/* P-31e (23/10/2026): arrastar e soltar FORA do cartão deixava `arrastou` ligado, e o clique seguinte que
+                não passa por pointerdown/pointerup aqui — Enter ou espaço em "marcar" e "Ver prévia" — era engolido
+                em silêncio. Cada gesto começa limpo, e clique de teclado (`detail` 0) nunca é engolido. */}
             <div className="relative overflow-hidden" data-vitrine-trilho
-                onPointerDown={varias ? (e) => setArraste({ x0: e.clientX, dx: 0 }) : undefined}
+                onPointerDown={varias ? (e) => {
+                    arrastou.current = false;
+                    setArraste({ x0: e.clientX, dx: 0 });
+                } : undefined}
                 onPointerMove={varias ? (e) => setArraste((a) => (a ? { ...a, dx: e.clientX - a.x0 } : a)) : undefined}
                 onPointerUp={varias ? soltar : undefined}
                 onPointerLeave={varias ? soltar : undefined}
                 onClickCapture={varias ? (e) => {
-                    if (arrastou.current) {
+                    if (arrastou.current && e.detail !== 0) {
                         e.preventDefault();
                         e.stopPropagation();
                     }

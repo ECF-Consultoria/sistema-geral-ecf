@@ -137,6 +137,31 @@ const ENVIO_FORA = {
 /** Fora do Mercado Envios da conta, com o frete tirado da Precificação: `{ rotulo, aviso }`; senão null. */
 export const envioForaDoMe2 = (s) => (s?.frete_da_precificacao ? (ENVIO_FORA[s.envio] ?? ENVIO_FORA.fora) : null);
 
+// P-25 (23/10/2026): o anúncio que sai fora do Mercado Envios mostrava "Oferecer frete grátis · Opcional nesta faixa
+// de preço" — lá não há faixa nenhuma. A dica diz para onde vai o envio. Regra do usuário: frete grátis é o COMPRADOR
+// não pagar e o vendedor paga sempre; nunca escrever que "o frete grátis não vale" (learnings frete-mercado-envios §10).
+export const DICA_FORA_DO_ME2 = {
+    combinar: 'Este anúncio sai «Combine a entrega»: o frete é acertado com o comprador.',
+    me1: 'Este anúncio sai pela sua transportadora (ME1), fora do Mercado Envios: a entrega é feita por ela.',
+    fora: 'Este anúncio sai fora do Mercado Envios (pela sua transportadora ou «Combine a entrega»).',
+};
+
+/**
+ * Para onde vai o envio quando o pacote passa do limite do Mercado Envios da conta: 'combinar' | 'me1' | 'fora';
+ * null dentro dele ou sem consulta. Quem decide é a consulta do frete (`m.frete`): fora do ME2 o servidor responde
+ * `conhecido` SEM nenhum tipo (`EditorRascunhoService::freteGratis`), o que dentro dele nunca acontece — ou diz o
+ * destino em `envio`, se mandar. "Quanto você recebe" (`m.simulacao`) só diz QUAL dos dois foras é.
+ */
+export const destinoForaDoMe2 = (frete, simulacao = null) => {
+    if (! frete || typeof frete !== 'object') return null;
+    if (typeof frete.envio === 'string') return ['combinar', 'me1', 'fora'].includes(frete.envio) ? frete.envio : null;
+    const tipos = frete.por_tipo && typeof frete.por_tipo === 'object' ? Object.keys(frete.por_tipo) : [];
+    if (frete.conhecido !== true || tipos.length > 0) return null;
+    const daSimulacao = Object.values(simulacao ?? {}).find((s) => s?.frete_da_precificacao)?.envio;
+
+    return daSimulacao === 'combinar' || daSimulacao === 'me1' ? daSimulacao : 'fora';
+};
+
 /**
  * Os avisos de um tipo de anúncio, em ordem de leitura. Cada frase é UMA string (sem interpolação
  * dentro do JSX), para o HTML não sair picado por comentários entre nós de texto.
@@ -382,6 +407,7 @@ function SecaoEnvio({ m }) {
     const modo = rasc.envio?.modo ?? 'me2';
     const frete = modo === 'me2' ? m.frete : null;
     const freteObrigatorio = !! frete?.obrigatorio;
+    const foraDoMe2 = destinoForaDoMe2(frete, m.simulacao);
     const erroEnvio = useErroDoCampo((x) => x.campo === 'envio');
 
     return (
@@ -414,7 +440,13 @@ function SecaoEnvio({ m }) {
                                 className="h-4 w-4 rounded border-white/40 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-campo="frete-gratis" />
                             <span className="text-[15px] text-white">Oferecer frete grátis</span>
                         </label>
-                        {frete?.conhecido && (
+                        {foraDoMe2 && (
+                            <p className="ml-7 mt-1.5 flex items-start gap-1.5 text-[13px] text-white/50" data-frete-regra="fora-do-me2" data-envio-fora={foraDoMe2}>
+                                <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                {DICA_FORA_DO_ME2[foraDoMe2]}
+                            </p>
+                        )}
+                        {frete?.conhecido && ! foraDoMe2 && (
                             <p className={cn('ml-7 mt-1.5 flex items-start gap-1.5 text-[13px]', freteObrigatorio ? 'text-emerald-300' : 'text-white/50')} data-frete-regra={freteObrigatorio ? 'obrigatorio' : (frete.parcial ? 'parcial' : 'opcional')}>
                                 <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
                                 {freteObrigatorio

@@ -67,6 +67,22 @@ export function contaQuePublica(pub, empresa) {
 }
 
 /**
+ * P-14 (23/10/2026): a recusa ao lado do botão que a causou. Conferir, Publicar, "Levar o frete" e "reenviar
+ * descrição" ficam no fim da Prévia, e a faixa vermelha do topo da coluna fica centenas de pixels acima: o botão
+ * voltava ao normal e nada mudava perto dele.
+ */
+function ErroDaAcao({ acao, children }) {
+    if (! children) return null;
+
+    return (
+        <p className="flex w-full items-start gap-1.5 whitespace-pre-line text-[13px] text-red-300" data-erro-da-acao={acao}>
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{children}</span>
+        </p>
+    );
+}
+
+/**
  * `onIrPara(etapa, problema?)` leva à etapa com os campos marcados e acesos; com `problema`, direto ao campo dele.
  * `produtoId` é para reenviar a descrição.
  */
@@ -114,11 +130,18 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         return null;
     };
 
+    // A mensagem da recusa desta ação, enquanto a faixa do topo a mostra (`usePublicador`, P-14).
+    const erroDe = (acao) => (pub.erroDaAcao?.acao === acao ? pub.erroDaAcao.mensagem : null);
+    // Tentar de novo a mesma ação limpa a recusa anterior dela (as outras mensagens da faixa ficam).
+    const limparErroDe = (acao) => { if (erroDe(acao)) pub.setErro(null); };
+
     // 11/10/2026 — a conferência compara o frete do Mercado Livre com o da Precificação (V-FRT-01). Quando
     // diverge, este botão leva o do Mercado Livre para lá: o preço do Portal é refeito e pede conferir de novo.
     const [levandoFrete, setLevandoFrete] = useState(false);
     // Com `itemId`, é a terceira conferência: o frete que o Mercado Livre cobra de UM anúncio já publicado.
     const levarFrete = async (itemId = null) => {
+        const acao = itemId === null ? 'levar-frete' : `levar-frete:${itemId}`;
+        limparErroDe(acao);
         setLevandoFrete(true);
         try {
             const { data } = itemId === null
@@ -130,18 +153,19 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                 : 'Frete do anúncio levado para a Precificação. O preço do Portal foi refeito: atualize o preço deste anúncio no Mercado Livre.');
             pub.recarregar();
         } catch (e) {
-            pub.setErro(mensagemDe(e));
+            pub.falhouNaAcao(acao, mensagemDe(e));
         } finally {
             setLevandoFrete(false);
         }
     };
 
     const reenviarDescricao = async (itemId) => {
+        limparErroDe(`descricao:${itemId}`);
         try {
             await axios.post(route('mlb.anuncios.publicador.descricao', { produto: produtoId, item: itemId }));
             pub.recarregar();
         } catch (e) {
-            pub.setErro(mensagemDe(e));
+            pub.falhouNaAcao(`descricao:${itemId}`, mensagemDe(e));
         }
     };
 
@@ -190,6 +214,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                                 {levandoFrete && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Levar o frete do Mercado Livre para a Precificação
                                             </button>
                                             <span className="text-[13px] text-white/45">O preço do Portal é refeito com ele; depois, confira de novo.</span>
+                                            <ErroDaAcao acao="levar-frete">{erroDe('levar-frete')}</ErroDaAcao>
                                         </div>
                                     )}
                                 </div>
@@ -211,6 +236,8 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                 <BotaoConferir pub={pub} primario={! publicarPrimario} className="h-11 px-5" />
                                 <BotaoPublicar pub={pub} primario={publicarPrimario} className="h-11 px-5" />
                             </div>
+                            <ErroDaAcao acao="conferir">{erroDe('conferir')}</ErroDaAcao>
+                            <ErroDaAcao acao="publicar">{erroDe('publicar')}</ErroDaAcao>
                             {motivoDoPublicar() && <p className="text-[15px] text-amber-300" data-motivo-publicar>{motivoDoPublicar()}</p>}
                             {! pub.liberada && <AvisoContaTravada variante="nota" />}
                             {pub.liberada && conta.nome && <p className="text-[13px] text-white/45" data-conta-que-publica>Publica na conta {conta.nome}{conta.mlId ? ` · ML ${conta.mlId}` : ''}.</p>}
@@ -264,6 +291,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         {i.descricao_status === 'FAILED' && (
                                             <button type="button" onClick={() => reenviarDescricao(i.id)} className={LINK}>reenviar descrição</button>
                                         )}
+                                        <ErroDaAcao acao={`descricao:${i.id}`}>{erroDe(`descricao:${i.id}`)}</ErroDaAcao>
                                         {i.plano_b && <span className="text-sky-200">· confira o estoque por depósito no ML</span>}
                                         {i.mensagem && <span className="w-full text-amber-300">{i.mensagem}</span>}
                                         {/* 11/10/2026: o frete que o Mercado Livre cobra deste anúncio, contra o da Precificação. */}
@@ -286,6 +314,7 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                                 {i.frete.levado_em && <span className="text-white/45">já levado para a Precificação</span>}
                                             </span>
                                         )}
+                                        <ErroDaAcao acao={`levar-frete:${i.id}`}>{erroDe(`levar-frete:${i.id}`)}</ErroDaAcao>
                                     </li>
                                 ))}
                             </ul>

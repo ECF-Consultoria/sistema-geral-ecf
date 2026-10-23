@@ -274,7 +274,8 @@ test('CR-F01 usePublicador: toda ação de estrutura descarrega antes, na fila, 
     }
     const e = corpo(f, 'estruturar');
     assert.match(e, /enfileirar\(async \(\) => \{\s*await salvarTudoAgora\(\);/);
-    assert.match(e, /chamar\(fazer, \{ tudo: true \}\)/);
+    // P-15 (23/10/2026): `fundo`/`aoFalhar` passam adiante — o envio de várias fotos junta as recusas.
+    assert.match(e, /chamar\(fazer, \{ tudo: true, fundo, aoFalhar \}\)/);
     assert.match(corpo(f, 'chamar'), /if \(tudo\) aplicarServidor\(data, \{ mesclar: true \}\)/);
     assert.match(corpo(f, 'aplicarServidor'), /mesclarComPendentes\(/);
     // "descarregar" espera o que já está em voo: entra na fila.
@@ -561,9 +562,12 @@ test('BarraDoEditor — 56px sticky, trilha "Publicador MLB / empresa / produto"
 
 test('BarraDoEditor — estado publicado, salvamento e conexão', () => {
     const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
-    for (const t of ['Publicado no Mercado Livre', 'Voltar aos produtos', 'Salvando…', 'Salvo há', 'Não salvo', 'ML conectado', 'Reconectar']) {
+    for (const t of ['Voltar aos produtos', 'Salvando…', 'Salvo há', 'Não salvo', 'ML conectado', 'Reconectar']) {
         assert.ok(f.includes(t), `falta o texto "${t}"`);
     }
+    // P-28 (23/10/2026): o selo do publicado vem de `situacaoDoPublicado` (pausado/em revisão não é "Publicado").
+    assert.match(f, /situacaoDoPublicado\(pub\.publicacao\)/);
+    assert.ok(lerSemComentarios(`resources/js/Components/Publicador/derivados.js`).includes('Publicado no Mercado Livre'));
 });
 
 test('SeletorDeProdutos — popover com busca, aria-current, setas, "+ Produto" e selo compacto; sem contador de progresso', () => {

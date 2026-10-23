@@ -400,7 +400,8 @@ test('Formas de envio — explicação da escolhida embaixo; conferir aplica ant
     assert.match(envio, /me2: 'Logística do Mercado Livre/);
     assert.match(envio, /dica=\{EXPLICACAO_ENVIO\[modo\] \?\? null\}/);
     const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
-    assert.match(hook, /const conferir = async \(\) => \{\s*await garantirFreteObrigatorio\(\);/);
+    // P-31b (23/10/2026): o clique trava o botão antes; a regra do frete continua sendo o primeiro passo do pedido.
+    assert.match(hook, /const conferir = async \(\) => \{[\s\S]*?try \{\s*await garantirFreteObrigatorio\(\);/);
     assert.match(hook, /if \(regra\?\.obrigatorio && ! rascRef\.current\?\.envio\?\.frete_gratis\)/);
     assert.match(lerSemComentarios(`${BASE}/Mesa/AnuncioNoMl.jsx`), /data-previa-frete/);
 });

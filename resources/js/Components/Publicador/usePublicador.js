@@ -98,6 +98,17 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     const palavrasRef = useRef({});
     // Frete grátis obrigatório pela faixa de preço (resposta do servidor), nulo = não consultado.
     const [frete, setFrete] = useState(null);
+    // P-31c (23/10/2026): número da última consulta do frete — só a resposta dela vale. Uma consulta lenta de um
+    // preço antigo (89) chegando depois da do preço novo (69) marcava e travava o frete grátis abaixo de R$ 79.
+    const consultaFrete = useRef(0);
+    // P-14 (23/10/2026): a recusa de uma ação do fim da Prévia, para aparecer também AO LADO do botão que a causou
+    // (a faixa do topo fica centenas de pixels acima). `{ acao, mensagem }`; `acao` = 'conferir' | 'publicar' |
+    // 'levar-frete' | 'levar-frete:<item>' | 'descricao:<item>'.
+    const [erroDaAcao, setErroDaAcao] = useState(null);
+    // P-31b (23/10/2026): o clique em Conferir já trava o botão e diz "Conferindo…" enquanto o frete é consultado
+    // (antes do POST); sem isso o segundo clique disparava outra conferência no ML.
+    const [pedindoConferencia, setPedindoConferencia] = useState(false);
+    const conferindoAgora = useRef(false);
     const pausadoRef = useRef(pausado);
     pausadoRef.current = pausado;
     const emVoo = useRef(0);
@@ -148,14 +159,18 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
 
     /**
      * Chamada que devolve o estado (nulo se falhou). `tudo` = ação de estrutura (troca também as
-     * cópias locais, mesclando). `fundo` = salvamento automático: não mexe na faixa de erro (quem
-     * avisa é o indicador da barra) e entrega a mensagem a `aoFalhar`.
+     * cópias locais, mesclando). `fundo` = não mexe na faixa de erro e entrega a mensagem a `aoFalhar`
+     * (o salvamento automático, que avisa pelo indicador da barra, e o envio de várias fotos, que junta
+     * as recusas). Sem `fundo`, `aoFalhar` recebe a mensagem além da faixa.
      */
     const chamar = async (promessa, { tudo = false, fundo = false, aoFalhar } = {}) => {
         const n = ++ordem.current.enviada;
         emVoo.current += 1;
         setSalvando((s) => s + 1);
-        if (! fundo) setErro(null);
+        if (! fundo) {
+            setErro(null);
+            setErroDaAcao(null);
+        }
         try {
             const { data } = await promessa();
             // Uma resposta mais velha que a última aplicada não volta o estado no tempo.
@@ -167,7 +182,8 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
             return data;
         } catch (e) {
             const mensagem = mensagemDe(e);
-            if (fundo) aoFalhar?.(mensagem); else setErro(mensagem);
+            if (! fundo) setErro(mensagem);
+            aoFalhar?.(mensagem);
 
             return null;
         } finally {
@@ -297,6 +313,9 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
         palavrasRef.current = {};
         setPalavrasIa({});
         setFrete(null);
+        // A consulta do frete do produto que saiu não vale para este (P-31c).
+        consultaFrete.current += 1;
+        setErroDaAcao(null);
         enfileirar(async () => {
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
@@ -418,29 +437,52 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     }, []);
 
     // ── Andamento da fila (conferência e publicação) ──
+    // P-16 (23/10/2026): a leitura seguinte só sai DEPOIS que a anterior voltou (sem leituras sobrepostas), cada uma
+    // tem número na mesma conta do `chamar` e a mais velha que a última aplicada é descartada, e nada é aplicado
+    // depois de o acompanhamento acabar (`vivo`). Antes, com `setInterval`, a leitura N-1 lenta chegava depois da N
+    // que encerrou a espera e voltava a tela a "Publicando…" (para sempre) ou a "Confira de novo".
     useEffect(() => {
         if (! aguardando) return undefined;
-        const t = setInterval(async () => {
+        let vivo = true;
+        let relogio = null;
+        const ler = async () => {
+            if (! vivo) return;
             if (Date.now() - aguardando.desde > LIMITE_ANDAMENTO) {
                 setAguardando(null);
                 setAviso('Ainda processando no servidor. Recarregue a página em alguns minutos para ver o resultado.');
 
                 return;
             }
+            const n = ++ordem.current.enviada;
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
-                setEstado(data);
-                if (aguardando.tipo === 'conferencia' && conferenciaChegou(aguardando, data)) setAguardando(null);
-                if (aguardando.tipo === 'publicacao' && data.publicacao?.status !== 'RUNNING') {
-                    setAguardando(null);
-                    onPublicou?.();
+                if (! vivo) return;
+                if (n >= ordem.current.aplicada) {
+                    ordem.current.aplicada = n;
+                    setEstado(data);
+                    if (aguardando.tipo === 'conferencia' && conferenciaChegou(aguardando, data)) {
+                        setAguardando(null);
+
+                        return;
+                    }
+                    if (aguardando.tipo === 'publicacao' && data.publicacao?.status !== 'RUNNING') {
+                        setAguardando(null);
+                        onPublicou?.();
+
+                        return;
+                    }
                 }
             } catch {
                 // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
             }
-        }, INTERVALO_ANDAMENTO);
+            if (vivo) relogio = setTimeout(ler, INTERVALO_ANDAMENTO);
+        };
+        relogio = setTimeout(ler, INTERVALO_ANDAMENTO);
 
-        return () => clearInterval(t);
+        return () => {
+            vivo = false;
+            clearTimeout(relogio);
+        };
     }, [aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Depois de publicar ──
@@ -448,38 +490,43 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     // chega um minuto depois. Enquanto a publicação for recente, relê de vez em quando SÓ a publicação: o resto do
     // estado (o que a pessoa ainda edita) não é trocado.
     const concluidaEm = estado?.publicacao && estado.publicacao.status !== 'RUNNING' ? estado.publicacao.concluida_em : null;
+    // P-16 (23/10/2026): também encadeada (a próxima leitura só depois da anterior) e sem aplicar nada depois do fim.
     useEffect(() => {
         if (! concluidaEm || aguardando) return undefined;
         const fim = Date.parse(concluidaEm) + RELER_DEPOIS_DE_PUBLICAR;
         if (! (fim > Date.now())) return undefined;
-        const t = setInterval(async () => {
-            if (Date.now() > fim) {
-                clearInterval(t);
-
-                return;
-            }
+        let vivo = true;
+        let relogio = null;
+        const ler = async () => {
+            if (! vivo || Date.now() > fim) return;
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
-                if (data?.publicacao?.id) setEstado((e) => (e && e.publicacao?.id === data.publicacao.id ? { ...e, publicacao: data.publicacao } : e));
+                if (vivo && data?.publicacao?.id) setEstado((e) => (e && e.publicacao?.id === data.publicacao.id ? { ...e, publicacao: data.publicacao } : e));
             } catch {
                 // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
             }
-        }, INTERVALO_DEPOIS_DE_PUBLICAR);
+            if (vivo) relogio = setTimeout(ler, INTERVALO_DEPOIS_DE_PUBLICAR);
+        };
+        relogio = setTimeout(ler, INTERVALO_DEPOIS_DE_PUBLICAR);
 
-        return () => clearInterval(t);
+        return () => {
+            vivo = false;
+            clearTimeout(relogio);
+        };
     }, [concluidaEm, aguardando, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Ações ──
     /**
      * Ação de estrutura (CR-F01): na fila, salva antes o que estava pendente e, na volta,
      * troca o estado inteiro mesclando — o que for digitado enquanto ela corre fica na tela
-     * e segue por salvar. `antes` roda logo antes do pedido (depois do salvamento).
+     * e segue por salvar. `antes` roda logo antes do pedido (depois do salvamento); `fundo` e
+     * `aoFalhar` são os do `chamar`.
      */
-    const estruturar = (fazer, { antes } = {}) => enfileirar(async () => {
+    const estruturar = (fazer, { antes, fundo = false, aoFalhar } = {}) => enfileirar(async () => {
         await salvarTudoAgora();
         antes?.();
 
-        return chamar(fazer, { tudo: true });
+        return chamar(fazer, { tudo: true, fundo, aoFalhar });
     });
 
     const escolherCategoria = async (id) => {
@@ -515,44 +562,78 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
         return data;
     };
     const enviarFotos = async (arquivos, grupo) => {
+        // P-15 (23/10/2026): cada foto é um pedido, e cada pedido limpava a faixa — a recusa de uma (12 MB, por
+        // exemplo) sumia quando a próxima começava a subir. As recusas se juntam, uma por arquivo, e ficam na faixa
+        // até a pessoa fechar ou mandar fotos de novo.
+        const recusas = [];
+        setErro(null);
+        setErroDaAcao(null);
         // Uma volta da fila por arquivo: o que se digita enquanto as fotos sobem é salvo entre elas.
-        for (const arquivo of arquivos) {
+        for (const arquivo of Array.from(arquivos ?? [])) {
             const fd = new FormData();
             fd.append('imagem', arquivo);
             fd.append('grupo', grupo);
             setEnviandoFoto(grupo);
-            const data = await estruturar(() => axios.post(rota('fotos', produtoId), fd));
+            let falha = null;
+            const data = await estruturar(() => axios.post(rota('fotos', produtoId), fd), { fundo: true, aoFalhar: (m) => { falha = m; } });
             setEnviandoFoto(null);
             const bloqueio = data?.foto?.problemas?.find((p) => p.severidade === 'BLOCKER');
-            if (bloqueio) setErro(`${arquivo.name}: ${bloqueio.mensagem}`);
+            const motivo = falha ?? bloqueio?.mensagem ?? null;
+            if (motivo) {
+                recusas.push(`${arquivo.name}: ${motivo}`);
+                setErro(recusas.join('\n'));
+            }
         }
+        // De novo no fim: um salvamento entre as fotos que volta a dar certo limpa a faixa (`salvamentoEmDia`).
+        if (recusas.length) setErro(recusas.join('\n'));
     };
     const atribuirFotos = async (atribuicoes) => {
         // A nova ordem aparece na hora e de novo depois do salvamento (que devolve a ordem anterior).
         const otimista = (e) => ({ ...e, atribuicoes });
+        const anteriores = estado?.atribuicoes;
         setEstado(otimista);
-        await estruturar(
+        const data = await estruturar(
             () => axios.put(rota('fotos.atribuir', produtoId), { atribuicoes: atribuicoes.map((a) => ({ ...a, imagem: Number(a.imagem) })) }),
             { antes: () => setEstado(otimista) },
         );
+        // P-31a (23/10/2026): o servidor recusou (ou a rede caiu): a grade volta à ordem gravada — senão ela mostrava a
+        // ordem nova que não entrou, e a Prévia (do servidor) a antiga. Só se a tela ainda está na ordem que esta troca pôs.
+        if (! data) setEstado((e) => (e && e.atribuicoes === atribuicoes ? { ...e, atribuicoes: anteriores } : e));
     };
     const removerFoto = (imagemId) => estruturar(() => axios.delete(rota('fotos.remover', produtoId, { imagem: imagemId })));
     const reenviarFoto = (imagemId) => estruturar(() => axios.post(rota('fotos.reenviar', produtoId, { imagem: imagemId })));
 
-    const conferir = async () => {
-        await garantirFreteObrigatorio();
-        const data = await enfileirar(async () => {
-            await salvarTudoAgora();
+    /** A recusa de uma ação do fim da Prévia: na faixa do topo e ao lado do botão dela (P-14). */
+    const falhouNaAcao = (acao, mensagem) => {
+        setErro(mensagem);
+        setErroDaAcao({ acao, mensagem });
+    };
 
-            return chamar(() => axios.post(rota('conferir', produtoId)));
-        });
-        if (data) {
-            setCiente(false);
-            setAguardando({ tipo: 'conferencia', conferencia: estado?.conferencia?.id ?? null, desde: Date.now() });
+    const conferir = async () => {
+        // P-31b: um clique por vez — o segundo, enquanto o frete é consultado, não sai.
+        if (conferindoAgora.current) return;
+        conferindoAgora.current = true;
+        setPedindoConferencia(true);
+        try {
+            await garantirFreteObrigatorio();
+            const data = await enfileirar(async () => {
+                await salvarTudoAgora();
+
+                return chamar(() => axios.post(rota('conferir', produtoId)), { aoFalhar: (m) => setErroDaAcao({ acao: 'conferir', mensagem: m }) });
+            });
+            if (data) {
+                setCiente(false);
+                setAguardando({ tipo: 'conferencia', conferencia: estado?.conferencia?.id ?? null, desde: Date.now() });
+            }
+        } finally {
+            conferindoAgora.current = false;
+            setPedindoConferencia(false);
         }
     };
     const publicar = async () => {
-        const data = await enfileirar(() => chamar(() => axios.post(rota('publicar', produtoId), { ciente })));
+        const data = await enfileirar(() => chamar(() => axios.post(rota('publicar', produtoId), { ciente }), {
+            aoFalhar: (m) => setErroDaAcao({ acao: 'publicar', mensagem: m }),
+        }));
         if (data) setAguardando({ tipo: 'publicacao', desde: Date.now() });
     };
     const simular = async () => {
@@ -653,15 +734,17 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
 
     /** Frete grátis obrigatório pela faixa de preço: salva o pendente antes (o servidor lê preço e pacote gravados). */
     const consultarFrete = async () => {
+        // P-31c: só a resposta da última consulta vai para a tela; quem pediu recebe a da sua.
+        const n = ++consultaFrete.current;
         await descarregar();
         try {
             const { data } = await axios.get(rota('frete', produtoId));
-            setFrete(data.frete_gratis ?? null);
+            if (n === consultaFrete.current) setFrete(data.frete_gratis ?? null);
 
             return data.frete_gratis ?? null;
         } catch {
             // Sem a resposta do ML a tela segue como antes: a escolha do frete grátis fica com a pessoa.
-            setFrete(null);
+            if (n === consultaFrete.current) setFrete(null);
 
             return null;
         }
@@ -763,11 +846,12 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     const problemasDoAtributo = (id, variante = null) => todos.filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
     const bloqueiosLocais = locais.filter((p) => p.severidade === 'BLOCKER').length;
 
-    const estadoConf = estadoDaConferencia({ conf, aguardando, sujo: editando });
+    // P-31b: do clique em Conferir até o POST voltar (o frete é consultado antes), a conferência já está "conferindo".
+    const estadoConf = estadoDaConferencia({ conf, aguardando: pedindoConferencia && ! aguardando ? { tipo: 'conferencia' } : aguardando, sujo: editando });
     const nPendencias = conf?.local ? locais.filter((p) => p.severidade === 'BLOCKER').length : daConferencia.bloqueios.length;
     // O texto só diz "o Mercado Livre apontou" quando tudo veio dele (camada L3).
     const conferenciaDoMl = estadoConf === 'avisos' ? daConferencia.avisosDoMl : daConferencia.bloqueiosDoMl;
-    const podeConferir = calcularPodeConferir({ disabled, bloqueiosLocais, salvando, schema });
+    const podeConferir = calcularPodeConferir({ disabled: disabled || pedindoConferencia, bloqueiosLocais, salvando, schema });
     const podePublicar = calcularPodePublicar({ disabled, conf, sujo: editando, ciente, salvando, liberada });
 
     const m = {
@@ -796,6 +880,11 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
             mensagem: falhaSalvar?.mensagem ?? null,
         },
         aguardando,
+        // P-31b: o clique em Conferir já saiu (consultando o frete ou pedindo a conferência).
+        pedindoConferencia,
+        // P-14: a recusa da última ação do fim da Prévia, enquanto a faixa do topo ainda mostra a mesma mensagem.
+        erroDaAcao: erroDaAcao && erroDaAcao.mensagem === erro ? erroDaAcao : null,
+        falhouNaAcao,
         ciente,
         setCiente,
         conferir,

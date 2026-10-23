@@ -360,7 +360,8 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                             </Faixa>
                         )}
                         {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}
-                        {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
+                        {/* P-15 (23/10/2026): várias fotos recusadas no mesmo envio vêm uma por linha. */}
+                        {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}><p className="whitespace-pre-line" data-faixa-erro>{pub.erro}</p></Faixa>}
                         {/* Quick 261016-imr: a faixa dizia "precisa ser reconectada" para QUALQUER falha ao
                             ler a conta — inclusive o ML fora do ar com o token bom, enquanto o selo do topo
                             (que lê o token) mostrava "ML conectado". Agora mostra o motivo real que o

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { AlertTriangle, Check, CheckCircle2, Loader2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { situacaoDoPublicado } from '../derivados';
 import BotaoAnunciarPorIa from './BotaoAnunciarPorIa';
 import SeletorDeProdutos from './SeletorDeProdutos';
 import { BASE_BOTAO, SECUNDARIO } from './botoes';
@@ -74,6 +75,7 @@ function Salvamento({ pub }) {
 
 export default function BarraDoEditor({ pub, empresa, produto, produtos = [], onTrocar, ia, onVoltar }) {
     const publicado = pub.m.estado?.rascunho?.status === 'PUBLISHED';
+    const noAr = situacaoDoPublicado(pub.publicacao);
     const rotuloPrograma = empresa.programa_rotulo ?? empresa.programa;
     const reconectar = empresa.token !== 'ativo';
     const voltar = () => onVoltar?.();
@@ -148,8 +150,11 @@ export default function BarraDoEditor({ pub, empresa, produto, produtos = [], on
             <div className="flex shrink-0 items-center gap-2">
                 {publicado ? (
                     <>
-                        <span className="inline-flex items-center gap-2 text-[13px] font-bold text-emerald-400">
-                            <CheckCircle2 size={16} aria-hidden="true" /> <span className="max-sm:hidden">Publicado no Mercado Livre</span>
+                        {/* P-28 (23/10/2026): pausado ou em revisão no ML não é "Publicado" — a mesma fonte da Prévia. */}
+                        <span className={cn('inline-flex items-center gap-2 text-[13px] font-bold', noAr.tom === 'completo' ? 'text-emerald-400' : 'text-amber-300')}
+                            data-situacao-publicado={noAr.tom}>
+                            {noAr.tom === 'completo' ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />}
+                            <span className="max-sm:hidden">{noAr.texto}</span>
                         </span>
                         <Link
                             href={route('mlb.anuncios.publicador.produtos', { conta: empresa.chave })}
