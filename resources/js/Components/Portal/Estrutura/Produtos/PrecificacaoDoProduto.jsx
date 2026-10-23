@@ -204,7 +204,8 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
         const r = {};
         for (const v of ficha.vars) {
             if (! chaveDe(v) || ! Array.isArray(v.volumes_digitados) || v.volumes_digitados.length === 0) continue;
-            const medidas = v.volumes_digitados.map((c) => ['c', 'l', 'a', 'kg'].map((k) => Number(paraNumero(c[k]))));
+            // Medida, não dinheiro (23/10/2026): "1.500" kg é 1,5 kg, como o servidor lê a caixa.
+            const medidas = v.volumes_digitados.map((c) => ['c', 'l', 'a', 'kg'].map((k) => Number(paraNumero(c[k], { milhar: false }))));
             if (medidas.some((m) => m.some((n) => ! Number.isFinite(n) || n <= 0))) continue;
             r[chaveDe(v)] = medidas.map((m) => m.join('x')).join('|');
         }
@@ -360,7 +361,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                                     : <><span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Salvo automaticamente</>)}
                     </span>
                     {dados && itens.length > 0 && (
-                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Tipo de anúncio">
+                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Clássico ou Premium">
                             {TIPOS.map(([k, l]) => (
                                 <button key={k} type="button" onClick={() => setTipo(k)} aria-pressed={tipo === k} data-tipo-anuncio={k}
                                     className={cn('rounded-lg px-4 py-1.5 text-[13px] font-semibold transition', tipo === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>

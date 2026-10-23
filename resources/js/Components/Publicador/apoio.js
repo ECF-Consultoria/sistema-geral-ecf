@@ -3,6 +3,8 @@
 // As rotas são todas por produto (`mlb.anuncios.publicador.*`) e TODA resposta
 // traz o estado inteiro do rascunho — a tela nunca adivinha o que foi gravado.
 
+import { normalizarNumeroBr } from '../../lib/numeroBr.js';
+
 /** Monta o gerador de rotas de um editor: `criarRota('mlb.anuncios.publicador', 'produto')('salvar', 7)`. */
 export const criarRota = (prefixo, chave) => (nome, id, extra = {}) => route(`${prefixo}.${nome}`, { [chave]: id, ...extra });
 
@@ -36,10 +38,11 @@ export const NOME_ETAPA = {
 export const GERAL = 'GENERAL';
 
 export const paraTexto = (n) => (n === null || n === undefined || n === '' ? '' : Number(n).toFixed(2).replace('.', ','));
+// 23/10/2026 (P-02): "1.299" é mil duzentos e noventa e nove, não R$ 1,30 — a regra pt-BR mora em `numeroBr.js`.
 export const paraNumero = (t) => {
     const s = String(t ?? '').trim().replace(/\s|R\$/g, '');
     if (s === '') return null;
-    const n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s);
+    const n = Number(normalizarNumeroBr(s));
 
     return Number.isFinite(n) ? n : null;
 };

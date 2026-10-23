@@ -9,6 +9,7 @@ import SimuladorPrecificacao from '@/Components/Portal/Estrutura/Precificacao/Si
 import { avisoSemSugestao, resumoDoEnvio, seloDoEnvio } from '@/lib/precificacaoEnvio';
 import { deveCotarDeNovo, freteEmBranco, freteUnico, legendaDoFreteUnico, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
 import { cartoesDaFamilia, filtrosDeTipo, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia, rotuloDaFase } from '@/lib/precificacaoPorFamilia';
+import { normalizarNumeroBr } from '@/lib/numeroBr';
 import { cartoesDasFamilias } from '@/lib/precificacaoSimulador';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
@@ -101,11 +102,12 @@ const PENDENCIA = {
 const TIPOS_DE_ANUNCIO = [['classico', 'Clássico'], ['premium', 'Premium']];
 
 // O cliente digita "12,50" — o servidor recebe 12.50. Vazio é "não informado".
+// 23/10/2026 (P-02): "1.299" é 1299, não 1,299 — a regra pt-BR é a de `numeroBr.js`.
 const paraNumero = (texto) => {
     const t = String(texto ?? '').trim().replace(/\s|R\$|%/g, '');
     if (t === '') return '';
 
-    return t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+    return normalizarNumeroBr(t);
 };
 const paraTexto = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
 const fmtPct = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;

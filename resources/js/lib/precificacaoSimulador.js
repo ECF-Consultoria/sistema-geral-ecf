@@ -13,6 +13,7 @@
 // publicar preço 43% errado (`precificacao-onboarding-duas-telas.md` §1).
 // ═══════════════════════════════════════════════════════════════════════
 
+import { normalizarNumeroBr } from './numeroBr.js';
 import { rotuloDaFase } from './precificacaoPorFamilia.js';
 
 const lista = (x) => (Array.isArray(x) ? x : []);
@@ -20,13 +21,17 @@ const lista = (x) => (Array.isArray(x) ? x : []);
 /** As exceções por oferta que o servidor aceita (`EstruturaPrecificacao::EXCECOES`). */
 export const EXCECOES = ['comissao_classico', 'comissao_premium', 'imposto', 'margem_contribuicao', 'lucro_liquido'];
 
-/** O cliente digita "12,50" — o servidor recebe "12.50". Vazio é "não informado". */
-export function paraNumero(texto) {
+/**
+ * O cliente digita "12,50" — o servidor recebe "12.50". Vazio é "não informado".
+ * 23/10/2026 (P-02): "1.299" de custo ou frete é 1299, não 1,299 (regra pt-BR de `numeroBr.js`).
+ * `milhar: false` = medida da caixa, que o servidor lê com ponto decimal ("1.500" kg = 1,5).
+ */
+export function paraNumero(texto, { milhar = true } = {}) {
     if (typeof texto === 'number') return Number.isFinite(texto) ? String(texto) : '';
     const t = String(texto ?? '').trim().replace(/\s|R\$|%/g, '');
     if (t === '') return '';
 
-    return t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+    return normalizarNumeroBr(t, { milhar });
 }
 
 export const paraTexto = (n) => (n === null || n === undefined || n === '' ? '' : String(n).replace('.', ','));

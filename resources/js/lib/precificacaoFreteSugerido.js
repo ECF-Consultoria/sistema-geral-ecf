@@ -11,6 +11,8 @@
 // de custos do Mercado Livre.
 // ═══════════════════════════════════════════════════════════════════════
 
+import { normalizarNumeroBr } from './numeroBr.js';
+
 export const ORIGEM_DO_SUGERIDO = {
     conta: 'sugerido pela sua conta',
     tabela: 'estimado pela tabela',
@@ -76,11 +78,11 @@ export const freteEmBranco = (calculo) => calculo?.frete_origem === 'sugerido' |
 // origem dele, ficam no detalhe. Digitar no campo único grava nos dois tipos. Nada aqui calcula frete: só decide
 // o que a linha desenha a partir do que foi digitado e do que o servidor mandou.
 
-/** "200", "200,00" e " 200,0 " são o mesmo frete; vazio é vazio. */
+/** "200", "200,00" e " 200,0 " são o mesmo frete; vazio é vazio. "1.200" é 1200 (pt-BR, `numeroBr.js`, 23/10/2026). */
 const mesmoTexto = (texto) => {
     const t = String(texto ?? '').trim().replace(/\s|R\$/g, '');
     if (t === '') return '';
-    const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+    const n = Number(normalizarNumeroBr(t));
 
     return Number.isFinite(n) ? String(n) : t;
 };
