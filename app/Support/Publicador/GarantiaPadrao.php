@@ -166,8 +166,9 @@ final class GarantiaPadrao
         if (! $mudou && self::normalizar($estado[self::MARCA] ?? null) == $g) {
             return false;
         }
-        $estado[self::MARCA] = $g;
-        $r->forceFill(['garantia' => $g, 'step_state' => $estado])->save();
+        $r->forceFill(['garantia' => $g])->save();
+        // A marca no estado relido sob trava (23/10/2026, P-04), não na cópia em memória do `$r`.
+        EstadoDoRascunho::gravar($r, self::MARCA, $g);
         if ($mudou) {
             $r->increment('revisao');
         }

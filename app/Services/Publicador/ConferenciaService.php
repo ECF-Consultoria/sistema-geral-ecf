@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\EstadoDoRascunho;
 use App\Models\EstruturaOferta;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
@@ -346,7 +347,9 @@ class ConferenciaService
         $ids = array_values(array_unique(array_filter(array_map(
             fn ($a) => is_array($a) ? ($a['id'] ?? null) : null, (array) ($resp->corpo['required_attributes'] ?? []),
         ))));
-        $r->update(['step_state' => [...(array) $r->step_state, 'condicionais' => ['revisao' => $r->revisao, 'ids' => $ids, 'em' => now()->toIso8601String()]]]);
+        // Só a chave (23/10/2026, P-04): o `$r` foi lido antes da conta, do schema, dos uploads e deste POST — regravar o
+        // estado inteiro apagava o que a automação de imagens gravou no meio (o `kit_id` sumia e as imagens nunca entravam).
+        EstadoDoRascunho::gravar($r, 'condicionais', ['revisao' => $r->revisao, 'ids' => $ids, 'em' => now()->toIso8601String()]);
 
         return ['ids' => $ids, 'bruta' => $bruta];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Support\Publicador\EstadoDoRascunho;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
@@ -955,10 +956,9 @@ class EditorRascunhoService
             && self::VERSAO_DO_RESUMO === ($antes['versao'] ?? null)) {
             return;
         }
-        $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
-        $atual['resumo'] = ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor, 'validado' => $validado,
-            'itens' => $itens, 'versao' => self::VERSAO_DO_RESUMO];
-        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
+        // Relido e gravado sob trava (23/10/2026, P-04): entre a leitura e a escrita um Job podia gravar outra chave.
+        EstadoDoRascunho::gravar($r, 'resumo', ['bloqueios' => count($bloqueios), 'revisao' => (int) $r->revisao, 'por_cor' => $porCor,
+            'validado' => $validado, 'itens' => $itens, 'versao' => self::VERSAO_DO_RESUMO]);
     }
 
     /**
@@ -1096,13 +1096,15 @@ class EditorRascunhoService
         // A conta vem do produto (Company ou MlbEmpresa); sem token, `conta()` lança V-ACC-01 e o erro fica no estado.
         try {
             $conta = $this->contas->contexto($r->conta());
-            $r->update([
-                'step_state' => [...(array) $r->step_state, 'conta' => $conta->paraSnapshot()],
-                'modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo,
-                'conta_checada_em' => now(),
-            ]);
+            // 23/10/2026 (P-04): só a chave `conta`, relida sob trava — o `[...$r->step_state, …]` de antes regravava o
+            // estado inteiro lido ANTES desta chamada ao ML e apagava o que um Job gravou no meio. E sem tocar o
+            // `updated_at`: reler a conta não é editar o anúncio (o "Atualizado há…" da vitrine mudava só por abrir).
+            EstadoDoRascunho::gravar($r, 'conta', $conta->paraSnapshot());
+            $colunas = ['modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo, 'conta_checada_em' => now()];
+            DB::table('pub_rascunhos')->where('id', $r->id)->update($colunas);
+            $r->forceFill($colunas)->syncOriginalAttributes(array_keys($colunas));
         } catch (RegraViolada $e) {
-            $r->update(['step_state' => [...(array) $r->step_state, 'conta' => ['erro' => $e->getMessage()]]]);
+            EstadoDoRascunho::gravar($r, 'conta', ['erro' => $e->getMessage()]);
         }
     }
 
