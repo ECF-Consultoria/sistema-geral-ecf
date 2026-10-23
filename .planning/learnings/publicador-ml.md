@@ -2116,3 +2116,33 @@ Relatório do teste (privado): https://claude.ai/artifact/FugibU3JY1dmopMLbtHjLW
   falso (direto ou pelos traits `CenarioDoPreparo`/`CenarioCriativoDoPublicador`).
 - Ficou de fora (decisão do usuário pendente): `Pages/Desempenho/MetricasManuais.jsx` tem a mesma regra de número
   do P-02 ("1.299" vira 1,299) — zona de Desempenho/bônus, exige GSD.
+
+## 59. Jardinagem mensal pela árvore do MAG — o que não se deduz do código (23/10/2026)
+
+Pedido do usuário: um "republicador" para o anúncio que não bate a métrica. Decisão dele: **"fazer que nem a MAG"**
+(árvore da aula de 27/11/2025, Turma 8; o mapa mental fica em `mag8/` no checkout principal, FORA do git). A ideia
+original dele era "muita visita e nenhuma venda → republicar com termos novos"; a árvore manda esse caso para
+**criativo + teste de elasticidade de preço**, e republicar ("exclui e cria uma nova oferta") só o de **menos de 100
+visitas e nenhuma venda** — o anúncio que ninguém acha. Não "corrija" a régua de volta para a ideia original.
+- **Tabela própria `pub_jardinagens`, não `pub_tarefas`:** o unique `(tipo, publicacao_id)` de lá dá uma tarefa por
+  publicação; a Jardinagem é uma por ANÚNCIO por MÊS (Clássico e Premium vendem diferente).
+- **Leitura no ML, na hora** — o acervo da Fase 134 não serve: `ml_acervo_metricas_diarias.visitas` veio nulo em 100%
+  das linhas de produção (10–11/10, causa não apurada; o acervo usa `/items/{id}/visits` com `date_from/date_to` e um
+  tudo-ou-nada com `performance`/`price_to_win`). A Jardinagem usa `/items/{id}/visits/time_window`, o mesmo da
+  Jardinagem do Portal, que funciona em produção. Vendas = `sold_quantity` agora − o gravado no mês anterior (no 1º
+  mês, zero: o anúncio nasceu no Publicador). Não há tabela de pedidos por anúncio.
+- **Janela em dias INTEIROS:** do começo do mês até ontem; o dia da análise abre o mês seguinte. Rodar duas vezes
+  no mesmo dia não duplica (o mês recém-gravado reabre o relógio; e o unique `ml_item_id + ciclo`).
+- **"Em observação" na tela = só o 1º mês.** O anúncio já analisado aparece na lista pelo mês mais novo; listá-lo
+  embaixo também mostraria o mesmo anúncio duas vezes.
+- **A "Jardinagem" do Portal (agenda da Estrutura, "7 dias depois", feito/não feito) é OUTRA coisa** e continua
+  como está: é da aula do Mapeamento Estrutural, por oferta, manual. As duas não se falam.
+- **Republicar NÃO é automático, de propósito.** A esteira barra: `PublicacaoService::prepararItens` pula o tipo já
+  CREATED no rascunho (RN-94), `PubAprovacaoOferta::PUBLICADO` é terminal (Fase 188, do outro dev), a IA não escreve
+  em rascunho publicado (`IaParaRascunhoService::intocavel`), e nada no código encerra anúncio no ML. Publicar o novo
+  com o antigo ativo é anúncio duplicado (infração). Por isso a Jardinagem só PROPÕE o título novo
+  (`proposta.titulo_novo`, com `PalavrasChaveService::gerarTitulosDaJardinagem`) e a equipe encerra/cria à mão.
+  Automatizar é decisão do usuário e precisa de sondagem na #459 (cada `POST /items` lá pede confirmação dele).
+- **Testar numa conta de verdade sem gravar:** `publicador:jardinagem --ler --dias=7` (só GET). `--aplicar` com
+  `--dias` grava um mês curto DE VERDADE e desloca o ciclo seguinte.
+- Em 23/10 nenhum anúncio do Publicador tinha 30 dias: as primeiras análises saem no começo de novembro.
