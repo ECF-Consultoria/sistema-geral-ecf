@@ -4832,3 +4832,67 @@ agora basta o piloto do agente.**
 ⚠️⚠️ **E A OUTRA SESSÃO ESTÁ LIBERADA:** ela **esperou** este fechamento para começar o **AG-05b**, que precisa
 de patch em `PublicacaoService::iniciar()` e `abrirTarefaPosPublicacao()` — o gate de `numstat` do **PUB-03**
 reprovaria se ela tivesse começado antes. **Com a fase fechada, o range do gate não a alcança mais.**
+
+---
+
+## ⛔⛔ TOMBAMENTO DA REVISÃO (v27.0) — 23/10/2026 · o foco passa a ser o AGENTE
+
+**Decisão do usuário** (decisão **27** do ROADMAP): a parte de **revisão** da v27.0 é **descontinuada**,
+porque **o outro dev já fez a revisão de um jeito mais simples** — **a tela da PRÉVIA do anúncio**, já em
+produção. Ele vai trazer **plano e handoff novos**, com melhorias nessa tela.
+
+➡️ **Inventário completo, o que fica de pé e as decisões abertas:**
+`.planning/coordenacao/261023-tombamento-da-revisao-v27-o-que-fica-de-pe.md`
+
+### ⚠️⚠️ TOMBAR NÃO É APAGAR — o Agente está de pé SOBRE o portão (medido)
+
+Os **9** arquivos de `app/Services/Publicador/Agente/` usam **`PubAprovacaoOferta`**,
+**`PubAprovacaoConjunto`**, **`PubAprovacaoImagem`** e o **`AndamentoDaOfertaService`** — este por
+**injeção de construtor** (`LeituraDoAgente:31`). ➡️ **A espinha da 186 e a única porta FICAM.**
+
+**Inventário do portão:** 23 serviços · 42 `.jsx` · 11 modelos · 5 migrations · 45 testes PHP · 28 gates JS.
+⚠️ **Os testes ficam verdes:** protegem código **vivo em produção**, e *apagar teste de código vivo é pior
+que teste ausente*.
+
+### ⚠️⚠️ A PONTE QUE AINDA NÃO EXISTE — o achado mais importante para o plano novo
+
+```
+PreparadorDaAprovacao:102  ->  mover($oferta, AGUARDANDO_APROVACAO)   e NUNCA aprova
+AndamentoDaOfertaService   ->  a publicação da Fase 193 dispara NA APROVAÇÃO
+
+Agente prepara -> `aguardando_aprovacao` -> ALGUÉM APROVA -> publica
+                                            ^^^^^^^^^^^^^ e é ISTO que foi tombado
+```
+
+➡️⚠️ **Sem uma ponte do aceite da Prévia até o `mover(APROVADO)`, a oferta do Agente fica parada para
+sempre.** O plano novo **tem de nomeá-la**. ⚠️ **E a Fase 193 (aprovar → publica, 22 commits não
+publicados) é PROVAVELMENTE CARGA, não descarte:** é o **único** caminho que leva a oferta ao ar.
+
+### ⚠️⚠️ DOIS BLOQUEIOS DE ORDEM — medidos, e nenhum deles é de escopo
+
+**1. A tela da Prévia NÃO está na nossa árvore.** O commit `78b6d7ae` **não é ancestral do HEAD** — está
+nos **54 commits do `origin/main` que nos faltam**: `PreviaDoAnuncioService.php` (**330 l., novo**),
+`Mesa/AnuncioNoMl.jsx` (**259 l.**), `Mesa/EtapaPrevia.jsx` (**133 l.**), mais `Publicar.jsx`,
+`AbasDoHeader.jsx` e `config/publicador.php`. ⚠️ **E há mais CINCO consertos dela lá, um marcado "demo
+23/10"** — **está sendo trabalhada hoje**.
+➡️⚠️⚠️ **O MERGE passou a ser pré-requisito do PRÓPRIO PLANO, não só do deploy:** o plano propõe melhorias
+numa tela que **não existe aqui**, e qualquer ponteiro ou gate escrito contra a árvore de hoje mediria **o
+vazio**.
+
+**2. A tela mora em território que era VETADO para nós.** `EtapaPrevia.jsx` e `AnuncioNoMl.jsx` ficam em
+**`resources/js/Components/Publicador/Mesa/`** — o **editor**, que **todos** os briefings desta milestone
+listaram como **NÃO TOCAR**, porque era território do outro dev, ativo.
+➡️⚠️ **A fronteira muda, e isso tem de ser dito com todas as letras:** (a) **briefing futuro não pode
+carregar o veto antigo** — ele faria o executor **PARAR diante do próprio trabalho que o plano manda**;
+(b) **é território compartilhado e ATIVO** → **a fronteira nova precisa ser combinada com o outro dev,
+arquivo por arquivo, ANTES da primeira wave.**
+
+### Decisões abertas (T-1..T-5 no documento de tombamento)
+
+| # | decisão | estado |
+|---|---|---|
+| **T-1** | quem aprova agora | ✅ **respondida: a tela da Prévia** — mas a **ponte** segue por nomear |
+| **T-2** | a **aba visível** em produção (no ar desde 18/10, com contador) | ⚠️ **a premissa mudou**: em 21/10 ele a manteve apontando para área **em construção**; agora aponta para área **descontinuada**. ⚠️ E ocultar **não** é passar destino nulo — o componente desenha um `<span>` **morto** |
+| **T-3** | a **Fase 193** vai ao ar ou é descartada | ⚠️ depende da ponte (é **provavelmente carga**) |
+| **T-4** | a **Fase 189** (lightbox, 44 commits) vai no próximo deploy | aberta — inofensiva, mas é feature tombada |
+| **T-5** | a **Fase 194** sai do ROADMAP ou é absorvida pelo plano novo | aberta — ela **era** *"ligar a automação"*, e o Agente **É** a automação |
