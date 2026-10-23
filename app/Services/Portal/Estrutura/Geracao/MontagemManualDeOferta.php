@@ -159,6 +159,8 @@ class MontagemManualDeOferta
                 'pacote'        => $av['pacote'],
                 'peso_faturado' => $av['peso_faturado'],
                 'sem_medida'    => $av['sem_medida'],
+                // Fora do ME2: a transportadora (a conta tem ME1) ou "a combinar" (23/10/2026, P-27).
+                'destino'       => $av['logistica'] === 'me1' ? ModalidadeDeEnvio::destinoFora(ModalidadeDeEnvio::me1EmCache($empresa)) : null,
             ];
             $frete = $this->frete->estimar($empresa, ['montagem' => [
                 'pacote'        => $av['pacote'],

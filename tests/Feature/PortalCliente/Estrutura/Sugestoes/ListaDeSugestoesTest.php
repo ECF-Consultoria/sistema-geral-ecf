@@ -392,7 +392,8 @@ class ListaDeSugestoesTest extends TestCase
                 $this->chavesOrdenadas($i)
             );
         }
-        $this->assertSame(['chave', 'pacote', 'peso_faturado', 'sem_medida'], $this->chavesOrdenadas($item['logistica']));
+        // 23/10/2026 (P-27): + destino (fora do ME2: transportadora ou a combinar).
+        $this->assertSame(['chave', 'destino', 'pacote', 'peso_faturado', 'sem_medida'], $this->chavesOrdenadas($item['logistica']));
         $this->assertNull($item['descartada_em']);
 
         EstruturaSugestaoDescartada::create(['company_id' => $empresa->id, 'chave' => $item['chave'], 'fase' => $item['fase']]);

@@ -465,7 +465,7 @@ export default function SimuladorPrecificacao({ cartoes, parametros, freteTabela
                                     ? <span className="text-red-300">{erro}</span>
                                     : <><span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Salvo automaticamente</>}
                         </span>
-                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Tipo de anúncio">
+                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Clássico ou Premium">
                             {TIPOS.map(([k, l]) => (
                                 <button key={k} type="button" onClick={() => setTipo(k)} aria-pressed={tipo === k} data-tipo-anuncio={k}
                                     className={cn('rounded-lg px-4 py-1.5 text-[13px] font-semibold transition', tipo === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>

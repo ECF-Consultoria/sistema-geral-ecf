@@ -247,6 +247,24 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
 
 // ─── Funil do Mapeamento ────────────────────────────────────────────────
 
+test('P-27 (23/10/2026) — fora do ME2 numa conta sem ME1, a prévia diz "A combinar", não "Frete pela sua transportadora"', async () => {
+    const mod = await montar('resources/js/Components/Portal/Estrutura/Sugestoes/MontarKitAMao.jsx', 'montar-kit-p27');
+    const fora = (destino) => texto(html(h(mod.PreviaDoKit, {
+        previa: { ...PREVIA, logistica: { chave: 'me1', pacote: { c: 160, l: 90, a: 35, peso_real: 46 }, peso_faturado: 84, sem_medida: [], destino } },
+        calculando: false, nome: null, sku: null, onNome: () => {}, onSku: () => {}, vocabulario: VOCAB_SUG,
+    })));
+
+    const semMe1 = fora('combinar');
+    assert.ok(semMe1.includes('A combinar') && semMe1.includes('Entrega combinada com o comprador'), semMe1);
+    assert.ok(! semMe1.includes('Frete pela sua transportadora') && ! semMe1.includes('ME1'));
+    assert.equal(semMe1.match(PROIBIDO), null);
+
+    const comMe1 = fora('me1');
+    assert.ok(comMe1.includes('ME1') && comMe1.includes('Frete pela sua transportadora'));
+    // Sem saber o destino (preferência não lida), vale o de antes.
+    assert.ok(fora(undefined).includes('Frete pela sua transportadora'));
+});
+
 test('FunilDoMapeamento: quatro cartões e só os links das telas que a pessoa vê', async () => {
     const { default: Funil, FunilCarregando } = await montar('resources/js/Components/Portal/Estrutura/FunilDoMapeamento.jsx', 'funil');
 

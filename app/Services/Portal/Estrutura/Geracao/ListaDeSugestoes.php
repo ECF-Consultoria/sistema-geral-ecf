@@ -701,6 +701,9 @@ class ListaDeSugestoes
         }
 
         $fretes = $this->frete->estimar($empresa, $paraFrete);
+        // Fora do ME2, para onde vai: a transportadora (a conta tem ME1) ou "a combinar" (23/10/2026, P-27 — a #459 não
+        // tem ME1 e a tela dizia "Frete pela sua transportadora").
+        $destinoFora = ModalidadeDeEnvio::destinoFora(ModalidadeDeEnvio::me1EmCache($empresa));
 
         foreach ($itens as $k => $item) {
             $av = $avaliados[$k];
@@ -709,6 +712,7 @@ class ListaDeSugestoes
                 'pacote'        => $av['logistica']['pacote'],
                 'peso_faturado' => $av['logistica']['peso_faturado'],
                 'sem_medida'    => $av['logistica']['sem_medida'],
+                'destino'       => $av['logistica']['logistica'] === 'me1' ? $destinoFora : null,
             ];
             $itens[$k]['frete'] = $fretes[(string) $item['chave']] ?? null;
             $itens[$k]['custo'] = $av['custo'];

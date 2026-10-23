@@ -43,6 +43,9 @@ final class VitrineDeProdutosService
     /** O chip de quem o limite diário de imagens por IA barrou (22/10/2026). */
     public const IMAGENS_AMANHA = 'Imagens amanhã';
 
+    /** O chip do produto sem categoria e sem foto (23/10/2026, P-30): sem categoria, nada mais foi conferido. */
+    public const FALTA_CATEGORIA_E_IMAGEM = 'Falta categoria e imagem';
+
     /** O chip de quem a geração automática de imagens falhou e as tentativas acabaram (23/10/2026, P-06). */
     public const IMAGENS_NAO_GERADAS = 'Imagens não geradas';
 
@@ -292,6 +295,12 @@ final class VitrineDeProdutosService
     private static function naoEstaPronto(?PubRascunho $r, ?string $status, bool $temFoto, int $faltam): ?array
     {
         if (! $temFoto) {
+            // Sem categoria nada foi conferido (o resumo diz 0): o cartão do produto vazio dizia só "Falta imagem"
+            // (23/10/2026, P-30 — o "QA22 Salvar Triplo" não tinha categoria, título, preço, estoque nem descrição).
+            if ($r !== null && ! $r->categoria_id) {
+                return ['texto' => self::FALTA_CATEGORIA_E_IMAGEM, 'tom' => 'ambar', 'detalhe' => 'O resto só é conferido com a categoria'];
+            }
+
             return ['texto' => 'Falta imagem', 'tom' => 'ambar', 'detalhe' => $faltam > 1 ? "Faltam {$faltam} itens no total" : null];
         }
         // 22/10/2026: o limite diário barrou as imagens por IA — só com as fotos do cliente, ainda não está pronto. 23/10
@@ -388,6 +397,10 @@ final class VitrineDeProdutosService
         }
         if ($chip === 'Falta categoria') {
             return [['texto' => 'Escolha a categoria do produto.', 'url' => $em('produto')]];
+        }
+        if ($chip === self::FALTA_CATEGORIA_E_IMAGEM) {
+            return [['texto' => 'Escolha a categoria do produto.', 'url' => $em('produto')],
+                ['texto' => 'Adicione ao menos uma imagem do produto.', 'url' => $em('imagens')]];
         }
         if ($chip === self::IMAGENS_NAO_GERADAS) {
             return [['texto' => 'A geração automática das imagens falhou duas vezes. Gere na etapa Imagens.', 'url' => $em('imagens')]];

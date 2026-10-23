@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Minus, Package, Plus, Search, Tra
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import { Botao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import { PilulaLogistica, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { SeloFase } from './PecasDaSugestao';
+import { rotulosDoDestino, SeloFase, TextoForaDoMe2 } from './PecasDaSugestao';
 import {
     MAX_COMPONENTES_PADRAO, METODOLOGIA, ROTULO_FASE_MONTAGEM, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo,
     itemInicialDoProduto, mudarQuantidade, removerItem, rotuloDaVariacao, textoDaCriada, textoDoCriar, textoDoEstoque,
@@ -225,7 +225,7 @@ export function PreviaDoKit({ previa, calculando, nome, sku, onNome, onSku, voca
                 {logistica && (
                     <span className="inline-flex items-center gap-1.5">
                         <Package size={14} aria-hidden="true" />
-                        <PilulaLogistica chave={logistica.chave} rotulos={vocabulario?.logisticas} className="h-auto bg-transparent px-0" />
+                        <PilulaLogistica chave={logistica.chave} rotulos={rotulosDoDestino(vocabulario?.logisticas, logistica)} className="h-auto bg-transparent px-0" />
                     </span>
                 )}
                 {temFrete && (
@@ -233,7 +233,7 @@ export function PreviaDoKit({ previa, calculando, nome, sku, onNome, onSku, voca
                         <Truck size={14} aria-hidden="true" /> Frete estimado <strong className="tabular-nums text-white">{fmtReais(previa.frete.valor)}</strong>
                     </span>
                 )}
-                {logistica?.chave === 'me1' && <span data-frete>Frete pela sua transportadora</span>}
+                {logistica?.chave === 'me1' && <TextoForaDoMe2 destino={logistica.destino} />}
                 <span data-custo>Custo do conjunto <strong className="tabular-nums text-white">{fmtReais(previa.custo)}</strong></span>
             </div>
             {logistica?.chave === 'pendente' && semMedida.length > 0 && (

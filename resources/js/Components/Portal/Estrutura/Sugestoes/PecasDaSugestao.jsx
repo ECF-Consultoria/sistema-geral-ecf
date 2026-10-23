@@ -114,7 +114,7 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/60">
             <span data-logistica className="inline-flex items-center gap-1.5">
                 <Package size={14} className="text-white/60" aria-hidden="true" />
-                <PilulaLogistica chave={logistica.chave} rotulos={vocabulario?.logisticas}
+                <PilulaLogistica chave={logistica.chave} rotulos={rotulosDoDestino(vocabulario?.logisticas, logistica)}
                     className="h-auto bg-transparent px-0" />
             </span>
             {logistica.chave === 'pendente' && semMedida.length > 0 && (
@@ -129,9 +129,7 @@ export function LogisticaEFrete({ sugestao, freteCotado = null, vocabulario }) {
                     . Complete na ficha.
                 </span>
             )}
-            {logistica.chave === 'me1' && (
-                <span data-frete title="Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora.">Frete pela sua transportadora</span>
-            )}
+            {logistica.chave === 'me1' && <TextoForaDoMe2 destino={logistica.destino} />}
             {temFrete && (
                 <>
                     <span className="hidden h-8 w-px bg-white/[0.08] sm:block" aria-hidden="true" />
@@ -175,4 +173,19 @@ export function TiposDaSugestao({ itens = [], onTipo }) {
             )))}
         </div>
     );
+}
+
+/**
+ * Fora do tamanho do envio ME2, a conta SEM transportadora própria combina a entrega com o comprador (23/10/2026, P-27):
+ * a #459 não tem ME1 e a tela dizia "ME1 · Frete pela sua transportadora". `destino` vem do servidor ('me1', 'combinar'
+ * ou 'fora' = ainda não se sabe); sem ele, vale o de antes.
+ */
+export function rotulosDoDestino(rotulos, logistica) {
+    return logistica?.chave === 'me1' && logistica?.destino === 'combinar' ? { ...(rotulos ?? {}), me1: 'A combinar' } : rotulos;
+}
+
+export function TextoForaDoMe2({ destino }) {
+    return destino === 'combinar'
+        ? <span data-frete title="Fora do tamanho do envio ME2. A entrega é combinada com o comprador.">Entrega combinada com o comprador</span>
+        : <span data-frete title="Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora.">Frete pela sua transportadora</span>;
 }

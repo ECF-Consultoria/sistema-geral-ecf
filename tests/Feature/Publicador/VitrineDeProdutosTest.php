@@ -188,6 +188,21 @@ class VitrineDeProdutosTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $resumo['bloqueios'], 'sem foto é bloqueio');
     }
 
+    /** 23/10/2026 (P-30): o produto vazio (sem categoria e sem foto) dizia só "Falta imagem", com o resumo em 0. */
+    public function test_sem_categoria_e_sem_foto_o_cartao_diz_os_dois_e_leva_as_duas_etapas(): void
+    {
+        $this->mesa()->getJson($this->rota('abrir'))->assertOk();
+        $this->semResumo();
+
+        $c = $this->cartaoDaCadeira();
+
+        $this->assertSame('pendencia', $c['grupo']);
+        $this->assertSame('Falta categoria e imagem', $c['chip']['texto']);
+        $this->assertSame(2, count($c['resolver']));
+        $this->assertStringContainsString('etapa=produto', $c['resolver'][0]['url']);
+        $this->assertStringContainsString('etapa=imagens', $c['resolver'][1]['url']);
+    }
+
     public function test_sem_categoria_nada_foi_validado_e_o_cartao_diz_falta_categoria(): void
     {
         $this->mesa()->getJson($this->rota('abrir'))->assertOk();
