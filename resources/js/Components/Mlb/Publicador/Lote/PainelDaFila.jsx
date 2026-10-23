@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ExternalLink, Pause, Play, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
@@ -33,6 +34,11 @@ export function proximoJaPassou(iso, agora = new Date()) {
  * @param {{fila: ?object, ocupado?: boolean, aoPausar?: Function, aoRetomar?: Function, aoCancelar?: Function, aoRemover?: (itemId: number) => void, agora?: Date}} props
  */
 export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetomar, aoCancelar, aoRemover, agora = null }) {
+    // 23/10/2026: "Cancelar fila" era UM clique, ao lado de "Pausar", e cancela toda
+    // a publicação agendada. Agora o clique pede confirmação aqui mesmo (o viewer
+    // não tem `confirm()` do navegador): "Sim, cancelar a fila" / "Não, manter".
+    // O hook vem antes do `return` condicional (regra dos hooks).
+    const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
     const instante = agora instanceof Date ? agora : new Date();
     if (! fila || typeof fila !== 'object') return null;
     const f = comoObjeto(fila);
@@ -65,7 +71,7 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                         {textoSeguro(f.criada_por, '') !== '' ? ` · agendada por ${textoSeguro(f.criada_por)}` : ''}
                     </p>
                 </div>
-                {f.viva === true && (
+                {f.viva === true && ! confirmandoCancelar && (
                     <div className="flex flex-wrap gap-2">
                         {ativa && (
                             <BotaoAcao onClick={() => aoPausar?.()} disabled={ocupado}>
@@ -79,7 +85,25 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                                 Retomar
                             </BotaoAcao>
                         )}
-                        <BotaoAcao onClick={() => aoCancelar?.()} disabled={ocupado}>Cancelar fila</BotaoAcao>
+                        <BotaoAcao onClick={() => setConfirmandoCancelar(true)} disabled={ocupado}>Cancelar fila</BotaoAcao>
+                    </div>
+                )}
+                {f.viva === true && confirmandoCancelar && (
+                    <div role="alertdialog" aria-label="Confirmar cancelamento da fila" className="flex flex-wrap items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/[0.06] px-3 py-2">
+                        <p className="text-[13px] font-normal text-red-200">
+                            Cancelar a fila inteira? Os produtos que ainda não foram publicados saem da fila.
+                        </p>
+                        <BotaoAcao
+                            onClick={() => {
+                                setConfirmandoCancelar(false);
+                                aoCancelar?.();
+                            }}
+                            disabled={ocupado}
+                            className="border-red-500/40 text-red-200 hover:bg-red-500/10"
+                        >
+                            Sim, cancelar a fila
+                        </BotaoAcao>
+                        <BotaoAcao onClick={() => setConfirmandoCancelar(false)} disabled={ocupado}>Não, manter</BotaoAcao>
                     </div>
                 )}
             </div>

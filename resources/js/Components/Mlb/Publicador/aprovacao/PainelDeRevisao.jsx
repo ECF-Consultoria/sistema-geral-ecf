@@ -1,4 +1,4 @@
-import { isValidElement, useEffect } from 'react';
+import { isValidElement, useEffect, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
@@ -228,6 +228,50 @@ export function textoDaRecusa(valor) {
     return typeof valor === 'string' && valor.trim() !== '' ? valor : null;
 }
 
+// ═══ ⚠️⚠️ 23/10/2026 (P-18e) — UMA ESCRITA DO PAINEL POR VEZ ═══════════════
+//
+// O duplo clique em "Aprovar para publicação" mandava DOIS POSTs: o segundo
+// interrompia o primeiro no navegador (o Inertia cancela a visita em voo), o
+// servidor já tinha aprovado o primeiro e o segundo voltava 422 — a tela
+// mostrava erro numa oferta que FOI aprovada (e aprovar já publica).
+// ➡️ A trava mora AQUI, no helper único, e não em cada botão: toda escrita do
+// painel passa por ele. Ela liga no `onStart` (síncrono dentro do `router.post`,
+// então o segundo clique já a encontra ligada) e desliga no `onFinish`, que o
+// Inertia chama em TODO desfecho (sucesso, erro, 422 cru, interrupção).
+// Leitura (`leitura: true`: simulação e prévia do frete) não liga a trava, mas
+// também não sai com uma escrita em voo — ela interromperia a escrita.
+// A tela lê a trava por `useEscritaDoPainelEmVoo()` para desabilitar os botões.
+let escritaEmVoo = false;
+const ouvintesDaEscrita = new Set();
+
+function marcarEscritaEmVoo(valor) {
+    if (escritaEmVoo === valor) return;
+
+    escritaEmVoo = valor;
+    ouvintesDaEscrita.forEach((ouvinte) => ouvinte());
+}
+
+/** Se há uma escrita do painel em voo agora (23/10/2026, P-18e). */
+export function escritaDoPainelEmVoo() {
+    return escritaEmVoo;
+}
+
+/** Assina a trava de escrita — o formato que `useSyncExternalStore` pede. */
+export function assinarEscritaDoPainel(ouvinte) {
+    if (typeof ouvinte !== 'function') return () => {};
+
+    ouvintesDaEscrita.add(ouvinte);
+
+    return () => {
+        ouvintesDaEscrita.delete(ouvinte);
+    };
+}
+
+/** A trava como valor de render; no render de servidor é sempre `false`. */
+export function useEscritaDoPainelEmVoo() {
+    return useSyncExternalStore(assinarEscritaDoPainel, escritaDoPainelEmVoo, () => false);
+}
+
 /**
  * ⚠️⚠️ **O HELPER ÚNICO DE ESCRITA DO PAINEL (W11 / critério 17 / COL-04).**
  *
@@ -291,7 +335,14 @@ export function textoDaRecusa(valor) {
  * @param {unknown} [pedido.parametros] os parâmetros da rota
  * @param {unknown} [pedido.corpo] o corpo, SEM a versão
  * @param {unknown} [pedido.versao] a `versao` que a pessoa VIU (`painel.versao`)
- * @param {unknown} [pedido.onConflito] `(mensagem) => void`, chamado no 422 de versão
+ * @param {unknown} [pedido.onConflito] `(mensagem, ehConflito) => void`, chamado em
+ *   TODA recusa do painel. ⚠️ 23/10/2026 (P-18d): `ehConflito` é `true` SÓ no 422
+ *   de VERSÃO divergente (COL-04); nas outras recusas é `false`, e a tela mostra
+ *   a mensagem do servidor SEM dizer que a oferta mudou
+ * @param {unknown} [pedido.onSucesso] `() => void`, chamado só quando o servidor
+ *   ACEITOU (23/10/2026, P-18e: o modal fecha aqui, não quando o envio sai)
+ * @param {unknown} [pedido.leitura] `true` para a simulação e a prévia do frete:
+ *   não liga a trava de escrita (23/10/2026, P-18e)
  * @returns {boolean} se a escrita foi disparada
  */
 export function escreverNoPainel(pedido = null) {
@@ -305,9 +356,15 @@ export function escreverNoPainel(pedido = null) {
     // o que permite ao chamador NÃO desenhar o botão — a régua do D4.
     if (nomeDaRota === null || versaoVista === null) return false;
 
+    // 23/10/2026 (P-18e): com uma escrita em voo nada sai — nem a segunda (o duplo
+    // clique), nem uma leitura, que interromperia a escrita no navegador.
+    if (escritaEmVoo) return false;
+
+    const ehLeitura = alvo.leitura === true;
     const corpo = objetoDoPainel(alvo.corpo) ?? {};
     const parametros = objetoDoPainel(alvo.parametros) ?? {};
     const aoConflitar = typeof alvo.onConflito === 'function' ? alvo.onConflito : null;
+    const aoTerSucesso = typeof alvo.onSucesso === 'function' ? alvo.onSucesso : null;
 
     // ⚠️⚠️ O CAMINHO REAL do 422 deste painel (ver o docblock): a recusa é
     // `response()->json([...], 422)` CRUA, então o Inertia desvia para
@@ -328,7 +385,10 @@ export function escreverNoPainel(pedido = null) {
             // virar silêncio, e o modal do Inertia é o sinal certo para ele.
             if (regra === null) return undefined;
 
-            aoConflitar(textoDaRecusa(dados.message) ?? regra);
+            // 23/10/2026 (P-18d): toda recusa com `regra` continua chegando, mas
+            // só a de VERSÃO é conflito — antes um frete recusado (MOD-03) virava
+            // "a oferta mudou, recarregue".
+            aoConflitar(textoDaRecusa(dados.message) ?? regra, regra === REGRA_VERSAO_DIVERGENTE);
 
             // ⚠️ `false` CANCELA o modal de erro do Inertia (`onGlobalEvent`,
             // `dist/index.esm.js:1373`-`:1381`): o aviso da tela é o sinal, e dois
@@ -344,6 +404,16 @@ export function escreverNoPainel(pedido = null) {
         { ...corpo, [CHAVE_DA_VERSAO]: versaoVista },
         {
             preserveScroll: true,
+            // 23/10/2026 (P-18e): a trava liga aqui — o `onStart` roda DENTRO do
+            // `router.post`, antes do pedido sair.
+            onStart: () => {
+                if (!ehLeitura) marcarEscritaEmVoo(true);
+            },
+            // 23/10/2026 (P-18e): só o servidor ACEITANDO conta como sucesso (o
+            // `onSuccess` não roda no 422 cru nem com a sacola `errors` cheia).
+            onSuccess: () => {
+                if (aoTerSucesso !== null) aoTerSucesso();
+            },
             onError: (erros) => {
                 if (aoConflitar === null) return;
 
@@ -370,12 +440,15 @@ export function escreverNoPainel(pedido = null) {
                 // ⚠️ `onConflito` é chamado com a mensagem do conflito quando ela
                 // vier, e com a PRIMEIRA mensagem quando não vier — **nunca em
                 // silêncio**, porque o pior resultado aqui é a pessoa achar que
-                // aprovou.
-                aoConflitar(conflito ?? mensagens[0] ?? null);
+                // aprovou. 23/10/2026 (P-18d): o 2º argumento diz se é conflito de
+                // VERSÃO; validação e regra de negócio chegam com `false`.
+                aoConflitar(conflito ?? mensagens[0] ?? null, regra === REGRA_VERSAO_DIVERGENTE || conflito !== null);
             },
             // ⚠️⚠️ O ouvinte vive só pela DURAÇÃO da requisição. Ouvinte global
             // permanente pegaria o `invalid` de QUALQUER outra tela.
+            // 23/10/2026 (P-18e): e a trava de escrita desliga aqui, em todo desfecho.
             onFinish: () => {
+                if (!ehLeitura) marcarEscritaEmVoo(false);
                 if (typeof desinscrever === 'function') desinscrever();
             },
         },

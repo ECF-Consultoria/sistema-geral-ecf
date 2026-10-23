@@ -530,6 +530,9 @@ const ARQUIVOS_NOVOS = [
     // `KpisDoPainel.jsx` e reusado por SEMELHANÇA DE FUNÇÃO — COL-04 **não tem
     // elemento no protótipo**, e isso está DECLARADO.
     `${DIR_APROV}/AvisoDeVersaoMudou.jsx`,
+    // 23/10/2026 (P-18a, correções da fila) — o campo de busca com rascunho local e
+    // atraso. Ele não declara classe nenhuma (o `className` vem de `FiltrosDaFila`).
+    `${DIR_APROV}/CampoDeBuscaDaFila.jsx`,
 ];
 
 /**

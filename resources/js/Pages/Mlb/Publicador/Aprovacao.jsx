@@ -13,7 +13,7 @@ import VazioDaFila from '@/Components/Mlb/Publicador/aprovacao/VazioDaFila';
 import BarraDeSelecao from '@/Components/Mlb/Publicador/aprovacao/BarraDeSelecao';
 import ModalDeLote from '@/Components/Mlb/Publicador/aprovacao/ModalDeLote';
 import ToastDaFila from '@/Components/Mlb/Publicador/aprovacao/ToastDaFila';
-import PainelDeRevisao, { escreverNoPainel } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
+import PainelDeRevisao, { escreverNoPainel, useEscritaDoPainelEmVoo } from '@/Components/Mlb/Publicador/aprovacao/PainelDeRevisao';
 import ColunaDeFotos from '@/Components/Mlb/Publicador/aprovacao/ColunaDeFotos';
 import ColunaDePreco from '@/Components/Mlb/Publicador/aprovacao/ColunaDePreco';
 import PendenciasDoPainel from '@/Components/Mlb/Publicador/aprovacao/PendenciasDoPainel';
@@ -23,7 +23,7 @@ import ModalDeAjuste from '@/Components/Mlb/Publicador/aprovacao/ModalDeAjuste';
 import ModalDeExcecao from '@/Components/Mlb/Publicador/aprovacao/ModalDeExcecao';
 import ModalDeFrete from '@/Components/Mlb/Publicador/aprovacao/ModalDeFrete';
 import ModalDeReprovarImagem, { MODAL_REPROVAR } from '@/Components/Mlb/Publicador/aprovacao/ModalDeReprovarImagem';
-import AvisoDeVersaoMudou from '@/Components/Mlb/Publicador/aprovacao/AvisoDeVersaoMudou';
+import AvisoDeVersaoMudou, { AvisoDeRecusa } from '@/Components/Mlb/Publicador/aprovacao/AvisoDeVersaoMudou';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 187, plano 04 — A PÁGINA DA FILA "Aguardando aprovação".
@@ -177,13 +177,35 @@ function chaveSegura(valor) {
  * ⚠️ A `etapa` viaja junto para o filtro em que a pessoa está NÃO ser apagado
  * pelo clique. O servidor a saneia contra a lista fechada das 9 chaves.
  */
+/**
+ * A querystring da URL ATUAL, sem `oferta` — 23/10/2026 (P-18b).
+ *
+ * Abrir uma oferta pela linha ou pelo "Revisar agora" mandava só `{etapa, oferta}`:
+ * a fila atrás do painel perdia a busca, os filtros e a seleção (`?sel=`). Como a
+ * URL É a fonte do recorte e da seleção (COL-03), e `irParaOferta` é de módulo (não
+ * enxerga as props), ela carrega adiante o que a URL já tem. Sem `window` (render
+ * de servidor, gates) devolve `{}` — o comportamento de antes.
+ */
+function consultaDaUrlAtual() {
+    if (typeof window === 'undefined' || typeof window.location?.search !== 'string') return {};
+
+    const consulta = {};
+
+    for (const [chave, valor] of new URLSearchParams(window.location.search)) {
+        if (chave !== 'oferta' && valor !== '') consulta[chave] = valor;
+    }
+
+    return consulta;
+}
+
 function irParaOferta(empresaId, etapaAtiva) {
     if (empresaId === null) return null;
 
     return (ofertaId) => {
         router.get(
             route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-            { etapa: etapaAtiva, oferta: ofertaId },
+            // 23/10/2026 (P-18b): recorte e seleção da URL viajam junto.
+            { ...consultaDaUrlAtual(), etapa: etapaAtiva, oferta: ofertaId },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -382,6 +404,11 @@ export default function Aprovacao({
     // OFERTA junto, para o aviso não vazar para a oferta seguinte no ↑/↓.
     const [conflitoDoPainel, setConflitoDoPainel] = useState(null);
 
+    // 23/10/2026 (P-18e): se há uma escrita do painel em voo. NÃO é estado desta
+    // página: a trava mora no helper único `escreverNoPainel` (é ele que recusa o
+    // segundo envio); aqui ela só é LIDA para travar os botões e os modais.
+    const enviandoNoPainel = useEscritaDoPainelEmVoo();
+
     // A etapa acesa, resolvida UMA vez: a faixa de 9 a usa para marcar o card e
     // a navegação da oferta a repassa, para "Revisar agora" não apagar o filtro
     // em que a pessoa está.
@@ -465,6 +492,27 @@ export default function Aprovacao({
         etapa: etapaAtiva,
     };
 
+    // ⚠️ A SELEÇÃO do lote (`?sel=`), já SANEADA pelo servidor — ver o bloco "O
+    // LOTE" mais abaixo. 23/10/2026 (P-18b): declarada aqui, antes dos handlers
+    // que a carregam adiante.
+    const idsSelecionados = (Array.isArray(selecionados) ? selecionados : [])
+        .map((id) => inteiroSeguro(id))
+        .filter((id) => id !== null);
+
+    // 23/10/2026 (P-18b): o recorte E a seleção numa querystring só. Filtrar, trocar
+    // de etapa, abrir e fechar a oferta perdiam o `?sel=` — a barra de seleção
+    // sumia —, contra o que o bloco do lote promete (a seleção sobrevive a voltar do
+    // painel, e a de outro recorte não se perde).
+    const consultaDaFila = (mudanca = {}) => {
+        const query = querystringDe({ ...recorteAtual, ...mudanca });
+
+        if (idsSelecionados.length > 0) {
+            query.sel = idsSelecionados.join(',');
+        }
+
+        return query;
+    };
+
     // ⚠️ Sem id de empresa não há destino: o clique NÃO é oferecido, em vez de
     // montar uma rota inventada. É a mesma regra do "Revisar agora".
     const navegar = empresaId === null
@@ -475,7 +523,7 @@ export default function Aprovacao({
             setMenuAberto(null);
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                querystringDe({ ...recorteAtual, ...mudanca }),
+                consultaDaFila(mudanca),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -551,7 +599,9 @@ export default function Aprovacao({
         : (chave) => {
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                { etapa: chave },
+                // 23/10/2026 (P-18b): trocar de etapa não apaga busca, filtros e
+                // seleção (as contagens da faixa já são sobre os DEMAIS filtros).
+                consultaDaFila({ etapa: chave }),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -566,9 +616,7 @@ export default function Aprovacao({
     // ⚠️ Os ids vêm do servidor **JÁ SANEADOS** contra as ofertas da conta
     // (`selecaoSaneada()`): id de outra empresa na querystring é DESCARTADO. A tela
     // nunca pinta como selecionada uma oferta que o POST depois recusaria.
-    const idsSelecionados = (Array.isArray(selecionados) ? selecionados : [])
-        .map((id) => inteiroSeguro(id))
-        .filter((id) => id !== null);
+    // (23/10/2026: `idsSelecionados` é declarado lá em cima, junto do recorte.)
 
     // Navega mantendo o recorte e trocando só a seleção.
     const irParaSelecao = empresaId === null
@@ -628,6 +676,20 @@ export default function Aprovacao({
             irParaSelecao(proximos);
         };
 
+    // 23/10/2026 (P-18c): o checkbox de CADA LINHA. `LinhaDaOferta` sempre soube
+    // desenhá-lo, mas a página nunca passava `onMarcar` — só dava para marcar todas
+    // as visíveis pelo cabeçalho. Marca/desmarca UMA, mantendo as outras.
+    const marcarOferta = irParaSelecao === null
+        ? null
+        : (id) => {
+            const alvo = inteiroSeguro(id);
+            if (alvo === null) return;
+
+            irParaSelecao(idsSelecionados.includes(alvo)
+                ? idsSelecionados.filter((x) => x !== alvo)
+                : idsSelecionados.concat(alvo));
+        };
+
     // ⚠️⚠️ **OS DOIS VAZIOS HONESTOS** (decisão 16 do usuário, 15/10/2026). O
     // `algum_filtro` é o MESMO booleano do servidor que a linha de filtros usa — ele
     // é **LIDO**, nunca recalculado aqui: duas respostas para "há filtro?"
@@ -667,7 +729,7 @@ export default function Aprovacao({
     const noTabela = isValidElement(tabela) ? tabela : <TabelaDaFila
         grupos={grupos}
         linhaDaOferta={(oferta) => (
-            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} />
+            <LinhaDaOferta linha={oferta} onAbrir={irParaOferta(empresaId, etapaAtiva)} onMarcar={marcarOferta} marcada={idsSelecionados.includes(inteiroSeguro(objetoSeguro(oferta)?.id))} />
         )}
         onMarcarVisiveis={marcarVisiveis}
         visiveisMarcadas={todasVisiveisMarcadas}
@@ -753,7 +815,8 @@ export default function Aprovacao({
 
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                { ...querystringDe(recorteAtual), oferta: id },
+                // 23/10/2026 (P-18b): com a seleção (`?sel=`) junto.
+                { ...consultaDaFila(), oferta: id },
                 { only: ['painel'], preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -765,7 +828,8 @@ export default function Aprovacao({
         : () => {
             router.get(
                 route('mlb.anuncios.meus.aprovacao', { company: empresaId }),
-                querystringDe(recorteAtual),
+                // 23/10/2026 (P-18b): fechar a oferta não derruba a seleção.
+                consultaDaFila(),
                 { preserveState: true, preserveScroll: true, replace: true },
             );
         };
@@ -813,6 +877,8 @@ export default function Aprovacao({
             rota: 'mlb.anuncios.meus.aprovacao.painel.tentar-de-novo',
             parametros: { company: empresaId, oferta: ofertaDoPainel },
             versao: versaoDoPainel,
+            // 23/10/2026 (P-18d): a recusa daqui também aparece na tela.
+            onConflito: registrarConflito,
         });
 
     // ═══ ⚠⚠ Fase 188, plano 08 — A COLUNA DE FOTOS NO SLOT ═══════════════
@@ -849,6 +915,252 @@ export default function Aprovacao({
 
             setFotoAberta({ oferta: ofertaDoPainel, indice: alvo });
         };
+
+    // ═══ ⚠️⚠️ 23/10/2026 (P-01) — DECLARADO ANTES DO PRIMEIRO USO ═══════════
+    //
+    // Os dois blocos abaixo (modais/escritas do painel e simulação/prévia do
+    // flash) moravam DEPOIS das colunas e das pendências, que os leem já no
+    // render. `const` lido antes da declaração é zona morta temporal: com o
+    // painel chegando com fotos, preço ou pendências a página LANÇAVA
+    // (`Cannot access 'abrirModalDeReprovar' before initialization`) e a tela
+    // ficava preta. Só a ORDEM mudou aqui. Gate:
+    // `tests/js/publicador-aprovacao-correcoes.test.js`.
+
+    // ===== Fase 188, plano 11 - OS DOIS PRIMEIROS MODAIS, LIGADOS =====
+    //
+    // ⚠️⚠️ **DESVIO DECLARADO DO `files_modified` do 188-11-PLAN.md**, pelo MESMO
+    // precedente das waves **188-09** e **188-10**, que também não listavam esta
+    // página e também a ligaram: **NENHUMA wave de 11 a 13 tem esta página no
+    // `files`**, e sem o fio os modais existiriam no disco e **não apareceriam na
+    // tela** - e os critérios 11 e 12 falam do que a tela MOSTRA. Logo: o fio entra
+    // aqui, DECLARADO, e nada mais desta página é tocado.
+    //
+    // ⚠️ **Derivação PURA, sem `useEffect`:** modal guardado para OUTRA oferta é
+    // descartado. Sem isto, navegar com as setas levaria o modal aberto para a
+    // oferta seguinte - e o ajuste iria para a oferta errada.
+    const modalAberto = modalDoPainel !== null && objetoSeguro(modalDoPainel)?.oferta === ofertaDoPainel
+        ? modalDoPainel
+        : null;
+
+    // ⚠️ Sem empresa, sem oferta ou sem versão **não há handler** - e sem handler o
+    // botão **não é desenhado** (D4). É a mesma régua do "Revisar agora": nunca uma
+    // rota inventada, nunca uma escrita sobre versão que a tela não viu.
+    const podeEscreverNoPainel = empresaId !== null && ofertaDoPainel !== null && versaoDoPainel !== null;
+
+    // ⚠️ `({ excecao = null } = {})` só cobre `undefined`, **NÃO `null`** - e foi
+    // assim que uma função passou a LANÇAR NO CLIQUE na wave 188-08. A guarda é
+    // explícita.
+    const abrirModalDoPainel = !podeEscreverNoPainel
+        ? null
+        : (modal, excecao) => setModalDoPainel({
+            modal: typeof modal === 'string' ? modal : null,
+            oferta: ofertaDoPainel,
+            excecao: typeof excecao === 'string' ? excecao : null,
+            item: 0,
+            texto: '',
+            responsavelId: null,
+            justificativa: '',
+            // ⚠️⚠️ COL-04 — a VERSÃO QUE A TELA VIU no momento em que o modal
+            // abriu. É ela que o aviso de concorrência compara com a versão do
+            // payload: com o modal aberto, um recarregamento parcial por baixo
+            // (↑/↓, ou o retorno de uma prévia) pode trazer versão nova, e aí o que
+            // a pessoa está vendo no modal **já é velho**.
+            versaoVista: versaoDoPainel,
+            // ⚠️ Fase 188, plano 12 — os campos dos outros dois modais. Eles
+            // nascem VAZIOS a cada abertura: campo de modal que lembra o que a
+            // pessoa digitou na vez anterior é o que faz alguém confirmar o frete
+            // de OUTRA oferta sem perceber.
+            valor: '',
+            origem: null,
+            imagemId: null,
+            motivo: '',
+            // 23/10/2026 (P-18e): a recusa do servidor ao último envio deste modal.
+            erro: null,
+        });
+
+    const fecharModalDoPainel = () => setModalDoPainel(null);
+
+    // ⚠️⚠️ Fase 188, plano 12 — o MOD-04 é aberto pelo BLOCO DA IMAGEM
+    // SELECIONADA (plano 188-08), que manda o `imagem_id` (a linha de REVISÃO,
+    // `pub_aprovacao_imagens.id`). ⚠️ Ele **não** está em `MODAIS` (a lista fechada
+    // dos destinos de pendência) de propósito: nenhum bloqueio leva a ele.
+    // ⚠️ `inteiroSeguro` **mais** `> 0`: `id = 0` é plausível e sairia numa rota
+    // que não existe.
+    const abrirModalDeReprovar = !podeEscreverNoPainel
+        ? null
+        : (imagemId) => {
+            const alvo = inteiroSeguro(imagemId);
+            if (alvo === null || alvo <= 0) return;
+
+            setModalDoPainel({
+                modal: MODAL_REPROVAR,
+                oferta: ofertaDoPainel,
+                excecao: null,
+                item: 0,
+                texto: '',
+                responsavelId: null,
+                justificativa: '',
+                versaoVista: versaoDoPainel,
+                valor: '',
+                origem: null,
+                imagemId: alvo,
+                motivo: '',
+                erro: null,
+            });
+        };
+
+    // ⚠️ Atualização de UM campo do formulário, preservando o resto.
+    const mudarCampoDoModal = (campo, valor) => setModalDoPainel((anterior) => {
+        const atual = objetoSeguro(anterior);
+        if (atual === null) return anterior;
+
+        return { ...atual, [campo]: valor };
+    });
+
+    // ⚠️⚠️ **TODA ESCRITA PELO HELPER ÚNICO `escreverNoPainel`** (W11 / COL-04 /
+    // critério 17): ele acrescenta `versao_esperada` **SEMPRE** e **não engole** o
+    // 422 de versão divergente. ⚠️ `versao_esperada` é OPCIONAL no corpo da action,
+    // então omiti-la faz `exigirVersao()` receber `null` e **LIBERAR** a escrita -
+    // literalmente "sobrescrever em silêncio", que é o que o critério 17 proíbe.
+    // ⚠️ **Nunca `router.post` direto** (há gate com lista CONSTANTE, plano 188-12).
+    //
+    // ⚠️⚠️ **Fase 188, plano 12 — O AVISO DE CONCORRÊNCIA ACENDE AQUI.** O helper
+    // chama `onConflito` com a mensagem do SERVIDOR (ela diz as DUAS versões), e
+    // ela **nunca é remontada no cliente**.
+    // ⚠️ Derivação PURA: conflito guardado para OUTRA oferta é descartado — sem
+    // isso, navegar com ↑/↓ levaria o aviso para a oferta seguinte.
+    const conflitoAberto = conflitoDoPainel !== null && objetoSeguro(conflitoDoPainel)?.oferta === ofertaDoPainel
+        ? conflitoDoPainel
+        : null;
+
+    // ⚠️⚠️ 23/10/2026 (P-18d): o helper manda TODA recusa por aqui, e o 2º argumento
+    // diz se ela é o 422 de VERSÃO divergente. Antes, qualquer recusa com `regra`
+    // virava "a oferta mudou — Recarregar a revisão" (um frete recusado, MOD-03,
+    // inclusive). Agora a recusa comum fica marcada (`recusa: true`) e aparece como
+    // `AvisoDeRecusa`, com a mensagem do servidor e sem o botão de recarregar. Ela
+    // guarda a VERSÃO em que nasceu e some quando a versão muda (a ação seguinte
+    // passou) ou quando a oferta muda.
+    const registrarConflito = ofertaDoPainel === null
+        ? null
+        : (mensagem, ehConflito) => setConflitoDoPainel({
+            oferta: ofertaDoPainel,
+            // ⚠️ Guarda de tipo: a mensagem vem da REDE. ⚠️ E NUNCA `String(…)`.
+            mensagem: typeof mensagem === 'string' && mensagem.trim() !== '' ? mensagem : null,
+            recusa: ehConflito === false,
+            versao: versaoDoPainel,
+        });
+
+    // 23/10/2026 (P-18d): uma escrita da página que PASSOU apaga a recusa anterior.
+    const limparRecusa = () => setConflitoDoPainel((anterior) => (objetoSeguro(anterior)?.recusa === true ? null : anterior));
+
+    // ⚠️⚠️ 23/10/2026 (P-18e) — O DESFECHO DE UM ENVIO DE MODAL.
+    //
+    // Antes o modal fechava quando o envio SAÍA: com o servidor recusando (frete
+    // inválido, motivo curto, versão mudou), o modal já tinha fechado e o que a
+    // pessoa digitou (valor do frete, motivo, justificativa) se perdia. Agora ele
+    // fecha só no SUCESSO; na recusa fica aberto, com o texto, e mostra a mensagem
+    // do servidor dentro dele (a recusa também vai para o painel, para não sumir
+    // se a pessoa fechar o modal). As guardas olham o TIPO do modal e a oferta: a
+    // resposta de um envio não fecha nem marca outro modal aberto depois.
+    const desfechoDoModal = (qual) => {
+        const esteModal = (atual) => objetoSeguro(atual)?.modal === qual && objetoSeguro(atual)?.oferta === ofertaDoPainel;
+        const marcarErro = (erro) => setModalDoPainel((atual) => (esteModal(atual) ? { ...atual, erro } : atual));
+
+        return {
+            onConflito: (mensagem, ehConflito) => {
+                if (registrarConflito !== null) registrarConflito(mensagem, ehConflito);
+                marcarErro(typeof mensagem === 'string' && mensagem.trim() !== '' ? mensagem : null);
+            },
+            onSucesso: () => {
+                limparRecusa();
+                setModalDoPainel((atual) => (esteModal(atual) ? null : atual));
+            },
+            // O erro do envio anterior sai quando um novo envio SAI.
+            limparErro: () => marcarErro(null),
+        };
+    };
+
+    const escreverDoModal = (rota, corpo) => {
+        if (!podeEscreverNoPainel || modalAberto === null) return;
+
+        const desfecho = desfechoDoModal(modalAberto.modal);
+        const disparou = escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: desfecho.onConflito,
+            onSucesso: desfecho.onSucesso,
+        });
+
+        if (disparou) desfecho.limparErro();
+    };
+
+    // ⚠️⚠️ A PRÉVIA DO FRETE e a SIMULAÇÃO DE PREÇO são LEITURAS que o servidor
+    // devolve pelo **FLASH**, e não por `axios`. ⚠️ **MEDIDO:** as duas actions são
+    // dual-path (`$request->expectsJson() ? json : back()->with(...)`), e o Inertia
+    // manda `Accept: text/html, application/xhtml+xml` — então `expectsJson()` é
+    // **falso** e o ramo é o `back()->with('painel_frete_previa' | 'painel_simulacao', …)`.
+    // ⚠️ E `router.post` tem `preserveState: true` por DEFAULT, então o estado local
+    // do modal **sobrevive** à volta e o campo digitado não é zerado.
+    // ➡️ **Zero `axios`, zero `fetch`, zero estado novo para a prévia.**
+    const lerDoPainel = (rota, corpo) => {
+        if (!podeEscreverNoPainel) return;
+
+        escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: registrarConflito,
+            // 23/10/2026 (P-18e): leitura não liga a trava de escrita.
+            leitura: true,
+        });
+    };
+
+    // ⚠️⚠️ **A ESCRITA DIRETA, SEM MODAL** (o "Conferir alteração" dos KPIs, o
+    // salvar/descartar da simulação). ⚠️ Ela NÃO fecha modal nenhum.
+    const escreverDireto = (rota, corpo) => {
+        if (!podeEscreverNoPainel) return;
+
+        escreverNoPainel({
+            rota,
+            parametros: { company: empresaId, oferta: ofertaDoPainel },
+            corpo,
+            versao: versaoDoPainel,
+            onConflito: registrarConflito,
+            onSucesso: limparRecusa,
+        });
+    };
+
+    // ⚠️⚠️ Fase 188, plano 12 — A SIMULAÇÃO e a PRÉVIA DO FRETE chegam pelo FLASH
+    // (ver o bloco `lerDoPainel` acima): as duas actions são DUAL-PATH, e pelo
+    // Inertia o ramo é o `back()->with(...)`. ➡️ A tela SUBSTITUI o bloco neutro
+    // que veio no payload pelo que o servidor acabou de medir.
+    // ⚠️ **A FORMA é a MESMA** (`PrecoDoPainelService::simular()` e
+    // `simulacaoNeutra()` devolvem as mesmas chaves): a tela não remonta nada, ela
+    // troca o bloco inteiro.
+    // ⚠️⚠️ 23/10/2026 (P-05): o servidor marca as duas com `oferta_id`, e a tela só
+    // as usa na oferta ABERTA. O flash sobrevive ao recarregamento parcial do ↑/↓
+    // (`only: ['painel']` não o recarrega): sem a guarda, a simulação da oferta A
+    // aparecia — e podia ser SALVA — na oferta B.
+    const daOfertaAberta = (cru) => {
+        const bloco = objetoSeguro(cru);
+
+        return bloco !== null && ofertaDoPainel !== null && inteiroSeguro(bloco.oferta_id) === ofertaDoPainel ? bloco : null;
+    };
+    const simulacaoDoFlash = daOfertaAberta(objetoSeguro(flash)?.painel_simulacao);
+    const previaDoFrete = daOfertaAberta(objetoSeguro(flash)?.painel_frete_previa);
+
+    const precoComSimulacao = precoDoPainel === null || simulacaoDoFlash === null
+        ? precoDoPainel
+        : { ...precoDoPainel, simulacao: simulacaoDoFlash };
+
+    // ⚠️ O que "Salvar no anúncio" manda é o TEXTO do campo (23/10/2026, P-05: o
+    // valor digitado é estado da caixa) e, sem ele, o valor DIGITÁVEL que o servidor
+    // devolveu (`preenche`) — a tela não reformata número, e sanear aqui criaria a
+    // SEGUNDA leitura do mesmo campo (a canônica é `PrecoDoPainelService::sanear`).
+    const precoSimulado = chaveSegura(objetoSeguro(precoComSimulacao?.simulacao)?.preenche) ?? '';
 
     const colunaDeFotos = fotosDoPainel === null
         ? null
@@ -894,13 +1206,15 @@ export default function Aprovacao({
         ? null
         : (
             <ColunaDePreco
-                key="coluna-de-preco"
+                // 23/10/2026 (P-05): `key` por oferta — o valor digitado na
+                // simulação é estado da caixa e volta ao do servidor ao trocar de oferta.
+                key={'coluna-de-preco-' + ofertaDoPainel}
                 preco={precoComSimulacao}
                 onConferirAlteracao={!podeEscreverNoPainel ? null : () => escreverDireto('mlb.anuncios.meus.aprovacao.painel.conferir-alteracao', {})}
                 onInformarFrete={abrirModalDoPainel === null ? null : () => abrirModalDoPainel(MODAL_FRETE, null)}
                 onSimular={!podeEscreverNoPainel ? null : (digitado) => lerDoPainel('mlb.anuncios.meus.aprovacao.painel.preco.simular', { preco: typeof digitado === 'string' ? digitado : '' })}
                 onDescartar={!podeEscreverNoPainel ? null : () => lerDoPainel('mlb.anuncios.meus.aprovacao.painel.preco.simular', { preco: '' })}
-                onSalvar={!podeEscreverNoPainel ? null : () => escreverDireto('mlb.anuncios.meus.aprovacao.painel.preco', { preco: precoSimulado })}
+                onSalvar={!podeEscreverNoPainel ? null : (digitado) => escreverDireto('mlb.anuncios.meus.aprovacao.painel.preco', { preco: typeof digitado === 'string' && digitado.trim() !== '' ? digitado : precoSimulado })}
                 onAbrirIrma={abrirOferta}
             />
         );
@@ -971,168 +1285,6 @@ export default function Aprovacao({
             />
         );
 
-    // ===== Fase 188, plano 11 - OS DOIS PRIMEIROS MODAIS, LIGADOS =====
-    //
-    // ⚠️⚠️ **DESVIO DECLARADO DO `files_modified` do 188-11-PLAN.md**, pelo MESMO
-    // precedente das waves **188-09** e **188-10**, que também não listavam esta
-    // página e também a ligaram: **NENHUMA wave de 11 a 13 tem esta página no
-    // `files`**, e sem o fio os modais existiriam no disco e **não apareceriam na
-    // tela** - e os critérios 11 e 12 falam do que a tela MOSTRA. Logo: o fio entra
-    // aqui, DECLARADO, e nada mais desta página é tocado.
-    //
-    // ⚠️ **Derivação PURA, sem `useEffect`:** modal guardado para OUTRA oferta é
-    // descartado. Sem isto, navegar com as setas levaria o modal aberto para a
-    // oferta seguinte - e o ajuste iria para a oferta errada.
-    const modalAberto = modalDoPainel !== null && objetoSeguro(modalDoPainel)?.oferta === ofertaDoPainel
-        ? modalDoPainel
-        : null;
-
-    // ⚠️ Sem empresa, sem oferta ou sem versão **não há handler** - e sem handler o
-    // botão **não é desenhado** (D4). É a mesma régua do "Revisar agora": nunca uma
-    // rota inventada, nunca uma escrita sobre versão que a tela não viu.
-    const podeEscreverNoPainel = empresaId !== null && ofertaDoPainel !== null && versaoDoPainel !== null;
-
-    // ⚠️ `({ excecao = null } = {})` só cobre `undefined`, **NÃO `null`** - e foi
-    // assim que uma função passou a LANÇAR NO CLIQUE na wave 188-08. A guarda é
-    // explícita.
-    const abrirModalDoPainel = !podeEscreverNoPainel
-        ? null
-        : (modal, excecao) => setModalDoPainel({
-            modal: typeof modal === 'string' ? modal : null,
-            oferta: ofertaDoPainel,
-            excecao: typeof excecao === 'string' ? excecao : null,
-            item: 0,
-            texto: '',
-            responsavelId: null,
-            justificativa: '',
-            // ⚠️⚠️ COL-04 — a VERSÃO QUE A TELA VIU no momento em que o modal
-            // abriu. É ela que o aviso de concorrência compara com a versão do
-            // payload: com o modal aberto, um recarregamento parcial por baixo
-            // (↑/↓, ou o retorno de uma prévia) pode trazer versão nova, e aí o que
-            // a pessoa está vendo no modal **já é velho**.
-            versaoVista: versaoDoPainel,
-            // ⚠️ Fase 188, plano 12 — os campos dos outros dois modais. Eles
-            // nascem VAZIOS a cada abertura: campo de modal que lembra o que a
-            // pessoa digitou na vez anterior é o que faz alguém confirmar o frete
-            // de OUTRA oferta sem perceber.
-            valor: '',
-            origem: null,
-            imagemId: null,
-            motivo: '',
-        });
-
-    const fecharModalDoPainel = () => setModalDoPainel(null);
-
-    // ⚠️⚠️ Fase 188, plano 12 — o MOD-04 é aberto pelo BLOCO DA IMAGEM
-    // SELECIONADA (plano 188-08), que manda o `imagem_id` (a linha de REVISÃO,
-    // `pub_aprovacao_imagens.id`). ⚠️ Ele **não** está em `MODAIS` (a lista fechada
-    // dos destinos de pendência) de propósito: nenhum bloqueio leva a ele.
-    // ⚠️ `inteiroSeguro` **mais** `> 0`: `id = 0` é plausível e sairia numa rota
-    // que não existe.
-    const abrirModalDeReprovar = !podeEscreverNoPainel
-        ? null
-        : (imagemId) => {
-            const alvo = inteiroSeguro(imagemId);
-            if (alvo === null || alvo <= 0) return;
-
-            setModalDoPainel({
-                modal: MODAL_REPROVAR,
-                oferta: ofertaDoPainel,
-                excecao: null,
-                item: 0,
-                texto: '',
-                responsavelId: null,
-                justificativa: '',
-                versaoVista: versaoDoPainel,
-                valor: '',
-                origem: null,
-                imagemId: alvo,
-                motivo: '',
-            });
-        };
-
-    // ⚠️ Atualização de UM campo do formulário, preservando o resto.
-    const mudarCampoDoModal = (campo, valor) => setModalDoPainel((anterior) => {
-        const atual = objetoSeguro(anterior);
-        if (atual === null) return anterior;
-
-        return { ...atual, [campo]: valor };
-    });
-
-    // ⚠️⚠️ **TODA ESCRITA PELO HELPER ÚNICO `escreverNoPainel`** (W11 / COL-04 /
-    // critério 17): ele acrescenta `versao_esperada` **SEMPRE** e **não engole** o
-    // 422 de versão divergente. ⚠️ `versao_esperada` é OPCIONAL no corpo da action,
-    // então omiti-la faz `exigirVersao()` receber `null` e **LIBERAR** a escrita -
-    // literalmente "sobrescrever em silêncio", que é o que o critério 17 proíbe.
-    // ⚠️ **Nunca `router.post` direto** (há gate com lista CONSTANTE, plano 188-12).
-    //
-    // ⚠️⚠️ **Fase 188, plano 12 — O AVISO DE CONCORRÊNCIA ACENDE AQUI.** O helper
-    // chama `onConflito` com a mensagem do SERVIDOR (ela diz as DUAS versões), e
-    // ela **nunca é remontada no cliente**.
-    // ⚠️ Derivação PURA: conflito guardado para OUTRA oferta é descartado — sem
-    // isso, navegar com ↑/↓ levaria o aviso para a oferta seguinte.
-    const conflitoAberto = conflitoDoPainel !== null && objetoSeguro(conflitoDoPainel)?.oferta === ofertaDoPainel
-        ? conflitoDoPainel
-        : null;
-
-    const registrarConflito = ofertaDoPainel === null
-        ? null
-        : (mensagem) => setConflitoDoPainel({
-            oferta: ofertaDoPainel,
-            // ⚠️ Guarda de tipo: a mensagem vem da REDE. ⚠️ E NUNCA `String(…)`.
-            mensagem: typeof mensagem === 'string' && mensagem.trim() !== '' ? mensagem : null,
-        });
-
-    const escreverDoModal = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        const disparou = escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-
-        // ⚠️ O modal só fecha se a escrita SAIU. Fechar antes faria a pessoa achar
-        // que pediu o ajuste quando nada foi enviado.
-        if (disparou) fecharModalDoPainel();
-    };
-
-    // ⚠️⚠️ A PRÉVIA DO FRETE e a SIMULAÇÃO DE PREÇO são LEITURAS que o servidor
-    // devolve pelo **FLASH**, e não por `axios`. ⚠️ **MEDIDO:** as duas actions são
-    // dual-path (`$request->expectsJson() ? json : back()->with(...)`), e o Inertia
-    // manda `Accept: text/html, application/xhtml+xml` — então `expectsJson()` é
-    // **falso** e o ramo é o `back()->with('painel_frete_previa' | 'painel_simulacao', …)`.
-    // ⚠️ E `router.post` tem `preserveState: true` por DEFAULT, então o estado local
-    // do modal **sobrevive** à volta e o campo digitado não é zerado.
-    // ➡️ **Zero `axios`, zero `fetch`, zero estado novo para a prévia.**
-    const lerDoPainel = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-    };
-
-    // ⚠️⚠️ **A ESCRITA DIRETA, SEM MODAL** (o "Conferir alteração" dos KPIs, o
-    // salvar/descartar da simulação). ⚠️ Ela NÃO fecha modal nenhum.
-    const escreverDireto = (rota, corpo) => {
-        if (!podeEscreverNoPainel) return;
-
-        escreverNoPainel({
-            rota,
-            parametros: { company: empresaId, oferta: ofertaDoPainel },
-            corpo,
-            versao: versaoDoPainel,
-            onConflito: registrarConflito,
-        });
-    };
-
     const noRodapeDoPainel = rodapeDoPainel === null
         ? null
         : (
@@ -1147,31 +1299,15 @@ export default function Aprovacao({
                 ofertaId={ofertaDoPainel}
                 versao={versaoDoPainel}
                 onConflito={registrarConflito}
+                // 23/10/2026 (P-18e): "Salvar revisão" e "Aprovar" travam com uma
+                // escrita em voo — o duplo clique mandava dois pedidos.
+                enviando={enviandoNoPainel}
             />
         );
 
     // ⚠️ O payload dos modais vem do SERVIDOR (`modais.*`, plano 188-06): a tela
     // **não** monta a tabela de escopos, nem a lista de autorizadores, nem os
     // chips de defeito. Montá-los aqui seria a SEGUNDA VERDADE de cada um.
-    // ⚠️⚠️ Fase 188, plano 12 — A SIMULAÇÃO e a PRÉVIA DO FRETE chegam pelo FLASH
-    // (ver o bloco `lerDoPainel` acima): as duas actions são DUAL-PATH, e pelo
-    // Inertia o ramo é o `back()->with(...)`. ➡️ A tela SUBSTITUI o bloco neutro
-    // que veio no payload pelo que o servidor acabou de medir.
-    // ⚠️ **A FORMA é a MESMA** (`PrecoDoPainelService::simular()` e
-    // `simulacaoNeutra()` devolvem as mesmas chaves): a tela não remonta nada, ela
-    // troca o bloco inteiro.
-    const simulacaoDoFlash = objetoSeguro(objetoSeguro(flash)?.painel_simulacao);
-    const previaDoFrete = objetoSeguro(objetoSeguro(flash)?.painel_frete_previa);
-
-    const precoComSimulacao = precoDoPainel === null || simulacaoDoFlash === null
-        ? precoDoPainel
-        : { ...precoDoPainel, simulacao: simulacaoDoFlash };
-
-    // ⚠️ O que "Salvar no anúncio" manda é o valor DIGITÁVEL que o servidor
-    // devolveu (`preenche`) — a tela não reformata número, e sanear aqui criaria a
-    // SEGUNDA leitura do mesmo campo (a canônica é `PrecoDoPainelService::sanear`).
-    const precoSimulado = chaveSegura(objetoSeguro(precoComSimulacao?.simulacao)?.preenche) ?? '';
-
     // ⚠️ A imagem que vai ser reprovada é a entrada de `painel.fotos.imagens` com o
     // `id` que o bloco mandou — e é dela que saem a URL (`url_arquivo`, a MESMA
     // fonte da coluna de fotos do plano 188-08), o rótulo e o `tipo_rotulo`.
@@ -1211,6 +1347,8 @@ export default function Aprovacao({
                 onTexto={(valor) => mudarCampoDoModal('texto', valor)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.ajuste', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeExcecao
                 key="modal-de-excecao"
@@ -1225,6 +1363,8 @@ export default function Aprovacao({
                 onJustificativa={(valor) => mudarCampoDoModal('justificativa', valor)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.excecao', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeFrete
                 key="modal-de-frete"
@@ -1245,6 +1385,8 @@ export default function Aprovacao({
                 onOrigem={(chave) => mudarCampoDoModal('origem', chave)}
                 onFechar={fecharModalDoPainel}
                 onSubmeter={(pedido) => escreverDoModal('mlb.anuncios.meus.aprovacao.painel.frete', pedido)}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
             <ModalDeReprovarImagem
                 key="modal-de-reprovar"
@@ -1262,16 +1404,21 @@ export default function Aprovacao({
                     const imagemId = inteiroSeguro(modalAberto.imagemId);
                     if (!podeEscreverNoPainel || imagemId === null || imagemId <= 0) return;
 
+                    // 23/10/2026 (P-18e): fecha só no SUCESSO; a recusa aparece no modal.
+                    const desfecho = desfechoDoModal(MODAL_REPROVAR);
                     const disparou = escreverNoPainel({
                         rota: 'mlb.anuncios.meus.aprovacao.painel.imagem.reprovar',
                         parametros: { company: empresaId, oferta: ofertaDoPainel, imagem: imagemId },
                         corpo: pedido,
                         versao: versaoDoPainel,
-                        onConflito: registrarConflito,
+                        onConflito: desfecho.onConflito,
+                        onSucesso: desfecho.onSucesso,
                     });
 
-                    if (disparou) fecharModalDoPainel();
+                    if (disparou) desfecho.limparErro();
                 }}
+                erro={modalAberto.erro ?? null}
+                enviando={enviandoNoPainel}
             />,
         ];
 
@@ -1295,18 +1442,27 @@ export default function Aprovacao({
     // aviso NÃO é desenhado). ⚠️ O que **não** está provado é o RUNTIME do
     // recarregamento parcial — **não há navegador nesta máquina**. O que os gates
     // provam é a função PURA `avisoDeVersao()`, nos DOIS gatilhos.
-    const noAvisoDoPainel = (
+    //
+    // ⚠️⚠️ 23/10/2026 (P-18d): a recusa que NÃO é conflito de versão não acende este
+    // aviso ("a oferta mudou — Recarregar") — ela aparece no `AvisoDeRecusa`, com a
+    // mensagem do servidor, enquanto a oferta estiver na versão em que ela nasceu.
+    const recusaAberta = objetoSeguro(conflitoAberto)?.recusa === true;
+    const noAvisoDoPainel = [
         <AvisoDeVersaoMudou
             key="aviso-de-versao"
             versaoVista={objetoSeguro(modalAberto)?.versaoVista ?? versaoDoPainel}
             versaoAtual={versaoDoPainel}
-            mensagem={objetoSeguro(conflitoAberto)?.mensagem ?? null}
+            mensagem={recusaAberta ? null : (objetoSeguro(conflitoAberto)?.mensagem ?? null)}
             onRecarregar={ofertaDoPainel === null || abrirOferta === null ? null : () => {
                 setConflitoDoPainel(null);
                 abrirOferta(ofertaDoPainel);
             }}
-        />
-    );
+        />,
+        <AvisoDeRecusa
+            key="aviso-de-recusa"
+            mensagem={recusaAberta && conflitoAberto.versao === versaoDoPainel ? conflitoAberto.mensagem : null}
+        />,
+    ];
 
     const noPainel = isValidElement(painelNo)
         ? painelNo

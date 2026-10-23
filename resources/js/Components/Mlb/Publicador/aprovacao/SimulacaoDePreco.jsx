@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
     TEXTO_DA_COR,
@@ -152,7 +153,25 @@ export const CLASSES_INDISPONIVEL = 'text-[11.5px] text-pub-warn-txt';
 export const SEPARADOR = '· ';
 
 /**
+ * 23/10/2026 (P-05) — quanto a tela espera a pessoa parar de digitar antes de
+ * pedir a simulação: cada pedido é um POST com recarregamento da página.
+ */
+export const ATRASO_DA_DIGITACAO = 350;
+
+/**
  * A caixa de simulação.
+ *
+ * ═══ ⚠️⚠️ 23/10/2026 (P-05) — O VALOR DIGITADO É ESTADO DESTA CAIXA ═══════════
+ *
+ * O input era controlado por `simulacao.preenche`, que o SERVIDOR devolve — e
+ * ele não é eco do que se digita: no estado neutro (vazio, inválido, igual ao
+ * salvo) vem `''`, e no simulado vem reformatado (`150` → `150,00`). Cada tecla
+ * voltava o campo para o que o servidor tinha (vazio, na prática) e não dava
+ * para digitar. ➡️ O texto digitado mora AQUI e a resposta NUNCA o sobrescreve;
+ * o servidor continua dono da CONTA (resultado, margem, selo, `pode_salvar`).
+ * O campo nasce com o `preenche` recebido e volta a ele só quando a página troca
+ * de oferta (ela monta a coluna com `key` por oferta). "Salvar no anúncio" manda
+ * o texto que está no campo — o que a pessoa vê é o que é gravado.
  *
  * @param {object} props
  * @param {unknown} [props.simulacao] `preco.simulacao` (plano 188-04)
@@ -161,7 +180,7 @@ export const SEPARADOR = '· ';
  * @param {unknown} [props.onSimular] `(valorDigitado) => void`, ou `null` — a
  *   rota é da wave **188-06**. ⚠️ **Sem ela a caixa não é desenhada.**
  * @param {unknown} [props.onDescartar] `() => void`, ou `null`
- * @param {unknown} [props.onSalvar] `() => void`, ou `null`
+ * @param {unknown} [props.onSalvar] `(valorDigitado) => void`, ou `null`
  */
 export default function SimulacaoDePreco({
     simulacao = null,
@@ -172,12 +191,47 @@ export default function SimulacaoDePreco({
     onSalvar = null,
 }) {
     const dados = objetoDoPainel(simulacao);
-    const simular = typeof onSimular === 'function' ? onSimular : null;
+    const pedirAoServidor = typeof onSimular === 'function' ? onSimular : null;
+
+    // 23/10/2026 (P-05): o texto do campo e o relógio da digitação. Os hooks vêm
+    // ANTES do `return` condicional (regra dos hooks).
+    const [digitado, setDigitado] = useState(() => textoDoPainel(dados?.preenche) ?? '');
+    const relogio = useRef(null);
+
+    useEffect(() => () => {
+        if (relogio.current !== null) clearTimeout(relogio.current);
+    }, []);
 
     // ⚠️⚠️ Sem dado OU sem transporte a caixa inteira não nasce — ver o bloco "O
     // TRANSPORTE É DA WAVE 188-06" no docblock. Campo de digitação sem destino é
     // controle MORTO, e caixa tracejada com só o título é casca decorativa (D4).
-    if (dados === null || simular === null) return null;
+    if (dados === null || pedirAoServidor === null) return null;
+
+    const pararRelogio = () => {
+        if (relogio.current === null) return;
+
+        clearTimeout(relogio.current);
+        relogio.current = null;
+    };
+
+    // Digitar: o campo muda NA HORA; o pedido sai quando a pessoa para.
+    const digitar = (valor) => {
+        const texto = typeof valor === 'string' ? valor : '';
+
+        setDigitado(texto);
+        pararRelogio();
+        relogio.current = setTimeout(() => {
+            relogio.current = null;
+            pedirAoServidor(texto);
+        }, ATRASO_DA_DIGITACAO);
+    };
+
+    // Atalho: preenche o campo com o valor do servidor e pede na hora.
+    const simular = (valor) => {
+        pararRelogio();
+        setDigitado(valor);
+        pedirAoServidor(valor);
+    };
 
     const titulo = textoDoPainel(dados.titulo);
     const selo = dados.simulando === true ? textoDoPainel(dados.selo) : null;
@@ -210,15 +264,16 @@ export default function SimulacaoDePreco({
             <div className={CLASSES_LINHA_2}>
                 <span className={CLASSES_CAMPO}>
                     <span className={CLASSES_PREFIXO}>R$</span>
-                    {/* ⚠️ O valor vem do SERVIDOR (`preenche`): a tela não guarda
-                        número nem o reformata. Digitar manda; o payload volta. */}
+                    {/* ⚠️ A tela não reformata o número: o campo mostra o que a
+                        pessoa digitou (23/10/2026, P-05 — antes ele seguia o
+                        `preenche` do servidor e voltava a vazio a cada tecla). */}
                     <input
                         type="text"
                         inputMode="decimal"
                         className={CLASSES_INPUT}
-                        value={textoDoPainel(dados.preenche) ?? ''}
+                        value={digitado}
                         placeholder={textoDoPainel(dados.placeholder) ?? undefined}
-                        onChange={(evento) => simular(evento?.target?.value)}
+                        onChange={(evento) => digitar(evento?.target?.value)}
                     />
                 </span>
 
@@ -238,12 +293,29 @@ export default function SimulacaoDePreco({
                 {descartar === null && salvar === null ? null : (
                     <span className={CLASSES_ACOES}>
                         {descartar === null ? null : (
-                            <button type="button" className={CLASSES_DESCARTAR} onClick={() => descartar()}>
+                            <button
+                                type="button"
+                                className={CLASSES_DESCARTAR}
+                                onClick={() => {
+                                    // 23/10/2026 (P-05): descartar limpa o campo.
+                                    pararRelogio();
+                                    setDigitado('');
+                                    descartar();
+                                }}
+                            >
                                 {textoDoPainel(dados.rotulo_descartar)}
                             </button>
                         )}
                         {salvar === null ? null : (
-                            <button type="button" className={CLASSES_SALVAR} onClick={() => salvar()}>
+                            <button
+                                type="button"
+                                className={CLASSES_SALVAR}
+                                onClick={() => {
+                                    // 23/10/2026 (P-05): grava o que está no campo.
+                                    pararRelogio();
+                                    salvar(digitado);
+                                }}
+                            >
                                 {textoDoPainel(dados.rotulo_salvar)}
                             </button>
                         )}

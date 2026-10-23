@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import CascaDeModal from './CascaDeModal';
+import { AvisoDeRecusa } from './AvisoDeVersaoMudou';
 import { classeDaCorDoPreco, TEXTO_DA_COR } from './KpisDoPainel';
 import { objetoDoPainel, textoDoPainel } from './ImagemGrandeDoPainel';
 
@@ -316,6 +317,10 @@ export function CorpoDoFrete({
  * @param {unknown} [props.onFechar] `() => void`
  * @param {unknown} [props.onSubmeter] `({valor, origem}) => void` — ⚠️ a escrita é
  *   do CHAMADOR, pelo helper único `escreverNoPainel`
+ * @param {unknown} [props.erro] a recusa do servidor ao último envio (23/10/2026,
+ *   P-18e): o modal fica aberto, com o que foi digitado, e diz o porquê
+ * @param {unknown} [props.enviando] `true` enquanto o envio não voltou: o botão
+ *   de enviar trava (23/10/2026, P-18e — o duplo clique mandava dois pedidos)
  */
 export default function ModalDeFrete({
     aberto = false,
@@ -327,10 +332,13 @@ export default function ModalDeFrete({
     onOrigem = null,
     onFechar = null,
     onSubmeter = null,
+    erro = null,
+    enviando = false,
 }) {
     if (aberto !== true) return null;
 
     const numero = valorDoFrete(valor);
+    const emVoo = enviando === true;
     const enviar = typeof onSubmeter === 'function' ? onSubmeter : null;
 
     return (
@@ -339,13 +347,13 @@ export default function ModalDeFrete({
             titulo={TITULO}
             sub={textoDoPainel(sub) ?? undefined}
             rotuloDoBotao={ROTULO_DO_BOTAO}
-            podeSubmeter={numero !== null}
+            podeSubmeter={numero !== null && !emVoo}
             onFechar={onFechar}
             onSubmeter={enviar === null ? null : () => {
                 // ⚠️ A guarda é REPETIDA aqui de propósito: a casca já desabilita o
                 // botão, mas a régua é "o clique NÃO chama a rota", não "o botão
                 // está cinza".
-                if (valorDoFrete(valor) === null) return;
+                if (emVoo || valorDoFrete(valor) === null) return;
 
                 // ⚠️ O que viaja é o TEXTO digitado e a CHAVE da origem. O
                 // saneamento canônico é do servidor (`PrecoDoPainelService::sanear`):
@@ -354,13 +362,17 @@ export default function ModalDeFrete({
                 enviar({ valor, origem: origemEscolhida(origem).chave });
             }}
         >
-            <CorpoDoFrete
-                valor={valor}
-                origem={origem}
-                previa={previa}
-                onValor={onValor}
-                onOrigem={onOrigem}
-            />
+            {[
+                <CorpoDoFrete
+                    key="corpo"
+                    valor={valor}
+                    origem={origem}
+                    previa={previa}
+                    onValor={onValor}
+                    onOrigem={onOrigem}
+                />,
+                <AvisoDeRecusa key="erro" mensagem={erro} />,
+            ]}
         </CascaDeModal>
     );
 }

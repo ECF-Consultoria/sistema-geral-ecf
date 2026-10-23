@@ -10,6 +10,7 @@ import {
     ROTULO_CANCELAR,
     TopoDoModal,
 } from './CascaDeModal';
+import { AvisoDeRecusa } from './AvisoDeVersaoMudou';
 import {
     listaDoPainel,
     objetoDoPainel,
@@ -383,6 +384,10 @@ export function BotaoDeReprovar({ podeSubmeter = false, onSubmeter = null }) {
  * @param {unknown} [props.onFechar] `() => void`
  * @param {unknown} [props.onSubmeter] `({motivo}) => void` — ⚠️ a escrita é do
  *   CHAMADOR, pelo helper único `escreverNoPainel`
+ * @param {unknown} [props.erro] a recusa do servidor ao último envio (23/10/2026,
+ *   P-18e): o modal fica aberto, com o que foi digitado, e diz o porquê
+ * @param {unknown} [props.enviando] `true` enquanto o envio não voltou: o botão
+ *   de enviar trava (23/10/2026, P-18e — o duplo clique mandava dois pedidos)
  */
 export default function ModalDeReprovarImagem({
     aberto = false,
@@ -392,12 +397,15 @@ export default function ModalDeReprovarImagem({
     onMotivo = null,
     onFechar = null,
     onSubmeter = null,
+    erro = null,
+    enviando = false,
 }) {
     // ⚠️ Sem imagem não há o que reprovar: o modal **não abre**, nem com casca
     // vazia. Reprovar "a imagem nenhuma" é um clique morto.
     if (aberto !== true || objetoDoPainel(imagem) === null) return null;
 
-    const pode = motivoValido(motivo);
+    const emVoo = enviando === true;
+    const pode = motivoValido(motivo) && !emVoo;
     const enviar = typeof onSubmeter === 'function' ? onSubmeter : null;
     const fechar = typeof onFechar === 'function' ? onFechar : null;
 
@@ -418,6 +426,7 @@ export default function ModalDeReprovarImagem({
                         motivo={motivo}
                         onMotivo={onMotivo}
                     />
+                    <AvisoDeRecusa mensagem={erro} />
                 </div>
 
                 <div className={CLASSES_RODAPE}>
@@ -432,7 +441,7 @@ export default function ModalDeReprovarImagem({
                         onSubmeter={enviar === null ? null : () => {
                             // ⚠️ A guarda é REPETIDA de propósito: a régua é "o
                             // clique NÃO chama a rota", não "o botão está cinza".
-                            if (!motivoValido(motivo)) return;
+                            if (emVoo || !motivoValido(motivo)) return;
 
                             enviar({ motivo });
                         }}
