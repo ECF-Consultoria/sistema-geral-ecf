@@ -197,7 +197,7 @@ function TabelaDeExecucoes({ linhas, vazio }) {
 }
 
 /** O formulário da configuração essencial. Envia a versão que a pessoa VIU (`versao_esperada`). */
-function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
+function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], processando, onSalvar }) {
     const inicial = () => ({
         habilitado: Boolean(configuracao?.habilitado),
         modalidade: configuracao?.modalidade ?? '',
@@ -206,6 +206,8 @@ function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
         teto_fila: numero(configuracao?.teto_fila ?? 10),
         janela_inicio: configuracao?.janela_inicio ?? '',
         janela_fim: configuracao?.janela_fim ?? '',
+        // ⚠️ ISO: 1 = segunda … 7 = domingo. Vazio = todo dia (o servidor normaliza para `null`).
+        dias_semana: lista(configuracao?.dias_semana).map((d) => numero(d)).filter((d) => d >= 1 && d <= 7),
     });
     const [form, setForm] = useState(inicial);
     // Outra versão chegou do servidor (salvou, ou recarregou depois de um conflito): o formulário a acompanha.
@@ -222,6 +224,7 @@ function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
             teto_fila: numero(form.teto_fila),
             janela_inicio: form.janela_inicio || null,
             janela_fim: form.janela_fim || null,
+            dias_semana: lista(form.dias_semana),
             versao_esperada: numero(configuracao?.versao),
         });
     };
@@ -262,9 +265,61 @@ function FormularioDaConfiguracao({ configuracao, processando, onSalvar }) {
                     <input type="time" value={form.janela_fim} onChange={campo('janela_fim')} className={entrada} />
                 </label>
             </div>
+
+            {/* ⚠️ O CALENDÁRIO (E1, 23/10/2026). Botão de alternar, não `<select multiple>`: sete opções
+                cabem na linha e `multiple` exige Ctrl+clique, que ninguém descobre.
+                ⚠️ **A cor NÃO é o único sinal** (VOC-05): o dia marcado tem `aria-pressed` e a frase
+                abaixo diz, por extenso, quais dias valem. */}
+            <div>
+                <span className="text-[12px] text-pub-txt-3">Dias em que ele prepara sozinho</span>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {lista(diasOpcoes).map((o) => {
+                        // ⚠️ TUDO dentro do callback: o Rollup elimina variável de escopo do componente
+                        // usada dentro de `.map()` (defeito medido neste projeto).
+                        const valor = numero(o?.valor);
+                        const rotulo = texto(o?.rotulo, String(valor));
+                        const marcado = lista(form.dias_semana).includes(valor);
+
+                        return valor < 1 || valor > 7 ? null : (
+                            <button
+                                key={valor} type="button" aria-pressed={marcado} disabled={processando}
+                                onClick={() => setForm((f) => {
+                                    const atuais = lista(f.dias_semana);
+
+                                    return {
+                                        ...f,
+                                        dias_semana: atuais.includes(valor)
+                                            ? atuais.filter((d) => d !== valor)
+                                            : [...atuais, valor].sort((a, b) => a - b),
+                                    };
+                                })}
+                                className={`rounded-md border px-2.5 py-1 text-[12px] ${marcado
+                                    ? 'border-pub-accent bg-pub-accent/[0.12] text-pub-txt'
+                                    : 'border-pub-line-strong text-pub-txt-3'}`}
+                            >
+                                {rotulo}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
             <p className="text-[11px] text-pub-txt-4">
                 Sem horário, ele pode preparar a qualquer hora. O horário vale só para o que ele faz sozinho; o
                 "Preparar agora" funciona sempre. Margem e custos vêm da configuração financeira da empresa.
+            </p>
+            {/* ⚠️ A frase diz o estado por EXTENSO, e distingue os dois casos: "nenhum marcado" significa
+                TODO dia (mesma convenção do horário em branco), e deixar isso implícito faria a pessoa achar
+                que desmarcar tudo trava o agente. */}
+            <p className="text-[11px] text-pub-txt-4">
+                {lista(form.dias_semana).length === 0
+                    ? 'Nenhum dia marcado: ele pode preparar em qualquer dia da semana.'
+                    : `Ele prepara sozinho às ${lista(form.dias_semana)
+                        .map((d) => texto(lista(diasOpcoes).find((o) => numero(o?.valor) === d)?.rotulo, String(d)))
+                        .join(', ')}.`}
+                {form.janela_inicio && form.janela_fim && form.janela_inicio > form.janela_fim
+                    ? ' ⚠️ Como o horário passa da meia-noite, a madrugada conta como o dia em que a janela começou.'
+                    : ''}
             </p>
             <div className="flex items-center justify-between">
                 <span className="text-[11px] text-pub-txt-4">
@@ -352,7 +407,12 @@ export default function ConteudoDoAgente({ agente, produtos = [], atividade = nu
             {/* Largura toda nos dois: a tabela da Atividade tem 6 colunas e o motivo é texto longo — numa coluna
                 estreita ao lado do formulário ela cortava o motivo (visto no screenshot de 20/10/2026). */}
             <Cartao titulo="Configuração essencial">
-                <FormularioDaConfiguracao configuracao={configuracao} processando={processando} onSalvar={onSalvar} />
+                <FormularioDaConfiguracao
+                    configuracao={configuracao}
+                    diasOpcoes={lista(agente?.dias_opcoes)}
+                    processando={processando}
+                    onSalvar={onSalvar}
+                />
             </Cartao>
             {/* ⚠️⚠️ **ANTES ESTE CARTÃO MOSTRAVA A MESMA TABELA DA FILA, com outro título** —
                 as execuções mais recentes. Não era registro de atividade: era a fila repetida, e

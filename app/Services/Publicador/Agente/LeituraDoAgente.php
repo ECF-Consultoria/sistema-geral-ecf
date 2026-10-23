@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador\Agente;
 
+use App\Models\PubAgenteConfiguracao;
 use App\Models\PubAgenteExecucao;
 use App\Models\PubAprovacaoOferta;
 use App\Models\User;
@@ -57,6 +58,12 @@ class LeituraDoAgente
                 'teto_fila' => (int) $cfg->teto_fila,
                 'janela_inicio' => $cfg->janela_inicio ? substr((string) $cfg->janela_inicio, 0, 5) : null,
                 'janela_fim' => $cfg->janela_fim ? substr((string) $cfg->janela_fim, 0, 5) : null,
+                // ⚠️ O calendário (E1): `[1..7]` em ISO. **Nulo vai como `[]` para a tela**, porque lá
+                // "nenhum marcado" e "todo dia" são o MESMO estado — e o servidor já trata os dois igual.
+                'dias_semana' => array_values(array_filter(
+                    array_map('intval', (array) ($cfg->dias_semana ?? [])),
+                    fn (int $d) => $d >= 1 && $d <= 7,
+                )),
                 'escopo' => $cfg->escopo ?? ['incluir' => [], 'excluir' => []],
                 'atualizado_em' => $cfg->updated_at?->toIso8601String(),
             ],
@@ -73,6 +80,12 @@ class LeituraDoAgente
                 'falhas' => $soma([PubAprovacaoOferta::FALHA]),
                 'publicadas' => $soma([PubAprovacaoOferta::PUBLICADO]),
             ],
+            // ⚠️ Os rótulos dos dias saem do SERVIDOR, do `ROTULO_DO_DIA` do modelo — **um vocabulário
+            // só**. Uma segunda lista em JS divergiria, e divergir é erro medido nas Fases 186/187.
+            'dias_opcoes' => array_map(
+                fn (int $d) => ['valor' => $d, 'rotulo' => PubAgenteConfiguracao::ROTULO_DO_DIA[$d]],
+                PubAgenteConfiguracao::DIAS_ISO,
+            ),
             'fila' => $this->fila($conta),
         ];
     }

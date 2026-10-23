@@ -1077,25 +1077,81 @@ test('⚠️⚠️ TERRITÓRIO: as ausências deste plano, recortadas aos SEUS a
 });
 
 test('⚠️ TERRITÓRIO: nenhuma PEÇA nova sob `resources/` é `.js`, e nada foi instalado 188_07', () => {
+    // ⚠️⚠️ **CONSERTADO EM 23/10/2026 — ESTAS DUAS SONDAS MEDIAM O **WIP DA ÁRVORE**, NÃO O
+    // TERRITÓRIO DESTA FASE, E A SEGUNDA FICOU VERMELHA PELO TRABALHO DE OUTRO ESFORÇO.**
+    //
+    // Como estavam:
+    //   · `git diff --numstat HEAD -- package.json …`  → compara a ÁRVORE com o `HEAD`;
+    //   · `git status --porcelain -- database/migrations` → lista o que está **não-commitado**.
+    //
+    // ➡️ Nenhuma das duas fala da Fase 188. Nesta árvore — **compartilhada com outro dev e com
+    // várias sessões do Claude Code** — qualquer migration ou `package.json` em curso de
+    // **qualquer** esforço as reprova. Foi o que aconteceu: a E1 do Agente acrescentou
+    // `dias_semana` em `pub_agente_configuracoes` e este gate, de uma fase **já fechada e no ar**,
+    // ficou vermelho por isso. **É a família "gate mede WIP, não território"**, prima do
+    // `git diff --stat -- <dir>` que sai vazio por construção.
+    //
+    // ⚠️ **O conserto NÃO é remover a prova nem passar a aceitar migration.** O invariante
+    // continua *"o plano 188-07 não acrescentou migration nem instalou dependência"* — o que muda
+    // é **onde ele é medido**: nos **commits deste plano**, pelo MESMO mecanismo que o caso
+    // vizinho deste arquivo já usa (escopo do assunto via `--grep` **sem janela**, filtrado por
+    // `%s`). Assim ele não pode deslizar nem ser reprovado pelo trabalho de outra pessoa.
+    //
+    // ⚠️ A sobre-captura do `--grep` (ele lê a mensagem inteira) é inofensiva de propósito: o
+    // filtro por `%s` descarta commit que só cita o escopo no CORPO. Amplia o candidato, nunca o
+    // veredicto.
+    const commitsDoPlano = execFileSync('git', ['log', '--grep=(188-0', '--format=%H%x09%s'], { cwd: RAIZ, encoding: 'utf8' })
+        .split(/\r?\n/)
+        .filter((l) => l.trim() !== '')
+        .map((l) => { const [h, ...t] = l.split('\t'); return { hash: h, assunto: t.join('\t') }; })
+        .filter((c) => c.assunto.includes('(188-07)'));
+
+    // ⚠️⚠️ ISCA DE NÃO-CEGUEIRA, e ela é obrigatória: com `commitsDoPlano` vazio, os dois
+    // `deepEqual` abaixo asseverariam `[] === []` e ficariam **VAZIOS POR CONSTRUÇÃO** — verdes
+    // sem medir nada. Foi exatamente esse o defeito que o caso vizinho sofreu e consertou.
+    assert.ok(commitsDoPlano.length >= 1, 'nenhum commit com `(188-07)` no assunto — as duas provas abaixo ficariam VAZIAS por construção');
+
+    const arquivosDoPlano = commitsDoPlano.flatMap((c) => execFileSync('git', ['show', '--name-only', '--format=', c.hash], { cwd: RAIZ, encoding: 'utf8' })
+        .split(/\r?\n/)
+        .map((f) => f.trim())
+        .filter((f) => f !== ''));
+
     // ⚠️⚠️ **O INVARIANTE CERTO É "nenhuma PEÇA nova é `.js`"** — a 187-11 mediu
     // que *"nenhum arquivo novo é `.js`"* era **literalmente FALSO** (há 9 `.js`,
     // **todos TESTES**). `tailwind.config.js` varre `*.jsx` e **NÃO** `*.js`:
     // classe num `.js` não gera CSS e **não existe para a tela**, com render verde.
-    const novos = execFileSync('git', ['status', '--porcelain', '--', 'resources/'], { cwd: RAIZ, encoding: 'utf8' })
-        .split(/\r?\n/)
-        .map((l) => l.slice(3).trim())
-        .filter((c) => c !== '');
+    //
+    // ⚠️⚠️ **TAMBÉM CONSERTADA EM 23/10/2026, pelo mesmo motivo das duas abaixo.** Ela lia
+    // `git status --porcelain -- resources/`, isto é o **WIP da árvore**. Estava VERDE, mas seria
+    // reprovada no dia em que **qualquer** sessão desta árvore compartilhada tivesse um `.js`
+    // não-commitado sob `resources/` — trabalho de outra pessoa derrubando o gate de uma fase já
+    // fechada. Consertei junto porque deixar **metade** do teste medindo território e metade
+    // medindo WIP engana quem ler depois mais do que a ausência do conserto.
+    const pecasEmJs = arquivosDoPlano.filter((f) => f.startsWith('resources/') && f.endsWith('.js'));
+    assert.deepEqual(pecasEmJs, [], 'peça nova sob `resources/` em `.js` num commit deste plano — a classe não geraria CSS');
 
-    const pecasEmJs = novos.filter((c) => c.endsWith('.js') && c.startsWith('resources/'));
-    assert.deepEqual(pecasEmJs, [], 'peça nova sob `resources/` em `.js` — a classe não geraria CSS');
+    // ⚠️ ISCA desta sonda também, em fonte sintética — e ela guarda a **distinção** que a
+    // 187-11 mediu: `.js` de TESTE é legítimo (há nove), `.js` de PEÇA não é.
+    const CEBO_DE_PECAS = ['resources/js/x.js', 'resources/js/x.jsx', 'tests/js/y.test.js'];
+    assert.deepEqual(
+        CEBO_DE_PECAS.filter((f) => f.startsWith('resources/') && f.endsWith('.js')),
+        ['resources/js/x.js'],
+        'a sonda de peça `.js` está CEGA, ou passou a acusar `.js` de TESTE (que é legítimo)',
+    );
 
-    // ⚠️ T-188-SC — este plano **não instala nada**. Sonda por FORMA.
-    const dependencias = execFileSync('git', ['diff', '--numstat', 'HEAD', '--', 'package.json', 'package-lock.json'], { cwd: RAIZ, encoding: 'utf8' }).trim();
-    assert.equal(dependencias, '', 'package.json/package-lock.json foram tocados — este plano não instala nada');
+    // ⚠️ T-188-SC — este plano **não instala nada**.
+    const dependencias = arquivosDoPlano.filter((f) => f === 'package.json' || f === 'package-lock.json');
+    assert.deepEqual(dependencias, [], 'package.json/package-lock.json foram tocados por um commit deste plano — ele não instala nada');
 
     // ⚠️ E nenhuma migration: esta fase não tem migration nenhuma.
-    const migrations = execFileSync('git', ['status', '--porcelain', '--', 'database/migrations'], { cwd: RAIZ, encoding: 'utf8' }).trim();
-    assert.equal(migrations, '', 'migration apareceu — esta fase NÃO tem migration');
+    const migrations = arquivosDoPlano.filter((f) => f.startsWith('database/migrations/'));
+    assert.deepEqual(migrations, [], 'migration apareceu num commit deste plano — a Fase 188 NÃO tem migration');
+
+    // ⚠️ ISCA das duas sondas, em fonte sintética: elas acham o que deve ser achado. Sem isto,
+    // um `startsWith` com o caminho errado daria `[]` para sempre.
+    const CEBO_DE_ARQUIVOS = ['package.json', 'database/migrations/2026_01_01_000000_x.php', 'resources/js/x.jsx'];
+    assert.deepEqual(CEBO_DE_ARQUIVOS.filter((f) => f === 'package.json' || f === 'package-lock.json'), ['package.json'], 'a sonda de dependência está CEGA');
+    assert.deepEqual(CEBO_DE_ARQUIVOS.filter((f) => f.startsWith('database/migrations/')), ['database/migrations/2026_01_01_000000_x.php'], 'a sonda de migration está CEGA');
 });
 
 test('⚠️ TERRITÓRIO: o ESCOPO DO ASSUNTO `(188-07)`, em duas passadas 188_07', () => {

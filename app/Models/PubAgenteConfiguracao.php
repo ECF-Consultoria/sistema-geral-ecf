@@ -27,7 +27,23 @@ class PubAgenteConfiguracao extends Model
     /** As chaves que explicam uma decisão — o que vai para o snapshot de cada versão. */
     public const CHAVES_DA_VERSAO = [
         'habilitado', 'controle', 'modalidade', 'estoque_minimo', 'limite_diario', 'teto_fila',
-        'janela_inicio', 'janela_fim', 'escopo',
+        // ⚠️ `dias_semana` entrou em 23/10/2026 (E1) e **tem de estar aqui**: sem ele, o snapshot de
+        // uma versão não explicaria por que uma execução foi recusada por `AG-01-JANELA` num domingo.
+        'janela_inicio', 'janela_fim', 'dias_semana', 'escopo',
+    ];
+
+    /** Os dias da semana em **ISO-8601**: 1 = segunda … 7 = domingo. */
+    public const DIAS_ISO = [1, 2, 3, 4, 5, 6, 7];
+
+    /**
+     * ⚠️ Nome curto de cada dia, em pt-BR, para a TELA.
+     *
+     * ⚠️ **ISO, nunca o `dayOfWeek` do Carbon (0 = domingo).** O 0-based é a armadilha de um-a-menos
+     * aqui: `0` é *falsy* em PHP e em JS, então domingo marcado desapareceria em qualquer
+     * `array_filter`, `if ($dia)` ou `.filter(Boolean)`. Com ISO não existe dia `0`.
+     */
+    public const ROTULO_DO_DIA = [
+        1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom',
     ];
 
     protected $guarded = ['id'];
@@ -39,6 +55,7 @@ class PubAgenteConfiguracao extends Model
         'limite_diario' => 'integer',
         'teto_fila' => 'integer',
         'escopo' => 'array',
+        'dias_semana' => 'array',
     ];
 
     public function versoes(): HasMany

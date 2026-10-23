@@ -90,6 +90,10 @@ class MlbPublicadorAgenteController extends Controller
             'teto_fila' => ['required', 'integer', 'min:0', 'max:1000'],
             'janela_inicio' => ['nullable', 'date_format:H:i'],
             'janela_fim' => ['nullable', 'date_format:H:i'],
+            // ⚠️ O calendário (E1, 23/10/2026): ISO, 1 = segunda … 7 = domingo. Lista vazia é válida e
+            // significa "todo dia" — o serviço a normaliza para `null`.
+            'dias_semana' => ['nullable', 'array'],
+            'dias_semana.*' => ['integer', 'between:1,7'],
         ]);
 
         return $this->executarRegra(function () use ($config, $alvo, $dados, $request) {

@@ -99,16 +99,61 @@ class PoliticaDoAgente
         return null;
     }
 
-    /** Sem janela = sempre. Fuso de São Paulo; início > fim = janela que passa da meia-noite. */
+    /**
+     * A janela de preparo: **DIA da semana** e **HORA**. Fuso de São Paulo nos dois.
+     *
+     * ⚠️ **Sem restrição = sempre**, nas duas dimensões: `dias_semana` nulo ou vazio vale todo dia, e
+     * hora ausente (ou início igual ao fim) vale a toda hora. É a convenção que a AG-01 já tinha, e é
+     * o que faz esta mudança **não alterar comportamento de nenhuma loja existente** — todas têm a
+     * coluna nova em `null`.
+     *
+     * ⚠️ Início > fim = janela que **passa da meia-noite** (ex.: 22:00–02:00).
+     *
+     * ═══ ⚠️⚠️ A DECISÃO DELICADA: de que DIA é a madrugada de uma janela que cruza a meia-noite ═══
+     *
+     * Com `dias_semana = [1]` (segunda) e janela 22:00–02:00, **01:00 de terça está DENTRO** — porque
+     * a janela **começou na segunda**. O dia é avaliado contra o dia em que a janela ABRIU, não contra o
+     * dia do relógio.
+     *
+     * ➡️ **Por que assim:** avaliar pelo dia do relógio faria a janela da loja **parar na meia-noite**
+     * sem ninguem ter pedido — ela escolheu "segunda, das 22h às 2h" e receberia duas horas que viram
+     * zero. Seria um recorte silencioso, e recorte silencioso é o defeito que esta tela toda evita.
+     *
+     * ⚠️ Consequência que fica DITA: nessa configuração, **terça 01:00 prepara e segunda 01:00 não** —
+     * a madrugada de segunda pertence ao domingo, que não está marcado. Há teste para as duas pontas.
+     */
     public static function dentroDaJanela(PubAgenteConfiguracao $cfg, Carbon $agora): bool
     {
+        $emSp = $agora->copy()->setTimezone('America/Sao_Paulo');
+        $hora = $emSp->format('H:i');
+
         $inicio = substr((string) $cfg->janela_inicio, 0, 5);
         $fim = substr((string) $cfg->janela_fim, 0, 5);
-        if ($inicio === '' || $fim === '' || $inicio === $fim) {
-            return true;
+        $temHora = $inicio !== '' && $fim !== '' && $inicio !== $fim;
+
+        // ⚠️ Filtra 1..7: valor fora da faixa no banco (dado antigo, escrita por fora) não pode travar o
+        // agente — ele é descartado, e aí a lista vazia volta a significar "todo dia".
+        $dias = array_values(array_filter(
+            array_map('intval', (array) ($cfg->dias_semana ?? [])),
+            fn (int $d) => $d >= 1 && $d <= 7,
+        ));
+
+        if ($dias !== []) {
+            // ⚠️ O dia em que a janela ABRIU (ver o docblock): na madrugada de uma janela que cruza a
+            // meia-noite, o dia de referência é o de ontem.
+            $naMadrugadaDaVespera = $temHora && $inicio > $fim && $hora < $fim;
+            $diaDeReferencia = $naMadrugadaDaVespera
+                ? (int) $emSp->copy()->subDay()->isoWeekday()
+                : (int) $emSp->isoWeekday();
+
+            if (! in_array($diaDeReferencia, $dias, true)) {
+                return false;
+            }
         }
 
-        $hora = $agora->copy()->setTimezone('America/Sao_Paulo')->format('H:i');
+        if (! $temHora) {
+            return true;
+        }
 
         return $inicio < $fim
             ? $hora >= $inicio && $hora < $fim

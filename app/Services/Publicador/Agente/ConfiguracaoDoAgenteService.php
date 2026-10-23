@@ -51,7 +51,7 @@ class ConfiguracaoDoAgenteService
 
     /**
      * @param  array{habilitado?: bool, modalidade?: ?string, estoque_minimo?: int, limite_diario?: int, teto_fila?: int,
-     *               janela_inicio?: ?string, janela_fim?: ?string, escopo?: ?array}  $dados
+     *               janela_inicio?: ?string, janela_fim?: ?string, dias_semana?: ?list<int>, escopo?: ?array}  $dados
      *
      * @throws RegraViolada versão divergente
      */
@@ -158,6 +158,9 @@ class ConfiguracaoDoAgenteService
             'teto_fila' => ['sometimes', 'integer', 'min:0', 'max:1000'],
             'janela_inicio' => ['sometimes', 'nullable', 'date_format:H:i'],
             'janela_fim' => ['sometimes', 'nullable', 'date_format:H:i'],
+            // ⚠️ O calendário (E1, 23/10/2026): `[1..7]` em ISO, 1 = segunda … 7 = domingo.
+            'dias_semana' => ['sometimes', 'nullable', 'array'],
+            'dias_semana.*' => ['integer', 'between:1,7'],
             'escopo' => ['sometimes', 'nullable', 'array'],
             'escopo.incluir' => ['sometimes', 'array'],
             'escopo.incluir.*' => ['integer'],
@@ -171,6 +174,15 @@ class ConfiguracaoDoAgenteService
             $temJanela = $inicio !== null && $fim !== null && $inicio !== $fim;
             $validos['janela_inicio'] = $temJanela ? "{$inicio}:00" : null;
             $validos['janela_fim'] = $temJanela ? "{$fim}:00" : null;
+        }
+        if (array_key_exists('dias_semana', $validos)) {
+            $dias = array_values(array_unique(array_map('intval', (array) ($validos['dias_semana'] ?? []))));
+            sort($dias);
+            // ⚠️⚠️ **LISTA VAZIA VIRA `null`, e isso é decisão, não acidente:** `[]` significa *"não
+            // restringi"*, pela mesma convenção que a janela de hora já usa (*"sem janela = sempre"*).
+            // Se `[]` valesse "nenhum dia", desmarcar todos travaria o agente **em silêncio** e seria lido
+            // como defeito. Guardar uma representação só também deixa o snapshot da versão sem ambiguidade.
+            $validos['dias_semana'] = $dias === [] ? null : $dias;
         }
         if (array_key_exists('escopo', $validos) && $validos['escopo'] !== null) {
             $validos['escopo'] = [

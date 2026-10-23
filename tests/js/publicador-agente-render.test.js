@@ -78,7 +78,14 @@ const AGENTE = {
         existe: true, versao: 3, habilitado: true, controle: 'ativo', motivo_controle: null, modalidade: 'gold_special',
         estoque_minimo: 1, limite_diario: 5, teto_fila: 10, janela_inicio: '08:00', janela_fim: '18:00',
         escopo: { incluir: [], excluir: [] }, atualizado_em: '2026-10-20T13:00:00-03:00',
+        // ⚠️ O calendário (E1, 23/10/2026): ISO, 1 = segunda … 7 = domingo.
+        dias_semana: [1, 7],
     },
+    dias_opcoes: [
+        { valor: 1, rotulo: 'Seg' }, { valor: 2, rotulo: 'Ter' }, { valor: 3, rotulo: 'Qua' },
+        { valor: 4, rotulo: 'Qui' }, { valor: 5, rotulo: 'Sex' }, { valor: 6, rotulo: 'S\u00e1b' },
+        { valor: 7, rotulo: 'Dom' },
+    ],
     contadores: { aguardando_dados: 1, preparando: 2, admitidos_hoje: 3, aguardando_aprovacao: 4, publicacao: 0, falhas: 0, publicadas: 0 },
     fila: [
         {
@@ -207,4 +214,126 @@ test('Agente.jsx: escritas pelas rotas nomeadas, com a versão que a pessoa viu'
     for (const f of [pagina, conteudo]) {
         assert.doesNotMatch(f, /ECFA|tema\.js|support\.js|localStorage/);
     }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// O CALENDÁRIO da janela de preparo (E1, 23/10/2026)
+//
+// ⚠️ DE CADA CASO, A PERGUNTA RESPONDIDA ANTES DELE EXISTIR:
+//  1. DOMINGO  → o `7` de domingo ser comido por um `.filter(Boolean)` ou por um
+//                `if (dia)`. **É por isto que o projeto usa ISO** (1..7) e não o
+//                `dayOfWeek` 0-based: `0` é *falsy* e domingo sumiria. O caso prova
+//                que domingo RENDERIZA e sai MARCADO.
+//  2. SINAL    → a cor ser o único sinal do dia marcado (VOC-05 proíbe). O marcado
+//                tem `aria-pressed="true"`, e a frase diz os dias por extenso.
+//  3. VAZIO    → "nenhum dia marcado" ser lido como "o agente está travado". A tela
+//                diz, por extenso, que vale qualquer dia.
+//  4. MEIA-NOITE → a consequência da janela que cruza a meia-noite ficar implícita.
+//                O aviso aparece **só** quando início > fim.
+//  5. LIXO     → `dias_opcoes`/`dias_semana` em formato torto derrubando a tela.
+// ════════════════════════════════════════════════════════════════════════
+
+test('o calendário: os sete dias com rótulo do servidor, e domingo SOBREVIVE 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, { agente: AGENTE, produtos: [] }));
+
+    // Os sete, em pt-BR, vindos de `dias_opcoes` — a tela não tem lista própria.
+    for (const rotulo of ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S\u00e1b', 'Dom']) {
+        assert.ok(html.includes(`>${rotulo}<`), `o dia "${rotulo}" não apareceu`);
+    }
+    // E nenhum dia aparece como NÚMERO cru.
+    assert.doesNotMatch(html, /aria-pressed="(true|false)"[^>]*>\s*[1-7]\s*</, 'um dia apareceu como número cru na tela');
+
+    // ⚠⚠ DOMINGO (7) sai MARCADO. Com 0-based ele seria `0`, *falsy*, e desapareceria —
+    // este caso é o que prova que o ISO está sendo respeitado de ponta a ponta.
+    assert.match(html, /aria-pressed="true"[^>]*>Dom</, 'domingo estava marcado e não saiu marcado — sintoma do 0-based *falsy*');
+    assert.match(html, /aria-pressed="true"[^>]*>Seg</, 'segunda estava marcada e não saiu marcada');
+    // E um dia NÃO marcado sai como `false` — sem isto, `aria-pressed="true"` passaria se
+    // TODOS viessem marcados.
+    assert.match(html, /aria-pressed="false"[^>]*>Qua</, 'quarta NÃO estava marcada e saiu marcada');
+
+    // ⚠️ A COR NÃO É O ÚNICO SINAL (VOC-05): a frase diz os dias por extenso.
+    assert.match(html, /Ele prepara sozinho às Seg, Dom\./, 'a frase não diz os dias marcados por extenso');
+});
+
+test('o calendário vazio diz que vale QUALQUER dia, e não parece travado 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, dias_semana: [] } }, produtos: [],
+    }));
+
+    // ⚠️ Sem esta frase, "nenhum marcado" seria lido como "o agente está parado" — e o
+    // servidor trata lista vazia como TODO dia.
+    assert.match(html, /Nenhum dia marcado: ele pode preparar em qualquer dia da semana\./, 'a tela não explica que nenhum dia marcado vale todo dia');
+    assert.doesNotMatch(html, /aria-pressed="true"[^>]*>(Seg|Ter|Qua|Qui|Sex|S\u00e1b|Dom)</, 'um dia saiu marcado com o calendário vazio');
+});
+
+test('o aviso da meia-noite aparece SÓ quando a janela cruza a meia-noite 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    const AVISO = /a madrugada conta como o dia em que a janela começou/;
+
+    // 22:00 → 02:00 cruza: o aviso aparece, porque a consequência não pode ficar implícita.
+    const cruza = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, janela_inicio: '22:00', janela_fim: '02:00' } },
+    }));
+    assert.match(cruza, AVISO, 'a janela cruza a meia-noite e a tela não avisa');
+
+    // 08:00 → 18:00 não cruza: o aviso NÃO aparece, senão seria ruído fixo.
+    const naoCruza = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, janela_inicio: '08:00', janela_fim: '18:00' } },
+    }));
+    assert.doesNotMatch(naoCruza, AVISO, 'o aviso da meia-noite aparece numa janela que não cruza — é ruído fixo');
+
+    // E sem horário nenhum também não aparece.
+    const semHora = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, janela_inicio: '', janela_fim: '' } },
+    }));
+    assert.doesNotMatch(semHora, AVISO, 'o aviso da meia-noite aparece sem horário configurado');
+});
+
+test('⚠️ lixo no calendário não derruba a tela 23_10', async () => {
+    const { default: ConteudoDoAgente } = await montar(CONTEUDO);
+    // ⚠️ `{toString: null}` faz `Number(` e `String(` LANÇAREM — é a assinatura das telas pretas.
+    const VENENO = { toString: null };
+    const CASOS = [
+        { dias_semana: 'nao-e-lista', dias_opcoes: 'x' },
+        { dias_semana: [0, 8, -1, null, 'x', VENENO], dias_opcoes: [null, 'x', 42, { valor: VENENO, rotulo: VENENO }] },
+        { dias_semana: VENENO, dias_opcoes: VENENO },
+        { dias_semana: [1, 1, 1], dias_opcoes: [{ valor: 1, rotulo: null }, { valor: 1, rotulo: 'Seg' }] },
+    ];
+
+    for (const caso of CASOS) {
+        assert.doesNotThrow(
+            () => renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+                agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, dias_semana: caso.dias_semana }, dias_opcoes: caso.dias_opcoes },
+            })),
+            // ⚠️ NUNCA `String(caso)` aqui: `{toString:null}` lançaria DENTRO da mensagem.
+            'um formato torto do calendário derrubou a tela',
+        );
+    }
+
+    // E o caso mais torto não vaza lixo para a tela.
+    const html = renderToStaticMarkup(React.createElement(ConteudoDoAgente, {
+        agente: { ...AGENTE, configuracao: { ...AGENTE.configuracao, dias_semana: [0, 9, VENENO] }, dias_opcoes: [{ valor: VENENO, rotulo: VENENO }] },
+    }));
+    assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, 'formato inesperado do calendário vazou para a tela');
+    assert.ok(html.length > 500, `o HTML veio com ${html.length} bytes — render vazio não prova nada`);
+});
+
+test('o calendário viaja na gravacão, e a tela não tem lista de dias própria 23_10', () => {
+    const conteudo = lerSemComentarios(CONTEUDO);
+
+    // O formulário manda `dias_semana` no PUT.
+    assert.match(conteudo, /dias_semana: lista\(form\.dias_semana\)/, 'o calendário não viaja na gravação');
+
+    // ⚠⚠ **UM VOCABULÁRIO SÓ:** os rótulos vêm de `dias_opcoes`, do servidor. Uma segunda lista
+    // em JS divergiria — erro medido nas Fases 186/187, e lá a regra ficou: chaves pt-BR nos dois
+    // lados, e NUNCA um `||` aceitando as duas formas.
+    for (const nome of ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']) {
+        assert.equal(conteudo.includes(`'${nome}'`), false, `a tela tem um rótulo próprio para ${nome} — o rótulo vem do servidor`);
+    }
+    assert.equal(/const DIAS\b/.test(conteudo), false, 'a tela ganhou uma lista de dias própria');
+
+    // ⚠️ ISCA do leitor: a fonte foi lida de verdade.
+    assert.match(conteudo, /diasOpcoes/, 'a fonte lida não é a do componente — as asserções acima seriam vazias');
 });
