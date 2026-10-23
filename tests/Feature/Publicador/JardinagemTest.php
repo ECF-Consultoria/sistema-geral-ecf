@@ -236,6 +236,46 @@ class JardinagemTest extends TestCase
         $this->artisan('publicador:jardinagem')->expectsOutputToContain('mês fechado (a analisar): 1')->assertSuccessful();
     }
 
+    public function test_previa_mostra_os_numeros_parciais_e_o_ramo_de_hoje_sem_gravar_mesmo_desligada(): void
+    {
+        config(['publicador.jardinagem.ativo' => false]);
+        // 12 dias no ar: 10 visitas/dia = 120 visitas, 1 venda → 0,83% → conversão baixa SE fosse analisado hoje.
+        $this->publicadoHa(12, ['MLB1001' => 'gold_special', 'MLB1002' => 'gold_pro']);
+        PubPublicacaoItem::where('ml_item_id', 'MLB1002')->update(['avisos' => ['estado' => ['status' => 'paused']]]);
+        $this->noMl['MLB1001'] = ['status' => 'active', 'vendidos' => 1, 'visitas' => $this->serie(10, 12)];
+        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->getJson(route('mlb.anuncios.publicador.jardinagem.previa'))
+            ->assertOk()
+            ->assertJsonPath('dias_do_ciclo', 30)
+            ->assertJsonPath('fora_do_ar', 1)
+            ->assertJsonCount(1, 'itens')
+            ->assertJsonPath('itens.0.ml_item_id', 'MLB1001')
+            ->assertJsonPath('itens.0.tipo', 'Clássico')
+            ->assertJsonPath('itens.0.dias_passados', 12)
+            ->assertJsonPath('itens.0.resultado', 'analisado')
+            ->assertJsonPath('itens.0.visitas', 120)
+            ->assertJsonPath('itens.0.vendas', 1)
+            ->assertJsonPath('itens.0.conversao', 0.83)
+            ->assertJsonPath('itens.0.diagnostico', PubJardinagem::CONVERSAO_BAIXA)
+            ->assertJsonPath('itens.0.permalink', 'https://produto.mercadolivre.com.br/MLB1001-teste-_JM');
+
+        $this->assertSame(0, PubJardinagem::count(), 'a prévia não grava nada');
+        Queue::assertNothingPushed();
+
+        // Guardada: abrir de novo não refaz as leituras no ML.
+        $antes = count(Http::recorded());
+        $this->actingAs($admin)->getJson(route('mlb.anuncios.publicador.jardinagem.previa'))->assertOk()->assertJsonPath('itens.0.visitas', 120);
+        $this->assertSame($antes, count(Http::recorded()));
+    }
+
+    public function test_previa_pede_a_chave_da_jardinagem(): void
+    {
+        $this->actingAs(\App\Models\User::factory()->create(['role' => 'consultor']))
+            ->getJson(route('mlb.anuncios.publicador.jardinagem.previa'))->assertForbidden();
+        Http::assertNothingSent();
+    }
+
     public function test_rodada_diaria_agendada_com_aplicar_e_so_roda_ligada(): void
     {
         $evento = collect(app(Schedule::class)->events())->first(fn ($e) => str_contains((string) $e->command, 'publicador:jardinagem'));

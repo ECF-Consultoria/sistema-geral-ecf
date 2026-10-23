@@ -85,14 +85,17 @@ test('formatadores e filtros da URL', () => {
 test('Jardinagem.jsx — ações pelas rotas da Jardinagem, filtros na URL e nada que escreva no ML', () => {
     const f = lerSemComentarios(PAGINA);
     assert.match(f, /const ROTA = 'mlb\.anuncios\.publicador\.jardinagem'/);
-    for (const r of ['index', 'marcar', 'concluir', 'observacao', 'proposta']) {
+    for (const r of ['index', 'marcar', 'concluir', 'observacao', 'proposta', 'previa']) {
         assert.ok(f.includes(`\`\${ROTA}.${r}\``), `rota ${r}`);
     }
     assert.match(f, /const NA_MESMA_TELA = \{ preserveScroll: true, preserveState: true \}/);
     assert.match(f, /motivo\.trim\(\) === ''/, '"Não se aplica" só liga com motivo');
     assert.match(f, /disabled=\{j\.resolvida !== true\}/, 'Concluir só com tudo resolvido');
     assert.match(f, /const cartoes = lista\.map\(/, 'cartões montados no corpo do componente (Rollup)');
-    assert.doesNotMatch(f, /axios|\/items|alavancas\./, 'a tela não fala com o Mercado Livre');
+    // A tela nunca fala com o ML direto: o único axios é o GET da prévia, na rota da própria Jardinagem.
+    assert.doesNotMatch(f, /\/items|alavancas\.|axios\.(post|put|patch|delete)/, 'a tela não fala com o Mercado Livre');
+    assert.equal((f.match(/axios\.get\(/g) ?? []).length, 1);
+    assert.match(f, /axios\.get\(route\(`\$\{ROTA\}\.previa`\)/);
 });
 
 test('menu: a Jardinagem fica OCULTA — só pela URL (pedido do usuário, 23/10/2026)', () => {
@@ -140,7 +143,7 @@ before(async () => {
             '@inertiajs/react': STUB_INERTIA,
             '@/Layouts/AppLayout': STUB_APPLAYOUT,
         },
-        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react'],
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios'],
     });
     const outfile = path.join(__dirname, `.jardinagem-render-${process.pid}-${Date.now()}.mjs`);
     fs.writeFileSync(outfile, resultado.outputFiles[0].text, 'utf8');
@@ -217,6 +220,43 @@ test('Jardinagem.jsx — sem tração: ramo, números, título novo com os termo
     assert.match(h, /análise em 12\/11/);
     assert.match(h, /Voltar ao Publicador/);
     assert.doesNotMatch(h, /\[object Object\]|NaN|undefined|Invalid Date/);
+});
+
+test('PreviaDeHoje — antes do clique só o botão; com a leitura, os números parciais e o ramo de hoje', () => {
+    const vazia = renderToStaticMarkup(React.createElement(Pagina.PreviaDeHoje, { conta: null, ramos: RAMOS }));
+    assert.match(vazia, />Ver como estão hoje</);
+    assert.doesNotMatch(vazia, /Visitas/);
+
+    const lida = renderToStaticMarkup(React.createElement(Pagina.PreviaDeHoje, {
+        conta: null,
+        ramos: RAMOS,
+        inicial: {
+            lida_em: '2026-10-23T19:30:00Z', dias_do_ciclo: 30, fora_do_ar: 22, encerrados: 0, fora: 0, acima_do_teto: 0,
+            itens: [
+                { ml_item_id: 'MLB5439825875', tipo: 'Clássico', titulo: 'Poltrona Opala', permalink: 'https://produto.mercadolivre.com.br/MLB5439825875-x-_JM',
+                    dias_passados: 12, resultado: 'analisado', visitas: 1234, vendas: 2, conversao: 0.16, diagnostico: 'conversao_baixa', erro: null },
+                { ml_item_id: 'MLB5439857995', tipo: 'Premium', titulo: null, permalink: null, dias_passados: 3, resultado: 'erro', erro: 'Leitura das visitas falhou.' },
+            ],
+        },
+    }));
+    assert.match(lida, />Ler de novo</);
+    assert.match(lida, /lido em 23\/10 16:30/);
+    assert.match(lida, /dia 12 de 30/);
+    assert.match(lida, />1\.234</);
+    assert.match(lida, />0,16%</);
+    assert.match(lida, />Conversão baixa</);
+    assert.match(lida, /Reavaliar o criativo e testar o preço/);
+    assert.match(lida, /href="https:\/\/produto\.mercadolivre\.com\.br\/MLB5439825875-x-_JM"/);
+    assert.match(lida, /Leitura das visitas falhou\./);
+    assert.match(lida, /22 anúncio\(s\) pausado\(s\) ou em revisão/);
+    assert.doesNotMatch(lida, /\[object Object\]|NaN|undefined|Invalid Date/);
+
+    const torta = renderToStaticMarkup(React.createElement(Pagina.PreviaDeHoje, {
+        conta: { x: 1 }, ramos: null,
+        inicial: { lida_em: { a: 1 }, dias_do_ciclo: 'x', itens: [{ ml_item_id: { b: 1 }, resultado: 'analisado', visitas: '9', conversao: NaN, diagnostico: { c: 1 } }, null, 'x'] },
+    }));
+    assert.doesNotMatch(torta, /\[object Object\]|NaN|undefined|Invalid Date/);
+    assert.match(html(props()), /data-previa/, 'a prévia está na página');
 });
 
 test('Jardinagem.jsx — desligada avisa que a análise ainda não roda; ligada, sem aviso', () => {

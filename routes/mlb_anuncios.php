@@ -945,6 +945,9 @@ Route::middleware(['auth', 'verified', 'permission:'.Permissions::MLB_JARDINAGEM
     ->name('mlb.anuncios.publicador.jardinagem.')
     ->group(function () {
         Route::get('/', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'index'])->name('index');
+        // A prévia de hoje: só GET no ML, nada gravado (vale com a Jardinagem desligada). Guardada 5 min no servidor.
+        Route::get('previa', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'previa'])
+            ->middleware('throttle:10,1,publicador.jardinagem.previa')->name('previa');
         Route::put('{jardinagem}/itens/{chave}', [\App\Http\Controllers\MlbPublicadorJardinagemController::class, 'marcar'])
             ->whereNumber('jardinagem')->whereIn('chave', \App\Models\PubJardinagem::CHAVES_DO_CHECKLIST)
             ->middleware('throttle:120,1,publicador.jardinagem.acao')->name('marcar');

@@ -15,6 +15,7 @@ use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\ReguaDaJardinagem;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -53,6 +54,12 @@ class JardinagemService
     public const MOTIVO_MAX = 300;
 
     public const OBSERVACAO_MAX = 2000;
+
+    /** A prévia fica guardada este tanto (segundos): abrir e fechar a tela não refaz as leituras no ML. */
+    public const PREVIA_TTL = 300;
+
+    /** No máximo estes anúncios por prévia (cada um = 2 GETs, numa requisição da tela). */
+    private const PREVIA_TETO = 60;
 
     public function __construct(
         private MercadoLivreService $ml,
@@ -227,6 +234,57 @@ class JardinagemService
         }
 
         return $saida;
+    }
+
+    /**
+     * A PRÉVIA de hoje (23/10/2026, pedido do usuário: "queria ver os dados" antes de ligar a Jardinagem): cada
+     * anúncio no ar, com as visitas e vendas do mês ATÉ AGORA (parcial) e o ramo em que cairia se fosse analisado
+     * hoje. Só leitura no ML e nada gravado — vale com a Jardinagem desligada. Guardada `PREVIA_TTL` segundos
+     * por recorte de conta, para abrir e fechar a tela não refazer as leituras.
+     *
+     * @return array{lida_em: string, dias_do_ciclo: int, itens: list<array>, fora_do_ar: int, encerrados: int, fora: int, acima_do_teto: int}
+     */
+    public function previa(?string $soConta = null): array
+    {
+        return Cache::remember('publicador:jardinagem:previa:'.($soConta ?? 'todas'), self::PREVIA_TTL, function () use ($soConta) {
+            $s = $this->situacao($soConta);
+            $todos = [...$s['devidos'], ...$s['em_observacao']];
+            $linhas = array_slice($todos, 0, self::PREVIA_TETO);
+            $lidos = collect($this->analisar($linhas, gravar: false))->keyBy('ml_item_id');
+
+            $itens = array_map(function (array $l) use ($lidos) {
+                /** @var PubPublicacaoItem $item */
+                $item = $l['item'];
+                $r = (array) ($lidos->get((string) $item->ml_item_id) ?? ['resultado' => 'erro', 'erro' => 'O Mercado Livre não respondeu.']);
+
+                return [
+                    'ml_item_id' => (string) $item->ml_item_id,
+                    'listing_type_id' => (string) $item->listing_type_id,
+                    'titulo' => $item->payload['family_name'] ?? $item->payload['title'] ?? null,
+                    'permalink' => $item->avisos['estado']['permalink'] ?? null,
+                    'conta' => $l['conta_chave'],
+                    'mes' => $l['ciclo'],
+                    'inicio' => $l['inicio'],
+                    'dias_passados' => $l['dias_passados'],
+                    'resultado' => (string) ($r['resultado'] ?? 'erro'),
+                    'visitas' => $r['visitas'] ?? null,
+                    'vendas' => $r['vendas'] ?? null,
+                    'conversao' => $r['conversao'] ?? null,
+                    'diagnostico' => $r['diagnostico'] ?? null,
+                    'erro' => $r['erro'] ?? null,
+                ];
+            }, $linhas);
+
+            return [
+                'lida_em' => now()->toIso8601String(),
+                'dias_do_ciclo' => self::diasDoCiclo(),
+                'itens' => $itens,
+                'fora_do_ar' => $s['fora_do_ar'],
+                'encerrados' => $s['encerrados'],
+                'fora' => $s['fora'],
+                'acima_do_teto' => max(0, count($todos) - count($linhas)),
+            ];
+        });
     }
 
     /**

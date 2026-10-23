@@ -2151,3 +2151,7 @@ visitas e nenhuma venda** — o anúncio que ninguém acha. Não "corrija" a ré
   `AppLayout.jsx` — inverter quando ele liberar); `publicador.jardinagem.ativo` nasce `false`: a rodada diária não
   roda e o `--aplicar` à mão se recusa. A tela abre em `/mlb/anuncios/publicador/jardinagem` com o aviso "desligada".
   Ligar = `PUBLICADOR_JARDINAGEM_ATIVO=true` no `.env` da VPS + `config:cache` — só com a palavra dele.
+- **Prévia "Como estão hoje" (23/10, pedido "queria ver os dados" com a Jardinagem desligada):** botão na tela →
+  `GET …/jardinagem/previa` → `JardinagemService::previa()` = `situacao()` + `analisar(gravar: false)` sobre TODOS
+  os anúncios no ar (devidos + em observação), números parciais desde o começo do mês de cada um. Só GET no ML,
+  nada gravado, sem IA; guardada 5 min por recorte de conta (`publicador:jardinagem:previa:*`), throttle 10/min.
