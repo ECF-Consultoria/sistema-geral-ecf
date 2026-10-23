@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  *   é o modo de conferir a régua numa conta de verdade (com `--dias=7`, por exemplo, sem esperar o mês).
  * - **`--aplicar`:** lê, grava o mês de cada anúncio e pede o título novo dos sem tração (fila da IA).
  *
- * A rodada diária (`routes/console.php`) roda com `--aplicar`: cada anúncio entra no dia em que o seu mês
+ * A rodada diária (`routes/console.php`) roda com `--aplicar`, só com `publicador.jardinagem.ativo` ligado (nasce desligado; desligado, o `--aplicar` à mão também se recusa): cada anúncio entra no dia em que o seu mês
  * fecha. `--dias` só vale à mão (a rodada usa `publicador.jardinagem.dias_do_ciclo`); com `--aplicar` ele
  * grava um mês mais curto de verdade — use `--ler` para testar.
  */
@@ -35,6 +35,12 @@ class PublicadorJardinagem extends Command
         $dias = $this->option('dias') !== null ? max(0, (int) $this->option('dias')) : JardinagemService::diasDoCiclo();
         $teto = max(0, (int) ($this->option('teto') ?? config('publicador.jardinagem.teto', 300)));
         $aplicar = (bool) $this->option('aplicar');
+        // Desligada (`publicador.jardinagem.ativo`), a Jardinagem não grava nada — nem pela rodada diária, nem à mão.
+        if ($aplicar && ! (bool) config('publicador.jardinagem.ativo', false)) {
+            $this->warn('A Jardinagem está desligada (PUBLICADOR_JARDINAGEM_ATIVO): nada foi lido nem gravado. Use --ler para só conferir.');
+
+            return self::SUCCESS;
+        }
         $ler = $aplicar || (bool) $this->option('ler');
 
         $s = $jardinagem->situacao($conta === '' ? null : $conta, $dias);

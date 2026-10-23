@@ -2146,3 +2146,8 @@ visitas e nenhuma venda** — o anúncio que ninguém acha. Não "corrija" a ré
 - **Testar numa conta de verdade sem gravar:** `publicador:jardinagem --ler --dias=7` (só GET). `--aplicar` com
   `--dias` grava um mês curto DE VERDADE e desloca o ciclo seguinte.
 - Em 23/10 nenhum anúncio do Publicador tinha 30 dias: as primeiras análises saem no começo de novembro.
+- **Subiu OCULTA e DESLIGADA (pedido do usuário, 23/10: "de modo oculto onde eu acesso apenas pela URL… não quero
+  ele funcionando por enquanto, quero ver como ficou antes").** Sem item no menu (o teste JS barra `jardinagem` no
+  `AppLayout.jsx` — inverter quando ele liberar); `publicador.jardinagem.ativo` nasce `false`: a rodada diária não
+  roda e o `--aplicar` à mão se recusa. A tela abre em `/mlb/anuncios/publicador/jardinagem` com o aviso "desligada".
+  Ligar = `PUBLICADOR_JARDINAGEM_ATIVO=true` no `.env` da VPS + `config:cache` — só com a palavra dele.

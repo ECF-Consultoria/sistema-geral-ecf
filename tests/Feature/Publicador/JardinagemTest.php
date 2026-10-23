@@ -44,6 +44,8 @@ class JardinagemTest extends TestCase
             'refresh_token' => 'fake-refresh-token', 'token_type' => 'bearer', 'expires_at' => now()->addHours(5),
             'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
         config(['publicador.contas_liberadas' => ['companies' => [$this->conta->id], 'mlb_empresas' => []]]);
+        // A Jardinagem nasce desligada (23/10/2026); estes testes provam o que ela faz LIGADA.
+        config(['publicador.jardinagem.ativo' => true]);
         $this->conta = $this->conta->fresh();
 
         Http::preventStrayRequests();
@@ -234,7 +236,7 @@ class JardinagemTest extends TestCase
         $this->artisan('publicador:jardinagem')->expectsOutputToContain('mês fechado (a analisar): 1')->assertSuccessful();
     }
 
-    public function test_rodada_diaria_agendada_com_aplicar(): void
+    public function test_rodada_diaria_agendada_com_aplicar_e_so_roda_ligada(): void
     {
         $evento = collect(app(Schedule::class)->events())->first(fn ($e) => str_contains((string) $e->command, 'publicador:jardinagem'));
 
@@ -242,5 +244,29 @@ class JardinagemTest extends TestCase
         $this->assertStringContainsString('--aplicar', (string) $evento->command);
         $this->assertSame('40 9 * * *', $evento->expression);
         $this->assertSame('America/Sao_Paulo', $evento->timezone);
+
+        $this->assertTrue($evento->filtersPass($this->app));
+        config(['publicador.jardinagem.ativo' => false]);
+        $this->assertFalse($evento->filtersPass($this->app), 'desligada, a rodada diária não pode rodar');
+    }
+
+    public function test_nasce_desligada_e_desligada_nao_le_nem_grava(): void
+    {
+        $this->assertFalse((bool) ((require base_path('config/publicador.php'))['jardinagem']['ativo']),
+            'o padrão do config tem de ser DESLIGADO até o usuário liberar');
+
+        config(['publicador.jardinagem.ativo' => false]);
+        $this->publicadoHa(30, ['MLB1001' => 'gold_special']);
+        $this->noMl['MLB1001'] = ['status' => 'active', 'vendidos' => 0, 'visitas' => $this->serie(1, 30)];
+
+        $this->artisan('publicador:jardinagem --aplicar')->expectsOutputToContain('A Jardinagem está desligada')->assertSuccessful();
+
+        Http::assertNothingSent();
+        $this->assertSame(0, PubJardinagem::count());
+        Queue::assertNothingPushed();
+
+        // `--ler` segue valendo para conferir (só GET, nada gravado).
+        $this->artisan('publicador:jardinagem --ler')->expectsOutputToContain('→ Sem tração')->assertSuccessful();
+        $this->assertSame(0, PubJardinagem::count());
     }
 }

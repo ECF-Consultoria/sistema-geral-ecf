@@ -95,12 +95,11 @@ test('Jardinagem.jsx — ações pelas rotas da Jardinagem, filtros na URL e nad
     assert.doesNotMatch(f, /axios|\/items|alavancas\./, 'a tela não fala com o Mercado Livre');
 });
 
-test('menu: item de topo pela chave própria mlb.jardinagem', () => {
+test('menu: a Jardinagem fica OCULTA — só pela URL (pedido do usuário, 23/10/2026)', () => {
+    // "Pode subir mas de modo oculto onde eu acesso apenas pela URL." Quando ele liberar, o item de topo entra
+    // aqui (rota mlb.anuncios.publicador.jardinagem.index, chave mlb.jardinagem) e esta asserção se inverte.
     const menu = lerSemComentarios('resources/js/Layouts/AppLayout.jsx');
-    assert.match(menu, /routeName: 'mlb\.anuncios\.publicador\.jardinagem\.index'/);
-    assert.match(menu, /page: 'Mlb\/Jardinagem'/);
-    assert.match(menu, /permission: 'mlb\.jardinagem'/);
-    assert.match(menu, /\bSprout\b/);
+    assert.doesNotMatch(menu, /jardinagem/i);
 });
 
 // ─── Render real ────────────────────────────────────────────────────────────
@@ -218,6 +217,12 @@ test('Jardinagem.jsx — sem tração: ramo, números, título novo com os termo
     assert.match(h, /análise em 12\/11/);
     assert.match(h, /Voltar ao Publicador/);
     assert.doesNotMatch(h, /\[object Object\]|NaN|undefined|Invalid Date/);
+});
+
+test('Jardinagem.jsx — desligada avisa que a análise ainda não roda; ligada, sem aviso', () => {
+    assert.match(html(props()), /A Jardinagem está desligada/);
+    assert.match(html(props({ ativa: false })), /data-jardinagem-desligada/);
+    assert.doesNotMatch(html(props({ ativa: true })), /A Jardinagem está desligada/);
 });
 
 test('Jardinagem.jsx — gerando, erro e outros ramos', () => {

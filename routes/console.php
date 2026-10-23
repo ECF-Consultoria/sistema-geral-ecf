@@ -616,7 +616,7 @@ Schedule::command('publicador:reler-publicados --aplicar')
 // Publicador — Jardinagem mensal dos publicados pela árvore do MAG (23/10/2026). Todo dia, analisa só o
 // anúncio cujo mês FECHOU hoje (`publicador.jardinagem.dias_do_ciclo`): cada um uma vez por mês, no seu dia.
 // Só GET no ML (visitas da janela + `sold_quantity`), só conta liberada do mesmo vendedor. Depois da releitura
-// das 09:20 (que diz quem está pausado/encerrado). `PUBLICADOR_JARDINAGEM_ATIVO=false` desliga.
+// das 09:20 (que diz quem está pausado/encerrado). Nasce DESLIGADA (`PUBLICADOR_JARDINAGEM_ATIVO`, padrão false, 23/10).
 Schedule::command('publicador:jardinagem --aplicar')
     ->dailyAt((string) config('publicador.jardinagem.horario', '09:40'))
     ->timezone('America/Sao_Paulo')

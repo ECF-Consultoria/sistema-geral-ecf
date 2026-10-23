@@ -410,9 +410,15 @@ return [
     | `horario`: São Paulo, depois da releitura das 09:20 e longe da cascata de
     | ML das 11h.
     |
+    | `ativo` nasce DESLIGADO (pedido do usuário em 23/10/2026: "não quero ele
+    | funcionando por enquanto, quero ver como ficou antes"). Desligado, a
+    | rodada diária não roda e o `--aplicar` à mão se recusa a gravar; a tela
+    | abre (só pela URL, sem item no menu) e o `--ler` continua só lendo.
+    | Ligar = `PUBLICADOR_JARDINAGEM_ATIVO=true` no `.env` + `config:cache`.
+    |
     */
     'jardinagem' => [
-        'ativo' => (bool) env('PUBLICADOR_JARDINAGEM_ATIVO', true),
+        'ativo' => (bool) env('PUBLICADOR_JARDINAGEM_ATIVO', false),
         'horario' => (string) env('PUBLICADOR_JARDINAGEM_HORARIO', '09:40'),
         'dias_do_ciclo' => (int) env('PUBLICADOR_JARDINAGEM_DIAS', 30),
         'visitas_corte' => (int) env('PUBLICADOR_JARDINAGEM_VISITAS_CORTE', 100),

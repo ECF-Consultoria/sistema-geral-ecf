@@ -115,6 +115,8 @@ class MlbPublicadorJardinagemController extends Controller
                 'conversao_corte' => $regua->corteConversao,
                 'diagnosticos' => collect($regua->descricoes())->map(fn ($d, $chave) => ['chave' => $chave, ...$d])->values(),
             ],
+            // Desligada (padrão até o usuário liberar), a tela avisa que a análise diária ainda não roda.
+            'ativa' => (bool) config('publicador.jardinagem.ativo', false),
             // O Publicador é `role:admin`: o link de volta só para quem o abre.
             'pode_abrir_publicador' => (bool) $request->user()?->isAdmin(),
         ]);

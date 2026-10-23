@@ -468,6 +468,16 @@ export default function Jardinagem(props) {
                     </div>
                 </div>
 
+                {props.ativa !== true && (
+                    <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4" data-jardinagem-desligada>
+                        <p className="text-[13px] font-bold text-amber-200">A Jardinagem está desligada</p>
+                        <p className="mt-1 text-[13px] font-normal text-white/70">
+                            A análise diária ainda não roda: nenhum anúncio é lido no Mercado Livre e nada é gravado. Esta é a tela
+                            como vai ficar — depois de ligada, cada anúncio entra aqui quando o mês dele fechar.
+                        </p>
+                    </div>
+                )}
+
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {cartoesDosRamos.map((c) => (
                         <CartaoDoRamo

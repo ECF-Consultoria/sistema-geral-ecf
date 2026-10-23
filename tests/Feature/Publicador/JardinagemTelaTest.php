@@ -95,6 +95,7 @@ class JardinagemTelaTest extends TestCase
                 ->where('em_observacao.0.tipo', 'Premium')
                 ->where('regras.dias_do_ciclo', 30)
                 ->where('regras.diagnosticos.0.regra', 'Menos de 100 visitas e nenhuma venda')
+                ->where('ativa', false)
                 ->where('pode_abrir_publicador', false));
     }
 
