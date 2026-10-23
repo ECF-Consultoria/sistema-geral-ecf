@@ -94,13 +94,14 @@ class LimitesPausaERecuperacaoDoAgenteTest extends TestCase
         $r->update(['descricao' => null]);
         $this->pedir($pub);
 
-        // A cadeia está na fila: o título roda antes da suspensão, Modelo e descrição depois.
-        $titulo = Queue::pushed(GerarPreparoIaJob::class)->first();
-        $this->assertSame(PreparoIaDoRascunhoService::TITULO, $titulo->etapa);
+        // As DUAS cadeias estão na fila ([título → Modelo] e [descrição], despacharCadeias 21/10/2026): o título roda
+        // antes da suspensão; o Modelo (elo seguinte) e a descrição (outra cadeia) já encontram a loja suspensa.
+        $cabecas = Queue::pushed(GerarPreparoIaJob::class)->keyBy(fn ($j) => $j->etapa);
+        $titulo = $cabecas[PreparoIaDoRascunhoService::TITULO];
         $this->executar($titulo);
         app(ControleDoAgente::class)->suspender($this->conta(), $this->admin, 'conferir fotos');
-        foreach ($titulo->chained as $serializado) {
-            $this->assertSame(PreparoIaDoRascunhoService::DESISTIU, $this->executar(unserialize($serializado)));
+        foreach ([...array_map('unserialize', $titulo->chained), $cabecas[PreparoIaDoRascunhoService::DESCRICAO]] as $job) {
+            $this->assertSame(PreparoIaDoRascunhoService::DESISTIU, $this->executar($job), "a etapa {$job->etapa} rodou com a loja suspensa");
         }
         $this->assertNull($r->fresh()->descricao, 'escreveu com o agente suspenso');
         $this->assertSame('pausada', app(PreparadorDaAprovacao::class)->encaminhar(PubAgenteExecucao::firstOrFail()));
@@ -111,10 +112,9 @@ class LimitesPausaERecuperacaoDoAgenteTest extends TestCase
         $res = app(ControleDoAgente::class)->retomar($this->conta(), $this->admin);
         $this->assertSame(1, $res['continuadas']);
         $this->assertSame(1, PubAgenteExecucao::count());
-        $nova = Queue::pushed(GerarPreparoIaJob::class)->last();
-        $this->assertSame($antes + 1, Queue::pushed(GerarPreparoIaJob::class)->count());
-        $this->assertSame(PreparoIaDoRascunhoService::MODELO, $nova->etapa);
-        $this->assertSame([PreparoIaDoRascunhoService::DESCRICAO], $nova->restantes);
+        // As cadeias NOVAS são só as do que faltou — Modelo e descrição; o título (já `ok`) não volta a gastar.
+        $novas = Queue::pushed(GerarPreparoIaJob::class)->slice($antes)->map(fn ($j) => $j->etapa)->sort()->values()->all();
+        $this->assertSame([PreparoIaDoRascunhoService::DESCRICAO, PreparoIaDoRascunhoService::MODELO], $novas);
     }
 
     public function test_valor_que_volta_da_ia_com_o_agente_pausado_espera_e_nao_escreve(): void
@@ -167,7 +167,7 @@ class LimitesPausaERecuperacaoDoAgenteTest extends TestCase
 
         $this->assertSame(1, $r['recuperadas']);
         $this->assertSame(PubAgenteExecucao::PREPARANDO, $parada->fresh()->estado);
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        $this->assertSame([PreparoIaDoRascunhoService::DESCRICAO, PreparoIaDoRascunhoService::TITULO], $this->cabecasDasCadeias());
     }
 
     // ─── Varredura ───

@@ -7,6 +7,7 @@ use App\Models\PubAgenteExecucao;
 use App\Models\PubRascunho;
 use App\Services\Publicador\Agente\ConfiguracaoDoAgenteService;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
+use App\Services\Publicador\PreparoIaDoRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\RegraViolada;
@@ -42,7 +43,8 @@ class EntradaDoPreparoDoAgenteTest extends TestCase
         $this->assertSame(PubAgenteExecucao::PREPARANDO, $r['execucao']->estado);
         $this->assertSame('gerando_texto', $r['execucao']->etapa);
         $this->assertNotNull($r['execucao']->versao_dos_fatos);
-        Queue::assertPushed(GerarPreparoIaJob::class, 1); // uma cadeia (título → Modelo → descrição encadeados)
+        // As duas cadeias do preparo de sempre: [título → Modelo] e [descrição] (despacharCadeias, 21/10/2026).
+        $this->assertSame([PreparoIaDoRascunhoService::DESCRICAO, PreparoIaDoRascunhoService::TITULO], $this->cabecasDasCadeias());
     }
 
     public function test_incompleto_bloqueia_com_os_motivos_e_sem_ia(): void
@@ -92,7 +94,8 @@ class EntradaDoPreparoDoAgenteTest extends TestCase
         $this->assertSame('agente: preparando (gerando_texto)', $doSave);
         $this->assertSame(1, PubAgenteExecucao::count());
         $this->assertSame($manual['execucao']->id, PubAgenteExecucao::first()->id);
-        Queue::assertPushed(GerarPreparoIaJob::class, 1);
+        // Só as cabeças de UM preparo: duplicado seriam quatro (título 2×, descrição 2×).
+        $this->assertSame([PreparoIaDoRascunhoService::DESCRICAO, PreparoIaDoRascunhoService::TITULO], $this->cabecasDasCadeias());
     }
 
     public function test_edicao_da_equipe_fica_quando_a_cadeia_roda(): void

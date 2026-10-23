@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Publicador\Agente;
 
+use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Models\EstruturaProduto;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
@@ -11,6 +12,7 @@ use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Payload\Alvo;
+use Illuminate\Support\Facades\Queue;
 use Tests\Feature\Publicador\Lote\CenarioDoPreparo;
 
 /**
@@ -28,6 +30,19 @@ trait CenarioDoAgente
     {
         $this->montarPreparo();
         $this->admin = User::factory()->create(['role' => 'admin']);
+    }
+
+    /**
+     * As CABEÇAS das cadeias de texto enfileiradas (cada `GerarPreparoIaJob` empurrado abre uma cadeia; os elos seguintes
+     * vão em `chained`), em ordem. Desde 21/10/2026 (`PreparoIaDoRascunhoService::despacharCadeias`, pedido do usuário
+     * por velocidade) um preparo completo abre DUAS cadeias em paralelo — [título → Modelo] e [descrição] — então
+     * "não duplicou" é "só estas cabeças", não "uma só".
+     *
+     * @return list<string>
+     */
+    protected function cabecasDasCadeias(): array
+    {
+        return Queue::pushed(GerarPreparoIaJob::class)->map(fn ($j) => $j->etapa)->sort()->values()->all();
     }
 
     protected function conta(): array
