@@ -129,6 +129,30 @@ export function LinhaDaAtividade({ linha }) {
 
                 {motivo !== '' && <div className="mt-0.5 text-[12px] text-pub-txt-3">{motivo}</div>}
 
+                {/* ⚠️⚠️ O DIFF da configuração (23/10/2026): **campo por campo, em pt-BR, vindo do
+                    SERVIDOR.** Lista vazia significa *"não sei dizer"* (versão 1, ou sem a anterior no
+                    banco) e **não** *"nada mudou"* — por isso a tela simplesmente não desenha nada,
+                    em vez de escrever "sem mudanças", que seria uma afirmação sem prova. */}
+                {lista(linha?.mudancas).length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                        {lista(linha?.mudancas).map((m, i) => {
+                            // ⚠️ DENTRO do callback (Rollup elimina var de escopo usada no `.map()`).
+                            const campo = texto(m?.campo, `c-${i}`);
+                            const rotuloDoCampo = texto(m?.rotulo, campo);
+                            const de = texto(m?.de, '—');
+                            const para = texto(m?.para, '—');
+
+                            return (
+                                <li key={campo} className="text-[12px] text-pub-txt-3">
+                                    <span className="text-pub-txt-4">{rotuloDoCampo}:</span>{' '}
+                                    <span className="line-through">{de}</span>{' → '}
+                                    <span className="text-pub-txt-2">{para}</span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-pub-txt-4">
                     {origemRotulo !== '' && <span>{origemRotulo}</span>}
                     {autor !== '' && <span>{autor}</span>}

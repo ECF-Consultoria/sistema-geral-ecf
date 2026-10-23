@@ -103,6 +103,12 @@ const ATIVIDADE = {
                     titulo: 'Configuração salva (versão 2)', resultado: null,
                     resultado_rotulo: 'Agente pausado nesta versão', motivo: null, versao: 2, autor: 'Maycon',
                     produto: null, links: {},
+                    // ⚠️ O diff entre versões (23/10/2026), campo por campo, vindo do servidor.
+                    mudancas: [
+                        { campo: 'limite_diario', rotulo: 'Limite por dia', de: '5', para: '9' },
+                        { campo: 'dias_semana', rotulo: 'Dias da semana', de: 'todo dia', para: 'Seg, Dom' },
+                        { campo: 'escopo', rotulo: 'Escopo de produtos', de: 'todos os produtos', para: '2 incluído(s), 1 excluído(s)' },
+                    ],
                 },
             ],
         },
@@ -313,4 +319,70 @@ test('loja sem atividade diz isso, e com filtro diz outra coisa', () => {
     const comFiltro = renderToStaticMarkup(React.createElement(RegistroDeAtividade, { atividade: recorteVazio }));
     assert.match(comFiltro, /Nenhum registro neste recorte\./, 'o recorte vazio não foi distinguido da loja parada');
     assert.doesNotMatch(comFiltro, /ainda não fez nada/, 'o recorte vazio afirmou que o agente está parado');
+});
+
+test('⚠⚠ o diff da configuração aparece campo por campo, e lista vazia NÃO vira "nada mudou" 23_10', () => {
+    // ⚠️ Antes a linha da configuração dizia só o ESTADO da versão. Agora ela diz O QUE MUDOU —
+    // e os rótulos vêm do SERVIDOR, como todo o resto desta peça.
+    const html = renderToStaticMarkup(React.createElement(RegistroDeAtividade, { atividade: ATIVIDADE }));
+
+    assert.match(html, /Limite por dia:/, 'o rótulo do campo não apareceu');
+    assert.match(html, /Dias da semana:/, 'o rótulo do calendário não apareceu');
+    assert.match(html, /todo dia/, 'o valor anterior do calendário não apareceu');
+    assert.match(html, /Seg, Dom/, 'o valor novo do calendário não apareceu');
+    assert.match(html, /→/, 'a seta do "de → para" não apareceu');
+
+    // ⚠⚠ **ID DE PRODUTO NÃO VAI PARA A TELA**: o escopo aparece como CONTAGEM.
+    assert.match(html, /2 incluído\(s\), 1 excluído\(s\)/, 'o escopo não saiu como contagem');
+    // ⚠️⚠️ **AQUI EU HAVIA ESCRITO UMA ASSERÇÃO VAZIA, e tirei.** Era um
+    // `doesNotMatch(/(4242|4343|5151)/)` procurando ids de produto que **esta fixture nunca
+    // teve** — gate sobre zero casos, que passa sempre e não prova nada.
+    // ➡️ A prova de verdade está do lado do SERVIDOR, onde os ids **existem** na origem:
+    // `RegistroDeAtividadeDoAgenteTest::test_o_escopo_no_diff_e_CONTAGEM_e_nunca_id_de_produto_e1`
+    // grava `incluir: [4242, 4343]` / `excluir: [5151]` e cobra que nenhum deles apareça no texto.
+    // Aqui basta o que esta peça decide: ela **mostra o que o servidor manda**, sem traduzir.
+
+    // ⚠⚠ **LISTA VAZIA NÃO VIRA FRASE.** Vazia significa *"não sei dizer"* (versão 1, ou sem a
+    // anterior no banco) — escrever "sem mudanças" seria uma afirmação sem prova.
+    const semDiff = {
+        ...ATIVIDADE,
+        dias: [{ dia: '2026-10-22', rotulo: 'Ontem', linhas: [{
+            id: 'configuracao-1', fonte: 'configuracao', fonte_rotulo: 'Configuração', origem: 'manual',
+            origem_rotulo: 'Uma pessoa', hora: '09:00', dia: '2026-10-22', titulo: 'Configuração criada',
+            resultado_rotulo: null, motivo: null, versao: 1, autor: 'Maycon', produto: null, links: {}, mudancas: [],
+        }] }],
+    };
+    const html1 = renderToStaticMarkup(React.createElement(RegistroDeAtividade, { atividade: semDiff }));
+    assert.match(html1, /Configuração criada/, 'a versão 1 não diz "criada"');
+    assert.doesNotMatch(html1, /sem mudanças|nada mudou|→/, 'a tela afirmou algo sobre uma versão sem anterior');
+
+    // ⚠️ ISCA: a sonda da seta acha quando ela ESTÁ lá — senão o `doesNotMatch` acima seria vazio.
+    assert.match(html, /→/, 'a sonda da seta está CEGA');
+});
+
+test('⚠️ lixo no diff não derruba a tela 23_10', () => {
+    const VENENO = { toString: null };
+    const CASOS = [
+        'nao-e-lista', 42, VENENO,
+        [null, undefined, 'x', 7],
+        [{ campo: VENENO, rotulo: VENENO, de: VENENO, para: VENENO }],
+        [{}, { campo: 'x' }, { de: 'a' }],
+    ];
+
+    for (const mudancas of CASOS) {
+        const atividade = {
+            ...ATIVIDADE,
+            dias: [{ dia: 'd', rotulo: 'r', linhas: [{ id: 'c-1', fonte: 'configuracao', titulo: 'x', mudancas }] }],
+        };
+        assert.doesNotThrow(
+            () => renderToStaticMarkup(React.createElement(RegistroDeAtividade, { atividade })),
+            // ⚠️ NUNCA `String(mudancas)`: `{toString:null}` lançaria DENTRO da mensagem.
+            'um formato torto do diff derrubou a peça',
+        );
+    }
+
+    const html = renderToStaticMarkup(React.createElement(RegistroDeAtividade, {
+        atividade: { ...ATIVIDADE, dias: [{ dia: 'd', rotulo: 'r', linhas: [{ id: 'c', fonte: 'configuracao', titulo: 't', mudancas: [{ campo: VENENO, de: VENENO, para: VENENO }] }] }] },
+    }));
+    assert.doesNotMatch(html, /\[object Object\]|NaN|undefined|Invalid Date/, 'formato inesperado do diff vazou para a tela');
 });

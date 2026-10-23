@@ -57,10 +57,15 @@ use Illuminate\Support\Facades\DB;
  *
  * ═══ ⚠️ O QUE ESTA FATIA **NÃO** FAZ (dito aqui para ninguém presumir) ═════════════════════════
  *
- *   · **não diz QUAIS campos mudaram** entre duas versões da configuração. O snapshot de cada
- *     versão está em `dados`, então o diff é possível — mas comparar versões vizinhas quebra na
- *     fronteira da página, e fazer certo é fatia própria. Aqui a linha diz *"Configuração salva
- *     (versão N)"* e mostra o ESTADO naquela versão. **Não afirma o que mudou.**
+ *   · **não tem o diff de uma versão sem a anterior no banco.** ⚠️ **Isto mudou em 23/10/2026:** a
+ *     linha da configuração **agora diz o que mudou** (`mudancas`), campo por campo, em pt-BR.
+ *     O que ficou de fora é estreito e honesto: quando a versão anterior **não existe** (a versão
+ *     1, ou histórico incompleto) a lista volta **VAZIA** e a tela não escreve diff nenhum —
+ *     vazia significa *"não sei dizer"*, nunca *"nada mudou"*.
+ *     ⚠️ E a lacuna que eu havia declarado aqui antes (*"comparar versões vizinhas quebra na
+ *     fronteira da página"*) foi resolvida na RAIZ: a anterior de cada linha é buscada
+ *     **explicitamente por número**, em UMA consulta para a página inteira — nunca pela
+ *     adjacência do que calhou de cair na página.
  *   · **não tem evidências/anexos** por linha (o desenho pede; é E6).
  *   · **não mostra promoção automática nem correção humana como tipos próprios** — eles existem
  *     como eventos da oferta e entram pela fonte `aprovacao`, com o rótulo que o portão já dá.
@@ -113,6 +118,26 @@ class AtividadeDoAgente
         'ativo' => 'ativo',
         'pausado' => 'pausado',
         'suspenso' => 'suspenso',
+    ];
+
+    /**
+     * ⚠️⚠️ O nome em pt-BR de cada campo da configuração, para o DIFF entre versões (23/10/2026).
+     *
+     * ⚠️ **Tem de cobrir EXATAMENTE `PubAgenteConfiguracao::CHAVES_DA_VERSAO`**, e há gate cobrando
+     * a bijeção nos dois sentidos: chave nova no snapshot **sem rótulo aqui** apareceria **crua** na
+     * tela (`estoque_minimo: 1 → 4`), e rótulo de chave que não existe mais é linha morta.
+     */
+    public const ROTULO_DO_CAMPO = [
+        'habilitado' => 'Agente ligado',
+        'controle' => 'Controle',
+        'modalidade' => 'Modalidade',
+        'estoque_minimo' => 'Estoque mínimo',
+        'limite_diario' => 'Limite por dia',
+        'teto_fila' => 'Máximo esperando revisão',
+        'janela_inicio' => 'Começa a preparar às',
+        'janela_fim' => 'Para de preparar às',
+        'dias_semana' => 'Dias da semana',
+        'escopo' => 'Escopo de produtos',
     ];
 
     /**
@@ -439,7 +464,30 @@ class AtividadeDoAgente
         $autores = $idsAutor->isEmpty() ? collect() : User::query()
             ->whereIn('id', $idsAutor)->get(['id', 'name'])->keyBy('id');
 
-        return $cruas->map(function ($r) use ($produtos, $autores, $conta) {
+        // ⚠️⚠️ **O DIFF ENTRE VERSÕES (23/10/2026), e ele fecha uma lacuna que eu havia
+        // DECLARADO:** antes a linha da configuração dizia só o ESTADO daquela versão, porque
+        // comparar versões VIZINHAS **quebra na fronteira da página** — a versão anterior pode
+        // estar na página seguinte, ou nem estar no recorte filtrado.
+        //
+        // ➡️ **O conserto é buscar a anterior de cada linha EXPLICITAMENTE**, por número, em
+        // **UMA consulta para a página inteira** (`whereIn`) — nunca uma por linha, e nunca
+        // confiando na adjacência do que calhou de cair na página.
+        $versoesNaPagina = $cruas->where('fonte', self::FONTE_CONFIGURACAO)->pluck('versao')
+            ->filter(fn ($v) => $v !== null)->map(fn ($v) => (int) $v)->unique()->values();
+
+        $anteriores = collect();
+        if ($versoesNaPagina->isNotEmpty()) {
+            $cfgId = PubAgenteConfiguracao::query()->where('conta_chave', $conta['chave'])->value('id');
+            if ($cfgId !== null) {
+                $anteriores = DB::table('pub_agente_configuracao_versoes')
+                    ->where('configuracao_id', $cfgId)
+                    // A anterior de cada uma: `versao - 1`.
+                    ->whereIn('versao', $versoesNaPagina->map(fn (int $v) => $v - 1)->all())
+                    ->pluck('dados', 'versao');
+            }
+        }
+
+        return $cruas->map(function ($r) use ($produtos, $autores, $conta, $anteriores) {
             $produto = $r->produto_id === null ? null : $produtos->get($r->produto_id);
             $quando = Carbon::parse($r->quando)->setTimezone('America/Sao_Paulo');
 
@@ -455,6 +503,9 @@ class AtividadeDoAgente
                 'titulo' => $this->titulo($r),
                 'resultado' => $r->resultado,
                 'resultado_rotulo' => $this->resultadoRotulo($r),
+                // ⚠️ Só a fonte `configuracao` tem diff; nas outras a chave vem `[]` e a tela não
+                // desenha nada — lista vazia é "nada a dizer", não "nada mudou".
+                'mudancas' => $this->mudancas($r, $anteriores),
                 'motivo' => $this->texto($r->motivo),
                 'versao' => $r->versao === null ? null : (int) $r->versao,
                 'autor' => $r->autor_id === null
@@ -475,9 +526,11 @@ class AtividadeDoAgente
     {
         return match ($r->fonte) {
             self::FONTE_PREPARO => 'Preparo de produto',
-            // ⚠️ "Configuração salva (versão N)" e NUNCA "agente pausado": esta fatia tem o
-            // snapshot, não o diff, então ela não afirma o que mudou. Ver o docblock da classe.
-            self::FONTE_CONFIGURACAO => 'Configuração salva (versão '.((int) $r->versao).')',
+            // ⚠️ A versão **1** é a criação: não há anterior com que comparar, e dizer "salva"
+            // sugeriria que algo existia antes.
+            self::FONTE_CONFIGURACAO => ((int) $r->versao) <= 1
+                ? 'Configuração criada'
+                : 'Configuração salva (versão '.((int) $r->versao).')',
             self::FONTE_APROVACAO => PubAprovacaoEvento::TIPOS[$r->tipo]['rotulo'] ?? 'Evento da oferta',
             default => 'Evento',
         };
@@ -508,6 +561,117 @@ class AtividadeDoAgente
         }
 
         return null;
+    }
+
+    /**
+     * ⚠️⚠️ **O QUE MUDOU entre esta versão da configuração e a anterior.**
+     *
+     * Antes esta classe dizia apenas o ESTADO da versão, e o docblock declarava a lacuna. Agora
+     * ela diz o que mudou — **e continua sem afirmar nada que não possa provar**: sem a versão
+     * anterior no banco, a lista volta **vazia** e a tela não escreve diff nenhum. Vazia significa
+     * *"não sei dizer"*, e é por isso que a versão 1 (que não tem anterior) ganha o título
+     * *"Configuração criada"* em vez de um diff inventado contra o nada.
+     *
+     * @return list<array{campo: string, rotulo: string, de: string, para: string}>
+     */
+    private function mudancas($r, $anteriores): array
+    {
+        if ($r->fonte !== self::FONTE_CONFIGURACAO || $r->versao === null) {
+            return [];
+        }
+
+        $agora = is_string($r->extra) ? json_decode($r->extra, true) : null;
+        $antes = $anteriores->get(((int) $r->versao) - 1);
+        $antes = is_string($antes) ? json_decode($antes, true) : null;
+
+        // ⚠️ JSON torto de qualquer um dos dois lados → lista vazia. Nunca lança, nunca inventa.
+        if (! is_array($agora) || ! is_array($antes)) {
+            return [];
+        }
+
+        $mudancas = [];
+        foreach (PubAgenteConfiguracao::CHAVES_DA_VERSAO as $campo) {
+            // ⚠️ Flag DENTRO do laço.
+            $de = $this->valorLegivel($campo, $antes[$campo] ?? null);
+            $para = $this->valorLegivel($campo, $agora[$campo] ?? null);
+            if ($de === $para) {
+                continue;
+            }
+
+            $mudancas[] = [
+                'campo' => $campo,
+                'rotulo' => self::ROTULO_DO_CAMPO[$campo] ?? $campo,
+                'de' => $de,
+                'para' => $para,
+            ];
+        }
+
+        return $mudancas;
+    }
+
+    /**
+     * O valor de um campo da configuração, em pt-BR e legível por gente.
+     *
+     * ⚠️ **A comparação do diff acontece sobre ESTE texto**, de propósito: `1` e `'1'` vindos de
+     * snapshots de épocas diferentes são o mesmo valor para a pessoa, e comparar os brutos
+     * inventaria uma mudança que ninguém fez. ⚠️ A contrapartida: dois valores com o mesmo texto
+     * nunca viram mudança — e é o que se quer, porque a tela mostra texto.
+     */
+    private function valorLegivel(string $campo, $valor): string
+    {
+        if ($campo === 'habilitado') {
+            return ($valor === true || $valor === 1 || $valor === '1') ? 'sim' : 'não';
+        }
+
+        if ($campo === 'dias_semana') {
+            $dias = array_values(array_filter(
+                array_map('intval', (array) ($valor ?? [])),
+                fn (int $d) => $d >= 1 && $d <= 7,
+            ));
+            sort($dias);
+
+            // ⚠️ Lista vazia é "todo dia", pela mesma convenção da política — e dizer "nenhum"
+            // seria o oposto do que o agente faz.
+            return $dias === []
+                ? 'todo dia'
+                : implode(', ', array_map(fn (int $d) => PubAgenteConfiguracao::ROTULO_DO_DIA[$d], $dias));
+        }
+
+        if ($campo === 'escopo') {
+            // ⚠️ **CONTAGEM, nunca a lista de ids.** Id de produto na tela é jargão (regra
+            // permanente deste projeto), e uma lista de dezenas de números não diz nada a ninguém.
+            $e = is_array($valor) ? $valor : [];
+            $incluir = count((array) ($e['incluir'] ?? []));
+            $excluir = count((array) ($e['excluir'] ?? []));
+
+            return $incluir === 0 && $excluir === 0
+                ? 'todos os produtos'
+                : "{$incluir} incluído(s), {$excluir} excluído(s)";
+        }
+
+        if ($valor === null || $valor === '') {
+            // ⚠️ "sem" e não "—" nem vazio: numa frase "Modalidade: sem → Clássico" a pessoa lê o
+            // que aconteceu; com um traço ela lê um defeito de tela.
+            return 'sem';
+        }
+
+        if ($campo === 'janela_inicio' || $campo === 'janela_fim') {
+            return substr((string) $valor, 0, 5);
+        }
+
+        if ($campo === 'controle') {
+            return self::ROTULO_DO_CONTROLE[(string) $valor] ?? (string) $valor;
+        }
+
+        if ($campo === 'modalidade') {
+            // Os rótulos de modalidade da tela do agente, para o diff falar a mesma língua.
+            return ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'][(string) $valor] ?? (string) $valor;
+        }
+
+        // ⚠️ Escalar só: array ou objeto aqui viraria `Array`/exceção. Os campos que podem ser
+        // compostos já foram tratados acima, e um campo novo composto cai aqui — então o fallback
+        // diz **o tipo**, que é informação honesta, em vez de arriscar uma conversão.
+        return is_scalar($valor) ? (string) $valor : '(valor composto)';
     }
 
     /**

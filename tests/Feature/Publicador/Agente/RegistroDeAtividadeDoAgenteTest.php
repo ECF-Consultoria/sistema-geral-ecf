@@ -441,4 +441,112 @@ class RegistroDeAtividadeDoAgenteTest extends TestCase
         $this->assertSame(1, $this->atividade([], 0)['pagina'], 'página zero não foi corrigida');
         $this->assertSame(1, $this->atividade([], -5)['pagina'], 'página negativa não foi corrigida');
     }
+
+    public function test_a_linha_da_configuracao_DIZ_o_que_mudou_campo_por_campo_e1(): void
+    {
+        // ⚠️⚠️ **ISTO FECHA UMA LACUNA QUE EU HAVIA DECLARADO.** Antes a linha dizia só o ESTADO da
+        // versão, porque comparar versões VIZINHAS quebra na fronteira da página. Agora a anterior
+        // é buscada **explicitamente por número**, numa consulta para a página inteira.
+        $this->ligar(['limite_diario' => 5, 'modalidade' => 'gold_special']);
+        $cfg = app(ConfiguracaoDoAgenteService::class)->daConta($this->conta());
+
+        app(ConfiguracaoDoAgenteService::class)->salvar($this->conta(), [
+            'habilitado' => true, 'limite_diario' => 9, 'modalidade' => 'gold_pro', 'dias_semana' => [1, 7],
+        ], (int) $cfg->versao, $this->admin);
+
+        $linhas = $this->linhas($this->atividade(['fonte' => AtividadeDoAgente::FONTE_CONFIGURACAO]));
+        $maisNova = $linhas[0];
+        $porCampo = collect($maisNova['mudancas'])->keyBy('campo');
+
+        $this->assertArrayHasKey('limite_diario', $porCampo, 'a mudança do limite diário não apareceu');
+        $this->assertSame('5', $porCampo['limite_diario']['de'], 'o valor ANTERIOR do limite está errado');
+        $this->assertSame('9', $porCampo['limite_diario']['para'], 'o valor NOVO do limite está errado');
+        $this->assertSame('Limite por dia', $porCampo['limite_diario']['rotulo'], 'o campo aparece cru na tela');
+
+        // ⚠️ A modalidade sai com o RÓTULO da tela, não com `gold_pro` — jargão não vai para a tela.
+        $this->assertSame('Clássico', $porCampo['modalidade']['de'], 'a modalidade anterior saiu crua');
+        $this->assertSame('Premium', $porCampo['modalidade']['para'], 'a modalidade nova saiu crua');
+
+        // ⚠️ E os dias saem por extenso.
+        $this->assertSame('todo dia', $porCampo['dias_semana']['de'], 'calendário vazio deveria ler "todo dia"');
+        $this->assertSame('Seg, Dom', $porCampo['dias_semana']['para'], 'os dias não saíram por extenso');
+
+        // ⚠️⚠️ O QUE **NÃO** MUDOU NÃO APARECE. Sem isto o diff listaria os dez campos sempre, e
+        // a pessoa teria de achar a mudança no meio do ruído.
+        $this->assertArrayNotHasKey('teto_fila', $porCampo, 'um campo que NÃO mudou entrou no diff');
+        $this->assertArrayNotHasKey('estoque_minimo', $porCampo, 'um campo que NÃO mudou entrou no diff');
+    }
+
+    public function test_versao_1_nao_inventa_diff_contra_o_nada_e1(): void
+    {
+        // ⚠️ A versão 1 **não tem anterior**. Lista vazia significa *"não sei dizer"*, nunca
+        // *"nada mudou"* — e o título diz "criada", não "salva", para não sugerir que algo existia.
+        $this->ligar();
+
+        $linhas = $this->linhas($this->atividade(['fonte' => AtividadeDoAgente::FONTE_CONFIGURACAO]));
+        $this->assertCount(1, $linhas, 'o cenário deveria ter exatamente uma versão');
+        $this->assertSame(1, $linhas[0]['versao'], 'a versão não é a primeira');
+        $this->assertSame([], $linhas[0]['mudancas'], 'a versão 1 inventou um diff contra o nada');
+        $this->assertSame('Configuração criada', $linhas[0]['titulo'], 'a versão 1 diz "salva" em vez de "criada"');
+    }
+
+    public function test_o_escopo_no_diff_e_CONTAGEM_e_nunca_id_de_produto_e1(): void
+    {
+        // ⚠️ Id de produto na tela é jargão (regra permanente deste projeto), e uma lista de
+        // dezenas de números não diz nada a ninguém.
+        $this->ligar();
+        $cfg = app(ConfiguracaoDoAgenteService::class)->daConta($this->conta());
+        app(ConfiguracaoDoAgenteService::class)->salvar($this->conta(), [
+            'habilitado' => true, 'escopo' => ['incluir' => [4242, 4343], 'excluir' => [5151]],
+        ], (int) $cfg->versao, $this->admin);
+
+        $linhas = $this->linhas($this->atividade(['fonte' => AtividadeDoAgente::FONTE_CONFIGURACAO]));
+        $porCampo = collect($linhas[0]['mudancas'])->keyBy('campo');
+
+        $this->assertArrayHasKey('escopo', $porCampo, 'a mudança de escopo não apareceu');
+        $this->assertSame('todos os produtos', $porCampo['escopo']['de'], 'escopo vazio deveria ler "todos os produtos"');
+        $this->assertSame('2 incluído(s), 1 excluído(s)', $porCampo['escopo']['para'], 'o escopo não saiu como contagem');
+
+        // ⚠️⚠️ E nenhum id de produto vaza para o texto do diff.
+        $texto = json_encode($linhas[0]['mudancas'], JSON_UNESCAPED_UNICODE);
+        foreach (['4242', '4343', '5151'] as $id) {
+            $this->assertStringNotContainsString($id, $texto, "o id de produto {$id} vazou para o diff da tela");
+        }
+    }
+
+    public function test_todo_campo_da_versao_tem_rotulo_em_pt_br_e1(): void
+    {
+        // ⚠️⚠️ BIJEÇÃO nos DOIS sentidos: chave nova no snapshot **sem rótulo** apareceria CRUA
+        // na tela (`estoque_minimo: 1 → 4`), e rótulo de chave que não existe mais é linha morta.
+        $doSnapshot = PubAgenteConfiguracao::CHAVES_DA_VERSAO;
+        sort($doSnapshot);
+        $comRotulo = array_keys(AtividadeDoAgente::ROTULO_DO_CAMPO);
+        sort($comRotulo);
+
+        $this->assertSame($doSnapshot, $comRotulo, 'os rótulos de campo divergiram das chaves da versão');
+
+        foreach (AtividadeDoAgente::ROTULO_DO_CAMPO as $campo => $rotulo) {
+            $this->assertNotSame($campo, $rotulo, "o campo `{$campo}` aparece cru na tela");
+        }
+    }
+
+    public function test_snapshot_torto_de_qualquer_lado_nao_inventa_diff_e1(): void
+    {
+        // ⚠️ JSON inválido de QUALQUER um dos dois lados → lista vazia. Nunca lança, nunca inventa.
+        $this->ligar();
+        $cfgM = PubAgenteConfiguracao::query()->where('conta_chave', $this->conta()['chave'])->firstOrFail();
+
+        DB::table('pub_agente_configuracao_versoes')->insert([
+            ['configuracao_id' => $cfgM->id, 'versao' => 40, 'dados' => 'isto nao e json', 'autor_id' => null, 'criada_em' => now()],
+            ['configuracao_id' => $cfgM->id, 'versao' => 41, 'dados' => json_encode(['limite_diario' => 3]), 'autor_id' => null, 'criada_em' => now()],
+        ]);
+
+        $porVersao = collect($this->linhas($this->atividade(['fonte' => AtividadeDoAgente::FONTE_CONFIGURACAO])))->keyBy('versao');
+
+        // A 41 tem a 40 como anterior, e a 40 é lixo → sem diff, sem exceção.
+        $this->assertArrayHasKey(41, $porVersao, 'a versão 41 não entrou na atividade');
+        $this->assertSame([], $porVersao[41]['mudancas'], 'snapshot anterior torto virou diff inventado');
+        $this->assertArrayHasKey(40, $porVersao, 'a versão 40 derrubou ou sumiu da lista');
+        $this->assertSame([], $porVersao[40]['mudancas'], 'snapshot torto virou diff inventado');
+    }
 }
