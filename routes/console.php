@@ -591,10 +591,11 @@ Schedule::command('publicador:promocoes-renovar')
     ->withoutOverlapping();
 
 // Publicador — imagens por IA automáticas que o limite diário barrou (22/10/2026): o rascunho marcado num dia
-// anterior volta para a avaliação (fila `creative`). 06:00 de São Paulo: o limite do dia já zerou e as imagens
-// ficam prontas antes de o time chegar.
+// anterior volta para a avaliação (fila `creative`). 06:05 de São Paulo: o limite do dia já zerou e as imagens
+// ficam prontas antes de o time chegar. Fora do minuto 06:00 de propósito: o `adman:warm-diff` das 06:00 roda em
+// primeiro plano e segura o resto daquele minuto (em 23/10 levou 1h13 e este comando só rodou às 07:13).
 Schedule::command('publicador:imagens-adiadas')
-    ->dailyAt('06:00')
+    ->dailyAt('06:05')
     ->timezone('America/Sao_Paulo')
     ->name('publicador-imagens-adiadas')
     ->withoutOverlapping();

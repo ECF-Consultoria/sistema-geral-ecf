@@ -380,14 +380,14 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertTrue(CriativosAutomaticosService::adiadoPeloLimite($r->fresh()));
     }
 
-    public function test_a_retomada_e_agendada_as_6h_de_sao_paulo_sem_sobrepor(): void
+    public function test_a_retomada_e_agendada_as_6h05_de_sao_paulo_fora_do_minuto_do_adman(): void
     {
         $eventos = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->filter(fn ($e) => str_contains((string) $e->command, 'publicador:imagens-adiadas'));
 
         $this->assertCount(1, $eventos);
         $e = $eventos->first();
-        $this->assertSame('0 6 * * *', $e->expression);
+        $this->assertSame('5 6 * * *', $e->expression, 'fora das 06:00: o adman:warm-diff segura aquele minuto');
         $this->assertSame('America/Sao_Paulo', $e->timezone);
         $this->assertTrue($e->withoutOverlapping);
     }

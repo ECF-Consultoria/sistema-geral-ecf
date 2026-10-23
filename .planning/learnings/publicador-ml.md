@@ -2025,6 +2025,11 @@ antigo); só o pedido de JSON no fim é nosso.
   manda de novo para a avaliação o que foi barrado em dia anterior — o teto segue valendo. Qualquer outro desfecho
   da avaliação apaga a marca, menos `ocupado`/`erro`. Decisão do usuário: o limite continua 10 e nada é gerado
   por fora dele.
+- **23/10, a 1ª retomada funcionou** (kit 46 do rascunho 106: ambientada + fundo limpo com as 4 poltronas, aprovadas
+  pelo juiz, aplicadas; cartão voltou a "Pronto"), mas às 07:13, não às 06:00: o `adman:warm-diff` das 06:00 roda em
+  PRIMEIRO plano e o `schedule:run` daquele minuto executa os eventos em fila — tudo marcado para 06:00 esperou 1h13.
+  Por isso o comando foi para 06:05. Regra geral: comando curto não divide minuto com job longo sem `runInBackground`
+  (o histórico fica em `/var/log/laravel-scheduler.log`, "... 1h 13min DONE ⇂ warm-adman-diff-manha").
 
 ## 55. A descrição não repete a ficha técnica (22/10/2026)
 
