@@ -1,5 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
+import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, Copy, ExternalLink, MinusCircle, Sprout } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -372,6 +373,126 @@ export function CartaoJardinagem({ linha, ramo }) {
     );
 }
 
+/**
+ * A prévia de hoje (pedido do usuário, 23/10: "queria ver os dados" antes de ligar): no clique, o servidor lê no
+ * ML — só leitura, nada gravado — as visitas e vendas de cada anúncio no ar desde o começo do mês dele e diz em
+ * qual ramo ele cairia se fosse analisado hoje. Os números são PARCIAIS até o mês fechar.
+ */
+export function PreviaDeHoje({ conta, ramos, inicial = null }) {
+    const [dados, setDados] = useState(inicial);
+    const [lendo, setLendo] = useState(false);
+    const [erro, setErro] = useState(null);
+    const p = comoObjeto(dados);
+    const dias = numeroSeguro(p.dias_do_ciclo) ?? 30;
+    const listaRamos = comoLista(ramos).map((r) => comoObjeto(r));
+    // Cada linha já sai pronta daqui (o .map() do JSX só lê o próprio item — armadilha do Rollup).
+    const linhas = comoLista(p.itens).map((i) => {
+        const x = comoObjeto(i);
+        const ramo = listaRamos.find((r) => r.chave === x.diagnostico) ?? null;
+
+        return {
+            chave: textoSeguro(x.ml_item_id, ''),
+            mlb: textoSeguro(x.ml_item_id),
+            tipo: textoSeguro(x.tipo, ''),
+            titulo: typeof x.titulo === 'string' ? x.titulo : '',
+            permalink: typeof x.permalink === 'string' ? x.permalink : null,
+            dia: `dia ${fmtInteiro(numeroSeguro(x.dias_passados))} de ${fmtInteiro(dias)}`,
+            lido: x.resultado === 'analisado',
+            visitas: fmtInteiro(x.visitas),
+            vendas: fmtInteiro(x.vendas),
+            conversao: fmtConversao(x.conversao),
+            rotulo: ramo ? textoSeguro(ramo.rotulo) : textoSeguro(x.diagnostico, '—'),
+            acao: ramo ? textoSeguro(ramo.acao, '') : '',
+            cor: COR_DIAGNOSTICO[x.diagnostico] ?? COR_STATUS.pendente,
+            erro: textoSeguro(x.erro, 'Não deu para ler este anúncio agora.'),
+        };
+    });
+    const foraDoAr = numeroSeguro(p.fora_do_ar) ?? 0;
+    const acimaDoTeto = numeroSeguro(p.acima_do_teto) ?? 0;
+
+    async function ler() {
+        setLendo(true);
+        setErro(null);
+        try {
+            const r = await axios.get(route(`${ROTA}.previa`), { params: conta ? { conta } : {} });
+            setDados(comoObjeto(comoObjeto(r).data));
+        } catch (e) {
+            const status = comoObjeto(comoObjeto(e).response).status;
+            setErro(status === 429 ? 'Muitas leituras seguidas. Espere um minuto e tente de novo.' : 'Não deu para ler no Mercado Livre agora. Tente de novo.');
+        } finally {
+            setLendo(false);
+        }
+    }
+
+    return (
+        <section aria-label="Como estão hoje" className="mb-6 rounded-xl border border-white/[0.08] bg-ecf-card p-5" data-previa>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-[720px]">
+                    <h2 className="text-[15px] font-bold text-white">Como estão hoje</h2>
+                    <p className="mt-1 text-[13px] font-normal text-white/55">
+                        Lê agora no Mercado Livre as visitas e vendas de cada anúncio no ar desde o começo do mês dele, e mostra em
+                        qual grupo da árvore ele cairia se fosse analisado hoje. Só leitura: nada é gravado. Os números são parciais
+                        até o mês fechar.
+                    </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    {typeof p.lida_em === 'string' && <span className="text-[11px] font-normal text-white/40">lido em {fmtQuando(p.lida_em)}</span>}
+                    <BotaoAcao disabled={lendo} onClick={ler}>{lendo ? 'Lendo no Mercado Livre…' : dados ? 'Ler de novo' : 'Ver como estão hoje'}</BotaoAcao>
+                </div>
+            </div>
+
+            {erro && <p className="mt-3 text-[13px] font-normal text-red-300">{erro}</p>}
+
+            {dados && linhas.length === 0 && (
+                <p className="mt-4 text-[13px] font-normal text-white/55">Nenhum anúncio do Publicador está no ar agora.</p>
+            )}
+
+            {linhas.length > 0 && (
+                <ul className="mt-4 divide-y divide-white/[0.06] rounded-lg border border-white/[0.08]">
+                    {linhas.map((l) => (
+                        <li key={l.chave} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.5fr))_minmax(0,1.2fr)] md:items-center">
+                            <div className="min-w-0">
+                                <p className="flex flex-wrap items-center gap-2 text-[13px] font-normal text-white/70">
+                                    <span className="font-bold text-white/55">{l.tipo}</span>
+                                    {l.permalink ? (
+                                        <a href={l.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-mono text-white/85 hover:text-ecf-yellow">
+                                            {l.mlb} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                                        </a>
+                                    ) : (
+                                        <span className="font-mono text-white/85">{l.mlb}</span>
+                                    )}
+                                    <span className="text-white/45">· {l.dia}</span>
+                                </p>
+                                {l.titulo !== '' && <p className="mt-0.5 truncate text-[13px] font-normal text-white/55">{l.titulo}</p>}
+                            </div>
+                            {l.lido ? (
+                                <>
+                                    <p className="text-[13px] font-normal text-white/70"><span className="block text-[11px] font-bold text-white/40">Visitas</span><span className="tabular-nums text-white">{l.visitas}</span></p>
+                                    <p className="text-[13px] font-normal text-white/70"><span className="block text-[11px] font-bold text-white/40">Vendas</span><span className="tabular-nums text-white">{l.vendas}</span></p>
+                                    <p className="text-[13px] font-normal text-white/70"><span className="block text-[11px] font-bold text-white/40">Conversão</span><span className="tabular-nums text-white">{l.conversao}</span></p>
+                                    <div className="min-w-0">
+                                        <span className={cn('inline-flex rounded-md border px-2 py-0.5 text-[11px] font-bold', l.cor)}>{l.rotulo}</span>
+                                        {l.acao !== '' && <p className="mt-1 text-[11px] font-normal text-white/45">{l.acao}</p>}
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-[13px] font-normal text-amber-300 md:col-span-4">{l.erro}</p>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            {dados && (foraDoAr > 0 || acimaDoTeto > 0) && (
+                <p className="mt-3 text-[11px] font-normal text-white/40">
+                    {foraDoAr > 0 ? `${fmtInteiro(foraDoAr)} anúncio(s) pausado(s) ou em revisão no Mercado Livre ficam de fora (sem estar no ar, a régua não vale). ` : ''}
+                    {acimaDoTeto > 0 ? `${fmtInteiro(acimaDoTeto)} anúncio(s) além do limite da prévia não foram lidos.` : ''}
+                </p>
+            )}
+        </section>
+    );
+}
+
 /** Os anúncios ainda dentro do 1º mês: quando cada um será analisado. */
 export function EmObservacao({ itens, diasDoCiclo }) {
     const lista = comoLista(itens).map((i) => {
@@ -472,11 +593,13 @@ export default function Jardinagem(props) {
                     <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4" data-jardinagem-desligada>
                         <p className="text-[13px] font-bold text-amber-200">A Jardinagem está desligada</p>
                         <p className="mt-1 text-[13px] font-normal text-white/70">
-                            A análise diária ainda não roda: nenhum anúncio é lido no Mercado Livre e nada é gravado. Esta é a tela
-                            como vai ficar — depois de ligada, cada anúncio entra aqui quando o mês dele fechar.
+                            A análise diária ainda não roda e nada é gravado. Depois de ligada, cada anúncio entra na lista quando o
+                            mês dele fechar. Para ver os números de hoje, use "Ver como estão hoje" (só leitura).
                         </p>
                     </div>
                 )}
+
+                <PreviaDeHoje conta={conta} ramos={ramos} />
 
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {cartoesDosRamos.map((c) => (

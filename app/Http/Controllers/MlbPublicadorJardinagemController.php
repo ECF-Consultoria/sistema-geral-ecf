@@ -6,6 +6,7 @@ use App\Models\PubJardinagem;
 use App\Services\Publicador\Jardinagem\JardinagemService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\RegraViolada;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -119,6 +120,27 @@ class MlbPublicadorJardinagemController extends Controller
             'ativa' => (bool) config('publicador.jardinagem.ativo', false),
             // O Publicador é `role:admin`: o link de volta só para quem o abre.
             'pode_abrir_publicador' => (bool) $request->user()?->isAdmin(),
+        ]);
+    }
+
+    /**
+     * A prévia de hoje (JSON): cada anúncio no ar com os números do mês até agora e o ramo em que cairia se fosse
+     * analisado hoje. Só leitura no ML, nada gravado — funciona com a Jardinagem desligada. A tela pede no clique.
+     */
+    public function previa(Request $request): JsonResponse
+    {
+        $chaveConta = (string) $request->query('conta', '');
+        $conta = preg_match('/^(empresa|company)-\d+$/D', $chaveConta) === 1 ? $chaveConta : null;
+
+        $p = $this->jardinagem->previa($conta);
+
+        return response()->json([
+            ...$p,
+            'itens' => array_map(fn (array $i) => [
+                ...$i,
+                'tipo' => self::NOME_TIPO[$i['listing_type_id']] ?? $i['listing_type_id'],
+                'permalink' => self::linkSeguro($i['permalink']),
+            ], $p['itens']),
         ]);
     }
 
