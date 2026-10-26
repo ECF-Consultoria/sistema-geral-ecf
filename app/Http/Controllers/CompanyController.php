@@ -11,6 +11,7 @@ use App\Models\Servico;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
+use App\Services\Empresas\EmpresasPolosService;
 use App\Services\Empresas\EmpresasVisiveisService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Onboarding\OnboardingSituacaoService;
@@ -151,7 +152,7 @@ class CompanyController extends Controller
             ->delete();
     }
 
-    public function index(Request $request, AcessosDoPortalService $acessosPortal)
+    public function index(Request $request, AcessosDoPortalService $acessosPortal, EmpresasPolosService $empresasPolos)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
         // valores do dominio da coluna ENUM; fora disso, ignora silenciosamente
@@ -421,6 +422,14 @@ class CompanyController extends Controller
             ])->all();
         }
 
+        // ─── Aba Polos (26/10/2026) ─────────────────────────────────────────
+        // As empresas dos Polos ficam FORA da lista acima de propósito (Phase
+        // 35) e moram em `mlb_empresas`; a aba própria as mostra sem mexer na
+        // aba Empresas nem no MCP. Mesmo esquema da sub-aba de acessos do
+        // portal: o total vem sempre (é um COUNT e o rótulo precisa dele) e a
+        // lista só quando a aba pede, em partial reload.
+        $podeVerPolos = $empresasPolos->podeVer($usuario);
+
         $users = User::where('active', true)
             ->where('role', '!=', 'admin')
             ->get(['id', 'name', 'role']);
@@ -570,6 +579,17 @@ class CompanyController extends Controller
             'portal_acessos'       => $podeGerirPortal
                 ? Inertia::optional(fn () => $acessosPortal->dados())
                 : null,
+
+            // ─── Aba Polos (26/10/2026) ──────────────────────────────
+            // Esconder no front é cosmético; o que protege é a lista vazia
+            // (e o total zero) para quem não vê Polos.
+            'pode_ver_polos'          => $podeVerPolos,
+            'polos_total'             => $podeVerPolos ? $empresasPolos->total() : 0,
+            'polos_empresas'          => $podeVerPolos
+                ? Inertia::optional(fn () => $empresasPolos->lista())
+                : null,
+            'pode_abrir_painel_polos' => $podeVerPolos && $empresasPolos->podeAbrirPainel($usuario),
+            'pode_abrir_ficha_polos'  => $podeVerPolos && $empresasPolos->podeAbrirFicha($usuario),
         ]);
     }
 
