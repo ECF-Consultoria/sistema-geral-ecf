@@ -6,8 +6,12 @@ use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
+use App\Services\EcfDriveService;
+use App\Services\MercadoLivreService;
+use App\Support\CustId;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * As empresas dos Polos na aba "Portal do cliente" de `/companies` (26/10/2026).
@@ -35,6 +39,23 @@ use Illuminate\Support\Facades\DB;
  */
 class PolosNoPortalService
 {
+    /**
+     * Domínios de contas que a ECF cria e opera para as empresas dos Polos.
+     * Medido em produção (26/10/2026): TODOS os 331 `mlb_empresas.gmail`
+     * preenchidos eram da ECF (146 `@ecfconsultoria.com.br`, 69
+     * `@polosmoveis.com.br`, o resto gmails com "ecf" no nome). O portal manda
+     * o código de login para o e-mail cadastrado — com um desses, o código
+     * chegaria à ECF, não ao cliente.
+     */
+    private const DOMINIOS_DA_ECF = ['ecfconsultoria.com.br', 'polosmoveis.com.br'];
+
+    /** Alias que o ML expõe no lugar do e-mail real; ninguém lê essa caixa. */
+    private const DOMINIO_ALIAS_ML = 'mail.mercadolivre.com';
+
+    public function __construct(private MercadoLivreService $ml)
+    {
+    }
+
     /**
      * Linhas da aba Portal — sem os logins, que o controller junta numa
      * consulta só com as empresas de Performance.
@@ -99,31 +120,50 @@ class PolosNoPortalService
     }
 
     /**
-     * Garante o cadastro (`Company`) da empresa Polos e devolve-o.
+     * Garante o cadastro (`Company`) da empresa Polos, com o contato do
+     * cliente sugerido para o "Dar acesso".
      *
-     * Idempotente: se a empresa já tem cadastro, devolve o existente. A trava
-     * na linha de `mlb_empresas` impede que dois cliques (ou duas pessoas) criem
-     * dois cadastros para a mesma empresa.
+     * Idempotente: se a empresa já tem cadastro, devolve o existente — e só
+     * completa o contato que estiver VAZIO (nunca sobrescreve o que alguém
+     * digitou). A trava na linha de `mlb_empresas` impede que dois cliques
+     * (ou duas pessoas) criem dois cadastros para a mesma empresa.
+     *
+     * O contato é buscado ANTES da transação: são chamadas HTTP (Mercado Livre,
+     * ECF Drive) e não podem segurar a trava da linha enquanto respondem.
+     *
+     * @return array{company: Company, criado: bool, contato: array{nome: ?string, email: ?string, telefone: ?string, fontes: list<string>}}
      */
-    public function liberar(MlbEmpresa $empresa, User $quem): Company
+    public function liberar(MlbEmpresa $empresa, User $quem): array
     {
-        return DB::transaction(function () use ($empresa, $quem) {
+        $existente = $empresa->company_id ? Company::find($empresa->company_id) : null;
+
+        $precisaContato = $existente === null
+            || blank($existente->email_cliente) || blank($existente->telefone) || blank($existente->nome_contato);
+
+        $contato = $precisaContato
+            ? $this->contatoDoCliente($empresa)
+            : ['nome' => null, 'email' => null, 'telefone' => null, 'fontes' => []];
+
+        return DB::transaction(function () use ($empresa, $quem, $contato) {
             $empresa = MlbEmpresa::whereKey($empresa->id)->lockForUpdate()->firstOrFail();
 
-            if ($empresa->company_id && ($existente = Company::find($empresa->company_id))) {
-                return $existente;
+            if ($empresa->company_id && ($company = Company::find($empresa->company_id))) {
+                $this->completarContato($company, $contato, $quem);
+
+                return ['company' => $company, 'criado' => false, 'contato' => $contato];
             }
 
             $company = Company::create([
-                'name'         => $empresa->nome,
-                // Sugestão para o "Dar acesso", que pré-preenche o contato do
-                // cliente a partir do cadastro. Só o nome: a ficha não guarda
-                // e-mail nem telefone do cliente em coluna.
-                'nome_contato' => $empresa->implementacao?->nome_contato ?: null,
-                'active'       => true,
-                'status'       => 'ativo',
-                'empresa_nova' => false,
-                'notes'        => 'Cadastro criado em '.now()->format('d/m/Y')
+                'name'          => $empresa->nome,
+                // Sugestão para o "Dar acesso", que pré-preenche o contato a
+                // partir do cadastro. Quem dá o acesso revisa antes de salvar.
+                'nome_contato'  => $contato['nome'] ?? ($empresa->implementacao?->nome_contato ?: null),
+                'email_cliente' => $contato['email'],
+                'telefone'      => $contato['telefone'],
+                'active'        => true,
+                'status'        => 'ativo',
+                'empresa_nova'  => false,
+                'notes'         => 'Cadastro criado em '.now()->format('d/m/Y')
                     ." para liberar o Portal do Cliente da empresa Polos #{$empresa->id}. "
                     .'Sem Cust ID e sem contrato de propósito: o Cust e o operacional continuam na empresa Polos.',
             ]);
@@ -134,11 +174,148 @@ class PolosNoPortalService
             activity('portal')
                 ->causedBy($quem)
                 ->performedOn($company)
-                ->withProperties(['mlb_empresa_id' => $empresa->id])
+                ->withProperties(['mlb_empresa_id' => $empresa->id, 'contato_de' => $contato['fontes']])
                 ->log("Cadastro criado para liberar o portal da empresa Polos \"{$empresa->nome}\"");
 
-            return $company;
+            return ['company' => $company, 'criado' => true, 'contato' => $contato];
         });
+    }
+
+    /**
+     * Contato do CLIENTE de uma empresa Polos — nome, e-mail e telefone.
+     *
+     * As tabelas dos Polos não guardam isso (o nome de contato da ficha estava
+     * vazio em todas as 464 em 26/10/2026, e os e-mails da empresa são contas
+     * da ECF). Duas fontes, nesta ordem, cada uma só preenche o que faltou:
+     *
+     *  1. a conta do Mercado Livre conectada (`/users/me` com o token da
+     *     própria empresa) — 58 das 464 tinham token em 26/10/2026;
+     *  2. o ECF Drive pelo Cust ID (`/clientes/{cust}`).
+     *
+     * Falha de qualquer fonte não impede liberar: o "Dar acesso" só abre sem
+     * a sugestão.
+     *
+     * @return array{nome: ?string, email: ?string, telefone: ?string, fontes: list<string>}
+     */
+    public function contatoDoCliente(MlbEmpresa $empresa): array
+    {
+        $contato = ['nome' => null, 'email' => null, 'telefone' => null, 'fontes' => []];
+
+        $daEcf = array_values(array_filter([
+            mb_strtolower(trim((string) $empresa->gmail)),
+            mb_strtolower(trim((string) $empresa->implementacao?->gmail_colaborador)),
+        ]));
+
+        $juntar = function (string $fonte, ?string $nome, ?string $email, ?string $telefone) use (&$contato, $daEcf) {
+            $novos = [
+                'nome'     => filled($nome) ? trim($nome) : null,
+                'email'    => $this->emailDoCliente($email, $daEcf),
+                'telefone' => $this->telefone($telefone),
+            ];
+            $usou = false;
+            foreach ($novos as $campo => $valor) {
+                if ($contato[$campo] === null && $valor !== null) {
+                    $contato[$campo] = $valor;
+                    $usou = true;
+                }
+            }
+            if ($usou) {
+                $contato['fontes'][] = $fonte;
+            }
+        };
+
+        if ($empresa->mlToken?->status === 'active') {
+            try {
+                $u = $this->ml->get($empresa, '/users/me');
+                $juntar(
+                    'conta do Mercado Livre',
+                    trim(($u['first_name'] ?? '').' '.($u['last_name'] ?? '')),
+                    $u['email'] ?? null,
+                    ($u['phone']['area_code'] ?? '').($u['phone']['number'] ?? ''),
+                );
+            } catch (\Throwable $e) {
+                Log::warning("[Portal Polos] /users/me falhou na empresa {$empresa->id} ({$empresa->nome}): ".$e->getMessage());
+            }
+        }
+
+        $cust = CustId::normaliza((string) $empresa->cust_id);
+        if ($cust !== '' && ($contato['email'] === null || $contato['telefone'] === null)) {
+            try {
+                $c = app(EcfDriveService::class)->cliente($cust);
+                $juntar('ECF Drive', null, $c['email'] ?? null, $c['telefone'] ?? null);
+            } catch (\Throwable $e) {
+                Log::warning("[Portal Polos] ECF Drive falhou na empresa {$empresa->id} ({$empresa->nome}), cust {$cust}: ".$e->getMessage());
+            }
+        }
+
+        return $contato;
+    }
+
+    /**
+     * Completa só os campos de contato VAZIOS de um cadastro já existente.
+     *
+     * `saveQuietly()` de propósito: `email_cliente`/`nome_contato` são campos-
+     * gatilho do `CompanyGatilhoContratoObserver`, e reavaliar contrato de um
+     * cadastro que não tem (nem terá) contrato é ruído. O registro fica no
+     * activity log abaixo, com os nomes dos campos.
+     */
+    private function completarContato(Company $company, array $contato, User $quem): void
+    {
+        $mapa = ['nome_contato' => 'nome', 'email_cliente' => 'email', 'telefone' => 'telefone'];
+        $preenchidos = [];
+
+        foreach ($mapa as $coluna => $chave) {
+            if (blank($company->{$coluna}) && filled($contato[$chave] ?? null)) {
+                $company->{$coluna} = $contato[$chave];
+                $preenchidos[] = $coluna;
+            }
+        }
+
+        if ($preenchidos === []) {
+            return;
+        }
+
+        $company->saveQuietly();
+
+        activity('portal')
+            ->causedBy($quem)
+            ->performedOn($company)
+            ->withProperties(['campos' => $preenchidos, 'contato_de' => $contato['fontes']])
+            ->log('Contato do cliente sugerido para o portal');
+    }
+
+    /** E-mail válido que NÃO seja uma conta da ECF nem o alias do ML. */
+    private function emailDoCliente(?string $email, array $daEcf): ?string
+    {
+        $email = mb_strtolower(trim((string) $email));
+
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL) || in_array($email, $daEcf, true)) {
+            return null;
+        }
+
+        $dominio = substr(strrchr($email, '@'), 1);
+        if (in_array($dominio, [...self::DOMINIOS_DA_ECF, self::DOMINIO_ALIAS_ML], true)) {
+            return null;
+        }
+
+        return $email;
+    }
+
+    /** Telefone no formato do cadastro, `(11) 99999-9999`; fora do padrão passa como veio. */
+    private function telefone(?string $telefone): ?string
+    {
+        $digitos = preg_replace('/\D/', '', (string) $telefone);
+
+        if (strlen($digitos) >= 12 && str_starts_with($digitos, '55')) {
+            $digitos = substr($digitos, 2);
+        }
+
+        return match (strlen($digitos)) {
+            11      => sprintf('(%s) %s-%s', substr($digitos, 0, 2), substr($digitos, 2, 5), substr($digitos, 7)),
+            10      => sprintf('(%s) %s-%s', substr($digitos, 0, 2), substr($digitos, 2, 4), substr($digitos, 6)),
+            0       => null,
+            default => trim((string) $telefone),
+        };
     }
 
     /**

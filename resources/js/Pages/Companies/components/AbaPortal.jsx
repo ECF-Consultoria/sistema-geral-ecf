@@ -207,7 +207,7 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false, onLiberada }) {
 
             <p className="text-white/40 text-[12px]">
                 Entrar no portal abre a mesma tela que o cliente vê, numa aba nova e no seu nome — o que você fizer lá fica registrado como seu.
-                {totalPolos > 0 && ' Empresa dos Polos ainda sem cadastro: "Liberar portal" cria o cadastro dela para o portal (sem Cust ID e sem contrato) e já abre o "Dar acesso".'}
+                {totalPolos > 0 && ' Empresa dos Polos ainda sem cadastro: "Liberar portal" cria o cadastro dela para o portal (sem Cust ID e sem contrato) e já abre o "Dar acesso", com o contato do cliente puxado da conta do Mercado Livre ou do ECF Drive quando houver.'}
             </p>
 
             <Card>
@@ -278,7 +278,21 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false, onLiberada }) {
                                             </div>
                                         ) : (
                                         <div className="flex items-center justify-end gap-1.5">
-                                            {podeGerirPortal && (
+                                            {/* Polos ainda sem login: o "Dar acesso" passa pelo
+                                                "Liberar", que completa o contato vazio do cadastro
+                                                (conta do ML / ECF Drive) antes de abrir o formulário. */}
+                                            {podeGerirPortal && e.polos && e.logins.logins === 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => liberar(e)}
+                                                    disabled={liberando !== null}
+                                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] text-white/45 hover:text-white/85 hover:bg-white/[0.05] transition-colors disabled:opacity-50"
+                                                    title="Busca o contato do cliente e abre o Dar acesso"
+                                                >
+                                                    <UserPlus size={13} /> {liberando === e.chave ? 'Buscando contato…' : 'Dar acesso'}
+                                                </button>
+                                            )}
+                                            {podeGerirPortal && !(e.polos && e.logins.logins === 0) && (
                                                 <Link
                                                     href={route('companies.index', { tab: 'portal', sub: 'acessos', portal_company: e.id })}
                                                     className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] text-white/45 hover:text-white/85 hover:bg-white/[0.05] transition-colors"

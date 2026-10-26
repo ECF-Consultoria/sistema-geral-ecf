@@ -2009,3 +2009,19 @@ três desenhos: criar o cadastro **na hora, só para a empresa liberada** (não 
   (§2), porque `PortalPpaService` chega à Company por `mlb_empresas.company_id`.
 - Testes: `tests/Feature/PortalCliente/PolosNoPortalTest.php` (recorte, cadastro mínimo, idempotência, 404, 403,
   Comercial e aba Empresas limpos). Falhas antigas que seguem iguais: as 3 do §51.
+
+### 53.1 O contato do cliente Polos NÃO está nas tabelas dos Polos (medido em produção, 26/10/2026)
+
+Pedido seguinte: o "Dar acesso" vir com e-mail/telefone do cliente. Nas 464 Polos: `mlb_implementacoes.nome_contato`
+vazio em TODAS; `mlb_empresas.gmail` preenchido em 331, mas **todos são contas da ECF** (146 `@ecfconsultoria.com.br`,
+69 `@polosmoveis.com.br`, o resto gmails com "ecf" no nome; 306 iguais ao `gmail_colaborador`). O portal manda o código
+de login para esse e-mail — com um deles o código chega à ECF. A planilha Polos não tem coluna de contato e
+`company_grants` não tem linha para nenhum Cust de Polos.
+
+O que existe: **`/users/me` da conta ML conectada** (58 das 464 com token ativo em `ml_tokens.mlb_empresa_id`) e o
+**ECF Drive** `/clientes/{cust}` (campos `email`/`telefone`, cobertura não medida — a amostra veio vazia, `enrichedAt`
+nulo). `PolosNoPortalService::contatoDoCliente()` usa os dois nessa ordem, cada um só completa o que faltou, descarta
+domínio da ECF, o alias `@mail.mercadolivre.com` e os dois e-mails da própria empresa Polos; o aviso verde diz a fonte.
+Busca FORA da transação (HTTP não segura a trava da linha). Em cadastro que já existe só completa campo VAZIO, com
+`saveQuietly()` — `email_cliente`/`nome_contato` são gatilho do `CompanyGatilhoContratoObserver`. Por isso o "Dar acesso"
+de Polos ainda sem login também passa pela rota de liberar.

@@ -66,14 +66,24 @@ class PortalUsuarioController extends Controller
     {
         abort_unless($polos->noRecorte($mlbEmpresa), 404);
 
-        $jaTinha = $mlbEmpresa->company_id !== null;
-        $company = $polos->liberar($mlbEmpresa, $request->user());
+        ['company' => $company, 'criado' => $criado, 'contato' => $contato] = $polos->liberar($mlbEmpresa, $request->user());
+        $company->refresh();
+
+        $abertura = $criado
+            ? "Portal liberado para {$company->name}."
+            : "{$company->name} já tinha cadastro.";
+
+        // O "Dar acesso" pré-preenche com o contato do cadastro; o aviso diz de
+        // onde ele veio para quem vai revisar — ou que precisa digitar à mão.
+        $sobreContato = match (true) {
+            $contato['fontes'] !== [] => ' Contato sugerido pela '.implode(' e pelo ', $contato['fontes']).': confira antes de dar acesso.',
+            blank($company->email_cliente) => ' Não achei o e-mail do cliente (sem conta do Mercado Livre conectada e nada no ECF Drive): digite à mão.',
+            default => '',
+        };
 
         return redirect()
             ->route('companies.index', ['tab' => 'portal', 'sub' => 'acessos', 'portal_company' => $company->id])
-            ->with('success', $jaTinha
-                ? "{$company->name} já tinha cadastro. Agora é só dar acesso."
-                : "Portal liberado para {$company->name}. Agora é só dar acesso a quem do cliente vai entrar.");
+            ->with('success', $abertura.$sobreContato);
     }
     public function store(Request $request)
     {
