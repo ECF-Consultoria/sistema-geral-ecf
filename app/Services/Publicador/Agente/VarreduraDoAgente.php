@@ -58,7 +58,9 @@ class VarreduraDoAgente
                     return;
                 }
                 $resumo['lojas']++;
-                foreach ($this->candidatos($conta) as $pub) {
+                // ⚠️ O cooldown é lido DA CONFIGURAÇÃO DESTA LOJA, dentro do laço — cada loja tem o
+                // seu, e `null` resolve para as mesmas 24 h de antes.
+                foreach ($this->candidatos($conta, $cfg->cooldownEfetivo()) as $pub) {
                     $resumo['pedidos']++;
                     try {
                         $r = $this->entrada->pedir($conta, $pub, PubAgenteExecucao::ORIGEM_AUTOMATICA);
@@ -78,15 +80,35 @@ class VarreduraDoAgente
     }
 
     /** @return iterable<PubProduto> */
-    private function candidatos(array $conta): iterable
+    private function candidatos(array $conta, int $cooldown): iterable
     {
         return $this->programas->produtosQuery($conta['mlb_empresa'], $conta['company'])
             ->whereNull('produto_base_id')
             ->whereIn('id', PubRascunho::query()->select('produto_id'))
             ->whereNotIn('id', PubAprovacaoOferta::query()->whereNotNull('produto_id')->select('produto_id'))
+            // ⚠️⚠️ **O COOLDOWN (26/10/2026), E ELE FECHOU UM LAÇO DE GASTO.**
+            //
+            // Antes esta exclusão tinha um cooldown **de fato** de 24 h — mas **só para
+            // `BLOQUEADA`**. ⚠️ **`FALHOU` não era excluído por nada**, então um produto cuja
+            // preparação falhou podia ser repescado na **passada seguinte** do agendador, e cada
+            // passada gasta chamada de IA **paga**. O plano é explícito: *"não trocar segurança
+            // contra velocidade aparente"*.
+            //
+            // ➡️ Agora o cooldown é **por loja** e cobre **os dois desfechos de "não deu certo"**.
+            // ⚠️ `CANCELADA` fica **de fora de propósito**: cancelar não é falhar, e quem cancela
+            // pode querer pedir de novo em seguida — pôr cooldown ali faria o sistema recusar o
+            // próprio gesto da pessoa, sem explicação.
+            //
+            // ⚠️ O corte usa `cooldownEfetivo()`, e **`null` na coluna resolve para as mesmas 24 h
+            // de antes** — é o que faz esta mudança não alterar nenhuma loja existente.
             ->whereNotIn('id', PubAgenteExecucao::query()->whereNotNull('produto_id')
                 ->where(fn ($q) => $q->whereIn('estado', [...PubAgenteExecucao::VIVAS, ...PubAgenteExecucao::TERMINADAS_COM_RESULTADO])
-                    ->orWhere(fn ($b) => $b->where('estado', PubAgenteExecucao::BLOQUEADA)->where('concluida_em', '>=', now()->subDay())))
+                    ->orWhere(fn ($b) => $b
+                        ->whereIn('estado', [PubAgenteExecucao::BLOQUEADA, PubAgenteExecucao::FALHOU])
+                        // ⚠️ `>=` sobre o corte: com cooldown **0** o corte é `now()` e a linha com
+                        // `concluida_em` exatamente agora ainda sai da lista nesta passada — a
+                        // seguinte já a aceita. Zero é "sem espera", não "no mesmo instante".
+                        ->where('concluida_em', '>=', now()->subMinutes($cooldown))))
                 ->select('produto_id'))
             ->orderBy('id')
             ->limit(self::POR_PASSADA)

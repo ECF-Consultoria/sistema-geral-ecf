@@ -56,6 +56,14 @@ class LeituraDoAgente
                 'estoque_minimo' => (int) $cfg->estoque_minimo,
                 'limite_diario' => (int) $cfg->limite_diario,
                 'teto_fila' => (int) $cfg->teto_fila,
+                // ⚠️ O ritmo vai CRU (pode ser `null` = "use o padrão") **e** resolvido, porque a
+                // tela precisa dos dois: o campo mostra o cru (vazio = padrão) e a frase de apoio
+                // mostra o efetivo. Mandar só o resolvido faria o campo vazio virar "1440" ao
+                // salvar, fixando na loja um valor que ela nunca escolheu.
+                'cooldown_minutos' => $cfg->cooldown_minutos === null ? null : (int) $cfg->cooldown_minutos,
+                'cooldown_efetivo' => $cfg->cooldownEfetivo(),
+                'tentativas_max' => $cfg->tentativas_max === null ? null : (int) $cfg->tentativas_max,
+                'tentativas_efetivas' => $cfg->tentativasEfetivas(),
                 'janela_inicio' => $cfg->janela_inicio ? substr((string) $cfg->janela_inicio, 0, 5) : null,
                 'janela_fim' => $cfg->janela_fim ? substr((string) $cfg->janela_fim, 0, 5) : null,
                 // ⚠️ O calendário (E1): `[1..7]` em ISO. **Nulo vai como `[]` para a tela**, porque lá

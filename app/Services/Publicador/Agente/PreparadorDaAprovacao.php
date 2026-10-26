@@ -34,8 +34,14 @@ use Illuminate\Support\Facades\Log;
  */
 class PreparadorDaAprovacao
 {
-    /** Quantas vezes a cadeia de texto que morreu é pedida de novo antes de bloquear (AG-06). */
-    public const MAX_TENTATIVAS = 2;
+    // ⚠️⚠️ **`MAX_TENTATIVAS` SAIU DAQUI EM 26/10/2026, e o motivo é "uma fonte só".**
+    //
+    // O máximo de tentativas passou a ser opção da loja (`tentativas_max`), e o padrão vive em
+    // `PubAgenteConfiguracao::TENTATIVAS_PADRAO` — que é o valor que `null` na coluna resolve.
+    // Deixar a constante aqui com o mesmo `2` criaria **duas fontes do mesmo número**, e duas
+    // cópias divergem: alguem mudaria o padrão num lugar e o outro seguiria valendo em silêncio.
+    // ⚠️ Medido antes de remover: **ninguém fora desta classe a usava** (os outros
+    // `MAX_TENTATIVAS` do projeto são de `PortalCodigoAcesso`, outra classe).
 
     public function __construct(
         private ProgramasPublicadorService $programas,
@@ -190,14 +196,30 @@ class PreparadorDaAprovacao
 
     /**
      * A cadeia de texto morreu (Job perdido, erro da IA, desistiu de esperar) ou nunca começou para estes fatos:
-     * pede o preparo de novo — `avaliarIa` refaz só as etapas que não deram certo — até `MAX_TENTATIVAS` vezes.
+     * pede o preparo de novo — `avaliarIa` refaz só as etapas que não deram certo — até o máximo
+     * da LOJA (`tentativas_max`, 26/10/2026; `null` resolve para `PubAgenteConfiguracao::TENTATIVAS_PADRAO`).
      * Depois disso bloqueia com o motivo: a pessoa escreve o texto no editor e pede "Preparar agora".
      */
     private function recuperarTexto(PubAgenteExecucao $execucao, PubProduto $pub, string $texto): string
     {
-        if ($execucao->tentativas >= self::MAX_TENTATIVAS) {
+        // ⚠️⚠️ **O MÁXIMO PASSOU A SER POR LOJA (26/10/2026).** Era a constante
+        // `MAX_TENTATIVAS` desta classe, que **foi removida** para não duplicar o número: o
+        // padrão passou a viver **só** em `PubAgenteConfiguracao::TENTATIVAS_PADRAO`, que é o que
+        // `null` na coluna resolve. Logo nenhuma loja existente muda de comportamento.
+        //
+        // ⚠️ A configuração é lida pelo `configuracao_id` **da execução**, não pela conta: a
+        // execução guarda com que configuração foi admitida, e mudar o limite no meio de um preparo
+        // em curso não deve reescrever a regra que já valia para ele. Sem a linha (configuração
+        // apagada, `nullOnDelete`), cai no padrão — nunca em zero por omissão, que faria a
+        // recuperação morrer na primeira falha.
+        $maximo = ($execucao->configuracao_id === null
+            ? null
+            : PubAgenteConfiguracao::query()->whereKey($execucao->configuracao_id)->first()
+        )?->tentativasEfetivas() ?? PubAgenteConfiguracao::TENTATIVAS_PADRAO;
+
+        if ($execucao->tentativas >= $maximo) {
             return $this->bloquear($execucao, 'texto_nao_concluido',
-                'A IA não concluiu o texto depois de '.self::MAX_TENTATIVAS.' tentativa(s). Escreva no editor e peça "Preparar agora".');
+                'A IA não concluiu o texto depois de '.$maximo.' tentativa(s). Escreva no editor e peça "Preparar agora".');
         }
 
         $situacao = $this->preparo()->avaliarIa($pub);

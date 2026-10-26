@@ -221,6 +221,12 @@ function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], copia = null,
         janela_fim: texto(doRascunho?.janela_fim ?? configuracao?.janela_fim, ''),
         // ⚠️ ISO: 1 = segunda … 7 = domingo. Vazio = todo dia (o servidor normaliza para `null`).
         dias_semana: lista(doRascunho?.dias_semana ?? configuracao?.dias_semana).map((d) => numero(d)).filter((d) => d >= 1 && d <= 7),
+        // ⚠️⚠️ O ritmo (26/10/2026) guarda o valor CRU, e **vazio significa "use o padrão"** —
+        // não o padrão escrito no campo. Se a tela preenchesse 1440 aqui, salvar **fixaria** na
+        // loja um número que ela nunca escolheu, e ela deixaria de acompanhar o padrão se ele
+        // mudar. ⚠️ E **`0` é valor válido** ("sem espera"), por isso `?? ''` e nunca `|| ''`.
+        cooldown_minutos: (doRascunho?.cooldown_minutos ?? configuracao?.cooldown_minutos) ?? '',
+        tentativas_max: (doRascunho?.tentativas_max ?? configuracao?.tentativas_max) ?? '',
     });
     const [form, setForm] = useState(inicial);
     // Outra versão chegou do servidor (salvou, ou recarregou depois de um conflito): o formulário a acompanha.
@@ -240,6 +246,11 @@ function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], copia = null,
             janela_inicio: form.janela_inicio || null,
             janela_fim: form.janela_fim || null,
             dias_semana: lista(form.dias_semana),
+            // ⚠️ Vazio volta como `null` ("use o padrão"); `0` volta como `0` ("sem espera" /
+            // "não repita"). Um `|| null` aqui transformaria o **0** em padrão e a loja receberia o
+            // OPOSTO do que pediu — é a mesma armadilha do falsy que o servidor evita com `=== null`.
+            cooldown_minutos: form.cooldown_minutos === '' ? null : numero(form.cooldown_minutos),
+            tentativas_max: form.tentativas_max === '' ? null : numero(form.tentativas_max),
             versao_esperada: numero(configuracao?.versao),
         });
     };
@@ -323,7 +334,35 @@ function FormularioDaConfiguracao({ configuracao, diasOpcoes = [], copia = null,
                     até
                     <input type="time" value={form.janela_fim} onChange={campo('janela_fim')} className={entrada} />
                 </label>
+                {/* ⚠️ O RITMO (26/10/2026). Placeholder com o PADRÃO, campo vazio = padrão — o
+                    número NÃO é escrito no valor, para salvar não fixar na loja algo que ela não
+                    escolheu. A unidade está no rótulo, como nos vizinhos. */}
+                <label className="text-[12px] text-pub-txt-3">
+                    Espera antes de tentar o mesmo produto (minutos)
+                    <input
+                        type="number" min="0" max="10080" value={form.cooldown_minutos}
+                        placeholder={`padrão: ${numero(configuracao?.cooldown_efetivo ?? 1440)}`}
+                        onChange={campo('cooldown_minutos')} className={entrada}
+                    />
+                </label>
+                <label className="text-[12px] text-pub-txt-3">
+                    Tentativas de texto por produto
+                    <input
+                        type="number" min="0" max="5" value={form.tentativas_max}
+                        placeholder={`padrão: ${numero(configuracao?.tentativas_efetivas ?? 2)}`}
+                        onChange={campo('tentativas_max')} className={entrada}
+                    />
+                </label>
             </div>
+            {/* ⚠️⚠️ A FRASE QUE EVITA DUAS LEITURAS ERRADAS: que campo vazio está "faltando", e que
+                `0` é a mesma coisa que vazio. São estados diferentes e a tela diz os dois. */}
+            <p className="text-[11px] text-pub-txt-4">
+                Campo de ritmo em branco usa o padrão do sistema
+                ({numero(configuracao?.cooldown_efetivo ?? 1440)} min de espera e{' '}
+                {numero(configuracao?.tentativas_efetivas ?? 2)} tentativa(s)). Zero é diferente de
+                vazio: zero significa sem espera e sem repetir. A espera vale para o que o agente faz
+                sozinho — o "Preparar agora" não espera.
+            </p>
 
             {/* ⚠️ O CALENDÁRIO (E1, 23/10/2026). Botão de alternar, não `<select multiple>`: sete opções
                 cabem na linha e `multiple` exige Ctrl+clique, que ninguém descobre.

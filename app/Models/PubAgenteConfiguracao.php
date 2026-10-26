@@ -30,7 +30,27 @@ class PubAgenteConfiguracao extends Model
         // ⚠️ `dias_semana` entrou em 23/10/2026 (E1) e **tem de estar aqui**: sem ele, o snapshot de
         // uma versão não explicaria por que uma execução foi recusada por `AG-01-JANELA` num domingo.
         'janela_inicio', 'janela_fim', 'dias_semana', 'escopo',
+        // ⚠️ O ritmo (26/10/2026): entram no snapshot porque explicam por que uma execução foi
+        // ou não repescada, e quantas vezes a cadeia de texto foi repedida.
+        'cooldown_minutos', 'tentativas_max',
     ];
+
+    /**
+     * ⚠️⚠️ **OS DEFAULTS QUE PRESERVAM O COMPORTAMENTO DE HOJE.** As duas colunas de ritmo
+     * nascem `null` em toda loja existente, e `null` resolve para **exatamente** o que já valia:
+     *
+     *   · **1440 min (24 h)** — é o cooldown **de fato** que `VarreduraDoAgente::candidatos()` já
+     *     aplicava a `BLOQUEADA` (`concluida_em >= now()->subDay()`), medido em 26/10;
+     *   · **2 tentativas** — era a constante `MAX_TENTATIVAS` de `PreparadorDaAprovacao`, e ela
+     *     **foi removida de lá** para o número não existir em dois lugares. ⚠️ **Este é agora o
+     *     ÚNICO lugar onde esse padrão vive**, e há gate cobrando que nenhuma outra classe do
+     *     agente volte a declarar um máximo de tentativas próprio.
+     *
+     * ➡️ É por isso que o deploy desta fatia **não muda o comportamento de nenhuma loja**.
+     */
+    public const COOLDOWN_PADRAO_MINUTOS = 1440;
+
+    public const TENTATIVAS_PADRAO = 2;
 
     /** Os dias da semana em **ISO-8601**: 1 = segunda … 7 = domingo. */
     public const DIAS_ISO = [1, 2, 3, 4, 5, 6, 7];
@@ -56,7 +76,31 @@ class PubAgenteConfiguracao extends Model
         'teto_fila' => 'integer',
         'escopo' => 'array',
         'dias_semana' => 'array',
+        'cooldown_minutos' => 'integer',
+        'tentativas_max' => 'integer',
     ];
+
+    /**
+     * O cooldown efetivo, em minutos — `null` na coluna significa o padrão de hoje.
+     *
+     * ⚠️ **Zero é um valor VÁLIDO e significa "sem espera"**, e por isso a resolução testa
+     * `=== null` e nunca `?:` nem `??` sobre falsy: com `?:`, um cooldown de **0** cairia no
+     * padrão de 24 h e a loja receberia o oposto do que pediu.
+     */
+    public function cooldownEfetivo(): int
+    {
+        return $this->cooldown_minutos === null ? self::COOLDOWN_PADRAO_MINUTOS : (int) $this->cooldown_minutos;
+    }
+
+    /**
+     * Quantas vezes a cadeia de texto é repedida — `null` na coluna significa o padrão de hoje.
+     *
+     * ⚠️ Mesma razão do `cooldownEfetivo()`: **zero é válido** e significa *"não repita"*.
+     */
+    public function tentativasEfetivas(): int
+    {
+        return $this->tentativas_max === null ? self::TENTATIVAS_PADRAO : (int) $this->tentativas_max;
+    }
 
     public function versoes(): HasMany
     {

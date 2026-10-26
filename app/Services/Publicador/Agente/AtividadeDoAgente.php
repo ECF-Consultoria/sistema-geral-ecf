@@ -138,6 +138,11 @@ class AtividadeDoAgente
         'janela_fim' => 'Para de preparar às',
         'dias_semana' => 'Dias da semana',
         'escopo' => 'Escopo de produtos',
+        // ⚠️ O ritmo (26/10/2026). ⚠️ **Entraram aqui porque o gate da bijeção os EXIGIU:** ele
+        // reprovou no mesmo instante em que as duas chaves entraram em `CHAVES_DA_VERSAO`, dizendo
+        // que sem rótulo elas apareceriam **cruas** na tela. Foi o gate fazendo o trabalho dele.
+        'cooldown_minutos' => 'Espera antes de tentar de novo',
+        'tentativas_max' => 'Tentativas de texto',
     ];
 
     /**
@@ -647,6 +652,23 @@ class AtividadeDoAgente
             return $incluir === 0 && $excluir === 0
                 ? 'todos os produtos'
                 : "{$incluir} incluído(s), {$excluir} excluído(s)";
+        }
+
+        // ⚠️⚠️ **O RITMO VEM ANTES DO `null` GENÉRICO, e a razão é que para ele `null` NÃO É "sem".**
+        //
+        // Nestes dois campos `null` significa **"use o padrão do sistema"**, e `0` significa **"sem
+        // espera" / "não repita"** — são estados DIFERENTES. Se caíssem no `'sem'` lá embaixo, o
+        // diff leria *"Espera: sem → 30 min"* onde na verdade era *"padrão (1440 min) → 30 min"*,
+        // e a pessoa concluiria que o agente não esperava nada antes. É o contrário da verdade.
+        if ($campo === 'cooldown_minutos') {
+            return $valor === null
+                ? 'padrão ('.PubAgenteConfiguracao::COOLDOWN_PADRAO_MINUTOS.' min)'
+                : ((int) $valor === 0 ? 'sem espera' : ((int) $valor).' min');
+        }
+        if ($campo === 'tentativas_max') {
+            return $valor === null
+                ? 'padrão ('.PubAgenteConfiguracao::TENTATIVAS_PADRAO.')'
+                : ((int) $valor === 0 ? 'nenhuma' : ((int) $valor).' tentativa(s)');
         }
 
         if ($valor === null || $valor === '') {

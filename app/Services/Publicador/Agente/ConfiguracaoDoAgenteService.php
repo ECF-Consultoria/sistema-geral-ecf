@@ -156,6 +156,13 @@ class ConfiguracaoDoAgenteService
             'estoque_minimo' => ['sometimes', 'integer', 'min:0', 'max:100000'],
             'limite_diario' => ['sometimes', 'integer', 'min:0', 'max:1000'],
             'teto_fila' => ['sometimes', 'integer', 'min:0', 'max:1000'],
+            // ⚠️ O ritmo (26/10/2026). `nullable` significa "use o padrão"; **0 é válido** e
+            // significa "sem espera" / "não repita" — são coisas diferentes de `null`.
+            // ⚠️ Teto de 7 dias no cooldown: mais que isso não é ritmo, é desligar o agente para
+            // aquele produto — e para desligar existe o liga/desliga, que é visível na tela.
+            'cooldown_minutos' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:10080'],
+            // ⚠️ Teto de 5: cada tentativa gasta chamada de IA **paga**.
+            'tentativas_max' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:5'],
             'janela_inicio' => ['sometimes', 'nullable', 'date_format:H:i'],
             'janela_fim' => ['sometimes', 'nullable', 'date_format:H:i'],
             // ⚠️ O calendário (E1, 23/10/2026): `[1..7]` em ISO, 1 = segunda … 7 = domingo.

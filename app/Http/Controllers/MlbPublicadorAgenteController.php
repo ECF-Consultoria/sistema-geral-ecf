@@ -107,6 +107,9 @@ class MlbPublicadorAgenteController extends Controller
             'janela_fim' => ['nullable', 'date_format:H:i'],
             // ⚠️ O calendário (E1, 23/10/2026): ISO, 1 = segunda … 7 = domingo. Lista vazia é válida e
             // significa "todo dia" — o serviço a normaliza para `null`.
+            // ⚠️ O ritmo (26/10/2026): nulo = padrão; 0 = sem espera / não repetir.
+            'cooldown_minutos' => ['nullable', 'integer', 'min:0', 'max:10080'],
+            'tentativas_max' => ['nullable', 'integer', 'min:0', 'max:5'],
             'dias_semana' => ['nullable', 'array'],
             'dias_semana.*' => ['integer', 'between:1,7'],
         ]);
