@@ -79,7 +79,7 @@ class LoginDoPortalTest extends TestCase
         $usuario = $this->usuario($empresa);
         $codigo = $this->pedirCodigo($usuario);
         $this->withSession(['portal_equipe_user_id' => 999])->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $codigo])
-            ->assertRedirect(route('portal.auth.inicio'))->assertSessionMissing('portal_equipe_user_id');
+            ->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]))->assertSessionMissing('portal_equipe_user_id');
         $this->assertAuthenticatedAs($usuario, 'portal');
     }
 
@@ -104,7 +104,7 @@ class LoginDoPortalTest extends TestCase
         $this->assertMatchesRegularExpression('/^\d{6}$/', $codigo);
 
         $this->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $codigo])
-            ->assertRedirect(route('portal.auth.inicio'));
+            ->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]));
 
         $this->assertAuthenticatedAs($usuario, 'portal');
         $this->assertSame($empresa->id, session('portal_empresa_id'));

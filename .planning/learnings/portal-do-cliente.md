@@ -2025,3 +2025,49 @@ domínio da ECF, o alias `@mail.mercadolivre.com` e os dois e-mails da própria 
 Busca FORA da transação (HTTP não segura a trava da linha). Em cadastro que já existe só completa campo VAZIO, com
 `saveQuietly()` — `email_cliente`/`nome_contato` são gatilho do `CompanyGatilhoContratoObserver`. Por isso o "Dar acesso"
 de Polos ainda sem login também passa pela rota de liberar.
+
+## 54. Multi-abas: a empresa do portal foi para o ENDEREÇO (26/10/2026)
+
+Relato do usuário: com dois portais abertos (modo equipe), voltar à primeira aba mostrava a última empresa aberta. Era
+pior do que a tela: a empresa vinha só de `session('portal_empresa_id')`, uma sessão para todas as abas — o **salvar da
+aba antiga gravava na última empresa aberta**. E `PortalEquipeController::abrirSessaoDeEquipe()` fazia `invalidate()` a
+cada "Entrar no portal", então nem guardar várias empresas na sessão bastaria.
+
+O desenho (escolha do usuário entre "empresa no endereço" e "só a equipe, por cabeçalho"):
+
+- **Rotas:** o grupo `portal.auth` virou `prefix('portal/{portalEmpresa}')` com `where [0-9]+`; os 99 nomes de rota não
+  mudaram. `EnsurePortalAutenticado` confere o número a cada requisição — cliente: `podeVer()`; equipe: a empresa
+  precisa estar em `PortalContexto::SESSAO_EMPRESAS_EQUIPE` (`[id => 'passagem'|'link']`, cada uma aberta pela porta da
+  equipe, o que mantém a auditoria por empresa) **e** `podeEntrar()`. Depois põe a empresa em
+  `request()->attributes` (`PortalContexto::empresa()` lê dali), faz `URL::defaults` com ela e
+  **`forgetParameter()`** — os controllers recebem os parâmetros POR POSIÇÃO; sem isso `renomearFamilia(Request, int
+  $lista)` receberia o id da empresa.
+- **Recusas:** cliente em empresa que não é dele → GET volta ao Início da padrão (`Inertia::location`), escrita 403.
+  Equipe em empresa que não abriu → 403 **sem derrubar a sessão** (as outras abas seguem). Perder a carteira ainda
+  derruba tudo, como antes.
+- **`'0'` = "a empresa da sessão"** — `URL::defaults(['portalEmpresa' => '0'])` no `AppServiceProvider`. É o que sai de
+  `route('portal.auth.…')` fora de uma requisição do portal (os 474 `route()` de 69 arquivos de teste, jobs, telas do
+  admin). Texto, não número: o Ziggy trata `0` numérico como "sem padrão" e lançaria "parameter is required". Chegando
+  por `/portal/0/…`, `Inertia::resolveUrlUsing` troca a URL da página pelo número real (o F5 da aba fica preso nele).
+- **Ziggy:** o `@routes` exporta `URL::defaults` — cada aba nasce com a empresa dela como padrão, e todo `route()` do
+  navegador sai certo sem mexer em JSX. Por isso a **troca de empresa do cliente** (`portal.auth.empresa`) virou
+  `Inertia::location()`: uma visita do Inertia manteria o Ziggy da empresa anterior. Em teste, o `@routes` só imprime
+  os padrões na PRIMEIRA página do processo (`BladeRouteGenerator::$generated` estático) — zere antes de conferir.
+- **Endereço antigo** (`/portal/inicio`, `/portal/ppa?plano=12`, favoritos e WhatsApp): `PortalEnderecoAntigoController`
+  manda GET para o mesmo caminho na empresa da sessão e **não refaz escrita** (iria para a empresa errada — é o defeito
+  corrigido). A rota só casa caminho que começa por letra.
+- **Domínio do cliente:** a allowlist continua escrita SEM a empresa; `RestringeDominioDoPortal::liberado()` tira o
+  número logo depois de `portal/`. `DominioLiberaTodoModuloTest` compara o caminho sem `{portalEmpresa}`.
+- **Outros lugares que olhavam o caminho:** a tradução do 413 de upload em `bootstrap/app.php` (regex ganhou
+  `([0-9]+/)?`). Links para o cliente gerados fora do portal levam a empresa: compartilhar PPA (`$ppa->company_id`) e
+  boas-vindas (`$company->id`).
+- **Local engana:** sem `PORTAL_CLIENTE_DOMINIO`, portal e admin dividem o cookie, e a primeira entrada da equipe (que
+  invalida a sessão) desloga o admin — já era assim. Para ver duas abas localmente, sirva o portal noutro host. E não
+  mexa no `.env` do worktree com testes rodando: o phpunit lê o mesmo `.env`.
+- **Em teste o gerador de URL sobrevive entre requisições** (em produção não: cada requisição começa do zero). O
+  `URL::defaults` da última requisição do portal fica valendo para o `route()` seguinte do teste — e é por isso que
+  `entrarNoPortal()` (`tests/Concerns/EntraNoPortal.php`), o login do cliente e a entrada da equipe também fixam a
+  empresa recém-aberta: teste que troca de empresa no meio geraria o link da anterior. Tentei zerar para `'0'` no fim
+  do middleware e quebrou o lado oposto (redirect com id real × `route()` com `0`) — não faça.
+- Testes: `tests/Feature/PortalCliente/MultiAbasPortalTest.php` (11); 20 arquivos de teste antigos ajustados para o
+  endereço novo (`'/portal/…'` escrito à mão virou `'/portal/0/…'`; redirect pós-login compara com o id da empresa).

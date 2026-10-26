@@ -102,7 +102,7 @@ class OnboardingConectarMlTest extends TestCase
         $destino = $response->headers->get('Location');
 
         // O retorno NÃO viaja na URL do ML — quem o guarda é o state no cache.
-        $this->assertStringNotContainsString('/portal/onboarding', urldecode($destino));
+        $this->assertDoesNotMatchRegularExpression('#/portal/([0-9]+/)?onboarding#', urldecode($destino));
 
         parse_str(parse_url($destino, PHP_URL_QUERY) ?: '', $query);
         $state = $query['state'] ?? null;

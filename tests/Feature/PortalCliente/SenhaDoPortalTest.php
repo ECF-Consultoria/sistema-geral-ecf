@@ -70,7 +70,7 @@ class SenhaDoPortalTest extends TestCase
 
         $this->post(route('portal.senha.entrar'), [
             'email' => $cliente->email, 'senha' => 'senha-boa-123',
-        ])->assertRedirect(route('portal.auth.inicio'));
+        ])->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $cliente->empresaPadrao()->id]));
 
         $this->assertSame($cliente->id, auth('portal')->id());
     }
@@ -292,6 +292,6 @@ class SenhaDoPortalTest extends TestCase
         );
 
         $this->post(route('portal.validar'), ['email' => $cliente->email, 'codigo' => $codigo])
-            ->assertRedirect(route('portal.auth.inicio'));
+            ->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $cliente->empresaPadrao()->id]));
     }
 }

@@ -98,6 +98,15 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
 
+        // Multi-abas do portal (26/10/2026): as rotas `portal.auth.*` levam a
+        // empresa no endereço. Fora de uma requisição do portal (testes, jobs,
+        // telas do admin) quem gera o link nem sempre sabe a empresa — o padrão
+        // "0" quer dizer "a da sessão", como era antes. Dentro do portal o
+        // `EnsurePortalAutenticado` troca este padrão pela empresa conferida.
+        \Illuminate\Support\Facades\URL::defaults([
+            \App\Support\Portal\PortalContexto::PARAMETRO => \App\Support\Portal\PortalContexto::SEM_EMPRESA_NA_URL,
+        ]);
+
         // Phase 26 — Rate limiter para receiver de webhooks do ECF Drive.
         // 600 req/min por IP: cobre ~150 empresas × 6 eventos com margem (D-K do PLAN).
         // Exceder → 429 Too Many Requests. Defesa contra DDoS/replay massivo.

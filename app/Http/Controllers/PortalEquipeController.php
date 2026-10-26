@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Services\Portal\PortalEquipeService;
+use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -71,7 +72,7 @@ class PortalEquipeController extends Controller
 
         $this->abrirSessaoDeEquipe($request, $entrada, porLink: false);
 
-        return redirect()->route('portal.auth.inicio');
+        return redirect()->route('portal.auth.inicio', [PortalContexto::PARAMETRO => $entrada['empresa']->id]);
     }
 
     /**
@@ -92,7 +93,7 @@ class PortalEquipeController extends Controller
 
         $this->abrirSessaoDeEquipe($request, $entrada, porLink: true);
 
-        return redirect()->route('portal.auth.inicio');
+        return redirect()->route('portal.auth.inicio', [PortalContexto::PARAMETRO => $entrada['empresa']->id]);
     }
 
     /**
@@ -102,20 +103,49 @@ class PortalEquipeController extends Controller
      */
     private function abrirSessaoDeEquipe(Request $request, array $entrada, bool $porLink): void
     {
-        // Derruba qualquer sessão de cliente que estivesse aberta neste
-        // navegador. Sem isto, o analista que testou com a conta de um cliente
-        // continuaria com a sessão dela por baixo — e a próxima ação sairia no
-        // nome errado.
-        Auth::guard('portal')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        $membroId = $entrada['membro']->id;
 
-        $request->session()->put(\App\Support\Portal\PortalContexto::SESSAO_EQUIPE, $entrada['membro']->id);
-        $request->session()->put('portal_empresa_id', $entrada['empresa']->id);
+        // Multi-abas (26/10/2026): a MESMA pessoa da ECF entrando em mais uma
+        // empresa soma à sessão que já existe, em vez de apagá-la — senão a
+        // aba da empresa anterior perdia o acesso no clique seguinte.
+        $mesmaPessoa = (int) $request->session()->get(PortalContexto::SESSAO_EQUIPE) === $membroId
+            && ! Auth::guard('portal')->check();
 
-        if ($porLink) {
-            $request->session()->put(\App\Support\Portal\PortalContexto::SESSAO_LINK, true);
+        if ($mesmaPessoa) {
+            $entradas = PortalContexto::empresasDaEquipe();
+
+            // Sessão aberta antes do multi-abas: a empresa dela entra na lista.
+            if ($entradas === [] && ($anterior = (int) $request->session()->get('portal_empresa_id'))) {
+                $entradas[$anterior] = $request->session()->get(PortalContexto::SESSAO_LINK) ? 'link' : 'passagem';
+            }
+
+            // Id de sessão novo a cada entrada, mantendo os dados e o token de
+            // CSRF (as outras abas continuam postando com o token que têm).
+            $request->session()->regenerate();
+        } else {
+            // Derruba qualquer sessão de cliente (ou de outra pessoa da ECF)
+            // que estivesse aberta neste navegador. Sem isto, o analista que
+            // testou com a conta de um cliente continuaria com a sessão dela
+            // por baixo — e a próxima ação sairia no nome errado.
+            Auth::guard('portal')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+            $entradas = [];
         }
+
+        $entradas[$entrada['empresa']->id] = $porLink ? 'link' : 'passagem';
+
+        $request->session()->put(PortalContexto::SESSAO_EQUIPE, $membroId);
+        $request->session()->put(PortalContexto::SESSAO_EMPRESAS_EQUIPE, $entradas);
+        $request->session()->put('portal_empresa_id', $entrada['empresa']->id);
+        \Illuminate\Support\Facades\URL::defaults([PortalContexto::PARAMETRO => (string) $entrada['empresa']->id]);
+
+        // "Sair" decide o destino por aqui: quem só entrou por link aberto não
+        // necessariamente tem login no admin.
+        $soPorLink = ! in_array('passagem', $entradas, true);
+        $soPorLink
+            ? $request->session()->put(PortalContexto::SESSAO_LINK, true)
+            : $request->session()->forget(PortalContexto::SESSAO_LINK);
     }
 
     /**

@@ -163,7 +163,7 @@ class DominioDoPortalTest extends TestCase
         $company = $this->empresa();
         $cliente = $this->clienteDoPortal($company);
 
-        foreach (['/portal/inicio', '/portal/onboarding', '/portal/ppa'] as $uri) {
+        foreach (['/portal/0/inicio', '/portal/0/onboarding', '/portal/0/ppa'] as $uri) {
             $this->entrarNoPortal($company, $cliente);
             $this->noDominioDoCliente($uri)->assertOk();
         }

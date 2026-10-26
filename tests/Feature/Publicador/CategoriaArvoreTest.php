@@ -172,7 +172,7 @@ class CategoriaArvoreTest extends TestCase
 
     public function test_portal_navega_so_com_o_app_token_e_exige_sessao(): void
     {
-        $this->get('/portal/estrutura/produtos/categorias/arvore')->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/categorias/arvore')->assertRedirect();
 
         $empresa = $this->empresaDoGabarito();
         MlToken::create([

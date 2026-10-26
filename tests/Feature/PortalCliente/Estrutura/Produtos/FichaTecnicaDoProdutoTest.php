@@ -163,8 +163,8 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
     public function test_sem_sessao_os_dois_endpoints_mandam_para_a_entrada_do_portal(): void
     {
-        $this->get('/portal/estrutura/produtos/campos-categoria?categoria=MLB1')->assertRedirect();
-        $this->put('/portal/estrutura/produtos/12/ficha-tecnica', [])->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/campos-categoria?categoria=MLB1')->assertRedirect();
+        $this->put('/portal/0/estrutura/produtos/12/ficha-tecnica', [])->assertRedirect();
     }
 
     public function test_o_endpoint_devolve_os_grupos_com_obrigatorios_em_destaque(): void
@@ -360,8 +360,8 @@ class FichaTecnicaDoProdutoTest extends TestCase
         // 404 antes da validação: nem o corpo vazio (que daria 422) nem um válido mudam a resposta.
         $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $alheio->id), $this->ficha())->assertNotFound();
         $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $alheio->id), [])->assertNotFound();
-        $sessao->putJson('/portal/estrutura/produtos/999999/ficha-tecnica', $this->ficha())->assertNotFound();
-        $sessao->putJson('/portal/estrutura/produtos/abc/ficha-tecnica', $this->ficha())->assertNotFound();
+        $sessao->putJson('/portal/0/estrutura/produtos/999999/ficha-tecnica', $this->ficha())->assertNotFound();
+        $sessao->putJson('/portal/0/estrutura/produtos/abc/ficha-tecnica', $this->ficha())->assertNotFound();
 
         $this->assertSame('Original', EstruturaProdutoAtributo::where('produto_id', $alheio->id)->value('valor'));
         $this->assertSame(1, EstruturaProdutoAtributo::count());

@@ -167,6 +167,8 @@ class PortalAuthController extends Controller
 
         Auth::guard('portal')->login($usuario);
         $request->session()->put('portal_empresa_id', $empresa->id);
+        // Links gerados daqui em diante (o destino logo abaixo) já com a empresa.
+        \Illuminate\Support\Facades\URL::defaults([\App\Support\Portal\PortalContexto::PARAMETRO => (string) $empresa->id]);
 
         $this->auditoria->entrou($usuario, $empresa, $request->ip());
 
@@ -194,7 +196,9 @@ class PortalAuthController extends Controller
         $caminho = is_string($pretendido) ? parse_url($pretendido, PHP_URL_PATH) : null;
 
         if (! is_string($caminho) || ! str_starts_with($caminho, '/portal/')) {
-            return route('portal.auth.inicio');
+            return route('portal.auth.inicio', [
+                \App\Support\Portal\PortalContexto::PARAMETRO => (string) $request->session()->get('portal_empresa_id', \App\Support\Portal\PortalContexto::SEM_EMPRESA_NA_URL),
+            ]);
         }
 
         $query = parse_url($pretendido, PHP_URL_QUERY);
@@ -263,6 +267,11 @@ class PortalAuthController extends Controller
 
         $request->session()->put('portal_empresa_id', $dados['company_id']);
 
-        return redirect()->route('portal.auth.inicio');
+        // Multi-abas (26/10/2026): a empresa vai no endereço, e a página
+        // recarrega inteira — os links da aba (Ziggy) nascem no `@routes` com a
+        // empresa, e uma visita do Inertia continuaria gerando os da anterior.
+        $destino = route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => (int) $dados['company_id']]);
+
+        return $request->header('X-Inertia') ? \Inertia\Inertia::location($destino) : redirect()->to($destino);
     }
 }

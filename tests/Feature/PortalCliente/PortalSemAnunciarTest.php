@@ -66,7 +66,7 @@ class PortalSemAnunciarTest extends TestCase
         foreach ($this->rotasRemovidas() as [$metodo, $caminho]) {
             $caminho = str_replace('/ofertas/1/', "/ofertas/{$oferta}/", $caminho);
 
-            $sessao->call($metodo, '/portal'.$caminho)->assertNotFound("{$metodo} /portal{$caminho} deveria ser 404.");
+            $sessao->call($metodo, '/portal/0'.$caminho)->assertNotFound("{$metodo} /portal{$caminho} deveria ser 404.");
         }
 
         // Nada foi criado por essas chamadas.
@@ -81,7 +81,7 @@ class PortalSemAnunciarTest extends TestCase
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
         foreach ($this->rotasRemovidas() as [$metodo, $caminho]) {
-            $sessao->call($metodo, 'http://'.self::DOMINIO.'/portal'.$caminho)
+            $sessao->call($metodo, 'http://'.self::DOMINIO.'/portal/0'.$caminho)
                 ->assertNotFound("{$metodo} {$caminho} deveria ser 404 no domínio do portal.");
         }
     }

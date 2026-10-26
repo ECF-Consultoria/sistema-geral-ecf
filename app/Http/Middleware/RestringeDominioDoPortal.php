@@ -249,6 +249,14 @@ class RestringeDominioDoPortal
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */
     public static function liberado(string $caminho): bool
     {
+        // Multi-abas (26/10/2026): o portal autenticado leva a empresa no
+        // caminho (`portal/{empresa}/…`). A lista continua escrita SEM ela — o
+        // número sai antes de comparar, e só logo depois de `portal/`. Uma rota
+        // fora da lista continua fora: `portal/7/usuarios` vira `portal/usuarios`.
+        if (preg_match('#\Aportal/[0-9]+(/.*)?\z#', $caminho, $m) === 1) {
+            $caminho = 'portal'.($m[1] ?? '');
+        }
+
         // Mesma semântica de `Request::is()`: Str::is sobre o caminho decodificado.
         foreach (self::PERMITIDO as $padrao) {
             if (Str::is($padrao, $caminho)) {

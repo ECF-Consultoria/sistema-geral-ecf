@@ -272,7 +272,10 @@ class PortalClienteTest extends TestCase
         $cliente = $this->clienteDoPortal($minha);
 
         // Pessoa da empresa "Minha", sessão apontando para "Outra".
-        $resposta = $this->entrarNoPortal($outra, $cliente)->get(route('portal.auth.ppa'));
+        // Endereço com "0" = a empresa da SESSÃO (adulterada aqui). O número de
+        // outra empresa no endereço tem teste próprio em MultiAbasPortalTest.
+        $resposta = $this->entrarNoPortal($outra, $cliente)
+            ->get(route('portal.auth.ppa', [\App\Support\Portal\PortalContexto::PARAMETRO => \App\Support\Portal\PortalContexto::SEM_EMPRESA_NA_URL]));
 
         $resposta->assertOk();
         $resposta->assertDontSee('Plano alheio', false);

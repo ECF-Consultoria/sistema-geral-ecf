@@ -64,7 +64,7 @@ class LinkAbertoDeEquipeTest extends TestCase
         $dono = $this->admin();
         $this->naLista($empresa, $dono);
 
-        $this->get($this->link($empresa))->assertRedirect(route('portal.auth.inicio'));
+        $this->get($this->link($empresa))->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]));
 
         $this->assertSame($dono->id, session(PortalContexto::SESSAO_EQUIPE));
         $this->assertSame($empresa->id, session('portal_empresa_id'));
@@ -240,7 +240,7 @@ class LinkAbertoDeEquipeTest extends TestCase
         $linhas = array_values(array_filter(explode("\n", trim(Artisan::output()))));
         $link = end($linhas);
 
-        $this->get($link)->assertRedirect(route('portal.auth.inicio'));
+        $this->get($link)->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]));
     }
 
     #[Test]

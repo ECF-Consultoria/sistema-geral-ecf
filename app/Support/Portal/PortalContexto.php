@@ -35,6 +35,45 @@ class PortalContexto
      */
     public const SESSAO_LINK = 'portal_equipe_por_link';
 
+    // ─── Multi-abas (26/10/2026) ─────────────────────────────────────────
+    //
+    // A empresa passou a ir no ENDEREÇO (`/portal/{portalEmpresa}/...`). Até
+    // aqui ela vinha só da sessão, e a sessão é uma para todas as abas: abrir
+    // o portal de uma segunda empresa trocava a primeira — e o "salvar" de uma
+    // aba antiga gravava na última empresa aberta, não na que a tela mostrava.
+    //
+    // Continua valendo a regra de cima: o número do endereço NÃO decide nada
+    // sozinho. O `EnsurePortalAutenticado` confere, a cada requisição, se quem
+    // está ali pode ver aquela empresa (cliente: `podeVer()`; equipe: entrou
+    // nela pela passagem E `podeEntrar()`), e só então a põe no request.
+
+    /** O parâmetro de rota com a empresa. */
+    public const PARAMETRO = 'portalEmpresa';
+
+    /**
+     * Valor padrão global do parâmetro (AppServiceProvider): "a empresa da
+     * sessão", como era antes. É o que sai de `route('portal.auth.…')` gerado
+     * FORA de uma requisição do portal (testes, jobs, telas do admin). Texto e
+     * não número de propósito: o Ziggy trata `0` numérico como "sem padrão".
+     */
+    public const SEM_EMPRESA_NA_URL = '0';
+
+    /** Onde o middleware deixa a empresa já conferida desta requisição. */
+    public const ATRIBUTO = 'portal_empresa_conferida';
+
+    /**
+     * Empresas em que o membro da EQUIPE entrou nesta sessão, `[id => 'passagem'|'link']`.
+     * Cada uma precisou da porta da equipe — é o que mantém um registro de
+     * auditoria por empresa visitada, mesmo com várias abas abertas.
+     */
+    public const SESSAO_EMPRESAS_EQUIPE = 'portal_equipe_empresas';
+
+    /** @return array<int, string> */
+    public static function empresasDaEquipe(): array
+    {
+        return (array) session(self::SESSAO_EMPRESAS_EQUIPE, []);
+    }
+
     /** Alguém da ECF está dentro do portal deste cliente? */
     public static function modoEquipe(): bool
     {
@@ -101,7 +140,9 @@ class PortalContexto
      */
     public static function empresa(): Company
     {
-        $id = session('portal_empresa_id');
+        // A do endereço, conferida pelo middleware nesta requisição. A sessão
+        // só responde em rota sem empresa no endereço (o que não deveria sobrar).
+        $id = request()->attributes->get(self::ATRIBUTO) ?? session('portal_empresa_id');
 
         if (! $id) {
             throw new \LogicException('Empresa do portal ausente na sessão.');

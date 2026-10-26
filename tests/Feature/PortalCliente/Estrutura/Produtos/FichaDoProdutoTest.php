@@ -51,8 +51,8 @@ class FichaDoProdutoTest extends TestCase
 
     public function test_sem_sessao_as_duas_rotas_mandam_para_a_entrada_do_portal(): void
     {
-        $this->get('/portal/estrutura/produtos/novo')->assertRedirect();
-        $this->get('/portal/estrutura/produtos/12')->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/novo')->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/12')->assertRedirect();
     }
 
     public function test_o_cliente_abre_a_ficha_de_produto_novo(): void
@@ -112,7 +112,7 @@ class FichaDoProdutoTest extends TestCase
         $idAlheio = $this->gravarProdutoDuasVariacoes($outra);
 
         $this->withoutVite()->entrarNoPortal($minha)
-            ->get('/portal/estrutura/produtos/'.$idAlheio)
+            ->get('/portal/0/estrutura/produtos/'.$idAlheio)
             ->assertNotFound();
     }
 
@@ -120,8 +120,8 @@ class FichaDoProdutoTest extends TestCase
     {
         $sessao = $this->withoutVite()->entrarNoPortal($this->empresaDoGabarito());
 
-        $sessao->get('/portal/estrutura/produtos/999999')->assertNotFound();
-        $sessao->get('/portal/estrutura/produtos/abc')->assertNotFound();
+        $sessao->get('/portal/0/estrutura/produtos/999999')->assertNotFound();
+        $sessao->get('/portal/0/estrutura/produtos/abc')->assertNotFound();
     }
 
     public function test_a_equipe_abre_a_ficha(): void
@@ -139,10 +139,10 @@ class FichaDoProdutoTest extends TestCase
         $rotas = app('router')->getRoutes();
         $acao = fn (string $caminho) => $rotas->match(Request::create($caminho, 'GET'))->getActionMethod();
 
-        $this->assertSame('modelo', $acao('/portal/estrutura/produtos/modelo'));
-        $this->assertSame('buscarCategorias', $acao('/portal/estrutura/produtos/categorias'));
-        $this->assertSame('novo', $acao('/portal/estrutura/produtos/novo'));
-        $this->assertSame('ficha', $acao('/portal/estrutura/produtos/12'));
+        $this->assertSame('modelo', $acao('/portal/0/estrutura/produtos/modelo'));
+        $this->assertSame('buscarCategorias', $acao('/portal/0/estrutura/produtos/categorias'));
+        $this->assertSame('novo', $acao('/portal/0/estrutura/produtos/novo'));
+        $this->assertSame('ficha', $acao('/portal/0/estrutura/produtos/12'));
     }
 
     public function test_a_allowlist_libera_so_o_id_numerico_e_o_novo(): void
@@ -163,8 +163,8 @@ class FichaDoProdutoTest extends TestCase
     {
         config(['portal.dominio_cliente' => 'cliente.teste']);
 
-        $this->get('http://cliente.teste/portal/estrutura/produtos/12')->assertRedirect();
-        $this->get('http://cliente.teste/portal/estrutura/produtos/12/x')->assertNotFound();
-        $this->get('http://cliente.teste/portal/estrutura/produtos/abc')->assertNotFound();
+        $this->get('http://cliente.teste/portal/0/estrutura/produtos/12')->assertRedirect();
+        $this->get('http://cliente.teste/portal/0/estrutura/produtos/12/x')->assertNotFound();
+        $this->get('http://cliente.teste/portal/0/estrutura/produtos/abc')->assertNotFound();
     }
 }

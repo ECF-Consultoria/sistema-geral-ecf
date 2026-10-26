@@ -184,7 +184,17 @@ Route::patch('/implementacao/{token}/publicador/frete', [MlbImplementacaoControl
 // route:list mostrava as internas respondendo naquelas URIs.
 //
 // `/entrar` e `/sair` ficam na raiz de propósito: são as que o cliente digita.
-Route::middleware('portal.auth')->prefix('portal')->group(function () {
+//
+// Multi-abas (26/10/2026): a empresa vai no caminho, `/portal/{portalEmpresa}/…`,
+// para cada aba ficar presa à sua. O número é CONFERIDO a cada requisição pelo
+// `portal.auth` (que também o tira dos parâmetros antes do controller); "0" é
+// "a empresa da sessão", o padrão de link gerado fora do portal. Os nomes das
+// rotas não mudaram, e a allowlist do domínio do cliente continua escrita sem
+// a empresa (`RestringeDominioDoPortal::liberado()` tira o número).
+Route::middleware('portal.auth')
+    ->prefix('portal/{portalEmpresa}')
+    ->where(['portalEmpresa' => '[0-9]+'])
+    ->group(function () {
     Route::get('/inicio',     [PortalClienteController::class, 'inicioAutenticado'])->name('portal.auth.inicio');
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspaceAutenticado'])->name('portal.auth.onboarding');
     Route::get('/ppa',        [PortalPpaController::class, 'indexAutenticado'])->name('portal.auth.ppa');
@@ -444,6 +454,16 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // que é o caminho de remover.
     Route::put('/senha', [PortalAuthController::class, 'salvarSenha'])->name('portal.auth.senha');
 });
+
+// Endereços de antes do multi-abas, sem a empresa (`/portal/inicio`,
+// `/portal/ppa?plano=12`): estão em favoritos e no WhatsApp de clientes.
+// Leitura vai para o mesmo caminho na empresa da sessão; escrita NÃO é refeita
+// (iria para a empresa da sessão, que pode não ser a da tela que a mandou).
+// Só casa caminho que começa por letra — `/portal/123/…` é do grupo de cima.
+Route::middleware('portal.auth')
+    ->match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], '/portal/{caminho}', \App\Http\Controllers\PortalEnderecoAntigoController::class)
+    ->where('caminho', '[A-Za-z].*')
+    ->name('portal.endereco-antigo');
 
 // Sair fica fora do prefixo — a sessão morre no mesmo lugar em que nasceu.
 Route::post('/sair', [PortalAuthController::class, 'sair'])

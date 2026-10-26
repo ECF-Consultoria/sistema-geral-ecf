@@ -224,7 +224,7 @@ class AcessoAsSugestoesTest extends TestCase
         $sessao = $this->entrarNoPortal($minha);
 
         $sessao->putJson(route('portal.auth.estrutura.sugestoes.geracao', ['produto' => $alheio->id]), ['qtd_combo' => '2'])->assertNotFound();
-        $sessao->putJson('/portal/estrutura/sugestoes/produtos/abc/geracao', ['qtd_combo' => '2'])->assertNotFound();
+        $sessao->putJson('/portal/0/estrutura/sugestoes/produtos/abc/geracao', ['qtd_combo' => '2'])->assertNotFound();
         $this->assertDatabaseMissing('estrutura_produto_geracao', ['produto_id' => $alheio->id]);
     }
 

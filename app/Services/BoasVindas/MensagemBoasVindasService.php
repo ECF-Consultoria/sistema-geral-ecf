@@ -134,7 +134,7 @@ class MensagemBoasVindasService
         }
 
         $linkSistema = \App\Support\Portal\UrlDoPortal::para('portal.entrada');
-        $linkOauth = \App\Support\Portal\UrlDoPortal::para('portal.auth.onboarding');
+        $linkOauth = \App\Support\Portal\UrlDoPortal::para('portal.auth.onboarding', [\App\Support\Portal\PortalContexto::PARAMETRO => $company->id]);
         if (!PortalUsuario::ativos()->whereHas('empresas', fn ($q) => $q->where('companies.id', $company->id))->exists()) {
             $pendencias[] = 'Cadastre um contato em Acessos do portal antes de enviar as boas-vindas.';
         }

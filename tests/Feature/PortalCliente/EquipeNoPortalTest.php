@@ -170,7 +170,7 @@ class EquipeNoPortalTest extends TestCase
         $empresa = $this->empresa();
 
         $this->get(route('portal.equipe.entrar', ['t' => $this->ticketPara($membro, $empresa)]))
-            ->assertRedirect(route('portal.auth.inicio'));
+            ->assertRedirect(route('portal.auth.inicio', [PortalContexto::PARAMETRO => $empresa->id]));
 
         $this->assertSame($membro->id, session(PortalContexto::SESSAO_EQUIPE));
         $this->assertSame($empresa->id, session('portal_empresa_id'));
@@ -179,10 +179,11 @@ class EquipeNoPortalTest extends TestCase
     #[Test]
     public function a_passagem_serve_uma_vez_so(): void
     {
-        $token = $this->ticketPara($this->admin(), $this->empresa());
+        $empresa = $this->empresa();
+        $token = $this->ticketPara($this->admin(), $empresa);
 
         $this->get(route('portal.equipe.entrar', ['t' => $token]))
-            ->assertRedirect(route('portal.auth.inicio'));
+            ->assertRedirect(route('portal.auth.inicio', [PortalContexto::PARAMETRO => $empresa->id]));
 
         $this->flushSession();
 

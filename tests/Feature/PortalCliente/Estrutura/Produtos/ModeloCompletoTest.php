@@ -500,7 +500,7 @@ class ModeloCompletoTest extends TestCase
 
     public function test_baixar_recusa_categoria_que_nao_e_a_ultima_do_ramo_ou_invalida_e_exige_sessao(): void
     {
-        $this->get('/portal/estrutura/produtos/modelo-completo?categorias[]=MLB1')->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/modelo-completo?categorias[]=MLB1')->assertRedirect();
 
         $sessao = $this->entrarNoPortal($this->empresaDoGabarito());
         $rota = fn (array $c) => route('portal.auth.estrutura.produtos.modelo_completo', ['categorias' => $c]);
@@ -805,7 +805,7 @@ class ModeloCompletoTest extends TestCase
 
     public function test_meus_produtos_sem_nenhum_produto_responde_404_e_exige_sessao(): void
     {
-        $this->get('/portal/estrutura/produtos/exportar-completo')->assertRedirect();
+        $this->get('/portal/0/estrutura/produtos/exportar-completo')->assertRedirect();
         $this->entrarNoPortal($this->empresaDoGabarito())->get(route('portal.auth.estrutura.produtos.exportar_completo'))->assertNotFound();
     }
 

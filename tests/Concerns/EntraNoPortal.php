@@ -56,6 +56,12 @@ trait EntraNoPortal
     {
         $usuario ??= $this->clienteDoPortal($empresa);
 
+        // Multi-abas (26/10/2026): `route('portal.auth.…')` gerado daqui em
+        // diante sai com esta empresa no endereço, como numa aba aberta nela.
+        \Illuminate\Support\Facades\URL::defaults([
+            \App\Support\Portal\PortalContexto::PARAMETRO => (string) $empresa->id,
+        ]);
+
         return $this->withSession([
             $this->app['auth']->guard('portal')->getName() => $usuario->getAuthIdentifier(),
             'portal_empresa_id'                             => $empresa->id,

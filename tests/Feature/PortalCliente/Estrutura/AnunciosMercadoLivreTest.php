@@ -535,8 +535,10 @@ class AnunciosMercadoLivreTest extends TestCase
         $sessao->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);   // a trava segura o segundo
 
-        // Sem conta conectada, nada a aquecer.
+        // Sem conta conectada, nada a aquecer. O guard guarda o cliente da
+        // requisição anterior: trocar de empresa no mesmo teste pede guard novo.
         $outra = $this->empresaDoGabarito();
+        $this->app['auth']->forgetGuards();
         $this->withoutVite()->entrarNoPortal($outra)->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);
     }

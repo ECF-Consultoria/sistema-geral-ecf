@@ -94,8 +94,12 @@ class DominioLiberaTodoModuloTest extends TestCase
             $nome = $rota->getName();
             $liberada = false;
 
+            // Multi-abas (26/10/2026): a rota leva a empresa (`portal/{portalEmpresa}/…`)
+            // e a allowlist continua escrita sem ela — `liberado()` tira o número.
+            $semEmpresa = preg_replace('#\Aportal/\{'.\App\Support\Portal\PortalContexto::PARAMETRO.'\}(?=/|\z)#', 'portal', $uri);
+
             foreach ($permitido as $padrao) {
-                if (Str::is($padrao, $uri)) {
+                if (Str::is($padrao, $semEmpresa)) {
                     $liberada = true;
                     break;
                 }
@@ -132,7 +136,7 @@ class DominioLiberaTodoModuloTest extends TestCase
         // Dentro da lista: o snapshot. Como é POST, um GET devolve 405 — que é
         // justamente a prova de que o middleware deixou passar e quem respondeu
         // foi o router.
-        $this->get('http://cliente.teste/portal/onboarding/fotografia')
+        $this->get('http://cliente.teste/portal/0/onboarding/fotografia')
             ->assertStatus(405);
     }
 }

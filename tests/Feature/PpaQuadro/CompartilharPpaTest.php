@@ -83,7 +83,7 @@ class CompartilharPpaTest extends TestCase
             ->assertInertia(fn (Assert $p) => $p
                 ->where('ppas.data.0.compartilhar.disponivel', true)
                 ->where('ppas.data.0.compartilhar.via', 'portal')
-                ->where('ppas.data.0.compartilhar.url', route('portal.auth.ppa', ['plano' => $ppa->id]))
+                ->where('ppas.data.0.compartilhar.url', route('portal.auth.ppa', [\App\Support\Portal\PortalContexto::PARAMETRO => $ppa->company_id, 'plano' => $ppa->id]))
             );
     }
 
@@ -146,7 +146,7 @@ class CompartilharPpaTest extends TestCase
             ->postJson(route('ppa.workspace.generate', $ppa))
             ->assertOk()
             ->assertJsonPath('via', 'portal')
-            ->assertJsonPath('url', route('portal.auth.ppa', ['plano' => $ppa->id]));
+            ->assertJsonPath('url', route('portal.auth.ppa', [\App\Support\Portal\PortalContexto::PARAMETRO => $ppa->company_id, 'plano' => $ppa->id]));
 
         $this->assertNull($ppa->fresh()->workspace_token);
     }
@@ -186,7 +186,7 @@ class CompartilharPpaTest extends TestCase
         $ppa = $this->ppaDeEmpresa($this->admin(), 'sent', $empresa);
         $cliente = $this->cliente($empresa);
 
-        $link = route('portal.auth.ppa', ['plano' => $ppa->id]);
+        $link = route('portal.auth.ppa', [\App\Support\Portal\PortalContexto::PARAMETRO => $ppa->company_id, 'plano' => $ppa->id]);
 
         $this->get($link)->assertRedirect(route('portal.entrada'));
 
@@ -203,7 +203,7 @@ class CompartilharPpaTest extends TestCase
         $cliente = $this->cliente($this->empresa());
 
         $this->post(route('portal.senha.entrar'), ['email' => $cliente->email, 'senha' => 'Senha@2026!'])
-            ->assertRedirect(route('portal.auth.inicio'));
+            ->assertRedirect(route('portal.auth.inicio', [\App\Support\Portal\PortalContexto::PARAMETRO => $cliente->empresaPadrao()->id]));
     }
 
     #[Test]

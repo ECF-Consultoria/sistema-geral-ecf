@@ -131,7 +131,7 @@ class PpaListaService
             return [
                 'disponivel' => $disponivel,
                 'via'        => 'portal',
-                'url'        => $disponivel ? UrlDoPortal::para('portal.auth.ppa', ['plano' => $ppa->id]) : null,
+                'url'        => $disponivel ? UrlDoPortal::para('portal.auth.ppa', [\App\Support\Portal\PortalContexto::PARAMETRO => $ppa->company_id, 'plano' => $ppa->id]) : null,
             ];
         }
 

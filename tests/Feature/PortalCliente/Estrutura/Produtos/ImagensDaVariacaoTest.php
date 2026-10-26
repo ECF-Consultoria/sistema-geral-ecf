@@ -136,7 +136,7 @@ class ImagensDaVariacaoTest extends TestCase
         // O caminho do disco não vai para a tela; só a rota autenticada.
         $this->assertStringNotContainsString($linhas[0]->caminho, $resposta->getContent());
         $this->assertSame(
-            '/portal/estrutura/produtos/variacao/'.$variacao->id.'/imagem/'.$linhas[0]->id,
+            '/portal/'.$minha->id.'/estrutura/produtos/variacao/'.$variacao->id.'/imagem/'.$linhas[0]->id,
             $resposta->json('imagens.0.url'),
         );
     }
@@ -585,7 +585,7 @@ class ImagensDaVariacaoTest extends TestCase
                 ->where('linhas.0.id', $natural->id)
                 ->has('linhas.0.imagens', 2)
                 ->where('linhas.0.imagens.0.id', $idCapa)
-                ->where('linhas.0.imagens.0.url', "/portal/estrutura/produtos/variacao/{$natural->id}/imagem/{$idCapa}")
+                ->where('linhas.0.imagens.0.url', "/portal/{$empresa->id}/estrutura/produtos/variacao/{$natural->id}/imagem/{$idCapa}")
                 ->where('linhas.0.imagens.0.nome_original', 'capa.jpg')
                 ->where('linhas.0.imagens.0.ordem', 0)
                 ->where('linhas.0.imagens.0.capa', true)
@@ -597,7 +597,7 @@ class ImagensDaVariacaoTest extends TestCase
             );
 
         // A url da prop serve a imagem para quem está logado; e o caminho do disco não vai na prop.
-        $sessao->get("/portal/estrutura/produtos/variacao/{$natural->id}/imagem/{$idCapa}")->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $sessao->get("/portal/{$empresa->id}/estrutura/produtos/variacao/{$natural->id}/imagem/{$idCapa}")->assertOk()->assertHeader('Content-Type', 'image/jpeg');
         $props = json_encode($pagina->viewData('page')['props']);
         $this->assertStringNotContainsString('"caminho"', $props);
         $this->assertStringNotContainsString("estrutura/{$empresa->id}/produtos/", $props);
@@ -628,7 +628,7 @@ class ImagensDaVariacaoTest extends TestCase
         $sessao->get(route('portal.auth.estrutura.produtos'))->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('produtos.linhas.0.id', $comFoto->id)
-                ->where('produtos.linhas.0.capa', "/portal/estrutura/produtos/variacao/{$comFoto->id}/imagem/{$idCapa}")
+                ->where('produtos.linhas.0.capa', "/portal/{$empresa->id}/estrutura/produtos/variacao/{$comFoto->id}/imagem/{$idCapa}")
                 ->missing('produtos.linhas.0.imagens')
                 ->where('produtos.linhas.1.id', $semFoto->id)
                 ->where('produtos.linhas.1.capa', null)

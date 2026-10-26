@@ -105,7 +105,7 @@ class MensagemBoasVindasTest extends TestCase
         // Bloco 3 — link do Adman, vindo do config.
         $this->assertStringContainsString('https://app.ad-man.io/register?ref=TESTE', $r['texto']);
         // Blocos 4 e 5 — os dois links do cliente.
-        $this->assertStringContainsString(route('portal.auth.onboarding'), $r['texto']);
+        $this->assertStringContainsString(route('portal.auth.onboarding', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]), $r['texto']);
         $this->assertStringContainsString(route('portal.entrada'), $r['texto']);
         // Bloco 6 — orientações.
         $this->assertStringContainsString('O que precisamos de você agora', $r['texto']);
@@ -129,7 +129,7 @@ class MensagemBoasVindasTest extends TestCase
 
         $texto = $this->servico153()->paraEmpresa($empresa->fresh())['texto'];
 
-        $this->assertStringContainsString(route('portal.auth.onboarding'), $texto);
+        $this->assertStringContainsString(route('portal.auth.onboarding', [\App\Support\Portal\PortalContexto::PARAMETRO => $empresa->id]), $texto);
         $this->assertStringNotContainsString('/ml/initiate', $texto);
         $this->assertStringNotContainsString('companies/'.$empresa->id.'/ml', $texto);
     }
