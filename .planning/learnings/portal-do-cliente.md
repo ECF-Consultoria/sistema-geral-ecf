@@ -1832,7 +1832,7 @@ onboarding não tinha como ser aberta** (o §49 ainda descreve esse estado).
   `/acessos-portal`, o checklist da Fase 152 e o "Sair do portal" já apontam para `tab=portal`.
 - **A lista é a régua de `PortalEquipeService::podeEntrar()`, montada no servidor** (`portal_empresas`): admin vê todas
   as empresas da página, os demais só a carteira (`company_users`). O universo é o de `/companies` —
-  `EmpresasVisiveisService`: Performance com contrato ativo, **sem MlbEmpresa**. Empresa de Polos ou sem contrato
+  `EmpresasVisiveisService`: Performance com contrato ativo, **sem MlbEmpresa** (Polos entrou depois, ver §53). Empresa de Polos ou sem contrato
   ativo continua sem porta pela tela; a rota `companies.portal.abrir` abre qualquer `Company`, só falta onde clicar.
   `AbaPortalEmCompaniesTest::toda_empresa_listada_abre_pela_porta_da_equipe` clica em todas as linhas: se alguém
   alargar a lista sem mexer em `podeEntrar()`, ele quebra (conferido por mutação: sem o filtro de carteira, 2 testes
@@ -1972,3 +1972,40 @@ nenhuma sugestão, e uma mesa de cabeceira incompleta com Combo. O gerador está
 - Kit de duas cores do MESMO produto nunca é sugerido (o par é entre produtos); sai pelo "Montar kit".
 - O conserto é na tela admin `/dev/estrutura-geracao`: Combo "2" no tipo Poltrona e o par Poltrona + Poltrona
   ("Combit: não"). `PoltronasNaSementeTest` prova os dois lados.
+
+## 53. Empresas dos Polos na aba Portal do cliente: o cadastro nasce no "Liberar portal" (26/10/2026)
+
+Pedido do usuário: dar acesso ao portal para as empresas dos Polos a partir da aba **Portal do cliente** de
+`/companies` (uma aba "Polos" separada chegou a subir no mesmo dia e foi retirada: não era o pedido). O portal é todo
+por `Company`, e só **4 de 464** Polos ativas tinham `mlb_empresas.company_id` em produção. Escolha do usuário entre
+três desenhos: criar o cadastro **na hora, só para a empresa liberada** (não para as 460 de uma vez, nem só listar as 4).
+
+- **Onde:** `PolosNoPortalService` monta as linhas (admin only: as escritas do portal são `role:admin`, e Polos não tem
+  carteira em `company_users`) e `liberar()` cria a `Company`; rota `portal.polos.liberar`
+  (`POST /acessos-portal/polos/{mlbEmpresa}/liberar`). Depois de liberar, a tela vai para "Acessos do portal" com o
+  "Dar acesso" aberto na empresa (o `portal_company` da URL + `onLiberada` que troca a sub-aba — a visita do Inertia
+  PRESERVA o estado e, sem isso, a tela ficava em "Empresas").
+- **Recorte:** `ativas()` + `programa('polos')` **menos a fase `Churn`** (pedido do usuário; "Protocolo Churn",
+  "Desistência" e "Encerrado" ficam — em produção eram 111 Encerrado). Fora do recorte a rota dá 404.
+- **O cadastro é mínimo de propósito**, e cada ausência protege um módulo:
+  sem Cust ID (`AdmanService::syncAll`, `RefreshGrossBillingCacheJob` e `SyncFaturamentoMensal` pegam toda `Company`
+  ativa COM cust — com o cust copiado a Adman passaria a sincronizar a conta em dobro, com a key de 10 rpm);
+  sem contrato (contrato dispara Onboarding e `EmpresaOperacionalRouter`, que criaria OUTRA ficha de Polos; Fechamento,
+  Dashboard e a aba Empresas exigem contrato); sem etapa (a fila do Comercial/Administrativo é por etapa);
+  `empresa_nova = false`. O nome de contato vem da ficha (`mlb_implementacoes.nome_contato`), só como sugestão do
+  "Dar acesso".
+- **Onde ele ainda aparece, e onde não:** a listagem "Cadastro de Empresas" do Comercial mostra toda `Company` ativa e
+  o marcaria com a pendência `sem_servico`. Saiu de lá pelo scope `Company::excetoCadastroDoPortal()` — **ligada a uma
+  `MlbEmpresa` e sem NENHUM contrato, nem inativo**. É marca estrutural, sem coluna: empresa do Comercial nasce com
+  contrato, e a do HubSpot ainda sem contrato não tem ficha de Polos (as duas continuam na fila — há teste). Ele
+  APARECE nas listas de seleção de empresa (ex.: o próprio "Dar acesso", PPA) e no contador "sem mapeamento" do NPS
+  automático — aceito.
+- **Limite conhecido — Mercado Livre no portal:** os recursos do portal que falam com o ML
+  (`AnunciosMercadoLivreService`, frete ME2) leem `Company::mlToken()`. A conta ML de uma empresa Polos fica em
+  `ml_tokens.mlb_empresa_id` (`MlbEmpresa::mlToken()`), então o cadastro novo nasce "sem conta ML" no portal mesmo
+  com a Polos conectada. Se o cliente Polos precisar do "Puxar do ML" no Mapeamento, é aí que se mexe — não copie o
+  token para a `Company` sem pensar no Publicador, que distingue `company-N` de `empresa-N` pela âncora.
+- **Bônus que vem de graça:** com o `company_id` preenchido, o PPA de Polos daquela empresa passa a aparecer no portal
+  (§2), porque `PortalPpaService` chega à Company por `mlb_empresas.company_id`.
+- Testes: `tests/Feature/PortalCliente/PolosNoPortalTest.php` (recorte, cadastro mínimo, idempotência, 404, 403,
+  Comercial e aba Empresas limpos). Falhas antigas que seguem iguais: as 3 do §51.

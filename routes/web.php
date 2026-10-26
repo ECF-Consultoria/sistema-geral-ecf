@@ -1445,6 +1445,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->withoutMiddleware('role:admin')
             ->name('companies.portal.abrir');
         Route::post('/acessos-portal', [PortalUsuarioController::class, 'store'])->name('portal.usuarios.store');
+        // "Liberar portal" de empresa dos Polos (26/10/2026): cria o cadastro
+        // mínimo que o portal exige. Admin, como o resto destas escritas.
+        Route::post('/acessos-portal/polos/{mlbEmpresa}/liberar', [PortalUsuarioController::class, 'liberarPolos'])->name('portal.polos.liberar');
         Route::put('/acessos-portal/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
         Route::post('/acessos-portal/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');
         Route::delete('/acessos-portal/{portalUsuario}/empresas/{company}', [PortalUsuarioController::class, 'desvincular'])->name('portal.usuarios.desvincular');

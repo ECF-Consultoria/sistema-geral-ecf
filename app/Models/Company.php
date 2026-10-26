@@ -107,6 +107,19 @@ class Company extends Model implements ContaMercadoLivre
     }
 
     /**
+     * Deixa de fora o cadastro que existe SÓ para o Portal do Cliente de uma
+     * empresa Polos ({@see \App\Services\Portal\PolosNoPortalService::liberar()},
+     * 26/10/2026): ligado a uma `MlbEmpresa` e sem NENHUM contrato, nem
+     * inativo. Empresa que veio do Comercial sempre nasce com contrato, e a do
+     * HubSpot ainda sem contrato não tem ficha de Polos — por isso a marca
+     * estrutural pega só esse cadastro, sem coluna nova.
+     */
+    public function scopeExcetoCadastroDoPortal($query)
+    {
+        return $query->where(fn ($q) => $q->whereHas('contratosServico')->orWhereDoesntHave('mlbEmpresa'));
+    }
+
+    /**
      * Abre (ou substitui) a pendência única desta empresa. NÃO toca `etapa`
      * — é a garantia por construção da ETAPA-04: marcar pendência não pode
      * mover a etapa. Um campo derivado poderia virar sozinho quando dado

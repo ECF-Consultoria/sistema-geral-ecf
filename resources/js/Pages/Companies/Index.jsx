@@ -25,7 +25,6 @@ import { IMaskInput } from 'react-imask';
 // responsáveis já são atribuídos.
 import AbaOnboarding from './components/AbaOnboarding';
 import AbaPortal from './components/AbaPortal';
-import AbaPolos from './components/AbaPolos';
 
 // Quick task 260805-eqk — MARKETPLACES_EXTRAS removida junto com a coluna
 // companies.marketplaces_extras (substituida pela tabela company_marketplaces).
@@ -183,15 +182,6 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // razão das flags acima: prop ausente esconde, nunca mostra.
     const podeVerPortal = usePage().props.pode_ver_portal ?? false;
     const portalEmpresas = usePage().props.portal_empresas ?? [];
-    // Aba Polos (26/10/2026) — as empresas dos Polos ficam fora da aba
-    // Empresas de propósito; aqui só são listadas. `polos_empresas` é prop
-    // optional: chega `undefined` até a aba pedir (o `?? []` NÃO vale aqui,
-    // senão a aba não sabe que ainda precisa buscar).
-    const podeVerPolos = usePage().props.pode_ver_polos ?? false;
-    const polosTotal = usePage().props.polos_total ?? 0;
-    const polosEmpresas = usePage().props.polos_empresas;
-    const podeAbrirPainelPolos = usePage().props.pode_abrir_painel_polos ?? false;
-    const podeAbrirFichaPolos = usePage().props.pode_abrir_ficha_polos ?? false;
 
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
@@ -212,7 +202,6 @@ export default function Companies({ companies, users, estrategistas = [], analis
             ...(pode_distribuir ? ['distribuicao'] : []),
             ...(podeVerOnboarding ? ['onboarding'] : []),
             ...(podeVerPortal ? ['portal'] : []),
-            ...(podeVerPolos ? ['polos'] : []),
         ];
         return abas.includes(t) ? t : 'empresas';
     });
@@ -494,9 +483,6 @@ export default function Companies({ companies, users, estrategistas = [], analis
         ...(podeVerPortal
             ? [{ key: 'portal', label: 'Portal do cliente' }]
             : []),
-        ...(podeVerPolos
-            ? [{ key: 'polos', label: `Polos (${polosTotal})` }]
-            : []),
     ];
 
     return (
@@ -768,16 +754,6 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         podeGerirPortal={podeGerirPortal}
                         portalAcessosTotal={portalAcessosTotal}
                         portalAcessos={portalAcessos}
-                    />
-                )}
-
-                {/* ══════════════ ABA POLOS ══════════════ */}
-                {tab === 'polos' && podeVerPolos && (
-                    <AbaPolos
-                        empresas={polosEmpresas}
-                        total={polosTotal}
-                        podeAbrirPainel={podeAbrirPainelPolos}
-                        podeAbrirFicha={podeAbrirFichaPolos}
                     />
                 )}
 

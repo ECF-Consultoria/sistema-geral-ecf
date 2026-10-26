@@ -11,11 +11,11 @@ use App\Models\Servico;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
-use App\Services\Empresas\EmpresasPolosService;
 use App\Services\Empresas\EmpresasVisiveisService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Portal\AcessosDoPortalService;
+use App\Services\Portal\PolosNoPortalService;
 use App\Models\CompanyManagerHistory;
 use App\Services\Nps\NpsScoreCalculator;
 use App\Support\ImagemUpload;
@@ -152,7 +152,7 @@ class CompanyController extends Controller
             ->delete();
     }
 
-    public function index(Request $request, AcessosDoPortalService $acessosPortal, EmpresasPolosService $empresasPolos)
+    public function index(Request $request, AcessosDoPortalService $acessosPortal, PolosNoPortalService $polosNoPortal)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
         // valores do dominio da coluna ENUM; fora disso, ignora silenciosamente
@@ -409,26 +409,37 @@ class CompanyController extends Controller
         if ($podeVerPortal) {
             $linhasPortal = $companies
                 ->filter(fn ($c) => $empresasDaCarteira === null || in_array($c['id'], $empresasDaCarteira, true))
+                ->map(fn ($c) => [
+                    'chave'          => "company-{$c['id']}",
+                    'id'             => $c['id'],
+                    'mlb_empresa_id' => null,
+                    'nome'           => $c['name'],
+                    'ativa'          => (bool) $c['active'],
+                    'grupo'          => $c['grupo'],
+                    'polos'          => null,
+                ])
                 ->values();
 
-            $logins = $acessosPortal->loginsPorEmpresa($linhasPortal->pluck('id')->all());
+            // Empresas dos Polos (26/10/2026) — ficam fora da lista acima de
+            // propósito (Phase 35) e quase nenhuma tem cadastro em `companies`,
+            // que é o que o portal entende. Só para admin: as escritas do
+            // portal (dar acesso, liberar) estão sob `role:admin`, e empresa
+            // Polos não tem carteira em `company_users` para o não-admin entrar.
+            if ($podeGerirPortal) {
+                $linhasPortal = $linhasPortal
+                    ->concat($polosNoPortal->linhas())
+                    ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
+                    ->values();
+            }
+
+            $logins = $acessosPortal->loginsPorEmpresa($linhasPortal->pluck('id')->filter()->values()->all());
 
             $portalEmpresas = $linhasPortal->map(fn ($c) => [
-                'id'     => $c['id'],
-                'nome'   => $c['name'],
-                'ativa'  => (bool) $c['active'],
-                'grupo'  => $c['grupo'],
-                'logins' => $logins[$c['id']] ?? ['logins' => 0, 'nunca_entrou' => 0, 'ultimo_login' => null],
+                ...$c,
+                'logins' => ($c['id'] ? ($logins[$c['id']] ?? null) : null)
+                    ?? ['logins' => 0, 'nunca_entrou' => 0, 'ultimo_login' => null],
             ])->all();
         }
-
-        // ─── Aba Polos (26/10/2026) ─────────────────────────────────────────
-        // As empresas dos Polos ficam FORA da lista acima de propósito (Phase
-        // 35) e moram em `mlb_empresas`; a aba própria as mostra sem mexer na
-        // aba Empresas nem no MCP. Mesmo esquema da sub-aba de acessos do
-        // portal: o total vem sempre (é um COUNT e o rótulo precisa dele) e a
-        // lista só quando a aba pede, em partial reload.
-        $podeVerPolos = $empresasPolos->podeVer($usuario);
 
         $users = User::where('active', true)
             ->where('role', '!=', 'admin')
@@ -579,17 +590,6 @@ class CompanyController extends Controller
             'portal_acessos'       => $podeGerirPortal
                 ? Inertia::optional(fn () => $acessosPortal->dados())
                 : null,
-
-            // ─── Aba Polos (26/10/2026) ──────────────────────────────
-            // Esconder no front é cosmético; o que protege é a lista vazia
-            // (e o total zero) para quem não vê Polos.
-            'pode_ver_polos'          => $podeVerPolos,
-            'polos_total'             => $podeVerPolos ? $empresasPolos->total() : 0,
-            'polos_empresas'          => $podeVerPolos
-                ? Inertia::optional(fn () => $empresasPolos->lista())
-                : null,
-            'pode_abrir_painel_polos' => $podeVerPolos && $empresasPolos->podeAbrirPainel($usuario),
-            'pode_abrir_ficha_polos'  => $podeVerPolos && $empresasPolos->podeAbrirFicha($usuario),
         ]);
     }
 

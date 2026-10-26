@@ -224,6 +224,10 @@ class ComercialController extends Controller
                 'hubspotEventos' => fn($q) => $q->orderByDesc('id')->limit(3),
             ])
             ->where('active', true)
+            // 26/10/2026 — o cadastro criado só para liberar o Portal de uma
+            // empresa Polos não tem contrato de propósito; aqui ele viraria
+            // pendência "sem serviço" na fila do Comercial sem ninguém dever nada.
+            ->excetoCadastroDoPortal()
             ->withExists(['hubspotEventoOrigem']);
 
         // (3) Filtros sql (empilháveis — Lição Phase 18)

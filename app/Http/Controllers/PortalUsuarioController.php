@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\MlbEmpresa;
 use App\Models\PortalUsuario;
 use App\Services\Portal\PortalAuditoria;
+use App\Services\Portal\PolosNoPortalService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -49,6 +51,29 @@ class PortalUsuarioController extends Controller
     public function index()
     {
         return redirect()->route('companies.index', ['tab' => 'portal', 'sub' => 'acessos']);
+    }
+
+    /**
+     * "Liberar portal" de uma empresa dos Polos (26/10/2026): cria o cadastro
+     * mínimo que o portal precisa ({@see PolosNoPortalService::liberar()}) e
+     * leva direto ao "Dar acesso" com a empresa já escolhida.
+     *
+     * Empresa fora do recorte da aba (arquivada, Churn, outro projeto) dá 404:
+     * o botão não aparece para ela, e a rota não deve fazer o que a tela não
+     * oferece.
+     */
+    public function liberarPolos(Request $request, MlbEmpresa $mlbEmpresa, PolosNoPortalService $polos)
+    {
+        abort_unless($polos->noRecorte($mlbEmpresa), 404);
+
+        $jaTinha = $mlbEmpresa->company_id !== null;
+        $company = $polos->liberar($mlbEmpresa, $request->user());
+
+        return redirect()
+            ->route('companies.index', ['tab' => 'portal', 'sub' => 'acessos', 'portal_company' => $company->id])
+            ->with('success', $jaTinha
+                ? "{$company->name} já tinha cadastro. Agora é só dar acesso."
+                : "Portal liberado para {$company->name}. Agora é só dar acesso a quem do cliente vai entrar.");
     }
     public function store(Request $request)
     {

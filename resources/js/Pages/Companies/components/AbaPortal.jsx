@@ -3,7 +3,7 @@ import { Link, router } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
-import { Building2, Clock, KeyRound, LogIn, Search, UserPlus } from 'lucide-react';
+import { Building2, Clock, KeyRound, LogIn, Search, Unlock, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AcessosDoPortal from '@/Components/Onboarding/Portal/AcessosDoPortal';
 
@@ -20,6 +20,12 @@ import AcessosDoPortal from '@/Components/Onboarding/Portal/AcessosDoPortal';
  * A lista chega PRONTA do servidor (`portal_empresas`), com a mesma régua de
  * `PortalEquipeService::podeEntrar()`: admin vê todas as empresas da página,
  * os demais só as da própria carteira. Nada é filtrado por permissão aqui.
+ *
+ * ### Empresas dos Polos (26/10/2026)
+ * Para o admin, a lista traz também as empresas dos Polos (selo "Polos"). O
+ * portal só entende `companies`, e quase nenhuma delas tem cadastro: nessas a
+ * linha vem com `id` nulo e oferece só "Liberar portal", que cria o cadastro
+ * mínimo e cai no "Dar acesso" com a empresa já escolhida.
  *
  * ### A lista de acessos NÃO vem na carga da página
  * É prop `optional` do servidor: só é montada quando o front pede. Quem abre
@@ -100,7 +106,7 @@ export default function AbaPortal({
 
             {sub === 'acessos'
                 ? <AcessosDoPortal dados={portalAcessos} />
-                : <EmpresasDoPortal empresas={empresas} podeGerirPortal />}
+                : <EmpresasDoPortal empresas={empresas} podeGerirPortal onLiberada={() => trocar('acessos')} />}
         </div>
     );
 }
@@ -111,21 +117,62 @@ const FILTROS = [
     { key: 'sem_login', label: 'Sem login' },
 ];
 
+// Só aparecem quando a lista traz empresa dos Polos (admin).
+const ORIGENS = [
+    { key: 'todas',       label: 'Todas as empresas' },
+    { key: 'performance', label: 'Performance' },
+    { key: 'polos',       label: 'Polos' },
+];
+
+const Chip = ({ ativo, onClick, children }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] border transition-colors',
+            ativo
+                ? 'bg-ecf-yellow/15 border-ecf-yellow/40 text-ecf-yellow'
+                : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/90',
+        )}
+    >
+        {children}
+    </button>
+);
+
 /** A lista de empresas com a porta de entrada de cada uma. */
-function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
+function EmpresasDoPortal({ empresas, podeGerirPortal = false, onLiberada }) {
     const [busca, setBusca] = useState('');
     const [filtro, setFiltro] = useState('todas');
+    const [origem, setOrigem] = useState('todas');
+    // Qual linha está sendo liberada — trava o botão contra clique duplo.
+    const [liberando, setLiberando] = useState(null);
+
+    const totalPolos = useMemo(() => empresas.filter((e) => e.polos).length, [empresas]);
 
     const visiveis = useMemo(() => {
         const termo = busca.trim().toLowerCase();
 
         return empresas.filter((e) => {
             if (termo && !e.nome.toLowerCase().includes(termo)) return false;
+            if (origem === 'polos' && !e.polos) return false;
+            if (origem === 'performance' && e.polos) return false;
             if (filtro === 'com_login') return e.logins.logins > 0;
             if (filtro === 'sem_login') return e.logins.logins === 0;
             return true;
         });
-    }, [empresas, busca, filtro]);
+    }, [empresas, busca, filtro, origem]);
+
+    const liberar = (e) => {
+        setLiberando(e.chave);
+        // O servidor manda para `sub=acessos&portal_company=…`, mas a visita
+        // preserva o estado da aba, que continuaria em "Empresas". Trocar aqui
+        // monta "Acessos do portal", que lê o `portal_company` da URL e abre o
+        // "Dar acesso" com a empresa recém-liberada.
+        router.post(route('portal.polos.liberar', e.mlb_empresa_id), {}, {
+            onSuccess: () => onLiberada?.(),
+            onFinish: () => setLiberando(null),
+        });
+    };
 
     return (
         <div className="space-y-4">
@@ -142,25 +189,25 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
 
                 <div className="flex items-center gap-1">
                     {FILTROS.map((f) => (
-                        <button
-                            key={f.key}
-                            type="button"
-                            onClick={() => setFiltro(f.key)}
-                            className={cn(
-                                'inline-flex items-center px-3 py-1 rounded-full text-[12px] border transition-colors',
-                                filtro === f.key
-                                    ? 'bg-ecf-yellow/15 border-ecf-yellow/40 text-ecf-yellow'
-                                    : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/90',
-                            )}
-                        >
-                            {f.label}
-                        </button>
+                        <Chip key={f.key} ativo={filtro === f.key} onClick={() => setFiltro(f.key)}>{f.label}</Chip>
                     ))}
                 </div>
+
+                {totalPolos > 0 && (
+                    <div className="flex items-center gap-1">
+                        {ORIGENS.map((o) => (
+                            <Chip key={o.key} ativo={origem === o.key} onClick={() => setOrigem(o.key)}>
+                                {o.label}
+                                {o.key === 'polos' && <span className="text-[11px] tabular-nums opacity-60">{totalPolos}</span>}
+                            </Chip>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <p className="text-white/40 text-[12px]">
                 Entrar no portal abre a mesma tela que o cliente vê, numa aba nova e no seu nome — o que você fizer lá fica registrado como seu.
+                {totalPolos > 0 && ' Empresa dos Polos ainda sem cadastro: "Liberar portal" cria o cadastro dela para o portal (sem Cust ID e sem contrato) e já abre o "Dar acesso".'}
             </p>
 
             <Card>
@@ -178,7 +225,7 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
                         </TableHeader>
                         <TableBody>
                             {visiveis.map((e) => (
-                                <TableRow key={e.id}>
+                                <TableRow key={e.chave ?? e.id}>
                                     <TableCell className="font-medium">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             {e.nome}
@@ -190,6 +237,14 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
                                                     {e.grupo.name}
                                                 </span>
                                             )}
+                                            {e.polos && (
+                                                <span
+                                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-400/12 text-sky-300"
+                                                    title={[e.polos.regiao, e.polos.fase].filter(Boolean).join(' · ') || undefined}
+                                                >
+                                                    Polos{e.polos.fase ? ` · ${e.polos.fase}` : ''}
+                                                </span>
+                                            )}
                                             {!e.ativa && (
                                                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/45">
                                                     Inativa
@@ -199,7 +254,9 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
                                     </TableCell>
 
                                     <TableCell>
-                                        <LoginsDoCliente logins={e.logins} />
+                                        {e.id
+                                            ? <LoginsDoCliente logins={e.logins} />
+                                            : <span className="text-white/30 text-[12.5px]" title="O portal precisa do cadastro da empresa">Sem cadastro</span>}
                                     </TableCell>
 
                                     <TableCell className="text-[13px] text-white/70 tabular-nums whitespace-nowrap">
@@ -207,6 +264,19 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
                                     </TableCell>
 
                                     <TableCell className="text-right">
+                                        {!e.id ? (
+                                            <div className="flex items-center justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => liberar(e)}
+                                                    disabled={liberando !== null}
+                                                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-ecf-yellow/15 hover:bg-ecf-yellow/25 text-[12.5px] text-ecf-yellow transition-colors whitespace-nowrap disabled:opacity-50"
+                                                    title="Cria o cadastro desta empresa para o portal e abre o Dar acesso"
+                                                >
+                                                    <Unlock size={13} /> {liberando === e.chave ? 'Liberando…' : 'Liberar portal'}
+                                                </button>
+                                            </div>
+                                        ) : (
                                         <div className="flex items-center justify-end gap-1.5">
                                             {podeGerirPortal && (
                                                 <Link
@@ -227,6 +297,7 @@ function EmpresasDoPortal({ empresas, podeGerirPortal = false }) {
                                                 <LogIn size={13} /> Entrar no portal
                                             </a>
                                         </div>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
