@@ -13,6 +13,9 @@ use App\Models\MlbEmpresa;
  * Âncora checada = a que tem token. As listas são separadas por âncora
  * (`companies` e `mlb_empresas`): Company 5 não libera MlbEmpresa 5.
  * Lista vazia = ninguém (fail-closed).
+ *
+ * 26/10/2026 — `publicador.alavancas.contas_liberadas.todas` libera qualquer conta de uma vez, separado do
+ * interruptor da publicação (liberar um não liga o outro).
  */
 final class AlavancasLiberadas
 {
@@ -20,8 +23,20 @@ final class AlavancasLiberadas
 
     public const MOTIVO = 'As Alavancas ainda não foram liberadas para escrever nesta conta do Mercado Livre. Você pode ver e analisar tudo aqui; criar e alterar espera a liberação, que é feita conta a conta pelo time de desenvolvimento.';
 
+    private static function todas(): bool
+    {
+        return (bool) config('publicador.alavancas.contas_liberadas.todas', false);
+    }
+
     public static function libera(?ContaMercadoLivre $conta): bool
     {
+        if (! $conta instanceof Company && ! $conta instanceof MlbEmpresa) {
+            return false;
+        }
+        if (self::todas()) {
+            return true;
+        }
+
         if ($conta instanceof Company) {
             $lista = config('publicador.alavancas.contas_liberadas.companies', []);
         } elseif ($conta instanceof MlbEmpresa) {
@@ -41,6 +56,9 @@ final class AlavancasLiberadas
     {
         if (preg_match('/^(company|empresa)-(\d+)$/D', (string) $chave, $m) !== 1) {
             return false;
+        }
+        if (self::todas()) {
+            return true;
         }
         $lista = config($m[1] === 'company'
             ? 'publicador.alavancas.contas_liberadas.companies'

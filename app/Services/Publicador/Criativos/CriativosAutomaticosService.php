@@ -140,7 +140,7 @@ final class CriativosAutomaticosService
     {
         return (bool) config('publicador.criativos_auto.ativo', false)
             && $companyId !== null
-            && in_array($companyId, $this->empresas(), true)
+            && $this->empresaNaLista($companyId)
             && $this->chave->ativa();
     }
 
@@ -934,12 +934,18 @@ final class CriativosAutomaticosService
         ], JSON_UNESCAPED_UNICODE));
     }
 
-    /** @return list<int> */
-    private function empresas(): array
+    /**
+     * A empresa está na lista das imagens automáticas? `*` na lista = todas as empresas (26/10/2026, o usuário:
+     * "deixar todos no mesmo padrão Dev 02 Teste"); o teto diário por empresa continua valendo para cada uma.
+     */
+    private function empresaNaLista(int $companyId): bool
     {
-        $csv = (string) Configuracao::get(self::CHAVE_EMPRESAS, '');
+        $itens = array_map('trim', explode(',', (string) Configuracao::get(self::CHAVE_EMPRESAS, '')));
+        if (in_array('*', $itens, true)) {
+            return true;
+        }
 
-        return array_values(array_map('intval', array_filter(array_map('trim', explode(',', $csv)), fn ($id) => $id !== '' && ctype_digit($id))));
+        return in_array($companyId, array_map('intval', array_filter($itens, fn ($id) => $id !== '' && ctype_digit($id))), true);
     }
 
     /** O usuário de sistema que planeja e gera (e paga a cota) — existe e está ativo. */

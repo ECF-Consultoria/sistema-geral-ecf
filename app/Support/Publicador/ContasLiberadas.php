@@ -13,11 +13,22 @@ use App\Models\MlbEmpresa;
  * liberada não libera MlbEmpresa 5. Lista vazia = NINGUÉM (fail-closed), ao
  * contrário do antigo `empresas_piloto`, onde vazio significava todas.
  * A checagem é sobre a âncora que PUBLICA (a que tem token).
+ *
+ * 26/10/2026 — `publicador.contas_liberadas.todas` libera qualquer conta de uma vez (o usuário liberou o
+ * Publicador novo para todas as contas, inclusive publicar). Sem conta, ou com âncora de outro tipo, segue
+ * fechado.
  */
 final class ContasLiberadas
 {
     public static function libera(?ContaMercadoLivre $conta): bool
     {
+        if (! $conta instanceof Company && ! $conta instanceof MlbEmpresa) {
+            return false;
+        }
+        if ((bool) config('publicador.contas_liberadas.todas', false)) {
+            return true;
+        }
+
         if ($conta instanceof Company) {
             $lista = config('publicador.contas_liberadas.companies', []);
         } elseif ($conta instanceof MlbEmpresa) {

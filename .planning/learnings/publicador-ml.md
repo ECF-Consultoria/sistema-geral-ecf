@@ -2155,3 +2155,32 @@ visitas e nenhuma venda** — o anúncio que ninguém acha. Não "corrija" a ré
   `GET …/jardinagem/previa` → `JardinagemService::previa()` = `situacao()` + `analisar(gravar: false)` sobre TODOS
   os anúncios no ar (devidos + em observação), números parciais desde o começo do mês de cada um. Só GET no ML,
   nada gravado, sem IA; guardada 5 min por recorte de conta (`publicador:jardinagem:previa:*`), throttle 10/min.
+
+## 60. Publicador liberado para TODAS as contas — onde ficam os interruptores (26/10/2026)
+
+Pedido do usuário: "liberar para todas as outras contas, inclusive para publicar; deixar todos no mesmo padrão Dev 02
+Teste". Até aqui a #459 era a única conta com: publicar, Alavancas (promoção automática de 14 dias), vitrine de cartões e
+imagens por IA automáticas. São QUATRO travas em três lugares diferentes — liberar uma não libera as outras:
+
+| O quê | Onde mora | Ligado para todas | Desligar |
+|---|---|---|---|
+| Publicar (`ContasLiberadas`) | `.env` | `PUBLICADOR_CONTAS_LIBERADAS_TODAS=true` | tirar a linha + `config:cache` (volta a valer `..._COMPANIES`, padrão `459`) |
+| Alavancas / promoção automática (`AlavancasLiberadas`) | `.env` | `PUBLICADOR_ALAVANCAS_LIBERADAS_TODAS=true` | idem (`..._ALAVANCAS_LIBERADAS_COMPANIES`, padrão `459`) |
+| Vitrine de cartões | `.env` | `PUBLICADOR_VITRINE=true` | idem (`PUBLICADOR_VITRINE_CONTAS`) |
+| Imagens por IA automáticas | `configuracoes.publicador_criativos_auto_companies` | `*` | voltar para `459` (sem deploy, sem cache) |
+
+- **O padrão do CÓDIGO segue fechado** (`todas` = false): local e testes continuam conta a conta. Quem liga é o `.env`
+  da VPS. Os testes que fazem `config(['publicador.contas_liberadas' => [...]])` trocam o array inteiro e por isso
+  derrubam o `todas` junto — é o que se quer.
+- **`publicador:sondar-alavancas` NÃO olha o `todas`**: ele grava fixture e escreve na conta, por isso segue só na lista
+  explícita (conta de teste). Não "uniformize".
+- **Imagens automáticas em todas = custo**: cada kit ~3–4 imagens no Creative Engine; o teto por empresa por dia
+  (`PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO`, 10) vale para CADA empresa. Produto só de Polos (sem `company_id`) não
+  entra mesmo com `*`: a referência é a foto que o cliente pôs no Portal, e Polos não tem Portal.
+- **Antes de ligar, conferir o que sairia sozinho**: oferta `aprovado` e fila `ativa` de conta antes travada voltam a
+  andar na passada seguinte do `publicador:portao-publicacao` / `publicador:fila-publicacao` (todo minuto). Em 26/10 não
+  havia nenhuma oferta nem fila fora da #459 (só 3 contas com 1 produto cada: company 188, mlb_empresa 665 e 694).
+- A `garantia padrão` é por conta (`configuracoes.publicador_garantia_padrao:<conta>`) e NÃO foi copiada da #459 (90 dias,
+  garantia do vendedor): é termo comercial de cada cliente ("uma empresa tem 7 dias, outra 90"). Sem ela, o produto
+  que chega do Portal para na conferência (V-SAL-05) até alguém definir a garantia no editor ou o padrão da conta na
+  Publicação em lote (`GarantiaPadrao`).

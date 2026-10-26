@@ -211,6 +211,27 @@ class CriativosAutomaticosTest extends TestCase
             'o Premium abre com a 2ª ambientada, e o meio é o mesmo do Clássico');
     }
 
+    /** 26/10/2026: `*` na lista = todas as empresas ("deixar todos no mesmo padrão Dev 02 Teste"). */
+    public function test_asterisco_na_lista_liga_para_todas_as_empresas(): void
+    {
+        $this->ligar();
+        $s = $this->servico();
+
+        Configuracao::set(CriativosAutomaticosService::CHAVE_EMPRESAS, '999');
+        $this->assertFalse($s->ligadoPara($this->empresa->id), 'fora da lista');
+
+        Configuracao::set(CriativosAutomaticosService::CHAVE_EMPRESAS, '*');
+        $this->assertTrue($s->ligadoPara($this->empresa->id));
+        $this->assertTrue($s->ligadoPara(123456), 'qualquer empresa');
+        $this->assertFalse($s->ligadoPara(null), 'produto sem empresa (só Polos) segue fora: não tem Portal');
+
+        Configuracao::set(CriativosAutomaticosService::CHAVE_EMPRESAS, '459, *');
+        $this->assertTrue($s->ligadoPara(123456), '`*` no meio da lista também vale');
+
+        config(['publicador.criativos_auto.ativo' => false]);
+        $this->assertFalse($s->ligadoPara($this->empresa->id), 'a chave geral continua mandando');
+    }
+
     public function test_cada_condicao_barra_o_gatilho(): void
     {
         $this->ligar();

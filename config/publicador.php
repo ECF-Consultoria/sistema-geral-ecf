@@ -54,7 +54,12 @@ return [
 
     // D21: contas liberadas para publicar, uma a uma pelo usuário depois do teste real;
     // vazio = ninguém. Listas separadas por âncora (Company 5 não libera MlbEmpresa 5).
+    // `todas` (26/10/2026, o usuário: "liberar para todas as outras contas, inclusive para publicar"):
+    // true libera QUALQUER conta, Company ou MlbEmpresa, e as listas deixam de valer. O padrão do código
+    // segue fechado; quem liga é o `.env` (`PUBLICADOR_CONTAS_LIBERADAS_TODAS=true`). Desligar = tirar a
+    // linha + `config:cache`, e volta a valer a lista.
     'contas_liberadas' => [
+        'todas' => (bool) env('PUBLICADOR_CONTAS_LIBERADAS_TODAS', false),
         'companies' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_COMPANIES', env('PUBLICADOR_EMPRESAS_PILOTO', '459')))))),
         'mlb_empresas' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_MLB_EMPRESAS', ''))))),
     ],
@@ -74,7 +79,12 @@ return [
         // D-03 (166): separada da trava de publicação de propósito — sem fallback para
         // as variáveis daquela trava (nem a antiga de piloto); vazio = ninguém;
         // Company 5 ≠ MlbEmpresa 5. Liberar uma não libera a outra.
+        // `todas` (26/10/2026): o mesmo interruptor da trava de publicar, mas SEPARADO dela pelo mesmo motivo
+        // (`PUBLICADOR_ALAVANCAS_LIBERADAS_TODAS`). Ligado, todo anúncio criado pelo Publicador ganha a promoção
+        // automática de 14 dias (`PromocaoAutomaticaService`), como na #459. O `publicador:sondar-alavancas` NÃO
+        // olha este interruptor: a sondagem grava fixture e segue só na lista (conta de teste).
         'contas_liberadas' => [
+            'todas' => (bool) env('PUBLICADOR_ALAVANCAS_LIBERADAS_TODAS', false),
             'companies' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_ALAVANCAS_LIBERADAS_COMPANIES', '459'))))),
             'mlb_empresas' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_ALAVANCAS_LIBERADAS_MLB_EMPRESAS', ''))))),
         ],
@@ -212,7 +222,7 @@ return [
     // sozinho as imagens (2 por kit ≈ US$ 0,20). Fica DESLIGADO até o dono do Creative Engine ajustar o lado
     // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
     // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
-    // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
+    // (ids separados por vírgula, ou `*` = todas as empresas — 26/10/2026) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
     // (id) com a chave `mlb.criativos_ia`. Desde 20/10/2026 as imagens do kit automático entram SOZINHAS no anúncio e
     // passam a ser AS fotos do grupo — a do cliente é só referência para a IA recriar o produto —, e quem confere é a
     // Prévia (etapa 5); a que o juiz reprovou fica para alguém decidir.
@@ -336,6 +346,7 @@ return [
     // 20/10/2026 — a conta abre na VITRINE de cartões (`ProdutosVitrine`) em vez da lista. `vitrine` liga para
     // TODAS as contas; `vitrine_contas` liga só para as listadas, pela chave da URL da conta, separadas por vírgula
     // (ex.: `company-459,empresa-12`) — "só na #459 primeiro", até o usuário aprovar para o time.
+    // 26/10/2026: aprovado para todas ("deixar todos no mesmo padrão Dev 02 Teste") — produção liga `PUBLICADOR_VITRINE=true`.
     'vitrine' => (bool) env('PUBLICADOR_VITRINE', false),
     'vitrine_contas' => array_values(array_filter(array_map('trim', explode(',', (string) env('PUBLICADOR_VITRINE_CONTAS', ''))))),
 

@@ -200,6 +200,25 @@ class ConferenciaContaNaoLiberadaTest extends TestCase
         $this->assertSame(1, $this->chamadas('/pictures/items/upload'));
     }
 
+    /** 26/10/2026: o interruptor `todas` libera a conta que NÃO está na lista — o mesmo caminho da liberação conta a conta. */
+    public function test_interruptor_todas_libera_a_conta_fora_da_lista(): void
+    {
+        $this->naoLiberar();
+        $imagens = app(ImagemAssetService::class);
+        $foto = PubImagem::query()->where('rascunho_id', $this->r->id)->firstOrFail();
+        $foto->update(['upload_status' => PubImagem::PENDENTE, 'ml_picture_id' => null]);
+        Storage::disk('local')->put($foto->caminho, 'conteudo');
+
+        $imagens->enviarAoMl($foto->fresh());
+        $this->assertSame(PubImagem::PENDENTE, $foto->fresh()->upload_status, 'lista vazia e interruptor desligado: nada sobe');
+
+        config(['publicador.contas_liberadas' => ['todas' => true, 'companies' => [], 'mlb_empresas' => []]]);
+        $imagens->enviarAoMl($foto->fresh());
+
+        $this->assertSame(PubImagem::ENVIADA, $foto->fresh()->upload_status);
+        $this->assertSame(1, $this->chamadas('/pictures/items/upload'));
+    }
+
     public function test_consultar_condicionais_em_conta_nao_liberada_devolve_nulo_sem_chamar(): void
     {
         $this->naoLiberar();
