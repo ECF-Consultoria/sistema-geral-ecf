@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
-    Building2, CheckCircle2, Clock, KeyRound, Mail, Plus, ShieldOff, ShieldCheck, Trash2, UserPlus, X,
+    Building2, CheckCircle2, Clock, KeyRound, LogIn, Mail, Plus, ShieldOff, ShieldCheck, Trash2, UserPlus, X,
 } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -241,6 +241,15 @@ export default function AcessosDoPortal({ dados }) {
                                                 className="group inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-white/[0.05] text-white/70 text-[12px]"
                                             >
                                                 <Building2 size={11} className="text-white/35" /> {e.nome}
+                                                <a
+                                                    href={route('companies.portal.abrir', e.id)}
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    title={`Entrar no portal de ${e.nome} — abre numa aba nova, no seu nome`}
+                                                    className="p-0.5 rounded text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
+                                                >
+                                                    <LogIn size={11} />
+                                                </a>
                                                 <button
                                                     type="button"
                                                     onClick={() => removerEmpresa(u, e)}
@@ -274,6 +283,19 @@ export default function AcessosDoPortal({ dados }) {
                                     isso a segunda é discreta e fica ao lado, não
                                     competindo com a primeira. */}
                                 <div className="flex items-center gap-1 shrink-0">
+                                    {/* Uma empresa só: a entrada vai direto no cartão. Com
+                                        mais de uma, cada etiqueta de empresa tem a sua. */}
+                                    {u.empresas.length === 1 && (
+                                        <a
+                                            href={route('companies.portal.abrir', u.empresas[0].id)}
+                                            target="_blank"
+                                            rel="noopener"
+                                            title={`Abre o portal de ${u.empresas[0].nome} no seu nome — fica registrado`}
+                                            className="inline-flex items-center gap-1.5 h-8 px-3 mr-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.11] text-[12.5px] text-white/85 transition-colors whitespace-nowrap"
+                                        >
+                                            <LogIn size={13} /> Entrar no portal
+                                        </a>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => alternarAtivo(u)}
