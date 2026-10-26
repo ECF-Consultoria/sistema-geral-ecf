@@ -65,7 +65,8 @@ class EmpresasPolosService
      *
      * Recorte: `ativas()` (arquivada fica fora, como em toda listagem de Polos)
      * + `programa('polos')`, a régua em SQL que já trata `projeto` digitado com
-     * caixa ou espaço diferente e cai na fase quando `projeto` está vazio.
+     * caixa ou espaço diferente e cai na fase quando `projeto` está vazio,
+     * menos a fase Churn (ver {@see consulta()}).
      *
      * @return list<array{
      *     id: int,
@@ -114,8 +115,16 @@ class EmpresasPolosService
             ->all();
     }
 
+    /**
+     * Fora da aba também quem está em Churn (pedido do usuário, 26/10/2026): a
+     * empresa já saiu. "Protocolo Churn" continua — ainda está em tratativa.
+     * Mesma normalização do `scopePrograma` (caixa e espaço), e fase vazia
+     * fica: `NULL <> 'churn'` daria falso e sumiria com "Sem fase".
+     */
     private function consulta()
     {
-        return MlbEmpresa::ativas()->programa(MlbEmpresa::PROGRAMA_POLOS);
+        return MlbEmpresa::ativas()
+            ->programa(MlbEmpresa::PROGRAMA_POLOS)
+            ->where(fn ($q) => $q->whereNull('fase')->orWhereRaw('LOWER(TRIM(fase)) <> ?', ['churn']));
     }
 }

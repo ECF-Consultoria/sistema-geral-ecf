@@ -129,18 +129,24 @@ class AbaPolosEmCompaniesTest extends TestCase
         $alfa  = $this->polo('Alfa', ['projeto' => null, 'fase' => 'M1']);
         // `projeto` digitado com caixa e espaço diferentes continua sendo Polos.
         $gama  = $this->polo('Gama', ['projeto' => ' Polos ']);
+        // Em tratativa de churn continua; sem fase também.
+        $delta = $this->polo('Delta', ['fase' => 'Protocolo Churn']);
+        $semFase = $this->polo('Epsilon', ['fase' => null]);
         $this->polo('Arquivada', ['arquivado_em' => now()]);
         $this->polo('Assessoria', ['projeto' => 'Assessoria', 'fase' => 'ASSESSORIA']);
+        // Churn sai da aba (pedido de 26/10/2026), com qualquer caixa/espaço.
+        $this->polo('Churn', ['fase' => 'Churn']);
+        $this->polo('Churn caixa', ['fase' => ' churn ']);
 
         $admin = $this->admin();
 
         $props = $this->carga($admin);
         $this->assertTrue($props['pode_ver_polos']);
-        $this->assertSame(3, $props['polos_total']);
+        $this->assertSame(5, $props['polos_total']);
 
         $lista = $this->listaDaAba($admin);
-        // Ordem alfabética, sem arquivada e sem outro projeto.
-        $this->assertSame([$alfa->id, $beta->id, $gama->id], array_column($lista, 'id'));
+        // Ordem alfabética, sem arquivada, sem outro projeto e sem Churn.
+        $this->assertSame([$alfa->id, $beta->id, $delta->id, $semFase->id, $gama->id], array_column($lista, 'id'));
     }
 
     #[Test]
