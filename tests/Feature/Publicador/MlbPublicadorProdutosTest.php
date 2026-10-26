@@ -455,7 +455,9 @@ class MlbPublicadorProdutosTest extends TestCase
         $espacos = $this->empresa(['nome' => 'Com Espacos', 'projeto' => ' POLOS '], comToken: true);
         $this->actingAs($this->admin());
 
-        $listadas = collect($this->get('/mlb/anuncios?programa=polos')->assertOk()->viewData('page')['props']['empresas'])->pluck('nome')->all();
+        // 26/10/2026: a tela A traz os três programas numa lista só; cada linha diz o seu.
+        $listadas = collect($this->get('/mlb/anuncios')->assertOk()->viewData('page')['props']['empresas'])
+            ->where('programa', 'polos')->pluck('nome')->values()->all();
         $this->assertEqualsCanonicalizing(['Caixa Mista', 'Com Espacos'], $listadas);
 
         foreach ([$polos, $espacos] as $e) {

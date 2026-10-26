@@ -18,7 +18,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/** Fase 164 / 164-03: tela A — empresas do programa com conta do ML (critério 1 do ROADMAP). */
+/**
+ * Fase 164 / 164-03: tela A — empresas com conta do ML (critério 1 do ROADMAP).
+ * 26/10/2026: os três programas numa lista só; a busca e o filtro de programa
+ * passaram para o navegador (ver `MlbPublicadorEntradaController::index`).
+ */
 class MlbPublicadorEntradaTest extends TestCase
 {
     use RefreshDatabase;
@@ -43,6 +47,12 @@ class MlbPublicadorEntradaTest extends TestCase
     private function nomes(string $query = ''): array
     {
         return collect($this->props($query)['empresas'])->pluck('nome')->all();
+    }
+
+    /** Nomes das linhas de UM programa — o corte que antes era a aba. */
+    private function nomesDo(string $programa): array
+    {
+        return collect($this->props()['empresas'])->where('programa', $programa)->pluck('nome')->values()->all();
     }
 
     private function token(array $ancora, array $extra = []): MlToken
@@ -71,30 +81,40 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->actingAs(User::factory()->create(['role' => 'consultor']))->get('/mlb/anuncios')->assertForbidden();
     }
 
-    public function test_sem_parametro_ou_invalido_e_polos(): void
+    /**
+     * 26/10/2026: uma lista só. Antes cada programa era uma aba e a busca só
+     * procurava na aba escolhida — empresa de Polos nunca era achada em Gestão.
+     */
+    public function test_lista_unica_com_os_tres_programas_e_cada_linha_diz_o_seu(): void
     {
         $this->empresa('Polo A', [], []);
         $this->empresa('Inc A', ['projeto' => 'Incubadora'], []);
+        $c = Company::factory()->create(['name' => 'Gestao A']);
+        $this->token(['company_id' => $c->id]);
 
-        $this->assertSame('polos', $this->props()['programa']);
-        $this->assertSame('polos', $this->props('?programa=xyz')['programa']);
-        $this->assertSame(['Polo A'], $this->nomes('?programa=xyz'));
+        $linhas = collect($this->props()['empresas'])->keyBy('nome');
+
+        $this->assertSame(['Gestao A', 'Inc A', 'Polo A'], $linhas->keys()->all(), 'ordem alfabética, programas misturados');
+        $this->assertSame(['polos', 'Polos'], [$linhas['Polo A']['programa'], $linhas['Polo A']['programa_rotulo']]);
+        $this->assertSame(['incubadora', 'Incubadora'], [$linhas['Inc A']['programa'], $linhas['Inc A']['programa_rotulo']]);
+        $this->assertSame(['gestao', 'Gestão'], [$linhas['Gestao A']['programa'], $linhas['Gestao A']['programa_rotulo']]);
     }
 
-    /**
-     * Fase 172-02: programa inicial por sessão (decisão do usuário — sessão →
-     * Polos, sem ramo de setor). `props()` usa `actingAs` a cada chamada, mas
-     * isso só troca o usuário autenticado — a sessão array-driver do processo
-     * de teste sobrevive entre as chamadas desta mesma função de teste.
-     */
-    public function test_sem_parametro_lembra_o_ultimo_programa_da_sessao(): void
+    /** `?programa=` só escolhe a etiqueta inicial: não corta a lista nem fica na sessão. */
+    public function test_programa_da_url_so_escolhe_a_etiqueta_inicial(): void
     {
-        $this->empresa('Inc A', ['projeto' => 'Incubadora'], []);
         $this->empresa('Polo A', [], []);
+        $this->empresa('Inc A', ['projeto' => 'Incubadora'], []);
 
-        $this->assertSame('incubadora', $this->props('?programa=incubadora')['programa']);
-        // Mesma sessão, sem ?programa: lembra o último escolhido, não cai em 'polos'.
-        $this->assertSame('incubadora', $this->props()['programa']);
+        $this->assertSame('todos', $this->props()['programa']);
+        $this->assertSame('todos', $this->props('?programa=xyz')['programa']);
+
+        $comPrograma = $this->props('?programa=incubadora');
+        $this->assertSame('incubadora', $comPrograma['programa']);
+        $this->assertEqualsCanonicalizing(['Polo A', 'Inc A'], collect($comPrograma['empresas'])->pluck('nome')->all());
+
+        // A sessão não guarda mais o último programa (Fase 172-02 aposentada em 26/10/2026).
+        $this->assertSame('todos', $this->props()['programa']);
     }
 
     public function test_polos_lista_formas_de_conta_e_exclui_arquivada_sem_conta_e_incubadora(): void
@@ -114,9 +134,10 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->empresa('Sem Conta');
         $this->empresa('Da Incubadora', ['projeto' => 'Incubadora'], []);
 
-        $linhas = collect($this->props('?programa=polos')['empresas'])->keyBy('nome');
-
-        $this->assertEqualsCanonicalizing(['Token Proprio', 'Token Na Company', 'Token Vencido', 'So Carimbo'], $linhas->keys()->all());
+        $this->assertEqualsCanonicalizing(['Token Proprio', 'Token Na Company', 'Token Vencido', 'So Carimbo'], $this->nomesDo('polos'));
+        $linhas = collect($this->props()['empresas'])->keyBy('nome');
+        $this->assertNotContains('Arquivada', $linhas->keys()->all());
+        $this->assertNotContains('Sem Conta', $linhas->keys()->all());
         $this->assertSame('ativo', $linhas['Token Proprio']['token']);
         $this->assertSame('ativo', $linhas['Token Na Company']['token']);
         // 20/10/2026: vencido renova sozinho na 1ª chamada — a conta não aparece desconectada.
@@ -136,8 +157,8 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->empresa('Por Tipo', ['projeto' => null, 'tipo' => 'INCUBADORA'], []);
         $this->empresa('De Polos', [], []);
 
-        $this->assertEqualsCanonicalizing(['Por Projeto', 'Por Fase', 'Por Tipo'], $this->nomes('?programa=incubadora'));
-        $this->assertSame(['De Polos'], $this->nomes('?programa=polos'));
+        $this->assertEqualsCanonicalizing(['Por Projeto', 'Por Fase', 'Por Tipo'], $this->nomesDo('incubadora'));
+        $this->assertSame(['De Polos'], $this->nomesDo('polos'));
     }
 
     public function test_gestao_lista_company_com_token_e_exclui_ligada_a_polos_ou_incubadora(): void
@@ -155,8 +176,8 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->token(['company_id' => $ligadaArquivada->id]);
         $this->empresa('Arq', ['company_id' => $ligadaArquivada->id, 'arquivado_em' => now()]);
 
-        $this->assertEqualsCanonicalizing(['Cliente Livre', 'Ligada Arquivada'], $this->nomes('?programa=gestao'));
-        $linha = collect($this->props('?programa=gestao')['empresas'])->firstWhere('nome', 'Cliente Livre');
+        $this->assertEqualsCanonicalizing(['Cliente Livre', 'Ligada Arquivada'], $this->nomesDo('gestao'));
+        $linha = collect($this->props()['empresas'])->firstWhere('nome', 'Cliente Livre');
         $this->assertSame('company-'.$livre->id, $linha['chave']);
         $this->assertSame('company', $linha['tipo']);
     }
@@ -220,8 +241,9 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->assertSame(3, $l['produtos']);
         $this->assertSame(1, $l['prontos']);
         $this->assertSame(1, $l['publicados']);
-        $this->assertSame(1, $props['indicadores']['prontos']);
-        $this->assertSame(1, $props['indicadores']['publicados_mes']);
+        $this->assertSame(1, $l['publicados_mes']);
+        // 26/10/2026: os cartões de número saíram da tela — o servidor não monta mais `indicadores`.
+        $this->assertArrayNotHasKey('indicadores', $props);
     }
 
     public function test_liberada_so_para_a_ancora_com_token_na_lista(): void
@@ -243,45 +265,45 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->assertFalse($l['B']['liberada']);
     }
 
-    public function test_programas_e_indicadores(): void
+    /**
+     * A contagem por programa é a das LINHAS da lista. Antes contava só as contas
+     * com token: a aba dizia "Polos 60" e a lista mostrava 96 (as que autorizaram
+     * e falta reconectar entram na lista).
+     */
+    public function test_programas_contam_as_linhas_da_lista(): void
     {
         $this->empresa('P1', [], []);
         $this->empresa('P2', [], []);
+        $carimbo = $this->empresa('P3 Falta Reconectar');
+        MlbImplementacao::create(['empresa_id' => $carimbo->id, 'token' => 'tok-p3', 'dados' => ['ml_oauth' => ['autorizado_em' => '2026-08-12T14:03:00Z']]]);
         $this->empresa('I1', ['projeto' => 'Incubadora'], []);
         $c = Company::factory()->create();
         $this->token(['company_id' => $c->id]);
         $this->empresa('Sem Conta');
 
         $props = $this->props();
-        $this->assertSame(['polos' => 2, 'incubadora' => 1, 'gestao' => 1], $props['programas']);
-        $this->assertSame(2, $props['indicadores']['empresas']);
-        $this->assertSame(0, $props['indicadores']['pct_sincronizado']);
+        $this->assertSame(['polos' => 3, 'incubadora' => 1, 'gestao' => 1], $props['programas']);
+        $this->assertCount(array_sum($props['programas']), $props['empresas']);
     }
 
-    public function test_busca_filtros_e_paginacao(): void
+    /** Sem paginação, e `busca`/`filtro`/`pagina` de links antigos não cortam nada. */
+    public function test_lista_inteira_sem_paginacao_e_parametros_antigos_ignorados(): void
     {
         for ($i = 1; $i <= 55; $i++) {
             $this->empresa(sprintf('Loja %02d', $i), [], []);
         }
-        $this->empresa('Vencida Especial', [], ['expires_at' => now()->subHour()]);
         $carimbo = $this->empresa('Falta Reconectar');
         MlbImplementacao::create(['empresa_id' => $carimbo->id, 'token' => 'tok-esp', 'dados' => ['ml_oauth' => ['autorizado_em' => '2026-08-12T14:03:00Z']]]);
 
         $p = $this->props();
-        $this->assertCount(50, $p['empresas']);
-        $this->assertSame(57, $p['paginacao']['total']);
-        $this->assertSame([1, 50], [$p['paginacao']['de'], $p['paginacao']['ate']]);
-        $this->assertSame(50, $p['paginacao']['por_pagina']);
+        $this->assertCount(56, $p['empresas']);
+        $this->assertSame('Falta Reconectar', $p['empresas'][0]['nome']);
+        $this->assertSame('Loja 55', $p['empresas'][55]['nome']);
+        foreach (['paginacao', 'filtros', 'indicadores'] as $chave) {
+            $this->assertArrayNotHasKey($chave, $p, $chave);
+        }
 
-        $p2 = $this->props('?pagina=2');
-        $this->assertCount(7, $p2['empresas']);
-        $this->assertSame([51, 57], [$p2['paginacao']['de'], $p2['paginacao']['ate']]);
-
-        $this->assertSame(['Loja 07'], $this->nomes('?busca=loja 07'));
-        // 20/10/2026: a vencida renova sozinha — atenção é só a conta que precisa reconectar.
-        $this->assertSame(['Falta Reconectar'], $this->nomes('?filtro=atencao'));
-        $this->assertSame([], $this->nomes('?filtro=prontos'));
-        $this->assertSame([], $this->nomes('?filtro=nunca'));
+        $this->assertCount(56, $this->props('?busca=loja 07&filtro=atencao&pagina=2')['empresas']);
     }
 
     public function test_numero_de_consultas_nao_cresce_com_o_numero_de_empresas(): void

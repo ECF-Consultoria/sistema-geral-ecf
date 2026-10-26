@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Check, Copy } from 'lucide-react';
 
 /**
@@ -9,7 +10,7 @@ import { Check, Copy } from 'lucide-react';
  * ML, e um clique interno da ECF carimbaria a conta errada (caso Masitto,
  * 27/08).
  */
-export default function LinkReconexao({ link }) {
+export default function LinkReconexao({ link, className }) {
     const [copiado, setCopiado] = useState(false);
 
     if (!link) {
@@ -32,7 +33,10 @@ export default function LinkReconexao({ link }) {
             type="button"
             onClick={copiar}
             title="Envie este link ao cliente: ele precisa abri-lo no navegador DELE. Um clique interno da ECF autoriza a conta errada."
-            className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+            className={cn(
+                'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                className,
+            )}
         >
             {copiado ? <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
             <span aria-live="polite">{copiado ? 'Link copiado' : 'Copiar link de reconexão'}</span>

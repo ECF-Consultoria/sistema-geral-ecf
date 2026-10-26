@@ -18,9 +18,9 @@ const ARQUIVOS = [
     DIR + 'AvisoContaTravada.jsx',
     DIR + 'LinkReconexao.jsx',
     DIR + 'BotaoSincronizarPortal.jsx',
-    DIR + 'SeletorPrograma.jsx',
-    DIR + 'IndicadoresDoPrograma.jsx',
-    DIR + 'PainelComoFunciona.jsx',
+    // 26/10/2026: SeletorPrograma, IndicadoresDoPrograma e PainelComoFunciona
+    // foram APAGADOS — a tela A virou "busca primeiro" (abas, cartões de número e
+    // "Como funciona" saíram por decisão do usuário).
     DIR + 'SeloStatusProduto.jsx',
     DIR + 'ModalNovoProduto.jsx',
     // Layout v2 da lista de Produtos (quick 261009-prd) — entram no mesmo
@@ -70,15 +70,6 @@ test('AvisoContaTravada — D26: validação e publicação esperam a liberaçã
     assert.match(fonte, /nota-conta-travada/);
 });
 
-test('SeletorPrograma — radiogroup com Polos, Incubadora e Gestão nessa ordem', () => {
-    const fonte = lerSemComentarios(DIR + 'SeletorPrograma.jsx');
-    assert.match(fonte, /role="radiogroup"/);
-    assert.match(fonte, /role="radio"/);
-    assert.match(fonte, /aria-checked/);
-    const ordem = [fonte.indexOf("'Polos'"), fonte.indexOf("'Incubadora'"), fonte.indexOf("'Gestão'")];
-    assert.ok(ordem.every((i) => i >= 0) && ordem[0] < ordem[1] && ordem[1] < ordem[2]);
-});
-
 test('BotaoSincronizarPortal — posta na rota do contrato e usa a mensagem do servidor', () => {
     const fonte = lerSemComentarios(DIR + 'BotaoSincronizarPortal.jsx');
     assert.match(fonte, /mlb\.anuncios\.publicador\.sincronizar/);
@@ -106,19 +97,23 @@ test('haQuanto — minutos, horas, dias, agora e inválido', () => {
     assert.equal(haQuanto('lixo', agora), null);
 });
 
-test('Tela A — lê o contrato de props e não referencia o wizard antigo nem pode_publicar', () => {
+test('Tela A — lê o contrato de props (programa, programas, empresas) e não referencia o wizard antigo nem pode_publicar', () => {
     const fonte = lerSemComentarios(PAGINA_A);
-    for (const p of ['programa', 'programas', 'indicadores', 'empresas', 'paginacao', 'filtros']) {
-        assert.ok(fonte.includes(p), p);
-    }
+    assert.match(fonte, /export default function AnunciosEmpresas\(\{ programa = 'todos', programas = \{\}, empresas = \[\] \}\)/);
+    // 26/10/2026: os cartões de número e a paginação saíram junto com as props.
+    assert.doesNotMatch(fonte, /indicadores|paginacao|filtros\./);
     assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard|pode_publicar/);
 });
 
-test('Tela A — troca de programa, filtro, busca e página por router.get na rota de entrada', () => {
+test('Tela A — busca e programa filtram NO NAVEGADOR: nenhuma visita à rota de entrada ao digitar', () => {
+    // A busca ia ao servidor a cada pausa de 350 ms e trocava o bloco pelo
+    // esqueleto: o campo sumia e o resto da digitação se perdia (medido em
+    // produção em 26/10/2026). Agora filtra a lista que já chegou.
     const fonte = lerSemComentarios(PAGINA_A);
-    assert.match(fonte, /router\.get\(route\('mlb\.anuncios\.index'\)/);
-    assert.match(fonte, /preserveState: true/);
-    assert.match(fonte, /pagina/);
+    assert.doesNotMatch(fonte, /router\.get\(route\('mlb\.anuncios\.index'\)/);
+    assert.doesNotMatch(fonte, /Esqueleto|setTimeout/);
+    assert.match(fonte, /filtrarEmpresas\(lista, \{ programa: filtroPrograma, busca \}\)/);
+    assert.match(fonte, /from '@\/Components\/Mlb\/Publicador\/entradaDoPublicador'/);
 });
 
 test('Tela A — a linha abre Produtos por clique e por Enter (focável)', () => {
@@ -133,11 +128,14 @@ test('Tela A — a linha abre Produtos por clique e por Enter (focável)', () =>
     assert.match(fonte, /'Enter'/);
 });
 
-test('Tela A — abrirConta é a ÚNICA função de abertura, usada pela linha e pelo botão "Publicar →"', () => {
+test('Tela A — abrirConta é a ÚNICA função de abertura: a linha (e o "Publicar" dela) e os Recentes', () => {
     const fonte = lerSemComentarios(PAGINA_A);
-    const ocorrencias = fonte.match(/abrirConta\(/g) ?? [];
-    // 3 chamadas: onClick da linha, onKeyDown (Enter) da linha e onClick do botão.
-    assert.equal(ocorrencias.length, 3, `esperado 3 ocorrências de abrirConta(, achou ${ocorrencias.length}`);
+    assert.equal((fonte.match(/const abrirConta = /g) ?? []).length, 1);
+    // A linha recebe a função; clique, Enter e "Publicar" passam pelo `abrir()` dela.
+    assert.match(fonte, /onAbrir=\{abrirConta\}/);
+    assert.match(fonte, /const abrir = \(\) => \{ if \(chave !== ''\) onAbrir\?\.\(e\); \};/);
+    // Recentes com linha viva também abrem por ela (e sobem para o topo).
+    assert.match(fonte, /abrirConta\(dados\)/);
     assert.doesNotMatch(fonte, /abrirProdutos/);
 });
 
@@ -207,16 +205,16 @@ test('Tela A — gravarRecente é chamado ANTES de navegar (ordem, não proximid
 
 test('Tela A — item de Recentes não guarda token (T-173-07, sem dado sensível)', () => {
     const fonte = lerSemComentarios(PAGINA_A);
-    assert.match(fonte, /const item = \{ chave: e\.chave, nome: e\.nome, identificador: e\.identificador, programa: e\.programa \?\? programa \};/);
+    assert.match(fonte, /const item = \{ chave: e\.chave, nome: e\.nome, identificador: e\.identificador, programa: e\.programa \};/);
 });
 
 test('Tela A — sem itens inventados do Stitch e sem linha avermelhada', () => {
     const fonte = lerSemComentarios(PAGINA_A);
     assert.doesNotMatch(fonte, /Publicar em Lote|Filtros Avançados|\bSLA\b/i);
-    // vermelho só nos blocos de erro (carga e sincronizar), nunca no <tr>
-    const abertura = fonte.match(/className="h-14[^"]*"/);
-    assert.ok(abertura, 'linha h-14 não encontrada');
-    assert.doesNotMatch(abertura[0], /bg-red|border-red/);
+    // vermelho só no aviso de erro do sincronizar, nunca na linha (<li> desde 26/10/2026)
+    const abertura = fonte.match(/<li\s[\s\S]*?className="([^"]*)"/);
+    assert.ok(abertura, 'linha <li> não encontrada');
+    assert.doesNotMatch(abertura[1], /bg-red|border-red/);
 });
 
 test('ModoAnuncioTabs — Individual aponta para o Publicador e sem Company desabilita (D14, D22, D23)', () => {

@@ -30,13 +30,12 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 /**
- * Tela A do Publicador (Fase 164): entrada em /mlb/anuncios, por programa
- * (Polos · Incubadora · Gestão). Só admins — o grupo de rotas aplica role:admin (D17).
+ * Tela A do Publicador (Fase 164): entrada em /mlb/anuncios, com as empresas dos
+ * três programas (Polos · Incubadora · Gestão) numa lista só desde 26/10/2026.
+ * Só admins — o grupo de rotas aplica role:admin (D17).
  */
 class MlbPublicadorEntradaController extends Controller
 {
-    private const POR_PAGINA = 50;
-    private const FILTROS = ['todos', 'prontos', 'atencao', 'nunca'];
     private const BUSCA_LIMITE = 20;
 
     /**
@@ -51,63 +50,39 @@ class MlbPublicadorEntradaController extends Controller
 
     public function __construct(private ProgramasPublicadorService $programas) {}
 
+    /**
+     * Tela A — "busca primeiro" (26/10/2026, decisão do usuário sobre os mockups).
+     *
+     * Uma lista SÓ com as empresas dos três programas, cada linha com o seu
+     * `programa`. A busca e as etiquetas Todas/Polos/Gestão filtram no navegador:
+     * antes cada programa era uma aba, a busca só procurava na aba escolhida e
+     * uma empresa de Polos nunca era achada estando em Gestão.
+     *
+     * Sem paginação de propósito: são ~175 contas, e a busca é o caminho
+     * principal. `?programa=` (links antigos, "Ver todas" do header) só escolhe a
+     * etiqueta inicial — não corta a lista. `busca`/`filtro`/`pagina` antigos são
+     * ignorados.
+     *
+     * `programas` conta as LINHAS da lista. Antes contava só as contas com token,
+     * e a aba dizia "Polos 60" com 96 empresas na lista.
+     */
     public function index(Request $request)
     {
-        // Fase 172-02: programa inicial por sessão (decisão do usuário — fica só
-        // sessão → Polos, SEM o ramo "setor do usuário" que a spec original previa).
-        // `?programa=` na URL continua mandando e grava o novo valor na sessão;
-        // sem o parâmetro, lê o último programa escolhido nesta sessão, caindo em
-        // 'polos' se a sessão estiver vazia ou com valor fora da whitelist.
-        $programaQuery = $request->query('programa');
-        if ($programaQuery !== null) {
-            $programa = in_array($programaQuery, ProgramasPublicadorService::PROGRAMAS, true)
-                ? $programaQuery
-                : 'polos';
-            session(['publicador.ultimo_programa' => $programa]);
-        } else {
-            $programa = (string) session('publicador.ultimo_programa', 'polos');
-            if (! in_array($programa, ProgramasPublicadorService::PROGRAMAS, true)) {
-                $programa = 'polos';
-            }
-        }
+        $pedido = (string) $request->query('programa', '');
+        $programa = in_array($pedido, ProgramasPublicadorService::PROGRAMAS, true) ? $pedido : 'todos';
 
-        $busca = mb_substr(trim((string) $request->query('busca', '')), 0, 120);
-        $filtro = (string) $request->query('filtro', 'todos');
-        if (! in_array($filtro, self::FILTROS, true)) {
-            $filtro = 'todos';
-        }
-
-        $todas = $this->programas->empresas($programa);
-        $indicadores = $this->programas->indicadores($programa, $todas);
-
-        $linhas = $todas
-            ->when($busca !== '', fn ($c) => $c->filter(fn ($l) => mb_stripos($l['nome'], $busca) !== false
-                || mb_stripos($l['identificador'], $busca) !== false))
-            ->when($filtro === 'prontos', fn ($c) => $c->filter(fn ($l) => $l['prontos'] > 0))
-            ->when($filtro === 'atencao', fn ($c) => $c->filter(fn ($l) => $l['token'] !== 'ativo'))
-            ->when($filtro === 'nunca', fn ($c) => $c->filter(fn ($l) => $l['portal']['situacao'] === 'nunca'))
+        $empresas = collect(ProgramasPublicadorService::PROGRAMAS)
+            ->flatMap(fn (string $p) => $this->programas->empresas($p)
+                ->map(fn (array $l) => $l + ['programa' => $p, 'programa_rotulo' => self::PROGRAMA_ROTULO[$p]]))
             ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
-        $total = $linhas->count();
-        $pagina = max(1, (int) $request->query('pagina', 1));
-        $pagina = min($pagina, max(1, (int) ceil($total / self::POR_PAGINA)));
-        $deslocamento = ($pagina - 1) * self::POR_PAGINA;
-        $pagBase = $linhas->slice($deslocamento, self::POR_PAGINA)->values();
-
         return Inertia::render('Mlb/AnunciosEmpresas', [
             'programa' => $programa,
-            'programas' => $this->programas->contagens(),
-            'indicadores' => $indicadores,
-            'empresas' => $pagBase,
-            'paginacao' => [
-                'pagina' => $pagina,
-                'por_pagina' => self::POR_PAGINA,
-                'total' => $total,
-                'de' => $total === 0 ? 0 : $deslocamento + 1,
-                'ate' => $deslocamento + $pagBase->count(),
-            ],
-            'filtros' => ['busca' => $busca, 'filtro' => $filtro],
+            'programas' => collect(ProgramasPublicadorService::PROGRAMAS)
+                ->mapWithKeys(fn (string $p) => [$p => $empresas->where('programa', $p)->count()])
+                ->all(),
+            'empresas' => $empresas,
         ]);
     }
 
