@@ -660,6 +660,20 @@ só como arquivo NÃO COMMITADO no checkout `c:\xampp\htdocs\ecf_admin` — não
 origin/main. Ela bloqueia também a junção de contas da Fase 159 (§7.1). O usuário
 decidiu, em 01/10, adiar a junção sem decidir ainda sobre a correção.
 
+**CONSERTADO em 2026-10-26** (`bc9ddae7`, publicado por fast-forward + `migrate --force`,
+sem `deploy.sh`): `SHOW INDEX` em produção sem o legado, com `..._user_ref_mes_unique` de
+apoio da FK. Backup antes: `/root/backup_carteiras_20261026_1909/`. Julho chegou a ser
+reconsolidado e foi **interrompido a pedido do usuário** ("não precisa de julho, só
+setembro adiante"): ficaram 2026-07 = 5 mensais e 2026-08 = 1 — **os dois meses seguem
+parcialmente ao vivo, de propósito**. O comando leva ~2,5 min por profissional (consulta a
+Adman), ~30 min por mês. Setembro fecha pelo cron de 31/10 14:00 — conferir por contagem.
+No mesmo dia: junção do Danilo feita **sem** `usuarios:unificar-contas` (a trava pede
+2026-08 consolidado): cargo Estrategista no user 15 pela /users, 17 lojas do 35 → 15 pela
+tela da empresa (grava `company_manager_history`), 0 atribuição/imputação de NPS de coleta
+≥ 2026-10 no 35 (as 5 dele são anteriores e ficaram), cache do 35 ≥ 2026-09 apagado e o 35
+desativado. Lista nova de carteiras de todo o Performance aplicada na mesma hora —
+setembro fecha com a carteira NOVA (decisão do usuário).
+
 **A suíte não protege contra a repetição, e não tem como.** Os testes rodam em
 SQLite, que não exige índice de apoio para FK — lá o drop da 140001 sempre deu
 certo e o legado nunca existiu. O teste acima trava o estado do schema e a
