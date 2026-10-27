@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown, ArrowUpDown,
-         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download, Gift } from 'lucide-react';
+         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX, Download, Gift, ClipboardCheck } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { corAds } from './components/adsCor';
 import { SeloFonteFaturamento, LancarFaturamentoManual } from './components/FaturamentoManual';
@@ -43,7 +43,7 @@ const campanhaDa = (e) => e.ads_campanha ?? 'nao_verificado';
 function StatusBadge({ status }) {
     const meta = STATUS_META[status] ?? { cor: '#94a3b8', label: status };
     return (
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold"
               style={{ background: `${meta.cor}22`, color: meta.cor }}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.cor }} />
             {meta.label}
@@ -71,8 +71,50 @@ export default function PolosEmpresas({
     podeLancarFaturamento = false,
     erro           = null,
 }) {
+    // Carteira por responsável do Painel Polos (TKT-0027): cada analista abre na própria
+    // carteira; quem não é responsável de nenhuma empresa abre em "Todos".
+    const { auth } = usePage().props;
+    const responsaveis = useMemo(() => {
+        const mapa = new Map();
+        let sem = 0;
+        empresas.forEach((e) => {
+            if (!e.responsavel_id) { sem++; return; }
+            const r = mapa.get(e.responsavel_id) ?? { id: e.responsavel_id, nome: e.responsavel, total: 0 };
+            r.total++;
+            mapa.set(e.responsavel_id, r);
+        });
+        return { lista: [...mapa.values()].sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')), sem };
+    }, [empresas]);
+    const minhaId = auth?.user?.id;
+    const [responsavel, setResponsavel] = useState(
+        responsaveis.lista.some((r) => r.id === minhaId) ? String(minhaId) : 'todos',
+    );
+    const daCarteira = useMemo(() => empresas.filter((e) => (
+        responsavel === 'todos' ? true
+            : responsavel === 'sem' ? !e.responsavel_id
+            : String(e.responsavel_id) === responsavel
+    )), [empresas, responsavel]);
+
+    // KPIs da carteira escolhida (em "Todos" são os totais do servidor). Mesma regra do
+    // servidor: faturamento soma M1–M4; ativos, meta e % só o roster da meta (sem M1).
+    const totaisVisiveis = useMemo(() => {
+        if (responsavel === 'todos') return totais;
+        const soma   = (lista, campo) => lista.reduce((t, e) => t + (e[campo] ?? 0), 0);
+        const naMeta = daCarteira.filter((e) => e.status !== 'Sem meta');
+        const m1     = daCarteira.filter((e) => e.status === 'Sem meta');
+        const meta   = soma(naMeta, 'meta');
+        return {
+            faturamento:    soma(daCarteira, 'faturamento'),
+            meta,
+            pct:            meta > 0 ? Math.round((soma(naMeta, 'faturamento') / meta) * 1000) / 10 : 0,
+            ativos:         naMeta.length,
+            m1:             m1.length,
+            faturamento_m1: soma(m1, 'faturamento'),
+        };
+    }, [responsavel, daCarteira, totais]);
+
     // Quantas empresas do mês estão com faturamento lançado à mão (rótulo do KPI).
-    const nManuais = empresas.filter((e) => e.faturamento_fonte === 'manual').length;
+    const nManuais = daCarteira.filter((e) => e.faturamento_fonte === 'manual').length;
 
     // Chegando do clique numa fatia da "Distribuição de status", a lista já abre filtrada
     // naquele status. O backend valida a chave (ver todasEmpresas) — aqui ela só vira o chip.
@@ -124,7 +166,7 @@ export default function PolosEmpresas({
     }));
 
     const lista = useMemo(() => {
-        let l = empresas.filter((e) => {
+        let l = daCarteira.filter((e) => {
             if (filtro === 'ads') { if (e.ads_desligado !== true) return false; }
             else if (filtro !== 'todas' && e.status !== filtro) return false;
             if (parcial && campanha !== 'todas' && campanhaDa(e) !== campanha) return false;
@@ -134,13 +176,13 @@ export default function PolosEmpresas({
         const { campo, dir } = ordem;
         l = [...l].sort((a, b) => {
             let va = a[campo], vb = b[campo];
-            if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb ?? '').toLowerCase(); }
+            if (typeof va === 'string' || typeof vb === 'string') { va = (va ?? '').toLowerCase(); vb = (vb ?? '').toLowerCase(); }
             if (va < vb) return dir === 'asc' ? -1 : 1;
             if (va > vb) return dir === 'asc' ? 1 : -1;
             return 0;
         });
         return l;
-    }, [empresas, filtro, campanha, busca, ordem, parcial]);
+    }, [daCarteira, filtro, campanha, busca, ordem, parcial]);
 
     // Baixar planilha (.xlsx) — mesmo padrão do Painel Polos: form POST oculto (download
     // nativo do navegador) levando o mês e os cust_id das linhas VISÍVEIS, na ordem da
@@ -167,12 +209,12 @@ export default function PolosEmpresas({
         document.body.removeChild(form);
     };
 
-    const contar = (key) => key === 'todas' ? empresas.length
-        : key === 'ads' ? empresas.filter((e) => e.ads_desligado === true).length
-        : empresas.filter((e) => e.status === key).length;
+    const contar = (key) => key === 'todas' ? daCarteira.length
+        : key === 'ads' ? daCarteira.filter((e) => e.ads_desligado === true).length
+        : daCarteira.filter((e) => e.status === key).length;
 
-    const contarCampanha = (key) => key === 'todas' ? empresas.length
-        : empresas.filter((e) => campanhaDa(e) === key).length;
+    const contarCampanha = (key) => key === 'todas' ? daCarteira.length
+        : daCarteira.filter((e) => campanhaDa(e) === key).length;
 
     const Th = ({ campo, children, className }) => (
         <th className={cn('px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40', className)}>
@@ -203,7 +245,12 @@ export default function PolosEmpresas({
                     </div>
 
                     {meses.length > 0 && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Link href={route('mlb.polos-painel.fila')}
+                                  title="Fila de revisão quinzenal: as empresas de cada analista para revisar hoje"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/10 px-3 py-1.5 text-[12px] font-semibold text-ecf-yellow transition hover:bg-ecf-yellow/20">
+                                <ClipboardCheck size={13} /> Fila de revisão
+                            </Link>
                             <button type="button" onClick={baixarPlanilha} disabled={lista.length === 0}
                                     title="Baixar as empresas da lista abaixo (filtros e busca aplicados) em .xlsx, com reunião do mês e comentários"
                                     className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40">
@@ -235,14 +282,14 @@ export default function PolosEmpresas({
                     Painel), e ativos/meta/% seguem só M2–M4. Os subtítulos dizem qual é qual —
                     sem eles o % parece não bater com faturamento ÷ meta (learnings painel-polos §14). */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Kpi label="Empresas ativas" value={totais.ativos}
-                         sub={(totais.m1 ?? 0) > 0 ? `+ ${totais.m1} em M1 (sem meta)` : null} />
+                    <Kpi label={responsavel === 'todos' ? 'Empresas ativas' : 'Empresas da carteira'} value={totaisVisiveis.ativos}
+                         sub={(totaisVisiveis.m1 ?? 0) > 0 ? `+ ${totaisVisiveis.m1} em M1 (sem meta)` : null} />
                     <Kpi label={nManuais > 0 ? `Faturamento (Adman + ${nManuais} manual)` : 'Faturamento (Adman)'}
-                         value={formatCurrency(totais.faturamento)} accent
-                         sub={(totais.m1 ?? 0) > 0 ? `M1–M4 · M1: ${formatCurrency(totais.faturamento_m1 ?? 0)}` : null} />
-                    <Kpi label="Meta total" value={formatCurrency(totais.meta)} />
-                    <Kpi label="% da meta" value={`${totais.pct}%`}
-                         sub={(totais.m1 ?? 0) > 0 ? 'base M2–M4' : null} />
+                         value={formatCurrency(totaisVisiveis.faturamento)} accent
+                         sub={(totaisVisiveis.m1 ?? 0) > 0 ? `M1–M4 · M1: ${formatCurrency(totaisVisiveis.faturamento_m1 ?? 0)}` : null} />
+                    <Kpi label="Meta total" value={formatCurrency(totaisVisiveis.meta)} />
+                    <Kpi label="% da meta" value={`${totaisVisiveis.pct}%`}
+                         sub={(totaisVisiveis.m1 ?? 0) > 0 ? 'base M2–M4' : null} />
                 </div>
 
                 {/* Filtros + busca */}
@@ -274,10 +321,25 @@ export default function PolosEmpresas({
                             </div>
                         )}
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-2 text-white/40 text-xs uppercase tracking-wider">
+                        Responsável
+                        <select value={responsavel} onChange={(ev) => setResponsavel(ev.target.value)}
+                                className="rounded-lg border border-white/[0.1] bg-ecf-card px-3 py-1.5 text-sm normal-case tracking-normal text-white/90 outline-none focus:border-ecf-yellow/40">
+                            <option value="todos" className="bg-ecf-card">Todos ({empresas.length})</option>
+                            {responsaveis.lista.map((r) => (
+                                <option key={r.id} value={String(r.id)} className="bg-ecf-card">
+                                    {r.id === minhaId ? `Minha carteira — ${r.nome}` : r.nome} ({r.total})
+                                </option>
+                            ))}
+                            {responsaveis.sem > 0 && <option value="sem" className="bg-ecf-card">Sem responsável ({responsaveis.sem})</option>}
+                        </select>
+                    </label>
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
                         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa ou polo…"
                                className="w-64 rounded-lg border border-white/[0.1] bg-ecf-card pl-9 pr-3 py-1.5 text-sm text-white/90 outline-none focus:border-ecf-yellow/40 placeholder:text-white/25" />
+                    </div>
                     </div>
                 </div>
 
@@ -289,6 +351,7 @@ export default function PolosEmpresas({
                                 <Th campo="nome">Empresa</Th>
                                 <Th campo="polo">Polo</Th>
                                 <Th campo="fase">Fase</Th>
+                                <Th campo="responsavel">Responsável</Th>
                                 <Th campo="status">Status</Th>
                                 <Th campo="faturamento" className="text-right">
                                     {metricaFaturamento === 'gross' ? 'Faturamento' : 'Faturamento (móveis)'}
@@ -301,7 +364,7 @@ export default function PolosEmpresas({
                         </thead>
                         <tbody className="divide-y divide-white/[0.04]">
                             {lista.length === 0 && (
-                                <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">Nenhuma empresa neste filtro.</td></tr>
+                                <tr><td colSpan={10} className="px-4 py-8 text-center text-white/40">Nenhuma empresa neste filtro.</td></tr>
                             )}
                             {lista.map((e) => {
                                 const expandida  = aberta === e.cust_id;
@@ -320,6 +383,7 @@ export default function PolosEmpresas({
                                             <td className="px-4 py-3 text-white/90 font-medium">{e.nome}</td>
                                             <td className="px-4 py-3 text-white/60">{e.polo}</td>
                                             <td className="px-4 py-3 text-white/40 text-xs">{e.fase}</td>
+                                            <td className="px-4 py-3 text-white/60 text-xs">{e.responsavel ?? <span className="text-white/25">—</span>}</td>
                                             <td className="px-4 py-3"><StatusBadge status={e.status} /></td>
                                             {/* Faturamento + origem do número (Adman / manual / sem dado) e,
                                                 para quem pode, o lápis do lançamento manual. */}
@@ -382,7 +446,7 @@ export default function PolosEmpresas({
                                         </tr>
                                         {expandida && (
                                             <tr key={`${e.cust_id}-sem`} className="bg-white/[0.02]">
-                                                <td colSpan={9} className="px-6 py-4">
+                                                <td colSpan={10} className="px-6 py-4">
                                                     {/* Semanal à esquerda, comentários à direita (a partir de xl fica
                                                         mesmo ao lado do card da última semana; abaixo disso empilha). */}
                                                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
@@ -445,7 +509,7 @@ export default function PolosEmpresas({
                     </table>
                 </div>
 
-                <p className="text-white/30 text-xs text-center">{lista.length} de {empresas.length} empresas · clique numa linha para ver o faturamento semanal e comentar</p>
+                <p className="text-white/30 text-xs text-center">{lista.length} de {daCarteira.length} empresas · clique numa linha para ver o faturamento semanal e comentar</p>
             </div>
         </AppLayout>
     );

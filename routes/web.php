@@ -68,6 +68,7 @@ use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
 use App\Http\Controllers\PolosController;
+use App\Http\Controllers\PolosFilaController;
 use App\Http\Controllers\PolosPpaController;
 use App\Http\Controllers\BonusAuditoriaController;
 use App\Http\Controllers\RelatorioBonificacaoController;
@@ -1732,6 +1733,13 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     // Lista enxuta dos sellers em JSON, sem a ficha (TKT-0022): leitura por máquina (ler_tela do
     // MCP). Gate operacional do painel; financeiro só p/ quem abre /polos/empresas.
     Route::get('/polos-painel/sellers', [PolosController::class, 'painelSellers'])->name('polos-painel.sellers');
+    // Fila de revisão quinzenal (TKT-0027): fila do dia por responsável e agenda do ciclo de
+    // 10 dias úteis. Gate do Faturamento Polos (mostra faturamento e bônus) — no controller.
+    Route::get('/polos-painel/fila',                     [PolosFilaController::class, 'index'])->name('polos-painel.fila');
+    Route::get('/polos-painel/fila/agenda',              [PolosFilaController::class, 'agenda'])->name('polos-painel.fila.agenda');
+    Route::post('/polos-painel/fila/agenda',             [PolosFilaController::class, 'salvarAgenda'])->name('polos-painel.fila.agenda.salvar');
+    Route::post('/polos-painel/fila/revisoes',           [PolosFilaController::class, 'marcar'])->name('polos-painel.fila.revisoes.marcar');
+    Route::delete('/polos-painel/fila/revisoes/{empresa}', [PolosFilaController::class, 'desmarcar'])->name('polos-painel.fila.revisoes.desmarcar');
     // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Baixar o Painel como planilha .xlsx (colunas + AutoFiltro). POST porque o front

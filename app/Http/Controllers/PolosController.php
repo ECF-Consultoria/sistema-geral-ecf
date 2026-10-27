@@ -29,6 +29,7 @@ use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
+use App\Services\Polos\FilaRevisaoPolos;
 use App\Services\Polos\VinculoAdmanPolos;
 use App\Support\CustId;
 use Illuminate\Http\Request;
@@ -1664,6 +1665,23 @@ class PolosController extends Controller
     }
 
     /**
+     * As linhas do Faturamento Polos (/polos/empresas) do mês mais recente, para outra tela
+     * que precisa do MESMO número — a fila de revisão quinzenal (TKT-0027). Passa pelo
+     * montarPolos() da própria tela, então faturamento, meta, % e ADS nunca divergem.
+     *
+     * @return array{mes:?string, parcial:bool, linhas:array<int, array<string,mixed>>}|null  null = ECF Drive sem o arquivo
+     */
+    public function linhasDoMesCorrente(): ?array
+    {
+        $d = $this->montarPolos();
+        if ($d === null) {
+            return null;
+        }
+
+        return ['mes' => $d['mesSel'], 'parcial' => (bool) $d['parcial'], 'linhas' => $this->linhasDaVisaoCompleta($d)];
+    }
+
+    /**
      * Linhas da visão completa (/polos/empresas): lista plana com o polo de cada empresa,
      * ordenada por faturamento desc. Compartilhada pela tela e pela planilha exportada,
      * para as duas nunca divergirem.
@@ -1687,6 +1705,16 @@ class PolosController extends Controller
             array_push($empresas, ...($d['m1'] ?? []));
         }
         usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
+
+        // Responsável do Painel Polos (TKT-0027): o filtro "carteira" de cada analista. É o de
+        // HOJE, também em mês fechado — a carteira não tem histórico.
+        $responsaveis = FilaRevisaoPolos::responsaveisPorEmpresa(array_column($empresas, 'mlb_empresa_id'));
+        foreach ($empresas as &$e) {
+            $r = $responsaveis[(int) ($e['mlb_empresa_id'] ?? 0)] ?? null;
+            $e['responsavel_id'] = $r['id'] ?? null;
+            $e['responsavel']    = $r['nome'] ?? null;
+        }
+        unset($e);
 
         // Status das campanhas e bônus de ADS são estado de AGORA: só o mês corrente os mostra.
         // Mês fechado segue com o `ads_desligado` congelado no roster daquele mês.
@@ -1766,6 +1794,7 @@ class PolosController extends Controller
             ['key' => 'cust_id',       'label' => 'Cust ID',     'tipo' => 'texto'],
             ['key' => 'polo',          'label' => 'Polo',        'tipo' => 'texto'],
             ['key' => 'fase',          'label' => 'Fase',        'tipo' => 'texto'],
+            ['key' => 'responsavel',   'label' => 'Responsável', 'tipo' => 'texto'],
             ['key' => 'status',        'label' => 'Status',      'tipo' => 'texto'],
             ['key' => 'faturamento',   'label' => $d['metricaFaturamento'] === self::METRICA_GROSS ? 'Faturamento' : 'Faturamento (móveis)', 'tipo' => 'dinheiro'],
             ['key' => 'faturamento_fonte', 'label' => 'Fonte do faturamento', 'tipo' => 'texto', 'largura' => 34],
@@ -1804,6 +1833,7 @@ class PolosController extends Controller
                 'cust_id'       => $e['cust_id'],
                 'polo'          => $e['polo'],
                 'fase'          => $e['fase'],
+                'responsavel'   => $e['responsavel'] ?? null,
                 'status'        => self::EMPRESAS_STATUS_LABEL[$e['status']] ?? $e['status'],
                 'faturamento'   => $e['faturamento'],
                 'faturamento_fonte' => $this->fonteFaturamentoParaCelula($e),

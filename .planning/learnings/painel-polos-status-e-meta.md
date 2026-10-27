@@ -717,3 +717,27 @@ em vez de coluna no snapshot porque a ausência de linha no snapshot é sinal us
 (ordem por `synced_at`, §15) e pela trava do `--arquivar-ausentes` (§11.1). Cada linha de empresa leva
 `faturamento_fonte` (`adman` | `manual` | `sem_dado`): pela primeira vez a tela distingue
 "sem dado" de "vendeu zero".
+
+## 19. Fila de revisão quinzenal: "atrasada" é NESTE ciclo, e o M1 quase não tem dono (TKT-0027, 27/10/2026)
+
+`/mlb/polos-painel/fila` e `/fila/agenda` (`FilaRevisaoPolos`): cada empresa M1–M4 tem um dia
+fixo no ciclo de 10 dias úteis (Seg A … Sex B; Seg A = semana de 26/10/2026, chave
+`polos_ciclo_inicio` em `configuracoes`). O que custou descobrir:
+
+- **"Atrasada" tem de olhar o ciclo ATUAL.** A primeira versão contava o último dia previsto
+  ≤ hoje, que pode ser do ciclo anterior: quem ganhava dia na agenda (Qui A, numa terça da
+  Semana A) aparecia "Atrasada · 12d" por uma quinta de antes da agenda existir. A regra da
+  spec é "o dia passou NESTE ciclo sem revisão, ou a última revisão tem mais de 15 dias" —
+  travada em `FilaRevisaoQuinzenalTest`. Só a conferência na tela pegou; os testes do
+  primeiro desenho passavam.
+- **Responsável = o do Painel Polos** (`mlb_implementacoes.responsavel_id`; sem ficha, o da
+  empresa — mesma regra do `painelSellers`). Em 27/10/2026: M2–M4 = 200 empresas, todas com
+  responsável (Jhonatan 105, Elvis 95); **M1 = 77, só 1 com responsável**. Empresa sem dono
+  não entra na fila de ninguém — se pedirem "a fila não mostra as M1", é cadastro, não bug.
+- **Sinais que ficaram de fora por falta de dado:** ACOS, vendas por Ads, anúncios ativos e
+  promoções elegíveis. O snapshot (`polos_faturamento_snapshots`) só guarda faturamento e
+  investimento em Ads; trazer o resto é leitura nova da Adman (~10 rpm, §8.3).
+- **Bônus da fila = `manual-credits` da conta** (os R$ 3.000) de `polos_ads_bonificacoes`. A
+  Adman só devolve bônus com saldo: bônus gasto até o fim some e a empresa aparece "sem bônus".
+- Marcar "feito" sem texto grava só a revisão (`polos_revisoes`), sem comentário padrão —
+  um "Revisado sem alterações" apagaria o aviso "Desatualizado" ("sem bônus" × saldo na Adman).

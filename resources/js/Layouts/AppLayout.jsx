@@ -136,6 +136,9 @@ const NAV_TREE = [
             // Gate por permission dedicada mlb.faturamento_polos (concedida ao setor Polos).
             // Antes era excludeRoles admin-only; migrado p/ liberar o setor Polos ver o financeiro.
             { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   permission: 'mlb.faturamento_polos' },
+            // Fila de revisão quinzenal por responsável (TKT-0027). Mesmo gate do Faturamento:
+            // a fila mostra faturamento e bônus e grava comentário lá.
+            { label: 'Fila de revisão',   routeName: 'mlb.polos-painel.fila',   page: 'Polos/Fila',         icon: ClipboardCheck, permission: 'mlb.faturamento_polos' },
         ],
     },
 
