@@ -199,6 +199,12 @@ class ReavaliacaoAutomaticaTest extends TestCase
         $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
 
         $gestao = $this->servicoQueExige(['nome' => 'Gestão']);
+        // Quick 261027-m1y — o contrato de Gestão agora exige tabela progressiva resolvida
+        // (pré-check `tabela_progressiva`); este 'Gestão' de teste é um segundo registro,
+        // sem as faixas semeadas pela migration, então ganha uma faixa mínima.
+        \App\Models\ServicoFaixaFaturamento::create([
+            'servico_id' => $gestao->id, 'ordem' => 1, 'limite_superior' => null, 'valor' => 1000, 'valor_e_piso' => true,
+        ]);
         $this->contratoServicoAtivo($company, $gestao);
 
         $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->count());

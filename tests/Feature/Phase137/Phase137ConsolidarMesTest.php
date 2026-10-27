@@ -538,8 +538,8 @@ class Phase137ConsolidarMesTest extends TestCase
         $gravado = DB::table('fechamento_snapshots')->where('company_id', $company->id)->first();
 
         $this->assertNotNull($gravado);
-        $this->assertTrue((bool) $gravado->valor_faixa_e_piso, 'A última faixa de Gestão é piso ("a partir de R$ 12.000") — o snapshot precisa registrar isso, senão a wave 5 (PDF/email) cobra fechado onde o contrato prevê piso.');
-        $this->assertEqualsWithDelta(12_000.00, (float) $gravado->valor_faixa, 0.001);
+        $this->assertTrue((bool) $gravado->valor_faixa_e_piso, 'A última faixa de Gestão é piso ("a partir de R$ 13.500") — o snapshot precisa registrar isso, senão a wave 5 (PDF/email) cobra fechado onde o contrato prevê piso.');
+        $this->assertEqualsWithDelta(13_500.00, (float) $gravado->valor_faixa, 0.001); // quick 261027-m1y: piso novo de Gestão
     }
 
     #[Test]
@@ -559,7 +559,7 @@ class Phase137ConsolidarMesTest extends TestCase
 
         $this->assertNotNull($gravado);
         $this->assertFalse((bool) $gravado->valor_faixa_e_piso, 'Faixa normal (fechada) não pode gravar true — contraponto que pegaria um bug que marcasse piso para todo mundo.');
-        $this->assertEqualsWithDelta(3_000.00, (float) $gravado->valor_faixa, 0.001);
+        $this->assertEqualsWithDelta(3_700.00, (float) $gravado->valor_faixa, 0.001); // quick 261027-m1y: 1ª faixa nova de Gestão
     }
 
     #[Test]
@@ -588,6 +588,6 @@ class Phase137ConsolidarMesTest extends TestCase
 
         $this->assertNotNull($grupoGravado);
         $this->assertTrue((bool) $grupoGravado->valor_faixa_e_piso, 'A soma do grupo caiu na faixa-piso de Gestão — o snapshot de grupo precisa registrar isso igual ao de empresa.');
-        $this->assertEqualsWithDelta(12_000.00, (float) $grupoGravado->valor_faixa, 0.001);
+        $this->assertEqualsWithDelta(13_500.00, (float) $grupoGravado->valor_faixa, 0.001); // quick 261027-m1y: piso novo de Gestão
     }
 }

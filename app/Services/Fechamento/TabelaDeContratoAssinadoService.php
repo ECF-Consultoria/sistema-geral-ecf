@@ -33,6 +33,11 @@ use Illuminate\Support\Facades\Log;
  * `Quick261006ValorDeCobrancaNaoMudaTest`.
  *
  * ### As faixas vêm do SERVIÇO, não do PDF
+ * ⚠️ SUPERADO em parte (quick 261027-m1y): contrato gerado COM `tabela_progressiva_snapshot`
+ * grava a tabela IMPRESSA (a congelada na geração), não a do serviço ao vivo. O caminho do
+ * serviço descrito abaixo vale só para contrato antigo, sem snapshot. Texto antigo mantido
+ * como histórico:
+ *
  * O documento assinado imprime a tabela do serviço (`servico_faixas_faturamento`) — ver
  * `TabelaEmpresaContratoController::modelosDePartida()`, que usa a mesma fonte como "modelo de
  * partida". Não há parsing de PDF aqui: a leitura do PDF é o caminho da Fase 140
@@ -134,6 +139,16 @@ class TabelaDeContratoAssinadoService
             return $this->resultado(self::MOTIVO_JA_CONFIRMADA, $company, $linhasAtuais, $origemAnterior);
         }
 
+        // Quick 261027-m1y — contrato gerado com tabela CONGELADA: o documento imprimiu UMA
+        // tabela só, e é ela que foi assinada. Grava a IMPRESSA, nunca a do serviço ao vivo
+        // (que pode ter mudado depois da geração). Sem snapshot (contrato antigo) cai no
+        // caminho de sempre, abaixo.
+        $faixasImpressas = $contrato->tabela_progressiva_snapshot['faixas'] ?? [];
+
+        if (! empty($faixasImpressas)) {
+            return $this->aplicarTabelaImpressa($contrato, $company, $linhasAtuais, $origemAnterior, $faixasImpressas, $aplicar);
+        }
+
         $servicoIds = $this->servicoIdsCobertos($contrato);
 
         // Faixas por serviço coberto, já descartando quem não tem tabela nenhuma (cobrança
@@ -221,6 +236,68 @@ class TabelaDeContratoAssinadoService
             $servicoOrigemId,
             $servicoNome,
             $faixas,
+            gravou: true,
+        );
+    }
+
+    /**
+     * Quick 261027-m1y — grava a tabela IMPRESSA no contrato (snapshot congelado na geração).
+     * Mesmo caminho de simulação/gravação/log/resultado do caminho do serviço.
+     *
+     * @param  array<int, array<string, mixed>>  $faixasImpressas
+     * @return array<string, mixed>
+     */
+    private function aplicarTabelaImpressa(
+        ContratoAssinatura $contrato,
+        Company $company,
+        Collection $linhasAtuais,
+        ?string $origemAnterior,
+        array $faixasImpressas,
+        bool $aplicar,
+    ): array {
+        $faixas = (new Collection($faixasImpressas))
+            ->sortBy('ordem')
+            ->map(fn (array $f) => [
+                'ordem'           => (int) $f['ordem'],
+                'limite_superior' => ($f['limite_superior'] ?? null) !== null ? (float) $f['limite_superior'] : null,
+                'valor'           => (float) $f['valor'],
+                'valor_e_piso'    => (bool) ($f['valor_e_piso'] ?? false),
+            ])
+            ->values()
+            ->all();
+
+        // Procedência: serviço do snapshot; tabela manual da empresa sem serviço → dono do contrato.
+        $servicoOrigemId = (int) ($contrato->tabela_progressiva_snapshot['servico_id'] ?? $contrato->servico_id);
+        $servicoNome     = Servico::query()->whereKey($servicoOrigemId)->value('nome');
+        $servicoIds      = $this->servicoIdsCobertos($contrato);
+
+        if (! $aplicar) {
+            return $this->resultado(
+                self::MOTIVO_SIMULADO, $company, $linhasAtuais, $origemAnterior,
+                $servicoIds, $servicoOrigemId, $servicoNome, $faixas,
+            );
+        }
+
+        $this->gravador->gravar(
+            $company,
+            $faixas,
+            EmpresaFaixaFaturamento::ORIGEM_CONTRATO,
+            $servicoOrigemId,
+            null,
+            self::FEITO_DE,
+        );
+
+        Log::info('[Fechamento] Tabela da empresa confirmada pela assinatura do contrato (tabela impressa congelada)', [
+            'company_id'             => $company->id,
+            'contrato_assinatura_id' => $contrato->id,
+            'servico_origem_id'      => $servicoOrigemId,
+            'origem_anterior'        => $origemAnterior,
+            'faixas'                 => count($faixas),
+        ]);
+
+        return $this->resultado(
+            self::MOTIVO_GRAVOU, $company, $linhasAtuais, $origemAnterior,
+            $servicoIds, $servicoOrigemId, $servicoNome, $faixas,
             gravou: true,
         );
     }

@@ -219,6 +219,33 @@ class ContratoDadosMinimosService
             } elseif (! is_numeric($diaVencimento) || (int) $diaVencimento < 1 || (int) $diaVencimento > 31) {
                 $itens[] = $this->item('dia_vencimento', $rotuloDia, 'formato', $contrato->servico_id);
             }
+
+            // 8. Quick 261027-m1y — serviço cujo modelo imprime a tabela
+            // progressiva variável (Gestão): precisa haver tabela resolvida
+            // (da empresa ou do serviço) e ela tem de caber nas 7 linhas do
+            // .docx. Reusa os motivos 'ausente'/'formato' (a tela só conhece
+            // esses dois).
+            $tabelaDoContrato = new TabelaDoContratoService();
+
+            if ($tabelaDoContrato->imprimeTabela($contrato->servico)) {
+                $tabela = $tabelaDoContrato->resolver($company, $contrato->servico);
+
+                if ($tabela === null) {
+                    $itens[] = $this->item('tabela_progressiva', "Tabela progressiva — {$nomeServico}", 'ausente', $contrato->servico_id);
+                } elseif (count($tabela['faixas']) > TabelaDoContratoService::MAX_FAIXAS_NO_CONTRATO) {
+                    $itens[] = $this->item(
+                        'tabela_progressiva',
+                        sprintf(
+                            'Tabela progressiva — %s (o contrato comporta no máximo %d faixas; a tabela tem %d)',
+                            $nomeServico,
+                            TabelaDoContratoService::MAX_FAIXAS_NO_CONTRATO,
+                            count($tabela['faixas'])
+                        ),
+                        'formato',
+                        $contrato->servico_id
+                    );
+                }
+            }
         }
 
         return $itens;

@@ -176,6 +176,12 @@ class GatilhoContratoPendenciaTest extends TestCase
         Queue::fake();
         $company = $this->companyCompleta();
         $gestao = $this->servicoQueExige(['nome' => 'Gestão']);
+        // Quick 261027-m1y — o contrato de Gestão agora exige tabela progressiva resolvida
+        // (pré-check `tabela_progressiva`); este 'Gestão' de teste é um segundo registro,
+        // sem as faixas semeadas pela migration, então ganha uma faixa mínima.
+        \App\Models\ServicoFaixaFaturamento::create([
+            'servico_id' => $gestao->id, 'ordem' => 1, 'limite_superior' => null, 'valor' => 1000, 'valor_e_piso' => true,
+        ]);
         $polos = $this->polos();
         $this->contratoServicoAtivo($company, $gestao);
         $this->contratoServicoAtivo($company, $polos);

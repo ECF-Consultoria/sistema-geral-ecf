@@ -60,7 +60,7 @@ class Phase141ResolverCutoverTest extends TestCase
         $this->assertNotNull($resultado);
         $this->assertSame('servico', $resultado['origem']);
         $this->assertSame($servico->id, $resultado['servico_id']);
-        $this->assertCount(7, $resultado['faixas']);
+        $this->assertCount(6, $resultado['faixas']); // quick 261027-m1y: Gestão passou de 7 para 6 faixas
         $this->assertNull($resultado['procedencia'], 'origem=servico nunca preenche procedencia.');
     }
 

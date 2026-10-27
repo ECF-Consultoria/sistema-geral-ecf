@@ -383,7 +383,7 @@ class Phase137FinanceiroPropsTest extends TestCase
         $linha     = collect($companies)->firstWhere('id', $company->id);
 
         $this->assertSame('maxima', $linha['faixa']);
-        $this->assertTrue($linha['valor_faixa_e_piso'], 'Acima de R$ 5M a última faixa de Gestão é piso ("a partir de R$ 12.000").');
-        $this->assertEqualsWithDelta(12_000.00, (float) $linha['valor_mensal'], 0.001);
+        $this->assertTrue($linha['valor_faixa_e_piso'], 'Acima de R$ 5M a última faixa de Gestão é piso ("a partir de R$ 13.500").');
+        $this->assertEqualsWithDelta(13_500.00, (float) $linha['valor_mensal'], 0.001); // quick 261027-m1y: piso novo de Gestão
     }
 }

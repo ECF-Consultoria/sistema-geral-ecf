@@ -164,8 +164,9 @@ class FechamentoEscopoAmpliadoTest extends TestCase
         $empresa = $linhas[0];
 
         $this->assertSame('Gestão', $empresa['tabela_servico_nome']);
-        $this->assertEqualsWithDelta(3000.00, (float) $empresa['valor_mensal'], 0.01, 'Faixa 1 de Gestão é R$ 3.000.');
-        $this->assertEqualsWithDelta(5500.00, (float) $empresa['cobranca_mensal'], 0.01, 'Faixa + contrato Shopee.');
+        // Quick 261027-m1y: a faixa 1 de Gestão passou de R$ 3.000 para R$ 3.700 (tabela padrão nova).
+        $this->assertEqualsWithDelta(3700.00, (float) $empresa['valor_mensal'], 0.01, 'Faixa 1 de Gestão é R$ 3.700.');
+        $this->assertEqualsWithDelta(6200.00, (float) $empresa['cobranca_mensal'], 0.01, 'Faixa + contrato Shopee.');
 
         $extras = collect($empresa['servicos_contratados'])
             ->where('tipo_cobranca', 'mensal')

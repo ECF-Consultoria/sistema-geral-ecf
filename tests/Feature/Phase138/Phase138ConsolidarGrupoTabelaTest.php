@@ -123,7 +123,7 @@ class Phase138ConsolidarGrupoTabelaTest extends TestCase
         $membroB = $this->criarEmpresaComContrato($gestao, ['company_group_id' => $grupo->id]);
 
         AdmanMetric::create(['company_id' => $membroA->id, 'reference_date' => '2026-08-10', 'revenue' => 200_000.00]);
-        AdmanMetric::create(['company_id' => $membroB->id, 'reference_date' => '2026-08-10', 'revenue' => 300_000.00]);
+        AdmanMetric::create(['company_id' => $membroB->id, 'reference_date' => '2026-08-10', 'revenue' => 300_100.00]);
 
         $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
 
@@ -133,9 +133,11 @@ class Phase138ConsolidarGrupoTabelaTest extends TestCase
         $this->assertSame('servico', $grupoGravado->tabela_origem, 'Sem tabela de grupo, a origem continua sendo a tabela do serviço da âncora — nada regrediu.');
         $this->assertSame($gestao->id, $grupoGravado->servico_id);
         $this->assertSame($membroB->id, $grupoGravado->empresa_ancora_id, 'A âncora é a empresa de maior faturamento_total.');
-        // Soma = 500.000,00 → cai na faixa 2 da tabela de Gestão (até 999.999,99 = R$ 4.500).
+        // Soma = 500.100,00 → cai na faixa 2 da tabela de Gestão (até 1.000.000,00 = R$ 5.500).
+        // Quick 261027-m1y: era 500.000,00 → faixa 2 (limite ,99); com a tabela nova o limite
+        // cheio de 500.000,00 ainda é da faixa 1, então a soma subiu 100 reais.
         $this->assertSame(2, (int) $grupoGravado->faixa_ordem);
-        $this->assertEqualsWithDelta(4_500.00, (float) $grupoGravado->valor_faixa, 0.01);
+        $this->assertEqualsWithDelta(5_500.00, (float) $grupoGravado->valor_faixa, 0.01);
     }
 
     // ─── Casos (b), (c) e (d): grupo COM tabela de grupo ────────────────────

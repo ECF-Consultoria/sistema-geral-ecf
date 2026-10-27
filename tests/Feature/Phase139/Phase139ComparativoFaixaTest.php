@@ -271,9 +271,9 @@ class Phase139ComparativoFaixaTest extends TestCase
 
         $this->assertNotNull($linhaAoVivo);
         $this->assertSame(1, $linhaAoVivo['faixa_ordem_anterior'], 'Agosto fechou na faixa 1 (R$300k) — sem isso o widget não sabe "Faixa 1 → 2".');
-        $this->assertEqualsWithDelta(3_000.00, (float) $linhaAoVivo['valor_faixa_anterior'], 0.01);
+        $this->assertEqualsWithDelta(3_700.00, (float) $linhaAoVivo['valor_faixa_anterior'], 0.01); // quick 261027-m1y: tabela nova de Gestão
         $this->assertTrue($linhaAoVivo['subiu_de_faixa']);
-        $this->assertEqualsWithDelta(1_500.00, (float) $linhaAoVivo['ganho_faixa'], 0.01, 'Faixa 2 (R$4.500) − faixa 1 (R$3.000) = R$1.500 de ganho.');
+        $this->assertEqualsWithDelta(1_800.00, (float) $linhaAoVivo['ganho_faixa'], 0.01, 'Faixa 2 (R$5.500) − faixa 1 (R$3.700) = R$1.800 de ganho.');
 
         // ─── CONGELADO (fecha setembro e reconsulta) ───
         $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-09'])->assertExitCode(0);
@@ -369,7 +369,7 @@ class Phase139ComparativoFaixaTest extends TestCase
         }
         $this->assertSame(1, $linhaAoVivo['faixa_ordem_anterior']);
         $this->assertTrue($linhaAoVivo['subiu_de_faixa']);
-        $this->assertEqualsWithDelta(1_500.00, (float) $linhaAoVivo['ganho_faixa'], 0.01);
+        $this->assertEqualsWithDelta(1_800.00, (float) $linhaAoVivo['ganho_faixa'], 0.01); // quick 261027-m1y: 5.500 − 3.700
 
         // ─── CONGELADO ───
         $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-09'])->assertExitCode(0);

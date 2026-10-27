@@ -165,7 +165,7 @@ class Phase137FaixaResolverTest extends TestCase
         $this->assertNotNull($resultado);
         $this->assertSame('servico', $resultado['origem']);
         $this->assertSame($servico->id, $resultado['servico_id']);
-        $this->assertCount(7, $resultado['faixas']);
+        $this->assertCount(6, $resultado['faixas']); // quick 261027-m1y: Gestão passou de 7 para 6 faixas
     }
 
     #[Test]
@@ -186,7 +186,7 @@ class Phase137FaixaResolverTest extends TestCase
         $this->assertNotNull($resultado);
         $this->assertSame('servico', $resultado['origem']);
         $this->assertSame($gestao->id, $resultado['servico_id'], 'Contrato combinado (D-05): a tabela do dono (Gestão) vence.');
-        $this->assertCount(7, $resultado['faixas']);
+        $this->assertCount(6, $resultado['faixas']); // quick 261027-m1y: Gestão passou de 7 para 6 faixas
     }
 
     #[Test]
@@ -248,9 +248,9 @@ class Phase137FaixaResolverTest extends TestCase
 
         $this->assertNotNull($classificacao);
         $this->assertSame(1, $classificacao['ordem']);
-        $this->assertEqualsWithDelta(3_000.00, $classificacao['valor'], 0.001);
+        $this->assertEqualsWithDelta(3_700.00, $classificacao['valor'], 0.001);
         $this->assertEqualsWithDelta(0.0, $classificacao['limite_inferior'], 0.001);
-        $this->assertEqualsWithDelta(499_999.99, $classificacao['limite_superior'], 0.001);
+        $this->assertEqualsWithDelta(500_000.00, $classificacao['limite_superior'], 0.001);
     }
 
     #[Test]
@@ -263,8 +263,8 @@ class Phase137FaixaResolverTest extends TestCase
         $classificacao = $resolver->classificar(9_000_000.00, $faixas);
 
         $this->assertNotNull($classificacao);
-        $this->assertSame(7, $classificacao['ordem']);
-        $this->assertEqualsWithDelta(12_000.00, $classificacao['valor'], 0.001);
+        $this->assertSame(6, $classificacao['ordem']);
+        $this->assertEqualsWithDelta(13_500.00, $classificacao['valor'], 0.001);
         $this->assertNull($classificacao['limite_superior']);
         $this->assertSame('maxima', $classificacao['label']);
     }
@@ -276,10 +276,13 @@ class Phase137FaixaResolverTest extends TestCase
         $faixas = ServicoFaixaFaturamento::where('servico_id', $servico->id)->ordenadas()->get();
 
         $resolver = app(FechamentoFaixaResolver::class);
-        $classificacao = $resolver->classificar(500_000.00, $faixas);
+        // Quick 261027-m1y — a tabela nova de Gestão usa limite cheio ("Até R$ 500.000,00"),
+        // não a convenção ,99: o limite exato ainda é da faixa 1 e um centavo acima já é da 2.
+        $classificacao = $resolver->classificar(500_000.01, $faixas);
 
         $this->assertNotNull($classificacao);
-        $this->assertSame(2, $classificacao['ordem'], 'O limite da faixa 1 é 499.999,99 — R$ 500.000,00 cai na faixa 2.');
+        $this->assertSame(2, $classificacao['ordem'], 'O limite da faixa 1 é 500.000,00 — R$ 500.000,01 cai na faixa 2.');
+        $this->assertSame(1, $resolver->classificar(500_000.00, $faixas)['ordem'], 'Limite exato fica na faixa "Até".');
     }
 
     #[Test]
@@ -292,7 +295,7 @@ class Phase137FaixaResolverTest extends TestCase
         $classificacao = $resolver->classificar(9_000_000.00, $faixas);
 
         $this->assertNotNull($classificacao);
-        $this->assertTrue($classificacao['valor_e_piso'], 'A última faixa de Gestão é "a partir de R$ 12.000" — piso, não preço fechado.');
+        $this->assertTrue($classificacao['valor_e_piso'], 'A última faixa de Gestão é "a partir de R$ 13.500" — piso, não preço fechado.');
     }
 
     #[Test]
