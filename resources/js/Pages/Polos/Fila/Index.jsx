@@ -44,7 +44,7 @@ const FILTRO_ATENCAO = {
     sem_comentario_mes: ['Sem comentário no mês', (e) => !e.ultimo_comentario?.do_mes],
     campanha_desligada: ['Campanha desligada', (e) => temSinal(e, 'campanha_desligada')],
     places:             ['Places pendente', (e) => temSinal(e, 'places')],
-    ads_sem_acordo:     ['Ads sem acordo', (e) => temSinal(e, 'ads_sem_acordo')],
+    // "Ads sem acordo" fica só como chip no cartão, sem opção de filtro (pedido de 27/10).
 };
 
 const FILTROS_PADRAO = { busca: '', ordem: 'prioridade', bonus: 'todos', atencao: 'todos', fase: 'todas', polo: 'todos' };
