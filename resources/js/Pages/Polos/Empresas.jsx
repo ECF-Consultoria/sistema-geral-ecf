@@ -448,9 +448,12 @@ export default function PolosEmpresas({
                                             <tr key={`${e.cust_id}-sem`} className="bg-white/[0.02]">
                                                 <td colSpan={10} className="px-6 py-4">
                                                     {/* Semanal à esquerda, comentários à direita (a partir de xl fica
-                                                        mesmo ao lado do card da última semana; abaixo disso empilha). */}
+                                                        mesmo ao lado do card da última semana; abaixo disso empilha).
+                                                        As duas colunas têm largura máxima: a <td> ocupa a largura da
+                                                        TABELA, que rola na horizontal e passa da tela — com flex-1 sem
+                                                        teto, os comentários iam para a ponta direita, fora da vista. */}
                                                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-                                                      <div className="min-w-0 flex-1">
+                                                      <div className="min-w-0 w-full max-w-3xl">
                                                     <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">Faturamento e ADS por semana — {e.nome}</p>
                                                     {sem?.loading && <p className="text-white/40 text-xs">Carregando da Adman…</p>}
                                                     {sem?.erro && <p className="text-red-300 text-xs">Falha ao buscar o semanal.</p>}
@@ -490,7 +493,7 @@ export default function PolosEmpresas({
                                                     />
                                                       </div>
                                                       {/* Comentários da empresa, de todos os meses (TKT-0007). */}
-                                                      <div className="w-full shrink-0 xl:w-[340px]">
+                                                      <div className="w-full max-w-3xl shrink-0 xl:w-[340px]">
                                                         <Comentarios
                                                             cust={e.cust_id}
                                                             empresa={e.nome}
