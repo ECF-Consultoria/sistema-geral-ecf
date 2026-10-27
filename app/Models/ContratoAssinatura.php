@@ -90,6 +90,10 @@ class ContratoAssinatura extends Model
         // Sem isto o mass assignment falharia EM SILÊNCIO, mesmo alerta de
         // sempre.
         'plano_parcelas_texto',
+        // Quick 261027-m1y — tabela progressiva IMPRESSA no contrato,
+        // congelada na geração (mesma disciplina de `servicos_snapshot`).
+        // Sem isto o mass assignment falharia EM SILÊNCIO.
+        'tabela_progressiva_snapshot',
     ];
 
     protected $casts = [
@@ -101,6 +105,8 @@ class ContratoAssinatura extends Model
         'ultimo_alerta_em'  => 'datetime',
         // D-10 — mesmo cast de ContratoServico::$casts['hubspot_snapshot'].
         'servicos_snapshot' => 'array',
+        // Quick 261027-m1y — tabela impressa no contrato (origem, faixas).
+        'tabela_progressiva_snapshot' => 'array',
         // Fase 127-01 (DADOS-06).
         'prazo_dias'        => 'integer',
         'lembrete_dias'     => 'integer',
@@ -350,6 +356,8 @@ class ContratoAssinatura extends Model
             // ⚠️ Não incluir 'servicos_snapshot' aqui: são valores de
             // contrato, o activity_log viraria cópia paralela do
             // congelamento numa tabela com retenção própria (T-125-03).
+            // Idem 'tabela_progressiva_snapshot' (quick 261027-m1y): valor de
+            // contrato, mesma razão do T-125-03 — fora do activity_log.
             ->logOnly(['status', 'enviado_em', 'assinado_em', 'liberado_em'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
