@@ -396,3 +396,19 @@ cliente depois.
 - A migration declara a coluna NOT NULL, mas a tela de contratos valida `nullable` e o
   `ContratoDadosMinimosService` checa "ausente". Não confie no schema: data vazia ou zerada conta
   como sem data.
+
+## Contrato de Gestão imprime a tabela CONGELADA — e a assinatura grava a impressa (quick 261027-m1y, 27/10/2026)
+
+- A tabela padrão de Gestão (`servico_faixas_faturamento`) virou 6 faixas: 3.700 / 5.500 / 7.400 / 9.250 /
+  11.100 / 13.500 (piso), limites cheios (500.000,00, não 499.999,99). Vale só para contrato NOVO:
+  `empresa_faixas_faturamento` não foi tocada, nenhuma cobrança do fechamento mudou.
+- O `.docx` de Gestão deixou de ter tabela fixa: variáveis `{{faixa_N_faturamento}}`/`{{faixa_N_valor}}`, N=1..7.
+  `TabelaDoContratoService` escolhe: tabela da empresa com origem `manual`/`contrato` → essa; senão a do serviço.
+  `presumida_servico` nunca é "específica". Tabela de GRUPO não entra.
+- A tabela escolhida é congelada em `contrato_assinaturas.tabela_progressiva_snapshot` na geração; ao assinar,
+  `TabelaDeContratoAssinadoService` grava a do snapshot (contrato antigo sem snapshot segue gravando a do serviço).
+  ⚠️ Por isso a migration congelou a tabela ANTIGA nos contratos de Gestão em rascunho/aguardando assinatura —
+  sem isso, um contrato impresso com a tabela velha gravaria a nova como "confirmada por contrato".
+- Mais de 7 faixas: a geração recusa (nunca trunca). O limite vale só para Gestão — a Shopee tem 11 faixas.
+- Ordem do deploy: subir o v6 no Clicksign → deploy + `queue:restart` → trocar `clicksign_template_id` do
+  serviço Gestão → `clicksign:sondar-modelo`. Não gerar contrato de Gestão entre o deploy e a troca do modelo.
