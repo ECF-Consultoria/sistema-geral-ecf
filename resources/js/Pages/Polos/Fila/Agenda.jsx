@@ -4,6 +4,11 @@ import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, Shuffle, Save, Info } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
+// Células da grade da agenda: cabeçalho fixo no topo (fundo opaco para o conteúdo passar por
+// baixo) e a linha entre empresas no próprio <td> (ver a nota da grade).
+const TH = 'sticky top-0 z-20 border-b border-white/[0.08] bg-ecf-card py-2.5';
+const TD = 'border-b border-white/[0.04]';
+
 /**
  * Polos/Fila/Agenda — "Configurar agenda de revisão" (TKT-0027): o dia do ciclo de 10 dias
  * úteis (Seg A … Sex B) em que cada empresa do analista é revisada. Nada grava até "Salvar
@@ -117,36 +122,40 @@ export default function FilaAgenda({ analistas = [], analistaId = null, podeTroc
                     </div>
                 </div>
 
-                {/* Grade: uma linha por empresa, um botão por dia (rola na horizontal no celular) */}
-                <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.02]">
-                    <table className="w-full min-w-[980px] text-sm">
-                        <thead className="border-b border-white/[0.08]">
+                {/* Grade: uma linha por empresa, um botão por dia. Como planilha com painéis
+                    congelados: a grade rola dentro do quadro, o cabeçalho fica no topo e a coluna
+                    Empresa fica à esquerda (no celular a grade rola na horizontal).
+                    border-separate: com border-collapse o sticky perde as bordas; por isso a linha
+                    entre empresas mora no <td>, e as células fixas têm fundo opaco (ecf-card). */}
+                <div className="max-h-[calc(100vh-150px)] overflow-auto rounded-2xl border border-white/[0.08] bg-ecf-card">
+                    <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
+                        <thead>
                             <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">
-                                <th className="px-4 py-2.5">Empresa</th>
-                                <th className="px-3 py-2.5">Polo</th>
-                                <th className="px-3 py-2.5">Fase</th>
-                                {dias.map((d) => <th key={d} className="px-1 py-2.5 text-center">{d}</th>)}
+                                <th className={cn(TH, 'left-0 z-30 px-4')}>Empresa</th>
+                                <th className={cn(TH, 'px-3')}>Polo</th>
+                                <th className={cn(TH, 'px-3')}>Fase</th>
+                                {dias.map((d) => <th key={d} className={cn(TH, 'px-1 text-center')}>{d}</th>)}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/[0.04]">
+                        <tbody>
                             {empresas.length === 0 && (
                                 <tr><td colSpan={3 + dias.length} className="px-4 py-8 text-center text-white/40">Nenhuma empresa ativa (M1 a M4) com este responsável.</td></tr>
                             )}
                             {empresas.map((e) => (
-                                <tr key={e.id} className="hover:bg-white/[0.02]">
-                                    <td className="px-4 py-2.5">
+                                <tr key={e.id} className="group">
+                                    <td className={cn(TD, 'sticky left-0 z-10 bg-ecf-card px-4 py-2.5 group-hover:bg-[#14161c]')}>
                                         <p className="text-white/90 font-medium">{e.nome}</p>
                                         <p className="text-white/40 text-xs tabular-nums">
                                             {e.faturamento !== null ? formatCurrency(e.faturamento) : 'Sem faturamento do mês'}
                                             {e.pct !== null ? ` · ${Math.min(Math.round(e.pct), 100)}%${e.pct > 100 ? ' ↑' : ''} da meta` : ''}
                                         </p>
                                     </td>
-                                    <td className="px-3 py-2.5 text-white/60">{e.polo ?? '—'}</td>
-                                    <td className="px-3 py-2.5 text-white/45 text-xs">{e.fase}</td>
+                                    <td className={cn(TD, 'px-3 py-2.5 text-white/60 group-hover:bg-white/[0.02]')}>{e.polo ?? '—'}</td>
+                                    <td className={cn(TD, 'px-3 py-2.5 text-white/45 text-xs group-hover:bg-white/[0.02]')}>{e.fase}</td>
                                     {dias.map((d, i) => {
                                         const ativo = agenda[e.id] === i;
                                         return (
-                                            <td key={d} className="px-1 py-2 text-center">
+                                            <td key={d} className={cn(TD, 'px-1 py-2 text-center group-hover:bg-white/[0.02]')}>
                                                 <button type="button" onClick={() => escolher(e.id, i)} aria-pressed={ativo}
                                                         title={ativo ? `Tirar ${e.nome} de ${d}` : `Revisar ${e.nome} em ${d}`}
                                                         className={cn('h-8 w-full min-w-[56px] rounded-md border text-xs font-semibold transition',
