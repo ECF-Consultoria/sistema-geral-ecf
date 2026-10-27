@@ -574,6 +574,26 @@ O que não é óbvio lendo o código:
   chips e com meta = soma dos limiares (§5). Se alguém comparar as duas telas, é esperado
   que o faturamento difira.
 
+### 14.1 `/polos/empresas` lista M1 desde 27/10/2026 — na lista, não na meta
+
+Pedido: "tem empresa gastando ADS no M1 e não estamos vendo, porque não está lá". Eram dois
+buracos somados: a tabela só varria o roster da meta, e o sync gravava **`ads = 0` fixo para
+M1** ("o AdsCard ignora M1") — mesmo listando, o ADS viria zerado. Hoje o warm apura o ADS de
+M1–M4 e a tabela traz as M1 com status **`Sem meta`** (chip "M1"), meta 0 e "—" na % da meta.
+
+- **`Sem meta` nunca vira No alvo / Em progresso / Não.** Os chips de status têm de bater com
+  a fatia do donut que trouxe o usuário até a tela (`?status=`), e o donut é só M2–M4.
+- **KPIs seguem a regra do card acima:** Faturamento soma tudo (M1–M4); Empresas ativas,
+  Meta total e % da meta ficam no roster da meta. Os subtítulos dizem qual é qual.
+- **O saldo de ADS do Cockpit não mudou** com o ADS de M1 no snapshot: `adsAdmanDoMes()` só lê
+  os cust_ids que recebe, e o Cockpit passa o roster da meta. Quem passar a ler a coluna `ads`
+  do snapshot sem filtrar pelo roster vai somar M1 junto.
+- **`painelSellers` (JSON do MCP) continua sem financeiro para M1** — `linhasDaVisaoCompleta(…,
+  comM1: false)`. O contrato dele é "nulo fora da meta".
+- **Mês fechado:** o roster congelado só guarda M2–M4 + Fechamento, então M1 sai do CSV
+  (`MESES_NO_PROGRAMA = 0`) cruzado com o cadastro de Polos, e quem já está no roster da meta
+  do mês não aparece duas vezes. Não há `ads_desligado`/problema histórico para M1.
+
 ## 15. O sync diário só cobria metade do roster — e começava 4h atrasado (2026-09-30)
 
 Pedido: "o faturamento polos atualizar todos os dias automaticamente". Já existia um

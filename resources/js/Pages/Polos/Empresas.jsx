@@ -12,6 +12,8 @@ const STATUS_META = {
     'Em progresso': { cor: '#ffe600', label: 'Em progresso' },
     'Não':          { cor: '#ef4444', label: 'Não faturou' },
     'Problema':     { cor: '#a855f7', label: 'Problema' },
+    // M1 (onboarding) entra na lista para acompanhar ADS e faturamento, mas não tem meta (D-01).
+    'Sem meta':     { cor: '#94a3b8', label: 'Sem meta (M1)' },
 };
 
 const FILTROS = [
@@ -20,6 +22,7 @@ const FILTROS = [
     { key: 'Em progresso', label: 'Em progresso' },
     { key: 'Não',          label: 'Não faturou' },
     { key: 'Problema',     label: 'Problema' },
+    { key: 'Sem meta',     label: 'M1', title: 'Empresas em M1 (onboarding): sem meta de faturamento, listadas para acompanhar ADS e vendas' },
     { key: 'ads',          label: 'Ads desligado', title: 'Nenhuma campanha ativa: soma as desligadas e as sem campanha' },
 ];
 
@@ -58,7 +61,7 @@ export default function PolosEmpresas({
     mesSelecionado = null,
     mesRefLabel    = null,
     parcial        = false,
-    totais         = { faturamento: 0, meta: 0, pct: 0, ativos: 0 },
+    totais         = { faturamento: 0, meta: 0, pct: 0, ativos: 0, m1: 0, faturamento_m1: 0 },
     adsLimites     = { teto: 3000, alerta1: 1000, alerta2: 2000 },
     metricaFaturamento = 'moveis',
     comentarios    = {},
@@ -228,12 +231,18 @@ export default function PolosEmpresas({
                 )}
 
                 {/* KPIs */}
+                {/* M1 está na lista mas não na meta: o faturamento soma M1–M4 (como o card do
+                    Painel), e ativos/meta/% seguem só M2–M4. Os subtítulos dizem qual é qual —
+                    sem eles o % parece não bater com faturamento ÷ meta (learnings painel-polos §14). */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Kpi label="Empresas ativas" value={totais.ativos} />
+                    <Kpi label="Empresas ativas" value={totais.ativos}
+                         sub={(totais.m1 ?? 0) > 0 ? `+ ${totais.m1} em M1 (sem meta)` : null} />
                     <Kpi label={nManuais > 0 ? `Faturamento (Adman + ${nManuais} manual)` : 'Faturamento (Adman)'}
-                         value={formatCurrency(totais.faturamento)} accent />
+                         value={formatCurrency(totais.faturamento)} accent
+                         sub={(totais.m1 ?? 0) > 0 ? `M1–M4 · M1: ${formatCurrency(totais.faturamento_m1 ?? 0)}` : null} />
                     <Kpi label="Meta total" value={formatCurrency(totais.meta)} />
-                    <Kpi label="% da meta" value={`${totais.pct}%`} />
+                    <Kpi label="% da meta" value={`${totais.pct}%`}
+                         sub={(totais.m1 ?? 0) > 0 ? 'base M2–M4' : null} />
                 </div>
 
                 {/* Filtros + busca */}
@@ -331,6 +340,9 @@ export default function PolosEmpresas({
                                                 O número real fica no hover, e a ORDENAÇÃO continua pelo
                                                 valor cru (e.pct), então o topo da lista não embaralha. */}
                                             <td className="px-4 py-3">
+                                                {e.status === 'Sem meta' ? (
+                                                    <span className="text-white/25 text-xs" title="M1 é onboarding: não tem meta de faturamento">—</span>
+                                                ) : (
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
                                                         <div className="h-full rounded-full" style={{ width: `${pctExibido}%`, background: statusCor }} />
@@ -340,6 +352,7 @@ export default function PolosEmpresas({
                                                         {pctExibido}%{estourou ? <span className="text-emerald-400/70"> ↑</span> : null}
                                                     </span>
                                                 </div>
+                                                )}
                                             </td>
                                             {/* Coluna ADS: barra de progresso do gasto mensal vs teto, colorida por limiar */}
                                             <td className="px-4 py-3">
@@ -694,11 +707,12 @@ function ReuniaoDoMes({ cust, mes, mesLabel, reuniao }) {
     );
 }
 
-function Kpi({ label, value, accent = false }) {
+function Kpi({ label, value, accent = false, sub = null }) {
     return (
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
             <p className="text-white/30 text-[10px] uppercase tracking-wider">{label}</p>
             <p className={cn('font-display font-extrabold text-lg mt-0.5', accent ? 'text-ecf-yellow' : 'text-white/85')}>{value}</p>
+            {sub && <p className="text-white/35 text-[10px] mt-0.5 tabular-nums">{sub}</p>}
         </div>
     );
 }

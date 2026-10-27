@@ -97,8 +97,8 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         // derivado de $de ('YYYY-MM-01') — chave do snapshot durável.
         $mes = substr(str_replace('-', '', $de), 0, 6);
 
-        // Inclui M1 (onboarding): o /polos lê o faturamento de M1 também da Adman.
-        // Guarda a fase: o gasto de ADS só é apurado p/ M2–M4 (o AdsCard ignora M1).
+        // Inclui M1 (onboarding): o /polos lê o faturamento de M1 também da Adman, e desde
+        // 27/10/2026 também o ADS (o /polos/empresas lista M1 para ver quem já gasta).
         $empresas = MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4'])
             ->where('projeto', 'POLOS')
             ->whereNull('arquivado_em') // não aquece cache de empresas arquivadas
@@ -144,8 +144,7 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                 break;
             }
 
-            $cust    = $emp['cust'];
-            $ehM2aM4 = in_array($emp['fase'], ['M2', 'M3', 'M4'], true);
+            $cust = $emp['cust'];
 
             // Throttle Adman (~10 rpm): 7s entre empresas, exceto a 1ª.
             if ($i > 0 && $pausa > 0) {
@@ -182,17 +181,17 @@ class SyncPolosFaturamentoJob implements ShouldQueue
 
                 // ADS REAL = soma do investment dos adgroups (fonte correta; bate com a
                 // planilha). O summarizedData.investment do /performance vem 0 p/ a maioria
-                // dos polos — por isso NÃO usamos $r['investment']. Só p/ M2–M4.
-                if ($ehM2aM4) {
-                    $ads = $adman->fetchAdsInvestmentTotal($cust, $de, $ate);
-                    if ($ads !== null) {        // erro → não sobrescreve o ADS anterior
-                        $dados['ads'] = $ads;
-                        if ($ads > 0) {
-                            $comAds++;
-                        }
+                // dos polos — por isso NÃO usamos $r['investment'].
+                //
+                // Vale para M1 também (27/10/2026). Antes M1 gravava 0 fixo ("o AdsCard ignora
+                // M1") e quem já gastava ADS no onboarding ficava invisível. O saldo de ADS do
+                // Cockpit não muda: adsAdmanDoMes() só lê os cust_ids do roster da meta (M2–M4).
+                $ads = $adman->fetchAdsInvestmentTotal($cust, $de, $ate);
+                if ($ads !== null) {            // erro → não sobrescreve o ADS anterior
+                    $dados['ads'] = $ads;
+                    if ($ads > 0) {
+                        $comAds++;
                     }
-                } else {
-                    $dados['ads'] = 0;          // M1 não tem ADS no card
                 }
 
                 // Persiste SÓ quando a Adman respondeu o faturamento (gross_billing !== null,

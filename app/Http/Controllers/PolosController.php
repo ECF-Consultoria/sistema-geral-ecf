@@ -62,6 +62,13 @@ use Inertia\Inertia;
 class PolosController extends Controller
 {
     /**
+     * Status das linhas M1 em /polos/empresas. M1 é onboarding e não tem meta (D-01): a linha
+     * existe para acompanhar ADS e faturamento, e NUNCA cai em No alvo / Em progresso / Não —
+     * esses chips têm de bater com a Distribuição de status, que é só M2–M4.
+     */
+    private const STATUS_SEM_META = 'Sem meta';
+
+    /**
      * Gate das telas de Faturamento Polos (index/todasEmpresas/sync/semanal).
      * Admin sempre; demais precisam da permissão dedicada mlb.faturamento_polos,
      * concedida ao setor Polos. NÃO reusa mlb.projetos p/ não vazar o financeiro
@@ -687,7 +694,7 @@ class PolosController extends Controller
         // que o mês corrente e o roster congelado trazem; só a reconstrução antiga pelo CSV
         // vem sem id e liga pelo cust. Ligar só pelo cust dava a uma empresa FORA da meta o
         // faturamento de outra com o mesmo cust (Moveis absoluto × Natture, 19/10/2026).
-        $linhasFin  = collect($d ? $this->linhasDaVisaoCompleta($d) : []);
+        $linhasFin  = collect($d ? $this->linhasDaVisaoCompleta($d, comM1: false) : []);
         $finPorId   = $linhasFin->whereNotNull('mlb_empresa_id')->keyBy('mlb_empresa_id');
         $finPorCust = $linhasFin->whereNull('mlb_empresa_id')->keyBy('cust_id');
 
@@ -1576,7 +1583,8 @@ class PolosController extends Controller
         // Só chaves conhecidas: query string é entrada do usuário, e um valor livre viraria
         // um chip que não filtra nada — a tela diria "0 empresas" sem explicar por quê.
         $statusInicial = $request->query('status');
-        if (! in_array($statusInicial, ['Sim', 'Em progresso', 'Não', 'Problema', 'ads'], true)) {
+        // 'Sem meta' (chip M1) não vem do donut, mas viaja na troca de mês como os demais.
+        if (! in_array($statusInicial, ['Sim', 'Em progresso', 'Não', 'Problema', self::STATUS_SEM_META, 'ads'], true)) {
             $statusInicial = null;
         }
 
@@ -1587,7 +1595,7 @@ class PolosController extends Controller
             'mesSelecionado' => null,
             'mesRefLabel'    => null,
             'parcial'        => false,
-            'totais'         => ['faturamento' => 0, 'meta' => 0, 'pct' => 0, 'ativos' => 0],
+            'totais'         => ['faturamento' => 0, 'meta' => 0, 'pct' => 0, 'ativos' => 0, 'm1' => 0, 'faturamento_m1' => 0],
             // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
             'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'comentarios'    => (object) [],
@@ -1606,10 +1614,17 @@ class PolosController extends Controller
                 ]));
             }
 
-            $empresas = $this->linhasDaVisaoCompleta($d);
+            $empresas = $this->linhasDaVisaoCompleta($d, comM1: true);
 
-            $totFat  = array_sum(array_column($empresas, 'faturamento'));
-            $totMeta = array_sum(array_column($empresas, 'meta'));
+            // M1 está na lista, não na meta: o faturamento soma tudo (M1–M4, como o card do
+            // Painel) e ativos/meta/% ficam só no roster da meta. Mesma regra do Painel —
+            // ver learnings painel-polos §14: não divida o total pela meta.
+            $m1     = array_values(array_filter($empresas, fn ($e) => $e['status'] === self::STATUS_SEM_META));
+            $naMeta = array_values(array_filter($empresas, fn ($e) => $e['status'] !== self::STATUS_SEM_META));
+
+            $totFat     = array_sum(array_column($empresas, 'faturamento'));
+            $totFatMeta = array_sum(array_column($naMeta, 'faturamento'));
+            $totMeta    = array_sum(array_column($naMeta, 'meta'));
 
             return Inertia::render('Polos/Empresas', [
                 'empresas'       => $empresas,
@@ -1619,10 +1634,12 @@ class PolosController extends Controller
                 'mesRefLabel'    => $d['mesAtual']['label'] ?? null,
                 'parcial'        => $d['parcial'],
                 'totais'         => [
-                    'faturamento' => $totFat,
-                    'meta'        => $totMeta,
-                    'pct'         => $totMeta > 0 ? round($totFat / $totMeta * 100, 1) : 0,
-                    'ativos'      => count($empresas),
+                    'faturamento'    => $totFat,
+                    'meta'           => $totMeta,
+                    'pct'            => $totMeta > 0 ? round($totFatMeta / $totMeta * 100, 1) : 0,
+                    'ativos'         => count($naMeta),
+                    'm1'             => count($m1),
+                    'faturamento_m1' => array_sum(array_column($m1, 'faturamento')),
                 ],
                 'adsLimites'     => $d['adsLimites'],
                 'metricaFaturamento' => $d['metricaFaturamento'],
@@ -1651,16 +1668,23 @@ class PolosController extends Controller
      * ordenada por faturamento desc. Compartilhada pela tela e pela planilha exportada,
      * para as duas nunca divergirem.
      *
+     * `$comM1` (27/10/2026): a tela e a planilha listam também as M1, com status
+     * STATUS_SEM_META — "tem empresa gastando ADS no M1 e não estamos vendo". O JSON enxuto do
+     * Painel (painelSellers) passa false: o contrato dele é financeiro nulo fora da meta.
+     *
      * @param  array  $d  Saída de montarPolos()
      * @return array<int, array<string,mixed>>
      */
-    private function linhasDaVisaoCompleta(array $d): array
+    private function linhasDaVisaoCompleta(array $d, bool $comM1 = true): array
     {
         $empresas = [];
         foreach ($d['polos'] as $p) {
             foreach (($p['empresas'] ?? []) as $e) {
                 $empresas[] = $e + ['polo' => $p['polo']];
             }
+        }
+        if ($comM1) {
+            array_push($empresas, ...($d['m1'] ?? []));
         }
         usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
 
@@ -1677,6 +1701,7 @@ class PolosController extends Controller
         'Em progresso' => 'Em progresso',
         'Não'          => 'Não faturou',
         'Problema'     => 'Problema',
+        self::STATUS_SEM_META => 'Sem meta (M1)',
     ];
 
     /** Rótulos espelhados de CAMPANHAS de Polos/Empresas.jsx; null = não verificado. */
@@ -1719,7 +1744,7 @@ class PolosController extends Controller
             return back()->with('error', 'Não foi possível montar a planilha agora: o ECF Drive não respondeu. Tente em alguns segundos.');
         }
 
-        $empresas = $this->linhasDaVisaoCompleta($d);
+        $empresas = $this->linhasDaVisaoCompleta($d, comM1: true);
 
         // Recorte e ordem da tela. Empresa sem Cust ID chega como '' (o middleware a
         // transforma em null) e casa com as demais sem Cust ID, como na própria tabela.
@@ -1771,6 +1796,9 @@ class PolosController extends Controller
                 default => null,
             };
 
+            // M1 não tem meta: célula vazia, não "R$ 0,00 / 0%" (que leria como meta não batida).
+            $semMeta = $e['status'] === self::STATUS_SEM_META;
+
             return [
                 'nome'          => $e['nome'],
                 'cust_id'       => $e['cust_id'],
@@ -1779,8 +1807,8 @@ class PolosController extends Controller
                 'status'        => self::EMPRESAS_STATUS_LABEL[$e['status']] ?? $e['status'],
                 'faturamento'   => $e['faturamento'],
                 'faturamento_fonte' => $this->fonteFaturamentoParaCelula($e),
-                'meta'          => $e['meta'],
-                'pct'           => $e['pct'],
+                'meta'          => $semMeta ? null : $e['meta'],
+                'pct'           => $semMeta ? null : $e['pct'],
                 'ads'           => $e['ads'],
                 'ads_situacao'  => $adsSituacao,
                 'campanhas'     => $parcial ? (self::EMPRESAS_CAMPANHA_LABEL[$e['ads_campanha'] ?? ''] ?? 'Não verificado') : null,
@@ -2371,9 +2399,153 @@ class PolosController extends Controller
         $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes, $manuais);
         $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
 
+        // Linhas M1 da visão completa — fora de polos/statusDist, que são o roster da meta.
+        $m1 = $this->linhasM1DoMes($mesSel, $parcial, $linhasMes, $ativos);
+
         $metricaFaturamento = $this->metricaFaturamento();
 
-        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial', 'adsLimites', 'metricaFaturamento');
+        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial', 'adsLimites', 'metricaFaturamento', 'm1');
+    }
+
+    /**
+     * Empresas M1 do mês, no MESMO formato das linhas de agregarPorPolo() (+ `polo`), para a
+     * visão completa (/polos/empresas). Pedido de 27/10/2026: "tem empresa gastando ADS no M1
+     * e não estamos vendo, porque não está lá".
+     *
+     * M1 continua fora da meta (D-01): meta 0, status STATUS_SEM_META, e nada daqui entra em
+     * polos[] nem na Distribuição de status. Faturamento pelo mesmo faturamentoVigenteDoMes()
+     * (Adman + manual) e ADS pelo mesmo snapshot dos ativos.
+     *
+     * Roster:
+     *  - mês corrente: MlbEmpresa ao vivo com fase M1 (sem M0 — o pedido foi M1, e o warm nem
+     *    aquece M0). Traz id, problema e ads_desligado, então a coluna Sinais edita como nas
+     *    demais linhas.
+     *  - mês fechado: o roster congelado só guarda M2–M4 + Fechamento, então M1 sai do CSV
+     *    (MESES_NO_PROGRAMA = 0), como na coorte de montarM1() — mas só quem existe no cadastro
+     *    de Polos: o CSV lista toda a base da Comercial (ver montarAtivosDoMes()).
+     *
+     * Sem cust_id não há como medir (nem chave para a linha da tela) → fica fora, como na
+     * coorte M1. Quem já está no roster da meta do mês não aparece de novo: o CSV atrasa a régua
+     * de meses no programa, e a fase do roster da meta vence.
+     *
+     * @param  array<array<string,mixed>>  $ativos  Roster da meta do mês (para deduplicar)
+     * @return array<int, array<string,mixed>>
+     */
+    private function linhasM1DoMes(?string $mesSel, bool $parcial, array $linhasMes, array $ativos): array
+    {
+        if ($mesSel === null) {
+            return [];
+        }
+
+        $naMeta = [];
+        foreach ($ativos as $a) {
+            $naMeta[CustId::normaliza((string) ($a['cust_id'] ?? ''))] = true;
+        }
+
+        $roster = []; // cust normalizado => linha no formato de montarAtivosDoMes()
+        if ($parcial) {
+            $empresas = MlbEmpresa::where('fase', 'M1')
+                ->where('projeto', 'POLOS')
+                ->whereNull('arquivado_em')
+                ->orderBy('id')
+                ->get(['id', 'nome', 'cust_id', 'polo', 'fase', 'problema', 'problema_nota', 'ads_desligado']);
+
+            foreach ($empresas as $e) {
+                $id = CustId::normaliza((string) $e->cust_id);
+                if ($id === '' || isset($roster[$id]) || isset($naMeta[$id])) {
+                    continue;
+                }
+                $nome = trim((string) $e->nome);
+                $roster[$id] = [
+                    'id'            => $e->id,
+                    'nome'          => $nome !== '' ? $nome : "Empresa {$id}",
+                    'polo'          => trim((string) $e->polo),
+                    'problema'      => (bool) $e->problema,
+                    'problema_nota' => $e->problema_nota,
+                    'ads_desligado' => $e->ads_desligado === null ? null : (bool) $e->ads_desligado,
+                ];
+            }
+        } else {
+            $curadas = MlbEmpresa::where('projeto', 'POLOS')
+                ->pluck('cust_id')
+                ->map(fn ($c) => CustId::normaliza((string) $c))
+                ->filter(fn ($c) => $c !== '')
+                ->flip();
+
+            foreach ($linhasMes as $row) {
+                if ((int) ($row['MESES_NO_PROGRAMA'] ?? $row['meses_no_programa'] ?? -1) !== 0) {
+                    continue;
+                }
+                $id = CustId::normaliza((string) ($row['CUS_CUST_ID_SEL'] ?? $row['cus_cust_id_sel'] ?? ''));
+                if ($id === '' || isset($roster[$id]) || isset($naMeta[$id]) || ! $curadas->has($id)) {
+                    continue;
+                }
+                $nome = trim((string) ($row['CUS_NICKNAME'] ?? $row['cus_nickname'] ?? ''));
+                $roster[$id] = [
+                    'id'            => null, // como no roster reconstruído do CSV: sem edição
+                    'nome'          => $nome !== '' ? $nome : "Empresa {$id}",
+                    'polo'          => trim((string) ($row['LOCALIDADE'] ?? $row['localidade'] ?? '')),
+                    'problema'      => false, // flag histórico indisponível no CSV
+                    'problema_nota' => null,
+                    'ads_desligado' => null,
+                ];
+            }
+        }
+
+        if ($roster === []) {
+            return [];
+        }
+
+        $custs   = array_map(fn ($id) => ['cust_id' => (string) $id], array_keys($roster));
+        $vigente = $this->faturamentoVigenteDoMes($custs, $mesSel);
+        $ads     = $this->adsAdmanDoMes($custs, $mesSel);
+        $lookup  = $this->montarLookup($linhasMes);
+
+        $linhas = [];
+        foreach ($roster as $id => $r) {
+            $id     = (string) $id; // chave numérica do array volta como int
+            $csv    = $lookup[$id] ?? null;
+            $manual = $vigente['manuais'][$id] ?? null;
+
+            $linhas[] = [
+                'cust_id'        => $id,
+                'mlb_empresa_id' => $r['id'],
+                'nome'           => $r['nome'],
+                'fase'           => 'M1',
+                'faturamento'    => $vigente['valores'][$id] ?? 0.0,
+                'faturamento_fonte'  => $this->fonteDoFaturamento($id, $manual, $vigente['valores']),
+                'faturamento_manual' => $manual,
+                'meta'           => 0.0,
+                'pct'            => 0.0,
+                'status'         => self::STATUS_SEM_META,
+                'ads'            => $ads[$id] ?? 0.0,
+                'problema'       => $r['problema'],
+                'problema_fora_da_meta' => false, // sem meta, não há de onde sair
+                'problema_nota'  => $r['problema_nota'],
+                'ads_desligado'  => $r['ads_desligado'],
+                // Mesma regra de agregarPorPolo(): LOCALIDADE do CSV, senão o polo do cadastro.
+                'polo'           => ($csv !== null && $csv['localidade'] !== '') ? $csv['localidade'] : ($r['polo'] ?: 'Sem polo'),
+            ];
+        }
+
+        return $linhas;
+    }
+
+    /**
+     * De onde veio o faturamento da linha: 'manual' (lançamento aplicado), 'adman' (está no
+     * mapa da Adman) ou 'sem_dado' (R$ 0 por ausência, não por venda zero — learnings
+     * painel-polos §18). Única regra para as linhas da meta e as M1.
+     *
+     * @param  array<string,mixed>|null  $manual   Lançamento do mês (saída de faturamentoVigenteDoMes)
+     * @param  array<string,float>       $valores  Mapa de faturamento usado na linha
+     */
+    private function fonteDoFaturamento(string $id, ?array $manual, array $valores): string
+    {
+        if ($manual['aplicado'] ?? false) {
+            return 'manual';
+        }
+
+        return ($id !== '' && array_key_exists($id, $valores)) ? 'adman' : 'sem_dado';
     }
 
     /**
@@ -3272,9 +3444,7 @@ class PolosController extends Controller
             // "está no mapa e não é manual aplicado" = Adman. Fora do mapa = sem dado (R$ 0
             // por ausência, não por venda zero — learnings painel-polos §18).
             $manual = $id !== '' ? ($manuais[$id] ?? null) : null;
-            $fonte  = ($manual['aplicado'] ?? false)
-                ? 'manual'
-                : (($id !== '' && array_key_exists($id, $fatAdman)) ? 'adman' : 'sem_dado');
+            $fonte  = $this->fonteDoFaturamento($id, $manual, $fatAdman);
 
             if (! isset($grupos[$localidade])) {
                 $grupos[$localidade] = ['faturamentos' => [], 'limiares' => [], 'statuses' => [], 'empresas' => []];
