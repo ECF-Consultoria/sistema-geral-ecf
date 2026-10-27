@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ContratoAssinatura;
+use App\Services\Contratos\TabelaDoContratoService;
 use App\Models\ContratoAssinaturaSignatario;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\ContratoVariaveisModeloService;
@@ -105,6 +106,12 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      * 2. Guard de modelo (D-21): serviço sem `clicksign_template_id` nem
      *    `CLICKSIGN_TEMPLATE_ID` padrão falha ANTES de qualquer chamada
      *    HTTP — gerar contrato com modelo errado é pior que não gerar.
+     * 2a. Quick 261027-m1y — congelamento da tabela progressiva: para o
+     *    serviço cujo modelo imprime a tabela variável (Gestão), grava em
+     *    `tabela_progressiva_snapshot` a tabela que vai no contrato (a
+     *    específica da empresa, manual/contrato, ou a padrão do serviço).
+     *    Tabela com mais de 7 faixas lança `\RuntimeException` ANTES de
+     *    qualquer HTTP (mesmo padrão do D-21) — nunca trunca.
      * 3. `ContratoVariaveisModeloService::montar()` — puro, sem HTTP.
      *    `$complementos` mistura duas origens de propósito: `endereco` é
      *    dado de EMPRESA, lido AO VIVO de `Company` (mesma disciplina de
@@ -149,7 +156,7 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      *     `ClicksignClient::montarEnvelopeComum()`; este job só deixa a
      *     exceção propagar, acionando `tries`/`backoff`/`failed()`.
      */
-    public function handle(ClicksignClient $client, ContratoVariaveisModeloService $variaveisService): void
+    public function handle(ClicksignClient $client, ContratoVariaveisModeloService $variaveisService, ?TabelaDoContratoService $tabelaDoContrato = null): void
     {
         $contrato = $this->contratoAssinatura->fresh(['company', 'servico']);
 
@@ -168,6 +175,9 @@ class GerarContratoAssinaturaJob implements ShouldQueue
                 $contrato->id
             ));
         }
+
+        // Quick 261027-m1y — congela a tabela impressa (recusa >7 faixas aqui).
+        ($tabelaDoContrato ?? app(TabelaDoContratoService::class))->congelar($contrato);
 
         $company = $contrato->company;
 

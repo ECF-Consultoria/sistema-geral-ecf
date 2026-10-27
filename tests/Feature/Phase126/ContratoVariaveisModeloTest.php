@@ -132,6 +132,13 @@ class ContratoVariaveisModeloTest extends TestCase
         $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['data_primeira_parcela']);
 
         foreach ($resultado['variaveis'] as $chave => $valor) {
+            // Quick 261027-m1y — as 14 faixa_N_* saem vazias DE PROPÓSITO quando o
+            // contrato não tem tabela congelada (linha sem faixa no .docx); a ausência
+            // real de tabela em Gestão vira pendência 'tabela_progressiva', não placeholder.
+            if (preg_match('/^faixa_\d_(faturamento|valor)$/', $chave)) {
+                continue;
+            }
+
             $this->assertNotNull($valor, "Variável '{$chave}' veio null — documento jurídico não pode ter campo em branco silencioso.");
             $this->assertNotSame('', $valor, "Variável '{$chave}' veio string vazia — documento jurídico não pode ter campo em branco silencioso.");
         }

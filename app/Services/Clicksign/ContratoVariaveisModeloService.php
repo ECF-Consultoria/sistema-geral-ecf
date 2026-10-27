@@ -155,6 +155,25 @@ class ContratoVariaveisModeloService
             // plano). A classe continua PURA (T-126-40) — só LÊ a chave
             // pronta, não decide override-ou-composto nem consulta nada.
             'plano_parcelas'        => fn (array $d) => $d['pagamento']['plano_parcelas'],
+            // Quick 261027-m1y — tabela progressiva variável (7 linhas fixas no
+            // .docx). Só o modelo de Gestão usa; nos modelos de Brigada/Shopee o
+            // `clicksign:sondar-modelo` vai listá-las como "faltando no .docx",
+            // o que é esperado (mesma situação de plano_parcelas/plataformas).
+            // Explícitas, uma por linha — nada de laço (ver docblock da classe).
+            'faixa_1_faturamento'  => fn (array $d) => $d['tabela_progressiva'][0]['faturamento'],
+            'faixa_1_valor'        => fn (array $d) => $d['tabela_progressiva'][0]['valor'],
+            'faixa_2_faturamento'  => fn (array $d) => $d['tabela_progressiva'][1]['faturamento'],
+            'faixa_2_valor'        => fn (array $d) => $d['tabela_progressiva'][1]['valor'],
+            'faixa_3_faturamento'  => fn (array $d) => $d['tabela_progressiva'][2]['faturamento'],
+            'faixa_3_valor'        => fn (array $d) => $d['tabela_progressiva'][2]['valor'],
+            'faixa_4_faturamento'  => fn (array $d) => $d['tabela_progressiva'][3]['faturamento'],
+            'faixa_4_valor'        => fn (array $d) => $d['tabela_progressiva'][3]['valor'],
+            'faixa_5_faturamento'  => fn (array $d) => $d['tabela_progressiva'][4]['faturamento'],
+            'faixa_5_valor'        => fn (array $d) => $d['tabela_progressiva'][4]['valor'],
+            'faixa_6_faturamento'  => fn (array $d) => $d['tabela_progressiva'][5]['faturamento'],
+            'faixa_6_valor'        => fn (array $d) => $d['tabela_progressiva'][5]['valor'],
+            'faixa_7_faturamento'  => fn (array $d) => $d['tabela_progressiva'][6]['faturamento'],
+            'faixa_7_valor'        => fn (array $d) => $d['tabela_progressiva'][6]['valor'],
         ];
     }
 

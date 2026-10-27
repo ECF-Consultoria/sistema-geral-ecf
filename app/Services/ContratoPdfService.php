@@ -8,6 +8,7 @@ use App\Models\ContratoAssinatura;
 // continua sendo ContratoVariaveisModeloService -> ContratoPdfService via
 // injeção de construtor.
 use App\Services\Clicksign\ContratoVariaveisModeloService;
+use App\Services\Contratos\TabelaDoContratoService;
 use Carbon\Carbon;
 
 /**
@@ -90,6 +91,7 @@ class ContratoPdfService
      *     contato: array{nome: string, email: string, telefone: string},
      *     servicos: array<int, array{servico: string, valor: float, valor_formatado: string, inicio: string, fim: string}>,
      *     plataformas: string,
+     *     tabela_progressiva: array<int, array{faturamento: string, valor: string}>,
      *     totais: array{valor_mensal_formatado: string},
      *     vigencia: array{inicio: string, fim: string, meses: string},
      *     pagamento: array{dia_vencimento: string, forma_pagamento: string, data_primeira_parcela: string},
@@ -150,6 +152,9 @@ class ContratoPdfService
             // snapshot antigo sem a chave) é VISÍVEL — nunca um espaço em
             // branco; ver `resolverPlataformas()`.
             'plataformas' => $this->resolverPlataformas($snapshot, $camposPendentes),
+            // Quick 261027-m1y — 7 linhas da tabela progressiva IMPRESSA, lidas do
+            // snapshot congelado no contrato (nunca da tabela ao vivo).
+            'tabela_progressiva' => TabelaDoContratoService::linhasParaContrato($contrato->tabela_progressiva_snapshot),
             'totais'   => [
                 'valor_mensal_formatado' => $this->formatarMoeda($this->somarValores($snapshot)),
             ],
@@ -171,6 +176,12 @@ class ContratoPdfService
             ],
             'gerado_em' => now()->format('d/m/Y H:i'),
         ];
+
+        // Quick 261027-m1y — serviço que imprime a tabela e contrato sem tabela
+        // congelada (serviço sem faixas): pendência visível, nunca linha vazia calada.
+        if (empty($contrato->tabela_progressiva_snapshot) && (new TabelaDoContratoService())->imprimeTabela($contrato->servico)) {
+            $camposPendentes[] = 'tabela_progressiva';
+        }
 
         sort($camposPendentes);
         $dados['campos_pendentes'] = array_values(array_unique($camposPendentes));
