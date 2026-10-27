@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, Check, AlertTriangle, Info, MessageSquareText, CalendarClock } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, AlertTriangle, Info, MessageSquareText, CalendarClock, Search, X } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
 // Selo da situação na fila (TKT-0027).
@@ -9,7 +9,74 @@ const SITUACAO = {
     atrasada:    { cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
     agenda_hoje: { cls: 'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30', label: 'Agenda de hoje' },
     sem_agenda:  { cls: 'bg-white/[0.06] text-white/60 border-white/[0.12]', label: 'Sem agenda' },
+    em_dia:      { cls: 'bg-white/[0.04] text-white/55 border-white/[0.1]' },
+    feita:       { cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
 };
+
+// Visões da lista: a fila de hoje é o padrão; "Todas" mostra a carteira inteira.
+const VISOES = [
+    { key: 'hoje',   label: 'Para revisar hoje' },
+    { key: 'feitas', label: 'Feitas hoje' },
+    { key: 'todas',  label: 'Todas da carteira' },
+];
+
+// [rótulo, valor da empresa, direção]. Sem valor (ex.: sem bônus) vai sempre para o fim.
+const ORDENS = {
+    prioridade:        ['Prioridade da fila', null, 0],
+    bonus_mais:        ['Bônus: mais usado primeiro', (e) => e.bonus?.pct_usado, -1],
+    bonus_menos:       ['Bônus: menos usado primeiro', (e) => e.bonus?.pct_usado, 1],
+    meta_menor:        ['Menor % da meta', (e) => e.pct, 1],
+    faturamento_maior: ['Maior faturamento', (e) => e.faturamento, -1],
+};
+
+const FILTRO_BONUS = {
+    todos:  ['Bônus: todos', () => true],
+    com:    ['Com bônus', (e) => !!e.bonus],
+    parado: ['Bônus parado (usou < 20%)', (e) => e.bonus?.ritmo?.tipo === 'parado'],
+    sem:    ['Sem bônus', (e) => !e.bonus],
+};
+
+const temSinal = (e, chave) => (e.sinais ?? []).some((s) => s.chave === chave);
+const FILTRO_ATENCAO = {
+    todos:              ['Atenção: todas', () => true],
+    atrasada:           ['Atrasadas', (e) => e.situacao === 'atrasada'],
+    desatualizado:      ['Comentário desatualizado', (e) => e.desatualizado],
+    sem_comentario_mes: ['Sem comentário no mês', (e) => !e.ultimo_comentario?.do_mes],
+    campanha_desligada: ['Campanha desligada', (e) => temSinal(e, 'campanha_desligada')],
+    places:             ['Places pendente', (e) => temSinal(e, 'places')],
+    ads_sem_acordo:     ['Ads sem acordo', (e) => temSinal(e, 'ads_sem_acordo')],
+};
+
+const FILTROS_PADRAO = { busca: '', ordem: 'prioridade', bonus: 'todos', atencao: 'todos', fase: 'todas', polo: 'todos' };
+
+const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+function aplicarFiltros(lista, f) {
+    const q = semAcento(f.busca.trim());
+    const filtrada = lista.filter((e) => (
+        (!q || semAcento(`${e.nome} ${e.cust_id ?? ''} ${e.polo ?? ''}`).includes(q))
+        && (f.fase === 'todas' || e.fase === f.fase)
+        && (f.polo === 'todos' || (e.polo ?? '') === f.polo)
+        && FILTRO_BONUS[f.bonus][1](e)
+        && FILTRO_ATENCAO[f.atencao][1](e)
+    ));
+
+    const [, valor, dir] = ORDENS[f.ordem];
+    if (!valor) return filtrada; // prioridade: a ordem que o servidor montou
+
+    return [...filtrada].sort((a, b) => {
+        const va = valor(a);
+        const vb = valor(b);
+        const semA = va === null || va === undefined;
+        const semB = vb === null || vb === undefined;
+        if (semA !== semB) return semA ? 1 : -1;
+        if (!semA && va !== vb) return (va - vb) * dir;
+        return a.nome.localeCompare(b.nome);
+    });
+}
+
+// Inertia: os filtros sobrevivem ao marcar/desmarcar (a página recarrega as props, não o estado).
+const OPCOES_GRAVAR = { preserveScroll: true, preserveState: true };
 
 const CHIP = {
     vermelho: 'bg-red-500/10 text-red-300 border-red-500/25',
@@ -30,15 +97,34 @@ const corMeta = (pct) => (pct >= 100 ? 'bg-emerald-500' : pct >= 60 ? 'bg-ecf-ye
  * Polos/Fila/Index — "Minha fila de hoje" (TKT-0027): as empresas que o analista revisa hoje
  * (agenda do dia + atrasadas + sem agenda), já na ordem de prioridade que o servidor monta.
  * Marcar grava a revisão; com texto, grava também o comentário no Faturamento Polos.
+ *
+ * Visões e filtros (pedido de 27/10): "Todas da carteira" mostra também quem está em dia
+ * (próxima revisão) e quem já foi feita; ordenar por bônus mais/menos usado; filtros de
+ * bônus, pontos de atenção, fase, polo e busca — tudo no cliente, sobre a carteira já carregada.
  */
 export default function FilaIndex({ analistas = [], analistaId = null, podeTrocar = false, fila = null, avisoFaturamento = null }) {
     const resumo    = fila?.resumo ?? {};
     const hoje      = fila?.hoje ?? {};
     const pendentes = fila?.pendentes ?? [];
     const feitas    = fila?.feitas ?? [];
+    const emDia     = fila?.em_dia ?? [];
     const analista  = analistas.find((a) => a.id === analistaId);
 
+    const [visao, setVisao]     = useState('hoje');
+    const [filtros, setFiltros] = useState(FILTROS_PADRAO);
+    const mudar = (campo, valor) => setFiltros((f) => ({ ...f, [campo]: valor }));
+    const filtrando = Object.keys(FILTROS_PADRAO).some((k) => k !== 'ordem' && filtros[k] !== FILTROS_PADRAO[k]);
+
+    // "Todas": a fila de hoje (na ordem dela), depois as em dia (próxima revisão mais perto) e as feitas.
+    const todas = useMemo(() => [...pendentes, ...emDia, ...feitas], [pendentes, emDia, feitas]);
+    const base  = visao === 'hoje' ? pendentes : visao === 'feitas' ? feitas : todas;
+    const lista = useMemo(() => aplicarFiltros(base, filtros), [base, filtros]);
+    const polos = useMemo(() => [...new Set(todas.map((e) => e.polo).filter(Boolean))].sort(), [todas]);
+
     const trocarAnalista = (id) => router.get(route('mlb.polos-painel.fila'), { analista: id }, { preserveScroll: true });
+
+    // Os cards do topo também são atalhos: levam à visão/filtro que explica o número.
+    const atalho = (v, extra = {}) => { setVisao(v); setFiltros({ ...FILTROS_PADRAO, ...extra }); };
 
     const pctFeitas = resumo.total_dia > 0 ? Math.round((resumo.feitas / resumo.total_dia) * 100) : 0;
 
@@ -89,32 +175,90 @@ export default function FilaIndex({ analistas = [], analistaId = null, podeTroca
 
                 {/* Cards do topo */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <Topo label="Para revisar hoje" valor={resumo.para_revisar ?? 0} destaque
+                    <Topo label="Para revisar hoje" valor={resumo.para_revisar ?? 0} destaque onClick={() => atalho('hoje')}
                           sub={`${resumo.atrasadas ?? 0} atrasada(s) + ${resumo.agenda_hoje ?? 0} da agenda${resumo.sem_agenda ? ` + ${resumo.sem_agenda} sem agenda` : ''}`} />
-                    <Topo label="Feitas hoje" valor={<>{resumo.feitas ?? 0} <span className="text-white/40 text-base font-semibold">de {resumo.total_dia ?? 0}</span></>}>
+                    <Topo label="Feitas hoje" onClick={() => atalho('feitas')}
+                          valor={<>{resumo.feitas ?? 0} <span className="text-white/40 text-base font-semibold">de {resumo.total_dia ?? 0}</span></>}>
                         <div className="mt-2 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
                             <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pctFeitas}%` }} />
                         </div>
                     </Topo>
                     <Topo label="Bônus parado na fila" valor={formatCurrency(resumo.bonus_parado ?? 0)} vermelho={(resumo.bonus_parado ?? 0) > 0}
+                          onClick={() => atalho('hoje', { bonus: 'parado', ordem: 'bonus_menos' })}
                           sub={`saldo das que usaram menos de 20%${resumo.bonus_vence ? ` · vence ${resumo.bonus_vence.data}` : ''}`} />
                     <Topo label="Comentários a atualizar" valor={resumo.comentarios_a_atualizar ?? 0} amarelo={(resumo.comentarios_a_atualizar ?? 0) > 0}
+                          onClick={() => atalho('hoje', { atencao: 'desatualizado' })}
                           sub={'dizem "sem bônus", mas a Adman mostra saldo'} />
                 </div>
 
-                {/* Fila */}
-                {(resumo.carteira ?? 0) === 0 ? (
-                    <Vazio texto="Nenhuma empresa ativa (M1 a M4) tem este analista como responsável no Painel Polos." />
-                ) : pendentes.length === 0 ? (
-                    <Vazio texto={hoje.rotulo ? 'Nada pendente hoje. Bom trabalho!' : 'Fim de semana: a fila volta na segunda.'} ok={!!hoje.rotulo} />
-                ) : (
-                    <div className="space-y-3">
-                        {pendentes.map((e) => <CartaoEmpresa key={e.id} e={e} />)}
+                {/* Visão, ordem e filtros */}
+                {(resumo.carteira ?? 0) > 0 && (
+                    <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">Ver</span>
+                            {VISOES.map((v) => {
+                                const n = v.key === 'hoje' ? pendentes.length : v.key === 'feitas' ? feitas.length : todas.length;
+                                return (
+                                    <button key={v.key} type="button" onClick={() => setVisao(v.key)} aria-pressed={visao === v.key}
+                                            className={cn('rounded-full px-3 py-1 text-xs font-semibold transition',
+                                                visao === v.key ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
+                                        {v.label} <span className="tabular-nums opacity-70">{n}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative w-full sm:w-56">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                                <input value={filtros.busca} onChange={(ev) => mudar('busca', ev.target.value)} placeholder="Buscar empresa ou Cust ID…"
+                                       className="w-full rounded-lg border border-white/[0.1] bg-ecf-card py-1.5 pl-9 pr-3 text-sm text-white/90 outline-none placeholder:text-white/25 focus:border-ecf-yellow/40" />
+                            </div>
+                            <Escolha valor={filtros.ordem} onChange={(v) => mudar('ordem', v)} titulo="Ordenar"
+                                     opcoes={Object.entries(ORDENS).map(([k, [rotulo]]) => [k, rotulo])} />
+                            <Escolha valor={filtros.bonus} onChange={(v) => mudar('bonus', v)} titulo="Bônus"
+                                     opcoes={Object.entries(FILTRO_BONUS).map(([k, [rotulo]]) => [k, rotulo])} />
+                            <Escolha valor={filtros.atencao} onChange={(v) => mudar('atencao', v)} titulo="Pontos de atenção"
+                                     opcoes={Object.entries(FILTRO_ATENCAO).map(([k, [rotulo]]) => [k, rotulo])} />
+                            <Escolha valor={filtros.fase} onChange={(v) => mudar('fase', v)} titulo="Fase"
+                                     opcoes={[['todas', 'Fase: todas'], ...['M1', 'M2', 'M3', 'M4'].map((f) => [f, f])]} />
+                            {polos.length > 1 && (
+                                <Escolha valor={filtros.polo} onChange={(v) => mudar('polo', v)} titulo="Polo"
+                                         opcoes={[['todos', 'Polo: todos'], ...polos.map((p) => [p, p])]} />
+                            )}
+                            {(filtrando || filtros.ordem !== 'prioridade') && (
+                                <button type="button" onClick={() => setFiltros(FILTROS_PADRAO)}
+                                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-white/50 hover:text-white/80">
+                                    <X size={13} /> Limpar
+                                </button>
+                            )}
+                        </div>
+                        {filtrando && (
+                            <p className="text-white/40 text-[11px]">Mostrando {lista.length} de {base.length}</p>
+                        )}
                     </div>
                 )}
 
-                {/* Feitas hoje */}
-                {feitas.length > 0 && (
+                {/* Lista */}
+                {(resumo.carteira ?? 0) === 0 ? (
+                    <Vazio texto="Nenhuma empresa ativa (M1 a M4) tem este analista como responsável no Painel Polos." />
+                ) : base.length === 0 ? (
+                    visao === 'hoje'
+                        ? <Vazio texto={hoje.rotulo ? 'Nada pendente hoje. Bom trabalho!' : 'Fim de semana: a fila volta na segunda.'} ok={!!hoje.rotulo} />
+                        : <Vazio texto="Nenhuma revisão feita hoje ainda." />
+                ) : lista.length === 0 ? (
+                    <Vazio texto="Nenhuma empresa com esses filtros." />
+                ) : visao === 'feitas' ? (
+                    <div className="divide-y divide-white/[0.04] rounded-2xl border border-white/[0.08] bg-white/[0.02]">
+                        {lista.map((e) => <LinhaFeita key={e.id} e={e} />)}
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {lista.map((e) => <CartaoEmpresa key={e.id} e={e} />)}
+                    </div>
+                )}
+
+                {/* Feitas hoje (resumo embaixo da fila do dia) */}
+                {visao === 'hoje' && feitas.length > 0 && (
                     <div className="space-y-2">
                         <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">Feitas hoje · {feitas.length}</p>
                         <div className="divide-y divide-white/[0.04] rounded-2xl border border-white/[0.08] bg-white/[0.02]">
@@ -127,9 +271,10 @@ export default function FilaIndex({ analistas = [], analistaId = null, podeTroca
     );
 }
 
-function Topo({ label, valor, sub, destaque = false, vermelho = false, amarelo = false, children }) {
+function Topo({ label, valor, sub, destaque = false, vermelho = false, amarelo = false, onClick, children }) {
     return (
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+        <button type="button" onClick={onClick} title="Mostrar na lista"
+                className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.04]">
             <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider">{label}</p>
             <p className={cn('font-display font-extrabold text-2xl mt-1 tabular-nums',
                 destaque ? 'text-ecf-yellow' : vermelho ? 'text-red-400' : amarelo ? 'text-amber-300' : 'text-white/90')}>
@@ -137,7 +282,18 @@ function Topo({ label, valor, sub, destaque = false, vermelho = false, amarelo =
             </p>
             {sub && <p className="text-white/40 text-[11px] mt-1 leading-snug">{sub}</p>}
             {children}
-        </div>
+        </button>
+    );
+}
+
+function Escolha({ valor, onChange, opcoes, titulo }) {
+    const ativo = valor !== opcoes[0][0];
+    return (
+        <select value={valor} onChange={(ev) => onChange(ev.target.value)} title={titulo} aria-label={titulo}
+                className={cn('rounded-lg border bg-ecf-card px-3 py-1.5 text-sm outline-none focus:border-ecf-yellow/40',
+                    ativo ? 'border-ecf-yellow/40 text-ecf-yellow' : 'border-white/[0.1] text-white/80')}>
+            {opcoes.map(([k, rotulo]) => <option key={k} value={k} className="bg-ecf-card text-white">{rotulo}</option>)}
+        </select>
     );
 }
 
@@ -150,8 +306,12 @@ function Vazio({ texto, ok = false }) {
 }
 
 function Selo({ e }) {
-    const s = SITUACAO[e.situacao] ?? SITUACAO.sem_agenda;
-    const texto = e.situacao === 'atrasada' ? `Atrasada · ${e.dias_atraso}d` : s.label;
+    const chave = e.revisao ? 'feita' : e.situacao;
+    const s = SITUACAO[chave] ?? SITUACAO.sem_agenda;
+    const texto = chave === 'feita' ? `Feita hoje · ${e.revisao.hora}`
+        : chave === 'atrasada' ? `Atrasada · ${e.dias_atraso}d`
+        : chave === 'em_dia' ? `Em dia · próxima ${e.proxima}`
+        : s.label;
     return (
         <span className={cn('inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', s.cls)}
               title={e.dia_label ? `Dia do ciclo: ${e.dia_label}` : 'Sem dia definido na agenda: aparece todo dia até ganhar um'}>
@@ -242,27 +402,36 @@ function CartaoEmpresa({ e }) {
     const [ocupado, setOcupado] = useState(false);
     const [erro, setErro] = useState(null);
 
+    const feita = !!e.revisao;
+
     const marcar = (comentario = '') => {
         if (ocupado) return;
         setOcupado(true);
         setErro(null);
         router.post(route('mlb.polos-painel.fila.revisoes.marcar'), { empresa_id: e.id, comentario }, {
-            preserveScroll: true,
+            ...OPCOES_GRAVAR,
             onSuccess: () => setTexto(''),
             onError: (errs) => setErro(errs.comentario ?? errs.empresa_id ?? 'Não foi possível marcar agora.'),
             onFinish: () => setOcupado(false),
         });
     };
 
+    const desfazer = () => {
+        if (ocupado) return;
+        setOcupado(true);
+        router.delete(route('mlb.polos-painel.fila.revisoes.desmarcar', e.id), { ...OPCOES_GRAVAR, onFinish: () => setOcupado(false) });
+    };
+
     const ultimo = e.ultimo_comentario;
 
     return (
-        <div className={cn('rounded-2xl border bg-white/[0.02]', e.situacao === 'atrasada' ? 'border-red-500/20' : 'border-white/[0.08]')}>
+        <div className={cn('rounded-2xl border bg-white/[0.02]',
+            feita ? 'border-emerald-500/20' : e.situacao === 'atrasada' ? 'border-red-500/20' : 'border-white/[0.08]')}>
             {/* Linha 1 — empresa, números, bônus e selo */}
             <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-[auto_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-center">
                 <div className="flex items-center gap-3 md:contents">
-                    <Caixa marcado={false} ocupado={ocupado} onClick={() => marcar('')}
-                           titulo="Marcar como revisada sem comentário" />
+                    <Caixa marcado={feita} ocupado={ocupado} onClick={feita ? desfazer : () => marcar('')}
+                           titulo={feita ? 'Desmarcar: desfaz a revisão de hoje (o comentário continua no Faturamento Polos)' : 'Marcar como revisada sem comentário'} />
                     <div className="min-w-0 md:order-none">
                         <p className="text-white font-semibold truncate">{e.nome}</p>
                         <p className="text-white/45 text-xs truncate">
@@ -315,6 +484,12 @@ function CartaoEmpresa({ e }) {
                     </button>
                 </form>
             </div>
+            {feita && (
+                <p className="px-4 pb-3 text-xs text-emerald-300/80 md:pl-[3.25rem]">
+                    Revisada por {e.revisao.por} às {e.revisao.hora}
+                    {e.revisao.proxima ? ` · próxima revisão ${e.revisao.proxima}` : ' · sem agenda'}
+                </p>
+            )}
             {erro && <p className="px-4 pb-3 text-xs text-red-300 md:pl-[3.25rem]">{erro}</p>}
         </div>
     );
@@ -325,10 +500,7 @@ function LinhaFeita({ e }) {
     const desfazer = () => {
         if (ocupado) return;
         setOcupado(true);
-        router.delete(route('mlb.polos-painel.fila.revisoes.desmarcar', e.id), {
-            preserveScroll: true,
-            onFinish: () => setOcupado(false),
-        });
+        router.delete(route('mlb.polos-painel.fila.revisoes.desmarcar', e.id), { ...OPCOES_GRAVAR, onFinish: () => setOcupado(false) });
     };
     const r = e.revisao ?? {};
 

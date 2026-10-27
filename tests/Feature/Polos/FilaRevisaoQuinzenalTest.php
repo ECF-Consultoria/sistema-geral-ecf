@@ -236,6 +236,10 @@ class FilaRevisaoQuinzenalTest extends TestCase
         );
         $this->assertSame([16, 2], array_column(array_slice($r['pendentes'], 0, 2), 'dias_atraso'));
         $this->assertSame(['Revisada Hoje'], array_column($r['feitas'], 'nome'));
+        // Visão "Todas da carteira": quem não está na fila de hoje vem em em_dia, com a próxima data.
+        $this->assertSame(['Feita no Ciclo'], array_column($r['em_dia'], 'nome'));
+        $this->assertSame('em_dia', $r['em_dia'][0]['situacao']);
+        $this->assertSame('09/11', $r['em_dia'][0]['proxima'], 'Seg A do ciclo seguinte.');
         $this->assertSame('11/11', $r['feitas'][0]['revisao']['proxima'], 'Qua A seguinte, 14 dias depois.');
 
         $this->assertSame(5, $r['resumo']['para_revisar']);
@@ -266,6 +270,9 @@ class FilaRevisaoQuinzenalTest extends TestCase
 
         $this->assertSame([], $r['pendentes']);
         $this->assertNull($r['hoje']['rotulo']);
+        // A carteira continua visível em "Todas", com a próxima revisão (Sex A seguinte: 06/11 é Sex B).
+        $this->assertSame(['Qualquer'], array_column($r['em_dia'], 'nome'));
+        $this->assertSame('13/11', $r['em_dia'][0]['proxima']);
     }
 
     // ─── Bônus e sinais ─────────────────────────────────────────────────────

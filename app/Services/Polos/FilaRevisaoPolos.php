@@ -51,6 +51,8 @@ class FilaRevisaoPolos
     public const SITUACAO_ATRASADA   = 'atrasada';
     public const SITUACAO_AGENDA     = 'agenda_hoje';
     public const SITUACAO_SEM_AGENDA = 'sem_agenda';
+    /** Fora da fila de hoje: o dia dela ainda vem (visão "Todas da carteira"). */
+    public const SITUACAO_EM_DIA     = 'em_dia';
 
     /** Programa da Adman do bônus mensal de R$ 3.000. */
     public const PROGRAMA_BONUS = 'manual-credits';
@@ -219,7 +221,7 @@ class FilaRevisaoPolos
      *
      * @param  array<int, array<string,mixed>>  $faturamento  Linhas do Faturamento Polos do mês
      *         corrente por mlb_empresa_id (as MESMAS de /polos/empresas); [] = sem dado.
-     * @return array{hoje: array, resumo: array, pendentes: array, feitas: array}
+     * @return array{hoje: array, resumo: array, pendentes: array, feitas: array, em_dia: array}
      */
     public function montar(int $analistaId, CarbonInterface $hoje, array $faturamento = []): array
     {
@@ -244,6 +246,7 @@ class FilaRevisaoPolos
 
         $pendentes = [];
         $feitas    = [];
+        $emDia     = [];
 
         foreach ($empresas as $e) {
             $card = $cards[$e->id];
@@ -263,13 +266,15 @@ class FilaRevisaoPolos
                 continue;
             }
 
-            // Fim de semana não tem fila.
-            if ($diaHoje === null) {
-                continue;
-            }
-
-            $situacao = $this->situacao($dia, $hoje, $inicio, $ultimas[$e->id] ?? null);
+            // Fim de semana não tem fila: ninguém entra em pendentes.
+            $situacao = $diaHoje === null ? null : $this->situacao($dia, $hoje, $inicio, $ultimas[$e->id] ?? null);
             if ($situacao === null) {
+                // Fora da fila de hoje — só aparece na visão "Todas da carteira".
+                $proxima = $dia === null ? null : self::proximaOcorrencia($dia, $hoje, $inicio);
+                $card['situacao']     = $dia === null ? self::SITUACAO_SEM_AGENDA : self::SITUACAO_EM_DIA;
+                $card['proxima']      = $proxima?->format('d/m');
+                $card['proxima_iso']  = $proxima?->toDateString();
+                $emDia[]              = $card;
                 continue;
             }
 
@@ -296,6 +301,8 @@ class FilaRevisaoPolos
         });
 
         usort($feitas, fn ($a, $b) => strcmp((string) $b['revisao']['hora'], (string) $a['revisao']['hora']));
+        // Em dia: a próxima revisão mais perto primeiro.
+        usort($emDia, fn ($a, $b) => strcmp((string) $a['proxima_iso'], (string) $b['proxima_iso']) ?: strcasecmp($a['nome'], $b['nome']));
 
         $contar = fn (string $s) => count(array_filter($pendentes, fn ($c) => $c['situacao'] === $s));
 
@@ -326,6 +333,7 @@ class FilaRevisaoPolos
             ],
             'pendentes' => $pendentes,
             'feitas'    => $feitas,
+            'em_dia'    => $emDia,
         ];
     }
 
@@ -445,6 +453,8 @@ class FilaRevisaoPolos
                 'situacao'    => null,
                 'dias_atraso' => null,
                 'revisao'     => null,
+                'proxima'     => null,
+                'proxima_iso' => null,
             ];
 
             $card['sinais'] = self::sinais($card, $e->implementacao?->places, $doMes->pluck('texto')->all());
