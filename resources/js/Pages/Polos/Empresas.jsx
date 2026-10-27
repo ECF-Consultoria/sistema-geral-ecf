@@ -217,7 +217,7 @@ export default function PolosEmpresas({
         : daCarteira.filter((e) => campanhaDa(e) === key).length;
 
     const Th = ({ campo, children, className }) => (
-        <th className={cn('px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40', className)}>
+        <th className={cn('px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40', className)}>
             <button type="button" onClick={() => ordenarPor(campo)} className="inline-flex items-center gap-1 hover:text-white/70">
                 {children}
                 <ArrowUpDown size={11} className={cn(ordem.campo === campo ? 'text-ecf-yellow' : 'opacity-40')} />
@@ -357,8 +357,12 @@ export default function PolosEmpresas({
                                     {metricaFaturamento === 'gross' ? 'Faturamento' : 'Faturamento (móveis)'}
                                 </Th>
                                 <Th campo="pct">% da meta</Th>
-                                <Th campo="ads">ADS</Th>
-                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Sinais</th>
+                                {/* O teto é o mesmo para todas as linhas: aparece uma vez aqui, e não
+                                    repetido em cada célula (era o que fazia a tabela passar da tela). */}
+                                <Th campo="ads">
+                                    ADS<span className="font-normal normal-case tracking-normal text-white/25"> · teto {formatCurrency(adsLimites.teto)}</span>
+                                </Th>
+                                <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Sinais</th>
                                 <th className="w-8" />
                             </tr>
                         </thead>
@@ -380,14 +384,14 @@ export default function PolosEmpresas({
                                     <>
                                         <tr key={e.cust_id} onClick={() => abrirSemanal(e.cust_id)}
                                             className={cn('cursor-pointer hover:bg-white/[0.03] transition', expandida && 'bg-white/[0.04]')}>
-                                            <td className="px-4 py-3 text-white/90 font-medium">{e.nome}</td>
-                                            <td className="px-4 py-3 text-white/60">{e.polo}</td>
-                                            <td className="px-4 py-3 text-white/40 text-xs">{e.fase}</td>
-                                            <td className="px-4 py-3 text-white/60 text-xs">{e.responsavel ?? <span className="text-white/25">—</span>}</td>
-                                            <td className="px-4 py-3"><StatusBadge status={e.status} /></td>
+                                            <td className="px-3 py-3 text-white/90 font-medium">{e.nome}</td>
+                                            <td className="px-3 py-3 text-white/60">{e.polo}</td>
+                                            <td className="px-3 py-3 text-white/40 text-xs">{e.fase}</td>
+                                            <td className="px-3 py-3 text-white/60 text-xs">{e.responsavel ?? <span className="text-white/25">—</span>}</td>
+                                            <td className="px-3 py-3"><StatusBadge status={e.status} /></td>
                                             {/* Faturamento + origem do número (Adman / manual / sem dado) e,
                                                 para quem pode, o lápis do lançamento manual. */}
-                                            <td className="px-4 py-3 text-right">
+                                            <td className="px-3 py-3 text-right">
                                                 <div className="flex flex-col items-end gap-1">
                                                     <div className="flex items-center gap-1.5">
                                                         <SeloFonteFaturamento empresa={e} />
@@ -403,7 +407,7 @@ export default function PolosEmpresas({
                                                 "1016,7%" e a coluna virava ruído. Bateu é bateu: 100%.
                                                 O número real fica no hover, e a ORDENAÇÃO continua pelo
                                                 valor cru (e.pct), então o topo da lista não embaralha. */}
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 {e.status === 'Sem meta' ? (
                                                     <span className="text-white/25 text-xs" title="M1 é onboarding: não tem meta de faturamento">—</span>
                                                 ) : (
@@ -418,19 +422,25 @@ export default function PolosEmpresas({
                                                 </div>
                                                 )}
                                             </td>
-                                            {/* Coluna ADS: barra de progresso do gasto mensal vs teto, colorida por limiar */}
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
-                                                        <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: adsCorHex }} />
+                                            {/* Coluna ADS: barra de progresso do gasto mensal vs teto (no cabeçalho),
+                                                colorida por limiar. O bônus fica logo abaixo do gasto, não ao lado:
+                                                lado a lado, a coluna chegava a ~440px e empurrava "Sinais" para
+                                                fora da tela em 1500px. */}
+                                            <td className="px-3 py-3">
+                                                <div className="flex flex-col items-start gap-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                                                            <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: adsCorHex }} />
+                                                        </div>
+                                                        <span className="text-white/40 text-xs tabular-nums whitespace-nowrap"
+                                                              title={`Teto: ${formatCurrency(adsLimites.teto)}`}>
+                                                            {formatCurrency(gastoAds)}
+                                                        </span>
                                                     </div>
-                                                    <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
-                                                        {formatCurrency(gastoAds)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
-                                                    </span>
                                                     {e.ads_bonus && <BonusAds bonus={e.ads_bonus} />}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center gap-1.5">
                                                     <AdsLigadoDesligado
                                                         valor={e.cust_id in adsPendente ? adsPendente[e.cust_id] : e.ads_desligado}
