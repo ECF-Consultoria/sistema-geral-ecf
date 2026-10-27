@@ -268,10 +268,10 @@ class Phase14FechamentoUiTest extends TestCase
         $this->assertCount(1, $companies);
 
         $this->assertEqualsWithDelta(
-            4700.0,
+            5700.0, // quick 261027-m1y: faixa 2 de Gestão passou de 4.500 para 5.500
             (float) $companies[0]['cobranca_mensal'],
             0.01,
-            'cobranca_mensal deve somar faixa_2 (4.500) + contrato mensal Polos (200) = 4.700.',
+            'cobranca_mensal deve somar faixa_2 (5.500) + contrato mensal Polos (200) = 5.700.',
         );
     }
 

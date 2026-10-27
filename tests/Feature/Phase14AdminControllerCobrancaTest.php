@@ -146,10 +146,10 @@ class Phase14AdminControllerCobrancaTest extends TestCase
         $companies = $response->viewData('page')['props']['companies'];
         $this->assertCount(1, $companies);
         $this->assertEqualsWithDelta(
-            4700.0,
+            5700.0, // quick 261027-m1y: faixa 2 de Gestão passou de 4.500 para 5.500
             (float) $companies[0]['cobranca_mensal'],
             0.01,
-            'cobranca_mensal pós-refator deve bater com legacy (4500 faixa + 200 additional = 4700) até R$ 0,01',
+            'cobranca_mensal pós-refator deve bater com legacy (5500 faixa + 200 additional = 5700) até R$ 0,01',
         );
     }
 

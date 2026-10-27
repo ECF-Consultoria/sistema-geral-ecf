@@ -259,7 +259,7 @@ class AdminFechamentoControllerTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
             ->where('companies.0.faixa', 'faixa_1')
-            ->where('companies.0.valor_mensal', 3000)
+            ->where('companies.0.valor_mensal', 3700) // quick 261027-m1y: tabela nova de Gestão
         );
     }
 
@@ -277,7 +277,7 @@ class AdminFechamentoControllerTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
             ->where('companies.0.faixa', 'faixa_2')
-            ->where('companies.0.valor_mensal', 4500)
+            ->where('companies.0.valor_mensal', 5500) // quick 261027-m1y: tabela nova de Gestão
         );
     }
 
@@ -295,7 +295,7 @@ class AdminFechamentoControllerTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
             ->where('companies.0.faixa', 'maxima')
-            ->where('companies.0.valor_mensal', 12000)
+            ->where('companies.0.valor_mensal', 13500) // quick 261027-m1y: tabela nova de Gestão
         );
     }
 
