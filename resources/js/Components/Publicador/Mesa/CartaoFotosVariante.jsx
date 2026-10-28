@@ -44,7 +44,7 @@ export default function CartaoFotosVariante({ m, v, eixos, grupo = null, fotosCo
                     maxFotos={limites.max_pictures_per_item_var ?? limites.max_pictures_per_item ?? 10}
                     minimo={limites.min_pictures ?? limites.recommended_pictures ?? null}
                     enviando={m.enviandoFoto} disabled={travada} envioAoMl={estado.publicacao_liberada === true}
-                    onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto} />
+                    onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto} onTrocar={m.trocarFoto} />
             ) : (
                 <p className="rounded-lg border border-white/20 bg-black/40 p-4 text-[13px] text-white/45" data-fotos-variante={v.chave}>Preparando as fotos desta variação…</p>
             )}

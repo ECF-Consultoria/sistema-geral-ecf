@@ -84,7 +84,7 @@ export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true }) {
  */
 export function BlocoDeFotos({
     grupo, titulo, nota = null, imagens, atribuicoes, maxFotos = 10, minimo = null, erro = null, enviando, disabled,
-    envioAoMl = true, onArquivos, onAtribuicoes, onExcluir, onReenviar, children,
+    envioAoMl = true, onArquivos, onAtribuicoes, onExcluir, onReenviar, onTrocar = null, children,
 }) {
     const arquivo = useRef(null);
     // `useMemo`: sem isto, `fotos`/`sugeridas` eram arrays NOVOS a cada render (mesmo sem mudar
@@ -125,6 +125,12 @@ export function BlocoDeFotos({
         if (restantes.some((a) => String(a.imagem) === id)) reordenar(fotos.filter((f) => f.id !== id));
         else onExcluir(id);
     };
+    // "Trocar foto" (27/10/2026): o arquivo novo fica no lugar da foto `indice` deste grupo (o servidor apaga a
+    // antiga se ela não estiver em outro grupo — a mesma regra do `remover` acima).
+    const trocar = (indice, arquivo) => {
+        const id = fotos[indice]?.id;
+        if (id && arquivo) onTrocar(arquivo, grupo, id);
+    };
 
     return (
         <>
@@ -148,7 +154,7 @@ export function BlocoDeFotos({
                     </div>
                 </div>
                 <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
-                    onReordenar={reordenar} onRemover={remover}
+                    onReordenar={reordenar} onRemover={remover} onTrocar={onTrocar ? trocar : null}
                     onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
                 {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => {
                     const indice = fotos.findIndex((x) => x.id === String(f.id));

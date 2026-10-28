@@ -600,6 +600,26 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
         // ordem nova que não entrou, e a Prévia (do servidor) a antiga. Só se a tela ainda está na ordem que esta troca pôs.
         if (! data) setEstado((e) => (e && e.atribuicoes === atribuicoes ? { ...e, atribuicoes: anteriores } : e));
     };
+    /**
+     * "Trocar foto" (27/10/2026): sobe o arquivo e ele fica NO LUGAR da foto `imagemId` do grupo — a capa trocada
+     * continua capa. O servidor faz tudo num pedido só (`substituir`) e apaga a antiga se ela não sobrou em outro
+     * grupo. Foto recusada não troca nada: a antiga fica e a recusa aparece na faixa, como no envio comum.
+     */
+    const trocarFoto = async (arquivo, grupo, imagemId) => {
+        if (! arquivo) return;
+        setErro(null);
+        setErroDaAcao(null);
+        const fd = new FormData();
+        fd.append('imagem', arquivo);
+        fd.append('grupo', grupo);
+        fd.append('substituir', String(imagemId));
+        setEnviandoFoto(grupo);
+        let falha = null;
+        const data = await estruturar(() => axios.post(rota('fotos', produtoId), fd), { fundo: true, aoFalhar: (m) => { falha = m; } });
+        setEnviandoFoto(null);
+        const motivo = falha ?? data?.foto?.problemas?.find((p) => p.severidade === 'BLOCKER')?.mensagem ?? null;
+        if (motivo) setErro(`${arquivo.name}: ${motivo}`);
+    };
     const removerFoto = (imagemId) => estruturar(() => axios.delete(rota('fotos.remover', produtoId, { imagem: imagemId })));
     const reenviarFoto = (imagemId) => estruturar(() => axios.post(rota('fotos.reenviar', produtoId, { imagem: imagemId })));
 
@@ -859,7 +879,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
         problemasDaSecao, problemasDoAtributo,
         mudarRasc, mudarVar, mudarAtributo,
         escolherCategoria, buscarCategorias, navegarCategorias, salvarEixos,
-        enviarFotos, atribuirFotos, removerFoto, reenviarFoto, enviandoFoto,
+        enviarFotos, atribuirFotos, trocarFoto, removerFoto, reenviarFoto, enviandoFoto,
         aviso, simular, simulacao, simulando, copiarTituloDo,
         termos, carregarTermos, palavrasIa, pedirPalavrasIa, frete, consultarFrete,
     };

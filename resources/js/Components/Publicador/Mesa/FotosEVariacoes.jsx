@@ -114,8 +114,8 @@ export function useEfeitosDasVariacoes(m) {
 // em variação que tem grupo próprio) — por isso o aviso quando está desligada.
 const PARA_QUE_SERVEM = 'Para fotos que valem para qualquer variação: embalagem, detalhes, medidas, o produto em uso. Envie uma vez e elas entram em todas as variações, depois das fotos de cada uma. Não precisa repetir em cada variação.';
 
-/** As fotos que valem para todas as variações (galeria geral). */
-function FotosParaTodas({ m }) {
+/** As fotos que valem para todas as variações (galeria geral). Também na Prévia, em "Editar fotos" (27/10/2026). */
+export function FotosParaTodas({ m }) {
     const { estado, schema } = m;
     const limites = schema?.limites ?? {};
     const temGerais = fotosDoGrupo(estado.imagens, estado.atribuicoes, GERAL).length > 0;
@@ -137,7 +137,7 @@ function FotosParaTodas({ m }) {
         <BlocoDeFotos grupo={GERAL} titulo="Fotos para todas as variações" nota={incluir ? 'entram em todas, depois das fotos de cada uma' : 'fora dos anúncios'}
             imagens={estado.imagens} atribuicoes={estado.atribuicoes} maxFotos={limites.max_pictures_per_item ?? 10}
             enviando={m.enviandoFoto} disabled={m.disabled} envioAoMl={estado.publicacao_liberada === true}
-            onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto}>
+            onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto} onTrocar={m.trocarFoto}>
             <p className="mt-3 text-[13px] text-white/50" data-explicacao-fotos-para-todas>{PARA_QUE_SERVEM}</p>
             <label className="mt-3 flex items-center gap-2 text-[13px] text-white/70">
                 <input type="checkbox" checked={incluir} disabled={m.disabled}

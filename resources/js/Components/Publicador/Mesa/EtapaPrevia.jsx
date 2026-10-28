@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, Info, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Images, Info, Loader2, RefreshCw, X } from 'lucide-react';
 import { mensagemDe } from '../apoio';
 import { anuncioEscolhido, notasDaPrevia } from '../previa';
 import AnuncioNoMl from './AnuncioNoMl';
+import CartaoFotosVariante from './CartaoFotosVariante';
+import { FotosParaTodas, fotosDaVariante } from './FotosEVariacoes';
 import { LINK, Secao } from './comum';
 import { cn } from '@/lib/utils';
 
@@ -51,10 +53,52 @@ function usePrevia({ pub, produtoId }) {
     return { previa, carregando, erro, recarregar: () => setVez((n) => n + 1) };
 }
 
+/**
+ * "Editar fotos" na Prévia (27/10/2026). Pedido do usuário: mudar, excluir e mover as fotos sem sair da Prévia. São os
+ * MESMOS blocos da etapa Imagens (o da variação vista e, havendo variações, "Fotos para todas"), sobre o mesmo
+ * rascunho: cada mudança sobe a revisão e a prévia se refaz sozinha (`usePrevia`). Nada de mexer na ordem pela galeria
+ * do ML: ela junta as fotos da variação com as gerais e, no Premium, a capa pode trocar de lugar com uma ambientada
+ * (`OrdemCapaPorAlvo`) — mover ali não diria em que grupo a foto mudou.
+ */
+function FotosDaPrevia({ m, anuncio, onFechar }) {
+    const estado = m.estado;
+    const eixos = estado?.eixos ?? [];
+    const temVariacoes = eixos.some((e) => (e.valores ?? []).length > 0);
+    const chave = anuncio?.variante?.chave ?? null;
+    const v = (m.variantes ?? []).find((x) => x.chave === chave && ! x.orfa) ?? null;
+    const rotulos = Object.fromEntries((m.variantes ?? []).map((x) => [x.chave, x.rotulo]));
+    const { grupo, com } = v ? fotosDaVariante(estado, v, rotulos) : { grupo: null, com: [] };
+    const premium = anuncio?.listing_type_id === 'gold_pro';
+
+    return (
+        <section className="space-y-4 rounded-xl border border-white/[0.12] bg-white/[0.02] p-5 max-sm:p-4" data-previa-editar-fotos={chave ?? ''}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 className="text-[15px] font-bold text-white">Fotos deste anúncio</h3>
+                    <p className="mt-1 text-[13px] text-white/55">
+                        Troque, exclua ou mude a ordem aqui mesmo; a prévia se atualiza sozinha. Vale para o Clássico e o Premium.
+                        {premium && ' No Premium a 1ª foto pode trocar de lugar com uma ambientada, para o anúncio não abrir igual ao Clássico.'}
+                    </p>
+                </div>
+                <button type="button" onClick={onFechar} className={LINK} data-acao="fechar-editar-fotos">
+                    <X size={14} aria-hidden="true" /> Fechar
+                </button>
+            </div>
+            {v ? (
+                <CartaoFotosVariante m={m} v={v} eixos={eixos} grupo={grupo} fotosCom={com} />
+            ) : (
+                <p className="text-[13px] text-white/55">Esta variação não está mais no rascunho. Atualize a prévia.</p>
+            )}
+            {temVariacoes && <FotosParaTodas m={m} />}
+        </section>
+    );
+}
+
 export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
     const { previa, carregando, erro, recarregar } = usePrevia({ pub, produtoId });
     const [tipo, setTipo] = useState(null);
     const [variante, setVariante] = useState(null);
+    const [editandoFotos, setEditandoFotos] = useState(false);
     // Demo 23/10 (A1): DESMARCADA de início — em 22/10 o ML recusou a promoção de todo anúncio novo
     // ("No candidates"); mostrar o preço riscado por padrão prometia um desconto que não sai.
     const [comPromocao, setComPromocao] = useState(false);
@@ -73,9 +117,16 @@ export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
                 titulo="Prévia"
                 descricao="Assim o comprador vai ver o anúncio no Mercado Livre. É o mesmo conteúdo que vai na publicação: confira e publique logo abaixo."
                 acao={(
-                    <button type="button" onClick={recarregar} disabled={carregando} className={LINK} data-acao="atualizar-previa">
-                        {carregando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} Atualizar prévia
-                    </button>
+                    <div className="flex flex-wrap items-center gap-4">
+                        {previa?.pronta && anuncio && (
+                            <button type="button" onClick={() => setEditandoFotos((x) => ! x)} aria-expanded={editandoFotos} className={LINK} data-acao="editar-fotos-previa">
+                                {editandoFotos ? <X size={14} aria-hidden="true" /> : <Images size={14} aria-hidden="true" />} {editandoFotos ? 'Fechar fotos' : 'Editar fotos'}
+                            </button>
+                        )}
+                        <button type="button" onClick={recarregar} disabled={carregando} className={LINK} data-acao="atualizar-previa">
+                            {carregando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} Atualizar prévia
+                        </button>
+                    </div>
                 )}
             >
                 {previa?.pronta && anuncio && (
@@ -124,6 +175,10 @@ export default function EtapaPrevia({ pub, empresa, produtoId, children }) {
                 )}
                 {! previa && carregando && <div aria-hidden="true" className="h-[480px] animate-pulse rounded-xl bg-white/[0.04]" data-previa-carregando />}
             </Secao>
+
+            {previa?.pronta && anuncio && editandoFotos && (
+                <FotosDaPrevia m={pub.m} anuncio={anuncio} onFechar={() => setEditandoFotos(false)} />
+            )}
 
             {previa?.pronta && anuncio && (
                 <div className={cn('transition-opacity', carregando && 'opacity-60')} aria-busy={carregando}>

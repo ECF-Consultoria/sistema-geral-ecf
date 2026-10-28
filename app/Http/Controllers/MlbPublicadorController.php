@@ -165,17 +165,32 @@ class MlbPublicadorController extends Controller
     /**
      * Uma foto do computador: conferida e guardada no disco privado; enviada ao ML
      * só se a conta está liberada (D26). Entra no fim do grupo onde foi solta.
+     *
+     * `substituir` (27/10/2026, "Trocar foto"): o id da foto do grupo que a nova
+     * substitui — a nova fica NO LUGAR dela, e a antiga é apagada se não sobrou em
+     * outro grupo. Foto recusada (bloqueio) não troca nada: a antiga continua lá.
      */
     public function foto(Request $request, int $produto): JsonResponse
     {
-        $dados = $request->validate(['imagem' => ['required', 'file', 'max:10240'], 'grupo' => ['nullable', 'string', 'max:600']]);
+        $dados = $request->validate([
+            'imagem' => ['required', 'file', 'max:10240'],
+            'grupo' => ['nullable', 'string', 'max:600'],
+            'substituir' => ['nullable', 'integer'],
+        ]);
         $arquivo = $request->file('imagem');
         $grupo = $dados['grupo'] ?? ResolvedorGruposImagem::GERAL;
+        $substituir = isset($dados['substituir']) ? (int) $dados['substituir'] : null;
 
-        return $this->responder(function () use ($produto, $arquivo, $grupo) {
+        return $this->responder(function () use ($produto, $arquivo, $grupo, $substituir) {
             $r = $this->rascunho($produto);
+            // A antiga é achada pelo rascunho do produto autorizado: id de outro rascunho dá 404, nunca troca.
+            $antiga = $substituir === null ? null : $r->imagens()->findOrFail($substituir);
             $res = $this->imagens->receber($r, $arquivo->get(), $arquivo->getClientOriginalName());
-            if ($res['imagem']) {
+            if ($res['imagem'] && $antiga) {
+                if ($this->editor->trocarFotoNoGrupo($r, $res['imagem'], $grupo, $antiga->id)) {
+                    $this->imagens->remover($antiga);
+                }
+            } elseif ($res['imagem']) {
                 $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo);
             }
 

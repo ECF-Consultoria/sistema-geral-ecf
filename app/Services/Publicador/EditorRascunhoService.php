@@ -399,6 +399,62 @@ class EditorRascunhoService
         });
     }
 
+    /**
+     * Troca UMA foto do grupo por outra, NO MESMO LUGAR (pedido do usuário em 27/10/2026: "poder
+     * mudar a foto"). A nova assume a posição da antiga — a capa trocada continua capa — e a antiga
+     * sai SÓ deste grupo; nos outros grupos (as outras cores) nada muda.
+     *
+     * Mesma trava de `colocarFotoNoGrupo` (travar ANTES de ler o snapshot, na mesma transação): sem
+     * ela uma troca e um arrasto ao mesmo tempo regravariam a lista inteira e um apagaria o outro.
+     *
+     * Casos de borda:
+     *  - a antiga já não está no grupo (outra aba tirou): a nova entra no FIM, como um envio comum;
+     *  - a nova já estava no grupo (mesmo arquivo, deduplicado pelo sha256): ela SAI do lugar onde
+     *    estava e vai para o da antiga, sem ficar repetida;
+     *  - nova = antiga (a pessoa escolheu o mesmo arquivo): nada muda.
+     *
+     * @return bool `true` se a antiga ficou sem grupo nenhum — quem chama a apaga, como o "remover"
+     *              da tela faz com a foto tirada do último lugar onde estava
+     */
+    public function trocarFotoNoGrupo(PubRascunho $r, PubImagem $nova, string $grupo, int $antiga): bool
+    {
+        if ((int) $nova->id === $antiga) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($r, $nova, $grupo, $antiga) {
+            $this->repo->travar($r);
+            $atuais = $this->repo->snapshot($r)->imagens;
+
+            $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
+            usort($doGrupo, fn ($a, $b) => ((int) $a['posicao']) <=> ((int) $b['posicao']));
+            $ordem = array_map(fn ($a) => (string) $a['imagem'], $doGrupo);
+            $lugar = array_search((string) $antiga, $ordem, true);
+
+            // A nova não fica repetida: se já estava no grupo, sai de onde estava.
+            $ordem = array_values(array_filter($ordem, fn ($id) => $id !== (string) $nova->id));
+            if ($lugar === false) {
+                $ordem[] = (string) $nova->id;
+            } else {
+                $lugar = array_search((string) $antiga, $ordem, true);
+                $ordem[$lugar] = (string) $nova->id;
+            }
+
+            // Só o grupo da troca é renumerado; os outros ficam byte a byte como estavam.
+            $outras = array_values(array_filter($atuais, fn ($a) => $a['grupo'] !== $grupo));
+            $this->repo->gravarAtribuicoes($r, [
+                ...$outras,
+                ...array_map(fn ($id, $i) => ['imagem' => (int) $id, 'grupo' => $grupo, 'posicao' => $i], $ordem, array_keys($ordem)),
+            ]);
+            $this->repo->tocar($r);
+
+            // Só apaga a antiga que ESTAVA aqui e não sobrou em lugar nenhum. Foto sem grupo nenhum desde
+            // antes (a do cliente que a IA usa de referência, §40) não é desta troca: fica.
+            return $lugar !== false
+                && ! in_array((string) $antiga, array_map(fn ($a) => (string) $a['imagem'], $outras), true);
+        });
+    }
+
     // ═══ Simulador "Você recebe" (E10, H-14) ════════════════════════════════
 
     /**
