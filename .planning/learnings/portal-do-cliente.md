@@ -2120,6 +2120,16 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   de poucos dias). A tela diz "Visitas (5 dias)". Cache do diagnóstico trocou de chave (`diag2`) por causa disso.
 - **A nota ECF (0–86) não aparece mais na tela** — "64 de 86" crua não dizia nada ao cliente, e virar % é
   renormalizar (proibido, D-22). Ela só ordena a lista. O que aparece é a "Qualidade no ML" (nível do próprio ML).
+- **Variação SEM valor quebra o Publicador** (visto na "Meia Cano Longo" em produção): o Sincronizar separa cada
+  variação sem valor num produto à parte (`CoresDoGrupo::separar`) e as fotos não chegam ao rascunho do produto.
+  Reproduzido localmente: com tamanho/cor/"Outro" preenchidos as fotos chegam; vazio, não. Por isso o tradutor
+  (1) lê o nome em `value_name` OU `values[0].name` OU nos atributos da variação; (2) escolhe como eixo a
+  característica que VARIA (moda traz cor E tamanho em cada variação; cor igual em todas → eixo tamanho, a cor vai
+  para a ficha); (3) em último caso dá "Variação N" com aviso.
+- **Moda não publica pelo Publicador** ("Esta categoria exige tabela de medidas…", `ClassificadorAtributos`,
+  bloqueio `tabela_de_medidas`): limitação ANTIGA do Publicador, não da importação. O anúncio importado já tem a
+  grade de tamanhos do vendedor (`SIZE_GRID_ID` + `SIZE_GRID_ROW_ID` por variação) — reaproveitá-la é o caminho
+  natural se um dia o Publicador for suportar moda.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 

@@ -132,6 +132,55 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'mais de uma característica')));
     }
 
+    public function test_moda_com_a_cor_igual_em_todas_o_eixo_e_o_tamanho_e_a_cor_vai_para_a_ficha(): void
+    {
+        // 28/10/2026, "Meia Cano Longo": cada variação traz cor E tamanho; só o tamanho varia.
+        $item = $this->cadeira();
+        $item['variations'] = [
+            ['id' => 1, 'available_quantity' => 5, 'picture_ids' => ['P1'],
+                'attribute_combinations' => [['id' => 'COLOR', 'value_name' => 'Branco'], ['id' => 'SIZE', 'value_name' => '34-38']],
+                'attributes' => [['id' => 'SIZE_GRID_ROW_ID', 'value_name' => '3947446:1']]],
+            ['id' => 2, 'available_quantity' => 4, 'picture_ids' => ['P2'],
+                // O nome do tamanho às vezes vem só em `values`.
+                'attribute_combinations' => [['id' => 'COLOR', 'value_name' => 'Branco'], ['id' => 'SIZE', 'value_name' => null, 'values' => [['id' => null, 'name' => '39-43']]]],
+                'attributes' => [['id' => 'SIZE_GRID_ROW_ID', 'value_name' => '3947446:2']]],
+        ];
+
+        $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
+
+        $this->assertSame([['tamanho', '34-38'], ['tamanho', '39-43']], array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+        $this->assertSame('Branco', $r['atributos']['COLOR']['value_name'] ?? null, 'a cor que não varia é do produto');
+        $this->assertEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'mais de uma característica')));
+    }
+
+    public function test_variacao_sem_nada_que_a_diferencie_ganha_nome_provisorio_e_aviso(): void
+    {
+        // Sem valor, o Publicador separa cada variação num produto e as fotos não chegam ao rascunho.
+        $item = $this->cadeira();
+        $item['variations'] = [
+            ['id' => 1, 'attribute_combinations' => [['id' => 'SIZE', 'value_name' => null]], 'attributes' => []],
+            ['id' => 2, 'attribute_combinations' => [], 'attributes' => []],
+        ];
+
+        $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
+
+        $this->assertSame([['outro', 'Variação 1'], ['outro', 'Variação 2']], array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+        $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'não diz o que muda')));
+    }
+
+    public function test_tamanho_so_nos_atributos_da_variacao(): void
+    {
+        $item = $this->cadeira();
+        $item['variations'] = [
+            ['id' => 1, 'attribute_combinations' => [], 'attributes' => [['id' => 'SIZE', 'value_name' => 'P'], ['id' => 'SIZE_GRID_ROW_ID', 'value_name' => 'x:1']]],
+            ['id' => 2, 'attribute_combinations' => [], 'attributes' => [['id' => 'SIZE', 'value_name' => 'M'], ['id' => 'SIZE_GRID_ROW_ID', 'value_name' => 'x:2']]],
+        ];
+
+        $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
+
+        $this->assertSame([['tamanho', 'P'], ['tamanho', 'M']], array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+    }
+
     public function test_ficha_leva_os_atributos_menos_sku_caixa_gtin_e_modelo_que_fica_no_retrato(): void
     {
         $r = TradutorAnuncioMlParaPortal::traduzir($this->cadeira(), null);

@@ -103,11 +103,12 @@ final class TradutorAnuncioMlParaPortal
         } else {
             $grupo = $skuDoAnuncio ?? $mlb;
             $usados = [];
-            $multi = false;
-            foreach ($variacoesMl as $v) {
-                if (count((array) ($v['attribute_combinations'] ?? [])) > 1) {
-                    $multi = true;
-                }
+            // O eixo é a característica que VARIA entre as variações (moda traz cor E tamanho em cada uma;
+            // com a cor igual em todas, o eixo é o tamanho — 28/10/2026, "Meia Cano Longo"). A que não varia
+            // é do produto: vai para a ficha.
+            [$eixoDe, $fixas, $multi] = self::eixosDasVariacoes($variacoesMl);
+            foreach ($fixas as $id => $valorFixo) {
+                $atributos[$id] ??= ['id' => $id, 'value_name' => $valorFixo];
             }
 
             foreach ($variacoesMl as $i => $v) {
@@ -123,7 +124,13 @@ final class TradutorAnuncioMlParaPortal
                 }
                 $usados[$chave] = true;
 
-                [$eixo, $valor] = self::eixoEValor((array) ($v['attribute_combinations'] ?? []), $multi);
+                [$eixo, $valor] = $eixoDe($v);
+                // Rede de segurança: variação sem nada que a diferencie vira produto SEPARADO no Publicador e as
+                // fotos não chegam ao rascunho (o caso da "Meia Cano Longo", 28/10/2026). Nome provisório + aviso.
+                if ($valor === null && count($variacoesMl) > 1) {
+                    [$eixo, $valor] = ['outro', 'Variação '.($i + 1)];
+                    $semNome = true;
+                }
 
                 $linhas[] = self::linha($codigo, $grupo, $nome, $categoria, $i === 0 ? $descricao : null, $volume, $eixo, $valor, $i + 1,
                     self::inteiro($v['available_quantity'] ?? null));
@@ -138,7 +145,10 @@ final class TradutorAnuncioMlParaPortal
             }
 
             if ($multi) {
-                $avisos[] = 'O anúncio varia em mais de uma característica ao mesmo tempo (ex.: cor e voltagem): as variações entraram como “Outro”, com os valores juntos.';
+                $avisos[] = 'O anúncio varia em mais de uma característica ao mesmo tempo (ex.: cor e tamanho): as variações entraram como “Outro”, com os valores juntos.';
+            }
+            if ($semNome ?? false) {
+                $avisos[] = 'O anúncio não diz o que muda entre as variações: elas entraram como “Variação 1”, “Variação 2”… — troque pelo valor certo (cor, tamanho…) no produto.';
             }
         }
 
@@ -273,27 +283,97 @@ final class TradutorAnuncioMlParaPortal
         return $linha;
     }
 
-    /** @return array{0: ?string, 1: ?string} [eixo, valor] */
-    private static function eixoEValor(array $combinacoes, bool $multi): array
+    /**
+     * As características de cada variação e qual delas é o eixo.
+     *
+     * - Uma só varia (o caso comum, inclusive moda com a cor igual em todas): eixo = ela (cor, tamanho,
+     *   voltagem…), valor = o dela.
+     * - Duas ou mais variam: o Portal guarda UM eixo por variação, então entra "Outro" com os valores
+     *   que variam, juntos ("Preto · M"), e um aviso.
+     * - As que não variam são do produto (`fixas`, para a ficha).
+     *
+     * @param  list<array>  $variacoes
+     * @return array{0: callable(array): array{0: ?string, 1: ?string}, 1: array<string, string>, 2: bool}
+     */
+    private static function eixosDasVariacoes(array $variacoes): array
     {
-        $partes = [];
-        $eixo = null;
-        foreach ($combinacoes as $c) {
-            $v = self::texto($c['value_name'] ?? '');
-            if ($v === '') {
-                continue;
+        $todas = array_map(fn (array $v) => self::caracteristicasDaVariacao($v), $variacoes);
+        $valores = [];
+        foreach ($todas as $c) {
+            foreach ($c as $id => $nome) {
+                $valores[$id][mb_strtolower($nome)] = $nome;
             }
-            $partes[] = $v;
-            $eixo ??= self::EIXO_DO_ATRIBUTO[strtoupper((string) ($c['id'] ?? ''))] ?? 'outro';
         }
-        if ($partes === []) {
-            return [null, null];
+        $variam = [];
+        $fixas = [];
+        foreach ($valores as $id => $distintos) {
+            if (count($distintos) > 1) {
+                $variam[] = $id;
+            } elseif (count($todas) > 1 && count(array_filter($todas, fn ($c) => isset($c[$id]))) === count($todas)) {
+                $fixas[$id] = (string) reset($distintos);
+            }
         }
-        if ($multi) {
-            $eixo = 'outro';
+        // Nenhuma varia (anúncio com variações iguais): fica como estava, com todas juntas.
+        $usar = $variam !== [] ? $variam : array_keys($valores);
+        $multi = count($usar) > 1;
+
+        $eixoDe = function (array $v) use ($usar, $multi): array {
+            $c = self::caracteristicasDaVariacao($v);
+            $partes = array_values(array_filter(array_map(fn ($id) => $c[$id] ?? null, $usar)));
+            if ($partes === []) {
+                return [null, null];
+            }
+            $eixo = $multi ? 'outro' : (self::eixoDoAtributo($usar[0]) ?? 'outro');
+
+            return [$eixo, mb_substr(implode(' · ', $partes), 0, NormalizadorDeLinha::MAX_VALOR)];
+        };
+
+        return [$eixoDe, $multi ? [] : $fixas, $multi];
+    }
+
+    /**
+     * id do atributo → valor (texto), das combinações da variação. O nome vem de `value_name` ou, quando ele
+     * vem nulo, de `values[0].name`. Sem combinação com nome, das características da própria variação que
+     * são eixo (moda às vezes traz o tamanho só ali). A linha da grade de tamanhos (`SIZE_GRID_ROW_ID`) não
+     * é característica.
+     *
+     * @return array<string, string>
+     */
+    private static function caracteristicasDaVariacao(array $v): array
+    {
+        $saida = [];
+        foreach ((array) ($v['attribute_combinations'] ?? []) as $c) {
+            $id = is_array($c) ? strtoupper(trim((string) ($c['id'] ?? ''))) : '';
+            $nome = is_array($c) ? self::valor($c) : null;
+            if ($id !== '' && $nome !== null && ! str_contains($id, 'GRID')) {
+                $saida[$id] = self::texto($nome);
+            }
+        }
+        if ($saida === []) {
+            foreach ((array) ($v['attributes'] ?? []) as $a) {
+                $id = is_array($a) ? strtoupper(trim((string) ($a['id'] ?? ''))) : '';
+                if ($id !== '' && self::eixoDoAtributo($id) !== null && ($nome = self::valor($a)) !== null) {
+                    $saida[$id] = self::texto($nome);
+                }
+            }
         }
 
-        return [$eixo, mb_substr(implode(' · ', $partes), 0, NormalizadorDeLinha::MAX_VALOR)];
+        return $saida;
+    }
+
+    /** O eixo do Portal para um atributo do ML (COLOR, MAIN_COLOR → cor; SIZE e afins → tamanho…), ou null. */
+    private static function eixoDoAtributo(string $id): ?string
+    {
+        $id = strtoupper($id);
+
+        return self::EIXO_DO_ATRIBUTO[$id]
+            ?? match (true) {
+                str_contains($id, 'GRID') => null,
+                str_contains($id, 'COLOR') => 'cor',
+                str_contains($id, 'SIZE') => 'tamanho',
+                str_contains($id, 'VOLTAGE') => 'voltagem',
+                default => null,
+            };
     }
 
     /**
