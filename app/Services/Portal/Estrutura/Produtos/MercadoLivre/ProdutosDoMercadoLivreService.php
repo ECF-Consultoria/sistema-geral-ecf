@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
- * "Trazer do Mercado Livre" (28/10/2026): o cliente que já vende no ML escolhe anúncios ativos
+ * "Importar do Mercado Livre" (28/10/2026): o cliente que já vende no ML escolhe anúncios
  * e eles viram Produtos do Portal, para a IA jardinar pela metodologia ECF. É um CLONE para
  * melhorar — o anúncio original continua no ar, intocado (decisão do usuário: os dois ficam
  * ativos, porque título e o resto vão mudar).
@@ -25,8 +25,9 @@ use Illuminate\Validation\ValidationException;
  * ### De onde vem a lista
  * Do acervo (`ml_acervo_itens`), que o `mlb:sync-acervo` já coleta todo dia de toda empresa com
  * conta conectada: título, vendas, nota ECF (0–86), saúde do ML, visitas de 30 dias (rotação).
- * Sem chamada ao ML para listar. Anúncio de catálogo fica de fora: a ficha dele é a do catálogo,
- * não há cadastro do vendedor para jardinar.
+ * Sem chamada ao ML para listar. TODOS os anúncios aparecem (decisão do usuário, 28/10/2026), com o
+ * filtro de situação: ativos, inativos (pausado, em revisão, encerrado) ou todos. O de catálogo vem
+ * marcado: a ficha dele é a do catálogo.
  *
  * ### O diagnóstico é da PÁGINA, ao vivo
  * Só os anúncios que estão na tela (até 30): um multiget para os campos, a ficha da categoria
@@ -44,7 +45,10 @@ class ProdutosDoMercadoLivreService
     /** Anúncios por clique em "Importar": cada um baixa até 12 fotos por variação. */
     public const MAX_POR_IMPORTACAO = 20;
 
-    public const ORDENS = ['piores', 'vendidos', 'visitas'];
+    /** "oportunidade": a nota do cadastro mais baixa primeiro (rótulo da tela: "Maior oportunidade de melhoria"). */
+    public const ORDENS = ['oportunidade', 'vendidos', 'visitas'];
+
+    public const SITUACOES = ['todos', 'ativos', 'inativos'];
 
     private const VALIDADE_HORAS = 6;
     private const DIAGNOSTICO_MINUTOS = 30;
@@ -70,15 +74,18 @@ class ProdutosDoMercadoLivreService
     /**
      * @return array{conectado: bool, total_acervo: int, atualizado_em: ?string, pagina: int, paginas: int, total: int, itens: list<array>}
      */
-    public function candidatos(Company $empresa, string $busca = '', string $ordem = 'piores', int $pagina = 1, bool $soNovos = false): array
+    public function candidatos(Company $empresa, string $busca = '', string $ordem = 'oportunidade', int $pagina = 1, bool $soNovos = false, string $situacao = 'todos'): array
     {
-        $ordem = in_array($ordem, self::ORDENS, true) ? $ordem : 'piores';
+        $ordem = in_array($ordem, self::ORDENS, true) ? $ordem : 'oportunidade';
+        $situacao = in_array($situacao, self::SITUACOES, true) ? $situacao : 'todos';
         $importados = EstruturaProdutoOrigemMl::query()->where('company_id', $empresa->id)->pluck('produto_id', 'ml_item_id');
 
-        $base = MlAcervoItem::query()
-            ->where('company_id', $empresa->id)
-            ->where('status', 'active')
-            ->where(fn ($q) => $q->whereNull('catalog_listing')->orWhere('catalog_listing', false));
+        $base = MlAcervoItem::query()->where('company_id', $empresa->id);
+        match ($situacao) {
+            'ativos'   => $base->where('status', 'active'),
+            'inativos' => $base->where(fn ($q) => $q->whereNull('status')->orWhere('status', '<>', 'active')),
+            default    => null,
+        };
 
         $busca = trim($busca);
         if ($busca !== '') {
@@ -94,11 +101,12 @@ class ProdutosDoMercadoLivreService
         $pagina = min(max(1, $pagina), $paginas);
 
         match ($ordem) {
-            // Pior cadastro primeiro; no empate, quem tem mais visita (mais a ganhar arrumando).
-            'piores'   => $base->orderByRaw('CASE WHEN nota_ecf IS NULL THEN 1 ELSE 0 END')->orderBy('nota_ecf')
+            // Mais oportunidade de melhoria primeiro (nota do cadastro mais baixa); no empate, quem tem mais
+            // visita (mais a ganhar arrumando).
+            'oportunidade' => $base->orderByRaw('CASE WHEN nota_ecf IS NULL THEN 1 ELSE 0 END')->orderBy('nota_ecf')
                 ->orderByRaw('CASE WHEN visitas_30d IS NULL THEN 1 ELSE 0 END')->orderByDesc('visitas_30d')->orderByDesc('sold_quantity'),
-            'vendidos' => $base->orderByDesc('sold_quantity'),
-            'visitas'  => $base->orderByRaw('CASE WHEN visitas_30d IS NULL THEN 1 ELSE 0 END')->orderByDesc('visitas_30d')->orderByDesc('sold_quantity'),
+            'vendidos'     => $base->orderByDesc('sold_quantity'),
+            'visitas'      => $base->orderByRaw('CASE WHEN visitas_30d IS NULL THEN 1 ELSE 0 END')->orderByDesc('visitas_30d')->orderByDesc('sold_quantity'),
         };
 
         $itens = $base->orderBy('id')->forPage($pagina, self::POR_PAGINA)->get();
@@ -124,6 +132,9 @@ class ProdutosDoMercadoLivreService
                     'permalink'    => $i->permalink,
                     'preco'        => $i->price !== null ? (float) $i->price : null,
                     'tipo'         => AnunciosMercadoLivreService::TIPOS_ML[$i->listing_type_id] ?? null,
+                    'ativo'        => $i->status === 'active',
+                    'status'       => AnunciosMercadoLivreService::STATUS_ML[$i->status] ?? ($i->status ? ucfirst((string) $i->status) : null),
+                    'catalogo'     => (bool) $i->catalog_listing,
                     'estoque'      => $i->available_quantity,
                     'vendas_total' => (int) $i->sold_quantity,
                     'visitas_30d'  => $i->visitas_30d,
@@ -213,7 +224,7 @@ class ProdutosDoMercadoLivreService
     public function iniciar(Company $empresa, array $mlbs, AtorDoPortal $ator): array
     {
         if (! AnunciosMercadoLivreService::conectado($empresa)) {
-            throw ValidationException::withMessages(['mlbs' => 'Conecte a conta do Mercado Livre para trazer os anúncios.']);
+            throw ValidationException::withMessages(['mlbs' => 'Conecte a conta do Mercado Livre para importar os anúncios.']);
         }
 
         $pedidos = array_values(array_unique(array_filter(array_map(fn ($m) => strtoupper(trim((string) $m)), $mlbs))));

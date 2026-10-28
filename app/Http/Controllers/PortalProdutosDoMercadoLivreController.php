@@ -11,13 +11,13 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 /**
- * Produtos → "Trazer do Mercado Livre" (28/10/2026): os anúncios ativos da conta, com o
+ * Produtos → "Importar do Mercado Livre" (28/10/2026): os anúncios da conta, com o
  * diagnóstico de cada um, e a importação (por anúncio ou em lote) para o cadastro de Produtos.
  *
  * Só orquestra: a regra mora em {@see ProdutosDoMercadoLivreService}. A empresa vem SEMPRE do
  * `PortalContexto`; um MLB de outra conta não está no acervo da empresa e é ignorado.
  *
- * Aqui a tela PODE dizer "Mercado Livre": é a página de trazer os anúncios dele (decisão do
+ * Aqui a tela PODE dizer "Mercado Livre": é a página de importar os anúncios dele (decisão do
  * usuário, 28/10/2026 — o produto importado leva o selo "Importado do Mercado Livre"). O sigilo
  * da ficha técnica continua valendo na ficha.
  */
@@ -48,14 +48,16 @@ class PortalProdutosDoMercadoLivreController extends Controller
             'ordem'    => ['nullable', 'string', 'in:'.implode(',', ProdutosDoMercadoLivreService::ORDENS)],
             'pagina'   => ['nullable', 'integer', 'min:1', 'max:10000'],
             'so_novos' => ['nullable', 'boolean'],
+            'situacao' => ['nullable', 'string', 'in:'.implode(',', ProdutosDoMercadoLivreService::SITUACOES)],
         ]);
 
         return response()->json($this->servico->candidatos(
             PortalContexto::empresa(),
             (string) ($dados['q'] ?? ''),
-            (string) ($dados['ordem'] ?? 'piores'),
+            (string) ($dados['ordem'] ?? 'oportunidade'),
             (int) ($dados['pagina'] ?? 1),
             (bool) ($dados['so_novos'] ?? false),
+            (string) ($dados['situacao'] ?? 'todos'),
         ));
     }
 

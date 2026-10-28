@@ -1,33 +1,41 @@
-// ─── Trazer do Mercado Livre: regras da tela, sem React (28/10/2026) ────────
+// ─── Importar do Mercado Livre: regras da tela, sem React (28/10/2026) ───────
 //
 // Só apresentação: a prioridade, os problemas e os números vêm do servidor
 // (DiagnosticoDoAnuncio). Aqui só se decide texto, cor e o que pode ser marcado.
 
 export const PRIORIDADES = {
-    alta: { rotulo: 'Vale trazer', classe: 'border-ecf-yellow/40 bg-ecf-yellow/[0.10] text-ecf-yellow' },
+    alta: { rotulo: 'Recomendado importar', classe: 'border-ecf-yellow/40 bg-ecf-yellow/[0.10] text-ecf-yellow' },
     media: { rotulo: 'Pode melhorar', classe: 'border-white/[0.14] bg-white/[0.05] text-white/80' },
     baixa: { rotulo: 'Está bom', classe: 'border-emerald-400/25 bg-emerald-400/[0.08] text-emerald-300' },
 };
 
+// Rótulos neutros (28/10/2026, o usuário: "Piores primeiro" pode soar desrespeitoso para o cliente).
 export const ORDENS = [
-    { valor: 'piores', rotulo: 'Piores primeiro' },
+    { valor: 'oportunidade', rotulo: 'Maior oportunidade de melhoria' },
     { valor: 'vendidos', rotulo: 'Mais vendidos' },
     { valor: 'visitas', rotulo: 'Mais visitas' },
 ];
 
+/** O filtro da lista: todos os anúncios por padrão, ou só ativos, ou só inativos (pausado, em revisão, encerrado). */
+export const FILTROS_SITUACAO = [
+    { valor: 'todos', rotulo: 'Todos' },
+    { valor: 'ativos', rotulo: 'Ativos' },
+    { valor: 'inativos', rotulo: 'Inativos' },
+];
+
 export const SITUACOES = {
     fila: 'Na fila',
-    importando: 'Trazendo',
+    importando: 'Importando',
     pronto: 'Pronto',
     ja_existe: 'Já estava no cadastro',
-    erro: 'Não deu certo',
+    erro: 'Não foi importado',
 };
 
 export const fmtInt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('pt-BR'));
 
 export const fmtPct = (n) => (n === null || n === undefined ? '—' : `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: n < 10 ? 1 : 0 })}%`);
 
-/** O anúncio pode ser marcado: ainda não foi trazido e não está sendo trazido agora. */
+/** O anúncio pode ser marcado: ainda não foi importado e não está sendo importado agora. */
 export function podeMarcar(anuncio, estadoPorMlb = {}) {
     if (anuncio.importado) return false;
     const s = estadoPorMlb[anuncio.mlb]?.situacao;

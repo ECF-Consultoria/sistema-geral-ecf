@@ -29,11 +29,11 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                     title="Para cadastrar muitos produtos de uma vez, preencha o modelo e importe aqui.">
                     <Upload size={18} /> Importar planilha
                 </button>
-                {/* 28/10/2026: quem já vende no ML traz os anúncios ativos para cá (só com a conta conectada). */}
+                {/* 28/10/2026: quem já vende no ML importa os anúncios para cá (só com a conta conectada). */}
                 {mlConectado && (
-                    <Link href={route('portal.auth.estrutura.produtos.ml')} data-acao="trazer-do-ml" className={cn(ACAO, SECUNDARIA)}
-                        title="Veja seus anúncios ativos, o que falta em cada um, e traga os que quiser para cá.">
-                        <DownloadCloud size={18} /> Trazer do Mercado Livre
+                    <Link href={route('portal.auth.estrutura.produtos.ml')} data-acao="importar-do-ml" className={cn(ACAO, SECUNDARIA)}
+                        title="Veja seus anúncios, o que falta em cada um, e importe os que quiser para cá.">
+                        <DownloadCloud size={18} /> Importar do Mercado Livre
                     </Link>
                 )}
                 {/* 13/10/2026: o modelo é sempre o completo (produto + ficha técnica), e a ficha depende da categoria — por isso abre a escolha. */}

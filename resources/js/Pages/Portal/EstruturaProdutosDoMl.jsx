@@ -3,15 +3,16 @@ import axios from 'axios';
 import { ArrowLeft, CheckCircle2, ChevronRight, CircleAlert, DownloadCloud, ExternalLink, Loader2, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, Paginacao, Seletor, fmtReais } from '@/Components/Portal/Estrutura/comum';
-import { ORDENS, PRIORIDADES, SITUACOES, alternar, fmtInt, fmtPct, marcarPagina, podeMarcar, resumoDoCadastro, textoDoItem } from '@/lib/produtosDoMl';
+import { FILTROS_SITUACAO, ORDENS, PRIORIDADES, SITUACOES, alternar, fmtInt, fmtPct, marcarPagina, podeMarcar, resumoDoCadastro, textoDoItem } from '@/lib/produtosDoMl';
 import { cn } from '@/lib/utils';
 
-// ─── Produtos → Trazer do Mercado Livre (28/10/2026) ────────────────────────
+// ─── Produtos → Importar do Mercado Livre (28/10/2026) ──────────────────────
 //
-// Os anúncios ativos da conta, do pior cadastro para o melhor, com o diagnóstico de cada um
-// (título, Modelo, campos, medidas, visitas e vendas de 30 dias) para a pessoa decidir o que vale
-// trazer. Trazer = criar o produto aqui com as fotos, as medidas e os campos do anúncio; a ficha é
-// completada em seguida. O anúncio original continua como está, no ar.
+// Todos os anúncios da conta (filtro Todos / Ativos / Inativos), da maior oportunidade de melhoria para
+// a menor, com o diagnóstico de cada um (título, Modelo, campos, medidas, visitas e vendas de 30 dias)
+// para a pessoa decidir o que vale importar. Importar = criar o produto aqui com as fotos, as medidas e
+// os campos do anúncio; a ficha é completada em seguida. O anúncio original continua como está.
+// Textos neutros e profissionais (pedido do usuário): "importar", nunca "trazer"; nada de "piores".
 //
 // A lista vem do servidor (acervo); o diagnóstico é pedido só para a página na tela; a importação
 // roda em segundo plano e o painel consulta o estado enquanto houver algo andando.
@@ -24,7 +25,8 @@ const MAX_ESPERA_VENDAS = 10;
 export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado, anuncios: iniciais, estado: estadoInicial, limites }) {
     const [anuncios, setAnuncios] = useState(iniciais);
     const [busca, setBusca] = useState('');
-    const [ordem, setOrdem] = useState('piores');
+    const [ordem, setOrdem] = useState('oportunidade');
+    const [situacao, setSituacao] = useState('todos');
     const [soNovos, setSoNovos] = useState(false);
     const [carregando, setCarregando] = useState(false);
     const [diagnosticos, setDiagnosticos] = useState({});
@@ -54,12 +56,12 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
     const primeira = useRef(true);
     useEffect(() => {
         if (primeira.current) { primeira.current = false; return; }
-        const t = setTimeout(() => carregar({ q: busca || undefined, ordem, so_novos: soNovos ? 1 : undefined, pagina: 1 }), 350);
+        const t = setTimeout(() => carregar({ q: busca || undefined, ordem, situacao, so_novos: soNovos ? 1 : undefined, pagina: 1 }), 350);
 
         return () => clearTimeout(t);
-    }, [busca, ordem, soNovos]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [busca, ordem, situacao, soNovos]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const irPara = (pagina) => carregar({ q: busca || undefined, ordem, so_novos: soNovos ? 1 : undefined, pagina });
+    const irPara = (pagina) => carregar({ q: busca || undefined, ordem, situacao, so_novos: soNovos ? 1 : undefined, pagina });
 
     // ─── Diagnóstico da página (e de novo quando as vendas da loja ficam prontas) ──
 
@@ -112,14 +114,14 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
         return () => clearTimeout(t);
     }, [estado]);
 
-    // Terminou de trazer: a lista passa a mostrar "Já trazido".
+    // Terminou de importar: a lista passa a mostrar "Já importado".
     const andava = useRef(estado.em_andamento);
     useEffect(() => {
         if (andava.current && ! estado.em_andamento) irPara(anuncios?.pagina ?? 1);
         andava.current = estado.em_andamento;
     }, [estado.em_andamento]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const trazer = async (mlbs) => {
+    const importar = async (mlbs) => {
         if (mlbs.length === 0 || enviando) return;
         setEnviando(true);
         setAviso(null);
@@ -134,7 +136,7 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
             });
         } catch (e) {
             const erros = e.response?.data?.errors;
-            setAviso(erros ? Object.values(erros).flat()[0] : 'Não deu para começar agora. Tente de novo.');
+            setAviso(erros ? Object.values(erros).flat()[0] : 'Não foi possível iniciar a importação agora. Tente de novo.');
         } finally {
             setEnviando(false);
         }
@@ -154,24 +156,24 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
     const paginaToda = marcaveis.length > 0 && marcaveis.every((a) => selecionados.has(a.mlb));
 
     return (
-        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Trazer do Mercado Livre">
-            <div className="mx-auto w-full max-w-[1600px] px-4 pb-16 pt-5 sm:px-6 lg:px-10" data-trazer-do-ml>
+        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Importar do Mercado Livre">
+            <div className="mx-auto w-full max-w-[1600px] px-4 pb-16 pt-5 sm:px-6 lg:px-10" data-importar-do-ml>
                 <nav aria-label="Caminho" className="flex items-center gap-2 text-[14px] text-white/70">
                     <ArrowLeft size={18} aria-hidden="true" />
                     <a href={route('portal.auth.estrutura.produtos')} className="hover:text-white">Produtos</a>
                     <ChevronRight size={14} aria-hidden="true" className="text-white/40" />
-                    <span className="text-white">Trazer do Mercado Livre</span>
+                    <span className="text-white">Importar do Mercado Livre</span>
                 </nav>
-                <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:text-[38px]">Trazer do Mercado Livre</h1>
+                <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:text-[38px]">Importar do Mercado Livre</h1>
                 <p className="mt-2 max-w-3xl text-[15px] text-white/70">
-                    Seus anúncios ativos, do que mais precisa de ajuste para o que menos. Cada anúncio que você trouxer vira um produto aqui,
-                    com as fotos, as medidas e as informações que ele já tem, e a ficha técnica é completada. O anúncio original continua no ar, como está.
+                    Todos os seus anúncios, a começar pelos que têm maior oportunidade de melhoria. Cada anúncio importado vira um produto aqui,
+                    com as fotos, as medidas e as informações que ele já tem, e a ficha técnica é completada. O anúncio original continua como está.
                 </p>
 
                 {! conectado && (
                     <section className="mt-6 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-sem-conta>
                         <h2 className="text-[15px] font-semibold text-white">Conecte sua conta do Mercado Livre</h2>
-                        <p className="mx-auto mt-2 max-w-lg text-[13px] text-white/50">Com a conta conectada, seus anúncios ativos aparecem aqui.</p>
+                        <p className="mx-auto mt-2 max-w-lg text-[13px] text-white/50">Com a conta conectada, seus anúncios aparecem aqui.</p>
                     </section>
                 )}
 
@@ -200,18 +202,23 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
                                     </button>
                                 )}
                             </div>
-                            <Seletor valor={ordem} onChange={(v) => setOrdem(v ?? 'piores')} opcoes={Object.fromEntries(ORDENS.map((o) => [o.valor, o.rotulo]))} className="h-11 lg:w-[200px]" aria-label="Ordem" data-ordem />
-                            <label className="inline-flex cursor-pointer items-center gap-2 text-[13.5px] text-white/75">
-                                <input type="checkbox" checked={soNovos} onChange={(e) => setSoNovos(e.target.checked)} className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-so-novos />
-                                Só os que ainda não trouxe
-                            </label>
+                            <div className="inline-flex h-11 shrink-0 items-center rounded-[10px] border border-white/[0.10] bg-white/[0.03] p-1" role="group" aria-label="Situação dos anúncios" data-filtro-situacao>
+                                {FILTROS_SITUACAO.map((f) => (
+                                    <button key={f.valor} type="button" onClick={() => setSituacao(f.valor)} aria-pressed={situacao === f.valor} data-situacao={f.valor}
+                                        className={cn('h-full rounded-[8px] px-3.5 text-[13.5px] font-medium transition-colors',
+                                            situacao === f.valor ? 'bg-ecf-yellow text-black' : 'text-white/70 hover:text-white')}>
+                                        {f.rotulo}
+                                    </button>
+                                ))}
+                            </div>
+                            <Seletor valor={ordem} onChange={(v) => setOrdem(v ?? 'oportunidade')} opcoes={Object.fromEntries(ORDENS.map((o) => [o.valor, o.rotulo]))} className="h-11 lg:w-[270px]" aria-label="Ordem" data-ordem />
                             <div className="flex items-center gap-3 lg:ml-auto">
                                 {selecionados.size > 0 && (
-                                    <button type="button" onClick={() => setSelecionados(new Set())} className="text-[13px] text-white/55 hover:text-white">Limpar seleção</button>
+                                    <button type="button" onClick={() => setSelecionados(new Set())} className="whitespace-nowrap text-[13px] text-white/55 hover:text-white">Limpar seleção</button>
                                 )}
-                                <Botao variante="primario" onClick={() => trazer([...selecionados])} disabled={selecionados.size === 0 || enviando} className="h-11 px-4 text-[14px]" data-acao="trazer-selecionados">
+                                <Botao variante="primario" onClick={() => importar([...selecionados])} disabled={selecionados.size === 0 || enviando} className="h-11 whitespace-nowrap px-4 text-[14px]" data-acao="importar-selecionados">
                                     {enviando ? <Loader2 size={15} className="animate-spin" /> : <DownloadCloud size={16} />}
-                                    {selecionados.size > 0 ? `Trazer ${selecionados.size} ${selecionados.size === 1 ? 'anúncio' : 'anúncios'}` : 'Trazer selecionados'}
+                                    {selecionados.size > 0 ? `Importar ${selecionados.size} ${selecionados.size === 1 ? 'anúncio' : 'anúncios'}` : 'Importar selecionados'}
                                 </Botao>
                             </div>
                         </div>
@@ -223,18 +230,24 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
                             </div>
                         )}
 
-                        <div className="mt-5 flex items-center justify-between gap-3 text-[12.5px] text-white/45">
-                            <label className="inline-flex cursor-pointer items-center gap-2">
-                                <input type="checkbox" checked={paginaToda} disabled={marcaveis.length === 0}
-                                    onChange={() => setSelecionados(paginaToda
-                                        ? new Set([...selecionados].filter((m) => ! marcaveis.some((a) => a.mlb === m)))
-                                        : marcarPagina(selecionados, itens, estadoPorMlb, teto))}
-                                    className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-marcar-pagina />
-                                Marcar a página (até {teto} por vez)
-                            </label>
+                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[12.5px] text-white/45">
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/75">
+                                    <input type="checkbox" checked={soNovos} onChange={(e) => setSoNovos(e.target.checked)} className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-so-novos />
+                                    Só os ainda não importados
+                                </label>
+                                <label className="inline-flex cursor-pointer items-center gap-2">
+                                    <input type="checkbox" checked={paginaToda} disabled={marcaveis.length === 0}
+                                        onChange={() => setSelecionados(paginaToda
+                                            ? new Set([...selecionados].filter((m) => ! marcaveis.some((a) => a.mlb === m)))
+                                            : marcarPagina(selecionados, itens, estadoPorMlb, teto))}
+                                        className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-marcar-pagina />
+                                    Marcar a página (até {teto} por vez)
+                                </label>
+                            </div>
                             <span>
                                 {carregando || diagnosticando ? <Loader2 size={13} className="mr-1 inline animate-spin" /> : null}
-                                {fmtInt(anuncios.total)} {anuncios.total === 1 ? 'anúncio ativo' : 'anúncios ativos'}
+                                {fmtInt(anuncios.total)} {anuncios.total === 1 ? 'anúncio' : 'anúncios'}
                             </span>
                         </div>
 
@@ -243,7 +256,7 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
                                 <CartaoAnuncio key={a.mlb} anuncio={a} diagnostico={diagnosticos[a.mlb]} situacao={estadoPorMlb[a.mlb]}
                                     marcado={selecionados.has(a.mlb)} marcavel={podeMarcar(a, estadoPorMlb)}
                                     onMarcar={() => setSelecionados((s) => alternar(s, a.mlb, teto))}
-                                    onTrazer={() => trazer([a.mlb])} enviando={enviando} />
+                                    onImportar={() => importar([a.mlb])} enviando={enviando} />
                             ))}
                         </ul>
 
@@ -266,8 +279,8 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
 
 // ─── Um anúncio ─────────────────────────────────────────────────────────────
 
-function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel, onMarcar, onTrazer, enviando }) {
-    // Já trazido: o rótulo de prioridade sai (a decisão já foi tomada); o diagnóstico continua como referência.
+function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel, onMarcar, onImportar, enviando }) {
+    // Já importado: o rótulo de prioridade sai (a decisão já foi tomada); o diagnóstico continua como referência.
     const prioridade = d && ! d.erro && ! a.importado ? PRIORIDADES[d.prioridade] : null;
     const resumo = resumoDoCadastro(d);
     const andando = situacao && (situacao.situacao === 'fila' || situacao.situacao === 'importando');
@@ -291,7 +304,13 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
                                 <span className="truncate">{a.titulo}</span>
                                 <ExternalLink size={13} className="shrink-0 text-white/40 group-hover:text-white/70" aria-hidden="true" />
                             </a>
-                            <p className="mt-1 text-[12.5px] text-white/50">
+                            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-white/50">
+                                {! a.ativo && a.status && (
+                                    <span className="rounded-md border border-white/[0.14] px-1.5 py-px text-[11.5px] font-medium text-white/70" data-status-anuncio>{a.status}</span>
+                                )}
+                                {a.catalogo && (
+                                    <span className="rounded-md border border-sky-400/25 px-1.5 py-px text-[11.5px] font-medium text-sky-300" data-catalogo>Catálogo</span>
+                                )}
                                 {a.mlb}{a.tipo ? ` · ${a.tipo}` : ''}{a.preco !== null ? ` · ${fmtReais(a.preco)}` : ''}{a.estoque !== null && a.estoque !== undefined ? ` · ${fmtInt(a.estoque)} em estoque` : ''}
                             </p>
                         </div>
@@ -300,14 +319,14 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
                                 <span className={cn('rounded-full border px-2.5 py-0.5 text-[12px] font-semibold', prioridade.classe)} data-rotulo-prioridade>{prioridade.rotulo}</span>
                             )}
                             {a.importado ? (
-                                <a href={route('portal.auth.estrutura.produtos.ficha', a.importado.produto_id)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 px-3 py-1.5 text-[13px] font-medium text-emerald-300 hover:bg-emerald-400/10" data-ja-trazido>
-                                    <CheckCircle2 size={14} /> Já trazido · ver produto
+                                <a href={route('portal.auth.estrutura.produtos.ficha', a.importado.produto_id)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 px-3 py-1.5 text-[13px] font-medium text-emerald-300 hover:bg-emerald-400/10" data-ja-importado>
+                                    <CheckCircle2 size={14} /> Já importado · ver produto
                                 </a>
                             ) : andando ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-white/60"><Loader2 size={14} className="animate-spin" /> {SITUACOES[situacao.situacao]}</span>
                             ) : (
-                                <Botao variante="secundario" onClick={onTrazer} disabled={enviando} data-acao="trazer-um">
-                                    <DownloadCloud size={14} /> Trazer
+                                <Botao variante="secundario" onClick={onImportar} disabled={enviando} data-acao="importar-um">
+                                    <DownloadCloud size={14} /> Importar
                                 </Botao>
                             )}
                         </div>
@@ -366,7 +385,7 @@ function PainelDaImportacao({ estado, onFechar }) {
             <div className="flex items-center justify-between gap-3">
                 <h2 className="flex items-center gap-2 text-[14px] font-semibold text-white">
                     {estado.em_andamento ? <Loader2 size={15} className="animate-spin text-ecf-yellow" /> : <CheckCircle2 size={15} className="text-emerald-300" />}
-                    {estado.em_andamento ? 'Trazendo os anúncios…' : `${prontos} de ${itens.length} ${itens.length === 1 ? 'anúncio trazido' : 'anúncios trazidos'}`}
+                    {estado.em_andamento ? 'Importando os anúncios…' : `${prontos} de ${itens.length} ${itens.length === 1 ? 'anúncio importado' : 'anúncios importados'}`}
                 </h2>
                 {! estado.em_andamento && (
                     <button type="button" onClick={onFechar} className="text-[12.5px] text-white/50 hover:text-white" data-acao="fechar-painel">Fechar</button>

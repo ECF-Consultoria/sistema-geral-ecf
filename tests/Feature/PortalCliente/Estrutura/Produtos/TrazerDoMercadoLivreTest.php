@@ -21,8 +21,8 @@ use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 
 /**
- * Produtos → "Trazer do Mercado Livre" (28/10/2026), de ponta a ponta pela rota, como o cliente
- * do Portal: anúncio ativo da conta conectada vira produto com variações, caixa, ficha, fotos do
+ * Produtos → "Importar do Mercado Livre" (28/10/2026), de ponta a ponta pela rota, como o cliente
+ * do Portal: anúncio da conta conectada (ativo ou não) vira produto com variações, caixa, ficha, fotos do
  * anúncio original e o selo de origem; a IA completa o campo que faltava. Nada é escrito no ML.
  */
 class TrazerDoMercadoLivreTest extends TestCase
@@ -266,6 +266,21 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertSame(0, EstruturaProduto::where('company_id', $empresa->id)->count());
     }
 
+    public function test_anuncio_pausado_ou_encerrado_tambem_e_importado(): void
+    {
+        // 28/10/2026, o usuário: a lista traz TODOS os anúncios, e qualquer um pode ser importado (é um clone).
+        $empresa = $this->empresaConectada();
+        $this->noAcervo($empresa, 'MLB111', ['status' => 'closed']);
+        $encerrado = $this->anuncio();
+        $encerrado['status'] = 'closed';
+        $this->fakeMl(['MLB111' => $encerrado]);
+
+        $r = $this->entrarNoPortal($empresa)->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
+
+        $this->assertSame('pronto', $r->json('itens.0.situacao'));
+        $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count());
+    }
+
     public function test_mlb_fora_do_acervo_da_empresa_e_recusado(): void
     {
         $empresa = $this->empresaConectada();
@@ -295,23 +310,30 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertSame(0, EstruturaProdutoOrigemMl::count());
     }
 
-    public function test_lista_traz_os_ativos_sem_catalogo_do_pior_para_o_melhor_e_marca_os_ja_trazidos(): void
+    public function test_lista_traz_todos_da_maior_oportunidade_para_a_menor_com_filtro_de_situacao(): void
     {
         $empresa = $this->empresaConectada();
-        $this->noAcervo($empresa, 'MLB1', ['nota_ecf' => 70]);
-        $this->noAcervo($empresa, 'MLB2', ['nota_ecf' => 20]);
-        $this->noAcervo($empresa, 'MLB3', ['nota_ecf' => 10, 'catalog_listing' => true]);
-        $this->noAcervo($empresa, 'MLB4', ['nota_ecf' => 5, 'status' => 'paused']);
-        $this->noAcervo($empresa, 'MLB5', ['nota_ecf' => null]);
+        $this->noAcervo($empresa, 'MLB1', ['nota_ecf' => 70, 'sold_quantity' => 5]);
+        $this->noAcervo($empresa, 'MLB2', ['nota_ecf' => 20, 'sold_quantity' => 40]);
+        $this->noAcervo($empresa, 'MLB3', ['nota_ecf' => 10, 'catalog_listing' => true, 'sold_quantity' => 10]);
+        $this->noAcervo($empresa, 'MLB4', ['nota_ecf' => 5, 'status' => 'paused', 'sold_quantity' => 20]);
+        $this->noAcervo($empresa, 'MLB5', ['nota_ecf' => null, 'sold_quantity' => 50]);
         $produto = EstruturaProduto::create(['company_id' => $empresa->id, 'codigo' => 'X', 'nome' => 'Já trazido']);
         EstruturaProdutoOrigemMl::create(['company_id' => $empresa->id, 'produto_id' => $produto->id, 'ml_item_id' => 'MLB1', 'importado_em' => now()]);
 
+        // Padrão: TODOS (ativo, pausado, catálogo), da nota mais baixa para a mais alta; sem nota por último.
         $r = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->assertOk();
-        $this->assertSame(['MLB2', 'MLB1', 'MLB5'], array_column($r->json('itens'), 'mlb'), 'sem catálogo, sem pausado; nota sem avaliação por último');
-        $this->assertSame(['produto_id' => $produto->id, 'nome' => 'Já trazido'], $r->json('itens.1.importado'));
+        $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB1', 'MLB5'], array_column($r->json('itens'), 'mlb'));
+        $this->assertSame(['produto_id' => $produto->id, 'nome' => 'Já trazido'], $r->json('itens.3.importado'));
+        $this->assertSame([false, 'Pausado'], [$r->json('itens.0.ativo'), $r->json('itens.0.status')]);
+        $this->assertTrue($r->json('itens.1.catalogo'));
 
-        $r = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['so_novos' => 1]))->assertOk();
-        $this->assertSame(['MLB2', 'MLB5'], array_column($r->json('itens'), 'mlb'));
+        $ver = fn (array $q) => array_column($this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', $q))->assertOk()->json('itens'), 'mlb');
+        $this->assertSame(['MLB3', 'MLB2', 'MLB1', 'MLB5'], $ver(['situacao' => 'ativos']));
+        $this->assertSame(['MLB4'], $ver(['situacao' => 'inativos']));
+        $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB5'], $ver(['so_novos' => 1]));
+        $this->assertSame(['MLB5', 'MLB2', 'MLB4', 'MLB3', 'MLB1'], $ver(['ordem' => 'vendidos']), 'mais vendidos primeiro');
+        $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['ordem' => 'piores']))->assertStatus(422);
     }
 
     public function test_diagnostico_da_pagina_aponta_o_que_falta_e_os_numeros(): void

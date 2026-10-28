@@ -7,7 +7,7 @@ use App\Services\Portal\Estrutura\Produtos\NormalizadorDeLinha;
 
 /**
  * Um anúncio do Mercado Livre (o corpo de `GET /items/{id}?include_attributes=all`) → o que o
- * cadastro de Produtos do Portal grava (28/10/2026, "trazer do ML para Produtos").
+ * cadastro de Produtos do Portal grava (28/10/2026, "Importar do Mercado Livre").
  *
  * Função PURA: sem HTTP, sem banco. Quem lê o anúncio e grava é o {@see ImportadorDeAnuncioMl}.
  *

@@ -82,6 +82,18 @@ class DiagnosticoDoAnuncioTest extends TestCase
         $this->assertSame('alta', $d['prioridade'], 'um de cadastro com um de desempenho');
     }
 
+    public function test_anuncio_pausado_ou_encerrado_nao_tem_problema_de_desempenho(): void
+    {
+        // Pausado não recebe visita nem venda: isso não diz nada do cadastro. Os números ficam, o "problema" não.
+        $item = ['status' => 'paused', 'title' => 'Mesa Lateral Redonda Madeira Maciça Pés Palito Sala Quarto',
+            'attributes' => [['id' => 'MODEL', 'value_name' => 'a, b'], ...$this->caixa()]];
+
+        $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => 0, 'visitas_30d' => 3]);
+
+        $this->assertSame([], $d['problemas']);
+        $this->assertSame(['vendas_30d' => 0, 'visitas_30d' => 3, 'conversao' => 0.0], $d['metricas']);
+    }
+
     public function test_metricas_ainda_nao_lidas_nao_viram_problema(): void
     {
         $item = ['title' => 'Mesa Lateral Redonda Madeira Maciça Pés Palito Sala Quarto', 'attributes' => [['id' => 'MODEL', 'value_name' => 'a, b']]];

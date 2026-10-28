@@ -87,9 +87,8 @@ class ImportadorDeAnuncioMl
         if ((string) ($item['seller_id'] ?? '') !== (string) $token->ml_user_id) {
             return $this->resultado(ProdutosDoMercadoLivreService::ERRO, null, 'Este anúncio não é da conta conectada.');
         }
-        if (! in_array($item['status'] ?? null, ['active', 'paused'], true)) {
-            return $this->resultado(ProdutosDoMercadoLivreService::ERRO, null, 'Só dá para trazer anúncio ativo ou pausado.');
-        }
+        // Qualquer situação entra (ativo, pausado, encerrado — decisão do usuário, 28/10/2026): é um clone
+        // para melhorar, e o anúncio original não é tocado.
 
         $descricao = null;
         try {

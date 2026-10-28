@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Importa UM anúncio do Mercado Livre como Produto do Portal (28/10/2026, "Trazer do Mercado
- * Livre"). Fila `high`: quem clicou está olhando a tela (o mesmo motivo do
+ * Importa UM anúncio do Mercado Livre como Produto do Portal (28/10/2026, "Importar do
+ * Mercado Livre"). Fila `high`: quem clicou está olhando a tela (o mesmo motivo do
  * `ImportarAnunciosMlEstruturaJob` — a `default` de produção carrega o sync do acervo).
  *
  * Sem nova tentativa: um anúncio pela metade (produto criado, fotos não) não pode ser refeito por

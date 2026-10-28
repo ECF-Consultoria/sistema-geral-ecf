@@ -5,7 +5,7 @@ namespace App\Services\Portal\Estrutura\Produtos\MercadoLivre;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 
 /**
- * O diagnóstico de UM anúncio ativo para a tela "Trazer do Mercado Livre" (28/10/2026): o que
+ * O diagnóstico de UM anúncio para a tela "Importar do Mercado Livre" (28/10/2026): o que
  * está fraco no cadastro dele e o que os números dizem, para a pessoa decidir o que vale importar
  * e jardinar pela metodologia.
  *
@@ -17,6 +17,7 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
  *   padrão ECF (lista de buscas separadas por vírgula, perto de 120 caracteres), campo obrigatório
  *   faltando, ficha com menos de 60% dos campos, sem medidas do produto, sem a caixa.
  * - **Desempenho** (o sintoma): pouca visita, muita visita e pouca venda, nenhuma venda em 30 dias.
+ *   Só para anúncio ATIVO: pausado ou encerrado não recebe visita nem venda, e isso não diz nada do cadastro.
  *
  * Prioridade: "alta" com 2+ problemas de cadastro, ou 1 de cadastro com 1 de desempenho; "média"
  * com qualquer um; "baixa" sem nenhum. Os cortes são heurística de triagem, não régua de nota:
@@ -132,12 +133,15 @@ final class DiagnosticoDoAnuncio
         $visitas = isset($metricas['visitas_30d']) ? (int) $metricas['visitas_30d'] : null;
         $conversao = ($vendas !== null && $visitas !== null && $visitas > 0) ? round($vendas / $visitas * 100, 2) : null;
 
-        if ($visitas !== null && $visitas < self::POUCA_VISITA) {
+        $ativo = ($item['status'] ?? 'active') === 'active';
+        if (! $ativo) {
+            // Os números continuam na tela; só não viram "problema".
+        } elseif ($visitas !== null && $visitas < self::POUCA_VISITA) {
             $problemas[] = ['chave' => 'pouca_visita', 'tipo' => 'desempenho', 'texto' => "Pouca visita: {$visitas} em 30 dias"];
         } elseif ($visitas !== null && $visitas >= self::MUITA_VISITA && $conversao !== null && $conversao < self::CONVERSAO_BAIXA) {
             $problemas[] = ['chave' => 'visita_sem_venda', 'tipo' => 'desempenho', 'texto' => "Muita visita e pouca venda: {$visitas} visitas, conversão de ".self::pct($conversao)];
         }
-        if ($vendas === 0) {
+        if ($ativo && $vendas === 0) {
             $problemas[] = ['chave' => 'sem_venda', 'tipo' => 'desempenho', 'texto' => 'Nenhuma venda em 30 dias'];
         }
 

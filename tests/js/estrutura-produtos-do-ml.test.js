@@ -39,7 +39,7 @@ test('o resumo do cadastro diz título, Modelo, campos e fotos', () => {
     assert.deepEqual(resumoDoCadastro(d), ['Título 38/60', 'Modelo vazio', 'Campos 12 de 40', '1 foto']);
     assert.deepEqual(resumoDoCadastro({ erro: 'x' }), []);
     assert.deepEqual(resumoDoCadastro(undefined), []);
-    assert.equal(PRIORIDADES.alta.rotulo, 'Vale trazer');
+    assert.equal(PRIORIDADES.alta.rotulo, 'Recomendado importar');
 });
 
 test('o painel diz o que aconteceu, sem contar como a ficha foi completada', () => {
@@ -56,4 +56,17 @@ test('o selo só diz que foi importado', () => {
     assert.match(selo, /Importado do Mercado Livre/);
     const texto = selo.replace(/\/\/.*$/gm, '');
     assert.ok(! /an[uú]ncio|publica|\bIA\b/i.test(texto.replace(/Importado do Mercado Livre/g, '')), 'o selo não fala de anúncio, publicação nem IA');
+});
+
+test('textos profissionais: importar, nunca trazer; nenhum rótulo depreciativo', () => {
+    const fontes = [
+        '../../resources/js/Pages/Portal/EstruturaProdutosDoMl.jsx',
+        '../../resources/js/lib/produtosDoMl.js',
+        '../../resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx',
+    ].map((f) => readFileSync(new URL(f, import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*\*[\s\S]*?\*\//g, ''));
+    for (const texto of fontes) {
+        assert.ok(! /\b[Tt]raz(er|ido|endo|idos)\b|trouxe|\b[Pp]iores?\b/.test(texto), 'texto informal ou depreciativo na tela');
+    }
+    assert.match(fontes[0], /Importar do Mercado Livre/);
+    assert.match(fontes[1], /Maior oportunidade de melhoria/);
 });

@@ -2101,6 +2101,13 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   `importado_do_ml`). As fotos do anúncio entram no Portal como fotos do cliente, e o kit automático (ligado para
   todas as empresas desde 26/10) as usaria de referência e TROCARIA as fotos do anúncio pelas da IA — gastando,
   contra o pedido ("por enquanto a imagem deixa puxando do anúncio original"). Para liberar um dia, é só tirar a trava.
+- **Textos profissionais (pedido do usuário no mesmo dia, depois de ver em produção):** "Importar", nunca "Trazer";
+  a ordem é "Maior oportunidade de melhoria", nunca "Piores primeiro" (soaria desrespeitoso ao cliente); o rótulo é
+  "Recomendado importar". Há gate em `tests/js/estrutura-produtos-do-ml.test.js`. A rota ficou `/mercado-livre` e as
+  classes com o nome antigo de arquivo de teste (`TrazerDoMercadoLivreTest`) — só o texto da tela mudou.
+- **TODOS os anúncios aparecem** (filtro Todos / Ativos / Inativos; padrão Todos) e qualquer situação pode ser
+  importada (pausado, encerrado, catálogo — este com marcador). Pausado/encerrado não recebe problema de DESEMPENHO
+  (sem visita não diz nada do cadastro); os números continuam na tela.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 
