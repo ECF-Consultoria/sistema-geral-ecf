@@ -135,12 +135,13 @@ function CartaoDoCatalogo({ cartao, tipo, selId, aberto, pronto, onAlternar, onE
 }
 
 /** Um percentual do produto (exceção). Vazio = vale o da empresa, que aparece apagado. */
-export function CampoPercentual({ rotulo, valor, empresa, onChange, onBlur, chave, placeholder = null }) {
+export function CampoPercentual({ rotulo, valor, empresa, onChange, onBlur, chave, placeholder = null, invalido = false }) {
     return (
         <div>
-            <label className={ROTULO_PEQUENO}>{rotulo}</label>
+            <label className={cn(ROTULO_PEQUENO, invalido && 'text-red-400')}>{rotulo}</label>
             <input value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                inputMode="decimal" placeholder={placeholder ?? paraTexto(empresa)} className={CAMPO_PEQUENO} data-excecao={chave} />
+                inputMode="decimal" placeholder={placeholder ?? paraTexto(empresa)} className={cn(CAMPO_PEQUENO, invalido && 'animate-blink-red border-red-500')}
+                data-excecao={chave} data-invalido={invalido ? 'sim' : undefined} />
         </div>
     );
 }

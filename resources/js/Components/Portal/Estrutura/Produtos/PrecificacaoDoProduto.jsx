@@ -7,7 +7,7 @@ import { avisoSemSugestao } from '@/lib/precificacaoEnvio';
 import { freteEmBranco, rotuloDoFrete } from '@/lib/precificacaoFreteSugerido';
 import {
     EXCECOES, dadosParaGravar, diferencasDaReferencia, faixaDoCartao, fmtPct, mudouDoGravado, paraNumero, paraTexto, pendentesPrimeiro,
-    reaisParaTexto,
+    premiumIgualAoClassico, reaisParaTexto,
 } from '@/lib/precificacaoSimulador';
 import { valorDaVariacao } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
@@ -69,7 +69,7 @@ const gravadoComoTexto = (c) => ({
  * variação; em "Só esta", a escolhida). Grava só o que mudou em relação ao que aparece — e quem decide em
  * quantas variações é o `onGravar` de quem chama ("Todas" iguala o conjunto inteiro).
  */
-function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, onCustoBlur, onGravar, bloqueado = false }) {
+function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, onCustoBlur, onGravar, bloqueado = false, premiumPendente = false }) {
     const freteK = `frete_${tipo}`;
     const c = referencia.calculo;
     const inicial = () => ({
@@ -111,7 +111,8 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
     const corTipo = tipo === 'classico' ? 'text-blue-300' : 'text-violet-300';
     const percentual = (rotulo, k) => (
         <CampoPercentual rotulo={rotulo} chave={k} valor={texto[k]} empresa={parametros?.[k]}
-            onChange={(v) => mudar(k, v)} onBlur={() => gravar(k, k, c.excecoes?.[k])} />
+            onChange={(v) => mudar(k, v)} onBlur={() => gravar(k, k, c.excecoes?.[k])}
+            invalido={premiumPendente && k === 'comissao_premium'} />
     );
 
     return (
@@ -170,7 +171,7 @@ function Entrada({ referencia, tipo, parametros, custo, dicaDoCusto, onCusto, on
     );
 }
 
-export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoProduto = '', linhas = [] }) {
+export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoProduto = '', linhas = [], onPremiumPendente = null, abrirPremium = 0 }) {
     const [dados, setDados] = useState(null);
     const [carregando, setCarregando] = useState(false);
     const [falhou, setFalhou] = useState(false);
@@ -314,6 +315,21 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
         gravar(outras, gravadoComoTexto(selecionado.calculo));
     };
 
+    // Premium com o MESMO preço do Clássico = Premium não preenchido (28/10/2026): o botão dele pisca vermelho e a
+    // ficha não salva até a comissão do Premium ser outra. Produto novo fica como sempre (os dois vêm do padrão).
+    const premiumIguais = novo ? [] : itens.filter((i) => premiumIgualAoClassico(i.calculo));
+    const nomesPremiumIguais = premiumIguais.map((i) => nomeDaVariacao(i));
+    const chavePremium = nomesPremiumIguais.join('|');
+    useEffect(() => { onPremiumPendente?.(nomesPremiumIguais); }, [chavePremium]); // eslint-disable-line react-hooks/exhaustive-deps
+    const secao = useRef(null);
+    // A página pediu (Salvar barrado): abre o Premium e rola até aqui.
+    useEffect(() => {
+        if (! abrirPremium) return;
+        setTipo('premium');
+        if (premiumIguais.length > 0 && ! emMassa) setSelId(premiumIguais[0].oferta.id);
+        secao.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [abrirPremium]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const proxima = ! emMassa && selecionado
         ? (itens.find((i) => i !== selecionado && i.calculo.pendencia)?.oferta.id ?? null)
         : null;
@@ -340,7 +356,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
     };
 
     return (
-        <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-4 lg:pt-3" data-precificacao-do-produto>
+        <section ref={secao} className="mt-2.5 scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-4 lg:pt-3" data-precificacao-do-produto>
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <h2 className="text-[20px] font-bold text-white">Precificação</h2>
@@ -363,16 +379,42 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                     </span>
                     {dados && itens.length > 0 && (
                         <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.04] p-1" role="group" aria-label="Clássico ou Premium">
-                            {TIPOS.map(([k, l]) => (
-                                <button key={k} type="button" onClick={() => setTipo(k)} aria-pressed={tipo === k} data-tipo-anuncio={k}
-                                    className={cn('rounded-lg px-4 py-1.5 text-[13px] font-semibold transition', tipo === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>
-                                    {l}
-                                </button>
-                            ))}
+                            {TIPOS.map(([k, l]) => {
+                                const pendente = k === 'premium' && premiumIguais.length > 0;
+
+                                return (
+                                    <button key={k} type="button" onClick={() => setTipo(k)} aria-pressed={tipo === k} data-tipo-anuncio={k}
+                                        data-premium-pendente={pendente ? 'sim' : undefined}
+                                        title={pendente ? 'O preço do Premium está igual ao do Clássico: informe a comissão do Premium' : undefined}
+                                        className={cn('rounded-lg px-4 py-1.5 text-[13px] font-semibold transition',
+                                            pendente
+                                                ? cn('animate-blink-red ring-2 ring-inset ring-red-500', tipo === k ? 'bg-red-500 text-white' : 'text-red-300')
+                                                : tipo === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>
+                                        {l}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
             </div>
+            {premiumIguais.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/[0.08] px-3 py-1.5 text-[12.5px] text-red-200" data-aviso-premium-igual>
+                    <span className="flex items-start gap-1.5">
+                        <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                        <span>
+                            O preço do Premium está igual ao do Clássico{varias ? ` (${nomesPremiumIguais.join(', ')})` : ''}. A comissão do
+                            Premium é outra: informe a comissão do Premium — sem isso o produto não salva.
+                        </span>
+                    </span>
+                    {tipo !== 'premium' && (
+                        <button type="button" onClick={() => setTipo('premium')} data-acao="abrir-premium"
+                            className="rounded-lg bg-red-500 px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110">
+                            Abrir o Premium
+                        </button>
+                    )}
+                </div>
+            )}
             {porSalvar.length > 0 && (
                 <p className="mt-2 rounded-lg border border-ecf-yellow/25 bg-ecf-yellow/[0.06] px-3 py-1.5 text-[12.5px] text-ecf-yellow/90"
                     data-custo-por-salvar={custoPorSalvar ? '' : undefined} data-caixa-por-salvar={caixaPorSalvar ? '' : undefined}>
@@ -466,7 +508,8 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
                         )}
 
                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                            <Entrada key={`${emMassa ? 'todas' : aberta.oferta.id}-${tipo}`} tipo={tipo} parametros={parametros} bloqueado={novo} {...entrada} />
+                            <Entrada key={`${emMassa ? 'todas' : aberta.oferta.id}-${tipo}`} tipo={tipo} parametros={parametros} bloqueado={novo} {...entrada}
+                                premiumPendente={tipo === 'premium' && (emMassa ? premiumIguais.length > 0 : premiumIguais.includes(aberta))} />
                             <ResultadoDaOferta membro={aberta} tipo={tipo}
                                 titulo={emMassa ? `Todas as ${itens.length} variações` : (varias ? nomeDaVariacao(aberta) : null)}
                                 proxima={proxima} onProxima={() => proxima !== null && setSelId(proxima)}

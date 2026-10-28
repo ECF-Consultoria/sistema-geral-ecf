@@ -1960,6 +1960,22 @@ deveria aparecer aqui e não salvar para depois voltar; a usabilidade fica horr�
 - Conferido no servidor local de demonstração (Chrome sem janela): produto novo, custo 270 e caixa 120 × 50 × 91 cm com
   10 kg → frete R$ 168,85 ("referência do ML para a caixa") e preço na hora, sem salvar.
 
+### Premium com o MESMO preço do Clássico trava o Salvar (28/10/2026)
+
+O usuário, no produto 77 da #459: "o preço está indo igual para os dois. Preço clássico é um e premium é outro, pois
+muda a comissão" — e o botão do Premium tem de piscar vermelho e a ficha não pode avançar sem ele.
+
+- O cálculo NÃO estava errado: Clássico e Premium só diferem pela comissão (padrão da empresa 11,5% × 16,5%) e pelo
+  frete. Preço igual = a comissão do Premium em vigor ficou igual à do Clássico (parâmetro da empresa ou exceção do
+  produto). Na demo, com os padrões, sai R$ 299,21 × R$ 322,40.
+- Regra (`premiumIgualAoClassico`, lib do simulador): os dois com preço e diferença < meio centavo = Premium não
+  preenchido. Sem custo não conta (é outra pendência). Em qualquer variação: o botão Premium pisca, o aviso diz quais,
+  na aba Premium a comissão fica vermelha; "Salvar produto" não chama o salvar, abre o Premium e rola até ele.
+- **Produto novo fica como antes** (decisão do usuário: "os dois são puxados pela API… que continue assim") — lá frete e
+  percentuais ficam travados até salvar, e travar o Salvar seria um beco sem saída.
+- Se a empresa tiver a comissão do Premium igual à do Clássico nos Parâmetros, TODO produto salvo dela vai piscar:
+  o conserto é nos Parâmetros da Precificação, não produto a produto.
+
 ## Poltrona sem Combo nem Kit no Planejamento é DADO, não código (22/10/2026)
 
 Teste da empresa #459: duas poltronas completas e publicadas (mesma família, ambiente Sala, tipo Poltrona) sem

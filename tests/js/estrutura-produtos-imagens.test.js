@@ -394,5 +394,6 @@ test('Aviso do Salvar aparece UMA vez na ficha (antes saía no topo e junto do b
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
     assert.equal((pagina.match(/data-aviso-junto-do-salvar/g) ?? []).length, 1);
     assert.equal((pagina.match(/\{ficha\.aviso\}/g) ?? []).length, 0, 'nenhuma segunda caixa com o mesmo aviso');
-    assert.ok(pagina.includes('{ficha.aviso ??'), 'o aviso segue junto do botão');
+    // 28/10/2026: a mesma caixa mostra também a trava do Premium igual ao Clássico (uma caixa só, como antes).
+    assert.ok(/\(ficha\.aviso \?\?/.test(pagina), 'o aviso segue junto do botão');
 });

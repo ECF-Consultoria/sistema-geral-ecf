@@ -215,6 +215,20 @@ export function faixaDoCartao(cartao, tipo) {
     return { min: Math.min(...precos), max: Math.max(...precos) };
 }
 
+/**
+ * O Premium com o MESMO preço do Clássico (28/10/2026, o usuário: "preço clássico é um e premium é outro, pois muda a
+ * comissão"): no ML a comissão do Premium é outra, então preço igual quer dizer que o Premium não foi preenchido.
+ * Só conta quando os dois têm preço (sem custo é outra pendência).
+ */
+export function premiumIgualAoClassico(calculo) {
+    const a = calculo?.classico?.minimo;
+    const b = calculo?.premium?.minimo;
+    if (a === null || a === undefined || b === null || b === undefined) return false;
+    if (! Number.isFinite(Number(a)) || ! Number.isFinite(Number(b))) return false;
+
+    return Math.abs(Number(a) - Number(b)) < 0.005;
+}
+
 /** As fatias da barra, com rótulo e cor, a partir das `partes` que o servidor mandou. Sem partes, vazio. */
 export function composicao(partes) {
     if (! partes) return [];

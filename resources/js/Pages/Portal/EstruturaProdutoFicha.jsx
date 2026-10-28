@@ -41,6 +41,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
     const [excluindoProduto, setExcluindoProduto] = useState(false);   // janela "Excluir produto" (o produto inteiro, 10/10/2026)
+    // Premium com o preço igual ao do Clássico (28/10/2026): o Salvar não passa; a Precificação diz quais e abre o Premium.
+    const [premiumPendente, setPremiumPendente] = useState([]);
+    const [avisoPremium, setAvisoPremium] = useState(null);
+    const [abrirPremium, setAbrirPremium] = useState(0);
     const liberado = useRef(false);
     const alteradoRef = useRef(ficha.alterado);
     alteradoRef.current = ficha.alterado;
@@ -178,6 +182,13 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
     const salvarProduto = async () => {
         const novo = ficha.novoProduto;
+        if (! novo && premiumPendente.length > 0) {
+            setAvisoPremium(`Não salvamos: o preço do Premium está igual ao do Clássico${premiumPendente.length > 1 ? ` (${premiumPendente.join(', ')})` : ''}. Informe a comissão do Premium na Precificação.`);
+            setAbrirPremium((n) => n + 1);
+
+            return;
+        }
+        setAvisoPremium(null);
         const r = await ficha.salvar();
         if (r.data?.listas) setListas(r.data.listas);
         // Produto novo ganha id no 1º lote gravado, mesmo se outro lote falhar: a volta já sabe qual destacar.
@@ -353,16 +364,18 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
                 {/* A Precificação logo depois das Variações (20/10/2026): o custo é delas, e o preço sai daqui
                     mesmo, sem trocar de tela. Só as variações deste produto; o frete grava na hora e o custo, com "Salvar produto". */}
-                <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas} />
+                <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas}
+                    onPremiumPendente={(nomes) => { setPremiumPendente(nomes); if (nomes.length === 0) setAvisoPremium(null); }} abrirPremium={abrirPremium} />
 
                 <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
                 <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
 
                 {/* Demo 23/10 (H3): o aviso do topo e o erro da variação ficam longe do botão — clicar em Salvar
                     parecia não fazer nada. O aviso fica aqui, colado aos botões (e só aqui). */}
-                {(ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
-                    <p role="alert" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar>
-                        {ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.'}
+                {(avisoPremium || ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
+                    <p role="alert" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar
+                        data-aviso-premium={avisoPremium ? 'sim' : undefined}>
+                        {avisoPremium || (ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.')}
                     </p>
                 )}
 
