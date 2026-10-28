@@ -63,6 +63,7 @@ use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalEstruturaController;
 use App\Http\Controllers\PortalEstruturaProdutosController;
+use App\Http\Controllers\PortalProdutosDoMercadoLivreController;
 use App\Http\Controllers\PortalEstruturaSugestoesController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
@@ -298,6 +299,20 @@ Route::middleware('portal.auth')
         ->middleware('throttle:10,1,estrutura.produtos.fichas.previa')->name('portal.auth.estrutura.produtos.fichas.previa');
     Route::post('/estrutura/produtos/fichas/importacao', [PortalEstruturaProdutosController::class, 'aplicarFichas'])
         ->middleware('throttle:6,1,estrutura.produtos.fichas.importacao')->name('portal.auth.estrutura.produtos.fichas.importacao');
+    // 28/10/2026 — Trazer do Mercado Livre: os anúncios ativos com diagnóstico e a importação
+    // para Produtos (clone para jardinar pela metodologia; o anúncio original fica como está).
+    Route::get('/estrutura/produtos/mercado-livre', [PortalProdutosDoMercadoLivreController::class, 'pagina'])
+        ->middleware('throttle:60,1,estrutura.produtos.ml')->name('portal.auth.estrutura.produtos.ml');
+    Route::get('/estrutura/produtos/mercado-livre/anuncios', [PortalProdutosDoMercadoLivreController::class, 'anuncios'])
+        ->middleware('throttle:120,1,estrutura.produtos.ml.anuncios')->name('portal.auth.estrutura.produtos.ml.anuncios');
+    Route::post('/estrutura/produtos/mercado-livre/diagnostico', [PortalProdutosDoMercadoLivreController::class, 'diagnostico'])
+        ->middleware('throttle:60,1,estrutura.produtos.ml.diagnostico')->name('portal.auth.estrutura.produtos.ml.diagnostico');
+    Route::post('/estrutura/produtos/mercado-livre/importar', [PortalProdutosDoMercadoLivreController::class, 'importar'])
+        ->middleware('throttle:20,1,estrutura.produtos.ml.importar')->name('portal.auth.estrutura.produtos.ml.importar');
+    Route::get('/estrutura/produtos/mercado-livre/estado', [PortalProdutosDoMercadoLivreController::class, 'estado'])
+        ->middleware('throttle:240,1,estrutura.produtos.ml.estado')->name('portal.auth.estrutura.produtos.ml.estado');
+    Route::post('/estrutura/produtos/mercado-livre/limpar', [PortalProdutosDoMercadoLivreController::class, 'limpar'])
+        ->middleware('throttle:30,1,estrutura.produtos.ml.limpar')->name('portal.auth.estrutura.produtos.ml.limpar');
     // 09/10/2026 — fotos em lote pelo nome do arquivo (Ref_número.jpg): prévia só com os nomes, depois remessas.
     Route::post('/estrutura/produtos/fotos/previa', [PortalEstruturaProdutosController::class, 'previaFotosEmLote'])
         ->middleware('throttle:30,1,estrutura.produtos.fotos.previa')->name('portal.auth.estrutura.produtos.fotos.previa');

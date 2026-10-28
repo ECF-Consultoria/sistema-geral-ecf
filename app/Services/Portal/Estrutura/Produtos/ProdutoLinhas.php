@@ -7,6 +7,7 @@ use App\Models\BlingVinculo;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoOrigemMl;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use Illuminate\Support\Str;
@@ -94,6 +95,7 @@ class ProdutoLinhas
 
         $capas = $this->capas($empresa, $variacaoIds);
         $bling = $this->blingPorVariacao($empresa, $variacaoIds);
+        $origensMl = $this->origensMl($empresa, $produtos->pluck('id')->all());
 
         // Passo 1: o que depende só dos volumes; Passo 2: UMA estimativa de frete para todas.
         // Os limites do ME2 são os da modalidade de envio da conta, já lida pela cotação real
@@ -128,7 +130,7 @@ class ProdutoLinhas
             foreach ($produto->variacoes as $indice => $variacao) {
                 [$volumes, $log] = $base[$variacao->id];
 
-                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id), $capas[$variacao->id] ?? null, $bling[$variacao->id]);
+                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id), $capas[$variacao->id] ?? null, $bling[$variacao->id], $origensMl[$produto->id] ?? null);
             }
         }
 
@@ -213,7 +215,33 @@ class ProdutoLinhas
         return $mapa;
     }
 
-    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta, ?string $capa, array $bling): array
+    /**
+     * De qual anúncio do Mercado Livre cada produto foi importado (28/10/2026): é o que acende o selo
+     * "Importado do Mercado Livre" no cartão. Uma consulta para o lote.
+     *
+     * @param  array<int, int>  $produtoIds
+     * @return array<int, array{mlb: string, importado_em: ?string}>
+     */
+    private function origensMl(Company $empresa, array $produtoIds): array
+    {
+        if ($produtoIds === []) {
+            return [];
+        }
+
+        $mapa = [];
+        EstruturaProdutoOrigemMl::query()
+            ->where('company_id', $empresa->id)
+            ->whereIn('produto_id', $produtoIds)
+            ->orderBy('id')
+            ->get(['produto_id', 'ml_item_id', 'importado_em'])
+            ->each(function (EstruturaProdutoOrigemMl $o) use (&$mapa) {
+                $mapa[(int) $o->produto_id] ??= ['mlb' => $o->ml_item_id, 'importado_em' => $o->importado_em?->toIso8601String()];
+            });
+
+        return $mapa;
+    }
+
+    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta, ?string $capa, array $bling, ?array $origemMl = null): array
     {
         $familia   = $produto->familia?->nome;
         $ambientes = $produto->ambientes->pluck('nome')->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
@@ -281,6 +309,8 @@ class ProdutoLinhas
             // (tudo `false`, `saldo_lido_em` nulo) — chave ausente numa recarga parcial do
             // Inertia já derrubou tela (precedente do `cabecalho: null` em Configuracoes.jsx).
             'bling'                => $bling,
+            // 28/10/2026: o anúncio do ML de onde o produto foi importado (null = cadastrado aqui). Sempre presente.
+            'origem_ml'            => $origemMl,
         ];
     }
 }

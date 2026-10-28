@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
 import { CaixaDeSelecao, CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import SeloImportadoDoMl from '@/Components/Portal/Estrutura/Produtos/SeloImportadoDoMl';
 import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, 
                         {primeira.nome}
                     </a>
                     <p className={apoio ? 'mt-1.5 truncate text-[15px] text-white/70' : 'mt-1.5 truncate text-[15px] text-white/40'}>{apoio || 'Sem família nem ambiente'}</p>
+                    <SeloImportadoDoMl origem={primeira.origem_ml} className="mt-1.5" />
                 </div>
             </div>
 

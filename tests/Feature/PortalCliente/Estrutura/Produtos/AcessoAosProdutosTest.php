@@ -174,14 +174,18 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(38, $achadas); // 21/10: + precificacao.previa (produto ainda não salvo); 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
+        $this->assertSame(44, $achadas); // 28/10: + ml, ml.anuncios, ml.diagnostico, ml.importar, ml.estado e ml.limpar (Trazer do Mercado Livre); 21/10: + precificacao.previa (produto ainda não salvo); 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
     {
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
-        $this->assertCount(29, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        $this->assertCount(35, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        // 28/10/2026 — Trazer do Mercado Livre: a página, a lista, o diagnóstico, a importação, o estado e o limpar.
+        foreach (['', '/anuncios', '/diagnostico', '/importar', '/estado', '/limpar'] as $f) {
+            $this->assertContains("portal/estrutura/produtos/mercado-livre{$f}", $permitido);
+        }
         // 21/10/2026 — a precificação do produto que ainda não foi salvo.
         $this->assertContains('portal/estrutura/produtos/precificacao-previa', $permitido);
         // 19/10/2026 — os termos e o limite do título de venda.

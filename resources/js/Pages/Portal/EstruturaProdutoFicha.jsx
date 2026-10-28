@@ -12,6 +12,7 @@ import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariaca
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
 import PrecificacaoDoProduto from '@/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto';
+import SeloImportadoDoMl from '@/Components/Portal/Estrutura/Produtos/SeloImportadoDoMl';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
@@ -254,6 +255,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         <span className="truncate text-white">{nome}</span>
                     </nav>
                     <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:mt-2.5 lg:text-[42px]">{nome}</h1>
+                    {primeira.origem_ml && <SeloImportadoDoMl origem={primeira.origem_ml} className="mt-2" />}
                     <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. {variacaoVira.frase}</p>
                 </div>
 

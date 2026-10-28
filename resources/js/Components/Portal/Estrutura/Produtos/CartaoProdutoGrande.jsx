@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
 import { CaixaDeSelecao, CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import SeloImportadoDoMl from '@/Components/Portal/Estrutura/Produtos/SeloImportadoDoMl';
 import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario,
                             <CaminhoCategoria linha={primeira} curto className="min-w-0 text-[13px] text-white/70" />
                         </div>
                         <PilulaFalta variacoes={variacoes} rotulos={vocabulario?.pendencias} nome={primeira.nome} />
+                        <SeloImportadoDoMl origem={primeira.origem_ml} />
                     </div>
                 </div>
             </div>

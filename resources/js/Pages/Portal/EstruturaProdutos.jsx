@@ -298,7 +298,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 <div className="mt-8">
                     <BarraAcoesProdutos temProdutos={temProdutos} busca={busca} onBusca={setBusca}
                         onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)} onBaixarModelo={() => setBaixandoModelo(true)} onFotosEmLote={() => setEnviandoFotos(true)}
-                        onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} />
+                        onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} mlConectado={ml_conectado} />
                 </div>
 
                 {temProdutos && (

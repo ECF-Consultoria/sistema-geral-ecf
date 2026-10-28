@@ -175,6 +175,13 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/fichas/modelo',
         'portal/estrutura/produtos/fichas/previa',
         'portal/estrutura/produtos/fichas/importacao',
+        // 28/10/2026 — Trazer do Mercado Livre (lista com diagnóstico, importação e o estado dela).
+        'portal/estrutura/produtos/mercado-livre',
+        'portal/estrutura/produtos/mercado-livre/anuncios',
+        'portal/estrutura/produtos/mercado-livre/diagnostico',
+        'portal/estrutura/produtos/mercado-livre/importar',
+        'portal/estrutura/produtos/mercado-livre/estado',
+        'portal/estrutura/produtos/mercado-livre/limpar',
         'portal/estrutura/produtos/fretes',
         // 21/10/2026 — a precificação do produto que ainda não foi salvo (custo e caixa digitados, nada gravado).
         'portal/estrutura/produtos/precificacao-previa',

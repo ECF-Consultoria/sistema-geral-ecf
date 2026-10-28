@@ -2071,3 +2071,41 @@ O desenho (escolha do usuário entre "empresa no endereço" e "só a equipe, por
   do middleware e quebrou o lado oposto (redirect com id real × `route()` com `0`) — não faça.
 - Testes: `tests/Feature/PortalCliente/MultiAbasPortalTest.php` (11); 20 arquivos de teste antigos ajustados para o
   endereço novo (`'/portal/…'` escrito à mão virou `'/portal/0/…'`; redirect pós-login compara com o id da empresa).
+
+## 55. "Trazer do Mercado Livre": anúncio ativo vira Produto para a IA jardinar (28/10/2026)
+
+Pedido: cliente que já vende no ML traz os anúncios ativos para Produtos; a IA completa o que falta pela
+metodologia; as fotos são as do anúncio original (sem gerar imagem); o Portal mostra o selo "Importado do
+Mercado Livre". Decisões do usuário: o anúncio original **continua no ar** (é um clone para melhorar — título e
+o resto vão mudar); **qualquer um** (cliente ou equipe) escolhe, por anúncio ou em lote; a escolha é guiada por
+diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas de 30 dias, conversão).
+
+**O que não é óbvio no código:**
+
+- **O título de venda fica VAZIO de propósito.** Título no cadastro conta como "planejado" e o preparo da IA no
+  Publicador não o reescreve (`PreparoIaDoRascunhoService::livres`). O título do anúncio vira o `nome`.
+- **O Modelo do anúncio não vai para a ficha** (saiu dela em 09/10): fica em `estrutura_produto_origens_ml.retrato`
+  e entra no prompt da IA como "Modelo informado pelo vendedor".
+- **O sigilo da ficha continua** (`FichaTecnicaDaCategoria::TERMOS_PROIBIDOS`). A exceção é só o selo
+  (`SeloImportadoDoMl.jsx`, arquivo próprio) e a página `/estrutura/produtos/mercado-livre`. O painel de importação
+  diz "Completamos N campos da ficha técnica", nunca "a IA".
+- **Ref que já existe NÃO é atualizada.** No modo importação o `gravarLinhas` ATUALIZA variação de mesma Ref e o
+  grupo CASA com produto existente — importar por cima apagaria o que o cliente digitou. O importador recusa como
+  "já existe" (é o Clássico + Premium do mesmo SKU) e troca o grupo para o MLB se ele bater em produto alheio.
+- **A ficha pode não carregar na importação** (catálogo fora): por isso o retrato guarda `atributos_ml` cru e a
+  jardinagem REAPLICA o que o anúncio tinha antes de chamar a IA (achado na demo; antes os campos se perdiam).
+  O Job da jardinagem tenta 3 vezes nesse caso.
+- **O ML guarda UMA caixa** (`SELLER_PACKAGE_*`). Móvel em vários volumes chega com um volume só.
+  `shipping.dimensions` ("AxLxC,gramas") é só reserva — nos 20 itens reais da Fase 134 veio `null` em todos.
+- **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
+  Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
+
+**Armadilhas de ambiente achadas no caminho (não são regressão):**
+
+- `PolosController` faz `ini_set('memory_limit', '512M')`: na suíte inteira, um teste dele baixa o limite do
+  processo e um teste de planilha depois estoura em `zipstream-php/src/File.php:334` — mesmo com
+  `-d memory_limit=3G`. Rode em lotes (por pasta).
+- Suíte PHP rodando no MESMO worktree de uma demo apaga as fotos da demo: os testes usam o disco `local` real com
+  os mesmos ids (empresa 1, produto 1). Demo e suíte em worktrees separados, ou uma depois da outra.
+- No Node 26 os testes JS `publicador-*-187/188` estouram a pilha no próprio hook de `require.resolve` — ambiente,
+  não código.

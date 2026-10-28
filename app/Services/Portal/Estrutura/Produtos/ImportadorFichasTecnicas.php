@@ -267,8 +267,11 @@ class ImportadorFichasTecnicas
      * A célula → a entrada que a tela mandaria: lista pelo id da opção (casada pelo nome),
      * várias opções separadas por "|", "Não se aplica" pelo marcador, número com a unidade
      * escrita ao lado ("50 mm") ou a da coluna.
+     *
+     * Pública desde 28/10/2026: a jardinagem do produto trazido do ML lê a resposta da IA (texto
+     * por campo) pela MESMA regra da célula da planilha.
      */
-    private static function entrada(array $campo, mixed $bruto): array
+    public static function entrada(array $campo, mixed $bruto): array
     {
         $texto = is_bool($bruto) ? ($bruto ? 'Sim' : 'Não') : trim((string) $bruto);
 

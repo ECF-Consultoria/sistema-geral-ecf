@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { Download, FileSpreadsheet, Folder, Images, Lightbulb, Loader2, Plus, Search, Sparkles, Upload, X } from 'lucide-react';
+import { Download, DownloadCloud, FileSpreadsheet, Folder, Images, Lightbulb, Loader2, Plus, Search, Sparkles, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos: linha de ações + busca (167-20, D-25) ────────────────────────
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 const ACAO = 'inline-flex h-12 items-center gap-3 rounded-[10px] px-5 text-[15px] transition-colors disabled:pointer-events-none disabled:opacity-40';
 const SECUNDARIA = 'border border-white/[0.10] bg-white/[0.03] font-medium text-white/85 hover:bg-white/[0.07] hover:text-white';
 
-export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdicionar, onListas, onImportar, onBaixarModelo, onFotosEmLote, onSugerir, sugerindo = false, podeSugerir = false }) {
+export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdicionar, onListas, onImportar, onBaixarModelo, onFotosEmLote, onSugerir, sugerindo = false, podeSugerir = false, mlConectado = false }) {
     return (
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center" data-barra-acoes>
             <div className="flex flex-wrap items-center gap-4">
@@ -29,6 +29,13 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                     title="Para cadastrar muitos produtos de uma vez, preencha o modelo e importe aqui.">
                     <Upload size={18} /> Importar planilha
                 </button>
+                {/* 28/10/2026: quem já vende no ML traz os anúncios ativos para cá (só com a conta conectada). */}
+                {mlConectado && (
+                    <Link href={route('portal.auth.estrutura.produtos.ml')} data-acao="trazer-do-ml" className={cn(ACAO, SECUNDARIA)}
+                        title="Veja seus anúncios ativos, o que falta em cada um, e traga os que quiser para cá.">
+                        <DownloadCloud size={18} /> Trazer do Mercado Livre
+                    </Link>
+                )}
                 {/* 13/10/2026: o modelo é sempre o completo (produto + ficha técnica), e a ficha depende da categoria — por isso abre a escolha. */}
                 <button type="button" onClick={onBaixarModelo} data-acao="baixar-modelo" className={cn(ACAO, SECUNDARIA)}
                     title="Escolha a categoria e baixe a planilha com os dados do produto e a ficha técnica dela.">
