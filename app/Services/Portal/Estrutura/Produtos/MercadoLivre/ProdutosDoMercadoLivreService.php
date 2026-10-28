@@ -4,7 +4,6 @@ namespace App\Services\Portal\Estrutura\Produtos\MercadoLivre;
 
 use App\Jobs\Portal\ImportarAnuncioMlParaProdutoJob;
 use App\Models\Company;
-use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoOrigemMl;
 use App\Models\MlAcervoItem;
 use App\Services\MercadoLivreService;
@@ -53,7 +52,11 @@ class ProdutosDoMercadoLivreService
     private const VALIDADE_HORAS = 6;
     private const DIAGNOSTICO_MINUTOS = 30;
     private const IDS_POR_MULTIGET = 20;
-    private const CAMPOS_MULTIGET = 'id,title,category_id,status,seller_id,attributes,pictures,variations,shipping,catalog_listing';
+    /** `date_created`/`start_time`: há quantos dias o anúncio está no ar (a janela das visitas e vendas). */
+    private const CAMPOS_MULTIGET = 'id,title,category_id,status,seller_id,attributes,pictures,variations,shipping,catalog_listing,date_created,start_time';
+
+    /** O nível de qualidade que o próprio ML dá ao anúncio (`/item/{id}/performance`), em português. */
+    public const NIVEIS_ML = ['good' => 'Boa', 'medium' => 'Média', 'low' => 'Baixa', 'incomplete' => 'Incompleta'];
 
     /** Situações de um anúncio na importação. */
     public const NA_FILA = 'fila';
@@ -67,6 +70,7 @@ class ProdutosDoMercadoLivreService
         private AnunciosMercadoLivreService $anuncios,
         private FichaTecnicaDaCategoria $fichas,
         private MlCatalogoMetaService $catalogo,
+        private AnunciosNoPortal $noPortal,
     ) {}
 
     // ═══ Lista ══════════════════════════════════════════════════════════════
@@ -78,7 +82,6 @@ class ProdutosDoMercadoLivreService
     {
         $ordem = in_array($ordem, self::ORDENS, true) ? $ordem : 'oportunidade';
         $situacao = in_array($situacao, self::SITUACOES, true) ? $situacao : 'todos';
-        $importados = EstruturaProdutoOrigemMl::query()->where('company_id', $empresa->id)->pluck('produto_id', 'ml_item_id');
 
         $base = MlAcervoItem::query()->where('company_id', $empresa->id);
         match ($situacao) {
@@ -92,8 +95,9 @@ class ProdutosDoMercadoLivreService
             $mlb = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $busca));
             $base->where(fn ($q) => $q->where('title', 'like', '%'.addcslashes($busca, '%_\\').'%')->orWhere('ml_item_id', $mlb));
         }
-        if ($soNovos && $importados->isNotEmpty()) {
-            $base->whereNotIn('ml_item_id', $importados->keys()->all());
+        // "Esconder os que já estão no Portal": importados, publicados pelo Publicador e ligados no Mapeamento.
+        if ($soNovos && ($jaNoPortal = array_keys($this->noPortal->daEmpresa($empresa))) !== []) {
+            $base->whereNotIn('ml_item_id', $jaNoPortal);
         }
 
         $total = (clone $base)->count();
@@ -111,9 +115,7 @@ class ProdutosDoMercadoLivreService
 
         $itens = $base->orderBy('id')->forPage($pagina, self::POR_PAGINA)->get();
 
-        $produtos = EstruturaProduto::query()->where('company_id', $empresa->id)
-            ->whereIn('id', $itens->map(fn ($i) => $importados[$i->ml_item_id] ?? null)->filter()->values()->all())
-            ->pluck('nome', 'id');
+        $noPortal = $this->noPortal->daEmpresa($empresa, $itens->pluck('ml_item_id')->all());
 
         return [
             'conectado'     => AnunciosMercadoLivreService::conectado($empresa),
@@ -122,9 +124,7 @@ class ProdutosDoMercadoLivreService
             'pagina'        => $pagina,
             'paginas'       => $paginas,
             'total'         => $total,
-            'itens'         => $itens->map(function (MlAcervoItem $i) use ($importados, $produtos) {
-                $produtoId = $importados[$i->ml_item_id] ?? null;
-
+            'itens'         => $itens->map(function (MlAcervoItem $i) use ($noPortal) {
                 return [
                     'mlb'          => $i->ml_item_id,
                     'titulo'       => $i->title,
@@ -139,14 +139,20 @@ class ProdutosDoMercadoLivreService
                     'vendas_total' => (int) $i->sold_quantity,
                     'visitas_30d'  => $i->visitas_30d,
                     'fotos'        => $i->fotos_count,
-                    'nota_ecf'     => $i->nota_ecf,
-                    'nota_base'    => \App\Services\Mlb\Acervo\AnuncioSaudeService::BASE,
+                    // A nota ECF (0–86) ordena a lista mas NÃO vai para a tela: crua, "64 de 86" não diz nada ao
+                    // cliente (usuário, 28/10/2026), e virar % é renormalizar a régua (proibido, D-22). Os
+                    // problemas do diagnóstico explicam o cadastro; a qualidade que aparece é a do próprio ML.
                     'saude_ml'     => $i->performance_score,
+                    'saude_nivel'  => self::NIVEIS_ML[$i->performance_level] ?? null,
                     'acoes_ml'     => array_slice(array_values(array_filter(array_map(
                         fn ($a) => is_array($a) ? ($a['title'] ?? null) : (is_string($a) ? $a : null),
                         (array) ($i->performance_acoes ?? []),
                     ))), 0, 3),
-                    'importado'    => $produtoId ? ['produto_id' => (int) $produtoId, 'nome' => $produtos[$produtoId] ?? null] : null,
+                    // Já tem o produto no Portal (importado, publicado pelo Publicador ou ligado no Mapeamento):
+                    // não é recomendado nem importado de novo.
+                    'no_portal'    => $noPortal[$i->ml_item_id] ?? null,
+                    // Publicado pelo assistente antigo de anúncio da ECF (acervo `origem = ecf`): já é da metodologia.
+                    'feito_pela_ecf' => $i->origem === MlAcervoItem::ORIGEM_ECF,
                 ];
             })->values()->all(),
         ];
@@ -243,7 +249,7 @@ class ProdutosDoMercadoLivreService
         $lote = Cache::get($this->chaveLote($empresa));
         $lote = is_array($lote) ? $lote : ['mlbs' => [], 'iniciado_em' => now()->toIso8601String()];
         $titulos = MlAcervoItem::query()->where('company_id', $empresa->id)->whereIn('ml_item_id', $validos)->pluck('title', 'ml_item_id');
-        $jaImportados = EstruturaProdutoOrigemMl::query()->where('company_id', $empresa->id)->whereIn('ml_item_id', $validos)->pluck('produto_id', 'ml_item_id');
+        $jaNoPortal = $this->noPortal->daEmpresa($empresa, $validos);
         $quem = self::quem($ator);
 
         foreach ($validos as $mlb) {
@@ -254,9 +260,12 @@ class ProdutosDoMercadoLivreService
             if (! in_array($mlb, $lote['mlbs'], true)) {
                 $lote['mlbs'][] = $mlb;
             }
-            if (isset($jaImportados[$mlb])) {
-                $this->marcar($empresa, $mlb, ['situacao' => self::PRONTO, 'titulo' => $titulos[$mlb] ?? $mlb,
-                    'produto_id' => (int) $jaImportados[$mlb], 'mensagem' => 'Este anúncio já tinha sido importado.']);
+            if (isset($jaNoPortal[$mlb])) {
+                $p = $jaNoPortal[$mlb];
+                $this->marcar($empresa, $mlb, $p['origem'] === AnunciosNoPortal::IMPORTADO
+                    ? ['situacao' => self::PRONTO, 'titulo' => $titulos[$mlb] ?? $mlb, 'produto_id' => $p['produto_id'], 'mensagem' => 'Este anúncio já tinha sido importado.']
+                    : ['situacao' => self::JA_EXISTE, 'titulo' => $titulos[$mlb] ?? $mlb, 'produto_id' => $p['produto_id'],
+                        'mensagem' => 'Este anúncio já está no Portal'.($p['nome'] ? ": “{$p['nome']}”" : '').'.']);
 
                 continue;
             }
@@ -415,6 +424,6 @@ class ProdutosDoMercadoLivreService
 
     private function chaveDiagnostico(Company $empresa, string $mlb): string
     {
-        return 'estrutura:produtos-ml:diag:'.$empresa->id.':'.$mlb;
+        return 'estrutura:produtos-ml:diag2:'.$empresa->id.':'.$mlb;
     }
 }

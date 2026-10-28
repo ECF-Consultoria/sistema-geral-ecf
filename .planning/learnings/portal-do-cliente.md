@@ -2108,6 +2108,16 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
 - **TODOS os anúncios aparecem** (filtro Todos / Ativos / Inativos; padrão Todos) e qualquer situação pode ser
   importada (pausado, encerrado, catálogo — este com marcador). Pausado/encerrado não recebe problema de DESEMPENHO
   (sem visita não diz nada do cadastro); os números continuam na tela.
+- **Anúncio que já tem o produto no Portal não é recomendado nem importado** (`AnunciosNoPortal`): importado por
+  esta tela, publicado pelo Publicador (`pub_publicacao_itens.ml_item_id` → publicação → rascunho →
+  `pub_produtos.estrutura_produto_id`) ou ligado no Mapeamento a uma oferta COM variação. Visto em produção na #459:
+  os anúncios do próprio Publicador apareciam como "Recomendado importar". Os do assistente antigo (`acervo.origem
+  = ecf`) ganham o marcador "Publicado pela ECF", sem recomendação, mas importáveis (não têm produto no Portal).
+- **Desempenho usa os dias NO AR** (`start_time`/`date_created`): anúncio com menos de 7 dias não recebe problema
+  de desempenho, e a régua de visita é proporcional aos dias (o usuário viu "Pouca visita: 3 em 30 dias" num anúncio
+  de poucos dias). A tela diz "Visitas (5 dias)". Cache do diagnóstico trocou de chave (`diag2`) por causa disso.
+- **A nota ECF (0–86) não aparece mais na tela** — "64 de 86" crua não dizia nada ao cliente, e virar % é
+  renormalizar (proibido, D-22). Ela só ordena a lista. O que aparece é a "Qualidade no ML" (nível do próprio ML).
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 

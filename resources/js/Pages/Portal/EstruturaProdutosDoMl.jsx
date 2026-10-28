@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ArrowLeft, CheckCircle2, ChevronRight, CircleAlert, DownloadCloud, ExternalLink, Loader2, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, Paginacao, Seletor, fmtReais } from '@/Components/Portal/Estrutura/comum';
-import { FILTROS_SITUACAO, ORDENS, PRIORIDADES, SITUACOES, alternar, fmtInt, fmtPct, marcarPagina, podeMarcar, resumoDoCadastro, textoDoItem } from '@/lib/produtosDoMl';
+import { FILTROS_SITUACAO, ORDENS, PRIORIDADES, SITUACOES, alternar, fmtInt, fmtPct, marcarPagina, podeMarcar, qualidadeNoMl, resumoDoCadastro, rotuloDaJanela, textoDoItem, textoNoPortal } from '@/lib/produtosDoMl';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos → Importar do Mercado Livre (28/10/2026) ──────────────────────
@@ -114,7 +114,7 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
         return () => clearTimeout(t);
     }, [estado]);
 
-    // Terminou de importar: a lista passa a mostrar "Já importado".
+    // Terminou de importar: a lista passa a mostrar "Já importado" e a vaga dele sai da seleção.
     const andava = useRef(estado.em_andamento);
     useEffect(() => {
         if (andava.current && ! estado.em_andamento) irPara(anuncios?.pagina ?? 1);
@@ -234,7 +234,7 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/75">
                                     <input type="checkbox" checked={soNovos} onChange={(e) => setSoNovos(e.target.checked)} className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-so-novos />
-                                    Só os ainda não importados
+                                    Esconder os que já estão no Portal
                                 </label>
                                 <label className="inline-flex cursor-pointer items-center gap-2">
                                     <input type="checkbox" checked={paginaToda} disabled={marcaveis.length === 0}
@@ -280,8 +280,10 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
 // ─── Um anúncio ─────────────────────────────────────────────────────────────
 
 function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel, onMarcar, onImportar, enviando }) {
-    // Já importado: o rótulo de prioridade sai (a decisão já foi tomada); o diagnóstico continua como referência.
-    const prioridade = d && ! d.erro && ! a.importado ? PRIORIDADES[d.prioridade] : null;
+    // O produto já está no Portal (importado, ou nascido no Portal e publicado pelo Publicador) ou o anúncio foi
+    // feito pela ECF: nada de recomendação (28/10/2026, o usuário viu "Recomendado importar" em anúncio nosso).
+    // O diagnóstico continua como referência.
+    const prioridade = d && ! d.erro && ! a.no_portal && ! a.feito_pela_ecf ? PRIORIDADES[d.prioridade] : null;
     const resumo = resumoDoCadastro(d);
     const andando = situacao && (situacao.situacao === 'fila' || situacao.situacao === 'importando');
 
@@ -311,6 +313,9 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
                                 {a.catalogo && (
                                     <span className="rounded-md border border-sky-400/25 px-1.5 py-px text-[11.5px] font-medium text-sky-300" data-catalogo>Catálogo</span>
                                 )}
+                                {a.feito_pela_ecf && ! a.no_portal && (
+                                    <span className="rounded-md border border-ecf-yellow/30 px-1.5 py-px text-[11.5px] font-medium text-ecf-yellow/90" data-feito-pela-ecf>Publicado pela ECF</span>
+                                )}
                                 {a.mlb}{a.tipo ? ` · ${a.tipo}` : ''}{a.preco !== null ? ` · ${fmtReais(a.preco)}` : ''}{a.estoque !== null && a.estoque !== undefined ? ` · ${fmtInt(a.estoque)} em estoque` : ''}
                             </p>
                         </div>
@@ -318,9 +323,9 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
                             {prioridade && (
                                 <span className={cn('rounded-full border px-2.5 py-0.5 text-[12px] font-semibold', prioridade.classe)} data-rotulo-prioridade>{prioridade.rotulo}</span>
                             )}
-                            {a.importado ? (
-                                <a href={route('portal.auth.estrutura.produtos.ficha', a.importado.produto_id)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 px-3 py-1.5 text-[13px] font-medium text-emerald-300 hover:bg-emerald-400/10" data-ja-importado>
-                                    <CheckCircle2 size={14} /> Já importado · ver produto
+                            {a.no_portal ? (
+                                <a href={route('portal.auth.estrutura.produtos.ficha', a.no_portal.produto_id)} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/25 px-3 py-1.5 text-[13px] font-medium text-emerald-300 hover:bg-emerald-400/10" data-no-portal={a.no_portal.origem}>
+                                    <CheckCircle2 size={14} /> {textoNoPortal(a.no_portal)}
                                 </a>
                             ) : andando ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-white/60"><Loader2 size={14} className="animate-spin" /> {SITUACOES[situacao.situacao]}</span>
@@ -332,14 +337,15 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
                         </div>
                     </div>
 
-                    {/* Os números: vendas e visitas de 30 dias, conversão, a nota do cadastro e a saúde do ML. */}
-                    <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-3 lg:grid-cols-6">
-                        <Numero rotulo="Vendas 30 dias" valor={d && ! d.erro ? fmtInt(d.metricas.vendas_30d) : '…'} />
+                    {/* Os números: vendas e visitas (30 dias, ou os dias que o anúncio tem), conversão e a qualidade que o
+                        próprio ML dá ao anúncio. A nota interna do cadastro NÃO aparece (crua, não dizia nada — 28/10/2026). */}
+                    <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-3 lg:grid-cols-5">
+                        <Numero rotulo={rotuloDaJanela('Vendas', d)} valor={d && ! d.erro ? fmtInt(d.metricas.vendas_30d) : '…'} />
                         <Numero rotulo="Vendas no total" valor={fmtInt(a.vendas_total)} />
-                        <Numero rotulo="Visitas 30 dias" valor={d && ! d.erro ? fmtInt(d.metricas.visitas_30d ?? a.visitas_30d) : fmtInt(a.visitas_30d)} />
+                        <Numero rotulo={rotuloDaJanela('Visitas', d)} valor={d && ! d.erro ? fmtInt(d.metricas.visitas_30d ?? a.visitas_30d) : fmtInt(a.visitas_30d)} />
                         <Numero rotulo="Conversão" valor={d && ! d.erro ? fmtPct(d.metricas.conversao) : '…'} />
-                        <Numero rotulo="Nota do cadastro" valor={a.nota_ecf !== null ? `${a.nota_ecf} de ${a.nota_base}` : '—'} />
-                        <Numero rotulo="Saúde no ML" valor={a.saude_ml !== null ? `${a.saude_ml} de 100` : '—'} />
+                        <Numero rotulo="Qualidade no ML" valor={qualidadeNoMl(a)}
+                            dica="A qualidade que o próprio Mercado Livre dá ao anúncio, de 0 a 100." />
                     </dl>
 
                     {resumo.length > 0 && <p className="mt-3 text-[12.5px] text-white/55" data-resumo-cadastro>{resumo.join(' · ')}</p>}
@@ -365,9 +371,9 @@ function CartaoAnuncio({ anuncio: a, diagnostico: d, situacao, marcado, marcavel
     );
 }
 
-function Numero({ rotulo, valor }) {
+function Numero({ rotulo, valor, dica }) {
     return (
-        <div className="min-w-0">
+        <div className="min-w-0" title={dica}>
             <dt className="truncate text-white/40">{rotulo}</dt>
             <dd className="mt-0.5 font-medium text-white/85">{valor}</dd>
         </div>

@@ -91,7 +91,32 @@ class DiagnosticoDoAnuncioTest extends TestCase
         $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => 0, 'visitas_30d' => 3]);
 
         $this->assertSame([], $d['problemas']);
-        $this->assertSame(['vendas_30d' => 0, 'visitas_30d' => 3, 'conversao' => 0.0], $d['metricas']);
+        $this->assertSame(['vendas_30d' => 0, 'visitas_30d' => 3, 'conversao' => 0.0, 'dias' => 30], $d['metricas']);
+    }
+
+    public function test_anuncio_novo_nao_tem_problema_de_desempenho_e_a_janela_e_a_dos_dias_no_ar(): void
+    {
+        // O usuário viu "Pouca visita: 3 em 30 dias" num anúncio de poucos dias (28/10/2026).
+        $agora = new \DateTimeImmutable('2026-10-28 12:00:00-03:00');
+        $item = ['status' => 'active', 'start_time' => '2026-10-23T10:00:00.000-03:00',
+            'title' => 'Mesa Lateral Redonda Madeira Maciça Pés Palito Sala Quarto',
+            'attributes' => [['id' => 'MODEL', 'value_name' => 'a, b'], ...$this->caixa()]];
+
+        $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => 0, 'visitas_30d' => 3], null, $agora);
+        $this->assertSame(6, $d['metricas']['dias']);
+        $this->assertSame([], $d['problemas'], 'menos de 7 dias no ar: os números ainda não dizem nada');
+
+        // 15 dias no ar: a régua é proporcional (100 visitas em 30 dias = 50 em 15) e o texto diz os dias reais.
+        $item['start_time'] = '2026-10-13T12:00:00.000-03:00';
+        $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => 0, 'visitas_30d' => 40], null, $agora);
+        $this->assertSame(15, $d['metricas']['dias']);
+        $this->assertSame(['Pouca visita: 40 em 15 dias', 'Nenhuma venda em 15 dias'], array_column($d['problemas'], 'texto'));
+        $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => 3, 'visitas_30d' => 60], null, $agora);
+        $this->assertSame([], $d['problemas'], '60 visitas em 15 dias passa da régua proporcional (50)');
+
+        // Anúncio antigo: a janela é a de 30 dias.
+        $item['start_time'] = '2025-01-01T00:00:00.000-03:00';
+        $this->assertSame(30, DiagnosticoDoAnuncio::avaliar($item, [], [], null, $agora)['metricas']['dias']);
     }
 
     public function test_metricas_ainda_nao_lidas_nao_viram_problema(): void
@@ -100,7 +125,7 @@ class DiagnosticoDoAnuncioTest extends TestCase
 
         $d = DiagnosticoDoAnuncio::avaliar($item, [], ['vendas_30d' => null, 'visitas_30d' => null]);
 
-        $this->assertSame(['vendas_30d' => null, 'visitas_30d' => null, 'conversao' => null], $d['metricas']);
+        $this->assertSame(['vendas_30d' => null, 'visitas_30d' => null, 'conversao' => null, 'dias' => 30], $d['metricas']);
         $this->assertSame(['sem_caixa'], array_column($d['problemas'], 'chave'));
         $this->assertSame(60, $d['titulo']['max'], 'sem o limite da categoria, 60');
     }

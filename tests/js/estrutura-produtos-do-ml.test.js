@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PRIORIDADES, alternar, marcarPagina, podeMarcar, resumoDoCadastro, textoDoItem } from '../../resources/js/lib/produtosDoMl.js';
+import { PRIORIDADES, alternar, marcarPagina, podeMarcar, qualidadeNoMl, resumoDoCadastro, rotuloDaJanela, textoDoItem, textoNoPortal } from '../../resources/js/lib/produtosDoMl.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Produtos → Trazer do Mercado Livre (28/10/2026): as regras da tela.
@@ -11,11 +11,12 @@ import { PRIORIDADES, alternar, marcarPagina, podeMarcar, resumoDoCadastro, text
 // que o produto foi importado — decisão do usuário: nada sobre o que se faz com a ficha.
 // ═══════════════════════════════════════════════════════════════════════
 
-const anuncio = (mlb, extra = {}) => ({ mlb, importado: null, ...extra });
+const anuncio = (mlb, extra = {}) => ({ mlb, no_portal: null, ...extra });
 
 test('não marca o que já foi trazido nem o que está andando', () => {
     assert.equal(podeMarcar(anuncio('MLB1')), true);
-    assert.equal(podeMarcar(anuncio('MLB1', { importado: { produto_id: 3 } })), false);
+    assert.equal(podeMarcar(anuncio('MLB1', { no_portal: { produto_id: 3, origem: 'importado' } })), false);
+    assert.equal(podeMarcar(anuncio('MLB1', { no_portal: { produto_id: 3, origem: 'publicador' } })), false, 'nascido no Portal não se importa');
     assert.equal(podeMarcar(anuncio('MLB1'), { MLB1: { situacao: 'importando' } }), false);
     assert.equal(podeMarcar(anuncio('MLB1'), { MLB1: { situacao: 'fila' } }), false);
     assert.equal(podeMarcar(anuncio('MLB1'), { MLB1: { situacao: 'erro' } }), true, 'deu erro: pode tentar de novo');
@@ -30,7 +31,7 @@ test('a seleção respeita o teto por envio', () => {
     s = alternar(s, 'A', 2);
     assert.deepEqual([...s], ['B']);
 
-    const pagina = [anuncio('X'), anuncio('Y', { importado: { produto_id: 1 } }), anuncio('Z'), anuncio('W')];
+    const pagina = [anuncio('X'), anuncio('Y', { no_portal: { produto_id: 1, origem: 'mapeamento' } }), anuncio('Z'), anuncio('W')];
     assert.deepEqual([...marcarPagina(new Set(), pagina, {}, 2)], ['X', 'Z']);
 });
 
@@ -69,4 +70,15 @@ test('textos profissionais: importar, nunca trazer; nenhum rótulo depreciativo'
     }
     assert.match(fontes[0], /Importar do Mercado Livre/);
     assert.match(fontes[1], /Maior oportunidade de melhoria/);
+});
+
+test('janela dos números e qualidade do ML em texto claro', () => {
+    assert.equal(rotuloDaJanela('Visitas', { metricas: { dias: 5 } }), 'Visitas (5 dias)');
+    assert.equal(rotuloDaJanela('Visitas', { metricas: { dias: 1 } }), 'Visitas (1 dia)');
+    assert.equal(rotuloDaJanela('Vendas', { metricas: { dias: 30 } }), 'Vendas 30 dias');
+    assert.equal(rotuloDaJanela('Vendas', undefined), 'Vendas 30 dias');
+    assert.equal(qualidadeNoMl({ saude_nivel: 'Boa', saude_ml: 88 }), 'Boa · 88');
+    assert.equal(qualidadeNoMl({ saude_nivel: null, saude_ml: null }), '—');
+    assert.equal(textoNoPortal({ origem: 'publicador' }), 'Já está no Portal · ver produto');
+    assert.equal(textoNoPortal({ origem: 'importado' }), 'Já importado · ver produto');
 });

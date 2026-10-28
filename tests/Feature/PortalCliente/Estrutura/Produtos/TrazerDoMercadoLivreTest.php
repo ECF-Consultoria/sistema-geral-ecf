@@ -281,6 +281,32 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count());
     }
 
+    public function test_anuncio_ligado_a_produto_no_mapeamento_ja_esta_no_portal_e_nao_e_importado_de_novo(): void
+    {
+        $empresa = $this->empresaConectada();
+        $this->noAcervo($empresa, 'MLB111');
+        $this->noAcervo($empresa, 'MLB222');
+        $this->fakeMl(['MLB111' => $this->anuncio()]);
+        app(ProdutoCadastroService::class)->gravarLinhas($empresa, [['codigo' => 'POLTR-1', 'nome' => 'Poltrona do Portal']],
+            $this->atorCliente($empresa), agendarPreparo: false);
+        $oferta = \App\Models\EstruturaOferta::where('company_id', $empresa->id)->whereNotNull('variacao_id')->sole();
+        \App\Models\EstruturaAnuncio::create(['oferta_id' => $oferta->id, 'tipo' => \App\Models\EstruturaAnuncio::TIPO_CLASSICO,
+            'status' => \App\Models\EstruturaAnuncio::STATUS_ATIVO, 'codigo_mlb' => 'MLB111', 'titulo' => 'Poltrona']);
+        $produto = EstruturaProduto::where('company_id', $empresa->id)->sole();
+
+        $lista = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->assertOk()->json('itens');
+        $porMlb = collect($lista)->keyBy('mlb');
+        $this->assertSame(['produto_id' => $produto->id, 'origem' => 'mapeamento', 'nome' => 'Poltrona do Portal'], $porMlb['MLB111']['no_portal']);
+        $this->assertNull($porMlb['MLB222']['no_portal']);
+        $soFora = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['so_novos' => 1]))->json('itens');
+        $this->assertSame(['MLB222'], array_column($soFora, 'mlb'), '"Esconder os que já estão no Portal"');
+
+        $r = $this->entrarNoPortal($empresa)->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
+        $this->assertSame('ja_existe', $r->json('itens.0.situacao'));
+        $this->assertSame('Este anúncio já está no Portal: “Poltrona do Portal”.', $r->json('itens.0.mensagem'));
+        $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count(), 'nada foi criado');
+    }
+
     public function test_mlb_fora_do_acervo_da_empresa_e_recusado(): void
     {
         $empresa = $this->empresaConectada();
@@ -324,7 +350,8 @@ class TrazerDoMercadoLivreTest extends TestCase
         // Padrão: TODOS (ativo, pausado, catálogo), da nota mais baixa para a mais alta; sem nota por último.
         $r = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->assertOk();
         $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB1', 'MLB5'], array_column($r->json('itens'), 'mlb'));
-        $this->assertSame(['produto_id' => $produto->id, 'nome' => 'Já trazido'], $r->json('itens.3.importado'));
+        $this->assertSame(['produto_id' => $produto->id, 'origem' => 'importado', 'nome' => 'Já trazido'], $r->json('itens.3.no_portal'));
+        $this->assertArrayNotHasKey('nota_ecf', $r->json('itens.0'), 'a nota interna do cadastro não vai para a tela');
         $this->assertSame([false, 'Pausado'], [$r->json('itens.0.ativo'), $r->json('itens.0.status')]);
         $this->assertTrue($r->json('itens.1.catalogo'));
 
@@ -351,7 +378,7 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertTrue($r->json('vendas_prontas'));
         $this->assertSame(['MLB111'], array_keys($r->json('diagnosticos')), 'MLB fora do acervo não é lido');
         $d = $r->json('diagnosticos.MLB111');
-        $this->assertSame(['vendas_30d' => 0, 'visitas_30d' => 40, 'conversao' => 0], $d['metricas']);
+        $this->assertSame(['vendas_30d' => 0, 'visitas_30d' => 40, 'conversao' => 0, 'dias' => 30], $d['metricas']);
         $this->assertSame(['titulo_curto', 'sem_modelo', 'obrigatorio_faltando', 'pouca_visita', 'sem_venda'], array_column($d['problemas'], 'chave'));
         $this->assertSame('alta', $d['prioridade']);
         $this->assertSame(['Material'], $d['campos']['obrigatorios_faltando']);

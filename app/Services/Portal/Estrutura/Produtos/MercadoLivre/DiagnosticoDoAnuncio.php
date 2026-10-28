@@ -37,8 +37,18 @@ final class DiagnosticoDoAnuncio
     /** Ficha com menos que esta fração dos campos preenchida = incompleta. */
     public const FRACAO_FICHA = 0.6;
 
+    /** Visitas em 30 dias. Anúncio mais novo que 30 dias: proporcional aos dias que está no ar. */
     public const POUCA_VISITA = 100;
     public const MUITA_VISITA = 300;
+
+    /**
+     * Abaixo disto o anúncio é novo demais para os números dizerem algo (o usuário viu "Pouca visita: 3 em 30
+     * dias" num anúncio de poucos dias, 28/10/2026): nenhum problema de desempenho.
+     */
+    public const DIAS_MINIMOS = 7;
+
+    /** A janela das visitas e vendas. */
+    public const JANELA_DIAS = 30;
     /** Conversão abaixo disto (em %), com muita visita = "muita visita, pouca venda". */
     public const CONVERSAO_BAIXA = 1.0;
 
@@ -54,12 +64,12 @@ final class DiagnosticoDoAnuncio
      *     campos: array{preenchidos: int, total: int, obrigatorios_faltando: list<string>},
      *     medidas: array{produto: ?bool, caixa: bool},
      *     fotos: int,
-     *     metricas: array{vendas_30d: ?int, visitas_30d: ?int, conversao: ?float},
+     *     metricas: array{vendas_30d: ?int, visitas_30d: ?int, conversao: ?float, dias: int},
      *     problemas: list<array{chave: string, tipo: string, texto: string}>,
      *     prioridade: string
      * }
      */
-    public static function avaliar(array $item, array $campos, array $metricas, ?int $maxTitulo = null): array
+    public static function avaliar(array $item, array $campos, array $metricas, ?int $maxTitulo = null, ?\DateTimeInterface $agora = null): array
     {
         $atributos = [];
         foreach ((array) ($item['attributes'] ?? []) as $a) {
@@ -133,16 +143,23 @@ final class DiagnosticoDoAnuncio
         $visitas = isset($metricas['visitas_30d']) ? (int) $metricas['visitas_30d'] : null;
         $conversao = ($vendas !== null && $visitas !== null && $visitas > 0) ? round($vendas / $visitas * 100, 2) : null;
 
-        $ativo = ($item['status'] ?? 'active') === 'active';
-        if (! $ativo) {
-            // Os números continuam na tela; só não viram "problema".
-        } elseif ($visitas !== null && $visitas < self::POUCA_VISITA) {
-            $problemas[] = ['chave' => 'pouca_visita', 'tipo' => 'desempenho', 'texto' => "Pouca visita: {$visitas} em 30 dias"];
-        } elseif ($visitas !== null && $visitas >= self::MUITA_VISITA && $conversao !== null && $conversao < self::CONVERSAO_BAIXA) {
-            $problemas[] = ['chave' => 'visita_sem_venda', 'tipo' => 'desempenho', 'texto' => "Muita visita e pouca venda: {$visitas} visitas, conversão de ".self::pct($conversao)];
+        // Há quantos dias o anúncio está no ar (até a janela de 30): a régua e o texto usam os dias reais.
+        $dias = self::diasNoAr($item, $agora);
+        $proporcao = $dias / self::JANELA_DIAS;
+        $emDias = $dias === 1 ? 'em 1 dia' : "em {$dias} dias";
+
+        // Pausado ou encerrado não recebe visita nem venda; anúncio novo ainda não tem número que diga algo.
+        // Nos dois casos os números continuam na tela; só não viram "problema".
+        $avaliaDesempenho = ($item['status'] ?? 'active') === 'active' && $dias >= self::DIAS_MINIMOS;
+        if (! $avaliaDesempenho) {
+            // nada
+        } elseif ($visitas !== null && $visitas < self::POUCA_VISITA * $proporcao) {
+            $problemas[] = ['chave' => 'pouca_visita', 'tipo' => 'desempenho', 'texto' => "Pouca visita: {$visitas} {$emDias}"];
+        } elseif ($visitas !== null && $visitas >= self::MUITA_VISITA * $proporcao && $conversao !== null && $conversao < self::CONVERSAO_BAIXA) {
+            $problemas[] = ['chave' => 'visita_sem_venda', 'tipo' => 'desempenho', 'texto' => "Muita visita e pouca venda: {$visitas} visitas {$emDias}, conversão de ".self::pct($conversao)];
         }
-        if ($ativo && $vendas === 0) {
-            $problemas[] = ['chave' => 'sem_venda', 'tipo' => 'desempenho', 'texto' => 'Nenhuma venda em 30 dias'];
+        if ($avaliaDesempenho && $vendas === 0) {
+            $problemas[] = ['chave' => 'sem_venda', 'tipo' => 'desempenho', 'texto' => "Nenhuma venda {$emDias}"];
         }
 
         $deCadastro = count(array_filter($problemas, fn ($p) => $p['tipo'] === 'cadastro'));
@@ -161,10 +178,27 @@ final class DiagnosticoDoAnuncio
             'campos'     => ['preenchidos' => $preenchidos, 'total' => $total, 'obrigatorios_faltando' => $obrigatoriosFaltando],
             'medidas'    => ['produto' => $temMedidaDoProduto, 'caixa' => $caixa],
             'fotos'      => $fotos,
-            'metricas'   => ['vendas_30d' => $vendas, 'visitas_30d' => $visitas, 'conversao' => $conversao],
+            'metricas'   => ['vendas_30d' => $vendas, 'visitas_30d' => $visitas, 'conversao' => $conversao, 'dias' => $dias],
             'problemas'  => $problemas,
             'prioridade' => $prioridade,
         ];
+    }
+
+    /** Dias no ar, de 1 até a janela; sem data no anúncio, a janela inteira (como era antes). */
+    public static function diasNoAr(array $item, ?\DateTimeInterface $agora = null): int
+    {
+        $criado = $item['start_time'] ?? $item['date_created'] ?? null;
+        if (! is_string($criado) || trim($criado) === '') {
+            return self::JANELA_DIAS;
+        }
+        try {
+            $inicio = new \DateTimeImmutable($criado);
+        } catch (\Throwable) {
+            return self::JANELA_DIAS;
+        }
+        $horas = (($agora ?? new \DateTimeImmutable())->getTimestamp() - $inicio->getTimestamp()) / 3600;
+
+        return (int) max(1, min(self::JANELA_DIAS, ceil($horas / 24)));
     }
 
     private static function pct(float $v): string

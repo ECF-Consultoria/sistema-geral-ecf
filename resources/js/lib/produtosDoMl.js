@@ -35,9 +35,12 @@ export const fmtInt = (n) => (n === null || n === undefined ? '—' : Number(n).
 
 export const fmtPct = (n) => (n === null || n === undefined ? '—' : `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: n < 10 ? 1 : 0 })}%`);
 
-/** O anúncio pode ser marcado: ainda não foi importado e não está sendo importado agora. */
+/**
+ * O anúncio pode ser marcado: o produto dele ainda não está no Portal (nem importado, nem publicado pelo
+ * Publicador, nem ligado no Mapeamento) e ele não está sendo importado agora.
+ */
 export function podeMarcar(anuncio, estadoPorMlb = {}) {
-    if (anuncio.importado) return false;
+    if (anuncio.no_portal) return false;
     const s = estadoPorMlb[anuncio.mlb]?.situacao;
 
     return s !== 'fila' && s !== 'importando' && s !== 'pronto';
@@ -64,6 +67,25 @@ export function marcarPagina(selecionados, anuncios, estadoPorMlb, teto) {
     }
 
     return novo;
+}
+
+/** O texto do botão de quem já está no Portal: importado por aqui, ou nascido no Portal (Publicador/Mapeamento). */
+export function textoNoPortal(noPortal) {
+    return noPortal?.origem === 'importado' ? 'Já importado · ver produto' : 'Já está no Portal · ver produto';
+}
+
+/** "Vendas 30 dias", ou "Vendas (5 dias)" no anúncio que está no ar há menos de 30 dias. */
+export function rotuloDaJanela(base, d) {
+    const dias = d && ! d.erro ? d.metricas?.dias : null;
+
+    return dias && dias < 30 ? `${base} (${dias} ${dias === 1 ? 'dia' : 'dias'})` : `${base} 30 dias`;
+}
+
+/** A qualidade que o próprio ML dá ao anúncio: "Boa · 88". Sem avaliação do ML, travessão. */
+export function qualidadeNoMl(anuncio) {
+    if (! anuncio.saude_nivel && (anuncio.saude_ml === null || anuncio.saude_ml === undefined)) return '—';
+
+    return [anuncio.saude_nivel, anuncio.saude_ml ?? null].filter((x) => x !== null && x !== undefined).join(' · ');
 }
 
 /** O resumo curto do cadastro do anúncio: título, Modelo e campos. */
