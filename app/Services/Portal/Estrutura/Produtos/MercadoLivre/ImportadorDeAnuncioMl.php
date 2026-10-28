@@ -98,19 +98,54 @@ class ImportadorDeAnuncioMl
             // Anúncio sem descrição responde 404: segue sem ela.
         }
 
-        $traducao = TradutorAnuncioMlParaPortal::traduzir($item, $descricao, VariacaoImagensService::maxPorVariacao());
-        $avisos = $traducao['avisos'];
+        // Um anúncio pode virar MAIS de um produto: o que varia em cor E tamanho vira um produto por tamanho
+        // (decisão do usuário, 28/10/2026 — {@see TradutorAnuncioMlParaPortal::traduzirEmProdutos()}).
+        $traducoes = TradutorAnuncioMlParaPortal::traduzirEmProdutos($item, $descricao, VariacaoImagensService::maxPorVariacao());
+        $avisos = [];
+        if (count($traducoes) > 1) {
+            $partes = array_map(fn (array $t) => (string) $t['retrato']['parte'], $traducoes);
+            $avisos[] = 'O anúncio varia em cor e em outra característica: virou '.count($traducoes).' produtos, um para cada '.
+                implode(', ', $partes).', com as cores como variações.';
+        }
+
+        $produtos = [];
+        foreach ($traducoes as $n => $traducao) {
+            $r = $this->umProduto($empresa, $mlb, $item, $traducao, $ator, $passo, $avisos);
+            if (isset($r['recusa'])) {
+                // O primeiro produto recusado encerra (nada foi criado); os seguintes viram aviso.
+                if ($produtos === []) {
+                    return $this->resultado($r['recusa'][0], $r['recusa'][1], $r['recusa'][2]);
+                }
+                $avisos[] = 'O produto “'.($traducao['retrato']['parte'] ?? $n + 1).'” não entrou: '.$r['recusa'][2];
+
+                continue;
+            }
+            $produtos[] = $r['produto'];
+        }
+
+        return $this->resultado(ProdutosDoMercadoLivreService::PRONTO, (int) $produtos[0]->id, null, $avisos);
+    }
+
+    /**
+     * Um produto de um anúncio: cadastro, ficha, fotos, origem (o selo) e a jardinagem na fila.
+     *
+     * @return array{produto?: EstruturaProduto, recusa?: array{0: string, 1: ?int, 2: string}}
+     */
+    private function umProduto(Company $empresa, string $mlb, array $item, array $traducao, AtorDoPortal $ator, callable $passo, array &$avisos): array
+    {
+        $avisos = [...$avisos, ...$traducao['avisos']];
         $linhas = $traducao['linhas'];
 
         // ─── 2. O cadastro ───
         $conflito = $this->refJaCadastrada($empresa, $linhas);
         if ($conflito !== null) {
-            return $this->resultado(ProdutosDoMercadoLivreService::JA_EXISTE, (int) $conflito->produto_id,
-                "Já existe um produto com o código “{$conflito->codigo}” ({$conflito->produto?->nome}). Se é o mesmo produto de outro anúncio, ele já está no cadastro.");
+            return ['recusa' => [ProdutosDoMercadoLivreService::JA_EXISTE, (int) $conflito->produto_id,
+                "Já existe um produto com o código “{$conflito->codigo}” ({$conflito->produto?->nome}). Se é o mesmo produto de outro anúncio, ele já está no cadastro."]];
         }
-        $linhas = $this->grupoLivre($empresa, $linhas, $mlb);
+        $grupoReserva = $mlb.(($traducao['retrato']['parte'] ?? null) !== null ? '-'.substr(md5((string) $traducao['retrato']['parte']), 0, 6) : '');
+        $linhas = $this->grupoLivre($empresa, $linhas, $grupoReserva);
         if ($linhas === null) {
-            return $this->resultado(ProdutosDoMercadoLivreService::ERRO, null, "Já existe um produto com o código {$mlb}.");
+            return ['recusa' => [ProdutosDoMercadoLivreService::ERRO, null, "Já existe um produto com o código {$grupoReserva}."]];
         }
 
         $passo('Criando o produto');
@@ -121,9 +156,7 @@ class ImportadorDeAnuncioMl
         }
         $produtoId = $res['linhas'][0]['produto_id'] ?? null;
         if ($produtoId === null) {
-            $msg = $res['erros'][0]['mensagem'] ?? 'Não foi possível criar o produto.';
-
-            return $this->resultado(ProdutosDoMercadoLivreService::ERRO, null, (string) $msg);
+            return ['recusa' => [ProdutosDoMercadoLivreService::ERRO, null, (string) ($res['erros'][0]['mensagem'] ?? 'Não foi possível criar o produto.')]];
         }
         foreach ($res['erros'] as $e) {
             $avisos[] = "Variação {$e['codigo']}: {$e['mensagem']}";
@@ -146,7 +179,7 @@ class ImportadorDeAnuncioMl
             'ml_item_id'      => $mlb,
             'titulo_original' => mb_substr((string) ($item['title'] ?? ''), 0, 255),
             // `atributos_ml` cru: se a ficha da categoria não carregou agora, a jardinagem os aplica depois.
-            'retrato'         => $traducao['retrato'] + ['atributos_ml' => $traducao['atributos'], 'campos_recusados' => $recusados, 'avisos' => $avisos],
+            'retrato'         => $traducao['retrato'] + ['atributos_ml' => $traducao['atributos'], 'campos_recusados' => $recusados, 'avisos' => array_values(array_unique($avisos))],
             'importado_por'   => mb_substr($ator->descricao(), 0, 255),
             'importado_em'    => now(),
         ]);
@@ -156,7 +189,7 @@ class ImportadorDeAnuncioMl
 
         JardinagemDaFicha::agendar($origem);
 
-        return $this->resultado(ProdutosDoMercadoLivreService::PRONTO, (int) $produto->id, null, $avisos);
+        return ['produto' => $produto];
     }
 
     // ═══ Internos ═══════════════════════════════════════════════════════════

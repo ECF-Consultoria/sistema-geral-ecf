@@ -140,6 +140,7 @@ class TrazerDoMercadoLivreTest extends TestCase
                         'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm', 'tags' => []],
                     ['id' => 'WITH_ARMRESTS', 'name' => 'Com braços', 'value_type' => 'boolean', 'tags' => [],
                         'values' => [['id' => '242085', 'name' => 'Sim'], ['id' => '242084', 'name' => 'Não']]],
+                    ['id' => 'SIZE', 'name' => 'Tamanho das meias', 'value_type' => 'string', 'tags' => []],
                 ], 200);
             }
             if (preg_match('#/categories/MLB193945$#', parse_url($url, PHP_URL_PATH) ?? '')) {
@@ -253,6 +254,43 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertSame('48', $ficha['SEAT_DEPTH'] ?? null);
         $this->assertSame('Couro sintético', $ficha['MATERIAL'] ?? null, 'e a IA completou só o que o anúncio não tinha');
         $this->assertSame(1, $r->json('itens.0.campos_ia'));
+    }
+
+    public function test_anuncio_de_cor_e_tamanho_vira_um_produto_por_tamanho_com_selo_e_tamanho_na_ficha(): void
+    {
+        $empresa = $this->empresaConectada();
+        $this->noAcervo($empresa, 'MLB111');
+        $meia = $this->anuncio();
+        $meia['title'] = 'Meia Cano Longo';
+        $comb = fn ($cor, $tam) => [['id' => 'COLOR', 'value_name' => $cor], ['id' => 'SIZE', 'value_name' => $tam]];
+        $meia['variations'] = [
+            ['id' => 1, 'available_quantity' => 3, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-B-34']]],
+            ['id' => 2, 'available_quantity' => 4, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco', '40-44'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-B-40']]],
+            ['id' => 3, 'available_quantity' => 5, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-34']]],
+            ['id' => 4, 'available_quantity' => 6, 'picture_ids' => ['P3'], 'attribute_combinations' => $comb('Verde', '40-44'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-40']]],
+        ];
+        $this->fakeMl(['MLB111' => $meia]);
+
+        $r = $this->withoutVite()->entrarNoPortal($empresa)
+            ->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
+
+        $this->assertSame('pronto', $r->json('itens.0.situacao'));
+        $produtos = EstruturaProduto::where('company_id', $empresa->id)->orderBy('id')->get();
+        $this->assertSame(['Meia Cano Longo 34-39', 'Meia Cano Longo 40-44'], $produtos->pluck('nome')->all());
+        foreach ($produtos as $p) {
+            $vars = EstruturaProdutoVariacao::where('produto_id', $p->id)->orderBy('ordem')->get();
+            $this->assertSame(['cor', 'cor'], $vars->pluck('eixo')->all());
+            $this->assertSame(['Branco', 'Verde'], $vars->pluck('valor')->all());
+            $this->assertSame(str_ends_with($p->nome, '34-39') ? '34-39' : '40-44',
+                EstruturaProdutoAtributo::where('produto_id', $p->id)->where('atributo_id', 'SIZE')->value('valor'), '"Tamanho das meias" preenchido');
+            $this->assertSame(1, EstruturaProdutoOrigemMl::where('produto_id', $p->id)->where('ml_item_id', 'MLB111')->count(), 'cada produto com o seu selo');
+            $this->assertGreaterThan(0, EstruturaProdutoVariacaoImagem::where('produto_id', $p->id)->count());
+        }
+        $this->assertStringContainsString('virou 2 produtos', implode(' ', $r->json('itens.0.avisos')));
+
+        // Importar de novo: já está no Portal.
+        $r = $this->entrarNoPortal($empresa)->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
+        $this->assertSame(2, EstruturaProduto::where('company_id', $empresa->id)->count());
     }
 
     public function test_anuncio_de_outra_conta_nao_entra(): void

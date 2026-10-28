@@ -58,6 +58,7 @@ final class TradutorAnuncioMlParaPortal
     /**
      * @param  array  $item  corpo de `GET /items/{id}` (com `include_attributes=all`)
      * @param  ?string  $descricao  `plain_text` de `GET /items/{id}/description` (null = não tem)
+     * @param  ?string  $parte  o valor que separa ESTE produto dos outros do mesmo anúncio ("34-39"), ou null
      * @return array{
      *     linhas: list<array>,
      *     fotos_por_linha: list<list<array{id: string, url: string}>>,
@@ -66,7 +67,7 @@ final class TradutorAnuncioMlParaPortal
      *     retrato: array
      * }
      */
-    public static function traduzir(array $item, ?string $descricao, int $maxFotos = self::MAX_FOTOS_PADRAO): array
+    public static function traduzir(array $item, ?string $descricao, int $maxFotos = self::MAX_FOTOS_PADRAO, ?string $parte = null): array
     {
         $mlb = strtoupper(trim((string) ($item['id'] ?? '')));
         $avisos = [];
@@ -74,6 +75,10 @@ final class TradutorAnuncioMlParaPortal
         $atributos = self::porId($item['attributes'] ?? []);
         $nome = self::texto($item['title'] ?? '') ?: $mlb;
         $skuDoAnuncio = self::valor($atributos['SELLER_SKU'] ?? null) ?? self::texto($item['seller_custom_field'] ?? '') ?: null;
+        if ($parte !== null) {
+            // Um dos produtos de um anúncio dividido ("Meia Cano Longo 34-39"): nome e código próprios.
+            $nome = mb_substr(trim($nome.' '.$parte), 0, 255);
+        }
 
         [$volume, $avisoVolume] = self::volume($atributos, $item['shipping'] ?? []);
         if ($avisoVolume !== null) {
@@ -103,6 +108,9 @@ final class TradutorAnuncioMlParaPortal
             $fotosPorLinha[] = array_slice(array_values($fotosDoAnuncio), 0, $maxFotos);
         } else {
             $grupo = $skuDoAnuncio ?? $mlb;
+            if ($parte !== null) {
+                $grupo = mb_substr($grupo.'-'.self::trecho($parte), 0, 120);
+            }
             $usados = [];
             // O eixo é a característica que VARIA entre as variações (moda traz cor E tamanho em cada uma;
             // com a cor igual em todas, o eixo é o tamanho — 28/10/2026, "Meia Cano Longo"). A que não varia
@@ -114,13 +122,15 @@ final class TradutorAnuncioMlParaPortal
 
             foreach ($variacoesMl as $i => $v) {
                 $atributosDaVariacao = self::porId($v['attributes'] ?? []);
+                // A posição no anúncio inteiro (o dividido traz só parte das variações): Ref única entre os produtos.
+                $posicao = (int) ($v['_posicao'] ?? $i + 1);
                 $codigo = self::valor($atributosDaVariacao['SELLER_SKU'] ?? null)
                     ?? (self::texto($v['seller_custom_field'] ?? '') ?: null)
-                    ?? $mlb.'-'.($i + 1);
+                    ?? $mlb.'-'.$posicao;
                 // A mesma Ref em duas variações do anúncio derrubaria a segunda (código repetido).
                 $chave = mb_strtolower($codigo);
                 if (isset($usados[$chave]) || mb_strtolower($grupo) === $chave && count($variacoesMl) > 1) {
-                    $codigo = $mlb.'-'.($i + 1);
+                    $codigo = $mlb.'-'.$posicao;
                     $chave = mb_strtolower($codigo);
                 }
                 $usados[$chave] = true;
@@ -169,8 +179,88 @@ final class TradutorAnuncioMlParaPortal
             'fotos_por_linha' => $fotosPorLinha,
             'atributos'       => $daFicha,
             'avisos'          => $avisos,
-            'retrato'         => self::retrato($item, $atributos, $volume, $descricao, count($fotosDoAnuncio), count($variacoesMl)),
+            'retrato'         => self::retrato($item, $atributos, $volume, $descricao, count($fotosDoAnuncio), count($variacoesMl)) + ['parte' => $parte],
         ];
+    }
+
+    /**
+     * Um anúncio → os produtos do Portal (28/10/2026, decisão do usuário).
+     *
+     * O Portal guarda UM tipo de variação por produto. Anúncio que varia em COR e em outra característica
+     * (moda: cor E tamanho, a "Meia Cano Longo") vira UM PRODUTO POR VALOR da outra — "Meia Cano Longo
+     * 34-39" e "… 40-44" —, cada um com as cores como variações (como os demais produtos do Publicador, que
+     * agrupa e fotografa por cor) e o valor na ficha ("Tamanho das meias = 34-39"). Fora desse caso (uma
+     * característica só, ou duas sem cor, ou três), um produto só, como em {@see self::traduzir()}.
+     *
+     * @return list<array> uma tradução (formato de {@see self::traduzir()}) por produto
+     */
+    public static function traduzirEmProdutos(array $item, ?string $descricao, int $maxFotos = self::MAX_FOTOS_PADRAO): array
+    {
+        $variacoes = array_values(array_filter((array) ($item['variations'] ?? []), 'is_array'));
+        foreach ($variacoes as $i => $v) {
+            $variacoes[$i]['_posicao'] = $i + 1;
+        }
+        $item = ['variations' => $variacoes] + $item;
+
+        $divisao = self::divisaoPorCor($variacoes);
+        if ($divisao === null) {
+            return [self::traduzir($item, $descricao, $maxFotos)];
+        }
+
+        $saida = [];
+        foreach ($divisao as $valor => $doGrupo) {
+            $saida[] = self::traduzir(['variations' => $doGrupo] + $item, $descricao, $maxFotos, (string) $valor);
+        }
+
+        return $saida;
+    }
+
+    /**
+     * As variações agrupadas pelo valor da característica que NÃO é cor, quando variam exatamente duas e uma
+     * delas é cor. Null = não divide. A ordem é a do anúncio.
+     *
+     * @return array<string, list<array>>|null
+     */
+    private static function divisaoPorCor(array $variacoes): ?array
+    {
+        if (count($variacoes) < 2) {
+            return null;
+        }
+        $todas = array_map(fn (array $v) => self::caracteristicasDaVariacao($v), $variacoes);
+        $distintos = [];
+        foreach ($todas as $c) {
+            foreach ($c as $id => $nome) {
+                $distintos[$id][mb_strtolower($nome)] = true;
+            }
+        }
+        $variam = array_keys(array_filter($distintos, fn ($d) => count($d) > 1));
+        if (count($variam) !== 2) {
+            return null;
+        }
+        $cores = array_values(array_filter($variam, fn ($id) => self::eixoDoAtributo($id) === 'cor'));
+        if (count($cores) !== 1) {
+            return null;
+        }
+        $divide = $variam[0] === $cores[0] ? $variam[1] : $variam[0];
+
+        $grupos = [];
+        foreach ($variacoes as $i => $v) {
+            $valor = $todas[$i][$divide] ?? null;
+            if ($valor === null) {
+                return null; // variação sem o valor que divide: não dá para saber de qual produto é
+            }
+            $grupos[$valor][] = $v;
+        }
+
+        return $grupos;
+    }
+
+    /** Um pedaço de código a partir de um valor ("34-39" → "34-39", "Tam Único" → "TAM-UNICO"). */
+    private static function trecho(string $valor): string
+    {
+        $t = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '-', (string) iconv('UTF-8', 'ASCII//TRANSLIT', $valor)));
+
+        return trim($t, '-') ?: 'P';
     }
 
     /**
@@ -312,6 +402,19 @@ final class TradutorAnuncioMlParaPortal
                 $variam[] = $id;
             } elseif (count($todas) > 1 && count(array_filter($todas, fn ($c) => isset($c[$id]))) === count($todas)) {
                 $fixas[$id] = (string) reset($distintos);
+            }
+        }
+        // Uma variação só (o tamanho que existe numa cor só, depois de dividir por tamanho): a cor é o valor dela
+        // e o resto é do produto.
+        if (count($todas) === 1) {
+            $cor = array_values(array_filter(array_keys($valores), fn ($id) => self::eixoDoAtributo($id) === 'cor'));
+            if ($cor !== []) {
+                $variam = [$cor[0]];
+                foreach ($valores as $id => $distintos) {
+                    if ($id !== $cor[0]) {
+                        $fixas[$id] = (string) reset($distintos);
+                    }
+                }
             }
         }
         // Nenhuma varia (anúncio com variações iguais): fica como estava, com todas juntas.
