@@ -169,37 +169,22 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'não diz o que muda')));
     }
 
-    public function test_cor_e_tamanho_viram_um_produto_por_tamanho_com_as_cores_como_variacoes(): void
+    public function test_cor_e_tamanho_continuam_um_produto_so_com_os_dois_em_cada_variacao(): void
     {
-        // 28/10/2026, decisão do usuário ("Meia Cano Longo": 2 cores × 2 tamanhos).
+        // 28/10/2026, decisão do usuário ("Meia Cano Longo"): um pai só, como no anúncio.
         $item = $this->cadeira();
-        $item['title'] = 'Meia Cano Longo';
         $comb = fn ($cor, $tam) => [['id' => 'COLOR', 'value_name' => $cor], ['id' => 'SIZE', 'value_name' => $tam]];
         $item['variations'] = [
-            ['id' => 1, 'available_quantity' => 3, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco - Verde', '34-39'), 'attributes' => []],
-            ['id' => 2, 'available_quantity' => 4, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco - Verde', '40-44'), 'attributes' => []],
-            ['id' => 3, 'available_quantity' => 5, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Verde - Branco', '34-39'), 'attributes' => []],
-            ['id' => 4, 'available_quantity' => 6, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Verde - Branco', '40-44'), 'attributes' => []],
+            ['id' => 1, 'attribute_combinations' => $comb('Branco', '34-39'), 'attributes' => []],
+            ['id' => 2, 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => []],
+            ['id' => 3, 'attribute_combinations' => $comb('Verde', '39-43'), 'attributes' => []],
         ];
 
-        $produtos = TradutorAnuncioMlParaPortal::traduzirEmProdutos($item, 'Meia de algodão.');
+        $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
 
-        $this->assertCount(2, $produtos);
-        [$p34, $p40] = $produtos;
-        $this->assertSame('Meia Cano Longo 34-39', $p34['linhas'][0]['nome']);
-        $this->assertSame('CAD-ER200-34-39', $p34['linhas'][0]['grupo']);
-        $this->assertSame([['cor', 'Branco - Verde', 3], ['cor', 'Verde - Branco', 5]], array_map(fn ($l) => [$l['eixo'], $l['valor'], $l['estoque']], $p34['linhas']));
-        $this->assertSame([['cor', 'Branco - Verde', 4], ['cor', 'Verde - Branco', 6]], array_map(fn ($l) => [$l['eixo'], $l['valor'], $l['estoque']], $p40['linhas']));
-        $this->assertSame('34-39', $p34['atributos']['SIZE']['value_name'], 'o tamanho vai para a ficha do produto');
-        $this->assertSame('40-44', $p40['atributos']['SIZE']['value_name']);
-        $this->assertSame(['MLB111-1', 'MLB111-3'], array_column($p34['linhas'], 'codigo'), 'sem SKU, o MLB e a posição no anúncio inteiro');
-        $this->assertSame(['MLB111-2', 'MLB111-4'], array_column($p40['linhas'], 'codigo'));
-        $this->assertSame([], array_intersect(array_column($p34['linhas'], 'codigo'), array_column($p40['linhas'], 'codigo')), 'Refs únicas entre os produtos');
-        $this->assertSame(['P1'], array_column($p34['fotos_por_linha'][0], 'id'));
-        $this->assertSame('34-39', $p34['retrato']['parte']);
-
-        // Uma característica só: um produto, como sempre.
-        $this->assertCount(1, TradutorAnuncioMlParaPortal::traduzirEmProdutos($this->cadeira(), null));
+        $this->assertSame([['outro', 'Branco · 34-39'], ['outro', 'Verde · 34-39'], ['outro', 'Verde · 39-43']],
+            array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+        $this->assertSame(['CAD-ER200'], array_values(array_unique(array_column($r['linhas'], 'grupo'))), 'um produto só');
     }
 
     public function test_tamanho_so_nos_atributos_da_variacao(): void

@@ -2140,12 +2140,12 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   cheio (medido: D_655797-MLB104381465699 = 333×500 no `-O`, 800×1200 no `-F`). A importação baixa o `-F` e só cai
   no `-O` se ele falhar (`TradutorAnuncioMlParaPortal::urlTamanhoCheio`). Reproduzido ponta a ponta: só `-O` → 0
   fotos no rascunho; `-F` → todas.
-- **Anúncio de COR e TAMANHO vira UM PRODUTO POR TAMANHO** (decisão do usuário, 28/10/2026, perguntada com a
-  meia na tela): o Portal guarda um tipo de variação por produto. "Meia Cano Longo 34-39" e "… 40-44", cada um com
-  as cores como variações e o tamanho na ficha ("Tamanho das meias" = o id da combinação, ex. `SIZE`). Vale quando
-  variam exatamente duas características e uma é cor (`traduzirEmProdutos`). Por isso a origem passou a ser única
-  por PRODUTO, não por anúncio (migration `2026_10_28_150000`; os índices novos entram antes do unique antigo sair,
-  senão a FK de `company_id` fica sem índice — erro 1553).
+- **Anúncio de COR e TAMANHO é UM PRODUTO SÓ** ("um pai só", decisão do usuário, 28/10/2026), com "Cor · Tamanho"
+  juntos em cada variação (eixo "Outro"): o Portal guarda UMA característica por variação. Separar em um produto por
+  tamanho foi tentado no mesmo dia e o usuário recusou ao ver ("veio separado sendo que são variações do mesmo
+  pai") — não repetir. Cor e tamanho separados + guia de tamanhos é o plano
+  `.planning/seeds/moda-cor-e-tamanho-e-guia-de-tamanhos.md`. Da tentativa ficou a migration `2026_10_28_150000`
+  (origem única por PRODUTO, não por anúncio), que já rodou em produção e continua correta.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 

@@ -98,36 +98,18 @@ class ImportadorDeAnuncioMl
             // Anúncio sem descrição responde 404: segue sem ela.
         }
 
-        // Um anúncio pode virar MAIS de um produto: o que varia em cor E tamanho vira um produto por tamanho
-        // (decisão do usuário, 28/10/2026 — {@see TradutorAnuncioMlParaPortal::traduzirEmProdutos()}).
-        $traducoes = TradutorAnuncioMlParaPortal::traduzirEmProdutos($item, $descricao, VariacaoImagensService::maxPorVariacao());
+        $traducao = TradutorAnuncioMlParaPortal::traduzir($item, $descricao, VariacaoImagensService::maxPorVariacao());
         $avisos = [];
-        if (count($traducoes) > 1) {
-            $partes = array_map(fn (array $t) => (string) $t['retrato']['parte'], $traducoes);
-            $avisos[] = 'O anúncio varia em cor e em outra característica: virou '.count($traducoes).' produtos, um para cada '.
-                implode(', ', $partes).', com as cores como variações.';
+        $r = $this->umProduto($empresa, $mlb, $item, $traducao, $ator, $passo, $avisos);
+        if (isset($r['recusa'])) {
+            return $this->resultado($r['recusa'][0], $r['recusa'][1], $r['recusa'][2]);
         }
 
-        $produtos = [];
-        foreach ($traducoes as $n => $traducao) {
-            $r = $this->umProduto($empresa, $mlb, $item, $traducao, $ator, $passo, $avisos);
-            if (isset($r['recusa'])) {
-                // O primeiro produto recusado encerra (nada foi criado); os seguintes viram aviso.
-                if ($produtos === []) {
-                    return $this->resultado($r['recusa'][0], $r['recusa'][1], $r['recusa'][2]);
-                }
-                $avisos[] = 'O produto “'.($traducao['retrato']['parte'] ?? $n + 1).'” não entrou: '.$r['recusa'][2];
-
-                continue;
-            }
-            $produtos[] = $r['produto'];
-        }
-
-        return $this->resultado(ProdutosDoMercadoLivreService::PRONTO, (int) $produtos[0]->id, null, $avisos);
+        return $this->resultado(ProdutosDoMercadoLivreService::PRONTO, (int) $r['produto']->id, null, $avisos);
     }
 
     /**
-     * Um produto de um anúncio: cadastro, ficha, fotos, origem (o selo) e a jardinagem na fila.
+     * O produto do anúncio: cadastro, ficha, fotos, origem (o selo) e a jardinagem na fila.
      *
      * @return array{produto?: EstruturaProduto, recusa?: array{0: string, 1: ?int, 2: string}}
      */
@@ -142,10 +124,9 @@ class ImportadorDeAnuncioMl
             return ['recusa' => [ProdutosDoMercadoLivreService::JA_EXISTE, (int) $conflito->produto_id,
                 "Já existe um produto com o código “{$conflito->codigo}” ({$conflito->produto?->nome}). Se é o mesmo produto de outro anúncio, ele já está no cadastro."]];
         }
-        $grupoReserva = $mlb.(($traducao['retrato']['parte'] ?? null) !== null ? '-'.substr(md5((string) $traducao['retrato']['parte']), 0, 6) : '');
-        $linhas = $this->grupoLivre($empresa, $linhas, $grupoReserva);
+        $linhas = $this->grupoLivre($empresa, $linhas, $mlb);
         if ($linhas === null) {
-            return ['recusa' => [ProdutosDoMercadoLivreService::ERRO, null, "Já existe um produto com o código {$grupoReserva}."]];
+            return ['recusa' => [ProdutosDoMercadoLivreService::ERRO, null, "Já existe um produto com o código {$mlb}."]];
         }
 
         $passo('Criando o produto');

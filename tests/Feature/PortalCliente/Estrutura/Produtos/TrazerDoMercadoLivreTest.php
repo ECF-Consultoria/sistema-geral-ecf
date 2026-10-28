@@ -256,8 +256,9 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertSame(1, $r->json('itens.0.campos_ia'));
     }
 
-    public function test_anuncio_de_cor_e_tamanho_vira_um_produto_por_tamanho_com_selo_e_tamanho_na_ficha(): void
+    public function test_anuncio_de_cor_e_tamanho_vira_um_produto_so_com_cor_e_tamanho_em_cada_variacao(): void
     {
+        // 28/10/2026, o usuário: "veio separado sendo que são variações do mesmo pai".
         $empresa = $this->empresaConectada();
         $this->noAcervo($empresa, 'MLB111');
         $meia = $this->anuncio();
@@ -265,9 +266,8 @@ class TrazerDoMercadoLivreTest extends TestCase
         $comb = fn ($cor, $tam) => [['id' => 'COLOR', 'value_name' => $cor], ['id' => 'SIZE', 'value_name' => $tam]];
         $meia['variations'] = [
             ['id' => 1, 'available_quantity' => 3, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-B-34']]],
-            ['id' => 2, 'available_quantity' => 4, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Branco', '40-44'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-B-40']]],
-            ['id' => 3, 'available_quantity' => 5, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-34']]],
-            ['id' => 4, 'available_quantity' => 6, 'picture_ids' => ['P3'], 'attribute_combinations' => $comb('Verde', '40-44'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-40']]],
+            ['id' => 2, 'available_quantity' => 5, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-34']]],
+            ['id' => 3, 'available_quantity' => 6, 'picture_ids' => ['P3'], 'attribute_combinations' => $comb('Verde', '39-43'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-39']]],
         ];
         $this->fakeMl(['MLB111' => $meia]);
 
@@ -275,22 +275,14 @@ class TrazerDoMercadoLivreTest extends TestCase
             ->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
 
         $this->assertSame('pronto', $r->json('itens.0.situacao'));
-        $produtos = EstruturaProduto::where('company_id', $empresa->id)->orderBy('id')->get();
-        $this->assertSame(['Meia Cano Longo 34-39', 'Meia Cano Longo 40-44'], $produtos->pluck('nome')->all());
-        foreach ($produtos as $p) {
-            $vars = EstruturaProdutoVariacao::where('produto_id', $p->id)->orderBy('ordem')->get();
-            $this->assertSame(['cor', 'cor'], $vars->pluck('eixo')->all());
-            $this->assertSame(['Branco', 'Verde'], $vars->pluck('valor')->all());
-            $this->assertSame(str_ends_with($p->nome, '34-39') ? '34-39' : '40-44',
-                EstruturaProdutoAtributo::where('produto_id', $p->id)->where('atributo_id', 'SIZE')->value('valor'), '"Tamanho das meias" preenchido');
-            $this->assertSame(1, EstruturaProdutoOrigemMl::where('produto_id', $p->id)->where('ml_item_id', 'MLB111')->count(), 'cada produto com o seu selo');
-            $this->assertGreaterThan(0, EstruturaProdutoVariacaoImagem::where('produto_id', $p->id)->count());
+        $produto = EstruturaProduto::where('company_id', $empresa->id)->sole();
+        $this->assertSame('Meia Cano Longo', $produto->nome);
+        $vars = EstruturaProdutoVariacao::where('produto_id', $produto->id)->orderBy('ordem')->get();
+        $this->assertSame(['Branco · 34-39', 'Verde · 34-39', 'Verde · 39-43'], $vars->pluck('valor')->all());
+        $this->assertSame(1, EstruturaProdutoOrigemMl::where('ml_item_id', 'MLB111')->count());
+        foreach ($vars as $v) {
+            $this->assertGreaterThan(0, EstruturaProdutoVariacaoImagem::where('variacao_id', $v->id)->count());
         }
-        $this->assertStringContainsString('virou 2 produtos', implode(' ', $r->json('itens.0.avisos')));
-
-        // Importar de novo: já está no Portal.
-        $r = $this->entrarNoPortal($empresa)->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
-        $this->assertSame(2, EstruturaProduto::where('company_id', $empresa->id)->count());
     }
 
     public function test_anuncio_de_outra_conta_nao_entra(): void
