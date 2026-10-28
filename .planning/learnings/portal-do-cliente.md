@@ -2190,8 +2190,19 @@ O usuário: "verdpm — eixo cor: Verde — outro eixo: tamanho 34-39", e escolh
 - **O anúncio aceita UMA variação personalizada só** (`EditorEixos`, V-VAR-02): se NENHUM dos dois eixos é atributo da
   categoria, o Sincronizar junta os dois valores num eixo próprio ("Preto · P"), com aviso. Um só fora da categoria
   dá certo (ex.: COLOR + "Tamanho" próprio na cadeira).
-- **Moda continua sem publicar pelo Publicador** (tabela de medidas) — a etapa 3 do seed
-  `moda-cor-e-tamanho-e-guia-de-tamanhos.md` é o que falta.
+- **Tabela de medidas: o bloqueio era FALSO para meia** (medido na #459 em 28/10/2026, à noite). O anúncio original da
+  "Meia Cano Longo" (domínio `MLB-SOCKS`) NÃO tem `SIZE_GRID_ID` — anúncio antigo, de antes da exigência —, então
+  "reaproveitar a tabela do original" não existe para ele. `POST /catalog/charts/search` com `domain_id: SOCKS` responde
+  `chart_not_available_for_invalid_domain` ("Domain MLB-SOCKS not active") e um `/items/validate` de meia SEM
+  `SIZE_GRID_ID` volta só com aviso de frete (`shipping.lost_me1_by_user`). A categoria tem os campos da tabela
+  (`SIZE_GRID_ID` grid_id, `SIZE_GRID_ROW_ID` grid_row_id, `GENDER` com `grid_template_required`) e o Publicador
+  bloqueava por eles. Agora `ClassificadorAtributos::DOMINIOS_SEM_TABELA_DE_MEDIDAS = ['MLB-SOCKS']` libera, e os
+  campos de tabela viram SYSTEM (nunca enviados). Camiseta (`MLB-T_SHIRTS`) SEGUE bloqueada: lá o validate acusa
+  `missing.fashion_grid.grid_id.values` e a busca de tabelas exige o filtro BRAND (e GENDER). `GET /catalog/charts/{id}`
+  e `GET /catalog/domains/{dom}/technical_specs?section=grids` deram 404 nesta conta. Domínio novo na lista só com a
+  mesma prova (busca + validate).
+- **Moda que exige tabela continua sem publicar pelo Publicador** — a etapa 3 do seed
+  `moda-cor-e-tamanho-e-guia-de-tamanhos.md` (escolher/criar a tabela da conta) é o que falta.
 - **Sigilo:** os testes `estrutura-ficha-sigilo` e `estrutura-produtos-importacao-v2` agora têm a EXCEÇÃO exata do
   botão "Importar do Mercado Livre" e do selo "Importado do Mercado Livre" (decisão do usuário). Eles falhavam desde
   o primeiro deploy da importação. Texto novo da ficha não diz "Mercado Livre" ("ex.: cor e tamanho").

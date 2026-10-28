@@ -11,6 +11,7 @@ use App\Support\Publicador\Schema\AtributoClassificado as A;
  *
  * Papel:
  *   read_only | inferred | fixed  → SYSTEM (vence `required`: o ML preenche — N-08)
+ *   grid_id | grid_row_id         → SYSTEM (a tabela de medidas: o Publicador não a escreve — 28/10/2026)
  *   escolhido como eixo           → VARIATION_AXIS
  *   variation_attribute           → VARIANT_DATA
  *   senão                         → PRODUCT
@@ -33,6 +34,18 @@ final class ClassificadorAtributos
 {
     private const SISTEMA = ['read_only', 'inferred', 'fixed'];
 
+    /** Tipos de valor da tabela de medidas (a guia e a linha dela): não são campo de ficha nem vão no anúncio. */
+    private const DA_TABELA_DE_MEDIDAS = ['grid_id', 'grid_row_id'];
+
+    /**
+     * Domínios que têm os campos da tabela de medidas na categoria, mas onde o ML NÃO a exige. MEDIDO na #459 em
+     * 28/10/2026 (anúncio de meia): `POST /catalog/charts/search` responde "Domain MLB-SOCKS not active" e um
+     * `/items/validate` de meia SEM `SIZE_GRID_ID` volta só com aviso de frete — nenhum erro de tabela. Na camiseta
+     * (MLB-T_SHIRTS), ao contrário, o validate acusa `missing.fashion_grid.grid_id.values` e a busca exige filtros:
+     * ela continua bloqueada. Domínio novo entra aqui só com a mesma prova (busca + validate).
+     */
+    public const DOMINIOS_SEM_TABELA_DE_MEDIDAS = ['MLB-SOCKS'];
+
     public function classificar(CategorySchema $schema, ContextoClassificacao $ctx): SchemaClassificado
     {
         $specs = $this->indexarTechnicalSpecs($schema->technicalSpecs);
@@ -53,7 +66,8 @@ final class ClassificadorAtributos
         $flags = [
             'folha' => $schema->folha(),
             'listing_allowed' => ($settings['listing_allowed'] ?? false) === true,
-            'needs_size_grid' => $this->exigeTabelaDeMedidas($schema->atributos),
+            'needs_size_grid' => ! in_array($schema->dominio(), self::DOMINIOS_SEM_TABELA_DE_MEDIDAS, true)
+                && $this->exigeTabelaDeMedidas($schema->atributos),
             'imagem_obrigatoria' => (bool) array_filter($atributos, fn (A $a) => $a->valueType === 'picture_id' && $a->obrigatorio()),
         ];
 
@@ -81,6 +95,7 @@ final class ClassificadorAtributos
 
         $papel = match (true) {
             (bool) array_intersect(self::SISTEMA, $tags) => A::SYSTEM,
+            in_array($valueType, self::DA_TABELA_DE_MEDIDAS, true) => A::SYSTEM,
             in_array($id, $ctx->eixos, true) => A::VARIATION_AXIS,
             $tem('variation_attribute') => A::VARIANT_DATA,
             default => A::PRODUCT,

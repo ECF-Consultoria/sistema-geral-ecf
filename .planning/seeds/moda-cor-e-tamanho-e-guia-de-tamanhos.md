@@ -8,8 +8,14 @@ completo a moda — este documento.
 
 > **Estado em 28/10/2026 (noite):** etapas 1 e 2 FEITAS — o usuário pediu dois eixos ao ver "Outro: Verde · 34-39".
 > Escolhidas as duas colunas nulas (`eixo_2`/`valor_2`), não a tabela nova; a tela agrupa por cor ("cor com tamanhos
-> dentro"). Detalhes e armadilhas em `.planning/learnings/portal-do-cliente.md` §55.1. **Falta a etapa 3** (guia de
-> tamanhos): a meia ainda não publica pelo Publicador. Planilha/exportação ainda NÃO levam o 2º eixo.
+> dentro"). Detalhes e armadilhas em `.planning/learnings/portal-do-cliente.md` §55.1. Planilha/exportação ainda NÃO
+> levam o 2º eixo.
+>
+> **Etapa 3, medida na #459 (28/10, noite):** MEIA NÃO PRECISA de tabela (domínio `MLB-SOCKS` "not active" para
+> tabelas; validate sem `SIZE_GRID_ID` passa) — o bloqueio do Publicador era falso e saiu para esse domínio. O anúncio
+> original da meia nem tem tabela. A etapa 3 continua valendo para os domínios que EXIGEM (camiseta `MLB-T_SHIRTS`:
+> busca de tabelas pede BRAND + GENDER; validate acusa `missing.fashion_grid.grid_id.values`). Criar tabela grava na
+> conta do cliente — combinar antes.
 
 ## Por que hoje não dá (antes de 28/10 à noite)
 

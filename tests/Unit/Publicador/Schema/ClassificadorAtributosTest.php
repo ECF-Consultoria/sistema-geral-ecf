@@ -168,6 +168,36 @@ class ClassificadorAtributosTest extends TestCase
         $this->assertSame([], self::classificar(self::CADEIRA)->bloqueiosFase2);
     }
 
+    /**
+     * 28/10/2026, medido na #459: meia (MLB-SOCKS) tem os campos da tabela na categoria, mas o ML não a exige
+     * ("Domain MLB-SOCKS not active" na busca; validate sem SIZE_GRID_ID sem erro de tabela). Não bloqueia.
+     */
+    public function test_meia_tem_os_campos_da_tabela_mas_nao_e_bloqueada(): void
+    {
+        $comoMeia = function (array $fontes) {
+            $fontes['categoria']['settings']['catalog_domain'] = 'MLB-SOCKS';
+
+            return $fontes;
+        };
+
+        $meia = self::classificar(self::CAMISETA, null, $comoMeia);
+
+        $this->assertSame('MLB-SOCKS', $meia->dominio);
+        $this->assertFalse($meia->flags['needs_size_grid']);
+        $this->assertNotContains('tabela_de_medidas', array_column($meia->bloqueiosFase2, 'motivo'));
+        // A camiseta de verdade (MLB-T_SHIRTS) segue bloqueada: lá o ML exige a tabela.
+        $this->assertTrue(self::classificar(self::CAMISETA)->flags['needs_size_grid']);
+    }
+
+    /** A guia e a linha da tabela de medidas não são campo de ficha nem vão no anúncio: o Publicador não as escreve. */
+    public function test_campos_da_tabela_de_medidas_sao_do_sistema(): void
+    {
+        $camiseta = self::classificar(self::CAMISETA);
+
+        $this->assertSame(A::SYSTEM, $camiseta->atributo('SIZE_GRID_ID')->papel);
+        $this->assertSame(A::SYSTEM, $camiseta->atributo('SIZE_GRID_ROW_ID')->papel);
+    }
+
     public function test_tc72_tc73_folha_e_listing_allowed(): void
     {
         $this->assertTrue(self::classificar(self::CADEIRA)->flags['folha']);
