@@ -294,12 +294,12 @@ class TrazerDoMercadoLivreTest extends TestCase
             'status' => \App\Models\EstruturaAnuncio::STATUS_ATIVO, 'codigo_mlb' => 'MLB111', 'titulo' => 'Poltrona']);
         $produto = EstruturaProduto::where('company_id', $empresa->id)->sole();
 
-        $lista = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->assertOk()->json('itens');
+        $lista = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['mostrar_no_portal' => 1]))->assertOk()->json('itens');
         $porMlb = collect($lista)->keyBy('mlb');
         $this->assertSame(['produto_id' => $produto->id, 'origem' => 'mapeamento', 'nome' => 'Poltrona do Portal'], $porMlb['MLB111']['no_portal']);
         $this->assertNull($porMlb['MLB222']['no_portal']);
-        $soFora = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['so_novos' => 1]))->json('itens');
-        $this->assertSame(['MLB222'], array_column($soFora, 'mlb'), '"Esconder os que já estão no Portal"');
+        $padrao = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->json('itens');
+        $this->assertSame(['MLB222'], array_column($padrao, 'mlb'), 'por padrão os que já estão no Portal ficam escondidos');
 
         $r = $this->entrarNoPortal($empresa)->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
         $this->assertSame('ja_existe', $r->json('itens.0.situacao'));
@@ -347,8 +347,9 @@ class TrazerDoMercadoLivreTest extends TestCase
         $produto = EstruturaProduto::create(['company_id' => $empresa->id, 'codigo' => 'X', 'nome' => 'Já trazido']);
         EstruturaProdutoOrigemMl::create(['company_id' => $empresa->id, 'produto_id' => $produto->id, 'ml_item_id' => 'MLB1', 'importado_em' => now()]);
 
-        // Padrão: TODOS (ativo, pausado, catálogo), da nota mais baixa para a mais alta; sem nota por último.
-        $r = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios'))->assertOk();
+        // Com "Mostrar os que já estão no Portal": TODOS (ativo, pausado, catálogo, o já importado), da nota mais
+        // baixa para a mais alta; sem nota por último.
+        $r = $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['mostrar_no_portal' => 1]))->assertOk();
         $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB1', 'MLB5'], array_column($r->json('itens'), 'mlb'));
         $this->assertSame(['produto_id' => $produto->id, 'origem' => 'importado', 'nome' => 'Já trazido'], $r->json('itens.3.no_portal'));
         $this->assertArrayNotHasKey('nota_ecf', $r->json('itens.0'), 'a nota interna do cadastro não vai para a tela');
@@ -356,10 +357,12 @@ class TrazerDoMercadoLivreTest extends TestCase
         $this->assertTrue($r->json('itens.1.catalogo'));
 
         $ver = fn (array $q) => array_column($this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', $q))->assertOk()->json('itens'), 'mlb');
-        $this->assertSame(['MLB3', 'MLB2', 'MLB1', 'MLB5'], $ver(['situacao' => 'ativos']));
+        // Padrão: o já importado (MLB1) fica escondido.
+        $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB5'], $ver([]));
+        $this->assertSame(['MLB3', 'MLB2', 'MLB5'], $ver(['situacao' => 'ativos']));
+        $this->assertSame(['MLB3', 'MLB2', 'MLB1', 'MLB5'], $ver(['situacao' => 'ativos', 'mostrar_no_portal' => 1]));
         $this->assertSame(['MLB4'], $ver(['situacao' => 'inativos']));
-        $this->assertSame(['MLB4', 'MLB3', 'MLB2', 'MLB5'], $ver(['so_novos' => 1]));
-        $this->assertSame(['MLB5', 'MLB2', 'MLB4', 'MLB3', 'MLB1'], $ver(['ordem' => 'vendidos']), 'mais vendidos primeiro');
+        $this->assertSame(['MLB5', 'MLB2', 'MLB4', 'MLB3'], $ver(['ordem' => 'vendidos']), 'mais vendidos primeiro');
         $this->entrarNoPortal($empresa)->getJson(route('portal.auth.estrutura.produtos.ml.anuncios', ['ordem' => 'piores']))->assertStatus(422);
     }
 

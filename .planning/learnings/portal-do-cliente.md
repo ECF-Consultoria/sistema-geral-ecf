@@ -2113,6 +2113,8 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   `pub_produtos.estrutura_produto_id`) ou ligado no Mapeamento a uma oferta COM variação. Visto em produção na #459:
   os anúncios do próprio Publicador apareciam como "Recomendado importar". Os do assistente antigo (`acervo.origem
   = ecf`) ganham o marcador "Publicado pela ECF", sem recomendação, mas importáveis (não têm produto no Portal).
+  Os que já estão no Portal começam ESCONDIDOS; a caixa é "Mostrar os que já estão no Portal" (desmarcada) —
+  parâmetro `mostrar_no_portal`. O usuário pediu assim: escondido tem de ser o padrão.
 - **Desempenho usa os dias NO AR** (`start_time`/`date_created`): anúncio com menos de 7 dias não recebe problema
   de desempenho, e a régua de visita é proporcional aos dias (o usuário viu "Pouca visita: 3 em 30 dias" num anúncio
   de poucos dias). A tela diz "Visitas (5 dias)". Cache do diagnóstico trocou de chave (`diag2`) por causa disso.

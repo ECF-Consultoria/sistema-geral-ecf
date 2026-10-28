@@ -27,7 +27,8 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
     const [busca, setBusca] = useState('');
     const [ordem, setOrdem] = useState('oportunidade');
     const [situacao, setSituacao] = useState('todos');
-    const [soNovos, setSoNovos] = useState(false);
+    // Os que já estão no Portal começam escondidos; a caixa "Mostrar os que já estão no Portal" os traz (28/10/2026).
+    const [mostrarNoPortal, setMostrarNoPortal] = useState(false);
     const [carregando, setCarregando] = useState(false);
     const [diagnosticos, setDiagnosticos] = useState({});
     const [diagnosticando, setDiagnosticando] = useState(false);
@@ -56,12 +57,12 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
     const primeira = useRef(true);
     useEffect(() => {
         if (primeira.current) { primeira.current = false; return; }
-        const t = setTimeout(() => carregar({ q: busca || undefined, ordem, situacao, so_novos: soNovos ? 1 : undefined, pagina: 1 }), 350);
+        const t = setTimeout(() => carregar({ q: busca || undefined, ordem, situacao, mostrar_no_portal: mostrarNoPortal ? 1 : undefined, pagina: 1 }), 350);
 
         return () => clearTimeout(t);
-    }, [busca, ordem, situacao, soNovos]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [busca, ordem, situacao, mostrarNoPortal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const irPara = (pagina) => carregar({ q: busca || undefined, ordem, situacao, so_novos: soNovos ? 1 : undefined, pagina });
+    const irPara = (pagina) => carregar({ q: busca || undefined, ordem, situacao, mostrar_no_portal: mostrarNoPortal ? 1 : undefined, pagina });
 
     // ─── Diagnóstico da página (e de novo quando as vendas da loja ficam prontas) ──
 
@@ -233,8 +234,8 @@ export default function EstruturaProdutosDoMl({ empresa, modulos = [], conectado
                         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[12.5px] text-white/45">
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/75">
-                                    <input type="checkbox" checked={soNovos} onChange={(e) => setSoNovos(e.target.checked)} className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-so-novos />
-                                    Esconder os que já estão no Portal
+                                    <input type="checkbox" checked={mostrarNoPortal} onChange={(e) => setMostrarNoPortal(e.target.checked)} className="h-4 w-4 rounded border-white/30 bg-transparent text-ecf-yellow focus:ring-0" data-mostrar-no-portal />
+                                    Mostrar os que já estão no Portal
                                 </label>
                                 <label className="inline-flex cursor-pointer items-center gap-2">
                                     <input type="checkbox" checked={paginaToda} disabled={marcaveis.length === 0}

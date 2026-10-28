@@ -35,7 +35,9 @@ class PortalProdutosDoMercadoLivreController extends Controller
         return Inertia::render('Portal/EstruturaProdutosDoMl', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
             'conectado' => AnunciosMercadoLivreService::conectado($empresa),
-            'anuncios'  => $this->servico->candidatos($empresa),
+            // Os que já estão no Portal começam ESCONDIDOS (28/10/2026, o usuário): a caixa da tela é
+            // "Mostrar os que já estão no Portal", desmarcada.
+            'anuncios'  => $this->servico->candidatos($empresa, soNovos: true),
             'estado'    => $this->servico->estado($empresa),
             'limites'   => ['por_importacao' => ProdutosDoMercadoLivreService::MAX_POR_IMPORTACAO],
         ]);
@@ -47,7 +49,7 @@ class PortalProdutosDoMercadoLivreController extends Controller
             'q'        => ['nullable', 'string', 'max:120'],
             'ordem'    => ['nullable', 'string', 'in:'.implode(',', ProdutosDoMercadoLivreService::ORDENS)],
             'pagina'   => ['nullable', 'integer', 'min:1', 'max:10000'],
-            'so_novos' => ['nullable', 'boolean'],
+            'mostrar_no_portal' => ['nullable', 'boolean'],
             'situacao' => ['nullable', 'string', 'in:'.implode(',', ProdutosDoMercadoLivreService::SITUACOES)],
         ]);
 
@@ -56,7 +58,7 @@ class PortalProdutosDoMercadoLivreController extends Controller
             (string) ($dados['q'] ?? ''),
             (string) ($dados['ordem'] ?? 'oportunidade'),
             (int) ($dados['pagina'] ?? 1),
-            (bool) ($dados['so_novos'] ?? false),
+            ! (bool) ($dados['mostrar_no_portal'] ?? false),
             (string) ($dados['situacao'] ?? 'todos'),
         ));
     }
