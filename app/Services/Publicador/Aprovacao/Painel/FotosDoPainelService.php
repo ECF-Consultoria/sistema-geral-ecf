@@ -77,7 +77,8 @@ use Illuminate\Support\Collection;
  *   3. **`PreparoIaDoRascunhoService:180`** — idem, no segundo laço;
  *   4. **`PreparoIaDoRascunhoService:366`** — idem, na escrita do rascunho;
  *   5. **`GarantiaPadrao:192`** — a garantia padrão não é escrita por baixo de quem edita;
- *   6. **`ExcluirProdutoService:195`** — a exclusão do produto espera.
+ *   6. **`ExcluirProdutoService`** — ⚠️ desde 28/10/2026 só com alguém EDITANDO (`EditorEmUso::editando`): a
+ *      miniatura da vitrine travava a exclusão do próprio produto que mostrava; não segura mais.
  *
  * ⚠️ **A RAZÃO DO USUÁRIO, e ela é o ponto: *é o que o portão quer*.** `AgendadorDaFila:336` diz
  * textualmente *"Gente com o editor aberto: não publica por baixo dela"* — e **revisar é trabalhar
@@ -596,7 +597,7 @@ class FotosDoPainelService
      * `arquivoFoto` → `rascunho()` → `produto()` → `EditorEmUso::marcar()`
      * (`MlbPublicadorController:405`; o tempo é `config/publicador.php:148`), e o sinal é lido por
      * **`AgendadorDaFila:337`**, **`PreparoIaDoRascunhoService:131`**, **`:180`**, **`:366`**,
-     * **`GarantiaPadrao:192`** e **`ExcluirProdutoService:195`**. ➡️ **Enquanto alguém revisa, o
+     * **`GarantiaPadrao:192`** (e, até 28/10/2026, **`ExcluirProdutoService`**). ➡️ **Enquanto alguém revisa, o
      * agendamento e o preparo por IA daquele produto esperam.** Aceito pelo usuário em 19/10/2026
      * (PERGUNTA-188-C): *é o que o portão quer* — `AgendadorDaFila:336` diz *"Gente com o editor
      * aberto: não publica por baixo dela"*, e revisar é trabalhar no produto. **"Servir sem marcar"

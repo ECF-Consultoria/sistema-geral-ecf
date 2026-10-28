@@ -211,7 +211,7 @@ class ExcluirProdutoTest extends TestCase
         $this->soltar($a, $b, $c, $d);
         $this->rascunhoDe($b)->update(['status' => PubRascunho::PUBLISHING]);
         Cache::put(ResumoRapidoService::chaveConferindo($c->id), 1, now()->addMinutes(5));
-        EditorEmUso::marcar($d->id);
+        EditorEmUso::marcarEdicao($d->id);
 
         $resposta = $this->svc()->excluir($this->alvo(), [$a->id, $b->id, $c->id, $d->id], $this->admin);
 
@@ -220,6 +220,19 @@ class ExcluirProdutoTest extends TestCase
 
         // O editor fechou há mais tempo: agora sai.
         $this->travel(10)->minutes();
+        $this->assertSame([$d->id], $this->svc()->excluir($this->alvo(), [$d->id], $this->admin)['excluidos']);
+    }
+
+    public function test_so_olhar_o_produto_nao_segura_a_exclusao(): void
+    {
+        // 28/10/2026: a miniatura da foto no cartão da vitrine marca o produto "em uso" (quem só olha); a
+        // própria vitrine travava a exclusão. Só quem GRAVOU no editor segura.
+        $d = $this->outraCadeira(4);
+        $this->soltar($d);
+        EditorEmUso::marcar($d->id);
+        $this->assertTrue(EditorEmUso::emUso($d->id));
+        $this->assertFalse(EditorEmUso::editando($d->id));
+
         $this->assertSame([$d->id], $this->svc()->excluir($this->alvo(), [$d->id], $this->admin)['excluidos']);
     }
 

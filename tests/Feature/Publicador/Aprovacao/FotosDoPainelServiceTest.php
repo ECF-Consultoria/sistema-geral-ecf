@@ -700,7 +700,9 @@ class FotosDoPainelServiceTest extends TestCase
             // deles e só acrescentou o gancho `agenteParado` do Agente no terceiro ponto.
             'app/Services/Publicador/PreparoIaDoRascunhoService.php' => ['preparar::editando', 'sincronizarAgora::editando', 'executarEtapa::editando'],
             'app/Support/Publicador/GarantiaPadrao.php' => ['aplicarNaConta::emUso'],
-            'app/Services/Publicador/ExcluirProdutoService.php' => ['impedimento::emUso', 'excluirUm::chave'],
+            // 28/10/2026: a exclusão passou a esperar só por quem EDITA (a miniatura da vitrine travava a
+            // exclusão do produto que ela mostra) — a mesma troca do preparo pela IA, declarada aqui.
+            'app/Services/Publicador/ExcluirProdutoService.php' => ['impedimento::editando', 'excluirUm::chave'],
             'app/Http/Controllers/MlbPublicadorController.php' => ['produto::marcar'],
         ];
         $divergentes = [];

@@ -192,8 +192,12 @@ final class ExcluirProdutoService
         if (Cache::has(ResumoRapidoService::chaveConferindo($id))) {
             return $recusa('EXC-07', 'Está sendo conferido com o Mercado Livre agora. Tente de novo em instantes.');
         }
-        if (EditorEmUso::emUso($id)) {
-            return $recusa('EXC-08', 'O editor deste produto está aberto (ou foi aberto há poucos minutos). Feche e tente de novo.');
+        // Só quem GRAVOU no editor segura a exclusão (28/10/2026). O "em uso" (`emUso`) é marcado também por
+        // quem só OLHA — inclusive a miniatura da foto no cartão da vitrine (`arquivoFoto` → `produto()`):
+        // com ele, a própria vitrine travava a exclusão do produto que mostra ("O editor deste produto está
+        // aberto", visto pelo usuário). Mesma troca que o preparo pela IA fez em 20/10/2026.
+        if (EditorEmUso::editando($id)) {
+            return $recusa('EXC-08', 'Alguém salvou algo no editor deste produto há poucos minutos. Tente de novo em instantes.');
         }
 
         return null;

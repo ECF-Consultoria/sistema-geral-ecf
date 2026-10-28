@@ -2130,6 +2130,10 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   bloqueio `tabela_de_medidas`): limitação ANTIGA do Publicador, não da importação. O anúncio importado já tem a
   grade de tamanhos do vendedor (`SIZE_GRID_ID` + `SIZE_GRID_ROW_ID` por variação) — reaproveitá-la é o caminho
   natural se um dia o Publicador for suportar moda.
+- **Refazer uma importação = excluir pelo PORTAL** (Produtos → ⋮ → Excluir): apaga o produto e a origem (cascade)
+  e libera importar de novo. Pelo Publicador não dá primeiro: `ExcluirProdutoService` recusa produto ainda ligado ao
+  Portal (EXC-01). E a trava EXC-08 ("editor aberto") passou a olhar só quem GRAVOU (`EditorEmUso::editando`): a
+  miniatura da foto no cartão da vitrine marca "em uso" e travava a exclusão do próprio produto mostrado.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 
