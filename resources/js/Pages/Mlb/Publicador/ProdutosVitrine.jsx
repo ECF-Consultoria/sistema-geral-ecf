@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
 import axios from 'axios';
-import { CheckSquare, Plus, Send, Trash2 } from 'lucide-react';
+import { ArrowDownWideNarrow, CheckSquare, ChevronDown, Plus, Send, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
@@ -12,8 +12,25 @@ import AvisoDaFila from '@/Components/Mlb/Publicador/AvisoDaFila';
 import { destinoDoLote } from '@/Components/Mlb/Publicador/AcoesDaSelecaoEmLote';
 import DialogoExcluirProdutos from '@/Components/Mlb/Publicador/DialogoExcluirProdutos';
 import CartaoDaVitrine from '@/Components/Mlb/Publicador/vitrine/CartaoDaVitrine';
-import { FILTROS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, releituraEnquantoVisivel, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
+import { FILTROS_DA_VITRINE, ORDENS_DA_VITRINE, familiasDaVitrine, filtrar, filtroInicial, listaSegura, ordemValida, releituraEnquantoVisivel, resumoDaSelecao } from '@/Components/Mlb/Publicador/vitrine/vitrine';
 import { cn } from '@/lib/utils';
+
+// 27/10/2026: a ordem escolhida fica lembrada neste navegador (só conveniência: sem ela, "Mais recentes primeiro").
+const CHAVE_DA_ORDEM = 'publicador.vitrine.ordem';
+const ordemLembrada = () => {
+    try {
+        return ordemValida(window.localStorage.getItem(CHAVE_DA_ORDEM));
+    } catch {
+        return ordemValida(null);
+    }
+};
+const lembrarOrdem = (ordem) => {
+    try {
+        window.localStorage.setItem(CHAVE_DA_ORDEM, ordem);
+    } catch {
+        // Sem localStorage (modo restrito): a ordem só não sobrevive ao F5.
+    }
+};
 
 // ─── Produtos da conta em VITRINE de cartões (20/10/2026) ───────────────────
 //
@@ -32,6 +49,7 @@ const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border 
 
 export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [], planejados = [], contagens = {}, cabecalho = null, fila_publicacao = null }) {
     const [filtro, setFiltro] = useState(() => filtroInicial(contagens));
+    const [ordem, setOrdem] = useState(() => (typeof window === 'undefined' ? ordemValida(null) : ordemLembrada()));
     const [selecao, setSelecao] = useState(() => new Set());
     const [modal, setModal] = useState(false);
     const [status, setStatus] = useState(null);
@@ -43,7 +61,8 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
     const lista = listaSegura(cartoes);
     const visiveis = useMemo(() => filtrar(lista, filtro), [lista, filtro]);
     // Um cartão por produto, com as fases lado a lado: Fase 1, os combos (2), os kits (3) e os combits (4) que o levam.
-    const familias = useMemo(() => familiasDaVitrine(lista, filtro, planejados), [lista, filtro, planejados]);
+    // 27/10/2026: em "Mais recentes primeiro" (o padrão) a família que chegou ou mudou por último vem no topo.
+    const familias = useMemo(() => familiasDaVitrine(lista, filtro, planejados, ordem), [lista, filtro, planejados, ordem]);
     const selecionados = resumoDaSelecao(lista, selecao);
     const prontosAVista = visiveis.filter((c) => c.selecionavel && c.grupo === 'prontos');
     const skus = useMemo(() => lista.map((c) => c.sku).filter(Boolean), [lista]);
@@ -166,11 +185,24 @@ export default function ProdutosVitrine({ empresa, liberada = false, cartoes = [
                             );
                         })}
                     </div>
-                    {prontosAVista.length > 0 && (
-                        <button type="button" onClick={marcarProntos} className="inline-flex items-center gap-2 rounded text-[13px] font-medium text-pub-txt-2 hover:text-pub-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent" data-acao="marcar-prontos">
-                            <CheckSquare size={15} aria-hidden="true" /> Marcar os {prontosAVista.length} prontos
-                        </button>
-                    )}
+                    <div className="flex flex-wrap items-center gap-4">
+                        <label className="inline-flex items-center gap-2 text-[13px] text-pub-txt-2">
+                            <ArrowDownWideNarrow size={15} aria-hidden="true" /> Ordem
+                            <span className="relative inline-flex items-center">
+                                <select value={ordem} onChange={(e) => { const nova = ordemValida(e.target.value); setOrdem(nova); lembrarOrdem(nova); }}
+                                    className="h-9 cursor-pointer appearance-none rounded-pub-control border border-pub-line bg-pub-surface pl-3 pr-8 text-[13px] text-pub-txt hover:bg-pub-hover-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"
+                                    data-vitrine-ordem={ordem}>
+                                    {ORDENS_DA_VITRINE.map((o) => <option key={o.chave} value={o.chave}>{o.rotulo}</option>)}
+                                </select>
+                                <ChevronDown size={14} aria-hidden="true" className="pointer-events-none absolute right-2.5 text-pub-txt-3" />
+                            </span>
+                        </label>
+                        {prontosAVista.length > 0 && (
+                            <button type="button" onClick={marcarProntos} className="inline-flex items-center gap-2 rounded text-[13px] font-medium text-pub-txt-2 hover:text-pub-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent" data-acao="marcar-prontos">
+                                <CheckSquare size={15} aria-hidden="true" /> Marcar os {prontosAVista.length} prontos
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {familias.length === 0 ? (

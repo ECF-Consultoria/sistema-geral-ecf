@@ -8,7 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    FILTROS_DA_VITRINE, RELEITURA_OCIOSA_MS, avisoDaIa, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, itensParaResolver, numeroDaFase, pilulasDasFases, reais,
+    FILTROS_DA_VITRINE, ORDENS_DA_VITRINE, RELEITURA_OCIOSA_MS, avisoDaIa, faixaDePreco, familiasDaVitrine, filtrar, filtroInicial, fotoDoCartao, itensParaResolver, momentoDaFace,
+    numeroDaFase, ordemValida, pilulasDasFases, quandoDoCartao, reais,
     releituraEnquantoVisivel, resumoDaSelecao, rotuloDaFase,
     tempoDesde, textoDosAnuncios,
 } from '../../resources/js/Components/Mlb/Publicador/vitrine/vitrine.js';
@@ -205,6 +206,54 @@ test('famílias — dois cartões nunca abrem na mesma face; sem outra que sirva
     assert.deepEqual(familiasDaVitrine([combitPronto], 'todos').map((f) => [f.id, f.fases[f.inicial].produto_id]), [[20, 31]]);
 });
 
+// 27/10/2026, o usuário: "poder ver como prioridade os mais recentes chegados e atualizados".
+test('ordem — "Mais recentes primeiro" é o padrão; a família da fase mais recente sobe e o cartão abre nela', () => {
+    assert.equal(ordemValida('lixo'), 'recentes');
+    assert.equal(ordemValida(null), 'recentes');
+    assert.equal(ordemValida('situacao'), 'situacao');
+    assert.deepEqual(ORDENS_DA_VITRINE.map((o) => o.chave), ['recentes', 'situacao']);
+
+    const em = (min) => new Date(Date.parse('2026-10-27T12:00:00Z') - min * 60000).toISOString();
+    const lista = [
+        { ...CADEIRA, atualizado_em: em(600) },
+        { ...COMBO2, atualizado_em: em(5) },          // o combo da cadeira acabou de mudar
+        { ...MESA_RD, atualizado_em: em(300) },
+        { ...POLTRONA, atualizado_em: em(900), chegou_em: em(30) }, // chegou há 30 min (a data de chegada vale)
+    ];
+    // "Por situação": a ordem do servidor, como antes, e cada cartão abre no próprio produto.
+    assert.deepEqual(familiasDaVitrine(lista, 'todos', [], 'situacao').map((f) => [f.id, f.inicial]), [[10, 0], [20, 0], [2, 0]]);
+    // "Mais recentes": a cadeira (pelo combo de 5 min), a poltrona (chegou há 30 min), a mesa (5 h).
+    const recentes = familiasDaVitrine(lista, 'todos', [], 'recentes');
+    assert.deepEqual(recentes.map((f) => [f.id, f.fases[f.inicial].produto_id]), [[10, 11], [2, 2], [20, 20]]);
+    // Sem a 4ª chave, a ordem é a de antes (quem já chama assim não muda).
+    assert.deepEqual(familiasDaVitrine(lista, 'todos', []).map((f) => f.id), [10, 20, 2]);
+    // Com filtro, vale a fase mais recente ENTRE as que servem a ele: em "Prontos" o combo segue puxando a cadeira.
+    assert.deepEqual(familiasDaVitrine(lista, 'prontos', [], 'recentes').map((f) => [f.id, f.fases[f.inicial].produto_id]), [[10, 11]]);
+    // Empate (sem data nenhuma) fica na ordem do servidor; a face de espera não tem data e não puxa ninguém.
+    assert.deepEqual(familiasDaVitrine([CADEIRA, MESA_RD], 'todos', [ESPERA3], 'recentes').map((f) => f.id), [10, 20]);
+    assert.equal(momentoDaFace(ESPERA3), 0);
+    assert.equal(momentoDaFace({ atualizado_em: 'x', chegou_em: null }), 0);
+});
+
+test('quando — "Chegou há…" no que acabou de chegar; com mudança depois, os dois; velho ou sem chegada, "Atualizado há…"', () => {
+    const agora = Date.parse('2026-10-27T12:00:00Z');
+    assert.equal(quandoDoCartao({ chegou_em: '2026-10-27T11:55:00Z', atualizado_em: '2026-10-27T11:56:00Z' }, agora), 'Chegou há 5 min');
+    assert.equal(quandoDoCartao({ chegou_em: '2026-10-26T09:00:00Z', atualizado_em: '2026-10-27T10:00:00Z' }, agora), 'Chegou ontem · atualizado há 2 h');
+    assert.equal(quandoDoCartao({ chegou_em: '2026-10-01T09:00:00Z', atualizado_em: '2026-10-24T09:00:00Z' }, agora), 'Atualizado há 3 dias');
+    assert.equal(quandoDoCartao({ atualizado_em: '2026-10-27T11:52:00Z' }, agora), 'Atualizado há 8 min');
+    assert.equal(quandoDoCartao({}, agora), null);
+    assert.equal(quandoDoCartao(null, agora), null);
+});
+
+test('página — a ordem é escolhida num select, lembrada no navegador com try/catch, e vai para as famílias', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/ProdutosVitrine.jsx');
+    assert.match(f, /data-vitrine-ordem=\{ordem\}/);
+    assert.match(f, /ORDENS_DA_VITRINE\.map\(\(o\) => <option key=\{o\.chave\} value=\{o\.chave\}>\{o\.rotulo\}<\/option>\)/);
+    assert.match(f, /window\.localStorage\.getItem\(CHAVE_DA_ORDEM\)/);
+    assert.match(f, /window\.localStorage\.setItem\(CHAVE_DA_ORDEM, ordem\)/);
+    assert.equal((f.match(/try \{/g) ?? []).length, 2, 'toda leitura e escrita do localStorage dentro de try');
+});
+
 test('pílulas — uma por fase, com as faces de cada uma e se alguma tem pendência', () => {
     const faces = familiasDaVitrine([CADEIRA, COMBO2, COMBO4, KIT, COMBIT], 'todos', [ESPERA3])[0].fases;
     assert.deepEqual(pilulasDasFases(faces).map((p) => [p.rotulo, p.primeira, p.indices.length, p.pendencia]),
@@ -262,7 +311,8 @@ test('página — publica a seleção pela fila em lote, um só botão amarelo n
     assert.equal((f.match(/bg-pub-accent px-5/g) ?? []).length, 1, 'o botão amarelo é só o de publicar');
     assert.doesNotMatch(f, /AvisoContaTravada|Confortável|Compacto|Buscar SKU/);
     assert.match(f, /<PublicadorHeader/);
-    assert.match(f, /familiasDaVitrine\(lista, filtro, planejados\)/);
+    // 27/10/2026: a ordem escolhida ("Mais recentes primeiro" | "Por situação") vai junto.
+    assert.match(f, /familiasDaVitrine\(lista, filtro, planejados, ordem\)/);
     // 22/10/2026: era "4" fixo; a releitura ociosa (R4) é o 5º recarregar. A regra é TODO recarregar trazer as faces de espera.
     const recargas = (f.match(/router\.reload\(\{ only: \[/g) ?? []).length;
     assert.equal(recargas, 5);

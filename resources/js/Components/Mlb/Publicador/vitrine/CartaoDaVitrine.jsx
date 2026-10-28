@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
 import { AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, ImageOff, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { avisoDaIa, faixaDePreco, fotoDoCartao, itensParaResolver, pilulasDasFases, tempoDesde, textoDosAnuncios } from './vitrine';
+import { avisoDaIa, faixaDePreco, fotoDoCartao, itensParaResolver, pilulasDasFases, quandoDoCartao, textoDosAnuncios } from './vitrine';
 
 // ─── Um cartão da vitrine = uma FAMÍLIA (20/10/2026) ────────────────────────
 //
@@ -58,7 +58,8 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
     const [resolvendo, setResolvendo] = useState(false);
     const classico = faixaDePreco(cartao?.precos?.gold_special);
     const premium = faixaDePreco(cartao?.precos?.gold_pro);
-    const atualizado = tempoDesde(cartao?.atualizado_em);
+    // 27/10/2026: "Chegou há…" no que acabou de chegar do Portal; o resto, "Atualizado há…".
+    const quando = quandoDoCartao(cartao);
     const composicao = typeof cartao?.composicao === 'string' && cartao.composicao !== '' ? cartao.composicao : null;
     const foco = ativa ? undefined : -1;
 
@@ -190,7 +191,7 @@ function Face({ cartao, marcado, onMarcar, ativa, anterior, proxima }) {
                 )}
 
                 <div className="mt-auto space-y-2 pt-1">
-                    {! planejada && atualizado && <p className="text-[12.5px] text-pub-txt-3">Atualizado {atualizado}</p>}
+                    {! planejada && quando && <p className="text-[12.5px] text-pub-txt-3" data-vitrine-quando>{quando}</p>}
                     {! planejada && cartao?.url_previa && (
                         <Link href={cartao.url_previa} tabIndex={foco} draggable={false}
                             className="flex h-9 w-full items-center justify-center gap-2 rounded-pub-control border border-pub-line-strong text-[13px] font-medium text-pub-txt hover:bg-pub-hover-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pub-accent"

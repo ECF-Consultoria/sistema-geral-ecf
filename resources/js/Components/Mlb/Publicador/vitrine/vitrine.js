@@ -65,17 +65,68 @@ const ordemDasFaces = (a, b) => (numeroDaFase(a) - numeroDaFase(b))
     || (Number(ehPlanejada(a)) - Number(ehPlanejada(b)))
     || ((numero(a.produto_id) ?? 0) - (numero(b.produto_id) ?? 0));
 
+// ─── A ordem da vitrine (27/10/2026) ───
+//
+// Pedido do usuário: "poder ver como prioridade os mais recentes chegados e atualizados". Até aqui a vitrine só
+// tinha a ordem do servidor (prontos, depois pendências, depois publicados; em cada grupo, o atualizado por último
+// primeiro) — o produto que acabou de chegar do Portal nasce "Com pendência" e ficava abaixo de todos os prontos.
+// "Mais recentes primeiro" (o padrão) põe no topo a família cuja fase chegou ou mudou por último, e o cartão abre
+// NESSA fase; "Por situação" é a ordem de antes.
+
+export const RECENTES = 'recentes';
+export const POR_SITUACAO = 'situacao';
+export const ORDENS_DA_VITRINE = [
+    { chave: RECENTES, rotulo: 'Mais recentes primeiro' },
+    { chave: POR_SITUACAO, rotulo: 'Por situação' },
+];
+
+/** A ordem pedida, ou a padrão ("Mais recentes primeiro") para qualquer valor desconhecido. */
+export const ordemValida = (ordem) => (ORDENS_DA_VITRINE.some((o) => o.chave === ordem) ? ordem : RECENTES);
+
+const instante = (iso) => {
+    const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
+
+    return Number.isFinite(t) ? t : 0;
+};
+
+/** Quando a face chegou ou mudou por último (ms; 0 = sem data). A face de espera não tem data própria. */
+export const momentoDaFace = (face) => (ehPlanejada(face) ? 0 : Math.max(instante(face?.atualizado_em), instante(face?.chegou_em)));
+
+/** Até quanto depois de chegar a mudança ainda conta como "chegou" (o preparo pela IA mexe logo depois). */
+const CHEGOU_E_JA_MUDOU_MS = 10 * 60 * 1000;
+/** Por quanto tempo o cartão diz "Chegou há…" (depois disso, só "Atualizado há…"). */
+const CHEGADA_RECENTE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * O "quando" do pé do cartão: "Chegou há 5 min" (chegou e nada mudou desde então), "Chegou ontem · atualizado há 2 h"
+ * ou "Atualizado há 3 dias" (chegou faz mais de uma semana, ou sem data de chegada). Nulo = sem data nenhuma.
+ */
+export function quandoDoCartao(cartao, agora = Date.now()) {
+    const chegou = instante(cartao?.chegou_em);
+    const mudou = instante(cartao?.atualizado_em);
+    if (chegou > 0 && agora - chegou <= CHEGADA_RECENTE_MS) {
+        const texto = `Chegou ${tempoDesde(cartao.chegou_em, agora)}`;
+
+        return mudou - chegou > CHEGOU_E_JA_MUDOU_MS ? `${texto} · atualizado ${tempoDesde(cartao.atualizado_em, agora)}` : texto;
+    }
+    const atualizado = tempoDesde(mudou > 0 ? cartao.atualizado_em : null, agora);
+
+    return atualizado ? `Atualizado ${atualizado}` : null;
+}
+
 /**
  * As FAMÍLIAS da vitrine (20/10/2026, decisões do usuário): um cartão por produto, com as fases dele lado a lado —
  * Fase 1 (o produto), Fase 2 (cada combo: o mesmo produto × N), Fase 3 (cada kit que o leva) e Fase 4 (cada
  * combit). O Kit e o Combit chegam com o cartão de CADA componente em `familias`, então a mesma face aparece nos
  * dois. `planejados` são os combos ACEITOS no Planejamento que ainda não são fase: entram como face de espera só em família que está
  * na tela. Com filtro, entra a família que tiver alguma fase REAL nele, e `inicial` aponta a 1ª dessas fases (o
- * cartão abre nela). A ordem das famílias é a do servidor.
+ * cartão abre nela). Na ordem "Por situação" as famílias vêm na ordem do servidor; em "Mais recentes primeiro" (27/10),
+ * a família da fase que chegou ou mudou por último vem primeiro, e o cartão abre nessa fase.
  *
  * @return {Array<{id: number, fases: Array<object>, inicial: number}>}
  */
-export function familiasDaVitrine(cartoes, filtro = 'todos', planejados = []) {
+export function familiasDaVitrine(cartoes, filtro = 'todos', planejados = [], ordem = POR_SITUACAO) {
+    const recentes = ordemValida(ordem) === RECENTES;
     const porFamilia = new Map();
     const juntar = (id, face) => {
         if (! porFamilia.has(id)) porFamilia.set(id, []);
@@ -93,12 +144,24 @@ export function familiasDaVitrine(cartoes, filtro = 'todos', planejados = []) {
     // mesa e a cadeira sozinhas não estavam prontas, e os dois cartões abriam no mesmo Combit da Mesa + 4 Cadeiras.
     // O cartão abre na 1ª face que serve e que nenhum cartão anterior abriu; sem nenhuma, ele não entra (a face já
     // está à vista no outro). Sem filtro, a 1ª face é o próprio produto — muda só a família que não o tem.
+    const serve = (f) => filtro === 'todos' || ! CHAVES.includes(filtro) || (! ehPlanejada(f) && f.grupo === filtro);
+    let familias = [...porFamilia];
+    for (const [, fases] of familias) fases.sort(ordemDasFaces);
+    if (recentes) {
+        // A família vale pela fase mais recente entre as que servem ao filtro; empate fica na ordem do servidor.
+        const momento = (fases) => Math.max(0, ...fases.filter(serve).map(momentoDaFace));
+        familias = familias.map((par, i) => ({ par, i, t: momento(par[1]) })).sort((a, b) => (b.t - a.t) || (a.i - b.i)).map((x) => x.par);
+    }
+
     const abertas = new Set();
     const saida = [];
-    for (const [id, fases] of porFamilia) {
-        fases.sort(ordemDasFaces);
-        const serve = (f) => filtro === 'todos' || ! CHAVES.includes(filtro) || (! ehPlanejada(f) && f.grupo === filtro);
-        const inicial = fases.findIndex((f) => serve(f) && ! abertas.has(chaveDaFace(f)));
+    for (const [id, fases] of familias) {
+        const livre = (f) => serve(f) && ! abertas.has(chaveDaFace(f));
+        let inicial = fases.findIndex(livre);
+        // Em "Mais recentes primeiro" o cartão abre na fase mais recente que serve (empate: a de menor fase).
+        if (recentes && inicial !== -1) {
+            fases.forEach((f, i) => { if (livre(f) && momentoDaFace(f) > momentoDaFace(fases[inicial])) inicial = i; });
+        }
         if (inicial !== -1) {
             abertas.add(chaveDaFace(fases[inicial]));
             saida.push({ id, fases, inicial });

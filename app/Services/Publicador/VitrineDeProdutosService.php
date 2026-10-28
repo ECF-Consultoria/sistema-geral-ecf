@@ -155,6 +155,9 @@ final class VitrineDeProdutosService
             ],
             'anuncios' => (int) ($l['anuncios'] ?? 0),
             'atualizado_em' => ($r?->updated_at ?? $p?->updated_at)?->toIso8601String(),
+            // 27/10/2026: quando o produto chegou aqui (do Portal, da planilha ou do "+ Produto") — a ordem "Mais
+            // recentes primeiro" e o "Chegou há…" do cartão.
+            'chegou_em' => $p?->created_at?->toIso8601String(),
             'url_previa' => $l['url_editor'].'?etapa=previa',
             // Marca para publicar quem ainda vai ao ML e não está na fila; quem decide se PODE é a fila (confere antes).
             'selecionavel' => ! $publicado && ($l['fila'] ?? null) === null,
