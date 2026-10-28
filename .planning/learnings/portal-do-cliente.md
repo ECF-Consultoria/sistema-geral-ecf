@@ -2097,6 +2097,10 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   O Job da jardinagem tenta 3 vezes nesse caso.
 - **O ML guarda UMA caixa** (`SELLER_PACKAGE_*`). Móvel em vários volumes chega com um volume só.
   `shipping.dimensions` ("AxLxC,gramas") é só reserva — nos 20 itens reais da Fase 134 veio `null` em todos.
+- **Produto trazido do ML NÃO gera imagem por IA automática** (`CriativosAutomaticosService::trazidoDoMl`, motivo
+  `importado_do_ml`). As fotos do anúncio entram no Portal como fotos do cliente, e o kit automático (ligado para
+  todas as empresas desde 26/10) as usaria de referência e TROCARIA as fotos do anúncio pelas da IA — gastando,
+  contra o pedido ("por enquanto a imagem deixa puxando do anúncio original"). Para liberar um dia, é só tirar a trava.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 

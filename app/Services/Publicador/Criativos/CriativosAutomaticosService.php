@@ -8,6 +8,7 @@ use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarCriativosAutomaticosJob;
 use App\Models\AcervoImagem;
 use App\Models\Configuracao;
+use App\Models\EstruturaProdutoOrigemMl;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAnuncioCriativo;
@@ -135,6 +136,22 @@ final class CriativosAutomaticosService
         private PublicadorCriativoReferenciaService $referencias,
     ) {}
 
+    /**
+     * Produto trazido de um anúncio do Mercado Livre ("Trazer do Mercado Livre", 28/10/2026): NÃO gera imagem por IA,
+     * nem o kit da Fase 1 nem a capa da Fase N. Decisão do usuário: "por enquanto a imagem deixa puxando do anúncio
+     * original, para não gastar gerando imagens novas" — e o kit automático TROCARIA as fotos do anúncio pelas da IA.
+     * O kit pedido no botão continua valendo (é gente decidindo gastar).
+     */
+    public static function trazidoDoMl(PubProduto $pub): bool
+    {
+        $ids = array_values(array_filter([
+            $pub->estrutura_produto_id,
+            $pub->produto_base_id !== null ? PubProduto::query()->whereKey($pub->produto_base_id)->value('estrutura_produto_id') : null,
+        ]));
+
+        return $ids !== [] && EstruturaProdutoOrigemMl::query()->whereIn('produto_id', $ids)->exists();
+    }
+
     /** A checagem barata (chaves e lista de empresas): sem ela, o preparo nem põe o Job na cadeia. */
     public function ligadoPara(?int $companyId): bool
     {
@@ -147,7 +164,7 @@ final class CriativosAutomaticosService
     /**
      * Todas as condições e, passando, o kit planejado + a geração encadeada.
      *
-     * @return string desligado, sem_rascunho, kit_da_fase, intocavel, incompleto, sem_usuario, sem_permissao, sem_foto,
+     * @return string desligado, importado_do_ml, sem_rascunho, kit_da_fase, intocavel, incompleto, sem_usuario, sem_permissao, sem_foto,
      *                kit_existente, em_dia, limite, ocupado, erro, planejando (um ou mais grupos). No kit da fase N
      *                vindo do Planejamento, a capa do conjunto ({@see capaDaFase()}).
      */
@@ -171,6 +188,9 @@ final class CriativosAutomaticosService
             }
             if (! $this->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
                 return 'desligado';
+            }
+            if (self::trazidoDoMl($pub)) {
+                return 'importado_do_ml';
             }
             if ($pub->produto_base_id !== null) {
                 return $this->capaDaFase($r, $pub);

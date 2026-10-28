@@ -193,6 +193,25 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertNotSame($daEquipe->id, $doCliente->id);
     }
 
+    public function test_produto_trazido_do_mercado_livre_nao_gera_imagem_automatica(): void
+    {
+        // 28/10/2026, o usuário: "por enquanto a imagem deixa puxando do anúncio original, para não gastar gerando
+        // imagens novas". As fotos do anúncio entram no Portal como fotos do cliente — sem esta trava o kit automático
+        // gastaria e TROCARIA as fotos do anúncio pelas da IA.
+        $this->ligar();
+        [$p, $r] = $this->produtoComFotos(2, 'IMP');
+        \App\Models\EstruturaProdutoOrigemMl::create(['company_id' => $this->empresa->id, 'produto_id' => $p->id,
+            'ml_item_id' => 'MLB123', 'importado_em' => now()]);
+
+        $this->assertSame('importado_do_ml', $this->servico()->avaliar($r->id));
+        $this->assertSame(0, MlAnuncioCriativoKit::query()->count());
+        Queue::assertNotPushed(PlanejarKitCriativosJob::class);
+
+        // O mesmo produto sem a origem planeja normalmente (a trava é só a origem).
+        \App\Models\EstruturaProdutoOrigemMl::query()->delete();
+        $this->assertSame('planejando', $this->servico()->avaliar($r->id));
+    }
+
     public function test_tres_imagens_duas_capas_e_em_movel_a_ambientacao_abre_o_classico(): void
     {
         $this->ligar();
