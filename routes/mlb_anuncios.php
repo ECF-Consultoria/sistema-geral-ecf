@@ -175,6 +175,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->whereNumber('imagem')->middleware('throttle:60,1,publicador.fotos.remover')->name('fotos.remover');
             Route::post('/fotos/{imagem}/reenviar', [MlbPublicadorController::class, 'reenviarFoto'])
                 ->whereNumber('imagem')->middleware('throttle:30,1,publicador.fotos.reenviar')->name('fotos.reenviar');
+            // 28/10/2026: manda a sequência de fotos do rascunho aos anúncios que já estão no ar.
+            Route::post('/fotos/no-ml', [MlbPublicadorController::class, 'atualizarFotosNoMl'])
+                ->middleware('throttle:10,1,publicador.fotos.no-ml')->name('fotos.no-ml');
             // D26: miniatura da foto guardada que ainda não subiu ao ML (conta não liberada).
             Route::get('/fotos/{imagem}/arquivo', [MlbPublicadorController::class, 'arquivoFoto'])
                 ->whereNumber('imagem')->middleware('throttle:240,1,publicador.fotos.arquivo')->name('fotos.arquivo');

@@ -4,6 +4,7 @@ import { AlertTriangle, Images, Info, Loader2, RefreshCw, X } from 'lucide-react
 import { mensagemDe } from '../apoio';
 import { anuncioEscolhido, notasDaPrevia } from '../previa';
 import AnuncioNoMl from './AnuncioNoMl';
+import AvisoFotosNoMl from './AvisoFotosNoMl';
 import CartaoFotosVariante from './CartaoFotosVariante';
 import { FotosParaTodas, fotosDaVariante } from './FotosEVariacoes';
 import { LINK, Secao } from './comum';
@@ -84,6 +85,7 @@ function FotosDaPrevia({ m, anuncio, onFechar }) {
                     <X size={14} aria-hidden="true" /> Fechar
                 </button>
             </div>
+            <AvisoFotosNoMl m={m} />
             {v ? (
                 <CartaoFotosVariante m={m} v={v} eixos={eixos} grupo={grupo} fotosCom={com} />
             ) : (

@@ -21,6 +21,9 @@ import { cn } from '@/lib/utils';
 export default function CartaoFotosVariante({ m, v, eixos, grupo = null, fotosCom = [] }) {
     const { estado, schema } = m;
     const travada = m.disabled || v.publicada;
+    // 28/10/2026: as fotos da variação publicada também mudam aqui; vão ao anúncio no ar pelo "Atualizar fotos no
+    // Mercado Livre" (`AvisoFotosNoMl`). Sem `disabledFotos` (fora do editor), vale a trava de antes.
+    const fotosTravadas = m.disabledFotos ?? travada;
     const limites = schema?.limites ?? {};
     const semVariacao = Object.keys(v.valores ?? {}).length === 0;
     const fotos = grupo ? fotosDoGrupo(estado.imagens, estado.atribuicoes, grupo).length : 0;
@@ -43,7 +46,7 @@ export default function CartaoFotosVariante({ m, v, eixos, grupo = null, fotosCo
                     imagens={estado.imagens} atribuicoes={estado.atribuicoes}
                     maxFotos={limites.max_pictures_per_item_var ?? limites.max_pictures_per_item ?? 10}
                     minimo={limites.min_pictures ?? limites.recommended_pictures ?? null}
-                    enviando={m.enviandoFoto} disabled={travada} envioAoMl={estado.publicacao_liberada === true}
+                    enviando={m.enviandoFoto} disabled={fotosTravadas} envioAoMl={estado.publicacao_liberada === true}
                     onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto} onTrocar={m.trocarFoto} />
             ) : (
                 <p className="rounded-lg border border-white/20 bg-black/40 p-4 text-[13px] text-white/45" data-fotos-variante={v.chave}>Preparando as fotos desta variação…</p>

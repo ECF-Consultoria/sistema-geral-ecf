@@ -219,7 +219,9 @@ export default function FotosDoPar({ fotos, editavel, maxFotos, enviando, onReor
             {fotos.length > 1 && (
                 <p className="mb-2 text-[11.5px] text-white/40" data-dica-ordem>
                     A 1ª foto é a <b className="text-ecf-yellow/80">capa</b>. {mesa
-                        ? <>Arraste para reordenar ou use a barra embaixo de cada foto: mover para os lados, tornar capa{podeTrocar ? ', trocar' : ''} e excluir. Clique na foto para ver maior.</>
+                        ? (editavel
+                            ? <>Arraste para reordenar ou use a barra embaixo de cada foto: mover para os lados, tornar capa{podeTrocar ? ', trocar' : ''} e excluir. Clique na foto para ver maior.</>
+                            : <>Clique na foto para ver maior.</>)
                         : <>Clique, segure e arraste para reordenar (ou use ◀ ▶) — o anúncio sai nesta mesma sequência.</>}
                 </p>
             )}

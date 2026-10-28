@@ -621,6 +621,21 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
         if (motivo) setErro(`${arquivo.name}: ${motivo}`);
     };
     const removerFoto = (imagemId) => estruturar(() => axios.delete(rota('fotos.remover', produtoId, { imagem: imagemId })));
+    /**
+     * 28/10/2026: produto publicado — manda a sequência de fotos daqui aos anúncios no ar (o único jeito de uma foto
+     * nova chegar a um anúncio publicado). Devolve o resultado do servidor (atualizados, falhas) ou nulo.
+     */
+    const [atualizandoFotosNoMl, setAtualizandoFotosNoMl] = useState(false);
+    const atualizarFotosNoMl = async () => {
+        setAtualizandoFotosNoMl(true);
+        try {
+            const data = await estruturar(() => axios.post(rota('fotos.no-ml', produtoId)));
+
+            return data?.fotos_atualizadas ?? null;
+        } finally {
+            setAtualizandoFotosNoMl(false);
+        }
+    };
     const reenviarFoto = (imagemId) => estruturar(() => axios.post(rota('fotos.reenviar', produtoId, { imagem: imagemId })));
 
     /** A recusa de uma ação do fim da Prévia: na faixa do topo e ao lado do botão dela (P-14). */
@@ -836,6 +851,9 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     const publicado = estado?.rascunho?.status === 'PUBLISHED';
     // CR-F02: com a IA gravando (`pausado`) ou relendo o servidor, a mesa é só leitura.
     const disabled = publicando || publicado || !! aguardando || pausado || relendo;
+    // 28/10/2026: as FOTOS do produto publicado continuam editáveis (o resto não) — elas vão aos anúncios no ar só pelo
+    // "Atualizar fotos no Mercado Livre" (`atualizarFotosNoMl`).
+    const disabledFotos = publicando || !! aguardando || pausado || relendo;
     const variantes = estado ? mesclarVariantes(estado.variantes, vars) : [];
     const alvos = estado && rasc ? mesclarAlvos(estado.alvos, rasc.alvos) : [];
     const conf = estado?.conferencia ?? null;
@@ -875,11 +893,11 @@ export default function usePublicador({ produtoId, onPublicou, pausado: pausadoD
     const podePublicar = calcularPodePublicar({ disabled, conf, sujo: editando, ciente, salvando, liberada });
 
     const m = {
-        estado, rasc, variantes, alvos, schema, disabled,
+        estado, rasc, variantes, alvos, schema, disabled, disabledFotos,
         problemasDaSecao, problemasDoAtributo,
         mudarRasc, mudarVar, mudarAtributo,
         escolherCategoria, buscarCategorias, navegarCategorias, salvarEixos,
-        enviarFotos, atribuirFotos, trocarFoto, removerFoto, reenviarFoto, enviandoFoto,
+        enviarFotos, atribuirFotos, trocarFoto, removerFoto, reenviarFoto, enviandoFoto, atualizarFotosNoMl, atualizandoFotosNoMl,
         aviso, simular, simulacao, simulando, copiarTituloDo,
         termos, carregarTermos, palavrasIa, pedirPalavrasIa, frete, consultarFrete,
     };

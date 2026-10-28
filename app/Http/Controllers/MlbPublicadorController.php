@@ -210,6 +210,20 @@ class MlbPublicadorController extends Controller
         });
     }
 
+    /**
+     * "Atualizar fotos no Mercado Livre" (28/10/2026): o produto já publicado recebe nos anúncios no ar a sequência de
+     * fotos do rascunho. Só aqui, por clique — nenhuma outra rota do editor escreve num anúncio publicado.
+     */
+    public function atualizarFotosNoMl(int $produto, \App\Services\Publicador\FotosDoPublicadoService $fotos): JsonResponse
+    {
+        return $this->responder(function () use ($produto, $fotos) {
+            $r = $this->rascunho($produto);
+            $resultado = $fotos->atualizar($r);
+
+            return [$r->fresh(), ['fotos_atualizadas' => $resultado]];
+        });
+    }
+
     public function reenviarFoto(int $produto, int $imagem): JsonResponse
     {
         return $this->responder(function () use ($produto, $imagem) {
@@ -395,6 +409,8 @@ class MlbPublicadorController extends Controller
                 ...$estado,
                 ...$extra,
                 'publicacao_liberada' => ContasLiberadas::libera($r->produto->contaOuNula()),
+                // 28/10/2026: produto publicado — quais anúncios no ar estão com fotos diferentes das daqui (nulo = não publicado).
+                'fotos_no_ml' => app(\App\Services\Publicador\FotosDoPublicadoService::class)->situacao($r->fresh() ?? $r),
             ], $status);
         } catch (RegraViolada $e) {
             return response()->json(['message' => $e->getMessage(), 'regra' => $e->regra], 422);

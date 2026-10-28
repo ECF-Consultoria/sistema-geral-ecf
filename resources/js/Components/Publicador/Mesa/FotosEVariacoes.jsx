@@ -3,6 +3,7 @@ import { ImagePlus } from 'lucide-react';
 import { AvisosDasFotos, BlocoDeFotos, fotosDoGrupo } from '../FotosPorGrupo';
 import { GERAL } from '../apoio';
 import { gerarEan13, gtinsEmUso, nomeDaCor, tomDaCor, variantesSemGtin } from '../ferramentas';
+import AvisoFotosNoMl from './AvisoFotosNoMl';
 import CartaoFotosVariante from './CartaoFotosVariante';
 import { LINK, Secao } from './comum';
 
@@ -121,11 +122,13 @@ export function FotosParaTodas({ m }) {
     const temGerais = fotosDoGrupo(estado.imagens, estado.atribuicoes, GERAL).length > 0;
     const [aberto, setAberto] = useState(temGerais);
     const incluir = !! (m.rasc?.incluir_geral ?? estado.rascunho.incluir_geral);
+    // 28/10/2026: as fotos do publicado também mudam; a caixa "Usar em todas" é do anúncio e segue travada.
+    const fotosTravadas = m.disabledFotos ?? m.disabled;
 
     if (! aberto && ! temGerais) {
         return (
             <div data-fotos-para-todas="fechado">
-                <button type="button" onClick={() => setAberto(true)} disabled={m.disabled} className={LINK} data-acao="fotos-para-todas">
+                <button type="button" onClick={() => setAberto(true)} disabled={fotosTravadas} className={LINK} data-acao="fotos-para-todas">
                     <ImagePlus size={16} aria-hidden="true" /> Adicionar fotos iguais para todas as variações
                 </button>
                 <p className="mt-1 text-[13px] text-white/50">{PARA_QUE_SERVEM}</p>
@@ -136,7 +139,7 @@ export function FotosParaTodas({ m }) {
     return (
         <BlocoDeFotos grupo={GERAL} titulo="Fotos para todas as variações" nota={incluir ? 'entram em todas, depois das fotos de cada uma' : 'fora dos anúncios'}
             imagens={estado.imagens} atribuicoes={estado.atribuicoes} maxFotos={limites.max_pictures_per_item ?? 10}
-            enviando={m.enviandoFoto} disabled={m.disabled} envioAoMl={estado.publicacao_liberada === true}
+            enviando={m.enviandoFoto} disabled={fotosTravadas} envioAoMl={estado.publicacao_liberada === true}
             onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto} onTrocar={m.trocarFoto}>
             <p className="mt-3 text-[13px] text-white/50" data-explicacao-fotos-para-todas>{PARA_QUE_SERVEM}</p>
             <label className="mt-3 flex items-center gap-2 text-[13px] text-white/70">
@@ -165,6 +168,7 @@ export default function FotosEVariacoes({ m }) {
             descricao={`As fotos de cada variação, e as que valem para todas. Fotos com ${regraDaFoto(limites)}; a primeira é a capa.`}>
             {! schema ? <p className="text-[15px] text-white/55">Escolha a categoria na etapa Produto para cadastrar as fotos.</p> : (
                 <div className="space-y-5">
+                    <AvisoFotosNoMl m={m} />
                     <AvisosDasFotos imagens={estado.imagens} atribuicoes={estado.atribuicoes} envioAoMl={estado.publicacao_liberada === true} disabled={m.disabled} onReenviar={m.reenviarFoto} />
 
                     <div className="space-y-4" data-lista-fotos-variacoes={atuais.length}>
