@@ -2134,6 +2134,12 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   e libera importar de novo. Pelo Publicador não dá primeiro: `ExcluirProdutoService` recusa produto ainda ligado ao
   Portal (EXC-01). E a trava EXC-08 ("editor aberto") passou a olhar só quem GRAVOU (`EditorEmUso::editando`): a
   miniatura da foto no cartão da vitrine marca "em uso" e travava a exclusão do próprio produto mostrado.
+- **A foto do anúncio (`secure_url`, `…-O.jpg`) é a REDUZIDA — lado maior em 500 px** (`size` 333×500, 500×261;
+  o real fica em `max_size`). Foto não quadrada fica com um lado < 500 e o Publicador a recusa (V-IMG-03, "pequena"):
+  a "Meia Cano Longo" chegou ao Portal com fotos e ao Publicador com ZERO. O mesmo endereço com `-F` é o tamanho
+  cheio (medido: D_655797-MLB104381465699 = 333×500 no `-O`, 800×1200 no `-F`). A importação baixa o `-F` e só cai
+  no `-O` se ele falhar (`TradutorAnuncioMlParaPortal::urlTamanhoCheio`). Reproduzido ponta a ponta: só `-O` → 0
+  fotos no rascunho; `-F` → todas.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
 

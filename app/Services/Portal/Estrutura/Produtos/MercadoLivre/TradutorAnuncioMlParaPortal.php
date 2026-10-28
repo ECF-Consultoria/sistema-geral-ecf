@@ -85,7 +85,8 @@ final class TradutorAnuncioMlParaPortal
             $id = (string) ($p['id'] ?? '');
             $url = self::url($p['secure_url'] ?? $p['url'] ?? null);
             if ($id !== '' && $url !== null) {
-                $fotosDoAnuncio[$id] = ['id' => $id, 'url' => $url];
+                // `url` = a foto em TAMANHO CHEIO; `url_reserva` = a do anúncio, se a cheia não vier.
+                $fotosDoAnuncio[$id] = ['id' => $id, 'url' => self::urlTamanhoCheio($url), 'url_reserva' => $url];
             }
         }
 
@@ -560,6 +561,18 @@ final class TradutorAnuncioMlParaPortal
     private static function inteiro(mixed $v): ?int
     {
         return is_numeric($v) ? (int) $v : null;
+    }
+
+    /**
+     * A foto em tamanho cheio (28/10/2026, "Meia Cano Longo" sem foto no Publicador). O `secure_url` do anúncio
+     * (`…-O.jpg`) é a versão reduzida, com o lado maior em 500 px (`size` 333×500, 500×261…; o tamanho real
+     * está em `max_size`) — e o Publicador recusa foto com algum lado abaixo de 500 px (V-IMG-03). O mesmo
+     * endereço com `-F` é a original: medido em 28/10/2026, D_655797-MLB104381465699 veio 333×500 no `-O` e
+     * 800×1200 no `-F` (= `max_size`). Fora desse padrão, o endereço fica como veio.
+     */
+    public static function urlTamanhoCheio(string $url): string
+    {
+        return (string) preg_replace('/-O\.(jpe?g|webp|png)$/i', '-F.$1', $url);
     }
 
     private static function url(mixed $u): ?string

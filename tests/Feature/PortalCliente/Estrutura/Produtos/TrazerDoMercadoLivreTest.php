@@ -218,7 +218,9 @@ class TrazerDoMercadoLivreTest extends TestCase
         foreach ($fotos->flatten() as $f) {
             Storage::disk('local')->assertExists($f->caminho);
         }
-        $this->assertCount(3, Http::recorded(fn (Request $q) => str_contains($q->url(), 'mlstatic.com')), 'a foto repetida entre variações é baixada uma vez');
+        $baixadas = Http::recorded(fn (Request $q) => str_contains($q->url(), 'mlstatic.com'))->map(fn ($par) => $par[0]->url())->all();
+        $this->assertCount(3, $baixadas, 'a foto repetida entre variações é baixada uma vez');
+        $this->assertSame([], array_values(array_filter($baixadas, fn ($u) => ! str_ends_with($u, '-F.jpg'))), 'sempre a de tamanho cheio');
 
         $origem = EstruturaProdutoOrigemMl::where('produto_id', $produto->id)->sole();
         $this->assertSame('MLB111', $origem->ml_item_id);

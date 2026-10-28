@@ -279,7 +279,9 @@ class ImportadorDeAnuncioMl
 
                 $arquivos = [];
                 foreach ($fotosPorLinha[$i] ?? [] as $n => $foto) {
-                    $baixadas[$foto['id']] ??= $this->baixar($foto['url']);
+                    // A de tamanho cheio; se ela não vier, a do anúncio (que pode ser pequena demais para publicar).
+                    $baixadas[$foto['id']] ??= $this->baixar($foto['url'])
+                        ?: (isset($foto['url_reserva']) && $foto['url_reserva'] !== $foto['url'] ? $this->baixar($foto['url_reserva']) : false);
                     if ($baixadas[$foto['id']] === false) {
                         $falhas++;
 

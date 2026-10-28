@@ -75,7 +75,8 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertArrayNotHasKey('descricao', $cinza, 'a descrição é do produto: só na 1ª linha');
 
         $this->assertSame(['P1', 'P2'], array_column($r['fotos_por_linha'][0], 'id'));
-        $this->assertSame(['https://http2.mlstatic.com/D_3-O.jpg'], array_column($r['fotos_por_linha'][1], 'url'), 'http vira https');
+        $this->assertSame(['https://http2.mlstatic.com/D_3-F.jpg'], array_column($r['fotos_por_linha'][1], 'url'), 'http vira https, e a foto é a de tamanho cheio');
+        $this->assertSame(['https://http2.mlstatic.com/D_3-O.jpg'], array_column($r['fotos_por_linha'][1], 'url_reserva'));
     }
 
     public function test_caixa_do_vendedor_vira_volume_em_cm_e_kg(): void
@@ -191,6 +192,15 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertSame(31, $r['retrato']['vendidos']);
         $this->assertSame(['Tempo de garantia: 90 dias'], $r['retrato']['garantia']);
         $this->assertSame(3, $r['retrato']['fotos']);
+    }
+
+    public function test_foto_em_tamanho_cheio(): void
+    {
+        // O `-O` do anúncio tem o lado maior em 500 px; o Publicador recusa lado abaixo de 500 (V-IMG-03).
+        $this->assertSame('https://http2.mlstatic.com/D_655797-MLB104381465699_012026-F.jpg',
+            TradutorAnuncioMlParaPortal::urlTamanhoCheio('https://http2.mlstatic.com/D_655797-MLB104381465699_012026-O.jpg'));
+        $this->assertSame('https://http2.mlstatic.com/D_1-F.webp', TradutorAnuncioMlParaPortal::urlTamanhoCheio('https://http2.mlstatic.com/D_1-O.webp'));
+        $this->assertSame('https://exemplo.test/foto.jpg', TradutorAnuncioMlParaPortal::urlTamanhoCheio('https://exemplo.test/foto.jpg'), 'fora do padrão, como veio');
     }
 
     public function test_entrada_da_ficha_por_tipo_de_campo(): void
