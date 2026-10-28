@@ -339,8 +339,11 @@ test('Gate: imagens são gravadas na hora e NÃO marcam a ficha como alterada', 
 });
 
 test('Gate: "Nova variação" não herda as imagens da 1ª, e o salvar parcial não as apaga', () => {
-    const nova = hook.slice(hook.indexOf('const novaVariacao = () =>'), hook.indexOf('const removerVariacao'));
+    // 28/10/2026: a assinatura ganhou a cor e a variação-base (novo tamanho dentro da cor); as fotos seguem não vindo.
+    const nova = hook.slice(hook.indexOf('const novaVariacao = ('), hook.indexOf('const removerVariacao'));
+    assert.ok(nova.length > 100, 'achou a função');
     assert.ok(nova.includes('imagens: []'));
+    assert.ok(! /patch\s*=\s*\{[^}]*imagens/.test(nova), 'quem chama não passa imagens no patch');
     assert.ok(hook.includes('imagens: v.imagens ?? []'), 'o POST `linhas` não devolve imagens: as da tela seguem');
     assert.ok(hook.includes('manterImagensAtuais(rascunho.vars, varsRef.current)'));
 });

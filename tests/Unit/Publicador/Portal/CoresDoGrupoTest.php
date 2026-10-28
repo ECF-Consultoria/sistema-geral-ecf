@@ -36,4 +36,17 @@ class CoresDoGrupoTest extends TestCase
         $this->assertSame([], $r['agrupaveis']);
         $this->assertCount(2, $r['fora']);
     }
+
+    /** Cor E tamanho (28/10/2026): a mesma cor em dois tamanhos são variações diferentes; o par é que não repete. */
+    public function test_com_o_segundo_eixo_o_par_de_valores_e_o_que_nao_repete(): void
+    {
+        $t = fn (int $id, string $cor, ?string $tam) => ['id' => $id, 'eixo' => 'cor', 'valor' => $cor, 'eixo_2' => 'tamanho', 'valor_2' => $tam, 'codigo' => 'SKU-'.$id];
+
+        $r = CoresDoGrupo::separar([$t(1, 'Verde', '34-39'), $t(2, 'Verde', '39-43'), $t(3, 'verde', '34-39'), $t(4, 'Azul', null), self::v(5, 'Preto')]);
+
+        $this->assertSame([1, 2], $r['agrupaveis']);
+        $this->assertStringContainsString('"verde · 34-39" está repetida', $r['fora'][3]);
+        $this->assertStringContainsString('sem o valor do segundo eixo', $r['fora'][4]);
+        $this->assertStringContainsString('"Preto" usa outro tipo', $r['fora'][5], 'cor sozinha não é do tipo cor + tamanho');
+    }
 }

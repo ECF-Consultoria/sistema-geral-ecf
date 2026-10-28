@@ -25,10 +25,17 @@ const ARQUIVOS = [
 // não entram: o que se proíbe é a palavra escrita para gente ler.
 const PROIBIDO = /Mercado Livre|mercado livre|an[uú]ncio publicado|anúncio|Anúncio|Publicador|\bpublicar\b|\bPublicar\b/;
 
+// A ÚNICA exceção (decisão do usuário, 28/10/2026): a entrada da importação e o selo do produto importado dizem
+// de onde ele veio — o anúncio que o próprio cliente já tem. Só estas frases, exatas; o resto segue em sigilo.
+const EXCECOES = {
+    [`${PASTA}/BarraAcoesProdutos.jsx`]: ['Importar do Mercado Livre', 'Veja seus anúncios, o que falta em cada um, e importe os que quiser para cá.'],
+    [`${PASTA}/SeloImportadoDoMl.jsx`]: ['Importado do Mercado Livre'],
+};
+
 test('nenhum arquivo da ficha do produto escreve para o cliente a origem do cadastro', () => {
     assert.ok(ARQUIVOS.length >= 10, 'a varredura precisa cobrir a pasta inteira da ficha');
     for (const arquivo of ARQUIVOS) {
-        const fonte = lerSemComentarios(arquivo);
+        const fonte = (EXCECOES[arquivo] ?? []).reduce((f, frase) => f.split(frase).join(''), lerSemComentarios(arquivo));
         const achado = fonte.match(PROIBIDO);
         assert.equal(achado, null, `${arquivo} cita "${achado?.[0]}"`);
     }

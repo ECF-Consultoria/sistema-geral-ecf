@@ -144,7 +144,7 @@ class PlanejamentoDaFaseService
     public function coresDoProduto(int $companyId, int $produtoId): array
     {
         $variacoes = EstruturaProdutoVariacao::query()->where('company_id', $companyId)->where('produto_id', $produtoId)
-            ->orderBy('ordem')->orderBy('id')->get(['id', 'eixo', 'valor', 'codigo', 'ordem']);
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'eixo', 'valor', 'eixo_2', 'valor_2', 'codigo', 'ordem']);
         if ($variacoes->isEmpty()) {
             return [];
         }
@@ -156,7 +156,8 @@ class PlanejamentoDaFaseService
         $cores = [];
         foreach (self::coresQueEntram($variacoes, $ofertas) as [$v, $oferta]) {
             $cores[(int) $v->id] = [
-                'valor' => trim((string) $v->valor),
+                // Com o 2º eixo (cor E tamanho), a "cor" do Planejamento é o par: "Verde · 34-39".
+                'valor' => (string) $v->valorCompleto(),
                 'oferta_id' => (int) $oferta->id,
                 'sku' => (string) $oferta->sku,
                 'codigo' => $v->codigo,
@@ -182,7 +183,7 @@ class PlanejamentoDaFaseService
         }
 
         $variacoes = EstruturaProdutoVariacao::query()->where('company_id', $companyId)->whereIn('produto_id', $produtoIds)
-            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'eixo', 'valor', 'codigo', 'ordem']);
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'eixo', 'valor', 'eixo_2', 'valor_2', 'codigo', 'ordem']);
         if ($variacoes->isEmpty()) {
             return [];
         }
@@ -226,7 +227,7 @@ class PlanejamentoDaFaseService
     {
         $comOferta = $variacoes->filter(fn (EstruturaProdutoVariacao $v) => $ofertas->has($v->id))->values();
         $entram = array_flip(CoresDoGrupo::separar($comOferta->map(fn (EstruturaProdutoVariacao $v) => [
-            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
+            'id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'eixo_2' => $v->eixo_2, 'valor_2' => $v->valor_2, 'codigo' => $v->codigo,
         ])->all())['agrupaveis']);
 
         $saida = [];

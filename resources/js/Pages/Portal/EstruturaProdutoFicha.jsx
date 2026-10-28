@@ -9,6 +9,7 @@ import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
 import FichaTitulo from '@/Components/Portal/Estrutura/Produtos/FichaTitulo';
 import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoProduto';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
+import VariacoesPorCor, { EixosDoProduto } from '@/Components/Portal/Estrutura/Produtos/VariacoesPorCor';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
 import PrecificacaoDoProduto from '@/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto';
@@ -244,6 +245,24 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         });
     };
 
+    // Cor E tamanho (28/10/2026): o novo tamanho nasce dentro da cor, copiando custo e caixa do último dela.
+    const novoNaCor = (cor, chaveBase) => {
+        const k = ficha.novaVariacao({ valor: cor }, chaveBase);
+        requestAnimationFrame(() => {
+            document.getElementById(`valor2-${k}`)?.focus();
+            document.getElementById(`variacao-${k}`)?.scrollIntoView({ block: 'nearest' });
+        });
+    };
+
+    // A cor nova nasce com o 1º tamanho; o foco vai ao nome da cor.
+    const novaCor = () => {
+        const k = ficha.novaVariacao({ valor: '' });
+        requestAnimationFrame(() => {
+            document.getElementById(`cor-${k}`)?.focus();
+            document.getElementById(`cor-${k}`)?.scrollIntoView({ block: 'nearest' });
+        });
+    };
+
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo={nome}>
             <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-5 sm:px-6 lg:pb-8" data-ficha-produto>
@@ -307,17 +326,28 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </div>
 
                     <fieldset disabled={ficha.salvando} className="min-w-0 border-0 p-0" data-campos-variacoes>
-                        <div className="mt-4 space-y-2.5">
-                            {ficha.vars.map((v) => (
-                                <CartaoVariacao key={v._k} variacao={v} ficha={ficha} vocabulario={vocabulario}
-                                    podeExcluir={!! v.id || ficha.vars.length > 1} onExcluir={excluir} />
-                            ))}
-                        </div>
+                        {ficha.segundoEixo ? (
+                            // Dois eixos: cada cor é um bloco com as fotos dela e os tamanhos dentro.
+                            <>
+                                <EixosDoProduto ficha={ficha} />
+                                <VariacoesPorCor ficha={ficha} vocabulario={vocabulario} onExcluir={excluir} onNovaNaCor={novoNaCor} onNovaCor={novaCor} />
+                            </>
+                        ) : (
+                            <>
+                                <div className="mt-4 space-y-2.5">
+                                    {ficha.vars.map((v) => (
+                                        <CartaoVariacao key={v._k} variacao={v} ficha={ficha} vocabulario={vocabulario}
+                                            podeExcluir={!! v.id || ficha.vars.length > 1} onExcluir={excluir} />
+                                    ))}
+                                </div>
 
-                        <button type="button" onClick={novaVariacao} data-acao="nova-variacao"
-                            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] text-[14px] text-white/80 hover:bg-white/[0.03] lg:h-8">
-                            <Plus size={14} /> Nova variação
-                        </button>
+                                <button type="button" onClick={novaVariacao} data-acao="nova-variacao"
+                                    className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] text-[14px] text-white/80 hover:bg-white/[0.03] lg:h-8">
+                                    <Plus size={14} /> Nova variação
+                                </button>
+                                <EixosDoProduto ficha={ficha} />
+                            </>
+                        )}
                     </fieldset>
                 </section>
 

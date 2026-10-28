@@ -43,6 +43,17 @@ class VariantesPorCorTest extends TestCase
         $this->assertSame(['d' => 3], $r);
     }
 
+    public function test_variante_de_cor_e_tamanho_casa_pelo_par_nas_duas_ordens(): void
+    {
+        // 28/10/2026: o produto do Portal com dois eixos chega como "Verde · 34-39" (PlanejamentoDaFaseService::coresDoProduto).
+        $r = VariantesPorCor::casar(
+            [self::v('a', ['Verde', '34-39']), self::v('b', ['40-44', 'verde']), self::v('c', ['Azul', '34-39'])],
+            [1 => 'Verde · 34-39', 2 => 'Verde · 40-44', 3 => 'Azul'],
+        );
+
+        $this->assertSame(['a' => 1, 'b' => 2], $r, 'Azul sozinho não é o par Azul · 34-39');
+    }
+
     public function test_cada_cor_casa_uma_vez_so(): void
     {
         $r = VariantesPorCor::casar([self::v('a', ['Preto']), self::v('b', ['preto'])], [1 => 'Preto']);

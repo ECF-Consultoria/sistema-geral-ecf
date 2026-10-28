@@ -306,7 +306,7 @@ class SugestaoDeKitService
     private function coresPorProduto(Collection $grupos): array
     {
         $variacoes = EstruturaProdutoVariacao::query()->whereIn('produto_id', $grupos->keys()->all())
-            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'company_id', 'eixo', 'valor', 'codigo']);
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'company_id', 'eixo', 'valor', 'eixo_2', 'valor_2', 'codigo']);
         $comSimples = $variacoes->isEmpty() ? collect() : EstruturaOferta::query()->where('fase', EstruturaOferta::FASE_SIMPLES)
             ->whereIn('variacao_id', $variacoes->pluck('id'))->pluck('variacao_id')->flip();
 
@@ -314,7 +314,7 @@ class SugestaoDeKitService
         foreach ($variacoes->groupBy('produto_id') as $produtoId => $lista) {
             $grupo = $grupos->get($produtoId);
             $cores = $lista->filter(fn (EstruturaProdutoVariacao $v) => (int) $v->company_id === (int) $grupo?->company_id && $comSimples->has($v->id))
-                ->map(fn (EstruturaProdutoVariacao $v) => ['id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo])
+                ->map(fn (EstruturaProdutoVariacao $v) => ['id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'eixo_2' => $v->eixo_2, 'valor_2' => $v->valor_2, 'codigo' => $v->codigo])
                 ->values()->all();
             $saida[(int) $produtoId] = count(CoresDoGrupo::separar($cores)['agrupaveis']);
         }

@@ -267,6 +267,10 @@ class ProdutoLinhas
             'eixo'                 => $variacao->eixo,
             'eixo_rotulo'          => $variacao->eixo ? (EstruturaProdutoVariacao::EIXOS[$variacao->eixo] ?? $variacao->eixo) : null,
             'valor'                => $variacao->valor,
+            // 2º eixo (28/10/2026): cor E tamanho, como no ML. Null nas variações de um eixo só.
+            'eixo_2'               => $variacao->eixo_2,
+            'eixo_2_rotulo'        => $variacao->eixo_2 ? (EstruturaProdutoVariacao::EIXOS[$variacao->eixo_2] ?? $variacao->eixo_2) : null,
+            'valor_2'              => $variacao->valor_2,
             'ordem'                => (int) $variacao->ordem,
             'primeira'             => $primeira,
             'familia'              => $familia,

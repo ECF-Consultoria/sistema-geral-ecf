@@ -9,6 +9,7 @@ import {
     EXCECOES, dadosParaGravar, diferencasDaReferencia, faixaDoCartao, fmtPct, mudouDoGravado, paraNumero, paraTexto, pendentesPrimeiro,
     reaisParaTexto,
 } from '@/lib/precificacaoSimulador';
+import { valorDaVariacao } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 
 // ─── Precificação dentro da ficha do produto (20/10/2026; refeita em 21/10) ─
@@ -282,7 +283,7 @@ export default function PrecificacaoDoProduto({ ficha, produtoId = null, nomeDoP
     const parametros = dados?.parametros;
     const porVariacao = new Map(ficha.vars.filter((v) => chaveDe(v)).map((v) => [chaveDe(v), v]));
     const varDe = (i) => porVariacao.get(novo ? i?.oferta.chave : i?.oferta.variacao_id);
-    const nomeDaVariacao = (i) => varDe(i)?.valor || (itens.length > 1 ? (i.oferta.sku ?? varDe(i)?.codigo ?? 'Variação') : 'Variação única');
+    const nomeDaVariacao = (i) => valorDaVariacao(varDe(i)) || (itens.length > 1 ? (i.oferta.sku ?? varDe(i)?.codigo ?? 'Variação') : 'Variação única');
 
     // A variação aberta em "Só esta": a escolhida, ou a primeira sem preço (a lista já vem com elas na frente).
     const selecionado = itens.find((i) => i.oferta.id === selId) ?? itens[0] ?? null;

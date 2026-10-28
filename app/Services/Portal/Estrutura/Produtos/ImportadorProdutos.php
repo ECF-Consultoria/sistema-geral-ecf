@@ -528,6 +528,8 @@ class ImportadorProdutos
                 'id'    => count($lista) + 1,
                 'eixo'  => in_array('eixo', $v['presentes'], true) ? $v['campos']['eixo'] : ($atual ? $atual->eixo : $eixoHerdado),
                 'valor' => in_array('valor', $v['presentes'], true) ? $v['campos']['valor'] : $atual?->valor,
+                'eixo_2' => in_array('eixo_2', $v['presentes'], true) ? $v['campos']['eixo_2'] : ($atual ? $atual->eixo_2 : ($cadastradas[0]->eixo_2 ?? null)),
+                'valor_2' => in_array('valor_2', $v['presentes'], true) ? $v['campos']['valor_2'] : $atual?->valor_2,
             ];
             if ($atual) {
                 $citadas[(int) $atual->id] = true;
@@ -535,7 +537,7 @@ class ImportadorProdutos
         }
         foreach ($cadastradas as $x) {
             if (! isset($citadas[(int) $x->id])) {
-                $lista[] = ['id' => count($lista) + 1, 'eixo' => $x->eixo, 'valor' => $x->valor];
+                $lista[] = ['id' => count($lista) + 1, 'eixo' => $x->eixo, 'valor' => $x->valor, 'eixo_2' => $x->eixo_2, 'valor_2' => $x->valor_2];
             }
         }
 
@@ -548,10 +550,13 @@ class ImportadorProdutos
         $vistos = [];
         foreach ($lista as $v) {
             $valor = trim((string) $v['valor']);
-            $chave = $valor === '' ? '' : ChaveCanonica::texto($valor);
+            // Com o 2º eixo (cor E tamanho), o que não repete é o par; sem o 2º valor conta como sem nome.
+            $valor2 = trim((string) ($v['valor_2'] ?? ''));
+            $semSegundo = trim((string) ($v['eixo_2'] ?? '')) !== '' && $valor2 === '';
+            $chave = $valor === '' ? '' : ChaveCanonica::texto($valor).'|'.ChaveCanonica::texto($valor2);
             if (isset($fora[$v['id']])) {
                 $problemas[match (true) {
-                    $valor === ''          => 'sem_nome',
+                    $valor === '' || $semSegundo => 'sem_nome',
                     isset($vistos[$chave]) => 'repetida',
                     default                => 'tipos',
                 }] = true;

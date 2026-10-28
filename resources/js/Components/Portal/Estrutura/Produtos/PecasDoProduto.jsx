@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { router, usePage } from '@inertiajs/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import Explicacao from '@/Components/Explicacao';
-import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
+import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete, valorDaVariacao } from '@/lib/produtosEstrutura';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
@@ -194,7 +194,7 @@ export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'gran
                 lista ? 'grid-cols-[minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-1'
                     : 'grid-cols-[minmax(0,108px)_minmax(0,1fr)_auto_minmax(72px,auto)] gap-x-3.5 py-3.5')}>
             <span className="truncate text-[14px] font-medium text-white">{variacao.codigo}</span>
-            <span className="truncate text-[14px] text-white/75">{variacao.valor || '—'}</span>
+            <span className="truncate text-[14px] text-white/75">{valorDaVariacao(variacao) || '—'}</span>
             <PilulaLogistica chave={variacao.logistica ?? 'pendente'} rotulos={vocabulario?.logisticas} className="h-8 px-3" />
             <span className={cn('min-w-0', lista ? 'text-left' : 'text-right')}>
                 {renderFrete(variacao, { consultando: emConsulta }, 'pilha')}

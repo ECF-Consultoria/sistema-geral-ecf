@@ -258,7 +258,8 @@ class TrazerDoMercadoLivreTest extends TestCase
 
     public function test_anuncio_de_cor_e_tamanho_vira_um_produto_so_com_cor_e_tamanho_em_cada_variacao(): void
     {
-        // 28/10/2026, o usuário: "veio separado sendo que são variações do mesmo pai".
+        // 28/10/2026, o usuário: "veio separado sendo que são variações do mesmo pai" e, depois, "deveria ter mais
+        // de um eixo, assim como é no mercado livre": Cor no 1º eixo, Tamanho no 2º, as fotos na 1ª de cada cor.
         $empresa = $this->empresaConectada();
         $this->noAcervo($empresa, 'MLB111');
         $meia = $this->anuncio();
@@ -278,11 +279,41 @@ class TrazerDoMercadoLivreTest extends TestCase
         $produto = EstruturaProduto::where('company_id', $empresa->id)->sole();
         $this->assertSame('Meia Cano Longo', $produto->nome);
         $vars = EstruturaProdutoVariacao::where('produto_id', $produto->id)->orderBy('ordem')->get();
-        $this->assertSame(['Branco · 34-39', 'Verde · 34-39', 'Verde · 39-43'], $vars->pluck('valor')->all());
+        $this->assertSame([['cor', 'Branco', 'tamanho', '34-39'], ['cor', 'Verde', 'tamanho', '34-39'], ['cor', 'Verde', 'tamanho', '39-43']],
+            $vars->map(fn ($v) => [$v->eixo, $v->valor, $v->eixo_2, $v->valor_2])->all());
         $this->assertSame(1, EstruturaProdutoOrigemMl::where('ml_item_id', 'MLB111')->count());
-        foreach ($vars as $v) {
-            $this->assertGreaterThan(0, EstruturaProdutoVariacaoImagem::where('variacao_id', $v->id)->count());
-        }
+        // A galeria é da cor: Branco e o 1º Verde têm fotos; o 2º Verde usa as da cor.
+        $this->assertSame([1, 1, 0], $vars->map(fn ($v) => EstruturaProdutoVariacaoImagem::where('variacao_id', $v->id)->count())->all());
+        // A oferta de cada variação leva os dois valores no nome.
+        $this->assertSame('Meia Cano Longo — Verde · 39-43', $vars[2]->oferta?->nome);
+        // Nem a Cor nem o Tamanho são da ficha: são os eixos.
+        $this->assertEqualsCanonicalizing(['cor', 'tamanho'], \App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto::eixosDoProduto($produto));
+    }
+
+    public function test_excluir_o_tamanho_que_guarda_as_fotos_passa_a_galeria_para_o_proximo_da_mesma_cor(): void
+    {
+        $empresa = $this->empresaConectada();
+        $this->noAcervo($empresa, 'MLB111');
+        $meia = $this->anuncio();
+        $comb = fn ($cor, $tam) => [['id' => 'COLOR', 'value_name' => $cor], ['id' => 'SIZE', 'value_name' => $tam]];
+        $meia['variations'] = [
+            ['id' => 1, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-34']]],
+            ['id' => 2, 'picture_ids' => ['P1'], 'attribute_combinations' => $comb('Verde', '39-43'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-V-39']]],
+            ['id' => 3, 'picture_ids' => ['P2'], 'attribute_combinations' => $comb('Azul', '34-39'), 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'MEIA-A-34']]],
+        ];
+        $this->fakeMl(['MLB111' => $meia]);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+        $sessao->postJson(route('portal.auth.estrutura.produtos.ml.importar'), ['mlbs' => ['MLB111']])->assertOk();
+        [$v34, $v39, $azul] = EstruturaProdutoVariacao::where('company_id', $empresa->id)->orderBy('ordem')->get()->all();
+        $foto = EstruturaProdutoVariacaoImagem::where('variacao_id', $v34->id)->sole();
+
+        $sessao->deleteJson(route('portal.auth.estrutura.produtos.variacoes.excluir', $v34->id))->assertOk();
+
+        $passou = EstruturaProdutoVariacaoImagem::where('variacao_id', $v39->id)->sole();
+        $this->assertSame($foto->id, $passou->id, 'a mesma foto, agora do outro tamanho da cor');
+        $this->assertStringContainsString("/variacoes/{$v39->id}/", $passou->caminho);
+        Storage::disk('local')->assertExists($passou->caminho);
+        $this->assertSame(1, EstruturaProdutoVariacaoImagem::where('variacao_id', $azul->id)->count(), 'a outra cor não muda');
     }
 
     public function test_anuncio_de_outra_conta_nao_entra(): void

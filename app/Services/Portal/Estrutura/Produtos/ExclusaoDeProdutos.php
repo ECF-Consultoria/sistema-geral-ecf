@@ -128,7 +128,8 @@ class ExclusaoDeProdutos
             foreach ($l['produtos'] as $p) {
                 $nomes[] = (string) $p->nome;
                 foreach ($l['variacoes_do_produto'][$p->id] ?? [] as $variacaoId) {
-                    $this->cadastro->excluirVariacao($empresa, (int) $variacaoId, $ator);
+                    // O produto inteiro sai: nada de passar a galeria da cor de um tamanho para outro.
+                    $this->cadastro->excluirVariacao($empresa, (int) $variacaoId, $ator, passarFotos: false);
                     $variacoes++;
                 }
 

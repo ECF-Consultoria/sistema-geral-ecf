@@ -24,7 +24,8 @@ use App\Services\Portal\Estrutura\Produtos\NormalizadorDeLinha;
  *   UMA caixa: móvel que vai em vários volumes chega com um volume só (aviso).
  * - Ficha técnica = os atributos do anúncio pelo id (a ficha do Portal usa os mesmos ids do
  *   catálogo). O Modelo NÃO vai para a ficha (saiu dela em 09/10/2026): fica no retrato, como fato.
- * - Fotos = as do anúncio, pela ordem; com variações, as `picture_ids` de cada uma.
+ * - Fotos = as do anúncio, pela ordem; com variações, as `picture_ids` de cada uma. Com dois eixos
+ *   (cor e tamanho), as fotos são da COR: vão só para a 1ª variação de cada cor (a dona da galeria).
  *
  * Medida que o anúncio não tem não é inventada aqui: o que não veio fica vazio.
  */
@@ -107,10 +108,9 @@ final class TradutorAnuncioMlParaPortal
             // O eixo é a característica que VARIA entre as variações (moda traz cor E tamanho em cada uma;
             // com a cor igual em todas, o eixo é o tamanho — 28/10/2026, "Meia Cano Longo"). A que não varia
             // é do produto: vai para a ficha. Variando as DUAS, o anúncio continua UM produto ("um pai só",
-            // decisão do usuário, 28/10/2026 — separar por tamanho foi tentado e desfeito no mesmo dia), com
-            // "Cor · Tamanho" juntos em cada variação; cor e tamanho separados é o plano de moda
-            // (`.planning/seeds/moda-cor-e-tamanho-e-guia-de-tamanhos.md`).
-            [$eixoDe, $fixas, $multi] = self::eixosDasVariacoes($variacoesMl);
+            // decisão do usuário, 28/10/2026) com DOIS eixos, como no ML: a cor no 1º, o tamanho no 2º.
+            [$eixoDe, $fixas, $alemDeDois] = self::eixosDasVariacoes($variacoesMl);
+            $corComFotos = [];
             foreach ($fixas as $id => $valorFixo) {
                 $atributos[$id] ??= ['id' => $id, 'value_name' => $valorFixo];
             }
@@ -129,17 +129,25 @@ final class TradutorAnuncioMlParaPortal
                 }
                 $usados[$chave] = true;
 
-                [$eixo, $valor] = $eixoDe($v);
+                [$eixo, $valor, $eixo2, $valor2] = $eixoDe($v);
                 // Rede de segurança: variação sem nada que a diferencie vira produto SEPARADO no Publicador e as
                 // fotos não chegam ao rascunho (o caso da "Meia Cano Longo", 28/10/2026). Nome provisório + aviso.
                 if ($valor === null && count($variacoesMl) > 1) {
-                    [$eixo, $valor] = ['outro', 'Variação '.($i + 1)];
+                    [$eixo, $valor] = [$eixo ?? 'outro', 'Variação '.($i + 1)];
                     $semNome = true;
                 }
 
                 $linhas[] = self::linha($codigo, $grupo, $nome, $categoria, $i === 0 ? $descricao : null, $volume, $eixo, $valor, $i + 1,
-                    self::inteiro($v['available_quantity'] ?? null));
+                    self::inteiro($v['available_quantity'] ?? null), $eixo2, $valor2);
 
+                // Dois eixos: a galeria é da cor (o 1º valor) e mora na 1ª variação dela; os outros tamanhos da
+                // mesma cor não repetem as fotos (o Portal e o Publicador mostram as da cor para todos).
+                $daCor = $eixo2 !== null ? mb_strtolower((string) $valor) : null;
+                if ($daCor !== null && isset($corComFotos[$daCor])) {
+                    $fotosPorLinha[] = [];
+
+                    continue;
+                }
                 $fotos = [];
                 foreach ((array) ($v['picture_ids'] ?? []) as $pid) {
                     if (isset($fotosDoAnuncio[(string) $pid])) {
@@ -147,10 +155,13 @@ final class TradutorAnuncioMlParaPortal
                     }
                 }
                 $fotosPorLinha[] = array_slice($fotos !== [] ? $fotos : array_values($fotosDoAnuncio), 0, $maxFotos);
+                if ($daCor !== null) {
+                    $corComFotos[$daCor] = true;
+                }
             }
 
-            if ($multi) {
-                $avisos[] = 'O anúncio varia em mais de uma característica ao mesmo tempo (ex.: cor e tamanho): cada variação entrou com as duas juntas (“Branco · 34-39”).';
+            if ($alemDeDois) {
+                $avisos[] = 'O anúncio varia em mais de duas características ao mesmo tempo: a partir da segunda, elas entraram juntas no segundo eixo (“M · Algodão”).';
             }
             if ($semNome ?? false) {
                 $avisos[] = 'O anúncio não diz o que muda entre as variações: elas entraram como “Variação 1”, “Variação 2”… — troque pelo valor certo (cor, tamanho…) no produto.';
@@ -258,7 +269,8 @@ final class TradutorAnuncioMlParaPortal
 
     // ═══ Internos ═══════════════════════════════════════════════════════════
 
-    private static function linha(string $codigo, string $grupo, string $nome, string $categoria, ?string $descricao, ?array $volume, ?string $eixo, ?string $valor, int $ordem, ?int $estoque): array
+    private static function linha(string $codigo, string $grupo, string $nome, string $categoria, ?string $descricao, ?array $volume, ?string $eixo, ?string $valor, int $ordem, ?int $estoque,
+        ?string $eixo2 = null, ?string $valor2 = null): array
     {
         $linha = [
             'codigo' => mb_substr($codigo, 0, 120),
@@ -281,6 +293,12 @@ final class TradutorAnuncioMlParaPortal
         if ($valor !== null) {
             $linha['valor'] = $valor;
         }
+        if ($eixo2 !== null) {
+            $linha['eixo_2'] = $eixo2;
+        }
+        if ($valor2 !== null) {
+            $linha['valor_2'] = $valor2;
+        }
         if ($estoque !== null && $estoque >= 0) {
             $linha['estoque'] = $estoque;
         }
@@ -289,16 +307,17 @@ final class TradutorAnuncioMlParaPortal
     }
 
     /**
-     * As características de cada variação e qual delas é o eixo.
+     * As características de cada variação e quais delas são os eixos.
      *
      * - Uma só varia (o caso comum, inclusive moda com a cor igual em todas): eixo = ela (cor, tamanho,
-     *   voltagem…), valor = o dela.
-     * - Duas ou mais variam: o Portal guarda UM eixo por variação, então entra "Outro" com os valores
-     *   que variam, juntos ("Preto · M"), e um aviso.
+     *   voltagem…), valor = o dela; sem 2º eixo.
+     * - Duas variam (moda: cor E tamanho): dois eixos, como no ML. O 1º é a COR quando ela varia (é ela que
+     *   agrupa e tem as fotos); o 2º, a outra. Mais de duas: a partir da segunda, juntas no 2º eixo, como
+     *   "Outro" ("M · Algodão"), e um aviso.
      * - As que não variam são do produto (`fixas`, para a ficha).
      *
      * @param  list<array>  $variacoes
-     * @return array{0: callable(array): array{0: ?string, 1: ?string}, 1: array<string, string>, 2: bool}
+     * @return array{0: callable(array): array{0: ?string, 1: ?string, 2: ?string, 3: ?string}, 1: array<string, string>, 2: bool}
      */
     private static function eixosDasVariacoes(array $variacoes): array
     {
@@ -331,22 +350,49 @@ final class TradutorAnuncioMlParaPortal
                 }
             }
         }
-        // Nenhuma varia (anúncio com variações iguais): fica como estava, com todas juntas.
+        // Nenhuma varia (anúncio com variações iguais): um eixo só com tudo junto, como antes.
         $usar = $variam !== [] ? $variam : array_keys($valores);
-        $multi = count($usar) > 1;
+        if ($usar === []) {
+            return [fn (array $v) => [null, null, null, null], $fixas, false];
+        }
+        if ($variam === [] && count($usar) > 1) {
+            $eixoDe = function (array $v) use ($usar): array {
+                $c = self::caracteristicasDaVariacao($v);
+                $partes = array_values(array_filter(array_map(fn ($id) => $c[$id] ?? null, $usar)));
 
-        $eixoDe = function (array $v) use ($usar, $multi): array {
-            $c = self::caracteristicasDaVariacao($v);
-            $partes = array_values(array_filter(array_map(fn ($id) => $c[$id] ?? null, $usar)));
-            if ($partes === []) {
-                return [null, null];
-            }
-            $eixo = $multi ? 'outro' : (self::eixoDoAtributo($usar[0]) ?? 'outro');
+                return $partes === [] ? [null, null, null, null] : ['outro', mb_substr(implode(' · ', $partes), 0, NormalizadorDeLinha::MAX_VALOR), null, null];
+            };
 
-            return [$eixo, mb_substr(implode(' · ', $partes), 0, NormalizadorDeLinha::MAX_VALOR)];
+            return [$eixoDe, [], false];
+        }
+
+        // A cor primeiro: no ML (e no Portal) é ela que agrupa os tamanhos e tem as fotos.
+        usort($usar, fn ($a, $b) => (self::eixoDoAtributo($a) === 'cor' ? 0 : 1) <=> (self::eixoDoAtributo($b) === 'cor' ? 0 : 1));
+        $primeiro = $usar[0];
+        $resto = array_slice($usar, 1);
+        $eixo1 = self::eixoDoAtributo($primeiro) ?? 'outro';
+        // O 2º eixo: o do atributo, quando é um só e não repete o 1º; senão "Outro" com os valores juntos.
+        $eixoDoResto = count($resto) === 1 ? self::eixoDoAtributo($resto[0]) : null;
+        $eixo2 = match (true) {
+            $resto === [] => null,
+            $eixoDoResto !== null && $eixoDoResto !== $eixo1 => $eixoDoResto,
+            default => 'outro',
         };
 
-        return [$eixoDe, $multi ? [] : $fixas, $multi];
+        $eixoDe = function (array $v) use ($primeiro, $resto, $eixo1, $eixo2): array {
+            $c = self::caracteristicasDaVariacao($v);
+            $valor = $c[$primeiro] ?? null;
+            $partes = array_values(array_filter(array_map(fn ($id) => $c[$id] ?? null, $resto)));
+            $valor2 = $partes === [] ? null : mb_substr(implode(' · ', $partes), 0, NormalizadorDeLinha::MAX_VALOR);
+            if ($valor === null) {
+                // Sem o 1º (a cor), a rede de segurança dá o nome; o 2º valor fica, no eixo dele.
+                return [$eixo1, null, $eixo2, $valor2];
+            }
+
+            return [$eixo1, mb_substr($valor, 0, NormalizadorDeLinha::MAX_VALOR), $eixo2, $valor2];
+        };
+
+        return [$eixoDe, $fixas, count($resto) > 1];
     }
 
     /**

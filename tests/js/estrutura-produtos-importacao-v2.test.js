@@ -105,7 +105,9 @@ test('sugestoesPendentes e resumoDasEscolhas: o "Confirmar as N sugestões" só 
 
 const janela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaImportacao.jsx');
 const bloco = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CategoriasAConfirmar.jsx');
-const barra = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx');
+// A entrada da importação do ML (28/10/2026) é a exceção que o usuário decidiu: só estas frases, exatas.
+const barra = ['Importar do Mercado Livre', 'Veja seus anúncios, o que falta em cada um, e importe os que quiser para cá.']
+    .reduce((f, frase) => f.split(frase).join(''), lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx'));
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
 const lib = lerSemComentarios('resources/js/lib/categoriasDaImportacao.js');
 

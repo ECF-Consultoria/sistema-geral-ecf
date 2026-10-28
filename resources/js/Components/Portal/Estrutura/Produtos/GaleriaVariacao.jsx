@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 // (`enviarPendentes`). As contas (o que cabe, o que guardar, o que o servidor
 // respondeu) ficam em `@/lib/imagensVariacao`, com teste próprio.
 
-export default function GaleriaVariacao({ variacao, aoMudar }) {
+export default function GaleriaVariacao({ variacao, aoMudar, titulo = 'Imagens' }) {
     const imagens = Array.isArray(variacao.imagens) ? variacao.imagens : [];
     const entrada = useRef(null);
     const [enviando, setEnviando] = useState(false);
@@ -99,7 +99,7 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
 
     return (
         <div className="mt-3 lg:mt-2 lg:grid lg:grid-cols-[84px_minmax(0,1fr)]" data-galeria-variacao>
-            <span className="mb-2 block text-[15px] font-semibold text-white lg:mb-0 lg:pt-2.5">Imagens</span>
+            <span className="mb-2 block text-[15px] font-semibold text-white lg:mb-0 lg:pt-2.5">{titulo}</span>
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
                     <input ref={entrada} type="file" multiple accept={ACEITA_NO_INPUT} onChange={aoEscolher} disabled={! envio.pode} className="sr-only" tabIndex={-1} aria-hidden="true" data-entrada-imagens />

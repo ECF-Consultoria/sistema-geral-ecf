@@ -80,6 +80,39 @@ class VariacaoImagensService
         }
     }
 
+    /**
+     * Passa a galeria de `$de` para `$para` (28/10/2026, cor E tamanho): com dois eixos as fotos são da COR
+     * e moram na 1ª variação dela; excluir esse tamanho levaria as fotos da cor junto. Os arquivos são
+     * COPIADOS para a pasta da outra variação e as linhas mudam de dona; a pasta antiga sai com a
+     * variação, depois do commit (o `deleting` do model). Só passa para quem não tem foto nenhuma.
+     *
+     * @return int quantas fotos passaram
+     */
+    public function passarGaleria(Company $empresa, EstruturaProdutoVariacao $de, EstruturaProdutoVariacao $para): int
+    {
+        $imagens = EstruturaProdutoVariacaoImagem::query()->where('company_id', $empresa->id)->where('variacao_id', $de->id)->orderBy('ordem')->get();
+        if ($imagens->isEmpty()
+            || EstruturaProdutoVariacaoImagem::query()->where('company_id', $empresa->id)->where('variacao_id', $para->id)->exists()) {
+            return 0;
+        }
+
+        $disco = Storage::disk(self::DISCO);
+        $pasta = self::pasta((int) $empresa->id, (int) $para->produto_id, (int) $para->id);
+        $passou = 0;
+        foreach ($imagens as $imagem) {
+            $destino = $pasta.'/'.basename((string) $imagem->caminho);
+            if (! $disco->exists((string) $imagem->caminho) || ! $disco->copy((string) $imagem->caminho, $destino)) {
+                Log::warning('[Estrutura Imagens] foto da cor não passou para a outra variação', ['imagem' => $imagem->id, 'de' => $de->id, 'para' => $para->id]);
+
+                continue;
+            }
+            $imagem->forceFill(['variacao_id' => $para->id, 'produto_id' => $para->produto_id, 'caminho' => $destino])->save();
+            $passou++;
+        }
+
+        return $passou;
+    }
+
     /** A URL que a tela usa no `<img src>`: relativa (vale em qualquer domínio do portal) e autenticada. */
     public static function url(int $variacaoId, int $imagemId): string
     {

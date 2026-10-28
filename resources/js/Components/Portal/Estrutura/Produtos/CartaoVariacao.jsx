@@ -6,6 +6,7 @@ import GaleriaVariacao from '@/Components/Portal/Estrutura/Produtos/GaleriaVaria
 import Explicacao from '@/Components/Explicacao';
 import { ConjuntosDoProduto, Obrigatorio, PilulaLogistica, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { primeiraFoto } from '@/lib/imagensVariacao';
+import { rotuloDoNovo } from '@/lib/produtosEstrutura';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +17,10 @@ import { cn } from '@/lib/utils';
 // calculados (só leitura). Só a Ref e o nome do produto são obrigatórios; o
 // Eixo é lista fechada e o Valor é texto livre (D-20). Cada rótulo leva o "o que é
 // isto?" (`ficha.explicacoes`, textos do servidor).
+//
+// `dentroDaCor` (cor E tamanho, 28/10/2026): o cartão é um tamanho dentro do bloco da cor
+// (`VariacoesPorCor`). O eixo e a cor são do bloco; aqui fica só o valor do 2º eixo, e as
+// fotos são as da cor (a galeria mora no bloco).
 
 const CAMPO = 'h-11 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 py-0 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-8';
 const CAMPO_SO_LEITURA = cn(CAMPO, 'flex items-center border-white/10 bg-white/[0.03]');
@@ -34,7 +39,7 @@ function formatarSaldoLidoEm(iso) {
     return data.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExcluir, onExcluir }) {
+export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExcluir, onExcluir, dentroDaCor = false, rotuloDoSegundo = '', fotosDaCor = null }) {
     const k = variacao._k;
     const gravada = !! variacao.id;
     const caixas = ficha.caixasEdit(variacao);
@@ -48,10 +53,10 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
         <section id={`variacao-${k}`} className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-4 lg:px-4 lg:pb-3 lg:pt-3" data-variacao-form>
             <div className="lg:flex lg:items-start lg:gap-5">
                 <div className="flex items-center gap-4 lg:w-[410px]">
-                    <QuadroFotoProduto nome={variacao.nome} foto={primeiraFoto(variacao.imagens)} tamanho="mini" />
+                    <QuadroFotoProduto nome={variacao.nome} foto={primeiraFoto(fotosDaCor ?? variacao.imagens)} tamanho="mini" />
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-3">
-                            <span className="truncate text-[17px] font-semibold text-white">{variacao.codigo || 'Nova variação'}</span>
+                            <span className="truncate text-[17px] font-semibold text-white">{variacao.codigo || (dentroDaCor ? rotuloDoNovo(rotuloDoSegundo) : 'Nova variação')}</span>
                             {gravada && <PilulaLogistica chave={variacao.logistica ?? 'pendente'} rotulos={vocabulario?.logisticas} />}
                         </div>
                         {oferta && (
@@ -67,7 +72,8 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                     </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-0 lg:max-w-[905px] lg:flex-1 lg:grid-cols-[203fr_168fr_185fr_158fr_130fr] lg:gap-5">
+                <div className={cn('mt-3 grid grid-cols-2 gap-3 lg:mt-0 lg:max-w-[905px] lg:flex-1 lg:gap-5',
+                    dentroDaCor ? 'lg:grid-cols-[203fr_185fr_158fr_130fr]' : 'lg:grid-cols-[203fr_168fr_185fr_158fr_130fr]')}>
                     <div>
                         <RotuloComExplicacao className={ROTULO} htmlFor={`ref-${k}`} explicacao={explicacoes.ref} nome="Ref">Ref <Obrigatorio /></RotuloComExplicacao>
                         {variacao.bling?.sku_travado ? (
@@ -79,17 +85,27 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                             <input id={`ref-${k}`} className={CAMPO} value={variacao.codigo} onChange={(e) => ficha.alterar(k, 'codigo', e.target.value)} placeholder="código" />
                         )}
                     </div>
-                    <div>
-                        <RotuloComExplicacao className={ROTULO} htmlFor={`eixo-${k}`} explicacao={explicacoes.eixo} nome="Eixo">Eixo</RotuloComExplicacao>
-                        <select id={`eixo-${k}`} className={CAMPO} value={variacao.eixo_rotulo ?? ''} onChange={(e) => ficha.alterar(k, 'eixo_rotulo', e.target.value)}>
-                            <option value="">—</option>
-                            {ficha.eixos.map((r) => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <RotuloComExplicacao className={ROTULO} htmlFor={`valor-${k}`} explicacao={explicacoes.valor} nome="Valor">Valor</RotuloComExplicacao>
-                        <input id={`valor-${k}`} className={CAMPO} value={variacao.valor ?? ''} onChange={(e) => ficha.alterar(k, 'valor', e.target.value)} placeholder="ex.: Natural" />
-                    </div>
+                    {dentroDaCor ? (
+                        <div>
+                            <label className={ROTULO} htmlFor={`valor2-${k}`}>{rotuloDoSegundo || 'Valor'}</label>
+                            <input id={`valor2-${k}`} className={CAMPO} value={variacao.valor_2 ?? ''} onChange={(e) => ficha.alterar(k, 'valor_2', e.target.value)}
+                                placeholder={rotuloDoSegundo === 'Tamanho' ? 'ex.: 34-39' : 'ex.: 220V'} data-campo-valor-2 />
+                        </div>
+                    ) : (
+                        <>
+                            <div>
+                                <RotuloComExplicacao className={ROTULO} htmlFor={`eixo-${k}`} explicacao={explicacoes.eixo} nome="Eixo">Eixo</RotuloComExplicacao>
+                                <select id={`eixo-${k}`} className={CAMPO} value={variacao.eixo_rotulo ?? ''} onChange={(e) => ficha.alterar(k, 'eixo_rotulo', e.target.value)}>
+                                    <option value="">—</option>
+                                    {ficha.eixos.map((r) => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <RotuloComExplicacao className={ROTULO} htmlFor={`valor-${k}`} explicacao={explicacoes.valor} nome="Valor">Valor</RotuloComExplicacao>
+                                <input id={`valor-${k}`} className={CAMPO} value={variacao.valor ?? ''} onChange={(e) => ficha.alterar(k, 'valor', e.target.value)} placeholder="ex.: Natural" />
+                            </div>
+                        </>
+                    )}
                     <div>
                         <RotuloComExplicacao className={ROTULO} htmlFor={`custo-${k}`} explicacao={explicacoes.custo} nome="Custo">Custo (R$)</RotuloComExplicacao>
                         <input id={`custo-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="decimal" value={variacao.custo ?? ''} onChange={(e) => ficha.alterar(k, 'custo', e.target.value)} placeholder="0,00" />
@@ -142,7 +158,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                 </div>
             </div>
 
-            <GaleriaVariacao variacao={variacao} aoMudar={(imagens) => ficha.definirImagens(k, imagens)} />
+            {! dentroDaCor && <GaleriaVariacao variacao={variacao} aoMudar={(imagens) => ficha.definirImagens(k, imagens)} />}
 
             <div className="mt-3 lg:mt-2">
                 <FaixaCalculados variacao={variacao} ficha={ficha} vocabulario={vocabulario} />

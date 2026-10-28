@@ -459,7 +459,8 @@ class EstruturaOfertaService
             return $semProduto;
         }
 
-        $valor = trim((string) $variacao->valor) !== '' ? (string) $variacao->valor : null;
+        // Com o 2º eixo, o nome leva os dois valores ("Verde · 34-39"); com um só, é o valor como sempre.
+        $valor = $variacao->valorCompleto();
 
         return [(string) $produto->nome, $valor, $this->tipoParaNome($produto)];
     }

@@ -294,14 +294,16 @@ class FichaTecnicaDoProduto
      */
     public static function eixosDoProduto(EstruturaProduto $produto): array
     {
-        return EstruturaProdutoVariacao::query()
+        // Os dois eixos contam (28/10/2026): na meia de cor E tamanho, nem a Cor nem o Tamanho são da ficha.
+        $linhas = EstruturaProdutoVariacao::query()
             ->where('company_id', $produto->company_id)
             ->where('produto_id', $produto->id)
-            ->whereNotNull('eixo')
-            ->where('eixo', '<>', '')
-            ->distinct()
-            ->pluck('eixo')
-            ->map(fn ($e) => (string) $e)
+            ->get(['eixo', 'eixo_2']);
+
+        return $linhas->flatMap(fn ($v) => [$v->eixo, $v->eixo_2])
+            ->map(fn ($e) => trim((string) $e))
+            ->filter(fn ($e) => $e !== '')
+            ->unique()
             ->values()
             ->all();
     }

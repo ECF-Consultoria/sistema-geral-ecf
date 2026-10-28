@@ -159,6 +159,12 @@ class PortalParaRascunhoService
         // ─── Cor já publicada em outro produto fica FORA do grupo (D-06: nunca o mesmo SKU duas vezes) ───
         $grupo['variacoes'] = $this->semCoresPublicadas($produto, $r, $grupo['variacoes'], $avisos);
 
+        // ─── Cor E tamanho (28/10/2026): as fotos são da cor; o tamanho sem foto usa as da cor dele ───
+        $doisEixos = self::temSegundoEixo($grupo['variacoes']);
+        if ($doisEixos) {
+            $grupo['variacoes'] = self::comFotosDaCor($grupo['variacoes']);
+        }
+
         // ─── Categoria e schema (o schema é lido ANTES da trava: pode ir ao ML) ───
         $categoriaPortal = $this->categoriaDoPortal($grupo['categoria'] ?? null, $r, $avisos);
         $base = $this->aplicarCategoria($r, $categoriaPortal, $resumo);
@@ -174,7 +180,10 @@ class PortalParaRascunhoService
             return $this->concluir($resumo, $produto, $r);
         }
 
-        $plano = $this->planoDoEixo($grupo['variacoes'], $schema, $avisos);
+        // Dois eixos quando o Portal tem os dois e a categoria aceita; senão um eixo só, com os dois valores juntos.
+        $plano = $doisEixos
+            ? ($this->planoDosDoisEixos($grupo['variacoes'], $schema, $avisos) ?? $this->planoDoEixo(self::comValoresJuntos($grupo['variacoes']), $schema, $avisos))
+            : $this->planoDoEixo($grupo['variacoes'], $schema, $avisos);
 
         // ─── Ficha técnica e pacote — uma escrita, só o vazio ───
         $pacotes = array_map(
@@ -185,7 +194,8 @@ class PortalParaRascunhoService
         // Produto de uma cor só: a cor da variação é a Cor do produto (a ficha do Portal não a pede).
         $corDoProduto = $plano['chave'] === null ? self::corUnica($grupo['variacoes']) : null;
         $atributosPortal = $corDoProduto !== null ? self::comCor($grupo['atributos'], $corDoProduto) : $grupo['atributos'];
-        if (! $this->aplicarFicha($r, $schema, $atributosPortal, $doGrupo['pacote'], $doGrupo['divergem'], $plano['chave'] ?? null, $resumo)) {
+        $chavesDosEixos = array_values(array_filter([$plano['chave'] ?? null, $plano['segundo']['chave'] ?? null]));
+        if (! $this->aplicarFicha($r, $schema, $atributosPortal, $doGrupo['pacote'], $doGrupo['divergem'], $chavesDosEixos, $resumo)) {
             return $this->parou($resumo);
         }
 
@@ -576,9 +586,12 @@ class PortalParaRascunhoService
      * @param  array{quantidade: int, campos: list<string>}|null  $doKit  composto do Planejamento: os campos de quantidade
      *                                                                    da ficha valem o kit, não a peça (21/10/2026)
      */
-    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo, ?array $doKit = null): bool
+    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, string|array|null $chaveEixo, array &$resumo, ?array $doKit = null): bool
     {
-        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo, $doKit) {
+        // Um eixo (texto) ou os dois (cor E tamanho, 28/10/2026): nenhum deles é campo da ficha.
+        $chavesEixo = array_values(array_filter((array) $chaveEixo, fn ($c) => is_string($c) && $c !== ''));
+
+        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chavesEixo, &$resumo, $doKit) {
             $schema = $this->schemaQueVale($schema, $r);
             if ($schema === null) {
                 return false;
@@ -595,7 +608,7 @@ class PortalParaRascunhoService
             foreach ($atributosPortal as $salvo) {
                 $id = (string) ($salvo['id'] ?? '');
                 $def = $schema->atributo($id);
-                if (! $this->daFicha($def, $id, $chaveEixo)) {
+                if (! $this->daFicha($def, $id, $chavesEixo)) {
                     continue;
                 }
                 if ($id === 'COLOR' && $corDoKitVale) {
@@ -665,7 +678,7 @@ class PortalParaRascunhoService
             foreach ($snap->atributos as $id => $atual) {
                 $id = (string) $id;
                 if (! isset($noPortal[$id]) && self::doPortal($atual) && $this->preenchido($atual)
-                    && $this->daFicha($schema->atributo($id), $id, $chaveEixo)) {
+                    && $this->daFicha($schema->atributo($id), $id, $chavesEixo)) {
                     $this->decidir($id, $atual, null, $novos, $remover, $resumo);
                 }
             }
@@ -679,10 +692,12 @@ class PortalParaRascunhoService
 
             // O atributo que virou o EIXO (ex.: a Cor do produto de uma cor só, que ganhou outras cores):
             // o valor de produto que o Portal tinha escrito sai — agora a cor mora em cada variante.
-            if ($chaveEixo !== null && $chaveEixo !== ChaveCanonica::EIXO_CUSTOM && ! in_array($chaveEixo, $remover, true)
-                && self::doPortal($snap->atributos[$chaveEixo] ?? null)) {
-                $remover[] = $chaveEixo;
-                $resumo['campos_atualizados']++;
+            foreach ($chavesEixo as $chaveEixo) {
+                if ($chaveEixo !== ChaveCanonica::EIXO_CUSTOM && ! in_array($chaveEixo, $remover, true)
+                    && self::doPortal($snap->atributos[$chaveEixo] ?? null)) {
+                    $remover[] = $chaveEixo;
+                    $resumo['campos_atualizados']++;
+                }
             }
 
             if ($divergem) {
@@ -718,9 +733,9 @@ class PortalParaRascunhoService
     }
 
     /** O atributo é da ficha que o Portal alimenta? (de produto, não é o eixo, não é o pacote, não é o Modelo — da IA) */
-    private function daFicha(?AtributoClassificado $def, string $id, ?string $chaveEixo): bool
+    private function daFicha(?AtributoClassificado $def, string $id, array $chavesEixo): bool
     {
-        return $def !== null && $def->papel === AtributoClassificado::PRODUCT && $id !== $chaveEixo
+        return $def !== null && $def->papel === AtributoClassificado::PRODUCT && ! in_array($id, $chavesEixo, true)
             && $id !== FichaTecnicaDaCategoria::ID_MODELO
             && $def->secao !== AtributoClassificado::SECAO_EMBALAGEM;
     }
@@ -866,6 +881,9 @@ class PortalParaRascunhoService
     {
         if ($plano['chave'] === null) {
             return count($variacoes) === 1 && $v->chave === ChaveCanonica::UNICA ? $variacoes[0] : null;
+        }
+        if (isset($plano['segundo'])) {
+            return $this->comboDaVariante($v, $plano, $eixos)['variacao'] ?? null;
         }
         $eixo = collect($eixos)->first(fn (Eixo $e) => $e->chave === $plano['chave'] || ChaveCanonica::texto($e->nome) === ChaveCanonica::texto($plano['nome']));
         $valor = $eixo !== null ? ($v->valores[$eixo->chave] ?? null) : null;
@@ -1119,6 +1137,342 @@ class PortalParaRascunhoService
         ];
     }
 
+    // ─── Cor E tamanho (28/10/2026): dois eixos, como no ML ──────────────────
+
+    /** Chave de `step_state` com as combinações ("verde|34-39", texto canônico) que o Portal já pôs no rascunho. */
+    private const MEMORIA_COMBINACOES = 'portal_combinacoes';
+
+    /**
+     * Chave de `step_state` com as variantes que o PORTAL desativou (combinação que não existia, ex.: Verde 40-44).
+     * Se o cliente criar a combinação depois, ela volta a ficar ativa; a desativada pela equipe nunca volta.
+     */
+    private const MEMORIA_DESATIVADAS = 'portal_desativadas';
+
+    /** Alguma variação do grupo tem o 2º eixo? */
+    private static function temSegundoEixo(array $variacoes): bool
+    {
+        foreach ($variacoes as $v) {
+            if (trim((string) ($v['eixo_2'] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * As fotos são da COR (o 1º valor) e moram no 1º tamanho dela: o tamanho sem foto recebe as da cor.
+     *
+     * @param  list<array>  $variacoes
+     * @return list<array>
+     */
+    private static function comFotosDaCor(array $variacoes): array
+    {
+        $daCor = [];
+        foreach ($variacoes as $v) {
+            $cor = ChaveCanonica::texto((string) $v['valor']);
+            if (($v['imagens'] ?? []) !== [] && ! isset($daCor[$cor])) {
+                $daCor[$cor] = $v['imagens'];
+            }
+        }
+
+        return array_map(function (array $v) use ($daCor) {
+            if (($v['imagens'] ?? []) === []) {
+                $v['imagens'] = $daCor[ChaveCanonica::texto((string) $v['valor'])] ?? [];
+            }
+
+            return $v;
+        }, $variacoes);
+    }
+
+    /** Um eixo só ("Outro") com os dois valores juntos — quando o rascunho não pode ter os dois eixos. */
+    private static function comValoresJuntos(array $variacoes): array
+    {
+        return array_map(fn (array $v) => ['eixo' => 'outro', 'valor' => CoresDoGrupo::valorCompleto($v)] + $v, $variacoes);
+    }
+
+    /**
+     * Um eixo do Portal na categoria: o atributo dela quando ele pode ser variação; senão o eixo próprio.
+     *
+     * @return array{chave: string, nome: string, definePicture: bool, def: ?AtributoClassificado}
+     */
+    private function eixoNaCategoria(string $eixo, ?SchemaClassificado $schema): array
+    {
+        $rotulo = EstruturaProdutoVariacao::EIXOS[$eixo] ?? 'Outro';
+        $idMl = self::EIXO_PARA_ML[$eixo] ?? null;
+        $def = $idMl !== null ? $schema?->atributo($idMl) : null;
+        $usa = $def !== null && $def->podeSerEixo;
+
+        return [
+            'chave' => $usa ? $idMl : ChaveCanonica::EIXO_CUSTOM,
+            'nome' => $usa ? ($def->nome !== '' ? $def->nome : $rotulo) : $rotulo,
+            'definePicture' => $usa && $def->definePicture,
+            'def' => $usa ? $def : null,
+        ];
+    }
+
+    /** @return array{id: ?string, nome: string} o valor como a lista da categoria o chama, ou o texto do Portal */
+    private static function valorNaCategoria(?AtributoClassificado $def, string $nome): array
+    {
+        foreach ($def?->valores ?? [] as $opcao) {
+            if (ChaveCanonica::texto((string) $opcao['name']) === ChaveCanonica::texto($nome)) {
+                return ['id' => (string) $opcao['id'], 'nome' => (string) $opcao['name']];
+            }
+        }
+
+        return ['id' => null, 'nome' => $nome];
+    }
+
+    private static function chaveDaCombinacao(string $valor1, string $valor2): string
+    {
+        return ChaveCanonica::texto($valor1).'|'.ChaveCanonica::texto($valor2);
+    }
+
+    /**
+     * Os dois eixos que o Portal pede (cor E tamanho) e as combinações que existem, sem tocar no rascunho.
+     * Null = não dá para ter os dois aqui (eixos iguais, nenhum dos dois na categoria — o anúncio aceita só
+     * UMA variação própria —, ou menos de duas combinações): quem chama usa um eixo só, com os valores juntos.
+     *
+     * @param  list<array>  $variacoes  já separadas pelo {@see CoresDoGrupo} (mesmo par de eixos, sem repetir)
+     * @return array{chave: string, nome: string, definePicture: bool, cores: list<array{id: ?string, nome: string}>,
+     *               segundo: array{chave: string, nome: string, definePicture: bool, valores: list<array{id: ?string, nome: string}>},
+     *               combinacoes: list<array{v1: array, v2: array, variacao: array}>}|null
+     */
+    private function planoDosDoisEixos(array $variacoes, ?SchemaClassificado $schema, array &$avisos): ?array
+    {
+        if (count($variacoes) < 2) {
+            return null;
+        }
+        $eixo1 = (string) ($variacoes[0]['eixo'] ?: 'outro');
+        $eixo2 = trim((string) ($variacoes[0]['eixo_2'] ?? ''));
+        if ($eixo2 === '' || $eixo2 === $eixo1) {
+            return null;
+        }
+        $p1 = $this->eixoNaCategoria($eixo1, $schema);
+        $p2 = $this->eixoNaCategoria($eixo2, $schema);
+        if ($p1['chave'] === ChaveCanonica::EIXO_CUSTOM && $p2['chave'] === ChaveCanonica::EIXO_CUSTOM) {
+            $avisos[] = "A categoria não tem \"{$p1['nome']}\" nem \"{$p2['nome']}\" como variação; os dois valores entraram juntos numa variação só.";
+
+            return null;
+        }
+
+        $valores1 = [];
+        $valores2 = [];
+        $combinacoes = [];
+        foreach ($variacoes as $v) {
+            $a = trim((string) $v['valor']);
+            $b = trim((string) ($v['valor_2'] ?? ''));
+            if ($a === '' || $b === '') {
+                continue; // o CoresDoGrupo já deixou fora, com aviso
+            }
+            $va = $valores1[ChaveCanonica::texto($a)] ??= self::valorNaCategoria($p1['def'], $a);
+            $vb = $valores2[ChaveCanonica::texto($b)] ??= self::valorNaCategoria($p2['def'], $b);
+            $combinacoes[] = ['v1' => $va, 'v2' => $vb, 'variacao' => $v];
+        }
+        if (count($combinacoes) < 2) {
+            return null;
+        }
+
+        return [
+            'chave' => $p1['chave'], 'nome' => $p1['nome'], 'definePicture' => $p1['definePicture'],
+            'cores' => array_values($valores1),
+            'segundo' => ['chave' => $p2['chave'], 'nome' => $p2['nome'], 'definePicture' => $p2['definePicture'], 'valores' => array_values($valores2)],
+            'combinacoes' => $combinacoes,
+        ];
+    }
+
+    /** Os dois eixos do rascunho que correspondem aos do plano (pela chave ou pelo nome), ou null. */
+    private function eixosDoPlano(array $plano, array $eixos): ?array
+    {
+        $mesmo = fn (Eixo $e, string $chave, string $nome) => $e->chave === $chave || ChaveCanonica::texto($e->nome) === ChaveCanonica::texto($nome);
+        $e1 = collect($eixos)->first(fn (Eixo $e) => $mesmo($e, $plano['chave'], $plano['nome']));
+        $e2 = collect($eixos)->first(fn (Eixo $e) => $e !== $e1 && $mesmo($e, $plano['segundo']['chave'], $plano['segundo']['nome']));
+
+        return $e1 !== null && $e2 !== null ? [$e1, $e2] : null;
+    }
+
+    /** A combinação do Portal desta variante (pelos dois valores), ou null (combinação da equipe, ou sem os eixos). */
+    private function comboDaVariante(Variante $v, array $plano, array $eixos): ?array
+    {
+        $par = $this->eixosDoPlano($plano, $eixos);
+        $a = $par !== null ? ($v->valores[$par[0]->chave] ?? null) : null;
+        $b = $par !== null ? ($v->valores[$par[1]->chave] ?? null) : null;
+        if ($a === null || $b === null) {
+            return null;
+        }
+        $chave = self::chaveDaCombinacao((string) $a->valueName, (string) $b->valueName);
+        foreach ($plano['combinacoes'] as $c) {
+            if (self::chaveDaCombinacao($c['v1']['nome'], $c['v2']['nome']) === $chave) {
+                return $c;
+            }
+        }
+
+        return null;
+    }
+
+    private static function temValor(Eixo $eixo, array $valor): bool
+    {
+        return collect($eixo->valores)->contains(fn ($x) => ChaveCanonica::texto((string) $x->valueName) === ChaveCanonica::texto($valor['nome'])
+            || ($valor['id'] !== null && $x->valueId === $valor['id']));
+    }
+
+    /**
+     * Os dois eixos, as variantes e o SKU/estoque de cada combinação — dentro da trava. O Publicador gera
+     * TODAS as combinações (Verde 40-44 mesmo que não exista): a que nasce agora e o Portal não tem fica
+     * desativada, como na tela. D-05: combinação que já esteve no rascunho e a equipe tirou não volta, e
+     * nenhuma combinação desativada pela equipe é reativada — só a que o próprio Portal desativou e agora existe.
+     */
+    private function aplicarDoisEixos(PubRascunho $r, PubProduto $produto, array $plano, array &$avisos, array &$resumo, ?AtributoClassificado $tom): bool
+    {
+        $snap = $this->repo->snapshot($r);
+        $escrito = $this->escritoPeloPortal($r);
+        $segundo = $plano['segundo'];
+        $doPortal = [];
+        foreach ($plano['combinacoes'] as $c) {
+            $doPortal[self::chaveDaCombinacao($c['v1']['nome'], $c['v2']['nome'])] = $c;
+        }
+        $estado = (array) $r->step_state;
+        $lembradas = array_fill_keys((array) ($estado[self::MEMORIA_COMBINACOES] ?? []), true);
+        $desativadasPeloPortal = array_fill_keys((array) ($estado[self::MEMORIA_DESATIVADAS] ?? []), true);
+        $antes = array_fill_keys(array_map(fn (Variante $v) => $v->chave, $snap->variantes), true);
+        $soIdENome = fn (array $valores) => array_values(array_map(fn ($x) => ['id' => $x['id'], 'nome' => $x['nome']], $valores));
+
+        if ($snap->eixos === []) {
+            $ancora = $plano['combinacoes'][0];
+            foreach ($plano['combinacoes'] as $c) {
+                if ($produto->oferta_id !== null && ($c['variacao']['oferta_id'] ?? null) === $produto->oferta_id) {
+                    $ancora = $c;
+                    break;
+                }
+            }
+            $eixos = fn (array $v1, array $v2) => [
+                ['chave' => $plano['chave'], 'nome' => $plano['nome'], 'defines_picture' => $plano['definePicture'], 'valores' => $soIdENome($v1)],
+                ['chave' => $segundo['chave'], 'nome' => $segundo['nome'], 'defines_picture' => $segundo['definePicture'], 'valores' => $soIdENome($v2)],
+            ];
+            try {
+                // Dois passos, como no eixo único: a variante única (com os dados que já tiver) passa para a combinação âncora.
+                $this->editor->salvarEixos($r, $eixos([$ancora['v1']], [$ancora['v2']]));
+                $this->editor->salvarEixos($r, $eixos($plano['cores'], $segundo['valores']));
+            } catch (RegraViolada $e) {
+                $avisos[] = 'As variações do Portal não puderam ser criadas: '.$e->getMessage();
+
+                return false;
+            }
+        } else {
+            $par = count($snap->eixos) === 2 ? $this->eixosDoPlano($plano, $snap->eixos) : null;
+            if ($par === null) {
+                $avisos[] = 'O rascunho já tem variações próprias (outro tipo de variação); o Portal não acrescentou as dele.';
+
+                return false;
+            }
+            $falta = [0 => [], 1 => []];
+            foreach ($doPortal as $chave => $c) {
+                if (isset($lembradas[$chave])) {
+                    continue; // já esteve no rascunho: se não está mais, a equipe tirou
+                }
+                foreach ([0 => 'v1', 1 => 'v2'] as $i => $lado) {
+                    if (! self::temValor($par[$i], $c[$lado])) {
+                        $falta[$i][ChaveCanonica::texto($c[$lado]['nome'])] = $c[$lado];
+                    }
+                }
+            }
+            if ($falta[0] !== [] || $falta[1] !== []) {
+                $novos = [];
+                foreach (Eixo::ordenar($snap->eixos) as $e) {
+                    $i = $e === $par[0] ? 0 : 1;
+                    $novos[] = ['chave' => $e->chave, 'nome' => $e->nome, 'defines_picture' => $e->definesPicture,
+                        'valores' => [...array_map(fn ($x) => ['id' => $x->valueId, 'nome' => $x->valueName], $e->valores), ...$soIdENome($falta[$i])]];
+                }
+                try {
+                    $this->editor->salvarEixos($r, $novos);
+                } catch (RegraViolada $e) {
+                    $avisos[] = 'As variações novas do Portal não puderam ser acrescentadas: '.$e->getMessage();
+
+                    return false;
+                }
+            }
+        }
+
+        // ── Variantes: as que nasceram agora sem combinação no Portal ficam desativadas; as do Portal recebem SKU e estoque ──
+        $snap = $this->repo->snapshot($r->fresh());
+        $skus = [];
+        foreach ($snap->variantes as $v) {
+            $sku = trim((string) ($v->dados['atributos']['SELLER_SKU']['value_name'] ?? ''));
+            if ($sku !== '') {
+                $skus[$sku] ??= $v->chave;
+            }
+        }
+        $porChave = [];
+        $lembrar = [];
+        $desativou = [];
+        $reativou = [];
+        foreach ($snap->variantes as $v) {
+            if ($v->orfa) {
+                continue;
+            }
+            $combo = $this->comboDaVariante($v, $plano, $snap->eixos);
+            $chave = $combo !== null ? self::chaveDaCombinacao($combo['v1']['nome'], $combo['v2']['nome']) : null;
+            if (! isset($antes[$v->chave]) && ($combo === null || isset($lembradas[$chave]))) {
+                if ($v->ativa && ! $v->publicada) {
+                    $porChave[$v->chave] = ['ativa' => false];
+                    $desativou[] = $v->chave;
+                }
+
+                continue;
+            }
+            if ($combo === null) {
+                continue; // combinação que a equipe criou e o Portal não tem
+            }
+            // A Cor principal: do eixo que é a cor no Portal.
+            $variacao = $combo['variacao'];
+            $nomeDaCor = null;
+            if (($variacao['eixo'] ?? null) === 'cor') {
+                $nomeDaCor = (string) $variacao['valor'];
+            } elseif (($variacao['eixo_2'] ?? null) === 'cor') {
+                $nomeDaCor = (string) $variacao['valor_2'];
+            }
+            $daVariante = [];
+            $dados = $this->dadosDaVariante($v, $variacao, true, $skus, $produto, $resumo, (array) ($escrito[$v->chave] ?? []), $daVariante, $tom, $nomeDaCor);
+            // A combinação que o Portal desativou (não existia) e o cliente criou depois: volta a ficar ativa.
+            if (! $v->ativa && isset($desativadasPeloPortal[$v->chave])) {
+                $dados = ($dados ?? []) + ['ativa' => true];
+                $reativou[] = $v->chave;
+            }
+            if ($dados !== null) {
+                $porChave[$v->chave] = $dados;
+            }
+            if ($daVariante !== []) {
+                $lembrar[$v->chave] = $daVariante;
+            }
+        }
+
+        $gravou = $this->gravarVariantes($r, $porChave);
+        $this->lembrarEscrito($r, $lembrar);
+        $this->guardarNaMemoria($r, self::MEMORIA_COMBINACOES, array_keys($doPortal));
+        $this->guardarNaMemoria($r, self::MEMORIA_DESATIVADAS, $desativou, $reativou);
+
+        return $gravou;
+    }
+
+    /**
+     * Uma lista da memória do Sincronizar em `step_state`: acrescenta `$mais`, tira `$menos`. Como
+     * {@see self::lembrarCores()}: direto na linha já travada, sem subir a revisão.
+     *
+     * @param  list<string>  $mais
+     * @param  list<string>  $menos
+     */
+    private function guardarNaMemoria(PubRascunho $r, string $chave, array $mais, array $menos = []): void
+    {
+        $estado = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+        $antes = array_values((array) ($estado[$chave] ?? []));
+        $depois = array_values(array_diff(array_unique([...$antes, ...$mais]), $menos));
+        if ($depois === $antes) {
+            return;
+        }
+        $estado[$chave] = $depois;
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado, JSON_UNESCAPED_UNICODE)]);
+    }
+
     /**
      * Eixos, variantes, SKU e estoque — dentro da trava. Um único gravador de variantes por execução.
      *
@@ -1127,6 +1481,10 @@ class PortalParaRascunhoService
     private function aplicarVariacoes(PubRascunho $r, PubProduto $produto, array $variacoes, array $plano, array &$avisos, array &$resumo,
         ?AtributoClassificado $tom = null, ?string $corDoProduto = null): bool
     {
+        if (isset($plano['segundo'])) {
+            return $this->aplicarDoisEixos($r, $produto, $plano, $avisos, $resumo, $tom);
+        }
+
         $snap = $this->repo->snapshot($r);
         $escrito = $this->escritoPeloPortal($r);
         $lembrar = [];

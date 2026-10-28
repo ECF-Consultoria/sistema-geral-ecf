@@ -244,13 +244,13 @@ class FotosEmLoteService
             ->with('produto:id,nome')
             ->withCount('imagens')
             ->orderBy('id')
-            ->get(['id', 'produto_id', 'codigo', 'valor'])
+            ->get(['id', 'produto_id', 'codigo', 'valor', 'valor_2'])
             ->each(function (EstruturaProdutoVariacao $v) use (&$saida) {
                 $saida[ProdutoCadastroService::chaveCodigo($v->codigo)] ??= [
                     'id'         => (int) $v->id,
                     'codigo'     => (string) $v->codigo,
                     'produto'    => (string) $v->produto?->nome,
-                    'valor'      => $v->valor,
+                    'valor'      => $v->valorCompleto(),
                     'imagens'    => (int) $v->imagens_count,
                     'produto_id' => (int) $v->produto_id,
                 ];

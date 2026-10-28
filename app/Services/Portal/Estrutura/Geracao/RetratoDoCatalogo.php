@@ -121,6 +121,8 @@ class RetratoDoCatalogo
                     'ordem'     => (int) $v->ordem,
                     'eixo'      => $v->eixo,
                     'valor'     => $v->valor,
+                    'eixo_2'    => $v->eixo_2,
+                    'valor_2'   => $v->valor_2,
                     'sku'       => $oferta?->sku ?? $v->codigo,
                     'oferta_id' => $oferta?->id,
                 ];
@@ -284,7 +286,7 @@ class RetratoDoCatalogo
             $comOferta = array_values(array_filter($produto['variacoes'], fn (array $v) => ! empty($v['oferta_id'])));
             usort($comOferta, fn (array $x, array $y) => [(int) $x['ordem'], (int) $x['id']] <=> [(int) $y['ordem'], (int) $y['id']]);
             $cores = CoresDoGrupo::separar(array_map(fn (array $v) => [
-                'id' => (int) $v['id'], 'eixo' => $v['eixo'], 'valor' => $v['valor'], 'codigo' => $v['sku'],
+                'id' => (int) $v['id'], 'eixo' => $v['eixo'], 'valor' => $v['valor'], 'eixo_2' => $v['eixo_2'] ?? null, 'valor_2' => $v['valor_2'] ?? null, 'codigo' => $v['sku'],
             ], $comOferta))['agrupaveis'];
             foreach ($cores as $variacaoId) {
                 $saida[] = ['itens' => [(int) $variacaoId => (int) $k->quantidade_kit], 'sku' => (string) $k->sku];

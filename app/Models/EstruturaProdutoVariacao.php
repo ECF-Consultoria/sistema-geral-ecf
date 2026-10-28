@@ -41,13 +41,30 @@ class EstruturaProdutoVariacao extends Model
 
     protected $table = 'estrutura_produto_variacoes';
 
-    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'custo', 'estoque'];
+    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'eixo_2', 'valor_2', 'custo', 'estoque'];
 
     protected $casts = [
         'custo' => 'float',
         'ordem' => 'integer',
         'estoque' => 'integer',
     ];
+
+    /**
+     * Os valores da variação para mostrar e para nomear a oferta: "Verde", ou "Verde · 34-39" quando ela
+     * tem o 2º eixo (28/10/2026, cor E tamanho como no ML). Null quando não tem valor nenhum.
+     */
+    public function valorCompleto(): ?string
+    {
+        return self::juntarValores($this->valor, $this->valor_2);
+    }
+
+    /** O 1º e o 2º valor num texto só ("Verde · 34-39"); o que estiver vazio fica de fora. */
+    public static function juntarValores(?string $valor, ?string $valor2): ?string
+    {
+        $partes = array_values(array_filter([trim((string) $valor), trim((string) $valor2)], fn ($p) => $p !== ''));
+
+        return $partes === [] ? null : implode(' · ', $partes);
+    }
 
     public function produto(): BelongsTo
     {

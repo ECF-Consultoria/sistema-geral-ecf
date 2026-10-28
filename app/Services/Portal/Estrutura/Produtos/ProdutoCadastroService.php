@@ -317,7 +317,10 @@ class ProdutoCadastroService
 
     // ═══ Oferta ligada à variação (D-08) ════════════════════════════════════
 
-    /** Nome da oferta: "Produto — Valor", ou só o produto quando a variação não tem valor. Diferencia V1/V2 na Lista SKUs e no "Sincronizar do Portal". */
+    /**
+     * Nome da oferta: "Produto — Valor", ou só o produto quando a variação não tem valor. Diferencia V1/V2 na Lista SKUs e no
+     * "Sincronizar do Portal". Com o 2º eixo, o valor chega junto: "Meia — Verde · 34-39" (`valorCompleto()`).
+     */
     public static function nomeDaOferta(string $nomeProduto, ?string $valor): string
     {
         $valor = trim((string) $valor);
@@ -342,7 +345,7 @@ class ProdutoCadastroService
         [, $absorvidos] = $this->ofertas->criar($empresa, [
             'sku'         => $variacao->codigo,
             'fase'        => EstruturaOferta::FASE_SIMPLES,
-            'nome'        => self::nomeDaOferta($produto->nome, $variacao->valor),
+            'nome'        => self::nomeDaOferta($produto->nome, $variacao->valorCompleto()),
             'variacao_id' => $variacao->id,
         ], $ator, varrerEspera: $skusDoLote === null, prepararNoPublicador: $agendarPreparo);
 
@@ -367,7 +370,7 @@ class ProdutoCadastroService
             $skusDoLote[] = $variacao->codigo;
         }
 
-        return $this->ofertas->sincronizarDaVariacao($oferta, $variacao->codigo, self::nomeDaOferta($produto->nome, $variacao->valor), $ator,
+        return $this->ofertas->sincronizarDaVariacao($oferta, $variacao->codigo, self::nomeDaOferta($produto->nome, $variacao->valorCompleto()), $ator,
             varrerEspera: $skusDoLote === null);
     }
 
@@ -421,13 +424,16 @@ class ProdutoCadastroService
      * voltam para a espera; o item do Publicador fica solto (D27). A última
      * variação leva o produto junto — produto sem variação não existe.
      *
+     * Com dois eixos (cor E tamanho), as fotos da cor moram na 1ª variação dela: excluir esse tamanho passa a
+     * galeria para o próximo tamanho da mesma cor (`$passarFotos`; a exclusão do produto inteiro não passa).
+     *
      * @return array{produto_excluido: bool, anuncios_para_espera: int, sku: ?string}
      */
-    public function excluirVariacao(Company $empresa, int $variacaoId, AtorDoPortal $ator): array
+    public function excluirVariacao(Company $empresa, int $variacaoId, AtorDoPortal $ator, bool $passarFotos = true): array
     {
         $variacao = EstruturaProdutoVariacao::query()->where('company_id', $empresa->id)->findOrFail($variacaoId);
 
-        return DB::transaction(function () use ($empresa, $variacao, $ator) {
+        return DB::transaction(function () use ($empresa, $variacao, $ator, $passarFotos) {
             $sku = $variacao->codigo;
             $produtoId = $variacao->produto_id;
             $oferta = EstruturaOferta::query()->where('variacao_id', $variacao->id)->first();
@@ -436,6 +442,17 @@ class ProdutoCadastroService
             if ($oferta) {
                 // O restrict de componente sobe como ValidationException e desfaz tudo.
                 $this->ofertas->excluir($oferta, $ator, viaProduto: true);
+            }
+
+            if ($passarFotos && trim((string) $variacao->eixo_2) !== '') {
+                $mesmaCor = EstruturaProdutoVariacao::query()->where('company_id', $empresa->id)
+                    ->where('produto_id', $variacao->produto_id)->whereKeyNot($variacao->id)
+                    ->withCount('imagens')->orderBy('ordem')->orderBy('id')->get()
+                    ->filter(fn (EstruturaProdutoVariacao $v) => mb_strtolower(trim((string) $v->valor)) === mb_strtolower(trim((string) $variacao->valor)));
+                // Outro tamanho da cor já tem fotos: a cor continua com galeria, nada a passar.
+                if ($mesmaCor->isNotEmpty() && $mesmaCor->every(fn ($v) => (int) $v->imagens_count === 0)) {
+                    app(VariacaoImagensService::class)->passarGaleria($empresa, $variacao, $mesmaCor->first());
+                }
             }
 
             $variacao->delete();
@@ -771,6 +788,8 @@ class ProdutoCadastroService
             }
 
             $eixo = in_array('eixo', $presentes, true) ? $campos['eixo'] : $copiar?->eixo;
+            // O 2º eixo (tamanho, na moda) é do produto como o 1º: a variação nova herda o da 1ª.
+            $eixo2 = in_array('eixo_2', $presentes, true) ? $campos['eixo_2'] : $copiar?->eixo_2;
             $custo = in_array('custo', $presentes, true) ? $campos['custo'] : $copiar?->custo;
             $ordem = $campos['ordem'] ?? min(NormalizadorDeLinha::MAX_ORDEM, (int) $produto->variacoes()->max('ordem') + 1);
 
@@ -781,6 +800,8 @@ class ProdutoCadastroService
                 'codigo'     => $codigo,
                 'eixo'       => $eixo,
                 'valor'      => $campos['valor'],
+                'eixo_2'     => $eixo2,
+                'valor_2'    => $campos['valor_2'],
                 'custo'      => $custo,
                 // Estoque é por variação: nunca se herda da primeira (diferente do custo).
                 'estoque'    => in_array('estoque', $presentes, true) ? $campos['estoque'] : null,
@@ -802,7 +823,7 @@ class ProdutoCadastroService
             // variação vinculada. Sem a trava, 'codigo' está sempre em $presentes (garantido
             // acima) e o comportamento de antes — sempre grava — continua idêntico.
             $novo = [];
-            foreach (['codigo', 'eixo', 'valor', 'ordem', 'custo', 'estoque'] as $c) {
+            foreach (['codigo', 'eixo', 'valor', 'eixo_2', 'valor_2', 'ordem', 'custo', 'estoque'] as $c) {
                 if (in_array($c, $presentes, true)) {
                     $novo[$c] = $c === 'codigo' ? $codigo : $campos[$c];
                 }

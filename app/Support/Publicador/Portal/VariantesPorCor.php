@@ -16,7 +16,7 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
  *
  * - Rascunho de UMA variante (`__single__`, sem eixo) casa com o produto de UMA cor.
  * - Variante com um valor de eixo casa pelo nome do valor; cada cor e cada variante casam uma vez só.
- * - Variante de dois ou mais eixos (a equipe acrescentou outro eixo) não casa: a cor sozinha não a define.
+ * - Variante de DOIS eixos casa pelo par ("Verde · 34-39", cor E tamanho do Portal, 28/10/2026); de três ou mais, não.
  * - Variante órfã fica de fora.
  *
  * Pura de propósito: nada aqui lê o banco.
@@ -53,6 +53,16 @@ final class VariantesPorCor
         $usadas = [];
         foreach ($vivas as $v) {
             $nomes = array_values((array) ($v['nomes'] ?? []));
+            if (count($nomes) === 2) {
+                // Cor E tamanho (28/10/2026): a "cor" do Portal chega como o par ("Verde · 34-39"); casa nas duas ordens.
+                $variacaoId = $porTexto[ChaveCanonica::texto("{$nomes[0]} · {$nomes[1]}")] ?? $porTexto[ChaveCanonica::texto("{$nomes[1]} · {$nomes[0]}")] ?? null;
+                if ($variacaoId !== null && ! isset($usadas[$variacaoId])) {
+                    $usadas[$variacaoId] = true;
+                    $saida[(string) $v['chave']] = $variacaoId;
+                }
+
+                continue;
+            }
             if (count($nomes) !== 1) {
                 continue;
             }

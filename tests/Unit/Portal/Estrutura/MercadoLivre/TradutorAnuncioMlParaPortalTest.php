@@ -121,16 +121,33 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertSame('MLB111', $r['linhas'][0]['codigo'], 'sem SKU, o MLB');
     }
 
-    public function test_varias_caracteristicas_juntas_viram_outro_com_os_valores_e_aviso(): void
+    public function test_duas_caracteristicas_viram_dois_eixos_com_a_cor_primeiro(): void
     {
+        // 28/10/2026: cor E voltagem variando = dois eixos, como no ML (antes: "Outro" com "Preto · 127V").
         $item = $this->cadeira();
-        $item['variations'][0]['attribute_combinations'][] = ['id' => 'VOLTAGE', 'value_name' => '127V'];
-        $item['variations'][1]['attribute_combinations'][] = ['id' => 'VOLTAGE', 'value_name' => '220V'];
+        $item['variations'][0]['attribute_combinations'] = [['id' => 'VOLTAGE', 'value_name' => '127V'], ['id' => 'COLOR', 'value_name' => 'Preto']];
+        $item['variations'][1]['attribute_combinations'] = [['id' => 'VOLTAGE', 'value_name' => '220V'], ['id' => 'COLOR', 'value_name' => 'Cinza']];
 
         $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
 
-        $this->assertSame(['outro', 'Preto · 127V'], [$r['linhas'][0]['eixo'], $r['linhas'][0]['valor']]);
-        $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'mais de uma característica')));
+        $this->assertSame([['cor', 'Preto', 'voltagem', '127V'], ['cor', 'Cinza', 'voltagem', '220V']],
+            array_map(fn ($l) => [$l['eixo'], $l['valor'], $l['eixo_2'] ?? null, $l['valor_2'] ?? null], $r['linhas']), 'a cor é o 1º eixo mesmo vindo depois');
+        $this->assertSame([], $r['avisos']);
+    }
+
+    public function test_mais_de_duas_caracteristicas_juntam_a_partir_da_segunda_no_segundo_eixo(): void
+    {
+        $item = $this->cadeira();
+        $item['variations'][0]['attribute_combinations'][] = ['id' => 'VOLTAGE', 'value_name' => '127V'];
+        $item['variations'][0]['attribute_combinations'][] = ['id' => 'MATERIAL', 'value_name' => 'Aço'];
+        $item['variations'][1]['attribute_combinations'][] = ['id' => 'VOLTAGE', 'value_name' => '220V'];
+        $item['variations'][1]['attribute_combinations'][] = ['id' => 'MATERIAL', 'value_name' => 'Madeira'];
+
+        $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
+
+        $this->assertSame(['cor', 'Preto', 'outro', '127V · Aço'],
+            [$r['linhas'][0]['eixo'], $r['linhas'][0]['valor'], $r['linhas'][0]['eixo_2'], $r['linhas'][0]['valor_2']]);
+        $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'mais de duas características')));
     }
 
     public function test_moda_com_a_cor_igual_em_todas_o_eixo_e_o_tamanho_e_a_cor_vai_para_a_ficha(): void
@@ -150,8 +167,9 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
 
         $this->assertSame([['tamanho', '34-38'], ['tamanho', '39-43']], array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+        $this->assertArrayNotHasKey('eixo_2', $r['linhas'][0], 'um eixo só: sem o 2º');
         $this->assertSame('Branco', $r['atributos']['COLOR']['value_name'] ?? null, 'a cor que não varia é do produto');
-        $this->assertEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'mais de uma característica')));
+        $this->assertSame([], $r['avisos']);
     }
 
     public function test_variacao_sem_nada_que_a_diferencie_ganha_nome_provisorio_e_aviso(): void
@@ -169,22 +187,26 @@ class TradutorAnuncioMlParaPortalTest extends TestCase
         $this->assertNotEmpty(array_filter($r['avisos'], fn ($a) => str_contains($a, 'não diz o que muda')));
     }
 
-    public function test_cor_e_tamanho_continuam_um_produto_so_com_os_dois_em_cada_variacao(): void
+    public function test_cor_e_tamanho_viram_um_produto_so_com_cor_e_tamanho_separados(): void
     {
-        // 28/10/2026, decisão do usuário ("Meia Cano Longo"): um pai só, como no anúncio.
+        // 28/10/2026, decisão do usuário ("Meia Cano Longo"): um pai só, como no anúncio, e com dois eixos
+        // como no ML — "verdpm: Cor Verde, Tamanho 34-39", não "Outro: Verde · 34-39".
         $item = $this->cadeira();
         $comb = fn ($cor, $tam) => [['id' => 'COLOR', 'value_name' => $cor], ['id' => 'SIZE', 'value_name' => $tam]];
         $item['variations'] = [
-            ['id' => 1, 'attribute_combinations' => $comb('Branco', '34-39'), 'attributes' => []],
-            ['id' => 2, 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => []],
-            ['id' => 3, 'attribute_combinations' => $comb('Verde', '39-43'), 'attributes' => []],
+            ['id' => 1, 'attribute_combinations' => $comb('Branco', '34-39'), 'attributes' => [], 'picture_ids' => ['P1']],
+            ['id' => 2, 'attribute_combinations' => $comb('Verde', '34-39'), 'attributes' => [], 'picture_ids' => ['P2', 'P3']],
+            ['id' => 3, 'attribute_combinations' => $comb('Verde', '39-43'), 'attributes' => [], 'picture_ids' => ['P2', 'P3']],
         ];
 
         $r = TradutorAnuncioMlParaPortal::traduzir($item, null);
 
-        $this->assertSame([['outro', 'Branco · 34-39'], ['outro', 'Verde · 34-39'], ['outro', 'Verde · 39-43']],
-            array_map(fn ($l) => [$l['eixo'], $l['valor']], $r['linhas']));
+        $this->assertSame([['cor', 'Branco', 'tamanho', '34-39'], ['cor', 'Verde', 'tamanho', '34-39'], ['cor', 'Verde', 'tamanho', '39-43']],
+            array_map(fn ($l) => [$l['eixo'], $l['valor'], $l['eixo_2'], $l['valor_2']], $r['linhas']));
         $this->assertSame(['CAD-ER200'], array_values(array_unique(array_column($r['linhas'], 'grupo'))), 'um produto só');
+        // As fotos são da cor: só a 1ª variação de cada cor as leva.
+        $this->assertSame([['P1'], ['P2', 'P3'], []], array_map(fn ($f) => array_column($f, 'id'), $r['fotos_por_linha']));
+        $this->assertSame([], $r['avisos']);
     }
 
     public function test_tamanho_so_nos_atributos_da_variacao(): void

@@ -125,7 +125,7 @@ final class EfetivosEmLote
             ->whereColumn('v.company_id', 'o.company_id')
             ->whereIn('v.produto_id', array_keys($estruturas))
             ->orderBy('o.id')
-            ->get(['o.id as oferta_id', 'o.company_id', 'o.sku', 'v.id as variacao_id', 'v.produto_id', 'v.eixo', 'v.valor', 'v.codigo', 'v.ordem']);
+            ->get(['o.id as oferta_id', 'o.company_id', 'o.sku', 'v.id as variacao_id', 'v.produto_id', 'v.eixo', 'v.valor', 'v.eixo_2', 'v.valor_2', 'v.codigo', 'v.ordem']);
 
         // O produto do Portal de cada base tem de existir na MESMA Company (o `produtoAgrupado()` da origem).
         $donoDaEstrutura = [];
@@ -363,13 +363,13 @@ final class EfetivosEmLote
         usort($variacoes, fn ($a, $b) => [(int) $a->ordem, (int) $a->variacao_id] <=> [(int) $b->ordem, (int) $b->variacao_id]);
 
         $entram = array_flip(CoresDoGrupo::separar(array_map(fn ($v) => [
-            'id' => (int) $v->variacao_id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo,
+            'id' => (int) $v->variacao_id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'eixo_2' => $v->eixo_2, 'valor_2' => $v->valor_2, 'codigo' => $v->codigo,
         ], $variacoes))['agrupaveis']);
 
         $cores = [];
         foreach ($variacoes as $v) {
             if (isset($entram[(int) $v->variacao_id])) {
-                $cores[(int) $v->variacao_id] = ['valor' => trim((string) $v->valor), 'oferta_id' => (int) $v->oferta_id, 'sku' => (string) $v->sku, 'codigo' => $v->codigo];
+                $cores[(int) $v->variacao_id] = ['valor' => CoresDoGrupo::valorCompleto(['valor' => $v->valor, 'valor_2' => $v->valor_2]), 'oferta_id' => (int) $v->oferta_id, 'sku' => (string) $v->sku, 'codigo' => $v->codigo];
             }
         }
 

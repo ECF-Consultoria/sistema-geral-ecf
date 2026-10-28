@@ -115,6 +115,7 @@ class PublicadorSincronizaPortalService
         foreach ($agrupaveis as $produtoId => $lista) {
             $separacao = CoresDoGrupo::separar(array_map(fn (EstruturaOferta $o) => [
                 'id' => (int) $o->variacao_id, 'eixo' => $variacoes[$o->variacao_id]->eixo, 'valor' => $variacoes[$o->variacao_id]->valor,
+                'eixo_2' => $variacoes[$o->variacao_id]->eixo_2, 'valor_2' => $variacoes[$o->variacao_id]->valor_2,
                 'codigo' => $variacoes[$o->variacao_id]->codigo,
             ], $this->naOrdem($lista, $variacoes)));
             if ($separacao['fora'] === []) {
@@ -471,7 +472,7 @@ class PublicadorSincronizaPortalService
         }
 
         return EstruturaProdutoVariacao::query()->where('company_id', $company->id)
-            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem', 'eixo', 'valor', 'codigo'])->keyBy('id');
+            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem', 'eixo', 'valor', 'eixo_2', 'valor_2', 'codigo'])->keyBy('id');
     }
 
     /** As ofertas na ordem das variações do Portal (empate: a oferta mais antiga). @return list<EstruturaOferta> */

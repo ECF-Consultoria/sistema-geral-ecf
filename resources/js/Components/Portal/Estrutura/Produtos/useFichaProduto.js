@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { aplicarImagens, enviarPendentes, manterImagensAtuais, montarEnvio } from '@/lib/imagensVariacao';
-import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
+import { campoEditaveis, linhaDoServidor, refSugerida, segundoEixoDe } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
@@ -27,6 +27,9 @@ export const MEDIDAS = [
 ];
 
 /** Campos que valem para o produto inteiro: a escolha vai para todas as variações do formulário. */
+/** A pergunta antes de tirar o 2º eixo com valores preenchidos (cor E tamanho, 28/10/2026). */
+export const CONFIRMA_TIRAR_SEGUNDO_EIXO = 'Tirar o segundo eixo apaga os valores dele (ex.: os tamanhos) de todas as variações ao salvar. Tirar mesmo assim?';
+
 /** A pergunta antes de trocar (ou tirar) a categoria de uma ficha técnica já preenchida (demo 23/10, N10). */
 export const CONFIRMA_TROCAR_CATEGORIA = 'Trocar a categoria muda os campos da ficha técnica. O que você já preencheu e não existir na nova categoria será apagado ao salvar. Trocar mesmo assim?';
 
@@ -36,7 +39,7 @@ let contador = 0;
 const novaChave = () => `m${++contador}`;
 
 const linhaEmBranco = (produto) => ({
-    _k: novaChave(), codigo: '', nome: produto?.nome ?? '', titulo: '', eixo_rotulo: '', valor: '', familia: '', ambientes_texto: '',
+    _k: novaChave(), codigo: '', nome: produto?.nome ?? '', titulo: '', eixo_rotulo: '', valor: '', eixo_2_rotulo: '', valor_2: '', familia: '', ambientes_texto: '',
     categoria: '', volumes_texto: '', custo: '', estoque: '', volumes: [],
     ...(produto?.id ? { produto_id: produto.id } : {}),
 });
@@ -162,8 +165,28 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id,
         eixos: eixosEmUso(vars, vocabulario?.eixos), aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
+    // Cor E tamanho (28/10/2026): com o 2º eixo, a tela agrupa as variações pela cor.
+    const segundoEixo = segundoEixoDe(vars);
 
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
+
+    /** Um campo em várias variações de uma vez (o nome da cor no grupo; o eixo do produto). */
+    const alterarVarias = (chaves, campo, valor) => {
+        const alvo = new Set(chaves);
+        setAlterado(true);
+        setVars((atual) => atual.map((v) => (alvo.has(v._k) ? { ...v, [campo]: valor } : v)));
+    };
+
+    /** O eixo (1º ou 2º) vale para o produto inteiro: vai para todas as variações. */
+    const definirEixo = (campo, rotulo) => alterarVarias(varsRef.current.map((v) => v._k), campo, rotulo);
+
+    /** Liga, troca ou tira o 2º eixo. Tirar com valores preenchidos pergunta antes; os valores saem junto. */
+    const definirSegundoEixo = (rotulo) => {
+        const atual = varsRef.current;
+        if (rotulo === '' && atual.some((v) => String(v.valor_2 ?? '').trim() !== '') && ! window.confirm(CONFIRMA_TIRAR_SEGUNDO_EIXO)) return;
+        setAlterado(true);
+        setVars(atual.map((v) => ({ ...v, eixo_2_rotulo: rotulo, ...(rotulo === '' ? { valor_2: '' } : {}) })));
+    };
 
     /**
      * Imagens de uma variação (o servidor grava envio, ordem e exclusão na hora). Só troca a lista na
@@ -230,9 +253,12 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     // ─── Nova variação (D-04): nasce com tudo da 1ª, só o Valor fica vazio ──
 
-    /** Devolve a chave da variação criada (a página foca o Valor dela). */
-    const novaVariacao = () => {
-        const base = vars[0];
+    /**
+     * Devolve a chave da variação criada (a página foca o Valor dela). Com dois eixos: `patch` traz a cor
+     * (novo tamanho dentro dela) e `chaveBase` a variação de onde copiar custo e caixas (a da mesma cor).
+     */
+    const novaVariacao = (patch = {}, chaveBase = null) => {
+        const base = vars.find((v) => v._k === chaveBase) ?? vars[0];
         const nova = {
             ...base,
             _k: novaChave(),
@@ -241,14 +267,17 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             imagens: [],   // as fotos são de cada variação: a nova nasce sem as da 1ª
             codigo: refSugerida(vars),
             valor: '',
+            valor_2: '',
             estoque: '',   // estoque é por variação: a nova nasce vazia, não herda o da 1ª
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
             _caixas: undefined,
+            ...patch,
         };
         // Com produto já gravado, família, ambientes e categoria são do produto e não voltam no POST
         // (o retrato os marca como "não mexidos"); eixo, custo e volumes vão sempre explícitos, com o
-        // que a tela mostra — `linhaParaServidor` cuida disso (FE-CR-04).
-        if (nova.produto_id) nova._base = { ...campoEditaveis(nova), codigo: '', valor: '' };
+        // que a tela mostra — `linhaParaServidor` cuida disso (FE-CR-04). O valor da cor que veio no
+        // `patch` conta como digitado (o retrato o tem vazio) e vai no POST.
+        if (nova.produto_id) nova._base = { ...campoEditaveis(nova), codigo: '', valor: '', valor_2: '' };
         else delete nova._base;
         setAlterado(true);
         setVars((atual) => [...atual, nova]);
@@ -401,6 +430,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
+        segundoEixo, alterarVarias, definirEixo, definirSegundoEixo,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho, recuperado, recomecar,
         tecnica, descricao,
         // O "o que é isto?" dos campos fixos (nome, família, Ref, custo, volumes…), do servidor.

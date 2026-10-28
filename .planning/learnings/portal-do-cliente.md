@@ -2140,14 +2140,45 @@ diagnóstico (título, Modelo, campos, medidas) **e números** (vendas e visitas
   cheio (medido: D_655797-MLB104381465699 = 333×500 no `-O`, 800×1200 no `-F`). A importação baixa o `-F` e só cai
   no `-O` se ele falhar (`TradutorAnuncioMlParaPortal::urlTamanhoCheio`). Reproduzido ponta a ponta: só `-O` → 0
   fotos no rascunho; `-F` → todas.
-- **Anúncio de COR e TAMANHO é UM PRODUTO SÓ** ("um pai só", decisão do usuário, 28/10/2026), com "Cor · Tamanho"
-  juntos em cada variação (eixo "Outro"): o Portal guarda UMA característica por variação. Separar em um produto por
-  tamanho foi tentado no mesmo dia e o usuário recusou ao ver ("veio separado sendo que são variações do mesmo
-  pai") — não repetir. Cor e tamanho separados + guia de tamanhos é o plano
-  `.planning/seeds/moda-cor-e-tamanho-e-guia-de-tamanhos.md`. Da tentativa ficou a migration `2026_10_28_150000`
-  (origem única por PRODUTO, não por anúncio), que já rodou em produção e continua correta.
+- **Anúncio de COR e TAMANHO é UM PRODUTO SÓ** ("um pai só", decisão do usuário, 28/10/2026), com Cor no 1º eixo
+  e Tamanho no 2º — ver §55.1. Separar em um produto por tamanho foi tentado no mesmo dia e o usuário recusou ao ver
+  ("veio separado sendo que são variações do mesmo pai") — não repetir. "Cor · Tamanho" juntos no eixo "Outro" também
+  foi recusado ("deveria ter mais de um eixo, assim como é no mercado livre"). Da tentativa ficou a migration
+  `2026_10_28_150000` (origem única por PRODUTO, não por anúncio), que já rodou em produção e continua correta.
 - **A lista sai do acervo** (`ml_acervo_itens`, sem chamada ao ML); o diagnóstico ao vivo é só da página (30).
   Conta recém-conectada fica com a lista vazia até o `mlb:sync-acervo` do dia seguinte.
+
+### 55.1 Dois eixos por variação — cor E tamanho, como no ML (28/10/2026)
+
+O usuário: "verdpm — eixo cor: Verde — outro eixo: tamanho 34-39", e escolheu a tela "cor com tamanhos dentro".
+
+- **Schema: duas colunas nulas no FIM de `estrutura_produto_variacoes`** (`eixo_2` varchar 30, `valor_2` varchar 80;
+  migration `2026_10_28_200000`), não tabela nova: o Portal precisa de dois eixos, não N, e todas as leituras da
+  variação continuam numa linha só. NULL = um eixo só (todas as variações antigas, sem backfill). O 1º eixo é o que
+  AGRUPA (a cor) e o 2º o que varia dentro dele.
+- **As fotos são da COR e moram na 1ª variação dela** (as tabelas de imagem continuam por variação). A importação
+  põe as fotos só no 1º tamanho de cada cor; a ficha mostra UMA galeria por cor (`gruposPorCor().dona` = a 1ª da cor
+  que tem foto); excluir o tamanho dono COPIA os arquivos para o próximo tamanho da cor e muda a dona das linhas
+  (`VariacaoImagensService::passarGaleria`) — a pasta velha sai com a variação, depois do commit. A exclusão do
+  produto inteiro não passa nada (`passarFotos: false`). O Publicador lê "as da cor" para o tamanho sem foto
+  (`PortalParaRascunhoService::comFotosDaCor`).
+- **A régua de agrupamento (`CoresDoGrupo`) chaveia pelo PAR** (tipo "cor+tamanho", valor "verde|34-39"). Ela tem
+  SEIS chamadores (Sincronizar, preenchimento do rascunho, Planejamento da fase, Efetivos em lote, Sugestão de kit,
+  Retrato do catálogo, importação por planilha): quem não passar `eixo_2`/`valor_2` vê "Verde 34-39" e "Verde 40-44"
+  como cor REPETIDA e manda a segunda para um produto separado. Variação com 2º eixo e sem o valor dele fica fora,
+  como a sem cor.
+- **No Publicador viram DOIS eixos** (COLOR + SIZE, COLOR + VOLTAGE…). O gerador do rascunho faz TODAS as
+  combinações: a que o Portal não tem (Verde 40-44 que não existe) nasce DESATIVADA. Memórias em `step_state`:
+  `portal_combinacoes` (D-05: combinação que já esteve e a equipe tirou não volta) e `portal_desativadas` (só a que o
+  PORTAL desativou é reativada quando o cliente cria a combinação; a que a EQUIPE desativou nunca).
+- **O anúncio aceita UMA variação personalizada só** (`EditorEixos`, V-VAR-02): se NENHUM dos dois eixos é atributo da
+  categoria, o Sincronizar junta os dois valores num eixo próprio ("Preto · P"), com aviso. Um só fora da categoria
+  dá certo (ex.: COLOR + "Tamanho" próprio na cadeira).
+- **Moda continua sem publicar pelo Publicador** (tabela de medidas) — a etapa 3 do seed
+  `moda-cor-e-tamanho-e-guia-de-tamanhos.md` é o que falta.
+- **Sigilo:** os testes `estrutura-ficha-sigilo` e `estrutura-produtos-importacao-v2` agora têm a EXCEÇÃO exata do
+  botão "Importar do Mercado Livre" e do selo "Importado do Mercado Livre" (decisão do usuário). Eles falhavam desde
+  o primeiro deploy da importação. Texto novo da ficha não diz "Mercado Livre" ("ex.: cor e tamanho").
 
 **Armadilhas de ambiente achadas no caminho (não são regressão):**
 

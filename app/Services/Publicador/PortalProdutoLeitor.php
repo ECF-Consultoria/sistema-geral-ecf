@@ -287,6 +287,9 @@ class PortalProdutoLeitor
             'id' => (int) $v->id,
             'eixo' => $v->eixo,
             'valor' => $v->valor,
+            // 2º eixo (28/10/2026): cor E tamanho. Null nas variações de um eixo só.
+            'eixo_2' => $v->eixo_2,
+            'valor_2' => $v->valor_2,
             'codigo' => $v->codigo,
             'estoque' => $v->estoque === null ? null : (int) $v->estoque,
             'custo' => $v->custo === null ? null : (float) $v->custo,

@@ -28,7 +28,7 @@ use InvalidArgumentException;
  * campo, FE-CR-03/BE-IN-05). Chave ausente = não mexer.
  * "SEM MEDIDAS" em `volumes_texto` é célula em branco, não "limpar" (BE-CR-02).
  *
- * Nomes lógicos em `presentes`: grupo, nome, titulo, eixo, valor, ordem, familia,
+ * Nomes lógicos em `presentes`: grupo, nome, titulo, eixo, valor, eixo_2, valor_2, ordem, familia,
  * ambientes, categoria, volumes, custo, estoque, descricao.
  *
  * `titulo` é o título de venda, do PRODUTO (19/10/2026): separado do nome, com a 1ª
@@ -77,6 +77,8 @@ final class NormalizadorDeLinha
             'titulo'          => null,
             'eixo'            => null,
             'valor'           => null,
+            'eixo_2'          => null,
+            'valor_2'         => null,
             'ordem'           => null,
             'familia'         => null,
             'ambientes'       => [],
@@ -216,6 +218,33 @@ final class NormalizadorDeLinha
             }
             $campos['valor'] = $valor;
             $presentes[] = 'valor';
+        }
+
+        // ─── 2º eixo (28/10/2026): cor E tamanho, como no ML. Só pelos campos explícitos ───
+        // (a coluna "Variação" da colagem segue sendo de um eixo só).
+        $eixo2Bruto = self::texto($bruta['eixo_2'] ?? null);
+        if (self::nuloExplicito($bruta, 'eixo_2')) {
+            $campos['eixo_2'] = null;
+            $presentes[] = 'eixo_2';
+        } elseif ($eixo2Bruto !== '') {
+            $eixo2 = self::eixo($eixo2Bruto);
+            if ($eixo2 === null) {
+                $erros['eixo_2'] = 'Escolha o segundo eixo: '.implode(', ', array_values(EstruturaProdutoVariacao::EIXOS)).'.';
+            } else {
+                $campos['eixo_2'] = $eixo2;
+                $presentes[] = 'eixo_2';
+            }
+        }
+        $valor2 = self::texto($bruta['valor_2'] ?? null);
+        if (self::nuloExplicito($bruta, 'valor_2')) {
+            $campos['valor_2'] = null;
+            $presentes[] = 'valor_2';
+        } elseif ($valor2 !== '') {
+            if (mb_strlen($valor2) > self::MAX_VALOR) {
+                $erros['valor_2'] = 'O valor do segundo eixo pode ter no máximo '.self::MAX_VALOR.' caracteres.';
+            }
+            $campos['valor_2'] = $valor2;
+            $presentes[] = 'valor_2';
         }
 
         // ─── Família ───

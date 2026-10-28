@@ -64,9 +64,12 @@ export function eixosEmUso(variacoes, eixosDoVocabulario) {
     });
     const usados = [];
     (Array.isArray(variacoes) ? variacoes : []).forEach((v) => {
-        const texto = String(v?.eixo_rotulo ?? v?.eixo ?? '').trim().toLowerCase();
-        const chave = texto === '' ? null : porRotulo.get(texto);
-        if (chave && ! usados.includes(chave)) usados.push(chave);
+        // Os dois eixos (cor E tamanho, 28/10/2026): nenhum deles é campo da ficha.
+        [v?.eixo_rotulo ?? v?.eixo, v?.eixo_2_rotulo ?? v?.eixo_2].forEach((e) => {
+            const texto = String(e ?? '').trim().toLowerCase();
+            const chave = texto === '' ? null : porRotulo.get(texto);
+            if (chave && ! usados.includes(chave)) usados.push(chave);
+        });
     });
 
     return usados;

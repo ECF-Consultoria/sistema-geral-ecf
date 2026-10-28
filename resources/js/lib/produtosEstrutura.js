@@ -165,6 +165,8 @@ export function linhaDoServidor(linha, rotulos = {}) {
         titulo: linha.titulo ?? '',
         eixo_rotulo: linha.eixo_rotulo ?? '',
         valor: linha.valor ?? '',
+        eixo_2_rotulo: linha.eixo_2_rotulo ?? '',
+        valor_2: linha.valor_2 ?? '',
         categoria: linha.categoria_ml_nome ?? linha.categoria_ml_id ?? '',
         ambientes_texto: ambientes.join(', '),
         volumes_texto: linha.volumes_texto ?? '',
@@ -178,7 +180,7 @@ export function linhaDoServidor(linha, rotulos = {}) {
     return pronta;
 }
 
-const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'titulo', 'eixo_rotulo', 'valor', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo', 'estoque'];
+const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'titulo', 'eixo_rotulo', 'valor', 'eixo_2_rotulo', 'valor_2', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo', 'estoque'];
 
 /** Os campos que a pessoa pode alterar numa linha, para comparar antes/depois. */
 export function campoEditaveis(row) {
@@ -220,6 +222,14 @@ export function linhaParaServidor(row) {
     if (alterou('valor') && ! vazio('valor')) out.valor = row.valor;
     else if (limpou('valor')) out.valor = null;
 
+    // 2º eixo (cor E tamanho, 28/10/2026): a mesma regra do 1º.
+    if (novaDeProdutoGravado) out.eixo_2 = vazio('eixo_2_rotulo') ? null : row.eixo_2_rotulo;
+    else if (alterou('eixo_2_rotulo') && ! vazio('eixo_2_rotulo')) out.eixo_2 = row.eixo_2_rotulo;
+    else if (limpou('eixo_2_rotulo')) out.eixo_2 = null;
+
+    if (alterou('valor_2') && ! vazio('valor_2')) out.valor_2 = row.valor_2;
+    else if (limpou('valor_2')) out.valor_2 = null;
+
     // Título de venda (19/10/2026): do produto, como a família — esvaziar o que o servidor tinha vai null (limpar).
     if (alterou('titulo') && ! vazio('titulo')) out.titulo = String(row.titulo).trim();
     else if (limpou('titulo')) out.titulo = null;
@@ -254,6 +264,55 @@ export function linhaParaServidor(row) {
     else if (limpou('estoque')) out.estoque = null;
 
     return out;
+}
+
+// ─── Cor E tamanho (28/10/2026): dois eixos por variação ────────────────────
+
+/** "Verde", ou "Verde · 34-39" quando a variação tem o 2º valor. */
+export function valorDaVariacao(v) {
+    return [v?.valor, v?.valor_2].map((x) => String(x ?? '').trim()).filter(Boolean).join(' · ');
+}
+
+const NOVO_DO_EIXO = { cor: 'Nova cor', tamanho: 'Novo tamanho', voltagem: 'Nova voltagem', material: 'Novo material', sabor: 'Novo sabor' };
+const PLURAL_DO_EIXO = { cor: 'cores', tamanho: 'tamanhos', voltagem: 'voltagens', material: 'materiais', sabor: 'sabores' };
+
+/** "Novo tamanho", "Nova cor"… pelo rótulo do eixo; "Nova variação" para "Outro" ou sem eixo. */
+export function rotuloDoNovo(rotulo) {
+    return NOVO_DO_EIXO[String(rotulo ?? '').trim().toLowerCase()] ?? 'Nova variação';
+}
+
+/** "1 tamanho", "3 tamanhos", "2 voltagens"…; "Outro" conta variações. */
+export function contagemDoEixo(n, rotulo) {
+    const chave = String(rotulo ?? '').trim().toLowerCase();
+    if (! PLURAL_DO_EIXO[chave]) return n === 1 ? '1 variação' : `${n} variações`;
+
+    return n === 1 ? `1 ${chave}` : `${n} ${PLURAL_DO_EIXO[chave]}`;
+}
+
+/** O 2º eixo do produto (o rótulo: "Tamanho"), ou '' quando ele tem um eixo só. */
+export function segundoEixoDe(vars) {
+    return (vars ?? []).map((v) => String(v?.eixo_2_rotulo ?? '').trim()).find((e) => e !== '') ?? '';
+}
+
+/**
+ * As variações agrupadas pelo 1º valor (a cor), na ordem em que aparecem: a cor com os tamanhos dentro. As fotos são da cor e moram numa variação dela (`dona`): a 1ª que tem foto, senão a 1ª.
+ * `chave` é estável enquanto se digita o nome da cor (a da 1ª variação do grupo).
+ */
+export function gruposPorCor(vars) {
+    const grupos = [];
+    const porValor = new Map();
+    (vars ?? []).forEach((v) => {
+        const valor = String(v?.valor ?? '').trim().toLowerCase();
+        let g = porValor.get(valor);
+        if (! g) {
+            g = { chave: v._k, valor: String(v?.valor ?? ''), vars: [] };
+            porValor.set(valor, g);
+            grupos.push(g);
+        }
+        g.vars.push(v);
+    });
+
+    return grupos.map((g) => ({ ...g, dona: g.vars.find((v) => (v.imagens ?? []).length > 0) ?? g.vars[0] }));
 }
 
 /**
