@@ -178,7 +178,7 @@ const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFich
 test('Bloco: título "Ficha técnica", obrigatórias e outras à vista, fieldset travado ao salvar', () => {
     assert.ok(bloco.includes('Ficha técnica</h2>'));
     assert.match(bloco, /<fieldset disabled=\{salvando\}/);
-    assert.match(bloco, /camposDaFicha\(tecnica\.grupos \?\? \[\], tecnica\.valores, \{ busca, filtro \}\)/);
+    assert.match(bloco, /camposDaFicha\(tecnica\.grupos \?\? \[\], tecnica\.valores, \{ busca, filtro, so: foto \}\)/);
     assert.match(bloco, /r\.obrigatorias\.map\(/);
     assert.match(bloco, /r\.outras\.map\(/);
     assert.match(bloco, /useState\('todas'\)/, 'abre mostrando todas');

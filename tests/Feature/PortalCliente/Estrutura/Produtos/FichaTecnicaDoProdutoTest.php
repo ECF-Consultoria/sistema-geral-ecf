@@ -74,8 +74,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
             ['id' => 'CAPACITY', 'name' => 'Capacidade', 'value_type' => 'number', 'tags' => [],
                 'attribute_group_id' => 'DIM', 'attribute_group_name' => 'Dimensões'],
-            // Condicional: o catálogo pede em certos casos — é o que aceita "Não se aplica" no Portal (29/10/2026).
-            ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => ['conditional_required' => true]],
+            ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => []],
             // Lista que aceita mais de uma opção (os chips). Vem como `string` com `values`,
             // que é como o catálogo entrega a maior parte das opções.
             ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
@@ -84,7 +83,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string',
                 'tags' => ['allow_variations' => true], 'values' => [['id' => '7', 'name' => 'Couro'], ['id' => '8', 'name' => 'Tecido']]],
             // Escondidos editáveis: grupo "Mais detalhes", no fim. Ajuda e opção que citam a plataforma não passam.
-            ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true, 'conditional_required' => true],
+            ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm', 'hint' => 'Aparece no anúncio do Mercado Livre'],
             ['id' => 'LUMBAR_SUPPORT_TYPE', 'name' => 'Tipo de apoio lombar', 'value_type' => 'list', 'tags' => ['hidden' => true],
                 'values' => [['id' => '31', 'name' => 'Fixo'], ['id' => '32', 'name' => 'Regulável'], ['id' => '33', 'name' => 'Igual ao anúncio']]],
@@ -544,7 +543,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $salvou = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id), $this->ficha())->assertOk();
         $this->assertSemOrigem($salvou->getContent(), 'salvar');
         $comNa = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
-            $this->ficha([['id' => 'SEAT_WIDTH', 'nao_se_aplica' => true], ['id' => 'LUMBAR_SUPPORT_TYPE', 'valor' => '32']]))->assertOk();
+            $this->ficha([['id' => 'SEAT_HEIGHT', 'nao_se_aplica' => true], ['id' => 'LUMBAR_SUPPORT_TYPE', 'valor' => '32']]))->assertOk();
         $this->assertSemOrigem($comNa->getContent(), 'salvar com "Não se aplica"');
         $naRecusado = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
             $this->ficha([['id' => 'BRAND', 'nao_se_aplica' => true]]))->assertStatus(422);
@@ -739,23 +738,25 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
         $this->assertFalse($na['BRAND'], 'obrigatório não aceita');
         $this->assertFalse($na['MATERIAL'], 'obrigatório não aceita');
-        // 29/10/2026: opcional comum não aceita mais — era atalho para o cliente não preencher.
-        $this->assertFalse($na['SEAT_HEIGHT'], 'opcional comum não aceita');
-        $this->assertFalse($na['CAPACITY'], 'opcional comum não aceita');
-        $this->assertTrue($na['WITH_DRAWER'], 'o condicional aceita');
-        $this->assertTrue($na['SEAT_WIDTH'], 'o condicional escondido editável também');
+        // Como no formulário da plataforma: todo opcional que ela mostra aceita.
+        $this->assertTrue($na['SEAT_HEIGHT']);
+        $this->assertTrue($na['CAPACITY']);
+        $this->assertTrue($na['WITH_DRAWER']);
+        // 29/10/2026: o escondido (que a plataforma nem mostra) não aceita — era atalho para não preencher.
+        $this->assertFalse($na['SEAT_WIDTH'], 'escondido não aceita');
+        $this->assertFalse($na['LUMBAR_SUPPORT_TYPE'], 'escondido não aceita');
     }
 
-    public function test_nao_se_aplica_em_opcional_comum_responde_422_e_nao_grava_nada(): void
+    public function test_nao_se_aplica_em_escondido_responde_422_e_nao_grava_nada(): void
     {
         $empresa = $this->empresaDoGabarito();
         $produto = $this->produto($empresa);
 
         $this->entrarNoPortal($empresa)
             ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
-                $this->ficha([['id' => 'SEAT_HEIGHT', 'nao_se_aplica' => true]]))
+                $this->ficha([['id' => 'SEAT_WIDTH', 'nao_se_aplica' => true]]))
             ->assertStatus(422)
-            ->assertJsonValidationErrors('atributos.SEAT_HEIGHT');
+            ->assertJsonValidationErrors('atributos.SEAT_WIDTH');
 
         $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
     }
@@ -770,16 +771,16 @@ class FichaTecnicaDoProdutoTest extends TestCase
         // O marcador vence o valor que vier junto (o controle fica travado na tela).
         $salvos = $sessao->putJson($url, $this->ficha([
             ['id' => 'WITH_DRAWER', 'nao_se_aplica' => true, 'valor' => 'Sim'],
-            ['id' => 'SEAT_WIDTH', 'nao_se_aplica' => true, 'valor' => '45', 'unidade' => 'cm'],
+            ['id' => 'SEAT_HEIGHT', 'nao_se_aplica' => true, 'valor' => '45', 'unidade' => 'cm'],
         ]))->assertOk()->json('salvos');
 
         $porId = collect($salvos)->keyBy('id');
         $this->assertSame('-1', $porId['WITH_DRAWER']['valor_id']);
         $this->assertNull($porId['WITH_DRAWER']['valor']);
-        $this->assertSame('-1', $porId['SEAT_WIDTH']['valor_id']);
-        $this->assertNull($porId['SEAT_WIDTH']['unidade']);
+        $this->assertSame('-1', $porId['SEAT_HEIGHT']['valor_id']);
+        $this->assertNull($porId['SEAT_HEIGHT']['unidade']);
 
-        $linha = EstruturaProdutoAtributo::where('produto_id', $produto->id)->where('atributo_id', 'SEAT_WIDTH')->firstOrFail();
+        $linha = EstruturaProdutoAtributo::where('produto_id', $produto->id)->where('atributo_id', 'SEAT_HEIGHT')->firstOrFail();
         $this->assertSame('-1', $linha->valor_id);
         $this->assertNull($linha->valor);
         $this->assertNull($linha->unidade);
@@ -798,7 +799,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $porId = collect($salvos)->keyBy('id');
         $this->assertSame('Não', $porId['WITH_DRAWER']['valor']);
         $this->assertNull($porId['WITH_DRAWER']['valor_id']);
-        $this->assertArrayNotHasKey('SEAT_WIDTH', $porId->all(), 'ausente sai, como qualquer campo');
+        $this->assertArrayNotHasKey('SEAT_HEIGHT', $porId->all(), 'ausente sai, como qualquer campo');
     }
 
     public function test_nao_se_aplica_em_obrigatorio_responde_422_e_nao_grava_nada(): void

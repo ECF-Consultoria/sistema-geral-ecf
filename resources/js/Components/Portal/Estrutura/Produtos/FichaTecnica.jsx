@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, RotateCcw, Search } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import CampoFichaTecnica from '@/Components/Portal/Estrutura/Produtos/CampoFichaTecnica';
 import { camposDaFicha } from '@/lib/fichaLayout';
 import { cn } from '@/lib/utils';
@@ -11,10 +11,11 @@ import { cn } from '@/lib/utils';
 // de alguma variação e as medidas do produto (bloco Medidas e envio) já chegam fora.
 //
 // 29/10/2026: os campos deixam de seguir os grupos da categoria ("Outros", "Mais
-// detalhes" — não diziam nada) e seguem a SITUAÇÃO: obrigatórias no topo; depois as
-// outras, preenchidas antes; e as marcadas "não se aplica" num grupo recolhido no fim
-// (numa poltrona, colchão, cama e sofá eram 15 caixas "Não se aplica" no meio da tela).
-// Busca pelo nome e filtro Todas · Faltando · Preenchidas. A conta mora em lib/fichaLayout.
+// detalhes" — não diziam nada) e ficam em dois blocos, obrigatórias e outras, sempre
+// na ordem da categoria: nada muda de lugar enquanto se preenche (o usuário: "preenche
+// e muda de lugar, fica desorganizado"), nem o "não se aplica", que fica no lugar,
+// apagado. Busca pelo nome e filtro Todas · Faltando · Preenchidas; o filtro tira uma
+// foto ao ser clicado, e o que se preenche depois não some da lista. Conta em lib/fichaLayout.
 
 const GRADE = 'grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]';
 const FILTROS = [['todas', 'Todas'], ['faltando', 'Faltando'], ['preenchidas', 'Preenchidas']];
@@ -22,7 +23,7 @@ const FILTROS = [['todas', 'Todas'], ['faltando', 'Faltando'], ['preenchidas', '
 export default function FichaTecnica({ tecnica, salvando }) {
     const [busca, setBusca] = useState('');
     const [filtro, setFiltro] = useState('todas');
-    const [verNa, setVerNa] = useState(false);
+    const [foto, setFoto] = useState(null);   // Set de ids do filtro escolhido, ou null em "Todas"
     if (! tecnica.temCategoria) {
         return (
             <section id="secao-ficha-tecnica" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-tecnica="sem-categoria">
@@ -32,14 +33,18 @@ export default function FichaTecnica({ tecnica, salvando }) {
         );
     }
 
-    const r = camposDaFicha(tecnica.grupos ?? [], tecnica.valores, { busca, filtro });
+    const grupos = tecnica.grupos ?? [];
+    const escolherFiltro = (k) => {
+        setFiltro(k);
+        setFoto(k === 'todas' ? null : new Set(camposDaFicha(grupos, tecnica.valores, { filtro: k }).ids));
+    };
+    const r = camposDaFicha(tecnica.grupos ?? [], tecnica.valores, { busca, filtro, so: foto });
     const c = r.contagem;
     const mostrar = (campo) => (
         <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
             erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
     );
     const nada = r.obrigatorias.length === 0 && r.outras.length === 0;
-    const naAberto = verNa || (busca.trim() !== '' && r.naoSeAplicam.length > 0);
 
     return (
         <section id="secao-ficha-tecnica" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-tecnica>
@@ -66,7 +71,7 @@ export default function FichaTecnica({ tecnica, salvando }) {
                 </div>
             )}
 
-            {! tecnica.carregando && ! tecnica.indisponivel && (c.todas > 0 || c.naoSeAplicam > 0) && (
+            {! tecnica.carregando && ! tecnica.indisponivel && c.todas > 0 && (
                 <>
                     <div className="mt-4 flex flex-wrap items-center gap-3" data-barra-ficha-tecnica>
                         <div className="relative w-full max-w-[320px]">
@@ -76,12 +81,17 @@ export default function FichaTecnica({ tecnica, salvando }) {
                         </div>
                         <div role="group" aria-label="Mostrar" className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-[3px]">
                             {FILTROS.map(([k, rotulo]) => (
-                                <button key={k} type="button" onClick={() => setFiltro(k)} aria-pressed={filtro === k} data-filtro-ficha-tecnica={k}
+                                <button key={k} type="button" onClick={() => escolherFiltro(k)} aria-pressed={filtro === k} data-filtro-ficha-tecnica={k}
                                     className={cn('rounded-md px-3 py-1 text-[12.5px]', filtro === k ? 'bg-white/[0.10] font-semibold text-white' : 'text-white/60 hover:text-white')}>
                                     {rotulo} <span className="tabular-nums text-white/45">{c[k]}</span>
                                 </button>
                             ))}
                         </div>
+                        {foto && (
+                            <span className="text-[12px] text-white/40" data-filtro-foto>
+                                lista de quando você filtrou · <button type="button" onClick={() => escolherFiltro(filtro)} className="text-white/70 underline decoration-white/30 underline-offset-[3px] hover:text-white">atualizar</button>
+                            </span>
+                        )}
                     </div>
 
                     {/* Durante o "Salvando…" nada se edita (mesma regra dos outros blocos da ficha). */}
@@ -109,32 +119,6 @@ export default function FichaTecnica({ tecnica, salvando }) {
                             </div>
                         )}
                         {nada && <p className="mt-5 text-[13px] text-white/50" data-ficha-tecnica-vazia>Nenhuma característica {busca.trim() ? `com “${busca.trim()}” ` : ''}neste filtro.</p>}
-
-                        {c.naoSeAplicam > 0 && (
-                            <div className="mt-6 border-t border-white/[0.07] pt-4" data-grupo-tecnico="nao-se-aplicam">
-                                <button type="button" onClick={() => setVerNa((v) => ! v)} aria-expanded={naAberto} data-acao="ver-nao-se-aplicam"
-                                    className="flex items-center gap-2 text-[13px] text-white/65 hover:text-white">
-                                    <span aria-hidden="true" className={cn('inline-block transition-transform', naAberto && 'rotate-90')}>›</span>
-                                    Não se aplicam a este produto ({c.naoSeAplicam})
-                                    <span className="text-[12px] text-white/35">· passe o mouse num campo e clique em “não se aplica” para mandá-lo para cá</span>
-                                </button>
-                                {naAberto && (
-                                    <ul className="mt-3 flex flex-wrap gap-2" data-lista-nao-se-aplicam>
-                                        {r.naoSeAplicam.map((cp) => (
-                                            <li key={cp.id} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] pl-3 pr-1 text-[13px] text-white/55">
-                                                {cp.nome}
-                                                <button type="button" onClick={() => tecnica.mudar(cp.id, { naoSeAplica: false })} data-acao="voltar-campo" data-campo={cp.id}
-                                                    aria-label={`Voltar ${cp.nome} para a ficha`} title="Voltar para a ficha"
-                                                    className="grid h-6 w-6 place-items-center rounded text-white/50 hover:bg-white/[0.08] hover:text-white">
-                                                    <RotateCcw size={13} />
-                                                </button>
-                                            </li>
-                                        ))}
-                                        {r.naoSeAplicam.length === 0 && <li className="text-[12.5px] text-white/40">Nenhuma com essa busca.</li>}
-                                    </ul>
-                                )}
-                            </div>
-                        )}
                     </fieldset>
                 </>
             )}

@@ -64,8 +64,9 @@ use Illuminate\Support\Facades\Log;
  *
  * ### "Não se aplica"
  * Sai com `nao_se_aplica = true` só o campo que o editor deixa marcar (`aceitaNaoSeAplica`:
- * atributo do produto que não é obrigatório) E que o catálogo marca `conditional_required`
- * (29/10/2026: em todo opcional, virava atalho para o cliente não preencher). O que o cliente
+ * atributo do produto que não é obrigatório) E que o catálogo não esconde (`hidden`) — como no
+ * formulário da própria plataforma, que oferece "Não se aplica" em cada opcional que mostra
+ * (29/10/2026: no escondido, virava atalho para o cliente não preencher). O que o cliente
  * marca é gravado por {@see FichaTecnicaDoProduto} com {@see FichaTecnicaDoProduto::NAO_SE_APLICA};
  * marcado onde não aceita, o servidor responde 422.
  *
@@ -533,12 +534,13 @@ class FichaTecnicaDaCategoria
             'unidades'      => $unidades,
             'unidade_padrao' => $unidadePadrao,
             'max'           => $max > 0 ? $max : null,
-            // 29/10/2026, decisão do usuário: no Portal, "Não se aplica" só no campo que o catálogo pede
-            // em certos casos (`conditional_required` — GTIN, voltagem do elétrico…). Em todo opcional ele
-            // virava atalho para o cliente não preencher, e o próprio formulário da plataforma não oferece
-            // em tudo. Obrigatório continua sem (o editor interno também recusa). O editor interno do
-            // Publicador segue com a regra dele: todo opcional aceita, e a equipe usa para dar "Pronto".
-            'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio && self::temTag($tags, 'conditional_required'),
+            // 29/10/2026, decisão do usuário: no Portal, "Não se aplica" como no formulário da própria
+            // plataforma — em cada opcional que ela MOSTRA. O escondido (`hidden`, grupo "Mais detalhes")
+            // ela nem exibe, e o "Não se aplica" nele era atalho para o cliente não preencher. Obrigatório
+            // continua sem (o editor interno também recusa). (Antes, no mesmo dia, ficou só no
+            // `conditional_required` — errado: tirou de campos que a plataforma oferece.) O editor interno
+            // do Publicador segue com a regra dele: todo opcional aceita, e a equipe usa para dar "Pronto".
+            'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio && ! self::temTag($tags, 'hidden'),
             // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela
             // usa só para esconder o campo no produto que varia por ele; nunca é mostrada.
             'eixo_do_portal' => $eixoDoPortal,

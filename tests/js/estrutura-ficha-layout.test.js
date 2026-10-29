@@ -49,36 +49,49 @@ const GRUPOS = [{ grupo: 'Outros', campos: [
     { id: 'SEATERS', nome: 'Quantidade de lugares', obrigatorio: true, nao_se_aplica: false },
 ] }];
 
-test('Ficha técnica: obrigatórias primeiro, outras com as preenchidas antes, "não se aplica" à parte', () => {
+// 29/10/2026 (2ª rodada): "preenche e muda de lugar, fica desorganizado" — a ordem é SEMPRE a da
+// categoria; preencher ou marcar "não se aplica" não move o campo.
+test('Ficha técnica: obrigatórias e outras na ordem da categoria; nada muda de lugar ao preencher', () => {
+    const vazio = camposDaFicha(GRUPOS, {});
     const valores = {
         BRAND: { valor: 'ECF' }, LINE: { valor: '' }, MATTRESS_WIDTH: { valor: '', naoSeAplica: true }, IS_KIT: { valor: 'Não' },
     };
     const r = camposDaFicha(GRUPOS, valores);
     assert.deepEqual(r.obrigatorias.map((c) => c.id), ['BRAND', 'SEATERS']);
-    assert.deepEqual(r.outras.map((c) => c.id), ['IS_KIT', 'LINE', 'APGID'], 'preenchida primeiro, depois as vazias na ordem da categoria');
-    assert.deepEqual(r.naoSeAplicam.map((c) => c.id), ['MATTRESS_WIDTH']);
+    assert.deepEqual(r.outras.map((c) => c.id), ['LINE', 'MATTRESS_WIDTH', 'APGID', 'IS_KIT'], 'ordem da categoria, o "não se aplica" no lugar');
+    assert.deepEqual(r.outras.map((c) => c.id), vazio.outras.map((c) => c.id), 'preencher não reordena');
     assert.equal(r.contagem.obrigatoriasFaltando, 1);
-    assert.equal(r.contagem.todas, 5, 'o que não se aplica não entra na conta');
-    assert.equal(r.contagem.preenchidas, 2);
+    assert.equal(r.contagem.todas, 6);
+    assert.equal(r.contagem.preenchidas, 3, '"não se aplica" conta como resolvido');
     assert.equal(r.contagem.faltando, 3);
+    assert.equal(r.contagem.naoSeAplicam, 1);
 });
 
 test('Ficha técnica: busca sem acento e filtro Faltando/Preenchidas', () => {
     const valores = { BRAND: { valor: 'ECF' }, MATTRESS_WIDTH: { naoSeAplica: true } };
     const busca = camposDaFicha(GRUPOS, valores, { busca: 'colchao' });
-    assert.deepEqual([...busca.obrigatorias, ...busca.outras].map((c) => c.id), []);
-    assert.deepEqual(busca.naoSeAplicam.map((c) => c.id), ['MATTRESS_WIDTH'], 'a busca também acha o que foi recolhido');
+    assert.deepEqual([...busca.obrigatorias, ...busca.outras].map((c) => c.id), ['MATTRESS_WIDTH']);
     const falta = camposDaFicha(GRUPOS, valores, { filtro: 'faltando' });
-    assert.ok(! falta.obrigatorias.some((c) => c.id === 'BRAND'));
+    assert.ok(! falta.ids.includes('BRAND') && ! falta.ids.includes('MATTRESS_WIDTH'));
     const cheias = camposDaFicha(GRUPOS, valores, { filtro: 'preenchidas' });
-    assert.deepEqual(cheias.obrigatorias.map((c) => c.id), ['BRAND']);
+    assert.deepEqual(cheias.ids, ['BRAND', 'MATTRESS_WIDTH']);
 });
 
-test('Obrigatória nunca vai para "não se aplica", mesmo marcada', () => {
+test('Filtro com "foto": o que se preenche depois de filtrar não some da lista', () => {
+    const foto = new Set(camposDaFicha(GRUPOS, {}, { filtro: 'faltando' }).ids);
+    // A pessoa preenche a Linha com o filtro "Faltando" aberto: ela continua ali.
+    const depois = camposDaFicha(GRUPOS, { LINE: { valor: 'Modena' } }, { filtro: 'faltando', so: foto });
+    assert.ok(depois.outras.some((c) => c.id === 'LINE'));
+    // Sem a foto, o filtro recalcula (é o "atualizar").
+    assert.ok(! camposDaFicha(GRUPOS, { LINE: { valor: 'Modena' } }, { filtro: 'faltando' }).ids.includes('LINE'));
+});
+
+test('Obrigatória nunca conta como "não se aplica", mesmo marcada', () => {
     const grupos = [{ campos: [{ id: 'X', nome: 'X', obrigatorio: true, nao_se_aplica: true }] }];
     const r = camposDaFicha(grupos, { X: { naoSeAplica: true } });
     assert.equal(r.obrigatorias.length, 1);
-    assert.equal(r.naoSeAplicam.length, 0);
+    assert.equal(r.contagem.naoSeAplicam, 0);
+    assert.equal(r.contagem.obrigatoriasFaltando, 1);
 });
 
 test('valorPreenchido: texto, número e lista; "não se aplica" não é valor', () => {

@@ -75,35 +75,40 @@ export const naoSeAplica = (campo, atual) => aceitaNaoSeAplica(campo) && !! atua
 const semAcento = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
- * Os campos dos grupos do servidor reorganizados pela situação, não pelo grupo da categoria
- * ("Outros" e "Mais detalhes" não diziam nada): obrigatórias primeiro; depois as outras, as
- * preenchidas antes; por fim as marcadas "não se aplica". `busca` filtra pelo nome; `filtro`
- * é 'todas' | 'faltando' | 'preenchidas' (as que não se aplicam não entram nas contas).
+ * Os campos dos grupos do servidor em dois blocos: obrigatórias e outras, SEMPRE na ordem da
+ * categoria. Nada muda de lugar enquanto se preenche (29/10/2026, o usuário: "preenche e muda de
+ * lugar, fica desorganizado") — nem o campo marcado "não se aplica", que fica onde está.
+ *
+ * `busca` filtra pelo nome. `filtro` é 'todas' | 'faltando' | 'preenchidas' ("não se aplica" conta
+ * como resolvido). `so` (Set de ids) é a foto tirada quando a pessoa escolheu o filtro: com ela, o
+ * que se preenche agora não some da lista — só um novo clique no filtro atualiza. `ids` devolve os
+ * campos que passam, para quem quiser tirar essa foto.
  */
-export function camposDaFicha(grupos, valores = {}, { busca = '', filtro = 'todas' } = {}) {
+export function camposDaFicha(grupos, valores = {}, { busca = '', filtro = 'todas', so = null } = {}) {
     const todos = (Array.isArray(grupos) ? grupos : []).flatMap((g) => (Array.isArray(g?.campos) ? g.campos : []));
     const termo = semAcento(busca.trim());
     const acha = (c) => ! termo || semAcento(c.nome).includes(termo);
     const cheio = (c) => valorPreenchido(valores[c.id]);
-    const ativos = todos.filter((c) => c.obrigatorio || ! naoSeAplica(c, valores[c.id]));
-    const passa = (c) => acha(c) && (filtro === 'todas' || (filtro === 'faltando' ? ! cheio(c) : cheio(c)));
+    const na = (c) => ! c.obrigatorio && naoSeAplica(c, valores[c.id]);
+    const resolvido = (c) => cheio(c) || na(c);
+    const noFiltro = (c) => (so ? so.has(c.id) : (filtro === 'todas' || (filtro === 'faltando' ? ! resolvido(c) : resolvido(c))));
+    const passa = (c) => acha(c) && noFiltro(c);
 
-    const outras = ativos.filter((c) => ! c.obrigatorio && passa(c));
-    // Estável: preenchidas primeiro, cada metade na ordem da categoria.
-    const ordenadas = [...outras.filter(cheio), ...outras.filter((c) => ! cheio(c))];
+    const obrigatorias = todos.filter((c) => c.obrigatorio && passa(c));
+    const outras = todos.filter((c) => ! c.obrigatorio && passa(c));
 
     return {
-        obrigatorias: ativos.filter((c) => c.obrigatorio && passa(c)),
-        outras: ordenadas,
-        naoSeAplicam: todos.filter((c) => ! c.obrigatorio && naoSeAplica(c, valores[c.id]) && acha(c)),
+        obrigatorias,
+        outras,
+        ids: [...obrigatorias, ...outras].map((c) => c.id),
         contagem: {
-            todas: ativos.length,
-            faltando: ativos.filter((c) => ! cheio(c)).length,
-            preenchidas: ativos.filter(cheio).length,
-            obrigatoriasFaltando: ativos.filter((c) => c.obrigatorio && ! cheio(c)).length,
-            obrigatorias: ativos.filter((c) => c.obrigatorio).length,
-            outrasPreenchidas: ativos.filter((c) => ! c.obrigatorio && cheio(c)).length,
-            naoSeAplicam: todos.filter((c) => ! c.obrigatorio && naoSeAplica(c, valores[c.id])).length,
+            todas: todos.length,
+            faltando: todos.filter((c) => ! resolvido(c)).length,
+            preenchidas: todos.filter(resolvido).length,
+            obrigatoriasFaltando: todos.filter((c) => c.obrigatorio && ! cheio(c)).length,
+            obrigatorias: todos.filter((c) => c.obrigatorio).length,
+            outrasPreenchidas: todos.filter((c) => ! c.obrigatorio && cheio(c)).length,
+            naoSeAplicam: todos.filter(na).length,
         },
     };
 }

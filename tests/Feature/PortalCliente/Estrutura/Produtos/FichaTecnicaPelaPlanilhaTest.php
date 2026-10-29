@@ -79,8 +79,7 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
                 'values' => [['id' => '101', 'name' => 'Madeira'], ['id' => '102', 'name' => 'Metal']]],
             ['id' => 'SEAT_HEIGHT', 'name' => 'Altura do assento', 'value_type' => 'number_unit', 'tags' => [],
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
-            // Condicional: no Portal, só ele aceita "Não se aplica" (29/10/2026).
-            ['id' => 'CAPACITY', 'name' => 'Capacidade', 'value_type' => 'number', 'tags' => ['conditional_required' => true]],
+            ['id' => 'CAPACITY', 'name' => 'Capacidade', 'value_type' => 'number', 'tags' => []],
             ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => []],
             ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
                 'values' => [['id' => '1', 'name' => 'Algodão'], ['id' => '2', 'name' => 'Couro'], ['id' => '3', 'name' => 'Microfibra']]],

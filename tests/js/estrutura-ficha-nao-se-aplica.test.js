@@ -83,11 +83,13 @@ test('Campo: "não se aplica" só onde o servidor oferece, e o controle trava en
     assert.ok(campo.includes('aria-pressed={naoSeAplica}'), 'o estado do botão é anunciado');
 });
 
-test('Ficha técnica: o que não se aplica sai da grade para um grupo recolhido, com "voltar"', () => {
+// 29/10/2026 (2ª rodada): marcado, o campo FICA no lugar, apagado, com "desfazer" — mudar de lugar
+// desorganizava a ficha.
+test('Ficha técnica: o "não se aplica" fica no lugar, apagado, com "desfazer"', () => {
     const bloco = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaTecnica.jsx');
-    assert.match(bloco, /data-grupo-tecnico="nao-se-aplicam"/);
-    assert.match(bloco, /tecnica\.mudar\(campo\.id, \{ naoSeAplica: false \}\)|tecnica\.mudar\(cp\.id, \{ naoSeAplica: false \}\)/);
-    assert.match(bloco, /data-acao="voltar-campo"/);
+    assert.doesNotMatch(bloco, /nao-se-aplicam|naoSeAplicam\.map/, 'sem grupo à parte');
+    assert.ok(campo.includes("naoSeAplica ? 'não se aplica · desfazer' : 'não se aplica'"));
+    assert.ok(campo.includes("naoSeAplica && 'opacity-40'"), 'o controle fica apagado no lugar');
 });
 
 test('Campo: `explicacao` vira o ícone ao lado do rótulo (sem title: seriam dois balões), sem buscar nada', () => {
