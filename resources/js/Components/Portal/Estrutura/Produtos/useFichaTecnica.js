@@ -4,6 +4,7 @@ import {
     categoriaParaConsulta, deveGravar, errosDaResposta, gruposDoProduto, idDoElemento, montarAtributos, valoresIniciais,
 } from '@/lib/fichaTecnica';
 import { camposDeMedidas, gruposSemMedidas } from '@/lib/medidasDoProduto';
+import { mesclarSugestoes } from '@/lib/fichaLayout';
 
 // ─── Estado da ficha técnica do produto ─────────────────────────────────────
 //
@@ -89,8 +90,34 @@ export default function useFichaTecnica({ salvos = [], categoria = null, eixos =
 
     const tentarDeNovo = () => setTentativa((n) => n + 1);
 
+    // "Preencher com IA" (29/10/2026): os campos que a IA preencheu nesta visita, marcados na tela até a
+    // pessoa mexer neles. Só na tela: o que vai para o servidor é o valor, no "Salvar produto" de sempre.
+    const [sugeridos, setSugeridos] = useState(() => new Set());
+
+    /** Aplica as sugestões (formato das linhas salvas) nos campos VAZIOS; devolve quantos e quantos "não se aplica". */
+    const aplicarSugestoes = (sugestoes) => {
+        const r = mesclarSugestoes(valoresRef.current, sugestoes);
+        if (r.aplicados.length === 0) return { aplicados: 0, naoSeAplica: 0 };
+        aoAlterar();
+        valoresRef.current = r.valores;
+        setValores(r.valores);
+        setSugeridos((atual) => new Set([...atual, ...r.aplicados]));
+
+        return { aplicados: r.aplicados.length, naoSeAplica: r.naoSeAplica };
+    };
+
+    /** O que a tela tem agora, no formato do PUT — a IA lê o que está digitado, mesmo sem salvar. */
+    const atributosAtuais = () => montarAtributos(gruposDoProduto(definicaoRef.current?.grupos, eixosRef.current), valoresRef.current);
+
     const mudar = (id, parte) => {
         aoAlterar();
+        setSugeridos((atual) => {
+            if (! atual.has(id)) return atual;
+            const n = new Set(atual);
+            n.delete(id);
+
+            return n;
+        });
         setValores((atual) => ({ ...atual, [id]: { valor: '', unidade: '', ...atual[id], ...parte } }));
         setErros((atual) => {
             if (! atual[id]) return atual;
@@ -137,7 +164,7 @@ export default function useFichaTecnica({ salvos = [], categoria = null, eixos =
     };
 
     return {
-        valores, definicao, grupos, medidas, carregando, indisponivel, erros, erroGeral,
+        valores, definicao, grupos, medidas, carregando, indisponivel, erros, erroGeral, sugeridos, aplicarSugestoes, atributosAtuais,
         temCategoria: !! idCategoria,
         mudar, tentarDeNovo, gravar,
     };

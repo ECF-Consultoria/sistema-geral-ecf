@@ -97,7 +97,7 @@ test('Campo: o rótulo fica colado no campo (nada de empurrar o controle para a 
 });
 
 test('Campo: `explicacao` vira o ícone ao lado do rótulo (sem title: seriam dois balões), sem buscar nada', () => {
-    assert.ok(campo.includes('export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explicacao })'));
+    assert.ok(campo.includes('export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explicacao, sugeridoIa = false })'));
     assert.ok(campo.includes('explicacao={ajuda} nome={campo.nome}'));
     assert.ok(! /title=\{ajuda\}|aria-description=/.test(campo), 'o title e o aria-description antigos saíram');
     assert.ok(! /axios|route\(|fetch\(|useEffect/.test(campo), 'o campo não busca dado nenhum');

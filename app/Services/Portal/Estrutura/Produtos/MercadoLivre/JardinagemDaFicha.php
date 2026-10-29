@@ -114,17 +114,10 @@ class JardinagemDaFicha
             (string) ($retrato['titulo'] ?? $produto->nome),
             (string) ($produto->categoria_ml_caminho ?: $produto->categoria_ml_nome ?: $categoria),
             $this->catalogo($faltando),
+            true,
         );
 
-        $respostas = is_array($r['dados']['atributos'] ?? null) ? $r['dados']['atributos'] : [];
-        $entradas = [];
-        foreach ($respostas as $id => $valor) {
-            $id = strtoupper(trim((string) $id));
-            if (! isset($faltando[$id]) || ! is_scalar($valor) || trim((string) $valor) === '') {
-                continue;
-            }
-            $entradas[$id] = ImportadorFichasTecnicas::entrada($faltando[$id], is_bool($valor) ? $valor : trim((string) $valor));
-        }
+        $entradas = self::entradasDaIa($r['dados']['atributos'] ?? null, $faltando);
 
         $gravados = [];
         if ($entradas !== []) {
@@ -144,6 +137,138 @@ class JardinagemDaFicha
             'em'        => now()->toIso8601String(),
             'modelo_ia' => $r['meta']['modelo'] ?? $r['meta']['model'] ?? null,
         ];
+    }
+
+    /**
+     * As respostas da IA no formato de entrada da ficha, só para os campos que faltam. `NAO_SE_APLICA`
+     * vira "Não se aplica" SÓ onde o campo aceita (29/10/2026); onde não aceita, é descartado.
+     *
+     * @param  array<string, array>  $faltando  id => campo da definição
+     * @return array<string, array>
+     */
+    private static function entradasDaIa(mixed $respostas, array $faltando): array
+    {
+        $entradas = [];
+        foreach (is_array($respostas) ? $respostas : [] as $id => $valor) {
+            $id = strtoupper(trim((string) $id));
+            if (! isset($faltando[$id]) || ! is_scalar($valor) || trim((string) $valor) === '') {
+                continue;
+            }
+            if (is_string($valor) && strtoupper(trim($valor)) === 'NAO_SE_APLICA') {
+                if ($faltando[$id]['nao_se_aplica'] ?? false) {
+                    $entradas[$id] = ['nao_se_aplica' => true];
+                }
+                continue;
+            }
+            $entradas[$id] = ImportadorFichasTecnicas::entrada($faltando[$id], is_bool($valor) ? $valor : trim((string) $valor));
+        }
+
+        return $entradas;
+    }
+
+    // ═══ "Preencher com IA" na ficha (29/10/2026) ═══════════════════════════
+
+    /** Quanto o botão espera a IA, no total (com a troca de modelo): a tela fica esperando. */
+    private const PRAZO_DO_BOTAO_S = 50;
+
+    /**
+     * O botão "Preencher com IA" da ficha técnica: o que a IA sugere para os campos que estão VAZIOS
+     * na tela agora (o que a pessoa digitou e ainda não salvou conta como preenchido). NÃO grava nada:
+     * as sugestões voltam no formato das linhas salvas e a tela as aplica para a pessoa revisar e salvar.
+     * Cada sugestão passa pela mesma validação da ficha (`planejarParcial`): opção que não existe e
+     * "Não se aplica" onde o campo não aceita ficam de fora.
+     *
+     * @param  array<string, array>  $atuais  id => entrada da tela ({valor, unidade, nao_se_aplica, …})
+     * @return array{sugestoes: list<array{id: string, nome: string, valor: ?string, valor_id: ?string, unidade: ?string}>, faltavam: int}
+     */
+    public function sugerir(EstruturaProduto $produto, array $atuais, string $titulo = '', string $descricao = ''): array
+    {
+        $categoria = trim((string) $produto->categoria_ml_id);
+        $definicao = $categoria === '' ? [] : $this->fichas->definicao($categoria);
+        if ($definicao === []) {
+            throw new \RuntimeException('A ficha técnica da categoria não carregou agora. Tente de novo.');
+        }
+        $campos = FichaTecnicaDaCategoria::camposPorId(FichaTecnicaDaCategoria::doProduto($definicao, FichaTecnicaDoProduto::eixosDoProduto($produto)));
+
+        $preenchidos = array_filter($atuais, fn ($e, $id) => isset($campos[$id]) && self::entradaPreenchida(is_array($e) ? $e : []), ARRAY_FILTER_USE_BOTH);
+        $faltando = array_diff_key($campos, $preenchidos);
+        if ($faltando === []) {
+            return ['sugestoes' => [], 'faltavam' => 0];
+        }
+
+        $origem = EstruturaProdutoOrigemMl::query()->where('company_id', $produto->company_id)->where('produto_id', $produto->id)->first();
+        $retrato = (array) ($origem?->retrato ?? []);
+        $titulo = trim($titulo) !== '' ? trim($titulo) : (string) ($retrato['titulo'] ?? '');
+
+        $r = $this->ia->comPrazo(microtime(true) + self::PRAZO_DO_BOTAO_S)->ficha(
+            (string) $produto->nome,
+            $this->fatosDaTela($retrato, $titulo, $campos, $preenchidos, trim($descricao) !== '' ? $descricao : (string) $produto->descricao),
+            $titulo !== '' ? $titulo : (string) $produto->nome,
+            (string) ($produto->categoria_ml_caminho ?: $produto->categoria_ml_nome ?: $categoria),
+            $this->catalogo($faltando),
+            true,
+        );
+
+        $plano = $this->fichaTecnica->planejarParcial($produto, self::entradasDaIa($r['dados']['atributos'] ?? null, $faltando));
+        $sugestoes = [];
+        foreach ($plano['validos'] as $id => $v) {
+            $sugestoes[] = ['id' => (string) $id, 'nome' => (string) $v['campo']['nome'], 'valor' => $v['valor'], 'valor_id' => $v['valor_id'], 'unidade' => $v['unidade']];
+        }
+
+        return ['sugestoes' => $sugestoes, 'faltavam' => count($faltando)];
+    }
+
+    /** A entrada da tela tem algo (valor, opções ou "Não se aplica")? */
+    private static function entradaPreenchida(array $e): bool
+    {
+        if (filter_var($e['nao_se_aplica'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $v = $e['valor'] ?? null;
+
+        return is_array($v) ? $v !== [] : trim((string) $v) !== '';
+    }
+
+    /** Os fatos para a IA a partir do que está NA TELA (pode ainda não estar salvo). */
+    private function fatosDaTela(array $retrato, string $titulo, array $campos, array $preenchidos, string $descricao): string
+    {
+        $linhas = [];
+        if ($titulo !== '') {
+            $linhas[] = 'Título: '.$titulo;
+        }
+        if (! empty($retrato['modelo'])) {
+            $linhas[] = 'Modelo informado pelo vendedor: '.$retrato['modelo'];
+        }
+        if (! empty($retrato['marca'])) {
+            $linhas[] = 'Marca: '.$retrato['marca'];
+        }
+        if ($preenchidos !== []) {
+            $linhas[] = 'Características já preenchidas:';
+            foreach ($preenchidos as $id => $e) {
+                $linhas[] = '- '.$campos[$id]['nome'].': '.self::textoDaEntrada($campos[$id], $e);
+            }
+        }
+        $descricao = trim($descricao);
+        if ($descricao !== '') {
+            $linhas[] = "Descrição:\n".mb_substr($descricao, 0, self::MAX_DESCRICAO_NO_PROMPT);
+        }
+
+        return implode("\n", $linhas);
+    }
+
+    /** O valor de uma entrada da tela em texto (o id de opção vira o nome dela). */
+    private static function textoDaEntrada(array $campo, array $e): string
+    {
+        if (filter_var($e['nao_se_aplica'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return 'Não se aplica';
+        }
+        $nomes = [];
+        foreach ((array) ($campo['valores'] ?? []) as $o) {
+            $nomes[(string) ($o['id'] ?? '')] = (string) ($o['nome'] ?? '');
+        }
+        $valores = array_map(fn ($v) => $nomes[(string) $v] ?? (string) $v, is_array($e['valor'] ?? null) ? $e['valor'] : [(string) ($e['valor'] ?? '')]);
+
+        return trim(implode(', ', $valores).' '.(string) ($e['unidade'] ?? ''));
     }
 
     /** @return array<string, true> ids já preenchidos na ficha do produto */
@@ -202,7 +327,9 @@ class JardinagemDaFicha
                 FichaTecnicaDaCategoria::TIPO_SIM_NAO => 'Sim/Não',
                 default => 'texto',
             };
-            $linhas[] = $id.(($c['obrigatorio'] ?? false) ? '*' : '').' | '.$c['nome'].' | '.$formato;
+            // [N/A]: o campo aceita "Não se aplica" (opcional que a plataforma mostra) — a IA só pode responder
+            // NAO_SE_APLICA nesses (29/10/2026).
+            $linhas[] = $id.(($c['obrigatorio'] ?? false) ? '*' : '').' | '.$c['nome'].' | '.$formato.(($c['nao_se_aplica'] ?? false) ? ' [N/A]' : '');
         }
 
         return implode("\n", $linhas);

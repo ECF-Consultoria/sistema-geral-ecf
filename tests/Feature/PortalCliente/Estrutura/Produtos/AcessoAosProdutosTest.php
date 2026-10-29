@@ -174,7 +174,7 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(44, $achadas); // 28/10: + ml, ml.anuncios, ml.diagnostico, ml.importar, ml.estado e ml.limpar (Trazer do Mercado Livre); 21/10: + precificacao.previa (produto ainda não salvo); 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
+        $this->assertSame(45, $achadas); // 29/10: + ficha_tecnica.ia (Preencher com IA); 28/10: + ml, ml.anuncios, ml.diagnostico, ml.importar, ml.estado e ml.limpar (Trazer do Mercado Livre); 21/10: + precificacao.previa (produto ainda não salvo); 20/10: + precificacao (a da ficha); 19/10: + termos_titulo; 13/10: + modelo_completo e exportar_completo; 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao; 10/10: + exclusao.previa e exclusao; 11/10: + categorias.arvore
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
@@ -209,6 +209,8 @@ class AcessoAosProdutosTest extends TestCase
             [
                 'portal/estrutura/produtos/{id}',
                 'portal/estrutura/produtos/{id}/ficha-tecnica',
+                // 29/10/2026: o "Preencher com IA" da ficha técnica (só sugere, não grava).
+                'portal/estrutura/produtos/{id}/ficha-tecnica/ia',
                 'portal/estrutura/produtos/{id}/descricao',
                 // 20/10/2026: a Precificação dentro da ficha do produto.
                 'portal/estrutura/produtos/{id}/precificacao',

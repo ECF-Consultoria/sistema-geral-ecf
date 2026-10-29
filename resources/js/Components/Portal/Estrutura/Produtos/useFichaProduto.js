@@ -297,6 +297,30 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         setErros((atual) => { const { [chave]: _descartada, ...outras } = atual; return outras; });
     };
 
+    // ─── "Preencher com IA" (29/10/2026) ────────────────────────────────────
+    //
+    // Pede à IA os campos VAZIOS da ficha técnica a partir do que está na tela (título, descrição e o que
+    // já se preencheu, mesmo sem salvar) e aplica as sugestões nos vazios. Nada é gravado: a pessoa revisa
+    // e salva. Precisa do produto salvo (os campos são os da categoria gravada).
+
+    /** Devolve { aplicados, naoSeAplica } ou { erro }. */
+    const preencherComIa = async () => {
+        const id = idDoProduto(varsRef.current, produto);
+        if (! id) return { erro: 'Salve o produto uma vez para usar a IA.' };
+        try {
+            const { data } = await axios.post(route('portal.auth.estrutura.produtos.ficha_tecnica.ia', id), {
+                categoria: varsRef.current[0]?.categoria_ml_id ?? null,
+                titulo: varsRef.current[0]?.titulo ?? '',
+                descricao: descricao.texto,
+                atributos: tecnica.atributosAtuais(),
+            });
+
+            return tecnica.aplicarSugestoes(Array.isArray(data?.sugestoes) ? data.sugestoes : []);
+        } catch (e) {
+            return { erro: e?.response?.data?.message ?? 'A IA não respondeu agora. Tente de novo em instantes.' };
+        }
+    };
+
     // ─── Salvar: o POST linhas, em lotes do limite do servidor ──────────────
 
     /** Devolve { ok, data }; quem chama decide o que fazer (a página volta para a lista). */
@@ -431,7 +455,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa, definirCaixas,
-        novaVariacao, removerVariacao, salvar,
+        novaVariacao, removerVariacao, salvar, preencherComIa,
         segundoEixo, alterarVarias, definirEixo, definirSegundoEixo,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho, recuperado, recomecar,
         tecnica, descricao,

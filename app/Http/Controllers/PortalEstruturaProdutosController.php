@@ -12,6 +12,7 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\ExclusaoDeProdutos;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Portal\Estrutura\Produtos\MercadoLivre\JardinagemDaFicha;
 use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorFichasTecnicas;
@@ -734,6 +735,49 @@ class PortalEstruturaProdutosController extends Controller
         $this->prepararNoPublicador($empresa, [$p->id]);
 
         return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
+    }
+
+    /**
+     * "Preencher com IA" (29/10/2026): o que a IA sugere para os campos VAZIOS da ficha técnica, a partir
+     * do que está na tela (o que se digitou e não salvou conta). Não grava nada — a tela aplica as
+     * sugestões e a pessoa revisa e salva. Produto de outra empresa responde 404 antes da validação. A
+     * categoria da tela tem de ser a salva (os campos são os dela).
+     */
+    public function sugerirFichaTecnica(Request $request, int $produto, JardinagemDaFicha $ia)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $dados = $request->validate([
+            'categoria'   => 'nullable|string|max:20',
+            'titulo'      => 'nullable|string|max:255',
+            'descricao'   => 'nullable|string|max:5000',
+            'atributos'   => 'present|array|max:300',
+            'atributos.*' => 'array',
+            'atributos.*.id' => 'required|string|max:80',
+        ]);
+
+        if (! filled($p->categoria_ml_id)) {
+            return response()->json(['message' => 'Escolha a categoria e salve o produto antes de usar a IA.'], 422);
+        }
+        if (filled($dados['categoria'] ?? null) && $dados['categoria'] !== $p->categoria_ml_id) {
+            return response()->json(['message' => 'A categoria mudou: salve o produto antes de usar a IA.'], 422);
+        }
+
+        $atuais = [];
+        foreach ((array) $request->input('atributos') as $a) {
+            $atuais[strtoupper(trim((string) ($a['id'] ?? '')))] = (array) $a;
+        }
+
+        try {
+            $r = $ia->sugerir($p, $atuais, (string) ($dados['titulo'] ?? ''), (string) ($dados['descricao'] ?? ''));
+        } catch (\Throwable $e) {
+            Log::warning("[Estrutura Produtos] IA da ficha técnica falhou — produto {$p->id}, empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return response()->json(['message' => 'A IA não respondeu agora. Tente de novo em instantes.'], 422);
+        }
+
+        return response()->json($r);
     }
 
     /**

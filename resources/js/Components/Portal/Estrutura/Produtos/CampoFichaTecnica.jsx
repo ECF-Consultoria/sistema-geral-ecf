@@ -161,7 +161,7 @@ function SimNao({ id, valor, onChange, descricao, invalido }) {
     );
 }
 
-export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explicacao }) {
+export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explicacao, sugeridoIa = false }) {
     const id = idDoElemento(campo.id);
     const podeNa = aceitaNaoSeAplica(campo);
     const naoSeAplica = podeNa && !! atual?.naoSeAplica;
@@ -243,11 +243,17 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
                 rótulo curto ficava solto lá em cima e "confunde se é aquilo mesmo que tenho que preencher"). A área
                 do rótulo guarda duas linhas e o texto encosta embaixo: quem tem nome curto e quem quebra em duas
                 linhas ficam com a caixa na mesma altura. */}
-            <div className="mb-1.5 flex min-h-[34px] items-end">
+            <div className="mb-1.5 flex min-h-[34px] items-end gap-2">
                 <RotuloComExplicacao id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
                     explicacao={ajuda} nome={campo.nome}>
                     {campo.nome}{campo.obrigatorio && <> <Obrigatorio /></>}
                 </RotuloComExplicacao>
+                {/* Preenchido pelo "Preencher com IA" e ainda não mexido: a pessoa confere antes de salvar. */}
+                {sugeridoIa && (
+                    <span className="ml-auto shrink-0 rounded-full bg-sky-300/10 px-2 py-0.5 text-[11px] font-medium text-sky-200" data-sugestao-ia>
+                        sugestão da IA
+                    </span>
+                )}
             </div>
             {/* Com "Não se aplica" marcado, o controle inteiro (chips, unidade, Sim/Não) fica travado — e no lugar. */}
             <fieldset disabled={naoSeAplica} className={cn('min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>

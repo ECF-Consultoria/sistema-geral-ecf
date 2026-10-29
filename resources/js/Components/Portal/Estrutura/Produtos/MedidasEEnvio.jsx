@@ -76,7 +76,8 @@ export default function MedidasEEnvio({ ficha, heranca }) {
                             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                                 {medidas.map((campo) => (
                                     <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
-                                        erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
+                                        erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao}
+                                        sugeridoIa={!! tecnica.sugeridos?.has(campo.id)} />
                                 ))}
                             </div>
                         </fieldset>

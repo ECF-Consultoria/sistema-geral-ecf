@@ -108,9 +108,14 @@ class AnaliseAnuncioService
      * preenchimento do cadastro, e a regra dele é a oposta da copy — nada de
      * persuasão, só o que as especificações sustentam.
      */
-    public function ficha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo): array
+    /**
+     * `comNaoSeAplica` (29/10/2026, ficha do Portal): a IA também pode responder `NAO_SE_APLICA` nos
+     * atributos marcados `[N/A]` no catálogo, quando a característica não existe naquele tipo de produto
+     * (colchão numa poltrona). Sem ele, o prompt é o de sempre (o "Anunciar por IA" não muda).
+     */
+    public function ficha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo, bool $comNaoSeAplica = false): array
     {
-        $r = $this->chamar($this->promptFicha($produto, $specs, $titulo, $caminhoCategoria, $catalogo), 6000);
+        $r = $this->chamar($this->promptFicha($produto, $specs, $titulo, $caminhoCategoria, $catalogo, $comNaoSeAplica), 6000);
 
         return [
             'dados' => $r['json'],
@@ -729,9 +734,13 @@ class AnaliseAnuncioService
      * `RascunhoAnuncioIaService::catalogoParaPrompt()` — só os que o wizard
      * mostra, para a IA não preencher campo que o publicador não vê.
      */
-    private function promptFicha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo): string
+    private function promptFicha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo, bool $comNaoSeAplica = false): string
     {
         $bloco = $this->blocoSpecs($specs);
+        // A regra 9 só existe quando quem chama marca no catálogo quem aceita "[N/A]".
+        $regraNa = $comNaoSeAplica
+            ? "\n        9. \"Não se aplica\": nos atributos marcados [N/A], quando a característica NÃO EXISTE neste tipo de produto (ex.: largura do colchão numa poltrona, cama auxiliar numa cadeira, voltagem num móvel sem parte elétrica), responda exatamente \"NAO_SE_APLICA\". Use só quando o tipo de produto não tem aquela parte ou função. Se a característica existe no produto e só falta a informação, OMITA (regra 1). Nunca responda NAO_SE_APLICA em atributo sem [N/A]."
+            : '';
 
         return <<<TXT
         Preencha o cadastro do anúncio do produto **{$produto}** no Mercado Livre.
@@ -747,7 +756,7 @@ class AnaliseAnuncioService
         5. Atributo "Sim/Não": responda "Sim" ou "Não".
         6. "variacoes": só quando as especificações trazem valores de um atributo de variação (ex.: cores ou tamanhos disponíveis). Uma entrada por combinação. Sem essa informação, lista vazia.
         7. "pacote": só se as especificações trazem medidas e peso do produto. Nesse caso estime o pacote EMBALADO (produto + embalagem), em gramas e centímetros. Sem medidas, null.
-        8. "garantia": só se as especificações mencionam garantia (ex.: "90 dias", "12 meses"). Senão, null.
+        8. "garantia": só se as especificações mencionam garantia (ex.: "90 dias", "12 meses"). Senão, null.{$regraNa}
 
         ATRIBUTOS DA FICHA (ID | nome | formato). Os marcados com * são obrigatórios na categoria:
         {$catalogo}

@@ -287,6 +287,9 @@ Route::middleware('portal.auth')
         ->middleware('throttle:60,1,estrutura.produtos.campos')->name('portal.auth.estrutura.produtos.campos_categoria');
     Route::put('/estrutura/produtos/{produto}/ficha-tecnica', [PortalEstruturaProdutosController::class, 'gravarFichaTecnica'])
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.ficha_tecnica')->name('portal.auth.estrutura.produtos.ficha_tecnica');
+    // "Preencher com IA" (29/10/2026): sugere os campos vazios da ficha técnica, sem gravar nada.
+    Route::post('/estrutura/produtos/{produto}/ficha-tecnica/ia', [PortalEstruturaProdutosController::class, 'sugerirFichaTecnica'])
+        ->whereNumber('produto')->middleware('throttle:10,1,estrutura.produtos.ficha_tecnica_ia')->name('portal.auth.estrutura.produtos.ficha_tecnica.ia');
     // Descrição do produto (texto livre do cliente); gravada no mesmo Salvar da ficha.
     Route::put('/estrutura/produtos/{produto}/descricao', [PortalEstruturaProdutosController::class, 'gravarDescricao'])
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.descricao')->name('portal.auth.estrutura.produtos.descricao');

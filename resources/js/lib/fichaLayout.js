@@ -10,7 +10,7 @@
 // o POST `linhas` não mudam: cada variação continua guardando o seu custo e as suas
 // caixas. "Igual em todas" é uma leitura da tela sobre esses valores.
 
-import { aceitaNaoSeAplica } from './fichaTecnica.js';
+import { aceitaNaoSeAplica, valoresIniciais } from './fichaTecnica.js';
 
 // ─── Valor comum entre as variações ─────────────────────────────────────────
 
@@ -111,6 +111,29 @@ export function camposDaFicha(grupos, valores = {}, { busca = '', filtro = 'toda
             naoSeAplicam: todos.filter(na).length,
         },
     };
+}
+
+// ─── "Preencher com IA" (29/10/2026) ────────────────────────────────────────
+
+/**
+ * Junta as sugestões da IA (no formato das linhas salvas: {id, valor, valor_id, unidade}) aos valores
+ * da tela, SÓ nos campos vazios — o que a pessoa já preencheu ou marcou "não se aplica" nunca muda.
+ * Devolve os valores novos e quem recebeu sugestão (`aplicados`) e quantos foram "não se aplica".
+ */
+export function mesclarSugestoes(valores, sugestoes) {
+    const novos = valoresIniciais(sugestoes);
+    const saida = { ...(valores ?? {}) };
+    const aplicados = [];
+    let naoSeAplica = 0;
+    Object.entries(novos).forEach(([id, v]) => {
+        const atual = saida[id];
+        if (valorPreenchido(atual) || atual?.naoSeAplica) return;
+        saida[id] = { ...(atual ?? {}), ...v };
+        aplicados.push(id);
+        if (v.naoSeAplica) naoSeAplica += 1;
+    });
+
+    return { valores: saida, aplicados, naoSeAplica };
 }
 
 // ─── Medidas: a mesma ordem no produto e na caixa ───────────────────────────

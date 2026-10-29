@@ -227,12 +227,13 @@ test('Salvar produto: a ficha técnica grava DEPOIS das variações, com o id do
     // A 167 segue de pé: um único POST de LINHAS e a sequência segue em produtosGravacao.
     // (O outro POST do hook é o das imagens guardadas, para a rota de imagens — gate logo abaixo.)
     assert.equal((hookFicha.match(/axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\)/g) ?? []).length, 1);
-    assert.equal((hookFicha.match(/axios\.post\(/g) ?? []).length, 2, 'só os dois POSTs: linhas e imagens guardadas');
+    // 29/10/2026: + o "Preencher com IA", fora do Salvar (não grava nada).
+    assert.equal((hookFicha.match(/axios\.post\(/g) ?? []).length, 3, 'linhas, imagens guardadas e a sugestão da IA');
     assert.ok(hookFicha.includes('Não salvamos esta variação: informe a Ref e o nome do produto.'));
 });
 
 test('Página: Dados gerais → Variações → Ficha técnica, e a guarda de saída da 167 continua inteira', () => {
-    assert.ok(pagina.includes('<FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />'));
+    assert.ok(pagina.includes('<FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} onPreencherComIa={ficha.preencherComIa} podeIa={! ficha.novoProduto} />'));
     // A Ficha técnica é a ÚLTIMA: Variações é o miolo do cadastro e vem antes da lista longa de
     // características da categoria. Dados gerais segue no topo (a Ficha técnica depende da categoria).
     const iDados = pagina.indexOf('<FichaDadosGerais');

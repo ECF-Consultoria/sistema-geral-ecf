@@ -42,7 +42,11 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     // Um POST de LINHAS e nada mais nesse caminho; o segundo POST do hook é o das imagens
     // que ficaram guardadas enquanto a variação não tinha id (sobem no Salvar).
     assert.equal(contar(hook, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\)/g), 1);
-    assert.equal(contar(hook, /axios\.post\(/g), 2);
+    // 29/10/2026: o terceiro é o "Preencher com IA" — fora do Salvar, e não grava nada.
+    assert.equal(contar(hook, /axios\.post\(/g), 3);
+    assert.equal(contar(hook, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.ficha_tecnica\.ia'/g), 1);
+    const salvar = hook.slice(hook.indexOf('const salvarUmaVez'), hook.indexOf('return {', hook.indexOf('const salvarUmaVez') + 2000));
+    assert.ok(! salvar.includes('ficha_tecnica.ia'), 'o Salvar não chama a IA');
     assert.ok(hook.includes('enviarPendentes('), 'o Salvar sobe as imagens guardadas');
     // A sequência (1ª variação sozinha, lotes com o produto_id) mora em produtosGravacao, com teste
     // comportamental próprio (estrutura-produtos-gravacao.test.js); o hook só injeta o POST.

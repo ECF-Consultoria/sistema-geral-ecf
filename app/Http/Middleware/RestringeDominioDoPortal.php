@@ -240,6 +240,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/{id}',
         // Ficha técnica do produto: só o id numérico no meio, e só o PUT existe nessa URL.
         'portal/estrutura/produtos/{id}/ficha-tecnica',
+        // "Preencher com IA" da ficha técnica (29/10/2026): id numérico no meio, só o POST, e não grava nada.
+        'portal/estrutura/produtos/{id}/ficha-tecnica/ia',
         // Descrição do produto (Fase 172): id numérico no meio, só o PUT existe nessa URL.
         'portal/estrutura/produtos/{id}/descricao',
         // A Precificação na ficha do produto (20/10/2026): id numérico no meio, só o GET existe nessa URL.

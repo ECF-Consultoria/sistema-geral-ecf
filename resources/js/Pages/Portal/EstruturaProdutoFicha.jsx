@@ -449,7 +449,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         {/* O produto montado e a caixa de envio lado a lado, na mesma ordem de medidas. */}
                         <MedidasEEnvio ficha={ficha} heranca={heranca} />
 
-                        <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
+                        {/* "Preencher com IA" (29/10/2026): preenche os vazios na tela; quem grava é o Salvar. */}
+                        <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} onPreencherComIa={ficha.preencherComIa} podeIa={! ficha.novoProduto} />
                         <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
 
                         {/* A Precificação no fim (29/10/2026): o custo é das variações, o frete das caixas; o preço sai

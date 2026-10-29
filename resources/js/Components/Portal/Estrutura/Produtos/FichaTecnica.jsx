@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Sparkles } from 'lucide-react';
 import CampoFichaTecnica from '@/Components/Portal/Estrutura/Produtos/CampoFichaTecnica';
 import { camposDaFicha } from '@/lib/fichaLayout';
 import { cn } from '@/lib/utils';
@@ -20,10 +20,30 @@ import { cn } from '@/lib/utils';
 const GRADE = 'grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]';
 const FILTROS = [['todas', 'Todas'], ['faltando', 'Faltando'], ['preenchidas', 'Preenchidas']];
 
-export default function FichaTecnica({ tecnica, salvando }) {
+/** O resultado do "Preencher com IA" em uma frase. */
+function textoDaIa(r) {
+    if (r.erro) return r.erro;
+    if (! r.aplicados) return 'A IA não achou mais nada para preencher com o que o produto informa.';
+    const valores = r.aplicados - r.naoSeAplica;
+    const partes = [];
+    if (valores > 0) partes.push(`preencheu ${valores} ${valores === 1 ? 'campo' : 'campos'}`);
+    if (r.naoSeAplica > 0) partes.push(`marcou ${r.naoSeAplica} como "Não se aplica"`);
+
+    return `A IA ${partes.join(' e ')}. Confira os marcados "sugestão da IA" e clique em Salvar produto.`;
+}
+
+export default function FichaTecnica({ tecnica, salvando, onPreencherComIa = null, podeIa = false }) {
     const [busca, setBusca] = useState('');
     const [filtro, setFiltro] = useState('todas');
     const [foto, setFoto] = useState(null);   // Set de ids do filtro escolhido, ou null em "Todas"
+    // "Preencher com IA" (29/10/2026): preenche os vazios na tela; quem grava é o "Salvar produto".
+    const [ia, setIa] = useState({ rodando: false, resultado: null });
+    const preencher = async () => {
+        if (! onPreencherComIa || ia.rodando) return;
+        setIa({ rodando: true, resultado: null });
+        const r = await onPreencherComIa();
+        setIa({ rodando: false, resultado: r });
+    };
     if (! tecnica.temCategoria) {
         return (
             <section id="secao-ficha-tecnica" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-tecnica="sem-categoria">
@@ -42,7 +62,8 @@ export default function FichaTecnica({ tecnica, salvando }) {
     const c = r.contagem;
     const mostrar = (campo) => (
         <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
-            erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
+            erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao}
+            sugeridoIa={!! tecnica.sugeridos?.has(campo.id)} />
     );
     const nada = r.obrigatorias.length === 0 && r.outras.length === 0;
 
@@ -92,7 +113,22 @@ export default function FichaTecnica({ tecnica, salvando }) {
                                 lista de quando você filtrou · <button type="button" onClick={() => escolherFiltro(filtro)} className="text-white/70 underline decoration-white/30 underline-offset-[3px] hover:text-white">atualizar</button>
                             </span>
                         )}
+                        {onPreencherComIa && (
+                            <button type="button" onClick={preencher} disabled={! podeIa || ia.rodando || salvando} data-acao="preencher-com-ia"
+                                title={podeIa ? 'Preenche os campos vazios com o que o produto informa. Nada é salvo antes de você clicar em Salvar produto.' : 'Salve o produto uma vez para usar a IA.'}
+                                className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/[0.08] px-4 text-[13px] font-medium text-sky-100 hover:bg-sky-300/[0.14] disabled:cursor-not-allowed disabled:opacity-50">
+                                {ia.rodando ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Sparkles size={15} aria-hidden="true" />}
+                                {ia.rodando ? 'A IA está lendo o produto…' : 'Preencher com IA'}
+                            </button>
+                        )}
                     </div>
+
+                    {ia.resultado && (
+                        <p role="status" data-resultado-ia={ia.resultado.erro ? 'erro' : 'ok'}
+                            className={cn('mt-3 rounded-lg border px-3 py-2 text-[13px]', ia.resultado.erro ? 'border-red-400/25 bg-red-500/[0.08] text-red-200' : 'border-sky-300/25 bg-sky-300/[0.06] text-sky-100')}>
+                            {textoDaIa(ia.resultado)}
+                        </p>
+                    )}
 
                     {/* Durante o "Salvando…" nada se edita (mesma regra dos outros blocos da ficha). */}
                     <fieldset disabled={salvando} className="min-w-0 border-0 p-0" data-campos-ficha-tecnica>

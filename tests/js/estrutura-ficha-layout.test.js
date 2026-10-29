@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    assinaturaDasCaixas, assinaturaDoCusto, camposDaFicha, estadoDasSecoes, grupoComum, nomeDasVariacoes,
+    assinaturaDasCaixas, assinaturaDoCusto, camposDaFicha, estadoDasSecoes, grupoComum, mesclarSugestoes, nomeDasVariacoes,
     ordenarMedidas, valorPreenchido,
 } from '../../resources/js/lib/fichaLayout.js';
 import { lerSemComentarios } from './_fonte.js';
@@ -84,6 +84,33 @@ test('Filtro com "foto": o que se preenche depois de filtrar não some da lista'
     assert.ok(depois.outras.some((c) => c.id === 'LINE'));
     // Sem a foto, o filtro recalcula (é o "atualizar").
     assert.ok(! camposDaFicha(GRUPOS, { LINE: { valor: 'Modena' } }, { filtro: 'faltando' }).ids.includes('LINE'));
+});
+
+// ─── "Preencher com IA" (29/10/2026) ────────────────────────────────────
+
+test('Sugestões da IA: só nos campos vazios; o que a pessoa preencheu ou marcou fica', () => {
+    const valores = {
+        BRAND: { valor: 'ECF', unidade: '' },              // preenchido: não muda
+        LINE: { valor: '', unidade: '', naoSeAplica: true },  // marcado "não se aplica": não muda
+        STYLE: { valor: '', unidade: '' },                  // vazio: recebe
+    };
+    const sugestoes = [
+        { id: 'BRAND', valor: 'Inventada', valor_id: null, unidade: null },
+        { id: 'LINE', valor: 'Modena', valor_id: '5', unidade: null },
+        { id: 'STYLE', valor: 'Clássico', valor_id: '7', unidade: null },
+        { id: 'MATTRESS_WIDTH', valor: null, valor_id: '-1', unidade: null },
+        { id: 'MAX_WEIGHT', valor: '120', valor_id: null, unidade: 'kg' },
+    ];
+    const r = mesclarSugestoes(valores, sugestoes);
+    assert.deepEqual(r.aplicados.sort(), ['MATTRESS_WIDTH', 'MAX_WEIGHT', 'STYLE']);
+    assert.equal(r.naoSeAplica, 1);
+    assert.equal(r.valores.BRAND.valor, 'ECF');
+    assert.equal(r.valores.LINE.naoSeAplica, true);
+    assert.equal(r.valores.STYLE.valor, '7', 'lista guarda o id da opção');
+    assert.equal(r.valores.MATTRESS_WIDTH.naoSeAplica, true);
+    assert.deepEqual([r.valores.MAX_WEIGHT.valor, r.valores.MAX_WEIGHT.unidade], ['120', 'kg']);
+    assert.notEqual(r.valores, valores, 'não mexe no objeto da tela');
+    assert.deepEqual(mesclarSugestoes(valores, []).aplicados, []);
 });
 
 test('Obrigatória nunca conta como "não se aplica", mesmo marcada', () => {
