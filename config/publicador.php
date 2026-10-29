@@ -33,6 +33,11 @@ return [
     'limite_family_name' => null,
 
     // `08` V-TIT-02 (aviso). Telefone, e-mail e link são detectados à parte.
+    // Ficha técnica INTEIRA para o produto ficar "Pronto" (29/10/2026, decisão do usuário: "fala que está pronto mas
+    // os campos de ficha técnica falta muita coisa"): todo campo das características principais e da ficha técnica
+    // preenchido ou marcado "Não se aplica" (regra V-ATT-13 do ValidadorRascunho). Desligar só se travar a operação.
+    'exigir_ficha_inteira' => (bool) env('PUBLICADOR_FICHA_INTEIRA', true),
+
     'termos_proibidos_titulo' => ['frete gratis', 'parcelado', 'sem juros', 'novo', 'usado', 'promocao', 'oferta'],
 
     // `08` V-ATT-11 (aviso), por domínio: medida "maior" não pode ficar abaixo da "menor".

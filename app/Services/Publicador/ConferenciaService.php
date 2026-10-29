@@ -326,6 +326,7 @@ class ConferenciaService
             hashSchemaDoRascunho: $r->schema_hash,
             limiteFamilyName: config('publicador.limite_family_name'),
             avisarAcimaDeItens: (int) config('publicador.avisar_acima_de_itens', 20),
+            fichaInteira: (bool) config('publicador.exigir_ficha_inteira', true),
         );
     }
 

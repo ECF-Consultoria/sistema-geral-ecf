@@ -38,6 +38,12 @@ final class ValidadorRascunho
         A::SECAO_VARIANTE => 'E5', A::SECAO_FICHA => 'E8', A::SECAO_AVANCADO => 'E8', A::SECAO_EMBALAGEM => 'E10',
     ];
 
+    /**
+     * As seções da ficha que precisam estar INTEIRAS para o produto ficar pronto (29/10/2026): as características
+     * principais e a ficha técnica visível. Avançado (`hidden`), embalagem, condição, eixo e variante ficam de fora.
+     */
+    private const SECOES_DA_FICHA_INTEIRA = [A::SECAO_PRINCIPAIS, A::SECAO_FICHA];
+
     /** @var list<Problema> */
     private array $p = [];
 
@@ -143,7 +149,16 @@ final class ValidadorRascunho
                     default => Problema::bloqueio('V-ATT-01', "Preencha «{$a->nome}».", $alvo),
                 };
             } elseif ($a->obrigatoriedade === A::RECOMMENDED) {
-                $this->p[] = Problema::aviso('V-ATT-10', "Preencha «{$a->nome}»: o Mercado Livre usa para dar exposição ao anúncio.", $alvo);
+                // 29/10/2026, decisão do usuário: o recomendado vazio TIRA o "Pronto" (era só aviso) — "fala que está
+                // pronto mas os campos de ficha técnica falta muita coisa". Sai preenchendo ou marcando "Não se aplica".
+                $this->p[] = Problema::bloqueio('V-ATT-10', $a->aceitaNaoSeAplica
+                    ? "Preencha «{$a->nome}» ou marque «Não se aplica»: o Mercado Livre usa para dar exposição ao anúncio."
+                    : "Preencha «{$a->nome}»: o Mercado Livre usa para dar exposição ao anúncio.", $alvo);
+            } elseif ($ctx->fichaInteira && in_array($a->secao, self::SECOES_DA_FICHA_INTEIRA, true)) {
+                // Ficha INTEIRA (29/10/2026, decisão do usuário): o opcional vazio da ficha visível também tira o
+                // "Pronto". Nos schemas reais o "recomendado" sem "obrigatório" quase não existe — o que faltava no
+                // berço eram opcionais. Todo opcional de produto aceita "Não se aplica" (`aceitaNaoSeAplica`).
+                $this->p[] = Problema::bloqueio('V-ATT-13', "Preencha «{$a->nome}» ou marque «Não se aplica».", $alvo);
             }
         }
 

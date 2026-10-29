@@ -6,6 +6,7 @@ use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\Schema\AtributoClassificado as A;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
 use App\Support\Publicador\Validacao\ContextoValidacao;
@@ -31,7 +32,59 @@ class ValidadorRascunhoTest extends TestCase
 
     private const IMAGEM_BOA = ['mime' => 'image/jpeg', 'bytes' => 800_000, 'largura' => 1200, 'altura' => 1200, 'upload_status' => 'uploaded'];
 
+    /**
+     * A ficha INTEIRA da cadeira (29/10/2026: o opcional vazio também tira o "Pronto"): o que o rascunho completo
+     * não preenche de propósito vai como "Não se aplica".
+     *
+     * @return array<string, array>
+     */
+    private static function restoDaFichaComoNaoSeAplica(array $preenchidos): array
+    {
+        $schema = (new ClassificadorAtributos())->classificar(self::schema(self::CADEIRA), new ContextoClassificacao());
+        $resto = [];
+        foreach ($schema->atributos as $id => $a) {
+            if ($a->editavel() && in_array($a->secao, [A::SECAO_PRINCIPAIS, A::SECAO_FICHA], true) && ! isset($preenchidos[$id]) && ! $a->obrigatorio()) {
+                $resto[$id] = ['value_id' => '-1', 'value_name' => null];
+            }
+        }
+
+        return $resto;
+    }
+
     private static function completo(array $mudar = []): RascunhoSnapshot
+    {
+        $preenchidos = [
+            'BRAND' => ['value_name' => 'ECF'],
+            'MODEL' => ['value_name' => 'Executiva'],
+            'BACKREST_HEIGHT' => ['value_name' => '50 cm'],
+            'SEAT_DEPTH' => ['value_name' => '45 cm'],
+            'OFFICE_CHAIR_WIDTH' => ['value_name' => '60 cm'],
+            'MAX_CHAIR_HEIGHT' => ['value_name' => '110 cm'],
+            'REQUIRES_ASSEMBLY' => ['value_id' => '242085'],
+            'IS_GAMER' => ['value_id' => '242084'],
+            'IS_ERGONOMIC' => ['value_id' => '242085'],
+            'IS_SWIVEL' => ['value_id' => '242085'],
+            'INCLUDES_ASSEMBLY_MANUAL' => ['value_id' => '242085'],
+        ];
+
+        return new RascunhoSnapshot(...[
+            'categoriaId' => self::CADEIRA,
+            'atributos' => $preenchidos + self::restoDaFichaComoNaoSeAplica($preenchidos),
+            'variantes' => [new Variante(ChaveCanonica::UNICA, [], dados: [
+                'estoque' => 3,
+                'precos' => ['gold_special' => 150.0, 'gold_pro' => 165.0],
+                'atributos' => ['SELLER_SKU' => ['value_name' => 'CAD'], 'GTIN' => ['value_name' => '7896553367645']],
+            ])],
+            'alvos' => [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória'), new Alvo('gold_pro', 'Cadeira de Escritório ECF Executiva com Giro')],
+            'imagens' => [['imagem' => 'a1', 'grupo' => R::GERAL, 'posicao' => 0]],
+            'descricao' => 'Cadeira executiva giratória.',
+            'envio' => ['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false],
+            'garantia' => ['tipo' => '2230280', 'tempo' => 30, 'unidade' => 'dias'],
+            ...$mudar,
+        ]);
+    }
+
+    private static function completoAntigo(array $mudar = []): RascunhoSnapshot
     {
         return new RascunhoSnapshot(...[
             'categoriaId' => self::CADEIRA,
@@ -103,6 +156,32 @@ class ValidadorRascunhoTest extends TestCase
     public function test_rascunho_completo_nao_tem_bloqueio(): void
     {
         $this->assertSame([], self::regras(self::validar()));
+    }
+
+    /** 29/10/2026, o usuário: "fala que está pronto mas os campos de ficha técnica falta muita coisa". */
+    public function test_opcional_vazio_da_ficha_tira_o_pronto_e_nao_se_aplica_resolve(): void
+    {
+        $semFicha = self::completoAntigo();
+
+        $problemas = self::validar($semFicha);
+        $this->assertContains('V-ATT-13', self::regras($problemas));
+        $p = self::primeiro($problemas, 'V-ATT-13');
+        $this->assertStringContainsString('Não se aplica', $p->mensagem);
+        $this->assertContains($p->alvo['etapa'], ['E3', 'E8'], 'aponta a etapa da ficha');
+
+        // "Não se aplica" em todos resolve: o completo é o antigo com o resto da ficha como N/A.
+        $this->assertSame([], self::regras(self::validar()));
+    }
+
+    public function test_ficha_inteira_nao_cobra_avancado_embalagem_nem_variante(): void
+    {
+        $schema = (new ClassificadorAtributos())->classificar(self::schema(self::CADEIRA), new ContextoClassificacao());
+        $cobrados = array_map(fn ($p) => $p->alvo['atributo'] ?? null, array_filter(self::validar(self::completoAntigo()), fn ($p) => $p->regra === 'V-ATT-13'));
+        foreach ($cobrados as $id) {
+            $this->assertContains($schema->atributo($id)->secao, [A::SECAO_PRINCIPAIS, A::SECAO_FICHA], "{$id} não é da ficha visível");
+        }
+        $this->assertNotContains('SELLER_PACKAGE_WEIGHT', $cobrados);
+        $this->assertNotContains('GTIN', $cobrados);
     }
 
     public function test_tc30_obrigatorio_faltando_aponta_o_campo_e_a_etapa(): void
@@ -182,6 +261,8 @@ class ValidadorRascunhoTest extends TestCase
         $variantes = array_map(fn ($c) => Variante::daCombinacao($c, $dadosPorCor[$c->rotulo]), GeradorCombinacoes::gerar([$cor]));
 
         return self::completo([
+            // A Cor virou variação: o produto não tem valor único dela (V-VAR-10), nem o "Não se aplica" da ficha inteira.
+            'atributos' => array_diff_key(self::completo()->atributos, ['COLOR' => 1]),
             'eixos' => [$cor],
             'variantes' => $variantes,
             'imagens' => [['imagem' => 'a1', 'grupo' => 'COLOR=id:52049', 'posicao' => 0], ['imagem' => 'a1', 'grupo' => 'COLOR=id:52028', 'posicao' => 0]],

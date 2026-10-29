@@ -711,6 +711,7 @@ class EditorRascunhoService
                 hashSchemaDoRascunho: $r->schema_hash,
                 limiteFamilyName: config('publicador.limite_family_name'),
                 avisarAcimaDeItens: (int) config('publicador.avisar_acima_de_itens', 20),
+                fichaInteira: (bool) config('publicador.exigir_ficha_inteira', true),
             );
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
@@ -1316,9 +1317,10 @@ class EditorRascunhoService
      * A versão do formato do resumo (`step_state.resumo`). Os rótulos do `por_cor` são texto de tela GRAVADO: mudou
      * um rótulo (20/10/2026: "falta foto" → "falta imagem"), sobe a versão — a vitrine refaz o resumo de outra versão
      * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela. 3 (21/10/2026): o resumo
-     * ganhou `itens` (o que falta, com a etapa da tela).
+     * ganhou `itens` (o que falta, com a etapa da tela). 4 (29/10/2026): a ficha técnica INTEIRA conta para o "Pronto"
+     * (V-ATT-13) — o produto que estava pronto com campos vazios é refeito e passa a "Com pendência".
      */
-    public const VERSAO_DO_RESUMO = 3;
+    public const VERSAO_DO_RESUMO = 4;
 
     /**
      * Em que etapa da TELA o problema se resolve — a mesma régua de `etapaDoProblema` (`Components/Publicador/apoio.js`):

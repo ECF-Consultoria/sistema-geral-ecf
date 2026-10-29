@@ -38,6 +38,8 @@ final class ContextoValidacao
         public readonly int $ladoMinimoImagem = 500,
         public readonly int $ladoRecomendadoImagem = 1200,
         public readonly int $avisarAcimaDeItens = 20,
+        // Ficha técnica INTEIRA para ficar pronto (29/10/2026, decisão do usuário): `publicador.exigir_ficha_inteira`.
+        public readonly bool $fichaInteira = true,
     ) {}
 
     public function multiDeposito(): bool

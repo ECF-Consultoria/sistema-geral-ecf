@@ -88,6 +88,9 @@ trait CenarioCadeira
      */
     protected function montarCenario(string $ancora = 'company'): void
     {
+        // Este cenário é de publicação, fila, frete e conferência: a cadeira tem só os campos obrigatórios. A ficha
+        // INTEIRA (29/10/2026) é coberta no ValidadorRascunhoTest e no FichaInteiraNoProntoTest.
+        config(['publicador.exigir_ficha_inteira' => false]);
         $tokenBase = ['ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
             'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()];
         if ($ancora === 'mlb_empresa') {

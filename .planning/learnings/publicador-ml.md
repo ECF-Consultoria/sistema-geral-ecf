@@ -2184,3 +2184,20 @@ imagens por IA automáticas. São QUATRO travas em três lugares diferentes — 
   garantia do vendedor): é termo comercial de cada cliente ("uma empresa tem 7 dias, outra 90"). Sem ela, o produto
   que chega do Portal para na conferência (V-SAL-05) até alguém definir a garantia no editor ou o padrão da conta na
   Publicação em lote (`GarantiaPadrao`).
+
+## 61. "Pronto" exige a ficha técnica INTEIRA; meia não exige tabela de medidas (28–29/10/2026)
+
+- **Pronto com ficha vazia** (o usuário, num "Mini Berço": "fala que está pronto mas os campos de ficha técnica falta
+  muita coisa"): só o OBRIGATÓRIO travava; recomendado era aviso; opcional, nada. Contado nos 4 schemas reais guardados
+  (`tests/fixtures-ml/sondagem/publico/categorias`): **0 campos "recomendados" sem "obrigatório"** — o ML marca
+  `catalog_required` junto de `required`. Então "obrigatórios + recomendados" NÃO mudaria nada; o que falta são
+  OPCIONAIS (8 a 24 por categoria). Decisão do usuário: **ficha inteira** — V-ATT-13 "Preencha «X» ou marque «Não se
+  aplica»" para todo campo vazio das seções PRINCIPAIS e FICHA (avançado/oculto, embalagem, condição, eixo e variante
+  ficam de fora). Todo opcional de produto aceita N/A (`aceitaNaoSeAplica`), e o `CampoAtributo` já mostra a opção.
+- Interruptor: `publicador.exigir_ficha_inteira` (env `PUBLICADOR_FICHA_INTEIRA`, padrão LIGADO). O `CenarioCadeira`
+  dos testes o DESLIGA (a cadeira do cenário só tem os obrigatórios, e os payloads são comparados com snapshots);
+  a regra é coberta por `ValidadorRascunhoTest` e `FichaInteiraNoProntoTest`.
+- `VERSAO_DO_RESUMO` 3 → 4: a vitrine refaz o resumo de quem está em outra versão (até `RESUMOS_POR_VISITA` por
+  visita), então o produto que estava "Pronto" com campos vazios passa a "Com pendência" sem ser aberto.
+- **Tabela de medidas:** medida na #459 — meia (`MLB-SOCKS`) não exige (ver `portal-do-cliente.md` §55.1);
+  `ClassificadorAtributos::DOMINIOS_SEM_TABELA_DE_MEDIDAS`. Camiseta (`MLB-T_SHIRTS`) exige e segue bloqueada.
