@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 // continua fechada.
 
 const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
-const ROTULO = 'block text-[13px] font-medium text-white/80';
+const ROTULO = 'block min-w-0 text-[12.5px] font-medium text-white/70';
 const BOTAO_OPCAO = 'h-11 min-w-[64px] flex-1 px-3 text-[14px] lg:h-9 lg:flex-none';
 
 /**
@@ -71,7 +71,7 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
                 <ul className="mb-1.5 flex flex-wrap gap-1.5" aria-label={`Escolhidos em ${campo.nome}`} data-escolhidos>
                     {escolhidos.map((v) => (
                         <li key={v} data-chip={v}
-                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-ecf-yellow/40 bg-ecf-yellow/15 pl-2.5 pr-1 text-[14px] font-medium text-white">
+                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-white/30 bg-white/[0.10] pl-2.5 pr-1 text-[14px] font-medium text-white">
                             <span className="truncate">{nomePorId.get(v) ?? v}</span>
                             <button type="button" onClick={() => tirar(v)} aria-label={`Tirar ${nomePorId.get(v) ?? v} de ${campo.nome}`}
                                 className="grid h-5 w-5 shrink-0 place-items-center rounded text-white/70 hover:bg-white/10 hover:text-white">
@@ -139,17 +139,21 @@ function ListaUnica({ id, campo, atual, classe, descricao, invalido, onMudar }) 
     );
 }
 
-/** "—", "Sim" e "Não": um par de opções, com a terceira para "não informado". */
+/**
+ * "Sim" e "Não" (29/10/2026: eram três, com "—" para não informado, e mais a caixa "Não se aplica"
+ * embaixo — quatro estados para uma pergunta de sim ou não). Clicar de novo na opção marcada limpa.
+ * A marcada fica em branco, não em amarelo: amarelo é do Salvar (revisão do Gemini, 29/10).
+ */
 function SimNao({ id, valor, onChange, descricao, invalido }) {
-    const opcoes = [['', '—', 'Não informado'], ['Sim', 'Sim', 'Sim'], ['Não', 'Não', 'Não']];
+    const opcoes = [['Sim', 'Sim'], ['Não', 'Não']];
 
     return (
         <div id={id} tabIndex={-1} role="group" aria-labelledby={descricao} aria-invalid={invalido || undefined}
-            className={cn('inline-flex w-full overflow-hidden rounded-lg border bg-black/40 sm:w-auto', invalido ? 'border-red-400/50' : 'border-white/20')}>
-            {opcoes.map(([chave, texto, dica]) => (
-                <button key={chave || 'vazio'} type="button" aria-pressed={valor === chave} title={dica} aria-label={dica}
-                    onClick={() => onChange(chave)} data-opcao={chave || 'vazio'}
-                    className={cn(BOTAO_OPCAO, 'border-r border-white/10 last:border-r-0', valor === chave ? 'bg-ecf-yellow font-semibold text-black' : 'text-white/80 hover:bg-white/[0.07]')}>
+            className={cn('inline-flex w-full max-w-[240px] overflow-hidden rounded-lg border bg-black/40', invalido ? 'border-red-400/50' : 'border-white/20')}>
+            {opcoes.map(([chave, texto]) => (
+                <button key={chave} type="button" aria-pressed={valor === chave} title={valor === chave ? `${texto} · clique de novo para limpar` : texto}
+                    onClick={() => onChange(valor === chave ? '' : chave)} data-opcao={chave}
+                    className={cn(BOTAO_OPCAO, 'flex-1 border-r border-white/10 last:border-r-0 lg:flex-1', valor === chave ? 'bg-white/90 font-semibold text-black' : 'text-white/75 hover:bg-white/[0.07]')}>
                     {texto}
                 </button>
             ))}
@@ -178,21 +182,29 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
                     onChange={(e) => onMudar(campo.id, { valor: e.target.value })} />
             );
             break;
-        case 'numero_unidade':
+        case 'numero_unidade': {
+            // Uma unidade só: ela fica DENTRO do campo, em cinza (29/10/2026: a 2ª caixa ao lado parecia
+            // editável). Várias: um seletor estreito no lugar do sufixo.
+            const unidades = campo.unidades ?? [];
             controle = (
-                <div className="flex gap-2">
-                    <input id={id} className={classe} inputMode="decimal" autoComplete="off" value={numeroParaTela(valor)}
+                <div className="relative">
+                    <input id={id} className={cn(classe, unidades.length > 1 ? 'pr-[84px]' : 'pr-12')} inputMode="decimal" autoComplete="off" value={numeroParaTela(valor)}
                         aria-invalid={invalido || undefined} aria-describedby={descricao}
                         onChange={(e) => onMudar(campo.id, { valor: e.target.value, unidade })} />
-                    {(campo.unidades ?? []).length > 0 && (
-                        <select className={cn(CAMPO, 'w-28 shrink-0 lg:w-28')} value={unidade} aria-label={`Unidade de ${campo.nome}`}
-                            onChange={(e) => onMudar(campo.id, { unidade: e.target.value })}>
-                            {campo.unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                    {unidades.length > 1 ? (
+                        <select className="absolute right-1.5 top-1/2 h-7 w-[72px] -translate-y-1/2 appearance-none rounded-md border-0 bg-white/[0.06] bg-none px-2 py-0 text-center text-[12.5px] leading-7 text-white/80 focus:outline-none focus:ring-0"
+                            value={unidade} aria-label={`Unidade de ${campo.nome}`} onChange={(e) => onMudar(campo.id, { unidade: e.target.value })}>
+                            {unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
                         </select>
+                    ) : (
+                        <span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12.5px] text-white/40" data-unidade-sufixo>
+                            {unidades[0]?.nome ?? unidade}
+                        </span>
                     )}
                 </div>
             );
             break;
+        }
         case 'sim_nao':
             controle = <SimNao id={id} valor={valor} descricao={rotuloId} invalido={invalido} onChange={(v) => onMudar(campo.id, { valor: v })} />;
             break;
@@ -226,25 +238,31 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
 
     return (
         <div data-campo-tecnico data-tipo={campo.tipo} data-obrigatorio={campo.obrigatorio ? 'sim' : 'nao'}
-            data-nao-se-aplica={naoSeAplica ? 'sim' : undefined}>
-            <RotuloComExplicacao id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
-                explicacao={ajuda} nome={campo.nome}>
-                {campo.nome}{campo.obrigatorio && <> <Obrigatorio /></>}
-            </RotuloComExplicacao>
+            data-nao-se-aplica={naoSeAplica ? 'sim' : undefined} className="group/campo flex min-w-0 flex-col">
+            {/* Rótulo que quebra em duas linhas não desalinha a fileira: o controle desce para a base (mt-auto). */}
+            <div className="mb-1 flex min-h-[18px] items-center gap-2">
+                <RotuloComExplicacao id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
+                    explicacao={ajuda} nome={campo.nome}>
+                    {campo.nome}{campo.obrigatorio && <> <Obrigatorio /></>}
+                </RotuloComExplicacao>
+                {/* "Não se aplica" (29/10/2026): um botão discreto na linha do rótulo, que aparece ao passar o
+                    mouse ou focar o campo, em vez de uma caixa embaixo de CADA campo (28 numa poltrona). Na ficha
+                    técnica, marcado, o campo vai para o grupo recolhido "Não se aplicam"; aqui ele fica apagado. */}
+                {podeNa && (
+                    <button type="button" aria-pressed={naoSeAplica} data-acao="nao-se-aplica"
+                        onClick={() => onMudar(campo.id, { naoSeAplica: ! naoSeAplica })}
+                        className={cn('ml-auto shrink-0 rounded px-1 text-[11.5px] transition-opacity focus-visible:opacity-100',
+                            naoSeAplica ? 'text-white/70 underline underline-offset-2 opacity-100' : 'text-white/45 opacity-0 hover:text-white hover:underline group-hover/campo:opacity-100 group-focus-within/campo:opacity-100')}>
+                        {naoSeAplica ? 'não se aplica · desfazer' : 'não se aplica'}
+                        {/* Leitor de tela: com dezenas de campos, cada botão diz de qual campo é. */}
+                        <span className="sr-only"> ({campo.nome})</span>
+                    </button>
+                )}
+            </div>
             {/* Com "Não se aplica" marcado, o controle inteiro (chips, unidade, Sim/Não) fica travado. */}
-            <fieldset disabled={naoSeAplica} className={cn('min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>
+            <fieldset disabled={naoSeAplica} className={cn('mt-auto min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>
                 {controle}
             </fieldset>
-            {podeNa && (
-                <label className="mt-1.5 inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/70">
-                    <input type="checkbox" checked={naoSeAplica} data-acao="nao-se-aplica"
-                        onChange={(e) => onMudar(campo.id, { naoSeAplica: e.target.checked })}
-                        className="h-4 w-4 rounded border-white/30 bg-black/40 text-ecf-yellow focus:ring-0 focus:ring-offset-0" />
-                    Não se aplica
-                    {/* Leitor de tela: com dezenas de caixas, cada uma diz de qual campo é. */}
-                    <span className="sr-only"> ({campo.nome})</span>
-                </label>
-            )}
             {invalido && <p id={`${id}-erro`} role="alert" className="mt-1 text-[12px] text-red-300">{erro}</p>}
         </div>
     );

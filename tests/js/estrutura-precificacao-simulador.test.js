@@ -227,9 +227,11 @@ test('a fiação: a página abre no Simulador, a ficha tem a seção, e nenhum d
 
     const ficha = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
     assert.match(ficha, /<PrecificacaoDoProduto ficha=\{ficha\}/);
-    // Depois das Variações e antes da Ficha técnica.
-    assert.ok(ficha.indexOf('<PrecificacaoDoProduto') > ficha.indexOf('data-campos-variacoes'));
-    assert.ok(ficha.indexOf('<PrecificacaoDoProduto') < ficha.indexOf('<FichaTecnica'));
+    // 29/10/2026 (ficha reorganizada, protótipo aprovado): a Precificação fecha a ficha, depois da Ficha
+    // técnica e da Descrição — o custo vem das variações e o frete das caixas, preenchidos antes.
+    assert.ok(ficha.indexOf('<PrecificacaoDoProduto') > ficha.indexOf('<CoresDoProduto'));
+    assert.ok(ficha.indexOf('<PrecificacaoDoProduto') > ficha.indexOf('<FichaTecnica'));
+    assert.match(ficha, /id="secao-preco"/, 'o índice leva até ela');
 
     const secao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto.jsx');
     assert.match(secao, /portal\.auth\.estrutura\.produtos\.precificacao/);

@@ -1,26 +1,53 @@
-import { Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, RotateCcw, Search } from 'lucide-react';
 import CampoFichaTecnica from '@/Components/Portal/Estrutura/Produtos/CampoFichaTecnica';
+import { camposDaFicha } from '@/lib/fichaLayout';
+import { cn } from '@/lib/utils';
 
 // ─── Bloco "Ficha técnica" da ficha do produto ──────────────────────────────
 //
-// Aparece quando o produto tem categoria. Mostra TODOS os campos dela de uma
-// vez, agrupados, e quem preenche é o cliente; o que ele digita vai junto no
-// "Salvar produto". Os grupos e os rótulos vêm do servidor, como estão, cada
-// campo com a sua explicação (ícone ao lado do rótulo). O campo que é o eixo de
-// alguma variação do produto já chega fora de `tecnica.grupos`, e as medidas do
-// produto fora da caixa também (têm bloco próprio, `MedidasDoProduto`).
+// Aparece quando o produto tem categoria e mostra TODOS os campos dela (decisão de
+// 07/10), que o cliente preenche; vai junto no "Salvar produto". O campo que é o eixo
+// de alguma variação e as medidas do produto (bloco Medidas e envio) já chegam fora.
+//
+// 29/10/2026: os campos deixam de seguir os grupos da categoria ("Outros", "Mais
+// detalhes" — não diziam nada) e seguem a SITUAÇÃO: obrigatórias no topo; depois as
+// outras, preenchidas antes; e as marcadas "não se aplica" num grupo recolhido no fim
+// (numa poltrona, colchão, cama e sofá eram 15 caixas "Não se aplica" no meio da tela).
+// Busca pelo nome e filtro Todas · Faltando · Preenchidas. A conta mora em lib/fichaLayout.
+
+const GRADE = 'grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]';
+const FILTROS = [['todas', 'Todas'], ['faltando', 'Faltando'], ['preenchidas', 'Preenchidas']];
 
 export default function FichaTecnica({ tecnica, salvando }) {
-    if (! tecnica.temCategoria) return null;
-    const grupos = tecnica.grupos ?? [];
+    const [busca, setBusca] = useState('');
+    const [filtro, setFiltro] = useState('todas');
+    const [verNa, setVerNa] = useState(false);
+    if (! tecnica.temCategoria) {
+        return (
+            <section id="secao-ficha-tecnica" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-tecnica="sem-categoria">
+                <h2 className="text-[19px] font-bold text-white">Ficha técnica</h2>
+                <p className="mt-0.5 text-[13.5px] text-white/60">Escolha a categoria do produto (lá em cima, em Produto) para ver as características que ela pede.</p>
+            </section>
+        );
+    }
+
+    const r = camposDaFicha(tecnica.grupos ?? [], tecnica.valores, { busca, filtro });
+    const c = r.contagem;
+    const mostrar = (campo) => (
+        <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
+            erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
+    );
+    const nada = r.obrigatorias.length === 0 && r.outras.length === 0;
+    const naAberto = verNa || (busca.trim() !== '' && r.naoSeAplicam.length > 0);
 
     return (
-        <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-5 lg:pt-3" data-ficha-tecnica>
-            <h2 className="text-[20px] font-bold text-white">Ficha técnica</h2>
-            <p className="mt-1 text-[14px] text-white/70">Preencha as características do produto. Os campos com * são obrigatórios.</p>
+        <section id="secao-ficha-tecnica" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-tecnica>
+            <h2 className="text-[19px] font-bold text-white">Ficha técnica</h2>
+            <p className="mt-0.5 text-[13.5px] text-white/65">As características que a categoria pede. Primeiro as obrigatórias.</p>
 
             {tecnica.erroGeral && (
-                <p role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200" data-erro-ficha-tecnica>{tecnica.erroGeral}</p>
+                <p role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12.5px] text-red-200" data-erro-ficha-tecnica>{tecnica.erroGeral}</p>
             )}
 
             {tecnica.carregando && (
@@ -39,20 +66,78 @@ export default function FichaTecnica({ tecnica, salvando }) {
                 </div>
             )}
 
-            {/* Durante o "Salvando…" nada se edita (mesma regra dos outros blocos da ficha). */}
-            <fieldset disabled={salvando} className="min-w-0 border-0 p-0" data-campos-ficha-tecnica>
-                {grupos.map((grupo, i) => (
-                    <div key={`${grupo.grupo}-${i}`} className="mt-4" data-grupo-tecnico>
-                        <h3 className="mb-2 border-b border-white/[0.08] pb-1 text-[15px] font-semibold text-white/90">{grupo.grupo}</h3>
-                        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                            {(grupo.campos ?? []).map((campo) => (
-                                <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
-                                    erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
+            {! tecnica.carregando && ! tecnica.indisponivel && (c.todas > 0 || c.naoSeAplicam > 0) && (
+                <>
+                    <div className="mt-4 flex flex-wrap items-center gap-3" data-barra-ficha-tecnica>
+                        <div className="relative w-full max-w-[320px]">
+                            <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar característica" aria-label="Buscar característica" data-busca-ficha-tecnica
+                                className="h-9 w-full rounded-lg border border-white/20 bg-black/40 pl-9 pr-3 text-[13.5px] text-white placeholder:text-white/35 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0" />
+                        </div>
+                        <div role="group" aria-label="Mostrar" className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-[3px]">
+                            {FILTROS.map(([k, rotulo]) => (
+                                <button key={k} type="button" onClick={() => setFiltro(k)} aria-pressed={filtro === k} data-filtro-ficha-tecnica={k}
+                                    className={cn('rounded-md px-3 py-1 text-[12.5px]', filtro === k ? 'bg-white/[0.10] font-semibold text-white' : 'text-white/60 hover:text-white')}>
+                                    {rotulo} <span className="tabular-nums text-white/45">{c[k]}</span>
+                                </button>
                             ))}
                         </div>
                     </div>
-                ))}
-            </fieldset>
+
+                    {/* Durante o "Salvando…" nada se edita (mesma regra dos outros blocos da ficha). */}
+                    <fieldset disabled={salvando} className="min-w-0 border-0 p-0" data-campos-ficha-tecnica>
+                        {r.obrigatorias.length > 0 && (
+                            <div className="mt-5" data-grupo-tecnico="obrigatorias">
+                                <h3 className="mb-3 flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-[0.07em] text-white/45">
+                                    Obrigatórias
+                                    {c.obrigatoriasFaltando > 0
+                                        ? <span className="rounded-full bg-amber-300/10 px-2 py-0.5 text-[11px] normal-case tracking-normal text-amber-200">{c.obrigatoriasFaltando} faltando</span>
+                                        : <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] normal-case tracking-normal text-emerald-300">completas</span>}
+                                </h3>
+                                <div className={GRADE}>{r.obrigatorias.map(mostrar)}</div>
+                            </div>
+                        )}
+                        {r.outras.length > 0 && (
+                            <div className="mt-6" data-grupo-tecnico="outras">
+                                <h3 className="mb-3 flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-[0.07em] text-white/45">
+                                    Outras características
+                                    <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] normal-case tracking-normal text-white/55">
+                                        {c.outrasPreenchidas} preenchidas
+                                    </span>
+                                </h3>
+                                <div className={GRADE}>{r.outras.map(mostrar)}</div>
+                            </div>
+                        )}
+                        {nada && <p className="mt-5 text-[13px] text-white/50" data-ficha-tecnica-vazia>Nenhuma característica {busca.trim() ? `com “${busca.trim()}” ` : ''}neste filtro.</p>}
+
+                        {c.naoSeAplicam > 0 && (
+                            <div className="mt-6 border-t border-white/[0.07] pt-4" data-grupo-tecnico="nao-se-aplicam">
+                                <button type="button" onClick={() => setVerNa((v) => ! v)} aria-expanded={naAberto} data-acao="ver-nao-se-aplicam"
+                                    className="flex items-center gap-2 text-[13px] text-white/65 hover:text-white">
+                                    <span aria-hidden="true" className={cn('inline-block transition-transform', naAberto && 'rotate-90')}>›</span>
+                                    Não se aplicam a este produto ({c.naoSeAplicam})
+                                    <span className="text-[12px] text-white/35">· passe o mouse num campo e clique em “não se aplica” para mandá-lo para cá</span>
+                                </button>
+                                {naAberto && (
+                                    <ul className="mt-3 flex flex-wrap gap-2" data-lista-nao-se-aplicam>
+                                        {r.naoSeAplicam.map((cp) => (
+                                            <li key={cp.id} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] pl-3 pr-1 text-[13px] text-white/55">
+                                                {cp.nome}
+                                                <button type="button" onClick={() => tecnica.mudar(cp.id, { naoSeAplica: false })} data-acao="voltar-campo" data-campo={cp.id}
+                                                    aria-label={`Voltar ${cp.nome} para a ficha`} title="Voltar para a ficha"
+                                                    className="grid h-6 w-6 place-items-center rounded text-white/50 hover:bg-white/[0.08] hover:text-white">
+                                                    <RotateCcw size={13} />
+                                                </button>
+                                            </li>
+                                        ))}
+                                        {r.naoSeAplicam.length === 0 && <li className="text-[12.5px] text-white/40">Nenhuma com essa busca.</li>}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
+                    </fieldset>
+                </>
+            )}
         </section>
     );
 }

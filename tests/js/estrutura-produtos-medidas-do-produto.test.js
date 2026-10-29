@@ -123,9 +123,16 @@ test('os ids do bloco do Portal são os de "Produto fora da caixa" no editor int
 
 // ─── Encaixe e sigilo ───────────────────────────────────────────────────────
 
-test('a ficha monta o bloco antes das Variações e a Ficha técnica não repete as medidas', () => {
+// 29/10/2026: as medidas do produto montado ficam LADO A LADO com a caixa de envio (MedidasEEnvio),
+// depois das variações e antes da Ficha técnica, na mesma ordem de medidas da caixa.
+test('a ficha monta as medidas ao lado da caixa, antes da Ficha técnica, que não as repete', () => {
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
-    assert.ok(pagina.indexOf('<MedidasDoProduto') > 0 && pagina.indexOf('<MedidasDoProduto') < pagina.indexOf('>Variações<'));
+    const iMedidas = pagina.indexOf('<MedidasEEnvio');
+    assert.ok(iMedidas > pagina.indexOf('<CoresDoProduto') && iMedidas < pagina.indexOf('<FichaTecnica'));
+    const bloco = lerSemComentarios(`${DIR}/MedidasEEnvio.jsx`);
+    assert.match(bloco, /ordenarMedidas\(tecnica\.medidas \?\? \[\]\)/);
+    assert.match(bloco, /data-medidas-do-produto/);
+    assert.match(bloco, /data-caixa-comum/);
     const hook = lerSemComentarios(`${DIR}/useFichaTecnica.js`);
     assert.match(hook, /const grupos = gruposSemMedidas\(doProduto\)/);
     assert.match(hook, /montarAtributos\(gruposDoProduto\(atual\?\.grupos/, 'o PUT continua levando as medidas');
@@ -136,7 +143,7 @@ test('a ficha monta o bloco antes das Variações e a Ficha técnica não repete
 
 test('sigilo: nada no bloco novo, na caixa nem na regra cita a origem do cadastro', () => {
     const PROIBIDO = /Mercado Livre|mercado livre|anúncio|Anúncio|Publicador|\bpublicar\b|\bPublicar\b|\bML\b/;
-    for (const arquivo of [`${DIR}/MedidasDoProduto.jsx`, `${DIR}/CartaoVolume.jsx`, 'resources/js/lib/medidasDoProduto.js']) {
+    for (const arquivo of [`${DIR}/MedidasDoProduto.jsx`, `${DIR}/MedidasEEnvio.jsx`, `${DIR}/CartaoVolume.jsx`, 'resources/js/lib/medidasDoProduto.js']) {
         const fonte = fs.readFileSync(path.resolve(RAIZ, arquivo), 'utf8');
         assert.equal(fonte.match(PROIBIDO), null, `${arquivo} cita "${fonte.match(PROIBIDO)?.[0]}"`);
     }

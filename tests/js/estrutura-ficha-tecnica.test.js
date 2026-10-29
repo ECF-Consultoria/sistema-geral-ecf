@@ -172,16 +172,20 @@ const hookTec = lerSemComentarios(`${DIR}useFichaTecnica.js`);
 const hookFicha = lerSemComentarios(`${DIR}useFichaProduto.js`);
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
 
-test('Bloco: título "Ficha técnica", grupos com título, campos todos visíveis e fieldset travado ao salvar', () => {
+// 29/10/2026: os grupos da categoria ("Outros", "Mais detalhes") deram lugar a obrigatórias → outras
+// (preenchidas antes) → as marcadas "não se aplica" num grupo fechado. Continua valendo a decisão de
+// 07/10: TODOS os campos a preencher aparecem de uma vez — nada de "mostrar opcionais".
+test('Bloco: título "Ficha técnica", obrigatórias e outras à vista, fieldset travado ao salvar', () => {
     assert.ok(bloco.includes('Ficha técnica</h2>'));
     assert.match(bloco, /<fieldset disabled=\{salvando\}/);
-    assert.match(bloco, /grupos\.map\(/);
-    assert.ok(bloco.includes('{grupo.grupo}</h3>'), 'cada grupo tem o seu título');
-    assert.match(bloco, /\(grupo\.campos \?\? \[\]\)\.map\(/);
-    assert.ok(bloco.includes('if (! tecnica.temCategoria) return null;'), 'sem categoria o bloco não aparece');
+    assert.match(bloco, /camposDaFicha\(tecnica\.grupos \?\? \[\], tecnica\.valores, \{ busca, filtro \}\)/);
+    assert.match(bloco, /r\.obrigatorias\.map\(/);
+    assert.match(bloco, /r\.outras\.map\(/);
+    assert.match(bloco, /useState\('todas'\)/, 'abre mostrando todas');
+    assert.ok(bloco.includes('data-ficha-tecnica="sem-categoria"'), 'sem categoria, a seção diz o que fazer');
     assert.ok(bloco.includes('Não foi possível carregar os campos agora; tente de novo.'));
     assert.ok(bloco.includes('Tentar de novo') && bloco.includes('tecnica.tentarDeNovo'));
-    assert.ok(! /colaps|recolh|accordion|<details/i.test(bloco), 'todos os campos de uma vez, sem recolher');
+    assert.ok(! /accordion|<details|opcionais/i.test(bloco), 'todos os campos a preencher de uma vez');
 });
 
 test('Campo: um controle para cada tipo, obrigatório marcado, rótulo é o nome do servidor', () => {
@@ -191,7 +195,9 @@ test('Campo: um controle para cada tipo, obrigatório marcado, rótulo é o nome
     assert.equal((campo.match(/inputMode="decimal"/g) ?? []).length, 2, 'número e número com unidade');
     assert.ok(campo.includes('campo.unidade_padrao'), 'unidade nasce na padrão');
     assert.ok(campo.includes('<option value="">Selecione</option>'));
-    assert.ok(campo.includes("['', '—', 'Não informado']") && campo.includes("'Sim'") && campo.includes("'Não'"));
+    // 29/10/2026: Sim/Não com duas opções; clicar de novo na marcada limpa (o "—" saiu).
+    assert.ok(campo.includes("[['Sim', 'Sim'], ['Não', 'Não']]"));
+    assert.ok(campo.includes("onChange(valor === chave ? '' : chave)"), 'clicar de novo limpa');
     assert.ok(campo.includes('campo.obrigatorio && <> <Obrigatorio /></>'));
     assert.ok(campo.includes('{campo.nome}'), 'o rótulo é o nome do servidor');
     assert.ok(! /\{campo\.id\}|\{`?\$\{campo\.id\}/.test(campo.replace(/key=\{campo\.id\}/g, '')), 'o id interno nunca é exibido');
@@ -230,12 +236,12 @@ test('Página: Dados gerais → Variações → Ficha técnica, e a guarda de sa
     // A Ficha técnica é a ÚLTIMA: Variações é o miolo do cadastro e vem antes da lista longa de
     // características da categoria. Dados gerais segue no topo (a Ficha técnica depende da categoria).
     const iDados = pagina.indexOf('<FichaDadosGerais');
-    const iVariacoes = pagina.indexOf('<h2 className="text-[20px] font-bold text-white">Variações</h2>');
+    const iVariacoes = pagina.indexOf('<CoresDoProduto');
     const iTecnica = pagina.indexOf('<FichaTecnica');
     assert.ok(iDados > 0 && iVariacoes > iDados, 'Variações depois de Dados gerais');
     assert.ok(iTecnica > iVariacoes, 'Ficha técnica depois de Variações');
-    // Cancelar/Salvar fecham a página, fora da seção de Variações (senão ficariam no meio dela).
-    assert.ok(pagina.indexOf("data-acao=\"salvar-produto\"") > iTecnica, 'os botões fecham a página');
+    // Cancelar/Salvar fecham a página, fora da seção de Variações (29/10/2026: numa barra presa embaixo).
+    assert.ok(pagina.indexOf('<BarraDeSalvar') > iTecnica, 'os botões fecham a página');
     assert.ok(pagina.includes('ficha_tecnica: fichaTecnica'));
     assert.ok(pagina.includes('definirGuardaDoVoltar(aoNavegarNoHistorico)'));
     assert.ok(pagina.includes("router.on('before'") && pagina.includes("addEventListener('beforeunload'"));

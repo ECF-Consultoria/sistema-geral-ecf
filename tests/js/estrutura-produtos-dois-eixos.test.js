@@ -81,9 +81,12 @@ test('rótulos: "Novo tamanho", "Nova cor", plural certo', () => {
 });
 
 test('a ficha usa o bloco por cor só com o 2º eixo, e a galeria fica no bloco (não no cartão do tamanho)', () => {
+    // 29/10/2026: a seção das variações saiu da página para CoresDoProduto.
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
-    assert.match(pagina, /ficha\.segundoEixo \?/);
-    assert.match(pagina, /<VariacoesPorCor /);
+    assert.match(pagina, /<CoresDoProduto /);
+    const secao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CoresDoProduto.jsx');
+    assert.match(secao, /ficha\.segundoEixo \?/);
+    assert.match(secao, /<VariacoesPorCor /);
     const cartao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CartaoVariacao.jsx');
     assert.match(cartao, /! dentroDaCor && <GaleriaVariacao/);
     const bloco = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/VariacoesPorCor.jsx');

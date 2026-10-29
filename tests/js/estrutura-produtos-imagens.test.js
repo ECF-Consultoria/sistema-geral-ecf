@@ -348,8 +348,10 @@ test('Gate: "Nova variação" não herda as imagens da 1ª, e o salvar parcial n
     assert.ok(hook.includes('manterImagensAtuais(rascunho.vars, varsRef.current)'));
 });
 
-test('Gate: o cartão continua tendo Volumes, calculados, excluir variação e o erro da variação', () => {
-    for (const trecho of ['<CartaoVolume', '<FaixaCalculados', 'data-acao="excluir-variacao"', 'data-erro-variacao', 'Caixa embalada']) {
+// 29/10/2026: no cartão (linha que abre), a caixa própria traz o resumo do envio em português no lugar
+// da faixa de calculados; a caixa comum mora em Medidas e envio.
+test('Gate: o cartão continua tendo caixas, resumo do envio, excluir variação e o erro da variação', () => {
+    for (const trecho of ['<CartaoVolume', '<ResumoDoEnvio', 'data-acao="excluir-variacao"', 'data-erro-variacao', 'Caixa de envio']) {
         assert.ok(cartao.includes(trecho), trecho);
     }
 });
@@ -391,9 +393,13 @@ test('Tamanho: a galeria barra antes de guardar a pendente e diz o limite', () =
 });
 
 test('Aviso do Salvar aparece UMA vez na ficha (antes saía no topo e junto do botão)', () => {
+    // 29/10/2026: o aviso mora na barra de salvar (presa embaixo, ao lado do botão), uma vez só.
     const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
-    assert.equal((pagina.match(/data-aviso-junto-do-salvar/g) ?? []).length, 1);
+    const barra = lerSemComentarios(`${DIR}BarraDeSalvar.jsx`);
+    assert.equal((barra.match(/data-aviso-junto-do-salvar/g) ?? []).length, 1);
+    assert.equal((pagina.match(/<BarraDeSalvar\b/g) ?? []).length, 1);
+    assert.equal((pagina.match(/data-aviso-junto-do-salvar/g) ?? []).length, 0, 'nenhuma segunda caixa com o mesmo aviso');
     assert.equal((pagina.match(/\{ficha\.aviso\}/g) ?? []).length, 0, 'nenhuma segunda caixa com o mesmo aviso');
     // 28/10/2026: a mesma caixa mostra também a trava do Premium igual ao Clássico (uma caixa só, como antes).
-    assert.ok(/\(ficha\.aviso \?\?/.test(pagina), 'o aviso segue junto do botão');
+    assert.ok(/mensagemAoSalvar = avisoPremium/.test(pagina) && /mensagemAoSalvar = ficha\.aviso/.test(pagina), 'os dois avisos vão para a mesma caixa');
 });

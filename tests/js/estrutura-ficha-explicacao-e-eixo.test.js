@@ -77,7 +77,9 @@ test('o hook da ficha técnica esconde e grava pelos eixos de AGORA das variaç�
     const ficha = lerSemComentarios(`${DIR}/useFichaProduto.js`);
     assert.match(ficha, /eixos: eixosEmUso\(vars, vocabulario\?\.eixos\)/);
     const bloco = lerSemComentarios(`${DIR}/FichaTecnica.jsx`);
-    assert.match(bloco, /const grupos = tecnica\.grupos \?\? \[\]/);
+    // 29/10/2026: a ficha reorganiza os grupos pela situação (lib/fichaLayout), mas parte dos MESMOS
+    // `tecnica.grupos` — já sem o eixo das variações.
+    assert.match(bloco, /camposDaFicha\(tecnica\.grupos \?\? \[\]/);
     assert.doesNotMatch(bloco, /tecnica\.definicao/, 'a tela não mostra a definição crua da categoria');
 });
 
@@ -143,9 +145,11 @@ test('Todo campo da ficha passa a explicação: ficha técnica e os campos fixos
     assert.doesNotMatch(dados, /data-escolha="familia"\s+title=/);
 
     const variacao = c('CartaoVariacao.jsx');
-    for (const chave of ['ref', 'eixo', 'valor', 'custo', 'estoque', 'volumes']) {
+    for (const chave of ['ref', 'valor', 'custo', 'estoque', 'volumes']) {
         assert.match(variacao, new RegExp(`(explicacao|texto)=\\{explicacoes\\.${chave}\\}`), chave);
     }
+    // 29/10/2026: o eixo é do produto e mora no cabeçalho das variações ("Varia por"), com a explicação dele.
+    assert.match(c('VariacoesPorCor.jsx'), /texto=\{ficha\.explicacoes\?\.eixo\}/, 'eixo');
     const volume = c('CartaoVolume.jsx');
     assert.match(volume, /explicacao=\{explicacoes\[EXPLICACAO_DA_MEDIDA\[m\.chave\]\]\}/);
     assert.match(volume, /\{ c: 'comprimento', l: 'largura', a: 'altura', kg: 'peso' \}/);

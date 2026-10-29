@@ -71,13 +71,23 @@ test('ida e volta: o N/A gravado volta igual no corpo do PUT', () => {
 
 const campo = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CampoFichaTecnica.jsx');
 
-test('Campo: caixa "Não se aplica" só onde o servidor oferece, e o controle trava enquanto marcada', () => {
+// 29/10/2026: a caixa embaixo de cada campo virou um botão discreto na linha do rótulo (numa poltrona
+// eram 28 caixas "Não se aplica"); marcado, o campo vai para o grupo recolhido da Ficha técnica.
+test('Campo: "não se aplica" só onde o servidor oferece, e o controle trava enquanto marcado', () => {
     assert.ok(campo.includes('const podeNa = aceitaNaoSeAplica(campo);'));
-    assert.ok(campo.includes('{podeNa && ('), 'a caixa só aparece no campo que aceita');
-    assert.ok(campo.includes('Não se aplica'), 'rótulo da caixa');
-    assert.ok(campo.includes('<span className="sr-only"> ({campo.nome})</span>'), 'IN-02: o leitor de tela ouve de qual campo é a caixa');
-    assert.ok(campo.includes('<fieldset disabled={naoSeAplica}'), 'o controle inteiro trava');
-    assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: e.target.checked })'));
+    assert.ok(campo.includes('{podeNa && ('), 'o botão só aparece no campo que aceita');
+    assert.ok(campo.includes('não se aplica'), 'texto do botão');
+    assert.ok(campo.includes('<span className="sr-only"> ({campo.nome})</span>'), 'IN-02: o leitor de tela ouve de qual campo é o botão');
+    assert.ok(/<fieldset disabled=\{naoSeAplica\}/.test(campo), 'o controle inteiro trava');
+    assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: ! naoSeAplica })'), 'o botão alterna');
+    assert.ok(campo.includes('aria-pressed={naoSeAplica}'), 'o estado do botão é anunciado');
+});
+
+test('Ficha técnica: o que não se aplica sai da grade para um grupo recolhido, com "voltar"', () => {
+    const bloco = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaTecnica.jsx');
+    assert.match(bloco, /data-grupo-tecnico="nao-se-aplicam"/);
+    assert.match(bloco, /tecnica\.mudar\(campo\.id, \{ naoSeAplica: false \}\)|tecnica\.mudar\(cp\.id, \{ naoSeAplica: false \}\)/);
+    assert.match(bloco, /data-acao="voltar-campo"/);
 });
 
 test('Campo: `explicacao` vira o ícone ao lado do rótulo (sem title: seriam dois balões), sem buscar nada', () => {

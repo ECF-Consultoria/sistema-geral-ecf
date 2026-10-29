@@ -26,6 +26,9 @@ const calculados = lerSemComentarios(`${DIR}FaixaCalculados.jsx`);
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 const gravacao = lerSemComentarios('resources/js/lib/produtosGravacao.js');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
+// 29/10/2026: a seção das variações e a barra de salvar saíram da página para componentes próprios.
+const cores = lerSemComentarios(`${DIR}CoresDoProduto.jsx`);
+const barra = lerSemComentarios(`${DIR}BarraDeSalvar.jsx`);
 const nav = lerSemComentarios('resources/js/lib/produtosNavegacao.js');
 const raiz = resolve(import.meta.dirname, '../..');
 const PAINEL = 'Sheet' + 'Produto';   // o painel lateral antigo, apagado no 167-19
@@ -95,18 +98,22 @@ test('Dados gerais: nome, família, ambientes e categoria nos pickers do projeto
     assert.ok(! dados.includes('@/Components/ui/sheet'));
 });
 
-test('Variação: Ref · Eixo · Valor · Custo, eixo nativo, valor livre e só a Ref obrigatória (D-20)', () => {
-    // 21/10/2026: "Volumes" virou "Caixa embalada" (o usuário não distinguia a medida do produto da do embalado).
-    for (const t of ['Ref', 'Eixo', 'Valor', 'Custo (R$)', 'Excluir variação', 'Caixa embalada', 'é a que calcula o frete']) {
+// 29/10/2026: a variação é uma linha que abre. O eixo é do produto (cabeçalho "Varia por", select nativo);
+// custo e caixa vêm "iguais às outras" com escape "próprio desta"; os calculados saíram do cartão (o resumo
+// do envio, sem ME1/ME2, fica em Medidas e envio e na caixa própria). Continua: só a Ref é obrigatória.
+test('Variação: Ref · Valor · Estoque · Custo e caixa iguais ou próprios, só a Ref obrigatória (D-20)', () => {
+    for (const t of ['Referência', 'Estoque', 'Custo', 'Excluir', 'Caixa de envio', 'Igual às outras', 'Custo próprio desta', 'Caixa própria desta']) {
         assert.ok(variacao.includes(t), `faltou: ${t}`);
     }
-    assert.ok(variacao.includes('<select') && variacao.includes('<option value="">'));
-    assert.ok(! variacao.includes('@/Components/ui/select'), 'Radix Select com value vazio apaga o dado');
+    const eixos = lerSemComentarios(`${DIR}VariacoesPorCor.jsx`);
+    assert.ok(eixos.includes('<select') && eixos.includes('<option value="">'), 'o eixo é select nativo');
+    assert.ok(! variacao.includes('@/Components/ui/select') && ! eixos.includes('@/Components/ui/select'), 'Radix Select com value vazio apaga o dado');
     assert.ok(variacao.includes('inputMode="decimal"'));
     assert.equal(contar(variacao, /<Obrigatorio/g), 1);
-    for (const t of ['<CartaoVolume', '<FaixaCalculados', '<PilulaLogistica', 'text-red-300', 'data-variacao-form']) {
+    for (const t of ['<CartaoVolume', '<ResumoDoEnvio', 'text-red-300', 'data-variacao-form']) {
         assert.ok(variacao.includes(t), `faltou: ${t}`);
     }
+    assert.ok(! /<PilulaLogistica|<FaixaCalculados/.test(variacao), 'ME1/ME2 e a faixa de calculados não voltam ao cartão');
     assert.ok(variacao.includes('Ver na Lista SKUs') && variacao.includes("route('portal.auth.estrutura.lista'"));
 });
 
@@ -144,15 +151,16 @@ test('Sem regra de negócio, HTML cru nem herança da precificação nos arquivo
 
 test('Página: componente real no layout do portal, com a ficha, as variações e o rodapé', () => {
     assert.match(pagina, /export default function EstruturaProdutoFicha/);
-    for (const t of ['PortalClienteLayout', 'useFichaProduto(', '<FichaDadosGerais', '<CartaoVariacao', '<JanelaExcluirVariacao', 'ArrowLeft',
-        'Produtos', 'Variações', 'Nova variação', 'Cancelar', 'Salvar produto',
-        'data-ficha-produto', 'data-acao="nova-variacao"', 'data-acao="cancelar"', 'data-acao="salvar-produto"']) {
-        assert.ok(pagina.includes(t), `faltou: ${t}`);
+    const tudo = [pagina, cores, barra].join('\n');
+    for (const t of ['PortalClienteLayout', 'useFichaProduto(', '<FichaDadosGerais', '<CoresDoProduto', '<BarraDeSalvar', '<JanelaExcluirVariacao', 'ArrowLeft', 'Produtos', 'data-ficha-produto']) {
+        assert.ok(pagina.includes(t), `faltou na página: ${t}`);
     }
-    assert.equal(contar(pagina, /bg-ecf-yellow/g), 1, 'Salvar produto é o único amarelo');
-    // FE-IN-05: dica do ⓘ no span (title no <svg> do lucide não aparece).
-    assert.ok(pagina.includes('<span className="inline-flex" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente.">'));
-    assert.ok(! /<Info [^>]*title=/.test(pagina));
+    for (const t of ['<CartaoVariacao', 'rotuloDoNovo(rotulo)', 'data-acao="nova-variacao"', 'Cancelar', 'Salvar produto', 'data-acao="cancelar"', 'data-acao="salvar-produto"']) {
+        assert.ok(tudo.includes(t), `faltou: ${t}`);
+    }
+    assert.equal(contar(tudo, /bg-ecf-yellow/g), 1, 'Salvar produto é o único amarelo');
+    // FE-IN-05: nada de title no <svg> do lucide (não aparece).
+    assert.ok(! /<Info [^>]*title=/.test(tudo));
 });
 
 test('Guarda: alteração não salva pede confirmação ao sair por link, botão ou aba', () => {
@@ -206,11 +214,14 @@ test('Rascunho: produto novo recupera sozinho e oferece começar do zero (N12)',
 });
 
 test('Salvando: campos, Nova variação, Excluir e pickers ficam travados durante o POST (FE-WR-02)', () => {
-    assert.equal(contar(pagina, /<fieldset disabled=\{ficha\.salvando\}/g), 2, 'dados gerais e variações');
-    // Nova variação e os cartões (com Excluir e volumes) estão dentro do fieldset das variações.
-    const fieldsetVariacoes = pagina.slice(pagina.indexOf('data-campos-variacoes'), pagina.indexOf('</fieldset>', pagina.indexOf('data-campos-variacoes')));
+    assert.equal(contar(pagina, /<fieldset disabled=\{ficha\.salvando\}/g), 1, 'dados gerais e título');
+    assert.equal(contar(cores, /<fieldset disabled=\{ficha\.salvando\}/g), 1, 'variações');
+    // Nova variação e as linhas (com Excluir e caixas) estão dentro do fieldset das variações.
+    const fieldsetVariacoes = cores.slice(cores.indexOf('data-campos-variacoes'), cores.lastIndexOf('</fieldset>'));
     assert.ok(fieldsetVariacoes.includes('<CartaoVariacao') && fieldsetVariacoes.includes('data-acao="nova-variacao"'));
-    assert.ok(pagina.includes('min-w-0 border-0 p-0'), 'o fieldset não muda o visual');
+    assert.ok(cores.includes('min-w-0 border-0 p-0'), 'o fieldset não muda o visual');
+    // A caixa comum (Medidas e envio) também trava durante o POST.
+    assert.match(lerSemComentarios(`${DIR}MedidasEEnvio.jsx`), /<fieldset disabled=\{ficha\.salvando\}[^>]*data-campos-caixa-comum/);
     // Os gatilhos e os X são botões dentro do fieldset; a trava no componente fica de reserva.
     assert.ok(dados.includes('if (ficha.salvando) return; fecharPicker.current = null;'));
     assert.equal(contar(dados, /if \(ficha\.salvando\) return;/g), 3, 'abrir picker, tirar ambiente e limpar categoria');

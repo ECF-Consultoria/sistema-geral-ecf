@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { ArrowLeft, ChevronRight, Info, Loader2, Plus, Save } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Trash2 } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash } from '@/Components/Portal/Estrutura/comum';
+import BarraDeSalvar from '@/Components/Portal/Estrutura/Produtos/BarraDeSalvar';
+import CoresDoProduto from '@/Components/Portal/Estrutura/Produtos/CoresDoProduto';
 import FichaDadosGerais from '@/Components/Portal/Estrutura/Produtos/FichaDadosGerais';
 import FichaDescricao from '@/Components/Portal/Estrutura/Produtos/FichaDescricao';
 import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
 import FichaTitulo from '@/Components/Portal/Estrutura/Produtos/FichaTitulo';
-import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoProduto';
-import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
-import VariacoesPorCor, { EixosDoProduto } from '@/Components/Portal/Estrutura/Produtos/VariacoesPorCor';
+import IndiceDaFicha from '@/Components/Portal/Estrutura/Produtos/IndiceDaFicha';
+import MedidasEEnvio from '@/Components/Portal/Estrutura/Produtos/MedidasEEnvio';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
+import { QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import PrecificacaoDoProduto from '@/Components/Portal/Estrutura/Produtos/PrecificacaoDoProduto';
 import SeloImportadoDoMl from '@/Components/Portal/Estrutura/Produtos/SeloImportadoDoMl';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
-import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
+import {
+    assinaturaDasCaixas, assinaturaDoCusto, camposDaFicha, estadoDasSecoes, grupoComum, nomeDasVariacoes, valorPreenchido,
+} from '@/lib/fichaLayout';
+import { fotoDoProduto } from '@/lib/imagensVariacao';
+import { contagemDoEixo, gruposPorCor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
+import { limiteDoTitulo } from '@/lib/tituloDoProduto';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
 import { textoDaVariacao } from '@/lib/portalSubmodulos';
 import {
@@ -33,6 +40,12 @@ import {
 // A regra de gravação está no hook `useFichaProduto` (POST `linhas` do servidor)
 // e a ida e volta da lista em `produtosNavegacao`. Aqui só se monta a página,
 // se protege o que foi digitado e se decide para onde voltar.
+//
+// 29/10/2026 — reorganizada (protótipo aprovado pelo usuário, com ideias do Gemini): a
+// largura toda, um índice com o estado de cada seção, a barra de salvar presa embaixo e
+// as seções na ordem Produto → Título → Variações → Medidas e envio → Ficha técnica →
+// Descrição → Precificação. Custo e caixa "iguais em todas" as variações são uma
+// leitura da tela (`heranca`, lib/fichaLayout): o POST continua levando os de cada uma.
 
 const CONFIRMA_SAIR = 'Há alterações não salvas neste produto. Sair sem salvar?';
 
@@ -59,6 +72,96 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const nome = primeira.nome || 'Novo produto';
     // "Cada variação vira uma oferta…": na Lista SKUs só para quem a vê (10/10/2026).
     const variacaoVira = textoDaVariacao(modulos);
+
+    // ─── Variações abertas e o que é "igual em todas" (29/10/2026) ──────────
+    //
+    // Cada variação é uma linha que abre; a nova nasce aberta. Custo e caixa comuns são
+    // os mais frequentes entre as variações (`grupoComum`); "próprio desta" tira a variação
+    // da conta mesmo com o valor igual (estado só da tela, não vai ao servidor).
+    const [abertas, setAbertas] = useState(() => new Set());
+    const alternarVariacao = (k) => setAbertas((atual) => { const n = new Set(atual); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+    const abrirVariacao = (k) => setAbertas((atual) => new Set(atual).add(k));
+    const [proprias, setProprias] = useState(() => ({ custo: new Set(), caixa: new Set() }));
+    const marcarPropria = (tipo, k, sim) => setProprias((p) => {
+        const n = new Set(p[tipo]);
+        if (sim) n.add(k); else n.delete(k);
+
+        return { ...p, [tipo]: n };
+    });
+
+    const vars = ficha.vars;
+    const comumCusto = grupoComum(vars, assinaturaDoCusto, proprias.custo);
+    const comumCaixa = grupoComum(vars, (v) => assinaturaDasCaixas(ficha.caixasEdit(v)), proprias.caixa);
+    const refCusto = vars.find((v) => v._k === comumCusto.chaves[0]) ?? vars[0];
+    const refCaixa = vars.find((v) => v._k === comumCaixa.chaves[0]) ?? vars[0];
+    const herdeirosDaCaixa = vars.filter((v) => comumCaixa.chaves.includes(v._k));
+    const caixasComuns = ficha.caixasEdit(refCaixa);
+    const primeiraCaixa = caixasComuns.find((c) => [c.c, c.l, c.a, c.kg].some((m) => String(m ?? '').trim() !== ''));
+    const custoComumTexto = String(refCusto?.custo ?? '').trim() === '' ? 'sem custo' : `R$ ${String(refCusto.custo).replace('.', ',')}`;
+
+    const heranca = {
+        varias: vars.length > 1,
+        nomeDasVariacoes: nomeDasVariacoes(primeira.eixo_rotulo),
+        custoComum: refCusto?.custo ?? '',
+        custoComumTexto,
+        herdeirosDoCusto: comumCusto.chaves,
+        herdaCusto: (v) => comumCusto.chaves.includes(v._k),
+        mudarCustoComum: (valor) => ficha.alterarVarias(comumCusto.chaves.length ? comumCusto.chaves : vars.map((v) => v._k), 'custo', valor),
+        usarCustoProprio: (v) => marcarPropria('custo', v._k, true),
+        usarCustoComum: (v) => { marcarPropria('custo', v._k, false); ficha.alterar(v._k, 'custo', refCusto?.custo ?? ''); },
+        herdeirosDaCaixa: comumCaixa.chaves,
+        herdaCaixa: (v) => comumCaixa.chaves.includes(v._k),
+        caixasComuns,
+        caixaComumTexto: primeiraCaixa ? `${primeiraCaixa.c || '?'} × ${primeiraCaixa.l || '?'} × ${primeiraCaixa.a || '?'} cm · ${primeiraCaixa.kg || '?'} kg` : 'ainda sem medidas',
+        referenciaDaCaixa: refCaixa,
+        mudarCaixaComum: (i, campo, valor) => herdeirosDaCaixa.forEach((v) => ficha.mudarCaixa(v, i, campo, valor)),
+        removerCaixaComum: (i) => herdeirosDaCaixa.forEach((v) => ficha.removerCaixa(v, i)),
+        adicionarCaixaComum: () => herdeirosDaCaixa.forEach((v) => ficha.adicionarVolume(v)),
+        usarCaixaPropria: (v) => marcarPropria('caixa', v._k, true),
+        usarCaixaComum: (v) => { marcarPropria('caixa', v._k, false); ficha.definirCaixas(v, caixasComuns); },
+    };
+
+    // ─── Estado de cada seção para o índice (só leitura) ────────────────────
+    const tecnica = ficha.tecnica;
+    const contagemTecnica = camposDaFicha(tecnica.grupos ?? [], tecnica.valores).contagem;
+    const estoqueTotal = vars.reduce((s, v) => s + (Number.parseInt(String(v.estoque ?? '').replace(/\D/g, ''), 10) || 0), 0);
+    const ambientes = String(primeira.ambientes_texto ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    // Com cor E tamanho: "2 cores · 4 tamanhos" (contar só as variações dizia "4 cores").
+    const variacoesTexto = ficha.segundoEixo
+        ? `${contagemDoEixo(gruposPorCor(vars).length, primeira.eixo_rotulo)} · ${contagemDoEixo(vars.length, ficha.segundoEixo)}`
+        : contagemDoEixo(vars.length, primeira.eixo_rotulo);
+    const estados = estadoDasSecoes({
+        nome: primeira.nome, temCategoria: !! (primeira.categoria_ml_id || primeira.categoria), familia: primeira.familia, ambientes: ambientes.length,
+        tituloTamanho: String(primeira.titulo ?? '').length, tituloLimite: limiteDoTitulo(ficha.termosDoTitulo.limite),
+        variacoesTexto, variacoesComErro: Object.keys(ficha.erros ?? {}).length, semReferencia: vars.filter((v) => String(v.codigo ?? '').trim() === '').length, estoque: estoqueTotal,
+        semCaixa: ! primeiraCaixa, medidasFaltando: (tecnica.medidas ?? []).filter((c) => c.obrigatorio && ! valorPreenchido(tecnica.valores[c.id])).length,
+        caixaTexto: primeiraCaixa ? `caixa ${primeiraCaixa.c}×${primeiraCaixa.l}×${primeiraCaixa.a}` : '',
+        tecnicaCarregando: tecnica.carregando, tecnicaComErro: Object.keys(tecnica.erros ?? {}).length > 0 || !! tecnica.erroGeral,
+        obrigatoriasFaltando: contagemTecnica.obrigatoriasFaltando, obrigatorias: contagemTecnica.obrigatorias, outrasPreenchidas: contagemTecnica.outrasPreenchidas,
+        descricaoTamanho: String(ficha.descricao.texto ?? '').trim().length, premiumPendente: premiumPendente.length > 0,
+    });
+    const secoes = [
+        ['secao-produto', 'Produto'], ['secao-titulo', 'Título de venda'], ['secao-cores', heranca.nomeDasVariacoes], ['secao-medidas', 'Medidas e envio'],
+        ['secao-ficha-tecnica', 'Ficha técnica'], ['secao-descricao', 'Descrição'], ['secao-preco', 'Precificação'],
+    ].map(([id, nomeDaSecao]) => ({ id, nome: nomeDaSecao, tipo: estados[id][0], sub: estados[id][1] }));
+
+    // O motivo de não ter salvado, na barra do Salvar, com o atalho para o campo.
+    const errosDasVariacoes = Object.keys(ficha.erros ?? {});
+    let mensagemAoSalvar = null;
+    let irPara = null;
+    if (avisoPremium) {
+        mensagemAoSalvar = avisoPremium;
+        irPara = 'secao-preco';
+    } else if (ficha.aviso) {
+        mensagemAoSalvar = ficha.aviso;
+        irPara = /título/i.test(ficha.aviso) ? 'ficha-titulo' : (/ficha técnica/i.test(ficha.aviso) ? 'secao-ficha-tecnica' : (/descrição/i.test(ficha.aviso) ? 'descricao-produto' : null));
+    } else if (errosDasVariacoes.length > 0) {
+        mensagemAoSalvar = errosDasVariacoes.length === 1
+            ? 'Não salvamos: confira a variação marcada em vermelho.'
+            : `Não salvamos: confira as ${errosDasVariacoes.length} variações marcadas em vermelho.`;
+        irPara = `variacao-${errosDasVariacoes[0]}`;
+    }
+    const meta = [primeira.familia, ambientes.join(', '), variacoesTexto, `${estoqueTotal} un. em estoque`].filter(Boolean);
 
     // ─── Proteção do que foi digitado (padrão do usePublicador) ─────────────
 
@@ -250,6 +353,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
     const novaVariacao = () => {
         const k = ficha.novaVariacao();
+        abrirVariacao(k);
         requestAnimationFrame(() => {
             document.getElementById(`valor-${k}`)?.focus();
             document.getElementById(`variacao-${k}`)?.scrollIntoView({ block: 'nearest' });
@@ -259,6 +363,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     // Cor E tamanho (28/10/2026): o novo tamanho nasce dentro da cor, copiando custo e caixa do último dela.
     const novoNaCor = (cor, chaveBase) => {
         const k = ficha.novaVariacao({ valor: cor }, chaveBase);
+        abrirVariacao(k);
         requestAnimationFrame(() => {
             document.getElementById(`valor2-${k}`)?.focus();
             document.getElementById(`variacao-${k}`)?.scrollIntoView({ block: 'nearest' });
@@ -268,6 +373,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     // A cor nova nasce com o 1º tamanho; o foco vai ao nome da cor.
     const novaCor = () => {
         const k = ficha.novaVariacao({ valor: '' });
+        abrirVariacao(k);
         requestAnimationFrame(() => {
             document.getElementById(`cor-${k}`)?.focus();
             document.getElementById(`cor-${k}`)?.scrollIntoView({ block: 'nearest' });
@@ -276,21 +382,36 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo={nome}>
-            <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-5 sm:px-6 lg:pb-8" data-ficha-produto>
-                <div className="lg:px-4">
-                    <nav aria-label="Caminho" className="flex items-center gap-2 text-[14px] text-white/70">
-                        <ArrowLeft size={18} aria-hidden="true" />
-                        <a href={urlDeVolta()} onClick={aoClicarProdutos} className="hover:text-white">Produtos</a>
-                        <ChevronRight size={14} aria-hidden="true" className="text-white/40" />
-                        <span className="truncate text-white">{nome}</span>
-                    </nav>
-                    <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:mt-2.5 lg:text-[42px]">{nome}</h1>
-                    {primeira.origem_ml && <SeloImportadoDoMl origem={primeira.origem_ml} className="mt-2" />}
-                    <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. {variacaoVira.frase}</p>
-                </div>
+            {/* A largura toda (29/10/2026: "não gostei desses espaços sem nada" dos lados). */}
+            <div className="w-full px-4 pt-5 sm:px-6 lg:px-8" data-ficha-produto>
+                <nav aria-label="Caminho" className="flex items-center gap-2 text-[13.5px] text-white/65">
+                    <ArrowLeft size={17} aria-hidden="true" />
+                    <a href={urlDeVolta()} onClick={aoClicarProdutos} className="hover:text-white">Produtos</a>
+                    <ChevronRight size={14} aria-hidden="true" className="text-white/35" />
+                    <span className="truncate text-white">{nome}</span>
+                </nav>
+
+                {/* Cabeçalho compacto: a foto, o nome e o resumo do produto numa linha (o H1 de 42 px e a
+                    frase de abertura empurravam a ficha para baixo). "Excluir produto" sai do rodapé. */}
+                <header className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <QuadroFotoProduto nome={nome} foto={fotoDoProduto(ficha.vars)} tamanho="mini" />
+                    <div className="min-w-0">
+                        <h1 className="font-display text-[26px] font-bold leading-tight text-white">{nome}</h1>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-white/55" data-resumo-produto>
+                            {meta.map((m, i) => <span key={i} className="flex items-center gap-2">{i > 0 && <span aria-hidden="true" className="text-white/25">·</span>}{m}</span>)}
+                        </p>
+                    </div>
+                    {primeira.origem_ml && <SeloImportadoDoMl origem={primeira.origem_ml} />}
+                    {! ficha.novoProduto && (
+                        <button type="button" onClick={() => setExcluindoProduto(true)} disabled={ficha.salvando} data-acao="excluir-produto"
+                            className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] text-red-300/85 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-60">
+                            <Trash2 size={15} /> Excluir produto
+                        </button>
+                    )}
+                </header>
 
                 {ficha.rascunho && (
-                    <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-rascunho>
+                    <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12.5px] text-white/60" data-rascunho>
                         <span>Você tinha alterações não salvas neste produto.</span>
                         <span className="flex items-center gap-3">
                             <button type="button" onClick={ficha.recuperarRascunho} disabled={ficha.salvando} data-acao="recuperar-rascunho" className="font-medium text-white/85 hover:text-white hover:underline">Recuperar</button>
@@ -307,98 +428,42 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     </div>
                 )}
 
-                {/* O aviso do Salvar mora só junto do botão (H3, mais abaixo): repetido aqui no topo, a mesma
-                    frase aparecia duas vezes na tela (teste da demo 23/10, A4). */}
+                <div className="mt-5 lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start lg:gap-7">
+                    {/* O mapa da ficha: o estado de cada seção e o que falta (só no computador). */}
+                    <aside className="hidden lg:sticky lg:top-4 lg:block">
+                        <IndiceDaFicha secoes={secoes} />
+                    </aside>
 
-                {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
-                <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
-                    <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
-                    {/* O título logo depois do nome e da categoria: os termos dele dependem dos dois (19/10/2026). */}
-                    <FichaTitulo ficha={ficha} />
-                </fieldset>
+                    <div className="flex min-w-0 flex-col gap-4">
+                        {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
+                        <fieldset disabled={ficha.salvando} className="flex min-w-0 flex-col gap-4 border-0 p-0" data-campos-ficha>
+                            <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
+                            {/* O título logo depois do nome e da categoria: os termos dele dependem dos dois (19/10/2026). */}
+                            <FichaTitulo ficha={ficha} />
+                        </fieldset>
 
-                {/* As medidas do produto fora da caixa vêm logo antes das Variações: o volume de cada
-                    variação pode usar as mesmas (caixa no cartão do volume). */}
-                <MedidasDoProduto ficha={ficha} />
+                        {/* As variações: o miolo do cadastro (Ref, estoque, fotos), com custo e caixa iguais em todas. */}
+                        <CoresDoProduto ficha={ficha} heranca={heranca} abertas={abertas} onAlternar={alternarVariacao} onExcluir={excluir}
+                            onNovaVariacao={novaVariacao} onNovaNaCor={novoNaCor} onNovaCor={novaCor} frase={variacaoVira.frase || null} />
 
-                {/* Variações ANTES da Ficha técnica: é o miolo do cadastro (Ref, custo, volumes,
-                    imagens) e precede a lista longa de características da categoria. Dados gerais
-                    continua no topo porque a Ficha técnica só existe depois da categoria escolhida. */}
-                <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-2 lg:pt-2">
-                    <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-[20px] font-bold text-white">Variações</h2>
-                        <p className="flex items-center gap-2 text-[14px] text-white/70">
-                            <span className="hidden sm:inline">{variacaoVira.frase}</span>
-                            {/* No <svg> o `title` não vira dica: ela mora no span (FE-IN-05). */}
-                            <span className="inline-flex" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente.">
-                                <Info size={16} aria-hidden="true" />
-                            </span>
-                        </p>
+                        {/* O produto montado e a caixa de envio lado a lado, na mesma ordem de medidas. */}
+                        <MedidasEEnvio ficha={ficha} heranca={heranca} />
+
+                        <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
+                        <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
+
+                        {/* A Precificação no fim (29/10/2026): o custo é das variações, o frete das caixas; o preço sai
+                            daqui mesmo, sem trocar de tela. O frete e os percentuais gravam na hora; o custo, com "Salvar produto". */}
+                        <div id="secao-preco" className="scroll-mt-4 [&>section]:mt-0">
+                            <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas}
+                                onPremiumPendente={(nomes) => { setPremiumPendente(nomes); if (nomes.length === 0) setAvisoPremium(null); }} abrirPremium={abrirPremium} />
+                        </div>
                     </div>
-
-                    <fieldset disabled={ficha.salvando} className="min-w-0 border-0 p-0" data-campos-variacoes>
-                        {ficha.segundoEixo ? (
-                            // Dois eixos: cada cor é um bloco com as fotos dela e os tamanhos dentro.
-                            <>
-                                <EixosDoProduto ficha={ficha} />
-                                <VariacoesPorCor ficha={ficha} vocabulario={vocabulario} onExcluir={excluir} onNovaNaCor={novoNaCor} onNovaCor={novaCor} />
-                            </>
-                        ) : (
-                            <>
-                                <div className="mt-4 space-y-2.5">
-                                    {ficha.vars.map((v) => (
-                                        <CartaoVariacao key={v._k} variacao={v} ficha={ficha} vocabulario={vocabulario}
-                                            podeExcluir={!! v.id || ficha.vars.length > 1} onExcluir={excluir} />
-                                    ))}
-                                </div>
-
-                                <button type="button" onClick={novaVariacao} data-acao="nova-variacao"
-                                    className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] text-[14px] text-white/80 hover:bg-white/[0.03] lg:h-8">
-                                    <Plus size={14} /> Nova variação
-                                </button>
-                                <EixosDoProduto ficha={ficha} />
-                            </>
-                        )}
-                    </fieldset>
-                </section>
-
-                {/* A Precificação logo depois das Variações (20/10/2026): o custo é delas, e o preço sai daqui
-                    mesmo, sem trocar de tela. Só as variações deste produto; o frete grava na hora e o custo, com "Salvar produto". */}
-                <PrecificacaoDoProduto ficha={ficha} produtoId={produto?.id ?? null} nomeDoProduto={produto?.nome ?? ''} linhas={linhas}
-                    onPremiumPendente={(nomes) => { setPremiumPendente(nomes); if (nomes.length === 0) setAvisoPremium(null); }} abrirPremium={abrirPremium} />
-
-                <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
-                <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
-
-                {/* Demo 23/10 (H3): o aviso do topo e o erro da variação ficam longe do botão — clicar em Salvar
-                    parecia não fazer nada. O aviso fica aqui, colado aos botões (e só aqui). */}
-                {(avisoPremium || ficha.aviso || Object.keys(ficha.erros ?? {}).length > 0) && (
-                    <p role="alert" className="mt-2.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[14px] text-red-200" data-aviso-junto-do-salvar
-                        data-aviso-premium={avisoPremium ? 'sim' : undefined}>
-                        {avisoPremium || (ficha.aviso ?? 'Não salvamos tudo: confira os campos marcados em vermelho acima.')}
-                    </p>
-                )}
-
-                {/* Cancelar/Salvar saíram de dentro de Variações: com a Ficha técnica depois dela,
-                    ali os botões ficariam no meio da página. As margens negativas acompanham o
-                    padding da página (px-4 / sm:px-6) para a barra encostada do celular. */}
-                <div className="mt-2.5 flex justify-end gap-3 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:border-t max-lg:border-white/[0.08] max-lg:bg-ecf-bg/95 max-lg:px-4 max-lg:py-3 max-sm:-mx-4 sm:max-lg:-mx-6 sm:max-lg:px-6">
-                    {! ficha.novoProduto && (
-                        <button type="button" onClick={() => setExcluindoProduto(true)} disabled={ficha.salvando} data-acao="excluir-produto"
-                            className="mr-auto h-11 rounded-lg border border-red-500/30 px-4 text-[14px] text-red-300 hover:bg-red-500/10 disabled:opacity-60 lg:h-9">
-                            Excluir produto
-                        </button>
-                    )}
-                    <button type="button" onClick={sair} data-acao="cancelar"
-                        className="h-11 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[14px] text-white hover:bg-white/[0.07] lg:h-9 lg:w-[151px]">
-                        Cancelar
-                    </button>
-                    <button type="button" onClick={salvarProduto} disabled={ficha.salvando} data-acao="salvar-produto"
-                        className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-4 text-[14px] font-semibold text-black hover:brightness-95 disabled:opacity-60 lg:h-9 lg:w-[284px] lg:flex-none">
-                        {ficha.salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        {ficha.salvando ? 'Salvando…' : 'Salvar produto'}
-                    </button>
                 </div>
+
+                {/* O Salvar sempre à mão, com o motivo de não ter salvado ao lado (demo 23/10, H3). */}
+                <BarraDeSalvar alterado={ficha.alterado} mensagem={mensagemAoSalvar} irPara={irPara} salvando={ficha.salvando}
+                    onCancelar={sair} onSalvar={salvarProduto} data-aviso-premium={avisoPremium ? 'sim' : undefined} />
             </div>
 
             <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima} novasNaoSalvas={exclusao?.novasNaoSalvas}

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search, X } from 'lucide-react';
-import EstoqueDoProduto from '@/Components/Portal/Estrutura/Produtos/EstoqueDoProduto';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import { CaminhoCategoria, Obrigatorio, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
@@ -12,7 +11,9 @@ import { cn } from '@/lib/utils';
 //
 // O bloco de cima: quadro da foto à esquerda (sem upload, D-29) e, na largura
 // que sobra, Nome · Família, Ambientes (chips), Categoria do Mercado Livre e o
-// Estoque do produto (o da única variação, ou a soma delas — `EstoqueDoProduto`).
+// (29/10/2026: o "Estoque do produto", a soma só leitura, saiu daqui — com cara de campo, parecia
+// editável, revisão do Gemini. A soma fica no cabeçalho e no pé das variações. A foto ganhou o
+// caminho de onde se troca; o quadro em si continua sem upload, D-29.)
 // Família e ambiente só da lista da empresa, com criar-uma-vez (D-05/D-07); a
 // categoria é sempre escolhida, nunca aceita sozinha (D-06) — os pickers já
 // garantem. A escolha vale para o produto inteiro (o servidor olha a 1ª).
@@ -56,10 +57,20 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
     };
 
     return (
-        <section className="rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:grid lg:grid-cols-[266px_minmax(0,1fr)] lg:gap-7 lg:p-5 lg:pb-4" data-ficha-dados>
+        <section id="secao-produto" className="scroll-mt-4 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5" data-ficha-dados>
+            <h2 className="text-[19px] font-bold text-white">Produto</h2>
+            <p className="mt-0.5 text-[13.5px] text-white/65">Como a sua empresa chama e organiza este produto.</p>
+            <div className="mt-4 lg:grid lg:grid-cols-[266px_minmax(0,1fr)] lg:gap-7">
             {/* O quadro do produto mostra a 1ª foto que existir entre as variações — inclusive a
                 que ainda não subiu (prévia local), para a tela refletir o upload na hora. */}
-            <QuadroFotoProduto nome={primeira.nome} foto={fotoDoProduto(ficha.vars)} tamanho="grande" />
+            <div>
+                <QuadroFotoProduto nome={primeira.nome} foto={fotoDoProduto(ficha.vars)} tamanho="grande" />
+                <p className="mt-2 text-[12px] text-white/45" data-foto-legenda>
+                    1ª foto da 1ª variação ·{' '}
+                    <a href="#secao-cores" onClick={(e) => { e.preventDefault(); document.getElementById('secao-cores')?.scrollIntoView({ behavior: 'smooth' }); }}
+                        className="text-white/80 underline decoration-white/30 underline-offset-[3px] hover:decoration-white">trocar nas variações</a>
+                </p>
+            </div>
 
             <div className="mt-4 min-w-0 lg:mt-0">
                 <div className="md:grid md:grid-cols-[minmax(0,605fr)_minmax(0,496fr)] md:gap-6">
@@ -161,7 +172,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                     </Popover.Root>
                 </div>
 
-                <EstoqueDoProduto ficha={ficha} />
+            </div>
             </div>
         </section>
     );

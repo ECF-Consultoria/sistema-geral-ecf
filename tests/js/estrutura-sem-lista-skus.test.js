@@ -206,8 +206,8 @@ test('o "Como funciona" de Produtos e a ficha usam a mesma frase, sem citar a Li
     const ficha = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
     assert.ok(ficha.includes("import { textoDaVariacao } from '@/lib/portalSubmodulos'"));
     assert.ok(ficha.includes('const variacaoVira = textoDaVariacao(modulos);'));
-    assert.ok(ficha.includes('Preencha o produto uma vez. {variacaoVira.frase}'));
-    assert.ok(ficha.includes('<span className="hidden sm:inline">{variacaoVira.frase}</span>'));
+    // 29/10/2026: a frase saiu do cabeçalho (compacto) e virou o subtítulo da seção das variações.
+    assert.ok(ficha.includes('frase={variacaoVira.frase || null}'));
 
     for (const [nome, fonte] of [['Produtos', produtos], ['ficha', ficha]]) {
         assert.ok(! fonte.includes('vira uma oferta na Lista SKUs'), `${nome}: a frase fixa da Lista saiu`);

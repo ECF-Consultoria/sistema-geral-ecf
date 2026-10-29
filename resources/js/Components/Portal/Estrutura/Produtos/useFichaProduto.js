@@ -250,6 +250,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     };
     const adicionarVolume = (v) => gravarCaixas(v._k, [...caixasEdit(v), { c: '', l: '', a: '', kg: '' }]);
     const removerCaixa = (v, indice) => gravarCaixas(v._k, caixasEdit(v).filter((_, i) => i !== indice));
+    /** Troca as caixas inteiras de uma variação (a cor que volta a usar a caixa comum, 29/10/2026). */
+    const definirCaixas = (v, caixas) => gravarCaixas(v._k, caixas.map((c) => ({ c: String(c.c ?? ''), l: String(c.l ?? ''), a: String(c.a ?? ''), kg: String(c.kg ?? '') })));
 
     // ─── Nova variação (D-04): nasce com tudo da 1ª, só o Valor fica vazio ──
 
@@ -428,7 +430,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
-        alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
+        alterarNome, alterarTitulo, termosDoTitulo, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa, definirCaixas,
         novaVariacao, removerVariacao, salvar,
         segundoEixo, alterarVarias, definirEixo, definirSegundoEixo,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho, recuperado, recomecar,

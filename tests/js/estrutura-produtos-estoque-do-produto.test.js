@@ -134,16 +134,18 @@ test('componente: várias variações → soma só leitura, sem campo, com a aju
     assert.match(html, /data-estoque-produto="soma"/);
     assert.doesNotMatch(html, /<input/);
     assert.match(html, /<output[^>]*>10<\/output>/);
-    assert.ok(html.includes('soma das variações abaixo · 2 de 3 variações informaram'));
+    assert.ok(html.includes('soma das variações · 2 de 3 variações informaram'));
 
     const vazio = renderToStaticMarkup(React.createElement(EstoqueDoProduto, { ficha: { ...ficha, vars: [v('a', ''), v('b', '')] } }));
     assert.match(vazio, /<output[^>]*>—<\/output>/);
-    assert.ok(vazio.includes('soma das variações abaixo<'), 'sem parcial quando nenhuma informou');
+    assert.ok(vazio.includes('soma das variações<'), 'sem parcial quando nenhuma informou');
 });
 
-test('gate: a ficha usa o componente nos dados gerais e o texto é neutro (sigilo)', () => {
+// 29/10/2026: a soma saiu dos dados gerais (com cara de campo, parecia editável) para o pé das variações.
+test('gate: a ficha usa o componente no pé das variações e o texto é neutro (sigilo)', () => {
     const dados = lerSemComentarios(`${DIR}/FichaDadosGerais.jsx`);
-    assert.match(dados, /<EstoqueDoProduto ficha=\{ficha\} \/>/);
+    assert.doesNotMatch(dados, /EstoqueDoProduto/, 'fora dos dados gerais');
+    assert.match(lerSemComentarios(`${DIR}/CoresDoProduto.jsx`), /<EstoqueDoProduto ficha=\{ficha\}/);
 
     const componente = lerSemComentarios(`${DIR}/EstoqueDoProduto.jsx`);
     const lib = lerSemComentarios('resources/js/lib/estoqueDoProduto.js');

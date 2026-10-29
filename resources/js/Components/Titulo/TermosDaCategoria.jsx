@@ -34,10 +34,15 @@ const quantosTermos = (n) => (n === 0 ? 'nenhum termo' : `só ${n} ${n === 1 ? '
 export default function TermosDaCategoria({
     dados, carregando = false, erro = null, onTentarDeNovo = null,
     titulo, limite, onAlternar, desabilitado = false, textos = {}, cabecalho = null, className,
+    // Ficha do produto (29/10/2026): 50 termos ocupavam 752 px. Com `limiteInicial`, mostra os N
+    // primeiros e "Ver todos"; `soRelacionadosInicial` começa no "Só os que citam o produto". Sem
+    // eles (o Publicador), nada muda.
+    limiteInicial = null, soRelacionadosInicial = false,
 }) {
     const t = { ...TEXTOS_NEUTROS, ...textos };
-    const [soRelacionados, setSoRelacionados] = useState(false);
+    const [soRelacionados, setSoRelacionados] = useState(soRelacionadosInicial);
     const [filtro, setFiltro] = useState('');
+    const [todos, setTodos] = useState(false);
 
     const lista = dados?.termos ?? [];
     const relacionados = lista.filter((x) => x.relacionado).length;
@@ -47,8 +52,10 @@ export default function TermosDaCategoria({
         return lista.filter((x) => (! soRelacionados || x.relacionado) && (! f || semAcento(x.termo).includes(f)));
     }, [lista, soRelacionados, filtro]);
     const acima = dados?.acima ?? null;
-    const daCategoria = visiveis.filter((x) => x.origem !== 'acima');
-    const deCima = visiveis.filter((x) => x.origem === 'acima');
+    const corta = limiteInicial && ! todos && ! filtro.trim() && visiveis.length > limiteInicial;
+    const daCategoriaTodos = visiveis.filter((x) => x.origem !== 'acima');
+    const daCategoria = corta ? daCategoriaTodos.slice(0, limiteInicial) : daCategoriaTodos;
+    const deCima = visiveis.filter((x) => x.origem === 'acima').slice(0, corta ? Math.max(0, limiteInicial - daCategoria.length) : undefined);
     const nomeCategoria = dados?.categoria?.caminho?.at(-1) ?? 'Esta categoria';
     const maximo = limiteDoTitulo(limite);
 
@@ -119,6 +126,12 @@ export default function TermosDaCategoria({
                         </div>
                     )}
                     {visiveis.length === 0 && <p className="mt-3 text-[13px] text-white/55">Nenhum termo com esse filtro.</p>}
+                    {limiteInicial && ! filtro.trim() && visiveis.length > limiteInicial && (
+                        <button type="button" onClick={() => setTodos((v) => ! v)} data-acao="ver-todos-termos"
+                            className="mt-3 text-[13px] font-medium text-white underline decoration-white/30 underline-offset-[3px] hover:decoration-white">
+                            {todos ? `Mostrar só os ${limiteInicial} primeiros` : `Ver todos os ${visiveis.length} termos`}
+                        </button>
+                    )}
                     <p className="mt-3 text-[11px] text-white/40">{t.rodape}</p>
                 </>
             )}
