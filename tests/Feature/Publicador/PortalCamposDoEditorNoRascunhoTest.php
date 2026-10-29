@@ -106,6 +106,18 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
         app(FichaTecnicaDoProduto::class)->gravar($this->empresa, $p, array_merge($obrigatorios, $mais), $ator);
     }
 
+    /**
+     * "Não se aplica" gravado direto, como o Portal gravava em qualquer opcional até 29/10/2026 — hoje ele
+     * só aceita nos condicionais, mas o que já está no banco continua valendo para o rascunho.
+     */
+    private function naoSeAplicaGravadoAntes(EstruturaProduto $p, array $ids): void
+    {
+        foreach ($ids as $id) {
+            EstruturaProdutoAtributo::create(['company_id' => $this->empresa->id, 'produto_id' => $p->id, 'atributo_id' => $id,
+                'atributo_nome' => $id, 'valor' => null, 'valor_id' => FichaTecnicaDoProduto::NAO_SE_APLICA, 'unidade' => null]);
+        }
+    }
+
     private function snap(PubProduto $pub): RascunhoSnapshot
     {
         return (new RascunhoRepository())->snapshot(PubRascunho::where('produto_id', $pub->id)->firstOrFail());
@@ -119,9 +131,10 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
             ['id' => 'LUMBAR_SUPPORT_TYPE', 'valor' => '10201909'],                    // escondido editável, lista (Regulável)
             ['id' => 'IS_KIT', 'valor' => 'Não'],                                      // escondido editável, Sim/Não
             ['id' => 'UPHOLSTERY_MATERIAL', 'valor' => '482783'],                      // allow_variations que não é o eixo (Couro)
-            ['id' => 'WITH_LIGHTS', 'nao_se_aplica' => true],                          // "Não se aplica"
-            ['id' => 'BASE_DIAMETER', 'nao_se_aplica' => true],                        // "Não se aplica" num escondido
         ]);
+        // "Não se aplica" num comum e num escondido, como ficou gravado antes de 29/10/2026 (o Portal hoje
+        // só deixa marcar nos condicionais; o que já estava gravado continua chegando ao rascunho).
+        $this->naoSeAplicaGravadoAntes($p, ['WITH_LIGHTS', 'BASE_DIAMETER']);
 
         // O que o Portal gravou.
         $gravado = EstruturaProdutoAtributo::where('produto_id', $p->id)->get()->keyBy('atributo_id');
@@ -154,10 +167,8 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
     public function test_nao_se_aplica_do_portal_so_preenche_o_vazio(): void
     {
         [$p, $pub] = $this->cadeira();
-        $this->gravarFicha($p, [
-            ['id' => 'WITH_LIGHTS', 'nao_se_aplica' => true],
-            ['id' => 'WITH_HEADREST', 'nao_se_aplica' => true],
-        ]);
+        $this->gravarFicha($p, []);
+        $this->naoSeAplicaGravadoAntes($p, ['WITH_LIGHTS', 'WITH_HEADREST']);
 
         // A equipe já respondeu um deles no editor.
         $editor = app(EditorRascunhoService::class);

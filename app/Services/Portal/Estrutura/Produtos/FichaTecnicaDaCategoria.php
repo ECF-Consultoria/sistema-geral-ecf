@@ -63,9 +63,11 @@ use Illuminate\Support\Facades\Log;
  * campo, de {@see ExplicacaoDeAtributos::paraPortal()} — que já aplica o filtro de sigilo.
  *
  * ### "Não se aplica"
- * O campo que o editor deixa marcar "Não se aplica" (`aceitaNaoSeAplica`: atributo do
- * produto que não é obrigatório) sai com `nao_se_aplica = true`. O que o cliente marca
- * é gravado por {@see FichaTecnicaDoProduto} com {@see FichaTecnicaDoProduto::NAO_SE_APLICA}.
+ * Sai com `nao_se_aplica = true` só o campo que o editor deixa marcar (`aceitaNaoSeAplica`:
+ * atributo do produto que não é obrigatório) E que o catálogo marca `conditional_required`
+ * (29/10/2026: em todo opcional, virava atalho para o cliente não preencher). O que o cliente
+ * marca é gravado por {@see FichaTecnicaDoProduto} com {@see FichaTecnicaDoProduto::NAO_SE_APLICA};
+ * marcado onde não aceita, o servidor responde 422.
  *
  * ### Qual controle cada campo vira
  * Ter opção é o que faz o campo ser uma LISTA — não o `value_type`. O catálogo
@@ -531,8 +533,12 @@ class FichaTecnicaDaCategoria
             'unidades'      => $unidades,
             'unidade_padrao' => $unidadePadrao,
             'max'           => $max > 0 ? $max : null,
-            // Mesma regra do editor interno; obrigatório da ficha nunca aceita (lá também não).
-            'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio,
+            // 29/10/2026, decisão do usuário: no Portal, "Não se aplica" só no campo que o catálogo pede
+            // em certos casos (`conditional_required` — GTIN, voltagem do elétrico…). Em todo opcional ele
+            // virava atalho para o cliente não preencher, e o próprio formulário da plataforma não oferece
+            // em tudo. Obrigatório continua sem (o editor interno também recusa). O editor interno do
+            // Publicador segue com a regra dele: todo opcional aceita, e a equipe usa para dar "Pronto".
+            'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio && self::temTag($tags, 'conditional_required'),
             // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela
             // usa só para esconder o campo no produto que varia por ele; nunca é mostrada.
             'eixo_do_portal' => $eixoDoPortal,

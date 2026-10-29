@@ -74,7 +74,8 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
             ['id' => 'CAPACITY', 'name' => 'Capacidade', 'value_type' => 'number', 'tags' => [],
                 'attribute_group_id' => 'DIM', 'attribute_group_name' => 'Dimensões'],
-            ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => []],
+            // Condicional: o catálogo pede em certos casos — é o que aceita "Não se aplica" no Portal (29/10/2026).
+            ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => ['conditional_required' => true]],
             // Lista que aceita mais de uma opção (os chips). Vem como `string` com `values`,
             // que é como o catálogo entrega a maior parte das opções.
             ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
@@ -83,7 +84,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string',
                 'tags' => ['allow_variations' => true], 'values' => [['id' => '7', 'name' => 'Couro'], ['id' => '8', 'name' => 'Tecido']]],
             // Escondidos editáveis: grupo "Mais detalhes", no fim. Ajuda e opção que citam a plataforma não passam.
-            ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
+            ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true, 'conditional_required' => true],
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm', 'hint' => 'Aparece no anúncio do Mercado Livre'],
             ['id' => 'LUMBAR_SUPPORT_TYPE', 'name' => 'Tipo de apoio lombar', 'value_type' => 'list', 'tags' => ['hidden' => true],
                 'values' => [['id' => '31', 'name' => 'Fixo'], ['id' => '32', 'name' => 'Regulável'], ['id' => '33', 'name' => 'Igual ao anúncio']]],
@@ -738,9 +739,25 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
         $this->assertFalse($na['BRAND'], 'obrigatório não aceita');
         $this->assertFalse($na['MATERIAL'], 'obrigatório não aceita');
-        $this->assertTrue($na['SEAT_HEIGHT']);
-        $this->assertTrue($na['WITH_DRAWER']);
-        $this->assertTrue($na['SEAT_WIDTH'], 'o escondido editável também');
+        // 29/10/2026: opcional comum não aceita mais — era atalho para o cliente não preencher.
+        $this->assertFalse($na['SEAT_HEIGHT'], 'opcional comum não aceita');
+        $this->assertFalse($na['CAPACITY'], 'opcional comum não aceita');
+        $this->assertTrue($na['WITH_DRAWER'], 'o condicional aceita');
+        $this->assertTrue($na['SEAT_WIDTH'], 'o condicional escondido editável também');
+    }
+
+    public function test_nao_se_aplica_em_opcional_comum_responde_422_e_nao_grava_nada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+
+        $this->entrarNoPortal($empresa)
+            ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
+                $this->ficha([['id' => 'SEAT_HEIGHT', 'nao_se_aplica' => true]]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('atributos.SEAT_HEIGHT');
+
+        $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
     }
 
     public function test_nao_se_aplica_grava_valor_id_menos_um_sem_valor_e_volta_ao_reabrir(): void

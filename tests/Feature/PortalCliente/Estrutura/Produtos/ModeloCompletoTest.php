@@ -108,7 +108,8 @@ class ModeloCompletoTest extends TestCase
             ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true], 'value_max_length' => 20],
             ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'list', 'tags' => ['required' => true],
                 'values' => [['id' => '101', 'name' => 'Madeira'], ['id' => '102', 'name' => 'Metal']]],
-            ['id' => 'SEAT_HEIGHT', 'name' => 'Altura do assento', 'value_type' => 'number_unit', 'tags' => [],
+            // Condicional: no Portal, só ele aceita "Não se aplica" (29/10/2026).
+            ['id' => 'SEAT_HEIGHT', 'name' => 'Altura do assento', 'value_type' => 'number_unit', 'tags' => ['conditional_required' => true],
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
             ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string', 'tags' => [],
                 'values' => [['id' => '7', 'name' => 'Couro'], ['id' => '8', 'name' => 'Tecido']]],
@@ -317,12 +318,13 @@ class ModeloCompletoTest extends TestCase
         $this->assertSame('Peso da caixa 2 (só se o produto for em mais de uma caixa). Só o número, em kg.', $this->ajuda($aba, 'Volume 2: peso (kg)'));
         $this->assertSame('Obrigatório. Escolha da lista.', $this->ajuda($aba, 'Material*'));
         $this->assertStringStartsWith('Obrigatório. Texto', $this->ajuda($aba, 'Marca*'));
-        // O opcional diz que é opcional e mostra o "Não se aplica" que a coluna aceita — inclusive onde não há lista.
+        // O opcional diz que é opcional. O "Não se aplica" só aparece na coluna que o aceita — desde 29/10/2026,
+        // só o condicional (no opcional comum era atalho para não preencher) —, inclusive onde não há lista.
         $nsa = 'Se o produto não tem isto, escreva: Não se aplica.';
         $this->assertSame("Opcional. Só o número, em cm. {$nsa}", $this->ajuda($aba, 'Altura do assento (cm)'));
-        $this->assertSame("Opcional. Escolha da lista ou escreva o seu. {$nsa}", $this->ajuda($aba, 'Material do estofamento'));
-        $this->assertSame("Opcional. Sim ou Não. {$nsa}", $this->ajuda($aba, 'Com gaveta'));
-        $this->assertSame("Opcional. Produto montado, fora da caixa. Só o número, em cm. {$nsa}", $this->ajuda($aba, 'Largura (cm)'));
+        $this->assertSame('Opcional. Escolha da lista ou escreva o seu.', $this->ajuda($aba, 'Material do estofamento'));
+        $this->assertSame('Opcional. Sim ou Não.', $this->ajuda($aba, 'Com gaveta'));
+        $this->assertSame('Opcional. Produto montado, fora da caixa. Só o número, em cm.', $this->ajuda($aba, 'Largura (cm)'));
         $this->assertStringNotContainsString('Não se aplica', $this->ajuda($aba, 'Material*'), 'o obrigatório não aceita');
 
         // A cor do cabeçalho separa o obrigatório (escuro, a cor da faixa) do opcional (claro).
@@ -346,8 +348,9 @@ class ModeloCompletoTest extends TestCase
         $this->assertStringContainsString('Metal', (string) $guia['Material*'][6]);
         $this->assertSame(['Todas', 'Produto embalado · Volume 1', 'Volume 1: peso (kg)', 'Não'], array_slice($guia['Volume 1: peso (kg)'], 0, 4));
         $this->assertSame(['Cadeiras', 'Medidas do produto fora da caixa', 'Largura (cm)', 'Não'], array_slice($guia['Largura (cm)'], 0, 4));
-        $this->assertSame('Sim · Não · Não se aplica', $guia['Com gaveta'][6]);
-        $this->assertStringEndsWith('Não se aplica', (string) $guia['Material do estofamento'][6]);
+        // 29/10/2026: "Não se aplica" só entre as opções do condicional; o opcional comum não oferece.
+        $this->assertSame('Sim · Não', $guia['Com gaveta'][6]);
+        $this->assertStringNotContainsString('Não se aplica', (string) $guia['Material do estofamento'][6]);
     }
 
     /**
