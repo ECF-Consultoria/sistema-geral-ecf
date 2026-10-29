@@ -85,7 +85,7 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
             <select id={id} value="" disabled={restantes.length === 0 && ! comOutro}
                 aria-invalid={invalido || undefined} aria-describedby={descricao}
                 onChange={(e) => somar(e.target.value)}
-                className="h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-1.5 text-[14px] text-white focus:outline-none focus:ring-0 disabled:text-white/30 lg:h-7">
+                className="h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-1.5 py-0 text-[14px] text-white focus:outline-none focus:ring-0 disabled:text-white/30 lg:h-8">
                 <option value="">{rotuloDoSelect}</option>
                 {restantes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
                 {comOutro && <option value={OPCAO_OUTRO}>Outro (escrever)</option>}
@@ -238,31 +238,33 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
 
     return (
         <div data-campo-tecnico data-tipo={campo.tipo} data-obrigatorio={campo.obrigatorio ? 'sim' : 'nao'}
-            data-nao-se-aplica={naoSeAplica ? 'sim' : undefined} className="group/campo flex min-w-0 flex-col">
-            {/* Rótulo que quebra em duas linhas não desalinha a fileira: o controle desce para a base (mt-auto). */}
-            <div className="mb-1 flex min-h-[18px] items-center gap-2">
+            data-nao-se-aplica={naoSeAplica ? 'sim' : undefined} className="min-w-0">
+            {/* O rótulo fica COLADO no campo dele (29/10/2026: com o campo empurrado para a base da fileira, o
+                rótulo curto ficava solto lá em cima e "confunde se é aquilo mesmo que tenho que preencher"). A área
+                do rótulo guarda duas linhas e o texto encosta embaixo: quem tem nome curto e quem quebra em duas
+                linhas ficam com a caixa na mesma altura. */}
+            <div className="mb-1.5 flex min-h-[34px] items-end">
                 <RotuloComExplicacao id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
                     explicacao={ajuda} nome={campo.nome}>
                     {campo.nome}{campo.obrigatorio && <> <Obrigatorio /></>}
                 </RotuloComExplicacao>
-                {/* "Não se aplica" (29/10/2026): um botão discreto na linha do rótulo, que aparece ao passar o
-                    mouse ou focar o campo, em vez de uma caixa embaixo de CADA campo (28 numa poltrona). Na ficha
-                    técnica, marcado, o campo vai para o grupo recolhido "Não se aplicam"; aqui ele fica apagado. */}
-                {podeNa && (
-                    <button type="button" aria-pressed={naoSeAplica} data-acao="nao-se-aplica"
-                        onClick={() => onMudar(campo.id, { naoSeAplica: ! naoSeAplica })}
-                        className={cn('ml-auto shrink-0 rounded px-1 text-[11.5px] transition-opacity focus-visible:opacity-100',
-                            naoSeAplica ? 'text-white/70 underline underline-offset-2 opacity-100' : 'text-white/45 opacity-0 hover:text-white hover:underline group-hover/campo:opacity-100 group-focus-within/campo:opacity-100')}>
-                        {naoSeAplica ? 'não se aplica · desfazer' : 'não se aplica'}
-                        {/* Leitor de tela: com dezenas de campos, cada botão diz de qual campo é. */}
-                        <span className="sr-only"> ({campo.nome})</span>
-                    </button>
-                )}
             </div>
-            {/* Com "Não se aplica" marcado, o controle inteiro (chips, unidade, Sim/Não) fica travado. */}
-            <fieldset disabled={naoSeAplica} className={cn('mt-auto min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>
+            {/* Com "Não se aplica" marcado, o controle inteiro (chips, unidade, Sim/Não) fica travado — e no lugar. */}
+            <fieldset disabled={naoSeAplica} className={cn('min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>
                 {controle}
             </fieldset>
+            {/* A caixinha "Não se aplica" embaixo do campo (29/10/2026: o usuário preferiu ela a um texto ao lado
+                do rótulo — "não dá para saber o que estou marcando"). Só onde o servidor oferece. */}
+            {podeNa && (
+                <label className="mt-1.5 inline-flex cursor-pointer items-center gap-2 text-[13px] text-white/70">
+                    <input type="checkbox" checked={naoSeAplica} data-acao="nao-se-aplica"
+                        onChange={(e) => onMudar(campo.id, { naoSeAplica: e.target.checked })}
+                        className="h-4 w-4 rounded border-white/30 bg-black/40 text-ecf-yellow focus:ring-0 focus:ring-offset-0" />
+                    Não se aplica
+                    {/* Leitor de tela: com dezenas de caixas, cada uma diz de qual campo é. */}
+                    <span className="sr-only"> ({campo.nome})</span>
+                </label>
+            )}
             {invalido && <p id={`${id}-erro`} role="alert" className="mt-1 text-[12px] text-red-300">{erro}</p>}
         </div>
     );

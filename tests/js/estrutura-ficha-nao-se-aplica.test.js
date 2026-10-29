@@ -71,25 +71,29 @@ test('ida e volta: o N/A gravado volta igual no corpo do PUT', () => {
 
 const campo = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CampoFichaTecnica.jsx');
 
-// 29/10/2026: a caixa embaixo de cada campo virou um botão discreto na linha do rótulo (numa poltrona
-// eram 28 caixas "Não se aplica"); marcado, o campo vai para o grupo recolhido da Ficha técnica.
-test('Campo: "não se aplica" só onde o servidor oferece, e o controle trava enquanto marcado', () => {
+// 29/10/2026: por um dia virou um texto ao lado do rótulo; o usuário pediu a caixinha de volta ("não dá
+// para saber o que estou marcando").
+test('Campo: caixa "Não se aplica" só onde o servidor oferece, e o controle trava enquanto marcada', () => {
     assert.ok(campo.includes('const podeNa = aceitaNaoSeAplica(campo);'));
-    assert.ok(campo.includes('{podeNa && ('), 'o botão só aparece no campo que aceita');
-    assert.ok(campo.includes('não se aplica'), 'texto do botão');
-    assert.ok(campo.includes('<span className="sr-only"> ({campo.nome})</span>'), 'IN-02: o leitor de tela ouve de qual campo é o botão');
+    assert.ok(campo.includes('{podeNa && ('), 'a caixa só aparece no campo que aceita');
+    assert.ok(campo.includes('Não se aplica'), 'rótulo da caixa');
+    assert.ok(campo.includes('<span className="sr-only"> ({campo.nome})</span>'), 'IN-02: o leitor de tela ouve de qual campo é a caixa');
     assert.ok(/<fieldset disabled=\{naoSeAplica\}/.test(campo), 'o controle inteiro trava');
-    assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: ! naoSeAplica })'), 'o botão alterna');
-    assert.ok(campo.includes('aria-pressed={naoSeAplica}'), 'o estado do botão é anunciado');
+    assert.ok(campo.includes('<input type="checkbox" checked={naoSeAplica} data-acao="nao-se-aplica"'), 'é uma caixinha de verdade');
+    assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: e.target.checked })'));
 });
 
-// 29/10/2026 (2ª rodada): marcado, o campo FICA no lugar, apagado, com "desfazer" — mudar de lugar
-// desorganizava a ficha.
-test('Ficha técnica: o "não se aplica" fica no lugar, apagado, com "desfazer"', () => {
+// 29/10/2026: marcado, o campo FICA no lugar, apagado — mudar de lugar desorganizava a ficha.
+test('Ficha técnica: o "Não se aplica" fica no lugar, apagado', () => {
     const bloco = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaTecnica.jsx');
     assert.doesNotMatch(bloco, /nao-se-aplicam|naoSeAplicam\.map/, 'sem grupo à parte');
-    assert.ok(campo.includes("naoSeAplica ? 'não se aplica · desfazer' : 'não se aplica'"));
     assert.ok(campo.includes("naoSeAplica && 'opacity-40'"), 'o controle fica apagado no lugar');
+});
+
+// 29/10/2026: o rótulo encosta no campo dele; a área do rótulo guarda duas linhas para a fileira não desalinhar.
+test('Campo: o rótulo fica colado no campo (nada de empurrar o controle para a base)', () => {
+    assert.ok(campo.includes('mb-1.5 flex min-h-[34px] items-end'));
+    assert.ok(! campo.includes('mt-auto'), 'o controle não desce para longe do rótulo');
 });
 
 test('Campo: `explicacao` vira o ícone ao lado do rótulo (sem title: seriam dois balões), sem buscar nada', () => {
