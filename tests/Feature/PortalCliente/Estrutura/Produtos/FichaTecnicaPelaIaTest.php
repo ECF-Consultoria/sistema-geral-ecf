@@ -55,6 +55,8 @@ class FichaTecnicaPelaIaTest extends TestCase
                         'values' => [['id' => '7', 'name' => 'Clássico'], ['id' => '8', 'name' => 'Moderno']]],
                     ['id' => 'MATTRESS_WIDTH', 'name' => 'Largura do colchão', 'value_type' => 'number_unit', 'tags' => [],
                         'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm'],
+                    // Texto livre: aceitaria "DESCONHECIDO" como valor se a IA não fosse filtrada.
+                    ['id' => 'LINE', 'name' => 'Linha', 'value_type' => 'string', 'tags' => []],
                     ['id' => 'WITH_REMOVABLE_COVER', 'name' => 'Com tecido removível', 'value_type' => 'boolean', 'tags' => [],
                         'values' => [['id' => '242085', 'name' => 'Sim'], ['id' => '242084', 'name' => 'Não']]],
                     // Escondido: a plataforma nem mostra; no Portal não aceita "Não se aplica".
@@ -87,6 +89,7 @@ class FichaTecnicaPelaIaTest extends TestCase
         $this->resposta = [
             'LEGS_MATERIAL' => 'Madeira', 'MATTRESS_WIDTH' => 'NAO_SE_APLICA', 'BED_WIDTH' => 'NAO_SE_APLICA',
             'STYLE' => 'Barroco', 'IS_RECLINABLE' => 'NAO_SE_APLICA', 'WITH_REMOVABLE_COVER' => 'Sim', 'BRAND' => 'Inventada',
+            'LINE' => 'DESCONHECIDO',
         ];
     }
 
@@ -117,7 +120,8 @@ class FichaTecnicaPelaIaTest extends TestCase
         $this->assertSame(['Madeira', '2'], [$sugestoes['LEGS_MATERIAL']['valor'], $sugestoes['LEGS_MATERIAL']['valor_id']]);
         $this->assertSame('-1', $sugestoes['MATTRESS_WIDTH']['valor_id'], 'o colchão numa poltrona: não se aplica');
         $this->assertNull($sugestoes['MATTRESS_WIDTH']['valor']);
-        $this->assertSame(5, $r->json('faltavam'), 'Marca e tecido removível estavam preenchidos na tela');
+        $this->assertSame(6, $r->json('faltavam'), 'Marca e tecido removível estavam preenchidos na tela');
+        $this->assertArrayNotHasKey('LINE', $sugestoes->all(), '"DESCONHECIDO" é o "não sei" da IA, nunca um valor');
 
         // A IA só foi perguntada sobre o que falta, com a marca [N/A] onde o campo aceita.
         $this->assertTrue($this->pedido['comNaoSeAplica']);

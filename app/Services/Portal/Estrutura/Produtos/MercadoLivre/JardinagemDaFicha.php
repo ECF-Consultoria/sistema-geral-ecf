@@ -154,6 +154,11 @@ class JardinagemDaFicha
             if (! isset($faltando[$id]) || ! is_scalar($valor) || trim((string) $valor) === '') {
                 continue;
             }
+            // "Não sei" da IA (regra 9 do prompt): descartado AQUI — senão, num campo que aceita texto livre,
+            // "DESCONHECIDO" entraria como valor.
+            if (is_string($valor) && strtoupper(trim($valor)) === 'DESCONHECIDO') {
+                continue;
+            }
             if (is_string($valor) && strtoupper(trim($valor)) === 'NAO_SE_APLICA') {
                 if ($faltando[$id]['nao_se_aplica'] ?? false) {
                     $entradas[$id] = ['nao_se_aplica' => true];

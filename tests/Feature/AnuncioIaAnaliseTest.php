@@ -808,6 +808,33 @@ class AnuncioIaAnaliseTest extends TestCase
         Http::assertNotSent(fn ($req) => $req['model'] !== 'modelo-de-teste' || isset($req['reasoning_effort']));
     }
 
+    /**
+     * 29/10/2026 — a ficha do Portal ("Preencher com IA" e a importação) pede "não se aplica" e vai no
+     * modelo mais forte: o flash-lite deixava o colchão de uma poltrona em branco. A ficha do Publicador
+     * (sem o flag) segue igual: principal, sem regra 9.
+     */
+    public function test_ficha_com_nao_se_aplica_vai_no_modelo_da_regua_e_obriga_a_decidir_cada_campo(): void
+    {
+        config(['services.llm.regua' => ['model' => 'modelo-regua', 'reasoning_effort' => 'low']]);
+        Http::fake(['llm.teste/*' => Http::response($this->resposta(['atributos' => []]))]);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+
+        $ia->ficha('Poltrona', '', 'Poltrona Opala', 'Móveis > Poltronas', 'MATTRESS_WIDTH | Largura do colchão | número [N/A]', true);
+        $ia->ficha('Poltrona', '', 'Poltrona Opala', 'Móveis > Poltronas', 'MATTRESS_WIDTH | Largura do colchão | número');
+
+        $pedidos = [];
+        Http::assertSent(function ($req) use (&$pedidos) {
+            $pedidos[] = ['model' => $req['model'], 'esforco' => $req['reasoning_effort'] ?? null, 'prompt' => (string) collect($req['messages'])->pluck('content')->implode(PHP_EOL)];
+
+            return true;
+        });
+        $this->assertSame(['modelo-regua', 'low'], [$pedidos[0]['model'], $pedidos[0]['esforco']]);
+        $this->assertStringContainsString('9. Atributos marcados [N/A]: responda TODOS eles', $pedidos[0]['prompt']);
+        $this->assertStringContainsString('"DESCONHECIDO"', $pedidos[0]['prompt']);
+        $this->assertSame(['modelo-de-teste', null], [$pedidos[1]['model'], $pedidos[1]['esforco']]);
+        $this->assertStringNotContainsString('NAO_SE_APLICA', $pedidos[1]['prompt']);
+    }
+
     public function test_modelo_da_regua_fora_do_ar_cai_no_principal_sem_esforco(): void
     {
         // O 3.8-flash devolve 503 "high demand" em série (medido em 01/10): o Modelo sai do flash-lite.

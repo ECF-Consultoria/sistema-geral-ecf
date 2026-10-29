@@ -112,10 +112,15 @@ class AnaliseAnuncioService
      * `comNaoSeAplica` (29/10/2026, ficha do Portal): a IA também pode responder `NAO_SE_APLICA` nos
      * atributos marcados `[N/A]` no catálogo, quando a característica não existe naquele tipo de produto
      * (colchão numa poltrona). Sem ele, o prompt é o de sempre (o "Anunciar por IA" não muda).
+     *
+     * Com ele, a chamada também começa pelo modelo da régua (o mais forte, com raciocínio `low`). Medido em
+     * 29/10/2026 no produto 79 da #459 (poltrona): o `flash-lite` deixou o colchão em branco e pôs "não se
+     * aplica" na densidade da espuma; o `gemini-3.8-flash` acertou colchão, formato de sofá e enchimento nas 3
+     * de 3 rodadas, em ~3 s.
      */
     public function ficha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo, bool $comNaoSeAplica = false): array
     {
-        $r = $this->chamar($this->promptFicha($produto, $specs, $titulo, $caminhoCategoria, $catalogo, $comNaoSeAplica), 6000);
+        $r = $this->chamar($this->promptFicha($produto, $specs, $titulo, $caminhoCategoria, $catalogo, $comNaoSeAplica), 6000, $comNaoSeAplica);
 
         return [
             'dados' => $r['json'],
@@ -737,10 +742,18 @@ class AnaliseAnuncioService
     private function promptFicha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo, bool $comNaoSeAplica = false): string
     {
         $bloco = $this->blocoSpecs($specs);
-        // A regra 9 só existe quando quem chama marca no catálogo quem aceita "[N/A]".
-        $regraNa = $comNaoSeAplica
-            ? "\n        9. \"Não se aplica\": nos atributos marcados [N/A], quando a característica NÃO EXISTE neste tipo de produto (ex.: largura do colchão numa poltrona, cama auxiliar numa cadeira, voltagem num móvel sem parte elétrica), responda exatamente \"NAO_SE_APLICA\". Use só quando o tipo de produto não tem aquela parte ou função. Se a característica existe no produto e só falta a informação, OMITA (regra 1). Nunca responda NAO_SE_APLICA em atributo sem [N/A]."
-            : '';
+        // A regra 9 só existe quando quem chama marca no catálogo quem aceita "[N/A]". Ela obriga a IA a
+        // decidir CADA campo [N/A] (valor, NAO_SE_APLICA ou DESCONHECIDO): deixada livre para omitir, ela
+        // omitia também o que claramente não existe no produto (medido em 29/10/2026).
+        $regraNa = $comNaoSeAplica ? <<<'R'
+
+        9. Atributos marcados [N/A]: responda TODOS eles, cada um com uma de três respostas:
+           a) o valor, quando o título, a descrição ou as características já preenchidas dizem (ex.: "pés de madeira" → Material dos pés: Madeira);
+           b) "NAO_SE_APLICA", quando ESTE TIPO de produto não tem aquela parte ou função. Pense no produto descrito, não na categoria: a categoria agrupa produtos diferentes e lista atributos de todos eles (ex.: colchão numa cadeira de jantar, voltagem num móvel sem parte elétrica, gavetas numa mesa sem gaveta). Se uma parte não existe ou não vem com o produto, TODOS os atributos que a descrevem (medidas, material, cor dela) são NAO_SE_APLICA;
+           c) "DESCONHECIDO", quando a parte existe no produto mas os fatos não dizem como ela é.
+           Embalagem, caixas, volumes, peso, medidas do produto, cor, marca e modelo existem em TODO produto: neles nunca NAO_SE_APLICA.
+           Atributos SEM [N/A] seguem as regras 1 a 5; se não existem no produto, omita (nunca "0" nem NAO_SE_APLICA).
+        R : '';
 
         return <<<TXT
         Preencha o cadastro do anúncio do produto **{$produto}** no Mercado Livre.
