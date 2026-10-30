@@ -32,7 +32,7 @@ use App\Support\Publicador\Variacao\Eixo;
  *   1. conta lida de novo (token renovado se preciso) e modelo igual ao do
  *      rascunho (V-ACC-01, V-ACC-02); conta não liberada ou sem token ativo
  *      confere só local (D26, WR-B04);
- *   2. schema revalidado (V-CAT-03);
+ *   2. schema relido (vencido em 24h é rebuscado);
  *   3. fotos pendentes sobem ANTES — assim o validate também confere as fotos;
  *   4. L1/L2 sem bloqueio, senão para aqui (economiza chamadas e dá mensagem melhor);
  *   5. `/attributes/conditional` com o payload da 1ª variante ativa (H-08);
@@ -323,7 +323,6 @@ class ConferenciaService
             paraPublicar: $paraPublicar,
             plausibilidade: (array) (config('publicador.plausibilidade')[$schema->dominio] ?? []),
             termosProibidosTitulo: (array) config('publicador.termos_proibidos_titulo', ContextoValidacao::TERMOS_PROIBIDOS_TITULO),
-            hashSchemaDoRascunho: $r->schema_hash,
             limiteFamilyName: config('publicador.limite_family_name'),
             avisarAcimaDeItens: (int) config('publicador.avisar_acima_de_itens', 20),
             fichaInteira: (bool) config('publicador.exigir_ficha_inteira', true),

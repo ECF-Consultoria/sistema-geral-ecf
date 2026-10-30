@@ -2201,3 +2201,24 @@ imagens por IA automáticas. São QUATRO travas em três lugares diferentes — 
   visita), então o produto que estava "Pronto" com campos vazios passa a "Com pendência" sem ser aberto.
 - **Tabela de medidas:** medida na #459 — meia (`MLB-SOCKS`) não exige (ver `portal-do-cliente.md` §55.1);
   `ClassificadorAtributos::DOMINIOS_SEM_TABELA_DE_MEDIDAS`. Camiseta (`MLB-T_SHIRTS`) exige e segue bloqueada.
+
+## 62. "A categoria mudou no Mercado Livre desde o rascunho" em TODO anúncio — o V-CAT-03 saiu (30/10/2026)
+
+- **Sintoma:** todos os produtos com mais de um dia abriam com o bloqueio V-CAT-03 em "Produto". O usuário: "não faz
+  sentido nenhum… tira isso".
+- **Causa:** `CategorySchema::hash()` é o sha256 das 4 respostas do ML INTEIRAS, e `GET /categories/{id}` traz
+  `total_items_in_this_category` (e o mesmo campo em cada `children_categories[]`) — a contagem de anúncios da
+  categoria, que muda a cada anúncio criado no ML (MLB1574 tinha 48.575.826 em 30/10). O schema guardado vence em 24h
+  (`publicador.schema_ttl_horas`); ao rebuscar, o hash muda mesmo sem nenhum campo mudar, e o `schema_hash` do
+  rascunho (gravado ao escolher a categoria) deixa de bater. A §"Segunda rodada" acima atribuiu o caso do Kit N a uma
+  mudança real da ficha de Poltronas — pode ter sido só isto.
+- **O que saiu:** o V-CAT-03 do `ValidadorRascunho` (com o `hashSchemaDoRascunho` do `ContextoValidacao`) e o
+  `encerrar` "A categoria mudou no Mercado Livre desde a conferência" do `PublicacaoService::prepararItens`, que pelo
+  mesmo motivo derrubaria a publicação de rascunho com mais de 24h. Nada se perde: a validação roda SEMPRE contra o
+  schema de hoje (campo novo obrigatório aparece campo a campo), e na publicação o plano é remontado com o schema de
+  hoje e comparado com o `plano_hash` conferido.
+- O código `V-CAT-03` continua existindo só para "Não foi possível ler esta categoria no Mercado Livre agora"
+  (`CategorySchemaRepository::obter`). `revalidar()['mudou']` ficou sem consumidor. `VERSAO_DO_RESUMO` 4 → 5: a vitrine refaz o resumo gravado com o
+  V-CAT-03 sem ninguém abrir o produto.
+- Se um dia voltar a precisar de "a categoria mudou", o hash tem de ignorar contadores (`total_items_in_this_category`,
+  `children_categories`, `picture`, `permalink`) — senão volta a acusar todo dia.

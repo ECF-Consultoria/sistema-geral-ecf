@@ -295,12 +295,9 @@ class PublicacaoService
             return;
         }
 
+        // Sem abortar por "a categoria mudou" (30/10/2026): o hash do schema muda todo dia com o
+        // `total_items_in_this_category`. Mudança que importa muda o plano, e o plano é conferido logo abaixo.
         $revalidado = $this->schemas->revalidar((string) $r->categoria_id, $r->schema_hash);
-        if ($revalidado['mudou']) {
-            $this->encerrar($p, $r, 'A categoria mudou no Mercado Livre desde a conferência. Revise os campos e confira de novo.');
-
-            return;
-        }
 
         // As fotos sobem para a conta fixada (a âncora não é resolvida de novo lá dentro).
         $this->imagens->enviarPendentes($r, $empresa);

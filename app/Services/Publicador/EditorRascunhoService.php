@@ -708,7 +708,6 @@ class EditorRascunhoService
                 imagens: $metadados,
                 plausibilidade: (array) (config('publicador.plausibilidade')[$schema->dominio] ?? []),
                 termosProibidosTitulo: (array) config('publicador.termos_proibidos_titulo', ContextoValidacao::TERMOS_PROIBIDOS_TITULO),
-                hashSchemaDoRascunho: $r->schema_hash,
                 limiteFamilyName: config('publicador.limite_family_name'),
                 avisarAcimaDeItens: (int) config('publicador.avisar_acima_de_itens', 20),
                 fichaInteira: (bool) config('publicador.exigir_ficha_inteira', true),
@@ -1318,9 +1317,10 @@ class EditorRascunhoService
      * um rótulo (20/10/2026: "falta foto" → "falta imagem"), sobe a versão — a vitrine refaz o resumo de outra versão
      * ({@see VitrineDeProdutosService::resumoEmDia()}) e o texto velho não fica na tela. 3 (21/10/2026): o resumo
      * ganhou `itens` (o que falta, com a etapa da tela). 4 (29/10/2026): a ficha técnica INTEIRA conta para o "Pronto"
-     * (V-ATT-13) — o produto que estava pronto com campos vazios é refeito e passa a "Com pendência".
+     * (V-ATT-13) — o produto que estava pronto com campos vazios é refeito e passa a "Com pendência". 5 (30/10/2026):
+     * o V-CAT-03 ("a categoria mudou") saiu — o resumo gravado com ele é refeito sem precisar abrir o produto.
      */
-    public const VERSAO_DO_RESUMO = 4;
+    public const VERSAO_DO_RESUMO = 5;
 
     /**
      * Em que etapa da TELA o problema se resolve — a mesma régua de `etapaDoProblema` (`Components/Publicador/apoio.js`):

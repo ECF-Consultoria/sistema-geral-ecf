@@ -21,7 +21,6 @@ final class ContextoValidacao
      * @param  list<string>|null  $modosEnvio  `shipping_preferences.modes`; nulo = não lido (não confere)
      * @param  array<string, array{mime?: string, bytes?: int, largura?: int, altura?: int, upload_status?: string, cmyk?: bool}>  $imagens
      * @param  list<array{maior: string, menor: string}>  $plausibilidade  V-ATT-11, por categoria
-     * @param  ?string  $hashSchemaDoRascunho  o `schema_hash` gravado no rascunho (V-CAT-03)
      * @param  ?int  $limiteFamilyName  teto extra do `family_name` (o 120 do [ML·S8] não apareceu no validate — N-14)
      */
     public function __construct(
@@ -32,7 +31,6 @@ final class ContextoValidacao
         public readonly bool $paraPublicar = false,
         public readonly array $plausibilidade = [],
         public readonly array $termosProibidosTitulo = self::TERMOS_PROIBIDOS_TITULO,
-        public readonly ?string $hashSchemaDoRascunho = null,
         public readonly ?int $limiteFamilyName = null,
         public readonly int $maxBytesImagem = 10 * 1024 * 1024,
         public readonly int $ladoMinimoImagem = 500,

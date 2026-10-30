@@ -13,6 +13,7 @@ use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Publicador\ConferenciaService;
+use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PublicacaoService;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
@@ -219,6 +220,28 @@ class PublicacaoTest extends TestCase
         $this->assertStringContainsString('mudou desde a conferência', $p->fresh()->conta_snapshot['motivo']);
         $this->assertSame(0, $this->postsDeItem());
         $this->assertSame(PubRascunho::DRAFT, $this->r->fresh()->status);
+    }
+
+    /**
+     * 30/10/2026: todo rascunho com mais de um dia abria com "A categoria mudou no Mercado Livre desde o rascunho"
+     * (V-CAT-03). O hash do schema entra com o `total_items_in_this_category`, que muda a cada anúncio criado no ML —
+     * reler a categoria depois do TTL de 24h já trocava o hash. O usuário: "tira isso".
+     */
+    public function test_categoria_relida_so_com_outro_total_de_itens_nao_bloqueia_nem_aborta(): void
+    {
+        $guardado = MlCategoriaSchema::find(self::CADEIRA);
+        $categoria = $guardado->categoria;
+        $categoria['total_items_in_this_category'] = (int) ($categoria['total_items_in_this_category'] ?? 0) + 1;
+        $guardado->update(['categoria' => $categoria]);
+        $this->assertNotSame($this->r->fresh()->schema_hash, $guardado->fresh()->paraSchema()->hash(), 'o cenário: hash do rascunho ≠ hash de hoje');
+
+        $regras = array_column(app(EditorRascunhoService::class)->estado($this->r->fresh())['problemas'], 'regra');
+        $this->assertNotContains('V-CAT-03', $regras, 'o editor não acusa mais "a categoria mudou"');
+
+        $p = $this->publicar();
+
+        $this->assertSame(PubPublicacao::PUBLISHED, $p->status, (string) ($p->conta_snapshot['motivo'] ?? ''));
+        $this->assertSame(1, $this->postsDeItem());
     }
 
     public function test_tc89_conta_que_mudou_de_modelo_aborta(): void

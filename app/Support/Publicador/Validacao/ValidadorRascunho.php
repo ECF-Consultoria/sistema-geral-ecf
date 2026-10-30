@@ -52,7 +52,7 @@ final class ValidadorRascunho
         $this->p = [];
 
         $this->conta($ctx);
-        $this->categoria($s, $ctx);
+        $this->categoria($s);
         $this->condicao($r, $s);
         $this->atributosDoProduto($r, $s, $ctx);
         $this->eixos($r, $s);
@@ -78,7 +78,7 @@ final class ValidadorRascunho
         }
     }
 
-    private function categoria(SchemaClassificado $s, ContextoValidacao $ctx): void
+    private function categoria(SchemaClassificado $s): void
     {
         $e2 = ['etapa' => 'E2'];
         if (! $s->flags['folha']) {
@@ -87,9 +87,10 @@ final class ValidadorRascunho
         if (! $s->flags['listing_allowed']) {
             $this->p[] = Problema::bloqueio('V-CAT-02', 'O Mercado Livre não aceita anúncios nesta categoria.', $e2);
         }
-        if ($ctx->hashSchemaDoRascunho !== null && $ctx->hashSchemaDoRascunho !== $s->schemaHash) {
-            $this->p[] = Problema::bloqueio('V-CAT-03', 'A categoria mudou no Mercado Livre desde o rascunho — revise os campos.', $e2);
-        }
+        // O V-CAT-03 ("A categoria mudou no Mercado Livre desde o rascunho") saiu em 30/10/2026 — o usuário: "tira isso".
+        // O hash do schema inclui `total_items_in_this_category`, que muda a cada anúncio criado no ML: todo rascunho
+        // com mais de 24h (o TTL do schema) acusava a mudança. Mudança de verdade aparece campo a campo, porque esta
+        // validação roda sempre contra o schema atual.
         foreach ($s->bloqueiosFase2 as $b) {
             $this->p[] = Problema::bloqueio('V-CAT-04', $b['mensagem'], [...$e2, 'motivo' => $b['motivo']]);
         }
