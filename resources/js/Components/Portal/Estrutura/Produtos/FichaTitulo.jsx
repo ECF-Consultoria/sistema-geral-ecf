@@ -53,7 +53,7 @@ export default function FichaTitulo({ ficha }) {
                 </div>
                 {acima && (
                     <p role="alert" className="mt-1.5 text-[13px] text-red-300" data-titulo-acima>
-                        O título passa de {limite} caracteres, o máximo desta categoria. Encurte para salvar.
+                        O título para anunciar vai até {limite} caracteres. Encurte para salvar.
                     </p>
                 )}
             </div>

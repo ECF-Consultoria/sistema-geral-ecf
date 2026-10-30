@@ -391,7 +391,7 @@ final class ValidadorRascunho
                 continue;
             }
             if ($limite !== null && mb_strlen($titulo) > $limite) {
-                $this->p[] = Problema::bloqueio('V-TIT-01', "O título do {$nome} tem ".mb_strlen($titulo)." caracteres; o limite desta categoria é {$limite}.", $onde, 'L1');
+                $this->p[] = Problema::bloqueio('V-TIT-01', "O título do {$nome} tem ".mb_strlen($titulo)." caracteres; o título para anunciar vai até {$limite}.", $onde, 'L1');
             }
             if ($termo = $this->termoProibido($titulo, $ctx)) {
                 $this->p[] = Problema::aviso('V-TIT-02', "O título do {$nome} tem «{$termo}». O Mercado Livre não permite contato, frete, parcelamento ou condição no título.", $onde, 'L1');

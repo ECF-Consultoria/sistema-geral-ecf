@@ -240,7 +240,7 @@ class PreviaDaFaseService
 
         [$tipos, $titulos, $cortou] = $this->titulos($rascunho, $nome, $quantidade, $maximo);
         if ($cortou) {
-            $avisos[] = self::aviso('titulo_cortado', "O título ficou maior que o limite desta categoria ({$maximo} caracteres) e foi cortado na última palavra inteira. Confira antes de confirmar.");
+            $avisos[] = self::aviso('titulo_cortado', "O título passou de {$maximo} caracteres, o máximo para anunciar, e foi cortado na última palavra inteira. Confira antes de confirmar.");
         }
 
         [$variantes, $lugaresEmZero, $temDesconhecido, $temZero] = $this->variantes($rascunho, $sku, $quantidade);

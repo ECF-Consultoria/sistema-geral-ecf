@@ -459,7 +459,7 @@ test('PainelCriarFase — os 8 campos da §4 no render real', async (contexto) =
         const html = corpo({
             previa: previaBase({
                 max_title_length: 70,
-                avisos: [{ chave: 'titulo_cortado', mensagem: 'O título ficou maior que o limite desta categoria (70 caracteres) e foi cortado na última palavra inteira.' }],
+                avisos: [{ chave: 'titulo_cortado', mensagem: 'O título passou de 70 caracteres, o máximo para anunciar, e foi cortado na última palavra inteira.' }],
             }),
         });
         assert.match(html, /cortado/i);

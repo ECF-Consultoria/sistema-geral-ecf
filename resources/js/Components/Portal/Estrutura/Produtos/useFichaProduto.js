@@ -351,7 +351,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         if (Object.keys(faltando).length) { setErros(faltando); return { ok: false, data: null }; }
         const limiteTitulo = limiteDoTitulo(termosDoTitulo.limite);
         if (String(vars[0].titulo ?? '').trim().length > limiteTitulo) {
-            setAviso(`O título passa de ${limiteTitulo} caracteres, o máximo desta categoria. Encurte o título e salve de novo.`);
+            setAviso(`O título para anunciar vai até ${limiteTitulo} caracteres. Encurte o título e salve de novo.`);
 
             return { ok: false, data: null };
         }

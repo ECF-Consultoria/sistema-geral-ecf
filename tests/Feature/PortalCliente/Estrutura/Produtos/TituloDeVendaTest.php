@@ -131,7 +131,9 @@ class TituloDeVendaTest extends TestCase
         $r = $this->gravar($sessao, ['titulo' => $longo, 'categoria_ml_id' => self::CATEGORIA])->assertOk();
 
         $this->assertSame(1, $r->json('totais.com_erro'));
-        $this->assertStringContainsString('o máximo desta categoria é 60', $r->json('erros.0.mensagem'));
+        // O limite vale para todo anúncio, não é "desta categoria" (o usuário, 30/10/2026).
+        $this->assertStringContainsString('o título para anunciar vai até 60', $r->json('erros.0.mensagem'));
+        $this->assertStringNotContainsString('desta categoria', $r->json('erros.0.mensagem'));
         $this->assertSame(0, EstruturaProduto::where('company_id', $empresa->id)->count(), 'a linha recusada não grava nada');
 
         // No limite, passa.

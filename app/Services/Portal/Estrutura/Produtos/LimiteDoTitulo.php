@@ -53,7 +53,7 @@ class LimiteDoTitulo
         $limite = $this->daCategoria($categoria);
         if ($limite !== null && $tamanho > $limite) {
             throw ValidationException::withMessages([
-                'titulo' => "O título tem {$tamanho} caracteres; o máximo desta categoria é {$limite}. Encurte o título.",
+                'titulo' => "O título tem {$tamanho} caracteres, e o título para anunciar vai até {$limite}. Encurte o título.",
             ]);
         }
     }
