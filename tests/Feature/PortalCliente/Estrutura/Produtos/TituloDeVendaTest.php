@@ -209,7 +209,7 @@ class TituloDeVendaTest extends TestCase
 
     public function test_planilha_tem_colunas_separadas_para_nome_e_titulo(): void
     {
-        $nome = array_search('Nome do produto*', ModeloProdutosXlsx::CABECALHOS, true);
+        $nome = array_search('Nome do produto', ModeloProdutosXlsx::CABECALHOS, true);
         $titulo = array_search('Título', ModeloProdutosXlsx::CABECALHOS, true);
         $this->assertIsInt($nome);
         $this->assertSame($nome + 1, $titulo);

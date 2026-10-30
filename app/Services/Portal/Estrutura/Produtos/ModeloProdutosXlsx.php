@@ -36,12 +36,13 @@ final class ModeloProdutosXlsx
     public const ABA_INSTRUCOES = 'Instruções';
     public const ABA_LISTAS     = 'Listas';
 
+    // Sem "*" desde 30/10/2026 (a planilha não diz o que é obrigatório); o leitor ignora o "*" das antigas.
     public const CABECALHOS = [
-        'Ref*',
-        'Produto (grupo)*',
+        'Ref',
+        'Produto (grupo)',
         'Tipo de variação',
         'Variação',
-        'Nome do produto*',
+        'Nome do produto',
         'Título',
         'Família (linha/coleção)',
         'Ambiente(s)',
@@ -259,13 +260,13 @@ final class ModeloProdutosXlsx
         $linhas = [
             'Como preencher a aba Produtos',
             $abertura,
-            'Os campos com * são obrigatórios. Uma linha por variação.',
-            'Ref*: o código da variação, único na sua empresa. É por ele que enviar a planilha de novo atualiza o que já existe.',
-            'Produto (grupo)*: o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as variações dele.',
+            'Uma linha por variação.',
+            'Ref: o código da variação, único na sua empresa. É por ele que enviar a planilha de novo atualiza o que já existe.',
+            'Produto (grupo): o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as variações dele.',
             'Tipo de variação: '.self::emTexto(array_values(EstruturaProdutoVariacao::EIXOS)).'. Em branco quando o produto não tem variação.',
             'Variação: o nome da variação, como Natural ou Off White. Dê nome a cada variação (ex.: a cor) para elas ficarem juntas no mesmo produto.',
-            'Nome do produto*, Título, Família, Ambiente(s), Categoria e Descrição são do produto: valem os da primeira linha dele.',
-            'Título: como o produto aparece para quem procura, separado do nome. Até 60 caracteres na maioria das categorias. Pode deixar em branco e completar depois no cadastro.',
+            'Nome do produto, Título, Família, Ambiente(s), Categoria e Descrição são do produto: valem os da primeira linha dele.',
+            'Título: como o produto aparece para quem procura, separado do nome. Até 60 caracteres.',
             'Família (linha/coleção): um nome só. Ambiente(s): separe vários com "/". O que ainda não existe é criado na lista.',
             'Categoria: o tipo do produto, como Mesa de jantar. Depois de enviar, você confirma a categoria de cada nome.',
             "Volumes: C\u{00D7}L\u{00D7}A \u{00B7} kg, uma caixa por vez, separadas por \"|\". Exemplo: 120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5. Escreva SEM MEDIDAS se ainda não tem as medidas.",

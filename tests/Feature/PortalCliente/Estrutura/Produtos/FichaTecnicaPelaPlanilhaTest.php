@@ -184,15 +184,15 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
         $this->assertSame(Worksheet::SHEETSTATE_HIDDEN, $planilha->getSheetByName('Listas')->getSheetState());
 
         $cadeiras = $planilha->getSheetByName('Cadeiras');
-        foreach (['Produto (grupo)*', 'Nome do produto', 'Marca*', 'Material*', 'Altura do assento (cm)', 'Capacidade', 'Com gaveta', 'Materiais', 'Cor'] as $c) {
+        foreach (['Produto (grupo)', 'Nome do produto', 'Marca', 'Material', 'Altura do assento (cm)', 'Capacidade', 'Com gaveta', 'Materiais', 'Cor'] as $c) {
             $this->assertNotNull($this->coluna($cadeiras, $c), "faltou a coluna {$c}");
         }
         $this->assertSame(['CAD', 'CB'], [(string) $cadeiras->getCell('A2')->getValue(), (string) $cadeiras->getCell('A3')->getValue()]);
         $this->assertNull($cadeiras->getCell('A4')->getValue(), 'só os produtos desta empresa, e só os da categoria');
-        $this->assertSame('Marca X', (string) $cadeiras->getCell($this->coluna($cadeiras, 'Marca*').'2')->getValue(), 'já sai com o que está salvo');
+        $this->assertSame('Marca X', (string) $cadeiras->getCell($this->coluna($cadeiras, 'Marca').'2')->getValue(), 'já sai com o que está salvo');
 
         $mesas = $planilha->getSheetByName('Mesas de Jantar');
-        $this->assertSame(['Produto (grupo)*', 'Nome do produto', 'Marca', 'Formato'],
+        $this->assertSame(['Produto (grupo)', 'Nome do produto', 'Marca', 'Formato'],
             array_map(fn ($c) => (string) $mesas->getCell([$c, 1])->getValue(), [1, 2, 3, 4]));
 
         // A lista de opções do Material está na aba oculta e a coluna valida contra ela.
@@ -242,13 +242,13 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
         $aba = $planilha->getSheetByName('Cadeiras');
 
         // Cadeira Alfa: Marca apagada (vazio não apaga), Material pelo nome, altura com outra unidade, Cor (é o eixo: ignorada).
-        $this->escrever($aba, 'Marca*', 'CAD', null);
-        $this->escrever($aba, 'Material*', 'CAD', 'metal');
+        $this->escrever($aba, 'Marca', 'CAD', null);
+        $this->escrever($aba, 'Material', 'CAD', 'metal');
         $this->escrever($aba, 'Altura do assento (cm)', 'CAD', '450 mm');
         $this->escrever($aba, 'Cor', 'CAD', 'Preto');
 
         // Cadeira Beta: sem Marca (obrigatório), Material fora das opções, vários materiais, Sim/Não e "Não se aplica".
-        $this->escrever($aba, 'Material*', 'CB', 'Plástico');
+        $this->escrever($aba, 'Material', 'CB', 'Plástico');
         $this->escrever($aba, 'Materiais', 'CB', 'Couro | algodão');
         $this->escrever($aba, 'Com gaveta', 'CB', 'Sim');
         $this->escrever($aba, 'Capacidade', 'CB', 'Não se aplica');
@@ -260,7 +260,7 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
         $aba->setCellValueExplicit('Z2', 'qualquer coisa', DataType::TYPE_STRING);
         $aba->setCellValueExplicit('A10', 'NAO-EXISTE', DataType::TYPE_STRING);
         $aba->setCellValueExplicit('A11', 'SC-1', DataType::TYPE_STRING);
-        $aba->setCellValueExplicit($this->coluna($aba, 'Marca*').'11', 'Marca Y', DataType::TYPE_STRING);
+        $aba->setCellValueExplicit($this->coluna($aba, 'Marca').'11', 'Marca Y', DataType::TYPE_STRING);
 
         $mesas = $planilha->getSheetByName('Mesas de Jantar');
         $this->escrever($mesas, 'Formato', 'MS', 'Redonda');
@@ -341,8 +341,8 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
         [$empresa, , $beta] = $this->cenario();
         $planilha = app(PlanilhaDasFichasTecnicas::class)->gerar($empresa)['planilha'];
         $aba = $planilha->getSheetByName('Cadeiras');
-        $this->escrever($aba, 'Marca*', 'CB', 'Bela Casa');
-        $this->escrever($aba, 'Material*', 'CB', 'Bambu');
+        $this->escrever($aba, 'Marca', 'CB', 'Bela Casa');
+        $this->escrever($aba, 'Material', 'CB', 'Bambu');
         $this->escrever($aba, 'Materiais', 'CB', 'couro | Sarja peletizada');
         $this->escrever($aba, 'Cor', 'CB', 'Verde musgo');
 

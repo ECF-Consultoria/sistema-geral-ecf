@@ -1726,16 +1726,24 @@ Não se aplica, mas não mostra as opções"; e o erro "Quantidade de lugares - 
   vai em CÉLULA.
 - **Três linhas acima dos produtos** (`ModeloCompleto::apresentar`): a 1 é a FAIXA dos blocos (Produto / Produto
   EMBALADO · Volume N / Custo, estoque e descrição / Ficha técnica / Medidas do produto FORA DA CAIXA / Mais detalhes),
-  repetida a cada 4 colunas para não sumir ao rolar; a 2 é o cabeçalho, escuro no obrigatório e claro no opcional; a 3
-  é a AJUDA ("Opcional. Só o número, em cm. Se o produto não tem isto, escreva: Não se aplica."). Os produtos começam
-  na 4. A explicação longa (o mesmo "o que é isto?" da tela) vai de nota no cabeçalho e na aba "Guia dos campos".
+  repetida a cada 4 colunas para não sumir ao rolar; a 2 é o cabeçalho; a 3 é a AJUDA ("Só o número, em cm. Se o
+  produto não tem isto, escreva: Não se aplica."). Os produtos começam na 4. A explicação longa (o mesmo "o que é
+  isto?" da tela) vai de nota no cabeçalho e na aba "Guia dos campos".
+- **A planilha NÃO diz o que é obrigatório nem opcional (30/10/2026, decisão do usuário).** Até então o cabeçalho
+  era escuro e com "*" no obrigatório e claro no opcional, a ajuda começava por "Obrigatório."/"Opcional.", as
+  instruções explicavam a cor e o guia tinha a coluna "Obrigatório". O usuário: "se não, vai ter coisas que o
+  cliente não vai querer preencher". Tudo isso saiu — nos três geradores (`ModeloCompleto`, `ModeloProdutosXlsx`,
+  `PlanilhaDasFichasTecnicas`); cada cabeçalho tem a cor do seu bloco. Não volte a marcar "opcional" na planilha. A
+  importação continua cobrando o que falta (a lista de pendências diz "obrigatório" DEPOIS do envio — isso fica). Os
+  leitores sempre descartaram o "*", então o modelo baixado antes entra igual (teste
+  `test_o_modelo_de_antes_com_asterisco_no_cabecalho_continua_entrando`).
 - **"Não se aplica" em coluna de número não tem lista**, e não deve ter: uma lista de uma opção marcaria todo número
   digitado como inválido em quem trata lista como aviso. O caminho é a linha de ajuda dizer, coluna por coluna, onde
   ele vale. A importação já aceitava o texto "Não se aplica" em qualquer coluna que aceita.
 - **A importação não ganhou versão.** `ImportadorFichasTecnicas::abaDaMatriz` acha o cabeçalho pela coluna "Produto
   (grupo)" entre as 3 primeiras linhas e pula a linha cuja célula do grupo começa com "Como preencher". O arquivo de
   antes (cabeçalho na linha 1) entra igual, e apagar a faixa não quebra nada. A aba "Guia dos campos" é pulada pelo
-  NOME: ela lista "Produto (grupo)*" numa célula e seria tomada por aba de produtos.
+  NOME: ela lista "Produto (grupo)" numa célula e seria tomada por aba de produtos.
 - **As medidas do produto tinham explicação errada vinda do catálogo**, e valia para qualquer categoria (a explicação
   é guardada por id do atributo): Largura = "Largura x Altura"; Profundidade de poltrona = "…da mesa". As seis
   (`LENGTH`, `WIDTH`, `HEIGHT`, `DEPTH`, `DIAMETER`, `WEIGHT`) ganharam texto fixo em `publicador_glossario.atributos`,

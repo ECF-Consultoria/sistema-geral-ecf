@@ -46,7 +46,8 @@ class PlanilhaDasFichasTecnicas
      */
     public const MARCA_DA_AJUDA = 'Como preencher';
 
-    public const COLUNA_GRUPO = 'Produto (grupo)*';
+    // Sem "*" desde 30/10/2026 (a planilha não diz o que é obrigatório); a leitura ignora o "*" das antigas.
+    public const COLUNA_GRUPO = 'Produto (grupo)';
     public const COLUNA_NOME = 'Nome do produto';
 
     /** O texto do "Não se aplica" na célula (o mesmo rótulo da ficha na tela). */
@@ -62,10 +63,13 @@ class PlanilhaDasFichasTecnicas
 
     // ═══ Regras compartilhadas com a importação ═════════════════════════════
 
-    /** O cabeçalho da coluna de um campo: nome, "*" no obrigatório e a unidade padrão entre parênteses. */
+    /**
+     * O cabeçalho da coluna de um campo: o nome e a unidade padrão entre parênteses. Sem o "*" do
+     * obrigatório desde 30/10/2026 — o usuário: marcar o que é opcional faz o cliente deixar em branco.
+     */
     public static function cabecalho(array $campo): string
     {
-        $texto = $campo['nome'].($campo['obrigatorio'] ? '*' : '');
+        $texto = $campo['nome'];
         if ($campo['tipo'] === FichaTecnicaDaCategoria::TIPO_NUMERO_UNIDADE && ($campo['unidade_padrao'] ?? null)) {
             $texto .= " ({$campo['unidade_padrao']})";
         }
@@ -76,13 +80,13 @@ class PlanilhaDasFichasTecnicas
     /**
      * O "como preencher" de um campo, curto, para a linha de ajuda do modelo completo (13/10/2026: "tem
      * muitas dimensões que pedem para preencher mas não é especificado o que é" e "tem colunas que
-     * preciso marcar Não se aplica, mas não mostra as opções"). Diz se é obrigatório, o que escrever
-     * e, onde vale, que dá para responder "Não se aplica". `$foraDaCaixa` marca as medidas do
-     * produto montado, para não se confundirem com as da embalagem.
+     * preciso marcar Não se aplica, mas não mostra as opções"). Diz o que escrever e, onde vale, que
+     * dá para responder "Não se aplica" — NÃO diz se é obrigatório ou opcional (30/10/2026).
+     * `$foraDaCaixa` marca as medidas do produto montado, para não se confundirem com as da embalagem.
      */
     public static function comoPreencher(array $campo, bool $foraDaCaixa = false): string
     {
-        $partes = [$campo['obrigatorio'] ? 'Obrigatório.' : 'Opcional.'];
+        $partes = [];
         if ($foraDaCaixa) {
             $partes[] = 'Produto montado, fora da caixa.';
         }
@@ -458,7 +462,7 @@ class PlanilhaDasFichasTecnicas
             $categorias === 0
                 ? 'Nenhum produto com a categoria confirmada ainda. Confirme a categoria dos produtos e baixe esta planilha de novo.'
                 : 'Uma aba por categoria, uma linha por produto. Preencha as colunas e envie a planilha de volta.',
-            'Os campos com * são obrigatórios. A unidade vem no nome da coluna, como (cm).',
+            'A unidade vem no nome da coluna, como (cm).',
             'Nas colunas com lista, escolha uma opção. Onde vale mais de uma, separe com |, como Algodão | Couro.',
             'Onde aceitar, escreva '.self::NAO_SE_APLICA.' para o campo que não vale para o produto.',
             'Célula em branco não apaga nada do que já está salvo.',

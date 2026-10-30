@@ -105,16 +105,19 @@ class ModeloCompleto
     private const COLUNAS_FIXAS = 2;
 
     /**
-     * Os blocos de colunas: o título na faixa, o nome curto (no guia), a cor da faixa — que é também a
-     * do cabeçalho OBRIGATÓRIO — e a clara, do cabeçalho opcional.
+     * Os blocos de colunas: o título na faixa, o nome curto (no guia) e a cor da faixa e do cabeçalho.
+     *
+     * 30/10/2026, o usuário: a planilha NÃO diz o que é obrigatório e o que é opcional — "se não vai ter
+     * coisas que o cliente não vai querer preencher". Todo cabeçalho na cor do bloco, sem "*", e nenhuma
+     * ajuda começa por "Obrigatório."/"Opcional.". A importação continua cobrando o que falta.
      */
     private const BLOCOS = [
-        'produto'  => ['titulo' => 'PRODUTO · uma linha por variação (cada cor ou tamanho)', 'curto' => 'Produto', 'cor' => '1F2430', 'clara' => 'E5E7EB'],
-        'embalado' => ['titulo' => 'PRODUTO EMBALADO', 'curto' => 'Produto embalado', 'cor' => '14532D', 'clara' => 'DCFCE7'],
-        'venda'    => ['titulo' => 'CUSTO, ESTOQUE E DESCRIÇÃO', 'curto' => 'Custo, estoque e descrição', 'cor' => '374151', 'clara' => 'E5E7EB'],
-        'ficha'    => ['titulo' => 'FICHA TÉCNICA · na 1ª linha de cada produto', 'curto' => 'Ficha técnica', 'cor' => '312E81', 'clara' => 'E0E7FF'],
-        'fora'     => ['titulo' => 'MEDIDAS DO PRODUTO FORA DA CAIXA · montado, sem a embalagem', 'curto' => 'Medidas do produto fora da caixa', 'cor' => '7C2D12', 'clara' => 'FFEDD5'],
-        'detalhes' => ['titulo' => 'MAIS DETALHES · opcionais', 'curto' => 'Mais detalhes', 'cor' => '4B5563', 'clara' => 'F3F4F6'],
+        'produto'  => ['titulo' => 'PRODUTO · uma linha por variação (cada cor ou tamanho)', 'curto' => 'Produto', 'cor' => '1F2430'],
+        'embalado' => ['titulo' => 'PRODUTO EMBALADO', 'curto' => 'Produto embalado', 'cor' => '14532D'],
+        'venda'    => ['titulo' => 'CUSTO, ESTOQUE E DESCRIÇÃO', 'curto' => 'Custo, estoque e descrição', 'cor' => '374151'],
+        'ficha'    => ['titulo' => 'FICHA TÉCNICA · na 1ª linha de cada produto', 'curto' => 'Ficha técnica', 'cor' => '312E81'],
+        'fora'     => ['titulo' => 'MEDIDAS DO PRODUTO FORA DA CAIXA · montado, sem a embalagem', 'curto' => 'Medidas do produto fora da caixa', 'cor' => '7C2D12'],
+        'detalhes' => ['titulo' => 'MAIS DETALHES', 'curto' => 'Mais detalhes', 'cor' => '4B5563'],
     ];
 
     /**
@@ -122,17 +125,17 @@ class ModeloCompleto
      * {@see PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA}: é por ela que a importação pula esta linha.
      */
     private const AJUDA_DO_PRODUTO = [
-        'grupo'     => PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA.' ↓  Obrigatório. O código que junta as variações do mesmo produto: repita em todas as linhas dele.',
-        'codigo'    => 'Obrigatório. O código de cada variação. Não pode repetir.',
-        'eixo'      => 'Opcional. Por onde o produto varia. Escolha da lista; em branco se não varia.',
+        'grupo'     => PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA.' ↓  O código que junta as variações do mesmo produto: repita em todas as linhas dele.',
+        'codigo'    => 'O código de cada variação. Não pode repetir.',
+        'eixo'      => 'Por onde o produto varia. Escolha da lista; em branco se não varia.',
         'variacao'  => 'A variação desta linha (ex.: Preto). Em branco se o produto não varia.',
-        'nome'      => 'Obrigatório. O nome do produto, igual em todas as linhas dele.',
-        'titulo'    => 'Opcional. Como o produto aparece para quem procura (até 60 caracteres na maioria das categorias). Em branco: complete depois no cadastro.',
-        'familia'   => 'Opcional. A linha ou coleção do produto.',
-        'ambientes' => 'Opcional. Onde o produto é usado. Mais de um: separe com /.',
-        'custo'     => 'Opcional. Quanto custa uma unidade, em reais. Só o número.',
-        'estoque'   => 'Opcional. Quantas unidades você tem. Só o número.',
-        'descricao' => 'Opcional. Texto livre sobre o produto.',
+        'nome'      => 'O nome do produto, igual em todas as linhas dele.',
+        'titulo'    => 'Como o produto aparece para quem procura. Até 60 caracteres.',
+        'familia'   => 'A linha ou coleção do produto.',
+        'ambientes' => 'Onde o produto é usado. Mais de um: separe com /.',
+        'custo'     => 'Quanto custa uma unidade, em reais. Só o número.',
+        'estoque'   => 'Quantas unidades você tem. Só o número.',
+        'descricao' => 'Texto livre sobre o produto.',
         'categoria' => 'O tipo do produto, por escrito (ex.: Poltronas).',
     ];
 
@@ -434,7 +437,7 @@ class ModeloCompleto
      *
      * @param  list<array{chave: string, titulo: string, largura: int}>  $doProduto
      * @param  list<array<string, mixed>>  $campos
-     * @return list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>
+     * @return list<array{bloco: string, grupo: string, titulo: string, ajuda: string, explicacao: string, opcoes: string}>
      */
     private function colunasDaAba(array $doProduto, array $campos, ?string $ajudaDoTitulo = null): array
     {
@@ -448,7 +451,6 @@ class ModeloCompleto
                 'bloco'       => self::blocoDoProduto($c['chave']),
                 'grupo'       => str_starts_with($c['chave'], 'vol:') ? 'Volume '.explode(':', $c['chave'])[1] : '',
                 'titulo'      => $c['titulo'],
-                'obrigatorio' => str_contains($c['titulo'], '*'),
                 'ajuda'       => $c['chave'] === 'titulo' && $ajudaDoTitulo !== null ? $ajudaDoTitulo : self::ajudaDoProduto($c['chave']),
                 'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
                 'opcoes'      => $c['chave'] === 'eixo' ? implode(' · ', array_values(EstruturaProdutoVariacao::EIXOS)) : '',
@@ -468,7 +470,6 @@ class ModeloCompleto
                 'bloco'       => (string) $campo['bloco'],
                 'grupo'       => in_array($campo['grupo'], ['', 'Outros', FichaTecnicaDaCategoria::GRUPO_PADRAO, FichaTecnicaDaCategoria::GRUPO_MAIS_DETALHES, FichaTecnicaDaCategoria::GRUPO_MEDIDAS_DO_PRODUTO], true) ? '' : (string) $campo['grupo'],
                 'titulo'      => PlanilhaDasFichasTecnicas::cabecalho($campo),
-                'obrigatorio' => (bool) $campo['obrigatorio'],
                 'ajuda'       => PlanilhaDasFichasTecnicas::comoPreencher($campo, $campo['bloco'] === 'fora'),
                 'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
                 'opcoes'      => Str::limit(implode(' · ', $opcoes), 900, ' …'),
@@ -628,14 +629,14 @@ class ModeloCompleto
      * especificado o que é: produto fora da caixa, embalado"):
      *
      *  - linha 1, a FAIXA: de que é cada bloco de colunas (o produto, o produto EMBALADO, a ficha técnica,
-     *    as medidas FORA DA CAIXA, os detalhes opcionais), cada bloco numa cor. O título se repete a cada
+     *    as medidas FORA DA CAIXA, os mais detalhes), cada bloco numa cor. O título se repete a cada
      *    4 colunas para continuar à vista quando a pessoa rola para o lado;
-     *  - linha 2, o cabeçalho: escuro e com "*" no obrigatório, claro no opcional — o campo que não vale
-     *    para o produto (a medida do colchão numa poltrona) deixa de parecer cobrança;
+     *  - linha 2, o cabeçalho: todos na cor do bloco, sem marcar obrigatório nem opcional (30/10/2026) —
+     *    o campo que não vale para o produto se responde com "Não se aplica";
      *  - linha 3, a AJUDA: como preencher cada coluna, e onde dá para responder "Não se aplica";
      *  - a explicação longa ("o que é") vai de nota no cabeçalho e na aba "Guia dos campos".
      *
-     * @param  list<array{bloco: string, grupo: string, titulo: string, obrigatorio: bool, ajuda: string, explicacao: string, opcoes: string}>  $colunas
+     * @param  list<array{bloco: string, grupo: string, titulo: string, ajuda: string, explicacao: string, opcoes: string}>  $colunas
      */
     private static function apresentar(Worksheet $aba, array $colunas, int $volumesAbertos = self::MAX_VOLUMES): void
     {
@@ -689,8 +690,8 @@ class ModeloCompleto
         foreach ($colunas as $i => $c) {
             $bloco = self::BLOCOS[$c['bloco']];
             $aba->getStyle($letra($i).$cabecalho)->applyFromArray([
-                'font'      => ['bold' => true, 'color' => ['rgb' => $c['obrigatorio'] ? 'FFFFFF' : '1F2937']],
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $c['obrigatorio'] ? $bloco['cor'] : $bloco['clara']]],
+                'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bloco['cor']]],
                 'alignment' => ['vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
             ]);
             if ($c['ajuda'] !== '') {
@@ -795,7 +796,7 @@ class ModeloCompleto
     /** A linha de ajuda do Título na aba de uma categoria com a seta (nulo = a de sempre). */
     private static function ajudaDoTitulo(array $doTitulo, bool $preenchido): ?string
     {
-        return $doTitulo['termos'] === [] ? null : 'Opcional. '.TermosDoTituloNaPlanilha::comoUsarASeta($preenchido, $doTitulo['limite']);
+        return $doTitulo['termos'] === [] ? null : TermosDoTituloNaPlanilha::comoUsarASeta($preenchido, $doTitulo['limite']);
     }
 
     /**
@@ -824,11 +825,11 @@ class ModeloCompleto
      */
     private static function preencherGuia(Worksheet $aba, array $doProduto, array $porAba): void
     {
-        $titulos = ['Aba', 'Bloco', 'Coluna', 'Obrigatório', 'O que é', 'Como preencher', 'Opções da lista'];
+        $titulos = ['Aba', 'Bloco', 'Coluna', 'O que é', 'Como preencher', 'Opções da lista'];
         foreach ($titulos as $i => $titulo) {
             self::texto($aba, Coordinate::stringFromColumnIndex($i + 1).'1', $titulo);
         }
-        foreach ([18, 34, 34, 13, 70, 60, 80] as $i => $largura) {
+        foreach ([18, 34, 34, 70, 60, 80] as $i => $largura) {
             $aba->getColumnDimension(Coordinate::stringFromColumnIndex($i + 1))->setWidth($largura);
         }
 
@@ -837,7 +838,7 @@ class ModeloCompleto
             // No guia a ajuda vai sem a marca que abre a linha de ajuda da aba (ela só serve lá).
             $comoPreencher = trim((string) preg_replace('/^'.preg_quote(PlanilhaDasFichasTecnicas::MARCA_DA_AJUDA, '/').'\s*↓\s*/u', '', $c['ajuda']));
             $valores = [$nomeDaAba, self::BLOCOS[$c['bloco']]['curto'].($c['grupo'] !== '' ? ' · '.$c['grupo'] : ''), $c['titulo'],
-                $c['obrigatorio'] ? 'Sim' : 'Não', $c['explicacao'], $comoPreencher, $c['opcoes']];
+                $c['explicacao'], $comoPreencher, $c['opcoes']];
             foreach ($valores as $i => $valor) {
                 if ($valor !== '') {
                     self::texto($aba, Coordinate::stringFromColumnIndex($i + 1).$linha, $valor);
@@ -854,11 +855,11 @@ class ModeloCompleto
             }
         }
 
-        $aba->getStyle('A1:G1')->applyFromArray([
+        $aba->getStyle('A1:F1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F2430']],
         ]);
-        $aba->getStyle('A2:G'.max(2, $linha - 1))->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
+        $aba->getStyle('A2:F'.max(2, $linha - 1))->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
         $aba->freezePane('A2');
     }
 
@@ -889,10 +890,9 @@ class ModeloCompleto
                     ? 'A primeira aba é a categoria que você escolheu. Todos os produtos dela vão nessa aba.'
                     : 'Cada aba é uma das categorias que você escolheu. Ponha cada produto na aba da categoria dele.'),
             'Em cada aba: a linha 1 diz de que é cada bloco de colunas, a linha 2 é o nome de cada coluna e a linha 3 diz como preencher. Os produtos começam na linha '.self::PRIMEIRA_LINHA.'.',
-            'Cabeçalho escuro e com * é obrigatório. Cabeçalho claro é opcional: preencha o que souber.',
             'Uma linha por variação do produto (cada cor ou tamanho é uma linha). Produto sem variação ocupa uma linha só.',
-            'Produto (grupo)*: o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as linhas dele.',
-            'Ref*: o código de cada variação. Não pode repetir.',
+            'Produto (grupo): o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as linhas dele.',
+            'Ref: o código de cada variação. Não pode repetir.',
             'PRODUTO EMBALADO (os Volumes): as medidas e o peso de cada CAIXA com o produto dentro. É por elas que o frete é calculado. Cada caixa tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Os volumes que não estão em uso vêm recolhidos: se o produto vai em mais de uma caixa, abra o Volume 2, o Volume 3… no botão + que fica acima das colunas, ao lado do último volume aberto, e preencha. Deixe em branco os que não usar.',
             'MEDIDAS DO PRODUTO FORA DA CAIXA: o produto montado, sem a embalagem. São diferentes das medidas do volume, que é a caixa.',
             'FICHA TÉCNICA: as características do produto. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',

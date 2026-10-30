@@ -273,7 +273,7 @@ class PlanilhaDeProdutosV2Test extends TestCase
         foreach (ModeloProdutosXlsx::CABECALHOS as $i => $titulo) {
             $this->assertSame($titulo, $folha->getCell(Coordinate::stringFromColumnIndex($i + 1).'1')->getValue());
         }
-        $this->assertSame(['Ref*', 'Produto (grupo)*', 'Tipo de variação', 'Variação', 'Nome do produto*'], array_slice(ModeloProdutosXlsx::CABECALHOS, 0, 5));
+        $this->assertSame(['Ref', 'Produto (grupo)', 'Tipo de variação', 'Variação', 'Nome do produto'], array_slice(ModeloProdutosXlsx::CABECALHOS, 0, 5));
         $this->assertSame(['Estoque (un.)', 'Descrição'], array_slice(ModeloProdutosXlsx::CABECALHOS, -2));
 
         $listasAba = $planilha->getSheetByName('Listas');
@@ -338,7 +338,9 @@ class PlanilhaDeProdutosV2Test extends TestCase
 
         $this->assertLessThanOrEqual(16, count($linhas), 'instruções curtas');
         $texto = implode("\n", $linhas);
-        $this->assertStringContainsString('Produto (grupo)*: o código que junta as variações de um mesmo produto.', $texto);
+        $this->assertStringContainsString('Produto (grupo): o código que junta as variações de um mesmo produto.', $texto);
+        // 30/10/2026: a planilha não diz o que é obrigatório nem opcional.
+        $this->assertDoesNotMatchRegularExpression('/obrigat|opcion|\*/iu', $texto);
         $this->assertStringContainsString('Dê nome a cada variação (ex.: a cor) para elas ficarem juntas no mesmo produto.', $texto);
         $this->assertStringContainsString('Cor, Tamanho, Voltagem, Material, Sabor ou Outro', $texto);
         $this->assertStringContainsString('Célula em branco não apaga nada.', $texto);
