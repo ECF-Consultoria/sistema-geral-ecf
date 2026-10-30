@@ -51,10 +51,13 @@ E conferir `config('services.hubspot.webhook_user_id')` antes de suspeitar do Hu
   caminho que não existe (a fase foi renumerada para 151) e que não existe na VPS. A conta é criada
   **antes** da escrita, então um erro de `file_put_contents` depois do id impresso não significa falha.
   Rodar de novo é idempotente e só mostra o id existente.
-- **A idempotência não recria empresa apagada.** O guarda olha só
-  `HubspotEvento.company_id_criada NOT NULL` do mesmo deal, não se a Company ainda existe. Se alguém
-  apagar a empresa e o deal voltar para Ganho, o evento cai como `ignorado`. Hoje o remédio é
-  `hubspot:reprocess-event`. Ainda não há correção no código.
+- **Empresa apagada É recriada no próximo Ganho, e isso não é bug.** Lendo só o controller, parece que
+  o guarda de idempotência (`company_id_criada NOT NULL` do mesmo deal) bloquearia para sempre. Não
+  bloqueia: `hubspot_eventos.company_id_criada` tem FK com `ON DELETE SET NULL` (conferido em
+  produção em 30/10: `hubspot_eventos_company_id_criada_foreign`, InnoDB, zero eventos órfãos) e
+  `Company` não usa SoftDeletes. Apagar a empresa zera o vínculo e libera o deal. Atenção: se um
+  dia `Company` ganhar SoftDeletes, essa garantia **some** (o SET NULL não dispara em soft delete) e
+  o guarda precisa passar a checar se a empresa existe.
 - Mover o deal para Ganho de novo **não** reprocessa nada: a Mariano Design (deal `66036878083`)
   foi para Ganho 3 vezes e só a primeira criou a empresa (473), o que é correto.
 - Gravação na VPS via `plink` é bloqueada pelo classificador (`Remote Shell Writes`). A leitura passa.

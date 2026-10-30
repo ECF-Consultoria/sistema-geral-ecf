@@ -13,4 +13,4 @@ Correção em produção (feita pelo usuário na VPS em 30/10, conferida por rec
 "Sistema HubSpot" id 41, `HUBSPOT_WEBHOOK_USER_ID=41`, e as empresas 460, 464 e 468–474 em
 `aguardando_administrativo`.
 
-Pendente (fora do escopo): a idempotência do webhook não recria empresa apagada.
+Suspeita descartada: "a idempotência não recria empresa apagada" é falsa. A FK `company_id_criada` é `ON DELETE SET NULL` (conferida em produção), e apagar a empresa libera o deal.
