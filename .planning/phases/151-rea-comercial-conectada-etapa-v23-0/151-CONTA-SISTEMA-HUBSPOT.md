@@ -4,7 +4,7 @@ Ator da transição de nascimento na etapa 1 quando o webhook do HubSpot roda
 sem sessão autenticada. Criada por `php artisan hubspot:criar-usuario-sistema --apply`.
 
 - **id_local:** 49
-- **id_vps:** (preencher no plano 151-09, depois de rodar o mesmo comando na VPS)
+- **id_vps:** 41 — criada em 2026-10-30, só depois do incidente da Entrada (ver `.planning/learnings/hubspot-webhook-empresa-sem-etapa.md`). `HUBSPOT_WEBHOOK_USER_ID=41` no `.env` da VPS.
 - **email:** sistema.hubspot@ecfconsultoria.com.br
 - **criado_em:** 2026-09-03
 - **role:** consultor (menor valor do enum — nunca admin)
