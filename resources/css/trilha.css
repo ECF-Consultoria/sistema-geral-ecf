@@ -1,0 +1,156 @@
+/* ==========================================================================
+   Trilha de produtos — cores próprias do subsistema
+   ---------------------------------------------------------------------------
+   A trilha nasce CLARA (é como o Erlon desenhou o protótipo) e tem o escuro
+   como opção. As cores vivem aqui como variáveis "R G B" e chegam ao Tailwind
+   pelo grupo `trilha` (tailwind.config.js), então `bg-trilha-surface/60` e
+   companhia funcionam com opacidade.
+
+   Por que não usar o modo claro do sistema (light.css): ele é um remendo que
+   reescreve `text-white`/`bg-white/[x]` quando o <html> ganha `.light`, e o
+   resto do sistema é escuro de nascença. A trilha não usa essas classes, então
+   o light.css não encosta nela — e o tema dela não muda o do resto do sistema
+   (chave própria no localStorage, ver `TrilhaLayout.jsx`).
+
+   `html[data-trilha-tema]`: o TrilhaLayout marca o <html> enquanto a trilha
+   está aberta, para as cores chegarem também à barra de rolagem da página.
+   ========================================================================== */
+
+.trilha,
+html[data-trilha-tema] {
+    color-scheme: light;
+    --t-bg: 255 255 255;
+    --t-surface: 255 255 255;
+    --t-surface2: 247 247 245;
+    --t-line: 232 232 228;
+    --t-line2: 240 240 236;
+    --t-fg: 27 28 31;
+    --t-fg2: 58 59 64;
+    --t-muted: 107 108 112;
+    --t-navy: 14 26 46;
+    --t-on-navy: 255 255 255;
+    --t-accent: 249 203 21;
+    --t-accent-ink: 43 33 0;
+    --t-run: 47 95 196;
+    --t-run-bg: 234 240 252;
+    --t-ok: 21 114 63;
+    --t-ok-bg: 230 244 236;
+    --t-warn: 143 84 0;
+    --t-warn-bg: 251 241 222;
+    --t-bad: 180 35 24;
+    --t-bad-bg: 251 232 232;
+    --t-roxo: 107 63 184;
+    --t-roxo-bg: 241 234 251;
+    --t-shade: 14 26 46;
+    --t-shade-a: 0.32;
+
+    /* Uma cor por etapa — é a cor das linhas e caixas do Mapa da loja. */
+    --t-s-lista: 183 121 31;
+    --t-s-mapa: 130 80 195;
+    --t-s-plano: 50 91 233;
+    --t-s-robo: 14 124 134;
+    --t-s-rev: 234 72 131;
+    --t-s-lanc: 21 114 63;
+
+    background-color: rgb(var(--t-bg));
+    color: rgb(var(--t-fg));
+}
+
+.trilha[data-tema='escuro'],
+html[data-trilha-tema='escuro'] {
+    color-scheme: dark;
+    --t-bg: 17 18 20;
+    --t-surface: 23 24 27;
+    --t-surface2: 29 30 34;
+    --t-line: 42 43 48;
+    --t-line2: 34 35 39;
+    --t-fg: 232 232 234;
+    --t-fg2: 201 202 206;
+    --t-muted: 154 155 161;
+    --t-navy: 232 232 234;
+    --t-on-navy: 17 18 20;
+    --t-run: 122 162 240;
+    --t-run-bg: 26 36 64;
+    --t-ok: 60 194 131;
+    --t-ok-bg: 18 50 31;
+    --t-warn: 240 166 58;
+    --t-warn-bg: 58 42 14;
+    --t-bad: 244 114 114;
+    --t-bad-bg: 61 23 23;
+    --t-roxo: 184 154 240;
+    --t-roxo-bg: 42 33 64;
+    --t-shade: 0 0 0;
+    --t-shade-a: 0.55;
+    --t-s-lista: 240 166 58;
+    --t-s-mapa: 184 154 240;
+    --t-s-plano: 122 162 240;
+    --t-s-robo: 79 195 203;
+    --t-s-rev: 242 122 168;
+    --t-s-lanc: 60 194 131;
+}
+
+/* Barras de rolagem. O app.css pinta o polegar de branco translúcido
+   (rgba(255,255,255,.12)), feito para o fundo escuro do sistema: no claro da
+   trilha ele sumia — a planilha da Lista, o corpo do painel lateral, a figura do
+   Mapa e a própria página rolavam sem barra à vista. A largura (6 px) continua
+   a do app.css; só a cor muda, nos dois temas.
+   A barra da PÁGINA: o Chrome a desenha com o estilo do <body> quando ele tem
+   barra própria (e tem: o `::-webkit-scrollbar` global do app.css casa com
+   ele); só sem isso ele usa o do <html>. Por isso os dois seletores. */
+.trilha ::-webkit-scrollbar-thumb,
+html[data-trilha-tema] body::-webkit-scrollbar-thumb,
+html[data-trilha-tema]::-webkit-scrollbar-thumb {
+    background: rgb(var(--t-line));
+}
+
+.trilha ::-webkit-scrollbar-thumb:hover,
+html[data-trilha-tema] body::-webkit-scrollbar-thumb:hover,
+html[data-trilha-tema]::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--t-muted));
+}
+
+/* Firefox não tem ::-webkit-scrollbar. Só onde ele falta: no Chrome 121+ o
+   `scrollbar-color` desligaria as regras acima e traria a barra larga do sistema. */
+@supports not selector(::-webkit-scrollbar) {
+    .trilha,
+    html[data-trilha-tema] {
+        scrollbar-color: rgb(var(--t-line)) transparent;
+    }
+}
+
+/* A faixa de cor da ECF no topo da tela e embaixo da etapa escolhida. */
+.trilha-gradiente {
+    background-image: linear-gradient(90deg, #f9cb15 0%, #f78314 22%, #f2623f 40%, #ea4883 58%, #8250c3 78%, #325be9 100%);
+}
+
+/* Fundo escurecido atrás do painel lateral. */
+.trilha-sombra {
+    background-color: rgb(var(--t-shade) / var(--t-shade-a));
+}
+
+/* As setas entre as etapas da barra do topo (só no computador). */
+.trilha-seta {
+    position: absolute;
+    right: -7px;
+    top: 22px;
+    width: 12px;
+    height: 12px;
+    transform: rotate(45deg);
+    border-top: 1px solid rgb(var(--t-line));
+    border-right: 1px solid rgb(var(--t-line));
+    background: inherit;
+    z-index: 2;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .trilha-painel-entra {
+        animation: trilha-entra 0.18s ease-out;
+    }
+
+    @keyframes trilha-entra {
+        from {
+            transform: translateX(24px);
+            opacity: 0.6;
+        }
+    }
+}

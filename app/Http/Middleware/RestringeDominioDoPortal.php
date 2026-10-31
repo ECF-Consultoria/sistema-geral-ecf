@@ -226,6 +226,8 @@ class RestringeDominioDoPortal
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',
+        // 30/10/2026 — Trilha de produtos, a porta do cliente (só leitura); a `/trilha` da equipe NÃO entra aqui.
+        'portal/trilha',
     ];
 
     /**

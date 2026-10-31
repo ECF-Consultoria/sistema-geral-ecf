@@ -151,6 +151,14 @@ class Modules
     /** Publicador da Incubadora (01/10/2026) — módulo em construção, oculto: só por URL e só o Dev. */
     public const INCUBADORA_PUBLICADOR       = 'incubadora.publicador';
 
+    // ═══ Trilha ═══
+    /**
+     * Trilha de produtos (30/10/2026) — subsistema em construção, oculto: a porta da EQUIPE (`/trilha`) só por
+     * URL e só o Dev. A porta do cliente (`/portal/{empresa}/trilha`) não passa por esta chave: lá a trava é a
+     * lista `trilha.empresas` (`App\Support\Trilha\TrilhaLigada`).
+     */
+    public const TRILHA_PRODUTOS             = 'trilha.produtos';
+
     /**
      * Catálogo agrupado por módulo com label legível em pt-BR — espelha o
      * formato de `Permissions::catalog()`, acrescentando por item: `grupo`,
@@ -240,6 +248,10 @@ class Modules
             // Sem item de menu de propósito: só por URL, e só o Dev entra (nasce oculto).
             'Incubadora' => [
                 ['key' => self::INCUBADORA_PUBLICADOR, 'name' => 'Publicador Incubadora', 'grupo' => 'Incubadora', 'route_prefix' => 'incubadora.publicador.', 'permission_key' => null, 'stage' => 'em_desenvolvimento', 'nasce_oculto' => true],
+            ],
+            // Mesma receita da Incubadora: sem item de menu, só por URL, e só o Dev entra (nasce oculto).
+            'Trilha' => [
+                ['key' => self::TRILHA_PRODUTOS, 'name' => 'Trilha de produtos', 'grupo' => 'Trilha', 'route_prefix' => 'trilha.', 'permission_key' => null, 'stage' => 'em_desenvolvimento', 'nasce_oculto' => true],
             ],
         ];
     }

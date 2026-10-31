@@ -99,6 +99,40 @@ export default {
                     dim: '#9ba0aa',
                     mute: '#6a6f79',
                 },
+                // Trilha de produtos (30/10/2026): as cores vêm de variáveis em
+                // `resources/css/trilha.css` — claro por padrão, escuro em
+                // `.trilha[data-tema="escuro"]`. Formato "R G B" para o
+                // modificador de opacidade funcionar (`bg-trilha-run/10`).
+                trilha: {
+                    bg: 'rgb(var(--t-bg) / <alpha-value>)',
+                    surface: 'rgb(var(--t-surface) / <alpha-value>)',
+                    surface2: 'rgb(var(--t-surface2) / <alpha-value>)',
+                    line: 'rgb(var(--t-line) / <alpha-value>)',
+                    line2: 'rgb(var(--t-line2) / <alpha-value>)',
+                    fg: 'rgb(var(--t-fg) / <alpha-value>)',
+                    fg2: 'rgb(var(--t-fg2) / <alpha-value>)',
+                    muted: 'rgb(var(--t-muted) / <alpha-value>)',
+                    navy: 'rgb(var(--t-navy) / <alpha-value>)',
+                    'on-navy': 'rgb(var(--t-on-navy) / <alpha-value>)',
+                    accent: 'rgb(var(--t-accent) / <alpha-value>)',
+                    'accent-ink': 'rgb(var(--t-accent-ink) / <alpha-value>)',
+                    run: 'rgb(var(--t-run) / <alpha-value>)',
+                    'run-bg': 'rgb(var(--t-run-bg) / <alpha-value>)',
+                    ok: 'rgb(var(--t-ok) / <alpha-value>)',
+                    'ok-bg': 'rgb(var(--t-ok-bg) / <alpha-value>)',
+                    warn: 'rgb(var(--t-warn) / <alpha-value>)',
+                    'warn-bg': 'rgb(var(--t-warn-bg) / <alpha-value>)',
+                    bad: 'rgb(var(--t-bad) / <alpha-value>)',
+                    'bad-bg': 'rgb(var(--t-bad-bg) / <alpha-value>)',
+                    roxo: 'rgb(var(--t-roxo) / <alpha-value>)',
+                    'roxo-bg': 'rgb(var(--t-roxo-bg) / <alpha-value>)',
+                    's-lista': 'rgb(var(--t-s-lista) / <alpha-value>)',
+                    's-mapa': 'rgb(var(--t-s-mapa) / <alpha-value>)',
+                    's-plano': 'rgb(var(--t-s-plano) / <alpha-value>)',
+                    's-robo': 'rgb(var(--t-s-robo) / <alpha-value>)',
+                    's-rev': 'rgb(var(--t-s-rev) / <alpha-value>)',
+                    's-lanc': 'rgb(var(--t-s-lanc) / <alpha-value>)',
+                },
                 // Paleta do Publicador (TOK-04..TOK-07), copiada da tabela
                 // "Cores (dark mode)" de `new_layout_publicador/README.md`.
                 //

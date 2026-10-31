@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Publicador da Incubadora — mesmo motivo: módulo de dois devs, fora do web.php.
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/incubadora_publicador.php');
+            // Trilha de produtos (30/10/2026) — as duas portas (equipe e cliente), mesmo motivo.
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/trilha.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
