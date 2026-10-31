@@ -2090,12 +2090,25 @@ class NpsController extends Controller
      *
      * Quem decide "fechado" é SEMPRE o `NpsJanelaResolver` — nunca consultar
      * `nps_ciclos` aqui, senão a régua ganha uma segunda versão.
+     *
+     * TKT-0029 (30/10/2026) — link COM `expires_at`: a data de corte é a do
+     * próprio link (`isExpired()`, checado antes deste guard) e aqui só vale o
+     * fechamento MANUAL. A régua de data de `fechada()` usa `gte` e fecha às
+     * 00:00 do último dia do mês (é a régua de LEITURA do bônus, C-01 da Fase
+     * 118): no envio, ela recusava link ainda na validade durante todo o último
+     * dia e impedia prorrogar a validade de um ciclo
+     * (`nps:prorrogar-validade`). Link SEM `expires_at` (legado) segue na régua
+     * de data, para não ficar respondível para sempre.
      */
     private function cicloFechado(NpsSurvey $survey): bool
     {
-        return $this->npsJanelaResolver->fechada(
-            $this->elegibilidadeService->competenciaDoSurvey($survey)
-        );
+        $mesColeta = $this->elegibilidadeService->competenciaDoSurvey($survey);
+
+        if ($survey->expires_at !== null) {
+            return $this->npsJanelaResolver->fechadaManualmente($mesColeta);
+        }
+
+        return $this->npsJanelaResolver->fechada($mesColeta);
     }
 
     public function submitResponse(Request $request, string $token)
