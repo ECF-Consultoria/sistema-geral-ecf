@@ -474,3 +474,37 @@ Outros dois buracos de cadastro medidos no mesmo dia, deixados como estavam:
 **450 OliverMulti** não tem nenhuma linha em `company_users`; **330 Decoral**
 tem estrategista só no serviço 9 (Shopee), então o NPS de Performance dela
 mostra a analista sem estrategista.
+
+---
+
+## 8. Prorrogar a validade de um ciclo: o que muda e o que NÃO muda (TKT-0029, 30/10/2026)
+
+Os links de out/2026 venciam no sábado 31/10. Pediram para prorrogar até 07/11
+"mantendo a competência". Só trocar o `expires_at` não bastava, por três motivos
+que não aparecem juntos em lugar nenhum do código:
+
+- **O link individual recusava resposta durante todo o último dia do mês.** O
+  envio (`NpsController::submitResponse`) consultava `NpsJanelaResolver::fechada()`,
+  que usa `gte` e fecha às 00:00 do último dia: é a régua de LEITURA do bônus
+  (C-01 da Fase 118), não a validade do link. O generate também recusa link novo
+  no último dia. Corrigido em `963d38a6`: com `expires_at` gravado, o envio só
+  barra pelo fechamento MANUAL; a data de corte é a do link. O link de grupo
+  nunca teve esse problema (só checa `expires_at`).
+- **A nota 1 do não respondido vira definitiva no dia 1 seguinte** (rotina das
+  09:30) e a resposta tardia não a substitui; o /nps do mês descarta a resposta
+  daquele survey (`surveyIdsComNotaDefinitiva`).
+- **O bônus lê a resposta por `completed_at`**, não pela competência do link.
+  Resposta em 05/11 a um link de outubro entra na coleta de NOVEMBRO, ou seja, no
+  bônus da competência out/26, e não no de set/26. E o `desempenho:consolidar-mes`
+  já congelou set/26 no último dia às 14h.
+
+Decisão do usuário em 30/10 (opção A): prorrogar mesmo assim, aceitando que a
+resposta a partir de 01/11 conta no bônus de out/26 e que a nota 1 fica em set/26.
+Comando: `php artisan nps:prorrogar-validade --mes=2026-10 --ate=2026-11-07 --dry-run`
+(rodar como `www-data`; sem `--dry-run` grava). Respondido não é tocado; link
+"expirado" volta a pendente; ciclo encerrado à mão continua recusando.
+
+Fazer a resposta tardia contar na competência ORIGINAL exige mexer nas quatro
+réguas juntas (validade, envio, materialização da nota 1 e leitura do bônus) e
+reconsolidar a competência: é fase GSD (toca `DesempenhoScoreService` e snapshot),
+registrada como item 2 da DEV-54.
