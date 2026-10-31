@@ -109,7 +109,10 @@ class HandleInertiaRequests extends Middleware
             'notificacoes_nao_lidas' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
             // Phase 23 — Contador de alertas críticos não-ackeados para badge da sidebar.
             // Lazy closure + cache 5min + try/catch retorna null em erro (falha silenciosa).
-            'alertas_criticos_count' => fn() => $this->countAlertasCriticos(),
+            // Só para quem está logado no sistema interno (31/10/2026, revisão da Trilha, F6): é a carteira inteira
+            // no ECF Drive, e sem esta trava o número ia no data-page do Portal do cliente (guard `portal`, sem
+            // usuário `web`) e cada carga dele disparava um GET /signals. O menu trata null como 0.
+            'alertas_criticos_count' => fn() => $user ? $this->countAlertasCriticos() : null,
             // 09/10/2026 — badge "Aguardando alavancas": tarefas pós-publicação abertas que são
             // minhas ou de ninguém. Só para quem vê a fila (`mlb.alavancas`; admin tem todas).
             'tarefas_alavancas' => fn() => $this->countTarefasAlavancas($request),
