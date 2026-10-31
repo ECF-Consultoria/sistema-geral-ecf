@@ -46,7 +46,7 @@ export const COR_MAPEADO = 'rgb(var(--t-fg2))';
 /** A caixa "Sem onda" (só existe quando há ondas): o que ainda falta planejar. */
 export const COR_SEM_ONDA = 'rgb(var(--t-warn))';
 
-/** Anúncio pela situação: no ar = verde da etapa "No ar"; pausado/em revisão = âmbar; encerrado e afins = cinza. */
+/** Anúncio pela situação (`situacaoDoAnuncio`): no ar = verde da etapa "No ar"; pausado ou parado = âmbar; encerrado ou inativo = cinza. */
 export const COR_DO_ANUNCIO = {
     ativo: COR_DA_ETAPA.lanc,
     atencao: 'rgb(var(--t-warn))',
@@ -112,15 +112,19 @@ const diaMes = (iso) => {
 const semPlataforma = (texto) => String(texto ?? '').replace(/\s+(?:no|pelo|do|ao)\s+Mercado\s+Livre\b/gi, '').trim();
 
 /**
- * Em que pé está o anúncio: 'ativo' (no ar, `situacao` null), 'atencao' (pausado,
- * em revisão, esperando ativação) ou 'fora' (encerrado, inativo…).
+ * Em que pé está o anúncio: 'ativo' (no ar, `situacao` null), 'fora' (encerrado
+ * ou inativo: não volta a vender) ou 'atencao' (o resto: pausado, em revisão,
+ * esperando pagamento ou ativação, e o "Fora do ar" que o servidor dá a qualquer
+ * situação nova). É a régua do servidor (`SituacaoDasOfertas::ENCERRADOS`): lá o
+ * anúncio parado liga o alerta da oferta desde a revisão de 31/10/2026 — e aqui o
+ * "Fora do ar" ficava cinza, como encerrado.
  */
 export function situacaoDoAnuncio(anuncio) {
     const s = String(anuncio?.situacao ?? '').trim();
     if (s === '') return 'ativo';
-    if (/paus|revis|aguard|ainda n/i.test(s)) return 'atencao';
+    if (/^(encerrad|inativ)/i.test(s)) return 'fora';
 
-    return 'fora';
+    return 'atencao';
 }
 
 /**
@@ -517,7 +521,7 @@ export function legendaDoMapa(temOndas = false) {
         ],
         anuncios: [
             { rotulo: 'No ar', cor: COR_DO_ANUNCIO.ativo },
-            { rotulo: 'Pausado ou em revisão', cor: COR_DO_ANUNCIO.atencao },
+            { rotulo: 'Pausado, em revisão ou fora do ar', cor: COR_DO_ANUNCIO.atencao },
             { rotulo: 'Encerrado ou inativo', cor: COR_DO_ANUNCIO.fora },
         ],
     };

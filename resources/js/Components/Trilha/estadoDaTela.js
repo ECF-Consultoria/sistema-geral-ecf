@@ -2,7 +2,7 @@
 //
 // Funções PURAS (sem React, sem Tailwind) que a página `Trilha/Empresa` usa:
 //
-// 1. O estado da tela vive na URL (`?etapa=lista&vista=mapa&abrir=p:12`), gravado
+// 1. O estado da tela vive na URL (`?abrir=p%3A12&etapa=lista&vista=mapa`), gravado
 //    com `history.replaceState` — sem ir ao servidor. Assim um F5, um link
 //    colado no WhatsApp ou o "voltar" de outra tela reabrem no mesmo lugar.
 // 2. O "Ver como: Cliente" da equipe tira, no navegador, o mesmo que o servidor
@@ -38,11 +38,24 @@ export function lerEstadoDaUrl(busca, dados) {
     };
 }
 
+/** O `rawurlencode` do PHP (RFC 3986): o `encodeURIComponent` deixa `!'()*` como estão, o PHP os codifica. */
+const rfc3986 = (texto) => encodeURIComponent(texto).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
 /**
  * A busca da URL com o estado da tela. Os valores padrão (Ver tudo, aba Trilha,
  * nada aberto) saem da URL, e os outros parâmetros de quem chegou ficam.
  *
- * @returns {string}  "" ou "?etapa=…"
+ * Sai escrita como o LARAVEL escreve a URL da página (`page.url`): chaves em
+ * ordem e cada parte em RFC 3986 (o ":" vira "%3A", o espaço "%20"). Por quê: na
+ * carga nova (F5, link colado, aba nova) o Inertia compara o `page.url` com a
+ * barra e, se diferem, EMPILHA uma entrada — o 1º "voltar" não saía da trilha e,
+ * no link colado, a barra e a tela ficavam diferentes (revisão de 31/10/2026). O
+ * servidor monta a busca com `Request::fullUrl()`, que passa pelo
+ * `normalizeQueryString` do Symfony (ksort + `http_build_query` em RFC 3986), nas
+ * duas portas. Só chave repetida ou com colchetes ("a[]=1", lista do PHP) ainda
+ * sairia diferente — a trilha não usa nenhuma das duas.
+ *
+ * @returns {string}  "" ou "?abrir=p%3A12&etapa=lista"
  */
 export function buscaComEstado(buscaAtual, { etapa, vista, abrir }) {
     const parametros = new URLSearchParams(buscaAtual ?? '');
@@ -50,8 +63,9 @@ export function buscaComEstado(buscaAtual, { etapa, vista, abrir }) {
     definir('etapa', etapa);
     definir('vista', vista === 'mapa' ? 'mapa' : null);
     definir('abrir', abrir);
-    // O ":" de "p:12" é válido na busca; sem isto a URL ficaria "p%3A12".
-    const texto = parametros.toString().replace(/%3A/gi, ':');
+    parametros.sort();
+    // Não o `toString()`: ele escreve o espaço como "+", e o PHP como "%20".
+    const texto = [...parametros].map(([chave, valor]) => `${rfc3986(chave)}=${rfc3986(valor)}`).join('&');
 
     return texto ? `?${texto}` : '';
 }
@@ -87,6 +101,9 @@ export function etapaDoItem(dados, chave) {
 export function paraVisaoCliente(dados) {
     return {
         ...dados,
+        // O servidor não manda as ondas ao cliente (`ApresentacaoDaTrilha::paraCliente`): quais campos dela o
+        // cliente vê é decisão da entrega que as preencher. Sem isto o Mapa simulado teria uma coluna a mais.
+        ondas: [],
         produtos: (dados.produtos ?? []).map(({ url_publicador, ...produto }) => ({
             ...produto,
             sugestoes_pendentes: [],

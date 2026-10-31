@@ -22,10 +22,16 @@ use App\Services\Publicador\ProgramasPublicadorService;
  *    agente; o MLB, além disso, é o elo com o Mercado Livre que não se expõe por lá.
  *
  * ### Por que LISTA de campos, e não "tudo menos"
- * Os campos que saem estão escritos aqui, um a um ({@see self::PRODUTO}, {@see self::OFERTA}). Um campo novo que o
- * serviço passe a devolver NÃO chega à tela — nem à do cliente — até alguém acrescentá-lo aqui. É a mesma lógica da
- * allowlist do `RestringeDominioDoPortal`: o padrão seguro é o campo novo nascer invisível, e expô-lo ao cliente
- * vira uma decisão consciente, não um efeito colateral de mexer no serviço.
+ * Os campos que saem estão escritos aqui, um a um ({@see self::PRODUTO}, {@see self::OFERTA}, e dentro da oferta
+ * {@see self::COMPONENTE} e os anúncios). Um campo novo que o serviço passe a devolver nesses níveis NÃO chega à
+ * tela — nem à do cliente — até alguém acrescentá-lo aqui. É a mesma lógica da allowlist do
+ * `RestringeDominioDoPortal`: o padrão seguro é o campo novo nascer invisível, e expô-lo ao cliente vira uma
+ * decisão consciente, não um efeito colateral de mexer no serviço.
+ *
+ * O que a lista NÃO cobre, de propósito (revisão de 31/10/2026, P1 — antes este texto prometia mais do que o
+ * código dava): `preparo`, `sugestoes_pendentes` e `ondas` saem para a EQUIPE como o serviço os monta (ela vê tudo);
+ * na porta do cliente os três saem nulos/vazios. As listas de texto (`skus`, `faltas`, `ambientes`) passam como
+ * vêm. Quando as ondas ganharem conteúdo (próxima entrega), quais campos o cliente vê vira uma lista aqui.
  */
 class ApresentacaoDaTrilha
 {
@@ -50,6 +56,17 @@ class ApresentacaoDaTrilha
         'etapa'                     => null,
         'sugestoes_pendentes'       => [],
         'sugestoes_pendentes_total' => 0,
+    ];
+
+    /**
+     * Campos de cada componente da oferta (`componentes[]`) — as duas portas. Sem esta lista o que o serviço pusesse
+     * DENTRO do componente sairia cru, inclusive para o cliente (revisão de 31/10/2026, P1).
+     */
+    private const COMPONENTE = [
+        'produto_id' => null,
+        'quantidade' => 1,
+        'sku'        => '',
+        'nome'       => '',
     ];
 
     /** Campos da oferta da trilha que saem para a tela (as duas portas). */
@@ -108,7 +125,8 @@ class ApresentacaoDaTrilha
                 'url_publicador' => $admin ? self::editor($p['pub_produto_id'] ?? null) : null,
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
-                'anuncios' => self::anuncios($o['anuncios'] ?? [], comMlb: true),
+                'componentes' => self::componentes($o['componentes'] ?? []),
+                'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: true),
             ]) + [
                 // Na revisão o que a equipe quer é a prévia do anúncio, não o começo do editor.
                 'url_publicador' => $admin ? self::editor($o['pub_produto_id'] ?? null, ($o['etapa'] ?? null) === 'revisao') : null,
@@ -120,8 +138,9 @@ class ApresentacaoDaTrilha
 
     /**
      * Porta do CLIENTE (`/portal/{empresa}/trilha`): os mesmos itens, SEM o que é só da equipe — nem a chave
-     * `pub_produto_id`/`url_publicador` existe, `preparo` vem nulo, o MLB dos anúncios vem nulo e a lista das
-     * sugestões vem vazia (fica o total, para o "N sugestões esperando decisão"). Links só para o próprio Portal.
+     * `pub_produto_id`/`url_publicador` existe, `preparo` vem nulo, o MLB dos anúncios vem nulo, a lista das
+     * sugestões vem vazia (fica o total, para o "N sugestões esperando decisão") e as ondas vêm vazias. Links só
+     * para o próprio Portal.
      *
      * @param  bool  $sessaoEquipe  alguém da ECF abriu a porta do cliente pelo modo equipe do Portal (faixa de aviso)
      */
@@ -145,10 +164,13 @@ class ApresentacaoDaTrilha
                 'url_ficha' => isset($p['id']) ? route('portal.auth.estrutura.produtos.ficha', ['produto' => (int) $p['id']]) : null,
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
-                'preparo'  => null,
-                'anuncios' => self::anuncios($o['anuncios'] ?? [], comMlb: false),
+                'componentes' => self::componentes($o['componentes'] ?? []),
+                'preparo'     => null,
+                'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: false),
             ]), $trilha['ofertas'] ?? []),
-            'ondas'         => $trilha['ondas'] ?? [],
+            // Quais campos da onda o cliente vê (data? responsável?) é decisão da próxima entrega, a que preenche as
+            // ondas: até lá nenhum. Decidido, entra aqui uma lista como a da oferta (o Mapa desenha {id, nome, data}).
+            'ondas'         => [],
             'gerado_em'     => $trilha['gerado_em'] ?? null,
         ];
     }
@@ -203,6 +225,17 @@ class ApresentacaoDaTrilha
         }
 
         return $saida;
+    }
+
+    /**
+     * Os componentes só com os campos da lista {@see self::COMPONENTE}, na ordem dela.
+     *
+     * @param  list<array<string, mixed>>  $componentes
+     * @return list<array{produto_id: ?int, quantidade: int, sku: string, nome: string}>
+     */
+    private static function componentes(array $componentes): array
+    {
+        return array_values(array_map(fn (array $c) => self::campos($c, self::COMPONENTE), $componentes));
     }
 
     /**

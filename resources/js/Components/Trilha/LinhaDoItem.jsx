@@ -1,4 +1,4 @@
-import { ETAPA_POR_CHAVE, acaoDoItem } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, acaoDoItem, estaNoAr } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
 import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/formatos';
@@ -31,9 +31,11 @@ export default function LinhaDoItem({ entrada, visao, onAbrir }) {
     const { tipo, chave, etapa, item } = entrada;
     const ehOferta = tipo === 'o';
     const situacao = situacaoDoItem(entrada);
-    const acao = acaoDoItem(etapa, visao);
-    // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto.
-    const tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : etapa === 'lanc' ? 'ok' : 'run';
+    const noAr = ehOferta && estaNoAr(item);
+    const acao = acaoDoItem(etapa, visao, noAr);
+    // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto. "No ar" é o que
+    // o status diz: a oferta da etapa 6 que não está à venda não fica verde (com alerta, já fica âmbar).
+    const tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : noAr ? 'ok' : 'run';
     const sku = ehOferta ? item.sku : skuDoProduto(item);
     const sub = ehOferta ? composicao(item) : item.familia || 'sem família';
     // Anúncio no ar com situação (pausado, em revisão…): a linha avisa, o detalhe fica no painel.

@@ -7,11 +7,13 @@ use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\Module;
 use App\Models\User;
+use App\Services\EcfDriveService;
 use App\Services\Portal\PortalEquipeService;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use App\Support\Modules;
 use App\Support\Trilha\TrilhaLigada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Mockery\MockInterface;
@@ -53,10 +55,22 @@ class AcessoATrilhaTest extends TestCase
         'onda_id', 'sem_produto',
     ];
 
+    /** As props da PÁGINA (seção 4 do contrato). O resto é o que o `HandleInertiaRequests` compartilha com toda página. */
+    private const PROPS_DA_PAGINA = ['visao', 'sessao_equipe', 'empresa', 'voltar', 'links', 'produtos', 'ofertas', 'ondas', 'gerado_em'];
+
+    /** As compartilhadas que chegam ao cliente COM valor: a infraestrutura da página, nenhuma é dado do sistema interno. */
+    private const COMPARTILHADAS_DE_INFRA = ['asset_url', 'csrf_token', 'errors', 'flash'];
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->withoutVite();
+        // O badge de alertas do menu interno (props compartilhadas) pergunta ao ECF Drive, e o phpunit.xml não troca o
+        // ECF_API_BASE do .env: sem o dublê, cada abertura da porta da equipe aqui batia no ECF Drive de verdade.
+        // Total diferente de zero de propósito: se a contagem vazar para o cliente, a varredura das compartilhadas
+        // ({@see assertNaoChegaNadaDaEquipe()}) a vê — um zero passaria por "vazio".
+        $this->mock(EcfDriveService::class, fn (MockInterface $m) => $m->shouldReceive('listSignals')->andReturn(['total' => 7]));
+        Http::preventStrayRequests();
     }
 
     // ─── Porta da EQUIPE (`/trilha`) ─────────────────────────────────────────
@@ -330,6 +344,74 @@ class AcessoATrilhaTest extends TestCase
         $this->assertNaoChegaNadaDaEquipe($resposta);
     }
 
+    /**
+     * Revisão de 31/10/2026 (P1): a lista de campos valia só no 1º nível de cada item — o que o serviço pusesse
+     * DENTRO de um componente, ou numa onda, chegava inteiro à porta do cliente. E as ondas são justamente o que a
+     * próxima entrega vai preencher ("robô na data", com responsável).
+     */
+    public function test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente(): void
+    {
+        $empresa = $this->empresaLigada();
+        $crua = $this->trilhaCrua();
+        $crua['ofertas'][0]['componentes'][0] += ['campo_novo_do_servico' => 'SEGREDO-ANINHADO', 'pub_produto_id' => 4242];
+        $crua['ondas'] = [['id' => 1, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'campo_novo_do_servico' => 'SEGREDO-ANINHADO']];
+        $this->mock(TrilhaDaEmpresa::class, fn (MockInterface $m) => $m
+            ->shouldReceive('montar')->twice()
+            ->withArgs(fn (Company $e) => $e->is($empresa))
+            ->andReturn($crua));
+
+        $resposta = $this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk();
+        $props = $this->props($resposta);
+
+        // Quais campos da onda o cliente vê é decisão da próxima entrega: até lá, nenhuma.
+        $this->assertSame([], $props['ondas']);
+        $this->assertSame(['produto_id', 'quantidade', 'sku', 'nome'], array_keys($props['ofertas'][0]['componentes'][0]));
+        $chaves = self::chaves(['produtos' => $props['produtos'], 'ofertas' => $props['ofertas'], 'ondas' => $props['ondas']]);
+        $this->assertNotContains('campo_novo_do_servico', $chaves);
+        $this->assertNotContains('pub_produto_id', $chaves);
+        $resposta->assertDontSee('SEGREDO-ANINHADO', false);
+
+        // Na equipe o componente sai com a mesma lista (as duas portas desenham a composição igual).
+        $equipe = $this->props($this->actingAs($this->dev())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertSame(
+            [['produto_id' => 13, 'quantidade' => 1, 'sku' => 'CJ-213', 'nome' => 'Rack para TV 1,80 m madeira maciça']],
+            $equipe['ofertas'][0]['componentes'],
+        );
+    }
+
+    /**
+     * Revisão de 31/10/2026 (F6): as props compartilhadas do Inertia também vão ao cliente, e a contagem de alertas
+     * críticos (o badge do menu interno: a carteira inteira no ECF Drive) era calculada sem olhar quem pede — ia no
+     * data-page da porta do cliente, e a carga dele disparava um GET /signals no ECF Drive.
+     */
+    public function test_a_porta_do_cliente_nao_leva_a_contagem_interna_de_alertas(): void
+    {
+        $empresa = $this->empresaLigada();
+        $this->mock(TrilhaDaEmpresa::class, fn (MockInterface $m) => $m->shouldReceive('montar')->twice()->andReturn($this->trilhaCrua()));
+        // `function … use (&…)`, não `fn`: a arrow function copiaria o contador, e ele ficaria sempre em zero.
+        $chamadas = 0;
+        $this->mock(EcfDriveService::class, function (MockInterface $m) use (&$chamadas) {
+            $m->shouldReceive('listSignals')->andReturnUsing(function () use (&$chamadas) {
+                $chamadas++;
+
+                return ['total' => 4242];
+            });
+        });
+
+        $props = $this->props($this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk());
+
+        $this->assertSame('cliente', $props['visao']);
+        $this->assertNull($props['auth']['user']);
+        $this->assertArrayHasKey('alertas_criticos_count', $props);
+        $this->assertNull($props['alertas_criticos_count']);
+        $this->assertSame(0, $chamadas, 'a porta do cliente não pergunta nada ao ECF Drive');
+
+        // Na equipe o badge continua: quem está logado no sistema interno recebe a contagem.
+        $props = $this->props($this->actingAs($this->dev())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertSame(4242, $props['alertas_criticos_count']);
+        $this->assertSame(1, $chamadas);
+    }
+
     public function test_empresa_fora_da_chave_responde_404_na_porta_do_cliente(): void
     {
         $empresa = Company::factory()->create();
@@ -458,7 +540,8 @@ class AcessoATrilhaTest extends TestCase
     /**
      * A saída CRUA do serviço (seção 3 do contrato), na ordem em que ele a devolve: produtos lista → mapa →
      * mapeado; ofertas plano → revisão → no ar. Traz tudo o que é só da equipe, e um campo que ninguém decidiu
-     * mostrar (`campo_novo_do_servico`), para provar que a apresentação só deixa sair o que está na lista dela.
+     * mostrar (`campo_novo_do_servico`) no 1º nível dos itens, para provar que a apresentação só deixa sair o que
+     * está na lista dela. Dentro do componente e da onda: {@see test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente()}.
      */
     private function trilhaCrua(): array
     {
@@ -570,6 +653,25 @@ class AcessoATrilhaTest extends TestCase
                 $this->assertNull($anuncio['mlb']);
             }
         }
+
+        // As props COMPARTILHADAS vão ao cliente do mesmo jeito (revisão de 31/10/2026, F6: a contagem de alertas da
+        // carteira inteira ia no data-page dele). Fora a infraestrutura da página, toda compartilhada chega VAZIA a
+        // quem não tem usuário `web`: uma nova que leve dado do sistema interno ao cliente derruba esta varredura.
+        $compartilhadas = array_diff_key($props, array_flip([...self::PROPS_DA_PAGINA, ...self::COMPARTILHADAS_DE_INFRA]));
+        $this->assertArrayHasKey('alertas_criticos_count', $compartilhadas, 'a varredura não está vendo as compartilhadas');
+        foreach ($compartilhadas as $chave => $valor) {
+            $this->assertTrue(self::vazio($valor), "a prop compartilhada `{$chave}` chegou ao cliente com dado: ".json_encode($valor, JSON_UNESCAPED_UNICODE));
+        }
+    }
+
+    /** null, false, 0, '' ou lista só com vazios, em qualquer nível. */
+    private static function vazio(mixed $valor): bool
+    {
+        if (is_array($valor)) {
+            return array_filter($valor, fn ($v) => ! self::vazio($v)) === [];
+        }
+
+        return in_array($valor, [null, false, 0, ''], true);
     }
 
     /** As props da página Inertia como o navegador as recebe. */

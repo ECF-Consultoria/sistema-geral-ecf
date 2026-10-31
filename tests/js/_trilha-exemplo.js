@@ -195,5 +195,7 @@ export function paraCliente(props = PROPS_EQUIPE) {
             preparo: null,
             anuncios: (o.anuncios ?? []).map((a) => ({ ...a, mlb: null })),
         })),
+        // As ondas não vão ao cliente (o servidor as manda vazias na porta dele).
+        ondas: [],
     };
 }

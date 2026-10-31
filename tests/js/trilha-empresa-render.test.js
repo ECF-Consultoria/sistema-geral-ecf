@@ -107,6 +107,19 @@ const contagens = (html) => Object.fromEntries([...html.matchAll(/data-etapa="(\
 /** As pílulas de ação das linhas, na ordem da tela. */
 const acoesDasLinhas = (html) => [...html.matchAll(/data-acao-da-linha="([^"]+)"/g)].map((m) => m[1]);
 
+/** As pílulas de ação com o tom de cada uma (`ok` verde, `warn` âmbar, `run` azul): `[['No ar', 'ok'], …]`. */
+const pilulasDasLinhas = (html) => [...html.matchAll(/class="([^"]*)" data-acao-da-linha="([^"]+)"/g)]
+    .map(([, classe, acao]) => [acao, classe.match(/\btext-trilha-(ok|warn|run)\b/)?.[1] ?? '?']);
+
+/** Os rótulos de uma constante PHP `const NOME = ['chave' => 'rótulo', …];` (a régua do servidor, lida da fonte). */
+function rotulosDoPhp(relativo, constante) {
+    const fonte = fs.readFileSync(path.resolve(RAIZ, relativo), 'utf8');
+    const bloco = fonte.match(new RegExp(`const ${constante}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
+    assert.ok(bloco, `${relativo}: a constante ${constante} sumiu`);
+
+    return [...bloco[1].matchAll(/=>\s*'([^']+)'/g)].map((m) => m[1]);
+}
+
 /** O pedaço do HTML a partir do painel lateral (ele é desenhado por último na página). */
 function painelLateral(html, chave) {
     const inicio = html.indexOf(`data-painel-lateral="${chave}"`);
@@ -267,6 +280,64 @@ test('?etapa=… das etapas 2 a 6: cabeçalho, "Pronto quando", a nota e só as 
     assert.ok(texto(semNada).includes('O robô não tem nada na fila.'));
 });
 
+test('"Pronto quando" da Lista cita tudo o que segura o produto na Lista (a régua do servidor, lida das fontes)', async () => {
+    // O cliente segue a regra escrita: se o produto fica na Lista por algo que o texto não cita, ele não sabe
+    // o que falta (revisão de 31/10/2026, F3: a Poltrona ficava com "ambiente" e o texto não falava nisso).
+    // A régua (contrato §5): as pendências do Portal por variação e, do serviço da trilha, descrição, fotos e
+    // ficha técnica. Pendência nova no servidor que o texto não cite derruba este teste.
+    const pendencias = rotulosDoPhp('app/Services/Portal/Estrutura/Produtos/PendenciasDoProduto.php', 'ROTULOS');
+    assert.ok(pendencias.length >= 8 && pendencias.includes('ambiente'), `a leitura da régua quebrou: ${pendencias}`);
+    const completude = fs.readFileSync(path.resolve(RAIZ, 'app/Services/Trilha/CompletudeDoProduto.php'), 'utf8');
+    // `$faltas[] = 'descrição'`, `'fotos (…'` e `'ficha: …'`: o rótulo até o "(" ou o ":".
+    const doServico = [...completude.matchAll(/\$faltas\[\]\s*=\s*'([^'(:]+)/g)].map((m) => m[1].trim());
+    assert.ok(doServico.length >= 3 && doServico.includes('descrição'), `a leitura do serviço quebrou: ${doServico}`);
+
+    const Pagina = await pagina();
+    for (const props of [PROPS_EQUIPE, paraCliente()]) {
+        const saida = desenhar(Pagina, props, '?etapa=lista');
+        const pronto = texto(saida.match(/Pronto quando:<\/b>([^<]*)</)?.[1] ?? '');
+        for (const rotulo of [...pendencias, ...doServico]) {
+            assert.ok(pronto.includes(rotulo), `o "Pronto quando" da Lista (${props.visao}) não cita "${rotulo}": ${pronto}`);
+        }
+        assert.equal(pronto.match(/Mercado Livre/), null, 'o cliente lê este texto');
+    }
+});
+
+test('etapa 6: a pílula diz "No ar" só quando o status diz; fora do ar, encerrada ou sem anúncio achado, "Conferir"', async () => {
+    // Desde a revisão de 31/10/2026 (F1), só ativo e pausado contam como no ar: a oferta publicada com o
+    // anúncio em revisão fica na etapa 6 como "Fora do ar · …" — e a pílula "No ar" ao lado contradizia o
+    // status (o "Anúncios encerrados" e o "Publicado" sem anúncio achado também).
+    const Pagina = await pagina();
+    const s1 = PROPS_EQUIPE.ofertas.find((o) => o.id === 's-1');
+    const comStatus = (id, status, alerta, anuncios) => (o) => (o.id === id ? { ...o, status, alerta, anuncios } : o);
+    const props = {
+        ...PROPS_EQUIPE,
+        ofertas: [
+            ...PROPS_EQUIPE.ofertas
+                // Um tipo à venda e o outro parado: no ar, com alerta.
+                .map(comStatus('s-10', 'No ar · falta o Premium', true, [
+                    { tipo: 'Clássico', mlb: 'MLB3488800012', situacao: null },
+                    { tipo: 'Premium', mlb: 'MLB3488800013', situacao: 'Em revisão' },
+                ]))
+                .map(comStatus('o-40', 'Fora do ar · Clássico', true, [{ tipo: 'Clássico', mlb: 'MLB3400011223', situacao: 'Em revisão' }])),
+            { ...s1, id: 's-98', nome: 'Banco jatobá', status: 'Anúncios encerrados', alerta: true, anuncios: [{ tipo: 'Clássico', mlb: 'MLB3400000098', situacao: 'Encerrado' }] },
+            { ...s1, id: 's-99', nome: 'Buffet jatobá', status: 'Publicado', alerta: false, anuncios: [] },
+        ],
+    };
+
+    const lanc = desenhar(Pagina, props, '?etapa=lanc');
+    // Verde só o que está à venda sem pendência; âmbar com alerta; o "Conferir" sem alerta é azul, não verde.
+    assert.deepEqual(pilulasDasLinhas(lanc), [['No ar', 'ok'], ['No ar', 'warn'], ['Conferir', 'warn'], ['Conferir', 'warn'], ['Conferir', 'run']]);
+    assert.ok(texto(lanc).includes('Fora do ar · Clássico') && texto(lanc).includes('Clássico: Em revisão'));
+
+    // O cliente só acompanha, com a mesma cor.
+    const doCliente = desenhar(Pagina, paraCliente(props), '?etapa=lanc');
+    assert.deepEqual(pilulasDasLinhas(doCliente), [['Acompanhar', 'ok'], ['Acompanhar', 'warn'], ['Acompanhar', 'warn'], ['Acompanhar', 'warn'], ['Acompanhar', 'run']]);
+
+    // O exemplo de sempre (tudo à venda) continua verde.
+    assert.deepEqual(pilulasDasLinhas(desenhar(Pagina, PROPS_EQUIPE, '?etapa=lanc')), [['No ar', 'ok'], ['No ar', 'ok'], ['No ar', 'ok']]);
+});
+
 // ─── Painel lateral pela URL ───────────────────────────────────────────────
 
 test('?abrir=p:4: o painel do produto, com as sugestões para a equipe e o Planejamento para o cliente', async () => {
@@ -379,12 +450,18 @@ test('"Ver como: Cliente" tira no navegador o mesmo que o servidor tira na porta
     assert.deepEqual(simulado.produtos.map(semFicha), servidor.produtos.map(semFicha));
     assert.equal(simulado.produtos.find((p) => p.id === 4).sugestoes_pendentes_total, 2);
     assert.equal(PROPS_EQUIPE.ofertas[0].anuncios[0].mlb, 'MLB3412345678', 'as props da equipe não são alteradas');
+    // As ondas: o servidor as manda vazias ao cliente (revisão de 31/10/2026, P1), e a simulação também tira.
+    const comOnda = { ...PROPS_EQUIPE, ondas: [{ id: 1, nome: 'Onda 1', data: '2026-11-10' }] };
+    assert.deepEqual(mod.paraVisaoCliente(comOnda).ondas, []);
+    assert.deepEqual(paraCliente(comOnda).ondas, []);
+    assert.equal(comOnda.ondas.length, 1, 'as props da equipe não são alteradas');
     assert.deepEqual(mod.linksParaVisaoCliente(PROPS_EQUIPE.links), { ...PROPS_EQUIPE.links, portal_abrir: null, publicador: null });
 
     assert.deepEqual(mod.lerEstadoDaUrl('?etapa=lista&vista=mapa&abrir=o:c-2-4', PROPS_EQUIPE), { etapa: 'lista', vista: 'mapa', abrir: 'o:c-2-4' });
     assert.deepEqual(mod.lerEstadoDaUrl('?etapa=nada&vista=x&abrir=p:12', PROPS_EQUIPE), { etapa: null, vista: 'trilha', abrir: null });
     assert.equal(mod.lerEstadoDaUrl('?abrir=p%3A4', PROPS_EQUIPE).abrir, 'p:4');
-    assert.equal(mod.buscaComEstado('?outro=1', { etapa: 'robo', vista: 'mapa', abrir: 'o:s-12' }), '?outro=1&etapa=robo&vista=mapa&abrir=o:s-12');
+    // A forma do Laravel (chaves em ordem, ":" como %3A): ver o teste da URL logo abaixo.
+    assert.equal(mod.buscaComEstado('?outro=1', { etapa: 'robo', vista: 'mapa', abrir: 'o:s-12' }), '?abrir=o%3As-12&etapa=robo&outro=1&vista=mapa');
     assert.equal(mod.buscaComEstado('?etapa=lista&vista=mapa&abrir=p:1', { etapa: null, vista: 'trilha', abrir: null }), '');
 
     // O `history.state` do Inertia ganha a URL nova também na página guardada (o "voltar" que recarrega
@@ -401,6 +478,47 @@ test('"Ver como: Cliente" tira no navegador o mesmo que o servidor tira na porta
     assert.equal(mod.etapaDoItem(PROPS_EQUIPE, 'p:4'), 'mapa');
     assert.equal(mod.etapaDoItem(PROPS_EQUIPE, 'o:s-11'), 'revisao');
     assert.equal(mod.etapaDoItem(PROPS_EQUIPE, 'o:nada'), null);
+});
+
+// ─── A URL que a tela grava é a que o servidor devolve ─────────────────────
+
+/**
+ * As buscas que o LARAVEL devolve no `page.url` (o Inertia monta com `Request::fullUrl()`, que passa pelo
+ * `normalizeQueryString` do Symfony: chaves em ordem e `http_build_query(…, PHP_QUERY_RFC3986)`).
+ * Tiradas do PHP real em 31/10/2026, com a entrada fora de ordem e com o ":" cru; para conferir um caso:
+ *   C:/xampp/php/php.exe -r "require 'vendor/autoload.php'; echo Illuminate\Http\Request::create('/trilha/459?etapa=lista&abrir=p:7')->fullUrl();"
+ * Cada linha: [busca de quem chegou, estado da tela, a busca do Laravel].
+ */
+const BUSCAS_DO_LARAVEL = [
+    ['', { etapa: 'lista', vista: 'trilha', abrir: 'p:7' }, '?abrir=p%3A7&etapa=lista'],
+    ['', { etapa: null, vista: 'trilha', abrir: 'o:s-11' }, '?abrir=o%3As-11'],
+    ['', { etapa: 'revisao', vista: 'mapa', abrir: 'o:c-2-4' }, '?abrir=o%3Ac-2-4&etapa=revisao&vista=mapa'],
+    ['', { etapa: 'mapa', vista: 'mapa', abrir: null }, '?etapa=mapa&vista=mapa'],
+    ['?outro=1', { etapa: 'robo', vista: 'mapa', abrir: 'o:s-12' }, '?abrir=o%3As-12&etapa=robo&outro=1&vista=mapa'],
+    ['?utm=zap%20grupo', { etapa: 'lista', vista: 'trilha', abrir: null }, '?etapa=lista&utm=zap%20grupo'],
+    ['?utm=zap+grupo', { etapa: 'lista', vista: 'trilha', abrir: null }, '?etapa=lista&utm=zap%20grupo'],
+    ["?nota=(ok)!*'~", { etapa: 'lanc', vista: 'trilha', abrir: 'o:o-40' }, '?abrir=o%3Ao-40&etapa=lanc&nota=%28ok%29%21%2A%27~'],
+    ['?q=a%C3%A7%C3%A3o', { etapa: 'plano', vista: 'trilha', abrir: null }, '?etapa=plano&q=a%C3%A7%C3%A3o'],
+    ['?Zeta=1&debug', { etapa: 'lista', vista: 'trilha', abrir: 'p:7' }, '?Zeta=1&abrir=p%3A7&debug=&etapa=lista'],
+    ['?abrir=p%3A7&etapa=lista', { etapa: 'lista', vista: 'trilha', abrir: 'p:7' }, '?abrir=p%3A7&etapa=lista'],
+    ['?vista=mapa&etapa=lista&abrir=p:1', { etapa: null, vista: 'trilha', abrir: null }, ''],
+];
+
+test('a busca que a tela grava é a mesma que o Laravel devolve no page.url (F5 e link colado sem entrada a mais no histórico)', async () => {
+    // Na carga nova (F5, link colado, aba nova) o Inertia compara o `page.url` do servidor com a barra
+    // (`isSameUrlWithoutHash`) e, se diferem, EMPILHA (pushState): o 1º "voltar" não saía da trilha e, no
+    // link colado, a barra e a tela ficavam diferentes (revisão de 31/10/2026, T1).
+    const mod = await montar('resources/js/Components/Trilha/estadoDaTela.js', 'trilha-estado-url');
+    // Os itens que a tabela abre, para a leitura de volta achar cada um.
+    const dados = { produtos: [{ id: 7 }, { id: 1 }], ofertas: ['s-11', 'c-2-4', 's-12', 'o-40'].map((id) => ({ id })) };
+
+    for (const [quemChegou, estado, doLaravel] of BUSCAS_DO_LARAVEL) {
+        assert.equal(mod.buscaComEstado(quemChegou, estado), doLaravel, `quem chegou: "${quemChegou}"`);
+        // Gravar de novo sobre a própria busca não muda nada (cada mudança de estado regrava a URL).
+        assert.equal(mod.buscaComEstado(doLaravel, estado), doLaravel, `regravada: "${doLaravel}"`);
+        // E a tela lê de volta o mesmo estado (o "%3A" volta a ser ":").
+        assert.deepEqual(mod.lerEstadoDaUrl(doLaravel, dados), { ...estado, vista: estado.vista === 'mapa' ? 'mapa' : 'trilha' }, doLaravel);
+    }
 });
 
 // ─── Cores só da trilha ────────────────────────────────────────────────────

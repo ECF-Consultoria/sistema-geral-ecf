@@ -20,7 +20,10 @@ export const ETAPAS = [
         titulo: 'Lista de produtos',
         dono: 'Cliente',
         unidade: 'produtos',
-        pronto: 'SKU, família, nome, descrição, custo, embalagem com medidas e peso, 3 fotos em cada cor e a ficha técnica preenchidos.',
+        // Cita TUDO o que segura o produto na Lista (as pendências do Portal mais descrição, fotos e ficha
+        // técnica, `App\Services\Trilha\CompletudeDoProduto`): o cliente segue esta regra. O teste de render lê a
+        // régua das fontes PHP e falha se uma falta possível não estiver aqui.
+        pronto: 'SKU, nome, família, ambiente, categoria, título de venda, descrição, custo, embalagem com medidas e peso (sem pendência de frete ME1), 3 fotos em cada cor e os campos obrigatórios da ficha técnica preenchidos.',
         faz: 'O cliente cadastra cada produto pela tela ou pela planilha. Ao escolher a categoria, a ficha técnica dela aparece para preencher.',
     },
     {
@@ -159,11 +162,23 @@ export function comQuemEsta(dados, visao) {
 }
 
 /**
- * O texto do botão da linha. O cliente só age na lista de produtos; no resto,
- * acompanha.
+ * A oferta está à venda? É o que o STATUS diz ("No ar · …": algum anúncio ativo ou
+ * pausado). A etapa 6 guarda a oferta publicada de qualquer jeito (é da
+ * Jardinagem), também a "Fora do ar · …" (anúncio em revisão, esperando
+ * pagamento…), a de "Anúncios encerrados" e a "Publicado" cujo anúncio não foi
+ * achado — e essas não estão no ar.
  */
-export function acaoDoItem(etapa, visao) {
-    if (visao === 'cliente') return etapa === 'lista' ? 'Completar' : 'Acompanhar';
+export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.status ?? '').startsWith('No ar');
 
-    return { lista: 'Completar', mapa: 'Mapear', plano: 'Planejar', robo: 'Ver preparo', revisao: 'Revisar', lanc: 'No ar' }[etapa] ?? 'Abrir';
+/**
+ * O texto do botão da linha. O cliente só age na lista de produtos; no resto,
+ * acompanha. Na etapa 6, a equipe lê "No ar" só quando a oferta está no ar
+ * (`estaNoAr`); a que não está pede "Conferir" — "No ar" ao lado de "Fora do ar"
+ * se contradiria.
+ */
+export function acaoDoItem(etapa, visao, noAr = true) {
+    if (visao === 'cliente') return etapa === 'lista' ? 'Completar' : 'Acompanhar';
+    if (etapa === 'lanc') return noAr ? 'No ar' : 'Conferir';
+
+    return { lista: 'Completar', mapa: 'Mapear', plano: 'Planejar', robo: 'Ver preparo', revisao: 'Revisar' }[etapa] ?? 'Abrir';
 }

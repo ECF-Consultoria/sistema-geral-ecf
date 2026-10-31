@@ -86,8 +86,16 @@ class SituacaoDasOfertas
         'not_yet_active'   => 'Ainda não ativado',
     ];
 
-    /** Anúncio que existe mas não está mais à venda: aparece na lista, mas não conta como "no ar". */
-    private const FORA_DO_AR = ['Encerrado', 'Inativo'];
+    /**
+     * O que conta como "no ar": ativo (null) e pausado — a decisão do contrato (o exemplo s-10, "No ar · falta o
+     * Premium" com o Clássico pausado) e a régua do Portal (`EstruturaAnuncio::conta()`: "pausado conta"). Lista
+     * PERMITIDA, de propósito (revisão de 31/10/2026, F1): em revisão, aguardando pagamento, ainda não ativado e o
+     * status que o Mercado Livre inventar amanhã ('Fora do ar') NÃO estão à venda — e diziam "No ar", sem alerta.
+     */
+    private const CONTA_NO_AR = [null, 'Pausado'];
+
+    /** Anúncio que existe mas não volta mais a vender: aparece na lista e não conta, sem dizer "fora do ar". */
+    private const ENCERRADOS = ['Encerrado', 'Inativo'];
 
     /**
      * @param  array<int, array{id: int, oferta_id: ?int, estrutura_produto_id: ?int, produto_base_id: ?int, quantidade_kit: int}>  $pubs
@@ -342,11 +350,21 @@ class SituacaoDasOfertas
         }
 
         $etapas = self::etapasDoPreparo($r);
+        // As imagens automáticas pela régua de `CriativosAutomaticosService::situacaoDasImagens()`, que a vitrine do
+        // Publicador lê ANTES do resumo para não dizer "Pronto" (`VitrineDeProdutosService::naoEstaPronto`): o resumo
+        // do editor não as cobre — com as fotos do cliente ele diz 0 bloqueio. Revisão de 31/10/2026 (D1). O
+        // conjunto, não a pílula: com duas cores, um kit andando numa não pode esconder a outra que ficou para amanhã.
+        $imagens = $this->estadosDasImagens($r);
         $paradas = [];
         foreach (Preparo::ETAPAS as $e) {
             if (isset($etapas[$e]) && $this->parou($etapas[$e])) {
                 $paradas[] = self::ROTULO_DA_ETAPA[$e];
             }
+        }
+        // As duas tentativas falharam ("Imagens não geradas" no Publicador): o robô não tenta mais sozinho, alguém
+        // precisa gerar na etapa Imagens — a mesma linha do agente que parou no texto.
+        if (isset($imagens['erro'])) {
+            $paradas[] = 'imagens';
         }
         if ($paradas !== []) {
             return ['etapa' => 'robo', 'status' => 'O agente parou: '.implode(', ', $paradas), 'alerta' => true];
@@ -361,16 +379,20 @@ class SituacaoDasOfertas
         foreach ($textoDoAgente ? Preparo::ETAPAS : [] as $e) {
             $textoPronto = $textoPronto && in_array($etapas[$e]['status'] ?? null, self::TEXTO_PRONTO, true);
         }
+        // Teto do dia ou nova tentativa amanhã cedo ("Imagens amanhã" no Publicador): o robô ainda volta, a etapa 4
+        // ("título, descrição e imagens prontos") não fechou — nenhuma linha da revisão vale, o item segue no robô.
+        // O kit só "fazendo" não segura: andando há mais de 30 min, o Publicador também já diz "Pronto".
+        $roboTerminou = ! isset($imagens['fila']);
 
         // "0 bloqueios" só quer dizer pronto com a categoria: sem ela o editor não valida nada e grava
         // `validado = false` com zero (a vitrine, pela mesma razão, diz "Falta categoria" e não "Pronto").
-        if ($emDia && $bloqueios === 0 && ($resumo['validado'] ?? null) === true) {
+        if ($roboTerminou && $emDia && $bloqueios === 0 && ($resumo['validado'] ?? null) === true) {
             return ['etapa' => 'revisao', 'status' => 'Pré-pronto · esperando a revisão', 'alerta' => false];
         }
-        if ($textoPronto && $emDia && $bloqueios > 0) {
+        if ($roboTerminou && $textoPronto && $emDia && $bloqueios > 0) {
             return ['etapa' => 'revisao', 'status' => ($bloqueios === 1 ? 'Falta 1 item' : "Faltam {$bloqueios} itens").' para publicar', 'alerta' => true];
         }
-        if ($textoPronto && ! $emDia) {
+        if ($roboTerminou && $textoPronto && ! $emDia) {
             return ['etapa' => 'revisao', 'status' => 'Pré-pronto · a conferir', 'alerta' => false];
         }
 
@@ -380,8 +402,12 @@ class SituacaoDasOfertas
     }
 
     /**
-     * No ar: Clássico e Premium, ou qual tipo falta. Pausado e em revisão CONTAM (a régua do Portal: "Pausado
-     * CONTA"); encerrado e inativo aparecem na lista, mas não contam.
+     * No ar: Clássico e Premium, ou qual tipo falta — contando só o ativo e o pausado ({@see CONTA_NO_AR}). O item
+     * publicado fica na etapa 6 de qualquer jeito (é da Jardinagem); o que muda é o texto e o alerta:
+     * - um tipo à venda e outro anúncio parado (em revisão…): "No ar · …" COM alerta;
+     * - nada à venda, mas algum parado: "Fora do ar · {tipos parados}", com alerta (o porquê de cada anúncio a tela
+     *   já mostra ao lado — "Clássico: Em revisão" —, por isso o texto não o repete);
+     * - todos encerrados/inativos: "Anúncios encerrados", com alerta (fora da tabela do contrato, como antes).
      *
      * @param  list<array{tipo: string, mlb: string, situacao: ?string}>  $anuncios
      * @return array{etapa: string, status: string, alerta: bool}
@@ -389,21 +415,31 @@ class SituacaoDasOfertas
     private static function noAr(array $anuncios): array
     {
         $tipos = [];
+        $parados = [];
         foreach ($anuncios as $a) {
-            if (! in_array($a['situacao'], self::FORA_DO_AR, true)) {
+            if (in_array($a['situacao'], self::CONTA_NO_AR, true)) {
                 $tipos[$a['tipo']] = true;
+            } elseif (! in_array($a['situacao'], self::ENCERRADOS, true)) {
+                $parados[$a['tipo']] = true;
             }
         }
 
-        $status = match (true) {
-            isset($tipos['Clássico'], $tipos['Premium']) => 'No ar · Clássico e Premium',
-            isset($tipos['Clássico'])                    => 'No ar · falta o Premium',
-            isset($tipos['Premium'])                     => 'No ar · falta o Clássico',
-            // Fora da tabela do contrato: todos os anúncios encerrados. Continua na etapa 6 (é da Jardinagem).
-            default                                      => 'Anúncios encerrados',
-        };
+        if ($tipos !== []) {
+            $status = match (true) {
+                isset($tipos['Clássico'], $tipos['Premium']) => 'No ar · Clássico e Premium',
+                isset($tipos['Clássico'])                    => 'No ar · falta o Premium',
+                default                                      => 'No ar · falta o Clássico',
+            };
 
-        return ['etapa' => 'lanc', 'status' => $status, 'alerta' => $tipos === []];
+            return ['etapa' => 'lanc', 'status' => $status, 'alerta' => $parados !== []];
+        }
+        if ($parados !== []) {
+            $quais = isset($parados['Clássico'], $parados['Premium']) ? 'Clássico e Premium' : array_key_first($parados);
+
+            return ['etapa' => 'lanc', 'status' => "Fora do ar · {$quais}", 'alerta' => true];
+        }
+
+        return ['etapa' => 'lanc', 'status' => 'Anúncios encerrados', 'alerta' => true];
     }
 
     // ═══ O agente ════════════════════════════════════════════════════════════
@@ -487,9 +523,27 @@ class SituacaoDasOfertas
      */
     private function imagens(PubRascunho $r): ?string
     {
+        $estados = $this->estadosDasImagens($r);
+        foreach (['erro', 'fazendo', 'fila', 'pronto', 'pulado'] as $e) {
+            if (isset($estados[$e])) {
+                return $e;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Todos os estados das imagens do rascunho (um por grupo, mais o teto do dia), sem escolher um: a pílula escolhe
+     * pela prioridade ({@see imagens()}); a etapa olha se ALGUM ficou na fila ou deu erro ({@see decidir()}).
+     *
+     * @return array<string, true>  'erro'|'fazendo'|'fila'|'pronto'|'pulado' → true
+     */
+    private function estadosDasImagens(PubRascunho $r): array
+    {
         $memoria = (array) ($r->step_state[CriativosAutomaticosService::MEMORIA] ?? []);
         if ($memoria === []) {
-            return null;
+            return [];
         }
 
         $estados = [];
@@ -515,13 +569,7 @@ class SituacaoDasOfertas
             }
         }
 
-        foreach (['erro', 'fazendo', 'fila', 'pronto', 'pulado'] as $e) {
-            if (isset($estados[$e])) {
-                return $e;
-            }
-        }
-
-        return null;
+        return $estados;
     }
 
     // ═══ Anúncios ════════════════════════════════════════════════════════════

@@ -156,13 +156,27 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
     assert.equal(situacaoDoAnuncio({ situacao: 'Pausado' }), 'atencao');
     assert.equal(situacaoDoAnuncio({ situacao: 'Em revisão' }), 'atencao');
     assert.equal(situacaoDoAnuncio({ situacao: 'Encerrado' }), 'fora');
+    // A régua do servidor (`SituacaoDasOfertas`, revisão de 31/10/2026): cinza só o que não volta a vender
+    // (encerrado, inativo); o resto parado — inclusive o "Fora do ar" genérico, que o servidor dá a qualquer
+    // situação nova do anúncio — liga o alerta lá e é âmbar aqui.
+    for (const parado of ['Fora do ar', 'Aguardando pagamento', 'Ainda não ativado', 'Pausado pelo Mercado Livre']) {
+        assert.equal(situacaoDoAnuncio({ situacao: parado }), 'atencao', parado);
+    }
+    assert.equal(situacaoDoAnuncio({ situacao: 'Inativo' }), 'fora');
+    const foraDoAr = montarGrafo({
+        ...PROPS_EQUIPE,
+        ofertas: PROPS_EQUIPE.ofertas.map((o) => (o.id === 's-10'
+            ? { ...o, status: 'Fora do ar · Clássico', alerta: true, anuncios: [{ ...o.anuncios[0], situacao: 'Fora do ar' }] }
+            : o)),
+    });
+    assert.equal(no(foraDoAr, 'm:s-10:0').cor, COR_DO_ANUNCIO.atencao, '"Fora do ar" = âmbar, como "Em revisão"');
 
     // Em `.js` nada de classe do Tailwind (não seria gerada): só rgb(var(--t-…)).
     for (const n of g.nos) assert.match(n.cor, /^rgb\(var\(--t-[a-z0-9-]+\)\)$/, n.id);
     const legenda = legendaDoMapa(false);
     assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar', 'Produto mapeado']);
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Sem onda'));
-    assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Pausado ou em revisão', 'Encerrado ou inativo']);
+    assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
 });
 
 // ─── Colunas e ondas ────────────────────────────────────────────────────────
@@ -426,7 +440,7 @@ test('MapaDaLoja desenha a faixa do fluxo, o filtro de família, as 3 colunas e 
         'Mapa da loja', 'Lista', '4 incompletos', 'Mapeamento', '2 produtos por mapear', 'esperando onda', 'Robô', '2 com pendência', 'No ar', '5 anúncios',
         'Lista de produtos', '11 produtos', 'Ofertas', '10 ofertas', 'Anúncios',
         'Ainda não há ondas', 'Todas', 'Aparadores', 'Sem família', 'APARADORES', 'SEM FAMÍLIA', 'SEM PRODUTO NA LISTA', '×6', '×4',
-        'Clique em qualquer caixa', 'Etapa (cor da caixa)', 'Produto mapeado', 'Pausado ou em revisão',
+        'Clique em qualquer caixa', 'Etapa (cor da caixa)', 'Produto mapeado', 'Pausado, em revisão ou fora do ar',
     ]) {
         assert.ok(t.includes(s), `faltou: ${s}`);
     }

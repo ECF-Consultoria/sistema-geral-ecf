@@ -24,6 +24,7 @@ use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Geracao\SugestoesService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Trilha\TrilhaDaEmpresa;
@@ -410,6 +411,56 @@ class TrilhaDaEmpresaTest extends TestCase
         $this->assertSame([['tipo' => 'Premium', 'mlb' => 'MLB8000010', 'situacao' => null]], $oferta['anuncios']);
     }
 
+    /**
+     * Revisão de 31/10/2026 (F1): "no ar" é o anúncio ativo ou pausado — a decisão do contrato (o exemplo s-10) e a
+     * régua do Portal ("Pausado CONTA"). Em revisão, aguardando pagamento, ainda não ativado e o status que o ML
+     * inventar não estão à venda: a trilha dizia "No ar · …", sem alerta, ao lado de um anúncio "Fora do ar". É o
+     * caso de logo depois de publicar (o H21 do `SituacaoDoAnuncioMl`: o ML põe em revisão depois de criar).
+     */
+    public function test_so_ativo_e_pausado_contam_como_no_ar(): void
+    {
+        $empresa = $this->empresa();
+        $n = 0;
+        $publicado = function (string $nome, array $anuncios) use ($empresa, &$n): array {
+            $p = $this->produto($empresa, $nome, 'VF'.(++$n));
+            $r = $this->rascunho($this->pubDoGrupo($empresa, $p), PubRascunho::PUBLISHED);
+            foreach ($anuncios as [$tipo, $statusNoMl]) {
+                $this->publicado($r, $tipo, 'MLB61000'.(++$n), $statusNoMl !== null ? ['status' => $statusNoMl] : null);
+            }
+
+            return $p;
+        };
+
+        $emRevisao = $publicado('Vaso Em Revisao', [['gold_special', 'under_review'], ['gold_pro', 'under_review']]);
+        $desconhecido = $publicado('Vaso Status Novo', [['gold_special', 'status_desconhecido']]);
+        $metade = $publicado('Vaso Metade', [['gold_special', null], ['gold_pro', 'under_review']]);
+        $aguardando = $publicado('Vaso Aguardando', [['gold_special', 'payment_required'], ['gold_pro', 'not_yet_active']]);
+        $encerradoERevisao = $publicado('Vaso Encerrado E Revisao', [['gold_special', 'closed'], ['gold_pro', 'under_review']]);
+        $pausado = $publicado('Vaso Pausado', [['gold_special', 'paused']]);
+        $encerrado = $publicado('Vaso Encerrado', [['gold_special', 'closed']]);
+
+        $trilha = $this->trilha($empresa);
+        $situacao = function (array $p) use ($trilha): array {
+            $o = $this->oferta($trilha, "s-{$p['produto']->id}");
+
+            return [$o['etapa'], $o['status'], $o['alerta'], array_column($o['anuncios'], 'situacao')];
+        };
+
+        // Nada à venda, mas nada encerrado: continua na etapa 6 (já publicado), com o alerta e sem dizer "No ar".
+        $this->assertSame(['lanc', 'Fora do ar · Clássico e Premium', true, ['Em revisão', 'Em revisão']], $situacao($emRevisao));
+        $this->assertSame(['lanc', 'Fora do ar · Clássico', true, ['Fora do ar']], $situacao($desconhecido));
+        $this->assertSame(['lanc', 'Fora do ar · Clássico e Premium', true, ['Aguardando pagamento', 'Ainda não ativado']], $situacao($aguardando));
+        $this->assertSame(['lanc', 'Fora do ar · Premium', true, ['Encerrado', 'Em revisão']], $situacao($encerradoERevisao));
+        // Um tipo à venda e o outro parado: "no ar", com o alerta.
+        $this->assertSame(['lanc', 'No ar · falta o Premium', true, [null, 'Em revisão']], $situacao($metade));
+        // O pausado conta (a decisão do contrato) e o encerrado segue como era.
+        $this->assertSame(['lanc', 'No ar · falta o Premium', false, ['Pausado']], $situacao($pausado));
+        $this->assertSame(['lanc', 'Anúncios encerrados', true, ['Encerrado']], $situacao($encerrado));
+        foreach ([$emRevisao, $desconhecido, $aguardando, $encerradoERevisao] as $p) {
+            $this->assertStringNotContainsString('No ar', $this->oferta($trilha, "s-{$p['produto']->id}")['status']);
+        }
+    }
+
     // ═══ Preparação automática e revisão ═════════════════════════════════════
 
     public function test_o_agente_trabalhando_poe_a_oferta_no_robo(): void
@@ -492,6 +543,73 @@ class TrilhaDaEmpresaTest extends TestCase
         // Fora do robô, etapa do texto sem registro não diz nada.
         $this->assertSame(['titulo' => null, 'modelo' => null, 'descricao' => null, 'imagens' => null], $this->oferta($trilha, "s-{$prePronto['produto']->id}")['preparo']);
         $this->assertSame(['titulo' => 'pronto', 'modelo' => 'pulado', 'descricao' => 'pronto', 'imagens' => null], $this->oferta($trilha, "s-{$faltamDois['produto']->id}")['preparo']);
+    }
+
+    /**
+     * Revisão de 31/10/2026 (D1): o resumo do editor não cobre as imagens automáticas — com as fotos do cliente ele
+     * diz 0 bloqueio. Quando as imagens não vieram, a vitrine do Publicador NÃO diz "Pronto" ("Imagens amanhã" /
+     * "Imagens não geradas", `VitrineDeProdutosService::naoEstaPronto`), e a etapa 4 só fecha com elas
+     * ("Título, descrição e imagens prontos"). A trilha dizia "Pré-pronto", sem alerta.
+     */
+    public function test_imagens_que_nao_vieram_seguram_o_pre_pronto(): void
+    {
+        $empresa = $this->empresa();
+        $texto = ['hash' => 'h', 'etapas' => ['titulo' => $this->etapa('ok', 9), 'modelo' => $this->etapa('ok', 8), 'descricao' => $this->etapa('ok', 7)]];
+        $kit = fn (string $status) => MlAnuncioCriativoKit::create(['token' => Str::random(32), 'status' => $status]);
+        $grupo = fn (MlAnuncioCriativoKit $k, int $tentativas, array $mais = []) => ['grupos' => ['geral' => [
+            'hash' => 'x', 'kit_id' => $k->id, 'em' => now()->subHours(2)->toIso8601String(), 'tentativas' => $tentativas,
+        ] + $mais]];
+        $teto = ['adiado' => ['dia' => now()->toDateString(), 'motivo' => 'limite']];
+        $estado = fn (array $criativos, int $bloqueios = 0, ?array $preparo = null) => [
+            'ia_preparo' => $preparo ?? $texto, 'resumo' => $this->resumo($bloqueios, 1), 'criativos_auto' => $criativos,
+        ];
+
+        // O teto do dia barrou as imagens: o robô volta amanhã.
+        $adiado = $this->comRascunho($empresa, 'Vaso Teto', 'VI1', $estado($teto));
+        // O kit falhou por erro técnico e ainda cabe a 2ª tentativa, amanhã cedo.
+        $novaTentativa = $this->comRascunho($empresa, 'Vaso Nova Tentativa', 'VI2', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 1)));
+        // As duas tentativas falharam: o robô não tenta mais sozinho.
+        $falhou = $this->comRascunho($empresa, 'Vaso Falhou', 'VI3', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 2)));
+        // Teto do dia com o resumo de outra revisão: o "Pré-pronto · a conferir" também não vale.
+        $adiadoVencido = $this->comRascunho($empresa, 'Vaso Teto Vencido', 'VI4', $estado($teto), 2);
+        // Teto do dia com itens faltando: segue no robô, com a conta do que falta.
+        $adiadoComFalta = $this->comRascunho($empresa, 'Vaso Teto Com Falta', 'VI5', $estado($teto, 2));
+        // Texto e imagens pararam juntos: um aviso só, na ordem do preparo.
+        $tudoParou = $this->comRascunho($empresa, 'Vaso Tudo Parou', 'VI6', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 2), 0,
+            ['hash' => 'h', 'etapas' => ['titulo' => $this->etapa('ok', 9), 'modelo' => $this->etapa('ok', 8), 'descricao' => $this->etapa('erro', 7)]]));
+        // Controle: as imagens entraram no anúncio — o pré-pronto vale.
+        $aplicadas = $this->comRascunho($empresa, 'Vaso Aplicadas', 'VI7', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_PRONTO), 1,
+            ['aplicado_em' => now()->toIso8601String(), 'aplicadas' => 2])));
+        // Dois grupos (cores): o teto do dia barrou um e o kit do outro anda há uma hora. A pílula diz "fazendo" (vem
+        // antes da fila), mas a etapa não fecha — o Publicador diz "Imagens amanhã".
+        $kitAndando = $kit(MlAnuncioCriativoKit::STATUS_GERANDO);
+        $kitAndando->forceFill(['created_at' => now()->subHour()])->save();
+        $duasCores = $this->comRascunho($empresa, 'Vaso Duas Cores', 'VI8', $estado($teto + $grupo($kitAndando, 1)));
+
+        $trilha = $this->trilha($empresa);
+        $situacao = function (array $p) use ($trilha): array {
+            $o = $this->oferta($trilha, "s-{$p['produto']->id}");
+
+            return [$o['etapa'], $o['status'], $o['alerta'], $o['preparo']['imagens']];
+        };
+
+        $this->assertSame(['robo', 'Preparando', false, 'fila'], $situacao($adiado));
+        $this->assertSame(['robo', 'Preparando', false, 'fila'], $situacao($novaTentativa));
+        $this->assertSame(['robo', 'O agente parou: imagens', true, 'erro'], $situacao($falhou));
+        $this->assertSame(['robo', 'Preparando', false, 'fila'], $situacao($adiadoVencido));
+        $this->assertSame(['robo', 'Preparando · faltam 2 itens', false, 'fila'], $situacao($adiadoComFalta));
+        $this->assertSame(['robo', 'O agente parou: descrição, imagens', true, 'erro'], $situacao($tudoParou));
+        $this->assertSame(['revisao', 'Pré-pronto · esperando a revisão', false, 'pronto'], $situacao($aplicadas));
+        $this->assertSame(['robo', 'Preparando', false, 'fazendo'], $situacao($duasCores));
+        $this->assertSame(['titulo' => 'pronto', 'modelo' => 'pronto', 'descricao' => 'pronto', 'imagens' => 'fila'],
+            $this->oferta($trilha, "s-{$adiado['produto']->id}")['preparo']);
+
+        // A mesma régua do Publicador: é o que a vitrine dele lê para não dizer "Pronto".
+        $this->assertSame('adiado', CriativosAutomaticosService::situacaoDasImagens($adiado['rascunho']));
+        $this->assertSame('nova_tentativa', CriativosAutomaticosService::situacaoDasImagens($novaTentativa['rascunho']));
+        $this->assertSame('falhou', CriativosAutomaticosService::situacaoDasImagens($falhou['rascunho']));
+        $this->assertSame('adiado', CriativosAutomaticosService::situacaoDasImagens($duasCores['rascunho']));
+        $this->assertNull(CriativosAutomaticosService::situacaoDasImagens($aplicadas['rascunho']));
     }
 
     // ═══ Ordem, consultas e nada gravado ═════════════════════════════════════
