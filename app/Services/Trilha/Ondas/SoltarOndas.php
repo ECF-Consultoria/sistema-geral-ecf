@@ -126,9 +126,10 @@ class SoltarOndas
         foreach ($todas as $l) {
             $chave = $l->chave();
             $item = $itens[$chave] ?? null;
-            if ($item === null || self::comboRecriado($l, $item)) {
-                // O combo que deixou de existir (todas as cores apagadas) ou que foi apagado e criado de novo depois de
-                // a linha nascer, em QUALQUER onda: sem isso um Combo N aceito de novo herdaria a onda antiga.
+            if ($item === null) {
+                // O combo que deixou de existir (todas as cores apagadas), em QUALQUER onda: sem isso um Combo N
+                // aceito de novo herdaria a onda antiga. Quem apaga pelo Eloquent já limpa na hora
+                // (`TrilhaComboExcluidoObserver`); aqui é a rede de segurança.
                 if (str_starts_with($chave, 'c-')) {
                     $orfas[] = $l;
                 }
@@ -161,7 +162,10 @@ class SoltarOndas
                 // Repescagem: UMA vez (com o agente ligado, uma por dia), de outro dia, dentro da janela (contada da
                 // entrada do item na onda), e só para quem ainda não tem NADA do texto — o que começou e falhou não
                 // volta sozinho.
-                if (($l->repescado_em !== null && ! $comAgente) || ! $item['sem_texto'] || ! $naJanela
+                // A repescagem diária do agente não vale para o Combo: o pedido dele não passa pelo agente (o Kit N nasce
+                // da Simples pronta) — repescá-lo todo dia só sincronizaria o produto à toa.
+                $umaVezSo = ! $comAgente || str_starts_with($chave, 'c-');
+                if (($l->repescado_em !== null && $umaVezSo) || ! $item['sem_texto'] || ! $naJanela
                     || $l->pedido_em->copy()->setTimezone(TrilhaOnda::FUSO)->toDateString() >= $hoje) {
                     continue;
                 }
@@ -235,31 +239,6 @@ class SoltarOndas
         }
 
         return $resumo;
-    }
-
-    /**
-     * O Combo N foi apagado e criado de novo DEPOIS de a linha nascer: todas as ofertas dele são mais novas que ela.
-     * A cor nova de um combo que já existia (alguma oferta mais velha que a linha) continua herdando a onda.
-     */
-    public static function comboRecriado(TrilhaOndaItem $linha, array $item, ?array $criadasEm = null): bool
-    {
-        if (! str_starts_with($linha->chave(), 'c-') || $linha->created_at === null || ($item['oferta_ids'] ?? []) === []) {
-            return false;
-        }
-        if ($criadasEm === null) {
-            $maisVelha = \App\Models\EstruturaOferta::query()->whereIn('id', $item['oferta_ids'])->min('created_at');
-        } else {
-            // As datas já lidas de uma vez por quem pergunta por vários combos ({@see OndasDaEmpresa::semCombosRecriados()}).
-            $maisVelha = null;
-            foreach ($item['oferta_ids'] as $id) {
-                $d = $criadasEm[(int) $id] ?? null;
-                if ($d !== null && ($maisVelha === null || Carbon::parse($d)->lt($maisVelha))) {
-                    $maisVelha = Carbon::parse($d);
-                }
-            }
-        }
-
-        return $maisVelha !== null && Carbon::parse($maisVelha)->gt($linha->created_at);
     }
 
     /**

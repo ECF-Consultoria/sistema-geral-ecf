@@ -93,8 +93,6 @@ class TrilhaDaEmpresa
 
         $situacao = SituacaoDasOfertas::daEmpresa($empresa, array_map('intval', $produtos->modelKeys()));
         $grupos = OfertasDaTrilha::agrupar($produtos, $ofertas, $componentes);
-        // A linha de Combo que não é a do combo de hoje (apagado, ou apagado e criado de novo) não conta até a limpeza.
-        $ondas = $ondas?->semCombosRecriados(array_column($grupos['combos'], null, 'id'));
 
         // ─── Produtos ───
         $saidaProdutos = [];

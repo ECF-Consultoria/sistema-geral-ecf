@@ -156,7 +156,7 @@ class OndasDaTrilha
      * Põe os itens na onda (ou move de uma onda que ainda não começou), ou tira (`$ondaId` null).
      *
      * @param  list<string>  $chaves  `s-12`, `c-12-2`, `o-55`
-     * @return array{mudados: list<string>, avisos: list<string>, onda: ?TrilhaOnda}
+     * @return array{mudados: list<string>, avisos: list<string>, onda: ?TrilhaOnda, sem_onda: bool}
      */
     public function planejar(Company $empresa, User $quem, array $chaves, ?int $ondaId): array
     {
@@ -203,7 +203,7 @@ class OndasDaTrilha
             $mudados = array_values(array_unique($mudados));
             self::conferirCombos($plano, $itens, $mudados);
             if ($mudados === []) {
-                return ['mudados' => [], 'avisos' => $avisos, 'onda' => $destino];
+                return ['mudados' => [], 'avisos' => $avisos, 'onda' => $destino, 'sem_onda' => false];
             }
 
             $de = [];
@@ -230,7 +230,12 @@ class OndasDaTrilha
                     : count($mudados).' oferta(s) tiradas da onda',
                 ['via' => 'trilha', 'onda_id' => $destino?->id, 'itens' => $mudados, 'de' => $de]);
 
-            return ['mudados' => $mudados, 'avisos' => $avisos, 'onda' => $destino];
+            // Tirar: "volta para Sem onda" só é verdade para quem ainda espera onda (tem produto e não andou); a que
+            // andou e a sem produto saem com o status delas (revisão de 02/11/2026).
+            $semOnda = $destino === null
+                && array_filter($mudados, fn (string $c) => ($itens[$c]['andou'] ?? true) || ($itens[$c]['sem_produto'] ?? true)) === [];
+
+            return ['mudados' => $mudados, 'avisos' => $avisos, 'onda' => $destino, 'sem_onda' => $semOnda];
         });
 
         if ($resultado['mudados'] !== [] && $resultado['onda'] !== null && $resultado['onda']->comecou()) {
@@ -255,9 +260,11 @@ class OndasDaTrilha
     }
 
     /**
-     * Apaga as linhas de Combo cujo combo deixou de existir (todas as cores apagadas no Portal), em qualquer onda —
-     * senão um Combo N aceito de novo herdaria a onda antiga. Também roda na soltura e antes do "Concluir
-     * mapeamento".
+     * Apaga as linhas de Combo cujo combo deixou de existir (todas as cores apagadas), em qualquer onda — senão um
+     * Combo N aceito de novo herdaria a onda antiga. Quem apaga a última cor já chama isto na hora
+     * (`TrilhaComboExcluidoObserver`); a soltura, o planejar, editar/apagar onda e o "Concluir mapeamento" chamam de
+     * novo, como rede de segurança. Só a órfã de verdade: o combo que ganhou uma cor e perdeu outra nunca deixou de
+     * existir e fica na onda dele.
      *
      * @param  array<string, array>  $itens  {@see TrilhaDaEmpresa::itens()}
      */
@@ -268,7 +275,7 @@ class OndasDaTrilha
             ->whereNotNull('produto_id')
             ->where('quantidade', '>=', 2)
             ->get()
-            ->reject(fn (TrilhaOndaItem $l) => isset($itens[$l->chave()]) && ! SoltarOndas::comboRecriado($l, $itens[$l->chave()]));
+            ->reject(fn (TrilhaOndaItem $l) => isset($itens[$l->chave()]));
         foreach ($orfas as $l) {
             $l->delete();
         }
@@ -352,13 +359,13 @@ class OndasDaTrilha
             $comboPreso = $onda['dia'] <= $hoje;
             if ($daSimples === null) {
                 $problemas[] = $comboPreso
-                    ? "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, que já começou: a simples do produto não pode ficar sem onda. Ponha a simples na {$onda['nome']} ou numa onda que também já começou."
+                    ? "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, que já começou: a simples do produto não pode ficar sem onda. Ponha a simples na {$onda['nome']} (ou numa onda que começou até ".self::diaCurto($onda['dia']).').'
                     : "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, mas a simples do produto ficaria sem onda. Tire o combo antes ou ponha a simples numa onda.";
             } elseif ($daSimples['dia'] > $onda['dia']) {
                 $problemas[] = "A simples de {$itens[$simples]['nome']} começaria em ".self::diaCurto($daSimples['dia'])
                     .", depois de \"{$itens[$chave]['nome']}\" ({$onda['nome']}, ".self::diaCurto($onda['dia']).'): o combo nasce da simples. '
                     .($comboPreso
-                        ? "Ponha a simples na {$onda['nome']} ou numa onda que também já começou."
+                        ? "Ponha a simples na {$onda['nome']} (ou numa onda que começou até ".self::diaCurto($onda['dia']).').'
                         : 'Ponha o combo numa onda a partir dessa data ou adiante a simples.');
             }
         }

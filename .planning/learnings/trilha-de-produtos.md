@@ -575,10 +575,17 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
     preparar ("todos" vence); o preparo marca `comecou` ao passar da espera de
     editor, e o que começou não entra mais na soma
     (`PreparoIaAgenda::juntarPendentes`).
-  - *Combo recriado herdava a onda até a limpeza*: a trava
-    (`PortaoDaOnda::ondaDoItem`) e a tela (`OndasDaEmpresa::semCombosRecriados`,
-    UMA consulta para todos os combos — a tela monta com número fixo de
-    consultas) já ignoram a linha velha; editar e apagar onda limpam antes.
+  - *Combo recriado herdava a onda até a limpeza*: NÃO se deduz pela idade.
+    A 1ª tentativa (`comboRecriado`: todas as ofertas do combo mais novas que
+    a linha da onda) errava — o combo que ganhou uma cor nova e depois perdeu
+    a original nunca deixou de existir, mas parecia "recriado" e perdia a
+    onda, até a que já tinha começado. O certo é o EVENTO: o
+    `TrilhaComboExcluidoObserver` (`#[ObservedBy]` em `EstruturaOferta`,
+    evento `deleted`) limpa a linha `c-` no ato em que a última cor do combo
+    sai, na mesma transação; a soltura, o planejar, editar/apagar onda e o
+    Concluir do mapeamento limpam só a órfã de verdade (item que não existe
+    mais), como rede de segurança para o que apaga por fora do Eloquent.
+    Teste que precisa de linha órfã apaga com `DB::table(...)->delete()`.
   - *Kit que ficou sem produto dentro de onda não saía*: tirar vale para ele.
   - Com o agente da Aprovação ligado, a recusa dele (limite do dia, teto da
     fila) gastava a única repescagem; a varredura dele pula a empresa da

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import { ETAPA_POR_CHAVE, chaveDeMapear, chaveDoProduto, ofertasDoProduto } from '@/lib/trilha';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
@@ -276,7 +276,7 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
     };
 }
 
-function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejamento }) {
+function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejamento, manterCaixa = false }) {
     const cliente = visao === 'cliente';
     const anuncios = oferta.anuncios ?? [];
     const componentes = oferta.componentes ?? [];
@@ -284,7 +284,7 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
     // A oferta sem produto na Lista fica fora das ondas nesta entrega.
     // A caixa da onda: a oferta das etapas 3 e 4 com produto na Lista e, em qualquer etapa, a que está numa onda
     // (a que já andou ou não tem produto numa onda por começar só pode sair dela — e é ali que sai).
-    const comOnda = trabalho && (oferta.onda_id != null || (ETAPAS_DA_ONDA.includes(oferta.etapa) && !oferta.sem_produto));
+    const comOnda = trabalho && (manterCaixa || oferta.onda_id != null || (ETAPAS_DA_ONDA.includes(oferta.etapa) && !oferta.sem_produto));
 
     const corpo = (
         <>
@@ -558,9 +558,21 @@ export function MioloDaGaveta({ sobrelinha, titulo, sub = null, rodape = null, o
  * }} props  `planejamento`: o que a caixa da onda precisa para gravar (`CaixaDaOnda`).
  */
 export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, planejamento = null }) {
+    // Depois de uma gravação na caixa da onda ela fica na tela, mesmo que a oferta deixe de ter onda (o "Tirar da
+    // onda" da que já andou ou não tem produto): o resultado continua à vista e o foco tem onde ficar. A chave do
+    // painel troca a cada item, e isto começa do zero.
+    const [caixaGravou, setCaixaGravou] = useState(false);
     const conteudo = entrada.tipo === 'p'
         ? conteudoDoProduto({ produto: entrada.item, dados, visao, links, onAbrir, trabalho, podeEditar })
-        : conteudoDaOferta({ oferta: entrada.item, dados, visao, onAbrir, trabalho, planejamento: { ...(planejamento ?? {}), podeEditar } });
+        : conteudoDaOferta({
+            oferta: entrada.item,
+            dados,
+            visao,
+            onAbrir,
+            trabalho,
+            manterCaixa: caixaGravou,
+            planejamento: { ...(planejamento ?? {}), podeEditar, onGravou: () => setCaixaGravou(true) },
+        });
 
     return (
         <MioloDaGaveta sobrelinha={conteudo.sobrelinha} titulo={conteudo.titulo} sub={conteudo.sub} rodape={conteudo.rodape}>

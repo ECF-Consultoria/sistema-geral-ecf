@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
 use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use App\Support\Trilha\TrilhaDeTrabalho;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -122,10 +123,11 @@ class PreparoIaAgenda
                 $marca = (string) Str::uuid();
                 $soItens = $soItensPorProduto !== null ? array_values($soItensPorProduto[$id] ?? []) : null;
                 if ($trilha) {
-                    $soItens = self::juntarPendentes($id, $marca, $soItens);
+                    $soItens = self::marcarComPendentes($id, $marca, $soItens);
+                } else {
+                    // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
+                    Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
                 }
-                // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
-                Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
                 PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca, 0, $soItens)->delay(now()->addSeconds($atraso));
                 // 3. "A IA vem aí" para a vitrine e o editor aberto (`IaTrabalhando::AGENDADA`): a espera + 1 minuto,
                 //    o bastante para a 1ª etapa já estar `rodando` quando a marca vence.
@@ -133,6 +135,30 @@ class PreparoIaAgenda
             }
         } catch (\Throwable $e) {
             Log::warning("[Publicador] Preparo pela IA: não foi possível agendar após o save no Portal (empresa {$companyId}): ".$e->getMessage());
+        }
+    }
+
+    /**
+     * Trilha de trabalho: a soma com o que estava pendente e a marca nova, numa trava por produto — o save do cliente e
+     * a soltura da onda no mesmo instante não podem gravar um por cima do outro (o "todos" do save se perderia). Sem a
+     * trava em 5 s, segue sem ela: o pior caso é o de antes da soma.
+     *
+     * @param  list<string>|null  $pedido
+     * @return list<string>|null
+     */
+    private static function marcarComPendentes(int $estruturaProdutoId, string $marca, ?array $pedido): ?array
+    {
+        $marcar = function () use ($estruturaProdutoId, $marca, $pedido): ?array {
+            $juntos = self::juntarPendentes($estruturaProdutoId, $marca, $pedido);
+            Cache::put(self::chaveDaMarca($estruturaProdutoId), $marca, now()->addDay());
+
+            return $juntos;
+        };
+
+        try {
+            return Cache::lock("publicador:preparo:agenda:{$estruturaProdutoId}", 10)->block(5, $marcar);
+        } catch (LockTimeoutException) {
+            return $marcar();
         }
     }
 

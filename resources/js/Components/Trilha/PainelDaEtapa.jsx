@@ -54,13 +54,15 @@ const VAZIO = {
 
 /**
  * O texto da etapa sem linhas. Com a trilha de trabalho, o Planejamento vazio diz o que o dado mostra: "todas já
- * estão numa onda" só quando alguma está; sem nenhuma oferta em onda, não há o que planejar.
+ * estão numa onda" só quando TODA oferta com produto tem onda (e há ao menos uma numa onda) — a que andou sem onda
+ * não está em onda nenhuma. Em qualquer outro caso, o neutro: não há o que planejar.
  */
 function textoDeVazio(chave, trabalho, dados) {
     if (trabalho && chave === 'plano') {
-        return (dados?.ofertas ?? []).some((o) => o.onda_id != null)
-            ? 'Todas as ofertas já estão numa onda.'
-            : 'Nada para planejar agora: nenhuma oferta esperando onda.';
+        const ofertas = dados?.ofertas ?? [];
+        const todasEmOnda = ofertas.some((o) => o.onda_id != null) && ofertas.every((o) => o.onda_id != null || o.sem_produto);
+
+        return todasEmOnda ? 'Todas as ofertas já estão numa onda.' : 'Nada para planejar agora: nenhuma oferta esperando onda.';
     }
 
     return VAZIO[chave] ?? 'Nada nesta etapa agora.';

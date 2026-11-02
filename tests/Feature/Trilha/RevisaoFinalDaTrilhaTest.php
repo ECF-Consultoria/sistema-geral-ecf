@@ -248,16 +248,17 @@ class RevisaoFinalDaTrilhaTest extends TestCase
         $combo->delete();
         $this->ofertaComposta($empresa, EstruturaOferta::FASE_COMBO, 'VA-1-CB2', 'Combo 2 Vaso Alfa', [[$a['simples'][0], 2]]);
 
-        // Antes da passada (a linha velha segue no banco): a trava segura o combo novo e a tela já o mostra Sem onda.
-        $this->assertSame(1, TrilhaOndaItem::query()->where('quantidade', 2)->count(), 'a linha velha só sai na passada');
+        // A linha velha saiu NA HORA da exclusão (TrilhaComboExcluidoObserver), antes de qualquer passada: a trava segura
+        // o combo novo e a tela já o mostra Sem onda.
+        $this->assertSame(0, TrilhaOndaItem::query()->where('quantidade', 2)->count(), 'a linha saiu com a última cor');
         $this->assertTrue($segura(), 'o combo recriado herdou a onda que já começou');
         $naTela = $this->itemDaTrilha($this->trilha($empresa), $c);
         $this->assertSame([null, 'plano', 'Sem onda · falta escolher a data', true],
             [$naTela['onda_id'], $naTela['etapa'], $naTela['status'], $naTela['planejavel']]);
 
-        // A passada apaga a linha; a trava e a tela seguem iguais.
+        // A passada não tem o que limpar; a trava e a tela seguem iguais.
         $this->agora('2026-11-05 10:07:00');
-        $this->assertSame([$c], $this->soltura()->rodar()[0]['orfaos']);
+        $this->assertSame([], $this->soltura()->rodar()[0]['orfaos']);
         $this->assertTrue($segura());
         $this->assertNull($this->itemDaTrilha($this->trilha($empresa), $c)['onda_id']);
     }
@@ -288,9 +289,9 @@ class RevisaoFinalDaTrilhaTest extends TestCase
         $this->assertSame([['quantidade' => 2, 'motivo' => 'espera a onda da trilha']], $r['pulados']);
         $this->assertSame(0, PubProduto::query()->where('produto_base_id', $grupo->id)->count());
 
-        // Depois da passada (a linha sai), também não.
+        // Depois da passada, também não (a linha já tinha saído com a última cor apagada).
         $this->agora('2026-11-05 10:07:00');
-        $this->assertSame(["c-{$this->produtoP->id}-2"], $this->soltura()->rodar()[0]['orfaos']);
+        $this->assertSame([], $this->soltura()->rodar()[0]['orfaos']);
         $this->assertSame([], app(CombosDoPlanejamentoService::class)->criarOsQueFaltam($grupo->fresh())['criados']);
     }
 

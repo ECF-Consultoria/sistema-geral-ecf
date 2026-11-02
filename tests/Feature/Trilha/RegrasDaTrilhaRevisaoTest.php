@@ -237,16 +237,18 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $this->ondas()->planejar($this->empresa, $this->dev, [$c], $onda->id);
         $this->assertSame(2, TrilhaOndaItem::count(), 'o combo e a Simples puxada');
 
-        // O Portal apaga o Combo 2 (a única cor) e, minutos depois, cria de novo — sem passada no meio.
+        // O Portal apaga o Combo 2 (a única cor): a linha da onda sai NA HORA (TrilhaComboExcluidoObserver), sem esperar
+        // a passada. Minutos depois o combo é criado de novo.
         $combo = EstruturaOferta::query()->where('company_id', $this->empresa->id)->where('fase', EstruturaOferta::FASE_COMBO)->firstOrFail();
         $portal->excluir($combo, $ator);
+        $this->assertSame(["s-{$a['produto']->id}"], TrilhaOndaItem::all()->map->chave()->all(), 'a linha do combo saiu na exclusão');
         $this->agora('2026-11-05 10:05:00');
         $portal->criarCombos($a['simples'][0]->fresh(), [2], null, null, $ator);
 
         $this->agora('2026-11-05 10:07:00');
         $resumo = $this->soltura()->rodar()[0];
 
-        $this->assertSame([$c], $resumo['orfaos']);
+        $this->assertSame([], $resumo['orfaos'], 'nada sobrou para a soltura limpar');
         $this->assertNull($this->itemDaTrilha($this->trilha(), $c)['onda_id'], 'o combo novo nasce Sem onda');
         $this->assertSame(["s-{$a['produto']->id}"], TrilhaOndaItem::all()->map->chave()->all(), 'a Simples segue na onda');
     }
@@ -266,7 +268,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $this->ondas()->planejar($this->empresa, $this->dev, ["s-{$b['produto']->id}"], $onda->id);
         $this->assertSame(1, TrilhaOndaItem::where('quantidade', 2)->count(), 'a cor nova de um combo que já existia herda a onda');
 
-        // 10:10: as duas cores apagadas e criadas de novo — é outro combo: o planejar seguinte tira a linha.
+        // 10:10: as duas cores apagadas e criadas de novo — é outro combo: a última cor apagada tira a linha na hora.
         $this->agora('2026-11-05 10:10:00');
         foreach ([$azul, $verde] as $o) {
             $o->componentes()->delete();

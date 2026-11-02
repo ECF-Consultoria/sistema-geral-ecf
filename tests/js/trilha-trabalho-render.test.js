@@ -185,9 +185,18 @@ test('etapa 3 com a trilha de trabalho: os cartões das ondas pela data, o "+ No
     assert.ok(linkDoPortal && !linkDoPortal.includes('bg-trilha-navy'), linkDoPortal);
     for (const proibido of VOCABULARIO_PROIBIDO) assert.equal(t.match(proibido), null, `etapa 3: ${proibido}`);
 
-    // Sem nada para planejar: "todas já estão numa onda" só quando alguma está.
-    const semNada = texto(desenhar({ ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.filter((o) => o.etapa !== 'plano') }, '?etapa=plano'));
-    assert.ok(semNada.includes('Todas as ofertas já estão numa onda.'));
+    // Sem nada para planejar: "todas já estão numa onda" só quando TODA oferta com produto tem onda. A mesa (s-1)
+    // andou sem onda: não está em onda nenhuma — sai o neutro.
+    const semPlano = PROPS_TRABALHO.ofertas.filter((o) => o.etapa !== 'plano');
+    assert.ok(semPlano.some((o) => o.id === 's-1' && o.onda_id == null && !o.sem_produto), 'a s-1 andou sem onda');
+    const semNada = texto(desenhar({ ...PROPS_TRABALHO, ofertas: semPlano }, '?etapa=plano'));
+    assert.ok(semNada.includes('Nada para planejar agora: nenhuma oferta esperando onda.') && !semNada.includes('Todas as ofertas já estão numa onda.'), semNada);
+    // Toda oferta com produto numa onda (a sem produto, fora delas, não conta): aí sim, "todas".
+    const todasEmOnda = PROPS_TRABALHO.ofertas.filter((o) => o.onda_id != null || (o.sem_produto && o.etapa !== 'plano'));
+    assert.ok(todasEmOnda.some((o) => o.sem_produto) && todasEmOnda.every((o) => o.etapa !== 'plano'));
+    assert.ok(texto(desenhar({ ...PROPS_TRABALHO, ofertas: todasEmOnda }, '?etapa=plano')).includes('Todas as ofertas já estão numa onda.'));
+    // Sem oferta nenhuma, "todas" não vale.
+    assert.ok(texto(desenhar({ ...PROPS_TRABALHO, ofertas: [] }, '?etapa=plano')).includes('Nada para planejar agora: nenhuma oferta esperando onda.'));
     const nenhumaEmOnda = PROPS_TRABALHO.ofertas.filter((o) => o.etapa !== 'plano').map((o) => ({ ...o, onda_id: null }));
     const semOndaNenhuma = texto(desenhar({ ...PROPS_TRABALHO, ofertas: nenhumaEmOnda }, '?etapa=plano'));
     assert.ok(semOndaNenhuma.includes('Nada para planejar agora: nenhuma oferta esperando onda.') && !semOndaNenhuma.includes('Todas as ofertas já estão numa onda.'));
@@ -477,6 +486,13 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
     const semProduto = painelLateral(desenhar(avulsaNaOnda, '?abrir=o:o-41'), 'o:o-41');
     assert.ok(texto(semProduto).includes('Na Onda 2') && !texto(semProduto).includes('começa em 05/11'));
     assert.ok(texto(semProduto).includes('Sem produto na Lista: pode só sair da onda.') && semProduto.includes('data-acao="tirar-da-onda"'));
+    // Tirada da onda, a caixa fica no painel (o resultado segue à vista): a sem produto está fora das ondas — nada de
+    // "Sem onda", nem de botão para pôr de volta.
+    const CaixaDaOnda = M.caixa.default;
+    const tirada = { ...PROPS_TRABALHO.ofertas.find((o) => o.id === 'o-41'), onda_id: null, planejavel: false, pode_tirar: false };
+    const fora = renderToStaticMarkup(h(CaixaDaOnda, { oferta: tirada, dados: PROPS_TRABALHO, visao: 'equipe', podeEditar: true, escrita: PROPS_TRABALHO.escrita }));
+    assert.match(fora, /data-estado-da-onda="fora"[^>]*>Fora das ondas: sem produto na Lista\.</);
+    assert.equal(fora.match(/data-seletor-de-onda|data-acao="/), null);
     // Sem onda e sem `planejavel` (andou antes das ondas): não entra.
     const semOndaAndou = { ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'o-31' ? { ...o, planejavel: false } : o)) };
     const kitAndou = painelLateral(desenhar(semOndaAndou, '?abrir=o:o-31'), 'o:o-31');

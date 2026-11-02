@@ -139,6 +139,20 @@ class OndasDaTrilhaTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_tirar_da_onda_a_oferta_que_ja_andou_nao_promete_sem_onda(): void
+    {
+        $a = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA-1');
+        $onda = $this->onda($this->empresa, '2026-11-20', 'Onda Futura');
+        $s = "s-{$a['produto']->id}";
+        $this->itemNaOnda($onda, $s);
+        // Alguém preparou à mão antes da data: o rascunho saiu de DRAFT, a Simples "andou" — sai da onda com o status dela.
+        $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $a), PubRascunho::VALIDATED);
+
+        $this->putJson($this->url('planejamento'), ['itens' => [$s], 'onda_id' => null])
+            ->assertOk()->assertJsonPath('mensagem', 'Tirada da onda.');
+        $this->assertSame(0, TrilhaOndaItem::count());
+    }
+
     public function test_por_numa_onda_que_ja_comecou_chama_o_robo_e_ela_nao_sai_mais(): void
     {
         $a = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA-1');

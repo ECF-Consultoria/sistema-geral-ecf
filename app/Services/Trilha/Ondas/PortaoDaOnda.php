@@ -97,9 +97,7 @@ class PortaoDaOnda
             }
 
             $item = ItemDaTrilha::doPub($pub);
-            $onda = $item !== null
-                ? $this->ondaDoItem((int) $pub->company_id, $item['chave'], $this->itens[(int) $pub->company_id][$item['chave']] ?? null)
-                : null;
+            $onda = $item !== null ? $this->ondaDoItem((int) $pub->company_id, $item['chave']) : null;
             if ($onda === null) {
                 return 'Esta oferta ainda não está numa onda da trilha.';
             }
@@ -138,17 +136,12 @@ class PortaoDaOnda
             return false;
         }
 
-        $onda = $this->ondaDoItem($empresaId, $chave, $item);
+        $onda = $this->ondaDoItem($empresaId, $chave);
 
         return $onda === null || ! $onda->comecou();
     }
 
-    /**
-     * @param  ?array  $item  o item da trilha ({@see TrilhaDaEmpresa::itens()}): com ele, a linha de um Combo apagado e
-     *                        criado de novo não vale — o combo novo não herda a onda antiga (nem o Kit N nasce por ela)
-     *                        enquanto a soltura não apaga a linha (revisão de 02/11/2026)
-     */
-    private function ondaDoItem(int $empresaId, string $chave, ?array $item = null): ?TrilhaOnda
+    private function ondaDoItem(int $empresaId, string $chave): ?TrilhaOnda
     {
         $colunas = TrilhaOndaItem::colunasDaChave($chave);
         if ($colunas === null) {
@@ -162,9 +155,6 @@ class PortaoDaOnda
                 fn ($q) => $q->where('produto_id', $colunas['produto_id'])->where('quantidade', $colunas['quantidade']))
             ->with('onda')
             ->first();
-        if ($linha !== null && $item !== null && SoltarOndas::comboRecriado($linha, $item)) {
-            return null;
-        }
 
         return $linha?->onda !== null && (int) $linha->onda->company_id === $empresaId ? $linha->onda : null;
     }

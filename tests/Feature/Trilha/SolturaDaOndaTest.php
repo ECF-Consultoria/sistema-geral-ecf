@@ -15,6 +15,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Feature\Trilha\Concerns\MontaTrilha;
@@ -183,9 +184,10 @@ class SolturaDaOndaTest extends TestCase
         $this->itemNaOnda($futura, "c-{$a['produto']->id}-2");
         $this->agora('2026-11-06 00:07:00');
 
-        // O combo é apagado no Portal: a linha sai na passada seguinte, mesmo com a onda longe de começar.
-        $combo->componentes()->delete();
-        $combo->delete();
+        // O combo é apagado por FORA do Eloquent (o TrilhaComboExcluidoObserver não vê): a rede de segurança da soltura
+        // tira a linha na passada seguinte, mesmo com a onda longe de começar.
+        DB::table('estrutura_oferta_componentes')->where('oferta_id', $combo->id)->delete();
+        DB::table('estrutura_ofertas')->where('id', $combo->id)->delete();
         $this->assertSame(["c-{$a['produto']->id}-2"], $this->soltura()->rodar()[0]['orfaos']);
         $this->assertSame(0, TrilhaOndaItem::count());
     }

@@ -93,7 +93,7 @@ class OndasDaTrilhaController extends Controller
             'avisos'   => $r['avisos'],
             'mensagem' => match (true) {
                 $r['mudados'] === [] => 'Nada mudou.',
-                $onda === null       => 'Tirada da onda: volta para Sem onda.',
+                $onda === null       => $r['sem_onda'] ? 'Tirada da onda: volta para Sem onda.' : 'Tirada da onda.',
                 $onda->comecou()     => "Na {$onda->nome}. Ela já começou: o robô foi chamado.",
                 default              => "Na {$onda->nome}. O robô começa em ".OndasDaTrilha::diaCurto($onda->dia()).'.',
             },

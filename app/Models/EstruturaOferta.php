@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Observers\TrilhaComboExcluidoObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -20,7 +22,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  *
  * O SKU só serve para CASAR a colagem de anúncios — e aí sempre normalizado por
  * {@see self::normalizarSku()}.
+ *
+ * Trilha de produtos (02/11/2026): o Combo apagado de vez sai da onda da trilha na hora
+ * ({@see TrilhaComboExcluidoObserver}).
  */
+#[ObservedBy(TrilhaComboExcluidoObserver::class)]
 class EstruturaOferta extends Model
 {
     protected $table = 'estrutura_ofertas';

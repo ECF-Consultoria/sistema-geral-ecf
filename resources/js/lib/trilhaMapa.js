@@ -18,9 +18,9 @@
 //   Planejamento e pode ser planejado; o que já passou dele sem onda vai para a
 //   caixa neutra "Começou sem onda" (a `w0` do protótipo, calculada aqui); a
 //   oferta sem produto na Lista vai para a neutra tracejada "Fora das ondas".
-//   A caixa de uma onda que ainda não começou diz "começa 05/11": quem não
-//   espera essa data (a que já andou, a sem produto) vai para "Começou sem
-//   onda" ou "Fora das ondas", não para ela.
+//   A oferta que está numa onda fica na caixa dela, mesmo a que já andou ou
+//   ficou sem produto (o "começa 05/11" é a data da onda, não da oferta): a
+//   onda que tem oferta nunca some do desenho — a mesma conta do cartão dela.
 // - O nó de anúncio NÃO usa o MLB como chave: na porta do cliente o MLB vem
 //   null, e no "Ver como: Cliente" da equipe o dado ainda traz o MLB. A chave é a
 //   posição do anúncio na oferta, e o texto só leva o MLB na visão da equipe.
@@ -36,7 +36,7 @@
 // varre `.jsx`. As cores daqui são `rgb(var(--t-…))`, para `style` no SVG.
 
 import { COR_DA_ETAPA, ETAPA_POR_CHAVE, ORDEM, SIGLA_DO_TIPO, chaveDaOferta, chaveDoProduto, contagemPorEtapa } from './trilha.js';
-import { naoEsperaAOnda, ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
+import { ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
 
 /** Nome curto de cada etapa: faixa do fluxo, legenda do mapa e cartões do índice. */
 export const ROTULO_CURTO = {
@@ -215,16 +215,14 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
     // ── Coluna 1: as ofertas que levam algum produto do recorte (sem filtro, todas) ──
     // A oferta sem produto na lista não tem família: só aparece em "Todas".
     const ofs = ofertas.filter((o) => !filtro || (o.componentes ?? []).some((c) => noRecorte.has(c.produto_id)));
-    const ondaPorId = new Map(ondas.map((w) => [w.id, w]));
-    // A caixa da onda diz "começa 05/11": só fica nela quem espera essa data. A que já andou (ou não tem
-    // produto) numa onda que ainda não começou não espera — vai para a caixa de quem já começou (ou a de fora).
-    // Sem onda: a oferta sem produto na Lista fica fora das ondas (não se planeja); das outras, "Sem onda" só o
-    // que está no Planejamento — o que já passou dele sem onda já começou.
+    const idsDasOndas = new Set(ondas.map((w) => w.id));
+    // A oferta que está numa onda fica na caixa dela — também a que já andou (alguém adiantou no editor) e a que
+    // ficou sem produto: ela ESTÁ na onda (o cartão da onda a conta, e só sai pelo "Tirar da onda"). O "começa
+    // 05/11" da caixa é a data da ONDA, não da oferta. Sem onda: a sem produto na Lista fica fora das ondas (não
+    // se planeja); das outras, "Sem onda" só o que está no Planejamento — o que já passou dele sem onda já começou.
     const ondaDa = (o) => {
-        const onda = o.onda_id != null ? ondaPorId.get(o.onda_id) : null;
-        if (onda && !naoEsperaAOnda(o, onda)) return onda.id;
+        if (o.onda_id != null && idsDasOndas.has(o.onda_id)) return o.onda_id;
         if (o.sem_produto) return 'fora';
-        if (onda) return 'antes';
 
         return o.etapa === 'plano' ? 'sem' : 'antes';
     };

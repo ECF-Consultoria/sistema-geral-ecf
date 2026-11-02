@@ -27,13 +27,16 @@ import { Botao, Caixa, Opcao, Seletor } from '@/Components/Trilha/Pecas';
 //   editor do Publicador) ou não tem produto: ela não espera a data — "já
 //   começou", e só "Tirar da onda";
 // - numa onda que já começou: só o texto — o robô já foi chamado;
-// - sem onda e não planejável: já começou sem onda e não entra em uma.
+// - sem onda e não planejável: já começou sem onda e não entra em uma — ou,
+//   sem produto, fica fora das ondas.
 // O cliente (e o "Ver como: Cliente") só lê.
 //
 // "+ Nova onda" abre o painel da onda nova e, criada a onda, volta para ESTA
 // oferta com ela já escolhida (`preEscolha`) — e com a dica de que falta pôr a
 // oferta nela: criar a onda não a pôs lá. Depois de gravar, o resultado do
-// servidor aparece aqui e no aviso da página, e a trilha recarrega.
+// servidor aparece aqui e no aviso da página, e a trilha recarrega. O painel
+// mantém a caixa na tela depois de gravar (`onGravou`), mesmo que a oferta saia
+// da onda: o resultado continua à vista e o foco, dentro do painel.
 
 /**
  * @param {{
@@ -46,7 +49,9 @@ import { Botao, Caixa, Opcao, Seletor } from '@/Components/Trilha/Pecas';
  *   onAvisar?: (texto: string, tipo?: 'sucesso'|'erro', extras?: string[]) => void,
  *   onRecarregar?: () => Promise<void>,
  *   onNovaOnda?: () => void,
- * }} props
+ *   onGravou?: () => void,
+ * }} props  `onGravou`: avisa o painel que houve gravação — ele mantém a caixa na tela mesmo que a oferta deixe
+ *           de ter onda (o resultado segue à vista e o foco tem onde ficar).
  */
 export default function CaixaDaOnda({
     oferta,
@@ -58,6 +63,7 @@ export default function CaixaDaOnda({
     onAvisar = () => {},
     onRecarregar = async () => {},
     onNovaOnda = null,
+    onGravou = () => {},
 }) {
     const cliente = visao === 'cliente';
     const ondas = ondasEmOrdem(dados.ondas);
@@ -79,8 +85,11 @@ export default function CaixaDaOnda({
         if (atual.comecou) situacao = 'comecou';
         else if (planejavel) situacao = 'agendada';
         else situacao = oferta.sem_produto ? 'sem_produto' : 'andou';
+    } else if (planejavel) {
+        situacao = 'sem';
     } else {
-        situacao = planejavel ? 'sem' : 'antes';
+        // A sem produto que acabou de sair de uma onda (a caixa fica na tela depois de gravar): fora das ondas.
+        situacao = oferta.sem_produto ? 'fora' : 'antes';
     }
 
     const quemEscreve = podeEditar && !cliente && !!escrita;
@@ -104,12 +113,19 @@ export default function CaixaDaOnda({
             const extras = (r.avisos ?? []).filter(Boolean);
             setResultado({ mensagem: r.mensagem ?? 'Pronto.', avisos: extras });
             setEscolha('');
+            onGravou();
             onAvisar(r.mensagem ?? 'Pronto.', 'sucesso', extras);
             // Os botões só voltam com a trilha recarregada: antes dela eles mostrariam a onda de antes, e um 2º
             // clique mandaria outro pedido ("Nada mudou." ou 422).
             await onRecarregar();
-            // A recarga troca os botões ("Colocar" vira "Mudar"/"Tirar"): o foco vai para o resultado, não para o <body>.
-            textoDoResultado.current?.focus();
+            // A recarga troca os botões ("Colocar" vira "Mudar"/"Tirar", "Tirar" some): o foco vai para o resultado.
+            // Se ele não estiver mais na tela e o foco tiver caído no <body> com o painel modal aberto, vai para o
+            // painel. Foco que já está noutro lugar (outro item aberto durante a recarga) fica onde está.
+            if (textoDoResultado.current?.isConnected) {
+                textoDoResultado.current.focus();
+            } else if (!document.activeElement || document.activeElement === document.body) {
+                document.querySelector('[data-painel-lateral] [role="dialog"]')?.focus?.();
+            }
         } catch (e) {
             const texto = mensagemDoErro(e);
             setErro(texto);
@@ -135,6 +151,7 @@ export default function CaixaDaOnda({
     else if (situacao === 'sem_produto') estado = `Na ${atual.nome}`;
     else if (atual) estado = `Na ${atual.nome} · ${quandoDaOndaPorExtenso(atual)}`;
     else if (situacao === 'antes') estado = cliente ? 'Já começou.' : 'Já começou sem onda: não entra em onda.';
+    else if (situacao === 'fora') estado = 'Fora das ondas: sem produto na Lista.';
     else if (escreve) estado = 'Sem onda: escolha a onda em que o robô começa.';
 
     // Por que a oferta numa onda por começar não espera a data (só a equipe lê o porquê).

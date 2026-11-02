@@ -216,13 +216,22 @@ test('com ondas: 4 colunas como no protótipo, "Sem onda" tracejada e o anúncio
     assert.deepEqual([no(g, 'w:fora').titulo, no(g, 'w:fora').sub, no(g, 'w:fora').situacao, no(g, 'w:fora').tracejado],
         ['Fora das ondas', 'sem produto na lista', '1 oferta', true]);
     assert.ok(g.ligacoes.some((l) => l.de === 'o:o-40' && l.para === 'w:fora'));
-    // A caixa da onda diz "começa 10/11": a oferta que já andou (`planejavel` falso) numa onda que ainda não começou
-    // não espera essa data — vai para "Começou sem onda"; a sem produto, para "Fora das ondas".
+    // A oferta que já andou (`planejavel` falso; alguém adiantou no editor) numa onda que ainda não começou ESTÁ na
+    // onda: fica na caixa dela — o "começa 10/11" é a data da ONDA, não da oferta — e a onda continua no desenho.
     const andou = montarGrafo({ ...COM_ONDAS, ofertas: COM_ONDAS.ofertas.map((o) => (o.id === 's-2' ? { ...o, planejavel: false } : o)) });
-    assert.ok(andou.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:antes'));
-    assert.ok(!andou.nos.some((n) => n.id === 'w:7'), 'a onda sem ninguém esperando por ela sai do desenho');
+    assert.ok(andou.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:7'), 'a que andou fica na caixa da onda dela');
+    assert.ok(!andou.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:antes'), 'e não vai para "Começou sem onda"');
+    assert.deepEqual([no(andou, 'w:7').sub, no(andou, 'w:7').situacao], ['começa 10/11', '1 oferta'], 'a onda que tem oferta não some do desenho');
+    assert.equal(no(andou, 'w:antes').situacao, '6 ofertas', '"Começou sem onda" é só de quem não tem onda');
+    assert.ok(relacionados(andou, 'w:7').has('o:s-2'));
     const comecada = montarGrafo({ ...COM_ONDAS, ondas: [{ ...COM_ONDAS.ondas[0], comecou: true }], ofertas: COM_ONDAS.ofertas.map((o) => (o.id === 's-2' ? { ...o, planejavel: false } : o)) });
     assert.ok(comecada.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:7'), 'na onda que já começou, ela fica na onda');
+    // A que ficou sem produto dentro de uma onda (o produto do kit saiu da Lista) também está nela (só sai pelo "Tirar
+    // da onda"): "Fora das ondas" é só a sem produto que não tem onda.
+    const semProdutoNaOnda = montarGrafo({ ...COM_ONDAS, ofertas: COM_ONDAS.ofertas.map((o) => (o.id === 's-2' ? { ...o, planejavel: false, sem_produto: true } : o)) });
+    assert.ok(semProdutoNaOnda.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:7'));
+    assert.equal(no(semProdutoNaOnda, 'w:7').situacao, '1 oferta');
+    assert.equal(no(semProdutoNaOnda, 'w:fora').situacao, '1 oferta', 'em "Fora das ondas", só a o-40 (sem onda)');
     // A sem produto que está no Planejamento também vai para "Fora das ondas" (não para "Sem onda · falta planejar").
     const avulsa = { ...PROPS_EQUIPE.ofertas.find((o) => o.id === 'o-40'), id: 'o-41', etapa: 'plano', status: 'Fora das ondas · sem produto na Lista', anuncios: [] };
     const comAvulsa = montarGrafo({ ...COM_ONDAS, ofertas: [...COM_ONDAS.ofertas, avulsa] });
