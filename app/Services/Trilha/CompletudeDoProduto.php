@@ -8,6 +8,7 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
+use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -114,8 +115,8 @@ class CompletudeDoProduto
             $faltas[] = 'descrição';
         }
 
-        // A menor contagem entre as cores: a régua é "3 fotos em CADA cor". Produto sem variação tem zero.
-        $contagens = $produto->variacoes->map(fn ($v) => (int) ($fotosPorVariacao[(int) $v->id] ?? 0));
+        // A menor contagem entre as variações: a régua é "3 fotos em CADA cor". Produto sem variação tem zero.
+        $contagens = self::fotosDeCadaVariacao($produto, $fotosPorVariacao);
         $fotosMin = $contagens->isEmpty() ? 0 : (int) $contagens->min();
         if ($fotosMin < self::FOTOS_MINIMAS) {
             $faltas[] = 'fotos ('.$fotosMin.' de '.self::FOTOS_MINIMAS.')';
@@ -192,6 +193,36 @@ class CompletudeDoProduto
         }
 
         return $rotulos;
+    }
+
+    /**
+     * Quantas fotos cada variação leva, na ordem das variações. Com UM eixo, as dela. Com cor E tamanho (dois eixos,
+     * 28/10/2026), as fotos são da COR e moram no 1º tamanho dela: o tamanho sem foto própria conta as da cor — a mesma
+     * regra com que o Publicador as leva ao rascunho (`PortalParaRascunhoService::comFotosDaCor`; mudou lá, muda aqui).
+     * Antes, o produto de moda com 2 tamanhos ou mais nunca saía da Lista ("fotos (0 de 3)"), embora a tela dissesse
+     * "3 fotos em cada cor" (3ª entrega da trilha, F0, 02/11/2026).
+     *
+     * @param  array<int, int>  $fotosPorVariacao  variacao_id → quantas fotos tem
+     * @return Collection<int, int>
+     */
+    private static function fotosDeCadaVariacao(EstruturaProduto $produto, array $fotosPorVariacao): Collection
+    {
+        $variacoes = $produto->variacoes->values();
+        $proprias = $variacoes->map(fn ($v) => (int) ($fotosPorVariacao[(int) $v->id] ?? 0));
+        if (! $variacoes->contains(fn ($v) => trim((string) $v->eixo_2) !== '')) {
+            return $proprias;
+        }
+
+        // A da cor = a da 1ª variação dessa cor que tem foto (o mesmo laço do Publicador).
+        $daCor = [];
+        foreach ($variacoes as $i => $v) {
+            $cor = ChaveCanonica::texto((string) $v->valor);
+            if ($proprias[$i] > 0 && ! isset($daCor[$cor])) {
+                $daCor[$cor] = $proprias[$i];
+            }
+        }
+
+        return $variacoes->map(fn ($v, $i) => $proprias[$i] > 0 ? $proprias[$i] : ($daCor[ChaveCanonica::texto((string) $v->valor)] ?? 0));
     }
 
     /**

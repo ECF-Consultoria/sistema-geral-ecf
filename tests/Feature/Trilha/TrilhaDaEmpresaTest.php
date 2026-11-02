@@ -61,6 +61,43 @@ class TrilhaDaEmpresaTest extends TestCase
 
     // ═══ Produto: a lista ═══════════════════════════════════════════════════
 
+    /**
+     * 3ª entrega, F0 (02/11/2026): com cor E tamanho, as fotos são da COR e moram no 1º tamanho dela; o tamanho sem foto
+     * própria leva as da cor — a regra com que o Publicador as põe no rascunho (`comFotosDaCor`). Antes, o produto de
+     * moda com 2 tamanhos ou mais nunca saía da Lista.
+     */
+    public function test_com_cor_e_tamanho_as_fotos_contam_por_cor_como_no_publicador(): void
+    {
+        $empresa = $this->empresa();
+        $p = $this->produto($empresa, 'Camiseta Teste', 'CT-1', ['Azul', 'Verde']);
+        [$azulP, $verdeP] = $p['variacoes'];
+        $azulP->update(['eixo_2' => 'tamanho', 'valor_2' => 'P']);
+        $verdeP->update(['eixo_2' => 'tamanho', 'valor_2' => 'P']);
+        // O tamanho M de cada cor, sem foto própria. A cor do M azul vem escrita de outro jeito: é a mesma cor (o texto
+        // canônico do Publicador).
+        $m = [];
+        foreach (['azul ' => 3, 'Verde' => 4] as $cor => $ordem) {
+            $m[] = $v = EstruturaProdutoVariacao::create(['produto_id' => $p['produto']->id, 'company_id' => $empresa->id, 'ordem' => $ordem,
+                'codigo' => 'CT-1-'.trim($cor).'-M', 'eixo' => 'cor', 'valor' => $cor, 'eixo_2' => 'tamanho', 'valor_2' => 'M', 'custo' => 100]);
+            EstruturaProdutoVolume::create(['variacao_id' => $v->id, 'ordem' => 1, 'comprimento' => 50, 'largura' => 40, 'altura' => 30, 'peso' => 5]);
+        }
+
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $p['produto']->id);
+        $this->assertSame([], $produto['faltas'], 'o tamanho sem foto leva as 3 da cor');
+        $this->assertSame(3, $produto['fotos_min']);
+        $this->assertSame(null, $produto['etapa']);
+
+        // O tamanho com foto PRÓPRIA conta as dele (o Publicador também não as completa com as da cor).
+        $this->fotos($empresa, $m[1], 1);
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $p['produto']->id);
+        $this->assertSame(['fotos (1 de 3)'], $produto['faltas']);
+
+        // Um eixo só segue por variação: a cor com 1 foto não pega as de outra cor.
+        $q = $this->produto($empresa, 'Vaso Teste', 'VT-1', ['Azul', 'Verde']);
+        EstruturaProdutoVariacaoImagem::where('variacao_id', $q['variacoes'][1]->id)->orderByDesc('id')->limit(2)->get()->each->delete();
+        $this->assertSame(['fotos (1 de 3)'], $this->produtoDaTrilha($this->trilha($empresa), $q['produto']->id)['faltas']);
+    }
+
     public function test_produto_incompleto_fica_na_lista_com_as_faltas_na_ordem_e_com_os_rotulos(): void
     {
         $empresa = $this->empresa();
