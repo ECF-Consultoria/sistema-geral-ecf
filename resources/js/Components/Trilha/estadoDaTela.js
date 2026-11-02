@@ -4,24 +4,69 @@
 //
 // 1. O estado da tela vive na URL (`?abrir=p%3A12&etapa=lista&vista=mapa`), gravado
 //    com `history.replaceState` — sem ir ao servidor. Assim um F5, um link
-//    colado no WhatsApp ou o "voltar" de outra tela reabrem no mesmo lugar.
+//    colado no WhatsApp ou o "voltar" de outra tela reabrem no mesmo lugar. O
+//    `abrir` aceita o produto (`p:12`), a oferta (`o:s-12`), a onda (`w:7`, e
+//    `w:nova` para criar) e o painel de mapear (`m:12`).
 // 2. O "Ver como: Cliente" da equipe tira, no navegador, o mesmo que o servidor
 //    tira na porta do cliente (`app/Http/Controllers/Trilha/`): link do
-//    Publicador, preparo do agente, código MLB e a lista de sugestões. O
-//    `url_ficha` e os links do Portal do cliente não existem na porta da equipe,
-//    então a simulação mostra o cliente sem esses botões.
+//    Publicador, preparo do agente, código MLB, a lista de sugestões, quem
+//    mapeou e, das ondas, quem criou. O `url_ficha` e os links do Portal do
+//    cliente não existem na porta da equipe, então a simulação mostra o cliente
+//    sem esses botões — e sem nenhuma escrita (a página tira o `podeEditar`).
 
-import { ORDEM, acharItem } from '@/lib/trilha';
+import { ORDEM, acharAberto, acharItem, chaveDoProduto } from '@/lib/trilha';
+
+/**
+ * Quem escreve nesta tela (2ª entrega): só a porta da equipe, com a trilha de
+ * trabalho ligada, com `pode_editar` e com os endereços de `escrita` — e fora do
+ * "Ver como: Cliente", que mostra a tela do cliente (ele só acompanha).
+ *
+ * @param {{visao?: string, trabalho?: boolean, pode_editar?: boolean, escrita?: ?object}} props
+ * @param {'equipe'|'cliente'} verComo
+ */
+export const podeEscrever = (props, verComo = 'equipe') => props?.visao !== 'cliente'
+    && verComo !== 'cliente'
+    && !!props?.trabalho
+    && !!props?.pode_editar
+    && !!props?.escrita;
+
+/**
+ * O painel que a chave aberta mostra, para quem está olhando — null quando não
+ * mostra nada (item que sumiu, ou painel de escrita para quem não escreve):
+ *
+ * - `p:`/`o:` → o painel do item;
+ * - `w:7` → a onda (só leitura sem `podeEditar`); `w:nova` → só com `podeEditar`;
+ * - `m:12` → o painel de mapear, só com `podeEditar` e com o produto fora da
+ *   Lista; senão, o painel do produto (o cliente, o "Ver como: Cliente" e o
+ *   link velho de um produto que voltou para a Lista caem nele).
+ *
+ * @returns {?{painel: 'item'|'onda'|'mapear', chave: string}}
+ */
+export function painelDaChave(dados, chave, { podeEditar = false } = {}) {
+    const achado = chave ? acharAberto(dados, chave) : null;
+    if (!achado) return null;
+    if (achado.painel === 'onda') return achado.onda || podeEditar ? achado : null;
+    if (achado.painel === 'mapear') {
+        if (podeEditar && achado.produto.etapa !== 'lista') return achado;
+        const produto = acharItem(dados, chaveDoProduto(achado.produto));
+
+        return produto ? { painel: 'item', ...produto } : null;
+    }
+
+    return achado;
+}
 
 /**
  * Lê o estado da tela da busca da URL. Valor desconhecido vira o padrão; item
- * que não existe mais (apagado, ou link velho) é ignorado.
+ * que não existe mais (apagado, ou link velho) é ignorado — e também o painel de
+ * escrita para quem não escreve (`podeEditar`).
  *
  * @param {string} busca  `window.location.search`
- * @param {{produtos: Array, ofertas: Array}} dados
+ * @param {{produtos: Array, ofertas: Array, ondas?: Array}} dados
+ * @param {{podeEditar?: boolean}} [quem]
  * @returns {{etapa: ?string, vista: 'trilha'|'mapa', abrir: ?string}}
  */
-export function lerEstadoDaUrl(busca, dados) {
+export function lerEstadoDaUrl(busca, dados, quem = {}) {
     let parametros;
     try {
         parametros = new URLSearchParams(busca ?? '');
@@ -34,7 +79,7 @@ export function lerEstadoDaUrl(busca, dados) {
     return {
         etapa: ORDEM.includes(etapa) ? etapa : null,
         vista: parametros.get('vista') === 'mapa' ? 'mapa' : 'trilha',
-        abrir: abrir && acharItem(dados, abrir) ? abrir : null,
+        abrir: abrir && painelDaChave(dados, abrir, quem) ? abrir : null,
     };
 }
 
@@ -88,25 +133,32 @@ export function estadoComUrl(estado, url) {
 
 /**
  * Para "Abrir na trilha" (Mapa da loja): a etapa em que o item aparece como linha.
- * O produto já mapeado (etapa null) só tem linha na planilha da Lista, que mostra todos.
+ * O produto já mapeado (etapa null) só tem linha na planilha da Lista, que mostra
+ * todos. A onda tem cartão no Planejamento.
  */
 export function etapaDoItem(dados, chave) {
-    const achado = acharItem(dados, chave);
+    const achado = acharAberto(dados, chave);
     if (!achado) return null;
+    if (achado.painel === 'onda') return 'plano';
+    if (achado.painel === 'mapear') return achado.produto.etapa ?? 'lista';
 
     return achado.etapa ?? 'lista';
 }
+
+/** Os campos da onda que a porta do cliente recebe (`ApresentacaoDaTrilha::ONDA_CLIENTE`): sem quem criou. */
+const daOndaParaCliente = ({ id, nome, data, comecou }) => ({ id, nome, data, comecou: !!comecou });
 
 /** Os dados como a porta do cliente os recebe: o mesmo corte do servidor, feito no navegador. */
 export function paraVisaoCliente(dados) {
     return {
         ...dados,
-        // O servidor não manda as ondas ao cliente (`ApresentacaoDaTrilha::paraCliente`): quais campos dela o
-        // cliente vê é decisão da entrega que as preencher. Sem isto o Mapa simulado teria uma coluna a mais.
-        ondas: [],
+        // O cliente vê as ondas só com nome, data e se começou (decisão de 02/11/2026, como no artefato).
+        ondas: (dados.ondas ?? []).map(daOndaParaCliente),
         produtos: (dados.produtos ?? []).map(({ url_publicador, ...produto }) => ({
             ...produto,
             sugestoes_pendentes: [],
+            // Quem mapeou é da equipe: o cliente lê só a data.
+            mapeado_por: null,
         })),
         ofertas: (dados.ofertas ?? []).map(({ url_publicador, ...oferta }) => ({
             ...oferta,

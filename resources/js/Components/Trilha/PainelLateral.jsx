@@ -1,23 +1,36 @@
-import { useEffect, useId, useRef } from 'react';
-import { ETAPA_POR_CHAVE, chaveDaOferta, chaveDoProduto, ofertasDoProduto } from '@/lib/trilha';
+import { createContext, useContext, useEffect, useId, useRef } from 'react';
+import { ETAPA_POR_CHAVE, chaveDeMapear, chaveDoProduto, ofertasDoProduto } from '@/lib/trilha';
+import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
-import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
+import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
+import CaixaDaOnda from '@/Components/Trilha/CaixaDaOnda';
 import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto } from '@/Components/Trilha/formatos';
 
-// ─── Trilha de produtos — o painel lateral do item aberto ───────────────────
+// ─── Trilha de produtos — o painel lateral ──────────────────────────────────
 //
 // A gaveta da direita do protótipo (`desenhaLayer()`, `gavetaProd()`,
-// `gavetaOferta()`), só de leitura: onde o item está, o que falta, com que
-// ofertas ele anda e o que o Publicador já fez. As ações são links para as telas
-// que já existem.
+// `gavetaOferta()`): onde o item está, o que falta, com que ofertas ele anda e o
+// que o Publicador já fez. Na 1ª entrega era só leitura; na 2ª (com a trilha de
+// trabalho e quem escreve) o produto ganha o "Mapear" e a oferta, a caixa
+// "Planejamento" com a onda dela.
 //
-// Acessibilidade: é um diálogo modal — o foco vai para o painel ao abrir, fica
-// preso nele no Tab, Esc e o clique no fundo escurecido fecham, e ao fechar o
-// foco volta para quem abriu (ou para a linha do item, se quem abriu sumiu).
+// Três peças:
+// - `Gaveta`: a casca — o diálogo modal, o fundo escurecido, Esc, o Tab preso
+//   dentro e o foco que volta para quem abriu. A página monta UMA gaveta para
+//   todos os painéis (item, onda, mapear): trocar de painel por dentro (da
+//   oferta para a "Nova onda" e de volta) não fecha nem reabre nada.
+// - `MioloDaGaveta`: cabeçalho, corpo rolável e rodapé de cada painel.
+// - `PainelDoItem`: o produto ou a oferta (`p:`/`o:`).
+//
+// Acessibilidade: o foco vai para o painel ao abrir (ou para o campo marcado
+// com `data-foco-inicial`), fica preso nele no Tab, Esc e o clique no fundo
+// fecham, e ao fechar o foco volta para quem abriu — ou para a linha do item,
+// se quem abriu sumiu, ou para a vista.
 //
 // Visão do cliente (de verdade ou na simulação da equipe): sem MLB, sem preparo
-// do agente, sem lista de sugestões e sem link do Publicador. A maior parte já
-// chega cortada nas props; o resto é escondido aqui pela `visao`.
+// do agente, sem lista de sugestões, sem link do Publicador e sem nenhuma
+// escrita. A maior parte já chega cortada nas props; o resto é escondido aqui
+// pela `visao` (e o `podeEditar` vem falso da página).
 
 const PREPARO = [
     ['titulo', 'Título'],
@@ -41,10 +54,13 @@ const ESTADO_DA_FICHA = {
     nao_conferida: { tom: 'neutro', rotulo: 'a conferir' },
 };
 
+/** As etapas em que a oferta mostra a caixa "Planejamento" (a da onda). */
+const ETAPAS_DA_ONDA = ['plano', 'robo'];
+
 const FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const LINHA_DA_CAIXA = 'flex items-center justify-between gap-2.5 border-b border-trilha-line2 py-2 text-[13px] last:border-b-0';
-const BOTAO_TEXTO = 'shrink-0 rounded px-0.5 text-[12.5px] font-semibold text-trilha-run hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
+const BOTAO_TEXTO = 'shrink-0 rounded px-0.5 text-[12.5px] font-semibold text-trilha-run hover:underline focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
 
 function Dado({ rotulo, falta = false, cheio = false, children }) {
     return (
@@ -52,31 +68,6 @@ function Dado({ rotulo, falta = false, cheio = false, children }) {
             <dt className="text-[12px] font-semibold text-trilha-fg2">{rotulo}</dt>
             <dd className={cn('m-0 text-[13px] [overflow-wrap:anywhere]', falta ? 'font-semibold text-trilha-warn' : 'text-trilha-fg')}>{children}</dd>
         </div>
-    );
-}
-
-/** Uma oferta na lista "Ofertas com este produto": clicar troca o painel para ela. */
-function OfertaDoProduto({ oferta, onAbrir }) {
-    const chave = chaveDaOferta(oferta);
-
-    return (
-        <button
-            type="button"
-            data-abrir={chave}
-            onClick={() => onAbrir(chave)}
-            className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 border-b border-trilha-line2 py-2 text-left text-[13px] last:border-b-0 hover:bg-trilha-surface2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run"
-        >
-            <span className="min-w-0">
-                <span className="block text-trilha-fg [overflow-wrap:anywhere]">
-                    <SeloDoTipo tipo={oferta.tipo} />
-                    {oferta.nome}
-                </span>
-                <span className="block text-[12.5px] text-trilha-muted [overflow-wrap:anywhere]">
-                    <span className="font-pub-mono font-semibold text-trilha-fg">{oferta.sku}</span> = {composicao(oferta)}
-                </span>
-            </span>
-            <span className="text-[12.5px] text-trilha-muted">{ETAPA_POR_CHAVE[oferta.etapa]?.titulo}</span>
-        </button>
     );
 }
 
@@ -111,7 +102,7 @@ function TextoDaFicha({ produto }) {
     return <span className="text-[12.5px] text-trilha-muted">{categoria}Ainda não conferida: os campos desta categoria não estão guardados no sistema.</span>;
 }
 
-function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
+function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, podeEditar }) {
     const cliente = visao === 'cliente';
     const faltas = produto.faltas ?? [];
     const ofertas = ofertasDoProduto(dados, produto.id);
@@ -123,6 +114,11 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
     const ficha = ESTADO_DA_FICHA[produto.ficha] ?? ESTADO_DA_FICHA.nao_conferida;
     const sugestoes = cliente ? [] : produto.sugestoes_pendentes ?? [];
     const totalDeSugestoes = produto.sugestoes_pendentes_total ?? sugestoes.length;
+    // Com a trilha de trabalho quem mapeia é a equipe, aqui: o cliente acompanha, não decide sugestão.
+    const mostraSugestoes = produto.etapa === 'mapa' && totalDeSugestoes > 0 && !(cliente && trabalho);
+    const mapeado = textoDoMapeamento(produto.mapeado_em, produto.mapeado_por);
+    // "Mapear" (ou "Mapear de novo", que só acrescenta ofertas): o produto fora da Lista, para quem escreve.
+    const podeMapear = podeEditar && produto.etapa !== 'lista';
 
     const corpo = (
         <>
@@ -131,6 +127,11 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
                 <OndeEsta etapa={produto.etapa} feitas={produto.etapa ? null : 2} />
                 {!produto.etapa && (
                     <span className="text-[12.5px] text-trilha-muted">Já mapeado: daqui em diante, cada oferta deste produto segue a sua trilha (veja abaixo).</span>
+                )}
+                {mapeado && (
+                    <span className="text-[12.5px] font-semibold text-trilha-fg2" data-mapeado="">
+                        {mapeado}
+                    </span>
                 )}
             </Caixa>
 
@@ -182,7 +183,7 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
                 {ofertas.length ? (
                     <div className="flex flex-col">
                         {ofertas.map((oferta) => (
-                            <OfertaDoProduto key={oferta.id} oferta={oferta} onAbrir={onAbrir} />
+                            <OfertaNaLista key={oferta.id} oferta={oferta} onAbrir={onAbrir} />
                         ))}
                     </div>
                 ) : (
@@ -190,7 +191,7 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
                 )}
             </Caixa>
 
-            {produto.etapa === 'mapa' && totalDeSugestoes > 0 && (
+            {mostraSugestoes && (
                 <Caixa titulo="Sugestões esperando decisão" extra={<Pilula tom="roxo">{totalDeSugestoes}</Pilula>} data-caixa="sugestoes">
                     {sugestoes.length > 0 ? (
                         <>
@@ -245,13 +246,22 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
             );
         }
     }
+    // O produto ainda no mapeamento tem o "Mapear" como ação principal; o já mapeado, o Publicador.
+    const mapearEhPrincipal = podeMapear && produto.etapa === 'mapa';
+    const botaoMapear = podeMapear && (
+        <Botao key="mapear" primario={mapearEhPrincipal} data-acao="mapear" onClick={() => onAbrir(chaveDeMapear(produto))}>
+            {produto.mapeado_em ? 'Mapear de novo' : 'Mapear'}
+        </Botao>
+    );
+    if (botaoMapear && !mapearEhPrincipal) rodape.push(botaoMapear);
     if (!cliente && produto.url_publicador) {
         rodape.push(
-            <LinkDeAcao key="publicador" href={produto.url_publicador} primario data-link="publicador">
+            <LinkDeAcao key="publicador" href={produto.url_publicador} primario={!mapearEhPrincipal} data-link="publicador">
                 Abrir no Publicador
             </LinkDeAcao>,
         );
     }
+    if (botaoMapear && mapearEhPrincipal) rodape.push(botaoMapear);
 
     return {
         sobrelinha: cliente ? 'Seu produto' : 'Produto da lista',
@@ -266,11 +276,13 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir }) {
     };
 }
 
-function conteudoDaOferta({ oferta, dados, visao, onAbrir }) {
+function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejamento }) {
     const cliente = visao === 'cliente';
     const anuncios = oferta.anuncios ?? [];
     const componentes = oferta.componentes ?? [];
     const produtosDaLoja = new Set((dados.produtos ?? []).map((p) => p.id));
+    // A oferta sem produto na Lista fica fora das ondas nesta entrega.
+    const comOnda = trabalho && ETAPAS_DA_ONDA.includes(oferta.etapa) && !oferta.sem_produto;
 
     const corpo = (
         <>
@@ -312,6 +324,8 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir }) {
             <Caixa titulo="Situação" className={cn(oferta.alerta && 'border-trilha-warn/40 bg-trilha-warn-bg')} data-caixa="situacao">
                 <span className={cn('text-[13px]', oferta.alerta ? 'font-semibold text-trilha-warn' : 'text-trilha-fg')}>{oferta.status}</span>
             </Caixa>
+
+            {comOnda && <CaixaDaOnda oferta={oferta} dados={dados} visao={visao} {...(planejamento ?? {})} />}
 
             {!cliente && oferta.preparo && (
                 <Caixa titulo="Preparação automática" data-caixa="preparo">
@@ -379,24 +393,52 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir }) {
     };
 }
 
+// ═══ A gaveta: a casca de todos os painéis ═══════════════════════════════════
+
+const GavetaContexto = createContext({ idDoTitulo: undefined, onFechar: () => {} });
+
+/**
+ * O clique no fundo escurecido fecha o painel — menos o 2º clique de um duplo clique: ele cai no fundo que o
+ * 1º clique (na linha ou no cartão) acabou de abrir, e fecharia o que a pessoa quis abrir.
+ */
+export const fecharNoFundo = (onFechar) => (evento) => {
+    if (evento?.detail > 1) return;
+    onFechar();
+};
+
+/**
+ * Para onde o foco volta quando quem abriu sumiu: a linha do item (o painel de
+ * mapear volta para a linha do produto; a onda, para o cartão dela — e, se a
+ * onda foi apagada e o cartão sumiu, para o "+ Nova onda") ou, sem linha na
+ * vista, a própria vista (achado T3 da revisão de 31/10).
+ */
+function alvoDaVolta(chave) {
+    const candidatas = [chave];
+    if (typeof chave === 'string' && chave.startsWith('m:')) candidatas.push(`p:${chave.slice(2)}`);
+    if (typeof chave === 'string' && chave.startsWith('w:')) candidatas.push('w:nova');
+    const comChave = [...document.querySelectorAll('[data-chave]')];
+    for (const c of candidatas) {
+        const achado = comChave.find((el) => el.dataset.chave === c);
+        if (achado) return achado;
+    }
+
+    return document.getElementById('trilha-vista');
+}
+
 /**
  * @param {{
- *   entrada: {tipo: 'p'|'o', chave: string, etapa: ?string, item: object},
- *   dados: {produtos: Array, ofertas: Array},
- *   visao: 'equipe'|'cliente',
- *   links: object,
+ *   chave: string,
  *   origem: {current: ?HTMLElement},
- *   onAbrir: (chave: string) => void,
  *   onFechar: () => void,
+ *   children: React.ReactNode,
  * }} props
  */
-export default function PainelLateral({ entrada, dados, visao, links, origem, onAbrir, onFechar }) {
+export function Gaveta({ chave, origem, onFechar, children }) {
     const painel = useRef(null);
-    const corpo = useRef(null);
     const idDoTitulo = useId();
-    // A chave de agora, para a limpeza ao fechar (o item pode ter trocado com o painel aberto).
-    const chaveAtual = useRef(entrada.chave);
-    chaveAtual.current = entrada.chave;
+    // A chave de agora, para a limpeza ao fechar (o painel pode ter trocado de item por dentro).
+    const chaveAtual = useRef(chave);
+    chaveAtual.current = chave;
 
     // Uma vez por abertura (dependências vazias de propósito): a página de trás para de
     // rolar e, ao fechar, o foco volta para quem abriu — ou, se ele sumiu (o "Abrir na
@@ -408,18 +450,17 @@ export default function PainelLateral({ entrada, dados, visao, links, origem, on
         return () => {
             document.body.style.overflow = rolagemAntes;
             const quemAbriu = origem?.current;
-            const linha = [...document.querySelectorAll('[data-chave]')].find((el) => el.dataset.chave === chaveAtual.current);
-            const alvo = quemAbriu?.isConnected ? quemAbriu : linha;
+            const alvo = quemAbriu?.isConnected ? quemAbriu : alvoDaVolta(chaveAtual.current);
             alvo?.focus?.();
         };
     }, []);
 
-    // A cada item mostrado (ao abrir e ao trocar de item por dentro), o foco vai para o
-    // painel — o botão clicado sumiu com o conteúdo velho — e a leitura começa do topo.
+    // A cada painel mostrado (ao abrir e ao trocar por dentro), o foco vai para ele — o botão
+    // clicado sumiu com o conteúdo velho. O painel com formulário marca o campo do começo.
     useEffect(() => {
-        corpo.current?.scrollTo?.({ top: 0 });
-        painel.current?.focus();
-    }, [entrada.chave]);
+        const inicial = painel.current?.querySelector('[data-foco-inicial]');
+        (inicial ?? painel.current)?.focus();
+    }, [chave]);
 
     useEffect(() => {
         const aoTeclar = (evento) => {
@@ -449,13 +490,9 @@ export default function PainelLateral({ entrada, dados, visao, links, origem, on
         }
     };
 
-    const conteudo = entrada.tipo === 'p'
-        ? conteudoDoProduto({ produto: entrada.item, dados, visao, links, onAbrir })
-        : conteudoDaOferta({ oferta: entrada.item, dados, visao, onAbrir });
-
     return (
-        <div data-painel-lateral={entrada.chave}>
-            <div aria-hidden="true" className="trilha-sombra fixed inset-0 z-40" onClick={onFechar} />
+        <div data-painel-lateral={chave}>
+            <div aria-hidden="true" className="trilha-sombra fixed inset-0 z-40" onClick={fecharNoFundo(onFechar)} />
             <aside
                 ref={painel}
                 role="dialog"
@@ -468,25 +505,64 @@ export default function PainelLateral({ entrada, dados, visao, links, origem, on
                     'pb-[env(safe-area-inset-bottom,0px)] pr-[env(safe-area-inset-right,0px)] pt-[env(safe-area-inset-top,0px)]',
                 )}
             >
-                <div className="flex items-start justify-between gap-2.5 border-b border-trilha-line px-5 pb-[14px] pt-[18px]">
-                    <div className="min-w-0">
-                        <Sobrelinha>{conteudo.sobrelinha}</Sobrelinha>
-                        <h2 id={idDoTitulo} className="mt-1 font-sans text-[18px] font-bold leading-snug tracking-normal [overflow-wrap:anywhere]">
-                            {conteudo.titulo}
-                        </h2>
-                        {conteudo.sub && <div className="mt-1 text-[12.5px] text-trilha-muted [overflow-wrap:anywhere]">{conteudo.sub}</div>}
-                    </div>
-                    <Botao onClick={onFechar}>Fechar</Botao>
-                </div>
-
-                <div ref={corpo} className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 py-4">
-                    {conteudo.corpo}
-                </div>
-
-                {conteudo.rodape.length > 0 && (
-                    <div className="flex flex-wrap justify-end gap-2 border-t border-trilha-line px-5 py-3">{conteudo.rodape}</div>
-                )}
+                <GavetaContexto.Provider value={{ idDoTitulo, onFechar }}>{children}</GavetaContexto.Provider>
             </aside>
         </div>
+    );
+}
+
+/**
+ * O miolo de um painel: sobrelinha, título (é o rótulo do diálogo) e o "Fechar"
+ * no alto; o corpo rola; o rodapé, quando há, leva as ações.
+ */
+export function MioloDaGaveta({ sobrelinha, titulo, sub = null, rodape = null, ocupado = false, children }) {
+    const { idDoTitulo, onFechar } = useContext(GavetaContexto);
+    const temRodape = Array.isArray(rodape) ? rodape.filter(Boolean).length > 0 : !!rodape;
+
+    return (
+        <>
+            <div className="flex items-start justify-between gap-2.5 border-b border-trilha-line px-5 pb-[14px] pt-[18px]">
+                <div className="min-w-0">
+                    <Sobrelinha>{sobrelinha}</Sobrelinha>
+                    <h2 id={idDoTitulo} className="mt-1 font-sans text-[18px] font-bold leading-snug tracking-normal [overflow-wrap:anywhere]">
+                        {titulo}
+                    </h2>
+                    {sub && <div className="mt-1 text-[12.5px] text-trilha-muted [overflow-wrap:anywhere]">{sub}</div>}
+                </div>
+                <Botao onClick={onFechar}>Fechar</Botao>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 py-4" aria-busy={ocupado || undefined}>
+                {children}
+            </div>
+
+            {temRodape && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-trilha-line px-5 py-3">{rodape}</div>}
+        </>
+    );
+}
+
+/**
+ * O painel do produto ou da oferta (`p:`/`o:`).
+ *
+ * @param {{
+ *   entrada: {tipo: 'p'|'o', chave: string, etapa: ?string, item: object},
+ *   dados: {produtos: Array, ofertas: Array, ondas?: Array},
+ *   visao: 'equipe'|'cliente',
+ *   links: object,
+ *   onAbrir: (chave: string) => void,
+ *   trabalho?: boolean,
+ *   podeEditar?: boolean,
+ *   planejamento?: object,
+ * }} props  `planejamento`: o que a caixa da onda precisa para gravar (`CaixaDaOnda`).
+ */
+export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, planejamento = null }) {
+    const conteudo = entrada.tipo === 'p'
+        ? conteudoDoProduto({ produto: entrada.item, dados, visao, links, onAbrir, trabalho, podeEditar })
+        : conteudoDaOferta({ oferta: entrada.item, dados, visao, onAbrir, trabalho, planejamento: { ...(planejamento ?? {}), podeEditar } });
+
+    return (
+        <MioloDaGaveta sobrelinha={conteudo.sobrelinha} titulo={conteudo.titulo} sub={conteudo.sub} rodape={conteudo.rodape}>
+            {conteudo.corpo}
+        </MioloDaGaveta>
     );
 }

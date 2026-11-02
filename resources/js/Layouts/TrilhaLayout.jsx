@@ -87,7 +87,7 @@ export default function TrilhaLayout({ titulo, empresa = null, voltar = null, ch
                         <button
                             type="button"
                             onClick={trocarTema}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-trilha-line bg-trilha-surface text-trilha-fg2 hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-trilha-run"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-trilha-line bg-trilha-surface text-trilha-fg2 hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-trilha-run"
                             aria-label={tema === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro'}
                             title={tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}
                         >

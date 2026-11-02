@@ -1,5 +1,8 @@
-import { ETAPAS, indiceDaEtapa } from '@/lib/trilha';
+import { forwardRef } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { ETAPAS, ETAPA_POR_CHAVE, chaveDaOferta, indiceDaEtapa } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
+import { composicao } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — as peças pequenas que as telas repetem ────────────
 //
@@ -7,6 +10,13 @@ import { cn } from '@/lib/utils';
 // painel lateral, a lista "Onde está" e os botões. São as classes do protótipo
 // do Erlon (`.pill`, `.dots`, `.tipo`, `.eyebrow`, `.box`, `.tl`, `.btn`)
 // escritas com as cores `trilha-*`, que trocam sozinhas no tema escuro.
+//
+// Da 2ª entrega (as escritas): os campos (`.inp`, `.sel` do protótipo), a
+// caixinha de marcar e a linha de oferta das listas dos painéis. O sistema tem
+// o plugin de formulários do Tailwind e um `select` escuro no app.css; as
+// classes daqui vencem os dois (são de classe, mais fortes que as de elemento) e
+// o `color-scheme` volta a ser o da trilha, para a lista aberta do seletor não
+// sair escura no tema claro.
 
 const TONS_DA_PILULA = {
     neutro: 'bg-trilha-surface2 text-trilha-fg2',
@@ -130,13 +140,133 @@ export function OndeEsta({ etapa, feitas = null }) {
     );
 }
 
-const BOTAO = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-line bg-trilha-surface px-3 py-[7px] text-[13px] font-semibold text-trilha-fg hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
-const BOTAO_PRIMARIO = 'border-trilha-navy bg-trilha-navy text-trilha-on-navy hover:border-trilha-navy hover:opacity-90';
+const BOTAO = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-line bg-trilha-surface px-3 py-[7px] text-[13px] font-semibold text-trilha-fg hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-trilha-line';
+const BOTAO_PRIMARIO = 'border-trilha-navy bg-trilha-navy text-trilha-on-navy hover:border-trilha-navy hover:opacity-90 disabled:hover:border-trilha-navy disabled:hover:opacity-50';
+const BOTAO_PERIGO = 'border-trilha-bad/40 text-trilha-bad hover:border-trilha-bad';
+const BOTAO_PERIGO_PRIMARIO = 'border-trilha-bad bg-trilha-bad text-trilha-bg hover:border-trilha-bad hover:opacity-90';
 
-export function Botao({ primario = false, className, children, ...resto }) {
+/**
+ * Botão da trilha. `primario` = a ação principal (azul-marinho); `perigo` = apagar (vermelho).
+ *
+ * `ocupado` = um envio está em andamento: o botão ignora o clique (e o envio do formulário) mas continua
+ * focável (`aria-disabled`). Com `disabled` o navegador tira o foco do botão clicado e ele cai no <body> —
+ * quem usa teclado ou leitor de tela perde o lugar no meio do envio.
+ */
+export const Botao = forwardRef(function Botao({ primario = false, perigo = false, ocupado = false, className, onClick, children, ...resto }, ref) {
     return (
-        <button type="button" className={cn(BOTAO, primario && BOTAO_PRIMARIO, className)} {...resto}>
+        <button
+            ref={ref}
+            type="button"
+            className={cn(
+                BOTAO,
+                primario && !perigo && BOTAO_PRIMARIO,
+                perigo && (primario ? BOTAO_PERIGO_PRIMARIO : BOTAO_PERIGO),
+                ocupado && 'cursor-progress opacity-60 hover:opacity-60',
+                className,
+            )}
+            {...resto}
+            aria-disabled={ocupado || undefined}
+            onClick={(evento) => {
+                if (ocupado) {
+                    evento.preventDefault();
+
+                    return;
+                }
+                onClick?.(evento);
+            }}
+        >
             {children}
+        </button>
+    );
+});
+
+/** O campo de texto e o de data (`.inp` do protótipo). */
+export const CAMPO = cn(
+    'block w-full min-w-0 rounded-lg border border-trilha-line bg-trilha-surface px-2.5 py-2 text-[13px] text-trilha-fg shadow-none [color-scheme:inherit]',
+    'placeholder:text-trilha-muted focus:border-trilha-run focus:outline-none focus:ring-2 focus:ring-trilha-run/30 focus:ring-offset-0',
+    'disabled:cursor-not-allowed disabled:bg-trilha-surface2 disabled:text-trilha-muted',
+);
+
+/** O rótulo de um campo (texto em cima, campo embaixo). */
+export const ROTULO_DO_CAMPO = 'flex min-w-0 flex-col gap-1 text-[12.5px] font-semibold text-trilha-fg2';
+
+/**
+ * O seletor (`.sel` do protótipo). O app.css tira a seta de todo `select` do
+ * sistema: a daqui é desenhada por cima, sem receber clique.
+ */
+export function Seletor({ className, envolveClassName, children, ...resto }) {
+    return (
+        <span className={cn('relative block min-w-0', envolveClassName)}>
+            <select className={cn(CAMPO, 'cursor-pointer appearance-none bg-none pr-8', className)} {...resto}>
+                {children}
+            </select>
+            <ChevronDown size={15} aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-trilha-muted" />
+        </span>
+    );
+}
+
+/** Uma opção do seletor, nas cores da trilha (o app.css pinta as opções de escuro). */
+export function Opcao({ className, children, ...resto }) {
+    return (
+        <option className={cn('bg-trilha-surface text-trilha-fg', className)} {...resto}>
+            {children}
+        </option>
+    );
+}
+
+/** A caixinha de marcar, verde quando marcada (como o `.mp-row` do protótipo). */
+export const CaixaDeMarcar = forwardRef(function CaixaDeMarcar({ className, ...resto }, ref) {
+    return (
+        <input
+            ref={ref}
+            type="checkbox"
+            className={cn(
+                'h-4 w-4 shrink-0 cursor-pointer rounded border-trilha-muted bg-trilha-surface text-trilha-ok',
+                'focus:ring-2 focus:ring-trilha-run/40 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60',
+                className,
+            )}
+            {...resto}
+        />
+    );
+});
+
+/** A etiqueta pequena ao lado de um nome ("sugerido", "combina · Sala", "já existe"). */
+export function Etiqueta({ tom = 'run', className, children, ...resto }) {
+    return (
+        <Pilula tom={tom} className={cn('px-1.5 py-0 text-[11px]', className)} {...resto}>
+            {children}
+        </Pilula>
+    );
+}
+
+/**
+ * Uma oferta numa lista de painel ("Ofertas com este produto", "Ofertas desta
+ * onda"): clicar troca o painel para ela. `extra` vai embaixo da etapa (o status).
+ */
+export function OfertaNaLista({ oferta, onAbrir, extra = null }) {
+    const chave = chaveDaOferta(oferta);
+
+    return (
+        <button
+            type="button"
+            data-abrir={chave}
+            onClick={() => onAbrir(chave)}
+            className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 border-b border-trilha-line2 py-2 text-left text-[13px] last:border-b-0 hover:bg-trilha-surface2 focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run max-[480px]:grid-cols-1"
+        >
+            <span className="min-w-0">
+                <span className="block text-trilha-fg [overflow-wrap:anywhere]">
+                    <SeloDoTipo tipo={oferta.tipo} />
+                    {oferta.nome}
+                </span>
+                <span className="block text-[12.5px] text-trilha-muted [overflow-wrap:anywhere]">
+                    <span className="font-pub-mono font-semibold text-trilha-fg">{oferta.sku}</span> = {composicao(oferta)}
+                </span>
+            </span>
+            {/* Com o status embaixo da etapa, a coluna tem teto: um status longo quebra em vez de espremer o nome. */}
+            <span className={cn('min-w-0 text-[12.5px] text-trilha-muted', extra && 'max-w-[220px] max-[480px]:max-w-none')}>
+                {ETAPA_POR_CHAVE[oferta.etapa]?.titulo}
+                {extra && <span className="block [overflow-wrap:anywhere]">{extra}</span>}
+            </span>
         </button>
     );
 }

@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
-import { PROPS_EQUIPE, paraCliente } from './_trilha-exemplo.js';
+import { PROPS_EQUIPE, PROPS_TRABALHO, paraCliente } from './_trilha-exemplo.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Render de verdade (React no servidor) da página `Trilha/Empresa` — a Trilha de
@@ -65,7 +65,7 @@ async function montar(relativo, rotulo) {
         },
         // Pacotes de node_modules ficam de fora (o Node os carrega): os CJS dentro do bundle ESM
         // quebram com "Dynamic require of react".
-        external: ['react', 'react-dom', 'react-dom/server', 'react/jsx-runtime', 'lucide-react', 'clsx', 'tailwind-merge',
+        external: ['react', 'react-dom', 'react-dom/server', 'react/jsx-runtime', 'lucide-react', 'clsx', 'tailwind-merge', 'axios',
             'class-variance-authority', '@radix-ui/*', '@headlessui/*', 'date-fns', 'date-fns/*'],
     });
 
@@ -265,7 +265,12 @@ test('?etapa=… das etapas 2 a 6: cabeçalho, "Pronto quando", a nota e só as 
     assert.deepEqual(acoesDasLinhas(revisao), ['Revisar', 'Revisar', 'Revisar']);
 
     const plano = texto(desenhar(Pagina, PROPS_EQUIPE, '?etapa=plano'));
-    assert.ok(plano.includes('Ondas: na próxima entrega'), 'no lugar dos cartões de onda');
+    assert.ok(plano.includes('Ondas: ainda não ligadas nesta loja'), 'no lugar dos cartões de onda (loja fora da trilha de trabalho)');
+    // Nem sem a chave a data da onda é prazo — e "próxima entrega" é bastidor (o cliente também lê).
+    for (const proibido of [/prazo/i, /publicar até/i, /data de publicação/i, /próxima entrega/i]) {
+        assert.equal(plano.match(proibido), null, `${proibido}`);
+        assert.equal(texto(desenhar(Pagina, paraCliente(), '?etapa=plano')).match(proibido), null, `cliente: ${proibido}`);
+    }
     assert.ok(plano.includes('Kit rack 1,80 m + painel ripado 2,20 m jatobá') && plano.includes('Espera a oferta simples ir ao ar'));
 
     const lanc = desenhar(Pagina, PROPS_EQUIPE, '?etapa=lanc');
@@ -450,16 +455,39 @@ test('"Ver como: Cliente" tira no navegador o mesmo que o servidor tira na porta
     assert.deepEqual(simulado.produtos.map(semFicha), servidor.produtos.map(semFicha));
     assert.equal(simulado.produtos.find((p) => p.id === 4).sugestoes_pendentes_total, 2);
     assert.equal(PROPS_EQUIPE.ofertas[0].anuncios[0].mlb, 'MLB3412345678', 'as props da equipe não são alteradas');
-    // As ondas: o servidor as manda vazias ao cliente (revisão de 31/10/2026, P1), e a simulação também tira.
-    const comOnda = { ...PROPS_EQUIPE, ondas: [{ id: 1, nome: 'Onda 1', data: '2026-11-10' }] };
-    assert.deepEqual(mod.paraVisaoCliente(comOnda).ondas, []);
-    assert.deepEqual(paraCliente(comOnda).ondas, []);
-    assert.equal(comOnda.ondas.length, 1, 'as props da equipe não são alteradas');
+    // As ondas: desde a 2ª entrega o cliente as vê só com nome, data e se começou (`ONDA_CLIENTE`) — sem quem
+    // criou. A simulação corta igual ao servidor.
+    const comOnda = { ...PROPS_EQUIPE, ondas: [{ id: 1, nome: 'Onda 1', data: '2026-11-10', comecou: false, criada_por: 'Rafael', criada_em: '2026-11-01T10:00:00-03:00' }] };
+    assert.deepEqual(mod.paraVisaoCliente(comOnda).ondas, [{ id: 1, nome: 'Onda 1', data: '2026-11-10', comecou: false }]);
+    assert.deepEqual(mod.paraVisaoCliente(comOnda).ondas, paraCliente(comOnda).ondas);
+    assert.equal(comOnda.ondas[0].criada_por, 'Rafael', 'as props da equipe não são alteradas');
+    // Quem mapeou também é da equipe: o cliente lê só a data.
+    const trabalho = mod.paraVisaoCliente(PROPS_TRABALHO);
+    assert.equal(trabalho.produtos.find((p) => p.id === 3).mapeado_por, null);
+    assert.equal(trabalho.produtos.find((p) => p.id === 3).mapeado_em, '2026-11-01T14:32:00-03:00');
+    assert.deepEqual(trabalho.ondas, paraCliente(PROPS_TRABALHO).ondas);
+    assert.deepEqual(trabalho.produtos.map(semFicha), paraCliente(PROPS_TRABALHO).produtos.map(semFicha));
     assert.deepEqual(mod.linksParaVisaoCliente(PROPS_EQUIPE.links), { ...PROPS_EQUIPE.links, portal_abrir: null, publicador: null });
 
     assert.deepEqual(mod.lerEstadoDaUrl('?etapa=lista&vista=mapa&abrir=o:c-2-4', PROPS_EQUIPE), { etapa: 'lista', vista: 'mapa', abrir: 'o:c-2-4' });
     assert.deepEqual(mod.lerEstadoDaUrl('?etapa=nada&vista=x&abrir=p:12', PROPS_EQUIPE), { etapa: null, vista: 'trilha', abrir: null });
     assert.equal(mod.lerEstadoDaUrl('?abrir=p%3A4', PROPS_EQUIPE).abrir, 'p:4');
+    // 2ª entrega: a onda (`w:9`), a onda nova (`w:nova`, só para quem escreve) e o painel de mapear (`m:5`).
+    assert.equal(mod.lerEstadoDaUrl('?abrir=w%3A9', PROPS_TRABALHO).abrir, 'w:9', 'a onda abre só leitura para quem não escreve');
+    assert.equal(mod.lerEstadoDaUrl('?abrir=w:99', PROPS_TRABALHO, { podeEditar: true }).abrir, null, 'onda que não existe');
+    assert.equal(mod.lerEstadoDaUrl('?abrir=w:nova', PROPS_TRABALHO).abrir, null, 'criar onda é só de quem escreve');
+    assert.equal(mod.lerEstadoDaUrl('?abrir=w%3Anova', PROPS_TRABALHO, { podeEditar: true }).abrir, 'w:nova');
+    assert.equal(mod.lerEstadoDaUrl('?abrir=m:5', PROPS_TRABALHO, { podeEditar: true }).abrir, 'm:5');
+    assert.equal(mod.lerEstadoDaUrl('?abrir=m:999', PROPS_TRABALHO, { podeEditar: true }).abrir, null);
+    // Sem escrita (ou com o produto de volta à Lista), o `m:` abre o painel do produto, só leitura.
+    assert.equal(mod.painelDaChave(PROPS_TRABALHO, 'm:5', { podeEditar: true }).painel, 'mapear');
+    assert.deepEqual(['item', 'p:5'], ((r) => [r.painel, r.chave])(mod.painelDaChave(PROPS_TRABALHO, 'm:5')));
+    assert.deepEqual(['item', 'p:6'], ((r) => [r.painel, r.chave])(mod.painelDaChave(PROPS_TRABALHO, 'm:6', { podeEditar: true })));
+    assert.equal(mod.painelDaChave(PROPS_TRABALHO, 'w:nova'), null);
+    assert.equal(mod.painelDaChave(PROPS_TRABALHO, 'w:9').onda.nome, 'Onda 2');
+    assert.equal(mod.etapaDoItem(PROPS_TRABALHO, 'w:9'), 'plano', 'a onda tem cartão no Planejamento');
+    assert.equal(mod.etapaDoItem(PROPS_TRABALHO, 'm:5'), 'mapa');
+    assert.equal(mod.buscaComEstado('', { etapa: 'plano', vista: 'trilha', abrir: 'w:nova' }), '?abrir=w%3Anova&etapa=plano');
     // A forma do Laravel (chaves em ordem, ":" como %3A): ver o teste da URL logo abaixo.
     assert.equal(mod.buscaComEstado('?outro=1', { etapa: 'robo', vista: 'mapa', abrir: 'o:s-12' }), '?abrir=o%3As-12&etapa=robo&outro=1&vista=mapa');
     assert.equal(mod.buscaComEstado('?etapa=lista&vista=mapa&abrir=p:1', { etapa: null, vista: 'trilha', abrir: null }), '');

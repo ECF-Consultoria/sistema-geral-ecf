@@ -8,8 +8,10 @@ import { PROPS_EQUIPE, paraCliente } from './_trilha-exemplo.js';
 import { lerSemComentarios } from './_fonte.js';
 import { COR_DA_ETAPA, chaveDaOferta, chaveDoProduto } from '../../resources/js/lib/trilha.js';
 import {
+    COR_ANTES_DAS_ONDAS,
     COR_DO_ANUNCIO,
     COR_MAPEADO,
+    COR_SEM_ONDA,
     cabecalhosDoMapa,
     caixaDoNo,
     familiasDoMapa,
@@ -176,6 +178,7 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
     const legenda = legendaDoMapa(false);
     assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar', 'Produto mapeado']);
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Sem onda'));
+    assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Antes ou fora das ondas' && e.cor === COR_ANTES_DAS_ONDAS));
     assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
 });
 
@@ -200,11 +203,27 @@ test('com ondas: 4 colunas como no protótipo, "Sem onda" tracejada e o anúncio
     const g = montarGrafo(COM_ONDAS);
 
     assert.equal(g.colunas, 4);
-    assert.deepEqual(ids(g, 'onda'), ['w:7', 'w:sem']);
-    assert.deepEqual([no(g, 'w:7').sub, no(g, 'w:7').situacao], ['até 10/11', '1 oferta']);
-    assert.deepEqual([no(g, 'w:sem').tracejado, no(g, 'w:sem').situacao], [true, '9 ofertas']);
+    assert.deepEqual(ids(g, 'onda'), ['w:7', 'w:sem', 'w:antes', 'w:fora']);
+    // A data da onda é o dia em que o robô COMEÇA (2ª entrega): nada de "até".
+    assert.deepEqual([no(g, 'w:7').sub, no(g, 'w:7').situacao], ['começa 10/11', '1 oferta']);
+    assert.equal(no(montarGrafo({ ...COM_ONDAS, ondas: [{ ...COM_ONDAS.ondas[0], comecou: true }] }), 'w:7').sub, 'começou 10/11');
+    // "Sem onda" (tracejada, âmbar) só com o que está no Planejamento: o combo e o kit.
+    assert.deepEqual([no(g, 'w:sem').tracejado, no(g, 'w:sem').situacao, no(g, 'w:sem').cor], [true, '2 ofertas', COR_SEM_ONDA]);
+    // O que já tinha passado do Planejamento sem onda vai para a caixa neutra "Antes das ondas".
+    assert.deepEqual([no(g, 'w:antes').titulo, no(g, 'w:antes').situacao, no(g, 'w:antes').cor, !!no(g, 'w:antes').tracejado],
+        ['Antes das ondas', '6 ofertas', COR_ANTES_DAS_ONDAS, false]);
+    // A oferta sem produto na Lista não entra em onda: nem "Sem onda", nem "Antes das ondas" — "Fora das ondas".
+    assert.deepEqual([no(g, 'w:fora').titulo, no(g, 'w:fora').sub, no(g, 'w:fora').situacao, no(g, 'w:fora').tracejado],
+        ['Fora das ondas', 'sem produto na lista', '1 oferta', true]);
+    assert.ok(g.ligacoes.some((l) => l.de === 'o:o-40' && l.para === 'w:fora'));
+    // A sem produto que está no Planejamento também vai para "Fora das ondas" (não para "Sem onda · falta planejar").
+    const avulsa = { ...PROPS_EQUIPE.ofertas.find((o) => o.id === 'o-40'), id: 'o-41', etapa: 'plano', status: 'Fora das ondas · sem produto na Lista', anuncios: [] };
+    const comAvulsa = montarGrafo({ ...COM_ONDAS, ofertas: [...COM_ONDAS.ofertas, avulsa] });
+    assert.equal(no(comAvulsa, 'w:sem').situacao, '2 ofertas');
+    assert.equal(no(comAvulsa, 'w:fora').situacao, '2 ofertas');
     assert.ok(g.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:7'));
-    assert.ok(ligacoesDe(g).includes('w:sem>m:s-1:0 via o:s-1'));
+    assert.ok(g.ligacoes.some((l) => l.de === 'o:o-31' && l.para === 'w:sem'));
+    assert.ok(ligacoesDe(g).includes('w:antes>m:s-1:0 via o:s-1'));
 
     const L = posicionar(g);
     assert.equal(L.colunas.length, 4);
@@ -213,8 +232,8 @@ test('com ondas: 4 colunas como no protótipo, "Sem onda" tracejada e o anúncio
     assert.deepEqual(cabecalhosDoMapa(g).map((c) => `${c.titulo}: ${c.detalhe}`), ['Lista de produtos: 11 produtos', 'Ofertas: 10 ofertas', 'Ondas: 1 onda', 'Anúncios: 5 anúncios']);
 
     assert.deepEqual([...relacionados(g, 'w:7')].sort(), ['o:s-2', 'p:2', 'w:7']);
-    assert.ok(relacionados(g, 'm:s-1:0').has('w:sem'), 'o anúncio acende a onda da oferta dele');
-    assert.ok(relacionados(g, 'p:1').has('w:sem'));
+    assert.ok(relacionados(g, 'm:s-1:0').has('w:antes'), 'o anúncio acende a onda da oferta dele');
+    assert.ok(relacionados(g, 'p:1').has('w:antes'));
     // Escolhida a mesa, a linha onda → anúncio do espelho (outra oferta) não acende.
     const mesa = relacionados(g, 'p:1');
     const doEspelho = g.ligacoes.find((l) => l.para === 'm:s-10:0');
@@ -470,7 +489,15 @@ test('MapaDaLoja desenha a faixa do fluxo, o filtro de família, as 3 colunas e 
     const quatro = html(h(MapaDaLoja, { dados: COM_ONDAS, visao: 'equipe' }));
     assert.match(quatro, /data-colunas="4"/);
     assert.ok(!quatro.includes('data-aviso-ondas'));
-    assert.ok(texto(quatro).includes('Onda 1 · simples') && texto(quatro).includes('Sem onda'));
+    for (const s of ['Onda 1 · simples', 'começa 10/11', 'Sem onda', 'Antes das ondas', 'já tinham começado', 'Fora das ondas', 'sem produto na lista']) {
+        assert.ok(texto(quatro).includes(s), `faltou: ${s}`);
+    }
+    assert.equal(texto(quatro).match(/(?:^|\s)até \d/), null, 'a onda não tem prazo');
+
+    // Com a trilha de trabalho e nenhuma onda ainda: 3 colunas, e o aviso "Ainda não há ondas" (da 1ª entrega) sai.
+    const semOndaAinda = html(h(MapaDaLoja, { dados: DADOS, visao: 'equipe', trabalho: true }));
+    assert.match(semOndaAinda, /data-colunas="3"/);
+    assert.ok(!semOndaAinda.includes('data-aviso-ondas'));
 
     // Loja vazia e dado faltando: não quebra.
     assert.ok(texto(html(h(MapaDaLoja, { dados: { produtos: [], ofertas: [], ondas: [] } }))).includes('nada para desenhar'));

@@ -39,8 +39,10 @@ export const ETAPAS = [
         titulo: 'Planejamento',
         dono: 'Estrategista',
         unidade: 'ofertas',
-        pronto: 'Cada oferta numa onda com data de publicação.',
-        faz: 'As ofertas entram em ondas com prazo. Normalmente as simples vêm primeiro. As ondas chegam na próxima entrega.',
+        // A data da onda é o dia em que o robô COMEÇA — nunca "prazo" nem "data de publicação" (decisão de
+        // 31/10/2026), com ou sem a trilha de trabalho ligada: o cliente também lê este texto.
+        pronto: 'Cada oferta numa onda, com o dia em que o robô começa.',
+        faz: 'As ofertas entram em ondas com data: no dia da onda o robô começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.',
     },
     {
         chave: 'robo',
@@ -72,6 +74,30 @@ export const ORDEM = ETAPAS.map((e) => e.chave);
 
 export const ETAPA_POR_CHAVE = Object.fromEntries(ETAPAS.map((e) => [e.chave, e]));
 
+/**
+ * Os textos que mudam com a TRILHA DE TRABALHO (2ª entrega, 02/11/2026: o
+ * mapeamento e as ondas passam a ser feitos aqui, e o robô começa no dia da
+ * onda). Os do Planejamento são os mesmos nas duas (estão em `ETAPAS`). As
+ * siglas são as do sistema (`-CB2`, `KT-`, `CT4-`).
+ */
+const TEXTOS_DA_TRILHA_DE_TRABALHO = {
+    mapa: {
+        faz: 'Todo produto vira oferta simples. Aqui se decide o que combina: combo (o mesmo produto em mais unidades, SKU-CB2), kit (com outros produtos, KT-SKU1-SKU2) e combit (com outros, algum em mais unidades, CT4-SKU1-SKU2). Não precisa esperar a simples vender.',
+    },
+    robo: {
+        faz: 'Na data da onda, o robô monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
+    },
+};
+
+/** A etapa com os textos da trilha que a empresa usa: os de hoje, ou os da trilha de trabalho (`trabalho`). */
+export function etapaDaTrilha(chave, trabalho = false) {
+    const etapa = ETAPA_POR_CHAVE[chave];
+    if (!etapa) return null;
+    const outros = trabalho ? TEXTOS_DA_TRILHA_DE_TRABALHO[chave] : null;
+
+    return outros ? { ...etapa, ...outros } : etapa;
+}
+
 /** Posição da etapa na trilha (0 a 5); -1 para chave desconhecida. */
 export const indiceDaEtapa = (chave) => ORDEM.indexOf(chave);
 
@@ -91,9 +117,16 @@ export const TIPOS_DE_OFERTA = ['Simples', 'Combo', 'Kit', 'Combit'];
 /** Sigla curta do tipo, para selo pequeno (Mapa da loja). */
 export const SIGLA_DO_TIPO = { Simples: 'S', Combo: 'CB', Kit: 'KIT', Combit: 'CBT' };
 
-/** Chave de um item na tela e na URL (`?abrir=`): `p:12` para produto, `o:s-12` para oferta. */
+/**
+ * Chave de um item na tela e na URL (`?abrir=`): `p:12` para produto, `o:s-12`
+ * para oferta. Da 2ª entrega: `w:7` para a onda, `w:nova` para criar uma, e
+ * `m:12` para o painel de mapear o produto 12.
+ */
 export const chaveDoProduto = (produto) => `p:${produto.id}`;
 export const chaveDaOferta = (oferta) => `o:${oferta.id}`;
+export const chaveDaOnda = (onda) => `w:${onda.id}`;
+export const CHAVE_NOVA_ONDA = 'w:nova';
+export const chaveDeMapear = (produto) => `m:${produto.id}`;
 
 /**
  * Os itens de uma etapa, no formato que as linhas da tela usam.
@@ -139,23 +172,53 @@ export function acharItem(dados, chave) {
     return null;
 }
 
+/**
+ * O que a chave do `?abrir=` abre, se ainda existir:
+ * - `p:`/`o:` → `{painel: 'item', …acharItem}` (o painel do produto ou da oferta);
+ * - `w:7` → `{painel: 'onda', onda}`; `w:nova` → `{painel: 'onda', onda: null}`;
+ * - `m:12` → `{painel: 'mapear', produto}`.
+ * Quem pode ver cada um (o `w:nova` e o `m:` são da equipe com escrita) quem decide é a tela.
+ */
+export function acharAberto(dados, chave) {
+    if (typeof chave !== 'string') return null;
+    if (chave === CHAVE_NOVA_ONDA) return { painel: 'onda', chave, onda: null };
+    if (chave.startsWith('w:')) {
+        const id = Number(chave.slice(2));
+        const onda = (dados.ondas ?? []).find((w) => w.id === id);
+
+        return onda ? { painel: 'onda', chave, onda } : null;
+    }
+    if (chave.startsWith('m:')) {
+        const id = Number(chave.slice(2));
+        const produto = (dados.produtos ?? []).find((p) => p.id === id);
+
+        return produto ? { painel: 'mapear', chave, produto } : null;
+    }
+    const achado = acharItem(dados, chave);
+
+    return achado ? { painel: 'item', ...achado } : null;
+}
+
 /** As ofertas (visíveis) que levam um produto, em qualquer quantidade. */
 export const ofertasDoProduto = (dados, produtoId) =>
     (dados.ofertas ?? []).filter((o) => (o.componentes ?? []).some((c) => c.produto_id === produtoId));
 
 /**
  * "Com quem está agora": o trabalho pendente de cada dono, com a etapa que o
- * botão abre. A Jardinagem é de outro módulo, então o Analista não entra.
+ * botão abre. A Jardinagem é de outro módulo, então o Analista não entra. A
+ * oferta sem produto na Lista que está no Planejamento não é trabalho do
+ * Estrategista: ela fica fora das ondas ("Fora das ondas · sem produto na Lista").
  *
  * @param {{produtos: Array, ofertas: Array}} dados
  * @param {'equipe'|'cliente'} visao
  */
 export function comQuemEsta(dados, visao) {
     const n = contagemPorEtapa(dados);
+    const paraPlanejar = (dados.ofertas ?? []).filter((o) => o.etapa === 'plano' && !o.sem_produto).length;
 
     return [
         { dono: 'Cliente', sigla: 'C', papel: 'cli', descricao: visao === 'cliente' ? 'você' : 'completar a lista', quantidade: n.lista, etapa: 'lista' },
-        { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + n.plano, etapa: 'mapa' },
+        { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + paraPlanejar, etapa: 'mapa' },
         { dono: 'Robô', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo' },
         { dono: 'Publicador', sigla: 'P', papel: '', descricao: 'revisar e publicar', quantidade: n.revisao, etapa: 'revisao' },
     ];
@@ -174,11 +237,13 @@ export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.s
  * O texto do botão da linha. O cliente só age na lista de produtos; no resto,
  * acompanha. Na etapa 6, a equipe lê "No ar" só quando a oferta está no ar
  * (`estaNoAr`); a que não está pede "Conferir" — "No ar" ao lado de "Fora do ar"
- * se contradiria.
+ * se contradiria. A oferta sem produto na Lista não entra em onda: no
+ * Planejamento ela pede "Abrir", não "Planejar".
  */
-export function acaoDoItem(etapa, visao, noAr = true) {
+export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false } = {}) {
     if (visao === 'cliente') return etapa === 'lista' ? 'Completar' : 'Acompanhar';
     if (etapa === 'lanc') return noAr ? 'No ar' : 'Conferir';
+    if (etapa === 'plano' && semProduto) return 'Abrir';
 
     return { lista: 'Completar', mapa: 'Mapear', plano: 'Planejar', robo: 'Ver preparo', revisao: 'Revisar' }[etapa] ?? 'Abrir';
 }

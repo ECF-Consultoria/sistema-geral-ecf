@@ -116,7 +116,7 @@ function LinhaDaPlanilha({ produto, onAbrir }) {
                 <button
                     type="button"
                     data-chave={chave}
-                    className="text-left font-bold text-trilha-fg hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
+                    className="text-left font-bold text-trilha-fg hover:underline focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
                 >
                     {produto.nome || 'Produto sem nome'}
                 </button>

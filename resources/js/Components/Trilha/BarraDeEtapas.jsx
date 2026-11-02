@@ -40,7 +40,7 @@ export default function BarraDeEtapas({ contagem, etapa, onEscolher }) {
                         onClick={() => onEscolher(e.chave)}
                         className={cn(
                             'relative flex min-w-0 flex-col gap-1.5 bg-trilha-surface px-[14px] pb-3 pt-[14px] text-left hover:bg-trilha-surface2',
-                            'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run',
+                            'focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run',
                             escolhida && 'bg-trilha-surface2',
                         )}
                     >

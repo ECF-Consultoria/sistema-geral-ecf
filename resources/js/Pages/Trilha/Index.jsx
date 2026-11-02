@@ -60,9 +60,8 @@ export default function Index({ empresas = [], ligadas = [], voltar = null }) {
                 </ul>
             )}
 
-            <div className="mt-[18px] text-[12.5px] text-trilha-muted">
-                Primeira versão · só leitura · aparecem só as empresas ligadas à trilha.
-            </div>
+            {/* Desde a 2ª entrega a trilha não é mais só leitura (a da empresa com a trilha de trabalho). */}
+            <div className="mt-[18px] text-[12.5px] text-trilha-muted">Aparecem só as empresas ligadas à trilha.</div>
         </TrilhaLayout>
     );
 }
@@ -78,7 +77,7 @@ function CartaoDaEmpresa({ empresa }) {
         <Link
             href={empresa.url}
             data-empresa={empresa.id}
-            className="group flex h-full flex-col gap-3.5 rounded-[14px] border border-trilha-line bg-trilha-surface p-4 hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
+            className="group flex h-full flex-col gap-3.5 rounded-[14px] border border-trilha-line bg-trilha-surface p-4 hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
         >
             <div className="flex items-center gap-3">
                 <Marca empresa={empresa} />

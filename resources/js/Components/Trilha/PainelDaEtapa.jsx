@@ -1,6 +1,7 @@
-import { useId } from 'react';
-import { ETAPA_POR_CHAVE, indiceDaEtapa, itensDaEtapa, todosNaOrdem, ETAPAS } from '@/lib/trilha';
+import { useId, useMemo } from 'react';
+import { ETAPA_POR_CHAVE, etapaDaTrilha, indiceDaEtapa, itensDaEtapa, todosNaOrdem, ETAPAS } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
+import CartoesDasOndas from '@/Components/Trilha/CartoesDasOndas';
 import LinhaDoItem from '@/Components/Trilha/LinhaDoItem';
 import { LinkDeAcao, Sobrelinha } from '@/Components/Trilha/Pecas';
 import { plural } from '@/Components/Trilha/formatos';
@@ -11,10 +12,16 @@ import { plural } from '@/Components/Trilha/formatos';
 // `painelGeral()`/`painelEtapa()`/`painelLanc()` do protótipo. A etapa 1 tem a
 // planilha própria (`PainelDaLista`), que reusa a moldura daqui.
 //
-// Esta entrega é SÓ LEITURA: os botões do protótipo ("+ Nova onda", "Colocar na
-// onda"…) viram links para as telas que já fazem isso. Cada link só aparece para
-// quem o recebeu nas props (a porta do cliente não recebe o do Publicador nem o
-// "Abrir o Portal" da equipe; a da equipe não recebe os do Portal do cliente).
+// Na 1ª entrega era SÓ LEITURA: os botões do protótipo viraram links para as
+// telas que já fazem aquilo. Cada link só aparece para quem o recebeu nas props
+// (a porta do cliente não recebe o do Publicador nem o "Abrir o Portal" da
+// equipe; a da equipe não recebe os do Portal do cliente).
+//
+// Com a trilha de trabalho (`trabalho`, 2ª entrega): as etapas 3 e 4 mostram os
+// cartões das ondas no lugar da nota "ondas ainda não ligadas" (o "+ Nova onda" só no
+// Planejamento e só para quem escreve), os textos das etapas são os da trilha de
+// trabalho e os links das etapas 2 a 4 viram secundários — o trabalho é feito
+// aqui. Sem `trabalho`, tudo como na 1ª entrega.
 
 const LINKS_DO_PAINEL = {
     geral: [
@@ -45,11 +52,22 @@ const VAZIO = {
     lanc: 'Nenhuma oferta no ar ainda.',
 };
 
+// Com a trilha de trabalho, o Planejamento vazio é o do protótipo: tudo já tem onda.
+const VAZIO_COM_TRABALHO = { ...VAZIO, plano: 'Todas as ofertas já estão numa onda.' };
+
+/** As etapas que mostram os cartões das ondas (com a trilha de trabalho). */
+const ETAPAS_COM_ONDAS = ['plano', 'robo'];
+
+/** As etapas cujo trabalho passou a ser feito na trilha: os links para as outras telas viram secundários. */
+const ETAPAS_DE_TRABALHO = ['mapa', 'plano', 'robo'];
+
 // No lugar dos cartões de onda (Planejamento) e das abas da Jardinagem (etapa 6) do protótipo.
 const NOTA = {
+    // Sem a trilha de trabalho (a loja fora da chave): nada de "prazo", "data de publicação" nem "próxima
+    // entrega" — o cliente também lê esta nota.
     plano: {
-        titulo: 'Ondas: na próxima entrega',
-        texto: 'Cada oferta vai entrar numa onda com data de publicação, e o robô começa na data da onda. Por enquanto, a oferta espera aqui até a preparação do anúncio começar.',
+        titulo: 'Ondas: ainda não ligadas nesta loja',
+        texto: 'Com as ondas ligadas, cada oferta entra numa onda com data, e o robô começa no dia dela. Por enquanto, a oferta espera aqui até a preparação do anúncio começar.',
     },
     lanc: {
         titulo: 'Protocolo e Jardinagem: em outro módulo',
@@ -57,15 +75,15 @@ const NOTA = {
     },
 };
 
-/** Os links do cabeçalho do painel; o primeiro é o destaque. */
-export function AcoesDoPainel({ chave, links }) {
+/** Os links do cabeçalho do painel; o primeiro é o destaque (menos quando todos são `secundarios`). */
+export function AcoesDoPainel({ chave, links, secundarios = false }) {
     const acoes = (LINKS_DO_PAINEL[chave] ?? []).filter(([campo]) => links?.[campo]);
     if (!acoes.length) return null;
 
     return (
         <div className="flex flex-wrap gap-2">
             {acoes.map(([campo, rotulo], i) => (
-                <LinkDeAcao key={campo} href={links[campo]} primario={i === 0} data-link={campo}>
+                <LinkDeAcao key={campo} href={links[campo]} primario={!secundarios && i === 0} data-link={campo}>
                     {rotulo}
                 </LinkDeAcao>
             ))}
@@ -95,12 +113,12 @@ export function MolduraDoPainel({ sobrelinha = null, titulo, texto, acoes = null
     );
 }
 
-/** A faixa "Pronto quando: …" da etapa. */
-export function RegraDePronto({ chave }) {
+/** A faixa "Pronto quando: …" da etapa (com os textos da trilha de trabalho, quando é ela). */
+export function RegraDePronto({ chave, trabalho = false }) {
     return (
         <div className="flex flex-wrap gap-x-[18px] gap-y-1.5 border-b border-trilha-line bg-trilha-surface2 px-[18px] py-2.5 text-[12.5px] text-trilha-fg2">
             <span>
-                <b className="text-trilha-fg">Pronto quando:</b> {ETAPA_POR_CHAVE[chave]?.pronto}
+                <b className="text-trilha-fg">Pronto quando:</b> {etapaDaTrilha(chave, trabalho)?.pronto}
             </span>
         </div>
     );
@@ -109,20 +127,30 @@ export function RegraDePronto({ chave }) {
 /** "Etapa 2 de 6 · Estrategista". */
 export const sobrelinhaDaEtapa = (chave) => `Etapa ${indiceDaEtapa(chave) + 1} de ${ETAPAS.length} · ${ETAPA_POR_CHAVE[chave]?.dono ?? ''}`;
 
-function Linhas({ entradas, visao, onAbrir, vazio }) {
+function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, podeEditar = false }) {
+    // A onda de cada oferta, para a segunda linha "{onda} · começa 05/11".
+    const ondaPorId = useMemo(() => new Map((dados?.ondas ?? []).map((w) => [w.id, w])), [dados?.ondas]);
     if (!entradas.length) return <div className="px-[18px] py-[30px] text-center text-trilha-muted">{vazio}</div>;
 
     return (
         <div className="flex flex-col">
             {entradas.map((entrada) => (
-                <LinhaDoItem key={entrada.chave} entrada={entrada} visao={visao} onAbrir={onAbrir} />
+                <LinhaDoItem
+                    key={entrada.chave}
+                    entrada={entrada}
+                    visao={visao}
+                    onAbrir={onAbrir}
+                    trabalho={trabalho}
+                    podeEditar={podeEditar}
+                    ondaPorId={ondaPorId}
+                />
             ))}
         </div>
     );
 }
 
 /** "Ver tudo": a loja inteira na ordem da trilha. */
-export function PainelGeral({ dados, visao, links, onAbrir }) {
+export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, podeEditar = false }) {
     const nProdutos = dados.produtos.length;
     const nOfertas = dados.ofertas.length;
     const noAr = dados.ofertas.filter((o) => o.etapa === 'lanc').length;
@@ -136,18 +164,27 @@ export function PainelGeral({ dados, visao, links, onAbrir }) {
         >
             <Linhas
                 entradas={todosNaOrdem(dados)}
+                dados={dados}
                 visao={visao}
                 onAbrir={onAbrir}
+                trabalho={trabalho}
+                podeEditar={podeEditar}
                 vazio="A trilha ainda está vazia: comece pela lista de produtos."
             />
         </MolduraDoPainel>
     );
 }
 
-/** As etapas 2 a 6: cabeçalho da etapa, a regra de "pronto", a nota (quando há) e as linhas. */
-export function PainelDaEtapa({ chave, dados, visao, links, onAbrir }) {
-    const etapa = ETAPA_POR_CHAVE[chave];
-    const nota = NOTA[chave];
+/**
+ * As etapas 2 a 6: cabeçalho da etapa, a regra de "pronto", a nota (quando há) ou
+ * os cartões das ondas (etapas 3 e 4 com a trilha de trabalho) e as linhas.
+ */
+export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = false, podeEditar = false }) {
+    const etapa = etapaDaTrilha(chave, trabalho);
+    const comOndas = trabalho && ETAPAS_COM_ONDAS.includes(chave);
+    // Com os cartões das ondas, a nota "ondas ainda não ligadas" sai; a da etapa 6 fica.
+    const nota = comOndas ? null : NOTA[chave];
+    const vazio = (trabalho ? VAZIO_COM_TRABALHO : VAZIO)[chave] ?? 'Nada nesta etapa agora.';
 
     return (
         <MolduraDoPainel
@@ -155,9 +192,10 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir }) {
             sobrelinha={sobrelinhaDaEtapa(chave)}
             titulo={etapa.titulo}
             texto={etapa.faz}
-            acoes={<AcoesDoPainel chave={chave} links={links} />}
+            acoes={<AcoesDoPainel chave={chave} links={links} secundarios={trabalho && ETAPAS_DE_TRABALHO.includes(chave)} />}
         >
-            <RegraDePronto chave={chave} />
+            <RegraDePronto chave={chave} trabalho={trabalho} />
+            {comOndas && <CartoesDasOndas dados={dados} podeCriar={podeEditar && chave === 'plano'} onAbrir={onAbrir} />}
             {nota && (
                 <div className="border-b border-trilha-line px-[18px] py-4">
                     <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-trilha-line px-[14px] py-3" data-nota={chave}>
@@ -166,7 +204,15 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir }) {
                     </div>
                 </div>
             )}
-            <Linhas entradas={itensDaEtapa(dados, chave)} visao={visao} onAbrir={onAbrir} vazio={VAZIO[chave] ?? 'Nada nesta etapa agora.'} />
+            <Linhas
+                entradas={itensDaEtapa(dados, chave)}
+                dados={dados}
+                visao={visao}
+                onAbrir={onAbrir}
+                trabalho={trabalho}
+                podeEditar={podeEditar}
+                vazio={vazio}
+            />
         </MolduraDoPainel>
     );
 }

@@ -9,9 +9,16 @@
 // - Agrupa e filtra pela FAMÍLIA do produto (o protótipo usava o ambiente): é
 //   como o cadastro e o Planejamento já organizam o catálogo. "Sem família" vai
 //   para o fim.
-// - As ondas só existem a partir da próxima entrega. Sem ondas o mapa tem 3
-//   colunas e a ligação vai direto da oferta aos anúncios; com ondas, 4 colunas
-//   como no protótipo (onda → anúncio, passando pela oferta: o `via`).
+// - As ondas existem desde a 2ª entrega (trilha de trabalho). Sem ondas o mapa
+//   tem 3 colunas e a ligação vai direto da oferta aos anúncios; com ondas, 4
+//   colunas como no protótipo (onda → anúncio, passando pela oferta: o `via`).
+//   A caixa da onda diz "começa 05/11" ou "começou 03/11" (a data é o dia em
+//   que o robô começa, não prazo); as ondas vão pela data e, no empate, pelo id.
+//   Sem onda, três caixas: "Sem onda" (tracejada, âmbar) só com o que está no
+//   Planejamento e pode ser planejado; o que já tinha passado dele antes das
+//   ondas vai para a caixa neutra "Antes das ondas" (a `w0` do protótipo,
+//   calculada aqui); a oferta sem produto na Lista, que não entra em onda, vai
+//   para a neutra tracejada "Fora das ondas".
 // - O nó de anúncio NÃO usa o MLB como chave: na porta do cliente o MLB vem
 //   null, e no "Ver como: Cliente" da equipe o dado ainda traz o MLB. A chave é a
 //   posição do anúncio na oferta, e o texto só leva o MLB na visão da equipe.
@@ -27,6 +34,7 @@
 // varre `.jsx`. As cores daqui são `rgb(var(--t-…))`, para `style` no SVG.
 
 import { COR_DA_ETAPA, ETAPA_POR_CHAVE, ORDEM, SIGLA_DO_TIPO, chaveDaOferta, chaveDoProduto, contagemPorEtapa } from './trilha.js';
+import { ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
 
 /** Nome curto de cada etapa: faixa do fluxo, legenda do mapa e cartões do índice. */
 export const ROTULO_CURTO = {
@@ -43,8 +51,17 @@ export const SEM_FAMILIA = 'Sem família';
 /** Produto mapeado (etapa null): já segue pelas ofertas, então a caixa dele fica neutra. */
 export const COR_MAPEADO = 'rgb(var(--t-fg2))';
 
-/** A caixa "Sem onda" (só existe quando há ondas): o que ainda falta planejar. */
+/** A caixa "Sem onda" (só existe quando há ondas): o que está no Planejamento e ainda falta planejar. */
 export const COR_SEM_ONDA = 'rgb(var(--t-warn))';
+
+/**
+ * As caixas neutras da coluna das ondas: "Antes das ondas" (o que já tinha passado do Planejamento quando as
+ * ondas começaram) e "Fora das ondas" (tracejada: a oferta sem produto na Lista, que não se planeja).
+ */
+export const COR_ANTES_DAS_ONDAS = 'rgb(var(--t-muted))';
+
+/** As caixas da coluna das ondas que não são onda de verdade (não contam no cabeçalho nem abrem painel). */
+export const PSEUDO_ONDAS = ['w:sem', 'w:antes', 'w:fora'];
 
 /** Anúncio pela situação (`situacaoDoAnuncio`): no ar = verde da etapa "No ar"; pausado ou parado = âmbar; encerrado ou inativo = cinza. */
 export const COR_DO_ANUNCIO = {
@@ -97,13 +114,6 @@ export const familiaDe = (produto) => String(produto?.familia ?? '').trim() || S
 
 /** O SKU que o mapa mostra do produto: o código do grupo; sem ele, o da 1ª cor. */
 const skuDoProduto = (produto) => produto.codigo || (produto.skus ?? [])[0] || '';
-
-/** "dd/mm" de uma data ISO, lendo só a parte da data (sem fuso para trocar o dia). */
-const diaMes = (iso) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''));
-
-    return m ? `${m[3]}/${m[2]}` : '';
-};
 
 // O cliente não lê o nome da plataforma (decisão de 07/10, sigilo). A porta do
 // cliente já chega limpa do servidor, mas o "Ver como: Cliente" da equipe usa o
@@ -204,7 +214,14 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
     // A oferta sem produto na lista não tem família: só aparece em "Todas".
     const ofs = ofertas.filter((o) => !filtro || (o.componentes ?? []).some((c) => noRecorte.has(c.produto_id)));
     const idsDeOnda = new Set(ondas.map((w) => w.id));
-    const ondaDa = (o) => (o.onda_id != null && idsDeOnda.has(o.onda_id) ? o.onda_id : 'sem');
+    // Sem onda: a oferta sem produto na Lista fica fora das ondas (não se planeja); das outras, "Sem onda" só o
+    // que está no Planejamento — o que já passou dele sem onda começou antes das ondas.
+    const ondaDa = (o) => {
+        if (o.onda_id != null && idsDeOnda.has(o.onda_id)) return o.onda_id;
+        if (o.sem_produto) return 'fora';
+
+        return o.etapa === 'plano' ? 'sem' : 'antes';
+    };
 
     for (const o of ofs) {
         const id = chaveDaOferta(o);
@@ -242,23 +259,37 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
         });
     }
 
-    // ── Coluna 2, só com ondas: as ondas das ofertas do recorte, pela data ──
+    // ── Coluna 2, só com ondas: as ondas das ofertas do recorte, pela data e, no empate, pelo id ──
     if (temOndas) {
-        const usadas = ondas
-            .filter((w) => ofs.some((o) => o.onda_id === w.id))
-            .sort((a, b) => comparar(a.data, b.data) || comparar(a.nome, b.nome));
+        const usadas = ondasEmOrdem(ondas).filter((w) => ofs.some((o) => o.onda_id === w.id));
         for (const w of usadas) {
             const situacao = quantos(ofs.filter((o) => o.onda_id === w.id).length, 'oferta', 'ofertas');
             const titulo = w.nome || `Onda ${w.id}`;
-            const sub = w.data ? `até ${diaMes(w.data)}` : 'sem data';
+            const sub = w.data ? quandoDaOnda(w) : 'sem data';
             nos.push({ id: `w:${w.id}`, tipo: 'onda', coluna: 2, titulo, sub, situacao, cor: COR_DA_ETAPA.plano, rotulo: `Onda ${titulo} · ${sub} · ${situacao}` });
         }
         const semOnda = ofs.filter((o) => ondaDa(o) === 'sem').length;
         if (semOnda) {
             const situacao = quantos(semOnda, 'oferta', 'ofertas');
             nos.push({
-                id: 'w:sem', tipo: 'onda', coluna: 2, titulo: 'Sem onda', sub: 'falta planejar', situacao, cor: COR_SEM_ONDA, tracejado: true,
+                id: 'w:sem', tipo: 'onda', coluna: 2, titulo: 'Sem onda', sub: 'falta planejar', situacao, cor: COR_SEM_ONDA, tracejado: true, pseudo: true,
                 rotulo: `Ofertas sem onda · falta planejar · ${situacao}`,
+            });
+        }
+        const antes = ofs.filter((o) => ondaDa(o) === 'antes').length;
+        if (antes) {
+            const situacao = quantos(antes, 'oferta', 'ofertas');
+            nos.push({
+                id: 'w:antes', tipo: 'onda', coluna: 2, titulo: 'Antes das ondas', sub: 'já tinham começado', situacao, cor: COR_ANTES_DAS_ONDAS, pseudo: true,
+                rotulo: `Ofertas de antes das ondas · já tinham começado · ${situacao}`,
+            });
+        }
+        const fora = ofs.filter((o) => ondaDa(o) === 'fora').length;
+        if (fora) {
+            const situacao = quantos(fora, 'oferta', 'ofertas');
+            nos.push({
+                id: 'w:fora', tipo: 'onda', coluna: 2, titulo: 'Fora das ondas', sub: 'sem produto na lista', situacao, cor: COR_ANTES_DAS_ONDAS, tracejado: true, pseudo: true,
+                rotulo: `Ofertas fora das ondas · sem produto na lista · ${situacao}`,
             });
         }
         for (const o of ofs) {
@@ -468,7 +499,7 @@ export function caixaDoNo(no) {
 
 /** Os títulos das colunas, com quantos itens cada uma desenha agora (já com o filtro). */
 export function cabecalhosDoMapa(grafo) {
-    const conta = (tipo) => grafo.nos.filter((n) => n.tipo === tipo && n.id !== 'w:sem').length;
+    const conta = (tipo) => grafo.nos.filter((n) => n.tipo === tipo && !n.pseudo).length;
 
     return [
         { titulo: 'Lista de produtos', detalhe: quantos(conta('produto'), 'produto', 'produtos') },
@@ -477,6 +508,13 @@ export function cabecalhosDoMapa(grafo) {
         { titulo: 'Anúncios', detalhe: quantos(conta('anuncio'), 'anúncio', 'anúncios') },
     ];
 }
+
+/**
+ * O status do robô que é PARADA (alguém precisa olhar): o agente parou, ou a onda
+ * começou há tempo e nada começou. "Na fila · com pendência na Lista" tem alerta
+ * mas é aviso — o robô prepara com o que houver —, não parada.
+ */
+const PARADA_DO_ROBO = /^(?:O agente parou|Ainda não começou)/;
 
 /**
  * A faixa do fluxo no topo do mapa (Lista → Mapeamento → Planejamento → Robô →
@@ -493,18 +531,20 @@ export function resumoDoFluxo(dados) {
     const alertas = (etapa) => ofertas.filter((o) => o.etapa === etapa && o.alerta).length;
     const idsDeOnda = new Set(ondas.map((w) => w.id));
     const emOndas = ofertas.filter((o) => o.onda_id != null && idsDeOnda.has(o.onda_id)).length;
+    // O que falta planejar: a oferta sem produto na Lista fica fora das ondas e não conta.
+    const paraPlanejar = ofertas.filter((o) => o.etapa === 'plano' && !o.sem_produto).length;
     const anuncios = ofertas.filter((o) => o.etapa === 'lanc').reduce((t, o) => t + (o.anuncios ?? []).length, 0);
     const passo = (chave, numero, unidade, detalhe) => ({ chave, titulo: ROTULO_CURTO[chave], numero, unidade, detalhe, cor: COR_DA_ETAPA[chave] });
-    const robo = alertas('robo');
+    const robo = ofertas.filter((o) => o.etapa === 'robo' && PARADA_DO_ROBO.test(String(o.status ?? ''))).length;
     const revisao = alertas('revisao');
 
     return [
         passo('lista', produtos.length, produtos.length === 1 ? 'produto' : 'produtos', n.lista ? quantos(n.lista, 'incompleto', 'incompletos') : ''),
         passo('mapa', ofertas.length, ofertas.length === 1 ? 'oferta' : 'ofertas', n.mapa ? `${quantos(n.mapa, 'produto', 'produtos')} por mapear` : ''),
         ondas.length
-            ? passo('plano', emOndas, 'em ondas', n.plano ? `${n.plano} sem onda` : '')
-            // Sem ondas (hoje), tudo o que está no Planejamento espera a sua.
-            : passo('plano', n.plano, n.plano === 1 ? 'oferta' : 'ofertas', n.plano ? 'esperando onda' : ''),
+            ? passo('plano', emOndas, 'em ondas', paraPlanejar ? `${paraPlanejar} sem onda` : '')
+            // Sem ondas, tudo o que está no Planejamento (e se planeja) espera a sua.
+            : passo('plano', n.plano, n.plano === 1 ? 'oferta' : 'ofertas', paraPlanejar ? 'esperando onda' : ''),
         passo('robo', n.robo, 'preparando', robo ? quantos(robo, 'parada', 'paradas') : ''),
         passo('revisao', n.revisao, 'para publicar', revisao ? `${revisao} com pendência` : ''),
         passo('lanc', n.lanc, n.lanc === 1 ? 'oferta' : 'ofertas', anuncios ? quantos(anuncios, 'anúncio', 'anúncios') : ''),
@@ -517,7 +557,7 @@ export function legendaDoMapa(temOndas = false) {
         etapas: [
             ...ORDEM.map((k) => ({ rotulo: k === 'lista' ? 'Lista de produtos' : ROTULO_CURTO[k], cor: COR_DA_ETAPA[k] })),
             { rotulo: 'Produto mapeado', cor: COR_MAPEADO },
-            ...(temOndas ? [{ rotulo: 'Sem onda', cor: COR_SEM_ONDA }] : []),
+            ...(temOndas ? [{ rotulo: 'Sem onda', cor: COR_SEM_ONDA }, { rotulo: 'Antes ou fora das ondas', cor: COR_ANTES_DAS_ONDAS }] : []),
         ],
         anuncios: [
             { rotulo: 'No ar', cor: COR_DO_ANUNCIO.ativo },

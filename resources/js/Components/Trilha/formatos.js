@@ -64,11 +64,14 @@ export const rotuloDaFase = (fase) => (fase ? fase.charAt(0).toUpperCase() + fas
  * - Produto na lista: o que falta, até 3 itens (o resto fica no painel lateral).
  * - Produto no mapeamento: quantas sugestões do Planejamento ainda esperam decisão
  *   (é o que segura o produto nesta etapa — ver a seção 5 do contrato da trilha).
+ *   Com a trilha de trabalho (`trabalho`), quem segura é o "Concluir mapeamento"
+ *   da própria trilha, não as sugestões: a linha diz só "falta mapear".
  *
  * @param {{tipo: 'p'|'o', item: object}} entrada  o formato de `itensDaEtapa()`
+ * @param {{trabalho?: boolean}} [opcoes]
  * @returns {{texto: string, alerta: boolean}}
  */
-export function situacaoDoItem({ tipo, item }) {
+export function situacaoDoItem({ tipo, item }, { trabalho = false } = {}) {
     if (tipo === 'o') return { texto: item.status ?? '', alerta: !!item.alerta };
 
     const faltas = item.faltas ?? [];
@@ -80,7 +83,7 @@ export function situacaoDoItem({ tipo, item }) {
     }
     if (item.etapa === 'lista') return { texto: 'Lista incompleta', alerta: true };
     if (item.etapa === 'mapa') {
-        const total = item.sugestoes_pendentes_total ?? 0;
+        const total = trabalho ? 0 : item.sugestoes_pendentes_total ?? 0;
 
         return {
             texto: total

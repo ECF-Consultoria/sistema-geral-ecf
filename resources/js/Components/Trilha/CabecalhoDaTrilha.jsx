@@ -57,7 +57,7 @@ export default function CabecalhoDaTrilha({ empresa, portaDaEquipe, verComo, onV
                                         data-ver-como={opcao.valor}
                                         onClick={() => onVerComo(opcao.valor)}
                                         className={cn(
-                                            'px-3 py-[7px] text-[13px] font-semibold text-trilha-fg2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run',
+                                            'px-3 py-[7px] text-[13px] font-semibold text-trilha-fg2 focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run',
                                             ligado && 'bg-trilha-navy text-trilha-on-navy',
                                         )}
                                     >
@@ -131,7 +131,7 @@ export function AbasDaVista({ vista, onVista, idDoPainel }) {
                         tabIndex={ligada ? 0 : -1}
                         onClick={() => onVista(aba.valor)}
                         className={cn(
-                            'rounded-[9px] px-[14px] py-2 text-[13.5px] font-bold text-trilha-fg2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run',
+                            'rounded-[9px] px-[14px] py-2 text-[13.5px] font-bold text-trilha-fg2 focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run',
                             ligada && 'bg-trilha-surface text-trilha-fg ring-1 ring-trilha-line',
                         )}
                     >

@@ -7,14 +7,25 @@
 //
 // O nome começa com `_` para o `node --test "tests/js/**/*.test.js"` não o
 // tomar por teste. `paraCliente()` imita o que o servidor tira na porta do
-// cliente (cliente.ecf…): nada de link do Publicador, de preparo, de MLB nem
-// da lista de sugestões.
+// cliente (cliente.ecf…): nada de link do Publicador, de preparo, de MLB, da
+// lista de sugestões, de quem mapeou nem de quem criou a onda — e nenhuma
+// escrita.
+//
+// `PROPS_EQUIPE` é a empresa SEM a trilha de trabalho (a 1ª entrega, como as
+// outras empresas continuam). `PROPS_TRABALHO` é a mesma loja com a trilha de
+// trabalho ligada (2ª entrega, 02/11/2026): ondas, mapeamento e os status da
+// régua da onda, para a equipe com escrita. `MAPEAMENTO`, `PREVIA` e `CONCLUIDO`
+// são as respostas JSON do painel de mapear (o contrato de
+// `App\Http\Controllers\Trilha\MapeamentoDaTrilhaController`).
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
     sessao_equipe: false,
     empresa: { id: 459, nome: 'Casa Jatobá', logo_url: null },
     voltar: { url: '/trilha', rotulo: 'Empresas' },
+    trabalho: false,
+    pode_editar: false,
+    escrita: null,
     links: {
         portal_abrir: '/companies/459/portal',
         planejamento: null,
@@ -184,10 +195,20 @@ export function paraCliente(props = PROPS_EQUIPE) {
         ...props,
         visao: 'cliente',
         voltar: { url: '/portal/459/inicio', rotulo: 'Voltar ao portal' },
-        links: { portal_abrir: null, planejamento: '/portal/459/estrutura/sugestoes', produtos: '/portal/459/estrutura/produtos', publicador: null },
+        // O cliente nunca escreve: nem `pode_editar`, nem endereço de escrita.
+        pode_editar: false,
+        escrita: null,
+        // Com a trilha de trabalho o mapeamento é da equipe: o atalho para o Planejamento do Portal sai.
+        links: {
+            portal_abrir: null,
+            planejamento: props.trabalho ? null : '/portal/459/estrutura/sugestoes',
+            produtos: '/portal/459/estrutura/produtos',
+            publicador: null,
+        },
         produtos: props.produtos.map(({ url_publicador, sugestoes_pendentes, ...p }) => ({
             ...p,
             sugestoes_pendentes: [],
+            mapeado_por: null,
             url_ficha: `/portal/459/estrutura/produtos/${p.id}`,
         })),
         ofertas: props.ofertas.map(({ url_publicador, preparo, ...o }) => ({
@@ -195,7 +216,160 @@ export function paraCliente(props = PROPS_EQUIPE) {
             preparo: null,
             anuncios: (o.anuncios ?? []).map((a) => ({ ...a, mlb: null })),
         })),
-        // As ondas não vão ao cliente (o servidor as manda vazias na porta dele).
-        ondas: [],
+        // As ondas vão ao cliente só com nome, data e se começou (`ApresentacaoDaTrilha::ONDA_CLIENTE`).
+        ondas: (props.ondas ?? []).map(({ id, nome, data, comecou }) => ({ id, nome, data, comecou: !!comecou })),
     };
 }
+
+// ═══ 2ª entrega: a mesma loja com a trilha de trabalho ═══════════════════════
+
+/** Os endereços das escritas (`ApresentacaoDaTrilha::escrita`). */
+export const ESCRITA = {
+    ondas: 'http://localhost/trilha/459/ondas',
+    planejamento: 'http://localhost/trilha/459/planejamento',
+    produtos: 'http://localhost/trilha/459/produtos',
+};
+
+/**
+ * As ondas como o servidor manda (pela data). A "Onda 1" já começou (03/11); a
+ * "Onda 2" e a "Onda 3" começam depois. O id não segue a data de propósito.
+ */
+const ONDAS = [
+    { id: 7, nome: 'Onda 1 · simples', data: '2026-11-03', comecou: true, criada_por: 'Rafael', criada_em: '2026-11-01T10:00:00-03:00' },
+    { id: 9, nome: 'Onda 2', data: '2026-11-05', comecou: false, criada_por: 'Rafael', criada_em: '2026-11-02T09:00:00-03:00' },
+    { id: 8, nome: 'Onda 3 · kits', data: '2026-11-10', comecou: false, criada_por: 'Erlon', criada_em: '2026-11-01T11:00:00-03:00' },
+];
+
+/** Cada oferta com a onda e o status da régua da onda (`SituacaoDasOfertas::naOnda`) quando ainda não andou. */
+const NA_TRILHA_DE_TRABALHO = {
+    's-2': { onda_id: 7 },
+    's-3': { onda_id: 7 },
+    's-4': { onda_id: 7 },
+    'c-2-4': { onda_id: 9, etapa: 'robo', status: 'Na fila · começa em 05/11', alerta: false, preparo: null },
+    'o-31': { onda_id: null, etapa: 'plano', status: 'Sem onda · falta escolher a data', alerta: true },
+    'o-32': { onda_id: 8, etapa: 'robo', status: 'Na fila · começa em 10/11', alerta: false, preparo: null },
+};
+
+/** O Combo 2 do aparador, nascido de um mapeamento na trilha: no Planejamento, sem onda. */
+const COMBO_DO_APARADOR = {
+    id: 'c-3-2', tipo: 'Combo', nome: 'Combo 2 · Aparador buffet 4 portas jatobá', sku: 'CJ-212-CB2', skus: ['CJ-212-CB2'],
+    componentes: [{ produto_id: 3, quantidade: 2, sku: 'CJ-212', nome: 'Aparador buffet 4 portas jatobá' }],
+    etapa: 'plano', status: 'Sem onda · falta escolher a data', alerta: true, anuncios: [], preparo: null,
+    onda_id: null, sem_produto: false, url_publicador: null,
+};
+
+/** O Combo 2 da mesa: na Onda 1, que já começou — e ainda não andou (o robô está na fila). */
+const COMBO_DA_MESA = {
+    id: 'c-1-2', tipo: 'Combo', nome: 'Combo 2 · Mesa de jantar jatobá 6 lugares', sku: 'CJ-210-CB2', skus: ['CJ-210-CB2'],
+    componentes: [{ produto_id: 1, quantidade: 2, sku: 'CJ-210', nome: 'Mesa de jantar jatobá 6 lugares' }],
+    etapa: 'robo', status: 'Na fila · começou em 03/11', alerta: false, anuncios: [], preparo: null,
+    onda_id: 7, sem_produto: false, url_publicador: null,
+};
+
+/** Uma oferta da Lista SKUs sem produto na Lista e sem rascunho: fica fora das ondas (`TrilhaDaEmpresa`). */
+const AVULSA_SEM_PRODUTO = {
+    id: 'o-41', tipo: 'Simples', nome: 'Cabideiro de parede jatobá', sku: 'CJ-305', skus: ['CJ-305'],
+    componentes: [{ produto_id: null, quantidade: 1, sku: 'CJ-305', nome: 'Cabideiro de parede jatobá' }],
+    etapa: 'plano', status: 'Fora das ondas · sem produto na Lista', alerta: false, anuncios: [], preparo: null,
+    onda_id: null, sem_produto: true, url_publicador: null,
+};
+
+/** As que ainda entram, mudam ou saem de onda (`planejavel` = tem produto na Lista e não andou). */
+const PLANEJAVEIS = new Set(['c-2-4', 'o-31', 'o-32', 'c-3-2', 'c-1-2']);
+
+export const PROPS_TRABALHO = {
+    ...PROPS_EQUIPE,
+    trabalho: true,
+    pode_editar: true,
+    escrita: ESCRITA,
+    ondas: ONDAS,
+    produtos: PROPS_EQUIPE.produtos.map((p) => {
+        // O rack: a Simples dele já andou (está na revisão) — com a trilha de trabalho, ele já está mapeado.
+        if (p.id === 4) return { ...p, etapa: null, mapeado_em: null, mapeado_por: null };
+        // O aparador foi mapeado na trilha.
+        if (p.id === 3) return { ...p, mapeado_em: '2026-11-01T14:32:00-03:00', mapeado_por: 'Rafael' };
+
+        return { ...p, mapeado_em: null, mapeado_por: null };
+    }),
+    ofertas: [
+        ...PROPS_EQUIPE.ofertas.map((o) => ({ ...o, ...(NA_TRILHA_DE_TRABALHO[o.id] ?? {}) })),
+        COMBO_DO_APARADOR,
+        COMBO_DA_MESA,
+        AVULSA_SEM_PRODUTO,
+    ].map((o) => ({ ...o, planejavel: PLANEJAVEIS.has(o.id) })),
+};
+
+/** `GET {escrita.produtos}/5/mapeamento` — o painel ripado (3 cores, a Preto ainda sem oferta). Parceiros fora de ordem. */
+export const MAPEAMENTO = {
+    produto: {
+        id: 5,
+        nome: 'Painel ripado para TV 2,20 m',
+        codigo: 'CJ-214',
+        familia: 'Racks',
+        ambientes: ['Sala de estar'],
+        foto: '/storage/estrutura/cj-214-nat.jpg',
+        cores: [
+            { variacao_id: 51, valor: 'Natural', sku: 'CJ-214-NAT', foto: '/storage/estrutura/cj-214-nat.jpg', tem_oferta: true },
+            { variacao_id: 52, valor: 'Mel', sku: 'CJ-214-MEL', foto: null, tem_oferta: true },
+            { variacao_id: 53, valor: 'Preto', sku: 'CJ-214-PT', foto: null, tem_oferta: false },
+        ],
+    },
+    combos: [
+        { quantidade: 2, sugerido: true, existe: 'todas' },
+        { quantidade: 3, sugerido: false, existe: 'nenhuma' },
+        { quantidade: 4, sugerido: false, existe: 'algumas' },
+        { quantidade: 6, sugerido: false, existe: 'nenhuma' },
+    ],
+    parceiros: [
+        { produto_id: 2, nome: 'Cadeira jatobá assento palhinha', codigo: 'CJ-211', foto: null, ambiente: null, sugerido: null, casa: false, motivo: 'As cores não casam com as deste produto.' },
+        { produto_id: 1, nome: 'Mesa de jantar jatobá 6 lugares', codigo: 'CJ-210', foto: null, ambiente: null, sugerido: null, casa: true, motivo: null },
+        { produto_id: 11, nome: 'Prateleira flutuante jatobá 1 m', codigo: 'CJ-302', foto: null, ambiente: 'Sala de estar', sugerido: null, casa: true, motivo: null },
+        { produto_id: 4, nome: 'Rack para TV 1,80 m madeira maciça', codigo: 'CJ-213', foto: '/storage/estrutura/cj-213.jpg', ambiente: 'Sala de estar', sugerido: 1, casa: true, motivo: null },
+    ],
+    mapeado_em: null,
+    mapeado_por: null,
+    max_componentes: 6,
+};
+
+/** `POST …/mapeamento/previa` com Combo 3, o rack 1× e a prateleira 2× (uma linha não dá). */
+export const PREVIA = {
+    linhas: [
+        {
+            chave: 's-5', tipo: 'Simples', nome: 'Painel ripado para TV 2,20 m', skus: ['CJ-214-NAT', 'CJ-214-MEL'], composicao: null,
+            estado: 'sempre', detalhe: 'A cor Preto ainda não tem oferta: salve o produto no cadastro.', avisos: [],
+        },
+        {
+            chave: 'c-5-2', tipo: 'Combo', nome: 'Combo 2 · Painel ripado para TV 2,20 m', skus: ['CJ-214-NAT-CB2', 'CJ-214-MEL-CB2'],
+            composicao: '2× CJ-214-NAT', estado: 'ja_existe', detalhe: 'Já existe: CJ-214-NAT-CB2, CJ-214-MEL-CB2.', avisos: [],
+        },
+        {
+            chave: 'c-5-3', tipo: 'Combo', nome: 'Combo 3 · Painel ripado para TV 2,20 m', skus: ['CJ-214-NAT-CB3', 'CJ-214-MEL-CB3'],
+            composicao: '3× CJ-214-NAT', estado: 'nova', detalhe: 'Uma por cor (2); no Publicador as cores viram um anúncio só.', avisos: [],
+        },
+        {
+            chave: 'c-5-4', tipo: 'Combo', nome: 'Combo 4 · Painel ripado para TV 2,20 m', skus: ['CJ-214-MEL-CB4'],
+            composicao: '4× CJ-214-NAT', estado: 'nova_parcial', detalhe: 'Nova em 1 de 2 cores (as outras já existem).', avisos: [],
+        },
+        {
+            chave: 'novo-1', tipo: 'Kit', nome: 'Kit rack 1,80 m + painel ripado 2,20 m natural', skus: ['KT-CJ-213-CJ-214-NAT'],
+            composicao: '1× CJ-213 + 1× CJ-214-NAT', estado: 'nova', detalhe: null, avisos: ['O título passa de 60 caracteres: confira no Publicador.'],
+        },
+        {
+            chave: 'novo-2', tipo: 'Combit', nome: 'Painel ripado 2,20 m natural + 2 prateleiras flutuantes', skus: ['CT2-CJ-214-NAT-CJ-302'],
+            composicao: '1× CJ-214-NAT + 2× CJ-302', estado: 'nao_da', detalhe: 'O SKU passa de 120 caracteres: encurte na Lista SKUs.', avisos: [],
+        },
+    ],
+    novas: 3,
+    pode_concluir: false,
+    mensagem: 'O SKU passa de 120 caracteres: encurte na Lista SKUs.',
+};
+
+/** `POST …/mapeamento` — o "Concluir": o Combo 3 (um item, duas cores) e o kit. */
+export const CONCLUIDO = {
+    criadas: [
+        { chave: 'c-5-3', tipo: 'Combo', nome: 'Combo 3 · Painel ripado para TV 2,20 m', skus: ['CJ-214-NAT-CB3', 'CJ-214-MEL-CB3'] },
+        { chave: 'o-77', tipo: 'Kit', nome: 'Kit rack 1,80 m + painel ripado 2,20 m natural', skus: ['KT-CJ-213-CJ-214-NAT'] },
+    ],
+    descartadas: 1,
+    mensagem: '2 ofertas criadas.',
+};

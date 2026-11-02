@@ -13,7 +13,7 @@ const AVATAR = {
     robo: 'bg-trilha-roxo-bg text-trilha-roxo',
 };
 
-const CHIP = 'inline-flex items-center gap-2 rounded-full border border-trilha-line bg-trilha-surface px-2.5 py-1.5 text-[12.5px] text-trilha-fg hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
+const CHIP = 'inline-flex items-center gap-2 rounded-full border border-trilha-line bg-trilha-surface px-2.5 py-1.5 text-[12.5px] text-trilha-fg hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
 
 /**
  * @param {{

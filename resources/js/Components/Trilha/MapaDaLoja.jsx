@@ -37,9 +37,10 @@ const VAZIO = [];
  *   dados: {produtos?: Array, ofertas?: Array, ondas?: Array},
  *   visao?: 'equipe'|'cliente',
  *   onAbrir?: (chave: string) => void,
- * }} props
+ *   trabalho?: boolean,
+ * }} props  `trabalho`: a trilha de trabalho está ligada (as ondas existem) — o aviso "Ainda não há ondas" sai.
  */
-export default function MapaDaLoja({ dados, visao = 'equipe', onAbrir }) {
+export default function MapaDaLoja({ dados, visao = 'equipe', onAbrir, trabalho = false }) {
     const [familia, setFamilia] = useState(null);
     const [escolhido, setEscolhido] = useState(null);
     const idDoTitulo = useId();
@@ -122,7 +123,7 @@ export default function MapaDaLoja({ dados, visao = 'equipe', onAbrir }) {
             ) : (
                 <div className="grid grid-cols-1 min-[1000px]:grid-cols-[minmax(0,1fr)_300px]">
                     <figure className="m-0 min-w-0 border-b border-trilha-line px-4 pb-4 pt-3.5 sm:px-[18px] min-[1000px]:border-b-0 min-[1000px]:border-r">
-                        {!comOndas && (
+                        {!comOndas && !trabalho && (
                             <p
                                 data-aviso-ondas
                                 className="mb-3 flex items-start gap-2 rounded-lg border border-dashed border-trilha-line bg-trilha-surface2 px-3 py-2 text-[12.5px] text-trilha-fg2"
@@ -237,7 +238,7 @@ function FiltroDeFamilia({ familias, atual, onTrocar }) {
                 aria-pressed={ligado}
                 onClick={() => onTrocar(valor)}
                 className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run',
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run',
                     ligado
                         ? 'border-trilha-navy bg-trilha-navy text-trilha-on-navy'
                         : 'border-trilha-line bg-trilha-surface text-trilha-fg2 hover:border-trilha-muted',
@@ -392,10 +393,12 @@ export function DetalheDoMapa({ desenho, sel, acesos, onEscolher, onAbrir, onLim
         .sort((a, b) => a.y - b.y);
     const doTipo = (tipo) => ligados.filter((n) => n.tipo === tipo);
 
-    // O anúncio não tem linha própria na trilha: leva à oferta dele. A onda ainda não tem tela.
+    // O anúncio não tem linha própria na trilha: leva à oferta dele. A onda abre o painel dela (o id do nó é a
+    // chave da tela, `w:7`); "Sem onda" e "Antes das ondas" não são ondas de verdade e não abrem nada.
     let abrir = null;
     if (no.tipo === 'produto' || no.tipo === 'oferta') abrir = { chave: no.id, rotulo: 'Abrir na trilha' };
     else if (no.tipo === 'anuncio') abrir = { chave: no.origem, rotulo: 'Abrir a oferta na trilha' };
+    else if (no.tipo === 'onda' && !no.pseudo) abrir = { chave: no.id, rotulo: 'Abrir a onda' };
 
     return (
         <>
@@ -435,7 +438,7 @@ export function DetalheDoMapa({ desenho, sel, acesos, onEscolher, onAbrir, onLim
                         type="button"
                         data-acao="abrir-na-trilha"
                         onClick={() => onAbrir(abrir.chave)}
-                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-navy bg-trilha-navy px-3 py-[7px] text-[13px] font-semibold text-trilha-on-navy focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-navy bg-trilha-navy px-3 py-[7px] text-[13px] font-semibold text-trilha-on-navy focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
                     >
                         {abrir.rotulo}
                     </button>
@@ -444,7 +447,7 @@ export function DetalheDoMapa({ desenho, sel, acesos, onEscolher, onAbrir, onLim
                     type="button"
                     data-acao="limpar-mapa"
                     onClick={onLimpar}
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-line bg-trilha-surface px-3 py-[7px] text-[13px] font-semibold text-trilha-fg hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-line bg-trilha-surface px-3 py-[7px] text-[13px] font-semibold text-trilha-fg hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
                 >
                     Limpar
                 </button>
@@ -464,7 +467,7 @@ function ListaDoDetalhe({ titulo, nos, onEscolher }) {
                     key={n.id}
                     type="button"
                     onClick={() => onEscolher(n.id)}
-                    className="grid grid-cols-[10px_minmax(0,1fr)] gap-x-2 gap-y-0.5 rounded-lg border border-trilha-line2 px-2 py-1.5 text-left text-[12.5px] text-trilha-fg hover:border-trilha-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-trilha-run"
+                    className="grid grid-cols-[10px_minmax(0,1fr)] gap-x-2 gap-y-0.5 rounded-lg border border-trilha-line2 px-2 py-1.5 text-left text-[12.5px] text-trilha-fg hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-trilha-run"
                 >
                     <i className="mt-1 h-2 w-2 rounded-[2px]" style={{ background: n.cor }} aria-hidden="true" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">{corta(n.titulo, 46)}</span>
