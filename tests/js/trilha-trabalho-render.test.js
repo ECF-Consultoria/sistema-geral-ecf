@@ -185,9 +185,12 @@ test('etapa 3 com a trilha de trabalho: os cartões das ondas pela data, o "+ No
     assert.ok(linkDoPortal && !linkDoPortal.includes('bg-trilha-navy'), linkDoPortal);
     for (const proibido of VOCABULARIO_PROIBIDO) assert.equal(t.match(proibido), null, `etapa 3: ${proibido}`);
 
-    // Sem nada para planejar: o texto do protótipo.
+    // Sem nada para planejar: "todas já estão numa onda" só quando alguma está.
     const semNada = texto(desenhar({ ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.filter((o) => o.etapa !== 'plano') }, '?etapa=plano'));
     assert.ok(semNada.includes('Todas as ofertas já estão numa onda.'));
+    const nenhumaEmOnda = PROPS_TRABALHO.ofertas.filter((o) => o.etapa !== 'plano').map((o) => ({ ...o, onda_id: null }));
+    const semOndaNenhuma = texto(desenhar({ ...PROPS_TRABALHO, ofertas: nenhumaEmOnda }, '?etapa=plano'));
+    assert.ok(semOndaNenhuma.includes('Nada para planejar agora: nenhuma oferta esperando onda.') && !semOndaNenhuma.includes('Todas as ofertas já estão numa onda.'));
 });
 
 test('etapa 4: os mesmos cartões, sem "+ Nova onda"; a fila da onda e a onda na segunda linha de cada oferta', () => {
@@ -425,7 +428,7 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
 
     // Na preparação sem onda: começou antes das ondas e não entra em uma.
     const antes = { ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 's-3' ? { ...o, onda_id: null } : o)) };
-    assert.ok(texto(painelLateral(desenhar(antes, '?abrir=o:s-3'), 'o:s-3')).includes('Começou antes das ondas: não entra em onda.'));
+    assert.ok(texto(painelLateral(desenhar(antes, '?abrir=o:s-3'), 'o:s-3')).includes('Já começou sem onda: não entra em onda.'));
 
     // Fora das etapas 3 e 4, sem produto na Lista (no ar ou no Planejamento) e sem a trilha de trabalho: sem caixa.
     for (const [props, chave] of [[PROPS_TRABALHO, 'o:s-11'], [PROPS_TRABALHO, 'o:o-40'], [PROPS_TRABALHO, 'o:o-41'], [PROPS_EQUIPE, 'o:o-31']]) {
@@ -437,15 +440,49 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
     assert.ok(texto(naFila).includes('Na Onda 1 · simples · começou em 03/11') && texto(naFila).includes('Na fila · começou em 03/11'));
     assert.equal(naFila.match(/data-seletor-de-onda|data-acao="(?:colocar-na-onda|mudar-de-onda|tirar-da-onda)"/), null);
 
-    // Numa onda que ainda não começou, mas a oferta já andou (`planejavel` falso): não muda mais de onda.
-    const andou = { ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'c-2-4' ? { ...o, planejavel: false } : o)) };
-    const travada = painelLateral(desenhar(andou, '?abrir=o:c-2-4'), 'o:c-2-4');
-    assert.ok(texto(travada).includes('Na Onda 2 · começa em 05/11') && texto(travada).includes('Já começou antes da data da onda: não muda mais de onda.'));
+    // Numa onda que ainda não começou, mas a oferta já andou (`planejavel` falso; `pode_tirar` verdadeiro): ela não
+    // espera a data — "já começou", nada de "começa em 05/11" — e só pode SAIR da onda.
+    // (A que andou tem o status das regras de sempre, não o da fila da onda.)
+    const andou = {
+        ...PROPS_TRABALHO,
+        ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'c-2-4' ? { ...o, planejavel: false, status: 'O agente está escrevendo título e descrição' } : o)),
+    };
+    const soTirar = painelLateral(desenhar(andou, '?abrir=o:c-2-4'), 'o:c-2-4');
+    assert.ok(texto(soTirar).includes('Na Onda 2 · já começou') && !texto(soTirar).includes('começa em 05/11'), texto(soTirar));
+    assert.ok(texto(soTirar).includes('Já começou antes da data da onda: pode só sair dela.'));
+    assert.ok(soTirar.includes('data-acao="tirar-da-onda"'), 'só "Tirar da onda"');
+    assert.equal(soTirar.match(/data-seletor-de-onda|data-acao="(?:colocar-na-onda|mudar-de-onda|nova-onda)"/), null);
+    // Sem `pode_tirar` (o servidor de antes não manda o campo: vale falso): só o texto, sem botão nenhum.
+    const semCampo = { ...andou, ofertas: andou.ofertas.map((o) => (o.id === 'c-2-4' ? { ...o, pode_tirar: undefined } : o)) };
+    const travada = painelLateral(desenhar(semCampo, '?abrir=o:c-2-4'), 'o:c-2-4');
+    assert.ok(texto(travada).includes('Já começou antes da data da onda: não muda mais de onda.'));
     assert.equal(travada.match(/data-seletor-de-onda|data-acao="(?:colocar-na-onda|mudar-de-onda|tirar-da-onda)"/), null);
+    // Na linha da etapa 4 também não "começa 05/11".
+    const linhaDoAndou = desenhar(andou, '?etapa=robo');
+    assert.ok(texto(linhaDoAndou).includes('Onda 2 · já começou') && !texto(linhaDoAndou).includes('Onda 2 · começa 05/11'));
+    // O cliente lê "Na Onda 2 · já começou", sem o porquê nem botão.
+    const andouCliente = painelLateral(desenhar(paraCliente(andou), '?abrir=o:c-2-4'), 'o:c-2-4');
+    assert.ok(texto(andouCliente).includes('Na Onda 2 · já começou') && !texto(andouCliente).includes('pode só sair'));
+    assert.equal(andouCliente.match(ACOES_DE_ESCRITA), null);
+    // A planejável numa onda por começar: "Tirar" só com `pode_tirar` (sem o campo, não).
+    const semPodeTirar = { ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'c-2-4' ? { ...o, pode_tirar: undefined } : o)) };
+    const mudarSemTirar = painelLateral(desenhar(semPodeTirar, '?abrir=o:c-2-4'), 'o:c-2-4');
+    assert.ok(mudarSemTirar.includes('data-acao="mudar-de-onda"') && !mudarSemTirar.includes('data-acao="tirar-da-onda"'));
+
+    // A sem produto numa onda por começar (o robô não a segura): "Na Onda 2" e só sair.
+    const avulsaNaOnda = {
+        ...PROPS_TRABALHO,
+        ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'o-41' ? { ...o, onda_id: 9, etapa: 'plano', planejavel: false, pode_tirar: true } : o)),
+    };
+    const semProduto = painelLateral(desenhar(avulsaNaOnda, '?abrir=o:o-41'), 'o:o-41');
+    assert.ok(texto(semProduto).includes('Na Onda 2') && !texto(semProduto).includes('começa em 05/11'));
+    assert.ok(texto(semProduto).includes('Sem produto na Lista: pode só sair da onda.') && semProduto.includes('data-acao="tirar-da-onda"'));
     // Sem onda e sem `planejavel` (andou antes das ondas): não entra.
     const semOndaAndou = { ...PROPS_TRABALHO, ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'o-31' ? { ...o, planejavel: false } : o)) };
     const kitAndou = painelLateral(desenhar(semOndaAndou, '?abrir=o:o-31'), 'o:o-31');
-    assert.ok(texto(kitAndou).includes('Começou antes das ondas: não entra em onda.') && !kitAndou.includes('data-acao="colocar-na-onda"'));
+    assert.ok(texto(kitAndou).includes('Já começou sem onda: não entra em onda.') && !kitAndou.includes('data-acao="colocar-na-onda"'));
+    // O cliente lê só "Já começou." (sem dizer quando).
+    assert.ok(texto(painelLateral(desenhar(paraCliente(semOndaAndou), '?abrir=o:o-31'), 'o:o-31')).includes('Já começou.'));
 
     // O cliente só lê: "Na {onda} · começa em …" ou "Sem onda".
     const doCliente = painelLateral(desenhar(paraCliente(PROPS_TRABALHO), '?abrir=o:c-2-4'), 'o:c-2-4');
@@ -515,8 +552,8 @@ test('painel da onda: editar (data entre hoje e hoje + 365), apagar só antes de
     assert.equal(M.onda.textoDeApagar(0, 0), 'Apagar esta onda? Ela não tem ofertas.');
     assert.equal(M.onda.textoDeApagar(1, 1), 'Apagar esta onda? A oferta dela volta para Sem onda.');
     assert.equal(M.onda.textoDeApagar(6, 6), 'Apagar esta onda? As 6 ofertas voltam para Sem onda.');
-    assert.equal(M.onda.textoDeApagar(2, 3), 'Apagar esta onda? 2 de 3 ofertas voltam para Sem onda; as outras já começaram.');
-    assert.equal(M.onda.textoDeApagar(0, 2), 'Apagar esta onda? As ofertas dela já começaram e seguem como estão.');
+    assert.equal(M.onda.textoDeApagar(2, 3), 'Apagar esta onda? As ofertas dela saem da onda; 2 de 3 voltam para Sem onda.');
+    assert.equal(M.onda.textoDeApagar(0, 2), 'Apagar esta onda? As ofertas dela saem da onda.');
 
     // O cliente lê o nome, o dia e as ofertas; nada de formulário. A onda nova nem abre.
     const doCliente = painelLateral(desenhar(paraCliente(PROPS_TRABALHO), '?abrir=w:9'), 'w:9');
@@ -618,12 +655,12 @@ test('rodapé e aviso: sem "Primeira versão · só leitura" quando há escrita;
 
 // ─── O Mapa da loja ────────────────────────────────────────────────────────
 
-test('mapa da loja com a trilha de trabalho: "começa"/"começou", ondas pela data, "Sem onda" e "Antes das ondas"; a onda abre o painel dela', () => {
+test('mapa da loja com a trilha de trabalho: "começa"/"começou", ondas pela data, "Sem onda" e "Começou sem onda"; a onda abre o painel dela', () => {
     const saida = desenhar(PROPS_TRABALHO, '?vista=mapa');
     const t = texto(saida);
     assert.match(saida, /data-colunas="4"/);
     assert.ok(!saida.includes('data-aviso-ondas'));
-    for (const s of ['começou 03/11', 'começa 05/11', 'começa 10/11', 'Sem onda', 'falta planejar', 'Antes das ondas']) {
+    for (const s of ['começou 03/11', 'começa 05/11', 'começa 10/11', 'Sem onda', 'falta planejar', 'Começou sem onda', 'já começadas']) {
         assert.ok(t.includes(s), `faltou no mapa: ${s}`);
     }
 
@@ -635,7 +672,7 @@ test('mapa da loja com a trilha de trabalho: "começa"/"começou", ondas pela da
     // A oferta sem produto na Lista fica fora das ondas — a do Planejamento e a que está no ar.
     assert.deepEqual(g.ligacoes.filter((l) => l.para === 'w:fora').map((l) => l.de).sort(), ['o:o-40', 'o:o-41']);
 
-    // "Abrir a onda" leva ao painel dela (a chave da tela); "Sem onda" e "Antes das ondas" não abrem nada.
+    // "Abrir a onda" leva ao painel dela (a chave da tela); "Sem onda" e "Começou sem onda" não abrem nada.
     const desenho = posicionar(g);
     const abertos = [];
     const detalhe = (sel) => renderToStaticMarkup(h(M.mapa.DetalheDoMapa, {

@@ -65,6 +65,24 @@ export const quandoDaOnda = (onda) => `${onda?.comecou ? 'começou' : 'começa'}
 /** "começa em 05/11" ou "começou em 03/11" — o cartão e o painel. */
 export const quandoDaOndaPorExtenso = (onda) => `${onda?.comecou ? 'começou' : 'começa'} em ${diaMes(onda?.data)}`;
 
+/**
+ * A oferta numa onda que ainda não começou, mas que não espera a data dela: a que já andou (preparada antes,
+ * p. ex. pelo editor do Publicador) e a sem produto na Lista (o robô não a segura). Para ela, "começa 05/11"
+ * seria falso — e a equipe só pode tirá-la da onda (`pode_tirar`).
+ */
+export const naoEsperaAOnda = (oferta, onda) => !!onda && !onda.comecou && oferta?.planejavel === false;
+
+/**
+ * O que a linha da oferta diz da onda dela, depois do nome: "começa 05/11", "começou 03/11" — ou, para a que
+ * não espera a data, "já começou" (a que andou) ou nada (a sem produto: a pílula "sem produto na lista" diz).
+ */
+export function quandoDaOfertaNaOnda(oferta, onda) {
+    if (!onda) return null;
+    if (naoEsperaAOnda(oferta, onda)) return oferta.sem_produto ? null : 'já começou';
+
+    return quandoDaOnda(onda);
+}
+
 /** "começa em 05/11" → "Começa em 05/11". */
 export const comMaiuscula = (texto) => (texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : '');
 
@@ -145,6 +163,17 @@ export function ehPlanejavel(oferta, onda = null) {
     if (typeof oferta?.planejavel === 'boolean') return oferta.planejavel;
 
     return !oferta?.sem_produto && (oferta?.etapa === 'plano' || (!!onda && !onda.comecou));
+}
+
+/**
+ * A ajuda embaixo do campo de data da onda. A onda NOVA nasce vazia: com a data de hoje, quem começa na hora é
+ * o que entrar nela (não "o robô começa ao salvar"). A que já existe, posta para hoje, solta as ofertas dela.
+ */
+export function ajudaDaDataDaOnda({ nova = false, comecou = false, data, hoje }) {
+    if (comecou) return 'Já começou: a data não muda mais.';
+    if (data === hoje) return nova ? 'Hoje: o que entrar nesta onda começa na hora.' : 'Hoje: o robô começa assim que a onda for salva.';
+
+    return 'O dia em que o robô começa a preparar as ofertas desta onda.';
 }
 
 /** Como cada onda aparece no seletor da oferta. A que já começou avisa que a oferta posta nela começa na hora. */

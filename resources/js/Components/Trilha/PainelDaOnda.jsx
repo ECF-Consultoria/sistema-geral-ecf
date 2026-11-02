@@ -3,6 +3,7 @@ import { apagarOnda, criarOnda, editarOnda, mensagemDoErro } from '@/lib/trilhaE
 import {
     DIAS_A_FRENTE,
     NOME_MAXIMO,
+    ajudaDaDataDaOnda,
     comMaiuscula,
     ehPlanejavel,
     hojeEmSaoPaulo,
@@ -35,21 +36,22 @@ import { plural } from '@/Components/Trilha/formatos';
 // essa oferta já escolhida (quem faz a volta é a página: `onCriada`).
 
 /**
- * A pergunta antes de apagar: o que acontece com as ofertas da onda. Volta para
- * "Sem onda" só a que ainda se planeja (`planejavel`); a que já andou segue como
- * está, sem onda.
+ * A pergunta antes de apagar: o que acontece com as ofertas da onda. Todas saem
+ * da onda (a resposta do servidor: "{nome} apagada: as ofertas dela saíram da
+ * onda."); volta para "Sem onda" só a que ainda se planeja (`planejavel`) — a que
+ * já andou ou não tem produto só sai, e segue como está.
  *
  * @param {number} voltam  as planejáveis
  * @param {number} total   todas as ofertas da onda
  */
 export function textoDeApagar(voltam, total = voltam) {
     if (total === 0) return 'Apagar esta onda? Ela não tem ofertas.';
-    if (voltam === 0) return 'Apagar esta onda? As ofertas dela já começaram e seguem como estão.';
+    if (voltam === 0) return 'Apagar esta onda? As ofertas dela saem da onda.';
     if (voltam === total) {
         return voltam === 1 ? 'Apagar esta onda? A oferta dela volta para Sem onda.' : `Apagar esta onda? As ${voltam} ofertas voltam para Sem onda.`;
     }
 
-    return `Apagar esta onda? ${voltam} de ${total} ofertas ${voltam === 1 ? 'volta' : 'voltam'} para Sem onda; as outras já começaram.`;
+    return `Apagar esta onda? As ofertas dela saem da onda; ${voltam} de ${total} ${voltam === 1 ? 'volta' : 'voltam'} para Sem onda.`;
 }
 
 /**
@@ -232,9 +234,7 @@ export default function PainelDaOnda({
         }
     };
 
-    let ajudaDaData = 'O dia em que o robô começa a preparar as ofertas desta onda.';
-    if (comecou) ajudaDaData = 'Já começou: a data não muda mais.';
-    else if (data === hoje) ajudaDaData = 'Hoje: o robô começa assim que a onda for salva.';
+    const ajudaDaData = ajudaDaDataDaOnda({ nova, comecou, data, hoje });
 
     const corpo = (
         <>

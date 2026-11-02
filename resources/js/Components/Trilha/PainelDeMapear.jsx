@@ -40,7 +40,10 @@ import { plural, skuDoProduto } from '@/Components/Trilha/formatos';
 // - Nada vem marcado. A sugestão do sistema só dá a ordem e a etiqueta; o combo
 //   que já existe em todas as cores vem marcado e travado ("já existe").
 // - "Concluir" grava tudo ou nada; o painel vira "Mapeamento concluído" e a
-//   trilha recarrega. As ofertas novas ficam no Planejamento, "Sem onda".
+//   trilha recarrega. A oferta nova entra no Planejamento sem onda — menos a
+//   cor nova de um combo que já está numa onda, que entra direto nela (o item
+//   da trilha é o combo, um só para todas as cores). Por isso o rodapé não
+//   promete para onde vão: quem diz é o status de cada uma, em "Criadas".
 //
 // Só para a equipe com escrita: a página não abre este painel para o cliente
 // nem no "Ver como: Cliente" (lá o `m:` cai no painel do produto).
@@ -204,7 +207,7 @@ export default function PainelDeMapear({ produto, dados, escrita, onAbrir, onAvi
                 </span>
             ) : (
                 <span key="dica" className={cn('mr-auto min-w-0 self-center text-[12.5px]', bloqueio ? 'font-semibold text-trilha-bad' : 'text-trilha-muted')}>
-                    {bloqueio ?? 'As ofertas vão para o Planejamento.'}
+                    {bloqueio ?? 'Confira em “Vai ser criado” e conclua.'}
                 </span>
             ),
             <Botao key="concluir" primario disabled={!podeConcluir} ocupado={concluindo} onClick={concluir} data-acao="concluir-mapeamento">

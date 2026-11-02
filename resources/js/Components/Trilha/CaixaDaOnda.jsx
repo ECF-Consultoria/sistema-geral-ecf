@@ -17,14 +17,17 @@ import { Botao, Caixa, Opcao, Seletor } from '@/Components/Trilha/Pecas';
 // ela está e, para quem escreve, pôr, mudar ou tirar. A data da onda é o dia em
 // que o robô começa a preparar a oferta — não prazo.
 //
-// Quem diz se a oferta ainda pode entrar, mudar ou sair de onda é o servidor
-// (`planejavel`: tem produto na Lista e ainda não andou). A régua da tela:
+// Quem diz o que a oferta ainda pode fazer é o servidor: `planejavel` (tem
+// produto na Lista e ainda não andou: entra, muda e sai de onda) e `pode_tirar`
+// (está numa onda que ainda não começou: pode sair dela — inclusive a que andou
+// e a sem produto). Sem o campo, `pode_tirar` vale falso. A régua da tela:
 // - sem onda e planejável (etapa 3): o seletor, "Colocar na onda" e "+ Nova onda";
 // - numa onda que ainda não começou, planejável: "Mudar de onda" e "Tirar da onda";
 // - numa onda que ainda não começou, mas que já andou (alguém adiantou no
-//   editor do Publicador): só o texto — não muda mais de onda;
+//   editor do Publicador) ou não tem produto: ela não espera a data — "já
+//   começou", e só "Tirar da onda";
 // - numa onda que já começou: só o texto — o robô já foi chamado;
-// - sem onda e não planejável: começou antes das ondas e não entra em uma.
+// - sem onda e não planejável: já começou sem onda e não entra em uma.
 // O cliente (e o "Ver como: Cliente") só lê.
 //
 // "+ Nova onda" abre o painel da onda nova e, criada a onda, volta para ESTA
@@ -70,15 +73,20 @@ export default function CaixaDaOnda({
     const [resultado, setResultado] = useState(null);
     const textoDoResultado = useRef(null);
 
+    const podeTirar = oferta.pode_tirar === true;
     let situacao;
     if (atual) {
         if (atual.comecou) situacao = 'comecou';
-        else situacao = planejavel ? 'agendada' : 'andou';
+        else if (planejavel) situacao = 'agendada';
+        else situacao = oferta.sem_produto ? 'sem_produto' : 'andou';
     } else {
         situacao = planejavel ? 'sem' : 'antes';
     }
 
-    const escreve = podeEditar && !cliente && !!escrita && (situacao === 'sem' || situacao === 'agendada');
+    const quemEscreve = podeEditar && !cliente && !!escrita;
+    const escreve = quemEscreve && (situacao === 'sem' || situacao === 'agendada');
+    // Numa onda por começar sem esperar a data dela (já andou, ou sem produto): só pode sair.
+    const soTirar = quemEscreve && podeTirar && (situacao === 'andou' || situacao === 'sem_produto');
     // Mudar para a mesma onda não muda nada: ela sai do seletor.
     const opcoes = situacao === 'agendada' ? ondas.filter((w) => w.id !== atual.id) : ondas;
     // Só vale a escolha que está no seletor (a onda recém-criada chega com a recarga; antes dela, nada escolhido).
@@ -123,9 +131,19 @@ export default function CaixaDaOnda({
     };
 
     let estado = 'Sem onda';
-    if (atual) estado = `Na ${atual.nome} · ${quandoDaOndaPorExtenso(atual)}`;
-    else if (situacao === 'antes') estado = cliente ? 'Começou antes das ondas.' : 'Começou antes das ondas: não entra em onda.';
+    if (situacao === 'andou') estado = `Na ${atual.nome} · já começou`;
+    else if (situacao === 'sem_produto') estado = `Na ${atual.nome}`;
+    else if (atual) estado = `Na ${atual.nome} · ${quandoDaOndaPorExtenso(atual)}`;
+    else if (situacao === 'antes') estado = cliente ? 'Já começou.' : 'Já começou sem onda: não entra em onda.';
     else if (escreve) estado = 'Sem onda: escolha a onda em que o robô começa.';
+
+    // Por que a oferta numa onda por começar não espera a data (só a equipe lê o porquê).
+    let travada = null;
+    if (!cliente && situacao === 'andou') {
+        travada = soTirar ? 'Já começou antes da data da onda: pode só sair dela.' : 'Já começou antes da data da onda: não muda mais de onda.';
+    } else if (!cliente && situacao === 'sem_produto') {
+        travada = soTirar ? 'Sem produto na Lista: pode só sair da onda.' : 'Sem produto na Lista: não espera a data da onda.';
+    }
 
     return (
         <Caixa titulo="Planejamento" data-caixa="planejamento" data-onda-da-oferta={atual?.id ?? ''}>
@@ -133,10 +151,18 @@ export default function CaixaDaOnda({
             <span className="text-[13px] font-semibold text-trilha-fg" data-estado-da-onda={situacao}>
                 {estado}
             </span>
-            {situacao === 'andou' && !cliente && (
+            {travada && (
                 <span className="text-[12.5px] text-trilha-fg2" data-onda-travada="">
-                    Já começou antes da data da onda: não muda mais de onda.
+                    {travada}
                 </span>
+            )}
+            {soTirar && (
+                <div className="flex flex-wrap gap-2">
+                    {/* `ocupado` (e não `disabled`) durante o envio: o botão clicado mantém o foco. */}
+                    <Botao data-acao="tirar-da-onda" ocupado={!!enviando} onClick={() => gravar(null, 'tirar')}>
+                        {enviando === 'tirar' ? 'Tirando…' : 'Tirar da onda'}
+                    </Botao>
+                </div>
             )}
 
             {escreve && (
@@ -184,9 +210,11 @@ export default function CaixaDaOnda({
                                 >
                                     {enviando === 'mudar' ? 'Mudando…' : 'Mudar de onda'}
                                 </Botao>
-                                <Botao data-acao="tirar-da-onda" ocupado={!!enviando} onClick={() => gravar(null, 'tirar')}>
-                                    {enviando === 'tirar' ? 'Tirando…' : 'Tirar da onda'}
-                                </Botao>
+                                {podeTirar && (
+                                    <Botao data-acao="tirar-da-onda" ocupado={!!enviando} onClick={() => gravar(null, 'tirar')}>
+                                        {enviando === 'tirar' ? 'Tirando…' : 'Tirar da onda'}
+                                    </Botao>
+                                )}
                             </>
                         )}
                         {onNovaOnda && (

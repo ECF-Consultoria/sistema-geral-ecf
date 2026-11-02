@@ -1,5 +1,5 @@
 import { ETAPA_POR_CHAVE, acaoDoItem, chaveDeMapear, estaNoAr } from '@/lib/trilha';
-import { quandoDaOnda } from '@/lib/trilhaOndas';
+import { quandoDaOfertaNaOnda } from '@/lib/trilhaOndas';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
 import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/formatos';
@@ -12,7 +12,8 @@ import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/fo
 // volta quando o painel fecha.
 //
 // Com a trilha de trabalho (2ª entrega): a oferta numa onda ganha a linha
-// "{onda} · começa 05/11" (ou "começou 03/11"), e o produto da etapa 2 abre
+// "{onda} · começa 05/11" (ou "começou 03/11"; "já começou" para a que andou
+// antes da data da onda), e o produto da etapa 2 abre
 // direto o painel de mapear para quem escreve (`m:{id}`) — para os outros, o
 // painel do produto, só leitura.
 //
@@ -41,6 +42,7 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
     const ehOferta = tipo === 'o';
     const situacao = situacaoDoItem(entrada, { trabalho });
     const onda = ehOferta && item.onda_id != null ? ondaPorId?.get(item.onda_id) ?? null : null;
+    const quandoNaOnda = quandoDaOfertaNaOnda(item, onda);
     // O produto da etapa 2 abre o painel de mapear para quem escreve; a linha continua sendo a do produto (`data-chave`).
     const chaveAoAbrir = !ehOferta && podeEditar && etapa === 'mapa' ? chaveDeMapear(item) : chave;
     const noAr = ehOferta && estaNoAr(item);
@@ -68,7 +70,9 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
                 {onda && (
                     <span className="mt-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-trilha-fg2 [overflow-wrap:anywhere]" data-onda-da-linha={onda.id}>
                         <i className="block h-2 w-2 shrink-0 rounded-[2px] bg-trilha-s-plano" aria-hidden="true" />
-                        {onda.nome} · {quandoDaOnda(onda)}
+                        {/* A que já andou (ou não tem produto) numa onda por começar não "começa dd/mm": ela não espera a data. */}
+                        {onda.nome}
+                        {quandoNaOnda && ` · ${quandoNaOnda}`}
                     </span>
                 )}
                 {ehOferta && item.sem_produto && (

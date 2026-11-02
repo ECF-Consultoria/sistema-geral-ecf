@@ -394,7 +394,7 @@ export function DetalheDoMapa({ desenho, sel, acesos, onEscolher, onAbrir, onLim
     const doTipo = (tipo) => ligados.filter((n) => n.tipo === tipo);
 
     // O anúncio não tem linha própria na trilha: leva à oferta dele. A onda abre o painel dela (o id do nó é a
-    // chave da tela, `w:7`); "Sem onda" e "Antes das ondas" não são ondas de verdade e não abrem nada.
+    // chave da tela, `w:7`); "Sem onda", "Começou sem onda" e "Fora das ondas" não são ondas de verdade e não abrem nada.
     let abrir = null;
     if (no.tipo === 'produto' || no.tipo === 'oferta') abrir = { chave: no.id, rotulo: 'Abrir na trilha' };
     else if (no.tipo === 'anuncio') abrir = { chave: no.origem, rotulo: 'Abrir a oferta na trilha' };

@@ -15,10 +15,12 @@
 //   A caixa da onda diz "começa 05/11" ou "começou 03/11" (a data é o dia em
 //   que o robô começa, não prazo); as ondas vão pela data e, no empate, pelo id.
 //   Sem onda, três caixas: "Sem onda" (tracejada, âmbar) só com o que está no
-//   Planejamento e pode ser planejado; o que já tinha passado dele antes das
-//   ondas vai para a caixa neutra "Antes das ondas" (a `w0` do protótipo,
-//   calculada aqui); a oferta sem produto na Lista, que não entra em onda, vai
-//   para a neutra tracejada "Fora das ondas".
+//   Planejamento e pode ser planejado; o que já passou dele sem onda vai para a
+//   caixa neutra "Começou sem onda" (a `w0` do protótipo, calculada aqui); a
+//   oferta sem produto na Lista vai para a neutra tracejada "Fora das ondas".
+//   A caixa de uma onda que ainda não começou diz "começa 05/11": quem não
+//   espera essa data (a que já andou, a sem produto) vai para "Começou sem
+//   onda" ou "Fora das ondas", não para ela.
 // - O nó de anúncio NÃO usa o MLB como chave: na porta do cliente o MLB vem
 //   null, e no "Ver como: Cliente" da equipe o dado ainda traz o MLB. A chave é a
 //   posição do anúncio na oferta, e o texto só leva o MLB na visão da equipe.
@@ -34,7 +36,7 @@
 // varre `.jsx`. As cores daqui são `rgb(var(--t-…))`, para `style` no SVG.
 
 import { COR_DA_ETAPA, ETAPA_POR_CHAVE, ORDEM, SIGLA_DO_TIPO, chaveDaOferta, chaveDoProduto, contagemPorEtapa } from './trilha.js';
-import { ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
+import { naoEsperaAOnda, ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
 
 /** Nome curto de cada etapa: faixa do fluxo, legenda do mapa e cartões do índice. */
 export const ROTULO_CURTO = {
@@ -55,8 +57,8 @@ export const COR_MAPEADO = 'rgb(var(--t-fg2))';
 export const COR_SEM_ONDA = 'rgb(var(--t-warn))';
 
 /**
- * As caixas neutras da coluna das ondas: "Antes das ondas" (o que já tinha passado do Planejamento quando as
- * ondas começaram) e "Fora das ondas" (tracejada: a oferta sem produto na Lista, que não se planeja).
+ * As caixas neutras da coluna das ondas: "Começou sem onda" (o que já passou do Planejamento sem esperar uma
+ * onda) e "Fora das ondas" (tracejada: a oferta sem produto na Lista, que não se planeja).
  */
 export const COR_ANTES_DAS_ONDAS = 'rgb(var(--t-muted))';
 
@@ -213,12 +215,16 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
     // ── Coluna 1: as ofertas que levam algum produto do recorte (sem filtro, todas) ──
     // A oferta sem produto na lista não tem família: só aparece em "Todas".
     const ofs = ofertas.filter((o) => !filtro || (o.componentes ?? []).some((c) => noRecorte.has(c.produto_id)));
-    const idsDeOnda = new Set(ondas.map((w) => w.id));
+    const ondaPorId = new Map(ondas.map((w) => [w.id, w]));
+    // A caixa da onda diz "começa 05/11": só fica nela quem espera essa data. A que já andou (ou não tem
+    // produto) numa onda que ainda não começou não espera — vai para a caixa de quem já começou (ou a de fora).
     // Sem onda: a oferta sem produto na Lista fica fora das ondas (não se planeja); das outras, "Sem onda" só o
-    // que está no Planejamento — o que já passou dele sem onda começou antes das ondas.
+    // que está no Planejamento — o que já passou dele sem onda já começou.
     const ondaDa = (o) => {
-        if (o.onda_id != null && idsDeOnda.has(o.onda_id)) return o.onda_id;
+        const onda = o.onda_id != null ? ondaPorId.get(o.onda_id) : null;
+        if (onda && !naoEsperaAOnda(o, onda)) return onda.id;
         if (o.sem_produto) return 'fora';
+        if (onda) return 'antes';
 
         return o.etapa === 'plano' ? 'sem' : 'antes';
     };
@@ -261,9 +267,9 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
 
     // ── Coluna 2, só com ondas: as ondas das ofertas do recorte, pela data e, no empate, pelo id ──
     if (temOndas) {
-        const usadas = ondasEmOrdem(ondas).filter((w) => ofs.some((o) => o.onda_id === w.id));
+        const usadas = ondasEmOrdem(ondas).filter((w) => ofs.some((o) => ondaDa(o) === w.id));
         for (const w of usadas) {
-            const situacao = quantos(ofs.filter((o) => o.onda_id === w.id).length, 'oferta', 'ofertas');
+            const situacao = quantos(ofs.filter((o) => ondaDa(o) === w.id).length, 'oferta', 'ofertas');
             const titulo = w.nome || `Onda ${w.id}`;
             const sub = w.data ? quandoDaOnda(w) : 'sem data';
             nos.push({ id: `w:${w.id}`, tipo: 'onda', coluna: 2, titulo, sub, situacao, cor: COR_DA_ETAPA.plano, rotulo: `Onda ${titulo} · ${sub} · ${situacao}` });
@@ -280,8 +286,8 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
         if (antes) {
             const situacao = quantos(antes, 'oferta', 'ofertas');
             nos.push({
-                id: 'w:antes', tipo: 'onda', coluna: 2, titulo: 'Antes das ondas', sub: 'já tinham começado', situacao, cor: COR_ANTES_DAS_ONDAS, pseudo: true,
-                rotulo: `Ofertas de antes das ondas · já tinham começado · ${situacao}`,
+                id: 'w:antes', tipo: 'onda', coluna: 2, titulo: 'Começou sem onda', sub: 'já começadas', situacao, cor: COR_ANTES_DAS_ONDAS, pseudo: true,
+                rotulo: `Ofertas que começaram sem onda · já começadas · ${situacao}`,
             });
         }
         const fora = ofs.filter((o) => ondaDa(o) === 'fora').length;
@@ -557,7 +563,7 @@ export function legendaDoMapa(temOndas = false) {
         etapas: [
             ...ORDEM.map((k) => ({ rotulo: k === 'lista' ? 'Lista de produtos' : ROTULO_CURTO[k], cor: COR_DA_ETAPA[k] })),
             { rotulo: 'Produto mapeado', cor: COR_MAPEADO },
-            ...(temOndas ? [{ rotulo: 'Sem onda', cor: COR_SEM_ONDA }, { rotulo: 'Antes ou fora das ondas', cor: COR_ANTES_DAS_ONDAS }] : []),
+            ...(temOndas ? [{ rotulo: 'Sem onda', cor: COR_SEM_ONDA }, { rotulo: 'Começou sem onda ou fora das ondas', cor: COR_ANTES_DAS_ONDAS }] : []),
         ],
         anuncios: [
             { rotulo: 'No ar', cor: COR_DO_ANUNCIO.ativo },

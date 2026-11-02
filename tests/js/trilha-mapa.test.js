@@ -178,7 +178,7 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
     const legenda = legendaDoMapa(false);
     assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar', 'Produto mapeado']);
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Sem onda'));
-    assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Antes ou fora das ondas' && e.cor === COR_ANTES_DAS_ONDAS));
+    assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Começou sem onda ou fora das ondas' && e.cor === COR_ANTES_DAS_ONDAS));
     assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
 });
 
@@ -209,13 +209,20 @@ test('com ondas: 4 colunas como no protótipo, "Sem onda" tracejada e o anúncio
     assert.equal(no(montarGrafo({ ...COM_ONDAS, ondas: [{ ...COM_ONDAS.ondas[0], comecou: true }] }), 'w:7').sub, 'começou 10/11');
     // "Sem onda" (tracejada, âmbar) só com o que está no Planejamento: o combo e o kit.
     assert.deepEqual([no(g, 'w:sem').tracejado, no(g, 'w:sem').situacao, no(g, 'w:sem').cor], [true, '2 ofertas', COR_SEM_ONDA]);
-    // O que já tinha passado do Planejamento sem onda vai para a caixa neutra "Antes das ondas".
+    // O que já tinha passado do Planejamento sem onda vai para a caixa neutra "Começou sem onda".
     assert.deepEqual([no(g, 'w:antes').titulo, no(g, 'w:antes').situacao, no(g, 'w:antes').cor, !!no(g, 'w:antes').tracejado],
-        ['Antes das ondas', '6 ofertas', COR_ANTES_DAS_ONDAS, false]);
-    // A oferta sem produto na Lista não entra em onda: nem "Sem onda", nem "Antes das ondas" — "Fora das ondas".
+        ['Começou sem onda', '6 ofertas', COR_ANTES_DAS_ONDAS, false]);
+    // A oferta sem produto na Lista não entra em onda: nem "Sem onda", nem "Começou sem onda" — "Fora das ondas".
     assert.deepEqual([no(g, 'w:fora').titulo, no(g, 'w:fora').sub, no(g, 'w:fora').situacao, no(g, 'w:fora').tracejado],
         ['Fora das ondas', 'sem produto na lista', '1 oferta', true]);
     assert.ok(g.ligacoes.some((l) => l.de === 'o:o-40' && l.para === 'w:fora'));
+    // A caixa da onda diz "começa 10/11": a oferta que já andou (`planejavel` falso) numa onda que ainda não começou
+    // não espera essa data — vai para "Começou sem onda"; a sem produto, para "Fora das ondas".
+    const andou = montarGrafo({ ...COM_ONDAS, ofertas: COM_ONDAS.ofertas.map((o) => (o.id === 's-2' ? { ...o, planejavel: false } : o)) });
+    assert.ok(andou.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:antes'));
+    assert.ok(!andou.nos.some((n) => n.id === 'w:7'), 'a onda sem ninguém esperando por ela sai do desenho');
+    const comecada = montarGrafo({ ...COM_ONDAS, ondas: [{ ...COM_ONDAS.ondas[0], comecou: true }], ofertas: COM_ONDAS.ofertas.map((o) => (o.id === 's-2' ? { ...o, planejavel: false } : o)) });
+    assert.ok(comecada.ligacoes.some((l) => l.de === 'o:s-2' && l.para === 'w:7'), 'na onda que já começou, ela fica na onda');
     // A sem produto que está no Planejamento também vai para "Fora das ondas" (não para "Sem onda · falta planejar").
     const avulsa = { ...PROPS_EQUIPE.ofertas.find((o) => o.id === 'o-40'), id: 'o-41', etapa: 'plano', status: 'Fora das ondas · sem produto na Lista', anuncios: [] };
     const comAvulsa = montarGrafo({ ...COM_ONDAS, ofertas: [...COM_ONDAS.ofertas, avulsa] });
@@ -489,7 +496,7 @@ test('MapaDaLoja desenha a faixa do fluxo, o filtro de família, as 3 colunas e 
     const quatro = html(h(MapaDaLoja, { dados: COM_ONDAS, visao: 'equipe' }));
     assert.match(quatro, /data-colunas="4"/);
     assert.ok(!quatro.includes('data-aviso-ondas'));
-    for (const s of ['Onda 1 · simples', 'começa 10/11', 'Sem onda', 'Antes das ondas', 'já tinham começado', 'Fora das ondas', 'sem produto na lista']) {
+    for (const s of ['Onda 1 · simples', 'começa 10/11', 'Sem onda', 'Começou sem onda', 'já começadas', 'Fora das ondas', 'sem produto na lista']) {
         assert.ok(texto(quatro).includes(s), `faltou: ${s}`);
     }
     assert.equal(texto(quatro).match(/(?:^|\s)até \d/), null, 'a onda não tem prazo');

@@ -282,7 +282,9 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
     const componentes = oferta.componentes ?? [];
     const produtosDaLoja = new Set((dados.produtos ?? []).map((p) => p.id));
     // A oferta sem produto na Lista fica fora das ondas nesta entrega.
-    const comOnda = trabalho && ETAPAS_DA_ONDA.includes(oferta.etapa) && !oferta.sem_produto;
+    // A caixa da onda: a oferta das etapas 3 e 4 com produto na Lista e, em qualquer etapa, a que está numa onda
+    // (a que já andou ou não tem produto numa onda por começar só pode sair dela — e é ali que sai).
+    const comOnda = trabalho && (oferta.onda_id != null || (ETAPAS_DA_ONDA.includes(oferta.etapa) && !oferta.sem_produto));
 
     const corpo = (
         <>

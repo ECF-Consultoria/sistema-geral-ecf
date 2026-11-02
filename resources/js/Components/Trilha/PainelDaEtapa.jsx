@@ -52,8 +52,19 @@ const VAZIO = {
     lanc: 'Nenhuma oferta no ar ainda.',
 };
 
-// Com a trilha de trabalho, o Planejamento vazio é o do protótipo: tudo já tem onda.
-const VAZIO_COM_TRABALHO = { ...VAZIO, plano: 'Todas as ofertas já estão numa onda.' };
+/**
+ * O texto da etapa sem linhas. Com a trilha de trabalho, o Planejamento vazio diz o que o dado mostra: "todas já
+ * estão numa onda" só quando alguma está; sem nenhuma oferta em onda, não há o que planejar.
+ */
+function textoDeVazio(chave, trabalho, dados) {
+    if (trabalho && chave === 'plano') {
+        return (dados?.ofertas ?? []).some((o) => o.onda_id != null)
+            ? 'Todas as ofertas já estão numa onda.'
+            : 'Nada para planejar agora: nenhuma oferta esperando onda.';
+    }
+
+    return VAZIO[chave] ?? 'Nada nesta etapa agora.';
+}
 
 /** As etapas que mostram os cartões das ondas (com a trilha de trabalho). */
 const ETAPAS_COM_ONDAS = ['plano', 'robo'];
@@ -184,7 +195,7 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = 
     const comOndas = trabalho && ETAPAS_COM_ONDAS.includes(chave);
     // Com os cartões das ondas, a nota "ondas ainda não ligadas" sai; a da etapa 6 fica.
     const nota = comOndas ? null : NOTA[chave];
-    const vazio = (trabalho ? VAZIO_COM_TRABALHO : VAZIO)[chave] ?? 'Nada nesta etapa agora.';
+    const vazio = textoDeVazio(chave, trabalho, dados);
 
     return (
         <MolduraDoPainel

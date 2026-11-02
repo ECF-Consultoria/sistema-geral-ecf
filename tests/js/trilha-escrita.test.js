@@ -24,6 +24,8 @@ import {
     rotuloNoSeletor,
     somarDias,
     textoDaOndaCriada,
+    ajudaDaDataDaOnda,
+    quandoDaOfertaNaOnda,
 } from '../../resources/js/lib/trilhaOndas.js';
 import {
     alternarCombo,
@@ -346,6 +348,21 @@ test('o que ainda entra em onda é o `planejavel` do servidor; a dica da onda re
     assert.equal(ehPlanejavel({ etapa: 'robo' }, { comecou: false }), true);
     assert.equal(ehPlanejavel({ etapa: 'robo' }, { comecou: true }), false);
     assert.equal(ehPlanejavel({ etapa: 'revisao' }), false);
+
+    // A ajuda da data: a onda NOVA nasce vazia — com a data de hoje, começa na hora o que entrar nela.
+    const hoje = '2026-11-02';
+    assert.equal(ajudaDaDataDaOnda({ nova: true, data: hoje, hoje }), 'Hoje: o que entrar nesta onda começa na hora.');
+    assert.equal(ajudaDaDataDaOnda({ nova: false, data: hoje, hoje }), 'Hoje: o robô começa assim que a onda for salva.');
+    assert.equal(ajudaDaDataDaOnda({ nova: true, data: '2026-11-05', hoje }), 'O dia em que o robô começa a preparar as ofertas desta onda.');
+    assert.equal(ajudaDaDataDaOnda({ comecou: true, data: '2026-11-01', hoje }), 'Já começou: a data não muda mais.');
+
+    // A linha da oferta numa onda por começar: "começa 05/11" só para quem espera a data.
+    const agendada = { id: 9, nome: 'Onda 2', data: '2026-11-05', comecou: false };
+    assert.equal(quandoDaOfertaNaOnda({ planejavel: true }, agendada), 'começa 05/11');
+    assert.equal(quandoDaOfertaNaOnda({}, agendada), 'começa 05/11', 'sem o campo, como antes');
+    assert.equal(quandoDaOfertaNaOnda({ planejavel: false }, agendada), 'já começou');
+    assert.equal(quandoDaOfertaNaOnda({ planejavel: false, sem_produto: true }, agendada), null);
+    assert.equal(quandoDaOfertaNaOnda({ planejavel: false }, { ...agendada, comecou: true }), 'começou 05/11');
 
     assert.equal(textoDaOndaCriada({ id: 9, nome: 'Onda 4', data: '2026-11-12', comecou: false }), 'Onda 4 criada (começa em 12/11). Agora coloque esta oferta nela.');
     assert.equal(textoDaOndaCriada({ id: 9, nome: 'Onda 4', data: '2026-11-02', comecou: true }), 'Onda 4 criada (começa hoje). Agora coloque esta oferta nela.');

@@ -296,7 +296,12 @@ export const PROPS_TRABALHO = {
         COMBO_DO_APARADOR,
         COMBO_DA_MESA,
         AVULSA_SEM_PRODUTO,
-    ].map((o) => ({ ...o, planejavel: PLANEJAVEIS.has(o.id) })),
+    ].map((o) => ({
+        ...o,
+        planejavel: PLANEJAVEIS.has(o.id),
+        // A equipe pode tirar da onda a oferta que está numa onda que ainda não começou (`pode_tirar`, as duas portas).
+        pode_tirar: o.onda_id != null && !ONDAS.find((w) => w.id === o.onda_id)?.comecou,
+    })),
 };
 
 /** `GET {escrita.produtos}/5/mapeamento` — o painel ripado (3 cores, a Preto ainda sem oferta). Parceiros fora de ordem. */
