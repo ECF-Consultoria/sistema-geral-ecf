@@ -7,6 +7,7 @@ use App\Models\PubAgenteExecucao;
 use App\Models\PubProduto;
 use App\Models\User;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Log;
 
@@ -120,12 +121,16 @@ class EntradaDoPreparo
             default => $situacao,
         };
 
-        // Sem IA disponível (cota diária da empresa, preparo desligado): bloqueia com o motivo, não finge pronto.
-        if (in_array($situacao, ['limite', 'desligado'], true)) {
+        // Sem IA disponível (cota diária da empresa, preparo desligado, a oferta esperando o dia da onda na Trilha de
+        // produtos): bloqueia com o motivo, não finge pronto. BLOQUEADA não conta no limite do dia e não é "terminada
+        // com resultado": depois da data, o próximo pedido é admitido de novo.
+        if (in_array($situacao, ['limite', 'desligado', PortaoDaOnda::AGUARDANDO], true)) {
             $execucao->update(['etapa' => $etapa, 'bloqueios' => null]);
-            $this->execucoes->encerrar($execucao, PubAgenteExecucao::BLOQUEADA, $situacao === 'limite'
-                ? 'Limite diário de gerações de texto da empresa atingido.'
-                : 'O preparo pela IA está desligado no sistema.');
+            $this->execucoes->encerrar($execucao, PubAgenteExecucao::BLOQUEADA, match ($situacao) {
+                'limite'  => 'Limite diário de gerações de texto da empresa atingido.',
+                'desligado' => 'O preparo pela IA está desligado no sistema.',
+                default   => 'Esta oferta espera o dia da onda dela na trilha de produtos.',
+            });
 
             return;
         }

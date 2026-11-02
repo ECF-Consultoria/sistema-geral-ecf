@@ -7,7 +7,10 @@ use App\Jobs\Publicador\CriarCombosDoPlanejamentoJob;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
+use App\Services\Trilha\Ondas\SimplesPronta;
 use App\Support\Publicador\RegraViolada;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -38,6 +41,15 @@ use Illuminate\Support\Facades\Log;
  * Depois de criar, o estado do editor é calculado uma vez, para a lista e a vitrine já mostrarem o que falta
  * (sem isso o kit que ninguém abriu apareceria "Pronto").
  *
+ * ### Trilha de produtos (2ª entrega, 02/11/2026) — só nas empresas com a trilha de trabalho ligada
+ * - o Kit N nasce da Fase 1 PRONTA, não só da publicada (decisão do usuário de 31/10/2026: o combo não espera a
+ *   simples ser publicada; o robô a prepara antes — {@see \App\Services\Trilha\Ondas\SimplesPronta}). O terceiro
+ *   gatilho é a passada da soltura das ondas (`trilha:soltar-ondas`), que chama {@see agendar()} para cada combo de
+ *   onda que já começou;
+ * - cada Combo N espera o dia da onda dele ({@see \App\Services\Trilha\Ondas\PortaoDaOnda::seguraOCombo()}): sem
+ *   isso, a Fase 1 pronta criaria todos os Kits N aceitos e pediria a capa (paga) de cada um.
+ * Fora da chave nada disso roda — a pergunta `TrilhaDeTrabalho::ligada()` só lê a configuração.
+ *
  * Produto que não é do Portal (Polos sem empresa cadastrada, produto criado direto no Publicador) segue com o
  * "Criar Fase N" de sempre, à mão. Nada aqui publica: o kit nasce rascunho, para a equipe revisar.
  */
@@ -66,6 +78,19 @@ final class CombosDoPlanejamentoService
     }
 
     /**
+     * A Fase 1 já deixa o combo nascer: publicada (a regra de sempre, KIT-05) — ou, na empresa com a trilha de
+     * trabalho ligada, pronta pelo robô ({@see SimplesPronta}).
+     */
+    private static function faseUmPronta(PubProduto $base): bool
+    {
+        if (in_array((string) $base->rascunho?->status, self::PUBLICADO, true)) {
+            return true;
+        }
+
+        return TrilhaDeTrabalho::ligada((int) $base->company_id) && SimplesPronta::para($base->rascunho);
+    }
+
+    /**
      * Põe na fila a criação dos combos do produto, se ele é do Portal e a Fase 1 está no ar. Depois do commit:
      * quem chama pode estar dentro de uma transação, e o Job precisa ler o que ela gravou.
      *
@@ -74,7 +99,7 @@ final class CombosDoPlanejamentoService
     public function agendar(int $produtoId): bool
     {
         $p = PubProduto::query()->with('rascunho:id,produto_id,status')->find($produtoId);
-        if ($p === null || ! self::doPortal($p) || ! in_array((string) $p->rascunho?->status, self::PUBLICADO, true)) {
+        if ($p === null || ! self::doPortal($p) || ! self::faseUmPronta($p)) {
             return false;
         }
 
@@ -91,14 +116,21 @@ final class CombosDoPlanejamentoService
     public function criarOsQueFaltam(PubProduto $base): array
     {
         $saida = ['criados' => [], 'pulados' => []];
-        if (! self::doPortal($base) || PlanejamentoDaFaseService::tipoComposto($base) !== null
-            || ! in_array((string) $base->rascunho?->status, self::PUBLICADO, true)) {
+        if (! self::doPortal($base) || PlanejamentoDaFaseService::tipoComposto($base) !== null || ! self::faseUmPronta($base)) {
             return $saida;
         }
 
+        // Trilha de produtos: uma trava só para o laço (ela lê os itens da empresa uma vez).
+        $portao = TrilhaDeTrabalho::ligada((int) $base->company_id) ? app(PortaoDaOnda::class) : null;
         $naFamilia = $base->familia()->where('produto_base_id', $base->id)->pluck('quantidade_kit')->map(fn ($q) => (int) $q)->all();
         foreach ($this->planejamento->quantidadesDoPlanejamento($base) as $n) {
             if (in_array($n, $naFamilia, true)) {
+                continue;
+            }
+            // Trilha de produtos: o Combo N espera o dia da onda dele (antes da prévia, da cópia e da capa paga).
+            if ($portao?->seguraOCombo((int) $base->estrutura_produto_id, $n, (int) $base->company_id)) {
+                $saida['pulados'][] = ['quantidade' => $n, 'motivo' => 'espera a onda da trilha'];
+
                 continue;
             }
 

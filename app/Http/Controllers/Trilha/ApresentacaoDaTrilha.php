@@ -13,7 +13,8 @@ use App\Services\Publicador\ProgramasPublicadorService;
  *
  * O serviço não sabe quem está olhando; quem sabe é esta classe. Ela faz duas coisas:
  *
- * 1. **Acrescenta os links** para as telas que já existem (a trilha é só leitura: toda ação é um link). Cada link
+ * 1. **Acrescenta os links** para as telas que já existem (fora o Mapeamento e o Planejamento da trilha de trabalho,
+ *    que gravam pelos endereços de `escrita`, toda ação é um link). Cada link
  *    só sai quando quem olha consegue abri-lo — Publicador só para admin (as rotas `mlb/anuncios` são
  *    `role:admin`), "Abrir o Portal" só para quem `PortalEquipeService::podeEntrar()`. Link que daria 403 é pior
  *    que link nenhum.
@@ -29,12 +30,36 @@ use App\Services\Publicador\ProgramasPublicadorService;
  * decisão consciente, não um efeito colateral de mexer no serviço.
  *
  * O que a lista NÃO cobre, de propósito (revisão de 31/10/2026, P1 — antes este texto prometia mais do que o
- * código dava): `preparo`, `sugestoes_pendentes` e `ondas` saem para a EQUIPE como o serviço os monta (ela vê tudo);
- * na porta do cliente os três saem nulos/vazios. As listas de texto (`skus`, `faltas`, `ambientes`) passam como
- * vêm. Quando as ondas ganharem conteúdo (próxima entrega), quais campos o cliente vê vira uma lista aqui.
+ * código dava): `preparo` e `sugestoes_pendentes` saem para a EQUIPE como o serviço os monta (ela vê tudo); na
+ * porta do cliente os dois saem nulos/vazios. As listas de texto (`skus`, `faltas`, `ambientes`) passam como vêm.
+ *
+ * ### As ondas (2ª entrega, 02/11/2026)
+ * Também por lista: {@see self::ONDA} para a equipe e {@see self::ONDA_CLIENTE} para o cliente — nome, data e se
+ * já começou, como no artefato; quem criou a onda não vai ao cliente. Com a trilha de trabalho ligada a equipe
+ * ganha `pode_editar` (a mesma régua de escrita do Portal) e os endereços das escritas em `escrita`; o cliente
+ * nunca recebe nenhum dos dois, e o "Decidir no Planejamento" do Portal sai da porta dele: o mapeamento passou a
+ * ser feito na trilha.
  */
 class ApresentacaoDaTrilha
 {
+    /** Campos da onda para a EQUIPE. */
+    private const ONDA = [
+        'id'         => null,
+        'nome'       => null,
+        'data'       => null,
+        'comecou'    => false,
+        'criada_por' => null,
+        'criada_em'  => null,
+    ];
+
+    /** Campos da onda para o CLIENTE: o que o artefato mostra a ele (nome, data, andamento), sem quem criou. */
+    private const ONDA_CLIENTE = [
+        'id'      => null,
+        'nome'    => null,
+        'data'    => null,
+        'comecou' => false,
+    ];
+
     /** Campos do produto que saem para a tela (as duas portas), com o valor de quando o serviço não os trouxer. */
     private const PRODUTO = [
         'id'                        => null,
@@ -56,6 +81,8 @@ class ApresentacaoDaTrilha
         'etapa'                     => null,
         'sugestoes_pendentes'       => [],
         'sugestoes_pendentes_total' => 0,
+        'mapeado_em'                => null,
+        'mapeado_por'               => null,
     ];
 
     /**
@@ -84,6 +111,7 @@ class ApresentacaoDaTrilha
         'preparo'     => null,
         'onda_id'     => null,
         'sem_produto' => false,
+        'planejavel'  => false,
     ];
 
     /** As etapas que contam produtos e as que contam ofertas — a mesma divisão de `contagemPorEtapa()` do front. */
@@ -106,14 +134,20 @@ class ApresentacaoDaTrilha
     {
         // O mesmo teste do `role:admin` que guarda as rotas do Publicador.
         $admin = $usuario->isAdmin();
+        $podeEntrar = $this->equipe->podeEntrar($usuario, $empresa);
+        $trabalho = (bool) ($trilha['trabalho'] ?? false);
+        $podeEditar = $trabalho && $podeEntrar;
 
         return [
             'visao'         => 'equipe',
             'sessao_equipe' => false,
             'empresa'       => self::empresa($empresa),
             'voltar'        => ['url' => route('trilha.index'), 'rotulo' => 'Empresas'],
+            'trabalho'      => $trabalho,
+            'pode_editar'   => $podeEditar,
+            'escrita'       => $podeEditar ? self::escrita($empresa) : null,
             'links'         => [
-                'portal_abrir' => $this->equipe->podeEntrar($usuario, $empresa)
+                'portal_abrir' => $podeEntrar
                     ? route('companies.portal.abrir', ['company' => $empresa->id])
                     : null,
                 'planejamento' => null,
@@ -131,35 +165,61 @@ class ApresentacaoDaTrilha
                 // Na revisão o que a equipe quer é a prévia do anúncio, não o começo do editor.
                 'url_publicador' => $admin ? self::editor($o['pub_produto_id'] ?? null, ($o['etapa'] ?? null) === 'revisao') : null,
             ], $trilha['ofertas'] ?? []),
-            'ondas'         => $trilha['ondas'] ?? [],
+            'ondas'         => array_map(fn (array $o) => self::campos($o, self::ONDA), $trilha['ondas'] ?? []),
             'gerado_em'     => $trilha['gerado_em'] ?? null,
+        ];
+    }
+
+    /**
+     * Os endereços das escritas da equipe (Planejamento e Mapeamento). A onda e o produto entram no fim do caminho
+     * (`{ondas}/{id}`, `{produtos}/{id}/mapeamento`).
+     *
+     * @return array{ondas: string, planejamento: string, produtos: string}
+     */
+    private static function escrita(Company $empresa): array
+    {
+        $base = route('trilha.empresa', ['company' => $empresa->id]);
+
+        return [
+            'ondas'        => route('trilha.ondas.criar', ['company' => $empresa->id]),
+            'planejamento' => route('trilha.planejamento', ['company' => $empresa->id]),
+            'produtos'     => $base.'/produtos',
         ];
     }
 
     /**
      * Porta do CLIENTE (`/portal/{empresa}/trilha`): os mesmos itens, SEM o que é só da equipe — nem a chave
      * `pub_produto_id`/`url_publicador` existe, `preparo` vem nulo, o MLB dos anúncios vem nulo, a lista das
-     * sugestões vem vazia (fica o total, para o "N sugestões esperando decisão") e as ondas vêm vazias. Links só
+     * sugestões vem vazia (fica o total, para o "N sugestões esperando decisão"), as ondas vêm só com id, nome, data e
+     * se começou (`ONDA_CLIENTE` — o NOME da onda, que a equipe digita, é visível ao cliente) e nada de escrita. Links só
      * para o próprio Portal.
      *
      * @param  bool  $sessaoEquipe  alguém da ECF abriu a porta do cliente pelo modo equipe do Portal (faixa de aviso)
      */
     public function paraCliente(Company $empresa, array $trilha, bool $sessaoEquipe): array
     {
+        $trabalho = (bool) ($trilha['trabalho'] ?? false);
+
         return [
             'visao'         => 'cliente',
             'sessao_equipe' => $sessaoEquipe,
             'empresa'       => self::empresa($empresa),
             // As rotas do Portal saem com a empresa desta aba (o `portal.auth` põe o `URL::defaults`).
             'voltar'        => ['url' => route('portal.auth.inicio'), 'rotulo' => 'Voltar ao portal'],
+            'trabalho'      => $trabalho,
+            'pode_editar'   => false,
+            'escrita'       => null,
             'links'         => [
                 'portal_abrir' => null,
-                'planejamento' => route('portal.auth.estrutura.sugestoes'),
+                // Com a trilha de trabalho o mapeamento é feito na trilha, pela equipe: o cliente acompanha, não
+                // decide (como no artefato) — o atalho para o Planejamento do Portal sai.
+                'planejamento' => $trabalho ? null : route('portal.auth.estrutura.sugestoes'),
                 'produtos'     => route('portal.auth.estrutura.produtos'),
                 'publicador'   => null,
             ],
             'produtos'      => array_map(fn (array $p) => array_replace(self::campos($p, self::PRODUTO), [
                 'sugestoes_pendentes' => [],
+                'mapeado_por'         => null,
             ]) + [
                 'url_ficha' => isset($p['id']) ? route('portal.auth.estrutura.produtos.ficha', ['produto' => (int) $p['id']]) : null,
             ], $trilha['produtos'] ?? []),
@@ -168,9 +228,8 @@ class ApresentacaoDaTrilha
                 'preparo'     => null,
                 'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: false),
             ]), $trilha['ofertas'] ?? []),
-            // Quais campos da onda o cliente vê (data? responsável?) é decisão da próxima entrega, a que preenche as
-            // ondas: até lá nenhum. Decidido, entra aqui uma lista como a da oferta (o Mapa desenha {id, nome, data}).
-            'ondas'         => [],
+            // Nome, data e se começou (decisão de 02/11/2026, como no artefato): sem quem criou.
+            'ondas'         => array_map(fn (array $o) => self::campos($o, self::ONDA_CLIENTE), $trilha['ondas'] ?? []),
             'gerado_em'     => $trilha['gerado_em'] ?? null,
         ];
     }

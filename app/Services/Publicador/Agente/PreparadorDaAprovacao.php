@@ -13,6 +13,7 @@ use App\Models\PubRascunho;
 use App\Services\Publicador\Aprovacao\AndamentoDaOfertaService;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -229,6 +230,10 @@ class PreparadorDaAprovacao
             return $this->bloquear($execucao, 'ia_indisponivel', $situacao === 'limite'
                 ? 'Limite diário de gerações de texto da empresa atingido.'
                 : 'O preparo pela IA está desligado no sistema.');
+        }
+        // Trilha de produtos (02/11/2026): a oferta espera o dia da onda — encerra com o motivo, sem nova tentativa.
+        if ($situacao === PortaoDaOnda::AGUARDANDO) {
+            return $this->bloquear($execucao, 'aguardando_onda', 'Esta oferta espera o dia da onda dela na trilha de produtos.');
         }
 
         return 'recuperando';

@@ -61,8 +61,13 @@ class PreparoIaAgenda
         return is_string($m) ? $m : null;
     }
 
-    /** @param  iterable<int|string|null>  $produtoIds  ids de `estrutura_produtos` da empresa */
-    public function aoSalvar(int $companyId, iterable $produtoIds): void
+    /**
+     * @param  iterable<int|string|null>  $produtoIds  ids de `estrutura_produtos` da empresa
+     * @param  array<int, list<string>>|null  $soItensPorProduto  Trilha de produtos (02/11/2026): a soltura da onda diz,
+     *        por produto, quais itens da trilha pediu — a IA só roda para eles (o Sincronizar segue para todos). Null (o
+     *        save de sempre) = nenhuma restrição.
+     */
+    public function aoSalvar(int $companyId, iterable $produtoIds, ?array $soItensPorProduto = null): void
     {
         try {
             if (! config('publicador.preparo_ia.ativo', true)) {
@@ -93,7 +98,8 @@ class PreparoIaAgenda
                 $marca = (string) Str::uuid();
                 // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
                 Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
-                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca)->delay(now()->addSeconds($atraso));
+                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca, 0,
+                    $soItensPorProduto !== null ? array_values($soItensPorProduto[$id] ?? []) : null)->delay(now()->addSeconds($atraso));
                 // 3. "A IA vem aí" para a vitrine e o editor aberto (`IaTrabalhando::AGENDADA`): a espera + 1 minuto,
                 //    o bastante para a 1ª etapa já estar `rodando` quando a marca vence.
                 Cache::put(self::chaveDoAgendado($id), now()->timestamp, now()->addSeconds($atraso + 60));

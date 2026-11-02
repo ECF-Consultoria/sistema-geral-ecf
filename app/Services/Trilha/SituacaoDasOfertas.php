@@ -286,10 +286,13 @@ class SituacaoDasOfertas
      *
      * @param  array{principal: ?int, todos: list<int>}  $pubs
      * @param  list<int>  $ofertaIds  as linhas de `estrutura_ofertas` do item (os anúncios da régua)
-     * @param  bool  $esperaSimples  Combo cuja Simples ainda não está no ar
+     * @param  bool  $esperaSimples  Combo cuja Simples ainda não está no ar (com a trilha de trabalho: pronta)
+     * @param  ?array  $onda  com a trilha de trabalho ligada, o contexto da onda do item
+     *                        ({@see \App\Services\Trilha\Ondas\OndasDaEmpresa::contextoDoItem()}); null = 1ª entrega
+     * @param  bool  $cadastroIncompleto  algum produto do item tem falta na lista (só lido com `$onda`)
      * @return array{etapa: string, status: string, alerta: bool, anuncios: list<array{tipo: string, mlb: string, situacao: ?string}>, preparo: ?array, pub_produto_id: ?int, andou: bool}
      */
-    public function doItem(array $pubs, array $ofertaIds, bool $esperaSimples): array
+    public function doItem(array $pubs, array $ofertaIds, bool $esperaSimples, ?array $onda = null, bool $cadastroIncompleto = false): array
     {
         $principal = $pubs['principal'];
         $r = $principal !== null ? ($this->rascunhos[$principal] ?? null) : null;
@@ -298,19 +301,108 @@ class SituacaoDasOfertas
         // O kit da fase N (o Combo N no Publicador) não recebe o texto do agente: "o texto dele tem fluxo próprio"
         // (`PreparoIaDoRascunhoService::avaliarIa`, 'kit_da_fase'). Para ele o texto do agente não se aplica.
         $textoDoAgente = $principal === null || $this->pubs[$principal]['produto_base_id'] === null;
-
-        $decisao = $this->decidir($r, $estruturaProdutoId, $anuncios, $esperaSimples, $textoDoAgente);
+        $andou = self::andou($anuncios !== [], $r, ! $textoDoAgente);
         $etapas = $r !== null ? self::etapasDoPreparo($r) : [];
+        $semTexto = $anuncios === [] && $textoDoAgente && ($r === null || ($r->status === PubRascunho::DRAFT && $etapas === []));
+
+        // Trilha de trabalho (2ª entrega): o que ainda não andou segue a régua da onda; o que andou, a de sempre. Com a
+        // onda já começada, o que segue SEM texto também (as imagens automáticas o fizeram "andar" quando o teto do
+        // texto bateu): senão ele ficaria "Preparando" para sempre, sem o alarme de "ainda não começou" (revisão de
+        // 02/11/2026).
+        $decisao = $onda !== null && (! $andou || ($semTexto && $onda['comecou']))
+            ? $this->naOnda($onda, $esperaSimples, $cadastroIncompleto)
+            : $this->decidir($r, $estruturaProdutoId, $anuncios, $esperaSimples, $textoDoAgente);
 
         return [
             ...$decisao,
             'anuncios'       => $anuncios,
             'preparo'        => $r !== null ? $this->preparo($r, $etapas, $decisao['etapa'], $textoDoAgente) : null,
             'pub_produto_id' => $principal,
-            // "Andou" (para a Simples de produto que ainda não saiu da lista/do mapeamento): tem anúncio, o rascunho
-            // passou do DRAFT ou o agente já mexeu nele.
-            'andou'          => $anuncios !== [] || ($r !== null && ($r->status !== PubRascunho::DRAFT || $etapas !== [])),
+            'andou'          => $andou,
+            // O robô ainda não escreveu NADA do texto (nem anúncio, nem rascunho fora do DRAFT, nem etapa registrada) —
+            // a régua da repescagem da soltura das ondas. Não é o `andou`: a memória das imagens sozinha (o teto do
+            // texto bateu e as imagens saíram assim mesmo) conta como "andou", mas o texto ainda está por fazer
+            // (revisão de 02/11/2026).
+            'sem_texto'      => $semTexto,
         ];
+    }
+
+    /**
+     * O item "andou" — já saiu do planejamento: tem anúncio, o rascunho passou do DRAFT, o robô já mexeu nele (uma
+     * etapa do texto registrada ou a memória das imagens automáticas, que existe sem o texto quando a cota de texto
+     * acabou) ou ele é o kit da fase N (nasce do Planejamento já como trabalho do Publicador).
+     *
+     * Régua única: decide quem aparece na trilha (a Simples de produto ainda na lista) e, com a trilha de trabalho,
+     * quem a data da onda segura — a trava do robô pergunta por aqui
+     * ({@see \App\Services\Trilha\Ondas\PortaoDaOnda}). Mudou aqui, mudou nos dois.
+     */
+    public static function andou(bool $temAnuncio, ?PubRascunho $r, bool $kitDaFase = false): bool
+    {
+        if ($temAnuncio || $kitDaFase) {
+            return true;
+        }
+        if ($r === null) {
+            return false;
+        }
+
+        return $r->status !== PubRascunho::DRAFT
+            || self::etapasDoPreparo($r) !== []
+            || (array) ($r->step_state[CriativosAutomaticosService::MEMORIA] ?? []) !== [];
+    }
+
+    /**
+     * A régua da ONDA (2ª entrega, 02/11/2026), para o item com produto que ainda não andou numa empresa com a
+     * trilha de trabalho ligada. A primeira linha que casa:
+     *
+     * | situação                                                    | etapa | status                                  |
+     * |-------------------------------------------------------------|-------|-----------------------------------------|
+     * | sem onda                                                    | plano | Sem onda · falta escolher a data (alerta) |
+     * | onda com data futura                                        | robo  | Na fila · começa em 05/11               |
+     * | a onda começou; combo cuja simples ainda não está pronta    | robo  | … espera a oferta simples ficar pronta  |
+     * | começou há mais de `parado_horas`, pedido feito, nada andou | robo  | Ainda não começou (desde 05/11) (alerta) |
+     * | a onda começou; alguma peça com pendência na Lista          | robo  | Na fila · com pendência na Lista (alerta) |
+     * | a onda começou                                              | robo  | Na fila · começou em 05/11              |
+     *
+     * A pendência na Lista é AVISO, não espera: o robô prepara com o que houver (só a ficha incompleta o barra, em
+     * `avaliarIa`) — o texto não promete o que a trava não faz (revisão de 02/11/2026). "Desde" conta do começo
+     * efetivo do item: o dia da onda ou, se ele entrou depois, a entrada. Os textos novos não citam o agente nem o
+     * Mercado Livre: a porta do cliente lê os mesmos (o sigilo dos textos da 1ª entrega segue em aberto, §13).
+     * A marca de "agendado" do save (80 s) não entra: o item segurado pela onda não tem preparo a caminho.
+     *
+     * @param  array{tem: bool, data: ?string, comecou: bool, pedido_em: ?Carbon, desde?: ?Carbon}  $onda
+     * @return array{etapa: string, status: string, alerta: bool}
+     */
+    private function naOnda(array $onda, bool $esperaSimples, bool $cadastroIncompleto): array
+    {
+        if (! $onda['tem']) {
+            return ['etapa' => 'plano', 'status' => 'Sem onda · falta escolher a data', 'alerta' => true];
+        }
+        if (! $onda['comecou']) {
+            return ['etapa' => 'robo', 'status' => 'Na fila · começa em '.self::diaCurto((string) $onda['data']), 'alerta' => false];
+        }
+        if ($esperaSimples) {
+            // A Simples sem onda (e sem ter andado) não vai ficar pronta sozinha: o combo esperaria para sempre.
+            return ($onda['simples_sem_onda'] ?? false)
+                ? ['etapa' => 'robo', 'status' => 'Na fila · a oferta simples está sem onda', 'alerta' => true]
+                : ['etapa' => 'robo', 'status' => 'Na fila · espera a oferta simples ficar pronta', 'alerta' => false];
+        }
+        $desde = ($onda['desde'] ?? null) ?? Carbon::parse((string) $onda['data'], 'America/Sao_Paulo')->startOfDay();
+        $desde = $desde->copy()->setTimezone('America/Sao_Paulo');
+        if ($onda['pedido_em'] !== null && $this->agora->gte($desde->copy()->addHours((int) config('trilha.ondas.parado_horas', 24)))) {
+            // A pendência na Lista fica no texto: a ficha incompleta é justamente o que segura o robô.
+            return ['etapa' => 'robo', 'status' => 'Ainda não começou (desde '.$desde->format('d/m').')'.($cadastroIncompleto ? ' · pendência na Lista' : ''), 'alerta' => true];
+        }
+        if ($cadastroIncompleto) {
+            return ['etapa' => 'robo', 'status' => 'Na fila · com pendência na Lista', 'alerta' => true];
+        }
+
+        return ['etapa' => 'robo', 'status' => 'Na fila · começou em '.self::diaCurto((string) $onda['data']), 'alerta' => false];
+    }
+
+    /** `2026-11-05` → `05/11`. */
+    private static function diaCurto(string $data): string
+    {
+        return strlen($data) >= 10 ? substr($data, 8, 2).'/'.substr($data, 5, 2) : $data;
     }
 
     /**

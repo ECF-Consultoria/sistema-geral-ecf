@@ -240,9 +240,13 @@ class MontagemManualDeOferta
      * Resolve os componentes DENTRO da empresa, deduz a fase e confere a duplicata e os
      * nomes. A ordem dos itens é a do nome sugerido ({@see RegrasDaMontagem::ordenar}).
      *
+     * Público desde 02/11/2026 para o Mapeamento da Trilha de produtos analisar cada composição com a MESMA régua
+     * do "Montar kit" — com `$retrato` já lido (sob a trava da empresa), para não reler o catálogo a cada uma. Sem
+     * ele (a prévia e a gravação daqui), o retrato é lido como sempre.
+     *
      * @return array{itens: list<array>, fase: ?string, ja_existe: ?array{sku: string}, sugerido: ?array{nome: string, sku: string}, nome: ?string, sku: ?string, avisos: list<array>, sku_repetido: bool, limites: array}
      */
-    private function analisar(Company $empresa, array $componentes, ?string $nome, ?string $sku): array
+    public function analisar(Company $empresa, array $componentes, ?string $nome, ?string $sku, ?array $retrato = null): array
     {
         $limites = [
             'max_titulo'      => (int) config('estrutura_geracao.max_titulo', 60),
@@ -254,7 +258,7 @@ class MontagemManualDeOferta
             throw ValidationException::withMessages(['componentes' => 'Um kit pode juntar até '.ChaveDeComposicao::MAXIMO_COMPONENTES.' produtos.']);
         }
 
-        $retrato = $this->retrato->daEmpresa($empresa);
+        $retrato ??= $this->retrato->daEmpresa($empresa);
         $itens = RegrasDaMontagem::ordenar($this->resolver($empresa, $componentes, $retrato));
 
         $quantidades = array_column($itens, 'quantidade');

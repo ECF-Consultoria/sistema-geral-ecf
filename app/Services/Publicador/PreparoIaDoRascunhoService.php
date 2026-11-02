@@ -19,12 +19,15 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Publicador\Agente\EntradaDoPreparo;
 use App\Services\Publicador\Agente\PoliticaDoAgente;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
+use App\Services\Trilha\Ondas\ItemDaTrilha;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
 use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -109,7 +112,7 @@ class PreparoIaDoRascunhoService
      * @return string o que aconteceu (para o log e os testes): desligado, superado, sem_produto,
      *                adiado, desistiu, pronto
      */
-    public function preparar(int $companyId, int $estruturaProdutoId, string $marca, int $adiamentos = 0): string
+    public function preparar(int $companyId, int $estruturaProdutoId, string $marca, int $adiamentos = 0, ?array $soItens = null): string
     {
         if (! $this->ativo()) {
             return 'desligado';
@@ -131,7 +134,7 @@ class PreparoIaDoRascunhoService
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
             if (EditorEmUso::editando((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
-                return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id);
+                return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id, $soItens);
             }
         }
 
@@ -144,12 +147,18 @@ class PreparoIaDoRascunhoService
                 $this->preencher($pub, comFrete: true);
             }
         }
+        // Trilha de produtos (02/11/2026): pedido pela soltura da onda, a IA roda só para os itens dela — os outros
+        // pub_produtos do produto (um kit que já andou com uma etapa em erro, p. ex.) não são refeitos de carona.
+        $portao = $soItens !== null || TrilhaDeTrabalho::ligada((int) $company->id) ? app(PortaoDaOnda::class) : null;
         foreach ($r['para_preencher'] as $id) {
             $pub = PubProduto::find($id);
             if ($pub !== null) {
+                if ($soItens !== null && ! in_array(ItemDaTrilha::doPub($pub)['chave'] ?? null, $soItens, true)) {
+                    continue;
+                }
                 // AG-02 (20/10/2026): conta com o agente ligado passa pela entrada única dele (elegibilidade antes da
                 // IA, uma execução viva por produto); as outras seguem exatamente como antes.
-                $situacao = app(EntradaDoPreparo::class)->aoPreparar($alvo, $pub) ?? $this->avaliarIa($pub);
+                $situacao = app(EntradaDoPreparo::class)->aoPreparar($alvo, $pub) ?? $this->avaliarIa($pub, $portao);
                 Log::info("[Publicador] Preparo pela IA: produto {$pub->id} ({$pub->nome}) da empresa {$company->id} — {$situacao}.");
                 $this->criativosSemCadeia($pub, $situacao);
             }
@@ -238,9 +247,9 @@ class PreparoIaDoRascunhoService
     /**
      * Decide se a IA prepara o rascunho deste produto e, se sim, encadeia as etapas.
      *
-     * @return string kit_da_fase, sem_rascunho, intocavel, incompleto, em_dia, limite, desligado, gerando
+     * @return string kit_da_fase, sem_rascunho, intocavel, aguardando_onda, incompleto, em_dia, limite, desligado, gerando
      */
-    public function avaliarIa(PubProduto $pub): string
+    public function avaliarIa(PubProduto $pub, ?PortaoDaOnda $portao = null): string
     {
         if (! $this->ativo()) {
             return 'desligado';
@@ -255,6 +264,11 @@ class PreparoIaDoRascunhoService
         }
         if (IaParaRascunhoService::intocavel($r)) {
             return 'intocavel';
+        }
+        // Trilha de produtos (02/11/2026): na empresa com a trilha de trabalho ligada, a oferta que ainda não andou espera
+        // o dia da onda dela — antes da cota, da memória e de qualquer Job: nada é gasto nem gravado.
+        if (TrilhaDeTrabalho::ligada((int) $pub->company_id) && ($portao ?? app(PortaoDaOnda::class))->segura($pub, $r)) {
+            return PortaoDaOnda::AGUARDANDO;
         }
         if (! $r->categoria_id || ! $this->fichaCompleta($pub)) {
             return 'incompleto';
@@ -901,14 +915,14 @@ class PreparoIaDoRascunhoService
         }
     }
 
-    private function adiarPreparo(int $companyId, int $estruturaProdutoId, string $marca, int $adiamentos, int $pubId): string
+    private function adiarPreparo(int $companyId, int $estruturaProdutoId, string $marca, int $adiamentos, int $pubId, ?array $soItens = null): string
     {
         if ($adiamentos >= $this->maxAdiamentos()) {
             Log::info("[Publicador] Preparo pela IA: o editor do produto {$pubId} seguiu em uso; o preparo do produto {$estruturaProdutoId} do Portal desistiu (o próximo save recomeça).");
 
             return self::DESISTIU;
         }
-        PrepararProdutoNoPublicadorJob::dispatch($companyId, $estruturaProdutoId, $marca, $adiamentos + 1)
+        PrepararProdutoNoPublicadorJob::dispatch($companyId, $estruturaProdutoId, $marca, $adiamentos + 1, $soItens)
             ->delay(now()->addMinutes($this->adiarMin()));
 
         return self::ADIADO;

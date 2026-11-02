@@ -38,13 +38,20 @@ class PrepararProdutoNoPublicadorJob implements ShouldQueue
         public int $estruturaProdutoId,
         public string $marca,
         public int $adiamentos = 0,
+        /**
+         * Trilha de produtos (02/11/2026): quando a soltura da onda pede o preparo, os itens da trilha pedidos (`s-12`,
+         * `o-55`…) — a IA só roda para os pub_produtos deles. Null (o save do Portal) = todos, como sempre.
+         *
+         * @var list<string>|null
+         */
+        public ?array $soItens = null,
     ) {
         $this->onQueue(PreparoIaAgenda::fila());
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void
     {
-        $servico->preparar($this->companyId, $this->estruturaProdutoId, $this->marca, $this->adiamentos);
+        $servico->preparar($this->companyId, $this->estruturaProdutoId, $this->marca, $this->adiamentos, $this->soItens);
     }
 
     public function failed(\Throwable $e): void

@@ -47,16 +47,16 @@ class AcessoATrilhaTest extends TestCase
     private const CAMPOS_DO_PRODUTO = [
         'id', 'nome', 'codigo', 'skus', 'familia', 'ambientes', 'categoria', 'variacoes', 'custo_min', 'custo_max',
         'medidas', 'embalagem', 'fotos_min', 'tem_descricao', 'ficha', 'faltas', 'etapa', 'sugestoes_pendentes',
-        'sugestoes_pendentes_total', 'url_ficha',
+        'sugestoes_pendentes_total', 'mapeado_em', 'mapeado_por', 'url_ficha',
     ];
 
     private const CAMPOS_DA_OFERTA = [
         'id', 'tipo', 'nome', 'sku', 'skus', 'componentes', 'etapa', 'status', 'alerta', 'anuncios', 'preparo',
-        'onda_id', 'sem_produto',
+        'onda_id', 'sem_produto', 'planejavel',
     ];
 
     /** As props da PÁGINA (seção 4 do contrato). O resto é o que o `HandleInertiaRequests` compartilha com toda página. */
-    private const PROPS_DA_PAGINA = ['visao', 'sessao_equipe', 'empresa', 'voltar', 'links', 'produtos', 'ofertas', 'ondas', 'gerado_em'];
+    private const PROPS_DA_PAGINA = ['visao', 'sessao_equipe', 'empresa', 'voltar', 'trabalho', 'pode_editar', 'escrita', 'links', 'produtos', 'ofertas', 'ondas', 'gerado_em'];
 
     /** As compartilhadas que chegam ao cliente COM valor: a infraestrutura da página, nenhuma é dado do sistema interno. */
     private const COMPARTILHADAS_DE_INFRA = ['asset_url', 'csrf_token', 'errors', 'flash'];
@@ -349,6 +349,50 @@ class AcessoATrilhaTest extends TestCase
      * DENTRO de um componente, ou numa onda, chegava inteiro à porta do cliente. E as ondas são justamente o que a
      * próxima entrega vai preencher ("robô na data", com responsável).
      */
+    /**
+     * 2ª entrega (02/11/2026): com a trilha de trabalho ligada, só a equipe que pode escrever no Portal da empresa
+     * recebe `pode_editar` e os endereços das escritas. O cliente nunca — e das ondas lê só nome, data e se começou,
+     * sem o atalho para o Planejamento do Portal (o mapeamento passou a ser feito na trilha).
+     */
+    public function test_com_a_trilha_de_trabalho_so_a_equipe_ganha_escrita_e_o_cliente_le_a_onda_enxuta(): void
+    {
+        $empresa = $this->empresaLigada();
+        config(['trilha.trabalho.empresas' => [$empresa->id]]);
+        $crua = $this->trilhaCrua();
+        $crua['trabalho'] = true;
+        $crua['ondas'] = [['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
+            'criada_em' => '2026-11-02T10:00:00-03:00', 'campo_novo_do_servico' => 'SEGREDO-DA-ONDA']];
+        $this->mock(TrilhaDaEmpresa::class, fn (MockInterface $m) => $m->shouldReceive('montar')->times(3)->andReturn($crua));
+
+        $equipe = $this->props($this->actingAs($this->dev())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertTrue($equipe['trabalho']);
+        $this->assertTrue($equipe['pode_editar']);
+        $this->assertSame([
+            'ondas'        => route('trilha.ondas.criar', ['company' => $empresa->id]),
+            'planejamento' => route('trilha.planejamento', ['company' => $empresa->id]),
+            'produtos'     => route('trilha.empresa', ['company' => $empresa->id]).'/produtos',
+        ], $equipe['escrita']);
+        $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
+            'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');
+
+        // Dev que não pode escrever no Portal desta empresa: vê a trilha, sem escrita.
+        $semCarteira = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $semCarteira->forceFill(['is_dev' => true])->save();
+        $leitor = $this->props($this->actingAs($semCarteira->refresh())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertFalse($leitor['pode_editar']);
+        $this->assertNull($leitor['escrita']);
+
+        $resposta = $this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk();
+        $cliente = $this->props($resposta);
+        $this->assertTrue($cliente['trabalho']);
+        $this->assertFalse($cliente['pode_editar']);
+        $this->assertNull($cliente['escrita']);
+        $this->assertNull($cliente['links']['planejamento']);
+        $this->assertSame([['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false]], $cliente['ondas']);
+        $resposta->assertDontSee('Rafael', false);
+        $resposta->assertDontSee('SEGREDO-DA-ONDA', false);
+    }
+
     public function test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente(): void
     {
         $empresa = $this->empresaLigada();
@@ -363,8 +407,8 @@ class AcessoATrilhaTest extends TestCase
         $resposta = $this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk();
         $props = $this->props($resposta);
 
-        // Quais campos da onda o cliente vê é decisão da próxima entrega: até lá, nenhuma.
-        $this->assertSame([], $props['ondas']);
+        // Da onda o cliente vê só nome, data e se começou (2ª entrega, 02/11/2026): o campo novo não chega.
+        $this->assertSame([['id' => 1, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false]], $props['ondas']);
         $this->assertSame(['produto_id', 'quantidade', 'sku', 'nome'], array_keys($props['ofertas'][0]['componentes'][0]));
         $chaves = self::chaves(['produtos' => $props['produtos'], 'ofertas' => $props['ofertas'], 'ondas' => $props['ondas']]);
         $this->assertNotContains('campo_novo_do_servico', $chaves);

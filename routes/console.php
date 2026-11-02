@@ -694,6 +694,20 @@ Schedule::command('publicador:agente-varrer')
     ->withoutOverlapping(15)
     ->onOneServer();
 
+// Trilha de produtos (2ª entrega, 02/11/2026): a data da onda solta o robô — a onda do dia D começa às 00h07 de São
+// Paulo, e cada passada pede o preparo de até `trilha.ondas.lote` produtos por empresa (o resto vai na seguinte).
+// Minutos 7/22/37/52: fora do 06:00 (o `adman:warm-diff` segura o agendador naquele minuto) e dos agendamentos
+// das :05. Só roda com empresa na trilha de trabalho (`TRILHA_TRABALHO_EMPRESAS`, nasce vazia). O log em arquivo
+// próprio porque `LOG_LEVEL=error` em produção esconde o `Log::info`.
+Schedule::command('trilha:soltar-ondas --aplicar')
+    ->cron('7,22,37,52 * * * *')
+    ->timezone('America/Sao_Paulo')
+    ->name('trilha-soltar-ondas')
+    ->when(fn () => \App\Support\Trilha\TrilhaDeTrabalho::empresas() !== [])
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/trilha-ondas.log'));
+
 // Fase 184 (BLING-13) — keep-alive ESPALHADO dos tokens do Bling. De hora em
 // hora, e NUNCA uma rajada diária: o access_token do Bling dura ~6h e o
 // refresh_token 30 dias, então uma rodada por hora já espalha a carga

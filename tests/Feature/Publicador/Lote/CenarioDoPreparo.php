@@ -121,7 +121,7 @@ trait CenarioDoPreparo
     protected function executar(object $job): string
     {
         return match (true) {
-            $job instanceof PrepararProdutoNoPublicadorJob => $this->preparo()->preparar($job->companyId, $job->estruturaProdutoId, $job->marca, $job->adiamentos),
+            $job instanceof PrepararProdutoNoPublicadorJob => $this->preparo()->preparar($job->companyId, $job->estruturaProdutoId, $job->marca, $job->adiamentos, $job->soItens),
             $job instanceof GerarPreparoIaJob => $this->preparo()->executarEtapa($job->rascunhoId, $job->etapa, $job->hash, $job->valorPronto, $job->adiamentos),
             default => 'outro:'.class_basename($job),
         };

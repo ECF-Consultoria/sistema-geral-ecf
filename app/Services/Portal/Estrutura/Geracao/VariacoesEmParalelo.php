@@ -92,6 +92,65 @@ final class VariacoesEmParalelo
         return array_values($pares);
     }
 
+    /**
+     * Três ou mais produtos juntos (o "Juntar todos" do Mapeamento da Trilha, 02/11/2026): a régua da âncora do Kit de
+     * 3 do gerador (`GeradorDeSugestoes::paraOTrio`) — a âncora é a lista com mais variações (empate: a primeira); cada
+     * variação dela casa em PARALELO com cada uma das outras listas, e só sai a combinação em que TODAS casaram. Cada
+     * variação da âncora aparece no máximo uma vez, nunca cartesiano.
+     *
+     * Pura, como o resto da classe. O gerador não foi mexido: `Tests\Unit\PortalEstrutura\Geracao\CasarComAncoraTest`
+     * confere que ela dá as mesmas cores que ele.
+     *
+     * @param  list<list<array<string,mixed>>>  $listas  uma lista de variações por produto, na ordem de quem chama
+     * @return list<list<array<string,mixed>>>  uma combinação por variação da âncora, com uma variação de cada lista
+     *                                          na MESMA ordem de `$listas`
+     */
+    public static function casarComAncora(array $listas): array
+    {
+        $listas = array_values($listas);
+        if ($listas === []) {
+            return [];
+        }
+        foreach ($listas as $lista) {
+            if ($lista === []) {
+                return [];
+            }
+        }
+
+        $ancora = 0;
+        foreach ($listas as $pos => $lista) {
+            if (count($lista) > count($listas[$ancora])) {
+                $ancora = $pos;
+            }
+        }
+
+        $casadas = [];
+        foreach ($listas as $pos => $lista) {
+            if ($pos === $ancora) {
+                continue;
+            }
+            foreach (self::casar($listas[$ancora], $lista) as [$va, $vp]) {
+                $casadas[$pos][$va['id']] ??= $vp;
+            }
+        }
+
+        $saida = [];
+        foreach (self::ordenar($listas[$ancora]) as $va) {
+            $combinacao = [];
+            foreach ($listas as $pos => $lista) {
+                $v = $pos === $ancora ? $va : ($casadas[$pos][$va['id']] ?? null);
+                if ($v === null) {
+                    continue 2;
+                }
+                $combinacao[$pos] = $v;
+            }
+            ksort($combinacao);
+            $saida[] = array_values($combinacao);
+        }
+
+        return $saida;
+    }
+
     /** @return list<array<string,mixed>> */
     private static function ordenar(array $variacoes): array
     {

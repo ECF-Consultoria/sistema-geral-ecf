@@ -7,6 +7,8 @@ use App\Models\PubAgenteExecucao;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Support\Carbon;
 
 /**
@@ -27,6 +29,9 @@ class PoliticaDoAgente
     public const REGRA_ESCOPO = 'AG-01-ESCOPO';
     public const REGRA_JANELA = 'AG-01-JANELA';
 
+    /** A oferta espera o dia da onda dela na Trilha de produtos (2ª entrega, 02/11/2026). */
+    public const REGRA_ONDA = 'TRILHA-ONDA';
+
     public function __construct(private ProgramasPublicadorService $programas) {}
 
     /** @return array{regra: string, mensagem: string}|null */
@@ -45,6 +50,14 @@ class PoliticaDoAgente
         if (in_array($produto->id, (array) ($escopo['excluir'] ?? []), true)
             || ($incluir !== [] && ! in_array($produto->id, $incluir, true))) {
             return ['regra' => self::REGRA_ESCOPO, 'mensagem' => 'Este produto está fora do escopo configurado para o agente.'];
+        }
+
+        // Trilha de produtos (02/11/2026): na empresa com a trilha de trabalho ligada, quem chama o robô é a data da
+        // onda — para toda origem, também o "Preparar agora". Antes da conta de capacidade: não cria execução nem
+        // ocupa vaga.
+        if (TrilhaDeTrabalho::ligada((int) $produto->company_id)
+            && ($espera = app(PortaoDaOnda::class)->recusaParaOAgente($produto)) !== null) {
+            return ['regra' => self::REGRA_ONDA, 'mensagem' => $espera];
         }
 
         // A janela vale para o que o agente faz sozinho; quem pede "Preparar agora" decide a hora.

@@ -210,7 +210,10 @@ largura). O contêiner é `relative` por isso. Vale para qualquer tabela com
 - Na porta do cliente, os status do robô falam do agente ("O agente está
   escrevendo…", "O agente parou: descrição") e a revisão mostra "A publicação
   falhou". O contrato corta o `preparo` (detalhe do agente), mas não esses
-  textos. Decidir antes de ligar empresa de cliente real.
+  textos. Decidir antes de ligar empresa de cliente real. Os status NOVOS da
+  régua da onda (2ª entrega) já nasceram neutros: "Na fila · começa/começou em
+  dd/mm", "Na fila · com pendência na Lista", "Ainda não começou (desde dd/mm)"
+  — este último é sinal de falha interna e também vai ao cliente.
 - A falta "medidas" (rótulo de `PendenciasDoProduto`) é a da EMBALAGEM. A
   trilha mostra também as medidas do produto montado, e o rótulo pode confundir
   ("falta medidas" ao lado de "210 × 92 × 85 cm").
@@ -291,9 +294,12 @@ servidor muda a pílula. No Mapa, cinza só `Encerrado`/`Inativo` (a lista
 ## 17. Porta do cliente: a lista de campos vale em todo nível, e as compartilhadas também vão
 
 - `ApresentacaoDaTrilha` passa os componentes por lista (`COMPONENTE`) nas duas
-  portas e manda `ondas: []` ao cliente até a entrega das ondas decidir quais
-  campos dela ele vê. O "Ver como: Cliente" corta igual no navegador
-  (`paraVisaoCliente`).
+  portas. Desde a 2ª entrega (02/11/2026) as ondas vão ao cliente só com id,
+  nome, data e se começou (`ONDA_CLIENTE`): o NOME da onda, que a equipe digita
+  livre, é visível a ele; quem criou, não. Nada de `pode_editar`/`escrita` na
+  porta dele. O "Ver como: Cliente" corta igual no navegador
+  (`paraVisaoCliente`) e a página não passa os endereços de escrita aos painéis
+  na simulação.
 - As props COMPARTILHADAS do `HandleInertiaRequests` vão no mesmo data-page.
   `alertas_criticos_count` (a carteira inteira no ECF Drive) era calculada sem
   olhar quem pedia e ia ao Portal do cliente; agora só sai para quem tem usuário
@@ -333,7 +339,8 @@ Decisão antes do código:
   módulo", e na ficha "os campos desta categoria não estão guardados no
   sistema" (soa como erro dele). Proposta: textos por visão — junto com os
   status do agente (§13).
-- **F8** — para o cliente, o produto no Mapeamento diz "Acompanhar" na linha, e
+- **F8** (resolvido na 2ª entrega, 02/11/2026: com a trilha de trabalho o cliente
+  acompanha e o link do Planejamento do Portal sai da porta dele) — para o cliente, o produto no Mapeamento diz "Acompanhar" na linha, e
   o painel pede "Decidir no Planejamento". Quem decide as sugestões? Se for o
   cliente, `acaoDoItem('mapa', 'cliente')` vira "Decidir"; se não, o botão vira
   o secundário "Ver no Planejamento".
@@ -352,7 +359,7 @@ Só trabalho:
 - **F4** — no Mapa, o anúncio parado só se distingue pela cor (a caixa diz
   "{tipo} · {MLB}"). Proposta: "{tipo} · {situação}" quando não for ativo, e a
   situação na lista "Anúncios" do detalhe.
-- **P2** — id com mais de 18 dígitos em `/trilha/{company}` dá 500 (TypeError
+- **P2** (resolvido na 2ª entrega: `[0-9]{1,18}` em todas as rotas da equipe) — id com mais de 18 dígitos em `/trilha/{company}` dá 500 (TypeError
   na coerção para `int`) em vez de 404. Uma linha em `routes/trilha.php`:
   `->where('company', '[0-9]{1,18}')` no lugar do `whereNumber` (mantém
   `/trilha/0459`).
@@ -361,7 +368,8 @@ Só trabalho:
   `trilha.empresa` e o editor do Publicador. São só endereços, nenhum dado, e é
   do Portal inteiro. Filtrar o Ziggy por grupo é decisão de quem cuida do
   Portal.
-- **D4** — falta teste de isolamento entre duas empresas (a consulta de
+- **D4** (em parte na 2ª entrega: onda, produto e item de outra loja dão 404/422 em
+  `OndasDaTrilhaTest`/`MapeamentoNaTrilhaTest`) — falta teste de isolamento entre duas empresas (a consulta de
   `pub_produtos` em `SituacaoDasOfertas` não filtra `company_id`: o isolamento
   vem das subconsultas) e um que compare as constantes copiadas (§9) com as
   originais, por `ReflectionClassConstant`.
@@ -374,3 +382,158 @@ Só trabalho:
 - **T5** — a interação (efeito da URL, foco, Esc, Tab, tema) não tem teste
   versionado; só os roteiros Playwright do scratchpad da sessão a conferiram.
   Proposta: extrair para funções puras e testar.
+
+## 20. 2ª entrega (02/11/2026): a trilha virou LUGAR DE TRABALHO — chave própria, nasce vazia
+
+Mapeamento e Planejamento (ondas com data) passaram a ser feitos DENTRO da
+trilha, e o robô (o agente de IA do Publicador) só prepara uma oferta no dia da
+onda dela. Tudo isso vale só para a chave `trilha.trabalho.empresas` (env
+`TRILHA_TRABALHO_EMPRESAS`, padrão VAZIO), cruzada com `trilha.empresas`
+(`App\Support\Trilha\TrilhaDeTrabalho`). Fora dela, nenhum gancho roda: cada um
+pergunta `TrilhaDeTrabalho::ligada()` primeiro, e a pergunta só lê a config.
+
+**Ligar exige três passos, nesta ordem**: `.env` + `php artisan config:cache` +
+`sudo -u www-data php artisan queue:restart`. A trava roda DENTRO dos workers
+(`ecf-worker-ia`, `ecf-worker-high`), que carregam a config ao subir — sem o
+`queue:restart` eles seguem preparando na hora. O `deploy.sh` só reinicia
+`ecf-worker:*`; depois de deploy que mexe na trava, `queue:restart` também.
+Nunca `supervisorctl restart` para isso: ele mata geração paga no meio.
+
+Na 459 (decisão do usuário de 02/11/2026), TUDO o que nasce depois de ligar
+espera a onda — inclusive o que vier do Portal. Quem testar o Publicador lá
+precisa pôr a oferta numa onda com a data de hoje (a soltura roda na hora).
+
+## 21. A trava do robô mora num ponto só: `avaliarIa`, por pub_produto
+
+`PreparoIaDoRascunhoService::avaliarIa()` é o ÚNICO lugar onde a IA de texto
+nasce (3 chamadores: `preparar()`, `EntradaDoPreparo::seguir()` e
+`PreparadorDaAprovacao::recuperarTexto()`; as imagens automáticas só saem depois
+dela passar, ou de `em_dia`/`limite` em `criativosSemCadeia`). A trava
+(`App\Services\Trilha\Ondas\PortaoDaOnda::segura`) fica entre `intocavel` e
+`incompleto`: antes da cota, da memória e de qualquer Job — o item segurado não
+gasta nada e nada é gravado. Devolve `aguardando_onda`.
+
+Por pub_produto, e não no `aoSalvar` (que é por produto): o `preparar()` de um
+produto prepara o grupo E os compostos dele, e a Simples e o kit do mesmo
+produto podem estar em ondas diferentes. A régua inversa pub → item é
+`Ondas\ItemDaTrilha::doPub()` (teste `ItemDaTrilhaTest` confere com o
+agrupamento). Mais três ganchos: o Kit N (`CombosDoPlanejamentoService`
+pergunta `seguraOCombo` por N), a política do agente da Aprovação (regra
+`TRILHA-ONDA`, antes da conta de capacidade) e `seguir`/`recuperarTexto`
+tratando `aguardando_onda` como `limite` (encerra BLOQUEADA — sem isso a
+execução ficaria PREPARANDO esperando um texto que não vem). A varredura do
+agente pula a empresa da chave. Em 02/11/2026 o agente estava DESLIGADO em todas
+as contas (0 habilitadas); os ganchos são para o dia em que alguém o ligar.
+
+Erro ao ler segura (e loga `[Trilha] Trava da onda`): é o lado barato.
+
+## 22. "Andou" é UMA régua: a tela e a trava perguntam a mesma
+
+`SituacaoDasOfertas::andou()`: tem anúncio, o rascunho saiu do DRAFT, o robô já
+mexeu (etapa do texto registrada OU memória `criativos_auto` — ela existe sem o
+texto quando a cota acabou) ou o item é o Kit N. A trava lê o "andou" do ITEM
+pela mesma régua (`TrilhaDaEmpresa::itens()`), nunca só o do pub: o item `s-p`
+pode ter outro pub (legado por cor) já publicado, e uma trava que olhasse só o
+pub seguraria para sempre uma oferta que a tela mostra "no ar" (e que ninguém
+consegue pôr numa onda). O que andou antes de a chave ligar não é segurado e não
+entra em onda.
+
+## 23. A data da onda é TEXTO `Y-m-d`, comparada em PHP
+
+`trilha_ondas.data` sem cast no model; o serviço grava `Y-m-d`. Com cast `date`
+o Eloquent gravaria `Y-m-d 00:00:00`, e no SQLite dos testes (coluna texto)
+`'2026-11-06 00:00:00' <= '2026-11-06'` é falso — no MySQL é verdadeiro. "Hoje"
+é sempre São Paulo (`TrilhaOnda::hoje()`). A data é o dia em que o robô COMEÇA,
+não "publicar até": nenhum texto da trilha diz "prazo".
+
+## 24. O combo na trilha nasce da Simples PRONTA, não da publicada
+
+Decisão do usuário de 31/10/2026 ("o combo não espera a simples vender; se o
+Publicador precisar, o agente prepara a simples antes"). Fora da trilha, a
+regra de sempre (KIT-05: Fase 1 publicada). Pronta = `Ondas\SimplesPronta`:
+rascunho DRAFT/VALIDATED, `situacaoDoTexto() === 'completo'` e imagens
+resolvidas (nada no teto do dia, nada esperando nova tentativa, nenhum kit
+andando) — o Kit N é CÓPIA do rascunho da Simples no instante em que nasce, e
+copiar no meio da geração levaria foto pela metade. Custo: o que a publicadora
+corrigir depois na Simples não chega ao Kit N. O KIT-05 só existe no controller
+do botão manual; `CriarFaseService::criar` aceita Simples não publicada.
+
+A soltura (`trilha:soltar-ondas`, minutos 7/22/37/52) chama
+`CombosDoPlanejamentoService::agendar` para o combo de onda que começou e ainda
+não andou, NO MÁXIMO 1×/hora por produto (`Cache::add`) e sem janela de dias: o
+Kit N nasce quando a Simples fica pronta, não só na hora do primeiro pedido (a
+Simples pode ficar pronta muito depois; o Job não chama IA). Não "conserte" o
+limite de 1×/h: sem ele, um Kit N que nunca nasce vira um Job a cada 15 min. Combo sem a Simples planejada leva a Simples junto
+para a mesma onda; combo não começa antes da Simples dele.
+
+## 25. Mapeamento na trilha: o servidor expande por COR
+
+O artefato compõe por produto; o sistema, por cor (§2). `MapeamentoNaTrilha`:
+Combo N → um combo por cor (um item `c-p-N`); parceiro com 1× → um Kit por par
+de cores em PARALELO (`VariacoesEmParalelo::casar`), com 2+ → Combit; "Juntar
+todos" → uma oferta por cor da âncora (`casarComAncora`, a régua do Kit de 3 do
+gerador, conferida por `CasarComAncoraTest`). Cada composição passa por
+`MontagemManualDeOferta::analisar()` (público desde 02/11, com o retrato já
+lido): fase, nome, SKU do sistema, "já existe" pela COMPOSIÇÃO (inclusive o Kit
+N do Publicador) e avisos. O SKU sai na ordem do TIPO, como o "Montar kit"
+(`KT-BB-1-VA-1` quando Banqueta tem tipo e Vaso não) — não na ordem do clique.
+O "Concluir" grava tudo ou nada sob a trava da empresa, descarta as sugestões
+que sobraram do produto (reversível no Portal, decisão de 02/11/2026) e marca
+`trilha_mapeamentos`. Com a chave, o produto completo fica em "falta mapear" até
+essa marca — ou até a Simples andar.
+
+## 26. Rodar as suítes do Publicador neste worktree
+
+O `.env` do worktree tem `PUBLICADOR_PREPARO_IA_ATIVO=false`: o `aoSalvar` sai
+cedo e os testes do preparo falham (ou passam sem a IA nunca rodar). Os testes
+da trilha ligam a config no `setUp`. Para as suítes do Publicador aqui:
+`PUBLICADOR_PREPARO_IA_ATIVO=true php vendor/bin/phpunit --colors=never <arquivo>`
+— e `--colors=never` porque `grep "^OK"` não casa com a saída colorida. O
+`FotosDoPainelServiceTest` falha neste worktree por um arquivo de design não
+versionado (`design_handoff_publicador/Aprovacao.dc.html`), não por regressão.
+
+## 27. A soltura e a IA paga: o que a revisão de 02/11/2026 mudou
+
+Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
+`SolturaDaOndaTest`, `OndasDaTrilhaTest`):
+
+- **A IA da soltura roda só para os itens pedidos.** `aoSalvar(p)` prepara
+  TODOS os pub_produtos de `p`, e `avaliarIa` refaz as etapas que deram `erro`:
+  pedir um kit (ou combo, ou repescar) refazia, paga e de carona, a etapa que
+  falhou na Simples de uma peça (e vice-versa). Agora a soltura passa
+  `soItensPorProduto` → `PrepararProdutoNoPublicadorJob->soItens` →
+  `preparar(..., $soItens)`: o Sincronizar e o preencher seguem para todos, mas
+  `avaliarIa` só roda para os pubs cujo item (`ItemDaTrilha::doPub`) foi pedido.
+  O save do Portal não manda `soItens` (null = como sempre). O Kit N nasce pelo
+  `agendar` (1×/h).
+- **Repescagem é UMA vez** (`repescado_em`), de outro dia, dentro de 7 dias
+  contados da ENTRADA do item na onda (`na_onda_desde` → `comecoEfetivo()`),
+  e só para quem tem `sem_texto` — não `!andou`: com as imagens automáticas
+  ligadas (a 459 tem), o item que bateu no teto do TEXTO ganha a memória das
+  imagens e "anda" sem texto nenhum.
+- **A Simples pronta espera as imagens**: o Job delas é o último elo da cadeia
+  da descrição; sem memória, espera 30 min do fim do texto (os desfechos sem
+  kit — sem foto, sem permissão — não gravam memória, por isso o prazo).
+- **A regra combo × simples vale também ao editar a data e ao apagar a onda**,
+  e só confere os pares que o pedido toca (antes, um combo quebrado de outro
+  produto travava qualquer planejamento).
+- **Combo apagado no Portal**: a linha `c-` órfã sai em QUALQUER onda (soltura,
+  planejar e Concluir do mapeamento) — senão o combo aceito de novo herdaria a
+  onda antiga.
+- A pendência na Lista é AVISO ("Na fila · com pendência na Lista"): o robô
+  prepara com o que houver; só a ficha incompleta o barra. A tela não pode
+  prometer espera.
+- A soltura no pedido roda depois do commit protegida (`try/catch`): falhar
+  ali não vira 500 (a nova tentativa da pessoa duplicaria a onda).
+- **Item sem texto avisa.** Com a onda começada, o item `sem_texto` (mesmo com
+  a memória das imagens) segue a régua da onda: "Ainda não começou (desde
+  dd/mm)" com alerta depois de 24 h — antes ficava "Preparando" para sempre.
+  Com pendência na Lista, o alarme leva " · pendência na Lista".
+- **Composto só de ofertas sem produto** (Lista SKUs, importação) é tratado
+  como sem produto: fora das ondas, sem trava (o robô nem teria ficha).
+- **Tirar da onda** vale para quem já andou (preparado ou publicado à mão antes
+  da data); mover, não. **Editar a data** reinicia `na_onda_desde`.
+- **Combo apagado e criado de novo** antes da passada: a linha `c-` mais velha
+  que TODAS as ofertas do combo é órfã (`SoltarOndas::comboRecriado`).
+- **A descrição automática do editor** (D-11, dispara ao abrir) não roda para
+  oferta segurada pela onda: abrir a tela não é pedir. O botão manual vale.

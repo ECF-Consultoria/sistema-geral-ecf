@@ -9,6 +9,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\RegraViolada;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -55,6 +56,12 @@ class VarreduraDoAgente
             ->each(function (PubAgenteConfiguracao $cfg) use (&$resumo) {
                 $conta = $this->programas->resolver($cfg->conta_chave);
                 if ($conta === null) {
+                    return;
+                }
+                // Trilha de produtos (02/11/2026): na empresa com a trilha de trabalho ligada quem chama o robô é a
+                // data da onda. Sem este pulo, os itens que a onda segura ocupariam as vagas da passada para sempre
+                // (a recusa é do produto, e ele volta a ser candidato na passada seguinte).
+                if (TrilhaDeTrabalho::ligada($conta['company'] ?? null)) {
                     return;
                 }
                 $resumo['lojas']++;

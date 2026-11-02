@@ -6,9 +6,11 @@ use App\Jobs\Publicador\GerarDescricaoIaJob;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Support\Publicador\ComposicaoDoComposto;
 use App\Support\Publicador\Emojis;
 use App\Support\Publicador\TermosVetados;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -57,6 +59,12 @@ class DescricaoIaService
     {
         if ($automatico) {
             if (trim((string) $r->descricao) !== '' || $this->descricaoDoCliente($r) === null) {
+                return null;
+            }
+            // Trilha de produtos (02/11/2026): abrir o editor de uma oferta que espera o dia da onda não pode disparar a
+            // descrição paga sozinho — ninguém clicou em gerar. O botão manual segue valendo (é uma pessoa pedindo).
+            $pub = $r->produto;
+            if ($pub !== null && TrilhaDeTrabalho::ligada((int) $pub->company_id) && app(PortaoDaOnda::class)->segura($pub, $r)) {
                 return null;
             }
             // `add` é atômico: dois pedidos simultâneos não passam os dois.

@@ -16,7 +16,8 @@ use Inertia\Response;
  * A rota já passou por `modulo:trilha.produtos` (módulo oculto: só o Dev entra enquanto não for liberado no
  * Controle Dev). Aqui só se confere a outra trava, a da chave `trilha.empresas`, e se orquestra: a trilha vem de
  * {@see TrilhaDaEmpresa} (só leitura, consultas fixas, nada no Mercado Livre) e as props de
- * {@see ApresentacaoDaTrilha}. Nenhuma escrita: toda ação da tela é um link para uma tela que já existe.
+ * {@see ApresentacaoDaTrilha}. As escritas da trilha de trabalho (2ª entrega: mapeamento e ondas) têm controllers
+ * próprios ({@see OndasDaTrilhaController}, {@see MapeamentoDaTrilhaController}); esta página só lê.
  */
 class TrilhaController extends Controller
 {
