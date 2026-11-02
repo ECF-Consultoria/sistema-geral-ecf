@@ -33,25 +33,32 @@ class PrepararProdutoNoPublicadorJob implements ShouldQueue
 
     public bool $failOnTimeout = true;
 
+    /**
+     * Trilha de produtos (02/11/2026): quando a soltura da onda pede o preparo, os itens da trilha pedidos (`s-12`,
+     * `o-55`…) — a IA só roda para os pub_produtos deles. Null (o save do Portal) = todos, como sempre.
+     *
+     * Declarada FORA do construtor e com padrão de propósito: o Job que entrou na fila antes deste campo existir volta
+     * da fila sem ele (o construtor não roda na volta). Promovida no construtor, a propriedade tipada ficaria sem valor
+     * e o `handle` quebraria em toda loja — com o padrão, ela volta null (= todos, como era).
+     *
+     * @var list<string>|null
+     */
+    public ?array $soItens = null;
+
     public function __construct(
         public int $companyId,
         public int $estruturaProdutoId,
         public string $marca,
         public int $adiamentos = 0,
-        /**
-         * Trilha de produtos (02/11/2026): quando a soltura da onda pede o preparo, os itens da trilha pedidos (`s-12`,
-         * `o-55`…) — a IA só roda para os pub_produtos deles. Null (o save do Portal) = todos, como sempre.
-         *
-         * @var list<string>|null
-         */
-        public ?array $soItens = null,
+        ?array $soItens = null,
     ) {
+        $this->soItens = $soItens;
         $this->onQueue(PreparoIaAgenda::fila());
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void
     {
-        $servico->preparar($this->companyId, $this->estruturaProdutoId, $this->marca, $this->adiamentos, $this->soItens);
+        $servico->preparar($this->companyId, $this->estruturaProdutoId, $this->marca, $this->adiamentos, $this->soItens ?? null);
     }
 
     public function failed(\Throwable $e): void
