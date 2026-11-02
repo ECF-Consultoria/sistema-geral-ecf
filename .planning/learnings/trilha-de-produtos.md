@@ -601,3 +601,21 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   (variação sem valor ou repetida): o pub avulso do combo dessa cor não é
   pedido pela soltura (o item `c-` "andou" pelo Kit N). Só um save o prepara.
   Não reproduzido; achado de leitura.
+
+## 29. 3ª entrega (02/11/2026): o cadastro DENTRO da trilha — decisões e o plano
+
+- A trilha vira um modo novo de usar o Publicador, SEM o Portal: a equipe cadastra o produto na etapa 1 (nome,
+  categoria do ML, ficha técnica, cores/tamanhos, fotos, caixa, custo). MESMAS tabelas do Portal (só a tela é nova);
+  só a equipe cadastra; o cliente segue lendo. O Portal e o Publicador de hoje continuam.
+- Desenho completo e as respostas do usuário: `.planning/trilha/ENTREGA-3-DESENHO.md` (juiz sobre três desenhos;
+  fatias F0–F6 + F7 planilha e F8 importar do ML).
+- Por que o produto da trilha só vai ao Publicador quando COMPLETO: o Sincronizar roda a cada save, mas só aplica a
+  categoria em rascunho SEM categoria e só copia foto para grupo VAZIO (`PortalParaRascunhoService`, conferido). Com
+  cadastro aos poucos, o rascunho ficaria preso na 1ª categoria e na 1ª foto.
+- **F0 (feita):** a régua da Lista conta as fotos POR COR quando há cor E tamanho (o tamanho sem foto própria leva as
+  da cor, como `PortalParaRascunhoService::comFotosDaCor` — mudou lá, muda em
+  `CompletudeDoProduto::fotosDeCadaVariacao`). Antes, o produto de moda com 2+ tamanhos nunca saía da Lista.
+- "Frete ME1" vira AVISO na trilha (decisão do usuário): um sofá de 216×98×60 cm soma 374 cm e passa de qualquer
+  limite do Mercado Envios — ficaria na Lista para sempre.
+- Os serviços do cadastro aceitam `Company` + `AtorDoPortal` explícitos; só o CONTROLLER do Portal lê `PortalContexto`
+  (que lança fora do `portal.auth`). A trilha usa controllers próprios com a guarda da 2ª entrega.
