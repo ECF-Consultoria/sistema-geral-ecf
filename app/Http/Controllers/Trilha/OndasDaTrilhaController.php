@@ -70,7 +70,9 @@ class OndasDaTrilhaController extends Controller
         $n = $this->ondas->excluir($alvo, $request->user());
 
         return response()->json([
-            'mensagem' => "{$alvo->nome} apagada.".($n > 0 ? " {$n} oferta(s) voltaram para Sem onda." : ''),
+            // Sem contar "voltaram para Sem onda": a que andou (preparada à mão antes da data) sai da onda com o status
+            // dela, e a tela perguntou antes contando só as planejáveis (revisão de tela de 02/11/2026).
+            'mensagem' => "{$alvo->nome} apagada".($n > 0 ? ': as ofertas dela saíram da onda.' : '.'),
         ]);
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Trilha\Ondas;
 
+use App\Models\EstruturaOferta;
 use App\Models\TrilhaMapeamento;
 use App\Models\TrilhaOnda;
 use App\Models\TrilhaOndaItem;
@@ -55,6 +56,37 @@ final class OndasDaEmpresa
             ->all();
 
         return new self($ondas, $linhas, $mapeamentos, $hoje ?? TrilhaOnda::hoje());
+    }
+
+    /**
+     * Sem as linhas de Combo que não são do combo de hoje: o combo apagado (todas as cores) ou apagado e criado de
+     * novo depois de a linha nascer ({@see SoltarOndas::comboRecriado()}). A soltura, o planejar e o "Concluir
+     * mapeamento" apagam essas linhas; até lá a tela já não as conta — o combo novo nasce "Sem onda" (revisão de
+     * 02/11/2026).
+     *
+     * @param  array<string, array>  $itens  chave → item com `oferta_ids` (os grupos da trilha)
+     */
+    public function semCombosRecriados(array $itens): self
+    {
+        // As datas das ofertas dos combos em onda numa consulta só: a trilha monta com número FIXO de consultas,
+        // qualquer que seja o número de combos (RegrasDaTrilhaRevisaoTest conta).
+        $ids = [];
+        foreach ($this->linhas as $chave => $l) {
+            if (str_starts_with((string) $chave, 'c-') && isset($itens[$chave])) {
+                array_push($ids, ...array_map('intval', $itens[$chave]['oferta_ids'] ?? []));
+            }
+        }
+        $criadasEm = $ids === [] ? [] : EstruturaOferta::query()
+            ->whereIn('id', array_values(array_unique($ids)))
+            ->pluck('created_at', 'id')
+            ->all();
+
+        $linhas = array_filter($this->linhas,
+            fn (TrilhaOndaItem $l, $chave) => ! str_starts_with((string) $chave, 'c-')
+                || (isset($itens[$chave]) && ! SoltarOndas::comboRecriado($l, $itens[$chave], $criadasEm)),
+            ARRAY_FILTER_USE_BOTH);
+
+        return new self($this->ondas, $linhas, $this->mapeamentos, $this->hoje);
     }
 
     /** A onda do item, ou null quando ele não está em nenhuma. */

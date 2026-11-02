@@ -121,7 +121,10 @@ class MapeamentoNaTrilha
         // Código e foto: o código não está no retrato; a foto é a da primeira cor que tiver.
         $codigos = EstruturaProduto::query()->where('company_id', $empresa->id)->pluck('codigo', 'id');
         $todasAsCores = array_merge(array_map(fn ($v) => (int) $v['id'], $varsP), ...array_column($parceiros, 'variacoes'));
-        $fotos = $this->fotos->capas($empresa, $todasAsCores);
+        // A miniatura pela rota da porta da equipe (`FotosDaTrilhaController`): a do Portal, aqui, sai `/portal/0/…` e
+        // cai no domínio do cliente, sem a sessão da equipe. Relativa, como a do Portal: a página está no mesmo domínio.
+        $fotos = $this->fotos->capas($empresa, $todasAsCores,
+            fn (int $variacao, int $imagem) => route('trilha.fotos', ['company' => (int) $empresa->id, 'variacao' => $variacao, 'imagem' => $imagem], false));
         foreach ($parceiros as &$x) {
             $x['codigo'] = self::texto($codigos[$x['produto_id']] ?? null);
             $x['foto'] = collect($x['variacoes'])->map(fn ($id) => $fotos[$id] ?? null)->filter()->first();

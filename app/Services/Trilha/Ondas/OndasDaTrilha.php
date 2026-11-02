@@ -78,8 +78,10 @@ class OndasDaTrilha
                 if ($onda->comecou()) {
                     throw ValidationException::withMessages(['data' => "A {$onda->nome} já começou: a data não muda mais."]);
                 }
-                // A data nova não pode pôr a Simples depois de um combo dela (nem o combo antes da Simples dele).
+                // A data nova não pode pôr a Simples depois de um combo dela (nem o combo antes da Simples dele). A
+                // linha de combo órfã ou recriada sai antes: ela não é o combo de hoje.
                 $itens = TrilhaDaEmpresa::itens($empresa);
+                self::limparCombosOrfaos($empresa, $itens);
                 $ondas = OndasDaEmpresa::ler((int) $empresa->id);
                 $plano = self::planoAtual($itens, $ondas);
                 $tocadas = [];
@@ -114,7 +116,7 @@ class OndasDaTrilha
         return $onda->fresh();
     }
 
-    /** @return int quantas ofertas voltaram para "Sem onda" */
+    /** @return int quantas ofertas saíram da onda */
     public function excluir(TrilhaOnda $onda, User $quem): int
     {
         $empresa = Company::query()->findOrFail($onda->company_id);
@@ -126,8 +128,10 @@ class OndasDaTrilha
                 throw ValidationException::withMessages(['onda' => "A {$onda->nome} já começou: o robô já foi chamado, ela não pode ser apagada."]);
             }
 
-            // Os itens voltam para "Sem onda": a Simples não pode sair deixando um combo dela noutra onda.
+            // Os itens saem da onda: a Simples não pode sair deixando um combo dela noutra onda. Antes, a linha de
+            // combo órfã ou recriada sai (ela não é o combo de hoje e travaria a conferência à toa).
             $itens = TrilhaDaEmpresa::itens($empresa);
+            self::limparCombosOrfaos($empresa, $itens);
             $plano = self::planoAtual($itens, OndasDaEmpresa::ler((int) $empresa->id));
             $tocadas = [];
             foreach ($plano as $chave => $p) {
@@ -140,7 +144,7 @@ class OndasDaTrilha
 
             $chaves = $onda->itens()->get()->map(fn (TrilhaOndaItem $l) => $l->chave())->all();
             RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, null, 'trilha_onda_apagada',
-                "Onda {$onda->nome} apagada: ".count($chaves).' oferta(s) voltaram para Sem onda',
+                "Onda {$onda->nome} apagada: ".count($chaves).' oferta(s) saíram da onda',
                 ['via' => 'trilha', 'onda_id' => (int) $onda->id, 'nome' => $onda->nome, 'data' => $onda->dia(), 'itens' => $chaves]);
             $onda->delete();
 
@@ -306,7 +310,9 @@ class OndasDaTrilha
             throw ValidationException::withMessages(['itens' => 'Oferta inválida.']);
         }
         $item = $itens[$chave] ?? throw ValidationException::withMessages(['itens' => 'Essa oferta não está mais na trilha (foi apagada ou mudou). Recarregue a página.']);
-        if ($item['sem_produto']) {
+        // Tirar vale também para a que ficou sem produto já dentro de uma onda (um kit cujo produto saiu da Lista):
+        // sem isso ela ficaria presa na onda, com o status "Fora das ondas" (revisão de 02/11/2026).
+        if ($item['sem_produto'] && ! $tirando) {
             throw ValidationException::withMessages(['itens' => "\"{$item['nome']}\" não tem produto na Lista: por enquanto fica fora das ondas."]);
         }
         if ($item['andou'] && ! $tirando) {
@@ -328,6 +334,7 @@ class OndasDaTrilha
     private static function conferirCombos(array $plano, array $itens, array $tocadas): void
     {
         $tocadas = array_flip($tocadas);
+        $hoje = TrilhaOnda::hoje();
         $problemas = [];
         foreach ($plano as $chave => $onda) {
             if ($onda === null || ! str_starts_with($chave, 'c-')) {
@@ -341,11 +348,18 @@ class OndasDaTrilha
                 continue;
             }
             $daSimples = $plano[$simples] ?? null;
+            // O combo numa onda que JÁ COMEÇOU não sai nem muda mais de onda: a saída é só pela simples.
+            $comboPreso = $onda['dia'] <= $hoje;
             if ($daSimples === null) {
-                $problemas[] = "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, mas a simples do produto ficaria sem onda. Tire o combo antes ou ponha a simples numa onda.";
+                $problemas[] = $comboPreso
+                    ? "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, que já começou: a simples do produto não pode ficar sem onda. Ponha a simples na {$onda['nome']} ou numa onda que também já começou."
+                    : "\"{$itens[$chave]['nome']}\" está na {$onda['nome']}, mas a simples do produto ficaria sem onda. Tire o combo antes ou ponha a simples numa onda.";
             } elseif ($daSimples['dia'] > $onda['dia']) {
                 $problemas[] = "A simples de {$itens[$simples]['nome']} começaria em ".self::diaCurto($daSimples['dia'])
-                    .", depois de \"{$itens[$chave]['nome']}\" ({$onda['nome']}, ".self::diaCurto($onda['dia']).'): o combo nasce da simples. Ponha o combo numa onda a partir dessa data ou adiante a simples.';
+                    .", depois de \"{$itens[$chave]['nome']}\" ({$onda['nome']}, ".self::diaCurto($onda['dia']).'): o combo nasce da simples. '
+                    .($comboPreso
+                        ? "Ponha a simples na {$onda['nome']} ou numa onda que também já começou."
+                        : 'Ponha o combo numa onda a partir dessa data ou adiante a simples.');
             }
         }
         if ($problemas !== []) {

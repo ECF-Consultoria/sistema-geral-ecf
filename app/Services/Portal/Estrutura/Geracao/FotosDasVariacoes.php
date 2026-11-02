@@ -20,10 +20,14 @@ class FotosDasVariacoes
 {
     /**
      * @param  list<int>  $variacoes
+     * @param  (\Closure(int, int): string)|null  $urlDaGaleria  quem monta o endereço da miniatura da galeria
+     *         (variação, imagem). Null = a rota do Portal, que só vale numa visita ao Portal; a porta da equipe da
+     *         trilha passa a dela (02/11/2026).
      * @return array<int, string> variacao_id => URL
      */
-    public function capas(Company $empresa, array $variacoes): array
+    public function capas(Company $empresa, array $variacoes, ?\Closure $urlDaGaleria = null): array
     {
+        $urlDaGaleria ??= fn (int $variacao, int $imagem) => VariacaoImagensService::urlMiniatura($variacao, $imagem);
         $variacoes = array_values(array_unique(array_filter(array_map('intval', $variacoes))));
         if ($variacoes === []) {
             return [];
@@ -35,8 +39,8 @@ class FotosDasVariacoes
             ->whereIn('variacao_id', $variacoes)
             ->orderBy('variacao_id')->orderBy('ordem')->orderBy('id')
             ->get(['id', 'variacao_id'])
-            ->each(function (EstruturaProdutoVariacaoImagem $i) use (&$fotos) {
-                $fotos[(int) $i->variacao_id] ??= VariacaoImagensService::urlMiniatura((int) $i->variacao_id, (int) $i->id);
+            ->each(function (EstruturaProdutoVariacaoImagem $i) use (&$fotos, $urlDaGaleria) {
+                $fotos[(int) $i->variacao_id] ??= $urlDaGaleria((int) $i->variacao_id, (int) $i->id);
             });
 
         $semGaleria = array_values(array_diff($variacoes, array_keys($fotos)));

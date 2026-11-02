@@ -52,7 +52,7 @@ class AcessoATrilhaTest extends TestCase
 
     private const CAMPOS_DA_OFERTA = [
         'id', 'tipo', 'nome', 'sku', 'skus', 'componentes', 'etapa', 'status', 'alerta', 'anuncios', 'preparo',
-        'onda_id', 'sem_produto', 'planejavel',
+        'onda_id', 'sem_produto', 'planejavel', 'pode_tirar',
     ];
 
     /** As props da PÁGINA (seção 4 do contrato). O resto é o que o `HandleInertiaRequests` compartilha com toda página. */

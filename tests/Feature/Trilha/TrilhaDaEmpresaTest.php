@@ -235,7 +235,7 @@ class TrilhaDaEmpresaTest extends TestCase
             'id' => "s-{$p['produto']->id}", 'tipo' => 'Simples', 'nome' => 'Vaso Gama', 'sku' => 'VG-1', 'skus' => ['VG-1-1', 'VG-1-2'],
             'componentes' => [['produto_id' => $p['produto']->id, 'quantidade' => 1, 'sku' => 'VG-1', 'nome' => 'Vaso Gama']],
             'etapa' => 'plano', 'status' => 'Sem onda', 'alerta' => false, 'anuncios' => [], 'preparo' => null,
-            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pub_produto_id' => null,
+            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pode_tirar' => false, 'pub_produto_id' => null,
         ], $simples[0]);
     }
 
@@ -281,7 +281,7 @@ class TrilhaDaEmpresaTest extends TestCase
             'skus' => ['VCB-1-1-CB2', 'VCB-1-2-CB2'],
             'componentes' => [['produto_id' => $p['produto']->id, 'quantidade' => 2, 'sku' => 'VCB-1', 'nome' => 'Vaso Combo']],
             'etapa' => 'plano', 'status' => 'Espera a oferta simples ir ao ar', 'alerta' => false, 'anuncios' => [], 'preparo' => null,
-            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pub_produto_id' => null,
+            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pode_tirar' => false, 'pub_produto_id' => null,
         ], $doCombo[0]);
 
         // A Simples no ar: o Combo passa a esperar só a onda.
@@ -330,7 +330,7 @@ class TrilhaDaEmpresaTest extends TestCase
             ],
             // O Kit não espera a simples (a regra da fase N é só do Combo).
             'etapa' => 'plano', 'status' => 'Sem onda', 'alerta' => false, 'anuncios' => [], 'preparo' => null,
-            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pub_produto_id' => null,
+            'onda_id' => null, 'sem_produto' => false, 'planejavel' => false, 'pode_tirar' => false, 'pub_produto_id' => null,
         ], $this->oferta($this->trilha($empresa), "o-{$kit->id}"));
 
         // No Publicador o Kit é um produto da própria oferta.

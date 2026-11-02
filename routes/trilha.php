@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
@@ -48,6 +49,10 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:120,1,trilha.previa')->name('mapeamento.previa');
         Route::post('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'concluir'])
             ->middleware('throttle:20,1,trilha.concluir')->name('mapeamento.concluir');
+        // A foto da cor no "Mapear": a rota de imagem do Portal, no domínio do admin, leva ao do cliente (sem sessão).
+        Route::get('/{company}/fotos/{variacao}/{imagem}', [FotosDaTrilhaController::class, 'ver'])
+            ->where(['variacao' => '[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
+            ->middleware('throttle:600,1,trilha.fotos')->name('fotos');
 
         // Planejamento: as ondas e quem está em cada uma.
         Route::post('/{company}/ondas', [OndasDaTrilhaController::class, 'criar'])

@@ -93,6 +93,8 @@ class TrilhaDaEmpresa
 
         $situacao = SituacaoDasOfertas::daEmpresa($empresa, array_map('intval', $produtos->modelKeys()));
         $grupos = OfertasDaTrilha::agrupar($produtos, $ofertas, $componentes);
+        // A linha de Combo que não é a do combo de hoje (apagado, ou apagado e criado de novo) não conta até a limpeza.
+        $ondas = $ondas?->semCombosRecriados(array_column($grupos['combos'], null, 'id'));
 
         // ─── Produtos ───
         $saidaProdutos = [];
@@ -134,10 +136,10 @@ class TrilhaDaEmpresa
         }
 
         // ─── Ofertas ───
-        $decididos = self::decidirItens($situacao, $grupos, $ondas, $faltas);
+        $decididos = self::decidirItens($situacao, $grupos, $ondas, $faltas, avulsasForaDasOndas: $ondas !== null);
         $saidaOfertas = [];
         foreach ($decididos['itens'] as $chave => $item) {
-            $saidaOfertas[$chave] = self::item($item, $decididos['decisoes'][$chave], $ondas?->ondaDoItem($chave)?->id, $ondas !== null);
+            $saidaOfertas[$chave] = self::item($item, $decididos['decisoes'][$chave], $ondas?->ondaDoItem($chave), $ondas);
         }
         // O link do produto para o Publicador é o da Simples dele (o grupo das cores; sem grupo, o legado).
         foreach ($decididos['pubs_da_simples'] as $produtoId => $pubs) {
@@ -265,20 +267,24 @@ class TrilhaDaEmpresa
      * o robô a prepara antes), não ir ao ar.
      *
      * @param  array<int, list<string>>  $faltas  produto → faltas da lista (vazio = completo; só com `$ondas`)
+     * @param  bool  $avulsasForaDasOndas  o composto feito só de ofertas sem produto sai `sem_produto` — a régua da trilha
+     *         de trabalho: sempre em {@see itens()} (só a trava, a soltura e o serviço das ondas a leem) e, na tela, só com
+     *         a chave (revisão de 02/11/2026: fora dela a 1ª entrega segue como era)
      * @return array{itens: array<string, array>, decisoes: array<string, array>, andou: array<string, bool>, pubs_da_simples: array<int, array>}
      */
-    private static function decidirItens(SituacaoDasOfertas $situacao, array $grupos, ?OndasDaEmpresa $ondas, array $faltas): array
+    private static function decidirItens(SituacaoDasOfertas $situacao, array $grupos, ?OndasDaEmpresa $ondas, array $faltas, bool $avulsasForaDasOndas = true): array
     {
         $itens = [];
         $decisoes = [];
         $andou = [];
         $pubsDaSimples = [];
 
-        $decidir = function (array $item, array $pubs, bool $esperaSimples) use (&$itens, &$decisoes, &$andou, $situacao, $ondas, $faltas): void {
+        $decidir = function (array $item, array $pubs, bool $esperaSimples) use (&$itens, &$decisoes, &$andou, $situacao, $ondas, $faltas, $avulsasForaDasOndas): void {
             $chave = $item['id'];
-            // O composto feito SÓ de ofertas sem produto (Lista SKUs, importação) também fica fora das ondas: a soltura
-            // não teria produto para pedir e ele ficaria "na fila" para sempre (revisão de 02/11/2026).
-            if (self::produtosDoItem($item) === []) {
+            // Trilha de trabalho: o composto feito SÓ de ofertas sem produto (Lista SKUs, importação) também fica fora
+            // das ondas — a soltura não teria produto para pedir e ele ficaria "na fila" para sempre (revisão de
+            // 02/11/2026). Sem a chave, a tela da 1ª entrega segue como era.
+            if ($avulsasForaDasOndas && self::produtosDoItem($item) === []) {
                 $item['sem_produto'] = true;
             }
             $onda = $ondas !== null && ! $item['sem_produto'] ? $ondas->contextoDoItem($chave) : null;
@@ -292,10 +298,12 @@ class TrilhaDaEmpresa
                 $incompleto = $incompleto || ($faltas[$produtoId] ?? []) !== [];
             }
             $d = $situacao->doItem($pubs, $item['oferta_ids'], $esperaSimples, $onda, $incompleto);
-            // Trilha de trabalho: a oferta sem produto na Lista fica fora das ondas (nesta entrega); sem rascunho, o
-            // "Sem onda" de antes faria parecer que falta alguém escolher a data dela.
-            if ($ondas !== null && $item['sem_produto'] && $d['etapa'] === 'plano' && $d['status'] === 'Sem onda') {
+            // Trilha de trabalho: a oferta sem produto na Lista fica fora das ondas (nesta entrega); o "Sem onda" de
+            // antes faria parecer que falta alguém escolher a data dela — e o combo dela, que esperava a simples,
+            // também não entra em onda.
+            if ($ondas !== null && $item['sem_produto'] && $d['etapa'] === 'plano' && ! $d['andou']) {
                 $d['status'] = 'Fora das ondas · sem produto na Lista';
+                $d['alerta'] = false;
             }
             $itens[$chave] = $item;
             $decisoes[$chave] = $d;
@@ -403,8 +411,10 @@ class TrilhaDaEmpresa
     /**
      * O item no formato do contrato.
      */
-    private static function item(array $item, array $s, ?int $ondaId, bool $trabalho): array
+    private static function item(array $item, array $s, ?TrilhaOnda $onda, ?OndasDaEmpresa $ondas): array
     {
+        $trabalho = $ondas !== null;
+
         return [
             'id'             => $item['id'],
             'tipo'           => $item['tipo'],
@@ -417,11 +427,15 @@ class TrilhaDaEmpresa
             'alerta'         => $s['alerta'],
             'anuncios'       => $s['anuncios'],
             'preparo'        => $s['preparo'],
-            'onda_id'        => $ondaId,
+            'onda_id'        => $onda !== null ? (int) $onda->id : null,
             'sem_produto'    => $item['sem_produto'],
             // Pode entrar, mudar ou sair de onda (a mesma régua do serviço das ondas): trilha de trabalho ligada, tem
             // produto e não andou.
             'planejavel'     => $trabalho && ! $item['sem_produto'] && ! $s['andou'],
+            // Pode SAIR da onda dela enquanto a onda não começou — também a que andou (alguém preparou à mão antes da
+            // data) e a que ficou sem produto: o serviço aceita tirar as duas (revisão de 02/11/2026). Onda que
+            // começou não devolve ninguém.
+            'pode_tirar'     => $trabalho && $onda !== null && ! $onda->comecou($ondas->hoje),
             'pub_produto_id' => $s['pub_produto_id'],
         ];
     }

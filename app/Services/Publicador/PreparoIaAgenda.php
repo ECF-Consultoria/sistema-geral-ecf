@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
 use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
+use App\Support\Trilha\TrilhaDeTrabalho;
 use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -62,6 +63,28 @@ class PreparoIaAgenda
     }
 
     /**
+     * Trilha de trabalho (revisão de 02/11/2026): o que o último Job agendado do produto vai preparar (`marca` +
+     * `itens`, null = todos). O Job novo SUPERA o anterior (debounce) e por isso leva a união dos dois — senão o save
+     * do cliente que a soltura da onda alcança em menos de 20 s perderia o preparo que pediu.
+     */
+    public static function chaveDosPendentes(int $estruturaProdutoId): string
+    {
+        return "publicador:preparo:pendentes:{$estruturaProdutoId}";
+    }
+
+    /** A marca cujo preparo já começou: o que ela leva não se soma mais aos pedidos novos. */
+    public static function chaveDoComecado(int $estruturaProdutoId): string
+    {
+        return "publicador:preparo:comecado:{$estruturaProdutoId}";
+    }
+
+    /** O preparo de `$marca` passou da espera e vai rodar ({@see PreparoIaDoRascunhoService::preparar()}). */
+    public static function comecou(int $estruturaProdutoId, string $marca): void
+    {
+        Cache::put(self::chaveDoComecado($estruturaProdutoId), $marca, now()->addDay());
+    }
+
+    /**
      * @param  iterable<int|string|null>  $produtoIds  ids de `estrutura_produtos` da empresa
      * @param  array<int, list<string>>|null  $soItensPorProduto  Trilha de produtos (02/11/2026): a soltura da onda diz,
      *        por produto, quais itens da trilha pediu — a IA só roda para eles (o Sincronizar segue para todos). Null (o
@@ -81,6 +104,7 @@ class PreparoIaAgenda
 
             $atraso = max(0, (int) config('publicador.preparo_ia.atraso_s', 20));
             $atrasoSincronizar = max(0, (int) config('publicador.preparo_ia.sincronizar_atraso_s', 15));
+            $trilha = TrilhaDeTrabalho::ligada($companyId);
             $ids = [];
             foreach ($produtoIds as $id) {
                 if ((int) $id > 0) {
@@ -96,10 +120,13 @@ class PreparoIaAgenda
 
                 // 2. A IA, depois que o cliente parar de mexer.
                 $marca = (string) Str::uuid();
+                $soItens = $soItensPorProduto !== null ? array_values($soItensPorProduto[$id] ?? []) : null;
+                if ($trilha) {
+                    $soItens = self::juntarPendentes($id, $marca, $soItens);
+                }
                 // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
                 Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());
-                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca, 0,
-                    $soItensPorProduto !== null ? array_values($soItensPorProduto[$id] ?? []) : null)->delay(now()->addSeconds($atraso));
+                PrepararProdutoNoPublicadorJob::dispatch($companyId, $id, $marca, 0, $soItens)->delay(now()->addSeconds($atraso));
                 // 3. "A IA vem aí" para a vitrine e o editor aberto (`IaTrabalhando::AGENDADA`): a espera + 1 minuto,
                 //    o bastante para a 1ª etapa já estar `rodando` quando a marca vence.
                 Cache::put(self::chaveDoAgendado($id), now()->timestamp, now()->addSeconds($atraso + 60));
@@ -107,5 +134,30 @@ class PreparoIaAgenda
         } catch (\Throwable $e) {
             Log::warning("[Publicador] Preparo pela IA: não foi possível agendar após o save no Portal (empresa {$companyId}): ".$e->getMessage());
         }
+    }
+
+    /**
+     * O pedido novo somado ao do Job anterior que ainda não começou ({@see chaveDosPendentes()}): "todos" (null) vence.
+     * O Job que já começou não entra na soma — os itens dele já estão sendo preparados.
+     *
+     * @param  list<string>|null  $pedido
+     * @return list<string>|null
+     */
+    private static function juntarPendentes(int $estruturaProdutoId, string $marca, ?array $pedido): ?array
+    {
+        $pendente = Cache::get(self::chaveDosPendentes($estruturaProdutoId));
+        $anterior = is_array($pendente) && array_key_exists('itens', $pendente)
+            && ($pendente['marca'] ?? null) !== Cache::get(self::chaveDoComecado($estruturaProdutoId))
+            ? $pendente : null;
+
+        $juntos = match (true) {
+            $pedido === null => null,
+            $anterior === null => $pedido,
+            $anterior['itens'] === null => null,
+            default => array_values(array_unique([...(array) $anterior['itens'], ...$pedido])),
+        };
+        Cache::put(self::chaveDosPendentes($estruturaProdutoId), ['marca' => $marca, 'itens' => $juntos], now()->addDay());
+
+        return $juntos;
     }
 }

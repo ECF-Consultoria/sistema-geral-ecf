@@ -112,7 +112,7 @@ class OndasDaTrilhaTest extends TestCase
 
         $this->deleteJson($this->url("ondas/{$agendada->id}"))
             ->assertOk()
-            ->assertJsonPath('mensagem', 'Onda Futura apagada. 1 oferta(s) voltaram para Sem onda.');
+            ->assertJsonPath('mensagem', 'Onda Futura apagada: as ofertas dela saíram da onda.');
         $this->assertSame(0, TrilhaOndaItem::count(), 'a cascata tira os itens');
         $this->assertNotNull(TrilhaOnda::find($comecou->id));
     }

@@ -537,3 +537,60 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   que TODAS as ofertas do combo é órfã (`SoltarOndas::comboRecriado`).
 - **A descrição automática do editor** (D-11, dispara ao abrir) não roda para
   oferta segurada pela onda: abrir a tela não é pedir. O botão manual vale.
+
+## 28. Deploy da 2ª entrega (02/11/2026): o Job com campo novo e o que a conferência achou depois
+
+- **Campo novo em Job enfileirado: NUNCA promovido no construtor.** O
+  `656ffd126` pôs `public ?array $soItens = null` como parâmetro promovido do
+  `PrepararProdutoNoPublicadorJob`. A propriedade promovida NÃO tem valor
+  padrão de propriedade: o Job que entrou na fila antes do deploy volta sem o
+  campo (o construtor não roda na volta; o `SerializesModels` pula a chave
+  ausente) e o `handle` lança "must not be accessed before initialization" —
+  em TODA loja, não só na trilha. Também o preparo ADIADO que um worker ainda
+  com o código velho na memória enfileira depois do deploy. A regra: declarar
+  fora do construtor com padrão (`public ?array $x = null;`) e ler com `?? null`
+  (`ddf33185d`; teste `PreparoJobDeAntesDaTrilhaTest` monta o payload antigo).
+  Em produção não chegou a quebrar nada: fila `publicador-ia` vazia na hora.
+- **O `deploy.sh` só reinicia `ecf-worker:*`.** Os workers `ecf-worker-ia`,
+  `-high` e `-creative` seguem com o código velho na memória até
+  `php artisan queue:restart` (como www-data). Ordem segura para ligar a chave:
+  deploy → `queue:restart` (código novo, chave desligada) → backup do `.env` →
+  linha no `.env` → `config:cache` → `queue:restart`.
+- **Produção grava log só de `error` para cima** (`LOG_LEVEL=error`): o
+  "aguardando_onda" e as linhas `[Trilha]` de nível info não aparecem no
+  `laravel.log`. Conferir pela base: rascunho sem `ia_preparo.etapas` = a IA
+  não rodou. A saída do `trilha:soltar-ondas` vai para
+  `storage/logs/trilha-ondas.log` (o `appendOutputTo` do agendamento).
+- **A chave foi ligada para a 459 em 02/11** (`TRILHA_TRABALHO_EMPRESAS=459`,
+  backup `.env.bak_trilha_trabalho_20261102`). Produtos de TESTE criados lá
+  pelos serviços do Portal: 86 Cadeira (2 cores), 87 Mesa, 88 Poltrona
+  (códigos `TRILHA-*`). A ficha da poltrona veio sem "Cor" porque a origem
+  (QA23A) tem a cor como VARIAÇÃO — copiar ficha de produto com eixo de cor
+  para um sem eixo deixa a Cor em branco.
+- **Defeitos que a conferência por mutação achou depois do deploy** (só na
+  empresa com a chave) e o conserto da rodada seguinte:
+  - *Save engolido pela soltura*: o debounce (marca nova supera o Job velho)
+    fazia o Job restrito da soltura engolir o save do cliente de 20 s antes.
+    Agora o Job mais novo leva a UNIÃO do que o anterior ainda não começado ia
+    preparar ("todos" vence); o preparo marca `comecou` ao passar da espera de
+    editor, e o que começou não entra mais na soma
+    (`PreparoIaAgenda::juntarPendentes`).
+  - *Combo recriado herdava a onda até a limpeza*: a trava
+    (`PortaoDaOnda::ondaDoItem`) e a tela (`OndasDaEmpresa::semCombosRecriados`,
+    UMA consulta para todos os combos — a tela monta com número fixo de
+    consultas) já ignoram a linha velha; editar e apagar onda limpam antes.
+  - *Kit que ficou sem produto dentro de onda não saía*: tirar vale para ele.
+  - Com o agente da Aprovação ligado, a recusa dele (limite do dia, teto da
+    fila) gastava a única repescagem; a varredura dele pula a empresa da
+    trilha. Agora, com o agente ligado, a repescagem vale uma vez POR DIA na
+    janela (a recusa não custa IA).
+  - Preparo desligado: a soltura não marca `pedido_em` (nenhum Job sairia).
+  - O composto só de ofertas avulsas vira `sem_produto` na TELA só com a chave
+    (fora dela a 1ª entrega segue como era); `TrilhaDaEmpresa::itens()` — que
+    só a trava, a soltura e o serviço das ondas leem — aplica sempre.
+  - Campo novo `pode_tirar` por oferta: a equipe tira da onda que não começou
+    também a oferta que andou e a sem produto (a tela mostra só "Tirar").
+- **Fica registrado, sem conserto:** combo com Kit N e uma cor "fora" do grupo
+  (variação sem valor ou repetida): o pub avulso do combo dessa cor não é
+  pedido pela soltura (o item `c-` "andou" pelo Kit N). Só um save o prepara.
+  Não reproduzido; achado de leitura.

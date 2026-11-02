@@ -112,6 +112,7 @@ class ApresentacaoDaTrilha
         'onda_id'     => null,
         'sem_produto' => false,
         'planejavel'  => false,
+        'pode_tirar'  => false,
     ];
 
     /** As etapas que contam produtos e as que contam ofertas — a mesma divisão de `contagemPorEtapa()` do front. */
@@ -227,6 +228,8 @@ class ApresentacaoDaTrilha
                 'componentes' => self::componentes($o['componentes'] ?? []),
                 'preparo'     => null,
                 'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: false),
+                // O cliente acompanha: não tira ninguém da onda.
+                'pode_tirar'  => false,
             ]), $trilha['ofertas'] ?? []),
             // Nome, data e se começou (decisão de 02/11/2026, como no artefato): sem quem criou.
             'ondas'         => array_map(fn (array $o) => self::campos($o, self::ONDA_CLIENTE), $trilha['ondas'] ?? []),

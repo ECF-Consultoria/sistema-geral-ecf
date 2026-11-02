@@ -3,12 +3,14 @@
 namespace App\Services\Trilha\Ondas;
 
 use App\Models\Company;
+use App\Models\PubAgenteConfiguracao;
 use App\Models\PubProduto;
 use App\Models\TrilhaOnda;
 use App\Models\TrilhaOndaItem;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Services\Publicador\CombosDoPlanejamentoService;
 use App\Services\Publicador\PreparoIaAgenda;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Trilha\TrilhaDeTrabalho;
@@ -23,18 +25,22 @@ use Illuminate\Support\Facades\Log;
  *
  * 1. **Soltar** — a onda cujo dia chegou (São Paulo, comparado em PHP) ganha `liberada_em`, uma vez só (linha
  *    travada), com o rastro `trilha_onda_solta`.
- * 2. **Pedir o robô** — os itens (Simples, Kit, Combit) das ondas que já começaram, ainda sem `pedido_em`, até
- *    `trilha.ondas.lote` produtos por passada: `PreparoIaAgenda::aoSalvar()`, o MESMO caminho de um save no Portal
- *    (Sincronizar + preparo 20 s depois, com a marca do debounce — sem ela o Job sairia "superado"). A trava da onda
- *    deixa passar o que já começou. O resto vai na passada seguinte. O Combo NÃO pede preparo (passo 4).
+ * 2. **Pedir o robô** — os itens das ondas que já começaram (Simples, Kit, Combit e o Combo, cujo pub avulso de
+ *    cor fora do kit também precisa do texto), ainda sem `pedido_em`, até `trilha.ondas.lote` produtos por passada:
+ *    `PreparoIaAgenda::aoSalvar()`, o MESMO caminho de um save no Portal (Sincronizar + preparo 20 s depois, com a
+ *    marca do debounce), mas com a IA restrita aos itens pedidos (`soItens`): o que já andou com uma etapa em erro
+ *    não é refeito de carona. A trava da onda deixa passar o que já começou. O resto vai na passada seguinte. Com o
+ *    preparo pela IA desligado nada é pedido nem marcado — o `aoSalvar` não agendaria Job nenhum.
  * 3. **Repescar** — o item pedido em outro dia que ainda não tem NADA do texto (teto do dia, worker parado, Job
  *    perdido) é pedido de novo UMA vez, dentro de `trilha.ondas.repescagem_dias` dias contados da entrada dele na onda
  *    (`TrilhaOndaItem::comecoEfetivo`). O que começou e falhou não volta sozinho: aparece como "O agente parou" e
  *    espera uma pessoa — não há laço pago. A régua é o texto (`sem_texto`), não o "andou": com as imagens
- *    automáticas ligadas, o item que bateu no teto do texto ganha a memória das imagens e "andou" sem texto.
+ *    automáticas ligadas, o item que bateu no teto do texto ganha a memória das imagens e "andou" sem texto. Com o
+ *    agente da Aprovação ligado na conta, a repescagem vale uma vez POR DIA na janela: a recusa dele (limite do dia,
+ *    teto da fila) não custa IA, e a varredura dele pula a empresa da trilha.
  * 4. **Combos** — o Combo de onda que começou e ainda não andou pede o Kit N (`CombosDoPlanejamentoService::agendar`),
- *    no máximo uma vez por hora por produto e dentro da janela: ele nasce quando a Simples fica pronta, não só na
- *    hora do pedido.
+ *    no máximo uma vez por hora por produto e SEM janela de dias: ele nasce quando a Simples fica pronta, que pode
+ *    ser muito depois do começo da onda (e o Job do Kit N não chama IA nenhuma).
  * 5. **Limpar** — a linha `c-` cujo combo deixou de existir (todas as cores apagadas), em qualquer onda: sem isso,
  *    um Combo N aceito depois herdaria a onda antiga.
  *
@@ -105,6 +111,11 @@ class SoltarOndas
         $janelaDesde = Carbon::parse($hoje, TrilhaOnda::FUSO)->subDays(max(0, (int) config('trilha.ondas.repescagem_dias', 7)))->startOfDay();
         $todas = TrilhaOndaItem::query()->where('company_id', $empresa->id)->with('onda')->orderBy('id')->get();
 
+        // O `aoSalvar` não agenda nada com o preparo desligado: marcar `pedido_em` mentiria e gastaria a repescagem.
+        $preparoLigado = (bool) config('publicador.preparo_ia.ativo', true);
+        $comAgente = $preparoLigado && self::agenteLigado($empresa);
+        $semPreparo = 0;
+
         $produtos = [];
         $soItens = [];
         $pedidas = [];
@@ -132,6 +143,11 @@ class SoltarOndas
             if (str_starts_with($chave, 'c-') && ! $item['andou']) {
                 $combos[(int) $l->produto_id] = true;
             }
+            if (! $preparoLigado) {
+                $semPreparo++;
+
+                continue;
+            }
 
             if ($l->pedido_em === null) {
                 // O que já tem texto (alguém preparou à mão antes da data) não precisa do robô: só fica marcado.
@@ -142,9 +158,10 @@ class SoltarOndas
                 }
                 $repescar = false;
             } else {
-                // Repescagem: UMA vez, de outro dia, dentro da janela (contada da entrada do item na onda), e só para
-                // quem ainda não tem NADA do texto — o que começou e falhou não volta sozinho.
-                if ($l->repescado_em !== null || ! $item['sem_texto'] || ! $naJanela
+                // Repescagem: UMA vez (com o agente ligado, uma por dia), de outro dia, dentro da janela (contada da
+                // entrada do item na onda), e só para quem ainda não tem NADA do texto — o que começou e falhou não
+                // volta sozinho.
+                if (($l->repescado_em !== null && ! $comAgente) || ! $item['sem_texto'] || ! $naJanela
                     || $l->pedido_em->copy()->setTimezone(TrilhaOnda::FUSO)->toDateString() >= $hoje) {
                     continue;
                 }
@@ -175,6 +192,9 @@ class SoltarOndas
             $resumo[$repescar ? 'repescados' : 'pedidos'][] = $chave;
         }
         $resumo['produtos'] = count($produtos);
+        if ($semPreparo > 0) {
+            Log::info("[Trilha] Ondas da empresa {$empresa->id} ({$empresa->name}): o preparo pela IA está desligado (publicador.preparo_ia.ativo); {$semPreparo} item(ns) de onda começada esperam o robô.");
+        }
 
         if ($aplicar) {
             if ($produtos !== []) {
@@ -221,14 +241,42 @@ class SoltarOndas
      * O Combo N foi apagado e criado de novo DEPOIS de a linha nascer: todas as ofertas dele são mais novas que ela.
      * A cor nova de um combo que já existia (alguma oferta mais velha que a linha) continua herdando a onda.
      */
-    public static function comboRecriado(TrilhaOndaItem $linha, array $item): bool
+    public static function comboRecriado(TrilhaOndaItem $linha, array $item, ?array $criadasEm = null): bool
     {
         if (! str_starts_with($linha->chave(), 'c-') || $linha->created_at === null || ($item['oferta_ids'] ?? []) === []) {
             return false;
         }
-        $maisVelha = \App\Models\EstruturaOferta::query()->whereIn('id', $item['oferta_ids'])->min('created_at');
+        if ($criadasEm === null) {
+            $maisVelha = \App\Models\EstruturaOferta::query()->whereIn('id', $item['oferta_ids'])->min('created_at');
+        } else {
+            // As datas já lidas de uma vez por quem pergunta por vários combos ({@see OndasDaEmpresa::semCombosRecriados()}).
+            $maisVelha = null;
+            foreach ($item['oferta_ids'] as $id) {
+                $d = $criadasEm[(int) $id] ?? null;
+                if ($d !== null && ($maisVelha === null || Carbon::parse($d)->lt($maisVelha))) {
+                    $maisVelha = Carbon::parse($d);
+                }
+            }
+        }
 
         return $maisVelha !== null && Carbon::parse($maisVelha)->gt($linha->created_at);
+    }
+
+    /**
+     * O agente da Aprovação está ligado na conta da empresa? (A mesma configuração que o `EntradaDoPreparo` lê.) Erro
+     * ao ler conta como desligado: vale a regra de sempre, uma repescagem só.
+     */
+    private static function agenteLigado(Company $empresa): bool
+    {
+        try {
+            $chave = app(ProgramasPublicadorService::class)->resolver('company-'.$empresa->id)['chave'] ?? null;
+
+            return $chave !== null && PubAgenteConfiguracao::query()->where('conta_chave', $chave)->where('habilitado', true)->exists();
+        } catch (\Throwable $e) {
+            Log::warning("[Trilha] Ondas da empresa {$empresa->id}: não deu para ler o agente da Aprovação da conta; repescagem de sempre. ".$e->getMessage());
+
+            return false;
+        }
     }
 
     /** Grava `liberada_em` uma vez só (a linha da onda travada) e deixa o rastro. */

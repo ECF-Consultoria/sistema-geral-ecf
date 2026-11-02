@@ -137,6 +137,11 @@ class PreparoIaDoRascunhoService
                 return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id, $soItens);
             }
         }
+        // Trilha de trabalho: daqui em diante este preparo roda — o que ele leva não se soma mais ao próximo pedido do
+        // produto (`PreparoIaAgenda::juntarPendentes`). O adiado acima não conta: o pedido seguinte o supera e o leva.
+        if (TrilhaDeTrabalho::ligada((int) $company->id)) {
+            PreparoIaAgenda::comecou($estruturaProdutoId, $marca);
+        }
 
         $alvo = $this->programas->resolver('company-'.$company->id);
         $r = $this->sincroniza->sincronizar($alvo['mlb_empresa'] ?? null, $company, (int) $produto->id);
