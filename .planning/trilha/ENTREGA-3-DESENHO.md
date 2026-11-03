@@ -1244,3 +1244,124 @@ escrita no ML.
   simples. R4 moda importa mas não publica (aviso). R5 quando publicado, o anúncio original e o novo ficam os dois no
   ar — só a 459. R6 acervo é diário (11:35). R7 duas portas (Portal da 459 também importa): trava e origem
   compartilhadas evitam produto em dobro.
+
+## 19. 4ª entrega — a revisão e a publicação dentro da trilha (desenho fechado em 03/11/2026)
+
+Pesquisa (03/11, conferir as linhas antes do código): a prévia do anúncio é `App\Services\Publicador\PreviaDoAnuncioService::montar(PubRascunho)` (não grava, não chama IA; com cache frio faz GET público do schema e `shipping_preferences`). `PreviaDaFaseService` é do kit — não serve. A rota da prévia do Publicador é `role:admin` e marca `EditorEmUso` (adia robô e fila). "Pedir ajuste ao robô" e "publicar pausado" NÃO existem. Não existe editar título/descrição de anúncio publicado (só fotos). O preço da Precificação é derivado na hora (`EstruturaPrecificacaoService::pagina`), o Publicador aplica onde `pub_variante_precos` é nulo. O bloqueio "Premium igual ao Clássico" existe só no front do Portal (`precificacaoSimulador.js::premiumIgualAoClassico`). **`ContasLiberadas` NÃO protege a #459** (`publicador.contas_liberadas.todas` ligado em prod desde 26/10).
+
+### 19.1 Respostas do usuário (03/11)
+1. **Aprovação do cliente: ANTES de publicar** (substitui o "publica pausado" de §16 — pausar/reativar/editar publicado não existe). [Mandar ao cliente] → ele aprova a PRÉVIA e só então o anúncio entra na fila de publicação da #459; pedido de ajuste volta para a equipe.
+2. **Pedir ajuste ao robô:** escolher o que refazer (título — com o Modelo — e/ou descrição), sem texto livre, sem imagens.
+3. **Preço:** a equipe ajusta na prévia, grava SÓ no rascunho do anúncio, com [Voltar ao da Precificação]; o cliente só vê. Premium igual ao Clássico bloqueado no servidor.
+4. **Fotos do cliente:** só enquanto o produto está na Lista; depois, só leitura ("fale com a equipe").
+
+Padrões assumidos (sem pergunta; o usuário pode mudar): a aprovação por loja liga pelo `.env` (D53); o cliente só vê a prévia quando o item está com ele; no modo equipe do Portal a ECF pode aprovar pelo cliente (grava `decidido_por_equipe`); texto do anúncio recém-publicado em revisão no ML: "Em análise", sem alerta nas primeiras 24 h (D59).
+
+### 19.2 Fatias, na ordem
+| Fatia | Entrega |
+|---|---|
+| **4a** Prévia só leitura (equipe) | painel `v:{item}` com fotos (as geradas marcadas), títulos por tipo, preço, descrição e ficha |
+| **4c** Preço ajustável | preço da Precificação × ajustado, gravado no rascunho; Premium = Clássico bloqueado no servidor |
+| **4d** Aprovar e publicar na #459 | conferir no ML e entrar na fila de publicação; acompanhamento; "Em análise" |
+| **4b** Pedir ajuste ao robô | refazer título e/ou descrição pelo próprio preparo |
+| **4f** Fotos enviadas pelo cliente | 1ª escrita na porta do cliente (produto na Lista) |
+| **4e** Aprovação do cliente por loja | mandar ao cliente; ele aprova (entra na fila) ou pede ajuste (texto para a equipe) |
+Cada fatia sobe sozinha, só na 459, só para o Dev.
+
+### 19.3 Decisões
+| # | Decisão |
+|---|---|
+| D42 | Serviço novo `App\Services\Trilha\PreviaNaTrilha`: acha o item pela régua única (`TrilhaDaEmpresa::itens()` → `pub_produto_id`), chama `PreviaDoAnuncioService::montar` **sem mudá-lo** e trabalha a saída: troca as URLs das fotos pela rota da trilha; marca `gerada` por foto (cópia da régua de `CriativosAutomaticosService::grupos`: `acervo_imagens.origem='ia'` ou `ml_anuncio_criativos.pub_imagem_id` — registrar no learnings "mudou lá, muda aqui"; NÃO usar o `de_ia` da Aprovação); reescreve `motivo` em texto neutro (sem "etapa Produto/Condições/Detalhes"). Nunca passa pela rota do Publicador (não marca `EditorEmUso`). |
+| D43 | Painel `v:{id do item}` (`v:s-12`, `v:c-12-2`, `v:o-55`), aberto pelo "Revisar" da linha em revisão; o `o:` ganha [Ver prévia]. O cartão do anúncio é componente próprio, sem "Mercado Livre", com lib pura `lib/trilhaPrevia.js` (NÃO reusar `AnuncioNoMl.jsx` — classes `pub-*` — nem `Components/Publicador/previa.js` — cita o ML). As peças da equipe ficam em `Components/Trilha/Revisao/`, por `lazy` dentro de `CadastroSobDemanda.jsx` (conferir o manifest — learnings §30). |
+| D44 | `v:` só para item na etapa `revisao` (e depois: publicado, para conferência). Antes: "o robô ainda prepara". |
+| D45 | (4c) Preço grava no rascunho por `EditorRascunhoService::salvarVariantes`, por tipo, igual em todas as cores ou por cor. Nulo = voltar ao da Precificação. Nunca escreve na Precificação. |
+| D46 | (4c) Premium = Clássico é regra do SERVIDOR da trilha (diferença < 0,005 sobre o preço efetivo de cada cor), no gravar do preço e no publicar. |
+| D47 | Toda escrita da 4ª entrega confere a `revisao` do rascunho: 409 SEM `travado` (padrão F6). 409 também com o item na fila (`NaFilaDePublicacao`), publicando ou publicado. |
+| D48 | (4d) **Guarda da #459 NO CÓDIGO:** `PublicacaoNaTrilha::LOJA = 459` (constante, não env), conferida na Company do endereço, em `pub_produtos.company_id` e na âncora da conta (Company 459, ou MlbEmpresa com `company_id` 459) antes de conferir e antes de agendar. Teste com a 460 pronta → 403 e nada na fila. |
+| D49 | (4d) Publicar = Job (fila `high`) que roda `ConferenciaService::conferir` e, OK (ou avisos com `ciente`), `FilaPublicacaoService::agendar(resolver('company-459'), [pub], User)`. Não usa o portão de aprovação nem o `iniciar` direto. |
+| D50 | (4d) Avisos da conferência: a tela lista e pede [Publicar assim mesmo] (`ciente`). |
+| D51 | (4b) `AjusteDoRoboNaTrilha` + Job na fila da IA: gera com `PalavrasChaveService::gerarTitulos` (`evitar` = títulos atuais) e `DescricaoIaService::gerar`, grava por `PreparoIaDoRascunhoService::executarEtapa(..., $valorPronto)` (só campo da IA; adia com editor em uso ou na fila). Respeita a cota diária. Teto 3 ajustes por item por dia. |
+| D52 | (4e) O pedido de ajuste do CLIENTE é texto para a equipe; nunca vai ao prompt. |
+| D53 | (4e) Chave `trilha.aprovacao_cliente.empresas` (env `TRILHA_APROVACAO_CLIENTE_EMPRESAS`, padrão vazio), cruzada com `TrilhaDeTrabalho`. Com ela, o primário vira [Mandar ao cliente]. |
+| D54 | (4e) Estado da aprovação na tabela NOVA `trilha_aprovacoes` (19.6); histórico no `activity_log`. |
+| D55 | (4e) O cliente aprova a `revisao_enviada`; se a equipe mexeu depois, 409 e volta para ela. |
+| D56 | (4e) Aprovado pelo cliente → agenda com o `User` que mandou (`enviado_por`); inativo → "Aprovado pelo cliente · falta publicar" para a equipe. |
+| D57 | Porta do cliente: controllers finos em `Trilha\Cliente\*` (leem `PortalContexto`) que chamam os MESMOS serviços com `Company` + `AtorDoPortal::cliente`. Só essa camada troca quando a trilha for para o outro sistema. |
+| D58 | (4f) Fotos do cliente: `CadastroNaTrilha::enviarFotos/excluirFoto` com ator cliente, atrás de guarda nova `empresaDoCliente(Company)`; só produto na Lista; depois 409. |
+| D59 | Textos do cliente nunca dizem "Mercado Livre", "Publicador", "Portal" nem "agente". Recém-publicado em revisão no ML: "Em análise", sem alerta nas primeiras 24 h (mexe em `noAr`/contadores — as telas mudam juntas). |
+| D60 | (4b) Enquanto o ajuste roda: "Robô refazendo · título, descrição" na revisão (marca em cache por pub), sem voltar à etapa 4. |
+
+### 19.4 Rotas
+`item` casa `s-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}`. Guarda: 404 chaves → 403 `podeEntrar` → 404 item (antes da validação) → 409 → 422.
+
+Equipe (`routes/trilha.php`):
+| Rota | Nome · throttle | Fatia |
+|---|---|---|
+| `GET /trilha/{company}/ofertas/{item}/previa` | `trilha.previa` · 120/min | 4a |
+| `GET /trilha/{company}/ofertas/{item}/fotos/{imagem}` (só `pub_imagens` daquele rascunho; `ArquivosDeImagem::resposta`; cache `private`) | `trilha.previa.foto` · 600/min | 4a |
+| `PUT /trilha/{company}/ofertas/{item}/preco` | `trilha.preco` · 30/min | 4c |
+| `POST /trilha/{company}/ofertas/{item}/publicar` | `trilha.publicar` · 10/min | 4d |
+| `GET /trilha/{company}/ofertas/{item}/publicacao` | `trilha.publicacao` · 240/min | 4d |
+| `POST /trilha/{company}/ofertas/{item}/ajuste` | `trilha.ajuste` · 10/min | 4b |
+| `POST /trilha/{company}/ofertas/{item}/cliente` | `trilha.cliente` · 10/min | 4e |
+
+Cliente (grupo `portal.auth`, prefixo `portal/{portalEmpresa}`; cada rota com linha em `RestringeDominioDoPortal::PERMITIDO_COM_ID`): 4f — fotos (GET/POST/DELETE); 4e — prévia, foto, aprovar, ajuste.
+`ApresentacaoDaTrilha::escrita` ganha `revisao: {previa, ...}` (URLs relativas; cada fatia acrescenta a sua). Na 4a: `revisao: {previa}` — a URL da prévia com `{item}` como marcador (ex.: `/trilha/459/ofertas/__ITEM__/previa`) para a tela trocar.
+
+### 19.5 Contrato JSON da prévia (4a; as outras fatias acrescentam)
+```json
+{"item": {"id": "s-12", "nome": "Rack 1,80 m", "tipo": "Simples", "etapa": "revisao", "status": "Pré-pronto · esperando a revisão"},
+ "pronta": true, "motivo": null, "revisao": 37,
+ "categoria": {"caminho": ["Casa, Móveis e Decoração", "Sala", "Racks"]},
+ "tipos": [{"chave": "classico", "nome": "Clássico"}, {"chave": "premium", "nome": "Premium"}],
+ "variantes": [{"chave": "v1", "rotulo": "Preto"}],
+ "anuncios": [{"tipo": "classico", "variante": "v1", "titulo": "…", "preco": 899.9, "promocao": null, "parcelas": null,
+   "fotos": [{"id": "881", "url": "/trilha/459/ofertas/s-12/fotos/881", "gerada": false}],
+   "caracteristicas": [{"grupo": "Principais", "itens": [{"nome": "Material", "valor": "MDF"}]}],
+   "envio": {"modo": "…", "aviso": null}}],
+ "descricao": "…",
+ "preco": {"classico": {"valor": 899.9, "da_precificacao": 879.9, "ajustado": true},
+           "premium": {"valor": 989.9, "da_precificacao": 989.9, "ajustado": false}},
+ "preparo": {"titulo": "ok", "descricao": "ok", "imagens": "ok"},
+ "publicacao": null, "aprovacao": null, "bloqueios": []}
+```
+- Sem rascunho ainda / não pronta: `pronta: false`, `motivo` neutro ("O robô ainda está preparando este anúncio."), `anuncios: []`.
+- Na porta do cliente (4e) não saem `preparo`, `bloqueios` nem `preco.*.da_precificacao`.
+- `publicacao` (4d) e `aprovacao` (4e) ficam `null` na 4a.
+
+### 19.6 Schema (só a 4e) — tabela NOVA, nenhuma ALTER
+```
+trilha_aprovacoes
+  id
+  company_id            ubigint  FK companies cascadeOnDelete      (tra_company_fk / tra_company_ix)
+  pub_produto_id        ubigint  FK pub_produtos cascadeOnDelete   unique tra_pub_uq (1 linha viva por anúncio)
+  item_chave            string(40)                                  ('s-12' | 'c-12-2' | 'o-55'; diagnóstico)
+  estado                string(20)                                  com_cliente | ajuste | aprovado (string, não ENUM)
+  rodada                usmallint default 1
+  revisao_enviada       uint                                        (pub_rascunhos.revisao no envio)
+  enviado_em            datetime
+  enviado_por           ubigint NULL FK users nullOnDelete          (tra_enviado_fk / tra_enviado_ix)
+  decidido_em           datetime NULL
+  decidido_por_cliente  ubigint NULL FK portal_usuarios nullOnDelete (tra_cliente_fk / tra_cliente_ix)
+  decidido_por_equipe   ubigint NULL FK users nullOnDelete          (tra_equipe_fk / tra_equipe_ix)
+  pedido                text NULL                                   (texto do "pedir ajuste" do cliente, ≤ 1000)
+  timestamps
+```
+MariaDB (learnings de desempenho §6): nomes de índice curtos; toda coluna `nullOnDelete` é nullable; o `down` dropa as FKs antes da tabela.
+
+### 19.7 Tela (4a)
+- O "Revisar" da linha em revisão abre `v:{item}`; o painel da oferta (`o:`) ganha [Ver prévia].
+- Corpo: "Onde está"; **Anúncio** — galeria (as geradas com selo "gerada pelo robô", cor própria), abas Clássico/Premium e cor, título, preço (com parcelas no Premium), descrição, ficha agrupada; **Preço** (só leitura na 4a: valor, e "ajustado" quando difere da Precificação); "Situação".
+- Rodapé: "Abrir no Publicador" continua só para admin (o link que já existe).
+- Texto neutro: nada de "Mercado Livre" no pacote que o cliente baixa (o cartão fica dentro do `lazy` da equipe).
+
+### 19.8 Custo
+4a: zero IA; ML só com cache frio (schema público e `shipping_preferences`).
+
+### 19.9 Testes (4a)
+`tests/Feature/Trilha/PreviaNaTrilhaTest.php`: itens s-, c- e o-; outro item ou outra loja → 404; sem rascunho → `motivo` neutro; URL da foto da trilha e `gerada` certo (origem `ia` e criativo); nenhum `/portal`, `mlb/anuncios`, "Mercado Livre" nem "etapa Produto/Condições/Detalhes" no JSON; `EditorEmUso` NÃO marcado; `Http::preventStrayRequests` com cache quente e consultas constantes; a rota da foto recusa `pub_imagens` de outro rascunho e de outra empresa; a matriz de acesso no dataProvider do `CadastroNaTrilhaAcessoTest`. JS: `tests/js/trilha-previa.test.js` + teste de fonte do `lazy`.
+
+### 19.10 Riscos
+R1 publicar fora da #459 (D48 + teste da 460). R2 o editor/lote do Publicador ainda publica o mesmo produto por fora (aceito na 459). R3 todo anúncio novo nasce `under_review` (D59). R4 ajustar preço invalida a conferência (o publicar sempre reconfere). R5 escrever no rascunho com o item na fila o tira como `precisa_revisar` (D47). R6 promoção automática agendada na publicação (a prévia mostra `promocao`). R7 régua do `gerada` é cópia. R8 D-05: foto/categoria trocada depois do 1º Sincronizar não chega ao rascunho. R9 1ª escrita na porta do cliente (allowlist, CSRF, 413, varredura de props). R10 agente da Aprovação, se ligado na 459, cria `PubAprovacaoOferta` em paralelo. R11 fila da IA mais cheia com ajustes.
+
+Achados fora do escopo: o "Salvar preço" do Painel de Aprovação não grava o preço (`AprovacaoDaOfertaService::registrarPrecoSalvo`); o aviso `preco_alterado` não tem escritor não nulo em `app/`.

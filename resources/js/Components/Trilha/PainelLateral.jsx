@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
-import { ETAPA_POR_CHAVE, chaveDeCadastro, chaveDeMapear, chaveDoProduto, deveFecharNoEsc, ofertasDoProduto } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, chaveDoProduto, deveFecharNoEsc, ofertasDoProduto, temPrevia } from '@/lib/trilha';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
@@ -33,6 +33,9 @@ import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto
 // GUARDA de saída: o painel de cadastro registra nela se há algo não salvo, e
 // fechar (Esc, fundo, "Fechar") pergunta primeiro. O Esc que um campo já tratou
 // (a lista aberta da família, por exemplo) não fecha a gaveta.
+//
+// Da 4ª entrega (4a): a oferta em revisão ou publicada ganha [Ver prévia] (a
+// gaveta `v:{item}`, em `Revisao/`, por `lazy`) para a equipe com `escrita.revisao`.
 //
 // Visão do cliente (de verdade ou na simulação da equipe): sem MLB, sem preparo
 // do agente, sem lista de sugestões, sem link do Publicador e sem nenhuma
@@ -297,7 +300,7 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
     };
 }
 
-function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejamento, manterCaixa = false }) {
+function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejamento, manterCaixa = false, comPrevia = false }) {
     const cliente = visao === 'cliente';
     const anuncios = oferta.anuncios ?? [];
     const componentes = oferta.componentes ?? [];
@@ -395,9 +398,19 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
     );
 
     const rodape = [];
+    // A prévia do anúncio (4a): na revisão é a ação principal (o "Revisar" da linha abre ela); publicada, conferência.
+    const verPrevia = !cliente && comPrevia && temPrevia(oferta);
+    const previaEhPrincipal = verPrevia && oferta.etapa === 'revisao';
+    if (verPrevia) {
+        rodape.push(
+            <Botao key="previa" primario={previaEhPrincipal} data-acao="ver-previa" onClick={() => onAbrir(chaveDaPrevia(oferta))}>
+                Ver prévia
+            </Botao>,
+        );
+    }
     if (!cliente && oferta.url_publicador) {
         rodape.push(
-            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario data-link="publicador">
+            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario={!previaEhPrincipal} data-link="publicador">
                 Abrir no Publicador
             </LinkDeAcao>,
         );
@@ -593,10 +606,12 @@ export function MioloDaGaveta({ sobrelinha, titulo, sub = null, rodape = null, o
  *   onAbrir: (chave: string) => void,
  *   trabalho?: boolean,
  *   podeEditar?: boolean,
+ *   comPrevia?: boolean,
  *   planejamento?: object,
- * }} props  `planejamento`: o que a caixa da onda precisa para gravar (`CaixaDaOnda`).
+ * }} props  `planejamento`: o que a caixa da onda precisa para gravar (`CaixaDaOnda`). `comPrevia`: a equipe com
+ *   `escrita.revisao` — a oferta em revisão ou publicada ganha [Ver prévia] (4a).
  */
-export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, planejamento = null }) {
+export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, planejamento = null }) {
     // Depois de uma gravação na caixa da onda ela fica na tela, mesmo que a oferta deixe de ter onda (o "Tirar da
     // onda" da que já andou ou não tem produto): o resultado continua à vista e o foco tem onde ficar. A chave do
     // painel troca a cada item, e isto começa do zero.
@@ -609,6 +624,7 @@ export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho =
             visao,
             onAbrir,
             trabalho,
+            comPrevia: podeEditar && comPrevia,
             manterCaixa: caixaGravou,
             planejamento: { ...(planejamento ?? {}), podeEditar, onGravou: () => setCaixaGravou(true) },
         });

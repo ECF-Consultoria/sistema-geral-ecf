@@ -1,4 +1,4 @@
-// ─── Trilha de produtos — o 2º caminho até a pasta `Cadastro/` (é para o Vite) ──
+// ─── Trilha de produtos — o 2º caminho até as pastas `Cadastro/` e `Revisao/` (é para o Vite) ──
 //
 // NÃO é uma tela: nenhum controller manda `Trilha/CadastroSobDemanda`, e nada
 // aqui roda. O arquivo existe para o MANIFEST do Vite (3ª entrega, 03/11/2026).
@@ -20,8 +20,13 @@
 // põe num pedaço próprio — o da página volta a ser só dela.
 //
 // A regra (conferida em tests/js/trilha-empresa-render.test.js): todo `lazy` de
-// fora da pasta `Cadastro/` aponta para um pedaço que está aqui também. Apagar
-// este arquivo, ou esquecer um pedaço novo aqui, tira a página do manifest.
+// fora das pastas `Cadastro/` e `Revisao/` aponta para um pedaço que está aqui
+// também. Apagar este arquivo, ou esquecer um pedaço novo aqui, tira a página do
+// manifest.
+//
+// 4ª entrega (4a, 03/11/2026): a pasta `Components/Trilha/Revisao/` (a prévia do
+// anúncio, só da equipe) entra pelo mesmo caminho — o pedaço dela usa as mesmas
+// peças da página (`PainelLateral`, `Pecas`, `trilhaEscrita`).
 
 /** Os pedaços da pasta `Cadastro/` que a trilha carrega sob demanda (os mesmos `lazy` da página e da Lista). */
 export const PEDACOS_DO_CADASTRO = {
@@ -30,6 +35,11 @@ export const PEDACOS_DO_CADASTRO = {
     QuadrosDaLista: () => import('@/Components/Trilha/Cadastro/QuadrosDaLista'),
     PlanilhaPorCategoria: () => import('@/Components/Trilha/Cadastro/PlanilhaPorCategoria'),
     ImportarDoMercadoLivre: () => import('@/Components/Trilha/Cadastro/ImportarDoMercadoLivre'),
+};
+
+/** Os pedaços da pasta `Revisao/` (4ª entrega) que a página carrega sob demanda (os mesmos `lazy` dela). */
+export const PEDACOS_DA_REVISAO = {
+    PreviaDoAnuncio: () => import('@/Components/Trilha/Revisao/PreviaDoAnuncio'),
 };
 
 /** Não desenha nada (não é uma tela). */

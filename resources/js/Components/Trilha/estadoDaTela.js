@@ -8,8 +8,9 @@
 //    `abrir` aceita o produto (`p:12`), a oferta (`o:s-12`), a onda (`w:7`, e
 //    `w:nova` para criar), o painel de mapear (`m:12`) e, da 3ª entrega, a
 //    gaveta de cadastro (`e:12`, e `e:novo` para criar um produto), da F7, a
-//    planilha por categoria (`e:planilha`) e, da F8, a importação dos anúncios
-//    da loja (`e:ml`).
+//    planilha por categoria (`e:planilha`), da F8, a importação dos anúncios
+//    da loja (`e:ml`) e, da 4ª entrega (4a), a prévia do anúncio de uma oferta
+//    (`v:s-12`).
 // 2. O "Ver como: Cliente" da equipe tira, no navegador, o mesmo que o servidor
 //    tira na porta do cliente (`app/Http/Controllers/Trilha/`): link do
 //    Publicador, preparo do agente, código MLB, a lista de sugestões, quem
@@ -34,6 +35,12 @@ export const podeEscrever = (props, verComo = 'equipe') => props?.visao !== 'cli
     && !!props?.escrita;
 
 /**
+ * Quem vê a prévia do anúncio (4ª entrega, 4a): quem escreve E recebeu o endereço dela (`escrita.revisao.previa`, a
+ * porta da equipe). O cliente, o "Ver como: Cliente" e a equipe sem esse endereço (servidor antigo) não abrem o `v:`.
+ */
+export const podeVerPrevia = (props, verComo = 'equipe') => podeEscrever(props, verComo) && !!props?.escrita?.revisao?.previa;
+
+/**
  * O painel que a chave aberta mostra, para quem está olhando — null quando não
  * mostra nada (item que sumiu, ou painel de escrita para quem não escreve):
  *
@@ -47,14 +54,17 @@ export const podeEscrever = (props, verComo = 'equipe') => props?.visao !== 'cli
  *   de leitura `p:12`. `e:novo` → só com `podeEditar`; para os outros, nada.
  * - `e:planilha` (F7) → a gaveta da planilha por categoria, só com `podeEditar`; para os outros, nada.
  * - `e:ml` (F8) → a gaveta de importar os anúncios da loja, só com `podeEditar`; para os outros, nada.
+ * - `v:s-12` (4a) → a prévia do anúncio da oferta, só com `comPrevia` (`podeVerPrevia`); para os outros, nada. A
+ *   oferta antes da revisão também abre: a gaveta diz que o robô ainda prepara (D44).
  *
- * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro'|'planilha'|'ml', chave: string}}
+ * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro'|'planilha'|'ml'|'previa', chave: string}}
  */
-export function painelDaChave(dados, chave, { podeEditar = false } = {}) {
+export function painelDaChave(dados, chave, { podeEditar = false, comPrevia = false } = {}) {
     const achado = chave ? acharAberto(dados, chave) : null;
     if (!achado) return null;
     if (achado.painel === 'onda') return achado.onda || podeEditar ? achado : null;
     if (achado.painel === 'planilha' || achado.painel === 'ml') return podeEditar ? achado : null;
+    if (achado.painel === 'previa') return podeEditar && comPrevia ? achado : null;
     if (achado.painel === 'cadastro') {
         if (podeEditar) return achado;
         if (!achado.produto) return null;
@@ -79,7 +89,7 @@ export function painelDaChave(dados, chave, { podeEditar = false } = {}) {
  *
  * @param {string} busca  `window.location.search`
  * @param {{produtos: Array, ofertas: Array, ondas?: Array}} dados
- * @param {{podeEditar?: boolean}} [quem]
+ * @param {{podeEditar?: boolean, comPrevia?: boolean}} [quem]
  * @returns {{etapa: ?string, vista: 'trilha'|'mapa', abrir: ?string}}
  */
 export function lerEstadoDaUrl(busca, dados, quem = {}) {
@@ -157,15 +167,16 @@ export function etapaDoItem(dados, chave) {
     if (!achado) return null;
     if (achado.painel === 'onda') return 'plano';
     if (achado.painel === 'mapear' || achado.painel === 'cadastro') return achado.produto?.etapa ?? 'lista';
+    if (achado.painel === 'previa') return achado.oferta?.etapa ?? null;
 
     return achado.etapa ?? 'lista';
 }
 
 /**
  * Para onde o foco volta ao fechar a gaveta quando quem abriu sumiu: as chaves (`data-chave`) a procurar, na
- * ordem. O painel de mapear e o de cadastro voltam para a linha do produto; a onda, para o cartão dela (e, se
- * ela foi apagada, para o "+ Nova onda"); o produto novo, para o "+ Produto na lista". Sem nenhuma na vista, a
- * página foca a própria vista (achado T3 da revisão de 31/10).
+ * ordem. O painel de mapear e o de cadastro voltam para a linha do produto; a prévia (4a), para a linha da oferta;
+ * a onda, para o cartão dela (e, se ela foi apagada, para o "+ Nova onda"); o produto novo, para o "+ Produto na
+ * lista". Sem nenhuma na vista, a página foca a própria vista (achado T3 da revisão de 31/10).
  *
  * @returns {string[]}
  */
@@ -173,6 +184,7 @@ export function candidatasDaVolta(chave) {
     if (typeof chave !== 'string') return [];
     const candidatas = [chave];
     if (/^[me]:\d+$/.test(chave)) candidatas.push(`p:${chave.slice(2)}`);
+    if (chave.startsWith('v:')) candidatas.push(`o:${chave.slice(2)}`);
     if (chave.startsWith('w:')) candidatas.push('w:nova');
 
     return candidatas;

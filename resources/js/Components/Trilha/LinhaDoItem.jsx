@@ -1,4 +1,4 @@
-import { ETAPA_POR_CHAVE, acaoDoItem, chaveDeCadastro, chaveDeMapear, estaNoAr } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, acaoDoItem, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, estaNoAr } from '@/lib/trilha';
 import { quandoDaOfertaNaOnda } from '@/lib/trilhaOndas';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
@@ -21,6 +21,10 @@ import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/fo
 // cadastro (`e:{id}`) para quem escreve, com a ação "Completar"; o que já andou
 // (`cadastro_travado`) abre o painel de leitura (`p:{id}`), com a ação "Ver".
 //
+// Da 4ª entrega (4a): o "Revisar" da oferta em revisão abre a prévia do anúncio
+// (`v:{item}`) para a equipe com `escrita.revisao` (`comPrevia`); para os outros,
+// o painel da oferta, como antes.
+//
 // No celular (até 760px) vira duas colunas: SKU e ação no alto; nome,
 // progresso e situação embaixo, na largura toda.
 
@@ -38,10 +42,11 @@ const LINHA = cn(
  *   onAbrir: (chave: string, origem: ?HTMLElement) => void,
  *   trabalho?: boolean,
  *   podeEditar?: boolean,
+ *   comPrevia?: boolean,
  *   ondaPorId?: ?Map<number, object>,
  * }} props
  */
-export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false, podeEditar = false, ondaPorId = null }) {
+export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, ondaPorId = null }) {
     const { tipo, chave, etapa, item } = entrada;
     const ehOferta = tipo === 'o';
     const situacao = situacaoDoItem(entrada, { trabalho });
@@ -53,6 +58,8 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
     let chaveAoAbrir = chave;
     if (!ehOferta && podeEditar && etapa === 'mapa') chaveAoAbrir = chaveDeMapear(item);
     if (!ehOferta && podeEditar && etapa === 'lista' && !travado) chaveAoAbrir = chaveDeCadastro(item);
+    // A oferta em revisão: o "Revisar" abre a prévia do anúncio (a linha continua sendo a da oferta, `o:`).
+    if (ehOferta && podeEditar && comPrevia && etapa === 'revisao') chaveAoAbrir = chaveDaPrevia(item);
     const noAr = ehOferta && estaNoAr(item);
     const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado });
     // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto. "No ar" é o que

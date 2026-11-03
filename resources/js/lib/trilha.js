@@ -152,6 +152,21 @@ export const CHAVE_PLANILHA = 'e:planilha';
 export const CHAVE_ML = 'e:ml';
 
 /**
+ * 4ª entrega, fatia 4a: a PRÉVIA do anúncio de uma oferta — `v:s-12`, `v:c-12-2`, `v:o-55` (a chave é a da oferta
+ * com `v:` no lugar de `o:`). Só para a equipe com `escrita.revisao` (`painelDaChave`); para os outros não abre nada.
+ */
+export const chaveDaPrevia = (oferta) => `v:${oferta.id}`;
+
+/**
+ * As etapas em que a oferta tem prévia (D44): a revisão e, depois de publicada, para conferência. Antes delas o robô
+ * ainda prepara — a gaveta diz isso em vez de perguntar ao servidor.
+ */
+export const ETAPAS_DA_PREVIA = ['revisao', 'lanc'];
+
+/** A oferta já tem prévia para ver (`ETAPAS_DA_PREVIA`)? */
+export const temPrevia = (oferta) => ETAPAS_DA_PREVIA.includes(oferta?.etapa);
+
+/**
  * A gaveta fecha no Esc só quando ninguém dentro dela já tratou a tecla: a lista aberta de um campo (família,
  * ambientes) fecha a si mesma com `preventDefault`, e o Esc dela não pode levar a gaveta junto (3ª entrega).
  */
@@ -208,8 +223,10 @@ export function acharItem(dados, chave) {
  * - `m:12` → `{painel: 'mapear', produto}`;
  * - `e:12` → `{painel: 'cadastro', produto}`; `e:novo` → `{painel: 'cadastro', produto: null}`;
  * - `e:planilha` → `{painel: 'planilha'}` (F7);
- * - `e:ml` → `{painel: 'ml'}` (F8, importar os anúncios da loja).
- * Quem pode ver cada um (o `w:nova`, o `m:` e o `e:` são da equipe com escrita) quem decide é a tela.
+ * - `e:ml` → `{painel: 'ml'}` (F8, importar os anúncios da loja);
+ * - `v:s-12` → `{painel: 'previa', oferta}` (4a, a prévia do anúncio da oferta).
+ * Quem pode ver cada um (o `w:nova`, o `m:` e o `e:` são da equipe com escrita; o `v:`, da equipe com
+ * `escrita.revisao`) quem decide é a tela.
  */
 export function acharAberto(dados, chave) {
     if (typeof chave !== 'string') return null;
@@ -217,6 +234,12 @@ export function acharAberto(dados, chave) {
     if (chave === CHAVE_NOVO_PRODUTO) return { painel: 'cadastro', chave, produto: null };
     if (chave === CHAVE_PLANILHA) return { painel: 'planilha', chave };
     if (chave === CHAVE_ML) return { painel: 'ml', chave };
+    if (chave.startsWith('v:')) {
+        const id = chave.slice(2);
+        const oferta = (dados.ofertas ?? []).find((o) => o.id === id);
+
+        return oferta ? { painel: 'previa', chave, etapa: oferta.etapa, oferta } : null;
+    }
     if (chave.startsWith('e:')) {
         const id = Number(chave.slice(2));
         const produto = (dados.produtos ?? []).find((p) => p.id === id);

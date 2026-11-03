@@ -906,3 +906,73 @@ Desenho: `ENTREGA-3-DESENHO.md` §18. Serviço `App\Services\Trilha\ImportacaoDo
 - **Os textos "Portal" que seguem no pacote da página** (`portal_abrir`, "Pela planilha… do Portal") são da porta das
   lojas SEM a chave de trabalho; com a chave (459) os links vêm nulos e o quadro antigo não aparece. Não é vazamento
   da F7/F8 — some quando a trilha de trabalho valer para todas as lojas.
+
+## 37. 4a — prévia (servidor) (03/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19 (D42/D44). Serviço `App\Services\Trilha\PreviaNaTrilha`, controller
+`Trilha\PreviaDaTrilhaController`, rotas `trilha.previa` e `trilha.previa.foto`, teste `PreviaNaTrilhaTest` (+ as duas
+rotas na matriz do `CadastroNaTrilhaAcessoTest`). Nada do Publicador mudou: `PreviaDoAnuncioService::montar` é chamado
+como está.
+
+- **O `gerada` é CÓPIA da régua das imagens automáticas — mudou lá, muda aqui.** `PreviaNaTrilha::geradas()` copia o
+  filtro de `CriativosAutomaticosService::grupos()` (que tira as geradas das referências): ativo do acervo com
+  `acervo_imagens.origem = 'ia'` OU foto apontada por `ml_anuncio_criativos.pub_imagem_id`. NÃO é o `de_ia` da
+  Aprovação (outra régua). Nenhum teste compara as duas cópias. Efeito conhecido: o Kit N (cópia do rascunho da Simples)
+  leva o ativo — a marca do acervo vai junto —, mas o criativo aponta para a linha da SIMPLES, e a cópia da foto que só
+  tinha a marca do criativo sai "do cliente". Hoje a aprovação de um criativo já grava o ativo `ia`; o caso é de foto
+  anterior ao acervo (e, nas imagens automáticas do Kit N, a mesma cópia contaria como referência — achado do
+  Publicador, não consertado).
+- **A etapa da prévia é a da TELA, não a de `itens()`.** Sem as ondas, `TrilhaDaEmpresa::itens()` decide pela régua de
+  sempre: o rascunho DRAFT com o resumo validado e sem o robô ter mexido sai "Pré-pronto · esperando a revisão"; a tela,
+  com a trilha de trabalho, o põe no Planejamento/na fila (não andou → régua da onda). A prévia lê
+  `itens($empresa, comoNaTela: true)` (+3 consultas das ondas e as fixas das faltas, que só mudam o texto "pendência na
+  Lista"); a trava e a soltura seguem sem o parâmetro. `itens()` ganhou `status`, `alerta`, `pub_produto_id` e
+  `preparo` (aditivo) — o `pub_produto_id` não depende da onda.
+- **A rota do Publicador marca `EditorEmUso` até num GET** (`MlbPublicadorController::produto()` → `marcar`): "em uso"
+  faz a fila de publicação ESPERAR (`AgendadorDaFila`). Por isso a trilha nunca passa por ela; o teste prova o
+  contraste (a da trilha não marca, a de lá marca).
+- **O `montar` LANÇA** quando o schema da categoria precisa vir do ML e não vem (cache frio, ML fora, token): a rota do
+  Publicador dá 500. A trilha pega (`\Throwable`, loga `[Trilha] Prévia do item…`) e responde 200 com
+  `MOTIVO_INDISPONIVEL` — o painel não cai.
+- **Fora da revisão: 200 com `pronta: false`, não 409** (o contrato §19.5 já descreve o "não pronta"; o item vai junto,
+  com etapa e status da linha). No ar (`lanc`), só há prévia se o rascunho foi publicado pelo sistema
+  (`PUBLISHED`/`PARTIALLY_PUBLISHED`): o anúncio colado/importado não tem plano que o descreva → `MOTIVO_SEM_PREVIA`.
+  Os motivos do Publicador ("na etapa Produto", "em Condições de venda", `RegraViolada` citando o Mercado Livre) nunca
+  saem; o `envio.aviso` dele também não (sai sempre nulo).
+- **O preço da Precificação é relido.** O `montar` não devolve o "da Precificação"; a trilha refaz a MESMA leitura
+  (`DadosEfetivosService::daProduto` → `RascunhoSnapshot::comEfetivosDe` → `dados.portal[lt].anunciado`, o preço da oferta
+  da cor ou o da âncora) — a Precificação roda duas vezes por prévia. `valor` e `da_precificacao` são da 1ª cor ativa
+  do tipo; `ajustado` olha TODAS (gravado no rascunho, sem a marca `preco_do_portal`, e diferente em ≥ 0,005 — ou a
+  Precificação sem preço). O preço de cada cor está em `anuncios[].preco`.
+- **A foto confere pela mesma régua, a cada pedido.** `trilha.previa.foto` roda `itens()` (sem as ondas) para achar o
+  rascunho do item: consultas fixas, mas lê o `step_state` de TODOS os rascunhos da loja por foto (a galeria pede ~6–12).
+  Na 459 não pesa; se pesar, guardar item → rascunho por poucos minutos (não feito: seria a 1ª escrita, em cache, de uma
+  fatia só de leitura). A foto NÃO confere a etapa (a lista das fotos já vem da prévia). `caminho` nulo (Anunciar antigo)
+  redireciona para o `ml_url` SEMPRE em https (`http://` guardado viraria conteúdo misto e o navegador bloquearia — a
+  regra do `emHttps` da F8); outro esquema = 404.
+- **O contador não é o `trilha.previa`**: esse prefixo de throttle já era o da prévia do "Mapear"
+  (`trilha.mapeamento.previa`) — as rotas novas usam `trilha.revisao.previa`/`trilha.revisao.foto` (os NOMES de rota são
+  os do desenho).
+- **Testes:** o controller fica guardado na rota entre os pedidos do MESMO teste (`Route::getController`; só o Octane
+  chama `flushController`) — dublê trocado no container depois do 1º pedido não chega. O da Precificação é um objeto
+  mudado no lugar. O cenário é o do preparo de verdade (`CenarioDoPreparo`), com as chaves da trilha ligadas só DEPOIS do
+  preparo (com elas o robô esperaria a onda) e o relógio 5 min à frente (a marca "agendado" de 80 s deixaria a Simples
+  em "Na fila do agente"). Na conta das consultas, relação vazia o Eloquent PULA (`familia` nula em todos os produtos =
+  zero consultas; o 1º com família = +1): a base do teste já tem de tudo antes de medir, senão +1 parece custo por produto.
+- **Custo medido** (SQLite em memória): 105 consultas por prévia e 15 por foto, iguais com mais produtos, kits,
+  outra loja e mais fotos; nenhuma chamada ao ML com a modalidade da conta no cache (sem ela, a conta liberada lê
+  `users/me`/`shipping_preferences` — o detector do teste pega).
+
+### 4a — prévia (tela), 03/11/2026
+- **A pasta `Revisao/` também precisa do 2º caminho** em `CadastroSobDemanda.jsx` (`PEDACOS_DA_REVISAO`), como a
+  `Cadastro/`. O teste dos `lazy` cobre `Cadastro|Revisao`, e `lib/trilhaPrevia.js` só pode ser importada de dentro
+  de `Revisao/` (senão vai para o pacote do cliente).
+- **"Revisar" abre `v:` só na etapa `revisao`.** A oferta publicada continua abrindo `o:`, com [Ver prévia] como ação
+  secundária. Sem `escrita.revisao` (cliente, "Ver como: Cliente"), tudo fica como antes e o link do Publicador volta
+  a ser o principal (só admin).
+- **Pendência para a 4e (D59):** o "Onde está" mostra "Publicador" como dono da etapa 5 — texto que vem de `ETAPAS`
+  em `lib/trilha.js` e já vai no pacote do cliente. Trocar antes de a prévia ir ao cliente.
+- **`fmtPreco` usa `toLocaleString`**, que põe espaço sem quebra (U+00A0) em "R$ 899,90": teste que compara texto
+  precisa normalizar esse espaço.
+- **`variante` é a chave canônica do Publicador** (`__single__`, `COLOR=id:52049`…), não `v1`; a tela não depende do
+  formato (as fixtures usam `v1`).

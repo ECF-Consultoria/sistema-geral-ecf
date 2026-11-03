@@ -22,6 +22,10 @@
 // `cadastro_travado` (o que já andou só se lê); `CADASTRO` e as respostas do
 // "Salvar" são o JSON da gaveta `e:{id}` (o contrato do §6.3 do desenho, de
 // `App\Http\Controllers\Trilha\CadastroDaTrilhaController`).
+//
+// 4ª entrega, 4a: `ESCRITA.revisao.previa` (a URL com o marcador `__ITEM__`) e o
+// JSON da prévia do anúncio (`PREVIA_DO_ANUNCIO`, `PREVIA_NAO_PRONTA` e o 409
+// `CONFLITO_DA_PREVIA`) — o contrato do §19.5 do desenho.
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -248,6 +252,10 @@ export const ESCRITA = {
         importar: '/trilha/459/mercado-livre/importar',
         estado: '/trilha/459/mercado-livre/estado',
         limpar: '/trilha/459/mercado-livre/limpar',
+    },
+    // 4ª entrega, 4a: a prévia do anúncio (§19.4 do desenho) — com o marcador `__ITEM__` no lugar do id do item.
+    revisao: {
+        previa: '/trilha/459/ofertas/__ITEM__/previa',
     },
 };
 
@@ -814,3 +822,107 @@ export const CADASTRO_DO_ML = {
         titulo: 'Criado-Mudo 2 Gavetas Jatobá Maciço', titulo_do_anuncio: 'Criado Mudo Jatoba Macico 2 Gavetas Promoção Frete Grátis',
     },
 };
+
+// ═══ 4ª entrega, fatia 4a: a prévia do anúncio (só leitura, porta da equipe) ═══
+
+/** A foto da prévia como o servidor manda (§19.5): a URL da rota da trilha e `gerada` (o robô fez). */
+const fotoDaPrevia = (item, id, gerada = false) => ({ id: String(id), url: `/trilha/459/ofertas/${item}/fotos/${id}`, gerada });
+
+/** A ficha agrupada de cada cor (o anúncio da cor leva o valor dela). */
+const fichaDaCadeira = (cor) => [
+    {
+        grupo: 'Principais',
+        itens: [
+            { nome: 'Marca', valor: 'Casa Jatobá' },
+            { nome: 'Material da estrutura', valor: 'Jatobá maciço' },
+            { nome: 'Cor', valor: cor },
+        ],
+    },
+    {
+        grupo: 'Dimensões',
+        itens: [
+            { nome: 'Altura', valor: '92 cm' },
+            { nome: 'Largura', valor: '45 cm' },
+            { nome: 'Profundidade', valor: '52 cm' },
+        ],
+    },
+];
+
+/**
+ * `GET {escrita.revisao.previa}` com `s-2` no lugar do marcador — a prévia PRONTA da cadeira (§19.5 do desenho): dois
+ * tipos × duas cores. No Premium a capa é outra (a ambientação que o robô fez vem primeiro, D6 do Publicador), as
+ * parcelas vêm na forma do retrato de origem (`sem_promocao`/`com_promocao`: o §19.5 só mostra o `null` do Clássico) e
+ * a cor Mel tem uma promoção prevista. O Clássico foi ajustado (899,90 × 879,90 da Precificação); o Premium, não. O
+ * `envio` leva também `frete_gratis` e `retirada` (o servidor repassa os do retrato; o §19.5 só mostra `modo` e `aviso`).
+ */
+export const PREVIA_DO_ANUNCIO = {
+    item: { id: 's-2', nome: 'Cadeira jatobá assento palhinha', tipo: 'Simples', etapa: 'revisao', status: 'Pré-pronto · esperando a revisão' },
+    pronta: true,
+    motivo: null,
+    revisao: 37,
+    categoria: { caminho: ['Casa, Móveis e Decoração', 'Sala de Jantar', 'Cadeiras'] },
+    tipos: [{ chave: 'classico', nome: 'Clássico' }, { chave: 'premium', nome: 'Premium' }],
+    variantes: [{ chave: 'v1', rotulo: 'Natural' }, { chave: 'v2', rotulo: 'Mel' }],
+    anuncios: [
+        {
+            tipo: 'classico', variante: 'v1', titulo: 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar', preco: 899.9, promocao: null, parcelas: null,
+            fotos: [fotoDaPrevia('s-2', 881), fotoDaPrevia('s-2', 882), fotoDaPrevia('s-2', 883), fotoDaPrevia('s-2', 890, true), fotoDaPrevia('s-2', 891, true)],
+            caracteristicas: fichaDaCadeira('Natural'),
+            envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+        },
+        {
+            tipo: 'classico', variante: 'v2', titulo: 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar', preco: 899.9,
+            promocao: { preco: 809.91, percentual: 10, ajustada_ao_minimo: false }, parcelas: null,
+            fotos: [fotoDaPrevia('s-2', 884), fotoDaPrevia('s-2', 885), fotoDaPrevia('s-2', 886), fotoDaPrevia('s-2', 892, true)],
+            caracteristicas: fichaDaCadeira('Mel'),
+            envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+        },
+        {
+            tipo: 'premium', variante: 'v1', titulo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar', preco: 989.9, promocao: null,
+            parcelas: { sem_promocao: { vezes: 10, valor: 98.99 }, com_promocao: null },
+            fotos: [fotoDaPrevia('s-2', 890, true), fotoDaPrevia('s-2', 881), fotoDaPrevia('s-2', 882), fotoDaPrevia('s-2', 883), fotoDaPrevia('s-2', 891, true)],
+            caracteristicas: fichaDaCadeira('Natural'),
+            envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+        },
+        {
+            tipo: 'premium', variante: 'v2', titulo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar', preco: 989.9, promocao: null,
+            parcelas: { sem_promocao: { vezes: 10, valor: 98.99 }, com_promocao: null },
+            fotos: [fotoDaPrevia('s-2', 892, true), fotoDaPrevia('s-2', 884), fotoDaPrevia('s-2', 885), fotoDaPrevia('s-2', 886)],
+            caracteristicas: fichaDaCadeira('Mel'),
+            envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+        },
+    ],
+    descricao: 'Olá! Que bom ter você na Casa Jatobá.\nCadeira jatobá com assento de palhinha natural.\n\nESPECIFICAÇÕES TÉCNICAS\n• Medidas: 45 × 52 × 92 cm\n• Material: jatobá maciço\n\nCUIDADOS E RECOMENDAÇÕES\n• Limpe com pano seco.',
+    preco: {
+        classico: { valor: 899.9, da_precificacao: 879.9, ajustado: true },
+        premium: { valor: 989.9, da_precificacao: 989.9, ajustado: false },
+    },
+    preparo: { titulo: 'ok', descricao: 'ok', imagens: 'ok' },
+    publicacao: null,
+    aprovacao: null,
+    bloqueios: [],
+};
+
+/**
+ * A mesma rota para um item sem prévia ainda (§19.5: `pronta: false`, `motivo` neutro, `anuncios: []`). O `preco` vem
+ * `null` (como o servidor manda fora da prévia pronta); na pronta, o tipo desligado também vem `null`.
+ */
+export const PREVIA_NAO_PRONTA = {
+    item: { id: 's-4', nome: 'Rack para TV 1,80 m madeira maciça', tipo: 'Simples', etapa: 'revisao', status: 'Faltam 2 itens para publicar' },
+    pronta: false,
+    motivo: 'O robô ainda está preparando este anúncio.',
+    revisao: 12,
+    categoria: null,
+    tipos: [],
+    variantes: [],
+    anuncios: [],
+    descricao: null,
+    preco: null,
+    preparo: { titulo: 'ok', descricao: 'ok', imagens: null },
+    publicacao: null,
+    aprovacao: null,
+    bloqueios: [],
+};
+
+/** O 409 do item que saiu da revisão depois que a trilha carregou (§19.4: a guarda 409 vem antes do 422). */
+export const CONFLITO_DA_PREVIA = { message: 'Este anúncio não está mais na revisão.' };

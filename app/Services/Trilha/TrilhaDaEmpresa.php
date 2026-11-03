@@ -207,34 +207,50 @@ class TrilhaDaEmpresa
      * lista, o Planejamento nem as ondas. É o que a trava do robô, a soltura das ondas e o serviço das ondas leem.
      * Consultas fixas: produtos com as cores, ofertas, componentes e o que o Publicador sabe delas.
      *
+     * `$comoNaTela` (4ª entrega, 4a — a prévia da revisão, 03/11/2026): a etapa e o status COMO A TELA os mostra. Com a
+     * trilha de trabalho, a tela decide o item que não andou pela régua da ONDA (Planejamento/na fila) e escreve
+     * "pendência na Lista" pelas faltas do cadastro; sem o parâmetro, a decisão é a de sempre (a que a trava e a soltura
+     * leem — elas não querem a onda). Custa mais as 3 consultas das ondas e as fixas das faltas ({@see faltasDosProdutos()}).
+     * O `pub_produto_id` (o que representa o item no Publicador) não depende da onda: é o mesmo nos dois modos.
+     *
      * @return array<string, array{chave: string, tipo: string, nome: string, produto_id: ?int, quantidade: ?int,
-     *     oferta_id: ?int, sem_produto: bool, andou: bool, sem_texto: bool, etapa: string, produtos: list<int>, depende_de: list<string>}>
+     *     oferta_id: ?int, sem_produto: bool, andou: bool, sem_texto: bool, etapa: string, status: string, alerta: bool,
+     *     pub_produto_id: ?int, preparo: ?array, produtos: list<int>, depende_de: list<string>}>
      */
-    public static function itens(Company $empresa): array
+    public static function itens(Company $empresa, bool $comoNaTela = false): array
     {
         $empresaId = (int) $empresa->id;
         $produtos = EstruturaProduto::query()->where('company_id', $empresaId)->with('variacoes')->orderBy('id')->get();
         [$ofertas, $componentes] = self::ofertasEComponentes($empresaId);
 
         $situacao = SituacaoDasOfertas::daEmpresa($empresa, array_map('intval', $produtos->modelKeys()));
-        $decididos = self::decidirItens($situacao, OfertasDaTrilha::agrupar($produtos, $ofertas, $componentes), null, []);
+        $ondas = $comoNaTela && TrilhaDeTrabalho::ligada($empresa) ? OndasDaEmpresa::ler($empresaId) : null;
+        $faltas = $ondas !== null ? self::faltasDosProdutos($empresa) : [];
+        $decididos = self::decidirItens($situacao, OfertasDaTrilha::agrupar($produtos, $ofertas, $componentes), $ondas, $faltas);
 
         $saida = [];
         foreach ($decididos['itens'] as $chave => $item) {
+            $d = $decididos['decisoes'][$chave];
             $saida[$chave] = [
-                'chave'       => $chave,
-                'tipo'        => $item['tipo'],
-                'nome'        => $item['nome'],
-                'produto_id'  => $item['produto_id'],
-                'quantidade'  => $item['quantidade'],
-                'oferta_id'   => str_starts_with($chave, 'o-') ? (int) substr($chave, 2) : null,
-                'sem_produto' => $item['sem_produto'],
-                'oferta_ids'  => $item['oferta_ids'],
-                'andou'       => $decididos['andou'][$chave],
-                'sem_texto'   => (bool) ($decididos['decisoes'][$chave]['sem_texto'] ?? false),
-                'etapa'       => $decididos['decisoes'][$chave]['etapa'],
-                'produtos'    => self::produtosDoItem($item),
-                'depende_de'  => $item['depende_de'],
+                'chave'          => $chave,
+                'tipo'           => $item['tipo'],
+                'nome'           => $item['nome'],
+                'produto_id'     => $item['produto_id'],
+                'quantidade'     => $item['quantidade'],
+                'oferta_id'      => str_starts_with($chave, 'o-') ? (int) substr($chave, 2) : null,
+                'sem_produto'    => $item['sem_produto'],
+                'oferta_ids'     => $item['oferta_ids'],
+                'andou'          => $decididos['andou'][$chave],
+                'sem_texto'      => (bool) ($d['sem_texto'] ?? false),
+                'etapa'          => $d['etapa'],
+                // 4a (03/11/2026): o que a prévia da revisão lê — o status do item, o pub_produto que o representa (o
+                // rascunho da prévia) e o preparo do robô, na régua da tela.
+                'status'         => $d['status'],
+                'alerta'         => (bool) $d['alerta'],
+                'pub_produto_id' => $d['pub_produto_id'],
+                'preparo'        => $d['preparo'],
+                'produtos'       => self::produtosDoItem($item),
+                'depende_de'     => $item['depende_de'],
             ];
         }
 

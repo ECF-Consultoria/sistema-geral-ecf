@@ -9,10 +9,14 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlAcervoItem;
 use App\Models\MlToken;
+use App\Models\PubImagem;
+use App\Models\PubProduto;
+use App\Models\PubRascunho;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
+use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -30,15 +34,15 @@ use Tests\TestCase;
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
- * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; cresce a cada
- * fatia). A ordem da guarda é o que se prova aqui:
+ * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
+ * anúncio e a foto dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
  * 3. quem não escreve no Portal da empresa → 403;
  * 4. o recurso do ENDEREÇO de outra loja → 404 ANTES de validar o corpo (o corpo inválido vai junto de propósito: se a
  *    validação viesse antes, a resposta seria 422 e diria "o produto existe, só o campo está errado"); a variação do
- *    endereço é DO PRODUTO do caminho, e a imagem, DA VARIAÇÃO (F3);
+ *    endereço é DO PRODUTO do caminho, e a imagem, DA VARIAÇÃO (F3); o item da prévia (4a) é da régua DESTA loja;
  * 5. a variação de OUTRO produto da MESMA loja no corpo → 404 (com `id`, o serviço do Portal acha o produto pela
  *    variação e ignoraria o do caminho);
  * 6. id de 19 dígitos → 404, nunca 500.
@@ -126,6 +130,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'ML: importar (F8)'      => ['POST', '/mercado-livre/importar', false],
             'ML: estado (F8)'        => ['GET', '/mercado-livre/estado', false],
             'ML: limpar (F8)'        => ['POST', '/mercado-livre/limpar', false],
+            // 4a: a prévia do anúncio do item (a Simples do produto, `s-{p}`) e a foto do rascunho dela (`{pi}`).
+            'prévia (4a)'            => ['GET', '/ofertas/s-{p}/previa', false],
+            'foto da prévia (4a)'    => ['GET', '/ofertas/s-{p}/fotos/{pi}', false],
         ];
     }
 
@@ -145,7 +152,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
 
         // Empresa que não existe, dentro das chaves: 404 também (o `findOrFail` da guarda).
         config(['trilha.empresas' => [...(array) config('trilha.empresas'), 999999], 'trilha.trabalho.empresas' => [...(array) config('trilha.trabalho.empresas'), 999999]]);
-        $this->pedir($this->dev, $metodo, '/trilha/999999'.str_replace(['{p}', '{v}', '{i}'], '1', $caminho), [])->assertNotFound();
+        $this->pedir($this->dev, $metodo, '/trilha/999999'.str_replace(['{p}', '{v}', '{i}', '{pi}'], '1', $caminho), [])->assertNotFound();
 
         $this->assertNadaGravado();
     }
@@ -296,6 +303,10 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // O id de 19 dígitos DENTRO do corpo: o serviço não o leria como número — 404, nunca variação nova.
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/linhas",
             ['linhas' => [['id' => $grande, 'codigo' => 'VA', 'nome' => 'Vaso Alfa']]])->assertNotFound();
+        // 4a: o item e a foto da prévia.
+        $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/previa")->assertNotFound();
+        $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/c-{$p['produto']->id}-1234/previa")->assertNotFound();
+        $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$p['produto']->id}/fotos/{$grande}")->assertNotFound();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
         $this->assertSame(1, EstruturaProdutoVariacao::query()->count());
@@ -310,6 +321,10 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
         $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
+        if (str_starts_with($caminho, '/ofertas/')) {
+            // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o robô não mexeu).
+            $this->fotoNoRascunho($p);
+        }
         if (str_starts_with($caminho, '/mercado-livre/')) {
             // F8: a conta conectada e o anúncio no acervo da loja (o Job fica na fila de mentira: nada chama o ML).
             MlToken::create(['company_id' => $this->empresa->id, 'ml_user_id' => '999', 'access_token' => 'APP_USR-x',
@@ -333,10 +348,28 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     private function url(Company $empresa, string $caminho, array $p): string
     {
         return "/trilha/{$empresa->id}".str_replace(
-            ['{p}', '{v}', '{i}'],
-            [(string) $p['produto']->id, (string) $p['variacoes'][0]->id, (string) $this->fotoDa($p)->id],
+            ['{p}', '{v}', '{i}', '{pi}'],
+            [(string) $p['produto']->id, (string) $p['variacoes'][0]->id, (string) $this->fotoDa($p)->id, (string) ($this->fotoDaPrevia($p)?->id ?? 1)],
             $caminho,
         );
+    }
+
+    /** 4a: a foto do rascunho da Simples do produto no Publicador (nula enquanto ela não está lá). */
+    private function fotoDaPrevia(array $p): ?PubImagem
+    {
+        $pub = PubProduto::query()->where('estrutura_produto_id', $p['produto']->id)->value('id');
+
+        return $pub === null ? null : PubImagem::query()->whereIn('rascunho_id', PubRascunho::query()->select('id')->where('produto_id', $pub))->orderBy('id')->first();
+    }
+
+    /** 4a: a Simples do produto no Publicador, com o rascunho e uma foto guardada no disco das imagens. */
+    private function fotoNoRascunho(array $p): PubImagem
+    {
+        $r = $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $p));
+        ArquivosDeImagem::gravar("publicador/{$r->id}/capa.jpg", UploadedFile::fake()->image('capa.jpg', 600, 600)->get());
+
+        return $r->imagens()->create(['caminho' => "publicador/{$r->id}/capa.jpg", 'sha256' => str_repeat('c', 64), 'mime' => 'image/jpeg',
+            'bytes' => 100, 'upload_status' => PubImagem::PENDENTE]);
     }
 
     /** A 1ª foto da 1ª variação do produto (o `produtoCompleto` grava 3 linhas, sem arquivo). */

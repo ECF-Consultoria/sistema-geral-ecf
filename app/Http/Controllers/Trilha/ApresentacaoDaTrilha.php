@@ -52,6 +52,9 @@ use App\Services\Publicador\ProgramasPublicadorService;
  */
 class ApresentacaoDaTrilha
 {
+    /** O lugar da chave do item nos endereços de `escrita.revisao` (4a): a tela troca pelo id da linha (`s-12`). */
+    public const MARCADOR_DO_ITEM = '__ITEM__';
+
     /** Campos da onda para a EQUIPE. */
     private const ONDA = [
         'id'         => null,
@@ -196,9 +199,11 @@ class ApresentacaoDaTrilha
      * `{categorias}/{id}/campos`, `{categorias}/{id}/titulo?nome=`) — relativa, como as fotos do retrato. `planilha` (F7):
      * os três endereços da planilha por categoria — `modelo` (GET, `?categorias[]=`), `previa` e `gravar` (POST multipart),
      * relativos como o `categorias`. `mercado_livre` (F8): `anuncios` e `estado` (GET), `importar` e `limpar` (POST),
-     * relativos também.
+     * relativos também. `revisao` (4ª entrega, 4a): a prévia do anúncio do painel `v:{item}`, relativa, com o marcador
+     * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
+     * acrescenta o seu endereço aqui.
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -221,6 +226,10 @@ class ApresentacaoDaTrilha
                 'importar' => route('trilha.ml.importar', $empresaId, false),
                 'estado'   => route('trilha.ml.estado', $empresaId, false),
                 'limpar'   => route('trilha.ml.limpar', $empresaId, false),
+            ],
+            // 4a: a prévia do anúncio (GET), com o item no marcador.
+            'revisao'       => [
+                'previa' => route('trilha.previa', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
             ],
         ];
     }

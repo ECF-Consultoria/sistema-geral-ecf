@@ -595,49 +595,60 @@ test('a tela da trilha usa só as cores trilha-* (nada de text-white, bg-white/�
 });
 
 // ─── 3ª entrega: a pasta `Cadastro/` só por `lazy`, e o "Mercado Livre" só nela ──
+// ─── 4ª entrega (4a): a pasta `Revisao/` (a prévia do anúncio) também só por `lazy` ──
 
-test('a pasta Cadastro/ só entra por `lazy(() => import(…))`: quem não escreve não baixa aquele JS', () => {
+const PASTA_DA_REVISAO = path.join(PASTA_DA_TRILHA, 'Revisao');
+
+test('as pastas Cadastro/ e Revisao/ só entram por `lazy(() => import(…))`: quem não escreve não baixa aquele JS', () => {
     // O corte dos DADOS é do servidor; este é o do CÓDIGO: os textos da equipe (e o "Mercado Livre") moram em
-    // `Cadastro/`, e nenhum arquivo de fora dela pode importá-la de forma estática — senão o Vite a põe no pacote
-    // que a página do cliente também carrega.
+    // `Cadastro/`, o cartão da prévia do anúncio (4a) em `Revisao/`, e nenhum arquivo de fora delas pode importá-las de
+    // forma estática — senão o Vite as põe no pacote que a página do cliente também carrega.
+    const dentroDasPastas = (f) => [PASTA_DO_CADASTRO, PASTA_DA_REVISAO].some((pasta) => f.startsWith(pasta + path.sep));
     const deFora = [
         path.resolve(RAIZ, 'resources/js/Pages/Trilha/Empresa.jsx'),
         path.resolve(RAIZ, 'resources/js/Pages/Trilha/Index.jsx'),
         path.resolve(RAIZ, 'resources/js/Layouts/TrilhaLayout.jsx'),
-        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => !f.startsWith(PASTA_DO_CADASTRO + path.sep)),
+        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => !dentroDasPastas(f)),
         ...fs.readdirSync(path.resolve(RAIZ, 'resources/js/lib')).filter((f) => /^trilha/.test(f)).map((f) => path.resolve(RAIZ, 'resources/js/lib', f)),
     ];
+    assert.ok(arquivosDe(PASTA_DA_REVISAO).length >= 1, 'a pasta Revisao/ existe');
     const alvos = new Set();
     for (const arquivo of deFora) {
         const fonte = lerSemComentarios(path.relative(RAIZ, arquivo));
         const nome = path.relative(RAIZ, arquivo);
-        // Toda menção à pasta (fora de comentário) é um `lazy(() => import('…/Cadastro/…'))`.
-        const mencoes = [...fonte.matchAll(/[^\n]*Trilha\/Cadastro\/[^\n]*/g)].map((m) => m[0]);
+        // Toda menção às pastas (fora de comentário) é um `lazy(() => import('…/Cadastro/…'))` ou `…/Revisao/…`.
+        const mencoes = [...fonte.matchAll(/[^\n]*Trilha\/(?:Cadastro|Revisao)\/[^\n]*/g)].map((m) => m[0]);
         for (const linha of mencoes) {
-            const lazy = linha.match(/lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/(\w+)'\)\)/);
+            const lazy = linha.match(/lazy\(\(\) => import\('@\/Components\/Trilha\/((?:Cadastro|Revisao)\/\w+)'\)\)/);
             assert.ok(lazy, `${nome}: ${linha.trim()}`);
             alvos.add(lazy[1]);
         }
-        assert.equal(fonte.match(/^\s*import\b[^;]*Cadastro\//m), null, `${nome}: import estático da pasta Cadastro/`);
+        assert.equal(fonte.match(/^\s*import\b[^;]*(?:Cadastro|Revisao)\//m), null, `${nome}: import estático da pasta Cadastro/ ou Revisao/`);
+        // A lib da prévia é da gaveta: só a pasta Revisao/ a importa.
+        assert.equal(fonte.match(/from ['"][^'"]*trilhaPrevia[^'"]*['"]/), null, `${nome}: importa a lib da prévia (trilhaPrevia)`);
     }
-    // A página carrega a gaveta de cadastro, a de criar, (F7) a da planilha por categoria e (F8) a da importação dos
-    // anúncios da loja; a Lista, o quadro da equipe.
+    // A página carrega a gaveta de cadastro, a de criar, (F7) a da planilha por categoria, (F8) a da importação dos
+    // anúncios da loja e (4a) a da prévia do anúncio; a Lista, o quadro da equipe.
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/PainelDoCadastro'\)\)/);
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/NovoProduto'\)\)/);
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/PlanilhaPorCategoria'\)\)/);
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/ImportarDoMercadoLivre'\)\)/);
+    assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Revisao\/PreviaDoAnuncio'\)\)/);
     assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelDaLista.jsx'), /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/QuadrosDaLista'\)\)/);
-    assert.deepEqual([...alvos].sort(), ['ImportarDoMercadoLivre', 'NovoProduto', 'PainelDoCadastro', 'PlanilhaPorCategoria', 'QuadrosDaLista']);
+    assert.deepEqual([...alvos].sort(), [
+        'Cadastro/ImportarDoMercadoLivre', 'Cadastro/NovoProduto', 'Cadastro/PainelDoCadastro', 'Cadastro/PlanilhaPorCategoria', 'Cadastro/QuadrosDaLista',
+        'Revisao/PreviaDoAnuncio',
+    ]);
 
-    // O 2º caminho até a pasta (`Pages/Trilha/CadastroSobDemanda.jsx`): TODO pedaço carregado por `lazy` está lá
+    // O 2º caminho até as pastas (`Pages/Trilha/CadastroSobDemanda.jsx`): TODO pedaço carregado por `lazy` está lá
     // também. Sem isso o Rollup deixa as peças da página dentro do pedaço dela, ele deixa de ser a "fachada" da
     // página e o manifest do Vite perde `resources/js/Pages/Trilha/Empresa.jsx` — a rota cai com "Unable to locate
     // file in Vite manifest", e o build sai 0 (conferido no build de 03/11/2026).
     const sobDemanda = lerSemComentarios('resources/js/Pages/Trilha/CadastroSobDemanda.jsx');
     assert.equal(sobDemanda.match(/^\s*import\b/m), null, 'só import dinâmico: o arquivo não carrega nada');
-    const doSegundoCaminho = new Set([...sobDemanda.matchAll(/(\w+): \(\) => import\('@\/Components\/Trilha\/Cadastro\/(\w+)'\)/g)]
-        .map(([, chave, alvo]) => (assert.equal(chave, alvo), alvo)));
+    const doSegundoCaminho = new Set([...sobDemanda.matchAll(/(\w+): \(\) => import\('@\/Components\/Trilha\/((Cadastro|Revisao)\/(\w+))'\)/g)]
+        .map(([, chave, alvo, , arquivo]) => (assert.equal(chave, arquivo), alvo)));
     for (const alvo of alvos) assert.ok(doSegundoCaminho.has(alvo), `Pages/Trilha/CadastroSobDemanda.jsx não pede ${alvo}`);
 });
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\Trilha\MercadoLivreDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
 use App\Http\Controllers\Trilha\PlanilhaDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
+use App\Http\Controllers\Trilha\PreviaDaTrilhaController;
 use App\Http\Controllers\Trilha\TrilhaController;
 use Illuminate\Support\Facades\Route;
 
@@ -100,6 +101,16 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:240,1,trilha.ml.estado')->name('ml.estado');
         Route::post('/{company}/mercado-livre/limpar', [MercadoLivreDaTrilhaController::class, 'limpar'])
             ->middleware('throttle:30,1,trilha.ml.limpar')->name('ml.limpar');
+
+        // A prévia do anúncio (4ª entrega, 4a, desenho §19.4): o painel `v:{item}` da revisão — só leitura — e as fotos do
+        // rascunho do item. `item` é a chave da linha (`s-12`, `c-12-2`, `o-55`). O contador NÃO é o `trilha.previa` da
+        // prévia do "Mapear" (seriam o mesmo limite): `trilha.revisao.*`.
+        Route::get('/{company}/ofertas/{item}/previa', [PreviaDaTrilhaController::class, 'previa'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:120,1,trilha.revisao.previa')->name('previa');
+        Route::get('/{company}/ofertas/{item}/fotos/{imagem}', [PreviaDaTrilhaController::class, 'foto'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:600,1,trilha.revisao.foto')->name('previa.foto');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

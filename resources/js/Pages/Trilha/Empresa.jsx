@@ -22,6 +22,7 @@ import {
     painelDaChave,
     paraVisaoCliente,
     podeEscrever,
+    podeVerPrevia,
     produtosDaTrilha,
 } from '@/Components/Trilha/estadoDaTela';
 import { fmtGeradoEm } from '@/Components/Trilha/formatos';
@@ -63,6 +64,12 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // pasta — "Escolher anúncios" no quadro da Lista. Só para quem escreve, por
 // `lazy`, com o 2º caminho em `CadastroSobDemanda.jsx`. O nome do marketplace só
 // aparece dentro da gaveta (o cliente baixa o JS desta página).
+//
+// ### 4ª entrega, fatia 4a (03/11/2026): a prévia do anúncio
+// A equipe com `escrita.revisao` confere o anúncio pré-pronto na gaveta `v:{item}`
+// (`Components/Trilha/Revisao/`, só leitura): o "Revisar" da linha em revisão abre
+// ela, e o painel da oferta ganha [Ver prévia]. Também por `lazy`, com o 2º caminho
+// em `CadastroSobDemanda.jsx` — o cartão do anúncio não vai no pacote do cliente.
 
 const ID_DA_VISTA = 'trilha-vista';
 
@@ -71,6 +78,8 @@ const PainelDoCadastro = lazy(() => import('@/Components/Trilha/Cadastro/PainelD
 const NovoProduto = lazy(() => import('@/Components/Trilha/Cadastro/NovoProduto'));
 const PlanilhaPorCategoria = lazy(() => import('@/Components/Trilha/Cadastro/PlanilhaPorCategoria'));
 const ImportarDoMercadoLivre = lazy(() => import('@/Components/Trilha/Cadastro/ImportarDoMercadoLivre'));
+// Só a equipe com `escrita.revisao` abre o painel `previa` (`painelDaChave`).
+const PreviaDoAnuncio = lazy(() => import('@/Components/Trilha/Revisao/PreviaDoAnuncio'));
 
 /** O que a gaveta mostra enquanto o JS do cadastro chega (a 1ª vez que alguém abre um). */
 function AbrindoOCadastro({ produto }) {
@@ -100,6 +109,17 @@ function AbrindoAImportacao() {
         <MioloDaGaveta sobrelinha="Anúncios da loja" titulo="Importar anúncios" ocupado>
             <p className="m-0 text-[13px] text-trilha-muted" data-carregando-importacao="">
                 Abrindo os anúncios…
+            </p>
+        </MioloDaGaveta>
+    );
+}
+
+/** O que a gaveta da prévia mostra enquanto o JS dela chega. */
+function AbrindoAPrevia({ oferta }) {
+    return (
+        <MioloDaGaveta sobrelinha={`${oferta?.tipo ?? 'Oferta'} · Prévia do anúncio`} titulo={oferta?.nome || 'Oferta sem nome'} ocupado>
+            <p className="m-0 text-[13px] text-trilha-muted" data-abrindo-previa="">
+                Abrindo a prévia…
             </p>
         </MioloDaGaveta>
     );
@@ -136,7 +156,8 @@ function gravarNaUrl(estado) {
  *   pode_editar: boolean,
  *   escrita: ?{ondas: string, planejamento: string, produtos: string, categorias?: string,
  *     planilha?: {modelo: string, previa: string, gravar: string},
- *     mercado_livre?: {anuncios: string, importar: string, estado: string, limpar: string}},
+ *     mercado_livre?: {anuncios: string, importar: string, estado: string, limpar: string},
+ *     revisao?: {previa: string}},
  *   produtos: Array<object>,
  *   ofertas: Array<object>,
  *   ondas: Array<object>,
@@ -175,6 +196,8 @@ export function TelaDaTrilha({
     const comTrabalho = !!trabalho;
     // Escreve só a equipe com escrita, e fora do "Ver como: Cliente" (lá a tela é a do cliente, que só acompanha).
     const podeEditar = podeEscrever({ visao, trabalho, pode_editar, escrita }, verComo);
+    // A prévia do anúncio (4a): quem escreve E recebeu `escrita.revisao.previa`.
+    const comPrevia = podeVerPrevia({ visao, trabalho, pode_editar, escrita }, verComo);
 
     // Com a trilha de trabalho a trilha substitui o Portal (F5): nenhum atalho para a ficha de lá.
     const dadosDaPorta = useMemo(
@@ -192,7 +215,7 @@ export function TelaDaTrilha({
 
     // O começo vem da URL (lido uma vez, na montagem). Valor estranho, item que não existe mais
     // ou painel de escrita para quem não escreve é ignorado em `lerEstadoDaUrl`.
-    const [inicial] = useState(() => lerEstadoDaUrl(buscaDaUrl(), dadosDaPorta, { podeEditar }));
+    const [inicial] = useState(() => lerEstadoDaUrl(buscaDaUrl(), dadosDaPorta, { podeEditar, comPrevia }));
     const [etapa, setEtapa] = useState(inicial.etapa);
     const [vista, setVista] = useState(inicial.vista);
     const [aberto, setAberto] = useState(inicial.abrir);
@@ -377,7 +400,7 @@ export function TelaDaTrilha({
         fechar();
     }, [fechar]);
 
-    const painel = painelDaChave(dados, aberto, { podeEditar });
+    const painel = painelDaChave(dados, aberto, { podeEditar, comPrevia });
     const temPainel = !!painel;
 
     // O que estava aberto sumiu (apagado numa recarga — por outra pessoa, inclusive —, ou o painel de escrita
@@ -387,7 +410,7 @@ export function TelaDaTrilha({
     }, [aberto, temPainel, fechar]);
 
     const geradoEm = fmtGeradoEm(gerado_em);
-    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirComGuarda, trabalho: comTrabalho, podeEditar };
+    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirComGuarda, trabalho: comTrabalho, podeEditar, comPrevia };
     // Os endereços de escrita só vão aos painéis de quem escreve: no "Ver como: Cliente" eles nem chegam lá.
     const escritaComum = { escrita: podeEditar ? escrita : null, onAvisar: avisar, onRecarregar: recarregarTrilha };
     // A chave troca o conteúdo inteiro a cada painel (de uma oferta para outra, também): o formulário, o
@@ -406,8 +429,16 @@ export function TelaDaTrilha({
                 onAbrir={abrirComGuarda}
                 trabalho={comTrabalho}
                 podeEditar={podeEditar}
+                comPrevia={comPrevia}
                 planejamento={{ ...escritaComum, preEscolha, onNovaOnda: podeEditar ? novaOndaDaOferta : null }}
             />
+        );
+    } else if (painel?.painel === 'previa') {
+        // Só chega aqui com `comPrevia` (`painelDaChave`): para os outros, o `v:` não abre nada.
+        conteudoDaGaveta = (
+            <Suspense key={chaveDoConteudo} fallback={<AbrindoAPrevia oferta={painel.oferta} />}>
+                <PreviaDoAnuncio oferta={painel.oferta} escrita={escritaComum.escrita} trabalho={comTrabalho} onAbrir={abrirComGuarda} />
+            </Suspense>
         );
     } else if (painel?.painel === 'onda') {
         conteudoDaGaveta = (

@@ -323,6 +323,20 @@ export async function limparImportacao(escrita) {
     return corpo(await axios.post(enderecoDaImportacao(escrita, 'limpar'), {}));
 }
 
+// ─── A prévia do anúncio (4ª entrega, 4a) ───────────────────────────────────
+
+/**
+ * A prévia do anúncio de uma oferta (§19.5 do desenho, só leitura). `url` chega PRONTA da gaveta (o
+ * `escrita.revisao.previa` com o id do item no lugar do marcador): esta lib não monta nada da prévia — a página do
+ * cliente a importa, e a lib da gaveta (`trilhaPrevia.js`) fica no pedaço que só a equipe baixa. O 409 (item fora da
+ * revisão) chega como erro do axios; quem trata é a gaveta.
+ */
+export async function carregarPrevia(url) {
+    if (!url) throw new ErroDaTrilha('A prévia não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.get(url));
+}
+
 // ─── Erros ──────────────────────────────────────────────────────────────────
 
 const SEM_CONEXAO = 'Não consegui falar com o servidor. Confira a conexão e tente de novo.';

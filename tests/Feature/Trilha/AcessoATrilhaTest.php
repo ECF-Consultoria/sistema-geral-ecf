@@ -392,6 +392,10 @@ class AcessoATrilhaTest extends TestCase
                 'estado'   => "/trilha/{$empresa->id}/mercado-livre/estado",
                 'limpar'   => "/trilha/{$empresa->id}/mercado-livre/limpar",
             ],
+            // 4a: a prévia do anúncio do painel `v:{item}`, com o marcador no lugar da chave do item (relativa).
+            'revisao'       => [
+                'previa' => "/trilha/{$empresa->id}/ofertas/__ITEM__/previa",
+            ],
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
             'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');
