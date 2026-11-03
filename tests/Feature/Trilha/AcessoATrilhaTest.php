@@ -126,6 +126,9 @@ class AcessoATrilhaTest extends TestCase
                 ->where('produtos.1.url_publicador', route('mlb.anuncios.publicador.editor', ['produto' => 74]))
                 ->where('produtos.0.url_publicador', null)
                 ->where('produtos.2.url_ficha', null)
+                // 3ª entrega (pergunta 1): o cadastro do produto que algum item já levou adiante é só leitura na trilha.
+                ->where('produtos.2.cadastro_travado', true)
+                ->where('produtos.0.cadastro_travado', false)
                 // A equipe vê as sugestões esperando decisão.
                 ->where('produtos.1.sugestoes_pendentes.0', ['fase' => 'combo', 'nome' => 'Combo 2 Racks para TV 1,80 m', 'sku' => 'CJ-213-CB2'])
                 ->where('produtos.1.sugestoes_pendentes_total', 2)
@@ -143,9 +146,10 @@ class AcessoATrilhaTest extends TestCase
             );
 
         $props = $this->props($resposta);
-        // O id do Publicador vira link e não sai cru; campo que o serviço inventar não chega sem decisão.
+        // O id do Publicador vira link e não sai cru; campo que o serviço inventar não chega sem decisão. A trava do
+        // cadastro (3ª entrega) é só desta porta.
         foreach ($props['produtos'] as $produto) {
-            $this->assertEqualsCanonicalizing([...self::CAMPOS_DO_PRODUTO, 'url_publicador'], array_keys($produto));
+            $this->assertEqualsCanonicalizing([...self::CAMPOS_DO_PRODUTO, 'url_publicador', 'cadastro_travado'], array_keys($produto));
         }
         foreach ($props['ofertas'] as $oferta) {
             $this->assertEqualsCanonicalizing([...self::CAMPOS_DA_OFERTA, 'url_publicador'], array_keys($oferta));
@@ -320,6 +324,8 @@ class AcessoATrilhaTest extends TestCase
         foreach ($props['ofertas'] as $oferta) {
             $this->assertEqualsCanonicalizing(self::CAMPOS_DA_OFERTA, array_keys($oferta));
         }
+        // A trava do cadastro (3ª entrega) diz o que o robô já fez: o cliente não a recebe em nível nenhum.
+        $this->assertNotContains('cadastro_travado', self::chaves($props));
         $this->assertNaoChegaNadaDaEquipe($resposta);
     }
 
@@ -615,6 +621,7 @@ class AcessoATrilhaTest extends TestCase
                     'medidas' => '180 × 90 × 76 cm', 'embalagem' => '186 × 96 × 18 cm · 42 kg', 'fotos_min' => 5, 'tem_descricao' => true,
                     'ficha' => 'completa', 'faltas' => [], 'etapa' => null,
                     'sugestoes_pendentes' => [], 'sugestoes_pendentes_total' => 0, 'pub_produto_id' => 71,
+                    'cadastro_travado' => true,
                     'campo_novo_do_servico' => 'não deveria sair',
                 ],
             ],

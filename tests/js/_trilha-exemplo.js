@@ -17,6 +17,11 @@
 // régua da onda, para a equipe com escrita. `MAPEAMENTO`, `PREVIA` e `CONCLUIDO`
 // são as respostas JSON do painel de mapear (o contrato de
 // `App\Http\Controllers\Trilha\MapeamentoDaTrilhaController`).
+//
+// 3ª entrega (o cadastro na trilha): cada produto da equipe com trabalho leva
+// `cadastro_travado` (o que já andou só se lê); `CADASTRO` e as respostas do
+// "Salvar" são o JSON da gaveta `e:{id}` (o contrato do §6.3 do desenho, de
+// `App\Http\Controllers\Trilha\CadastroDaTrilhaController`).
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -205,7 +210,8 @@ export function paraCliente(props = PROPS_EQUIPE) {
             produtos: '/portal/459/estrutura/produtos',
             publicador: null,
         },
-        produtos: props.produtos.map(({ url_publicador, sugestoes_pendentes, ...p }) => ({
+        // A trava do cadastro (3ª entrega) é da equipe: `cadastro_travado` sai só em `paraEquipe`.
+        produtos: props.produtos.map(({ url_publicador, sugestoes_pendentes, cadastro_travado, ...p }) => ({
             ...p,
             sugestoes_pendentes: [],
             mapeado_por: null,
@@ -274,6 +280,13 @@ const AVULSA_SEM_PRODUTO = {
     onda_id: null, sem_produto: true, url_publicador: null,
 };
 
+/**
+ * Os produtos com o cadastro TRAVADO (3ª entrega, pergunta 1): algum item da trilha que os leva já andou — a mesa
+ * e o espelho estão no ar, a cadeira e a prateleira na revisão, o aparador com o robô e o rack com a Simples na
+ * revisão. O painel ripado (só no kit que não andou) e os da Lista continuam editáveis.
+ */
+const TRAVADOS = new Set([1, 2, 3, 4, 10, 11]);
+
 /** As que ainda entram, mudam ou saem de onda (`planejavel` = tem produto na Lista e não andou). */
 const PLANEJAVEIS = new Set(['c-2-4', 'o-31', 'o-32', 'c-3-2', 'c-1-2']);
 
@@ -284,12 +297,14 @@ export const PROPS_TRABALHO = {
     escrita: ESCRITA,
     ondas: ONDAS,
     produtos: PROPS_EQUIPE.produtos.map((p) => {
+        // 3ª entrega: o produto que algum item da trilha já levou adiante tem o cadastro só para leitura.
+        const travado = { cadastro_travado: TRAVADOS.has(p.id) };
         // O rack: a Simples dele já andou (está na revisão) — com a trilha de trabalho, ele já está mapeado.
-        if (p.id === 4) return { ...p, etapa: null, mapeado_em: null, mapeado_por: null };
+        if (p.id === 4) return { ...p, ...travado, etapa: null, mapeado_em: null, mapeado_por: null };
         // O aparador foi mapeado na trilha.
-        if (p.id === 3) return { ...p, mapeado_em: '2026-11-01T14:32:00-03:00', mapeado_por: 'Rafael' };
+        if (p.id === 3) return { ...p, ...travado, mapeado_em: '2026-11-01T14:32:00-03:00', mapeado_por: 'Rafael' };
 
-        return { ...p, mapeado_em: null, mapeado_por: null };
+        return { ...p, ...travado, mapeado_em: null, mapeado_por: null };
     }),
     ofertas: [
         ...PROPS_EQUIPE.ofertas.map((o) => ({ ...o, ...(NA_TRILHA_DE_TRABALHO[o.id] ?? {}) })),
@@ -377,4 +392,120 @@ export const CONCLUIDO = {
     ],
     descartadas: 1,
     mensagem: '2 ofertas criadas.',
+};
+
+// ═══ 3ª entrega: a gaveta de cadastro (`e:{id}`) ═════════════════════════════
+
+/** As listas da empresa (família e ambientes), como a rota 1 manda. */
+const LISTAS = {
+    familias: [
+        { id: 1, nome: 'Aparadores' }, { id: 2, nome: 'Cadeiras' }, { id: 3, nome: 'Decoração' },
+        { id: 4, nome: 'Mesas' }, { id: 5, nome: 'Racks' }, { id: 6, nome: 'Sofás' },
+    ],
+    ambientes: [{ id: 1, nome: 'Cozinha' }, { id: 2, nome: 'Sala de estar' }, { id: 3, nome: 'Sala de jantar' }],
+};
+
+const EIXOS = { cor: 'Cor', tamanho: 'Tamanho', voltagem: 'Voltagem', material: 'Material', sabor: 'Sabor', outro: 'Outro' };
+const LIMITES = { fotos_por_variacao: 12, foto_mb: 10, descricao: 5000, linhas: 200 };
+
+/**
+ * `GET {escrita.produtos}/9/cadastro` — o criado-mudo, recém-criado pela trilha (só nome e SKU). A forma é a que o
+ * servidor manda de verdade (conferida na integração da F1): o custo e as medidas vêm como NÚMERO (o cast do model),
+ * não como o texto "890.00" do exemplo do desenho.
+ */
+export const CADASTRO = {
+    produto: {
+        id: 9, nome: 'Criado-mudo 2 gavetas', titulo: null, familia: null, ambientes: [], categoria: null,
+        descricao: null, eixo: null, eixo_2: null, origem_ml: false,
+    },
+    variacoes: [
+        {
+            id: 91, codigo: 'CRIADO-01', valor: null, valor_2: null, ordem: 1, custo: null, estoque: null, volumes: [],
+            bling: false, estoque_do_bling: false, dona_da_cor: true, logistica: 'pendente', fotos: [],
+        },
+    ],
+    ficha: { salvos: [] },
+    listas: LISTAS,
+    eixos: EIXOS,
+    limites: LIMITES,
+    situacao: {
+        etapa: 'lista',
+        faltas: ['medidas', 'custo', 'categoria', 'título', 'família', 'ambiente', 'descrição', 'fotos (0 de 3)'],
+        avisos: [], no_publicador: false, categoria_travada: false, mapeado_em: null,
+    },
+    edicao: { livre: true, motivo: null, onda_comecou: null },
+    versao: null,
+};
+
+/** `POST …/9/linhas` com tudo o que a F1 cobre: salvo, mas ainda faltam a categoria e as fotos (HTTP 200). */
+export const SALVO_INCOMPLETO = {
+    ...CADASTRO,
+    produto: {
+        ...CADASTRO.produto, titulo: 'Criado-Mudo 2 Gavetas Jatobá', familia: 'Criados-mudos', ambientes: ['Quarto'],
+        descricao: 'Criado-mudo em jatobá maciço com duas gavetas.',
+    },
+    variacoes: [{ ...CADASTRO.variacoes[0], custo: 1890, estoque: 4, volumes: [{ c: 50, l: 40, a: 60, kg: 18.5 }], logistica: 'me2' }],
+    listas: {
+        familias: [...LISTAS.familias, { id: 7, nome: 'Criados-mudos' }],
+        ambientes: [...LISTAS.ambientes, { id: 4, nome: 'Quarto' }],
+    },
+    situacao: { ...CADASTRO.situacao, faltas: ['categoria', 'fotos (0 de 3)'] },
+    erros: [],
+    avisos: [],
+    totais: { criadas: 0, atualizadas: 1, sem_mudanca: 0, com_erro: 0, absorvidos_da_espera: 0 },
+    criadas_nas_listas: { familias: ['Criados-mudos'], ambientes: ['Quarto'] },
+    mensagem: 'Salvo. Ainda faltam: categoria, fotos (0 de 3).',
+};
+
+/** O mesmo "Salvar", com a última falta resolvida: o produto saiu da Lista. */
+export const SALVO_COMPLETO = {
+    ...SALVO_INCOMPLETO,
+    situacao: { ...SALVO_INCOMPLETO.situacao, etapa: 'mapa', faltas: [] },
+    criadas_nas_listas: { familias: [], ambientes: [] },
+    mensagem: 'Lista completa: o produto seguiu para o mapeamento.',
+};
+
+/** Um "Salvar" que parou no custo: a linha volta em `erros` (HTTP 200) e nada dela gravou. */
+export const SALVO_COM_ERRO = {
+    ...CADASTRO,
+    erros: [{ indice: 0, chave: 'v91', codigo: 'CRIADO-01', mensagem: 'Use números no formato 1.234,56.', campos: { custo: 'Use números no formato 1.234,56.' } }],
+    avisos: [],
+    totais: { criadas: 0, atualizadas: 0, sem_mudanca: 0, com_erro: 1, absorvidos_da_espera: 0 },
+    criadas_nas_listas: { familias: [], ambientes: [] },
+    mensagem: 'Confira os campos marcados: o que está neles não foi salvo.',
+};
+
+/** O motivo da trava, como o servidor escreve (a gaveta e o 409). */
+export const MOTIVO_DA_TRAVA = 'A oferta “Cadeira jatobá assento palhinha” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar). '
+    + 'Mudar o cadastro agora faria o robô refazer texto e imagens e não muda o anúncio no ar.';
+
+/** `GET …/2/cadastro` — a cadeira (2 cores), que já está na revisão: só leitura. */
+export const CADASTRO_TRAVADO = {
+    ...CADASTRO,
+    produto: {
+        id: 2, nome: 'Cadeira jatobá assento palhinha', titulo: 'Cadeira Jatobá Assento Palhinha', familia: 'Cadeiras',
+        ambientes: ['Sala de jantar'], categoria: { id: 'MLB193945', nome: 'Cadeiras', caminho_texto: 'Casa › Móveis › Cadeiras', estado: 'confirmada' },
+        descricao: 'Cadeira em jatobá maciço.', eixo: 'cor', eixo_2: null, origem_ml: false,
+    },
+    variacoes: [
+        { id: 21, codigo: 'CJ-211-NAT', valor: 'Natural', valor_2: null, ordem: 1, custo: 290, estoque: null, volumes: [{ c: 50, l: 56, a: 60, kg: 7 }], bling: false, estoque_do_bling: false, dona_da_cor: true, logistica: 'me2', fotos: [] },
+        { id: 22, codigo: 'CJ-211-MEL', valor: 'Mel', valor_2: null, ordem: 2, custo: 310, estoque: 3, volumes: [{ c: 50, l: 56, a: 60, kg: 7 }], bling: false, estoque_do_bling: false, dona_da_cor: true, logistica: 'me2', fotos: [] },
+    ],
+    situacao: { etapa: null, faltas: [], avisos: [], no_publicador: true, categoria_travada: true, mapeado_em: null },
+    edicao: { livre: false, motivo: MOTIVO_DA_TRAVA, onda_comecou: null },
+};
+
+/** O criado-mudo com a Simples numa onda que já começou (o robô ainda não mexeu) e já no Publicador. */
+export const CADASTRO_ONDA_COMECOU = {
+    ...SALVO_INCOMPLETO,
+    situacao: { ...SALVO_INCOMPLETO.situacao, no_publicador: true },
+    edicao: { livre: true, motivo: null, onda_comecou: { id: 7, nome: 'Onda 1 · simples', data: '2026-11-03' } },
+};
+
+/** `POST {escrita.produtos}` (201): o produto nasceu com o nome e o SKU. */
+export const CRIADO = {
+    ...CADASTRO,
+    absorvidos_da_espera: 0,
+    avisos: [],
+    mensagem: 'Produto criado.',
 };

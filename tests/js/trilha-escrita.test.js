@@ -427,6 +427,49 @@ test('as escritas vão aos endereços de `escrita`, com o método e o corpo do c
     assert.equal(escrita.mensagemDoErro(new escrita.ErroDaTrilha('Esta tela não pode gravar: recarregue a página.')), 'Esta tela não pode gravar: recarregue a página.');
 });
 
+test('cadastro (3ª entrega): abrir, criar e gravar as linhas sob `escrita.produtos`; a `versao` só vai quando há uma', async () => {
+    const { pedidos, restaurar } = gravarPedidos({ produto: { id: 9 } });
+    const E = { ...PROPS_TRABALHO.escrita, produtos: `${PROPS_TRABALHO.escrita.produtos}/` };
+    try {
+        assert.deepEqual(await escrita.abrirCadastro(E, 9), { produto: { id: 9 } });
+        await escrita.criarProduto(E, { nome: 'Poltrona Ripada Bege', codigo: 'POLT-RIP-BG' });
+        await escrita.gravarLinhas(E, 9, [{ chave: 'v91', id: 91, codigo: 'CRIADO-01', nome: 'Criado-mudo', custo: '10' }]);
+        await escrita.gravarLinhas(E, 9, [{ chave: 'v91', id: 91, codigo: 'CRIADO-01', nome: 'Criado-mudo' }], { versao: 'abc' });
+    } finally {
+        restaurar();
+    }
+
+    assert.deepEqual(pedidos, [
+        { metodo: 'get', url: 'http://localhost/trilha/459/produtos/9/cadastro', corpo: undefined },
+        // Criar leva SÓ o nome e o SKU.
+        { metodo: 'post', url: 'http://localhost/trilha/459/produtos', corpo: { nome: 'Poltrona Ripada Bege', codigo: 'POLT-RIP-BG' } },
+        { metodo: 'post', url: 'http://localhost/trilha/459/produtos/9/linhas', corpo: { linhas: [{ chave: 'v91', id: 91, codigo: 'CRIADO-01', nome: 'Criado-mudo', custo: '10' }] } },
+        { metodo: 'post', url: 'http://localhost/trilha/459/produtos/9/linhas', corpo: { linhas: [{ chave: 'v91', id: 91, codigo: 'CRIADO-01', nome: 'Criado-mudo' }], versao: 'abc' } },
+    ]);
+    assert.equal(escrita.urlDoProduto(E, 12), 'http://localhost/trilha/459/produtos/12');
+
+    // Sem endereço (a porta do cliente nunca recebe nenhum), nada sai.
+    await assert.rejects(() => escrita.abrirCadastro(null, 9), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.criarProduto({ ondas: 'x' }, { nome: 'a', codigo: 'b' }), (e) => e instanceof escrita.ErroDaTrilha);
+});
+
+test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {
+    const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
+    const m = escrita.mensagemDoErro;
+    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar).';
+
+    assert.equal(m(erro(409, { travado: true, motivo, message: motivo })), motivo);
+    assert.equal(m(erro(409, { message: 'Este produto mudou depois que você abriu.' })), 'Este produto mudou depois que você abriu.');
+    assert.equal(m(erro(409, {})), 'Este produto não pode mais ser mudado daqui. Recarregue a página.');
+    assert.equal(m(erro(409, { message: 'Conflict' })), 'Conflict', 'texto curto do servidor ainda vale');
+
+    // SKU repetido: o 422 cai no próprio campo; a mensagem do framework (inglês) não.
+    assert.deepEqual(escrita.errosDosCampos(erro(422, { errors: { codigo: ['Este SKU já existe nesta empresa.'], nome: ['The nome field is required.'] } })),
+        { codigo: 'Este SKU já existe nesta empresa.' });
+    assert.deepEqual(escrita.errosDosCampos(erro(409, { travado: true })), {});
+    assert.deepEqual(escrita.errosDosCampos(new Error('rede')), {});
+});
+
 test('o erro para a pessoa: a primeira mensagem do 422; texto nosso quando o servidor fala inglês ou não fala', () => {
     const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
     const m = escrita.mensagemDoErro;
@@ -488,7 +531,7 @@ test('recarregar: duas recargas no ar — a anterior é cancelada e quem esperav
 });
 
 test('as libs da 2ª entrega não têm classe do Tailwind (em .js ela não é gerada)', () => {
-    for (const arquivo of ['resources/js/lib/trilhaOndas.js', 'resources/js/lib/trilhaMapeamento.js', 'resources/js/lib/trilhaEscrita.js']) {
+    for (const arquivo of ['resources/js/lib/trilhaOndas.js', 'resources/js/lib/trilhaMapeamento.js', 'resources/js/lib/trilhaEscrita.js', 'resources/js/lib/trilhaCadastro.js']) {
         const fonte = lerSemComentarios(arquivo);
         assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null, arquivo);
     }

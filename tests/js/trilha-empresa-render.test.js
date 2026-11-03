@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { PROPS_EQUIPE, PROPS_TRABALHO, paraCliente } from './_trilha-exemplo.js';
+import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Render de verdade (React no servidor) da página `Trilha/Empresa` — a Trilha de
@@ -298,7 +299,8 @@ test('"Pronto quando" da Lista cita tudo o que segura o produto na Lista (a rég
     assert.ok(doServico.length >= 3 && doServico.includes('descrição'), `a leitura do serviço quebrou: ${doServico}`);
 
     const Pagina = await pagina();
-    for (const props of [PROPS_EQUIPE, paraCliente()]) {
+    // Com a trilha de trabalho (3ª entrega) a régua é a mesma: o texto também.
+    for (const props of [PROPS_EQUIPE, paraCliente(), PROPS_TRABALHO, paraCliente(PROPS_TRABALHO)]) {
         const saida = desenhar(Pagina, props, '?etapa=lista');
         const pronto = texto(saida.match(/Pronto quando:<\/b>([^<]*)</)?.[1] ?? '');
         for (const rotulo of [...pendencias, ...doServico]) {
@@ -551,14 +553,25 @@ test('a busca que a tela grava é a mesma que o Laravel devolve no page.url (F5 
 
 // ─── Cores só da trilha ────────────────────────────────────────────────────
 
+/** Os arquivos de uma pasta e das subpastas dela (a `Cadastro/` da 3ª entrega), em ordem. */
+function arquivosDe(pasta) {
+    return fs.readdirSync(pasta, { withFileTypes: true })
+        .flatMap((e) => (e.isDirectory() ? arquivosDe(path.join(pasta, e.name)) : [path.join(pasta, e.name)]))
+        .sort();
+}
+
+const PASTA_DA_TRILHA = path.resolve(RAIZ, 'resources/js/Components/Trilha');
+const PASTA_DO_CADASTRO = path.join(PASTA_DA_TRILHA, 'Cadastro');
+
 test('a tela da trilha usa só as cores trilha-* (nada de text-white, bg-white/…, bg-ecf-*, pub-* nem hex solto)', () => {
-    const pasta = path.resolve(RAIZ, 'resources/js/Components/Trilha');
+    // RECURSIVA (3ª entrega): a pasta `Cadastro/` também — a leitura plana da pasta quebrava com EISDIR.
     // O MapaDaLoja.jsx tem dono próprio e o teste dele (trilha-mapa.test.js).
     const arquivos = [
         path.resolve(RAIZ, 'resources/js/Pages/Trilha/Empresa.jsx'),
-        ...fs.readdirSync(pasta).filter((f) => f !== 'MapaDaLoja.jsx').map((f) => path.join(pasta, f)),
+        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => path.basename(f) !== 'MapaDaLoja.jsx'),
     ];
     assert.ok(arquivos.length >= 8);
+    assert.ok(arquivos.some((f) => f.startsWith(PASTA_DO_CADASTRO + path.sep)), 'a varredura chega na pasta Cadastro/');
 
     for (const arquivo of arquivos) {
         const fonte = fs.readFileSync(arquivo, 'utf8');
@@ -569,5 +582,62 @@ test('a tela da trilha usa só as cores trilha-* (nada de text-white, bg-white/�
         assert.deepEqual(pub, [], `${nome}: classe pub-* fora da fonte mono`);
         assert.equal(fonte.match(/\[#[0-9a-fA-F]{3,8}\]/), null, `${nome}: cor hex solta em classe`);
         if (arquivo.endsWith('.js')) assert.ok(!fonte.includes('className'), `${nome}: classe em .js não é gerada pelo Tailwind`);
+    }
+});
+
+// ─── 3ª entrega: a pasta `Cadastro/` só por `lazy`, e o "Mercado Livre" só nela ──
+
+test('a pasta Cadastro/ só entra por `lazy(() => import(…))`: quem não escreve não baixa aquele JS', () => {
+    // O corte dos DADOS é do servidor; este é o do CÓDIGO: os textos da equipe (e o "Mercado Livre") moram em
+    // `Cadastro/`, e nenhum arquivo de fora dela pode importá-la de forma estática — senão o Vite a põe no pacote
+    // que a página do cliente também carrega.
+    const deFora = [
+        path.resolve(RAIZ, 'resources/js/Pages/Trilha/Empresa.jsx'),
+        path.resolve(RAIZ, 'resources/js/Pages/Trilha/Index.jsx'),
+        path.resolve(RAIZ, 'resources/js/Layouts/TrilhaLayout.jsx'),
+        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => !f.startsWith(PASTA_DO_CADASTRO + path.sep)),
+        ...fs.readdirSync(path.resolve(RAIZ, 'resources/js/lib')).filter((f) => /^trilha/.test(f)).map((f) => path.resolve(RAIZ, 'resources/js/lib', f)),
+    ];
+    const alvos = new Set();
+    for (const arquivo of deFora) {
+        const fonte = lerSemComentarios(path.relative(RAIZ, arquivo));
+        const nome = path.relative(RAIZ, arquivo);
+        // Toda menção à pasta (fora de comentário) é um `lazy(() => import('…/Cadastro/…'))`.
+        const mencoes = [...fonte.matchAll(/[^\n]*Trilha\/Cadastro\/[^\n]*/g)].map((m) => m[0]);
+        for (const linha of mencoes) {
+            const lazy = linha.match(/lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/(\w+)'\)\)/);
+            assert.ok(lazy, `${nome}: ${linha.trim()}`);
+            alvos.add(lazy[1]);
+        }
+        assert.equal(fonte.match(/^\s*import\b[^;]*Cadastro\//m), null, `${nome}: import estático da pasta Cadastro/`);
+    }
+    // A página carrega a gaveta de cadastro e a de criar; a Lista, o quadro da equipe.
+    const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
+    assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/PainelDoCadastro'\)\)/);
+    assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/NovoProduto'\)\)/);
+    assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelDaLista.jsx'), /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/QuadrosDaLista'\)\)/);
+    assert.deepEqual([...alvos].sort(), ['NovoProduto', 'PainelDoCadastro', 'QuadrosDaLista']);
+
+    // O 2º caminho até a pasta (`Pages/Trilha/CadastroSobDemanda.jsx`): TODO pedaço carregado por `lazy` está lá
+    // também. Sem isso o Rollup deixa as peças da página dentro do pedaço dela, ele deixa de ser a "fachada" da
+    // página e o manifest do Vite perde `resources/js/Pages/Trilha/Empresa.jsx` — a rota cai com "Unable to locate
+    // file in Vite manifest", e o build sai 0 (conferido no build de 03/11/2026).
+    const sobDemanda = lerSemComentarios('resources/js/Pages/Trilha/CadastroSobDemanda.jsx');
+    assert.equal(sobDemanda.match(/^\s*import\b/m), null, 'só import dinâmico: o arquivo não carrega nada');
+    const doSegundoCaminho = new Set([...sobDemanda.matchAll(/(\w+): \(\) => import\('@\/Components\/Trilha\/Cadastro\/(\w+)'\)/g)]
+        .map(([, chave, alvo]) => (assert.equal(chave, alvo), alvo)));
+    for (const alvo of alvos) assert.ok(doSegundoCaminho.has(alvo), `Pages/Trilha/CadastroSobDemanda.jsx não pede ${alvo}`);
+});
+
+test('nenhum "Mercado Livre" escrito fora da pasta Cadastro/ (o cliente baixa o resto do JS da trilha)', () => {
+    const deFora = [
+        ...fs.readdirSync(path.resolve(RAIZ, 'resources/js/Pages/Trilha')).map((f) => path.resolve(RAIZ, 'resources/js/Pages/Trilha', f)),
+        path.resolve(RAIZ, 'resources/js/Layouts/TrilhaLayout.jsx'),
+        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => !f.startsWith(PASTA_DO_CADASTRO + path.sep)),
+        ...fs.readdirSync(path.resolve(RAIZ, 'resources/js/lib')).filter((f) => /^trilha/.test(f)).map((f) => path.resolve(RAIZ, 'resources/js/lib', f)),
+    ];
+    for (const arquivo of deFora) {
+        const nome = path.relative(RAIZ, arquivo);
+        assert.equal(lerSemComentarios(nome).match(/Mercado\s+Livre/i), null, nome);
     }
 });

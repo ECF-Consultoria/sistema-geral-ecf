@@ -1,9 +1,9 @@
 import { useId, useMemo } from 'react';
-import { ETAPA_POR_CHAVE, etapaDaTrilha, indiceDaEtapa, itensDaEtapa, todosNaOrdem, ETAPAS } from '@/lib/trilha';
+import { CHAVE_NOVO_PRODUTO, etapaDaTrilha, indiceDaEtapa, itensDaEtapa, todosNaOrdem, ETAPAS } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 import CartoesDasOndas from '@/Components/Trilha/CartoesDasOndas';
 import LinhaDoItem from '@/Components/Trilha/LinhaDoItem';
-import { LinkDeAcao, Sobrelinha } from '@/Components/Trilha/Pecas';
+import { Botao, LinkDeAcao, Sobrelinha } from '@/Components/Trilha/Pecas';
 import { plural } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — o painel embaixo da barra de etapas ───────────────
@@ -22,6 +22,10 @@ import { plural } from '@/Components/Trilha/formatos';
 // Planejamento e só para quem escreve), os textos das etapas são os da trilha de
 // trabalho e os links das etapas 2 a 4 viram secundários — o trabalho é feito
 // aqui. Sem `trabalho`, tudo como na 1ª entrega.
+//
+// Da 3ª entrega (o cadastro na trilha): quem escreve ganha o "+ Produto na lista"
+// (a gaveta `e:novo`) no "Ver tudo" e na Lista, como a ação principal; os links
+// para as outras telas viram secundários ao lado dele.
 
 const LINKS_DO_PAINEL = {
     geral: [
@@ -88,6 +92,28 @@ const NOTA = {
     },
 };
 
+/**
+ * "+ Produto na lista" (3ª entrega): abre a gaveta de criar (`e:novo`). Só para quem escreve — quem desenha
+ * decide. O `data-chave` é por onde o foco volta quando a gaveta fecha sem o produto ter nascido.
+ */
+export function BotaoNovoProduto({ onAbrir, className }) {
+    return (
+        <Botao primario data-chave={CHAVE_NOVO_PRODUTO} data-acao="novo-produto" className={className} onClick={(evento) => onAbrir(CHAVE_NOVO_PRODUTO, evento.currentTarget)}>
+            + Produto na lista
+        </Botao>
+    );
+}
+
+/** As ações do cabeçalho de um painel de quem escreve: o "+ Produto na lista" na frente e os links, secundários. */
+export function AcoesComNovoProduto({ chave, links, onAbrir }) {
+    return (
+        <div className="flex flex-wrap gap-2">
+            <BotaoNovoProduto onAbrir={onAbrir} />
+            <AcoesDoPainel chave={chave} links={links} secundarios />
+        </div>
+    );
+}
+
 /** Os links do cabeçalho do painel; o primeiro é o destaque (menos quando todos são `secundarios`). */
 export function AcoesDoPainel({ chave, links, secundarios = false }) {
     const acoes = (LINKS_DO_PAINEL[chave] ?? []).filter(([campo]) => links?.[campo]);
@@ -137,8 +163,8 @@ export function RegraDePronto({ chave, trabalho = false }) {
     );
 }
 
-/** "Etapa 2 de 6 · Estrategista". */
-export const sobrelinhaDaEtapa = (chave) => `Etapa ${indiceDaEtapa(chave) + 1} de ${ETAPAS.length} · ${ETAPA_POR_CHAVE[chave]?.dono ?? ''}`;
+/** "Etapa 2 de 6 · Estrategista" ("Etapa 1 de 6 · Equipe ECF" na Lista da trilha de trabalho). */
+export const sobrelinhaDaEtapa = (chave, trabalho = false) => `Etapa ${indiceDaEtapa(chave) + 1} de ${ETAPAS.length} · ${etapaDaTrilha(chave, trabalho)?.dono ?? ''}`;
 
 function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, podeEditar = false }) {
     // A onda de cada oferta, para a segunda linha "{onda} · começa 05/11".
@@ -173,7 +199,7 @@ export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, po
             data-painel="geral"
             titulo="Tudo da loja, na ordem da trilha"
             texto={`${plural(nProdutos, 'produto na lista', 'produtos na lista')} · ${plural(nOfertas, 'oferta', 'ofertas')} · ${noAr} no ar. Clique numa etapa acima para ver só o que está nela.`}
-            acoes={<AcoesDoPainel chave="geral" links={links} />}
+            acoes={podeEditar ? <AcoesComNovoProduto chave="geral" links={links} onAbrir={onAbrir} /> : <AcoesDoPainel chave="geral" links={links} />}
         >
             <Linhas
                 entradas={todosNaOrdem(dados)}
@@ -202,7 +228,7 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = 
     return (
         <MolduraDoPainel
             data-painel={chave}
-            sobrelinha={sobrelinhaDaEtapa(chave)}
+            sobrelinha={sobrelinhaDaEtapa(chave, trabalho)}
             titulo={etapa.titulo}
             texto={etapa.faz}
             acoes={<AcoesDoPainel chave={chave} links={links} secundarios={trabalho && ETAPAS_DE_TRABALHO.includes(chave)} />}

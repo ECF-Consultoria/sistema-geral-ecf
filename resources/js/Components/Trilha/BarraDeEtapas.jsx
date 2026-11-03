@@ -1,4 +1,4 @@
-import { ETAPAS } from '@/lib/trilha';
+import { ETAPAS, etapaDaTrilha } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 
 // ─── Trilha de produtos — a barra das 6 etapas ──────────────────────────────
@@ -10,15 +10,19 @@ import { cn } from '@/lib/utils';
 // As linhas entre as etapas são o fundo da grade aparecendo no `gap-px`: assim
 // a mesma barra quebra em 6, 3 (até 1000px) e 2 colunas (até 560px) sem
 // calcular borda por posição. A seta só aparece com as 6 lado a lado.
+//
+// Com a trilha de trabalho (`trabalho`), o dono é o da trilha de trabalho: a Lista
+// é da "Equipe ECF" (3ª entrega: quem cadastra é a equipe, aqui dentro).
 
 /**
  * @param {{
  *   contagem: Record<string, number>,
  *   etapa: ?string,
  *   onEscolher: (chave: string) => void,
+ *   trabalho?: boolean,
  * }} props
  */
-export default function BarraDeEtapas({ contagem, etapa, onEscolher }) {
+export default function BarraDeEtapas({ contagem, etapa, onEscolher, trabalho = false }) {
     return (
         <nav
             aria-label="Etapas da trilha"
@@ -61,7 +65,7 @@ export default function BarraDeEtapas({ contagem, etapa, onEscolher }) {
                             <small className="ml-1 text-[12px] font-semibold tracking-normal text-trilha-muted">{unidade}</small>
                         </span>
                         <span className="text-[12px] text-trilha-muted">
-                            <b className="font-semibold text-trilha-fg2">{e.dono}</b>
+                            <b className="font-semibold text-trilha-fg2">{etapaDaTrilha(e.chave, trabalho).dono}</b>
                         </span>
                         {escolhida && <span aria-hidden="true" className="trilha-gradiente absolute inset-x-0 bottom-0 h-[3px]" />}
                         {i < ETAPAS.length - 1 && <span aria-hidden="true" className="trilha-seta max-[1000px]:hidden" />}

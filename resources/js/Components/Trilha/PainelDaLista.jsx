@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { ETAPA_POR_CHAVE, chaveDoProduto } from '@/lib/trilha';
+import { Suspense, lazy, useMemo } from 'react';
+import { chaveDeCadastro, chaveDoProduto, etapaDaTrilha } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
-import { AcoesDoPainel, MolduraDoPainel, RegraDePronto, sobrelinhaDaEtapa } from '@/Components/Trilha/PainelDaEtapa';
+import { AcoesComNovoProduto, AcoesDoPainel, BotaoNovoProduto, MolduraDoPainel, RegraDePronto, sobrelinhaDaEtapa } from '@/Components/Trilha/PainelDaEtapa';
 import { FOTOS_MINIMAS, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — etapa 1: a lista de produtos como planilha ────────
@@ -14,6 +14,14 @@ import { FOTOS_MINIMAS, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } fro
 // ficha do produto ou pela planilha-modelo importada) — daí os dois quadros
 // "Pelo sistema" / "Pela planilha", com o texto do protótipo trocado pelo que o
 // Portal faz de verdade.
+//
+// Com a trilha de trabalho (3ª entrega, 02/11/2026) quem cadastra é a EQUIPE,
+// aqui dentro: "+ Produto na lista" cria (a gaveta `e:novo`) e a linha abre a
+// gaveta de cadastro do produto (`e:{id}`) — a do produto que já andou
+// (`cadastro_travado`), o painel de leitura (`p:{id}`). O quadro "Pelo sistema"
+// da equipe mora em `Cadastro/` e chega por `lazy` (só quem escreve baixa o JS
+// da pasta); o cliente e o "Ver como: Cliente" leem só uma nota neutra, e o
+// "Pela planilha" sai.
 
 const COLUNAS = [
     { rotulo: 'Fotos' },
@@ -29,6 +37,9 @@ const COLUNAS = [
 ];
 
 const TD = 'border-b border-trilha-line2 px-3 py-2.5 align-middle';
+
+// O quadro da equipe: só quem escreve baixa a pasta `Cadastro/` (os textos dela são da equipe).
+const QuadrosDaLista = lazy(() => import('@/Components/Trilha/Cadastro/QuadrosDaLista'));
 
 function CelulaOk({ texto = null }) {
     return (
@@ -83,8 +94,10 @@ function CelulaDaFicha({ ficha }) {
     );
 }
 
-function LinhaDaPlanilha({ produto, onAbrir }) {
+function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
     const chave = chaveDoProduto(produto);
+    // Quem escreve abre a gaveta de cadastro; o produto que já andou, só o painel de leitura.
+    const chaveAoAbrir = podeEditar && !produto.cadastro_travado ? chaveDeCadastro(produto) : chave;
     const fotos = produto.fotos_min ?? 0;
     const custo = fmtCusto(produto);
     const situacao = situacaoNaPlanilha(produto);
@@ -92,7 +105,7 @@ function LinhaDaPlanilha({ produto, onAbrir }) {
 
     // A linha inteira abre o painel (mouse); o nome é o botão de verdade (teclado e
     // leitor de tela) e é para ele que o foco volta quando o painel fecha.
-    const abrir = (evento) => onAbrir(chave, evento.currentTarget.querySelector('[data-chave]'));
+    const abrir = (evento) => onAbrir(chaveAoAbrir, evento.currentTarget.querySelector('[data-chave]'));
 
     return (
         <tr data-produto={produto.id} onClick={abrir} className="cursor-pointer hover:bg-trilha-surface2">
@@ -116,6 +129,7 @@ function LinhaDaPlanilha({ produto, onAbrir }) {
                 <button
                     type="button"
                     data-chave={chave}
+                    data-abre={chaveAoAbrir}
                     className="text-left font-bold text-trilha-fg hover:underline focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
                 >
                     {produto.nome || 'Produto sem nome'}
@@ -159,16 +173,49 @@ function LinhaDaPlanilha({ produto, onAbrir }) {
     );
 }
 
+/** Os dois quadros de como a Lista se preenche, sem a trilha de trabalho (1ª entrega): o Portal faz. */
+function QuadrosDoPortal() {
+    return (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3 border-b border-trilha-line px-[18px] py-4">
+            <div className="flex flex-col gap-1.5 rounded-xl border border-trilha-line px-[14px] py-3">
+                <b className="text-[14px] text-trilha-fg">Pelo sistema</b>
+                <span className="text-[12.5px] text-trilha-muted">
+                    Um produto por vez, na ficha do produto no cadastro do Portal. Ao escolher a categoria, a ficha técnica dela aparece para preencher.
+                </span>
+            </div>
+            <div className="flex flex-col gap-1.5 rounded-xl border border-trilha-line px-[14px] py-3">
+                <b className="text-[14px] text-trilha-fg">Pela planilha</b>
+                <span className="text-[12.5px] text-trilha-muted">
+                    1. Baixe a planilha-modelo na tela de Produtos do Portal. 2. Preencha fora do sistema. 3. Importe de volta: o Portal mostra uma prévia antes de gravar.
+                </span>
+            </div>
+        </div>
+    );
+}
+
+/** Com a trilha de trabalho, quem não cadastra (o cliente, o "Ver como: Cliente") lê só isto. */
+function NotaDaLista() {
+    return (
+        <div className="border-b border-trilha-line px-[18px] py-4">
+            <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-trilha-line px-[14px] py-3" data-nota="lista">
+                <span className="text-[12.5px] text-trilha-fg2">A equipe ECF cadastra os produtos da sua loja aqui.</span>
+            </div>
+        </div>
+    );
+}
+
 /**
  * @param {{
  *   dados: {produtos: Array},
  *   visao: 'equipe'|'cliente',
  *   links: object,
  *   onAbrir: (chave: string, origem: ?HTMLElement) => void,
+ *   trabalho?: boolean,
+ *   podeEditar?: boolean,
  * }} props
  */
-export default function PainelDaLista({ dados, links, onAbrir }) {
-    const etapa = ETAPA_POR_CHAVE.lista;
+export default function PainelDaLista({ dados, links, onAbrir, trabalho = false, podeEditar = false }) {
+    const etapa = etapaDaTrilha('lista', trabalho);
     // Os que mais faltam primeiro. O sort é estável: no empate fica a ordem do servidor (etapa, nome).
     const produtos = useMemo(
         () => [...(dados.produtos ?? [])].sort((a, b) => (b.faltas?.length ?? 0) - (a.faltas?.length ?? 0)),
@@ -178,27 +225,20 @@ export default function PainelDaLista({ dados, links, onAbrir }) {
     return (
         <MolduraDoPainel
             data-painel="lista"
-            sobrelinha={sobrelinhaDaEtapa('lista')}
+            sobrelinha={sobrelinhaDaEtapa('lista', trabalho)}
             titulo={etapa.titulo}
             texto={etapa.faz}
-            acoes={<AcoesDoPainel chave="lista" links={links} />}
+            acoes={podeEditar ? <AcoesComNovoProduto chave="lista" links={links} onAbrir={onAbrir} /> : <AcoesDoPainel chave="lista" links={links} />}
         >
-            <RegraDePronto chave="lista" />
+            <RegraDePronto chave="lista" trabalho={trabalho} />
 
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3 border-b border-trilha-line px-[18px] py-4">
-                <div className="flex flex-col gap-1.5 rounded-xl border border-trilha-line px-[14px] py-3">
-                    <b className="text-[14px] text-trilha-fg">Pelo sistema</b>
-                    <span className="text-[12.5px] text-trilha-muted">
-                        Um produto por vez, na ficha do produto no cadastro do Portal. Ao escolher a categoria, a ficha técnica dela aparece para preencher.
-                    </span>
-                </div>
-                <div className="flex flex-col gap-1.5 rounded-xl border border-trilha-line px-[14px] py-3">
-                    <b className="text-[14px] text-trilha-fg">Pela planilha</b>
-                    <span className="text-[12.5px] text-trilha-muted">
-                        1. Baixe a planilha-modelo na tela de Produtos do Portal. 2. Preencha fora do sistema. 3. Importe de volta: o Portal mostra uma prévia antes de gravar.
-                    </span>
-                </div>
-            </div>
+            {!trabalho && <QuadrosDoPortal />}
+            {trabalho && podeEditar && (
+                <Suspense fallback={null}>
+                    <QuadrosDaLista />
+                </Suspense>
+            )}
+            {trabalho && !podeEditar && <NotaDaLista />}
 
             {produtos.length ? (
                 // `relative` de propósito: as células têm `sr-only` (posição absoluta). Sem um ancestral posicionado,
@@ -223,13 +263,16 @@ export default function PainelDaLista({ dados, links, onAbrir }) {
                         </thead>
                         <tbody>
                             {produtos.map((produto) => (
-                                <LinhaDaPlanilha key={produto.id} produto={produto} onAbrir={onAbrir} />
+                                <LinhaDaPlanilha key={produto.id} produto={produto} onAbrir={onAbrir} podeEditar={podeEditar} />
                             ))}
                         </tbody>
                     </table>
                 </div>
             ) : (
-                <div className="px-[18px] py-[30px] text-center text-trilha-muted">Nenhum produto cadastrado ainda.</div>
+                <div className="flex flex-col items-center gap-3 px-[18px] py-[30px] text-center text-trilha-muted" data-lista-vazia="">
+                    <span>Nenhum produto cadastrado ainda.</span>
+                    {podeEditar && <BotaoNovoProduto onAbrir={onAbrir} />}
+                </div>
             )}
         </MolduraDoPainel>
     );

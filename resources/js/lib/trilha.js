@@ -81,6 +81,12 @@ export const ETAPA_POR_CHAVE = Object.fromEntries(ETAPAS.map((e) => [e.chave, e]
  * siglas são as do sistema (`-CB2`, `KT-`, `CT4-`).
  */
 const TEXTOS_DA_TRILHA_DE_TRABALHO = {
+    // 3ª entrega (02/11/2026): quem cadastra é a equipe, aqui dentro. O `faz` é neutro: o cliente também lê.
+    // O "Pronto quando" não muda (a régua do servidor é a mesma; o teste de render a confere).
+    lista: {
+        dono: 'Equipe ECF',
+        faz: 'A equipe cadastra cada produto aqui: nome, categoria, ficha técnica, cores, fotos, medidas e custo. Completo, ele segue sozinho para o mapeamento.',
+    },
     mapa: {
         faz: 'Todo produto vira oferta simples. Aqui se decide o que combina: combo (o mesmo produto em mais unidades, SKU-CB2), kit (com outros produtos, KT-SKU1-SKU2) e combit (com outros, algum em mais unidades, CT4-SKU1-SKU2). Não precisa esperar a simples vender.',
     },
@@ -127,6 +133,20 @@ export const chaveDaOferta = (oferta) => `o:${oferta.id}`;
 export const chaveDaOnda = (onda) => `w:${onda.id}`;
 export const CHAVE_NOVA_ONDA = 'w:nova';
 export const chaveDeMapear = (produto) => `m:${produto.id}`;
+
+/**
+ * 3ª entrega: a gaveta de CADASTRO do produto — `e:12` edita o produto 12 e `e:novo` cria um. Só para a
+ * equipe com escrita: para os outros, `e:12` cai no painel de leitura `p:12` e `e:novo` não abre nada
+ * (`painelDaChave`, em `Components/Trilha/estadoDaTela.js`).
+ */
+export const CHAVE_NOVO_PRODUTO = 'e:novo';
+export const chaveDeCadastro = (produto) => `e:${produto.id}`;
+
+/**
+ * A gaveta fecha no Esc só quando ninguém dentro dela já tratou a tecla: a lista aberta de um campo (família,
+ * ambientes) fecha a si mesma com `preventDefault`, e o Esc dela não pode levar a gaveta junto (3ª entrega).
+ */
+export const deveFecharNoEsc = (evento) => evento?.key === 'Escape' && !evento.defaultPrevented;
 
 /**
  * Os itens de uma etapa, no formato que as linhas da tela usam.
@@ -176,12 +196,20 @@ export function acharItem(dados, chave) {
  * O que a chave do `?abrir=` abre, se ainda existir:
  * - `p:`/`o:` → `{painel: 'item', …acharItem}` (o painel do produto ou da oferta);
  * - `w:7` → `{painel: 'onda', onda}`; `w:nova` → `{painel: 'onda', onda: null}`;
- * - `m:12` → `{painel: 'mapear', produto}`.
- * Quem pode ver cada um (o `w:nova` e o `m:` são da equipe com escrita) quem decide é a tela.
+ * - `m:12` → `{painel: 'mapear', produto}`;
+ * - `e:12` → `{painel: 'cadastro', produto}`; `e:novo` → `{painel: 'cadastro', produto: null}`.
+ * Quem pode ver cada um (o `w:nova`, o `m:` e o `e:` são da equipe com escrita) quem decide é a tela.
  */
 export function acharAberto(dados, chave) {
     if (typeof chave !== 'string') return null;
     if (chave === CHAVE_NOVA_ONDA) return { painel: 'onda', chave, onda: null };
+    if (chave === CHAVE_NOVO_PRODUTO) return { painel: 'cadastro', chave, produto: null };
+    if (chave.startsWith('e:')) {
+        const id = Number(chave.slice(2));
+        const produto = (dados.produtos ?? []).find((p) => p.id === id);
+
+        return produto ? { painel: 'cadastro', chave, produto } : null;
+    }
     if (chave.startsWith('w:')) {
         const id = Number(chave.slice(2));
         const onda = (dados.ondas ?? []).find((w) => w.id === id);
@@ -209,15 +237,22 @@ export const ofertasDoProduto = (dados, produtoId) =>
  * oferta sem produto na Lista que está no Planejamento não é trabalho do
  * Estrategista: ela fica fora das ondas ("Fora das ondas · sem produto na Lista").
  *
+ * Com a trilha de trabalho (3ª entrega), a Lista é da equipe: "Equipe ECF · cadastrar a lista" — e o
+ * cliente lê "cadastrando seus produtos".
+ *
  * @param {{produtos: Array, ofertas: Array}} dados
  * @param {'equipe'|'cliente'} visao
+ * @param {boolean} [trabalho]
  */
-export function comQuemEsta(dados, visao) {
+export function comQuemEsta(dados, visao, trabalho = false) {
     const n = contagemPorEtapa(dados);
     const paraPlanejar = (dados.ofertas ?? []).filter((o) => o.etapa === 'plano' && !o.sem_produto).length;
+    const daLista = trabalho
+        ? { dono: 'Equipe ECF', sigla: 'EQ', papel: '', descricao: visao === 'cliente' ? 'cadastrando seus produtos' : 'cadastrar a lista' }
+        : { dono: 'Cliente', sigla: 'C', papel: 'cli', descricao: visao === 'cliente' ? 'você' : 'completar a lista' };
 
     return [
-        { dono: 'Cliente', sigla: 'C', papel: 'cli', descricao: visao === 'cliente' ? 'você' : 'completar a lista', quantidade: n.lista, etapa: 'lista' },
+        { ...daLista, quantidade: n.lista, etapa: 'lista' },
         { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + paraPlanejar, etapa: 'mapa' },
         { dono: 'Robô', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo' },
         { dono: 'Publicador', sigla: 'P', papel: '', descricao: 'revisar e publicar', quantidade: n.revisao, etapa: 'revisao' },
@@ -239,9 +274,13 @@ export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.s
  * (`estaNoAr`); a que não está pede "Conferir" — "No ar" ao lado de "Fora do ar"
  * se contradiria. A oferta sem produto na Lista não entra em onda: no
  * Planejamento ela pede "Abrir", não "Planejar".
+ *
+ * Com a trilha de trabalho (`trabalho`, 3ª entrega) quem cadastra é a equipe: o cliente só acompanha, também
+ * na Lista. O produto que já andou (`travado`: o robô preparou, está na revisão ou no ar) só se lê — "Ver".
  */
-export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false } = {}) {
-    if (visao === 'cliente') return etapa === 'lista' ? 'Completar' : 'Acompanhar';
+export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false, trabalho = false, travado = false } = {}) {
+    if (visao === 'cliente') return etapa === 'lista' && !trabalho ? 'Completar' : 'Acompanhar';
+    if (etapa === 'lista' && travado) return 'Ver';
     if (etapa === 'lanc') return noAr ? 'No ar' : 'Conferir';
     if (etapa === 'plano' && semProduto) return 'Abrir';
 

@@ -1,4 +1,4 @@
-import { ETAPA_POR_CHAVE, acaoDoItem, chaveDeMapear, estaNoAr } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, acaoDoItem, chaveDeCadastro, chaveDeMapear, estaNoAr } from '@/lib/trilha';
 import { quandoDaOfertaNaOnda } from '@/lib/trilhaOndas';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
@@ -16,6 +16,10 @@ import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/fo
 // antes da data da onda), e o produto da etapa 2 abre
 // direto o painel de mapear para quem escreve (`m:{id}`) — para os outros, o
 // painel do produto, só leitura.
+//
+// Da 3ª entrega (o cadastro na trilha): o produto da Lista abre a gaveta de
+// cadastro (`e:{id}`) para quem escreve, com a ação "Completar"; o que já andou
+// (`cadastro_travado`) abre o painel de leitura (`p:{id}`), com a ação "Ver".
 //
 // No celular (até 760px) vira duas colunas: SKU e ação no alto; nome,
 // progresso e situação embaixo, na largura toda.
@@ -43,10 +47,14 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
     const situacao = situacaoDoItem(entrada, { trabalho });
     const onda = ehOferta && item.onda_id != null ? ondaPorId?.get(item.onda_id) ?? null : null;
     const quandoNaOnda = quandoDaOfertaNaOnda(item, onda);
-    // O produto da etapa 2 abre o painel de mapear para quem escreve; a linha continua sendo a do produto (`data-chave`).
-    const chaveAoAbrir = !ehOferta && podeEditar && etapa === 'mapa' ? chaveDeMapear(item) : chave;
+    // O produto da etapa 2 abre o painel de mapear para quem escreve, e o da Lista, a gaveta de cadastro (o
+    // travado, o painel de leitura). A linha continua sendo a do produto (`data-chave`): o foco volta para ela.
+    const travado = !ehOferta && !!item.cadastro_travado;
+    let chaveAoAbrir = chave;
+    if (!ehOferta && podeEditar && etapa === 'mapa') chaveAoAbrir = chaveDeMapear(item);
+    if (!ehOferta && podeEditar && etapa === 'lista' && !travado) chaveAoAbrir = chaveDeCadastro(item);
     const noAr = ehOferta && estaNoAr(item);
-    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto });
+    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado });
     // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto. "No ar" é o que
     // o status diz: a oferta da etapa 6 que não está à venda não fica verde (com alerta, já fica âmbar).
     const tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : noAr ? 'ok' : 'run';

@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
-import { ETAPA_POR_CHAVE, chaveDeMapear, chaveDoProduto, ofertasDoProduto } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, chaveDeCadastro, chaveDeMapear, chaveDoProduto, deveFecharNoEsc, ofertasDoProduto } from '@/lib/trilha';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
 import CaixaDaOnda from '@/Components/Trilha/CaixaDaOnda';
+import { candidatasDaVolta } from '@/Components/Trilha/estadoDaTela';
 import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — o painel lateral ──────────────────────────────────
@@ -26,6 +27,12 @@ import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto
 // com `data-foco-inicial`), fica preso nele no Tab, Esc e o clique no fundo
 // fecham, e ao fechar o foco volta para quem abriu — ou para a linha do item,
 // se quem abriu sumiu, ou para a vista.
+//
+// Da 3ª entrega (o cadastro na trilha): o produto ganha "Editar cadastro" (a
+// gaveta `e:{id}`, em `Cadastro/`) para quem escreve, e a gaveta passa a ter uma
+// GUARDA de saída: o painel de cadastro registra nela se há algo não salvo, e
+// fechar (Esc, fundo, "Fechar") pergunta primeiro. O Esc que um campo já tratou
+// (a lista aberta da família, por exemplo) não fecha a gaveta.
 //
 // Visão do cliente (de verdade ou na simulação da equipe): sem MLB, sem preparo
 // do agente, sem lista de sugestões, sem link do Publicador e sem nenhuma
@@ -124,7 +131,7 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
         <>
             <Caixa titulo="Onde está" data-caixa="onde-esta">
                 {/* Produto mapeado (etapa null): passou pelas duas primeiras; quem anda agora são as ofertas. */}
-                <OndeEsta etapa={produto.etapa} feitas={produto.etapa ? null : 2} />
+                <OndeEsta etapa={produto.etapa} feitas={produto.etapa ? null : 2} trabalho={trabalho} />
                 {!produto.etapa && (
                     <span className="text-[12.5px] text-trilha-muted">Já mapeado: daqui em diante, cada oferta deste produto segue a sua trilha (veja abaixo).</span>
                 )}
@@ -246,6 +253,16 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
             );
         }
     }
+    // "Editar cadastro" (3ª entrega): a gaveta de cadastro, para quem escreve e com o produto que ainda não andou
+    // (o travado só se lê — aqui mesmo). Na Lista é a ação principal; fora dela, secundária.
+    const podeEditarCadastro = podeEditar && !produto.cadastro_travado;
+    if (podeEditarCadastro) {
+        rodape.push(
+            <Botao key="cadastro" primario={produto.etapa === 'lista'} data-acao="editar-cadastro" onClick={() => onAbrir(chaveDeCadastro(produto))}>
+                Editar cadastro
+            </Botao>,
+        );
+    }
     // O produto ainda no mapeamento tem o "Mapear" como ação principal; o já mapeado, o Publicador.
     const mapearEhPrincipal = podeMapear && produto.etapa === 'mapa';
     const botaoMapear = podeMapear && (
@@ -298,7 +315,7 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
             )}
 
             <Caixa titulo="Onde está" data-caixa="onde-esta">
-                <OndeEsta etapa={oferta.etapa} />
+                <OndeEsta etapa={oferta.etapa} trabalho={trabalho} />
             </Caixa>
 
             <Caixa titulo="Composição" extra={<span className="font-pub-mono text-[12.5px] font-semibold text-trilha-fg">{oferta.sku}</span>} data-caixa="composicao">
@@ -397,7 +414,25 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
 
 // ═══ A gaveta: a casca de todos os painéis ═══════════════════════════════════
 
-const GavetaContexto = createContext({ idDoTitulo: undefined, onFechar: () => {} });
+const GavetaContexto = createContext({ idDoTitulo: undefined, onFechar: () => {}, guarda: null });
+
+/**
+ * A guarda de saída da gaveta (3ª entrega): o painel com formulário registra `{mexido(), confirmar(seguir)}` e a
+ * página pergunta a ela antes de fechar, de abrir outro item por dentro e de trocar o "Ver como". Com algo mexido,
+ * o painel mostra a confirmação no rodapé e chama `seguir` se a pessoa descartar (ou salvar). `guardiao` precisa
+ * ser estável (as funções leem o estado de agora por referência).
+ */
+export function useGuardaDaGaveta(guardiao) {
+    const { guarda } = useContext(GavetaContexto);
+    useEffect(() => {
+        if (!guarda) return undefined;
+        guarda.current = guardiao;
+
+        return () => {
+            if (guarda.current === guardiao) guarda.current = null;
+        };
+    }, [guarda, guardiao]);
+}
 
 /**
  * O clique no fundo escurecido fecha o painel — menos o 2º clique de um duplo clique: ele cai no fundo que o
@@ -410,16 +445,14 @@ export const fecharNoFundo = (onFechar) => (evento) => {
 
 /**
  * Para onde o foco volta quando quem abriu sumiu: a linha do item (o painel de
- * mapear volta para a linha do produto; a onda, para o cartão dela — e, se a
- * onda foi apagada e o cartão sumiu, para o "+ Nova onda") ou, sem linha na
- * vista, a própria vista (achado T3 da revisão de 31/10).
+ * mapear e o de cadastro voltam para a linha do produto; a onda, para o cartão
+ * dela — e, se a onda foi apagada e o cartão sumiu, para o "+ Nova onda"; o
+ * produto novo, para o "+ Produto na lista") ou, sem linha na vista, a própria
+ * vista (achado T3 da revisão de 31/10). A ordem é `candidatasDaVolta`.
  */
 function alvoDaVolta(chave) {
-    const candidatas = [chave];
-    if (typeof chave === 'string' && chave.startsWith('m:')) candidatas.push(`p:${chave.slice(2)}`);
-    if (typeof chave === 'string' && chave.startsWith('w:')) candidatas.push('w:nova');
     const comChave = [...document.querySelectorAll('[data-chave]')];
-    for (const c of candidatas) {
+    for (const c of candidatasDaVolta(chave)) {
         const achado = comChave.find((el) => el.dataset.chave === c);
         if (achado) return achado;
     }
@@ -432,10 +465,11 @@ function alvoDaVolta(chave) {
  *   chave: string,
  *   origem: {current: ?HTMLElement},
  *   onFechar: () => void,
+ *   guarda?: ?{current: ?{mexido: () => boolean, confirmar: (seguir: () => void) => void}},
  *   children: React.ReactNode,
- * }} props
+ * }} props  `onFechar` já passa pela guarda (a página monta); `guarda` é onde o painel com formulário se registra.
  */
-export function Gaveta({ chave, origem, onFechar, children }) {
+export function Gaveta({ chave, origem, onFechar, guarda = null, children }) {
     const painel = useRef(null);
     const idDoTitulo = useId();
     // A chave de agora, para a limpeza ao fechar (o painel pode ter trocado de item por dentro).
@@ -466,7 +500,8 @@ export function Gaveta({ chave, origem, onFechar, children }) {
 
     useEffect(() => {
         const aoTeclar = (evento) => {
-            if (evento.key !== 'Escape') return;
+            // O Esc que um campo de dentro já tratou (fechou a lista dele) não fecha a gaveta.
+            if (!deveFecharNoEsc(evento)) return;
             evento.preventDefault();
             onFechar();
         };
@@ -507,7 +542,7 @@ export function Gaveta({ chave, origem, onFechar, children }) {
                     'pb-[env(safe-area-inset-bottom,0px)] pr-[env(safe-area-inset-right,0px)] pt-[env(safe-area-inset-top,0px)]',
                 )}
             >
-                <GavetaContexto.Provider value={{ idDoTitulo, onFechar }}>{children}</GavetaContexto.Provider>
+                <GavetaContexto.Provider value={{ idDoTitulo, onFechar, guarda }}>{children}</GavetaContexto.Provider>
             </aside>
         </div>
     );

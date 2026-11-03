@@ -619,3 +619,33 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   limite do Mercado Envios — ficaria na Lista para sempre.
 - Os serviços do cadastro aceitam `Company` + `AtorDoPortal` explícitos; só o CONTROLLER do Portal lê `PortalContexto`
   (que lança fora do `portal.auth`). A trilha usa controllers próprios com a guarda da 2ª entrega.
+
+## 30. F1 do cadastro (03/11/2026): o `lazy` que tira a página do manifest, e o contrato da gaveta
+
+- **`lazy` de uma pasta pode tirar a PÁGINA do manifest do Vite, com o build saindo 0.** A `Trilha/Empresa` carrega
+  `Components/Trilha/Cadastro/` por `React.lazy` (o cliente não baixa os textos da equipe). Os pedaços do cadastro
+  importam peças que só a página usa (`PainelLateral`, `Pecas`, `trilhaEscrita`…); com um caminho só até eles, o
+  Rollup deixa essas peças DENTRO do pedaço da página e o faz exportá-las — e o pedaço deixa de ser a fachada da
+  página: a chave `resources/js/Pages/Trilha/Empresa.jsx` some do manifest (vira `_Empresa-….js`). O `@vite([...
+  "resources/js/Pages/{$page['component']}.jsx"])` do `app.blade.php` derruba a rota ("Unable to locate file in Vite
+  manifest"), e nada avisa no build. Conserto escolhido: `Pages/Trilha/CadastroSobDemanda.jsx`, que não é tela — só
+  pede os mesmos pedaços, criando o 2º caminho (o Rollup passa as peças comuns para um pedaço próprio). O teste de
+  fonte em `trilha-empresa-render.test.js` exige que todo `lazy` de `Cadastro/` esteja nele. Não foi para
+  `manualChunks` no `vite.config.js` porque ele vale para o build inteiro, num arquivo que os dois devs disputam.
+  **Depois de qualquer `lazy` novo: conferir no `public/build/manifest.json` que a página continua lá** — "sair 0" não
+  prova nada.
+- **A trava do cadastro é UMA régua:** `TrilhaDaEmpresa::travasDoCadastro()` — a mesma no `montar`
+  (`cadastro_travado`, só na porta da equipe) e nas escritas (`CadastroNaTrilha::travado`, 409
+  `{travado, motivo}`). A F6 (versão) deve responder 409 SEM `travado`: a tela só vira "só leitura" com `travado`.
+- **Toda linha da rota 3 leva `codigo` e `nome`** (o normalizador do Portal exige; sem eles a linha volta em `erros`
+  com HTTP 200) — o `linhaParaServidor` já manda os dois sempre. Na F1 a linha sem `id` é 422 (variação nova é da F4).
+- **O retrato devolve custo e medidas como NÚMERO** (o cast do model: `1890.5`, `{c: 60, kg: 8.5}`) e o título
+  capitalizado pelo `TituloDoProduto`: o "mexido" da tela compara com o retrato NOVO, nunca com o que foi digitado.
+- **Bling: duas travas, duas chaves.** `bling` = SKU travado (vínculo ativo); `estoque_do_bling` = estoque travado
+  (só com a sincronização de estoque da conexão ligada). O serviço já ignora os dois ao gravar e avisa; a tela os
+  mostra só para leitura.
+- **O `criar` prende a linha de `companies`** (`lockForUpdate`) durante o `gravarLinhas`: o duplo clique ou duas abas
+  caem no "código já existe", sem depender só do unique. Nenhuma chamada HTTP dentro da trava.
+- A conferência de ponta a ponta (`CadastroDePontaAPontaTest` + o teste "o corpo do Salvar é o que o servidor lê" de
+  `trilha-cadastro.test.js`) usa o MESMO corpo literal dos dois lados: mudar o formato da linha num lado só quebra
+  um dos dois.

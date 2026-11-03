@@ -21,10 +21,11 @@ const CHIP = 'inline-flex items-center gap-2 rounded-full border border-trilha-l
  *   visao: 'equipe'|'cliente',
  *   etapa: ?string,
  *   onEscolher: (chave: ?string) => void,
- * }} props
+ *   trabalho?: boolean,
+ * }} props  Com a trilha de trabalho (`trabalho`), a Lista é da equipe ("Equipe ECF · cadastrar a lista").
  */
-export default function ComQuemEsta({ dados, visao, etapa, onEscolher }) {
-    const donos = comQuemEsta(dados, visao);
+export default function ComQuemEsta({ dados, visao, etapa, onEscolher, trabalho = false }) {
+    const donos = comQuemEsta(dados, visao, trabalho);
 
     return (
         <div className="mb-[18px] mt-[14px] flex flex-wrap items-center gap-2" data-com-quem-esta="">

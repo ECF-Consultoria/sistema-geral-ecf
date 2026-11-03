@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TrilhaLayout from '@/Layouts/TrilhaLayout';
 import MapaDaLoja from '@/Components/Trilha/MapaDaLoja';
 import CabecalhoDaTrilha, { AbasDaVista } from '@/Components/Trilha/CabecalhoDaTrilha';
@@ -6,11 +6,11 @@ import BarraDeEtapas from '@/Components/Trilha/BarraDeEtapas';
 import ComQuemEsta from '@/Components/Trilha/ComQuemEsta';
 import PainelDaLista from '@/Components/Trilha/PainelDaLista';
 import { PainelDaEtapa, PainelGeral } from '@/Components/Trilha/PainelDaEtapa';
-import { Gaveta, PainelDoItem } from '@/Components/Trilha/PainelLateral';
+import { Gaveta, MioloDaGaveta, PainelDoItem } from '@/Components/Trilha/PainelLateral';
 import PainelDaOnda from '@/Components/Trilha/PainelDaOnda';
 import PainelDeMapear from '@/Components/Trilha/PainelDeMapear';
 import Aviso from '@/Components/Trilha/Aviso';
-import { CHAVE_NOVA_ONDA, contagemPorEtapa } from '@/lib/trilha';
+import { CHAVE_NOVA_ONDA, chaveDeCadastro, contagemPorEtapa } from '@/lib/trilha';
 import { recarregar } from '@/lib/trilhaEscrita';
 import {
     buscaComEstado,
@@ -43,8 +43,31 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // "Ver como: Cliente". Os painéis de escrita (a onda, `w:`; o mapear, `m:`) usam
 // a MESMA gaveta dos itens; depois de cada escrita a página recarrega só os
 // dados da trilha (`recarregar`) e mostra o resultado no `Aviso`.
+//
+// ### 3ª entrega (02/11/2026): o cadastro do produto na trilha
+// A equipe com escrita cria ("+ Produto na lista", `e:novo`) e completa o produto
+// (`e:{id}`) na mesma gaveta. A pasta `Components/Trilha/Cadastro/` chega SÓ por
+// `lazy` e só com `podeEditar`: o cliente nunca baixa aquele JS (os textos são da
+// equipe). A gaveta de cadastro registra uma GUARDA: com algo não salvo, fechar,
+// abrir outro item por dentro e trocar o "Ver como" pedem confirmação no rodapé
+// dela antes de seguir.
 
 const ID_DA_VISTA = 'trilha-vista';
+
+// Só quem escreve chega a desenhar estes (a página não abre o painel `cadastro` para mais ninguém).
+const PainelDoCadastro = lazy(() => import('@/Components/Trilha/Cadastro/PainelDoCadastro'));
+const NovoProduto = lazy(() => import('@/Components/Trilha/Cadastro/NovoProduto'));
+
+/** O que a gaveta mostra enquanto o JS do cadastro chega (a 1ª vez que alguém abre um). */
+function AbrindoOCadastro({ produto }) {
+    return (
+        <MioloDaGaveta sobrelinha={produto ? 'Produto da lista' : 'Produto novo'} titulo={produto ? produto.nome || 'Produto sem nome' : 'Produto novo'} ocupado>
+            <p className="m-0 text-[13px] text-trilha-muted" data-carregando-cadastro="">
+                Abrindo o cadastro…
+            </p>
+        </MioloDaGaveta>
+    );
+}
 
 /** A busca da URL de agora ("" fora do navegador). */
 const buscaDaUrl = () => (typeof window === 'undefined' ? '' : window.location?.search ?? '');
@@ -205,6 +228,22 @@ export function TelaDaTrilha({
         trocarAberto(null);
     }, [trocarAberto]);
 
+    // A guarda de saída da gaveta (3ª entrega): o painel de cadastro se registra aqui (`useGuardaDaGaveta`). Com algo
+    // mexido, ele mostra a confirmação e só chama `seguir` se a pessoa descartar ou salvar.
+    const guarda = useRef(null);
+    const passarPelaGuarda = useCallback((seguir) => {
+        const g = guarda.current;
+        if (g?.mexido?.()) {
+            g.confirmar(seguir);
+
+            return;
+        }
+        seguir();
+    }, []);
+    const fecharComGuarda = useCallback(() => passarPelaGuarda(fechar), [passarPelaGuarda, fechar]);
+    const abrirComGuarda = useCallback((chave, elemento = null) => passarPelaGuarda(() => abrirItem(chave, elemento)), [passarPelaGuarda, abrirItem]);
+    const verComoComGuarda = useCallback((valor) => passarPelaGuarda(() => onVerComo(valor)), [passarPelaGuarda, onVerComo]);
+
     // "Abrir na trilha" (Mapa da loja): volta para a aba Trilha, na etapa em que o item
     // tem linha (a onda, no Planejamento), com o painel dele aberto.
     const abrirNaTrilha = useCallback(
@@ -213,9 +252,9 @@ export function TelaDaTrilha({
             if (!destino) return;
             setVista('trilha');
             setEtapa(destino);
-            abrirItem(chave);
+            abrirComGuarda(chave);
         },
-        [dados, abrirItem],
+        [dados, abrirComGuarda],
     );
 
     // "+ Nova onda" na caixa da oferta: abre a onda nova lembrando de onde veio.
@@ -263,6 +302,24 @@ export function TelaDaTrilha({
         if (daOferta) trocarAberto(daOferta);
     }, [voltaDaOnda, trocarAberto]);
 
+    // O produto nasceu ("Criar produto"): espera a recarga (ele precisa estar nos dados para a gaveta dele abrir)
+    // e, se a gaveta ainda é a mesma, troca para o cadastro dele. O foco, ao fechar, vai para a linha do produto.
+    const produtoCriado = useCallback(
+        async (resposta, marca) => {
+            await recarregarTrilha();
+            if (marca !== abertura.current) return;
+            const id = resposta?.produto?.id;
+            if (!id) {
+                fechar();
+
+                return;
+            }
+            origem.current = null;
+            trocarAberto(chaveDeCadastro({ id }));
+        },
+        [recarregarTrilha, fechar, trocarAberto],
+    );
+
     // "Ver no Planejamento" do mapeamento concluído.
     const verNoPlanejamento = useCallback(() => {
         setVista('trilha');
@@ -280,7 +337,7 @@ export function TelaDaTrilha({
     }, [aberto, temPainel, fechar]);
 
     const geradoEm = fmtGeradoEm(gerado_em);
-    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirItem, trabalho: comTrabalho, podeEditar };
+    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirComGuarda, trabalho: comTrabalho, podeEditar };
     // Os endereços de escrita só vão aos painéis de quem escreve: no "Ver como: Cliente" eles nem chegam lá.
     const escritaComum = { escrita: podeEditar ? escrita : null, onAvisar: avisar, onRecarregar: recarregarTrilha };
     // A chave troca o conteúdo inteiro a cada painel (de uma oferta para outra, também): o formulário, o
@@ -296,7 +353,7 @@ export function TelaDaTrilha({
                 dados={dados}
                 visao={visaoEfetiva}
                 links={linksDaVisao}
-                onAbrir={abrirItem}
+                onAbrir={abrirComGuarda}
                 trabalho={comTrabalho}
                 podeEditar={podeEditar}
                 planejamento={{ ...escritaComum, preEscolha, onNovaOnda: podeEditar ? novaOndaDaOferta : null }}
@@ -311,7 +368,7 @@ export function TelaDaTrilha({
                 visao={visaoEfetiva}
                 podeEditar={podeEditar}
                 retorno={painel.onda ? null : voltaDaOnda}
-                onAbrir={abrirItem}
+                onAbrir={abrirComGuarda}
                 onFechar={fechar}
                 onCriada={ondaCriada}
                 onApagada={ondaApagada}
@@ -326,10 +383,28 @@ export function TelaDaTrilha({
                 key={chaveDoConteudo}
                 produto={painel.produto}
                 dados={dados}
-                onAbrir={abrirItem}
+                onAbrir={abrirComGuarda}
                 onVerPlanejamento={verNoPlanejamento}
                 {...escritaComum}
             />
+        );
+    } else if (painel?.painel === 'cadastro') {
+        // Só chega aqui com `podeEditar` (`painelDaChave`): o `e:` de quem não escreve já virou o painel `p:`.
+        conteudoDaGaveta = (
+            <Suspense key={chaveDoConteudo} fallback={<AbrindoOCadastro produto={painel.produto} />}>
+                {painel.produto ? (
+                    <PainelDoCadastro
+                        produto={painel.produto}
+                        dados={dados}
+                        links={linksDaVisao}
+                        trabalho={comTrabalho}
+                        onAbrir={abrirComGuarda}
+                        {...escritaComum}
+                    />
+                ) : (
+                    <NovoProduto escrita={escritaComum.escrita} onCriado={produtoCriado} marcaDaAbertura={marcaDaAbertura} onAvisar={avisar} />
+                )}
+            </Suspense>
         );
     }
 
@@ -339,7 +414,7 @@ export function TelaDaTrilha({
                 empresa={empresa}
                 portaDaEquipe={portaDaEquipe}
                 verComo={verComo}
-                onVerComo={onVerComo}
+                onVerComo={verComoComGuarda}
                 sessaoEquipe={!!sessao_equipe}
             />
 
@@ -351,8 +426,8 @@ export function TelaDaTrilha({
                     <MapaDaLoja dados={dados} visao={visaoEfetiva} onAbrir={abrirNaTrilha} trabalho={comTrabalho} />
                 ) : (
                     <>
-                        <BarraDeEtapas contagem={contagem} etapa={etapa} onEscolher={escolherEtapa} />
-                        <ComQuemEsta dados={dados} visao={visaoEfetiva} etapa={etapa} onEscolher={escolherEtapa} />
+                        <BarraDeEtapas contagem={contagem} etapa={etapa} onEscolher={escolherEtapa} trabalho={comTrabalho} />
+                        <ComQuemEsta dados={dados} visao={visaoEfetiva} etapa={etapa} onEscolher={escolherEtapa} trabalho={comTrabalho} />
                         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
                             {etapa === null && <PainelGeral {...propsDoPainel} />}
                             {etapa === 'lista' && <PainelDaLista {...propsDoPainel} />}
@@ -369,7 +444,7 @@ export function TelaDaTrilha({
             </footer>
 
             {conteudoDaGaveta && (
-                <Gaveta chave={aberto} origem={origem} onFechar={fechar}>
+                <Gaveta chave={aberto} origem={origem} onFechar={fecharComGuarda} guarda={guarda}>
                     {conteudoDaGaveta}
                 </Gaveta>
             )}

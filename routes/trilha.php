@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
@@ -42,6 +43,16 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::get('/', [TrilhaController::class, 'index'])->name('index');
         Route::get('/{company}', [TrilhaController::class, 'empresa'])->name('empresa');
 
+        // Cadastro (3ª entrega, 02/11/2026): criar o produto (nome + SKU), abrir a gaveta e gravar as caixas — pelos
+        // serviços do Portal, sem o Portal. O controller confere as duas chaves, a escrita no Portal da empresa e o
+        // produto do endereço. `POST produtos` é o endereço `escrita.produtos` que a tela já recebe.
+        Route::post('/{company}/produtos', [CadastroDaTrilhaController::class, 'criar'])
+            ->middleware('throttle:30,1,trilha.cadastro.criar')->name('cadastro.criar');
+        Route::get('/{company}/produtos/{produto}/cadastro', [CadastroDaTrilhaController::class, 'abrir'])
+            ->middleware('throttle:120,1,trilha.cadastro.abrir')->name('cadastro.abrir');
+        Route::post('/{company}/produtos/{produto}/linhas', [CadastroDaTrilhaController::class, 'linhas'])
+            ->middleware('throttle:120,1,trilha.cadastro.linhas')->name('cadastro.linhas');
+
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
             ->middleware('throttle:60,1,trilha.mapeamento')->name('mapeamento.opcoes');
@@ -53,6 +64,20 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::get('/{company}/fotos/{variacao}/{imagem}', [FotosDaTrilhaController::class, 'ver'])
             ->where(['variacao' => '[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
             ->middleware('throttle:600,1,trilha.fotos')->name('fotos');
+
+        // Categoria e ficha técnica do cadastro (3ª entrega, F2): buscar pelo nome, navegar na árvore, os campos da
+        // categoria e os termos do título — só leitura de dado público (APP token). O controller confere as duas chaves
+        // e a escrita no Portal da empresa; `MLB` + até 17 dígitos no `where` (o resto é 404).
+        Route::get('/{company}/categorias', [\App\Http\Controllers\Trilha\CategoriasDaTrilhaController::class, 'buscar'])
+            ->middleware('throttle:60,1,trilha.categorias')->name('categorias');
+        Route::get('/{company}/categorias/arvore', [\App\Http\Controllers\Trilha\CategoriasDaTrilhaController::class, 'arvore'])
+            ->middleware('throttle:180,1,trilha.categorias.arvore')->name('categorias.arvore');
+        Route::get('/{company}/categorias/{categoria}/campos', [\App\Http\Controllers\Trilha\CategoriasDaTrilhaController::class, 'campos'])
+            ->where('categoria', 'MLB[0-9]{1,17}')
+            ->middleware('throttle:60,1,trilha.categorias.campos')->name('categorias.campos');
+        Route::get('/{company}/categorias/{categoria}/titulo', [\App\Http\Controllers\Trilha\CategoriasDaTrilhaController::class, 'titulo'])
+            ->where('categoria', 'MLB[0-9]{1,17}')
+            ->middleware('throttle:60,1,trilha.categorias.titulo')->name('categorias.titulo');
 
         // Planejamento: as ondas e quem está em cada uma.
         Route::post('/{company}/ondas', [OndasDaTrilhaController::class, 'criar'])

@@ -1,0 +1,36 @@
+// ─── Trilha de produtos — o 2º caminho até a pasta `Cadastro/` (é para o Vite) ──
+//
+// NÃO é uma tela: nenhum controller manda `Trilha/CadastroSobDemanda`, e nada
+// aqui roda. O arquivo existe para o MANIFEST do Vite (3ª entrega, 03/11/2026).
+//
+// O problema: a página `Trilha/Empresa` carrega a pasta `Components/Trilha/Cadastro/`
+// por `lazy` (só quem escreve baixa aquele JS — os textos são da equipe). Os
+// pedaços do cadastro usam peças que só a página usa (`PainelLateral`, `Pecas`,
+// `trilhaEscrita`…). Como o único caminho até eles passava pela página, o Rollup
+// deixava essas peças DENTRO do pedaço da página e fazia o pedaço exportá-las
+// para o cadastro — e um pedaço que exporta mais do que a página deixa de ser a
+// "fachada" dela: o manifest perdia a chave `resources/js/Pages/Trilha/Empresa.jsx`
+// (virava `_Empresa-….js`). O `@vite([... "resources/js/Pages/{$page['component']}.jsx"])`
+// do `app.blade.php` então quebra a rota com "Unable to locate file in Vite
+// manifest" — e o build sai 0, sem aviso nenhum.
+//
+// O conserto: este arquivo também é uma página para o `import.meta.glob` do
+// `app.jsx`, e pede os mesmos pedaços. Com dois caminhos até eles (a página e
+// este), o Rollup não pode supor que as peças da página já estão carregadas e as
+// põe num pedaço próprio — o da página volta a ser só dela.
+//
+// A regra (conferida em tests/js/trilha-empresa-render.test.js): todo `lazy` de
+// fora da pasta `Cadastro/` aponta para um pedaço que está aqui também. Apagar
+// este arquivo, ou esquecer um pedaço novo aqui, tira a página do manifest.
+
+/** Os pedaços da pasta `Cadastro/` que a trilha carrega sob demanda (os mesmos `lazy` da página e da Lista). */
+export const PEDACOS_DO_CADASTRO = {
+    PainelDoCadastro: () => import('@/Components/Trilha/Cadastro/PainelDoCadastro'),
+    NovoProduto: () => import('@/Components/Trilha/Cadastro/NovoProduto'),
+    QuadrosDaLista: () => import('@/Components/Trilha/Cadastro/QuadrosDaLista'),
+};
+
+/** Não desenha nada (não é uma tela). */
+export default function CadastroSobDemanda() {
+    return null;
+}

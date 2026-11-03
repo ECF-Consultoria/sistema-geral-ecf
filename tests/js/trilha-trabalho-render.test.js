@@ -145,7 +145,7 @@ const pilulasDasLinhas = (html) => [...html.matchAll(/class="([^"]*)" data-acao-
     .map(([, classe, acao]) => [acao, classe.match(/\btext-trilha-(ok|warn|run)\b/)?.[1] ?? '?']);
 
 /** As ações de ESCRITA da tela (botões e campos): nenhuma pode aparecer para o cliente nem para quem não escreve. */
-const ACOES_DE_ESCRITA = /data-acao="(?:nova-onda|colocar-na-onda|mudar-de-onda|tirar-da-onda|mapear|criar-onda|salvar-onda|apagar-onda|confirmar-apagar|concluir-mapeamento)"|<form\b|<select\b|<input\b|data-seletor-de-onda/;
+const ACOES_DE_ESCRITA = /data-acao="(?:nova-onda|colocar-na-onda|mudar-de-onda|tirar-da-onda|mapear|criar-onda|salvar-onda|apagar-onda|confirmar-apagar|concluir-mapeamento|novo-produto|editar-cadastro|criar-produto|salvar-cadastro)"|<form\b|<select\b|<input\b|<textarea\b|data-seletor-de-onda|data-carregando-cadastro/;
 
 /** Textos que a trilha de trabalho não pode ter: a data da onda não é prazo, e o "Concluir" não "planeja". */
 const VOCABULARIO_PROIBIDO = [/prazo/i, /publicar até/i, /data de publicação/i, /próxima entrega/i, /planejad[oa]/i, /\bSKU\d?\+SKU/, /-KIT\b/, /-CBT\d/];
@@ -583,7 +583,8 @@ test('painel da onda: editar (data entre hoje e hoje + 365), apagar só antes de
 
 test('a visão do cliente não tem NENHUM botão nem campo de escrita — em nenhuma etapa, aba ou painel; quem não escreve, também não', () => {
     const buscas = ['', '?etapa=lista', '?etapa=mapa', '?etapa=plano', '?etapa=robo', '?etapa=revisao', '?etapa=lanc', '?vista=mapa',
-        '?abrir=o:o-31', '?abrir=o:o-41', '?abrir=o:c-2-4', '?abrir=o:c-1-2', '?abrir=o:s-3', '?abrir=p:5', '?abrir=p:3', '?abrir=w:9', '?abrir=w:7', '?abrir=w:nova', '?abrir=m:5'];
+        '?abrir=o:o-31', '?abrir=o:o-41', '?abrir=o:c-2-4', '?abrir=o:c-1-2', '?abrir=o:s-3', '?abrir=p:5', '?abrir=p:3', '?abrir=w:9', '?abrir=w:7', '?abrir=w:nova', '?abrir=m:5',
+        '?abrir=p:9', '?abrir=e:9', '?abrir=e%3A9&etapa=lista', '?abrir=e:novo', '?abrir=e:2'];
     for (const [nome, props] of [
         ['porta do cliente', paraCliente(PROPS_TRABALHO)],
         ['equipe sem pode_editar', { ...PROPS_TRABALHO, pode_editar: false, escrita: null }],
@@ -617,10 +618,12 @@ test('"Ver como: Cliente" com a escrita de verdade nas props: nenhum botão nem 
     };
     assert.ok(PROPS_TRABALHO.escrita && PROPS_TRABALHO.pode_editar, 'a equipe tem escrita: a simulação é que tira');
 
-    for (const busca of ['', '?etapa=mapa', '?etapa=plano', '?etapa=robo', '?vista=mapa', '?abrir=o:o-31', '?abrir=o:c-2-4', '?abrir=o:c-1-2',
-        '?abrir=p:5', '?abrir=p:3', '?abrir=w:9', '?abrir=w:7', '?abrir=w:nova', '?abrir=m:5']) {
+    for (const busca of ['', '?etapa=lista', '?etapa=mapa', '?etapa=plano', '?etapa=robo', '?vista=mapa', '?abrir=o:o-31', '?abrir=o:c-2-4', '?abrir=o:c-1-2',
+        '?abrir=p:5', '?abrir=p:3', '?abrir=w:9', '?abrir=w:7', '?abrir=w:nova', '?abrir=m:5', '?abrir=p:9', '?abrir=e:9', '?abrir=e:novo']) {
         const saida = comoCliente(busca);
         assert.equal(saida.match(ACOES_DE_ESCRITA)?.[0] ?? null, null, `Ver como: Cliente ${busca}`);
+        // 3ª entrega: o "Mercado Livre" é texto da equipe (pasta `Cadastro/`); a tela do cliente não o escreve.
+        assert.equal(texto(saida).match(/Mercado Livre/i), null, `Ver como: Cliente ${busca}`);
         assert.ok(texto(saida).includes('Visão do cliente.'), busca);
         assert.ok(texto(saida).includes('Primeira versão · só leitura'), `${busca}: o rodapé é o do cliente`);
     }
@@ -697,4 +700,130 @@ test('mapa da loja com a trilha de trabalho: "começa"/"começou", ondas pela da
     assert.ok(texto(detalhe('w:9')).includes('Abrir a onda'));
     assert.ok(!detalhe('w:sem').includes('abrir-na-trilha') && !detalhe('w:antes').includes('abrir-na-trilha'));
     assert.equal(M.estado.etapaDoItem(PROPS_TRABALHO, 'w:9'), 'plano', 'o "Abrir na trilha" da onda vai para o Planejamento');
+});
+
+// ─── 3ª entrega: o cadastro do produto na etapa 1 ──────────────────────────
+
+/** As linhas da planilha da Lista: `[id do produto, o que o clique abre]`. */
+const aberturasDaPlanilha = (html) => [...html.matchAll(/<tr data-produto="(\d+)"[\s\S]*?data-abre="([^"]+)"/g)].map(([, id, abre]) => [Number(id), abre]);
+
+test('etapa 1 com a trilha de trabalho: "Equipe ECF", o texto novo, "+ Produto na lista" na frente e a linha abre o cadastro (o travado, o painel de leitura)', () => {
+    const saida = desenhar(PROPS_TRABALHO, '?etapa=lista');
+    const t = texto(saida);
+
+    for (const s of [
+        'Etapa 1 de 6 · Equipe ECF',
+        'A equipe cadastra cada produto aqui: nome, categoria, ficha técnica, cores, fotos, medidas e custo. Completo, ele segue sozinho para o mapeamento.',
+        'Pronto quando:',
+        '+ Produto na lista',
+        'Equipe ECF · cadastrar a lista',
+    ]) {
+        assert.ok(t.includes(s), `faltou na Lista: ${s}`);
+    }
+    // A barra de etapas também diz quem é o dono agora.
+    assert.match(saida, /data-etapa="lista"[\s\S]*?<b class="[^"]*">Equipe ECF<\/b>/);
+    // O botão é a ação principal; o "Abrir o Portal da empresa" fica ao lado, secundário (sai na F5).
+    const novo = abertura(saida, 'data-acao="novo-produto"');
+    assert.ok(novo.includes('data-chave="e:novo"') && novo.includes('bg-trilha-navy'), novo);
+    const portal = abertura(saida, 'data-link="portal_abrir"');
+    assert.ok(portal && !portal.includes('bg-trilha-navy'), portal);
+    // "Pela planilha" sai; o quadro da equipe chega por `lazy` (no render do servidor, ainda não).
+    assert.ok(!t.includes('Pela planilha') && !t.includes('Um produto por vez, na ficha do produto no cadastro do Portal'));
+
+    // A linha abre a gaveta de cadastro; o produto que já andou, o painel de leitura.
+    const aberturas = Object.fromEntries(aberturasDaPlanilha(saida));
+    assert.equal(aberturas[9], 'e:9');
+    assert.equal(aberturas[7], 'e:7');
+    assert.equal(aberturas[5], 'e:5', 'o painel ripado só está num kit que não andou');
+    assert.equal(aberturas[2], 'p:2', 'a cadeira está na revisão: só leitura');
+    assert.equal(aberturas[1], 'p:1');
+    // O foco volta para o nome (a chave de sempre, `p:`).
+    assert.ok(saida.includes('data-chave="p:9" data-abre="e:9"'));
+    for (const proibido of VOCABULARIO_PROIBIDO) assert.equal(t.match(proibido), null, `Lista: ${proibido}`);
+
+    // Lista vazia: o texto e o botão.
+    const vazia = desenhar({ ...PROPS_TRABALHO, produtos: [] }, '?etapa=lista');
+    assert.match(vazia, /data-lista-vazia=""[\s\S]*?Nenhum produto cadastrado ainda\.[\s\S]*?data-acao="novo-produto"/);
+});
+
+test('etapa 1 para quem não cadastra (cliente, "Ver como: Cliente", equipe sem escrita): a nota neutra, sem botão e a linha abre o painel de leitura', () => {
+    const { TelaDaTrilha } = M.pagina;
+    global.window.location.search = '?etapa=lista';
+    const comoCliente = renderToStaticMarkup(h(TelaDaTrilha, { ...PROPS_TRABALHO, verComo: 'cliente', onVerComo: () => {} }));
+    for (const [nome, saida] of [
+        ['cliente', desenhar(paraCliente(PROPS_TRABALHO), '?etapa=lista')],
+        ['Ver como: Cliente', comoCliente],
+        ['equipe sem escrita', desenhar({ ...PROPS_TRABALHO, pode_editar: false, escrita: null }, '?etapa=lista')],
+    ]) {
+        const t = texto(saida);
+        assert.ok(t.includes('A equipe ECF cadastra os produtos da sua loja aqui.'), `${nome}: a nota`);
+        assert.ok(!saida.includes('data-acao="novo-produto"'), `${nome}: sem "+ Produto na lista"`);
+        assert.ok(!t.includes('Pela planilha') && !saida.includes('data-quadros-da-equipe'), nome);
+        assert.ok(aberturasDaPlanilha(saida).every(([id, abre]) => abre === `p:${id}`), `${nome}: ${JSON.stringify(aberturasDaPlanilha(saida))}`);
+        assert.ok(t.includes('Etapa 1 de 6 · Equipe ECF'), nome);
+        assert.equal(t.match(/Mercado Livre/i), null, nome);
+    }
+    // O cliente acompanha (não "Completar"): quem cadastra é a equipe.
+    const verTudo = desenhar(paraCliente(PROPS_TRABALHO));
+    assert.ok(texto(verTudo).includes('Equipe ECF · cadastrando seus produtos'));
+    assert.deepEqual([...new Set(pilulasDasLinhas(verTudo).map(([acao]) => acao))], ['Acompanhar']);
+
+    // Sem a trilha de trabalho, tudo como na 1ª entrega.
+    const primeira = texto(desenhar(PROPS_EQUIPE, '?etapa=lista'));
+    assert.ok(primeira.includes('Etapa 1 de 6 · Cliente') && primeira.includes('Pela planilha') && !primeira.includes('+ Produto na lista'));
+});
+
+test('"Ver tudo": "+ Produto na lista" para quem escreve; o produto da Lista abre o cadastro ("Completar") — o travado, o painel ("Ver")', () => {
+    const saida = desenhar(PROPS_TRABALHO);
+    assert.ok(abertura(saida, 'data-acao="novo-produto"').includes('bg-trilha-navy'));
+    assert.ok(!desenhar(paraCliente(PROPS_TRABALHO)).includes('data-acao="novo-produto"'));
+
+    const abriu = (item, props = {}) => {
+        const chaves = [];
+        const botao = M.linha.default({
+            entrada: { tipo: 'p', chave: `p:${item.id}`, etapa: item.etapa, item }, visao: 'equipe', trabalho: true, podeEditar: true,
+            onAbrir: (chave) => chaves.push(chave), ...props,
+        });
+        botao.props.onClick({ currentTarget: null });
+        const pilula = botao.props.children.at(-1);
+
+        return [botao.props['data-chave'], chaves[0], pilula.props['data-acao-da-linha']];
+    };
+    const p9 = PROPS_TRABALHO.produtos.find((p) => p.id === 9);
+    assert.deepEqual(abriu(p9), ['p:9', 'e:9', 'Completar']);
+    assert.deepEqual(abriu({ ...p9, cadastro_travado: true }), ['p:9', 'p:9', 'Ver']);
+    assert.deepEqual(abriu(p9, { podeEditar: false }), ['p:9', 'p:9', 'Completar']);
+    assert.deepEqual(abriu(p9, { podeEditar: false, visao: 'cliente' }), ['p:9', 'p:9', 'Acompanhar']);
+    // O da etapa 2 continua abrindo o mapear.
+    assert.deepEqual(abriu(PROPS_TRABALHO.produtos.find((p) => p.id === 5)), ['p:5', 'm:5', 'Mapear']);
+});
+
+test('gaveta `e:` pela URL: quem escreve abre o cadastro (o JS chega por lazy); o cliente cai no painel de leitura; `e:novo` só para quem escreve', () => {
+    const e9 = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=e:9'), 'e:9');
+    assert.match(e9, /role="dialog" aria-modal="true"/);
+    assert.ok(texto(e9).includes('Produto da lista') && texto(e9).includes('Criado-mudo 2 gavetas') && texto(e9).includes('Abrindo o cadastro…'), texto(e9));
+    assert.match(e9, /aria-busy="true"/);
+    const novo = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=e:novo'), 'e:novo');
+    assert.ok(texto(novo).includes('Produto novo') && texto(novo).includes('Abrindo o cadastro…'));
+    // Produto que não existe mais: nada abre.
+    assert.ok(!desenhar(PROPS_TRABALHO, '?abrir=e:999').includes('role="dialog"'));
+
+    for (const [nome, props] of [['cliente', paraCliente(PROPS_TRABALHO)], ['sem escrita', { ...PROPS_TRABALHO, pode_editar: false, escrita: null }]]) {
+        const lido = painelLateral(desenhar(props, '?abrir=e:9'), 'e:9');
+        assert.ok(texto(lido).includes(nome === 'cliente' ? 'Seu produto' : 'Produto da lista') && !lido.includes('data-carregando-cadastro'), nome);
+        assert.equal(lido.match(ACOES_DE_ESCRITA), null, nome);
+        assert.ok(!desenhar(props, '?abrir=e:novo').includes('role="dialog"'), `${nome}: e:novo não abre`);
+    }
+});
+
+test('painel do produto (`p:`): "Editar cadastro" para quem escreve, com o produto que não andou — principal na Lista', () => {
+    const p9 = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=p:9'), 'p:9');
+    assert.ok(abertura(p9, 'data-acao="editar-cadastro"').includes('bg-trilha-navy'), 'na Lista, a ação principal');
+    const p5 = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=p:5'), 'p:5');
+    assert.ok(p5.includes('data-acao="editar-cadastro"') && !abertura(p5, 'data-acao="editar-cadastro"').includes('bg-trilha-navy'), 'fora da Lista, secundária');
+    // O travado só se lê; quem não escreve, também.
+    assert.ok(!painelLateral(desenhar(PROPS_TRABALHO, '?abrir=p:2'), 'p:2').includes('data-acao="editar-cadastro"'));
+    assert.ok(!painelLateral(desenhar(paraCliente(PROPS_TRABALHO), '?abrir=p:9'), 'p:9').includes('data-acao="editar-cadastro"'));
+    // O "Onde está" do produto com o dono da trilha de trabalho.
+    assert.ok(texto(p9).includes('Lista de produtos · Equipe ECF'));
 });

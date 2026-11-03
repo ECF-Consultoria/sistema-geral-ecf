@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { ETAPAS, ETAPA_POR_CHAVE, chaveDaOferta, indiceDaEtapa } from '@/lib/trilha';
+import { ETAPAS, ETAPA_POR_CHAVE, chaveDaOferta, etapaDaTrilha, indiceDaEtapa } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 import { composicao } from '@/Components/Trilha/formatos';
 
@@ -100,9 +100,11 @@ export function Caixa({ titulo, extra = null, className, children, ...resto }) {
 /**
  * "Onde está": as 6 etapas, com ✓ nas que o item já passou e a atual em destaque.
  * O produto já mapeado (etapa null) passou pelas duas primeiras e não está em
- * nenhuma: daí em diante quem anda são as ofertas dele (`feitas = 2`).
+ * nenhuma: daí em diante quem anda são as ofertas dele (`feitas = 2`). Com a
+ * trilha de trabalho (`trabalho`), o dono de cada etapa é o dela ("Equipe ECF"
+ * na Lista, 3ª entrega).
  */
-export function OndeEsta({ etapa, feitas = null }) {
+export function OndeEsta({ etapa, feitas = null, trabalho = false }) {
     const atual = indiceDaEtapa(etapa);
     const passou = feitas ?? atual;
 
@@ -129,7 +131,7 @@ export function OndeEsta({ etapa, feitas = null }) {
                             {feita ? '✓' : j + 1}
                         </span>
                         <span>
-                            {e.titulo} <span className="text-[12.5px] font-normal text-trilha-muted">· {e.dono}</span>
+                            {e.titulo} <span className="text-[12.5px] font-normal text-trilha-muted">· {etapaDaTrilha(e.chave, trabalho).dono}</span>
                             {feita && <span className="sr-only"> (concluída)</span>}
                             {agora && <span className="sr-only"> (etapa atual)</span>}
                         </span>

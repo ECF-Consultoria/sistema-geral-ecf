@@ -76,6 +76,35 @@ export async function concluirMapeamento(escrita, produtoId, escolha) {
     return corpo(await axios.post(urlDoMapeamento(escrita, produtoId), escolha));
 }
 
+// ─── Cadastro do produto (3ª entrega) ───────────────────────────────────────
+//
+// A gaveta `e:` grava pelas rotas da equipe sob `escrita.produtos` (a mesma base do
+// mapeamento). Toda escrita num produto que já andou responde 409 `{travado, motivo}`
+// (pergunta 1 do desenho): a tela vira só leitura com o motivo.
+
+/** `{escrita.produtos}/{id}` — a base das rotas do cadastro de um produto. */
+export const urlDoProduto = (escrita, produtoId) => `${endereco(escrita, 'produtos')}/${encodeURIComponent(produtoId)}`;
+
+/** O retrato da gaveta (a lista de campos do contrato, §6.3 do desenho): produto, variações, listas, situação, edição. */
+export async function abrirCadastro(escrita, produtoId) {
+    return corpo(await axios.get(`${urlDoProduto(escrita, produtoId)}/cadastro`));
+}
+
+/** "Criar produto": só nome e SKU; nascem o produto, a variação e a oferta simples. */
+export async function criarProduto(escrita, { nome, codigo }) {
+    return corpo(await axios.post(endereco(escrita, 'produtos'), { nome, codigo }));
+}
+
+/**
+ * O "Salvar" das linhas do produto (até 200 por pedido). A `versao` (F6, contra a aba velha) só vai quando há
+ * uma. → a resposta do `gravarLinhas` do Portal: `{linhas, erros, avisos, criadas_nas_listas, totais}`.
+ */
+export async function gravarLinhas(escrita, produtoId, linhas, { versao = null } = {}) {
+    const dados = versao ? { linhas, versao } : { linhas };
+
+    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/linhas`, dados));
+}
+
 // ─── Erros ──────────────────────────────────────────────────────────────────
 
 const SEM_CONEXAO = 'Não consegui falar com o servidor. Confira a conexão e tente de novo.';
@@ -107,10 +136,31 @@ export function mensagemDoErro(erro) {
     if (status === 401) return 'Sua sessão terminou. Entre de novo para continuar.';
     if (status === 403) return texto(data?.message) || 'Você não tem permissão para mudar esta trilha.';
     if (status === 404) return 'Não achei o que você pediu: talvez tenha sido apagado. Recarregue a página.';
+    // O produto que já andou (trava) ou que mudou depois de aberto (versão): o motivo vem do servidor, em português.
+    if (status === 409) return texto(data?.motivo) || texto(data?.message) || 'Este produto não pode mais ser mudado daqui. Recarregue a página.';
     if (status === 429) return 'Muitos pedidos seguidos. Espere um minuto e tente de novo.';
     if (status >= 500) return 'O servidor falhou. Tente de novo em instantes.';
 
     return texto(data?.message) || PADRAO;
+}
+
+/**
+ * Os erros do 422 por campo (`{codigo: 'Este SKU já existe…'}`), com a 1ª mensagem de cada um — para marcar o
+ * campo do formulário em vez de só o rodapé. A mensagem do framework (em inglês) não vai; os outros códigos
+ * não têm campo.
+ *
+ * @returns {Record<string, string>}
+ */
+export function errosDosCampos(erro) {
+    const resposta = erro?.response;
+    if (resposta?.status !== 422) return {};
+    const saida = {};
+    for (const [campo, mensagens] of Object.entries(resposta.data?.errors ?? {})) {
+        const primeira = [mensagens].flat().map(texto).find(Boolean);
+        if (primeira) saida[campo] = primeira;
+    }
+
+    return saida;
 }
 
 // ─── Recarga ────────────────────────────────────────────────────────────────

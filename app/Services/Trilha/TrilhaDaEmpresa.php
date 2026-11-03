@@ -135,6 +135,17 @@ class TrilhaDaEmpresa
 
         // ─── Ofertas ───
         $decididos = self::decidirItens($situacao, $grupos, $ondas, $faltas, avulsasForaDasOndas: $ondas !== null);
+        // 3ª entrega (pergunta 1): o produto que algum item já levou adiante fica só para leitura no cadastro da trilha —
+        // a MESMA régua que as escritas do cadastro conferem ({@see travasDoCadastro()}). A porta do cliente não a recebe.
+        $travas = self::travasDoCadastro(array_map(fn (string $chave) => [
+            'chave'    => $chave,
+            'nome'     => $decididos['itens'][$chave]['nome'],
+            'andou'    => $decididos['andou'][$chave],
+            'produtos' => self::produtosDoItem($decididos['itens'][$chave]),
+        ], array_keys($decididos['itens'])));
+        foreach ($saidaProdutos as $id => $p) {
+            $saidaProdutos[$id]['cadastro_travado'] = isset($travas[$id]);
+        }
         $saidaOfertas = [];
         foreach ($decididos['itens'] as $chave => $item) {
             $saidaOfertas[$chave] = self::item($item, $decididos['decisoes'][$chave], $ondas?->ondaDoItem($chave), $ondas);
@@ -254,6 +265,56 @@ class TrilhaDaEmpresa
         }
 
         return $saida;
+    }
+
+    /**
+     * O que falta no cadastro de UM produto — a régua de {@see faltasDosProdutos()} (e da etapa 1 da tela), sem ler o
+     * catálogo inteiro: o cadastro da trilha (3ª entrega, 02/11/2026) pergunta depois de cada escrita se o produto saiu
+     * da Lista. Consultas fixas: o produto com família, ambientes, variações e volumes, a ficha gravada, as fotos das
+     * variações e a definição guardada da categoria (tabela e cache).
+     *
+     * @return list<string> vazio = completo
+     */
+    public static function faltasDoProduto(Company $empresa, int $produtoId): array
+    {
+        $empresaId = (int) $empresa->id;
+        $produto = EstruturaProduto::query()
+            ->where('company_id', $empresaId)
+            ->with(['familia', 'ambientes', 'variacoes.volumes'])
+            ->findOrFail($produtoId);
+        $salvos = EstruturaProdutoAtributo::query()
+            ->where('company_id', $empresaId)
+            ->where('produto_id', $produto->id)
+            ->get(['produto_id', 'atributo_id', 'valor', 'valor_id', 'unidade']);
+        $fotos = self::fotosPorVariacao($empresaId, array_map('intval', $produto->variacoes->modelKeys()));
+        $definicoes = CompletudeDoProduto::definicoesGuardadas([$produto->categoria_ml_id]);
+
+        return CompletudeDoProduto::avaliar($produto, $salvos, $fotos, $definicoes, ModalidadeDeEnvio::emCache($empresa))['faltas'];
+    }
+
+    /**
+     * Quais produtos têm o cadastro TRAVADO na trilha (3ª entrega, pergunta 1, decisão do usuário de 02/11/2026): o
+     * produto que QUALQUER item da trilha já levou adiante — a Simples, o Combo N, o kit e o combit que o levam — fica só
+     * para leitura, porque mudar o cadastro dele faria o robô refazer texto e imagens (IA paga) e não muda o anúncio no
+     * ar. "Andou" é a régua única {@see SituacaoDasOfertas::andou()}: tem anúncio, o rascunho saiu do DRAFT, o robô já
+     * mexeu ou é o Kit N. A tela ({@see montar()}) e as escritas do cadastro perguntam por aqui.
+     *
+     * @param  iterable<array{chave: string, nome: string, andou: bool, produtos: list<int>}>  $itens  a forma de {@see itens()}
+     * @return array<int, array{chave: string, nome: string}> produto → o primeiro item que andou e o leva
+     */
+    public static function travasDoCadastro(iterable $itens): array
+    {
+        $travas = [];
+        foreach ($itens as $item) {
+            if (! $item['andou']) {
+                continue;
+            }
+            foreach ($item['produtos'] as $produtoId) {
+                $travas[(int) $produtoId] ??= ['chave' => (string) $item['chave'], 'nome' => (string) $item['nome']];
+            }
+        }
+
+        return $travas;
     }
 
     /**
@@ -468,15 +529,20 @@ class TrilhaDaEmpresa
     }
 
     /**
-     * Quantas fotos cada variação tem, numa consulta agrupada.
+     * Quantas fotos cada variação tem, numa consulta agrupada — da empresa toda ou só das variações pedidas.
      *
+     * @param  list<int>|null  $variacaoIds  null = todas as da empresa
      * @return array<int, int>
      */
-    private static function fotosPorVariacao(int $empresaId): array
+    private static function fotosPorVariacao(int $empresaId, ?array $variacaoIds = null): array
     {
+        if ($variacaoIds === []) {
+            return [];
+        }
         $saida = [];
         $linhas = DB::table('estrutura_produto_variacao_imagens')
             ->where('company_id', $empresaId)
+            ->when($variacaoIds !== null, fn ($q) => $q->whereIn('variacao_id', $variacaoIds))
             ->groupBy('variacao_id')
             ->select('variacao_id', DB::raw('count(*) as total'))
             ->get();

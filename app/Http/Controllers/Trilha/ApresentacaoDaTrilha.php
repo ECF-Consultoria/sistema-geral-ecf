@@ -39,6 +39,11 @@ use App\Services\Publicador\ProgramasPublicadorService;
  * ganha `pode_editar` (a mesma régua de escrita do Portal) e os endereços das escritas em `escrita`; o cliente
  * nunca recebe nenhum dos dois, e o "Decidir no Planejamento" do Portal sai da porta dele: o mapeamento passou a
  * ser feito na trilha.
+ *
+ * ### O cadastro na trilha (3ª entrega, 02/11/2026)
+ * A equipe cadastra o produto pela trilha com os endereços que já saem em `escrita.produtos` (`{produtos}` cria,
+ * `{produtos}/{id}/cadastro` abre, `{produtos}/{id}/linhas` grava). Cada produto da equipe leva `cadastro_travado` (o
+ * item que andou deixa o cadastro só para leitura); o cliente nunca recebe a chave.
  */
 class ApresentacaoDaTrilha
 {
@@ -156,8 +161,11 @@ class ApresentacaoDaTrilha
                 'publicador'   => $admin ? $this->contaNoPublicador($empresa) : null,
             ],
             'produtos'      => array_map(fn (array $p) => self::campos($p, self::PRODUTO) + [
-                'url_ficha'      => null,
-                'url_publicador' => $admin ? self::editor($p['pub_produto_id'] ?? null) : null,
+                'url_ficha'        => null,
+                'url_publicador'   => $admin ? self::editor($p['pub_produto_id'] ?? null) : null,
+                // 3ª entrega (pergunta 1): o item que já andou deixa o cadastro do produto só para leitura na trilha. Só
+                // nesta porta — o cliente não cadastra pela trilha e não lê a régua do robô.
+                'cadastro_travado' => (bool) ($p['cadastro_travado'] ?? false),
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
                 'componentes' => self::componentes($o['componentes'] ?? []),

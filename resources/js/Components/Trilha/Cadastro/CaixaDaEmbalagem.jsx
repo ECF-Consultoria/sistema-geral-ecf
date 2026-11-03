@@ -1,0 +1,110 @@
+import { MAX_CAIXAS, caixaVazia } from '@/lib/trilhaCadastro';
+import { cn } from '@/lib/utils';
+import { Botao, CAMPO } from '@/Components/Trilha/Pecas';
+import { Campo } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
+
+// ─── Trilha de produtos — custo e embalagem da variação ─────────────────────
+//
+// O custo (R$, na escrita brasileira: "1.890,00") e as caixas da variação
+// (C × L × A em cm e o peso em kg), até 20. Quem interpreta os números e confere
+// os limites (0,01 a 999,99 cm; 0,001 a 9.999,999 kg) é o servidor: o erro volta
+// no campo. A caixa em que nada foi digitado não conta nem vai no pedido.
+//
+// O frete (ME2, Full ou ME1) e o "Conferir frete pela conta" chegam na F3.
+
+const MEDIDAS = [
+    ['c', 'C', 'Comprimento', 'cm'],
+    ['l', 'L', 'Largura', 'cm'],
+    ['a', 'A', 'Altura', 'cm'],
+    ['kg', 'Peso', 'Peso', 'kg'],
+];
+
+const CAMPO_PEQUENO = cn(CAMPO, 'px-2 text-right tabular-nums');
+
+/** O custo da variação (R$), na escrita brasileira; quem interpreta é o servidor. */
+export function CampoDoCusto({ variacao, erro = null, onCampo }) {
+    return (
+        <Campo rotulo="Custo (R$)" campo="custo" obrigatorio erro={erro} dica="Quanto o produto custa para a loja, por unidade.">
+            {(controle) => (
+                <input
+                    {...controle}
+                    className={cn(controle.className, 'tabular-nums')}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="1.890,00"
+                    value={variacao.custo}
+                    onChange={(e) => onCampo('custo', e.target.value)}
+                />
+            )}
+        </Campo>
+    );
+}
+
+/**
+ * As caixas da embalagem.
+ *
+ * @param {{variacao: {volumes: Array<{c: string, l: string, a: string, kg: string}>},
+ *   erros?: Record<string, string>, onCampo: (campo: string, valor: any) => void}} props
+ */
+export default function CaixaDaEmbalagem({ variacao, erros = {}, onCampo }) {
+    // Sem caixa nenhuma, a tela mostra uma em branco: digitar nela é que cria a 1ª.
+    const caixas = variacao.volumes?.length ? variacao.volumes : [caixaVazia()];
+    const mudarCaixa = (i, medida, valor) => onCampo('volumes', caixas.map((c, j) => (j === i ? { ...c, [medida]: valor } : c)));
+    const tirarCaixa = (i) => onCampo('volumes', caixas.filter((_, j) => j !== i));
+    const maisCaixa = () => onCampo('volumes', [...caixas, caixaVazia()]);
+
+    return (
+        <>
+            <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0" data-campo="volumes">
+                <legend className="mb-1 p-0 text-[12.5px] font-semibold text-trilha-fg2">
+                    Embalagem
+                    <span aria-hidden="true" className="text-trilha-bad">
+                        {' '}*
+                    </span>
+                    <span className="ml-1.5 font-normal text-trilha-muted">C × L × A em cm, peso em kg</span>
+                </legend>
+                <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
+                    {caixas.map((caixa, i) => (
+                        <li key={i} className="grid grid-cols-[repeat(4,minmax(0,1fr))_auto] items-center gap-1.5" data-caixa-da-embalagem={i + 1}>
+                            {MEDIDAS.map(([medida, curto, longo, unidade]) => (
+                                <label key={medida} className="flex min-w-0 flex-col gap-0.5 text-[11.5px] font-semibold text-trilha-muted">
+                                    {i === 0 ? `${curto} (${unidade})` : <span className="sr-only">{`${curto} (${unidade})`}</span>}
+                                    <input
+                                        className={cn(CAMPO_PEQUENO, erros.volumes && 'border-trilha-bad')}
+                                        type="text"
+                                        inputMode="decimal"
+                                        aria-label={`${longo} da caixa ${i + 1} (${unidade})`}
+                                        aria-invalid={erros.volumes ? true : undefined}
+                                        value={caixa[medida]}
+                                        onChange={(e) => mudarCaixa(i, medida, e.target.value)}
+                                    />
+                                </label>
+                            ))}
+                            <Botao
+                                className={cn('self-end px-2 py-[7px] text-[12px]', caixas.length === 1 && 'invisible')}
+                                aria-label={`Tirar a caixa ${i + 1}`}
+                                data-acao="tirar-caixa"
+                                onClick={() => tirarCaixa(i)}
+                                tabIndex={caixas.length === 1 ? -1 : undefined}
+                            >
+                                Tirar
+                            </Botao>
+                        </li>
+                    ))}
+                </ol>
+                {erros.volumes && (
+                    <span className="text-[12px] font-semibold text-trilha-bad" data-erro-do-campo="volumes">
+                        {erros.volumes}
+                    </span>
+                )}
+                {caixas.length < MAX_CAIXAS && (
+                    <span>
+                        <Botao data-acao="mais-caixa" onClick={maisCaixa} className="px-2.5 py-1 text-[12.5px]">
+                            + caixa
+                        </Botao>
+                    </span>
+                )}
+            </fieldset>
+        </>
+    );
+}
