@@ -53,7 +53,7 @@ use Inertia\Inertia;
  *   meses          → Array<{ value: 'YYYYMM', label: 'Junho/2026', parcial: bool }> (desc)
  *   mesSelecionado → string|null (YYYYMM exibido)
  *   mesRefLabel    → string|null (label pt-BR do mês exibido)
- *   parcial          → bool (mês ainda enchendo — COMPARATIVO != FECHADO)
+ *   parcial          → bool (só o mês corrente do calendário — ver listarMeses)
  *   fonteFaturamento → 'adman' (mês corrente ao vivo) | 'csv' (mês fechado/oficial)
  *   erro             → string|null
  *
@@ -2934,8 +2934,8 @@ class PolosController extends Controller
 
     /**
      * Lista os meses distintos presentes no CSV (coluna TIM_MONTH_ID), em ordem
-     * decrescente (mais recente primeiro). Marca como `parcial` o mês que tiver
-     * qualquer linha com COMPARATIVO != FECHADO (mês corrente ainda enchendo).
+     * decrescente (mais recente primeiro). Só o mês corrente do CALENDÁRIO é `parcial`;
+     * mês que já acabou é fechado, diga o COMPARATIVO do CSV o que disser.
      *
      * @param  array<array<string,mixed>>  $linhas
      * @return array<array{value:string,label:string,parcial:bool}>
@@ -2963,9 +2963,16 @@ class PolosController extends Controller
             $temFechado[$mes] = ($temFechado[$mes] ?? false) || $comp === 'FECHADO';
         }
 
+        // Mês que já acabou no calendário é FECHADO mesmo que o CSV só traga linhas
+        // 'PARCIAL' dele. A Comercial leva dias para publicar o 'FECHADO', e nessa janela o
+        // mês passado seguia "corrente" — lido com o cadastro AO VIVO. Em 03/11/2026 a virada
+        // de fases das 08h (M1→M2 74, M2→M3 81, M3→M4 71, M4→Encerrado 48) reescreveu
+        // outubro com as fases de novembro: "no alvo" caiu de 55,0% para 42,9% sem nenhuma
+        // venda mudar. Mês passado lê o roster congelado (montarAtivosDoMes).
+        $corrente = now()->format('Ym');
         $mapa = []; // value(YYYYMM) => parcial(bool)
         foreach ($temFechado as $mes => $fechado) {
-            $mapa[$mes] = ! $fechado;
+            $mapa[$mes] = ! $fechado && (string) $mes >= $corrente;
         }
 
         // O eixo de meses NÃO deve depender do CSV para o mês corrente. A Comercial
@@ -2974,7 +2981,7 @@ class PolosController extends Controller
         // parcial para ele aparecer de imediato, alimentado pela Adman, sem esperar o CSV.
         // (Ativos vêm do MlbEmpresa ao vivo no ramo parcial; localidade fica vazia até o
         //  CSV do mês chegar — degradação apenas cosmética.)
-        $mapa[now()->format('Ym')] = true; // corrente é sempre parcial (ainda enchendo)
+        $mapa[$corrente] = true; // corrente é sempre parcial (ainda enchendo)
 
         krsort($mapa); // desc → mês mais recente primeiro
 

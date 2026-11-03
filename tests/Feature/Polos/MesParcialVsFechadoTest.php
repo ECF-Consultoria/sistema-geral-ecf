@@ -85,15 +85,26 @@ class MesParcialVsFechadoTest extends TestCase
         ])[$mes]);
     }
 
-    public function test_mes_so_com_parcial_continua_parcial(): void
+    public function test_mes_passado_so_com_parcial_ja_conta_como_fechado(): void
     {
-        // Mês que de fato ainda está enchendo: tem de usar o roster ao vivo.
+        // Incidente 03/11/2026: o CSV ainda trazia outubro só com linhas PARCIAL (a Comercial
+        // leva dias para publicar o FECHADO). Outubro seguia "corrente", lido com o cadastro
+        // ao vivo — e a virada de fases das 08h derrubou o "no alvo" de 55,0% para 42,9%.
+        // Este teste afirmava o contrário ("sem linha FECHADO o mês ainda está aberto").
         $mes = $this->mesPassado();
 
-        $this->assertTrue(
+        $this->assertFalse(
             $this->mapa([$this->linha($mes, 'PARCIAL')])[$mes],
-            'Sem nenhuma linha FECHADO o mês ainda está aberto.'
+            'Mês que já acabou no calendário é fechado, diga o CSV o que disser — senão a '
+            .'virada de fases reescreve o mês passado.'
         );
+    }
+
+    public function test_mes_corrente_so_com_parcial_segue_parcial(): void
+    {
+        $corrente = now()->format('Ym');
+
+        $this->assertTrue($this->mapa([$this->linha($corrente, 'PARCIAL')])[$corrente]);
     }
 
     public function test_mes_so_com_fechado_continua_fechado(): void

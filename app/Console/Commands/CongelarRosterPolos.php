@@ -23,6 +23,16 @@ use Illuminate\Support\Facades\DB;
  * estado exato daquele momento — validado contra a planilha de agosto/2026: 134 ativos
  * reconstruídos (M2=54 M3=37 M4=43) contra os 133 da planilha.
  *
+ * O snapshot do mês é a FOTO da última gravação, não a soma de todas: quem saiu do roster
+ * desde a gravação anterior (churn, devolvida a M1) é removido do mês. Decisão de 03/11/2026
+ * — o congelado de outubro acumulava 27 empresas que saíram no meio do mês e dava 48,9% "no
+ * alvo" contra os 55,0% que o painel mostrava em 31/10. Como o agendamento grava às 23:40
+ * todo dia, o mês fecha com a foto do último dia.
+ *
+ * Risco que continua de pé: virada de fases feita no ÚLTIMO dia do mês, antes das 23:40
+ * (aconteceu em 30/09/2026), entra na foto do mês que está acabando. O conserto é
+ * regravar o mês a partir de um backup ou do log — ver learnings painel-polos §20.
+ *
  * Dry-run por padrão: sem --apply só mostra o que gravaria.
  */
 class CongelarRosterPolos extends Command
@@ -78,6 +88,14 @@ class CongelarRosterPolos extends Command
         ));
         $this->line('   ' . collect($porFase)->map(fn ($n, $f) => "{$f}={$n}")->implode('  '));
 
+        // Quem está no snapshot do mês e saiu do roster: sai também da foto.
+        $custs   = array_column($roster, 'cust_id');
+        $sairam  = PoloRosterSnapshot::where('mes', $mes)->whereNotIn('cust_id', $custs)->count();
+        if ($sairam > 0) {
+            $this->line(sprintf('   %s %d empresa(s) que saíram do roster desde a última gravação',
+                $apply ? 'Removendo' : 'Removeria', $sairam));
+        }
+
         if (! $apply) {
             $this->comment('Nada gravado. Rode de novo com --apply.');
 
@@ -85,7 +103,9 @@ class CongelarRosterPolos extends Command
         }
 
         $agora = now();
-        DB::transaction(function () use ($roster, $mes, $origem, $agora) {
+        DB::transaction(function () use ($roster, $custs, $mes, $origem, $agora) {
+            PoloRosterSnapshot::where('mes', $mes)->whereNotIn('cust_id', $custs)->delete();
+
             foreach ($roster as $e) {
                 PoloRosterSnapshot::updateOrCreate(
                     ['mes' => $mes, 'cust_id' => $e['cust_id']],

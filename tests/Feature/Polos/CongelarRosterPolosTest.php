@@ -195,6 +195,59 @@ class CongelarRosterPolosTest extends TestCase
         $this->assertSame('M3', PoloRosterSnapshot::where('mes', $mes)->first()->fase);
     }
 
+    public function test_quem_saiu_do_roster_sai_da_foto_do_mes(): void
+    {
+        // Decisão de 03/11/2026: o mês fecha com a foto do último dia. O congelado de outubro
+        // acumulava 27 empresas que saíram no meio do mês (churn, devolvidas a M1) e dava
+        // 48,9% "no alvo" contra os 55,0% que o painel mostrava em 31/10.
+        $this->empresa(['cust_id' => '6000000001', 'nome' => 'Fica', 'fase' => 'M2']);
+        $this->empresa(['cust_id' => '6000000002', 'nome' => 'Sai No Meio Do Mes', 'fase' => 'M3']);
+        $mes = now()->format('Ym');
+        $anterior = now()->subMonthNoOverflow()->format('Ym');
+        PoloRosterSnapshot::create([
+            'mes' => $anterior, 'cust_id' => '6000000002', 'nome' => 'Sai No Meio Do Mes', 'fase' => 'M3',
+            'origem' => PoloRosterSnapshot::ORIGEM_VIVO, 'congelado_em' => now()->subMonthNoOverflow(),
+        ]);
+
+        $this->artisan('polos:congelar-roster', ['--apply' => true])->assertExitCode(0);
+        MlbEmpresa::where('cust_id', '6000000002')->update(['fase' => 'Churn']);
+        $this->artisan('polos:congelar-roster', ['--apply' => true])->assertExitCode(0);
+
+        $this->assertSame(['6000000001'], PoloRosterSnapshot::where('mes', $mes)->pluck('cust_id')->all(),
+            'Quem saiu do roster desde a última gravação não pode continuar na foto do mês.');
+        $this->assertSame(1, PoloRosterSnapshot::where('mes', $anterior)->count(),
+            'Gravar o mês corrente nunca mexe no congelado de outro mês.');
+    }
+
+    public function test_dry_run_nao_remove_quem_saiu(): void
+    {
+        $this->empresa(['cust_id' => '6100000001', 'fase' => 'M2']);
+        PoloRosterSnapshot::create([
+            'mes' => now()->format('Ym'), 'cust_id' => '6100000002', 'nome' => 'Saiu', 'fase' => 'M2',
+            'origem' => PoloRosterSnapshot::ORIGEM_VIVO, 'congelado_em' => now(),
+        ]);
+
+        $this->artisan('polos:congelar-roster')
+            ->expectsOutputToContain('Removeria 1 empresa(s)')
+            ->assertExitCode(0);
+
+        $this->assertSame(1, PoloRosterSnapshot::where('cust_id', '6100000002')->count());
+    }
+
+    public function test_roster_vazio_nao_apaga_o_mes(): void
+    {
+        // Leitura vazia do cadastro (falha, filtro errado) não pode zerar a foto do mês.
+        $mes = now()->format('Ym');
+        PoloRosterSnapshot::create([
+            'mes' => $mes, 'cust_id' => '6200000001', 'nome' => 'Guardada', 'fase' => 'M4',
+            'origem' => PoloRosterSnapshot::ORIGEM_VIVO, 'congelado_em' => now(),
+        ]);
+
+        $this->artisan('polos:congelar-roster', ['--apply' => true])->assertExitCode(0);
+
+        $this->assertSame(1, PoloRosterSnapshot::where('mes', $mes)->count());
+    }
+
     public function test_mes_invalido_falha_sem_gravar(): void
     {
         $this->artisan('polos:congelar-roster', ['--mes' => 'agosto', '--apply' => true])

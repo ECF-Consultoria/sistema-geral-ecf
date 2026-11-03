@@ -183,7 +183,8 @@ Schedule::command('polos:ads-bonus')
 // time faz na virada do mês (M0→M1→…→M4→Encerrado). Sem isso o mês fechado precisa ser
 // INFERIDO depois, e nenhuma fonte descreve o passado: o cadastro ao vivo já avançou de
 // fase e o CSV da Comercial lista toda a base de sellers, não só o programa.
-// updateOrCreate por (mes, cust_id) → rodar todo dia só reescreve o mês corrente.
+// Cada execução regrava a FOTO do mês corrente (quem saiu do roster sai do mês), então o
+// mês fecha com a foto do último dia — e nunca toca meses anteriores.
 Schedule::command('polos:congelar-roster --apply')
     ->dailyAt('23:40')
     ->timezone('America/Sao_Paulo')
