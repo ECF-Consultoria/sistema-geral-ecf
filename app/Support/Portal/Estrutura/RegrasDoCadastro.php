@@ -3,13 +3,17 @@
 namespace App\Support\Portal\Estrutura;
 
 use App\Models\EstruturaProduto;
+use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 
 /**
  * As regras de leitura do cadastro de produtos que valem nas DUAS portas que gravam o catálogo: a do Portal
- * (`PortalEstruturaProdutosController`) e a da equipe na trilha (`Trilha\CadastroDaTrilhaController`, 3ª entrega,
- * 02/11/2026). Duas cópias da mesma regra já custaram caro: a trilha usa esta, e o Portal passou a usá-la também
- * (extração mecânica, comportamento igual).
+ * (`PortalEstruturaProdutosController`) e a da equipe na trilha (`Trilha\CadastroDaTrilhaController` e
+ * `Trilha\FotosDaTrilhaController`, 3ª entrega, 02/11/2026). Duas cópias da mesma regra já custaram caro: a trilha
+ * usa esta, e o Portal passou a usá-la também (extração mecânica, comportamento igual) — as linhas cruas (F1), a
+ * ficha técnica (F2) e as imagens da variação (F3).
  *
  * Só leitura de requisição: nada aqui grava, consulta o banco ou sabe de qual porta veio o pedido.
  */
@@ -40,6 +44,108 @@ final class RegrasDoCadastro
         }
 
         return (array) $request->input('linhas');
+    }
+
+    // ═══ Imagens da variação ════════════════════════════════════════════════
+
+    /**
+     * A forma do envio de imagens da variação (`imagens[]`): de 1 ao teto por variação numa remessa, cada arquivo nos
+     * formatos e no tamanho do config. O `mimes` confere pelo CONTEÚDO (texto com nome `.jpg` é recusado), e o serviço
+     * confere de novo ao gravar. Extraída do `PortalEstruturaProdutosController::enviarImagens` (3ª entrega da trilha,
+     * F3, 03/11/2026): as duas portas recusam igual.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function imagens(): array
+    {
+        $max = VariacaoImagensService::maxPorVariacao();
+        $kb = (int) config('estrutura_produtos.imagens.max_kb', 10240);
+        $extensoes = implode(',', (array) config('estrutura_produtos.imagens.extensoes', ['jpg', 'jpeg', 'png', 'webp']));
+
+        return [
+            'imagens'   => ['required', 'array', 'min:1', "max:{$max}"],
+            'imagens.*' => ['file', "mimes:{$extensoes}", "max:{$kb}"],
+        ];
+    }
+
+    /**
+     * As mensagens de {@see imagens()}, com `:position` (a 1ª imagem é a 1) — as de sempre do Portal.
+     *
+     * @return array<string, string>
+     */
+    public static function mensagensDasImagens(): array
+    {
+        $max = VariacaoImagensService::maxPorVariacao();
+        $kb = (int) config('estrutura_produtos.imagens.max_kb', 10240);
+        $mb = rtrim(rtrim(number_format($kb / 1024, 1, ',', ''), '0'), ',');
+
+        return [
+            'imagens.required' => 'Escolha ao menos uma imagem.',
+            'imagens.array'    => 'Escolha ao menos uma imagem.',
+            'imagens.min'      => 'Escolha ao menos uma imagem.',
+            'imagens.max'      => "Cada variação aceita até {$max} imagens. Envie menos de uma vez.",
+            'imagens.*.file'   => 'Não foi possível receber a imagem :position. Tente de novo.',
+            'imagens.*.mimes'  => 'A imagem :position não está num formato aceito. Envie JPG, PNG ou WebP.',
+            'imagens.*.max'    => "A imagem :position passa de {$mb} MB; tente uma menor.",
+        ];
+    }
+
+    /**
+     * O envio que estourou o limite do PHP chega SEM arquivo e sem erro: quando o corpo passa
+     * de `post_max_size` o PHP descarta tudo (`$_POST` e `$_FILES` vazios), e quando um só arquivo
+     * passa de `upload_max_filesize` ele vem marcado inválido. Sem esta checagem a tela só veria
+     * "Escolha ao menos uma imagem" (ou nada). Aqui vira a mensagem certa, em `errors.imagens`.
+     *
+     * O caso do corpo acima de `post_max_size` NÃO chega até aqui: o `ValidatePostSize` do Laravel
+     * o barra antes, com 413 sem texto. Quem o transforma na mesma mensagem é o `withExceptions`
+     * de `bootstrap/app.php` (a rota do Portal e, desde a F3 da trilha, a da trilha). Chega aqui o
+     * resto: arquivo marcado inválido, ou corpo grande sem arquivo quando o `post_max_size` do
+     * servidor é maior que o limite que o Laravel enxerga.
+     *
+     * @throws ValidationException
+     */
+    public static function recusarEnvioQueNaoChegou(Request $request): void
+    {
+        $grande = VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
+
+        $recebidos = $request->file('imagens');
+        $recebidos = is_array($recebidos) ? $recebidos : ($recebidos ? [$recebidos] : []);
+
+        foreach ($recebidos as $arquivo) {
+            if ($arquivo instanceof UploadedFile && ! $arquivo->isValid()) {
+                $tamanho = in_array($arquivo->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true);
+
+                throw ValidationException::withMessages(['imagens' => $tamanho ? $grande : 'Não foi possível receber a imagem. Tente de novo.']);
+            }
+        }
+
+        if ($recebidos === []) {
+            $corpo = (int) $request->server('CONTENT_LENGTH', 0);
+            $limitePhp = self::bytesDoIni((string) ini_get('post_max_size'));
+
+            // Corpo de mais de 1 MB sem arquivo algum, ou acima do `post_max_size`, é o PHP que descartou.
+            if ($corpo > 1048576 || ($limitePhp > 0 && $corpo > $limitePhp)) {
+                throw ValidationException::withMessages(['imagens' => $grande]);
+            }
+        }
+    }
+
+    /** "8M" / "512K" / "1G" / "1048576" do php.ini em bytes (0 = sem limite). */
+    public static function bytesDoIni(string $valor): int
+    {
+        $valor = trim($valor);
+        if ($valor === '' || $valor === '0' || $valor === '-1') {
+            return 0;
+        }
+
+        $numero = (int) $valor;
+
+        return match (strtolower(substr($valor, -1))) {
+            'g'     => $numero * 1073741824,
+            'm'     => $numero * 1048576,
+            'k'     => $numero * 1024,
+            default => $numero,
+        };
     }
 
     // ═══ Ficha técnica ══════════════════════════════════════════════════════

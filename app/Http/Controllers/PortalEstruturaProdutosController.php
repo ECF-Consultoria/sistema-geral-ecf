@@ -37,7 +37,6 @@ use App\Support\Portal\Estrutura\RegrasDoCadastro;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -753,25 +752,9 @@ class PortalEstruturaProdutosController extends Controller
         $empresa = PortalContexto::empresa();
         $v = $this->variacaoDaEmpresa($empresa->id, $variacao);
 
-        $this->recusarEnvioQueNaoChegou($request);
-
-        $max = VariacaoImagensService::maxPorVariacao();
-        $kb = (int) config('estrutura_produtos.imagens.max_kb', 10240);
-        $extensoes = implode(',', (array) config('estrutura_produtos.imagens.extensoes', ['jpg', 'jpeg', 'png', 'webp']));
-        $mb = rtrim(rtrim(number_format($kb / 1024, 1, ',', ''), '0'), ',');
-
-        $request->validate([
-            'imagens'   => ['required', 'array', 'min:1', "max:{$max}"],
-            'imagens.*' => ['file', "mimes:{$extensoes}", "max:{$kb}"],
-        ], [
-            'imagens.required' => 'Escolha ao menos uma imagem.',
-            'imagens.array'    => 'Escolha ao menos uma imagem.',
-            'imagens.min'      => 'Escolha ao menos uma imagem.',
-            'imagens.max'      => "Cada variação aceita até {$max} imagens. Envie menos de uma vez.",
-            'imagens.*.file'   => 'Não foi possível receber a imagem :position. Tente de novo.',
-            'imagens.*.mimes'  => 'A imagem :position não está num formato aceito. Envie JPG, PNG ou WebP.',
-            'imagens.*.max'    => "A imagem :position passa de {$mb} MB; tente uma menor.",
-        ]);
+        // As mesmas regras da porta da trilha (`RegrasDoCadastro`, extraídas daqui na F3 da trilha; comportamento igual).
+        RegrasDoCadastro::recusarEnvioQueNaoChegou($request);
+        $request->validate(RegrasDoCadastro::imagens(), RegrasDoCadastro::mensagensDasImagens());
 
         $arquivos = array_values((array) $request->file('imagens'));
         $galeria = $this->imagens->enviar($empresa, $v, $arquivos, PortalContexto::ator());
@@ -911,7 +894,7 @@ class PortalEstruturaProdutosController extends Controller
     public function enviarFotosEmLote(Request $request)
     {
         $empresa = PortalContexto::empresa();
-        $this->recusarEnvioQueNaoChegou($request);
+        RegrasDoCadastro::recusarEnvioQueNaoChegou($request);
 
         $max = FotosEmLoteService::MAX_POR_ENVIO;
         $request->validate([
@@ -1036,61 +1019,6 @@ class PortalEstruturaProdutosController extends Controller
 
         return EstruturaProdutoVariacaoImagem::query()
             ->where('company_id', $empresaId)->where('variacao_id', $v->id)->whereKey($imagem)->firstOrFail();
-    }
-
-    /**
-     * O envio que estourou o limite do PHP chega SEM arquivo e sem erro: quando o corpo passa
-     * de `post_max_size` o PHP descarta tudo (`$_POST` e `$_FILES` vazios), e quando um só arquivo
-     * passa de `upload_max_filesize` ele vem marcado inválido. Sem esta checagem a tela só veria
-     * "Escolha ao menos uma imagem" (ou nada). Aqui vira a mensagem certa.
-     *
-     * O caso do corpo acima de `post_max_size` NÃO chega até aqui: o `ValidatePostSize` do Laravel
-     * o barra antes, com 413 sem texto. Quem o transforma na mesma mensagem é o `withExceptions`
-     * de `bootstrap/app.php`. Chega aqui o resto: arquivo marcado inválido, ou corpo grande sem arquivo
-     * quando o `post_max_size` do servidor é maior que o limite que o Laravel enxerga.
-     */
-    private function recusarEnvioQueNaoChegou(Request $request): void
-    {
-        $grande = VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
-
-        $recebidos = $request->file('imagens');
-        $recebidos = is_array($recebidos) ? $recebidos : ($recebidos ? [$recebidos] : []);
-
-        foreach ($recebidos as $arquivo) {
-            if ($arquivo instanceof UploadedFile && ! $arquivo->isValid()) {
-                $tamanho = in_array($arquivo->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true);
-
-                throw ValidationException::withMessages(['imagens' => $tamanho ? $grande : 'Não foi possível receber a imagem. Tente de novo.']);
-            }
-        }
-
-        if ($recebidos === []) {
-            $corpo = (int) $request->server('CONTENT_LENGTH', 0);
-            $limitePhp = self::bytesDoIni((string) ini_get('post_max_size'));
-
-            // Corpo de mais de 1 MB sem arquivo algum, ou acima do `post_max_size`, é o PHP que descartou.
-            if ($corpo > 1048576 || ($limitePhp > 0 && $corpo > $limitePhp)) {
-                throw ValidationException::withMessages(['imagens' => $grande]);
-            }
-        }
-    }
-
-    /** "8M" / "512K" / "1G" / "1048576" do php.ini em bytes (0 = sem limite). */
-    private static function bytesDoIni(string $valor): int
-    {
-        $valor = trim($valor);
-        if ($valor === '' || $valor === '0' || $valor === '-1') {
-            return 0;
-        }
-
-        $numero = (int) $valor;
-
-        return match (strtolower(substr($valor, -1))) {
-            'g'     => $numero * 1073741824,
-            'm'     => $numero * 1048576,
-            'k'     => $numero * 1024,
-            default => $numero,
-        };
     }
 
     /** @return array{eixos: array, logisticas: array, pendencias: array} */
