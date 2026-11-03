@@ -27,6 +27,21 @@ class AdmanService
     private string $baseUrl;
     private string $apiKey;
 
+    /** Segunda chave de integrador: a das contas dos Polos (ver chaveParaConta()). */
+    private string $apiKeyPolos;
+
+    /** custIds (só dígitos, como chave do array) que a chave dos Polos enxerga — memo por instância. */
+    private ?array $contasChavePolos = null;
+
+    /** Última lista boa de contas da chave dos Polos: ['contas' => [custId...], 'lido_em' => ISO]. Sem expiração. */
+    public const CACHE_CONTAS_CHAVE_POLOS = 'adman:contas-chave-polos:v1';
+
+    /** Idade a partir da qual a lista de contas da chave dos Polos é relida da Adman. */
+    private const CONTAS_CHAVE_POLOS_VALIDADE_HORAS = 6;
+
+    /** Trava entre processos: no máximo uma releitura da lista a cada 5 min, inclusive quando falha. */
+    private const CACHE_TRAVA_RELEITURA_POLOS = 'adman:contas-chave-polos:releitura';
+
     /**
      * Marketplace fallback transicional (Phase 18.5).
      *
@@ -42,15 +57,124 @@ class AdmanService
     {
         $this->baseUrl     = rtrim(config('services.adman.base_url', 'https://api.ad-man.io/v1'), '/');
         $this->apiKey      = config('services.adman.api_key', '');
+        $this->apiKeyPolos = (string) config('services.adman.polos_api_key', '');
         $this->marketplace = 'meli';
     }
 
-    private function headers(): array
+    private function headers(?string $custId = null): array
     {
         return [
-            'integrator-api-key' => $this->apiKey,
+            'integrator-api-key' => $this->chaveParaConta($custId),
             'Accept'             => 'application/json',
         ];
+    }
+
+    // ─── Duas chaves de integrador ──────────────────────────────────────────
+
+    /**
+     * Desde 03/11/2026 a Adman separa as contas da ECF em duas chaves de
+     * integrador, sem sobreposição: a principal enxerga a carteira de
+     * Performance e a dos Polos enxerga as contas dos Polos. Com a chave errada
+     * a Adman responde HTTP 500 "Customer not found" — a mesma resposta de um
+     * custId que não existe —, então não dá para descobrir a chave pelo erro:
+     * a escolha é pela lista de contas que a chave dos Polos enxerga
+     * (GET /meli/accounts). Conta fora dessa lista, ou sem chave dos Polos
+     * configurada, usa a principal (o comportamento de antes).
+     */
+    private function chaveParaConta(?string $custId): string
+    {
+        return $this->contaEstaNaChavePolos($custId) ? $this->apiKeyPolos : $this->apiKey;
+    }
+
+    /** A conta é atendida pela chave dos Polos? (diagnóstico: `php artisan adman:chaves --conta=`). */
+    public function contaEstaNaChavePolos(?string $custId): bool
+    {
+        if ($this->apiKeyPolos === '' || $custId === null) {
+            return false;
+        }
+
+        $cust = preg_replace('/\D/', '', $custId);
+
+        return $cust !== '' && isset($this->contasDaChavePolos()[$cust]);
+    }
+
+    public function temChavePolos(): bool
+    {
+        return $this->apiKeyPolos !== '';
+    }
+
+    /**
+     * custIds que a chave dos Polos enxerga. Lê do cache; relê da Adman quando
+     * a lista passou de 6h ou não existe. Se a releitura falhar, segue com a
+     * última lista boa — sem ela, todas as contas dos Polos voltariam a
+     * "Customer not found".
+     *
+     * @return array<string|int, true>
+     */
+    private function contasDaChavePolos(): array
+    {
+        if ($this->contasChavePolos !== null) {
+            return $this->contasChavePolos;
+        }
+
+        $guardado = Cache::get(self::CACHE_CONTAS_CHAVE_POLOS);
+        $valido   = is_array($guardado) && isset($guardado['contas'], $guardado['lido_em']);
+        $velho    = !$valido
+            || Carbon::parse($guardado['lido_em'])->lt(now()->subHours(self::CONTAS_CHAVE_POLOS_VALIDADE_HORAS));
+
+        if ($velho && Cache::add(self::CACHE_TRAVA_RELEITURA_POLOS, true, now()->addMinutes(5))) {
+            $novo = $this->atualizarContasDaChavePolos();
+            if ($novo !== null) {
+                $guardado = $novo;
+                $valido   = true;
+            }
+        }
+
+        return $this->contasChavePolos = $valido ? array_fill_keys($guardado['contas'], true) : [];
+    }
+
+    /**
+     * Relê da Adman a lista completa de contas da chave dos Polos e grava no
+     * cache. Devolve o que gravou, ou null se falhou ou veio vazia — nesses
+     * casos a lista anterior fica intocada.
+     *
+     * @return array{contas: list<string>, lido_em: string}|null
+     */
+    public function atualizarContasDaChavePolos(): ?array
+    {
+        if ($this->apiKeyPolos === '') {
+            return null;
+        }
+
+        $contas = [];
+        $pagina = 1;
+        try {
+            do {
+                $dados = $this->listAccounts(null, $pagina, 'meli', chavePolos: true);
+                foreach ($dados['accounts'] ?? [] as $conta) {
+                    $cust = preg_replace('/\D/', '', (string) ($conta['custId'] ?? ''));
+                    if ($cust !== '') {
+                        $contas[] = $cust;
+                    }
+                }
+                $totalPaginas = (int) ($dados['totalPages'] ?? 1);
+                $pagina++;
+            } while ($pagina <= $totalPaginas && $pagina <= 50);
+        } catch (\Throwable $e) {
+            Log::warning("[Adman] Falha ao ler as contas da chave dos Polos (página {$pagina}): {$e->getMessage()} — segue com a lista anterior.");
+            return null;
+        }
+
+        if ($contas === []) {
+            Log::warning('[Adman] A chave dos Polos devolveu 0 contas — lista anterior mantida.');
+            return null;
+        }
+
+        $registro = ['contas' => array_values(array_unique($contas)), 'lido_em' => now()->toIso8601String()];
+        Cache::forever(self::CACHE_CONTAS_CHAVE_POLOS, $registro);
+        $this->contasChavePolos = array_fill_keys($registro['contas'], true);
+
+        return $registro;
     }
 
     public function syncAll(): array
@@ -342,7 +466,7 @@ class AdmanService
     {
         $attempt = 0;
         while (true) {
-            $response = Http::withHeaders($this->headers())
+            $response = Http::withHeaders($this->headers($custId))
                 ->connectTimeout(15)
                 ->timeout(120)
                 ->get("{$this->baseUrl}/{$marketplace}/performance/{$custId}", [
@@ -1075,7 +1199,7 @@ class AdmanService
 
     public function fetchCampaigns(string $custId, string $marketplace = 'meli'): array
     {
-        $response = Http::withHeaders($this->headers())
+        $response = Http::withHeaders($this->headers($custId))
             ->timeout(30)
             ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns");
 
@@ -1101,7 +1225,7 @@ class AdmanService
         try {
             $response = null;
             for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
-                $response = Http::withHeaders($this->headers())
+                $response = Http::withHeaders($this->headers($custId))
                     ->timeout(30)
                     ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns");
                 if ($response->status() !== 429 || $tentativa === 3) {
@@ -1150,7 +1274,7 @@ class AdmanService
         try {
             $response = null;
             for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
-                $response = Http::withHeaders($this->headers())
+                $response = Http::withHeaders($this->headers($custId))
                     ->timeout(30)
                     ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/bonifications");
                 if ($response->status() !== 429 || $tentativa === 3) {
@@ -1180,7 +1304,7 @@ class AdmanService
 
     public function fetchCampaignMetrics(string $custId, string $campaignId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
-        $response = Http::withHeaders($this->headers())
+        $response = Http::withHeaders($this->headers($custId))
             ->timeout(30)
             ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/{$campaignId}/metrics", [
                 'dateFrom' => $dateFrom,
@@ -1218,7 +1342,7 @@ class AdmanService
 
     public function fetchAccountMetrics(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
-        $response = Http::withHeaders($this->headers())
+        $response = Http::withHeaders($this->headers($custId))
             ->timeout(30)
             ->get("{$this->baseUrl}/{$marketplace}/accounts/{$custId}/metrics", [
                 'dateFrom' => $dateFrom,
@@ -1322,12 +1446,23 @@ class AdmanService
         return $segundos > 0 ? $segundos : null;
     }
 
-    public function listAccounts(?string $filter = null, int $page = 1, string $marketplace = 'meli'): array
+    /**
+     * Contas que uma chave enxerga (uma página). `chavePolos` escolhe a segunda
+     * chave de integrador; o padrão é a principal.
+     */
+    public function listAccounts(?string $filter = null, int $page = 1, string $marketplace = 'meli', bool $chavePolos = false): array
     {
+        if ($chavePolos && $this->apiKeyPolos === '') {
+            throw new \RuntimeException('Adman: ADMAN_POLOS_API_KEY não configurada.');
+        }
+
         $params = ['page' => $page];
         if ($filter) $params['filter'] = $filter;
 
-        $response = Http::withHeaders($this->headers())
+        $response = Http::withHeaders([
+                'integrator-api-key' => $chavePolos ? $this->apiKeyPolos : $this->apiKey,
+                'Accept'             => 'application/json',
+            ])
             ->timeout(30)
             ->get("{$this->baseUrl}/{$marketplace}/accounts", $params);
 
@@ -1383,7 +1518,7 @@ class AdmanService
         $page = 1;
 
         do {
-            $response = Http::withHeaders($this->headers())
+            $response = Http::withHeaders($this->headers($custId))
                 ->timeout(30)
                 ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns", [
                     'page' => $page,
@@ -1548,7 +1683,7 @@ class AdmanService
             $response = null;
             $maxAttempts = 5;
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders($this->headers())
+                $response = Http::withHeaders($this->headers($custId))
                     ->timeout(60)
                     ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/adgroups/metrics", [
                         'dateFrom'     => $dateFrom,

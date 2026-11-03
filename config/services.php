@@ -40,6 +40,12 @@ return [
     'adman' => [
         'base_url' => env('ADMAN_BASE_URL', 'https://api.adman.com.br/v1'),
         'api_key'  => env('ADMAN_API_KEY', ''),
+        // Desde 03/11/2026 a Adman separa as contas da ECF em DUAS chaves de
+        // integrador, sem sobreposição: `api_key` enxerga a carteira de
+        // Performance e `polos_api_key` enxerga as contas dos Polos. O
+        // AdmanService escolhe a chave pela conta (ver chaveParaConta()).
+        // Vazia = comportamento antigo, tudo pela `api_key`.
+        'polos_api_key' => env('ADMAN_POLOS_API_KEY', ''),
         // Fase 139 (ADMIN-03, D-04) — link de cadastro/indicação do Adman,
         // FIXO e idêntico para todas as empresas: não há geração por empresa,
         // e o AdmanService é somente leitura (só puxa métricas). Trocar o

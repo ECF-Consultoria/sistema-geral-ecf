@@ -793,3 +793,24 @@ O último `polos:warm` com dado foi 29/10 13:43 (268/276). De 30/10 em diante: 0
 novembro está zerado. Quando a Adman voltar, rodar `polos:warm --mes=202610` além do mês
 corrente — e lembrar que o warm varre o cadastro ao vivo, então as 48 ex-M4 que viraram
 `Encerrado` em 03/11 não são reaquecidas.
+
+### 20.5 Causa do §20.4: a Adman separou as contas em DUAS chaves (03/11/2026)
+
+A Adman passou a atender a ECF com duas chaves de integrador **sem nenhuma conta em comum**:
+a antiga (`ADMAN_API_KEY`) ficou só com a carteira de Performance (262 contas, as 85
+ativas) e as contas dos Polos foram para uma chave nova (683 contas, 242 das 248 Polos
+ativas). O suporte deles respondeu "está OK" — e estava: a conta só mudou de chave.
+
+- **"Customer not found" não diagnostica nada.** A Adman dá exatamente essa resposta para
+  custId inexistente, para conta da lista com `linked=false` e para conta de OUTRA chave.
+  "User is not mentored by agency" é a única que diz "conheço, mas não é sua".
+- **Diagnóstico certo:** comparar `GET /v1/meli/accounts` (paginado, campo `custId`) de cada
+  chave. `php artisan adman:chaves --conta=<cust>` faz isso para a chave dos Polos.
+- **Correção:** `ADMAN_POLOS_API_KEY` no `.env`; o `AdmanService` escolhe a chave pela conta
+  (conta na lista da chave dos Polos → chave dos Polos; resto → principal). A lista fica no
+  cache sem expiração e é relida a cada 6h; se a releitura falhar, vale a última lista boa.
+  Sem a variável, tudo segue pela chave principal (comportamento antigo).
+- 6 Polos ativas não estavam em nenhuma das duas chaves (Campos Home, Cavalo, Henneberg,
+  HOME & HOBBY, Idea Home, ReyJef) — isso é cadastro na Adman, não código.
+- Rate limit (10 req/min) é por chave: separar as chaves também tirou os Polos da disputa de
+  cota com o `adman:sync` de Performance.
