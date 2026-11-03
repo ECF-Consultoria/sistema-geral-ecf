@@ -33,6 +33,7 @@ use App\Services\Portal\PortalClienteService;
 use App\Services\Publicador\CategoriaBuscaService;
 use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\ExplicacaoDeAtributos;
+use App\Support\Portal\Estrutura\RegrasDoCadastro;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
@@ -251,33 +252,13 @@ class PortalEstruturaProdutosController extends Controller
 
         $resultado = $this->cadastro->gravarLinhas(
             PortalContexto::empresa(),
-            $this->linhasComoVieram($request),
+            // O JSON cru (`''` = não mexi, `null` = limpar): a regra mora em `RegrasDoCadastro`, a mesma da trilha.
+            RegrasDoCadastro::linhasComoVieram($request),
             PortalContexto::ator(),
             ProdutoCadastroService::MODO_GRADE,
         );
 
         return response()->json([...$resultado, 'listas' => $this->listasDaEmpresa()]);
-    }
-
-    /**
-     * As linhas como o navegador mandou. No contrato de linha `null` explícito LIMPA
-     * o campo (custo, eixo, valor, família) e texto vazio é "não mexi"; o middleware
-     * global `ConvertEmptyStringsToNull` transformaria todo `''` em `null` e um campo
-     * vazio por engano apagaria o dado. Por isso o JSON é lido cru — a estrutura é a
-     * mesma que o `validate` acima já conferiu.
-     *
-     * @return array<int, mixed>
-     */
-    private function linhasComoVieram(Request $request): array
-    {
-        if ($request->isJson()) {
-            $corpo = json_decode((string) $request->getContent(), true);
-            if (is_array($corpo) && is_array($corpo['linhas'] ?? null)) {
-                return array_values($corpo['linhas']);
-            }
-        }
-
-        return (array) $request->input('linhas');
     }
 
     /** Exclui uma variação (D-22: mesma regra da Lista SKUs). */
