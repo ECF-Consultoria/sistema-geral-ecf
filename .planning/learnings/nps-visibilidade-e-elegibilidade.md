@@ -504,6 +504,20 @@ Comando: `php artisan nps:prorrogar-validade --mes=2026-10 --ate=2026-11-07 --dr
 (rodar como `www-data`; sem `--dry-run` grava). Respondido não é tocado; link
 "expirado" volta a pendente; ciclo encerrado à mão continua recusando.
 
+**Gerar link NOVO de um ciclo prorrogado (03/11/2026).** A tela só gerava link no
+mês corrente: empresa sem link de out/26 recebia um de nov/26, outro ciclo. Agora,
+com o mês exibido prorrogado e vigente, "Gerar Link NPS" (individual e de grupo)
+cria o link NAQUELE mês, valendo até a prorrogação. A prorrogação não tem tabela:
+`NpsProrrogacaoService` a lê do maior `expires_at` dos links do mês — só o comando
+empurra validade para depois do fim do mês, então é o rastro dele. O link manual
+do ciclo prorrogado nasce com `month_reference` preenchido (o `created_at` já é do
+mês seguinte; sem isso ele cairia em novembro). Mês passado SEM prorrogação é
+recusado no servidor, nunca vira link do mês corrente calado; ciclo encerrado à
+mão também recusa. O efeito no bônus é o mesmo da opção A acima: nota 1 de set/26
+fica, resposta em novembro conta em out/26 — e a empresa pode acabar com resposta
+no link de out/26 E no de nov/26 (as duas entram no bônus de out/26). O usuário
+escolheu assim sabendo disso.
+
 Fazer a resposta tardia contar na competência ORIGINAL exige mexer nas quatro
 réguas juntas (validade, envio, materialização da nota 1 e leitura do bônus) e
 reconsolidar a competência: é fase GSD (toca `DesempenhoScoreService` e snapshot),

@@ -360,6 +360,48 @@ function CicloAcao({ ciclo, competencia, coleta }) {
         });
     };
 
+    // 03/11/2026 — ciclo prorrogado e vigente (`nps:prorrogar-validade`): pela
+    // data ele já fechou, mas os links seguem aceitando resposta e ainda dá
+    // para gerar link novo dele. O selo vermelho "Ciclo fechado" mentia; aqui
+    // vira o prazo da prorrogação, e o botão de encerrar continua disponível
+    // para quem quiser cortar antes.
+    const fecharBotao = (
+        <button
+            type="button"
+            disabled={enviando}
+            onClick={() => confirmarEEnviar(
+                route('nps.ciclo.fechar'),
+                `Encerrar o NPS ${rotulo}?\n\n`
+                + '• Nenhum link novo poderá ser gerado deste ciclo\n'
+                + '• Links já enviados param de aceitar resposta\n'
+                + '• Quem não respondeu passa a contar nota 1',
+            )}
+            title={`Encerrar o ciclo ${rotulo}`}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/75 hover:bg-white/[0.06] hover:border-white/[0.18] disabled:opacity-50"
+        >
+            <Lock size={13} /> Fechar NPS
+        </button>
+    );
+
+    if (ciclo.prorrogado_ate) {
+        return (
+            <span className="inline-flex items-center gap-2">
+                <span
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, height: 36,
+                        padding: '0 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+                        color: '#f5b544', background: 'rgba(245,181,68,0.10)',
+                        border: '1px solid rgba(245,181,68,0.28)',
+                    }}
+                    title={`Ciclo prorrogado: os links aceitam resposta até ${ciclo.prorrogado_ate} às 23:59, e dá para gerar link novo deste ciclo até lá.`}
+                >
+                    <Clock size={13} /> Prorrogado até {ciclo.prorrogado_ate}
+                </span>
+                {fecharBotao}
+            </span>
+        );
+    }
+
     if (ciclo.fechado) {
         return (
             <span className="inline-flex items-center gap-2">
@@ -393,23 +435,7 @@ function CicloAcao({ ciclo, competencia, coleta }) {
         );
     }
 
-    return (
-        <button
-            type="button"
-            disabled={enviando}
-            onClick={() => confirmarEEnviar(
-                route('nps.ciclo.fechar'),
-                `Encerrar o NPS ${rotulo}?\n\n`
-                + '• Nenhum link novo poderá ser gerado deste ciclo\n'
-                + '• Links já enviados param de aceitar resposta\n'
-                + '• Quem não respondeu passa a contar nota 1',
-            )}
-            title={`Encerrar o ciclo ${rotulo}`}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/75 hover:bg-white/[0.06] hover:border-white/[0.18] disabled:opacity-50"
-        >
-            <Lock size={13} /> Fechar NPS
-        </button>
-    );
+    return fecharBotao;
 }
 
 // ═══ SearchableGlassSelect — select com CAMPO DE BUSCA (2026-07-20) ═══════
@@ -1631,6 +1657,10 @@ export default function NpsIndex({
     // Spec 2026-08-14 (item 2) — { fechado, fechado_manual, mes } do ciclo
     // exibido. `null` blinda payload antigo em cache logo após o deploy.
     ciclo = null,
+    // 03/11/2026 — { mes, rotulo, vale_ate } do ciclo em que o link gerado
+    // AGORA vai nascer: o mês exibido se estiver prorrogado e vigente, senão o
+    // mês corrente. `null` blinda payload antigo em cache logo após o deploy.
+    geracao_link = null,
     // 2026-08-14 — true quando a coleta do mês exibido já encerrou. Só então
     // quem não respondeu entra na média com nota 1 (mesma régua do bônus).
     janela_fechada = true,
@@ -1681,7 +1711,11 @@ export default function NpsIndex({
     // usar. Vazio = auto-resolve pelo NpsTemplateService (comportamento
     // legacy). Só admin vê o campo (usuários normais não têm permissão de
     // escolher template arbitrário — segurança em profundidade no controller).
-    const { data, setData, post, processing, reset, errors } = useForm({ company_id: '', template_id: '' });
+    const { data, setData, post, processing, reset, errors, transform } = useForm({ company_id: '', template_id: '' });
+
+    // 03/11/2026 — mês de coleta do link gerado (ciclo prorrogado → mês
+    // exibido). Vai em todo POST/GET de geração; o servidor confere de novo.
+    const mesDoLink = geracao_link?.mes || undefined;
 
     // 2026-07-14 (Fase 81) · modal gerar-link agora é MODELO-FIRST (DEC-81-3):
     // passo 1 escolhe o modelo (obrigatório); ao escolher, o passo 2 lista só
@@ -1740,12 +1774,12 @@ export default function NpsIndex({
         let cancelado = false;
         setCarregandoCobertura(true);
         setCobertura(null);
-        window.axios.get(route('nps.grupo.cobertura', { grupo: grupoId, template: data.template_id }))
+        window.axios.get(route('nps.grupo.cobertura', { grupo: grupoId, template: data.template_id, mes: mesDoLink }))
             .then(({ data: res }) => { if (!cancelado) setCobertura(res); })
             .catch(() => { if (!cancelado) setCobertura({ incluidas: [], excluidas: [] }); })
             .finally(() => { if (!cancelado) setCarregandoCobertura(false); });
         return () => { cancelado = true; };
-    }, [modoGeracao, grupoId, data.template_id]);
+    }, [modoGeracao, grupoId, data.template_id, mesDoLink]);
 
     useEffect(() => {
         if (flash?.nps_link) {
@@ -1825,11 +1859,13 @@ export default function NpsIndex({
             router.post(route('nps.grupo.generate'), {
                 company_group_id: grupoId,
                 template_id: data.template_id,
+                mes: mesDoLink,
             }, {
                 onSuccess: () => fecharGerarLink(),
             });
             return;
         }
+        transform(d => ({ ...d, mes: mesDoLink }));
         post(route('nps.generate'), {
             onSuccess: () => { reset(); setEmpresasElegiveis([]); setOpen(false); },
         });
@@ -2191,6 +2227,18 @@ export default function NpsIndex({
                             elegível para gerar o link de avaliação manual.
                         </DialogDescription>
                     </DialogHeader>
+                    {/* 03/11/2026 — em qual ciclo o link nasce. Com o ciclo
+                        exibido prorrogado ele é o mês da tela; senão, o mês
+                        corrente — dizer isso evita gerar no ciclo errado. */}
+                    {geracao_link && (
+                        <div className="flex items-start gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-white/70">
+                            <Calendar className="h-3.5 w-3.5 mt-0.5 shrink-0 text-white/50" />
+                            <span>
+                                Ciclo do link: <strong className="text-white/90">{geracao_link.rotulo}</strong>
+                                {' '}· vale até <strong className="text-white/90">{geracao_link.vale_ate}</strong>
+                            </span>
+                        </div>
+                    )}
                     <form onSubmit={submit} className="space-y-4">
                         {/* Passo 1 · MODELO (obrigatório, sem "__auto__"). Vale
                             para todos os usuários que geram link — o passo 2

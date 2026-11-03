@@ -13,8 +13,10 @@ use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsGrupoCoberturaService;
 use App\Services\Nps\NpsGrupoReplicacaoService;
 use App\Services\Nps\NpsImputationService;
+use App\Services\Nps\NpsProrrogacaoService;
 use App\Services\Nps\NpsSuspicionService;
 use App\Support\NpsTextRenderer;
+use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -48,7 +50,18 @@ class NpsGrupoController extends Controller
     public function __construct(
         private NpsGrupoCoberturaService $coberturaService,
         private NpsGrupoReplicacaoService $replicacaoService,
+        private NpsProrrogacaoService $prorrogacao,
     ) {
+    }
+
+    /** `AAAA-MM` válido → 1º dia do mês; vazio ou inválido → null. */
+    private function mesPedido(?string $mes): ?Carbon
+    {
+        if (! is_string($mes) || ! preg_match('/^\d{4}-\d{2}$/', $mes)) {
+            return null;
+        }
+
+        return Carbon::createFromFormat('Y-m-d', $mes.'-01')->startOfMonth();
     }
 
     /**
@@ -60,7 +73,14 @@ class NpsGrupoController extends Controller
     {
         $this->autorizarAcessoAoGrupo($grupo, request()->user());
 
-        $cobertura = $this->coberturaService->calcular($grupo, $template, now()->startOfMonth());
+        // 03/11/2026 — `?mes=AAAA-MM` de ciclo prorrogado: a prévia olha o mês
+        // em que o link vai nascer (mesma decisão do `generate()`).
+        $mesPedido = $this->mesPedido(request()->query('mes'));
+        $mes = $mesPedido !== null
+            ? $this->prorrogacao->cicloDoLinkNovo($mesPedido)['mes']
+            : now()->startOfMonth();
+
+        $cobertura = $this->coberturaService->calcular($grupo, $template, $mes);
 
         return response()->json([
             'referencia' => $cobertura['referencia'],
@@ -79,6 +99,8 @@ class NpsGrupoController extends Controller
         $data = $request->validate([
             'company_group_id' => 'required|exists:company_groups,id',
             'template_id'      => 'required|exists:nps_templates,id',
+            // 03/11/2026 · mês de COLETA do link. Ausente = mês corrente.
+            'mes'              => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
         ]);
 
         $user     = $request->user();
@@ -91,7 +113,20 @@ class NpsGrupoController extends Controller
             return back()->with('error', 'Este modelo de pesquisa está desativado e não pode gerar novos links.');
         }
 
-        $mes = now()->startOfMonth();
+        // 03/11/2026 — ciclo prorrogado: com `mes` de um mês passado cujo ciclo
+        // foi prorrogado e segue vigente, o link nasce naquele mês e vale até a
+        // prorrogação. Mês diferente do corrente sem prorrogação é recusado.
+        $mesPedido = $this->mesPedido($data['mes'] ?? null) ?? now()->startOfMonth();
+        $ciclo     = $this->prorrogacao->cicloDoLinkNovo($mesPedido);
+
+        if (! $ciclo['mes']->equalTo($mesPedido)) {
+            return back()->with('error', sprintf(
+                'O NPS de %s não aceita link novo: só o mês atual ou um ciclo prorrogado ainda dentro do prazo.',
+                $mesPedido->copy()->locale('pt_BR')->isoFormat('MMM/YY'),
+            ));
+        }
+
+        $mes = $ciclo['mes'];
 
         // Guard de duplicidade — mesmo espírito do Plan 02 ($jaExiste em
         // NpsController::generate()), mas na tabela do link de GRUPO:
@@ -127,7 +162,7 @@ class NpsGrupoController extends Controller
             'template_id'      => $template->id,
             'generated_by'     => $user->id,
             'month_reference'  => $mes,
-            'expires_at'       => now()->endOfMonth(),
+            'expires_at'       => $ciclo['vale_ate'],
             'status'           => 'pending',
         ]);
 

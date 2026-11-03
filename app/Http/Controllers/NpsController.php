@@ -20,6 +20,7 @@ use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsGrupoCoberturaService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsJanelaResolver;
+use App\Services\Nps\NpsProrrogacaoService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -67,6 +68,7 @@ class NpsController extends Controller
         private NpsSemLinkService $npsSemLinkService,
         private NpsJanelaResolver $npsJanelaResolver,
         private NpsGrupoCoberturaService $grupoCoberturaService,
+        private NpsProrrogacaoService $prorrogacao,
     ) {
     }
 
@@ -959,6 +961,10 @@ class NpsController extends Controller
         // se "não respondeu" já pode virar nota 1 nesta tela.
         $janelaFechada = $this->npsJanelaResolver->fechada($mesInicio);
 
+        // Ciclo do link gerado a partir desta tela (mês exibido prorrogado e
+        // vigente → ele; senão o mês corrente). Ver NpsProrrogacaoService.
+        $cicloLinkNovo = $this->prorrogacao->cicloDoLinkNovo($mesInicio);
+
         $cards = [
             'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista'], $janelaFechada),
             'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista'], $janelaFechada),
@@ -1131,6 +1137,24 @@ class NpsController extends Controller
                 'fechado'        => $janelaFechada,
                 'fechado_manual' => $this->npsJanelaResolver->fechadaManualmente($mesInicio),
                 'mes'            => $mesInicio->format('Y-m'),
+                // 03/11/2026 — ciclo prorrogado (`nps:prorrogar-validade`) e
+                // ainda vigente: a tela troca o selo "Ciclo fechado" por
+                // "Prorrogado até dd/mm". Só vale para mês passado — o mês
+                // corrente nunca está "prorrogado".
+                'prorrogado_ate' => $cicloLinkNovo['prorrogado']
+                    ? $cicloLinkNovo['vale_ate']->format('d/m')
+                    : null,
+            ],
+            // 03/11/2026 — para qual ciclo vai o link gerado AGORA a partir
+            // desta tela: o mês exibido, se estiver prorrogado e vigente; senão
+            // o mês corrente. O modal mostra isso antes de gerar e devolve
+            // `mes` no POST (o servidor confere de novo).
+            'geracao_link' => [
+                'mes'      => $cicloLinkNovo['mes']->format('Y-m'),
+                'rotulo'   => $cicloLinkNovo['mes']->copy()->locale('pt_BR')->isoFormat('MMM/YY')
+                    .' · ref. '
+                    .$cicloLinkNovo['mes']->copy()->subMonthNoOverflow()->locale('pt_BR')->isoFormat('MMM/YY'),
+                'vale_ate' => $cicloLinkNovo['vale_ate']->format('d/m/Y'),
             ],
             // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
             // respondido conta como nota 1" está ativa nesta tela. Cada card
@@ -1616,6 +1640,12 @@ class NpsController extends Controller
      * fixos (e 7 antes disso). Combinado com o desligamento do prune de
      * pendentes, o link nunca é apagado — só passa a exibir status "expirado"
      * na tela quando o mês vira.
+     *
+     * 03/11/2026 — CICLO PRORROGADO: com `mes=AAAA-MM` de um mês passado cujo
+     * ciclo foi prorrogado (`nps:prorrogar-validade`) e ainda está vigente, o
+     * link nasce NAQUELE mês (`month_reference` = mês de coleta) e vale até a
+     * data da prorrogação. Sem prorrogação vigente, mês diferente do corrente é
+     * recusado — nunca cai calado no mês corrente.
      */
     public function generate(Request $request, NpsTemplateService $templateService)
     {
@@ -1627,7 +1657,21 @@ class NpsController extends Controller
             // (default por priority/serviço) preservando o comportamento
             // original.
             'template_id' => 'nullable|integer|exists:nps_templates,id',
+            // 03/11/2026 · mês de COLETA do link. Ausente = mês corrente.
+            'mes'         => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
         ]);
+
+        $mesPedido = ! empty($data['mes'])
+            ? Carbon::createFromFormat('Y-m-d', $data['mes'].'-01')->startOfMonth()
+            : now()->startOfMonth();
+        $ciclo = $this->prorrogacao->cicloDoLinkNovo($mesPedido);
+
+        if (! $ciclo['mes']->equalTo($mesPedido)) {
+            return back()->with('error', sprintf(
+                'O NPS de %s não aceita link novo: só o mês atual ou um ciclo prorrogado ainda dentro do prazo.',
+                $mesPedido->copy()->locale('pt_BR')->isoFormat('MMM/YY'),
+            ));
+        }
 
         // Auth: admin OR user com a empresa em qualquer role no pivot
         // company_users (inclui estrategista, consultor, mentor). Padrão
@@ -1721,7 +1765,9 @@ class NpsController extends Controller
         // ANTES do guard de duplicidade: num ciclo fechado a resposta certa é
         // "encerrado", não "já existe um link" (que sugeriria reenviar um link
         // que também não aceita mais resposta).
-        if ($this->npsJanelaResolver->fechada(now()->startOfMonth())) {
+        // Ciclo prorrogado já vem filtrado por `cicloDoLinkNovo()` (vigente e
+        // não encerrado à mão); a régua de data só vale para o mês corrente.
+        if (! $ciclo['prorrogado'] && $this->npsJanelaResolver->fechada(now()->startOfMonth())) {
             return back()->with('error',
                 'O ciclo de NPS deste mês foi encerrado — não é possível gerar novos links. '
                 .'Reabra o ciclo para voltar a coletar.');
@@ -1730,7 +1776,7 @@ class NpsController extends Controller
         $jaExiste = $this->elegibilidadeService->surveyExistenteNaCompetencia(
             (int) $data['company_id'],
             (int) $template->id,
-            now()->startOfMonth(),
+            $ciclo['mes'],
         );
 
         if ($jaExiste !== null) {
@@ -1745,15 +1791,20 @@ class NpsController extends Controller
             'token'          => Str::uuid()->toString(),
             'company_id'     => $data['company_id'],
             'generated_by'   => $user->id,
-            'expires_at'     => now()->endOfMonth(), // 2026-07-20: link vale só no mês corrente; expira ao virar o mês (sem ser apagado)
+            // 2026-07-20: link vale só no mês corrente; expira ao virar o mês
+            // (sem ser apagado). Ciclo prorrogado: vale até a prorrogação.
+            'expires_at'     => $ciclo['vale_ate'],
             'status'         => 'pending',
             // REQ-31-08: explicita auto_generated=false em surveys manuais
             // para o admin filtrar "manual vs automatico" na UI (Plan 31-04).
             'auto_generated' => false,
             // Phase 69 NPS-B-01 — template resolvido via NpsTemplateService.
             'template_id'    => $template->id,
-            // month_reference fica null para manuais (D-12) — só surveys
-            // mensais automatizadas carregam o mês de referência semântico.
+            // month_reference fica null para manuais do mês corrente (D-12) —
+            // a competência sai do created_at. No ciclo prorrogado o
+            // created_at é do mês seguinte, então o mês de coleta precisa ir
+            // gravado (mesma coluna que o link de grupo já usa).
+            'month_reference' => $ciclo['prorrogado'] ? $ciclo['mes']->toDateString() : null,
         ]);
 
         // Phase 94 AB-94-3 — trilha de auditoria: link manual gerado.
