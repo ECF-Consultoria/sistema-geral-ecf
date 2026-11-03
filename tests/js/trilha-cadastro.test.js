@@ -83,6 +83,12 @@ import {
     textosDaExclusao,
     trocaDeEixo,
     valorComparavel,
+    // F6
+    MENSAGEM_DA_VERSAO,
+    conflitoDeVersao,
+    textoDoConflito,
+    travadoNo409,
+    versaoDepoisDe,
 } from '../../resources/js/lib/trilhaCadastro.js';
 import { avisosEmTexto } from '../../resources/js/Components/Trilha/formatos.js';
 import { acaoDoItem, comQuemEsta, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
@@ -1274,4 +1280,74 @@ test('F4 — "Excluir produto": os textos da prévia (o que sai junto), as monta
     assert.deepEqual(montadasDaPrevia({ montadas: [] }), []);
     assert.equal(exclusaoMudou({ response: { status: 422, data: { errors: { montadas: ['O que sai junto mudou.'] } } } }), true);
     assert.equal(exclusaoMudou({ response: { status: 422, data: { errors: { produto: ['x'] } } } }), false);
+});
+
+// ─── F6: a aba velha ────────────────────────────────────────────────────────
+
+test('F6 — os dois 409: o da TRAVA (`travado`) vira só leitura; o da VERSÃO (sem `travado`) pede "Recarregar"', () => {
+    const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
+    const daTrava = erro(409, { travado: true, motivo: 'A oferta “Cadeira” já saiu do Planejamento.', message: 'A oferta “Cadeira” já saiu do Planejamento.' });
+    const daVersao = erro(409, {
+        versao_atual: 'b'.repeat(40),
+        message: 'Este produto mudou depois que você abriu (outra pessoa salvou nele). Recarregue para ver o que mudou.',
+    });
+
+    assert.deepEqual([travadoNo409(daTrava), conflitoDeVersao(daTrava)], [true, false]);
+    assert.deepEqual([travadoNo409(daVersao), conflitoDeVersao(daVersao)], [false, true]);
+    // Nenhum dos dois fora do 409 (o 422 da categoria, a rede, o 404 de quem já sumiu).
+    for (const outro of [erro(422, { errors: { categoria: ['x'] } }), erro(404, {}), new Error('rede'), null]) {
+        assert.deepEqual([travadoNo409(outro), conflitoDeVersao(outro)], [false, false]);
+    }
+
+    // O texto do rodapé é o do servidor; sem ele, o nosso.
+    assert.equal(textoDoConflito(daVersao), daVersao.response.data.message);
+    assert.equal(textoDoConflito(erro(409, {})), MENSAGEM_DA_VERSAO);
+    assert.equal(textoDoConflito(null), MENSAGEM_DA_VERSAO);
+    assert.match(MENSAGEM_DA_VERSAO, /^Este produto mudou depois que você abriu/);
+});
+
+test('F6 — a versão que a gaveta conhece: a escrita CONFERIDA adota a da resposta; foto e frete não — e a diferente é o produto mudado por fora', () => {
+    const v1 = 'a'.repeat(40);
+    const v2 = 'b'.repeat(40);
+
+    // Linhas, ficha, remover cor: o pedido levou a versão e passou — a resposta é desta gravação.
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { conferida: true }), { versao: v2, mudou: false });
+    // Foto e frete não mudam a versão: a mesma, nada a dizer.
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v1 }), { versao: v1, mudou: false });
+    // Foto que volta com OUTRA versão: alguém gravou por fora. A gaveta fica com a dela (o próximo "Salvar" leva o 409) e avisa já.
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }), { versao: v1, mudou: true });
+    // Sem versão conhecida (o retrato não tinha) ou sem versão na resposta.
+    assert.deepEqual(versaoDepoisDe(null, { versao: v2 }), { versao: v2, mudou: false });
+    assert.deepEqual(versaoDepoisDe(v1, { mensagem: 'ok' }), { versao: v1, mudou: false });
+    assert.deepEqual(versaoDepoisDe(v1, null, { conferida: true }), { versao: v1, mudou: false });
+});
+
+test('F6 — o "Salvar" encadeia a versão (linhas → ficha) e, no 409 da versão na ficha, diz que as linhas JÁ gravaram e com qual versão', async () => {
+    const estado = comMudancas(CADASTRO_TRAVADO, { produto: { titulo: 'Novo' } });
+    const enviadas = [];
+    const versaoDaFicha = { isAxiosError: true, response: { status: 409, data: { versao_atual: 'x'.repeat(40), message: 'Este produto mudou depois que você abriu…' } } };
+    const r = await gravarCadastro({
+        estado,
+        retrato: CADASTRO_TRAVADO,
+        versao: 'v-da-gaveta',
+        enviarLinhas: async (linhas, { versao }) => {
+            enviadas.push(['linhas', versao]);
+
+            return { ...CADASTRO_TRAVADO, erros: [], avisos: [], versao: 'v-das-linhas' };
+        },
+        gravarFicha: async ({ versao }) => {
+            enviadas.push(['ficha', versao]);
+            throw versaoDaFicha;
+        },
+        fichaMudou: true,
+    });
+
+    assert.deepEqual(enviadas, [['linhas', 'v-da-gaveta'], ['ficha', 'v-das-linhas']]);
+    assert.deepEqual([r.ok, r.passo, r.linhas, r.versao], [false, 'ficha', true, 'v-das-linhas']);
+    assert.equal(conflitoDeVersao(r.falha), true);
+    assert.equal(temRetrato(r.resposta), true, 'o retrato das linhas vem junto: a gaveta mostra o que já gravou');
+
+    // O 409 no 1º pedido: nada gravou, e a versão continua a da gaveta.
+    const logo = await gravarCadastro({ estado, retrato: CADASTRO_TRAVADO, versao: 'v-da-gaveta', enviarLinhas: async () => { throw versaoDaFicha; } });
+    assert.deepEqual([logo.passo, logo.linhas, logo.versao, logo.resposta], ['linhas', true, 'v-da-gaveta', null]);
 });

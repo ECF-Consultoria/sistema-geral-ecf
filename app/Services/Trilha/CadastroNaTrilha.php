@@ -81,6 +81,12 @@ use Illuminate\Validation\ValidationException;
  * ({@see conferirCores()}, a do `CoresDoGrupo`): o que ela separaria em produto à parte, em silêncio, volta 422 por
  * linha e nada grava. Excluir: a cor/tamanho ({@see excluirVariacao()}; a última variação só sai por "Excluir
  * produto") e o produto inteiro, em dois passos ({@see previaDaExclusao()}, {@see excluirProduto()}).
+ *
+ * ### F6 (03/11/2026) — a aba velha
+ * O retrato traz a `versao` do cadastro ({@see VersaoDoCadastro}); as escritas que mudam conteúdo (linhas, ficha,
+ * excluir cor, excluir produto) aceitam a `versao` que a gaveta tinha e, diferente da atual, respondem 409 SEM
+ * `travado` ({@see exigirVersao()}) — a tela distingue os dois: o da trava vira só leitura, o da versão pede
+ * "Recarregar". Sem `versao` no corpo, segue como antes (compatível com quem não manda).
  */
 class CadastroNaTrilha
 {
@@ -132,6 +138,10 @@ class CadastroNaTrilha
     public const MSG_CATEGORIA_NAO_ANUNCIAVEL = 'O Mercado Livre não aceita produtos novos nesta categoria; escolha outra.';
 
     public const MSG_CATEGORIA_INVALIDA = 'Categoria inválida: escolha uma pela busca ou pela navegação.';
+
+    /** O 409 da versão (F6): a gaveta foi aberta antes de outra gravação no mesmo produto. */
+    public const MSG_VERSAO = 'Este produto mudou depois que você abriu (outra pessoa salvou nele). '
+        .'Recarregue para ver o que mudou.';
 
     public function __construct(
         private PortalEquipeService $equipe,
@@ -529,6 +539,28 @@ class CadastroNaTrilha
         }
     }
 
+    // ═══ A versão (F6) ══════════════════════════════════════════════════════
+
+    /**
+     * A aba velha: a `versao` que a gaveta recebeu no retrato, conferida contra a de agora ({@see VersaoDoCadastro}).
+     * Diferente → 409 `{versao_atual, message}` e nada grava. SEM a chave `travado`, de propósito: com ela a tela
+     * viraria só leitura, e aqui a pessoa só precisa recarregar (learnings §30). Sem versão (nula ou vazia), segue
+     * como antes — quem não manda não é conferido.
+     *
+     * Vem DEPOIS da trava (desenho §6.1): o produto que andou responde a trava, que diz mais.
+     */
+    public function exigirVersao(Company $empresa, EstruturaProduto $produto, ?string $versao): void
+    {
+        if ($versao === null || trim($versao) === '') {
+            return;
+        }
+
+        $atual = VersaoDoCadastro::de($empresa, $produto);
+        if (! hash_equals($atual, trim($versao))) {
+            throw new HttpResponseException(response()->json(['versao_atual' => $atual, 'message' => self::MSG_VERSAO], 409));
+        }
+    }
+
     // ═══ As escritas ════════════════════════════════════════════════════════
 
     /**
@@ -893,9 +925,10 @@ class CadastroNaTrilha
     /**
      * O JSON da gaveta `e:{id}` (contrato §6.3), campo a campo. Nada aqui chama o Mercado Livre nem grava. Não saem: a
      * capa, o frete estimado e as ofertas/conjuntos do `ProdutoLinhas` (a gaveta lê "Onde está" e "Ofertas" da própria
-     * trilha). As fotos saem pela rota da equipe — nenhuma URL `/portal/`. `versao` fica nula até a F6.
+     * trilha). As fotos saem pela rota da equipe — nenhuma URL `/portal/`. `versao` (F6) é a do cadastro AGORA
+     * ({@see VersaoDoCadastro}): a gaveta a devolve nas escritas que mudam conteúdo.
      *
-     * @return array{produto: array, variacoes: list<array>, ficha: array, listas: array, eixos: array<string, string>, limites: array<string, int>, situacao: array, edicao: array, versao: null}
+     * @return array{produto: array, variacoes: list<array>, ficha: array, listas: array, eixos: array<string, string>, limites: array<string, int>, situacao: array, edicao: array, versao: string}
      */
     public function retrato(Company $empresa, EstruturaProduto $produto): array
     {
@@ -982,8 +1015,8 @@ class CadastroNaTrilha
                 'motivo'       => $trilha['trava'] !== null ? self::motivoDaTrava($trilha['trava']['nome']) : null,
                 'onda_comecou' => $trilha['onda_comecou'],
             ],
-            // F6 (versão contra a aba velha).
-            'versao'    => null,
+            // F6 (versão contra a aba velha): sem o estoque nem as fotos.
+            'versao'    => VersaoDoCadastro::de($empresa, $produto),
         ];
     }
 

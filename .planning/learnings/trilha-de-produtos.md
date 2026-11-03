@@ -728,3 +728,28 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   `oferta_id`) e `trilha_mapeamentos` saem pela cascata do banco, e o Combo apagado sai pelo
   `TrilhaComboExcluidoObserver` na mesma transação. A prévia (`exclusao/previa`) também responde 409 no produto
   travado: a tela sabe antes de pedir a confirmação.
+
+## 34. F6 (03/11/2026): a versão contra a aba velha — o que não está escrito no código
+
+- **Dois 409, uma chave decide.** O da trava traz `travado: true` (a gaveta vira só leitura); o da versão traz
+  `{versao_atual, message}` e NUNCA `travado` (a gaveta mantém o digitado e o rodapé oferece [Recarregar]). Quem
+  acrescentar `travado` ao 409 da versão, ou mandar outro 409 sem ele, troca o comportamento da tela sem erro
+  nenhum. A trava vem antes da versão (diz mais); a versão vem antes do `conferirCategoria` (a aba velha não consulta
+  o ML).
+- **A resposta de foto e frete NÃO pode ser adotada como versão da gaveta.** Essas rotas não conferem a versão e
+  devolvem o retrato com a versão ATUAL do banco. Se a gaveta a adotasse, a mudança que outra aba fez entraria em
+  silêncio e o próximo "Salvar" passaria por cima dela. Regra (`versaoDepoisDe`): só a escrita conferida (linhas,
+  ficha, remover cor) troca a versão da gaveta; nas outras, versão diferente na resposta = produto mudado por fora →
+  o aviso aparece na hora. Por isso a versão mora num `ref` do hook, não no `retrato` (que é trocado por toda resposta).
+- **Remover uma cor de vários tamanhos são N DELETEs**, e cada um precisa levar a versão que o anterior devolveu —
+  com a da gaveta, o 2º DELETE levaria 409 da própria gaveta. Idem linhas → ficha no "Salvar" (`gravarCadastro`).
+- **Fora da versão: estoque e fotos.** O estoque porque o Bling grava por fora a cada varredura
+  (`gravarEstoqueDoBling`) — com ele no hash, toda gaveta aberta numa loja com Bling levaria 409 falso. As fotos
+  porque enviar só acrescenta e excluir age por id. Também fora: `atributo_nome` (rótulo da ficha) e `updated_at`.
+- **A versão é o hash do CONTEÚDO**, não um contador: se a outra aba desfaz a mudança, a versão velha volta a valer.
+  É aceito — o que a aba velha veria já é o que está salvo.
+- **O Portal não confere a versão** (risco do §11 do desenho): a trilha percebe o que o Portal gravou (409), mas o
+  Portal grava por cima da trilha sem aviso. A mensagem do 409 NÃO cita o Portal (o desenho original citava; saiu
+  pela regra de 03/11 "a trilha não tem nada a ver com o Portal") — `CadastroNaTrilha::MSG_VERSAO`.
+- O DELETE leva a versão no CORPO (`axios.delete(url, {data})`); o Laravel lê JSON no DELETE pelo `input()`
+  normalmente. Sem `versao` (nula ou vazia), nada é conferido — compatível com quem ainda não manda.

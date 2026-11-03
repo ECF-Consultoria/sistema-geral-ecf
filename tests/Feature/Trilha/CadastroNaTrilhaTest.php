@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Trilha\TrilhaDaEmpresa;
+use App\Services\Trilha\VersaoDoCadastro;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -194,7 +195,8 @@ class CadastroNaTrilhaTest extends TestCase
         $this->assertSame(['fotos_por_variacao' => 12, 'foto_mb' => 10, 'descricao' => 5000, 'linhas' => 200], $r['limites']);
         // Completo e não mapeado: "falta mapear".
         $this->assertSame(['etapa' => 'mapa', 'faltas' => [], 'avisos' => [], 'no_publicador' => false, 'categoria_travada' => false, 'mapeado_em' => null], $r['situacao']);
-        $this->assertNull($r['versao']);
+        // F6: a versão do cadastro (sha1), a mesma que o serviço calcula agora.
+        $this->assertSame(VersaoDoCadastro::de($this->empresa, $p['produto']), $r['versao']);
     }
 
     public function test_o_retrato_diz_mapeado_e_no_publicador_e_a_falta_e_a_mesma_da_lista(): void
@@ -568,6 +570,6 @@ class CadastroNaTrilhaTest extends TestCase
         // O "frete ME1" como aviso (F3) está no FotosNaTrilhaTest e no TrilhaDaEmpresaTest; aqui as caixas cabem.
         $this->assertSame([], $r['situacao']['avisos']);
         $this->assertSame(['livre', 'motivo', 'onda_comecou'], array_keys($r['edicao']));
-        $this->assertNull($r['versao'], 'F6');
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{40}$/', (string) $r['versao'], 'F6: a versão do cadastro (sha1)');
     }
 }

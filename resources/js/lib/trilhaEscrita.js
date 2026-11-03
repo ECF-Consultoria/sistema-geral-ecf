@@ -81,6 +81,12 @@ export async function concluirMapeamento(escrita, produtoId, escolha) {
 // A gaveta `e:` grava pelas rotas da equipe sob `escrita.produtos` (a mesma base do
 // mapeamento). Toda escrita num produto que já andou responde 409 `{travado, motivo}`
 // (pergunta 1 do desenho): a tela vira só leitura com o motivo.
+//
+// F6 (a aba velha): as escritas que mudam conteúdo — as linhas, a ficha, remover a
+// variação e excluir o produto (a prévia também) — levam a `versao` do retrato que a
+// gaveta tem, quando há uma. Diferente da atual, o servidor responde 409
+// `{versao_atual, message}` SEM `travado`: a tela pede "Recarregar" e NÃO vira só
+// leitura. Fotos e frete não levam versão (não mudam a versão).
 
 /** `{escrita.produtos}/{id}` — a base das rotas do cadastro de um produto. */
 export const urlDoProduto = (escrita, produtoId) => `${endereco(escrita, 'produtos')}/${encodeURIComponent(produtoId)}`;
@@ -175,26 +181,34 @@ export async function conferirFrete(escrita, produtoId) {
 
 /**
  * Remove UMA variação (uma cor de um tamanho só, ou um tamanho de uma cor). A peça de combo ou kit e a última
- * variação do produto voltam 422 com o texto do servidor (a última sai por "Excluir produto"). → o retrato novo.
+ * variação do produto voltam 422 com o texto do servidor (a última sai por "Excluir produto"). A `versao` (F6) vai
+ * no corpo do DELETE, só quando há uma. → o retrato novo.
  */
-export async function excluirVariacao(escrita, produtoId, variacaoId) {
-    return corpo(await axios.delete(urlDaVariacao(escrita, produtoId, variacaoId)));
+export async function excluirVariacao(escrita, produtoId, variacaoId, { versao = null } = {}) {
+    const url = urlDaVariacao(escrita, produtoId, variacaoId);
+
+    return corpo(await (versao ? axios.delete(url, { data: { versao } }) : axios.delete(url)));
 }
 
 /**
  * O 1º passo de "Excluir produto": o que sai junto (as ofertas montadas que usam o produto — combos, kits, combits),
- * sem tocar em nada. → `{produtos, montadas: [{id, sku, nome, fase, em_uso}], totais, …}`.
+ * sem tocar em nada. Com a `versao` (F6), a aba velha já sabe aqui, antes de pedir a confirmação.
+ * → `{produtos, montadas: [{id, sku, nome, fase, em_uso}], totais, …}`.
  */
-export async function previaDaExclusao(escrita, produtoId) {
-    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/exclusao/previa`, {}));
+export async function previaDaExclusao(escrita, produtoId, { versao = null } = {}) {
+    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/exclusao/previa`, versao ? { versao } : {}));
 }
 
 /**
  * O 2º passo: exclui o produto com as ofertas montadas que a pessoa VIU na prévia (`montadas`, os ids). Apareceu
- * outra no meio do caminho: 422 em `montadas`, e nada sai (a tela mostra a prévia de novo).
+ * outra no meio do caminho: 422 em `montadas`, e nada sai (a tela mostra a prévia de novo). A `versao` (F6) vai
+ * junto, só quando há uma.
  */
-export async function excluirProduto(escrita, produtoId, montadas = []) {
-    return corpo(await axios.delete(urlDoProduto(escrita, produtoId), { data: { montadas: [...(montadas ?? [])] } }));
+export async function excluirProduto(escrita, produtoId, montadas = [], { versao = null } = {}) {
+    const dados = { montadas: [...(montadas ?? [])] };
+    if (versao) dados.versao = versao;
+
+    return corpo(await axios.delete(urlDoProduto(escrita, produtoId), { data: dados }));
 }
 
 // ─── Categoria e ficha técnica (F2): só leitura do catálogo público ──────────

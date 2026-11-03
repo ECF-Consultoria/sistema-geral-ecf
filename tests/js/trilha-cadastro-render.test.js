@@ -1148,3 +1148,85 @@ test('F4 — a pasta do cadastro sem amarra com quem a usa: nada de "Portal", "e
     const textos = [...fonte.matchAll(/(['"`])((?:(?!\1).)*?)\1/g)].map((m) => m[2]).join('\n');
     assert.equal(textos.match(/\bPortal\b|\bequipe\b/i), null);
 });
+
+// ─── F6: a aba velha ────────────────────────────────────────────────────────
+
+const TEXTO_DA_VERSAO = 'Este produto mudou depois que você abriu (outra pessoa salvou nele). Recarregue para ver o que mudou.';
+
+test('F6 — o 409 da versão toma o RODAPÉ: o texto do servidor e [Recarregar]; o formulário segue editável e com o que foi digitado', () => {
+    const estado = estadoDoRetrato(CADASTRO);
+    estado.produto.titulo = 'Título Que Eu Digitei';
+    const conflito = { texto: TEXTO_DA_VERSAO, confirmar: false, recarregando: false, erro: null };
+    const saida = desenharGaveta(CADASTRO, { estado, conflito });
+    const t = texto(saida);
+
+    assert.match(saida, /data-conflito-de-versao=""/);
+    assert.match(saida, /role="alert"[^>]*>Este produto mudou depois que você abriu/);
+    assert.ok(t.includes(TEXTO_DA_VERSAO));
+    assert.ok(tag(saida, 'data-acao="recarregar-cadastro"').length > 0 && t.includes('Recarregar'));
+    // Sem "Salvar" (com a versão velha ele só repetiria o 409) e sem "Excluir produto".
+    assert.ok(!saida.includes('data-acao="salvar-cadastro"'));
+    assert.ok(!saida.includes('data-acao="excluir-produto"'));
+    // NUNCA o modo leitura: nada desabilitado, nenhum "Só leitura", e o que a pessoa digitou está lá.
+    assert.ok(!/<fieldset disabled=""/.test(saida), 'o formulário não trava');
+    assert.ok(!saida.includes('data-motivo-da-trava'));
+    assert.ok(!t.includes('Só leitura'));
+    assert.ok(saida.includes('value="Título Que Eu Digitei"'), 'nada se perde');
+});
+
+test('F6 — [Recarregar] com algo mexido pergunta antes (Descartar e recarregar · Cancelar); recarregando, o botão fica ocupado; o GET que falhou mostra o erro', () => {
+    const estado = estadoDoRetrato(CADASTRO);
+    estado.produto.titulo = 'Título Que Eu Digitei';
+    const base = { texto: TEXTO_DA_VERSAO, confirmar: false, recarregando: false, erro: null };
+
+    const pergunta = desenharGaveta(CADASTRO, { estado, conflito: { ...base, confirmar: true } });
+    assert.ok(texto(pergunta).includes('Recarregar descarta o que você mudou aqui e ainda não foi salvo.'));
+    assert.ok(tag(pergunta, 'data-acao="descartar-e-recarregar"').includes('text-trilha-bad'), 'descartar é a ação de perigo');
+    assert.ok(pergunta.includes('data-acao="cancelar-recarga"'));
+    assert.ok(!pergunta.includes('data-acao="recarregar-cadastro"'));
+    assert.ok(pergunta.includes('value="Título Que Eu Digitei"'), 'até confirmar, o mexido fica');
+
+    const recarregando = desenharGaveta(CADASTRO, { estado, conflito: { ...base, recarregando: true } });
+    assert.ok(texto(recarregando).includes('Recarregando…'));
+    // Ocupado como os outros botões da trilha: focável, `aria-disabled`, ignora o clique (o hook também barra o 2º).
+    assert.match(tag(recarregando, 'data-acao="recarregar-cadastro"'), /aria-disabled="true"/);
+
+    const falhou = desenharGaveta(CADASTRO, { estado, conflito: { ...base, erro: 'Não consegui falar com o servidor. Confira a conexão e tente de novo.' } });
+    assert.match(falhou, /data-erro-da-recarga=""[^>]*>Não consegui falar com o servidor/);
+    assert.ok(falhou.includes('data-acao="recarregar-cadastro"'), 'o botão fica para tentar de novo');
+
+    // A confirmação de SAÍDA (fechar com algo mexido) vem antes do aviso da versão: a pessoa pediu para sair.
+    const saindo = desenharGaveta(CADASTRO, { estado, conflito: base, pedido: { seguir: nada } });
+    assert.ok(saindo.includes('data-acao="salvar-e-fechar"') && !saindo.includes('data-conflito-de-versao'));
+});
+
+test('F6 — o hook manda a versão que a gaveta conhece em toda escrita que muda conteúdo; o 409 da versão nunca liga a trava', () => {
+    const fonte = lerSemComentarios('resources/js/Components/Trilha/Cadastro/useCadastroDoProduto.js');
+
+    // O "Salvar" (linhas → ficha, a versão encadeada pelo `gravarCadastro`), "+ Cor", remover (cada pedido com a do
+    // anterior), a prévia (as duas vezes) e excluir o produto.
+    assert.match(fonte, /gravarCadastro\(\{[\s\S]*?versao: versao\.current,/);
+    assert.match(fonte, /gravarLinhas\(escrita, produtoId, linhas, \{ versao: versao\.current \}\)/);
+    assert.match(fonte, /let v = versao\.current;[\s\S]*?excluirVariacaoNoServidor\(escrita, produtoId, id, \{ versao: v \}\);\s*if \(ultimo\?\.versao\) v = ultimo\.versao;/);
+    assert.equal((fonte.match(/previaDaExclusao\(escrita, produtoId, \{ versao: versao\.current \}\)/g) ?? []).length, 2);
+    assert.match(fonte, /excluirProdutoNoServidor\(escrita, produtoId, montadasDaPrevia\(atual\.previa\), \{ versao: versao\.current \}\)/);
+    // Fotos e frete não levam versão (não a mudam).
+    assert.match(fonte, /enviarFotosAoServidor\(escrita, produtoId, variacaoId, arquivos\)[,)]/);
+    assert.match(fonte, /conferirFreteNoServidor\(escrita, produtoId\)\)/);
+    // A versão vem do retrato aberto e do relido; a da resposta só vale na escrita conferida.
+    assert.equal((fonte.match(/versao\.current = (?:r|novo)\?\.versao \?\? null;/g) ?? []).length, 2);
+    assert.match(fonte, /versaoDepoisDe\(versao\.current, resposta, \{ conferida \}\)/);
+
+    // O 409 só é lido pelas duas regras puras (nenhum `status === 409` solto)...
+    assert.equal(fonte.match(/status === 409/), null);
+    // ... e o caminho do conflito e o do [Recarregar] não tocam na trava.
+    const trecho = (inicio, fim) => fonte.slice(fonte.indexOf(inicio), fonte.indexOf(fim, fonte.indexOf(inicio)));
+    for (const bloco of [
+        trecho('const avisarConflito = useCallback(', '}, [onAvisar]);'),
+        trecho('const recarregarRetrato = useCallback(', '}, [escrita, produtoId, onRecarregar]);'),
+        trecho('if (conflitoDeVersao(r.falha)) {', 'if (travadoNo409(r.falha)) {'),
+    ]) {
+        assert.ok(bloco.length > 50, bloco);
+        assert.equal(bloco.match(/setTrava|setTentativa/), null, bloco);
+    }
+});

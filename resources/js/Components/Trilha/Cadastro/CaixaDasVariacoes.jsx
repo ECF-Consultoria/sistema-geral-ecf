@@ -456,7 +456,8 @@ export function NovaVariacao({ tipo, retrato, estado, eixos, c, onFechar }) {
             return;
         }
         const r = await (c.adicionarVariacoes ?? semAcao)(novas, { cor: tipo !== 'tamanho' });
-        if (r.ignorada || r.travado) return;
+        // A trava e a aba velha (F6) já falam no topo e no rodapé da gaveta: aqui, o que foi digitado só fica.
+        if (r.ignorada || r.travado || r.conflito) return;
         if (r.ok) {
             onFechar({ texto: `${rotulo} “${texto(valor)}” entrou: ${novas.length === 1 ? '1 variação nova' : `${novas.length} variações novas`}.` });
 
@@ -704,7 +705,8 @@ export default function CaixaDasVariacoes({ retrato, estado, c, leitura = false,
     };
 
     const removido = (r, pedido) => {
-        if (r?.ignorada || r?.travado) return;
+        // A aba velha (F6) fala no rodapé da gaveta; só a remoção que saiu pela metade ainda se conta aqui.
+        if (r?.ignorada || r?.travado || (r?.conflito && !r?.parcial)) return;
         if (r?.ok) {
             setAviso({ texto: pedido.feito, tom: 'ok' });
 

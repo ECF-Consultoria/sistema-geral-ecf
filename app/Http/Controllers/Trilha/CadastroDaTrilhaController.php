@@ -29,9 +29,21 @@ use Illuminate\Support\Facades\Log;
  *
  * Toda resposta de escrita traz o retrato novo (as chaves da rota 1) mais o resultado dela — a tela não precisa de um
  * GET para saber como ficou. Nenhuma resposta leva endereço do Portal.
+ *
+ * F6 — a aba velha: as escritas que mudam conteúdo (rotas 3, 4, 14 e 15) aceitam a `versao` do retrato que a gaveta
+ * tinha, opcional; diferente da atual, 409 `{versao_atual, message}` SEM `travado`, depois da trava
+ * ({@see CadastroNaTrilha::exigirVersao()}). A versão nova vem em toda resposta com retrato.
  */
 class CadastroDaTrilhaController extends Controller
 {
+    /** A `versao` (F6) no corpo: opcional — sem ela, nada é conferido. */
+    private const REGRA_DA_VERSAO = ['versao' => ['nullable', 'string', 'max:64']];
+
+    private const MENSAGENS_DA_VERSAO = [
+        'versao.string' => 'Recarregue a página e tente de novo.',
+        'versao.max'    => 'Recarregue a página e tente de novo.',
+    ];
+
     public function __construct(private CadastroNaTrilha $cadastro) {}
 
     /** Rota 1 — o retrato da gaveta `e:{id}`. Não grava e não chama o Mercado Livre. */
@@ -85,18 +97,22 @@ class CadastroDaTrilhaController extends Controller
     public function linhas(Request $request, int $company, int $produto): JsonResponse
     {
         [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
-        $request->validate([
+        $dados = $request->validate([
             'linhas'   => ['required', 'array', 'min:1', 'max:'.ProdutoCadastroService::MAX_GRADE],
             'linhas.*' => ['array'],
+            ...self::REGRA_DA_VERSAO,
         ], [
             'linhas.required' => 'Nada para salvar.',
             'linhas.array'    => 'Nada para salvar.',
             'linhas.min'      => 'Nada para salvar.',
             'linhas.max'      => 'Envie no máximo '.ProdutoCadastroService::MAX_GRADE.' linhas por vez.',
             'linhas.*.array'  => 'Linha em formato inválido.',
+            ...self::MENSAGENS_DA_VERSAO,
         ]);
         $linhas = $this->cadastro->conferirLinhas($empresa, $alvo, RegrasDoCadastro::linhasComoVieram($request));
         $this->cadastro->exigirLivre($empresa, $alvo);
+        // F6: a aba velha, antes da categoria (o pedido recusado não chega a consultar o ML).
+        $this->cadastro->exigirVersao($empresa, $alvo, $dados['versao'] ?? null);
         // F2: a categoria nova, depois da trava (o produto travado não chega a consultar o ML).
         $linhas = $this->cadastro->conferirCategoria($empresa, $alvo, $linhas);
 
@@ -118,13 +134,15 @@ class CadastroDaTrilhaController extends Controller
      * combo ou kit: 422 `errors.oferta` com o texto do serviço, e nada muda; a última variação do produto: 422
      * `errors.variacao` (é "Excluir produto"); travado: 409. Os anúncios da cor voltam para a espera; com cor e tamanho,
      * a galeria passa para outro tamanho da cor. Não agenda o Publicador. Responde o retrato novo, `anuncios_para_espera`,
-     * `sku` e a mensagem.
+     * `sku` e a mensagem. F6: `versao` opcional no corpo (a aba velha: 409 sem `travado`, nada sai).
      */
     public function excluirVariacao(Request $request, int $company, int $produto, int $variacao): JsonResponse
     {
         [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
         $v = $this->cadastro->variacao($empresa, $alvo, $variacao);
+        $dados = $request->validate(self::REGRA_DA_VERSAO, self::MENSAGENS_DA_VERSAO);
         $this->cadastro->exigirLivre($empresa, $alvo);
+        $this->cadastro->exigirVersao($empresa, $alvo, $dados['versao'] ?? null);
 
         $r = $this->cadastro->excluirVariacao($empresa, $alvo, $v, AtorDoPortal::daEquipe($request->user()));
         $retrato = $this->cadastro->retrato($empresa, $alvo);
@@ -145,12 +163,15 @@ class CadastroDaTrilhaController extends Controller
     /**
      * Rota 15, 1º passo — o que sai junto com o produto, sem tocar em nada (sem corpo): `produtos` (este, com o número
      * de variações e `em_uso`), `montadas` (os combos, kits e combits que o usam: `id`, `sku`, `nome`, `fase`,
-     * `em_uso`) e `totais`. Travado: 409 (o produto que andou não se exclui pela trilha).
+     * `em_uso`) e `totais`. Travado: 409 (o produto que andou não se exclui pela trilha). F6: com `versao` no corpo, a
+     * aba velha já sabe aqui (409 sem `travado`), antes de pedir a confirmação.
      */
     public function previaDaExclusao(Request $request, int $company, int $produto): JsonResponse
     {
         [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $dados = $request->validate(self::REGRA_DA_VERSAO, self::MENSAGENS_DA_VERSAO);
         $this->cadastro->exigirLivre($empresa, $alvo);
+        $this->cadastro->exigirVersao($empresa, $alvo, $dados['versao'] ?? null);
 
         return response()->json($this->cadastro->previaDaExclusao($empresa, $alvo));
     }
@@ -159,7 +180,7 @@ class CadastroDaTrilhaController extends Controller
      * Rota 15, 2º passo — exclui o produto: `montadas` = os ids das montadas que a prévia mostrou (até 2.000). Apareceu
      * outra no meio do caminho: 422 `errors.montadas` e nada sai. Travado: 409. Sai junto o que a trilha tinha dele (as
      * linhas das ondas e o mapeamento). Responde `{produtos, variacoes, montadas, ids, nao_encontrados, mensagem}` —
-     * sem retrato: o produto não existe mais.
+     * sem retrato: o produto não existe mais. F6: `versao` opcional (a aba velha: 409 sem `travado`, nada sai).
      */
     public function excluirProduto(Request $request, int $company, int $produto): JsonResponse
     {
@@ -167,13 +188,16 @@ class CadastroDaTrilhaController extends Controller
         $dados = $request->validate([
             'montadas'   => ['nullable', 'array', 'max:2000'],
             'montadas.*' => ['integer', 'min:1'],
+            ...self::REGRA_DA_VERSAO,
         ], [
             'montadas.array'     => 'Confira de novo o que sai junto antes de excluir.',
             'montadas.max'       => 'Confira de novo o que sai junto antes de excluir.',
             'montadas.*.integer' => 'Confira de novo o que sai junto antes de excluir.',
             'montadas.*.min'     => 'Confira de novo o que sai junto antes de excluir.',
+            ...self::MENSAGENS_DA_VERSAO,
         ]);
         $this->cadastro->exigirLivre($empresa, $alvo);
+        $this->cadastro->exigirVersao($empresa, $alvo, $dados['versao'] ?? null);
 
         $r = $this->cadastro->excluirProduto($empresa, $alvo, $dados['montadas'] ?? [], AtorDoPortal::daEquipe($request->user()));
 
@@ -189,16 +213,18 @@ class CadastroDaTrilhaController extends Controller
      * Rota 4 — a ficha técnica INTEIRA do estado da gaveta (gravar substitui). O obrigatório vazio grava e vira a falta
      * "ficha: x" na Lista; valor inválido é 422 por campo (`errors["atributos.{ID}"]`) e nada grava; sem categoria
      * gravada, 422 sem chamar o ML; o catálogo fora, 422 sem apagar. `categoria` (opcional) é a que a gaveta tinha
-     * aberta: diferente da gravada, 422 em `errors.categoria`. Responde o retrato novo, como a rota 3.
+     * aberta: diferente da gravada, 422 em `errors.categoria`. Responde o retrato novo, como a rota 3. F6: `versao`
+     * opcional (a aba velha: 409 sem `travado`, nada grava).
      */
     public function ficha(Request $request, int $company, int $produto): JsonResponse
     {
         [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
         $dados = $request->validate(
-            RegrasDoCadastro::fichaTecnica() + ['categoria' => ['nullable', 'string', 'max:20']],
-            RegrasDoCadastro::mensagensDaFicha(),
+            RegrasDoCadastro::fichaTecnica() + ['categoria' => ['nullable', 'string', 'max:20']] + self::REGRA_DA_VERSAO,
+            RegrasDoCadastro::mensagensDaFicha() + self::MENSAGENS_DA_VERSAO,
         );
         $this->cadastro->exigirLivre($empresa, $alvo);
+        $this->cadastro->exigirVersao($empresa, $alvo, $dados['versao'] ?? null);
 
         $this->cadastro->gravarFicha($empresa, $alvo, (array) $request->input('atributos'), $dados['categoria'] ?? null,
             AtorDoPortal::daEquipe($request->user()));

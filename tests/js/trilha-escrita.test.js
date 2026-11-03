@@ -584,6 +584,48 @@ test('cadastro F4: remover variação, a prévia da exclusão e excluir o produt
         'O que sai junto com estes produtos mudou. Confira de novo antes de excluir.');
 });
 
+test('cadastro F6: a `versao` vai no corpo das escritas que mudam conteúdo (linhas, ficha, remover, prévia, excluir); foto e frete não levam', async () => {
+    const { pedidos, restaurar } = gravarPedidos({ produto: { id: 12 }, variacoes: [] });
+    const E = { ...PROPS_TRABALHO.escrita, produtos: `${PROPS_TRABALHO.escrita.produtos}/` };
+    const v = 'f'.repeat(40);
+    try {
+        await escrita.gravarLinhas(E, 12, [{ chave: 'v91', id: 91, codigo: 'CA-1', nome: 'Cadeira' }], { versao: v });
+        await escrita.gravarFicha(E, 12, [{ id: 'BRAND', valor: 'ECF' }], { categoria: 'MLB193945', versao: v });
+        await escrita.excluirVariacao(E, 12, 124, { versao: v });
+        await escrita.previaDaExclusao(E, 12, { versao: v });
+        await escrita.excluirProduto(E, 12, [70], { versao: v });
+        // Sem versão (o retrato antigo, sem a chave): como antes da F6.
+        await escrita.excluirVariacao(E, 12, 124, { versao: null });
+        await escrita.previaDaExclusao(E, 12, { versao: null });
+        await escrita.excluirProduto(E, 12, [], { versao: null });
+        // Foto e frete não mudam a versão: não a levam.
+        await escrita.excluirFoto(E, 12, 124, 501);
+        await escrita.conferirFrete(E, 12);
+    } finally {
+        restaurar();
+    }
+
+    const base = 'http://localhost/trilha/459/produtos/12';
+    assert.deepEqual(pedidos, [
+        { metodo: 'post', url: `${base}/linhas`, corpo: { linhas: [{ chave: 'v91', id: 91, codigo: 'CA-1', nome: 'Cadeira' }], versao: v } },
+        { metodo: 'put', url: `${base}/ficha-tecnica`, corpo: { atributos: [{ id: 'BRAND', valor: 'ECF' }], categoria: 'MLB193945', versao: v } },
+        // DELETE leva o corpo em `data` (o axios), e o servidor lê a `versao` dele.
+        { metodo: 'delete', url: `${base}/variacoes/124`, corpo: { data: { versao: v } } },
+        { metodo: 'post', url: `${base}/exclusao/previa`, corpo: { versao: v } },
+        { metodo: 'delete', url: base, corpo: { data: { montadas: [70], versao: v } } },
+        { metodo: 'delete', url: `${base}/variacoes/124`, corpo: undefined },
+        { metodo: 'post', url: `${base}/exclusao/previa`, corpo: {} },
+        { metodo: 'delete', url: base, corpo: { data: { montadas: [] } } },
+        { metodo: 'delete', url: `${base}/variacoes/124/fotos/501`, corpo: undefined },
+        { metodo: 'post', url: `${base}/frete`, corpo: {} },
+    ]);
+
+    // O 409 da versão chega à pessoa com o texto do servidor (como o da trava).
+    const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
+    const texto = 'Este produto mudou depois que você abriu (outra pessoa salvou nele). Recarregue para ver o que mudou.';
+    assert.equal(escrita.mensagemDoErro(erro(409, { versao_atual: v, message: texto })), texto);
+});
+
 test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {
     const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
     const m = escrita.mensagemDoErro;

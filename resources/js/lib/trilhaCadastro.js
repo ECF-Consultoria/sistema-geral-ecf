@@ -1028,6 +1028,48 @@ export const exclusaoMudou = (falha) => falha?.response?.status === 422 && !!fal
 /** A resposta da rota 3 já traz o retrato novo? (o controller da trilha devolve o retrato junto do resultado) */
 export const temRetrato = (resposta) => !!resposta && typeof resposta.produto === 'object' && resposta.produto !== null && Array.isArray(resposta.variacoes);
 
+// ─── A aba velha (F6) ───────────────────────────────────────────────────────
+//
+// O servidor responde 409 por DOIS motivos, e a gaveta os trata diferente:
+// - a TRAVA (`{travado: true, motivo}`): o produto andou — a gaveta vira só leitura;
+// - a VERSÃO (`{versao_atual, message}`, SEM `travado`): o produto mudou depois que
+//   a gaveta abriu — o que a pessoa digitou fica na tela e o rodapé oferece
+//   [Recarregar]. Nunca vira só leitura por isso.
+
+/** O texto do 409 da versão quando o servidor não manda o dele. */
+export const MENSAGEM_DA_VERSAO = 'Este produto mudou depois que você abriu (outra pessoa salvou nele). Recarregue para ver o que mudou.';
+
+/** O 409 da TRAVA (pergunta 1): o produto andou. */
+export const travadoNo409 = (falha) => falha?.response?.status === 409 && !!falha.response.data?.travado;
+
+/** O 409 da VERSÃO (F6): a gaveta é de antes de outra gravação no produto. É o 409 sem `travado`. */
+export const conflitoDeVersao = (falha) => falha?.response?.status === 409 && !falha.response.data?.travado;
+
+/** O texto do conflito para o rodapé: o do servidor, ou o nosso. */
+export function textoDoConflito(falha) {
+    const doServidor = falha?.response?.data?.message;
+
+    return typeof doServidor === 'string' && doServidor.trim() ? doServidor.trim() : MENSAGEM_DA_VERSAO;
+}
+
+/**
+ * A versão que a gaveta passa a conhecer depois de uma resposta com retrato.
+ * - Escrita CONFERIDA (mandou a versão e passou — linhas, ficha, remover cor): a da resposta, que é a desta gravação.
+ * - Escrita que o servidor NÃO confere (fotos, frete): a de antes. Fotos e frete não mudam a versão; se a da resposta
+ *   é outra, alguém mudou o produto por fora — `mudou: true`, e a gaveta avisa já (adotá-la deixaria o próximo
+ *   "Salvar" passar por cima do que a outra pessoa gravou).
+ * Sem versão conhecida (o retrato ainda não tinha), fica a da resposta.
+ *
+ * @returns {{versao: ?string, mudou: boolean}}
+ */
+export function versaoDepoisDe(conhecida, resposta, { conferida = false } = {}) {
+    const nova = typeof resposta?.versao === 'string' && resposta.versao ? resposta.versao : null;
+    if (!nova) return { versao: conhecida ?? null, mudou: false };
+    if (conferida || !conhecida) return { versao: nova, mudou: false };
+
+    return { versao: conhecida, mudou: nova !== conhecida };
+}
+
 /**
  * O "Salvar", na ORDEM do contrato (§5.9 do desenho): 1) as linhas, em lotes de até 200; 2) a ficha técnica
  * (F2: `gravarFicha`, só quando há o que gravar). O 1º lote com erro de campo (HTTP 200 com `erros`) PARA a

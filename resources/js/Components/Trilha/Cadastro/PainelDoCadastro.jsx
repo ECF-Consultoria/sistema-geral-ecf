@@ -45,6 +45,10 @@ import { FICHA_PARADA } from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // por cor com as fotos dela, "+ Cor"/"+ Tamanho" e remover na hora, custo e
 // caixa iguais ou por cor) e "Excluir produto" no rodapé, em dois passos (a
 // prévia do que sai junto e a confirmação), só com o produto livre.
+// F6: a aba velha. O 409 SEM `travado` (o produto mudou depois que a gaveta
+// abriu) toma o rodapé: o texto do servidor e [Recarregar]. O formulário segue
+// editável e com o que a pessoa digitou — nada de só leitura; o [Recarregar]
+// pergunta antes de descartar o que está mexido.
 
 /** A pílula do que falta, lida do servidor. */
 function PilulaDasFaltas({ faltas }) {
@@ -110,6 +114,42 @@ function EstadoDoRodape({ erroGeral, nota, temMudanca, etapa, leitura }) {
         <span className={cn('mr-auto min-w-0 self-center text-[12.5px]', temMudanca && !nota ? 'font-semibold text-trilha-warn' : 'text-trilha-muted')} data-estado-do-rodape="">
             {texto}
         </span>
+    );
+}
+
+/**
+ * O rodapé da aba velha (F6): "Este produto mudou depois que você abriu…" e [Recarregar]. Com algo mexido, o
+ * [Recarregar] pergunta antes ("Descartar e recarregar" · "Cancelar"); o GET que falhou mostra o erro e o botão fica.
+ */
+function AvisoDaVersao({ conflito, onRecarregar, onConfirmar, onCancelar }) {
+    if (conflito.confirmar) {
+        return (
+            <ConfirmacaoNaGaveta
+                texto="Recarregar descarta o que você mudou aqui e ainda não foi salvo."
+                acoes={[
+                    { rotulo: 'Descartar e recarregar', acao: 'descartar-e-recarregar', perigo: true, onClick: onConfirmar },
+                    { rotulo: 'Cancelar', acao: 'cancelar-recarga', foco: true, onClick: onCancelar },
+                ]}
+            />
+        );
+    }
+
+    return (
+        <div className="flex w-full flex-wrap items-center justify-end gap-2" data-conflito-de-versao="">
+            <span className="mr-auto flex min-w-0 flex-col gap-0.5 self-center text-[12.5px]">
+                <span role="alert" className="font-semibold text-trilha-warn">
+                    {conflito.texto}
+                </span>
+                {conflito.erro && (
+                    <span className="font-semibold text-trilha-bad" data-erro-da-recarga="">
+                        {conflito.erro}
+                    </span>
+                )}
+            </span>
+            <Botao primario data-acao="recarregar-cadastro" ocupado={!!conflito.recarregando} onClick={onRecarregar}>
+                {conflito.recarregando ? 'Recarregando…' : 'Recarregar'}
+            </Botao>
+        </div>
     );
 }
 
@@ -209,6 +249,16 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
                     { rotulo: 'Descartar', acao: 'descartar', perigo: true, onClick: c.descartar },
                     { rotulo: 'Continuar editando', acao: 'continuar-editando', foco: true, onClick: c.continuarEditando },
                 ]}
+            />
+        );
+    } else if (retrato && c.conflito) {
+        // F6: a aba velha toma o rodapé (sem "Salvar": com a versão de antes ele só repetiria o 409).
+        rodape = (
+            <AvisoDaVersao
+                conflito={c.conflito}
+                onRecarregar={c.pedirRecarga ?? (() => {})}
+                onConfirmar={c.confirmarRecarga ?? (() => {})}
+                onCancelar={c.cancelarRecarga ?? (() => {})}
             />
         );
     } else if (retrato) {

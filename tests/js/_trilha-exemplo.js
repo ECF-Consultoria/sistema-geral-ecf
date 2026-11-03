@@ -436,7 +436,8 @@ export const CADASTRO = {
         avisos: [], no_publicador: false, categoria_travada: false, mapeado_em: null,
     },
     edicao: { livre: true, motivo: null, onda_comecou: null },
-    versao: null,
+    // F6: o sha1 do cadastro (sem estoque nem fotos) — a gaveta o devolve nas escritas que mudam conteúdo.
+    versao: '3f786850e387550fdab836ed7e6dc881de23001b',
 };
 
 /** `POST …/9/linhas` com tudo o que a F1 cobre: salvo, mas ainda faltam a categoria e as fotos (HTTP 200). */

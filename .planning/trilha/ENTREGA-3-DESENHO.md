@@ -613,7 +613,7 @@ As fotos ficam no `FotosDaTrilhaController`, que já existe (rotas 10 a 12). As 
   - a ficha.
 
   Ficam FORA o estoque (o Bling grava por fora e daria 409 falso) e as fotos (enviar só acrescenta; excluir age por
-  id). Versão diferente → 409 "Este produto mudou depois que você abriu (outra pessoa salvou aqui ou no Portal).
+  id). Versão diferente → 409 "Este produto mudou depois que você abriu (outra pessoa salvou nele).
   Recarregue para ver o que mudou.", com a versão atual. A versão pega a aba velha, não a corrida de milissegundos:
   envolver o `gravarLinhas` numa trava seguraria o HTTP da categoria dentro dela.
 - **Rastro.** Os serviços gravam os eventos de sempre (`activity_log`, canal `portal`, origem `interno`). O

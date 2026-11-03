@@ -26,6 +26,7 @@ import {
     chaveDaVariacao,
     comCustoECaixasIguais,
     conferirGravacaoDasCores,
+    conflitoDeVersao,
     custoECaixasIguais,
     custoIgualEmCadaCor,
     depoisDaFichaRecusada,
@@ -44,7 +45,10 @@ import {
     nadaMudou,
     resultadoDoSalvar,
     temRetrato,
+    textoDoConflito,
+    travadoNo409,
     trocaDeEixo,
+    versaoDepoisDe,
 } from '@/lib/trilhaCadastro';
 import useCategoriaDaTrilha from '@/Components/Trilha/Cadastro/useCategoriaDaTrilha';
 import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
@@ -78,6 +82,17 @@ import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // todas as cores" (o padrão, quando o que está gravado é igual) ou "diferente
 // por cor". "Excluir produto" em dois passos: a prévia do que sai junto e a
 // confirmação; depois, a trilha recarrega e a gaveta fecha (o produto sumiu).
+//
+// F6: a aba velha. A gaveta guarda a `versao` do retrato (a que ELA conhece) e a
+// manda nas escritas que mudam conteúdo — o "Salvar" (linhas e ficha, a de cada
+// resposta valendo para o pedido seguinte), "+ Cor", remover e excluir o produto.
+// O 409 SEM `travado` é o da versão: o que a pessoa digitou fica na tela e o
+// rodapé diz "Este produto mudou depois que você abriu…" com [Recarregar] — que
+// relê o retrato e só descarta o que estava mexido depois de a pessoa confirmar.
+// Nunca vira só leitura por isso (o 409 COM `travado` continua o modo leitura).
+// As fotos e o frete não levam versão (não a mudam): se a resposta deles traz
+// outra, alguém mudou o produto por fora, e a gaveta avisa na hora em vez de
+// adotá-la (adotar deixaria o próximo "Salvar" passar por cima).
 //
 // E a guarda de saída (§5.12 do desenho): com algo mexido, fechar a gaveta,
 // abrir outro item por dentro, trocar o "Ver como" ou uma visita do Inertia
@@ -136,6 +151,10 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
     const [avisoDaCor, setAvisoDaCor] = useState(null);
     // F4: "Excluir produto" — `{passo: 'previa'|'confirmar'|'excluindo'|'excluido'|'erro', previa, erro}`.
     const [exclusao, setExclusao] = useState(null);
+    // F6: o 409 da versão — `{texto, confirmar, recarregando, erro}` (o rodapé vira o aviso com [Recarregar]).
+    const [conflito, setConflito] = useState(null);
+    // F6: a versão do cadastro que ESTA gaveta conhece (vai nas escritas que mudam conteúdo). Não se desenha: ref.
+    const versao = useRef(null);
 
     const vivo = useRef(true);
     useEffect(() => {
@@ -153,6 +172,8 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         abrirCadastro(escrita, produtoId)
             .then((r) => {
                 if (!atual) return;
+                versao.current = r?.versao ?? null;
+                setConflito(null);
                 setRetrato(r);
                 setEstado(estadoDoRetrato(r));
                 // "Iguais em todas as cores" é o padrão quando o gravado é igual; a escolha da pessoa fica numa releitura.
@@ -238,7 +259,30 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         definicao: { categoria: ficha.definicao?.categoria ?? null, grupos: ficha.definicao?.grupos ?? null, carregando: ficha.carregando },
         custoPorCor: !!custoPorCor,
         exclusao,
+        conflito,
     };
+
+    /**
+     * O 409 da versão (F6): o rodapé vira o aviso com [Recarregar]. O que a pessoa digitou FICA — nada é descartado
+     * aqui, e a gaveta não vira só leitura.
+     */
+    const avisarConflito = useCallback((falha) => {
+        const texto = typeof falha === 'string' ? falha : textoDoConflito(falha);
+        if (vivo.current) {
+            setConflito({ texto, confirmar: false, recarregando: false, erro: null });
+            setErros(SEM_ERROS);
+            setErroGeral(null);
+            setNota(null);
+        }
+        onAvisar(texto, 'erro');
+    }, [onAvisar]);
+
+    /** A versão depois de uma resposta com retrato (`versaoDepoisDe`); a de fora (fotos, frete) que mudou vira o aviso. */
+    const conhecerVersao = useCallback((resposta, { conferida }) => {
+        const { versao: nova, mudou } = versaoDepoisDe(versao.current, resposta, { conferida });
+        versao.current = nova;
+        if (mudou) avisarConflito(textoDoConflito(null));
+    }, [avisarConflito]);
 
     /** O "Salvar". → true quando gravou tudo (o resultado toma o lugar do formulário). */
     const salvar = useCallback(async () => {
@@ -269,12 +313,15 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             const r = await gravarCadastro({
                 estado: e0,
                 retrato: r0,
-                versao: r0.versao ?? null,
-                enviarLinhas: (linhas, { versao }) => gravarLinhas(escrita, produtoId, linhas, { versao }),
+                // F6: a versão que esta gaveta conhece; a de cada resposta vale para o pedido seguinte (linhas → ficha).
+                versao: versao.current,
+                enviarLinhas: (linhas, { versao: v }) => gravarLinhas(escrita, produtoId, linhas, { versao: v }),
                 // O 2º passo: a ficha que a tela montou ANTES do 1º, com a categoria dela (o servidor confere).
-                gravarFicha: plano.gravar ? ({ versao }) => gravarFicha(escrita, produtoId, plano.atributos, { categoria: plano.categoria, versao }) : null,
+                gravarFicha: plano.gravar ? ({ versao: v }) => gravarFicha(escrita, produtoId, plano.atributos, { categoria: plano.categoria, versao: v }) : null,
                 fichaMudou: plano.gravar,
             });
+            // O que gravou (os pedidos que passaram pela conferência) é desta gaveta: a versão dele vale daqui em diante.
+            if (r.versao) versao.current = r.versao;
             if (!vivo.current) return r.ok;
 
             if (r.nada) {
@@ -288,7 +335,21 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             if (r.falha) {
                 const resposta = r.falha?.response;
                 const texto = mensagemDoErro(r.falha);
-                if (resposta?.status === 409 && resposta.data?.travado) {
+                if (conflitoDeVersao(r.falha)) {
+                    // A aba velha (F6): nada deste pedido gravou e o que a pessoa digitou FICA na tela. Se um passo
+                    // anterior gravou (as linhas, quando foi a ficha que levou o 409), ele vira o retrato — sem apagar
+                    // o resto do que está mexido.
+                    if (temRetrato(r.resposta)) {
+                        const novo = r.resposta;
+                        setRetrato(novo);
+                        setEstado(r.passo === 'ficha' ? depoisDaFichaRecusada(e0, novo) : aplicarResposta(e0, r0, novo));
+                        onRecarregar();
+                    }
+                    avisarConflito(r.falha);
+
+                    return false;
+                }
+                if (travadoNo409(r.falha)) {
                     // O produto andou enquanto a gaveta estava aberta: vira só leitura, com o motivo do servidor, e o
                     // retrato é lido de novo (o que está na tela não foi salvo).
                     setTrava(texto);
@@ -386,7 +447,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             agora.current.salvando = false;
             if (vivo.current) setSalvando(false);
         }
-    }, [escrita, produtoId, onRecarregar, onAvisar]);
+    }, [escrita, produtoId, onRecarregar, onAvisar, avisarConflito]);
 
     // ─── As ações imediatas (F3) ────────────────────────────────────────────
 
@@ -403,10 +464,14 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
     /**
      * Uma ação imediata: o pedido, e a resposta (o retrato novo) juntada ao que está na tela. → `{ok, resposta?,
-     * falha?, travado?}`. O 409 da trava vira o modo leitura, como no "Salvar". A trilha recarrega (as faltas e a
-     * etapa mudam com as fotos); a foto que completa o produto diz que ele seguiu para o mapeamento.
+     * falha?, travado?, conflito?}`. O 409 da trava vira o modo leitura, como no "Salvar"; o da versão (F6), o aviso
+     * com [Recarregar]. A trilha recarrega (as faltas e a etapa mudam com as fotos); a foto que completa o produto diz
+     * que ele seguiu para o mapeamento.
+     *
+     * `conferida` (F6): o pedido levou a versão da gaveta e passou — a da resposta passa a valer. Sem ela (fotos,
+     * frete), a versão fica a de antes, e uma diferente na resposta é o produto mudado por fora (`versaoDepoisDe`).
      */
-    const imediata = useCallback(async (descricao, pedir) => {
+    const imediata = useCallback(async (descricao, pedir, { conferida = false } = {}) => {
         const { retrato: r0, leitura: soLeitura, salvando: jaSalvando, acao: emCurso } = agora.current;
         if (!r0 || soLeitura || jaSalvando || emCurso) return { ok: false, ignorada: true };
         agora.current.acao = descricao;
@@ -414,6 +479,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         try {
             const resposta = await pedir();
             const novo = temRetrato(resposta) ? resposta : await abrirCadastro(escrita, produtoId);
+            conhecerVersao(novo, { conferida });
             if (!vivo.current) return { ok: true, resposta };
             // O estado se mede contra o retrato de AGORA (um "Salvar" não corre junto: a ação o barra).
             const antigo = agora.current.retrato ?? r0;
@@ -426,8 +492,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
             return { ok: true, resposta };
         } catch (e) {
-            const resposta = e?.response;
-            if (resposta?.status === 409 && resposta.data?.travado) {
+            if (travadoNo409(e)) {
                 travar(e);
 
                 return { ok: false, falha: e, travado: true };
@@ -436,9 +501,15 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             // o retrato do último pedido que deu certo vale (F4).
             if (vivo.current && temRetrato(e?.retratoParcial)) {
                 const antigo = agora.current.retrato ?? r0;
+                if (conferida) conhecerVersao(e.retratoParcial, { conferida: true });
                 setRetrato(e.retratoParcial);
                 setEstado((atual) => aplicarResposta(atual, antigo, e.retratoParcial));
                 onRecarregar();
+            }
+            if (conflitoDeVersao(e)) {
+                avisarConflito(e);
+
+                return { ok: false, falha: e, conflito: true, parcial: temRetrato(e?.retratoParcial) };
             }
 
             return { ok: false, falha: e, parcial: temRetrato(e?.retratoParcial) };
@@ -446,7 +517,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             agora.current.acao = null;
             if (vivo.current) setAcao(null);
         }
-    }, [escrita, produtoId, onRecarregar, onAvisar, travar]);
+    }, [escrita, produtoId, onRecarregar, onAvisar, travar, conhecerVersao, avisarConflito]);
 
     /** Envia as fotos para a variação que guarda as da cor (a remessa já foi conferida pela galeria). */
     const enviarFotos = useCallback(
@@ -536,8 +607,12 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         }
 
         const linhas = linhasDaEstrutura(e0, r0, novas);
-        const r = await imediata({ tipo: 'variacoes', quantas: novas.length }, () => gravarLinhas(escrita, produtoId, linhas, { versao: r0.versao ?? null }));
-        if (!vivo.current || r.ignorada || r.travado) return r;
+        const r = await imediata(
+            { tipo: 'variacoes', quantas: novas.length },
+            () => gravarLinhas(escrita, produtoId, linhas, { versao: versao.current }),
+            { conferida: true },
+        );
+        if (!vivo.current || r.ignorada || r.travado || r.conflito) return r;
         if (!r.ok) {
             const do422 = errosDasLinhasNo422(r.falha, linhas);
             const soltas = do422?.soltas?.length ? do422.soltas : Object.keys(do422?.porChave ?? {}).length ? [] : [mensagemDoErro(r.falha)];
@@ -561,8 +636,8 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
     /**
      * Remove variações (uma cor inteira são as dela; um tamanho, a dele) — uma por pedido (rota 14). A peça de combo
-     * ou kit volta 422 com o texto do servidor: o que já saiu antes dela fica fora (o retrato parcial vale). → `{ok,
-     * falha?, parcial?}`.
+     * ou kit volta 422 com o texto do servidor: o que já saiu antes dela fica fora (o retrato parcial vale). Cada
+     * pedido leva a versão que o anterior devolveu (F6: o 1º, a da gaveta). → `{ok, falha?, parcial?, conflito?}`.
      */
     const removerVariacoes = useCallback(async (ids) => {
         const lista = [...(ids ?? [])];
@@ -570,9 +645,11 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
         return imediata({ tipo: 'remover', ids: lista }, async () => {
             let ultimo = null;
+            let v = versao.current;
             for (const id of lista) {
                 try {
-                    ultimo = await excluirVariacaoNoServidor(escrita, produtoId, id);
+                    ultimo = await excluirVariacaoNoServidor(escrita, produtoId, id, { versao: v });
+                    if (ultimo?.versao) v = ultimo.versao;
                 } catch (e) {
                     if (temRetrato(ultimo)) e.retratoParcial = ultimo;
                     throw e;
@@ -580,7 +657,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             }
 
             return ultimo;
-        });
+        }, { conferida: true });
     }, [imediata, escrita, produtoId]);
 
     // ─── Excluir o produto (F4): dois passos ────────────────────────────────
@@ -591,19 +668,26 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         if (soLeitura || jaSalvando || emCurso || ['previa', 'excluindo', 'excluido'].includes(emAndamento?.passo)) return;
         setExclusao({ passo: 'previa', previa: null, erro: null });
         try {
-            const previa = await previaDaExclusao(escrita, produtoId);
+            // F6: com a versão, a aba velha sabe já aqui — antes de pedir a confirmação.
+            const previa = await previaDaExclusao(escrita, produtoId, { versao: versao.current });
             if (vivo.current) setExclusao({ passo: 'confirmar', previa, erro: null });
         } catch (e) {
             if (!vivo.current) return;
-            if (e?.response?.status === 409 && e.response.data?.travado) {
+            if (travadoNo409(e)) {
                 setExclusao(null);
                 travar(e);
 
                 return;
             }
+            if (conflitoDeVersao(e)) {
+                setExclusao(null);
+                avisarConflito(e);
+
+                return;
+            }
             setExclusao({ passo: 'erro', previa: null, erro: mensagemDoErro(e) });
         }
-    }, [escrita, produtoId, travar]);
+    }, [escrita, produtoId, travar, avisarConflito]);
 
     /**
      * O 2º passo: exclui com as ofertas montadas que a pessoa VIU. Deu certo: a trilha recarrega e a gaveta fecha (o
@@ -614,7 +698,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         if (atual?.passo !== 'confirmar' || !atual.previa) return;
         setExclusao({ ...atual, passo: 'excluindo', erro: null });
         try {
-            const r = await excluirProdutoNoServidor(escrita, produtoId, montadasDaPrevia(atual.previa));
+            const r = await excluirProdutoNoServidor(escrita, produtoId, montadasDaPrevia(atual.previa), { versao: versao.current });
             if (!vivo.current) return;
             setExclusao({ passo: 'excluido', previa: atual.previa, erro: null });
             const texto = typeof r?.mensagem === 'string' && r.mensagem.trim() ? r.mensagem.trim() : 'Produto excluído.';
@@ -622,9 +706,16 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             await onRecarregar();
         } catch (e) {
             if (!vivo.current) return;
-            if (e?.response?.status === 409 && e.response.data?.travado) {
+            if (travadoNo409(e)) {
                 setExclusao(null);
                 travar(e);
+
+                return;
+            }
+            // F6: o produto mudou depois que a gaveta abriu — nada saiu; o rodapé pede "Recarregar" antes de excluir.
+            if (conflitoDeVersao(e)) {
+                setExclusao(null);
+                avisarConflito(e);
 
                 return;
             }
@@ -638,19 +729,71 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             }
             if (exclusaoMudou(e)) {
                 try {
-                    const previa = await previaDaExclusao(escrita, produtoId);
+                    const previa = await previaDaExclusao(escrita, produtoId, { versao: versao.current });
                     if (vivo.current) setExclusao({ passo: 'confirmar', previa, erro: 'O que sai junto mudou. Confira de novo antes de excluir.' });
                 } catch (e2) {
-                    if (vivo.current) setExclusao({ passo: 'erro', previa: null, erro: mensagemDoErro(e2) });
+                    if (!vivo.current) return;
+                    if (conflitoDeVersao(e2)) {
+                        setExclusao(null);
+                        avisarConflito(e2);
+
+                        return;
+                    }
+                    setExclusao({ passo: 'erro', previa: null, erro: mensagemDoErro(e2) });
                 }
 
                 return;
             }
             setExclusao({ ...atual, passo: 'confirmar', erro: mensagemDoErro(e) });
         }
-    }, [escrita, produtoId, onAvisar, onRecarregar, travar]);
+    }, [escrita, produtoId, onAvisar, onRecarregar, travar, avisarConflito]);
 
     const cancelarExclusao = useCallback(() => setExclusao(null), []);
+
+    // ─── A aba velha (F6): [Recarregar] ─────────────────────────────────────
+
+    /**
+     * Relê o retrato e volta ao que está salvo AGORA (a versão nova junto). Quem chama já confirmou o descarte, ou não
+     * havia nada mexido. O GET que falha deixa o aviso como estava, com o erro, para tentar de novo.
+     */
+    const recarregarRetrato = useCallback(async () => {
+        setConflito((atual) => (atual ? { ...atual, confirmar: false, recarregando: true, erro: null } : atual));
+        try {
+            const novo = await abrirCadastro(escrita, produtoId);
+            if (!vivo.current) return;
+            versao.current = novo?.versao ?? null;
+            agora.current.temMudanca = false;
+            setRetrato(novo);
+            setEstado(estadoDoRetrato(novo));
+            setCustoPorCor((escolhido) => escolhido ?? !custoECaixasIguais(novo?.variacoes));
+            setErros(SEM_ERROS);
+            setErroGeral(null);
+            setResultado(null);
+            setNotaDoFrete(null);
+            setConflito(null);
+            setNota('Recarregado: aqui está o que está salvo agora.');
+            onRecarregar();
+        } catch (e) {
+            if (vivo.current) {
+                setConflito((atual) => ({ ...(atual ?? { texto: textoDoConflito(null) }), confirmar: false, recarregando: false, erro: mensagemDoErro(e) }));
+            }
+        }
+    }, [escrita, produtoId, onRecarregar]);
+
+    /** [Recarregar]: com algo mexido, pergunta antes (o mexido seria descartado); sem, relê na hora. */
+    const pedirRecarga = useCallback(() => {
+        const { temMudanca: mexido, conflito: atual } = agora.current;
+        if (!atual || atual.recarregando) return;
+        if (mexido) {
+            setConflito({ ...atual, confirmar: true, erro: null });
+
+            return;
+        }
+        recarregarRetrato();
+    }, [recarregarRetrato]);
+
+    /** "Cancelar" na pergunta: o aviso volta, com o mexido intacto. */
+    const cancelarRecarga = useCallback(() => setConflito((atual) => (atual ? { ...atual, confirmar: false } : atual)), []);
 
     // ─── A guarda de saída ──────────────────────────────────────────────────
 
@@ -767,5 +910,10 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         pedirExclusao,
         confirmarExclusao,
         cancelarExclusao,
+        // F6
+        conflito,
+        pedirRecarga,
+        confirmarRecarga: recarregarRetrato,
+        cancelarRecarga,
     };
 }
