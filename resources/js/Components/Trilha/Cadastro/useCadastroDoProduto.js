@@ -5,31 +5,46 @@ import {
     conferirFrete as conferirFreteNoServidor,
     enviarFotos as enviarFotosAoServidor,
     excluirFoto as excluirFotoNoServidor,
+    excluirProduto as excluirProdutoNoServidor,
+    excluirVariacao as excluirVariacaoNoServidor,
     gravarFicha,
     gravarLinhas,
     mensagemDoErro,
+    previaDaExclusao,
 } from '@/lib/trilhaEscrita';
 import { errosDaResposta, idDoElemento } from '@/lib/fichaTecnica';
 import {
     ESPERE_A_FICHA,
     FICHA_FICOU_PARA_DEPOIS,
     MENSAGEM_DA_FICHA,
+    MENSAGEM_DAS_CORES,
     MENSAGEM_DOS_CAMPOS,
     MENSAGEM_SO_DA_FICHA,
     aplicarResposta,
+    avisoDaCorNova,
     categoriaTravada,
     chaveDaVariacao,
+    comCustoECaixasIguais,
+    conferirGravacaoDasCores,
+    custoECaixasIguais,
+    custoIgualEmCadaCor,
     depoisDaFichaRecusada,
     depoisDeSalvar,
     erroDaCategoriaNo422,
+    errosDasLinhasNo422,
     errosPorCampo,
     estadoDoRetrato,
+    exclusaoMudou,
     fichaParaSalvar,
     gravarCadastro,
+    linhasDaEstrutura,
+    linhasParaSalvar,
     mexido as estaMexido,
+    montadasDaPrevia,
     nadaMudou,
     resultadoDoSalvar,
     temRetrato,
+    trocaDeEixo,
 } from '@/lib/trilhaCadastro';
 import useCategoriaDaTrilha from '@/Components/Trilha/Cadastro/useCategoriaDaTrilha';
 import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
@@ -54,6 +69,15 @@ import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // novo: ele vira o retrato da gaveta e o estado o recebe por `aplicarResposta`
 // (o que a pessoa digitou e ainda não salvou fica como ela deixou). Uma ação de
 // cada vez, e nunca durante o "Salvar" (as duas mudariam o mesmo retrato).
+//
+// F4: cores e tamanhos. O tipo de variação e o nome de cada cor e tamanho
+// moram no estado (grava no "Salvar", com a conferência das cores ANTES); "+
+// Cor"/"+ Tamanho" e remover são AÇÕES IMEDIATAS — o pedido leva as variações
+// novas e a estrutura da tela (a 1ª cor nomeia a que já existe no mesmo
+// pedido), e nada do conteúdo (`linhasDaEstrutura`). Custo e caixas "iguais em
+// todas as cores" (o padrão, quando o que está gravado é igual) ou "diferente
+// por cor". "Excluir produto" em dois passos: a prévia do que sai junto e a
+// confirmação; depois, a trilha recarrega e a gaveta fecha (o produto sumiu).
 //
 // E a guarda de saída (§5.12 do desenho): com algo mexido, fechar a gaveta,
 // abrir outro item por dentro, trocar o "Ver como" ou uma visita do Inertia
@@ -106,6 +130,12 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
     const [acao, setAcao] = useState(null);
     // O que o "Conferir frete pela conta" respondeu: `{texto, tom: 'ok'|'erro'}`.
     const [notaDoFrete, setNotaDoFrete] = useState(null);
+    // F4: custo e caixas "diferente por cor" (false = iguais em todas). Null até o retrato chegar: aí vale o gravado.
+    const [custoPorCor, setCustoPorCor] = useState(null);
+    // F4: "Cor nova salva. Este produto já foi mapeado…" (depois de "+ Cor" num produto mapeado).
+    const [avisoDaCor, setAvisoDaCor] = useState(null);
+    // F4: "Excluir produto" — `{passo: 'previa'|'confirmar'|'excluindo'|'excluido'|'erro', previa, erro}`.
+    const [exclusao, setExclusao] = useState(null);
 
     const vivo = useRef(true);
     useEffect(() => {
@@ -125,6 +155,8 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
                 if (!atual) return;
                 setRetrato(r);
                 setEstado(estadoDoRetrato(r));
+                // "Iguais em todas as cores" é o padrão quando o gravado é igual; a escolha da pessoa fica numa releitura.
+                setCustoPorCor((escolhido) => escolhido ?? !custoECaixasIguais(r?.variacoes));
             })
             .catch((e) => {
                 if (atual) setErroAoAbrir(mensagemDoErro(e));
@@ -204,6 +236,8 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         // A ação imediata em curso: quem a liga e desliga é a própria ação (antes do próximo render).
         acao: agora.current.acao ?? null,
         definicao: { categoria: ficha.definicao?.categoria ?? null, grupos: ficha.definicao?.grupos ?? null, carregando: ficha.carregando },
+        custoPorCor: !!custoPorCor,
+        exclusao,
     };
 
     /** O "Salvar". → true quando gravou tudo (o resultado toma o lugar do formulário). */
@@ -213,6 +247,17 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         const plano = fichaParaSalvar({ estado: e0, retrato: r0, definicao });
         if (plano.esperar) {
             setNota(ESPERE_A_FICHA);
+
+            return false;
+        }
+        // F4: a conferência das cores (a régua do servidor) ANTES de gravar: a variação que esta gravação deixaria sem
+        // nome, repetida ou de outro tipo viraria, em silêncio, um anúncio separado. O que já estava gravado assim não
+        // barra (como no servidor) — só aparece marcado.
+        const conferencia = conferirGravacaoDasCores(e0, r0, [], { eixos: r0.eixos });
+        if (!conferencia.ok) {
+            setErros({ ...SEM_ERROS, porChave: conferencia.porChave });
+            setErroGeral(MENSAGEM_DAS_CORES);
+            onAvisar(MENSAGEM_DAS_CORES, 'erro');
 
             return false;
         }
@@ -276,11 +321,16 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
                     return false;
                 }
 
-                // O 422 da categoria (não anunciável, ou o produto já no Publicador) vai no campo dela.
+                // O 422 da categoria (não anunciável, ou o produto já no Publicador) vai no campo dela; o da
+                // conferência das cores do servidor (F4), no campo de cada variação — pela linha que a tela mandou.
                 const daCategoria = erroDaCategoriaNo422(r.falha);
+                const dasLinhas = errosDasLinhasNo422(r.falha, linhasParaSalvar(e0, r0));
+                const porChave = { ...(dasLinhas?.porChave ?? {}) };
                 if (daCategoria && e0.variacoes?.[0]) {
-                    setErros({ ...SEM_ERROS, porChave: { [chaveDaVariacao(e0.variacoes[0])]: { categoria: daCategoria } } });
+                    const primeira = chaveDaVariacao(e0.variacoes[0]);
+                    porChave[primeira] = { ...(porChave[primeira] ?? {}), categoria: daCategoria };
                 }
+                if (Object.keys(porChave).length) setErros({ ...SEM_ERROS, porChave });
                 setErroGeral(texto);
                 onAvisar(texto, 'erro');
 
@@ -340,6 +390,17 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
     // ─── As ações imediatas (F3) ────────────────────────────────────────────
 
+    /** O 409 da trava numa ação imediata: a gaveta vira só leitura, com o motivo do servidor, e relê o retrato. */
+    const travar = useCallback((falha) => {
+        const texto = mensagemDoErro(falha);
+        if (vivo.current) {
+            setTrava(texto);
+            setErros(SEM_ERROS);
+            setTentativa((n) => n + 1);
+        }
+        onAvisar(texto, 'erro');
+    }, [onAvisar]);
+
     /**
      * Uma ação imediata: o pedido, e a resposta (o retrato novo) juntada ao que está na tela. → `{ok, resposta?,
      * falha?, travado?}`. O 409 da trava vira o modo leitura, como no "Salvar". A trilha recarrega (as faltas e a
@@ -367,23 +428,25 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         } catch (e) {
             const resposta = e?.response;
             if (resposta?.status === 409 && resposta.data?.travado) {
-                const texto = mensagemDoErro(e);
-                if (vivo.current) {
-                    setTrava(texto);
-                    setErros(SEM_ERROS);
-                    setTentativa((n) => n + 1);
-                }
-                onAvisar(texto, 'erro');
+                travar(e);
 
                 return { ok: false, falha: e, travado: true };
             }
+            // Uma ação de vários pedidos (remover uma cor de vários tamanhos) que parou no meio: o que já saiu, saiu —
+            // o retrato do último pedido que deu certo vale (F4).
+            if (vivo.current && temRetrato(e?.retratoParcial)) {
+                const antigo = agora.current.retrato ?? r0;
+                setRetrato(e.retratoParcial);
+                setEstado((atual) => aplicarResposta(atual, antigo, e.retratoParcial));
+                onRecarregar();
+            }
 
-            return { ok: false, falha: e };
+            return { ok: false, falha: e, parcial: temRetrato(e?.retratoParcial) };
         } finally {
             agora.current.acao = null;
             if (vivo.current) setAcao(null);
         }
-    }, [escrita, produtoId, onRecarregar, onAvisar]);
+    }, [escrita, produtoId, onRecarregar, onAvisar, travar]);
 
     /** Envia as fotos para a variação que guarda as da cor (a remessa já foi conferida pela galeria). */
     const enviarFotos = useCallback(
@@ -414,6 +477,180 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
 
         return r;
     }, [imediata, escrita, produtoId]);
+
+    // ─── Cores e tamanhos (F4) ──────────────────────────────────────────────
+
+    /**
+     * "Este produto varia?": troca o tipo de variação NA TELA (grava no "Salvar"). → o resultado de `trocaDeEixo`:
+     * `{pode: false, motivo}` não muda nada; `{confirmar}` sem `confirmado` só pergunta (tirar o tamanho com valores).
+     */
+    const trocarEixo = useCallback((novo, { confirmado = false } = {}) => {
+        const { estado: e0, retrato: r0 } = agora.current;
+        if (!e0) return { pode: false, mudou: false };
+        const r = trocaDeEixo(e0, novo, { eixos: r0?.eixos });
+        if (!r.pode || !r.mudou || (r.confirmar && !confirmado)) return r;
+        setNota(null);
+        setEstado(r.estado);
+
+        return { ...r, aplicado: true };
+    }, []);
+
+    /** O nome de uma cor (o cartão inteiro: todas as variações dela) — ou de uma variação, com um tipo só. */
+    const mudarCor = useCallback((ids, valor) => {
+        setNota(null);
+        setEstado((e) => (e ? { ...e, variacoes: e.variacoes.map((v) => (ids.includes(v.id) ? { ...v, valor } : v)) } : e));
+    }, []);
+
+    /** Custo ou caixas (`campo`) em várias variações de uma vez: todas ("iguais em todas as cores") ou as da cor. */
+    const mudarNasVariacoes = useCallback((ids, campo, valor) => {
+        setNota(null);
+        setEstado((e) => (e ? { ...e, variacoes: e.variacoes.map((v) => (!ids || ids.includes(v.id) ? { ...v, [campo]: valor } : v)) } : e));
+    }, []);
+
+    /** "Iguais em todas as cores": o custo e as caixas da 1ª variação passam a valer para todas (na tela). */
+    const usarCustoIgual = useCallback(() => {
+        setCustoPorCor(false);
+        setEstado((e) => comCustoECaixasIguais(e));
+    }, []);
+    const usarCustoPorCor = useCallback(() => setCustoPorCor(true), []);
+
+    /**
+     * "+ Cor" / "+ Tamanho": a conferência das cores na tela e, passando, o pedido com as variações novas e a
+     * estrutura da tela (a 1ª cor nomeia a que já existe no MESMO pedido). → `{ok, porChave, soltas, criadas}`:
+     * - a conferência que não passa não envia nada (`porChave` marca a variação, nova ou não);
+     * - o servidor grava linha por linha: a nova com erro (o SKU que já existe na empresa) volta em `porChave` e as
+     *   outras ficam gravadas (`parcial`);
+     * - o 422 (a conferência do servidor) marca pela chave que a tela mandou.
+     * Com o custo "iguais em todas as cores", a variação nova passa a ter o da tela (fica mexida até o "Salvar").
+     */
+    const adicionarVariacoes = useCallback(async (novas, { cor = false } = {}) => {
+        const { estado: e0, retrato: r0 } = agora.current;
+        if (!e0 || !r0 || !novas?.length) return { ok: false, ignorada: true };
+        const conferencia = conferirGravacaoDasCores(e0, r0, novas, { eixos: r0.eixos });
+        if (!conferencia.ok) {
+            // Só o que ESTA ação cria (o que já estava gravado assim aparece marcado nos cartões, e não barra).
+            const porChave = {};
+            for (const p of conferencia.novos) porChave[p.chave] = { ...(porChave[p.chave] ?? {}), [p.campo]: p.mensagem };
+
+            return { ok: false, porChave, soltas: [MENSAGEM_DAS_CORES] };
+        }
+
+        const linhas = linhasDaEstrutura(e0, r0, novas);
+        const r = await imediata({ tipo: 'variacoes', quantas: novas.length }, () => gravarLinhas(escrita, produtoId, linhas, { versao: r0.versao ?? null }));
+        if (!vivo.current || r.ignorada || r.travado) return r;
+        if (!r.ok) {
+            const do422 = errosDasLinhasNo422(r.falha, linhas);
+            const soltas = do422?.soltas?.length ? do422.soltas : Object.keys(do422?.porChave ?? {}).length ? [] : [mensagemDoErro(r.falha)];
+
+            return { ok: false, porChave: do422?.porChave ?? {}, soltas, falha: r.falha };
+        }
+
+        // O custo e as caixas da tela valem para a nova ("iguais em todas", ou os da cor dela).
+        const novo = r.resposta;
+        if (!agora.current.custoPorCor) setEstado((e) => comCustoECaixasIguais(e));
+        else setEstado((e) => custoIgualEmCadaCor(e, novo));
+        const erros = novo?.erros ?? [];
+        const porCampo = errosPorCampo(erros);
+        const criadas = Number(novo?.totais?.criadas ?? 0);
+        // O produto já mapeado que ganhou variação (`mapear_de_novo` do servidor): o aviso com [Mapear de novo].
+        const aviso = avisoDaCorNova(novo, { cor });
+        if (aviso) setAvisoDaCor(aviso);
+
+        return { ok: erros.length === 0, parcial: erros.length > 0, porChave: porCampo.porChave, soltas: porCampo.soltas, criadas };
+    }, [imediata, escrita, produtoId]);
+
+    /**
+     * Remove variações (uma cor inteira são as dela; um tamanho, a dele) — uma por pedido (rota 14). A peça de combo
+     * ou kit volta 422 com o texto do servidor: o que já saiu antes dela fica fora (o retrato parcial vale). → `{ok,
+     * falha?, parcial?}`.
+     */
+    const removerVariacoes = useCallback(async (ids) => {
+        const lista = [...(ids ?? [])];
+        if (!lista.length) return { ok: false, ignorada: true };
+
+        return imediata({ tipo: 'remover', ids: lista }, async () => {
+            let ultimo = null;
+            for (const id of lista) {
+                try {
+                    ultimo = await excluirVariacaoNoServidor(escrita, produtoId, id);
+                } catch (e) {
+                    if (temRetrato(ultimo)) e.retratoParcial = ultimo;
+                    throw e;
+                }
+            }
+
+            return ultimo;
+        });
+    }, [imediata, escrita, produtoId]);
+
+    // ─── Excluir o produto (F4): dois passos ────────────────────────────────
+
+    /** O 1º passo: a prévia do que sai junto (as ofertas montadas). Só com o produto livre e nada em curso. */
+    const pedirExclusao = useCallback(async () => {
+        const { leitura: soLeitura, salvando: jaSalvando, acao: emCurso, exclusao: emAndamento } = agora.current;
+        if (soLeitura || jaSalvando || emCurso || ['previa', 'excluindo', 'excluido'].includes(emAndamento?.passo)) return;
+        setExclusao({ passo: 'previa', previa: null, erro: null });
+        try {
+            const previa = await previaDaExclusao(escrita, produtoId);
+            if (vivo.current) setExclusao({ passo: 'confirmar', previa, erro: null });
+        } catch (e) {
+            if (!vivo.current) return;
+            if (e?.response?.status === 409 && e.response.data?.travado) {
+                setExclusao(null);
+                travar(e);
+
+                return;
+            }
+            setExclusao({ passo: 'erro', previa: null, erro: mensagemDoErro(e) });
+        }
+    }, [escrita, produtoId, travar]);
+
+    /**
+     * O 2º passo: exclui com as ofertas montadas que a pessoa VIU. Deu certo: a trilha recarrega e a gaveta fecha (o
+     * produto sumiu dos dados). O que sai junto mudou no meio do caminho (422 em `montadas`): a prévia volta, nova.
+     */
+    const confirmarExclusao = useCallback(async () => {
+        const atual = agora.current.exclusao;
+        if (atual?.passo !== 'confirmar' || !atual.previa) return;
+        setExclusao({ ...atual, passo: 'excluindo', erro: null });
+        try {
+            const r = await excluirProdutoNoServidor(escrita, produtoId, montadasDaPrevia(atual.previa));
+            if (!vivo.current) return;
+            setExclusao({ passo: 'excluido', previa: atual.previa, erro: null });
+            const texto = typeof r?.mensagem === 'string' && r.mensagem.trim() ? r.mensagem.trim() : 'Produto excluído.';
+            onAvisar(texto, 'sucesso');
+            await onRecarregar();
+        } catch (e) {
+            if (!vivo.current) return;
+            if (e?.response?.status === 409 && e.response.data?.travado) {
+                setExclusao(null);
+                travar(e);
+
+                return;
+            }
+            // Já tinha saído (outra aba, outra pessoa): o que se queria aconteceu — a trilha recarrega e a gaveta fecha.
+            if (e?.response?.status === 404) {
+                setExclusao({ passo: 'excluido', previa: atual.previa, erro: null });
+                onAvisar('Este produto já tinha sido excluído.', 'sucesso');
+                await onRecarregar();
+
+                return;
+            }
+            if (exclusaoMudou(e)) {
+                try {
+                    const previa = await previaDaExclusao(escrita, produtoId);
+                    if (vivo.current) setExclusao({ passo: 'confirmar', previa, erro: 'O que sai junto mudou. Confira de novo antes de excluir.' });
+                } catch (e2) {
+                    if (vivo.current) setExclusao({ passo: 'erro', previa: null, erro: mensagemDoErro(e2) });
+                }
+
+                return;
+            }
+            setExclusao({ ...atual, passo: 'confirmar', erro: mensagemDoErro(e) });
+        }
+    }, [escrita, produtoId, onAvisar, onRecarregar, travar]);
+
+    const cancelarExclusao = useCallback(() => setExclusao(null), []);
 
     // ─── A guarda de saída ──────────────────────────────────────────────────
 
@@ -515,5 +752,20 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         excluirFoto,
         conferirFrete,
         notaDoFrete,
+        // F4
+        trocarEixo,
+        mudarCor,
+        mudarNasVariacoes,
+        custoPorCor: !!custoPorCor,
+        usarCustoIgual,
+        usarCustoPorCor,
+        adicionarVariacoes,
+        removerVariacoes,
+        avisoDaCor,
+        fecharAvisoDaCor: () => setAvisoDaCor(null),
+        exclusao,
+        pedirExclusao,
+        confirmarExclusao,
+        cancelarExclusao,
     };
 }

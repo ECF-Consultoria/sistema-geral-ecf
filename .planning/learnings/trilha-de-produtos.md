@@ -692,3 +692,39 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   Portal"; a F5 do servidor antecipada): equipe sem `links.portal_abrir`; cliente sem `voltar` (o "Voltar ao portal"),
   `links.planejamento`, `links.produtos` e `url_ficha`. O `TrilhaLayout` some com o `voltar` nulo. Sem a chave, tudo
   como na 1ª entrega. A varredura está em `AcessoATrilhaTest` (nenhum `/portal` nas props da página).
+
+## 33. F4 servidor (03/11/2026): cores conferidas pelo RESULTADO, e as exclusões
+
+- **A conferência das cores olha o que FICOU, não o pedido.** `CadastroNaTrilha::gravar` grava numa transação e, antes
+  de ela valer, passa as variações do produto pelo `CoresDoGrupo::separar` (a régua com que o Publicador separa em
+  produto à parte, em silêncio). Simular o pedido erraria por três coisas que o `ProdutoCadastroService` faz sozinho:
+  a variação nova herda o eixo (e o 2º eixo) da 1ª variação NO MOMENTO em que é criada (ordem das linhas importa); a
+  linha com erro não grava e as outras gravam; o SKU repetido só se sabe lá dentro. O caso que justificou: a 1ª cor
+  (a que nomeia a variação que já existia) falha por custo inválido ou título longo, a cor nova grava sozinha, e a de
+  antes fica sem nome ao lado dela. Agora isso é 422 com o erro DA LINHA (`motivo: 'linha'`), sem o "falta a cor"
+  — e a variação daquela linha não leva também o erro da cor. Só pedido "estrutural" (linha sem `id` ou com
+  eixo/valor/2º eixo/ordem) abre a transação; o resto segue como na F1–F3.
+- **"Não piora", não "tem de estar perfeito".** Só recusa a variação fora da régua que NÃO estava fora antes do pedido
+  (por id). O produto que já veio torto de outra porta (Portal, planilha, ML) não trava o salvar de outra coisa; a
+  resposta do 422 traz todas as que estão fora, as antigas também. Empate de tipo: o `arsort` do PHP 8 é estável, o
+  tipo da 1ª variação vence — a nova de outro tipo é a marcada.
+- **Contrato do 422 das cores** (a tela usa): `errors` no formato do Laravel (`linhas.{i}.{campo}`, ou
+  `variacoes.{id}.{campo}` para a variação que nenhuma linha tocou) e `erros[]` no formato dos `erros` do serviço
+  (`indice`, `chave`, `codigo`, `mensagem`, `campos`) mais `variacao_id` (nulo na variação nova: o id foi desfeito) e
+  `motivo` (`sem_valor`, `sem_valor_2`, `outro_tipo`, `repetida`, `linha`). Os textos não citam Portal nem Publicador
+  (a trilha vira a porta do cliente).
+- **O `categoriasDoLote` do serviço chama o ML antes de gravar** — com a transação da F4 aberta. Não segura trava (nada
+  foi escrito ainda; leitura do InnoDB não trava) e o `conferirCategoria` já aqueceu o MESMO cache. Não ponha trava de
+  linha (`lockForUpdate`) no começo dessa transação: ela passaria a segurar a chamada HTTP.
+- **A última variação não sai pela rota da cor**: no serviço ela leva o produto junto (sem a prévia das montadas).
+  A trilha recusa com 422 e prende a linha do produto durante a conta — duas abas tirando as duas últimas cores não
+  apagam o produto.
+- **"Anúncios voltam para a espera" não acontece pela trilha**: a cor com anúncio "andou" e trava o produto (409)
+  antes de chegar ao serviço. O `anuncios_para_espera` da rota 14 sai 0 enquanto a trava existir.
+- **A galeria da dona passa COPIANDO o arquivo** (`VariacaoImagensService::passarGaleria`): sem o arquivo no disco ela
+  só registra um aviso e não passa. Teste que exclui a dona precisa gravar o arquivo das fotos (o `produtoCompleto`
+  cria só as linhas).
+- **Excluir o produto pela trilha não precisa de limpeza própria das ondas**: `trilha_onda_itens` (FK em `produto_id` e
+  `oferta_id`) e `trilha_mapeamentos` saem pela cascata do banco, e o Combo apagado sai pelo
+  `TrilhaComboExcluidoObserver` na mesma transação. A prévia (`exclusao/previa`) também responde 409 no produto
+  travado: a tela sabe antes de pedir a confirmação.

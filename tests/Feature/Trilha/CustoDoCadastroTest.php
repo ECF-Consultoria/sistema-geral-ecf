@@ -10,8 +10,10 @@ use App\Models\EstruturaAmbiente;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaFamilia;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\MlCategoriaSchema;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\TrilhaOnda;
 use App\Models\User;
@@ -19,6 +21,8 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Publicador\RascunhoRepository;
 use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Services\Trilha\TrilhaDaEmpresa;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
+use App\Support\Publicador\Variacao\Eixo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -47,7 +51,9 @@ use Tests\TestCase;
  *   futura prepara o rascunho e a IA fica `aguardando_onda` (a dublê nunca é chamada); com a onda já começada a IA roda
  *   UMA vez — e o produto, que o robô levou adiante, trava;
  * - F3: o produto sem variação completado SÓ pela trilha (criar, caixas com a categoria, ficha, fotos) vai ao
- *   Publicador uma vez, na foto que o completa, e o rascunho nasce com a categoria e as 3 fotos.
+ *   Publicador uma vez, na foto que o completa, e o rascunho nasce com a categoria e as 3 fotos;
+ * - F4: o produto de duas cores completado só pela trilha vai ao Publicador uma vez e lá vira UM grupo com as duas
+ *   cores e as fotos de cada uma.
  */
 class CustoDoCadastroTest extends TestCase
 {
@@ -265,7 +271,78 @@ class CustoDoCadastroTest extends TestCase
         $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p));
     }
 
+    /**
+     * F4 (03/11/2026), o "pronto quando" da fatia: um produto de DUAS cores completado só pela trilha — criar, as caixas
+     * com a categoria e as duas cores no MESMO pedido (a 1ª nomeia a variação que já existia; a nova herda custo e
+     * caixas), a ficha, as fotos de cada cor. A foto da 1ª cor não o leva (falta a outra); a que completa a 2ª o leva
+     * UMA vez, e no Publicador ele vira UM grupo — nenhuma cor separada em produto à parte — com as duas cores e as 3
+     * fotos de cada uma, cada foto no grupo da sua cor.
+     */
+    public function test_um_produto_de_duas_cores_completado_so_pela_trilha_vira_um_grupo_no_publicador_uma_vez(): void
+    {
+        $this->montarPreparo();
+        MlCategoriaSchema::query()->update(['fetched_at' => now()]);
+        config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
+        $schema = self::schema(self::CADEIRA);
+        Cache::put('ml_meta_categoria_'.self::CADEIRA, $schema->categoria, 3600);
+        Cache::put('ml_meta_atributos_'.self::CADEIRA, $schema->atributos, 3600);
+
+        $id = $this->criar(['nome' => 'Cadeira Executiva', 'codigo' => 'CAD-AZ'])->assertCreated()->json('produto.id');
+        $p = EstruturaProduto::query()->findOrFail($id);
+        $azul = $p->variacoes()->sole();
+        $this->itemNaOnda($this->onda($this->empresa, '2026-11-20', 'Onda Futura'), "s-{$p->id}");
+
+        $r = $this->linhas($p, [
+            ['id' => $azul->id, 'chave' => "v{$azul->id}", 'codigo' => 'CAD-AZ', 'nome' => 'Cadeira Executiva', 'eixo' => 'cor', 'valor' => 'Azul',
+                'titulo' => 'Cadeira Executiva Giratória Com Encosto Em Tela', 'familia' => 'Cadeiras', 'ambientes' => ['Escritório'],
+                'categoria_ml_id' => self::CADEIRA, 'custo' => '350,00', 'estoque' => '5', 'volumes' => [['c' => 60, 'l' => 60, 'a' => 40, 'kg' => 12]],
+                'descricao' => 'Cadeira com encosto em tela, ótima para home office.'],
+            ['chave' => 'n1', 'codigo' => 'CAD-PT', 'nome' => 'Cadeira Executiva', 'eixo' => 'cor', 'valor' => 'Preto', 'estoque' => '2'],
+        ])->assertOk()->json();
+        $this->assertSame([], $r['erros']);
+        $preto = EstruturaProdutoVariacao::query()->where('codigo', 'CAD-PT')->sole();
+        $this->assertSame(['cor', 'Preto', 350.0, 1], [$preto->eixo, $preto->valor, $preto->custo, $preto->volumes()->count()]);
+
+        // A ficha: com a cor como eixo, a Cor sai dela (o id de eixo que vier é ignorado).
+        $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/produtos/{$p->id}/ficha-tecnica",
+            ['atributos' => $this->obrigatoriosDaCadeira(), 'categoria' => self::CADEIRA])->assertOk()
+            ->assertJsonPath('situacao.faltas', ['fotos (0 de 3)']);
+
+        // As fotos da Azul: ainda falta a Preto — nada vai ao Publicador.
+        $this->enviarFotos($p, $azul, ['azul-1.jpg', 'azul-2.jpg', 'azul-3.jpg'])->assertJsonPath('situacao.faltas', ['fotos (0 de 3)']);
+        Queue::assertNothingPushed();
+        // As da Preto completam o produto: UMA ida ao Publicador.
+        $this->enviarFotos($p, $preto, ['preto-1.jpg', 'preto-2.jpg', 'preto-3.jpg'])->assertJsonPath('situacao.etapa', 'mapa');
+        $this->assertSame(1, $this->jobs(SincronizarProdutoDoPortalJob::class, $p));
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p));
+
+        $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        $this->assertSame([], $this->rodar(GerarPreparoIaJob::class), 'a IA espera a onda');
+        // UM produto no Publicador para a empresa inteira: as duas cores no mesmo grupo, nenhuma separada.
+        $this->assertSame(1, PubProduto::query()->where('company_id', $this->empresa->id)->count());
+        $rascunho = $this->rascunhoDo($p);
+        $snap = app(RascunhoRepository::class)->snapshot($rascunho->fresh());
+        $eixos = Eixo::ordenar($snap->eixos);
+        $porCor = [];
+        foreach ($snap->variantes as $variante) {
+            $grupo = ResolvedorGruposImagem::chaveDoGrupo($variante, $eixos, $snap->fotosPorVariante);
+            $porCor[(string) collect($variante->valores)->first()?->valueName] = count(array_filter($snap->imagens, fn ($a) => $a['grupo'] === $grupo));
+        }
+        ksort($porCor);
+        $this->assertSame(['Azul' => 3, 'Preto' => 3], $porCor, 'cada cor com as 3 fotos dela');
+        $this->assertCount(6, $snap->imagens);
+        $this->assertSame(self::CADEIRA, (string) $rascunho->categoria_id);
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p));
+    }
+
     // ─── apoio ───
+
+    /** As fotos (diferentes entre si: o rascunho junta as de mesmo conteúdo) na variação, pela rota da trilha. */
+    private function enviarFotos(EstruturaProduto $p, EstruturaProdutoVariacao $v, array $nomes): TestResponse
+    {
+        return $this->actingAs($this->dev)->post("/trilha/{$this->empresa->id}/produtos/{$p->id}/variacoes/{$v->id}/fotos",
+            ['imagens' => array_map(fn (string $n) => $this->foto($n), $nomes)], ['Accept' => 'application/json'])->assertOk();
+    }
 
     /** Todo obrigatório da cadeira (a definição real), sem eixo nenhum no produto, com um valor válido para o tipo. */
     private function obrigatoriosDaCadeira(): array
@@ -296,7 +373,8 @@ class CustoDoCadastroTest extends TestCase
     private function foto(string $nome): UploadedFile
     {
         $gd = imagecreatetruecolor(1200, 1200);
-        imagefill($gd, 0, 0, imagecolorallocate($gd, crc32($nome) % 256, 120, 200));
+        $h = crc32($nome);
+        imagefill($gd, 0, 0, imagecolorallocate($gd, $h % 256, ($h >> 8) % 256, ($h >> 16) % 256));
         ob_start();
         imagejpeg($gd);
 

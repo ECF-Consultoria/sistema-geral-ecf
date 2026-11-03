@@ -67,6 +67,15 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:60,1,trilha.cadastro.fotos.excluir')->name('cadastro.fotos.excluir');
         Route::post('/{company}/produtos/{produto}/frete', [CadastroDaTrilhaController::class, 'frete'])
             ->middleware('throttle:20,1,trilha.cadastro.frete')->name('cadastro.frete');
+        // Excluir (F4): a cor ou o tamanho (a variação presa ao produto do caminho; a última só sai pelo "Excluir
+        // produto") e o produto inteiro em dois passos — a prévia do que sai junto e a exclusão com as montadas
+        // confirmadas (os dois no mesmo contador).
+        Route::delete('/{company}/produtos/{produto}/variacoes/{variacao}', [CadastroDaTrilhaController::class, 'excluirVariacao'])
+            ->middleware('throttle:30,1,trilha.cadastro.variacao')->name('cadastro.variacao');
+        Route::post('/{company}/produtos/{produto}/exclusao/previa', [CadastroDaTrilhaController::class, 'previaDaExclusao'])
+            ->middleware('throttle:10,1,trilha.cadastro.exclusao')->name('cadastro.exclusao.previa');
+        Route::delete('/{company}/produtos/{produto}', [CadastroDaTrilhaController::class, 'excluirProduto'])
+            ->middleware('throttle:10,1,trilha.cadastro.exclusao')->name('cadastro.exclusao');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

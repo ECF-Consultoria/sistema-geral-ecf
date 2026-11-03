@@ -58,6 +58,31 @@ import {
     textoDoEnvio,
     urlOriginalDaFoto,
     vaiPorMe1,
+    // F4
+    AVISO_DA_COR_NOVA_NO_MAPEADO,
+    AVISO_DA_VARIACAO_NOVA_NO_MAPEADO,
+    avisoDaCorNova,
+    cartoesDasVariacoes,
+    chaveDaVariacao,
+    comCustoECaixasIguais,
+    conferirCores,
+    conferirGravacaoDasCores,
+    custoECaixasIguais,
+    custoIgualEmCadaCor,
+    errosDasLinhasNo422,
+    estadoDaEstrutura,
+    estruturaMexida,
+    exclusaoMudou,
+    itensParaConferir,
+    linhasDaEstrutura,
+    modoDasVariacoes,
+    montadasDaPrevia,
+    novasDaCor,
+    novasDoTamanho,
+    refsSugeridas,
+    textosDaExclusao,
+    trocaDeEixo,
+    valorComparavel,
 } from '../../resources/js/lib/trilhaCadastro.js';
 import { avisosEmTexto } from '../../resources/js/Components/Trilha/formatos.js';
 import { acaoDoItem, comQuemEsta, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
@@ -114,12 +139,12 @@ function comMudancas(retrato, { produto = {}, variacoes = {} } = {}) {
 
 test('estadoDoRetrato: os campos em texto, como se digita (custo com vírgula, medidas sem zero à toa, nulo vira vazio)', () => {
     assert.deepEqual(estadoDoRetrato(CADASTRO), {
-        produto: { nome: 'Criado-mudo 2 gavetas', categoria: null, titulo: '', familia: '', ambientes: [], ambiente_digitado: '', descricao: '' },
-        variacoes: [{ id: 91, codigo: 'CRIADO-01', custo: '', estoque: '', volumes: [] }],
+        produto: { nome: 'Criado-mudo 2 gavetas', categoria: null, titulo: '', familia: '', ambientes: [], ambiente_digitado: '', descricao: '', eixo: '', eixo_2: '' },
+        variacoes: [{ id: 91, codigo: 'CRIADO-01', custo: '', estoque: '', volumes: [], valor: '', valor_2: '' }],
         ficha: {},
     });
     assert.deepEqual(estadoDoRetrato(SALVO_INCOMPLETO).variacoes[0], {
-        id: 91, codigo: 'CRIADO-01', custo: '1890,00', estoque: '4', volumes: [{ c: '50', l: '40', a: '60', kg: '18,5' }],
+        id: 91, codigo: 'CRIADO-01', custo: '1890,00', estoque: '4', volumes: [{ c: '50', l: '40', a: '60', kg: '18,5' }], valor: '', valor_2: '',
     });
     assert.equal(custoParaTexto('890.00'), '890,00');
     assert.equal(custoParaTexto(0), '0,00', 'custo zero é um valor, não "sem custo"');
@@ -258,7 +283,7 @@ test('o corpo do "Salvar" é o que o servidor lê (o mesmo literal do CadastroDe
     // Depois do "Salvar", os campos são os do servidor (título capitalizado, custo "1890,50"): nada fica "mexido".
     const depois = depoisDeSalvar(digitado, RETRATO_DEPOIS_DO_SALVAR, []);
     assert.equal(mexido(depois, RETRATO_DEPOIS_DO_SALVAR), false);
-    assert.deepEqual(depois.variacoes[0], { id: 1, codigo: 'POLT-RIP', custo: '1890,50', estoque: '4', volumes: [{ c: '60', l: '40', a: '30', kg: '8,5' }] });
+    assert.deepEqual(depois.variacoes[0], { id: 1, codigo: 'POLT-RIP', custo: '1890,50', estoque: '4', volumes: [{ c: '60', l: '40', a: '30', kg: '8,5' }], valor: '', valor_2: '' });
 
     // Esvaziar custo, família e título (só espaço também conta): vai `null` — e nada mais além de código e nome.
     const esvaziado = comMudancas(RETRATO_DEPOIS_DO_SALVAR, { produto: { familia: '', titulo: '   ' }, variacoes: { 1: { custo: '' } } });
@@ -977,4 +1002,276 @@ test('F3 — o frete: a logística de cada variação como o retrato diz; o ME1 
     assert.equal(embalagemMexida(estadoDoRetrato(SALVO_INCOMPLETO), SALVO_INCOMPLETO), false);
     assert.equal(embalagemMexida(comMudancas(SALVO_INCOMPLETO, { variacoes: { 91: { custo: '1,00' } } }), SALVO_INCOMPLETO), false, 'só a caixa conta');
     assert.equal(embalagemMexida(comMudancas(SALVO_INCOMPLETO, { variacoes: { 91: { volumes: [{ c: '1', l: '1', a: '1', kg: '1' }] } } }), SALVO_INCOMPLETO), true);
+});
+
+// ═══ F4 (03/11/2026): cores, tamanhos e exclusões ═══════════════════════════
+//
+// POR QUE EXISTE: a variação sem nome, repetida ou de outro tipo vira, EM SILÊNCIO, um anúncio separado no
+// Publicador — a conferência das cores roda na tela antes de gravar, com a régua do servidor. "+ Cor" e "+ Tamanho"
+// gravam na hora e levam junto só a ESTRUTURA (a 1ª cor nomeia a variação que já existe no mesmo pedido): o custo
+// digitado e não salvo não pode ir junto, nem sumir. E a variação nova vai com custo e caixas EXPLÍCITOS — sem eles
+// o servidor copiaria os da 1ª variação do banco, e o tamanho novo de uma cor de custo próprio nasceria errado.
+
+/** A camiseta com a Preta mais cara e de caixa maior ("diferente por cor"). */
+const CAMISETA_POR_COR = {
+    ...CADASTRO_CORES_E_TAMANHOS,
+    variacoes: CADASTRO_CORES_E_TAMANHOS.variacoes.map((v) => (v.valor === 'Preta' ? { ...v, custo: 31.5, volumes: [{ c: 32, l: 26, a: 4, kg: 0.35 }] } : v)),
+};
+
+test('F4 — conferirCores: sem valor com 2+, repetida sem caixa nem acento, o par cor·tamanho e o outro tipo', () => {
+    const it = (chave, valor, extra = {}) => ({ chave, eixo: 'cor', valor, eixo_2: '', valor_2: '', ...extra });
+
+    // Uma variação só: nada a conferir (ela entra no grupo de qualquer jeito).
+    assert.deepEqual(conferirCores([it('v1', '')]), { ok: true, porChave: {}, lista: [] });
+
+    // Sem valor com duas ou mais.
+    const vazio = conferirCores([it('v1', 'Bege'), it('v2', '  ')]);
+    assert.equal(vazio.ok, false);
+    assert.deepEqual(Object.keys(vazio.porChave), ['v2']);
+    assert.equal(vazio.porChave.v2.valor, 'Preencha a cor desta variação: com duas ou mais, cada uma precisa da sua.');
+
+    // Repetida sem caixa, sem acento e sem espaço sobrando: a 1ª fica, a outra é marcada.
+    const repetida = conferirCores([it('v1', 'Pérola'), it('v2', ' perola  '), it('v3', 'Areia')]);
+    assert.deepEqual(repetida.lista, [{ chave: 'v2', campo: 'valor', mensagem: 'A cor “perola” se repete neste produto.' }]);
+    assert.equal(valorComparavel('  Pérola   Clara '), 'perola clara');
+    assert.equal(valorComparavel('Açaí'), 'acai');
+
+    // Com o 2º tipo: o PAR se repete. Mesmo cartão → o tamanho; outro cartão com a mesma cor → a cor.
+    const par = (chave, valor, valor2, grupo) => it(chave, valor, { eixo_2: 'tamanho', valor_2: valor2, grupo });
+    assert.deepEqual(conferirCores([par('v1', 'Branca', 'P', 'a'), par('v2', 'Branca', 'p', 'a')]).porChave, { v2: { valor_2: 'O tamanho “p” se repete em Branca.' } });
+    assert.deepEqual(conferirCores([par('v1', 'Branca', 'P', 'a'), par('v2', 'BRANCA', 'P', 'b')]).porChave, { v2: { valor: 'A cor “BRANCA” já existe neste produto.' } });
+    assert.ok(conferirCores([par('v1', 'Branca', 'P', 'a'), par('v2', 'Branca', 'M', 'a')]).ok, 'Branca P e Branca M são variações diferentes');
+    assert.deepEqual(conferirCores([par('v1', 'Branca', 'P', 'a'), par('v2', 'Preta', '', 'b')]).porChave, { v2: { valor_2: 'Preencha o tamanho desta variação.' } });
+
+    // Outro tipo: vale o da maioria (no empate, o primeiro); o diferente é marcado no eixo.
+    const tipo = conferirCores([it('v1', 'Bege'), it('v2', 'Areia'), it('v3', '110V', { eixo: 'voltagem' })]);
+    assert.deepEqual(tipo.lista, [{ chave: 'v3', campo: 'eixo', mensagem: 'Esta variação usa outro tipo (Voltagem); todas precisam usar o mesmo.' }]);
+});
+
+test('F4 — a conferência de uma gravação só barra o que ELA cria (como o servidor); o que já estava gravado só aparece', () => {
+    // Já gravado com duas cores iguais (veio de fora): mexer no título não é barrado.
+    const gravado = { ...CADASTRO_TRAVADO, variacoes: CADASTRO_TRAVADO.variacoes.map((v) => ({ ...v, valor: 'Natural' })), edicao: { livre: true } };
+    const soTitulo = estadoDoRetrato(gravado);
+    soTitulo.produto.titulo = 'Outro título';
+    const r = conferirGravacaoDasCores(soTitulo, gravado);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.porChave, { v22: { valor: 'A cor “Natural” se repete neste produto.' } }, 'mostra o que já estava');
+
+    // Renomear a Preta para "branca": a gravação CRIA a repetição — barra, nas variações da Preta.
+    const renomeada = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    renomeada.variacoes = renomeada.variacoes.map((v) => (v.valor === 'Preta' ? { ...v, valor: 'bránca ' } : v));
+    const barrada = conferirGravacaoDasCores(renomeada, CADASTRO_CORES_E_TAMANHOS);
+    assert.equal(barrada.ok, false);
+    assert.deepEqual(barrada.novos.map((p) => [p.chave, p.campo]), [['v123', 'valor'], ['v124', 'valor']]);
+
+    // "+ Cor" com o nome de uma que já existe: a nova é marcada (vai no mini-formulário).
+    const camiseta = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    const novas = novasDaCor(camiseta, 'Branca');
+    const comNova = conferirGravacaoDasCores(camiseta, CADASTRO_CORES_E_TAMANHOS, novas);
+    assert.deepEqual(comNova.novos.map((p) => [p.chave, p.campo]), [['nova-1', 'valor'], ['nova-2', 'valor']]);
+    assert.equal(comNova.porChave['nova-1'].valor, 'A cor “Branca” já existe neste produto.');
+});
+
+test('F4 — "+ Cor": a 1ª cor nomeia a variação que já existe no MESMO pedido; a nova vai com custo e caixas explícitos (os GRAVADOS)', () => {
+    // A pessoa escolheu "Cor", deu nome à cor do que já existe e, sem salvar, mudou o custo.
+    const estado = estadoDoRetrato(SALVO_INCOMPLETO);
+    estado.produto.eixo = 'cor';
+    estado.variacoes[0].valor = 'Bege';
+    estado.variacoes[0].custo = '999,00';
+    const novas = novasDaCor(estado, 'Areia', { codigos: refsSugeridas(estado.variacoes, 1) });
+    assert.deepEqual(novas, [{ chave: 'nova-1', valor: 'Areia', valor_2: '', codigo: 'CRIADO-01-2', referencia: 91, grupo: 'nova-cor' }]);
+
+    assert.deepEqual(linhasDaEstrutura(estado, SALVO_INCOMPLETO, novas), [
+        // A que já existe: só a estrutura (o eixo e o nome da cor) — o custo mexido e não salvo NÃO vai.
+        { chave: 'v91', codigo: 'CRIADO-01', nome: 'Criado-mudo 2 gavetas', id: 91, eixo: 'cor', valor: 'Bege' },
+        // A nova: tudo explícito, com o custo e as caixas GRAVADOS da referência; o estoque começa vazio.
+        {
+            chave: 'nova-1', codigo: 'CRIADO-01-2', nome: 'Criado-mudo 2 gavetas', eixo: 'cor', valor: 'Areia', eixo_2: null,
+            volumes: [{ c: '50', l: '40', a: '60', kg: '18,5' }], custo: '1890,00', estoque: null,
+        },
+    ]);
+
+    // O mesmo pelo "Salvar" (`linhasParaSalvar` com a variação nova no estado): a mesma régua; sem `produto_id` nem
+    // categoria em texto na linha nova.
+    const comNova = estadoDaEstrutura(estado, SALVO_INCOMPLETO, novas);
+    const linhas = linhasParaSalvar(comNova, SALVO_INCOMPLETO);
+    assert.equal(linhas.length, 2);
+    assert.ok(!('produto_id' in linhas[1]) && !('categoria_texto' in linhas[1]) && !('id' in linhas[1]));
+    assert.equal(chaveDaVariacao(comNova.variacoes[1]), 'nova-1');
+    assert.equal(chaveDaVariacao({ id: 91 }), 'v91');
+});
+
+test('F4 — "+ Tamanho" (uma por cor) e "+ Cor" com tamanhos (uma por tamanho): custo e caixas da COR certa, não da 1ª variação', () => {
+    const estado = estadoDoRetrato(CAMISETA_POR_COR);
+    const tamanhos = novasDoTamanho(CAMISETA_POR_COR, estado, 'G', { codigos: refsSugeridas(estado.variacoes, 2) });
+    assert.deepEqual(tamanhos, [
+        { chave: 'novo-1', valor: 'Branca', valor_2: 'G', codigo: 'CAM-BR-P-2', referencia: 121, grupo: 'v121' },
+        { chave: 'novo-2', valor: 'Preta', valor_2: 'G', codigo: 'CAM-BR-P-3', referencia: 123, grupo: 'v123' },
+    ]);
+    const linhas = linhasDaEstrutura(estado, CAMISETA_POR_COR, tamanhos);
+    assert.deepEqual(linhas.map((l) => [l.chave, l.valor, l.valor_2, l.eixo, l.eixo_2, l.custo, l.volumes]), [
+        ['novo-1', 'Branca', 'G', 'cor', 'tamanho', '25,00', [{ c: '30', l: '25', a: '3', kg: '0,3' }]],
+        ['novo-2', 'Preta', 'G', 'cor', 'tamanho', '31,50', [{ c: '32', l: '26', a: '4', kg: '0,35' }]],
+    ], 'só as novas: nada da estrutura mudou');
+
+    // "+ Cor" com cor E tamanho: uma variação por tamanho, com o custo do mesmo tamanho na 1ª cor que o tem.
+    const cores = novasDaCor(estado, 'Azul', { codigos: ['CAM-AZ-P', 'CAM-AZ-M'] });
+    assert.deepEqual(cores.map((n) => [n.chave, n.valor, n.valor_2, n.codigo, n.referencia]), [['nova-1', 'Azul', 'P', 'CAM-AZ-P', 121], ['nova-2', 'Azul', 'M', 'CAM-AZ-M', 122]]);
+});
+
+test('F4 — refsSugeridas: a régua do Portal (o menor número livre a partir de 2), uma diferente da outra', () => {
+    assert.deepEqual(refsSugeridas([{ codigo: 'POLT-RIP' }], 3), ['POLT-RIP-2', 'POLT-RIP-3', 'POLT-RIP-4']);
+    // O número que já existe (sem caixa) é pulado; o que foi excluído volta a ser oferecido.
+    assert.deepEqual(refsSugeridas([{ codigo: 'POLT-RIP' }, { codigo: 'polt-rip-2' }, { codigo: 'POLT-RIP-4' }], 2), ['POLT-RIP-3', 'POLT-RIP-5']);
+    assert.deepEqual(refsSugeridas([{ codigo: 'X' }], 1, { usadas: ['X-2'] }), ['X-3'], 'os SKUs já digitados no formulário contam');
+    assert.deepEqual(refsSugeridas([{ codigo: '' }], 2), ['', ''], 'sem Ref na 1ª, nada a sugerir');
+    assert.deepEqual(refsSugeridas([], 1), ['']);
+});
+
+test('F4 — os cartões: com cor E tamanho, um por COR (o valor GRAVADO: não pula enquanto se digita); um tipo só, um por variação', () => {
+    const estado = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    estado.variacoes[0].valor = 'Branca Neve';
+    const cartoes = cartoesDasVariacoes(CADASTRO_CORES_E_TAMANHOS, estado);
+    assert.deepEqual(cartoes.map((c) => [c.chave, c.ids, c.dona, c.valor]), [['v121', [121, 122], 122, 'Branca Neve'], ['v123', [123, 124], 123, 'Preta']]);
+    assert.deepEqual(cartoes[0].galeria, { chave: 'v121', variacaoId: 122, cor: 'Branca', tamanhos: ['P', 'M'], fotos: CADASTRO_CORES_E_TAMANHOS.variacoes[1].fotos, onde: 'nesta cor' });
+    assert.deepEqual(cartoes[0].linhas.map((l) => [l.id, l.valor_2, l.codigo]), [[121, 'P', 'CAM-BR-P'], [122, 'M', 'CAM-BR-M']]);
+
+    const umTipo = cartoesDasVariacoes(CADASTRO_TRAVADO, estadoDoRetrato(CADASTRO_TRAVADO));
+    assert.deepEqual(umTipo.map((c) => [c.chave, c.ids, c.valor]), [['v21', [21], 'Natural'], ['v22', [22], 'Mel']]);
+    assert.deepEqual(cartoesDasVariacoes(CADASTRO, estadoDoRetrato(CADASTRO)).map((c) => c.galeria.onde), ['neste produto']);
+    assert.deepEqual(itensParaConferir(estado, CADASTRO_CORES_E_TAMANHOS).map((i) => i.grupo), ['v121', 'v121', 'v123', 'v123']);
+});
+
+test('F4 — "Este produto varia?": o modo pelo eixo; trocar o tipo é conteúdo (grava no "Salvar") e tem as suas travas', () => {
+    assert.equal(modoDasVariacoes({ eixo: null }, 1), 'nao');
+    assert.equal(modoDasVariacoes({ eixo: '' }, 3), 'sem-tipo');
+    assert.equal(modoDasVariacoes({ eixo: 'cor' }, 2), 'cor');
+    assert.equal(modoDasVariacoes({ eixo: 'cor', eixo_2: 'tamanho' }, 4), 'cor-tamanho');
+    assert.equal(modoDasVariacoes({ eixo: 'voltagem' }, 2), 'outro');
+    assert.equal(modoDasVariacoes({ eixo: 'voltagem', eixo_2: 'tamanho' }, 2), 'dois');
+
+    // Não varia → Cor (uma variação): troca direto, e o estado fica mexido (vai no "Salvar", com o eixo na linha).
+    const um = trocaDeEixo(estadoDoRetrato(SALVO_INCOMPLETO), { eixo: 'cor', eixo_2: '' });
+    assert.ok(um.pode && um.mudou && !um.confirmar);
+    assert.equal(estruturaMexida(um.estado, SALVO_INCOMPLETO), true);
+    um.estado.variacoes[0].valor = 'Bege';
+    assert.deepEqual(linhasParaSalvar(um.estado, SALVO_INCOMPLETO), [{ chave: 'v91', codigo: 'CRIADO-01', nome: 'Criado-mudo 2 gavetas', id: 91, eixo: 'cor', valor: 'Bege' }]);
+    // E de volta para "não varia": o eixo e o valor saem (null = limpar).
+    const corGravada = { ...SALVO_INCOMPLETO, produto: { ...SALVO_INCOMPLETO.produto, eixo: 'cor' }, variacoes: [{ ...SALVO_INCOMPLETO.variacoes[0], valor: 'Bege' }] };
+    const nao = trocaDeEixo(estadoDoRetrato(corGravada), { eixo: '', eixo_2: '' });
+    assert.equal(nao.estado.variacoes[0].valor, '');
+    assert.deepEqual(linhasParaSalvar(nao.estado, corGravada), [{ chave: 'v91', codigo: 'CRIADO-01', nome: 'Criado-mudo 2 gavetas', id: 91, eixo: null, valor: null }]);
+
+    // "Não varia" com duas variações: não dá.
+    const duas = trocaDeEixo(estadoDoRetrato(CADASTRO_TRAVADO), { eixo: '', eixo_2: '' });
+    assert.deepEqual([duas.pode, duas.motivo], [false, 'Para o produto não variar, ele fica com uma variação só: remova as outras antes.']);
+    // Tirar o tamanho com cor de dois tamanhos: a cor se repetiria — não dá.
+    const camiseta = trocaDeEixo(estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS), { eixo: 'cor', eixo_2: '' });
+    assert.deepEqual([camiseta.pode, camiseta.motivo], [false, 'Há cor com mais de uma variação de tamanho: remova as que sobram antes (fica uma por cor).']);
+    // Um tamanho por cor: pede confirmação (e só então troca); o 2º valor sai de todas.
+    const umPorCor = { ...CADASTRO_CORES_E_TAMANHOS, variacoes: [CADASTRO_CORES_E_TAMANHOS.variacoes[0], CADASTRO_CORES_E_TAMANHOS.variacoes[2]] };
+    const tirar = trocaDeEixo(estadoDoRetrato(umPorCor), { eixo: 'cor', eixo_2: '' });
+    assert.deepEqual([tirar.pode, tirar.confirmar], [true, 'O tamanho sai de todas as variações (P) quando você salvar.']);
+    assert.deepEqual(tirar.estado.variacoes.map((v) => v.valor_2), ['', '']);
+    assert.deepEqual(linhasParaSalvar(tirar.estado, umPorCor).map((l) => [l.chave, l.eixo_2, l.valor_2]), [['v121', null, null], ['v123', null, null]]);
+});
+
+test('F4 — custo e caixas: "iguais em todas as cores" quando o gravado é igual; igualar copia da 1ª; "por cor" iguala dentro da cor', () => {
+    assert.equal(custoECaixasIguais(CADASTRO_CORES_E_TAMANHOS.variacoes), true);
+    assert.equal(custoECaixasIguais(CAMISETA_POR_COR.variacoes), false);
+    assert.equal(custoECaixasIguais(estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS).variacoes), true, '"25" e "25,00" são o mesmo custo');
+    assert.equal(custoECaixasIguais([]), true);
+
+    const estado = estadoDoRetrato(CAMISETA_POR_COR);
+    const iguais = comCustoECaixasIguais(estado);
+    assert.deepEqual(iguais.variacoes.map((v) => v.custo), ['25,00', '25,00', '25,00', '25,00']);
+    assert.deepEqual(camposMexidos(iguais, CAMISETA_POR_COR).variacoes, { 123: ['custo', 'volumes'], 124: ['custo', 'volumes'] });
+
+    // "Por cor": o tamanho novo da Preta (nasceu com os GRAVADOS) passa a ter o custo da Preta que está na tela.
+    const naTela = estadoDoRetrato(CAMISETA_POR_COR);
+    naTela.variacoes = naTela.variacoes.map((v) => (v.id === 123 || v.id === 124 ? { ...v, custo: '33,00' } : v));
+    const comG = { ...CAMISETA_POR_COR, variacoes: [...CAMISETA_POR_COR.variacoes, { ...CAMISETA_POR_COR.variacoes[2], id: 125, codigo: 'CAM-PR-G', valor_2: 'G', dona_da_cor: false }] };
+    const juntos = aplicarResposta(naTela, CAMISETA_POR_COR, comG);
+    assert.equal(juntos.variacoes.find((v) => v.id === 125).custo, '31,50', 'a nova entra como veio');
+    assert.deepEqual(custoIgualEmCadaCor(juntos, comG).variacoes.map((v) => v.custo), ['25,00', '25,00', '33,00', '33,00', '33,00']);
+});
+
+test('F4 — aplicarResposta depois de "+ Cor": a cor nova entra, a estrutura da tela vira a gravada e o custo não salvo fica', () => {
+    const estado = estadoDoRetrato(SALVO_INCOMPLETO);
+    estado.produto.eixo = 'cor';
+    estado.variacoes[0].valor = 'Bege';
+    estado.variacoes[0].custo = '999,00';
+    const novo = {
+        ...SALVO_INCOMPLETO,
+        produto: { ...SALVO_INCOMPLETO.produto, eixo: 'cor' },
+        variacoes: [{ ...SALVO_INCOMPLETO.variacoes[0], valor: 'Bege' }, { ...SALVO_INCOMPLETO.variacoes[0], id: 92, codigo: 'CRIADO-01-2', valor: 'Areia', estoque: null }],
+        mapear_de_novo: false,
+    };
+    const junto = aplicarResposta(estado, SALVO_INCOMPLETO, novo);
+    assert.deepEqual(junto.variacoes.map((v) => [v.id, v.valor, v.custo]), [[91, 'Bege', '999,00'], [92, 'Areia', '1890,00']]);
+    assert.equal(estruturaMexida(junto, novo), false, 'a estrutura já é a gravada');
+    assert.deepEqual(camposMexidos(junto, novo), { produto: [], variacoes: { 91: ['custo'] } });
+});
+
+test('F4 — os erros do 422 das cores pelo lugar na gaveta: `linhas.{i}.campo` pela linha mandada, `variacoes.{id}`, e os `erros[]`', () => {
+    const linhas = [{ chave: 'v91', id: 91 }, { chave: 'nova-1', codigo: 'X-2' }];
+    const falha = {
+        response: {
+            status: 422,
+            data: {
+                message: 'Confira as variações marcadas.',
+                errors: { 'linhas.1.valor': ['“Bege” já existe neste produto: cada variação precisa de um valor diferente.'], 'variacoes.93.valor': ['Falta a cor desta variação.'], outra: ['Solta.'] },
+                erros: [
+                    { indice: 1, chave: 'nova-1', variacao_id: null, codigo: 'X-2', motivo: 'repetida', mensagem: 'x', campos: { valor: '“Bege” já existe neste produto: cada variação precisa de um valor diferente.' } },
+                    { indice: null, chave: null, variacao_id: 93, codigo: 'X-3', motivo: 'sem_valor', mensagem: 'x', campos: { valor: 'Falta a cor desta variação.' } },
+                    { indice: 0, chave: 'v91', variacao_id: 91, codigo: 'X', motivo: 'outro_tipo', mensagem: 'x', campos: { eixo_2: 'Esta variação é por Cor, e as outras por Cor e Tamanho.' } },
+                ],
+            },
+        },
+    };
+    assert.deepEqual(errosDasLinhasNo422(falha, linhas), {
+        porChave: {
+            'nova-1': { valor: '“Bege” já existe neste produto: cada variação precisa de um valor diferente.' },
+            v93: { valor: 'Falta a cor desta variação.' },
+            v91: { eixo_2: 'Esta variação é por Cor, e as outras por Cor e Tamanho.' },
+        },
+        soltas: ['Solta.'],
+    });
+    assert.equal(errosDasLinhasNo422({ response: { status: 409, data: {} } }, linhas), null);
+    // O erro de linha só com o id da variação (sem chave) também acha o lugar.
+    assert.deepEqual(errosPorCampo([{ chave: null, variacao_id: 22, campos: { valor_2: 'Falta o tamanho.' } }]).porChave, { v22: { valor_2: 'Falta o tamanho.' } });
+});
+
+test('F4 — o aviso da variação nova num produto mapeado: o `mapear_de_novo` do servidor manda', () => {
+    assert.equal(avisoDaCorNova({ mapear_de_novo: true }), AVISO_DA_COR_NOVA_NO_MAPEADO);
+    assert.equal(AVISO_DA_COR_NOVA_NO_MAPEADO, 'Cor nova salva. Este produto já foi mapeado: mapeie de novo para a cor ganhar os combos.');
+    assert.equal(avisoDaCorNova({ mapear_de_novo: true }, { cor: false }), AVISO_DA_VARIACAO_NOVA_NO_MAPEADO);
+    assert.equal(avisoDaCorNova({ mapear_de_novo: false, situacao: { mapeado_em: '2026-11-01' }, totais: { criadas: 1 } }), null);
+    // Sem a chave: o retrato diz (variação criada num produto com a marca de mapeado).
+    assert.equal(avisoDaCorNova({ situacao: { mapeado_em: '2026-11-01' }, totais: { criadas: 1 } }), AVISO_DA_COR_NOVA_NO_MAPEADO);
+    assert.equal(avisoDaCorNova({ situacao: { mapeado_em: null }, totais: { criadas: 1 } }), null);
+});
+
+test('F4 — "Excluir produto": os textos da prévia (o que sai junto), as montadas confirmadas e o "mudou no meio do caminho"', () => {
+    const previa = {
+        produtos: [{ id: 12, nome: 'Camiseta básica', codigo: null, variacoes: 4, em_uso: false }],
+        montadas: [{ id: 70, sku: 'CAM-BR-P-CB2', nome: 'Combo 2 · Camiseta', fase: 'combo', em_uso: false }, { id: 71, sku: 'KT-9', nome: null, fase: 'kit', em_uso: true }],
+        totais: { produtos: 1, variacoes: 4, montadas: 2, em_uso: 1 },
+        nao_encontrados: 0,
+    };
+    assert.deepEqual(textosDaExclusao(previa), {
+        frase: 'O produto sai do cadastro com 4 variações, as fotos e a ficha técnica. Não dá para desfazer.',
+        montadas: [{ id: 70, tipo: 'Combo', sku: 'CAM-BR-P-CB2', nome: 'Combo 2 · Camiseta' }, { id: 71, tipo: 'Kit', sku: 'KT-9', nome: '' }],
+        fraseDasMontadas: '2 ofertas montadas usam este produto e saem junto:',
+        emUso: 'Parte disto já está ligada a anúncio ou a preparo: o que estava ligado fica solto.',
+        botao: 'Excluir o produto e as 2 ofertas',
+    });
+    assert.deepEqual(montadasDaPrevia(previa), [70, 71]);
+    const sozinho = textosDaExclusao({ produtos: [{ id: 9, variacoes: 1 }], montadas: [], totais: { variacoes: 1, montadas: 0, em_uso: 0 } });
+    assert.deepEqual([sozinho.frase, sozinho.fraseDasMontadas, sozinho.emUso, sozinho.botao], [
+        'O produto sai do cadastro com 1 variação, as fotos e a ficha técnica. Não dá para desfazer.', null, null, 'Excluir produto',
+    ]);
+    assert.deepEqual(montadasDaPrevia({ montadas: [] }), []);
+    assert.equal(exclusaoMudou({ response: { status: 422, data: { errors: { montadas: ['O que sai junto mudou.'] } } } }), true);
+    assert.equal(exclusaoMudou({ response: { status: 422, data: { errors: { produto: ['x'] } } } }), false);
 });

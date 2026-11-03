@@ -113,9 +113,11 @@ class CadastroDePontaAPontaTest extends TestCase
         $this->assertSame([], $salvo['erros']);
         $this->assertSame(['criadas' => 0, 'atualizadas' => 1, 'sem_mudanca' => 0, 'com_erro' => 0], array_intersect_key($salvo['totais'], array_flip(['criadas', 'atualizadas', 'sem_mudanca', 'com_erro'])));
         $this->assertSame(['familias' => ['Poltronas'], 'ambientes' => ['Sala de estar', 'Varanda']], $salvo['criadas_nas_listas']);
-        // O retrato novo vem junto (a tela não faz o GET) e é o que a rota 1 diz agora.
+        // O retrato novo vem junto (a tela não faz o GET) e é o que a rota 1 diz agora. `mapear_de_novo` (F4): a cor nova
+        // num produto já mapeado — aqui, nenhuma.
+        $this->assertFalse($salvo['mapear_de_novo']);
         $this->assertSame($this->semPortal($this->actingAs($this->dev)->getJson("{$produtos}/{$id}/cadastro"))->json(),
-            array_diff_key($salvo, array_flip(['erros', 'avisos', 'totais', 'criadas_nas_listas', 'mensagem'])));
+            array_diff_key($salvo, array_flip(['erros', 'avisos', 'totais', 'criadas_nas_listas', 'mapear_de_novo', 'mensagem'])));
         // O título volta capitalizado pela régua do sistema: a tela compara o "mexido" com ESTE retrato, não com o digitado.
         $this->assertSame(['Poltrona Ripada Bege', 'Poltrona Ripada Bege Para Sala', 'Poltronas', ['Sala de estar', 'Varanda'], "Linha 1\nLinha 2"],
             [$salvo['produto']['nome'], $salvo['produto']['titulo'], $salvo['produto']['familia'], $salvo['produto']['ambientes'], $salvo['produto']['descricao']]);

@@ -20,13 +20,15 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Spatie\Activitylog\Models\Activity;
 use Tests\Feature\Trilha\Concerns\MontaTrilha;
 use Tests\TestCase;
 
 /**
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
- * foto e o "Conferir frete pela conta"; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; cresce a cada fatia). A ordem da
+ * guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -100,6 +102,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'fotos (rota 10)' => ['POST', '/produtos/{p}/variacoes/{v}/fotos', false],
             'excluir foto (rota 11)' => ['DELETE', '/produtos/{p}/variacoes/{v}/fotos/{i}', false],
             'frete (rota 13)' => ['POST', '/produtos/{p}/frete', false],
+            'excluir cor (rota 14)'      => ['DELETE', '/produtos/{p}/variacoes/{v}', false],
+            'prévia da exclusão (rota 15)' => ['POST', '/produtos/{p}/exclusao/previa', false],
+            'excluir produto (rota 15)'  => ['DELETE', '/produtos/{p}', false],
         ];
     }
 
@@ -262,11 +267,17 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$grande}/fotos/{$i}")->assertNotFound();
         $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$v}/fotos/{$grande}")->assertNotFound();
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/frete")->assertNotFound();
+        // F4: excluir a cor (o produto e a variação do endereço) e o produto, nos dois passos.
+        $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$grande}/variacoes/{$v}")->assertNotFound();
+        $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$grande}")->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/exclusao/previa")->assertNotFound();
+        $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$grande}", ['montadas' => []])->assertNotFound();
         // O id de 19 dígitos DENTRO do corpo: o serviço não o leria como número — 404, nunca variação nova.
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/linhas",
             ['linhas' => [['id' => $grande, 'codigo' => 'VA', 'nome' => 'Vaso Alfa']]])->assertNotFound();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
+        $this->assertSame(1, EstruturaProdutoVariacao::query()->count());
         $this->assertSame(3, EstruturaProdutoVariacaoImagem::query()->count());
     }
 
@@ -274,7 +285,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     #[DataProvider('rotas')]
     public function test_o_dev_que_escreve_no_portal_da_empresa_passa(string $metodo, string $caminho, bool $comVariacao): void
     {
-        $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
+        // Excluir a cor pede um produto de duas (a última variação só sai pelo "Excluir produto").
+        $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
+        $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
         $corpo = $metodo === 'POST' && ! str_contains($caminho, '{p}') ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
 
         $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p), $corpo);
@@ -344,6 +357,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // O `produtoCompleto` grava 3 fotos por variação: nenhuma a mais (enviada), nenhuma a menos (excluída).
         $this->assertSame(3 * EstruturaProdutoVariacao::query()->count(), EstruturaProdutoVariacaoImagem::query()->count(), 'mexeu nas fotos');
         $this->assertSame([], Storage::disk(VariacaoImagensService::DISCO)->allFiles(), 'gravou foto no disco');
+        // F4: nenhuma cor nem produto excluído (e nenhuma escrita da trilha registrada).
+        $this->assertFalse(Activity::query()->get()->contains(fn (Activity $a) => in_array($a->getExtraProperty('evento'),
+            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo'], true)), 'excluiu ou gravou');
         Http::assertNothingSent();
         Queue::assertNothingPushed();
     }

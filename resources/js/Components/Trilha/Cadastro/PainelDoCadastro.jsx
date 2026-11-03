@@ -1,17 +1,17 @@
 import { useEffect, useId, useRef } from 'react';
 import { chaveDeMapear, ofertasDoProduto, CHAVE_NOVO_PRODUTO } from '@/lib/trilha';
-import { avisoDaOndaComecada, categoriaDaGaveta, categoriaTravada, chaveDaVariacao, custoParaTexto, embalagemMexida } from '@/lib/trilhaCadastro';
+import { avisoDaOndaComecada, categoriaDaGaveta, categoriaTravada, chaveDaVariacao, embalagemMexida } from '@/lib/trilhaCadastro';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
-import { fmtMedida } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { avisosEmTexto, skuDoProduto } from '@/Components/Trilha/formatos';
-import CaixaDaEmbalagem, { CampoDoCusto, FreteDasVariacoes } from '@/Components/Trilha/Cadastro/CaixaDaEmbalagem';
+import { FreteDasVariacoes } from '@/Components/Trilha/Cadastro/CaixaDaEmbalagem';
+import CaixaDasVariacoes from '@/Components/Trilha/Cadastro/CaixaDasVariacoes';
 import CaixaDaFicha, { MedidasDoProdutoMontado } from '@/Components/Trilha/Cadastro/CaixaDaFicha';
-import { CampoDaDescricao, CampoDoEstoque, CampoDoSku, CamposDoProduto, DUAS_COLUNAS } from '@/Components/Trilha/Cadastro/CaixaDoProduto';
+import { CampoDaDescricao, CamposDoProduto } from '@/Components/Trilha/Cadastro/CaixaDoProduto';
 import EscolhaDaCategoria from '@/Components/Trilha/Cadastro/EscolhaDaCategoria';
-import { FotosDoProduto } from '@/Components/Trilha/Cadastro/FotosDaCor';
+import ExclusaoDoProduto from '@/Components/Trilha/Cadastro/ExclusaoDoProduto';
 import { AvisoNaGaveta, ConfirmacaoNaGaveta } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
 import useCadastroDoProduto from '@/Components/Trilha/Cadastro/useCadastroDoProduto';
 import { CATEGORIA_PARADA } from '@/Components/Trilha/Cadastro/useCategoriaDaTrilha';
@@ -40,9 +40,11 @@ import { FICHA_PARADA } from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // F3: as fotos (uma galeria por cor, envio e exclusão imediatos) e o frete de
 // cada variação, com o ME1 como AVISO (não segura o produto na Lista) e o
 // "Conferir frete pela conta". Com isso nada do cadastro manda mais a equipe
-// para outra tela: a trilha substitui o cadastro do Portal. O produto de
-// várias cores mostra as variações só para leitura até a F4 (cores e
-// tamanhos), mas as fotos de cada cor e o frete já se fazem aqui.
+// para outra tela: a trilha substitui o cadastro do Portal.
+// F4: cores e tamanhos (`CaixaDasVariacoes`: "Este produto varia?", um cartão
+// por cor com as fotos dela, "+ Cor"/"+ Tamanho" e remover na hora, custo e
+// caixa iguais ou por cor) e "Excluir produto" no rodapé, em dois passos (a
+// prévia do que sai junto e a confirmação), só com o produto livre.
 
 /** A pílula do que falta, lida do servidor. */
 function PilulaDasFaltas({ faltas }) {
@@ -86,32 +88,6 @@ function ListaDeFaltas({ faltas }) {
                 </li>
             ))}
         </ul>
-    );
-}
-
-/** O produto de várias variações: até a F4, SKU, custo, estoque e caixas de cada uma só para leitura. */
-function VariacoesSoLeitura({ variacoes }) {
-    return (
-        <div className="flex flex-col gap-1.5" data-variacoes-so-leitura="">
-            <span className="text-[12.5px] text-trilha-muted">
-                Este produto tem {variacoes.length} variações. Por enquanto, SKU, custo, estoque e caixas de cada uma ficam como estão; as fotos de
-                cada cor e o frete, logo abaixo, já se fazem aqui.
-            </span>
-            <ul className="m-0 flex list-none flex-col p-0">
-                {variacoes.map((v) => (
-                    <li key={v.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 border-b border-trilha-line2 py-1.5 text-[12.5px] last:border-b-0">
-                        <span className="min-w-0 [overflow-wrap:anywhere]">
-                            <b className="font-semibold text-trilha-fg">{[v.valor, v.valor_2].filter(Boolean).join(' · ') || 'Sem nome'}</b>{' '}
-                            <span className="font-pub-mono text-trilha-fg2">{v.codigo}</span>
-                        </span>
-                        <span className="text-right text-trilha-muted">
-                            {v.custo != null && v.custo !== '' ? `R$ ${custoParaTexto(v.custo)}` : 'sem custo'}
-                            {(v.volumes ?? []).length > 0 && <span className="block font-pub-mono">{fmtMedida(v.volumes[0])}</span>}
-                        </span>
-                    </li>
-                ))}
-            </ul>
-        </div>
     );
 }
 
@@ -212,7 +188,19 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
 
     // ─── O rodapé ───
     let rodape = null;
-    if (retrato && c.pedido) {
+    const exclusao = c.exclusao ?? null;
+    if (retrato && exclusao && !c.pedido) {
+        // "Excluir produto" (F4): a prévia do que sai junto e a confirmação tomam o rodapé.
+        rodape = (
+            <ExclusaoDoProduto
+                exclusao={exclusao}
+                nome={nome}
+                onConfirmar={c.confirmarExclusao ?? (() => {})}
+                onCancelar={c.cancelarExclusao ?? (() => {})}
+                onTentarDeNovo={c.pedirExclusao ?? (() => {})}
+            />
+        );
+    } else if (retrato && c.pedido) {
         rodape = (
             <ConfirmacaoNaGaveta
                 texto="Há alterações não salvas."
@@ -225,6 +213,12 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
         );
     } else if (retrato) {
         rodape = [
+            // "Excluir produto" (F4) só com o produto livre — o que já andou não se exclui por aqui.
+            !c.leitura && c.pedirExclusao && (
+                <Botao key="excluir" perigo data-acao="excluir-produto" disabled={c.salvando || !!c.acao} onClick={c.pedirExclusao}>
+                    Excluir produto
+                </Botao>
+            ),
             <EstadoDoRodape key="estado" erroGeral={c.erroGeral} nota={c.nota} temMudanca={c.temMudanca} etapa={etapa} leitura={c.leitura} />,
             etapa !== 'lista' && (
                 <Botao key="mapear" data-acao="mapear" onClick={() => onAbrir(chaveDeMapear({ id: produtoId }))}>
@@ -293,13 +287,9 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
 
 /** O corpo com o retrato carregado: os avisos, "Onde está", a Lista de produtos (o formulário), a ficha e as ofertas. */
 function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, idDoForm, onAbrir, campoDoNome, urlPublicador, usarEsta = null }) {
-    const variacoes = retrato.variacoes ?? [];
-    const unica = variacoes.length === 1 ? estado.variacoes[0] : null;
     const errosDe = (variacao) => (variacao ? c.erros.porChave[chaveDaVariacao(variacao)] ?? {} : {});
     // Os campos do produto andam na 1ª linha: os erros deles voltam na chave dela.
     const errosDoProduto = errosDe(estado.variacoes[0]);
-    const errosDaUnica = errosDe(unica);
-    const mudarAUnica = (campo, valor) => c.mudarVariacao(unica.id, campo, valor);
     const edicao = retrato.edicao ?? {};
     const situacao = retrato.situacao ?? {};
     const aviso = !c.leitura ? avisoDaOndaComecada(edicao.onda_comecou) : null;
@@ -390,26 +380,9 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
                                 />
                             }
                         />
-                        {unica ? (
-                            <>
-                                {/* "Não varia" (§5.3): SKU, custo, estoque, a embalagem com o frete e as fotos. */}
-                                <div className={DUAS_COLUNAS}>
-                                    <CampoDoSku variacao={unica} erro={errosDaUnica.codigo} bling={!!variacoes[0]?.bling} onCampo={mudarAUnica} />
-                                    <CampoDoCusto variacao={unica} erro={errosDaUnica.custo} onCampo={mudarAUnica} />
-                                </div>
-                                <div className={DUAS_COLUNAS}>
-                                    <CampoDoEstoque variacao={unica} erro={errosDaUnica.estoque} bling={!!variacoes[0]?.estoque_do_bling} onCampo={mudarAUnica} />
-                                </div>
-                                <CaixaDaEmbalagem variacao={unica} erros={errosDaUnica} onCampo={mudarAUnica} />
-                                {frete}
-                            </>
-                        ) : (
-                            <>
-                                <VariacoesSoLeitura variacoes={variacoes} />
-                                {frete}
-                            </>
-                        )}
-                        <FotosDoProduto retrato={retrato} c={c} leitura={c.leitura} />
+                        {/* "Este produto varia?" (§5.3, item 6): sem variação, SKU, custo, estoque, a embalagem com o
+                            frete e as fotos; com, um cartão por cor (F4). */}
+                        <CaixaDasVariacoes retrato={retrato} estado={estado} c={c} leitura={c.leitura} frete={frete} onAbrir={onAbrir} />
                         {/* As medidas do produto MONTADO (§5.3, item 7): campos da ficha, gravam com ela. */}
                         <MedidasDoProdutoMontado ficha={ficha} valores={estado.ficha} erros={errosDaFicha} categoria={categoria} onMudar={mudarFicha} />
                         <CampoDaDescricao

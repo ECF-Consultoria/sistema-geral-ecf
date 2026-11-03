@@ -22,7 +22,7 @@ import {
     SALVO_INCOMPLETO,
     TERMOS_DA_CATEGORIA,
 } from './_trilha-exemplo.js';
-import { categoriaDaGaveta, estadoDoRetrato, fotosPorCor, gruposDaFicha, mexido, resultadoDoSalvar, textoDaIa } from '../../resources/js/lib/trilhaCadastro.js';
+import { cartoesDasVariacoes, categoriaDaGaveta, estadoDoRetrato, fotosPorCor, gruposDaFicha, mexido, resultadoDoSalvar, textoDaIa } from '../../resources/js/lib/trilhaCadastro.js';
 import { camposDeMedidas, gruposSemMedidas } from '../../resources/js/lib/medidasDoProduto.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -93,6 +93,7 @@ const M = await montarTodos({
     produto: 'resources/js/Components/Trilha/Cadastro/CaixaDoProduto.jsx',
     campo: 'resources/js/Components/Trilha/Cadastro/CampoDaFicha.jsx',
     fotos: 'resources/js/Components/Trilha/Cadastro/FotosDaCor.jsx',
+    variacoes: 'resources/js/Components/Trilha/Cadastro/CaixaDasVariacoes.jsx',
 });
 
 const { createElement: h } = await import('react');
@@ -270,11 +271,14 @@ test('produto que andou: só leitura com o motivo no topo, sem "Salvar", com "Ab
     assert.match(saida, /href="\/mlb\/anuncios\/publicador\/produtos\/72\/editor"[^>]*data-link="publicador"/);
     // Fora da Lista: "Mapear de novo" continua (mapear não é mexer no cadastro).
     assert.ok(t.includes('Mapear de novo'));
-    // Duas cores: as variações só para leitura nesta fatia.
-    for (const s of ['Este produto tem 2 variações', 'Natural', 'CJ-211-NAT', 'R$ 290,00', 'Mel', 'CJ-211-MEL', 'R$ 310,00']) {
-        assert.ok(t.includes(s), `faltou: ${s}`);
+    // Duas cores (F4): um cartão por cor, com o custo de cada uma (diferentes: "diferente por cor") — tudo só para
+    // leitura (o fieldset desligado), sem "+ Cor", remover nem "Excluir produto".
+    for (const s of ['value="Natural"', 'value="CJ-211-NAT"', 'value="290,00"', 'value="Mel"', 'value="CJ-211-MEL"', 'value="310,00"']) {
+        assert.ok(saida.includes(s), `faltou: ${s}`);
     }
-    assert.ok(!saida.includes('data-campo="custo"'), 'sem campo de custo com várias variações');
+    assert.ok(saida.includes('data-cartao-da-variacao="v21"') && saida.includes('data-cartao-da-variacao="v22"'));
+    assert.match(saida, /data-campo="custo-e-embalagem" data-custo="por-cor"/);
+    for (const acao of ['mais-cor', 'remover-cor', 'excluir-produto', 'adicionar-variacao']) assert.ok(!saida.includes(`data-acao="${acao}"`), acao);
     // Com categoria, a dica do título não fala em "sem categoria".
     assert.ok(t.includes('É o título do Clássico; o robô escreve o do Premium.') && !t.includes('Sem categoria, vale o limite'));
     assert.ok(texto(desenharGaveta(CADASTRO)).includes('Sem categoria, vale o limite de 60 letras.'));
@@ -420,7 +424,9 @@ test('F3 — "Ver maior" abre a ORIGINAL (`?original=1`) dentro da gaveta; exclu
 
 test('F3 — cor E tamanho: uma galeria por COR, na dona, com os tamanhos que ela vale; a ação imediata ocupa o "Salvar"', () => {
     const saida = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
-    assert.match(texto(saida.match(/data-campo="fotos"[\s\S]*?<\/legend>/)?.[0] ?? ''), /Fotos \* mínimo 3 em cada cor/);
+    // F4: as fotos moram no cartão da cor — a galeria da Branca dentro do cartão dela.
+    assert.match(saida, /data-cartao-da-variacao="v121"[\s\S]*?data-galeria="v121"/);
+    assert.match(saida, /data-cartao-da-variacao="v123"[\s\S]*?data-galeria="v123"/);
     assert.deepEqual([...saida.matchAll(/data-galeria="(v\d+)" data-variacao-das-fotos="(\d+)"/g)].map((m) => [m[1], Number(m[2])]), [['v121', 122], ['v123', 123]]);
     const branca = galeria(saida, 'v121');
     assert.ok(texto(branca).includes('Branca') && texto(branca).includes('Valem para os tamanhos P e M.'));
@@ -899,4 +905,246 @@ test('F2 — as listas abrem dentro da gaveta: nada de portal nem Radix; Esc fec
     assert.equal(fonte.match(/createPortal|@radix-ui|Components\/Portal\//), null);
     const escolha = lerSemComentarios('resources/js/Components/Trilha/Cadastro/EscolhaDaCategoria.jsx');
     assert.match(escolha, /evento\.key !== 'Escape' \|\| evento\.defaultPrevented \|\| !cat\.aberto\) return;\s*evento\.preventDefault\(\);\s*cat\.fechar\(\);/);
+});
+
+// ═══ F4 (03/11/2026): cores, tamanhos e exclusões ═══════════════════════════
+
+/** As duas cadeiras (Natural e Mel) com o cadastro LIVRE: um tipo só (cor), custos diferentes. */
+const CADEIRA_LIVRE = {
+    ...CADASTRO_TRAVADO,
+    situacao: { ...CADASTRO_TRAVADO.situacao, etapa: 'lista', faltas: ['fotos (0 de 3)'], no_publicador: false, categoria_travada: false },
+    edicao: { livre: true, motivo: null, onda_comecou: null },
+};
+
+/** O pedaço do HTML de um cartão (`data-cartao-da-variacao="v121"`) até o próximo cartão ou o "+ Cor". */
+function cartao(html, chave) {
+    const inicio = html.indexOf(`data-cartao-da-variacao="${chave}"`);
+    assert.ok(inicio >= 0, `o cartão ${chave} devia estar desenhado`);
+    const proximo = html.indexOf('data-cartao-da-variacao="', inicio + 10);
+
+    return html.slice(inicio, proximo < 0 ? html.indexOf('data-campo="custo-e-embalagem"', inicio) : proximo);
+}
+
+/** O que o cartão recebe da caixa (o teste desenha o cartão sozinho, com a remoção já pedida). */
+function desenharCartao(retrato, chave, extra = {}) {
+    const estado = estadoDoRetrato(retrato);
+    const c = { ...estadoDoHook(retrato), estadoDoEixo: { eixo: estado.produto.eixo, eixo_2: estado.produto.eixo_2 } };
+    const cartoes = cartoesDasVariacoes(retrato, estado);
+
+    return renderToStaticMarkup(h(M.variacoes.CartaoDaVariacao, {
+        cartao: cartoes.find((x) => x.chave === chave),
+        retrato,
+        eixos: retrato.eixos,
+        c,
+        leitura: false,
+        errosDe: () => ({}),
+        podeRemover: cartoes.length > 1,
+        porCor: false,
+        ocupado: false,
+        ...extra,
+    }));
+}
+
+test('F4 — "Este produto varia?": [Não] [Cor] [Cor e tamanho] e os outros tipos no seletor; sem variação, o bloco de sempre', () => {
+    const nao = desenharGaveta(CADASTRO);
+    assert.match(nao, /data-campo="variacoes" data-modo-das-variacoes="nao"/);
+    assert.ok(tag(nao, 'data-opcao="nao"').includes('aria-pressed="true"') && tag(nao, 'data-opcao="cor"').includes('aria-pressed="false"'));
+    assert.ok(nao.includes('data-opcao="cor-tamanho"') && texto(nao).includes('Cor e tamanho'));
+    const seletor = nao.match(/<select[^>]*data-acao="outro-tipo-de-variacao"[\s\S]*?<\/select>/)?.[0] ?? '';
+    assert.deepEqual([...seletor.matchAll(/<option[^>]*value="(\w*)"/g)].map((m) => m[1]), ['', 'tamanho', 'voltagem', 'material', 'sabor', 'outro']);
+    // O "não varia": a pergunta vem antes do SKU; nada de cartão nem "+ Cor".
+    assert.ok(nao.indexOf('data-campo="variacoes"') < nao.indexOf('data-campo="codigo"'));
+    assert.ok(!nao.includes('data-cartao-da-variacao') && !nao.includes('data-acao="mais-cor"'));
+
+    // Várias variações SEM tipo (vieram de fora): a gaveta pede o tipo.
+    const semTipo = desenharGaveta({ ...CADEIRA_LIVRE, produto: { ...CADEIRA_LIVRE.produto, eixo: null } });
+    assert.match(semTipo, /data-modo-das-variacoes="sem-tipo"/);
+    assert.ok(texto(semTipo).includes('Este produto tem 2 variações sem tipo: escolha qual é (cor, tamanho…) e dê nome a cada uma.'));
+    assert.ok(!semTipo.includes('data-acao="mais-cor"'), 'sem o tipo, nada de "+ Cor"');
+});
+
+test('F4 — um tipo só (cor): um cartão por variação com nome, SKU e estoque; custos diferentes → "diferente por cor" no cartão', () => {
+    const saida = desenharGaveta(CADEIRA_LIVRE);
+    assert.ok(tag(saida, 'data-opcao="cor"').includes('aria-pressed="true"'));
+    assert.match(saida, /data-cartoes-das-variacoes="2"/);
+    const natural = cartao(saida, 'v21');
+    assert.ok(tag(natural, 'data-campo="valor"', 'div') && natural.includes('value="Natural"') && natural.includes('value="CJ-211-NAT"'));
+    assert.match(texto(natural.match(/data-campo="valor"[\s\S]*?<\/label>/)?.[0] ?? ''), /Cor \*/);
+    // Custos diferentes: o custo e a caixa ficam no cartão de cada cor.
+    assert.match(natural, /data-custo-da-cor=""[\s\S]*?value="290,00"/);
+    assert.match(cartao(saida, 'v22'), /data-custo-da-cor=""[\s\S]*?value="310,00"/);
+    assert.match(saida, /data-campo="custo-e-embalagem" data-custo="por-cor"/);
+    assert.ok(tag(saida, 'data-opcao="por-cor"').includes('aria-pressed="true"'));
+    assert.ok(texto(saida).includes('O custo e a caixa ficam no cartão de cada cor.'));
+    // A galeria de cada cor dentro do cartão; "+ Cor" (sem "+ Tamanho", o produto tem um tipo só); remover cada cor.
+    assert.match(natural, /data-galeria="v21"/);
+    assert.ok(saida.includes('data-acao="mais-cor"') && !saida.includes('data-acao="mais-tamanho"'));
+    assert.match(saida, /data-acao="mais-cor"[^>]*>\+ Cor</);
+    assert.equal((saida.match(/data-acao="remover-cor"/g) ?? []).length, 2);
+    // O frete e a ordem: cartões → "+ Cor" → custo e embalagem → frete.
+    const ordem = ['data-cartoes-das-variacoes', 'data-acao="mais-cor"', 'data-campo="custo-e-embalagem"', 'data-campo="frete"'].map((m) => saida.indexOf(m));
+    assert.ok(ordem.every((i, n) => i > 0 && (n === 0 || i > ordem[n - 1])), `ordem: ${ordem}`);
+});
+
+test('F4 — cor E tamanho: um cartão por cor, uma linha por tamanho (tamanho, SKU, estoque); "+ Cor" e "+ Tamanho"; custo igual em todas', () => {
+    const saida = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.ok(tag(saida, 'data-opcao="cor-tamanho"').includes('aria-pressed="true"'));
+    const branca = cartao(saida, 'v121');
+    assert.ok(branca.includes('value="Branca"'));
+    assert.deepEqual([...branca.matchAll(/data-linha-da-variacao="(\d+)"/g)].map((m) => Number(m[1])), [121, 122]);
+    assert.match(branca, /data-linha-da-variacao="121"[\s\S]*?data-campo="valor_2"[\s\S]*?value="P"[\s\S]*?data-campo="codigo"[\s\S]*?value="CAM-BR-P"/);
+    assert.ok(tag(branca, 'aria-label="SKU (tamanho P de Branca)"', 'input').includes('font-pub-mono'));
+    assert.equal((branca.match(/data-acao="tirar-tamanho"/g) ?? []).length, 2);
+    // As fotos são da cor: uma galeria por cartão, na dona.
+    assert.match(branca, /data-galeria="v121" data-variacao-das-fotos="122"/);
+    assert.ok(saida.includes('data-acao="mais-cor"') && saida.includes('data-acao="mais-tamanho"'));
+    assert.match(saida, /data-acao="mais-tamanho"[^>]*>\+ Tamanho</);
+    // Custo igual nas quatro: "iguais em todas as cores", um campo só.
+    assert.match(saida, /data-campo="custo-e-embalagem" data-custo="iguais"/);
+    assert.equal((saida.match(/data-campo="custo"/g) ?? []).length, 1);
+    assert.ok(!saida.includes('data-custo-da-cor'));
+    assert.ok(texto(saida).includes('Iguais em todas as cores') && texto(saida).includes('Diferente por cor'));
+    for (const proibido of VOCABULARIO_PROIBIDO) assert.equal(texto(saida).match(proibido), null, `${proibido}`);
+});
+
+test('F4 — a conferência das cores NA TELA, antes de gravar: a cor renomeada para uma que já existe é marcada no cartão', () => {
+    const estado = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    estado.variacoes = estado.variacoes.map((v) => (v.valor === 'Preta' ? { ...v, valor: 'branca' } : v));
+    const saida = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, { estado }, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.match(cartao(saida, 'v123'), /data-erro-do-campo="valor"[^>]*>A cor “branca” já existe neste produto\.</);
+    assert.ok(!cartao(saida, 'v121').includes('data-erro-do-campo'), 'a 1ª fica');
+    // Um tamanho sem nome com o 2º tipo: marcado na linha.
+    const semTamanho = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    semTamanho.variacoes[1].valor_2 = '';
+    const linha = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, { estado: semTamanho }, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.match(linha, /data-erro-da-linha="122"[^>]*>Preencha o tamanho desta variação\.</);
+    assert.ok(tag(linha, 'aria-label="Tamanho (tamanho 2 de Branca)"', 'input').includes('aria-invalid="true"'));
+});
+
+test('F4 — remover cor ou tamanho: a confirmação DENTRO do cartão (o foco no "Cancelar"); a última variação não tem "Remover"', () => {
+    const cor = desenharCartao(CADASTRO_CORES_E_TAMANHOS, 'v123', { remocaoInicial: 'cor' });
+    assert.match(cor, /data-confirmar-remocao="v123"/);
+    assert.ok(texto(cor).includes('Remover a cor “Preta” (2 variações)? Sai do cadastro na hora, com as fotos dela.'));
+    assert.ok(tag(cor, 'data-acao="confirmar-remocao"').includes('bg-trilha-bad'), 'a remoção é o botão de perigo');
+    assert.match(cor, /data-acao="confirmar-remocao"[^>]*>Remover cor</);
+    assert.ok(cor.includes('data-acao="cancelar-remocao"'));
+
+    const tamanho = desenharCartao(CADASTRO_CORES_E_TAMANHOS, 'v123', { remocaoInicial: 124 });
+    assert.match(tamanho, /data-confirmar-remocao="124"/);
+    assert.ok(texto(tamanho).includes('Tirar o tamanho “M” de Preta? Sai do cadastro na hora.'));
+    assert.match(tamanho, /data-acao="confirmar-remocao"[^>]*>Tirar tamanho</);
+    // Sem pedido, nada de confirmação.
+    assert.ok(!desenharCartao(CADASTRO_CORES_E_TAMANHOS, 'v123').includes('data-confirmar-remocao'));
+
+    // Removendo: o botão fica ocupado (continua focável).
+    const removendo = renderToStaticMarkup(h(M.variacoes.CartaoDaVariacao, {
+        cartao: cartoesDasVariacoes(CADASTRO_CORES_E_TAMANHOS, estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS))[1],
+        retrato: CADASTRO_CORES_E_TAMANHOS,
+        eixos: CADASTRO_CORES_E_TAMANHOS.eixos,
+        c: { ...estadoDoHook(CADASTRO_CORES_E_TAMANHOS), estadoDoEixo: { eixo: 'cor', eixo_2: 'tamanho' }, acao: { tipo: 'remover', ids: [123, 124] } },
+        errosDe: () => ({}),
+        podeRemover: true,
+        porCor: false,
+        ocupado: true,
+        remocaoInicial: 'cor',
+    }));
+    assert.match(removendo, /data-acao="confirmar-remocao"[^>]*aria-disabled="true"[^>]*>Removendo…</);
+
+    // Um cartão só, com uma variação: a última não sai por aqui (é "Excluir produto").
+    const umaCor = { ...CADASTRO, produto: { ...CADASTRO.produto, eixo: 'cor' }, variacoes: [{ ...CADASTRO.variacoes[0], valor: 'Bege' }] };
+    const so = desenharGaveta(umaCor);
+    assert.match(so, /data-cartoes-das-variacoes="1"/);
+    assert.ok(!so.includes('data-acao="remover-cor"') && !so.includes('data-acao="tirar-tamanho"'));
+    assert.ok(so.includes('data-acao="mais-cor"'), 'e "+ Cor" para a 2ª');
+});
+
+test('F4 — "+ Cor": na 1ª vez pergunta a cor do que já existe; o SKU sugerido para confirmar; "+ Tamanho" sugere um SKU por cor', () => {
+    const umaCor = { ...CADASTRO, produto: { ...CADASTRO.produto, eixo: 'cor' } };
+    const estado = estadoDoRetrato(umaCor);
+    const cor = renderToStaticMarkup(h(M.variacoes.NovaVariacao, { tipo: 'cor', retrato: umaCor, estado, eixos: umaCor.eixos, c: estadoDoHook(umaCor), onFechar: nada }));
+    const t = texto(cor);
+    assert.match(cor, /data-nova-variacao="cor"/);
+    assert.ok(t.includes('Cor do que já existe') && t.includes('A variação que o produto já tem também precisa do nome.'));
+    assert.ok(t.includes('Nova cor') && t.includes('SKU (sugerido; pode trocar)'));
+    assert.match(cor, /data-sku-da-nova="nova-1"[\s\S]*?value="CRIADO-01-2"/);
+    assert.match(cor, /data-acao="adicionar-variacao"[^>]*>Adicionar cor</);
+    assert.ok(t.includes('Custo e caixa vêm da variação parecida; o estoque começa vazio.'));
+
+    const camiseta = estadoDoRetrato(CADASTRO_CORES_E_TAMANHOS);
+    const tam = renderToStaticMarkup(h(M.variacoes.NovaVariacao, { tipo: 'tamanho', retrato: CADASTRO_CORES_E_TAMANHOS, estado: camiseta, eixos: CADASTRO_CORES_E_TAMANHOS.eixos, c: estadoDoHook(CADASTRO_CORES_E_TAMANHOS), onFechar: nada }));
+    assert.ok(texto(tam).includes('Novo tamanho em cada cor'));
+    assert.ok(!texto(tam).includes('do que já existe'), 'os tamanhos que existem já têm nome');
+    assert.deepEqual([...tam.matchAll(/data-sku-da-nova="(novo-\d)"[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?value="([^"]*)"/g)].map((m) => [m[1], m[2], m[3]]), [
+        ['novo-1', 'Branca', 'CAM-BR-P-2'],
+        ['novo-2', 'Preta', 'CAM-BR-P-3'],
+    ]);
+    assert.match(tam, /data-acao="adicionar-variacao"[^>]*>Adicionar tamanho</);
+
+    // Enviando: "Adicionando…" ocupado.
+    const enviando = renderToStaticMarkup(h(M.variacoes.NovaVariacao, {
+        tipo: 'cor', retrato: umaCor, estado, eixos: umaCor.eixos, c: { ...estadoDoHook(umaCor), acao: { tipo: 'variacoes', quantas: 1 } }, onFechar: nada,
+    }));
+    assert.match(enviando, /data-acao="adicionar-variacao"[^>]*aria-disabled="true"[^>]*>Adicionando…</);
+});
+
+test('F4 — avisos: a variação do Bling (SKU e estoque só leitura) e a cor nova num produto mapeado ([Mapear de novo])', () => {
+    const comBling = {
+        ...CADASTRO_CORES_E_TAMANHOS,
+        variacoes: CADASTRO_CORES_E_TAMANHOS.variacoes.map((v) => (v.id === 121 ? { ...v, bling: true, estoque_do_bling: true } : v)),
+    };
+    const saida = desenharGaveta(comBling, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.match(saida, /data-aviso-do-bling=""[\s\S]*?As variações ligadas ao Bling têm o SKU e o estoque só para leitura aqui: mudam no Bling\./);
+    assert.ok(tag(saida, 'aria-label="SKU (tamanho P de Branca)"', 'input').includes('readonly=""'));
+    assert.ok(tag(saida, 'aria-label="Estoque (tamanho P de Branca)"', 'input').includes('readonly=""'));
+    assert.ok(!tag(saida, 'aria-label="SKU (tamanho M de Branca)"', 'input').includes('readonly'));
+    assert.match(saida, /data-vem-do-bling=""[^>]*>SKU e estoque vêm do Bling: mudam lá./);
+    assert.ok(!desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } }).includes('data-aviso-do-bling'));
+
+    const mapeado = desenharGaveta(CADEIRA_LIVRE, { avisoDaCor: 'Cor nova salva. Este produto já foi mapeado: mapeie de novo para a cor ganhar os combos.' });
+    assert.match(mapeado, /data-aviso-da-cor-nova=""[\s\S]*?Cor nova salva\. Este produto já foi mapeado: mapeie de novo para a cor ganhar os combos\./);
+    assert.match(mapeado, /data-acao="mapear-de-novo"[^>]*>Mapear de novo</);
+    assert.ok(!desenharGaveta(CADEIRA_LIVRE).includes('data-aviso-da-cor-nova'));
+});
+
+test('F4 — "Excluir produto" em dois passos no rodapé: o botão (só destravado) → a prévia do que sai junto → confirmar', () => {
+    const passo0 = desenharGaveta(CADASTRO, { pedirExclusao: nada });
+    assert.ok(tag(passo0, 'data-acao="excluir-produto"').includes('text-trilha-bad'), 'perigo, não principal');
+    assert.ok(passo0.includes('data-acao="salvar-cadastro"'));
+    // O produto que andou (só leitura) não se exclui por aqui.
+    assert.ok(!desenharGaveta(CADASTRO_TRAVADO, { pedirExclusao: nada }).includes('data-acao="excluir-produto"'));
+
+    assert.ok(texto(desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'previa', previa: null, erro: null } })).includes('Conferindo o que sai junto…'));
+
+    const previa = {
+        produtos: [{ id: 9, nome: 'Criado-mudo 2 gavetas', codigo: null, variacoes: 1, em_uso: false }],
+        montadas: [{ id: 70, sku: 'CRIADO-01-CB2', nome: 'Combo 2 · Criado-mudo', fase: 'combo', em_uso: false }, { id: 71, sku: 'QUARTO-01', nome: 'Kit Quarto', fase: 'kit', em_uso: false }],
+        totais: { produtos: 1, variacoes: 1, montadas: 2, em_uso: 0 },
+        nao_encontrados: 0,
+    };
+    const passo1 = desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'confirmar', previa, erro: null } });
+    const t1 = texto(passo1);
+    assert.match(passo1, /data-exclusao-do-produto="confirmar"/);
+    for (const s of ['Excluir Criado-mudo 2 gavetas?', 'O produto sai do cadastro com 1 variação, as fotos e a ficha técnica. Não dá para desfazer.',
+        '2 ofertas montadas usam este produto e saem junto:', 'Combo CRIADO-01-CB2 · Combo 2 · Criado-mudo', 'Kit QUARTO-01 · Kit Quarto']) {
+        assert.ok(t1.includes(s), `faltou: ${s}`);
+    }
+    assert.match(passo1, /data-acao="confirmar-exclusao-do-produto"[^>]*>Excluir o produto e as 2 ofertas</);
+    assert.ok(passo1.includes('data-acao="cancelar-exclusao-do-produto"'));
+    assert.ok(!passo1.includes('data-acao="salvar-cadastro"') && !passo1.includes('data-acao="excluir-produto"'), 'o rodapé vira a confirmação');
+
+    const mudou = desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'confirmar', previa, erro: 'O que sai junto mudou. Confira de novo antes de excluir.' } });
+    assert.match(mudou, /role="alert"[^>]*>O que sai junto mudou\. Confira de novo antes de excluir\.</);
+    const excluindo = desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'excluindo', previa, erro: null } });
+    assert.match(excluindo, /data-acao="confirmar-exclusao-do-produto"[^>]*aria-disabled="true"[^>]*>Excluindo…</);
+    assert.ok(texto(desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'excluido', previa, erro: null } })).includes('Produto excluído.'));
+    const falhou = desenharGaveta(CADASTRO, { pedirExclusao: nada, exclusao: { passo: 'erro', previa: null, erro: 'O servidor falhou. Tente de novo em instantes.' } });
+    assert.ok(falhou.includes('data-acao="tentar-exclusao-de-novo"') && texto(falhou).includes('O servidor falhou. Tente de novo em instantes.'));
+});
+
+test('F4 — a pasta do cadastro sem amarra com quem a usa: nada de "Portal", "equipe" nem `window.confirm` nas peças novas', () => {
+    const fonte = ['CaixaDasVariacoes.jsx', 'ExclusaoDoProduto.jsx'].map((f) => lerSemComentarios(`resources/js/Components/Trilha/Cadastro/${f}`)).join('\n');
+    assert.equal(fonte.match(/window\.confirm|\balert\(|createPortal|@radix-ui|Components\/Portal\//), null);
+    // Os textos (entre aspas) não falam de Portal nem de "equipe": o cliente também vai cadastrar por aqui.
+    const textos = [...fonte.matchAll(/(['"`])((?:(?!\1).)*?)\1/g)].map((m) => m[2]).join('\n');
+    assert.equal(textos.match(/\bPortal\b|\bequipe\b/i), null);
 });

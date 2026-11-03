@@ -40,8 +40,8 @@ use Tests\TestCase;
  * - "criar primeiro": nasce o produto, a 1ª variação (sem eixo) e a oferta simples (SKU = Ref), e ele aparece na Lista
  *   da trilha e na tela de Produtos do Portal; SKU repetido (sem caixa nem acento) é 422 no campo;
  * - o JSON CRU das linhas: `''` não mexe, `null` limpa (sem isso o `ConvertEmptyStringsToNull` apagaria o dado);
- * - uma requisição, um produto, e só as chaves da lista permitida (sem eixo nem variação nova até a F4; a categoria,
- *   conferida, desde a F2 — {@see FichaNaTrilhaTest});
+ * - uma requisição, um produto, e só as chaves da lista permitida (a categoria, conferida, desde a F2 —
+ *   {@see FichaNaTrilhaTest}; cores, tamanhos e variação nova desde a F4 — {@see CoresNaTrilhaTest});
  * - o retrato é a LISTA DE CAMPOS do contrato (§6.3), com as fotos pela rota da equipe e nenhum `/portal/`;
  * - a trava (pergunta 1): o produto que algum item da trilha já levou adiante fica só para leitura (409);
  * - o rastro: um `trilha_cadastro_salvo` por escrita, com `via: trilha`, o passo e o ator da equipe.
@@ -340,8 +340,11 @@ class CadastroNaTrilhaTest extends TestCase
         $this->assertSame([100.0, 'Uma descrição do produto.'], [$p['variacoes'][0]->fresh()->custo, $p['produto']->fresh()->descricao]);
     }
 
-    /** As chaves fora da lista permitida não chegam ao serviço; o `produto_id` é sempre o do caminho. */
-    public function test_grupo_categoria_eixo_e_o_resto_fora_da_lista_sao_descartados(): void
+    /**
+     * As chaves fora da lista permitida não chegam ao serviço; o `produto_id` é sempre o do caminho. Desde a F4 o eixo,
+     * o valor, o 2º eixo e a ordem passam (com a conferência das cores — {@see CoresNaTrilhaTest}).
+     */
+    public function test_grupo_categoria_texto_e_o_resto_fora_da_lista_sao_descartados(): void
     {
         $a = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
         $b = $this->produtoCompleto($this->empresa, 'Vaso Beta', 'VB');
@@ -349,29 +352,33 @@ class CadastroNaTrilhaTest extends TestCase
         $this->linhas($a['produto'], [[
             'id' => $a['variacoes'][0]->id, 'codigo' => 'VA', 'nome' => 'Vaso Alfa Novo',
             'produto_id' => $b['produto']->id, 'company_id' => 999, 'grupo' => 'VB',
-            // O texto de categoria ("a confirmar" no Portal) nunca entra pela trilha; a cor (F4) entra com a conferência
-            // dela. A categoria do ML (F2) passa, conferida — ver FichaNaTrilhaTest.
-            'categoria_texto' => 'Cadeiras', 'eixo' => 'cor', 'valor' => 'Azul',
-            'eixo_2' => 'tamanho', 'valor_2' => 'P', 'ordem' => 9, 'variacao' => '2', 'volumes_texto' => '10x10x10 1kg',
+            // O texto de categoria ("a confirmar" no Portal) nunca entra pela trilha; a categoria do ML (F2) passa,
+            // conferida — ver FichaNaTrilhaTest. A coluna "Variação" da planilha e as caixas em texto também não.
+            'categoria_texto' => 'Cadeiras', 'variacao' => 'Cor: Verde', 'volumes_texto' => '10x10x10 1kg',
+            'eixo' => 'cor', 'valor' => 'Azul', 'eixo_2' => 'tamanho', 'valor_2' => 'P', 'ordem' => 9,
         ]])->assertOk()->assertJsonPath('erros', []);
 
         $produto = $a['produto']->fresh();
         $v = $a['variacoes'][0]->fresh();
         $this->assertSame(['Vaso Alfa Novo', 'VA', 'MLB100200', 'Objetos de decoração'], [$produto->nome, $produto->codigo, $produto->categoria_ml_id, $produto->categoria_ml_nome]);
-        $this->assertSame([null, null, null, null, 1], [$v->eixo, $v->valor, $v->eixo_2, $v->valor_2, $v->ordem]);
+        $this->assertSame(['cor', 'Azul', 'tamanho', 'P', 9], [$v->eixo, $v->valor, $v->eixo_2, $v->valor_2, $v->ordem]);
         $this->assertSame([[50.0, 40.0, 30.0, 5.0]], $v->volumes()->get()->map(fn ($x) => [(float) $x->comprimento, (float) $x->largura, (float) $x->altura, (float) $x->peso])->all());
         $this->assertSame('Vaso Beta', $b['produto']->fresh()->nome);
         $this->assertSame((int) $this->empresa->id, (int) $produto->company_id);
     }
 
-    public function test_nesta_fatia_a_linha_sem_id_e_recusada_e_nada_grava(): void
+    /**
+     * F4: a linha sem `id` é variação nova deste produto. Sem a cor da que já existe no mesmo pedido, o Publicador
+     * separaria as duas: 422 por linha e nada grava (o resto da régua está no {@see CoresNaTrilhaTest}).
+     */
+    public function test_a_linha_sem_id_e_variacao_nova_e_sem_nomear_a_que_existe_nada_grava(): void
     {
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
 
         $this->linhas($p['produto'], [
-            ['id' => $p['variacoes'][0]->id, 'codigo' => 'VA', 'nome' => 'Vaso Alfa', 'custo' => '7,00'],
-            ['codigo' => 'VA-2', 'nome' => 'Vaso Alfa'],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['linhas.1.id']);
+            ['id' => $p['variacoes'][0]->id, 'chave' => 'v1', 'codigo' => 'VA', 'nome' => 'Vaso Alfa', 'custo' => '7,00'],
+            ['chave' => 'n1', 'codigo' => 'VA-2', 'nome' => 'Vaso Alfa'],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['linhas.0.valor', 'linhas.1.valor']);
 
         $this->assertSame(1, EstruturaProdutoVariacao::query()->count());
         $this->assertSame(100.0, $p['variacoes'][0]->fresh()->custo);

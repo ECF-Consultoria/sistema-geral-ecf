@@ -269,6 +269,42 @@ export function AvisoNaGaveta({ tom = 'warn', titulo = null, children, ...resto 
 }
 
 /**
+ * A escolha entre poucas opções, lado a lado (botões de alternar, um marcado): "Este produto varia?", "Iguais em todas
+ * as cores / Diferente por cor". `children` entra no fim da fila (um seletor com mais opções, p. ex.).
+ *
+ * @param {{rotulo: string, opcoes: Array<{valor: string, rotulo: string}>, valor: ?string,
+ *   onEscolher: (valor: string) => void, disabled?: boolean, children?: React.ReactNode}} props
+ */
+export function EscolhaSegmentada({ rotulo, opcoes, valor, onEscolher, disabled = false, children = null, ...resto }) {
+    return (
+        <div role="group" aria-label={rotulo} className="flex flex-wrap items-center gap-1.5" {...resto}>
+            {opcoes.map((o) => {
+                const marcado = o.valor === valor;
+
+                return (
+                    <button
+                        key={o.valor}
+                        type="button"
+                        aria-pressed={marcado}
+                        disabled={disabled}
+                        data-opcao={o.valor}
+                        onClick={() => onEscolher(o.valor)}
+                        className={cn(
+                            'inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold',
+                            'focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run disabled:cursor-not-allowed disabled:opacity-50',
+                            marcado ? 'border-trilha-navy bg-trilha-navy text-trilha-on-navy' : 'border-trilha-line bg-trilha-surface text-trilha-fg hover:border-trilha-muted',
+                        )}
+                    >
+                        {o.rotulo}
+                    </button>
+                );
+            })}
+            {children}
+        </div>
+    );
+}
+
+/**
  * A confirmação no RODAPÉ da gaveta (a trilha não usa `window.confirm`): o texto e as ações, com o foco na de
  * `foco` (a que não perde nada). Esc aqui é a mesma coisa que ela.
  *

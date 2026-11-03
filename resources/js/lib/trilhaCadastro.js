@@ -20,8 +20,15 @@
 // fotos (uma galeria por cor, ação imediata) e o frete (a logística de cada
 // variação, o ME1 como AVISO e o "Conferir frete pela conta") — lidos do
 // retrato; a resposta de cada ação imediata entra por `aplicarResposta`.
+// F4: cores e tamanhos. O EIXO (cor, tamanho…) é do produto e mora em
+// `estado.produto.eixo`/`eixo_2`; o VALOR (Branca, P) é de cada variação
+// (`variacoes[].valor`/`valor_2`). Criar e remover variação são ações
+// imediatas que levam junto a ESTRUTURA da tela (`linhasDaEstrutura`) e nada do
+// conteúdo; renomear, trocar o tipo e o resto vão no "Salvar". A conferência
+// das cores (`conferirCores`) é a régua do servidor, rodada ANTES de gravar.
 
-import { campoEditaveis, gruposPorCor, linhaParaServidor } from './produtosEstrutura.js';
+import { assinaturaDasCaixas, assinaturaDoCusto } from './fichaLayout.js';
+import { campoEditaveis, gruposPorCor, linhaParaServidor, refSugerida } from './produtosEstrutura.js';
 import { categoriaParaConsulta, deveGravar, eixosEmUso, gruposDoProduto, montarAtributos, valoresIniciais } from './fichaTecnica.js';
 import { mesclarSugestoes } from './fichaLayout.js';
 import { LIMITE_IMAGENS, LIMITE_MB, avisoDeGrandes, prepararRemessa, quantasCabem, separarGrandes } from './imagensVariacao.js';
@@ -35,9 +42,12 @@ export const MAX_CAIXAS = 20;
 /** O máximo de linhas por pedido, quando o retrato não diz (`ProdutoCadastroService::MAX_GRADE`). */
 export const LINHAS_POR_PEDIDO = 200;
 
-/** Os campos do PRODUTO na gaveta (vão na 1ª linha) e os de cada VARIAÇÃO. */
-export const CAMPOS_DO_PRODUTO = ['nome', 'categoria', 'titulo', 'familia', 'ambientes', 'descricao'];
-export const CAMPOS_DA_VARIACAO = ['codigo', 'custo', 'estoque', 'volumes'];
+/**
+ * Os campos do PRODUTO na gaveta (vão na 1ª linha; o eixo e o 2º eixo, F4, vão em TODAS) e os de cada VARIAÇÃO (o
+ * valor e o 2º valor da variação são da F4: "Branca", "P").
+ */
+export const CAMPOS_DO_PRODUTO = ['nome', 'categoria', 'titulo', 'familia', 'ambientes', 'descricao', 'eixo', 'eixo_2'];
+export const CAMPOS_DA_VARIACAO = ['codigo', 'custo', 'estoque', 'volumes', 'valor', 'valor_2'];
 
 /** O texto do "Salvar" que parou num campo (o servidor devolve um erro por linha, com HTTP 200). */
 export const MENSAGEM_DOS_CAMPOS = 'Confira os campos marcados: o que está neles não foi salvo.';
@@ -88,8 +98,11 @@ export const caixaEmBranco = (caixa) => ['c', 'l', 'a', 'kg'].every((k) => texto
 
 const caixasPreenchidas = (caixas) => (caixas ?? []).filter((c) => !caixaEmBranco(c)).map((c) => ({ c: texto(c.c), l: texto(c.l), a: texto(c.a), kg: texto(c.kg) }));
 
-/** A chave de uma variação na tela e no pedido (`chave` da linha, que volta nos erros). */
-export const chaveDaVariacao = (variacao) => `v${variacao.id}`;
+/**
+ * A chave de uma variação na tela e no pedido (`chave` da linha, que volta nos erros): `v{id}` da que existe; a da
+ * variação NOVA (F4, ainda sem id) é a que a tela deu a ela (`nova-1`…).
+ */
+export const chaveDaVariacao = (variacao) => (variacao?.id ? `v${variacao.id}` : String(variacao?.chave ?? ''));
 
 /**
  * A categoria como a gaveta guarda: `{id, nome, caminho_texto}`, ou null. A que o cadastro tem só como TEXTO (sem
@@ -114,9 +127,13 @@ export const caminhoParaTela = (categoria) => texto(categoria?.caminho_texto || 
  * estoque e as medidas como texto — quem interpreta é o servidor. A ficha técnica no formato de
  * `lib/fichaTecnica.js` (`valoresIniciais` dos `salvos`).
  *
+ * O eixo do produto (`cor`, `tamanho`…, a chave do sistema; '' = não varia) e o valor de cada variação também são
+ * texto (F4).
+ *
  * @returns {{produto: {nome: string, categoria: ?{id: string, nome: string, caminho_texto: string}, titulo: string,
- *              familia: string, ambientes: string[], descricao: string},
- *            variacoes: Array<{id: number, codigo: string, custo: string, estoque: string, volumes: Array<{c: string, l: string, a: string, kg: string}>}>,
+ *              familia: string, ambientes: string[], descricao: string, eixo: string, eixo_2: string},
+ *            variacoes: Array<{id: number, codigo: string, custo: string, estoque: string, volumes: Array<{c: string, l: string, a: string, kg: string}>,
+ *              valor: string, valor_2: string}>,
  *            ficha: Record<string, {valor: any, unidade: string, naoSeAplica?: boolean, outro?: boolean}>}}
  */
 export function estadoDoRetrato(retrato) {
@@ -132,15 +149,24 @@ export function estadoDoRetrato(retrato) {
             // O ambiente digitado no campo e ainda não juntado como chip: conta (é mexido e vai no "Salvar").
             ambiente_digitado: '',
             descricao: p.descricao ?? '',
+            eixo: p.eixo ?? '',
+            eixo_2: p.eixo_2 ?? '',
         },
-        variacoes: (retrato?.variacoes ?? []).map((v) => ({
-            id: v.id,
-            codigo: v.codigo ?? '',
-            custo: custoParaTexto(v.custo),
-            estoque: v.estoque === null || v.estoque === undefined ? '' : String(v.estoque),
-            volumes: (v.volumes ?? []).map((c) => ({ c: numeroParaTexto(c?.c), l: numeroParaTexto(c?.l), a: numeroParaTexto(c?.a), kg: numeroParaTexto(c?.kg) })),
-        })),
+        variacoes: (retrato?.variacoes ?? []).map(estadoDaVariacao),
         ficha: valoresIniciais(retrato?.ficha?.salvos),
+    };
+}
+
+/** Uma variação do retrato como a gaveta guarda (tudo em texto, como se digita). */
+function estadoDaVariacao(v) {
+    return {
+        id: v.id,
+        codigo: v.codigo ?? '',
+        custo: custoParaTexto(v.custo),
+        estoque: v.estoque === null || v.estoque === undefined ? '' : String(v.estoque),
+        volumes: (v.volumes ?? []).map((c) => ({ c: numeroParaTexto(c?.c), l: numeroParaTexto(c?.l), a: numeroParaTexto(c?.a), kg: numeroParaTexto(c?.kg) })),
+        valor: v.valor ?? '',
+        valor_2: v.valor_2 ?? '',
     };
 }
 
@@ -178,16 +204,16 @@ function igual(campo, a, b) {
 
 /**
  * Os campos que a pessoa mudou em relação ao retrato: `{produto: ['titulo'], variacoes: {31: ['custo']}}`.
- * A variação que o retrato não tem (não deveria acontecer na F1) conta com todos os campos.
+ * A variação que o retrato não tem (a NOVA, F4, pela chave dela) conta com todos os campos.
  */
 export function camposMexidos(estado, retrato) {
     const base = estadoDoRetrato(retrato);
     const produto = CAMPOS_DO_PRODUTO.filter((c) => !igual(c, doProduto(estado?.produto, c), base.produto[c]));
     const variacoes = {};
     for (const v of estado?.variacoes ?? []) {
-        const b = base.variacoes.find((x) => x.id === v.id);
+        const b = v.id ? base.variacoes.find((x) => x.id === v.id) : null;
         const campos = b ? CAMPOS_DA_VARIACAO.filter((c) => !igual(c, v[c], b[c])) : [...CAMPOS_DA_VARIACAO];
-        if (campos.length) variacoes[v.id] = campos;
+        if (campos.length) variacoes[v.id || chaveDaVariacao(v)] = campos;
     }
 
     return { produto, variacoes };
@@ -367,23 +393,40 @@ const SEMPRE_NA_LINHA = ['chave', 'codigo', 'nome', 'id'];
  * 1ª linha (nome, título, família, ambientes e a descrição, que o servidor grava pela linha). Nada de
  * `produto_id` nem `grupo`: na trilha, uma requisição é um produto — o do endereço.
  *
+ * F4: o EIXO do produto vai em toda linha cuja variação ainda não o tem (a 1ª cor nomeia a variação que já existe:
+ * `eixo` e `valor` na linha dela); o valor e o 2º valor de cada uma, quando mudaram. A variação NOVA (sem `id`, com
+ * a `chave` que a tela deu) vai com TUDO explícito — eixos, valores, custo e caixas: sem eles o servidor copiaria os
+ * da 1ª variação do banco, e numa cor de custo próprio o tamanho novo nasceria com o custo de outra cor.
+ *
  * @returns {Array<object>}
  */
 export function linhasParaSalvar(estado, retrato) {
     if (!estado || !retrato) return [];
     const base = estadoDoRetrato(retrato);
     const mexidos = camposMexidos(estado, retrato);
+    const eixo = texto(estado.produto?.eixo);
+    const eixo2 = texto(estado.produto?.eixo_2);
     const linhas = [];
 
     (estado.variacoes ?? []).forEach((v, i) => {
-        const b = base.variacoes.find((x) => x.id === v.id) ?? { codigo: '', custo: '', estoque: '', volumes: [] };
+        if (!v.id) {
+            linhas.push(linhaDaVariacaoNova(v, estado, retrato));
+
+            return;
+        }
+        const b = base.variacoes.find((x) => x.id === v.id) ?? { codigo: '', custo: '', estoque: '', volumes: [], valor: '', valor_2: '' };
+        // O eixo que a variação tem gravado: o dela, quando o retrato manda; senão, o do produto (o da 1ª variação).
+        const salva = (retrato.variacoes ?? []).find((x) => x.id === v.id) ?? {};
+        const eixoAntes = texto(salva.eixo !== undefined ? salva.eixo : base.produto.eixo);
+        const eixo2Antes = texto(salva.eixo_2 !== undefined ? salva.eixo_2 : base.produto.eixo_2);
+        const mudouEixo = eixo !== eixoAntes || eixo2 !== eixo2Antes;
         const primeira = i === 0;
         const daVariacao = mexidos.variacoes[v.id] ?? [];
         const doProdutoMexido = primeira ? mexidos.produto : [];
-        if (!daVariacao.length && !doProdutoMexido.length) return;
+        if (!daVariacao.length && !doProdutoMexido.length && !mudouEixo) return;
 
-        // Os campos que esta tela edita, no formato da linha do Portal. O que ela não edita (eixo, valor, caixas
-        // em texto) fica igual dos dois lados e não vai.
+        // Os campos que esta tela edita, no formato da linha do Portal. O que não mudou fica igual dos dois lados e
+        // não vai.
         const linha = {
             id: v.id,
             _k: chaveDaVariacao(v),
@@ -393,6 +436,10 @@ export function linhasParaSalvar(estado, retrato) {
             familia: primeira ? estado.produto.familia : base.produto.familia,
             custo: v.custo,
             estoque: v.estoque,
+            eixo_rotulo: eixo,
+            valor: eixo ? v.valor ?? '' : '',
+            eixo_2_rotulo: eixo2,
+            valor_2: eixo2 ? v.valor_2 ?? '' : '',
         };
         linha._base = campoEditaveis({
             codigo: b.codigo,
@@ -401,6 +448,10 @@ export function linhasParaSalvar(estado, retrato) {
             familia: base.produto.familia,
             custo: b.custo,
             estoque: b.estoque,
+            eixo_rotulo: eixoAntes,
+            valor: b.valor,
+            eixo_2_rotulo: eixo2Antes,
+            valor_2: b.valor_2,
         });
         // As caixas vão como lista (vazia = limpar), só quando mudaram; a caixa em branco não vai.
         if (daVariacao.includes('volumes')) linha.volumes_digitados = caixasPreenchidas(v.volumes);
@@ -427,6 +478,552 @@ export function linhasParaSalvar(estado, retrato) {
 
     return linhas;
 }
+
+/**
+ * A linha da variação NOVA (F4): pela régua do Portal para "variação nova de produto já gravado" (`linhaParaServidor`
+ * com `produto_id`, que manda eixo, custo, caixas e estoque EXPLÍCITOS — vazio vai `null`), sem o `produto_id` (o do
+ * endereço vale) e sem a categoria em texto (a linha nova não é do produto).
+ */
+function linhaDaVariacaoNova(v, estado, retrato) {
+    const eixo = texto(estado.produto?.eixo);
+    const eixo2 = texto(estado.produto?.eixo_2);
+    const saida = linhaParaServidor({
+        _k: chaveDaVariacao(v),
+        produto_id: retrato.produto?.id ?? true,
+        codigo: v.codigo,
+        nome: estado.produto.nome,
+        eixo_rotulo: eixo,
+        valor: eixo ? v.valor ?? '' : '',
+        eixo_2_rotulo: eixo2,
+        valor_2: eixo2 ? v.valor_2 ?? '' : '',
+        custo: v.custo ?? '',
+        estoque: v.estoque ?? '',
+        volumes_digitados: caixasPreenchidas(v.volumes),
+    });
+    delete saida.produto_id;
+    delete saida.categoria_texto;
+
+    return saida;
+}
+
+// ─── Cores e tamanhos (F4) ──────────────────────────────────────────────────
+//
+// §5.6 do desenho. Um cartão por cor (com cor E tamanho, as variações da cor; com um eixo só, cada variação é um
+// cartão), o nome editável, as fotos da cor e, dentro, uma linha por tamanho. "+ Cor" e "+ Tamanho" são AÇÕES
+// IMEDIATAS: o pedido leva as variações novas e a ESTRUTURA que está na tela (o eixo do produto e os valores das que
+// já existem — a 1ª cor nomeia a variação que já existe, no MESMO pedido) e nada do conteúdo delas (SKU, custo,
+// estoque e caixas esperam o "Salvar"). Remover é imediato também (rota 14, uma variação por pedido).
+//
+// A conferência das cores é a régua do servidor (a do `CoresDoGrupo` do Publicador), rodada na tela ANTES de gravar:
+// com duas variações ou mais, toda variação tem valor; nenhum valor (nem par cor e tamanho) se repete, sem caixa nem
+// acento; todas usam o mesmo tipo. O que fugisse disso viraria, em silêncio, um anúncio separado.
+
+/** Os tipos de variação do sistema, quando o retrato não manda os dele (`eixos`). */
+export const EIXOS_DO_SISTEMA = { cor: 'Cor', tamanho: 'Tamanho', voltagem: 'Voltagem', material: 'Material', sabor: 'Sabor', outro: 'Outro' };
+
+/** Como o texto chama o valor de cada tipo ("a cor", "o tamanho"). */
+const ARTIGO_DO_EIXO = { cor: 'a cor', tamanho: 'o tamanho', voltagem: 'a voltagem', material: 'o material', sabor: 'o sabor', outro: 'o nome da variação' };
+
+const comMaiuscula = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/** O rótulo do tipo de variação ("Cor"), pelos `eixos` do retrato. */
+export function rotuloDoEixo(eixo, eixos = null) {
+    const chave = texto(eixo);
+    if (!chave) return '';
+
+    return texto(eixos?.[chave]) || EIXOS_DO_SISTEMA[chave] || comMaiuscula(chave);
+}
+
+/** "a cor", "o tamanho"… (o tipo sem artigo conhecido vira "o valor de X"). */
+export function nomeDoEixo(eixo, eixos = null) {
+    const chave = texto(eixo);
+    if (ARTIGO_DO_EIXO[chave]) return ARTIGO_DO_EIXO[chave];
+
+    return chave ? `o valor de ${rotuloDoEixo(chave, eixos).toLowerCase()}` : 'o nome da variação';
+}
+
+/** Como o servidor compara os valores das variações: sem caixa, sem acento e sem espaço sobrando (`ChaveCanonica::texto`). */
+export const valorComparavel = (v) => texto(v).replace(/\s+/g, ' ').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/**
+ * "Este produto varia?" — o modo da gaveta, pelo eixo do produto e quantas variações ele tem:
+ * `nao` (uma variação, sem tipo); `cor`; `cor-tamanho`; `outro` (um tipo só, que não é cor); `dois` (dois tipos que
+ * não são cor e tamanho — veio de fora; a gaveta mostra como cor e tamanho); `sem-tipo` (várias variações sem tipo).
+ */
+export function modoDasVariacoes(produto, quantas) {
+    const eixo = texto(produto?.eixo);
+    const eixo2 = texto(produto?.eixo_2);
+    if (!eixo) return Number(quantas) > 1 ? 'sem-tipo' : 'nao';
+    if (eixo2) return eixo === 'cor' && eixo2 === 'tamanho' ? 'cor-tamanho' : 'dois';
+
+    return eixo === 'cor' ? 'cor' : 'outro';
+}
+
+/**
+ * A conferência das cores (a régua do servidor), sobre as variações COMO FICARIAM depois de gravar: cada item é
+ * `{chave, eixo, valor, eixo_2, valor_2, grupo?}` (`grupo`: o cartão da cor, para dizer se a repetida é a cor ou o
+ * tamanho). Com menos de duas variações não há o que conferir. A 1ª de um valor repetido fica; as outras são
+ * marcadas.
+ *
+ * @returns {{ok: boolean, porChave: Record<string, Record<string, string>>, lista: Array<{chave: string, campo: string, mensagem: string}>}}
+ *   `campo`: `valor`, `valor_2` ou `eixo`.
+ */
+export function conferirCores(itens, { eixos = null } = {}) {
+    const todos = (Array.isArray(itens) ? itens : []).filter(Boolean);
+    const porChave = {};
+    const lista = [];
+    const marcar = (chave, campo, mensagem) => {
+        if (porChave[chave]?.[campo]) return;
+        porChave[chave] = { ...(porChave[chave] ?? {}), [campo]: mensagem };
+        lista.push({ chave, campo, mensagem });
+    };
+    if (todos.length < 2) return { ok: true, porChave, lista };
+
+    const tipo = (it) => `${texto(it.eixo) || 'outro'}${texto(it.eixo_2) ? `+${texto(it.eixo_2)}` : ''}`;
+    // O tipo que vale é o da maioria entre as que têm valor (no empate, o que aparece primeiro) — como o servidor.
+    const contagem = new Map();
+    for (const it of todos) {
+        if (texto(it.valor) === '') continue;
+        contagem.set(tipo(it), (contagem.get(tipo(it)) ?? 0) + 1);
+    }
+    let dominante = null;
+    for (const [t, n] of contagem) if (dominante === null || n > contagem.get(dominante)) dominante = t;
+
+    const vistos = new Map();
+    for (const it of todos) {
+        const chave = String(it.chave ?? '');
+        const valor = texto(it.valor);
+        const eixo2 = texto(it.eixo_2);
+        if (valor === '') {
+            marcar(chave, 'valor', `Preencha ${nomeDoEixo(it.eixo, eixos)} desta variação: com duas ou mais, cada uma precisa da sua.`);
+            continue;
+        }
+        if (eixo2 && texto(it.valor_2) === '') {
+            marcar(chave, 'valor_2', `Preencha ${nomeDoEixo(eixo2, eixos)} desta variação.`);
+            continue;
+        }
+        if (dominante !== null && tipo(it) !== dominante) {
+            const rotulos = [rotuloDoEixo(it.eixo, eixos) || 'sem tipo', rotuloDoEixo(eixo2, eixos)].filter(Boolean).join(' e ');
+            marcar(chave, 'eixo', `Esta variação usa outro tipo (${rotulos}); todas precisam usar o mesmo.`);
+            continue;
+        }
+        const par = `${valorComparavel(valor)}|${eixo2 ? valorComparavel(it.valor_2) : ''}`;
+        const primeiro = vistos.get(par);
+        if (!primeiro) {
+            vistos.set(par, it);
+            continue;
+        }
+        if (!eixo2) {
+            marcar(chave, 'valor', `${comMaiuscula(nomeDoEixo(it.eixo, eixos))} “${valor}” se repete neste produto.`);
+        } else if ((it.grupo ?? null) !== null && it.grupo !== primeiro.grupo) {
+            marcar(chave, 'valor', `${comMaiuscula(nomeDoEixo(it.eixo, eixos))} “${valor}” já existe neste produto.`);
+        } else {
+            marcar(chave, 'valor_2', `${comMaiuscula(nomeDoEixo(eixo2, eixos))} “${texto(it.valor_2)}” se repete em ${valor}.`);
+        }
+    }
+
+    return { ok: lista.length === 0, porChave, lista };
+}
+
+/**
+ * Os cartões da gaveta: com cor E tamanho, um por COR (as variações agrupadas pelo valor GRAVADO — o cartão não muda
+ * de lugar enquanto o nome é digitado); com um tipo só, um por variação. A chave do cartão é a da 1ª variação dele
+ * (a mesma da galeria de fotos). As fotos moram na "dona" (a que o servidor marca `dona_da_cor`; senão a 1ª com foto;
+ * senão a 1ª).
+ *
+ * @returns {Array<{chave: string, ids: number[], dona: number, valor: string, linhas: Array<object>,
+ *   galeria: {chave: string, variacaoId: number, cor: ?string, tamanhos: string[], fotos: Array, onde: string}}>}
+ *   `linhas`: as variações do cartão como estão na tela (com `bling` e `estoque_do_bling` do retrato).
+ */
+export function cartoesDasVariacoes(retrato, estado) {
+    const salvas = retrato?.variacoes ?? [];
+    const naTela = new Map((estado?.variacoes ?? []).map((v) => [v.id, v]));
+    const eixo = texto(estado?.produto?.eixo ?? retrato?.produto?.eixo);
+    const dois = texto(estado?.produto?.eixo_2 ?? retrato?.produto?.eixo_2) !== '';
+    const grupos = [];
+    const porValor = new Map();
+    for (const s of salvas) {
+        const k = dois ? valorComparavel(s.valor) : `#${s.id}`;
+        let g = porValor.get(k);
+        if (!g) {
+            g = { chave: `v${s.id}`, salvas: [] };
+            porValor.set(k, g);
+            grupos.push(g);
+        }
+        g.salvas.push(s);
+    }
+
+    return grupos.map((g) => {
+        const dona = g.salvas.find((s) => s.dona_da_cor === true) ?? g.salvas.find((s) => (s.fotos ?? []).length > 0) ?? g.salvas[0];
+        const linhas = g.salvas.map((s) => ({ ...(naTela.get(s.id) ?? estadoDaVariacao(s)), bling: !!s.bling, estoque_do_bling: !!s.estoque_do_bling }));
+        const cor = texto(g.salvas[0].valor) || null;
+        let onde = 'nesta variação';
+        if (salvas.length === 1 && !eixo) onde = 'neste produto';
+        else if (dois || eixo === 'cor') onde = 'nesta cor';
+
+        return {
+            chave: g.chave,
+            ids: g.salvas.map((s) => s.id),
+            dona: dona.id,
+            valor: linhas[0].valor ?? '',
+            linhas,
+            galeria: {
+                chave: g.chave,
+                variacaoId: dona.id,
+                cor,
+                tamanhos: dois ? g.salvas.map((s) => texto(s.valor_2)).filter(Boolean) : [],
+                fotos: dona.fotos ?? [],
+                onde,
+            },
+        };
+    });
+}
+
+/** O cartão de cada variação (`id → chave do cartão`): é o `grupo` da conferência das cores. */
+function cartaoDeCada(retrato, estado) {
+    const mapa = new Map();
+    for (const c of cartoesDasVariacoes(retrato, estado)) for (const id of c.ids) mapa.set(id, c.chave);
+
+    return mapa;
+}
+
+/**
+ * As variações como ficariam depois de gravar, para a conferência das cores: as da tela (com o eixo do produto) e as
+ * novas (`novas`, de "+ Cor"/"+ Tamanho").
+ */
+export function itensParaConferir(estado, retrato, novas = []) {
+    const eixo = texto(estado?.produto?.eixo);
+    const eixo2 = texto(estado?.produto?.eixo_2);
+    const cartao = cartaoDeCada(retrato, estado);
+    const item = (v, chave, grupo) => ({ chave, eixo, valor: eixo ? v.valor : '', eixo_2: eixo2, valor_2: eixo2 ? v.valor_2 : '', grupo });
+
+    return [
+        ...(estado?.variacoes ?? []).map((v) => item(v, chaveDaVariacao(v), cartao.get(v.id) ?? chaveDaVariacao(v))),
+        ...(novas ?? []).map((n) => item(n, n.chave, n.grupo ?? n.chave)),
+    ];
+}
+
+/**
+ * A conferência das cores de uma GRAVAÇÃO, como o servidor: só barra o problema que a gravação CRIA (o que já estava
+ * gravado assim não segura o resto do cadastro). `porChave` traz todos — os de antes também, para a tela mostrar o
+ * quadro inteiro; `novos`, os que barram.
+ *
+ * @returns {{ok: boolean, porChave: Record<string, Record<string, string>>, novos: Array<{chave: string, campo: string, mensagem: string}>}}
+ */
+export function conferirGravacaoDasCores(estado, retrato, novas = [], { eixos = null } = {}) {
+    const depois = conferirCores(itensParaConferir(estado, retrato, novas), { eixos });
+    const antes = conferirCores(itensParaConferir(estadoDoRetrato(retrato), retrato), { eixos });
+    const novos = depois.lista.filter((p) => !antes.porChave[p.chave]);
+
+    return { ok: novos.length === 0, porChave: depois.porChave, novos };
+}
+
+/**
+ * Os SKUs sugeridos para `quantas` variações novas, um diferente do outro: o de cada uma é a régua do Portal
+ * (`refSugerida`: a Ref da 1ª variação com o menor número livre a partir de 2), contando as já sugeridas. Sem Ref na
+ * 1ª, nada a sugerir ('').
+ *
+ * @returns {string[]}
+ */
+export function refsSugeridas(variacoes, quantas, { usadas = [] } = {}) {
+    const base = [...(variacoes ?? []).map((v) => ({ codigo: v?.codigo ?? '' })), ...(usadas ?? []).map((codigo) => ({ codigo }))];
+    const saida = [];
+    for (let i = 0; i < Math.max(0, Number(quantas) || 0); i += 1) {
+        const sugerida = base.length ? refSugerida([...base, ...saida.filter(Boolean).map((codigo) => ({ codigo }))]) : '';
+        saida.push(sugerida);
+    }
+
+    return saida;
+}
+
+/** Os tamanhos do produto (o 2º valor), na ordem em que aparecem, sem repetir (sem caixa nem acento). */
+export function tamanhosDoProduto(estado) {
+    const vistos = new Set();
+    const saida = [];
+    for (const v of estado?.variacoes ?? []) {
+        const t = texto(v.valor_2);
+        if (!t || vistos.has(valorComparavel(t))) continue;
+        vistos.add(valorComparavel(t));
+        saida.push(t);
+    }
+
+    return saida;
+}
+
+/**
+ * As variações que "+ Cor" cria: com cor E tamanho, uma por tamanho do produto; com um tipo só, uma. Cada uma leva o
+ * SKU (`codigos`, na ordem dos tamanhos) e a `referencia` — a variação GRAVADA de onde vêm custo e caixas (o mesmo
+ * tamanho na 1ª cor que o tem; senão a 1ª variação).
+ *
+ * @returns {Array<{chave: string, valor: string, valor_2: string, codigo: string, referencia: ?number, grupo: string}>}
+ */
+export function novasDaCor(estado, valor, { codigos = [] } = {}) {
+    const vars = estado?.variacoes ?? [];
+    const dois = texto(estado?.produto?.eixo_2) !== '';
+    const tamanhos = dois ? tamanhosDoProduto(estado) : [''];
+
+    return (tamanhos.length ? tamanhos : ['']).map((t, i) => {
+        const mesmo = dois ? vars.find((v) => valorComparavel(v.valor_2) === valorComparavel(t)) : null;
+
+        return {
+            chave: `nova-${i + 1}`,
+            valor: texto(valor),
+            valor_2: t,
+            codigo: texto(codigos[i]),
+            referencia: (mesmo ?? vars[0])?.id ?? null,
+            grupo: 'nova-cor',
+        };
+    });
+}
+
+/**
+ * As variações que "+ Tamanho" cria: uma por cor (cartão), com o nome da cor como está na tela. A `referencia` é a 1ª
+ * variação da cor (o custo e as caixas da cor).
+ *
+ * @returns {Array<{chave: string, valor: string, valor_2: string, codigo: string, referencia: number, grupo: string}>}
+ */
+export function novasDoTamanho(retrato, estado, valor2, { codigos = [] } = {}) {
+    return cartoesDasVariacoes(retrato, estado).map((cartao, i) => ({
+        chave: `novo-${i + 1}`,
+        valor: texto(cartao.valor),
+        valor_2: texto(valor2),
+        codigo: texto(codigos[i]),
+        referencia: cartao.ids[0],
+        grupo: cartao.chave,
+    }));
+}
+
+/**
+ * O estado que uma AÇÃO IMEDIATA grava: o conteúdo como está GRAVADO (o que a pessoa mexeu e não salvou não vai), a
+ * estrutura como está NA TELA (o eixo do produto, o valor e o 2º valor de cada variação) e as variações `novas`, com o
+ * custo e as caixas GRAVADOS da `referencia` de cada uma.
+ */
+export function estadoDaEstrutura(estado, retrato, novas = []) {
+    const base = estadoDoRetrato(retrato);
+    const naTela = new Map((estado?.variacoes ?? []).map((v) => [v.id, v]));
+    const eixo = texto(estado?.produto?.eixo ?? base.produto.eixo);
+    const eixo2 = texto(estado?.produto?.eixo_2 ?? base.produto.eixo_2);
+
+    return {
+        produto: { ...base.produto, eixo, eixo_2: eixo2 },
+        variacoes: [
+            ...base.variacoes.map((b) => {
+                const v = naTela.get(b.id);
+
+                return v ? { ...b, valor: v.valor ?? '', valor_2: v.valor_2 ?? '' } : b;
+            }),
+            ...(novas ?? []).map((n) => {
+                const ref = base.variacoes.find((b) => b.id === n.referencia) ?? base.variacoes[0] ?? { custo: '', volumes: [] };
+
+                return { id: null, chave: n.chave, codigo: texto(n.codigo), valor: texto(n.valor), valor_2: texto(n.valor_2), custo: ref.custo, estoque: '', volumes: ref.volumes };
+            }),
+        ],
+        ficha: base.ficha,
+    };
+}
+
+/** As linhas de uma ação imediata ("+ Cor", "+ Tamanho"): a estrutura da tela e as novas, pela mesma régua do "Salvar". */
+export const linhasDaEstrutura = (estado, retrato, novas = []) => linhasParaSalvar(estadoDaEstrutura(estado, retrato, novas), retrato);
+
+/**
+ * A estrutura (o tipo de variação ou o valor de alguma) mudou na tela e não foi salva? Ela vai junto na próxima ação
+ * imediata e é o que liga a conferência das cores no "Salvar".
+ */
+export function estruturaMexida(estado, retrato) {
+    if (!estado || !retrato) return false;
+    const m = camposMexidos(estado, retrato);
+
+    return m.produto.includes('eixo') || m.produto.includes('eixo_2') || Object.values(m.variacoes).some((c) => c.includes('valor') || c.includes('valor_2'));
+}
+
+/**
+ * Trocar o tipo de variação ("Este produto varia?") — conteúdo da tela, grava no "Salvar":
+ * - para "não varia", só com uma variação (o valor dela sai); com mais, `pode: false` e o motivo;
+ * - tirar o 2º tipo (o tamanho) com valores pede confirmação; com uma cor de dois tamanhos ou mais, não dá (a cor se
+ *   repetiria): `pode: false`;
+ * - o resto troca direto (os valores ficam: muitas vezes o tipo é que estava errado).
+ *
+ * @returns {{pode: boolean, mudou: boolean, motivo?: string, confirmar?: string, estado: object}}
+ */
+export function trocaDeEixo(estado, novo, { eixos = null } = {}) {
+    const vars = estado?.variacoes ?? [];
+    const eixo = texto(novo?.eixo);
+    const eixo2 = eixo ? texto(novo?.eixo_2) : '';
+    const eixoAntes = texto(estado?.produto?.eixo);
+    const eixo2Antes = texto(estado?.produto?.eixo_2);
+    if (eixo === eixoAntes && eixo2 === eixo2Antes) return { pode: true, mudou: false, estado };
+    if (!eixo && vars.length > 1) {
+        return { pode: false, mudou: false, motivo: 'Para o produto não variar, ele fica com uma variação só: remova as outras antes.', estado };
+    }
+
+    const resultado = {
+        ...estado,
+        produto: { ...estado.produto, eixo, eixo_2: eixo2 },
+        variacoes: vars.map((v) => ({ ...v, valor: eixo ? v.valor : '', valor_2: eixo2 ? v.valor_2 : '' })),
+    };
+    if (eixo2Antes && !eixo2) {
+        const tamanhos = tamanhosDoProduto(estado);
+        if (tamanhos.length) {
+            const porCor = new Map();
+            for (const v of vars) porCor.set(valorComparavel(v.valor), (porCor.get(valorComparavel(v.valor)) ?? 0) + 1);
+            if ([...porCor.values()].some((n) => n > 1)) {
+                const r1 = rotuloDoEixo(eixoAntes, eixos).toLowerCase();
+                const r2 = rotuloDoEixo(eixo2Antes, eixos).toLowerCase();
+
+                return {
+                    pode: false,
+                    mudou: false,
+                    motivo: `Há ${r1} com mais de uma variação de ${r2}: remova as que sobram antes (fica uma por ${r1}).`,
+                    estado,
+                };
+            }
+
+            return {
+                pode: true,
+                mudou: true,
+                confirmar: `${comMaiuscula(nomeDoEixo(eixo2Antes, eixos))} sai de todas as variações (${emLista(tamanhos)}) quando você salvar.`,
+                estado: resultado,
+            };
+        }
+    }
+
+    return { pode: true, mudou: true, estado: resultado };
+}
+
+/** Custo e caixas iguais em todas as variações? (é o padrão "iguais em todas as cores"; "89" e "89,00" são o mesmo) */
+export function custoECaixasIguais(variacoes) {
+    const vars = variacoes ?? [];
+    if (vars.length < 2) return true;
+
+    return new Set(vars.map((v) => assinaturaDoCusto(v))).size === 1 && new Set(vars.map((v) => assinaturaDasCaixas(v.volumes))).size === 1;
+}
+
+/** "Iguais em todas as cores": o custo e as caixas de uma variação (`deId`, ou a 1ª) em todas. */
+export function comCustoECaixasIguais(estado, deId = null) {
+    const vars = estado?.variacoes ?? [];
+    const fonte = vars.find((v) => v.id === deId) ?? vars[0];
+    if (!fonte) return estado;
+
+    return { ...estado, variacoes: vars.map((v) => ({ ...v, custo: fonte.custo, volumes: (fonte.volumes ?? []).map((c) => ({ ...c })) })) };
+}
+
+/**
+ * "Diferente por cor", com cor E tamanho: o custo e as caixas são da COR — cada tamanho leva os da 1ª variação do
+ * cartão (o tamanho novo, que nasce com os GRAVADOS da cor, passa a ter os que estão na tela).
+ */
+export function custoIgualEmCadaCor(estado, retrato) {
+    if (!estado) return estado;
+    const deCada = new Map();
+    for (const cartao of cartoesDasVariacoes(retrato, estado)) {
+        const fonte = (estado.variacoes ?? []).find((v) => v.id === cartao.ids[0]);
+        if (fonte) for (const id of cartao.ids) deCada.set(id, fonte);
+    }
+
+    return {
+        ...estado,
+        variacoes: (estado.variacoes ?? []).map((v) => {
+            const fonte = deCada.get(v.id);
+
+            return fonte && fonte !== v ? { ...v, custo: fonte.custo, volumes: (fonte.volumes ?? []).map((c) => ({ ...c })) } : v;
+        }),
+    };
+}
+
+/** O "Salvar" parou na conferência das cores (na tela, antes de gravar). */
+export const MENSAGEM_DAS_CORES = 'Confira as variações marcadas: cada uma precisa de um nome próprio, sem repetir.';
+
+/**
+ * Os erros de um 422 das linhas pelo lugar na gaveta (a conferência das cores do servidor, F4): a chave do Laravel
+ * `linhas.{i}.{campo}` vira a `chave` que a tela mandou naquela linha (`linhas`, o corpo do pedido); a da variação
+ * que nenhuma linha tocou, `variacoes.{id}.{campo}`, vira `v{id}`; a que já vem como `{chave}.{campo}` também
+ * serve. Os `erros[]` do mesmo 422 (o formato dos erros de linha: `chave` ou `variacao_id`, `campos`) somam. O que
+ * não tem lugar vai em `soltas`. Sem 422, null.
+ *
+ * @returns {?{porChave: Record<string, Record<string, string>>, soltas: string[]}}
+ */
+export function errosDasLinhasNo422(falha, linhas = []) {
+    if (falha?.response?.status !== 422) return null;
+    const dados = falha.response.data ?? {};
+    const porChave = {};
+    const soltas = [];
+    const chaves = new Set((linhas ?? []).map((l) => l?.chave).filter(Boolean));
+    const por = (chave, campo, m) => {
+        const lugar = campo === 'categoria_ml_id' ? 'categoria' : campo;
+        porChave[chave] = { ...(porChave[chave] ?? {}), [lugar]: m };
+    };
+    for (const [k, mensagens] of Object.entries(dados.errors ?? {})) {
+        const m = [mensagens].flat().map((x) => (typeof x === 'string' ? x.trim() : '')).find(Boolean);
+        if (!m) continue;
+        const pelaPosicao = k.match(/^linhas\.(\d+)\.(\w+)$/);
+        const pelaVariacao = k.match(/^variacoes\.(\d+)\.(\w+)$/);
+        const pelaChave = k.match(/^([^.]+)\.(\w+)$/);
+        if (pelaPosicao && linhas?.[Number(pelaPosicao[1])]?.chave) por(linhas[Number(pelaPosicao[1])].chave, pelaPosicao[2], m);
+        else if (pelaVariacao) por(`v${pelaVariacao[1]}`, pelaVariacao[2], m);
+        else if (pelaChave && chaves.has(pelaChave[1])) por(pelaChave[1], pelaChave[2], m);
+        else soltas.push(m);
+    }
+    // Os mesmos erros como os de linha do Portal (`erros: [{chave|variacao_id, campos}]`): somam (a mensagem igual não
+    // se repete). O que já tem lugar não fica também solto.
+    const deLinha = errosPorCampo(dados.erros ?? [], [...CAMPOS_DO_PRODUTO, ...CAMPOS_DA_VARIACAO]);
+    for (const [chave, campos] of Object.entries(deLinha.porChave)) porChave[chave] = { ...(porChave[chave] ?? {}), ...campos };
+    const comLugar = new Set(Object.values(porChave).flatMap((campos) => Object.values(campos)));
+    soltas.push(...deLinha.soltas);
+
+    return { porChave, soltas: [...new Set(soltas)].filter((m) => !comLugar.has(m)) };
+}
+
+/** A cor nova num produto JÁ mapeado: o combo é por cor e não nasce sozinho (D15) — a gaveta pede para mapear de novo. */
+export const AVISO_DA_COR_NOVA_NO_MAPEADO = 'Cor nova salva. Este produto já foi mapeado: mapeie de novo para a cor ganhar os combos.';
+
+/** O mesmo, para o tamanho (ou outra variação) novo. */
+export const AVISO_DA_VARIACAO_NOVA_NO_MAPEADO = 'Variação nova salva. Este produto já foi mapeado: mapeie de novo para ela ganhar os combos.';
+
+/**
+ * O aviso depois de "+ Cor"/"+ Tamanho": o servidor diz (`mapear_de_novo`, quando criou variação num produto já
+ * mapeado). Sem a chave (resposta antiga), vale o retrato: variação criada (`totais.criadas`) e `situacao.mapeado_em`.
+ */
+export function avisoDaCorNova(resposta, { cor = true } = {}) {
+    const mapear = typeof resposta?.mapear_de_novo === 'boolean'
+        ? resposta.mapear_de_novo
+        : Number(resposta?.totais?.criadas ?? 0) > 0 && !!resposta?.situacao?.mapeado_em;
+    if (!mapear) return null;
+
+    return cor ? AVISO_DA_COR_NOVA_NO_MAPEADO : AVISO_DA_VARIACAO_NOVA_NO_MAPEADO;
+}
+
+// ─── Excluir o produto (F4, rota 15) ────────────────────────────────────────
+
+const TIPO_DA_MONTADA = { combo: 'Combo', kit: 'Kit', combit: 'Combit' };
+
+const contar = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/**
+ * Os textos dos dois passos de "Excluir produto", a partir da PRÉVIA do servidor (o que sai junto: as ofertas
+ * montadas que usam o produto — combos, kits, combits). Nada é calculado aqui.
+ *
+ * @returns {{frase: string, montadas: Array<{id: number, tipo: string, sku: string, nome: string}>, fraseDasMontadas: ?string,
+ *   emUso: ?string, botao: string}}
+ */
+export function textosDaExclusao(previa) {
+    const produto = (previa?.produtos ?? [])[0] ?? null;
+    const variacoes = Number(previa?.totais?.variacoes ?? produto?.variacoes ?? 0) || 0;
+    const montadas = (previa?.montadas ?? []).map((m) => ({ id: m.id, tipo: TIPO_DA_MONTADA[m.fase] ?? 'Oferta', sku: texto(m.sku), nome: texto(m.nome) }));
+    const n = montadas.length;
+
+    return {
+        frase: `O produto sai do cadastro com ${contar(variacoes, 'variação', 'variações')}, as fotos e a ficha técnica. Não dá para desfazer.`,
+        montadas,
+        fraseDasMontadas: n ? `${n === 1 ? '1 oferta montada usa' : `${n} ofertas montadas usam`} este produto e ${n === 1 ? 'sai' : 'saem'} junto:` : null,
+        emUso: Number(previa?.totais?.em_uso ?? 0) > 0 ? 'Parte disto já está ligada a anúncio ou a preparo: o que estava ligado fica solto.' : null,
+        botao: n ? `Excluir o produto e ${n === 1 ? 'a oferta' : `as ${n} ofertas`}` : 'Excluir produto',
+    };
+}
+
+/** As ofertas montadas que a pessoa VIU na prévia: o servidor só exclui se forem exatamente essas. */
+export const montadasDaPrevia = (previa) => (previa?.montadas ?? []).map((m) => m.id).filter((id) => id !== null && id !== undefined);
+
+/** O que sai junto mudou entre a prévia e a confirmação (422 em `montadas`): a gaveta mostra a prévia de novo. */
+export const exclusaoMudou = (falha) => falha?.response?.status === 422 && !!falha.response.data?.errors?.montadas;
 
 /** A resposta da rota 3 já traz o retrato novo? (o controller da trilha devolve o retrato junto do resultado) */
 export const temRetrato = (resposta) => !!resposta && typeof resposta.produto === 'object' && resposta.produto !== null && Array.isArray(resposta.variacoes);
@@ -514,8 +1111,12 @@ export function errosPorCampo(erros, campos = [...CAMPOS_DO_PRODUTO, ...CAMPOS_D
             .filter(([, m]) => typeof m === 'string' && m.trim())
             .map(([campo, m]) => [campo === 'categoria_ml_id' ? 'categoria' : campo, m]);
         const conhecidos = doErro.filter(([campo]) => campos.includes(campo));
-        if (erro?.chave && conhecidos.length) {
-            porChave[erro.chave] = { ...(porChave[erro.chave] ?? {}), ...Object.fromEntries(conhecidos) };
+        // F4: a variação que nenhuma linha tocou (a conferência das cores olha o produto inteiro) vem só com o id.
+        const chave = erro?.chave || (erro?.variacao_id ? `v${erro.variacao_id}` : null);
+        if (chave && conhecidos.length) {
+            porChave[chave] = { ...(porChave[chave] ?? {}), ...Object.fromEntries(conhecidos) };
+        } else if (conhecidos.length) {
+            soltas.push(...conhecidos.map(([, m]) => m));
         }
         const fora = doErro.filter(([campo]) => !campos.includes(campo)).map(([, m]) => m);
         if (fora.length) soltas.push(...fora);

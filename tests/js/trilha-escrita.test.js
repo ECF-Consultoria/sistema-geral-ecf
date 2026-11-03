@@ -541,6 +541,49 @@ test('cadastro F3: enviar fotos (multipart, um `imagens[]` por arquivo), excluir
     assert.equal(escrita.mensagemDoErro({ isAxiosError: true, response: { status: 409, data: { travado: true, motivo } } }), motivo);
 });
 
+test('cadastro F4: remover variação, a prévia da exclusão e excluir o produto (com as montadas da prévia) — sob `escrita.produtos`', async () => {
+    const { pedidos, restaurar } = gravarPedidos({ produto: { id: 12 }, variacoes: [], mensagem: 'Variação CAM-PR-M excluída.' });
+    const E = { ...PROPS_TRABALHO.escrita, produtos: `${PROPS_TRABALHO.escrita.produtos}/` };
+    try {
+        assert.deepEqual(await escrita.excluirVariacao(E, 12, 124), { produto: { id: 12 }, variacoes: [], mensagem: 'Variação CAM-PR-M excluída.' });
+        await escrita.previaDaExclusao(E, 12);
+        await escrita.excluirProduto(E, 12, [70, 71]);
+        await escrita.excluirProduto(E, 12);
+        // "+ Cor"/"+ Tamanho" vão pela rota do "Salvar": a linha nova sem `id`, com a chave da tela.
+        await escrita.gravarLinhas(E, 12, [{ chave: 'nova-1', codigo: 'CAM-AZ-P', nome: 'Camiseta básica', eixo: 'cor', valor: 'Azul', eixo_2: 'tamanho', valor_2: 'P' }]);
+    } finally {
+        restaurar();
+    }
+
+    assert.deepEqual(pedidos, [
+        { metodo: 'delete', url: 'http://localhost/trilha/459/produtos/12/variacoes/124', corpo: undefined },
+        // A prévia: sem corpo (o produto é o do endereço).
+        { metodo: 'post', url: 'http://localhost/trilha/459/produtos/12/exclusao/previa', corpo: {} },
+        // Excluir leva as montadas que a pessoa VIU na prévia; sem nenhuma, a lista vazia.
+        { metodo: 'delete', url: 'http://localhost/trilha/459/produtos/12', corpo: { data: { montadas: [70, 71] } } },
+        { metodo: 'delete', url: 'http://localhost/trilha/459/produtos/12', corpo: { data: { montadas: [] } } },
+        {
+            metodo: 'post',
+            url: 'http://localhost/trilha/459/produtos/12/linhas',
+            corpo: { linhas: [{ chave: 'nova-1', codigo: 'CAM-AZ-P', nome: 'Camiseta básica', eixo: 'cor', valor: 'Azul', eixo_2: 'tamanho', valor_2: 'P' }] },
+        },
+    ]);
+
+    // Sem endereço (a porta do cliente nunca recebe nenhum), nada sai.
+    await assert.rejects(() => escrita.excluirVariacao(null, 12, 124), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.previaDaExclusao({ ondas: 'x' }, 12), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.excluirProduto(null, 12, []), (e) => e instanceof escrita.ErroDaTrilha);
+
+    // Os textos do servidor chegam à pessoa: a peça de combo, a última variação, o que sai junto que mudou.
+    const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
+    assert.equal(escrita.mensagemDoErro(erro(422, { errors: { oferta: ['Esta oferta entra em CAM-CB2. Exclua ou edite essas variações antes.'] } })),
+        'Esta oferta entra em CAM-CB2. Exclua ou edite essas variações antes.');
+    assert.equal(escrita.mensagemDoErro(erro(422, { errors: { variacao: ['Esta é a única variação do produto: para tirá-la, use “Excluir produto”.'] } })),
+        'Esta é a única variação do produto: para tirá-la, use “Excluir produto”.');
+    assert.equal(escrita.mensagemDoErro(erro(422, { errors: { montadas: ['O que sai junto com estes produtos mudou. Confira de novo antes de excluir.'] } })),
+        'O que sai junto com estes produtos mudou. Confira de novo antes de excluir.');
+});
+
 test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {
     const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
     const m = escrita.mensagemDoErro;

@@ -168,6 +168,35 @@ export async function conferirFrete(escrita, produtoId) {
     return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/frete`, {}));
 }
 
+// ─── Cores, tamanhos e exclusões (F4): ações IMEDIATAS ──────────────────────
+//
+// "+ Cor" e "+ Tamanho" vão pela mesma rota do "Salvar" (`gravarLinhas`, com as linhas sem `id`). Remover uma
+// variação e excluir o produto têm rota própria. O produto que andou responde 409 `{travado, motivo}`.
+
+/**
+ * Remove UMA variação (uma cor de um tamanho só, ou um tamanho de uma cor). A peça de combo ou kit e a última
+ * variação do produto voltam 422 com o texto do servidor (a última sai por "Excluir produto"). → o retrato novo.
+ */
+export async function excluirVariacao(escrita, produtoId, variacaoId) {
+    return corpo(await axios.delete(urlDaVariacao(escrita, produtoId, variacaoId)));
+}
+
+/**
+ * O 1º passo de "Excluir produto": o que sai junto (as ofertas montadas que usam o produto — combos, kits, combits),
+ * sem tocar em nada. → `{produtos, montadas: [{id, sku, nome, fase, em_uso}], totais, …}`.
+ */
+export async function previaDaExclusao(escrita, produtoId) {
+    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/exclusao/previa`, {}));
+}
+
+/**
+ * O 2º passo: exclui o produto com as ofertas montadas que a pessoa VIU na prévia (`montadas`, os ids). Apareceu
+ * outra no meio do caminho: 422 em `montadas`, e nada sai (a tela mostra a prévia de novo).
+ */
+export async function excluirProduto(escrita, produtoId, montadas = []) {
+    return corpo(await axios.delete(urlDoProduto(escrita, produtoId), { data: { montadas: [...(montadas ?? [])] } }));
+}
+
 // ─── Categoria e ficha técnica (F2): só leitura do catálogo público ──────────
 //
 // Sob `escrita.categorias` (só para quem escreve). O catálogo fora do ar NUNCA é erro HTTP: a resposta vem 200 com

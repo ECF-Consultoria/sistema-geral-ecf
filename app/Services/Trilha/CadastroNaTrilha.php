@@ -11,6 +11,7 @@ use App\Models\PubProduto;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
+use App\Services\Portal\Estrutura\Produtos\ExclusaoDeProdutos;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
@@ -25,6 +26,7 @@ use App\Services\Portal\PortalEquipeService;
 use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Trilha\Ondas\OndasDaEmpresa;
 use App\Support\Portal\AtorDoPortal;
+use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Trilha\TrilhaDeTrabalho;
 use App\Support\Trilha\TrilhaLigada;
@@ -71,6 +73,14 @@ use Illuminate\Validation\ValidationException;
  * produto do caminho — {@see variacao()}, {@see imagem()}) e o "Conferir frete pela conta" ({@see cotarFrete()}). Com
  * a trilha de trabalho o "frete ME1" é AVISO (`situacao.avisos`), não falta: não segura o produto na Lista nem o
  * gatilho do Publicador (pergunta 3, {@see CompletudeDoProduto::avaliar()}).
+ *
+ * ### F4 (03/11/2026)
+ * Cores e tamanhos: a rota das linhas aceita VÁRIAS variações e as NOVAS (sem `id`) do mesmo produto, com eixo, valor,
+ * 2º eixo e ordem. A cor nova herda custo e caixas da 1ª variação quando a linha não os traz e ganha a sua oferta
+ * simples (é o serviço do Portal que faz). Antes de valer, as variações passam pela régua do Publicador
+ * ({@see conferirCores()}, a do `CoresDoGrupo`): o que ela separaria em produto à parte, em silêncio, volta 422 por
+ * linha e nada grava. Excluir: a cor/tamanho ({@see excluirVariacao()}; a última variação só sai por "Excluir
+ * produto") e o produto inteiro, em dois passos ({@see previaDaExclusao()}, {@see excluirProduto()}).
  */
 class CadastroNaTrilha
 {
@@ -84,15 +94,37 @@ class CadastroNaTrilha
 
     public const PASSO_FOTO_EXCLUIDA = 'foto_excluida';
 
+    public const PASSO_VARIACAO_EXCLUIDA = 'variacao_excluida';
+
+    public const PASSO_PRODUTO_EXCLUIDO = 'produto_excluido';
+
     /**
      * As chaves da linha que a trilha deixa chegar ao serviço; o resto é descartado (`grupo`, `company_id`,
      * `categoria_texto`, `variacao`, `volumes_texto`…), e o `produto_id` é sempre o do caminho. `categoria_ml_id` (F2)
-     * passa por {@see conferirCategoria()}. A lista final do desenho (§6.3) ainda acrescenta `eixo`, `valor`, `eixo_2`,
-     * `valor_2`, `ordem` (F4, com a conferência das cores).
+     * passa por {@see conferirCategoria()}; `eixo`, `valor`, `eixo_2`, `valor_2` e `ordem` (F4), pela conferência das
+     * cores ({@see gravar()}).
      */
     public const CHAVES_DA_LINHA = [
-        'id', 'chave', 'codigo', 'nome', 'titulo', 'familia', 'ambientes', 'categoria_ml_id', 'volumes', 'custo', 'estoque', 'descricao',
+        'id', 'chave', 'codigo', 'nome', 'titulo', 'eixo', 'valor', 'eixo_2', 'valor_2', 'ordem',
+        'familia', 'ambientes', 'categoria_ml_id', 'volumes', 'custo', 'estoque', 'descricao',
     ];
+
+    /** As chaves que mexem no que o Publicador agrupa (a linha sem `id` também): só com elas há o que conferir. */
+    private const CHAVES_DAS_CORES = ['eixo', 'valor', 'eixo_2', 'valor_2', 'ordem'];
+
+    /** O artigo de cada eixo nas mensagens da conferência ("Falta a cor…", "Falta o tamanho…"). */
+    private const O_EIXO = [
+        'cor' => 'a cor', 'tamanho' => 'o tamanho', 'voltagem' => 'a voltagem', 'material' => 'o material', 'sabor' => 'o sabor',
+    ];
+
+    public const MSG_CORES = 'Confira as variações marcadas: nada foi salvo. Com duas ou mais variações, cada uma precisa de '
+        .'um nome próprio, sem repetir, e todas do mesmo tipo.';
+
+    /** A conferência caiu só porque uma linha falhou (e a outra, sozinha, deixaria variação sem nome). */
+    public const MSG_CORES_LINHA = 'Confira os campos marcados: nada foi salvo — as variações deste pedido só gravam juntas.';
+
+    /** A última variação não sai pela rota da cor: sem ela o produto deixaria de existir — é "Excluir produto". */
+    public const MSG_ULTIMA_VARIACAO = 'Esta é a única variação do produto: para tirá-la, use “Excluir produto”.';
 
     /** A categoria no Publicador só se troca no editor de lá (D12): o rascunho só recebe categoria quando está sem. */
     public const MSG_CATEGORIA_NO_PUBLICADOR = 'A categoria já está no Publicador; troque no editor de lá.';
@@ -167,7 +199,7 @@ class CadastroNaTrilha
      * editaria o B). O `id` que o serviço não leria como número (texto, fração) também é 404: lá ele viraria "sem id"
      * e criaria uma variação nova.
      *
-     * Nesta fatia (F1) a trilha só edita as variações que o produto já tem: linha sem `id` → 422.
+     * A linha SEM `id` (F4) é uma variação nova DESTE produto (o `produto_id` do caminho; o `grupo` não passa).
      *
      * @param  array<int, mixed>  $linhas  como o navegador mandou ({@see \App\Support\Portal\Estrutura\RegrasDoCadastro::linhasComoVieram()})
      * @return list<array<string, mixed>>
@@ -182,25 +214,15 @@ class CadastroNaTrilha
             ->all();
 
         $saida = [];
-        $semId = null;
-        foreach (array_values($linhas) as $i => $bruta) {
+        foreach (array_values($linhas) as $bruta) {
             $bruta = is_array($bruta) ? $bruta : [];
-            $id = $bruta['id'] ?? null;
-            if ($id === null || $id === '') {
-                $semId ??= $i;
-            } else {
-                abort_unless(in_array(self::idDaLinha($id), $doProduto, true), 404);
+            if (! self::semId($bruta)) {
+                abort_unless(in_array(self::idDaLinha($bruta['id']), $doProduto, true), 404);
             }
 
             $linha = array_intersect_key($bruta, array_flip(self::CHAVES_DA_LINHA));
             $linha['produto_id'] = (int) $produto->id;
             $saida[] = $linha;
-        }
-
-        if ($semId !== null) {
-            throw ValidationException::withMessages([
-                "linhas.{$semId}.id" => 'Por aqui, por enquanto, só se editam as variações que o produto já tem.',
-            ]);
         }
 
         return $saida;
@@ -279,6 +301,208 @@ class CadastroNaTrilha
         return array_values($linhas);
     }
 
+    // ═══ As cores (F4) ══════════════════════════════════════════════════════
+
+    /**
+     * A régua do Publicador sobre as variações de um produto (a do `CoresDoGrupo`, que decide quem vira cor do grupo e
+     * quem vira produto à parte, em silêncio): com duas ou mais variações, toda variação tem valor (e o do 2º eixo,
+     * quando ele existe); nenhum valor — nem par cor e tamanho — se repete, sem caixa nem acento; e todas usam o mesmo
+     * tipo de variação. Função pura: o CONJUNTO das que ficam fora é sempre o do `CoresDoGrupo::separar` (mudou lá,
+     * muda aqui sozinho); daqui sai só o motivo, o campo e o texto para a tela — sem "Portal" nem "Publicador": a
+     * trilha também é a porta do cliente.
+     *
+     * @param  list<array{id: int, eixo: ?string, valor: ?string, eixo_2?: ?string, valor_2?: ?string, codigo?: ?string}>  $variacoes  na ordem do produto (`ordem`, `id`)
+     * @return array<int, array{motivo: string, campo: string, mensagem: string}>  id da variação → o que está errado nela
+     */
+    public static function conferirCores(array $variacoes): array
+    {
+        $fora = CoresDoGrupo::separar($variacoes)['fora'];
+        if ($fora === []) {
+            return [];
+        }
+
+        // O tipo dominante, pela mesma conta do `CoresDoGrupo` (só para dizer qual é o tipo das outras).
+        $contagem = [];
+        foreach ($variacoes as $v) {
+            if (trim((string) $v['valor']) !== '') {
+                $tipo = CoresDoGrupo::tipo($v);
+                $contagem[$tipo] = ($contagem[$tipo] ?? 0) + 1;
+            }
+        }
+        arsort($contagem);
+        $dominante = $contagem === [] ? '' : (string) array_key_first($contagem);
+
+        $saida = [];
+        foreach ($variacoes as $v) {
+            if (isset($fora[(int) $v['id']])) {
+                $saida[(int) $v['id']] = self::motivoDaCor($v, $dominante);
+            }
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O motivo, na MESMA ordem das perguntas do `CoresDoGrupo` (sem valor, sem o 2º valor, outro tipo, repetida).
+     *
+     * @return array{motivo: string, campo: string, mensagem: string}
+     */
+    private static function motivoDaCor(array $v, string $dominante): array
+    {
+        $eixo = trim((string) ($v['eixo'] ?? ''));
+        $eixo2 = trim((string) ($v['eixo_2'] ?? ''));
+
+        if (trim((string) $v['valor']) === '') {
+            return ['motivo' => 'sem_valor', 'campo' => 'valor',
+                'mensagem' => 'Falta '.(self::O_EIXO[$eixo] ?? 'o nome').' desta variação: com duas ou mais, cada uma precisa ter o seu.'];
+        }
+        if ($eixo2 !== '' && trim((string) ($v['valor_2'] ?? '')) === '') {
+            return ['motivo' => 'sem_valor_2', 'campo' => 'valor_2', 'mensagem' => 'Falta '.(self::O_EIXO[$eixo2] ?? 'o segundo valor').' desta variação.'];
+        }
+        $tipo = CoresDoGrupo::tipo($v);
+        if ($tipo !== $dominante) {
+            [$eixoDominante] = explode('+', $dominante.'+');
+
+            return ['motivo' => 'outro_tipo', 'campo' => ($eixo ?: 'outro') !== $eixoDominante ? 'eixo' : 'eixo_2',
+                'mensagem' => 'Esta variação é por '.self::rotuloDoTipo($tipo).', e as outras por '.self::rotuloDoTipo($dominante)
+                    .': todas as variações do produto precisam ser do mesmo tipo.'];
+        }
+
+        return ['motivo' => 'repetida', 'campo' => $eixo2 !== '' ? 'valor_2' : 'valor',
+            'mensagem' => '“'.CoresDoGrupo::valorCompleto($v).'” já existe neste produto: cada variação precisa de um valor diferente.'];
+    }
+
+    /** "Cor", ou "Cor e Tamanho" para o par. */
+    private static function rotuloDoTipo(string $tipo): string
+    {
+        return implode(' e ', array_map(fn (string $e) => EstruturaProdutoVariacao::EIXOS[$e] ?? $e, explode('+', $tipo)));
+    }
+
+    /**
+     * As variações do produto como o Publicador as lê (na ordem `ordem`, `id`), para {@see conferirCores()}.
+     *
+     * @return list<array{id: int, eixo: ?string, valor: ?string, eixo_2: ?string, valor_2: ?string, codigo: string}>
+     */
+    private function variacoesParaConferir(Company $empresa, EstruturaProduto $produto): array
+    {
+        return EstruturaProdutoVariacao::query()
+            ->where('company_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->orderBy('ordem')->orderBy('id')
+            ->get(['id', 'eixo', 'valor', 'eixo_2', 'valor_2', 'codigo'])
+            ->map(fn (EstruturaProdutoVariacao $v) => ['id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor,
+                'eixo_2' => $v->eixo_2, 'valor_2' => $v->valor_2, 'codigo' => (string) $v->codigo])
+            ->all();
+    }
+
+    /**
+     * Dentro da transação do {@see gravar()}: com as variações como FICARAM, a que o Publicador separaria e que não
+     * estava separada ANTES do pedido derruba tudo — 422, a transação desfaz. A resposta traz TODAS as variações fora
+     * da régua (as de antes também, para a tela mostrar o quadro inteiro), cada uma presa à linha do pedido que a
+     * tocou: pelo `id`, ou, na variação nova, pelo SKU (o serviço a criou com o código da linha). A que nenhuma linha
+     * tocou vem só com o `variacao_id`; a nova, sem ele (o id dela foi desfeito).
+     *
+     * Os erros de LINHA do serviço (custo inválido, SKU repetido…) vêm junto, com `motivo: 'linha'` — nada gravou, então
+     * todos valem. E a variação cuja linha falhou por um deles não leva também o erro da cor: ela ficou sem nome porque
+     * a linha não gravou, e "falta a cor" ao lado da cor que a pessoa digitou só confundiria.
+     *
+     * Formato (a tela lê `erros` como os `erros` do serviço — `indice`, `chave`, `codigo`, `mensagem`, `campos` — mais
+     * `variacao_id` e `motivo`; e `errors`, o do Laravel: `linhas.{i}.{campo}`, ou `variacoes.{id}.{campo}`).
+     *
+     * @param  list<array>  $antes  {@see variacoesParaConferir()} antes do pedido
+     * @param  list<array>  $depois  idem, depois do serviço, na mesma transação
+     * @param  list<array<string, mixed>>  $linhas  as linhas do pedido, na ordem em que vieram
+     * @param  list<array{indice: int, chave: ?string, codigo: ?string, mensagem: string, campos: array<string, string>}>  $errosDasLinhas  os `erros` do serviço
+     *
+     * @throws HttpResponseException
+     */
+    private function recusarCores(array $antes, array $depois, array $linhas, array $errosDasLinhas): void
+    {
+        $problemas = self::conferirCores($depois);
+        $novos = array_diff_key($problemas, self::conferirCores($antes));
+        if ($novos === []) {
+            return;
+        }
+
+        $existiam = array_flip(array_column($antes, 'id'));
+        $indicePorId = [];
+        $indicePorCodigo = [];
+        foreach ($linhas as $i => $l) {
+            if (self::semId($l)) {
+                $indicePorCodigo[ProdutoCadastroService::chaveCodigo((string) ($l['codigo'] ?? ''))] ??= $i;
+            } else {
+                $indicePorId[self::idDaLinha($l['id'])] ??= $i;
+            }
+        }
+
+        $erros = [];
+        $porCampo = [];
+        $comErro = [];
+        foreach ($errosDasLinhas as $e) {
+            $i = (int) $e['indice'];
+            $comErro[$i] = true;
+            $id = self::semId($linhas[$i] ?? []) ? null : self::idDaLinha($linhas[$i]['id']);
+            $erros[] = ['indice' => $i, 'chave' => $e['chave'] ?? null, 'variacao_id' => $id, 'codigo' => $e['codigo'] ?? null,
+                'motivo' => 'linha', 'mensagem' => (string) $e['mensagem'], 'campos' => $e['campos']];
+            foreach ($e['campos'] as $campo => $mensagem) {
+                $porCampo["linhas.{$i}.{$campo}"][] = (string) $mensagem;
+            }
+        }
+
+        foreach ($depois as $v) {
+            $id = (int) $v['id'];
+            if (! isset($problemas[$id])) {
+                continue;
+            }
+            $existia = isset($existiam[$id]);
+            $i = $existia ? ($indicePorId[$id] ?? null) : ($indicePorCodigo[ProdutoCadastroService::chaveCodigo($v['codigo'])] ?? null);
+            if ($i !== null && isset($comErro[$i])) {
+                continue;
+            }
+            $chave = $i !== null ? trim((string) (is_scalar($linhas[$i]['chave'] ?? null) ? $linhas[$i]['chave'] : '')) : '';
+            ['motivo' => $motivo, 'campo' => $campo, 'mensagem' => $mensagem] = $problemas[$id];
+
+            $erros[] = [
+                'indice'      => $i,
+                'chave'       => $chave !== '' ? mb_substr($chave, 0, 64) : null,
+                'variacao_id' => $existia ? $id : null,
+                'codigo'      => $v['codigo'],
+                'motivo'      => $motivo,
+                'mensagem'    => $mensagem,
+                'campos'      => [$campo => $mensagem],
+            ];
+            $porCampo[$i !== null ? "linhas.{$i}.{$campo}" : "variacoes.{$id}.{$campo}"][] = $mensagem;
+        }
+
+        $soDeLinha = array_filter($erros, fn (array $e) => $e['motivo'] !== 'linha') === [];
+
+        throw new HttpResponseException(response()->json([
+            'message' => $soDeLinha ? self::MSG_CORES_LINHA : self::MSG_CORES,
+            'errors'  => $porCampo,
+            'erros'   => $erros,
+        ], 422));
+    }
+
+    /** O pedido cria variação ou mexe no que o Publicador agrupa (eixo, valor, 2º eixo, ordem)? */
+    private static function mexeNasCores(array $linhas): bool
+    {
+        foreach ($linhas as $l) {
+            if (self::semId($l) || array_intersect_key($l, array_flip(self::CHAVES_DAS_CORES)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A linha é de uma variação nova (sem `id`, ou com ele vazio). */
+    private static function semId(array $linha): bool
+    {
+        $id = $linha['id'] ?? null;
+
+        return $id === null || $id === '';
+    }
+
     // ═══ A trava (pergunta 1) ═══════════════════════════════════════════════
 
     /**
@@ -347,12 +571,32 @@ class CadastroNaTrilha
      * algo mudou, o evento da trilha e o gatilho {@see prepararSeCabe()}. Erro de uma linha não impede as outras: volta
      * em `erros` (um por linha, com a `chave` da tela), com HTTP 200, como no Portal.
      *
+     * F4 — as cores: o pedido que cria variação ou mexe em eixo, valor, 2º eixo ou ordem grava numa transação e, ANTES
+     * de ela valer, as variações do produto como FICARAM passam pela régua do Publicador ({@see conferirCores()}). A
+     * variação que ele separaria em produto à parte e que não estava separada antes do pedido desfaz tudo: 422 com o
+     * erro por linha ({@see recusarCores()}). Conferir o resultado (e não simular o pedido) pega o que o serviço faz por
+     * conta própria: a variação nova herda o eixo da 1ª, a linha que falha não grava e a de depois grava — a 1ª cor que
+     * falhasse por outro motivo (título longo, SKU repetido) deixaria a variação de antes sem nome ao lado da nova. O
+     * problema que o produto já tinha (cadastrado antes por outra porta) não trava o salvar de outra coisa.
+     *
      * @param  list<array<string, mixed>>  $linhas
      * @return array{erros: list<array>, avisos: list<string>, totais: array<string, int>, criadas_nas_listas: array{familias: list<string>, ambientes: list<string>}}
+     *
+     * @throws HttpResponseException 422 da conferência das cores (nada gravado)
      */
     public function gravar(Company $empresa, EstruturaProduto $produto, array $linhas, AtorDoPortal $ator): array
     {
-        $r = $this->cadastro->gravarLinhas($empresa, $linhas, $ator, ProdutoCadastroService::MODO_GRADE, agendarPreparo: false);
+        if (! self::mexeNasCores($linhas)) {
+            $r = $this->cadastro->gravarLinhas($empresa, $linhas, $ator, ProdutoCadastroService::MODO_GRADE, agendarPreparo: false);
+        } else {
+            $antes = $this->variacoesParaConferir($empresa, $produto);
+            $r = DB::transaction(function () use ($empresa, $produto, $linhas, $ator, $antes) {
+                $r = $this->cadastro->gravarLinhas($empresa, $linhas, $ator, ProdutoCadastroService::MODO_GRADE, agendarPreparo: false);
+                $this->recusarCores($antes, $this->variacoesParaConferir($empresa, $produto), $linhas, $r['erros']);
+
+                return $r;
+            });
+        }
 
         if ((int) $r['totais']['criadas'] + (int) $r['totais']['atualizadas'] > 0) {
             $this->registrar($ator, $empresa, $produto->fresh() ?? $produto, self::PASSO_LINHAS, ['totais' => $r['totais']]);
@@ -430,6 +674,78 @@ class CadastroNaTrilha
 
         $this->registrar($ator, $empresa, $produto, self::PASSO_FOTO_EXCLUIDA, ['variacao_id' => (int) $variacao->id, 'imagem_id' => $id]);
         $this->prepararSeCabe($empresa, $produto);
+    }
+
+    // ═══ Excluir (F4) ═══════════════════════════════════════════════════════
+
+    /**
+     * Tira UMA cor ou tamanho do produto, pelo serviço do Portal (`ProdutoCadastroService::excluirVariacao`, a regra da
+     * Lista SKUs): a peça de combo ou kit é recusada (422 em `oferta`, com o texto do serviço) e nada muda; os anúncios
+     * da oferta dela voltam para a espera; com cor E tamanho, a galeria da cor passa para outro tamanho dela quando era
+     * este que a guardava.
+     *
+     * A ÚLTIMA variação não sai por aqui (422 em `variacao`): no serviço ela leva o produto junto, e isso é o "Excluir
+     * produto", em dois passos ({@see excluirProduto()}). A linha do produto fica presa durante a conta e a exclusão:
+     * duas abas tirando as duas últimas cores ao mesmo tempo não apagam o produto.
+     *
+     * Não agenda o Publicador, como o Portal (exclusão não chama o `aoSalvar`). Depois: o evento (passo
+     * `variacao_excluida`).
+     *
+     * @return array{produto_excluido: bool, anuncios_para_espera: int, sku: ?string}
+     *
+     * @throws ValidationException
+     */
+    public function excluirVariacao(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator): array
+    {
+        $r = DB::transaction(function () use ($empresa, $produto, $variacao, $ator) {
+            EstruturaProduto::query()->whereKey($produto->id)->lockForUpdate()->first();
+            $quantas = EstruturaProdutoVariacao::query()->where('company_id', $empresa->id)->where('produto_id', $produto->id)->count();
+            if ($quantas <= 1) {
+                throw ValidationException::withMessages(['variacao' => self::MSG_ULTIMA_VARIACAO]);
+            }
+
+            return $this->cadastro->excluirVariacao($empresa, (int) $variacao->id, $ator);
+        });
+
+        $this->registrar($ator, $empresa, $produto, self::PASSO_VARIACAO_EXCLUIDA, [
+            'variacao_id' => (int) $variacao->id, 'sku' => $r['sku'], 'anuncios_para_espera' => (int) $r['anuncios_para_espera'],
+        ]);
+
+        return $r;
+    }
+
+    /**
+     * O 1º passo do "Excluir produto": o que sai junto, sem tocar em nada (`ExclusaoDeProdutos::previa` do produto do
+     * caminho) — as variações e as ofertas montadas que o usam (combos, kits, combits), cada uma com `em_uso`.
+     *
+     * @return array{produtos: list<array>, montadas: list<array{id: int, sku: string, nome: ?string, fase: string, em_uso: bool}>, totais: array<string, int>, nao_encontrados: int}
+     */
+    public function previaDaExclusao(Company $empresa, EstruturaProduto $produto): array
+    {
+        return app(ExclusaoDeProdutos::class)->previa($empresa, [(int) $produto->id]);
+    }
+
+    /**
+     * O 2º passo: exclui o produto e as ofertas montadas que o usam, só se `$montadasConfirmadas` são exatamente as que a
+     * prévia mostrou (apareceu outra no meio do caminho: 422 em `montadas`, nada sai). Tudo numa transação
+     * (`ExclusaoDeProdutos::excluir`). O que a trilha tinha dele sai junto: `trilha_onda_itens` e `trilha_mapeamentos`
+     * pela cascata do banco (FK no produto e na oferta), e o Combo apagado sai da onda pelo `TrilhaComboExcluidoObserver`,
+     * na mesma transação. Depois: o evento (passo `produto_excluido`). Não agenda nada.
+     *
+     * @param  array<int, int|string>  $montadasConfirmadas
+     * @return array{produtos: int, variacoes: int, montadas: int, ids: list<int>, nao_encontrados: int}
+     *
+     * @throws ValidationException
+     */
+    public function excluirProduto(Company $empresa, EstruturaProduto $produto, array $montadasConfirmadas, AtorDoPortal $ator): array
+    {
+        $r = app(ExclusaoDeProdutos::class)->excluir($empresa, [(int) $produto->id], $montadasConfirmadas, $ator);
+
+        $this->registrar($ator, $empresa, $produto, self::PASSO_PRODUTO_EXCLUIDO, [
+            'codigo' => $produto->codigo, 'variacoes' => (int) $r['variacoes'], 'montadas' => (int) $r['montadas'],
+        ]);
+
+        return $r;
     }
 
     // ═══ O frete (rota 13) ══════════════════════════════════════════════════
