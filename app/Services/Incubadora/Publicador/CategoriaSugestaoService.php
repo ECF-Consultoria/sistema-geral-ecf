@@ -69,10 +69,16 @@ class CategoriaSugestaoService
     }
 
     /**
-     * Uma categoria pronta para a tela: nome, caminho com id por nível e se é
-     * folha (só folha recebe anúncio). Null quando o ML não devolve a categoria.
+     * Uma categoria pronta para a tela: nome, caminho com id por nível, se é
+     * folha (só folha recebe anúncio) e se é ANUNCIÁVEL. Null quando o ML não
+     * devolve a categoria.
      *
-     * @return array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool}|null
+     * `anunciavel` (3ª entrega da trilha, 03/11/2026): folha cujo
+     * `settings.listing_allowed` não é `false` — a mesma régua da árvore
+     * ({@see \App\Services\Publicador\CategoriaBuscaService::nivel()}). Chave
+     * ADITIVA: só a trilha a lê; o Portal segue olhando só `folha`.
+     *
+     * @return array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool, anunciavel: bool}|null
      */
     public function detalhe(string $categoriaId): ?array
     {
@@ -81,12 +87,7 @@ class CategoriaSugestaoService
             return null;
         }
 
-        return [
-            'id'      => (string) ($cat['id'] ?? $categoriaId),
-            'nome'    => (string) ($cat['name'] ?? $categoriaId),
-            'caminho' => $this->caminho($cat),
-            'folha'   => empty($cat['children_categories']),
-        ];
+        return $this->paraTela($cat, $categoriaId);
     }
 
     /**
@@ -96,7 +97,7 @@ class CategoriaSugestaoService
      * muda `detalhe()` nem `sugerir()`.
      *
      * @param  array<int, string>  $ids
-     * @return array<string, array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool}|null>
+     * @return array<string, array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool, anunciavel: bool}|null>
      */
     public function detalhes(array $ids): array
     {
@@ -107,15 +108,30 @@ class CategoriaSugestaoService
 
         $saida = [];
         foreach ($this->categoriasEmLote($ids) as $id => $cat) {
-            $saida[$id] = $cat ? [
-                'id'      => (string) ($cat['id'] ?? $id),
-                'nome'    => (string) ($cat['name'] ?? $id),
-                'caminho' => $this->caminho($cat),
-                'folha'   => empty($cat['children_categories']),
-            ] : null;
+            $saida[$id] = $cat ? $this->paraTela($cat, (string) $id) : null;
         }
 
         return $saida;
+    }
+
+    /**
+     * O corpo de `GET /categories/{id}` no formato de `detalhe()`/`detalhes()` (um lugar só, para as duas
+     * não divergirem).
+     *
+     * @return array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool, anunciavel: bool}
+     */
+    private function paraTela(array $cat, string $id): array
+    {
+        $folha = empty($cat['children_categories']);
+
+        return [
+            'id'         => (string) ($cat['id'] ?? $id),
+            'nome'       => (string) ($cat['name'] ?? $id),
+            'caminho'    => $this->caminho($cat),
+            'folha'      => $folha,
+            // Sem o campo, vale o que a folha diz (como na árvore do Publicador).
+            'anunciavel' => $folha && (data_get($cat, 'settings.listing_allowed') ?? true) !== false,
+        ];
     }
 
     /** @return array<int, array{id: string, nome: string}> */

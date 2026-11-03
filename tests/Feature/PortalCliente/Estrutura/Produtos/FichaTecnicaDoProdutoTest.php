@@ -310,6 +310,57 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
     }
 
+    /**
+     * 3ª entrega da trilha (03/11/2026): `gravar(..., exigirObrigatorios: false)` é só da trilha, onde a equipe cadastra
+     * aos poucos e a falta "ficha: x" fica na Lista. O Portal NÃO passa o parâmetro: lá o obrigatório vazio continua 422
+     * e nada grava. Com `false`, o resto da validação é a mesma (valor inválido continua erro por campo).
+     */
+    public function test_o_portal_continua_exigindo_os_obrigatorios_e_so_a_trilha_grava_incompleto(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+        $servico = app(\App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto::class);
+        $ator = \App\Support\Portal\AtorDoPortal::daEquipe(\App\Models\User::factory()->create(['role' => 'admin']));
+        $soOpcional = ['atributos' => [['id' => 'SEAT_HEIGHT', 'valor' => '45', 'unidade' => 'cm']]];
+
+        // O padrão do parâmetro é exigir.
+        $this->assertTrue((new \ReflectionParameter([\App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto::class, 'gravar'], 'exigirObrigatorios'))->getDefaultValue());
+
+        // O Portal (sem o parâmetro): Marca e Material vazios → 422 nos dois, nada gravado.
+        $this->entrarNoPortal($empresa)
+            ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id), $soOpcional)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['atributos.BRAND', 'atributos.MATERIAL']);
+        $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
+
+        // O serviço chamado sem o parâmetro também exige.
+        try {
+            $servico->gravar($empresa, $produto, $soOpcional['atributos'], $ator);
+            $this->fail('sem o parâmetro, o obrigatório vazio tem de barrar');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('atributos.BRAND', $e->errors());
+        }
+        $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
+
+        // A trilha (`false`): grava o que veio, com os obrigatórios em branco.
+        $salvos = $servico->gravar($empresa, $produto, $soOpcional['atributos'], $ator, exigirObrigatorios: false);
+        $this->assertSame(['SEAT_HEIGHT'], array_column($salvos, 'id'));
+        $this->assertSame(['45', 'cm'], [$salvos[0]['valor'], $salvos[0]['unidade']]);
+
+        // Continua SUBSTITUIR: o que não veio sai.
+        $servico->gravar($empresa, $produto, [['id' => 'BRAND', 'valor' => 'Bela Casa']], $ator, exigirObrigatorios: false);
+        $this->assertSame(['BRAND'], EstruturaProdutoAtributo::where('produto_id', $produto->id)->pluck('atributo_id')->all());
+
+        // Valor inválido continua erro por campo, e nada muda.
+        try {
+            $servico->gravar($empresa, $produto, [['id' => 'MATERIAL', 'valor' => '999']], $ator, exigirObrigatorios: false);
+            $this->fail('valor fora da lista tem de barrar mesmo sem exigir os obrigatórios');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertSame(['atributos.MATERIAL'], array_keys($e->errors()));
+        }
+        $this->assertSame(['BRAND' => 'Bela Casa'], EstruturaProdutoAtributo::where('produto_id', $produto->id)->pluck('valor', 'atributo_id')->all());
+    }
+
     public function test_valor_de_lista_invalido_responde_422(): void
     {
         $empresa = $this->empresaDoGabarito();

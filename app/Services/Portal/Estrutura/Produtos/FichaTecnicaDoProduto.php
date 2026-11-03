@@ -87,12 +87,17 @@ class FichaTecnicaDoProduto
     }
 
     /**
+     * `$exigirObrigatorios` (3ª entrega da trilha, 03/11/2026): com `false`, o obrigatório VAZIO não vira erro — a
+     * ficha grava incompleta e a falta "ficha: x" aparece na Lista da trilha, onde a equipe cadastra aos poucos.
+     * O resto da validação é a mesma (valor inválido continua erro por campo). O Portal não passa o parâmetro: lá o
+     * obrigatório continua barrando o salvar.
+     *
      * @param  array<int, mixed>  $recebidos  [{id, valor, unidade, nao_se_aplica, proprio}, ...] como a tela mandou
      * @return array<int, array{id: string, nome: string, valor: ?string, valor_id: ?string, unidade: ?string}>
      *
      * @throws ValidationException
      */
-    public function gravar(Company $empresa, EstruturaProduto $produto, array $recebidos, AtorDoPortal $ator): array
+    public function gravar(Company $empresa, EstruturaProduto $produto, array $recebidos, AtorDoPortal $ator, bool $exigirObrigatorios = true): array
     {
         $categoria = trim((string) $produto->categoria_ml_id);
         if ($categoria === '') {
@@ -129,7 +134,7 @@ class FichaTecnicaDoProduto
             }
 
             if ($normal === null) {
-                if ($campo['obrigatorio']) {
+                if ($campo['obrigatorio'] && $exigirObrigatorios) {
                     $erros["atributos.{$id}"] = "Preencha “{$campo['nome']}”.";
                 }
                 continue;
