@@ -522,3 +522,37 @@ Fazer a resposta tardia contar na competência ORIGINAL exige mexer nas quatro
 réguas juntas (validade, envio, materialização da nota 1 e leitura do bônus) e
 reconsolidar a competência: é fase GSD (toca `DesempenhoScoreService` e snapshot),
 registrada como item 2 da DEV-54.
+
+**42 links de hoje caíram no mês passado — pelo CONECTOR, não pela tela (03/11/2026).**
+Pela tela, o mês selecionado no topo decide o ciclo (`geracao_link.mes` vai no
+POST). Pelo conector MCP (`enviar_formulario` no claude.ai) não existe "mês
+selecionado": o Claude manda o `mes` sozinho, e mandou `2026-10` — leu o "ref.
+out/26" de "nov/26 · ref. out/26" como mês do link. Em 74 s nasceram 31 links
+individuais + 11 de grupo em out/26 · ref. set/26; a resposta dizia só "gerado
+com sucesso" e ninguém viu. Rastro: `nps_survey_events.user_agent = 'Symfony'`
+com IP `160.79.106.x` (Anthropic) = conector; navegador aparece com UA de Chrome
+e com `POST /nps/generate` no `ecf-admin-access.log` (o conector NÃO aparece lá).
+
+Três defeitos apareceram juntos, corrigidos no mesmo commit:
+- **A nota 1 nascia DEFINITIVA.** `NpsImputationService` fechava a competência
+  pelo fim do MÊS; link gerado em 03/11 num ciclo de outubro já nascia "não
+  respondeu" definitivo, e a resposta era descartada no /nps
+  (`surveyIdsComNotaDefinitiva`) — 5 notas 5 sumiram assim. Agora o prazo é o fim
+  do mês OU o `expires_at` do link, o que vier depois (`prazoEncerrado()`). Link
+  sem prorrogação vence no fim do mês: para ele nada muda.
+- **O espelho da resposta de grupo gravava `expires_at = now()->endOfMonth()`.**
+  Resposta em novembro a um link de outubro gravava 30/11, e como
+  `NpsProrrogacaoService` lê a prorrogação do MAIOR `expires_at` do mês, out/26
+  passou a aparecer "Prorrogado até 30/11" (aceitando link novo até lá). Agora o
+  espelho herda o `expires_at` do link de grupo.
+- **A mensagem de sucesso não dizia o ciclo.** Agora diz ("gerado no ciclo
+  out/26 · ref. set/26, válido até 07/11/2026") e a validação do `mes` explica
+  que é o PRIMEIRO mês da etiqueta — o conector lê esse trecho de código.
+
+Correção dos dados em produção (decisão do usuário: "o que é para ser hoje deixa
+para hoje"): os 31 + 11 links e os 14 espelhos foram para nov/26 (validade
+30/11), saíram 175 notas 1 definitivas de out/26 e nasceram 118 provisórias de
+nov/26 pela mesma régua do disparo; o link de nov/26 pendente da Ale Peças (728)
+foi apagado por duplicar o 750, que o cliente respondeu. O bônus não mudou: ele
+lê a resposta por `completed_at`. Backup em `/tmp/nps_backup_mover_nov_261103_153513.json`
+na VPS.

@@ -89,7 +89,7 @@ class NpsGeracaoDuplicidadeTest extends TestCase
 
         $response = $this->gerarLink($admin, $empresa, $template);
 
-        $response->assertSessionHas('success', 'Link NPS gerado com sucesso.');
+        $response->assertSessionHas('success', 'Link NPS gerado no ciclo jul/26 · ref. jun/26, válido até 31/07/2026.');
         $response->assertSessionHas('nps_link');
 
         $this->assertSame(
@@ -181,7 +181,7 @@ class NpsGeracaoDuplicidadeTest extends TestCase
 
         $response = $this->gerarLink($admin, $empresa, $template);
 
-        $response->assertSessionHas('success', 'Link NPS gerado com sucesso.');
+        $response->assertSessionHas('success', 'Link NPS gerado no ciclo jul/26 · ref. jun/26, válido até 31/07/2026.');
         $this->assertSame(
             2,
             NpsSurvey::where('company_id', $empresa->id)->where('template_id', $template->id)->count(),
@@ -206,7 +206,7 @@ class NpsGeracaoDuplicidadeTest extends TestCase
 
         $response = $this->gerarLink($admin, $empresa, $templateY);
 
-        $response->assertSessionHas('success', 'Link NPS gerado com sucesso.');
+        $response->assertSessionHas('success', 'Link NPS gerado no ciclo jul/26 · ref. jun/26, válido até 31/07/2026.');
         $this->assertSame(1, NpsSurvey::where('company_id', $empresa->id)->where('template_id', $templateX->id)->count());
         $this->assertSame(1, NpsSurvey::where('company_id', $empresa->id)->where('template_id', $templateY->id)->count());
     }

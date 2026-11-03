@@ -101,4 +101,35 @@ final class NpsProrrogacaoService
 
         return ['mes' => $atual, 'vale_ate' => $atual->copy()->endOfMonth(), 'prorrogado' => false];
     }
+
+    /**
+     * Etiqueta do ciclo como a tela mostra: "nov/26 · ref. out/26" para o mês
+     * de coleta nov/26. O primeiro mês é o do LINK (coleta); o "ref." é a
+     * competência que a nota avalia, sempre o mês anterior.
+     */
+    public function rotulo(Carbon $mesColeta): string
+    {
+        $mes = $mesColeta->copy()->startOfMonth()->locale('pt_BR');
+
+        return $mes->isoFormat('MMM/YY').' · ref. '.$mes->copy()->subMonthNoOverflow()->isoFormat('MMM/YY');
+    }
+
+    /**
+     * Mensagem de sucesso da geração de link — diz em que ciclo o link nasceu
+     * e até quando vale. 03/11/2026: 42 links nasceram em out/26 pelo conector
+     * (MCP), que escolhe o `mes` sozinho, e ninguém percebeu porque a resposta
+     * dizia só "gerado com sucesso". Com o ciclo na mensagem, quem gera — pessoa
+     * ou Claude — vê na hora se caiu no mês errado.
+     *
+     * @param  array{mes: Carbon, vale_ate: Carbon, prorrogado: bool}  $ciclo
+     */
+    public function mensagemDeGerado(string $oQue, array $ciclo): string
+    {
+        return sprintf(
+            '%s gerado no ciclo %s, válido até %s.',
+            $oQue,
+            $this->rotulo($ciclo['mes']),
+            $ciclo['vale_ate']->format('d/m/Y'),
+        );
+    }
 }

@@ -146,7 +146,7 @@ class NpsImputationService
         // link do NPS vale até 23:59:59 do último dia do mês
         // (`expires_at = endOfMonth`), então usar `gte` marcaria definitivo
         // às 00:00 do último dia enquanto o cliente ainda tem 24h de prazo.
-        $competenciaFechada = now()->startOfDay()->gt($competencia->copy()->endOfMonth()->startOfDay());
+        $competenciaFechada = $this->prazoEncerrado($competencia, $survey->expires_at);
 
         // ─── Promoção: linhas já existentes que ainda estavam provisórias
         // viram definitivo quando a competência fecha. Nunca mexe em linha
@@ -284,7 +284,7 @@ class NpsImputationService
         // Mesma régua `gt` do individual (ver comentário lá): o link vale até
         // 23:59:59 do último dia, então `gte` congelaria o 1 com 24h de prazo
         // ainda correndo.
-        $competenciaFechada = now()->startOfDay()->gt($competencia->copy()->endOfMonth()->startOfDay());
+        $competenciaFechada = $this->prazoEncerrado($competencia, $groupSurvey->expires_at);
 
         if ($competenciaFechada) {
             $paraPromover = NpsImputedAssignment::where('group_survey_id', $groupSurvey->id)
@@ -435,6 +435,30 @@ class NpsImputationService
         });
 
         return $stats;
+    }
+
+    /**
+     * O "não respondeu" de um link só pode virar DEFINITIVO depois que o
+     * cliente perdeu o prazo — o fim do mês da competência OU a validade do
+     * próprio link, o que vier DEPOIS.
+     *
+     * 03/11/2026: link gerado num ciclo prorrogado (out/26 valendo até 07/11,
+     * `NpsProrrogacaoService`) nascia com a nota 1 já definitiva, porque o mês
+     * estava encerrado — e a resposta que chegava depois era descartada no /nps
+     * (`surveyIdsComNotaDefinitiva`). Link sem prorrogação vence no fim do mês,
+     * então para ele nada muda. Linha já definitiva continua intocada (D2).
+     */
+    private function prazoEncerrado(Carbon $competencia, ?Carbon $expiresAt): bool
+    {
+        $fim = $competencia->copy()->endOfMonth();
+
+        if ($expiresAt !== null && $expiresAt->gt($fim)) {
+            $fim = $expiresAt->copy();
+        }
+
+        // Comparação por DATA e `gt` (ver docblock da classe): o link vale até
+        // 23:59:59 do último dia do prazo.
+        return now()->startOfDay()->gt($fim->copy()->startOfDay());
     }
 
     /**

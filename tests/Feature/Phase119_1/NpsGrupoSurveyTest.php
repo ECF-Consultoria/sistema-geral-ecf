@@ -203,7 +203,7 @@ class NpsGrupoSurveyTest extends TestCase
             'template_id'      => $template->id,
         ]);
 
-        $response->assertSessionHas('success', 'Link de NPS do grupo gerado com sucesso.');
+        $response->assertSessionHas('success', 'Link de NPS do grupo gerado no ciclo jul/26 · ref. jun/26, válido até 31/07/2026.');
         $response->assertSessionHas('nps_link');
 
         $this->assertSame(1, NpsGroupSurvey::where('company_group_id', $grupo->id)->count());

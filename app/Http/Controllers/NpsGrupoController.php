@@ -99,7 +99,11 @@ class NpsGrupoController extends Controller
         $data = $request->validate([
             'company_group_id' => 'required|exists:company_groups,id',
             'template_id'      => 'required|exists:nps_templates,id',
-            // 03/11/2026 · mês de COLETA do link. Ausente = mês corrente.
+            // 03/11/2026 · mês de COLETA do link (AAAA-MM). É o PRIMEIRO mês da
+            // etiqueta do ciclo, nunca o "ref.": para "nov/26 · ref. out/26"
+            // mande 2026-11. Ausente = mês atual — é o certo para link novo.
+            // Mês passado só serve para ciclo prorrogado ainda no prazo, e a
+            // nota passa a contar NAQUELE ciclo antigo.
             'mes'              => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
         ]);
 
@@ -183,7 +187,7 @@ class NpsGrupoController extends Controller
         }
 
         return back()->with([
-            'success'  => 'Link de NPS do grupo gerado com sucesso.',
+            'success'  => $this->prorrogacao->mensagemDeGerado('Link de NPS do grupo', $ciclo),
             'nps_link' => route('nps.grupo.respond', $groupSurvey->token),
         ]);
     }

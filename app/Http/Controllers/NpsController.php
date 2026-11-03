@@ -1151,9 +1151,7 @@ class NpsController extends Controller
             // `mes` no POST (o servidor confere de novo).
             'geracao_link' => [
                 'mes'      => $cicloLinkNovo['mes']->format('Y-m'),
-                'rotulo'   => $cicloLinkNovo['mes']->copy()->locale('pt_BR')->isoFormat('MMM/YY')
-                    .' · ref. '
-                    .$cicloLinkNovo['mes']->copy()->subMonthNoOverflow()->locale('pt_BR')->isoFormat('MMM/YY'),
+                'rotulo'   => $this->prorrogacao->rotulo($cicloLinkNovo['mes']),
                 'vale_ate' => $cicloLinkNovo['vale_ate']->format('d/m/Y'),
             ],
             // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
@@ -1657,7 +1655,11 @@ class NpsController extends Controller
             // (default por priority/serviço) preservando o comportamento
             // original.
             'template_id' => 'nullable|integer|exists:nps_templates,id',
-            // 03/11/2026 · mês de COLETA do link. Ausente = mês corrente.
+            // 03/11/2026 · mês de COLETA do link (AAAA-MM). É o PRIMEIRO mês da
+            // etiqueta do ciclo, nunca o "ref.": para "nov/26 · ref. out/26"
+            // mande 2026-11. Ausente = mês atual — é o certo para link novo.
+            // Mês passado só serve para ciclo prorrogado ainda no prazo, e a
+            // nota passa a contar NAQUELE ciclo antigo.
             'mes'         => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
         ]);
 
@@ -1835,7 +1837,7 @@ class NpsController extends Controller
         }
 
         return back()->with([
-            'success'  => 'Link NPS gerado com sucesso.',
+            'success'  => $this->prorrogacao->mensagemDeGerado('Link NPS', $ciclo),
             'nps_link' => route('nps.respond', $survey->token),
         ]);
     }

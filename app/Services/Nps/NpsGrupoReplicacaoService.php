@@ -86,7 +86,13 @@ class NpsGrupoReplicacaoService
                     'token'           => Str::uuid()->toString(),
                     'company_id'      => $incluida['company_id'],
                     'generated_by'    => $groupSurvey->generated_by,
-                    'expires_at'      => now()->endOfMonth(),
+                    // 03/11/2026 — validade do PRÓPRIO link de grupo. Era
+                    // `now()->endOfMonth()`: resposta em 03/11 a um link de
+                    // out/26 prorrogado até 07/11 gravava 30/11, e
+                    // `NpsProrrogacaoService` (que lê a prorrogação do maior
+                    // `expires_at` do mês) passou a dizer "out/26 prorrogado
+                    // até 30/11".
+                    'expires_at'      => $groupSurvey->expires_at ?? now()->endOfMonth(),
                     'status'          => 'pending',
                     'auto_generated'  => false,
                     'template_id'     => $groupSurvey->template_id,

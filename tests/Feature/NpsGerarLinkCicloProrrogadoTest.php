@@ -6,12 +6,15 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\NpsCiclo;
 use App\Models\NpsGroupSurvey;
+use App\Models\NpsImputedAssignment;
 use App\Models\NpsSurvey;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\Nps\NpsImputationService;
+use App\Services\Nps\NpsProrrogacaoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -138,12 +141,20 @@ class NpsGerarLinkCicloProrrogadoTest extends TestCase
 
         $this->actingAs($this->admin())
             ->post('/nps/generate', ['company_id' => $empresa->id, 'template_id' => $template->id, 'mes' => '2026-10'])
-            ->assertSessionHas('nps_link');
+            ->assertSessionHas('nps_link')
+            // Quem gera (pessoa ou Claude pelo conector) vê o ciclo na resposta.
+            ->assertSessionHas('success', 'Link NPS gerado no ciclo out/26 · ref. set/26, válido até 07/11/2026.');
 
         $novo = NpsSurvey::where('company_id', $empresa->id)->sole();
         $this->assertSame('2026-10-01', $novo->month_reference->toDateString(), 'nasce no ciclo de outubro, não no de novembro.');
         $this->assertSame('2026-11-07 23:59:59', $novo->expires_at->format('Y-m-d H:i:s'));
         $this->assertFalse((bool) $novo->auto_generated);
+
+        // Link que acabou de nascer não pode já ter "não respondeu" DEFINITIVO
+        // (caso de 03/11: a nota 1 nascia definitiva e a resposta era descartada).
+        $notas = NpsImputedAssignment::where('survey_id', $novo->id)->get();
+        $this->assertNotEmpty($notas, 'o piso de nota 1 provisória continua nascendo no disparo.');
+        $this->assertSame([NpsImputedAssignment::STATUS_PROVISORIO], $notas->pluck('status')->unique()->values()->all());
 
         // O cliente responde dentro da prorrogação — sem sessão: resposta com
         // usuário interno logado é bloqueada de propósito (Fase 96).
@@ -162,7 +173,8 @@ class NpsGerarLinkCicloProrrogadoTest extends TestCase
 
         $this->actingAs($this->admin())
             ->post('/nps/generate', ['company_id' => $empresa->id, 'template_id' => $template->id])
-            ->assertSessionHas('nps_link');
+            ->assertSessionHas('nps_link')
+            ->assertSessionHas('success', 'Link NPS gerado no ciclo nov/26 · ref. out/26, válido até 30/11/2026.');
 
         $novo = NpsSurvey::where('company_id', $empresa->id)->sole();
         $this->assertNull($novo->month_reference);
@@ -235,6 +247,94 @@ class NpsGerarLinkCicloProrrogadoTest extends TestCase
             ->assertSessionHas('nps_link_existente', route('nps.respond', $existente->token));
 
         $this->assertSame(1, NpsSurvey::where('company_id', $empresa->id)->count());
+    }
+
+    // ─── Nota 1 do "não respondeu" ───────────────────────────────────────
+
+    #[Test]
+    public function nota_1_do_link_prorrogado_so_vira_definitiva_depois_da_prorrogacao(): void
+    {
+        $template = $this->template();
+        $this->linkDeOutubro($template);
+        $empresa = $this->empresaCoberta($template);
+
+        $this->actingAs($this->admin())
+            ->post('/nps/generate', ['company_id' => $empresa->id, 'template_id' => $template->id, 'mes' => '2026-10'])
+            ->assertSessionHas('nps_link');
+
+        $novo      = NpsSurvey::where('company_id', $empresa->id)->sole();
+        $imputacao = app(NpsImputationService::class);
+        $status    = fn () => NpsImputedAssignment::where('survey_id', $novo->id)->pluck('status')->unique()->values()->all();
+
+        // Último dia da prorrogação: o cliente ainda pode responder.
+        Carbon::setTestNow(Carbon::parse('2026-11-07 18:00:00'));
+        $imputacao->materializar($novo->fresh());
+        $this->assertSame([NpsImputedAssignment::STATUS_PROVISORIO], $status());
+
+        // Prazo vencido sem resposta: aí sim vira definitiva.
+        Carbon::setTestNow(Carbon::parse('2026-11-08 09:30:00'));
+        $imputacao->materializar($novo->fresh());
+        $this->assertSame([NpsImputedAssignment::STATUS_DEFINITIVO], $status());
+    }
+
+    #[Test]
+    public function link_sem_prorrogacao_continua_virando_definitivo_ao_fechar_o_mes(): void
+    {
+        $template = $this->template();
+        $empresa  = $this->empresaCoberta($template);
+        $outubro  = $this->linkDeOutubro($template, $empresa, '2026-10-31 23:59:59');
+
+        app(NpsImputationService::class)->materializar($outubro);
+
+        $this->assertSame(
+            [NpsImputedAssignment::STATUS_DEFINITIVO],
+            NpsImputedAssignment::where('survey_id', $outubro->id)->pluck('status')->unique()->values()->all(),
+            'link que venceu em 31/10 segue a régua de sempre: em 03/11 a nota 1 já é definitiva.'
+        );
+    }
+
+    #[Test]
+    public function resposta_de_grupo_do_ciclo_prorrogado_herda_a_validade_do_link(): void
+    {
+        $servico  = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $template = $this->template();
+        $template->serviceScopes()->attach([$servico]);
+        $this->linkDeOutubro($template);
+
+        $grupo        = CompanyGroup::create(['name' => 'Grupo que responde']);
+        $estrategista = User::factory()->create();
+        foreach ([1, 2] as $_) {
+            $empresa = Company::factory()->create(['active' => true, 'company_group_id' => $grupo->id]);
+            $this->criarContrato($empresa->id, $servico, true);
+            $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servico);
+        }
+
+        $this->actingAs($this->admin())
+            ->post(route('nps.grupo.generate'), [
+                'company_group_id' => $grupo->id,
+                'template_id'      => $template->id,
+                'mes'              => '2026-10',
+            ])
+            ->assertSessionHas('success', 'Link de NPS do grupo gerado no ciclo out/26 · ref. set/26, válido até 07/11/2026.');
+
+        $link = NpsGroupSurvey::where('company_group_id', $grupo->id)->sole();
+
+        $this->app['auth']->forgetGuards();
+        $this->post(route('nps.grupo.submit', $link->token), $this->resposta($template))->assertOk();
+
+        $espelhos = NpsSurvey::where('group_survey_id', $link->id)->get();
+        $this->assertCount(2, $espelhos);
+        foreach ($espelhos as $espelho) {
+            $this->assertSame('2026-10-01', $espelho->month_reference->toDateString());
+            $this->assertSame('2026-11-07 23:59:59', $espelho->expires_at->format('Y-m-d H:i:s'),
+                'a cópia por empresa vale o mesmo que o link de grupo, não o fim do mês da resposta.');
+        }
+
+        // Era isto que fazia out/26 aparecer "Prorrogado até 30/11".
+        $this->assertSame(
+            '2026-11-07 23:59:59',
+            app(NpsProrrogacaoService::class)->prorrogadoAte(Carbon::parse('2026-10-01'))->format('Y-m-d H:i:s')
+        );
     }
 
     // ─── Tela ────────────────────────────────────────────────────────────
