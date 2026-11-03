@@ -42,6 +42,22 @@ class HubspotApiClient
     }
 
     /**
+     * Quick 261103-hsf (DEV-55) — PATCH /crm/v3/objects/deals/{id} mudando só
+     * o `dealstage`. Único método de ESCRITA do client: quem chama
+     * (`AvancarDealHubspotJob`) já decidiu que o deal pode avançar.
+     *
+     * @throws \Illuminate\Http\Client\RequestException em 4xx/5xx
+     */
+    public function atualizarEtapaDoDeal(string $dealId, string $stageId): void
+    {
+        $res = Http::withToken($this->token)
+            ->patch(self::BASE . "/crm/v3/objects/deals/{$dealId}", [
+                'properties' => ['dealstage' => $stageId],
+            ]);
+        $res->throw();
+    }
+
+    /**
      * GET /crm/v3/objects/deals/{id}?properties=...
      *
      * @param  string         $id          objectId do deal no HubSpot

@@ -136,9 +136,17 @@ class HubspotWebhookController extends Controller
         // Phase 34 hotfix — aceita CSV de stage IDs porque a conta HubSpot tem
         // multiplos pipelines (Polos / Infoprodutos / Sales default) e cada um
         // tem seu proprio dealstage id de "Fechado Ganho".
+        //
+        // Quick 261103-hsf (DEV-55) — "Contrato Pendente" do Pipeline
+        // Consultoria também cria a empresa: é a coluna em que o Comercial
+        // passou a entregar o cliente ao sistema. Quando o mesmo deal chegar
+        // depois em Ganho (movido pelo próprio sistema ao assinar), cai na
+        // idempotência logo abaixo — não duplica.
         $stagesGatilho = collect(explode(',', (string) config('services.hubspot.stage_fechado_ganho_id')))
+            ->push((string) config('services.hubspot.stage_contrato_pendente_id'))
             ->map(fn ($s) => trim($s))
             ->filter()
+            ->unique()
             ->all();
 
         // ── Filtro: so processa deal.propertyChange + dealstage ∈ stagesGatilho ─

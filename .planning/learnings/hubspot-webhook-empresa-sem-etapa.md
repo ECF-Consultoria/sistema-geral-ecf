@@ -62,3 +62,19 @@ E conferir `config('services.hubspot.webhook_user_id')` antes de suspeitar do Hu
   foi para Ganho 3 vezes e só a primeira criou a empresa (473), o que é correto.
 - Gravação na VPS via `plink` é bloqueada pelo classificador (`Remote Shell Writes`). A leitura passa.
   Para gravar, entregar os comandos ao usuário.
+
+## Fluxo do Pipeline Consultoria (desde a quick 261103-hsf, DEV-55)
+
+- A empresa entra no sistema quando o deal chega em **Contrato Pendente** (`1470731063`), não
+  mais só em Ganho. Os gatilhos de Ganho dos outros pipelines continuam valendo.
+- O sistema **escreve** no HubSpot: contrato enviado (`aguardando_assinaturas`) move o deal para
+  **Contrato Enviado** (`contractsent`); contrato assinado move para **Ganho** (`closedwon`). Quem
+  faz isso é `ContratoAssinaturaHubspotObserver` → `AvancarDealHubspotJob` (fila `high`).
+- O job só avança e só no pipeline `default`. Deal em Perdido nunca é mexido.
+- O deal é o do **último `HubspotEvento` processado** da empresa, não `companies.hubspot_deal_id`
+  (essa coluna segue "só preenche se vazio" e guarda o deal antigo de cliente que volta).
+- Desligar a escrita sem deploy: `HUBSPOT_AVANCAR_DEAL_ATIVO=false` + `config:cache` + `queue:restart`.
+- "Não moveu o deal": procurar `[HubSpot Avançar Deal]` no log `ecf-webhooks`. Cada saída silenciosa
+  (sem deal, outro pipeline, já adiante, desligado) tem uma linha própria.
+- Se o Comercial criar ou renomear colunas, os IDs mudam: medir de novo com
+  `GET /crm/v3/pipelines/deals` e ajustar as variáveis `HUBSPOT_STAGE_*` no `.env`.

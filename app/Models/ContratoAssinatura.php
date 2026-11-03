@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Observers\ContratoAssinaturaHubspotObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,6 +46,9 @@ use Spatie\Activitylog\Traits\LogsActivity;
  *                              separada de recusa do cliente; detalhe em
  *                              `erro_mensagem`.
  */
+// Quick 261103-hsf (DEV-55) — move o deal no HubSpot quando o contrato é
+// enviado/assinado (ver docblock do Observer).
+#[ObservedBy(ContratoAssinaturaHubspotObserver::class)]
 class ContratoAssinatura extends Model
 {
     use HasFactory, LogsActivity;

@@ -149,6 +149,19 @@ return [
         // `hubspot:criar-usuario-sistema --apply` — nunca um admin real (D-17
         // proíbe: geraria histórico falso na timeline da Fase 143).
         'webhook_user_id'        => env('HUBSPOT_WEBHOOK_USER_ID'),
+        // Quick 261103-hsf (DEV-55) — novo fluxo do Pipeline Consultoria. A
+        // empresa entra no sistema em "Contrato Pendente" e o próprio sistema
+        // move o deal para "Contrato Enviado" (contrato enviado ao cliente) e
+        // "Ganho" (contrato assinado). IDs MEDIDOS na conta real em 03/11/2026
+        // via GET /crm/v3/pipelines/deals — não são adivinhação.
+        // `avancar_deal_ativo=false` desliga só a escrita no HubSpot, sem deploy
+        // (config:cache + queue:restart depois de mexer no .env).
+        'pipeline_consultoria_id'      => env('HUBSPOT_PIPELINE_CONSULTORIA_ID', 'default'),
+        'stage_contrato_pendente_id'   => env('HUBSPOT_STAGE_CONTRATO_PENDENTE_ID', '1470731063'),
+        'stage_contrato_enviado_id'    => env('HUBSPOT_STAGE_CONTRATO_ENVIADO_ID', 'contractsent'),
+        'stage_ganho_consultoria_id'   => env('HUBSPOT_STAGE_GANHO_CONSULTORIA_ID', 'closedwon'),
+        'stage_perdido_consultoria_id' => env('HUBSPOT_STAGE_PERDIDO_CONSULTORIA_ID', 'closedlost'),
+        'avancar_deal_ativo'           => (bool) env('HUBSPOT_AVANCAR_DEAL_ATIVO', true),
         'props' => [
             // Phase 111 Plan 111-01 (HUB-API-01) — deal/company/contact ganham
             // props ampliadas do handoff Comercial v20.0 (só ADICIONA chaves;
