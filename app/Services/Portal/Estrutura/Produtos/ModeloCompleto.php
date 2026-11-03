@@ -57,6 +57,14 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  * letras do prefixo) e o nome dela; {@see self::categoriasDoArquivo()} devolve o código inteiro.
  *
  * A importação é {@see ImportadorModeloCompleto}: as duas que já existiam, na ordem certa.
+ *
+ * ### O perfil da trilha (03/11/2026, F7 — "Planilha por categoria")
+ * A trilha de produtos baixa o MESMO arquivo, por um perfil aditivo ({@see self::PERFIL_TRILHA}; o padrão é o do
+ * Portal, igual a antes): a ficha sai de `definicao()` — SEM `definicaoComExplicacoes()`, que enfileira a IA das
+ * explicações ao baixar —, o produto ganha o 2º eixo (as quatro colunas de variação, {@see self::CAMPOS_ANTES_DA_TRILHA}),
+ * a marca é {@see self::MARCA_DA_TRILHA}, as instruções são próprias (nenhuma cita o Portal nem outra tela) e a
+ * categoria precisa ser folha E anunciável, com a aba cabendo nas {@see ImportadorFichasTecnicas::MAX_COLUNAS} colunas
+ * que o leitor lê. Quem lê esse arquivo de volta é `App\Services\Trilha\PlanilhaDaTrilha`, não o importador do Portal.
  */
 class ModeloCompleto
 {
@@ -66,6 +74,25 @@ class ModeloCompleto
 
     /** A1 da aba oculta: é por ela que a importação reconhece o modelo. */
     public const MARCA = 'modelo-completo-v1';
+
+    /** Os perfis do arquivo: o do Portal (o de sempre) e o da trilha (F7, 03/11/2026). */
+    public const PERFIL_PORTAL = 'portal';
+    public const PERFIL_TRILHA = 'trilha';
+
+    /** A marca do arquivo da trilha: o importador do Portal não o reconhece, e a trilha não reconhece o do Portal. */
+    public const MARCA_DA_TRILHA = 'trilha-planilha-v1';
+
+    /**
+     * As colunas do produto no perfil da trilha: o 2º eixo (cor E tamanho, contrato da F4) logo depois da variação.
+     * Lá a coluna "Variação" é o VALOR da variação (nunca o ordinal do modelo antigo).
+     */
+    public const CAMPOS_ANTES_DA_TRILHA = ['grupo', 'codigo', 'eixo', 'variacao', 'eixo_2', 'valor_2', 'nome', 'titulo', 'familia', 'ambientes'];
+
+    /** Quantas linhas de produtos o arquivo da trilha aceita de uma vez (a volta é síncrona: medida no teste de custo). */
+    public const MAX_LINHAS_DA_TRILHA = 500;
+
+    /** Os cabeçalhos das duas colunas do 2º eixo (só no perfil da trilha). */
+    public const CABECALHOS_DO_2O_EIXO = ['eixo_2' => 'Tipo da 2ª variação', 'valor_2' => '2ª variação'];
 
     /** Quantas categorias a pessoa escolhe por modelo vazio. */
     public const MAX_CATEGORIAS = 10;
@@ -133,6 +160,9 @@ class ModeloCompleto
         'titulo'    => 'Como o produto aparece para quem procura. Até 60 caracteres.',
         'familia'   => 'A linha ou coleção do produto.',
         'ambientes' => 'Onde o produto é usado. Mais de um: separe com /.',
+        // Só no perfil da trilha.
+        'eixo_2'    => 'Com cor E tamanho: o segundo tipo (ex.: Tamanho). Em branco se o produto varia por um tipo só.',
+        'valor_2'   => 'A segunda variação desta linha (ex.: M). Em branco se o produto varia por um tipo só.',
         'custo'     => 'Quanto custa uma unidade, em reais. Só o número.',
         'estoque'   => 'Quantas unidades você tem. Só o número.',
         'descricao' => 'Texto livre sobre o produto.',
@@ -147,7 +177,10 @@ class ModeloCompleto
     /** O que nunca vai para uma célula ou nota: qualquer termo que conte para onde o cadastro vai. */
     private const NAO_VAI = '/mercado|an[uú]nci|publica|\bmlb|\bml\b/iu';
 
-    private const LARGURAS = ['grupo' => 18, 'codigo' => 14, 'eixo' => 17, 'variacao' => 18, 'nome' => 32, 'titulo' => 40, 'familia' => 24, 'ambientes' => 28,
+    /** No perfil da trilha, também nada que cite o Portal (a trilha o substitui: decisão do usuário de 03/11/2026). */
+    private const NAO_VAI_NA_TRILHA = '/portal/iu';
+
+    private const LARGURAS = ['grupo' => 18, 'codigo' => 14, 'eixo' => 17, 'variacao' => 18, 'eixo_2' => 20, 'valor_2' => 16, 'nome' => 32, 'titulo' => 40, 'familia' => 24, 'ambientes' => 28,
         'custo' => 13, 'estoque' => 13, 'descricao' => 50, 'categoria' => 28];
 
     public function __construct(
@@ -167,16 +200,17 @@ class ModeloCompleto
 
     /**
      * As colunas do produto, na ordem: cada uma com a `chave` (o campo do modelo de Produtos, ou
-     * `vol:N:medida`), o `titulo` do cabeçalho e a `largura`.
+     * `vol:N:medida`), o `titulo` do cabeçalho e a `largura`. `$doisEixos` (perfil da trilha) põe as duas
+     * colunas do 2º eixo depois da variação.
      *
      * @return list<array{chave: string, titulo: string, largura: int}>
      */
-    public static function colunas(int $volumes = self::VOLUMES_NO_MODELO, bool $comCategoria = false): array
+    public static function colunas(int $volumes = self::VOLUMES_NO_MODELO, bool $comCategoria = false, bool $doisEixos = false): array
     {
-        $porCampo = array_combine(ModeloProdutosXlsx::CAMPOS, ModeloProdutosXlsx::CABECALHOS);
+        $porCampo = array_combine(ModeloProdutosXlsx::CAMPOS, ModeloProdutosXlsx::CABECALHOS) + self::CABECALHOS_DO_2O_EIXO;
         $campo = fn (string $c) => ['chave' => $c, 'titulo' => $porCampo[$c], 'largura' => self::LARGURAS[$c]];
 
-        $saida = array_map($campo, self::CAMPOS_ANTES);
+        $saida = array_map($campo, $doisEixos ? self::CAMPOS_ANTES_DA_TRILHA : self::CAMPOS_ANTES);
         for ($n = 1; $n <= max(1, min($volumes, self::MAX_VOLUMES)); $n++) {
             foreach (array_keys(self::MEDIDAS) as $m) {
                 $saida[] = ['chave' => "vol:{$n}:{$m}", 'titulo' => self::tituloDoVolume($n, $m), 'largura' => 22];
@@ -187,21 +221,22 @@ class ModeloCompleto
     }
 
     /** Os cabeçalhos das colunas do produto, na ordem. */
-    public static function cabecalhosDoProduto(int $volumes = self::VOLUMES_NO_MODELO, bool $comCategoria = false): array
+    public static function cabecalhosDoProduto(int $volumes = self::VOLUMES_NO_MODELO, bool $comCategoria = false, bool $doisEixos = false): array
     {
-        return array_column(self::colunas($volumes, $comCategoria), 'titulo');
+        return array_column(self::colunas($volumes, $comCategoria, $doisEixos), 'titulo');
     }
 
     /**
      * Cabeçalho (sem caixa, acento nem "*") => chave da coluna, para QUALQUER quantidade de volumes e com
-     * a Categoria: é por aqui que a importação sabe de que é cada coluna do produto.
+     * a Categoria: é por aqui que a importação sabe de que é cada coluna do produto. `$doisEixos`: com as
+     * duas colunas do 2º eixo (o perfil da trilha).
      *
      * @return array<string, string>
      */
-    public static function chavesDosCabecalhos(): array
+    public static function chavesDosCabecalhos(bool $doisEixos = false): array
     {
         $saida = [];
-        foreach (self::colunas(self::MAX_VOLUMES, true) as $c) {
+        foreach (self::colunas(self::MAX_VOLUMES, true, $doisEixos) as $c) {
             $saida[PlanilhaDasFichasTecnicas::chave(str_replace('*', '', $c['titulo']))] = $c['chave'];
         }
 
@@ -232,13 +267,19 @@ class ModeloCompleto
     /**
      * O modelo VAZIO das categorias escolhidas.
      *
+     * `$perfil` ({@see self::PERFIL_TRILHA}, F7 da trilha): a ficha sem as explicações (nenhuma IA enfileirada ao
+     * baixar), o 2º eixo, a marca e as instruções da trilha, e duas recusas a mais — a categoria que não é anunciável e
+     * a que passaria das colunas que o leitor lê (ele corta o resto em silêncio). O padrão é o do Portal, igual a antes.
+     *
      * @param  list<string>  $ids  códigos das categorias escolhidas (só a última de cada ramo serve)
      * @return array{planilha: ?Spreadsheet, abas: list<array{id: string, nome: string, aba: string, campos: int}>, recusadas: list<array{id: string, motivo: string}>}
      */
-    public function gerar(array $ids): array
+    public function gerar(array $ids, string $perfil = self::PERFIL_PORTAL): array
     {
+        $trilha = $perfil === self::PERFIL_TRILHA;
         $ids = array_slice(array_values(array_unique(array_map(fn ($i) => mb_strtoupper(trim((string) $i)), $ids))), 0, self::MAX_CATEGORIAS);
         $detalhes = $ids === [] ? [] : $this->categorias->detalhes($ids);
+        $doProduto = count(self::colunas(self::VOLUMES_NO_MODELO, false, $trilha));
 
         $dados = [];
         $recusadas = [];
@@ -252,15 +293,24 @@ class ModeloCompleto
                 $recusadas[] = ['id' => $id, 'motivo' => "“{$d['nome']}” ainda tem categorias dentro dela. Escolha uma mais específica."];
                 continue;
             }
-            $campos = $this->camposDa($id);
+            if ($trilha && ! ($d['anunciavel'] ?? true)) {
+                $recusadas[] = ['id' => $id, 'motivo' => "“{$d['nome']}” não aceita produtos novos agora. Escolha outra categoria."];
+                continue;
+            }
+            $campos = $this->camposDa($id, comExplicacoes: ! $trilha);
             if ($campos === []) {
                 $recusadas[] = ['id' => $id, 'motivo' => "A ficha técnica de “{$d['nome']}” não está disponível agora. Tente de novo em instantes."];
+                continue;
+            }
+            if ($trilha && $doProduto + count($campos) > ImportadorFichasTecnicas::MAX_COLUNAS) {
+                $recusadas[] = ['id' => $id, 'motivo' => "“{$d['nome']}” tem campos demais para caber numa planilha ("
+                    .($doProduto + count($campos)).' colunas; o limite é '.ImportadorFichasTecnicas::MAX_COLUNAS.'). Cadastre os produtos dela pela tela.'];
                 continue;
             }
             $dados[] = ['id' => $id, 'nome' => $d['nome'], 'caminho' => implode(' > ', array_column($d['caminho'], 'nome')), 'campos' => $campos, 'linhas' => []];
         }
 
-        return ['recusadas' => $recusadas] + $this->montar($dados, [], false);
+        return ['recusadas' => $recusadas] + $this->montar($dados, [], false, $perfil);
     }
 
     /**
@@ -317,12 +367,10 @@ class ModeloCompleto
     }
 
     /**
-     * As categorias de um arquivo do modelo completo: nome da aba => {id, nome}. `id` nulo = a aba dos
-     * produtos sem categoria. Vazio = não é o modelo completo (ou a aba oculta foi apagada).
-     *
-     * @return array<string, array{id: ?string, nome: string}>
+     * A marca que o arquivo traz na aba oculta (A1 de "Categorias"), ou null quando não há essa aba ou o arquivo não
+     * abre. É o que separa "não é deste sistema" de "é o arquivo de outro perfil" (a trilha recusa o do Portal).
      */
-    public static function categoriasDoArquivo(string $caminho): array
+    public static function marcaDoArquivo(string $caminho): ?string
     {
         try {
             $leitor = IOFactory::createReader('Xlsx');
@@ -330,7 +378,31 @@ class ModeloCompleto
             $leitor->setLoadSheetsOnly([self::ABA_CATEGORIAS]);
             $planilha = $leitor->load($caminho);
             $folha = $planilha->getSheetByName(self::ABA_CATEGORIAS);
-            if ($folha === null || trim((string) $folha->getCell('A1')->getValue()) !== self::MARCA) {
+            $marca = $folha === null ? null : trim((string) $folha->getCell('A1')->getValue());
+            $planilha->disconnectWorksheets();
+
+            return $marca === '' ? null : $marca;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * As categorias de um arquivo do modelo completo: nome da aba => {id, nome}. `id` nulo = a aba dos
+     * produtos sem categoria. Vazio = não é o modelo completo (ou a aba oculta foi apagada). `$marca`: a do
+     * perfil que se espera ({@see self::MARCA_DA_TRILHA} na trilha); o padrão é a do Portal.
+     *
+     * @return array<string, array{id: ?string, nome: string}>
+     */
+    public static function categoriasDoArquivo(string $caminho, string $marca = self::MARCA): array
+    {
+        try {
+            $leitor = IOFactory::createReader('Xlsx');
+            $leitor->setReadDataOnly(true);
+            $leitor->setLoadSheetsOnly([self::ABA_CATEGORIAS]);
+            $planilha = $leitor->load($caminho);
+            $folha = $planilha->getSheetByName(self::ABA_CATEGORIAS);
+            if ($folha === null || trim((string) $folha->getCell('A1')->getValue()) !== $marca) {
                 return [];
             }
 
@@ -363,13 +435,17 @@ class ModeloCompleto
      * (`ficha`, `fora` = medidas do produto fora da caixa, `detalhes`), o `grupo` e a `explicacao` (o
      * mesmo "o que é isto?" da tela). Vazio quando a categoria não respondeu.
      *
+     * `$comExplicacoes = false` (perfil da trilha): a definição pura, sem a `explicacao` — a que vem com ela enfileira a
+     * IA das explicações dos campos que ainda não têm, e baixar a planilha não pode gastar IA (D10/D20 da trilha).
+     *
      * @return list<array<string, mixed>>
      */
-    private function camposDa(string $id): array
+    private function camposDa(string $id, bool $comExplicacoes = true): array
     {
         try {
             $campos = [];
-            foreach ($this->definicao->definicaoComExplicacoes($id) as $grupo) {
+            $grupos = $comExplicacoes ? $this->definicao->definicaoComExplicacoes($id) : $this->definicao->definicao($id);
+            foreach ($grupos as $grupo) {
                 $bloco = match (true) {
                     (bool) ($grupo['medidas_do_produto'] ?? false) => 'fora',
                     ($grupo['grupo'] ?? '') === FichaTecnicaDaCategoria::GRUPO_MAIS_DETALHES => 'detalhes',
@@ -391,7 +467,7 @@ class ModeloCompleto
     /** O bloco de uma coluna do produto: o produto em si, o produto embalado (volumes) ou custo/estoque/descrição. */
     private static function blocoDoProduto(string $chave): string
     {
-        return str_starts_with($chave, 'vol:') ? 'embalado' : (in_array($chave, self::CAMPOS_ANTES, true) ? 'produto' : 'venda');
+        return str_starts_with($chave, 'vol:') ? 'embalado' : (in_array($chave, self::CAMPOS_ANTES_DA_TRILHA, true) ? 'produto' : 'venda');
     }
 
     /** O "como preencher" curto de uma coluna do produto (a linha de ajuda). */
@@ -419,8 +495,8 @@ class ModeloCompleto
             return ['c' => 'comprimento', 'l' => 'largura', 'a' => 'altura', 'kg' => 'peso'][explode(':', $chave)[2]] ?? null;
         }
 
-        return ['codigo' => 'ref', 'eixo' => 'eixo', 'variacao' => 'valor', 'nome' => 'nome', 'titulo' => 'titulo', 'familia' => 'familia', 'ambientes' => 'ambientes',
-            'custo' => 'custo', 'estoque' => 'estoque', 'descricao' => 'descricao', 'categoria' => 'categoria'][$chave] ?? null;
+        return ['codigo' => 'ref', 'eixo' => 'eixo', 'variacao' => 'valor', 'eixo_2' => 'eixo', 'valor_2' => 'valor', 'nome' => 'nome', 'titulo' => 'titulo',
+            'familia' => 'familia', 'ambientes' => 'ambientes', 'custo' => 'custo', 'estoque' => 'estoque', 'descricao' => 'descricao', 'categoria' => 'categoria'][$chave] ?? null;
     }
 
     /** O texto pode ir para a planilha do cliente? (nada que conte para onde o cadastro vai.) */
@@ -431,17 +507,25 @@ class ModeloCompleto
         return $texto !== '' && preg_match(self::NAO_VAI, $texto) !== 1 && ! ExplicacaoDeAtributos::revelaDestino($texto);
     }
 
+    /** O filtro do perfil da trilha: o de sempre e, além dele, nada que cite o Portal. */
+    private static function podeIrNaTrilha(?string $texto): bool
+    {
+        return self::podeIr($texto) && preg_match(self::NAO_VAI_NA_TRILHA, (string) $texto) !== 1;
+    }
+
     /**
      * As colunas de uma aba, já com tudo o que a apresentação precisa: de que bloco é, o título, a
      * ajuda curta ("como preencher"), a explicação longa ("o que é") e as opções.
      *
      * @param  list<array{chave: string, titulo: string, largura: int}>  $doProduto
      * @param  list<array<string, mixed>>  $campos
+     * @param  bool  $trilha  o perfil da trilha: o filtro de sigilo também barra o que cita o Portal
      * @return list<array{bloco: string, grupo: string, titulo: string, ajuda: string, explicacao: string, opcoes: string}>
      */
-    private function colunasDaAba(array $doProduto, array $campos, ?string $ajudaDoTitulo = null): array
+    private function colunasDaAba(array $doProduto, array $campos, ?string $ajudaDoTitulo = null, bool $trilha = false): array
     {
         $glossario = $this->explicacoes->camposDoPortal();
+        $podeIr = $trilha ? self::podeIrNaTrilha(...) : self::podeIr(...);
         $saida = [];
 
         foreach ($doProduto as $c) {
@@ -452,8 +536,8 @@ class ModeloCompleto
                 'grupo'       => str_starts_with($c['chave'], 'vol:') ? 'Volume '.explode(':', $c['chave'])[1] : '',
                 'titulo'      => $c['titulo'],
                 'ajuda'       => $c['chave'] === 'titulo' && $ajudaDoTitulo !== null ? $ajudaDoTitulo : self::ajudaDoProduto($c['chave']),
-                'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
-                'opcoes'      => $c['chave'] === 'eixo' ? implode(' · ', array_values(EstruturaProdutoVariacao::EIXOS)) : '',
+                'explicacao'  => $podeIr($explicacao) ? $explicacao : '',
+                'opcoes'      => in_array($c['chave'], ['eixo', 'eixo_2'], true) ? implode(' · ', array_values(EstruturaProdutoVariacao::EIXOS)) : '',
             ];
         }
 
@@ -471,7 +555,7 @@ class ModeloCompleto
                 'grupo'       => in_array($campo['grupo'], ['', 'Outros', FichaTecnicaDaCategoria::GRUPO_PADRAO, FichaTecnicaDaCategoria::GRUPO_MAIS_DETALHES, FichaTecnicaDaCategoria::GRUPO_MEDIDAS_DO_PRODUTO], true) ? '' : (string) $campo['grupo'],
                 'titulo'      => PlanilhaDasFichasTecnicas::cabecalho($campo),
                 'ajuda'       => PlanilhaDasFichasTecnicas::comoPreencher($campo, $campo['bloco'] === 'fora'),
-                'explicacao'  => self::podeIr($explicacao) ? $explicacao : '',
+                'explicacao'  => $podeIr($explicacao) ? $explicacao : '',
                 'opcoes'      => Str::limit(implode(' · ', $opcoes), 900, ' …'),
             ];
         }
@@ -484,11 +568,12 @@ class ModeloCompleto
      * @param  list<array{produto: array<string, string>, ficha: array}>  $semCategoria
      * @return array{planilha: ?Spreadsheet, abas: list<array{id: ?string, nome: string, aba: string, campos: int}>}
      */
-    private function montar(array $categorias, array $semCategoria, bool $preenchido): array
+    private function montar(array $categorias, array $semCategoria, bool $preenchido, string $perfil = self::PERFIL_PORTAL): array
     {
         if ($categorias === [] && $semCategoria === []) {
             return ['planilha' => null, 'abas' => []];
         }
+        $trilha = $perfil === self::PERFIL_TRILHA;
 
         $planilha = new Spreadsheet();
         $planilha->getProperties()->setCreator('ECF')->setLastModifiedBy('ECF')->setTitle('Produtos e ficha técnica')
@@ -501,7 +586,7 @@ class ModeloCompleto
             $volumes = max($volumes, count(VolumesTexto::interpretar($linha['produto']['volumes_texto'] ?? '')['volumes']));
         }
         $volumes = min($volumes, self::MAX_VOLUMES);
-        $doProduto = self::colunas($volumes);
+        $doProduto = self::colunas($volumes, false, $trilha);
 
         $listas = new Worksheet($planilha, PlanilhaDasFichasTecnicas::ABA_LISTAS);
         $colunaDaLista = 0;
@@ -527,7 +612,7 @@ class ModeloCompleto
             if ($c['campos'] !== []) {
                 $this->fichas->colunasDaFicha($aba, $c['campos'], $primeiraDaFicha, $fim, $listas, $colunaDaLista, self::LINHA_DO_CABECALHO, self::PRIMEIRA_LINHA);
             }
-            $doTitulo = $this->termosDoTitulo->daCategoria($c['id'], self::podeIr(...));
+            $doTitulo = $this->termosDoTitulo->daCategoria($c['id'], $trilha ? self::podeIrNaTrilha(...) : self::podeIr(...));
             $comSeta = self::setaDoTitulo($aba, $doProduto, $c['linhas'], $doTitulo, $fim, $listas, $colunaDaLista) || $comSeta;
             foreach ($c['linhas'] as $n => $linha) {
                 self::linhaDoProduto($aba, $doProduto, $n + self::PRIMEIRA_LINHA, $linha['produto']);
@@ -538,7 +623,7 @@ class ModeloCompleto
                     }
                 }
             }
-            $colunas = $this->colunasDaAba($doProduto, $c['campos'], self::ajudaDoTitulo($doTitulo, $preenchido));
+            $colunas = $this->colunasDaAba($doProduto, $c['campos'], self::ajudaDoTitulo($doTitulo, $preenchido), $trilha);
             $abertos = max(1, $maisVolumes($c['linhas']));
             self::apresentar($aba, $colunas, $abertos);
             self::recolherVolumes($aba, $doProduto, $abertos);
@@ -565,18 +650,22 @@ class ModeloCompleto
 
         $instrucoes = new Worksheet($planilha, self::ABA_INSTRUCOES);
         $planilha->addSheet($instrucoes);
-        self::preencherInstrucoes($instrucoes, count($categorias), $preenchido, $semCategoria !== [], $comSeta);
+        if ($trilha) {
+            self::preencherInstrucoesDaTrilha($instrucoes, count($categorias), $comSeta);
+        } else {
+            self::preencherInstrucoes($instrucoes, count($categorias), $preenchido, $semCategoria !== [], $comSeta);
+        }
 
         $doGuia = new Worksheet($planilha, PlanilhaDasFichasTecnicas::ABA_GUIA);
         $planilha->addSheet($doGuia);
-        self::preencherGuia($doGuia, $this->colunasDaAba(self::colunas($volumes, $semCategoria !== []), []), $guia);
+        self::preencherGuia($doGuia, $this->colunasDaAba(self::colunas($volumes, $semCategoria !== [], $trilha), [], null, $trilha), $guia);
 
         $listas->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
         $planilha->addSheet($listas);
 
         $oculta = new Worksheet($planilha, self::ABA_CATEGORIAS);
         $planilha->addSheet($oculta);
-        self::texto($oculta, 'A1', self::MARCA);
+        self::texto($oculta, 'A1', $trilha ? self::MARCA_DA_TRILHA : self::MARCA);
         foreach ($mapa as $n => $linha) {
             foreach ($linha as $i => $valor) {
                 self::texto($oculta, Coordinate::stringFromColumnIndex($i + 1).($n + 2), (string) $valor);
@@ -597,11 +686,16 @@ class ModeloCompleto
             $coluna = Coordinate::stringFromColumnIndex($i + 1);
             self::texto($aba, $coluna.self::LINHA_DO_CABECALHO, $c['titulo']);
             $aba->getColumnDimension($coluna)->setWidth($c['largura']);
-            if (in_array($c['chave'], ['grupo', 'codigo', 'variacao'], true)) {
+            if (in_array($c['chave'], ['grupo', 'codigo', 'variacao', 'valor_2'], true)) {
                 $aba->getStyle("{$coluna}{$de}:{$coluna}{$fim}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
             }
             if ($c['chave'] === 'eixo') {
                 $aba->setDataValidation("{$coluna}{$de}:{$coluna}{$fim}", self::listaDeTipos());
+            }
+            // Só no perfil da trilha.
+            if ($c['chave'] === 'eixo_2') {
+                $aba->setDataValidation("{$coluna}{$de}:{$coluna}{$fim}", self::listaDeTipos(
+                    self::CABECALHOS_DO_2O_EIXO['eixo_2'], 'Com cor E tamanho, o segundo tipo (ex.: Tamanho). Deixe em branco se o produto varia por um tipo só.'));
             }
         }
     }
@@ -863,15 +957,15 @@ class ModeloCompleto
         $aba->freezePane('A2');
     }
 
-    private static function listaDeTipos(): DataValidation
+    private static function listaDeTipos(string $titulo = 'Tipo de variação', string $dica = 'Por onde o produto varia. Deixe em branco se não varia.'): DataValidation
     {
         $v = new DataValidation();
         $v->setType(DataValidation::TYPE_LIST);
         $v->setAllowBlank(true);
         $v->setShowDropDown(true);
         $v->setShowInputMessage(true);
-        $v->setPromptTitle('Tipo de variação');
-        $v->setPrompt('Por onde o produto varia. Deixe em branco se não varia.');
+        $v->setPromptTitle($titulo);
+        $v->setPrompt($dica);
         $v->setFormula1('"'.implode(',', array_values(EstruturaProdutoVariacao::EIXOS)).'"');
 
         return $v;
@@ -904,6 +998,45 @@ class ModeloCompleto
             'Não mude o nome das abas nem dos cabeçalhos, e não apague as três primeiras linhas. As fotos entram depois, em "Enviar fotos em lote".',
             ...($temSemCategoria ? ['A aba "Sem categoria" traz os produtos que ainda não têm categoria: sem ela não há ficha técnica. Escolha a categoria de cada um na tela e baixe de novo para ver a ficha.'] : []),
             ...($preenchido ? ['Para cadastrar produto de uma categoria que ainda não está aqui, use "Baixar modelo" e escolha a categoria.'] : []),
+        ];
+        foreach ($linhas as $n => $texto) {
+            self::texto($aba, 'A'.($n + 1), $texto);
+        }
+        $aba->getStyle('A1')->getFont()->setBold(true);
+        $aba->getColumnDimension('A')->setWidth(140);
+        $aba->getStyle('A1:A'.count($linhas))->getAlignment()->setWrapText(true);
+    }
+
+    /**
+     * As instruções do perfil da trilha (F7, 03/11/2026). Próprias: nenhuma cita o Portal, outra tela do sistema, o
+     * "Enviar fotos em lote" nem o "Baixar modelo" — o arquivo vai para o cliente no outro sistema, onde a trilha é a
+     * porta. Dizem a regra da volta: a Ref é a chave (o produto que já existe é reconhecido por ela), branco não apaga,
+     * o produto com erro fica inteiro de fora e a prévia mostra antes o que entra.
+     */
+    private static function preencherInstrucoesDaTrilha(Worksheet $aba, int $categorias, bool $comSeta): void
+    {
+        $linhas = [
+            'Como preencher',
+            $categorias === 1
+                ? 'A primeira aba é a categoria que você escolheu. Todos os produtos dela vão nessa aba.'
+                : 'Cada aba é uma das categorias que você escolheu. Ponha cada produto na aba da categoria dele.',
+            'Em cada aba: a linha 1 diz de que é cada bloco de colunas, a linha 2 é o nome de cada coluna e a linha 3 diz como preencher. Os produtos começam na linha '.self::PRIMEIRA_LINHA.'.',
+            'Uma linha por variação do produto: cada cor, ou cada combinação de cor e tamanho, é uma linha. Produto sem variação ocupa uma linha só.',
+            'Produto (grupo): o código que junta as variações de um mesmo produto. Repita o mesmo código em todas as linhas dele.',
+            'Ref: o código de cada variação. Não pode repetir. É pela Ref que o produto já cadastrado é reconhecido: enviar de novo atualiza só o que estiver preenchido, e uma Ref nova num produto que já existe vira uma variação nova dele.',
+            'Tipo de variação e Variação: por onde o produto varia (Cor, Tamanho…) e como é esta linha (Preto, M…). Com cor E tamanho, use também Tipo da 2ª variação e 2ª variação (por exemplo, Cor Preto e Tamanho M). Todas as linhas de um produto usam os mesmos tipos, e a mesma variação não se repete.',
+            'Nome, título, família, ambientes e descrição são do produto: preencha na primeira linha dele (nas outras, o nome pode se repetir).',
+            'PRODUTO EMBALADO (os Volumes): as medidas e o peso de cada CAIXA com o produto dentro. É por elas que o frete é calculado. Cada caixa tem quatro colunas — comprimento, largura e altura em cm e o peso em kg. Os volumes que não estão em uso vêm recolhidos: se o produto vai em mais de uma caixa, abra o Volume 2, o Volume 3… no botão + que fica acima das colunas, ao lado do último volume aberto, e preencha. Deixe em branco os que não usar.',
+            'MEDIDAS DO PRODUTO FORA DA CAIXA: o produto montado, sem a embalagem. São diferentes das medidas do volume, que é a caixa.',
+            'FICHA TÉCNICA: as características do produto. Preencha na PRIMEIRA linha do produto; nas outras variações pode ficar em branco.',
+            'Onde houver lista, escolha uma opção pela seta da célula; em algumas listas você também pode escrever o seu valor. Para marcar mais de uma opção num campo, separe com | .',
+            ...($comSeta ? ['TÍTULO DE VENDA: clique na célula do título e abra a seta. Ela traz os termos mais buscados da categoria: escolha um para começar e complete escrevendo (F2 ou duplo clique na célula), ou escreva o seu título.'] : []),
+            'Não se aplica: quando o produto não tem o que a coluna pede (por exemplo, a medida do colchão numa poltrona que não vira cama), escreva Não se aplica na célula. A linha 3 diz em quais colunas isso vale. Em branco quer dizer que você não informou.',
+            'A aba "'.PlanilhaDasFichasTecnicas::ABA_GUIA.'" explica cada coluna: o que é, como preencher e as opções de cada lista. A mesma explicação aparece ao passar o mouse no nome da coluna.',
+            'Célula em branco não apaga nada do que já está cadastrado, e nada é excluído pela planilha.',
+            'Antes de gravar, aparece o que cada produto vai receber e o que fica de fora, com a linha e a coluna. O produto com algum erro fica inteiro de fora; os outros entram.',
+            'Até '.self::MAX_LINHAS_DA_TRILHA.' linhas de produtos por arquivo. Não mude o nome das abas nem dos cabeçalhos, e não apague as três primeiras linhas.',
+            'As fotos entram depois, no cadastro de cada produto (as fotos de cada cor).',
         ];
         foreach ($linhas as $n => $texto) {
             self::texto($aba, 'A'.($n + 1), $texto);

@@ -54,10 +54,21 @@ function useCliqueNaLista(mudouEm) {
     };
 }
 
+/** Os rótulos da gaveta do produto; a planilha (F7) troca por "Adicionar" e "escolhida". */
+const ROTULOS_DA_GAVETA = { usar: 'Usar esta', marcada: 'atual' };
+
+/** A categoria `id` está marcada? `selecionada`: o id da gaveta do produto, ou os ids já escolhidos (a planilha, F7). */
+const estaMarcada = (selecionada, id) => (Array.isArray(selecionada)
+    ? selecionada.some((s) => String(s) === String(id))
+    : !!selecionada && String(selecionada) === String(id));
+
 const BOTAO_DA_LISTA = 'flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-[13px] focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-trilha-run';
 
-/** A lista de "Buscar"/"Ver outras": o texto (começa pelo nome) e as candidatas. */
-function BuscaDaCategoria({ cat, selecionada }) {
+/**
+ * A lista de "Buscar"/"Ver outras": o texto (começa pelo nome) e as candidatas. Exportada para a planilha por
+ * categoria (F7), que escolhe várias (`selecionada` = a lista de ids) com os seus `rotulos`.
+ */
+export function BuscaDaCategoria({ cat, selecionada, rotulos = ROTULOS_DA_GAVETA }) {
     const clique = useCliqueNaLista(cat.lista.mudouEm);
     const { situacao, candidatas } = cat.lista;
     const campo = useRef(null);
@@ -111,7 +122,7 @@ function BuscaDaCategoria({ cat, selecionada }) {
                     {candidatas.map((c) => {
                         const usavel = candidataUsavel(c);
                         const fechada = c.folha === true && c.anunciavel === false;
-                        const marcada = selecionada && selecionada === c.id;
+                        const marcada = estaMarcada(selecionada, c.id);
 
                         return (
                             <li key={c.id}>
@@ -130,9 +141,9 @@ function BuscaDaCategoria({ cat, selecionada }) {
                                         {!usavel && <span className="block text-[12px] text-trilha-warn">{porQueNaoUsar(c)}</span>}
                                     </span>
                                     {marcada ? (
-                                        <Etiqueta tom="ok">atual</Etiqueta>
+                                        <Etiqueta tom="ok">{rotulos.marcada}</Etiqueta>
                                     ) : usavel ? (
-                                        <Etiqueta tom="run">Usar esta</Etiqueta>
+                                        <Etiqueta tom="run">{rotulos.usar}</Etiqueta>
                                     ) : (
                                         !fechada && <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-trilha-muted" />
                                     )}
@@ -146,8 +157,8 @@ function BuscaDaCategoria({ cat, selecionada }) {
     );
 }
 
-/** "Navegar": a árvore, um nível por vez; "Usar esta" só na última do caminho que aceita produto novo. */
-function ArvoreDaCategoria({ cat, selecionada }) {
+/** "Navegar": a árvore, um nível por vez; "Usar esta" só na última do caminho que aceita produto novo. Exportada para a F7. */
+export function ArvoreDaCategoria({ cat, selecionada, rotulos = ROTULOS_DA_GAVETA }) {
     const { nivel, estado, ir, tentarDeNovo } = useArvoreDeCategorias(cat.buscarNivel, { inicio: cat.inicioDaArvore });
     const [filtro, setFiltro] = useState('');
     const mudouEm = useRef(0);
@@ -212,7 +223,7 @@ function ArvoreDaCategoria({ cat, selecionada }) {
                     {podeEscolher(nivel.atual) ? (
                         <span>
                             <Botao primario data-acao="usar-esta-categoria" onClick={() => cat.escolher(escolhaDaCategoria(nivel, nivel.atual))}>
-                                Usar esta
+                                {rotulos.usar}
                             </Botao>
                         </span>
                     ) : (
@@ -240,7 +251,7 @@ function ArvoreDaCategoria({ cat, selecionada }) {
                                 const final = ehFinal(f);
                                 const usavel = final && podeEscolher(f);
                                 const fechada = final && !usavel;
-                                const marcada = selecionada && String(selecionada) === String(f.id);
+                                const marcada = estaMarcada(selecionada, f.id);
 
                                 return (
                                     <li key={f.id}>
@@ -258,8 +269,8 @@ function ArvoreDaCategoria({ cat, selecionada }) {
                                             className={cn(BOTAO_DA_LISTA, fechada ? 'cursor-not-allowed text-trilha-muted' : 'text-trilha-fg hover:bg-trilha-surface', marcada && 'bg-trilha-surface')}
                                         >
                                             <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{f.nome}</span>
-                                            {marcada && <Etiqueta tom="ok">atual</Etiqueta>}
-                                            {usavel && !marcada && <Etiqueta tom="run">Usar esta</Etiqueta>}
+                                            {marcada && <Etiqueta tom="ok">{rotulos.marcada}</Etiqueta>}
+                                            {usavel && !marcada && <Etiqueta tom="run">{rotulos.usar}</Etiqueta>}
                                             {fechada && <span className="shrink-0 text-[12px]">Não aceita produto novo</span>}
                                             {!final && <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-trilha-muted" />}
                                         </button>

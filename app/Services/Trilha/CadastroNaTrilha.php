@@ -104,6 +104,9 @@ class CadastroNaTrilha
 
     public const PASSO_PRODUTO_EXCLUIDO = 'produto_excluido';
 
+    /** F7: o produto gravado pela planilha por categoria ({@see PlanilhaDaTrilha}) — um evento por produto. */
+    public const PASSO_PLANILHA = 'planilha';
+
     /**
      * As chaves da linha que a trilha deixa chegar ao serviço; o resto é descartado (`grupo`, `company_id`,
      * `categoria_texto`, `variacao`, `volumes_texto`…), e o `produto_id` é sempre o do caminho. `categoria_ml_id` (F2)
@@ -528,6 +531,17 @@ class CadastroNaTrilha
     }
 
     /**
+     * A trava de TODOS os produtos da empresa, lida uma vez (F7: a planilha confere cada produto do arquivo pela mesma
+     * régua de {@see travado()}, sem reler os itens por produto).
+     *
+     * @return array<int, string> produto → o texto da trava (o mesmo do 409)
+     */
+    public function motivosDasTravas(Company $empresa): array
+    {
+        return array_map(fn (array $t) => self::motivoDaTrava($t['nome']), TrilhaDaEmpresa::travasDoCadastro(TrilhaDaEmpresa::itens($empresa)));
+    }
+
+    /**
      * Toda escrita no produto travado responde 409 `{travado: true, motivo}` (e `message`, que a tela já lê nos
      * outros erros) — nada é gravado.
      */
@@ -572,11 +586,14 @@ class CadastroNaTrilha
      * duplo clique, duas abas) não criam dois: a linha da empresa fica presa durante a gravação, e o 2º pedido lê o SKU
      * do 1º e cai no "repetido".
      *
+     * `$efeitos` (F7, aditivo): com `false`, nem o evento da trilha nem o gatilho do Publicador — a planilha os faz uma
+     * vez por produto no fim ({@see PlanilhaDaTrilha}), e a prévia não faz nenhum dos dois.
+     *
      * @return array{produto: EstruturaProduto, absorvidos_da_espera: int, avisos: list<string>}
      *
      * @throws ValidationException
      */
-    public function criar(Company $empresa, string $nome, string $codigo, AtorDoPortal $ator): array
+    public function criar(Company $empresa, string $nome, string $codigo, AtorDoPortal $ator, bool $efeitos = true): array
     {
         $r = DB::transaction(function () use ($empresa, $nome, $codigo, $ator) {
             Company::query()->whereKey($empresa->id)->lockForUpdate()->first();
@@ -592,8 +609,10 @@ class CadastroNaTrilha
 
         $produto = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail((int) $r['linhas'][0]['produto_id']);
         $absorvidos = (int) ($r['totais']['absorvidos_da_espera'] ?? 0);
-        $this->registrar($ator, $empresa, $produto, self::PASSO_CRIAR, ['codigo' => $codigo, 'absorvidos_da_espera' => $absorvidos]);
-        $this->prepararSeCabe($empresa, $produto);
+        if ($efeitos) {
+            $this->registrar($ator, $empresa, $produto, self::PASSO_CRIAR, ['codigo' => $codigo, 'absorvidos_da_espera' => $absorvidos]);
+            $this->prepararSeCabe($empresa, $produto);
+        }
 
         return ['produto' => $produto, 'absorvidos_da_espera' => $absorvidos, 'avisos' => array_values($r['avisos'])];
     }
@@ -611,12 +630,14 @@ class CadastroNaTrilha
      * falhasse por outro motivo (título longo, SKU repetido) deixaria a variação de antes sem nome ao lado da nova. O
      * problema que o produto já tinha (cadastrado antes por outra porta) não trava o salvar de outra coisa.
      *
+     * `$efeitos` (F7, aditivo): com `false`, nem o evento da trilha nem o gatilho do Publicador (ver {@see criar()}).
+     *
      * @param  list<array<string, mixed>>  $linhas
      * @return array{erros: list<array>, avisos: list<string>, totais: array<string, int>, criadas_nas_listas: array{familias: list<string>, ambientes: list<string>}}
      *
      * @throws HttpResponseException 422 da conferência das cores (nada gravado)
      */
-    public function gravar(Company $empresa, EstruturaProduto $produto, array $linhas, AtorDoPortal $ator): array
+    public function gravar(Company $empresa, EstruturaProduto $produto, array $linhas, AtorDoPortal $ator, bool $efeitos = true): array
     {
         if (! self::mexeNasCores($linhas)) {
             $r = $this->cadastro->gravarLinhas($empresa, $linhas, $ator, ProdutoCadastroService::MODO_GRADE, agendarPreparo: false);
@@ -630,7 +651,7 @@ class CadastroNaTrilha
             });
         }
 
-        if ((int) $r['totais']['criadas'] + (int) $r['totais']['atualizadas'] > 0) {
+        if ($efeitos && (int) $r['totais']['criadas'] + (int) $r['totais']['atualizadas'] > 0) {
             $this->registrar($ator, $empresa, $produto->fresh() ?? $produto, self::PASSO_LINHAS, ['totais' => $r['totais']]);
             $this->prepararSeCabe($empresa, $produto);
         }

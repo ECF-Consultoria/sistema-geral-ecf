@@ -7,7 +7,8 @@
 //    colado no WhatsApp ou o "voltar" de outra tela reabrem no mesmo lugar. O
 //    `abrir` aceita o produto (`p:12`), a oferta (`o:s-12`), a onda (`w:7`, e
 //    `w:nova` para criar), o painel de mapear (`m:12`) e, da 3ª entrega, a
-//    gaveta de cadastro (`e:12`, e `e:novo` para criar um produto).
+//    gaveta de cadastro (`e:12`, e `e:novo` para criar um produto) e, da F7, a
+//    planilha por categoria (`e:planilha`).
 // 2. O "Ver como: Cliente" da equipe tira, no navegador, o mesmo que o servidor
 //    tira na porta do cliente (`app/Http/Controllers/Trilha/`): link do
 //    Publicador, preparo do agente, código MLB, a lista de sugestões, quem
@@ -43,13 +44,15 @@ export const podeEscrever = (props, verComo = 'equipe') => props?.visao !== 'cli
  * - `e:12` → a gaveta de cadastro, só com `podeEditar` (o produto travado abre
  *   nela também, só para leitura — quem diz é o servidor); sem escrita, o painel
  *   de leitura `p:12`. `e:novo` → só com `podeEditar`; para os outros, nada.
+ * - `e:planilha` (F7) → a gaveta da planilha por categoria, só com `podeEditar`; para os outros, nada.
  *
- * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro', chave: string}}
+ * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro'|'planilha', chave: string}}
  */
 export function painelDaChave(dados, chave, { podeEditar = false } = {}) {
     const achado = chave ? acharAberto(dados, chave) : null;
     if (!achado) return null;
     if (achado.painel === 'onda') return achado.onda || podeEditar ? achado : null;
+    if (achado.painel === 'planilha') return podeEditar ? achado : null;
     if (achado.painel === 'cadastro') {
         if (podeEditar) return achado;
         if (!achado.produto) return null;

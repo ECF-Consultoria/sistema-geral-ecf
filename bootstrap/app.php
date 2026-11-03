@@ -84,5 +84,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 return response()->json(['message' => $mensagem, 'errors' => ['imagens' => [$mensagem]]], 422);
             }
+            // A planilha por categoria da trilha (F7, 03/11/2026): a prévia e o gravar respondem no campo do arquivo.
+            if ($request->isMethod('POST') && preg_match('#^trilha/[0-9]+/planilha(/previa)?$#', $caminho) === 1) {
+                $mensagem = \App\Support\Portal\Estrutura\RegrasDoCadastro::MSG_PLANILHA_GRANDE;
+
+                return response()->json(['message' => $mensagem, 'errors' => ['arquivo' => [$mensagem]]], 422);
+            }
         });
     })->create();

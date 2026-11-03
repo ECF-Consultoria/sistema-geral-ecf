@@ -66,12 +66,8 @@ class PortalEstruturaProdutosController extends Controller
     private const LIMITES = ['colar' => 200, 'arquivo_mb' => 2, 'linhas_arquivo' => 1000];
 
     /** O que a pessoa lê quando o arquivo da importação não passa (sem isso chegava "validation.mimes"). */
-    private const MENSAGENS_DO_ARQUIVO = [
-        'arquivo.required' => 'Escolha a planilha (.xlsx).',
-        'arquivo.file'     => 'Não foi possível receber o arquivo. Tente de novo.',
-        'arquivo.max'      => 'O arquivo passa de 2 MB. Divida em arquivos menores.',
-        'arquivo.mimes'    => 'Envie a planilha no formato .xlsx.',
-    ];
+    // As mesmas da trilha (F7, 03/11/2026): a regra mora em `RegrasDoCadastro`.
+    private const MENSAGENS_DO_ARQUIVO = RegrasDoCadastro::MENSAGENS_DA_PLANILHA;
 
     public function __construct(
         private PortalClienteService $portal,
@@ -1087,12 +1083,7 @@ class PortalEstruturaProdutosController extends Controller
      */
     private function caminhoDoUpload(Request $request): string
     {
-        $arquivo = $request->file('arquivo');
-        if (strtolower((string) $arquivo->getClientOriginalExtension()) !== 'xlsx') {
-            throw ValidationException::withMessages(['arquivo' => 'Envie a planilha no formato .xlsx.']);
-        }
-
-        return (string) $arquivo->getRealPath();
+        return RegrasDoCadastro::caminhoDaPlanilha($request);
     }
 
     /** @param  array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>}  $c */

@@ -53,12 +53,18 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // equipe). A gaveta de cadastro registra uma GUARDA: com algo não salvo, fechar,
 // abrir outro item por dentro e trocar o "Ver como" pedem confirmação no rodapé
 // dela antes de seguir.
+//
+// F7 (03/11/2026): a planilha por categoria (`e:planilha`), a 3ª gaveta da pasta
+// `Cadastro/` — "Usar planilha" no quadro da Lista. Também só para quem escreve,
+// e também por `lazy` com o 2º caminho em `CadastroSobDemanda.jsx` (§30 dos
+// learnings: sem ele esta página some do manifest do Vite).
 
 const ID_DA_VISTA = 'trilha-vista';
 
 // Só quem escreve chega a desenhar estes (a página não abre o painel `cadastro` para mais ninguém).
 const PainelDoCadastro = lazy(() => import('@/Components/Trilha/Cadastro/PainelDoCadastro'));
 const NovoProduto = lazy(() => import('@/Components/Trilha/Cadastro/NovoProduto'));
+const PlanilhaPorCategoria = lazy(() => import('@/Components/Trilha/Cadastro/PlanilhaPorCategoria'));
 
 /** O que a gaveta mostra enquanto o JS do cadastro chega (a 1ª vez que alguém abre um). */
 function AbrindoOCadastro({ produto }) {
@@ -66,6 +72,17 @@ function AbrindoOCadastro({ produto }) {
         <MioloDaGaveta sobrelinha={produto ? 'Produto da lista' : 'Produto novo'} titulo={produto ? produto.nome || 'Produto sem nome' : 'Produto novo'} ocupado>
             <p className="m-0 text-[13px] text-trilha-muted" data-carregando-cadastro="">
                 Abrindo o cadastro…
+            </p>
+        </MioloDaGaveta>
+    );
+}
+
+/** O que a gaveta da planilha mostra enquanto o JS dela chega. */
+function AbrindoAPlanilha() {
+    return (
+        <MioloDaGaveta sobrelinha="Planilha por categoria" titulo="Cadastrar pela planilha" ocupado>
+            <p className="m-0 text-[13px] text-trilha-muted" data-carregando-planilha="">
+                Abrindo a planilha…
             </p>
         </MioloDaGaveta>
     );
@@ -100,7 +117,8 @@ function gravarNaUrl(estado) {
  *   links: {portal_abrir: ?string, planejamento: ?string, produtos: ?string, publicador: ?string},
  *   trabalho: boolean,
  *   pode_editar: boolean,
- *   escrita: ?{ondas: string, planejamento: string, produtos: string},
+ *   escrita: ?{ondas: string, planejamento: string, produtos: string, categorias?: string,
+ *     planilha?: {modelo: string, previa: string, gravar: string}},
  *   produtos: Array<object>,
  *   ofertas: Array<object>,
  *   ondas: Array<object>,
@@ -402,6 +420,13 @@ export function TelaDaTrilha({
                 {...escritaComum}
             />
         );
+    } else if (painel?.painel === 'planilha') {
+        // Só chega aqui com `podeEditar` (`painelDaChave`): para os outros, o `e:planilha` não abre nada.
+        conteudoDaGaveta = (
+            <Suspense key={chaveDoConteudo} fallback={<AbrindoAPlanilha />}>
+                <PlanilhaPorCategoria escrita={escritaComum.escrita} onAbrir={abrirComGuarda} onAvisar={avisar} onRecarregar={recarregarTrilha} />
+            </Suspense>
+        );
     } else if (painel?.painel === 'cadastro') {
         // Só chega aqui com `podeEditar` (`painelDaChave`): o `e:` de quem não escreve já virou o painel `p:`.
         conteudoDaGaveta = (
@@ -447,7 +472,7 @@ export function TelaDaTrilha({
                         <ComQuemEsta dados={dados} visao={visaoEfetiva} etapa={etapa} onEscolher={escolherEtapa} trabalho={comTrabalho} />
                         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
                             {etapa === null && <PainelGeral {...propsDoPainel} />}
-                            {etapa === 'lista' && <PainelDaLista {...propsDoPainel} />}
+                            {etapa === 'lista' && <PainelDaLista {...propsDoPainel} comPlanilha={podeEditar && !!escrita?.planilha} />}
                             {etapa !== null && etapa !== 'lista' && <PainelDaEtapa chave={etapa} {...propsDoPainel} />}
                         </div>
                     </>

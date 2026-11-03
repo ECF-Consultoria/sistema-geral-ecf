@@ -522,6 +522,7 @@ test('"+ Produto na lista" (e:novo): só Nome e SKU, "Criar produto" ligado ao f
 test('o quadro "Pelo sistema" da equipe (na pasta lazy): um produto por vez, aqui dentro', () => {
     const t = texto(renderToStaticMarkup(h(M.quadros.default)));
     assert.ok(t.includes('Pelo sistema') && t.includes('“+ Produto na lista” pede o nome e o SKU'));
+    // Sem o endereço da planilha (`comPlanilha`, F7), o "Pela planilha" não aparece — ver tests/js/trilha-planilha.test.js.
     assert.ok(!t.includes('Pela planilha'));
 });
 

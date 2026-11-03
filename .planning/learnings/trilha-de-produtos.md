@@ -753,3 +753,81 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   pela regra de 03/11 "a trilha não tem nada a ver com o Portal") — `CadastroNaTrilha::MSG_VERSAO`.
 - O DELETE leva a versão no CORPO (`axios.delete(url, {data})`); o Laravel lê JSON no DELETE pelo `input()`
   normalmente. Sem `versao` (nula ou vazia), nada é conferido — compatível com quem ainda não manda.
+
+## 35. F7 — planilha (servidor) (03/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §17. Serviço `App\Services\Trilha\PlanilhaDaTrilha`, controller
+`Trilha\PlanilhaDaTrilhaController`, testes `PlanilhaNaTrilhaTest` e `CustoDaPlanilhaTest`.
+
+- **Dois achados do Portal (fora do escopo, NÃO consertados):**
+  1. O Modelo Completo do Portal **corta em silêncio** o que passa da linha 1.001 e da coluna 200: é o `IReadFilter`
+     de `ImportadorFichasTecnicas::ler` (`MAX_LINHAS + 1`, `MAX_COLUNAS`). Ninguém avisa. A trilha usa o mesmo
+     leitor e se protege por fora (`recusarDadoForaDoCorte`): `listWorksheetInfo` (só percorre o XML) e, se a aba
+     passa da área, relê SÓ fora dela — havendo valor, o arquivo volta 422. O modelo formata as colunas de código
+     até a linha 1.001, então o arquivo nosso sempre declara 1.001 linhas: a releitura só acontece quando alguém
+     escreveu além.
+  2. O "Baixar modelo" do Portal **enfileira `GerarExplicacoesDeAtributosJob`** (IA paga): `ModeloCompleto::camposDa`
+     usa `definicaoComExplicacoes`, que pede à IA a explicação dos campos que ainda não têm. O perfil da trilha usa
+     `definicao()` e o teste prova `Queue::assertNotPushed`. O teste de "arquivo que não serve" gera um arquivo do
+     Portal e confere que ELE enfileira — é o que dá sentido à prova da trilha.
+- **A "Variação" da trilha vai como `valor`, nunca como `variacao`.** O `NormalizadorDeLinha` lê a coluna `variacao`
+  como ORDINAL quando é número ou "única" (o modelo antigo): o tamanho "1" ou "2" viraria `ordem` e a variação
+  ficaria sem valor. Idem o `2ª variação` → `valor_2` (string com formato texto no modelo).
+- **A Ref é a chave e vai a do BANCO ao serviço.** O `ProdutoCadastroService` grava `codigo` em toda linha com `id`
+  (está sempre em `presentes`): a Ref digitada em outra caixa ("lisa-1" × "LISA-1") casa pela `chaveCodigo`, mas
+  trocaria o SKU da oferta. A planilha nunca troca nem apaga SKU (§17.1).
+- **A Cor só sai da ficha de quem varia por ela se o atributo tiver `allow_variations`** (`eixo_do_portal`,
+  `FichaTecnicaDaCategoria::campoDe`). Sem a tag, a coluna "Cor" da ficha grava como campo comum. Catálogo de
+  mentira em teste precisa da tag, senão o teste "a Cor não entra" falha sem bug nenhum.
+- **`EstruturaProduto::titulo` tem mutator** (`TituloDoProduto::capitalizar`): o `create` do teste já grava "Título
+  De Venda…". Para provar "branco não apaga", compare com o título lido do banco antes, não com o literal.
+- **A versão (F6) só vale para quem VAI gravar.** A tela devolve `versoes[id]` de todo produto que tinha versão na
+  prévia, inclusive o recusado e o sem mudança; a conferência fica DENTRO da transação, depois de saber se o produto
+  muda. Sem mudança com versão velha = `sem_mudanca`, sem erro. Id que não é número, ou de produto fora do arquivo:
+  ignorado.
+- **A prévia é `beginTransaction` + `rollBack` por produto.** Os eventos dos serviços (`produtos_gravados`,
+  `ficha_tecnica_gravada`) somem no rollback e o `DB::afterCommit` é descartado. A prova é por contagem de TODAS as
+  `estrutura_*`, `activity_log` e `jobs`, mais o `VersaoDoCadastro::conteudo` do produto existente igual antes e
+  depois (contagem não pega UPDATE).
+- **Erro de linha do serviço não é exceção**: `gravarLinhas` devolve `erros` com tudo o mais gravado. A planilha
+  confere `$r['erros']` e desfaz o produto inteiro (decisão do usuário: o produto com erro fica inteiro de fora).
+  O 422 das cores (`HttpResponseException`) é lido pelo corpo (`erros[].indice/campos`).
+- **422 sempre em JSON nas três rotas** (`emJson` no controller): o download pode sair de um link, e o `validate()`
+  do Laravel redirecionaria com a sessão de erros quando o pedido não diz que aceita JSON.
+- **Custo medido** (SQLite em memória, máquina local; MariaDB da VPS não medido): 84 consultas por produto na
+  prévia e 97 no gravar (produto de 2 cores + ficha), constantes. O fixo do arquivo inclui a régua da trava, lida
+  UMA vez (`CadastroNaTrilha::motivosDasTravas`); com a empresa VAZIA ela pula consultas — o teste faz um envio antes
+  de medir, senão a diferença de 1 consulta parece custo por produto. **500 linhas** (125 produtos × 4 variações +
+  ficha): prévia 5,6 s, gravar 11,1 s. O `carregar` do `ProdutoCadastroService` lê a empresa INTEIRA a cada
+  `gravarLinhas` (2 por produto novo: `criar` + `gravar`) — consultas fixas, mas as linhas crescem com o catálogo:
+  loja com milhares de variações vai pesar mais que isso.
+- **Cache antes das transações (D25)**: `detalhes` em lote, `definicao` por aba e, havendo título acima de 60
+  caracteres, `LimiteDoTitulo::daCategoria` (o schema pode ir ao catálogo). Categoria que não responde aqui recusa o
+  ARQUIVO (gravar sem ela deixaria a categoria "não validada" e sem ficha). Com o cache quente, prévia e gravar não
+  fazem nenhuma requisição (`Http::recorded()` igual antes e depois).
+- **Matriz de acesso**: o download é `StreamedResponse`, sem o `status()` que o `TestResponse` repassa — a matriz usa
+  `getStatusCode()`. O baixar junta TODO erro de validação em `errors.categorias` (o Laravel poria o item inválido
+  em `categorias.0`, chave que a tela não lê e que o `assertJsonPath` nem alcança — §31).
+- **Diferenças de propósito em relação ao Portal**: aba de categoria RENOMEADA com dado recusa o arquivo (o Portal
+  ignorava a aba com aviso — o produto sumia); termo do título com "portal" sai da seta (`NAO_VAI_NA_TRILHA`). Nome
+  de campo e opção da ficha NÃO são filtrados por "portal" (é dado da categoria). Linha sem grupo vira produto
+  sozinho pela Ref, como no Portal.
+- **Regras do upload em `RegrasDoCadastro`** (`planilha()`, `MENSAGENS_DA_PLANILHA`, `caminhoDaPlanilha`): extraídas
+  do controller do Portal, que passou a usá-las (comportamento igual). `recusarPlanilhaQueNaoChegou` só na trilha. O
+  413 vira 422 `errors.arquivo` pela regex `^trilha/[0-9]+/planilha(/previa)?$` no `bootstrap/app.php`.
+
+### F7 — planilha (tela), 03/11/2026
+- **`lazy` em teste com esbuild:** o bundle de teste (sem divisão em pedaços) transforma o `import()` em promessa já
+  resolvida — depois do 1º render, os renders seguintes do MESMO arquivo de teste desenham o componente real, não o
+  fallback. "No render do servidor o `lazy` ainda não aparece" só vale no 1º render; foi o que deixou o teste antigo
+  do "Pela planilha" dependente da ordem dos testes.
+- **Botão desligado em teste de render:** procurar `disabled` na tag de um botão da trilha sempre acha (classes
+  `disabled:…` do Tailwind). Conferir `disabled=""`; o ocupado é `aria-disabled="true"`.
+- **Nome do download:** `nomeDoArquivoBaixado` (`lib/modeloCompleto.js`) só aceita `[A-Za-z0-9._-]` terminando em
+  `.xlsx`; com espaço ou acento no `Content-Disposition` o arquivo sai como `planilha-da-trilha.xlsx`. O servidor
+  da trilha gera o nome nessa regra (coberto em `PlanilhaNaTrilhaTest`).
+- **O gravar manda os bytes da prévia:** a tela copia o arquivo em memória na hora da escolha; mexer no arquivo no
+  disco depois da prévia não muda o que grava. O servidor relê e refaz tudo (sem estado entre prévia e gravar).
+- **A suíte JS inteira (`node --test tests/js/`) estoura a pilha** em 8 arquivos `publicador-*-187/188` e no
+  `estrutura-grade-glide`; sozinhos passam (ex.: `publicador-fila-linha-187` 23/23). Não é regressão da trilha. Eles
+  deixam `tests/js/.pub-*-inertia-stub-*.mjs` soltos quando caem — apagar, não commitar.

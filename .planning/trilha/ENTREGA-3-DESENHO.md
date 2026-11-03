@@ -1001,3 +1001,128 @@ Lista?**
   Publicador, só na #459); **aprovação do cliente ligável por loja** (publica pausado, o cliente aprova ou pede
   ajuste na trilha dele); **preço vindo da Precificação existente**, ajustável antes de publicar; e o envio de fotos
   pelo cliente na trilha.
+
+## 17. F7 — Planilha por categoria (desenho fechado em 03/11/2026)
+
+Pesquisa do que já existe: `ModeloCompleto` + `ImportadorModeloCompleto` (Portal), `PlanilhaDasFichasTecnicas`,
+`ImportadorFichasTecnicas::ler`, `lib/modeloCompleto.js`. A "planilha direta" do Publicador NÃO está no HEAD
+(`e87404dbb` só no branch `feat/publicador-planilha-261016`).
+
+### 17.1 Respostas do usuário (03/11)
+1. **Erro em alguns produtos:** grava os certos; o produto com erro fica **inteiro** de fora (nada dele grava, nem a
+   ficha). A prévia mostra antes o que fica de fora e por quê.
+2. **SKU que já existe:** atualiza só o preenchido (branco não apaga, nada é excluído, Ref nova no grupo = cor/tamanho
+   novo). Recusa: produto travado (andou), em outra categoria, já no Publicador com categoria que mudaria (D12), ou
+   que mudou depois da prévia (versão da F6).
+3. **Fotos:** depois, pela gaveta de cada produto (fotos por cor). Sem fotos na planilha.
+4. **Só o modelo vazio por categoria** (o que o protótipo promete). Sem "baixar meus produtos", sem aba "Sem
+   categoria", sem apagar nem trocar SKU pela planilha (o SKU é a chave).
+
+### 17.2 Decisões
+| # | Decisão | Por quê |
+|---|---|---|
+| D20 | O arquivo sai do `ModeloCompleto` com um **perfil** aditivo (padrão = Portal, igual a hoje). Perfil da trilha: ficha por `definicao()` (SEM `definicaoComExplicacoes` — não enfileira IA ao baixar), 2º eixo, marca `trilha-planilha-v1`, instruções próprias (nenhuma cita Portal, Publicador, "Enviar fotos em lote" ou "Baixar modelo"), recusa categoria não folha OU não anunciável | uma só apresentação; D10 proíbe IA ao baixar |
+| D21 | Variação em 4 colunas: "Tipo de variação", "Variação", "Tipo da 2ª variação", "2ª variação" → `eixo/valor/eixo_2/valor_2` (listas de `EstruturaProdutoVariacao::EIXOS`) | contrato da F4 |
+| D22 | A importação NÃO passa por `ImportadorModeloCompleto`/`ImportadorProdutos` (o arquivo de passagem perde o 2º eixo e não conhece trava/anunciável/régua de cores). Serviço novo `App\Services\Trilha\PlanilhaDaTrilha` lê com `ImportadorFichasTecnicas::ler` e executa **cada produto como uma gaveta salva**: `CadastroNaTrilha::criar` (novo) → `gravar` (com `conferirLinhas`/`conferirCores`) → ficha por `FichaTecnicaDoProduto::gravarParcial` | reusa as regras já testadas da gaveta |
+| D23 | Uma transação por produto. Campo da ficha inválido = **aviso** (só ele fica de fora, como no `gravarParcial`) | 1 erro de digitação em 60 colunas não barra o produto |
+| D24 | **A prévia é o gravar desfeito:** as mesmas transações por produto, com rollback, sem `registrar` e sem `prepararSeCabe` | conferir o resultado, não simular (learnings §33) |
+| D25 | Antes de qualquer transação: aquecer cache com `CategoriaSugestaoService::detalhes(ids das abas)` em lote e `definicao` por aba. Nenhuma chamada HTTP dentro da transação | `criar` prende `companies` com `lockForUpdate` |
+| D26 | Efeitos só no gravar: um `trilha_cadastro_salvo` por produto (`passo: planilha`) e, no fim, UM `aoSalvar(soOsQueCabem(gravados))`. `criar`/`gravar` ganham parâmetro aditivo `efeitos` (padrão true) | não preparar N vezes |
+| D27 | Sigilo da planilha mantido (`NAO_VAI`); nenhuma célula/instrução cita Portal, Publicador ou Mercado Livre | o arquivo vai para o cliente no outro sistema |
+
+### 17.3 Rotas (grupo da equipe em `routes/trilha.php`; controller fino `Trilha\PlanilhaDaTrilhaController`)
+Guarda: `CadastroNaTrilha::empresa()` (404 pelas chaves → 403 sem `podeEntrar`) ANTES da validação. Ator:
+`AtorDoPortal::daEquipe`.
+
+| Rota | Nome · throttle | Resposta |
+|---|---|---|
+| `GET /trilha/{company}/planilha/modelo?categorias[]=MLB…` (1 a 10) | `trilha.planilha.modelo` · 30/min | o `.xlsx` (download). 422 `errors.categorias` com o motivo da recusada |
+| `POST /trilha/{company}/planilha/previa` (multipart `arquivo`) | `trilha.planilha.previa` · 10/min | 200 JSON da prévia; nada grava, nada enfileira |
+| `POST /trilha/{company}/planilha` (multipart `arquivo` + `versoes[{produto_id}]=hash`) | `trilha.planilha.gravar` · 6/min | 200 JSON do resultado |
+
+- Erro do ARQUIVO (não é .xlsx, > 2 MB, sem aba reconhecida da trilha, > 500 linhas de dados, marca de outro
+  modelo): **422 `errors.arquivo`** com a frase. O 413 do servidor vira 422 `errors.arquivo` em
+  `bootstrap/app.php` (ramo próprio para as rotas `trilha/{id}/planilha` e `trilha/{id}/planilha/previa`; o de
+  fotos segue `errors.imagens`).
+- `ApresentacaoDaTrilha::escrita` ganha `planilha: {modelo, previa, gravar}` (URLs), só na porta da equipe com escrita.
+
+### 17.4 Contrato JSON (prévia e gravar têm a MESMA forma)
+```json
+{
+  "gravado": false,
+  "abas": [{"categoria_id": "MLB31447", "categoria_nome": "Camisetas", "linhas": 6}],
+  "produtos": [{
+    "chave": "CAM-01",
+    "aba": "MLB31447",
+    "linhas": [4, 5, 6],
+    "produto_id": null,
+    "nome": "Camiseta básica",
+    "codigo": "CAM-01",
+    "situacao": "novo | atualizado | sem_mudanca | recusado",
+    "variacoes": {"novas": 6, "atualizadas": 0},
+    "erros":  [{"linha": 5, "coluna": "Variação", "mensagem": "..."}],
+    "avisos": [{"linha": 4, "coluna": "Material", "mensagem": "..."}],
+    "faltas": ["fotos (0 de 3)"],
+    "versao": null
+  }],
+  "totais": {"novos": 1, "atualizados": 0, "sem_mudanca": 0, "recusados": 0},
+  "mensagem": "1 produto novo, nenhum recusado."
+}
+```
+- `erros` não vazio ⇔ `situacao = recusado`. Erro do produto inteiro (travado, outra categoria, versão) vem com
+  `linha` = 1ª linha do produto e `coluna` = null.
+- `versao` = `VersaoDoCadastro::de` do existente (na prévia); a tela devolve em `versoes[produto_id]` no gravar.
+  Diferente no gravar → aquele produto `recusado` com `MSG_VERSAO`; os outros gravam.
+- `faltas` = as faltas da Lista do produto como ficaria (calculadas dentro da transação, antes do rollback na prévia).
+- No gravar: `gravado: true`; a tela recarrega a Lista.
+
+### 17.5 O arquivo
+- Igual ao Modelo Completo (faixa linha 1, cabeçalho 2, ajuda 3, dados da 4; volumes recolhidos; seta de termos no
+  Título; listas da ficha na aba oculta), mais as 4 colunas de variação e a marca `trilha-planilha-v1` na aba oculta
+  "Categorias".
+- "Grupo" junta as linhas do mesmo produto (cada cor ou cor+tamanho é uma linha). A ficha vale da 1ª linha do
+  produto; o campo que é eixo do produto é ignorado para ele (como `doProduto`).
+- Gerar recusa a categoria cuja aba passaria de 200 colunas (o leitor corta em silêncio).
+
+### 17.6 Produto existente
+Casa pela Ref (sem caixa, acento nem espaço — `chaveCodigo`), só na empresa. Refs de um grupo em produtos diferentes
+→ grupo recusado. Régua de trava (`travasDoCadastro(itens())`) calculada UMA vez por arquivo. SKU/estoque travados
+pelo Bling: ignorados com aviso (o serviço já faz).
+
+### 17.7 Limites
+2 MB, `.xlsx` (mimes + extensão); 10 categorias; **500 linhas de dados** (linha com dado além do corte do leitor =
+recusa do arquivo, nunca corte em silêncio); 200 variações por produto (`MAX_GRADE`); 200 colunas. Síncrono — medir
+o tempo de 500 linhas no teste de custo.
+
+### 17.8 Chamadas ao ML e custo
+Baixar: por categoria, `detalhes` (cache 7 d), `definicao` (cache 7 d) e termos do título (prazo total 20 s, para na
+1ª falha). **Zero IA.** Prévia e gravar: só os caches (D25); nenhuma IA; o robô só roda se o produto completar
+(sem fotos não completa) ou se já estiver no Publicador.
+
+### 17.9 Tela
+- `Cadastro/QuadrosDaLista.jsx` ganha o quadro "Pela planilha": "1. Escolha as categorias dos produtos. 2. Baixe a
+  planilha já com os campos da ficha técnica de cada uma. 3. Preencha e suba de volta." + botão "Usar planilha".
+- Gaveta `e:planilha` (só com escrita, como `e:novo`) em `Cadastro/PlanilhaPorCategoria.jsx`: escolher categorias
+  (busca e árvore da F2, até 10, `lib/modeloCompleto.js`) → "Baixar planilha" → "Enviar planilha" → prévia por
+  produto (novo/atualizado/sem mudança/recusado, erros por linha e coluna, avisos, faltas) → "Gravar N produtos
+  (M ficam de fora)" → resultado → recarrega a Lista. Lógica pura em `lib/trilhaPlanilha.js`.
+- O `lazy` novo vai DENTRO de `Pages/Trilha/CadastroSobDemanda.jsx`; conferir que `Empresa.jsx` e
+  `CadastroSobDemanda.jsx` seguem no `manifest.json` (learnings §30).
+
+### 17.10 Testes (no mesmo commit)
+- `tests/Feature/Trilha/PlanilhaNaTrilhaTest.php`: baixar (aba por categoria, 4 colunas de variação,
+  `Queue::assertNotPushed(GerarExplicacoesDeAtributosJob)`, nenhuma célula/instrução com "Mercado", "Portal" ou
+  "/portal", não anunciável/não folha → 422, marca própria); prévia (contagens de `estrutura_*` e `activity_log`
+  iguais antes e depois, `Queue::assertNothingPushed`, SKU repetido, cores inválidas, travado, outra categoria,
+  versão velha); gravar (2 cores × 3 tamanhos com `eixo_2`, branco não apaga, obrigatório vazio grava, campo
+  inválido = aviso, produto ruim não derruba os outros, novo sem foto NÃO vai ao Publicador, o que já está lá vai
+  uma vez, evento `passo: planilha`); limites (413 → 422 `errors.arquivo`, não-xlsx, > 2 MB, > 500 linhas).
+- `CadastroNaTrilhaAcessoTest`: as 3 rotas no `dataProvider`.
+- Custo: `Http::preventStrayRequests` com cache quente; consultas por produto constantes.
+- JS: `tests/js/trilha-planilha.test.js` + teste de fonte do `lazy`.
+- Rede do Portal, arquivo por arquivo: `ModeloCompletoTest`, `ModeloEImportacaoTest`, `FichaTecnicaPelaPlanilhaTest`,
+  `PlanilhaDeProdutosV2Test`, `TituloDeVendaTest`.
+
+### 17.11 Achados do Portal (fora do escopo — só registrar no learnings)
+- O Modelo Completo do Portal corta em silêncio acima da linha 1.001 (`ImportadorFichasTecnicas::ler` :434).
+- O "Baixar modelo" do Portal enfileira `GerarExplicacoesDeAtributosJob` (`definicaoComExplicacoes`).

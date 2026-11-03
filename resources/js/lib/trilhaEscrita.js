@@ -13,6 +13,8 @@
 
 import axios from 'axios';
 import { router } from '@inertiajs/react';
+import { nomeDoArquivoBaixado, parametrosDoModelo } from './modeloCompleto.js';
+import { ARQUIVO_DA_TRILHA, formularioDaPrevia, formularioDoGravar } from './trilhaPlanilha.js';
 
 /** Erro da própria tela (endereço que não veio, p. ex.): o texto dele pode ir para a pessoa. */
 export class ErroDaTrilha extends Error {}
@@ -244,6 +246,41 @@ export async function camposDaCategoria(escrita, categoriaId) {
 /** Os termos mais buscados e o limite do título da categoria. → `{limite, indisponivel, termos?, acima?, …}`. */
 export async function termosDoTitulo(escrita, categoriaId, nome = '') {
     return corpo(await axios.get(comConsulta(`${urlDasCategorias(escrita)}/${encodeURIComponent(categoriaId)}/titulo`, { nome })));
+}
+
+// ─── Planilha por categoria (F7) ────────────────────────────────────────────
+//
+// Sob `escrita.planilha = {modelo, previa, gravar}` (§17.3 do desenho; só na porta da equipe com escrita). O erro do
+// ARQUIVO volta 422 `errors.arquivo`; a categoria recusada no download, 422 `errors.categorias` (dentro do blob).
+
+function enderecoDaPlanilha(escrita, campo) {
+    const url = escrita?.planilha?.[campo];
+    if (!url) throw new ErroDaTrilha('A planilha não está disponível nesta tela: recarregue a página.');
+
+    return semBarraNoFim(url);
+}
+
+/**
+ * "Baixar planilha": o modelo vazio das categorias escolhidas (`categorias[]`, de 1 a 10), uma aba por categoria.
+ * → `{arquivo: Blob, nome}` (o nome vem do servidor, pelo `Content-Disposition`).
+ */
+export async function baixarPlanilha(escrita, categorias) {
+    const resposta = await axios.get(enderecoDaPlanilha(escrita, 'modelo'), { params: parametrosDoModelo(categorias), responseType: 'blob' });
+
+    return { arquivo: resposta?.data ?? null, nome: nomeDoArquivoBaixado(resposta?.headers?.['content-disposition'], ARQUIVO_DA_TRILHA) };
+}
+
+/** "Enviar planilha": a prévia por produto (multipart `arquivo`) — nada grava, nada enfileira. → o JSON do §17.4. */
+export async function previaDaPlanilha(escrita, arquivo) {
+    return corpo(await axios.post(enderecoDaPlanilha(escrita, 'previa'), formularioDaPrevia(arquivo)));
+}
+
+/**
+ * "Gravar N produtos": o MESMO arquivo da prévia e a versão de cada produto que já existia nela
+ * (`versoes[produto_id]`). → o JSON do §17.4, com `gravado: true`.
+ */
+export async function gravarPlanilha(escrita, arquivo, previa) {
+    return corpo(await axios.post(enderecoDaPlanilha(escrita, 'gravar'), formularioDoGravar(arquivo, previa)));
 }
 
 // ─── Erros ──────────────────────────────────────────────────────────────────

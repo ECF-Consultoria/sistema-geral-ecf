@@ -46,6 +46,73 @@ final class RegrasDoCadastro
         return (array) $request->input('linhas');
     }
 
+    // ═══ A planilha (.xlsx) ═════════════════════════════════════════════════
+
+    /** O teto do arquivo de planilha, e a frase quando ele passa (a mesma do 413 que o `bootstrap/app.php` traduz). */
+    public const MSG_PLANILHA_GRANDE = 'O arquivo passa de 2 MB. Divida em arquivos menores.';
+
+    /**
+     * As mensagens do envio de planilha (`arquivo`), as de sempre do Portal — extraídas do
+     * `PortalEstruturaProdutosController` (F7 da trilha, 03/11/2026): as duas portas recusam igual.
+     */
+    public const MENSAGENS_DA_PLANILHA = [
+        'arquivo.required' => 'Escolha a planilha (.xlsx).',
+        'arquivo.file'     => 'Não foi possível receber o arquivo. Tente de novo.',
+        'arquivo.max'      => self::MSG_PLANILHA_GRANDE,
+        'arquivo.mimes'    => 'Envie a planilha no formato .xlsx.',
+    ];
+
+    /**
+     * A forma do envio de planilha: um arquivo de até 2 MB, `.xlsx` pelo CONTEÚDO (`mimes`). A extensão do nome é
+     * conferida à parte ({@see caminhoDaPlanilha()}).
+     *
+     * @return array<string, string>
+     */
+    public static function planilha(): array
+    {
+        return ['arquivo' => 'required|file|max:2048|mimes:xlsx'];
+    }
+
+    /**
+     * O caminho do arquivo recebido, depois de conferir que o NOME também termina em `.xlsx` (o `mimes` olha o
+     * conteúdo; um `.zip` qualquer passaria por ele).
+     *
+     * @throws ValidationException
+     */
+    public static function caminhoDaPlanilha(Request $request): string
+    {
+        $arquivo = $request->file('arquivo');
+        if (strtolower((string) $arquivo->getClientOriginalExtension()) !== 'xlsx') {
+            throw ValidationException::withMessages(['arquivo' => 'Envie a planilha no formato .xlsx.']);
+        }
+
+        return (string) $arquivo->getRealPath();
+    }
+
+    /**
+     * A planilha que estourou o limite do PHP chega sem arquivo, ou com ele marcado inválido — e a validação diria
+     * "Escolha a planilha" ou "Não foi possível receber". Aqui vira a frase certa, em `errors.arquivo` (o corpo acima
+     * do `post_max_size` nem chega: o `bootstrap/app.php` traduz o 413). Por ora só a trilha usa.
+     *
+     * @throws ValidationException
+     */
+    public static function recusarPlanilhaQueNaoChegou(Request $request): void
+    {
+        $arquivo = $request->file('arquivo');
+        if ($arquivo instanceof UploadedFile && ! $arquivo->isValid()
+            && in_array($arquivo->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            throw ValidationException::withMessages(['arquivo' => self::MSG_PLANILHA_GRANDE]);
+        }
+
+        if ($arquivo === null) {
+            $corpo = (int) $request->server('CONTENT_LENGTH', 0);
+            $limitePhp = self::bytesDoIni((string) ini_get('post_max_size'));
+            if ($corpo > 2 * 1048576 || ($limitePhp > 0 && $corpo > $limitePhp)) {
+                throw ValidationException::withMessages(['arquivo' => self::MSG_PLANILHA_GRANDE]);
+            }
+        }
+    }
+
     // ═══ Imagens da variação ════════════════════════════════════════════════
 
     /**

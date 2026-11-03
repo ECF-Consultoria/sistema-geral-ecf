@@ -798,8 +798,9 @@ test('etapa 1 com a trilha de trabalho: "Equipe ECF", o texto novo, "+ Produto n
     assert.ok(novo.includes('data-chave="e:novo"') && novo.includes('bg-trilha-navy'), novo);
     assert.equal(abertura(saida, 'data-link="portal_abrir"'), '');
     assert.ok(!t.includes('Portal'), 'nenhum texto do Portal na Lista com trabalho');
-    // "Pela planilha" sai; o quadro da equipe chega por `lazy` (no render do servidor, ainda não).
-    assert.ok(!t.includes('Pela planilha') && !t.includes('Um produto por vez, na ficha do produto no cadastro do Portal'));
+    // O "Pela planilha" do PORTAL sai. O quadro da equipe chega por `lazy` e, com `escrita.planilha` (F7), traz o
+    // "Pela planilha" da trilha (a planilha por categoria) — esse pode estar aqui se o `lazy` já resolveu.
+    assert.ok(!t.includes('Baixe a planilha-modelo na tela de Produtos do Portal') && !t.includes('Um produto por vez, na ficha do produto no cadastro do Portal'));
 
     // A linha abre a gaveta de cadastro; o produto que já andou, o painel de leitura.
     const aberturas = Object.fromEntries(aberturasDaPlanilha(saida));

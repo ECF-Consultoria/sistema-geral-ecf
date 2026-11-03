@@ -21,7 +21,8 @@ import { FOTOS_MINIMAS, avisosEmTexto, fmtCusto, plural, situacaoNaPlanilha, sku
 // (`cadastro_travado`), o painel de leitura (`p:{id}`). O quadro "Pelo sistema"
 // da equipe mora em `Cadastro/` e chega por `lazy` (só quem escreve baixa o JS
 // da pasta); o cliente e o "Ver como: Cliente" leem só uma nota neutra, e o
-// "Pela planilha" sai.
+// "Pela planilha" do Portal sai. Da F7, o "Pela planilha" da equipe (a planilha
+// por categoria, gaveta `e:planilha`) vem no mesmo quadro `lazy`.
 
 const COLUNAS = [
     { rotulo: 'Fotos' },
@@ -220,9 +221,10 @@ function NotaDaLista() {
  *   onAbrir: (chave: string, origem: ?HTMLElement) => void,
  *   trabalho?: boolean,
  *   podeEditar?: boolean,
- * }} props
+ *   comPlanilha?: boolean,
+ * }} props  `comPlanilha`: veio o endereço da planilha por categoria (`escrita.planilha`, F7).
  */
-export default function PainelDaLista({ dados, links, onAbrir, trabalho = false, podeEditar = false }) {
+export default function PainelDaLista({ dados, links, onAbrir, trabalho = false, podeEditar = false, comPlanilha = false }) {
     const etapa = etapaDaTrilha('lista', trabalho);
     // Os que mais faltam primeiro. O sort é estável: no empate fica a ordem do servidor (etapa, nome).
     const produtos = useMemo(
@@ -243,7 +245,7 @@ export default function PainelDaLista({ dados, links, onAbrir, trabalho = false,
             {!trabalho && <QuadrosDoPortal />}
             {trabalho && podeEditar && (
                 <Suspense fallback={null}>
-                    <QuadrosDaLista />
+                    <QuadrosDaLista onAbrir={onAbrir} comPlanilha={comPlanilha} />
                 </Suspense>
             )}
             {trabalho && !podeEditar && <NotaDaLista />}

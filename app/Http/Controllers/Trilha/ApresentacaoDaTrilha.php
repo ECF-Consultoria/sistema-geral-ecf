@@ -193,19 +193,27 @@ class ApresentacaoDaTrilha
      * Os endereços das escritas da equipe (Planejamento, Mapeamento e o cadastro). A onda e o produto entram no fim do
      * caminho (`{ondas}/{id}`, `{produtos}/{id}/mapeamento`, `{produtos}/{id}/ficha-tecnica`…). `categorias` (F2) é a
      * base das leituras da categoria e da ficha (`{categorias}?q=`, `{categorias}/arvore?pai=`,
-     * `{categorias}/{id}/campos`, `{categorias}/{id}/titulo?nome=`) — relativa, como as fotos do retrato.
+     * `{categorias}/{id}/campos`, `{categorias}/{id}/titulo?nome=`) — relativa, como as fotos do retrato. `planilha` (F7):
+     * os três endereços da planilha por categoria — `modelo` (GET, `?categorias[]=`), `previa` e `gravar` (POST multipart),
+     * relativos como o `categorias`.
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}}
      */
     private static function escrita(Company $empresa): array
     {
         $base = route('trilha.empresa', ['company' => $empresa->id]);
+        $empresaId = ['company' => $empresa->id];
 
         return [
-            'ondas'        => route('trilha.ondas.criar', ['company' => $empresa->id]),
-            'planejamento' => route('trilha.planejamento', ['company' => $empresa->id]),
+            'ondas'        => route('trilha.ondas.criar', $empresaId),
+            'planejamento' => route('trilha.planejamento', $empresaId),
             'produtos'     => $base.'/produtos',
-            'categorias'   => route('trilha.categorias', ['company' => $empresa->id], false),
+            'categorias'   => route('trilha.categorias', $empresaId, false),
+            'planilha'     => [
+                'modelo' => route('trilha.planilha.modelo', $empresaId, false),
+                'previa' => route('trilha.planilha.previa', $empresaId, false),
+                'gravar' => route('trilha.planilha.gravar', $empresaId, false),
+            ],
         ];
     }
 

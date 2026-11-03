@@ -145,6 +145,9 @@ export const chaveDeMapear = (produto) => `m:${produto.id}`;
 export const CHAVE_NOVO_PRODUTO = 'e:novo';
 export const chaveDeCadastro = (produto) => `e:${produto.id}`;
 
+/** F7: a gaveta da planilha por categoria (baixar, enviar, conferir e gravar) — também só da equipe com escrita. */
+export const CHAVE_PLANILHA = 'e:planilha';
+
 /**
  * A gaveta fecha no Esc só quando ninguém dentro dela já tratou a tecla: a lista aberta de um campo (família,
  * ambientes) fecha a si mesma com `preventDefault`, e o Esc dela não pode levar a gaveta junto (3ª entrega).
@@ -200,13 +203,15 @@ export function acharItem(dados, chave) {
  * - `p:`/`o:` → `{painel: 'item', …acharItem}` (o painel do produto ou da oferta);
  * - `w:7` → `{painel: 'onda', onda}`; `w:nova` → `{painel: 'onda', onda: null}`;
  * - `m:12` → `{painel: 'mapear', produto}`;
- * - `e:12` → `{painel: 'cadastro', produto}`; `e:novo` → `{painel: 'cadastro', produto: null}`.
+ * - `e:12` → `{painel: 'cadastro', produto}`; `e:novo` → `{painel: 'cadastro', produto: null}`;
+ * - `e:planilha` → `{painel: 'planilha'}` (F7).
  * Quem pode ver cada um (o `w:nova`, o `m:` e o `e:` são da equipe com escrita) quem decide é a tela.
  */
 export function acharAberto(dados, chave) {
     if (typeof chave !== 'string') return null;
     if (chave === CHAVE_NOVA_ONDA) return { painel: 'onda', chave, onda: null };
     if (chave === CHAVE_NOVO_PRODUTO) return { painel: 'cadastro', chave, produto: null };
+    if (chave === CHAVE_PLANILHA) return { painel: 'planilha', chave };
     if (chave.startsWith('e:')) {
         const id = Number(chave.slice(2));
         const produto = (dados.produtos ?? []).find((p) => p.id === id);

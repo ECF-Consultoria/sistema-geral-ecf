@@ -236,6 +236,12 @@ export const ESCRITA = {
     produtos: 'http://localhost/trilha/459/produtos',
     // 3ª entrega, F2: a base das leituras da categoria e da ficha — relativa, como o servidor manda.
     categorias: '/trilha/459/categorias',
+    // F7: a planilha por categoria (§17.3 do desenho) — baixar o modelo, a prévia e o gravar.
+    planilha: {
+        modelo: '/trilha/459/planilha/modelo',
+        previa: '/trilha/459/planilha/previa',
+        gravar: '/trilha/459/planilha',
+    },
 };
 
 /**
@@ -641,4 +647,60 @@ export const CADASTRO_CORES_E_TAMANHOS = {
         daCamiseta(124, 'CAM-PR-M', 'Preta', 'M', { logistica: 'me1' }),
     ],
     situacao: { ...CADASTRO.situacao, faltas: ['fotos (0 de 3)'], avisos: ['vai por ME1 (transportadora)'] },
+};
+
+// ─── 3ª entrega, F7: a planilha por categoria (§17.4 do desenho) ────────────
+
+/**
+ * `POST {escrita.planilha.previa}` — a prévia de uma planilha com DUAS abas (Camisetas e Criados-mudos). A forma é a
+ * do §17.4, igual no gravar: a camiseta nova (2 cores × 3 tamanhos, 6 linhas) e a regata recusada (variação sem
+ * valor); o criado-mudo 9 atualizado com um aviso de campo da ficha (o campo inválido sai sozinho), o 12 sem
+ * mudança e a cadeira (2) recusada por inteiro (andou: o erro do produto inteiro vem com a 1ª linha e `coluna` nula). Os
+ * `totais` do servidor vêm de propósito DIFERENTES da lista (a tela conta pela lista).
+ */
+export const PREVIA_DA_PLANILHA = {
+    gravado: false,
+    abas: [
+        { categoria_id: 'MLB31447', categoria_nome: 'Camisetas', linhas: 8 },
+        { categoria_id: 'MLB1902', categoria_nome: 'Criados-mudos', linhas: 3 },
+    ],
+    produtos: [
+        {
+            chave: 'CAM-01', aba: 'MLB31447', linhas: [4, 5, 6, 7, 8, 9], produto_id: null, nome: 'Camiseta básica', codigo: 'CAM-01',
+            situacao: 'novo', variacoes: { novas: 6, atualizadas: 0 }, erros: [], avisos: [], faltas: ['fotos (0 de 3)', 'descrição'], versao: null,
+        },
+        {
+            chave: 'REG-01', aba: 'MLB31447', linhas: [10, 11], produto_id: null, nome: 'Regata lisa', codigo: 'REG-01',
+            situacao: 'recusado', variacoes: { novas: 0, atualizadas: 0 },
+            erros: [{ linha: 11, coluna: 'Variação', mensagem: 'Informe a variação: com duas ou mais linhas, cada uma precisa da sua.' }],
+            avisos: [], faltas: [], versao: null,
+        },
+        {
+            chave: 'CRIADO-01', aba: 'MLB1902', linhas: [4], produto_id: 9, nome: 'Criado-mudo 2 gavetas', codigo: 'CRIADO-01',
+            situacao: 'atualizado', variacoes: { novas: 0, atualizadas: 1 }, erros: [],
+            avisos: [{ linha: 4, coluna: 'Material', mensagem: '“Madeira maciça de jatobá” não é uma opção deste campo: ele ficou de fora.' }],
+            faltas: ['fotos (0 de 3)'], versao: 'a'.repeat(40),
+        },
+        {
+            chave: 'CRIADO-02', aba: 'MLB1902', linhas: [5], produto_id: 12, nome: 'Criado-mudo 1 gaveta', codigo: 'CRIADO-02',
+            situacao: 'sem_mudanca', variacoes: { novas: 0, atualizadas: 0 }, erros: [], avisos: [], faltas: [], versao: 'b'.repeat(40),
+        },
+        {
+            chave: 'CJ-211', aba: 'MLB1902', linhas: [6], produto_id: 2, nome: 'Cadeira jatobá assento palhinha', codigo: 'CJ-211',
+            situacao: 'recusado', variacoes: { novas: 0, atualizadas: 0 },
+            erros: [{ linha: 6, coluna: null, mensagem: 'Este produto já andou na trilha: o cadastro dele é só leitura.' }],
+            avisos: [], faltas: [], versao: 'c'.repeat(40),
+        },
+    ],
+    totais: { novos: 9, atualizados: 9, sem_mudanca: 9, recusados: 9 },
+    mensagem: '1 produto novo, 1 atualizado, 1 sem mudança e 2 ficam de fora.',
+};
+
+/** `POST {escrita.planilha.gravar}` — o resultado da mesma planilha: a camiseta nasceu (produto 130); os recusados, de fora. */
+export const RESULTADO_DA_PLANILHA = {
+    ...PREVIA_DA_PLANILHA,
+    gravado: true,
+    produtos: PREVIA_DA_PLANILHA.produtos.map((p) => (p.chave === 'CAM-01' ? { ...p, produto_id: 130 } : p)),
+    totais: { novos: 1, atualizados: 1, sem_mudanca: 1, recusados: 2 },
+    mensagem: '1 produto criado, 1 atualizado, 1 sem mudança e 2 ficaram de fora.',
 };

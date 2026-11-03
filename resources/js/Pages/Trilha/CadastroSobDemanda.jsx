@@ -28,6 +28,7 @@ export const PEDACOS_DO_CADASTRO = {
     PainelDoCadastro: () => import('@/Components/Trilha/Cadastro/PainelDoCadastro'),
     NovoProduto: () => import('@/Components/Trilha/Cadastro/NovoProduto'),
     QuadrosDaLista: () => import('@/Components/Trilha/Cadastro/QuadrosDaLista'),
+    PlanilhaPorCategoria: () => import('@/Components/Trilha/Cadastro/PlanilhaPorCategoria'),
 };
 
 /** Não desenha nada (não é uma tela). */

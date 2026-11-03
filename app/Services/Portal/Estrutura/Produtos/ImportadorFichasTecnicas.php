@@ -40,11 +40,13 @@ class ImportadorFichasTecnicas
     public const MAX_BYTES = 2 * 1024 * 1024;
     public const DETALHE_MAXIMO = 200;
 
-    private const MAX_COLUNAS = 200;
+    /** Público desde 03/11/2026: o arquivo da trilha (`ModeloCompleto`, perfil da trilha) não gera aba que passe disto. */
+    public const MAX_COLUNAS = 200;
     private const MAX_DESCOMPACTADO = 30 * 1024 * 1024;
     private const MAX_XML_DA_ABA = 10 * 1024 * 1024;
 
-    private const MSG_ILEGIVEL = 'Não conseguimos ler este arquivo. Use a planilha da ficha técnica (.xlsx) baixada aqui.';
+    /** Público desde 03/11/2026: a trilha troca esta frase pela dela quando o arquivo nem é planilha deste sistema. */
+    public const MSG_ILEGIVEL = 'Não conseguimos ler este arquivo. Use a planilha da ficha técnica (.xlsx) baixada aqui.';
     private const MSG_GRANDE = 'O arquivo é grande demais para importar. Divida a planilha em arquivos menores.';
 
     public function __construct(

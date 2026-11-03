@@ -620,12 +620,13 @@ test('a pasta Cadastro/ só entra por `lazy(() => import(…))`: quem não escre
         }
         assert.equal(fonte.match(/^\s*import\b[^;]*Cadastro\//m), null, `${nome}: import estático da pasta Cadastro/`);
     }
-    // A página carrega a gaveta de cadastro e a de criar; a Lista, o quadro da equipe.
+    // A página carrega a gaveta de cadastro, a de criar e (F7) a da planilha por categoria; a Lista, o quadro da equipe.
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/PainelDoCadastro'\)\)/);
     assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/NovoProduto'\)\)/);
+    assert.match(pagina, /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/PlanilhaPorCategoria'\)\)/);
     assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelDaLista.jsx'), /lazy\(\(\) => import\('@\/Components\/Trilha\/Cadastro\/QuadrosDaLista'\)\)/);
-    assert.deepEqual([...alvos].sort(), ['NovoProduto', 'PainelDoCadastro', 'QuadrosDaLista']);
+    assert.deepEqual([...alvos].sort(), ['NovoProduto', 'PainelDoCadastro', 'PlanilhaPorCategoria', 'QuadrosDaLista']);
 
     // O 2º caminho até a pasta (`Pages/Trilha/CadastroSobDemanda.jsx`): TODO pedaço carregado por `lazy` está lá
     // também. Sem isso o Rollup deixa as peças da página dentro do pedaço dela, ele deixa de ser a "fachada" da

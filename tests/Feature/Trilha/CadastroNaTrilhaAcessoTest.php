@@ -27,8 +27,8 @@ use Tests\TestCase;
 /**
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
- * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; cresce a cada fatia). A ordem da
- * guarda é o que se prova aqui:
+ * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
+ * categoria, a prévia e o gravar dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -51,6 +51,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
 
     private User $dev;
 
+    /** @var list<string> as planilhas mínimas gravadas no disco (F7) */
+    private array $temporarios = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -65,6 +68,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         Cache::put('ml_app_token_coleta', 'app-token-teste', 3600);
         Http::fake([
             '*/categories/MLB100200/attributes' => Http::response([['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true]]]),
+            // F7: a planilha lê a categoria (folha) para baixar e para conferir a volta.
+            '*/categories/MLB100200' => Http::response(['id' => 'MLB100200', 'name' => 'Objetos de decoração', 'children_categories' => [],
+                'path_from_root' => [['id' => 'MLB100200', 'name' => 'Objetos de decoração']]]),
             '*' => Http::response([], 404),
         ]);
         $this->app->instance(AnaliseAnuncioService::class, new class extends AnaliseAnuncioService
@@ -81,6 +87,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
 
     protected function tearDown(): void
     {
+        foreach ($this->temporarios as $arquivo) {
+            @unlink($arquivo);
+        }
         Carbon::setTestNow();
         parent::tearDown();
     }
@@ -105,6 +114,10 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'excluir cor (rota 14)'      => ['DELETE', '/produtos/{p}/variacoes/{v}', false],
             'prévia da exclusão (rota 15)' => ['POST', '/produtos/{p}/exclusao/previa', false],
             'excluir produto (rota 15)'  => ['DELETE', '/produtos/{p}', false],
+            // F7: a planilha por categoria (sem recurso no endereço: o produto vem do arquivo).
+            'planilha: baixar (F7)'  => ['GET', '/planilha/modelo?categorias[]=MLB100200', false],
+            'planilha: prévia (F7)'  => ['POST', '/planilha/previa', false],
+            'planilha: gravar (F7)'  => ['POST', '/planilha', false],
         ];
     }
 
@@ -166,7 +179,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     public function test_o_produto_de_outra_loja_pelo_endereco_desta_e_404_mesmo_com_corpo_invalido(string $metodo, string $caminho, bool $comVariacao): void
     {
         if (! str_contains($caminho, '{p}')) {
-            // A rota de criar não tem recurso no endereço: só a empresa (coberta acima).
+            // As rotas de criar e da planilha não têm recurso no endereço: só a empresa (coberta acima).
             $this->assertTrue(true);
 
             return;
@@ -288,11 +301,12 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // Excluir a cor pede um produto de duas (a última variação só sai pelo "Excluir produto").
         $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
-        $corpo = $metodo === 'POST' && ! str_contains($caminho, '{p}') ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
+        $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
 
         $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p), $corpo);
 
-        $this->assertContains($resposta->status(), [200, 201], (string) $resposta->getContent());
+        // `getStatusCode()`: o download do modelo (F7) é um StreamedResponse, sem o `status()` do Illuminate.
+        $this->assertContains($resposta->getStatusCode(), [200, 201], (string) $resposta->getContent());
         $this->assertStringNotContainsString('/portal/', (string) $resposta->getContent());
     }
 
@@ -324,8 +338,28 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             str_ends_with($caminho, '/ia')            => ['categoria' => 'MLB100200', 'titulo' => $nome, 'atributos' => []],
             // Multipart: o `json()` do teste tira os arquivos do corpo e os manda como upload.
             str_ends_with($caminho, '/fotos')         => ['imagens' => [UploadedFile::fake()->image('foto.jpg', 600, 600)]],
+            // F7: a planilha da trilha mínima (a marca, a aba da categoria e uma linha), em multipart.
+            str_starts_with($caminho, '/planilha/previa'), $caminho === '/planilha' => ['arquivo' => $this->planilhaMinima()],
             default                                   => [],
         };
+    }
+
+    /** O arquivo da planilha da trilha com uma linha: a aba da categoria, o cabeçalho na linha 2 e a marca na aba oculta. */
+    private function planilhaMinima(): UploadedFile
+    {
+        $planilha = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $aba = $planilha->getActiveSheet()->setTitle('Objetos de decoração');
+        foreach (['Produto (grupo)', 'Ref', 'Nome do produto'] as $i => $titulo) {
+            $aba->setCellValue([$i + 1, 2], $titulo);
+        }
+        $aba->fromArray([['PL-'.uniqid(), 'PL-'.uniqid(), 'Vaso da Planilha']], null, 'A4');
+        $oculta = $planilha->createSheet()->setTitle('Categorias');
+        $oculta->fromArray([['trilha-planilha-v1'], ['Objetos de decoração', '100200', 'Objetos de decoração']], null, 'A1');
+        $caminho = tempnam(sys_get_temp_dir(), 'pl').'.xlsx';
+        $this->temporarios[] = $caminho;
+        \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($planilha, 'Xlsx')->save($caminho);
+
+        return new UploadedFile($caminho, 'planilha.xlsx', null, null, true);
     }
 
     private function pedir(User $quem, string $metodo, string $url, array $corpo): TestResponse

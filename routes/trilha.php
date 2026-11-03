@@ -4,6 +4,7 @@ use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
+use App\Http\Controllers\Trilha\PlanilhaDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
 use App\Http\Controllers\Trilha\TrilhaController;
 use Illuminate\Support\Facades\Route;
@@ -76,6 +77,16 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:10,1,trilha.cadastro.exclusao')->name('cadastro.exclusao.previa');
         Route::delete('/{company}/produtos/{produto}', [CadastroDaTrilhaController::class, 'excluirProduto'])
             ->middleware('throttle:10,1,trilha.cadastro.exclusao')->name('cadastro.exclusao');
+
+        // A planilha por categoria (F7, desenho §17): baixar o modelo das categorias (`categorias[]`, 1 a 10), a prévia do
+        // arquivo preenchido (nada grava) e o gravar (multipart `arquivo`; o gravar leva `versoes[{produto}]` da prévia).
+        // Cada uma com o seu contador; o 413 do arquivo grande vira 422 `errors.arquivo` no `bootstrap/app.php`.
+        Route::get('/{company}/planilha/modelo', [PlanilhaDaTrilhaController::class, 'modelo'])
+            ->middleware('throttle:30,1,trilha.planilha.modelo')->name('planilha.modelo');
+        Route::post('/{company}/planilha/previa', [PlanilhaDaTrilhaController::class, 'previa'])
+            ->middleware('throttle:10,1,trilha.planilha.previa')->name('planilha.previa');
+        Route::post('/{company}/planilha', [PlanilhaDaTrilhaController::class, 'gravar'])
+            ->middleware('throttle:6,1,trilha.planilha.gravar')->name('planilha.gravar');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
