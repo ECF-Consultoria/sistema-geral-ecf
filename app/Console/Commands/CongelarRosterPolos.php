@@ -65,6 +65,14 @@ class CongelarRosterPolos extends Command
         $apply = (bool) $this->option('apply');
         $doLog = (bool) $this->option('do-log');
 
+        // O cadastro ao vivo só descreve o mês corrente. Gravá-lo num mês passado reescreveria
+        // aquele mês com as fases de hoje — o mesmo erro que o congelamento existe para evitar.
+        if (! $doLog && $mes !== now()->format('Ym')) {
+            $this->error("O cadastro ao vivo só congela o mês corrente. Para {$mes} use --do-log.");
+
+            return self::FAILURE;
+        }
+
         [$roster, $origem] = $doLog ? $this->rosterPeloLog($mes) : $this->rosterAoVivo();
 
         if (empty($roster)) {

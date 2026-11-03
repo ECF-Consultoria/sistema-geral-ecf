@@ -248,6 +248,22 @@ class CongelarRosterPolosTest extends TestCase
         $this->assertSame(1, PoloRosterSnapshot::where('mes', $mes)->count());
     }
 
+    public function test_mes_passado_sem_do_log_e_recusado(): void
+    {
+        // Sem --do-log a fonte é o cadastro de HOJE: gravar isso em outubro reescreveria
+        // outubro com as fases de novembro — e, com a foto, apagaria quem saiu.
+        $this->empresa(['cust_id' => '6300000001', 'fase' => 'M2']);
+        $anterior = now()->subMonthNoOverflow()->format('Ym');
+        PoloRosterSnapshot::create([
+            'mes' => $anterior, 'cust_id' => '6300000002', 'nome' => 'Era Do Mes Passado', 'fase' => 'M4',
+            'origem' => PoloRosterSnapshot::ORIGEM_VIVO, 'congelado_em' => now()->subMonthNoOverflow(),
+        ]);
+
+        $this->artisan('polos:congelar-roster', ['--mes' => $anterior, '--apply' => true])->assertExitCode(1);
+
+        $this->assertSame(['6300000002'], PoloRosterSnapshot::where('mes', $anterior)->pluck('cust_id')->all());
+    }
+
     public function test_mes_invalido_falha_sem_gravar(): void
     {
         $this->artisan('polos:congelar-roster', ['--mes' => 'agosto', '--apply' => true])
