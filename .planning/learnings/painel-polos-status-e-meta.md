@@ -741,3 +741,55 @@ fixo no ciclo de 10 dias úteis (Seg A … Sex B; Seg A = semana de 26/10/2026, 
   Adman só devolve bônus com saldo: bônus gasto até o fim some e a empresa aparece "sem bônus".
 - Marcar "feito" sem texto grava só a revisão (`polos_revisoes`), sem comentário padrão —
   um "Revisado sem alterações" apagaria o aviso "Desatualizado" ("sem bônus" × saldo na Adman).
+
+## 20. A virada reescrevia o mês passado DE NOVO — por uma janela que o §12 não fechou (03/11/2026)
+
+Queixa: "mês passado era ~59% da meta e agora dá 40 e pouco". O número era o **% no alvo**
+(Distribuição de status), não o "% Geral da meta" — `polo_meta_faturamento` nunca foi gravada
+em `configuracoes` e segue no default de R$ 3,2 mi. Medido em produção:
+
+| Outubro/2026 lido com… | No alvo |
+|---|---|
+| o roster no ar em 31/10 | 110/200 = **55,0%** |
+| o cadastro de 03/11, depois da virada das 08h | 96/224 = 42,9% |
+| o roster congelado de outubro (como estava) | 111/227 = 48,9% |
+
+### 20.1 O §12.1 fechou o mês só quando o CSV dizia FECHADO
+
+`listarMeses()` marcava parcial todo mês sem linha `FECHADO`. A Comercial leva dias para
+publicar o `FECHADO` (em 03/11 o CSV, baixado em 28/10, tinha outubro só com 613 linhas
+`PARCIAL`), e nessa janela o mês passado seguia "corrente" — lido com o cadastro AO VIVO.
+A virada de 03/11 08h (M1→M2 74, M2→M3 81, M3→M4 71, M4→Encerrado 48) reescreveu outubro com
+as fases de novembro. Um teste (`test_mes_so_com_parcial_continua_parcial`) **travava** esse
+comportamento. Hoje: só o mês corrente do calendário é parcial.
+
+### 20.2 O roster congelado era a SOMA do mês, não a foto do fim
+
+`polos:congelar-roster` fazia `updateOrCreate` e nunca apagava: quem passava um único dia em
+M2–M4 ficava no mês. Outubro acumulou 27 empresas que saíram no meio do mês — churn e ~13
+devolvidas a M1 em 15/10 (as "Customer not found" da Adman, que o time tirou da meta de
+propósito). Decisão do usuário em 03/11: **o mês fecha com a foto do último dia** — o comando
+remove do mês quem saiu do roster desde a gravação anterior. Roster vazio não apaga nada.
+
+Efeito colateral que a soma escondia: virada feita alguns dias DEPOIS do fim do mês contamina
+o mês NOVO (novembro tinha a foto de 02/11, com as fases de outubro; a soma juntaria as duas).
+
+### 20.3 Correção dos dados (03/11/2026)
+
+- **Setembro** estava contaminado desde a virada antecipada de 30/09 16:54 (267 linhas).
+  Restaurado com a foto de 29/09 23:40 do backup (166 linhas: M2=80 M3=51 M4=35; as 7 linhas
+  mais antigas do backup eram saídas do meio do mês e ficaram de fora pela regra do §20.2).
+- **Outubro**: removidas as 27 linhas fora da gravação de 31/10 23:40 → 200 (M2=81 M3=71 M4=48).
+- Backup do estado anterior: `storage/app/backups/polos_roster_snapshots_antes_restauracao_20261103_144702.json` na VPS.
+
+**Risco que continua:** virada feita no último dia do mês ANTES das 23:40 entra na foto do mês
+que acaba (foi o 30/09). O conserto é regravar o mês: `--do-log` não serve, porque o corte dele
+é o fim do mês e a virada aconteceu antes; use o backup do dia anterior ou o `activity_log`.
+
+### 20.4 Junto, mas outro problema: a Adman parou em 29/10
+
+O último `polos:warm` com dado foi 29/10 13:43 (268/276). De 30/10 em diante: 0 atualizadas —
+"Customer not found" para todas as contas Polos. Outubro está sem os últimos ~2,5 dias e
+novembro está zerado. Quando a Adman voltar, rodar `polos:warm --mes=202610` além do mês
+corrente — e lembrar que o warm varre o cadastro ao vivo, então as 48 ex-M4 que viraram
+`Encerrado` em 03/11 não são reaquecidas.
