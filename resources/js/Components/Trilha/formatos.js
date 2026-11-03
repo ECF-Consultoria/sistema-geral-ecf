@@ -97,6 +97,21 @@ export function situacaoDoItem({ tipo, item }, { trabalho = false } = {}) {
 }
 
 /**
+ * Os avisos de um produto em texto, sem vazio nem repetição (3ª entrega, F3). Aviso é o que NÃO segura o produto na
+ * Lista — com a trilha de trabalho, o "vai por ME1 (transportadora)" que tomou o lugar da falta "frete ME1". O texto
+ * é do servidor e neutro (as duas portas o leem); aceita o texto solto ou `{texto}`.
+ *
+ * @returns {string[]}
+ */
+export function avisosEmTexto(avisos) {
+    const textos = (Array.isArray(avisos) ? avisos : [])
+        .map((a) => String((typeof a === 'string' ? a : a?.texto ?? a?.mensagem) ?? '').trim())
+        .filter(Boolean);
+
+    return [...new Set(textos)];
+}
+
+/**
  * A coluna "Situação" da planilha da Lista: texto e barrinha.
  * @returns {{texto: string, porcento: number, tom: 'warn'|'ok'}}
  */

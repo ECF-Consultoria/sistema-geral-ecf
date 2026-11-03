@@ -46,7 +46,7 @@ class AcessoATrilhaTest extends TestCase
     /** Os campos de cada item na tela — os do contrato (seção 4), nem um a mais. */
     private const CAMPOS_DO_PRODUTO = [
         'id', 'nome', 'codigo', 'skus', 'familia', 'ambientes', 'categoria', 'variacoes', 'custo_min', 'custo_max',
-        'medidas', 'embalagem', 'fotos_min', 'tem_descricao', 'ficha', 'faltas', 'etapa', 'sugestoes_pendentes',
+        'medidas', 'embalagem', 'fotos_min', 'tem_descricao', 'ficha', 'faltas', 'avisos', 'etapa', 'sugestoes_pendentes',
         'sugestoes_pendentes_total', 'mapeado_em', 'mapeado_por', 'url_ficha',
     ];
 
@@ -399,6 +399,42 @@ class AcessoATrilhaTest extends TestCase
         $this->assertSame([['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false]], $cliente['ondas']);
         $resposta->assertDontSee('Rafael', false);
         $resposta->assertDontSee('SEGREDO-DA-ONDA', false);
+    }
+
+    /**
+     * F5 do desenho, antecipada com a F3 (decisão do usuário de 03/11/2026: "a trilha não pode ter nada a ver com o
+     * Portal do cliente; ela substitui o Portal"): com a trilha de trabalho, nenhum endereço do Portal sai nas props das
+     * duas portas — na equipe, sem "Abrir o Portal da empresa" (mesmo para quem pode entrar nele); no cliente, sem o
+     * "Voltar ao portal", sem os atalhos do Planejamento e do cadastro de Produtos e sem a ficha de cada produto. Sem a
+     * chave, tudo como na 1ª entrega (os testes acima: `links.portal_abrir`, `links.produtos`, `url_ficha`).
+     */
+    public function test_com_a_trilha_de_trabalho_nenhum_link_do_portal_sai_nas_props_das_duas_portas(): void
+    {
+        $empresa = $this->empresaLigada();
+        config(['trilha.trabalho.empresas' => [$empresa->id]]);
+        $crua = $this->trilhaCrua();
+        $crua['trabalho'] = true;
+        $this->mock(TrilhaDaEmpresa::class, fn (MockInterface $m) => $m->shouldReceive('montar')->times(2)->andReturn($crua));
+
+        $equipe = $this->props($this->actingAs($this->dev())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertTrue($equipe['pode_editar'], 'quem pode entrar no Portal da empresa — e nem assim recebe o link');
+        $this->assertNull($equipe['links']['portal_abrir']);
+        $this->assertSame(['url' => route('trilha.index'), 'rotulo' => 'Empresas'], $equipe['voltar']);
+
+        $cliente = $this->props($this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk());
+        $this->assertNull($cliente['voltar'], 'nem o "Voltar ao portal"');
+        $this->assertSame(['portal_abrir' => null, 'planejamento' => null, 'produtos' => null, 'publicador' => null], $cliente['links']);
+        $this->assertNotEmpty($cliente['produtos']);
+        foreach ($cliente['produtos'] as $produto) {
+            $this->assertNull($produto['url_ficha'], $produto['nome']);
+        }
+
+        // A varredura das props DA PÁGINA (as compartilhadas são de toda página): nenhum endereço nem texto do Portal.
+        foreach (['equipe' => $equipe, 'cliente' => $cliente] as $porta => $props) {
+            $json = json_encode(array_intersect_key($props, array_flip(self::PROPS_DA_PAGINA)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $this->assertStringNotContainsString('/portal', $json, $porta);
+            $this->assertStringNotContainsStringIgnoringCase('ao portal', $json, $porta);
+        }
     }
 
     public function test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente(): void

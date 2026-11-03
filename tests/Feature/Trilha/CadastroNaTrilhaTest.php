@@ -302,7 +302,7 @@ class CadastroNaTrilhaTest extends TestCase
         $r = $this->linhas($produto, [[
             'id' => $v->id, 'chave' => 'k1', 'codigo' => 'POLT-1-BG', 'nome' => 'Poltrona Ripada', 'titulo' => 'poltrona ripada bege para sala',
             'familia' => 'Poltronas', 'ambientes' => ['Sala de estar', 'Varanda'], 'custo' => '1.890,50', 'estoque' => '4',
-            // Caixa dentro dos limites dos Correios: o "frete ME1" (que vira aviso só na F3) fica fora deste teste.
+            // Caixa dentro dos limites dos Correios: o "frete ME1" (aviso na trilha de trabalho, F3) fica fora deste teste.
             'volumes' => [['c' => 60, 'l' => 40, 'a' => 30, 'kg' => 8.5]], 'descricao' => "Linha 1\nLinha 2",
         ]])->assertOk()->json();
 
@@ -558,7 +558,8 @@ class CadastroNaTrilhaTest extends TestCase
         $this->assertSame(['salvos'], array_keys($r['ficha']));
         $this->assertSame(['familias', 'ambientes'], array_keys($r['listas']));
         $this->assertSame(self::CHAVES_DA_SITUACAO, array_keys($r['situacao']));
-        $this->assertSame([], $r['situacao']['avisos'], 'F1: o "frete ME1" vira aviso só na F3');
+        // O "frete ME1" como aviso (F3) está no FotosNaTrilhaTest e no TrilhaDaEmpresaTest; aqui as caixas cabem.
+        $this->assertSame([], $r['situacao']['avisos']);
         $this->assertSame(['livre', 'motivo', 'onda_comecou'], array_keys($r['edicao']));
         $this->assertNull($r['versao'], 'F6');
     }

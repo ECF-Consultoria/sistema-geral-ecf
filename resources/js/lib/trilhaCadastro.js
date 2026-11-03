@@ -16,11 +16,16 @@
 // `categoria_ml_id`) e a ficha técnica com as medidas do produto montado — o
 // 2º passo do `gravarCadastro`, depois das linhas (a ficha exige a categoria
 // GRAVADA). A ficha mora no mesmo estado da gaveta (`estado.ficha`, no formato
-// de `lib/fichaTecnica.js`): o "mexido" e a guarda de saída a veem.
+// de `lib/fichaTecnica.js`): o "mexido" e a guarda de saída a veem. F3: as
+// fotos (uma galeria por cor, ação imediata) e o frete (a logística de cada
+// variação, o ME1 como AVISO e o "Conferir frete pela conta") — lidos do
+// retrato; a resposta de cada ação imediata entra por `aplicarResposta`.
 
-import { campoEditaveis, linhaParaServidor } from './produtosEstrutura.js';
+import { campoEditaveis, gruposPorCor, linhaParaServidor } from './produtosEstrutura.js';
 import { categoriaParaConsulta, deveGravar, eixosEmUso, gruposDoProduto, montarAtributos, valoresIniciais } from './fichaTecnica.js';
 import { mesclarSugestoes } from './fichaLayout.js';
+import { LIMITE_IMAGENS, LIMITE_MB, avisoDeGrandes, prepararRemessa, quantasCabem, separarGrandes } from './imagensVariacao.js';
+import { FOTOS_MINIMAS } from '../Components/Trilha/formatos.js';
 
 export { CHAVE_NOVO_PRODUTO, deveFecharNoEsc } from './trilha.js';
 
@@ -689,6 +694,142 @@ export function acaoDoEnter({ listaAberta, ativa = -1, itens = [], temSemEscolha
 
 /** O nome é novo na lista da empresa? (vira a etiqueta "(nova)" ao lado do campo) */
 export const nomeNovo = (opcoes, nome) => texto(nome) !== '' && !(opcoes ?? []).some((o) => nomeComparavel(typeof o === 'string' ? o : o?.nome) === nomeComparavel(nome));
+
+// ─── Fotos (F3) ─────────────────────────────────────────────────────────────
+//
+// As fotos são AÇÃO IMEDIATA (enviar e excluir gravam na hora, sem o "Salvar"): elas não moram no estado da gaveta,
+// e sim no retrato (`variacoes[].fotos`, com as URLs da rota da equipe). A resposta de cada ação é o retrato novo,
+// juntado ao estado por `aplicarResposta` — o que a pessoa digitou e não salvou fica.
+
+/**
+ * As galerias da gaveta, uma por COR (§5.7 do desenho), na ordem das variações:
+ * - com cor E tamanho, as fotos são da cor e moram numa variação dela, a "dona" (`gruposPorCor`, a régua do Portal:
+ *   a 1ª com foto, senão a 1ª — a mesma do `dona_da_cor` do servidor, que vale quando vem);
+ * - com um eixo só (ou nenhum), cada variação guarda as suas: uma galeria por variação;
+ * - sem variação (o produto que não varia), uma galeria só.
+ *
+ * `onde` é como os textos da galeria chamam o lugar ("nesta cor", "neste produto").
+ *
+ * @returns {Array<{chave: string, variacaoId: number, cor: ?string, tamanhos: string[], fotos: Array<{id: number,
+ *   url: string, url_original?: string, nome_original?: string}>, onde: string}>}
+ */
+export function fotosPorCor(retrato) {
+    const variacoes = (retrato?.variacoes ?? []).map((v) => ({ ...v, _k: chaveDaVariacao(v), imagens: v.fotos ?? [] }));
+    if (!variacoes.length) return [];
+    const doisEixos = texto(retrato?.produto?.eixo_2) !== '' || variacoes.some((v) => texto(v.valor_2) !== '');
+    const grupos = doisEixos
+        ? gruposPorCor(variacoes)
+        : variacoes.map((v) => ({ chave: v._k, valor: v.valor ?? '', vars: [v], dona: v }));
+    const eixo = texto(retrato?.produto?.eixo).toLowerCase();
+
+    return grupos.map((g) => {
+        const dona = g.vars.find((v) => v.dona_da_cor === true) ?? g.dona;
+        const cor = texto(g.valor) || null;
+        let onde = 'nesta variação';
+        if (!cor && variacoes.length === 1) onde = 'neste produto';
+        else if (doisEixos || eixo === 'cor') onde = 'nesta cor';
+
+        return {
+            chave: g.chave,
+            variacaoId: dona.id,
+            cor,
+            tamanhos: doisEixos ? g.vars.map((v) => texto(v.valor_2)).filter(Boolean) : [],
+            fotos: dona.fotos ?? [],
+            onde,
+        };
+    });
+}
+
+/**
+ * O contador da galeria: abaixo do mínimo da Lista (3 em cada cor), "2 de 3" em âmbar; no mínimo ou acima,
+ * "3 fotos" em verde. O servidor é quem decide a falta; isto só lê o que a galeria tem.
+ *
+ * @returns {{texto: string, tom: 'warn'|'ok', completo: boolean}}
+ */
+export function contadorDeFotos(quantas, minimo = FOTOS_MINIMAS) {
+    const n = Math.max(0, Number(quantas) || 0);
+    if (n < minimo) return { texto: `${n} de ${minimo}`, tom: 'warn', completo: false };
+
+    return { texto: `${n} ${n === 1 ? 'foto' : 'fotos'}`, tom: 'ok', completo: true };
+}
+
+/** A foto grande ("Ver maior"): a `url_original` do retrato; sem ela, a mesma rota com `?original=1`. */
+export function urlOriginalDaFoto(foto) {
+    if (texto(foto?.url_original)) return texto(foto.url_original);
+    const url = texto(foto?.url);
+    if (!url) return null;
+
+    return `${url}${url.includes('?') ? '&' : '?'}original=1`;
+}
+
+/**
+ * A remessa de fotos de uma galeria, conferida ANTES do envio (o servidor é tudo ou nada; a tela avisa antes):
+ * - acima do teto de tamanho (`mb`, o do retrato) não vai — `separarGrandes`, com o aviso de cada uma;
+ * - formato fora de JPG/PNG/WebP não vai — `prepararRemessa`, sem o teto de quantidade (este vai abaixo, no texto da
+ *   trilha: a galeria é da cor, não da "variação");
+ * - mais do que cabe (`quantasCabem`): NADA vai, e o aviso diz quantas ainda cabem.
+ * Os arquivos que servem vão juntos, numa remessa só, com os avisos dos que ficaram de fora.
+ *
+ * @param {Array<{name: string, size?: number}>|FileList} escolhidos
+ * @returns {{arquivos: Array, avisos: string[]}}  `arquivos` vazio = não envia
+ */
+export function remessaDeFotos(escolhidos, total, { limite = LIMITE_IMAGENS, mb = LIMITE_MB, onde = 'nesta cor' } = {}) {
+    const lista = Array.from(escolhidos ?? []);
+    if (!lista.length) return { arquivos: [], avisos: [] };
+    const tetoMb = Number(mb) > 0 ? Number(mb) : LIMITE_MB;
+    const { cabem: noTamanho, grandes } = separarGrandes(lista, tetoMb * 1024 * 1024);
+    const { arquivos: noFormato, avisos } = prepararRemessa(noTamanho, 0, Number.POSITIVE_INFINITY);
+    const deGrandes = avisoDeGrandes(grandes, tetoMb);
+    if (deGrandes) avisos.push(deGrandes);
+    if (!noFormato.length) return { arquivos: [], avisos };
+
+    const cabem = quantasCabem(total, limite);
+    if (noFormato.length > cabem) {
+        avisos.push(cabem === 0
+            ? `Já há ${limite} fotos ${onde}, o máximo. Exclua alguma para enviar outra.`
+            : `Cabem mais ${cabem} ${cabem === 1 ? 'foto' : 'fotos'} ${onde}. Escolha menos e envie de novo.`);
+
+        return { arquivos: [], avisos };
+    }
+
+    return { arquivos: noFormato, avisos };
+}
+
+/** "3 fotos enviadas." / "1 foto enviada." — o que a galeria diz depois do envio. */
+export const textoDoEnvio = (n) => (Number(n) === 1 ? '1 foto enviada.' : `${Number(n) || 0} fotos enviadas.`);
+
+// ─── Frete (F3) ─────────────────────────────────────────────────────────────
+
+/**
+ * A logística de cada variação, como o retrato diz (ME2, Full, ME1 ou "pendente" sem caixa salva) — nada calculado
+ * aqui. Com a trilha de trabalho o ME1 NÃO segura o produto: é aviso (pergunta 3 do desenho).
+ *
+ * @returns {Array<{id: number, nome: string, codigo: string, logistica: 'me2'|'me2_full'|'me1'|'pendente'}>}
+ */
+export function logisticaDasVariacoes(retrato) {
+    const conhecidas = ['me2', 'me2_full', 'me1'];
+
+    return (retrato?.variacoes ?? []).map((v) => ({
+        id: v.id,
+        nome: [v.valor, v.valor_2].map(texto).filter(Boolean).join(' · '),
+        codigo: texto(v.codigo),
+        logistica: conhecidas.includes(v.logistica) ? v.logistica : 'pendente',
+    }));
+}
+
+/** Alguma variação só vai por transportadora (ME1)? É o aviso "vai por ME1 (transportadora)". */
+export const vaiPorMe1 = (retrato) => logisticaDasVariacoes(retrato).some((v) => v.logistica === 'me1');
+
+/**
+ * A embalagem está mexida (não salva) em alguma variação? O "Conferir frete pela conta" usa as caixas SALVAS: com
+ * caixa mexida, conferir agora diria o frete das caixas de antes.
+ */
+export function embalagemMexida(estado, retrato) {
+    if (!estado || !retrato) return false;
+    const m = camposMexidos(estado, retrato);
+
+    return Object.values(m.variacoes).some((campos) => campos.includes('volumes'));
+}
 
 // ─── Avisos da gaveta ───────────────────────────────────────────────────────
 

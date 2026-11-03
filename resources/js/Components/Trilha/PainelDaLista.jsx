@@ -2,7 +2,7 @@ import { Suspense, lazy, useMemo } from 'react';
 import { chaveDeCadastro, chaveDoProduto, etapaDaTrilha } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 import { AcoesComNovoProduto, AcoesDoPainel, BotaoNovoProduto, MolduraDoPainel, RegraDePronto, sobrelinhaDaEtapa } from '@/Components/Trilha/PainelDaEtapa';
-import { FOTOS_MINIMAS, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } from '@/Components/Trilha/formatos';
+import { FOTOS_MINIMAS, avisosEmTexto, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — etapa 1: a lista de produtos como planilha ────────
 //
@@ -102,6 +102,9 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
     const custo = fmtCusto(produto);
     const situacao = situacaoNaPlanilha(produto);
     const ambientes = produto.ambientes ?? [];
+    // O que não segura o produto na Lista (com a trilha de trabalho: "vai por ME1 (transportadora)"): AVISO, nunca
+    // "falta" — a barrinha e o "Completo" não mudam por ele.
+    const avisos = avisosEmTexto(produto.avisos);
 
     // A linha inteira abre o painel (mouse); o nome é o botão de verdade (teclado e
     // leitor de tela) e é para ele que o foco volta quando o painel fecha.
@@ -168,6 +171,11 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
                     </span>
                     <span className="whitespace-nowrap text-[12.5px]">{situacao.texto}</span>
                 </div>
+                {avisos.length > 0 && (
+                    <span className="mt-1 block text-[12px] text-trilha-run" data-aviso-do-produto="">
+                        <span className="font-semibold">aviso:</span> {avisos.join(' · ')}
+                    </span>
+                )}
             </td>
         </tr>
     );

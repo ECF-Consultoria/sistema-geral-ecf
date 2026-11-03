@@ -8,6 +8,10 @@ import {
     CADASTRO,
     CADASTRO_CATEGORIA_TRAVADA,
     CADASTRO_COM_CATEGORIA,
+    CADASTRO_COM_FOTOS,
+    CADASTRO_CORES_E_TAMANHOS,
+    CADASTRO_FOTOS_COMPLETAS,
+    CADASTRO_ME1,
     CADASTRO_ONDA_COMECOU,
     CADASTRO_TRAVADO,
     CAMPOS_DA_CATEGORIA,
@@ -18,7 +22,7 @@ import {
     SALVO_INCOMPLETO,
     TERMOS_DA_CATEGORIA,
 } from './_trilha-exemplo.js';
-import { categoriaDaGaveta, estadoDoRetrato, gruposDaFicha, mexido, resultadoDoSalvar, textoDaIa } from '../../resources/js/lib/trilhaCadastro.js';
+import { categoriaDaGaveta, estadoDoRetrato, fotosPorCor, gruposDaFicha, mexido, resultadoDoSalvar, textoDaIa } from '../../resources/js/lib/trilhaCadastro.js';
 import { camposDeMedidas, gruposSemMedidas } from '../../resources/js/lib/medidasDoProduto.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -88,6 +92,7 @@ const M = await montarTodos({
     quadros: 'resources/js/Components/Trilha/Cadastro/QuadrosDaLista.jsx',
     produto: 'resources/js/Components/Trilha/Cadastro/CaixaDoProduto.jsx',
     campo: 'resources/js/Components/Trilha/Cadastro/CampoDaFicha.jsx',
+    fotos: 'resources/js/Components/Trilha/Cadastro/FotosDaCor.jsx',
 });
 
 const { createElement: h } = await import('react');
@@ -166,8 +171,8 @@ test('a gaveta na ordem do protótipo: Onde está, a Lista de produtos (nome →
     const caixas = ['onde-esta', 'lista', 'ficha', 'ofertas'].map((c) => saida.indexOf(`data-caixa="${c}"`));
     assert.ok(caixas.every((i, n) => i > 0 && (n === 0 || i > caixas[n - 1])), `ordem das caixas: ${caixas}`);
     // A ordem do §5.3: nome, CATEGORIA (F2, logo abaixo do nome), família, ambientes, título e, sem variação, SKU,
-    // custo, estoque e embalagem; as medidas do produto montado; a descrição no fim.
-    const campos = ['nome', 'categoria', 'familia', 'ambientes', 'titulo', 'codigo', 'custo', 'estoque', 'volumes', 'medidas-do-produto', 'descricao']
+    // custo, estoque, embalagem com o frete e as fotos (F3); as medidas do produto montado; a descrição no fim.
+    const campos = ['nome', 'categoria', 'familia', 'ambientes', 'titulo', 'codigo', 'custo', 'estoque', 'volumes', 'frete', 'fotos', 'medidas-do-produto', 'descricao']
         .map((c) => saida.indexOf(`data-campo="${c}"`));
     assert.ok(campos.every((i, n) => i > 0 && (n === 0 || i > campos[n - 1])), `ordem dos campos: ${campos}`);
 
@@ -177,10 +182,11 @@ test('a gaveta na ordem do protótipo: Onde está, a Lista de produtos (nome →
     // A pílula e as faltas: as do SERVIDOR, nada recalculado.
     assert.match(saida, /data-caixa="lista"[\s\S]*?faltam 8/);
     for (const falta of CADASTRO.situacao.faltas) assert.ok(t.includes(falta), `falta não mostrada: ${falta}`);
-    // F2: a categoria e a ficha se completam AQUI; só as fotos e o frete (F3) ainda apontam o Portal da empresa.
-    assert.ok(t.includes('As fotos e o frete ainda não se completam por aqui: use o Portal da empresa.'), t);
-    assert.ok(!/categoria|ficha/i.test(texto(saida.match(/data-nota-do-portal=""[\s\S]*?<\/div>/)?.[0] ?? '')), 'a nota não fala mais de categoria nem de ficha');
-    assert.match(saida, /href="\/companies\/459\/portal"[^>]*data-link="portal"/);
+    // F3: fotos e frete também se completam AQUI — a nota que mandava ao Portal da empresa saiu, e nada na gaveta
+    // leva ao Portal (a trilha o substitui).
+    assert.ok(!saida.includes('data-nota-do-portal') && !saida.includes('data-link="portal"'));
+    assert.equal(t.match(/portal/i), null, t);
+    assert.equal(saida.match(/href="[^"]*portal[^"]*"/), null);
 
     // O nome é o começo do foco.
     assert.ok(tag(saida, 'data-foco-inicial', 'input').includes('value="Criado-mudo 2 gavetas"'));
@@ -232,7 +238,7 @@ test('salvo com faltas: a pílula "faltam 2"; completo: "completa" e "Mapear ago
     const completo = desenharGaveta(SALVO_COMPLETO);
     assert.match(completo, /data-caixa="lista"[\s\S]*?>completa</);
     assert.ok(texto(completo).includes('Mapear agora'));
-    assert.ok(!completo.includes('data-nota-do-portal'), 'nada a completar fora daqui');
+    assert.ok(!completo.includes('data-nota-do-portal') && !texto(completo).includes('Portal'), 'nada a completar fora daqui');
 });
 
 test('o resultado do "Salvar" toma o lugar do formulário: "Lista completa…" + "Mapear agora"; ou "Ainda faltam…" + "Continuar editando"', () => {
@@ -325,6 +331,169 @@ test('abrindo: "Abrindo o cadastro do produto…" (ocupado); o GET que falhou te
     const falhou = desenharGaveta(null, { erroAoAbrir: 'O servidor falhou. Tente de novo em instantes.' }, { produto: produtoDaTrilha(9) });
     assert.ok(texto(falhou).includes('O servidor falhou. Tente de novo em instantes.'));
     assert.ok(falhou.includes('data-acao="tentar-de-novo"'));
+});
+
+// ─── F3: as fotos e o frete ─────────────────────────────────────────────────
+
+/** O pedaço do HTML de uma galeria (`data-galeria="v91"`) até a próxima galeria ou o fim das fotos. */
+function galeria(html, chave) {
+    const inicio = html.indexOf(`data-galeria="${chave}"`);
+    assert.ok(inicio >= 0, `a galeria ${chave} devia estar desenhada`);
+    const fim = html.indexOf('data-galeria="', inicio + 10);
+
+    return html.slice(inicio, fim < 0 ? html.indexOf('data-campo="medidas-do-produto"', inicio) : fim);
+}
+
+test('F3 — a galeria do produto: as miniaturas pela rota da equipe, a capa, o contador "2 de 3" em âmbar e "3 fotos" em verde', () => {
+    const saida = desenharGaveta(CADASTRO_COM_FOTOS);
+    const g = galeria(saida, 'v91');
+    const t = texto(g);
+
+    // O rótulo do campo, obrigatório, com o mínimo; a galeria única do produto que não varia.
+    assert.match(texto(saida.match(/data-campo="fotos"[\s\S]*?<\/legend>/)?.[0] ?? ''), /Fotos \* mínimo 3/);
+    assert.ok(t.includes('Fotos do produto'));
+    // As miniaturas são as da rota da equipe (o retrato), nunca do Portal; a 1ª é a capa.
+    assert.deepEqual([...g.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]), ['/trilha/459/fotos/91/501', '/trilha/459/fotos/91/502']);
+    assert.match(g, /data-foto="501"[\s\S]*?>capa</);
+    assert.ok(tag(g, 'data-ver-maior="501"').includes('aria-label="Ver maior: foto 1 (capa)"'));
+    assert.ok(tag(g, 'data-ver-maior="502"').includes('aria-label="Ver maior: foto 2"'));
+    // O contador: abaixo de 3, âmbar.
+    const contador = tag(g, 'data-contador-de-fotos', 'span');
+    assert.ok(contador.includes('data-contador-de-fotos="warn"') && contador.includes('text-trilha-warn'), contador);
+    assert.match(g, /data-contador-de-fotos="warn"[^>]*>2 de 3</);
+    // Enviar (escolha múltipla, só os formatos aceitos) e excluir, uma de cada foto.
+    assert.equal((g.match(/data-acao="excluir-foto"/g) ?? []).length, 2);
+    assert.ok(g.includes('data-acao="enviar-fotos"'));
+    const arquivo = tag(saida, 'data-arquivos-da-galeria="v91"', 'input');
+    assert.ok(arquivo.includes('type="file"') && arquivo.includes('multiple=""') && arquivo.includes('accept=".jpg,.jpeg,.png,.webp'), arquivo);
+    assert.ok(t.includes('JPG, PNG ou WebP, até 10 MB cada; cabem até 12 neste produto. A 1ª foto é a capa.'));
+    // Fora do Publicador, sem o aviso das fotos.
+    assert.ok(!saida.includes('data-aviso-das-fotos-no-publicador'));
+
+    // Com 3 fotos, verde.
+    const completas = galeria(desenharGaveta(CADASTRO_FOTOS_COMPLETAS), 'v91');
+    assert.match(completas, /data-contador-de-fotos="ok"[^>]*>3 fotos</);
+    assert.ok(tag(completas, 'data-contador-de-fotos', 'span').includes('text-trilha-ok'));
+    // Sem foto: "0 de 3" e só o "Enviar fotos".
+    const vazia = galeria(desenharGaveta(SALVO_INCOMPLETO), 'v91');
+    assert.match(vazia, /data-contador-de-fotos="warn"[^>]*>0 de 3</);
+    assert.ok(!vazia.includes('<img') && vazia.includes('data-acao="enviar-fotos"'));
+});
+
+test('F3 — "Ver maior" abre a ORIGINAL (`?original=1`) dentro da gaveta; excluir pede a confirmação ali mesmo', () => {
+    const [g] = fotosPorCor(CADASTRO_COM_FOTOS);
+    const nada = () => {};
+    const desenhar = (extra) => renderToStaticMarkup(h(M.fotos.VistaDaGaleria, { galeria: g, ...extra }));
+
+    const maior = desenhar({ maior: 502 });
+    assert.match(maior, /data-foto-maior="502"[\s\S]*?<img src="\/trilha\/459\/fotos\/91\/502\?original=1"/);
+    assert.ok(tag(maior, 'data-link="foto-original"', 'a').includes('href="/trilha/459/fotos/91/502?original=1"'));
+    assert.ok(tag(maior, 'data-link="foto-original"', 'a').includes('target="_blank"'));
+    assert.ok(maior.includes('data-acao="fechar-foto-maior"') && texto(maior).includes('lado.jpg'));
+    assert.ok(tag(maior, 'data-ver-maior="502"').includes('aria-expanded="true"'));
+
+    // Excluir a capa: a confirmação na galeria (sem window.confirm), com o foco no "Cancelar".
+    const confirmando = desenhar({ confirmando: 501, onConfirmarExclusao: nada });
+    assert.ok(texto(confirmando).includes('Excluir a capa? Ela sai do cadastro na hora, e a 2ª foto passa a ser a capa.'));
+    assert.ok(confirmando.includes('data-acao="confirmar-exclusao-da-foto"') && confirmando.includes('data-acao="cancelar-exclusao-da-foto"'));
+    assert.ok(tag(confirmando, 'data-acao="confirmar-exclusao-da-foto"').includes('bg-trilha-bad'));
+    assert.ok(texto(desenhar({ confirmando: 502 })).includes('Excluir a foto 2? Ela sai do cadastro na hora.'));
+    // Excluindo: o botão fica ocupado.
+    assert.ok(tag(desenhar({ confirmando: 502, excluindo: 502 }), 'data-acao="confirmar-exclusao-da-foto"').includes('aria-disabled="true"'));
+
+    // Enviando: "Enviando 3…", a galeria ocupada; os avisos e o "enviadas" chegam por `role`.
+    const enviando = desenhar({ enviando: 3 });
+    assert.ok(texto(enviando).includes('Enviando 3…') && enviando.includes('aria-busy="true"'));
+    const comAviso = desenhar({ avisos: ['“grande.jpg” tem 12 MB; o limite é 10 MB. Escolha uma foto menor.'], status: '2 fotos enviadas.' });
+    assert.match(comAviso, /role="alert"[^>]*data-avisos-da-galeria=""[\s\S]*?grande\.jpg/);
+    assert.match(comAviso, /role="status"[^>]*>2 fotos enviadas\.</);
+    // Cheia (12): sem o "Enviar fotos", e a dica diz por quê.
+    const cheia = desenhar({ galeria: { ...g, fotos: Array.from({ length: 12 }, (_, i) => ({ id: 700 + i, url: `/trilha/459/fotos/91/${700 + i}` })) } });
+    assert.ok(!cheia.includes('data-acao="enviar-fotos"') && texto(cheia).includes('Já há 12 fotos neste produto, o máximo.'));
+    // Só leitura: as fotos se veem, nada se envia nem se exclui.
+    const leitura = desenhar({ leitura: true });
+    assert.ok(leitura.includes('<img') && !leitura.includes('data-acao="excluir-foto"') && !leitura.includes('data-acao="enviar-fotos"'));
+    // Na gaveta só de leitura o "Ver maior" é um LINK para a original (o `fieldset disabled` desligaria o botão).
+    const verMaior = tag(leitura, 'data-ver-maior="501"', 'a');
+    assert.ok(verMaior.includes('href="/trilha/459/fotos/91/501?original=1"') && verMaior.includes('target="_blank"'), verMaior);
+});
+
+test('F3 — cor E tamanho: uma galeria por COR, na dona, com os tamanhos que ela vale; a ação imediata ocupa o "Salvar"', () => {
+    const saida = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.match(texto(saida.match(/data-campo="fotos"[\s\S]*?<\/legend>/)?.[0] ?? ''), /Fotos \* mínimo 3 em cada cor/);
+    assert.deepEqual([...saida.matchAll(/data-galeria="(v\d+)" data-variacao-das-fotos="(\d+)"/g)].map((m) => [m[1], Number(m[2])]), [['v121', 122], ['v123', 123]]);
+    const branca = galeria(saida, 'v121');
+    assert.ok(texto(branca).includes('Branca') && texto(branca).includes('Valem para os tamanhos P e M.'));
+    assert.match(branca, /data-contador-de-fotos="ok"[^>]*>3 fotos</);
+    assert.ok(texto(branca).includes('cabem até 12 nesta cor'));
+    const preta = galeria(saida, 'v123');
+    assert.match(preta, /data-contador-de-fotos="warn"[^>]*>0 de 3</);
+
+    // Uma remessa subindo: o "Salvar" fica ocupado (as duas mudariam o mesmo retrato), as outras ações esperam.
+    const estado = estadoDoRetrato(CADASTRO_COM_FOTOS);
+    estado.produto.titulo = 'Mexido';
+    const subindo = desenharGaveta(CADASTRO_COM_FOTOS, { estado, acao: { tipo: 'fotos', variacaoId: 91, quantas: 2 } });
+    assert.ok(tag(subindo, 'data-excluir-foto="501"').includes('disabled=""'), 'excluir espera o envio');
+    assert.ok(tag(subindo, 'data-acao="salvar-cadastro"').includes('aria-disabled="true"'));
+    assert.ok(texto(galeria(subindo, 'v91')).includes('Enviando 2…'));
+    assert.ok(tag(subindo, 'data-acao="conferir-frete"').includes('disabled=""'));
+});
+
+test('F3 — produto no Publicador: "Foto nova aqui não entra no anúncio…"; travado, as fotos só se veem', () => {
+    const noPublicador = desenharGaveta({ ...CADASTRO_COM_FOTOS, situacao: { ...CADASTRO_COM_FOTOS.situacao, no_publicador: true, categoria_travada: true } });
+    assert.match(noPublicador, /data-aviso-das-fotos-no-publicador=""[\s\S]*?Foto nova aqui não entra no anúncio que já está sendo montado: troque no Publicador\./);
+    assert.ok(noPublicador.includes('data-acao="enviar-fotos"'), 'o envio continua: o aviso só diz onde ela não chega');
+
+    const travado = desenharGaveta({ ...CADASTRO_TRAVADO, variacoes: [{ ...CADASTRO_TRAVADO.variacoes[0], fotos: CADASTRO_COM_FOTOS.variacoes[0].fotos }, CADASTRO_TRAVADO.variacoes[1]] });
+    assert.ok(travado.includes('/trilha/459/fotos/91/501'));
+    for (const acao of ['enviar-fotos', 'excluir-foto', 'conferir-frete']) assert.ok(!travado.includes(`data-acao="${acao}"`), acao);
+    assert.ok(!travado.includes('data-aviso-das-fotos-no-publicador'), 'só leitura: nada a avisar sobre foto nova');
+});
+
+test('F3 — o ME1 é AVISO: o produto completo diz "completa" e "Segue com aviso: vai por ME1 (transportadora)"; o frete por variação', () => {
+    const saida = desenharGaveta(CADASTRO_ME1);
+    const t = texto(saida);
+    // A pílula da Lista: completa (o aviso não é falta), e o aviso ao lado, no tom de informação.
+    assert.match(saida, /data-caixa="lista"[\s\S]*?>completa</);
+    assert.ok(!saida.includes('data-faltas=""'));
+    assert.match(saida, /data-avisos=""[\s\S]*?Segue com aviso:[\s\S]*?text-trilha-run[^>]*>vai por ME1 \(transportadora\)</);
+    // No frete da variação: o ME1, com o texto do aviso — nada de "falta".
+    assert.match(saida, /data-campo="frete"[\s\S]*?data-logistica="me1"[\s\S]*?>ME1<[\s\S]*?Segue com aviso: vai por ME1 \(transportadora\)\./);
+    assert.ok(t.includes('o produto não fica preso na Lista por isso'));
+    assert.equal(t.match(/frete ME1/), null, 'a falta antiga não aparece');
+
+    // ME2 e "sem caixa salva": sem aviso.
+    assert.match(desenharGaveta(SALVO_INCOMPLETO), /data-logistica="me2"[\s\S]*?>ME2<[\s\S]*?Vai pelo Mercado Envios \(ME2\)\./);
+    const semCaixa = desenharGaveta(CADASTRO);
+    assert.match(semCaixa, /data-logistica="pendente"[\s\S]*?O frete aparece quando a embalagem estiver salva\./);
+    assert.ok(!semCaixa.includes('data-avisos=""'));
+
+    // Várias variações: uma linha por variação com a sua logística; o aviso uma vez.
+    const camiseta = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
+    assert.deepEqual([...camiseta.matchAll(/<li [^>]*data-logistica="(\w+)"/g)].map((m) => m[1]), ['me2', 'me2', 'me2', 'me1']);
+    assert.match(camiseta, /data-aviso-do-me1=""[^>]*>Segue com aviso: vai por ME1 \(transportadora\)\.</);
+    assert.match(camiseta, /data-avisos=""[\s\S]*?vai por ME1 \(transportadora\)/);
+});
+
+test('F3 — [Conferir frete pela conta]: lê a conta da loja; espera o "Salvar" quando a caixa está mexida; a resposta vira nota', () => {
+    const livre = tag(desenharGaveta(SALVO_INCOMPLETO), 'data-acao="conferir-frete"');
+    assert.ok(livre && !livre.includes('disabled=""') && !livre.includes('aria-disabled'), livre);
+    assert.ok(texto(desenharGaveta(SALVO_INCOMPLETO)).includes('Lê a conta da loja no Mercado Livre (só leitura) e guarda a modalidade de envio de verdade.'));
+
+    // A caixa mexida e não salva: o frete é conferido com as caixas SALVAS — o botão espera.
+    const estado = estadoDoRetrato(SALVO_INCOMPLETO);
+    estado.variacoes[0].volumes = [{ c: '216', l: '98', a: '60', kg: '62' }];
+    const mexida = desenharGaveta(SALVO_INCOMPLETO, { estado });
+    assert.ok(tag(mexida, 'data-acao="conferir-frete"').includes('disabled=""'));
+    assert.ok(texto(mexida).includes('Salve a embalagem antes: o frete é conferido com as caixas salvas.'));
+
+    // Conferindo: ocupado; a resposta do servidor vira a nota.
+    const conferindo = desenharGaveta(SALVO_INCOMPLETO, { acao: { tipo: 'frete' } });
+    assert.ok(tag(conferindo, 'data-acao="conferir-frete"').includes('aria-disabled="true"') && texto(conferindo).includes('Conferindo…'));
+    const conferido = desenharGaveta(CADASTRO_ME1, { notaDoFrete: { texto: 'Frete conferido pela conta da loja.', tom: 'ok' } });
+    assert.match(conferido, /role="status"[^>]*data-nota-do-frete="ok"[^>]*>Frete conferido pela conta da loja\.</);
+    const falhou = desenharGaveta(CADASTRO_ME1, { notaDoFrete: { texto: 'O servidor falhou. Tente de novo em instantes.', tom: 'erro' } });
+    assert.match(falhou, /role="alert"[^>]*data-nota-do-frete="erro"/);
 });
 
 // ─── `e:novo` e o quadro da Lista ───────────────────────────────────────────

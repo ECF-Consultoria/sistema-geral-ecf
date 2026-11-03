@@ -668,3 +668,27 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
   por candidata e estourava o tempo do PHP — um 500 que o `catch (\Throwable)` não pega.
 - `assertJsonPath` não aceita ponto escapado em chave como `errors.linhas\.0\.campo`; o `FichaNaTrilhaTest` usa um
   helper.
+
+## 32. F3 servidor (03/11/2026): fotos, frete, o ME1 que vira aviso e a trilha sem o Portal
+
+- **"Frete ME1" vira aviso só com a chave de trabalho, nos TRÊS pontos que leem a régua** (`TrilhaDaEmpresa::montar`,
+  `faltasDosProdutos`, `faltasDoProduto`/`cadastroDoProduto`, que passam `$me1ComoAviso` ao
+  `CompletudeDoProduto::avaliar`). Esquecer um deles faz a Lista dizer "completo" e o Mapeamento (ou o
+  `prepararSeCabe`/`soOsQueCabem`) recusar — ou o contrário. O aviso é `CompletudeDoProduto::AVISO_ME1` ("vai por ME1
+  (transportadora)"), em `avisos` do produto (as duas portas) e em `situacao.avisos` da gaveta.
+- **O teste JS do "Pronto quando" lê `$faltas[] = '…'` do PHP**: o aviso é gravado em `$avisos[]` de propósito, para não
+  virar "rótulo que segura". O texto com `trabalho` ainda diz "sem pendência de frete ME1" — continua citando o rótulo
+  (o teste passa), mas não segura mais.
+- **A 459 não tem ME1** (`ModalidadeDeEnvio`): lá o que passa do Mercado Envios sai "Combine a entrega", não por
+  transportadora. O aviso é o texto aprovado no desenho; a rota 13 devolve `frete.fora_do_me2` (`me1`/`combinar`/`fora`)
+  para a tela dizer o destino certo.
+- **O rascunho junta fotos de mesmo conteúdo** (`ImagemAssetService::receber`, por sha256): três
+  `UploadedFile::fake()->image()` do mesmo tamanho são o MESMO arquivo e viram UMA foto no Publicador. Teste que conta
+  fotos no rascunho precisa de imagens diferentes.
+- **As regras de imagem moram em `RegrasDoCadastro`** (`imagens`, `mensagensDasImagens`, `recusarEnvioQueNaoChegou`,
+  `bytesDoIni`): o Portal (envio por variação e fotos em lote) e a trilha usam as mesmas. O 413 do `post_max_size`
+  vira 422 no `bootstrap/app.php` pelas DUAS regexes (Portal e trilha) — rota nova de envio precisa entrar lá.
+- **Com `trabalho`, nenhum endereço do Portal sai da trilha** (decisão do usuário de 03/11/2026, "a trilha substitui o
+  Portal"; a F5 do servidor antecipada): equipe sem `links.portal_abrir`; cliente sem `voltar` (o "Voltar ao portal"),
+  `links.planejamento`, `links.produtos` e `url_ficha`. O `TrilhaLayout` some com o `voltar` nulo. Sem a chave, tudo
+  como na 1ª entrega. A varredura está em `AcessoATrilhaTest` (nenhum `/portal` nas props da página).

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { abrirCadastro, gravarFicha, gravarLinhas, mensagemDoErro } from '@/lib/trilhaEscrita';
+import {
+    abrirCadastro,
+    conferirFrete as conferirFreteNoServidor,
+    enviarFotos as enviarFotosAoServidor,
+    excluirFoto as excluirFotoNoServidor,
+    gravarFicha,
+    gravarLinhas,
+    mensagemDoErro,
+} from '@/lib/trilhaEscrita';
 import { errosDaResposta, idDoElemento } from '@/lib/fichaTecnica';
 import {
     ESPERE_A_FICHA,
@@ -8,6 +16,7 @@ import {
     MENSAGEM_DA_FICHA,
     MENSAGEM_DOS_CAMPOS,
     MENSAGEM_SO_DA_FICHA,
+    aplicarResposta,
     categoriaTravada,
     chaveDaVariacao,
     depoisDaFichaRecusada,
@@ -39,6 +48,12 @@ import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // "Salvar" tem dois passos (§5.9 do desenho): 1) as linhas (com a categoria);
 // 2) a ficha inteira, se ela ou a categoria mudou. O 422 do passo 2 marca os
 // campos da ficha e o passo 1 fica gravado.
+//
+// F3: as AÇÕES IMEDIATAS — enviar e excluir foto e "Conferir frete pela
+// conta". Elas gravam na hora, sem o "Salvar", e o servidor responde o retrato
+// novo: ele vira o retrato da gaveta e o estado o recebe por `aplicarResposta`
+// (o que a pessoa digitou e ainda não salvou fica como ela deixou). Uma ação de
+// cada vez, e nunca durante o "Salvar" (as duas mudariam o mesmo retrato).
 //
 // E a guarda de saída (§5.12 do desenho): com algo mexido, fechar a gaveta,
 // abrir outro item por dentro, trocar o "Ver como" ou uma visita do Inertia
@@ -87,6 +102,10 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
     const [trava, setTrava] = useState(null);
     // A confirmação de saída pendente: `{seguir}` — o que fazer se a pessoa descartar (ou salvar).
     const [pedido, setPedido] = useState(null);
+    // A ação imediata em curso (F3): `{tipo: 'fotos'|'foto'|'frete', variacaoId?, imagemId?, quantas?}`.
+    const [acao, setAcao] = useState(null);
+    // O que o "Conferir frete pela conta" respondeu: `{texto, tom: 'ok'|'erro'}`.
+    const [notaDoFrete, setNotaDoFrete] = useState(null);
 
     const vivo = useRef(true);
     useEffect(() => {
@@ -182,13 +201,15 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         leitura,
         temMudanca,
         salvando,
+        // A ação imediata em curso: quem a liga e desliga é a própria ação (antes do próximo render).
+        acao: agora.current.acao ?? null,
         definicao: { categoria: ficha.definicao?.categoria ?? null, grupos: ficha.definicao?.grupos ?? null, carregando: ficha.carregando },
     };
 
     /** O "Salvar". → true quando gravou tudo (o resultado toma o lugar do formulário). */
     const salvar = useCallback(async () => {
-        const { estado: e0, retrato: r0, leitura: soLeitura, salvando: jaSalvando, definicao } = agora.current;
-        if (jaSalvando || soLeitura || !e0 || !r0) return false;
+        const { estado: e0, retrato: r0, leitura: soLeitura, salvando: jaSalvando, definicao, acao: emCurso } = agora.current;
+        if (jaSalvando || soLeitura || !e0 || !r0 || emCurso) return false;
         const plano = fichaParaSalvar({ estado: e0, retrato: r0, definicao });
         if (plano.esperar) {
             setNota(ESPERE_A_FICHA);
@@ -317,6 +338,83 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         }
     }, [escrita, produtoId, onRecarregar, onAvisar]);
 
+    // ─── As ações imediatas (F3) ────────────────────────────────────────────
+
+    /**
+     * Uma ação imediata: o pedido, e a resposta (o retrato novo) juntada ao que está na tela. → `{ok, resposta?,
+     * falha?, travado?}`. O 409 da trava vira o modo leitura, como no "Salvar". A trilha recarrega (as faltas e a
+     * etapa mudam com as fotos); a foto que completa o produto diz que ele seguiu para o mapeamento.
+     */
+    const imediata = useCallback(async (descricao, pedir) => {
+        const { retrato: r0, leitura: soLeitura, salvando: jaSalvando, acao: emCurso } = agora.current;
+        if (!r0 || soLeitura || jaSalvando || emCurso) return { ok: false, ignorada: true };
+        agora.current.acao = descricao;
+        setAcao(descricao);
+        try {
+            const resposta = await pedir();
+            const novo = temRetrato(resposta) ? resposta : await abrirCadastro(escrita, produtoId);
+            if (!vivo.current) return { ok: true, resposta };
+            // O estado se mede contra o retrato de AGORA (um "Salvar" não corre junto: a ação o barra).
+            const antigo = agora.current.retrato ?? r0;
+            setRetrato(novo);
+            setEstado((e) => aplicarResposta(e, antigo, novo));
+            setResultado(null);
+            onRecarregar();
+            const fim = resultadoDoSalvar(antigo, novo);
+            if (fim.tipo === 'completo') onAvisar(fim.texto, 'sucesso');
+
+            return { ok: true, resposta };
+        } catch (e) {
+            const resposta = e?.response;
+            if (resposta?.status === 409 && resposta.data?.travado) {
+                const texto = mensagemDoErro(e);
+                if (vivo.current) {
+                    setTrava(texto);
+                    setErros(SEM_ERROS);
+                    setTentativa((n) => n + 1);
+                }
+                onAvisar(texto, 'erro');
+
+                return { ok: false, falha: e, travado: true };
+            }
+
+            return { ok: false, falha: e };
+        } finally {
+            agora.current.acao = null;
+            if (vivo.current) setAcao(null);
+        }
+    }, [escrita, produtoId, onRecarregar, onAvisar]);
+
+    /** Envia as fotos para a variação que guarda as da cor (a remessa já foi conferida pela galeria). */
+    const enviarFotos = useCallback(
+        (variacaoId, arquivos) => imediata(
+            { tipo: 'fotos', variacaoId, quantas: Array.from(arquivos ?? []).length },
+            () => enviarFotosAoServidor(escrita, produtoId, variacaoId, arquivos),
+        ),
+        [imediata, escrita, produtoId],
+    );
+
+    /** Exclui uma foto (a galeria já pediu a confirmação). */
+    const excluirFoto = useCallback(
+        (variacaoId, imagemId) => imediata({ tipo: 'foto', variacaoId, imagemId }, () => excluirFotoNoServidor(escrita, produtoId, variacaoId, imagemId)),
+        [imediata, escrita, produtoId],
+    );
+
+    /** "Conferir frete pela conta": a logística de cada variação volta no retrato; a nota diz o que o servidor disse. */
+    const conferirFrete = useCallback(async () => {
+        setNotaDoFrete(null);
+        const r = await imediata({ tipo: 'frete' }, () => conferirFreteNoServidor(escrita, produtoId));
+        if (!vivo.current || r.ignorada || r.travado) return r;
+        if (r.ok) {
+            const texto = typeof r.resposta?.mensagem === 'string' && r.resposta.mensagem.trim() ? r.resposta.mensagem.trim() : 'Frete conferido pela conta da loja.';
+            setNotaDoFrete({ texto, tom: 'ok' });
+        } else {
+            setNotaDoFrete({ texto: mensagemDoErro(r.falha), tom: 'erro' });
+        }
+
+        return r;
+    }, [imediata, escrita, produtoId]);
+
     // ─── A guarda de saída ──────────────────────────────────────────────────
 
     /** A gaveta pergunta a esta antes de fechar, abrir outro item ou trocar o "Ver como" (`useGuardaDaGaveta`). */
@@ -412,5 +510,10 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         continuarEditando,
         descartar,
         salvarESeguir,
+        acao,
+        enviarFotos,
+        excluirFoto,
+        conferirFrete,
+        notaDoFrete,
     };
 }

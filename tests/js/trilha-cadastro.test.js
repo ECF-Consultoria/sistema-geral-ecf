@@ -5,8 +5,9 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import {
-    CADASTRO, CADASTRO_CATEGORIA_TRAVADA, CADASTRO_COM_CATEGORIA, CADASTRO_TRAVADO, CAMPOS_DA_CATEGORIA, CANDIDATAS, PROPS_TRABALHO,
-    SALVO_COMPLETO, SALVO_COM_ERRO, SALVO_INCOMPLETO, paraCliente,
+    CADASTRO, CADASTRO_CATEGORIA_TRAVADA, CADASTRO_COM_CATEGORIA, CADASTRO_COM_FOTOS, CADASTRO_CORES_E_TAMANHOS, CADASTRO_FOTOS_COMPLETAS,
+    CADASTRO_ME1, CADASTRO_TRAVADO, CAMPOS_DA_CATEGORIA, CANDIDATAS, PROPS_TRABALHO, SALVO_COMPLETO, SALVO_COM_ERRO, SALVO_INCOMPLETO,
+    paraCliente,
 } from './_trilha-exemplo.js';
 import { lerSemComentarios } from './_fonte.js';
 import {
@@ -30,26 +31,35 @@ import {
     depoisDaFichaRecusada,
     depoisDeSalvar,
     deveFecharNoEsc,
+    embalagemMexida,
     erroDaCategoriaNo422,
     errosPorCampo,
     estadoDoRetrato,
+    contadorDeFotos,
     fichaMexida,
     fichaParaSalvar,
+    fotosPorCor,
     gravarCadastro,
     gruposDaFicha,
     linhasParaSalvar,
+    logisticaDasVariacoes,
     mexido,
     nadaMudou,
     nomeNovo,
     opcoesQueCasam,
     podePreencherComIa,
     porQueNaoUsar,
+    remessaDeFotos,
     resultadoDoSalvar,
     sugestaoDaCategoria,
     temRetrato,
     textoDaBusca,
     textoDaIa,
+    textoDoEnvio,
+    urlOriginalDaFoto,
+    vaiPorMe1,
 } from '../../resources/js/lib/trilhaCadastro.js';
+import { avisosEmTexto } from '../../resources/js/Components/Trilha/formatos.js';
 import { acaoDoItem, comQuemEsta, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -491,7 +501,11 @@ test('textos da etapa 1 com a trilha de trabalho: o dono é a equipe; o cliente 
     assert.equal(etapaDaTrilha('lista', true).dono, 'Equipe ECF');
     assert.equal(etapaDaTrilha('lista', false).dono, 'Cliente');
     assert.equal(etapaDaTrilha('lista', true).faz, 'A equipe cadastra cada produto aqui: nome, categoria, ficha técnica, cores, fotos, medidas e custo. Completo, ele segue sozinho para o mapeamento.');
-    assert.equal(etapaDaTrilha('lista', true).pronto, etapaDaTrilha('lista', false).pronto, 'o "Pronto quando" é a mesma régua');
+    // O "Pronto quando" é a mesma régua, MENOS o "frete ME1": com a trilha de trabalho ele é aviso (pergunta 3, F3).
+    const semMe1 = etapaDaTrilha('lista', false).pronto.replace(' (sem pendência de frete ME1)', '');
+    const comTrabalho = etapaDaTrilha('lista', true).pronto;
+    assert.ok(comTrabalho.startsWith(semMe1), comTrabalho);
+    assert.ok(comTrabalho.endsWith('segue com o aviso “vai por ME1 (transportadora)”.') && !comTrabalho.includes('frete ME1'), comTrabalho);
 
     assert.equal(acaoDoItem('lista', 'cliente', true, { trabalho: true }), 'Acompanhar');
     assert.equal(acaoDoItem('lista', 'cliente', true, { trabalho: false }), 'Completar');
@@ -835,4 +849,132 @@ test('F2 — os hooks da categoria e da ficha são .js sem classe; "Mercado Livr
         assert.ok(!fonte.includes('className'), f);
     }
     assert.equal(lerSemComentarios('resources/js/lib/trilhaCadastro.js').match(/Mercado\s+Livre/i), null);
+});
+
+// ═══ F3 — as fotos e o frete ═══════════════════════════════════════════════
+
+test('F3 — fotosPorCor: sem variação, uma galeria; um eixo, uma por variação; cor E tamanho, uma por COR, na dona', () => {
+    // O produto que não varia: uma galeria só, na variação dele.
+    assert.deepEqual(fotosPorCor(CADASTRO), [{ chave: 'v91', variacaoId: 91, cor: null, tamanhos: [], fotos: [], onde: 'neste produto' }]);
+    assert.deepEqual(fotosPorCor(CADASTRO_COM_FOTOS)[0].fotos.map((f) => f.id), [501, 502]);
+
+    // Duas cores, um eixo: cada cor (cada variação) tem a sua.
+    const cadeira = fotosPorCor(CADASTRO_TRAVADO);
+    assert.deepEqual(cadeira.map((g) => [g.cor, g.variacaoId, g.onde]), [['Natural', 21, 'nesta cor'], ['Mel', 22, 'nesta cor']]);
+
+    // Cor E tamanho: as fotos são da cor e moram na dona (a 1ª com foto, senão a 1ª) — a Branca no M, a Preta no P.
+    const camiseta = fotosPorCor(CADASTRO_CORES_E_TAMANHOS);
+    assert.deepEqual(camiseta.map((g) => [g.cor, g.variacaoId, g.tamanhos, g.fotos.length, g.onde]), [
+        ['Branca', 122, ['P', 'M'], 3, 'nesta cor'],
+        ['Preta', 123, ['P', 'M'], 0, 'nesta cor'],
+    ]);
+    // Sem a marca do servidor, a régua do Portal (`gruposPorCor`) dá a mesma dona.
+    const semMarca = { ...CADASTRO_CORES_E_TAMANHOS, variacoes: CADASTRO_CORES_E_TAMANHOS.variacoes.map(({ dona_da_cor, ...v }) => v) };
+    assert.deepEqual(fotosPorCor(semMarca).map((g) => g.variacaoId), [122, 123]);
+    // A marca do servidor vale quando difere (ele é quem diz onde as fotos moram).
+    const marcada = { ...semMarca, variacoes: semMarca.variacoes.map((v) => ({ ...v, dona_da_cor: v.id === 121 || v.id === 124 })) };
+    assert.deepEqual(fotosPorCor(marcada).map((g) => g.variacaoId), [121, 124]);
+
+    // Outro eixo (voltagem): a galeria é da variação.
+    const voltagem = { ...CADASTRO_TRAVADO, produto: { ...CADASTRO_TRAVADO.produto, eixo: 'voltagem' } };
+    assert.deepEqual(fotosPorCor(voltagem).map((g) => g.onde), ['nesta variação', 'nesta variação']);
+    assert.deepEqual(fotosPorCor({ variacoes: [] }), []);
+    assert.deepEqual(fotosPorCor(null), []);
+});
+
+test('F3 — o contador da galeria ("2 de 3" âmbar, "3 fotos" verde) e a foto grande pela `url_original`', () => {
+    assert.deepEqual(contadorDeFotos(0), { texto: '0 de 3', tom: 'warn', completo: false });
+    assert.deepEqual(contadorDeFotos(2), { texto: '2 de 3', tom: 'warn', completo: false });
+    assert.deepEqual(contadorDeFotos(3), { texto: '3 fotos', tom: 'ok', completo: true });
+    assert.deepEqual(contadorDeFotos(7), { texto: '7 fotos', tom: 'ok', completo: true });
+    assert.deepEqual(contadorDeFotos(1, 1), { texto: '1 foto', tom: 'ok', completo: true });
+    assert.equal(contadorDeFotos('x').texto, '0 de 3');
+
+    const [primeira] = CADASTRO_COM_FOTOS.variacoes[0].fotos;
+    assert.equal(urlOriginalDaFoto(primeira), '/trilha/459/fotos/91/501?original=1');
+    assert.equal(urlOriginalDaFoto({ url: '/trilha/459/fotos/91/501' }), '/trilha/459/fotos/91/501?original=1');
+    assert.equal(urlOriginalDaFoto({ url: '/x?v=2' }), '/x?v=2&original=1');
+    assert.equal(urlOriginalDaFoto({}), null);
+    assert.equal(textoDoEnvio(1), '1 foto enviada.');
+    assert.equal(textoDoEnvio(3), '3 fotos enviadas.');
+});
+
+test('F3 — a remessa: vai o que cabe, numa remessa só; o grande demais e o formato errado ficam de fora com aviso; passou do teto, NADA vai', () => {
+    const MB = 1024 * 1024;
+    const arq = (name, mb = 1) => ({ name, size: mb * MB });
+
+    // Três que servem: vão as três, sem aviso.
+    assert.deepEqual(remessaDeFotos([arq('a.jpg'), arq('b.PNG'), arq('c.webp')], 0), { arquivos: [arq('a.jpg'), arq('b.PNG'), arq('c.webp')], avisos: [] });
+
+    // O grande demais (12 MB) e o de formato errado ficam de fora; os outros vão.
+    const misto = remessaDeFotos([arq('a.jpg'), arq('grande.jpg', 12), arq('anim.gif')], 1);
+    assert.deepEqual(misto.arquivos.map((a) => a.name), ['a.jpg']);
+    assert.deepEqual(misto.avisos, [
+        '"anim.gif" não está num formato aceito. Envie JPG, PNG ou WebP.',
+        '“grande.jpg” tem 12 MB; o limite é 10 MB. Escolha uma foto menor.',
+    ]);
+
+    // O teto de tamanho é o do retrato (`limites.foto_mb`).
+    const cinco = remessaDeFotos([arq('a.jpg', 6)], 0, { mb: 5 });
+    assert.deepEqual(cinco.arquivos, []);
+    assert.match(cinco.avisos[0], /o limite é 5 MB/);
+
+    // Mais do que cabe: tudo ou nada, como o servidor — e o aviso diz quantas cabem, no lugar da galeria.
+    assert.deepEqual(remessaDeFotos([arq('a.jpg'), arq('b.jpg')], 11), { arquivos: [], avisos: ['Cabem mais 1 foto nesta cor. Escolha menos e envie de novo.'] });
+    assert.deepEqual(remessaDeFotos([arq('a.jpg'), arq('b.jpg'), arq('c.jpg')], 9, { limite: 10, onde: 'neste produto' }).avisos,
+        ['Cabem mais 1 foto neste produto. Escolha menos e envie de novo.']);
+    assert.deepEqual(remessaDeFotos([arq('a.jpg')], 12), { arquivos: [], avisos: ['Já há 12 fotos nesta cor, o máximo. Exclua alguma para enviar outra.'] });
+    // Os que ficaram de fora não contam no teto: 2 servem, 1 é grande, cabem 2 → as 2 vão.
+    assert.deepEqual(remessaDeFotos([arq('a.jpg'), arq('b.jpg'), arq('c.jpg', 30)], 10).arquivos.map((a) => a.name), ['a.jpg', 'b.jpg']);
+    assert.deepEqual(remessaDeFotos([], 0), { arquivos: [], avisos: [] });
+    assert.deepEqual(remessaDeFotos(null, 0), { arquivos: [], avisos: [] });
+});
+
+test('F3 — aplicarResposta com FOTO e campo mexido: a foto entra (no retrato) e nada do que não foi salvo se perde', () => {
+    // A pessoa mexeu no título, no custo, numa caixa e na ficha; enviou 2 fotos antes de salvar.
+    const antigo = CADASTRO_COM_CATEGORIA;
+    const estado = {
+        ...comMudancas(antigo, { produto: { titulo: 'Meu título' }, variacoes: { 91: { custo: '999,00', volumes: [{ c: '51', l: '40', a: '60', kg: '18,5' }] } } }),
+        ficha: { ...estadoDoRetrato(antigo).ficha, BRAND: { valor: 'Minha marca', unidade: '' } },
+    };
+    const novo = {
+        ...antigo,
+        variacoes: [{ ...antigo.variacoes[0], fotos: CADASTRO_COM_FOTOS.variacoes[0].fotos }],
+        situacao: { ...antigo.situacao, faltas: ['ficha: Material principal', 'fotos (2 de 3)'] },
+    };
+    const junto = aplicarResposta(estado, antigo, novo);
+
+    assert.equal(junto.produto.titulo, 'Meu título');
+    assert.equal(junto.variacoes[0].custo, '999,00');
+    assert.deepEqual(junto.variacoes[0].volumes, [{ c: '51', l: '40', a: '60', kg: '18,5' }]);
+    assert.equal(junto.ficha.BRAND.valor, 'Minha marca', 'a ficha mexida fica');
+    assert.deepEqual(camposMexidos(junto, novo), { produto: ['titulo'], variacoes: { 91: ['custo', 'volumes'] } });
+    assert.equal(mexido(junto, novo), true, 'o "Salvar" continua com o que mudou');
+    assert.equal(fichaMexida(junto, novo), true);
+    // As fotos vêm do retrato novo (não moram no estado).
+    assert.deepEqual(fotosPorCor(novo)[0].fotos.map((f) => f.id), [501, 502]);
+    assert.equal('fotos' in junto.variacoes[0], false);
+    // Nada mexido: a foto não liga o "Salvar".
+    const limpo = aplicarResposta(estadoDoRetrato(antigo), antigo, novo);
+    assert.equal(mexido(limpo, novo), false);
+});
+
+test('F3 — o frete: a logística de cada variação como o retrato diz; o ME1 é aviso; caixa não salva segura o "Conferir"', () => {
+    assert.deepEqual(logisticaDasVariacoes(CADASTRO), [{ id: 91, nome: '', codigo: 'CRIADO-01', logistica: 'pendente' }]);
+    assert.deepEqual(logisticaDasVariacoes(CADASTRO_CORES_E_TAMANHOS).map((v) => [v.nome, v.logistica]), [
+        ['Branca · P', 'me2'], ['Branca · M', 'me2'], ['Preta · P', 'me2'], ['Preta · M', 'me1'],
+    ]);
+    assert.equal(logisticaDasVariacoes({ variacoes: [{ id: 1, logistica: 'qualquer' }] })[0].logistica, 'pendente');
+    assert.equal(vaiPorMe1(CADASTRO_ME1), true);
+    assert.equal(vaiPorMe1(SALVO_INCOMPLETO), false);
+
+    // O aviso vem do servidor e não é falta: o produto completo tem `faltas` vazio.
+    assert.deepEqual(CADASTRO_ME1.situacao.faltas, []);
+    assert.deepEqual(avisosEmTexto(CADASTRO_ME1.situacao.avisos), ['vai por ME1 (transportadora)']);
+    assert.deepEqual(avisosEmTexto(['a', ' a ', '', null, { texto: 'b' }]), ['a', 'b']);
+    assert.deepEqual(avisosEmTexto(undefined), []);
+
+    assert.equal(embalagemMexida(estadoDoRetrato(SALVO_INCOMPLETO), SALVO_INCOMPLETO), false);
+    assert.equal(embalagemMexida(comMudancas(SALVO_INCOMPLETO, { variacoes: { 91: { custo: '1,00' } } }), SALVO_INCOMPLETO), false, 'só a caixa conta');
+    assert.equal(embalagemMexida(comMudancas(SALVO_INCOMPLETO, { variacoes: { 91: { volumes: [{ c: '1', l: '1', a: '1', kg: '1' }] } } }), SALVO_INCOMPLETO), true);
 });

@@ -6,12 +6,16 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\PubProduto;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
+use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\NormalizadorDeLinha;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
@@ -61,6 +65,12 @@ use Illuminate\Validation\ValidationException;
  * A categoria do ML entra na linha com a conferência dela ({@see conferirCategoria()}: anunciável e não travada pelo
  * Publicador), e a ficha técnica grava INCOMPLETA ({@see gravarFicha()}: o obrigatório vazio vira a falta "ficha: x"
  * na Lista, em vez de barrar o salvar).
+ *
+ * ### F3 (03/11/2026)
+ * As fotos da variação ({@see enviarFotos()}, {@see excluirFoto()}: a variação e a imagem do ENDEREÇO presas ao
+ * produto do caminho — {@see variacao()}, {@see imagem()}) e o "Conferir frete pela conta" ({@see cotarFrete()}). Com
+ * a trilha de trabalho o "frete ME1" é AVISO (`situacao.avisos`), não falta: não segura o produto na Lista nem o
+ * gatilho do Publicador (pergunta 3, {@see CompletudeDoProduto::avaliar()}).
  */
 class CadastroNaTrilha
 {
@@ -69,6 +79,10 @@ class CadastroNaTrilha
     public const PASSO_LINHAS = 'linhas';
 
     public const PASSO_FICHA = 'ficha';
+
+    public const PASSO_FOTOS = 'fotos';
+
+    public const PASSO_FOTO_EXCLUIDA = 'foto_excluida';
 
     /**
      * As chaves da linha que a trilha deixa chegar ao serviço; o resto é descartado (`grupo`, `company_id`,
@@ -123,6 +137,27 @@ class CadastroNaTrilha
         $empresa = $this->empresa($quem, $company);
 
         return [$empresa, EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto)];
+    }
+
+    /**
+     * A variação do ENDEREÇO, presa à empresa E ao produto do caminho: a de outro produto (mesmo da loja) ou de outra
+     * loja é 404 — antes de validar o corpo, como o produto ({@see alvo()}).
+     */
+    public function variacao(Company $empresa, EstruturaProduto $produto, int $variacao): EstruturaProdutoVariacao
+    {
+        return EstruturaProdutoVariacao::query()
+            ->where('company_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->findOrFail($variacao);
+    }
+
+    /** A imagem do ENDEREÇO, presa à empresa E à variação do caminho: a de outra variação ou loja é 404. */
+    public function imagem(Company $empresa, EstruturaProdutoVariacao $variacao, int $imagem): EstruturaProdutoVariacaoImagem
+    {
+        return EstruturaProdutoVariacaoImagem::query()
+            ->where('company_id', $empresa->id)
+            ->where('variacao_id', $variacao->id)
+            ->findOrFail($imagem);
     }
 
     /**
@@ -365,6 +400,85 @@ class CadastroNaTrilha
         return array_values($salvos);
     }
 
+    /**
+     * As fotos no fim da galeria da variação, pelo serviço do Portal (`VariacaoImagensService::enviar`): disco privado,
+     * TUDO OU NADA (a remessa que não cabe inteira no teto da variação é 422 em `imagens` e nada fica), a variação
+     * presa durante a gravação (dois envios ao mesmo tempo não furam o teto). Depois: o evento da trilha (passo `fotos`)
+     * e o gatilho {@see prepararSeCabe()} — a foto que completa o produto o leva ao Publicador, uma vez.
+     *
+     * @param  list<\Illuminate\Http\UploadedFile>  $arquivos  já validados pela forma ({@see \App\Support\Portal\Estrutura\RegrasDoCadastro::imagens()})
+     *
+     * @throws ValidationException
+     */
+    public function enviarFotos(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, array $arquivos, AtorDoPortal $ator): void
+    {
+        $this->imagens->enviar($empresa, $variacao, $arquivos, $ator);
+
+        $this->registrar($ator, $empresa, $produto, self::PASSO_FOTOS, ['variacao_id' => (int) $variacao->id, 'quantidade' => count($arquivos)]);
+        $this->prepararSeCabe($empresa, $produto);
+    }
+
+    /**
+     * Tira a foto da galeria, pelo serviço do Portal (`VariacaoImagensService::excluir`): as que sobram são renumeradas
+     * (a 1ª vira capa) e o arquivo sai do disco DEPOIS do commit. Depois: o evento (passo `foto_excluida`) e o gatilho
+     * {@see prepararSeCabe()} (o produto que já está no Publicador segue recebendo cada gravação).
+     */
+    public function excluirFoto(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, EstruturaProdutoVariacaoImagem $imagem, AtorDoPortal $ator): void
+    {
+        $id = (int) $imagem->id;
+        $this->imagens->excluir($empresa, $variacao, $imagem, $ator);
+
+        $this->registrar($ator, $empresa, $produto, self::PASSO_FOTO_EXCLUIDA, ['variacao_id' => (int) $variacao->id, 'imagem_id' => $id]);
+        $this->prepararSeCabe($empresa, $produto);
+    }
+
+    // ═══ O frete (rota 13) ══════════════════════════════════════════════════
+
+    /**
+     * "Conferir frete pela conta": as variações do produto pelo `FreteMe2Service::cotar`, montadas como na tela de
+     * Produtos do Portal (`cotarFretes`). É o único ponto do cadastro que usa a conta da LOJA, e só lê (GET da
+     * preferência de envio e das cotações, com o token dela); sem conta conectada, a estimativa da tabela, sem nenhuma
+     * requisição. O que fica é a modalidade de envio da conta em cache (`ModalidadeDeEnvio`,
+     * `frete.modalidade_cache_horas`): a régua da Lista e a logística do retrato passam a usar os limites da conta, e o
+     * ME1 que era só dos limites dos Correios some. Nada é gravado no banco.
+     *
+     * @return array{conectado: bool, falhou: bool, fora_do_me2: string}
+     */
+    public function cotarFrete(Company $empresa, EstruturaProduto $produto): array
+    {
+        $variacoes = EstruturaProdutoVariacao::query()
+            ->where('company_id', $empresa->id)
+            ->where('produto_id', $produto->id)
+            ->with('volumes')
+            ->orderBy('ordem')->orderBy('id')
+            ->get();
+
+        $itens = [];
+        foreach ($variacoes as $v) {
+            $volumes = $v->volumes
+                ->map(fn ($x) => ['c' => (float) $x->comprimento, 'l' => (float) $x->largura, 'a' => (float) $x->altura, 'kg' => (float) $x->peso])
+                ->values()->all();
+            $log = LogisticaProduto::daVolumes($volumes);
+
+            $itens[(int) $v->id] = [
+                'pacote'        => $log['pacote'],
+                'peso_faturado' => $log['peso_faturado'],
+                'logistica'     => $log['logistica'],
+                'custo'         => $v->custo,
+            ];
+        }
+
+        $r = app(FreteMe2Service::class)->cotar($empresa, $itens);
+
+        return [
+            'conectado'   => (bool) $r['conectado'],
+            'falhou'      => (bool) $r['falhou'],
+            // Para onde vai o que passa do Mercado Envios da conta: a transportadora (ME1), "Combine a entrega" (a conta
+            // sem ME1) ou ainda não se sabe (a preferência não foi lida).
+            'fora_do_me2' => ModalidadeDeEnvio::destinoFora(ModalidadeDeEnvio::me1EmCache($empresa)),
+        ];
+    }
+
     // ═══ O Publicador (pergunta 2) ══════════════════════════════════════════
 
     /**
@@ -475,7 +589,7 @@ class CadastroNaTrilha
         $donas = self::donasDaCor($linhas, $galerias);
         $primeira = $linhas[0] ?? [];
 
-        $faltas = TrilhaDaEmpresa::faltasDoProduto($empresa, (int) $produto->id);
+        ['faltas' => $faltas, 'avisos' => $avisos] = TrilhaDaEmpresa::cadastroDoProduto($empresa, (int) $produto->id);
         $noPublicador = $this->jaNoPublicador($empresa, $produto);
         $trilha = $this->naTrilha($empresa, (int) $produto->id);
         $etapa = match (true) {
@@ -538,8 +652,9 @@ class CadastroNaTrilha
             'situacao'  => [
                 'etapa'             => $etapa,
                 'faltas'            => $faltas,
-                // F3: o "frete ME1" vira aviso aqui (pergunta 3). Na F1, nenhum.
-                'avisos'            => [],
+                // F3 (pergunta 3): o que não segura o produto na Lista — o "frete ME1" vira o aviso
+                // `CompletudeDoProduto::AVISO_ME1` ("vai por ME1 (transportadora)").
+                'avisos'            => $avisos,
                 'no_publicador'     => $noPublicador,
                 // D12: com o produto no Publicador a categoria só se troca no editor de lá (o servidor recusa a troca
                 // em `conferirCategoria`).
@@ -641,7 +756,8 @@ class CadastroNaTrilha
     }
 
     /**
-     * A foto pela rota da equipe (a miniatura; `url_original` pede a grande — servida a partir da F3).
+     * A foto pela rota da equipe: `url` é a miniatura; `url_original` (`?original=1`, F3) é o arquivo enviado, para o
+     * "Ver maior".
      *
      * @return array{id: int, url: string, url_original: string, nome_original: string}
      */

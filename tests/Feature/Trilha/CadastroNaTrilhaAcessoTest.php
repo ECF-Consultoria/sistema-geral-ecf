@@ -6,11 +6,13 @@ use App\Models\Company;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -23,13 +25,15 @@ use Tests\TestCase;
 
 /**
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
- * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
+ * foto e o "Conferir frete pela conta"; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
  * 3. quem não escreve no Portal da empresa → 403;
  * 4. o recurso do ENDEREÇO de outra loja → 404 ANTES de validar o corpo (o corpo inválido vai junto de propósito: se a
- *    validação viesse antes, a resposta seria 422 e diria "o produto existe, só o campo está errado");
+ *    validação viesse antes, a resposta seria 422 e diria "o produto existe, só o campo está errado"); a variação do
+ *    endereço é DO PRODUTO do caminho, e a imagem, DA VARIAÇÃO (F3);
  * 5. a variação de OUTRO produto da MESMA loja no corpo → 404 (com `id`, o serviço do Portal acha o produto pela
  *    variação e ignoraria o do caminho);
  * 6. id de 19 dígitos → 404, nunca 500.
@@ -80,8 +84,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     }
 
     /**
-     * As rotas da fatia: [método, caminho depois de `/trilha/{empresa}` (com `{p}` = o produto), corpo VÁLIDO]. O corpo
-     * válido da rota 3 é montado no teste (precisa do id da variação).
+     * As rotas da fatia: [método, caminho depois de `/trilha/{empresa}` (com `{p}` = o produto, `{v}` = a 1ª variação
+     * dele e `{i}` = a 1ª foto dela), corpo VÁLIDO]. O corpo válido é montado no teste ({@see corpo()}).
      *
      * @return array<string, array{0: string, 1: string, 2: bool}>
      */
@@ -93,6 +97,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'linhas (rota 3)' => ['POST', '/produtos/{p}/linhas', true],
             'ficha (rota 4)'  => ['PUT', '/produtos/{p}/ficha-tecnica', false],
             'IA (rota 9)'     => ['POST', '/produtos/{p}/ficha-tecnica/ia', false],
+            'fotos (rota 10)' => ['POST', '/produtos/{p}/variacoes/{v}/fotos', false],
+            'excluir foto (rota 11)' => ['DELETE', '/produtos/{p}/variacoes/{v}/fotos/{i}', false],
+            'frete (rota 13)' => ['POST', '/produtos/{p}/frete', false],
         ];
     }
 
@@ -102,17 +109,17 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // Na trilha de leitura (1ª entrega), sem a chave de trabalho: o cadastro não existe.
         $soLeitura = $this->empresaDaTrilha(trabalho: false);
         $p = $this->produtoCompleto($soLeitura, 'Vaso Leitura', 'VL');
-        $this->pedir($this->dev, $metodo, $this->url($soLeitura, $caminho, $p['produto']), $this->corpo($caminho, $p))->assertNotFound();
+        $this->pedir($this->dev, $metodo, $this->url($soLeitura, $caminho, $p), $this->corpo($caminho, $p))->assertNotFound();
 
         // Fora de `trilha.empresas` (mesmo que alguém a pusesse só na de trabalho): 404 antes de ler a empresa.
         $fora = $this->empresaDaTrilha();
         $q = $this->produtoCompleto($fora, 'Vaso Fora', 'VF');
         config(['trilha.empresas' => array_values(array_diff((array) config('trilha.empresas'), [$fora->id]))]);
-        $this->pedir($this->dev, $metodo, $this->url($fora, $caminho, $q['produto']), $this->corpo($caminho, $q))->assertNotFound();
+        $this->pedir($this->dev, $metodo, $this->url($fora, $caminho, $q), $this->corpo($caminho, $q))->assertNotFound();
 
         // Empresa que não existe, dentro das chaves: 404 também (o `findOrFail` da guarda).
         config(['trilha.empresas' => [...(array) config('trilha.empresas'), 999999], 'trilha.trabalho.empresas' => [...(array) config('trilha.trabalho.empresas'), 999999]]);
-        $this->pedir($this->dev, $metodo, '/trilha/999999'.str_replace('{p}', '1', $caminho), [])->assertNotFound();
+        $this->pedir($this->dev, $metodo, '/trilha/999999'.str_replace(['{p}', '{v}', '{i}'], '1', $caminho), [])->assertNotFound();
 
         $this->assertNadaGravado();
     }
@@ -121,7 +128,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     public function test_sem_login_vai_para_o_login_e_quem_nao_e_dev_recebe_404(string $metodo, string $caminho, bool $comVariacao): void
     {
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
-        $url = $this->url($this->empresa, $caminho, $p['produto']);
+        $url = $this->url($this->empresa, $caminho, $p);
         $corpo = $this->corpo($caminho, $p);
 
         // Módulo oculto: o admin que não é Dev recebe 404, como se a rota não existisse.
@@ -143,7 +150,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $semCarteira->forceFill(['is_dev' => true])->save();
 
         // Com corpo inválido: o 403 vem antes do 422.
-        $this->pedir($semCarteira->refresh(), $metodo, $this->url($this->empresa, $caminho, $p['produto']), ['linhas' => 'x', 'nome' => ''])
+        $this->pedir($semCarteira->refresh(), $metodo, $this->url($this->empresa, $caminho, $p), ['linhas' => 'x', 'nome' => ''])
             ->assertForbidden()
             ->assertJsonPath('message', 'Você não tem acesso ao portal desta empresa.');
 
@@ -164,9 +171,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $antes = $this->retratoDoBanco($deFora['produto']);
 
         // Corpo inválido de propósito: o 404 vem antes do 422.
-        $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $deFora['produto']), ['linhas' => 'x'])->assertNotFound();
+        $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $deFora), ['linhas' => 'x'])->assertNotFound();
         // E com o corpo válido (a variação dele, pelo endereço desta loja): 404 igual, e nada muda lá.
-        $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $deFora['produto']), $this->corpo($caminho, $deFora, 'Trocado por fora'))->assertNotFound();
+        $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $deFora), $this->corpo($caminho, $deFora, 'Trocado por fora'))->assertNotFound();
 
         $this->assertSame($antes, $this->retratoDoBanco($deFora['produto']));
     }
@@ -177,7 +184,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $b = $this->produtoCompleto($this->empresa, 'Vaso Beta', 'VB');
         $antesA = $this->retratoDoBanco($a['produto']);
         $antesB = $this->retratoDoBanco($b['produto']);
-        $url = $this->url($this->empresa, '/produtos/{p}/linhas', $a['produto']);
+        $url = $this->url($this->empresa, '/produtos/{p}/linhas', $a);
 
         // Só a variação de B, pelo caminho de A.
         $this->pedir($this->dev, 'POST', $url, ['linhas' => [
@@ -204,6 +211,37 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertSame(2, EstruturaProdutoVariacao::query()->where('company_id', $this->empresa->id)->count());
     }
 
+    /**
+     * F3: a variação do ENDEREÇO tem de ser do produto do caminho, e a imagem, da variação — senão 404, antes de validar
+     * o corpo (vai inválido de propósito) e sem mexer em nada. Com o produto certo e a variação de outro produto da
+     * MESMA loja, o serviço gravaria a foto no produto errado.
+     */
+    public function test_a_variacao_ou_a_imagem_de_outro_produto_ou_loja_no_endereco_e_404_antes_de_validar(): void
+    {
+        $a = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', ['Azul', 'Verde']);
+        $b = $this->produtoCompleto($this->empresa, 'Vaso Beta', 'VB');
+        $outra = $this->empresaDaTrilha();
+        $deFora = $this->produtoCompleto($outra, 'Vaso de Fora', 'VX');
+        $base = "/trilha/{$this->empresa->id}/produtos/{$a['produto']->id}/variacoes";
+        $antes = [$this->retratoDoBanco($a['produto']), $this->retratoDoBanco($b['produto']), $this->retratoDoBanco($deFora['produto'])];
+
+        foreach ([$b, $deFora] as $alheio) {
+            $alheia = $alheio['variacoes'][0];
+            // Enviar: corpo inválido (sem `imagens`) e o válido — 404 nos dois.
+            $this->pedir($this->dev, 'POST', "{$base}/{$alheia->id}/fotos", ['imagens' => 'x'])->assertNotFound();
+            $this->pedir($this->dev, 'POST', "{$base}/{$alheia->id}/fotos", ['imagens' => [UploadedFile::fake()->image('f.jpg', 600, 600)]])->assertNotFound();
+            // Excluir a foto dela pelo produto A.
+            $this->pedir($this->dev, 'DELETE', "{$base}/{$alheia->id}/fotos/".$this->fotoDa($alheio)->id, [])->assertNotFound();
+        }
+        // A foto da Azul pela Verde (o mesmo produto) e a de outra loja pela Azul.
+        [$azul, $verde] = $a['variacoes'];
+        $this->pedir($this->dev, 'DELETE', "{$base}/{$verde->id}/fotos/".$this->fotoDa($a)->id, [])->assertNotFound();
+        $this->pedir($this->dev, 'DELETE', "{$base}/{$azul->id}/fotos/".$this->fotoDa($deFora)->id, [])->assertNotFound();
+
+        $this->assertSame($antes, [$this->retratoDoBanco($a['produto']), $this->retratoDoBanco($b['produto']), $this->retratoDoBanco($deFora['produto'])]);
+        $this->assertNadaGravado();
+    }
+
     public function test_id_de_19_digitos_e_404_nunca_500(): void
     {
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
@@ -216,11 +254,20 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/linhas", ['linhas' => [['id' => 1, 'codigo' => 'X', 'nome' => 'X']]])->assertNotFound();
         $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/produtos/{$grande}/ficha-tecnica", ['atributos' => []])->assertNotFound();
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/ficha-tecnica/ia", ['atributos' => []])->assertNotFound();
+        // F3: o produto, a variação e a imagem do endereço.
+        $v = $p['variacoes'][0]->id;
+        $i = $this->fotoDa($p)->id;
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/variacoes/{$v}/fotos", [])->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$grande}/fotos", [])->assertNotFound();
+        $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$grande}/fotos/{$i}")->assertNotFound();
+        $this->actingAs($this->dev)->deleteJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$v}/fotos/{$grande}")->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/frete")->assertNotFound();
         // O id de 19 dígitos DENTRO do corpo: o serviço não o leria como número — 404, nunca variação nova.
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/linhas",
             ['linhas' => [['id' => $grande, 'codigo' => 'VA', 'nome' => 'Vaso Alfa']]])->assertNotFound();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
+        $this->assertSame(3, EstruturaProdutoVariacaoImagem::query()->count());
     }
 
     /** O que o Dev com a empresa ainda recebe pela mesma matriz: a rota existe e responde. */
@@ -230,7 +277,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
         $corpo = $metodo === 'POST' && ! str_contains($caminho, '{p}') ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
 
-        $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p['produto']), $corpo);
+        $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p), $corpo);
 
         $this->assertContains($resposta->status(), [200, 201], (string) $resposta->getContent());
         $this->assertStringNotContainsString('/portal/', (string) $resposta->getContent());
@@ -238,9 +285,20 @@ class CadastroNaTrilhaAcessoTest extends TestCase
 
     // ─── apoio ───
 
-    private function url(Company $empresa, string $caminho, EstruturaProduto $produto): string
+    /** @param  array{produto: EstruturaProduto, variacoes: list<EstruturaProdutoVariacao>}  $p */
+    private function url(Company $empresa, string $caminho, array $p): string
     {
-        return "/trilha/{$empresa->id}".str_replace('{p}', (string) $produto->id, $caminho);
+        return "/trilha/{$empresa->id}".str_replace(
+            ['{p}', '{v}', '{i}'],
+            [(string) $p['produto']->id, (string) $p['variacoes'][0]->id, (string) $this->fotoDa($p)->id],
+            $caminho,
+        );
+    }
+
+    /** A 1ª foto da 1ª variação do produto (o `produtoCompleto` grava 3 linhas, sem arquivo). */
+    private function fotoDa(array $p): EstruturaProdutoVariacaoImagem
+    {
+        return EstruturaProdutoVariacaoImagem::query()->where('variacao_id', $p['variacoes'][0]->id)->orderBy('ordem')->orderBy('id')->firstOrFail();
     }
 
     /** O corpo VÁLIDO de cada rota (a 3 leva a variação do produto). */
@@ -251,6 +309,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             $caminho === '/produtos'                  => ['nome' => 'Vaso Novo', 'codigo' => 'VN-'.uniqid()],
             str_ends_with($caminho, '/ficha-tecnica') => ['atributos' => [['id' => 'BRAND', 'valor' => $nome]]],
             str_ends_with($caminho, '/ia')            => ['categoria' => 'MLB100200', 'titulo' => $nome, 'atributos' => []],
+            // Multipart: o `json()` do teste tira os arquivos do corpo e os manda como upload.
+            str_ends_with($caminho, '/fotos')         => ['imagens' => [UploadedFile::fake()->image('foto.jpg', 600, 600)]],
             default                                   => [],
         };
     }
@@ -271,15 +331,20 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'descricao' => $p->descricao,
             'variacoes' => $p->variacoes->map(fn ($v) => [$v->id, $v->codigo, $v->custo, $v->estoque])->all(),
             'ficha'     => EstruturaProdutoAtributo::query()->where('produto_id', $p->id)->orderBy('atributo_id')->pluck('valor', 'atributo_id')->all(),
+            'fotos'     => EstruturaProdutoVariacaoImagem::query()->where('produto_id', $p->id)->orderBy('id')->get(['id', 'variacao_id', 'ordem'])->toArray(),
         ];
     }
 
-    /** Nenhum produto novo, nenhuma linha mudada, nenhum Job. */
+    /** Nenhum produto novo, nenhuma linha mudada, nenhuma foto enviada nem excluída, nada no ML, nenhum Job. */
     private function assertNadaGravado(): void
     {
         $this->assertSame(0, EstruturaProduto::query()->where('nome', 'Vaso Novo')->count(), 'criou produto');
         $this->assertSame(0, EstruturaProdutoVariacao::query()->where('custo', 9.99)->count(), 'gravou a linha');
         $this->assertSame(0, EstruturaProdutoAtributo::query()->count(), 'gravou a ficha');
+        // O `produtoCompleto` grava 3 fotos por variação: nenhuma a mais (enviada), nenhuma a menos (excluída).
+        $this->assertSame(3 * EstruturaProdutoVariacao::query()->count(), EstruturaProdutoVariacaoImagem::query()->count(), 'mexeu nas fotos');
+        $this->assertSame([], Storage::disk(VariacaoImagensService::DISCO)->allFiles(), 'gravou foto no disco');
+        Http::assertNothingSent();
         Queue::assertNothingPushed();
     }
 }

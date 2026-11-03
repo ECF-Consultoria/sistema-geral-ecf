@@ -199,3 +199,25 @@ export function paraVisaoCliente(dados) {
 
 /** Os links da porta da equipe que o cliente não tem. */
 export const linksParaVisaoCliente = (links) => ({ ...(links ?? {}), portal_abrir: null, publicador: null });
+
+/**
+ * Os links que levam ao Portal do cliente: o "Abrir o Portal da empresa" (equipe), o cadastro de produtos e o
+ * Planejamento (cliente). Com a trilha de trabalho (3ª entrega, F5) a trilha SUBSTITUI o Portal — nenhum deles fica
+ * (o servidor também os manda nulos; aqui é a mesma regra no navegador, para o "Ver como" e para dado antigo).
+ */
+export const LINKS_DO_PORTAL = ['portal_abrir', 'produtos', 'planejamento'];
+
+/** Os links da tela: com `trabalho`, sem nenhum caminho para o Portal; sem ele, como vieram (1ª entrega). */
+export function linksDaTrilha(links, trabalho = false) {
+    const base = links ?? {};
+    if (!trabalho) return base;
+
+    return { ...base, ...Object.fromEntries(LINKS_DO_PORTAL.map((campo) => [campo, null])) };
+}
+
+/** Os produtos sem o atalho para a ficha do Portal (`url_ficha`) quando a trilha é de trabalho (F5). */
+export function produtosDaTrilha(produtos, trabalho = false) {
+    if (!trabalho) return produtos ?? [];
+
+    return (produtos ?? []).map((p) => (p?.url_ficha ? { ...p, url_ficha: null } : p));
+}

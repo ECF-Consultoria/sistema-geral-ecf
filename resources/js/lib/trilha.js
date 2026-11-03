@@ -82,10 +82,13 @@ export const ETAPA_POR_CHAVE = Object.fromEntries(ETAPAS.map((e) => [e.chave, e]
  */
 const TEXTOS_DA_TRILHA_DE_TRABALHO = {
     // 3ª entrega (02/11/2026): quem cadastra é a equipe, aqui dentro. O `faz` é neutro: o cliente também lê.
-    // O "Pronto quando" não muda (a régua do servidor é a mesma; o teste de render a confere).
+    // O "Pronto quando" segue a régua do servidor (o teste de render a confere), com a pergunta 3 do desenho: na
+    // trilha de trabalho o "frete ME1" deixou de segurar o produto — vira o aviso "vai por ME1 (transportadora)"
+    // (`CompletudeDoProduto::AVISO_ME1`), e o texto diz isso em vez de pedir "sem pendência de frete ME1".
     lista: {
         dono: 'Equipe ECF',
         faz: 'A equipe cadastra cada produto aqui: nome, categoria, ficha técnica, cores, fotos, medidas e custo. Completo, ele segue sozinho para o mapeamento.',
+        pronto: 'SKU, nome, família, ambiente, categoria, título de venda, descrição, custo, embalagem com medidas e peso, 3 fotos em cada cor e os campos obrigatórios da ficha técnica preenchidos. O que passa do tamanho do frete ME2 não fica preso aqui: segue com o aviso “vai por ME1 (transportadora)”.',
     },
     mapa: {
         faz: 'Todo produto vira oferta simples. Aqui se decide o que combina: combo (o mesmo produto em mais unidades, SKU-CB2), kit (com outros produtos, KT-SKU1-SKU2) e combit (com outros, algum em mais unidades, CT4-SKU1-SKU2). Não precisa esperar a simples vender.',

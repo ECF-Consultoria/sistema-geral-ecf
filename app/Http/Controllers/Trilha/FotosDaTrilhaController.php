@@ -3,37 +3,45 @@
 namespace App\Http\Controllers\Trilha;
 
 use App\Http\Controllers\Controller;
-use App\Models\Company;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
-use App\Services\Portal\PortalEquipeService;
-use App\Support\Trilha\TrilhaDeTrabalho;
-use App\Support\Trilha\TrilhaLigada;
+use App\Services\Trilha\CadastroNaTrilha;
+use App\Support\Portal\AtorDoPortal;
+use App\Support\Portal\Estrutura\RegrasDoCadastro;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A foto da cor (a miniatura da galeria do Portal) na porta da EQUIPE da trilha — o painel "Mapear" (02/11/2026).
+ * As fotos da variação na porta da EQUIPE da trilha: ver (o painel "Mapear", 02/11/2026, e a galeria do cadastro), e,
+ * desde a F3 do cadastro (03/11/2026), enviar e excluir — pelo serviço do Portal (`VariacaoImagensService`), sem o
+ * Portal.
  *
  * A rota de imagem do Portal não serve aqui: gerada fora de uma visita ao Portal ela sai `/portal/0/…`, e no domínio
  * do admin o `LevaPortalParaODominioDoCliente` a manda para o domínio do cliente, onde a equipe não tem sessão — a foto
- * aparecia quebrada. Quem passa é conferido como no Mapeamento ({@see MapeamentoDaTrilhaController}): as duas chaves
- * (404) e a régua de escrita do Portal da empresa (403); a imagem tem de ser da variação e da empresa do endereço
- * (404 — ninguém lê a foto de outra loja trocando o número). O arquivo sai como no Portal (`verImagem`).
+ * aparecia quebrada.
+ *
+ * A guarda é a do cadastro ({@see CadastroNaTrilha::empresa()}, desenho §6.1): as duas chaves (404, antes de ler a
+ * empresa) e a régua de escrita do Portal da empresa (403); o produto, a variação e a imagem do ENDEREÇO presos à
+ * empresa e uns aos outros (404, antes de validar o corpo — ninguém lê nem mexe na foto de outra loja trocando o
+ * número); a forma do envio (422); e, nas escritas, a trava do produto que já andou (409).
  */
 class FotosDaTrilhaController extends Controller
 {
     public function __construct(
         private VariacaoImagensService $imagens,
-        private PortalEquipeService $equipe,
+        private CadastroNaTrilha $cadastro,
     ) {}
 
+    /**
+     * Rota 12 — o arquivo da foto. Sem parâmetro, a miniatura (a galeria e o "Mapear"; uma semana no cache do
+     * navegador: o id da imagem nunca troca de conteúdo). `?original=1` (F3, o "Ver maior"): o arquivo enviado, uma
+     * hora de cache. Sempre `private` (nunca em cache compartilhado) e `nosniff`.
+     */
     public function ver(Request $request, int $company, int $variacao, int $imagem): Response
     {
-        abort_unless(TrilhaLigada::para($company) && TrilhaDeTrabalho::ligada($company), 404);
-        $empresa = Company::query()->findOrFail($company);
-        abort_unless($this->equipe->podeEntrar($request->user(), $empresa), 403, 'Você não tem acesso ao portal desta empresa.');
+        $empresa = $this->cadastro->empresa($request->user(), $company);
 
         $img = EstruturaProdutoVariacaoImagem::query()
             ->where('company_id', $empresa->id)
@@ -42,7 +50,7 @@ class FotosDaTrilhaController extends Controller
             ->firstOrFail();
         abort_unless($this->imagens->existe($img), 404);
 
-        if (($miniatura = $this->imagens->miniatura($img)) !== null) {
+        if (! $request->boolean('original') && ($miniatura = $this->imagens->miniatura($img)) !== null) {
             return Storage::disk(VariacaoImagensService::DISCO)->response($miniatura, null, [
                 'Content-Type'           => 'image/jpeg',
                 'Cache-Control'          => 'private, max-age=604800',
@@ -50,11 +58,63 @@ class FotosDaTrilhaController extends Controller
             ]);
         }
 
-        // Sem miniatura (sem GD, formato que o GD não lê): a original, como no Portal.
+        // A original: pedida, ou sem miniatura (sem GD, formato que o GD não lê), como no Portal.
         return Storage::disk(VariacaoImagensService::DISCO)->response($img->caminho, null, [
             'Content-Type'           => $img->mime,
             'Cache-Control'          => 'private, max-age=3600',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * Rota 10 — envia `imagens[]` (multipart) para o fim da galeria da variação. As regras são as do Portal
+     * (`RegrasDoCadastro::imagens`: 1 ao teto por variação, JPG/PNG/WebP conferidos pelo CONTEÚDO, até 10 MB cada,
+     * mensagens com a posição da imagem), e o envio que o PHP descartou vira a mensagem certa. Tudo ou nada: a remessa
+     * que não cabe inteira no teto é 422 em `errors.imagens` e nada fica. Responde o retrato novo da gaveta.
+     */
+    public function enviar(Request $request, int $company, int $produto, int $variacao): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $v = $this->cadastro->variacao($empresa, $alvo, $variacao);
+
+        RegrasDoCadastro::recusarEnvioQueNaoChegou($request);
+        $request->validate(RegrasDoCadastro::imagens(), RegrasDoCadastro::mensagensDasImagens());
+        $this->cadastro->exigirLivre($empresa, $alvo);
+
+        $arquivos = array_values((array) $request->file('imagens'));
+        $this->cadastro->enviarFotos($empresa, $alvo, $v, $arquivos, AtorDoPortal::daEquipe($request->user()));
+        $retrato = $this->cadastro->retrato($empresa, $alvo);
+
+        return response()->json([
+            ...$retrato,
+            'mensagem' => self::mensagem(count($arquivos) === 1 ? 'Foto enviada.' : 'Fotos enviadas.', $retrato['situacao']),
+        ]);
+    }
+
+    /**
+     * Rota 11 — exclui a foto: as que sobram são renumeradas (a 1ª vira a capa) e o arquivo sai do disco depois do
+     * commit. Responde o retrato novo da gaveta.
+     */
+    public function excluir(Request $request, int $company, int $produto, int $variacao, int $imagem): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $v = $this->cadastro->variacao($empresa, $alvo, $variacao);
+        $img = $this->cadastro->imagem($empresa, $v, $imagem);
+        $this->cadastro->exigirLivre($empresa, $alvo);
+
+        $this->cadastro->excluirFoto($empresa, $alvo, $v, $img, AtorDoPortal::daEquipe($request->user()));
+        $retrato = $this->cadastro->retrato($empresa, $alvo);
+
+        return response()->json([...$retrato, 'mensagem' => self::mensagem('Foto excluída.', $retrato['situacao'])]);
+    }
+
+    /** O resultado, no padrão das outras escritas do cadastro: completo, ainda na Lista ou só o que foi feito. */
+    private static function mensagem(string $feito, array $situacao): string
+    {
+        return match ($situacao['etapa']) {
+            'lista' => $feito.' Ainda faltam: '.implode(', ', $situacao['faltas']).'.',
+            'mapa'  => 'Lista completa: o produto seguiu para o mapeamento.',
+            default => $feito,
+        };
     }
 }

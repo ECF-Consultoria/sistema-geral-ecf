@@ -584,3 +584,60 @@ export const CADASTRO_CATEGORIA_TRAVADA = {
     ...CADASTRO_COM_CATEGORIA,
     situacao: { ...CADASTRO_COM_CATEGORIA.situacao, no_publicador: true, categoria_travada: true },
 };
+
+// ─── 3ª entrega, F3: as fotos e o frete ─────────────────────────────────────
+
+/** Uma foto como o retrato manda: a miniatura e a original pela rota da equipe (`trilha.fotos`), nunca `/portal/`. */
+const foto = (variacao, id, nome) => ({
+    id, url: `/trilha/459/fotos/${variacao}/${id}`, url_original: `/trilha/459/fotos/${variacao}/${id}?original=1`, nome_original: nome,
+});
+
+/** A resposta do envio de 2 fotos ao criado-mudo (rota 10): o retrato novo — ainda falta 1 foto (e a categoria). */
+export const CADASTRO_COM_FOTOS = {
+    ...SALVO_INCOMPLETO,
+    variacoes: [{ ...SALVO_INCOMPLETO.variacoes[0], fotos: [foto(91, 501, 'frente.jpg'), foto(91, 502, 'lado.jpg')] }],
+    situacao: { ...SALVO_INCOMPLETO.situacao, faltas: ['categoria', 'fotos (2 de 3)'] },
+    mensagem: '2 fotos enviadas.',
+};
+
+/** O mesmo, com a 3ª foto: as fotos completas. */
+export const CADASTRO_FOTOS_COMPLETAS = {
+    ...CADASTRO_COM_FOTOS,
+    variacoes: [{ ...CADASTRO_COM_FOTOS.variacoes[0], fotos: [...CADASTRO_COM_FOTOS.variacoes[0].fotos, foto(91, 503, 'detalhe.jpg')] }],
+    situacao: { ...CADASTRO_COM_FOTOS.situacao, faltas: ['categoria'] },
+};
+
+/**
+ * O criado-mudo numa caixa que passa do tamanho do Mercado Envios (só vai por transportadora): com a trilha de
+ * trabalho o ME1 é AVISO (pergunta 3) — o produto está completo e saiu da Lista.
+ */
+export const CADASTRO_ME1 = {
+    ...SALVO_COMPLETO,
+    variacoes: [{
+        ...SALVO_COMPLETO.variacoes[0], volumes: [{ c: 216, l: 98, a: 60, kg: 62 }], logistica: 'me1',
+        fotos: CADASTRO_FOTOS_COMPLETAS.variacoes[0].fotos,
+    }],
+    situacao: { ...SALVO_COMPLETO.situacao, etapa: 'mapa', faltas: [], avisos: ['vai por ME1 (transportadora)'] },
+};
+
+/** Uma variação da camiseta (a forma do retrato). */
+const daCamiseta = (id, codigo, valor, valor2, { dona = false, logistica = 'me2', fotos = [] } = {}) => ({
+    id, codigo, valor, valor_2: valor2, ordem: id - 120, custo: 25, estoque: null, volumes: [{ c: 30, l: 25, a: 3, kg: 0.3 }],
+    bling: false, estoque_do_bling: false, dona_da_cor: dona, logistica, fotos,
+});
+
+/**
+ * Uma camiseta de 2 cores × 2 tamanhos (a moda). As fotos são da COR: a Branca as tem no tamanho M (a 1ª variação
+ * dela COM foto é a dona); a Preta, sem foto, guarda na P (a 1ª dela). A Preta M passa do Mercado Envios (aviso).
+ */
+export const CADASTRO_CORES_E_TAMANHOS = {
+    ...CADASTRO,
+    produto: { ...CADASTRO.produto, id: 12, nome: 'Camiseta básica', eixo: 'cor', eixo_2: 'tamanho' },
+    variacoes: [
+        daCamiseta(121, 'CAM-BR-P', 'Branca', 'P'),
+        daCamiseta(122, 'CAM-BR-M', 'Branca', 'M', { dona: true, fotos: [foto(122, 601, 'branca-1.jpg'), foto(122, 602, 'branca-2.jpg'), foto(122, 603, 'branca-3.jpg')] }),
+        daCamiseta(123, 'CAM-PR-P', 'Preta', 'P', { dona: true }),
+        daCamiseta(124, 'CAM-PR-M', 'Preta', 'M', { logistica: 'me1' }),
+    ],
+    situacao: { ...CADASTRO.situacao, faltas: ['fotos (0 de 3)'], avisos: ['vai por ME1 (transportadora)'] },
+};

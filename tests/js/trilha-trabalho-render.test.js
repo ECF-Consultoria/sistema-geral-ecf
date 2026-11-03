@@ -179,10 +179,11 @@ test('etapa 3 com a trilha de trabalho: os cartões das ondas pela data, o "+ No
 
     // As linhas sem onda: pílula âmbar "Planejar".
     assert.deepEqual(pilulasDasLinhas(saida), [['Planejar', 'warn'], ['Planejar', 'warn'], ['Abrir', 'run']], 'a sem produto não se planeja: "Abrir"');
-    // A nota da 1ª entrega sai; o link para o Portal fica, mas não como o destaque.
+    // A nota da 1ª entrega sai; o link para o Portal TAMBÉM (3ª entrega, F5): com a trilha de trabalho a trilha
+    // substitui o Portal do cliente — mesmo com o servidor ainda mandando o endereço.
     assert.ok(!saida.includes('data-nota="plano"') && !t.includes('Ondas: na próxima entrega'));
-    const linkDoPortal = abertura(saida, 'data-link="portal_abrir"');
-    assert.ok(linkDoPortal && !linkDoPortal.includes('bg-trilha-navy'), linkDoPortal);
+    assert.equal(abertura(saida, 'data-link="portal_abrir"'), '', 'nenhum link para o Portal com trabalho');
+    assert.ok(PROPS_TRABALHO.links.portal_abrir, 'o exemplo ainda traz o endereço: quem tira é a tela');
     for (const proibido of VOCABULARIO_PROIBIDO) assert.equal(t.match(proibido), null, `etapa 3: ${proibido}`);
 
     // Sem nada para planejar: "todas já estão numa onda" só quando TODA oferta com produto tem onda. A mesa (s-1)
@@ -390,7 +391,7 @@ test('"Mapeamento concluído": a mensagem do servidor, as criadas com o SKU do s
     const saida = renderToStaticMarkup(h(ResultadoDoMapeamento, { resultado: CONCLUIDO, dados: PROPS_TRABALHO, onAbrir: () => {} }));
     const t = texto(saida);
     for (const s of ['2 ofertas criadas.',
-        '1 sugestão do sistema que não foi escolhida foi para Descartadas, no Planejamento do Portal.',
+        '1 sugestão do sistema que não foi escolhida foi descartada.',
         'Criadas', 'Combo 3 · Painel ripado para TV 2,20 m', 'CJ-214-NAT-CB3 · CJ-214-MEL-CB3', 'KT-CJ-213-CJ-214-NAT']) {
         assert.ok(t.includes(s), `faltou no concluído: ${s}`);
     }
@@ -636,6 +637,76 @@ test('"Ver como: Cliente" com a escrita de verdade nas props: nenhum botão nem 
     assert.ok(!comoCliente('?abrir=w:nova').includes('role="dialog"'));
 });
 
+test('F3 — na Lista o aviso do produto ("vai por ME1 (transportadora)") aparece SEM ser falta: "Completo", barra cheia, nas duas portas', () => {
+    const comAviso = (props) => ({
+        ...props,
+        produtos: props.produtos.map((p) => (p.id === 9
+            ? {
+                ...p, faltas: [], etapa: 'mapa', avisos: ['vai por ME1 (transportadora)'], custo_min: 1890, custo_max: 1890,
+                embalagem: '216 × 98 × 60 cm · 62 kg', tem_descricao: true, fotos_min: 3, ficha: 'completa',
+            }
+            : p)),
+    });
+    const linha = (html) => html.match(/<tr data-produto="9"[\s\S]*?<\/tr>/)?.[0] ?? '';
+
+    for (const [nome, props] of [['equipe', comAviso(PROPS_TRABALHO)], ['cliente', paraCliente(comAviso(PROPS_TRABALHO))]]) {
+        const l = linha(desenhar(props, '?etapa=lista'));
+        assert.ok(l, nome);
+        assert.match(l, /data-aviso-do-produto=""[^>]*>[\s\S]*?aviso:[\s\S]*?vai por ME1 \(transportadora\)/, nome);
+        // Não é falta: nenhuma célula "falta", a situação é "Completo" e a barra está cheia.
+        assert.ok(!texto(l).includes('falta'), `${nome}: ${texto(l)}`);
+        assert.ok(texto(l).includes('Completo') && l.includes('width:100%'), nome);
+        const aviso = tag(l, 'data-aviso-do-produto', { nome: 'span' });
+        assert.ok(aviso.includes('text-trilha-run') && !aviso.includes('trilha-warn'), `${nome}: aviso não é o âmbar da falta: ${aviso}`);
+    }
+    // Sem aviso, nada a mais na linha.
+    assert.ok(!linha(desenhar(PROPS_TRABALHO, '?etapa=lista')).includes('data-aviso-do-produto'));
+});
+
+test('F5 (3ª entrega) — com a trilha de trabalho a trilha SUBSTITUI o Portal: nenhum texto nem link para ele, em nenhuma porta, etapa ou painel', () => {
+    const { TelaDaTrilha } = M.pagina;
+    const comoCliente = (busca) => {
+        global.window.location.search = busca;
+        global.window.location.href = `http://localhost/trilha/459${busca}`;
+
+        return renderToStaticMarkup(h(TelaDaTrilha, { ...PROPS_TRABALHO, verComo: 'cliente', onVerComo: () => {} }));
+    };
+    // O exemplo ainda traz os endereços do Portal (o servidor da 1ª entrega os mandava): quem tira é a tela também.
+    assert.ok(PROPS_TRABALHO.links.portal_abrir && paraCliente(PROPS_TRABALHO).links.produtos);
+    assert.ok(paraCliente(PROPS_TRABALHO).produtos.every((p) => p.url_ficha));
+
+    const buscas = ['', '?etapa=lista', '?etapa=mapa', '?etapa=plano', '?etapa=robo', '?etapa=revisao', '?etapa=lanc', '?vista=mapa',
+        '?abrir=p:9', '?abrir=p:7', '?abrir=p:5', '?abrir=p:4', '?abrir=p:3', '?abrir=p:1', '?abrir=o:o-31', '?abrir=o:c-2-4', '?abrir=w:9', '?abrir=m:5'];
+    const linkDoPortal = /href="[^"]*(?:\/portal\b|\/companies\/\d+\/portal)[^"]*"/;
+    const atalhosDoPortal = ['Completar no cadastro', 'Ver no cadastro', 'Abrir o cadastro de produtos', 'Decidir no Planejamento', 'Abrir o Planejamento'];
+    for (const [nome, desenho] of [
+        ['equipe', (busca) => desenhar(PROPS_TRABALHO, busca)],
+        ['cliente', (busca) => desenhar(paraCliente(PROPS_TRABALHO), busca)],
+        ['Ver como: Cliente', comoCliente],
+        ['equipe sem escrita', (busca) => desenhar({ ...PROPS_TRABALHO, pode_editar: false, escrita: null }, busca)],
+    ]) {
+        for (const busca of buscas) {
+            // O "voltar" do cliente leva à casa dele (o `voltar` do servidor, na moldura) — não é o cadastro: fica fora.
+            const saida = desenho(busca).replace(/<a\b[^>]*href="\/portal\/459\/inicio"[^>]*>[\s\S]*?<\/a>/g, '');
+            const t = texto(saida);
+            assert.equal(t.match(/[^.]{0,40}portal[^.]{0,40}/i)?.[0] ?? null, null, `${nome} ${busca}: texto do Portal`);
+            assert.equal(saida.match(linkDoPortal)?.[0] ?? null, null, `${nome} ${busca}: link para o Portal`);
+            for (const atalho of atalhosDoPortal) assert.ok(!t.includes(atalho), `${nome} ${busca}: ${atalho}`);
+        }
+    }
+    // A faixa do cliente: com a trilha de trabalho ele acompanha (quem cadastra é a equipe), não "mexe na lista".
+    assert.ok(texto(desenhar(paraCliente(PROPS_TRABALHO))).includes('Você vê a trilha inteira e acompanha cada etapa: a equipe ECF cadastra os produtos da sua loja.'));
+    assert.ok(texto(comoCliente('')).includes('O cliente vê a trilha inteira e acompanha: quem cadastra os produtos é a equipe ECF.'));
+
+    // Sem a trilha de trabalho, a 1ª entrega fica igual: a equipe com o "Abrir o Portal da empresa" e o cliente com o
+    // cadastro de produtos e a ficha de cada produto.
+    assert.match(desenhar(PROPS_EQUIPE, '?etapa=lista'), /data-link="portal_abrir"/);
+    const doCliente = desenhar(paraCliente(), '?abrir=p:9');
+    assert.ok(texto(doCliente).includes('Completar no cadastro') && doCliente.includes('href="/portal/459/estrutura/produtos/9"'));
+    assert.match(desenhar(paraCliente(), '?etapa=lista'), /data-link="produtos"/);
+    assert.ok(texto(desenhar(paraCliente())).includes('Você vê a trilha inteira: mexe na lista de produtos e acompanha o resto.'));
+});
+
 test('durante um envio o botão fica "ocupado" (aria-disabled, focável, ignora o clique); o 2º clique de um duplo clique não fecha a gaveta', () => {
     const { Botao } = M.pecas;
     const ocupado = renderToStaticMarkup(h(Botao, { ocupado: true, primario: true }, 'Salvar'));
@@ -722,11 +793,11 @@ test('etapa 1 com a trilha de trabalho: "Equipe ECF", o texto novo, "+ Produto n
     }
     // A barra de etapas também diz quem é o dono agora.
     assert.match(saida, /data-etapa="lista"[\s\S]*?<b class="[^"]*">Equipe ECF<\/b>/);
-    // O botão é a ação principal; o "Abrir o Portal da empresa" fica ao lado, secundário (sai na F5).
+    // O botão é a ação principal; o "Abrir o Portal da empresa" saiu (F5: a trilha substitui o Portal).
     const novo = abertura(saida, 'data-acao="novo-produto"');
     assert.ok(novo.includes('data-chave="e:novo"') && novo.includes('bg-trilha-navy'), novo);
-    const portal = abertura(saida, 'data-link="portal_abrir"');
-    assert.ok(portal && !portal.includes('bg-trilha-navy'), portal);
+    assert.equal(abertura(saida, 'data-link="portal_abrir"'), '');
+    assert.ok(!t.includes('Portal'), 'nenhum texto do Portal na Lista com trabalho');
     // "Pela planilha" sai; o quadro da equipe chega por `lazy` (no render do servidor, ainda não).
     assert.ok(!t.includes('Pela planilha') && !t.includes('Um produto por vez, na ficha do produto no cadastro do Portal'));
 

@@ -75,8 +75,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // responde 413 sem texto e a tela ficaria muda. Só nesta rota vira 422 com a mensagem
         // clara no mesmo formato de erro de validação (`errors.imagens`) que a tela já lê.
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {
-            // `([0-9]+/)?`: a empresa vai no caminho desde o multi-abas (26/10/2026).
-            if ($request->isMethod('POST') && preg_match('#^portal/([0-9]+/)?estrutura/produtos/variacao/[0-9]+/imagens$#', $request->decodedPath()) === 1) {
+            // `([0-9]+/)?`: a empresa vai no caminho desde o multi-abas (26/10/2026). A 2ª: o envio de fotos do
+            // cadastro na trilha (3ª entrega, F3, 03/11/2026), com a mesma resposta.
+            $caminho = $request->decodedPath();
+            if ($request->isMethod('POST') && (preg_match('#^portal/([0-9]+/)?estrutura/produtos/variacao/[0-9]+/imagens$#', $caminho) === 1
+                || preg_match('#^trilha/[0-9]+/produtos/[0-9]+/variacoes/[0-9]+/fotos$#', $caminho) === 1)) {
                 $mensagem = \App\Services\Portal\Estrutura\Produtos\VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
 
                 return response()->json(['message' => $mensagem, 'errors' => ['imagens' => [$mensagem]]], 422);

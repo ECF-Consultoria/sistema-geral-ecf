@@ -26,7 +26,7 @@ const VER_COMO = [
  *   sessaoEquipe: boolean,
  * }} props
  */
-export default function CabecalhoDaTrilha({ empresa, portaDaEquipe, verComo, onVerComo, sessaoEquipe }) {
+export default function CabecalhoDaTrilha({ empresa, portaDaEquipe, verComo, onVerComo, sessaoEquipe, trabalho = false }) {
     const visaoDoCliente = !portaDaEquipe || verComo === 'cliente';
 
     return (
@@ -84,9 +84,14 @@ export default function CabecalhoDaTrilha({ empresa, portaDaEquipe, verComo, onV
                 <div className="mb-[14px] flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] bg-trilha-roxo-bg px-[14px] py-2.5 text-[13px] text-trilha-fg" data-faixa="visao-cliente">
                     <b>Visão do cliente.</b>
                     <span>
-                        {portaDaEquipe
-                            ? 'O cliente vê a trilha inteira. Ele mexe na lista de produtos; o resto ele acompanha.'
-                            : 'Você vê a trilha inteira: mexe na lista de produtos e acompanha o resto.'}
+                        {/* Com a trilha de trabalho (3ª entrega) quem cadastra é a equipe: o cliente só acompanha. */}
+                        {trabalho
+                            ? portaDaEquipe
+                                ? 'O cliente vê a trilha inteira e acompanha: quem cadastra os produtos é a equipe ECF.'
+                                : 'Você vê a trilha inteira e acompanha cada etapa: a equipe ECF cadastra os produtos da sua loja.'
+                            : portaDaEquipe
+                              ? 'O cliente vê a trilha inteira. Ele mexe na lista de produtos; o resto ele acompanha.'
+                              : 'Você vê a trilha inteira: mexe na lista de produtos e acompanha o resto.'}
                     </span>
                 </div>
             )}

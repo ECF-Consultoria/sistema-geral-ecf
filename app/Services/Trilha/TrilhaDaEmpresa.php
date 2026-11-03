@@ -88,6 +88,8 @@ class TrilhaDaEmpresa
         $definicoes = CompletudeDoProduto::definicoesGuardadas($produtos->pluck('categoria_ml_id'));
         // A mesma logística da tela de Produtos: limites da modalidade de envio já lida (só cache).
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        // 3ª entrega (pergunta 3): com a trilha de trabalho o "frete ME1" é aviso, não falta.
+        $me1ComoAviso = $ondas !== null;
 
         [$ofertas, $componentes] = self::ofertasEComponentes($empresaId);
 
@@ -98,7 +100,7 @@ class TrilhaDaEmpresa
         $saidaProdutos = [];
         $faltas = [];
         foreach ($produtos as $p) {
-            $c = CompletudeDoProduto::avaliar($p, $salvos->get($p->id, collect()), $fotos, $definicoes, $modalidade);
+            $c = CompletudeDoProduto::avaliar($p, $salvos->get($p->id, collect()), $fotos, $definicoes, $modalidade, $me1ComoAviso);
             $faltas[(int) $p->id] = $c['faltas'];
             $sugestoes = $pendentes[(int) $p->id] ?? [];
             $codigo = trim((string) $p->codigo);
@@ -123,6 +125,8 @@ class TrilhaDaEmpresa
                 'tem_descricao'             => $c['tem_descricao'],
                 'ficha'                     => $c['ficha'],
                 'faltas'                    => $c['faltas'],
+                // O que não segura o produto na Lista, mas a tela avisa (com a trilha de trabalho: o "frete ME1").
+                'avisos'                    => $c['avisos'],
                 // Com a trilha de trabalho a etapa 2 é decidida depois das ofertas (a Simples andou?) — abaixo.
                 'etapa'                     => $c['faltas'] !== [] ? 'lista' : ($ondas === null && $sugestoes !== [] ? 'mapa' : null),
                 'sugestoes_pendentes'       => array_slice($sugestoes, 0, self::MAX_SUGESTOES),
@@ -258,10 +262,11 @@ class TrilhaDaEmpresa
         $fotos = self::fotosPorVariacao($empresaId);
         $definicoes = CompletudeDoProduto::definicoesGuardadas($produtos->pluck('categoria_ml_id'));
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        $me1ComoAviso = TrilhaDeTrabalho::ligada($empresa);
 
         $saida = [];
         foreach ($produtos as $p) {
-            $saida[(int) $p->id] = CompletudeDoProduto::avaliar($p, $salvos->get($p->id, collect()), $fotos, $definicoes, $modalidade)['faltas'];
+            $saida[(int) $p->id] = CompletudeDoProduto::avaliar($p, $salvos->get($p->id, collect()), $fotos, $definicoes, $modalidade, $me1ComoAviso)['faltas'];
         }
 
         return $saida;
@@ -277,6 +282,17 @@ class TrilhaDaEmpresa
      */
     public static function faltasDoProduto(Company $empresa, int $produtoId): array
     {
+        return self::cadastroDoProduto($empresa, $produtoId)['faltas'];
+    }
+
+    /**
+     * As faltas e os avisos de UM produto, pela régua de {@see faltasDoProduto()} — o retrato da gaveta do cadastro lê os
+     * dois. Com a trilha de trabalho o "frete ME1" vem em `avisos` (pergunta 3), não em `faltas`.
+     *
+     * @return array{faltas: list<string>, avisos: list<string>}
+     */
+    public static function cadastroDoProduto(Company $empresa, int $produtoId): array
+    {
         $empresaId = (int) $empresa->id;
         $produto = EstruturaProduto::query()
             ->where('company_id', $empresaId)
@@ -288,8 +304,9 @@ class TrilhaDaEmpresa
             ->get(['produto_id', 'atributo_id', 'valor', 'valor_id', 'unidade']);
         $fotos = self::fotosPorVariacao($empresaId, array_map('intval', $produto->variacoes->modelKeys()));
         $definicoes = CompletudeDoProduto::definicoesGuardadas([$produto->categoria_ml_id]);
+        $c = CompletudeDoProduto::avaliar($produto, $salvos, $fotos, $definicoes, ModalidadeDeEnvio::emCache($empresa), TrilhaDeTrabalho::ligada($empresa));
 
-        return CompletudeDoProduto::avaliar($produto, $salvos, $fotos, $definicoes, ModalidadeDeEnvio::emCache($empresa))['faltas'];
+        return ['faltas' => $c['faltas'], 'avisos' => $c['avisos']];
     }
 
     /**

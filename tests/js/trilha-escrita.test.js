@@ -269,7 +269,7 @@ test('mapeamento: os rótulos de "Vai ser criado", do concluído e da marca de m
     assert.equal(textoDasCriadas(1), '1 oferta criada.');
     assert.equal(textoDasCriadas(3), '3 ofertas criadas.');
     assert.equal(textoDasDescartadas(0), null);
-    assert.equal(textoDasDescartadas(2), '2 sugestões do sistema que não foram escolhidas foram para Descartadas, no Planejamento do Portal.');
+    assert.equal(textoDasDescartadas(2), '2 sugestões do sistema que não foram escolhidas foram descartadas.');
     // Nunca "planejado".
     for (const t of [textoDasCriadas(0), textoDasCriadas(1), textoDasCriadas(4)]) assert.equal(t.match(/planejad/i), null, t);
 
@@ -502,6 +502,43 @@ test('cadastro F2: a categoria sob `escrita.categorias` (busca, árvore, campos,
         escrita.mensagemDoErro({ isAxiosError: true, response: { status: 422, data: { message: 'Escolha a categoria e salve o produto antes de usar a IA.' } } }),
         'Escolha a categoria e salve o produto antes de usar a IA.',
     );
+});
+
+test('cadastro F3: enviar fotos (multipart, um `imagens[]` por arquivo), excluir foto e conferir o frete — sob `escrita.produtos`', async () => {
+    const { pedidos, restaurar } = gravarPedidos({ produto: { id: 9 }, variacoes: [], mensagem: '2 fotos enviadas.' });
+    const E = { ...PROPS_TRABALHO.escrita, produtos: `${PROPS_TRABALHO.escrita.produtos}/` };
+    const frente = new File(['a'], 'frente.jpg', { type: 'image/jpeg' });
+    const lado = new File(['b'], 'lado.png', { type: 'image/png' });
+    try {
+        assert.deepEqual(await escrita.enviarFotos(E, 9, 91, [frente, lado]), { produto: { id: 9 }, variacoes: [], mensagem: '2 fotos enviadas.' });
+        await escrita.excluirFoto(E, 9, 91, 501);
+        await escrita.conferirFrete(E, 9);
+    } finally {
+        restaurar();
+    }
+
+    assert.deepEqual(pedidos.map(({ metodo, url }) => [metodo, url]), [
+        ['post', 'http://localhost/trilha/459/produtos/9/variacoes/91/fotos'],
+        ['delete', 'http://localhost/trilha/459/produtos/9/variacoes/91/fotos/501'],
+        ['post', 'http://localhost/trilha/459/produtos/9/frete'],
+    ]);
+    // O envio é multipart: os arquivos na ordem escolhida, todos no mesmo campo `imagens[]` (o servidor é tudo ou nada).
+    const envio = pedidos[0].corpo;
+    assert.ok(envio instanceof FormData, 'multipart');
+    assert.deepEqual(envio.getAll('imagens[]').map((f) => f.name), ['frente.jpg', 'lado.png']);
+    assert.deepEqual([...envio.keys()], ['imagens[]', 'imagens[]']);
+    assert.equal(pedidos[1].corpo, undefined);
+    assert.deepEqual(pedidos[2].corpo, {});
+    assert.equal(escrita.urlDaVariacao(E, 9, 91), 'http://localhost/trilha/459/produtos/9/variacoes/91');
+
+    // Sem endereço (a porta do cliente nunca recebe nenhum), nada sai.
+    await assert.rejects(() => escrita.enviarFotos(null, 9, 91, [frente]), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.excluirFoto({ ondas: 'x' }, 9, 91, 501), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.conferirFrete(null, 9), (e) => e instanceof escrita.ErroDaTrilha);
+
+    // A trava vale também para as fotos: o 409 traz o motivo do servidor.
+    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar).';
+    assert.equal(escrita.mensagemDoErro({ isAxiosError: true, response: { status: 409, data: { travado: true, motivo } } }), motivo);
 });
 
 test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {

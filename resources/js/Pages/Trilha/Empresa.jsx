@@ -17,10 +17,12 @@ import {
     estadoComUrl,
     etapaDoItem,
     lerEstadoDaUrl,
+    linksDaTrilha,
     linksParaVisaoCliente,
     painelDaChave,
     paraVisaoCliente,
     podeEscrever,
+    produtosDaTrilha,
 } from '@/Components/Trilha/estadoDaTela';
 import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 
@@ -138,13 +140,18 @@ export function TelaDaTrilha({
     // Escreve só a equipe com escrita, e fora do "Ver como: Cliente" (lá a tela é a do cliente, que só acompanha).
     const podeEditar = podeEscrever({ visao, trabalho, pode_editar, escrita }, verComo);
 
+    // Com a trilha de trabalho a trilha substitui o Portal (F5): nenhum atalho para a ficha de lá.
     const dadosDaPorta = useMemo(
-        () => ({ produtos: produtos ?? [], ofertas: ofertas ?? [], ondas: ondas ?? [] }),
-        [produtos, ofertas, ondas],
+        () => ({ produtos: produtosDaTrilha(produtos, comTrabalho), ofertas: ofertas ?? [], ondas: ondas ?? [] }),
+        [produtos, ofertas, ondas, comTrabalho],
     );
     // Na simulação, o mesmo corte que o servidor faz na porta do cliente.
     const dados = useMemo(() => (simulandoCliente ? paraVisaoCliente(dadosDaPorta) : dadosDaPorta), [simulandoCliente, dadosDaPorta]);
-    const linksDaVisao = useMemo(() => (simulandoCliente ? linksParaVisaoCliente(links) : links ?? {}), [simulandoCliente, links]);
+    // Com a trilha de trabalho, nenhum link para o Portal (F5); no "Ver como: Cliente", também sem os da equipe.
+    const linksDaVisao = useMemo(
+        () => linksDaTrilha(simulandoCliente ? linksParaVisaoCliente(links) : links, comTrabalho),
+        [simulandoCliente, links, comTrabalho],
+    );
     const contagem = useMemo(() => contagemPorEtapa(dados), [dados]);
 
     // O começo vem da URL (lido uma vez, na montagem). Valor estranho, item que não existe mais
@@ -425,6 +432,7 @@ export function TelaDaTrilha({
                 verComo={verComo}
                 onVerComo={verComoComGuarda}
                 sessaoEquipe={!!sessao_equipe}
+                trabalho={comTrabalho}
             />
 
             <AbasDaVista vista={vista} onVista={setVista} idDoPainel={ID_DA_VISTA} />

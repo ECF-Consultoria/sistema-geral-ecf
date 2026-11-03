@@ -153,13 +153,16 @@ export function textoDasCriadas(n) {
     return n === 1 ? '1 oferta criada.' : `${n} ofertas criadas.`;
 }
 
-/** As sugestões do sistema que o "Concluir" mandou para Descartadas (reversível no Portal). */
+/**
+ * As sugestões do sistema que o "Concluir" descartou. Sem citar o Portal: com a trilha de trabalho (a única que
+ * mapeia aqui) a trilha substitui o Portal do cliente (3ª entrega, F5) — "Mapear de novo" é o caminho de volta.
+ */
 export function textoDasDescartadas(n) {
     if (!n) return null;
 
     return n === 1
-        ? '1 sugestão do sistema que não foi escolhida foi para Descartadas, no Planejamento do Portal.'
-        : `${n} sugestões do sistema que não foram escolhidas foram para Descartadas, no Planejamento do Portal.`;
+        ? '1 sugestão do sistema que não foi escolhida foi descartada.'
+        : `${n} sugestões do sistema que não foram escolhidas foram descartadas.`;
 }
 
 /** O próximo produto esperando o mapeamento (o "Continuar mapeando"); null se não sobrou nenhum. */

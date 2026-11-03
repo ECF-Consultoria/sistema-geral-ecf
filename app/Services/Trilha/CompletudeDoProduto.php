@@ -24,6 +24,10 @@ use Illuminate\Support\Facades\Cache;
  *   pela definição GUARDADA (tabela do schema ou o cache de 7 dias). Categoria sem definição guardada fica
  *   "não conferida" e não vira falta: conferir exigiria chamar o Mercado Livre, e a trilha nunca chama.
  *
+ * Na trilha de TRABALHO o "frete ME1" não segura o produto: vira aviso ({@see avaliar()}, `$me1ComoAviso`). A régua
+ * continua só lendo o que está guardado; quem chama o Mercado Livre é o cadastro da trilha (a busca de categoria, os
+ * campos da ficha e o "Conferir frete pela conta", que grava a modalidade de envio que esta régua lê do cache).
+ *
  * Diferença de propósito em relação ao Funil: os eixos que saem da ficha são os DOIS de cada variação
  * (`eixo` e `eixo_2`), como em {@see FichaTecnicaDoProduto::eixosDoProduto()} desde 28/10/2026 (na meia de
  * cor E tamanho, nem a Cor nem o Tamanho são da ficha). O Funil ainda olha só o `eixo`.
@@ -35,6 +39,12 @@ class CompletudeDoProduto
 {
     /** Fotos que cada cor precisa ter (a régua do protótipo do Erlon: "3 fotos em cada cor"). */
     public const FOTOS_MINIMAS = 3;
+
+    /**
+     * O aviso que toma o lugar da falta "frete ME1" na trilha de trabalho (3ª entrega, pergunta 3, decisão do usuário de
+     * 02/11/2026). Neutro: as duas portas o leem.
+     */
+    public const AVISO_ME1 = 'vai por ME1 (transportadora)';
 
     /**
      * As medidas do produto MONTADO que viram o texto "180 × 90 × 76 cm", na ordem do bloco da ficha
@@ -99,16 +109,29 @@ class CompletudeDoProduto
     /**
      * O produto pela régua da lista.
      *
+     * `$me1ComoAviso` (3ª entrega, pergunta 3): na trilha de TRABALHO o "frete ME1" sai das faltas e vira o aviso
+     * {@see AVISO_ME1} — o que só vai por transportadora (um sofá de 216 × 98 × 60 cm soma 374 cm, e o maior limite do
+     * ME2 é 300 cm) ficaria na Lista para sempre, e nada que a equipe preencha resolve. O aviso não segura o produto:
+     * ele sai da Lista, vai ao Publicador e ao Mapeamento. Sem a chave (1ª entrega e o resto do sistema), `false`: a
+     * falta fica como era.
+     *
      * @param  EstruturaProduto  $produto  com `familia`, `ambientes` e `variacoes.volumes` já carregados
      * @param  Collection<int, \App\Models\EstruturaProdutoAtributo>  $salvos  a ficha gravada do produto
      * @param  array<int, int>  $fotosPorVariacao  variacao_id → quantas fotos tem
      * @param  array<string, array>  $definicoes  saída de {@see definicoesGuardadas()}
      * @param  ?string  $modalidade  `ModalidadeDeEnvio::emCache()` da empresa
-     * @return array{faltas: list<string>, ficha: string, medidas: ?string, embalagem: ?string, fotos_min: int, tem_descricao: bool, custo_min: ?float, custo_max: ?float}
+     * @return array{faltas: list<string>, avisos: list<string>, ficha: string, medidas: ?string, embalagem: ?string, fotos_min: int, tem_descricao: bool, custo_min: ?float, custo_max: ?float}
      */
-    public static function avaliar(EstruturaProduto $produto, Collection $salvos, array $fotosPorVariacao, array $definicoes, ?string $modalidade): array
+    public static function avaliar(EstruturaProduto $produto, Collection $salvos, array $fotosPorVariacao, array $definicoes, ?string $modalidade, bool $me1ComoAviso = false): array
     {
         $faltas = self::pendencias($produto, $modalidade);
+
+        $avisos = [];
+        $me1 = PendenciasDoProduto::ROTULOS[PendenciasDoProduto::FRETE_ME1];
+        if ($me1ComoAviso && in_array($me1, $faltas, true)) {
+            $faltas = array_values(array_filter($faltas, fn (string $f) => $f !== $me1));
+            $avisos[] = self::AVISO_ME1;
+        }
 
         $temDescricao = trim((string) $produto->descricao) !== '';
         if (! $temDescricao) {
@@ -142,6 +165,7 @@ class CompletudeDoProduto
 
         return [
             'faltas'        => $faltas,
+            'avisos'        => $avisos,
             'ficha'         => $ficha,
             'medidas'       => self::medidas($salvos),
             'embalagem'     => self::embalagem($produto),

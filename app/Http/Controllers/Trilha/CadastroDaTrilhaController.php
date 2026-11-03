@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Trilha;
 
 use App\Http\Controllers\Controller;
+use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Services\Portal\Estrutura\Produtos\MercadoLivre\JardinagemDaFicha;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Trilha\CadastroNaTrilha;
 use App\Support\Portal\AtorDoPortal;
@@ -15,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * O cadastro do produto na porta da EQUIPE da trilha (3ª entrega, 02/11/2026), em JSON: abrir a gaveta (o retrato),
  * criar o produto (nome + SKU), gravar as linhas (com a categoria, F2), gravar a ficha técnica e o "Preencher com IA"
- * dela (F2b). Controller fino: a regra mora em {@see CadastroNaTrilha}, e os
+ * dela (F2b), e o "Conferir frete pela conta" (F3; as fotos ficam no {@see FotosDaTrilhaController}). Controller fino: a regra mora em {@see CadastroNaTrilha}, e os
  * serviços são os do Portal — o `PortalEstruturaProdutosController` não serve aqui porque lê o `PortalContexto`, que
  * só existe dentro do `portal.auth`.
  *
@@ -158,6 +160,44 @@ class CadastroDaTrilhaController extends Controller
         }
 
         return response()->json($r);
+    }
+
+    /**
+     * Rota 13 — "Conferir frete pela conta" (F3): sem corpo. Lê a conta da LOJA (só GET) e grava em cache a modalidade
+     * de envio dela; sem conta conectada, a estimativa, sem requisição. Não grava no produto (sem trava). Responde o
+     * retrato novo (a `logistica` de cada variação já pela conta, e os avisos) mais `frete` {conectado, falhou,
+     * fora_do_me2} e a mensagem.
+     */
+    public function frete(Request $request, int $company, int $produto): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+
+        $frete = $this->cadastro->cotarFrete($empresa, $alvo);
+        $retrato = $this->cadastro->retrato($empresa, $alvo);
+
+        return response()->json([...$retrato, 'frete' => $frete, 'mensagem' => self::mensagemDoFrete($frete, $retrato['variacoes'])]);
+    }
+
+    /**
+     * @param  array{conectado: bool, falhou: bool, fora_do_me2: string}  $frete
+     * @param  list<array{logistica: ?string}>  $variacoes
+     */
+    private static function mensagemDoFrete(array $frete, array $variacoes): string
+    {
+        if (! $frete['conectado']) {
+            return 'A loja não tem conta conectada: a logística fica pela estimativa (os limites padrão do Mercado Envios).';
+        }
+        if ($frete['falhou']) {
+            return 'A conta da loja não respondeu agora: a logística fica pela estimativa. Tente de novo em instantes.';
+        }
+        if (! in_array(LogisticaProduto::ME1, array_column($variacoes, 'logistica'), true)) {
+            return 'Frete conferido pela conta da loja.';
+        }
+
+        return match ($frete['fora_do_me2']) {
+            ModalidadeDeEnvio::FORA_COMBINAR =>'Frete conferido pela conta da loja: o produto passa do limite do Mercado Envios e, sem ME1 na conta, o anúncio sai com “Combine a entrega”.',
+            default => 'Frete conferido pela conta da loja: o produto passa do limite do Mercado Envios e vai por ME1 (transportadora).',
+        };
     }
 
     /** O resultado do "Salvar", no padrão do Mapear: completo, salvo com faltas, nada mudou ou erro de campo. */

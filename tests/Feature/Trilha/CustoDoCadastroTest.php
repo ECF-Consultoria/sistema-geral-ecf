@@ -15,9 +15,12 @@ use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Models\TrilhaOnda;
 use App\Models\User;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
+use App\Services\Publicador\RascunhoRepository;
 use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -42,7 +45,9 @@ use Tests\TestCase;
  * - travado (pergunta 1): 409 e nenhum Job;
  * - de ponta a ponta, com o preparo de verdade (`CenarioDoPreparo`): completar pela trilha com a Simples numa onda
  *   futura prepara o rascunho e a IA fica `aguardando_onda` (a dublê nunca é chamada); com a onda já começada a IA roda
- *   UMA vez — e o produto, que o robô levou adiante, trava.
+ *   UMA vez — e o produto, que o robô levou adiante, trava;
+ * - F3: o produto sem variação completado SÓ pela trilha (criar, caixas com a categoria, ficha, fotos) vai ao
+ *   Publicador uma vez, na foto que o completa, e o rascunho nasce com a categoria e as 3 fotos.
  */
 class CustoDoCadastroTest extends TestCase
 {
@@ -196,7 +201,107 @@ class CustoDoCadastroTest extends TestCase
         $this->assertFalse($this->abrir($p)->json('edicao.livre'));
     }
 
+    /**
+     * F3 (03/11/2026), o "pronto quando" da fatia: um produto SEM variação (sem cor nem tamanho) completado SÓ pela
+     * trilha — criar, as caixas com a categoria, a ficha técnica e as fotos, sem abrir o Portal. Enquanto falta algo,
+     * nada vai ao Publicador; a foto que o completa o leva UMA vez, e o 1º Sincronizar leva tudo de uma vez: o rascunho
+     * nasce com a categoria certa e as 3 fotos. A Simples numa onda futura: a IA fica `aguardando_onda` (a dublê nunca é
+     * chamada).
+     */
+    public function test_um_produto_sem_variacao_completado_so_pela_trilha_vai_ao_publicador_uma_vez_e_a_ia_espera_a_onda(): void
+    {
+        $this->montarPreparo();
+        MlCategoriaSchema::query()->update(['fetched_at' => now()]);
+        config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
+        // O ML do cenário não responde nada (`Http::fake()` vazio): a categoria e os campos dela vêm do que já foi lido
+        // (os caches de 7 dias da busca e da ficha), com as respostas REAIS da sondagem.
+        $schema = self::schema(self::CADEIRA);
+        Cache::put('ml_meta_categoria_'.self::CADEIRA, $schema->categoria, 3600);
+        Cache::put('ml_meta_atributos_'.self::CADEIRA, $schema->atributos, 3600);
+
+        // 1. Criar: nome + SKU. Uma variação sem eixo; a Simples entra numa onda que ainda não chegou.
+        $id = $this->criar(['nome' => 'Cadeira Executiva', 'codigo' => 'CAD-1'])->assertCreated()->json('produto.id');
+        $p = EstruturaProduto::query()->findOrFail($id);
+        $v = $p->variacoes()->sole();
+        $this->assertNull($v->eixo);
+        $this->itemNaOnda($this->onda($this->empresa, '2026-11-20', 'Onda Futura'), "s-{$p->id}");
+
+        // 2. As caixas, com a categoria.
+        $r = $this->linhas($p, [[
+            'id' => $v->id, 'codigo' => 'CAD-1', 'nome' => 'Cadeira Executiva', 'titulo' => 'Cadeira Executiva Giratória Com Encosto Em Tela',
+            'familia' => 'Cadeiras', 'ambientes' => ['Escritório'], 'categoria_ml_id' => self::CADEIRA, 'custo' => '350,00', 'estoque' => '5',
+            'volumes' => [['c' => 60, 'l' => 60, 'a' => 40, 'kg' => 12]], 'descricao' => 'Cadeira com encosto em tela, ótima para home office.',
+        ]])->assertOk()->json();
+        $this->assertSame([], $r['erros']);
+        $this->assertSame(self::CADEIRA, $p->fresh()->categoria_ml_id);
+        $this->assertContains('fotos (0 de 3)', $r['situacao']['faltas']);
+        $this->assertNotEmpty(array_filter($r['situacao']['faltas'], fn (string $f) => str_starts_with($f, 'ficha: ')));
+
+        // 3. A ficha técnica: todo obrigatório da cadeira (sem eixo, a Cor também é da ficha).
+        $r = $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/produtos/{$p->id}/ficha-tecnica",
+            ['atributos' => $this->obrigatoriosDaCadeira(), 'categoria' => self::CADEIRA])->assertOk()->json();
+        $this->assertSame(['fotos (0 de 3)'], $r['situacao']['faltas']);
+        Queue::assertNothingPushed();
+
+        // 4. As fotos: a remessa que completa o produto.
+        $r = $this->actingAs($this->dev)->post("/trilha/{$this->empresa->id}/produtos/{$p->id}/variacoes/{$v->id}/fotos",
+            ['imagens' => [$this->foto('frente.jpg'), $this->foto('lado.jpg'), $this->foto('costas.jpg')]], ['Accept' => 'application/json'])
+            ->assertOk()->json();
+        $this->assertSame([[], 'mapa'], [$r['situacao']['faltas'], $r['situacao']['etapa']]);
+        $this->assertSame(1, $this->jobs(SincronizarProdutoDoPortalJob::class, $p));
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p));
+
+        // O Publicador, de verdade: o rascunho nasce inteiro, e a IA espera a data da onda.
+        $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        $this->assertSame([], $this->rodar(GerarPreparoIaJob::class), 'nenhuma etapa paga');
+        Queue::assertNotPushed(GerarPreparoIaJob::class);
+        $rascunho = $this->rascunhoDo($p);
+        $this->assertSame(self::CADEIRA, (string) $rascunho->categoria_id);
+        $this->assertCount(3, app(RascunhoRepository::class)->snapshot($rascunho->fresh())->imagens, 'as 3 fotos de uma vez');
+        $this->assertArrayNotHasKey('ia_preparo', (array) $rascunho->step_state, 'a IA não escreveu nada');
+        $this->assertSame(PortaoDaOnda::AGUARDANDO, $this->preparo()->avaliarIa($this->pubDo($p)));
+        // Não andou: o cadastro segue editável, e só esta vez foi ao Publicador.
+        $this->assertTrue($this->abrir($p)->json('edicao.livre'));
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p));
+    }
+
     // ─── apoio ───
+
+    /** Todo obrigatório da cadeira (a definição real), sem eixo nenhum no produto, com um valor válido para o tipo. */
+    private function obrigatoriosDaCadeira(): array
+    {
+        $grupos = FichaTecnicaDaCategoria::doProduto(FichaTecnicaDaCategoria::daAtributos(self::schema(self::CADEIRA)->atributos), []);
+        $saida = [];
+        foreach (FichaTecnicaDaCategoria::camposPorId($grupos) as $id => $c) {
+            if (! $c['obrigatorio'] || $id === FichaTecnicaDaCategoria::ID_MODELO) {
+                continue;
+            }
+            $saida[] = match ($c['tipo']) {
+                FichaTecnicaDaCategoria::TIPO_NUMERO_UNIDADE => ['id' => $id, 'valor' => '50', 'unidade' => $c['unidade_padrao']],
+                FichaTecnicaDaCategoria::TIPO_NUMERO         => ['id' => $id, 'valor' => '3'],
+                FichaTecnicaDaCategoria::TIPO_SIM_NAO        => ['id' => $id, 'valor' => 'Sim'],
+                FichaTecnicaDaCategoria::TIPO_LISTA          => ['id' => $id, 'valor' => (string) $c['valores'][0]['id']],
+                default                                      => ['id' => $id, 'valor' => $c['valores'] !== [] ? (string) $c['valores'][0]['id'] : 'ECF'],
+            };
+        }
+        $this->assertGreaterThan(5, count($saida), 'a cadeira real tem vários obrigatórios');
+
+        return $saida;
+    }
+
+    /**
+     * Uma foto de verdade, grande o bastante para o Publicador (o mínimo de tamanho do ML) e DIFERENTE das outras: o
+     * rascunho junta as fotos de mesmo conteúdo (sha256), e três `image()` iguais virariam uma.
+     */
+    private function foto(string $nome): UploadedFile
+    {
+        $gd = imagecreatetruecolor(1200, 1200);
+        imagefill($gd, 0, 0, imagecolorallocate($gd, crc32($nome) % 256, 120, 200));
+        ob_start();
+        imagejpeg($gd);
+
+        return UploadedFile::fake()->createWithContent($nome, (string) ob_get_clean());
+    }
 
     /**
      * A cadeira do cenário do preparo (categoria com o schema guardado e a ficha completa) com família, ambiente e as 3

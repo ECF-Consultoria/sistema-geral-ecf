@@ -27,6 +27,8 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PreparoIaAgenda;
+use App\Services\Trilha\CadastroNaTrilha;
+use App\Services\Trilha\CompletudeDoProduto;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use App\Support\Publicador\Schema\CategorySchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -96,6 +98,48 @@ class TrilhaDaEmpresaTest extends TestCase
         $q = $this->produto($empresa, 'Vaso Teste', 'VT-1', ['Azul', 'Verde']);
         EstruturaProdutoVariacaoImagem::where('variacao_id', $q['variacoes'][1]->id)->orderByDesc('id')->limit(2)->get()->each->delete();
         $this->assertSame(['fotos (1 de 3)'], $this->produtoDaTrilha($this->trilha($empresa), $q['produto']->id)['faltas']);
+    }
+
+    /**
+     * 3ª entrega, pergunta 3 (decisão do usuário de 02/11/2026): na trilha de TRABALHO o "frete ME1" não segura o
+     * produto na Lista — vira o aviso "vai por ME1 (transportadora)", e o produto segue para o Mapeamento e cabe no
+     * Publicador (o que só vai por transportadora ficaria na Lista para sempre: nada que a equipe preencha resolve).
+     * Sem a chave, a 1ª entrega segue igual: a falta "frete ME1" e a Lista. A mesma régua em todo lugar que a lê: a
+     * tela, as faltas do Mapeamento, a gaveta do cadastro e o gatilho do Publicador.
+     */
+    public function test_com_a_trilha_de_trabalho_o_frete_me1_e_aviso_e_nao_segura_o_produto_na_lista(): void
+    {
+        $empresa = $this->empresa();
+        $p = $this->produto($empresa, 'Aparador Longo', 'AP-1');
+        // 187 cm no maior lado: passa dos limites dos Correios (a modalidade padrão, sem a da conta em cache).
+        $p['variacoes'][0]->volumes()->update(['comprimento' => 187, 'largura' => 44, 'altura' => 12, 'peso' => 28.5]);
+        $id = (int) $p['produto']->id;
+
+        config(['trilha.empresas' => [$empresa->id], 'trilha.trabalho.empresas' => []]);
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $id);
+        $this->assertSame([['frete ME1'], [], 'lista'], [$produto['faltas'], $produto['avisos'], $produto['etapa']], 'sem a chave: como na 1ª entrega');
+        $this->assertSame(['frete ME1'], TrilhaDaEmpresa::faltasDoProduto($empresa, $id));
+        $this->assertSame(['frete ME1'], TrilhaDaEmpresa::faltasDosProdutos($empresa)[$id]);
+
+        config(['trilha.trabalho.empresas' => [$empresa->id]]);
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $id);
+        $this->assertSame([[], [CompletudeDoProduto::AVISO_ME1], 'mapa'], [$produto['faltas'], $produto['avisos'], $produto['etapa']]);
+        $this->assertSame([], TrilhaDaEmpresa::faltasDoProduto($empresa, $id));
+        $this->assertSame([], TrilhaDaEmpresa::faltasDosProdutos($empresa)[$id]);
+        $this->assertSame(['faltas' => [], 'avisos' => [CompletudeDoProduto::AVISO_ME1]], TrilhaDaEmpresa::cadastroDoProduto($empresa, $id));
+        $this->assertSame([$id], CadastroNaTrilha::soOsQueCabem((int) $empresa->id, [$id]), 'cabe no Publicador');
+
+        // O aviso não esconde as faltas de verdade: elas continuam segurando o produto, e o aviso vem junto.
+        $p['produto']->update(['descricao' => '']);
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $id);
+        $this->assertSame([['descrição'], [CompletudeDoProduto::AVISO_ME1], 'lista'], [$produto['faltas'], $produto['avisos'], $produto['etapa']]);
+        $this->assertSame([], CadastroNaTrilha::soOsQueCabem((int) $empresa->id, [$id]));
+
+        // A caixa que cabe nos Correios: nem falta nem aviso.
+        $p['produto']->update(['descricao' => 'Uma descrição do produto.']);
+        $p['variacoes'][0]->volumes()->update(['comprimento' => 50, 'largura' => 40, 'altura' => 30, 'peso' => 5]);
+        $produto = $this->produtoDaTrilha($this->trilha($empresa), $id);
+        $this->assertSame([[], []], [$produto['faltas'], $produto['avisos']]);
     }
 
     public function test_produto_incompleto_fica_na_lista_com_as_faltas_na_ordem_e_com_os_rotulos(): void

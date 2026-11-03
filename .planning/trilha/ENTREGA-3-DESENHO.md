@@ -983,3 +983,21 @@ Lista?**
    desenho fechado antes do código (a planilha de hoje não leva cor e tamanho juntos; o import deixa o título vazio e
    roda a IA da ficha na hora).
 5. **Cada fatia pode subir** quando testada, só na 459 e só para o Dev.
+
+## 16. Mais decisões do usuário (03/11/2026)
+
+- **A trilha não pode ter nada a ver com o Portal do cliente: ela o substitui.** Nenhum link, nota ou caminho da
+  trilha leva ao Portal (a F5 foi antecipada para junto da F3). Por baixo, o produto segue nas mesmas tabelas que o
+  Publicador lê (decisão de 02/11), o que não aparece na trilha.
+- **O módulo da trilha vai para OUTRO sistema**, onde o cliente terá acesso e vai cadastrar e subir tudo pela
+  trilha. Primeiro ele fica pronto aqui; depois é levado. Consequência para o código: a trilha tem de ser um
+  subsistema independente — sem depender de telas, sessão ou contexto do Portal — e as peças do cadastro não podem
+  assumir que só a equipe as usa (a porta do cliente vai ganhar o cadastro e o envio de fotos lá).
+- **Fotos do cliente:** sobem pela trilha.
+- **Ordem:** a planejada — F3 (fotos e frete) → F4 (cores e tamanhos) → F6 (versão) → F7 (planilha por categoria) →
+  F8 (importar do ML) → 4ª entrega.
+- **4ª entrega (escopo decidido):** a etapa 5 dentro da trilha — a prévia do anúncio (fotos + imagens geradas,
+  títulos Clássico/Premium, preço, descrição, ficha), "Pedir ajuste ao robô" e "Aprovar e publicar" (fila do
+  Publicador, só na #459); **aprovação do cliente ligável por loja** (publica pausado, o cliente aprova ou pede
+  ajuste na trilha dele); **preço vindo da Precificação existente**, ajustável antes de publicar; e o envio de fotos
+  pelo cliente na trilha.

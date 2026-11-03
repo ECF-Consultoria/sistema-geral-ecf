@@ -236,14 +236,18 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
             </span>,
         );
     }
-    if (cliente && produto.url_ficha) {
+    // Com a trilha de trabalho a trilha substitui o Portal (3ª entrega, F5): nenhum atalho para o cadastro de lá — o
+    // cliente acompanha, quem cadastra é a equipe, aqui.
+    if (cliente && produto.url_ficha && !trabalho) {
         rodape.push(
             <LinkDeAcao key="ficha" href={produto.url_ficha} primario={produto.etapa === 'lista'} data-link="ficha">
                 {produto.etapa === 'lista' ? 'Completar no cadastro' : 'Ver no cadastro'}
             </LinkDeAcao>,
         );
     }
-    if (produto.etapa === 'mapa') {
+    // No mapeamento, sem a trilha de trabalho, o caminho era o Portal (o Planejamento do cliente, o Portal da empresa
+    // para a equipe). Com ela, o "Mapear" já está aqui e nenhum link leva ao Portal (F5).
+    if (produto.etapa === 'mapa' && !trabalho) {
         const destino = cliente ? links?.planejamento : links?.portal_abrir;
         if (destino) {
             rodape.push(

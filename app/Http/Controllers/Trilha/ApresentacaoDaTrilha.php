@@ -31,7 +31,8 @@ use App\Services\Publicador\ProgramasPublicadorService;
  *
  * O que a lista NÃO cobre, de propósito (revisão de 31/10/2026, P1 — antes este texto prometia mais do que o
  * código dava): `preparo` e `sugestoes_pendentes` saem para a EQUIPE como o serviço os monta (ela vê tudo); na
- * porta do cliente os dois saem nulos/vazios. As listas de texto (`skus`, `faltas`, `ambientes`) passam como vêm.
+ * porta do cliente os dois saem nulos/vazios. As listas de texto (`skus`, `faltas`, `avisos`, `ambientes`) passam como
+ * vêm.
  *
  * ### As ondas (2ª entrega, 02/11/2026)
  * Também por lista: {@see self::ONDA} para a equipe e {@see self::ONDA_CLIENTE} para o cliente — nome, data e se
@@ -44,6 +45,10 @@ use App\Services\Publicador\ProgramasPublicadorService;
  * A equipe cadastra o produto pela trilha com os endereços que já saem em `escrita.produtos` (`{produtos}` cria,
  * `{produtos}/{id}/cadastro` abre, `{produtos}/{id}/linhas` grava). Cada produto da equipe leva `cadastro_travado` (o
  * item que andou deixa o cadastro só para leitura); o cliente nunca recebe a chave.
+ *
+ * ### A trilha de trabalho substitui o Portal (decisão do usuário de 03/11/2026; F5 do desenho, D16 e D17)
+ * Com `trabalho`, nenhum endereço servido aqui leva ao Portal do cliente: na equipe, `links.portal_abrir` nulo; no
+ * cliente, `voltar`, `links.planejamento`, `links.produtos` e `url_ficha` nulos. Sem a chave, tudo como na 1ª entrega.
  */
 class ApresentacaoDaTrilha
 {
@@ -83,6 +88,9 @@ class ApresentacaoDaTrilha
         'tem_descricao'             => false,
         'ficha'                     => null,
         'faltas'                    => [],
+        // 3ª entrega (pergunta 3): o que não segura o produto na Lista, mas a tela avisa — com a trilha de trabalho, o
+        // "frete ME1" ("vai por ME1 (transportadora)"). Texto neutro: as duas portas o leem. Sem a chave, vazio.
+        'avisos'                    => [],
         'etapa'                     => null,
         'sugestoes_pendentes'       => [],
         'sugestoes_pendentes_total' => 0,
@@ -153,7 +161,9 @@ class ApresentacaoDaTrilha
             'pode_editar'   => $podeEditar,
             'escrita'       => $podeEditar ? self::escrita($empresa) : null,
             'links'         => [
-                'portal_abrir' => $podeEntrar
+                // Com a trilha de trabalho a trilha SUBSTITUI o Portal (decisão do usuário de 03/11/2026; F5 do desenho,
+                // D17): nenhum caminho dela leva ao Portal do cliente. Sem a chave, como na 1ª entrega.
+                'portal_abrir' => $podeEntrar && ! $trabalho
                     ? route('companies.portal.abrir', ['company' => $empresa->id])
                     : null,
                 'planejamento' => null,
@@ -216,24 +226,26 @@ class ApresentacaoDaTrilha
             'visao'         => 'cliente',
             'sessao_equipe' => $sessaoEquipe,
             'empresa'       => self::empresa($empresa),
-            // As rotas do Portal saem com a empresa desta aba (o `portal.auth` põe o `URL::defaults`).
-            'voltar'        => ['url' => route('portal.auth.inicio'), 'rotulo' => 'Voltar ao portal'],
+            // As rotas do Portal saem com a empresa desta aba (o `portal.auth` põe o `URL::defaults`). Com a trilha de
+            // trabalho, NENHUM endereço do Portal sai daqui (a trilha substitui o Portal, decisão do usuário de
+            // 03/11/2026; F5 do desenho, D16): nem o "Voltar ao portal" — o `TrilhaLayout` some com o link nulo.
+            'voltar'        => $trabalho ? null : ['url' => route('portal.auth.inicio'), 'rotulo' => 'Voltar ao portal'],
             'trabalho'      => $trabalho,
             'pode_editar'   => false,
             'escrita'       => null,
             'links'         => [
                 'portal_abrir' => null,
-                // Com a trilha de trabalho o mapeamento é feito na trilha, pela equipe: o cliente acompanha, não
-                // decide (como no artefato) — o atalho para o Planejamento do Portal sai.
+                // Com a trilha de trabalho a equipe cadastra e mapeia na trilha: o cliente acompanha, não decide (como
+                // no artefato) — os atalhos para o Planejamento e o cadastro de Produtos do Portal saem.
                 'planejamento' => $trabalho ? null : route('portal.auth.estrutura.sugestoes'),
-                'produtos'     => route('portal.auth.estrutura.produtos'),
+                'produtos'     => $trabalho ? null : route('portal.auth.estrutura.produtos'),
                 'publicador'   => null,
             ],
             'produtos'      => array_map(fn (array $p) => array_replace(self::campos($p, self::PRODUTO), [
                 'sugestoes_pendentes' => [],
                 'mapeado_por'         => null,
             ]) + [
-                'url_ficha' => isset($p['id']) ? route('portal.auth.estrutura.produtos.ficha', ['produto' => (int) $p['id']]) : null,
+                'url_ficha' => isset($p['id']) && ! $trabalho ? route('portal.auth.estrutura.produtos.ficha', ['produto' => (int) $p['id']]) : null,
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
                 'componentes' => self::componentes($o['componentes'] ?? []),

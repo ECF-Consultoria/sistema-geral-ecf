@@ -38,7 +38,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
     ->prefix('trilha')
     ->name('trilha.')
-    ->where(['company' => '[0-9]{1,18}', 'onda' => '[0-9]{1,18}', 'produto' => '[0-9]{1,18}'])
+    ->where(['company' => '[0-9]{1,18}', 'onda' => '[0-9]{1,18}', 'produto' => '[0-9]{1,18}', 'variacao' => '[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
     ->group(function () {
         Route::get('/', [TrilhaController::class, 'index'])->name('index');
         Route::get('/{company}', [TrilhaController::class, 'empresa'])->name('empresa');
@@ -58,6 +58,15 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:60,1,trilha.cadastro.ficha')->name('cadastro.ficha');
         Route::post('/{company}/produtos/{produto}/ficha-tecnica/ia', [CadastroDaTrilhaController::class, 'sugerirFicha'])
             ->middleware('throttle:10,1,trilha.cadastro.ia')->name('cadastro.ia');
+        // Fotos e frete (F3): enviar (`imagens[]`, multipart) e excluir a foto da variação — a variação presa ao produto
+        // do caminho e a imagem à variação —, e o "Conferir frete pela conta" (só leitura na conta da loja). O 413 do
+        // envio grande demais vira 422 no `bootstrap/app.php`, como no Portal.
+        Route::post('/{company}/produtos/{produto}/variacoes/{variacao}/fotos', [FotosDaTrilhaController::class, 'enviar'])
+            ->middleware('throttle:30,1,trilha.cadastro.fotos')->name('cadastro.fotos');
+        Route::delete('/{company}/produtos/{produto}/variacoes/{variacao}/fotos/{imagem}', [FotosDaTrilhaController::class, 'excluir'])
+            ->middleware('throttle:60,1,trilha.cadastro.fotos.excluir')->name('cadastro.fotos.excluir');
+        Route::post('/{company}/produtos/{produto}/frete', [CadastroDaTrilhaController::class, 'frete'])
+            ->middleware('throttle:20,1,trilha.cadastro.frete')->name('cadastro.frete');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
@@ -66,9 +75,9 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:120,1,trilha.previa')->name('mapeamento.previa');
         Route::post('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'concluir'])
             ->middleware('throttle:20,1,trilha.concluir')->name('mapeamento.concluir');
-        // A foto da cor no "Mapear": a rota de imagem do Portal, no domínio do admin, leva ao do cliente (sem sessão).
+        // A foto da cor no "Mapear" e na galeria do cadastro (a miniatura; `?original=1`, o arquivo enviado): a rota de
+        // imagem do Portal, no domínio do admin, leva ao do cliente (sem sessão).
         Route::get('/{company}/fotos/{variacao}/{imagem}', [FotosDaTrilhaController::class, 'ver'])
-            ->where(['variacao' => '[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
             ->middleware('throttle:600,1,trilha.fotos')->name('fotos');
 
         // Categoria e ficha técnica do cadastro (3ª entrega, F2): buscar pelo nome, navegar na árvore, os campos da

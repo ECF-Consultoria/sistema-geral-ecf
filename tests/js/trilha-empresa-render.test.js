@@ -299,12 +299,21 @@ test('"Pronto quando" da Lista cita tudo o que segura o produto na Lista (a rég
     assert.ok(doServico.length >= 3 && doServico.includes('descrição'), `a leitura do serviço quebrou: ${doServico}`);
 
     const Pagina = await pagina();
-    // Com a trilha de trabalho (3ª entrega) a régua é a mesma: o texto também.
+    // Com a trilha de trabalho (3ª entrega) a régua é a mesma, MENOS o "frete ME1": ele vira aviso (pergunta 3,
+    // `CompletudeDoProduto::AVISO_ME1`) — o texto não o pede, e diz que o produto segue com o aviso.
+    const avisoMe1 = completude.match(/AVISO_ME1\s*=\s*'([^']+)'/)?.[1];
+    assert.ok(avisoMe1, 'a leitura do aviso do ME1 quebrou');
     for (const props of [PROPS_EQUIPE, paraCliente(), PROPS_TRABALHO, paraCliente(PROPS_TRABALHO)]) {
         const saida = desenhar(Pagina, props, '?etapa=lista');
         const pronto = texto(saida.match(/Pronto quando:<\/b>([^<]*)</)?.[1] ?? '');
-        for (const rotulo of [...pendencias, ...doServico]) {
+        const exigidos = [...pendencias, ...doServico].filter((r) => !(props.trabalho && r === 'frete ME1'));
+        for (const rotulo of exigidos) {
             assert.ok(pronto.includes(rotulo), `o "Pronto quando" da Lista (${props.visao}) não cita "${rotulo}": ${pronto}`);
+        }
+        if (props.trabalho) {
+            assert.ok(pronto.includes(`segue com o aviso “${avisoMe1}”`) && !pronto.includes('frete ME1'), `com trabalho, o ME1 é aviso: ${pronto}`);
+        } else {
+            assert.ok(pronto.includes('frete ME1'), pronto);
         }
         assert.equal(pronto.match(/Mercado Livre/), null, 'o cliente lê este texto');
     }

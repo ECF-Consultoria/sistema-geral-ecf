@@ -134,6 +134,40 @@ export async function fichaPelaIa(escrita, produtoId, { categoria, titulo, descr
     }));
 }
 
+// ─── Fotos e frete (F3): ações IMEDIATAS ────────────────────────────────────
+//
+// Enviar e excluir foto e conferir o frete gravam na hora (não esperam o "Salvar") e respondem o RETRATO novo da
+// gaveta — quem chama junta a estrutura nova ao que está na tela sem apagar o que ainda não foi salvo
+// (`aplicarResposta`). O produto que andou responde 409 `{travado, motivo}`, como as outras escritas.
+
+/** `{escrita.produtos}/{p}/variacoes/{v}` — a variação que guarda as fotos (a "dona" da cor). */
+export const urlDaVariacao = (escrita, produtoId, variacaoId) => `${urlDoProduto(escrita, produtoId)}/variacoes/${encodeURIComponent(variacaoId)}`;
+
+/**
+ * Envia fotos para a variação (multipart, um `imagens[]` por arquivo, na ordem escolhida). O servidor é tudo ou
+ * nada: 1 a 12 por variação, JPG/PNG/WebP (conferido pelo conteúdo), até 10 MB cada; o 422 traz a mensagem de
+ * cada arquivo (`errors["imagens.N"]`). → o retrato novo da gaveta.
+ */
+export async function enviarFotos(escrita, produtoId, variacaoId, arquivos) {
+    const dados = new FormData();
+    Array.from(arquivos ?? []).forEach((arquivo) => dados.append('imagens[]', arquivo));
+
+    return corpo(await axios.post(`${urlDaVariacao(escrita, produtoId, variacaoId)}/fotos`, dados));
+}
+
+/** Exclui uma foto da variação (as outras são renumeradas: a 1ª é a capa). → o retrato novo da gaveta. */
+export async function excluirFoto(escrita, produtoId, variacaoId, imagemId) {
+    return corpo(await axios.delete(`${urlDaVariacao(escrita, produtoId, variacaoId)}/fotos/${encodeURIComponent(imagemId)}`));
+}
+
+/**
+ * "Conferir frete pela conta": o servidor lê a conta da LOJA (só leitura) e guarda a modalidade de envio de
+ * verdade; sem conta conectada, fica a estimativa pelas caixas. → o retrato novo, com a logística de cada variação.
+ */
+export async function conferirFrete(escrita, produtoId) {
+    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/frete`, {}));
+}
+
 // ─── Categoria e ficha técnica (F2): só leitura do catálogo público ──────────
 //
 // Sob `escrita.categorias` (só para quem escreve). O catálogo fora do ar NUNCA é erro HTTP: a resposta vem 200 com
