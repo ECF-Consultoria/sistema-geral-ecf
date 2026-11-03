@@ -78,7 +78,17 @@ class JardinagemDaFicha
         return $registro;
     }
 
-    private function completar(Company $empresa, EstruturaProduto $produto, EstruturaProdutoOrigemMl $origem): array
+    /**
+     * O que a jardinagem faz na ficha, SEM gravar o registro na origem e SEM agendar o Publicador: os campos do anúncio
+     * que ainda faltam e a IA no que continua vazio. Devolve o registro (o que {@see jardinar()} grava em
+     * `origem.jardinagem`). Pode lançar (a IA fora): quem chama decide o registro do erro.
+     *
+     * Público desde 03/11/2026 (F8 da trilha, D31): a importação da trilha chama a IA da ficha na hora, no mesmo Job, e
+     * grava o registro ela mesma — o preparo do Publicador vem só no fim, depois do título.
+     *
+     * @return array{campos_ia: list<string>, nomes: list<string>, faltavam: int, em: string, modelo_ia?: ?string}|array{erro: string, ficha_indisponivel: bool, em: string}
+     */
+    public function completar(Company $empresa, EstruturaProduto $produto, EstruturaProdutoOrigemMl $origem): array
     {
         $categoria = trim((string) $produto->categoria_ml_id);
         $definicao = $categoria === '' ? [] : $this->fichas->definicao($categoria);

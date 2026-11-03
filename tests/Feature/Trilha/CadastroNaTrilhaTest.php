@@ -58,7 +58,7 @@ class CadastroNaTrilhaTest extends TestCase
     /** As chaves do retrato da gaveta (§6.3), nem uma a mais. */
     private const CHAVES_DO_RETRATO = ['produto', 'variacoes', 'ficha', 'listas', 'eixos', 'limites', 'situacao', 'edicao', 'versao'];
 
-    private const CHAVES_DO_PRODUTO = ['id', 'nome', 'titulo', 'familia', 'ambientes', 'categoria', 'descricao', 'eixo', 'eixo_2', 'origem_ml'];
+    private const CHAVES_DO_PRODUTO = ['id', 'nome', 'titulo', 'familia', 'ambientes', 'categoria', 'descricao', 'eixo', 'eixo_2', 'origem_ml', 'titulo_do_anuncio'];
 
     private const CHAVES_DA_VARIACAO = ['id', 'codigo', 'valor', 'valor_2', 'ordem', 'custo', 'estoque', 'volumes', 'bling', 'estoque_do_bling', 'dona_da_cor', 'logistica', 'fotos'];
 
@@ -177,6 +177,8 @@ class CadastroNaTrilhaTest extends TestCase
             'ambientes' => ['Sala de estar'],
             'categoria' => ['id' => 'MLB100200', 'nome' => 'Objetos de decoração', 'caminho_texto' => 'Casa › Decoração', 'estado' => 'confirmada'],
             'descricao' => 'Uma descrição do produto.', 'eixo' => null, 'eixo_2' => null, 'origem_ml' => false,
+            // F8 (D41): o título do anúncio original — nulo no produto que não veio do ML.
+            'titulo_do_anuncio' => null,
         ], $r['produto']);
         $variacao = $r['variacoes'][0];
         $this->assertSame([(int) $v->id, 'VA', 1, 100, null, [['c' => 50, 'l' => 40, 'a' => 30, 'kg' => 5]], false, false, true],

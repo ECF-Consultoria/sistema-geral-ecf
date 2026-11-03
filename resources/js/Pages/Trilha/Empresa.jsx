@@ -58,6 +58,11 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // `Cadastro/` — "Usar planilha" no quadro da Lista. Também só para quem escreve,
 // e também por `lazy` com o 2º caminho em `CadastroSobDemanda.jsx` (§30 dos
 // learnings: sem ele esta página some do manifest do Vite).
+//
+// F8 (03/11/2026): a importação dos anúncios da loja (`e:ml`), a 4ª gaveta da
+// pasta — "Escolher anúncios" no quadro da Lista. Só para quem escreve, por
+// `lazy`, com o 2º caminho em `CadastroSobDemanda.jsx`. O nome do marketplace só
+// aparece dentro da gaveta (o cliente baixa o JS desta página).
 
 const ID_DA_VISTA = 'trilha-vista';
 
@@ -65,6 +70,7 @@ const ID_DA_VISTA = 'trilha-vista';
 const PainelDoCadastro = lazy(() => import('@/Components/Trilha/Cadastro/PainelDoCadastro'));
 const NovoProduto = lazy(() => import('@/Components/Trilha/Cadastro/NovoProduto'));
 const PlanilhaPorCategoria = lazy(() => import('@/Components/Trilha/Cadastro/PlanilhaPorCategoria'));
+const ImportarDoMercadoLivre = lazy(() => import('@/Components/Trilha/Cadastro/ImportarDoMercadoLivre'));
 
 /** O que a gaveta mostra enquanto o JS do cadastro chega (a 1ª vez que alguém abre um). */
 function AbrindoOCadastro({ produto }) {
@@ -83,6 +89,17 @@ function AbrindoAPlanilha() {
         <MioloDaGaveta sobrelinha="Planilha por categoria" titulo="Cadastrar pela planilha" ocupado>
             <p className="m-0 text-[13px] text-trilha-muted" data-carregando-planilha="">
                 Abrindo a planilha…
+            </p>
+        </MioloDaGaveta>
+    );
+}
+
+/** O que a gaveta da importação mostra enquanto o JS dela chega. */
+function AbrindoAImportacao() {
+    return (
+        <MioloDaGaveta sobrelinha="Anúncios da loja" titulo="Importar anúncios" ocupado>
+            <p className="m-0 text-[13px] text-trilha-muted" data-carregando-importacao="">
+                Abrindo os anúncios…
             </p>
         </MioloDaGaveta>
     );
@@ -118,7 +135,8 @@ function gravarNaUrl(estado) {
  *   trabalho: boolean,
  *   pode_editar: boolean,
  *   escrita: ?{ondas: string, planejamento: string, produtos: string, categorias?: string,
- *     planilha?: {modelo: string, previa: string, gravar: string}},
+ *     planilha?: {modelo: string, previa: string, gravar: string},
+ *     mercado_livre?: {anuncios: string, importar: string, estado: string, limpar: string}},
  *   produtos: Array<object>,
  *   ofertas: Array<object>,
  *   ondas: Array<object>,
@@ -427,6 +445,14 @@ export function TelaDaTrilha({
                 <PlanilhaPorCategoria escrita={escritaComum.escrita} onAbrir={abrirComGuarda} onAvisar={avisar} onRecarregar={recarregarTrilha} />
             </Suspense>
         );
+    } else if (painel?.painel === 'ml') {
+        // Só chega aqui com `podeEditar` (`painelDaChave`): para os outros, o `e:ml` não abre nada. `dados`: o [Abrir]
+        // de cada produto importado só aparece quando ele já está na Lista (senão o `e:{id}` não acharia a gaveta).
+        conteudoDaGaveta = (
+            <Suspense key={chaveDoConteudo} fallback={<AbrindoAImportacao />}>
+                <ImportarDoMercadoLivre escrita={escritaComum.escrita} dados={dados} onAbrir={abrirComGuarda} onAvisar={avisar} onRecarregar={recarregarTrilha} />
+            </Suspense>
+        );
     } else if (painel?.painel === 'cadastro') {
         // Só chega aqui com `podeEditar` (`painelDaChave`): o `e:` de quem não escreve já virou o painel `p:`.
         conteudoDaGaveta = (
@@ -472,7 +498,9 @@ export function TelaDaTrilha({
                         <ComQuemEsta dados={dados} visao={visaoEfetiva} etapa={etapa} onEscolher={escolherEtapa} trabalho={comTrabalho} />
                         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
                             {etapa === null && <PainelGeral {...propsDoPainel} />}
-                            {etapa === 'lista' && <PainelDaLista {...propsDoPainel} comPlanilha={podeEditar && !!escrita?.planilha} />}
+                            {etapa === 'lista' && (
+                                <PainelDaLista {...propsDoPainel} comPlanilha={podeEditar && !!escrita?.planilha} comImportacao={podeEditar && !!escrita?.mercado_livre} />
+                            )}
                             {etapa !== null && etapa !== 'lista' && <PainelDaEtapa chave={etapa} {...propsDoPainel} />}
                         </div>
                     </>

@@ -283,6 +283,46 @@ export async function gravarPlanilha(escrita, arquivo, previa) {
     return corpo(await axios.post(enderecoDaPlanilha(escrita, 'gravar'), formularioDoGravar(arquivo, previa)));
 }
 
+// ─── Importar os anúncios da loja (F8) ──────────────────────────────────────
+//
+// Sob `escrita.mercado_livre = {anuncios, importar, estado, limpar}` (§18.3 do desenho; só na porta da equipe com
+// escrita). Listar lê o acervo (não chama o marketplace); importar enfileira um Job por anúncio e responde o ESTADO;
+// o estado e o limpar respondem a mesma forma (§18.4). O 422 do importar vem em `errors.mlbs`.
+//
+// A busca chega PRONTA (`parametrosDaLista` de `lib/trilhaImportarMl.js`, que a gaveta chama): este arquivo é
+// importado pela página (o cliente também baixa) e não pode puxar a lib da gaveta — ela traz os rótulos do
+// importador do Portal (`produtosDoMl.js`) para o pacote da página.
+
+function enderecoDaImportacao(escrita, campo) {
+    const url = escrita?.mercado_livre?.[campo];
+    if (!url) throw new ErroDaTrilha('A importação de anúncios não está disponível nesta tela: recarregue a página.');
+
+    return semBarraNoFim(url);
+}
+
+/**
+ * A lista dos anúncios da loja. `busca` = `{q, ordem, situacao, pagina, mostrar_na_lista}` (`parametrosDaLista`), na
+ * ordem do §18.3; o que vem null ou vazio não vai. → `{conectado, atualizado_em, total, pagina, paginas, limite, itens}`.
+ */
+export async function anunciosDaLoja(escrita, busca = {}) {
+    return corpo(await axios.get(comConsulta(enderecoDaImportacao(escrita, 'anuncios'), busca ?? {})));
+}
+
+/** "Importar N": os MLBs marcados (1 a 20). → o estado da importação (§18.4). */
+export async function importarAnuncios(escrita, mlbs) {
+    return corpo(await axios.post(enderecoDaImportacao(escrita, 'importar'), { mlbs: [...(mlbs ?? [])] }));
+}
+
+/** O estado da importação (a gaveta pergunta a cada 2 s enquanto há algo andando). */
+export async function estadoDaImportacao(escrita) {
+    return corpo(await axios.get(enderecoDaImportacao(escrita, 'estado')));
+}
+
+/** "Limpar": tira da gaveta a importação que já terminou. → o estado (vazio). */
+export async function limparImportacao(escrita) {
+    return corpo(await axios.post(enderecoDaImportacao(escrita, 'limpar'), {}));
+}
+
 // ─── Erros ──────────────────────────────────────────────────────────────────
 
 const SEM_CONEXAO = 'Não consegui falar com o servidor. Confira a conexão e tente de novo.';

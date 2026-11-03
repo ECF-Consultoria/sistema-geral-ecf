@@ -831,3 +831,78 @@ Desenho: `ENTREGA-3-DESENHO.md` §17. Serviço `App\Services\Trilha\PlanilhaDaTr
 - **A suíte JS inteira (`node --test tests/js/`) estoura a pilha** em 8 arquivos `publicador-*-187/188` e no
   `estrutura-grade-glide`; sozinhos passam (ex.: `publicador-fila-linha-187` 23/23). Não é regressão da trilha. Eles
   deixam `tests/js/.pub-*-inertia-stub-*.mjs` soltos quando caem — apagar, não commitar.
+
+## 36. F8 — importar do ML (servidor) (03/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §18. Serviço `App\Services\Trilha\ImportacaoDoMercadoLivre`, Job
+`App\Jobs\Trilha\ImportarAnuncioNaTrilhaJob`, controller `Trilha\MercadoLivreDaTrilhaController`, teste
+`ImportarDoMlNaTrilhaTest`. Extraídos do Portal sem mudar o comportamento dele: `FotosDoAnuncioMl` (só baixa) e
+`TradutorAnuncioMlParaPortal::entradasDaFicha` (pura); `JardinagemDaFicha::completar` virou público.
+
+- **A espera transforma o importado em produto "no ar" (D37).** O `gravarLinhas` do cadastro termina com
+  `EstruturaOfertaService::varrerEspera`: a linha de `estrutura_anuncios_espera` cujo SKU (`normalizarSku`: trim +
+  minúscula) casa com a oferta nova é PROMOVIDA a `EstruturaAnuncio` daquela oferta. O produto recém-importado nasce
+  ligado ao anúncio original, "andou" pela régua única (`SituacaoDasOfertas::andou`) e fica travado (409) — sem
+  ninguém ter mexido nele. Por isso a trilha recusa o anúncio ANTES de gravar quando algum SKU dele está na espera.
+  O outro caminho de importação não confere isso (fora do escopo, não consertado).
+- **`jardinagem` nula deixa o estado do outro caminho "em andamento" para sempre.** O `estado()` do
+  `ProdutosDoMercadoLivreService` conta como em andamento o item `pronto` cuja origem tem `jardinagem` nula e sem
+  erro (= "a IA ainda vai passar"). A trilha SEMPRE grava o registro: o da IA, o do erro (`{erro, em}`) ou, sem
+  categoria, `{campos_ia: [], sem_categoria: true, em}`. Quem criar origem por outro caminho precisa fazer o mesmo.
+- **Por que a fila da IA (`PreparoIaAgenda::fila()`, `publicador-ia`) e não a `high`.** Em produção a `high` tem UM
+  worker, que também publica anúncio e manda o código de acesso do cliente; cada anúncio da trilha baixa até 12 fotos
+  por cor e faz DUAS chamadas pagas à IA (ficha e título), e o lote vai a 20. O Job do outro caminho fica na `high`
+  porque não chama a IA na hora (a jardinagem dele já ia para a fila da IA). **No deploy**: o `deploy.sh` só reinicia
+  `ecf-worker:*` (§28) — o `ecf-worker-ia` segue com o código velho, sem a classe do Job novo, até
+  `php artisan queue:restart`.
+- **Nenhum HTTP com a transação aberta (D30) — e a prova não pode usar "`> 0`".** Com `RefreshDatabase` o próprio
+  teste roda dentro de uma transação: `DB::transactionLevel()` já é 1 no `setUp`. O detector do teste guarda o nível
+  do `setUp` e anota toda requisição feita acima dele. Por que passa: o `criar` prende `companies`, e dentro da
+  transação o `conferirCategoria` (`detalhe`), o `categoriasDoLote` do serviço (`detalhes`) e o `gravarParcial`
+  (`definicao`) leem só cache — aquecido ANTES (`detalhes` em lote e `definicao`); as fotos são baixadas antes e
+  guardadas depois do commit. Prova por mutação: esfriar `ml_meta_categoria_{id}` (a chave do `CategoriaSugestaoService`,
+  a MESMA do `MlCatalogoMetaService::categoria`) depois do aquecimento faz o detector anotar `GET …/categories/…`.
+- **Fila `sync` nos testes: a exceção do Job vira 500 do POST.** O `importar` despacha e o Job roda dentro da
+  requisição; em produção, não. Um 500 no teste do importar é o Job, não o controller.
+- **O título do robô (D32)** sai de `PalavrasChaveService::gerarTitulosDoProduto` (aditivo; o caminho do Publicador
+  não mudou — as suítes de título dele passam): o mesmo `titulosPorTermos`, `finalizarTitulo`, `semRepetir` e a
+  maiúscula, com o contexto montado do PRODUTO (nome, caminho e `max_title_length` do schema — o que o
+  `LimiteDoTitulo` lê —, fatos da ficha GRAVADA sem a marca, a marca como proibição). Os termos seguem a régua da IA
+  do Publicador (`termosParaIa`: os da categoria, relacionados primeiro, até 50), não a da tela (`termosDaCategoria`
+  completa com o nível de cima, que o Publicador só mostra). Termos FORA (exceção do `/trends`) = título para a
+  equipe, sem gastar a chamada da IA; termos VAZIOS (404, a categoria sem lista) = a IA só com o nome, como no
+  Publicador. `evitar` = o título do anúncio: quando a IA o devolve, o `diferenciar` troca a ordem das duas últimas
+  palavras. Um título só: o do Clássico (o do Premium só quando o do Clássico não deu para diferenciar), gravado pela
+  gaveta (`CadastroNaTrilha::gravar` na 1ª variação) para passar pelo normalizador e pelo limite.
+- **Ref que já existe: dois lugares.** Na lista e no pedido, os `skus` do acervo × as Refs da loja (recusa na hora,
+  sem Job); no Job, os SKUs do anúncio lido. O `skus` do acervo pode ser NULO (não coletado) — aí só o Job sabe.
+  `na_lista.como = sku` NÃO some com `mostrar_na_lista` desligado: o acervo filtra antes de paginar e não sabe das
+  Refs.
+- **Trava ocupada pelo outro caminho:** o Job da trilha marca `erro` ("já está sendo importado agora"). O do outro
+  caminho volta calado e deixa o item em `fila` por 6 h (a tela dele pergunta para sempre) — achado, não consertado.
+- **Contrato do estado (correção da tela de 03/11):** a §18.4 tinha `titulo` duas vezes no item. Ficou:
+  `titulo_do_anuncio` = o do anúncio (sempre, desde a fila); `titulo` = o título de venda do robô (nulo até ele
+  escrever; nulo no `novo` em que ele falhou). Na LISTA, `titulo` é o do anúncio. O retrato da gaveta ganhou
+  `produto.titulo_do_anuncio` (nulo no produto que não veio do ML, sem consulta a mais).
+- **Custo medido** (SQLite em memória; MariaDB não medido): 143 consultas por anúncio simples (o POST + o Job na
+  fila `sync`, com o cache da categoria quente), iguais no 2º e no 3º anúncio. O 1º anúncio de uma categoria paga
+  a mais o schema, os termos e a ficha dela.
+- **Moda:** a categoria cujos atributos têm `SIZE_GRID_ID`/`grid_id` (`MlGradeService::categoriaExigeGrade`) entra
+  com o aviso "ainda não publica pelo sistema".
+
+### F8 — importar do ML (tela), 03/11/2026
+- **`lib/trilhaEscrita.js` é importado de forma ESTÁTICA pela página que o cliente baixa.** Qualquer import novo nele
+  entra no pacote do cliente — no 1º build da F8 ele puxou `lib/produtosDoMl.js` (com "Já está no Portal") para os
+  `imports` da página. Sintoma só no `manifest.json` (build sai 0, testes passam). Regra: a lib da gaveta monta os
+  dados e passa prontos; `trilhaEscrita` não importa lib de gaveta (há teste que proíbe).
+- **[Abrir] para um `e:{id}` que ainda não está em `dados.produtos` FECHA a gaveta** (`painelDaChave` devolve null e
+  a página chama `fechar`). Por isso a gaveta da importação recebe `dados`, só mostra [Abrir] quando o produto já está
+  na Lista ("Entrando na Lista…" enquanto não) e pede uma recarga por produto que falta.
+- **A guarda da importação não descarta nada:** fechar não para o Job; o botão é "Sair assim mesmo" (não é de
+  perigo) e não há `beforeunload`. A Lista só recarrega sozinha com a gaveta aberta; reabrir retoma pelo `GET estado`.
+- **D40 na prática:** o quadro de `Cadastro/QuadrosDaLista.jsx` pode citar "Mercado Livre"; a página e o fallback do
+  `lazy` não (o cliente baixa os dois). `trilhaImportarMl.js` é varrido pelo teste de "nenhum Mercado Livre fora de
+  `Cadastro/`".
+- **Os textos "Portal" que seguem no pacote da página** (`portal_abrir`, "Pela planilha… do Portal") são da porta das
+  lojas SEM a chave de trabalho; com a chave (459) os links vêm nulos e o quadro antigo não aparece. Não é vazamento
+  da F7/F8 — some quando a trilha de trabalho valer para todas as lojas.

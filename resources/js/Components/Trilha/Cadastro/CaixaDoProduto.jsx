@@ -111,16 +111,20 @@ export function TermosDoTitulo({ termos, titulo, limite, onAlternar, onTentarDeN
  * @param {{produto: {nome: string, familia: string, ambientes: string[], titulo: string},
  *   listas: {familias: Array, ambientes: Array}, erros: Record<string, string>,
  *   onCampo: (campo: string, valor: any) => void, campoDoNome?: object, temCategoria?: boolean,
- *   categoria?: React.ReactNode, limite?: ?number, termos?: ?object, onTentarTermos?: () => void}} props
+ *   categoria?: React.ReactNode, limite?: ?number, termos?: ?object, onTentarTermos?: () => void,
+ *   tituloOriginal?: ?string}} props
  *   `categoria`: o bloco da categoria (`EscolhaDaCategoria`), logo abaixo do nome; `temCategoria`: há categoria na
  *   gaveta; `limite` e `termos`: os da categoria (`useCategoriaDaTrilha`) — sem eles, o contador usa 60.
+ *   `tituloOriginal` (F8, D41): o título do anúncio de onde o produto foi importado — só referência, embaixo do campo
+ *   (o título de venda é o que o robô escreveu; a equipe compara com o de antes).
  */
 export function CamposDoProduto({
     produto, listas, erros = {}, onCampo, campoDoNome = null, temCategoria = false, categoria = null, limite: limiteDaCategoria = null, termos = null,
-    onTentarTermos = null,
+    onTentarTermos = null, tituloOriginal = null,
 }) {
     const limite = limiteDoTitulo(temCategoria ? limiteDaCategoria : null);
     const titulo = produto.titulo ?? '';
+    const original = typeof tituloOriginal === 'string' ? tituloOriginal.trim() : '';
     const nome = String(produto.nome ?? '').trim();
     // "Começar pelo nome": o título vazio começa pelo nome, com as maiúsculas da régua (o servidor faz igual).
     const comecarPeloNome = () => onCampo('titulo', capitalizarTitulo(nome).slice(0, limite).trim());
@@ -193,6 +197,11 @@ export function CamposDoProduto({
                 {(controle) => (
                     <div className="flex min-w-0 flex-col gap-1.5">
                         <input {...controle} type="text" maxLength={255} value={titulo} onChange={(e) => onCampo('titulo', e.target.value)} />
+                        {original && (
+                            <span className="text-[12px] font-normal text-trilha-muted [overflow-wrap:anywhere]" data-titulo-do-anuncio="">
+                                Título do anúncio original: <span className="text-trilha-fg2">{original}</span>
+                            </span>
+                        )}
                         {titulo.trim() === '' && nome !== '' && (
                             <span>
                                 <Botao data-acao="titulo-pelo-nome" onClick={comecarPeloNome} className="px-2.5 py-1 text-[12.5px]">

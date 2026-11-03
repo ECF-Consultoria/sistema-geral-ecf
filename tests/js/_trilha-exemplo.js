@@ -242,6 +242,13 @@ export const ESCRITA = {
         previa: '/trilha/459/planilha/previa',
         gravar: '/trilha/459/planilha',
     },
+    // F8: importar os anúncios da loja (§18.3 do desenho) — listar, importar, o estado e limpar.
+    mercado_livre: {
+        anuncios: '/trilha/459/mercado-livre/anuncios',
+        importar: '/trilha/459/mercado-livre/importar',
+        estado: '/trilha/459/mercado-livre/estado',
+        limpar: '/trilha/459/mercado-livre/limpar',
+    },
 };
 
 /**
@@ -703,4 +710,107 @@ export const RESULTADO_DA_PLANILHA = {
     produtos: PREVIA_DA_PLANILHA.produtos.map((p) => (p.chave === 'CAM-01' ? { ...p, produto_id: 130 } : p)),
     totais: { novos: 1, atualizados: 1, sem_mudanca: 1, recusados: 2 },
     mensagem: '1 produto criado, 1 atualizado, 1 sem mudança e 2 ficaram de fora.',
+};
+
+// ─── 3ª entrega, F8: importar os anúncios da loja (§18.4 do desenho) ────────
+
+/** Um anúncio da lista, na forma do §18.4 (o que o teste não muda vem com o valor do exemplo do desenho). */
+const anuncio = (mlb, extra = {}) => ({
+    mlb, titulo: `Anúncio ${mlb}`, thumbnail: `http://http2.mlstatic.com/D_${mlb}-I.jpg`, permalink: `https://produto.mercadolivre.com.br/${mlb.replace('MLB', 'MLB-')}`,
+    preco: 199.9, tipo: 'Clássico', ativo: true, status: 'Ativo', catalogo: false, estoque: 12, vendas_total: 30, visitas_30d: 410,
+    fotos: 8, saude_nivel: 'Média', feito_pela_ecf: false, na_lista: null, importacao: null, ...extra,
+});
+
+/**
+ * `GET {escrita.mercado_livre.anuncios}` — a 1ª página (de 2) dos anúncios da loja: um comum e um pausado (marcáveis),
+ * um importado antes (o produto 9 está na Lista: "Abrir"), um com o SKU de um produto que a trilha não tem nos dados
+ * (sem "Abrir"), um sendo importado por outra aba e um de catálogo feito pela ECF.
+ */
+export const LISTA_DO_ML = {
+    conectado: true,
+    atualizado_em: '2026-11-03T11:35:00-03:00',
+    total: 41,
+    pagina: 1,
+    paginas: 2,
+    limite: 20,
+    itens: [
+        anuncio('MLB4001', { titulo: 'Poltrona Decorativa Linho Pé Palito Sala Quarto' }),
+        anuncio('MLB4002', { titulo: 'Mesa Lateral Jatobá Redonda', ativo: false, status: 'Pausado', estoque: 0, vendas_total: 3, visitas_30d: 12 }),
+        anuncio('MLB4003', { titulo: 'Criado Mudo Jatobá 2 Gavetas', na_lista: { produto_id: 9, nome: 'Criado-mudo 2 gavetas', como: 'importado' } }),
+        anuncio('MLB4004', { titulo: 'Banqueta Alta Jatobá', na_lista: { produto_id: 999, nome: 'Banqueta alta', como: 'sku' } }),
+        anuncio('MLB4005', { titulo: 'Aparador Buffet 4 Portas', importacao: { situacao: 'importando' } }),
+        anuncio('MLB4006', { titulo: 'Cadeira Jatobá Palhinha', catalogo: true, feito_pela_ecf: true, saude_nivel: null }),
+    ],
+};
+
+/**
+ * `POST {escrita.mercado_livre.importar}` (e o `GET …/estado` logo depois) — uma importação ANDANDO, com as seis
+ * situações do §18.4. O `titulo` aparece duas vezes no item do desenho (o do anúncio e o de venda): no JSON vale o
+ * último — aqui, no "novo", é o que o robô escreveu; nos que andam, o do anúncio. Os `totais` vêm de propósito
+ * DIFERENTES da lista (a tela conta pela lista, como na planilha).
+ */
+export const ESTADO_DO_ML = {
+    em_andamento: true,
+    totais: { novos: 9, na_lista: 9, recusados: 9, erros: 9 },
+    itens: [
+        {
+            mlb: 'MLB4001', situacao: 'novo', passo: null, produto_id: 140, nome: 'Poltrona Decorativa Linho Pé Palito', codigo: 'POLT-01',
+            variacoes: 6, fotos: { trazidas: 9, falharam: 1 }, ficha: { gravados: 14, recusados: 2, pela_ia: 5 },
+            titulo: 'Poltrona Decorativa Estofada Linho Pés Palito', avisos: ['1 foto não veio do anúncio: envie pela gaveta do produto.'],
+            faltas: ['custo', 'família', 'ambiente'], mensagem: null,
+        },
+        {
+            mlb: 'MLB4002', titulo: 'Mesa Lateral Jatobá Redonda', situacao: 'importando', passo: 'Trazendo as fotos', produto_id: 141, nome: 'Mesa lateral jatobá redonda',
+            codigo: 'MESA-LAT-01', variacoes: 1, fotos: null, ficha: null, avisos: [], faltas: [], mensagem: null,
+        },
+        {
+            mlb: 'MLB4007', titulo: 'Estante Jatobá 5 Prateleiras', situacao: 'fila', passo: null, produto_id: null, nome: null, codigo: null,
+            variacoes: null, fotos: null, ficha: null, avisos: [], faltas: [], mensagem: null,
+        },
+        {
+            mlb: 'MLB4008', titulo: 'Mesa de Jantar Jatobá 6 Lugares', situacao: 'recusado', passo: null, produto_id: null, nome: null, codigo: null,
+            variacoes: null, fotos: null, ficha: null, avisos: [], faltas: [], mensagem: 'O SKU CJ-210 já é do produto “Mesa de jantar jatobá 6 lugares”: nada foi gravado.',
+        },
+        {
+            mlb: 'MLB4009', titulo: 'Rack Jatobá 1,80 m', situacao: 'erro', passo: null, produto_id: null, nome: null, codigo: null,
+            variacoes: null, fotos: null, ficha: null, avisos: [], faltas: [], mensagem: 'A categoria do anúncio não respondeu agora. Tente de novo.',
+        },
+        {
+            mlb: 'MLB4010', titulo: 'Criado Mudo Jatobá 2 Gavetas', situacao: 'na_lista', passo: null, produto_id: 9, nome: 'Criado-mudo 2 gavetas', codigo: 'CRIADO-01',
+            variacoes: 1, fotos: null, ficha: null, avisos: [], faltas: [], mensagem: 'Já estava na Lista (importado antes): nada mudou.',
+        },
+    ],
+};
+
+/** A mesma importação TERMINADA: a mesa e a estante viraram produto (a estante, sem título — a IA ficou fora). */
+export const ESTADO_DO_ML_FIM = {
+    ...ESTADO_DO_ML,
+    em_andamento: false,
+    totais: { novos: 3, na_lista: 1, recusados: 1, erros: 1 },
+    itens: ESTADO_DO_ML.itens.map((i) => {
+        if (i.mlb === 'MLB4002') {
+            return {
+                ...i, situacao: 'novo', passo: null, titulo: 'Mesa Lateral Redonda Jatobá Maciço Sala', fotos: { trazidas: 4, falharam: 0 },
+                ficha: { gravados: 11, recusados: 0, pela_ia: 3 }, faltas: ['custo', 'família', 'ambiente'],
+            };
+        }
+        if (i.mlb === 'MLB4007') {
+            return {
+                ...i, situacao: 'novo', produto_id: 142, nome: 'Estante jatobá 5 prateleiras', codigo: 'EST-05', variacoes: 1, titulo: null,
+                fotos: { trazidas: 0, falharam: 0 }, ficha: { gravados: 0, recusados: 0, pela_ia: 0 },
+                avisos: ['Escreva o título na gaveta.'], faltas: ['custo', 'família', 'ambiente', 'título', 'fotos (0 de 3)'],
+            };
+        }
+
+        return i;
+    }),
+};
+
+/** `GET …/9/cadastro` do produto que veio de um anúncio (D41): o título de venda do robô e o do anúncio original. */
+export const CADASTRO_DO_ML = {
+    ...SALVO_INCOMPLETO,
+    produto: {
+        ...SALVO_INCOMPLETO.produto, origem_ml: true,
+        titulo: 'Criado-Mudo 2 Gavetas Jatobá Maciço', titulo_do_anuncio: 'Criado Mudo Jatoba Macico 2 Gavetas Promoção Frete Grátis',
+    },
 };

@@ -1126,3 +1126,121 @@ Baixar: por categoria, `detalhes` (cache 7 d), `definicao` (cache 7 d) e termos 
 ### 17.11 Achados do Portal (fora do escopo — só registrar no learnings)
 - O Modelo Completo do Portal corta em silêncio acima da linha 1.001 (`ImportadorFichasTecnicas::ler` :434).
 - O "Baixar modelo" do Portal enfileira `GerarExplicacoesDeAtributosJob` (`definicaoComExplicacoes`).
+
+## 18. F8 — Importar do Mercado Livre (desenho fechado em 03/11/2026)
+
+Pesquisa: o importador de 28/10 (`ImportadorDeAnuncioMl`, `TradutorAnuncioMlParaPortal`, `ProdutosDoMercadoLivreService`,
+`ImportarAnuncioMlParaProdutoJob`, `JardinagemDaFicha`, `EstruturaProdutoOrigemMl`) funciona, mas só serve ao Portal
+(`PortalContexto`, `MODO_IMPORTACAO` + `grupo` sem a régua das cores/anunciável/trava, textos "Portal"). Não confundir
+com `AnunciosMercadoLivreService` + `ImportarAnunciosMlEstruturaJob` (cria oferta por SKU para o Mapeamento).
+
+### 18.1 Respostas do usuário (03/11)
+1. **Título de venda:** é NOSSO, não o do anúncio, e quem escreve é o robô — "pega os termos mais usados, o
+   contexto do produto de acordo com a ficha, e as palavras que fazem sentido, e cria o título, assim como é no
+   Publicador". A equipe pode ajustar depois na gaveta.
+2. **IA da ficha:** roda na hora da importação (uma chamada paga por anúncio, fora da onda, grava sem revisão).
+3. **Produto que já existe** (já importado, publicado, ligado, ou Ref igual): não mexe — "Já está na Lista ·
+   Abrir", ou recusa dizendo de qual produto é o SKU.
+4. **Fotos:** copiar do anúncio (tamanho cheio, até 12 por cor).
+
+### 18.2 Decisões
+| # | Decisão | Por quê |
+|---|---|---|
+| D28 | Serviço novo `App\Services\Trilha\ImportacaoDoMercadoLivre`. Cada anúncio executa como uma gaveta salva (padrão da F7): `criar(efeitos:false)` → `conferirLinhas` → `conferirCategoria` → `gravar(efeitos:false)` → `FichaTecnicaDoProduto::gravarParcial`, **numa transação**. Não usa `ImportadorDeAnuncioMl::importar` | o `MODO_IMPORTACAO` + `grupo` pula a régua das cores (F4), o anunciável e a trava |
+| D29 | Reusa sem mudar: `TradutorAnuncioMlParaPortal::traduzir`, `ProdutosDoMercadoLivreService::candidatos` (o controller da trilha remapeia `no_portal` → `na_lista`), `AnunciosNoPortal::daEmpresa`. Extrai sem mudar comportamento (suítes do Portal = rede): baixar fotos → `FotosDoAnuncioMl` (só baixa); entradas da ficha → `TradutorAnuncioMlParaPortal::entradasDaFicha` (pura) | duas cópias de regra já custaram caro (D6) |
+| D30 | Ordem: GET do anúncio, da descrição e das fotos (temporários) + aquecer `detalhe`/`definicao` da categoria ANTES; a transação só toca o banco (`criar` prende `companies`); fotos entram por cor (`VariacaoImagensService::enviar`, 1ª variação de cada cor) DEPOIS do commit; foto que falha = aviso | nenhum HTTP dentro da trava (learnings §30) |
+| D31 | **Ficha pela IA na hora** (resposta 2): depois das fotos, o mesmo Job chama `JardinagemDaFicha::completar` (atributos do anúncio que ficaram de fora + `AnaliseAnuncioService::ficha`; só preenche vazio). Grava `origem.jardinagem` como o Portal grava | resposta 2; `jardinagem` nula deixaria o estado do Portal "em andamento" para sempre |
+| D32 | **Título pelo robô** (resposta 1): depois da ficha, o mesmo Job monta o contexto do PRODUTO (nome, caminho da categoria, termos de `PalavrasChaveService::termosDaCategoria`, fatos da ficha gravada, marca, limite `LimiteDoTitulo`) e chama a MESMA IA do Publicador (`AnaliseAnuncioService::tituloPorTermos`/`titulosPorTermos` — o prompt do `gerarTitulos`), finaliza com as regras do Publicador (`finalizarTitulo`/`RegrasDoTitulo`/`TituloDoProduto::capitalizar`) e grava em `estrutura_produtos.titulo` (o "título de venda" da gaveta). `evitar` = o título do anúncio original (nunca devolver o mesmo). Falhou (IA fora, termos fora) → título fica vazio, aviso "Escreva o título na gaveta", e o produto fica na Lista por essa falta. Se precisar de método novo para um produto (o `contextoDoTitulo` de hoje recebe `PubRascunho`), é ADITIVO no `PalavrasChaveService` — o caminho do Publicador não muda | resposta 1: "assim como é no Publicador" |
+| D33 | Categoria do anúncio: entra se folha e anunciável. Se não, o produto entra **sem categoria**, com aviso, sem ficha e sem título pelo robô (a gaveta pede a categoria). Definição da categoria fora do ar → o anúncio sai `erro` ("tente de novo") e nada grava | aqui a categoria não é escolha da equipe |
+| D34 | Produto existente nunca é atualizado (resposta 3) | quem atualiza em massa é a F7 |
+| D35 | Efeitos: grava a origem (`EstruturaProdutoOrigemMl`: selo, deduplicação, fatos para a IA), `registrar(passo: 'mercado_livre', {mlb})` e, no fim do Job, `prepararSeCabe` (na prática nada vai ao Publicador: custo, família e ambiente nunca vêm do ML) | — |
+| D36 | Job `App\Jobs\Trilha\ImportarAnuncioNaTrilhaJob`: **fila da IA (`PreparoIaAgenda::fila()`)**, não a `high` (em prod a `high` tem 1 worker que também publica e manda código de acesso; 20 importações com IA a seguravam). `tries 1`, `timeout 600`. Ator refeito com `AtorDoPortal::daEquipe(User)`; sem a pessoa, o Job não roda. Estado em cache `trilha:ml:{lote,item}:…` por 6 h. Trava por anúncio com a MESMA chave do Portal (`estrutura:produtos-ml:importando:{empresa}:{mlb}`) | Portal e trilha não importam o mesmo MLB ao mesmo tempo |
+| D37 | **Espera:** se algum SKU do anúncio tem linha em `estrutura_anuncio_espera` (SKU normalizado), o anúncio sai `recusado` com o motivo e nada grava | senão o produto nasce ligado ao anúncio original, "no ar" e travado (409) — `varrerEspera` no `ProdutoCadastroService` |
+| D38 | Sem prévia separada: a lista já diz o que vai acontecer (`na_lista` como importado/publicado/ligado/**sku** — cruza o `skus` do acervo com as Refs da empresa, sem chamar o ML). Desfazer = "Excluir produto" da F4 | nada é sobrescrito |
+| D39 | Sem diagnóstico ao vivo nesta fatia | listar não chama o ML |
+| D40 | Textos: "Mercado Livre" só na porta da equipe, dentro do `lazy`. Nenhum "Portal" nem `/portal`. Moda que exige tabela de medidas leva o aviso "esta categoria ainda não publica pelo sistema" | regra de 03/11 |
+| D41 | A gaveta do produto importado mostra "Título do anúncio original: …" (de `origem.retrato`), só como referência, na porta da equipe | a equipe compara o título do robô com o de antes |
+
+### 18.3 Rotas (grupo da equipe em `routes/trilha.php`; controller fino `Trilha\MercadoLivreDaTrilhaController`)
+Guarda `CadastroNaTrilha::empresa()` (404 chaves → 403) antes da validação.
+
+| Rota | Nome · throttle |
+|---|---|
+| `GET /trilha/{company}/mercado-livre/anuncios?q=&ordem=&situacao=&pagina=&mostrar_na_lista=` | `trilha.ml.anuncios` · 120/min |
+| `POST /trilha/{company}/mercado-livre/importar` (`mlbs[]`, 1 a 20) | `trilha.ml.importar` · 10/min |
+| `GET /trilha/{company}/mercado-livre/estado` | `trilha.ml.estado` · 240/min |
+| `POST /trilha/{company}/mercado-livre/limpar` | `trilha.ml.limpar` · 30/min |
+
+422 `errors.mlbs`: nenhum, mais de 20, fora do acervo da empresa, conta desconectada (sem link).
+`ApresentacaoDaTrilha::escrita` ganha `mercado_livre: {anuncios, importar, estado, limpar}`.
+
+### 18.4 Contrato JSON
+Lista:
+```json
+{"conectado": true, "atualizado_em": "2026-11-03T11:35:00-03:00", "total": 41, "pagina": 1, "paginas": 2, "limite": 20,
+ "itens": [{"mlb": "MLB1", "titulo": "…", "thumbnail": "https://…", "permalink": "https://…", "preco": 199.9, "tipo": "Clássico",
+   "ativo": true, "status": "Ativo", "catalogo": false, "estoque": 12, "vendas_total": 30, "visitas_30d": 410,
+   "fotos": 8, "saude_nivel": "Média", "feito_pela_ecf": false,
+   "na_lista": null, "importacao": null}]}
+```
+`na_lista`: null | `{produto_id, nome, como: importado|publicado|ligado|sku}`. `importacao`: null | `{situacao}`.
+
+Estado (resposta do `importar`, do `estado` e do `limpar`):
+```json
+{"em_andamento": true, "totais": {"novos": 1, "na_lista": 0, "recusados": 0, "erros": 0},
+ "itens": [{"mlb": "MLB1", "titulo_do_anuncio": "…", "situacao": "fila|importando|novo|na_lista|recusado|erro",
+   "passo": "Lendo o anúncio|Gravando|Trazendo as fotos|Preenchendo a ficha|Escrevendo o título|null",
+   "produto_id": 91, "nome": "…", "codigo": "POLT-01", "variacoes": 6,
+   "fotos": {"trazidas": 9, "falharam": 1}, "ficha": {"gravados": 14, "recusados": 2, "pela_ia": 5},
+   "titulo": "Poltrona Decorativa Estofada Linho Pés Palito", "avisos": ["…"],
+   "faltas": ["custo", "família", "ambiente"], "mensagem": null}]}
+```
+- `titulo_do_anuncio` = título do anúncio do ML (sempre); `titulo` = o título de venda escrito pelo robô (null até
+  ser escrito). Na LISTA, `titulo` é o do anúncio. `limite` da lista = teto por clique (20); página de 30.
+- `GET estado` ao abrir devolve o último lote do cache (6 h), mesmo terminado, ou `{em_andamento: false, itens: []}`.
+- `recusado` e `erro`: nada foi gravado. `novo` com foto/IA que falhou: o produto fica, com aviso.
+- `situacao` só vira `novo` no FIM do Job (depois do título); enquanto isso é `importando` com o `passo`.
+- `faltas` de `TrilhaDaEmpresa::faltasDoProduto`, calculadas no fim.
+
+### 18.5 Tela
+- `Cadastro/QuadrosDaLista.jsx` ganha o quadro "Do Mercado Livre": "Traga os anúncios que a loja já tem. Cada um vira
+  um produto na Lista, com variações, fotos, caixa, ficha e título. O custo, a família e o ambiente ficam para a
+  equipe." Botão "Escolher anúncios".
+- Gaveta `e:ml` em `Cadastro/ImportarDoMercadoLivre.jsx`, `lazy` dentro de `CadastroSobDemanda.jsx` (conferir o
+  manifest — learnings §30): busca, situação, ordem, "Mostrar os que já estão na Lista"; marca até 20; "Importar N".
+  Pergunta o estado a cada 2 s; cada linha mostra o passo, depois "novo" com o título escrito, as faltas e [Abrir]
+  (`e:{id}`), ou o motivo. Ao terminar, recarrega a Lista. Lógica pura em `lib/trilhaImportarMl.js` (reusa rótulos
+  de `lib/produtosDoMl.js`, menos o `textoNoPortal`).
+- Gaveta do produto (`e:{id}`): "Título do anúncio original: …" quando o produto veio do ML (D41).
+
+### 18.6 Limites
+20 anúncios por clique; 30 por página; 12 fotos por variação, 10 MB por foto; 200 variações (`MAX_GRADE`) — acima,
+`recusado`; Job até 600 s.
+
+### 18.7 Chamadas ao ML e custo
+Listar: zero (acervo). Por anúncio: 1 GET do item (`include_attributes=all`) + 1 da descrição; fotos da CDN sem
+token (até 12 por cor, 20 s, 2 tentativas); `detalhe`/`definicao` da categoria do cache de 7 d; termos do título
+(`/trends`, cache do serviço). **IA: 2 chamadas pagas por anúncio** (ficha ~6000 tokens + título ~2500). Zero
+escrita no ML.
+
+### 18.8 Testes (no mesmo commit)
+- `tests/Feature/Trilha/ImportarDoMlNaTrilhaTest.php` (`Http::fake` nos moldes do `TrazerDoMercadoLivreTest`, IA
+  falsa): anúncio simples vira produto com título do robô e faltas = [custo, família, ambiente]; cor×tamanho grava
+  `eixo_2`, fotos só na 1ª variação de cada cor; sem SKU → `MLB-n`; o título nunca é o do anúncio; IA do título
+  fora → título vazio + aviso; IA da ficha preenche só vazio; Job na fila da IA (não `high`); evento `passo:
+  mercado_livre`; origem com `jardinagem` não nula; reimportar → `na_lista`; Ref existente → recusado com contagens
+  das `estrutura_*` iguais; categoria não anunciável → sem categoria, sem título, com aviso; definição fora → erro,
+  nada gravado; foto que falha → aviso; outra conta (`seller_id`) → erro; fora do acervo → 422; espera → recusado;
+  **o `Http::fake` falha se `DB::transactionLevel() > 0`** (prova da D30); nenhum "Portal"/"/portal" no JSON.
+- `CadastroNaTrilhaAcessoTest`: as 4 rotas no `dataProvider`.
+- Custo: consultas constantes por anúncio.
+- JS: `tests/js/trilha-importar-ml.test.js` + teste de fonte do `lazy`.
+- Rede do Portal (arquivo por arquivo): `TrazerDoMercadoLivreTest`, `ImportarDoMlPublicadoPeloPortalTest`,
+  `TradutorAnuncioMlParaPortalTest`, `FichaTecnicaPelaIaTest`, e os testes do `PalavrasChaveService`/título do
+  Publicador se ele mudar.
+
+### 18.9 Riscos
+- R1 espera (D37). R2 fila da IA mais cheia (20 anúncios × 2 chamadas) — medir na 459. R3 kit/combo vira produto
+  simples. R4 moda importa mas não publica (aviso). R5 quando publicado, o anúncio original e o novo ficam os dois no
+  ar — só a 459. R6 acervo é diário (11:35). R7 duas portas (Portal da 459 também importa): trava e origem
+  compartilhadas evitam produto em dobro.

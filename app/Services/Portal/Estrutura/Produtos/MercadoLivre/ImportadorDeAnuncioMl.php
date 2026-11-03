@@ -13,8 +13,6 @@ use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -44,9 +42,6 @@ use Illuminate\Validation\ValidationException;
  */
 class ImportadorDeAnuncioMl
 {
-    private const MIMES = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
-    private const MAX_BYTES_FOTO = 10 * 1024 * 1024;
-
     public function __construct(
         private MercadoLivreService $ml,
         private ProdutoCadastroService $cadastro,
@@ -245,12 +240,7 @@ class ImportadorDeAnuncioMl
         }
         $campos = FichaTecnicaDaCategoria::camposPorId(FichaTecnicaDaCategoria::doProduto($definicao, FichaTecnicaDoProduto::eixosDoProduto($produto)));
 
-        $entradas = [];
-        foreach ($atributos as $id => $a) {
-            if (isset($campos[$id]) && ($e = TradutorAnuncioMlParaPortal::entradaDaFicha($campos[$id], $a)) !== null) {
-                $entradas[$id] = $e;
-            }
-        }
+        $entradas = TradutorAnuncioMlParaPortal::entradasDaFicha($campos, $atributos);
         if ($entradas === []) {
             return [];
         }
@@ -277,7 +267,8 @@ class ImportadorDeAnuncioMl
      */
     private function fotos(Company $empresa, array $linhas, array $fotosPorLinha, array $variacoes, AtorDoPortal $ator, array &$avisos): void
     {
-        $baixadas = [];   // id da foto => [caminho, mime] | false
+        // O baixar mora em `FotosDoAnuncioMl` (03/11/2026, F8 da trilha): a mesma regra para as duas portas.
+        $baixador = new FotosDoAnuncioMl();
         $falhas = 0;
 
         try {
@@ -291,19 +282,9 @@ class ImportadorDeAnuncioMl
                     continue;
                 }
 
-                $arquivos = [];
-                foreach ($fotosPorLinha[$i] ?? [] as $n => $foto) {
-                    // A de tamanho cheio; se ela não vier, a do anúncio (que pode ser pequena demais para publicar).
-                    $baixadas[$foto['id']] ??= $this->baixar($foto['url'])
-                        ?: (isset($foto['url_reserva']) && $foto['url_reserva'] !== $foto['url'] ? $this->baixar($foto['url_reserva']) : false);
-                    if ($baixadas[$foto['id']] === false) {
-                        $falhas++;
-
-                        continue;
-                    }
-                    [$caminho, $mime] = $baixadas[$foto['id']];
-                    $arquivos[] = new UploadedFile($caminho, ($linha['codigo'] ?? 'foto').'_'.($n + 1).'.'.self::MIMES[$mime], $mime, null, true);
-                }
+                // A de tamanho cheio; se ela não vier, a do anúncio (que pode ser pequena demais para publicar).
+                ['arquivos' => $arquivos, 'falhas' => $falhasDaLinha] = $baixador->arquivos($fotosPorLinha[$i] ?? [], (string) ($linha['codigo'] ?? 'foto'));
+                $falhas += $falhasDaLinha;
                 if ($arquivos === []) {
                     continue;
                 }
@@ -316,40 +297,12 @@ class ImportadorDeAnuncioMl
                 }
             }
         } finally {
-            foreach ($baixadas as $b) {
-                if (is_array($b)) {
-                    @unlink($b[0]);
-                }
-            }
+            $baixador->limpar();
         }
 
         if ($falhas > 0) {
             $avisos[] = $falhas === 1 ? '1 foto do anúncio não pôde ser baixada.' : "{$falhas} fotos do anúncio não puderam ser baixadas.";
         }
-    }
-
-    /** @return array{0: string, 1: string}|false  [arquivo temporário, mime] */
-    private function baixar(string $url): array|false
-    {
-        try {
-            $r = Http::timeout(20)->retry(2, 500, throw: false)->get($url);
-        } catch (\Throwable) {
-            return false;
-        }
-        $corpo = $r->successful() ? $r->body() : '';
-        if ($corpo === '' || strlen($corpo) > self::MAX_BYTES_FOTO) {
-            return false;
-        }
-        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($corpo);
-        if (! isset(self::MIMES[$mime])) {
-            return false;
-        }
-        $caminho = tempnam(sys_get_temp_dir(), 'mlfoto');
-        if ($caminho === false || file_put_contents($caminho, $corpo) === false) {
-            return false;
-        }
-
-        return [$caminho, $mime];
     }
 
     private function resultado(string $situacao, ?int $produtoId, ?string $mensagem, array $avisos = []): array

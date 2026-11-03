@@ -385,6 +385,13 @@ class AcessoATrilhaTest extends TestCase
                 'previa' => "/trilha/{$empresa->id}/planilha/previa",
                 'gravar' => "/trilha/{$empresa->id}/planilha",
             ],
+            // F8: importar do Mercado Livre — a lista, o pedido, o estado e o limpar (relativos).
+            'mercado_livre' => [
+                'anuncios' => "/trilha/{$empresa->id}/mercado-livre/anuncios",
+                'importar' => "/trilha/{$empresa->id}/mercado-livre/importar",
+                'estado'   => "/trilha/{$empresa->id}/mercado-livre/estado",
+                'limpar'   => "/trilha/{$empresa->id}/mercado-livre/limpar",
+            ],
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
             'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');

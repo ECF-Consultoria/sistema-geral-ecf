@@ -415,6 +415,7 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
                             limite={cat.termos?.limite ?? null}
                             termos={cat.termos}
                             onTentarTermos={cat.tentarTermosDeNovo}
+                            tituloOriginal={retrato.produto?.titulo_do_anuncio ?? null}
                             categoria={
                                 <EscolhaDaCategoria
                                     cat={cat}

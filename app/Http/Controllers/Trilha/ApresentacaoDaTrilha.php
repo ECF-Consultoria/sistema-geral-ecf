@@ -195,9 +195,10 @@ class ApresentacaoDaTrilha
      * base das leituras da categoria e da ficha (`{categorias}?q=`, `{categorias}/arvore?pai=`,
      * `{categorias}/{id}/campos`, `{categorias}/{id}/titulo?nome=`) — relativa, como as fotos do retrato. `planilha` (F7):
      * os três endereços da planilha por categoria — `modelo` (GET, `?categorias[]=`), `previa` e `gravar` (POST multipart),
-     * relativos como o `categorias`.
+     * relativos como o `categorias`. `mercado_livre` (F8): `anuncios` e `estado` (GET), `importar` e `limpar` (POST),
+     * relativos também.
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -213,6 +214,13 @@ class ApresentacaoDaTrilha
                 'modelo' => route('trilha.planilha.modelo', $empresaId, false),
                 'previa' => route('trilha.planilha.previa', $empresaId, false),
                 'gravar' => route('trilha.planilha.gravar', $empresaId, false),
+            ],
+            // F8: importar do Mercado Livre — a lista (GET), o pedido (POST `mlbs[]`), o estado (GET) e o limpar (POST).
+            'mercado_livre' => [
+                'anuncios' => route('trilha.ml.anuncios', $empresaId, false),
+                'importar' => route('trilha.ml.importar', $empresaId, false),
+                'estado'   => route('trilha.ml.estado', $empresaId, false),
+                'limpar'   => route('trilha.ml.limpar', $empresaId, false),
             ],
         ];
     }

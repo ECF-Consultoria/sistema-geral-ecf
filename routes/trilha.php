@@ -3,6 +3,7 @@
 use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
+use App\Http\Controllers\Trilha\MercadoLivreDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
 use App\Http\Controllers\Trilha\PlanilhaDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
@@ -87,6 +88,18 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:10,1,trilha.planilha.previa')->name('planilha.previa');
         Route::post('/{company}/planilha', [PlanilhaDaTrilhaController::class, 'gravar'])
             ->middleware('throttle:6,1,trilha.planilha.gravar')->name('planilha.gravar');
+
+        // Importar do Mercado Livre (F8, desenho §18): a lista dos anúncios da loja (o acervo, sem chamar o ML), o pedido
+        // (`mlbs[]`, 1 a 20 — um Job por anúncio, na fila da IA), o estado do lote (a tela pergunta a cada 2 s) e o
+        // "limpar" do painel. Cada uma com o seu contador.
+        Route::get('/{company}/mercado-livre/anuncios', [MercadoLivreDaTrilhaController::class, 'anuncios'])
+            ->middleware('throttle:120,1,trilha.ml.anuncios')->name('ml.anuncios');
+        Route::post('/{company}/mercado-livre/importar', [MercadoLivreDaTrilhaController::class, 'importar'])
+            ->middleware('throttle:10,1,trilha.ml.importar')->name('ml.importar');
+        Route::get('/{company}/mercado-livre/estado', [MercadoLivreDaTrilhaController::class, 'estado'])
+            ->middleware('throttle:240,1,trilha.ml.estado')->name('ml.estado');
+        Route::post('/{company}/mercado-livre/limpar', [MercadoLivreDaTrilhaController::class, 'limpar'])
+            ->middleware('throttle:30,1,trilha.ml.limpar')->name('ml.limpar');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

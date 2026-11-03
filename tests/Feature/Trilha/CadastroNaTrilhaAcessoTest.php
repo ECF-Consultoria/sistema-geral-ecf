@@ -7,6 +7,8 @@ use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
+use App\Models\MlAcervoItem;
+use App\Models\MlToken;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
@@ -28,7 +30,8 @@ use Tests\TestCase;
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
- * categoria, a prévia e o gravar dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; cresce a cada
+ * fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -118,6 +121,11 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'planilha: baixar (F7)'  => ['GET', '/planilha/modelo?categorias[]=MLB100200', false],
             'planilha: prévia (F7)'  => ['POST', '/planilha/previa', false],
             'planilha: gravar (F7)'  => ['POST', '/planilha', false],
+            // F8: importar do Mercado Livre (sem recurso no endereço: o anúncio vem no corpo e o resto do acervo).
+            'ML: anúncios (F8)'      => ['GET', '/mercado-livre/anuncios', false],
+            'ML: importar (F8)'      => ['POST', '/mercado-livre/importar', false],
+            'ML: estado (F8)'        => ['GET', '/mercado-livre/estado', false],
+            'ML: limpar (F8)'        => ['POST', '/mercado-livre/limpar', false],
         ];
     }
 
@@ -302,12 +310,21 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
         $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
+        if (str_starts_with($caminho, '/mercado-livre/')) {
+            // F8: a conta conectada e o anúncio no acervo da loja (o Job fica na fila de mentira: nada chama o ML).
+            MlToken::create(['company_id' => $this->empresa->id, 'ml_user_id' => '999', 'access_token' => 'APP_USR-x',
+                'refresh_token' => 'TG-x', 'expires_at' => now()->addHours(5), 'status' => 'active']);
+            MlAcervoItem::create(['company_id' => $this->empresa->id, 'ml_item_id' => 'MLB900', 'title' => 'Vaso no ar', 'status' => 'active', 'coletado_em' => now()]);
+        }
 
         $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p), $corpo);
 
         // `getStatusCode()`: o download do modelo (F7) é um StreamedResponse, sem o `status()` do Illuminate.
         $this->assertContains($resposta->getStatusCode(), [200, 201], (string) $resposta->getContent());
         $this->assertStringNotContainsString('/portal/', (string) $resposta->getContent());
+        if ($caminho === '/mercado-livre/importar') {
+            Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\ImportarAnuncioNaTrilhaJob::class);
+        }
     }
 
     // ─── apoio ───
@@ -340,6 +357,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             str_ends_with($caminho, '/fotos')         => ['imagens' => [UploadedFile::fake()->image('foto.jpg', 600, 600)]],
             // F7: a planilha da trilha mínima (a marca, a aba da categoria e uma linha), em multipart.
             str_starts_with($caminho, '/planilha/previa'), $caminho === '/planilha' => ['arquivo' => $this->planilhaMinima()],
+            // F8: o anúncio do acervo (montado no teste que passa).
+            $caminho === '/mercado-livre/importar'    => ['mlbs' => ['MLB900']],
             default                                   => [],
         };
     }

@@ -4,6 +4,9 @@ namespace App\Services\Publicador;
 
 use App\Support\Publicador\ComposicaoDoComposto;
 use App\Jobs\Publicador\GerarPalavrasChaveIaJob;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoAtributo;
+use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Incubadora\Publicador\TermosMaisBuscadosService;
@@ -709,6 +712,154 @@ class PalavrasChaveService
         ));
     }
 
+    // ═══ O título de um PRODUTO do cadastro (F8 da trilha, 03/11/2026) ═══════
+
+    /**
+     * Os DOIS títulos para um produto do cadastro, sem rascunho — o "Importar do Mercado Livre" da trilha (D32: "o
+     * título é NOSSO e quem escreve é o robô, assim como é no Publicador"). O MESMO prompt e as MESMAS regras de
+     * {@see gerarTitulos()} — `titulosPorTermos`, {@see finalizarTitulo()} (marca, "ECF" e número de especificação fora,
+     * corte no limite da categoria), `RegrasDoTitulo::semRepetir` e a maiúscula do `TituloDoProduto` —; o que muda é de
+     * onde vem o contexto: o produto e a ficha GRAVADA dele ({@see contextoDoTituloDoProduto()}), não o rascunho.
+     *
+     * `evitar` = títulos que o resultado não pode repetir (na trilha, o do anúncio original): vão ao prompt e o servidor
+     * garante. Um tipo que não deu para diferenciar volta VAZIO. Nunca grava nada. Método aditivo: o caminho do
+     * Publicador ({@see gerarTitulos()}, {@see contextoDoTitulo()}) não muda.
+     *
+     * @param  array<array-key, string>  $evitar
+     * @return array{gold_special: string, gold_pro: string}
+     *
+     * @throws RegraViolada sem categoria, ou categoria que não dá para ler
+     * @throws \RuntimeException termos da categoria fora do ar, ou a IA fora
+     */
+    public function gerarTitulosDoProduto(EstruturaProduto $produto, array $evitar = [], ?float $prazo = null): array
+    {
+        $c = $this->contextoDoTituloDoProduto($produto);
+        $evitar = array_values(array_unique(array_filter(array_map(fn ($t) => trim((string) $t), $evitar))));
+        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+
+        $dados = $ia->titulosPorTermos($c['produto'], $c['caminho'], $c['termos'], [], $c['maximo'], $c['fatos']->paraPrompt(),
+            implode(', ', $c['marcas']), implode(' / ', $evitar))['dados'];
+        $classico = $this->finalizarTitulo((string) ($dados['classico'] ?? ''), $c);
+        $premium = $this->finalizarTitulo((string) ($dados['premium'] ?? ''), $c);
+
+        return array_map(fn (string $t) => $t === '' ? '' : (string) TituloDoProduto::capitalizar($t), RegrasDoTitulo::semRepetir(
+            ['gold_special' => $classico ?: $premium, 'gold_pro' => $premium ?: $classico],
+            $evitar, $c['candidatos'], $c['maximo'],
+        ));
+    }
+
+    /**
+     * O contexto de {@see contextoDoTitulo()} montado do PRODUTO do cadastro: a categoria gravada (o caminho e o limite
+     * do título pelo MESMO schema do editor — o `max_title_length`, que é o que o `LimiteDoTitulo` lê), os termos pela
+     * régua da IA do Publicador ({@see termosDoNomeParaIa()}), os fatos da ficha gravada sem a marca
+     * ({@see fatosDoCadastro()}) e a marca (BRAND da ficha). Sem kit: produto do cadastro não tem prefixo.
+     *
+     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>, prefixo: string, termos_do_kit: list<array>}
+     *
+     * @throws RegraViolada
+     * @throws \RuntimeException
+     */
+    private function contextoDoTituloDoProduto(EstruturaProduto $produto): array
+    {
+        $categoria = trim((string) $produto->categoria_ml_id);
+        if ($categoria === '') {
+            throw new RegraViolada('V-CAT-01', 'Escolha a categoria do produto antes.');
+        }
+        $schema = $this->schemas->obter($categoria);
+        $caminho = $schema->caminho();
+        $nome = trim((string) $produto->nome);
+        $termos = $this->termosDoNomeParaIa($categoria, $nome, $caminho);
+        $ficha = EstruturaProdutoAtributo::query()
+            ->where('company_id', $produto->company_id)->where('produto_id', $produto->id)
+            ->orderBy('id')->get(['atributo_id', 'atributo_nome', 'valor', 'valor_id', 'unidade']);
+        $fatos = $this->fatosDoCadastro($produto, $ficha, $schema, $nome, implode(' > ', $caminho));
+        $marca = $ficha->firstWhere('atributo_id', self::ID_MARCA);
+        $marca = $marca !== null && (string) $marca->valor_id !== ValorAtributo::NAO_SE_APLICA ? trim((string) $marca->valor) : '';
+        $marcas = $marca === '' ? [] : [$marca];
+
+        return [
+            'caminho' => implode(' > ', $caminho),
+            'maximo' => (int) ($schema->settings()['max_title_length'] ?? 60) ?: 60,
+            'termos' => $termos,
+            'produto' => $nome,
+            'fatos' => $fatos,
+            'marcas' => $marcas,
+            'referencia' => $nome.' '.implode(' ', $termos),
+            'candidatos' => RegrasDoTitulo::candidatos($termos, $nome, $fatos, $marcas),
+            'prefixo' => '',
+            'termos_do_kit' => [],
+        ];
+    }
+
+    /**
+     * Os fatos de {@see fatos()} lidos da ficha GRAVADA do produto do cadastro (sem a marca, como no título): o nome
+     * pt-BR do schema, as medidas (campo numérico ou com unidade), o público/idade e as cores — as das variações quando o
+     * produto varia por cor (1º ou 2º eixo), senão a da ficha. Vazio e "Não se aplica" ficam de fora; valor sem link nem
+     * e-mail, cortado em 120.
+     *
+     * @param  \Illuminate\Support\Collection<int, EstruturaProdutoAtributo>  $ficha
+     */
+    private function fatosDoCadastro(EstruturaProduto $produto, \Illuminate\Support\Collection $ficha, CategorySchema $schema, string $nome, string $contexto): FatosDoProduto
+    {
+        $fora = [...self::FORA_DOS_FATOS, self::ID_MARCA];
+        $nomes = [];
+        $numericos = [];
+        foreach ($schema->atributos as $a) {
+            if (isset($a['id'])) {
+                $nomes[(string) $a['id']] = (string) ($a['name'] ?? $a['id']);
+                if (in_array($a['value_type'] ?? null, ['number', 'number_unit'], true)) {
+                    $numericos[(string) $a['id']] = true;
+                }
+            }
+        }
+
+        $linhas = [];
+        $medidas = [];
+        $publico = [];
+        $coresDaFicha = [];
+        foreach ($ficha as $a) {
+            $id = (string) $a->atributo_id;
+            if ((string) $a->valor_id === ValorAtributo::NAO_SE_APLICA || in_array($id, $fora, true) || preg_match('/PACKAGE|DATA_SOURCE|SIZE_GRID/', $id)) {
+                continue;
+            }
+            $valor = trim(trim((string) $a->valor).' '.trim((string) $a->unidade));
+            if ($valor === '' || in_array(Str::lower(Str::ascii($valor)), ['n/a', 'na', 'nao se aplica'], true)) {
+                continue;
+            }
+            $valor = mb_substr(DescricaoIaService::semContato($valor, telefones: false), 0, 120);
+            $rotulo = $nomes[$id] ?? (trim((string) $a->atributo_nome) ?: $id);
+            if (in_array($id, self::ATRIBUTOS_DE_COR, true)) {
+                $coresDaFicha[] = $valor;
+            } elseif (preg_match('/AGE|GENDER/', $id)) {
+                $publico[] = [$rotulo, $valor];
+            } elseif (isset($numericos[$id]) || trim((string) $a->unidade) !== '') {
+                $medidas[] = [$rotulo, $valor];
+            } elseif (count($linhas) < self::MAX_LINHAS_FICHA) {
+                $linhas[] = [$rotulo, $valor];
+            }
+        }
+
+        // As cores das variações, quando a cor é um dos eixos do produto (a mesma ideia de `coresDasVariantes`).
+        $cores = [];
+        foreach (EstruturaProdutoVariacao::query()->where('company_id', $produto->company_id)->where('produto_id', $produto->id)
+            ->orderBy('ordem')->orderBy('id')->get(['eixo', 'valor', 'eixo_2', 'valor_2']) as $v) {
+            foreach ([['eixo', 'valor'], ['eixo_2', 'valor_2']] as [$eixo, $campo]) {
+                if ($v->{$eixo} === 'cor' && trim((string) $v->{$campo}) !== '') {
+                    $cores[] = trim((string) $v->{$campo});
+                }
+            }
+        }
+
+        return new FatosDoProduto(
+            cores: array_values(array_unique($cores)) ?: array_values(array_unique($coresDaFicha)),
+            ficha: $linhas,
+            medidas: $medidas,
+            publico: $publico,
+            produto: $nome,
+            contexto: $contexto,
+        );
+    }
+
     /**
      * O Modelo para o rascunho, devolvido direto. `titulo` = o(s) título(s) que acabaram de ser
      * gerados (somam-se aos ativos gravados, como o da tela).
@@ -744,10 +895,25 @@ class PalavrasChaveService
     private function termosParaIa(string $categoria, PubRascunho $r, array $caminho): array
     {
         try {
-            $lista = $this->trends->termos($categoria, $r->produto->nomeExibido(), $caminho)['termos'];
+            return $this->termosDoNomeParaIa($categoria, $r->produto->nomeExibido(), $caminho);
         } catch (\RuntimeException) {
             return [];
         }
+    }
+
+    /**
+     * A régua de {@see termosParaIa()} pelo NOME do produto, sem rascunho (F8 da trilha, 03/11/2026): os termos da
+     * categoria, os relacionados ao produto primeiro, até {@see TERMOS_PARA_IA}. Lança quando o ML não responde — o
+     * Publicador segue sem termos; a trilha deixa o título para a equipe.
+     *
+     * @param  list<string>  $caminho
+     * @return list<string>
+     *
+     * @throws \RuntimeException
+     */
+    private function termosDoNomeParaIa(string $categoria, string $nome, array $caminho): array
+    {
+        $lista = $this->trends->termos($categoria, $nome, $caminho)['termos'];
         usort($lista, fn ($a, $b) => [(int) $b['relacionado'], $a['posicao']] <=> [(int) $a['relacionado'], $b['posicao']]);
 
         return array_slice(array_column($lista, 'termo'), 0, self::TERMOS_PARA_IA);

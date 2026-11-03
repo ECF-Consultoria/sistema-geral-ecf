@@ -451,8 +451,9 @@ test('o quadro "Pela planilha" (§17.9): os 3 passos e "Usar planilha", que abre
 
 test('a Lista passa `comPlanilha` (de `escrita.planilha`) e o `onAbrir` ao quadro da equipe', () => {
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
-    assert.match(pagina, /<PainelDaLista \{\.\.\.propsDoPainel\} comPlanilha=\{podeEditar && !!escrita\?\.planilha\} \/>/);
-    assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelDaLista.jsx'), /<QuadrosDaLista onAbrir=\{onAbrir\} comPlanilha=\{comPlanilha\} \/>/);
+    // F8: a mesma linha passa também `comImportacao` (ver tests/js/trilha-importar-ml.test.js).
+    assert.match(pagina, /<PainelDaLista \{\.\.\.propsDoPainel\} comPlanilha=\{podeEditar && !!escrita\?\.planilha\} comImportacao=\{[^}]*\} \/>/);
+    assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelDaLista.jsx'), /<QuadrosDaLista onAbrir=\{onAbrir\} comPlanilha=\{comPlanilha\} comMercadoLivre=\{comImportacao\} \/>/);
 });
 
 // ─── A gaveta desenhada ─────────────────────────────────────────────────────
@@ -644,9 +645,15 @@ test('o `lazy` da planilha: na página E no 2º caminho (`CadastroSobDemanda.jsx
 });
 
 test('a gaveta e o quadro: só cores trilha-*, nenhum texto do Portal, do Publicador ou do Mercado Livre', () => {
-    for (const arquivo of ['resources/js/Components/Trilha/Cadastro/PlanilhaPorCategoria.jsx', 'resources/js/Components/Trilha/Cadastro/QuadrosDaLista.jsx']) {
+    // F8: o quadro ganhou o "Do Mercado Livre" (D40: o nome do marketplace pode aparecer na porta da equipe, dentro do
+    // `lazy`) — nele o PROIBIDO é só o Portal e o Publicador. A gaveta da planilha continua sem nenhum dos três.
+    const SEM_PORTAL = /Portal|\/portal|Publicador/i;
+    for (const [arquivo, proibido] of [
+        ['resources/js/Components/Trilha/Cadastro/PlanilhaPorCategoria.jsx', PROIBIDO],
+        ['resources/js/Components/Trilha/Cadastro/QuadrosDaLista.jsx', SEM_PORTAL],
+    ]) {
         const fonte = lerSemComentarios(arquivo);
-        assert.equal(fonte.match(PROIBIDO), null, arquivo);
+        assert.equal(fonte.match(proibido), null, arquivo);
         assert.equal(fonte.match(/\btext-white\b|\bbg-white\/|\b(?:bg|text|border)-ecf-|\[#[0-9a-fA-F]{3,8}\]/), null, arquivo);
     }
 });

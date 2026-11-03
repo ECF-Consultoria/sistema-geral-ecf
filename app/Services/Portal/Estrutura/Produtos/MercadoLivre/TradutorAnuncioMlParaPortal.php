@@ -189,6 +189,27 @@ final class TradutorAnuncioMlParaPortal
     }
 
     /**
+     * Os atributos do anúncio (`traduzir()['atributos']`) → as entradas da ficha, só para os campos que a categoria tem
+     * (`$campos`, id → campo da definição) e que dão para levar ({@see entradaDaFicha()}). Pura. Extraída do
+     * `ImportadorDeAnuncioMl` em 03/11/2026 (F8 da trilha): o Portal e a trilha montam a ficha do anúncio pela mesma régua.
+     *
+     * @param  array<string, array>  $campos  id → campo ({@see \App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria::camposPorId()})
+     * @param  array<string, mixed>  $atributos  id → atributo cru do anúncio
+     * @return array<string, array>  id → entrada
+     */
+    public static function entradasDaFicha(array $campos, array $atributos): array
+    {
+        $entradas = [];
+        foreach ($atributos as $id => $a) {
+            if (isset($campos[$id]) && is_array($a) && ($e = self::entradaDaFicha($campos[$id], $a)) !== null) {
+                $entradas[$id] = $e;
+            }
+        }
+
+        return $entradas;
+    }
+
+    /**
      * Um atributo do ML → a entrada que a tela da ficha mandaria para aquele campo
      * ({valor, unidade, nao_se_aplica, proprio, proprios}). Null = não dá para levar.
      *

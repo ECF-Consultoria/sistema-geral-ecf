@@ -5,6 +5,7 @@ namespace App\Services\Trilha;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoOrigemMl;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\PubProduto;
@@ -106,6 +107,9 @@ class CadastroNaTrilha
 
     /** F7: o produto gravado pela planilha por categoria ({@see PlanilhaDaTrilha}) — um evento por produto. */
     public const PASSO_PLANILHA = 'planilha';
+
+    /** F8: o produto importado de um anúncio do Mercado Livre ({@see ImportacaoDoMercadoLivre}) — um evento por anúncio, com o `mlb`. */
+    public const PASSO_MERCADO_LIVRE = 'mercado_livre';
 
     /**
      * As chaves da linha que a trilha deixa chegar ao serviço; o resto é descartado (`grupo`, `company_id`,
@@ -989,6 +993,9 @@ class CadastroNaTrilha
                 'eixo'      => $primeira['eixo'] ?? null,
                 'eixo_2'    => $primeira['eixo_2'] ?? null,
                 'origem_ml' => ($primeira['origem_ml'] ?? null) !== null,
+                // F8 (D41): o título do anúncio de onde o produto veio, só como referência para a equipe comparar com o do
+                // robô. Nulo no produto que não veio do ML (esse não gasta a consulta).
+                'titulo_do_anuncio' => ($primeira['origem_ml'] ?? null) !== null ? $this->tituloDoAnuncio($empresa, $produto) : null,
             ],
             'variacoes' => array_map(fn (array $l) => [
                 'id'               => (int) $l['id'],
@@ -1042,6 +1049,16 @@ class CadastroNaTrilha
     }
 
     // ═══ Internos ═══════════════════════════════════════════════════════════
+
+    /** F8 (D41): o título do anúncio original (o do retrato da origem; sem ele, a coluna), ou null. Uma consulta. */
+    private function tituloDoAnuncio(Company $empresa, EstruturaProduto $produto): ?string
+    {
+        $origem = EstruturaProdutoOrigemMl::query()->where('company_id', $empresa->id)->where('produto_id', $produto->id)
+            ->orderBy('id')->first(['titulo_original', 'retrato']);
+        $titulo = trim((string) (($origem?->retrato['titulo'] ?? null) ?: $origem?->titulo_original));
+
+        return $titulo !== '' ? $titulo : null;
+    }
 
     /**
      * O que a trilha sabe do produto, lido de uma vez: a trava, se a Simples dele andou, a onda já começada de um item
