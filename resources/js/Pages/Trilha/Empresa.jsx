@@ -304,6 +304,9 @@ export function TelaDaTrilha({
 
     // O produto nasceu ("Criar produto"): espera a recarga (ele precisa estar nos dados para a gaveta dele abrir)
     // e, se a gaveta ainda é a mesma, troca para o cadastro dele. O foco, ao fechar, vai para a linha do produto.
+    // `recemCriado`: a gaveta dele leva o foco ao "Usar esta" da categoria sugerida quando ela chegar (§5.2) —
+    // uma vez só (a gaveta avisa em `onFocoUsado`; reabrir o produto depois começa pelo nome, como sempre).
+    const recemCriado = useRef(null);
     const produtoCriado = useCallback(
         async (resposta, marca) => {
             await recarregarTrilha();
@@ -315,10 +318,14 @@ export function TelaDaTrilha({
                 return;
             }
             origem.current = null;
+            recemCriado.current = id;
             trocarAberto(chaveDeCadastro({ id }));
         },
         [recarregarTrilha, fechar, trocarAberto],
     );
+    const focoDoRecemCriadoUsado = useCallback(() => {
+        recemCriado.current = null;
+    }, []);
 
     // "Ver no Planejamento" do mapeamento concluído.
     const verNoPlanejamento = useCallback(() => {
@@ -399,6 +406,8 @@ export function TelaDaTrilha({
                         links={linksDaVisao}
                         trabalho={comTrabalho}
                         onAbrir={abrirComGuarda}
+                        recemCriado={recemCriado.current === painel.produto.id}
+                        onFocoUsado={focoDoRecemCriadoUsado}
                         {...escritaComum}
                     />
                 ) : (

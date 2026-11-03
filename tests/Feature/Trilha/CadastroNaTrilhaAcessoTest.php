@@ -4,9 +4,11 @@ namespace Tests\Feature\Trilha;
 
 use App\Models\Company;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\TrilhaOnda;
 use App\Models\User;
+use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -21,7 +23,7 @@ use Tests\TestCase;
 
 /**
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
- * fatia (F1: abrir, criar e gravar as linhas; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -52,6 +54,20 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         Storage::fake(VariacaoImagensService::DISCO);
         Carbon::setTestNow(Carbon::parse('2026-11-05 10:00:00', TrilhaOnda::FUSO));
         config(['trilha.empresas' => [], 'trilha.trabalho.empresas' => [], 'publicador.preparo_ia.ativo' => true]);
+        // A ficha (rotas 4 e 9) lê os campos da categoria do produto: o catálogo de mentira, com o app token em cache
+        // (depois do relógio, senão o token nasce vencido); e a IA é um dublê — nenhuma chamada real.
+        Cache::put('ml_app_token_coleta', 'app-token-teste', 3600);
+        Http::fake([
+            '*/categories/MLB100200/attributes' => Http::response([['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true]]]),
+            '*' => Http::response([], 404),
+        ]);
+        $this->app->instance(AnaliseAnuncioService::class, new class extends AnaliseAnuncioService
+        {
+            public function ficha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo, bool $comNaoSeAplica = false): array
+            {
+                return ['dados' => ['atributos' => ['BRAND' => 'Marca da IA']], 'meta' => ['modelo' => 'teste']];
+            }
+        });
         $this->empresa = $this->empresaDaTrilha();
         $this->dev = User::factory()->create(['role' => 'admin', 'active' => true, 'name' => 'Rafael']);
         $this->dev->forceFill(['is_dev' => true])->save();
@@ -75,6 +91,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'abrir (rota 1)'  => ['GET', '/produtos/{p}/cadastro', false],
             'criar (rota 2)'  => ['POST', '/produtos', false],
             'linhas (rota 3)' => ['POST', '/produtos/{p}/linhas', true],
+            'ficha (rota 4)'  => ['PUT', '/produtos/{p}/ficha-tecnica', false],
+            'IA (rota 9)'     => ['POST', '/produtos/{p}/ficha-tecnica/ia', false],
         ];
     }
 
@@ -196,6 +214,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->postJson("/trilha/{$grande}/produtos", ['nome' => 'X', 'codigo' => 'X'])->assertNotFound();
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/produtos/{$grande}/cadastro")->assertNotFound();
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/linhas", ['linhas' => [['id' => 1, 'codigo' => 'X', 'nome' => 'X']]])->assertNotFound();
+        $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/produtos/{$grande}/ficha-tecnica", ['atributos' => []])->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$grande}/ficha-tecnica/ia", ['atributos' => []])->assertNotFound();
         // O id de 19 dígitos DENTRO do corpo: o serviço não o leria como número — 404, nunca variação nova.
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/linhas",
             ['linhas' => [['id' => $grande, 'codigo' => 'VA', 'nome' => 'Vaso Alfa']]])->assertNotFound();
@@ -227,9 +247,11 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     private function corpo(string $caminho, array $p, string $nome = 'Vaso Alfa'): array
     {
         return match (true) {
-            str_ends_with($caminho, '/linhas') => ['linhas' => [['id' => $p['variacoes'][0]->id, 'codigo' => $p['variacoes'][0]->codigo, 'nome' => $nome, 'custo' => '9,99']]],
-            $caminho === '/produtos'           => ['nome' => 'Vaso Novo', 'codigo' => 'VN-'.uniqid()],
-            default                            => [],
+            str_ends_with($caminho, '/linhas')        => ['linhas' => [['id' => $p['variacoes'][0]->id, 'codigo' => $p['variacoes'][0]->codigo, 'nome' => $nome, 'custo' => '9,99']]],
+            $caminho === '/produtos'                  => ['nome' => 'Vaso Novo', 'codigo' => 'VN-'.uniqid()],
+            str_ends_with($caminho, '/ficha-tecnica') => ['atributos' => [['id' => 'BRAND', 'valor' => $nome]]],
+            str_ends_with($caminho, '/ia')            => ['categoria' => 'MLB100200', 'titulo' => $nome, 'atributos' => []],
+            default                                   => [],
         };
     }
 
@@ -248,6 +270,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'titulo'    => $p->titulo,
             'descricao' => $p->descricao,
             'variacoes' => $p->variacoes->map(fn ($v) => [$v->id, $v->codigo, $v->custo, $v->estoque])->all(),
+            'ficha'     => EstruturaProdutoAtributo::query()->where('produto_id', $p->id)->orderBy('atributo_id')->pluck('valor', 'atributo_id')->all(),
         ];
     }
 
@@ -256,6 +279,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     {
         $this->assertSame(0, EstruturaProduto::query()->where('nome', 'Vaso Novo')->count(), 'criou produto');
         $this->assertSame(0, EstruturaProdutoVariacao::query()->where('custo', 9.99)->count(), 'gravou a linha');
+        $this->assertSame(0, EstruturaProdutoAtributo::query()->count(), 'gravou a ficha');
         Queue::assertNothingPushed();
     }
 }

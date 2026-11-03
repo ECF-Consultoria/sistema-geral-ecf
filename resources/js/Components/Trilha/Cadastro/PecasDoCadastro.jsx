@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { nomeComparavel, nomeNovo, opcoesQueCasam } from '@/lib/trilhaCadastro';
+import { acaoDoEnter, nomeComparavel, nomeNovo, opcoesQueCasam } from '@/lib/trilhaCadastro';
 import { cn } from '@/lib/utils';
 import { Botao, CAMPO, Etiqueta } from '@/Components/Trilha/Pecas';
 
@@ -85,6 +85,7 @@ export function Campo({ rotulo, campo, obrigatorio = false, dica = null, erro = 
 /**
  * O campo de texto com a lista de sugestões embaixo (combobox): ↓/↑ andam, Enter escolhe, Esc fecha só a lista.
  * O que foi digitado e não existe aparece no fim como "(nova)"/"(novo)" — o servidor cria pelo nome no "Salvar".
+ * Com a lista aberta, o Enter NUNCA envia o formulário (`acaoDoEnter`): escolhe a marcada ou a 1ª.
  *
  * @param {{valor: string, onValor: (v: string) => void, opcoes: Array, onEscolher: (nome: string) => void,
  *   fora?: string[], rotuloDoNovo?: string, aoEnterSemEscolha?: ?(() => void), controle?: object,
@@ -113,11 +114,11 @@ export function CampoComSugestoes({ valor, onValor, opcoes, onEscolher, fora = [
             evento.preventDefault();
             setAtiva((i) => Math.max(-1, i - 1));
         } else if (evento.key === 'Enter') {
-            if (mostra && ativa >= 0 && itens[ativa]) {
-                evento.preventDefault();
-                escolher(itens[ativa]);
-            } else if (aoEnterSemEscolha) {
-                evento.preventDefault();
+            const acao = acaoDoEnter({ listaAberta: mostra, ativa, itens, temSemEscolha: !!aoEnterSemEscolha });
+            if (acao.prevenir) evento.preventDefault();
+            if (acao.escolher) escolher(acao.escolher);
+            else if (mostra) setAberta(false);
+            if (acao.semEscolha) {
                 aoEnterSemEscolha();
                 setAberta(false);
             }
@@ -175,9 +176,19 @@ export function CampoComSugestoes({ valor, onValor, opcoes, onEscolher, fora = [
     );
 }
 
-/** Os ambientes: os escolhidos como chips (com "×") e o campo com busca para juntar mais. */
-export function ChipsComBusca({ valores, onMudar, opcoes, controle = {}, rotuloDoNovo = 'novo', placeholder = 'Buscar ou criar…' }) {
-    const [digitado, setDigitado] = useState('');
+/**
+ * Os ambientes: os escolhidos como chips (com "×") e o campo com busca para juntar mais.
+ *
+ * O texto do campo pode morar FORA (`digitado` + `onDigitado`, no estado da gaveta): assim o que foi digitado e
+ * ainda não virou chip conta como mexido, vai no "Salvar" e a guarda pergunta ao fechar (revisão da F1 — guardado
+ * aqui dentro, ele se perdia calado). Sem os dois, o texto fica local.
+ */
+export function ChipsComBusca({ valores, onMudar, opcoes, controle = {}, rotuloDoNovo = 'novo', placeholder = 'Buscar ou criar…', digitado: deFora = undefined, onDigitado = undefined }) {
+    const [local, setLocal] = useState('');
+    const controlado = typeof onDigitado === 'function';
+    const digitado = controlado ? deFora ?? '' : local;
+    const setDigitado = controlado ? onDigitado : setLocal;
+    const pendente = controlado && String(digitado).trim() !== '' && !valores.some((v) => nomeComparavel(v) === nomeComparavel(digitado));
     const juntar = (nome) => {
         const limpo = String(nome ?? '').trim();
         if (!limpo) return;
@@ -218,6 +229,11 @@ export function ChipsComBusca({ valores, onMudar, opcoes, controle = {}, rotuloD
                 controle={controle}
                 placeholder={placeholder}
             />
+            {pendente && (
+                <span className="text-[12px] text-trilha-muted" data-ambiente-digitado="">
+                    “{String(digitado).trim()}” entra como ambiente ao salvar (Enter junta agora).
+                </span>
+            )}
         </div>
     );
 }

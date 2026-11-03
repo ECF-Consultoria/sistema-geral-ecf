@@ -4,27 +4,51 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
-import { CADASTRO, CADASTRO_TRAVADO, PROPS_TRABALHO, SALVO_COMPLETO, SALVO_COM_ERRO, SALVO_INCOMPLETO, paraCliente } from './_trilha-exemplo.js';
+import {
+    CADASTRO, CADASTRO_CATEGORIA_TRAVADA, CADASTRO_COM_CATEGORIA, CADASTRO_TRAVADO, CAMPOS_DA_CATEGORIA, CANDIDATAS, PROPS_TRABALHO,
+    SALVO_COMPLETO, SALVO_COM_ERRO, SALVO_INCOMPLETO, paraCliente,
+} from './_trilha-exemplo.js';
 import { lerSemComentarios } from './_fonte.js';
 import {
+    AVISO_DO_SKU_ABSORVIDO,
     CHAVE_NOVO_PRODUTO,
+    LISTA_ESTAVEL_MS,
+    acaoDoEnter,
+    ambientesEfetivos,
+    produtoNovoMexido,
     MENSAGEM_DOS_CAMPOS,
     aplicarResposta,
+    aplicarSugestoesNaFicha,
     avisoDaOndaComecada,
+    caminhoParaTela,
     camposMexidos,
+    candidataUsavel,
+    categoriaDaGaveta,
+    categoriaTravada,
+    cliqueValeNaLista,
     custoParaTexto,
+    depoisDaFichaRecusada,
     depoisDeSalvar,
     deveFecharNoEsc,
+    erroDaCategoriaNo422,
     errosPorCampo,
     estadoDoRetrato,
+    fichaMexida,
+    fichaParaSalvar,
     gravarCadastro,
+    gruposDaFicha,
     linhasParaSalvar,
     mexido,
     nadaMudou,
     nomeNovo,
     opcoesQueCasam,
+    podePreencherComIa,
+    porQueNaoUsar,
     resultadoDoSalvar,
+    sugestaoDaCategoria,
     temRetrato,
+    textoDaBusca,
+    textoDaIa,
 } from '../../resources/js/lib/trilhaCadastro.js';
 import { acaoDoItem, comQuemEsta, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
 
@@ -80,8 +104,9 @@ function comMudancas(retrato, { produto = {}, variacoes = {} } = {}) {
 
 test('estadoDoRetrato: os campos em texto, como se digita (custo com vírgula, medidas sem zero à toa, nulo vira vazio)', () => {
     assert.deepEqual(estadoDoRetrato(CADASTRO), {
-        produto: { nome: 'Criado-mudo 2 gavetas', titulo: '', familia: '', ambientes: [], descricao: '' },
+        produto: { nome: 'Criado-mudo 2 gavetas', categoria: null, titulo: '', familia: '', ambientes: [], ambiente_digitado: '', descricao: '' },
         variacoes: [{ id: 91, codigo: 'CRIADO-01', custo: '', estoque: '', volumes: [] }],
+        ficha: {},
     });
     assert.deepEqual(estadoDoRetrato(SALVO_INCOMPLETO).variacoes[0], {
         id: 91, codigo: 'CRIADO-01', custo: '1890,00', estoque: '4', volumes: [{ c: '50', l: '40', a: '60', kg: '18,5' }],
@@ -311,7 +336,7 @@ test('nadaMudou: os `totais` dos lotes somados; zerados (o servidor não achou d
     const lote = (criadas, atualizadas, semMudanca) => async () => ({ erros: [], totais: { criadas, atualizadas, sem_mudanca: semMudanca, com_erro: 0 } });
 
     const semDiferenca = await gravarCadastro({ estado, retrato: CADASTRO_TRAVADO, porPedido: 1, enviarLinhas: lote(0, 0, 1) });
-    assert.deepEqual(semDiferenca.totais, { criadas: 0, atualizadas: 0, sem_mudanca: 2, com_erro: 0 });
+    assert.deepEqual(semDiferenca.totais, { criadas: 0, atualizadas: 0, sem_mudanca: 2, com_erro: 0, absorvidos_da_espera: 0 });
     assert.equal(nadaMudou(semDiferenca), true);
 
     const umGravou = await gravarCadastro({ estado, retrato: CADASTRO_TRAVADO, enviarLinhas: lote(0, 1, 1) });
@@ -325,13 +350,14 @@ test('nadaMudou: os `totais` dos lotes somados; zerados (o servidor não achou d
 
 test('errosPorCampo: o erro de cada linha no campo dela; o que não tem campo na gaveta vai para o rodapé', () => {
     assert.deepEqual(errosPorCampo(SALVO_COM_ERRO.erros), { porChave: { v91: { custo: 'Use números no formato 1.234,56.' } }, soltas: [] });
+    // F2: a categoria é campo da gaveta — o serviço a chama de `categoria_ml_id` ("mais específica"), e o erro cai nela.
     assert.deepEqual(errosPorCampo([
-        { chave: 'v91', mensagem: 'O título passa do limite.', campos: { titulo: 'O título passa do limite.', categoria: 'Categoria não encontrada.' } },
+        { chave: 'v91', mensagem: 'O título passa do limite.', campos: { titulo: 'O título passa do limite.', categoria_ml_id: 'Escolha uma categoria mais específica (a última do caminho).' } },
         { chave: 'v92', mensagem: 'Não deu para gravar esta linha agora.', campos: { linha: 'Não deu para gravar esta linha agora.' } },
         { chave: null, mensagem: 'Erro sem campo.', campos: {} },
     ]), {
-        porChave: { v91: { titulo: 'O título passa do limite.' } },
-        soltas: ['Categoria não encontrada.', 'Não deu para gravar esta linha agora.', 'Erro sem campo.'],
+        porChave: { v91: { titulo: 'O título passa do limite.', categoria: 'Escolha uma categoria mais específica (a última do caminho).' } },
+        soltas: ['Não deu para gravar esta linha agora.', 'Erro sem campo.'],
     });
     assert.deepEqual(errosPorCampo(null), { porChave: {}, soltas: [] });
     assert.equal(MENSAGEM_DOS_CAMPOS, 'Confira os campos marcados: o que está neles não foi salvo.');
@@ -485,4 +511,328 @@ test('lib/trilhaCadastro.js é pura: sem React, sem axios, sem classe do Tailwin
     assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null);
     const doHook = fs.readFileSync(path.resolve(RAIZ, 'resources/js/Components/Trilha/Cadastro/useCadastroDoProduto.js'), 'utf8');
     assert.ok(!doHook.includes('className'), 'o hook é .js: classe ali não é gerada');
+});
+
+// ═══ F2 — a categoria e a ficha técnica ════════════════════════════════════
+
+test('F2 — sugestaoDaCategoria: a 1ª que é a última do caminho E aceita produto novo; o que não serve diz por quê', () => {
+    assert.equal(sugestaoDaCategoria(CANDIDATAS.categorias)?.id, 'MLB1902');
+    // Sem nenhuma usável (a que não é a última e a fechada para produto novo): nenhuma sugestão.
+    assert.equal(sugestaoDaCategoria([CANDIDATAS.categorias[0], CANDIDATAS.categorias[2]]), null);
+    // O servidor que não soube dizer (`null`): essa não se sugere.
+    assert.equal(sugestaoDaCategoria([{ ...CANDIDATAS.categorias[1], folha: null, anunciavel: null }]), null);
+    assert.equal(sugestaoDaCategoria([{ ...CANDIDATAS.categorias[1], anunciavel: null }]), null);
+    assert.equal(sugestaoDaCategoria(null), null);
+    assert.equal(sugestaoDaCategoria([{ id: 'Poltronas', folha: true, anunciavel: true }]), null, 'só id de categoria de verdade');
+
+    assert.deepEqual(CANDIDATAS.categorias.map((c) => [candidataUsavel(c), porQueNaoUsar(c)]), [
+        [false, 'Escolha uma mais específica'],
+        [true, null],
+        [false, 'Não aceita produto novo'],
+    ]);
+
+    // A categoria como a gaveta guarda — da busca, da árvore (caminho em lista) e do retrato; o texto sem id não conta.
+    assert.deepEqual(categoriaDaGaveta(CANDIDATAS.categorias[1]), { id: 'MLB1902', nome: 'Criados-mudos', caminho_texto: 'Casa, Móveis e Decoração > Quarto > Criados-mudos' });
+    assert.deepEqual(categoriaDaGaveta({ id: 'mlb5', nome: 'Poltronas', caminho: ['Casa', 'Poltronas'], folha: true }), { id: 'MLB5', nome: 'Poltronas', caminho_texto: 'Casa > Poltronas' });
+    assert.equal(categoriaDaGaveta({ id: null, nome: 'Poltrona decorativa', estado: 'a_confirmar' }), null, 'o texto colado ("a confirmar") não é categoria');
+    assert.equal(estadoDoRetrato({ ...CADASTRO, produto: { ...CADASTRO.produto, categoria: { id: null, nome: 'Poltrona' } } }).produto.categoria, null);
+    assert.equal(caminhoParaTela(CANDIDATAS.categorias[1]), 'Casa, Móveis e Decoração › Quarto › Criados-mudos');
+
+    // A busca pelo nome: de 2 a 120 letras.
+    assert.equal(textoDaBusca(' a '), null);
+    assert.equal(textoDaBusca('  Criado-mudo  '), 'Criado-mudo');
+    assert.equal(textoDaBusca('x'.repeat(300)).length, 120);
+
+    // A lista que acabou de mudar não aceita clique (a pessoa mirou na de antes — demo de 23/10).
+    assert.equal(cliqueValeNaLista({ mudouEm: 1000, desceuEm: 1000 + LISTA_ESTAVEL_MS - 1, agora: 9000 }), false);
+    assert.equal(cliqueValeNaLista({ mudouEm: 1000, desceuEm: 1000 + LISTA_ESTAVEL_MS, agora: 9000 }), true);
+    assert.equal(cliqueValeNaLista({ mudouEm: 1000, agora: 1100 }), false, 'sem o mouse (teclado): conta a partir de agora');
+
+    // Com o produto no Publicador, a categoria trava (D12).
+    assert.equal(categoriaTravada(CADASTRO_CATEGORIA_TRAVADA), true);
+    assert.equal(categoriaTravada(CADASTRO_COM_CATEGORIA), false);
+    assert.equal(categoriaTravada({ situacao: { no_publicador: true, categoria_travada: false } }), true);
+});
+
+test('F2 — "Usar esta" só põe a categoria no ESTADO: fica mexido, e ela vai pelo id na 1ª linha do "Salvar"', () => {
+    const estado = estadoDoRetrato(CADASTRO);
+    const usada = { ...estado, produto: { ...estado.produto, categoria: categoriaDaGaveta(sugestaoDaCategoria(CANDIDATAS.categorias)) } };
+    assert.equal(mexido(estado, CADASTRO), false);
+    assert.equal(mexido(usada, CADASTRO), true);
+    assert.deepEqual(camposMexidos(usada, CADASTRO).produto, ['categoria']);
+    assert.deepEqual(linhasParaSalvar(usada, CADASTRO), [{ chave: 'v91', codigo: 'CRIADO-01', nome: 'Criado-mudo 2 gavetas', id: 91, categoria_ml_id: 'MLB1902' }]);
+
+    // A categoria que o servidor já tem não vai (nem como texto); trocar vai só o id novo.
+    const igual = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    assert.deepEqual(linhasParaSalvar(igual, CADASTRO_COM_CATEGORIA), []);
+    const [linha] = linhasParaSalvar({ ...igual, produto: { ...igual.produto, categoria: { id: 'MLB1903', nome: 'x', caminho_texto: 'x' } } }, CADASTRO_COM_CATEGORIA);
+    assert.equal(linha.categoria_ml_id, 'MLB1903');
+    assert.ok(!('categoria_texto' in linha) && !('categoria' in linha), JSON.stringify(linha));
+
+    // Duas variações: a categoria anda com o produto, na 1ª linha só.
+    const duas = estadoDoRetrato(CADASTRO_TRAVADO);
+    duas.produto.categoria = { id: 'MLB9', nome: 'Cadeiras', caminho_texto: 'Casa > Cadeiras' };
+    duas.variacoes[1].estoque = '9';
+    assert.deepEqual(linhasParaSalvar(duas, CADASTRO_TRAVADO).map((l) => [l.chave, l.categoria_ml_id ?? null]), [['v21', 'MLB9'], ['v22', null]]);
+
+    // Uma ação imediata (F3/F4) não apaga a categoria escolhida e ainda não salva.
+    assert.equal(aplicarResposta(usada, CADASTRO, SALVO_INCOMPLETO).produto.categoria.id, 'MLB1902');
+
+    // O 422 da trilha (não anunciável, ou o produto já no Publicador) cai no campo da categoria.
+    const recusa = (errors) => ({ isAxiosError: true, response: { status: 422, data: { errors } } });
+    assert.equal(erroDaCategoriaNo422(recusa({ 'linhas.0.categoria_ml_id': ['A categoria já está no Publicador; troque no editor de lá.'] })), 'A categoria já está no Publicador; troque no editor de lá.');
+    assert.equal(erroDaCategoriaNo422(recusa({ 'linhas.0.custo': ['Use números.'] })), null);
+    assert.equal(erroDaCategoriaNo422({ response: { status: 409, data: { errors: { categoria: ['x'] } } } }), null);
+});
+
+test('F2 — a ficha no estado da gaveta: os salvos viram valores, o "mexido" compara o corpo do servidor, o eixo do produto sai', () => {
+    const estado = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    assert.deepEqual(estado.ficha, { BRAND: { valor: 'ECF Móveis', unidade: '' } });
+    const grupos = gruposDaFicha(CAMPOS_DA_CATEGORIA.grupos, CADASTRO_COM_CATEGORIA);
+    assert.equal(mexido(estado, CADASTRO_COM_CATEGORIA, { grupos }), false);
+    assert.equal(mexido({ ...estado, ficha: { ...estado.ficha, MAIN_MATERIAL: { valor: '1', unidade: '' } } }, CADASTRO_COM_CATEGORIA, { grupos }), true);
+
+    // Digitar e apagar não conta (a unidade padrão que ficou no campo não é valor) — com e sem a definição.
+    const apagado = { ...estado, ficha: { ...estado.ficha, MAX_WEIGHT: { valor: '', unidade: 'kg' } } };
+    assert.equal(fichaMexida(apagado, CADASTRO_COM_CATEGORIA, { grupos }), false);
+    assert.equal(fichaMexida(apagado, CADASTRO_COM_CATEGORIA), false);
+
+    // A opção gravada como TEXTO ("Madeira", sem o id) é a mesma que escolher a opção pelo id.
+    const comNome = { ...CADASTRO_COM_CATEGORIA, ficha: { salvos: [...CADASTRO_COM_CATEGORIA.ficha.salvos, { id: 'MAIN_MATERIAL', nome: 'Material principal', valor: 'Madeira', valor_id: null, unidade: null }] } };
+    const peloId = estadoDoRetrato(comNome);
+    peloId.ficha = { ...peloId.ficha, MAIN_MATERIAL: { valor: '1', unidade: '', outro: false } };
+    assert.equal(fichaMexida(peloId, comNome, { grupos }), false);
+    // O estado sem ficha (o formato da F1) não conta como mexido.
+    assert.equal(fichaMexida({ produto: estado.produto, variacoes: estado.variacoes }, CADASTRO_COM_CATEGORIA), false);
+
+    // O eixo das variações (a cadeira varia por COR): o campo Cor sai da ficha; sem eixo, fica.
+    const ids = (g) => g.flatMap((x) => x.campos.map((c) => c.id));
+    assert.ok(ids(grupos).includes('COLOR'));
+    assert.ok(!ids(gruposDaFicha(CAMPOS_DA_CATEGORIA.grupos, CADASTRO_TRAVADO)).includes('COLOR'));
+    // As medidas do produto montado continuam (gravam com a ficha).
+    assert.ok(ids(grupos).includes('WIDTH'));
+});
+
+test('F2 — o "Salvar" com a ficha: as linhas (com a categoria) primeiro, a ficha INTEIRA depois; o 422 da ficha deixa o passo 1 gravado', async () => {
+    const definicao = { categoria: 'MLB1902', grupos: CAMPOS_DA_CATEGORIA.grupos, carregando: false };
+    const sem = estadoDoRetrato(CADASTRO);
+    const estado = {
+        ...sem,
+        produto: { ...sem.produto, categoria: categoriaDaGaveta(CANDIDATAS.categorias[1]) },
+        ficha: { BRAND: { valor: 'ECF Móveis', unidade: '' }, MAIN_MATERIAL: { valor: '1', unidade: '' }, WIDTH: { valor: '45', unidade: 'cm' } },
+    };
+    const so = (p) => ({ gravar: p.gravar, esperar: p.esperar, pulou: p.pulou });
+
+    // Sem categoria na tela, a ficha não vai (ela exige a categoria GRAVADA).
+    assert.equal(fichaParaSalvar({ estado: sem, retrato: CADASTRO, definicao }).gravar, false);
+    // Os campos da categoria nova ainda carregando: espera (mandar agora apagaria a ficha). Fora do ar: as linhas
+    // vão, a ficha fica para o próximo "Salvar".
+    assert.deepEqual(so(fichaParaSalvar({ estado, retrato: CADASTRO, definicao: { categoria: null, grupos: null, carregando: true } })), { gravar: false, esperar: true, pulou: false });
+    assert.deepEqual(so(fichaParaSalvar({ estado, retrato: CADASTRO, definicao: { categoria: null, grupos: null, carregando: false } })), { gravar: false, esperar: false, pulou: true });
+
+    const plano = fichaParaSalvar({ estado, retrato: CADASTRO, definicao });
+    assert.equal(plano.gravar, true);
+    assert.equal(plano.categoria, 'MLB1902', 'a categoria da tela vai junto (o servidor confere com a gravada)');
+    // A ficha INTEIRA (o PUT substitui), com as medidas do produto montado.
+    assert.deepEqual(plano.atributos, [{ id: 'BRAND', valor: 'ECF Móveis' }, { id: 'MAIN_MATERIAL', valor: '1' }, { id: 'WIDTH', valor: '45', unidade: 'cm' }]);
+
+    const pedidos = [];
+    const r = await gravarCadastro({
+        estado,
+        retrato: CADASTRO,
+        enviarLinhas: async (linhas) => {
+            pedidos.push(['linhas', linhas]);
+
+            return { ...SALVO_INCOMPLETO, erros: [] };
+        },
+        gravarFicha: async () => {
+            pedidos.push(['ficha']);
+
+            return CADASTRO_COM_CATEGORIA;
+        },
+        fichaMudou: plano.gravar,
+    });
+    assert.deepEqual(pedidos.map(([p]) => p), ['linhas', 'ficha']);
+    assert.equal(pedidos[0][1][0].categoria_ml_id, 'MLB1902', 'a categoria grava no passo 1, antes da ficha');
+    assert.deepEqual([r.ok, r.linhas, r.ficha], [true, true, true]);
+    assert.equal(r.resposta, CADASTRO_COM_CATEGORIA, 'o retrato novo é o do último passo');
+    // As linhas não mudaram nada no servidor, mas a ficha gravou: não é "nada mudou".
+    assert.equal(nadaMudou({ ...r, totais: { criadas: 0, atualizadas: 0 } }), false);
+
+    // Só a ficha mudou: nenhuma linha sai.
+    const soFicha = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    soFicha.ficha = { ...soFicha.ficha, MAIN_MATERIAL: { valor: '2', unidade: '' } };
+    const planoSo = fichaParaSalvar({ estado: soFicha, retrato: CADASTRO_COM_CATEGORIA, definicao });
+    assert.deepEqual(planoSo.atributos, [{ id: 'BRAND', valor: 'ECF Móveis' }, { id: 'MAIN_MATERIAL', valor: '2' }]);
+    const passos = [];
+    const rSo = await gravarCadastro({
+        estado: soFicha,
+        retrato: CADASTRO_COM_CATEGORIA,
+        enviarLinhas: async () => passos.push('linhas'),
+        gravarFicha: async () => {
+            passos.push('ficha');
+
+            return CADASTRO_COM_CATEGORIA;
+        },
+        fichaMudou: planoSo.gravar,
+    });
+    assert.deepEqual([passos, rSo.linhas, rSo.ok], [['ficha'], false, true]);
+
+    // Nada mudou na ficha nem na categoria: ela não vai.
+    assert.equal(fichaParaSalvar({ estado: estadoDoRetrato(CADASTRO_COM_CATEGORIA), retrato: CADASTRO_COM_CATEGORIA, definicao }).gravar, false);
+
+    // Trocar a categoria regrava a ficha inteira: a ficha vazia LIMPA a gravada (os campos que a nova não tem saem).
+    const trocada = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    trocada.produto.categoria = { id: 'MLB777', nome: 'Mesas de cabeceira', caminho_texto: 'Casa > Mesas de cabeceira' };
+    const planoTroca = fichaParaSalvar({
+        estado: trocada,
+        retrato: CADASTRO_COM_CATEGORIA,
+        definicao: { categoria: 'MLB777', grupos: [{ grupo: 'G', campos: [{ id: 'SHAPE', nome: 'Formato', tipo: 'texto', obrigatorio: false }] }], carregando: false },
+    });
+    assert.deepEqual([planoTroca.gravar, planoTroca.atributos, planoTroca.categoria], [true, [], 'MLB777']);
+
+    // A ficha recusada (422 por campo): para no passo 2 — e o passo 1 JÁ gravou (`linhas`).
+    const falha = { isAxiosError: true, response: { status: 422, data: { errors: { 'atributos.MAIN_MATERIAL': ['Escolha uma das opções.'] } } } };
+    const recusada = await gravarCadastro({
+        estado,
+        retrato: CADASTRO,
+        enviarLinhas: async () => ({ ...SALVO_INCOMPLETO, erros: [] }),
+        gravarFicha: async () => {
+            throw falha;
+        },
+        fichaMudou: true,
+    });
+    assert.deepEqual([recusada.ok, recusada.passo, recusada.linhas, recusada.falha], [false, 'ficha', true, falha]);
+    // Na gaveta: o produto e as variações do retrato novo (a categoria já gravada), a ficha como a pessoa deixou.
+    const depois = depoisDaFichaRecusada(estado, CADASTRO_COM_CATEGORIA);
+    assert.equal(depois.produto.categoria.id, 'MLB1902');
+    assert.deepEqual(depois.ficha, estado.ficha);
+    assert.equal(mexido(depois, CADASTRO_COM_CATEGORIA, { grupos: gruposDaFicha(CAMPOS_DA_CATEGORIA.grupos, CADASTRO_COM_CATEGORIA) }), true, 'a ficha continua para salvar');
+    // O erro de campo no passo 1 para antes da ficha: ela fica como estava na tela.
+    assert.deepEqual(depoisDeSalvar(estado, SALVO_COM_ERRO, SALVO_COM_ERRO.erros).ficha, estado.ficha);
+});
+
+test('F2b — "Preencher com IA": só os vazios recebem; o preenchido e o "não se aplica" ficam; nada grava (fica mexido)', () => {
+    const estado = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    estado.ficha.FINISH = { valor: '', unidade: '', naoSeAplica: true };
+    const sugestoes = [
+        { id: 'BRAND', nome: 'Marca', valor: 'Outra marca', valor_id: null, unidade: null },
+        { id: 'MAIN_MATERIAL', nome: 'Material principal', valor: 'Madeira', valor_id: '1', unidade: null },
+        { id: 'MAX_WEIGHT', nome: 'Peso máximo suportado', valor: '30', valor_id: null, unidade: 'kg' },
+        { id: 'FINISH', nome: 'Acabamento', valor: 'Verniz', valor_id: null, unidade: null },
+        { id: 'HEIGHT', nome: 'Altura', valor: null, valor_id: '-1', unidade: null },
+    ];
+    const r = aplicarSugestoesNaFicha(estado.ficha, sugestoes);
+    assert.deepEqual([...r.aplicados].sort(), ['HEIGHT', 'MAIN_MATERIAL', 'MAX_WEIGHT']);
+    assert.equal(r.naoSeAplica, 1);
+    assert.equal(r.ficha.BRAND.valor, 'ECF Móveis', 'o que a pessoa preencheu não muda');
+    assert.equal(r.ficha.FINISH.naoSeAplica, true, '"não se aplica" marcado não muda');
+    assert.equal(r.ficha.MAIN_MATERIAL.valor, '1');
+    assert.deepEqual(r.ficha.MAX_WEIGHT, { valor: '30', unidade: 'kg' });
+    assert.equal(estado.ficha.MAIN_MATERIAL, undefined, 'a ficha de entrada não é alterada');
+    assert.deepEqual(aplicarSugestoesNaFicha(r.ficha, sugestoes).aplicados, [], 'de novo: nada mais a preencher');
+
+    const grupos = gruposDaFicha(CAMPOS_DA_CATEGORIA.grupos, CADASTRO_COM_CATEGORIA);
+    assert.equal(mexido({ ...estado, ficha: r.ficha }, CADASTRO_COM_CATEGORIA, { grupos }), true, 'nada gravou: o "Salvar" é que grava');
+
+    assert.equal(textoDaIa({ aplicados: 3, naoSeAplica: 1 }), 'A IA preencheu 2 campos e marcou 1 como "Não se aplica". Confira os marcados "sugestão da IA" e clique em Salvar.');
+    assert.equal(textoDaIa({ aplicados: 0, naoSeAplica: 0 }), 'A IA não achou mais nada para preencher com o que o produto informa.');
+    assert.equal(textoDaIa({ erro: 'A IA não respondeu agora. Tente de novo em instantes.' }), 'A IA não respondeu agora. Tente de novo em instantes.');
+
+    // Só com a categoria SALVA e a mesma na tela (o servidor recusa a tela que trocou sem salvar).
+    assert.equal(podePreencherComIa(CADASTRO_COM_CATEGORIA, estado), true);
+    assert.equal(podePreencherComIa(CADASTRO, estadoDoRetrato(CADASTRO)), false, 'sem categoria');
+    const escolhida = estadoDoRetrato(CADASTRO);
+    escolhida.produto.categoria = categoriaDaGaveta(CANDIDATAS.categorias[1]);
+    assert.equal(podePreencherComIa(CADASTRO, escolhida), false, 'escolhida e ainda não salva');
+    const trocou = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    trocou.produto.categoria = { id: 'MLB777', nome: 'x', caminho_texto: 'x' };
+    assert.equal(podePreencherComIa(CADASTRO_COM_CATEGORIA, trocou), false, 'trocou e não salvou');
+});
+
+// ═══ Revisão da F1 (03/11/2026) ════════════════════════════════════════════
+
+test('revisão F1 — Enter com a lista de sugestões aberta NUNCA envia o formulário: escolhe a marcada ou a 1ª', () => {
+    // "Pol" com "Poltronas" na lista: o Enter antes caía no submit implícito e o "Salvar" criava a família "Pol".
+    const { opcoes, novo } = opcoesQueCasam([{ id: 1, nome: 'Poltronas' }, { id: 2, nome: 'Mesas' }], 'Pol');
+    const itens = [...opcoes.map((nome) => ({ nome, novo: false })), { nome: novo, novo: true }];
+    assert.deepEqual(itens.map((i) => i.nome), ['Poltronas', 'Pol'], 'o "(nova)" vem por último');
+
+    assert.deepEqual(acaoDoEnter({ listaAberta: true, ativa: -1, itens }), { prevenir: true, escolher: itens[0], semEscolha: false });
+    assert.deepEqual(acaoDoEnter({ listaAberta: true, ativa: 1, itens }), { prevenir: true, escolher: itens[1], semEscolha: false }, 'a marcada pelas setas');
+    // O campo que junta sem lista (ambientes) também não junta o texto cru com a lista aberta: vale a escolha.
+    assert.deepEqual(acaoDoEnter({ listaAberta: true, ativa: -1, itens, temSemEscolha: true }).semEscolha, false);
+    // Lista fechada: o ambiente digitado vira chip (sem enviar); a família segue o padrão do navegador.
+    assert.deepEqual(acaoDoEnter({ listaAberta: false, temSemEscolha: true }), { prevenir: true, escolher: null, semEscolha: true });
+    assert.deepEqual(acaoDoEnter({ listaAberta: false, temSemEscolha: false }), { prevenir: false, escolher: null, semEscolha: false });
+
+    // O campo com sugestões decide o Enter por esta regra (e não tem outro caminho até o submit).
+    const pecas = lerSemComentarios('resources/js/Components/Trilha/Cadastro/PecasDoCadastro.jsx');
+    assert.match(pecas, /evento\.key === 'Enter'\) \{\s*const acao = acaoDoEnter\(\{ listaAberta: mostra, ativa, itens, temSemEscolha: !!aoEnterSemEscolha \}\);\s*if \(acao\.prevenir\) evento\.preventDefault\(\);/);
+});
+
+test('revisão F1 — o ambiente digitado e não juntado CONTA: é mexido, vai no "Salvar" e a guarda o vê', () => {
+    const estado = estadoDoRetrato(CADASTRO);
+    assert.equal(estado.produto.ambiente_digitado, '');
+    const digitado = { ...estado, produto: { ...estado.produto, ambientes: ['Quarto'], ambiente_digitado: '  Varanda ' } };
+    assert.deepEqual(ambientesEfetivos(digitado.produto), ['Quarto', 'Varanda']);
+    assert.equal(mexido(digitado, CADASTRO), true);
+    assert.deepEqual(linhasParaSalvar(digitado, CADASTRO)[0].ambientes, ['Quarto', 'Varanda']);
+
+    // Só o texto, sem chip nenhum: já é mexido (o "Salvar" liga e fechar pergunta).
+    const soTexto = { ...estado, produto: { ...estado.produto, ambiente_digitado: 'Varanda' } };
+    assert.equal(mexido(soTexto, CADASTRO), true);
+    assert.deepEqual(linhasParaSalvar(soTexto, CADASTRO)[0].ambientes, ['Varanda']);
+
+    // O digitado igual a um chip (sem caixa nem acento) não repete nem conta; só espaço não conta.
+    const comSala = { ...CADASTRO, produto: { ...CADASTRO.produto, ambientes: ['Sala de estar'] } };
+    const base = estadoDoRetrato(comSala);
+    assert.equal(mexido({ ...base, produto: { ...base.produto, ambiente_digitado: 'sala de ESTAR' } }, comSala), false);
+    assert.equal(mexido({ ...base, produto: { ...base.produto, ambiente_digitado: '   ' } }, comSala), false);
+
+    // Uma ação imediata não apaga o que está digitado; depois do "Salvar", o campo zera (o retrato novo tem o chip).
+    assert.equal(aplicarResposta(digitado, CADASTRO, SALVO_INCOMPLETO).produto.ambiente_digitado, '  Varanda ');
+    assert.equal(depoisDeSalvar(digitado, SALVO_INCOMPLETO, []).produto.ambiente_digitado, '');
+});
+
+test('revisão F1 — o SKU que tinha anúncio na espera: o resultado diz que ficou ligado e vai para a etapa 6 (nada de "mapeamento")', async () => {
+    const absorvido = { ...SALVO_COMPLETO, situacao: { ...SALVO_COMPLETO.situacao, etapa: null }, edicao: { livre: false, motivo: 'O anúncio deste SKU já está no ar.', onda_comecou: null } };
+    assert.deepEqual(resultadoDoSalvar(CADASTRO, absorvido, null, { absorvidos: 1 }), {
+        tipo: 'absorvido', texto: AVISO_DO_SKU_ABSORVIDO, faltas: [], extra: null,
+    });
+    assert.equal(AVISO_DO_SKU_ABSORVIDO, 'Este SKU já tinha anúncio: o produto ficou ligado a ele e vai direto para a etapa 6.');
+    assert.equal(resultadoDoSalvar(CADASTRO, SALVO_COMPLETO, null, { absorvidos: 0 }).tipo, 'completo', 'sem absorção, como antes');
+
+    // O `absorvidos_da_espera` dos lotes é somado (é dele que o hook tira o aviso).
+    const estado = comMudancas(CADASTRO_TRAVADO, { variacoes: { 21: { codigo: 'SKU-NA-ESPERA' }, 22: { estoque: '5' } } });
+    const r = await gravarCadastro({
+        estado,
+        retrato: CADASTRO_TRAVADO,
+        porPedido: 1,
+        enviarLinhas: async (linhas) => ({ erros: [], totais: { criadas: 0, atualizadas: 1, sem_mudanca: 0, com_erro: 0, absorvidos_da_espera: linhas[0].chave === 'v21' ? 1 : 0 } }),
+    });
+    assert.equal(r.totais.absorvidos_da_espera, 1);
+    assert.equal(nadaMudou(r), false);
+});
+
+test('revisão F1 — o produto novo (e:novo) tem a guarda simples: nome ou SKU digitados e ainda não criado', () => {
+    assert.equal(produtoNovoMexido({ nome: '', codigo: '' }), false);
+    assert.equal(produtoNovoMexido({ nome: '   ', codigo: '' }), false);
+    assert.equal(produtoNovoMexido({ nome: 'Poltrona', codigo: '' }), true);
+    assert.equal(produtoNovoMexido({ nome: '', codigo: 'POLT-1' }), true);
+    assert.equal(produtoNovoMexido({ nome: 'Poltrona', codigo: 'POLT-1', criando: true }), false, 'durante o envio, nada a perder');
+    assert.equal(produtoNovoMexido({ nome: 'Poltrona', codigo: 'POLT-1', criado: true }), false);
+
+    const novo = lerSemComentarios('resources/js/Components/Trilha/Cadastro/NovoProduto.jsx');
+    assert.match(novo, /useGuardaDaGaveta\(guardiao\)/);
+    assert.match(novo, /mexido: \(\) => !!agora\.current\.mexido/);
+    assert.match(novo, /addEventListener\('beforeunload'/);
+});
+
+test('F2 — os hooks da categoria e da ficha são .js sem classe; "Mercado Livre" fora da lib pura', () => {
+    for (const f of ['useCategoriaDaTrilha.js', 'useFichaDaTrilha.js']) {
+        const fonte = fs.readFileSync(path.resolve(RAIZ, `resources/js/Components/Trilha/Cadastro/${f}`), 'utf8');
+        assert.ok(!fonte.includes('className'), f);
+    }
+    assert.equal(lerSemComentarios('resources/js/lib/trilhaCadastro.js').match(/Mercado\s+Livre/i), null);
 });

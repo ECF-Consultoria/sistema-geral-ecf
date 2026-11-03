@@ -115,7 +115,8 @@ class EstruturaOfertaService
         }
 
         $empresaId = (int) $empresa->id;
-        DB::afterCommit(fn () => app(PreparoIaAgenda::class)->aoSalvar($empresaId, $produtos));
+        // Na empresa da trilha de trabalho, só o produto completo (ou que o Publicador já conhece) vai até lá.
+        DB::afterCommit(fn () => app(PreparoIaAgenda::class)->aoSalvar($empresaId, \App\Services\Trilha\CadastroNaTrilha::soOsQueCabem($empresaId, $produtos)));
     }
 
     /**

@@ -125,7 +125,8 @@ class ImportadorFichasTecnicas
 
         // O produto mudou: o preparo dele é agendado, como no salvar da ficha na tela.
         if ($gravados !== []) {
-            app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, array_keys($gravados));
+            // Na empresa da trilha de trabalho, só o produto completo (ou que o Publicador já conhece) vai até lá.
+            app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, \App\Services\Trilha\CadastroNaTrilha::soOsQueCabem((int) $empresa->id, array_keys($gravados)));
         }
 
         $naoEntraram = [];

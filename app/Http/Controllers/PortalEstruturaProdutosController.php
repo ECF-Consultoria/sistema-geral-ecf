@@ -66,12 +66,6 @@ class PortalEstruturaProdutosController extends Controller
     /** Limites mostrados na tela (o servidor valida por conta própria). */
     private const LIMITES = ['colar' => 200, 'arquivo_mb' => 2, 'linhas_arquivo' => 1000];
 
-    /**
-     * Teto de opções num campo multivalor (os chips). Não é regra de negócio: é só para um
-     * corpo absurdo não chegar ao serviço. A lista de opções de uma categoria não passa disso.
-     */
-    private const MAX_OPCOES_MULTIVALOR = 60;
-
     /** O que a pessoa lê quando o arquivo da importação não passa (sem isso chegava "validation.mimes"). */
     private const MENSAGENS_DO_ARQUIVO = [
         'arquivo.required' => 'Escolha a planilha (.xlsx).',
@@ -686,31 +680,8 @@ class PortalEstruturaProdutosController extends Controller
         $empresa = PortalContexto::empresa();
         $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
 
-        $request->validate([
-            'atributos'           => 'present|array|max:300',
-            'atributos.*'         => 'array',
-            'atributos.*.id'      => 'required|string|max:80',
-            'atributos.*.unidade' => 'nullable|string|max:20',
-            // "Não se aplica" vem por marcador próprio, nunca pelo valor (ver FichaTecnicaDoProduto::NAO_SE_APLICA).
-            'atributos.*.nao_se_aplica' => 'nullable|boolean',
-            // O valor veio do "Outro" de uma lista (11/10/2026): texto escrito à mão, nunca id de opção.
-            // Na lista de várias opções, `proprios` diz quais itens de `valor` são texto.
-            'atributos.*.proprio' => 'nullable|boolean',
-            'atributos.*.proprios' => 'nullable|array|max:50',
-            'atributos.*.proprios.*' => 'string|max:255',
-            // Escalar, ou a LISTA de opções de um campo multivalor (os chips). Quem confere se
-            // o campo aceita lista, e se cada opção existe, é o serviço — contra a definição
-            // da categoria. Aqui só se barra o que não é nenhum dos dois (objeto, lista aninhada).
-            'atributos.*.valor'   => ['nullable', function (string $campo, mixed $valor, \Closure $falhou) {
-                if (is_scalar($valor)) {
-                    return;
-                }
-                if (is_array($valor) && count($valor) <= self::MAX_OPCOES_MULTIVALOR && ! array_filter($valor, fn ($v) => ! is_scalar($v))) {
-                    return;
-                }
-                $falhou('Valor inválido.');
-            }],
-        ]);
+        // A forma do corpo mora em `RegrasDoCadastro`, a mesma da ficha na trilha (3ª entrega).
+        $request->validate(RegrasDoCadastro::fichaTecnica());
 
         $salvos = $this->fichaTecnica->gravar($empresa, $p, (array) $request->input('atributos'), PortalContexto::ator());
         $this->prepararNoPublicador($empresa, [$p->id]);
@@ -729,26 +700,15 @@ class PortalEstruturaProdutosController extends Controller
         $empresa = PortalContexto::empresa();
         $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
 
-        $dados = $request->validate([
-            'categoria'   => 'nullable|string|max:20',
-            'titulo'      => 'nullable|string|max:255',
-            'descricao'   => 'nullable|string|max:5000',
-            'atributos'   => 'present|array|max:300',
-            'atributos.*' => 'array',
-            'atributos.*.id' => 'required|string|max:80',
-        ]);
+        // A forma do corpo e as duas recusas moram em `RegrasDoCadastro`, as mesmas da IA da ficha na trilha.
+        $dados = $request->validate(RegrasDoCadastro::iaDaFicha());
 
-        if (! filled($p->categoria_ml_id)) {
-            return response()->json(['message' => 'Escolha a categoria e salve o produto antes de usar a IA.'], 422);
-        }
-        if (filled($dados['categoria'] ?? null) && $dados['categoria'] !== $p->categoria_ml_id) {
-            return response()->json(['message' => 'A categoria mudou: salve o produto antes de usar a IA.'], 422);
+        $recusa = RegrasDoCadastro::recusaDaIa($p, $dados['categoria'] ?? null);
+        if ($recusa !== null) {
+            return response()->json(['message' => $recusa], 422);
         }
 
-        $atuais = [];
-        foreach ((array) $request->input('atributos') as $a) {
-            $atuais[strtoupper(trim((string) ($a['id'] ?? '')))] = (array) $a;
-        }
+        $atuais = RegrasDoCadastro::atributosDaTela((array) $request->input('atributos'));
 
         try {
             $r = $ia->sugerir($p, $atuais, (string) ($dados['titulo'] ?? ''), (string) ($dados['descricao'] ?? ''));
@@ -1060,7 +1020,8 @@ class PortalEstruturaProdutosController extends Controller
      */
     private function prepararNoPublicador(\App\Models\Company $empresa, array $produtoIds): void
     {
-        app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, $produtoIds);
+        // Na empresa da trilha de trabalho, só o produto completo (ou que o Publicador já conhece) vai até lá.
+        app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, \App\Services\Trilha\CadastroNaTrilha::soOsQueCabem((int) $empresa->id, $produtoIds));
     }
 
     private function variacaoDaEmpresa(int $empresaId, int $variacao): EstruturaProdutoVariacao

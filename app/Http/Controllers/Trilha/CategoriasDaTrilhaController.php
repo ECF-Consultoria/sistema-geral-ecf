@@ -45,9 +45,12 @@ class CategoriasDaTrilhaController extends Controller
 
         try {
             $saida = [];
-            foreach ($categorias->sugerir($dados['q']) as $c) {
-                // O `sugerir` já leu as categorias em lote: o `detalhe` sai do cache compartilhado.
-                $detalhe = $categorias->detalhe($c['id']);
+            $candidatas = $categorias->sugerir($dados['q']);
+            // UMA leitura em lote (paralela e com o cache do `sugerir`): o `detalhe` uma a uma, com o ML lento,
+            // somava 15 s por candidata e estourava o tempo do PHP — um 500 que o catch não pega (revisão da F1).
+            $detalhes = $categorias->detalhes(array_column($candidatas, 'id'));
+            foreach ($candidatas as $c) {
+                $detalhe = $detalhes[$c['id']] ?? null;
                 $saida[] = [
                     'id'            => $c['id'],
                     'nome'          => $c['nome'],

@@ -52,6 +52,12 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:120,1,trilha.cadastro.abrir')->name('cadastro.abrir');
         Route::post('/{company}/produtos/{produto}/linhas', [CadastroDaTrilhaController::class, 'linhas'])
             ->middleware('throttle:120,1,trilha.cadastro.linhas')->name('cadastro.linhas');
+        // A ficha técnica (F2): grava a ficha inteira da gaveta, incompleta se for o caso; e o "Preencher com IA" dela
+        // (F2b), que só sugere — a IA é paga por clique, daí o teto baixo.
+        Route::put('/{company}/produtos/{produto}/ficha-tecnica', [CadastroDaTrilhaController::class, 'ficha'])
+            ->middleware('throttle:60,1,trilha.cadastro.ficha')->name('cadastro.ficha');
+        Route::post('/{company}/produtos/{produto}/ficha-tecnica/ia', [CadastroDaTrilhaController::class, 'sugerirFicha'])
+            ->middleware('throttle:10,1,trilha.cadastro.ia')->name('cadastro.ia');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

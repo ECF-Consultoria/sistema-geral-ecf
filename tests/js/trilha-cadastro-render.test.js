@@ -6,14 +6,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import {
     CADASTRO,
+    CADASTRO_CATEGORIA_TRAVADA,
+    CADASTRO_COM_CATEGORIA,
     CADASTRO_ONDA_COMECOU,
     CADASTRO_TRAVADO,
+    CAMPOS_DA_CATEGORIA,
+    CANDIDATAS,
     MOTIVO_DA_TRAVA,
     PROPS_TRABALHO,
     SALVO_COMPLETO,
     SALVO_INCOMPLETO,
+    TERMOS_DA_CATEGORIA,
 } from './_trilha-exemplo.js';
-import { estadoDoRetrato, mexido, resultadoDoSalvar } from '../../resources/js/lib/trilhaCadastro.js';
+import { categoriaDaGaveta, estadoDoRetrato, gruposDaFicha, mexido, resultadoDoSalvar, textoDaIa } from '../../resources/js/lib/trilhaCadastro.js';
+import { camposDeMedidas, gruposSemMedidas } from '../../resources/js/lib/medidasDoProduto.js';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,6 +87,7 @@ const M = await montarTodos({
     novo: 'resources/js/Components/Trilha/Cadastro/NovoProduto.jsx',
     quadros: 'resources/js/Components/Trilha/Cadastro/QuadrosDaLista.jsx',
     produto: 'resources/js/Components/Trilha/Cadastro/CaixaDoProduto.jsx',
+    campo: 'resources/js/Components/Trilha/Cadastro/CampoDaFicha.jsx',
 });
 
 const { createElement: h } = await import('react');
@@ -156,10 +163,12 @@ test('a gaveta na ordem do protótipo: Onde está, a Lista de produtos (nome →
     // Cabeçalho: sobrelinha, nome e "SKU · família".
     for (const s of ['Produto da lista', 'Criado-mudo 2 gavetas', 'CRIADO-01 · sem família']) assert.ok(t.includes(s), `faltou: ${s}`);
 
-    const caixas = ['onde-esta', 'lista', 'ofertas'].map((c) => saida.indexOf(`data-caixa="${c}"`));
+    const caixas = ['onde-esta', 'lista', 'ficha', 'ofertas'].map((c) => saida.indexOf(`data-caixa="${c}"`));
     assert.ok(caixas.every((i, n) => i > 0 && (n === 0 || i > caixas[n - 1])), `ordem das caixas: ${caixas}`);
-    // A ordem do §5.3: nome, família, ambientes, título e, sem variação, SKU, custo, estoque e embalagem; a descrição no fim.
-    const campos = ['nome', 'familia', 'ambientes', 'titulo', 'codigo', 'custo', 'estoque', 'volumes', 'descricao'].map((c) => saida.indexOf(`data-campo="${c}"`));
+    // A ordem do §5.3: nome, CATEGORIA (F2, logo abaixo do nome), família, ambientes, título e, sem variação, SKU,
+    // custo, estoque e embalagem; as medidas do produto montado; a descrição no fim.
+    const campos = ['nome', 'categoria', 'familia', 'ambientes', 'titulo', 'codigo', 'custo', 'estoque', 'volumes', 'medidas-do-produto', 'descricao']
+        .map((c) => saida.indexOf(`data-campo="${c}"`));
     assert.ok(campos.every((i, n) => i > 0 && (n === 0 || i > campos[n - 1])), `ordem dos campos: ${campos}`);
 
     // O "Onde está" com o dono da trilha de trabalho.
@@ -168,8 +177,9 @@ test('a gaveta na ordem do protótipo: Onde está, a Lista de produtos (nome →
     // A pílula e as faltas: as do SERVIDOR, nada recalculado.
     assert.match(saida, /data-caixa="lista"[\s\S]*?faltam 8/);
     for (const falta of CADASTRO.situacao.faltas) assert.ok(t.includes(falta), `falta não mostrada: ${falta}`);
-    // O que esta fatia ainda não completa aqui aponta o Portal da empresa (saída de emergência até a F5).
-    assert.ok(t.includes('Categoria, ficha técnica e fotos ainda não se completam por aqui'));
+    // F2: a categoria e a ficha se completam AQUI; só as fotos e o frete (F3) ainda apontam o Portal da empresa.
+    assert.ok(t.includes('As fotos e o frete ainda não se completam por aqui: use o Portal da empresa.'), t);
+    assert.ok(!/categoria|ficha/i.test(texto(saida.match(/data-nota-do-portal=""[\s\S]*?<\/div>/)?.[0] ?? '')), 'a nota não fala mais de categoria nem de ficha');
     assert.match(saida, /href="\/companies\/459\/portal"[^>]*data-link="portal"/);
 
     // O nome é o começo do foco.
@@ -364,4 +374,360 @@ test('as peças do produto: a família nova ganha "(nova)"; o SKU do Bling é s�
     const estoqueDoBling = renderToStaticMarkup(h(M.produto.CampoDoEstoque, { variacao: { codigo: 'BL-1', estoque: '3' }, bling: true, onCampo: nada }));
     assert.ok(tag(estoqueDoBling, 'value="3"', 'input').includes('readonly=""'));
     assert.ok(texto(estoqueDoBling).includes('Vem do Bling: muda lá.'));
+});
+
+// ═══ F2 — a categoria e a ficha técnica ════════════════════════════════════
+//
+// Os hooks (`useCategoriaDaTrilha`, `useFichaDaTrilha`) são montados à mão, como o do cadastro: a gaveta desenha o
+// que eles devolvem. A ficha "carregada" usa as funções de verdade sobre a definição do exemplo.
+
+const BUSCA_PARADA = { situacao: 'parada', candidatas: [], consulta: null, mudouEm: 0 };
+
+/** O que `useCategoriaDaTrilha` devolve, com `extra` por cima. */
+const categoriaDoHook = (extra = {}) => ({
+    sugestao: BUSCA_PARADA,
+    sugerida: null,
+    tentarSugestaoDeNovo: nada,
+    aberto: null,
+    consulta: '',
+    mudarConsulta: nada,
+    lista: BUSCA_PARADA,
+    tentarListaDeNovo: nada,
+    inicioDaArvore: null,
+    aberturaDaArvore: 0,
+    buscarNivel: async () => null,
+    abrirBusca: nada,
+    abrirNavegacao: nada,
+    fechar: nada,
+    escolher: nada,
+    troca: null,
+    confirmarTroca: nada,
+    manterAtual: nada,
+    termos: { categoria: null, dados: null, limite: null, carregando: false, erro: null },
+    tentarTermosDeNovo: nada,
+    ...extra,
+});
+
+/** O que `useFichaDaTrilha` devolve com os campos da categoria do exemplo já carregados. */
+function fichaDoHook(retrato, extra = {}) {
+    const doProduto = gruposDaFicha(CAMPOS_DA_CATEGORIA.grupos, retrato);
+
+    return {
+        definicao: { categoria: 'MLB1902', grupos: CAMPOS_DA_CATEGORIA.grupos },
+        doProduto,
+        grupos: gruposSemMedidas(doProduto),
+        medidas: camposDeMedidas(doProduto),
+        carregando: false,
+        indisponivel: false,
+        tentarDeNovo: nada,
+        sugeridos: new Set(),
+        esquecerSugestao: nada,
+        ia: { rodando: false, resultado: null },
+        podeIa: false,
+        preencherComIa: nada,
+        ...extra,
+    };
+}
+
+/** O trecho do HTML de uma caixa (`data-caixa="…"`) até a próxima. */
+const caixa = (html, nome) => {
+    const inicio = html.indexOf(`data-caixa="${nome}"`);
+    const fim = html.indexOf('data-caixa="', inicio + 12);
+
+    return inicio < 0 ? '' : html.slice(inicio, fim < 0 ? undefined : fim);
+};
+
+test('F2 — "Categoria sugerida" aparece SEM aplicar: a gaveta segue sem categoria, nada mexido, a ficha espera a escolha', () => {
+    const sugestao = { situacao: 'pronta', candidatas: CANDIDATAS.categorias, consulta: 'Criado-mudo 2 gavetas', mudouEm: 1 };
+    const saida = desenharGaveta(CADASTRO, { categoria: categoriaDoHook({ sugestao, sugerida: CANDIDATAS.categorias[1] }) });
+    const t = texto(saida);
+
+    assert.ok(t.includes('Categoria do Mercado Livre *'), 'o rótulo, com o * do obrigatório');
+    assert.ok(t.includes('Categoria sugerida: Casa, Móveis e Decoração › Quarto › Criados-mudos'), t);
+    assert.match(saida, /data-categoria-sugerida="MLB1902"/);
+    for (const acao of ['usar-categoria-sugerida', 'ver-outras-categorias', 'navegar-categorias']) assert.ok(saida.includes(`data-acao="${acao}"`), acao);
+    assert.ok(tag(saida, 'data-acao="usar-categoria-sugerida"').includes('bg-trilha-navy'), '"Usar esta" é a ação principal');
+
+    // Nada foi aplicado (D-06): sem categoria na gaveta, a ficha e as medidas pedem a escolha; o "Salvar" fica desligado.
+    assert.ok(!saida.includes('data-categoria-escolhida'));
+    assert.ok(caixa(saida, 'ficha').includes('data-ficha-sem-categoria') && t.includes('Digite o nome do item: o sistema sugere a categoria e abre os campos dela.'));
+    assert.ok(t.includes('Escolha a categoria para ver as medidas do produto.'));
+    assert.ok(tag(saida, 'data-acao="salvar-cadastro"').includes('disabled=""'));
+    assert.ok(t.includes('Sem categoria, vale o limite de 60 letras.') && t.includes('0 de 60'));
+
+    // Sem candidata, ou com o catálogo fora: "Não achei pelo nome. [Buscar] [Navegar] [Tentar de novo]".
+    const naoAchei = desenharGaveta(CADASTRO, { categoria: categoriaDoHook({ sugestao: { ...sugestao, situacao: 'nada', candidatas: [] } }) });
+    assert.ok(texto(naoAchei).includes('Não achei pelo nome.'));
+    for (const acao of ['buscar-categoria', 'navegar-categorias', 'tentar-sugestao-de-novo']) assert.ok(naoAchei.includes(`data-acao="${acao}"`), acao);
+    // Candidatas, mas nenhuma usável: "Ver outras" leva a elas.
+    const semUsavel = desenharGaveta(CADASTRO, { categoria: categoriaDoHook({ sugestao: { ...sugestao, candidatas: [CANDIDATAS.categorias[0]] } }) });
+    assert.ok(texto(semUsavel).includes('Não achei uma categoria certa pelo nome (1 parecida).') && semUsavel.includes('data-acao="ver-outras-categorias"'));
+});
+
+test('F2 — "Usar esta" põe a categoria NA GAVETA ("nova · grava ao salvar"); "Ver outras" diz por que não serve; trocar pede confirmação', () => {
+    const estado = estadoDoRetrato(CADASTRO);
+    estado.produto.categoria = categoriaDaGaveta(CANDIDATAS.categorias[1]);
+    const escolhida = desenharGaveta(CADASTRO, { estado, ficha: fichaDoHook(CADASTRO) });
+    const t = texto(escolhida);
+    assert.match(escolhida, /data-categoria-escolhida="MLB1902"/);
+    assert.ok(t.includes('Casa, Móveis e Decoração › Quarto › Criados-mudos') && t.includes('nova · grava ao salvar'));
+    assert.ok(t.includes('Há mudanças não salvas.') && !tag(escolhida, 'data-acao="salvar-cadastro"').includes('disabled=""'), 'escolher é mexer: o "Salvar" grava');
+    assert.ok(escolhida.includes('data-acao="trocar-categoria"'));
+    // A ficha abre com os campos da categoria escolhida (mesmo antes de salvar).
+    assert.match(caixa(escolhida, 'ficha'), /data-caminho-da-ficha="MLB1902"/);
+
+    // A lista de "Ver outras"/"Buscar": a que não é a última diz "mais específica" (abre a navegação nela); a fechada
+    // para produto novo fica desligada; a usável diz "Usar esta".
+    const lista = { situacao: 'pronta', candidatas: CANDIDATAS.categorias, consulta: 'Criado-mudo', mudouEm: 1 };
+    const aberta = desenharGaveta(CADASTRO, { categoria: categoriaDoHook({ aberto: 'buscar', consulta: 'Criado-mudo', lista }) });
+    assert.match(aberta, /data-painel-da-categoria="buscar"/);
+    const item = (id) => texto(aberta.match(new RegExp(`data-candidata="${id}"[\\s\\S]*?</button>`))?.[0] ?? '');
+    assert.ok(item('MLB1901').includes('Escolha uma mais específica'), item('MLB1901'));
+    assert.ok(item('MLB1902').includes('Usar esta'), item('MLB1902'));
+    assert.ok(tag(aberta, 'data-candidata="MLB1903"').includes('disabled=""') && item('MLB1903').includes('Não aceita produto novo'));
+    assert.ok(tag(aberta, 'data-busca-de-categoria', 'input').includes('value="Criado-mudo"'));
+
+    // "Navegar": a árvore nível a nível, dentro da gaveta (abre carregando o 1º nível).
+    const arvore = desenharGaveta(CADASTRO, { categoria: categoriaDoHook({ aberto: 'navegar' }) });
+    assert.match(arvore, /data-painel-da-categoria="navegar"/);
+    assert.ok(texto(arvore).includes('Todas as categorias') && texto(arvore).includes('Carregando as categorias…'));
+
+    // Trocar a que já estava: a confirmação DENTRO da gaveta (nada de window.confirm), com o foco em "Manter a atual".
+    const troca = desenharGaveta(CADASTRO_COM_CATEGORIA, {
+        categoria: categoriaDoHook({ troca: { id: 'MLB777', nome: 'Mesas de cabeceira', caminho_texto: 'Casa > Mesas de cabeceira' } }),
+        ficha: fichaDoHook(CADASTRO_COM_CATEGORIA),
+    });
+    const tt = texto(troca);
+    assert.match(tt, /Trocar para Casa › Mesas de cabeceira ?\?/);
+    assert.ok(tt.includes('Os campos da ficha que a categoria nova não tem saem quando você salvar.'), tt);
+    assert.ok(troca.includes('data-acao="confirmar-troca-de-categoria"') && troca.includes('data-acao="manter-categoria"'));
+});
+
+test('F2 — a ficha: * nos obrigatórios, que vêm primeiro; "Outras características (N)" recolhidas; o texto da equipe; Marca com sugestões', () => {
+    const saida = desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA) });
+    const ficha = caixa(saida, 'ficha');
+    const t = texto(ficha);
+
+    assert.ok(t.includes('Ficha técnica do Mercado Livre'));
+    assert.ok(t.includes('Os campos vêm da categoria do Mercado Livre. Os marcados com * são os obrigatórios da categoria; a revisão do Publicador ainda confere outros antes de publicar.'));
+    assert.match(ficha, /data-caminho-da-ficha="MLB1902"/);
+    assert.ok(t.includes('1 obrigatória faltando'), 'falta o Material (a Marca está salva)');
+    // O filtro, com as contas de lib/fichaLayout (as medidas do produto montado ficam fora: são da Lista).
+    for (const [chave, n] of [['todas', 7], ['faltando', 6], ['preenchidas', 1]]) {
+        assert.match(ficha, new RegExp(`data-filtro-da-ficha="${chave}"[^>]*>[^<]*<span[^>]*>${n}<`), chave);
+    }
+
+    // As obrigatórias primeiro, cada uma com "*"; nada de `required` (o obrigatório vazio grava e vira falta).
+    const obrigatorias = ficha.match(/data-grupo-tecnico="obrigatorias"[\s\S]*?data-grupo-tecnico="outras"/)?.[0] ?? '';
+    const rotulos = [...obrigatorias.matchAll(/data-obrigatorio="sim"[\s\S]*?(<label[\s\S]*?<\/label>)/g)].map((m) => texto(m[1]).trim());
+    assert.deepEqual(rotulos, ['Marca *', 'Material principal *']);
+    assert.equal((obrigatorias.match(/data-obrigatorio="nao"/g) ?? []).length, 0);
+    assert.doesNotMatch(saida, /\srequired=""/);
+    assert.ok(tag(ficha, 'value="ECF Móveis"', 'input').includes('aria-required="true"'));
+    // A Marca é texto livre com sugestões (`datalist`).
+    assert.match(ficha, /<datalist[^>]*data-sugestoes=""[^>]*><option value="Genérica"><\/option><option value="ECF Móveis">/);
+
+    // As outras, recolhidas: o botão diz quantas, e os campos não estão na tela.
+    assert.ok(tag(ficha, 'data-acao="outras-caracteristicas"').includes('aria-expanded="false"'));
+    assert.ok(t.includes('Outras características (5)'));
+    assert.ok(!t.includes('Com gavetas') && !t.includes('Acabamento'));
+    // Fora da ficha: o Modelo (o servidor nem manda) e, no produto que varia por cor, o campo Cor.
+    assert.ok(!t.includes('Modelo'));
+    const porCor = desenharGaveta({ ...CADASTRO_COM_CATEGORIA, produto: { ...CADASTRO_COM_CATEGORIA.produto, eixo: 'cor' } }, { ficha: fichaDoHook({ ...CADASTRO_COM_CATEGORIA, produto: { ...CADASTRO_COM_CATEGORIA.produto, eixo: 'cor' } }) });
+    assert.ok(texto(caixa(porCor, 'ficha')).includes('Outras características (4)'));
+
+    // As medidas do produto montado: na caixa da Lista, perto da embalagem — campos da ficha, com a unidade.
+    const medidas = saida.match(/data-campo="medidas-do-produto"[\s\S]*?data-campo="descricao"/)?.[0] ?? '';
+    assert.ok(caixa(saida, 'lista').includes('data-campo="medidas-do-produto"'));
+    assert.ok(texto(medidas).includes('Largura') && texto(medidas).includes('Altura'));
+    assert.equal((medidas.match(/data-unidade-sufixo=""[^>]*>cm</g) ?? []).length, 2);
+
+    // Os campos da categoria ainda carregando / fora do ar.
+    const carregando = caixa(desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { carregando: true, grupos: [], medidas: [] }) }), 'ficha');
+    assert.ok(texto(carregando).includes('Carregando os campos da categoria…'));
+    const fora = caixa(desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { indisponivel: true, grupos: [], medidas: [] }) }), 'ficha');
+    assert.ok(texto(fora).includes('Não deu para carregar os campos da categoria agora.') && fora.includes('data-acao="recarregar-ficha"'));
+
+    // O erro do passo 2 (422 por campo) marca o campo da ficha.
+    const comErro = desenharGaveta(CADASTRO_COM_CATEGORIA, {
+        ficha: fichaDoHook(CADASTRO_COM_CATEGORIA),
+        erros: { porChave: {}, soltas: [], ficha: { MAIN_MATERIAL: 'Escolha uma das opções.' } },
+        erroGeral: 'Os dados do produto foram salvos; confira os campos marcados na ficha.',
+    });
+    assert.match(comErro, /data-erro-do-campo-tecnico=""[^>]*>Escolha uma das opções\.</);
+    assert.ok(texto(comErro).includes('Os dados do produto foram salvos; confira os campos marcados na ficha.'));
+});
+
+test('F2 — cada tipo de campo da ficha, com os data-* do Portal: Sim/Não, unidade, várias opções, "Outro", "Não se aplica"', () => {
+    const campos = Object.fromEntries(CAMPOS_DA_CATEGORIA.grupos.flatMap((g) => g.campos).map((c) => [c.id, c]));
+    const desenhar = (id, atual = null, extra = {}) => renderToStaticMarkup(h(M.campo.default, { campo: campos[id], atual, onMudar: nada, ...extra }));
+
+    const simNao = desenhar('WITH_DRAWERS', { valor: 'Sim', unidade: '' });
+    assert.match(simNao, /data-campo-tecnico="" data-tipo="sim_nao" data-obrigatorio="nao"/);
+    assert.ok(tag(simNao, 'data-opcao="Sim"').includes('aria-pressed="true"') && tag(simNao, 'data-opcao="Não"').includes('aria-pressed="false"'));
+
+    const peso = desenhar('MAX_WEIGHT', { valor: '30.5', unidade: 'g' });
+    assert.ok(tag(peso, 'value="30,5"', 'input'), 'o número com vírgula');
+    assert.match(peso, /<select[^>]*aria-label="Unidade de Peso máximo suportado"/);
+    assert.match(desenhar('WIDTH'), /data-unidade-sufixo=""[^>]*>cm</);
+
+    const estilos = desenhar('STYLES', { valor: ['10'], unidade: '' });
+    assert.ok(tag(estilos, 'data-opcao="10"', 'input').includes('checked=""') && !tag(estilos, 'data-opcao="11"', 'input').includes('checked'));
+    assert.match(estilos, /data-multivalor=""/);
+
+    const material = desenhar('MAIN_MATERIAL', { valor: 'Pinus', unidade: '', outro: true });
+    assert.ok(texto(material).includes('Outro (escrever)'));
+    assert.ok(tag(material, 'data-valor-proprio', 'input').includes('value="Pinus"'));
+    assert.match(material, /data-obrigatorio="sim"/);
+
+    const acabamento = desenhar('FINISH', { valor: 'Verniz', unidade: '', naoSeAplica: true });
+    assert.match(acabamento, /data-nao-se-aplica="sim"/);
+    assert.ok(tag(acabamento, 'data-acao="nao-se-aplica"', 'input').includes('checked=""'));
+    assert.match(acabamento, /<fieldset disabled=""/, 'marcado, o controle trava (e o valor fica guardado)');
+    assert.ok(!desenhar('BRAND').includes('data-acao="nao-se-aplica"'), 'só onde o servidor oferece');
+
+    const comErroEIa = desenhar('BRAND', { valor: 'X', unidade: '' }, { erro: 'Até 60 letras.', sugeridoIa: true });
+    assert.match(comErroEIa, /role="alert"[^>]*data-erro-do-campo-tecnico=""[^>]*>Até 60 letras\.</);
+    assert.ok(tag(comErroEIa, 'value="X"', 'input').includes('aria-invalid="true"'));
+    assert.match(comErroEIa, /data-sugestao-ia=""[^>]*>sugestão da IA</);
+});
+
+test('F2 — categoria TRAVADA (o produto já está no Publicador): só leitura, "Para trocar, use o editor do Publicador"; o resto segue editável', () => {
+    const produto = { ...produtoDaTrilha(9), url_publicador: '/mlb/anuncios/publicador/produtos/90/editor' };
+    const saida = desenharGaveta(CADASTRO_CATEGORIA_TRAVADA, { ficha: fichaDoHook(CADASTRO_CATEGORIA_TRAVADA) }, { produto });
+    const t = texto(saida);
+    assert.match(saida, /data-categoria-travada=""/);
+    assert.ok(t.includes('Casa, Móveis e Decoração › Quarto › Criados-mudos') && t.includes('Para trocar, use o editor do Publicador.'));
+    assert.match(saida, /href="\/mlb\/anuncios\/publicador\/produtos\/90\/editor"[^>]*data-link="publicador-categoria"/);
+    for (const acao of ['trocar-categoria', 'usar-categoria-sugerida', 'buscar-categoria', 'navegar-categorias']) assert.ok(!saida.includes(`data-acao="${acao}"`), acao);
+    // O produto continua editável (só a categoria trava): sem o fieldset desligado, e a ficha aberta.
+    assert.doesNotMatch(saida, /<fieldset disabled=""/);
+    assert.match(caixa(saida, 'ficha'), /data-filtro-da-ficha="todas"/);
+
+    // O produto que andou (só leitura): a categoria aparece, sem nenhuma ação.
+    const travado = desenharGaveta(CADASTRO_TRAVADO);
+    assert.match(travado, /data-categoria-travada=""/);
+    assert.ok(texto(travado).includes('Casa › Móveis › Cadeiras'));
+    assert.ok(!travado.includes('data-acao="trocar-categoria"') && !travado.includes('Para trocar, use o editor do Publicador.'));
+});
+
+test('F2b — "Preencher com IA" só com a categoria SALVA ("usa IA" ao lado); escolhida e não salva, só o aviso; o resultado e as sugestões marcadas', () => {
+    const salva = desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { podeIa: true }) });
+    assert.ok(salva.includes('data-acao="preencher-com-ia"'));
+    assert.match(salva, /data-usa-ia=""[^>]*>usa IA</);
+
+    // Escolhida e ainda não salva: nada de botão — só o aviso.
+    const estado = estadoDoRetrato(CADASTRO);
+    estado.produto.categoria = categoriaDaGaveta(CANDIDATAS.categorias[1]);
+    const naoSalva = desenharGaveta(CADASTRO, { estado, ficha: fichaDoHook(CADASTRO) });
+    assert.ok(!naoSalva.includes('data-acao="preencher-com-ia"'));
+    assert.ok(texto(naoSalva).includes('Com a categoria salva, a IA pode preencher os campos vazios (usa IA).'));
+    // Trocada e não salva: o aviso pede para salvar a nova.
+    const trocada = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    trocada.produto.categoria = { id: 'MLB777', nome: 'Mesas de cabeceira', caminho_texto: 'Casa > Mesas de cabeceira' };
+    const tt = texto(desenharGaveta(CADASTRO_COM_CATEGORIA, { estado: trocada, ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { definicao: { categoria: 'MLB777', grupos: CAMPOS_DA_CATEGORIA.grupos } }) }));
+    assert.ok(tt.includes('Salve a categoria nova para a IA preencher os campos vazios (usa IA).'), tt);
+    // O produto só para leitura não oferece nada.
+    assert.ok(!desenharGaveta(CADASTRO_TRAVADO, { ficha: fichaDoHook(CADASTRO_TRAVADO) }).includes('usa IA'));
+
+    // Depois do clique: o resultado em uma frase e os campos que a IA preencheu marcados (ainda não salvos).
+    const r = { aplicados: 2, naoSeAplica: 0 };
+    const estadoIa = estadoDoRetrato(CADASTRO_COM_CATEGORIA);
+    estadoIa.ficha.MAIN_MATERIAL = { valor: '1', unidade: '' };
+    const depois = desenharGaveta(CADASTRO_COM_CATEGORIA, {
+        estado: estadoIa,
+        ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { podeIa: true, sugeridos: new Set(['MAIN_MATERIAL']), ia: { rodando: false, resultado: { ...r, texto: textoDaIa(r) } } }),
+    });
+    assert.match(depois, /data-resultado-ia="ok"/);
+    assert.ok(texto(depois).includes('A IA preencheu 2 campos. Confira os marcados "sugestão da IA" e clique em Salvar.'));
+    assert.equal((depois.match(/data-sugestao-ia=""/g) ?? []).length, 1);
+    assert.ok(texto(depois).includes('Há mudanças não salvas.'), 'nada gravou: o "Salvar" é que grava');
+    // Rodando: o botão fica ocupado (continua focável).
+    const rodando = desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA, { podeIa: true, ia: { rodando: true, resultado: null } }) });
+    assert.ok(tag(rodando, 'data-acao="preencher-com-ia"').includes('aria-disabled="true"') && texto(rodando).includes('A IA está lendo o produto…'));
+});
+
+test('F2 — o título com os termos e o limite da categoria: o chip do termo que o título já tem vem marcado', () => {
+    const termos = { categoria: 'MLB1902', dados: TERMOS_DA_CATEGORIA, limite: 70, carregando: false, erro: null };
+    const saida = desenharGaveta(CADASTRO_COM_CATEGORIA, { categoria: categoriaDoHook({ termos }), ficha: fichaDoHook(CADASTRO_COM_CATEGORIA) });
+    const t = texto(saida);
+    assert.ok(t.includes('28 de 70'), 'o contador contra o limite da categoria');
+    assert.ok(!t.includes('Sem categoria, vale o limite'));
+    assert.match(saida, /data-termos-mais-buscados="3"/);
+    assert.ok(tag(saida, 'data-termo="jatobá"').includes('aria-pressed="true"'), 'o título tem "Jatobá"');
+    assert.ok(tag(saida, 'data-termo="mesa de cabeceira"').includes('aria-pressed="false"'));
+    // Termos fora do ar: dá para digitar, com "Tentar de novo".
+    const fora = desenharGaveta(CADASTRO_COM_CATEGORIA, {
+        categoria: categoriaDoHook({ termos: { ...termos, dados: null, erro: 'Não deu para carregar os termos agora. O título pode ser digitado normalmente.' } }),
+    });
+    assert.match(fora, /data-erro-termos=""/);
+});
+
+// ═══ Revisão da F1 (03/11/2026) ════════════════════════════════════════════
+
+test('revisão F1 — o ambiente digitado e não juntado: a gaveta diz que ele entra ao salvar, e o "Salvar" liga', () => {
+    const listas = { familias: [], ambientes: [{ id: 1, nome: 'Sala' }] };
+    const campos = renderToStaticMarkup(h(M.produto.CamposDoProduto, {
+        produto: { nome: 'Mesa', familia: '', ambientes: ['Sala'], ambiente_digitado: 'Varanda', titulo: '' }, listas, onCampo: nada,
+    }));
+    assert.ok(tag(campos, 'role="combobox"', 'input') && campos.includes('value="Varanda"'), 'o texto mora no estado da gaveta');
+    assert.match(campos, /data-ambiente-digitado=""[^>]*>“Varanda” entra como ambiente ao salvar \(Enter junta agora\)\.</);
+    // Igual a um chip, nada a avisar.
+    const repetido = renderToStaticMarkup(h(M.produto.CamposDoProduto, {
+        produto: { nome: 'Mesa', familia: '', ambientes: ['Sala'], ambiente_digitado: 'sala', titulo: '' }, listas, onCampo: nada,
+    }));
+    assert.ok(!repetido.includes('data-ambiente-digitado'));
+
+    const estado = estadoDoRetrato(CADASTRO);
+    estado.produto.ambiente_digitado = 'Varanda';
+    const gaveta = desenharGaveta(CADASTRO, { estado });
+    assert.ok(texto(gaveta).includes('Há mudanças não salvas.'));
+    assert.ok(!tag(gaveta, 'data-acao="salvar-cadastro"').includes('disabled=""'));
+});
+
+test('revisão F1 — o SKU que tinha anúncio na espera: o aviso no lugar do formulário, sem "Mapear agora"; depois, só leitura pelo retrato', () => {
+    const motivo = 'O anúncio deste SKU já está no ar: o cadastro não muda mais por aqui.';
+    const absorvido = {
+        ...SALVO_INCOMPLETO,
+        situacao: { ...SALVO_INCOMPLETO.situacao, etapa: null, faltas: [] },
+        edicao: { livre: false, motivo, onda_comecou: null },
+    };
+    const resultado = resultadoDoSalvar(CADASTRO, absorvido, null, { absorvidos: 1 });
+    const saida = desenharGaveta(absorvido, { resultado });
+    const t = texto(saida);
+    assert.match(saida, /data-resultado-do-cadastro="absorvido" role="alert"/);
+    assert.ok(t.includes('Este SKU já tinha anúncio: o produto ficou ligado a ele e vai direto para a etapa 6.'));
+    assert.ok(!t.includes('Lista completa') && !saida.includes('data-acao="mapear-agora"'));
+    assert.match(saida, /data-acao="continuar-editando"[^>]*>Ver o cadastro</);
+
+    // De volta ao cadastro: o retrato novo diz que não é mais editável — só leitura, com o motivo do servidor.
+    const depois = desenharGaveta(absorvido);
+    assert.ok(texto(depois).includes(`Só leitura ${motivo}`));
+    assert.match(depois, /<fieldset disabled=""/);
+    assert.ok(!depois.includes('data-acao="salvar-cadastro"'));
+});
+
+test('revisão F1 — logo depois de criar, o foco vai para o "Usar esta" da sugestão (uma vez, se a pessoa não saiu do nome)', () => {
+    const escolha = lerSemComentarios('resources/js/Components/Trilha/Cadastro/EscolhaDaCategoria.jsx');
+    assert.match(escolha, /<Botao ref=\{refDoUsarEsta\} primario data-acao="usar-categoria-sugerida"/);
+    const painel = lerSemComentarios('resources/js/Components/Trilha/Cadastro/PainelDoCadastro.jsx');
+    assert.match(painel, /if \(!recemCriado \|\| focouNaSugestao\.current \|\| !sugerida \|\| !usarEsta\.current/);
+    assert.match(painel, /if \(!noComeco \|\| c\.temMudanca\) return;\s*focouNaSugestao\.current = true;\s*usarEsta\.current\.focus\(\);/);
+    const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
+    assert.match(pagina, /recemCriado\.current = id;\s*trocarAberto\(chaveDeCadastro\(\{ id \}\)\);/);
+    assert.match(pagina, /recemCriado=\{recemCriado\.current === painel\.produto\.id\}/);
+});
+
+test('revisão F1 — o comentário da guarda não promete o VOLTAR do navegador (o popstate do Inertia não passa pelo `before`)', () => {
+    const fonte = fs.readFileSync(path.resolve(RAIZ, 'resources/js/Components/Trilha/Cadastro/useCadastroDoProduto.js'), 'utf8');
+    assert.ok(!fonte.includes('o voltar que vira visita'));
+    assert.ok(fonte.includes('O que a guarda NÃO cobre: o botão VOLTAR do navegador.'));
+});
+
+test('F2 — as listas abrem dentro da gaveta: nada de portal nem Radix; Esc fecha só a lista (preventDefault)', () => {
+    const fonte = ['EscolhaDaCategoria.jsx', 'CaixaDaFicha.jsx', 'CampoDaFicha.jsx']
+        .map((f) => lerSemComentarios(`resources/js/Components/Trilha/Cadastro/${f}`)).join('\n');
+    assert.equal(fonte.match(/createPortal|@radix-ui|Components\/Portal\//), null);
+    const escolha = lerSemComentarios('resources/js/Components/Trilha/Cadastro/EscolhaDaCategoria.jsx');
+    assert.match(escolha, /evento\.key !== 'Escape' \|\| evento\.defaultPrevented \|\| !cat\.aberto\) return;\s*evento\.preventDefault\(\);\s*cat\.fechar\(\);/);
 });

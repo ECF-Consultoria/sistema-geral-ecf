@@ -649,3 +649,22 @@ Achados confirmados por teste antes do deploy (`RepescagemSemLacoPagoTest`,
 - A conferência de ponta a ponta (`CadastroDePontaAPontaTest` + o teste "o corpo do Salvar é o que o servidor lê" de
   `trilha-cadastro.test.js`) usa o MESMO corpo literal dos dois lados: mudar o formato da linha num lado só quebra
   um dos dois.
+
+## 31. F2 (03/11/2026): categoria e ficha na trilha, e o Portal da loja da trilha também só manda o completo
+
+- **O Portal também segura o incompleto na loja da trilha.** A gaveta da F1 mandava a equipe ao Portal para
+  categoria, ficha e fotos — e cada save lá agendava o Publicador com o produto ainda incompleto (o rascunho ficaria
+  preso na 1ª categoria e nas 1ªs fotos). Os CINCO caminhos de save do Portal que chamam `PreparoIaAgenda::aoSalvar`
+  (o controller, `ProdutoCadastroService::gravarLinhas`/planilha, a oferta criada em `EstruturaOfertaService`, as
+  fichas em lote, a ficha vinda do ML) passam por `CadastroNaTrilha::soOsQueCabem`: na empresa da trilha de trabalho,
+  só vai o completo ou o que o Publicador já conhece. NÃO no funil `aoSalvar`: a soltura das ondas pede de propósito
+  o que está com pendência (é AVISO, §27) e os testes da 2ª entrega chamam o `aoSalvar` direto como "um save".
+  Caminho novo que chame `aoSalvar` a partir de um save precisa passar pela régua.
+- No normalizador do Portal, `categoria_ml_id: ''` LIMPA a categoria — ao contrário da regra "texto vazio não mexe"
+  dos outros campos. A trilha converte `''` em "não mexi" antes do serviço.
+- A rota 4 (ficha) recusa a ficha de uma categoria diferente da gravada ("A categoria mudou: salve o produto antes de
+  gravar a ficha."): sem isso a ficha de uma categoria gravaria por cima da outra.
+- A sugestão de categoria lê os detalhes das candidatas em LOTE (`detalhes`): uma a uma, com o ML lento, somava 15 s
+  por candidata e estourava o tempo do PHP — um 500 que o `catch (\Throwable)` não pega.
+- `assertJsonPath` não aceita ponto escapado em chave como `errors.linhas\.0\.campo`; o `FichaNaTrilhaTest` usa um
+  helper.

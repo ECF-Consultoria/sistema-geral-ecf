@@ -9,6 +9,7 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubProduto;
 use App\Models\TrilhaOnda;
 use App\Models\User;
+use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
 use App\Services\Portal\Estrutura\Produtos\NormalizadorDeLinha;
@@ -51,10 +52,15 @@ use Illuminate\Validation\ValidationException;
  * (`PortalParaRascunhoService`). Com o cadastro aos poucos, que a trilha incentiva, o rascunho ficaria preso na 1ª
  * categoria e na 1ª foto. Completo, o 1º Sincronizar leva tudo de uma vez; daí em diante, cada gravação vai.
  *
- * ### F1 (esta fatia)
+ * ### F1
  * Criar (nome + SKU) e editar o básico: nome, título, família, ambientes, descrição e, por variação que JÁ existe,
- * SKU, custo, estoque e caixas. Categoria (F2) e cor/tamanho novos (F4) entram com as conferências deles — até lá as
- * chaves deles saem da linha ({@see CHAVES_DA_LINHA}) e a linha sem `id` é recusada.
+ * SKU, custo, estoque e caixas. Cor/tamanho novos (F4) entram com a conferência deles — até lá as chaves deles saem da
+ * linha ({@see CHAVES_DA_LINHA}) e a linha sem `id` é recusada.
+ *
+ * ### F2 (03/11/2026)
+ * A categoria do ML entra na linha com a conferência dela ({@see conferirCategoria()}: anunciável e não travada pelo
+ * Publicador), e a ficha técnica grava INCOMPLETA ({@see gravarFicha()}: o obrigatório vazio vira a falta "ficha: x"
+ * na Lista, em vez de barrar o salvar).
  */
 class CadastroNaTrilha
 {
@@ -62,15 +68,24 @@ class CadastroNaTrilha
 
     public const PASSO_LINHAS = 'linhas';
 
+    public const PASSO_FICHA = 'ficha';
+
     /**
      * As chaves da linha que a trilha deixa chegar ao serviço; o resto é descartado (`grupo`, `company_id`,
-     * `categoria_texto`, `variacao`, `volumes_texto`…), e o `produto_id` é sempre o do caminho. A lista final do
-     * desenho (§6.3) acrescenta `categoria_ml_id` (F2: folha, anunciável e não travada) e `eixo`, `valor`, `eixo_2`,
-     * `valor_2`, `ordem` (F4, com a conferência das cores) — cada uma junto da conferência dela.
+     * `categoria_texto`, `variacao`, `volumes_texto`…), e o `produto_id` é sempre o do caminho. `categoria_ml_id` (F2)
+     * passa por {@see conferirCategoria()}. A lista final do desenho (§6.3) ainda acrescenta `eixo`, `valor`, `eixo_2`,
+     * `valor_2`, `ordem` (F4, com a conferência das cores).
      */
     public const CHAVES_DA_LINHA = [
-        'id', 'chave', 'codigo', 'nome', 'titulo', 'familia', 'ambientes', 'volumes', 'custo', 'estoque', 'descricao',
+        'id', 'chave', 'codigo', 'nome', 'titulo', 'familia', 'ambientes', 'categoria_ml_id', 'volumes', 'custo', 'estoque', 'descricao',
     ];
+
+    /** A categoria no Publicador só se troca no editor de lá (D12): o rascunho só recebe categoria quando está sem. */
+    public const MSG_CATEGORIA_NO_PUBLICADOR = 'A categoria já está no Publicador; troque no editor de lá.';
+
+    public const MSG_CATEGORIA_NAO_ANUNCIAVEL = 'O Mercado Livre não aceita produtos novos nesta categoria; escolha outra.';
+
+    public const MSG_CATEGORIA_INVALIDA = 'Categoria inválida: escolha uma pela busca ou pela navegação.';
 
     public function __construct(
         private PortalEquipeService $equipe,
@@ -154,6 +169,79 @@ class CadastroNaTrilha
         }
 
         return $saida;
+    }
+
+    /**
+     * A categoria do ML nas linhas JÁ conferidas ({@see conferirLinhas()}), antes do serviço (F2, desenho §6.3):
+     *
+     * - `''` (ou só espaço) = não mexi: a chave sai da linha — no normalizador do Portal o texto vazio LIMPARIA a
+     *   categoria, e a trilha segue o contrato do resto da linha (`''` não mexe, `null` limpa);
+     * - `MLB` + 1..17 dígitos (sem caixa) passa adiante em maiúsculas; qualquer outro texto é 422 — na trilha a
+     *   categoria só vem da busca ou da navegação, e o Portal faria dele uma categoria "a confirmar";
+     * - a categoria igual à gravada não é conferida de novo (a tela devolve a de sempre em toda linha);
+     * - trocar (ou limpar) com o produto no Publicador é 422: lá o rascunho só recebe categoria quando está sem, e a
+     *   troca mora no editor dele (D12);
+     * - a categoria NOVA precisa ser anunciável (`CategoriaSugestaoService::detalhe`, o mesmo cache de 7 dias da busca):
+     *   a folha fechada para anúncio novo é 422. Com o ML fora (`null`), segue como no Portal — o serviço grava "não
+     *   validada" e avisa; a que não é folha também segue, e o serviço devolve o erro da linha ("mais específica").
+     *
+     * Os erros vão no campo da linha (`linhas.{i}.categoria_ml_id`), num 422 só; nada grava.
+     *
+     * @param  list<array<string, mixed>>  $linhas
+     * @return list<array<string, mixed>>
+     *
+     * @throws ValidationException
+     */
+    public function conferirCategoria(Company $empresa, EstruturaProduto $produto, array $linhas): array
+    {
+        $gravada = strtoupper(trim((string) $produto->categoria_ml_id));
+        $noPublicador = null;
+        $erros = [];
+        $novas = []; // id => índice da 1ª linha que a pede
+
+        foreach ($linhas as $i => $linha) {
+            if (! array_key_exists('categoria_ml_id', $linha)) {
+                continue;
+            }
+            $bruta = $linha['categoria_ml_id'];
+            if (is_string($bruta) && trim($bruta) === '') {
+                unset($linhas[$i]['categoria_ml_id']);
+                continue;
+            }
+            if ($bruta !== null && ! (is_string($bruta) && preg_match('/^MLB\d{1,17}$/i', trim($bruta)))) {
+                $erros["linhas.{$i}.categoria_ml_id"] = self::MSG_CATEGORIA_INVALIDA;
+                continue;
+            }
+
+            $id = $bruta === null ? null : strtoupper(trim($bruta));
+            $linhas[$i]['categoria_ml_id'] = $id;
+            if (($id ?? '') === $gravada) {
+                continue;
+            }
+            if ($noPublicador ??= $this->jaNoPublicador($empresa, $produto)) {
+                $erros["linhas.{$i}.categoria_ml_id"] = self::MSG_CATEGORIA_NO_PUBLICADOR;
+                continue;
+            }
+            if ($id !== null) {
+                $novas[$id] ??= $i;
+            }
+        }
+
+        if ($erros === [] && $novas !== []) {
+            $categorias = app(CategoriaSugestaoService::class);
+            foreach ($novas as $id => $i) {
+                $detalhe = $categorias->detalhe((string) $id);
+                if ($detalhe !== null && $detalhe['folha'] && ! ($detalhe['anunciavel'] ?? true)) {
+                    $erros["linhas.{$i}.categoria_ml_id"] = self::MSG_CATEGORIA_NAO_ANUNCIAVEL;
+                }
+            }
+        }
+
+        if ($erros !== []) {
+            throw ValidationException::withMessages($erros);
+        }
+
+        return array_values($linhas);
     }
 
     // ═══ A trava (pergunta 1) ═══════════════════════════════════════════════
@@ -244,6 +332,39 @@ class CadastroNaTrilha
         ];
     }
 
+    /**
+     * A ficha técnica INTEIRA do estado da gaveta, pelo serviço do Portal com `exigirObrigatorios: false` (F2): o
+     * obrigatório vazio grava e vira a falta "ficha: x" na Lista — a equipe cadastra aos poucos. O resto é o do
+     * Portal: gravar SUBSTITUI (o Modelo antigo fica), o id de eixo do produto e o desconhecido são ignorados, valor
+     * inválido é 422 por campo (`atributos.{ID}`) sem gravar nada, sem categoria é 422 SEM chamar o ML, e o catálogo
+     * fora é 422 antes de apagar qualquer linha.
+     *
+     * `$categoriaDaTela` (opcional): a categoria que a gaveta tinha aberta ao montar a ficha. Diferente da gravada (o
+     * "Salvar" das linhas não levou a troca), é 422 em `categoria` — gravar a ficha de uma categoria por cima da outra
+     * apagaria os campos da que está gravada.
+     *
+     * Depois de gravar: o evento da trilha (passo `ficha`) e o gatilho {@see prepararSeCabe()}.
+     *
+     * @param  array<int, mixed>  $atributos  [{id, valor, unidade, nao_se_aplica, proprio, proprios}, ...] como a tela mandou
+     * @return list<array{id: string, nome: string, valor: ?string, valor_id: ?string, unidade: ?string}> o que ficou salvo
+     *
+     * @throws ValidationException
+     */
+    public function gravarFicha(Company $empresa, EstruturaProduto $produto, array $atributos, ?string $categoriaDaTela, AtorDoPortal $ator): array
+    {
+        $gravada = strtoupper(trim((string) $produto->categoria_ml_id));
+        if ($gravada !== '' && filled($categoriaDaTela) && strtoupper(trim((string) $categoriaDaTela)) !== $gravada) {
+            throw ValidationException::withMessages(['categoria' => 'A categoria mudou: salve o produto antes de gravar a ficha.']);
+        }
+
+        $salvos = $this->ficha->gravar($empresa, $produto, $atributos, $ator, exigirObrigatorios: false);
+
+        $this->registrar($ator, $empresa, $produto, self::PASSO_FICHA, ['campos' => count($salvos)]);
+        $this->prepararSeCabe($empresa, $produto);
+
+        return array_values($salvos);
+    }
+
     // ═══ O Publicador (pergunta 2) ══════════════════════════════════════════
 
     /**
@@ -253,6 +374,49 @@ class CadastroNaTrilha
      *
      * @return bool se agendou
      */
+    /**
+     * Na empresa da trilha de trabalho, os produtos da lista que PODEM ir ao Publicador: os completos (faltas vazias) e
+     * os que ele já conhece — a mesma régua do {@see prepararSeCabe()}, para os caminhos de save do PORTAL (a tela, a
+     * gravação de linhas e a planilha, a oferta criada, as fichas em lote, a ficha vinda do ML). Sem isso, o Portal —
+     * aonde a própria gaveta da F1 mandava a equipe para categoria e fotos — levava ao Publicador o produto ainda
+     * incompleto, e o rascunho ficava preso na 1ª categoria e nas 1ªs fotos (revisão da F1, 03/11/2026).
+     *
+     * Fora da chave, devolve a lista como veio. A soltura da onda não passa por aqui (ela pede de propósito). Erro ao
+     * ler deixa passar, como era antes.
+     *
+     * @param  iterable<int|string>  $produtoIds
+     * @return list<int>
+     */
+    public static function soOsQueCabem(int $empresaId, iterable $produtoIds): array
+    {
+        $ids = [];
+        foreach ($produtoIds as $id) {
+            if ((int) $id > 0) {
+                $ids[(int) $id] = (int) $id;
+            }
+        }
+        if ($ids === [] || ! TrilhaDeTrabalho::ligada($empresaId)) {
+            return array_values($ids);
+        }
+
+        try {
+            $empresa = Company::query()->find($empresaId);
+            if ($empresa === null) {
+                return array_values($ids);
+            }
+            $servico = app(self::class);
+            $produtos = EstruturaProduto::query()->where('company_id', $empresaId)->whereIn('id', $ids)->get()->keyBy('id');
+
+            return array_values(array_filter($ids, fn (int $id) => ! $produtos->has($id)
+                || $servico->jaNoPublicador($empresa, $produtos->get($id))
+                || TrilhaDaEmpresa::faltasDoProduto($empresa, $id) === []));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("[Trilha] Não deu para conferir se os produtos da empresa {$empresaId} cabem no Publicador; seguem como antes. ".$e->getMessage());
+
+            return array_values($ids);
+        }
+    }
+
     public function prepararSeCabe(Company $empresa, EstruturaProduto $produto): bool
     {
         if (! $this->jaNoPublicador($empresa, $produto) && TrilhaDaEmpresa::faltasDoProduto($empresa, (int) $produto->id) !== []) {
@@ -377,7 +541,8 @@ class CadastroNaTrilha
                 // F3: o "frete ME1" vira aviso aqui (pergunta 3). Na F1, nenhum.
                 'avisos'            => [],
                 'no_publicador'     => $noPublicador,
-                // D12: com o produto no Publicador a categoria só se troca no editor de lá (a recusa no servidor é da F2).
+                // D12: com o produto no Publicador a categoria só se troca no editor de lá (o servidor recusa a troca
+                // em `conferirCategoria`).
                 'categoria_travada' => $noPublicador,
                 'mapeado_em'        => $trilha['mapeado_em'],
             ],

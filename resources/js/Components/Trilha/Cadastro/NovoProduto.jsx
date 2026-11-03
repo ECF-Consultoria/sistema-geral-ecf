@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { criarProduto, errosDosCampos, mensagemDoErro } from '@/lib/trilhaEscrita';
+import { produtoNovoMexido } from '@/lib/trilhaCadastro';
 import { cn } from '@/lib/utils';
 import { Botao } from '@/Components/Trilha/Pecas';
-import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
-import { Campo } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
+import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLateral';
+import { Campo, ConfirmacaoNaGaveta } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
 
 // ─── Trilha de produtos — "+ Produto na lista" (a gaveta `e:novo`) ──────────
 //
@@ -16,6 +17,11 @@ import { Campo } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
 // O botão fica "ocupado" do envio até a troca (o duplo clique não cria dois; o
 // servidor também segura). SKU repetido — conferido sem caixa nem acento — volta
 // como 422 no próprio campo.
+//
+// A guarda simples (revisão da F1): com nome ou SKU digitados e o produto ainda
+// não criado, fechar (Esc, clique no fundo, "Fechar"), abrir outro item ou
+// trocar o "Ver como" pedem confirmação no rodapé; F5 e fechar a aba, o
+// `beforeunload` do navegador.
 
 /**
  * @param {{
@@ -36,6 +42,33 @@ export default function NovoProduto({ escrita, onCriado, marcaDaAbertura = () =>
     const campoDoNome = useRef(null);
     const campoDoCodigo = useRef(null);
     const vivo = useRef(true);
+
+    // ─── A guarda simples ───
+    const [pedido, setPedido] = useState(null);           // `{seguir}`: o que fazer se a pessoa descartar
+    const mexido = produtoNovoMexido({ nome, codigo, criando, criado });
+    const agora = useRef({});
+    agora.current.mexido = mexido;
+    const guardiao = useMemo(() => ({
+        mexido: () => !!agora.current.mexido,
+        confirmar: (seguir) => setPedido({ seguir }),
+    }), []);
+    useGuardaDaGaveta(guardiao);
+    const descartar = () => {
+        const seguir = pedido?.seguir;
+        setPedido(null);
+        agora.current.mexido = false;
+        seguir?.();
+    };
+    useEffect(() => {
+        if (!mexido || typeof window === 'undefined') return undefined;
+        const aoSair = (evento) => {
+            evento.preventDefault();
+            evento.returnValue = '';
+        };
+        window.addEventListener('beforeunload', aoSair);
+
+        return () => window.removeEventListener('beforeunload', aoSair);
+    }, [mexido]);
 
     useEffect(() => {
         vivo.current = true;
@@ -89,7 +122,15 @@ export default function NovoProduto({ escrita, onCriado, marcaDaAbertura = () =>
             titulo="Produto novo"
             sub="Nome e SKU criam o produto; o resto do cadastro vem depois."
             ocupado={ocupado}
-            rodape={[
+            rodape={pedido ? (
+                <ConfirmacaoNaGaveta
+                    texto="O produto digitado ainda não foi criado."
+                    acoes={[
+                        { rotulo: 'Descartar', acao: 'descartar', perigo: true, onClick: descartar },
+                        { rotulo: 'Continuar editando', acao: 'continuar-editando', foco: true, onClick: () => setPedido(null) },
+                    ]}
+                />
+            ) : [
                 erroGeral ? (
                     <span key="dica" role="alert" className="mr-auto min-w-0 self-center text-[12.5px] font-semibold text-trilha-bad">
                         {erroGeral}

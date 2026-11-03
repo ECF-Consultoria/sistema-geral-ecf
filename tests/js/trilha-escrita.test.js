@@ -453,6 +453,57 @@ test('cadastro (3ª entrega): abrir, criar e gravar as linhas sob `escrita.produ
     await assert.rejects(() => escrita.criarProduto({ ondas: 'x' }, { nome: 'a', codigo: 'b' }), (e) => e instanceof escrita.ErroDaTrilha);
 });
 
+test('cadastro F2: a categoria sob `escrita.categorias` (busca, árvore, campos, termos) e a ficha sob `escrita.produtos`', async () => {
+    const { pedidos, restaurar } = gravarPedidos({ categorias: [], indisponivel: true });
+    // O servidor manda `categorias` relativo (como as fotos); a barra no fim não duplica.
+    const E = { ...PROPS_TRABALHO.escrita, categorias: `${PROPS_TRABALHO.escrita.categorias}/` };
+    const atributos = [{ id: 'BRAND', valor: 'ECF Móveis' }, { id: 'WIDTH', valor: '45', unidade: 'cm' }];
+    try {
+        assert.deepEqual(await escrita.buscarCategorias(E, 'Criado-mudo 2 gavetas'), { categorias: [], indisponivel: true });
+        await escrita.nivelDaArvore(E);
+        await escrita.nivelDaArvore(E, 'MLB1574');
+        await escrita.camposDaCategoria(E, 'MLB1902');
+        await escrita.termosDoTitulo(E, 'MLB1902', 'Criado-mudo & cia');
+        await escrita.termosDoTitulo(E, 'MLB1902');
+        await escrita.gravarFicha(E, 9, atributos, { categoria: 'MLB1902' });
+        await escrita.gravarFicha(E, 9, [], { versao: 'abc' });
+        await escrita.fichaPelaIa(E, 9, { categoria: 'MLB1902', titulo: 'Criado-Mudo Jatobá', descricao: 'Jatobá maciço.', atributos });
+    } finally {
+        restaurar();
+    }
+
+    assert.deepEqual(pedidos, [
+        // O texto vai na query, codificado.
+        { metodo: 'get', url: '/trilha/459/categorias?q=Criado-mudo%202%20gavetas', corpo: undefined },
+        // Sem `pai`, o 1º nível.
+        { metodo: 'get', url: '/trilha/459/categorias/arvore', corpo: undefined },
+        { metodo: 'get', url: '/trilha/459/categorias/arvore?pai=MLB1574', corpo: undefined },
+        { metodo: 'get', url: '/trilha/459/categorias/MLB1902/campos', corpo: undefined },
+        { metodo: 'get', url: '/trilha/459/categorias/MLB1902/titulo?nome=Criado-mudo%20%26%20cia', corpo: undefined },
+        { metodo: 'get', url: '/trilha/459/categorias/MLB1902/titulo', corpo: undefined },
+        // A ficha INTEIRA, com a categoria que a gaveta tinha aberta (o servidor confere com a gravada).
+        { metodo: 'put', url: 'http://localhost/trilha/459/produtos/9/ficha-tecnica', corpo: { atributos, categoria: 'MLB1902' } },
+        // A ficha vazia também vai (é o "limpar"); a `versao` só quando há uma.
+        { metodo: 'put', url: 'http://localhost/trilha/459/produtos/9/ficha-tecnica', corpo: { atributos: [], versao: 'abc' } },
+        // A IA lê o que está na tela (nada gravado) — e não grava.
+        {
+            metodo: 'post',
+            url: 'http://localhost/trilha/459/produtos/9/ficha-tecnica/ia',
+            corpo: { categoria: 'MLB1902', titulo: 'Criado-Mudo Jatobá', descricao: 'Jatobá maciço.', atributos },
+        },
+    ]);
+
+    // Sem o endereço das categorias (a porta do cliente nunca recebe nenhum), nada sai — e o erro tem texto para a pessoa.
+    await assert.rejects(() => escrita.buscarCategorias({ produtos: 'x' }, 'mesa'), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.camposDaCategoria(null, 'MLB1'), (e) => e instanceof escrita.ErroDaTrilha);
+    await assert.rejects(() => escrita.gravarFicha({ categorias: 'x' }, 9, []), (e) => e instanceof escrita.ErroDaTrilha);
+    // O 422 da IA (sem categoria salva) chega com o texto do servidor.
+    assert.equal(
+        escrita.mensagemDoErro({ isAxiosError: true, response: { status: 422, data: { message: 'Escolha a categoria e salve o produto antes de usar a IA.' } } }),
+        'Escolha a categoria e salve o produto antes de usar a IA.',
+    );
+});
+
 test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {
     const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
     const m = escrita.mensagemDoErro;

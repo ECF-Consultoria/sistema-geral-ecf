@@ -72,7 +72,8 @@ class JardinagemDaFicha
         $origem->save();
 
         // Daqui para frente é o caminho de qualquer produto salvo: Publicador + título, Modelo e descrição.
-        $this->preparo->aoSalvar((int) $empresa->id, [(int) $produto->id]);
+        // Na empresa da trilha de trabalho, só o produto completo (ou que o Publicador já conhece) vai até lá.
+        $this->preparo->aoSalvar((int) $empresa->id, \App\Services\Trilha\CadastroNaTrilha::soOsQueCabem((int) $empresa->id, [(int) $produto->id]));
 
         return $registro;
     }

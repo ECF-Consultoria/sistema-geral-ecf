@@ -377,6 +377,8 @@ class AcessoATrilhaTest extends TestCase
             'ondas'        => route('trilha.ondas.criar', ['company' => $empresa->id]),
             'planejamento' => route('trilha.planejamento', ['company' => $empresa->id]),
             'produtos'     => route('trilha.empresa', ['company' => $empresa->id]).'/produtos',
+            // F2: a base das leituras da categoria e da ficha — só para quem escreve, como as outras.
+            'categorias'   => "/trilha/{$empresa->id}/categorias",
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
             'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');

@@ -234,6 +234,8 @@ export const ESCRITA = {
     ondas: 'http://localhost/trilha/459/ondas',
     planejamento: 'http://localhost/trilha/459/planejamento',
     produtos: 'http://localhost/trilha/459/produtos',
+    // 3ª entrega, F2: a base das leituras da categoria e da ficha — relativa, como o servidor manda.
+    categorias: '/trilha/459/categorias',
 };
 
 /**
@@ -508,4 +510,77 @@ export const CRIADO = {
     absorvidos_da_espera: 0,
     avisos: [],
     mensagem: 'Produto criado.',
+};
+
+// ─── 3ª entrega, F2: a categoria e a ficha técnica ──────────────────────────
+
+/**
+ * `GET {escrita.categorias}?q=Criado-mudo 2 gavetas` — as candidatas do preditor, com `folha` e `anunciavel`. A 1ª
+ * não é a última do caminho; a 2ª é a SUGERIDA (última e aceita produto novo); a 3ª é a última, mas fechada para
+ * produto novo.
+ */
+export const CANDIDATAS = {
+    categorias: [
+        { id: 'MLB1901', nome: 'Quarto', caminho: [{ id: 'MLB1574', nome: 'Casa, Móveis e Decoração' }, { id: 'MLB1901', nome: 'Quarto' }], caminho_texto: 'Casa, Móveis e Decoração > Quarto', folha: false, anunciavel: false },
+        { id: 'MLB1902', nome: 'Criados-mudos', caminho: [{ id: 'MLB1574', nome: 'Casa, Móveis e Decoração' }, { id: 'MLB1901', nome: 'Quarto' }, { id: 'MLB1902', nome: 'Criados-mudos' }], caminho_texto: 'Casa, Móveis e Decoração > Quarto > Criados-mudos', folha: true, anunciavel: true },
+        { id: 'MLB1903', nome: 'Cabeceiras antigas', caminho: [{ id: 'MLB1574', nome: 'Casa, Móveis e Decoração' }, { id: 'MLB1903', nome: 'Cabeceiras antigas' }], caminho_texto: 'Casa, Móveis e Decoração > Cabeceiras antigas', folha: true, anunciavel: false },
+    ],
+    indisponivel: false,
+};
+
+/**
+ * `GET {escrita.categorias}/MLB1902/campos` — a definição da ficha (a `definicao()` do servidor, sem explicações):
+ * os obrigatórios, a Marca com sugestões, uma lista que aceita valor próprio, o campo que é eixo (Cor), Sim/Não,
+ * número com várias unidades, lista de várias opções, um "não se aplica" e o grupo das medidas do produto montado.
+ */
+export const CAMPOS_DA_CATEGORIA = {
+    grupos: [
+        { grupo: 'Principais', campos: [
+            { id: 'BRAND', nome: 'Marca', obrigatorio: true, tipo: 'texto', valores: [], unidades: [], unidade_padrao: null, max: 60, sugestoes: ['Genérica', 'ECF Móveis'] },
+            { id: 'MAIN_MATERIAL', nome: 'Material principal', obrigatorio: true, tipo: 'lista', valores: [{ id: '1', nome: 'Madeira' }, { id: '2', nome: 'MDF' }], unidades: [], unidade_padrao: null, max: 60, aceita_outro: true },
+            { id: 'COLOR', nome: 'Cor', obrigatorio: false, tipo: 'lista', valores: [{ id: '52049', nome: 'Preto' }, { id: '51994', nome: 'Branco' }], unidades: [], unidade_padrao: null, max: null, eixo_do_portal: 'cor' },
+        ] },
+        { grupo: 'Mais detalhes', campos: [
+            { id: 'WITH_DRAWERS', nome: 'Com gavetas', obrigatorio: false, tipo: 'sim_nao', valores: [], unidades: [], unidade_padrao: null, max: null },
+            { id: 'MAX_WEIGHT', nome: 'Peso máximo suportado', obrigatorio: false, tipo: 'numero_unidade', valores: [], unidades: [{ id: 'kg', nome: 'kg' }, { id: 'g', nome: 'g' }], unidade_padrao: 'kg', max: null },
+            { id: 'STYLES', nome: 'Estilos', obrigatorio: false, tipo: 'lista', multivalor: true, valores: [{ id: '10', nome: 'Moderno' }, { id: '11', nome: 'Rústico' }], unidades: [], unidade_padrao: null, max: null },
+            { id: 'FINISH', nome: 'Acabamento', obrigatorio: false, tipo: 'texto', valores: [], unidades: [], unidade_padrao: null, max: 60, nao_se_aplica: true },
+        ] },
+        { grupo: 'Medidas do produto', medidas_do_produto: true, campos: [
+            { id: 'WIDTH', nome: 'Largura', obrigatorio: false, tipo: 'numero_unidade', valores: [], unidades: [{ id: 'cm', nome: 'cm' }], unidade_padrao: 'cm', max: null },
+            { id: 'HEIGHT', nome: 'Altura', obrigatorio: false, tipo: 'numero_unidade', valores: [], unidades: [{ id: 'cm', nome: 'cm' }], unidade_padrao: 'cm', max: null },
+        ] },
+    ],
+    indisponivel: false,
+};
+
+/** `GET {escrita.categorias}/MLB1902/titulo?nome=…` — os termos e o limite da categoria. */
+export const TERMOS_DA_CATEGORIA = {
+    limite: 70,
+    indisponivel: false,
+    total: 3,
+    categoria: { caminho: ['Casa, Móveis e Decoração', 'Quarto', 'Criados-mudos'] },
+    termos: [
+        { posicao: 1, termo: 'criado mudo', grupo: 'popular', relacionado: true, origem: 'categoria' },
+        { posicao: 2, termo: 'mesa de cabeceira', grupo: 'desejado', relacionado: false, origem: 'categoria' },
+        { posicao: 3, termo: 'jatobá', grupo: null, relacionado: true, origem: 'categoria' },
+    ],
+    acima: null,
+};
+
+/** O criado-mudo com a categoria GRAVADA e a ficha parcial (só a Marca): falta o Material, obrigatório. */
+export const CADASTRO_COM_CATEGORIA = {
+    ...SALVO_INCOMPLETO,
+    produto: {
+        ...SALVO_INCOMPLETO.produto,
+        categoria: { id: 'MLB1902', nome: 'Criados-mudos', caminho_texto: 'Casa, Móveis e Decoração > Quarto > Criados-mudos', estado: 'confirmada' },
+    },
+    ficha: { salvos: [{ id: 'BRAND', nome: 'Marca', valor: 'ECF Móveis', valor_id: null, unidade: null }] },
+    situacao: { ...SALVO_INCOMPLETO.situacao, faltas: ['ficha: Material principal', 'fotos (0 de 3)'] },
+};
+
+/** O mesmo produto já no Publicador (a onda não começou, o robô não mexeu): editável, com a categoria TRAVADA. */
+export const CADASTRO_CATEGORIA_TRAVADA = {
+    ...CADASTRO_COM_CATEGORIA,
+    situacao: { ...CADASTRO_COM_CATEGORIA.situacao, no_publicador: true, categoria_travada: true },
 };

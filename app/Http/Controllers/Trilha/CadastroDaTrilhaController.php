@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Trilha;
 
 use App\Http\Controllers\Controller;
+use App\Services\Portal\Estrutura\Produtos\MercadoLivre\JardinagemDaFicha;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Trilha\CadastroNaTrilha;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Portal\Estrutura\RegrasDoCadastro;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * O cadastro do produto na porta da EQUIPE da trilha (3ª entrega, 02/11/2026), em JSON: abrir a gaveta (o retrato),
- * criar o produto (nome + SKU) e gravar as linhas. Controller fino: a regra mora em {@see CadastroNaTrilha}, e os
+ * criar o produto (nome + SKU), gravar as linhas (com a categoria, F2), gravar a ficha técnica e o "Preencher com IA"
+ * dela (F2b). Controller fino: a regra mora em {@see CadastroNaTrilha}, e os
  * serviços são os do Portal — o `PortalEstruturaProdutosController` não serve aqui porque lê o `PortalContexto`, que
  * só existe dentro do `portal.auth`.
  *
@@ -86,6 +89,8 @@ class CadastroDaTrilhaController extends Controller
         ]);
         $linhas = $this->cadastro->conferirLinhas($empresa, $alvo, RegrasDoCadastro::linhasComoVieram($request));
         $this->cadastro->exigirLivre($empresa, $alvo);
+        // F2: a categoria nova, depois da trava (o produto travado não chega a consultar o ML).
+        $linhas = $this->cadastro->conferirCategoria($empresa, $alvo, $linhas);
 
         $r = $this->cadastro->gravar($empresa, $alvo, $linhas, AtorDoPortal::daEquipe($request->user()));
         $retrato = $this->cadastro->retrato($empresa, $alvo);
@@ -95,6 +100,64 @@ class CadastroDaTrilhaController extends Controller
             ...$r,
             'mensagem' => self::mensagemDoSalvar($r, $retrato['situacao']),
         ]);
+    }
+
+    /**
+     * Rota 4 — a ficha técnica INTEIRA do estado da gaveta (gravar substitui). O obrigatório vazio grava e vira a falta
+     * "ficha: x" na Lista; valor inválido é 422 por campo (`errors["atributos.{ID}"]`) e nada grava; sem categoria
+     * gravada, 422 sem chamar o ML; o catálogo fora, 422 sem apagar. `categoria` (opcional) é a que a gaveta tinha
+     * aberta: diferente da gravada, 422 em `errors.categoria`. Responde o retrato novo, como a rota 3.
+     */
+    public function ficha(Request $request, int $company, int $produto): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $dados = $request->validate(
+            RegrasDoCadastro::fichaTecnica() + ['categoria' => ['nullable', 'string', 'max:20']],
+            RegrasDoCadastro::mensagensDaFicha(),
+        );
+        $this->cadastro->exigirLivre($empresa, $alvo);
+
+        $this->cadastro->gravarFicha($empresa, $alvo, (array) $request->input('atributos'), $dados['categoria'] ?? null,
+            AtorDoPortal::daEquipe($request->user()));
+        $retrato = $this->cadastro->retrato($empresa, $alvo);
+
+        return response()->json([
+            ...$retrato,
+            'mensagem' => match ($retrato['situacao']['etapa']) {
+                'lista' => 'Ficha salva. Ainda faltam: '.implode(', ', $retrato['situacao']['faltas']).'.',
+                'mapa'  => 'Lista completa: o produto seguiu para o mapeamento.',
+                default => 'Ficha salva.',
+            },
+        ]);
+    }
+
+    /**
+     * Rota 9 — "Preencher com IA" da ficha (botão manual; a IA é paga por clique). As checagens são as do Portal
+     * (`RegrasDoCadastro::recusaDaIa`): sem categoria salva, ou com a tela numa categoria que não é a salva, 422
+     * `{message}` sem chamar nada. NÃO grava: devolve `{sugestoes, faltavam}` — só para os campos VAZIOS na tela, cada
+     * sugestão já validada contra a categoria — e a pessoa revisa e salva pela rota 4. IA fora: 422 `{message}`.
+     */
+    public function sugerirFicha(Request $request, int $company, int $produto, JardinagemDaFicha $ia): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $dados = $request->validate(RegrasDoCadastro::iaDaFicha(), RegrasDoCadastro::mensagensDaFicha());
+        $this->cadastro->exigirLivre($empresa, $alvo);
+
+        $recusa = RegrasDoCadastro::recusaDaIa($alvo, $dados['categoria'] ?? null);
+        if ($recusa !== null) {
+            return response()->json(['message' => $recusa], 422);
+        }
+
+        try {
+            $r = $ia->sugerir($alvo, RegrasDoCadastro::atributosDaTela((array) $request->input('atributos')),
+                (string) ($dados['titulo'] ?? ''), (string) ($dados['descricao'] ?? ''));
+        } catch (\Throwable $e) {
+            Log::warning("[Trilha] IA da ficha técnica falhou — produto {$alvo->id}, empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return response()->json(['message' => 'A IA não respondeu agora. Tente de novo em instantes.'], 422);
+        }
+
+        return response()->json($r);
     }
 
     /** O resultado do "Salvar", no padrão do Mapear: completo, salvo com faltas, nada mudou ou erro de campo. */

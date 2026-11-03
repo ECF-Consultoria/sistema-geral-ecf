@@ -180,10 +180,12 @@ class ApresentacaoDaTrilha
     }
 
     /**
-     * Os endereços das escritas da equipe (Planejamento e Mapeamento). A onda e o produto entram no fim do caminho
-     * (`{ondas}/{id}`, `{produtos}/{id}/mapeamento`).
+     * Os endereços das escritas da equipe (Planejamento, Mapeamento e o cadastro). A onda e o produto entram no fim do
+     * caminho (`{ondas}/{id}`, `{produtos}/{id}/mapeamento`, `{produtos}/{id}/ficha-tecnica`…). `categorias` (F2) é a
+     * base das leituras da categoria e da ficha (`{categorias}?q=`, `{categorias}/arvore?pai=`,
+     * `{categorias}/{id}/campos`, `{categorias}/{id}/titulo?nome=`) — relativa, como as fotos do retrato.
      *
-     * @return array{ondas: string, planejamento: string, produtos: string}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string}
      */
     private static function escrita(Company $empresa): array
     {
@@ -193,6 +195,7 @@ class ApresentacaoDaTrilha
             'ondas'        => route('trilha.ondas.criar', ['company' => $empresa->id]),
             'planejamento' => route('trilha.planejamento', ['company' => $empresa->id]),
             'produtos'     => $base.'/produtos',
+            'categorias'   => route('trilha.categorias', ['company' => $empresa->id], false),
         ];
     }
 

@@ -105,6 +105,70 @@ export async function gravarLinhas(escrita, produtoId, linhas, { versao = null }
     return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/linhas`, dados));
 }
 
+/**
+ * O 2º passo do "Salvar" (F2): a ficha técnica INTEIRA do que está na tela (`montarAtributos`) — o servidor
+ * substitui a gravada. O obrigatório vazio grava (vira falta na Lista); valor inválido volta 422 por campo
+ * (`atributos.<id>`). `categoria` é a que a gaveta tinha aberta ao montar a ficha: diferente da gravada (o passo
+ * das linhas não levou a troca), o servidor recusa (422 em `categoria`) em vez de gravar uma ficha por cima da
+ * outra. → o retrato novo da gaveta.
+ */
+export async function gravarFicha(escrita, produtoId, atributos, { categoria = null, versao = null } = {}) {
+    const dados = { atributos };
+    if (categoria) dados.categoria = categoria;
+    if (versao) dados.versao = versao;
+
+    return corpo(await axios.put(`${urlDoProduto(escrita, produtoId)}/ficha-tecnica`, dados));
+}
+
+/**
+ * "Preencher com IA" (F2b): as sugestões para os campos VAZIOS, a partir do que está na tela (título, descrição e
+ * a ficha ainda não salva). NÃO grava nada. 422 sem a categoria salva (ou com a da tela diferente da salva).
+ * → `{sugestoes: [{id, nome, valor, valor_id, unidade}], faltavam}`.
+ */
+export async function fichaPelaIa(escrita, produtoId, { categoria, titulo, descricao, atributos }) {
+    return corpo(await axios.post(`${urlDoProduto(escrita, produtoId)}/ficha-tecnica/ia`, {
+        categoria: categoria ?? null,
+        titulo: titulo ?? '',
+        descricao: descricao ?? '',
+        atributos: atributos ?? [],
+    }));
+}
+
+// ─── Categoria e ficha técnica (F2): só leitura do catálogo público ──────────
+//
+// Sob `escrita.categorias` (só para quem escreve). O catálogo fora do ar NUNCA é erro HTTP: a resposta vem 200 com
+// `indisponivel`; o 422 é só do pedido malformado (texto curto demais, por exemplo) — a tela distingue os dois.
+
+/** `{escrita.categorias}` — a base das rotas de categoria. */
+export const urlDasCategorias = (escrita) => endereco(escrita, 'categorias');
+
+/** O texto na query (`?q=…`), sem depender de onde o axios põe os `params`. */
+const comConsulta = (url, campos) => {
+    const pares = Object.entries(campos).filter(([, v]) => v !== null && v !== undefined && v !== '');
+
+    return pares.length ? `${url}?${pares.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}` : url;
+};
+
+/** As candidatas pelo nome do produto. → `{categorias: [{id, nome, caminho, caminho_texto, folha, anunciavel}], indisponivel}`. */
+export async function buscarCategorias(escrita, q) {
+    return corpo(await axios.get(comConsulta(urlDasCategorias(escrita), { q })));
+}
+
+/** Um nível da árvore (sem `pai`, o 1º). → `{atual, caminho, filhas, indisponivel}` (o formato de `lib/arvoreDeCategorias`). */
+export async function nivelDaArvore(escrita, pai = null) {
+    return corpo(await axios.get(comConsulta(`${urlDasCategorias(escrita)}/arvore`, { pai })));
+}
+
+/** Os campos da ficha técnica da categoria, em grupos. → `{grupos, indisponivel}`. */
+export async function camposDaCategoria(escrita, categoriaId) {
+    return corpo(await axios.get(`${urlDasCategorias(escrita)}/${encodeURIComponent(categoriaId)}/campos`));
+}
+
+/** Os termos mais buscados e o limite do título da categoria. → `{limite, indisponivel, termos?, acima?, …}`. */
+export async function termosDoTitulo(escrita, categoriaId, nome = '') {
+    return corpo(await axios.get(comConsulta(`${urlDasCategorias(escrita)}/${encodeURIComponent(categoriaId)}/titulo`, { nome })));
+}
+
 // ─── Erros ──────────────────────────────────────────────────────────────────
 
 const SEM_CONEXAO = 'Não consegui falar com o servidor. Confira a conexão e tente de novo.';

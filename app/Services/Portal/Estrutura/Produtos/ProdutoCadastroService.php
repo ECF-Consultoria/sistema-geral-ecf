@@ -228,7 +228,8 @@ class ProdutoCadastroService
         // Vale para a grade e para a importação da planilha, que passa por aqui. Caminho DIRETO até
         // o PreparoIaAgenda (o outro é via oferta: ver `criarOferta`/`sincronizarOferta` abaixo).
         if ($agendarPreparo && $produtosMudados !== []) {
-            app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, array_keys($produtosMudados));
+            // Na empresa da trilha de trabalho, só o produto completo (ou que o Publicador já conhece) vai até lá.
+            app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, \App\Services\Trilha\CadastroNaTrilha::soOsQueCabem((int) $empresa->id, array_keys($produtosMudados)));
         }
 
         $saida = $this->linhas->paraProdutos($empresa, array_keys($produtosTocados));

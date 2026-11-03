@@ -40,7 +40,8 @@ use Tests\TestCase;
  * - "criar primeiro": nasce o produto, a 1ª variação (sem eixo) e a oferta simples (SKU = Ref), e ele aparece na Lista
  *   da trilha e na tela de Produtos do Portal; SKU repetido (sem caixa nem acento) é 422 no campo;
  * - o JSON CRU das linhas: `''` não mexe, `null` limpa (sem isso o `ConvertEmptyStringsToNull` apagaria o dado);
- * - uma requisição, um produto, e só as chaves da lista permitida (F1: sem categoria, sem eixo, sem variação nova);
+ * - uma requisição, um produto, e só as chaves da lista permitida (sem eixo nem variação nova até a F4; a categoria,
+ *   conferida, desde a F2 — {@see FichaNaTrilhaTest});
  * - o retrato é a LISTA DE CAMPOS do contrato (§6.3), com as fotos pela rota da equipe e nenhum `/portal/`;
  * - a trava (pergunta 1): o produto que algum item da trilha já levou adiante fica só para leitura (409);
  * - o rastro: um `trilha_cadastro_salvo` por escrita, com `via: trilha`, o passo e o ator da equipe.
@@ -348,8 +349,9 @@ class CadastroNaTrilhaTest extends TestCase
         $this->linhas($a['produto'], [[
             'id' => $a['variacoes'][0]->id, 'codigo' => 'VA', 'nome' => 'Vaso Alfa Novo',
             'produto_id' => $b['produto']->id, 'company_id' => 999, 'grupo' => 'VB',
-            // Categoria (F2) e cor (F4) entram com as conferências delas; até lá, descartadas — e nada vai ao ML.
-            'categoria_ml_id' => 'MLB1234', 'categoria_texto' => 'Cadeiras', 'eixo' => 'cor', 'valor' => 'Azul',
+            // O texto de categoria ("a confirmar" no Portal) nunca entra pela trilha; a cor (F4) entra com a conferência
+            // dela. A categoria do ML (F2) passa, conferida — ver FichaNaTrilhaTest.
+            'categoria_texto' => 'Cadeiras', 'eixo' => 'cor', 'valor' => 'Azul',
             'eixo_2' => 'tamanho', 'valor_2' => 'P', 'ordem' => 9, 'variacao' => '2', 'volumes_texto' => '10x10x10 1kg',
         ]])->assertOk()->assertJsonPath('erros', []);
 
