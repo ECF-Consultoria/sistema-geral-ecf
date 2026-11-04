@@ -578,3 +578,11 @@ continuam no bônus de set/26 (já consolidado em 31/10) e não entram no de out
 de novo por causa do `completed_at`. Levar essas respostas para out/26 é o item 2 da
 DEV-54 (fase GSD + reconsolidar set/26). Backup em
 `/tmp/nps_backup_out_para_nov_261104_095822.json` na VPS.
+
+Efeito colateral em set/26 (conferido no mesmo dia): o ciclo out/26 ficou só com o
+646 (TY), então o recálculo AO VIVO de set/26 perdeu as notas 1 dos que não
+responderam. O NPS dessas pessoas sobe (Rubens 2,32 → 4,95, Danilo 1,65 → 4,92,
+Nathalia 2,94 → 4,98). O ramo (D) não deu nota 1 nova para elas. O snapshot congelado
+em 31/10 14:01 não muda, e as 10 pessoas ficam `sem_bonus` nas duas contas. Quem
+reconsolidar set/26 vai ver esses números mudarem. A causa é esta correção, não um
+defeito.
