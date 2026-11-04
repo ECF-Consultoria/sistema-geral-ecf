@@ -7,7 +7,7 @@ import { plural } from '@/Components/Trilha/formatos';
 // ─── Trilha de produtos — os cartões das ondas (etapas 3 e 4) ───────────────
 //
 // O `.ondas` do protótipo, com a régua da 2ª entrega: a data da onda é o dia em
-// que o robô COMEÇA ("Começa em 05/11", "Começou em 03/11"), nunca prazo. A
+// que o agente COMEÇA ("Começa em 05/11", "Começou em 03/11"), nunca prazo. A
 // barra conta as ofertas da onda que já estão na revisão ou no ar. Clicar abre
 // a onda (`?abrir=w:{id}`): nome, data e as ofertas dela.
 //

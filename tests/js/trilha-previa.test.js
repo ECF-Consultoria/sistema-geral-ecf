@@ -49,8 +49,8 @@ import {
 // POR QUE EXISTE: a gaveta `v:{item}` lê o JSON do §19.5 do desenho (o servidor,
 // `App\Services\Trilha\PreviaNaTrilha`, é feito em paralelo) pela URL
 // `escrita.revisao.previa`, com o marcador `__ITEM__` no lugar do id. Um nome de
-// campo trocado num lado só faria a gaveta mostrar "o robô ainda prepara" para
-// um anúncio pronto, o Premium sem parcelas, a foto do robô sem o selo — ou o
+// campo trocado num lado só faria a gaveta mostrar "o agente ainda prepara" para
+// um anúncio pronto, o Premium sem parcelas, a foto do agente sem o selo — ou o
 // cartão com o nome do marketplace entrar no pacote do cliente. Aqui: as regras
 // puras (`lib/trilhaPrevia.js`), a chamada (com o axios de mentira), a gaveta
 // DESENHADA com o JSON do contrato (pronta, não pronta, 409, carregando, erro,
@@ -181,8 +181,8 @@ const OFERTA_S1 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-1');
 const OFERTA_S3 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-3');
 const SEM_REVISAO = { ...PROPS_TRABALHO, escrita: { ...ESCRITA, revisao: undefined } };
 
-/** O nome do marketplace, o Portal e o "agente" (D59): nenhum deles no cartão. */
-const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|\bagente\b/i;
+/** O nome do marketplace e o Portal (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente"): nenhum deles no cartão. */
+const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|robô/i;
 
 const desenharVista = (props = {}) => renderToStaticMarkup(h(M.previa.VistaDaPrevia, { oferta: OFERTA_S2, previa: PREVIA_DO_ANUNCIO, trabalho: true, ...props }));
 
@@ -208,10 +208,10 @@ test('pronta ou não: `pronta: true` com anúncio; o motivo do servidor, ou o ne
     assert.equal(previaPronta({ ...PREVIA_DO_ANUNCIO, anuncios: [] }), false, 'pronta sem anúncio não desenha cartão vazio');
     assert.equal(previaPronta({ ...PREVIA_DO_ANUNCIO, pronta: 'sim' }), false);
     assert.equal(previaPronta(null), false);
-    assert.equal(motivoDaPrevia(PREVIA_NAO_PRONTA), 'O robô ainda está preparando este anúncio.');
+    assert.equal(motivoDaPrevia(PREVIA_NAO_PRONTA), 'O agente ainda está preparando este anúncio.');
     assert.equal(motivoDaPrevia({ pronta: false, motivo: '  Falta a categoria deste anúncio.  ' }), 'Falta a categoria deste anúncio.');
     for (const p of [{ pronta: false }, { pronta: false, motivo: '' }, null]) assert.equal(motivoDaPrevia(p), MOTIVO_SEM_PREVIA);
-    assert.equal(MOTIVO_SEM_PREVIA, 'O robô ainda está preparando este anúncio.');
+    assert.equal(MOTIVO_SEM_PREVIA, 'O agente ainda está preparando este anúncio.');
     // Onde está e Situação: a prévia é mais nova que a oferta da página.
     assert.equal(etapaDaPrevia(PREVIA_DO_ANUNCIO, { etapa: 'robo' }), 'revisao');
     assert.equal(etapaDaPrevia(null, { etapa: 'robo' }), 'robo');
@@ -266,7 +266,7 @@ test('tipos e cores: agrupados por tipo × cor; só o que tem anúncio vira aba;
     assert.deepEqual(variantesDaPrevia(antigo), [{ chave: 'v7', rotulo: 'Preto' }]);
 });
 
-test('fotos: a ordem do anúncio (a capa do Premium é a do robô), `gerada` booleano, o texto das geradas e o alternativo', () => {
+test('fotos: a ordem do anúncio (a capa do Premium é a do agente), `gerada` booleano, o texto das geradas e o alternativo', () => {
     const [classicoNatural, , premiumNatural] = PREVIA_DO_ANUNCIO.anuncios;
     const fotos = fotosDoAnuncio(classicoNatural);
     assert.deepEqual(fotos.map((f) => [f.id, f.gerada]), [['881', false], ['882', false], ['883', false], ['890', true], ['891', true]]);
@@ -281,14 +281,14 @@ test('fotos: a ordem do anúncio (a capa do Premium é a do robô), `gerada` boo
     assert.equal(fotosDoAnuncio({ fotos: [{ id: 3, url: '/y.jpg', miniatura: ' /y.jpg?miniatura=1 ' }] })[0].miniatura, '/y.jpg?miniatura=1');
     assert.equal(fotosDoAnuncio({ fotos: [{ id: 3, url: '/y.jpg', miniatura: null }] })[0].miniatura, '/y.jpg');
 
-    assert.equal(ROTULO_DA_GERADA, 'gerada pelo robô');
-    assert.equal(textoDasGeradas(fotos), '2 das 5 fotos foram geradas pelo robô.');
-    assert.equal(textoDasGeradas(fotosDoAnuncio(PREVIA_DO_ANUNCIO.anuncios[1])), '1 das 4 fotos foi gerada pelo robô.');
-    assert.equal(textoDasGeradas([{ gerada: true }]), 'A foto foi gerada pelo robô.');
-    assert.equal(textoDasGeradas([{ gerada: true }, { gerada: true }]), 'As 2 fotos foram geradas pelo robô.');
+    assert.equal(ROTULO_DA_GERADA, 'gerada pelo agente');
+    assert.equal(textoDasGeradas(fotos), '2 das 5 fotos foram geradas pelo agente.');
+    assert.equal(textoDasGeradas(fotosDoAnuncio(PREVIA_DO_ANUNCIO.anuncios[1])), '1 das 4 fotos foi gerada pelo agente.');
+    assert.equal(textoDasGeradas([{ gerada: true }]), 'A foto foi gerada pelo agente.');
+    assert.equal(textoDasGeradas([{ gerada: true }, { gerada: true }]), 'As 2 fotos foram geradas pelo agente.');
     assert.equal(textoDasGeradas([{ gerada: false }]), null);
     assert.equal(textoDasGeradas([]), null);
-    assert.equal(rotuloDaFoto(fotos[3], 3, 5), 'Foto 4 de 5, gerada pelo robô');
+    assert.equal(rotuloDaFoto(fotos[3], 3, 5), 'Foto 4 de 5, gerada pelo agente');
     assert.equal(rotuloDaFoto(fotos[0], 0, 5), 'Foto 1 de 5');
 });
 
@@ -363,11 +363,11 @@ test('o resto do cartão: categoria, descrição, ficha agrupada, entrega, prepa
     assert.deepEqual(bloqueiosDaPrevia({ bloqueios: ['Falta a garantia', { mensagem: 'Preço do Premium igual ao Clássico' }, { texto: '' }, 7] }), ['Falta a garantia', 'Preço do Premium igual ao Clássico']);
 });
 
-test('lib/trilhaPrevia.js é pura: sem React, sem axios, sem classe do Tailwind, sem o marketplace, o Portal, o Publicador nem o "agente"', () => {
+test('lib/trilhaPrevia.js é pura: sem React, sem axios, sem classe do Tailwind, sem o marketplace, o Portal, o Publicador nem o "robô"', () => {
     const fonte = lerSemComentarios('resources/js/lib/trilhaPrevia.js');
     assert.equal(fonte.match(/^\s*import\b/m), null, 'nenhum import: o node a carrega direto');
     assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null);
-    assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b/i), null);
+    assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|Publicador|robô/i), null);
 });
 
 // ─── A chamada ao servidor ─────────────────────────────────────────────────
@@ -410,9 +410,9 @@ test('a prévia pronta (§19.5): Onde está, o cartão do anúncio, o Preço com
         'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar', 'R$ 899,90', 'Entrega pelo ME2, com frete grátis para o comprador.',
         'Descrição', 'Olá! Que bom ter você na Casa Jatobá.', 'CUIDADOS E RECOMENDAÇÕES',
         'Ficha técnica', 'Principais', 'Material da estrutura', 'Jatobá maciço', 'Dimensões', 'Altura', '92 cm',
-        '2 das 5 fotos foram geradas pelo robô.',
+        '2 das 5 fotos foram geradas pelo agente.',
         'Preço', 'Clássico', 'ajustado', 'na Precificação: R$ 879,90', 'Premium', 'R$ 989,90', 'igual à Precificação',
-        'Situação', 'Pré-pronto · esperando a revisão', 'Preparo do robô:', 'Título · pronto', 'Descrição · pronto', 'Imagens · pronto',
+        'Situação', 'Pré-pronto · esperando a revisão', 'Preparo do agente:', 'Título · pronto', 'Descrição · pronto', 'Imagens · pronto',
         'Ver a oferta',
     ]) {
         assert.ok(t.includes(s), `faltou: ${s}`);
@@ -433,11 +433,11 @@ test('a prévia pronta (§19.5): Onde está, o cartão do anúncio, o Preço com
     // R10 (04/11/2026): nenhum link do Publicador — nem com o endereço velho na oferta de exemplo (`url_publicador`).
     assert.ok(OFERTA_S2.url_publicador, 'o exemplo ainda traz o endereço');
     assert.ok(!saida.includes('data-link="publicador"') && !saida.includes('/mlb/anuncios/publicador') && !t.includes('Abrir no Publicador'));
-    // Nada do marketplace, do Portal nem do "agente" (D59).
+    // Nada do marketplace, do Portal (D59) nem do antigo "robô" (R9).
     assert.equal(t.match(PROIBIDO), null);
 });
 
-test('a galeria: a capa grande, as miniaturas, as do robô com o selo "gerada pelo robô" em roxo e toda foto com `loading="lazy"`', () => {
+test('a galeria: a capa grande, as miniaturas, as do agente com o selo "gerada pelo agente" em roxo e toda foto com `loading="lazy"`', () => {
     const saida = desenharVista();
     const galeria = pedaco(saida, 'data-galeria', '');
     const imagens = galeria.match(/<img\b[^>]*>/g) ?? [];
@@ -448,10 +448,10 @@ test('a galeria: a capa grande, as miniaturas, as do robô com o selo "gerada pe
     assert.match(galeria, /data-capa=""/);
     // A capa do Clássico é do cliente: sem selo na foto grande.
     assert.ok(!pedaco(saida, 'data-foto-grande', '881').slice(0, pedaco(saida, 'data-foto-grande', '881').indexOf('</figure>')).includes('data-selo-gerada'));
-    // As miniaturas do robô: marcadas e com o rótulo acessível.
+    // As miniaturas do agente: marcadas e com o rótulo acessível.
     const geradas = tags(galeria, 'data-gerada=""');
     assert.deepEqual(geradas.map((b) => b.match(/data-foto="(\d+)"/)[1]), ['890', '891']);
-    assert.ok(geradas.every((b) => b.includes('border-trilha-roxo/60') && /aria-label="Foto \d de 5, gerada pelo robô"/.test(b)), geradas.join('\n'));
+    assert.ok(geradas.every((b) => b.includes('border-trilha-roxo/60') && /aria-label="Foto \d de 5, gerada pelo agente"/.test(b)), geradas.join('\n'));
     assert.ok(tag(galeria, 'data-foto="881"').includes('aria-pressed="true"'), 'a capa é a escolhida ao abrir');
     // As cores com a capa de cada uma.
     assert.match(pedaco(saida, 'data-escolha', 'variante'), /<img src="\/trilha\/459\/ofertas\/s-2\/fotos\/884" alt="" loading="lazy"/);
@@ -473,22 +473,22 @@ test('R3: a grade e a bolinha da cor pedem a MINIATURA; só a foto em destaque �
     assert.match(pedaco(saida, 'data-escolha', 'variante'), /<img src="\/trilha\/459\/ofertas\/s-2\/fotos\/884\?miniatura=1" alt="" loading="lazy"/);
 });
 
-test('o Premium (outra escolha): a capa é a do robô, com o selo; o preço com as parcelas sem juros', () => {
+test('o Premium (outra escolha): a capa é a do agente, com o selo; o preço com as parcelas sem juros', () => {
     const saida = desenharVista({ inicial: { tipo: 'premium', variante: 'v2' } });
     const t = texto(saida);
     assert.match(saida, /data-anuncio="premium:v2"/);
     assert.ok(tag(saida, 'data-opcao="premium"').includes('aria-pressed="true"') && tag(saida, 'data-opcao="v2"').includes('aria-pressed="true"'));
     const grande = pedaco(saida, 'data-foto-grande', '892');
-    assert.ok(grande.includes('alt="Foto 1 de 4, gerada pelo robô"'), grande.slice(0, 300));
-    assert.ok(grande.slice(0, grande.indexOf('</figure>')).includes('data-selo-gerada'), 'a capa do robô leva o selo');
-    assert.ok(texto(grande.slice(0, grande.indexOf('</figure>'))).includes('gerada pelo robô'));
+    assert.ok(grande.includes('alt="Foto 1 de 4, gerada pelo agente"'), grande.slice(0, 300));
+    assert.ok(grande.slice(0, grande.indexOf('</figure>')).includes('data-selo-gerada'), 'a capa do agente leva o selo');
+    assert.ok(texto(grande.slice(0, grande.indexOf('</figure>'))).includes('gerada pelo agente'));
     assert.ok(t.includes('Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar'));
     assert.ok(t.includes('R$ 989,90') && t.includes('em 10× R$ 98,99 sem juros') && t.includes('estimativa pela faixa de preço'), t);
     assert.match(saida, /data-parcelas=""/);
     // A cor Mel do Clássico tem a promoção prevista: ela aparece só lá.
     const melClassico = texto(desenharVista({ inicial: { tipo: 'classico', variante: 'v2' } }));
     assert.ok(melClassico.includes('Depois de publicar, o sistema tenta uma promoção: R$ 809,91 (10% de desconto).'), melClassico);
-    assert.ok(melClassico.includes('1 das 4 fotos foi gerada pelo robô.'));
+    assert.ok(melClassico.includes('1 das 4 fotos foi gerada pelo agente.'));
 });
 
 test('uma cor só e um tipo só: sem as abas que não escolhem nada; anúncio sem foto e sem descrição avisa', () => {
@@ -510,7 +510,7 @@ test('uma cor só e um tipo só: sem as abas que não escolhem nada; anúncio se
 test('sem prévia (200 `pronta: false`) e o 409: o motivo neutro no lugar do cartão, sem Preço e sem "Tentar de novo"', () => {
     const naoPronta = desenharVista({ oferta: OFERTA_S4, previa: PREVIA_NAO_PRONTA });
     const t = texto(naoPronta);
-    assert.ok(t.includes('O robô ainda está preparando este anúncio.'), t);
+    assert.ok(t.includes('O agente ainda está preparando este anúncio.'), t);
     assert.ok(naoPronta.includes('data-previa-indisponivel') && !naoPronta.includes('data-galeria') && !naoPronta.includes('data-caixa="preco"'));
     assert.ok(!naoPronta.includes('data-acao="tentar-previa-de-novo"') && !naoPronta.includes('role="alert"'));
     // A Situação continua: o status da prévia e o preparo dela.
@@ -539,14 +539,14 @@ test('carregando, erro e antes da revisão (D44)', () => {
 
     const antes = desenharVista({ oferta: OFERTA_S3, previa: null, antes: true });
     assert.ok(texto(antes).includes(ANTES_DA_REVISAO), texto(antes));
-    assert.equal(ANTES_DA_REVISAO, 'O robô ainda prepara este anúncio: a prévia aparece quando ele chegar à revisão.');
+    assert.equal(ANTES_DA_REVISAO, 'O agente ainda prepara este anúncio: a prévia aparece quando ele chegar à revisão.');
     assert.ok(texto(antes).includes('Preparação automática') && texto(antes).includes(OFERTA_S3.status));
 });
 
 test('a gaveta de verdade (com o hook): na revisão abre "Abrindo a prévia…"; antes dela, nem pergunta ao servidor', () => {
     const naRevisao = renderToStaticMarkup(h(M.previa.default, { oferta: OFERTA_S2, escrita: ESCRITA, trabalho: true }));
     assert.ok(naRevisao.includes('data-carregando-previa') && naRevisao.includes('aria-busy="true"'));
-    // A oferta com o robô (D44): o texto, sem "carregando" — o efeito do pedido nem chega a rodar.
+    // A oferta com o agente (D44): o texto, sem "carregando" — o efeito do pedido nem chega a rodar.
     const antes = renderToStaticMarkup(h(M.previa.default, { oferta: OFERTA_S3, escrita: ESCRITA, trabalho: true }));
     assert.ok(texto(antes).includes(ANTES_DA_REVISAO) && !antes.includes('data-carregando-previa'));
     // Publicada: tem prévia (conferência).
@@ -661,7 +661,7 @@ test('o "Revisar" da linha em revisão abre `v:` (a linha continua sendo a da of
     assert.deepEqual(abriu(OFERTA_S2, { comPrevia: false }), ['o:s-2', 'o:s-2', 'Revisar']);
     assert.deepEqual(abriu(OFERTA_S2, { podeEditar: false }), ['o:s-2', 'o:s-2', 'Revisar']);
     assert.deepEqual(abriu(OFERTA_S2, { podeEditar: false, comPrevia: false, visao: 'cliente' }), ['o:s-2', 'o:s-2', 'Acompanhar']);
-    // A publicada ("No ar") e a do robô abrem o painel da oferta: o [Ver prévia] da publicada fica lá.
+    // A publicada ("No ar") e a do agente abrem o painel da oferta: o [Ver prévia] da publicada fica lá.
     assert.deepEqual(abriu(OFERTA_S1), ['o:s-1', 'o:s-1', 'No ar']);
     assert.deepEqual(abriu(OFERTA_S3), ['o:s-3', 'o:s-3', 'Ver preparo']);
 
@@ -692,7 +692,7 @@ test('o painel da oferta (`o:`) ganha [Ver prévia]: principal na revisão, secu
     assert.equal(linkPublicador(publicada), '');
     assert.ok(!texto(publicada).includes('Abrir no Publicador'));
 
-    assert.equal(botaoPrevia(daOferta(PROPS_TRABALHO, 's-3')), '', 'com o robô: ainda não');
+    assert.equal(botaoPrevia(daOferta(PROPS_TRABALHO, 's-3')), '', 'com o agente: ainda não');
     assert.equal(botaoPrevia(daOferta(PROPS_TRABALHO, 'c-2-4')), '', 'no planejamento: ainda não');
     for (const [nome, props] of [
         ['cliente', paraCliente(PROPS_TRABALHO)],
@@ -728,13 +728,13 @@ test('o `lazy` da prévia: na página E no 2º caminho (`CadastroSobDemanda.jsx`
     assert.equal(fallback.match(/Mercado\s+Livre|Portal|Publicador/i), null);
 });
 
-test('a pasta Revisao/: só cores trilha-*, toda foto com `loading="lazy"`, nenhum marketplace, Portal, "agente" nem Publicador (R10)', () => {
+test('a pasta Revisao/: só cores trilha-*, toda foto com `loading="lazy"`, nenhum marketplace, Portal, "robô" (R9) nem Publicador (R10)', () => {
     const pasta = path.resolve(RAIZ, 'resources/js/Components/Trilha/Revisao');
     const arquivos = fs.readdirSync(pasta).map((f) => path.join('resources/js/Components/Trilha/Revisao', f));
     assert.ok(arquivos.length >= 1);
     for (const arquivo of arquivos) {
         const fonte = lerSemComentarios(arquivo);
-        assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|\bagente\b/i), null, arquivo);
+        assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|robô/i), null, arquivo);
         // R10 (04/11/2026): o "Abrir no Publicador" que morava na gaveta saiu — nenhuma peça da pasta cita o Publicador
         // nem lê o endereço dele.
         assert.equal(fonte.match(/url_publicador/), null, arquivo);

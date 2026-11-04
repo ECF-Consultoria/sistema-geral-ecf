@@ -84,7 +84,7 @@ class OndasEmLoteTest extends TestCase
         $this->assertSame('"Vaso Andou" já começou (preparada, em revisão ou no ar): não entra em onda.', $r->json('resultados.2.motivo'));
         $this->assertSame('"Avulso" não tem produto na Lista: por enquanto fica fora das ondas.', $r->json('resultados.3.motivo'));
         $this->assertSame([3, 2], [$r->json('entraram'), $r->json('recusadas')]);
-        $this->assertSame('3 ofertas na Onda 1. O robô começa em 08/11. 2 recusadas: veja o motivo de cada uma.', $r->json('mensagem'));
+        $this->assertSame('3 ofertas na Onda 1. O agente começa em 08/11. 2 recusadas: veja o motivo de cada uma.', $r->json('mensagem'));
         $this->assertEqualsCanonicalizing([$sA, $sB, $sC], TrilhaOndaItem::all()->map->chave()->all());
         $this->assertSame([$onda->id], TrilhaOndaItem::query()->distinct()->pluck('onda_id')->map(fn ($id) => (int) $id)->all());
         Queue::assertNothingPushed();
@@ -157,7 +157,7 @@ class OndasEmLoteTest extends TestCase
         $r = $this->lote([$c2], $depois->id)->assertOk();
         $this->assertSame(['entrou', [$s]], [$r->json('resultados.0.situacao'), $r->json('resultados.0.junto')]);
         $this->assertSame('A simples de Vaso Alfa entrou junto, na Onda Depois: o combo nasce dela.', $r->json('avisos.0'));
-        $this->assertSame('2 ofertas na Onda Depois. O robô começa em 08/11.', $r->json('mensagem'));
+        $this->assertSame('2 ofertas na Onda Depois. O agente começa em 08/11.', $r->json('mensagem'));
         $this->assertEqualsCanonicalizing([$s, $c2], TrilhaOndaItem::all()->map->chave()->all());
 
         // Recomeça: o Combo 3 numa onda que começa ANTES, com a Simples sem onda (dado antigo).
@@ -215,7 +215,7 @@ class OndasEmLoteTest extends TestCase
 
         $this->lote(["s-{$a['produto']->id}", "s-{$b['produto']->id}"], $hoje->id)
             ->assertOk()
-            ->assertJsonPath('mensagem', '2 ofertas na Onda Hoje. Ela já começou: o robô foi chamado.')
+            ->assertJsonPath('mensagem', '2 ofertas na Onda Hoje. Ela já começou: o agente foi chamado.')
             ->assertJsonPath('onda', ['id' => $hoje->id, 'nome' => 'Onda Hoje', 'data' => '2026-11-05', 'comecou' => true]);
 
         foreach ([$a, $b] as $p) {

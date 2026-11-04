@@ -181,7 +181,7 @@ class MapeamentoNaTrilha
     /**
      * Grava o mapeamento: as composições novas (pela regra do aceite do Portal), a varredura da espera e o Sincronizar
      * uma vez no fim, o descarte das sugestões que sobraram do produto (reversível no Portal), a marca de "mapeado" e
-     * o rastro. Tudo numa transação, sob a trava da empresa: ou tudo, ou nada. O robô NÃO começa aqui: as ofertas
+     * o rastro. Tudo numa transação, sob a trava da empresa: ou tudo, ou nada. O agente NÃO começa aqui: as ofertas
      * novas ficam "Sem onda" no Planejamento.
      *
      * @return array{criadas: list<array{chave: string, tipo: string, nome: string, skus: list<string>}>, descartadas: int, mensagem: string}
@@ -221,7 +221,7 @@ class MapeamentoNaTrilha
             }
 
             // Uma vez no fim, como o aceite das sugestões: a espera e o Sincronizar (o kit chega ao Publicador sem
-            // IA — a trava da onda segura o robô até a data).
+            // IA — a trava da onda segura o agente até a data).
             if ($skus !== []) {
                 $this->ofertas->varrerEspera($empresa, $skus);
                 $this->ofertas->prepararNoPublicador($empresa, $componentes);

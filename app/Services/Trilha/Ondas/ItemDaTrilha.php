@@ -10,7 +10,7 @@ use App\Models\PubProduto;
 /**
  * A régua INVERSA da trilha (2ª entrega, 02/11/2026): de um pub_produto do Publicador para o item da trilha que
  * ele representa. O sentido de ida (item → pub_produtos) é o de `OfertasDaTrilha::agrupar()` com
- * `SituacaoDasOfertas::pubsDaSimples()/pubsDoCombo()/pubsDaOferta()`; esta classe é a volta, para a trava do robô
+ * `SituacaoDasOfertas::pubsDaSimples()/pubsDoCombo()/pubsDaOferta()`; esta classe é a volta, para a trava do agente
  * saber de qual onda o rascunho depende. As duas têm de concordar — `Tests\Feature\Trilha\ItemDaTrilhaTest`
  * confere com os mesmos dados.
  *

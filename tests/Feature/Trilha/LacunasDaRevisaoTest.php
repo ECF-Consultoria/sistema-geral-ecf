@@ -37,7 +37,7 @@ use Tests\TestCase;
  *   da onda (`soItens`) — perdê-los faria o Job da volta preparar o produto inteiro e refazer, paga e de carona, a
  *   etapa que falhou na Simples;
  * - a Simples "Publicando agora" não está pronta para o Kit N nascer — nem na tela (o combo espera) nem no servidor
- *   (`SimplesPronta`, `CombosDoPlanejamentoService::agendar`), mesmo com o texto do robô completo;
+ *   (`SimplesPronta`, `CombosDoPlanejamentoService::agendar`), mesmo com o texto do agente completo;
  * - a Simples com a publicação FALHADA também não, mesmo com o texto completo (o teste da revisão usa uma falhada SEM
  *   texto, que o servidor barra pelo texto e não pelo status).
  *
@@ -128,7 +128,7 @@ class LacunasDaRevisaoTest extends TestCase
         [$empresa, $s, $c, $grupo, $r] = $this->simplesComTextoCompleto();
         $this->assertProntaParaOKitN($empresa, $s, $c, $grupo, $r);
 
-        // A publicação falhou: o texto do robô está lá, completo — é o status que barra (uma pessoa precisa olhar).
+        // A publicação falhou: o texto do agente está lá, completo — é o status que barra (uma pessoa precisa olhar).
         PubRascunho::whereKey($r->id)->update(['status' => PubRascunho::FAILED]);
         $this->assertSame('completo', app(PreparoIaDoRascunhoService::class)->situacaoDoTexto($r->fresh()));
 
@@ -138,7 +138,7 @@ class LacunasDaRevisaoTest extends TestCase
     // ─── apoio ───
 
     /**
-     * Um produto completo e mapeado, com a Simples no Publicador em DRAFT e o texto do robô COMPLETO para os fatos de
+     * Um produto completo e mapeado, com a Simples no Publicador em DRAFT e o texto do agente COMPLETO para os fatos de
      * agora, e o Combo 2 dele numa onda de 05/11 já solta e pedida. Hoje é 07/11.
      *
      * @return array{0: Company, 1: string, 2: string, 3: PubProduto, 4: PubRascunho}

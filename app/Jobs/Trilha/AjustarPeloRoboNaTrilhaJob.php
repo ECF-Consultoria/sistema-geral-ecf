@@ -12,7 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * O "Pedir ajuste ao robô" da revisão da trilha (4ª entrega, fatia 4b, desenho §19.14, D51): refaz o título (com o
+ * O "Pedir ajuste ao agente" da revisão da trilha (4ª entrega, fatia 4b, desenho §19.14, D51): refaz o título (com o
  * Modelo) e/ou a descrição do anúncio com os geradores do preparo e grava pelo `executarEtapa` do Publicador. A regra mora
  * em {@see AjusteDoRoboNaTrilha::executar()}.
  *
@@ -63,12 +63,12 @@ class AjustarPeloRoboNaTrilhaJob implements ShouldQueue
         $resultado = $this->modo === self::ACOMPANHAR
             ? $ajuste->acompanhar($this->companyId, $this->item, $this->pubProdutoId, $this->pedido, $this->partes, $this->vez)
             : $ajuste->executar($this->companyId, $this->item, $this->pubProdutoId, $this->pedido, $this->partes);
-        Log::info("[Trilha] Ajuste do robô ({$this->modo}): item {$this->item} (anúncio {$this->pubProdutoId}) da empresa {$this->companyId}: {$resultado}.");
+        Log::info("[Trilha] Ajuste do agente ({$this->modo}): item {$this->item} (anúncio {$this->pubProdutoId}) da empresa {$this->companyId}: {$resultado}.");
     }
 
     public function failed(\Throwable $e): void
     {
         AjusteDoRoboNaTrilha::quebrou($this->pubProdutoId, $this->pedido);
-        Log::error("[Trilha] Ajuste do robô ({$this->modo}) do item {$this->item} (anúncio {$this->pubProdutoId}) da empresa {$this->companyId} quebrou: ".$e->getMessage());
+        Log::error("[Trilha] Ajuste do agente ({$this->modo}) do item {$this->item} (anúncio {$this->pubProdutoId}) da empresa {$this->companyId} quebrou: ".$e->getMessage());
     }
 }

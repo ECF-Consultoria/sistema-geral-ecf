@@ -209,7 +209,7 @@ class TrilhaDaEmpresa
 
     /**
      * Os itens de oferta da empresa pela chave — a MESMA régua de {@see montar()} (agrupamento e "andou"), sem a
-     * lista, o Planejamento nem as ondas. É o que a trava do robô, a soltura das ondas e o serviço das ondas leem.
+     * lista, o Planejamento nem as ondas. É o que a trava do agente, a soltura das ondas e o serviço das ondas leem.
      * Consultas fixas: produtos com as cores, ofertas, componentes e o que o Publicador sabe delas.
      *
      * `$comoNaTela` (4ª entrega, 4a — a prévia da revisão, 03/11/2026): a etapa e o status COMO A TELA os mostra. Com a
@@ -249,7 +249,7 @@ class TrilhaDaEmpresa
                 'sem_texto'      => (bool) ($d['sem_texto'] ?? false),
                 'etapa'          => $d['etapa'],
                 // 4a (03/11/2026): o que a prévia da revisão lê — o status do item, o pub_produto que o representa (o
-                // rascunho da prévia) e o preparo do robô, na régua da tela.
+                // rascunho da prévia) e o preparo do agente, na régua da tela.
                 'status'         => $d['status'],
                 'alerta'         => (bool) $d['alerta'],
                 'pub_produto_id' => $d['pub_produto_id'],
@@ -335,8 +335,8 @@ class TrilhaDaEmpresa
     /**
      * Quais produtos têm o cadastro TRAVADO na trilha (3ª entrega, pergunta 1, decisão do usuário de 02/11/2026): o
      * produto que QUALQUER item da trilha já levou adiante — a Simples, o Combo N, o kit e o combit que o levam — fica só
-     * para leitura, porque mudar o cadastro dele faria o robô refazer texto e imagens (IA paga) e não muda o anúncio no
-     * ar. "Andou" é a régua única {@see SituacaoDasOfertas::andou()}: tem anúncio, o rascunho saiu do DRAFT, o robô já
+     * para leitura, porque mudar o cadastro dele faria o agente refazer texto e imagens (IA paga) e não muda o anúncio no
+     * ar. "Andou" é a régua única {@see SituacaoDasOfertas::andou()}: tem anúncio, o rascunho saiu do DRAFT, o agente já
      * mexeu ou é o Kit N. A tela ({@see montar()}) e as escritas do cadastro perguntam por aqui.
      *
      * @param  iterable<array{chave: string, nome: string, andou: bool, produtos: list<int>}>  $itens  a forma de {@see itens()}
@@ -363,7 +363,7 @@ class TrilhaDaEmpresa
      *
      * Com `$ondas` (a trilha de trabalho ligada), o item que ainda não andou e tem produto segue a régua da onda; o
      * Combo espera a Simples dele ficar PRONTA (decisão de 31/10/2026: o combo não espera a simples ser publicada —
-     * o robô a prepara antes), não ir ao ar.
+     * o agente a prepara antes), não ir ao ar.
      *
      * @param  array<int, list<string>>  $faltas  produto → faltas da lista (vazio = completo; só com `$ondas`)
      * @param  bool  $avulsasForaDasOndas  o composto feito só de ofertas sem produto sai `sem_produto` — a régua da trilha
@@ -418,7 +418,7 @@ class TrilhaDaEmpresa
         }
 
         // Sem a trilha de trabalho o Combo espera a Simples ir AO AR (a regra da fase N); com ela, ficar PRONTA — a
-        // régua do robô (`Ondas\SimplesPronta`) vista pela tela: na revisão ou no ar, com o texto do robô, e nem
+        // régua do agente (`Ondas\SimplesPronta`) vista pela tela: na revisão ou no ar, com o texto do agente, e nem
         // publicando nem com a publicação falhada (aí o Kit N também não nasce).
         $prontas = $ondas !== null ? ['revisao', 'lanc'] : ['lanc'];
         $simplesPronta = function (array $dependeDe) use (&$decisoes, $prontas, $ondas): bool {

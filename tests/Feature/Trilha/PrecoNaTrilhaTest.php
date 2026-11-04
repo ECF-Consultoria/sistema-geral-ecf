@@ -41,7 +41,7 @@ use Tests\TestCase;
  * `EditorRascunhoService::salvarVariantes`), em todas as cores ou numa só, e responde a prévia nova.
  *
  * O cenário é o do preparo de verdade (`CenarioDoPreparo`, como o `PreviaNaTrilhaTest`): a cadeira de DUAS cores (Azul e
- * Preto, um pub_produto com as duas como variantes) preparada pelo robô, na revisão; as chaves da trilha ligam só depois
+ * Preto, um pub_produto com as duas como variantes) preparada pelo agente, na revisão; as chaves da trilha ligam só depois
  * do preparo. A Precificação é um dublê fixo por cor (a de verdade tem a suíte dela) — fora no teste que prova que ela
  * NÃO é escrita, que roda com a de verdade. O que se prova:
  *
@@ -514,7 +514,7 @@ class PrecoNaTrilhaTest extends TestCase
 
     private function ligarATrilha(): void
     {
-        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o robô esperaria a onda).
+        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o agente esperaria a onda).
         Carbon::setTestNow(now()->addMinutes(5));
         config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
     }

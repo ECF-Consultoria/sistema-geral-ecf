@@ -37,11 +37,11 @@ use Tests\Feature\Trilha\Concerns\MontaTrilha;
 use Tests\TestCase;
 
 /**
- * "Pedir ajuste ao robô" na revisão (4ª entrega, fatia 4b, desenho §19.14, D51/D60): `POST /trilha/{empresa}/ofertas/{item}/ajuste`
+ * "Pedir ajuste ao agente" na revisão (4ª entrega, fatia 4b, desenho §19.14, D51/D60): `POST /trilha/{empresa}/ofertas/{item}/ajuste`
  * `{revisao, refazer}` põe na fila da IA um Job que refaz o título (com o Modelo) e/ou a descrição com os geradores do
  * preparo e grava pelo `executarEtapa` do Publicador; `GET …/ajuste` acompanha.
  *
- * O cenário é o do preparo de verdade (`CenarioDoPreparo`, como a 4a/4c/4d): a cadeira preparada pelo robô, na revisão, na
+ * O cenário é o do preparo de verdade (`CenarioDoPreparo`, como a 4a/4c/4d): a cadeira preparada pelo agente, na revisão, na
  * loja 459, com as chaves da trilha ligadas só depois do preparo. A IA é FALSA e anota cada chamada (método e argumentos):
  * nenhuma IA nem Mercado Livre de verdade. O Job sai da fila de mentira e roda à mão. O que se prova:
  *
@@ -49,11 +49,11 @@ use Tests\TestCase;
  * - parte editada pela equipe → `mantido`, nada sobrescrito e NENHUMA chamada nem cota gasta; a equipe que edita DURANTE
  *   a geração também vence (quem decide é o `executarEtapa`, sob a trava);
  * - editor em uso → adiado: o valor gerado vai no Job adiado do Publicador (sem gerar de novo) e o acompanhamento fecha;
- * - 409: na fila, publicando, publicado, fora da revisão, conferindo para publicar, texto que não é do robô (kit da fase
+ * - 409: na fila, publicando, publicado, fora da revisão, conferindo para publicar, texto que não é do agente (kit da fase
  *   N), ajuste em andamento, revisão velha (sem `travado`); 422: `refazer` inválido e o 4º pedido do dia;
  * - a cota diária da LOJA (o MESMO contador do preparo) esgotada → `erro` sem chamar a IA;
  * - o Job na fila da IA, nunca na `high`; texto livre no corpo não chega a lugar nenhum (Job, estado, histórico, IA);
- * - D60: "Robô refazendo · …" na linha da Lista enquanto anda, e a régua de sempre depois; o vencido não segura a linha;
+ * - D60: "Agente refazendo · …" na linha da Lista enquanto anda, e a régua de sempre depois; o vencido não segura a linha;
  * - o `ajuste` da prévia = o do GET; o histórico com quem pediu e as partes; a 4d espera o ajuste terminar.
  */
 class AjusteDoRoboNaTrilhaTest extends TestCase
@@ -82,7 +82,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
     /** @var list<array{0: string, 1: array}> as chamadas à IA falsa: [método, argumentos] */
     private array $chamadas = [];
 
-    /** Chamado DENTRO da geração da descrição (a equipe editando enquanto o robô pensa). */
+    /** Chamado DENTRO da geração da descrição (a equipe editando enquanto o agente pensa). */
     private ?\Closure $durante = null;
 
     private \SplObjectStorage $ajustesRodados;
@@ -156,7 +156,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
         $this->assertSame([], $this->chamadasDe('descricao'));
         $this->assertSame($descricao, (string) $r->fresh()->descricao);
 
-        // O robô continua dono do título (a memória acompanhou) e a revisão subiu (a conferência antiga perde a validade).
+        // O agente continua dono do título (a memória acompanhou) e a revisão subiu (a conferência antiga perde a validade).
         $escrito = $r->fresh()->step_state['ia_escrito'];
         $this->assertSame($novos['gold_special'], TituloDoProduto::capitalizar($escrito['titulo_gold_special']));
         $this->assertGreaterThan($revisao, (int) $r->fresh()->revisao);
@@ -176,7 +176,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
         $nova = (string) $this->rascunho()->descricao;
         $this->assertNotSame($descricao, $nova);
         $this->assertStringContainsString('feita para o dia inteiro', $nova);
-        $this->assertSame($nova, $this->rascunho()->step_state['ia_escrito']['descricao'], 'a memória do robô acompanhou');
+        $this->assertSame($nova, $this->rascunho()->step_state['ia_escrito']['descricao'], 'a memória do agente acompanhou');
         $this->assertSame($antes, $this->titulos());
         $this->assertSame([], $this->chamadasDe('titulosPorTermos'));
         $this->assertSame([], $this->chamadasDe('modeloPorTermos'));
@@ -235,13 +235,13 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
     public function test_a_equipe_que_edita_durante_a_geracao_vence(): void
     {
         $id = (int) $this->rascunho()->id;
-        $this->durante = fn () => DB::table('pub_rascunhos')->where('id', $id)->update(['descricao' => 'A equipe escreveu enquanto o robô pensava.']);
+        $this->durante = fn () => DB::table('pub_rascunhos')->where('id', $id)->update(['descricao' => 'A equipe escreveu enquanto o agente pensava.']);
 
         $this->pedir(['revisao' => $this->revisao(), 'refazer' => ['descricao']])->assertStatus(202);
         $this->rodarAjustes();
 
         $this->assertCount(1, $this->chamadasDe('descricao'), 'controle: a IA gerou');
-        $this->assertSame('A equipe escreveu enquanto o robô pensava.', (string) $this->rascunho()->descricao);
+        $this->assertSame('A equipe escreveu enquanto o agente pensava.', (string) $this->rascunho()->descricao);
         $this->assertSame(['situacao' => 'mantido', 'mensagem' => Ajuste::MSG_DESCRICAO_MANTIDA], $this->estado()->json('ajuste.partes.descricao'));
     }
 
@@ -299,7 +299,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
         }
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['status' => PubRascunho::DRAFT]);
 
-        // O "Aprovar e publicar" (4d) conferindo agora: o robô gravaria depois da conferência.
+        // O "Aprovar e publicar" (4d) conferindo agora: o agente gravaria depois da conferência.
         Cache::put(PublicacaoNaTrilha::chave((int) $this->pub->id), ['situacao' => 'conferindo', 'mensagem' => '', 'avisos' => [], 'mlbs' => [],
             'em' => now()->toIso8601String()], 3600);
         $this->assertSame(['message' => Ajuste::MSG_CONFERINDO_409], $pedir()->assertStatus(409)->json());
@@ -345,7 +345,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
             $this->pedir(['revisao' => $this->revisao(), 'refazer' => ['descricao']])->assertStatus(409)->json());
         Queue::assertPushed(AjustarPeloRoboNaTrilhaJob::class, 1);
         $this->assertSame(1, $this->historico()->count());
-        // O "Aprovar e publicar" (4d) enquanto o robô refaz: a conferência validaria o texto velho.
+        // O "Aprovar e publicar" (4d) enquanto o agente refaz: a conferência validaria o texto velho.
         $this->assertSame(['message' => Ajuste::MSG_PUBLICAR_COM_AJUSTE],
             $this->publicar(['revisao' => $this->revisao(), 'ciente' => false])->assertStatus(409)->json());
         Queue::assertNotPushed(PublicarPelaTrilhaJob::class);
@@ -357,7 +357,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
             $this->pedir(['revisao' => $this->revisao(), 'refazer' => ['descricao']])->assertStatus(409)->json());
     }
 
-    /** O kit da fase N (o Combo N, cópia do rascunho da Simples) tem texto de fluxo próprio: o robô não o refaz. */
+    /** O kit da fase N (o Combo N, cópia do rascunho da Simples) tem texto de fluxo próprio: o agente não o refaz. */
     public function test_o_kit_da_fase_n_nao_tem_ajuste(): void
     {
         config(['trilha.empresas' => [], 'trilha.trabalho.empresas' => []]);
@@ -497,7 +497,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
 
     // ═══ D60, a prévia e o histórico ═════════════════════════════════════════
 
-    /** "Robô refazendo · …" na linha da Lista (a página da equipe) enquanto anda; depois, a régua de sempre. */
+    /** "Agente refazendo · …" na linha da Lista (a página da equipe) enquanto anda; depois, a régua de sempre. */
     public function test_d60_a_linha_fica_na_revisao_com_robo_refazendo_e_volta_ao_fim(): void
     {
         $antes = $this->linha();
@@ -506,8 +506,8 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
         $this->pedir(['revisao' => $this->revisao(), 'refazer' => ['titulo', 'descricao']])->assertStatus(202);
 
         $naLista = $this->itemDaTrilha($this->paginaDaEquipe(), $this->item());
-        $this->assertSame(['revisao', 'Robô refazendo · título, descrição', false], [$naLista['etapa'], $naLista['status'], $naLista['alerta']]);
-        $this->assertSame('Robô refazendo · título, descrição', $this->previa()->json('item.status'), 'a prévia lê a mesma régua');
+        $this->assertSame(['revisao', 'Agente refazendo · título, descrição', false], [$naLista['etapa'], $naLista['status'], $naLista['alerta']]);
+        $this->assertSame('Agente refazendo · título, descrição', $this->previa()->json('item.status'), 'a prévia lê a mesma régua');
 
         $this->rodarAjustes();
         $depois = $this->itemDaTrilha($this->paginaDaEquipe(), $this->item());
@@ -515,7 +515,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
 
         // O ajuste que ficou parado (o Job morreu) não segura a linha nem o próximo pedido.
         $this->pedir(['revisao' => $this->revisao(), 'refazer' => ['descricao']])->assertStatus(202);
-        $this->assertSame('Robô refazendo · descrição', $this->linha()['status']);
+        $this->assertSame('Agente refazendo · descrição', $this->linha()['status']);
         Carbon::setTestNow(now()->addMinutes(Ajuste::ANDAMENTO_VALE_MIN + 1));
         $this->assertSame('Pré-pronto · a conferir', $this->linha()['status']);
         $this->assertSame(['situacao' => 'erro', 'mensagem' => Ajuste::MSG_NAO_TERMINOU], array_intersect_key($this->estado()->json('ajuste'), ['situacao' => 1, 'mensagem' => 1]));
@@ -553,7 +553,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
         $this->assertSame(['portal', 'interno', (int) $this->empresa->id, $this->item(), (int) $this->pub->id, $revisao, ['titulo', 'descricao']],
             [$a->log_name, $a->getExtraProperty('origem'), (int) $a->getExtraProperty('company_id'), $a->getExtraProperty('item'),
                 (int) $a->getExtraProperty('pub_produto_id'), (int) $a->getExtraProperty('revisao'), $a->getExtraProperty('partes')]);
-        $this->assertSame('Ajuste pedido ao robô em "Cadeira Executiva": título e descrição', $a->description);
+        $this->assertSame('Ajuste pedido ao agente em "Cadeira Executiva": título e descrição', $a->description);
         $this->assertSame(Queue::pushed(AjustarPeloRoboNaTrilhaJob::class)->first()->pedido, $a->getExtraProperty('pedido'));
     }
 
@@ -659,7 +659,7 @@ class AjusteDoRoboNaTrilhaTest extends TestCase
 
     private function ligarATrilha(): void
     {
-        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o robô esperaria a onda).
+        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o agente esperaria a onda).
         Carbon::setTestNow(now()->addMinutes(5));
         config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
     }

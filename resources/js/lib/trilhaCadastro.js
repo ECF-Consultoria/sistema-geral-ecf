@@ -1530,7 +1530,7 @@ export function embalagemMexida(estado, retrato) {
 // ─── Avisos da gaveta ───────────────────────────────────────────────────────
 
 /**
- * A onda de um item deste produto já começou e o robô ainda não mexeu: salvar faz o robô preparar com o que
+ * A onda de um item deste produto já começou e o agente ainda não mexeu: salvar faz o agente preparar com o que
  * estiver aqui. O nome da onda é livre ("Onda 1 · simples", "Black Friday").
  */
 export function avisoDaOndaComecada(onda) {
@@ -1538,5 +1538,5 @@ export function avisoDaOndaComecada(onda) {
     const nome = texto(onda.nome);
     const qual = /^onda\b/i.test(nome) ? `A ${nome}` : `A onda “${nome}”`;
 
-    return `${qual} já começou: ao salvar, o robô prepara este produto com o que estiver aqui (usa IA).`;
+    return `${qual} já começou: ao salvar, o agente prepara este produto com o que estiver aqui (usa IA).`;
 }

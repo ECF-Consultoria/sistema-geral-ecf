@@ -49,7 +49,7 @@ use Tests\TestCase;
  * - travado (pergunta 1): 409 e nenhum Job;
  * - de ponta a ponta, com o preparo de verdade (`CenarioDoPreparo`): completar pela trilha com a Simples numa onda
  *   futura prepara o rascunho e a IA fica `aguardando_onda` (a dublê nunca é chamada); com a onda já começada a IA roda
- *   UMA vez — e o produto, que o robô levou adiante, trava;
+ *   UMA vez — e o produto, que o agente levou adiante, trava;
  * - F3: o produto sem variação completado SÓ pela trilha (criar, caixas com a categoria, ficha, fotos) vai ao
  *   Publicador uma vez, na foto que o completa, e o rascunho nasce com a categoria e as 3 fotos;
  * - F4: o produto de duas cores completado só pela trilha vai ao Publicador uma vez e lá vira UM grupo com as duas
@@ -131,7 +131,7 @@ class CustoDoCadastroTest extends TestCase
     public function test_o_produto_que_ja_esta_no_publicador_vai_a_cada_gravacao_mesmo_incompleto(): void
     {
         $this->empresa = $this->empresaDaTrilha();
-        // O grupo das cores no Publicador, com rascunho ainda DRAFT e sem nada do robô: não andou, não trava.
+        // O grupo das cores no Publicador, com rascunho ainda DRAFT e sem nada do agente: não andou, não trava.
         $grupo = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', ['Azul', 'Verde'], ['descricao' => null]);
         $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $grupo));
         // O legado por cor: o pub ancorado só na oferta simples de uma cor.
@@ -198,7 +198,7 @@ class CustoDoCadastroTest extends TestCase
         $this->assertNotSame([], $this->rodar(GerarPreparoIaJob::class), 'a cadeia da IA rodou');
         $this->assertArrayHasKey('ia_preparo', (array) $this->rascunhoDo($p)->fresh()->step_state);
 
-        // O robô levou o produto adiante: a próxima escrita é recusada e nada mais vai para a fila.
+        // O agente levou o produto adiante: a próxima escrita é recusada e nada mais vai para a fila.
         $preparos = $this->jobs(PrepararProdutoNoPublicadorJob::class, $p);
         $this->assertTrue(TrilhaDaEmpresa::itens($this->empresa->fresh())["s-{$p->id}"]['andou']);
         $this->linhas($p, [['id' => $p->variacoes()->value('id'), 'codigo' => 'CAD-AZ', 'nome' => 'Cadeira Executiva', 'custo' => '1,00']])

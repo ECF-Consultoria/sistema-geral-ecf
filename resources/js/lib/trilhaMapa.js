@@ -13,7 +13,7 @@
 //   tem 3 colunas e a ligação vai direto da oferta aos anúncios; com ondas, 4
 //   colunas como no protótipo (onda → anúncio, passando pela oferta: o `via`).
 //   A caixa da onda diz "começa 05/11" ou "começou 03/11" (a data é o dia em
-//   que o robô começa, não prazo); as ondas vão pela data e, no empate, pelo id.
+//   que o agente começa, não prazo); as ondas vão pela data e, no empate, pelo id.
 //   Sem onda, três caixas: "Sem onda" (tracejada, âmbar) só com o que está no
 //   Planejamento e pode ser planejado; o que já passou dele sem onda vai para a
 //   caixa neutra "Começou sem onda" (a `w0` do protótipo, calculada aqui); a
@@ -43,7 +43,7 @@ export const ROTULO_CURTO = {
     lista: 'Lista',
     mapa: 'Mapeamento',
     plano: 'Planejamento',
-    robo: 'Robô',
+    robo: 'Agente',
     revisao: 'Revisão',
     lanc: 'No ar',
 };
@@ -518,14 +518,14 @@ export function cabecalhosDoMapa(grafo) {
 }
 
 /**
- * O status do robô que é PARADA (alguém precisa olhar): o agente parou, ou a onda
+ * O status do agente que é PARADA (alguém precisa olhar): o agente parou, ou a onda
  * começou há tempo e nada começou. "Na fila · com pendência na Lista" tem alerta
- * mas é aviso — o robô prepara com o que houver —, não parada.
+ * mas é aviso — o agente prepara com o que houver —, não parada.
  */
 const PARADA_DO_ROBO = /^(?:O agente parou|Ainda não começou)/;
 
 /**
- * A faixa do fluxo no topo do mapa (Lista → Mapeamento → Planejamento → Robô →
+ * A faixa do fluxo no topo do mapa (Lista → Mapeamento → Planejamento → Agente →
  * Revisão → No ar), sempre da loja inteira — o filtro de família não mexe nela,
  * como no protótipo.
  *

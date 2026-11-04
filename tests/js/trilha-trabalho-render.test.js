@@ -16,7 +16,7 @@ import { montarGrafo, posicionar, relacionados } from '../../resources/js/lib/tr
 // mapeamento (etapa 2) — e a escrita é só da equipe com `pode_editar`. O risco
 // que mais custa é um botão de escrita aparecendo para o cliente (ou para quem
 // não pode escrever no Portal da empresa); o outro é o vocabulário: a data da
-// onda é o dia em que o robô COMEÇA, nunca prazo, e as siglas são as do sistema.
+// onda é o dia em que o agente COMEÇA, nunca prazo, e as siglas são as do sistema.
 // Os painéis que buscam dados (o de mapear) são desenhados com o JSON do
 // contrato, sem pedido nenhum (`CorpoDoMapeamento`, `ResultadoDoMapeamento`).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -165,8 +165,8 @@ test('etapa 3 com a trilha de trabalho: os cartões das ondas pela data, o "+ No
         'Onda 2', 'Começa em 05/11 · 1 oferta', '0 de 1 já na revisão ou no ar',
         'Onda 3 · kits', 'Começa em 10/11 · 1 oferta', 'Começou', 'Agendada',
         '+ Nova onda', 'Agrupe as ofertas que começam no mesmo dia.',
-        'Cada oferta numa onda, com o dia em que o robô começa.',
-        'As ofertas entram em ondas com data: no dia da onda o robô começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.',
+        'Cada oferta numa onda, com o dia em que o agente começa.',
+        'As ofertas entram em ondas com data: no dia da onda o agente começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.',
         'Sem onda · falta escolher a data',
     ]) {
         assert.ok(t.includes(s), `faltou na etapa 3: ${s}`);
@@ -210,7 +210,7 @@ test('etapa 4: os mesmos cartões, sem "+ Nova onda"; a fila da onda e a onda na
     assert.equal((saida.match(/data-onda="\d+"/g) ?? []).length, 3);
     assert.ok(!saida.includes('data-acao="nova-onda"'), 'a onda nova nasce no Planejamento');
     for (const s of [
-        'Na data da onda, o robô monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
+        'Na data da onda, o agente monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
         'Na fila · começa em 05/11', 'Na fila · começa em 10/11', 'Na fila · começou em 03/11',
         'Onda 2 · começa 05/11', 'Onda 3 · kits · começa 10/11', 'Onda 1 · simples · começou 03/11',
     ]) {
@@ -414,7 +414,7 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
     // Sem onda (etapa 3): o seletor das ondas pela data, "Colocar na onda" e "+ Nova onda".
     const kit = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=o:o-31'), 'o:o-31');
     const tk = texto(kit);
-    for (const s of ['Planejamento', 'A data da onda é o dia em que o robô começa a preparar esta oferta.', 'Sem onda: escolha a onda em que o robô começa.',
+    for (const s of ['Planejamento', 'A data da onda é o dia em que o agente começa a preparar esta oferta.', 'Sem onda: escolha a onda em que o agente começa.',
         'Colocar na onda', '+ Nova onda',
         'As fotos das peças entram como estiverem: a simples de Painel ripado para TV 2,20 m ainda não foi preparada.']) {
         assert.ok(tk.includes(s), `faltou na caixa (sem onda): ${s}`);
@@ -445,7 +445,7 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
         assert.ok(!painelLateral(desenhar(props, `?abrir=${chave}`), chave).includes('data-caixa="planejamento"'), chave);
     }
 
-    // Numa onda que já começou, ainda na fila (planejável, mas o robô já foi chamado): só o texto.
+    // Numa onda que já começou, ainda na fila (planejável, mas o agente já foi chamado): só o texto.
     const naFila = painelLateral(desenhar(PROPS_TRABALHO, '?abrir=o:c-1-2'), 'o:c-1-2');
     assert.ok(texto(naFila).includes('Na Onda 1 · simples · começou em 03/11') && texto(naFila).includes('Na fila · começou em 03/11'));
     assert.equal(naFila.match(/data-seletor-de-onda|data-acao="(?:colocar-na-onda|mudar-de-onda|tirar-da-onda)"/), null);
@@ -479,7 +479,7 @@ test('caixa "Planejamento" da oferta: pôr (sem onda), mudar e tirar (onda que n
     const mudarSemTirar = painelLateral(desenhar(semPodeTirar, '?abrir=o:c-2-4'), 'o:c-2-4');
     assert.ok(mudarSemTirar.includes('data-acao="mudar-de-onda"') && !mudarSemTirar.includes('data-acao="tirar-da-onda"'));
 
-    // A sem produto numa onda por começar (o robô não a segura): "Na Onda 2" e só sair.
+    // A sem produto numa onda por começar (o agente não a segura): "Na Onda 2" e só sair.
     const avulsaNaOnda = {
         ...PROPS_TRABALHO,
         ofertas: PROPS_TRABALHO.ofertas.map((o) => (o.id === 'o-41' ? { ...o, onda_id: 9, etapa: 'plano', planejavel: false, pode_tirar: true } : o)),

@@ -477,8 +477,8 @@ test('lista com busca: começa com primeiro, depois contém; sem caixa nem acent
 // ─── Avisos, Esc e chave ────────────────────────────────────────────────────
 
 test('aviso da onda começada: o nome livre da onda, sem "Onda Onda"; o Esc que um campo tratou não fecha a gaveta', () => {
-    assert.equal(avisoDaOndaComecada({ nome: 'Onda 1 · simples' }), 'A Onda 1 · simples já começou: ao salvar, o robô prepara este produto com o que estiver aqui (usa IA).');
-    assert.equal(avisoDaOndaComecada({ nome: 'Black Friday' }), 'A onda “Black Friday” já começou: ao salvar, o robô prepara este produto com o que estiver aqui (usa IA).');
+    assert.equal(avisoDaOndaComecada({ nome: 'Onda 1 · simples' }), 'A Onda 1 · simples já começou: ao salvar, o agente prepara este produto com o que estiver aqui (usa IA).');
+    assert.equal(avisoDaOndaComecada({ nome: 'Black Friday' }), 'A onda “Black Friday” já começou: ao salvar, o agente prepara este produto com o que estiver aqui (usa IA).');
     assert.equal(avisoDaOndaComecada(null), null);
 
     assert.equal(deveFecharNoEsc({ key: 'Escape', defaultPrevented: false }), true);

@@ -34,21 +34,21 @@ import {
 import { cn } from '@/lib/utils';
 import { Botao, Pilula } from '@/Components/Trilha/Pecas';
 
-// ─── Trilha de produtos — pedir ajuste ao robô pela prévia (4ª entrega, fatia 4b) ──
+// ─── Trilha de produtos — pedir ajuste ao agente pela prévia (4ª entrega, fatia 4b) ──
 //
 // §19.14 do desenho. O rodapé da gaveta `v:{item}` ganha o secundário [Pedir
-// ajuste ao robô]: só para a equipe que recebeu `escrita.revisao.ajuste`, com a
+// ajuste ao agente]: só para a equipe que recebeu `escrita.revisao.ajuste`, com a
 // prévia pronta, o item na revisão, sem publicação andando (ou feita) e sem
 // ajuste andando. No limite do dia (3 por anúncio) ele fica desligado com a dica.
 //
 // O botão abre no rodapé a escolha "O que refazer?" — [Título] [Descrição]
 // (alternáveis, pelo menos um), "Restam N ajustes hoje", [Refazer] [Cancelar].
-// NENHUM campo de texto: o robô refaz com o próprio preparo (D51), sem pedido livre.
+// NENHUM campo de texto: o agente refaz com o próprio preparo (D51), sem pedido livre.
 //
 // Depois do pedido (202 `{ajuste}`), a gaveta pergunta o `GET` (a mesma URL) a
 // cada 3 s enquanto ele anda (na fila → fazendo) e para ao fechar ou ao terminar.
 // No fim, recarrega a prévia (o título e a descrição novos aparecem) e a Lista (o
-// "Robô refazendo · …" da linha some, D60), e mostra o resultado por parte
+// "Agente refazendo · …" da linha some, D60), e mostra o resultado por parte
 // ("Título refeito.", "Descrição mantida: a equipe editou."). Aberta com o ajuste
 // andando (a prévia já traz `ajuste`), a gaveta retoma o acompanhamento sozinha.
 //
@@ -187,7 +187,7 @@ export function useAjusteDaPrevia({ escrita, oferta, previa, publicacao = null, 
         emVoo.current = false;
         if (!vivo.current) return;
         mudar((base) => estadoDepoisDoEnvio(base, r));
-        // O pedido entrou: a linha da Lista passa a dizer "Robô refazendo · …" (D60).
+        // O pedido entrou: a linha da Lista passa a dizer "Agente refazendo · …" (D60).
         if (!r.erro) agora.current.onRecarregar?.();
     };
 
@@ -318,7 +318,7 @@ export function EscolhaDoAjuste({ ajuste }) {
     );
 }
 
-/** O secundário [Pedir ajuste ao robô] (a dica dele mora no bloco, em cima do rodapé). */
+/** O secundário [Pedir ajuste ao agente] (a dica dele mora no bloco, em cima do rodapé). */
 export function BotaoDoAjuste({ ajuste }) {
     const { acao } = ajuste;
     if (!acao) return null;
@@ -350,7 +350,7 @@ const TOM_DO_RESULTADO = { ok: 'text-trilha-ok', neutro: 'text-trilha-fg2', bad:
  * linha inteira só quando tem o que mostrar. `escondido` = a confirmação da publicação tomou o rodapé.
  *
  * O foco não cai no <body>: a cada troca (a escolha que fecha, o pedido que entra, o erro), se o foco se perdeu ele vai
- * para o [Recarregar], o [Pedir ajuste ao robô], o erro ou a situação. Este efeito roda ANTES do da publicação (vem
+ * para o [Recarregar], o [Pedir ajuste ao agente], o erro ou a situação. Este efeito roda ANTES do da publicação (vem
  * antes no rodapé): quando ele acha onde pôr o foco, o de lá não mexe.
  */
 export function BlocoDoAjuste({ ajuste, escondido = false }) {

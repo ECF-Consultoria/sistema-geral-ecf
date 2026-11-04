@@ -47,7 +47,7 @@ use Tests\Unit\Publicador\Concerns\CarregaSchemas;
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
  * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
  * anúncio e a foto dela; 4c: o preço ajustável; 4d: o "Aprovar e publicar" e o acompanhamento; 4b: o "Pedir ajuste ao
- * robô" e o estado dele; 4e: o "Mandar ao cliente" — as rotas DO CLIENTE da 4e têm a matriz delas no
+ * agente" e o estado dele; 4e: o "Mandar ao cliente" — as rotas DO CLIENTE da 4e têm a matriz delas no
  * `AprovacaoDoClienteNaTrilhaTest`, pelo `portal.auth`; cresce a cada fatia). A
  * empresa dos testes é a 459 (`PublicacaoNaTrilha::LOJA`): a 4d só passa nela — o 403 da outra loja está no
  * `PublicarNaTrilhaTest`. A ordem da guarda é o que se prova aqui:
@@ -157,7 +157,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4d: aprovar e publicar (põe na fila de publicação — o Job fica na fila de mentira) e o acompanhamento.
             'publicar (4d)'          => ['POST', '/ofertas/s-{p}/publicar', false],
             'acompanhar (4d)'        => ['GET', '/ofertas/s-{p}/publicacao', false],
-            // 4b: pedir ajuste ao robô (o Job fica na fila de mentira — nenhuma IA) e o estado dele, no mesmo endereço.
+            // 4b: pedir ajuste ao agente (o Job fica na fila de mentira — nenhuma IA) e o estado dele, no mesmo endereço.
             'ajuste (4b)'            => ['POST', '/ofertas/s-{p}/ajuste', false],
             'estado do ajuste (4b)'  => ['GET', '/ofertas/s-{p}/ajuste', false],
             // 4e: mandar a prévia ao cliente (com a chave da aprovação ligada no teste que passa; sem ela, 409).
@@ -366,13 +366,13 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
         if (str_starts_with($caminho, '/ofertas/')) {
-            // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o robô não mexeu).
+            // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o agente não mexeu).
             $this->fotoNoRascunho($p);
         }
         $ajustePedido = $metodo === 'POST' && str_ends_with($caminho, '/ajuste');
         $mandar = str_ends_with($caminho, '/cliente');
         if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar') || $ajustePedido || $mandar) {
-            // 4c: o preço só muda na revisão — o robô terminou o texto e o rascunho tem os dois tipos e a variante.
+            // 4c: o preço só muda na revisão — o agente terminou o texto e o rascunho tem os dois tipos e a variante.
             $this->naRevisao($p);
         }
         if (str_ends_with($caminho, '/publicar') || $ajustePedido || $mandar) {
@@ -384,13 +384,13 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             config(['trilha.aprovacao_cliente.empresas' => [$this->empresa->id]]);
         }
         if ($ajustePedido) {
-            // 4b: o texto é do robô (o preparo dele registrado, com o hash dos fatos).
+            // 4b: o texto é do agente (o preparo dele registrado, com o hash dos fatos).
             $r = PubRascunho::query()->whereIn('produto_id', PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->firstOrFail();
             $r->update(['step_state' => array_replace_recursive((array) $r->step_state, ['ia_preparo' => ['hash' => 'fatos-do-preparo']])]);
         }
         $tentarDeNovo = str_ends_with($caminho, '/preparo');
         if ($tentarDeNovo) {
-            // R4: o título do robô parou (sem crédito) — o item fica no robô com a `parada`.
+            // R4: o título do agente parou (sem crédito) — o item fica no agente com a `parada`.
             $r = PubRascunho::query()->whereIn('produto_id', PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->firstOrFail();
             $r->update(['step_state' => array_replace_recursive((array) $r->step_state, ['ia_preparo' => ['hash' => 'fatos-do-preparo',
                 'etapas' => ['titulo' => ['status' => 'erro', 'motivo' => 'sem_credito', 'em' => now()->toIso8601String()]]]])]);
@@ -477,7 +477,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
     }
 
     /**
-     * 4c: a Simples do produto na revisão (o rascunho da 4a, com o texto do robô pronto, os dois tipos ligados e a variante
+     * 4c: a Simples do produto na revisão (o rascunho da 4a, com o texto do agente pronto, os dois tipos ligados e a variante
      * única) — o preço só muda aqui.
      */
     private function naRevisao(array $p): void

@@ -72,7 +72,7 @@ class CombosNaOndaTest extends TestCase
         $this->aceitarCombos(2);
         $this->naOnda(2, '2026-11-05');
 
-        // O robô ainda não terminou o texto: nada nasce.
+        // O agente ainda não terminou o texto: nada nasce.
         $this->assertFalse($this->servico()->agendar($grupo->id));
         $this->assertSame([], $this->servico()->criarOsQueFaltam($grupo->fresh())['criados']);
 

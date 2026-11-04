@@ -185,7 +185,7 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
     // Em `.js` nada de classe do Tailwind (não seria gerada): só rgb(var(--t-…)).
     for (const n of g.nos) assert.match(n.cor, /^rgb\(var\(--t-[a-z0-9-]+\)\)$/, n.id);
     const legenda = legendaDoMapa(false);
-    assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar', 'Produto mapeado']);
+    assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Agente', 'Revisão', 'No ar', 'Produto mapeado']);
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Sem onda'));
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Começou sem onda ou fora das ondas' && e.cor === COR_ANTES_DAS_ONDAS));
     assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Em análise (recém-publicado)', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
@@ -213,7 +213,7 @@ test('com ondas: 4 colunas como no protótipo, "Sem onda" tracejada e o anúncio
 
     assert.equal(g.colunas, 4);
     assert.deepEqual(ids(g, 'onda'), ['w:7', 'w:sem', 'w:antes', 'w:fora']);
-    // A data da onda é o dia em que o robô COMEÇA (2ª entrega): nada de "até".
+    // A data da onda é o dia em que o agente COMEÇA (2ª entrega): nada de "até".
     assert.deepEqual([no(g, 'w:7').sub, no(g, 'w:7').situacao], ['começa 10/11', '1 oferta']);
     assert.equal(no(montarGrafo({ ...COM_ONDAS, ondas: [{ ...COM_ONDAS.ondas[0], comecou: true }] }), 'w:7').sub, 'começou 10/11');
     // "Sem onda" (tracejada, âmbar) só com o que está no Planejamento: o combo e o kit.
@@ -398,10 +398,10 @@ test('visão do cliente: nenhum MLB no mapa — nem com o dado da equipe ("Ver c
 
 // ─── Faixa do fluxo ─────────────────────────────────────────────────────────
 
-test('faixa do fluxo: Lista → Mapeamento → Planejamento → Robô → Revisão → No ar, da loja inteira', () => {
+test('faixa do fluxo: Lista → Mapeamento → Planejamento → Agente → Revisão → No ar, da loja inteira', () => {
     const fluxo = resumoDoFluxo(PROPS_EQUIPE);
 
-    assert.deepEqual(fluxo.map((p) => p.titulo), ['Lista', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar']);
+    assert.deepEqual(fluxo.map((p) => p.titulo), ['Lista', 'Mapeamento', 'Planejamento', 'Agente', 'Revisão', 'No ar']);
     assert.deepEqual(fluxo.map((p) => `${p.numero} ${p.unidade}${p.detalhe ? ` · ${p.detalhe}` : ''}`), [
         '11 produtos · 4 incompletos',
         '10 ofertas · 2 produtos por mapear',
@@ -481,7 +481,7 @@ test('MapaDaLoja desenha a faixa do fluxo, o filtro de família, as 3 colunas e 
     const equipe = html(h(MapaDaLoja, { dados: DADOS, visao: 'equipe', onAbrir: () => {} }));
     const t = texto(equipe);
     for (const s of [
-        'Mapa da loja', 'Lista', '4 incompletos', 'Mapeamento', '2 produtos por mapear', 'esperando onda', 'Robô', '2 com pendência', 'No ar', '5 anúncios',
+        'Mapa da loja', 'Lista', '4 incompletos', 'Mapeamento', '2 produtos por mapear', 'esperando onda', 'Agente', '2 com pendência', 'No ar', '5 anúncios',
         'Lista de produtos', '11 produtos', 'Ofertas', '10 ofertas', 'Anúncios',
         'Ainda não há ondas', 'Todas', 'Aparadores', 'Sem família', 'APARADORES', 'SEM FAMÍLIA', 'SEM PRODUTO NA LISTA', '×6', '×4',
         'Clique em qualquer caixa', 'Etapa (cor da caixa)', 'Produto mapeado', 'Pausado, em revisão ou fora do ar',

@@ -395,14 +395,14 @@ export async function estadoDaPublicacao(url) {
 }
 
 /**
- * "Pedir ajuste ao robô" (4b, §19.14 do desenho). `url` chega PRONTA da gaveta (o `escrita.revisao.ajuste` com o id do
+ * "Pedir ajuste ao agente" (4b, §19.14 do desenho). `url` chega PRONTA da gaveta (o `escrita.revisao.ajuste` com o id do
  * item no lugar do marcador) e `dados` também (`{revisao, refazer: ['titulo'|'descricao']}`, montado pela lib do
  * ajuste — esta não a importa, pelo mesmo motivo da prévia). → 202 `{ajuste: {situacao: 'fila', partes, restantes_hoje,
  * mensagem}}`. O 409 (revisão velha; ou o item fora da revisão, na fila, publicado, não pronto, com ajuste andando) e o
  * 422 (`errors.refazer`: o limite do dia) chegam como erro do axios; quem trata é a gaveta.
  */
 export async function pedirAjuste(url, dados) {
-    if (!url) throw new ErroDaTrilha('O ajuste pelo robô não está disponível nesta tela: recarregue a página.');
+    if (!url) throw new ErroDaTrilha('O ajuste pelo agente não está disponível nesta tela: recarregue a página.');
 
     return corpo(await axios.post(url, dados));
 }
@@ -438,7 +438,7 @@ export async function estadoDoAjuste(url) {
 /**
  * [Mandar ao cliente] (a equipe, `escrita.revisao.cliente`): `dados` = `{revisao}`. → 200 a prévia NOVA (a forma do
  * §19.5, com `aprovacao` em `com_cliente`). 409: a chave desligada, a revisão velha (`revisao_atual`), fora da
- * revisão, na fila/publicando/publicado, o robô ajustando, já com o cliente; 422: o Premium igual ao Clássico.
+ * revisão, na fila/publicando/publicado, o agente ajustando, já com o cliente; 422: o Premium igual ao Clássico.
  */
 export async function mandarAoCliente(url, dados) {
     if (!url) throw new ErroDaTrilha('Mandar ao cliente não está disponível nesta tela: recarregue a página.');
@@ -458,7 +458,7 @@ export async function aprovarPeloCliente(url, dados) {
 
 /**
  * [Pedir ajuste] (o cliente, `cliente_escrita.aprovacao.ajuste`): `dados` = `{revisao, texto}` — o texto vai para a
- * EQUIPE, nunca a um robô (D52). → 200 `{aprovacao}`. 422 em `errors.texto`; 409 como o de aprovar.
+ * EQUIPE, nunca a um agente (D52). → 200 `{aprovacao}`. 422 em `errors.texto`; 409 como o de aprovar.
  */
 export async function pedirAjustePeloCliente(url, dados) {
     if (!url) throw new ErroDaTrilha('O pedido de ajuste não está disponível nesta tela: recarregue a página.');

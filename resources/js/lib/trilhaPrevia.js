@@ -7,7 +7,7 @@
 //
 // O contrato é o §19.5 do desenho (`.planning/trilha/ENTREGA-3-DESENHO.md`), de
 // `App\Services\Trilha\PreviaNaTrilha`: um anúncio por tipo × cor, as fotos com
-// `gerada` (as que o robô fez), o preço por tipo com o da Precificação, o preparo
+// `gerada` (as que o agente fez), o preço por tipo com o da Precificação, o preparo
 // e os bloqueios (só na porta da equipe).
 //
 // Esta lib mora no pedaço que SÓ a equipe baixa (o `lazy` da gaveta): a página do
@@ -21,22 +21,22 @@
 /** O marcador que o servidor põe no lugar do id do item em `escrita.revisao.previa` (§19.4). */
 export const MARCADOR_DO_ITEM = '__ITEM__';
 
-/** O selo das fotos que o robô fez (cor própria na galeria). */
-export const ROTULO_DA_GERADA = 'gerada pelo robô';
+/** O selo das fotos que o agente fez (cor própria na galeria). */
+export const ROTULO_DA_GERADA = 'gerada pelo agente';
 
 /** Sem prévia ainda (sem rascunho, ou o servidor não mandou motivo): o texto neutro do §19.5. */
-export const MOTIVO_SEM_PREVIA = 'O robô ainda está preparando este anúncio.';
+export const MOTIVO_SEM_PREVIA = 'O agente ainda está preparando este anúncio.';
 
 /** O 409 sem mensagem própria: o item saiu da revisão depois que a trilha carregou. */
 export const MOTIVO_FORA_DA_REVISAO = 'Este anúncio não está mais na revisão. Recarregue a página para ver onde ele está.';
 
 /** A oferta antes da revisão (D44): a gaveta nem pergunta ao servidor. */
-export const ANTES_DA_REVISAO = 'O robô ainda prepara este anúncio: a prévia aparece quando ele chegar à revisão.';
+export const ANTES_DA_REVISAO = 'O agente ainda prepara este anúncio: a prévia aparece quando ele chegar à revisão.';
 
 /** O nome do tipo quando o servidor não manda a lista `tipos` (dado antigo). */
 const NOME_DO_TIPO = { classico: 'Clássico', premium: 'Premium' };
 
-/** A ordem dos campos do preparo do robô na Situação. */
+/** A ordem dos campos do preparo do agente na Situação. */
 const CAMPOS_DO_PREPARO = [
     ['titulo', 'Título'],
     ['descricao', 'Descrição'],
@@ -224,17 +224,17 @@ export function fotosDoAnuncio(anuncio) {
 /** A foto de capa: a 1ª do anúncio (no Premium ela pode ser outra que a do Clássico). Null sem foto. */
 export const capaDoAnuncio = (anuncio) => fotosDoAnuncio(anuncio)[0] ?? null;
 
-/** O texto alternativo de uma foto da galeria: "Foto 2 de 6, gerada pelo robô". */
+/** O texto alternativo de uma foto da galeria: "Foto 2 de 6, gerada pelo agente". */
 export const rotuloDaFoto = (foto, indice, total) => `Foto ${indice + 1} de ${total}${foto?.gerada ? `, ${ROTULO_DA_GERADA}` : ''}`;
 
-/** Quantas das fotos o robô fez, em texto; null quando nenhuma. */
+/** Quantas das fotos o agente fez, em texto; null quando nenhuma. */
 export function textoDasGeradas(fotos) {
     const total = lista(fotos).length;
     const geradas = lista(fotos).filter((f) => f?.gerada).length;
     if (!geradas) return null;
-    if (geradas === total) return total === 1 ? 'A foto foi gerada pelo robô.' : `As ${total} fotos foram geradas pelo robô.`;
+    if (geradas === total) return total === 1 ? 'A foto foi gerada pelo agente.' : `As ${total} fotos foram geradas pelo agente.`;
 
-    return geradas === 1 ? `1 das ${total} fotos foi gerada pelo robô.` : `${geradas} das ${total} fotos foram geradas pelo robô.`;
+    return geradas === 1 ? `1 das ${total} fotos foi gerada pelo agente.` : `${geradas} das ${total} fotos foram geradas pelo agente.`;
 }
 
 // ─── Preço ──────────────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ export function textoDoEnvio(envio) {
 }
 
 /**
- * O preparo do robô na Situação (só na porta da equipe): título, descrição e imagens, com o tom da pílula. Campo que
+ * O preparo do agente na Situação (só na porta da equipe): título, descrição e imagens, com o tom da pílula. Campo que
  * não veio fica de fora; sem `preparo`, nada.
  *
  * @returns {Array<{campo: string, rotulo: string, tom: string, estado: string}>}

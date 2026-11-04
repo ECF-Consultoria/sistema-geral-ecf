@@ -29,7 +29,7 @@ import { Botao, Caixa, Pilula } from '@/Components/Trilha/Pecas';
 // A caixa "Aprovação do cliente" (no corpo, logo depois do "Onde está") diz em que pé
 // está: com o cliente desde… (o primário desligado: espera a resposta), o pedido de
 // ajuste dele citado como ele escreveu (o primário vira [Mandar ao cliente de novo];
-// o preço e o ajuste pelo robô seguem como sempre), o anúncio que voltou para a equipe
+// o preço e o ajuste pelo agente seguem como sempre), o anúncio que voltou para a equipe
 // porque mudou depois do envio (D55), o aprovado (que falta publicar, ou segue pela
 // publicação no rodapé).
 //
@@ -37,7 +37,7 @@ import { Botao, Caixa, Pilula } from '@/Components/Trilha/Pecas';
 // gaveta passa a mostrá-la, a Lista recarrega ("Com o cliente para aprovar") e a
 // página avisa. Os erros ficam no rodapé: o 409 da revisão velha ("Este anúncio mudou
 // depois que você abriu" + [Recarregar], o padrão F6), os outros 409 (a chave
-// desligada, já com o cliente, o robô ajustando…) e o 422 (o Premium igual ao
+// desligada, já com o cliente, o agente ajustando…) e o 422 (o Premium igual ao
 // Clássico), com a mensagem do servidor.
 //
 // Nenhum texto daqui cita o marketplace, o Portal, o Publicador nem o "agente" (D59).

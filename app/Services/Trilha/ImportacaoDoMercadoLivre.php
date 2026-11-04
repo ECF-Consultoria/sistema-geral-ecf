@@ -53,7 +53,7 @@ use Illuminate\Validation\ValidationException;
  *    cores pelo resultado) → a ficha do anúncio (`gravarParcial`) → a origem (`EstruturaProdutoOrigemMl`: selo,
  *    deduplicação, fatos para a IA) → o evento `passo: mercado_livre`. Qualquer erro de linha recusa o anúncio inteiro.
  * 3. Depois do commit, cada passo protegido (o produto fica, com aviso): as fotos por cor (`VariacaoImagensService`),
- *    a ficha pela IA (D31, `JardinagemDaFicha::completar`), o título pelo robô (D32, o mesmo do Publicador:
+ *    a ficha pela IA (D31, `JardinagemDaFicha::completar`), o título pelo agente (D32, o mesmo do Publicador:
  *    `PalavrasChaveService::gerarTitulosDoProduto`) e, no fim, `prepararSeCabe` (na prática nada vai: custo, família e
  *    ambiente nunca vêm do ML).
  *
@@ -153,7 +153,7 @@ class ImportacaoDoMercadoLivre
     public const AVISO_MODA = 'Esta categoria ainda não publica pelo sistema (ela pede a tabela de medidas): o produto fica na Lista, '
         .'mas ainda não vira anúncio novo por aqui.';
 
-    public const AVISO_TITULO = 'O robô não conseguiu escrever o título agora. Escreva o título na gaveta.';
+    public const AVISO_TITULO = 'O agente não conseguiu escrever o título agora. Escreva o título na gaveta.';
 
     public const AVISO_FICHA_IA = 'A IA não completou a ficha agora: confira os campos na gaveta.';
 
@@ -288,7 +288,7 @@ class ImportacaoDoMercadoLivre
     /**
      * O painel do lote (contrato §18.4, com a correção da tela de 03/11): um item por anúncio pedido, na ordem do pedido —
      * o último lote fica 6 h no cache, mesmo terminado; sem lote, `{em_andamento: false, totais: zeros, itens: []}`.
-     * `titulo_do_anuncio` é sempre o do anúncio; `titulo` é o título de venda que o robô escreveu (nulo até ele
+     * `titulo_do_anuncio` é sempre o do anúncio; `titulo` é o título de venda que o agente escreveu (nulo até ele
      * escrever, e nulo no `novo` em que ele não conseguiu).
      *
      * @return array{em_andamento: bool, totais: array{novos: int, na_lista: int, recusados: int, erros: int}, itens: list<array>}
@@ -464,7 +464,7 @@ class ImportacaoDoMercadoLivre
             ['produto' => $produto, 'origem' => $origem, 'ficha' => $ficha] = $gravado;
             $avisos = $gravado['avisos'];
 
-            // ─── 7. Depois do commit: fotos, ficha pela IA, título pelo robô (cada um protegido) ───
+            // ─── 7. Depois do commit: fotos, ficha pela IA, título pelo agente (cada um protegido) ───
             $this->marcar($empresa, $mlb, ['passo' => self::PASSO_FOTOS, 'produto_id' => (int) $produto->id, 'nome' => (string) $produto->nome]);
             $fotos = $this->guardarFotos($empresa, $produto, $linhas, $fotosPorLinha, $ator, $avisos);
             $fotos['falharam'] += $falhas;
@@ -673,7 +673,7 @@ class ImportacaoDoMercadoLivre
     }
 
     /**
-     * D32 — o título de venda pelo robô do Publicador, a partir do PRODUTO (nome, categoria, termos, ficha gravada,
+     * D32 — o título de venda pelo agente do Publicador, a partir do PRODUTO (nome, categoria, termos, ficha gravada,
      * marca, limite), nunca igual ao do anúncio original. UM título: o do Clássico (o do Premium só quando o do
      * Clássico não deu para diferenciar). Grava pela gaveta (`CadastroNaTrilha::gravar`, a 1ª variação). Null = não
      * escreveu (IA fora, termos fora, nada que não repetisse o original) — a equipe escreve na gaveta.
@@ -701,7 +701,7 @@ class ImportacaoDoMercadoLivre
 
             return (string) ($produto->fresh()?->titulo ?? $titulo);
         } catch (\Throwable $e) {
-            Log::warning("[Trilha] Importar do ML: o robô não escreveu o título do produto {$produto->id} — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            Log::warning("[Trilha] Importar do ML: o agente não escreveu o título do produto {$produto->id} — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
 
             return null;
         }
@@ -827,7 +827,7 @@ class ImportacaoDoMercadoLivre
 
         return [
             'mlb'               => $mlb,
-            // O título de VENDA que o robô escreveu: nulo até ele escrever (só no `novo`, e só se a IA deu certo).
+            // O título de VENDA que o agente escreveu: nulo até ele escrever (só no `novo`, e só se a IA deu certo).
             'titulo'            => $situacao === self::NOVO && isset($s['titulo_de_venda']) ? (string) $s['titulo_de_venda'] : null,
             // O título do anúncio no ML: sempre, desde a fila.
             'titulo_do_anuncio' => $doAnuncio,

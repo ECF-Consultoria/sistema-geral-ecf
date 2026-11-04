@@ -103,7 +103,7 @@ const pedaco = (html, marcador) => {
 
 const ESCRITA = { preparo: '/trilha/459/ofertas/__ITEM__/preparo', ondas: '/trilha/459/ondas', planejamento: '/trilha/459/planejamento' };
 
-/** A oferta parada no robô, como a equipe a recebe (`preparo` e `parada` só nesta porta). */
+/** A oferta parada no agente, como a equipe a recebe (`preparo` e `parada` só nesta porta). */
 const ofertaParada = (parada, extra = {}) => ({
     id: 's-12', tipo: 'Simples', nome: 'Cadeira Executiva', sku: 'CAD-AZ', skus: ['CAD-AZ'],
     componentes: [{ produto_id: 12, quantidade: 1, sku: 'CAD-AZ', nome: 'Cadeira Executiva' }],

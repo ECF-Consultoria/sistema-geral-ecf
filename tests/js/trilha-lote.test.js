@@ -137,7 +137,7 @@ const RESPOSTA = {
     entraram: 3,
     recusadas: 1,
     avisos: ['A simples de Aparador buffet 4 portas jatobá entrou junto, na Onda 2: o combo nasce dela.'],
-    mensagem: '3 ofertas na Onda 2. O robô começa em 05/11. 1 recusada: veja o motivo de cada uma.',
+    mensagem: '3 ofertas na Onda 2. O agente começa em 05/11. 1 recusada: veja o motivo de cada uma.',
 };
 
 test('o resultado por oferta: as recusadas com o motivo do SERVIDOR, as que entraram (e quem veio junto), as que já estavam', () => {
@@ -159,7 +159,7 @@ test('o resultado por oferta: as recusadas com o motivo do SERVIDOR, as que entr
     assert.match(html, /data-entrou="c-3-2"[\s\S]*· com Aparador buffet \(simples\)/);
     assert.ok(t.includes('Já estavam nesta onda: Sofá 3 lugares.'));
     assert.ok(t.includes(RESPOSTA.avisos[0]));
-    // A data é o dia em que o robô começa: nada de prazo.
+    // A data é o dia em que o agente começa: nada de prazo.
     assert.ok(!/prazo|publicar até|data de publicação/i.test(t));
 });
 

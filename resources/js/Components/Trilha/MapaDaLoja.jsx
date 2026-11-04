@@ -258,7 +258,7 @@ function FiltroDeFamilia({ familias, atual, onTrocar }) {
     );
 }
 
-/** Lista → Mapeamento → Planejamento → Robô → Revisão → No ar, com os números da loja inteira. */
+/** Lista → Mapeamento → Planejamento → Agente → Revisão → No ar, com os números da loja inteira. */
 function FaixaDoFluxo({ passos }) {
     return (
         <ol

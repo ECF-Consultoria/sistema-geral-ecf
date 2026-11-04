@@ -41,12 +41,12 @@ use Tests\TestCase;
 
 /**
  * A prévia do anúncio dentro da trilha (4ª entrega, fatia 4a, desenho §19): o painel `v:{item}` da equipe lê o anúncio
- * que o robô preparou — o MESMO plano do Publicador (`PreviaDoAnuncioService::montar`) — sem passar pela rota de lá.
+ * que o agente preparou — o MESMO plano do Publicador (`PreviaDoAnuncioService::montar`) — sem passar pela rota de lá.
  *
  * O cenário é o do preparo de verdade (`CenarioDoPreparo`: a cadeira MLB193945 com o schema guardado, a IA como dublê,
  * a fila rodada à mão): o produto P com a Simples preparada e três fotos (do cliente, gerada pelo acervo, gerada por
  * criativo), o Kit 2 dela (o Combo 2 do Portal, `c-P-2`) e o Kit com o produto Q (`o-K`). As chaves da trilha só ligam
- * DEPOIS do preparo (com elas o robô esperaria a onda). O que se prova:
+ * DEPOIS do preparo (com elas o agente esperaria a onda). O que se prova:
  *
  * - os três tipos de item (s-, c-, o-) abrem a prévia do rascunho DELES, com as fotos pela rota da trilha e `gerada`
  *   pela régua das imagens automáticas (acervo `ia` e criativo);
@@ -116,7 +116,7 @@ class PreviaNaTrilhaTest extends TestCase
         // O Kit 2 da Simples (o Combo 2 do Portal): CÓPIA do rascunho dela, fotos inclusive (outras linhas de `pub_imagens`).
         $this->kitN = app(CriarFaseService::class)->criar($this->grupo->fresh(), ['quantidade' => 2]);
 
-        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o robô esperaria a onda).
+        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o agente esperaria a onda).
         Carbon::setTestNow(now()->addMinutes(5));
         config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
         $this->dev = User::factory()->create(['role' => 'admin', 'active' => true]);
@@ -208,7 +208,7 @@ class PreviaNaTrilhaTest extends TestCase
         $this->assertCount(3, $doCombo['anuncios'][0]['fotos']);
         $geradas = collect($doCombo['anuncios'][0]['fotos'])->where('gerada', true)->pluck('id')->all();
         $this->assertSame([(string) $doKitN[$this->fotos['acervo']->sha256]->id], $geradas);
-        // O texto do Kit N não é do robô ("kit_da_fase"): nada a dizer do título nem da descrição.
+        // O texto do Kit N não é do agente ("kit_da_fase"): nada a dizer do título nem da descrição.
         $this->assertSame(['titulo' => null, 'descricao' => null, 'imagens' => null], $doCombo['preparo']);
         $this->assertSame(['titulo' => 'ok', 'descricao' => 'ok', 'imagens' => null], $doKit['preparo']);
     }
@@ -235,9 +235,9 @@ class PreviaNaTrilhaTest extends TestCase
     }
 
     /**
-     * Fora da revisão o painel diz que o robô prepara (200 + `pronta: false`, a escolha da 4a — o contrato da §19.5 já
+     * Fora da revisão o painel diz que o agente prepara (200 + `pronta: false`, a escolha da 4a — o contrato da §19.5 já
      * descreve o "não pronta"). A etapa e o status são os da LINHA da tela: com a trilha de trabalho, o item que não andou
-     * segue a régua da onda — o rascunho com o resumo validado sem o robô ter mexido diria "esperando a revisão" na
+     * segue a régua da onda — o rascunho com o resumo validado sem o agente ter mexido diria "esperando a revisão" na
      * régua sem as ondas, mas a tela o mostra no Planejamento, e a prévia não pode abrir.
      */
     public function test_fora_da_revisao_a_previa_diz_que_o_robo_prepara_com_a_etapa_da_tela(): void
@@ -370,7 +370,7 @@ class PreviaNaTrilhaTest extends TestCase
 
     /**
      * A prévia e a foto não gravam nada e NÃO marcam o editor do Publicador como em uso — a rota de lá marca (a fila e o
-     * robô esperam quem está "no editor"); a da trilha, que só lê, não pode segurar ninguém.
+     * agente esperam quem está "no editor"); a da trilha, que só lê, não pode segurar ninguém.
      */
     public function test_a_previa_e_a_foto_nao_gravam_nada_nem_marcam_o_editor_em_uso(): void
     {
@@ -647,7 +647,7 @@ class PreviaNaTrilhaTest extends TestCase
     }
 
     /**
-     * Os efetivos do Portal fixos — o preço da Precificação por tipo (título planejado nulo: vale o do robô). O dublê é
+     * Os efetivos do Portal fixos — o preço da Precificação por tipo (título planejado nulo: vale o do agente). O dublê é
      * UM objeto, mudado no lugar: o controller (e o que ele recebeu no construtor) é resolvido uma vez por rota no teste.
      */
     private function efetivosDoPortal(array $precos): void

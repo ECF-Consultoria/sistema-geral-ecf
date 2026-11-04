@@ -1454,3 +1454,20 @@ teste `AprovacaoDoClienteNaTrilhaTest` (+ a rota da equipe na matriz do `Cadastr
   por item (nada parcial); um registro só no histórico e uma soltura só. Endereço derivado (`{escrita.planejamento}/lote`).
 - **Testes de fonte da 4a/4e contam `comPrevia={comPrevia}`/`comAprovacao={comAprovacao}` em `PainelDaEtapa`** (agora 4).
 - Prova de mutação por troca de trecho: o trecho mutado não pode já existir no arquivo nem ser vazio.
+
+### R9 — "robô" virou "agente" (04/11/2026)
+- **A IA da trilha é "o agente" para a equipe E para o cliente** (decisão do usuário, 04/11), revogando a parte do D59
+  que escondia "agente" do cliente. As réguas dos testes agora PROÍBEM "robô" (em string visível; comentário pode).
+  `PublicacaoNaTrilha::neutro()` troca "robô" por "agente" (a regex usa `rob\x{F4}` para a fonte não conter a palavra).
+  As descrições antigas do §13/§39 sobre esconder "agente" do cliente estão superadas.
+- **Prefixos amarrados nos dois lados:** `SituacaoDasOfertas::REFAZENDO = 'Agente refazendo'` ↔ `lib/trilhaAjuste.js`;
+  "Na fila do agente" (`AGENDADA` / `MSG_PARTE_FILA` / tela). Quem amarra é `tests/js/trilha-agente.test.js`.
+- **Porta do cliente:** "criada pelo agente" (foto gerada) e "preparado pelo agente"; onde quem age é a equipe de
+  fato, segue "a equipe".
+- **Teste de fonte com esbuild:** com `charset` padrão (ascii) o esbuild escreve `ô` como `ô` e a régua passa pelo
+  motivo errado — use `charset: 'utf8'`. O `lerSemComentarios` (`_fonte.js`) pode engolir código depois de um `/*`
+  dentro de string (ex.: `'image/*'`); o PHP é lido por um leitor de estado que respeita aspas.
+- **Histórico:** o `activity_log` antigo continua com "robô"; daqui em diante grava "agente". Comentários de
+  `config/trilha.php`, `routes/*.php`, `Models/TrilhaOnda*` e os documentos de `.planning` ainda dizem "robô".
+- **CRLF:** alguns arquivos da trilha estão em CRLF no worktree e em LF no repositório (`autocrlf=true`); troca em
+  massa por bytes para o diff mostrar só as linhas mudadas.

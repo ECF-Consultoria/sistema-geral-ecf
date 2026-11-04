@@ -23,11 +23,11 @@ import { plural } from '@/Components/Trilha/formatos';
 // A gaveta "Nova onda" do protótipo, com o que a 2ª entrega acrescentou:
 // editar e apagar (só antes de a onda começar), e a lista das ofertas dela.
 //
-// - A data é o dia em que o robô COMEÇA, entre hoje e hoje + 365 (São Paulo).
-//   Hoje = "começar agora": o servidor chama o robô no próprio pedido. Data
+// - A data é o dia em que o agente COMEÇA, entre hoje e hoje + 365 (São Paulo).
+//   Hoje = "começar agora": o servidor chama o agente no próprio pedido. Data
 //   passada não existe (o artefato aceitava; aqui "começar agora" é hoje).
 // - A onda que começou fica com a data travada ("Já começou: a data não muda
-//   mais.") e sem "Apagar": o robô já foi chamado. O nome muda sempre.
+//   mais.") e sem "Apagar": o agente já foi chamado. O nome muda sempre.
 // - Apagar pede confirmação: as ofertas dela voltam para "Sem onda".
 // - Sem escrita (o cliente, o "Ver como: Cliente", quem não escreve no Portal da
 //   empresa): só leitura — nome, data e as ofertas.
@@ -286,7 +286,7 @@ export default function PainelDaOnda({
                 ) : (
                     <Caixa titulo="Quando" data-caixa="quando">
                         <span className="text-[13px] text-trilha-fg">{quando}</span>
-                        <span className="text-[12.5px] text-trilha-muted">A data é o dia em que o robô começa a preparar as ofertas desta onda.</span>
+                        <span className="text-[12.5px] text-trilha-muted">A data é o dia em que o agente começa a preparar as ofertas desta onda.</span>
                     </Caixa>
                 )}
 

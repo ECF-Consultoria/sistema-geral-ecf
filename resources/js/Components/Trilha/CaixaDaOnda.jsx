@@ -15,7 +15,7 @@ import { Botao, Caixa, Opcao, Seletor } from '@/Components/Trilha/Pecas';
 //
 // No painel da oferta das etapas 3 e 4 (com a trilha de trabalho): em que onda
 // ela está e, para quem escreve, pôr, mudar ou tirar. A data da onda é o dia em
-// que o robô começa a preparar a oferta — não prazo.
+// que o agente começa a preparar a oferta — não prazo.
 //
 // Quem diz o que a oferta ainda pode fazer é o servidor: `planejavel` (tem
 // produto na Lista e ainda não andou: entra, muda e sai de onda) e `pode_tirar`
@@ -26,7 +26,7 @@ import { Botao, Caixa, Opcao, Seletor } from '@/Components/Trilha/Pecas';
 // - numa onda que ainda não começou, mas que já andou (alguém adiantou no
 //   editor do Publicador) ou não tem produto: ela não espera a data — "já
 //   começou", e só "Tirar da onda";
-// - numa onda que já começou: só o texto — o robô já foi chamado;
+// - numa onda que já começou: só o texto — o agente já foi chamado;
 // - sem onda e não planejável: já começou sem onda e não entra em uma — ou,
 //   sem produto, fica fora das ondas.
 // O cliente (e o "Ver como: Cliente") só lê.
@@ -152,7 +152,7 @@ export default function CaixaDaOnda({
     else if (atual) estado = `Na ${atual.nome} · ${quandoDaOndaPorExtenso(atual)}`;
     else if (situacao === 'antes') estado = cliente ? 'Já começou.' : 'Já começou sem onda: não entra em onda.';
     else if (situacao === 'fora') estado = 'Fora das ondas: sem produto na Lista.';
-    else if (escreve) estado = 'Sem onda: escolha a onda em que o robô começa.';
+    else if (escreve) estado = 'Sem onda: escolha a onda em que o agente começa.';
 
     // Por que a oferta numa onda por começar não espera a data (só a equipe lê o porquê).
     let travada = null;
@@ -164,7 +164,7 @@ export default function CaixaDaOnda({
 
     return (
         <Caixa titulo="Planejamento" data-caixa="planejamento" data-onda-da-oferta={atual?.id ?? ''}>
-            <span className="text-[12.5px] text-trilha-muted">A data da onda é o dia em que o robô começa a preparar esta oferta.</span>
+            <span className="text-[12.5px] text-trilha-muted">A data da onda é o dia em que o agente começa a preparar esta oferta.</span>
             <span className="text-[13px] font-semibold text-trilha-fg" data-estado-da-onda={situacao}>
                 {estado}
             </span>

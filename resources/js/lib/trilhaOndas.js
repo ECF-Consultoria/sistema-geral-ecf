@@ -1,6 +1,6 @@
 // ─── Trilha de produtos — as ondas do Planejamento (2ª entrega, 02/11/2026) ──
 //
-// Uma onda é um grupo de ofertas com o DIA em que o robô (o agente de IA)
+// Uma onda é um grupo de ofertas com o DIA em que o agente (de IA)
 // começa a prepará-las. A data não é prazo de publicação: nenhum texto daqui
 // diz "prazo", "publicar até" ou "data de publicação".
 //
@@ -67,7 +67,7 @@ export const quandoDaOndaPorExtenso = (onda) => `${onda?.comecou ? 'começou' : 
 
 /**
  * A oferta numa onda que ainda não começou, mas que não espera a data dela: a que já andou (preparada antes,
- * p. ex. pelo editor do Publicador) e a sem produto na Lista (o robô não a segura). Para ela, "começa 05/11"
+ * p. ex. pelo editor do Publicador) e a sem produto na Lista (o agente não a segura). Para ela, "começa 05/11"
  * seria falso — e a equipe só pode tirá-la da onda (`pode_tirar`).
  */
 export const naoEsperaAOnda = (oferta, onda) => !!onda && !onda.comecou && oferta?.planejavel === false;
@@ -141,8 +141,8 @@ export function problemaDaOnda({ nome, data }, { hoje, dataTravada = false, outr
     if (!limpo || limpo.length > NOME_MAXIMO) return `Dê um nome de 1 a ${NOME_MAXIMO} caracteres à onda.`;
     if ((outrasOndas ?? []).some((w) => chaveDoNome(w?.nome) === chaveDoNome(limpo))) return 'Já existe uma onda com esse nome nesta loja.';
     if (dataTravada) return null;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data ?? ''))) return 'Escolha o dia em que o robô começa.';
-    if (data < hoje) return 'Escolha hoje ou um dia depois: hoje faz o robô começar agora.';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data ?? ''))) return 'Escolha o dia em que o agente começa.';
+    if (data < hoje) return 'Escolha hoje ou um dia depois: hoje faz o agente começar agora.';
     if (data > somarDias(hoje, DIAS_A_FRENTE)) return 'Escolha uma data até um ano para a frente.';
 
     return null;
@@ -167,13 +167,13 @@ export function ehPlanejavel(oferta, onda = null) {
 
 /**
  * A ajuda embaixo do campo de data da onda. A onda NOVA nasce vazia: com a data de hoje, quem começa na hora é
- * o que entrar nela (não "o robô começa ao salvar"). A que já existe, posta para hoje, solta as ofertas dela.
+ * o que entrar nela (não "o agente começa ao salvar"). A que já existe, posta para hoje, solta as ofertas dela.
  */
 export function ajudaDaDataDaOnda({ nova = false, comecou = false, data, hoje }) {
     if (comecou) return 'Já começou: a data não muda mais.';
-    if (data === hoje) return nova ? 'Hoje: o que entrar nesta onda começa na hora.' : 'Hoje: o robô começa assim que a onda for salva.';
+    if (data === hoje) return nova ? 'Hoje: o que entrar nesta onda começa na hora.' : 'Hoje: o agente começa assim que a onda for salva.';
 
-    return 'O dia em que o robô começa a preparar as ofertas desta onda.';
+    return 'O dia em que o agente começa a preparar as ofertas desta onda.';
 }
 
 /** Como cada onda aparece no seletor da oferta. A que já começou avisa que a oferta posta nela começa na hora. */
@@ -193,7 +193,7 @@ export function emTexto(nomes) {
  * Os avisos de dependência da oferta que a tela já sabe calcular (desenho da 2ª
  * entrega, §4.4) — antes de pôr numa onda, ou com a onda ainda por começar:
  *
- * - peça com pendência na Lista: é só aviso — no dia da onda o robô prepara com
+ * - peça com pendência na Lista: é só aviso — no dia da onda o agente prepara com
  *   o que estiver lá (`Na fila · com pendência na Lista` no status); complete antes;
  * - Kit e Combit: as fotos das peças entram como estiverem — a galeria do
  *   composto leva as fotos da simples de cada peça no estado em que estiverem.
@@ -209,7 +209,7 @@ export function avisosDaOferta(oferta, dados, { cliente = false } = {}) {
     const avisos = [];
 
     const naLista = pecas.filter((id) => produtos.get(id)?.etapa === 'lista');
-    const comOQueHouver = 'no dia da onda o robô prepara com o que estiver lá. Complete antes da data.';
+    const comOQueHouver = 'no dia da onda o agente prepara com o que estiver lá. Complete antes da data.';
     if (naLista.length === 1) avisos.push(`O produto ${nomeDe(naLista[0])} tem pendência na Lista: ${comOQueHouver}`);
     if (naLista.length > 1) avisos.push(`Os produtos ${emTexto(naLista.map(nomeDe))} têm pendência na Lista: ${comOQueHouver}`);
 

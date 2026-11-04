@@ -39,7 +39,7 @@ use Tests\TestCase;
  * rotas da equipe, com o Job rodando na hora (fila `sync`):
  *
  * - o anúncio vira produto da Lista com variações (cor E tamanho pelo `eixo_2`), fotos (só na 1ª variação de cada cor),
- *   caixa, a ficha do anúncio, a IA completando SÓ o vazio, o título escrito pelo robô do Publicador (nunca o do
+ *   caixa, a ficha do anúncio, a IA completando SÓ o vazio, o título escrito pelo agente do Publicador (nunca o do
  *   anúncio) e as faltas que são só da equipe — custo, família e ambiente;
  * - sem SKU, a Ref é o MLB com a posição; a IA do título (ou os termos) fora → título vazio com aviso e a falta;
  * - nada é atualizado: reimportar é `na_lista`; Ref que já existe e SKU com anúncio na espera (D37) são recusados sem
@@ -153,7 +153,7 @@ class ImportarDoMlNaTrilhaTest extends TestCase
             'avisos' => [], 'faltas' => ['custo', 'família', 'ambiente'], 'mensagem' => null,
         ], $item);
 
-        // O produto: o nome é o do anúncio; o TÍTULO DE VENDA é o do robô, nunca o do anúncio.
+        // O produto: o nome é o do anúncio; o TÍTULO DE VENDA é o do agente, nunca o do anúncio.
         $this->assertSame(self::ORIGINAL, $produto->nome);
         $this->assertSame(self::DO_ROBO, $produto->titulo);
         $this->assertFalse(RegrasDoTitulo::mesmo($produto->titulo, self::ORIGINAL));
@@ -315,7 +315,7 @@ class ImportarDoMlNaTrilhaTest extends TestCase
         $r = $this->importar(['MLB111'])->assertOk();
 
         $this->assertTrue($r->json('em_andamento'));
-        // Na fila: o título do anúncio já vem; o de venda (`titulo`) só quando o robô escrever.
+        // Na fila: o título do anúncio já vem; o de venda (`titulo`) só quando o agente escrever.
         $this->assertSame(['fila', null, null, self::ORIGINAL],
             [$r->json('itens.0.situacao'), $r->json('itens.0.passo'), $r->json('itens.0.titulo'), $r->json('itens.0.titulo_do_anuncio')]);
         $this->assertNotSame('high', PreparoIaAgenda::fila());

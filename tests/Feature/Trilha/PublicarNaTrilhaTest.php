@@ -55,7 +55,7 @@ use Tests\TestCase;
  * `GET …/publicacao` acompanha. Quem publica é a fila — nada daqui manda `POST /items`.
  *
  * O cenário é o do preparo de verdade (`CenarioDoPreparo`, como o da 4c): a cadeira de DUAS cores (Azul e Preto, um
- * pub_produto só) preparada pelo robô, na revisão, com uma foto já enviada e o preço gravado nas duas cores; a conta da
+ * pub_produto só) preparada pelo agente, na revisão, com uma foto já enviada e o preço gravado nas duas cores; a conta da
  * loja conectada e liberada; as chaves da trilha ligam só depois do preparo. A loja é a 459 (`PublicacaoNaTrilha::LOJA`).
  * O Mercado Livre é um `Http::fake` só com o que a conferência pergunta (conta, condicionais, tipos, SKU e o
  * `/items/validate`) e `preventStrayRequests`: qualquer outro pedido — um `POST /items` — estoura. O que se prova:
@@ -86,8 +86,8 @@ class PublicarNaTrilhaTest extends TestCase
     /** As chaves de `publicacao` (§19.13), na ordem. */
     private const CHAVES = ['situacao', 'mensagem', 'avisos', 'mlbs'];
 
-    /** O que não pode aparecer em texto nenhum da publicação (D59 e a régua de 4a). */
-    private const PROIBIDOS = ['Mercado Livre', 'Publicador', 'Portal', 'agente', '/portal', 'mlb/anuncios'];
+    /** O que não pode aparecer em texto nenhum da publicação (D59 e a régua de 4a) — e o antigo "robô" (R9: é "agente"). */
+    private const PROIBIDOS = ['Mercado Livre', 'Publicador', 'Portal', 'robô', 'Robô', '/portal', 'mlb/anuncios'];
 
     private EstruturaProduto $d;
 
@@ -143,7 +143,7 @@ class PublicarNaTrilhaTest extends TestCase
     // ═══ D48 — só na 459, guarda no código ════════════════════════════════════
 
     /**
-     * A 460 com TUDO pronto (a cadeira preparada pelo robô, na revisão, prévia pronta, foto enviada, preço, conta
+     * A 460 com TUDO pronto (a cadeira preparada pelo agente, na revisão, prévia pronta, foto enviada, preço, conta
      * conectada E liberada, as duas chaves da trilha): 403 com a mensagem neutra e NADA — nenhum Job, nenhum HTTP,
      * nenhuma fila, nenhum estado. Sem a guarda, este pedido iria para a fila de publicação de uma loja de cliente.
      */
@@ -613,7 +613,7 @@ class PublicarNaTrilhaTest extends TestCase
 
     // ─── apoio ───
 
-    /** A cadeira de duas cores (Azul e Preto, um pub_produto só) da empresa, preparada pelo robô de verdade. */
+    /** A cadeira de duas cores (Azul e Preto, um pub_produto só) da empresa, preparada pelo agente de verdade. */
     private function cadeira(Company $empresa, string $codigo): EstruturaProduto
     {
         $antes = $this->empresa;
@@ -632,7 +632,7 @@ class PublicarNaTrilhaTest extends TestCase
         return $d;
     }
 
-    /** As chaves da trilha ligam DEPOIS do preparo (com elas o robô esperaria a onda); a marca de "agendado" (80 s) vence. */
+    /** As chaves da trilha ligam DEPOIS do preparo (com elas o agente esperaria a onda); a marca de "agendado" (80 s) vence. */
     private function ligarATrilha(array $empresas): void
     {
         Carbon::setTestNow(now()->addMinutes(5));

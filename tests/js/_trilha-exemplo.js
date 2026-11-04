@@ -279,7 +279,7 @@ export const ESCRITA = {
         // 4d: aprovar e publicar (§19.13) — o `POST` e o `GET` do acompanhamento, com o mesmo marcador.
         publicar: '/trilha/459/ofertas/__ITEM__/publicar',
         publicacao: '/trilha/459/ofertas/__ITEM__/publicacao',
-        // 4b: pedir ajuste ao robô (§19.14) — o `POST` e o `GET` do acompanhamento na MESMA URL, com o mesmo marcador.
+        // 4b: pedir ajuste ao agente (§19.14) — o `POST` e o `GET` do acompanhamento na MESMA URL, com o mesmo marcador.
         ajuste: '/trilha/459/ofertas/__ITEM__/ajuste',
     },
 };
@@ -312,7 +312,7 @@ const COMBO_DO_APARADOR = {
     onda_id: null, sem_produto: false, url_publicador: null,
 };
 
-/** O Combo 2 da mesa: na Onda 1, que já começou — e ainda não andou (o robô está na fila). */
+/** O Combo 2 da mesa: na Onda 1, que já começou — e ainda não andou (o agente está na fila). */
 const COMBO_DA_MESA = {
     id: 'c-1-2', tipo: 'Combo', nome: 'Combo 2 · Mesa de jantar jatobá 6 lugares', sku: 'CJ-210-CB2', skus: ['CJ-210-CB2'],
     componentes: [{ produto_id: 1, quantidade: 2, sku: 'CJ-210', nome: 'Mesa de jantar jatobá 6 lugares' }],
@@ -330,7 +330,7 @@ const AVULSA_SEM_PRODUTO = {
 
 /**
  * Os produtos com o cadastro TRAVADO (3ª entrega, pergunta 1): algum item da trilha que os leva já andou — a mesa
- * e o espelho estão no ar, a cadeira e a prateleira na revisão, o aparador com o robô e o rack com a Simples na
+ * e o espelho estão no ar, a cadeira e a prateleira na revisão, o aparador com o agente e o rack com a Simples na
  * revisão. O painel ripado (só no kit que não andou) e os da Lista continuam editáveis.
  */
 const TRAVADOS = new Set([1, 2, 3, 4, 10, 11]);
@@ -525,8 +525,8 @@ export const SALVO_COM_ERRO = {
 };
 
 /** O motivo da trava, como o servidor escreve (a gaveta e o 409). */
-export const MOTIVO_DA_TRAVA = 'A oferta “Cadeira jatobá assento palhinha” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar). '
-    + 'Mudar o cadastro agora faria o robô refazer texto e imagens e não muda o anúncio no ar.';
+export const MOTIVO_DA_TRAVA = 'A oferta “Cadeira jatobá assento palhinha” já saiu do Planejamento (o agente já preparou, está na revisão ou no ar). '
+    + 'Mudar o cadastro agora faria o agente refazer texto e imagens e não muda o anúncio no ar.';
 
 /** `GET …/2/cadastro` — a cadeira (2 cores), que já está na revisão: só leitura. */
 export const CADASTRO_TRAVADO = {
@@ -544,7 +544,7 @@ export const CADASTRO_TRAVADO = {
     edicao: { livre: false, motivo: MOTIVO_DA_TRAVA, onda_comecou: null },
 };
 
-/** O criado-mudo com a Simples numa onda que já começou (o robô ainda não mexeu) e já no Publicador. */
+/** O criado-mudo com a Simples numa onda que já começou (o agente ainda não mexeu) e já no Publicador. */
 export const CADASTRO_ONDA_COMECOU = {
     ...SALVO_INCOMPLETO,
     situacao: { ...SALVO_INCOMPLETO.situacao, no_publicador: true },
@@ -626,7 +626,7 @@ export const CADASTRO_COM_CATEGORIA = {
     situacao: { ...SALVO_INCOMPLETO.situacao, faltas: ['ficha: Material principal', 'fotos (0 de 3)'] },
 };
 
-/** O mesmo produto já no Publicador (a onda não começou, o robô não mexeu): editável, com a categoria TRAVADA. */
+/** O mesmo produto já no Publicador (a onda não começou, o agente não mexeu): editável, com a categoria TRAVADA. */
 export const CADASTRO_CATEGORIA_TRAVADA = {
     ...CADASTRO_COM_CATEGORIA,
     situacao: { ...CADASTRO_COM_CATEGORIA.situacao, no_publicador: true, categoria_travada: true },
@@ -779,7 +779,7 @@ export const LISTA_DO_ML = {
 /**
  * `POST {escrita.mercado_livre.importar}` (e o `GET …/estado` logo depois) — uma importação ANDANDO, com as seis
  * situações do §18.4. O `titulo` aparece duas vezes no item do desenho (o do anúncio e o de venda): no JSON vale o
- * último — aqui, no "novo", é o que o robô escreveu; nos que andam, o do anúncio. Os `totais` vêm de propósito
+ * último — aqui, no "novo", é o que o agente escreveu; nos que andam, o do anúncio. Os `totais` vêm de propósito
  * DIFERENTES da lista (a tela conta pela lista, como na planilha).
  */
 export const ESTADO_DO_ML = {
@@ -839,7 +839,7 @@ export const ESTADO_DO_ML_FIM = {
     }),
 };
 
-/** `GET …/9/cadastro` do produto que veio de um anúncio (D41): o título de venda do robô e o do anúncio original. */
+/** `GET …/9/cadastro` do produto que veio de um anúncio (D41): o título de venda do agente e o do anúncio original. */
 export const CADASTRO_DO_ML = {
     ...SALVO_INCOMPLETO,
     produto: {
@@ -850,7 +850,7 @@ export const CADASTRO_DO_ML = {
 
 // ═══ 4ª entrega, fatia 4a: a prévia do anúncio (só leitura, porta da equipe) ═══
 
-/** A foto da prévia como o servidor manda (§19.5): a URL da rota da trilha e `gerada` (o robô fez). */
+/** A foto da prévia como o servidor manda (§19.5): a URL da rota da trilha e `gerada` (o agente fez). */
 const fotoDaPrevia = (item, id, gerada = false) => ({ id: String(id), url: `/trilha/459/ofertas/${item}/fotos/${id}`, gerada });
 
 /** A ficha agrupada de cada cor (o anúncio da cor leva o valor dela). */
@@ -875,7 +875,7 @@ const fichaDaCadeira = (cor) => [
 
 /**
  * `GET {escrita.revisao.previa}` com `s-2` no lugar do marcador — a prévia PRONTA da cadeira (§19.5 do desenho): dois
- * tipos × duas cores. No Premium a capa é outra (a ambientação que o robô fez vem primeiro, D6 do Publicador), as
+ * tipos × duas cores. No Premium a capa é outra (a ambientação que o agente fez vem primeiro, D6 do Publicador), as
  * parcelas vêm na forma do retrato de origem (`sem_promocao`/`com_promocao`: o §19.5 só mostra o `null` do Clássico) e
  * a cor Mel tem uma promoção prevista. O Clássico foi ajustado (899,90 × 879,90 da Precificação); o Premium, não. O
  * `envio` leva também `frete_gratis` e `retirada` (o servidor repassa os do retrato; o §19.5 só mostra `modo` e `aviso`).
@@ -935,7 +935,7 @@ export const PREVIA_DO_ANUNCIO = {
 export const PREVIA_NAO_PRONTA = {
     item: { id: 's-4', nome: 'Rack para TV 1,80 m madeira maciça', tipo: 'Simples', etapa: 'revisao', status: 'Faltam 2 itens para publicar' },
     pronta: false,
-    motivo: 'O robô ainda está preparando este anúncio.',
+    motivo: 'O agente ainda está preparando este anúncio.',
     revisao: 12,
     categoria: null,
     tipos: [],
@@ -1025,7 +1025,7 @@ export const PRECO_ABAIXO_DO_MINIMO = {
     avisos: ['Abaixo do mínimo da Precificação no Clássico (R$ 820,00).'],
 };
 
-/** 409 da revisão (outra aba, ou o robô, mexeu): `{revisao_atual, message}` SEM `travado` (padrão F6/D47). */
+/** 409 da revisão (outra aba, ou o agente, mexeu): `{revisao_atual, message}` SEM `travado` (padrão F6/D47). */
 export const CONFLITO_DO_PRECO = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
 
 /** 409 do item na fila de publicação (ou publicando, publicado, fora da revisão): só `{message}`, neutro. */
@@ -1125,7 +1125,7 @@ export const PUBLICAR_PREMIUM_IGUAL = {
     errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico na cor Mel.'] },
 };
 
-// ═══ 4ª entrega, 4b: pedir ajuste ao robô (§19.14 do desenho) ═══════════════
+// ═══ 4ª entrega, 4b: pedir ajuste ao agente (§19.14 do desenho) ═══════════════
 
 /**
  * A prévia pronta (a da 4c) com o que a 4b acrescenta: `ajuste` (nenhum pedido ainda) e `ajustes_restantes_hoje` (o teto
@@ -1140,24 +1140,24 @@ export const PREVIA_PARA_AJUSTE = { ...PREVIA_COM_PRECO, ajuste: null, ajustes_r
 export const AJUSTE_ACEITO = {
     ajuste: {
         situacao: 'fila',
-        partes: { titulo: { situacao: 'fila', mensagem: 'Na fila do robô.' }, descricao: { situacao: 'fila', mensagem: 'Na fila do robô.' } },
+        partes: { titulo: { situacao: 'fila', mensagem: 'Na fila do agente.' }, descricao: { situacao: 'fila', mensagem: 'Na fila do agente.' } },
         restantes_hoje: 2,
-        mensagem: 'Pedido recebido: o robô começa em instantes.',
+        mensagem: 'Pedido recebido: o agente começa em instantes.',
     },
 };
 
-/** `GET {escrita.revisao.ajuste}` — o robô já refez o título e está na descrição. */
+/** `GET {escrita.revisao.ajuste}` — o agente já refez o título e está na descrição. */
 export const AJUSTE_FAZENDO = {
     ajuste: {
         situacao: 'fazendo',
-        partes: { titulo: { situacao: 'refeito', mensagem: 'Título refeito.' }, descricao: { situacao: 'fazendo', mensagem: 'O robô está refazendo.' } },
+        partes: { titulo: { situacao: 'refeito', mensagem: 'Título refeito.' }, descricao: { situacao: 'fazendo', mensagem: 'O agente está refazendo.' } },
         restantes_hoje: 2,
-        mensagem: 'O robô está refazendo…',
+        mensagem: 'O agente está refazendo…',
     },
 };
 
 /**
- * Terminou: o título foi refeito; a descrição a equipe tinha editado à mão (o robô só reescreve o campo que ainda é
+ * Terminou: o título foi refeito; a descrição a equipe tinha editado à mão (o agente só reescreve o campo que ainda é
  * dele — `mantido`, com a mensagem do servidor).
  */
 export const AJUSTE_FEITO = {
@@ -1165,7 +1165,7 @@ export const AJUSTE_FEITO = {
         situacao: 'feito',
         partes: {
             titulo: { situacao: 'refeito', mensagem: 'Título refeito.' },
-            descricao: { situacao: 'mantido', mensagem: 'A equipe editou a descrição; o robô não mexe nela.' },
+            descricao: { situacao: 'mantido', mensagem: 'A equipe editou a descrição; o agente não mexe nela.' },
         },
         restantes_hoje: 2,
         mensagem: 'Ajuste pronto.',
@@ -1176,9 +1176,9 @@ export const AJUSTE_FEITO = {
 export const AJUSTE_COM_ERRO = {
     ajuste: {
         situacao: 'erro',
-        partes: { titulo: { situacao: 'erro', mensagem: 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.' } },
+        partes: { titulo: { situacao: 'erro', mensagem: 'O limite diário do agente para esta loja acabou. Amanhã libera de novo.' } },
         restantes_hoje: 2,
-        mensagem: 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.',
+        mensagem: 'O limite diário do agente para esta loja acabou. Amanhã libera de novo.',
     },
 };
 
@@ -1187,11 +1187,11 @@ export const AJUSTE_COM_DOIS_ERROS = {
     ajuste: {
         situacao: 'erro',
         partes: {
-            titulo: { situacao: 'erro', mensagem: 'O robô não achou um título diferente do atual.' },
-            descricao: { situacao: 'erro', mensagem: 'O robô chegou ao mesmo texto; nada mudou.' },
+            titulo: { situacao: 'erro', mensagem: 'O agente não achou um título diferente do atual.' },
+            descricao: { situacao: 'erro', mensagem: 'O agente chegou ao mesmo texto; nada mudou.' },
         },
         restantes_hoje: 1,
-        mensagem: 'O robô não conseguiu fazer o ajuste.',
+        mensagem: 'O agente não conseguiu fazer o ajuste.',
     },
 };
 
@@ -1201,12 +1201,12 @@ export const SEM_AJUSTE = { ajuste: null };
 /** A prévia com o ajuste andando (a mesma forma do GET): a gaveta retoma o acompanhamento; a linha diz D60. */
 export const PREVIA_AJUSTANDO = {
     ...PREVIA_COM_PRECO,
-    item: { ...PREVIA_COM_PRECO.item, status: 'Robô refazendo · título, descrição' },
+    item: { ...PREVIA_COM_PRECO.item, status: 'Agente refazendo · título, descrição' },
     ajuste: AJUSTE_FAZENDO.ajuste,
     ajustes_restantes_hoje: 2,
 };
 
-/** O título novo que o robô escreveu (diferente dos dois de antes — `evitar`). */
+/** O título novo que o agente escreveu (diferente dos dois de antes — `evitar`). */
 export const TITULO_REFEITO = 'Cadeira De Jantar Jatobá Maciço Assento Palhinha Natural';
 
 /** A prévia recarregada no fim do ajuste: o título novo nos dois tipos, a revisão subiu, o resultado em `ajuste`. */
@@ -1229,10 +1229,10 @@ export const PREVIA_SEM_AJUSTES = {
 export const CONFLITO_DO_AJUSTE = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
 
 /** 409 com um ajuste já andando (outra aba pediu): só `{message}`, neutro. */
-export const AJUSTE_JA_ANDANDO = { message: 'O robô já está refazendo este anúncio. Espere terminar.' };
+export const AJUSTE_JA_ANDANDO = { message: 'O agente já está refazendo este anúncio. Espere terminar.' };
 
 /** 409 do item na fila de publicação (ou publicando, publicado, fora da revisão, não pronto): só `{message}`. */
-export const AJUSTE_NA_FILA_DE_PUBLICACAO = { message: 'Este anúncio já está na fila de publicação: o robô não mexe mais nele.' };
+export const AJUSTE_NA_FILA_DE_PUBLICACAO = { message: 'Este anúncio já está na fila de publicação: o agente não mexe mais nele.' };
 
 /** 422 do limite do dia (§19.12: 3 ajustes por anúncio por dia), em `errors.refazer`. */
 export const AJUSTE_NO_LIMITE = {
@@ -1244,7 +1244,7 @@ export const AJUSTE_NO_LIMITE = {
 export const AJUSTE_DO_LIMITE = { ajuste: { ...AJUSTE_FEITO.ajuste, restantes_hoje: 0 } };
 
 /**
- * O kit da fase N (ou o rascunho que o robô nunca preparou): o texto não é do robô. O servidor manda
+ * O kit da fase N (ou o rascunho que o agente nunca preparou): o texto não é do agente. O servidor manda
  * `ajustes_restantes_hoje: 0` também aqui, e o `preparo` vem sem título nem descrição — o botão some (não é limite).
  */
 export const PREVIA_SEM_ROBO = {

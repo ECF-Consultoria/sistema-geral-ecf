@@ -432,7 +432,7 @@ class CadastroNaTrilhaTest extends TestCase
         return [
             'rascunho validado'          => ['validado'],
             'com anúncio'                => ['anuncio'],
-            'com etapa do robô'          => ['robo'],
+            'com etapa do agente'          => ['robo'],
             'Kit N do Publicador'        => ['kit_n'],
             'kit da trilha que o leva'   => ['kit'],
         ];
@@ -471,7 +471,7 @@ class CadastroNaTrilhaTest extends TestCase
         $hoje = $this->onda($this->empresa, '2026-11-05', 'Onda Novembro');
         $this->itemNaOnda($hoje, "s-{$p['produto']->id}");
         $this->itemNaOnda($this->onda($this->empresa, '2026-11-20', 'Onda Futura'), "s-{$q['produto']->id}");
-        // O rascunho existe, ainda DRAFT e sem nada do robô: não andou.
+        // O rascunho existe, ainda DRAFT e sem nada do agente: não andou.
         $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $p));
 
         $r = $this->abrir($p['produto'])->assertOk()->json();

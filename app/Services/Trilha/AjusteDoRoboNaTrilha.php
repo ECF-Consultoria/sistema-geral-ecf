@@ -31,9 +31,9 @@ use Illuminate\Validation\ValidationException;
 use Spatie\Activitylog\Models\Activity;
 
 /**
- * "Pedir ajuste ao robô" na revisão da trilha (4ª entrega, fatia 4b, desenho §19.14, D51/D60): a equipe escolhe o que o
- * robô refaz no anúncio que ele preparou — o TÍTULO (com o Modelo junto) e/ou a DESCRIÇÃO — sem texto livre e sem
- * imagens. O robô refaz com os MESMOS geradores do preparo do Publicador e grava pelo MESMO caminho, com as travas dele.
+ * "Pedir ajuste ao agente" na revisão da trilha (4ª entrega, fatia 4b, desenho §19.14, D51/D60): a equipe escolhe o que o
+ * agente refaz no anúncio que ele preparou — o TÍTULO (com o Modelo junto) e/ou a DESCRIÇÃO — sem texto livre e sem
+ * imagens. O agente refaz com os MESMOS geradores do preparo do Publicador e grava pelo MESMO caminho, com as travas dele.
  *
  * ### Nenhum texto livre chega a prompt nenhum
  * Do corpo só se leem `revisao` e `refazer` (lista fechada: `titulo`, `descricao`); qualquer outra chave é ignorada e
@@ -43,7 +43,7 @@ use Spatie\Activitylog\Models\Activity;
  * ### A guarda do pedido (`POST …/ajuste`), nesta ordem
  * O controller conferiu as duas chaves (404) e a escrita (403). Aqui: 404 item (a régua única, antes do corpo) → 409 SEM
  * `travado`: na fila de publicação → publicando → publicado → fora da revisão → sendo conferido para publicar (4d) → o
- * texto não é do robô (kit da fase N, rascunho sem preparo) → ajuste já em andamento → a `revisao` (ausente/fora da
+ * texto não é do agente (kit da fase N, rascunho sem preparo) → ajuste já em andamento → a `revisao` (ausente/fora da
  * forma = 422 `errors.revisao`; velha = 409 `{revisao_atual, message}`) → prévia não pronta → 422 `errors.refazer`
  * (vazio, parte desconhecida, e o limite de {@see LIMITE_POR_DIA} por anúncio por dia).
  *
@@ -56,27 +56,27 @@ use Spatie\Activitylog\Models\Activity;
  * histórico não grava e o limite deixa de valer (a cota diária da loja continua).
  *
  * ### O Job ({@see executar()}), na fila da IA
- * Para cada parte: é do robô? (cópia da régua do preparo — {@see titulosLivres()}, {@see descricaoLivre()}); não sendo,
+ * Para cada parte: é do agente? (cópia da régua do preparo — {@see titulosLivres()}, {@see descricaoLivre()}); não sendo,
  * `mantido` SEM chamar a IA. Sendo: a cota diária da LOJA (o MESMO contador do preparo, {@see consumirCota()}; sem cota =
  * `erro`, sem gastar) → gera (título: `PalavrasChaveService::gerarTitulos($r, $prazo, $evitar)` com `evitar` = os títulos
  * atuais dos dois tipos, e o Modelo depois; descrição: `DescricaoIaService::gerar`) → grava por
  * `PreparoIaDoRascunhoService::executarEtapa(rascunho, etapa, hash, $valorPronto)`, que é QUEM decide de verdade, sob a
- * trava do rascunho: só escreve campo que ainda é do robô (`step_state.ia_escrito`) — o resto vira `mantido` —, e adia
+ * trava do rascunho: só escreve campo que ainda é do agente (`step_state.ia_escrito`) — o resto vira `mantido` —, e adia
  * com o editor em uso, com o anúncio na fila de publicação ou com "Anunciar por IA" rodando (o valor gerado vai no Job
  * adiado do Publicador; nada se gera de novo). Adiado: a parte fica `fila` e um acompanhamento ({@see acompanhar()},
- * zero IA) lê o desfecho no `step_state` até a escrita acontecer (ou o robô desistir).
+ * zero IA) lê o desfecho no `step_state` até a escrita acontecer (ou o agente desistir).
  *
  * ### As réguas COPIADAS do preparo — mudou lá, muda aqui
  * `PreparoIaDoRascunhoService::livres()`, `categoriaTemModelo()` e `consumirCota()` são PRIVADAS, e o arquivo é vigiado por
  * portões (Fases 188/193: os leitores do `EditorEmUso` por método, contagens de asserções — já reprovaram mudança legítima;
  * o `FotosDoPainelServiceTest`, que os roda, falha no worktree por ambiente): aqui moram cópias, sem tocar nele. As de
- * "é do robô?" só economizam a chamada — quem decide a escrita é o
+ * "é do agente?" só economizam a chamada — quem decide a escrita é o
  * `executarEtapa`, sob a trava; divergir faria gastar à toa, nunca sobrescrever o que a equipe escreveu. A da cota usa a
  * MESMA chave do preparo (o orçamento do dia é um só) — o teste prova que os dois contadores são o mesmo.
  *
  * ### O estado (D60)
  * Em cache por anúncio (`trilha:ajuste:{pub}`, {@see HORAS_DO_ESTADO} h): `fila` → `fazendo` → `feito` | `erro`. Enquanto
- * `fila`/`fazendo`, a linha da trilha diz "Robô refazendo · título, descrição" e fica na revisão
+ * `fila`/`fazendo`, a linha da trilha diz "Agente refazendo · título, descrição" e fica na revisão
  * ({@see refazendoEmLote()}, lido pela {@see SituacaoDasOfertas}). `fila`/`fazendo` parado há mais de
  * {@see ANDAMENTO_VALE_MIN} min é Job que morreu: sai `erro` e libera um pedido novo.
  */
@@ -96,7 +96,7 @@ class AjusteDoRoboNaTrilha
      */
     public const ANDAMENTO_VALE_MIN = 180;
 
-    /** As partes do pedido, na ordem em que o robô as faz e a tela as lista. */
+    /** As partes do pedido, na ordem em que o agente as faz e a tela as lista. */
     public const PARTES = ['titulo', 'descricao'];
 
     public const ROTULO = ['titulo' => 'título', 'descricao' => 'descrição'];
@@ -108,42 +108,42 @@ class AjusteDoRoboNaTrilha
     public const REFEITO = 'refeito';
     public const MANTIDO = 'mantido';
 
-    public const MSG_FILA = 'Pedido recebido: o robô começa em instantes.';
-    public const MSG_FAZENDO = 'O robô está refazendo…';
+    public const MSG_FILA = 'Pedido recebido: o agente começa em instantes.';
+    public const MSG_FAZENDO = 'O agente está refazendo…';
     public const MSG_FEITO = 'Ajuste pronto.';
-    public const MSG_ERRO = 'O robô não conseguiu fazer o ajuste.';
+    public const MSG_ERRO = 'O agente não conseguiu fazer o ajuste.';
 
-    public const MSG_PARTE_FILA = 'Na fila do robô.';
-    public const MSG_PARTE_FAZENDO = 'O robô está refazendo.';
+    public const MSG_PARTE_FILA = 'Na fila do agente.';
+    public const MSG_PARTE_FAZENDO = 'O agente está refazendo.';
     public const MSG_TITULO_REFEITO = 'Título refeito.';
     public const MSG_DESCRICAO_REFEITA = 'Descrição refeita.';
-    public const MSG_TITULO_MANTIDO = 'A equipe editou o título; o robô não mexe nele.';
-    public const MSG_DESCRICAO_MANTIDA = 'A equipe editou a descrição; o robô não mexe nela.';
-    public const MSG_ADIADO = 'O robô já refez e grava assim que o anúncio estiver livre.';
-    public const MSG_COTA = 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.';
-    public const MSG_DESLIGADO = 'O robô está desligado agora.';
-    public const MSG_IA_FALHOU = 'O robô não conseguiu refazer agora. Tente de novo mais tarde.';
-    public const MSG_SEM_TITULO_NOVO = 'O robô não achou um título diferente do atual.';
-    public const MSG_IGUAL = 'O robô chegou ao mesmo texto; nada mudou.';
-    public const MSG_PUBLICADO_DEPOIS = 'O anúncio foi publicado antes de o robô gravar; nada foi trocado.';
-    public const MSG_NA_FILA_DEPOIS = 'O anúncio entrou na fila de publicação; o robô não mexe mais nele.';
-    public const MSG_MUDOU = 'O anúncio mudou enquanto o robô refazia; nada foi trocado. Peça de novo.';
-    public const MSG_DESISTIU = 'O anúncio ficou ocupado por muito tempo; o robô desistiu de gravar.';
-    public const MSG_SEM_TEMPO = 'O robô demorou demais. Tente de novo.';
-    public const MSG_NAO_TERMINOU = 'O robô não terminou. Tente de novo.';
+    public const MSG_TITULO_MANTIDO = 'A equipe editou o título; o agente não mexe nele.';
+    public const MSG_DESCRICAO_MANTIDA = 'A equipe editou a descrição; o agente não mexe nela.';
+    public const MSG_ADIADO = 'O agente já refez e grava assim que o anúncio estiver livre.';
+    public const MSG_COTA = 'O limite diário do agente para esta loja acabou. Amanhã libera de novo.';
+    public const MSG_DESLIGADO = 'O agente está desligado agora.';
+    public const MSG_IA_FALHOU = 'O agente não conseguiu refazer agora. Tente de novo mais tarde.';
+    public const MSG_SEM_TITULO_NOVO = 'O agente não achou um título diferente do atual.';
+    public const MSG_IGUAL = 'O agente chegou ao mesmo texto; nada mudou.';
+    public const MSG_PUBLICADO_DEPOIS = 'O anúncio foi publicado antes de o agente gravar; nada foi trocado.';
+    public const MSG_NA_FILA_DEPOIS = 'O anúncio entrou na fila de publicação; o agente não mexe mais nele.';
+    public const MSG_MUDOU = 'O anúncio mudou enquanto o agente refazia; nada foi trocado. Peça de novo.';
+    public const MSG_DESISTIU = 'O anúncio ficou ocupado por muito tempo; o agente desistiu de gravar.';
+    public const MSG_SEM_TEMPO = 'O agente demorou demais. Tente de novo.';
+    public const MSG_NAO_TERMINOU = 'O agente não terminou. Tente de novo.';
 
-    public const MSG_NA_FILA_409 = 'Este anúncio já está na fila de publicação: o robô não mexe mais nele.';
-    public const MSG_PUBLICANDO_409 = 'Este anúncio está sendo publicado agora: o robô não mexe mais nele.';
-    public const MSG_PUBLICADO_409 = 'Este anúncio já foi publicado: o robô não mexe mais nele.';
-    public const MSG_FORA_DA_REVISAO = 'Este anúncio não está na revisão: o robô só refaz quando ele estiver pronto para revisar.';
+    public const MSG_NA_FILA_409 = 'Este anúncio já está na fila de publicação: o agente não mexe mais nele.';
+    public const MSG_PUBLICANDO_409 = 'Este anúncio está sendo publicado agora: o agente não mexe mais nele.';
+    public const MSG_PUBLICADO_409 = 'Este anúncio já foi publicado: o agente não mexe mais nele.';
+    public const MSG_FORA_DA_REVISAO = 'Este anúncio não está na revisão: o agente só refaz quando ele estiver pronto para revisar.';
     public const MSG_CONFERINDO_409 = 'Este anúncio está sendo conferido para publicar. Espere a conferência terminar.';
-    public const MSG_SEM_ROBO = 'O texto deste anúncio não foi escrito pelo robô: não há o que ele refazer.';
-    public const MSG_EM_ANDAMENTO_409 = 'O robô já está refazendo este anúncio. Espere terminar.';
+    public const MSG_SEM_ROBO = 'O texto deste anúncio não foi escrito pelo agente: não há o que ele refazer.';
+    public const MSG_EM_ANDAMENTO_409 = 'O agente já está refazendo este anúncio. Espere terminar.';
     public const MSG_REFAZER = 'Escolha o que refazer: o título, a descrição ou os dois.';
     public const MSG_LIMITE = 'Este anúncio já teve 3 ajustes hoje. Amanhã libera de novo.';
 
     /** O que a 4d (publicar) responde enquanto um ajuste anda. */
-    public const MSG_PUBLICAR_COM_AJUSTE = 'O robô está refazendo este anúncio. Espere terminar para publicar.';
+    public const MSG_PUBLICAR_COM_AJUSTE = 'O agente está refazendo este anúncio. Espere terminar para publicar.';
 
     /** Os dois tipos que recebem título (os do preparo). */
     private const TIPOS_TITULO = ['gold_special', 'gold_pro'];
@@ -230,7 +230,7 @@ class AjusteDoRoboNaTrilha
                 'pedido_em' => now()->toIso8601String(),
             ]);
             RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, $r, self::EVENTO,
-                "Ajuste pedido ao robô em \"{$item['nome']}\": ".implode(' e ', array_map(fn ($p) => self::ROTULO[$p], $partes)), [
+                "Ajuste pedido ao agente em \"{$item['nome']}\": ".implode(' e ', array_map(fn ($p) => self::ROTULO[$p], $partes)), [
                     'item'           => $chave,
                     'pub_produto_id' => $pubId,
                     'rascunho_id'    => (int) $r->id,
@@ -288,7 +288,7 @@ class AjusteDoRoboNaTrilha
         self::atualizar($pubId, $pedido, fn (array $e) => [...$e, 'situacao' => self::FAZENDO, 'mensagem' => self::MSG_FAZENDO,
             'partes' => array_map(fn () => self::parte(self::FAZENDO, self::MSG_PARTE_FAZENDO), $e['partes'])]);
 
-        // Antes de gastar: o anúncio ainda é do robô e ainda dá para mexer nele?
+        // Antes de gastar: o anúncio ainda é do agente e ainda dá para mexer nele?
         $bloqueio = match (true) {
             IaParaRascunhoService::intocavel($r)                 => self::MSG_PUBLICADO_DEPOIS,
             NaFilaDePublicacao::emUso($pubId)                    => self::MSG_NA_FILA_DEPOIS,
@@ -306,7 +306,7 @@ class AjusteDoRoboNaTrilha
         $escrito = (array) ($r->step_state[Memoria::ESCRITO] ?? []);
         $snap = $this->repo->snapshot($r);
         $saida = [];
-        // Quem é do robô AGORA (economia: a decisão que vale é a do `executarEtapa`, sob a trava).
+        // Quem é do agente AGORA (economia: a decisão que vale é a do `executarEtapa`, sob a trava).
         $livres = in_array('titulo', $partes, true) ? $this->titulosLivres($r, $snap, $escrito) : [];
         if (in_array('titulo', $partes, true) && $livres === []) {
             $saida['titulo'] = self::parte(self::MANTIDO, self::MSG_TITULO_MANTIDO);
@@ -317,7 +317,7 @@ class AjusteDoRoboNaTrilha
         $aGerar = array_values(array_filter($partes, fn ($p) => ! isset($saida[$p])));
         // A cota diária da LOJA, uma por pedido que vai gastar (o preparo também conta uma por produto preparado).
         if ($aGerar !== [] && ! self::consumirCota((int) $pub->company_id)) {
-            Log::warning("[Trilha] Ajuste do robô: limite diário da empresa {$pub->company_id} atingido; o anúncio {$pubId} (item {$chave}) não foi refeito.");
+            Log::warning("[Trilha] Ajuste do agente: limite diário da empresa {$pub->company_id} atingido; o anúncio {$pubId} (item {$chave}) não foi refeito.");
             foreach ($aGerar as $p) {
                 $saida[$p] = self::parte(self::ERRO, self::MSG_COTA);
             }
@@ -337,7 +337,7 @@ class AjusteDoRoboNaTrilha
             AjustarPeloRoboNaTrilhaJob::dispatch($empresaId, $chave, $pubId, $pedido, $partes, 'acompanhar', 1)
                 ->delay(now()->addMinutes(self::esperaDoAcompanhamento()));
         }
-        Log::info("[Trilha] Ajuste do robô: item {$chave} (anúncio {$pubId}) da empresa {$empresaId}: {$final} ("
+        Log::info("[Trilha] Ajuste do agente: item {$chave} (anúncio {$pubId}) da empresa {$empresaId}: {$final} ("
             .implode(', ', array_map(fn ($p, $s) => "{$p} {$s['situacao']}", array_keys($saida), $saida)).').');
 
         return $final;
@@ -412,7 +412,7 @@ class AjusteDoRoboNaTrilha
      * O título dos dois tipos: `gerarTitulos` com `evitar` = os títulos ATUAIS (o servidor garante um diferente) e a
      * escrita pelo `executarEtapa` com o valor pronto. Escrito ou adiado, o Modelo vem junto ({@see refazerModelo()}).
      *
-     * @param  list<string>  $livres  os tipos cujo título ainda é do robô
+     * @param  list<string>  $livres  os tipos cujo título ainda é do agente
      */
     private function refazerTitulo(PubRascunho $r, RascunhoSnapshot $snap, string $hash, array $escrito, array $livres, float $fim): array
     {
@@ -425,7 +425,7 @@ class AjusteDoRoboNaTrilha
         try {
             $titulos = $this->palavras->gerarTitulos($r, self::prazo($fim), $evitar);
         } catch (\Throwable $e) {
-            Log::warning("[Trilha] Ajuste do robô (título) falhou no rascunho {$r->id}: ".$e->getMessage());
+            Log::warning("[Trilha] Ajuste do agente (título) falhou no rascunho {$r->id}: ".$e->getMessage());
 
             return self::parte(self::ERRO, self::MSG_IA_FALHOU);
         }
@@ -443,7 +443,7 @@ class AjusteDoRoboNaTrilha
     }
 
     /**
-     * O Modelo depois do título novo ("título — com o Modelo —", §19.1): só se o campo ainda é do robô e a categoria tem
+     * O Modelo depois do título novo ("título — com o Modelo —", §19.1): só se o campo ainda é do agente e a categoria tem
      * Modelo; gerado com os títulos NOVOS e gravado pelo mesmo `executarEtapa`. Melhor esforço: falhar aqui não muda o
      * desfecho do título (o Modelo não é parte do contrato).
      *
@@ -462,7 +462,7 @@ class AjusteDoRoboNaTrilha
                 $this->preparo->executarEtapa($rascunhoId, Preparo::MODELO, $hash, $valor);
             }
         } catch (\Throwable $e) {
-            Log::warning("[Trilha] Ajuste do robô (Modelo) falhou no rascunho {$rascunhoId}: ".$e->getMessage());
+            Log::warning("[Trilha] Ajuste do agente (Modelo) falhou no rascunho {$rascunhoId}: ".$e->getMessage());
         }
     }
 
@@ -474,7 +474,7 @@ class AjusteDoRoboNaTrilha
         try {
             $texto = $this->descricao->gerar($r, self::prazo($fim));
         } catch (\Throwable $e) {
-            Log::warning("[Trilha] Ajuste do robô (descrição) falhou no rascunho {$r->id}: ".$e->getMessage());
+            Log::warning("[Trilha] Ajuste do agente (descrição) falhou no rascunho {$r->id}: ".$e->getMessage());
 
             return self::parte(self::ERRO, self::MSG_IA_FALHOU);
         }
@@ -508,7 +508,7 @@ class AjusteDoRoboNaTrilha
     /**
      * O desfecho de uma parte adiada, lido do `step_state` (nulo = ainda esperando). A escrita do Publicador grava a etapa
      * `ok` também quando o campo virou da equipe ("mantido") — o que separa os dois é a memória `ia_escrito`: mudou E o
-     * campo está com ela = o robô gravou.
+     * campo está com ela = o agente gravou.
      */
     private function desfechoDoAdiado(PubRascunho $r, string $parte, array $espera): ?array
     {
@@ -571,9 +571,9 @@ class AjusteDoRoboNaTrilha
     // ═══ As réguas copiadas do preparo (mudou lá, muda aqui) ══════════════════
 
     /**
-     * Os tipos cujo título ainda é do robô — cópia do ramo do título de `PreparoIaDoRascunhoService::livres()` (privado):
+     * Os tipos cujo título ainda é do agente — cópia do ramo do título de `PreparoIaDoRascunhoService::livres()` (privado):
      * vazio ou ainda com o último título que a automação escreveu; o título PLANEJADO (aba Anúncios, ou o título de venda
-     * do cadastro) conta como preenchido — também quando o campo ainda tem o que o robô escreveu antes dele.
+     * do cadastro) conta como preenchido — também quando o campo ainda tem o que o agente escreveu antes dele.
      *
      * @param  array<string, mixed>  $escrito  `step_state.ia_escrito`
      * @return list<string>
@@ -600,7 +600,7 @@ class AjusteDoRoboNaTrilha
         return $tipos;
     }
 
-    /** A descrição ainda é do robô — o ramo da descrição de `PreparoIaDoRascunhoService::livres()`. */
+    /** A descrição ainda é do agente — o ramo da descrição de `PreparoIaDoRascunhoService::livres()`. */
     private static function descricaoLivre(PubRascunho $r, array $escrito): bool
     {
         $ultimo = $escrito[Memoria::DESCRICAO] ?? null;
@@ -608,7 +608,7 @@ class AjusteDoRoboNaTrilha
         return Memoria::podeEscrever((string) ($r->descricao ?? ''), is_string($ultimo) ? $ultimo : null);
     }
 
-    /** O Modelo ainda é do robô — o ramo do Modelo de `PreparoIaDoRascunhoService::livres()` (lido agora, depois do título). */
+    /** O Modelo ainda é do agente — o ramo do Modelo de `PreparoIaDoRascunhoService::livres()` (lido agora, depois do título). */
     private function modeloLivre(PubRascunho $r): bool
     {
         $atual = $this->repo->snapshot($r)->atributos['MODEL'] ?? null;
@@ -674,8 +674,8 @@ class AjusteDoRoboNaTrilha
     }
 
     /**
-     * Quantos pedidos de ajuste o anúncio ainda tem hoje. 0 também quando o robô não tem o que refazer nele (o kit da fase
-     * N e o rascunho sem preparo do robô): a tela só oferece o botão com saldo.
+     * Quantos pedidos de ajuste o anúncio ainda tem hoje. 0 também quando o agente não tem o que refazer nele (o kit da fase
+     * N e o rascunho sem preparo do agente): a tela só oferece o botão com saldo.
      */
     public static function restantesHoje(?PubRascunho $r): int
     {
@@ -700,7 +700,7 @@ class AjusteDoRoboNaTrilha
     }
 
     /**
-     * D60, em lote para a linha da trilha: anúncio → as partes que o robô ainda está refazendo (rótulos, na ordem), só
+     * D60, em lote para a linha da trilha: anúncio → as partes que o agente ainda está refazendo (rótulos, na ordem), só
      * dos ajustes em `fila`/`fazendo`. Uma leitura de cache para todos.
      *
      * @param  list<int>  $pubIds
@@ -742,7 +742,7 @@ class AjusteDoRoboNaTrilha
 
     /**
      * 409 SEM `travado` pelo estado do anúncio (D47): na fila, publicando, publicado; fora da revisão (inclusive sem
-     * rascunho); e o "Aprovar e publicar" (4d) conferindo agora — o robô gravaria depois da conferência.
+     * rascunho); e o "Aprovar e publicar" (4d) conferindo agora — o agente gravaria depois da conferência.
      */
     private static function exigirQueDaParaAjustar(array $item, ?PubRascunho $r): void
     {
@@ -795,8 +795,8 @@ class AjusteDoRoboNaTrilha
     }
 
     /**
-     * O texto do anúncio é do robô: não é o kit da fase N (o texto dele tem fluxo próprio — `avaliarIa` devolve
-     * `kit_da_fase`) e o rascunho tem o preparo do robô (`ia_preparo.hash`: sem ele o `executarEtapa` não grava nada).
+     * O texto do anúncio é do agente: não é o kit da fase N (o texto dele tem fluxo próprio — `avaliarIa` devolve
+     * `kit_da_fase`) e o rascunho tem o preparo do agente (`ia_preparo.hash`: sem ele o `executarEtapa` não grava nada).
      */
     private static function doRobo(?PubProduto $pub, PubRascunho $r): bool
     {

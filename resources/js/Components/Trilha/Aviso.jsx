@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 // ─── Trilha de produtos — o aviso curto depois de uma escrita ───────────────
 //
-// O `toast` do protótipo: "Na Onda 2. O robô começa em 05/11.", "Onda 3
+// O `toast` do protótipo: "Na Onda 2. O agente começa em 05/11.", "Onda 3
 // criada…", o erro que o servidor devolveu. O TrilhaLayout não mostra o flash
 // do sistema, e as escritas da trilha são JSON: o aviso é daqui.
 //

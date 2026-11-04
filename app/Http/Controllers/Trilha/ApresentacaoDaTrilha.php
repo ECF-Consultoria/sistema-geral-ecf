@@ -202,7 +202,7 @@ class ApresentacaoDaTrilha
             ]) + [
                 'url_ficha'        => null,
                 // 3ª entrega (pergunta 1): o item que já andou deixa o cadastro do produto só para leitura na trilha. Só
-                // nesta porta — o cliente não cadastra pela trilha e não lê a régua do robô.
+                // nesta porta — o cliente não cadastra pela trilha e não lê a régua do agente.
                 'cadastro_travado' => (bool) ($p['cadastro_travado'] ?? false),
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
@@ -225,7 +225,7 @@ class ApresentacaoDaTrilha
      * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
      * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável; 4d: `publicar`, o POST do "Aprovar e
      * publicar", e `publicacao`, o GET do acompanhamento — os dois em toda loja com escrita: a #459 é conferida no servidor;
-     * 4b: `ajuste`, o POST do "Pedir ajuste ao robô" e o GET do estado dele, no mesmo endereço; 4e: `cliente`, o POST do
+     * 4b: `ajuste`, o POST do "Pedir ajuste ao agente" e o GET do estado dele, no mesmo endereço; 4e: `cliente`, o POST do
      * "Mandar ao cliente" — SÓ na loja que aprova com o cliente: sem a chave a forma fica a da 4b).
      *
      * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string, cliente?: string}, preparo: string}
@@ -259,7 +259,7 @@ class ApresentacaoDaTrilha
                 'preco'      => route('trilha.preco', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 'publicar'   => route('trilha.publicar', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 'publicacao' => route('trilha.publicacao', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
-                // 4b: pedir ajuste ao robô (POST) e o estado dele (GET) — o MESMO endereço.
+                // 4b: pedir ajuste ao agente (POST) e o estado dele (GET) — o MESMO endereço.
                 'ajuste'     => route('trilha.ajuste', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 // 4e: mandar a prévia ao cliente (POST) — só na loja que aprova com ele.
                 ...(AprovacaoDoCliente::ligada($empresa)

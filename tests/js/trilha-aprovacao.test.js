@@ -157,7 +157,7 @@ import {
 // cima da aprovação ([Aprovar e publicar] com a chave ligada), o cliente aprovar sem confirmação, o pedido sair vazio
 // ou com chaves a mais, o 409 do D55 virar "falha" em vez de "voltou para a equipe" — ou, pior, a gaveta do cliente
 // abrir para a equipe (ou no "Ver como: Cliente") e o pacote do cliente levar `Revisao/`/`Cadastro/` e os textos com o
-// marketplace, o Portal, o Publicador, o agente ou o robô. Aqui: a lógica pura (`lib/trilhaAprovacao.js`), as chamadas
+// marketplace, o Portal, o Publicador ou o antigo "robô" (R9). Aqui: a lógica pura (`lib/trilhaAprovacao.js`), as chamadas
 // (com o axios de mentira), a Lista (status e ação nas duas portas), as duas gavetas DESENHADAS com os JSON do
 // contrato, e as amarras de fonte (o `lazy`, o 2º caminho, o pacote do cliente).
 //
@@ -263,9 +263,9 @@ function rodapeDe(html) {
 }
 const temRodape = (html) => html.includes('border-t border-trilha-line px-5 py-3');
 
-/** O nome do marketplace, o Portal, o Publicador e o "agente" (D59) — e, para o CLIENTE, também o robô. */
-const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b/i;
-const PROIBIDO_AO_CLIENTE = /Mercado\s+Livre|Portal|Publicador|\bagente\b|rob[ôo]|\bME[12]\b|Precifica/i;
+/** O nome do marketplace, o Portal e o Publicador (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente", equipe E cliente). */
+const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|robô/i;
+const PROIBIDO_AO_CLIENTE = /Mercado\s+Livre|Portal|Publicador|rob[ôo]|\bME[12]\b|Precifica/i;
 
 const erro = (status, data = {}) => Object.assign(new Error('x'), { isAxiosError: true, response: { status, data } });
 
@@ -385,9 +385,9 @@ test('com a chave, a equipe só publica direto o aprovado como está (D56); a tr
     assert.equal(semPublicarDireto(publicar, null), publicar, 'a gaveta de antes da 4e');
     assert.equal(semPublicarDireto(null, { publicaDireto: false }), null);
 
-    // O robô refazendo (o `travaDaPublicacao` do hook da 4b): o primário desligado com a dica daqui.
+    // O agente refazendo (o `travaDaPublicacao` do hook da 4b): o primário desligado com a dica daqui.
     const envio = { url: '/x', acao: { reenvio: false, rotulo: ROTULO_DO_ENVIO, desligado: false, ocupado: false, dica: null } };
-    assert.deepEqual(comTravaDoEnvio(envio, 'Espere o robô terminar o ajuste antes de publicar.').acao, { reenvio: false, rotulo: ROTULO_DO_ENVIO, desligado: true, ocupado: false, dica: TRAVA_DO_AJUSTE });
+    assert.deepEqual(comTravaDoEnvio(envio, 'Espere o agente terminar o ajuste antes de publicar.').acao, { reenvio: false, rotulo: ROTULO_DO_ENVIO, desligado: true, ocupado: false, dica: TRAVA_DO_AJUSTE });
     assert.equal(comTravaDoEnvio(envio, null), envio);
     const comOCliente = { url: '/x', acao: { ...envio.acao, desligado: true, dica: DICA_COM_O_CLIENTE } };
     assert.equal(comTravaDoEnvio(comOCliente, 'x'), comOCliente, 'o "com o cliente" fica');
@@ -525,7 +525,7 @@ test('cliente: a caixa de situação de cada estado e a publicação em texto ne
     assert.deepEqual(['conferindo', 'na_fila', 'publicando', 'publicado', 'erro'].map((s) => publicacaoAndando({ situacao: s })), [true, true, true, false, false]);
 });
 
-test('cliente: o cartão enxuto — tipos e cores, a foto "criada pela equipe", a entrega sem sigla e o preço sem a Precificação', () => {
+test('cliente: o cartão enxuto — tipos e cores, a foto "criada pelo agente" (R9), a entrega sem sigla e o preço sem a Precificação', () => {
     assert.deepEqual(tiposDoAnuncio(PREVIA_DO_CLIENTE), [{ chave: 'classico', nome: 'Clássico' }, { chave: 'premium', nome: 'Premium' }]);
     assert.deepEqual(coresDoAnuncio(PREVIA_DO_CLIENTE, 'classico').map((c) => c.rotulo), ['Natural', 'Mel']);
     assert.deepEqual(escolhaDoAnuncio(PREVIA_DO_CLIENTE), { tipo: 'classico', variante: 'COLOR=id:52049' });
@@ -533,9 +533,11 @@ test('cliente: o cartão enxuto — tipos e cores, a foto "criada pela equipe", 
     const fotos = fotosDoAnuncio(PREVIA_DO_CLIENTE.anuncios[0]);
     assert.deepEqual(fotos.map((f) => [f.id, f.criada]), [['881', false], ['882', false], ['883', false], ['890', true], ['891', true]]);
     assert.ok(fotos.every((f) => f.url.startsWith('/portal/459/trilha/ofertas/s-2/fotos/')));
-    assert.equal(ROTULO_DA_CRIADA, 'criada pela equipe');
-    assert.equal(textoDasCriadas(fotos), '2 das 5 fotos foram criadas pela equipe.');
-    assert.equal(textoDasCriadas([{ criada: true }]), 'A foto foi criada pela equipe.');
+    assert.equal(ROTULO_DA_CRIADA, 'criada pelo agente');
+    assert.equal(textoDasCriadas(fotos), '2 das 5 fotos foram criadas pelo agente.');
+    assert.equal(textoDasCriadas([{ criada: true }]), 'A foto foi criada pelo agente.');
+    assert.equal(textoDasCriadas([{ criada: true }, { criada: true }]), 'As 2 fotos foram criadas pelo agente.');
+    assert.equal(textoDasCriadas([{ criada: true }, { criada: false }]), '1 das 2 fotos foi criada pelo agente.');
     assert.equal(textoDasCriadas(fotos.filter((f) => !f.criada)), null);
     assert.equal(textoDaEntrega({ modo: 'me2', frete_gratis: true }), 'Entrega pelo canal de venda, com frete grátis para o comprador.');
     assert.equal(textoDaEntrega({ modo: 'me1' }), 'Entrega por transportadora.');
@@ -548,11 +550,11 @@ test('cliente: o cartão enxuto — tipos e cores, a foto "criada pela equipe", 
     assert.equal(fmtPreco(null), '—');
 });
 
-test('lib/trilhaAprovacao.js é pura: nenhum import (nada da gaveta da equipe); sem classe do Tailwind, marketplace, Portal, Publicador, agente nem robô', () => {
+test('lib/trilhaAprovacao.js é pura: nenhum import (nada da gaveta da equipe); sem classe do Tailwind, marketplace, Portal, Publicador nem robô', () => {
     const fonte = lerSemComentarios('resources/js/lib/trilhaAprovacao.js');
     assert.equal(fonte.match(/^\s*import\b|\bimport\(/m), null, 'nenhum import: o pedaço do cliente a leva');
     assert.equal(fonte.match(/className|\b(?:bg|text|border)-trilha-/), null);
-    assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b|rob[ôo]/i), null);
+    assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|Publicador|rob[ôo]/i), null);
 });
 
 // ═══ As chamadas ao servidor ═════════════════════════════════════════════════
@@ -861,7 +863,7 @@ test('com a chave: o primário vira [Mandar ao cliente] (por último), sem [Apro
     const botao = tag(rodape, 'data-acao="mandar-ao-cliente"');
     assert.ok(botao.includes('bg-trilha-navy') && !botao.includes('disabled=""'), botao);
     assert.ok(!rodape.includes('aprovar-e-publicar'), 'a equipe não publica direto');
-    // A ordem: [Ver a oferta] [Pedir ajuste ao robô] [Mandar ao cliente] (R10, 04/11/2026: sem "Abrir no Publicador").
+    // A ordem: [Ver a oferta] [Pedir ajuste ao agente] [Mandar ao cliente] (R10, 04/11/2026: sem "Abrir no Publicador").
     const ordem = ['data-acao="ver-oferta"', 'data-acao="pedir-ajuste"', 'data-acao="mandar-ao-cliente"'].map((m) => rodape.indexOf(m));
     assert.ok(ordem.every((p, i) => p >= 0 && (i === 0 || p > ordem[i - 1])), JSON.stringify(ordem));
     assert.ok(!rodape.includes('data-link="publicador"'), 'R10: nenhum link do Publicador');
@@ -869,7 +871,7 @@ test('com a chave: o primário vira [Mandar ao cliente] (por último), sem [Apro
     assert.ok(saida.indexOf('data-caixa="onde-esta"') < saida.indexOf('data-caixa="aprovacao-do-cliente"'));
     assert.ok(saida.indexOf('data-caixa="aprovacao-do-cliente"') < saida.indexOf('data-caixa="anuncio"'));
     assert.equal(texto(caixaDaAprovacao(saida)), 'Aprovação do cliente Esta loja aprova os anúncios antes de publicar. Mande a prévia ao cliente: ele aprova (e o anúncio entra na fila de publicação) ou pede ajuste.');
-    // O preço continua editável (a equipe ajusta antes de mandar). Nada do marketplace, do Portal nem do agente.
+    // O preço continua editável (a equipe ajusta antes de mandar). Nada do marketplace, do Portal nem do antigo "robô".
     assert.ok(saida.includes('data-preco-editavel=""'));
     assert.equal(texto(rodape).match(PROIBIDO), null);
     assert.equal(texto(caixaDaAprovacao(saida)).match(PROIBIDO), null);
@@ -896,7 +898,7 @@ test('com o cliente: "Com o cliente para aprovar desde …", quem mandou e o pri
     const dica = tag(rodape, 'data-dica-do-envio', 'span');
     assert.ok(texto(pedaco(rodape, 'data-dica-do-envio', '')).includes(DICA_COM_O_CLIENTE));
     assert.equal(botao.match(/aria-describedby="([^"]+)"/)?.[1], dica.match(/id="([^"]+)"/)?.[1], 'a dica descreve o botão');
-    assert.ok(tag(rodape, 'data-acao="pedir-ajuste"') && !tag(rodape, 'data-acao="pedir-ajuste"').includes('disabled=""'), 'o ajuste pelo robô segue');
+    assert.ok(tag(rodape, 'data-acao="pedir-ajuste"') && !tag(rodape, 'data-acao="pedir-ajuste"').includes('disabled=""'), 'o ajuste pelo agente segue');
     assert.ok(saida.includes('data-preco-editavel=""'), 'o preço segue editável');
     assert.ok(!rodape.includes('aprovar-e-publicar'));
 
@@ -988,7 +990,7 @@ test('enviando, a nota e os erros: "Enviando…" focável; "Enviado ao cliente."
     }
 });
 
-test('outra pergunta no rodapé esconde o envio: a guarda do preço, a confirmação da publicação; o robô refazendo o desliga', () => {
+test('outra pergunta no rodapé esconde o envio: a guarda do preço, a confirmação da publicação; o agente refazendo o desliga', () => {
     const guarda = M.previa.VistaDaPrevia({
         oferta: OFERTA_S2, previa: PREVIA_SEM_ENVIO, preco: precoEditavel({ pedido: { seguir: () => {} } }),
         publicar: controleDaPublicacao({ previa: PREVIA_SEM_ENVIO, escrita: ESCRITA_COM_CLIENTE }), envio: controleDoEnvio({ previa: PREVIA_SEM_ENVIO }),
@@ -1004,7 +1006,7 @@ test('outra pergunta no rodapé esconde o envio: a guarda do preço, a confirma�
     });
     assert.equal(aprovado.props.rodape.props.escondido, true);
     assert.ok(rodapeDe(renderToStaticMarkup(aprovado)).includes('data-confirmacao-da-publicacao'));
-    // O robô refazendo o anúncio (4b): [Mandar ao cliente] desligado com a dica daqui; o preço só leitura.
+    // O agente refazendo o anúncio (4b): [Mandar ao cliente] desligado com a dica daqui; o preço só leitura.
     const ajustando = desenhar({ previa: { ...PREVIA_AJUSTANDO, aprovacao: null } });
     const botao = tag(rodapeDe(ajustando), 'data-acao="mandar-ao-cliente"');
     assert.ok(botao.includes('disabled=""'), botao);
@@ -1085,7 +1087,7 @@ test('cliente — o anúncio com ele: a situação, o cartão enxuto, o "Preço"
         'Situação', 'Este anúncio espera a sua aprovação', 'A equipe mandou em 04/11 às 14:32. Confira o anúncio abaixo: aprove, ou peça ajuste se algo precisar mudar.',
         'Anúncio', 'Casa, Móveis e Decoração › Sala de Jantar › Cadeiras', 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar',
         'R$ 899,90', 'Entrega pelo canal de venda, com frete grátis para o comprador.', 'Descrição', 'CUIDADOS E RECOMENDAÇÕES',
-        'Ficha técnica', 'Material da estrutura', 'Jatobá maciço', '2 das 5 fotos foram criadas pela equipe.',
+        'Ficha técnica', 'Material da estrutura', 'Jatobá maciço', '2 das 5 fotos foram criadas pelo agente.',
         'Preço', 'Clássico', 'Premium', 'R$ 989,90', 'Pedir ajuste', 'Aprovar anúncio',
     ]) {
         assert.ok(t.includes(s), s);
@@ -1102,7 +1104,7 @@ test('cliente — o anúncio com ele: a situação, o cartão enxuto, o "Preço"
     assert.ok(pedir && !pedir.includes('bg-trilha-navy') && aprovar.includes('bg-trilha-navy'));
     assert.ok(rodape.indexOf('pedir-ajuste-do-cliente') < rodape.indexOf('aprovar-anuncio'));
     assert.equal(ROTULO_DO_APROVAR, 'Aprovar anúncio');
-    // Nada do marketplace, do Portal, do Publicador, do agente, do robô, das siglas do envio nem da Precificação.
+    // Nada do marketplace, do Portal, do Publicador, do antigo "robô" (R9), das siglas do envio nem da Precificação.
     assert.equal(t.match(PROIBIDO_AO_CLIENTE), null, t.match(PROIBIDO_AO_CLIENTE)?.[0]);
     assert.ok(!t.includes('ajustado') && !t.includes('mínimo'));
     // As ações chamam o controle.
@@ -1205,9 +1207,10 @@ test('cliente — o 409 (o anúncio mudou depois do envio, D55): a mensagem e [R
     assert.match(indisponivel, /role="status"[^>]*data-erro-do-anuncio="indisponivel"/);
     const falhou = desenharCliente({ previa: null, erro: erroDoCliente(erro(500), 'O servidor falhou. Tente de novo em instantes.') });
     assert.ok(texto(falhou).includes('Não deu para abrir o anúncio.') && tag(falhou, 'data-acao="tentar-anuncio-de-novo"'));
-    // A prévia não pronta: o texto neutro daqui (o `motivo` do servidor pode citar o robô), sem rodapé.
-    const naoPronta = desenharCliente({ previa: { ...PREVIA_DO_CLIENTE, pronta: false, anuncios: [], motivo: 'O robô ainda está preparando este anúncio.' } });
-    assert.ok(texto(naoPronta).includes(MSG_EM_PREPARO) && !texto(naoPronta).includes('robô') && !temRodape(naoPronta));
+    // A prévia não pronta: o texto daqui (o `motivo` do servidor não é repassado), sem rodapé.
+    const naoPronta = desenharCliente({ previa: { ...PREVIA_DO_CLIENTE, pronta: false, anuncios: [], motivo: 'MARCA-DO-SERVIDOR: o agente ainda está preparando.' } });
+    assert.equal(MSG_EM_PREPARO, 'Este anúncio ainda está sendo preparado pelo agente.');
+    assert.ok(texto(naoPronta).includes(MSG_EM_PREPARO) && !texto(naoPronta).includes('MARCA-DO-SERVIDOR') && !/robô/i.test(texto(naoPronta)) && !temRodape(naoPronta));
 });
 
 test('cliente — a guarda da gaveta: o pedido escrito e não enviado pergunta antes de sair ([Descartar] / [Continuar escrevendo])', () => {
@@ -1378,9 +1381,9 @@ test('a gaveta do cliente só entra por `lazy`, na página E no 2º caminho (`Ca
     assert.equal(sobDemanda.match(/^\s*import\b/m), null);
 });
 
-test('as peças novas: só cores `trilha-*`; nenhum marketplace, Portal, Publicador nem agente — e nada de robô no que o cliente lê', () => {
+test('as peças novas: só cores `trilha-*`; nenhum marketplace, Portal, Publicador nem robô (R9: é "agente") no que a equipe e o cliente leem', () => {
     for (const [arquivo, proibido] of [
-        ['resources/js/Components/Trilha/Cliente/AprovarAnuncio.jsx', /Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b|rob[ôo]/i],
+        ['resources/js/Components/Trilha/Cliente/AprovarAnuncio.jsx', /Mercado\s+Livre|Portal|\/portal|Publicador|rob[ôo]/i],
         ['resources/js/Components/Trilha/Revisao/MandarAoCliente.jsx', PROIBIDO],
     ]) {
         const fonte = lerSemComentarios(arquivo);

@@ -34,7 +34,7 @@ import { FICHA_PARADA } from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // toma o lugar do formulário ("Lista completa: o produto seguiu para o
 // mapeamento." ou "Salvo. Ainda faltam: …"), no padrão do Mapear.
 //
-// O produto que já andou (o robô preparou, está na revisão ou no ar) abre SÓ
+// O produto que já andou (o agente preparou, está na revisão ou no ar) abre SÓ
 // PARA LEITURA, com o motivo no topo: o servidor diz (`edicao.livre`) e recusa
 // toda escrita com 409, que aqui vira o mesmo modo leitura.
 //

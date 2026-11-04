@@ -139,7 +139,7 @@ test('ondas: ordem por data e, no empate, por id; "começa"/"começou" — nunca
     assert.equal(quandoDaOndaPorExtenso(ondas[0]), 'começa em 05/11');
     assert.equal(quandoDaOndaPorExtenso(ondas[1]), 'começou em 03/11');
     assert.equal(rotuloNoSeletor(ondas[0]), 'B · começa 05/11');
-    assert.equal(rotuloNoSeletor(ondas[1]), 'A · começou 03/11 · começa na hora', 'pôr numa onda que começou faz o robô começar na hora');
+    assert.equal(rotuloNoSeletor(ondas[1]), 'A · começou 03/11 · começa na hora', 'pôr numa onda que começou faz o agente começar na hora');
 
     // O andamento do cartão: as ofertas da onda e quantas já estão na revisão ou no ar.
     assert.deepEqual(andamentoDaOnda(PROPS_TRABALHO, 7), { total: 4, prontas: 2, porcento: 50, concluida: false });
@@ -159,10 +159,10 @@ test('onda nova: o nome sugerido é o primeiro "Onda N" livre; a validação fal
     assert.equal(problemaDaOnda({ nome: 'Onda 2', data: hoje }, { hoje }), null, 'hoje = começar agora');
     assert.equal(problemaDaOnda({ nome: '  ', data: '2026-11-05' }, { hoje }), 'Dê um nome de 1 a 80 caracteres à onda.');
     assert.equal(problemaDaOnda({ nome: 'x'.repeat(81), data: '2026-11-05' }, { hoje }), 'Dê um nome de 1 a 80 caracteres à onda.');
-    assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '2026-11-01' }, { hoje }), 'Escolha hoje ou um dia depois: hoje faz o robô começar agora.');
+    assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '2026-11-01' }, { hoje }), 'Escolha hoje ou um dia depois: hoje faz o agente começar agora.');
     assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '2027-11-03' }, { hoje }), 'Escolha uma data até um ano para a frente.');
     assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '2027-11-02' }, { hoje }), null, 'hoje + 365 ainda vale');
-    assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '' }, { hoje }), 'Escolha o dia em que o robô começa.');
+    assert.equal(problemaDaOnda({ nome: 'Onda 2', data: '' }, { hoje }), 'Escolha o dia em que o agente começa.');
     // A onda que já começou fica com a data travada: só o nome é conferido.
     assert.equal(problemaDaOnda({ nome: 'Onda 1', data: '2026-11-01' }, { hoje, dataTravada: true }), null);
 
@@ -182,14 +182,14 @@ test('avisos da oferta antes da onda: peça com pendência na Lista (todos) e fo
     ]);
     assert.deepEqual(avisosDaOferta(kit, PROPS_TRABALHO, { cliente: true }), [], 'o preparo das fotos é da equipe');
 
-    // Uma peça volta para a Lista: é aviso, não trava — no dia da onda o robô prepara com o que houver (o cliente
+    // Uma peça volta para a Lista: é aviso, não trava — no dia da onda o agente prepara com o que houver (o cliente
     // também lê, e é ele quem completa).
     const comPendencia = { ...PROPS_TRABALHO, produtos: PROPS_TRABALHO.produtos.map((p) => (p.id === 4 ? { ...p, etapa: 'lista' } : p)) };
     assert.equal(avisosDaOferta(kit, comPendencia, { cliente: true })[0],
-        'O produto Rack para TV 1,80 m madeira maciça tem pendência na Lista: no dia da onda o robô prepara com o que estiver lá. Complete antes da data.');
+        'O produto Rack para TV 1,80 m madeira maciça tem pendência na Lista: no dia da onda o agente prepara com o que estiver lá. Complete antes da data.');
     const duasNaLista = { ...comPendencia, produtos: comPendencia.produtos.map((p) => (p.id === 5 ? { ...p, etapa: 'lista' } : p)) };
     assert.equal(avisosDaOferta(kit, duasNaLista, { cliente: true })[0],
-        'Os produtos Rack para TV 1,80 m madeira maciça e Painel ripado para TV 2,20 m têm pendência na Lista: no dia da onda o robô prepara com o que estiver lá. Complete antes da data.');
+        'Os produtos Rack para TV 1,80 m madeira maciça e Painel ripado para TV 2,20 m têm pendência na Lista: no dia da onda o agente prepara com o que estiver lá. Complete antes da data.');
     for (const aviso of avisosDaOferta(kit, duasNaLista)) assert.equal(aviso.match(/só prepara quando|espera/), null, `pendência é aviso, não espera: ${aviso}`);
 
     // Combo e simples não falam das fotos das peças.
@@ -284,12 +284,12 @@ test('mapeamento: os rótulos de "Vai ser criado", do concluído e da marca de m
 
 // ─── Textos da trilha de trabalho ───────────────────────────────────────────
 
-test('textos das etapas com a trilha de trabalho: siglas do sistema e a data que é o começo do robô — nada de prazo', () => {
+test('textos das etapas com a trilha de trabalho: siglas do sistema e a data que é o começo do agente — nada de prazo', () => {
     for (const chave of ORDEM) assert.equal(etapaDaTrilha(chave, false), ETAPA_POR_CHAVE[chave], `${chave}: sem trabalho, os de hoje`);
 
-    assert.equal(etapaDaTrilha('plano', true).pronto, 'Cada oferta numa onda, com o dia em que o robô começa.');
-    assert.equal(etapaDaTrilha('plano', true).faz, 'As ofertas entram em ondas com data: no dia da onda o robô começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.');
-    assert.equal(etapaDaTrilha('robo', true).faz, 'Na data da onda, o robô monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.');
+    assert.equal(etapaDaTrilha('plano', true).pronto, 'Cada oferta numa onda, com o dia em que o agente começa.');
+    assert.equal(etapaDaTrilha('plano', true).faz, 'As ofertas entram em ondas com data: no dia da onda o agente começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.');
+    assert.equal(etapaDaTrilha('robo', true).faz, 'Na data da onda, o agente monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.');
     assert.match(etapaDaTrilha('mapa', true).faz, /SKU-CB2.*KT-SKU1-SKU2.*CT4-SKU1-SKU2.*Não precisa esperar a simples vender\.$/);
     assert.equal(etapaDaTrilha('mapa', true).pronto, ETAPA_POR_CHAVE.mapa.pronto, 'o "Pronto quando" do mapeamento fica');
 
@@ -299,14 +299,14 @@ test('textos das etapas com a trilha de trabalho: siglas do sistema e a data que
     }
 
     // Sem a chave também: a data da onda nunca é prazo, e "próxima entrega" é bastidor — o cliente lê estes textos.
-    assert.equal(etapaDaTrilha('plano', false).pronto, 'Cada oferta numa onda, com o dia em que o robô começa.');
+    assert.equal(etapaDaTrilha('plano', false).pronto, 'Cada oferta numa onda, com o dia em que o agente começa.');
     const deHoje = ORDEM.map((k) => etapaDaTrilha(k, false)).flatMap((e) => [e.pronto, e.faz]).join(' ');
     for (const proibido of [/prazo/i, /publicar até/i, /data de publicação/i, /próxima entrega/i]) {
         assert.equal(deHoje.match(proibido), null, `texto proibido sem a trilha de trabalho: ${proibido}`);
     }
 });
 
-// ─── A oferta sem produto, o que ainda se planeja e o robô parado ──────────
+// ─── A oferta sem produto, o que ainda se planeja e o agente parado ──────────
 
 test('oferta sem produto na Lista: "Abrir" (não "Planejar") e fora da conta do Estrategista e do "sem onda"', () => {
     assert.equal(acaoDoItem('plano', 'equipe', true, { semProduto: true }), 'Abrir');
@@ -322,7 +322,7 @@ test('oferta sem produto na Lista: "Abrir" (não "Planejar") e fora da conta do 
     assert.equal(resumoDoFluxo(soAvulsa).find((p) => p.chave === 'plano').detalhe, '');
 });
 
-test('robô: "parada" no resumo é só o agente que parou ou o que não começou — a pendência na Lista é aviso', () => {
+test('agente: "parada" no resumo é só o agente que parou ou o que não começou — a pendência na Lista é aviso', () => {
     const oferta = (id, status, alerta) => ({ id, tipo: 'Simples', etapa: 'robo', status, alerta, componentes: [], anuncios: [] });
     const dados = {
         produtos: [],
@@ -352,8 +352,8 @@ test('o que ainda entra em onda é o `planejavel` do servidor; a dica da onda re
     // A ajuda da data: a onda NOVA nasce vazia — com a data de hoje, começa na hora o que entrar nela.
     const hoje = '2026-11-02';
     assert.equal(ajudaDaDataDaOnda({ nova: true, data: hoje, hoje }), 'Hoje: o que entrar nesta onda começa na hora.');
-    assert.equal(ajudaDaDataDaOnda({ nova: false, data: hoje, hoje }), 'Hoje: o robô começa assim que a onda for salva.');
-    assert.equal(ajudaDaDataDaOnda({ nova: true, data: '2026-11-05', hoje }), 'O dia em que o robô começa a preparar as ofertas desta onda.');
+    assert.equal(ajudaDaDataDaOnda({ nova: false, data: hoje, hoje }), 'Hoje: o agente começa assim que a onda for salva.');
+    assert.equal(ajudaDaDataDaOnda({ nova: true, data: '2026-11-05', hoje }), 'O dia em que o agente começa a preparar as ofertas desta onda.');
     assert.equal(ajudaDaDataDaOnda({ comecou: true, data: '2026-11-01', hoje }), 'Já começou: a data não muda mais.');
 
     // A linha da oferta numa onda por começar: "começa 05/11" só para quem espera a data.
@@ -391,10 +391,10 @@ function gravarPedidos(resposta = { mensagem: 'ok' }) {
 }
 
 test('as escritas vão aos endereços de `escrita`, com o método e o corpo do contrato', async () => {
-    const { pedidos, restaurar } = gravarPedidos({ mensagem: 'Na Onda 2. O robô começa em 05/11.' });
+    const { pedidos, restaurar } = gravarPedidos({ mensagem: 'Na Onda 2. O agente começa em 05/11.' });
     const E = { ...PROPS_TRABALHO.escrita, produtos: `${PROPS_TRABALHO.escrita.produtos}/` };
     try {
-        assert.deepEqual(await escrita.criarOnda(E, { nome: 'Onda 4', data: '2026-11-12' }), { mensagem: 'Na Onda 2. O robô começa em 05/11.' });
+        assert.deepEqual(await escrita.criarOnda(E, { nome: 'Onda 4', data: '2026-11-12' }), { mensagem: 'Na Onda 2. O agente começa em 05/11.' });
         await escrita.editarOnda(E, 9, { data: '2026-11-06' });
         await escrita.apagarOnda(E, 9);
         await escrita.planejarItens(E, ['c-2-4'], 9);
@@ -537,7 +537,7 @@ test('cadastro F3: enviar fotos (multipart, um `imagens[]` por arquivo), excluir
     await assert.rejects(() => escrita.conferirFrete(null, 9), (e) => e instanceof escrita.ErroDaTrilha);
 
     // A trava vale também para as fotos: o 409 traz o motivo do servidor.
-    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar).';
+    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o agente já preparou, está na revisão ou no ar).';
     assert.equal(escrita.mensagemDoErro({ isAxiosError: true, response: { status: 409, data: { travado: true, motivo } } }), motivo);
 });
 
@@ -629,7 +629,7 @@ test('cadastro F6: a `versao` vai no corpo das escritas que mudam conteúdo (lin
 test('cadastro: o 409 do produto que andou traz o motivo do servidor; o 422 da criação marca o campo', () => {
     const erro = (status, data) => ({ isAxiosError: true, response: { status, data } });
     const m = escrita.mensagemDoErro;
-    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar).';
+    const motivo = 'A oferta “Cadeira” já saiu do Planejamento (o agente já preparou, está na revisão ou no ar).';
 
     assert.equal(m(erro(409, { travado: true, motivo, message: motivo })), motivo);
     assert.equal(m(erro(409, { message: 'Este produto mudou depois que você abriu.' })), 'Este produto mudou depois que você abriu.');

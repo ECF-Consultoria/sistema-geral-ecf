@@ -197,7 +197,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $linha->refresh();
         $this->assertSame(['2026-11-10 22:00', '2026-11-10 22:00'], [$this->noFuso($linha->na_onda_desde), $this->noFuso($linha->pedido_em)]);
 
-        // 11/11 às 00:30, duas horas e meia depois de o robô ser chamado: sem alarme (não conta da meia-noite do dia 10).
+        // 11/11 às 00:30, duas horas e meia depois de o agente ser chamado: sem alarme (não conta da meia-noite do dia 10).
         $this->agora('2026-11-11 00:30:00');
         $item = $this->itemDaTrilha($this->trilha(), $s);
         $this->assertSame(['Na fila · começou em 10/11', false], [$item['status'], $item['alerta']]);
@@ -520,7 +520,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         // A Simples não pode começar depois do combo...
         $nova = $this->ondas()->criar($this->empresa, $this->dev, 'Onda 2', '2026-11-10');
         $this->assertRecusado(fn () => $this->ondas()->planejar($this->empresa, $this->dev, [$s], $nova->id), 'itens', 'começaria em 10/11');
-        // ... na onda do combo (que já começou) ela entra, o robô é chamado e o aviso apaga.
+        // ... na onda do combo (que já começou) ela entra, o agente é chamado e o aviso apaga.
         $this->ondas()->planejar($this->empresa, $this->dev, [$s], $onda->id);
         $combo = $this->itemDaTrilha($this->trilha(), $c);
         $this->assertSame(['Na fila · espera a oferta simples ficar pronta', false], [$combo['status'], $combo['alerta']]);
@@ -536,7 +536,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
 
         $casos = [];
         foreach ([[$falhou, PubRascunho::FAILED, []], [$semTexto, PubRascunho::DRAFT, [
-            // As imagens automáticas entraram e o editor validou com os textos do Portal — o texto do robô nunca saiu.
+            // As imagens automáticas entraram e o editor validou com os textos do Portal — o texto do agente nunca saiu.
             CriativosAutomaticosService::MEMORIA => ['grupos' => ['g1' => ['kit_id' => 999, 'aplicado_em' => '2026-11-05T01:00:00-03:00', 'aplicadas' => 3]]],
             'resumo' => ['revisao' => 1, 'validado' => true, 'bloqueios' => 0, 'versao' => EditorRascunhoService::VERSAO_DO_RESUMO],
         ]]] as [$p, $status, $estado]) {
@@ -554,7 +554,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
             $simples = $this->itemDaTrilha($trilha, "s-{$p['produto']->id}");
             $combo = $this->itemDaTrilha($trilha, "c-{$p['produto']->id}-2");
             $daSimples[] = [$simples['etapa'], $simples['status']];
-            // A tela e o robô concordam: a Simples não está pronta, o Kit N não nasce — o combo espera, sem o alarme
+            // A tela e o agente concordam: a Simples não está pronta, o Kit N não nasce — o combo espera, sem o alarme
             // de "ainda não começou".
             $this->assertSame(['robo', 'Na fila · espera a oferta simples ficar pronta', false], [$combo['etapa'], $combo['status'], $combo['alerta']], $status);
             $this->assertFalse(SimplesPronta::para($r->fresh()), $status);
@@ -583,7 +583,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         ]]]];
         $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $comImagens), PubRascunho::DRAFT, $memoria);
         $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $semImagens), PubRascunho::DRAFT);
-        // Igual ao primeiro, e o editor validou com os textos do Portal (0 bloqueio): o texto do robô segue por fazer.
+        // Igual ao primeiro, e o editor validou com os textos do Portal (0 bloqueio): o texto do agente segue por fazer.
         $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $validado), PubRascunho::DRAFT, $memoria + [
             'resumo' => ['revisao' => 1, 'validado' => true, 'bloqueios' => 0, 'versao' => EditorRascunhoService::VERSAO_DO_RESUMO],
         ]);
@@ -592,7 +592,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $doComImagens = $itens["s-{$comImagens['produto']->id}"];
         $this->assertSame([true, true], [$doComImagens['andou'], $doComImagens['sem_texto']], 'as imagens fazem "andar"; o texto segue por fazer');
 
-        // O mesmo estado do robô, o mesmo alarme — com ou sem as imagens (antes: "Preparando" para sempre, sem alarme).
+        // O mesmo estado do agente, o mesmo alarme — com ou sem as imagens (antes: "Preparando" para sempre, sem alarme).
         $trilha = $this->trilha();
         foreach (['sem imagens' => $semImagens, 'com imagens' => $comImagens, 'validado pelo editor' => $validado] as $caso => $p) {
             $item = $this->itemDaTrilha($trilha, "s-{$p['produto']->id}");
@@ -623,7 +623,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $hoje = $this->itemDaTrilha($this->trilha(), "o-{$kit->id}");
         $this->assertSame(['robo', 'Na fila · com pendência na Lista', true], [$hoje['etapa'], $hoje['status'], $hoje['alerta']]);
 
-        // 24 h sem nada andar: o alarme de "ainda não começou" — e a pendência (o que segura o robô) segue dita.
+        // 24 h sem nada andar: o alarme de "ainda não começou" — e a pendência (o que segura o agente) segue dita.
         $this->agora('2026-11-06 10:00:00');
         $amanha = $this->itemDaTrilha($this->trilha(), "o-{$kit->id}");
         $this->assertSame(['robo', 'Ainda não começou (desde 05/11) · pendência na Lista', true], [$amanha['etapa'], $amanha['status'], $amanha['alerta']]);
@@ -704,7 +704,7 @@ class RegrasDaTrilhaRevisaoTest extends TestCase
         $pub = $this->grupoNoPublicador($this->empresa, $a);
         $r = $this->rascunhoDoPub($pub, PubRascunho::DRAFT);
         $this->itemNaOnda($this->onda($this->empresa, '2026-11-20', 'Onda Futura'), "s-{$a['produto']->id}");
-        $this->assertSame(PortaoDaOnda::AGUARDANDO, app(PreparoIaDoRascunhoService::class)->avaliarIa($pub->fresh()), 'o robô espera a onda');
+        $this->assertSame(PortaoDaOnda::AGUARDANDO, app(PreparoIaDoRascunhoService::class)->avaliarIa($pub->fresh()), 'o agente espera a onda');
 
         // Abrir o editor (descrição vazia, texto do cliente à mão) não gera a descrição paga sozinho...
         $this->assertNull(app(DescricaoIaService::class)->pedir($r->fresh(), automatico: true));

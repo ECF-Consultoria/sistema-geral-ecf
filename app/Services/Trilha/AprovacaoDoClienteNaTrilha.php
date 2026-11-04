@@ -34,7 +34,7 @@ use Illuminate\Validation\ValidationException;
  * equipe pelo cliente no modo equipe do Portal) e `trilha_aprovacao_voltou` (D55: a equipe mudou depois de enviar).
  *
  * ### O cliente aprova a versão ENVIADA (D55)
- * Se a `revisao` do rascunho mudou depois do envio (o preço da 4c, o ajuste do robô da 4b, o editor do Publicador), a
+ * Se a `revisao` do rascunho mudou depois do envio (o preço da 4c, o ajuste do agente da 4b, o editor do Publicador), a
  * aprovação é recusada (409) e a linha volta para a equipe (`ajuste`, `pedido` nulo — o motivo é
  * {@see MOTIVO_EQUIPE_MUDOU}). A equipe não precisa esperar o cliente: o "Mandar ao cliente de novo" vale também com a
  * linha `com_cliente` quando a revisão mudou (com a MESMA revisão, é 409 — já está com ele).
@@ -47,7 +47,7 @@ use Illuminate\Validation\ValidationException;
  * ({@see exigirAprovacaoParaPublicar()}).
  *
  * ### O texto do ajuste nunca vai a prompt (D52)
- * Só `pedido` (coluna) e o `activity_log` o guardam; nenhum serviço da IA (o "Pedir ajuste ao robô" da 4b lê só
+ * Só `pedido` (coluna) e o `activity_log` o guardam; nenhum serviço da IA (o "Pedir ajuste ao agente" da 4b lê só
  * `revisao` e `refazer`) lê esta tabela.
  *
  * ### Os 409 do cliente trazem a `aprovacao` dele
@@ -87,7 +87,7 @@ class AprovacaoDoClienteNaTrilha
 
     public const MSG_FORA_DA_REVISAO = 'Este anúncio não está na revisão: só dá para mandar ao cliente quando ele estiver pronto para revisar.';
 
-    public const MSG_AJUSTE_DO_ROBO = 'O robô está refazendo este anúncio. Espere terminar para mandar ao cliente.';
+    public const MSG_AJUSTE_DO_ROBO = 'O agente está refazendo este anúncio. Espere terminar para mandar ao cliente.';
 
     public const MSG_CONFERINDO = 'Este anúncio está sendo conferido para publicar. Espere a conferência terminar.';
 
@@ -145,7 +145,7 @@ class AprovacaoDoClienteNaTrilha
      * O `POST /trilha/{company}/ofertas/{item}/cliente` `{revisao}`. Devolve a prévia nova (§19.5) com `aprovacao`.
      *
      * Ordem (§19.16): 404 item → 409 chave desligada → 409 do estado (na fila → publicando → publicado → fora da revisão)
-     * → 409 o robô refazendo o texto (4b) → 409 a publicação conferindo (4d) → 409 já com o cliente nesta revisão →
+     * → 409 o agente refazendo o texto (4b) → 409 a publicação conferindo (4d) → 409 já com o cliente nesta revisão →
      * 422/409 da `revisao` (a regra da 4c: ausente = 422, velha = 409 SEM `travado`, com `revisao_atual`) → 409 prévia não
      * pronta → 422 Premium = Clássico em TODAS as cores (D46).
      *
@@ -285,7 +285,7 @@ class AprovacaoDoClienteNaTrilha
      *
      * Ordem: 404 item / linha → 409 não está com ele → 409 já seguiu para a publicação (na fila, publicando, publicado) →
      * 409 D55 (a equipe mudou depois de enviar: a linha VOLTA para a equipe) → 422/409 da `revisao` dele (a aba velha de
-     * uma rodada anterior) → 409 o robô refazendo agora (nada muda) → grava `aprovado` e pede a publicação pelo caminho da
+     * uma rodada anterior) → 409 o agente refazendo agora (nada muda) → grava `aprovado` e pede a publicação pelo caminho da
      * 4d com quem mandou ({@see publicarPeloCliente()}).
      *
      * @param  array<string, mixed>  $corpo

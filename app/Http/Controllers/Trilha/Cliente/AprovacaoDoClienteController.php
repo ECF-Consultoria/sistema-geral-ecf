@@ -29,7 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
  *    404 sem elas, como se a rota não existisse;
  * 3. o item do endereço (404, o de outra loja não existe na régua desta) e o envio a ele (404: o cliente só vê o que a
  *    equipe mandou) — antes do corpo;
- * 4. 409 (não está com ele; já seguiu para a publicação; D55; a aba velha; o robô refazendo agora) → 422 (`revisao`,
+ * 4. 409 (não está com ele; já seguiu para a publicação; D55; a aba velha; o agente refazendo agora) → 422 (`revisao`,
  *    `texto`), sempre em JSON e com a `message` = o 1º erro.
  *
  * ### O modo equipe do Portal APROVA pelo cliente (diferente da 4f)

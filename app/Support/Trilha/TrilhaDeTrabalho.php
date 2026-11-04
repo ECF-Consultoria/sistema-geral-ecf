@@ -8,7 +8,7 @@ use App\Models\Company;
  * A empresa usa a trilha como LUGAR DE TRABALHO (2ª entrega, 02/11/2026)? É a chave `trilha.trabalho.empresas`
  * (env `TRILHA_TRABALHO_EMPRESAS`), cruzada com {@see TrilhaLigada}: só vale para empresa cuja trilha está aberta.
  *
- * Com ela ligada a equipe mapeia e planeja dentro da trilha, e o robô do Publicador só prepara a oferta quando
+ * Com ela ligada a equipe mapeia e planeja dentro da trilha, e o agente do Publicador só prepara a oferta quando
  * chega o dia da onda dela. Desligada, TUDO segue exatamente o caminho de antes — cada gancho no Publicador
  * pergunta aqui primeiro, e a pergunta só lê a configuração (nenhuma consulta ao banco).
  *

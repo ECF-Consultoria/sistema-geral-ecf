@@ -63,7 +63,7 @@ use Tests\TestCase;
  * aprova (`…/aprovar` — o anúncio segue para a fila pelo caminho da 4d, com quem mandou) ou pede ajuste (`…/ajuste` —
  * texto para a equipe, nunca para a IA).
  *
- * O cenário é o da 4d (`PublicarNaTrilhaTest`): a cadeira de DUAS cores preparada pelo robô de verdade, na revisão, na
+ * O cenário é o da 4d (`PublicarNaTrilhaTest`): a cadeira de DUAS cores preparada pelo agente de verdade, na revisão, na
  * loja 459, com foto enviada, preço gravado e a conta conectada; o Mercado Livre é um `Http::fake` só com o que a
  * conferência pergunta (um `POST /items` estoura) e a fila é de mentira. A chave da aprovação liga a 459 no `setUp`. O
  * cliente é um `PortalUsuario` da 459 na sessão do Portal. O que se prova:
@@ -73,7 +73,7 @@ use Tests\TestCase;
  * - o cliente aprova → o Job de publicar entra com o `User` `enviado_por` (não o cliente, não o modo equipe); a guarda da
  *   #459 vale (a 460 com a chave ligada aprova, mas nada vai para a fila nem para o ML);
  * - D55: a revisão mudou depois do envio → 409 ao cliente e a linha volta para a equipe;
- * - o ajuste exige texto (422) e o texto NÃO chega a prompt nenhum (nem ao "Pedir ajuste ao robô" que vem depois);
+ * - o ajuste exige texto (422) e o texto NÃO chega a prompt nenhum (nem ao "Pedir ajuste ao agente" que vem depois);
  * - o cliente só vê a prévia do item que a equipe mandou, sem `preparo`, `bloqueios`, `ajuste`, `minimo`,
  *   `da_precificacao`; outra empresa → 404;
  * - modo equipe do Portal grava `decidido_por_equipe`; `enviado_por` inativo → "falta publicar" e o [Aprovar e publicar]
@@ -101,8 +101,8 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
     /** A `aprovacao` da EQUIPE: as do cliente + as que só a equipe lê. */
     private const APROVACAO_DA_EQUIPE = ['estado', 'rodada', 'enviado_em', 'pedido', 'motivo', 'enviado_por', 'decidido_em', 'decidido_por', 'mudou_depois', 'falta_publicar'];
 
-    /** As palavras que o cliente nunca lê (D59). */
-    private const PROIBIDAS = ['mercado livre', 'publicador', 'portal', 'agente'];
+    /** As palavras que o cliente nunca lê (D59) — e o antigo "robô", que virou "agente" (R9, 04/11/2026). */
+    private const PROIBIDAS = ['mercado livre', 'publicador', 'portal', 'robô'];
 
     private EstruturaProduto $d;
 
@@ -263,7 +263,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $this->assertSame(1, TrilhaAprovacao::query()->sole()->rodada);
     }
 
-    /** A guarda do "Mandar", na ordem do contrato: 409 do estado, robô, revisão velha (sem `travado`), 422 da forma e do D46. */
+    /** A guarda do "Mandar", na ordem do contrato: 409 do estado, agente, revisão velha (sem `travado`), 422 da forma e do D46. */
     public function test_mandar_recusa_o_que_nao_esta_pronto_para_o_cliente(): void
     {
         // São mais pedidos que o teto de 10/min da rota (o teto é conferido em {@see test_cada_rota_tem_o_seu_teto()}).
@@ -281,7 +281,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $this->precos($this->d, ['pr' => [239.9, 239.9]]);
         $this->assertErro($this->mandar(['revisao' => $this->revisao()]), 'precos.premium', PrecoNaTrilha::MSG_PREMIUM_IGUAL);
         $this->precos($this->d, ['pr' => [209.9, 239.9]]);
-        // O robô refazendo o texto (4b): 409.
+        // O agente refazendo o texto (4b): 409.
         Cache::put(AjusteDoRoboNaTrilha::chave((int) $this->pub->id), ['pedido' => 'p-1', 'situacao' => 'fila',
             'partes' => ['titulo' => ['situacao' => 'fila']], 'em' => now()->toIso8601String()], 600);
         $this->assertSame(['message' => Aprovacao::MSG_AJUSTE_DO_ROBO], $this->mandar(['revisao' => $this->revisao()])->assertStatus(409)->json());
@@ -497,7 +497,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $revisao = $this->revisao();
         $this->mandar(['revisao' => $revisao])->assertOk();
         $this->assertStringStartsWith('Com o cliente', $this->linha()['status']);
-        // A equipe pediu ajuste ao robô depois de mandar e ele ainda não gravou: 409, nada muda.
+        // A equipe pediu ajuste ao agente depois de mandar e ele ainda não gravou: 409, nada muda.
         Cache::put(AjusteDoRoboNaTrilha::chave((int) $this->pub->id), ['pedido' => 'p-1', 'situacao' => 'fazendo',
             'partes' => ['titulo' => ['situacao' => 'fazendo']], 'em' => now()->toIso8601String()], 600);
         $this->assertSame(['message' => Aprovacao::MSG_EQUIPE_MEXENDO, 'aprovacao' => ['estado' => 'com_cliente', 'rodada' => 1,
@@ -516,7 +516,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
 
     /**
      * O "Pedir ajuste" exige texto (1 a 1000) e o grava para a equipe — e para mais lugar nenhum: depois dele a equipe pede
-     * ajuste ao robô (4b, IA falsa que anota), e a marca do texto não aparece em NENHUM argumento de NENHUMA chamada à IA,
+     * ajuste ao agente (4b, IA falsa que anota), e a marca do texto não aparece em NENHUM argumento de NENHUMA chamada à IA,
      * em Job nenhum nem no estado do ajuste.
      */
     public function test_o_ajuste_do_cliente_exige_texto_e_nao_chega_a_prompt_nenhum(): void
@@ -550,7 +550,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         // Pedido de novo: não está mais com ele.
         $this->comoCliente()->postJson($this->urlCliente('ajuste'), ['revisao' => $revisao, 'texto' => 'mais'])->assertStatus(409);
 
-        // A equipe pede ajuste ao robô (título e descrição) — a IA falsa anota tudo o que recebe.
+        // A equipe pede ajuste ao agente (título e descrição) — a IA falsa anota tudo o que recebe.
         $chamadas = [];
         $this->mock(AnaliseAnuncioService::class, function (MockInterface $m) use (&$chamadas) {
             $m->shouldReceive('comPrazo')->andReturnSelf();
@@ -935,7 +935,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
 
     // ─── apoio ───
 
-    /** A cadeira de duas cores (Azul e Preto, um pub_produto só) da empresa, preparada pelo robô de verdade. */
+    /** A cadeira de duas cores (Azul e Preto, um pub_produto só) da empresa, preparada pelo agente de verdade. */
     private function cadeira(Company $empresa, string $codigo): EstruturaProduto
     {
         $antes = $this->empresa;
@@ -954,7 +954,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         return $d;
     }
 
-    /** As chaves da trilha ligam DEPOIS do preparo (com elas o robô esperaria a onda); a marca de "agendado" (80 s) vence. */
+    /** As chaves da trilha ligam DEPOIS do preparo (com elas o agente esperaria a onda); a marca de "agendado" (80 s) vence. */
     private function ligarATrilha(array $empresas): void
     {
         Carbon::setTestNow(now()->addMinutes(5));
@@ -1147,7 +1147,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $this->assertSame($mensagem, $resposta->json('errors')[$campo][0] ?? null, (string) $resposta->getContent());
     }
 
-    /** Todo TEXTO que o cliente lê (as URLs não) sem "Mercado Livre", "Publicador", "Portal" nem "agente". */
+    /** Todo TEXTO que o cliente lê (as URLs não) sem "Mercado Livre", "Publicador", "Portal" nem "robô". */
     private function assertTextoNeutro(array $dados, string $onde = ''): void
     {
         foreach ($dados as $chave => $valor) {

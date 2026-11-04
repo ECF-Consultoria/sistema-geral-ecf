@@ -102,14 +102,14 @@ import {
 } from '../../resources/js/lib/trilhaAjuste.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Trilha de produtos — 4ª entrega, fatia 4b: pedir ajuste ao robô pela prévia (a TELA).
+// Trilha de produtos — 4ª entrega, fatia 4b: pedir ajuste ao agente pela prévia (a TELA).
 //
 // POR QUE EXISTE: o rodapé da gaveta `v:{item}` pede o ajuste pelo `POST` do §19.14
 // do desenho e acompanha pelo `GET` na MESMA URL (o servidor, feito em paralelo, é
 // `AjusteDoRoboNaTrilhaTest`). Um nome trocado num lado só faria a gaveta mostrar
-// "Robô refazendo" para sempre (situação que ela não conhece), perguntar sem parar,
+// "Agente refazendo" para sempre (situação que ela não conhece), perguntar sem parar,
 // mandar uma parte que o servidor não conhece (ou texto livre, que o desenho proíbe),
-// deixar publicar com o texto de antes enquanto o robô refaz, tratar a aba velha
+// deixar publicar com o texto de antes enquanto o agente refaz, tratar a aba velha
 // (409 com `revisao_atual`) como "não pode" — ou deixar o botão para quem não
 // escreve. Aqui: a lógica pura (`lib/trilhaAjuste.js`), as chamadas (com o axios de
 // mentira), o acompanhamento simulado volta a volta, o rodapé DESENHADO com os JSON
@@ -224,8 +224,8 @@ const OFERTA_S1 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-1');
 /** O servidor de antes da 4b: a prévia, o preço e a publicação, sem o ajuste. */
 const ANTES_DA_4B = { ...ESCRITA, revisao: { previa: ESCRITA.revisao.previa, preco: ESCRITA.revisao.preco, publicar: ESCRITA.revisao.publicar, publicacao: ESCRITA.revisao.publicacao } };
 
-/** O nome do marketplace, o Portal, o Publicador e o "agente" (D59): nenhum deles no ajuste. */
-const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b/i;
+/** O nome do marketplace, o Portal e o Publicador (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente"): nenhum deles no ajuste. */
+const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|robô/i;
 
 const erro = (status, data = {}) => Object.assign(new Error('x'), { isAxiosError: true, response: { status, data } });
 const doAjuste = (r) => normalizarAjuste(r.ajuste);
@@ -352,9 +352,9 @@ test('o ajuste do contrato (§19.14): as 4 situações e as 5 de cada parte; o r
     assert.deepEqual(PARTES, ['titulo', 'descricao']);
     assert.deepEqual(ajusteDaResposta(AJUSTE_ACEITO), {
         situacao: 'fila',
-        partes: { titulo: { situacao: 'fila', mensagem: 'Na fila do robô.' }, descricao: { situacao: 'fila', mensagem: 'Na fila do robô.' } },
+        partes: { titulo: { situacao: 'fila', mensagem: 'Na fila do agente.' }, descricao: { situacao: 'fila', mensagem: 'Na fila do agente.' } },
         restantes_hoje: 2,
-        mensagem: 'Pedido recebido: o robô começa em instantes.',
+        mensagem: 'Pedido recebido: o agente começa em instantes.',
     });
     assert.deepEqual(ajusteDaPrevia(PREVIA_AJUSTANDO), doAjuste(AJUSTE_FAZENDO), 'a prévia traz o MESMO ajuste do GET');
     for (const nada of [SEM_AJUSTE, {}, null, { ajuste: { situacao: 'pausado' } }, { ajuste: 'fila' }, { ajuste: { partes: {} } }]) {
@@ -372,20 +372,20 @@ test('o ajuste do contrato (§19.14): as 4 situações e as 5 de cada parte; o r
     assert.deepEqual(SITUACOES.map((s) => emAndamento({ situacao: s })), [true, true, false, false]);
 });
 
-test('o texto de cada situação (D60: "Robô refazendo · título, descrição") e o resultado por parte ("Título refeito.", "Descrição mantida: a equipe editou.")', () => {
+test('o texto de cada situação (D60: "Agente refazendo · título, descrição") e o resultado por parte ("Título refeito.", "Descrição mantida: a equipe editou.")', () => {
     // Andando: o título com as partes que ainda andam, o giro, nenhum detalhe (a mensagem do servidor não vira detalhe).
-    assert.deepEqual(vistaDoAjuste(AJUSTE_ACEITO.ajuste), { situacao: 'fila', titulo: 'Na fila do robô · título, descrição', tom: 'run', detalhe: null, resultados: [], andando: true });
+    assert.deepEqual(vistaDoAjuste(AJUSTE_ACEITO.ajuste), { situacao: 'fila', titulo: 'Na fila do agente · título, descrição', tom: 'run', detalhe: null, resultados: [], andando: true });
     const fazendo = vistaDoAjuste(AJUSTE_FAZENDO.ajuste);
-    assert.deepEqual([fazendo.titulo, fazendo.tom, fazendo.detalhe, fazendo.andando], ['Robô refazendo · descrição', 'run', null, true], 'o título já foi: só a descrição anda');
+    assert.deepEqual([fazendo.titulo, fazendo.tom, fazendo.detalhe, fazendo.andando], ['Agente refazendo · descrição', 'run', null, true], 'o título já foi: só a descrição anda');
     assert.deepEqual(fazendo.resultados, [{ parte: 'titulo', nome: 'Título', situacao: 'refeito', texto: 'Título refeito.', detalhe: null, tom: 'ok' }]);
-    assert.equal(vistaDoAjuste({ situacao: 'fazendo', partes: { titulo: { situacao: 'fazendo' }, descricao: { situacao: 'fazendo' } } }).titulo, 'Robô refazendo · título, descrição');
-    assert.equal(vistaDoAjuste({ situacao: 'fazendo', partes: {} }).titulo, 'Robô refazendo');
-    assert.equal(vistaDoAjuste({ situacao: 'fila' }).titulo, 'Na fila do robô');
+    assert.equal(vistaDoAjuste({ situacao: 'fazendo', partes: { titulo: { situacao: 'fazendo' }, descricao: { situacao: 'fazendo' } } }).titulo, 'Agente refazendo · título, descrição');
+    assert.equal(vistaDoAjuste({ situacao: 'fazendo', partes: {} }).titulo, 'Agente refazendo');
+    assert.equal(vistaDoAjuste({ situacao: 'fila' }).titulo, 'Na fila do agente');
 
     // Feito: o resultado por parte, na ordem do contrato; a mensagem geral ("Ajuste pronto.", genérica) não vira detalhe.
     const feito = vistaDoAjuste(AJUSTE_FEITO.ajuste);
     assert.deepEqual([feito.titulo, feito.tom, feito.detalhe, feito.andando], [AVISO_TERMINOU, 'ok', null, false]);
-    assert.equal(AVISO_TERMINOU, 'O robô terminou o ajuste.');
+    assert.equal(AVISO_TERMINOU, 'O agente terminou o ajuste.');
     assert.deepEqual(feito.resultados.map((r) => [r.parte, r.texto, r.tom]), [
         ['titulo', 'Título refeito.', 'ok'],
         ['descricao', 'Descrição mantida: a equipe editou.', 'neutro'],
@@ -398,20 +398,20 @@ test('o texto de cada situação (D60: "Robô refazendo · título, descrição"
     assert.equal(vistaDoAjuste({ situacao: 'feito', partes: {} }).tom, 'ok');
     assert.equal(vistaDoAjuste({ ...AJUSTE_FEITO.ajuste, mensagem: 'Qualquer outra coisa.' }).detalhe, null, 'no feito, quem fala são as partes');
     // Feito com uma parte que falhou: a causa dela aparece na linha dela.
-    const meio = vistaDoAjuste({ situacao: 'feito', partes: { titulo: { situacao: 'refeito' }, descricao: { situacao: 'erro', mensagem: 'O robô chegou ao mesmo texto; nada mudou.' } }, mensagem: 'Ajuste pronto.' });
+    const meio = vistaDoAjuste({ situacao: 'feito', partes: { titulo: { situacao: 'refeito' }, descricao: { situacao: 'erro', mensagem: 'O agente chegou ao mesmo texto; nada mudou.' } }, mensagem: 'Ajuste pronto.' });
     assert.deepEqual([meio.tom, meio.detalhe, meio.resultados.map((r) => [r.texto, r.detalhe])], ['ok', null, [
-        ['Título refeito.', null], ['Descrição: o robô não conseguiu refazer.', 'O robô chegou ao mesmo texto; nada mudou.'],
+        ['Título refeito.', null], ['Descrição: o agente não conseguiu refazer.', 'O agente chegou ao mesmo texto; nada mudou.'],
     ]]);
 
     // Erro: a causa única (a mensagem geral) como detalhe — a da parte, igual, não repete.
     const comErro = vistaDoAjuste(AJUSTE_COM_ERRO.ajuste);
-    assert.deepEqual([comErro.titulo, comErro.tom, comErro.detalhe], [AVISO_FALHOU, 'bad', 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.']);
-    assert.equal(AVISO_FALHOU, 'O ajuste do robô não deu certo.');
-    assert.deepEqual(comErro.resultados, [{ parte: 'titulo', nome: 'Título', situacao: 'erro', texto: 'Título: o robô não conseguiu refazer.', detalhe: null, tom: 'bad' }]);
+    assert.deepEqual([comErro.titulo, comErro.tom, comErro.detalhe], [AVISO_FALHOU, 'bad', 'O limite diário do agente para esta loja acabou. Amanhã libera de novo.']);
+    assert.equal(AVISO_FALHOU, 'O ajuste do agente não deu certo.');
+    assert.deepEqual(comErro.resultados, [{ parte: 'titulo', nome: 'Título', situacao: 'erro', texto: 'Título: o agente não conseguiu refazer.', detalhe: null, tom: 'bad' }]);
     assert.equal(resultadosDoAjuste({ situacao: 'erro', mensagem: 'Falhou.', partes: { descricao: { situacao: 'erro', mensagem: 'O texto ficou vazio.' } } })[0].detalhe, 'O texto ficou vazio.');
     // Cada parte falhou por um motivo: a geral é genérica e sai; a causa fica em cada linha.
     const doisErros = vistaDoAjuste(AJUSTE_COM_DOIS_ERROS.ajuste);
-    assert.deepEqual([doisErros.detalhe, doisErros.resultados.map((r) => r.detalhe)], [null, ['O robô não achou um título diferente do atual.', 'O robô chegou ao mesmo texto; nada mudou.']]);
+    assert.deepEqual([doisErros.detalhe, doisErros.resultados.map((r) => r.detalhe)], [null, ['O agente não achou um título diferente do atual.', 'O agente chegou ao mesmo texto; nada mudou.']]);
     assert.equal(vistaDoAjuste(null), null);
     assert.deepEqual(resultadosDoAjuste(null), []);
 });
@@ -419,7 +419,7 @@ test('o texto de cada situação (D60: "Robô refazendo · título, descrição"
 test('o botão: só com a URL, a prévia pronta, NA REVISÃO, sem publicação andando ou feita e sem ajuste andando', () => {
     const base = { escrita: ESCRITA, previa: PREVIA_PARA_AJUSTE, oferta: OFERTA_S2, restantes: 3 };
     assert.deepEqual(acaoDoAjuste(base), { rotulo: ROTULO_DO_PEDIR, desligado: false, dica: null });
-    assert.equal(ROTULO_DO_PEDIR, 'Pedir ajuste ao robô');
+    assert.equal(ROTULO_DO_PEDIR, 'Pedir ajuste ao agente');
     assert.ok(acaoDoAjuste({ ...base, oferta: null }), 'sem a oferta, o id da prévia');
 
     for (const [nome, mudanca] of [
@@ -451,11 +451,11 @@ test('o botão: só com a URL, a prévia pronta, NA REVISÃO, sem publicação a
     assert.deepEqual(acaoDoAjuste({ ...base, precoPendente: true }), { rotulo: ROTULO_DO_PEDIR, desligado: true, dica: DICA_DO_PRECO_PENDENTE });
     assert.equal(acaoDoAjuste({ ...base, restantes: 0, precoPendente: true }).dica, DICA_DO_LIMITE, 'salvar o preço não resolve o limite');
 
-    // O servidor manda 0 também quando o texto não é do robô (o kit da fase N, o rascunho sem o preparo dele): com 0 e o
+    // O servidor manda 0 também quando o texto não é do agente (o kit da fase N, o rascunho sem o preparo dele): com 0 e o
     // `preparo` sem título nem descrição, o botão SOME — "limite atingido" seria mentira. Com saldo, o servidor decide.
     assert.equal(textoDoRobo(PREVIA_PARA_AJUSTE), true);
     assert.equal(textoDoRobo(PREVIA_SEM_ROBO), false);
-    assert.equal(textoDoRobo({ preparo: { titulo: null, descricao: 'erro' } }), true, 'o robô tentou a descrição');
+    assert.equal(textoDoRobo({ preparo: { titulo: null, descricao: 'erro' } }), true, 'o agente tentou a descrição');
     assert.equal(textoDoRobo({}), false);
     assert.equal(acaoDoAjuste({ ...base, previa: PREVIA_SEM_ROBO, restantes: 0 }), null);
     assert.ok(acaoDoAjuste({ ...base, previa: PREVIA_SEM_ROBO, restantes: 1 }));
@@ -594,7 +594,7 @@ test('os erros do pedido: 409 com `revisao_atual` = a aba velha; os outros 409, 
     assert.equal(erroDoAjuste(erro(409, { revisao_atual: 39, message: 'Conflict' })).mensagem, MSG_MUDOU, 'a mensagem do framework não vai');
     assert.equal(erroDoAjuste(erro(409, { revisao_atual: null })).tipo, 'revisao', 'a chave decide, não o valor');
     // Os outros 409 (e, por garantia, o que viesse com `travado`).
-    assert.deepEqual(erroDoAjuste(erro(409, AJUSTE_JA_ANDANDO)), { tipo: 'conflito', mensagem: 'O robô já está refazendo este anúncio. Espere terminar.', revisaoAtual: null });
+    assert.deepEqual(erroDoAjuste(erro(409, AJUSTE_JA_ANDANDO)), { tipo: 'conflito', mensagem: 'O agente já está refazendo este anúncio. Espere terminar.', revisaoAtual: null });
     assert.equal(erroDoAjuste(erro(409, AJUSTE_NA_FILA_DE_PUBLICACAO)).mensagem, AJUSTE_NA_FILA_DE_PUBLICACAO.message);
     assert.equal(erroDoAjuste(erro(409, { revisao_atual: 3, travado: true, message: 'Travado.' })).tipo, 'conflito');
     for (const data of [{}, { message: 'Conflict.' }, null]) assert.equal(erroDoAjuste(erro(409, data)).mensagem, MSG_CONFLITO, JSON.stringify(data));
@@ -611,7 +611,7 @@ test('os erros do pedido: 409 com `revisao_atual` = a aba velha; os outros 409, 
     assert.deepEqual(['revisao', 'conflito', 'invalido', 'proibido', 'outro'].map((tipo) => devePerguntarDepoisDoErro({ tipo })), [false, true, true, false, false]);
 });
 
-test('lib/trilhaAjuste.js é pura: nenhum import (nem a lib da prévia, do preço ou da publicação); sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "agente"', () => {
+test('lib/trilhaAjuste.js é pura: nenhum import (nem a lib da prévia, do preço ou da publicação); sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "robô"', () => {
     const fonte = lerSemComentarios('resources/js/lib/trilhaAjuste.js');
     assert.equal(fonte.match(/^\s*import\b/m), null, 'nenhum import: o node a carrega direto');
     assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null);
@@ -651,7 +651,7 @@ test('pedirAjuste e estadoDoAjuste: POST e GET na MESMA URL pronta; a resposta �
         assert.deepEqual(await M.escrita.pedirAjuste(url, corpoDoAjuste(PREVIA_PARA_AJUSTE, ['titulo'])), AJUSTE_ACEITO);
         assert.deepEqual(await M.escrita.estadoDoAjuste(url), AJUSTE_FAZENDO);
         await assert.rejects(M.escrita.pedirAjuste(urlDoAjuste(ANTES_DA_4B, 's-2'), {}), (falha) => {
-            assert.equal(M.escrita.mensagemDoErro(falha), 'O ajuste pelo robô não está disponível nesta tela: recarregue a página.');
+            assert.equal(M.escrita.mensagemDoErro(falha), 'O ajuste pelo agente não está disponível nesta tela: recarregue a página.');
 
             return true;
         });
@@ -714,7 +714,7 @@ test('enviarAjuste (o que [Refazer] faz): 202 → na fila; 409 da revisão → o
 
     // Sem a URL: nenhum pedido, o texto da tela.
     pedidos = await comAxios({}, async () => {
-        assert.equal((await M.ajuste.enviarAjuste(null, corpo)).erro.mensagem, 'O ajuste pelo robô não está disponível nesta tela: recarregue a página.');
+        assert.equal((await M.ajuste.enviarAjuste(null, corpo)).erro.mensagem, 'O ajuste pelo agente não está disponível nesta tela: recarregue a página.');
     });
     assert.deepEqual(pedidos, []);
 });
@@ -779,14 +779,14 @@ test('lib/trilhaEscrita.js e as peças de fora da pasta Revisao/ NÃO importam a
 
 // ─── O rodapé desenhado ─────────────────────────────────────────────────────
 
-test('pronto para ajustar: [Pedir ajuste ao robô] secundário no rodapé, depois das ações de sempre e antes do primário', () => {
+test('pronto para ajustar: [Pedir ajuste ao agente] secundário no rodapé, depois das ações de sempre e antes do primário', () => {
     const saida = desenhar();
     const rodape = rodapeDe(saida);
     const botao = tag(rodape, 'data-acao="pedir-ajuste"');
     assert.ok(botao, 'o botão');
     assert.ok(!botao.includes('bg-trilha-navy') && !botao.includes('disabled=""') && !botao.includes('aria-describedby'), botao);
-    assert.ok(texto(rodape).includes('Pedir ajuste ao robô'));
-    // A ordem: [Ver a oferta] [Pedir ajuste ao robô] [Aprovar e publicar] (o primário por último). R10 (04/11/2026): o
+    assert.ok(texto(rodape).includes('Pedir ajuste ao agente'));
+    // A ordem: [Ver a oferta] [Pedir ajuste ao agente] [Aprovar e publicar] (o primário por último). R10 (04/11/2026): o
     // "Abrir no Publicador" saiu — nem para o admin (a oferta de exemplo ainda traz o endereço velho, e ele não aparece).
     const ordem = ['data-acao="ver-oferta"', 'data-acao="pedir-ajuste"', 'data-acao="aprovar-e-publicar"'].map((m) => rodape.indexOf(m));
     assert.ok(ordem.every((i, j) => i >= 0 && (j === 0 || i > ordem[j - 1])), JSON.stringify(ordem));
@@ -869,10 +869,10 @@ test('a escolha no rodapé: "O que refazer?" [Título] [Descrição] (alternáve
     assert.match(fonte, /if \(emVoo\.current \|\| !daVez\?\.podeRefazer\) return;\s*emVoo\.current = true;\s*const corpo = corpoDoAjuste\(previaAgora\.current, atual\.partes\);/);
 });
 
-test('andando: "Na fila do robô · …" / "Robô refazendo · …" com o giro; sem [Pedir ajuste]; [Aprovar e publicar] desligado e o preço só leitura, com o porquê', () => {
+test('andando: "Na fila do agente · …" / "Agente refazendo · …" com o giro; sem [Pedir ajuste]; [Aprovar e publicar] desligado e o preço só leitura, com o porquê', () => {
     for (const [resposta, titulo] of [
-        [AJUSTE_ACEITO, 'Na fila do robô · título, descrição'],
-        [AJUSTE_FAZENDO, 'Robô refazendo · descrição'],
+        [AJUSTE_ACEITO, 'Na fila do agente · título, descrição'],
+        [AJUSTE_FAZENDO, 'Agente refazendo · descrição'],
     ]) {
         const saida = desenhar({ estado: { ajuste: doAjuste(resposta) } });
         const rodape = rodapeDe(saida);
@@ -894,7 +894,7 @@ test('andando: "Na fila do robô · …" / "Robô refazendo · …" com o giro; 
     // O que já terminou no meio do caminho aparece: "Título refeito." enquanto a descrição anda.
     const fazendo = rodapeDe(desenhar({ estado: { ajuste: doAjuste(AJUSTE_FAZENDO) } }));
     assert.ok(texto(pedaco(fazendo, 'data-resultado-do-ajuste', '')).includes('Título refeito.'));
-    assert.equal(TRAVA_DA_PUBLICACAO, 'Espere o robô terminar o ajuste antes de publicar.');
+    assert.equal(TRAVA_DA_PUBLICACAO, 'Espere o agente terminar o ajuste antes de publicar.');
     // O pedido saindo (antes do 202) também trava o preço.
     const caixa = pedaco(desenhar({ estado: { escolhendo: true, partes: ['titulo'], enviando: true } }), 'data-caixa', 'preco');
     assert.ok(texto(caixa).includes(TRAVA_DO_PRECO));
@@ -904,7 +904,7 @@ test('terminou: o resultado por parte ("Título refeito.", "Descrição mantida:
     const saida = desenhar({ previa: PREVIA_AJUSTADA });
     const rodape = rodapeDe(saida);
     const situacao = pedaco(rodape, 'data-situacao-do-ajuste', 'feito');
-    assert.ok(texto(situacao).includes('O robô terminou o ajuste.'));
+    assert.ok(texto(situacao).includes('O agente terminou o ajuste.'));
     assert.ok(tag(situacao, 'data-pilula-do-ajuste', 'span').includes('bg-trilha-ok-bg'));
     assert.ok(!situacao.includes('animate-spin'));
     // Uma linha por parte, na ordem do contrato, dentro da região `status` (o leitor de tela lê o resultado).
@@ -922,9 +922,9 @@ test('terminou: o resultado por parte ("Título refeito.", "Descrição mantida:
     // O erro: a mensagem do servidor e a parte que não deu; em vermelho.
     const comErro = rodapeDe(desenhar({ estado: { ajuste: doAjuste(AJUSTE_COM_ERRO) } }));
     const deErro = pedaco(comErro, 'data-situacao-do-ajuste', 'erro');
-    assert.ok(texto(deErro).includes('O ajuste do robô não deu certo.') && texto(deErro).includes('O limite diário do robô para esta loja acabou.'));
+    assert.ok(texto(deErro).includes('O ajuste do agente não deu certo.') && texto(deErro).includes('O limite diário do agente para esta loja acabou.'));
     assert.ok(tag(deErro, 'data-pilula-do-ajuste', 'span').includes('bg-trilha-bad-bg'));
-    assert.ok(texto(comErro).includes('Título: o robô não conseguiu refazer.'));
+    assert.ok(texto(comErro).includes('Título: o agente não conseguiu refazer.'));
     assert.ok(tag(comErro, 'data-acao="pedir-ajuste"'), 'tentar de novo');
 });
 
@@ -950,7 +950,7 @@ test('os erros do pedido no rodapé: 409 da revisão ("mudou" + [Recarregar]); o
     assert.ok(tag(daRevisao, 'data-erro-do-ajuste', 'div').includes('bg-trilha-warn-bg'));
 
     for (const [status, data, mensagem, tipo] of [
-        [409, AJUSTE_JA_ANDANDO, 'O robô já está refazendo este anúncio.', 'conflito'],
+        [409, AJUSTE_JA_ANDANDO, 'O agente já está refazendo este anúncio.', 'conflito'],
         [409, AJUSTE_NA_FILA_DE_PUBLICACAO, AJUSTE_NA_FILA_DE_PUBLICACAO.message, 'conflito'],
         [422, AJUSTE_NO_LIMITE, 'Este anúncio já teve 3 ajustes hoje. Amanhã libera de novo.', 'invalido'],
         [403, { message: 'Sem acesso a esta trilha.' }, 'Sem acesso a esta trilha.', 'proibido'],
@@ -967,7 +967,7 @@ test('os erros do pedido no rodapé: 409 da revisão ("mudou" + [Recarregar]); o
     assert.ok(texto(limite).includes(DICA_DO_LIMITE) && texto(limite).includes(AJUSTE_NO_LIMITE.message));
     // O 409 de outro ajuste com o estado lido: a mensagem E o andamento, sem o botão.
     const lido = rodapeDe(desenhar({ estado: { erro: erroDoAjuste(erro(409, AJUSTE_JA_ANDANDO)), ajuste: doAjuste(AJUSTE_FAZENDO) } }));
-    assert.ok(texto(lido).includes('Robô refazendo · descrição') && texto(lido).includes(AJUSTE_JA_ANDANDO.message) && !lido.includes('data-acao="pedir-ajuste"'));
+    assert.ok(texto(lido).includes('Agente refazendo · descrição') && texto(lido).includes(AJUSTE_JA_ANDANDO.message) && !lido.includes('data-acao="pedir-ajuste"'));
     // O [Recarregar] limpa o ajuste da gaveta e pede a prévia de novo (o mesmo "Tentar de novo" da gaveta).
     const ajuste = controleDoAjuste({ estado: { erro: erroDoAjuste(erro(409, CONFLITO_DO_AJUSTE)) } });
     ajuste.recarregar();
@@ -1005,7 +1005,7 @@ test('com o hook: o botão para a equipe com a URL; escondido para quem não esc
         ['publicada (conferência)', ESCRITA, PREVIA_PUBLICADA, OFERTA_S1],
         ['na fila de publicação', ESCRITA, PREVIA_NA_FILA],
         ['com o ajuste andando', ESCRITA, PREVIA_AJUSTANDO],
-        ['o texto não é do robô (o servidor manda 0)', ESCRITA, PREVIA_SEM_ROBO],
+        ['o texto não é do agente (o servidor manda 0)', ESCRITA, PREVIA_SEM_ROBO],
     ]) {
         const saida = comHooks(escrita, previa, oferta);
         assert.ok(!saida.includes('data-acao="pedir-ajuste"') && !saida.includes('data-escolha-do-ajuste'), nome);
@@ -1018,13 +1018,13 @@ test('com o hook: o botão para a equipe com a URL; escondido para quem não esc
 test('com o hook: aberta com o ajuste andando (a prévia traz `ajuste`), a gaveta retoma — a situação, sem o botão, o publicar desligado, o preço só leitura', () => {
     const saida = comHooks(ESCRITA, PREVIA_AJUSTANDO);
     const rodape = rodapeDe(saida);
-    assert.ok(texto(pedaco(rodape, 'data-situacao-do-ajuste', 'fazendo')).includes('Robô refazendo · descrição'));
+    assert.ok(texto(pedaco(rodape, 'data-situacao-do-ajuste', 'fazendo')).includes('Agente refazendo · descrição'));
     assert.ok(!rodape.includes('data-acao="pedir-ajuste"'));
     assert.ok(tag(rodape, 'data-acao="aprovar-e-publicar"').includes('disabled=""'));
     assert.ok(texto(pedaco(saida, 'data-preco-so-leitura', '')).includes(TRAVA_DO_PRECO));
     assert.ok(!saida.includes('data-preco-editavel'));
     // A Situação mostra o status D60 da prévia.
-    assert.ok(texto(pedaco(saida, 'data-caixa', 'situacao')).includes('Robô refazendo · título, descrição'));
+    assert.ok(texto(pedaco(saida, 'data-caixa', 'situacao')).includes('Agente refazendo · título, descrição'));
     // Terminado (a prévia recarregada): o resultado, o botão de volta.
     const ajustada = rodapeDe(comHooks(ESCRITA, PREVIA_AJUSTADA));
     assert.ok(texto(ajustada).includes('Título refeito.') && tag(ajustada, 'data-acao="pedir-ajuste"'));
@@ -1041,7 +1041,7 @@ test('com o hook: aberta com o ajuste andando (a prévia traz `ajuste`), a gavet
     assert.match(fonte, /return novo\.ajuste !== l\.ajuste \? \{ \.\.\.novo, previa: previaAgora\.current \} : novo;/);
     // O fim: a prévia (o texto novo) e a Lista recarregam, e a página avisa (só a transição que a gaveta viu).
     assert.match(fonte, /if \(!terminouOAjuste\(antes, situacao\)\) return;\s*agora\.current\.onRecarregarPrevia\?\.\(\);\s*agora\.current\.onRecarregar\?\.\(\);\s*agora\.current\.onAvisar\?\.\(/);
-    // O pedido que entrou recarrega a Lista (a linha passa a dizer "Robô refazendo · …", D60).
+    // O pedido que entrou recarrega a Lista (a linha passa a dizer "Agente refazendo · …", D60).
     assert.match(fonte, /mudar\(\(base\) => estadoDepoisDoEnvio\(base, r\)\);[\s\S]*?if \(!r\.erro\) agora\.current\.onRecarregar\?\.\(\);/);
 });
 
@@ -1063,13 +1063,13 @@ test('a gaveta de verdade: carregando não mostra o botão; a ligação passa a 
     assert.match(fonte, /\(doRecarregar\.current \?\? botao \?\? doErro\.current \?\? \(vista \? daSituacao\.current : null\)\)\?\.focus\(\);/);
 });
 
-test('a pasta Revisao/ com o ajuste: nenhum marketplace, Portal, Publicador nem "agente"; só cores trilha-*; não importa Cadastro/ nem as libs da prévia, do preço e da publicação', () => {
+test('a pasta Revisao/ com o ajuste: nenhum marketplace, Portal, Publicador nem "robô"; só cores trilha-*; não importa Cadastro/ nem as libs da prévia, do preço e da publicação', () => {
     const fonte = lerSemComentarios('resources/js/Components/Trilha/Revisao/AjusteDoRobo.jsx');
     assert.equal(fonte.match(PROIBIDO), null);
     assert.equal(fonte.match(/\btext-white\b|\bbg-white\/|\b(?:bg|text|border)-ecf-|\[#[0-9a-fA-F]{3,8}\]/), null);
     assert.deepEqual([...fonte.matchAll(/[\w-]*\bpub-[\w-]*/g)].map((m) => m[0]), []);
     assert.equal(fonte.match(/from ['"][^'"]*(?:Trilha\/Cadastro\/|trilhaCadastro|trilhaPrevia|trilhaPreco|trilhaPublicar)[^'"]*['"]/), null);
-    // Nenhum campo de texto livre no componente (D51): o robô refaz com o próprio preparo.
+    // Nenhum campo de texto livre no componente (D51): o agente refaz com o próprio preparo.
     assert.equal(fonte.match(/<input\b|<textarea\b|contentEditable/), null);
     // Os textos do rodapé que a lib não tem (os do JSX) também são neutros.
     for (const s of ['Não consegui conferir agora; tento de novo em instantes.', 'Acompanhar de novo', 'Recarregar', 'Cancelar']) assert.ok(fonte.includes(s), s);

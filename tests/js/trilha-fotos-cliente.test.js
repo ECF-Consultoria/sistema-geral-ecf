@@ -177,8 +177,8 @@ function daCaixa(html) {
     return html.slice(html.lastIndexOf('<', marca), seguinte > 0 ? html.lastIndexOf('<', seguinte) : undefined);
 }
 
-/** O nome do marketplace, o Portal, o Publicador e o "agente" (D59): nenhum deles no que o cliente LÊ. */
-const PROIBIDO = /Mercado\s+Livre|Portal|Publicador|\bagente\b/i;
+/** O nome do marketplace, o Portal e o Publicador (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente"): nenhum deles no que o cliente LÊ. */
+const PROIBIDO = /Mercado\s+Livre|Portal|Publicador|robô/i;
 
 const BASE = CLIENTE_ESCRITA.fotos;
 const Q = lerQuadro(QUADRO_DE_FOTOS);
@@ -950,7 +950,7 @@ test('a pasta `Cliente/` só entra por `lazy(() => import(…))`, com o 2º cami
     assert.match(sobDemanda, /export const PEDACOS_DO_CLIENTE = \{/);
 });
 
-test('a pasta `Cliente/` e a lib dela: só as peças comuns (nada da equipe), só cores `trilha-*`, nenhum marketplace, Portal, Publicador nem "agente"', () => {
+test('a pasta `Cliente/` e a lib dela: só as peças comuns (nada da equipe), só cores `trilha-*`, nenhum marketplace, Portal, Publicador nem "robô"', () => {
     const caixa = 'resources/js/Components/Trilha/Cliente/FotosDoProduto.jsx';
     assert.deepEqual(importsEstaticos(path.resolve(RAIZ, caixa)).sort(), [
         '@/Components/Trilha/Pecas', '@/lib/trilhaEscrita', '@/lib/trilhaFotosCliente', '@/lib/utils', 'lucide-react', 'react',

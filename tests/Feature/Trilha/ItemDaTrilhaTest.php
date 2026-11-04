@@ -15,7 +15,7 @@ use Tests\TestCase;
 /**
  * A régua inversa (pub_produto → item da trilha) concorda com o agrupamento da trilha (item → pub_produtos): com os
  * mesmos dados, cada pub_produto do Portal cai num item que existe em `TrilhaDaEmpresa::itens()` — é o que deixa a
- * trava do robô e a tela falarem da mesma oferta.
+ * trava do agente e a tela falarem da mesma oferta.
  */
 class ItemDaTrilhaTest extends TestCase
 {

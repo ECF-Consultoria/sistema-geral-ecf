@@ -18,10 +18,10 @@ use Illuminate\Validation\ValidationException;
  * O Planejamento dentro da trilha (2ª entrega, 02/11/2026): criar, editar e apagar onda; pôr, mover e tirar oferta.
  *
  * Regras (o porquê de cada uma no desenho da 2ª entrega):
- * - A data é o dia em que o robô COMEÇA (São Paulo), entre hoje e hoje + 365. Hoje = "começar agora": a soltura
+ * - A data é o dia em que o agente COMEÇA (São Paulo), entre hoje e hoje + 365. Hoje = "começar agora": a soltura
  *   roda no próprio pedido. Data passada é recusada.
  * - Até o dia chegar dá para mudar a data, mover, tirar e apagar. Depois, só renomear e pôr oferta nova (que começa
- *   na hora): o robô já foi chamado.
+ *   na hora): o agente já foi chamado.
  * - Só entra em onda a oferta que ainda não andou e tem produto — a da etapa 3. Um item fica numa onda só.
  * - O Combo nasce da Simples do produto: `c-{p}-{N}` só fica numa onda com data igual ou posterior à da `s-{p}`
  *   (salvo se a Simples já andou). Simples sem onda entra JUNTO, na mesma onda, com aviso. Tirar a Simples, movê-la
@@ -54,7 +54,7 @@ class OndasDaTrilha
             self::conferirNomeLivre((int) $empresa->id, $nome);
             $onda = TrilhaOnda::create(['company_id' => $empresa->id, 'nome' => $nome, 'data' => $data, 'criada_por' => $quem->id]);
             RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, $onda, 'trilha_onda_criada',
-                "Onda {$nome} criada: o robô começa em ".self::diaCurto($data), ['via' => 'trilha', 'onda_id' => (int) $onda->id, 'data' => $data]);
+                "Onda {$nome} criada: o agente começa em ".self::diaCurto($data), ['via' => 'trilha', 'onda_id' => (int) $onda->id, 'data' => $data]);
 
             return $onda;
         });
@@ -101,7 +101,7 @@ class OndasDaTrilha
             }
             $onda->update(array_filter(['nome' => $nome, 'data' => $data], fn ($v) => $v !== null));
             // Data nova (inclusive o "começar agora"): a contagem dos itens recomeça daqui — senão o alarme "ainda não
-            // começou" contaria do começo do dia de hoje, horas antes de o robô ser chamado.
+            // começou" contaria do começo do dia de hoje, horas antes de o agente ser chamado.
             if ($data !== null && $antes['data'] !== $onda->dia()) {
                 $onda->itens()->update(['na_onda_desde' => now(), 'pedido_em' => null, 'repescado_em' => null]);
             }
@@ -131,7 +131,7 @@ class OndasDaTrilha
             Company::query()->whereKey($empresa->id)->lockForUpdate()->first();
             $onda = TrilhaOnda::query()->whereKey($onda->id)->lockForUpdate()->firstOrFail();
             if ($onda->comecou()) {
-                throw ValidationException::withMessages(['onda' => "A {$onda->nome} já começou: o robô já foi chamado, ela não pode ser apagada."]);
+                throw ValidationException::withMessages(['onda' => "A {$onda->nome} já começou: o agente já foi chamado, ela não pode ser apagada."]);
             }
 
             // Os itens saem da onda: a Simples não pode sair deixando um combo dela noutra onda. Antes, a linha de
@@ -552,7 +552,7 @@ class OndasDaTrilha
         }
         $hoje = TrilhaOnda::hoje();
         if ($data < $hoje) {
-            throw ValidationException::withMessages(['data' => 'Escolha hoje ou um dia depois: hoje faz o robô começar agora.']);
+            throw ValidationException::withMessages(['data' => 'Escolha hoje ou um dia depois: hoje faz o agente começar agora.']);
         }
         if ($data > Carbon::parse($hoje, TrilhaOnda::FUSO)->addDays(self::DIAS_A_FRENTE)->toDateString()) {
             throw ValidationException::withMessages(['data' => 'Escolha uma data até um ano para a frente.']);

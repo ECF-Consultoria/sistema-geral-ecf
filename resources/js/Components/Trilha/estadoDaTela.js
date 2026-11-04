@@ -100,7 +100,7 @@ export function enderecosDaAprovacaoDoCliente(props) {
  * - `e:planilha` (F7) → a gaveta da planilha por categoria, só com `podeEditar`; para os outros, nada.
  * - `e:ml` (F8) → a gaveta de importar os anúncios da loja, só com `podeEditar`; para os outros, nada.
  * - `v:s-12` (4a) → a prévia do anúncio da oferta, só com `comPrevia` (`podeVerPrevia`); para os outros, nada. A
- *   oferta antes da revisão também abre: a gaveta diz que o robô ainda prepara (D44).
+ *   oferta antes da revisão também abre: a gaveta diz que o agente ainda prepara (D44).
  *   4e: para o CLIENTE de verdade com `cliente_escrita.aprovacao` (`comAprovacao`), o mesmo `v:` abre a gaveta dele
  *   (`aprovacao`) — só na oferta que está com ele, ou que ele já respondeu (`estadoDaAprovacao`); senão, nada.
  *

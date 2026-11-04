@@ -9,7 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * "Pedir ajuste ao robô" na porta da EQUIPE da trilha (4ª entrega, fatia 4b, desenho §19.14). Fino: a regra mora em
+ * "Pedir ajuste ao agente" na porta da EQUIPE da trilha (4ª entrega, fatia 4b, desenho §19.14). Fino: a regra mora em
  * {@see AjusteDoRoboNaTrilha}.
  *
  * A guarda das duas rotas começa pela do cadastro ({@see CadastroNaTrilha::empresa()}): as duas chaves (404, antes de

@@ -20,7 +20,7 @@ use Tests\Feature\Publicador\Lote\CenarioDoPreparo;
 use Tests\TestCase;
 
 /**
- * A trava do robô na data da onda (Trilha de produtos, 2ª entrega, 02/11/2026): na empresa com a trilha de trabalho
+ * A trava do agente na data da onda (Trilha de produtos, 2ª entrega, 02/11/2026): na empresa com a trilha de trabalho
  * ligada, salvar no Portal NÃO chama a IA da oferta que ainda não andou e não está numa onda que já começou — e o
  * item segurado não gasta nada (cota intacta, nenhuma memória gravada, nenhum Job da cadeia).
  *
@@ -101,7 +101,7 @@ class PortaoDaOndaTest extends TestCase
 
     public function test_fora_da_chave_de_trabalho_tudo_segue_como_antes(): void
     {
-        // Só a porta da trilha aberta (a 1ª entrega): o robô não muda.
+        // Só a porta da trilha aberta (a 1ª entrega): o agente não muda.
         config(['trilha.trabalho.empresas' => []]);
         $p = $this->produtoDoPortal();
 

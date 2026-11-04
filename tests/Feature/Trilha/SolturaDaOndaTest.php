@@ -22,7 +22,7 @@ use Tests\Feature\Trilha\Concerns\MontaTrilha;
 use Tests\TestCase;
 
 /**
- * A data da onda solta o robô (2ª entrega, 02/11/2026): a passada de `trilha:soltar-ondas` grava `liberada_em` uma vez,
+ * A data da onda solta o agente (2ª entrega, 02/11/2026): a passada de `trilha:soltar-ondas` grava `liberada_em` uma vez,
  * pede o preparo pelo MESMO caminho de um save (`PreparoIaAgenda::aoSalvar` → Sincronizar + preparo com a marca do
  * debounce), respeita o lote, repesca uma vez por dia só quem nunca começou e limpa a linha de combo órfã.
  */
@@ -68,7 +68,7 @@ class SolturaDaOndaTest extends TestCase
         $pedidos = Queue::pushed(PrepararProdutoNoPublicadorJob::class)->map(fn ($j) => $j->estruturaProdutoId)->sort()->values()->all();
         $this->assertSame([(int) $a['produto']->id, (int) $b['produto']->id], $pedidos);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 2);
-        $this->assertDatabaseHas('activity_log', ['description' => 'Onda Onda 1 começou (2026-11-06): o robô começa a preparar as ofertas dela']);
+        $this->assertDatabaseHas('activity_log', ['description' => 'Onda Onda 1 começou (2026-11-06): o agente começa a preparar as ofertas dela']);
 
         // A segunda passada do mesmo dia não pede nada de novo.
         $this->soltura()->rodar();

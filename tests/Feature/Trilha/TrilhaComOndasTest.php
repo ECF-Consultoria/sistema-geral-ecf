@@ -128,7 +128,7 @@ class TrilhaComOndasTest extends TestCase
         $trilha = $this->trilha($empresa);
         $this->assertSame('Na fila · espera a oferta simples ficar pronta', $this->itemDaTrilha($trilha, "c-{$a['produto']->id}-2")['status']);
         $kitNaTrilha = $this->itemDaTrilha($trilha, "o-{$kit->id}");
-        // A pendência é AVISO, não espera: o robô prepara com o que houver (só a ficha incompleta o barra).
+        // A pendência é AVISO, não espera: o agente prepara com o que houver (só a ficha incompleta o barra).
         $this->assertSame(['robo', 'Na fila · com pendência na Lista', true], [$kitNaTrilha['etapa'], $kitNaTrilha['status'], $kitNaTrilha['alerta']]);
     }
 

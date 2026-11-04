@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * A prévia do anúncio DENTRO da trilha (4ª entrega, fatia 4a, desenho §19, D42/D44): o painel `v:{item}` da equipe mostra
- * o anúncio que o robô preparou — fotos (as geradas marcadas), título e preço por tipo, descrição e ficha — sem abrir o
+ * o anúncio que o agente preparou — fotos (as geradas marcadas), título e preço por tipo, descrição e ficha — sem abrir o
  * Publicador. SÓ LEITURA: nada aqui grava, chama IA ou publica.
  *
  * ### De onde vem
@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Log;
  *   linha) → o `pub_produto_id` que o representa → o rascunho dele. Nenhuma outra forma de casar item com anúncio.
  * - O anúncio pelo {@see PreviaDoAnuncioService::montar()} do Publicador, chamado como está: o MESMO plano da
  *   conferência e da publicação ("o que se vê é o que se envia"). A rota do Publicador NÃO é usada — ela é `role:admin`
- *   e marca `EditorEmUso` (a fila e o robô esperam quem está "no editor"); o `montar` sozinho não marca nada.
+ *   e marca `EditorEmUso` (a fila e o agente esperam quem está "no editor"); o `montar` sozinho não marca nada.
  *
  * ### O que a trilha muda na saída (o JSON é escrito por lista de campos, como o retrato do cadastro)
  * - **fotos**: o endereço vira a rota da trilha (`trilha.previa.foto`, relativa) — a do Publicador é `role:admin` e a do
@@ -34,10 +34,10 @@ use Illuminate\Support\Facades\Log;
  *   neutro ({@see motivoNeutro()});
  * - **preço** por tipo: o efetivo × o da Precificação, o mínimo dela, se as cores diferem e se o Premium empatou com o
  *   Clássico ({@see precos()}; a 4c — {@see PrecoNaTrilha} — grava o preço e devolve esta mesma prévia);
- * - **preparo**: o do robô, da régua da linha (`step_state.ia_preparo` e a memória das imagens);
+ * - **preparo**: o do agente, da régua da linha (`step_state.ia_preparo` e a memória das imagens);
  * - **publicacao** (4d): a situação do "Aprovar e publicar" ({@see PublicacaoNaTrilha::situacao()}), em toda resposta —
  *   inclusive fora da revisão (o item publicado mostra o `publicado` com os MLBs enquanto o pedido vale);
- * - **ajuste** (4b): o "Pedir ajuste ao robô" ({@see AjusteDoRoboNaTrilha::situacao()}) e `ajustes_restantes_hoje`.
+ * - **ajuste** (4b): o "Pedir ajuste ao agente" ({@see AjusteDoRoboNaTrilha::situacao()}) e `ajustes_restantes_hoje`.
  *   Fora do contrato e de propósito: o id da categoria, a promoção "sem promoção porque…" (cita o Portal), a garantia,
  *   o estoque e o `titulo_no_ml`.
  *
@@ -53,7 +53,7 @@ use Illuminate\Support\Facades\Log;
  */
 class PreviaNaTrilha
 {
-    public const MOTIVO_PREPARANDO = 'O robô ainda está preparando este anúncio.';
+    public const MOTIVO_PREPARANDO = 'O agente ainda está preparando este anúncio.';
 
     public const MOTIVO_SEM_PREVIA = 'Este anúncio não tem prévia: ele não foi montado pelo sistema.';
 
@@ -82,7 +82,7 @@ class PreviaNaTrilha
     /** Abaixo disto o preço é o mesmo (centavo arredondado) — a régua do D46. Pública: o gravar do preço (4c) usa a mesma. */
     public const DIFERENCA = 0.005;
 
-    /** O preparo do robô que o contrato leva, e a pílula da linha → a palavra do contrato. */
+    /** O preparo do agente que o contrato leva, e a pílula da linha → a palavra do contrato. */
     private const ETAPAS_DO_PREPARO = ['titulo', 'descricao', 'imagens'];
 
     private const PILULA = ['pronto' => 'ok', 'pulado' => 'pulado', 'erro' => 'erro', 'fazendo' => 'fazendo', 'fila' => 'fila'];
@@ -143,8 +143,8 @@ class PreviaNaTrilha
             // 4d: a situação do "Aprovar e publicar" — o MESMO cálculo do `GET …/publicacao` (nula: nunca pediu e nada vivo
             // na fila).
             'publicacao' => $publicacao,
-            // 4b: o "Pedir ajuste ao robô" — o MESMO cálculo do `GET …/ajuste` (nulo: nunca pediu) — e quantos pedidos o
-            // anúncio ainda tem hoje (0 também quando o texto não é do robô: a tela só oferece o botão com saldo).
+            // 4b: o "Pedir ajuste ao agente" — o MESMO cálculo do `GET …/ajuste` (nulo: nunca pediu) — e quantos pedidos o
+            // anúncio ainda tem hoje (0 também quando o texto não é do agente: a tela só oferece o botão com saldo).
             'ajuste'                 => AjusteDoRoboNaTrilha::situacao($r, $restantes),
             'ajustes_restantes_hoje' => $restantes,
             // 4e: a aprovação do cliente na versão da EQUIPE (nula: a loja não aprova com o cliente, ou nunca mandou) —
@@ -318,9 +318,9 @@ class PreviaNaTrilha
     }
 
     /**
-     * O preparo do robô no contrato: título, descrição e imagens, pela pílula da linha (a régua de
+     * O preparo do agente no contrato: título, descrição e imagens, pela pílula da linha (a régua de
      * `SituacaoDasOfertas::preparo()` — com o `rodando`/`adiado` vencido virando erro) — `pronto` sai `ok`. Nulo = nada
-     * registrado (o texto do Kit N, que o robô não escreve; as imagens sem a automação).
+     * registrado (o texto do Kit N, que o agente não escreve; as imagens sem a automação).
      *
      * @return array{titulo: ?string, descricao: ?string, imagens: ?string}
      */

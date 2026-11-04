@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * O preço ajustável da revisão (4ª entrega, fatia 4c, desenho §19.11, D45/D46/D47): a equipe troca o preço do Clássico
- * e/ou do Premium do anúncio que o robô preparou — em todas as cores ou numa só — sem abrir o Publicador. Grava SÓ no
+ * e/ou do Premium do anúncio que o agente preparou — em todas as cores ou numa só — sem abrir o Publicador. Grava SÓ no
  * rascunho (`pub_variante_precos`), pelo caminho do editor ({@see EditorRascunhoService::salvarVariantes()}, D45); a
  * Precificação nunca é escrita (o preço dela é lido na hora, e `null` = voltar a herdar dele).
  *
@@ -177,7 +177,7 @@ class PrecoNaTrilha
 
     /**
      * 409 SEM `travado` pelo ESTADO do anúncio (D47): na fila de publicação, publicando ou publicado — e, fora disso, o
-     * item que não está na revisão (o robô ainda prepara, no ar por outro caminho, sem rascunho).
+     * item que não está na revisão (o agente ainda prepara, no ar por outro caminho, sem rascunho).
      *
      * @throws HttpResponseException
      */

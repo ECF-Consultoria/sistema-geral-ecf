@@ -6,7 +6,7 @@ use App\Services\Trilha\Ondas\SoltarOndas;
 use Illuminate\Console\Command;
 
 /**
- * Trilha de produtos (2ª entrega, 02/11/2026): a data da onda solta o robô. Agendado em `routes/console.php` aos
+ * Trilha de produtos (2ª entrega, 02/11/2026): a data da onda solta o agente. Agendado em `routes/console.php` aos
  * minutos 7, 22, 37 e 52 (a onda do dia D começa às 00h07 de São Paulo), só quando há empresa na trilha de
  * trabalho. Sem `--aplicar`, só lista o que faria — nada é gravado e nenhum Job sai.
  *
@@ -15,10 +15,10 @@ use Illuminate\Console\Command;
 class TrilhaSoltarOndas extends Command
 {
     protected $signature = 'trilha:soltar-ondas
-        {--aplicar : grava e pede o robô (sem a opção, só mostra o que faria)}
+        {--aplicar : grava e pede o agente (sem a opção, só mostra o que faria)}
         {--empresa= : só esta empresa (companies.id)}';
 
-    protected $description = 'Solta as ondas da Trilha de produtos cujo dia chegou e pede o robô para as ofertas delas';
+    protected $description = 'Solta as ondas da Trilha de produtos cujo dia chegou e pede o agente para as ofertas delas';
 
     public function handle(SoltarOndas $soltura): int
     {

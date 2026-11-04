@@ -218,7 +218,7 @@ class AgenteNaSolturaTest extends TestCase
 
     /**
      * @param  list<EstruturaProduto>  $produtos
-     * @return array<string, bool> a Simples de cada produto → o robô ainda não escreveu NADA do texto
+     * @return array<string, bool> a Simples de cada produto → o agente ainda não escreveu NADA do texto
      */
     private function semTexto(array $produtos): array
     {

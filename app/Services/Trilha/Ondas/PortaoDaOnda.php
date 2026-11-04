@@ -11,7 +11,7 @@ use App\Services\Trilha\TrilhaDaEmpresa;
 use Illuminate\Support\Facades\Log;
 
 /**
- * A trava do robô na data da onda (Trilha de produtos, 2ª entrega, 02/11/2026) — num lugar só.
+ * A trava do agente na data da onda (Trilha de produtos, 2ª entrega, 02/11/2026) — num lugar só.
  *
  * Na empresa com a trilha de trabalho ligada (`App\Support\Trilha\TrilhaDeTrabalho`), a oferta que ainda não andou
  * só é preparada pela IA quando chega o dia da onda dela. Quem pergunta:

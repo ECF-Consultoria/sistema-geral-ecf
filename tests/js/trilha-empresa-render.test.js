@@ -172,7 +172,7 @@ test('equipe: cabeçalho, as 6 etapas com as contagens do exemplo, os status e a
     assert.match(saida, /aria-pressed="false" data-ver-como="cliente"/);
     assert.ok(!t.includes('Visão do cliente'));
 
-    for (const s of ['Com quem está agora', 'Cliente · completar a lista 4', 'Estrategista · mapear e planejar 4', 'Robô · preparando 2',
+    for (const s of ['Com quem está agora', 'Cliente · completar a lista 4', 'Estrategista · mapear e planejar 4', 'Agente · preparando 2',
         'Publicador · revisar e publicar 3', 'Ver tudo']) {
         assert.ok(t.includes(s), `faltou no "Com quem está agora": ${s}`);
     }
@@ -285,7 +285,7 @@ test('?etapa=… das etapas 2 a 6: cabeçalho, "Pronto quando", a nota e só as 
 
     // Etapa vazia: o texto do protótipo.
     const semNada = desenhar(Pagina, { ...PROPS_EQUIPE, ofertas: PROPS_EQUIPE.ofertas.filter((o) => o.etapa !== 'robo') }, '?etapa=robo');
-    assert.ok(texto(semNada).includes('O robô não tem nada na fila.'));
+    assert.ok(texto(semNada).includes('O agente não tem nada na fila.'));
 });
 
 test('"Pronto quando" da Lista cita tudo o que segura o produto na Lista (a régua do servidor, lida das fontes)', async () => {

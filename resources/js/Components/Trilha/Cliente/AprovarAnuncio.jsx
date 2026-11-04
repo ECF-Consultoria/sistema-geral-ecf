@@ -61,8 +61,8 @@ import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLate
 // - a situação (espera a sua aprovação / você pediu ajuste / aprovado), com o pedido
 //   dele citado;
 // - o cartão do anúncio — uma versão ENXUTA própria: o da equipe mora em `Revisao/` e
-//   na lib da prévia, que o cliente não baixa; aqui a foto que a equipe criou diz
-//   "criada pela equipe" e a entrega não usa as siglas do canal de venda;
+//   na lib da prévia, que o cliente não baixa; aqui a foto que o agente criou diz
+//   "criada pelo agente" e a entrega não usa as siglas do canal de venda;
 // - "Preço" só leitura (o valor de cada tipo; nada da Precificação);
 // - o rodapé [Pedir ajuste] (abre o campo de texto: obrigatório, até 1000, com o
 //   contador) e [Aprovar anúncio] (confirmação "O anúncio vai ao ar depois da sua
@@ -75,7 +75,8 @@ import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLate
 // Esta pasta é do cliente e chega SÓ por `lazy` (a página a pede; o 2º caminho está em
 // `Pages/Trilha/CadastroSobDemanda.jsx`). Não importa nada das pastas `Cadastro/` e
 // `Revisao/` nem das libs da gaveta da equipe. Os textos são do CLIENTE: nada de
-// marketplace, Portal, Publicador, agente nem robô — "a equipe".
+// marketplace, Portal nem Publicador; o que a IA fez é "do agente" (R9), o resto é
+// "a equipe".
 
 const BOTAO_DE_ALTERNAR = cn(
     'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold',
@@ -109,7 +110,7 @@ function Alternar({ rotulo, opcoes, valor, onEscolher, ...resto }) {
     );
 }
 
-/** A galeria: a foto escolhida grande e as miniaturas — as que a equipe criou, marcadas. */
+/** A galeria: a foto escolhida grande e as miniaturas — as que o agente criou, marcadas. */
 function Galeria({ fotos, indice, onIndice }) {
     if (!fotos.length) {
         return (

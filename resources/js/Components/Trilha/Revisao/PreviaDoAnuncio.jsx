@@ -50,20 +50,20 @@ import RodapeDoEnvio, { CaixaDaAprovacao, useEnvioAoCliente } from '@/Components
 //
 // O corpo segue o protótipo do Erlon (a caixa "Prévia do anúncio" da etapa 5):
 // - "Onde está";
-// - Anúncio: o cartão no jeito do anúncio — a galeria (as fotos que o robô fez
-//   com o selo "gerada pelo robô", em roxo), as abas Clássico/Premium e de cor, a
+// - Anúncio: o cartão no jeito do anúncio — a galeria (as fotos que o agente fez
+//   com o selo "gerada pelo agente", em roxo), as abas Clássico/Premium e de cor, a
 //   categoria, o título, o preço (com as parcelas no Premium), a entrega, a
 //   descrição e a ficha agrupada;
 // - Preço: o valor de cada tipo e "ajustado" quando ele difere da Precificação —
 //   editável pela equipe desde a 4c (`CaixaDoPreco.jsx`, §19.11), só leitura para
 //   os outros e no anúncio publicado;
-// - Situação: o status da oferta, o que falta para publicar e o preparo do robô.
+// - Situação: o status da oferta, o que falta para publicar e o preparo do agente.
 //
 // 4d (§19.13): o rodapé ganha o primário [Aprovar e publicar], a confirmação e o
 // acompanhamento da publicação (`PublicarAnuncio.jsx`); enquanto ela anda (ou
 // depois de publicado), a caixa "Preço" fica só leitura.
 //
-// 4b (§19.14): o rodapé ganha o secundário [Pedir ajuste ao robô], a escolha "O
+// 4b (§19.14): o rodapé ganha o secundário [Pedir ajuste ao agente], a escolha "O
 // que refazer?" e o acompanhamento do ajuste (`AjusteDoRobo.jsx`); enquanto ele
 // anda, a caixa "Preço" e o [Aprovar e publicar] ficam desligados, com a dica.
 //
@@ -71,13 +71,13 @@ import RodapeDoEnvio, { CaixaDaAprovacao, useEnvioAoCliente } from '@/Components
 // direto — o primário vira [Mandar ao cliente] (`MandarAoCliente.jsx`), com a caixa
 // "Aprovação do cliente" no corpo (com o cliente desde…, o pedido de ajuste citado);
 // o [Aprovar e publicar] só volta para o anúncio que o cliente aprovou e falta
-// publicar (D56). Com o robô refazendo, o [Mandar ao cliente] também espera.
+// publicar (D56). Com o agente refazendo, o [Mandar ao cliente] também espera.
 //
 // A gaveta pede a prévia UMA vez ao abrir (`GET escrita.revisao.previa`, com o id
 // no lugar do marcador). O item fora da revisão volta como 409 `{message}` ou 200
 // com `pronta: false` + `motivo`: os dois viram o mesmo aviso neutro, sem
 // "Tentar de novo" (é um estado, não uma falha). A oferta antes da revisão nem
-// pergunta: o robô ainda prepara (D44).
+// pergunta: o agente ainda prepara (D44).
 //
 // Chega SÓ por `lazy` (a página e o 2º caminho em `Pages/Trilha/CadastroSobDemanda.jsx`
 // — learnings §30): o cliente não baixa este JS (na 4e ele ganhou um cartão próprio,
@@ -114,7 +114,7 @@ function Alternar({ rotulo, opcoes, valor, onEscolher, ...resto }) {
     );
 }
 
-/** O selo da foto que o robô fez. */
+/** O selo da foto que o agente fez. */
 function SeloDaGerada({ className }) {
     return (
         <Pilula tom="roxo" className={cn('border border-trilha-roxo/40', className)} data-selo-gerada="">
@@ -125,7 +125,7 @@ function SeloDaGerada({ className }) {
 }
 
 /**
- * A galeria: a foto escolhida grande (a capa, ao abrir) e as miniaturas — as do robô marcadas em roxo. R3 (04/11/2026): a
+ * A galeria: a foto escolhida grande (a capa, ao abrir) e as miniaturas — as do agente marcadas em roxo. R3 (04/11/2026): a
  * grade usa a versão pequena de cada foto (`miniatura`, quando o servidor a manda); só a foto em destaque é a grande.
  */
 function Galeria({ fotos, indice, onIndice }) {
@@ -177,7 +177,7 @@ function Galeria({ fotos, indice, onIndice }) {
                                 <img src={foto.miniatura || foto.url} alt="" loading="lazy" decoding="async" className="block aspect-square w-full object-cover" />
                                 {foto.gerada && (
                                     <span aria-hidden="true" className="absolute inset-x-0 bottom-0 bg-trilha-roxo-bg px-1 text-center text-[10px] font-semibold leading-4 text-trilha-roxo">
-                                        robô
+                                        agente
                                     </span>
                                 )}
                             </button>
@@ -332,7 +332,7 @@ function CaixaDoAnuncio({ previa, inicial = null }) {
     );
 }
 
-/** A caixa "Situação": o status da oferta, o que impede de publicar e o preparo do robô (só para a equipe). */
+/** A caixa "Situação": o status da oferta, o que impede de publicar e o preparo do agente (só para a equipe). */
 function CaixaDaSituacao({ oferta, previa }) {
     const bloqueios = bloqueiosDaPrevia(previa);
     const preparo = preparoDaPrevia(previa);
@@ -357,7 +357,7 @@ function CaixaDaSituacao({ oferta, previa }) {
             )}
             {preparo.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5" data-preparo="">
-                    <span className="text-[12.5px] text-trilha-fg2">Preparo do robô:</span>
+                    <span className="text-[12.5px] text-trilha-fg2">Preparo do agente:</span>
                     {preparo.map((p) => (
                         <Pilula key={p.campo} tom={p.tom} data-preparo-campo={p.campo}>
                             {p.rotulo} · {p.estado}
@@ -391,17 +391,17 @@ export const PREVIA_CARREGANDO = Object.freeze({ carregando: true, erro: null, p
  *   envio?: ?object,
  * }} props  `preco` = o estado e as ações da caixa "Preço" (`usePrecoDaPrevia`, 4c); sem ele, a caixa só se lê.
  *   `publicar` = o estado e as ações da publicação (`usePublicacaoDaPrevia`, 4d); sem ele, o rodapé é o da 4a.
- *   `ajuste` = o estado e as ações do ajuste pelo robô (`useAjusteDaPrevia`, 4b); sem ele, nada do ajuste.
+ *   `ajuste` = o estado e as ações do ajuste pelo agente (`useAjusteDaPrevia`, 4b); sem ele, nada do ajuste.
  *   `envio` = o envio ao cliente (`useEnvioAoCliente`, 4e); sem ele (ou sem a chave da loja), nada da aprovação.
  */
 export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaGaveta = null, publicar: publicarComTudo = null, ajuste = null, envio: envioDaGaveta = null }) {
     const pronta = !antes && !carregando && !erro && previaPronta(previa);
     const semPrevia = !antes && !carregando && !erro && !!previa && !pronta;
-    // 4e: com a chave da loja, a equipe só publica direto o anúncio que o cliente aprovou (D56); o envio espera o robô.
+    // 4e: com a chave da loja, a equipe só publica direto o anúncio que o cliente aprovou (D56); o envio espera o agente.
     const comEnvio = !!envioDaGaveta?.url;
     const publicarDaGaveta = semPublicarDireto(publicarComTudo, comEnvio ? envioDaGaveta : null);
     const envio = comEnvio ? comTravaDoEnvio(envioDaGaveta, ajuste?.travaDaPublicacao) : null;
-    // 4b: com o robô refazendo o anúncio, a caixa "Preço" fica só leitura e o [Aprovar e publicar] desligado, com o porquê.
+    // 4b: com o agente refazendo o anúncio, a caixa "Preço" fica só leitura e o [Aprovar e publicar] desligado, com o porquê.
     const precoDaCaixa = comTravaDoPreco(precoDaGaveta, ajuste?.travaDoPreco);
     const publicar = comTravaDaPublicacao(publicarDaGaveta, ajuste?.travaDaPublicacao);
     // 4d: com a publicação andando (ou feita), a caixa "Preço" fica só leitura, com o porquê.
@@ -416,7 +416,7 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
             Ver a oferta
         </Botao>,
     ];
-    // 4b: o secundário [Pedir ajuste ao robô], antes do primário da publicação.
+    // 4b: o secundário [Pedir ajuste ao agente], antes do primário da publicação.
     if (ajuste?.acao) rodape.push(<BotaoDoAjuste key="ajuste" ajuste={ajuste} />);
     // 4d: a situação da publicação, o primário e a confirmação dele em volta das ações de sempre.
     if (publicar) rodape = <RodapeDaPublicacao publicar={publicar}>{rodape}</RodapeDaPublicacao>;

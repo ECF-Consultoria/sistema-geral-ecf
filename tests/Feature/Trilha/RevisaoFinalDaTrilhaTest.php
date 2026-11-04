@@ -388,7 +388,7 @@ class RevisaoFinalDaTrilhaTest extends TestCase
         $this->assertNull($linha->fresh()->pedido_em, 'marcar o pedido mentiria e gastaria a repescagem');
         Queue::assertNotPushed(PrepararProdutoNoPublicadorJob::class);
 
-        // Religado no mesmo dia, a passada seguinte pede o robô — só para o item da onda.
+        // Religado no mesmo dia, a passada seguinte pede o agente — só para o item da onda.
         config(['publicador.preparo_ia.ativo' => true]);
         $this->agora('2026-11-05 10:15:00');
         $resumo = $this->soltura()->rodar()[0];

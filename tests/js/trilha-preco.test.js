@@ -163,8 +163,8 @@ const OFERTA_S1 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-1');
 const NATURAL = 'COLOR=id:52049';
 const MEL = 'COLOR=id:52055';
 
-/** O nome do marketplace, o Portal, o Publicador e o "agente" (D59): nenhum deles na caixa. */
-const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b/i;
+/** O nome do marketplace, o Portal e o Publicador (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente"): nenhum deles na caixa. */
+const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|robô/i;
 
 /** Um controle da caixa (o que o hook devolve) com o estado pedido e ações de mentira que anotam o que foi chamado. */
 function controle(estado = {}, extras = {}) {
@@ -453,7 +453,7 @@ test('os erros: 409 com `revisao_atual` = a aba velha ([Recarregar], o digitado 
     assert.equal(textoDoBotaoDoPreco({ salvando: true }), 'Salvando…');
 });
 
-test('lib/trilhaPreco.js é pura: só a regra do número do sistema; sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "agente"', () => {
+test('lib/trilhaPreco.js é pura: só a regra do número do sistema; sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "robô"', () => {
     const fonte = lerSemComentarios('resources/js/lib/trilhaPreco.js');
     assert.deepEqual([...fonte.matchAll(/^\s*import\b[^;]*;/gm)].map((m) => m[0].trim()), ["import { normalizarNumeroBr } from './numeroBr.js';"]);
     assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null);
@@ -587,7 +587,7 @@ test('a caixa editável (equipe, na revisão): por tipo, o campo com o valor de 
     assert.ok(tag(caixa, 'data-acao="salvar-preco"').includes('disabled=""'), tag(caixa, 'data-acao="salvar-preco"'));
     assert.ok(tag(caixa, 'data-acao="salvar-preco"').includes('type="submit"'));
     assert.match(caixa, /data-estado-do-preco="dica"/);
-    // A ordem da gaveta segue a da 4a; nada do marketplace, do Portal, do Publicador nem do "agente" na caixa.
+    // A ordem da gaveta segue a da 4a; nada do marketplace, do Portal, do Publicador nem do antigo "robô" na caixa.
     assert.ok(saida.indexOf('data-caixa="anuncio"') < saida.indexOf('data-caixa="preco"') && saida.indexOf('data-caixa="preco"') < saida.indexOf('data-caixa="situacao"'));
     assert.equal(t.match(PROIBIDO), null);
 });

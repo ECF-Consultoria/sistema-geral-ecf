@@ -20,12 +20,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * A data da onda solta o robô (Trilha de produtos, 2ª entrega, 02/11/2026). Uma passada, por empresa da trilha de
+ * A data da onda solta o agente (Trilha de produtos, 2ª entrega, 02/11/2026). Uma passada, por empresa da trilha de
  * trabalho:
  *
  * 1. **Soltar** — a onda cujo dia chegou (São Paulo, comparado em PHP) ganha `liberada_em`, uma vez só (linha
  *    travada), com o rastro `trilha_onda_solta`.
- * 2. **Pedir o robô** — os itens das ondas que já começaram (Simples, Kit, Combit e o Combo, cujo pub avulso de
+ * 2. **Pedir o agente** — os itens das ondas que já começaram (Simples, Kit, Combit e o Combo, cujo pub avulso de
  *    cor fora do kit também precisa do texto), ainda sem `pedido_em`, até `trilha.ondas.lote` produtos por passada:
  *    `PreparoIaAgenda::aoSalvar()`, o MESMO caminho de um save no Portal (Sincronizar + preparo 20 s depois, com a
  *    marca do debounce), mas com a IA restrita aos itens pedidos (`soItens`): o que já andou com uma etapa em erro
@@ -105,7 +105,7 @@ class SoltarOndas
             }
         }
 
-        // ─── 2 e 3. Pedir o robô e repescar, no mesmo lote ───
+        // ─── 2 e 3. Pedir o agente e repescar, no mesmo lote ───
         $itens = TrilhaDaEmpresa::itens($empresa);
         $lote = max(1, (int) config('trilha.ondas.lote', 30));
         $janelaDesde = Carbon::parse($hoje, TrilhaOnda::FUSO)->subDays(max(0, (int) config('trilha.ondas.repescagem_dias', 7)))->startOfDay();
@@ -151,7 +151,7 @@ class SoltarOndas
             }
 
             if ($l->pedido_em === null) {
-                // O que já tem texto (alguém preparou à mão antes da data) não precisa do robô: só fica marcado.
+                // O que já tem texto (alguém preparou à mão antes da data) não precisa do agente: só fica marcado.
                 if ($item['andou'] && ! $item['sem_texto']) {
                     $soMarcar[] = $l;
 
@@ -197,13 +197,13 @@ class SoltarOndas
         }
         $resumo['produtos'] = count($produtos);
         if ($semPreparo > 0) {
-            Log::info("[Trilha] Ondas da empresa {$empresa->id} ({$empresa->name}): o preparo pela IA está desligado (publicador.preparo_ia.ativo); {$semPreparo} item(ns) de onda começada esperam o robô.");
+            Log::info("[Trilha] Ondas da empresa {$empresa->id} ({$empresa->name}): o preparo pela IA está desligado (publicador.preparo_ia.ativo); {$semPreparo} item(ns) de onda começada esperam o agente.");
         }
 
         if ($aplicar) {
             if ($produtos !== []) {
                 $this->agenda->aoSalvar((int) $empresa->id, array_keys($produtos), array_map(fn (array $c) => array_values(array_unique($c)), $soItens));
-                Log::info("[Trilha] Ondas da empresa {$empresa->id} ({$empresa->name}): robô pedido para ".(count($pedidas) + count($repescadas)).' item(ns), '.count($produtos).' produto(s).');
+                Log::info("[Trilha] Ondas da empresa {$empresa->id} ({$empresa->name}): agente pedido para ".(count($pedidas) + count($repescadas)).' item(ns), '.count($produtos).' produto(s).');
             }
             $ids = fn (array $linhas) => array_map(fn (TrilhaOndaItem $l) => (int) $l->id, $linhas);
             if ($pedidas !== [] || $soMarcar !== []) {
@@ -268,7 +268,7 @@ class SoltarOndas
             }
             $onda->update(['liberada_em' => now()]);
             RegistroEstrutura::registrar(self::ator(), $empresa, $onda, 'trilha_onda_solta',
-                "Onda {$onda->nome} começou ({$onda->dia()}): o robô começa a preparar as ofertas dela",
+                "Onda {$onda->nome} começou ({$onda->dia()}): o agente começa a preparar as ofertas dela",
                 ['via' => 'trilha', 'onda_id' => (int) $onda->id]);
         });
     }

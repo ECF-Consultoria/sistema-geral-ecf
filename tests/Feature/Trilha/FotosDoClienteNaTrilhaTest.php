@@ -57,7 +57,7 @@ class FotosDoClienteNaTrilhaTest extends TestCase
     use RefreshDatabase;
 
     /** As palavras que o cliente nunca lê nesta porta (D59). */
-    private const PROIBIDAS = ['mercado livre', 'publicador', 'portal', 'agente'];
+    private const PROIBIDAS = ['mercado livre', 'publicador', 'portal', 'robô'];
 
     private Company $empresa;
 
@@ -164,7 +164,7 @@ class FotosDoClienteNaTrilhaTest extends TestCase
         $this->assertSame(['cliente', PortalUsuario::class, (int) $this->cliente->id],
             [$doServico->getExtraProperty('origem'), $doServico->causer_type, (int) $doServico->causer_id]);
 
-        // Ainda na Lista: nada vai ao robô.
+        // Ainda na Lista: nada vai ao agente.
         Queue::assertNothingPushed();
     }
 
@@ -712,7 +712,7 @@ class FotosDoClienteNaTrilhaTest extends TestCase
         return Queue::pushed($classe, fn ($j) => (int) $j->estruturaProdutoId === (int) $produto->id)->count();
     }
 
-    /** Todo TEXTO que o cliente lê (as URLs não) sem "Mercado Livre", "Publicador", "Portal" nem "agente". */
+    /** Todo TEXTO que o cliente lê (as URLs não) sem "Mercado Livre", "Publicador", "Portal" nem "robô" (R9: é "agente"). */
     private function assertTextoNeutro(array $dados, string $onde = ''): void
     {
         foreach ($dados as $chave => $valor) {

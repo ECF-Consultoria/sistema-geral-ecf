@@ -736,7 +736,7 @@ const desenharCadastro = (retrato) => renderToStaticMarkup(h(M.cadastro.VistaDoC
 test('D41: o produto que veio de um anúncio mostra "Título do anúncio original: …" embaixo do título de venda, só como referência', () => {
     const saida = desenharCadastro(CADASTRO_DO_ML);
     const campo = pedaco(saida, 'data-campo', 'titulo');
-    assert.ok(tag(campo, 'value=', 'input').includes('value="Criado-Mudo 2 Gavetas Jatobá Maciço"'), 'o título de venda é o do robô');
+    assert.ok(tag(campo, 'value=', 'input').includes('value="Criado-Mudo 2 Gavetas Jatobá Maciço"'), 'o título de venda é o do agente');
     assert.ok(texto(campo).includes('Título do anúncio original: Criado Mudo Jatoba Macico 2 Gavetas Promoção Frete Grátis'), texto(campo));
     assert.equal((saida.match(/data-titulo-do-anuncio=""/g) ?? []).length, 1);
     // Só referência: não é campo (não vai no "Salvar") e não muda o "mexido".

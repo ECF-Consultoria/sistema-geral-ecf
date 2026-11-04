@@ -27,8 +27,9 @@
 // gaveta da equipe pode ir junto (as libs da prévia, do preço, da publicação e do
 // ajuste). Por isso o marcador, a régua da mensagem do framework e as situações da
 // publicação que travam são CÓPIAS — o teste confere que são iguais às de lá. Sem
-// classe do Tailwind (arquivo `.js`). Nenhum texto daqui cita o marketplace, o Portal,
-// o Publicador, o "agente" nem o robô (D59): o cliente lê boa parte deles.
+// classe do Tailwind (arquivo `.js`). Nenhum texto daqui cita o marketplace, o Portal
+// nem o Publicador (D59): o cliente lê boa parte deles. O que a IA fez é "do agente"
+// (R9, 04/11/2026: "robô" virou "agente" para a equipe E o cliente).
 
 /** O marcador do id do item nas URLs da revisão e da aprovação (§19.4, §19.16). */
 export const MARCADOR_DO_ITEM = '__ITEM__';
@@ -382,7 +383,7 @@ export const NOTA_PEDIDO = 'Pedido enviado à equipe.';
 export const PERGUNTA_DA_SAIDA = 'Descartar o pedido de ajuste que você escreveu?';
 export const MSG_MUDOU_PARA_O_CLIENTE = 'Este anúncio mudou depois que a equipe mandou para você. Recarregue para ver como ele está agora.';
 export const MSG_INDISPONIVEL = 'Este anúncio não está com você para aprovar agora. A equipe avisa quando ele estiver pronto.';
-export const MSG_EM_PREPARO = 'Este anúncio ainda está sendo preparado pela equipe.';
+export const MSG_EM_PREPARO = 'Este anúncio ainda está sendo preparado pelo agente.';
 
 /**
  * As ações do rodapé do cliente: [Pedir ajuste] e [Aprovar anúncio] só com a prévia pronta, o anúncio COM ELE
@@ -535,10 +536,10 @@ export function vistaParaOCliente(previa) {
 // ═══ CLIENTE: o cartão do anúncio (versão enxuta própria) ═════════════════════
 //
 // As mesmas regras do cartão da equipe (`lib/trilhaPrevia.js`, que o cliente não baixa), com os textos dele: a foto que
-// o robô da equipe fez sai "criada pela equipe", e a entrega não usa as siglas do marketplace.
+// o agente fez sai "criada pelo agente" (R9), e a entrega não usa as siglas do marketplace.
 
 /** O selo da foto criada (a `gerada` do §19.5), no texto do cliente. */
-export const ROTULO_DA_CRIADA = 'criada pela equipe';
+export const ROTULO_DA_CRIADA = 'criada pelo agente';
 
 const NOME_DO_TIPO = { classico: 'Clássico', premium: 'Premium' };
 
@@ -617,17 +618,17 @@ export function fotosDoAnuncio(anuncio) {
         .map((f, i) => ({ id: String(f.id ?? `foto-${i}`), url: f.url.trim(), criada: f.gerada === true }));
 }
 
-/** "Foto 2 de 6, criada pela equipe". */
+/** "Foto 2 de 6, criada pelo agente". */
 export const rotuloDaFoto = (foto, indice, total) => `Foto ${indice + 1} de ${total}${foto?.criada ? `, ${ROTULO_DA_CRIADA}` : ''}`;
 
-/** Quantas fotos a equipe criou, em texto; null quando nenhuma. */
+/** Quantas fotos o agente criou, em texto; null quando nenhuma. */
 export function textoDasCriadas(fotos) {
     const total = lista(fotos).length;
     const criadas = lista(fotos).filter((f) => f?.criada).length;
     if (!criadas) return null;
-    if (criadas === total) return total === 1 ? 'A foto foi criada pela equipe.' : `As ${total} fotos foram criadas pela equipe.`;
+    if (criadas === total) return total === 1 ? 'A foto foi criada pelo agente.' : `As ${total} fotos foram criadas pelo agente.`;
 
-    return criadas === 1 ? `1 das ${total} fotos foi criada pela equipe.` : `${criadas} das ${total} fotos foram criadas pela equipe.`;
+    return criadas === 1 ? `1 das ${total} fotos foi criada pelo agente.` : `${criadas} das ${total} fotos foram criadas pelo agente.`;
 }
 
 /** "R$ 899,90" (com o espaço sem quebra do `toLocaleString`); "—" sem número. */

@@ -189,8 +189,8 @@ const OFERTA_S2 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-2');
 const OFERTA_S1 = PROPS_TRABALHO.ofertas.find((o) => o.id === 's-1');
 const SO_A_PREVIA = { ...ESCRITA, revisao: { previa: ESCRITA.revisao.previa, preco: ESCRITA.revisao.preco } };
 
-/** O nome do marketplace, o Portal, o Publicador e o "agente" (D59): nenhum deles no rodapé da publicação. */
-const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|\bagente\b/i;
+/** O nome do marketplace, o Portal e o Publicador (D59) e o antigo "robô" (R9, 04/11/2026: "robô" virou "agente"): nenhum deles no rodapé da publicação. */
+const PROIBIDO = /Mercado\s+Livre|Portal|\/portal|Publicador|robô/i;
 
 const erro = (status, data = {}) => Object.assign(new Error('x'), { isAxiosError: true, response: { status, data } });
 const daResposta = (r) => normalizarPublicacao(r.publicacao);
@@ -443,7 +443,7 @@ test('os erros do pedido: 409 com `revisao_atual` = a aba velha; os outros 409, 
     assert.equal(erroDaPublicacao(new Error('rede')).mensagem, 'Não deu certo. Tente de novo.');
 });
 
-test('lib/trilhaPublicar.js é pura: nenhum import (nem a lib da prévia, nem a do preço); sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "agente"', () => {
+test('lib/trilhaPublicar.js é pura: nenhum import (nem a lib da prévia, nem a do preço); sem React, axios, classe do Tailwind, marketplace, Portal, Publicador nem "robô"', () => {
     const fonte = lerSemComentarios('resources/js/lib/trilhaPublicar.js');
     assert.equal(fonte.match(/^\s*import\b/m), null, 'nenhum import: o node a carrega direto');
     assert.equal(fonte.match(/className|\b(?:bg|text|border|fill|stroke)-trilha-/), null);
@@ -858,7 +858,7 @@ test('a gaveta de verdade: carregando não mostra o primário; a ligação passa
     assert.match(rodape, /useEffect\(\(\) => \{\s*focado\.current\?\.focus\(\);\s*\}, \[\]\);/, 'a confirmação foca o [Cancelar]');
 });
 
-test('a pasta Revisao/ com o rodapé novo: nenhum marketplace, Portal, Publicador nem "agente"; só cores trilha-*; não importa Cadastro/', () => {
+test('a pasta Revisao/ com o rodapé novo: nenhum marketplace, Portal, Publicador nem "robô"; só cores trilha-*; não importa Cadastro/', () => {
     const fonte = lerSemComentarios('resources/js/Components/Trilha/Revisao/PublicarAnuncio.jsx');
     assert.equal(fonte.match(PROIBIDO), null);
     assert.equal(fonte.match(/\btext-white\b|\bbg-white\/|\b(?:bg|text|border)-ecf-|\[#[0-9a-fA-F]{3,8}\]/), null);

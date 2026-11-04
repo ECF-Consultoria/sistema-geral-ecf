@@ -54,7 +54,7 @@ import { AvisoNaGaveta, ConfirmacaoNaGaveta, EscolhaSegmentada } from '@/Compone
 //    "Já está na Lista · Abrir". Não há prévia: nada é sobrescrito (D34/D38).
 // 2. Marca até 20 e "Importar N": cada anúncio vira um Job (na fila da IA, D36).
 //    A gaveta pergunta o estado a cada 2 s enquanto há algo andando; cada linha
-//    mostra o passo e, no fim, "novo" com o título que o robô escreveu, o que
+//    mostra o passo e, no fim, "novo" com o título que o agente escreveu, o que
 //    ainda falta na Lista e [Abrir] — ou o motivo de ter ficado de fora.
 // 3. Ao terminar, a Lista recarrega (e a lista dos anúncios também, para o
 //    "Já está na Lista" aparecer). O produto que fica pronto no meio do caminho
@@ -454,7 +454,7 @@ function ItemDaImportacao({ item, idsNaLista, onAbrir }) {
     const detalhes = novo ? detalhesDoNovo(item) : [];
     const temProduto = (novo || chave === 'na_lista') && item?.produto_id !== null && item?.produto_id !== undefined && item?.produto_id !== '';
     const podeAbrir = temProduto && estaNaLista(idsNaLista, item.produto_id);
-    // O título do item é o do anúncio até o robô escrever o de venda (§18.4): no "novo", o nome do produto vai em cima.
+    // O título do item é o do anúncio até o agente escrever o de venda (§18.4): no "novo", o nome do produto vai em cima.
     const nome = item?.nome || item?.titulo_do_anuncio || (novo ? null : item?.titulo) || item?.mlb;
     const tituloEscrito = novo && typeof item?.titulo === 'string' ? item.titulo.trim() : '';
 

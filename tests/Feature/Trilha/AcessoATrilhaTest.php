@@ -330,7 +330,7 @@ class AcessoATrilhaTest extends TestCase
         foreach ($props['ofertas'] as $oferta) {
             $this->assertEqualsCanonicalizing(self::CAMPOS_DA_OFERTA, array_keys($oferta));
         }
-        // A trava do cadastro (3ª entrega) diz o que o robô já fez: o cliente não a recebe em nível nenhum.
+        // A trava do cadastro (3ª entrega) diz o que o agente já fez: o cliente não a recebe em nível nenhum.
         $this->assertNotContains('cadastro_travado', self::chaves($props));
         $this->assertNaoChegaNadaDaEquipe($resposta);
     }
@@ -360,7 +360,7 @@ class AcessoATrilhaTest extends TestCase
     /**
      * Revisão de 31/10/2026 (P1): a lista de campos valia só no 1º nível de cada item — o que o serviço pusesse
      * DENTRO de um componente, ou numa onda, chegava inteiro à porta do cliente. E as ondas são justamente o que a
-     * próxima entrega vai preencher ("robô na data", com responsável).
+     * próxima entrega vai preencher ("agente na data", com responsável).
      */
     /**
      * 2ª entrega (02/11/2026): com a trilha de trabalho ligada, só a equipe que pode escrever no Portal da empresa
@@ -402,7 +402,7 @@ class AcessoATrilhaTest extends TestCase
             // 4a: a prévia do anúncio do painel `v:{item}`, com o marcador no lugar da chave do item (relativa).
             // 4c: o preço ajustável dela (PUT), com o mesmo marcador. 4d: aprovar e publicar (POST) e o acompanhamento (GET) —
             // em toda loja com escrita (a guarda da #459 é do servidor), nunca na porta do cliente (`escrita` nula abaixo).
-            // 4b: o "Pedir ajuste ao robô" (POST) e o estado dele (GET), no mesmo endereço.
+            // 4b: o "Pedir ajuste ao agente" (POST) e o estado dele (GET), no mesmo endereço.
             'revisao'       => [
                 'previa'     => "/trilha/{$empresa->id}/ofertas/__ITEM__/previa",
                 'preco'      => "/trilha/{$empresa->id}/ofertas/__ITEM__/preco",

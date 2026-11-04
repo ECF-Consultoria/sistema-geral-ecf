@@ -46,7 +46,7 @@ use Illuminate\Validation\ValidationException;
  *
  * ### O pedido (`POST …/publicar`), nesta ordem (§19.13)
  * 404 chaves → 403 escrita (o controller) → 404 item → 403 fora da #459 → 409 (na fila → publicando → publicado → fora
- * da revisão → o robô refazendo o texto (4b); depois a `revisao` velha, SEM `travado`, com `revisao_atual`; e a prévia
+ * da revisão → o agente refazendo o texto (4b); depois a `revisao` velha, SEM `travado`, com `revisao_atual`; e a prévia
  * não pronta) → 422 (Premium =
  * Clássico em TODAS as cores ativas — D46, a régua do `premium_igual` da prévia, a mesma do {@see PrecoNaTrilha}; a 4c
  * confere só as cores tocadas). Passou: grava o estado `conferindo` e enfileira o {@see PublicarPelaTrilhaJob}.
@@ -191,7 +191,7 @@ class PublicacaoNaTrilha
         if (! $peloCliente) {
             AprovacaoDoClienteNaTrilha::exigirAprovacaoParaPublicar($empresa, $r);
         }
-        // 4b: com o robô refazendo o texto, a conferência validaria o texto velho e a escrita dele viria depois — 409 até
+        // 4b: com o agente refazendo o texto, a conferência validaria o texto velho e a escrita dele viria depois — 409 até
         // o ajuste terminar (a tela já desliga o botão; esta é a regra do servidor).
         if (AjusteDoRoboNaTrilha::andandoNoPub((int) $pub->id)) {
             throw new HttpResponseException(response()->json(['message' => AjusteDoRoboNaTrilha::MSG_PUBLICAR_COM_AJUSTE], 409));
@@ -291,7 +291,7 @@ class PublicacaoNaTrilha
 
             return 'ocupado';
         }
-        // A pessoa aprovou a revisão N: a N+1 (o preço de outra aba, o robô) ela não viu.
+        // A pessoa aprovou a revisão N: a N+1 (o preço de outra aba, o agente) ela não viu.
         if ((int) $r->revisao !== $revisao) {
             self::gravar($pubId, self::estado(self::RECUSADO, self::MSG_MUDOU));
 
@@ -626,15 +626,16 @@ class PublicacaoNaTrilha
     }
 
     /**
-     * O texto da conferência e da fila sem o nome da plataforma, do Publicador, do Portal nem do agente (D59 — a trilha
-     * vira a porta do cliente). "Mercado Livre" → "canal de venda" (o artigo masculino de antes continua certo: "o",
-     * "do", "no", "pelo").
+     * O texto da conferência e da fila sem o nome da plataforma, do Publicador nem do Portal (D59 — a trilha vira a porta
+     * do cliente). "Mercado Livre" → "canal de venda" (o artigo masculino de antes continua certo: "o", "do", "no",
+     * "pelo"). R9 (04/11/2026): a IA da trilha é "o agente" para a equipe E o cliente — o "agente" que vem do Publicador
+     * passa como está, e um "robô" vira "agente" (também masculino: os artigos seguem certos).
      */
     public static function neutro(string $texto): string
     {
         $texto = trim((string) preg_replace(
-            ['/\bMercado\s+Livre\b/iu', '/\bPublicador\b/iu', '/\bPortal\b/iu', '/\bagente\b/iu'],
-            ['canal de venda', 'sistema', 'cadastro', 'robô'],
+            ['/\bMercado\s+Livre\b/iu', '/\bPublicador\b/iu', '/\bPortal\b/iu', '/\bRob\x{F4}\b/u', '/\brob\x{F4}\b/iu'],
+            ['canal de venda', 'sistema', 'cadastro', 'Agente', 'agente'],
             $texto,
         ));
 

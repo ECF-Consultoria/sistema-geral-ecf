@@ -10,7 +10,7 @@
 //    esse não se marca: "Já está na Lista · Abrir". Não há prévia separada (D38).
 // 2. "Importar N" (até 20 por clique) manda os MLBs; cada um vira um Job na fila
 //    da IA (D36). A tela pergunta o estado a cada 2 s enquanto há algo andando;
-//    cada linha mostra o passo e, no fim, "novo" (com o título que o robô
+//    cada linha mostra o passo e, no fim, "novo" (com o título que o agente
 //    escreveu e o que ainda falta na Lista), "já estava na Lista", ou o motivo
 //    de ter ficado de fora (`recusado`/`erro`: nada foi gravado).
 // 3. Ao terminar, a Lista recarrega.

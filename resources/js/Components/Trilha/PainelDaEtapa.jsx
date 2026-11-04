@@ -50,7 +50,7 @@ const LINKS_DO_PAINEL = {
 const VAZIO = {
     mapa: 'Nada para mapear: os produtos completos já viraram ofertas.',
     plano: 'Nenhuma oferta esperando o planejamento.',
-    robo: 'O robô não tem nada na fila.',
+    robo: 'O agente não tem nada na fila.',
     revisao: 'Nada para revisar agora.',
     lanc: 'Nenhuma oferta no ar ainda.',
 };
@@ -83,7 +83,7 @@ const NOTA = {
     // entrega" — o cliente também lê esta nota.
     plano: {
         titulo: 'Ondas: ainda não ligadas nesta loja',
-        texto: 'Com as ondas ligadas, cada oferta entra numa onda com data, e o robô começa no dia dela. Por enquanto, a oferta espera aqui até a preparação do anúncio começar.',
+        texto: 'Com as ondas ligadas, cada oferta entra numa onda com data, e o agente começa no dia dela. Por enquanto, a oferta espera aqui até a preparação do anúncio começar.',
     },
     lanc: {
         titulo: 'Protocolo e Jardinagem: em outro módulo',

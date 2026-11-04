@@ -39,15 +39,15 @@ export const ETAPAS = [
         titulo: 'Planejamento',
         dono: 'Estrategista',
         unidade: 'ofertas',
-        // A data da onda é o dia em que o robô COMEÇA — nunca "prazo" nem "data de publicação" (decisão de
+        // A data da onda é o dia em que o agente COMEÇA — nunca "prazo" nem "data de publicação" (decisão de
         // 31/10/2026), com ou sem a trilha de trabalho ligada: o cliente também lê este texto.
-        pronto: 'Cada oferta numa onda, com o dia em que o robô começa.',
-        faz: 'As ofertas entram em ondas com data: no dia da onda o robô começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.',
+        pronto: 'Cada oferta numa onda, com o dia em que o agente começa.',
+        faz: 'As ofertas entram em ondas com data: no dia da onda o agente começa a preparar. Normalmente as simples vêm primeiro, mas a ordem depende da lista do cliente.',
     },
     {
         chave: 'robo',
         titulo: 'Preparação automática',
-        dono: 'Robô',
+        dono: 'Agente',
         unidade: 'ofertas',
         pronto: 'Título, descrição e imagens prontos: o anúncio fica pré-pronto.',
         faz: 'O agente monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
@@ -77,7 +77,7 @@ export const ETAPA_POR_CHAVE = Object.fromEntries(ETAPAS.map((e) => [e.chave, e]
 
 /**
  * Os textos que mudam com a TRILHA DE TRABALHO (2ª entrega, 02/11/2026: o
- * mapeamento e as ondas passam a ser feitos aqui, e o robô começa no dia da
+ * mapeamento e as ondas passam a ser feitos aqui, e o agente começa no dia da
  * onda). Os do Planejamento são os mesmos nas duas (estão em `ETAPAS`). As
  * siglas são as do sistema (`-CB2`, `KT-`, `CT4-`).
  */
@@ -95,7 +95,7 @@ const TEXTOS_DA_TRILHA_DE_TRABALHO = {
         faz: 'Todo produto vira oferta simples. Aqui se decide o que combina: combo (o mesmo produto em mais unidades, SKU-CB2), kit (com outros produtos, KT-SKU1-SKU2) e combit (com outros, algum em mais unidades, CT4-SKU1-SKU2). Não precisa esperar a simples vender.',
     },
     robo: {
-        faz: 'Na data da onda, o robô monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
+        faz: 'Na data da onda, o agente monta o anúncio com a lista do cliente: título, descrição e imagens a partir das fotos.',
     },
 };
 
@@ -159,7 +159,7 @@ export const CHAVE_ML = 'e:ml';
 export const chaveDaPrevia = (oferta) => `v:${oferta.id}`;
 
 /**
- * As etapas em que a oferta tem prévia (D44): a revisão e, depois de publicada, para conferência. Antes delas o robô
+ * As etapas em que a oferta tem prévia (D44): a revisão e, depois de publicada, para conferência. Antes delas o agente
  * ainda prepara — a gaveta diz isso em vez de perguntar ao servidor.
  */
 export const ETAPAS_DA_PREVIA = ['revisao', 'lanc'];
@@ -299,7 +299,7 @@ export function comQuemEsta(dados, visao, trabalho = false) {
     return [
         { ...daLista, quantidade: n.lista, etapa: 'lista', chave: 'lista' },
         { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + paraPlanejar, etapa: 'mapa', chave: 'mapa' },
-        { dono: 'Robô', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo', chave: 'robo' },
+        { dono: 'Agente', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo', chave: 'robo' },
         { ...daRevisao, quantidade: n.revisao - comCliente, etapa: 'revisao', chave: 'revisao' },
         ...(comCliente > 0
             ? [{ dono: visao === 'cliente' ? 'Você' : 'Cliente', sigla: 'C', papel: 'cli', descricao: 'aprovar anúncios', quantidade: comCliente, etapa: 'revisao', chave: 'aprovacao' }]
@@ -359,7 +359,7 @@ export function estadoDaAprovacao(oferta) {
  * Planejamento ela pede "Abrir", não "Planejar".
  *
  * Com a trilha de trabalho (`trabalho`, 3ª entrega) quem cadastra é a equipe: o cliente só acompanha, também
- * na Lista. O produto que já andou (`travado`: o robô preparou, está na revisão ou no ar) só se lê — "Ver".
+ * na Lista. O produto que já andou (`travado`: o agente preparou, está na revisão ou no ar) só se lê — "Ver".
  *
  * 4e (§19.16): o anúncio que está com o cliente para aprovar (`aprovacao` = `com_cliente`) pede "Aprovar" ao cliente
  * — só quando a linha abre a gaveta dele (`podeAprovar`: o cliente de verdade, com o endereço) — e diz "Com o

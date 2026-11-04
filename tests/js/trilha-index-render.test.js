@@ -95,7 +95,7 @@ test('o índice desenha um cartão por empresa ligada: link da trilha, iniciais 
         assert.ok(t.includes(s), `faltou: ${s}`);
     }
     const etapas = [...saida.matchAll(/data-etapa="(\w+)"[^>]*>.*?<b[^>]*>(\d+)<\/b><span[^>]*>([^<]+)<\/span>/g)].map((m) => `${m[1]}=${m[2]} ${m[3]}`);
-    assert.deepEqual(etapas, ['lista=4 Lista', 'mapa=2 Mapeamento', 'plano=2 Planejamento', 'robo=2 Robô', 'revisao=3 Revisão', 'lanc=3 No ar']);
+    assert.deepEqual(etapas, ['lista=4 Lista', 'mapa=2 Mapeamento', 'plano=2 Planejamento', 'robo=2 Agente', 'revisao=3 Revisão', 'lanc=3 No ar']);
     // Cada etapa na cor do Mapa da loja (por style: a cor é variável do tema).
     for (const k of ['lista', 'mapa', 'plano', 'robo', 'rev', 'lanc']) assert.match(saida, new RegExp(`background:rgb\\(var\\(--t-s-${k}\\)\\)`));
     assert.match(saida, /title="Lista de produtos: 4 produtos"/);

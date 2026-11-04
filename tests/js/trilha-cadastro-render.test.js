@@ -281,7 +281,7 @@ test('produto que andou: só leitura com o motivo no topo, sem "Salvar" e sem li
     assert.match(saida, /data-campo="custo-e-embalagem" data-custo="por-cor"/);
     for (const acao of ['mais-cor', 'remover-cor', 'excluir-produto', 'adicionar-variacao']) assert.ok(!saida.includes(`data-acao="${acao}"`), acao);
     // Com categoria, a dica do título não fala em "sem categoria".
-    assert.ok(t.includes('É o título do Clássico; o robô escreve o do Premium.') && !t.includes('Sem categoria, vale o limite'));
+    assert.ok(t.includes('É o título do Clássico; o agente escreve o do Premium.') && !t.includes('Sem categoria, vale o limite'));
     assert.ok(texto(desenharGaveta(CADASTRO)).includes('Sem categoria, vale o limite de 60 letras.'));
     // As ofertas com o produto, só leitura (abrem o painel delas).
     assert.match(saida, /data-abrir="o:s-2"/);
@@ -298,7 +298,7 @@ test('409 no "Salvar" (o produto andou enquanto a gaveta estava aberta): o mesmo
 test('avisos: a onda que começou (usa IA) e o produto que já está no Publicador; erro de campo marcado e no rodapé', () => {
     const saida = desenharGaveta(CADASTRO_ONDA_COMECOU);
     const t = texto(saida);
-    assert.ok(t.includes('A Onda 1 · simples já começou: ao salvar, o robô prepara este produto com o que estiver aqui (usa IA).'));
+    assert.ok(t.includes('A Onda 1 · simples já começou: ao salvar, o agente prepara este produto com o que estiver aqui (usa IA).'));
     assert.ok(t.includes('O anúncio deste produto já está sendo montado: texto, ficha, custo e embalagem que você mudar seguem para ele; categoria e fotos, não.'));
     assert.ok(!desenharGaveta(CADASTRO).includes('data-aviso-da-onda'), 'sem onda começada, sem aviso');
     // O produto travado não mostra o aviso da onda (nada a salvar).

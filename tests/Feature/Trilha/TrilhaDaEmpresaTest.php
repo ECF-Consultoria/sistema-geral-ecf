@@ -383,7 +383,7 @@ class TrilhaDaEmpresaTest extends TestCase
         $oferta = $this->oferta($this->trilha($empresa), "c-{$p['produto']->id}-2");
         $this->assertSame(['revisao', 'Publicando agora', $fase->id], [$oferta['etapa'], $oferta['status'], $oferta['pub_produto_id']]);
 
-        // O agente não escreve o texto do kit da fase: o que falta nele é do Publicador, não "Preparando" no robô.
+        // O agente não escreve o texto do kit da fase: o que falta nele é do Publicador, não "Preparando" no agente.
         $r->update(['status' => PubRascunho::DRAFT, 'step_state' => ['resumo' => $this->resumo(2, 1)]]);
         $oferta = $this->oferta($this->trilha($empresa), "c-{$p['produto']->id}-2");
         $this->assertSame(['revisao', 'Faltam 2 itens para publicar', true], [$oferta['etapa'], $oferta['status'], $oferta['alerta']]);
@@ -627,7 +627,7 @@ class TrilhaDaEmpresaTest extends TestCase
         $this->assertSame(['robo', 'Preparando', false], $situacao($semCategoria));
         $this->assertSame(['robo', 'Preparando', false], $situacao($versaoVelha));
 
-        // Fora do robô, etapa do texto sem registro não diz nada.
+        // Fora do agente, etapa do texto sem registro não diz nada.
         $this->assertSame(['titulo' => null, 'modelo' => null, 'descricao' => null, 'imagens' => null], $this->oferta($trilha, "s-{$prePronto['produto']->id}")['preparo']);
         $this->assertSame(['titulo' => 'pronto', 'modelo' => 'pulado', 'descricao' => 'pronto', 'imagens' => null], $this->oferta($trilha, "s-{$faltamDois['produto']->id}")['preparo']);
     }
@@ -651,15 +651,15 @@ class TrilhaDaEmpresaTest extends TestCase
             'ia_preparo' => $preparo ?? $texto, 'resumo' => $this->resumo($bloqueios, 1), 'criativos_auto' => $criativos,
         ];
 
-        // O teto do dia barrou as imagens: o robô volta amanhã.
+        // O teto do dia barrou as imagens: o agente volta amanhã.
         $adiado = $this->comRascunho($empresa, 'Vaso Teto', 'VI1', $estado($teto));
         // O kit falhou por erro técnico e ainda cabe a 2ª tentativa, amanhã cedo.
         $novaTentativa = $this->comRascunho($empresa, 'Vaso Nova Tentativa', 'VI2', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 1)));
-        // As duas tentativas falharam: o robô não tenta mais sozinho.
+        // As duas tentativas falharam: o agente não tenta mais sozinho.
         $falhou = $this->comRascunho($empresa, 'Vaso Falhou', 'VI3', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 2)));
         // Teto do dia com o resumo de outra revisão: o "Pré-pronto · a conferir" também não vale.
         $adiadoVencido = $this->comRascunho($empresa, 'Vaso Teto Vencido', 'VI4', $estado($teto), 2);
-        // Teto do dia com itens faltando: segue no robô, com a conta do que falta.
+        // Teto do dia com itens faltando: segue no agente, com a conta do que falta.
         $adiadoComFalta = $this->comRascunho($empresa, 'Vaso Teto Com Falta', 'VI5', $estado($teto, 2));
         // Texto e imagens pararam juntos: um aviso só, na ordem do preparo.
         $tudoParou = $this->comRascunho($empresa, 'Vaso Tudo Parou', 'VI6', $estado($grupo($kit(MlAnuncioCriativoKit::STATUS_ERRO), 2), 0,
@@ -710,7 +710,7 @@ class TrilhaDaEmpresaTest extends TestCase
         $this->quantidadesDeCombo($empresa, $mapa['produto'], '2');
         $noAr = $this->produto($empresa, 'Bem no ar', 'Z4');
         $this->anuncioDaRegua($noAr['simples'][0], 'classico', 'MLB9000001');
-        $this->comRascunho($empresa, 'Com o robô', 'Z5', ['ia_preparo' => ['hash' => 'h', 'etapas' => ['titulo' => $this->etapa('rodando', 1)]]]);
+        $this->comRascunho($empresa, 'Com o agente', 'Z5', ['ia_preparo' => ['hash' => 'h', 'etapas' => ['titulo' => $this->etapa('rodando', 1)]]]);
         $this->comRascunho($empresa, 'Em revisão', 'Z6', ['resumo' => $this->resumo(0, 1)]);
         $semOnda = $this->produto($empresa, 'Aguardando', 'Z7');
         $this->composta($empresa, 'kit', 'KT-Z7-Z4', 'Kit aguardando', [[$semOnda['simples'][0], 1], [$noAr['simples'][0], 1]]);
@@ -723,7 +723,7 @@ class TrilhaDaEmpresaTest extends TestCase
         );
         $this->assertSame([null], array_values(array_unique(array_column(array_slice($trilha['produtos'], 3), 'etapa'))));
         $this->assertSame(
-            [['plano', 'Simples', 'Aguardando'], ['plano', 'Kit', 'Kit aguardando'], ['robo', 'Simples', 'Com o robô'],
+            [['plano', 'Simples', 'Aguardando'], ['plano', 'Kit', 'Kit aguardando'], ['robo', 'Simples', 'Com o agente'],
                 ['revisao', 'Simples', 'Em revisão'], ['lanc', 'Simples', 'Bem no ar']],
             array_map(fn ($o) => [$o['etapa'], $o['tipo'], $o['nome']], $trilha['ofertas']),
         );

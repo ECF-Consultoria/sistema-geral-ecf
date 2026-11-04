@@ -116,7 +116,7 @@ export function TermosDoTitulo({ termos, titulo, limite, onAlternar, onTentarDeN
  *   `categoria`: o bloco da categoria (`EscolhaDaCategoria`), logo abaixo do nome; `temCategoria`: há categoria na
  *   gaveta; `limite` e `termos`: os da categoria (`useCategoriaDaTrilha`) — sem eles, o contador usa 60.
  *   `tituloOriginal` (F8, D41): o título do anúncio de onde o produto foi importado — só referência, embaixo do campo
- *   (o título de venda é o que o robô escreveu; a equipe compara com o de antes).
+ *   (o título de venda é o que o agente escreveu; a equipe compara com o de antes).
  */
 export function CamposDoProduto({
     produto, listas, erros = {}, onCampo, campoDoNome = null, temCategoria = false, categoria = null, limite: limiteDaCategoria = null, termos = null,
@@ -190,8 +190,8 @@ export function CamposDoProduto({
                 contador={<Contador atual={titulo.length} limite={limite} />}
                 dica={
                     temCategoria
-                        ? 'É o título do Clássico; o robô escreve o do Premium.'
-                        : `É o título do Clássico; o robô escreve o do Premium. Sem categoria, vale o limite de ${LIMITE_TITULO_PADRAO} letras.`
+                        ? 'É o título do Clássico; o agente escreve o do Premium.'
+                        : `É o título do Clássico; o agente escreve o do Premium. Sem categoria, vale o limite de ${LIMITE_TITULO_PADRAO} letras.`
                 }
             >
                 {(controle) => (

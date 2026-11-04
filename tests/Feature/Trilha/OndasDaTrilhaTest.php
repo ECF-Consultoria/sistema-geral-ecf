@@ -127,7 +127,7 @@ class OndasDaTrilhaTest extends TestCase
         $s = "s-{$a['produto']->id}";
 
         $this->putJson($this->url('planejamento'), ['itens' => [$s], 'onda_id' => $onda1->id])
-            ->assertOk()->assertJsonPath('mensagem', 'Na Onda 1. O robô começa em 08/11.');
+            ->assertOk()->assertJsonPath('mensagem', 'Na Onda 1. O agente começa em 08/11.');
         $this->assertSame($onda1->id, (int) TrilhaOndaItem::first()->onda_id);
 
         $this->putJson($this->url('planejamento'), ['itens' => [$s], 'onda_id' => $onda2->id])->assertOk();
@@ -161,7 +161,7 @@ class OndasDaTrilhaTest extends TestCase
         $s = "s-{$a['produto']->id}";
 
         $this->putJson($this->url('planejamento'), ['itens' => [$s], 'onda_id' => $hoje->id])
-            ->assertOk()->assertJsonPath('mensagem', 'Na Onda Hoje. Ela já começou: o robô foi chamado.');
+            ->assertOk()->assertJsonPath('mensagem', 'Na Onda Hoje. Ela já começou: o agente foi chamado.');
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 1);
         $this->assertNotNull(TrilhaOndaItem::first()->pedido_em);
 

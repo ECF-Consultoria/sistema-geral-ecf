@@ -38,7 +38,7 @@ class OndasDaTrilhaController extends Controller
 
         $onda = $this->ondas->criar($empresa, $request->user(), $dados['nome'], $dados['data']);
 
-        // A onda nasce VAZIA: o texto não diz que o robô foi chamado — ele começa para o que entrar nela.
+        // A onda nasce VAZIA: o texto não diz que o agente foi chamado — ele começa para o que entrar nela.
         return response()->json([
             'onda'     => self::onda($onda),
             'mensagem' => $onda->comecou()
@@ -94,8 +94,8 @@ class OndasDaTrilhaController extends Controller
             'mensagem' => match (true) {
                 $r['mudados'] === [] => 'Nada mudou.',
                 $onda === null       => $r['sem_onda'] ? 'Tirada da onda: volta para Sem onda.' : 'Tirada da onda.',
-                $onda->comecou()     => "Na {$onda->nome}. Ela já começou: o robô foi chamado.",
-                default              => "Na {$onda->nome}. O robô começa em ".OndasDaTrilha::diaCurto($onda->dia()).'.',
+                $onda->comecou()     => "Na {$onda->nome}. Ela já começou: o agente foi chamado.",
+                default              => "Na {$onda->nome}. O agente começa em ".OndasDaTrilha::diaCurto($onda->dia()).'.',
             },
         ]);
     }
@@ -128,7 +128,7 @@ class OndasDaTrilhaController extends Controller
         $n = count($r['mudados']);
         $mensagem = match (true) {
             $n > 0 => ($n === 1 ? '1 oferta' : "{$n} ofertas")." na {$onda->nome}. "
-                .($onda->comecou() ? 'Ela já começou: o robô foi chamado.' : 'O robô começa em '.OndasDaTrilha::diaCurto($onda->dia()).'.'),
+                .($onda->comecou() ? 'Ela já começou: o agente foi chamado.' : 'O agente começa em '.OndasDaTrilha::diaCurto($onda->dia()).'.'),
             $recusadas > 0 => "Nenhuma oferta entrou na {$onda->nome}.",
             default        => "Nada mudou: já estavam na {$onda->nome}.",
         };

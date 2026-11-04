@@ -1,7 +1,7 @@
-// ─── Trilha de produtos — pedir ajuste ao robô pela prévia (4ª entrega, fatia 4b) ─
+// ─── Trilha de produtos — pedir ajuste ao agente pela prévia (4ª entrega, fatia 4b) ─
 //
 // As contas PURAS do ajuste na gaveta `v:{item}` (`Components/Trilha/Revisao/AjusteDoRobo.jsx`):
-// a URL, quando o botão [Pedir ajuste ao robô] aparece (e quando fica desligado),
+// a URL, quando o botão [Pedir ajuste ao agente] aparece (e quando fica desligado),
 // a escolha "O que refazer?" (título e/ou descrição — nunca texto livre), o corpo
 // do pedido, o texto de cada situação do ajuste e o resultado por parte, quando
 // perguntar de novo, o que cada erro quer dizer e as travas que o ajuste põe no
@@ -29,12 +29,12 @@
 // publicação que travam são CÓPIAS — o teste confere que são iguais às de lá.
 //
 // Sem React, sem axios e sem classe do Tailwind (arquivo `.js`). Os textos não
-// citam o marketplace, o Portal nem o "agente" (D59): é "o robô".
+// citam o marketplace nem o Portal (D59); quem refaz é "o agente" (R9, 04/11/2026: "robô" virou "agente").
 
 /** O marcador do id do item nas URLs da revisão (§19.4) — o mesmo `MARCADOR_DO_ITEM` da prévia. */
 export const MARCADOR_DO_ITEM = '__ITEM__';
 
-/** As partes que o robô refaz, na ordem do contrato (e do corpo do pedido). Nada além delas: sem texto livre. */
+/** As partes que o agente refaz, na ordem do contrato (e do corpo do pedido). Nada além delas: sem texto livre. */
 export const PARTES = Object.freeze(['titulo', 'descricao']);
 
 /** As situações do ajuste (§19.14). */
@@ -62,7 +62,7 @@ export const INTERVALO_DA_CONSULTA_MS = 3000;
 /** O teto de perguntas seguidas (30 min a cada 3 s): a gaveta esquecida aberta não pergunta para sempre. */
 export const MAX_CONSULTAS = 600;
 
-export const ROTULO_DO_PEDIR = 'Pedir ajuste ao robô';
+export const ROTULO_DO_PEDIR = 'Pedir ajuste ao agente';
 export const PERGUNTA_DA_ESCOLHA = 'O que refazer?';
 export const ROTULO_DO_REFAZER = 'Refazer';
 export const ROTULO_ENVIANDO = 'Enviando…';
@@ -80,26 +80,26 @@ export const DICA_DA_ESCOLHA = 'Escolha o título, a descrição ou os dois.';
 export const MSG_MUDOU = 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.';
 
 /** Os outros 409 sem mensagem própria. */
-export const MSG_CONFLITO = 'O robô não pode refazer este anúncio agora. Recarregue a página para ver onde ele está.';
+export const MSG_CONFLITO = 'O agente não pode refazer este anúncio agora. Recarregue a página para ver onde ele está.';
 
 /** O 422 sem mensagem que sirva. */
-export const MSG_CONFIRA = 'Confira o que pediu ao robô e tente de novo.';
+export const MSG_CONFIRA = 'Confira o que pediu ao agente e tente de novo.';
 
 /** O 403 sem mensagem própria. */
 export const MSG_PROIBIDO = 'Você não tem permissão para pedir ajuste neste anúncio.';
 
 /** Passou do teto de perguntas: o ajuste segue no servidor, a gaveta só para de olhar. */
-export const MSG_PAROU = 'Parei de acompanhar por aqui. O robô continua o ajuste mesmo com a tela fechada.';
+export const MSG_PAROU = 'Parei de acompanhar por aqui. O agente continua o ajuste mesmo com a tela fechada.';
 
 /** Os avisos da página quando a gaveta vê o ajuste terminar. */
-export const AVISO_TERMINOU = 'O robô terminou o ajuste.';
-export const AVISO_FALHOU = 'O ajuste do robô não deu certo.';
+export const AVISO_TERMINOU = 'O agente terminou o ajuste.';
+export const AVISO_FALHOU = 'O ajuste do agente não deu certo.';
 
-/** A caixa "Preço" só leitura enquanto o robô refaz (o pedido sobe a revisão: o preço salvo no meio levaria 409). */
-export const TRAVA_DO_PRECO = 'O robô está refazendo o anúncio: o preço fica só para leitura até ele terminar.';
+/** A caixa "Preço" só leitura enquanto o agente refaz (o pedido sobe a revisão: o preço salvo no meio levaria 409). */
+export const TRAVA_DO_PRECO = 'O agente está refazendo o anúncio: o preço fica só para leitura até ele terminar.';
 
-/** O [Aprovar e publicar] desligado enquanto o robô refaz (publicaria o texto de antes). */
-export const TRAVA_DA_PUBLICACAO = 'Espere o robô terminar o ajuste antes de publicar.';
+/** O [Aprovar e publicar] desligado enquanto o agente refaz (publicaria o texto de antes). */
+export const TRAVA_DA_PUBLICACAO = 'Espere o agente terminar o ajuste antes de publicar.';
 
 const DA_PARTE = {
     titulo: {
@@ -107,14 +107,14 @@ const DA_PARTE = {
         minusculo: 'título',
         refeito: 'Título refeito.',
         mantido: 'Título mantido: a equipe editou.',
-        erro: 'Título: o robô não conseguiu refazer.',
+        erro: 'Título: o agente não conseguiu refazer.',
     },
     descricao: {
         nome: 'Descrição',
         minusculo: 'descrição',
         refeito: 'Descrição refeita.',
         mantido: 'Descrição mantida: a equipe editou.',
-        erro: 'Descrição: o robô não conseguiu refazer.',
+        erro: 'Descrição: o agente não conseguiu refazer.',
     },
 };
 
@@ -200,7 +200,7 @@ const dizMais = (mensagem, titulo) => !!mensagem && !semPontaFinal(mensagem).sta
 
 /**
  * O resultado por parte (só as que terminaram, na ordem do contrato): "Título refeito.", "Descrição mantida: a equipe
- * editou.", "Título: o robô não conseguiu refazer." — e, no erro, o porquê do servidor (quando não repete o geral).
+ * editou.", "Título: o agente não conseguiu refazer." — e, no erro, o porquê do servidor (quando não repete o geral).
  *
  * @returns {Array<{parte: string, nome: string, situacao: string, texto: string, detalhe: ?string, tom: string}>}
  */
@@ -219,7 +219,7 @@ export function resultadosDoAjuste(ajuste) {
 }
 
 /**
- * O que o rodapé mostra do ajuste: o título neutro da situação ("Robô refazendo · título, descrição", D60 — só as partes
+ * O que o rodapé mostra do ajuste: o título neutro da situação ("Agente refazendo · título, descrição", D60 — só as partes
  * que ainda andam), o tom da pílula, o detalhe (no erro, a causa que o servidor manda), o resultado por parte e se
  * ainda anda. Null sem ajuste.
  *
@@ -233,10 +233,10 @@ export function vistaDoAjuste(ajuste) {
     let titulo;
     let tom;
     if (a.situacao === 'fila') {
-        titulo = quais ? `Na fila do robô · ${quais}` : 'Na fila do robô';
+        titulo = quais ? `Na fila do agente · ${quais}` : 'Na fila do agente';
         tom = 'run';
     } else if (a.situacao === 'fazendo') {
-        titulo = quais ? `Robô refazendo · ${quais}` : 'Robô refazendo';
+        titulo = quais ? `Agente refazendo · ${quais}` : 'Agente refazendo';
         tom = 'run';
     } else if (a.situacao === 'feito') {
         titulo = AVISO_TERMINOU;
@@ -315,17 +315,17 @@ export function textoDosRestantes(restantes) {
 // ─── O botão ─────────────────────────────────────────────────────────────────
 
 /**
- * O robô escreveu o texto deste anúncio? O `preparo` da prévia (a régua da linha, só na porta da equipe) traz a pílula do
- * título e da descrição quando o preparo do robô passou por elas; no kit da fase N e no rascunho que o robô nunca
+ * O agente escreveu o texto deste anúncio? O `preparo` da prévia (a régua da linha, só na porta da equipe) traz a pílula do
+ * título e da descrição quando o preparo do agente passou por elas; no kit da fase N e no rascunho que o agente nunca
  * preparou, as duas vêm nulas.
  */
 export const textoDoRobo = (previa) => previa?.preparo?.titulo != null || previa?.preparo?.descricao != null;
 
 /**
- * O botão secundário [Pedir ajuste ao robô], ou null quando ele não aparece. Aparece só para quem recebeu a URL, com a
+ * O botão secundário [Pedir ajuste ao agente], ou null quando ele não aparece. Aparece só para quem recebeu a URL, com a
  * prévia pronta (e não o 409 dela), o item NA REVISÃO, sem publicação andando ou feita (conferindo, na fila, publicando,
  * publicado — avisos, recusado e erro deixam ajustar e tentar de novo) e sem ajuste andando. No limite do dia (0
- * restantes) ou com preço digitado e não salvo, fica desligado com a dica; com 0 e um texto que o robô não escreveu
+ * restantes) ou com preço digitado e não salvo, fica desligado com a dica; com 0 e um texto que o agente não escreveu
  * (`textoDoRobo`), some. `ajuste` e `publicacao` são os que valem agora (os da gaveta, ou os da prévia).
  *
  * @returns {?{rotulo: string, desligado: boolean, dica: ?string}}
@@ -337,8 +337,8 @@ export function acaoDoAjuste({ escrita, previa, oferta = null, ajuste = null, pu
     if (PUBLICACAO_QUE_TRAVA.includes(publicacao?.situacao)) return null;
     if (emAndamento(ajuste)) return null;
     const n = numero(restantes);
-    // O servidor manda 0 também quando o robô não tem o que refazer (o kit da fase N, o rascunho sem o preparo dele):
-    // com 0 e nenhum texto do robô no `preparo`, o botão some — "limite atingido" seria mentira.
+    // O servidor manda 0 também quando o agente não tem o que refazer (o kit da fase N, o rascunho sem o preparo dele):
+    // com 0 e nenhum texto do agente no `preparo`, o botão some — "limite atingido" seria mentira.
     if (n !== null && n <= 0 && !textoDoRobo(previa)) return null;
     let dica = null;
     if (n !== null && n <= 0) dica = DICA_DO_LIMITE;
@@ -436,7 +436,7 @@ export function estadoDepoisDaConsulta(estado, resposta) {
     return resposta?.ajuste === undefined ? base : { ...base, ajuste: resposta.ajuste };
 }
 
-// ─── As travas enquanto o robô refaz ────────────────────────────────────────
+// ─── As travas enquanto o agente refaz ────────────────────────────────────────
 
 /** A caixa "Preço" só leitura enquanto o ajuste anda (ou o pedido sai), com o porquê; null = segue a regra dela. */
 export const travaDoPreco = (ajuste, enviando = false) => (enviando || emAndamento(ajuste) ? TRAVA_DO_PRECO : null);

@@ -15,7 +15,7 @@ use Illuminate\Support\Carbon;
  * (decisão do usuário de 31/10/2026: "o combo não espera a simples vender; se o Publicador precisar da simples, o
  * agente a prepara antes"). Fora da trilha de trabalho o Kit N continua nascendo só com a Fase 1 PUBLICADA.
  *
- * Pronta = o robô terminou: rascunho em DRAFT ou VALIDATED (nem publicando, nem publicado, nem com falha), o texto
+ * Pronta = o agente terminou: rascunho em DRAFT ou VALIDATED (nem publicando, nem publicado, nem com falha), o texto
  * do preparo completo para os fatos de agora (`situacaoDoTexto`) e as imagens automáticas resolvidas — nada no teto
  * do dia, nada esperando nova tentativa, nenhum kit ainda andando e, com elas ligadas, o Job delas já rodado (ou o
  * prazo da espera vencido). O Kit N é uma CÓPIA do rascunho da Simples no instante em que nasce

@@ -297,7 +297,7 @@ class CustoDaTrilhaTest extends TestCase
         $pub = $this->grupoNoPublicador($empresa, $a);
         $r = $this->rascunhoDoPub($pub, PubRascunho::DRAFT);
         $this->itemNaOnda($this->onda($empresa, '2026-11-20', 'Onda futura'), "s-{$a['produto']->id}");
-        $this->assertSame(PortaoDaOnda::AGUARDANDO, app(PreparoIaDoRascunhoService::class)->avaliarIa($pub->fresh()), 'o robô espera a onda');
+        $this->assertSame(PortaoDaOnda::AGUARDANDO, app(PreparoIaDoRascunhoService::class)->avaliarIa($pub->fresh()), 'o agente espera a onda');
 
         // Abrir o editor (descrição vazia, texto do cliente) não gera a descrição paga sozinho antes da data.
         $this->assertNull(app(DescricaoIaService::class)->pedir($r->fresh(), automatico: true));
@@ -373,7 +373,7 @@ class CustoDaTrilhaTest extends TestCase
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->soItens !== null && $this->mesmos([$s, $c], $j->soItens));
         Queue::assertNotPushed(CriarCombosDoPlanejamentoJob::class);
 
-        // O robô termina a Simples no dia seguinte (o teto do dia), já fora da janela: o Kit N nasce mesmo assim.
+        // O agente termina a Simples no dia seguinte (o teto do dia), já fora da janela: o Kit N nasce mesmo assim.
         $this->agora('2026-11-13 00:07:00');
         $this->textoPronto($grupo->rascunho);
         $this->soltura()->daEmpresa($this->empresaP);
@@ -449,7 +449,7 @@ class CustoDaTrilhaTest extends TestCase
     }
 
     /**
-     * O produto de três cores do Planejamento com a Simples em DRAFT (o robô ainda não fez o texto) e o Combo 2 aceito,
+     * O produto de três cores do Planejamento com a Simples em DRAFT (o agente ainda não fez o texto) e o Combo 2 aceito,
      * os dois numa onda de 05/11 que já foi solta e pedida (entraram na véspera).
      */
     private function comboNoPlanejamento(): PubProduto

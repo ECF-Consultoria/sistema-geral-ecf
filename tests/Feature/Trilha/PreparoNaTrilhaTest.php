@@ -71,7 +71,7 @@ class PreparoNaTrilhaTest extends TestCase
         // O preparo de sempre, com o dublê da IA: título, Modelo e descrição `ok`.
         $this->salvarERodar($this->p);
         $this->pub = $this->pubDo($this->p);
-        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o robô esperaria a onda).
+        // A marca de "agendado" do save (80 s) vence; e só agora a trilha liga (com ela o agente esperaria a onda).
         Carbon::setTestNow(now()->addMinutes(5));
         config(['trilha.empresas' => [$this->empresa->id], 'trilha.trabalho.empresas' => [$this->empresa->id]]);
         $this->dev = User::factory()->create(['role' => 'admin', 'active' => true]);
@@ -297,7 +297,7 @@ class PreparoNaTrilhaTest extends TestCase
         DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado, JSON_UNESCAPED_UNICODE)]);
     }
 
-    /** As imagens automáticas falharam duas vezes (o robô não tenta mais sozinho). */
+    /** As imagens automáticas falharam duas vezes (o agente não tenta mais sozinho). */
     private function imagensFalharam(): void
     {
         $kit = MlAnuncioCriativoKit::create(['token' => Str::random(32), 'status' => MlAnuncioCriativoKit::STATUS_ERRO]);

@@ -1093,7 +1093,7 @@ class CadastroNaTrilha
                 'eixo_2'    => $primeira['eixo_2'] ?? null,
                 'origem_ml' => ($primeira['origem_ml'] ?? null) !== null,
                 // F8 (D41): o título do anúncio de onde o produto veio, só como referência para a equipe comparar com o do
-                // robô. Nulo no produto que não veio do ML (esse não gasta a consulta).
+                // agente. Nulo no produto que não veio do ML (esse não gasta a consulta).
                 'titulo_do_anuncio' => ($primeira['origem_ml'] ?? null) !== null ? $this->tituloDoAnuncio($empresa, $produto) : null,
             ],
             'variacoes' => array_map(fn (array $l) => [
@@ -1161,7 +1161,7 @@ class CadastroNaTrilha
 
     /**
      * O que a trilha sabe do produto, lido de uma vez: a trava, se a Simples dele andou, a onda já começada de um item
-     * dele que ainda não andou (salvar, então, faz o robô preparar com o que estiver aqui) e a marca do mapeamento.
+     * dele que ainda não andou (salvar, então, faz o agente preparar com o que estiver aqui) e a marca do mapeamento.
      *
      * @return array{trava: ?array{chave: string, nome: string}, simples_andou: bool, onda_comecou: ?array{id: int, nome: string, data: string}, mapeado_em: ?string}
      */
@@ -1196,8 +1196,8 @@ class CadastroNaTrilha
     /** O texto da trava, para a gaveta e para o 409. */
     private static function motivoDaTrava(string $nomeDoItem): string
     {
-        return "A oferta “{$nomeDoItem}” já saiu do Planejamento (o robô já preparou, está na revisão ou no ar). "
-            .'Mudar o cadastro agora faria o robô refazer texto e imagens e não muda o anúncio no ar.';
+        return "A oferta “{$nomeDoItem}” já saiu do Planejamento (o agente já preparou, está na revisão ou no ar). "
+            .'Mudar o cadastro agora faria o agente refazer texto e imagens e não muda o anúncio no ar.';
     }
 
     /**

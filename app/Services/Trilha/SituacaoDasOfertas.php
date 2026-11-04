@@ -111,11 +111,11 @@ class SituacaoDasOfertas
     public const EM_ANALISE_HORAS = 24;
 
     /**
-     * D60 (4ª entrega, 4b, 04/11/2026): o status da linha enquanto um "Pedir ajuste ao robô" está em `fila`/`fazendo` —
-     * "Robô refazendo · título, descrição" (as partes que ainda andam), na revisão e sem alerta
+     * D60 (4ª entrega, 4b, 04/11/2026): o status da linha enquanto um "Pedir ajuste ao agente" está em `fila`/`fazendo` —
+     * "Agente refazendo · título, descrição" (as partes que ainda andam), na revisão e sem alerta
      * ({@see AjusteDoRoboNaTrilha::refazendoEmLote()}). Mudou o texto, a tela confere o prefixo.
      */
-    public const REFAZENDO = 'Robô refazendo';
+    public const REFAZENDO = 'Agente refazendo';
 
     /** R4: a causa da etapa que DESISTIU (o anúncio ficou em uso — editor aberto, na fila — ou o agente pausado). */
     public const DESISTIU = 'desistiu';
@@ -142,7 +142,7 @@ class SituacaoDasOfertas
      * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>  $daRegua  oferta → anúncios
      * @param  array<int, array{status: ?string, criado_em: ?Carbon}>  $kitsDeImagem
      * @param  array<int, true>  $agendados  estrutura_produto_id com o preparo agendado
-     * @param  array<int, list<string>>  $refazendo  pub → as partes que o robô está refazendo a pedido da revisão (4b, D60)
+     * @param  array<int, list<string>>  $refazendo  pub → as partes que o agente está refazendo a pedido da revisão (4b, D60)
      * @param  array<int, array{status: string, alerta: bool}>  $aprovacoes  pub → o status da aprovação do cliente (4e)
      * @param  array<int, true>  $deNovo  pub → o [Tentar de novo] da preparação pedido e ainda na fila (R4)
      */
@@ -226,7 +226,7 @@ class SituacaoDasOfertas
             self::kitsDeImagem($rascunhos),
             self::agendados($produtoIds),
             now(),
-            // 4b (D60): os ajustes pedidos ao robô em andamento — uma leitura de cache para todos os anúncios com rascunho.
+            // 4b (D60): os ajustes pedidos ao agente em andamento — uma leitura de cache para todos os anúncios com rascunho.
             AjusteDoRoboNaTrilha::refazendoEmLote(array_keys($rascunhos)),
             // 4e: a aprovação do cliente — só na loja da chave (sem ela, nenhuma consulta).
             AprovacaoDoClienteNaTrilha::statusEmLote($empresa, $rascunhos),
@@ -362,14 +362,14 @@ class SituacaoDasOfertas
         // 4e: a aprovação do cliente — "Com o cliente para aprovar", "O cliente pediu ajuste", "Aprovado pelo cliente · …".
         // Só no item na revisão, sem anúncio e com o rascunho ainda não publicado (publicando, publicado e "a publicação
         // falhou" seguem a régua de sempre — o combo lê esses textos para saber se a Simples ficou pronta). A etapa não
-        // muda; o D60 abaixo vence (o robô refazendo é o que está acontecendo agora).
+        // muda; o D60 abaixo vence (o agente refazendo é o que está acontecendo agora).
         $aprovacao = $principal !== null ? ($this->aprovacoes[$principal] ?? null) : null;
         if ($aprovacao !== null && $anuncios === [] && $r !== null && $decisao['etapa'] === 'revisao'
             && in_array($r->status, [PubRascunho::DRAFT, PubRascunho::VALIDATED], true)) {
             $decisao = ['etapa' => 'revisao', 'status' => $aprovacao['status'], 'alerta' => $aprovacao['alerta']];
         }
-        // D60 (4b): a revisão pediu ajuste ao robô e ele ainda está refazendo — o item FICA na revisão, com o que está sendo
-        // refeito. Sem isto, a etapa da escrita adiada (ou o resumo vencido pela revisão nova) o devolveria ao robô
+        // D60 (4b): a revisão pediu ajuste ao agente e ele ainda está refazendo — o item FICA na revisão, com o que está sendo
+        // refeito. Sem isto, a etapa da escrita adiada (ou o resumo vencido pela revisão nova) o devolveria ao agente
         // ("Preparando"). Só enquanto o anúncio não está no ar nem publicando (aí vale a régua de sempre).
         $refazendo = $principal !== null ? ($this->refazendo[$principal] ?? null) : null;
         if ($refazendo !== null && $anuncios === [] && $r !== null && in_array($decisao['etapa'], ['robo', 'revisao'], true)
@@ -386,7 +386,7 @@ class SituacaoDasOfertas
             'preparo'        => $r !== null ? $this->preparo($r, $etapas, $decisao['etapa'], $textoDoAgente) : null,
             'pub_produto_id' => $principal,
             'andou'          => $andou,
-            // O robô ainda não escreveu NADA do texto (nem anúncio, nem rascunho fora do DRAFT, nem etapa registrada) —
+            // O agente ainda não escreveu NADA do texto (nem anúncio, nem rascunho fora do DRAFT, nem etapa registrada) —
             // a régua da repescagem da soltura das ondas. Não é o `andou`: a memória das imagens sozinha (o teto do
             // texto bateu e as imagens saíram assim mesmo) conta como "andou", mas o texto ainda está por fazer
             // (revisão de 02/11/2026).
@@ -395,12 +395,12 @@ class SituacaoDasOfertas
     }
 
     /**
-     * O item "andou" — já saiu do planejamento: tem anúncio, o rascunho passou do DRAFT, o robô já mexeu nele (uma
+     * O item "andou" — já saiu do planejamento: tem anúncio, o rascunho passou do DRAFT, o agente já mexeu nele (uma
      * etapa do texto registrada ou a memória das imagens automáticas, que existe sem o texto quando a cota de texto
      * acabou) ou ele é o kit da fase N (nasce do Planejamento já como trabalho do Publicador).
      *
      * Régua única: decide quem aparece na trilha (a Simples de produto ainda na lista) e, com a trilha de trabalho,
-     * quem a data da onda segura — a trava do robô pergunta por aqui
+     * quem a data da onda segura — a trava do agente pergunta por aqui
      * ({@see \App\Services\Trilha\Ondas\PortaoDaOnda}). Mudou aqui, mudou nos dois.
      */
     public static function andou(bool $temAnuncio, ?PubRascunho $r, bool $kitDaFase = false): bool
@@ -430,7 +430,7 @@ class SituacaoDasOfertas
      * | a onda começou; alguma peça com pendência na Lista          | robo  | Na fila · com pendência na Lista (alerta) |
      * | a onda começou                                              | robo  | Na fila · começou em 05/11              |
      *
-     * A pendência na Lista é AVISO, não espera: o robô prepara com o que houver (só a ficha incompleta o barra, em
+     * A pendência na Lista é AVISO, não espera: o agente prepara com o que houver (só a ficha incompleta o barra, em
      * `avaliarIa`) — o texto não promete o que a trava não faz (revisão de 02/11/2026). "Desde" conta do começo
      * efetivo do item: o dia da onda ou, se ele entrou depois, a entrada. Os textos novos não citam o agente nem o
      * Mercado Livre: a porta do cliente lê os mesmos (o sigilo dos textos da 1ª entrega segue em aberto, §13).
@@ -456,7 +456,7 @@ class SituacaoDasOfertas
         $desde = ($onda['desde'] ?? null) ?? Carbon::parse((string) $onda['data'], 'America/Sao_Paulo')->startOfDay();
         $desde = $desde->copy()->setTimezone('America/Sao_Paulo');
         if ($onda['pedido_em'] !== null && $this->agora->gte($desde->copy()->addHours((int) config('trilha.ondas.parado_horas', 24)))) {
-            // A pendência na Lista fica no texto: a ficha incompleta é justamente o que segura o robô.
+            // A pendência na Lista fica no texto: a ficha incompleta é justamente o que segura o agente.
             return ['etapa' => 'robo', 'status' => 'Ainda não começou (desde '.$desde->format('d/m').')'.($cadastroIncompleto ? ' · pendência na Lista' : ''), 'alerta' => true];
         }
         if ($cadastroIncompleto) {
@@ -523,7 +523,7 @@ class SituacaoDasOfertas
                 $doTexto[$e] = self::motivoDaParada($etapas[$e]);
             }
         }
-        // As duas tentativas falharam ("Imagens não geradas" no Publicador): o robô não tenta mais sozinho, alguém
+        // As duas tentativas falharam ("Imagens não geradas" no Publicador): o agente não tenta mais sozinho, alguém
         // precisa gerar na etapa Imagens — a mesma linha do agente que parou no texto.
         if (isset($imagens['erro'])) {
             $paradas[] = 'imagens';
@@ -541,14 +541,14 @@ class SituacaoDasOfertas
         $resumo = (array) ($r->step_state['resumo'] ?? []);
         $emDia = self::resumoEmDia($r);
         $bloqueios = (int) ($resumo['bloqueios'] ?? 0);
-        // Sem isto o Combo N já no Publicador ficaria para sempre "Preparando" no robô, esperando um texto que o
+        // Sem isto o Combo N já no Publicador ficaria para sempre "Preparando" no agente, esperando um texto que o
         // agente nunca escreve — e o que falta nele é trabalho do Publicador.
         $textoPronto = true;
         foreach ($textoDoAgente ? Preparo::ETAPAS : [] as $e) {
             $textoPronto = $textoPronto && in_array($etapas[$e]['status'] ?? null, self::TEXTO_PRONTO, true);
         }
-        // Teto do dia ou nova tentativa amanhã cedo ("Imagens amanhã" no Publicador): o robô ainda volta, a etapa 4
-        // ("título, descrição e imagens prontos") não fechou — nenhuma linha da revisão vale, o item segue no robô.
+        // Teto do dia ou nova tentativa amanhã cedo ("Imagens amanhã" no Publicador): o agente ainda volta, a etapa 4
+        // ("título, descrição e imagens prontos") não fechou — nenhuma linha da revisão vale, o item segue no agente.
         // O kit só "fazendo" não segura: andando há mais de 30 min, o Publicador também já diz "Pronto".
         $roboTerminou = ! isset($imagens['fila']);
 
@@ -701,7 +701,7 @@ class SituacaoDasOfertas
 
     /**
      * O preparo, item por item (só a equipe vê). Etapa do texto sem registro: "na fila" enquanto o item está com o
-     * robô, senão nada a dizer — e nunca "na fila" no kit da fase N, em que o texto do agente não se aplica.
+     * agente, senão nada a dizer — e nunca "na fila" no kit da fase N, em que o texto do agente não se aplica.
      *
      * @param  array<string, array>  $etapas
      * @return array{titulo: ?string, modelo: ?string, descricao: ?string, imagens: ?string}
