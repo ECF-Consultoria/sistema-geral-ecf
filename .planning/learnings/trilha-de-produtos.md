@@ -1049,3 +1049,100 @@ Nada do Publicador mudou: o `EditorRascunhoService::salvarVariantes` é chamado 
   regra Premium = Clássico são decididos pelo servidor, cor a cor.
 - **Pendências registradas para a frente:** 4d confere Premium = Clássico em TODAS as cores (a 4c só nas tocadas);
   4e corta `preco.*.minimo` e `da_precificacao` da prévia do cliente.
+
+## 39. 4d — publicar (servidor) (04/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19.13 (D46–D50, D59). Serviço `App\Services\Trilha\PublicacaoNaTrilha`, Job
+`App\Jobs\Trilha\PublicarPelaTrilhaJob` (fila `high`, `tries 1`), controller `Trilha\PublicacaoDaTrilhaController`, rotas
+`trilha.publicar` (`POST …/ofertas/{item}/publicar`, 10/min, contador `trilha.revisao.publicar`) e `trilha.publicacao`
+(`GET …/publicacao`, 240/min, contador `trilha.revisao.publicacao`), `escrita.revisao.publicar`/`publicacao` com `__ITEM__`,
+teste `PublicarNaTrilhaTest` (+ as duas rotas na matriz do `CadastroNaTrilhaAcessoTest`, que agora roda com a empresa 459).
+Nada do Publicador mudou: `ConferenciaService::conferir`, `FilaPublicacaoService::agendar` e
+`ProgramasPublicadorService::resolver` (MÉTODO de instância, não estático) são chamados como estão.
+
+- **A trilha nunca publica.** Ela confere e AGENDA na fila de publicação da conta (`resolver('company-459')`); quem manda
+  `POST /items` é o `AgendadorDaFila`, na passada dele (todo minuto, rodadas de `produtos_por_rodada` a cada
+  `intervalo_minutos`, só na janela — o "na fila" pode durar), e ele confere de novo o plano e a revisão gravados no item.
+  O teste prova com `Http::preventStrayRequests` só com o que a conferência pergunta: um `POST /items` estouraria.
+  **Na 459 é publicação DE VERDADE**: `publicador.contas_liberadas.todas` está ligada em produção desde 26/10 — a
+  `ContasLiberadas` não segura nada lá. A única trava é a D48.
+- **D48 confere as âncoras CANDIDATAS, não só a de agora.** `PublicacaoNaTrilha::daLoja`: (1) a Company do endereço é a
+  `LOJA` (constante, NUNCA `.env`); (2) `pub_produtos.company_id` é a 459; (3) a MlbEmpresa do anúncio (se houver) e a
+  âncora com token (`contaOuNula()`, MlbEmpresa ANTES de Company) são da 459. Conferir só a de agora deixaria a janela do
+  token que reconecta entre o agendar e a publicação. Âncora nula (sem token) passa a D48 — a conferência sai só local
+  (`LOCAL`/`V-ACC-01`) e vira `recusado` "precisa ser reconectada", que é o texto certo (um 403 "não liberado para esta
+  loja" mentiria). Roda no pedido, no `GET` (403 também) e DUAS vezes no Job: antes de conferir e de novo antes de agendar
+  (a conferência leva segundos e chama o ML). Cada uma das três sozinha tem teste com dado cruzado de propósito (a do
+  endereço só cai sozinha com um anúncio da 460 marcado `company_id` 459 — num cenário normal da 460 as três caem juntas
+  e a mutação de uma não aparece). 13 mutações + 2 do contrato da tela, todas derrubam teste.
+- **Sem os "padrões do editor" antes de conferir, de propósito.** O `ConferirRascunhoJob` e o lote aplicam
+  `PadroesDoRascunhoService::aplicar(comFrete)` como rede de segurança — isso sobe a `revisao` e muda o payload DEPOIS
+  de a pessoa aprovar a prévia. A trilha confere o que foi aprovado; o preparo do robô já aplicou os padrões (com frete).
+  Se faltar algo, a conferência diz e o item volta `recusado`.
+- **A revisão aprovada é conferida no Job.** O Job leva a `revisao` do pedido; se o rascunho mudou antes de ele rodar (o
+  preço de outra aba, o robô), `recusado` "mudou" — sem conferir nem agendar a N+1 que ninguém viu.
+- **Ordem do pedido:** 404 item → 403 D48 → 409 do estado (na fila → publicando → publicado → fora da revisão) → 422/409 da
+  `revisao` (a regra da 4c) → 422 `ciente` inválido → 409 prévia não pronta (`message` = o `motivo` neutro da prévia) →
+  422 D46. A D46 do publicar é o `preco.premium_igual` da prévia (o preço do PLANO de cada cor ativa, a mesma régua
+  `PreviaNaTrilha::mesmoPreco` da 4c) — TODAS as cores, não só as tocadas; erro em `errors["precos.premium"]` e no
+  `message`.
+- **Dois cliques, uma conferência — sem `ShouldBeUnique`.** O pedido segura uma `Cache::lock` curta e, com `conferindo`
+  recente no estado, devolve o MESMO objeto (202) sem Job novo. `ShouldBeUnique` também atrapalharia o teste: a trava
+  única só é solta pelo worker, e com `Queue::fake` o 2º pedido (o [Publicar assim mesmo]) seria engolido. `conferindo`
+  com mais de 30 min (`CONFERINDO_VALE_MIN`; o Job tem 5 de timeout, mas a `high` de produção tem UM worker) é Job que
+  morreu: a situação diz `erro` e um pedido novo enfileira de novo. O `failed()` grava `erro`.
+- **A situação** (`PublicacaoNaTrilha::situacao`, o MESMO cálculo no `GET` e no campo `publicacao` da prévia): (1) item
+  VIVO na fila do anúncio vence tudo (inclusive o agendado pelo Publicador sem a trilha — é o mesmo motivo do 409, e a
+  tela não oferece [Aprovar e publicar] à toa); (2) o estado do pedido (`trilha:publicar:{pub}`, 6 h); depois de
+  `na_fila`, o item da fila em que ele entrou e a `pub_publicacoes` dele — a publicação terminada já vale `publicado`
+  antes de o agendador fechar o item; (3) sem pedido, só o rascunho `PUBLISHING`; senão `null`. `mlbs` = lista de
+  STRINGS (a tela só conta), Clássico antes do Premium, só os `CREATED`. `mensagem` nunca vazia (reserva por situação).
+  Passadas as 6 h, um anúncio já publicado volta a `publicacao: null` (não é mais "pedido"; a linha diz o resto).
+- **Textos neutros:** as mensagens da conferência e o `motivo` da fila citam "Mercado Livre", "Publicador", "editor".
+  `PublicacaoNaTrilha::neutro` troca "Mercado Livre" → "canal de venda" (o artigo masculino de antes continua certo),
+  "Publicador" → "sistema", "Portal" → "cadastro", "agente" → "robô". Mensagem nova no dicionário `publicador_erros` com
+  outra marca passa crua.
+- **Histórico:** o pedido grava `trilha_publicacao_pedida` (canal `portal`, ator da equipe, `item`, `revisao`, `ciente`) —
+  é o único registro de QUEM aprovou (na fila, `criada_por` é o mesmo usuário e vira o ator das publicações).
+- **D59 é só da trilha.** `SituacaoDasOfertas::publicados` lê `pub_publicacao_itens.criado_em` (gravado no 201): o
+  `under_review` criado há menos de 24 h sai `"Em análise"` (anúncio) e a linha `"Em análise · {tipos}"` SEM alerta;
+  ao lado de um à venda, `"No ar · …"` sem alerta; um parado de verdade ao lado segue `"Fora do ar"` com alerta. Sem
+  `criado_em`, a regra antiga (o `TrilhaDaEmpresaTest` monta assim e continua valendo). Publicador e Polos não leem
+  `SituacaoDasOfertas`. **Na tela:** `estaNoAr()` (`lib/trilha.js`) lê o prefixo "No ar" — a linha "Em análise · …" cai
+  em "Conferir" na pílula da equipe, e o Mapa a pinta de âmbar (parado). A contagem por etapa não muda (etapa 6).
+- **Os endereços saem em toda loja com escrita**, não só na 459 (a forma do contrato não muda por loja): fora dela o
+  `POST` responde 403 com `MSG_LOJA`.
+- **Testes:** o cenário do preparo de verdade com a empresa criada com `id` 459 (`Company::factory()->create(['id' => …])`;
+  na matriz, `empresaDaTrilha(id: …)`). Para a conferência passar: uma foto POR COR já enviada (`ENVIADA` +
+  `ml_picture_id`, senão V-IMG-05 e a conferência sobe foto), a garantia (V-SAL-05), o preço gravado, a modalidade de
+  envio no cache e um `shipping_options/free` SEM `coverage` (o passo 9 do frete cota pela Precificação; sem cotação,
+  não vira aviso). A conferência de verdade NÃO sobe a `revisao` (o [Publicar assim mesmo] usa a mesma). Na rede do
+  Publicador, além do `FotosDoPainelServiceTest` (§26), o `ProximoARevisarServiceTest` também cai neste worktree pelo
+  MESMO arquivo de design não versionado (`design_handoff_publicador/Aprovacao.dc.html`) — ambiente, não regressão.
+- **Deploy:** Job novo na fila `high` — o `deploy.sh` só reinicia `ecf-worker:*`; o `ecf-worker-high` precisa de
+  `php artisan queue:restart` (como www-data) para conhecer a classe (§28).
+
+### 4d — publicar (tela), 04/11/2026
+- **O servidor manda `mensagem` em toda situação;** nas que andam ela repete o título ("Na fila de publicação.",
+  "Publicando agora…"). A tela esconde a mensagem quando ela começa pelo título (sem contar caixa e pontuação final).
+  Mudou o texto no servidor (`PublicacaoNaTrilha::MSG_*`), confira aqui.
+- **O estado da publicação na tela fica preso à prévia aberta:** chegou prévia nova ([Recarregar], preço salvo), vale
+  o `publicacao` dela e o acompanhamento recomeça.
+- **O primário [Aprovar e publicar] espelha `preco.premium_igual`** (botão desligado com dica) e também desliga com
+  preço digitado e não salvo (publicaria o preço velho). Quem decide continua sendo o servidor (422).
+- **[Publicar assim mesmo] é um clique só** (a decisão é o próprio botão). Acompanhamento a cada 3 s, com teto de
+  30 min ([Acompanhar de novo]); para em 401/403/404/419; rede, 429 e 5xx tentam de novo na volta seguinte. 409 que
+  não é de revisão: pergunta o estado uma vez — se outra aba já publicou, passa a acompanhar.
+- **Publicado mostra só QUANTOS anúncios foram criados**, não os códigos (o cartão vai ao cliente na 4e).
+- **Avisos, recusado e erro não travam o preço** (ajustar e tentar de novo é o caminho); só conferindo, na fila,
+  publicando e publicado travam.
+- `lib/trilhaPublicar.js` copia o marcador `__ITEM__` e a régua das mensagens do framework (as libs `trilha*` não
+  importam a lib da prévia nem a do preço); um teste confere que o marcador é o mesmo.
+- **Sem DOM na suíte:** o relógio de 3 s e o foco foram provados por funções puras, render no servidor e teste de
+  fonte. Conferir no navegador real quando a 459 tiver um item para publicar (publicar cria anúncio DE VERDADE).
+- **"Em análise" na Lista e no Mapa (04/11):** o servidor dá "Em análise · …" sem alerta nas primeiras 24 h (D59),
+  mas `estaNoAr()` lê o prefixo "No ar" — a linha caía em "Conferir" (âmbar) e o Mapa pintava de âmbar.
+  `estaEmAnalise()` + ação neutra "Em análise" na linha e `situacaoDoAnuncio` → 'analise' (cor da Revisão, com item
+  na legenda). Mudou o texto do status no servidor (`SituacaoDasOfertas`), mude os prefixos aqui.
+- **`FotosDoPainelServiceTest` falha neste worktree por ambiente** (`design_handoff_publicador/Aprovacao.dc.html` não
+  versionado — §26); não é regressão da trilha.

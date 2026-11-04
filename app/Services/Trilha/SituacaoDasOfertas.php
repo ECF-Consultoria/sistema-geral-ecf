@@ -98,6 +98,18 @@ class SituacaoDasOfertas
     private const ENCERRADOS = ['Encerrado', 'Inativo'];
 
     /**
+     * D59 (4ª entrega, 4d, 04/11/2026): todo anúncio novo nasce `under_review` no Mercado Livre (o H21 do
+     * `SituacaoDoAnuncioMl`) e fica assim até a releitura o ver ativo. Nas primeiras {@see EM_ANALISE_HORAS} horas depois
+     * de CRIADO (`pub_publicacao_itens.criado_em`, gravado no 201 do `POST /items`), ele é "Em análise" — sem alerta e sem
+     * contar como à venda; depois volta à regra de sempre ("Em revisão", "Fora do ar" com alerta). Sem `criado_em` (não
+     * acontece no fluxo do Publicador; só em dado antigo ou montado à mão) vale a regra de sempre. Só a trilha lê isto: o
+     * Publicador e os Polos continuam dizendo "Em revisão no Mercado Livre".
+     */
+    public const EM_ANALISE = 'Em análise';
+
+    public const EM_ANALISE_HORAS = 24;
+
+    /**
      * @param  array<int, array{id: int, oferta_id: ?int, estrutura_produto_id: ?int, produto_base_id: ?int, quantidade_kit: int}>  $pubs
      * @param  array<int, int>  $grupoDoProduto  estrutura_produto_id → pub do grupo
      * @param  array<int, int>  $pubDaOferta  oferta_id → pub
@@ -180,7 +192,7 @@ class SituacaoDasOfertas
             $pubDaOferta,
             $kitsDaBase,
             $rascunhos,
-            self::publicados(array_map(fn (PubRascunho $r) => (int) $r->id, array_values($rascunhos))),
+            self::publicados(array_map(fn (PubRascunho $r) => (int) $r->id, array_values($rascunhos)), now()),
             self::daRegua($empresaId),
             self::kitsDeImagem($rascunhos),
             self::agendados($produtoIds),
@@ -496,9 +508,11 @@ class SituacaoDasOfertas
     /**
      * No ar: Clássico e Premium, ou qual tipo falta — contando só o ativo e o pausado ({@see CONTA_NO_AR}). O item
      * publicado fica na etapa 6 de qualquer jeito (é da Jardinagem); o que muda é o texto e o alerta:
-     * - um tipo à venda e outro anúncio parado (em revisão…): "No ar · …" COM alerta;
+     * - um tipo à venda e outro anúncio parado (em revisão…): "No ar · …" COM alerta — o "Em análise" (D59) não alerta;
      * - nada à venda, mas algum parado: "Fora do ar · {tipos parados}", com alerta (o porquê de cada anúncio a tela
      *   já mostra ao lado — "Clássico: Em revisão" —, por isso o texto não o repete);
+     * - nada à venda nem parado, mas algum recém-publicado em análise (D59, {@see EM_ANALISE}): "Em análise · {tipos}",
+     *   SEM alerta;
      * - todos encerrados/inativos: "Anúncios encerrados", com alerta (fora da tabela do contrato, como antes).
      *
      * @param  list<array{tipo: string, mlb: string, situacao: ?string}>  $anuncios
@@ -508,9 +522,12 @@ class SituacaoDasOfertas
     {
         $tipos = [];
         $parados = [];
+        $emAnalise = [];
         foreach ($anuncios as $a) {
             if (in_array($a['situacao'], self::CONTA_NO_AR, true)) {
                 $tipos[$a['tipo']] = true;
+            } elseif ($a['situacao'] === self::EM_ANALISE) {
+                $emAnalise[$a['tipo']] = true;
             } elseif (! in_array($a['situacao'], self::ENCERRADOS, true)) {
                 $parados[$a['tipo']] = true;
             }
@@ -529,6 +546,11 @@ class SituacaoDasOfertas
             $quais = isset($parados['Clássico'], $parados['Premium']) ? 'Clássico e Premium' : array_key_first($parados);
 
             return ['etapa' => 'lanc', 'status' => "Fora do ar · {$quais}", 'alerta' => true];
+        }
+        if ($emAnalise !== []) {
+            $quais = isset($emAnalise['Clássico'], $emAnalise['Premium']) ? 'Clássico e Premium' : array_key_first($emAnalise);
+
+            return ['etapa' => 'lanc', 'status' => self::EM_ANALISE." · {$quais}", 'alerta' => false];
         }
 
         return ['etapa' => 'lanc', 'status' => 'Anúncios encerrados', 'alerta' => true];
@@ -698,12 +720,13 @@ class SituacaoDasOfertas
 
     /**
      * Os itens `CREATED` com MLB das publicações dos rascunhos, por rascunho. Só as colunas pequenas: o payload e
-     * a resposta crua do ML ficam no banco.
+     * a resposta crua do ML ficam no banco. O `under_review` criado há menos de {@see EM_ANALISE_HORAS} horas sai
+     * {@see EM_ANALISE} (D59).
      *
      * @param  list<int>  $rascunhoIds
      * @return array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>
      */
-    private static function publicados(array $rascunhoIds): array
+    private static function publicados(array $rascunhoIds, Carbon $agora): array
     {
         if ($rascunhoIds === []) {
             return [];
@@ -715,7 +738,8 @@ class SituacaoDasOfertas
             ->where('i.status', PubPublicacaoItem::CREATED)
             ->whereNotNull('i.ml_item_id')
             ->orderBy('i.id')
-            ->get(['p.rascunho_id', 'i.listing_type_id', 'i.ml_item_id', 'i.avisos']);
+            ->get(['p.rascunho_id', 'i.listing_type_id', 'i.ml_item_id', 'i.avisos', 'i.criado_em']);
+        $desde = $agora->copy()->subHours(self::EM_ANALISE_HORAS);
 
         $saida = [];
         foreach ($linhas as $l) {
@@ -727,12 +751,19 @@ class SituacaoDasOfertas
             $avisos = is_string($l->avisos) ? json_decode($l->avisos, true) : $l->avisos;
             $estado = is_array($avisos) && is_array($avisos['estado'] ?? null) ? $avisos['estado'] : null;
             $situacao = SituacaoDoAnuncioMl::situacao($estado);
+            // D59: recém-criado e ainda em revisão no ML = "Em análise" (sem alerta), só nas primeiras 24 h.
+            $emAnalise = $situacao !== null && $situacao['status'] === 'under_review' && $l->criado_em !== null
+                && Carbon::parse((string) $l->criado_em)->gt($desde);
 
             // O mais novo vence: a mesma publicação relida tem o estado mais recente.
             $saida[(int) $l->rascunho_id][$mlb] = [
                 'tipo'     => $tipo,
                 'mlb'      => $mlb,
-                'situacao' => $situacao === null ? null : (self::SITUACAO_CURTA[$situacao['status']] ?? 'Fora do ar'),
+                'situacao' => match (true) {
+                    $situacao === null => null,
+                    $emAnalise         => self::EM_ANALISE,
+                    default            => self::SITUACAO_CURTA[$situacao['status']] ?? 'Fora do ar',
+                },
             ];
         }
 

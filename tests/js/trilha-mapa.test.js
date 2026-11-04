@@ -165,6 +165,15 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
         assert.equal(situacaoDoAnuncio({ situacao: parado }), 'atencao', parado);
     }
     assert.equal(situacaoDoAnuncio({ situacao: 'Inativo' }), 'fora');
+    // 4d (D59): recém-publicado em análise não é alerta (âmbar) nem "no ar" (verde): cor da Revisão.
+    assert.equal(situacaoDoAnuncio({ situacao: 'Em análise' }), 'analise');
+    assert.equal(COR_DO_ANUNCIO.analise, COR_DA_ETAPA.revisao);
+    assert.notEqual(COR_DO_ANUNCIO.analise, COR_DO_ANUNCIO.atencao);
+    const emAnalise = montarGrafo({
+        ...PROPS_EQUIPE,
+        ofertas: PROPS_EQUIPE.ofertas.map((o) => (o.id === 's-10' ? { ...o, anuncios: [{ tipo: 'Clássico', mlb: 'MLB3488800012', situacao: 'Em análise' }] } : o)),
+    });
+    assert.equal(no(emAnalise, 'm:s-10:0').cor, COR_DO_ANUNCIO.analise, 'em análise = cor da Revisão, não âmbar');
     const foraDoAr = montarGrafo({
         ...PROPS_EQUIPE,
         ofertas: PROPS_EQUIPE.ofertas.map((o) => (o.id === 's-10'
@@ -179,7 +188,7 @@ test('as cores: produto pela etapa (mapeado fica neutro), oferta pela etapa, an�
     assert.deepEqual(legenda.etapas.map((e) => e.rotulo), ['Lista de produtos', 'Mapeamento', 'Planejamento', 'Robô', 'Revisão', 'No ar', 'Produto mapeado']);
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Sem onda'));
     assert.ok(legendaDoMapa(true).etapas.some((e) => e.rotulo === 'Começou sem onda ou fora das ondas' && e.cor === COR_ANTES_DAS_ONDAS));
-    assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
+    assert.deepEqual(legenda.anuncios.map((e) => e.rotulo), ['No ar', 'Em análise (recém-publicado)', 'Pausado, em revisão ou fora do ar', 'Encerrado ou inativo']);
 });
 
 // ─── Colunas e ondas ────────────────────────────────────────────────────────

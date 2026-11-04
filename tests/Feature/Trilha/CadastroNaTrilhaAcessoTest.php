@@ -7,7 +7,9 @@ use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
+use App\Jobs\Trilha\PublicarPelaTrilhaJob;
 use App\Models\MlAcervoItem;
+use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
@@ -16,6 +18,7 @@ use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Publicador\RascunhoRepository;
+use App\Services\Trilha\PublicacaoNaTrilha;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Variacao\ChaveCanonica;
@@ -35,13 +38,16 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Activitylog\Models\Activity;
 use Tests\Feature\Trilha\Concerns\MontaTrilha;
 use Tests\TestCase;
+use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
  * Quem passa pelas rotas do cadastro na trilha (3ª entrega, 02/11/2026, desenho §6.1) — a matriz de TODAS as rotas da
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
  * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
- * anúncio e a foto dela; 4c: o preço ajustável; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * anúncio e a foto dela; 4c: o preço ajustável; 4d: o "Aprovar e publicar" e o acompanhamento; cresce a cada fatia). A
+ * empresa dos testes é a 459 (`PublicacaoNaTrilha::LOJA`): a 4d só passa nela — o 403 da outra loja está no
+ * `PublicarNaTrilhaTest`. A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -57,6 +63,7 @@ use Tests\TestCase;
  */
 class CadastroNaTrilhaAcessoTest extends TestCase
 {
+    use CarregaSchemas;
     use MontaTrilha;
     use RefreshDatabase;
 
@@ -93,7 +100,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
                 return ['dados' => ['atributos' => ['BRAND' => 'Marca da IA']], 'meta' => ['modelo' => 'teste']];
             }
         });
-        $this->empresa = $this->empresaDaTrilha();
+        // A 459: a única loja em que a 4d publica (as outras rotas não olham o id).
+        $this->empresa = $this->empresaDaTrilha(id: PublicacaoNaTrilha::LOJA);
         $this->dev = User::factory()->create(['role' => 'admin', 'active' => true, 'name' => 'Rafael']);
         $this->dev->forceFill(['is_dev' => true])->save();
     }
@@ -141,6 +149,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'foto da prévia (4a)'    => ['GET', '/ofertas/s-{p}/fotos/{pi}', false],
             // 4c: o preço ajustável da prévia (grava só no rascunho do anúncio).
             'preço (4c)'             => ['PUT', '/ofertas/s-{p}/preco', false],
+            // 4d: aprovar e publicar (põe na fila de publicação — o Job fica na fila de mentira) e o acompanhamento.
+            'publicar (4d)'          => ['POST', '/ofertas/s-{p}/publicar', false],
+            'acompanhar (4d)'        => ['GET', '/ofertas/s-{p}/publicacao', false],
         ];
     }
 
@@ -317,6 +328,11 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$p['produto']->id}/fotos/{$grande}")->assertNotFound();
         // 4c: o item do preço.
         $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/preco", ['revisao' => 1, 'precos' => ['classico' => 1]])->assertNotFound();
+        // 4d: o item do publicar e do acompanhamento, e a empresa.
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/publicar", ['revisao' => 1])->assertNotFound();
+        $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/o-{$grande}/publicacao")->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$grande}/ofertas/s-{$p['produto']->id}/publicar", ['revisao' => 1])->assertNotFound();
+        Queue::assertNothingPushed();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
         $this->assertSame(1, EstruturaProdutoVariacao::query()->count());
@@ -334,9 +350,13 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o robô não mexeu).
             $this->fotoNoRascunho($p);
         }
-        if (str_ends_with($caminho, '/preco')) {
+        if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar')) {
             // 4c: o preço só muda na revisão — o robô terminou o texto e o rascunho tem os dois tipos e a variante.
             $this->naRevisao($p);
+        }
+        if (str_ends_with($caminho, '/publicar')) {
+            // 4d: e só se publica com a prévia pronta — a categoria com o schema guardado (nenhuma leitura do ML).
+            $this->comCategoria($p);
         }
         // Depois da montagem: o corpo do preço leva a revisão do rascunho.
         $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
@@ -350,10 +370,19 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $resposta = $this->pedir($this->dev, $metodo, $this->url($this->empresa, $caminho, $p), $corpo);
 
         // `getStatusCode()`: o download do modelo (F7) é um StreamedResponse, sem o `status()` do Illuminate.
-        $this->assertContains($resposta->getStatusCode(), [200, 201], (string) $resposta->getContent());
+        $this->assertContains($resposta->getStatusCode(), [200, 201, 202], (string) $resposta->getContent());
         $this->assertStringNotContainsString('/portal/', (string) $resposta->getContent());
         if ($caminho === '/mercado-livre/importar') {
             Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\ImportarAnuncioNaTrilhaJob::class);
+        }
+        if (str_ends_with($caminho, '/publicar')) {
+            // 4d: 202 e o Job na fila `high` — nada mais (quem publica é a fila do Publicador, depois da conferência).
+            $this->assertSame(202, $resposta->getStatusCode());
+            $this->assertSame('conferindo', $resposta->json('publicacao.situacao'));
+            Queue::assertPushedOn('high', PublicarPelaTrilhaJob::class);
+        }
+        if (str_ends_with($caminho, '/publicacao')) {
+            $this->assertSame(['publicacao' => null], $resposta->json(), 'nunca pediu');
         }
         if (str_ends_with($caminho, '/preco')) {
             $this->assertSame(['gold_special' => '199.90', 'gold_pro' => null], DB::table('pub_variante_precos as pr')
@@ -408,6 +437,19 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertSame('revisao', TrilhaDaEmpresa::itens($this->empresa, comoNaTela: true)["s-{$p['produto']->id}"]['etapa'] ?? null, 'controle: na revisão');
     }
 
+    /** 4d: o rascunho da Simples com a categoria (a cadeira, com o schema guardado — nenhuma leitura do ML): a prévia fica pronta. */
+    private function comCategoria(array $p): void
+    {
+        $schema = self::schema(self::CADEIRA);
+        MlCategoriaSchema::create(['category_id' => self::CADEIRA, 'domain_id' => $schema->dominio(), 'categoria' => $schema->categoria,
+            'atributos' => $schema->atributos, 'technical_specs' => $schema->technicalSpecs, 'sale_terms' => $schema->saleTerms,
+            'schema_hash' => $schema->hash(), 'fetched_at' => now()]);
+        $pub = PubProduto::query()->where('estrutura_produto_id', $p['produto']->id)->firstOrFail();
+        app(RascunhoRepository::class)->gravarCategoria(PubRascunho::query()->where('produto_id', $pub->id)->firstOrFail(), $schema);
+        $this->assertTrue($this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$p['produto']->id}/previa")->assertOk()->json('pronta'),
+            'controle: a prévia está pronta');
+    }
+
     /** A 1ª foto da 1ª variação do produto (o `produtoCompleto` grava 3 linhas, sem arquivo). */
     private function fotoDa(array $p): EstruturaProdutoVariacaoImagem
     {
@@ -432,6 +474,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             str_ends_with($caminho, '/preco')         => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
                 PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1),
                 'precos' => ['classico' => 199.9], 'cor' => null],
+            // 4d: a revisão do rascunho da Simples (1 enquanto ele não existe).
+            str_ends_with($caminho, '/publicar')      => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
+                PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1), 'ciente' => false],
             default                                   => [],
         };
     }
@@ -485,7 +530,7 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertSame([], Storage::disk(VariacaoImagensService::DISCO)->allFiles(), 'gravou foto no disco');
         // F4: nenhuma cor nem produto excluído (e nenhuma escrita da trilha registrada).
         $this->assertFalse(Activity::query()->get()->contains(fn (Activity $a) => in_array($a->getExtraProperty('evento'),
-            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado'], true)), 'excluiu ou gravou');
+            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado', 'trilha_publicacao_pedida'], true)), 'excluiu ou gravou');
         // 4c: nenhum preço gravado no rascunho.
         $this->assertSame(0, DB::table('pub_variante_precos')->whereNotNull('preco')->count(), 'gravou preço');
         Http::assertNothingSent();

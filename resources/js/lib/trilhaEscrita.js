@@ -323,7 +323,7 @@ export async function limparImportacao(escrita) {
     return corpo(await axios.post(enderecoDaImportacao(escrita, 'limpar'), {}));
 }
 
-// ─── A prévia do anúncio (4ª entrega, 4a) ───────────────────────────────────
+// ─── A prévia do anúncio (4ª entrega, 4a; preço 4c; publicar 4d) ────────────
 
 /**
  * A prévia do anúncio de uma oferta (§19.5 do desenho, só leitura). `url` chega PRONTA da gaveta (o
@@ -348,6 +348,29 @@ export async function salvarPreco(url, dados) {
     if (!url) throw new ErroDaTrilha('O preço não pode ser salvo nesta tela: recarregue a página.');
 
     return corpo(await axios.put(url, dados));
+}
+
+/**
+ * "Aprovar e publicar" (4d, §19.13 do desenho). `url` chega PRONTA da gaveta (o `escrita.revisao.publicar` com o id do
+ * item no lugar do marcador) e `dados` também (`{revisao, ciente}`, montado pela lib do rodapé — esta não a importa,
+ * pelo mesmo motivo da prévia). → 202 `{publicacao: {situacao: 'conferindo', mensagem, avisos, mlbs}}`. O 403 (loja
+ * não liberada), o 409 (revisão velha, ou o item fora da revisão, na fila, publicado, não pronto) e o 422 chegam como
+ * erro do axios; quem trata é a gaveta.
+ */
+export async function publicarAnuncio(url, dados) {
+    if (!url) throw new ErroDaTrilha('A publicação não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url, dados));
+}
+
+/**
+ * Como está a publicação pedida (4d): a gaveta pergunta a cada 3 s enquanto ela anda. `url` chega PRONTA (o
+ * `escrita.revisao.publicacao` com o id). → `{publicacao: {...}}`, ou `{publicacao: null}` se nunca foi pedida.
+ */
+export async function estadoDaPublicacao(url) {
+    if (!url) throw new ErroDaTrilha('O acompanhamento da publicação não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.get(url));
 }
 
 // ─── Erros ──────────────────────────────────────────────────────────────────

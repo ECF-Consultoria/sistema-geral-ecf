@@ -33,7 +33,9 @@ use Illuminate\Support\Facades\Log;
  *   neutro ({@see motivoNeutro()});
  * - **preço** por tipo: o efetivo × o da Precificação, o mínimo dela, se as cores diferem e se o Premium empatou com o
  *   Clássico ({@see precos()}; a 4c — {@see PrecoNaTrilha} — grava o preço e devolve esta mesma prévia);
- * - **preparo**: o do robô, da régua da linha (`step_state.ia_preparo` e a memória das imagens).
+ * - **preparo**: o do robô, da régua da linha (`step_state.ia_preparo` e a memória das imagens);
+ * - **publicacao** (4d): a situação do "Aprovar e publicar" ({@see PublicacaoNaTrilha::situacao()}), em toda resposta —
+ *   inclusive fora da revisão (o item publicado mostra o `publicado` com os MLBs enquanto o pedido vale).
  *   Fora do contrato e de propósito: o id da categoria, a promoção "sem promoção porque…" (cita o Portal), a garantia,
  *   o estoque e o `titulo_no_ml`.
  *
@@ -114,8 +116,9 @@ class PreviaNaTrilha
             'descricao'  => null,
             'preco'      => null,
             'preparo'    => $r !== null ? self::preparo($item['preparo'] ?? null) : null,
-            // 4d e 4e acrescentam.
-            'publicacao' => null,
+            // 4d: a situação do "Aprovar e publicar" — o MESMO cálculo do `GET …/publicacao` (nula: nunca pediu e nada vivo
+            // na fila). 4e acrescenta a `aprovacao`.
+            'publicacao' => PublicacaoNaTrilha::situacao($r),
             'aprovacao'  => null,
             'bloqueios'  => [],
         ];

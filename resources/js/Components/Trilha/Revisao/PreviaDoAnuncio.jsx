@@ -36,6 +36,7 @@ import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula } from '@/Components/Trilha/
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { composicao } from '@/Components/Trilha/formatos';
 import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
+import RodapeDaPublicacao, { usePublicacaoDaPrevia } from '@/Components/Trilha/Revisao/PublicarAnuncio';
 
 // ─── Trilha de produtos — a prévia do anúncio (a gaveta `v:{item}`, 4ª entrega, 4a) ──
 //
@@ -53,6 +54,10 @@ import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components
 //   editável pela equipe desde a 4c (`CaixaDoPreco.jsx`, §19.11), só leitura para
 //   os outros e no anúncio publicado;
 // - Situação: o status da oferta, o que falta para publicar e o preparo do robô.
+//
+// 4d (§19.13): o rodapé ganha o primário [Aprovar e publicar], a confirmação e o
+// acompanhamento da publicação (`PublicarAnuncio.jsx`); enquanto ela anda (ou
+// depois de publicado), a caixa "Preço" fica só leitura.
 //
 // A gaveta pede a prévia UMA vez ao abrir (`GET escrita.revisao.previa`, com o id
 // no lugar do marcador). O item fora da revisão volta como 409 `{message}` ou 200
@@ -362,25 +367,34 @@ export const PREVIA_CARREGANDO = Object.freeze({ carregando: true, erro: null, p
  *   onTentarDeNovo?: () => void,
  *   inicial?: ?{tipo: string, variante: string},
  *   preco?: ?object,
+ *   publicar?: ?object,
  * }} props  `preco` = o estado e as ações da caixa "Preço" (`usePrecoDaPrevia`, 4c); sem ele, a caixa só se lê.
+ *   `publicar` = o estado e as ações da publicação (`usePublicacaoDaPrevia`, 4d); sem ele, o rodapé é o da 4a.
  */
-export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco = null }) {
+export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaCaixa = null, publicar = null }) {
     const pronta = !antes && !carregando && !erro && previaPronta(previa);
     const semPrevia = !antes && !carregando && !erro && !!previa && !pronta;
+    // 4d: com a publicação andando (ou feita), a caixa "Preço" fica só leitura, com o porquê.
+    const preco = publicar?.travaDoPreco && precoDaCaixa?.editavel
+        ? { ...precoDaCaixa, estado: { ...precoDaCaixa.estado, leitura: publicar.travaDoPreco } }
+        : precoDaCaixa;
 
     let rodape = [
         <Botao key="oferta" data-acao="ver-oferta" onClick={() => onAbrir(chaveDaOferta(oferta))}>
             Ver a oferta
         </Botao>,
     ];
-    // O link que já existia no painel da oferta: o servidor só o manda ao admin (e o "Ver como: Cliente" o tira).
+    // O link que já existia no painel da oferta: o servidor só o manda ao admin (e o "Ver como: Cliente" o tira). Com o
+    // [Aprovar e publicar] (4d) na tela, ele vira secundário.
     if (oferta?.url_publicador) {
         rodape.push(
-            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario data-link="publicador">
+            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario={!publicar?.acao} data-link="publicador">
                 Abrir no Publicador
             </LinkDeAcao>,
         );
     }
+    // 4d: a situação da publicação, o primário e a confirmação dele em volta das ações de sempre.
+    if (publicar) rodape = <RodapeDaPublicacao publicar={publicar}>{rodape}</RodapeDaPublicacao>;
     // A guarda (4c): com preço digitado e não salvo, a confirmação toma o rodapé.
     if (preco?.pedido) rodape = <ConfirmacaoDoPreco preco={preco} />;
 
@@ -440,6 +454,9 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
  * 4c: a caixa "Preço" (`usePrecoDaPrevia`). Salvo o preço, a gaveta inteira passa a mostrar a prévia da resposta; o
  * [Recarregar] do 409 da revisão pede a prévia de novo (como o "Tentar de novo").
  *
+ * 4d: a publicação (`usePublicacaoDaPrevia`) parte da `publicacao` da prévia — aberta com o pedido andando, retoma o
+ * acompanhamento —; o [Recarregar] do 409 dela também pede a prévia de novo; o publicado recarrega a Lista.
+ *
  * @param {{oferta: object, escrita: ?object, trabalho?: boolean, onAbrir?: (chave: string) => void,
  *   onAvisar?: (texto: string, tipo?: string) => void, onRecarregar?: ?(() => void)}} props
  */
@@ -482,6 +499,15 @@ export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onA
         preco.limpar();
         setTentativa((n) => n + 1);
     };
+    const publicar = usePublicacaoDaPrevia({
+        escrita,
+        oferta,
+        previa: estado.previa,
+        precoPendente: !!(preco.mexido || preco.estado?.salvando),
+        onRecarregarPrevia: tentarDeNovo,
+        onAvisar,
+        onRecarregar,
+    });
 
-    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} preco={preco} />;
+    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} publicar={publicar} preco={preco} />;
 }

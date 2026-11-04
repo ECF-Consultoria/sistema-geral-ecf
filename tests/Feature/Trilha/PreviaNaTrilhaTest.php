@@ -444,8 +444,9 @@ class PreviaNaTrilhaTest extends TestCase
         $this->withoutVite();
         $props = json_decode(json_encode($this->actingAs($this->dev)->get("/trilha/{$this->empresa->id}")->assertOk()->viewData('page')), true)['props'];
 
-        // 4c acrescentou o `preco` (o PUT do preço ajustável), com o mesmo marcador.
-        $this->assertSame(['previa' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/previa", 'preco' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/preco"],
+        // 4c acrescentou o `preco` (o PUT do preço ajustável) e a 4d o `publicar` e o `publicacao`, com o mesmo marcador.
+        $this->assertSame(['previa' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/previa", 'preco' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/preco",
+            'publicar' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicar", 'publicacao' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicacao"],
             $props['escrita']['revisao']);
         $url = str_replace('__ITEM__', "s-{$this->p->id}", $props['escrita']['revisao']['previa']);
         $this->assertTrue($this->actingAs($this->dev)->getJson($url)->assertOk()->json('pronta'));

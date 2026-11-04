@@ -393,10 +393,13 @@ class AcessoATrilhaTest extends TestCase
                 'limpar'   => "/trilha/{$empresa->id}/mercado-livre/limpar",
             ],
             // 4a: a prévia do anúncio do painel `v:{item}`, com o marcador no lugar da chave do item (relativa).
-            // 4c: o preço ajustável dela (PUT), com o mesmo marcador.
+            // 4c: o preço ajustável dela (PUT), com o mesmo marcador. 4d: aprovar e publicar (POST) e o acompanhamento (GET) —
+            // em toda loja com escrita (a guarda da #459 é do servidor), nunca na porta do cliente (`escrita` nula abaixo).
             'revisao'       => [
-                'previa' => "/trilha/{$empresa->id}/ofertas/__ITEM__/previa",
-                'preco'  => "/trilha/{$empresa->id}/ofertas/__ITEM__/preco",
+                'previa'     => "/trilha/{$empresa->id}/ofertas/__ITEM__/previa",
+                'preco'      => "/trilha/{$empresa->id}/ofertas/__ITEM__/preco",
+                'publicar'   => "/trilha/{$empresa->id}/ofertas/__ITEM__/publicar",
+                'publicacao' => "/trilha/{$empresa->id}/ofertas/__ITEM__/publicacao",
             ],
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',

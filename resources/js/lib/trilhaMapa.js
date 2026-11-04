@@ -68,6 +68,8 @@ export const PSEUDO_ONDAS = ['w:sem', 'w:antes', 'w:fora'];
 /** Anúncio pela situação (`situacaoDoAnuncio`): no ar = verde da etapa "No ar"; pausado ou parado = âmbar; encerrado ou inativo = cinza. */
 export const COR_DO_ANUNCIO = {
     ativo: COR_DA_ETAPA.lanc,
+    // Recém-publicado em análise (4d, D59): a cor da Revisão — nem verde (não vende ainda), nem âmbar (não é alerta).
+    analise: COR_DA_ETAPA.revisao,
     atencao: 'rgb(var(--t-warn))',
     fora: 'rgb(var(--t-muted))',
 };
@@ -135,6 +137,8 @@ export function situacaoDoAnuncio(anuncio) {
     const s = String(anuncio?.situacao ?? '').trim();
     if (s === '') return 'ativo';
     if (/^(encerrad|inativ)/i.test(s)) return 'fora';
+    // "Em análise" só vem nas primeiras 24 h depois de publicar (D59); depois o servidor volta à régua antiga.
+    if (/^em análise/i.test(s)) return 'analise';
 
     return 'atencao';
 }
@@ -565,6 +569,7 @@ export function legendaDoMapa(temOndas = false) {
         ],
         anuncios: [
             { rotulo: 'No ar', cor: COR_DO_ANUNCIO.ativo },
+            { rotulo: 'Em análise (recém-publicado)', cor: COR_DO_ANUNCIO.analise },
             { rotulo: 'Pausado, em revisão ou fora do ar', cor: COR_DO_ANUNCIO.atencao },
             { rotulo: 'Encerrado ou inativo', cor: COR_DO_ANUNCIO.fora },
         ],

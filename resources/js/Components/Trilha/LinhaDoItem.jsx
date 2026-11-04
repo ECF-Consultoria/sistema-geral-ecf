@@ -1,4 +1,4 @@
-import { ETAPA_POR_CHAVE, acaoDoItem, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, estaNoAr } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, acaoDoItem, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, estaEmAnalise, estaNoAr } from '@/lib/trilha';
 import { quandoDaOfertaNaOnda } from '@/lib/trilhaOndas';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
@@ -61,7 +61,9 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
     // A oferta em revisão: o "Revisar" abre a prévia do anúncio (a linha continua sendo a da oferta, `o:`).
     if (ehOferta && podeEditar && comPrevia && etapa === 'revisao') chaveAoAbrir = chaveDaPrevia(item);
     const noAr = ehOferta && estaNoAr(item);
-    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado });
+    // Recém-publicado em análise (D59): ação neutra "Em análise" — nem verde de "No ar", nem âmbar de "Conferir".
+    const emAnalise = ehOferta && estaEmAnalise(item);
+    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado, emAnalise });
     // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto. "No ar" é o que
     // o status diz: a oferta da etapa 6 que não está à venda não fica verde (com alerta, já fica âmbar).
     const tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : noAr ? 'ok' : 'run';

@@ -305,6 +305,12 @@ export function comQuemEsta(dados, visao, trabalho = false) {
 export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.status ?? '').startsWith('No ar');
 
 /**
+ * Recém-publicado, ainda em análise pela plataforma (4d, D59): nas primeiras 24 h o servidor dá "Em análise · …"
+ * sem alerta. Não está à venda ainda (não é "No ar"), mas também não pede conferência (não é âmbar).
+ */
+export const estaEmAnalise = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.status ?? '').startsWith('Em análise');
+
+/**
  * O texto do botão da linha. O cliente só age na lista de produtos; no resto,
  * acompanha. Na etapa 6, a equipe lê "No ar" só quando a oferta está no ar
  * (`estaNoAr`); a que não está pede "Conferir" — "No ar" ao lado de "Fora do ar"
@@ -314,9 +320,10 @@ export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.s
  * Com a trilha de trabalho (`trabalho`, 3ª entrega) quem cadastra é a equipe: o cliente só acompanha, também
  * na Lista. O produto que já andou (`travado`: o robô preparou, está na revisão ou no ar) só se lê — "Ver".
  */
-export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false, trabalho = false, travado = false } = {}) {
+export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false, trabalho = false, travado = false, emAnalise = false } = {}) {
     if (visao === 'cliente') return etapa === 'lista' && !trabalho ? 'Completar' : 'Acompanhar';
     if (etapa === 'lista' && travado) return 'Ver';
+    if (etapa === 'lanc' && emAnalise && !noAr) return 'Em análise';
     if (etapa === 'lanc') return noAr ? 'No ar' : 'Conferir';
     if (etapa === 'plano' && semProduto) return 'Abrir';
 

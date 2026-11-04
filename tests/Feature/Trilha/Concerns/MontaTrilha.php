@@ -24,13 +24,15 @@ use Illuminate\Support\Str;
  */
 trait MontaTrilha
 {
-    protected function empresaDaTrilha(bool $trabalho = true): Company
+    /** `$id`: a empresa com o id escolhido (a 4d só publica na 459 — `PublicacaoNaTrilha::LOJA`). */
+    protected function empresaDaTrilha(bool $trabalho = true, ?int $id = null): Company
     {
-        $empresa = Company::create([
+        $dados = [
             'name'   => 'Loja da Trilha '.uniqid(),
             'cnpj'   => substr(str_pad((string) random_int(1, 99999999999999), 14, '0', STR_PAD_LEFT), 0, 14),
             'active' => true, 'status' => 'ativo', 'empresa_nova' => false,
-        ]);
+        ];
+        $empresa = $id !== null ? Company::query()->forceCreate([...$dados, 'id' => $id]) : Company::create($dados);
         config(['trilha.empresas' => [...(array) config('trilha.empresas', []), $empresa->id]]);
         if ($trabalho) {
             config(['trilha.trabalho.empresas' => [...(array) config('trilha.trabalho.empresas', []), $empresa->id]]);

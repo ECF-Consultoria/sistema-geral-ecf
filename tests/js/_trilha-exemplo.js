@@ -30,6 +30,10 @@
 // 4c: `ESCRITA.revisao.preco` (a URL do `PUT`, com o marcador) e as respostas do
 // preço ajustável (`PREVIA_COM_PRECO`, `PREVIA_POR_COR`, `PRECO_SALVO`,
 // `PRECO_ABAIXO_DO_MINIMO` e os erros 409/422) — o contrato do §19.11.
+//
+// 4d: `ESCRITA.revisao.publicar` e `ESCRITA.revisao.publicacao` (o `POST` e o `GET`,
+// com o marcador) e as respostas de aprovar e publicar (`PUBLICACAO_*`, as prévias
+// com a publicação andando e os erros 403/409/422) — o contrato do §19.13.
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -262,6 +266,9 @@ export const ESCRITA = {
         previa: '/trilha/459/ofertas/__ITEM__/previa',
         // 4c: o preço ajustável (§19.11) — `PUT`, com o mesmo marcador.
         preco: '/trilha/459/ofertas/__ITEM__/preco',
+        // 4d: aprovar e publicar (§19.13) — o `POST` e o `GET` do acompanhamento, com o mesmo marcador.
+        publicar: '/trilha/459/ofertas/__ITEM__/publicar',
+        publicacao: '/trilha/459/ofertas/__ITEM__/publicacao',
     },
 };
 
@@ -1016,4 +1023,92 @@ export const PRECO_NA_FILA = { message: 'Este anúncio já está na fila de publ
 export const ERROS_DO_PRECO = {
     message: 'O Premium não pode ter o mesmo preço do Clássico.',
     errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico.'] },
+};
+
+// ═══ 4ª entrega, 4d: aprovar e publicar (§19.13 do desenho) ═══════════════════
+
+/**
+ * `POST {escrita.revisao.publicar}` 202 — `{revisao: 37, ciente: false}`: o pedido entrou e a conferência começou. As
+ * mensagens são as do servidor (`PublicacaoNaTrilha::MSG_*`, 04/11): nas situações que andam, elas repetem o título
+ * da tela e não viram detalhe.
+ */
+export const PUBLICAR_ACEITO = { publicacao: { situacao: 'conferindo', mensagem: 'Conferindo o anúncio antes de publicar…', avisos: [], mlbs: [] } };
+
+/** `GET {escrita.revisao.publicacao}` — a conferência deixou avisos: a tela lista e pede [Publicar assim mesmo] (`ciente`). */
+export const PUBLICACAO_AVISOS = {
+    publicacao: {
+        situacao: 'avisos',
+        mensagem: 'A conferência deu avisos. Se estiver de acordo, publique assim mesmo.',
+        avisos: ['A foto 3 da cor Mel tem menos de 1.200 px: pode perder o zoom.', { mensagem: 'O título do Premium usa só 3 dos termos mais buscados.' }],
+        mlbs: [],
+    },
+};
+
+/** Na fila de publicação (a situação sai da fila de verdade depois do `na_fila`). */
+export const PUBLICACAO_NA_FILA = { publicacao: { situacao: 'na_fila', mensagem: 'Na fila de publicação.', avisos: [], mlbs: [] } };
+
+/** Publicando agora. */
+export const PUBLICACAO_PUBLICANDO = { publicacao: { situacao: 'publicando', mensagem: 'Publicando agora…', avisos: [], mlbs: [] } };
+
+/** Publicado (um anúncio por tipo × cor): "Publicado · em análise" (D59). */
+export const PUBLICACAO_PUBLICADA = {
+    publicacao: {
+        situacao: 'publicado',
+        mensagem: 'Publicado. Nas primeiras horas o anúncio fica em análise antes de ir à venda.',
+        avisos: [],
+        mlbs: ['MLB5123456781', 'MLB5123456782', 'MLB5123456783', 'MLB5123456784'],
+    },
+};
+
+/** A conferência achou erro (sempre bloqueia): a mensagem e os erros em texto neutro em `avisos`; nada na fila. */
+export const PUBLICACAO_RECUSADA = {
+    publicacao: {
+        situacao: 'recusado',
+        mensagem: 'A conferência encontrou problemas que impedem publicar. Corrija e tente de novo.',
+        avisos: ['A categoria pede o campo “Material do assento”.'],
+        mlbs: [],
+    },
+};
+
+/** A publicação falhou depois da fila. */
+export const PUBLICACAO_COM_ERRO = {
+    publicacao: { situacao: 'erro', mensagem: 'A publicação não deu certo. Confira o anúncio e tente de novo.', avisos: [], mlbs: [] },
+};
+
+/** `GET` de um item que nunca pediu (ou o pedido venceu no cache). */
+export const SEM_PUBLICACAO = { publicacao: null };
+
+/** A prévia (GET) com a publicação na fila — `publicacao` pelo mesmo cálculo: a gaveta retoma o acompanhamento. */
+export const PREVIA_NA_FILA = {
+    ...PREVIA_COM_PRECO,
+    item: { ...PREVIA_COM_PRECO.item, status: 'Na fila de publicação' },
+    publicacao: PUBLICACAO_NA_FILA.publicacao,
+};
+
+/** A prévia com os avisos da última conferência (o preço continua editável; o primário vira [Publicar assim mesmo]). */
+export const PREVIA_COM_AVISOS = { ...PREVIA_COM_PRECO, publicacao: PUBLICACAO_AVISOS.publicacao };
+
+/** A prévia de quem já foi publicado pela trilha: no ar (conferência), "Publicado · em análise". */
+export const PREVIA_PUBLICADA = {
+    ...PREVIA_COM_PRECO,
+    item: { ...PREVIA_COM_PRECO.item, etapa: 'lanc', status: 'Em análise · Clássico e Premium' },
+    publicacao: PUBLICACAO_PUBLICADA.publicacao,
+};
+
+/** A prévia pronta com um bloqueio (o que falta para publicar): sem [Aprovar e publicar]. */
+export const PREVIA_COM_BLOQUEIO = { ...PREVIA_COM_PRECO, bloqueios: ['Falta a garantia do anúncio.'] };
+
+/** 409 da revisão (o preço mudou noutra aba depois que a gaveta abriu): `{revisao_atual, message}` SEM `travado`. */
+export const CONFLITO_DO_PUBLICAR = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
+
+/** 409 do item que já está na fila (outra aba pediu): só `{message}`, neutro. */
+export const PUBLICAR_JA_NA_FILA = { message: 'Este anúncio já está na fila de publicação.' };
+
+/** 403 fora da loja liberada (D48): a mensagem neutra do §19.13. */
+export const PUBLICAR_FORA_DA_LOJA = { message: 'Publicar pela trilha ainda não está liberado para esta loja.' };
+
+/** 422 do Premium igual ao Clássico (D46: no publicar, TODAS as cores ativas). */
+export const PUBLICAR_PREMIUM_IGUAL = {
+    message: 'O Premium não pode ter o mesmo preço do Clássico.',
+    errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico na cor Mel.'] },
 };

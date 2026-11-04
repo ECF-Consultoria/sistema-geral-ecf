@@ -455,6 +455,8 @@ export function usePrecoDaPrevia({ escrita, oferta, previa, onPreviaNova, onReca
     return {
         editavel,
         estado,
+        // Preço digitado e não salvo (4d: o [Aprovar e publicar] fica desligado — publicaria o preço velho).
+        mexido: !!mexido,
         pedido,
         salvar,
         limpar,

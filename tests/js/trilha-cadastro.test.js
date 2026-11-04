@@ -91,7 +91,7 @@ import {
     versaoDepoisDe,
 } from '../../resources/js/lib/trilhaCadastro.js';
 import { avisosEmTexto } from '../../resources/js/Components/Trilha/formatos.js';
-import { acaoDoItem, comQuemEsta, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
+import { acaoDoItem, comQuemEsta, estaEmAnalise, estaNoAr, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Trilha de produtos — 3ª entrega (02/11/2026): o cadastro do produto DENTRO
@@ -538,6 +538,16 @@ test('textos da etapa 1 com a trilha de trabalho: o dono é a equipe; o cliente 
     assert.ok(comTrabalho.startsWith(semMe1), comTrabalho);
     assert.ok(comTrabalho.endsWith('segue com o aviso “vai por ME1 (transportadora)”.') && !comTrabalho.includes('frete ME1'), comTrabalho);
 
+    // 4d (D59): recém-publicado em análise — ação neutra para a equipe; o cliente segue em "Acompanhar".
+    assert.equal(acaoDoItem('lanc', 'equipe', false, { emAnalise: true }), 'Em análise');
+    assert.equal(acaoDoItem('lanc', 'equipe', false, {}), 'Conferir');
+    assert.equal(acaoDoItem('lanc', 'equipe', true, { emAnalise: true }), 'No ar', 'um anúncio já à venda vence');
+    assert.equal(acaoDoItem('lanc', 'cliente', false, { emAnalise: true }), 'Acompanhar');
+    const recem = { etapa: 'lanc', status: 'Em análise · Clássico e Premium' };
+    assert.equal(estaEmAnalise(recem), true);
+    assert.equal(estaNoAr(recem), false);
+    assert.equal(estaEmAnalise({ etapa: 'revisao', status: 'Em análise · Clássico' }), false, 'só na etapa 6');
+    assert.equal(estaEmAnalise({ etapa: 'lanc', status: 'No ar · Clássico' }), false);
     assert.equal(acaoDoItem('lista', 'cliente', true, { trabalho: true }), 'Acompanhar');
     assert.equal(acaoDoItem('lista', 'cliente', true, { trabalho: false }), 'Completar');
     assert.equal(acaoDoItem('lista', 'equipe', true, { trabalho: true }), 'Completar');

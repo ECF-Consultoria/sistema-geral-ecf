@@ -201,9 +201,10 @@ class ApresentacaoDaTrilha
      * relativos como o `categorias`. `mercado_livre` (F8): `anuncios` e `estado` (GET), `importar` e `limpar` (POST),
      * relativos também. `revisao` (4ª entrega, 4a): a prévia do anúncio do painel `v:{item}`, relativa, com o marcador
      * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
-     * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável).
+     * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável; 4d: `publicar`, o POST do "Aprovar e
+     * publicar", e `publicacao`, o GET do acompanhamento — os dois em toda loja com escrita: a #459 é conferida no servidor).
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -227,10 +228,13 @@ class ApresentacaoDaTrilha
                 'estado'   => route('trilha.ml.estado', $empresaId, false),
                 'limpar'   => route('trilha.ml.limpar', $empresaId, false),
             ],
-            // 4a: a prévia do anúncio (GET), com o item no marcador. 4c: o preço ajustável dela (PUT).
+            // 4a: a prévia do anúncio (GET), com o item no marcador. 4c: o preço ajustável dela (PUT). 4d: aprovar e
+            // publicar (POST) e o acompanhamento (GET) — a guarda da #459 é do servidor; aqui só o endereço.
             'revisao'       => [
-                'previa' => route('trilha.previa', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
-                'preco'  => route('trilha.preco', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                'previa'     => route('trilha.previa', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                'preco'      => route('trilha.preco', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                'publicar'   => route('trilha.publicar', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                'publicacao' => route('trilha.publicacao', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
             ],
         ];
     }

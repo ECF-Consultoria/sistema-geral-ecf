@@ -9,6 +9,7 @@ use App\Http\Controllers\Trilha\PlanilhaDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
 use App\Http\Controllers\Trilha\PrecoDaTrilhaController;
 use App\Http\Controllers\Trilha\PreviaDaTrilhaController;
+use App\Http\Controllers\Trilha\PublicacaoDaTrilhaController;
 use App\Http\Controllers\Trilha\TrilhaController;
 use Illuminate\Support\Facades\Route;
 
@@ -117,6 +118,15 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::put('/{company}/ofertas/{item}/preco', [PrecoDaTrilhaController::class, 'ajustar'])
             ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
             ->middleware('throttle:30,1,trilha.revisao.preco')->name('preco');
+        // 4d (§19.13): aprovar e publicar — confere e põe o anúncio na FILA de publicação da loja (quem publica é a fila);
+        // só na #459, guarda NO CÓDIGO (`PublicacaoNaTrilha::LOJA`). E o acompanhamento (a tela pergunta a cada 3 s).
+        // Contadores `trilha.revisao.publicar` e `trilha.revisao.publicacao` (os nomes das rotas são os do desenho).
+        Route::post('/{company}/ofertas/{item}/publicar', [PublicacaoDaTrilhaController::class, 'publicar'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:10,1,trilha.revisao.publicar')->name('publicar');
+        Route::get('/{company}/ofertas/{item}/publicacao', [PublicacaoDaTrilhaController::class, 'publicacao'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:240,1,trilha.revisao.publicacao')->name('publicacao');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
