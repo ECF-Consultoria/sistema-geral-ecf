@@ -63,9 +63,9 @@ class PreviaNaTrilhaTest extends TestCase
     use MontaTrilha;
     use RefreshDatabase;
 
-    /** As chaves do contrato (§19.5), na ordem. */
+    /** As chaves do contrato (§19.5), na ordem (4b acrescentou `ajuste` e `ajustes_restantes_hoje`, §19.14). */
     private const CHAVES = ['item', 'pronta', 'motivo', 'revisao', 'categoria', 'tipos', 'variantes', 'anuncios', 'descricao',
-        'preco', 'preparo', 'publicacao', 'aprovacao', 'bloqueios'];
+        'preco', 'preparo', 'publicacao', 'ajuste', 'ajustes_restantes_hoje', 'aprovacao', 'bloqueios'];
 
     private EstruturaProduto $p;
 
@@ -444,9 +444,11 @@ class PreviaNaTrilhaTest extends TestCase
         $this->withoutVite();
         $props = json_decode(json_encode($this->actingAs($this->dev)->get("/trilha/{$this->empresa->id}")->assertOk()->viewData('page')), true)['props'];
 
-        // 4c acrescentou o `preco` (o PUT do preço ajustável) e a 4d o `publicar` e o `publicacao`, com o mesmo marcador.
+        // 4c acrescentou o `preco` (o PUT do preço ajustável), a 4d o `publicar` e o `publicacao` e a 4b o `ajuste`, com o
+        // mesmo marcador.
         $this->assertSame(['previa' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/previa", 'preco' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/preco",
-            'publicar' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicar", 'publicacao' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicacao"],
+            'publicar' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicar", 'publicacao' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/publicacao",
+            'ajuste' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/ajuste"],
             $props['escrita']['revisao']);
         $url = str_replace('__ITEM__', "s-{$this->p->id}", $props['escrita']['revisao']['previa']);
         $this->assertTrue($this->actingAs($this->dev)->getJson($url)->assertOk()->json('pronta'));

@@ -45,7 +45,8 @@ use Illuminate\Validation\ValidationException;
  *
  * ### O pedido (`POST …/publicar`), nesta ordem (§19.13)
  * 404 chaves → 403 escrita (o controller) → 404 item → 403 fora da #459 → 409 (na fila → publicando → publicado → fora
- * da revisão; depois a `revisao` velha, SEM `travado`, com `revisao_atual`; e a prévia não pronta) → 422 (Premium =
+ * da revisão → o robô refazendo o texto (4b); depois a `revisao` velha, SEM `travado`, com `revisao_atual`; e a prévia
+ * não pronta) → 422 (Premium =
  * Clássico em TODAS as cores ativas — D46, a régua do `premium_igual` da prévia, a mesma do {@see PrecoNaTrilha}; a 4c
  * confere só as cores tocadas). Passou: grava o estado `conferindo` e enfileira o {@see PublicarPelaTrilhaJob}.
  *
@@ -178,6 +179,11 @@ class PublicacaoNaTrilha
         self::exigirQueDaParaPublicar($item, $r);
         /** @var PubRascunho $r */
         /** @var PubProduto $pub */
+        // 4b: com o robô refazendo o texto, a conferência validaria o texto velho e a escrita dele viria depois — 409 até
+        // o ajuste terminar (a tela já desliga o botão; esta é a regra do servidor).
+        if (AjusteDoRoboNaTrilha::andandoNoPub((int) $pub->id)) {
+            throw new HttpResponseException(response()->json(['message' => AjusteDoRoboNaTrilha::MSG_PUBLICAR_COM_AJUSTE], 409));
+        }
         $revisao = self::exigirRevisao($r, $corpo);
         $ciente = self::ciente($corpo);
 

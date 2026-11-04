@@ -63,9 +63,9 @@ class PrecoNaTrilhaTest extends TestCase
     use MontaTrilha;
     use RefreshDatabase;
 
-    /** As chaves da prévia (§19.5) e, só na resposta do PUT, `avisos`. */
+    /** As chaves da prévia (§19.5, com as da 4b) e, só na resposta do PUT, `avisos`. */
     private const CHAVES = ['item', 'pronta', 'motivo', 'revisao', 'categoria', 'tipos', 'variantes', 'anuncios', 'descricao',
-        'preco', 'preparo', 'publicacao', 'aprovacao', 'bloqueios', 'avisos'];
+        'preco', 'preparo', 'publicacao', 'ajuste', 'ajustes_restantes_hoje', 'aprovacao', 'bloqueios', 'avisos'];
 
     /** As chaves canônicas das duas cores da cadeira no Publicador (valores do eixo COLOR do schema MLB193945). */
     private const AZUL = 'COLOR=id:52028';

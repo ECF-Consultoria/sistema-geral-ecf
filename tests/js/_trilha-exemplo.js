@@ -269,6 +269,8 @@ export const ESCRITA = {
         // 4d: aprovar e publicar (§19.13) — o `POST` e o `GET` do acompanhamento, com o mesmo marcador.
         publicar: '/trilha/459/ofertas/__ITEM__/publicar',
         publicacao: '/trilha/459/ofertas/__ITEM__/publicacao',
+        // 4b: pedir ajuste ao robô (§19.14) — o `POST` e o `GET` do acompanhamento na MESMA URL, com o mesmo marcador.
+        ajuste: '/trilha/459/ofertas/__ITEM__/ajuste',
     },
 };
 
@@ -1111,4 +1113,133 @@ export const PUBLICAR_FORA_DA_LOJA = { message: 'Publicar pela trilha ainda não
 export const PUBLICAR_PREMIUM_IGUAL = {
     message: 'O Premium não pode ter o mesmo preço do Clássico.',
     errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico na cor Mel.'] },
+};
+
+// ═══ 4ª entrega, 4b: pedir ajuste ao robô (§19.14 do desenho) ═══════════════
+
+/**
+ * A prévia pronta (a da 4c) com o que a 4b acrescenta: `ajuste` (nenhum pedido ainda) e `ajustes_restantes_hoje` (o teto
+ * é 3 por anúncio por dia, §19.12).
+ */
+export const PREVIA_PARA_AJUSTE = { ...PREVIA_COM_PRECO, ajuste: null, ajustes_restantes_hoje: 3 };
+
+/**
+ * `POST {escrita.revisao.ajuste}` 202 — `{revisao: 37, refazer: ['titulo', 'descricao']}`: o pedido entrou na fila da IA.
+ * As mensagens desta seção são as do servidor (`AjusteDoRoboNaTrilha::MSG_*`, 04/11).
+ */
+export const AJUSTE_ACEITO = {
+    ajuste: {
+        situacao: 'fila',
+        partes: { titulo: { situacao: 'fila', mensagem: 'Na fila do robô.' }, descricao: { situacao: 'fila', mensagem: 'Na fila do robô.' } },
+        restantes_hoje: 2,
+        mensagem: 'Pedido recebido: o robô começa em instantes.',
+    },
+};
+
+/** `GET {escrita.revisao.ajuste}` — o robô já refez o título e está na descrição. */
+export const AJUSTE_FAZENDO = {
+    ajuste: {
+        situacao: 'fazendo',
+        partes: { titulo: { situacao: 'refeito', mensagem: 'Título refeito.' }, descricao: { situacao: 'fazendo', mensagem: 'O robô está refazendo.' } },
+        restantes_hoje: 2,
+        mensagem: 'O robô está refazendo…',
+    },
+};
+
+/**
+ * Terminou: o título foi refeito; a descrição a equipe tinha editado à mão (o robô só reescreve o campo que ainda é
+ * dele — `mantido`, com a mensagem do servidor).
+ */
+export const AJUSTE_FEITO = {
+    ajuste: {
+        situacao: 'feito',
+        partes: {
+            titulo: { situacao: 'refeito', mensagem: 'Título refeito.' },
+            descricao: { situacao: 'mantido', mensagem: 'A equipe editou a descrição; o robô não mexe nela.' },
+        },
+        restantes_hoje: 2,
+        mensagem: 'Ajuste pronto.',
+    },
+};
+
+/** Só o título pedido, e a cota diária da loja acabou: `erro` sem gastar (§19.14) — a causa única vira a mensagem geral. */
+export const AJUSTE_COM_ERRO = {
+    ajuste: {
+        situacao: 'erro',
+        partes: { titulo: { situacao: 'erro', mensagem: 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.' } },
+        restantes_hoje: 2,
+        mensagem: 'O limite diário do robô para esta loja acabou. Amanhã libera de novo.',
+    },
+};
+
+/** As duas partes falharam por motivos diferentes: a mensagem geral é a genérica; a causa vai em cada parte. */
+export const AJUSTE_COM_DOIS_ERROS = {
+    ajuste: {
+        situacao: 'erro',
+        partes: {
+            titulo: { situacao: 'erro', mensagem: 'O robô não achou um título diferente do atual.' },
+            descricao: { situacao: 'erro', mensagem: 'O robô chegou ao mesmo texto; nada mudou.' },
+        },
+        restantes_hoje: 1,
+        mensagem: 'O robô não conseguiu fazer o ajuste.',
+    },
+};
+
+/** `GET` de um item que nunca pediu ajuste (ou o pedido venceu no cache). */
+export const SEM_AJUSTE = { ajuste: null };
+
+/** A prévia com o ajuste andando (a mesma forma do GET): a gaveta retoma o acompanhamento; a linha diz D60. */
+export const PREVIA_AJUSTANDO = {
+    ...PREVIA_COM_PRECO,
+    item: { ...PREVIA_COM_PRECO.item, status: 'Robô refazendo · título, descrição' },
+    ajuste: AJUSTE_FAZENDO.ajuste,
+    ajustes_restantes_hoje: 2,
+};
+
+/** O título novo que o robô escreveu (diferente dos dois de antes — `evitar`). */
+export const TITULO_REFEITO = 'Cadeira De Jantar Jatobá Maciço Assento Palhinha Natural';
+
+/** A prévia recarregada no fim do ajuste: o título novo nos dois tipos, a revisão subiu, o resultado em `ajuste`. */
+export const PREVIA_AJUSTADA = {
+    ...PREVIA_COM_PRECO,
+    revisao: 38,
+    anuncios: PREVIA_COM_PRECO.anuncios.map((a) => ({ ...a, titulo: TITULO_REFEITO })),
+    ajuste: AJUSTE_FEITO.ajuste,
+    ajustes_restantes_hoje: 2,
+};
+
+/** A prévia de um anúncio que já teve os 3 ajustes de hoje: o botão fica desligado, com a dica. */
+export const PREVIA_SEM_AJUSTES = {
+    ...PREVIA_COM_PRECO,
+    ajuste: { ...AJUSTE_FEITO.ajuste, restantes_hoje: 0 },
+    ajustes_restantes_hoje: 0,
+};
+
+/** 409 da revisão (o preço mudou noutra aba depois que a gaveta abriu): `{revisao_atual, message}` SEM `travado`. */
+export const CONFLITO_DO_AJUSTE = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
+
+/** 409 com um ajuste já andando (outra aba pediu): só `{message}`, neutro. */
+export const AJUSTE_JA_ANDANDO = { message: 'O robô já está refazendo este anúncio. Espere terminar.' };
+
+/** 409 do item na fila de publicação (ou publicando, publicado, fora da revisão, não pronto): só `{message}`. */
+export const AJUSTE_NA_FILA_DE_PUBLICACAO = { message: 'Este anúncio já está na fila de publicação: o robô não mexe mais nele.' };
+
+/** 422 do limite do dia (§19.12: 3 ajustes por anúncio por dia), em `errors.refazer`. */
+export const AJUSTE_NO_LIMITE = {
+    message: 'Este anúncio já teve 3 ajustes hoje. Amanhã libera de novo.',
+    errors: { refazer: ['Este anúncio já teve 3 ajustes hoje. Amanhã libera de novo.'] },
+};
+
+/** O `GET` depois do 422 do limite: o último ajuste do dia, com `restantes_hoje: 0`. */
+export const AJUSTE_DO_LIMITE = { ajuste: { ...AJUSTE_FEITO.ajuste, restantes_hoje: 0 } };
+
+/**
+ * O kit da fase N (ou o rascunho que o robô nunca preparou): o texto não é do robô. O servidor manda
+ * `ajustes_restantes_hoje: 0` também aqui, e o `preparo` vem sem título nem descrição — o botão some (não é limite).
+ */
+export const PREVIA_SEM_ROBO = {
+    ...PREVIA_COM_PRECO,
+    preparo: { titulo: null, descricao: null, imagens: null },
+    ajuste: null,
+    ajustes_restantes_hoje: 0,
 };

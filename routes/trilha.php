@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Trilha\AjusteDaTrilhaController;
 use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
@@ -127,6 +128,15 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::get('/{company}/ofertas/{item}/publicacao', [PublicacaoDaTrilhaController::class, 'publicacao'])
             ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
             ->middleware('throttle:240,1,trilha.revisao.publicacao')->name('publicacao');
+        // 4b (§19.14): pedir ajuste ao robô — refaz o título (com o Modelo) e/ou a descrição pelo preparo do Publicador,
+        // na fila da IA; sem texto livre. E o acompanhamento (a tela pergunta a cada 3 s). Contadores próprios,
+        // `trilha.revisao.ajuste` e `trilha.revisao.ajuste.estado` (os nomes das rotas são os do desenho).
+        Route::post('/{company}/ofertas/{item}/ajuste', [AjusteDaTrilhaController::class, 'pedir'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:10,1,trilha.revisao.ajuste')->name('ajuste');
+        Route::get('/{company}/ofertas/{item}/ajuste', [AjusteDaTrilhaController::class, 'estado'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:240,1,trilha.revisao.ajuste.estado')->name('ajuste.estado');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

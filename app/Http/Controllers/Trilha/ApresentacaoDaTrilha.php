@@ -202,9 +202,10 @@ class ApresentacaoDaTrilha
      * relativos também. `revisao` (4ª entrega, 4a): a prévia do anúncio do painel `v:{item}`, relativa, com o marcador
      * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
      * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável; 4d: `publicar`, o POST do "Aprovar e
-     * publicar", e `publicacao`, o GET do acompanhamento — os dois em toda loja com escrita: a #459 é conferida no servidor).
+     * publicar", e `publicacao`, o GET do acompanhamento — os dois em toda loja com escrita: a #459 é conferida no servidor;
+     * 4b: `ajuste`, o POST do "Pedir ajuste ao robô" e o GET do estado dele, no mesmo endereço).
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -235,6 +236,8 @@ class ApresentacaoDaTrilha
                 'preco'      => route('trilha.preco', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 'publicar'   => route('trilha.publicar', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 'publicacao' => route('trilha.publicacao', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                // 4b: pedir ajuste ao robô (POST) e o estado dele (GET) — o MESMO endereço.
+                'ajuste'     => route('trilha.ajuste', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
             ],
         ];
     }

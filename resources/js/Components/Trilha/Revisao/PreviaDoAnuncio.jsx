@@ -31,12 +31,14 @@ import {
     urlDaPrevia,
     variantesDaPrevia,
 } from '@/lib/trilhaPrevia';
+import { comTravaDaPublicacao, comTravaDoPreco } from '@/lib/trilhaAjuste';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { composicao } from '@/Components/Trilha/formatos';
 import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
 import RodapeDaPublicacao, { usePublicacaoDaPrevia } from '@/Components/Trilha/Revisao/PublicarAnuncio';
+import RodapeDoAjuste, { BotaoDoAjuste, useAjusteDaPrevia } from '@/Components/Trilha/Revisao/AjusteDoRobo';
 
 // ─── Trilha de produtos — a prévia do anúncio (a gaveta `v:{item}`, 4ª entrega, 4a) ──
 //
@@ -58,6 +60,10 @@ import RodapeDaPublicacao, { usePublicacaoDaPrevia } from '@/Components/Trilha/R
 // 4d (§19.13): o rodapé ganha o primário [Aprovar e publicar], a confirmação e o
 // acompanhamento da publicação (`PublicarAnuncio.jsx`); enquanto ela anda (ou
 // depois de publicado), a caixa "Preço" fica só leitura.
+//
+// 4b (§19.14): o rodapé ganha o secundário [Pedir ajuste ao robô], a escolha "O
+// que refazer?" e o acompanhamento do ajuste (`AjusteDoRobo.jsx`); enquanto ele
+// anda, a caixa "Preço" e o [Aprovar e publicar] ficam desligados, com a dica.
 //
 // A gaveta pede a prévia UMA vez ao abrir (`GET escrita.revisao.previa`, com o id
 // no lugar do marcador). O item fora da revisão volta como 409 `{message}` ou 200
@@ -368,12 +374,17 @@ export const PREVIA_CARREGANDO = Object.freeze({ carregando: true, erro: null, p
  *   inicial?: ?{tipo: string, variante: string},
  *   preco?: ?object,
  *   publicar?: ?object,
+ *   ajuste?: ?object,
  * }} props  `preco` = o estado e as ações da caixa "Preço" (`usePrecoDaPrevia`, 4c); sem ele, a caixa só se lê.
  *   `publicar` = o estado e as ações da publicação (`usePublicacaoDaPrevia`, 4d); sem ele, o rodapé é o da 4a.
+ *   `ajuste` = o estado e as ações do ajuste pelo robô (`useAjusteDaPrevia`, 4b); sem ele, nada do ajuste.
  */
-export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaCaixa = null, publicar = null }) {
+export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaGaveta = null, publicar: publicarDaGaveta = null, ajuste = null }) {
     const pronta = !antes && !carregando && !erro && previaPronta(previa);
     const semPrevia = !antes && !carregando && !erro && !!previa && !pronta;
+    // 4b: com o robô refazendo o anúncio, a caixa "Preço" fica só leitura e o [Aprovar e publicar] desligado, com o porquê.
+    const precoDaCaixa = comTravaDoPreco(precoDaGaveta, ajuste?.travaDoPreco);
+    const publicar = comTravaDaPublicacao(publicarDaGaveta, ajuste?.travaDaPublicacao);
     // 4d: com a publicação andando (ou feita), a caixa "Preço" fica só leitura, com o porquê.
     const preco = publicar?.travaDoPreco && precoDaCaixa?.editavel
         ? { ...precoDaCaixa, estado: { ...precoDaCaixa.estado, leitura: publicar.travaDoPreco } }
@@ -393,10 +404,15 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
             </LinkDeAcao>,
         );
     }
+    // 4b: o secundário [Pedir ajuste ao robô], antes do primário da publicação.
+    if (ajuste?.acao) rodape.push(<BotaoDoAjuste key="ajuste" ajuste={ajuste} />);
     // 4d: a situação da publicação, o primário e a confirmação dele em volta das ações de sempre.
     if (publicar) rodape = <RodapeDaPublicacao publicar={publicar}>{rodape}</RodapeDaPublicacao>;
     // A guarda (4c): com preço digitado e não salvo, a confirmação toma o rodapé.
     if (preco?.pedido) rodape = <ConfirmacaoDoPreco preco={preco} />;
+    // 4b: o andamento e o resultado do ajuste em cima das ações; a escolha "O que refazer?" toma o rodapé. Com a
+    // confirmação da publicação na tela, o bloco do ajuste se esconde (ela é a única coisa do rodapé).
+    else if (ajuste) rodape = <RodapeDoAjuste ajuste={ajuste} escondido={!!publicar?.confirmando}>{rodape}</RodapeDoAjuste>;
 
     return (
         <MioloDaGaveta
@@ -457,6 +473,9 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
  * 4d: a publicação (`usePublicacaoDaPrevia`) parte da `publicacao` da prévia — aberta com o pedido andando, retoma o
  * acompanhamento —; o [Recarregar] do 409 dela também pede a prévia de novo; o publicado recarrega a Lista.
  *
+ * 4b: o ajuste (`useAjusteDaPrevia`) parte do `ajuste` da prévia (aberta com ele andando, retoma) e da publicação que
+ * vale agora; no fim ele pede a prévia de novo (o texto novo) e recarrega a Lista.
+ *
  * @param {{oferta: object, escrita: ?object, trabalho?: boolean, onAbrir?: (chave: string) => void,
  *   onAvisar?: (texto: string, tipo?: string) => void, onRecarregar?: ?(() => void)}} props
  */
@@ -508,6 +527,16 @@ export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onA
         onAvisar,
         onRecarregar,
     });
+    const ajuste = useAjusteDaPrevia({
+        escrita,
+        oferta,
+        previa: estado.previa,
+        publicacao: publicar.publicacao,
+        precoPendente: !!(preco.mexido || preco.estado?.salvando),
+        onRecarregarPrevia: tentarDeNovo,
+        onAvisar,
+        onRecarregar,
+    });
 
-    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} publicar={publicar} preco={preco} />;
+    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} ajuste={ajuste} publicar={publicar} preco={preco} />;
 }

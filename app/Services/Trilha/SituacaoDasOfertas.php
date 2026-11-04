@@ -110,6 +110,13 @@ class SituacaoDasOfertas
     public const EM_ANALISE_HORAS = 24;
 
     /**
+     * D60 (4ª entrega, 4b, 04/11/2026): o status da linha enquanto um "Pedir ajuste ao robô" está em `fila`/`fazendo` —
+     * "Robô refazendo · título, descrição" (as partes que ainda andam), na revisão e sem alerta
+     * ({@see AjusteDoRoboNaTrilha::refazendoEmLote()}). Mudou o texto, a tela confere o prefixo.
+     */
+    public const REFAZENDO = 'Robô refazendo';
+
+    /**
      * @param  array<int, array{id: int, oferta_id: ?int, estrutura_produto_id: ?int, produto_base_id: ?int, quantidade_kit: int}>  $pubs
      * @param  array<int, int>  $grupoDoProduto  estrutura_produto_id → pub do grupo
      * @param  array<int, int>  $pubDaOferta  oferta_id → pub
@@ -119,6 +126,7 @@ class SituacaoDasOfertas
      * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>  $daRegua  oferta → anúncios
      * @param  array<int, array{status: ?string, criado_em: ?Carbon}>  $kitsDeImagem
      * @param  array<int, true>  $agendados  estrutura_produto_id com o preparo agendado
+     * @param  array<int, list<string>>  $refazendo  pub → as partes que o robô está refazendo a pedido da revisão (4b, D60)
      */
     private function __construct(
         private array $pubs,
@@ -131,6 +139,7 @@ class SituacaoDasOfertas
         private array $kitsDeImagem,
         private array $agendados,
         private Carbon $agora,
+        private array $refazendo = [],
     ) {}
 
     /**
@@ -197,6 +206,8 @@ class SituacaoDasOfertas
             self::kitsDeImagem($rascunhos),
             self::agendados($produtoIds),
             now(),
+            // 4b (D60): os ajustes pedidos ao robô em andamento — uma leitura de cache para todos os anúncios com rascunho.
+            AjusteDoRoboNaTrilha::refazendoEmLote(array_keys($rascunhos)),
         );
     }
 
@@ -324,6 +335,14 @@ class SituacaoDasOfertas
         $decisao = $onda !== null && (! $andou || ($semTexto && $onda['comecou']))
             ? $this->naOnda($onda, $esperaSimples, $cadastroIncompleto)
             : $this->decidir($r, $estruturaProdutoId, $anuncios, $esperaSimples, $textoDoAgente);
+        // D60 (4b): a revisão pediu ajuste ao robô e ele ainda está refazendo — o item FICA na revisão, com o que está sendo
+        // refeito. Sem isto, a etapa da escrita adiada (ou o resumo vencido pela revisão nova) o devolveria ao robô
+        // ("Preparando"). Só enquanto o anúncio não está no ar nem publicando (aí vale a régua de sempre).
+        $refazendo = $principal !== null ? ($this->refazendo[$principal] ?? null) : null;
+        if ($refazendo !== null && $anuncios === [] && $r !== null && in_array($decisao['etapa'], ['robo', 'revisao'], true)
+            && ! in_array($r->status, [PubRascunho::PUBLISHING, PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED], true)) {
+            $decisao = ['etapa' => 'revisao', 'status' => self::REFAZENDO.' · '.implode(', ', $refazendo), 'alerta' => false];
+        }
 
         return [
             ...$decisao,

@@ -1146,3 +1146,89 @@ Nada do Publicador mudou: `ConferenciaService::conferir`, `FilaPublicacaoService
   na legenda). Mudou o texto do status no servidor (`SituacaoDasOfertas`), mude os prefixos aqui.
 - **`FotosDoPainelServiceTest` falha neste worktree por ambiente** (`design_handoff_publicador/Aprovacao.dc.html` não
   versionado — §26); não é regressão da trilha.
+
+## 40. 4b — ajuste ao robô (servidor) (04/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19.14 (D51/D60). Serviço `App\Services\Trilha\AjusteDoRoboNaTrilha`, Job
+`App\Jobs\Trilha\AjustarPeloRoboNaTrilhaJob` (fila da IA, `tries 1`, `timeout` 540), controller
+`Trilha\AjusteDaTrilhaController`, rotas `trilha.ajuste` (`POST …/ofertas/{item}/ajuste`, 10/min, contador
+`trilha.revisao.ajuste`) e `trilha.ajuste.estado` (`GET` no mesmo endereço, 240/min, contador `trilha.revisao.ajuste.estado`),
+`escrita.revisao.ajuste` com `__ITEM__`, teste `AjusteDoRoboNaTrilhaTest` (+ as duas rotas na matriz do
+`CadastroNaTrilhaAcessoTest`). Nada do Publicador mudou: `executarEtapa`, `gerarTitulos`, `gerarModelo` e `DescricaoIaService::gerar`
+são chamados como estão; nenhum prompt mudou.
+
+- **O `PreparoIaDoRascunhoService.php` é vigiado por portões** (Fases 188/193: `FotosDoPainelServiceTest` confere os leitores
+  do `EditorEmUso` nele por método, e `tests/gates/contagens-188-03.txt` conta asserções — a âncora por NÚMERO DE LINHA já
+  reprovou mudança legítima em 20/10). Esse teste falha neste worktree por ambiente (§26), então não haveria como provar que
+  os portões seguem verdes: a 4b não tocou o arquivo e mora aqui uma CÓPIA de três regras privadas de lá — mudou lá, muda
+  aqui: `livres()` (o "é do robô?" do título e da descrição, e do Modelo), `categoriaTemModelo()` e
+  `consumirCota()`. As duas primeiras só economizam a chamada da IA: quem decide a escrita é o `executarEtapa`, sob a trava
+  do rascunho (o teste da equipe que edita DURANTE a geração prova). A da cota usa a MESMA chave
+  (`publicador:preparo:cota:{empresa}:{Y-m-d}`) e o MESMO teto: o ajuste gasta do orçamento do preparo, 1 por pedido que vai
+  chamar a IA (parte toda "mantida" não gasta). O teste com o teto em 1 depois do preparo do `setUp` prova que o contador é
+  um só (mutação: outra chave → a IA é chamada).
+- **`executarEtapa` com `$valorPronto` exige o hash GUARDADO** (`step_state.ia_preparo.hash`); sem ele devolve `superado`
+  sempre. Sem hash = o texto não é do robô: o kit da fase N (o Combo N, `produto_base_id` — `avaliarIa` dá `kit_da_fase`) e o
+  rascunho que chegou à revisão sem preparo. Para eles o POST é 409 `MSG_SEM_ROBO` e a prévia diz
+  `ajustes_restantes_hoje: 0` (a tela só oferece o botão com saldo). O ajuste usa o hash guardado, não recalcula
+  `hashDosFatos` — o título e a descrição não entram no hash, então o ajuste não dispara preparo novo.
+- **O título planejado nunca é refeito.** A régua do robô conta o título PLANEJADO (aba Anúncios, ou o título de venda do
+  cadastro, que vira o planejado do Clássico) como preenchido. Na trilha o título do cadastro é escrito pela equipe (e o F8
+  grava o título do robô no cadastro, na 1ª variação): nesses produtos o ajuste refaz só o Premium e diz "Título do Premium
+  refeito; o do Clássico é da equipe e ficou." Com os dois tipos da equipe, `mantido` sem chamar a IA.
+- **O `evitar` é o "não repita" do prompt E a garantia do servidor**: `gerarTitulos` passa os títulos atuais ao
+  `titulosPorTermos` (8º argumento) e o `RegrasDoTitulo::semRepetir` os diferencia (troca as duas últimas palavras, ou põe
+  um termo). O teste usa a IA falsa devolvendo os MESMOS títulos de antes — só o `evitar` faz sair diferente (mutação:
+  `evitar` vazio → `igual`). `igual` (o robô chegou ao mesmo texto) sai como `erro` "nada mudou".
+- **O Modelo vem com o título** ("título — com o Modelo —", §19.1): depois do título escrito ou adiado, `gerarModelo` com os
+  títulos NOVOS e `executarEtapa(MODELO)`, só se o Modelo ainda é do robô e a categoria tem MODEL. Melhor esforço: não é
+  parte do contrato e não muda o desfecho do título.
+- **Adiado (editor em uso, na fila, "Anunciar por IA", agente parado):** o `executarEtapa` põe o valor gerado num
+  `GerarPreparoIaJob` adiado do PUBLICADOR (até `max_adiamentos` × `adiar_min`, ~2 h) — a IA não é chamada de novo. A parte
+  fica `fila` ("O robô já refez e grava assim que o anúncio estiver livre.") e o mesmo Job da trilha, em modo
+  `acompanhar` (zero IA, a cada `adiar_min` + 1 min, até 30 vezes), lê o desfecho no `step_state`. **A etapa sai `ok` tanto
+  quando grava quanto quando a equipe editou no meio** — o que separa `refeito` de `mantido` é a memória `ia_escrito`: mudou
+  (sha1 de antes guardado no estado) E o campo está com ela. Hash dos fatos trocado no meio = `erro` "o anúncio mudou".
+- **O limite de 3/dia conta o `activity_log`** (`trilha_ajuste_pedido`, subject = o rascunho, desde a meia-noite de São
+  Paulo): durável (sobrevive a reinício do cache) e é o mesmo registro de QUEM pediu e quais partes. A corrida de dois
+  cliques fecha com `Cache::lock` curta + o 409 "em andamento" relido dentro da trava. Conta o PEDIDO, inclusive o que
+  terminou em erro ou mantido (§19.12: "3 pedidos"). ⚠️ `ACTIVITY_LOGGER_ENABLED=false` desliga o histórico e, com ele, o
+  limite (a cota da loja segue valendo).
+- **Ordem da guarda do POST:** 404 item → 409 na fila → publicando → publicado → fora da revisão → o "Aprovar e publicar"
+  (4d) `conferindo` → texto não é do robô → ajuste em andamento → `revisao` (ausente = 422 `errors.revisao`; velha = 409
+  `{revisao_atual, message}` sem `travado`) → prévia não pronta (409, o `motivo` neutro) → 422 `errors.refazer` (vazio,
+  fora da forma, parte desconhecida) → 422 limite. E a 4d ganhou o espelho: publicar com ajuste andando é 409
+  (`MSG_PUBLICAR_COM_AJUSTE`) — sem isso a conferência validaria o texto velho e a escrita do robô viria depois.
+- **Nenhum texto livre:** o controller passa `$request->all()` (como 4c/4d) e o SERVIÇO lê só `revisao` e `refazer` (lista
+  fechada). O teste manda chaves a mais com uma marca e confere que ela não aparece no Job serializado, no estado, no
+  `activity_log` nem em NENHUM argumento de NENHUMA chamada à IA falsa (mutação: a marca no estado → `evitar` → a asserção
+  do estado pega; sem ela e sem a do Job, a da IA pega sozinha).
+- **D60 é uma troca DEPOIS da decisão de sempre**, em `SituacaoDasOfertas::doItem`: com o ajuste em `fila`/`fazendo` (lido
+  em lote, um `Cache::many` para todos os anúncios com rascunho — `AjusteDoRoboNaTrilha::refazendoEmLote`), o item que a régua
+  poria no robô ou na revisão vira `revisao` "Robô refazendo · título, descrição" (as partes que ainda andam), sem alerta.
+  Sem a troca, a etapa adiada (não está em `TEXTO_PRONTO`) com o resumo vencido pela revisão nova devolveria o item a
+  "Preparando" (etapa 4). Publicando/publicado/no ar: a régua de sempre. O prefixo é `SituacaoDasOfertas::REFAZENDO`.
+- **Vencido:** `fila`/`fazendo` sem atualização há mais de 180 min (`ANDAMENTO_VALE_MIN`, a mesma régua do "agente parou")
+  é Job que morreu: o GET e a prévia dizem `erro` "O robô não terminou", a linha sai do D60 e um pedido novo passa. O
+  acompanhamento do adiado atualiza o estado a cada passada, então espera longa de editor não vence.
+- **Testes:** o Job roda pelo `handle` (fila de mentira); a IA falsa é um mock que ANOTA método e argumentos
+  (`andReturnUsing`), trocado DEPOIS do preparo do `setUp`. A empresa é a 459 (o teste "publicar espera o ajuste" passa
+  pela D48). 12 mutações (limite, histórico, mantido, `executarEtapa`, texto livre ×2, fila, cota, D60, `evitar`, desfecho
+  do adiado, Job repetido) — todas derrubam teste. O Job só refaz com o estado em `fila`: o mesmo pedido entregue duas
+  vezes pela fila (`retry_after`) não paga a IA de novo.
+- **Deploy:** Job novo na fila `publicador-ia` — o `deploy.sh` só reinicia `ecf-worker:*`; o `ecf-worker-ia` precisa de
+  `php artisan queue:restart` (como www-data) para conhecer a classe (§28).
+
+### 4b — ajuste ao robô (tela), 04/11/2026
+- **Ordem dos hooks:** o hook do ajuste precisa da publicação que vale agora, e o publicar precisa saber se o ajuste
+  anda. Resolvido na vista (`comTravaDaPublicacao`/`comTravaDoPreco` sobre os controles); o hook da 4d não muda.
+- **O ajuste da gaveta NÃO zera com prévia nova** (ao contrário da 4d): ele é marcado com a prévia aberta e a prévia
+  que chega depois vence (`ajusteEfetivo`) — assim o resultado visto sobrevive à recarga do fim.
+- **Os testes de fonte da 4c/4d travam linhas de `PreviaDoAnuncio.jsx`** (`if (publicar) …` seguida de
+  `if (preco?.pedido) …`, e o fim `publicar={publicar} preco={preco} />;`). O rodapé do ajuste entrou como `else if`
+  depois delas — quem mexer ali, confira esses testes.
+- **`ajustes_restantes_hoje` é 0 também quando o texto não é do robô** (Kit da fase N, rascunho sem preparo): a tela
+  esconde o botão quando o `preparo` da prévia não tem título nem descrição do robô ("limite atingido" seria mentira).
+- Acompanhamento a cada 3 s com teto de 30 min (`MAX_CONSULTAS`), como a 4d — o adiado (editor do Publicador aberto)
+  pode durar ~2 h no servidor.
+- **Git Bash:** `grep -c $'\r'` dentro de laço contou todas as linhas de arquivos em LF — conferir CRLF pelos bytes.

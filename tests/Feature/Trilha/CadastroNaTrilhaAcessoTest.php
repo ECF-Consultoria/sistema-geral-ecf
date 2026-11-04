@@ -45,7 +45,8 @@ use Tests\Unit\Publicador\Concerns\CarregaSchemas;
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
  * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
- * anúncio e a foto dela; 4c: o preço ajustável; 4d: o "Aprovar e publicar" e o acompanhamento; cresce a cada fatia). A
+ * anúncio e a foto dela; 4c: o preço ajustável; 4d: o "Aprovar e publicar" e o acompanhamento; 4b: o "Pedir ajuste ao
+ * robô" e o estado dele; cresce a cada fatia). A
  * empresa dos testes é a 459 (`PublicacaoNaTrilha::LOJA`): a 4d só passa nela — o 403 da outra loja está no
  * `PublicarNaTrilhaTest`. A ordem da guarda é o que se prova aqui:
  *
@@ -152,6 +153,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4d: aprovar e publicar (põe na fila de publicação — o Job fica na fila de mentira) e o acompanhamento.
             'publicar (4d)'          => ['POST', '/ofertas/s-{p}/publicar', false],
             'acompanhar (4d)'        => ['GET', '/ofertas/s-{p}/publicacao', false],
+            // 4b: pedir ajuste ao robô (o Job fica na fila de mentira — nenhuma IA) e o estado dele, no mesmo endereço.
+            'ajuste (4b)'            => ['POST', '/ofertas/s-{p}/ajuste', false],
+            'estado do ajuste (4b)'  => ['GET', '/ofertas/s-{p}/ajuste', false],
         ];
     }
 
@@ -332,6 +336,10 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/publicar", ['revisao' => 1])->assertNotFound();
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/o-{$grande}/publicacao")->assertNotFound();
         $this->actingAs($this->dev)->postJson("/trilha/{$grande}/ofertas/s-{$p['produto']->id}/publicar", ['revisao' => 1])->assertNotFound();
+        // 4b: o item do ajuste (POST e GET) e a empresa.
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/ajuste", ['revisao' => 1, 'refazer' => ['titulo']])->assertNotFound();
+        $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/c-{$p['produto']->id}-1234/ajuste")->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$grande}/ofertas/s-{$p['produto']->id}/ajuste", ['revisao' => 1, 'refazer' => ['titulo']])->assertNotFound();
         Queue::assertNothingPushed();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
@@ -350,13 +358,19 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o robô não mexeu).
             $this->fotoNoRascunho($p);
         }
-        if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar')) {
+        $ajustePedido = $metodo === 'POST' && str_ends_with($caminho, '/ajuste');
+        if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar') || $ajustePedido) {
             // 4c: o preço só muda na revisão — o robô terminou o texto e o rascunho tem os dois tipos e a variante.
             $this->naRevisao($p);
         }
-        if (str_ends_with($caminho, '/publicar')) {
+        if (str_ends_with($caminho, '/publicar') || $ajustePedido) {
             // 4d: e só se publica com a prévia pronta — a categoria com o schema guardado (nenhuma leitura do ML).
             $this->comCategoria($p);
+        }
+        if ($ajustePedido) {
+            // 4b: o texto é do robô (o preparo dele registrado, com o hash dos fatos).
+            $r = PubRascunho::query()->whereIn('produto_id', PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->firstOrFail();
+            $r->update(['step_state' => array_replace_recursive((array) $r->step_state, ['ia_preparo' => ['hash' => 'fatos-do-preparo']])]);
         }
         // Depois da montagem: o corpo do preço leva a revisão do rascunho.
         $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
@@ -383,6 +397,13 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         }
         if (str_ends_with($caminho, '/publicacao')) {
             $this->assertSame(['publicacao' => null], $resposta->json(), 'nunca pediu');
+        }
+        if ($ajustePedido) {
+            // 4b: 202 e o Job na fila da IA (nada roda: a fila é de mentira).
+            $this->assertSame([202, 'fila'], [$resposta->getStatusCode(), $resposta->json('ajuste.situacao')]);
+            Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\AjustarPeloRoboNaTrilhaJob::class);
+        } elseif (str_ends_with($caminho, '/ajuste')) {
+            $this->assertSame(['ajuste' => null], $resposta->json(), 'nunca pediu');
         }
         if (str_ends_with($caminho, '/preco')) {
             $this->assertSame(['gold_special' => '199.90', 'gold_pro' => null], DB::table('pub_variante_precos as pr')
@@ -477,6 +498,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4d: a revisão do rascunho da Simples (1 enquanto ele não existe).
             str_ends_with($caminho, '/publicar')      => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
                 PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1), 'ciente' => false],
+            // 4b: a revisão do rascunho da Simples (1 enquanto ele não existe) e o título.
+            str_ends_with($caminho, '/ajuste')        => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
+                PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1), 'refazer' => ['titulo']],
             default                                   => [],
         };
     }
@@ -530,7 +554,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertSame([], Storage::disk(VariacaoImagensService::DISCO)->allFiles(), 'gravou foto no disco');
         // F4: nenhuma cor nem produto excluído (e nenhuma escrita da trilha registrada).
         $this->assertFalse(Activity::query()->get()->contains(fn (Activity $a) => in_array($a->getExtraProperty('evento'),
-            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado', 'trilha_publicacao_pedida'], true)), 'excluiu ou gravou');
+            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado', 'trilha_publicacao_pedida',
+                'trilha_ajuste_pedido'], true)), 'excluiu ou gravou');
         // 4c: nenhum preço gravado no rascunho.
         $this->assertSame(0, DB::table('pub_variante_precos')->whereNotNull('preco')->count(), 'gravou preço');
         Http::assertNothingSent();

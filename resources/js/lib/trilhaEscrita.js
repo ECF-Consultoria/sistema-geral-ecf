@@ -323,7 +323,7 @@ export async function limparImportacao(escrita) {
     return corpo(await axios.post(enderecoDaImportacao(escrita, 'limpar'), {}));
 }
 
-// ─── A prévia do anúncio (4ª entrega, 4a; preço 4c; publicar 4d) ────────────
+// ─── A prévia do anúncio (4ª entrega, 4a; preço 4c; publicar 4d; ajuste 4b) ─
 
 /**
  * A prévia do anúncio de uma oferta (§19.5 do desenho, só leitura). `url` chega PRONTA da gaveta (o
@@ -369,6 +369,29 @@ export async function publicarAnuncio(url, dados) {
  */
 export async function estadoDaPublicacao(url) {
     if (!url) throw new ErroDaTrilha('O acompanhamento da publicação não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.get(url));
+}
+
+/**
+ * "Pedir ajuste ao robô" (4b, §19.14 do desenho). `url` chega PRONTA da gaveta (o `escrita.revisao.ajuste` com o id do
+ * item no lugar do marcador) e `dados` também (`{revisao, refazer: ['titulo'|'descricao']}`, montado pela lib do
+ * ajuste — esta não a importa, pelo mesmo motivo da prévia). → 202 `{ajuste: {situacao: 'fila', partes, restantes_hoje,
+ * mensagem}}`. O 409 (revisão velha; ou o item fora da revisão, na fila, publicado, não pronto, com ajuste andando) e o
+ * 422 (`errors.refazer`: o limite do dia) chegam como erro do axios; quem trata é a gaveta.
+ */
+export async function pedirAjuste(url, dados) {
+    if (!url) throw new ErroDaTrilha('O ajuste pelo robô não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url, dados));
+}
+
+/**
+ * Como está o ajuste pedido (4b): a gaveta pergunta a cada 3 s enquanto ele anda. `url` chega PRONTA (a MESMA do
+ * pedido). → `{ajuste: {...}}`, ou `{ajuste: null}` se nunca foi pedido.
+ */
+export async function estadoDoAjuste(url) {
+    if (!url) throw new ErroDaTrilha('O acompanhamento do ajuste não está disponível nesta tela: recarregue a página.');
 
     return corpo(await axios.get(url));
 }

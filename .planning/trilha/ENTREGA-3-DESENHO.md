@@ -1462,3 +1462,99 @@ publicado → 409; Premium igual → 422; **nenhum `POST /items` disparado pela 
 segue a fila (`na_fila` → `publicado` com `mlbs`); "Em análise" nas primeiras 24 h e a regra antiga depois; matriz de
 acesso. Rede: suítes da fila e da publicação do Publicador (`PUBLICADOR_PREPARO_IA_ATIVO=true`, `--colors=never`).
 JS: `tests/js/trilha-publicar.test.js`.
+
+### 19.14 4b — pedir ajuste ao robô (contrato)
+Rotas (equipe; URL em `escrita.revisao.ajuste`, com `__ITEM__`, só para quem escreve):
+- `POST /trilha/{company}/ofertas/{item}/ajuste` (`trilha.ajuste`, 10/min; contador `trilha.revisao.ajuste`) — corpo
+  `{revisao, refazer: ["titulo", "descricao"]}` (1 ou 2 partes; SEM texto livre — qualquer outra chave é ignorada)
+  → **202** `{ajuste: {...}}`.
+- `GET /trilha/{company}/ofertas/{item}/ajuste` (`trilha.ajuste.estado`, 240/min; contador `trilha.revisao.ajuste.estado`)
+  → 200 `{ajuste: {...}}` ou `{ajuste: null}`.
+
+`ajuste = {situacao: fila|fazendo|feito|erro, partes: {titulo?: {situacao: refeito|mantido|erro|fila|fazendo,
+mensagem}, descricao?: {...}}, restantes_hoje: n, mensagem}`. `mantido` = a equipe editou aquela parte à mão (o robô
+só reescreve campo que ainda é dele — `step_state.ia_escrito`), com mensagem "A equipe editou o título; o robô não
+mexe nele." A prévia (§19.5) passa a trazer `ajuste` (mesma forma e mesmo cálculo do GET) e `ajustes_restantes_hoje`.
+
+Guarda: 404 chaves → 403 → 404 item → 409 (revisão velha SEM `travado`, com `revisao_atual`; fora da revisão; na
+fila/publicando/publicado; prévia não pronta; ajuste já em andamento) → 422 (`refazer` vazio ou com parte
+desconhecida em `errors.refazer`; **limite de 3 ajustes por anúncio por dia** → `errors.refazer` "Este anúncio já teve
+3 ajustes hoje. Amanhã libera de novo.").
+
+Job `App\Jobs\Trilha\AjustarPeloRoboNaTrilhaJob` na fila da IA (`PreparoIaAgenda::fila()`): para cada parte, gera
+com os geradores do preparo — título: `PalavrasChaveService::gerarTitulos($r, $prazo, $evitar)` com `evitar` = os
+títulos atuais dos dois tipos; descrição: `DescricaoIaService::gerar` — e grava por
+`PreparoIaDoRascunhoService::executarEtapa(rascunhoId, etapa, hash, $valorPronto)` (as travas do robô: só campo da
+IA; adia com editor em uso ou com o item na fila). Respeita a cota diária da loja (falta cota → `erro` com mensagem
+neutra, sem gastar). Confira as assinaturas reais antes de usar. Nenhum prompt do Publicador muda.
+
+D60: enquanto o ajuste está em `fila`/`fazendo`, o item fica na revisão com o status **"Robô refazendo · título,
+descrição"** (marca em cache por pub, 6 h; some em `feito`/`erro`), sem voltar à etapa 4.
+
+Tela (gaveta `v:`): botão secundário **[Pedir ajuste ao robô]** quando há `escrita.revisao.ajuste`, a prévia está
+pronta, na revisão, sem publicação nem ajuste em andamento e `ajustes_restantes_hoje > 0`; abre no rodapé a escolha
+"O que refazer?" com [Título] [Descrição] (pelo menos um) + [Refazer] [Cancelar], e "Restam N ajustes hoje";
+depois pergunta o `GET ajuste` a cada 3 s enquanto `fila`/`fazendo`; ao terminar recarrega a prévia (o título e a
+descrição novos aparecem) e mostra o resultado por parte ("Título refeito.", "Descrição mantida: a equipe editou.");
+409/422 → mensagem do servidor. Enquanto o ajuste anda, [Aprovar e publicar] e a caixa de preço ficam desligados.
+
+Custo: título = 1 chamada de IA (+1 do Modelo, se o gerador usar); descrição = 1. Zero escrita no ML.
+
+Testes 4b: `tests/Feature/Trilha/AjusteDoRoboNaTrilhaTest.php` (IA falsa) — título novo diferente dos atuais
+(`evitar`); parte editada pela equipe → `mantido`, nada sobrescrito; editor em uso → adiado (sem perder o pedido);
+na fila/publicando/publicado → 409; fora da revisão → 409; revisão velha → 409 sem `travado`; 4º pedido no dia → 422;
+cota da loja esgotada → `erro` sem chamar a IA; Job na fila da IA (não `high`); texto livre no corpo é ignorado (não
+chega a prompt nenhum); D60 na linha da Lista; a `ajuste` da prévia = a do GET; matriz de acesso. Rede: suítes do
+preparo IA do Publicador (`PreparoIaDoRascunhoService`, `PalavrasChaveService`, `DescricaoIaService`). JS:
+`tests/js/trilha-ajuste.test.js`.
+
+### 19.15 4f — fotos enviadas pelo cliente (contrato)
+É a 1ª ESCRITA na porta do cliente (R9): guarda própria, allowlist do domínio do cliente, CSRF, 413, varredura de
+props. D57 (controllers finos em `App\Http\Controllers\Trilha\Cliente\*` que leem `PortalContexto` e chamam os MESMOS
+serviços com `Company` + `AtorDoPortal::cliente(PortalUsuario)`) e D58 (`CadastroNaTrilha::enviarFotos/excluirFoto` +
+guarda nova `empresaDoCliente(Company)` — as duas chaves `TrilhaLigada` e `TrilhaDeTrabalho`; o vínculo do usuário com
+a empresa já vem conferido pelo `portal.auth`). Resposta do usuário (§19.12): enviar E excluir, só enquanto o
+produto está na Lista.
+
+Rotas (grupo `portal.auth`, prefixo `portal/{portalEmpresa}`, nomes `portal.trilha.fotos.*`; cada uma com linha em
+`RestringeDominioDoPortal::PERMITIDO_COM_ID`):
+- `GET  portal/{pe}/trilha/produtos/{produto}/fotos` → 200 o quadro de fotos do produto (abaixo).
+- `GET  portal/{pe}/trilha/fotos/{variacao}/{imagem}` → a imagem (só da empresa; `Cache-Control: private`).
+- `POST portal/{pe}/trilha/produtos/{produto}/variacoes/{variacao}/fotos` (multipart `imagens[]`) → 200 o quadro novo + `avisos`.
+- `DELETE portal/{pe}/trilha/produtos/{produto}/variacoes/{variacao}/fotos/{imagem}` → 200 o quadro novo.
+Throttles com contador próprio (`trilha.cliente.fotos*`). A URL base chega na página do cliente por
+`cliente_escrita.fotos` = `/portal/{pe}/trilha/produtos/__PRODUTO__/fotos` — SÓ quando as duas chaves estão ligadas e
+quem vê é o cliente de verdade (no "Ver como: Cliente" da equipe NÃO vem: a equipe tem a gaveta dela).
+
+Quadro de fotos:
+```json
+{"produto": {"id": 91, "nome": "Cadeira Jatobá", "editavel": true, "motivo": null},
+ "cores": [{"variacao_id": 301, "rotulo": "Natural", "minimo": 3, "maximo": 12,
+            "fotos": [{"id": 5501, "url": "/portal/88/trilha/fotos/301/5501"}], "faltam": 1}],
+ "limites": {"tamanho_mb": 10, "tipos": ["jpg", "png", "webp"], "por_envio": 12}}
+```
+- `cores` segue a MESMA régua das fotos por cor da equipe (`CompletudeDoProduto::fotosDeCadaVariacao`: com cor e
+  tamanho, a foto é da cor — vai na 1ª variação da cor). `faltam` = quanto falta para o mínimo daquela cor.
+- `editavel: false` + `motivo` ("Este produto já seguiu para a próxima etapa. Para trocar as fotos, fale com a
+  equipe.") quando o produto andou (`exigirLivre`/trava) ou não está mais na Lista; POST/DELETE nesse caso → 409
+  `{message}`.
+
+Guarda, nesta ordem: `portal.auth` → 404 sem as duas chaves (`empresaDoCliente`) → 404 produto/variação/imagem de
+outra empresa ou inexistente (antes da validação) → 409 produto que andou/fora da Lista → 422 (regras de imagem de
+`RegrasDoCadastro`; 413 do servidor → 422 `errors.imagens` — estender a regex de `bootstrap/app.php` para as rotas do
+cliente). Evento `trilha_cadastro_salvo` (`passo: fotos`) com o ator CLIENTE. Depois de enviar, `prepararSeCabe` como na
+equipe (o produto completo segue sozinho; o robô espera a onda).
+
+Tela (cliente): no painel do produto da Lista (`p:`), a caixa **Fotos** por cor: miniaturas (`loading="lazy"`),
+"Faltam N fotos nesta cor" / "Fotos completas", [Enviar fotos] (várias de uma vez; confere tipo e tamanho antes de
+enviar), [Excluir] por foto com confirmação no rodapé, e o andamento do envio. `editavel: false` → só leitura com o
+`motivo`. Textos neutros: nada de "Mercado Livre", "Publicador", "Portal" nem "agente". O pacote do cliente não pode
+levar nada da equipe (`Cadastro/`, `Revisao/`).
+
+Testes 4f: `tests/Feature/Trilha/FotosDoClienteNaTrilhaTest.php` — o cliente da 459 envia e exclui no próprio produto
+(arquivo gravado, evento com ator cliente); produto/variação/imagem de outra empresa → 404; sem as chaves → 404;
+produto que andou ou fora da Lista → 409 (nada grava); 413/`UPLOAD_ERR_INI_SIZE` → 422 `errors.imagens`; tipo e
+tamanho → 422; o domínio do cliente deixa a rota passar (allowlist) e o CSRF vale; `cliente_escrita` só para o
+cliente de verdade (não no "Ver como: Cliente"); a varredura do `AcessoATrilhaTest` (props compartilhadas do cliente
+sem dado da equipe); a rota de foto da equipe não muda. JS: `tests/js/trilha-fotos-cliente.test.js` + teste de que
+o pacote do cliente não importa `Cadastro/` nem `Revisao/`.
