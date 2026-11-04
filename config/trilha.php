@@ -56,6 +56,34 @@ return [
     ],
 
     /*
+    |--------------------------------------------------------------------------
+    | A aprovação do CLIENTE por loja (4ª entrega, fatia 4e, 04/11/2026)
+    |--------------------------------------------------------------------------
+    |
+    | Os `companies.id` em que o anúncio preparado pela trilha só vai para a
+    | fila de publicação DEPOIS de o cliente aprovar a prévia (desenho §19.16,
+    | D53). Com a loja aqui, o primário da revisão da equipe vira [Mandar ao
+    | cliente] e o "Aprovar e publicar" direto da equipe responde 409 (a
+    | aprovação do cliente não valeria nada); o cliente aprova (o anúncio
+    | entra na fila com quem mandou) ou pede ajuste (texto para a equipe).
+    |
+    | Vale só para empresa que também está na trilha de trabalho
+    | (`App\Support\Trilha\AprovacaoDoCliente`, cruzada com `TrilhaDeTrabalho`).
+    | Nasce VAZIA: muda quem publica. Ligar = `TRILHA_APROVACAO_CLIENTE_EMPRESAS=459`
+    | no `.env` + `php artisan config:cache`. Desligar é o mesmo com a lista
+    | vazia: tudo volta a ser como na 4d, e as linhas de `trilha_aprovacoes`
+    | ficam no banco sem efeito.
+    |
+    */
+
+    'aprovacao_cliente' => [
+        'empresas' => array_values(array_unique(array_map('intval', array_filter(
+            array_map('trim', explode(',', (string) env('TRILHA_APROVACAO_CLIENTE_EMPRESAS', ''))),
+            fn (string $id) => ctype_digit($id) && (int) $id > 0,
+        )))),
+    ],
+
+    /*
     | A soltura das ondas (`trilha:soltar-ondas`): quantos produtos cada passada
     | pede ao robô por empresa (o resto vai na passada seguinte, 15 minutos
     | depois), por quantos dias depois do início a passada repete o pedido de

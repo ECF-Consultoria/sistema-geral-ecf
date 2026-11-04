@@ -15,6 +15,7 @@ import { recarregar } from '@/lib/trilhaEscrita';
 import {
     buscaComEstado,
     enderecoDasFotosDoCliente,
+    enderecosDaAprovacaoDoCliente,
     estadoComUrl,
     etapaDoItem,
     lerEstadoDaUrl,
@@ -78,6 +79,13 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // ganha a caixa "Fotos" (`Components/Trilha/Cliente/`, por `lazy` dentro do
 // `PainelLateral`, com o 2º caminho em `CadastroSobDemanda.jsx`). Depois de enviar
 // ou excluir, a trilha recarrega (as faltas do produto mudam).
+//
+// ### 4ª entrega, fatia 4e (04/11/2026): a aprovação do cliente por loja
+// Com `cliente_escrita.aprovacao` (de novo só o cliente de verdade), o anúncio que a
+// equipe mandou para ele abre na gaveta dele (`v:{item}`, a linha diz "Aprovar"):
+// `Components/Trilha/Cliente/AprovarAnuncio.jsx`, por `lazy` com o 2º caminho em
+// `CadastroSobDemanda.jsx`. Na porta da equipe o `v:` segue sendo a prévia dela (com o
+// [Mandar ao cliente] quando a loja aprova com o cliente).
 
 const ID_DA_VISTA = 'trilha-vista';
 
@@ -88,6 +96,8 @@ const PlanilhaPorCategoria = lazy(() => import('@/Components/Trilha/Cadastro/Pla
 const ImportarDoMercadoLivre = lazy(() => import('@/Components/Trilha/Cadastro/ImportarDoMercadoLivre'));
 // Só a equipe com `escrita.revisao` abre o painel `previa` (`painelDaChave`).
 const PreviaDoAnuncio = lazy(() => import('@/Components/Trilha/Revisao/PreviaDoAnuncio'));
+// Só o cliente de verdade com `cliente_escrita.aprovacao` abre o painel `aprovacao` (`painelDaChave`).
+const AprovarAnuncio = lazy(() => import('@/Components/Trilha/Cliente/AprovarAnuncio'));
 
 /** O que a gaveta mostra enquanto o JS do cadastro chega (a 1ª vez que alguém abre um). */
 function AbrindoOCadastro({ produto }) {
@@ -166,7 +176,7 @@ function gravarNaUrl(estado) {
  *     planilha?: {modelo: string, previa: string, gravar: string},
  *     mercado_livre?: {anuncios: string, importar: string, estado: string, limpar: string},
  *     revisao?: {previa: string}},
- *   cliente_escrita?: ?{fotos: string},
+ *   cliente_escrita?: ?{fotos?: string, aprovacao?: {previa: string, aprovar: string, ajuste: string}},
  *   produtos: Array<object>,
  *   ofertas: Array<object>,
  *   ondas: Array<object>,
@@ -210,6 +220,9 @@ export function TelaDaTrilha({
     const comPrevia = podeVerPrevia({ visao, trabalho, pode_editar, escrita }, verComo);
     // As fotos que o cliente envia (4f): só a porta do cliente de verdade, com o endereço do servidor.
     const baseDasFotos = enderecoDasFotosDoCliente({ visao, trabalho, cliente_escrita });
+    // A aprovação do anúncio pelo cliente (4e): a mesma regra — só a porta do cliente de verdade, com os três endereços.
+    const enderecosDaAprovacao = useMemo(() => enderecosDaAprovacaoDoCliente({ visao, trabalho, cliente_escrita }), [visao, trabalho, cliente_escrita]);
+    const comAprovacao = !!enderecosDaAprovacao;
 
     // Com a trilha de trabalho a trilha substitui o Portal (F5): nenhum atalho para a ficha de lá.
     const dadosDaPorta = useMemo(
@@ -227,7 +240,7 @@ export function TelaDaTrilha({
 
     // O começo vem da URL (lido uma vez, na montagem). Valor estranho, item que não existe mais
     // ou painel de escrita para quem não escreve é ignorado em `lerEstadoDaUrl`.
-    const [inicial] = useState(() => lerEstadoDaUrl(buscaDaUrl(), dadosDaPorta, { podeEditar, comPrevia }));
+    const [inicial] = useState(() => lerEstadoDaUrl(buscaDaUrl(), dadosDaPorta, { podeEditar, comPrevia, comAprovacao }));
     const [etapa, setEtapa] = useState(inicial.etapa);
     const [vista, setVista] = useState(inicial.vista);
     const [aberto, setAberto] = useState(inicial.abrir);
@@ -412,7 +425,7 @@ export function TelaDaTrilha({
         fechar();
     }, [fechar]);
 
-    const painel = painelDaChave(dados, aberto, { podeEditar, comPrevia });
+    const painel = painelDaChave(dados, aberto, { podeEditar, comPrevia, comAprovacao });
     const temPainel = !!painel;
 
     // O que estava aberto sumiu (apagado numa recarga — por outra pessoa, inclusive —, ou o painel de escrita
@@ -422,7 +435,7 @@ export function TelaDaTrilha({
     }, [aberto, temPainel, fechar]);
 
     const geradoEm = fmtGeradoEm(gerado_em);
-    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirComGuarda, trabalho: comTrabalho, podeEditar, comPrevia };
+    const propsDoPainel = { dados, visao: visaoEfetiva, links: linksDaVisao, onAbrir: abrirComGuarda, trabalho: comTrabalho, podeEditar, comPrevia, comAprovacao };
     // Os endereços de escrita só vão aos painéis de quem escreve: no "Ver como: Cliente" eles nem chegam lá.
     const escritaComum = { escrita: podeEditar ? escrita : null, onAvisar: avisar, onRecarregar: recarregarTrilha };
     // A chave troca o conteúdo inteiro a cada painel (de uma oferta para outra, também): o formulário, o
@@ -442,6 +455,7 @@ export function TelaDaTrilha({
                 trabalho={comTrabalho}
                 podeEditar={podeEditar}
                 comPrevia={comPrevia}
+                comAprovacao={comAprovacao}
                 planejamento={{ ...escritaComum, preEscolha, onNovaOnda: podeEditar ? novaOndaDaOferta : null }}
                 fotosDoCliente={baseDasFotos ? { base: baseDasFotos, onRecarregar: recarregarTrilha, onAvisar: avisar } : null}
             />
@@ -451,6 +465,13 @@ export function TelaDaTrilha({
         conteudoDaGaveta = (
             <Suspense key={chaveDoConteudo} fallback={<AbrindoAPrevia oferta={painel.oferta} />}>
                 <PreviaDoAnuncio oferta={painel.oferta} trabalho={comTrabalho} onAbrir={abrirComGuarda} {...escritaComum} />
+            </Suspense>
+        );
+    } else if (painel?.painel === 'aprovacao') {
+        // Só chega aqui o cliente de verdade com `cliente_escrita.aprovacao` (`painelDaChave`): a gaveta dele (4e).
+        conteudoDaGaveta = (
+            <Suspense key={chaveDoConteudo} fallback={<AbrindoAPrevia oferta={painel.oferta} />}>
+                <AprovarAnuncio oferta={painel.oferta} enderecos={enderecosDaAprovacao} onAvisar={avisar} onRecarregar={recarregarTrilha} />
             </Suspense>
         );
     } else if (painel?.painel === 'onda') {

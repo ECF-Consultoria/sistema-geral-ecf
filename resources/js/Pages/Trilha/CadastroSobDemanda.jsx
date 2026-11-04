@@ -31,6 +31,9 @@
 // 4f (04/11/2026): a pasta `Components/Trilha/Cliente/` (as fotos que o CLIENTE
 // envia, pedidas por `lazy` dentro do `PainelLateral`) também — o pedaço dela usa
 // `Pecas` e `trilhaEscrita`, como a página.
+//
+// 4e (04/11/2026): a gaveta do cliente que aprova o anúncio (`Cliente/AprovarAnuncio`,
+// pedida por `lazy` na página) — usa `PainelLateral`, `Pecas` e `trilhaEscrita`.
 
 /** Os pedaços da pasta `Cadastro/` que a trilha carrega sob demanda (os mesmos `lazy` da página e da Lista). */
 export const PEDACOS_DO_CADASTRO = {
@@ -46,9 +49,13 @@ export const PEDACOS_DA_REVISAO = {
     PreviaDoAnuncio: () => import('@/Components/Trilha/Revisao/PreviaDoAnuncio'),
 };
 
-/** Os pedaços da pasta `Cliente/` (4f) que o painel do produto carrega sob demanda (o mesmo `lazy` do `PainelLateral`). */
+/**
+ * Os pedaços da pasta `Cliente/` que a porta do cliente carrega sob demanda: as fotos (4f, o `lazy` do `PainelLateral`)
+ * e a aprovação do anúncio (4e, o `lazy` da página).
+ */
 export const PEDACOS_DO_CLIENTE = {
     FotosDoProduto: () => import('@/Components/Trilha/Cliente/FotosDoProduto'),
+    AprovarAnuncio: () => import('@/Components/Trilha/Cliente/AprovarAnuncio'),
 };
 
 /** Não desenha nada (não é uma tela). */

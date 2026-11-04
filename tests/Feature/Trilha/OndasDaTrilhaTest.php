@@ -283,10 +283,11 @@ class OndasDaTrilhaTest extends TestCase
 
     /**
      * A porta do cliente só escreve nas FOTOS do produto (4ª entrega, 4f, 04/11/2026 — enviar e excluir, a 1ª escrita
-     * dela): nenhuma outra rota de escrita sob `portal/{empresa}/trilha`. Pelo ENDEREÇO, não pelo nome — as rotas da 4f
-     * se chamam `portal.trilha.fotos.*` (o desenho), e uma conferência por `portal.auth.trilha*` não as veria.
+     * dela) e na APROVAÇÃO do anúncio (4e, 04/11/2026 — aprovar e pedir ajuste): nenhuma outra rota de escrita sob
+     * `portal/{empresa}/trilha`. Pelo ENDEREÇO, não pelo nome — as rotas se chamam `portal.trilha.fotos.*` e
+     * `portal.trilha.aprovacao.*` (o desenho), e uma conferência por `portal.auth.trilha*` não as veria.
      */
-    public function test_a_porta_do_cliente_so_escreve_nas_fotos(): void
+    public function test_a_porta_do_cliente_so_escreve_nas_fotos_e_na_aprovacao(): void
     {
         $escritas = [];
         $leituras = 0;
@@ -297,9 +298,14 @@ class OndasDaTrilhaTest extends TestCase
             $metodos = array_values(array_diff($rota->methods(), ['GET', 'HEAD']));
             $metodos === [] ? $leituras++ : $escritas[(string) $rota->getName()] = $metodos;
         }
-        $this->assertSame(3, $leituras, 'a página, o quadro de fotos e a foto');
+        $this->assertSame(5, $leituras, 'a página, o quadro de fotos e a foto (4f), a prévia e a foto da aprovação (4e)');
         ksort($escritas);
-        $this->assertSame(['portal.trilha.fotos.enviar' => ['POST'], 'portal.trilha.fotos.excluir' => ['DELETE']], $escritas);
+        $this->assertSame([
+            'portal.trilha.aprovacao.ajuste'  => ['POST'],
+            'portal.trilha.aprovacao.aprovar' => ['POST'],
+            'portal.trilha.fotos.enviar'      => ['POST'],
+            'portal.trilha.fotos.excluir'     => ['DELETE'],
+        ], $escritas);
 
         // E cada escrita da equipe tem o seu prefixo de throttle.
         foreach (['trilha.ondas.criar', 'trilha.ondas.editar', 'trilha.ondas.excluir', 'trilha.planejamento'] as $nome) {

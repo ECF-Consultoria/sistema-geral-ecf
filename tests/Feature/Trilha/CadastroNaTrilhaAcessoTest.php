@@ -14,6 +14,7 @@ use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\TrilhaAprovacao;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
@@ -46,7 +47,8 @@ use Tests\Unit\Publicador\Concerns\CarregaSchemas;
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
  * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
  * anúncio e a foto dela; 4c: o preço ajustável; 4d: o "Aprovar e publicar" e o acompanhamento; 4b: o "Pedir ajuste ao
- * robô" e o estado dele; cresce a cada fatia). A
+ * robô" e o estado dele; 4e: o "Mandar ao cliente" — as rotas DO CLIENTE da 4e têm a matriz delas no
+ * `AprovacaoDoClienteNaTrilhaTest`, pelo `portal.auth`; cresce a cada fatia). A
  * empresa dos testes é a 459 (`PublicacaoNaTrilha::LOJA`): a 4d só passa nela — o 403 da outra loja está no
  * `PublicarNaTrilhaTest`. A ordem da guarda é o que se prova aqui:
  *
@@ -156,6 +158,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4b: pedir ajuste ao robô (o Job fica na fila de mentira — nenhuma IA) e o estado dele, no mesmo endereço.
             'ajuste (4b)'            => ['POST', '/ofertas/s-{p}/ajuste', false],
             'estado do ajuste (4b)'  => ['GET', '/ofertas/s-{p}/ajuste', false],
+            // 4e: mandar a prévia ao cliente (com a chave da aprovação ligada no teste que passa; sem ela, 409).
+            'mandar ao cliente (4e)' => ['POST', '/ofertas/s-{p}/cliente', false],
         ];
     }
 
@@ -340,6 +344,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/ajuste", ['revisao' => 1, 'refazer' => ['titulo']])->assertNotFound();
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/c-{$p['produto']->id}-1234/ajuste")->assertNotFound();
         $this->actingAs($this->dev)->postJson("/trilha/{$grande}/ofertas/s-{$p['produto']->id}/ajuste", ['revisao' => 1, 'refazer' => ['titulo']])->assertNotFound();
+        // 4e: o item e a empresa do "Mandar ao cliente".
+        $this->actingAs($this->dev)->postJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/cliente", ['revisao' => 1])->assertNotFound();
+        $this->actingAs($this->dev)->postJson("/trilha/{$grande}/ofertas/s-{$p['produto']->id}/cliente", ['revisao' => 1])->assertNotFound();
         Queue::assertNothingPushed();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
@@ -359,13 +366,18 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             $this->fotoNoRascunho($p);
         }
         $ajustePedido = $metodo === 'POST' && str_ends_with($caminho, '/ajuste');
-        if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar') || $ajustePedido) {
+        $mandar = str_ends_with($caminho, '/cliente');
+        if (str_ends_with($caminho, '/preco') || str_ends_with($caminho, '/publicar') || $ajustePedido || $mandar) {
             // 4c: o preço só muda na revisão — o robô terminou o texto e o rascunho tem os dois tipos e a variante.
             $this->naRevisao($p);
         }
-        if (str_ends_with($caminho, '/publicar') || $ajustePedido) {
+        if (str_ends_with($caminho, '/publicar') || $ajustePedido || $mandar) {
             // 4d: e só se publica com a prévia pronta — a categoria com o schema guardado (nenhuma leitura do ML).
             $this->comCategoria($p);
+        }
+        if ($mandar) {
+            // 4e: a loja aprova com o cliente.
+            config(['trilha.aprovacao_cliente.empresas' => [$this->empresa->id]]);
         }
         if ($ajustePedido) {
             // 4b: o texto é do robô (o preparo dele registrado, com o hash dos fatos).
@@ -404,6 +416,12 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\AjustarPeloRoboNaTrilhaJob::class);
         } elseif (str_ends_with($caminho, '/ajuste')) {
             $this->assertSame(['ajuste' => null], $resposta->json(), 'nunca pediu');
+        }
+        if ($mandar) {
+            // 4e: 200 com a prévia nova, a linha `com_cliente` e nada na fila (quem publica é a aprovação do cliente).
+            $this->assertSame([200, 'com_cliente'], [$resposta->getStatusCode(), $resposta->json('aprovacao.estado')]);
+            $this->assertSame(1, TrilhaAprovacao::query()->count());
+            Queue::assertNothingPushed();
         }
         if (str_ends_with($caminho, '/preco')) {
             $this->assertSame(['gold_special' => '199.90', 'gold_pro' => null], DB::table('pub_variante_precos as pr')
@@ -501,6 +519,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4b: a revisão do rascunho da Simples (1 enquanto ele não existe) e o título.
             str_ends_with($caminho, '/ajuste')        => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
                 PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1), 'refazer' => ['titulo']],
+            // 4e: a revisão do rascunho da Simples (1 enquanto ele não existe).
+            str_ends_with($caminho, '/cliente')       => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
+                PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1)],
             default                                   => [],
         };
     }
@@ -555,7 +576,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // F4: nenhuma cor nem produto excluído (e nenhuma escrita da trilha registrada).
         $this->assertFalse(Activity::query()->get()->contains(fn (Activity $a) => in_array($a->getExtraProperty('evento'),
             ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado', 'trilha_publicacao_pedida',
-                'trilha_ajuste_pedido'], true)), 'excluiu ou gravou');
+                'trilha_ajuste_pedido', 'trilha_aprovacao_enviada'], true)), 'excluiu ou gravou');
+        // 4e: nenhuma prévia mandada ao cliente.
+        $this->assertSame(0, TrilhaAprovacao::query()->count(), 'mandou ao cliente');
         // 4c: nenhum preço gravado no rascunho.
         $this->assertSame(0, DB::table('pub_variante_precos')->whereNotNull('preco')->count(), 'gravou preço');
         Http::assertNothingSent();

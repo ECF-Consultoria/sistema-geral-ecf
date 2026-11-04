@@ -50,6 +50,11 @@ use Illuminate\Validation\ValidationException;
  * Clássico em TODAS as cores ativas — D46, a régua do `premium_igual` da prévia, a mesma do {@see PrecoNaTrilha}; a 4c
  * confere só as cores tocadas). Passou: grava o estado `conferindo` e enfileira o {@see PublicarPelaTrilhaJob}.
  *
+ * 4e (04/11/2026, §19.16): na loja que aprova com o cliente ({@see \App\Support\Trilha\AprovacaoDoCliente}), a equipe NÃO
+ * publica direto — 409 depois do estado, salvo o item que o cliente aprovou na MESMA revisão e cujo envio não publicou
+ * (D56; {@see AprovacaoDoClienteNaTrilha::exigirAprovacaoParaPublicar()}). A aprovação do cliente entra por aqui mesmo
+ * (`$peloCliente`), com o `User` que mandou ao cliente: a guarda da #459 e todo o resto valem igual.
+ *
  * ### O Job ({@see executar()})
  * Refaz a guarda D48 → confere que a `revisao` é a que a pessoa aprovou → `ConferenciaService::conferir` (fotos, validate)
  * → erro = `recusado`; avisos sem `ciente` = `avisos`; senão refaz a D48 e `FilaPublicacaoService::agendar(resolver(
@@ -168,7 +173,7 @@ class PublicacaoNaTrilha
      * @throws HttpResponseException 403 (fora da #459) e 409
      * @throws ValidationException 422
      */
-    public function pedir(Company $empresa, string $chave, array $corpo, User $quem): array
+    public function pedir(Company $empresa, string $chave, array $corpo, User $quem, bool $peloCliente = false): array
     {
         $item = TrilhaDaEmpresa::itens($empresa, comoNaTela: true)[$chave] ?? null;
         abort_if($item === null, 404);
@@ -179,6 +184,12 @@ class PublicacaoNaTrilha
         self::exigirQueDaParaPublicar($item, $r);
         /** @var PubRascunho $r */
         /** @var PubProduto $pub */
+        // 4e: a loja que aprova com o cliente não publica direto pela equipe (a aprovação dele não valeria nada) — só o
+        // item que ele aprovou nesta revisão e não publicou (D56). A aprovação do cliente já conferiu isso e entra aqui
+        // com `$peloCliente`.
+        if (! $peloCliente) {
+            AprovacaoDoClienteNaTrilha::exigirAprovacaoParaPublicar($empresa, $r);
+        }
         // 4b: com o robô refazendo o texto, a conferência validaria o texto velho e a escrita dele viria depois — 409 até
         // o ajuste terminar (a tela já desliga o botão; esta é a regra do servidor).
         if (AjusteDoRoboNaTrilha::andandoNoPub((int) $pub->id)) {
@@ -210,9 +221,13 @@ class PublicacaoNaTrilha
             self::gravar((int) $pub->id, self::estado(self::CONFERINDO, self::MSG_CONFERINDO) + [
                 'revisao' => $revisao, 'ciente' => $ciente, 'por' => (int) $quem->id, 'item' => $chave,
             ]);
+            // O ator é quem publica (na fila, `criada_por` é o mesmo usuário). Pela aprovação do cliente (4e), é quem mandou
+            // a prévia a ele — quem aprovou de fato fica no `trilha_aprovacao_aprovada`, com o ator dele.
             RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, $r, 'trilha_publicacao_pedida',
-                "Publicação de \"{$item['nome']}\" aprovada na revisão".($ciente ? ' (ciente dos avisos)' : ''), [
+                $peloCliente ? "Publicação de \"{$item['nome']}\" pedida pela aprovação do cliente"
+                    : "Publicação de \"{$item['nome']}\" aprovada na revisão".($ciente ? ' (ciente dos avisos)' : ''), [
                     'item' => $chave, 'pub_produto_id' => (int) $pub->id, 'rascunho_id' => (int) $r->id, 'revisao' => $revisao, 'ciente' => $ciente,
+                    'via' => $peloCliente ? 'aprovacao_do_cliente' : 'revisao',
                 ]);
             PublicarPelaTrilhaJob::dispatch((int) $empresa->id, $chave, (int) $pub->id, (int) $quem->id, $revisao, $ciente);
         } finally {
@@ -657,8 +672,11 @@ class PublicacaoNaTrilha
         Cache::put(self::chave($pubId), [...$estado, 'em' => now()->toIso8601String()], now()->addHours(self::HORAS_DO_ESTADO));
     }
 
-    /** O `conferindo` gravado há mais de {@see CONFERINDO_VALE_MIN} minutos. */
-    private static function velho(array $estado): bool
+    /**
+     * O `conferindo` gravado há mais de {@see CONFERINDO_VALE_MIN} minutos. Público (4e): o status em lote da Lista
+     * ({@see AprovacaoDoClienteNaTrilha::statusEmLote()}) lê o mesmo estado do cache.
+     */
+    public static function velho(array $estado): bool
     {
         $em = isset($estado['em']) ? Carbon::parse((string) $estado['em']) : null;
 

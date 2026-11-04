@@ -91,15 +91,24 @@ class PreviaNaTrilha
      * A prévia do item `$chave` (`s-12`, `c-12-2`, `o-55`) da empresa, no contrato da §19.5. Item que não existe na
      * empresa: 404 (de outra loja também — a régua só conhece os itens desta).
      *
+     * 4e (04/11/2026, aditivo): `$urlDaFoto` troca o endereço das fotos (a porta do CLIENTE serve as fotos pela rota
+     * dela, `portal.trilha.aprovacao.foto`; sem ele, a da equipe) e `$item` é o item já lido pela régua
+     * ({@see TrilhaDaEmpresa::itens()} com `comoNaTela`) — quem já o leu não paga a régua duas vezes. O corte do que o
+     * cliente não vê é de {@see AprovacaoDoClienteNaTrilha::paraOCliente()}, não daqui.
+     *
+     * @param  ?\Closure(int): string  $urlDaFoto  id da `pub_imagens` → o endereço da foto na porta de quem pede
+     * @param  ?array  $item  o item de `TrilhaDaEmpresa::itens($empresa, comoNaTela: true)[$chave]`
      * @return array<string, mixed>
      */
-    public function montar(Company $empresa, string $chave): array
+    public function montar(Company $empresa, string $chave, ?\Closure $urlDaFoto = null, ?array $item = null): array
     {
-        $item = TrilhaDaEmpresa::itens($empresa, comoNaTela: true)[$chave] ?? null;
+        $item ??= TrilhaDaEmpresa::itens($empresa, comoNaTela: true)[$chave] ?? null;
         abort_if($item === null, 404);
+        $urlDaFoto ??= fn (int $imagem): string => self::urlDaFoto($empresa, $chave, $imagem);
 
         $r = self::rascunho($item);
         $restantes = AjusteDoRoboNaTrilha::restantesHoje($r);
+        $publicacao = PublicacaoNaTrilha::situacao($r);
         $saida = [
             'item'       => [
                 'id'     => $chave,
@@ -119,13 +128,15 @@ class PreviaNaTrilha
             'preco'      => null,
             'preparo'    => $r !== null ? self::preparo($item['preparo'] ?? null) : null,
             // 4d: a situação do "Aprovar e publicar" — o MESMO cálculo do `GET …/publicacao` (nula: nunca pediu e nada vivo
-            // na fila). 4e acrescenta a `aprovacao`.
-            'publicacao' => PublicacaoNaTrilha::situacao($r),
+            // na fila).
+            'publicacao' => $publicacao,
             // 4b: o "Pedir ajuste ao robô" — o MESMO cálculo do `GET …/ajuste` (nulo: nunca pediu) — e quantos pedidos o
             // anúncio ainda tem hoje (0 também quando o texto não é do robô: a tela só oferece o botão com saldo).
             'ajuste'                 => AjusteDoRoboNaTrilha::situacao($r, $restantes),
             'ajustes_restantes_hoje' => $restantes,
-            'aprovacao'  => null,
+            // 4e: a aprovação do cliente na versão da EQUIPE (nula: a loja não aprova com o cliente, ou nunca mandou) —
+            // {@see AprovacaoDoClienteNaTrilha::daEquipe()}.
+            'aprovacao'  => AprovacaoDoClienteNaTrilha::daEquipe($empresa, $r, $publicacao),
             'bloqueios'  => [],
         ];
 
@@ -180,7 +191,7 @@ class PreviaNaTrilha
                 'parcelas'        => $a['parcelas'],
                 'fotos'           => array_map(fn (array $f) => [
                     'id'     => (string) $f['id'],
-                    'url'    => self::urlDaFoto($empresa, $chave, (int) $f['id']),
+                    'url'    => $urlDaFoto((int) $f['id']),
                     'gerada' => isset($geradas[(int) $f['id']]),
                 ], (array) $a['fotos']),
                 'caracteristicas' => $a['caracteristicas'],

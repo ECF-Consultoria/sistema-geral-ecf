@@ -1,4 +1,4 @@
-import { ETAPA_POR_CHAVE, acaoDoItem, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, estaEmAnalise, estaNoAr } from '@/lib/trilha';
+import { ETAPA_POR_CHAVE, acaoDoItem, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, estaEmAnalise, estaNoAr, estadoDaAprovacao } from '@/lib/trilha';
 import { quandoDaOfertaNaOnda } from '@/lib/trilhaOndas';
 import { cn } from '@/lib/utils';
 import { BolinhasDeProgresso, Pilula, SeloDoTipo } from '@/Components/Trilha/Pecas';
@@ -25,6 +25,11 @@ import { composicao, situacaoDoItem, skuDoProduto } from '@/Components/Trilha/fo
 // (`v:{item}`) para a equipe com `escrita.revisao` (`comPrevia`); para os outros,
 // o painel da oferta, como antes.
 //
+// 4e (§19.16): o anúncio que está com o cliente diz "Com o cliente" à equipe (a
+// linha segue abrindo a prévia dela) e "Aprovar" ao cliente de verdade com
+// `cliente_escrita.aprovacao` (`comAprovacao`) — a linha dele abre o `v:` na
+// versão do cliente; depois que ele responde, "Acompanhar" abre a mesma gaveta.
+//
 // No celular (até 760px) vira duas colunas: SKU e ação no alto; nome,
 // progresso e situação embaixo, na largura toda.
 
@@ -43,10 +48,11 @@ const LINHA = cn(
  *   trabalho?: boolean,
  *   podeEditar?: boolean,
  *   comPrevia?: boolean,
+ *   comAprovacao?: boolean,
  *   ondaPorId?: ?Map<number, object>,
  * }} props
  */
-export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, ondaPorId = null }) {
+export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false, ondaPorId = null }) {
     const { tipo, chave, etapa, item } = entrada;
     const ehOferta = tipo === 'o';
     const situacao = situacaoDoItem(entrada, { trabalho });
@@ -60,13 +66,20 @@ export default function LinhaDoItem({ entrada, visao, onAbrir, trabalho = false,
     if (!ehOferta && podeEditar && etapa === 'lista' && !travado) chaveAoAbrir = chaveDeCadastro(item);
     // A oferta em revisão: o "Revisar" abre a prévia do anúncio (a linha continua sendo a da oferta, `o:`).
     if (ehOferta && podeEditar && comPrevia && etapa === 'revisao') chaveAoAbrir = chaveDaPrevia(item);
+    // 4e: a aprovação do cliente. O cliente de verdade abre a gaveta dele (`v:`) no anúncio que está com ele ou que ele
+    // já respondeu; quem escreve nunca recebe `comAprovacao` (a página só o dá à porta do cliente).
+    const aprovacao = ehOferta ? estadoDaAprovacao(item) : null;
+    const podeAprovar = visao === 'cliente' && comAprovacao && !podeEditar;
+    if (podeAprovar && aprovacao) chaveAoAbrir = chaveDaPrevia(item);
     const noAr = ehOferta && estaNoAr(item);
     // Recém-publicado em análise (D59): ação neutra "Em análise" — nem verde de "No ar", nem âmbar de "Conferir".
     const emAnalise = ehOferta && estaEmAnalise(item);
-    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado, emAnalise });
+    const acao = acaoDoItem(etapa, visao, noAr, { semProduto: ehOferta && !!item.sem_produto, trabalho, travado: podeEditar && travado, emAnalise, aprovacao, podeAprovar });
     // A cor da ação segue a do protótipo: âmbar quando falta algo, verde no ar, azul no resto. "No ar" é o que
-    // o status diz: a oferta da etapa 6 que não está à venda não fica verde (com alerta, já fica âmbar).
-    const tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : noAr ? 'ok' : 'run';
+    // o status diz: a oferta da etapa 6 que não está à venda não fica verde (com alerta, já fica âmbar). "Com o
+    // cliente" (4e) é espera da equipe: neutro.
+    let tomDaAcao = situacao.alerta || etapa === 'lista' ? 'warn' : noAr ? 'ok' : 'run';
+    if (acao === 'Com o cliente' && !situacao.alerta) tomDaAcao = 'neutro';
     const sku = ehOferta ? item.sku : skuDoProduto(item);
     const sub = ehOferta ? composicao(item) : item.familia || 'sem família';
     // Anúncio no ar com situação (pausado, em revisão…): a linha avisa, o detalhe fica no painel.

@@ -166,7 +166,7 @@ export function RegraDePronto({ chave, trabalho = false }) {
 /** "Etapa 2 de 6 · Estrategista" ("Etapa 1 de 6 · Equipe ECF" na Lista da trilha de trabalho). */
 export const sobrelinhaDaEtapa = (chave, trabalho = false) => `Etapa ${indiceDaEtapa(chave) + 1} de ${ETAPAS.length} · ${etapaDaTrilha(chave, trabalho)?.dono ?? ''}`;
 
-function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, podeEditar = false, comPrevia = false }) {
+function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false }) {
     // A onda de cada oferta, para a segunda linha "{onda} · começa 05/11".
     const ondaPorId = useMemo(() => new Map((dados?.ondas ?? []).map((w) => [w.id, w])), [dados?.ondas]);
     if (!entradas.length) return <div className="px-[18px] py-[30px] text-center text-trilha-muted">{vazio}</div>;
@@ -182,6 +182,7 @@ function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, pode
                     trabalho={trabalho}
                     podeEditar={podeEditar}
                     comPrevia={comPrevia}
+                    comAprovacao={comAprovacao}
                     ondaPorId={ondaPorId}
                 />
             ))}
@@ -190,7 +191,7 @@ function Linhas({ entradas, dados, visao, onAbrir, vazio, trabalho = false, pode
 }
 
 /** "Ver tudo": a loja inteira na ordem da trilha. */
-export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false }) {
+export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false }) {
     const nProdutos = dados.produtos.length;
     const nOfertas = dados.ofertas.length;
     const noAr = dados.ofertas.filter((o) => o.etapa === 'lanc').length;
@@ -210,6 +211,7 @@ export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, po
                 trabalho={trabalho}
                 podeEditar={podeEditar}
                 comPrevia={comPrevia}
+                comAprovacao={comAprovacao}
                 vazio="A trilha ainda está vazia: comece pela lista de produtos."
             />
         </MolduraDoPainel>
@@ -220,7 +222,7 @@ export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, po
  * As etapas 2 a 6: cabeçalho da etapa, a regra de "pronto", a nota (quando há) ou
  * os cartões das ondas (etapas 3 e 4 com a trilha de trabalho) e as linhas.
  */
-export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false }) {
+export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false }) {
     const etapa = etapaDaTrilha(chave, trabalho);
     const comOndas = trabalho && ETAPAS_COM_ONDAS.includes(chave);
     // Com os cartões das ondas, a nota "ondas ainda não ligadas" sai; a da etapa 6 fica.
@@ -253,6 +255,7 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = 
                 trabalho={trabalho}
                 podeEditar={podeEditar}
                 comPrevia={comPrevia}
+                comAprovacao={comAprovacao}
                 vazio={vazio}
             />
         </MolduraDoPainel>

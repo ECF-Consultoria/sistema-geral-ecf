@@ -127,6 +127,7 @@ class SituacaoDasOfertas
      * @param  array<int, array{status: ?string, criado_em: ?Carbon}>  $kitsDeImagem
      * @param  array<int, true>  $agendados  estrutura_produto_id com o preparo agendado
      * @param  array<int, list<string>>  $refazendo  pub → as partes que o robô está refazendo a pedido da revisão (4b, D60)
+     * @param  array<int, array{status: string, alerta: bool}>  $aprovacoes  pub → o status da aprovação do cliente (4e)
      */
     private function __construct(
         private array $pubs,
@@ -140,6 +141,7 @@ class SituacaoDasOfertas
         private array $agendados,
         private Carbon $agora,
         private array $refazendo = [],
+        private array $aprovacoes = [],
     ) {}
 
     /**
@@ -208,6 +210,8 @@ class SituacaoDasOfertas
             now(),
             // 4b (D60): os ajustes pedidos ao robô em andamento — uma leitura de cache para todos os anúncios com rascunho.
             AjusteDoRoboNaTrilha::refazendoEmLote(array_keys($rascunhos)),
+            // 4e: a aprovação do cliente — só na loja da chave (sem ela, nenhuma consulta).
+            AprovacaoDoClienteNaTrilha::statusEmLote($empresa, $rascunhos),
         );
     }
 
@@ -335,6 +339,15 @@ class SituacaoDasOfertas
         $decisao = $onda !== null && (! $andou || ($semTexto && $onda['comecou']))
             ? $this->naOnda($onda, $esperaSimples, $cadastroIncompleto)
             : $this->decidir($r, $estruturaProdutoId, $anuncios, $esperaSimples, $textoDoAgente);
+        // 4e: a aprovação do cliente — "Com o cliente para aprovar", "O cliente pediu ajuste", "Aprovado pelo cliente · …".
+        // Só no item na revisão, sem anúncio e com o rascunho ainda não publicado (publicando, publicado e "a publicação
+        // falhou" seguem a régua de sempre — o combo lê esses textos para saber se a Simples ficou pronta). A etapa não
+        // muda; o D60 abaixo vence (o robô refazendo é o que está acontecendo agora).
+        $aprovacao = $principal !== null ? ($this->aprovacoes[$principal] ?? null) : null;
+        if ($aprovacao !== null && $anuncios === [] && $r !== null && $decisao['etapa'] === 'revisao'
+            && in_array($r->status, [PubRascunho::DRAFT, PubRascunho::VALIDATED], true)) {
+            $decisao = ['etapa' => 'revisao', 'status' => $aprovacao['status'], 'alerta' => $aprovacao['alerta']];
+        }
         // D60 (4b): a revisão pediu ajuste ao robô e ele ainda está refazendo — o item FICA na revisão, com o que está sendo
         // refeito. Sem isto, a etapa da escrita adiada (ou o resumo vencido pela revisão nova) o devolveria ao robô
         // ("Preparando"). Só enquanto o anúncio não está no ar nem publicando (aí vale a régua de sempre).

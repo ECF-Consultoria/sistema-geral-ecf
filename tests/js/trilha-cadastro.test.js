@@ -558,6 +558,26 @@ test('textos da etapa 1 com a trilha de trabalho: o dono é a equipe; o cliente 
     assert.deepEqual([daLista.dono, daLista.descricao, daLista.etapa], ['Equipe ECF', 'cadastrar a lista', 'lista']);
     assert.equal(comQuemEsta(PROPS_TRABALHO, 'cliente', true)[0].descricao, 'cadastrando seus produtos');
     assert.equal(comQuemEsta(PROPS_TRABALHO, 'equipe', false)[0].dono, 'Cliente');
+    // 4e (D59): o cliente nunca lê "Publicador"; a revisão é da "Equipe ECF" para ele. As chaves não repetem.
+    const doCliente = comQuemEsta(PROPS_TRABALHO, 'cliente', true);
+    assert.ok(doCliente.every((d) => d.dono !== 'Publicador'));
+    assert.equal(doCliente.find((d) => d.etapa === 'revisao').descricao, 'revisando seus anúncios');
+    assert.equal(new Set(doCliente.map((d) => d.chave)).size, doCliente.length);
+    assert.equal(comQuemEsta(PROPS_TRABALHO, 'equipe', true).find((d) => d.chave === 'revisao').dono, 'Publicador');
+    // Com o cliente para aprovar: sai da conta da revisão e ganha o chip dele ("Você" para o cliente).
+    const comUm = {
+        ...PROPS_TRABALHO,
+        ofertas: [...(PROPS_TRABALHO.ofertas ?? []), { id: 's-900', etapa: 'revisao', status: 'Com o cliente para aprovar', anuncios: [] }],
+    };
+    const antes = comQuemEsta(PROPS_TRABALHO, 'cliente', true).find((d) => d.chave === 'revisao').quantidade;
+    const depois = comQuemEsta(comUm, 'cliente', true);
+    assert.equal(depois.find((d) => d.chave === 'revisao').quantidade, antes);
+    assert.deepEqual(
+        (({ dono, descricao, quantidade }) => ({ dono, descricao, quantidade }))(depois.find((d) => d.chave === 'aprovacao')),
+        { dono: 'Você', descricao: 'aprovar anúncios', quantidade: 1 },
+    );
+    assert.equal(comQuemEsta(comUm, 'equipe', true).find((d) => d.chave === 'aprovacao').dono, 'Cliente');
+    assert.equal(comQuemEsta(PROPS_TRABALHO, 'cliente', true).some((d) => d.chave === 'aprovacao'), false, 'sem ninguém com o cliente, sem chip');
 });
 
 test('lib/trilhaCadastro.js é pura: sem React, sem axios, sem classe do Tailwind', () => {

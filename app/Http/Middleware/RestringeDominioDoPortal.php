@@ -262,7 +262,17 @@ class RestringeDominioDoPortal
         'portal/trilha/fotos/{id}/{id}',
         'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
         'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
+        // 04/11/2026 — Trilha de produtos, 4e: a aprovação do CLIENTE (a prévia do anúncio que a equipe mandou, a foto
+        // dela, aprovar e pedir ajuste). `{item}` casa SÓ a chave do item da trilha (`s-12`, `c-12-2`, `o-55`); o caminho
+        // inteiro, uma linha por rota.
+        'portal/trilha/ofertas/{item}/previa',
+        'portal/trilha/ofertas/{item}/fotos/{id}',
+        'portal/trilha/ofertas/{item}/aprovar',
+        'portal/trilha/ofertas/{item}/ajuste',
     ];
+
+    /** O marcador `{item}` de {@see PERMITIDO_COM_ID}: a chave do item da trilha — `s-{n}`, `c-{n}-{n}` ou `o-{n}`. */
+    private const ITEM_DA_TRILHA = '(?:s-[0-9]+|c-[0-9]+-[0-9]+|o-[0-9]+)';
 
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */
     public static function liberado(string $caminho): bool
@@ -283,7 +293,8 @@ class RestringeDominioDoPortal
         }
 
         foreach (self::PERMITIDO_COM_ID as $padrao) {
-            $regex = '#\A'.str_replace(preg_quote('{id}', '#'), '[0-9]+', preg_quote($padrao, '#')).'\z#';
+            $regex = '#\A'.str_replace([preg_quote('{id}', '#'), preg_quote('{item}', '#')], ['[0-9]+', self::ITEM_DA_TRILHA],
+                preg_quote($padrao, '#')).'\z#';
             if (preg_match($regex, $caminho) === 1) {
                 return true;
             }

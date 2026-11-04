@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Trilha\AjusteDaTrilhaController;
+use App\Http\Controllers\Trilha\AprovacaoDaTrilhaController;
 use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
+use App\Http\Controllers\Trilha\Cliente\AprovacaoDoClienteController;
 use App\Http\Controllers\Trilha\Cliente\FotosDoClienteController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
@@ -38,6 +40,10 @@ use Illuminate\Support\Facades\Route;
 | fotos do produto enquanto ele está na Lista (enviar e excluir), nas rotas
 | `portal.trilha.fotos.*`. São as ÚNICAS escritas no `portal.auth` da trilha
 | (o `OndasDaTrilhaTest` confere pelo endereço).
+|
+| 4ª entrega, 4e (04/11/2026): a aprovação do cliente por loja — a equipe
+| manda a prévia (`trilha.cliente`) e o cliente a vê, aprova ou pede ajuste
+| (`portal.trilha.aprovacao.*`, mais duas escritas na porta dele).
 |
 */
 
@@ -142,6 +148,11 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::get('/{company}/ofertas/{item}/ajuste', [AjusteDaTrilhaController::class, 'estado'])
             ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
             ->middleware('throttle:240,1,trilha.revisao.ajuste.estado')->name('ajuste.estado');
+        // 4e (§19.16): mandar a prévia ao cliente para aprovar — só na loja da chave `trilha.aprovacao_cliente.empresas`
+        // (desligada = 409). Contador próprio, `trilha.revisao.cliente` (o nome da rota é o do desenho, `trilha.cliente`).
+        Route::post('/{company}/ofertas/{item}/cliente', [AprovacaoDaTrilhaController::class, 'mandar'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:10,1,trilha.revisao.cliente')->name('cliente');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
@@ -212,5 +223,24 @@ Route::middleware('portal.auth')
                     ->middleware('throttle:30,1,trilha.cliente.fotos.enviar')->name('enviar');
                 Route::delete('/trilha/produtos/{produto}/variacoes/{variacao}/fotos/{imagem}', [FotosDoClienteController::class, 'excluir'])
                     ->middleware('throttle:60,1,trilha.cliente.fotos.excluir')->name('excluir');
+            });
+
+        // 4e (desenho §19.16, D57): a aprovação do CLIENTE — a prévia do anúncio que a equipe mandou a ele (sem os
+        // bastidores), as fotos dela, aprovar (o anúncio segue para a fila de publicação pelo caminho da 4d, com quem
+        // mandou) e pedir ajuste (texto para a equipe, nunca para a IA). Só com as duas chaves da trilha E a da aprovação
+        // (404 sem elas); o modo equipe do Portal aprova em nome do cliente (`decidido_por_equipe`). Cada rota com o seu
+        // contador (`trilha.cliente.aprovacao*`) e a sua linha em `RestringeDominioDoPortal::PERMITIDO_COM_ID` (o marcador
+        // `{item}` casa `s-12`, `c-12-2`, `o-55`).
+        Route::where(['item' => 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
+            ->name('portal.trilha.aprovacao.')
+            ->group(function () {
+                Route::get('/trilha/ofertas/{item}/previa', [AprovacaoDoClienteController::class, 'previa'])
+                    ->middleware('throttle:120,1,trilha.cliente.aprovacao.previa')->name('previa');
+                Route::get('/trilha/ofertas/{item}/fotos/{imagem}', [AprovacaoDoClienteController::class, 'foto'])
+                    ->middleware('throttle:600,1,trilha.cliente.aprovacao.foto')->name('foto');
+                Route::post('/trilha/ofertas/{item}/aprovar', [AprovacaoDoClienteController::class, 'aprovar'])
+                    ->middleware('throttle:10,1,trilha.cliente.aprovacao.aprovar')->name('aprovar');
+                Route::post('/trilha/ofertas/{item}/ajuste', [AprovacaoDoClienteController::class, 'ajuste'])
+                    ->middleware('throttle:10,1,trilha.cliente.aprovacao.ajuste')->name('ajuste');
             });
     });

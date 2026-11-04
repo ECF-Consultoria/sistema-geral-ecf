@@ -17,10 +17,12 @@
 //    mapeou e, das ondas, quem criou. O `url_ficha` e os links do Portal do
 //    cliente não existem na porta da equipe, então a simulação mostra o cliente
 //    sem esses botões — e sem nenhuma escrita (a página tira o `podeEditar`).
-// 3. Da 4ª entrega (4f): a única escrita do cliente, as fotos do produto da
+// 3. Da 4ª entrega (4f): a 1ª escrita do cliente, as fotos do produto da
 //    Lista, pelo endereço `cliente_escrita.fotos` (`enderecoDasFotosDoCliente`).
+//    E (4e) a aprovação do anúncio, por `cliente_escrita.aprovacao`
+//    (`enderecosDaAprovacaoDoCliente`): o `v:{item}` do cliente abre a gaveta dele.
 
-import { ORDEM, acharAberto, acharItem, chaveDoProduto } from '@/lib/trilha';
+import { ORDEM, acharAberto, acharItem, chaveDoProduto, estadoDaAprovacao } from '@/lib/trilha';
 
 /**
  * Quem escreve nesta tela (2ª entrega): só a porta da equipe, com a trilha de
@@ -58,6 +60,31 @@ export function enderecoDasFotosDoCliente(props) {
     return typeof base === 'string' && base.trim() ? base.trim() : null;
 }
 
+/** O marcador do id do item nas URLs da aprovação do cliente (§19.16) — o mesmo `__ITEM__` da revisão (§19.4). */
+const MARCADOR_DO_ITEM = '__ITEM__';
+
+/**
+ * Os endereços da aprovação do anúncio pelo CLIENTE (4ª entrega, 4e): `cliente_escrita.aprovacao = {previa, aprovar,
+ * ajuste}`, cada um com o marcador `__ITEM__`. A mesma regra das fotos: só a porta do cliente de verdade (`visao`
+ * 'cliente' nas PROPS — nunca o "Ver como: Cliente" da equipe, que tem a gaveta dela), com a trilha de trabalho e os
+ * TRÊS endereços (com o marcador); faltando um, null — a gaveta não abre pela metade.
+ *
+ * @param {{visao?: string, trabalho?: boolean, cliente_escrita?: ?{aprovacao?: ?{previa?: string, aprovar?: string, ajuste?: string}}}} props
+ * @returns {?{previa: string, aprovar: string, ajuste: string}}
+ */
+export function enderecosDaAprovacaoDoCliente(props) {
+    if (props?.visao !== 'cliente' || !props?.trabalho) return null;
+    const enderecos = props?.cliente_escrita?.aprovacao;
+    const saida = {};
+    for (const campo of ['previa', 'aprovar', 'ajuste']) {
+        const url = enderecos?.[campo];
+        if (typeof url !== 'string' || !url.includes(MARCADOR_DO_ITEM)) return null;
+        saida[campo] = url.trim();
+    }
+
+    return saida;
+}
+
 /**
  * O painel que a chave aberta mostra, para quem está olhando — null quando não
  * mostra nada (item que sumiu, ou painel de escrita para quem não escreve):
@@ -74,15 +101,21 @@ export function enderecoDasFotosDoCliente(props) {
  * - `e:ml` (F8) → a gaveta de importar os anúncios da loja, só com `podeEditar`; para os outros, nada.
  * - `v:s-12` (4a) → a prévia do anúncio da oferta, só com `comPrevia` (`podeVerPrevia`); para os outros, nada. A
  *   oferta antes da revisão também abre: a gaveta diz que o robô ainda prepara (D44).
+ *   4e: para o CLIENTE de verdade com `cliente_escrita.aprovacao` (`comAprovacao`), o mesmo `v:` abre a gaveta dele
+ *   (`aprovacao`) — só na oferta que está com ele, ou que ele já respondeu (`estadoDaAprovacao`); senão, nada.
  *
- * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro'|'planilha'|'ml'|'previa', chave: string}}
+ * @returns {?{painel: 'item'|'onda'|'mapear'|'cadastro'|'planilha'|'ml'|'previa'|'aprovacao', chave: string}}
  */
-export function painelDaChave(dados, chave, { podeEditar = false, comPrevia = false } = {}) {
+export function painelDaChave(dados, chave, { podeEditar = false, comPrevia = false, comAprovacao = false } = {}) {
     const achado = chave ? acharAberto(dados, chave) : null;
     if (!achado) return null;
     if (achado.painel === 'onda') return achado.onda || podeEditar ? achado : null;
     if (achado.painel === 'planilha' || achado.painel === 'ml') return podeEditar ? achado : null;
-    if (achado.painel === 'previa') return podeEditar && comPrevia ? achado : null;
+    if (achado.painel === 'previa') {
+        if (podeEditar && comPrevia) return achado;
+
+        return comAprovacao && !podeEditar && estadoDaAprovacao(achado.oferta) ? { ...achado, painel: 'aprovacao' } : null;
+    }
     if (achado.painel === 'cadastro') {
         if (podeEditar) return achado;
         if (!achado.produto) return null;
@@ -107,7 +140,7 @@ export function painelDaChave(dados, chave, { podeEditar = false, comPrevia = fa
  *
  * @param {string} busca  `window.location.search`
  * @param {{produtos: Array, ofertas: Array, ondas?: Array}} dados
- * @param {{podeEditar?: boolean, comPrevia?: boolean}} [quem]
+ * @param {{podeEditar?: boolean, comPrevia?: boolean, comAprovacao?: boolean}} [quem]
  * @returns {{etapa: ?string, vista: 'trilha'|'mapa', abrir: ?string}}
  */
 export function lerEstadoDaUrl(busca, dados, quem = {}) {

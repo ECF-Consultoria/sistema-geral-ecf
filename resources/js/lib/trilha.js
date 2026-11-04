@@ -55,7 +55,8 @@ export const ETAPAS = [
     {
         chave: 'revisao',
         titulo: 'Revisão e publicação',
-        dono: 'Publicador',
+        // 4e (D59): o cliente lê este texto no "Onde está" — nada de "Publicador" (o nome do módulo interno).
+        dono: 'Equipe ECF',
         unidade: 'ofertas',
         pronto: 'Anúncio publicado em Clássico e Premium.',
         faz: 'A equipe confere a prévia do anúncio pré-pronto, ajusta o que precisar e publica.',
@@ -287,11 +288,22 @@ export function comQuemEsta(dados, visao, trabalho = false) {
         ? { dono: 'Equipe ECF', sigla: 'EQ', papel: '', descricao: visao === 'cliente' ? 'cadastrando seus produtos' : 'cadastrar a lista' }
         : { dono: 'Cliente', sigla: 'C', papel: 'cli', descricao: visao === 'cliente' ? 'você' : 'completar a lista' };
 
+    // 4e: o anúncio "Com o cliente para aprovar" está na etapa 5, mas o trabalho é do cliente — sai da conta da
+    // revisão e ganha o próprio chip (só quando há algum: loja sem aprovação do cliente não muda).
+    const comCliente = (dados.ofertas ?? []).filter((o) => o.etapa === 'revisao' && String(o.status ?? '').startsWith('Com o cliente')).length;
+    // D59: o cliente nunca lê "Publicador" (o nome do módulo interno).
+    const daRevisao = visao === 'cliente'
+        ? { dono: 'Equipe ECF', sigla: 'EQ', papel: '', descricao: 'revisando seus anúncios' }
+        : { dono: 'Publicador', sigla: 'P', papel: '', descricao: 'revisar e publicar' };
+
     return [
-        { ...daLista, quantidade: n.lista, etapa: 'lista' },
-        { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + paraPlanejar, etapa: 'mapa' },
-        { dono: 'Robô', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo' },
-        { dono: 'Publicador', sigla: 'P', papel: '', descricao: 'revisar e publicar', quantidade: n.revisao, etapa: 'revisao' },
+        { ...daLista, quantidade: n.lista, etapa: 'lista', chave: 'lista' },
+        { dono: 'Estrategista', sigla: 'E', papel: '', descricao: 'mapear e planejar', quantidade: n.mapa + paraPlanejar, etapa: 'mapa', chave: 'mapa' },
+        { dono: 'Robô', sigla: '⚙', papel: 'robo', descricao: 'preparando', quantidade: n.robo, etapa: 'robo', chave: 'robo' },
+        { ...daRevisao, quantidade: n.revisao - comCliente, etapa: 'revisao', chave: 'revisao' },
+        ...(comCliente > 0
+            ? [{ dono: visao === 'cliente' ? 'Você' : 'Cliente', sigla: 'C', papel: 'cli', descricao: 'aprovar anúncios', quantidade: comCliente, etapa: 'revisao', chave: 'aprovacao' }]
+            : []),
     ];
 }
 
@@ -310,6 +322,35 @@ export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.s
  */
 export const estaEmAnalise = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.status ?? '').startsWith('Em análise');
 
+/** Os estados da aprovação do cliente (4e, §19.16 — `trilha_aprovacoes.estado`). */
+export const ESTADOS_DA_APROVACAO = ['com_cliente', 'ajuste', 'aprovado'];
+
+/**
+ * O começo do status que o servidor escreve na linha para cada estado da aprovação (§19.16, "Lista";
+ * `AprovacaoDoClienteNaTrilha::STATUS_*`): "Com o cliente para aprovar", "O cliente pediu ajuste" (ou "Em ajuste pela
+ * equipe", quando o anúncio voltou porque a equipe o mudou depois de enviar — D55), "Aprovado pelo cliente · na fila"
+ * (ou "· falta publicar", D56). Mudou o texto no servidor, mude aqui — como os prefixos de `estaNoAr`/`estaEmAnalise`.
+ */
+export const STATUS_DA_APROVACAO = [
+    ['com_cliente', 'Com o cliente'],
+    ['ajuste', 'O cliente pediu ajuste'],
+    ['ajuste', 'Em ajuste pela equipe'],
+    ['aprovado', 'Aprovado pelo cliente'],
+];
+
+/**
+ * Em que pé está a aprovação do cliente desta oferta (4e): `com_cliente`, `ajuste`, `aprovado` ou null (a loja sem a
+ * aprovação, ou o anúncio que ainda não foi ao cliente). Vale o campo `aprovacao.estado` quando o servidor o manda na
+ * oferta; sem ele, o começo do status da linha (o que o contrato descreve).
+ */
+export function estadoDaAprovacao(oferta) {
+    const doCampo = oferta?.aprovacao?.estado;
+    if (ESTADOS_DA_APROVACAO.includes(doCampo)) return doCampo;
+    const status = String(oferta?.status ?? '');
+
+    return STATUS_DA_APROVACAO.find(([, prefixo]) => status.startsWith(prefixo))?.[0] ?? null;
+}
+
 /**
  * O texto do botão da linha. O cliente só age na lista de produtos; no resto,
  * acompanha. Na etapa 6, a equipe lê "No ar" só quando a oferta está no ar
@@ -319,9 +360,18 @@ export const estaEmAnalise = (oferta) => oferta?.etapa === 'lanc' && String(ofer
  *
  * Com a trilha de trabalho (`trabalho`, 3ª entrega) quem cadastra é a equipe: o cliente só acompanha, também
  * na Lista. O produto que já andou (`travado`: o robô preparou, está na revisão ou no ar) só se lê — "Ver".
+ *
+ * 4e (§19.16): o anúncio que está com o cliente para aprovar (`aprovacao` = `com_cliente`) pede "Aprovar" ao cliente
+ * — só quando a linha abre a gaveta dele (`podeAprovar`: o cliente de verdade, com o endereço) — e diz "Com o
+ * cliente" à equipe (ela espera).
  */
-export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false, trabalho = false, travado = false, emAnalise = false } = {}) {
-    if (visao === 'cliente') return etapa === 'lista' && !trabalho ? 'Completar' : 'Acompanhar';
+export function acaoDoItem(etapa, visao, noAr = true, { semProduto = false, trabalho = false, travado = false, emAnalise = false, aprovacao = null, podeAprovar = false } = {}) {
+    if (visao === 'cliente') {
+        if (podeAprovar && aprovacao === 'com_cliente') return 'Aprovar';
+
+        return etapa === 'lista' && !trabalho ? 'Completar' : 'Acompanhar';
+    }
+    if (etapa === 'revisao' && aprovacao === 'com_cliente') return 'Com o cliente';
     if (etapa === 'lista' && travado) return 'Ver';
     if (etapa === 'lanc' && emAnalise && !noAr) return 'Em análise';
     if (etapa === 'lanc') return noAr ? 'No ar' : 'Conferir';

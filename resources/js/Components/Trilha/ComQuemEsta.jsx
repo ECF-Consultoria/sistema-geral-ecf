@@ -32,9 +32,10 @@ export default function ComQuemEsta({ dados, visao, etapa, onEscolher, trabalho 
             <span className="mr-1 text-[12px] font-semibold text-trilha-muted">Com quem está agora</span>
             {donos.map((d) => (
                 <button
-                    key={d.dono}
+                    key={d.chave ?? d.etapa}
                     type="button"
-                    aria-pressed={etapa === d.etapa}
+                    // O chip "aprovar anúncios" (4e) abre a mesma etapa da revisão, mas só o da revisão fica marcado.
+                    aria-pressed={etapa === (d.chave ?? d.etapa)}
                     data-dono={d.dono}
                     onClick={() => onEscolher(d.etapa)}
                     className={CHIP}

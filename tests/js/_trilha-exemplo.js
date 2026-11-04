@@ -38,6 +38,12 @@
 // 4f: `CLIENTE_ESCRITA` (a base das fotos do CLIENTE, com o marcador `__PRODUTO__`),
 // `PROPS_CLIENTE_COM_FOTOS` (a porta do cliente de verdade com ela) e o quadro de
 // fotos (`QUADRO_*`, `CONFLITO_DAS_FOTOS`, `ERROS_DAS_FOTOS`…) — o contrato do §19.15.
+//
+// 4e: a aprovação do cliente por loja — `ESCRITA_COM_CLIENTE` (`escrita.revisao.cliente`),
+// `PROPS_COM_APROVACAO`/`PROPS_CLIENTE_COM_APROVACAO` (as duas portas na loja da chave,
+// com os status da Lista), as prévias da equipe em cada estado (`PREVIA_COM_CLIENTE`,
+// `PREVIA_AJUSTE_DO_CLIENTE`, `PREVIA_VOLTOU`, `PREVIA_APROVADA_*`), a prévia na versão
+// do cliente (`PREVIA_DO_CLIENTE`) e as respostas/erros dele — o contrato do §19.16.
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -1373,3 +1379,174 @@ export const QUADRO_SEM_COR = {
 
 /** 403 da escrita vindo do `portal.auth` (a aba é de outra loja): `{message}` em pt-BR. */
 export const SEM_ACESSO_A_EMPRESA = { message: 'Você não tem acesso a esta empresa.' };
+
+// ═══ 4ª entrega, 4e: a aprovação do cliente por loja (o contrato do §19.16) ════
+//
+// Os textos dos status e das mensagens são os do servidor (`AprovacaoDoClienteNaTrilha::STATUS_*`/`MSG_*`, 04/11). A
+// oferta da Lista NÃO leva o estado da aprovação: só o status (a tela lê o começo dele).
+
+/** A escrita da equipe na loja que aprova com o cliente: `escrita.revisao.cliente` (o `POST` do [Mandar ao cliente]). */
+export const ESCRITA_COM_CLIENTE = { ...ESCRITA, revisao: { ...ESCRITA.revisao, cliente: '/trilha/459/ofertas/__ITEM__/cliente' } };
+
+/** Os status da linha da Lista com a aprovação. */
+export const STATUS_COM_CLIENTE = 'Com o cliente para aprovar';
+export const STATUS_PEDIU_AJUSTE = 'O cliente pediu ajuste';
+export const STATUS_EM_AJUSTE = 'Em ajuste pela equipe';
+export const STATUS_APROVADO_NA_FILA = 'Aprovado pelo cliente · na fila';
+export const STATUS_APROVADO_FALTA_PUBLICAR = 'Aprovado pelo cliente · falta publicar';
+
+/** A cadeira com o cliente; a prateleira com o pedido de ajuste dele (alerta). */
+const NA_APROVACAO = {
+    's-2': { status: STATUS_COM_CLIENTE, alerta: false },
+    's-11': { status: STATUS_PEDIU_AJUSTE, alerta: true },
+};
+
+/** A loja da trilha de trabalho com a chave da aprovação do cliente (a porta da equipe). */
+export const PROPS_COM_APROVACAO = {
+    ...PROPS_TRABALHO,
+    escrita: ESCRITA_COM_CLIENTE,
+    ofertas: PROPS_TRABALHO.ofertas.map((o) => ({ ...o, ...(NA_APROVACAO[o.id] ?? {}) })),
+};
+
+/** O que o cliente escreveu no "Pedir ajuste" (com quebra de linha — a caixa da equipe cita como ele escreveu). */
+export const PEDIDO_DO_CLIENTE = 'A cor Mel ficou mais escura que a real.\nTroquem a 2ª foto, por favor.';
+
+/**
+ * A `aprovacao` da prévia da EQUIPE (`AprovacaoDoClienteNaTrilha::daEquipe`): a do cliente (`estado`, `rodada`,
+ * `enviado_em`, `pedido`) mais `motivo`, `enviado_por`, `decidido_em`, `decidido_por`, `mudou_depois` e `falta_publicar`.
+ */
+export const APROVACAO_COM_CLIENTE = {
+    estado: 'com_cliente', rodada: 1, enviado_em: '2026-11-04T14:32:00-03:00', pedido: null,
+    motivo: null, enviado_por: 'Rafael', decidido_em: null, decidido_por: null, mudou_depois: false, falta_publicar: false,
+};
+export const APROVACAO_AJUSTE = { ...APROVACAO_COM_CLIENTE, estado: 'ajuste', pedido: PEDIDO_DO_CLIENTE, decidido_em: '2026-11-04T16:05:00-03:00', decidido_por: 'Marina Jatobá' };
+/** D55: a equipe mudou o anúncio depois de enviar e o cliente tentou aprovar — a linha voltou (`pedido` nulo, `motivo`). */
+export const APROVACAO_VOLTOU = { ...APROVACAO_COM_CLIENTE, estado: 'ajuste', motivo: 'A equipe mudou o anúncio depois de enviar.' };
+/** D56: aprovado na 2ª rodada, e quem mandou está inativo — nada na fila: falta publicar. */
+export const APROVACAO_APROVADA = { ...APROVACAO_COM_CLIENTE, estado: 'aprovado', rodada: 2, decidido_em: '2026-11-04T17:10:00-03:00', decidido_por: 'Marina Jatobá', falta_publicar: true };
+
+/** A prévia (a da 4b) na loja da chave, sem envio ainda: `aprovacao: null`. */
+export const PREVIA_SEM_ENVIO = { ...PREVIA_PARA_AJUSTE, aprovacao: null };
+
+/** `POST {escrita.revisao.cliente}` 200 — a prévia NOVA, com a aprovação em `com_cliente` (e o GET, depois). */
+export const PREVIA_COM_CLIENTE = { ...PREVIA_PARA_AJUSTE, item: { ...PREVIA_PARA_AJUSTE.item, status: STATUS_COM_CLIENTE }, aprovacao: APROVACAO_COM_CLIENTE };
+
+/** Com o cliente, mas a equipe mexeu depois de enviar (`mudou_depois`): o [Mandar ao cliente de novo] vale. */
+export const PREVIA_COM_CLIENTE_MUDOU = { ...PREVIA_COM_CLIENTE, revisao: 38, aprovacao: { ...APROVACAO_COM_CLIENTE, mudou_depois: true } };
+
+/** O cliente pediu ajuste. */
+export const PREVIA_AJUSTE_DO_CLIENTE = { ...PREVIA_PARA_AJUSTE, item: { ...PREVIA_PARA_AJUSTE.item, status: STATUS_PEDIU_AJUSTE }, aprovacao: APROVACAO_AJUSTE };
+
+/** Voltou para a equipe (D55). */
+export const PREVIA_VOLTOU = { ...PREVIA_PARA_AJUSTE, item: { ...PREVIA_PARA_AJUSTE.item, status: STATUS_EM_AJUSTE }, aprovacao: APROVACAO_VOLTOU };
+
+/** Aprovado e nada na fila (D56): o [Aprovar e publicar] volta para a equipe. */
+export const PREVIA_APROVADA_FALTA_PUBLICAR = {
+    ...PREVIA_PARA_AJUSTE,
+    item: { ...PREVIA_PARA_AJUSTE.item, status: STATUS_APROVADO_FALTA_PUBLICAR },
+    aprovacao: APROVACAO_APROVADA,
+    publicacao: null,
+};
+
+/** Aprovado e na fila de publicação (a aprovação entrou pelo caminho da 4d): nenhum primário. */
+export const PREVIA_APROVADA_NA_FILA = {
+    ...PREVIA_PARA_AJUSTE,
+    item: { ...PREVIA_PARA_AJUSTE.item, status: STATUS_APROVADO_NA_FILA },
+    aprovacao: { ...APROVACAO_APROVADA, falta_publicar: false },
+    publicacao: PUBLICACAO_NA_FILA.publicacao,
+};
+
+/** Os erros do [Mandar ao cliente]: a revisão velha (`revisao_atual`, sem `travado`) e os outros 409; o 422 do D46. */
+export const CONFLITO_DO_ENVIO = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
+export const ENVIO_JA_COM_CLIENTE = { message: 'Este anúncio já está com o cliente para aprovar.' };
+export const ENVIO_CHAVE_DESLIGADA = { message: 'Esta loja não aprova os anúncios com o cliente.' };
+export const ENVIO_PREMIUM_IGUAL = {
+    message: 'O Premium não pode ter o mesmo preço do Clássico.',
+    errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico na cor Mel.'] },
+};
+
+/** O `POST publicar` da equipe com a chave ligada (o 409 da 4d): a mensagem do servidor. */
+export const PUBLICAR_COM_O_CLIENTE = { message: 'Esta loja aprova com o cliente: mande a prévia para ele.' };
+
+// ─── A porta do cliente ─────────────────────────────────────────────────────
+
+/** `cliente_escrita.aprovacao` (com o marcador `__ITEM__`): a prévia, aprovar e pedir ajuste. */
+export const CLIENTE_ESCRITA_COM_APROVACAO = {
+    ...CLIENTE_ESCRITA,
+    aprovacao: {
+        previa: '/portal/459/trilha/ofertas/__ITEM__/previa',
+        aprovar: '/portal/459/trilha/ofertas/__ITEM__/aprovar',
+        ajuste: '/portal/459/trilha/ofertas/__ITEM__/ajuste',
+    },
+};
+
+/** A porta do cliente de verdade na loja da chave. */
+export const PROPS_CLIENTE_COM_APROVACAO = { ...paraCliente(PROPS_COM_APROVACAO), cliente_escrita: CLIENTE_ESCRITA_COM_APROVACAO };
+
+/** A `aprovacao` na porta do cliente: só `estado`, `rodada`, `enviado_em` e `pedido`. */
+const APROVACAO_DO_CLIENTE = { estado: 'com_cliente', rodada: 1, enviado_em: '2026-11-04T14:32:00-03:00', pedido: null };
+
+/**
+ * `GET {cliente_escrita.aprovacao.previa}` com `s-2` — a prévia na versão do CLIENTE (`paraOCliente`): sem `preparo`,
+ * `bloqueios`, `ajuste`, `ajustes_restantes_hoje`, `preco.*.da_precificacao` e `preco.*.minimo`; as fotos pela rota da
+ * porta dele; `publicacao` nula até ele aprovar.
+ */
+export const PREVIA_DO_CLIENTE = {
+    item: { ...PREVIA_COM_PRECO.item, status: STATUS_COM_CLIENTE },
+    pronta: true,
+    motivo: null,
+    revisao: 37,
+    categoria: PREVIA_COM_PRECO.categoria,
+    tipos: PREVIA_COM_PRECO.tipos,
+    variantes: PREVIA_COM_PRECO.variantes,
+    anuncios: PREVIA_COM_PRECO.anuncios.map((a) => ({
+        ...a,
+        fotos: a.fotos.map((f) => ({ ...f, url: f.url.replace('/trilha/459/', '/portal/459/trilha/') })),
+        envio: { ...a.envio, aviso: null },
+    })),
+    descricao: PREVIA_COM_PRECO.descricao,
+    preco: {
+        classico: { valor: 899.9, ajustado: true },
+        premium: { valor: 989.9, ajustado: false },
+        por_cor: false,
+        premium_igual: false,
+    },
+    publicacao: null,
+    aprovacao: APROVACAO_DO_CLIENTE,
+};
+
+/** `POST {aprovar}` 200 — `{revisao: 37}`: aprovado, e o pedido da 4d entrou (conferindo), com a mensagem neutra. */
+export const CLIENTE_APROVOU = {
+    aprovacao: { ...APROVACAO_DO_CLIENTE, estado: 'aprovado' },
+    publicacao: { situacao: 'conferindo', mensagem: 'Aprovado. A equipe publica em seguida.' },
+};
+
+/** `POST {ajuste}` 200 — `{revisao: 37, texto}`: a aprovação em `ajuste`, com o pedido. */
+export const CLIENTE_PEDIU_AJUSTE = { aprovacao: { ...APROVACAO_DO_CLIENTE, estado: 'ajuste', pedido: PEDIDO_DO_CLIENTE } };
+
+/** 409 do D55: a equipe mudou o anúncio depois de enviar — a linha voltou para ela, e o 409 diz onde ele está agora. */
+export const CONFLITO_DO_CLIENTE = {
+    message: 'Este anúncio mudou depois que foi enviado para você. A equipe vai conferir e mandar de novo.',
+    aprovacao: { ...APROVACAO_DO_CLIENTE, estado: 'ajuste' },
+};
+
+/** 409 de quem já não tem o anúncio com ele (outra aba já respondeu). */
+export const NAO_ESTA_COM_VOCE = { message: 'Este anúncio não está esperando a sua aprovação.' };
+
+/** 422 do texto do pedido (`errors.texto`). */
+export const ERRO_DO_TEXTO = { message: 'Escreva o que precisa mudar no anúncio.', errors: { texto: ['Escreva o que precisa mudar no anúncio.'] } };
+
+/** A prévia do cliente depois de aprovar, com a publicação na fila (a mensagem neutra do servidor). */
+export const PREVIA_DO_CLIENTE_APROVADA = {
+    ...PREVIA_DO_CLIENTE,
+    item: { ...PREVIA_DO_CLIENTE.item, status: STATUS_APROVADO_NA_FILA },
+    aprovacao: { ...APROVACAO_DO_CLIENTE, estado: 'aprovado' },
+    publicacao: { situacao: 'na_fila', mensagem: 'Aprovado. O anúncio está na fila para ir ao ar.' },
+};
+
+/** A prévia do cliente depois do pedido de ajuste. */
+export const PREVIA_DO_CLIENTE_AJUSTE = {
+    ...PREVIA_DO_CLIENTE,
+    item: { ...PREVIA_DO_CLIENTE.item, status: STATUS_PEDIU_AJUSTE },
+    aprovacao: { ...APROVACAO_DO_CLIENTE, estado: 'ajuste', pedido: PEDIDO_DO_CLIENTE },
+};

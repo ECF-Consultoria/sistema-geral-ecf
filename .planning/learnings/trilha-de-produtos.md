@@ -1302,3 +1302,91 @@ migration; o `enviarFotos`/`excluirFoto` da equipe são chamados como estão, co
   Publicador" (`ETAPAS` em `lib/trilha.js`).
 - Mutação em `trilhaEscrita.js`: há duas linhas `append('imagens[]')` (equipe e cliente) — trocar só a 1ª acerta a da
   equipe.
+
+## 42. 4e — aprovação do cliente (servidor) (04/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19.16 (D52–D57) e §19.6 (a tabela). Tabela NOVA `trilha_aprovacoes` (migration
+`2026_11_04_120000_create_trilha_aprovacoes_table`, model `TrilhaAprovacao`), chave `trilha.aprovacao_cliente.empresas`
+(env `TRILHA_APROVACAO_CLIENTE_EMPRESAS`, padrão vazio; `App\Support\Trilha\AprovacaoDoCliente`, cruzada com
+`TrilhaDeTrabalho`), serviço `App\Services\Trilha\AprovacaoDoClienteNaTrilha`, controllers `Trilha\AprovacaoDaTrilhaController`
+(equipe, `trilha.cliente`) e `Trilha\Cliente\AprovacaoDoClienteController` (`portal.trilha.aprovacao.{previa,foto,aprovar,ajuste}`),
+teste `AprovacaoDoClienteNaTrilhaTest` (+ a rota da equipe na matriz do `CadastroNaTrilhaAcessoTest` e a varredura do
+`AcessoATrilhaTest`). Nada do Publicador mudou.
+
+- **Ligar exige a chave E a trilha de trabalho.** `.env` + `config:cache`; nenhum Job novo (a aprovação usa o
+  `PublicarPelaTrilhaJob` da 4d — se a 4d já está no ar, nada de `queue:restart` por causa da 4e). Desligar deixa as linhas
+  no banco SEM efeito: a prévia da equipe volta a `aprovacao: null`, a Lista à régua de sempre e as rotas do cliente a 404.
+- **A migration foi subida e descida num MariaDB 10.4 DE VERDADE** (o do XAMPP, banco descartável com as 4 tabelas
+  referenciadas mínimas — `scratchpad/migracao_mariadb.php` da sessão de 04/11): nomes `tra_*`, SET NULL/CASCADE, único por
+  anúncio, `down` idempotente. **O `down` dropa as FKs PELO NOME só fora do SQLite**: no SQLite o `dropForeign('nome')`
+  LANÇA ("does not support dropping foreign keys by name"), e pelas colunas o Laravel deduziria
+  `trilha_aprovacoes_company_id_foreign`, que no MariaDB não existe. O teste confere a ordem no fonte.
+- **Com a chave, a equipe NÃO publica direto** (`PublicacaoNaTrilha::pedir` → `exigirAprovacaoParaPublicar`, DEPOIS da
+  D48 e do 409 do estado): 409 `MSG_APROVA_COM_CLIENTE`. Exceção D56: a linha `aprovado` na MESMA revisão (o envio não
+  publicou — quem mandou inativo, avisos, recusa, a 460). Mudou depois da aprovação: 409 `MSG_MUDOU_DEPOIS_DA_APROVACAO`
+  (o cliente aprova a versão, não o anúncio).
+- **A aprovação do cliente entra pelo `pedir` da 4d** (`peloCliente: true`), com o `User` `enviado_por` e `ciente: false`
+  — o cliente não decide sobre avisos da conferência; eles voltam à equipe como "falta publicar". O que a 4d recusa (403 fora
+  da #459, 409, 422) é engolido e logado: a aprovação FICA gravada. O `trilha_publicacao_pedida` ganhou `via`
+  (`revisao` | `aprovacao_do_cliente`); o causer dele é quem mandou, e quem aprovou de fato está no
+  `trilha_aprovacao_aprovada` (com o ator dele — cliente, ou o membro da ECF no modo equipe).
+- **D55 é conferido contra a `revisao_enviada`, não contra a revisão que o cliente manda.** A prévia do cliente mostra o
+  anúncio de AGORA (com a `revisao` de agora); se a equipe mexeu depois de enviar, o cliente manda a revisão nova e mesmo
+  assim leva 409 — e a linha volta para a equipe (`ajuste`, `pedido` nulo, evento `trilha_aprovacao_voltou`). Na Lista isso
+  é "Em ajuste pela equipe" (NÃO "O cliente pediu ajuste": ele não pediu nada). A equipe não precisa esperar o cliente: com
+  a revisão mudada (`aprovacao.mudou_depois`), o "Mandar ao cliente" vale mesmo com a linha `com_cliente` (rodada + 1);
+  com a MESMA revisão, 409 "já está com o cliente". A aba velha do cliente (revisão de uma rodada anterior) leva 409
+  `{revisao_atual, message, aprovacao}` sem mudar nada.
+- **O status da Lista é troca DEPOIS da decisão** (`SituacaoDasOfertas::doItem`, em lote: `statusEmLote` = 1 consulta + 1
+  da fila e um `Cache::many` só com aprovado; sem a chave, zero), e só com o rascunho DRAFT/VALIDATED na revisão:
+  publicando, publicado e "A publicação falhou" seguem a régua de sempre — o `simplesPronta` do `TrilhaDaEmpresa` lê
+  "Publicando agora" e "A publicação falhou" para o combo saber se a Simples está pronta (uma mutação que aplica a troca no
+  PUBLISHING derruba o teste). O D60 (robô refazendo) vence a aprovação. **A tela lê o estado pelo PREFIXO**: "Com o
+  cliente", "O cliente pediu ajuste", "Em ajuste pela equipe", "Aprovado pelo cliente" (· conferindo / · na fila /
+  · publicando / · falta publicar) — mudou o texto em `AprovacaoDoClienteNaTrilha::STATUS_*`, muda a tela.
+- **O modo equipe do Portal APROVA pelo cliente** (diferente da 4f, que dá 404 ali): recebe `cliente_escrita =
+  {fotos: null, aprovacao: {...}}` e grava `decidido_por_equipe`. O ator é o `PortalContexto::ator()`, que PREFERE o membro
+  da equipe — a sessão com as duas marcas grava como equipe (o teste monta essa sessão). A publicação continua com quem
+  MANDOU, não com quem aprovou no modo equipe.
+- **`{item}` na allowlist do domínio do cliente**: `RestringeDominioDoPortal::liberado` ganhou o marcador `{item}`
+  (`s-N`, `c-N-N`, `o-N`, caminho inteiro) ao lado do `{id}`. Rota nova do cliente com a chave do item usa ele; o teste de
+  varredura das rotas do cliente (4f) troca `{item}` por `s-7` antes de perguntar.
+- **A prévia do cliente é por LISTA de campos** (`paraOCliente`): o campo novo que a prévia da equipe ganhar não chega a
+  ele sem decisão. `publicacao` só depois que ELE aprovou, com mensagem própria (avisos/recusa/erro = "a equipe confere os
+  últimos detalhes"; "publicado em parte" = "Publicado…"). As fotos vêm pela rota dele (`PreviaNaTrilha::montar` ganhou
+  `$urlDaFoto` e `$item`, aditivos) e a resposta da foto é a MESMA da 4a (`App\Support\Trilha\FotoDaPrevia`, extraída do
+  controller da 4a sem mudar o comportamento).
+- **O texto do ajuste do cliente só mora em `pedido` e no `activity_log`.** O teste faz a equipe pedir ajuste ao robô (4b)
+  DEPOIS do pedido do cliente e procura a marca do texto em todo argumento de toda chamada à IA falsa, nos Jobs e no estado
+  do ajuste; a mutação que põe o `pedido` no `evitar` do título derruba o teste. Quem um dia quiser "ajuste com IA a partir
+  do pedido do cliente" muda o D52 — é decisão, não detalhe.
+- **Mutantes equivalentes (registrados):** tirar só a 1ª conferência do "já com o cliente" (a 2ª, sob a trava, segura) e
+  tirar o `company_id` da busca da linha (o item só existe pela régua da empresa do endereço). 28 mutações, 26 derrubam
+  teste, estas duas são as equivalentes.
+- **Todo 409 da porta do cliente com a linha à mão leva `aprovacao`** (na forma do cliente): não está com ele, já seguiu,
+  D55, a aba velha (`{revisao_atual, message, aprovacao}`) e a equipe mexendo agora. Só o da trava ocupada vai sem. A tela
+  da 4e conta com isso para atualizar a caixa sem outro pedido.
+- **Teto de 10/min nas escritas**: o teste que martela o "Mandar" desliga o `ThrottleRequests`; o teto de cada rota é
+  conferido à parte (`gatherMiddleware` + o 11º pedido = 429).
+
+### 4e — aprovação do cliente (tela), 04/11/2026
+- **O estado da aprovação na Lista sai do PREFIXO do status** (`STATUS_DA_APROVACAO` em `lib/trilha.js`: "Com o
+  cliente", "O cliente pediu ajuste", "Em ajuste pela equipe" — o D55 —, "Aprovado pelo cliente"; sufixos do
+  aprovado: `· conferindo`, `· na fila`, `· publicando`, `· falta publicar`). Mudou no servidor
+  (`AprovacaoDoClienteNaTrilha::STATUS_*`), mude aqui — como `estaNoAr`/`estaEmAnalise`.
+- **O cartão do cliente (`Cliente/AprovarAnuncio.jsx`) é uma versão enxuta própria** que copia as regras de
+  `trilhaPrevia` — mudou lá, muda aqui. "gerada" vira "criada pela equipe"; a entrega não fala ME1/ME2. A gaveta do
+  cliente não pergunta sozinha de tempos em tempos ([Ver como está agora] relê) e não repassa `motivo` nem
+  `publicacao.mensagem` do servidor (usa textos neutros próprios pela `situacao`).
+- **`VistaDaPrevia` precisa continuar sem hooks** (os testes a chamam como função); os testes de fonte da 4c/4d/4b
+  travam linhas da gaveta — o rodapé do envio ao cliente é o embrulho de FORA.
+- **Foco:** o efeito do pai roda depois dos filhos; a ref `voltarFoco` devolve o foco ao primário depois de mandar ou
+  cancelar.
+- **Endereços do cliente entram no hook pelos textos** (com `useMemo` na página): um objeto novo a cada render faria
+  pedido em laço.
+- **"Com quem está agora" (04/11):** o cliente lê "Equipe ECF · revisando seus anúncios" (nunca "Publicador"); com
+  anúncio esperando o cliente, sai da conta da revisão e ganha o chip "Você · aprovar anúncios" ("Cliente" para a
+  equipe). Os chips usam `chave` (não o `dono`) como `key`: "Equipe ECF" pode aparecer duas vezes na trilha de
+  trabalho.
+- **Modo equipe do Portal recebe `cliente_escrita = {fotos: null, aprovacao: {...}}`** (a ECF aprova pelo cliente →
+  `decidido_por_equipe`); fora do modo equipe, só o cliente de verdade.

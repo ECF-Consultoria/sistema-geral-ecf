@@ -477,6 +477,50 @@ class AcessoATrilhaTest extends TestCase
         $this->assertStringNotContainsString('/portal', (string) json_encode($equipe['cliente_escrita']), 'nada da porta do cliente na equipe');
     }
 
+    /**
+     * 4e (04/11/2026, §19.16): com a loja aprovando com o cliente, a equipe ganha `escrita.revisao.cliente` (o "Mandar ao
+     * cliente") e a porta do cliente `cliente_escrita.aprovacao` — também no modo equipe do Portal (a ECF aprova pelo
+     * cliente; as fotos da 4f continuam fora ali). A varredura segue valendo: nenhum endereço do Portal (só os da própria
+     * trilha sob `/portal/{id}/trilha/`), nada da equipe nas props do cliente e nenhuma compartilhada com dado.
+     */
+    public function test_com_a_aprovacao_do_cliente_a_equipe_ganha_o_mandar_e_o_cliente_os_enderecos_dele(): void
+    {
+        $empresa = $this->empresaLigada();
+        config(['trilha.trabalho.empresas' => [$empresa->id], 'trilha.aprovacao_cliente.empresas' => [$empresa->id]]);
+        $crua = $this->trilhaCrua();
+        $crua['trabalho'] = true;
+        $this->mock(TrilhaDaEmpresa::class, fn (MockInterface $m) => $m->shouldReceive('montar')->times(3)->andReturn($crua));
+        $item = "/portal/{$empresa->id}/trilha/ofertas/__ITEM__";
+        $aprovacao = ['previa' => "{$item}/previa", 'aprovar' => "{$item}/aprovar", 'ajuste' => "{$item}/ajuste"];
+
+        $equipe = $this->props($this->actingAs($this->dev())->get('/trilha/'.$empresa->id)->assertOk());
+        $this->assertSame("/trilha/{$empresa->id}/ofertas/__ITEM__/cliente", $equipe['escrita']['revisao']['cliente']);
+        $this->assertSame(['previa', 'preco', 'publicar', 'publicacao', 'ajuste', 'cliente'], array_keys($equipe['escrita']['revisao']));
+        $this->assertNull($equipe['cliente_escrita'], 'nada da porta do cliente na equipe');
+        $this->app['auth']->forgetGuards();
+
+        $resposta = $this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk();
+        $cliente = $this->props($resposta);
+        $this->assertSame(['fotos' => "/portal/{$empresa->id}/trilha/produtos/__PRODUTO__/fotos", 'aprovacao' => $aprovacao], $cliente['cliente_escrita']);
+        $this->assertNull($cliente['escrita']);
+        $this->assertNaoChegaNadaDaEquipe($resposta);
+        foreach (['equipe' => $equipe, 'cliente' => $cliente] as $porta => $props) {
+            $json = json_encode(array_intersect_key($props, array_flip(self::PROPS_DA_PAGINA)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $this->assertSame(0, preg_match_all('#/portal(?!/'.$empresa->id.'/trilha/)#', $json), "{$porta}: {$json}");
+        }
+        // Cada endereço do cliente casa a allowlist do domínio dele (com o item no marcador).
+        foreach ($aprovacao as $url) {
+            $this->assertTrue(RestringeDominioDoPortal::liberado(ltrim(str_replace('__ITEM__', 's-12', $url), '/')), $url);
+        }
+        $this->app['auth']->forgetGuards();
+        $this->flushSession();
+
+        // O modo equipe do Portal: a aprovação (a ECF aprova pelo cliente), sem as fotos.
+        $passagem = $this->entrarComoEquipe($empresa)->get(route('portal.auth.trilha'))->assertOk();
+        $this->assertSame(['fotos' => null, 'aprovacao' => $aprovacao], $this->props($passagem)['cliente_escrita']);
+        $this->assertNaoChegaNadaDaEquipe($passagem);
+    }
+
     public function test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente(): void
     {
         $empresa = $this->empresaLigada();
@@ -567,14 +611,32 @@ class AcessoATrilhaTest extends TestCase
 
         $permitido = (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertSame(['portal/trilha'], array_values(array_filter($permitido, fn ($p) => str_contains($p, 'trilha'))));
-        // 4f (04/11/2026): as fotos do cliente — uma linha por rota, com id; nenhuma outra da trilha (linha nova aqui é decisão).
+        // 4f (04/11/2026): as fotos do cliente — uma linha por rota, com id; 4e (04/11/2026): a aprovação do cliente, com o
+        // marcador `{item}` (a chave do item da trilha). Nenhuma outra da trilha (linha nova aqui é decisão).
         $comId = (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID');
         $this->assertSame([
             'portal/trilha/produtos/{id}/fotos',
             'portal/trilha/fotos/{id}/{id}',
             'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
             'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
+            'portal/trilha/ofertas/{item}/previa',
+            'portal/trilha/ofertas/{item}/fotos/{id}',
+            'portal/trilha/ofertas/{item}/aprovar',
+            'portal/trilha/ofertas/{item}/ajuste',
         ], array_values(array_filter($comId, fn ($p) => str_contains($p, 'trilha'))));
+        // 4e: o `{item}` casa só as três formas da chave do item, e o caminho inteiro.
+        foreach (['s-12', 'c-12-2', 'o-55'] as $item) {
+            $this->assertTrue(RestringeDominioDoPortal::liberado("portal/459/trilha/ofertas/{$item}/previa"), $item);
+            $this->assertTrue(RestringeDominioDoPortal::liberado("portal/459/trilha/ofertas/{$item}/fotos/881"), $item);
+            $this->assertTrue(RestringeDominioDoPortal::liberado("portal/459/trilha/ofertas/{$item}/aprovar"), $item);
+            $this->assertTrue(RestringeDominioDoPortal::liberado("portal/459/trilha/ofertas/{$item}/ajuste"), $item);
+        }
+        foreach (['portal/459/trilha/ofertas/12/previa', 'portal/459/trilha/ofertas/x-12/previa', 'portal/459/trilha/ofertas/s-12',
+            'portal/459/trilha/ofertas/s-12/publicar', 'portal/459/trilha/ofertas/s-12/cliente', 'portal/459/trilha/ofertas/s-12/preco',
+            'portal/459/trilha/ofertas/s-12/fotos/abc', 'portal/459/trilha/ofertas/s-12/previa/x', 'portal/459/trilha/ofertas/c-12/previa',
+            'portal/459/trilha/ofertas/s-12-3/previa', 'trilha/459/ofertas/s-12/previa'] as $caminho) {
+            $this->assertFalse(RestringeDominioDoPortal::liberado($caminho), $caminho);
+        }
     }
 
     /** No domínio do cliente a porta da equipe não existe — nem para o Dev logado. No do admin, abre. */

@@ -828,7 +828,9 @@ test('o rodapé do painel do produto: a caixa entrega a confirmação e ela toma
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
     assert.match(pagina, /const baseDasFotos = enderecoDasFotosDoCliente\(\{ visao, trabalho, cliente_escrita \}\);/);
     assert.match(pagina, /fotosDoCliente=\{baseDasFotos \? \{ base: baseDasFotos, onRecarregar: recarregarTrilha, onAvisar: avisar \} : null\}/);
-    assert.equal((pagina.match(/cliente_escrita/g) ?? []).length, 2, 'o parâmetro e a regra; nada mais lê o endereço cru');
+    // 4e: a aprovação lê o mesmo `cliente_escrita` pela regra dela (`enderecosDaAprovacaoDoCliente`, num `useMemo`).
+    assert.match(pagina, /enderecosDaAprovacaoDoCliente\(\{ visao, trabalho, cliente_escrita \}\), \[visao, trabalho, cliente_escrita\]\);/);
+    assert.equal((pagina.match(/cliente_escrita/g) ?? []).length, 4, 'o parâmetro e as duas regras (a da aprovação com a dependência do memo); nada mais lê o endereço cru');
     // A caixa entrega a confirmação ao rodapé e a tira ao sair; o Esc da confirmação não fecha a gaveta.
     const caixa = lerSemComentarios('resources/js/Components/Trilha/Cliente/FotosDoProduto.jsx');
     assert.match(caixa, /onRodape\(pergunta\s*\?/);
@@ -921,7 +923,7 @@ test('o pacote do cliente não leva `Cadastro/` nem `Revisao/` (nem as libs da g
 test('a pasta `Cliente/` só entra por `lazy(() => import(…))`, com o 2º caminho em `CadastroSobDemanda.jsx` (senão a página some do manifest)', () => {
     const pasta = path.resolve(RAIZ, 'resources/js/Components/Trilha/Cliente');
     const daPasta = fs.readdirSync(pasta).map((f) => path.join(pasta, f));
-    assert.deepEqual(daPasta.map((f) => path.basename(f)), ['FotosDoProduto.jsx']);
+    assert.deepEqual(daPasta.map((f) => path.basename(f)).sort(), ['AprovarAnuncio.jsx', 'FotosDoProduto.jsx'], 'a 4e acrescentou a gaveta de aprovar');
     const deFora = ['resources/js/Components/Trilha', 'resources/js/Pages/Trilha', 'resources/js/Layouts', 'resources/js/lib']
         .flatMap((p) => fs.readdirSync(path.resolve(RAIZ, p), { recursive: true }).map((f) => path.resolve(RAIZ, p, String(f))))
         .filter((f) => /\.(?:jsx?|mjs)$/.test(f) && !f.startsWith(pasta + path.sep));
@@ -937,7 +939,7 @@ test('a pasta `Cliente/` só entra por `lazy(() => import(…))`, com o 2º cami
         }
         assert.equal(fonte.match(/^\s*import\b[^;]*Trilha\/Cliente\//m), null, `${nome}: import estático da pasta Cliente/`);
     }
-    assert.deepEqual([...alvos], ['Cliente/FotosDoProduto']);
+    assert.deepEqual([...alvos].sort(), ['Cliente/AprovarAnuncio', 'Cliente/FotosDoProduto']);
     assert.match(lerSemComentarios('resources/js/Components/Trilha/PainelLateral.jsx'), /const FotosDoCliente = lazy\(\(\) => import\('@\/Components\/Trilha\/Cliente\/FotosDoProduto'\)\);/);
 
     const sobDemanda = lerSemComentarios('resources/js/Pages/Trilha/CadastroSobDemanda.jsx');

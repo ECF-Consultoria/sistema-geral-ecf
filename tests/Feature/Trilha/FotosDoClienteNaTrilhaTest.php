@@ -429,15 +429,16 @@ class FotosDoClienteNaTrilhaTest extends TestCase
             $this->assertFalse(RestringeDominioDoPortal::liberado($caminho), $caminho);
         }
         // E toda rota da porta do cliente da trilha está na lista (rota nova sem linha nasce 404 lá — e no localhost passa).
+        // O `{item}` da aprovação (4e) é a chave do item da trilha, não um número.
         $rotas = 0;
         foreach (Route::getRoutes() as $rota) {
             if (str_starts_with($rota->uri(), 'portal/{'.PortalContexto::PARAMETRO.'}/trilha')) {
                 $rotas++;
-                $caminho = preg_replace('/\{\w+\}/', '7', $rota->uri());
+                $caminho = preg_replace('/\{\w+\}/', '7', str_replace('{item}', 's-7', $rota->uri()));
                 $this->assertTrue(RestringeDominioDoPortal::liberado($caminho), "{$rota->getName()} ({$rota->uri()})");
             }
         }
-        $this->assertSame(5, $rotas, 'a página e as quatro rotas das fotos');
+        $this->assertSame(9, $rotas, 'a página, as quatro rotas das fotos (4f) e as quatro da aprovação (4e)');
     }
 
     /** O CSRF vale como em produção: sem o token, 419 e nada grava; com ele, passa. */

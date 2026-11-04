@@ -8,6 +8,7 @@ use App\Services\Portal\PortalEquipeService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Trilha\CadastroNaTrilha;
 use App\Support\Portal\PortalContexto;
+use App\Support\Trilha\AprovacaoDoCliente;
 
 /**
  * As props da página `Trilha/Empresa` nas duas portas, a partir da saída CRUA de
@@ -56,6 +57,12 @@ use App\Support\Portal\PortalContexto;
  * `cliente_escrita.fotos` — o quadro de fotos do produto na porta do cliente (`/portal/{pe}/trilha/produtos/__PRODUTO__/
  * fotos`, as rotas da própria trilha sob o prefixo da porta dele, não um link do Portal). Só para o cliente de verdade e
  * com as duas chaves; na equipe (e no modo equipe do Portal) a chave vem nula. `escrita` continua sendo só da equipe.
+ *
+ * ### A aprovação do cliente (4ª entrega, 4e, 04/11/2026)
+ * Só na loja da chave {@see AprovacaoDoCliente}: a equipe ganha `escrita.revisao.cliente` (o "Mandar ao cliente") e a
+ * porta do cliente `cliente_escrita.aprovacao = {previa, aprovar, ajuste}` (com o marcador `__ITEM__`). Esta, também no
+ * modo equipe do Portal — ali a ECF aprova EM NOME do cliente (`decidido_por_equipe`, desenho §19.1), e as fotos (4f)
+ * continuam fora (`cliente_escrita.fotos` nula). Sem a chave, as duas formas ficam exatamente como na 4f.
  */
 class ApresentacaoDaTrilha
 {
@@ -216,9 +223,10 @@ class ApresentacaoDaTrilha
      * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
      * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável; 4d: `publicar`, o POST do "Aprovar e
      * publicar", e `publicacao`, o GET do acompanhamento — os dois em toda loja com escrita: a #459 é conferida no servidor;
-     * 4b: `ajuste`, o POST do "Pedir ajuste ao robô" e o GET do estado dele, no mesmo endereço).
+     * 4b: `ajuste`, o POST do "Pedir ajuste ao robô" e o GET do estado dele, no mesmo endereço; 4e: `cliente`, o POST do
+     * "Mandar ao cliente" — SÓ na loja que aprova com o cliente: sem a chave a forma fica a da 4b).
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string, cliente?: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -251,6 +259,10 @@ class ApresentacaoDaTrilha
                 'publicacao' => route('trilha.publicacao', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
                 // 4b: pedir ajuste ao robô (POST) e o estado dele (GET) — o MESMO endereço.
                 'ajuste'     => route('trilha.ajuste', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                // 4e: mandar a prévia ao cliente (POST) — só na loja que aprova com ele.
+                ...(AprovacaoDoCliente::ligada($empresa)
+                    ? ['cliente' => route('trilha.cliente', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false)]
+                    : []),
             ],
         ];
     }
@@ -284,12 +296,7 @@ class ApresentacaoDaTrilha
             // VERDADE: no modo equipe do Portal não vem (as rotas também respondem 404 ali). Relativo, com o marcador do
             // produto: o GET do quadro de fotos; o envio e a exclusão estão no mesmo prefixo
             // (`…/produtos/{id}/variacoes/{v}/fotos[/{imagem}]`) e as fotos vêm com a URL pronta no quadro.
-            'cliente_escrita' => ! $sessaoEquipe && CadastroNaTrilha::clienteEscreve($empresa) ? [
-                'fotos' => route('portal.trilha.fotos.quadro', [
-                    PortalContexto::PARAMETRO => (int) $empresa->id,
-                    'produto'                 => self::MARCADOR_DO_PRODUTO,
-                ], false),
-            ] : null,
+            'cliente_escrita' => self::clienteEscrita($empresa, $sessaoEquipe),
             'links'         => [
                 'portal_abrir' => null,
                 // Com a trilha de trabalho a equipe cadastra e mapeia na trilha: o cliente acompanha, não decide (como
@@ -315,6 +322,37 @@ class ApresentacaoDaTrilha
             'ondas'         => array_map(fn (array $o) => self::campos($o, self::ONDA_CLIENTE), $trilha['ondas'] ?? []),
             'gerado_em'     => $trilha['gerado_em'] ?? null,
         ];
+    }
+
+    /**
+     * Os endereços de escrita da porta do CLIENTE (nula quando não há nenhum):
+     * - `fotos` (4f): o quadro de fotos do produto, com o marcador do produto — só o cliente DE VERDADE e com as duas
+     *   chaves; no modo equipe do Portal vem nula (as rotas dão 404 ali: não há cliente para ser o ator);
+     * - `aprovacao` (4e): `{previa, aprovar, ajuste}`, com o marcador `__ITEM__` — só na loja que aprova com o cliente
+     *   ({@see AprovacaoDoCliente}, que já exige as duas chaves). Também no modo equipe: a ECF aprova pelo cliente
+     *   (`decidido_por_equipe`). Sem a chave, a chave `aprovacao` nem aparece (a forma da 4f).
+     *
+     * @return ?array{fotos: ?string, aprovacao?: array{previa: string, aprovar: string, ajuste: string}}
+     */
+    private static function clienteEscrita(Company $empresa, bool $sessaoEquipe): ?array
+    {
+        $fotos = ! $sessaoEquipe && CadastroNaTrilha::clienteEscreve($empresa)
+            ? route('portal.trilha.fotos.quadro', [PortalContexto::PARAMETRO => (int) $empresa->id, 'produto' => self::MARCADOR_DO_PRODUTO], false)
+            : null;
+        $aprovacao = null;
+        if (AprovacaoDoCliente::ligada($empresa)) {
+            $item = [PortalContexto::PARAMETRO => (int) $empresa->id, 'item' => self::MARCADOR_DO_ITEM];
+            $aprovacao = [
+                'previa'  => route('portal.trilha.aprovacao.previa', $item, false),
+                'aprovar' => route('portal.trilha.aprovacao.aprovar', $item, false),
+                'ajuste'  => route('portal.trilha.aprovacao.ajuste', $item, false),
+            ];
+        }
+        if ($fotos === null && $aprovacao === null) {
+            return null;
+        }
+
+        return ['fotos' => $fotos, ...($aprovacao !== null ? ['aprovacao' => $aprovacao] : [])];
     }
 
     /**

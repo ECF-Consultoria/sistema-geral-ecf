@@ -400,6 +400,43 @@ export async function estadoDoAjuste(url) {
     return corpo(await axios.get(url));
 }
 
+// ─── A aprovação do cliente (4ª entrega, 4e) ────────────────────────────────
+//
+// §19.16 do desenho. As URLs chegam PRONTAS (com o id do item no lugar do marcador, trocado pela gaveta — esta lib é
+// importada pela página e não monta nada da aprovação) e os corpos também (`lib/trilhaAprovacao.js`). O 409 e o 422
+// chegam como erro do axios; quem trata é a gaveta.
+
+/**
+ * [Mandar ao cliente] (a equipe, `escrita.revisao.cliente`): `dados` = `{revisao}`. → 200 a prévia NOVA (a forma do
+ * §19.5, com `aprovacao` em `com_cliente`). 409: a chave desligada, a revisão velha (`revisao_atual`), fora da
+ * revisão, na fila/publicando/publicado, o robô ajustando, já com o cliente; 422: o Premium igual ao Clássico.
+ */
+export async function mandarAoCliente(url, dados) {
+    if (!url) throw new ErroDaTrilha('Mandar ao cliente não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url, dados));
+}
+
+/**
+ * [Aprovar anúncio] (o cliente, `cliente_escrita.aprovacao.aprovar`): `dados` = `{revisao}`. → 200 `{aprovacao,
+ * publicacao}`. 409: o anúncio mudou depois que a equipe mandou (D55), ou não está mais com ele.
+ */
+export async function aprovarPeloCliente(url, dados) {
+    if (!url) throw new ErroDaTrilha('A aprovação não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url, dados));
+}
+
+/**
+ * [Pedir ajuste] (o cliente, `cliente_escrita.aprovacao.ajuste`): `dados` = `{revisao, texto}` — o texto vai para a
+ * EQUIPE, nunca a um robô (D52). → 200 `{aprovacao}`. 422 em `errors.texto`; 409 como o de aprovar.
+ */
+export async function pedirAjustePeloCliente(url, dados) {
+    if (!url) throw new ErroDaTrilha('O pedido de ajuste não está disponível nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url, dados));
+}
+
 // ─── As fotos que o cliente envia (4ª entrega, 4f) ──────────────────────────
 //
 // §19.15 do desenho: a 1ª escrita da porta do CLIENTE. As URLs chegam PRONTAS da caixa (a base

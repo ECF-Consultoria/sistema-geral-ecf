@@ -32,6 +32,7 @@ import {
     variantesDaPrevia,
 } from '@/lib/trilhaPrevia';
 import { comTravaDaPublicacao, comTravaDoPreco } from '@/lib/trilhaAjuste';
+import { comTravaDoEnvio, semPublicarDireto } from '@/lib/trilhaAprovacao';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
@@ -39,6 +40,7 @@ import { composicao } from '@/Components/Trilha/formatos';
 import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
 import RodapeDaPublicacao, { usePublicacaoDaPrevia } from '@/Components/Trilha/Revisao/PublicarAnuncio';
 import RodapeDoAjuste, { BotaoDoAjuste, useAjusteDaPrevia } from '@/Components/Trilha/Revisao/AjusteDoRobo';
+import RodapeDoEnvio, { CaixaDaAprovacao, useEnvioAoCliente } from '@/Components/Trilha/Revisao/MandarAoCliente';
 
 // ─── Trilha de produtos — a prévia do anúncio (a gaveta `v:{item}`, 4ª entrega, 4a) ──
 //
@@ -65,6 +67,12 @@ import RodapeDoAjuste, { BotaoDoAjuste, useAjusteDaPrevia } from '@/Components/T
 // que refazer?" e o acompanhamento do ajuste (`AjusteDoRobo.jsx`); enquanto ele
 // anda, a caixa "Preço" e o [Aprovar e publicar] ficam desligados, com a dica.
 //
+// 4e (§19.16): com a chave da loja (`escrita.revisao.cliente`), a equipe não publica
+// direto — o primário vira [Mandar ao cliente] (`MandarAoCliente.jsx`), com a caixa
+// "Aprovação do cliente" no corpo (com o cliente desde…, o pedido de ajuste citado);
+// o [Aprovar e publicar] só volta para o anúncio que o cliente aprovou e falta
+// publicar (D56). Com o robô refazendo, o [Mandar ao cliente] também espera.
+//
 // A gaveta pede a prévia UMA vez ao abrir (`GET escrita.revisao.previa`, com o id
 // no lugar do marcador). O item fora da revisão volta como 409 `{message}` ou 200
 // com `pronta: false` + `motivo`: os dois viram o mesmo aviso neutro, sem
@@ -72,9 +80,10 @@ import RodapeDoAjuste, { BotaoDoAjuste, useAjusteDaPrevia } from '@/Components/T
 // pergunta: o robô ainda prepara (D44).
 //
 // Chega SÓ por `lazy` (a página e o 2º caminho em `Pages/Trilha/CadastroSobDemanda.jsx`
-// — learnings §30): o cliente não baixa este JS. Mesmo assim os textos não citam o
-// marketplace nem o "agente" (D59): o mesmo cartão vai ao cliente na 4e. O único
-// "Publicador" é o link que já existia, que o servidor só manda ao admin.
+// — learnings §30): o cliente não baixa este JS (na 4e ele ganhou um cartão próprio,
+// enxuto, em `Cliente/AprovarAnuncio.jsx`). Mesmo assim os textos não citam o
+// marketplace nem o "agente" (D59). O único "Publicador" é o link que já existia, que
+// o servidor só manda ao admin.
 
 const BOTAO_DE_ALTERNAR = cn(
     'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold',
@@ -375,13 +384,19 @@ export const PREVIA_CARREGANDO = Object.freeze({ carregando: true, erro: null, p
  *   preco?: ?object,
  *   publicar?: ?object,
  *   ajuste?: ?object,
+ *   envio?: ?object,
  * }} props  `preco` = o estado e as ações da caixa "Preço" (`usePrecoDaPrevia`, 4c); sem ele, a caixa só se lê.
  *   `publicar` = o estado e as ações da publicação (`usePublicacaoDaPrevia`, 4d); sem ele, o rodapé é o da 4a.
  *   `ajuste` = o estado e as ações do ajuste pelo robô (`useAjusteDaPrevia`, 4b); sem ele, nada do ajuste.
+ *   `envio` = o envio ao cliente (`useEnvioAoCliente`, 4e); sem ele (ou sem a chave da loja), nada da aprovação.
  */
-export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaGaveta = null, publicar: publicarDaGaveta = null, ajuste = null }) {
+export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco: precoDaGaveta = null, publicar: publicarComTudo = null, ajuste = null, envio: envioDaGaveta = null }) {
     const pronta = !antes && !carregando && !erro && previaPronta(previa);
     const semPrevia = !antes && !carregando && !erro && !!previa && !pronta;
+    // 4e: com a chave da loja, a equipe só publica direto o anúncio que o cliente aprovou (D56); o envio espera o robô.
+    const comEnvio = !!envioDaGaveta?.url;
+    const publicarDaGaveta = semPublicarDireto(publicarComTudo, comEnvio ? envioDaGaveta : null);
+    const envio = comEnvio ? comTravaDoEnvio(envioDaGaveta, ajuste?.travaDaPublicacao) : null;
     // 4b: com o robô refazendo o anúncio, a caixa "Preço" fica só leitura e o [Aprovar e publicar] desligado, com o porquê.
     const precoDaCaixa = comTravaDoPreco(precoDaGaveta, ajuste?.travaDoPreco);
     const publicar = comTravaDaPublicacao(publicarDaGaveta, ajuste?.travaDaPublicacao);
@@ -413,6 +428,15 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
     // 4b: o andamento e o resultado do ajuste em cima das ações; a escolha "O que refazer?" toma o rodapé. Com a
     // confirmação da publicação na tela, o bloco do ajuste se esconde (ela é a única coisa do rodapé).
     else if (ajuste) rodape = <RodapeDoAjuste ajuste={ajuste} escondido={!!publicar?.confirmando}>{rodape}</RodapeDoAjuste>;
+    // 4e: o [Mandar ao cliente] por fora de tudo (o primário por último). Outra pergunta no rodapé (a guarda do preço, a
+    // escolha do ajuste, a confirmação da publicação) o esconde; a confirmação dele toma o rodapé inteiro.
+    if (envio) {
+        rodape = (
+            <RodapeDoEnvio envio={envio} escondido={!!(preco?.pedido || ajuste?.escolhendo || publicar?.confirmando)}>
+                {rodape}
+            </RodapeDoEnvio>
+        );
+    }
 
     return (
         <MioloDaGaveta
@@ -429,6 +453,8 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
             <Caixa titulo="Onde está" data-caixa="onde-esta">
                 <OndeEsta etapa={etapaDaPrevia(previa, oferta)} trabalho={trabalho} />
             </Caixa>
+
+            {pronta && envio && <CaixaDaAprovacao envio={envio} />}
 
             {carregando && (
                 <p className="m-0 text-[13px] text-trilha-muted" data-carregando-previa="">
@@ -475,6 +501,9 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
  *
  * 4b: o ajuste (`useAjusteDaPrevia`) parte do `ajuste` da prévia (aberta com ele andando, retoma) e da publicação que
  * vale agora; no fim ele pede a prévia de novo (o texto novo) e recarrega a Lista.
+ *
+ * 4e: o envio ao cliente (`useEnvioAoCliente`) só existe com `escrita.revisao.cliente`; mandado, a gaveta passa a mostrar
+ * a prévia da resposta (com a aprovação) e a Lista recarrega.
  *
  * @param {{oferta: object, escrita: ?object, trabalho?: boolean, onAbrir?: (chave: string) => void,
  *   onAvisar?: (texto: string, tipo?: string) => void, onRecarregar?: ?(() => void)}} props
@@ -537,6 +566,17 @@ export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onA
         onAvisar,
         onRecarregar,
     });
+    const envio = useEnvioAoCliente({
+        escrita,
+        oferta,
+        previa: estado.previa,
+        publicacao: publicar.publicacao,
+        precoPendente: !!(preco.mexido || preco.estado?.salvando),
+        onPreviaNova: (previa) => setEstado({ carregando: false, erro: null, previa }),
+        onRecarregarPrevia: tentarDeNovo,
+        onAvisar,
+        onRecarregar,
+    });
 
-    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} ajuste={ajuste} publicar={publicar} preco={preco} />;
+    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} envio={envio} ajuste={ajuste} publicar={publicar} preco={preco} />;
 }

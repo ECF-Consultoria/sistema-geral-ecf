@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Trilha;
 use App\Http\Controllers\Controller;
 use App\Services\Trilha\CadastroNaTrilha;
 use App\Services\Trilha\PreviaNaTrilha;
-use App\Support\Publicador\Imagem\ArquivosDeImagem;
+use App\Support\Trilha\FotoDaPrevia;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,41 +36,14 @@ class PreviaDaTrilhaController extends Controller
 
     /**
      * `GET /trilha/{company}/ofertas/{item}/fotos/{imagem}` — o arquivo da foto do rascunho do item (o de outro rascunho
-     * é 404). A cópia guardada pelo único caminho das fotos do Publicador (`ArquivosDeImagem`); a foto antiga, que só
-     * tem o endereço público do ML (`caminho` nulo, veio do Anunciar antigo), vai por redirecionamento. Cache `private`
-     * (nunca em cache compartilhado), como a miniatura do editor.
+     * é 404). A resposta é a de {@see FotoDaPrevia::resposta()} (a mesma da porta do cliente na 4e): a cópia guardada
+     * pelo único caminho das fotos do Publicador; a foto antiga, só com o endereço público do ML, por redirecionamento
+     * em https. Cache `private`, como a miniatura do editor.
      */
     public function foto(Request $request, int $company, string $item, int $imagem): Response
     {
         $empresa = $this->cadastro->empresa($request->user(), $company);
-        $img = $this->previa->imagem($empresa, $item, $imagem);
 
-        $cabecalhos = ['Cache-Control' => 'private, max-age=300', 'X-Content-Type-Options' => 'nosniff'];
-        if (is_string($img->mime) && str_starts_with($img->mime, 'image/')) {
-            $cabecalhos['Content-Type'] = $img->mime;
-        }
-        $resposta = $img->caminho !== null ? ArquivosDeImagem::resposta($img->caminho, $cabecalhos) : null;
-        if ($resposta !== null) {
-            return $resposta;
-        }
-        if (($publica = self::emHttps($img->ml_url)) !== null) {
-            return redirect()->away($publica)->withHeaders(['Cache-Control' => 'private, max-age=300']);
-        }
-
-        abort(404);
-    }
-
-    /**
-     * O endereço público da foto SEMPRE em https: o Anunciar antigo pode ter guardado `http://`, e a página é https — o
-     * navegador bloquearia a imagem (conteúdo misto). A mesma regra do `emHttps` da tela da F8 (`lib/trilhaImportarMl.js`)
-     * e do `TradutorAnuncioMlParaPortal::url`. Outro esquema (ou vazio): nenhum endereço.
-     */
-    private static function emHttps(mixed $url): ?string
-    {
-        if (! is_string($url) || ! preg_match('#^https?://#i', trim($url))) {
-            return null;
-        }
-
-        return (string) preg_replace('#^http://#i', 'https://', trim($url));
+        return FotoDaPrevia::resposta($this->previa->imagem($empresa, $item, $imagem));
     }
 }

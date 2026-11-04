@@ -262,7 +262,7 @@ test('?etapa=… das etapas 2 a 6: cabeçalho, "Pronto quando", a nota e só as 
     const Pagina = await pagina();
 
     const revisao = desenhar(Pagina, PROPS_EQUIPE, '?etapa=revisao');
-    assert.ok(texto(revisao).includes('Etapa 5 de 6 · Publicador') && texto(revisao).includes('Pronto quando:'));
+    assert.ok(texto(revisao).includes('Etapa 5 de 6 · Equipe ECF') && texto(revisao).includes('Pronto quando:'));
     assert.deepEqual(acoesDasLinhas(revisao), ['Revisar', 'Revisar', 'Revisar']);
 
     const plano = texto(desenhar(Pagina, PROPS_EQUIPE, '?etapa=plano'));

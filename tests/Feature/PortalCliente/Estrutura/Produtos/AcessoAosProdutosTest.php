@@ -225,6 +225,12 @@ class AcessoAosProdutosTest extends TestCase
                 'portal/trilha/fotos/{id}/{id}',
                 'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
                 'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
+                // 04/11/2026: Trilha de produtos, 4e — a aprovação do cliente (a prévia, a foto dela, aprovar e pedir
+                // ajuste); `{item}` é a chave do item da trilha. Cobertas em `Trilha/AprovacaoDoClienteNaTrilhaTest`.
+                'portal/trilha/ofertas/{item}/previa',
+                'portal/trilha/ofertas/{item}/fotos/{id}',
+                'portal/trilha/ofertas/{item}/aprovar',
+                'portal/trilha/ofertas/{item}/ajuste',
             ],
             (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID'),
         );
