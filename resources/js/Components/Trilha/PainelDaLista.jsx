@@ -1,9 +1,9 @@
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { chaveDeCadastro, chaveDoProduto, etapaDaTrilha } from '@/lib/trilha';
-import { alvoDaColuna, irParaOCadastro, pilulasDasFaltas } from '@/lib/trilhaFaltas';
+import { alvoDaColuna, irParaOCadastro } from '@/lib/trilhaFaltas';
 import { cn } from '@/lib/utils';
 import { AcoesComNovoProduto, AcoesDoPainel, BotaoNovoProduto, MolduraDoPainel, RegraDePronto, sobrelinhaDaEtapa } from '@/Components/Trilha/PainelDaEtapa';
-import PilulaDaFalta, { ListaDePilulasDasFaltas } from '@/Components/Trilha/PilulaDaFalta';
+import PilulaDaFalta from '@/Components/Trilha/PilulaDaFalta';
 import { FOTOS_MINIMAS, avisosEmTexto, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — etapa 1: a lista de produtos como planilha ────────
@@ -170,7 +170,6 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
     const avisos = avisosEmTexto(produto.avisos);
     // R11: quem escreve vai da falta direto ao campo dela, na gaveta do produto (o travado só se lê: texto).
     const irPara = irParaOCadastro(onAbrir, produto, podeEditar);
-    const pilulas = pilulasDasFaltas(produto.faltas);
 
     // A linha inteira abre o painel (mouse); o nome é o botão de verdade (teclado e
     // leitor de tela) e é para ele que o foco volta quando o painel fecha.
@@ -234,8 +233,8 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
                     </span>
                     <span className="whitespace-nowrap text-[12.5px]">{situacao.texto}</span>
                 </div>
-                {/* R11: o que falta, uma pílula por falta (as da ficha numa só) — botões para quem escreve. */}
-                <ListaDePilulasDasFaltas itens={pilulas} onIr={irPara} className="mt-1.5 max-w-[260px] gap-1" data-faltas-da-linha="" />
+                {/* A lista de faltas (pílulas clicáveis) fica SÓ no painel lateral e na gaveta — na linha ela empilhava
+                    8 pílulas por produto (pedido do usuário, 04/11). Aqui: a barrinha e o "N faltam". */}
                 {avisos.length > 0 && (
                     <span className="mt-1 block text-[12px] text-trilha-run" data-aviso-do-produto="">
                         <span className="font-semibold">aviso:</span> {avisos.join(' · ')}

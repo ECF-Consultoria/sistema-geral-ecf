@@ -506,16 +506,17 @@ test('R2 — a coluna "Fotos" desenha a miniatura da capa (com a contagem no can
     assert.match(linhaDaLista(doCliente, 7), /<img src="\/portal\/459\/trilha\/fotos\/71\/7001"/);
 });
 
-test('R11 — na Lista, quem escreve: cada "falta" das colunas e cada falta da "Situação" é um botão com o alvo dela', () => {
+test('R11 — na Lista, quem escreve: cada "falta" das COLUNAS é um botão; a "Situação" fica só com a barrinha', () => {
     const saida = desenhar(COM_CAPA, '?etapa=lista');
     const criado = linhaDaLista(saida, 9);
     const alvos = [...criado.matchAll(/data-alvo-da-falta="([^"]+)"/g)].map((m) => m[1]);
-    // As colunas (custo, embalagem, descrição, fotos) e a "Situação" (as 8 faltas do servidor).
-    assert.deepEqual(alvos, ['custo', 'volumes', 'descricao', 'fotos', 'volumes', 'custo', 'categoria', 'titulo', 'familia', 'ambientes', 'descricao', 'fotos']);
+    // Só as colunas (custo, embalagem, descrição, fotos). A lista de faltas em pílulas NÃO vai na linha (pedido do
+    // usuário em 04/11: empilhava 8 pílulas por produto) — ela fica no painel lateral e na gaveta.
+    assert.deepEqual(alvos, ['custo', 'volumes', 'descricao', 'fotos']);
+    assert.ok(!criado.includes('data-faltas-da-linha'), 'nenhuma lista de pílulas na linha da Lista');
     assert.match(criado, /aria-label="Completar no cadastro: custo"/);
-    // O sofá: a ficha numa pílula, levando ao campo que falta.
     const sofa = linhaDaLista(saida, 7);
-    assert.match(sofa, /data-falta="ficha: material do estofado"[^>]*data-alvo-da-falta="ficha"/);
+    assert.ok(!/data-falta="ficha: material do estofado"/.test(sofa), 'a pílula da ficha não vai na linha');
     assert.match(sofa, /aria-label="Completar no cadastro: ficha técnica"/, 'o "falta" da coluna da ficha diz para onde vai');
     // O "8 faltam" e a barrinha continuam.
     assert.ok(texto(criado).includes('8 faltam'));
@@ -526,7 +527,9 @@ test('R11 — o cliente, o "Ver como: Cliente" e o produto que andou: a falta é
     const simulado = desenhar(COM_CAPA, '?etapa=lista', 'cliente');
     for (const [nome, html] of [['cliente', doCliente], ['Ver como: Cliente', simulado]]) {
         assert.ok(!html.includes('data-alvo-da-falta'), nome);
-        assert.match(linhaDaLista(html, 9), /data-falta="custo"/, `${nome}: a falta continua à vista, como texto`);
+        // A falta segue à vista como TEXTO nas colunas ("falta"); a lista de pílulas não vai na linha.
+        assert.ok(texto(linhaDaLista(html, 9)).includes('falta'), `${nome}: a falta continua à vista, como texto`);
+        assert.ok(!linhaDaLista(html, 9).includes('data-faltas-da-linha'), `${nome}: sem lista de pílulas na linha`);
     }
     const comTravado = {
         ...COM_CAPA,
