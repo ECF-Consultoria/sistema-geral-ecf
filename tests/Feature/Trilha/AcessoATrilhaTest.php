@@ -393,8 +393,10 @@ class AcessoATrilhaTest extends TestCase
                 'limpar'   => "/trilha/{$empresa->id}/mercado-livre/limpar",
             ],
             // 4a: a prévia do anúncio do painel `v:{item}`, com o marcador no lugar da chave do item (relativa).
+            // 4c: o preço ajustável dela (PUT), com o mesmo marcador.
             'revisao'       => [
                 'previa' => "/trilha/{$empresa->id}/ofertas/__ITEM__/previa",
+                'preco'  => "/trilha/{$empresa->id}/ofertas/__ITEM__/preco",
             ],
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',

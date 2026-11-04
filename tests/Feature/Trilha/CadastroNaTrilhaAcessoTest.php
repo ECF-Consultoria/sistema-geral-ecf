@@ -15,12 +15,18 @@ use App\Models\PubRascunho;
 use App\Models\TrilhaOnda;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Services\Publicador\RascunhoRepository;
+use App\Services\Trilha\TrilhaDaEmpresa;
+use App\Support\Publicador\Payload\Alvo;
+use App\Support\Publicador\Variacao\ChaveCanonica;
+use App\Support\Publicador\Variacao\Variante;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Support\Publicador\Imagem\ArquivosDeImagem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -35,7 +41,7 @@ use Tests\TestCase;
  * fatia (F1: abrir, criar e gravar as linhas; F2: a ficha técnica e o "Preencher com IA" dela; F3: enviar e excluir
  * foto e o "Conferir frete pela conta"; F4: excluir a cor e o produto, em dois passos; F7: baixar a planilha por
  * categoria, a prévia e o gravar dela; F8: a lista dos anúncios do ML, o importar, o estado e o limpar; 4a: a prévia do
- * anúncio e a foto dela; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
+ * anúncio e a foto dela; 4c: o preço ajustável; cresce a cada fatia). A ordem da guarda é o que se prova aqui:
  *
  * 1. as duas chaves (`trilha.empresas` e `trilha.trabalho.empresas`) → 404, antes de ler a empresa;
  * 2. o módulo oculto (só o Dev) → 404; sem login → login;
@@ -133,6 +139,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             // 4a: a prévia do anúncio do item (a Simples do produto, `s-{p}`) e a foto do rascunho dela (`{pi}`).
             'prévia (4a)'            => ['GET', '/ofertas/s-{p}/previa', false],
             'foto da prévia (4a)'    => ['GET', '/ofertas/s-{p}/fotos/{pi}', false],
+            // 4c: o preço ajustável da prévia (grava só no rascunho do anúncio).
+            'preço (4c)'             => ['PUT', '/ofertas/s-{p}/preco', false],
         ];
     }
 
@@ -307,6 +315,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/previa")->assertNotFound();
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/c-{$p['produto']->id}-1234/previa")->assertNotFound();
         $this->actingAs($this->dev)->getJson("/trilha/{$this->empresa->id}/ofertas/s-{$p['produto']->id}/fotos/{$grande}")->assertNotFound();
+        // 4c: o item do preço.
+        $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/ofertas/s-{$grande}/preco", ['revisao' => 1, 'precos' => ['classico' => 1]])->assertNotFound();
 
         $this->assertSame(1, EstruturaProduto::query()->count());
         $this->assertSame(1, EstruturaProdutoVariacao::query()->count());
@@ -320,11 +330,16 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         // Excluir a cor pede um produto de duas (a última variação só sai pelo "Excluir produto").
         $cores = $caminho === '/produtos/{p}/variacoes/{v}' ? ['Azul', 'Verde'] : [null];
         $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', $cores);
-        $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
         if (str_starts_with($caminho, '/ofertas/')) {
             // 4a: a Simples no Publicador, com rascunho e uma foto guardada (a prévia diz "não pronta": o robô não mexeu).
             $this->fotoNoRascunho($p);
         }
+        if (str_ends_with($caminho, '/preco')) {
+            // 4c: o preço só muda na revisão — o robô terminou o texto e o rascunho tem os dois tipos e a variante.
+            $this->naRevisao($p);
+        }
+        // Depois da montagem: o corpo do preço leva a revisão do rascunho.
+        $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
         if (str_starts_with($caminho, '/mercado-livre/')) {
             // F8: a conta conectada e o anúncio no acervo da loja (o Job fica na fila de mentira: nada chama o ML).
             MlToken::create(['company_id' => $this->empresa->id, 'ml_user_id' => '999', 'access_token' => 'APP_USR-x',
@@ -339,6 +354,11 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertStringNotContainsString('/portal/', (string) $resposta->getContent());
         if ($caminho === '/mercado-livre/importar') {
             Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\ImportarAnuncioNaTrilhaJob::class);
+        }
+        if (str_ends_with($caminho, '/preco')) {
+            $this->assertSame(['gold_special' => '199.90', 'gold_pro' => null], DB::table('pub_variante_precos as pr')
+                ->join('pub_rascunho_alvos as a', 'a.id', '=', 'pr.alvo_id')->orderBy('a.posicao')->pluck('pr.preco', 'a.listing_type_id')
+                ->map(fn ($v) => $v === null ? null : number_format((float) $v, 2, '.', ''))->all());
         }
     }
 
@@ -372,6 +392,22 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'bytes' => 100, 'upload_status' => PubImagem::PENDENTE]);
     }
 
+    /**
+     * 4c: a Simples do produto na revisão (o rascunho da 4a, com o texto do robô pronto, os dois tipos ligados e a variante
+     * única) — o preço só muda aqui.
+     */
+    private function naRevisao(array $p): void
+    {
+        $pub = PubProduto::query()->where('estrutura_produto_id', $p['produto']->id)->firstOrFail();
+        $r = PubRascunho::query()->where('produto_id', $pub->id)->firstOrFail();
+        $ok = ['status' => 'ok'];
+        $r->update(['step_state' => ['ia_preparo' => ['etapas' => ['titulo' => $ok, 'modelo' => $ok, 'descricao' => $ok]]]]);
+        $repo = app(RascunhoRepository::class);
+        $repo->gravarAlvos($r, [new Alvo('gold_special', null, true), new Alvo('gold_pro', null, true)]);
+        $repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [])]);
+        $this->assertSame('revisao', TrilhaDaEmpresa::itens($this->empresa, comoNaTela: true)["s-{$p['produto']->id}"]['etapa'] ?? null, 'controle: na revisão');
+    }
+
     /** A 1ª foto da 1ª variação do produto (o `produtoCompleto` grava 3 linhas, sem arquivo). */
     private function fotoDa(array $p): EstruturaProdutoVariacaoImagem
     {
@@ -392,6 +428,10 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             str_starts_with($caminho, '/planilha/previa'), $caminho === '/planilha' => ['arquivo' => $this->planilhaMinima()],
             // F8: o anúncio do acervo (montado no teste que passa).
             $caminho === '/mercado-livre/importar'    => ['mlbs' => ['MLB900']],
+            // 4c: a revisão do rascunho da Simples (1 enquanto ele não existe) e o Clássico.
+            str_ends_with($caminho, '/preco')         => ['revisao' => (int) (PubRascunho::query()->whereIn('produto_id',
+                PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->value('revisao') ?? 1),
+                'precos' => ['classico' => 199.9], 'cor' => null],
             default                                   => [],
         };
     }
@@ -445,7 +485,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
         $this->assertSame([], Storage::disk(VariacaoImagensService::DISCO)->allFiles(), 'gravou foto no disco');
         // F4: nenhuma cor nem produto excluído (e nenhuma escrita da trilha registrada).
         $this->assertFalse(Activity::query()->get()->contains(fn (Activity $a) => in_array($a->getExtraProperty('evento'),
-            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo'], true)), 'excluiu ou gravou');
+            ['variacao_excluida', 'produtos_excluidos', 'produto_excluido', 'trilha_cadastro_salvo', 'trilha_preco_ajustado'], true)), 'excluiu ou gravou');
+        // 4c: nenhum preço gravado no rascunho.
+        $this->assertSame(0, DB::table('pub_variante_precos')->whereNotNull('preco')->count(), 'gravou preço');
         Http::assertNothingSent();
         Queue::assertNothingPushed();
     }

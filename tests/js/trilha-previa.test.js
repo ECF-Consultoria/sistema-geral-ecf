@@ -710,7 +710,9 @@ test('a pasta Revisao/: só cores trilha-*, toda foto com `loading="lazy"`, nenh
     for (const arquivo of arquivos) {
         const fonte = lerSemComentarios(arquivo);
         assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|\bagente\b/i), null, arquivo);
-        assert.deepEqual([...fonte.matchAll(/[^\n]*Publicador[^\n]*/g)].map((m) => m[0].trim()), ['Abrir no Publicador'], arquivo);
+        // O link que já existia mora na gaveta; as outras peças da pasta (a caixa do preço, 4c) não citam o Publicador.
+        const doPublicador = path.basename(arquivo) === 'PreviaDoAnuncio.jsx' ? ['Abrir no Publicador'] : [];
+        assert.deepEqual([...fonte.matchAll(/[^\n]*Publicador[^\n]*/g)].map((m) => m[0].trim()), doPublicador, arquivo);
         assert.equal(fonte.match(/\btext-white\b|\bbg-white\/|\b(?:bg|text|border)-ecf-|\[#[0-9a-fA-F]{3,8}\]/), null, arquivo);
         const pub = [...fonte.matchAll(/[\w-]*\bpub-[\w-]*/g)].map((m) => m[0]).filter((c) => c !== 'font-pub-mono');
         assert.deepEqual(pub, [], `${arquivo}: classe pub-*`);

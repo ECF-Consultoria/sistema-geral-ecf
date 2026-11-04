@@ -7,6 +7,7 @@ use App\Http\Controllers\Trilha\MercadoLivreDaTrilhaController;
 use App\Http\Controllers\Trilha\OndasDaTrilhaController;
 use App\Http\Controllers\Trilha\PlanilhaDaTrilhaController;
 use App\Http\Controllers\Trilha\PortalTrilhaController;
+use App\Http\Controllers\Trilha\PrecoDaTrilhaController;
 use App\Http\Controllers\Trilha\PreviaDaTrilhaController;
 use App\Http\Controllers\Trilha\TrilhaController;
 use Illuminate\Support\Facades\Route;
@@ -111,6 +112,11 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::get('/{company}/ofertas/{item}/fotos/{imagem}', [PreviaDaTrilhaController::class, 'foto'])
             ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
             ->middleware('throttle:600,1,trilha.revisao.foto')->name('previa.foto');
+        // 4c (§19.11): o preço ajustável da prévia — grava só no rascunho do anúncio (`pub_variante_precos`), nunca na
+        // Precificação. Contador `trilha.revisao.preco` (o nome da rota é o do desenho, `trilha.preco`).
+        Route::put('/{company}/ofertas/{item}/preco', [PrecoDaTrilhaController::class, 'ajustar'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:30,1,trilha.revisao.preco')->name('preco');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])

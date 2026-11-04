@@ -328,10 +328,13 @@ class PreviaNaTrilhaTest extends TestCase
         $r = $this->rascunhoDo($this->p);
         $chave = "s-{$this->p->id}";
 
+        // 4c ampliou o `preco` (aditivo): o `minimo` da Precificação por tipo, `por_cor` e `premium_igual`.
         $j = $this->previa($chave)->assertOk()->json();
         $this->assertSame([
-            'classico' => ['valor' => 207.19, 'da_precificacao' => 207.19, 'ajustado' => false],
-            'premium'  => ['valor' => 230.5, 'da_precificacao' => 230.5, 'ajustado' => false],
+            'classico'      => ['valor' => 207.19, 'da_precificacao' => 207.19, 'minimo' => null, 'ajustado' => false],
+            'premium'       => ['valor' => 230.5, 'da_precificacao' => 230.5, 'minimo' => null, 'ajustado' => false],
+            'por_cor'       => false,
+            'premium_igual' => false,
         ], $j['preco']);
         $this->assertSame([207.19, 230.5], array_column($j['anuncios'], 'preco'));
 
@@ -339,8 +342,10 @@ class PreviaNaTrilhaTest extends TestCase
         app(EditorRascunhoService::class)->salvarVariantes($r->fresh(), ['__single__' => ['precos' => ['gold_special' => 199.9]]]);
         $j = $this->previa($chave)->assertOk()->json();
         $this->assertSame([
-            'classico' => ['valor' => 199.9, 'da_precificacao' => 207.19, 'ajustado' => true],
-            'premium'  => ['valor' => 230.5, 'da_precificacao' => 230.5, 'ajustado' => false],
+            'classico'      => ['valor' => 199.9, 'da_precificacao' => 207.19, 'minimo' => null, 'ajustado' => true],
+            'premium'       => ['valor' => 230.5, 'da_precificacao' => 230.5, 'minimo' => null, 'ajustado' => false],
+            'por_cor'       => false,
+            'premium_igual' => false,
         ], $j['preco']);
         $this->assertSame(199.9, $j['anuncios'][0]['preco'], 'o preço do anúncio é o do plano');
 
@@ -353,7 +358,8 @@ class PreviaNaTrilhaTest extends TestCase
         app(EditorRascunhoService::class)->salvarVariantes($r->fresh(), ['__single__' => ['precos' => ['gold_special' => 199.9]]]);
         DB::table('pub_rascunho_alvos')->where('rascunho_id', $r->id)->where('listing_type_id', 'gold_pro')->update(['ativo' => false]);
         $j = $this->previa($chave)->assertOk()->json();
-        $this->assertSame(['classico' => ['valor' => 199.9, 'da_precificacao' => null, 'ajustado' => true], 'premium' => null], $j['preco']);
+        $this->assertSame(['classico' => ['valor' => 199.9, 'da_precificacao' => null, 'minimo' => null, 'ajustado' => true], 'premium' => null,
+            'por_cor' => false, 'premium_igual' => false], $j['preco']);
         $this->assertSame([['chave' => 'classico', 'nome' => 'Clássico']], $j['tipos']);
     }
 
@@ -438,7 +444,9 @@ class PreviaNaTrilhaTest extends TestCase
         $this->withoutVite();
         $props = json_decode(json_encode($this->actingAs($this->dev)->get("/trilha/{$this->empresa->id}")->assertOk()->viewData('page')), true)['props'];
 
-        $this->assertSame(['previa' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/previa"], $props['escrita']['revisao']);
+        // 4c acrescentou o `preco` (o PUT do preço ajustável), com o mesmo marcador.
+        $this->assertSame(['previa' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/previa", 'preco' => "/trilha/{$this->empresa->id}/ofertas/__ITEM__/preco"],
+            $props['escrita']['revisao']);
         $url = str_replace('__ITEM__', "s-{$this->p->id}", $props['escrita']['revisao']['previa']);
         $this->assertTrue($this->actingAs($this->dev)->getJson($url)->assertOk()->json('pronta'));
     }

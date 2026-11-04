@@ -26,6 +26,10 @@
 // 4ª entrega, 4a: `ESCRITA.revisao.previa` (a URL com o marcador `__ITEM__`) e o
 // JSON da prévia do anúncio (`PREVIA_DO_ANUNCIO`, `PREVIA_NAO_PRONTA` e o 409
 // `CONFLITO_DA_PREVIA`) — o contrato do §19.5 do desenho.
+//
+// 4c: `ESCRITA.revisao.preco` (a URL do `PUT`, com o marcador) e as respostas do
+// preço ajustável (`PREVIA_COM_PRECO`, `PREVIA_POR_COR`, `PRECO_SALVO`,
+// `PRECO_ABAIXO_DO_MINIMO` e os erros 409/422) — o contrato do §19.11.
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -256,6 +260,8 @@ export const ESCRITA = {
     // 4ª entrega, 4a: a prévia do anúncio (§19.4 do desenho) — com o marcador `__ITEM__` no lugar do id do item.
     revisao: {
         previa: '/trilha/459/ofertas/__ITEM__/previa',
+        // 4c: o preço ajustável (§19.11) — `PUT`, com o mesmo marcador.
+        preco: '/trilha/459/ofertas/__ITEM__/preco',
     },
 };
 
@@ -926,3 +932,88 @@ export const PREVIA_NAO_PRONTA = {
 
 /** O 409 do item que saiu da revisão depois que a trilha carregou (§19.4: a guarda 409 vem antes do 422). */
 export const CONFLITO_DA_PREVIA = { message: 'Este anúncio não está mais na revisão.' };
+
+// ═══ 4ª entrega, 4c: o preço ajustável (§19.11 do desenho) ═══════════════════
+
+/** As chaves CANÔNICAS das cores no rascunho (a `cor` do pedido vai como vem, sem codificar). */
+const COR_NATURAL = 'COLOR=id:52049';
+const COR_MEL = 'COLOR=id:52055';
+const CHAVE_CANONICA = { v1: COR_NATURAL, v2: COR_MEL };
+
+/** A prévia com a cor na chave canônica e o preço de cada anúncio trocado por `precoDe(tipo, cor)`. */
+function comPrecos(previa, precoDe) {
+    return {
+        ...previa,
+        variantes: previa.variantes.map((v) => ({ ...v, chave: CHAVE_CANONICA[v.chave] ?? v.chave })),
+        anuncios: previa.anuncios.map((a) => {
+            const variante = CHAVE_CANONICA[a.variante] ?? a.variante;
+
+            return { ...a, variante, preco: precoDe(a.tipo, variante) ?? a.preco };
+        }),
+    };
+}
+
+/**
+ * `GET {escrita.revisao.previa}` depois da 4c: o `preco` ampliado — `minimo` por tipo (da 1ª cor ativa), `por_cor` e
+ * `premium_igual` — e `avisos` vazio. O Clássico foi ajustado (899,90 × 879,90 da Precificação, mínimo 820,00); o
+ * Premium segue a Precificação (989,90, mínimo 900,00). As duas cores com o mesmo preço.
+ */
+export const PREVIA_COM_PRECO = {
+    ...comPrecos(PREVIA_DO_ANUNCIO, () => null),
+    preco: {
+        classico: { valor: 899.9, da_precificacao: 879.9, minimo: 820, ajustado: true },
+        premium: { valor: 989.9, da_precificacao: 989.9, minimo: 900, ajustado: false },
+        por_cor: false,
+        premium_igual: false,
+    },
+    avisos: [],
+};
+
+/** A mesma, com o Clássico da cor Mel a 949,90 (uma cor com preço próprio: `por_cor`). */
+export const PREVIA_POR_COR = {
+    ...comPrecos(PREVIA_DO_ANUNCIO, (tipo, cor) => (tipo === 'classico' && cor === COR_MEL ? 949.9 : null)),
+    preco: { ...PREVIA_COM_PRECO.preco, por_cor: true },
+    avisos: [],
+};
+
+/**
+ * `PUT {escrita.revisao.preco}` 200 — `{revisao: 37, precos: {classico: 949.9}, cor: null}`: a prévia NOVA (a revisão
+ * subiu, o Clássico de todas as cores a 949,90, a linha agora "a conferir").
+ */
+export const PRECO_SALVO = {
+    ...comPrecos(PREVIA_DO_ANUNCIO, (tipo) => (tipo === 'classico' ? 949.9 : null)),
+    item: { ...PREVIA_DO_ANUNCIO.item, status: 'Pré-pronto · a conferir' },
+    revisao: 38,
+    preco: {
+        classico: { valor: 949.9, da_precificacao: 879.9, minimo: 820, ajustado: true },
+        premium: { valor: 989.9, da_precificacao: 989.9, minimo: 900, ajustado: false },
+        por_cor: false,
+        premium_igual: false,
+    },
+    avisos: [],
+};
+
+/** 200 com o Clássico abaixo do mínimo (800,00 < 820,00): grava, e o aviso vem em `avisos` — não trava. */
+export const PRECO_ABAIXO_DO_MINIMO = {
+    ...comPrecos(PREVIA_DO_ANUNCIO, (tipo) => (tipo === 'classico' ? 800 : null)),
+    revisao: 38,
+    preco: {
+        classico: { valor: 800, da_precificacao: 879.9, minimo: 820, ajustado: true },
+        premium: { valor: 989.9, da_precificacao: 989.9, minimo: 900, ajustado: false },
+        por_cor: false,
+        premium_igual: false,
+    },
+    avisos: ['Abaixo do mínimo da Precificação no Clássico (R$ 820,00).'],
+};
+
+/** 409 da revisão (outra aba, ou o robô, mexeu): `{revisao_atual, message}` SEM `travado` (padrão F6/D47). */
+export const CONFLITO_DO_PRECO = { revisao_atual: 39, message: 'Este anúncio mudou depois que você abriu. Recarregue para ver o que mudou.' };
+
+/** 409 do item na fila de publicação (ou publicando, publicado, fora da revisão): só `{message}`, neutro. */
+export const PRECO_NA_FILA = { message: 'Este anúncio já está na fila de publicação: o preço não muda mais por aqui.' };
+
+/** 422 do Premium igual ao Clássico (D46), no campo do Premium. */
+export const ERROS_DO_PRECO = {
+    message: 'O Premium não pode ter o mesmo preço do Clássico.',
+    errors: { 'precos.premium': ['O Premium não pode ter o mesmo preço do Clássico.'] },
+};

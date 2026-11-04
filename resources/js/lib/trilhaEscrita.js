@@ -337,6 +337,19 @@ export async function carregarPrevia(url) {
     return corpo(await axios.get(url));
 }
 
+/**
+ * O preço ajustado na prévia (4c, §19.11 do desenho). `url` chega PRONTA da gaveta (o `escrita.revisao.preco` com o id
+ * do item no lugar do marcador) e `dados` também (`{revisao, precos: {classico?, premium?}, cor}`, montado pela lib da
+ * caixa — esta não a importa, pelo mesmo motivo da prévia). → a prévia NOVA (a forma do §19.5, com o `preco` ampliado
+ * e os `avisos`). O 409 (revisão velha; ou o item na fila, publicado ou fora da revisão) e o 422 chegam como erro do
+ * axios; quem trata é a gaveta.
+ */
+export async function salvarPreco(url, dados) {
+    if (!url) throw new ErroDaTrilha('O preço não pode ser salvo nesta tela: recarregue a página.');
+
+    return corpo(await axios.put(url, dados));
+}
+
 // ─── Erros ──────────────────────────────────────────────────────────────────
 
 const SEM_CONEXAO = 'Não consegui falar com o servidor. Confira a conexão e tente de novo.';

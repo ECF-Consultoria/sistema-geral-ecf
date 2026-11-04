@@ -16,7 +16,6 @@ import {
     fmtPreco,
     fotosDoAnuncio,
     gruposDaFicha,
-    linhasDoPreco,
     motivoDaPrevia,
     parcelasDoAnuncio,
     preparoDaPrevia,
@@ -27,7 +26,6 @@ import {
     textoDaPromocao,
     textoDasGeradas,
     textoDasParcelas,
-    textoDoAjustado,
     textoDoEnvio,
     tiposDaPrevia,
     urlDaPrevia,
@@ -37,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { composicao } from '@/Components/Trilha/formatos';
+import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
 
 // ─── Trilha de produtos — a prévia do anúncio (a gaveta `v:{item}`, 4ª entrega, 4a) ──
 //
@@ -50,8 +49,9 @@ import { composicao } from '@/Components/Trilha/formatos';
 //   com o selo "gerada pelo robô", em roxo), as abas Clássico/Premium e de cor, a
 //   categoria, o título, o preço (com as parcelas no Premium), a entrega, a
 //   descrição e a ficha agrupada;
-// - Preço: só leitura — o valor de cada tipo e "ajustado" quando ele difere da
-//   Precificação;
+// - Preço: o valor de cada tipo e "ajustado" quando ele difere da Precificação —
+//   editável pela equipe desde a 4c (`CaixaDoPreco.jsx`, §19.11), só leitura para
+//   os outros e no anúncio publicado;
 // - Situação: o status da oferta, o que falta para publicar e o preparo do robô.
 //
 // A gaveta pede a prévia UMA vez ao abrir (`GET escrita.revisao.previa`, com o id
@@ -71,7 +71,6 @@ const BOTAO_DE_ALTERNAR = cn(
 );
 const MARCADO = 'border-trilha-navy bg-trilha-navy text-trilha-on-navy';
 const DESMARCADO = 'border-trilha-line bg-trilha-surface text-trilha-fg hover:border-trilha-muted';
-const LINHA_DA_CAIXA = 'flex items-start justify-between gap-2.5 border-b border-trilha-line2 py-2 text-[13px] last:border-b-0';
 const SUBTITULO = 'm-0 font-sans text-[12px] font-bold uppercase leading-snug tracking-[0.06em] text-trilha-fg2';
 
 /** A escolha entre poucas opções (os tipos, as cores): botões de alternar, um marcado. */
@@ -309,42 +308,6 @@ function CaixaDoAnuncio({ previa, inicial = null }) {
     );
 }
 
-/** A caixa "Preço": só leitura na 4a — o valor de cada tipo e o "ajustado" quando difere da Precificação. */
-function CaixaDoPreco({ previa }) {
-    const linhas = linhasDoPreco(previa);
-
-    return (
-        <Caixa titulo="Preço" data-caixa="preco">
-            {linhas.length ? (
-                <ul className="m-0 flex list-none flex-col p-0">
-                    {linhas.map((linha) => {
-                        const nota = textoDoAjustado(linha);
-
-                        return (
-                            <li key={linha.chave} className={LINHA_DA_CAIXA} data-preco={linha.chave}>
-                                <b className="font-semibold">{linha.nome}</b>
-                                <span className="flex flex-col items-end gap-0.5 text-right">
-                                    <span className="flex flex-wrap items-center justify-end gap-1.5">
-                                        {linha.ajustado && (
-                                            <Pilula tom="warn" data-ajustado="">
-                                                ajustado
-                                            </Pilula>
-                                        )}
-                                        <span className="font-semibold tabular-nums text-trilha-fg">{fmtPreco(linha.valor)}</span>
-                                    </span>
-                                    {nota && <span className="text-[12px] text-trilha-muted">{nota}</span>}
-                                </span>
-                            </li>
-                        );
-                    })}
-                </ul>
-            ) : (
-                <span className="text-[12.5px] text-trilha-muted">Sem preço na prévia ainda.</span>
-            )}
-        </Caixa>
-    );
-}
-
 /** A caixa "Situação": o status da oferta, o que impede de publicar e o preparo do robô (só para a equipe). */
 function CaixaDaSituacao({ oferta, previa }) {
     const bloqueios = bloqueiosDaPrevia(previa);
@@ -398,13 +361,14 @@ export const PREVIA_CARREGANDO = Object.freeze({ carregando: true, erro: null, p
  *   onAbrir?: (chave: string) => void,
  *   onTentarDeNovo?: () => void,
  *   inicial?: ?{tipo: string, variante: string},
- * }} props
+ *   preco?: ?object,
+ * }} props  `preco` = o estado e as ações da caixa "Preço" (`usePrecoDaPrevia`, 4c); sem ele, a caixa só se lê.
  */
-export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null }) {
+export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro = null, antes = false, trabalho = false, onAbrir = () => {}, onTentarDeNovo = () => {}, inicial = null, preco = null }) {
     const pronta = !antes && !carregando && !erro && previaPronta(previa);
     const semPrevia = !antes && !carregando && !erro && !!previa && !pronta;
 
-    const rodape = [
+    let rodape = [
         <Botao key="oferta" data-acao="ver-oferta" onClick={() => onAbrir(chaveDaOferta(oferta))}>
             Ver a oferta
         </Botao>,
@@ -417,6 +381,8 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
             </LinkDeAcao>,
         );
     }
+    // A guarda (4c): com preço digitado e não salvo, a confirmação toma o rodapé.
+    if (preco?.pedido) rodape = <ConfirmacaoDoPreco preco={preco} />;
 
     return (
         <MioloDaGaveta
@@ -460,7 +426,7 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
             )}
 
             {pronta && <CaixaDoAnuncio previa={previa} inicial={inicial} />}
-            {pronta && <CaixaDoPreco previa={previa} />}
+            {pronta && <CaixaDoPreco previa={previa} preco={preco} />}
 
             {!carregando && <CaixaDaSituacao oferta={oferta} previa={pronta || semPrevia ? previa : null} />}
         </MioloDaGaveta>
@@ -471,9 +437,13 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
  * A gaveta `v:{item}`: pede a prévia ao abrir e desenha a vista. Só chega aqui a equipe com `escrita.revisao`
  * (`painelDaChave`); a chave da página troca o conteúdo inteiro a cada item, e o pedido começa do zero.
  *
- * @param {{oferta: object, escrita: ?object, trabalho?: boolean, onAbrir?: (chave: string) => void}} props
+ * 4c: a caixa "Preço" (`usePrecoDaPrevia`). Salvo o preço, a gaveta inteira passa a mostrar a prévia da resposta; o
+ * [Recarregar] do 409 da revisão pede a prévia de novo (como o "Tentar de novo").
+ *
+ * @param {{oferta: object, escrita: ?object, trabalho?: boolean, onAbrir?: (chave: string) => void,
+ *   onAvisar?: (texto: string, tipo?: string) => void, onRecarregar?: ?(() => void)}} props
  */
-export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onAbrir = () => {} }) {
+export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onAbrir = () => {}, onAvisar = () => {}, onRecarregar = null }) {
     const antes = !temPrevia(oferta);
     const url = useMemo(() => urlDaPrevia(escrita, oferta?.id), [escrita, oferta?.id]);
     const [estado, setEstado] = useState(() => (antes ? { carregando: false, erro: null, previa: null } : PREVIA_CARREGANDO));
@@ -499,5 +469,19 @@ export default function PreviaDoAnuncio({ oferta, escrita, trabalho = false, onA
         };
     }, [antes, url, tentativa]);
 
-    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={() => setTentativa((n) => n + 1)} />;
+    const preco = usePrecoDaPrevia({
+        escrita,
+        oferta,
+        previa: estado.previa,
+        onPreviaNova: (previa) => setEstado({ carregando: false, erro: null, previa }),
+        onRecarregarPrevia: () => setTentativa((n) => n + 1),
+        onAvisar,
+        onRecarregar,
+    });
+    const tentarDeNovo = () => {
+        preco.limpar();
+        setTentativa((n) => n + 1);
+    };
+
+    return <VistaDaPrevia oferta={oferta} {...estado} antes={antes} trabalho={trabalho} onAbrir={onAbrir} onTentarDeNovo={tentarDeNovo} preco={preco} />;
 }

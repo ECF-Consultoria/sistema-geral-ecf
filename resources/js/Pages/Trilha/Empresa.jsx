@@ -437,7 +437,7 @@ export function TelaDaTrilha({
         // Só chega aqui com `comPrevia` (`painelDaChave`): para os outros, o `v:` não abre nada.
         conteudoDaGaveta = (
             <Suspense key={chaveDoConteudo} fallback={<AbrindoAPrevia oferta={painel.oferta} />}>
-                <PreviaDoAnuncio oferta={painel.oferta} escrita={escritaComum.escrita} trabalho={comTrabalho} onAbrir={abrirComGuarda} />
+                <PreviaDoAnuncio oferta={painel.oferta} trabalho={comTrabalho} onAbrir={abrirComGuarda} {...escritaComum} />
             </Suspense>
         );
     } else if (painel?.painel === 'onda') {

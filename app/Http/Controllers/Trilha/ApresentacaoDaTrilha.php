@@ -201,9 +201,9 @@ class ApresentacaoDaTrilha
      * relativos como o `categorias`. `mercado_livre` (F8): `anuncios` e `estado` (GET), `importar` e `limpar` (POST),
      * relativos também. `revisao` (4ª entrega, 4a): a prévia do anúncio do painel `v:{item}`, relativa, com o marcador
      * `__ITEM__` no lugar da chave do item (`s-12`, `c-12-2`, `o-55`) para a tela trocar — cada fatia da 4ª entrega
-     * acrescenta o seu endereço aqui.
+     * acrescenta o seu endereço aqui (4c: `preco`, o PUT do preço ajustável).
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string}}
      */
     private static function escrita(Company $empresa): array
     {
@@ -227,9 +227,10 @@ class ApresentacaoDaTrilha
                 'estado'   => route('trilha.ml.estado', $empresaId, false),
                 'limpar'   => route('trilha.ml.limpar', $empresaId, false),
             ],
-            // 4a: a prévia do anúncio (GET), com o item no marcador.
+            // 4a: a prévia do anúncio (GET), com o item no marcador. 4c: o preço ajustável dela (PUT).
             'revisao'       => [
                 'previa' => route('trilha.previa', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
+                'preco'  => route('trilha.preco', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
             ],
         ];
     }

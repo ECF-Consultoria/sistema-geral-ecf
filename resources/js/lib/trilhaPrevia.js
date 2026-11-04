@@ -272,7 +272,8 @@ export function textoDaPromocao(anuncio) {
 export function linhasDoPreco(previa) {
     const precos = previa?.preco && typeof previa.preco === 'object' ? previa.preco : {};
     const nomes = new Map([...lista(previa?.tipos), ...tiposDaPrevia(previa)].filter((t) => t?.chave != null).map((t) => [String(t.chave), t.nome]));
-    const ordem = [...new Set([...nomes.keys(), ...Object.keys(precos)])].filter((chave) => precos[chave]);
+    // Só os tipos (objetos): a 4c acrescenta ao `preco` as bandeiras `por_cor` e `premium_igual`, que não são linha.
+    const ordem = [...new Set([...nomes.keys(), ...Object.keys(precos)])].filter((chave) => precos[chave] && typeof precos[chave] === 'object');
 
     return ordem.map((chave) => {
         const p = precos[chave];

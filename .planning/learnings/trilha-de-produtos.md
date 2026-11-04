@@ -976,3 +976,76 @@ como está.
   precisa normalizar esse espaço.
 - **`variante` é a chave canônica do Publicador** (`__single__`, `COLOR=id:52049`…), não `v1`; a tela não depende do
   formato (as fixtures usam `v1`).
+
+## 38. 4c — preço (servidor) (04/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19.11 (D45/D46/D47). Serviço `App\Services\Trilha\PrecoNaTrilha`, controller
+`Trilha\PrecoDaTrilhaController`, rota `trilha.preco` (`PUT …/ofertas/{item}/preco`, contador `trilha.revisao.preco`),
+`escrita.revisao.preco` com `__ITEM__`, teste `PrecoNaTrilhaTest` (+ a rota na matriz do `CadastroNaTrilhaAcessoTest`).
+Nada do Publicador mudou: o `EditorRascunhoService::salvarVariantes` é chamado como está.
+
+- **O `salvarVariantes` troca o mapa `precos` INTEIRO da variante** (`gravarVariacao` grava `dados.precos[lt] ?? null`
+  para cada alvo). Por isso a trilha manda, por cor, o mapa GRAVADO (o `RascunhoRepository::snapshot` cru) com o tipo
+  pedido trocado — NUNCA o do `comEfetivosDe`: o efetivo já traz o preço herdado da Precificação, e gravá-lo congelaria
+  esse preço no rascunho (o defeito do Anunciar antigo, `16` §1.6; a mutação que troca o cru pelo efetivo derruba o
+  teste de "todas as cores": o Premium deixa de ser nulo). Só as cores que mudam vão ao `salvarVariantes`; o pedido
+  que não muda nada (comparado com o GRAVADO — `null` num tipo que já herda é "nada") não grava: a `revisao` não sobe e
+  a conferência não perde a validade à toa.
+- **O `salvarVariantes` não aceita ator**: o histórico é da trilha (`RegistroEstrutura`, canal `portal`, evento
+  `trilha_preco_ajustado`, origem `interno`, causer = o usuário, subject = o `PubRascunho`), UM registro por tipo que
+  mudou, com `tipo`, `cor` (a do pedido; nula = todas), `de` (cor → o preço EFETIVO antes, o que iria ao anúncio) e
+  `para` (`null` = voltou à Precificação).
+- **A ordem do 409**: estado primeiro (na fila → publicando → publicado → fora da revisão), depois a `revisao` — o
+  estado diz mais (recarregar não tira da fila). "Publicando agora" é etapa `revisao` na linha da trilha
+  (`SituacaoDasOfertas::decidir`): o 409 tem de olhar o `status` do rascunho, não a etapa. "A publicação falhou"
+  (`FAILED`) continua editável. A `revisao` AUSENTE (ou fora da forma) é 422 `errors.revisao` — o contrato não dizia;
+  sem ela não há como saber se a aba é velha. Nenhum 409 leva `travado` (o 409 da revisão leva `revisao_atual`).
+- **Sem transação de fora, de propósito.** O `salvarVariantes` trava o rascunho só dentro da transação dele e propaga o
+  estoque aos kits DEPOIS dela; embrulhá-lo numa trava de fora juntaria duas travas de rascunho (T-175-40). A conferência
+  da revisão e do estado fica antes, sem trava: na janela de milissegundos vale o que o editor do Publicador já faz (a
+  última escrita vence), e se a fila pegar o item no meio a `revisao` nova o tira como `precisa_revisar` (R5).
+- **D46 só nas cores que o pedido TOCA** (interpretação do "cada cor" do contrato): o empate que já existia noutra cor —
+  a própria Precificação pode dar Premium = Clássico numa cor — não pode impedir de consertar cor por cor. A prévia
+  avisa (`preco.premium_igual`, que olha TODAS as cores ativas). **A 4d (publicar) precisa conferir todas.** O efetivo
+  "depois" de cada cor: o gravado pedido; senão o gravado de antes; senão o da Precificação DAQUELA cor
+  (`dados.portal[lt].anunciado`, a linha da oferta da cor ou a da âncora). Só com os dois tipos ligados. O espelho da
+  tela usa o `preco.{tipo}.da_precificacao` (da 1ª cor) no `null`: com Precificação diferente por cor ele pode errar —
+  o servidor decide.
+- **O `minimo` é o da Central de Promoções** (`DadosEfetivosService::precosDePromocao`, ADR PORTAL-02), da MESMA linha
+  da Precificação que dá o preço da cor (`dados.portal[lt].minimo`). O aviso é um por tipo, com o MAIOR mínimo que o
+  valor não alcança (meio centavo de folga: no mínimo exato não avisa); `null` nunca avisa. Texto com o tipo, para a
+  tela poder pôr no lugar: "Abaixo do mínimo da Precificação no Clássico (R$ 185,50)." (o contrato tinha só
+  "Abaixo do mínimo da Precificação (R$ …).").
+- **Tipo desligado no pedido é 422 mesmo com `null`** (a letra do contrato); a cor desativada no anúncio não é "cor
+  dele" (422 `errors.cor`). Valor: `numeric|gt:0|decimal:0,2|max:9999999` (o teto do editor do Publicador); todas as
+  regras com mensagem própria — o idioma do Laravel aqui é o inglês.
+- **O `preco` da prévia cresceu de forma aditiva** (`minimo` por tipo, `por_cor`, `premium_igual`) — no GET também, a
+  caixa editável é desenhada por ele. As asserções da 4a que comparavam o `preco` inteiro e a `escrita.revisao` (aqui e no
+  `AcessoATrilhaTest`) foram ajustadas. O PUT devolve
+  as chaves da prévia + `avisos` (o GET não tem `avisos`). Quando a prévia for ao cliente (4e), cortar também o `minimo`
+  (o contrato só cita `da_precificacao`).
+- **Testes:** o JSON tira o `.0` (170.0 sai `170`): comparação estrita com número redondo usa inteiro. `assertJsonPath`
+  não alcança `errors.precos.premium` (§31) — helper `assertErro`. Na matriz, o "passa" do preço precisa do item na
+  REVISÃO: o `rascunhoDoPub` sozinho deixa a Simples no Planejamento (o robô não "andou") — `ia_preparo.etapas` ok + os
+  dois alvos + a variante única; e o corpo é montado DEPOIS disso (leva a `revisao`). O cenário de duas cores é a
+  cadeira do `CenarioDoPreparo` com uma 2ª variação (`COLOR=id:52028` Azul, `COLOR=id:52049` Preto, um pub_produto só).
+- **Custo** (SQLite em memória): a Precificação roda 3× por PUT (o efetivo de antes, o `montar` e o `precos()` da
+  prévia nova); nenhuma chamada ao ML com o cache quente; nenhum Job (o `propagar` do estoque dos kits só grava quando o
+  NÚMERO do estoque muda — preço não muda estoque).
+
+### 4c — preço (tela), 04/11/2026
+- **`linhasDoPreco` (`lib/trilhaPrevia.js`) filtra OBJETOS:** a 4c pôs bandeiras booleanas em `preco` (`por_cor`,
+  `premium_igual`); filtrar só por "valor verdadeiro" as transformava em linhas de tipo fantasmas. Campo novo em
+  `preco` que seja objeto vira linha.
+- **`Revisao/` não importa `Cadastro/`:** o `PecasDoCadastro` puxava ~50 kB do cadastro para a gaveta da prévia, que
+  vai ao cliente na 4e. Campo, aviso e confirmação foram redesenhados em `Revisao/CaixaDoPreco.jsx`; há teste que
+  proíbe o import.
+- **As libs `trilha*` não importam `trilhaPrevia`** (o teste de pastas as trata como "de fora"): `trilhaPreco.js`
+  tem cópias do marcador `__ITEM__` e do formato do real, e um teste confere que são iguais.
+- **SSR:** o React escreve `readonly=""` (não `readOnly`); quando dois pacotes do esbuild montam o mesmo componente,
+  compare pelo `.name`, não pela referência.
+- **Limitação aceita (04/11):** com uma cor escolhida, a referência "da Precificação" e o "mínimo" exibidos são os da
+  1ª cor ativa (`preco.{tipo}`); com Precificação diferente por cor, a referência pode divergir. O valor gravado e a
+  regra Premium = Clássico são decididos pelo servidor, cor a cor.
+- **Pendências registradas para a frente:** 4d confere Premium = Clássico em TODAS as cores (a 4c só nas tocadas);
+  4e corta `preco.*.minimo` e `da_precificacao` da prévia do cliente.

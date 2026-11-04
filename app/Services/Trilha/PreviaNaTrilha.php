@@ -31,7 +31,8 @@ use Illuminate\Support\Facades\Log;
  *   automáticas — mudou lá, muda aqui);
  * - **motivo**: o texto do Publicador cita "etapa Produto/Condições/Detalhes" e o Mercado Livre; aqui sai um texto
  *   neutro ({@see motivoNeutro()});
- * - **preço** por tipo: o efetivo × o da Precificação ({@see precos()});
+ * - **preço** por tipo: o efetivo × o da Precificação, o mínimo dela, se as cores diferem e se o Premium empatou com o
+ *   Clássico ({@see precos()}; a 4c — {@see PrecoNaTrilha} — grava o preço e devolve esta mesma prévia);
  * - **preparo**: o do robô, da régua da linha (`step_state.ia_preparo` e a memória das imagens).
  *   Fora do contrato e de propósito: o id da categoria, a promoção "sem promoção porque…" (cita o Portal), a garantia,
  *   o estoque e o `titulo_no_ml`.
@@ -64,13 +65,13 @@ class PreviaNaTrilha
     /** As etapas da trilha em que o painel `v:` mostra a prévia (D44). */
     public const ETAPAS_COM_PREVIA = ['revisao', 'lanc'];
 
-    /** `listing_type_id` → a chave do tipo no contrato (o Publicador só publica estes dois). */
-    private const TIPO = ['gold_special' => 'classico', 'gold_pro' => 'premium'];
+    /** `listing_type_id` → a chave do tipo no contrato (o Publicador só publica estes dois). Público: o preço (4c) usa o mesmo. */
+    public const TIPO = ['gold_special' => 'classico', 'gold_pro' => 'premium'];
 
-    private const NOME_DO_TIPO = ['classico' => 'Clássico', 'premium' => 'Premium'];
+    public const NOME_DO_TIPO = ['classico' => 'Clássico', 'premium' => 'Premium'];
 
-    /** Abaixo disto o preço é o mesmo (centavo arredondado) — a régua do D46. */
-    private const DIFERENCA = 0.005;
+    /** Abaixo disto o preço é o mesmo (centavo arredondado) — a régua do D46. Pública: o gravar do preço (4c) usa a mesma. */
+    public const DIFERENCA = 0.005;
 
     /** O preparo do robô que o contrato leva, e a pílula da linha → a palavra do contrato. */
     private const ETAPAS_DO_PREPARO = ['titulo', 'descricao', 'imagens'];
@@ -232,8 +233,11 @@ class PreviaNaTrilha
         return route('trilha.previa.foto', ['company' => $empresa->id, 'item' => $chave, 'imagem' => $imagem], false);
     }
 
-    /** O rascunho do pub_produto que representa o item (nulo: o item ainda não está no Publicador). */
-    private static function rascunho(array $item): ?PubRascunho
+    /**
+     * O rascunho do pub_produto que representa o item (nulo: o item ainda não está no Publicador). Público: o preço
+     * ({@see PrecoNaTrilha}) acha o rascunho pela MESMA régua.
+     */
+    public static function rascunho(array $item): ?PubRascunho
     {
         $pub = $item['pub_produto_id'] ?? null;
 
@@ -275,13 +279,18 @@ class PreviaNaTrilha
      * O preço de cada tipo: `valor` = o do anúncio da 1ª cor ativa (o preço do plano, o que vai ao ML); `da_precificacao`
      * = o da Precificação para a mesma cor — a MESMA leitura do `montar` (`DadosEfetivosService::daProduto` →
      * `RascunhoSnapshot::comEfetivosDe`: o preço da oferta daquela cor, senão o da âncora), refeita aqui porque o
-     * `montar` não a devolve; `ajustado` = ALGUMA cor ativa do tipo tem preço gravado no rascunho que difere do da
+     * `montar` não a devolve; `minimo` (4c) = o mínimo da Precificação da MESMA linha (o preço da Central de Promoções,
+     * `dados.portal[lt].minimo`); `ajustado` = ALGUMA cor ativa do tipo tem preço gravado no rascunho que difere do da
      * Precificação (ou a Precificação não tem preço). Com cores de preço diferente, o preço de cada uma está em
      * `anuncios[].preco`. Tipo desligado: null.
      *
+     * 4c (aditivo): `por_cor` = em algum tipo, uma cor ativa tem preço diferente das outras (meio centavo); e
+     * `premium_igual` = em alguma cor, o Premium tem o MESMO preço do Clássico (a régua do D46, a mesma do gravar —
+     * {@see PrecoNaTrilha}). Os dois olham o preço do PLANO de cada cor (o `anuncios[].preco`).
+     *
      * @param  list<array<string, mixed>>  $anuncios  os do `montar` (com `listing_type_id` e `variante.chave`)
      * @param  list<array{chave: string, nome: string}>  $tipos
-     * @return array{classico: ?array{valor: ?float, da_precificacao: ?float, ajustado: bool}, premium: ?array{valor: ?float, da_precificacao: ?float, ajustado: bool}}
+     * @return array{classico: ?array{valor: ?float, da_precificacao: ?float, minimo: ?float, ajustado: bool}, premium: ?array{valor: ?float, da_precificacao: ?float, minimo: ?float, ajustado: bool}, por_cor: bool, premium_igual: bool}
      */
     private function precos(PubRascunho $r, array $anuncios, array $tipos): array
     {
@@ -310,11 +319,40 @@ class PreviaNaTrilha
             $saida[$tipo] = [
                 'valor'           => $doTipo[0]['preco'] !== null ? (float) $doTipo[0]['preco'] : null,
                 'da_precificacao' => isset($dados['portal'][$lt]['anunciado']) ? (float) $dados['portal'][$lt]['anunciado'] : null,
+                'minimo'          => isset($dados['portal'][$lt]['minimo']) ? (float) $dados['portal'][$lt]['minimo'] : null,
                 'ajustado'        => $ajustado,
             ];
         }
 
-        return $saida;
+        // 4c: o preço do plano de cada cor, por tipo — para dizer se as cores diferem e se o Premium empatou com o Clássico.
+        $porVariante = [];
+        foreach ($anuncios as $a) {
+            if (isset(self::TIPO[$a['listing_type_id']]) && in_array(self::TIPO[$a['listing_type_id']], $ligados, true)) {
+                $porVariante[(string) $a['variante']['chave']][$a['listing_type_id']] = $a['preco'] !== null ? (float) $a['preco'] : null;
+            }
+        }
+        $porCor = false;
+        foreach (array_keys(self::TIPO) as $lt) {
+            $valores = [];
+            foreach ($porVariante as $precos) {
+                if (array_key_exists($lt, $precos)) {
+                    $valores[$precos[$lt] === null ? 'sem' : number_format($precos[$lt], 2, '.', '')] = true;
+                }
+            }
+            $porCor = $porCor || count($valores) > 1;
+        }
+        $premiumIgual = false;
+        foreach ($porVariante as $precos) {
+            $premiumIgual = $premiumIgual || self::mesmoPreco($precos['gold_special'] ?? null, $precos['gold_pro'] ?? null);
+        }
+
+        return [...$saida, 'por_cor' => $porCor, 'premium_igual' => $premiumIgual];
+    }
+
+    /** Os dois preços existem e diferem menos que meio centavo — a régua do D46 (Premium = Clássico). */
+    public static function mesmoPreco(?float $classico, ?float $premium): bool
+    {
+        return $classico !== null && $premium !== null && abs($classico - $premium) < self::DIFERENCA;
     }
 
     /**

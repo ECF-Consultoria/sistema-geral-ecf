@@ -1365,3 +1365,100 @@ MariaDB (learnings de desempenho §6): nomes de índice curtos; toda coluna `nul
 R1 publicar fora da #459 (D48 + teste da 460). R2 o editor/lote do Publicador ainda publica o mesmo produto por fora (aceito na 459). R3 todo anúncio novo nasce `under_review` (D59). R4 ajustar preço invalida a conferência (o publicar sempre reconfere). R5 escrever no rascunho com o item na fila o tira como `precisa_revisar` (D47). R6 promoção automática agendada na publicação (a prévia mostra `promocao`). R7 régua do `gerada` é cópia. R8 D-05: foto/categoria trocada depois do 1º Sincronizar não chega ao rascunho. R9 1ª escrita na porta do cliente (allowlist, CSRF, 413, varredura de props). R10 agente da Aprovação, se ligado na 459, cria `PubAprovacaoOferta` em paralelo. R11 fila da IA mais cheia com ajustes.
 
 Achados fora do escopo: o "Salvar preço" do Painel de Aprovação não grava o preço (`AprovacaoDaOfertaService::registrarPrecoSalvo`); o aviso `preco_alterado` não tem escritor não nulo em `app/`.
+
+### 19.11 4c — preço ajustável (contrato)
+`PUT /trilha/{company}/ofertas/{item}/preco` (`trilha.preco`, 30/min). URL em `escrita.revisao.preco` (com `__ITEM__`).
+
+Pedido:
+```json
+{"revisao": 37, "precos": {"classico": 899.9, "premium": null}, "cor": null}
+```
+- `precos.{classico|premium}`: número > 0 com até 2 casas, ou `null` = **voltar ao da Precificação** naquele tipo.
+  Tipo ausente no pedido = não mexe. Tipo desligado no anúncio = 422.
+- `cor`: `null` = todas as cores; ou a chave da variante (a mesma de `variantes[].chave`) = só aquela cor.
+- Grava por `EditorRascunhoService::salvarVariantes` (D45) em `pub_variante_precos`; nunca escreve na Precificação.
+
+Respostas:
+- 200 → a prévia nova (forma §19.5), com `preco` ampliado:
+  `preco.{classico|premium} = {valor, da_precificacao, minimo, ajustado}` (da 1ª cor ativa) e
+  `preco.por_cor: bool` (alguma cor com preço diferente das outras no mesmo tipo), `preco.premium_igual: bool`.
+  O preço de cada cor segue em `anuncios[].preco`.
+- 422 `errors["precos.classico"]` / `errors["precos.premium"]`: valor inválido; **"O Premium não pode ter o mesmo
+  preço do Clássico."** (D46: diferença < 0,005 sobre o preço EFETIVO de cada cor, depois de aplicar o pedido);
+  tipo desligado.
+- 409 SEM `travado` (padrão F6/D47): `revisao` diferente da atual → `{revisao_atual, message: "Este anúncio mudou
+  depois que você abriu. Recarregue para ver o que mudou."}`; item na fila, publicando ou publicado →
+  `{message}` neutro. Item fora da revisão → 409 `{message}`.
+- Abaixo do `minimo` da Precificação: **aviso** na resposta (`avisos: ["Abaixo do mínimo da Precificação (R$ …)."]`),
+  não bloqueia — a equipe decide.
+- Efeitos: sobe a `revisao` do rascunho (a conferência anterior perde a validade — R4); registra no `activity_log`
+  (`trilha_preco_ajustado`, com tipo, cor, de → para, ator da equipe). Zero IA, zero ML.
+
+Tela (equipe): a caixa **Preço** da prévia vira editável — por tipo, um campo com o valor atual e, embaixo, "da
+Precificação: R$ X · mínimo R$ Y"; "Todas as cores" × uma cor (seletor com as `variantes`); [Salvar preço];
+[Voltar ao da Precificação] por tipo (manda `null`); aviso na hora quando Premium = Clássico (espelho da regra; o
+servidor decide); 409 de revisão → "Este anúncio mudou depois que você abriu" + [Recarregar]; 409 de fila/publicado
+→ a caixa fica só leitura com a mensagem. O cliente nunca edita (a porta do cliente nem recebe a URL).
+
+Testes 4c: `tests/Feature/Trilha/PrecoNaTrilhaTest.php` — grava em `pub_variante_precos` (todas as cores e uma cor);
+`null` volta a herdar; Premium igual → 422 (inclusive quando a igualdade nasce de combinar o pedido com o preço já
+gravado do outro tipo); tipo desligado → 422; revisão velha → 409 sem `travado`; na fila/publicando/publicado → 409;
+fora da revisão → 409; contagem de `estrutura_precificacoes` (e tabelas da Precificação) igual antes e depois;
+`activity_log` com o evento; abaixo do mínimo = aviso; nenhum HTTP e nenhum Job; matriz de acesso no dataProvider.
+JS: `tests/js/trilha-preco.test.js` (lógica pura + chamada + render da caixa editável e dos 409/422).
+
+### 19.12 Respostas da 2ª rodada (04/11)
+- **4d — quem publica:** quem já edita a trilha da loja (a mesma escrita da porta da equipe; hoje só o Dev na 459).
+  A guarda da #459 no código (D48) vale por cima.
+- **4d — avisos da conferência:** mostra e pede confirmação ([Publicar assim mesmo] = `ciente`); erro sempre bloqueia.
+- **4b — limite:** 3 pedidos de ajuste por anúncio por dia (a cota diária da loja vale por cima).
+- **4f — fotos do cliente:** enviar E excluir, enquanto o produto está na Lista.
+- Ritmo: o usuário manteve o rigor (testes completos e provas de mutação em todas as fatias); a bateria agora roda
+  em paralelo (`scratchpad/bateria.sh`, 4 processos, `TEST_TOKEN` por arquivo).
+
+### 19.13 4d — aprovar e publicar na #459 (contrato)
+Rotas (equipe; URLs em `escrita.revisao.publicar` e `escrita.revisao.publicacao`, com `__ITEM__`, só para quem escreve):
+- `POST /trilha/{company}/ofertas/{item}/publicar` (`trilha.publicar`, 10/min; contador `trilha.revisao.publicar`)
+  — corpo `{revisao, ciente}` → **202** `{publicacao: {situacao: "conferindo", mensagem, avisos: [], mlbs: []}}`.
+- `GET /trilha/{company}/ofertas/{item}/publicacao` (`trilha.publicacao`, 240/min; contador `trilha.revisao.publicacao`)
+  → 200 `{publicacao: {...}}` (ou `{publicacao: null}` se nunca pediu).
+
+Guarda, nesta ordem: 404 chaves → 403 `podeEntrar` → 404 item → **403 fora da #459** (D48: `PublicacaoNaTrilha::LOJA =
+459` constante; confere a Company do endereço, `pub_produtos.company_id` e a âncora da conta — Company 459 ou
+MlbEmpresa com `company_id` 459 — com a mensagem neutra "Publicar pela trilha ainda não está liberado para esta
+loja.") → 409 (revisão velha SEM `travado`, com `revisao_atual`; item fora da revisão; na fila/publicando/publicado;
+prévia não pronta) → 422 (Premium = Clássico, D46 — no publicar confere TODAS as cores ativas, não só as tocadas como
+na 4c).
+
+Job `App\Jobs\Trilha\PublicarPelaTrilhaJob` (fila `high`, `tries 1`): refaz a guarda D48 (o Job não confia no
+controller) → `ConferenciaService::conferir($rascunho)` → erros = `recusado` (mensagem + `avisos` com os erros em
+texto neutro) → avisos sem `ciente` = `avisos` (lista) → senão `FilaPublicacaoService::agendar(
+ProgramasPublicadorService::resolver('company-459'), [$pubId], $user, ['ciente' => $ciente])` → `na_fila`. NUNCA usa o
+portão de aprovação nem `PublicacaoService::iniciar` direto (D49). O estado do pedido fica em cache
+`trilha:publicar:{pub}` por 6 h; depois de `na_fila`, a situação sai da fila/publicação de verdade
+(`PubFilaPublicacaoItem` e `pub_publicacoes`): `na_fila` → `publicando` → `publicado` (com `mlbs`) | `erro`.
+
+`publicacao.situacao` ∈ `conferindo | avisos | na_fila | publicando | publicado | recusado | erro`. A prévia (§19.5)
+passa a trazer `publicacao` preenchida pelo mesmo cálculo.
+
+D59 (nesta fatia): anúncio recém-publicado ainda `under_review` no ML aparece como **"Em análise"**, sem alerta, nas
+primeiras 24 h (em `SituacaoDasOfertas::noAr` e onde os contadores "no ar" leem — as telas mudam juntas); depois
+de 24 h volta à regra de hoje.
+
+Tela (equipe, na gaveta `v:`): rodapé primário **[Aprovar e publicar]** quando a prévia está pronta, na revisão, sem
+`bloqueios` e com `escrita.revisao.publicar`; confirmação no rodapé ("Publicar este anúncio na loja agora?");
+depois, pergunta o `GET publicacao` a cada 3 s enquanto `conferindo | na_fila | publicando`; `avisos` → lista +
+[Publicar assim mesmo] (POST de novo com `ciente: true` e a `revisao` atual); `recusado`/`erro` → mensagem; `publicado`
+→ "Publicado · em análise" e recarrega a Lista. O link "Abrir no Publicador" (admin) continua.
+
+Custo: zero IA. ML: conferência (sobe fotos + `POST /items/validate`) e publicação (`POST /items` por tipo × cor +
+descrição + `GET`) — **só na 459**.
+
+Testes 4d: `tests/Feature/Trilha/PublicarNaTrilhaTest.php` — **empresa 460 com tudo pronto → 403 e
+`Queue::assertNothingPushed`**; pub da 459 com âncora de outra empresa → recusa (também dentro do Job); `Http::fake`
+no validate → item na fila (`PubFilaPublicacaoItem`); avisos sem `ciente` → `avisos`; com `ciente` → na fila;
+erro de conferência → `recusado`, nada na fila; revisão velha → 409 sem `travado`; fora da revisão / na fila /
+publicado → 409; Premium igual → 422; **nenhum `POST /items` disparado pela trilha** (só a fila publica); a situação
+segue a fila (`na_fila` → `publicado` com `mlbs`); "Em análise" nas primeiras 24 h e a regra antiga depois; matriz de
+acesso. Rede: suítes da fila e da publicação do Publicador (`PUBLICADOR_PREPARO_IA_ATIVO=true`, `--colors=never`).
+JS: `tests/js/trilha-publicar.test.js`.
