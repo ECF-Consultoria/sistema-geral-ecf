@@ -9,7 +9,8 @@ import CampoDaFicha from '@/Components/Trilha/Cadastro/CampoDaFicha';
 //
 // §5.5 do desenho. Sem categoria, a ficha só explica de onde os campos vêm.
 // Com ela: o caminho da categoria, o texto da equipe, as OBRIGATÓRIAS primeiro
-// e as "Outras características (N)" recolhidas, o filtro Todas · Faltando ·
+// e as "Outras características (N)" — ABERTAS ao abrir a gaveta (R7, 04/11/2026:
+// a equipe preenche tudo de uma vez; recolher continua possível), o filtro Todas · Faltando ·
 // Preenchidas (a conta é de `lib/fichaLayout.js`; o filtro tira uma foto ao ser
 // clicado, e o que se preenche depois não some da lista) e o "Preencher com
 // IA" — botão manual, só com a categoria SALVA, que preenche os vazios e não
@@ -30,8 +31,8 @@ const FILTROS = [
 
 const GRADE = 'grid grid-cols-1 gap-3';
 
-/** O texto da equipe (§5.5): sem prometer "para publicar" — o Publicador confere outros obrigatórios na revisão. */
-export const TEXTO_DA_FICHA = 'Os campos vêm da categoria do Mercado Livre. Os marcados com * são os obrigatórios da categoria; a revisão do Publicador ainda confere outros antes de publicar.';
+/** O texto da equipe (§5.5): sem prometer "para publicar" — a revisão do anúncio confere outros obrigatórios (sem citar o Publicador: R10). */
+export const TEXTO_DA_FICHA = 'Os campos vêm da categoria do Mercado Livre. Os marcados com * são os obrigatórios da categoria; a revisão do anúncio ainda confere outros antes de publicar.';
 
 /** Carregando, fora do ar ou sem nada: a linha que fica no lugar dos campos. */
 function EstadoDosCampos({ ficha, carregandoTexto }) {
@@ -136,7 +137,8 @@ function PreencherComIa({ ficha, categoria, salva, leitura, salvando }) {
 export default function CaixaDaFicha({ ficha, valores, erros = {}, categoria, salva = null, leitura = false, salvando = false, onMudar }) {
     const [filtro, setFiltro] = useState('todas');
     const [foto, setFoto] = useState(null);       // os ids do filtro escolhido, ou null em "Todas"
-    const [outrasAbertas, setOutrasAbertas] = useState(false);
+    // R7: abertas por padrão — "não vir ocultada, já vir tudo para preencher".
+    const [outrasAbertas, setOutrasAbertas] = useState(true);
 
     if (!categoria) {
         return (
@@ -236,14 +238,18 @@ export default function CaixaDaFicha({ ficha, valores, erros = {}, categoria, sa
 
                     {r.outras.length > 0 && (
                         <div className="flex flex-col gap-2" data-grupo-tecnico="outras">
-                            <span>
+                            <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-pub-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-trilha-muted" data-titulo-das-outras="">
+                                    Outras características ({r.outras.length})
+                                </span>
                                 <Botao
                                     aria-expanded={abertas}
                                     data-acao="outras-caracteristicas"
                                     onClick={() => setOutrasAbertas((v) => !v)}
                                     className="px-2.5 py-1 text-[12.5px]"
                                 >
-                                    {abertas ? 'Esconder as outras características' : `Outras características (${r.outras.length})`}
+                                    {abertas ? 'Esconder' : 'Mostrar'}
+                                    <span className="sr-only"> as outras características</span>
                                 </Botao>
                             </span>
                             {abertas && <div className={GRADE}>{r.outras.map(mostrar)}</div>}

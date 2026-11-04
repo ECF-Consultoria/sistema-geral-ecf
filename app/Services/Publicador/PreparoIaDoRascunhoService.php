@@ -23,6 +23,7 @@ use App\Services\Trilha\Ondas\ItemDaTrilha;
 use App\Services\Trilha\Ondas\PortaoDaOnda;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
+use App\Support\Publicador\MotivoDaFalhaDaIa;
 use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
@@ -365,7 +366,9 @@ class PreparoIaDoRascunhoService
                 $valor = $this->gerar($r, $etapa, $preparo);
             } catch (\Throwable $e) {
                 Log::warning("[Publicador] Preparo pela IA ({$etapa}) falhou no rascunho {$r->id}: ".$e->getMessage());
-                $this->marcarEtapa($r->id, $hash, $etapa, self::ERRO);
+                // R4 da trilha (04/11/2026, aditivo): a causa curta fica na etapa (`motivo`: sem crédito, limite,
+                // indisponível…) — o erro do texto só ia para o `warning`, que a produção não grava.
+                $this->marcarEtapa($r->id, $hash, $etapa, self::ERRO, MotivoDaFalhaDaIa::de($e));
                 if ($etapa === self::DESCRICAO) {
                     // Sem descrição gerada, o automático do editor (D-11) volta a ter a sua chance.
                     Cache::forget(DescricaoIaService::chaveAuto($r->id));
@@ -422,14 +425,18 @@ class PreparoIaDoRascunhoService
         return $resultado;
     }
 
-    /** Registra como a etapa terminou — só se o preparo ainda for o destes fatos. */
-    public function marcarEtapa(int $rascunhoId, string $hash, string $etapa, string $status): void
+    /**
+     * Registra como a etapa terminou — só se o preparo ainda for o destes fatos. `$motivo` (R4 da trilha, 04/11/2026,
+     * aditivo): a causa curta do erro ({@see MotivoDaFalhaDaIa}); sem ele, a etapa fica como sempre foi.
+     */
+    public function marcarEtapa(int $rascunhoId, string $hash, string $etapa, string $status, ?string $motivo = null): void
     {
-        $this->comEstado($rascunhoId, function (array $estado) use ($hash, $etapa, $status) {
+        $this->comEstado($rascunhoId, function (array $estado) use ($hash, $etapa, $status, $motivo) {
             if (($estado[Memoria::PREPARO]['hash'] ?? null) !== $hash) {
                 return $estado;
             }
-            $estado[Memoria::PREPARO]['etapas'][$etapa] = ['status' => $status, 'em' => now()->toIso8601String()];
+            $estado[Memoria::PREPARO]['etapas'][$etapa] = ['status' => $status, 'em' => now()->toIso8601String()]
+                + ($motivo !== null ? ['motivo' => $motivo] : []);
 
             return $estado;
         });

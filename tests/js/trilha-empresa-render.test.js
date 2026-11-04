@@ -177,8 +177,10 @@ test('equipe: cabeçalho, as 6 etapas com as contagens do exemplo, os status e a
         assert.ok(t.includes(s), `faltou no "Com quem está agora": ${s}`);
     }
 
-    // As ações da equipe são links para as telas que já existem.
-    assert.ok(saida.includes('href="/companies/459/portal"') && saida.includes('href="/mlb/anuncios/publicador/empresas/company-459"'));
+    // As ações da equipe são links para as telas que já existem — menos o Publicador (R10, 04/11/2026: "a trilha é o
+    // publicador"), mesmo com `links.publicador` no exemplo antigo.
+    assert.ok(saida.includes('href="/companies/459/portal"'));
+    assert.ok(PROPS_EQUIPE.links.publicador && !saida.includes('/mlb/anuncios/publicador') && !t.includes('Abrir o Publicador'));
     assert.ok(!saida.includes('MLB'), 'o código do anúncio só aparece no painel lateral');
     assert.ok(!saida.includes('role="dialog"'), 'nada aberto sem ?abrir=');
     assert.match(saida, /id="trilha-aba-trilha" aria-selected="true"/);
@@ -364,13 +366,15 @@ test('?abrir=p:4: o painel do produto, com as sugestões para a equipe e o Plane
     const t = texto(painel);
     for (const s of ['Produto da lista', 'Rack para TV 1,80 m madeira maciça', 'Onde está', 'Lista de produtos', 'completa', 'Ficha técnica',
         'Ofertas com este produto', 'Kit rack 1,80 m + painel ripado 2,20 m jatobá', 'KT-CJ-213-CJ-214 = 1× CJ-213 + 1× CJ-214',
-        'Sugestões esperando decisão', 'Combo 2 Racks para TV 1,80 m', 'CJ-213-CB2', 'Abrir no Publicador', 'Abrir o Portal da empresa', 'Fechar']) {
+        'Sugestões esperando decisão', 'Combo 2 Racks para TV 1,80 m', 'CJ-213-CB2', 'Abrir o Portal da empresa', 'Fechar']) {
         assert.ok(t.includes(s), `faltou no painel: ${s}`);
     }
+    // R10: nenhum link do Publicador no painel do produto (o exemplo ainda traz `url_publicador`).
+    assert.ok(!t.includes('Abrir no Publicador') && !painel.includes('data-link="publicador"'));
     // Cada oferta do produto é um botão que troca o painel para ela.
     assert.ok(painel.includes('data-abrir="o:s-4"') && painel.includes('data-abrir="o:o-31"'));
     assert.match(painel, /<li aria-current="step"[^>]*>(?:(?!<\/li>)[\s\S])*Mapeamento estrutural/, 'a etapa atual é o mapeamento');
-    assert.ok(painel.includes('href="/mlb/anuncios/publicador/produtos/74/editor"') && painel.includes('href="/companies/459/portal"'));
+    assert.ok(!painel.includes('/mlb/anuncios/publicador') && painel.includes('href="/companies/459/portal"'));
 
     const doCliente = painelLateral(desenhar(Pagina, paraCliente(), '?abrir=p:4'), 'p:4');
     const tc = texto(doCliente);
@@ -398,10 +402,11 @@ test('?abrir=o:…: a oferta com MLB e preparo para a equipe; o cliente vê só 
     const s1 = painelLateral(desenhar(Pagina, PROPS_EQUIPE, '?abrir=o:s-1'), 'o:s-1');
     const t = texto(s1);
     for (const s of ['Simples · Protocolo e Jardinagem', 'Composição', '1× Mesa de jantar jatobá 6 lugares', 'Situação', 'No ar · Clássico e Premium',
-        'Preparação automática', 'Título', 'Modelo', 'Descrição', 'Imagens', 'Pronto', 'Anúncios', 'MLB3412345678', 'MLB3412345679', 'Abrir no Publicador']) {
+        'Preparação automática', 'Título', 'Modelo', 'Descrição', 'Imagens', 'Pronto', 'Anúncios', 'MLB3412345678', 'MLB3412345679']) {
         assert.ok(t.includes(s), `faltou na oferta: ${s}`);
     }
-    assert.ok(s1.includes('href="/mlb/anuncios/publicador/produtos/71/editor"'));
+    // R10: nenhum link do Publicador no painel da oferta (o exemplo ainda traz `url_publicador`).
+    assert.ok(!t.includes('Abrir no Publicador') && !s1.includes('/mlb/anuncios/publicador'));
 
     assert.ok(s1.includes('data-caixa="preparo"'));
 

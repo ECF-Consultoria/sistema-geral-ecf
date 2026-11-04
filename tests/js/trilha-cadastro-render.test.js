@@ -260,15 +260,16 @@ test('o resultado do "Salvar" toma o lugar do formulário: "Lista completa…" +
     assert.ok(tag(incompleto, 'data-acao="continuar-editando"').includes('bg-trilha-navy'));
 });
 
-test('produto que andou: só leitura com o motivo no topo, sem "Salvar", com "Abrir no Publicador"; as cores (Portal) só se leem', () => {
-    const saida = desenharGaveta(CADASTRO_TRAVADO);
+test('produto que andou: só leitura com o motivo no topo, sem "Salvar" e sem link para fora (R10); as cores (Portal) só se leem', () => {
+    // Mesmo que um `url_publicador` antigo chegasse nas props, a gaveta não o lê mais (R10, 04/11/2026).
+    const saida = desenharGaveta(CADASTRO_TRAVADO, {}, { produto: { ...produtoDaTrilha(CADASTRO_TRAVADO.produto.id), url_publicador: '/mlb/anuncios/publicador/produtos/72/editor' } });
     const t = texto(saida);
 
     assert.ok(saida.indexOf('data-motivo-da-trava') < saida.indexOf('data-caixa="onde-esta"'), 'o motivo vem no topo');
     assert.ok(t.includes(`Só leitura ${MOTIVO_DA_TRAVA}`), t);
     assert.match(saida, /<fieldset disabled=""/);
     assert.ok(!saida.includes('data-acao="salvar-cadastro"'));
-    assert.match(saida, /href="\/mlb\/anuncios\/publicador\/produtos\/72\/editor"[^>]*data-link="publicador"/);
+    assert.ok(!saida.includes('data-link="publicador"') && !saida.includes('/mlb/anuncios/publicador'), 'nenhum link ao Publicador');
     // Fora da Lista: "Mapear de novo" continua (mapear não é mexer no cadastro).
     assert.ok(t.includes('Mapear de novo'));
     // Duas cores (F4): um cartão por cor, com o custo de cada uma (diferentes: "diferente por cor") — tudo só para
@@ -298,7 +299,7 @@ test('avisos: a onda que começou (usa IA) e o produto que já está no Publicad
     const saida = desenharGaveta(CADASTRO_ONDA_COMECOU);
     const t = texto(saida);
     assert.ok(t.includes('A Onda 1 · simples já começou: ao salvar, o robô prepara este produto com o que estiver aqui (usa IA).'));
-    assert.ok(t.includes('Este produto já está no Publicador: texto, ficha, custo e embalagem que você mudar seguem para lá; categoria e fotos, não.'));
+    assert.ok(t.includes('O anúncio deste produto já está sendo montado: texto, ficha, custo e embalagem que você mudar seguem para ele; categoria e fotos, não.'));
     assert.ok(!desenharGaveta(CADASTRO).includes('data-aviso-da-onda'), 'sem onda começada, sem aviso');
     // O produto travado não mostra o aviso da onda (nada a salvar).
     assert.ok(!desenharGaveta({ ...CADASTRO_TRAVADO, edicao: { ...CADASTRO_TRAVADO.edicao, onda_comecou: { id: 7, nome: 'Onda 1' } } }).includes('data-aviso-da-onda'));
@@ -358,7 +359,7 @@ test('F3 — a galeria do produto: as miniaturas pela rota da equipe, a capa, o 
     assert.ok(t.includes('Fotos do produto'));
     // As miniaturas são as da rota da equipe (o retrato), nunca do Portal; a 1ª é a capa.
     assert.deepEqual([...g.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]), ['/trilha/459/fotos/91/501', '/trilha/459/fotos/91/502']);
-    assert.match(g, /data-foto="501"[\s\S]*?>capa</);
+    assert.match(g, /data-foto="501"[\s\S]*?data-capa=""[^>]*>Capa</);
     assert.ok(tag(g, 'data-ver-maior="501"').includes('aria-label="Ver maior: foto 1 (capa)"'));
     assert.ok(tag(g, 'data-ver-maior="502"').includes('aria-label="Ver maior: foto 2"'));
     // O contador: abaixo de 3, âmbar.
@@ -370,7 +371,7 @@ test('F3 — a galeria do produto: as miniaturas pela rota da equipe, a capa, o 
     assert.ok(g.includes('data-acao="enviar-fotos"'));
     const arquivo = tag(saida, 'data-arquivos-da-galeria="v91"', 'input');
     assert.ok(arquivo.includes('type="file"') && arquivo.includes('multiple=""') && arquivo.includes('accept=".jpg,.jpeg,.png,.webp'), arquivo);
-    assert.ok(t.includes('JPG, PNG ou WebP, até 10 MB cada; cabem até 12 neste produto. A 1ª foto é a capa.'));
+    assert.ok(t.includes('JPG, PNG ou WebP, até 10 MB cada; cabem até 12 neste produto. A 1ª foto é a capa: arraste ou use as setas para mudar a ordem.'));
     // Fora do Publicador, sem o aviso das fotos.
     assert.ok(!saida.includes('data-aviso-das-fotos-no-publicador'));
 
@@ -422,6 +423,57 @@ test('F3 — "Ver maior" abre a ORIGINAL (`?original=1`) dentro da gaveta; exclu
     assert.ok(verMaior.includes('href="/trilha/459/fotos/91/501?original=1"') && verMaior.includes('target="_blank"'), verMaior);
 });
 
+test('R6 — mover as fotos: arrastar e as setas de cada foto, "Capa" na 1ª; travado na leitura, com uma foto só e enquanto outra ação corre', () => {
+    const [g] = fotosPorCor(CADASTRO_COM_FOTOS);
+    const desenhar = (extra) => renderToStaticMarkup(h(M.fotos.VistaDaGaleria, { galeria: g, ...extra }));
+
+    const livre = desenhar({});
+    assert.match(livre, /data-ordem-das-fotos="501,502"/);
+    // Cada foto arrasta (HTML5, sem biblioteca) e tem as duas setas — a da ponta desligada.
+    assert.equal((livre.match(/draggable="true"/g) ?? []).length, 2);
+    assert.ok(tag(livre, 'data-mover-foto="501"', 'span').length > 0);
+    const esquerdaDaCapa = tag(livre.slice(livre.indexOf('data-mover-foto="501"')), 'data-acao="mover-foto-esquerda"', 'button');
+    assert.ok(esquerdaDaCapa.includes('disabled=""'), 'a capa não vai mais para a esquerda');
+    const esquerdaDa2 = tag(livre.slice(livre.indexOf('data-mover-foto="502"')), 'data-acao="mover-foto-esquerda"', 'button');
+    assert.ok(!esquerdaDa2.includes('disabled=""') && esquerdaDa2.includes('aria-label="Mover a foto 2 para a esquerda (ela vira a capa)"'), esquerdaDa2);
+    const direitaDa2 = tag(livre.slice(livre.indexOf('data-mover-foto="502"')), 'data-acao="mover-foto-direita"', 'button');
+    assert.ok(direitaDa2.includes('disabled=""'), 'a última não vai mais para a direita');
+    // A capa marcada só na 1ª.
+    assert.equal((livre.match(/data-capa=""/g) ?? []).length, 1);
+    assert.match(livre, /data-foto="501"[\s\S]*?data-capa=""/);
+
+    // Gravando a ordem (ou outra ação na gaveta): as setas e o arraste esperam; a galeria diz que está ocupada.
+    for (const travada of [desenhar({ ordenando: true }), desenhar({ bloqueada: true })]) {
+        assert.ok(!travada.includes('draggable="true"'));
+        assert.ok([...travada.matchAll(/data-acao="mover-foto-(?:esquerda|direita)"[^>]*>/g)].every((m) => m[0].includes('disabled=""')));
+    }
+    assert.ok(desenhar({ ordenando: true }).includes('aria-busy="true"'));
+    // O arraste em curso: a foto arrastada esmaece; o lugar onde ela cai fica marcado.
+    const arrastando = desenhar({ arrastando: 501, alvo: 1 });
+    assert.ok(tag(arrastando, 'data-foto="501"', 'li').includes('opacity-50'));
+    assert.ok(tag(arrastando, 'data-foto="502"', 'li').includes('outline-trilha-run'));
+
+    // Só leitura e uma foto só: nada se move.
+    const leitura = desenhar({ leitura: true });
+    assert.ok(!leitura.includes('data-mover-foto') && !leitura.includes('draggable="true"'));
+    const uma = desenhar({ galeria: { ...g, fotos: g.fotos.slice(0, 1) } });
+    assert.ok(!uma.includes('data-mover-foto') && !uma.includes('draggable="true"'));
+    assert.ok(texto(uma).includes('A 1ª foto é a capa.') && !texto(uma).includes('arraste'));
+});
+
+test('R6 — a gaveta: as setas e o arraste chegam à galeria de cada cor (o hook tem a ação, sem versão)', () => {
+    const fonte = lerSemComentarios('resources/js/Components/Trilha/Cadastro/FotosDaCor.jsx');
+    // As duas portas da galeria (o produto sem cor e o cartão da cor) levam a ação da ordem.
+    assert.match(fonte, /onOrdenar=\{c\?\.ordenarFotos \?\? semAcao\}/);
+    assert.match(lerSemComentarios('resources/js/Components/Trilha/Cadastro/CaixaDasVariacoes.jsx'), /onOrdenar=\{c\.ordenarFotos \?\? semAcao\}/);
+    // O pedido leva a ordem de TODAS as fotos da galeria que está na tela; a galeria mostra a ordem pedida enquanto ele corre.
+    assert.match(fonte, /const ordem = ordemMovida\(antes, id, para\);/);
+    assert.match(fonte, /setPendente\(ordem\);\s*const r = await onOrdenar\(galeria\.variacaoId, ordem\);\s*setPendente\(null\);/);
+    assert.match(fonte, /fotosNaOrdem\(galeria\.fotos, pendente\)/);
+    // Soltar = mover para a posição de onde caiu.
+    assert.match(fonte, /onSoltar=\{\(i\) => \{[\s\S]*?mover\(id, i\);/);
+});
+
 test('F3 — cor E tamanho: uma galeria por COR, na dona, com os tamanhos que ela vale; a ação imediata ocupa o "Salvar"', () => {
     const saida = desenharGaveta(CADASTRO_CORES_E_TAMANHOS, {}, { produto: { id: 12, nome: 'Camiseta básica' } });
     // F4: as fotos moram no cartão da cor — a galeria da Branca dentro do cartão dela.
@@ -447,7 +499,7 @@ test('F3 — cor E tamanho: uma galeria por COR, na dona, com os tamanhos que el
 
 test('F3 — produto no Publicador: "Foto nova aqui não entra no anúncio…"; travado, as fotos só se veem', () => {
     const noPublicador = desenharGaveta({ ...CADASTRO_COM_FOTOS, situacao: { ...CADASTRO_COM_FOTOS.situacao, no_publicador: true, categoria_travada: true } });
-    assert.match(noPublicador, /data-aviso-das-fotos-no-publicador=""[\s\S]*?Foto nova aqui não entra no anúncio que já está sendo montado: troque no Publicador\./);
+    assert.match(noPublicador, /data-aviso-das-fotos-no-publicador=""[\s\S]*?Foto nova \(ou a ordem nova\) aqui não entra no anúncio que já está sendo montado\. Para trocar as fotos dele, fale com quem cuida da publicação deste produto\./);
     assert.ok(noPublicador.includes('data-acao="enviar-fotos"'), 'o envio continua: o aviso só diz onde ela não chega');
 
     const travado = desenharGaveta({ ...CADASTRO_TRAVADO, variacoes: [{ ...CADASTRO_TRAVADO.variacoes[0], fotos: CADASTRO_COM_FOTOS.variacoes[0].fotos }, CADASTRO_TRAVADO.variacoes[1]] });
@@ -679,13 +731,13 @@ test('F2 — "Usar esta" põe a categoria NA GAVETA ("nova · grava ao salvar");
     assert.ok(troca.includes('data-acao="confirmar-troca-de-categoria"') && troca.includes('data-acao="manter-categoria"'));
 });
 
-test('F2 — a ficha: * nos obrigatórios, que vêm primeiro; "Outras características (N)" recolhidas; o texto da equipe; Marca com sugestões', () => {
+test('F2 — a ficha: * nos obrigatórios, que vêm primeiro; "Outras características (N)" ABERTAS (R7); o texto da equipe; Marca com sugestões', () => {
     const saida = desenharGaveta(CADASTRO_COM_CATEGORIA, { ficha: fichaDoHook(CADASTRO_COM_CATEGORIA) });
     const ficha = caixa(saida, 'ficha');
     const t = texto(ficha);
 
     assert.ok(t.includes('Ficha técnica do Mercado Livre'));
-    assert.ok(t.includes('Os campos vêm da categoria do Mercado Livre. Os marcados com * são os obrigatórios da categoria; a revisão do Publicador ainda confere outros antes de publicar.'));
+    assert.ok(t.includes('Os campos vêm da categoria do Mercado Livre. Os marcados com * são os obrigatórios da categoria; a revisão do anúncio ainda confere outros antes de publicar.'));
     assert.match(ficha, /data-caminho-da-ficha="MLB1902"/);
     assert.ok(t.includes('1 obrigatória faltando'), 'falta o Material (a Marca está salva)');
     // O filtro, com as contas de lib/fichaLayout (as medidas do produto montado ficam fora: são da Lista).
@@ -703,10 +755,13 @@ test('F2 — a ficha: * nos obrigatórios, que vêm primeiro; "Outras caracterí
     // A Marca é texto livre com sugestões (`datalist`).
     assert.match(ficha, /<datalist[^>]*data-sugestoes=""[^>]*><option value="Genérica"><\/option><option value="ECF Móveis">/);
 
-    // As outras, recolhidas: o botão diz quantas, e os campos não estão na tela.
-    assert.ok(tag(ficha, 'data-acao="outras-caracteristicas"').includes('aria-expanded="false"'));
-    assert.ok(t.includes('Outras características (5)'));
-    assert.ok(!t.includes('Com gavetas') && !t.includes('Acabamento'));
+    // R7 (04/11/2026): as outras já vêm ABERTAS ("não vir ocultada, já vir tudo para preencher") — o título diz quantas,
+    // os campos estão na tela e o botão recolhe.
+    assert.ok(tag(ficha, 'data-acao="outras-caracteristicas"').includes('aria-expanded="true"'));
+    assert.match(ficha, /data-acao="outras-caracteristicas"[^>]*>Esconder<span class="sr-only"> as outras características</);
+    assert.match(ficha, /data-titulo-das-outras=""[^>]*>Outras características \(5\)</);
+    assert.ok(t.includes('Com gavetas') && t.includes('Acabamento'));
+    assert.equal((ficha.match(/data-grupo-tecnico="outras"[\s\S]*$/)?.[0].match(/data-campo-tecnico=""/g) ?? []).length, 5);
     // Fora da ficha: o Modelo (o servidor nem manda) e, no produto que varia por cor, o campo Cor.
     assert.ok(!t.includes('Modelo'));
     const porCor = desenharGaveta({ ...CADASTRO_COM_CATEGORIA, produto: { ...CADASTRO_COM_CATEGORIA.produto, eixo: 'cor' } }, { ficha: fichaDoHook({ ...CADASTRO_COM_CATEGORIA, produto: { ...CADASTRO_COM_CATEGORIA.produto, eixo: 'cor' } }) });
@@ -768,13 +823,14 @@ test('F2 — cada tipo de campo da ficha, com os data-* do Portal: Sim/Não, uni
     assert.match(comErroEIa, /data-sugestao-ia=""[^>]*>sugestão da IA</);
 });
 
-test('F2 — categoria TRAVADA (o produto já está no Publicador): só leitura, "Para trocar, use o editor do Publicador"; o resto segue editável', () => {
+test('F2 — categoria TRAVADA (o anúncio já está sendo montado): só leitura, o porquê e a quem pedir — sem citar nem levar ao Publicador (R10); o resto segue editável', () => {
     const produto = { ...produtoDaTrilha(9), url_publicador: '/mlb/anuncios/publicador/produtos/90/editor' };
     const saida = desenharGaveta(CADASTRO_CATEGORIA_TRAVADA, { ficha: fichaDoHook(CADASTRO_CATEGORIA_TRAVADA) }, { produto });
     const t = texto(saida);
     assert.match(saida, /data-categoria-travada=""/);
-    assert.ok(t.includes('Casa, Móveis e Decoração › Quarto › Criados-mudos') && t.includes('Para trocar, use o editor do Publicador.'));
-    assert.match(saida, /href="\/mlb\/anuncios\/publicador\/produtos\/90\/editor"[^>]*data-link="publicador-categoria"/);
+    assert.ok(t.includes('Casa, Móveis e Decoração › Quarto › Criados-mudos'));
+    assert.match(saida, /data-categoria-ja-no-anuncio=""[^>]*>Ela já foi usada no anúncio em preparo e não muda mais por aqui\. Se estiver errada, peça a troca a quem cuida da publicação deste produto\.</);
+    assert.ok(!saida.includes('data-link="publicador-categoria"') && !saida.includes('/mlb/anuncios/publicador') && !t.includes('Publicador'));
     for (const acao of ['trocar-categoria', 'usar-categoria-sugerida', 'buscar-categoria', 'navegar-categorias']) assert.ok(!saida.includes(`data-acao="${acao}"`), acao);
     // O produto continua editável (só a categoria trava): sem o fieldset desligado, e a ficha aberta.
     assert.doesNotMatch(saida, /<fieldset disabled=""/);
@@ -784,7 +840,32 @@ test('F2 — categoria TRAVADA (o produto já está no Publicador): só leitura,
     const travado = desenharGaveta(CADASTRO_TRAVADO);
     assert.match(travado, /data-categoria-travada=""/);
     assert.ok(texto(travado).includes('Casa › Móveis › Cadeiras'));
-    assert.ok(!travado.includes('data-acao="trocar-categoria"') && !travado.includes('Para trocar, use o editor do Publicador.'));
+    assert.ok(!travado.includes('data-acao="trocar-categoria"') && !travado.includes('data-categoria-ja-no-anuncio'));
+});
+
+test('R10 — nada na pasta Cadastro/ cita o Publicador nem lê o endereço dele: o texto da tela e o 422 da categoria', () => {
+    // A trilha é o lugar da publicação (R10, 04/11/2026): o servidor não manda mais `url_publicador` e a gaveta não cita a
+    // outra tela em nenhum texto. Lido SEM os comentários (o código pode explicar de onde vem a regra).
+    const pasta = path.join(RAIZ, 'resources/js/Components/Trilha/Cadastro');
+    const arquivos = fs.readdirSync(pasta).filter((a) => /\.(jsx?|mjs)$/.test(a));
+    assert.ok(arquivos.length >= 15, `achei ${arquivos.length} arquivos`);
+    for (const arquivo of arquivos) {
+        const fonte = lerSemComentarios(`resources/js/Components/Trilha/Cadastro/${arquivo}`);
+        assert.equal(fonte.match(/Publicador/), null, `${arquivo} cita o Publicador`);
+        assert.equal(fonte.match(/url_?[Pp]ublicador/), null, `${arquivo} lê o endereço do Publicador`);
+    }
+    // E o 422 da categoria que o servidor manda à gaveta (o mesmo texto na planilha).
+    const servico = fs.readFileSync(path.join(RAIZ, 'app/Services/Trilha/CadastroNaTrilha.php'), 'utf8');
+    const msg = servico.match(/MSG_CATEGORIA_NO_PUBLICADOR = ([\s\S]*?);\n/)?.[1] ?? '';
+    assert.ok(msg.includes('não muda mais por aqui'), msg);
+    assert.doesNotMatch(msg, /Publicador/);
+
+    // Desenhada com tudo o que antes citava o Publicador ligado: o produto no Publicador, a categoria travada, fotos.
+    const tudo = desenharGaveta({ ...CADASTRO_COM_FOTOS, situacao: { ...CADASTRO_COM_FOTOS.situacao, no_publicador: true, categoria_travada: true } },
+        {}, { produto: { ...produtoDaTrilha(9), url_publicador: '/mlb/anuncios/publicador/produtos/90/editor' } });
+    assert.ok(tudo.includes('data-aviso-do-publicador') && tudo.includes('data-aviso-das-fotos-no-publicador'), 'controle: os avisos estão na tela');
+    assert.equal(texto(tudo).match(/Publicador/), null, texto(tudo));
+    assert.equal(tudo.match(/href="[^"]*publicador[^"]*"/), null);
 });
 
 test('F2b — "Preencher com IA" só com a categoria SALVA ("usa IA" ao lado); escolhida e não salva, só o aviso; o resultado e as sugestões marcadas', () => {
@@ -1216,7 +1297,12 @@ test('F6 — o hook manda a versão que a gaveta conhece em toda escrita que mud
     assert.match(fonte, /conferirFreteNoServidor\(escrita, produtoId\)\)/);
     // A versão vem do retrato aberto e do relido; a da resposta só vale na escrita conferida.
     assert.equal((fonte.match(/versao\.current = (?:r|novo)\?\.versao \?\? null;/g) ?? []).length, 2);
-    assert.match(fonte, /versaoDepoisDe\(versao\.current, resposta, \{ conferida \}\)/);
+    // R1: a régua da versão de fora recebe o "mexido" de agora (sem nada mexido, a gaveta adota o retrato e só anota).
+    assert.match(fonte, /versaoDepoisDe\(versao\.current, resposta, \{ conferida, mexido: !!agora\.current\.temMudanca \}\)/);
+    assert.match(fonte, /if \(mudou\) avisarConflito\(textoDoConflito\(null\)\);\s*else if \(porFora && vivo\.current\) setNota\(NOTA_DO_RETRATO_DE_FORA\);/);
+    // R6: a ordem das fotos não leva versão; o retrato relido do 422 passa pela mesma régua (não só o da conferida).
+    assert.match(fonte, /ordenarFotosNoServidor\(escrita, produtoId, variacaoId, ordem\)/);
+    assert.match(fonte, /conhecerVersao\(e\.retratoParcial, \{ conferida \}\);/);
 
     // O 409 só é lido pelas duas regras puras (nenhum `status === 409` solto)...
     assert.equal(fonte.match(/status === 409/), null);

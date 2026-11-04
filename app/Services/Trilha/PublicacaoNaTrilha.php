@@ -3,6 +3,7 @@
 namespace App\Services\Trilha;
 
 use App\Contracts\ContaMercadoLivre;
+use App\Jobs\Trilha\AndarFilaDePublicacaoJob;
 use App\Jobs\Trilha\PublicarPelaTrilhaJob;
 use App\Models\Company;
 use App\Models\MlbEmpresa;
@@ -325,6 +326,9 @@ class PublicacaoNaTrilha
         if (in_array($pubId, $resultado['agendados'], true) || $vivo !== null) {
             self::gravar($pubId, self::estado(self::NA_FILA, self::MSG_NA_FILA) + ['fila_item_id' => $vivo?->id, 'revisao' => $revisao]);
             Log::info("[Trilha] Publicar: o anúncio {$pubId} (item {$chave}) entrou na fila de publicação da loja ".self::LOJA." por {$quem->name}.");
+            // R5 (retorno do 1º teste, 04/11/2026): a passada da fila NA HORA, em vez de esperar a do minuto — a mesma
+            // `AgendadorDaFila::rodar()`, com todas as checagens dela e a mesma trava de sobreposição do agendamento.
+            AndarFilaDePublicacaoJob::dispatch();
 
             return 'na_fila';
         }

@@ -65,6 +65,15 @@ export async function planejarItens(escrita, itens, ondaId) {
     return corpo(await axios.put(endereco(escrita, 'planejamento'), { itens, onda_id: ondaId ?? null }));
 }
 
+/**
+ * R12 (04/11/2026): põe VÁRIAS ofertas numa onda de uma vez, em `{escrita.planejamento}/lote` — as regras de pôr uma,
+ * a resposta por item. → `{onda, resultados: [{item, nome, situacao: entrou|ja_estava|recusado, motivo, junto}],
+ * entraram, recusadas, avisos, mensagem}` (200 também com recusas).
+ */
+export async function planejarEmLote(escrita, itens, ondaId) {
+    return corpo(await axios.put(`${endereco(escrita, 'planejamento')}/lote`, { itens, onda_id: ondaId }));
+}
+
 // ─── Mapeamento ─────────────────────────────────────────────────────────────
 
 /** As opções do painel de mapear: o produto, os combos, os outros produtos e a marca de mapeado. */
@@ -170,6 +179,14 @@ export async function enviarFotos(escrita, produtoId, variacaoId, arquivos) {
 /** Exclui uma foto da variação (as outras são renumeradas: a 1ª é a capa). → o retrato novo da gaveta. */
 export async function excluirFoto(escrita, produtoId, variacaoId, imagemId) {
     return corpo(await axios.delete(`${urlDaVariacao(escrita, produtoId, variacaoId)}/fotos/${encodeURIComponent(imagemId)}`));
+}
+
+/**
+ * R6: a ordem das fotos da variação — `ordem` com TODAS as fotos dela, cada uma uma vez; a 1ª é a capa. A lista que não
+ * bate com a galeria de agora (outra aba mexeu) volta 422 em `ordem` e nada muda. → o retrato novo da gaveta.
+ */
+export async function ordenarFotos(escrita, produtoId, variacaoId, ordem) {
+    return corpo(await axios.put(`${urlDaVariacao(escrita, produtoId, variacaoId)}/fotos/ordem`, { ordem: [...(ordem ?? [])] }));
 }
 
 /**
@@ -388,6 +405,18 @@ export async function pedirAjuste(url, dados) {
     if (!url) throw new ErroDaTrilha('O ajuste pelo robô não está disponível nesta tela: recarregue a página.');
 
     return corpo(await axios.post(url, dados));
+}
+
+/**
+ * R4 (retorno do 1º teste, 04/11/2026): o [Tentar de novo] da "Preparação automática". `url` chega PRONTA da caixa (o
+ * `escrita.preparo` com o id do item no lugar do marcador — como a prévia, esta lib não monta o endereço). Sem corpo.
+ * → 202 `{preparo: {situacao: 'fila', mensagem, etapas}}`. O 409 (nada parado no texto, ou já pedido) chega como erro
+ * do axios; quem trata é a caixa.
+ */
+export async function tentarPreparoDeNovo(url) {
+    if (!url) throw new ErroDaTrilha('A preparação não pode ser pedida de novo nesta tela: recarregue a página.');
+
+    return corpo(await axios.post(url));
 }
 
 /**

@@ -4,7 +4,7 @@ import useArvoreDeCategorias from '@/Components/Categorias/useArvoreDeCategorias
 import { ehFinal, escolhaDaCategoria, filtrarFilhas, nivelEhFinal, podeEscolher, trilha } from '@/lib/arvoreDeCategorias';
 import { MAXIMO_DA_BUSCA, caminhoParaTela, candidataUsavel, cliqueValeNaLista, porQueNaoUsar } from '@/lib/trilhaCadastro';
 import { cn } from '@/lib/utils';
-import { Botao, CAMPO, Etiqueta, LinkDeAcao } from '@/Components/Trilha/Pecas';
+import { Botao, CAMPO, Etiqueta } from '@/Components/Trilha/Pecas';
 import { ConfirmacaoNaGaveta } from '@/Components/Trilha/Cadastro/PecasDoCadastro';
 
 // ─── Trilha de produtos — a categoria do Mercado Livre na gaveta (F2) ───────
@@ -56,6 +56,13 @@ function useCliqueNaLista(mudouEm) {
 
 /** Os rótulos da gaveta do produto; a planilha (F7) troca por "Adicionar" e "escolhida". */
 const ROTULOS_DA_GAVETA = { usar: 'Usar esta', marcada: 'atual' };
+
+/**
+ * A categoria que não muda mais por aqui (D12): o anúncio do produto já está sendo montado com ela. Sem citar outra
+ * tela (R10, 04/11/2026: nada na trilha leva ao editor de fora) — o porquê e a quem pedir. O 422 do servidor
+ * (`CadastroNaTrilha::MSG_CATEGORIA_NO_PUBLICADOR`) diz o mesmo.
+ */
+export const CATEGORIA_JA_NO_ANUNCIO = 'Ela já foi usada no anúncio em preparo e não muda mais por aqui. Se estiver errada, peça a troca a quem cuida da publicação deste produto.';
 
 /** A categoria `id` está marcada? `selecionada`: o id da gaveta do produto, ou os ids já escolhidos (a planilha, F7). */
 const estaMarcada = (selecionada, id) => (Array.isArray(selecionada)
@@ -371,12 +378,14 @@ function SemCategoria({ cat, nome, textoAntigo, refDoUsarEsta = null }) {
  * A categoria do Mercado Livre do produto, logo abaixo do nome.
  *
  * @param {{cat: object, categoria: ?{id: string, nome: string, caminho_texto: string}, salva: ?{id: string},
- *   textoAntigo?: ?string, travada?: boolean, leitura?: boolean, urlPublicador?: ?string, erro?: ?string,
+ *   textoAntigo?: ?string, travada?: boolean, leitura?: boolean, erro?: ?string,
  *   nome: string}} props
  *   `cat`: o retorno de `useCategoriaDaTrilha`; `categoria`: a do estado da gaveta; `salva`: a gravada;
- *   `travada`: o produto já está no Publicador (a troca é no editor de lá); `refDoUsarEsta`: o "Usar esta" da sugestão (o foco logo depois de criar, §5.2).
+ *   `travada`: o anúncio do produto já está sendo montado com ela (D12: não muda mais por aqui; desde o R10, 04/11/2026,
+ *   nada na trilha leva ao editor de fora — a gaveta só diz o porquê e a quem pedir); `refDoUsarEsta`: o "Usar esta"
+ *   da sugestão (o foco logo depois de criar, §5.2).
  */
-export default function EscolhaDaCategoria({ cat, categoria, salva = null, textoAntigo = null, travada = false, leitura = false, urlPublicador = null, erro = null, nome, refDoUsarEsta = null }) {
+export default function EscolhaDaCategoria({ cat, categoria, salva = null, textoAntigo = null, travada = false, leitura = false, erro = null, nome, refDoUsarEsta = null }) {
     const idDoRotulo = useId();
     const idDoErro = useId();
     const nova = categoria && categoria.id !== salva?.id;
@@ -394,11 +403,8 @@ export default function EscolhaDaCategoria({ cat, categoria, salva = null, texto
             <div className="flex min-w-0 flex-col gap-1.5" data-categoria-travada="">
                 <span className="text-[13px] text-trilha-fg [overflow-wrap:anywhere]">{categoria ? caminhoParaTela(categoria) : textoAntigo || 'Sem categoria'}</span>
                 {travada && !leitura && (
-                    <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-trilha-muted">
-                        Para trocar, use o editor do Publicador.
-                        <LinkDeAcao href={urlPublicador} className="px-2.5 py-1 text-[12.5px]" data-link="publicador-categoria">
-                            Abrir no Publicador
-                        </LinkDeAcao>
+                    <span className="text-[12.5px] text-trilha-muted" data-categoria-ja-no-anuncio="">
+                        {CATEGORIA_JA_NO_ANUNCIO}
                     </span>
                 )}
             </div>

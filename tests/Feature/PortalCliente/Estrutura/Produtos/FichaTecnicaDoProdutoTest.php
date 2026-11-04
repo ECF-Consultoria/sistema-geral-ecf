@@ -787,29 +787,39 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ->assertOk()->json('grupos');
         $na = array_column(array_merge(...array_column($grupos, 'campos')), 'nao_se_aplica', 'id');
 
+        // R8 (04/11/2026): a régua da documentação da plataforma — obrigatório e `allow_variations` não podem ser N/A.
         $this->assertFalse($na['BRAND'], 'obrigatório não aceita');
         $this->assertFalse($na['MATERIAL'], 'obrigatório não aceita');
-        // Como no formulário da plataforma: todo opcional que ela mostra aceita.
+        $this->assertFalse($na['UPHOLSTERY_MATERIAL'], 'allow_variations não aceita');
+        // Todo opcional de produto aceita…
         $this->assertTrue($na['SEAT_HEIGHT']);
         $this->assertTrue($na['CAPACITY']);
-        $this->assertTrue($na['WITH_DRAWER']);
-        // 29/10/2026: o escondido (que a plataforma nem mostra) não aceita — era atalho para não preencher.
-        $this->assertFalse($na['SEAT_WIDTH'], 'escondido não aceita');
-        $this->assertFalse($na['LUMBAR_SUPPORT_TYPE'], 'escondido não aceita');
+        $this->assertTrue($na['MATERIALS']);
+        // … e o escondido também (pode ser carregado pela API; nunca é obrigatório) — o N/A tirado em 29/10 volta.
+        $this->assertTrue($na['SEAT_WIDTH'], 'escondido aceita');
+        $this->assertTrue($na['LUMBAR_SUPPORT_TYPE'], 'escondido aceita');
+        // Regra nossa: Sim/Não não tem N/A — o "Não" já responde.
+        $this->assertFalse($na['WITH_DRAWER'], 'Sim/Não não aceita');
     }
 
-    public function test_nao_se_aplica_em_escondido_responde_422_e_nao_grava_nada(): void
+    public function test_nao_se_aplica_em_sim_nao_responde_422_e_no_escondido_grava(): void
     {
         $empresa = $this->empresaDoGabarito();
         $produto = $this->produto($empresa);
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
 
+        // Sim/Não (R8): 422 e nada grava.
         $this->entrarNoPortal($empresa)
-            ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
-                $this->ficha([['id' => 'SEAT_WIDTH', 'nao_se_aplica' => true]]))
+            ->putJson($url, $this->ficha([['id' => 'WITH_DRAWER', 'nao_se_aplica' => true]]))
             ->assertStatus(422)
-            ->assertJsonValidationErrors('atributos.SEAT_WIDTH');
-
+            ->assertJsonValidationErrors('atributos.WITH_DRAWER');
         $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
+
+        // O escondido (R8): grava o N/A, como qualquer opcional.
+        $this->entrarNoPortal($empresa)
+            ->putJson($url, $this->ficha([['id' => 'SEAT_WIDTH', 'nao_se_aplica' => true]]))
+            ->assertOk();
+        $this->assertSame('-1', EstruturaProdutoAtributo::where('produto_id', $produto->id)->where('atributo_id', 'SEAT_WIDTH')->value('valor_id'));
     }
 
     public function test_nao_se_aplica_grava_valor_id_menos_um_sem_valor_e_volta_ao_reabrir(): void
@@ -821,13 +831,13 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
         // O marcador vence o valor que vier junto (o controle fica travado na tela).
         $salvos = $sessao->putJson($url, $this->ficha([
-            ['id' => 'WITH_DRAWER', 'nao_se_aplica' => true, 'valor' => 'Sim'],
+            ['id' => 'CAPACITY', 'nao_se_aplica' => true, 'valor' => '30'],
             ['id' => 'SEAT_HEIGHT', 'nao_se_aplica' => true, 'valor' => '45', 'unidade' => 'cm'],
         ]))->assertOk()->json('salvos');
 
         $porId = collect($salvos)->keyBy('id');
-        $this->assertSame('-1', $porId['WITH_DRAWER']['valor_id']);
-        $this->assertNull($porId['WITH_DRAWER']['valor']);
+        $this->assertSame('-1', $porId['CAPACITY']['valor_id']);
+        $this->assertNull($porId['CAPACITY']['valor']);
         $this->assertSame('-1', $porId['SEAT_HEIGHT']['valor_id']);
         $this->assertNull($porId['SEAT_HEIGHT']['unidade']);
 
@@ -842,14 +852,14 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 $props = $page->toArray();
                 $props = $props['props'] ?? $props;
                 $salvos = collect($props['ficha_tecnica']['salvos'])->keyBy('id');
-                $this->assertSame('-1', $salvos['WITH_DRAWER']['valor_id']);
+                $this->assertSame('-1', $salvos['CAPACITY']['valor_id']);
             });
 
         // Desmarcar e preencher troca o N/A pelo valor.
-        $salvos = $sessao->putJson($url, $this->ficha([['id' => 'WITH_DRAWER', 'valor' => 'Não']]))->assertOk()->json('salvos');
+        $salvos = $sessao->putJson($url, $this->ficha([['id' => 'CAPACITY', 'valor' => '30']]))->assertOk()->json('salvos');
         $porId = collect($salvos)->keyBy('id');
-        $this->assertSame('Não', $porId['WITH_DRAWER']['valor']);
-        $this->assertNull($porId['WITH_DRAWER']['valor_id']);
+        $this->assertSame('30', $porId['CAPACITY']['valor']);
+        $this->assertNull($porId['CAPACITY']['valor_id']);
         $this->assertArrayNotHasKey('SEAT_HEIGHT', $porId->all(), 'ausente sai, como qualquer campo');
     }
 

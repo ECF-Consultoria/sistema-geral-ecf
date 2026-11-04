@@ -107,6 +107,12 @@ class CadastroNaTrilha
 
     public const PASSO_FOTO_EXCLUIDA = 'foto_excluida';
 
+    /** R6 (04/11/2026): a ordem das fotos de uma cor mudou (a 1ª é a capa). */
+    public const PASSO_FOTOS_ORDENADAS = 'fotos_ordenadas';
+
+    /** R6: a lista da ordem não é a galeria de agora (outra aba enviou ou excluiu uma foto no meio do caminho). */
+    public const MSG_ORDEM_DAS_FOTOS = 'As fotos desta cor mudaram enquanto você arrumava a ordem: confira e arraste de novo.';
+
     public const PASSO_VARIACAO_EXCLUIDA = 'variacao_excluida';
 
     public const PASSO_PRODUTO_EXCLUIDO = 'produto_excluido';
@@ -145,8 +151,12 @@ class CadastroNaTrilha
     /** A última variação não sai pela rota da cor: sem ela o produto deixaria de existir — é "Excluir produto". */
     public const MSG_ULTIMA_VARIACAO = 'Esta é a única variação do produto: para tirá-la, use “Excluir produto”.';
 
-    /** A categoria no Publicador só se troca no editor de lá (D12): o rascunho só recebe categoria quando está sem. */
-    public const MSG_CATEGORIA_NO_PUBLICADOR = 'A categoria já está no Publicador; troque no editor de lá.';
+    /**
+     * A categoria no Publicador só se troca no editor de lá (D12): o rascunho só recebe categoria quando está sem. O texto
+     * não cita o Publicador (R10, 04/11/2026: nada na trilha leva a ele) — diz o porquê e a quem pedir.
+     */
+    public const MSG_CATEGORIA_NO_PUBLICADOR = 'A categoria já foi usada no anúncio em preparo e não muda mais por aqui. '
+        .'Se estiver errada, peça a troca a quem cuida da publicação deste produto.';
 
     public const MSG_CATEGORIA_NAO_ANUNCIAVEL = 'O Mercado Livre não aceita produtos novos nesta categoria; escolha outra.';
 
@@ -770,6 +780,56 @@ class CadastroNaTrilha
 
         $this->registrar($ator, $empresa, $produto, self::PASSO_FOTO_EXCLUIDA, ['variacao_id' => (int) $variacao->id, 'imagem_id' => $id]);
         $this->prepararSeCabe($empresa, $produto);
+    }
+
+    /**
+     * R6 (04/11/2026) — a ordem das fotos da cor, pelo serviço do Portal (`VariacaoImagensService::reordenar`, que
+     * renumera 0..N-1; a 1ª é a capa). Diferente do Portal (que ignora o id de fora e põe o esquecido no fim), aqui a
+     * lista tem de ser EXATAMENTE a galeria de agora: a conferência e a regravação correm com a variação presa (a mesma
+     * trava do envio), e a foto que outra aba enviou ou excluiu no meio do caminho é 422 em `ordem` — nada muda.
+     *
+     * A mesma ordem de antes não grava nem registra nada (devolve false). Mudou: o evento (passo `fotos_ordenadas`) e o
+     * gatilho {@see prepararSeCabe()}, como o Portal faz ao reordenar.
+     *
+     * @param  list<int>  $ordem  os ids das fotos da variação, na ordem desejada
+     * @return bool se a ordem mudou
+     *
+     * @throws ValidationException
+     */
+    public function ordenarFotos(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, array $ordem, AtorDoPortal $ator): bool
+    {
+        $ordem = array_map('intval', array_values($ordem));
+
+        $mudou = DB::transaction(function () use ($empresa, $variacao, $ordem, $ator) {
+            EstruturaProdutoVariacao::query()->where('company_id', $empresa->id)->whereKey($variacao->id)->lockForUpdate()->first();
+
+            $atual = EstruturaProdutoVariacaoImagem::query()
+                ->where('company_id', $empresa->id)->where('variacao_id', $variacao->id)
+                ->orderBy('ordem')->orderBy('id')
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+            $pedidos = $ordem;
+            $existentes = $atual;
+            sort($pedidos);
+            sort($existentes);
+            if ($pedidos !== $existentes) {
+                throw ValidationException::withMessages(['ordem' => self::MSG_ORDEM_DAS_FOTOS]);
+            }
+            if ($ordem === $atual) {
+                return false;
+            }
+
+            $this->imagens->reordenar($empresa, $variacao, $ordem, $ator);
+
+            return true;
+        });
+
+        if ($mudou) {
+            $this->registrar($ator, $empresa, $produto, self::PASSO_FOTOS_ORDENADAS, ['variacao_id' => (int) $variacao->id, 'ordem' => $ordem]);
+            $this->prepararSeCabe($empresa, $produto);
+        }
+
+        return $mudou;
     }
 
     // ═══ Excluir (F4) ═══════════════════════════════════════════════════════

@@ -211,7 +211,14 @@ export function anuncioEscolhido(previa, escolha = {}) {
 export function fotosDoAnuncio(anuncio) {
     return lista(anuncio?.fotos)
         .filter((f) => textoLimpo(f?.url))
-        .map((f, i) => ({ id: String(f.id ?? `foto-${i}`), url: f.url.trim(), gerada: f.gerada === true }));
+        .map((f, i) => ({
+            id: String(f.id ?? `foto-${i}`),
+            url: f.url.trim(),
+            // R3 (04/11/2026): a grade das miniaturas e a bolinha da cor pedem a versão pequena; a grande só na foto em
+            // destaque. Sem miniatura (a porta do cliente, a foto antiga), a própria foto.
+            miniatura: textoLimpo(f.miniatura) ? f.miniatura.trim() : f.url.trim(),
+            gerada: f.gerada === true,
+        }));
 }
 
 /** A foto de capa: a 1ª do anúncio (no Premium ela pode ser outra que a do Clássico). Null sem foto. */

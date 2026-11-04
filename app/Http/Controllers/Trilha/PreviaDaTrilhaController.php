@@ -39,11 +39,14 @@ class PreviaDaTrilhaController extends Controller
      * é 404). A resposta é a de {@see FotoDaPrevia::resposta()} (a mesma da porta do cliente na 4e): a cópia guardada
      * pelo único caminho das fotos do Publicador; a foto antiga, só com o endereço público do ML, por redirecionamento
      * em https. Cache `private`, como a miniatura do editor.
+     *
+     * R3 (04/11/2026): `?miniatura=1` serve a versão pequena (a grade da galeria); o `If-None-Match` com o ETag da foto
+     * recebe 304 — sempre DEPOIS da guarda e da régua do item.
      */
     public function foto(Request $request, int $company, string $item, int $imagem): Response
     {
         $empresa = $this->cadastro->empresa($request->user(), $company);
 
-        return FotoDaPrevia::resposta($this->previa->imagem($empresa, $item, $imagem));
+        return FotoDaPrevia::resposta($this->previa->imagem($empresa, $item, $imagem), $request->boolean('miniatura'), $request);
     }
 }

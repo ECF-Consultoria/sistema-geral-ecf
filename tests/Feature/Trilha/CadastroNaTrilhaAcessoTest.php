@@ -134,6 +134,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'IA (rota 9)'     => ['POST', '/produtos/{p}/ficha-tecnica/ia', false],
             'fotos (rota 10)' => ['POST', '/produtos/{p}/variacoes/{v}/fotos', false],
             'excluir foto (rota 11)' => ['DELETE', '/produtos/{p}/variacoes/{v}/fotos/{i}', false],
+            // R6 (04/11/2026): a ordem das fotos da cor.
+            'ordem das fotos (R6)'   => ['PUT', '/produtos/{p}/variacoes/{v}/fotos/ordem', false],
             'frete (rota 13)' => ['POST', '/produtos/{p}/frete', false],
             'excluir cor (rota 14)'      => ['DELETE', '/produtos/{p}/variacoes/{v}', false],
             'prévia da exclusão (rota 15)' => ['POST', '/produtos/{p}/exclusao/previa', false],
@@ -160,6 +162,8 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             'estado do ajuste (4b)'  => ['GET', '/ofertas/s-{p}/ajuste', false],
             // 4e: mandar a prévia ao cliente (com a chave da aprovação ligada no teste que passa; sem ela, 409).
             'mandar ao cliente (4e)' => ['POST', '/ofertas/s-{p}/cliente', false],
+            // R4 (04/11/2026): o [Tentar de novo] da preparação (o Job fica na fila de mentira — nenhuma IA).
+            'tentar de novo (R4)'    => ['POST', '/ofertas/s-{p}/preparo', false],
         ];
     }
 
@@ -384,6 +388,13 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             $r = PubRascunho::query()->whereIn('produto_id', PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->firstOrFail();
             $r->update(['step_state' => array_replace_recursive((array) $r->step_state, ['ia_preparo' => ['hash' => 'fatos-do-preparo']])]);
         }
+        $tentarDeNovo = str_ends_with($caminho, '/preparo');
+        if ($tentarDeNovo) {
+            // R4: o título do robô parou (sem crédito) — o item fica no robô com a `parada`.
+            $r = PubRascunho::query()->whereIn('produto_id', PubProduto::query()->select('id')->where('estrutura_produto_id', $p['produto']->id))->firstOrFail();
+            $r->update(['step_state' => array_replace_recursive((array) $r->step_state, ['ia_preparo' => ['hash' => 'fatos-do-preparo',
+                'etapas' => ['titulo' => ['status' => 'erro', 'motivo' => 'sem_credito', 'em' => now()->toIso8601String()]]]])]);
+        }
         // Depois da montagem: o corpo do preço leva a revisão do rascunho.
         $corpo = $caminho === '/produtos' ? ['nome' => 'Vaso Novo', 'codigo' => 'VN-1'] : $this->corpo($caminho, $p);
         if (str_starts_with($caminho, '/mercado-livre/')) {
@@ -416,6 +427,11 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\AjustarPeloRoboNaTrilhaJob::class);
         } elseif (str_ends_with($caminho, '/ajuste')) {
             $this->assertSame(['ajuste' => null], $resposta->json(), 'nunca pediu');
+        }
+        if ($tentarDeNovo) {
+            // R4: 202 e o Job na fila da IA (nada roda: a fila é de mentira).
+            $this->assertSame([202, 'fila'], [$resposta->getStatusCode(), $resposta->json('preparo.situacao')]);
+            Queue::assertPushedOn(\App\Services\Publicador\PreparoIaAgenda::fila(), \App\Jobs\Trilha\TentarPreparoDeNovoJob::class);
         }
         if ($mandar) {
             // 4e: 200 com a prévia nova, a linha `com_cliente` e nada na fila (quem publica é a aprovação do cliente).
@@ -505,6 +521,9 @@ class CadastroNaTrilhaAcessoTest extends TestCase
             str_ends_with($caminho, '/ia')            => ['categoria' => 'MLB100200', 'titulo' => $nome, 'atributos' => []],
             // Multipart: o `json()` do teste tira os arquivos do corpo e os manda como upload.
             str_ends_with($caminho, '/fotos')         => ['imagens' => [UploadedFile::fake()->image('foto.jpg', 600, 600)]],
+            // R6: todas as fotos da 1ª variação, de trás para a frente.
+            str_ends_with($caminho, '/fotos/ordem')   => ['ordem' => EstruturaProdutoVariacaoImagem::query()->where('variacao_id', $p['variacoes'][0]->id)
+                ->orderByDesc('ordem')->orderByDesc('id')->pluck('id')->map(fn ($id) => (int) $id)->all()],
             // F7: a planilha da trilha mínima (a marca, a aba da categoria e uma linha), em multipart.
             str_starts_with($caminho, '/planilha/previa'), $caminho === '/planilha' => ['arquivo' => $this->planilhaMinima()],
             // F8: o anúncio do acervo (montado no teste que passa).

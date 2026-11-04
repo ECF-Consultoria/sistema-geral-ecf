@@ -48,11 +48,15 @@ class AcessoATrilhaTest extends TestCase
         'id', 'nome', 'codigo', 'skus', 'familia', 'ambientes', 'categoria', 'variacoes', 'custo_min', 'custo_max',
         'medidas', 'embalagem', 'fotos_min', 'tem_descricao', 'ficha', 'faltas', 'avisos', 'etapa', 'sugestoes_pendentes',
         'sugestoes_pendentes_total', 'mapeado_em', 'mapeado_por', 'url_ficha',
+        // R2 (04/11/2026): o endereço da miniatura da Lista, montado por porta (`CapaNaListaTest`).
+        'capa',
     ];
 
     private const CAMPOS_DA_OFERTA = [
         'id', 'tipo', 'nome', 'sku', 'skus', 'componentes', 'etapa', 'status', 'alerta', 'anuncios', 'preparo',
         'onda_id', 'sem_produto', 'planejavel', 'pode_tirar',
+        // R4 (04/11/2026): por que o agente parou e se dá para pedir de novo (nulo na porta do cliente).
+        'parada',
     ];
 
     /**
@@ -117,17 +121,13 @@ class AcessoATrilhaTest extends TestCase
                 ->where('sessao_equipe', false)
                 ->where('empresa', ['id' => $empresa->id, 'nome' => 'Casa Jatobá', 'logo_url' => null])
                 ->where('voltar', ['url' => route('trilha.index'), 'rotulo' => 'Empresas'])
+                // R10 (04/11/2026): nenhum link do Publicador, nem para o admin ("a trilha é o publicador").
                 ->where('links', [
                     'portal_abrir' => route('companies.portal.abrir', ['company' => $empresa->id]),
                     'planejamento' => null,
                     'produtos'     => null,
-                    // Empresa sem loja de programa: a conta do Publicador é a da própria Company.
-                    'publicador'   => route('mlb.anuncios.publicador.produtos', ['conta' => 'company-'.$empresa->id]),
                 ])
-                // Produto: o editor do pub_produto do grupo; sem pub_produto, sem link. Ficha do Portal só na porta do cliente.
-                ->where('produtos.2.url_publicador', route('mlb.anuncios.publicador.editor', ['produto' => 71]))
-                ->where('produtos.1.url_publicador', route('mlb.anuncios.publicador.editor', ['produto' => 74]))
-                ->where('produtos.0.url_publicador', null)
+                // Ficha do Portal só na porta do cliente.
                 ->where('produtos.2.url_ficha', null)
                 // 3ª entrega (pergunta 1): o cadastro do produto que algum item já levou adiante é só leitura na trilha.
                 ->where('produtos.2.cadastro_travado', true)
@@ -135,10 +135,6 @@ class AcessoATrilhaTest extends TestCase
                 // A equipe vê as sugestões esperando decisão.
                 ->where('produtos.1.sugestoes_pendentes.0', ['fase' => 'combo', 'nome' => 'Combo 2 Racks para TV 1,80 m', 'sku' => 'CJ-213-CB2'])
                 ->where('produtos.1.sugestoes_pendentes_total', 2)
-                // Oferta: na revisão o link abre a Prévia; no ar, o editor; sem pub_produto, nada.
-                ->where('ofertas.0.url_publicador', null)
-                ->where('ofertas.1.url_publicador', route('mlb.anuncios.publicador.editor', ['produto' => 72]).'?etapa=previa')
-                ->where('ofertas.2.url_publicador', route('mlb.anuncios.publicador.editor', ['produto' => 71]))
                 ->where('ofertas.2.anuncios', [
                     ['tipo' => 'Clássico', 'mlb' => self::MLB_CLASSICO, 'situacao' => null],
                     ['tipo' => 'Premium', 'mlb' => self::MLB_PREMIUM, 'situacao' => null],
@@ -149,29 +145,35 @@ class AcessoATrilhaTest extends TestCase
             );
 
         $props = $this->props($resposta);
-        // O id do Publicador vira link e não sai cru; campo que o serviço inventar não chega sem decisão. A trava do
+        // O id do Publicador não sai cru nem vira link (R10); campo que o serviço inventar não chega sem decisão. A trava do
         // cadastro (3ª entrega) é só desta porta.
         foreach ($props['produtos'] as $produto) {
-            $this->assertEqualsCanonicalizing([...self::CAMPOS_DO_PRODUTO, 'url_publicador', 'cadastro_travado'], array_keys($produto));
+            $this->assertEqualsCanonicalizing([...self::CAMPOS_DO_PRODUTO, 'cadastro_travado'], array_keys($produto));
         }
         foreach ($props['ofertas'] as $oferta) {
-            $this->assertEqualsCanonicalizing([...self::CAMPOS_DA_OFERTA, 'url_publicador'], array_keys($oferta));
+            $this->assertEqualsCanonicalizing(self::CAMPOS_DA_OFERTA, array_keys($oferta));
         }
         $this->assertNotContains('campo_novo_do_servico', self::chaves($props));
     }
 
-    /** Empresa que é loja de um programa (Polos): o link vai direto à chave canônica `empresa-N`, sem redirecionar. */
-    public function test_o_link_do_publicador_usa_a_chave_canonica_da_loja_de_programa(): void
+    /**
+     * R10 (retorno do 1º teste, 04/11/2026): "a trilha é o publicador" — nenhum endereço do Publicador sai na página da
+     * equipe, nem para o admin, nem na loja de um programa (Polos), em nível nenhum (nem `url_publicador`, nem
+     * `links.publicador`, nem o caminho `mlb/anuncios/publicador` no JSON).
+     */
+    public function test_nenhum_link_do_publicador_nem_para_o_admin(): void
     {
         $empresa = $this->empresaLigada();
-        $loja = MlbEmpresa::create(['nome' => 'Loja Polos', 'projeto' => 'POLOS', 'company_id' => $empresa->id]);
+        MlbEmpresa::create(['nome' => 'Loja Polos', 'projeto' => 'POLOS', 'company_id' => $empresa->id]);
         $this->trilhaDuble($empresa);
 
-        $this->actingAs($this->dev())->get('/trilha/'.$empresa->id)
-            ->assertOk()
-            ->assertInertia(fn (Assert $p) => $p
-                ->where('links.publicador', route('mlb.anuncios.publicador.produtos', ['conta' => 'empresa-'.$loja->id]))
-            );
+        $admin = $this->dev();
+        $this->assertTrue($admin->isAdmin());
+        $props = $this->props($this->actingAs($admin)->get('/trilha/'.$empresa->id)->assertOk());
+
+        $this->assertArrayNotHasKey('publicador', $props['links']);
+        $this->assertNotContains('url_publicador', self::chaves($props));
+        $this->assertStringNotContainsString('anuncios/publicador', json_encode($props, JSON_UNESCAPED_SLASHES));
     }
 
     public function test_empresa_fora_da_chave_responde_404_na_porta_da_equipe(): void
@@ -272,11 +274,11 @@ class AcessoATrilhaTest extends TestCase
             ->assertInertia(fn (Assert $p) => $p
                 ->component('Trilha/Empresa')
                 ->where('visao', 'equipe')
-                ->where('links.publicador', null)
+                ->missing('links.publicador')
                 ->where('links.portal_abrir', null)
-                ->where('produtos.2.url_publicador', null)
-                ->where('ofertas.1.url_publicador', null)
-                ->where('ofertas.2.url_publicador', null)
+                ->missing('produtos.2.url_publicador')
+                ->missing('ofertas.1.url_publicador')
+                ->missing('ofertas.2.url_publicador')
             );
     }
 
@@ -301,7 +303,6 @@ class AcessoATrilhaTest extends TestCase
                     'portal_abrir' => null,
                     'planejamento' => route('portal.auth.estrutura.sugestoes'),
                     'produtos'     => route('portal.auth.estrutura.produtos'),
-                    'publicador'   => null,
                 ])
                 // Cada produto leva à ficha dele no cadastro do Portal.
                 ->where('produtos.0.url_ficha', route('portal.auth.estrutura.produtos.ficha', ['produto' => 14]))
@@ -348,7 +349,7 @@ class AcessoATrilhaTest extends TestCase
                 ->where('sessao_equipe', true)
                 ->where('cliente_escrita', null)
                 ->where('links.portal_abrir', null)
-                ->where('links.publicador', null)
+                ->missing('links.publicador')
                 ->where('produtos.1.sugestoes_pendentes', [])
                 ->where('ofertas.2.preparo', null)
             );
@@ -409,6 +410,8 @@ class AcessoATrilhaTest extends TestCase
                 'publicacao' => "/trilha/{$empresa->id}/ofertas/__ITEM__/publicacao",
                 'ajuste'     => "/trilha/{$empresa->id}/ofertas/__ITEM__/ajuste",
             ],
+            // R4: o [Tentar de novo] da "Preparação automática" (POST), com o mesmo marcador.
+            'preparo'       => "/trilha/{$empresa->id}/ofertas/__ITEM__/preparo",
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
             'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');
@@ -459,7 +462,7 @@ class AcessoATrilhaTest extends TestCase
 
         $cliente = $this->props($this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk());
         $this->assertNull($cliente['voltar'], 'nem o "Voltar ao portal"');
-        $this->assertSame(['portal_abrir' => null, 'planejamento' => null, 'produtos' => null, 'publicador' => null], $cliente['links']);
+        $this->assertSame(['portal_abrir' => null, 'planejamento' => null, 'produtos' => null], $cliente['links']);
         $this->assertNotEmpty($cliente['produtos']);
         foreach ($cliente['produtos'] as $produto) {
             $this->assertNull($produto['url_ficha'], $produto['nome']);

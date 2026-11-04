@@ -1055,20 +1055,29 @@ export function textoDoConflito(falha) {
 /**
  * A versão que a gaveta passa a conhecer depois de uma resposta com retrato.
  * - Escrita CONFERIDA (mandou a versão e passou — linhas, ficha, remover cor): a da resposta, que é a desta gravação.
- * - Escrita que o servidor NÃO confere (fotos, frete): a de antes. Fotos e frete não mudam a versão; se a da resposta
- *   é outra, alguém mudou o produto por fora — `mudou: true`, e a gaveta avisa já (adotá-la deixaria o próximo
- *   "Salvar" passar por cima do que a outra pessoa gravou).
+ * - Escrita que o servidor NÃO confere (fotos, ordem das fotos, frete): elas não mudam a versão. Se a da resposta é
+ *   outra, o produto mudou POR FORA depois que a gaveta abriu (outra aba, o Portal, a planilha, a importação…):
+ *   - com algo MEXIDO na gaveta: fica a de antes e `mudou: true` — a gaveta avisa já (adotá-la deixaria o próximo
+ *     "Salvar" passar por cima do que foi gravado por fora);
+ *   - sem NADA mexido (R1, 04/11/2026): não há o que perder — a resposta já é o retrato de agora e a gaveta passa a
+ *     mostrá-lo, como o [Recarregar] faria. Adota a nova, sem aviso (`porFora: true`). Antes, o envio de foto
+ *     acusava "Recarregue…" mesmo com a gaveta toda salva: um alarme sem risco nenhum.
+ *   `mexido` vale `true` quando não se diz (o seguro: avisar).
  * Sem versão conhecida (o retrato ainda não tinha), fica a da resposta.
  *
- * @returns {{versao: ?string, mudou: boolean}}
+ * @returns {{versao: ?string, mudou: boolean, porFora: boolean}}
  */
-export function versaoDepoisDe(conhecida, resposta, { conferida = false } = {}) {
+export function versaoDepoisDe(conhecida, resposta, { conferida = false, mexido = true } = {}) {
     const nova = typeof resposta?.versao === 'string' && resposta.versao ? resposta.versao : null;
-    if (!nova) return { versao: conhecida ?? null, mudou: false };
-    if (conferida || !conhecida) return { versao: nova, mudou: false };
+    if (!nova) return { versao: conhecida ?? null, mudou: false, porFora: false };
+    if (conferida || !conhecida || nova === conhecida) return { versao: nova, mudou: false, porFora: false };
+    if (!mexido) return { versao: nova, mudou: false, porFora: true };
 
-    return { versao: conhecida, mudou: nova !== conhecida };
+    return { versao: conhecida, mudou: true, porFora: false };
 }
+
+/** R1: a nota do rodapé quando a gaveta (sem nada mexido) passou a mostrar o que outra gravação deixou no produto. */
+export const NOTA_DO_RETRATO_DE_FORA = 'Este produto tinha mudado em outro lugar: a gaveta já mostra o que está salvo agora.';
 
 /**
  * O "Salvar", na ORDEM do contrato (§5.9 do desenho): 1) as linhas, em lotes de até 200; 2) a ficha técnica
@@ -1440,6 +1449,50 @@ export function remessaDeFotos(escolhidos, total, { limite = LIMITE_IMAGENS, mb 
 
 /** "3 fotos enviadas." / "1 foto enviada." — o que a galeria diz depois do envio. */
 export const textoDoEnvio = (n) => (Number(n) === 1 ? '1 foto enviada.' : `${Number(n) || 0} fotos enviadas.`);
+
+// ─── A ordem das fotos (R6, 04/11/2026) ─────────────────────────────────────
+//
+// Arrastar ou as setas mudam a ordem de UMA cor; a 1ª é a capa. O pedido leva os ids de TODAS as fotos da galeria
+// (o servidor recusa a lista que não bate com a de agora). Funções puras: a galeria só desenha.
+
+/**
+ * Os ids depois de pôr a foto `id` na posição `para` (0 = capa; fora da faixa vai para a ponta). Null quando nada muda
+ * (o id não está na galeria, a posição não é inteira, ou a foto já estava ali) — não há pedido a fazer.
+ *
+ * @returns {?number[]}
+ */
+export function ordemMovida(fotos, id, para) {
+    const ids = (fotos ?? []).map((f) => f?.id);
+    const de = ids.indexOf(id);
+    if (de < 0 || !Number.isInteger(para)) return null;
+    const alvo = Math.min(Math.max(para, 0), ids.length - 1);
+    if (alvo === de) return null;
+    const nova = ids.slice();
+    nova.splice(de, 1);
+    nova.splice(alvo, 0, id);
+
+    return nova;
+}
+
+/**
+ * As fotos na ordem `ordem` (os ids) — o que a galeria mostra enquanto o pedido corre. A ordem que não é exatamente a
+ * desta galeria (uma foto entrou ou saiu no meio do caminho) não vale: ficam as fotos como vieram.
+ */
+export function fotosNaOrdem(fotos, ordem) {
+    const lista = fotos ?? [];
+    if (!Array.isArray(ordem) || ordem.length !== lista.length) return lista;
+    const porId = new Map(lista.map((f) => [f?.id, f]));
+    const saida = ordem.map((id) => porId.get(id));
+
+    return saida.every(Boolean) && new Set(ordem).size === ordem.length ? saida : lista;
+}
+
+/** O que a galeria diz depois de gravar a ordem: a capa nova merece ser dita. */
+export function textoDaOrdem(antes, ordem) {
+    const capaAntes = (antes ?? [])[0]?.id;
+
+    return Array.isArray(ordem) && ordem.length && ordem[0] !== capaAntes ? 'Ordem salva: a capa mudou.' : 'Ordem salva.';
+}
 
 // ─── Frete (F3) ─────────────────────────────────────────────────────────────
 

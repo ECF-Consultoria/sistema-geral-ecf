@@ -357,10 +357,72 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertSame($semModelo($editorSemEixo), $semEixo);
         $this->assertSame(['COLOR'], array_values(array_diff($semEixo, $porCor)));
 
-        // E o "Não se aplica" é o mesmo dos dois lados.
+        // E o "Não se aplica" parte do mesmo papel de produto do editor, menos o que a documentação da plataforma proíbe
+        // (`allow_variations`) e o Sim/Não (regra nossa: o "Não" responde) — R8, 04/11/2026.
+        $crus = array_column(self::atributosDaCadeira(), null, 'id');
         foreach ($campos as $id => $campo) {
-            $this->assertSame($classificado->atributos[$id]->aceitaNaoSeAplica, $campo['nao_se_aplica'], "N/A de {$id}");
+            $tags = ClassificadorAtributos::tags($crus[$id]['tags'] ?? []);
+            $esperado = $classificado->atributos[$id]->aceitaNaoSeAplica
+                && ! in_array('allow_variations', $tags, true)
+                && $campo['tipo'] !== F::TIPO_SIM_NAO;
+            $this->assertSame($esperado, $campo['nao_se_aplica'], "N/A de {$id}");
         }
+    }
+
+    /**
+     * R8 (04/11/2026) — o "Não se aplica" pela documentação da plataforma: obrigatório e `allow_variations` NÃO podem ser
+     * N/A; o escondido pode (volta o N/A dos "Mais detalhes"); Sim/Não não ganha (regra nossa). Na cadeira de escritório
+     * real: os 9 Sim/Não opcionais saem; a Cor e o Material do estofamento (deixam variar) saem; os escondidos entram.
+     */
+    public function test_nao_se_aplica_segue_a_documentacao_da_plataforma(): void
+    {
+        $campos = F::camposPorId(F::daAtributos([
+            ['id' => 'OBRIG', 'name' => 'Obrigatório', 'value_type' => 'string', 'tags' => ['required' => true]],
+            ['id' => 'COMUM', 'name' => 'Comum', 'value_type' => 'number', 'tags' => []],
+            ['id' => 'LISTA', 'name' => 'Lista', 'value_type' => 'list', 'tags' => [], 'values' => [['id' => '1', 'name' => 'Um']]],
+            ['id' => 'SIMNAO', 'name' => 'Com luzes', 'value_type' => 'boolean', 'tags' => []],
+            ['id' => 'COLOR', 'name' => 'Cor', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            // A "Largura da cama" da categoria de sofás e poltronas (o retorno do usuário de 04/11): escondida.
+            ['id' => 'BED_WIDTH', 'name' => 'Largura da cama', 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
+                'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'm', 'name' => 'm']], 'default_unit' => 'm'],
+            ['id' => 'INCLUDES_AUXILIARY_BED', 'name' => 'Inclui cama auxiliar', 'value_type' => 'boolean', 'tags' => ['hidden' => true]],
+            ['id' => 'NOVO', 'name' => 'Só no novo', 'value_type' => 'string', 'tags' => ['new_required' => true]],
+        ]));
+
+        $na = array_map(fn (array $c) => $c['nao_se_aplica'], $campos);
+        ksort($na);
+        $esperado = [
+            'OBRIG' => false, 'COMUM' => true, 'LISTA' => true, 'SIMNAO' => false, 'COLOR' => false,
+            'BED_WIDTH' => true, 'INCLUDES_AUXILIARY_BED' => false, 'NOVO' => false,
+        ];
+        ksort($esperado);
+        $this->assertSame($esperado, $na);
+        $this->assertSame(F::GRUPO_MAIS_DETALHES, $this->grupoDe(F::daAtributos([
+            ['id' => 'BED_WIDTH', 'name' => 'Largura da cama', 'value_type' => 'number_unit', 'tags' => ['hidden' => true]],
+        ]), 'BED_WIDTH'), 'a largura da cama fica em "Mais detalhes", agora com o N/A');
+
+        // A cadeira real (MLB193945): quem aceita, pela régua.
+        $cadeira = F::camposPorId(F::daAtributos(self::atributosDaCadeira()));
+        $semNa = array_keys(array_filter($cadeira, fn (array $c) => ! $c['nao_se_aplica']));
+        foreach (['WITH_WHEELS', 'WITH_LIGHTS', 'WITH_ARMREST', 'WITH_HEADREST', 'WITH_FOOTREST', 'WITH_FOOT_RING',
+            'WITH_ADJUSTABLE_HEIGHT', 'WITH_ADJUSTABLE_ARMREST', 'WITH_RECLINING_BACKREST', 'COLOR', 'UPHOLSTERY_MATERIAL',
+            'BACKREST_HEIGHT', 'SEAT_DEPTH', 'IS_GAMER'] as $id) {
+            $this->assertContains($id, $semNa, "{$id} sem N/A");
+        }
+        foreach (['MAX_WEIGHT_SUPPORTED', 'STRUCTURE_MATERIALS', 'FOOT_RING_MATERIALS', 'OFFICE_CHAIR_TYPE', 'SEAT_WIDTH', 'LUMBAR_SUPPORT_TYPE', 'BASE_DIAMETER'] as $id) {
+            $this->assertTrue($cadeira[$id]['nao_se_aplica'], "{$id} com N/A");
+        }
+    }
+
+    private function grupoDe(array $grupos, string $id): ?string
+    {
+        foreach ($grupos as $g) {
+            if (in_array($id, array_column($g['campos'], 'id'), true)) {
+                return $g['grupo'];
+            }
+        }
+
+        return null;
     }
 
     public function test_na_cadeira_os_hidden_editaveis_vao_para_mais_detalhes_no_fim_e_o_estofamento_entra(): void

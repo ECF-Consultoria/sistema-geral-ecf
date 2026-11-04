@@ -1,9 +1,13 @@
 import { Suspense, createContext, lazy, useContext, useEffect, useId, useRef, useState } from 'react';
+import { RotateCw } from 'lucide-react';
 import { ETAPA_POR_CHAVE, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, chaveDoProduto, deveFecharNoEsc, estadoDaAprovacao, ofertasDoProduto, temPrevia } from '@/lib/trilha';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
+import { mensagemDoErro, tentarPreparoDeNovo } from '@/lib/trilhaEscrita';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
 import CaixaDaOnda from '@/Components/Trilha/CaixaDaOnda';
+import PilulaDaFalta from '@/Components/Trilha/PilulaDaFalta';
+import { irParaOCadastro } from '@/lib/trilhaFaltas';
 import { candidatasDaVolta } from '@/Components/Trilha/estadoDaTela';
 import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto } from '@/Components/Trilha/formatos';
 
@@ -37,8 +41,11 @@ import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto
 // Da 4ª entrega (4a): a oferta em revisão ou publicada ganha [Ver prévia] (a
 // gaveta `v:{item}`, em `Revisao/`, por `lazy`) para a equipe com `escrita.revisao`.
 //
+// R10 (retorno do 1º teste, 04/11/2026): nenhum painel leva ao editor de fora —
+// nem para o admin. "A trilha é o publicador."
+//
 // Visão do cliente (de verdade ou na simulação da equipe): sem MLB, sem preparo
-// do agente, sem lista de sugestões, sem link do Publicador e sem nenhuma
+// do agente, sem lista de sugestões e sem nenhuma
 // escrita. A maior parte já chega cortada nas props; o resto é escondido aqui
 // pela `visao` (e o `podeEditar` vem falso da página).
 //
@@ -51,6 +58,10 @@ import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto
 // E a 4e: o cliente de verdade com `cliente_escrita.aprovacao` (`comAprovacao`)
 // ganha, na oferta que está com ele (ou que ele já respondeu), o atalho para a
 // gaveta `v:` dele — [Ver e aprovar] / [Ver o anúncio].
+//
+// R4 (retorno do 1º teste, 04/11/2026): com a preparação parada, a caixa
+// "Preparação automática" diz a causa e o que fazer (`oferta.parada`, só da equipe)
+// e, para quem escreve, tem o [Tentar de novo] (`escrita.preparo`).
 
 // Só o cliente com `cliente_escrita.fotos` chega a desenhar esta (a página só passa `fotosDoCliente` a ele).
 const FotosDoCliente = lazy(() => import('@/Components/Trilha/Cliente/FotosDoProduto'));
@@ -125,6 +136,80 @@ function TextoDaFicha({ produto }) {
     return <span className="text-[12.5px] text-trilha-muted">{categoria}Ainda não conferida: os campos desta categoria não estão guardados no sistema.</span>;
 }
 
+/**
+ * R4 (retorno do 1º teste, 04/11/2026): a causa de a preparação ter parado e o que fazer — pelo `parada.motivo` que o
+ * servidor manda (`SituacaoDasOfertas::parada`; a causa do erro vem do preparo, `MotivoDaFalhaDaIa`). Mudou o código lá,
+ * muda aqui. Só a equipe recebe (`parada` é nula na porta do cliente).
+ */
+export const CAUSA_DA_PARADA = {
+    sem_credito: { causa: 'A IA está sem crédito:', fazer: 'avise o responsável pela conta do Gemini.' },
+    chave: { causa: 'A chave da IA foi recusada:', fazer: 'avise o responsável pela conta do Gemini.' },
+    limite: { causa: 'A IA atingiu o limite de uso por agora.', fazer: 'Tente de novo em alguns minutos.' },
+    indisponivel: { causa: 'A IA não respondeu a tempo.', fazer: 'Tente de novo.' },
+    nao_terminou: { causa: 'A preparação parou no meio.', fazer: 'Tente de novo.' },
+    desistiu: { causa: 'O anúncio ficou em uso e a preparação não gravou.', fazer: 'Tente de novo.' },
+    outro: { causa: 'A preparação falhou.', fazer: 'Tente de novo.' },
+    imagens: { causa: 'As imagens automáticas não saíram depois de duas tentativas.', fazer: null },
+};
+
+/** O texto inteiro da causa (o que a caixa diz). */
+export const textoDaParada = (parada) => {
+    const c = CAUSA_DA_PARADA[parada?.motivo] ?? CAUSA_DA_PARADA.outro;
+
+    return c.fazer ? `${c.causa} ${c.fazer}` : c.causa;
+};
+
+/**
+ * R4: a causa de a preparação ter parado, o que fazer e o [Tentar de novo] — só com `parada.tentar` (alguma etapa do
+ * TEXTO parou; o preparo não refaz as imagens) e o endereço `escrita.preparo` (quem escreve). O pedido refaz SÓ as etapas
+ * que pararam, pelo próprio preparo, na fila da IA; depois a Lista recarrega ("Na fila do agente"). O 409 (já pedido,
+ * nada parado) também recarrega: a linha passa a dizer o que vale agora.
+ */
+/**
+ * O endereço do [Tentar de novo] do item: o `escrita.preparo` com o id no lugar do marcador (o mesmo `__ITEM__` de
+ * `ApresentacaoDaTrilha::MARCADOR_DO_ITEM`). Como na prévia, quem monta é a caixa; `trilhaEscrita` recebe pronto.
+ */
+export const urlDoPreparo = (escrita, itemId) => (escrita?.preparo ? String(escrita.preparo).replace('__ITEM__', encodeURIComponent(itemId)) : null);
+
+function ParadaDoPreparo({ parada, itemId, escrita = null, onAvisar = () => {}, onRecarregar = null }) {
+    const [pedindo, setPedindo] = useState(false);
+    const [erro, setErro] = useState(null);
+    const podeTentar = !!parada?.tentar && !!escrita?.preparo;
+
+    const tentar = async () => {
+        if (pedindo) return;
+        setPedindo(true);
+        setErro(null);
+        try {
+            const r = await tentarPreparoDeNovo(urlDoPreparo(escrita, itemId));
+            onAvisar?.(r?.preparo?.mensagem ?? 'Pedido feito.', 'sucesso');
+            await onRecarregar?.();
+        } catch (falha) {
+            setErro(mensagemDoErro(falha));
+            if (falha?.response?.status === 409) await onRecarregar?.();
+        } finally {
+            setPedindo(false);
+        }
+    };
+
+    return (
+        <div className="mt-2 flex flex-col items-start gap-2 rounded-lg border border-trilha-bad/30 bg-trilha-bad-bg px-3 py-2.5 text-[12.5px]" data-parada={parada?.motivo ?? ''}>
+            <span className="text-trilha-fg [overflow-wrap:anywhere]" data-causa-da-parada="">
+                {textoDaParada(parada)}
+            </span>
+            {podeTentar && (
+                <Botao data-acao="tentar-preparo-de-novo" ocupado={pedindo} onClick={tentar}>
+                    <RotateCw size={14} aria-hidden="true" className={cn(pedindo && 'animate-spin motion-reduce:animate-none')} />
+                    {pedindo ? 'Pedindo…' : 'Tentar de novo'}
+                </Botao>
+            )}
+            <span role="status" className="text-trilha-bad empty:hidden" data-erro-da-parada="">
+                {erro ?? ''}
+            </span>
+        </div>
+    );
+}
+
 /** O que a caixa "Fotos" do cliente mostra enquanto o JS dela chega. */
 function AbrindoAsFotos() {
     return (
@@ -178,7 +263,11 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
                     <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="O que falta">
                         {faltas.map((falta) => (
                             <li key={falta}>
-                                <Pilula tom="warn">{falta}</Pilula>
+                                {/* R11: quem escreve vai da falta ao campo dela, na gaveta de cadastro; os outros leem. */}
+                                <PilulaDaFalta
+                                    falta={falta}
+                                    onIr={irParaOCadastro(onAbrir, produto, podeEditar)}
+                                />
                             </li>
                         ))}
                     </ul>
@@ -307,22 +396,16 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
             </Botao>,
         );
     }
-    // O produto ainda no mapeamento tem o "Mapear" como ação principal; o já mapeado, o Publicador.
+    // O produto ainda no mapeamento tem o "Mapear" como ação principal (o último); o já mapeado, "Mapear de novo" como
+    // secundária. R10 (04/11/2026): nenhum link leva ao editor de fora — "a trilha é o publicador", inclusive para o admin.
     const mapearEhPrincipal = podeMapear && produto.etapa === 'mapa';
-    const botaoMapear = podeMapear && (
-        <Botao key="mapear" primario={mapearEhPrincipal} data-acao="mapear" onClick={() => onAbrir(chaveDeMapear(produto))}>
-            {produto.mapeado_em ? 'Mapear de novo' : 'Mapear'}
-        </Botao>
-    );
-    if (botaoMapear && !mapearEhPrincipal) rodape.push(botaoMapear);
-    if (!cliente && produto.url_publicador) {
+    if (podeMapear) {
         rodape.push(
-            <LinkDeAcao key="publicador" href={produto.url_publicador} primario={!mapearEhPrincipal} data-link="publicador">
-                Abrir no Publicador
-            </LinkDeAcao>,
+            <Botao key="mapear" primario={mapearEhPrincipal} data-acao="mapear" onClick={() => onAbrir(chaveDeMapear(produto))}>
+                {produto.mapeado_em ? 'Mapear de novo' : 'Mapear'}
+            </Botao>,
         );
     }
-    if (botaoMapear && mapearEhPrincipal) rodape.push(botaoMapear);
 
     return {
         sobrelinha: cliente ? 'Seu produto' : 'Produto da lista',
@@ -411,6 +494,16 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
                             );
                         })}
                     </div>
+                    {/* R4: parou — a causa, o que fazer e (para quem escreve) o [Tentar de novo]. */}
+                    {oferta.parada && (
+                        <ParadaDoPreparo
+                            parada={oferta.parada}
+                            itemId={oferta.id}
+                            escrita={planejamento?.podeEditar ? planejamento?.escrita : null}
+                            onAvisar={planejamento?.onAvisar}
+                            onRecarregar={planejamento?.onRecarregar}
+                        />
+                    )}
                 </Caixa>
             )}
 
@@ -452,13 +545,6 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
             <Botao key="aprovacao" primario={aprovacao === 'com_cliente'} data-acao="ver-anuncio-do-cliente" onClick={() => onAbrir(chaveDaPrevia(oferta))}>
                 {aprovacao === 'com_cliente' ? 'Ver e aprovar' : 'Ver o anúncio'}
             </Botao>,
-        );
-    }
-    if (!cliente && oferta.url_publicador) {
-        rodape.push(
-            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario={!previaEhPrincipal} data-link="publicador">
-                Abrir no Publicador
-            </LinkDeAcao>,
         );
     }
 

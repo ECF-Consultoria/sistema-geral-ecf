@@ -602,22 +602,23 @@ test('lib/trilhaEscrita.js e as peças de fora da pasta Revisao/ NÃO importam a
 
 // ─── O rodapé desenhado ─────────────────────────────────────────────────────
 
-test('pronto para publicar: [Aprovar e publicar] é o primário do rodapé; o link de admin vira secundário; o preço segue editável', () => {
+test('pronto para publicar: [Aprovar e publicar] é o primário do rodapé; nenhum link do Publicador (R10); o preço segue editável', () => {
     const saida = desenhar();
     const rodape = rodapeDe(saida);
     const botao = tag(rodape, 'data-acao="aprovar-e-publicar"');
     assert.ok(botao.includes('bg-trilha-navy') && !botao.includes('disabled=""') && !botao.includes('aria-disabled'), botao);
-    assert.ok(texto(rodape).includes('Aprovar e publicar') && texto(rodape).includes('Ver a oferta') && texto(rodape).includes('Abrir no Publicador'));
-    // O primário é o último; o link de admin (o único "Publicador" — que já existia) fica secundário.
-    assert.ok(rodape.indexOf('data-acao="ver-oferta"') < rodape.indexOf('data-link="publicador"') && rodape.indexOf('data-link="publicador"') < rodape.indexOf('data-acao="aprovar-e-publicar"'));
-    assert.ok(!tag(rodape, 'data-link="publicador"', 'a').includes('bg-trilha-navy'), 'dois primários não');
+    assert.ok(texto(rodape).includes('Aprovar e publicar') && texto(rodape).includes('Ver a oferta'));
+    // O primário é o último. R10 (04/11/2026): o "Abrir no Publicador" saiu — nem para o admin (a oferta de exemplo ainda
+    // traz o endereço velho, e ele não aparece).
+    assert.ok(rodape.indexOf('data-acao="ver-oferta"') < rodape.indexOf('data-acao="aprovar-e-publicar"'));
+    assert.ok(!rodape.includes('data-link="publicador"') && !texto(rodape).includes('Publicador'));
     // A região da situação existe sempre (o leitor de tela lê cada troca), vazia antes do pedido.
     assert.match(rodape, /role="status"[^>]*data-situacao-da-publicacao=""/);
     assert.match(saida, /data-preco-editavel=""/);
-    // A vista sem o controle da publicação: o rodapé da 4a (o link de admin primário).
+    // A vista sem o controle da publicação: o rodapé da 4a, só [Ver a oferta].
     const semPublicar = renderToStaticMarkup(h(M.previa.VistaDaPrevia, { oferta: OFERTA_S2, previa: PREVIA_COM_PRECO, preco: precoEditavel() }));
-    assert.ok(!semPublicar.includes('aprovar-e-publicar') && tag(semPublicar, 'data-link="publicador"', 'a').includes('bg-trilha-navy'));
-    assert.equal(texto(rodape).replace('Abrir no Publicador', '').match(PROIBIDO), null);
+    assert.ok(!semPublicar.includes('aprovar-e-publicar') && !semPublicar.includes('data-link="publicador"') && semPublicar.includes('data-acao="ver-oferta"'));
+    assert.equal(texto(rodape).match(PROIBIDO), null);
 });
 
 test('a confirmação no rodapé: "Publicar este anúncio na loja agora?" [Publicar] [Cancelar] — nada sai sem ela', () => {
@@ -666,12 +667,13 @@ test('cada situação andando: o texto neutro (com o giro), nenhum primário e a
         assert.match(rodape, new RegExp(`role="status"[^>]*data-situacao-da-publicacao="${resposta.publicacao.situacao}"`));
         assert.match(situacao, /<svg[^>]*animate-spin[^>]*motion-reduce:animate-none/, 'gira (e para com "menos movimento")');
         assert.ok(!rodape.includes('aprovar-e-publicar') && !rodape.includes('publicar-assim-mesmo'), `${titulo}: nenhum primário`);
-        assert.ok(tag(rodape, 'data-link="publicador"', 'a').includes('bg-trilha-navy'), 'sem o primário da publicação, o link de admin volta a ser o principal');
+        // R10: nem o link de admin volta (ele saiu da trilha) — fica o [Ver a oferta].
+        assert.ok(!rodape.includes('data-link="publicador"') && rodape.includes('data-acao="ver-oferta"'), `${titulo}: sem link do Publicador`);
         // O preço: só leitura, com o porquê; nenhum campo.
         const caixa = pedaco(saida, 'data-caixa', 'preco');
         assert.ok(texto(pedaco(caixa, 'data-preco-so-leitura', '')).includes(trava), trava);
         assert.ok(!caixa.includes('<input') && !caixa.includes('data-acao="salvar-preco"'));
-        assert.equal(texto(rodape).replace('Abrir no Publicador', '').match(PROIBIDO), null);
+        assert.equal(texto(rodape).match(PROIBIDO), null);
     }
 });
 

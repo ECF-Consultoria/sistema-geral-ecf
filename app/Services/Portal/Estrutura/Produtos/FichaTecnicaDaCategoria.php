@@ -62,13 +62,27 @@ use Illuminate\Support\Facades\Log;
  * {@see self::definicaoComExplicacoes()} acrescenta `explicacao` (texto curto, NEUTRO) a cada
  * campo, de {@see ExplicacaoDeAtributos::paraPortal()} — que já aplica o filtro de sigilo.
  *
- * ### "Não se aplica"
- * Sai com `nao_se_aplica = true` só o campo que o editor deixa marcar (`aceitaNaoSeAplica`:
- * atributo do produto que não é obrigatório) E que o catálogo não esconde (`hidden`) — como no
- * formulário da própria plataforma, que oferece "Não se aplica" em cada opcional que mostra
- * (29/10/2026: no escondido, virava atalho para o cliente não preencher). O que o cliente
- * marca é gravado por {@see FichaTecnicaDoProduto} com {@see FichaTecnicaDoProduto::NAO_SE_APLICA};
- * marcado onde não aceita, o servidor responde 422.
+ * ### "Não se aplica" — a régua da documentação da plataforma (R8, 04/11/2026)
+ * A API NÃO diz, atributo por atributo, onde o "Não se aplica" faz sentido: nem `/categories/{id}/attributes`
+ * (só as `tags`, o `value_type` e os `values`) nem `technical_specs/input` (lá só `ui_config.allow_custom_value`,
+ * `hint`, `tooltip` e as `rendering_conditions`) trazem um sinal assim. O que ela documenta é QUEM NÃO PODE ser N/A
+ * (developers.mercadolivre.com.br/pt_br/atributos, "Especificar atributos que não aplicam": `value_id = "-1"` e
+ * `value_name = null`). Daí a régua, em {@see self::aceitaNaoSeAplica()}:
+ * - obrigatório (`required`; para produto novo, `new_required`) NÃO — "Atributos com tag required:true não podem ser
+ *   N/A" (e o `/items/validate` responde `cause_id 100`, "cannot be not applicable": sondagem de 01/10,
+ *   `tests/fixtures-ml/sondagem/conta/categorias/MLB193945/validate_na_em_obrigatorio.json`);
+ * - `allow_variations` NÃO — "Los atributos con tag allow_variations no pueden ser N/A" (a versão es_ar da mesma
+ *   página): a Cor, o Material do estofamento… quando o produto não varia por eles, a ficha pede o valor;
+ * - escondido (`hidden`) SIM — ele "não é exibido no fluxo de vendas, mas pode ser carregado via API", e a matriz de
+ *   exclusões da página diz que oculto nunca é obrigatório. Volta o N/A dos "Mais detalhes" (tirado em 29/10/2026,
+ *   quando virava atalho para o cliente não preencher): a poltrona da categoria de sofás e poltronas mostra "Largura
+ *   da cama" ali, e a resposta certa é "Não se aplica";
+ * - REGRA NOSSA, onde a API não diz nada: Sim/Não não ganha N/A — o "Não" já responde ("Com luzes": Não). Era o
+ *   grosso do "Não se aplica em tudo" da ficha (9 dos campos da cadeira de escritório).
+ * Fora disso, o papel de produto do classificador (`aceitaNaoSeAplica`: nem eixo, nem dado da variação, nem campo do
+ * sistema). O que o cliente marca é gravado por {@see FichaTecnicaDoProduto} com {@see FichaTecnicaDoProduto::NAO_SE_APLICA};
+ * marcado onde não aceita, o servidor responde 422. O editor do Publicador segue com a régua dele (todo opcional de
+ * produto aceita: `ClassificadorAtributos`).
  *
  * ### Qual controle cada campo vira
  * Ter opção é o que faz o campo ser uma LISTA — não o `value_type`. O catálogo
@@ -534,13 +548,8 @@ class FichaTecnicaDaCategoria
             'unidades'      => $unidades,
             'unidade_padrao' => $unidadePadrao,
             'max'           => $max > 0 ? $max : null,
-            // 29/10/2026, decisão do usuário: no Portal, "Não se aplica" como no formulário da própria
-            // plataforma — em cada opcional que ela MOSTRA. O escondido (`hidden`, grupo "Mais detalhes")
-            // ela nem exibe, e o "Não se aplica" nele era atalho para o cliente não preencher. Obrigatório
-            // continua sem (o editor interno também recusa). (Antes, no mesmo dia, ficou só no
-            // `conditional_required` — errado: tirou de campos que a plataforma oferece.) O editor interno
-            // do Publicador segue com a regra dele: todo opcional aceita, e a equipe usa para dar "Pronto".
-            'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio && ! self::temTag($tags, 'hidden'),
+            // R8 (04/11/2026): a régua da documentação da plataforma — ver o bloco "Não se aplica" da classe.
+            'nao_se_aplica' => self::aceitaNaoSeAplica($classificado, $obrigatorio, $tipo, $tags),
             // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela
             // usa só para esconder o campo no produto que varia por ele; nunca é mostrada.
             'eixo_do_portal' => $eixoDoPortal,
@@ -549,6 +558,19 @@ class FichaTecnicaDaCategoria
             // Lista que aceita um valor escrito à mão além das opções ("Outro") — ver o bloco da classe.
             'aceita_outro'  => $tipo === self::TIPO_LISTA && $valores !== [] && $classificado->aceitaTextoLivre,
         ];
+    }
+
+    /**
+     * "Não se aplica" no campo? (R8 — ver o bloco da classe.) Obrigatório e `allow_variations` não podem (a documentação);
+     * Sim/Não não precisa (regra nossa: o "Não" responde); o escondido pode. O resto vem do papel de produto do
+     * classificador.
+     */
+    private static function aceitaNaoSeAplica(AtributoClassificado $classificado, bool $obrigatorio, string $tipo, array $tags): bool
+    {
+        return $classificado->aceitaNaoSeAplica
+            && ! $obrigatorio
+            && ! self::temTag($tags, 'allow_variations')
+            && $tipo !== self::TIPO_SIM_NAO;
     }
 
     /**

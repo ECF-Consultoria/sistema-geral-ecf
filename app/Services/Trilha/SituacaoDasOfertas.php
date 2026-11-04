@@ -16,6 +16,7 @@ use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\PreparoIaDoRascunhoService as Preparo;
 use App\Support\Publicador\IaTrabalhando;
 use App\Support\Publicador\MemoriaDoPreparoIa;
+use App\Support\Publicador\MotivoDaFalhaDaIa;
 use App\Support\Publicador\SituacaoDoAnuncioMl;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -116,6 +117,21 @@ class SituacaoDasOfertas
      */
     public const REFAZENDO = 'Robô refazendo';
 
+    /** R4: a causa da etapa que DESISTIU (o anúncio ficou em uso — editor aberto, na fila — ou o agente pausado). */
+    public const DESISTIU = 'desistiu';
+
+    /** R4: a causa da etapa `rodando`/`adiada` vencida (o Job morreu sem avisar). */
+    public const NAO_TERMINOU = 'nao_terminou';
+
+    /**
+     * R4: quando etapas diferentes pararam por causas diferentes, a que a caixa mostra — a que pede alguém de fora (o
+     * crédito, a chave) antes da que só pede "tente de novo".
+     */
+    private const PRIORIDADE_DO_MOTIVO = [
+        MotivoDaFalhaDaIa::SEM_CREDITO, MotivoDaFalhaDaIa::CHAVE, MotivoDaFalhaDaIa::LIMITE, MotivoDaFalhaDaIa::INDISPONIVEL,
+        self::NAO_TERMINOU, self::DESISTIU, MotivoDaFalhaDaIa::OUTRO,
+    ];
+
     /**
      * @param  array<int, array{id: int, oferta_id: ?int, estrutura_produto_id: ?int, produto_base_id: ?int, quantidade_kit: int}>  $pubs
      * @param  array<int, int>  $grupoDoProduto  estrutura_produto_id → pub do grupo
@@ -128,6 +144,7 @@ class SituacaoDasOfertas
      * @param  array<int, true>  $agendados  estrutura_produto_id com o preparo agendado
      * @param  array<int, list<string>>  $refazendo  pub → as partes que o robô está refazendo a pedido da revisão (4b, D60)
      * @param  array<int, array{status: string, alerta: bool}>  $aprovacoes  pub → o status da aprovação do cliente (4e)
+     * @param  array<int, true>  $deNovo  pub → o [Tentar de novo] da preparação pedido e ainda na fila (R4)
      */
     private function __construct(
         private array $pubs,
@@ -142,6 +159,7 @@ class SituacaoDasOfertas
         private Carbon $agora,
         private array $refazendo = [],
         private array $aprovacoes = [],
+        private array $deNovo = [],
     ) {}
 
     /**
@@ -212,6 +230,8 @@ class SituacaoDasOfertas
             AjusteDoRoboNaTrilha::refazendoEmLote(array_keys($rascunhos)),
             // 4e: a aprovação do cliente — só na loja da chave (sem ela, nenhuma consulta).
             AprovacaoDoClienteNaTrilha::statusEmLote($empresa, $rascunhos),
+            // R4 (04/11/2026): o [Tentar de novo] pedido e ainda na fila da IA — uma leitura de cache para todos.
+            PreparoNaTrilha::pedidosEmLote(array_keys($rascunhos)),
         );
     }
 
@@ -317,7 +337,7 @@ class SituacaoDasOfertas
      * @param  ?array  $onda  com a trilha de trabalho ligada, o contexto da onda do item
      *                        ({@see \App\Services\Trilha\Ondas\OndasDaEmpresa::contextoDoItem()}); null = 1ª entrega
      * @param  bool  $cadastroIncompleto  algum produto do item tem falta na lista (só lido com `$onda`)
-     * @return array{etapa: string, status: string, alerta: bool, anuncios: list<array{tipo: string, mlb: string, situacao: ?string}>, preparo: ?array, pub_produto_id: ?int, andou: bool}
+     * @return array{etapa: string, status: string, alerta: bool, parada: ?array{motivo: string, etapas: list<string>, tentar: bool}, anuncios: list<array{tipo: string, mlb: string, situacao: ?string}>, preparo: ?array, pub_produto_id: ?int, andou: bool}
      */
     public function doItem(array $pubs, array $ofertaIds, bool $esperaSimples, ?array $onda = null, bool $cadastroIncompleto = false): array
     {
@@ -359,6 +379,9 @@ class SituacaoDasOfertas
 
         return [
             ...$decisao,
+            // R4: só quando a decisão de agora é "O agente parou" ({@see parada()}); qualquer outra régua (onda, no ar, a
+            // aprovação, o ajuste andando) a tira.
+            'parada'         => $decisao['parada'] ?? null,
             'anuncios'       => $anuncios,
             'preparo'        => $r !== null ? $this->preparo($r, $etapas, $decisao['etapa'], $textoDoAgente) : null,
             'pub_produto_id' => $principal,
@@ -492,9 +515,12 @@ class SituacaoDasOfertas
         // conjunto, não a pílula: com duas cores, um kit andando numa não pode esconder a outra que ficou para amanhã.
         $imagens = $this->estadosDasImagens($r);
         $paradas = [];
+        // R4 (04/11/2026): a causa de cada etapa do texto que parou (`motivo` gravado pelo preparo; sem ele, "outro").
+        $doTexto = [];
         foreach (Preparo::ETAPAS as $e) {
             if (isset($etapas[$e]) && $this->parou($etapas[$e])) {
                 $paradas[] = self::ROTULO_DA_ETAPA[$e];
+                $doTexto[$e] = self::motivoDaParada($etapas[$e]);
             }
         }
         // As duas tentativas falharam ("Imagens não geradas" no Publicador): o robô não tenta mais sozinho, alguém
@@ -503,7 +529,13 @@ class SituacaoDasOfertas
             $paradas[] = 'imagens';
         }
         if ($paradas !== []) {
-            return ['etapa' => 'robo', 'status' => 'O agente parou: '.implode(', ', $paradas), 'alerta' => true];
+            // R4: o [Tentar de novo] foi pedido e o Job ainda não rodou — agora o item está na fila, não parado.
+            if ($doTexto !== [] && $textoDoAgente && isset($this->deNovo[(int) $r->produto_id])) {
+                return ['etapa' => 'robo', 'status' => 'Na fila do agente', 'alerta' => false];
+            }
+
+            return ['etapa' => 'robo', 'status' => 'O agente parou: '.implode(', ', $paradas), 'alerta' => true,
+                'parada' => self::parada($doTexto, isset($imagens['erro']), $textoDoAgente)];
         }
 
         $resumo = (array) ($r->step_state['resumo'] ?? []);
@@ -616,6 +648,46 @@ class SituacaoDasOfertas
         }
 
         return null;
+    }
+
+    /**
+     * R4 (retorno do 1º teste, 04/11/2026): por que o texto parou e se a equipe pode pedir de novo — o que a caixa
+     * "Preparação automática" mostra (a causa, o que fazer e o [Tentar de novo]). Só a equipe recebe (o `preparo` e isto
+     * saem nulos na porta do cliente).
+     * - `motivo`: a causa mais útil entre as etapas do texto paradas ({@see PRIORIDADE_DO_MOTIVO}: "sem crédito" vence
+     *   "tente de novo"); só as imagens paradas = `imagens`;
+     * - `etapas`: `titulo`/`modelo`/`descricao` que pararam e `imagens`;
+     * - `tentar`: alguma etapa do TEXTO parou e o texto é do agente (o preparo só refaz o texto; as imagens que falharam
+     *   duas vezes e o Kit N, não) — {@see PreparoNaTrilha}.
+     *
+     * @param  array<string, string>  $doTexto  etapa do texto parada → a causa dela
+     * @return array{motivo: string, etapas: list<string>, tentar: bool}
+     */
+    private static function parada(array $doTexto, bool $imagens, bool $textoDoAgente): array
+    {
+        $motivo = 'imagens';
+        foreach (self::PRIORIDADE_DO_MOTIVO as $m) {
+            if (in_array($m, $doTexto, true)) {
+                $motivo = $m;
+                break;
+            }
+        }
+
+        return [
+            'motivo' => $motivo,
+            'etapas' => [...array_keys($doTexto), ...($imagens ? ['imagens'] : [])],
+            'tentar' => $doTexto !== [] && $textoDoAgente,
+        ];
+    }
+
+    /** A causa de UMA etapa parada: a que o preparo gravou no erro, a desistência (anúncio em uso) ou o Job que morreu. */
+    private static function motivoDaParada(array $etapa): string
+    {
+        return match ($etapa['status'] ?? null) {
+            Preparo::ERRO     => in_array($etapa['motivo'] ?? null, MotivoDaFalhaDaIa::TODOS, true) ? (string) $etapa['motivo'] : MotivoDaFalhaDaIa::OUTRO,
+            Preparo::DESISTIU => self::DESISTIU,
+            default           => self::NAO_TERMINOU,
+        };
     }
 
     /** A etapa terminou mal: erro, desistência ou `rodando`/`adiada` vencida (o Job morreu sem avisar). */

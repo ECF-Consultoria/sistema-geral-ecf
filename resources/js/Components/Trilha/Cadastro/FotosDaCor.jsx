@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
-import { ImagePlus, Maximize2, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, ImagePlus, Maximize2, Trash2 } from 'lucide-react';
 import { ACEITA_NO_INPUT, LIMITE_IMAGENS, LIMITE_MB, avisosDoErro } from '@/lib/imagensVariacao';
-import { contadorDeFotos, fotosPorCor, remessaDeFotos, textoDoEnvio, urlOriginalDaFoto } from '@/lib/trilhaCadastro';
+import { contadorDeFotos, fotosNaOrdem, fotosPorCor, ordemMovida, remessaDeFotos, textoDaOrdem, textoDoEnvio, urlOriginalDaFoto } from '@/lib/trilhaCadastro';
 import { cn } from '@/lib/utils';
 import { Botao, Etiqueta, LinkDeAcao, Pilula } from '@/Components/Trilha/Pecas';
 import { FOTOS_MINIMAS } from '@/Components/Trilha/formatos';
@@ -20,15 +20,26 @@ import { AvisoNaGaveta, ConfirmacaoNaGaveta } from '@/Components/Trilha/Cadastro
 // DENTRO da galeria e exclui na hora. A resposta é o retrato novo, que o hook
 // junta ao estado sem apagar o que está mexido e não salvo.
 //
-// A 1ª foto é a capa; ordem e capa não se mudam por aqui (como no Portal).
+// A 1ª foto é a capa ("Capa" marcada). R6 (04/11/2026): a ordem se muda por
+// arrastar (HTML5, sem biblioteca) ou pelas setas de cada foto (o teclado:
+// Tab até a seta e Enter) e grava na hora (`PUT …/fotos/ordem`, com TODAS as
+// fotos da cor; a lista que não bate com a galeria de agora volta 422 e a
+// gaveta relê). Enquanto o pedido corre, a galeria já mostra a ordem nova.
 // As miniaturas vêm pela rota da equipe (`trilha.fotos`); "Ver maior" abre a
 // original (`?original=1`) ali mesmo, na gaveta. Nenhum componente do Portal:
 // tokens `trilha-*`, claro e escuro.
 
-/** O produto já está no Publicador: o Sincronizar só copia foto para galeria vazia (§5.7). */
-export const AVISO_DAS_FOTOS_NO_PUBLICADOR = 'Foto nova aqui não entra no anúncio que já está sendo montado: troque no Publicador.';
+/** O produto já está no Publicador: o Sincronizar só copia foto para galeria vazia (§5.7) — nem a ordem nova (R6) vai. */
+export const AVISO_DAS_FOTOS_NO_PUBLICADOR = 'Foto nova (ou a ordem nova) aqui não entra no anúncio que já está sendo montado. Para trocar as fotos dele, fale com quem cuida da publicação deste produto.';
 
 const FOCO = 'focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run';
+
+/** As setas da ordem (R6): pequenas, ao pé da miniatura. */
+const SETA = cn(
+    'inline-flex h-6 w-6 items-center justify-center rounded-md border border-trilha-line text-trilha-fg2 hover:border-trilha-run hover:text-trilha-run',
+    'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-trilha-line disabled:hover:text-trilha-fg2',
+    FOCO,
+);
 
 /** "P, M e G". */
 const emLista = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0] ?? '');
@@ -50,8 +61,8 @@ function Miniatura({ foto, capa, rotulo, leitura, aberta, onClick }) {
         <>
             <img src={foto.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             {capa && (
-                <Etiqueta tom="roxo" className="absolute left-1 top-1">
-                    capa
+                <Etiqueta tom="roxo" className="absolute left-1 top-1" data-capa="">
+                    Capa
                 </Etiqueta>
             )}
             <span aria-hidden="true" className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-md bg-trilha-surface/90 text-trilha-fg2">
@@ -93,8 +104,15 @@ export function VistaDaGaleria({
     confirmando = null, maior = null, avisos = [], status = null, onEscolher = () => {}, onPedirExclusao = () => {},
     onConfirmarExclusao = () => {}, onCancelarExclusao = () => {}, onVerMaior = () => {}, onFecharMaior = () => {},
     refDoEscolher = null, refDoFecharMaior = null,
+    ordenando = false, arrastando = null, alvo = null, onMover = () => {}, onArrastar = () => {}, onAlvo = () => {},
+    onSoltar = () => {}, onFimDoArraste = () => {},
 }) {
     const { cor, fotos, onde, tamanhos } = galeria;
+    // R6: com 2 fotos ou mais, a ordem se muda (arrastar ou as setas) — nunca na leitura nem com outra ação correndo.
+    const podeMover = !leitura && fotos.length > 1;
+    const moverTravado = bloqueada || ordenando;
+    const arrasta = podeMover && !moverTravado;
+    const recebe = podeMover && arrastando != null;
     const contador = contadorDeFotos(fotos.length, FOTOS_MINIMAS);
     const cheia = fotos.length >= limite;
     const indiceDaConfirmacao = fotos.findIndex((f) => f.id === confirmando);
@@ -107,7 +125,7 @@ export function VistaDaGaleria({
             className="flex min-w-0 flex-col gap-2 rounded-xl border border-trilha-line2 bg-trilha-surface px-3 py-2.5"
             data-galeria={galeria.chave}
             data-variacao-das-fotos={galeria.variacaoId}
-            aria-busy={enviando > 0 || excluindo != null ? true : undefined}
+            aria-busy={enviando > 0 || excluindo != null || ordenando ? true : undefined}
         >
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="min-w-0 text-[12.5px] font-semibold text-trilha-fg [overflow-wrap:anywhere]">
@@ -123,9 +141,34 @@ export function VistaDaGaleria({
                 </span>
             )}
 
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-0">
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2 p-0" data-ordem-das-fotos={fotos.map((f) => f.id).join(',')}>
                 {fotos.map((foto, i) => (
-                    <li key={foto.id} className="flex min-w-0 flex-col gap-1" data-foto={foto.id}>
+                    <li
+                        key={foto.id}
+                        className={cn(
+                            'flex min-w-0 flex-col gap-1 rounded-lg',
+                            arrasta && 'cursor-grab',
+                            arrastando === foto.id && 'opacity-50',
+                            recebe && alvo === i && arrastando !== foto.id && 'outline outline-2 outline-offset-2 outline-trilha-run',
+                        )}
+                        data-foto={foto.id}
+                        draggable={arrasta ? true : undefined}
+                        onDragStart={arrasta ? (evento) => {
+                            evento.dataTransfer.effectAllowed = 'move';
+                            evento.dataTransfer.setData('text/plain', String(foto.id));
+                            onArrastar(foto.id);
+                        } : undefined}
+                        onDragOver={recebe ? (evento) => {
+                            evento.preventDefault();
+                            evento.dataTransfer.dropEffect = 'move';
+                            onAlvo(i);
+                        } : undefined}
+                        onDrop={recebe ? (evento) => {
+                            evento.preventDefault();
+                            onSoltar(i);
+                        } : undefined}
+                        onDragEnd={podeMover ? () => onFimDoArraste() : undefined}
+                    >
                         <Miniatura
                             foto={foto}
                             capa={i === 0}
@@ -134,6 +177,32 @@ export function VistaDaGaleria({
                             aberta={maior === foto.id}
                             onClick={() => (maior === foto.id ? onFecharMaior() : onVerMaior(foto.id))}
                         />
+                        {podeMover && (
+                            <span className="flex items-center justify-center gap-1" data-mover-foto={foto.id}>
+                                <button
+                                    type="button"
+                                    data-acao="mover-foto-esquerda"
+                                    disabled={moverTravado || i === 0}
+                                    aria-label={`Mover a ${nomeDaFoto(i, cor)} para a esquerda${i === 1 ? ' (ela vira a capa)' : ''}`}
+                                    title="Para a esquerda"
+                                    onClick={() => onMover(foto.id, i - 1, 'esquerda')}
+                                    className={SETA}
+                                >
+                                    <ChevronLeft size={14} aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    data-acao="mover-foto-direita"
+                                    disabled={moverTravado || i === fotos.length - 1}
+                                    aria-label={`Mover a ${nomeDaFoto(i, cor)} para a direita`}
+                                    title="Para a direita"
+                                    onClick={() => onMover(foto.id, i + 1, 'direita')}
+                                    className={SETA}
+                                >
+                                    <ChevronRight size={14} aria-hidden="true" />
+                                </button>
+                            </span>
+                        )}
                         {!leitura && (
                             <button
                                 type="button"
@@ -240,7 +309,7 @@ export function VistaDaGaleria({
                 <span className="text-[12px] text-trilha-muted">
                     {cheia
                         ? `Já há ${limite} fotos ${onde}, o máximo. Exclua alguma para enviar outra.`
-                        : `JPG, PNG ou WebP, até ${mb} MB cada; cabem até ${limite} ${onde}. A 1ª foto é a capa.`}
+                        : `JPG, PNG ou WebP, até ${mb} MB cada; cabem até ${limite} ${onde}. A 1ª foto é a capa${podeMover ? ': arraste ou use as setas para mudar a ordem' : ''}.`}
                 </span>
             )}
             {avisos.length > 0 && (
@@ -264,14 +333,23 @@ export function VistaDaGaleria({
  *
  * @param {{galeria: object, limite?: number, mb?: number, leitura?: boolean, acao?: ?object,
  *   onEnviar: (variacaoId: number, arquivos: File[]) => Promise<{ok: boolean, falha?: any, travado?: boolean, ignorada?: boolean}>,
- *   onExcluir: (variacaoId: number, imagemId: number) => Promise<{ok: boolean, falha?: any, travado?: boolean, ignorada?: boolean}>}} props
- *   `acao`: a ação imediata em curso na gaveta (desta ou de outra galeria, ou o frete).
+ *   onExcluir: (variacaoId: number, imagemId: number) => Promise<{ok: boolean, falha?: any, travado?: boolean, ignorada?: boolean}>,
+ *   onOrdenar?: (variacaoId: number, ordem: number[]) => Promise<{ok: boolean, falha?: any, travado?: boolean, ignorada?: boolean}>}} props
+ *   `acao`: a ação imediata em curso na gaveta (desta ou de outra galeria, ou o frete). `onOrdenar` (R6): a ordem de
+ *   TODAS as fotos da galeria.
  */
-export default function FotosDaCor({ galeria, limite = LIMITE_IMAGENS, mb = LIMITE_MB, leitura = false, ocupada = false, acao = null, onEnviar, onExcluir }) {
+export default function FotosDaCor({
+    galeria, limite = LIMITE_IMAGENS, mb = LIMITE_MB, leitura = false, ocupada = false, acao = null, onEnviar, onExcluir,
+    onOrdenar = async () => ({ ok: false, ignorada: true }),
+}) {
     const [avisos, setAvisos] = useState([]);
     const [status, setStatus] = useState(null);
     const [confirmando, setConfirmando] = useState(null);
     const [maior, setMaior] = useState(null);
+    // R6: a ordem pedida enquanto o pedido corre (a galeria já a mostra), a foto arrastada e o lugar onde ela cairia.
+    const [pendente, setPendente] = useState(null);
+    const [arrastando, setArrastando] = useState(null);
+    const [alvo, setAlvo] = useState(null);
     const caixa = useRef(null);
     const arquivo = useRef(null);
     const escolher = useRef(null);
@@ -279,6 +357,8 @@ export default function FotosDaCor({ galeria, limite = LIMITE_IMAGENS, mb = LIMI
     const desta = acao?.variacaoId === galeria.variacaoId;
     const enviando = desta && acao?.tipo === 'fotos' ? acao.quantas || 1 : 0;
     const excluindo = desta && acao?.tipo === 'foto' ? acao.imagemId : null;
+    const ordenando = desta && acao?.tipo === 'ordem';
+    const vista = pendente ? { ...galeria, fotos: fotosNaOrdem(galeria.fotos, pendente) } : galeria;
 
     const focar = (seletor) => {
         if (typeof requestAnimationFrame === 'undefined') return;
@@ -297,6 +377,42 @@ export default function FotosDaCor({ galeria, limite = LIMITE_IMAGENS, mb = LIMI
         const r = await onEnviar(galeria.variacaoId, arquivos);
         if (r?.ok) setStatus(textoDoEnvio(arquivos.length));
         else if (r?.falha && !r.travado) setAvisos([...antes, ...avisosDoErro(r.falha)]);
+    };
+
+    /**
+     * R6: põe a foto `id` na posição `para` (0 = capa) e grava. A galeria mostra a ordem nova já; deu errado, volta à
+     * do retrato, com o aviso. `seta` (teclado): o foco volta à mesma seta da foto, no lugar novo.
+     */
+    const mover = async (id, para, seta = null) => {
+        const antes = vista.fotos;
+        const ordem = ordemMovida(antes, id, para);
+        if (!ordem) return;
+        setStatus(null);
+        setAvisos([]);
+        setPendente(ordem);
+        const r = await onOrdenar(galeria.variacaoId, ordem);
+        setPendente(null);
+        if (r?.ok) setStatus(textoDaOrdem(antes, ordem));
+        else if (r?.falha && !r.travado) setAvisos(avisosDoErro(r.falha));
+        if (seta) setFocoDaSeta({ id, seta });
+    };
+    // O foco do teclado fica na foto que andou: a mesma seta; na ponta (ela se desliga), a outra; sem setas, a miniatura.
+    // Depois do render em que as setas voltam a valer (durante o pedido elas ficam desligadas e o foco se perderia).
+    const [focoDaSeta, setFocoDaSeta] = useState(null);
+    const setasLivres = !ordenando && pendente == null && !ocupada && acao == null;
+    useEffect(() => {
+        if (!focoDaSeta || !setasLivres) return;
+        const { id, seta } = focoDaSeta;
+        setFocoDaSeta(null);
+        const raiz = caixa.current;
+        const alvoDoFoco = raiz?.querySelector(`[data-mover-foto="${id}"] [data-acao="mover-foto-${seta}"]:not([disabled])`)
+            ?? raiz?.querySelector(`[data-mover-foto="${id}"] button:not([disabled])`)
+            ?? raiz?.querySelector(`[data-ver-maior="${id}"]`);
+        alvoDoFoco?.focus?.();
+    }, [focoDaSeta, setasLivres]);
+    const fimDoArraste = () => {
+        setArrastando(null);
+        setAlvo(null);
     };
 
     const confirmarExclusao = async () => {
@@ -319,7 +435,7 @@ export default function FotosDaCor({ galeria, limite = LIMITE_IMAGENS, mb = LIMI
     return (
         <div ref={caixa} className="min-w-0">
             <VistaDaGaleria
-                galeria={galeria}
+                galeria={vista}
                 limite={limite}
                 mb={mb}
                 leitura={leitura}
@@ -353,6 +469,21 @@ export default function FotosDaCor({ galeria, limite = LIMITE_IMAGENS, mb = LIMI
                 }}
                 refDoEscolher={escolher}
                 refDoFecharMaior={fecharMaior}
+                ordenando={ordenando || pendente != null}
+                arrastando={arrastando}
+                alvo={alvo}
+                onMover={mover}
+                onArrastar={(id) => {
+                    setStatus(null);
+                    setArrastando(id);
+                }}
+                onAlvo={(i) => setAlvo((atual) => (atual === i ? atual : i))}
+                onSoltar={(i) => {
+                    const id = arrastando;
+                    fimDoArraste();
+                    if (id != null) mover(id, i);
+                }}
+                onFimDoArraste={fimDoArraste}
             />
             {!leitura && (
                 <input
@@ -411,6 +542,7 @@ export function FotosDoProduto({ retrato, c, leitura = false }) {
                     acao={c?.acao ?? null}
                     onEnviar={c?.enviarFotos ?? semAcao}
                     onExcluir={c?.excluirFoto ?? semAcao}
+                    onOrdenar={c?.ordenarFotos ?? semAcao}
                 />
             ))}
         </fieldset>

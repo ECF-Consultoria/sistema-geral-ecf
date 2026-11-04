@@ -10,6 +10,7 @@ use App\Services\Publicador\DadosEfetivosService;
 use App\Services\Publicador\PreviaDoAnuncioService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -46,7 +47,9 @@ use Illuminate\Support\Facades\Log;
  * — não 409: o contrato (§19.5) já descreve o "não pronta", e o item segue útil para a tela (etapa e status).
  *
  * Custo: consultas FIXAS (a régua da linha, o `montar`, a Precificação uma vez a mais para o "da Precificação" e uma
- * consulta para as geradas); o ML só com cache frio (schema público e `shipping_preferences`, dentro do `montar`).
+ * consulta para as geradas); o ML só com cache frio (schema público e `shipping_preferences`, dentro do `montar`). R3
+ * (04/11/2026): a régua lida aqui fica guardada como o mapa item → anúncio da empresa ({@see imagem()}) — as fotos da
+ * galeria, pedidas logo depois, não leem a loja de novo.
  */
 class PreviaNaTrilha
 {
@@ -64,6 +67,9 @@ class PreviaNaTrilha
     public const MOTIVO_SEM_VARIACAO = 'Nenhuma variação ativa no anúncio.';
 
     public const MOTIVO_PENDENCIA = 'O anúncio ainda tem uma pendência que impede a prévia.';
+
+    /** R3: por quanto tempo o mapa item → anúncio da empresa vale para as fotos ({@see imagem()}). */
+    public const PUBS_VALE_MIN = 10;
 
     /** As etapas da trilha em que o painel `v:` mostra a prévia (D44). */
     public const ETAPAS_COM_PREVIA = ['revisao', 'lanc'];
@@ -102,8 +108,15 @@ class PreviaNaTrilha
      */
     public function montar(Company $empresa, string $chave, ?\Closure $urlDaFoto = null, ?array $item = null): array
     {
-        $item ??= TrilhaDaEmpresa::itens($empresa, comoNaTela: true)[$chave] ?? null;
+        if ($item === null) {
+            $itens = TrilhaDaEmpresa::itens($empresa, comoNaTela: true);
+            // R3: a régua já está lida — as fotos que a galeria pede logo depois acham o rascunho por aqui.
+            self::guardarPubs($empresa, $itens);
+            $item = $itens[$chave] ?? null;
+        }
         abort_if($item === null, 404);
+        // R3: a miniatura (a grade da galeria) só na porta da equipe — a do cliente tem a rota dela e não a recebe.
+        $miniaturaDaFoto = $urlDaFoto === null ? fn (int $imagem): string => self::urlDaFoto($empresa, $chave, $imagem, miniatura: true) : null;
         $urlDaFoto ??= fn (int $imagem): string => self::urlDaFoto($empresa, $chave, $imagem);
 
         $r = self::rascunho($item);
@@ -190,9 +203,11 @@ class PreviaNaTrilha
                 'promocao'        => $a['promocao'],
                 'parcelas'        => $a['parcelas'],
                 'fotos'           => array_map(fn (array $f) => [
-                    'id'     => (string) $f['id'],
-                    'url'    => $urlDaFoto((int) $f['id']),
-                    'gerada' => isset($geradas[(int) $f['id']]),
+                    'id'        => (string) $f['id'],
+                    'url'       => $urlDaFoto((int) $f['id']),
+                    // R3 (aditivo): a versão pequena para a grade; nula na porta do cliente.
+                    'miniatura' => $miniaturaDaFoto !== null ? $miniaturaDaFoto((int) $f['id']) : null,
+                    'gerada'    => isset($geradas[(int) $f['id']]),
                 ], (array) $a['fotos']),
                 'caracteristicas' => $a['caracteristicas'],
                 // O `aviso` do Publicador, quando existir, é texto de lá (cita o ML): a trilha não o repassa.
@@ -212,14 +227,52 @@ class PreviaNaTrilha
      * A foto do ENDEREÇO: só uma `pub_imagens` do rascunho que a prévia do item mostra, achado pela MESMA régua
      * ({@see TrilhaDaEmpresa::itens()} → `pub_produto_id`) — a de outro rascunho (outro item, outra loja) é 404. A régua
      * sem as ondas: o `pub_produto_id` não depende delas, e a foto não confere a etapa (a lista das fotos é da prévia).
+     *
+     * R3 (retorno do 1º teste, 04/11/2026): a régua lia a loja INTEIRA (produtos, ofertas e o `step_state` de todos os
+     * rascunhos) a cada foto, e a galeria pede várias de uma vez. Agora o item → anúncio vem do mapa que a própria prévia
+     * acabou de ler ({@see guardarPubs()}, por empresa, {@see PUBS_VALE_MIN} min): a foto custa uma leitura de cache e UMA
+     * consulta. Sem o mapa (expirou, ou a foto pedida sem a prévia), a régua roda uma vez e o guarda para as próximas. O
+     * mapa é do servidor e da empresa do endereço, montado pela régua de sempre: a guarda é a mesma.
      */
     public function imagem(Company $empresa, string $chave, int $imagem): PubImagem
     {
-        $item = TrilhaDaEmpresa::itens($empresa)[$chave] ?? null;
-        $r = $item !== null ? self::rascunho($item) : null;
-        abort_if($r === null, 404);
+        $pub = self::pubDoItem($empresa, $chave);
+        abort_if($pub === null, 404);
 
-        return PubImagem::query()->where('rascunho_id', $r->id)->whereKey($imagem)->firstOrFail();
+        return PubImagem::query()
+            ->whereIn('rascunho_id', PubRascunho::query()->select('id')->where('produto_id', $pub))
+            ->whereKey($imagem)
+            ->firstOrFail();
+    }
+
+    /** O anúncio (pub_produto) do item pela régua, do mapa da empresa (nulo: o item não existe ou não tem anúncio). */
+    private static function pubDoItem(Company $empresa, string $chave): ?int
+    {
+        $mapa = Cache::get(self::chaveDosPubs($empresa));
+        if (! is_array($mapa) || ! array_key_exists($chave, $mapa)) {
+            $mapa = self::guardarPubs($empresa, TrilhaDaEmpresa::itens($empresa));
+        }
+
+        return isset($mapa[$chave]) ? (int) $mapa[$chave] : null;
+    }
+
+    /**
+     * Guarda o mapa item → `pub_produto_id` da empresa (o que a régua acabou de ler).
+     *
+     * @param  array<string, array{pub_produto_id: ?int}>  $itens
+     * @return array<string, ?int>
+     */
+    private static function guardarPubs(Company $empresa, array $itens): array
+    {
+        $mapa = array_map(fn (array $i) => isset($i['pub_produto_id']) ? (int) $i['pub_produto_id'] : null, $itens);
+        Cache::put(self::chaveDosPubs($empresa), $mapa, now()->addMinutes(self::PUBS_VALE_MIN));
+
+        return $mapa;
+    }
+
+    public static function chaveDosPubs(Company $empresa): string
+    {
+        return 'trilha:previa:pubs:'.(int) $empresa->id;
     }
 
     /**
@@ -247,10 +300,10 @@ class PreviaNaTrilha
         return $saida;
     }
 
-    /** O endereço da foto pela trilha, relativo (como as fotos do retrato do cadastro). */
-    public static function urlDaFoto(Company $empresa, string $chave, int $imagem): string
+    /** O endereço da foto pela trilha, relativo (como as fotos do retrato do cadastro); `miniatura` = a versão pequena (R3). */
+    public static function urlDaFoto(Company $empresa, string $chave, int $imagem, bool $miniatura = false): string
     {
-        return route('trilha.previa.foto', ['company' => $empresa->id, 'item' => $chave, 'imagem' => $imagem], false);
+        return route('trilha.previa.foto', ['company' => $empresa->id, 'item' => $chave, 'imagem' => $imagem, ...($miniatura ? ['miniatura' => 1] : [])], false);
     }
 
     /**

@@ -28,6 +28,7 @@ use Illuminate\Http\Client\Factory as FabricaHttp;
 use Illuminate\Http\Client\Request as PedidoHttp;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -168,8 +169,10 @@ class PreviaNaTrilhaTest extends TestCase
         $this->assertEqualsCanonicalizing(array_map(fn (PubImagem $i) => (string) $i->id, $this->fotos), $porId->keys()->all());
         foreach ($this->fotos as $tipo => $img) {
             $foto = $porId[(string) $img->id];
-            $this->assertSame(['id', 'url', 'gerada'], array_keys($foto));
+            // R3 (04/11/2026, aditivo): a `miniatura` da grade, o mesmo endereço com `?miniatura=1`.
+            $this->assertSame(['id', 'url', 'miniatura', 'gerada'], array_keys($foto));
             $this->assertSame("/trilha/{$this->empresa->id}/ofertas/{$chave}/fotos/{$img->id}", $foto['url']);
+            $this->assertSame("/trilha/{$this->empresa->id}/ofertas/{$chave}/fotos/{$img->id}?miniatura=1", $foto['miniatura']);
             $this->assertSame($tipo !== 'cliente', $foto['gerada'], "a foto {$tipo}");
         }
         // E a URL abre a foto.
@@ -419,6 +422,8 @@ class PreviaNaTrilhaTest extends TestCase
         // …e pela loja de fora, a foto desta.
         $this->actingAs($this->dev)->get("/trilha/{$outra->id}/ofertas/s-{$deFora['produto']->id}/fotos/{$this->fotos['cliente']->id}")->assertNotFound();
         $this->actingAs($this->dev)->get("/trilha/{$outra->id}/ofertas/s-{$deFora['produto']->id}/fotos/{$alheia->id}")->assertOk();
+        // R3: o mapa item → anúncio (cache) é POR EMPRESA — o item da loja de fora, já no mapa dela, pelo endereço desta: 404.
+        $this->actingAs($this->dev)->get("/trilha/{$this->empresa->id}/ofertas/s-{$deFora['produto']->id}/fotos/{$alheia->id}")->assertNotFound();
 
         // A foto antiga, só com o endereço público (veio do Anunciar antigo): redireciona; sem nada: 404.
         $r = $this->rascunhoDo($this->p);
@@ -435,6 +440,94 @@ class PreviaNaTrilhaTest extends TestCase
         $this->actingAs($this->dev)->get($this->urlDaFoto($s, $estranha))->assertNotFound();
         $perdida = $r->imagens()->create(['caminho' => 'publicador/sumiu.jpg', 'sha256' => str_repeat('b', 64), 'mime' => 'image/jpeg', 'bytes' => 10, 'upload_status' => PubImagem::PENDENTE]);
         $this->actingAs($this->dev)->get($this->urlDaFoto($s, $perdida))->assertNotFound();
+    }
+
+    /**
+     * R3 (retorno do 1º teste, 04/11/2026): a foto não lê mais a loja inteira. A prévia guarda o mapa item → anúncio que
+     * ela acabou de ler; cada foto pedida depois custa a guarda, uma leitura de cache e UMA consulta (a da foto, presa ao
+     * rascunho do anúncio do item). Sem o mapa (expirou), a 1ª foto paga a régua uma vez e as seguintes, não.
+     */
+    public function test_a_foto_acha_o_rascunho_pelo_mapa_da_previa_sem_ler_a_loja(): void
+    {
+        $s = "s-{$this->p->id}";
+        $url = $this->urlDaFoto($s, $this->fotos['cliente']);
+
+        // Sem o mapa: a régua de antes (produtos, ofertas, rascunhos com o `step_state`) — e ela fica guardada.
+        Cache::forget(PreviaNaTrilha::chaveDosPubs($this->empresa));
+        [$fria, $sqlFria] = $this->consultasComSql(fn () => $this->actingAs($this->dev)->get($url)->assertOk());
+        $this->assertTrue($this->leALoja($sqlFria), 'sem o mapa, a 1ª foto acha o item pela régua');
+
+        // Com o mapa (a 2ª foto, ou qualquer foto depois de abrir a prévia): nada da loja.
+        [$quente, $sqlQuente] = $this->consultasComSql(fn () => $this->actingAs($this->dev)->get($this->urlDaFoto($s, $this->fotos['acervo']))->assertOk());
+        $this->assertFalse($this->leALoja($sqlQuente), implode("\n", $sqlQuente));
+        Cache::forget(PreviaNaTrilha::chaveDosPubs($this->empresa));
+        $this->previa($s)->assertOk();
+        [$depoisDaPrevia, $sqlDepois] = $this->consultasComSql(fn () => $this->actingAs($this->dev)->get($url)->assertOk());
+        $this->assertFalse($this->leALoja($sqlDepois), 'a prévia deixou o mapa pronto para a galeria');
+        $this->assertSame($quente, $depoisDaPrevia);
+        // Só a consulta da foto além da guarda: a régua inteira saiu (o número de antes da mudança é a `$fria`).
+        $this->assertSame(1, collect($sqlQuente)->filter(fn (string $q) => str_contains($q, '"pub_imagens"'))->count());
+        // Medido em 04/11/2026 (SQLite em memória): 15 consultas por foto lendo a loja inteira → 6 (5 da guarda + a foto).
+        $this->assertLessThan($fria, $quente);
+        $this->assertSame(6, $quente, implode("\n", $sqlQuente));
+
+        // E não cresce com o catálogo: mais produtos com rascunho e kits na loja, o mesmo número.
+        foreach (['VA', 'VB'] as $codigo) {
+            $mais = $this->produtoCompleto($this->empresa, "Vaso {$codigo}", $codigo, ['Azul', 'Verde']);
+            $this->rascunhoDoPub($this->grupoNoPublicador($this->empresa, $mais), PubRascunho::DRAFT, ['ia_preparo' => ['etapas' => ['titulo' => ['status' => 'ok']]]]);
+        }
+        $this->previa($s)->assertOk();
+        $this->assertSame($quente, $this->consultasComSql(fn () => $this->actingAs($this->dev)->get($url)->assertOk())[0]);
+    }
+
+    /**
+     * R3: o navegador guarda a foto (`private`, com ETag e Last-Modified) e a revalida sem baixar de novo — o 304 sai sem
+     * abrir o disco, mas só DEPOIS da guarda (o ETag certo pelo item errado continua 404). A miniatura (`?miniatura=1`,
+     * a grade da galeria) é a WebP do acervo, menor, com o seu ETag e 7 dias de cache; a foto sem ativo do acervo sai inteira.
+     */
+    public function test_a_foto_tem_cache_do_navegador_etag_e_miniatura(): void
+    {
+        $s = "s-{$this->p->id}";
+        $url = $this->urlDaFoto($s, $this->fotos['acervo']);
+
+        $grande = $this->actingAs($this->dev)->get($url)->assertOk();
+        $etag = (string) $grande->headers->get('ETag');
+        $this->assertMatchesRegularExpression('/^"pi-'.$this->fotos['acervo']->id.'-[0-9a-f]{16}"$/', $etag);
+        $this->assertSame(['max-age=3600', 'private'], $this->diretivas($grande));
+        $this->assertNotNull($grande->headers->get('Last-Modified'));
+        $this->assertSame('image/jpeg', $grande->headers->get('Content-Type'));
+
+        // A revalidação: 304, sem corpo e sem tocar no disco (o arquivo some e o 304 continua).
+        $arquivo = $this->fotos['acervo']->caminho;
+        $conteudo = ArquivosDeImagem::ler($arquivo);
+        ArquivosDeImagem::apagar($arquivo);
+        $naoMudou = $this->actingAs($this->dev)->get($url, ['If-None-Match' => $etag]);
+        $this->assertSame(304, $naoMudou->getStatusCode());
+        $this->assertSame('', (string) $naoMudou->getContent());
+        $this->assertSame($etag, $naoMudou->headers->get('ETag'));
+        ArquivosDeImagem::gravar($arquivo, (string) $conteudo);
+        // O ETag certo não abre a guarda: a mesma foto pelo item do Kit é 404, não 304.
+        $this->assertSame(404, $this->actingAs($this->dev)->get($this->urlDaFoto("o-{$this->kit->id}", $this->fotos['acervo']), ['If-None-Match' => $etag])->getStatusCode());
+        // ETag de outra foto: a foto inteira de novo.
+        $this->actingAs($this->dev)->get($url, ['If-None-Match' => '"pi-1-0000000000000000"'])->assertOk();
+
+        // A miniatura: WebP do acervo, menor que a original, outro ETag, 7 dias.
+        $miniatura = $this->actingAs($this->dev)->get($url.'?miniatura=1')->assertOk();
+        $this->assertSame('image/webp', $miniatura->headers->get('Content-Type'));
+        $this->assertSame(['max-age=604800', 'private'], $this->diretivas($miniatura));
+        $this->assertSame(substr($etag, 0, -1).'-m"', $miniatura->headers->get('ETag'));
+        $this->assertLessThan(strlen((string) $conteudo), strlen($miniatura->streamedContent()));
+        $this->assertSame(304, $this->actingAs($this->dev)->get($url.'?miniatura=1', ['If-None-Match' => $miniatura->headers->get('ETag')])->getStatusCode());
+
+        // Sem ativo do acervo (ou com outro arquivo): a foto inteira, mesmo pedindo a miniatura.
+        $semAtivo = $this->foto($this->rascunhoDo($this->p), 'sem-ativo.jpg', 700);
+        $semAtivo->update(['acervo_imagem_id' => null]);
+        $this->assertSame('image/jpeg', $this->actingAs($this->dev)->get($this->urlDaFoto($s, $semAtivo).'?miniatura=1')->assertOk()->headers->get('Content-Type'));
+        // A foto antiga, só no ML: a miniatura é a variação pequena do CDN de lá.
+        $antiga = $this->rascunhoDo($this->p)->imagens()->create(['caminho' => null, 'sha256' => str_repeat('a', 64), 'mime' => 'image/jpeg', 'bytes' => 10,
+            'upload_status' => PubImagem::ENVIADA, 'ml_picture_id' => 'PIC-1', 'ml_url' => 'https://http2.mlstatic.com/D_1-O.jpg']);
+        $this->actingAs($this->dev)->get($this->urlDaFoto($s, $antiga).'?miniatura=1')->assertRedirect('https://http2.mlstatic.com/D_1-I.jpg');
+        $this->actingAs($this->dev)->get($this->urlDaFoto($s, $antiga))->assertRedirect('https://http2.mlstatic.com/D_1-O.jpg');
     }
 
     // ═══ O endereço na página ═════════════════════════════════════════════════
@@ -591,6 +684,43 @@ class PreviaNaTrilhaTest extends TestCase
         DB::disableQueryLog();
 
         return $total;
+    }
+
+    /**
+     * Quantas consultas o pedido faz, e o SQL de cada uma (R3).
+     *
+     * @return array{0: int, 1: list<string>}
+     */
+    private function consultasComSql(callable $pedido): array
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $pedido();
+        $sql = array_map(fn (array $q) => (string) $q['query'], DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return [count($sql), $sql];
+    }
+
+    /** A régua da loja inteira passou por aqui: o catálogo (produtos, ofertas) ou o `step_state` dos rascunhos. */
+    private function leALoja(array $sql): bool
+    {
+        foreach ($sql as $q) {
+            if (str_contains($q, '"estrutura_produtos"') || str_contains($q, '"estrutura_ofertas"') || str_contains($q, '"step_state"')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** As diretivas do Cache-Control, em ordem (o Symfony pode reordená-las). @return list<string> */
+    private function diretivas(TestResponse $resposta): array
+    {
+        $diretivas = array_map('trim', explode(',', (string) $resposta->headers->get('Cache-Control')));
+        sort($diretivas);
+
+        return $diretivas;
     }
 
     /** O que a prévia poderia mudar no banco: cada linha das tabelas do Publicador e da trilha, e o histórico. */

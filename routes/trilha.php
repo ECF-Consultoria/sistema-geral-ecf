@@ -82,6 +82,9 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:30,1,trilha.cadastro.fotos')->name('cadastro.fotos');
         Route::delete('/{company}/produtos/{produto}/variacoes/{variacao}/fotos/{imagem}', [FotosDaTrilhaController::class, 'excluir'])
             ->middleware('throttle:60,1,trilha.cadastro.fotos.excluir')->name('cadastro.fotos.excluir');
+        // A ordem das fotos da cor (R6, 04/11/2026): `{ordem: [ids]}` com TODAS as fotos da variação; a 1ª é a capa.
+        Route::put('/{company}/produtos/{produto}/variacoes/{variacao}/fotos/ordem', [FotosDaTrilhaController::class, 'ordenar'])
+            ->middleware('throttle:60,1,trilha.cadastro.fotos.ordem')->name('cadastro.fotos.ordem');
         Route::post('/{company}/produtos/{produto}/frete', [CadastroDaTrilhaController::class, 'frete'])
             ->middleware('throttle:20,1,trilha.cadastro.frete')->name('cadastro.frete');
         // Excluir (F4): a cor ou o tamanho (a variação presa ao produto do caminho; a última só sai pelo "Excluir
@@ -153,6 +156,11 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
         Route::post('/{company}/ofertas/{item}/cliente', [AprovacaoDaTrilhaController::class, 'mandar'])
             ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
             ->middleware('throttle:10,1,trilha.revisao.cliente')->name('cliente');
+        // R4 (retorno do 1º teste, 04/11/2026): o [Tentar de novo] da "Preparação automática" — o próprio preparo refaz
+        // só as etapas do texto que pararam, na fila da IA. 409 sem etapa parada ou já pedido. Contador próprio.
+        Route::post('/{company}/ofertas/{item}/preparo', [\App\Http\Controllers\Trilha\PreparoDaTrilhaController::class, 'tentarDeNovo'])
+            ->where('item', 's-[0-9]{1,18}|c-[0-9]{1,18}-[0-9]{1,3}|o-[0-9]{1,18}')
+            ->middleware('throttle:10,1,trilha.preparo')->name('preparo');
 
         // Mapeamento: o painel "Mapear" do produto (opções, prévia ao vivo e o "Concluir").
         Route::get('/{company}/produtos/{produto}/mapeamento', [MapeamentoDaTrilhaController::class, 'opcoes'])
@@ -189,6 +197,10 @@ Route::middleware(['auth', 'verified', 'modulo:trilha.produtos'])
             ->middleware('throttle:30,1,trilha.ondas')->name('ondas.excluir');
         Route::put('/{company}/planejamento', [OndasDaTrilhaController::class, 'planejar'])
             ->middleware('throttle:30,1,trilha.ondas')->name('planejamento');
+        // R12 (04/11/2026): pôr VÁRIOS itens numa onda de uma vez — as regras de pôr um, a resposta por item. A tela
+        // monta o endereço como `{escrita.planejamento}/lote`. Contador próprio (até 100 itens por pedido).
+        Route::put('/{company}/planejamento/lote', [OndasDaTrilhaController::class, 'planejarEmLote'])
+            ->middleware('throttle:10,1,trilha.ondas.lote')->name('planejamento.lote');
     });
 
 // ─── Porta do cliente ───────────────────────────────────────────────────

@@ -29,12 +29,18 @@ use Illuminate\Validation\ValidationException;
  *   noutra é recusado com a lista dos combos — mexer sozinho mudaria uma data que alguém escolheu. A conferência
  *   olha só os pares que o pedido toca: um combo de OUTRO produto nunca trava o planejamento deste.
  *
+ * - Em LOTE (R12, 04/11/2026, {@see planejarEmLote()}): as mesmas regras, item a item ({@see porNoPlano()}); o que não
+ *   passa é recusado com o motivo e o resto entra.
+ *
  * Tudo sob a trava da empresa (`Company::lockForUpdate`, a mesma do aceite e do "Montar kit" do Portal), com o
  * rastro no `RegistroEstrutura`. A soltura (quando a onda já começou) roda DEPOIS do commit.
  */
 class OndasDaTrilha
 {
     public const DIAS_A_FRENTE = 365;
+
+    /** Quantos itens o "Pôr na onda" em lote aceita por pedido (R12, 04/11/2026). */
+    public const MAXIMO_DO_LOTE = 100;
 
     public function __construct(private SoltarOndas $soltura) {}
 
@@ -172,32 +178,13 @@ class OndasDaTrilha
 
             // O plano: chave → onda de destino (null = sem onda). Começa com o que já está gravado.
             $plano = self::planoAtual($itens, $ondas);
-            $paraOnde = $destino !== null ? self::resumo($destino) : null;
 
             $mudados = [];
             $avisos = [];
             foreach (array_values(array_unique($chaves)) as $chave) {
-                // Tirar vale também para quem já andou (alguém preparou ou publicou à mão antes da data): ele só sai.
-                $item = self::itemPlanejavel($chave, $itens, tirando: $destino === null);
-                $atual = $ondas->ondaDoItem($chave);
-                if ($atual !== null && $atual->comecou() && $atual->id !== $destino?->id) {
-                    throw ValidationException::withMessages(['itens' => "A {$atual->nome} já começou: \"{$item['nome']}\" não muda mais de onda."]);
-                }
-                if ($atual?->id === $destino?->id) {
-                    continue;
-                }
-                $plano[$chave] = $paraOnde;
-                $mudados[] = $chave;
-
-                // Combo sem a Simples planejada: a Simples entra junto, na mesma onda.
-                if ($destino !== null && str_starts_with($chave, 'c-')) {
-                    $simples = 's-'.$item['produto_id'];
-                    if (isset($itens[$simples]) && ! $itens[$simples]['andou'] && $plano[$simples] === null) {
-                        $plano[$simples] = $paraOnde;
-                        $mudados[] = $simples;
-                        $avisos[] = "A simples de {$itens[$simples]['nome']} entrou junto, na {$destino->nome}: o combo nasce dela.";
-                    }
-                }
+                $passo = self::porNoPlano($chave, $itens, $ondas, $destino, $plano);
+                $mudados = [...$mudados, ...$passo['mudados']];
+                $avisos = [...$avisos, ...$passo['avisos']];
             }
 
             $mudados = array_values(array_unique($mudados));
@@ -206,29 +193,7 @@ class OndasDaTrilha
                 return ['mudados' => [], 'avisos' => $avisos, 'onda' => $destino, 'sem_onda' => false];
             }
 
-            $de = [];
-            foreach ($mudados as $chave) {
-                $de[$chave] = $ondas->ondaDoItem($chave)?->id;
-                $linha = $ondas->linhaDoItem($chave);
-                if ($plano[$chave] === null) {
-                    $linha?->delete();
-
-                    continue;
-                }
-                // Entrou (ou mudou de) onda agora: o pedido e a repescagem recomeçam da onda nova.
-                $campos = ['onda_id' => $plano[$chave]['id'], 'na_onda_desde' => now(), 'pedido_em' => null, 'repescado_em' => null, 'incluido_por' => $quem->id];
-                if ($linha !== null) {
-                    $linha->update($campos);
-                } else {
-                    TrilhaOndaItem::create([...TrilhaOndaItem::colunasDaChave($chave), 'company_id' => $empresa->id, ...$campos]);
-                }
-            }
-
-            RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, $destino, 'trilha_itens_na_onda',
-                $destino !== null
-                    ? count($mudados).' oferta(s) na '.$destino->nome.' (começa em '.self::diaCurto($destino->dia()).')'
-                    : count($mudados).' oferta(s) tiradas da onda',
-                ['via' => 'trilha', 'onda_id' => $destino?->id, 'itens' => $mudados, 'de' => $de]);
+            self::gravarPlano($empresa, $quem, $mudados, $plano, $ondas, $destino);
 
             // Tirar: "volta para Sem onda" só é verdade para quem ainda espera onda (tem produto e não andou); a que
             // andou e a sem produto saem com o status delas (revisão de 02/11/2026).
@@ -243,6 +208,184 @@ class OndasDaTrilha
         }
 
         return $resultado;
+    }
+
+    /**
+     * R12 do 1º teste do usuário (04/11/2026): pôr VÁRIOS itens numa onda de uma vez, com as MESMAS regras de pôr um
+     * ({@see porNoPlano()} e {@see conferirCombos()}, as do {@see planejar()}), mas com a resposta POR ITEM: o que não
+     * passa é recusado com o motivo e o resto entra — ao contrário do `planejar`, em que um item recusado barra o pedido.
+     *
+     * Nada parcial DENTRO de um item: o Combo e a Simples que ele puxa entram juntos ou nenhum dos dois (o plano volta ao
+     * que era antes do item). As Simples vêm primeiro, depois os Combos e o resto: o Combo marcado junto com a Simples
+     * dele não é recusado só porque chegou antes dela. Tudo numa transação, sob a trava da empresa, com UM registro no
+     * histórico e UMA soltura (onda que já começou) depois do commit.
+     *
+     * @param  list<string>  $chaves  `s-12`, `c-12-2`, `o-55`
+     * @return array{onda: TrilhaOnda, resultados: list<array{item: string, nome: ?string, situacao: 'entrou'|'ja_estava'|'recusado', motivo: ?string, junto: list<string>}>, mudados: list<string>, avisos: list<string>}
+     */
+    public function planejarEmLote(Company $empresa, User $quem, array $chaves, int $ondaId): array
+    {
+        $resultado = DB::transaction(function () use ($empresa, $quem, $chaves, $ondaId) {
+            Company::query()->whereKey($empresa->id)->lockForUpdate()->first();
+            $itens = TrilhaDaEmpresa::itens($empresa);
+            self::limparCombosOrfaos($empresa, $itens);
+            $ondas = OndasDaEmpresa::ler((int) $empresa->id);
+            $destino = $ondas->onda($ondaId) ?? throw ValidationException::withMessages(['onda_id' => 'Essa onda não existe nesta loja.']);
+            $plano = self::planoAtual($itens, $ondas);
+
+            $pedidas = array_values(array_unique($chaves));
+            $porItem = [];
+            $mudados = [];
+            $avisos = [];
+            foreach (self::naOrdemDoLote($pedidas) as $chave) {
+                $antes = $plano;
+                try {
+                    $passo = self::porNoPlano($chave, $itens, $ondas, $destino, $plano);
+                    self::conferirCombos($plano, $itens, $passo['mudados']);
+                } catch (ValidationException $e) {
+                    // O item inteiro fica de fora — inclusive a Simples que ele puxaria.
+                    $plano = $antes;
+                    $porItem[$chave] = ['situacao' => 'recusado', 'motivo' => self::primeiraMensagem($e), 'junto' => []];
+
+                    continue;
+                }
+                $porItem[$chave] = $passo['mudados'] === []
+                    ? ['situacao' => 'ja_estava', 'motivo' => null, 'junto' => []]
+                    : ['situacao' => 'entrou', 'motivo' => null, 'junto' => array_values(array_diff($passo['mudados'], [$chave]))];
+                $mudados = [...$mudados, ...$passo['mudados']];
+                $avisos = [...$avisos, ...$passo['avisos']];
+            }
+            $mudados = array_values(array_unique($mudados));
+
+            if ($mudados !== []) {
+                $recusados = array_filter($porItem, fn (array $r) => $r['situacao'] === 'recusado');
+                self::gravarPlano($empresa, $quem, $mudados, $plano, $ondas, $destino,
+                    ['lote' => true, 'recusados' => array_map(fn (array $r) => $r['motivo'], $recusados)]);
+            }
+
+            // Na ordem do pedido (a da tela), com o nome do item: a resposta se lê sem a trilha recarregada.
+            $resultados = array_map(fn (string $chave) => [
+                'item' => $chave,
+                'nome' => isset($itens[$chave]) ? (string) $itens[$chave]['nome'] : null,
+                ...$porItem[$chave],
+            ], $pedidas);
+
+            return ['onda' => $destino, 'resultados' => $resultados, 'mudados' => $mudados, 'avisos' => array_values(array_unique($avisos))];
+        });
+
+        if ($resultado['mudados'] !== [] && $resultado['onda']->comecou()) {
+            $this->soltarDepoisDoCommit($empresa);
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * UM item no plano, com as regras de pôr/mover/tirar — o passo que o {@see planejar()} e o {@see planejarEmLote()}
+     * repetem: o item existe, tem produto e não andou (tirar vale também para quem andou); a onda em que ele está não
+     * começou (ou é a mesma); o Combo sem a Simples planejada a puxa para a mesma onda. Mexe só no `$plano` (nada é
+     * gravado aqui); a regra Combo × Simples é conferida por quem chama ({@see conferirCombos()}), com o que mudou.
+     * Lança `ValidationException` (`itens`) quando o item não pode.
+     *
+     * @param  array<string, array>  $itens  {@see TrilhaDaEmpresa::itens()}
+     * @param  array<string, ?array{id: int, nome: string, dia: string}>  $plano
+     * @return array{mudados: list<string>, avisos: list<string>}  vazio = o item já estava ali
+     */
+    private static function porNoPlano(string $chave, array $itens, OndasDaEmpresa $ondas, ?TrilhaOnda $destino, array &$plano): array
+    {
+        // Tirar vale também para quem já andou (alguém preparou ou publicou à mão antes da data): ele só sai.
+        $item = self::itemPlanejavel($chave, $itens, tirando: $destino === null);
+        $atual = $ondas->ondaDoItem($chave);
+        if ($atual !== null && $atual->comecou() && $atual->id !== $destino?->id) {
+            throw ValidationException::withMessages(['itens' => "A {$atual->nome} já começou: \"{$item['nome']}\" não muda mais de onda."]);
+        }
+        if ($atual?->id === $destino?->id) {
+            return ['mudados' => [], 'avisos' => []];
+        }
+        $paraOnde = $destino !== null ? self::resumo($destino) : null;
+        $plano[$chave] = $paraOnde;
+        $mudados = [$chave];
+        $avisos = [];
+
+        // Combo sem a Simples planejada: a Simples entra junto, na mesma onda.
+        if ($destino !== null && str_starts_with($chave, 'c-')) {
+            $simples = 's-'.$item['produto_id'];
+            if (isset($itens[$simples]) && ! $itens[$simples]['andou'] && $plano[$simples] === null) {
+                $plano[$simples] = $paraOnde;
+                $mudados[] = $simples;
+                $avisos[] = "A simples de {$itens[$simples]['nome']} entrou junto, na {$destino->nome}: o combo nasce dela.";
+            }
+        }
+
+        return ['mudados' => $mudados, 'avisos' => $avisos];
+    }
+
+    /**
+     * Grava o que mudou no plano (entrar, mudar e sair de onda) e o rastro no histórico — UM registro por pedido.
+     *
+     * @param  list<string>  $mudados
+     * @param  array<string, ?array{id: int, nome: string, dia: string}>  $plano
+     * @param  array<string, mixed>  $extras  o que o histórico leva a mais (o lote: `lote`, `recusados`)
+     */
+    private static function gravarPlano(Company $empresa, User $quem, array $mudados, array $plano, OndasDaEmpresa $ondas, ?TrilhaOnda $destino, array $extras = []): void
+    {
+        $de = [];
+        foreach ($mudados as $chave) {
+            $de[$chave] = $ondas->ondaDoItem($chave)?->id;
+            $linha = $ondas->linhaDoItem($chave);
+            if ($plano[$chave] === null) {
+                $linha?->delete();
+
+                continue;
+            }
+            // Entrou (ou mudou de) onda agora: o pedido e a repescagem recomeçam da onda nova.
+            $campos = ['onda_id' => $plano[$chave]['id'], 'na_onda_desde' => now(), 'pedido_em' => null, 'repescado_em' => null, 'incluido_por' => $quem->id];
+            if ($linha !== null) {
+                $linha->update($campos);
+            } else {
+                TrilhaOndaItem::create([...TrilhaOndaItem::colunasDaChave($chave), 'company_id' => $empresa->id, ...$campos]);
+            }
+        }
+
+        RegistroEstrutura::registrar(AtorDoPortal::daEquipe($quem), $empresa, $destino, 'trilha_itens_na_onda',
+            $destino !== null
+                ? count($mudados).' oferta(s) na '.$destino->nome.' (começa em '.self::diaCurto($destino->dia()).')'
+                : count($mudados).' oferta(s) tiradas da onda',
+            ['via' => 'trilha', 'onda_id' => $destino?->id, 'itens' => $mudados, 'de' => $de, ...$extras]);
+    }
+
+    /**
+     * A ordem em que o lote confere os itens: as Simples, os Combos, o resto — cada grupo na ordem do pedido. Assim o
+     * Combo marcado com a Simples dele a encontra já no plano novo (e não é recusado por "a simples começaria depois").
+     *
+     * @param  list<string>  $chaves
+     * @return list<string>
+     */
+    private static function naOrdemDoLote(array $chaves): array
+    {
+        $grupo = fn (string $c) => match (true) {
+            str_starts_with($c, 's-') => 0,
+            str_starts_with($c, 'c-') => 1,
+            default                   => 2,
+        };
+        $posicao = array_flip($chaves);
+        usort($chaves, fn (string $a, string $b) => [$grupo($a), $posicao[$a]] <=> [$grupo($b), $posicao[$b]]);
+
+        return $chaves;
+    }
+
+    /** A 1ª mensagem da recusa — o texto da regra, em português, como o `planejar` devolve no 422. */
+    private static function primeiraMensagem(ValidationException $e): string
+    {
+        foreach ($e->errors() as $mensagens) {
+            foreach ((array) $mensagens as $m) {
+                if (is_string($m) && trim($m) !== '') {
+                    return $m;
+                }
+            }
+        }
+
+        return 'Esta oferta não pode entrar nesta onda.';
     }
 
     /**

@@ -322,7 +322,8 @@ class ModeloCompletoTest extends TestCase
         $nsa = 'Se o produto não tem isto, escreva: Não se aplica.';
         $this->assertSame("Só o número, em cm. {$nsa}", $this->ajuda($aba, 'Altura do assento (cm)'));
         $this->assertSame("Escolha da lista ou escreva o seu. {$nsa}", $this->ajuda($aba, 'Material do estofamento'));
-        $this->assertSame("Sim ou Não. {$nsa}", $this->ajuda($aba, 'Com gaveta'));
+        // R8 (04/11/2026): Sim/Não não tem "Não se aplica" — o "Não" já responde.
+        $this->assertSame('Sim ou Não.', $this->ajuda($aba, 'Com gaveta'));
         $this->assertSame("Produto montado, fora da caixa. Só o número, em cm. {$nsa}", $this->ajuda($aba, 'Largura (cm)'));
         $this->assertStringNotContainsString('Não se aplica', $this->ajuda($aba, 'Material'), 'o obrigatório não aceita');
         $ajudas = implode(' | ', array_map(fn ($c) => (string) $c, $aba->rangeToArray('A'.ModeloCompleto::LINHA_DA_AJUDA.':'.$aba->getHighestColumn().ModeloCompleto::LINHA_DA_AJUDA)[0]));
@@ -352,7 +353,7 @@ class ModeloCompletoTest extends TestCase
         $this->assertStringContainsString('Metal', (string) $guia['Material'][5]);
         $this->assertSame(['Todas', 'Produto embalado · Volume 1', 'Volume 1: peso (kg)'], array_slice($guia['Volume 1: peso (kg)'], 0, 3));
         $this->assertSame(['Cadeiras', 'Medidas do produto fora da caixa', 'Largura (cm)'], array_slice($guia['Largura (cm)'], 0, 3));
-        $this->assertSame('Sim · Não · Não se aplica', $guia['Com gaveta'][5]);
+        $this->assertSame('Sim · Não', $guia['Com gaveta'][5], 'R8: Sim/Não sem "Não se aplica"');
         $this->assertStringEndsWith('Não se aplica', (string) $guia['Material do estofamento'][5]);
 
         // As instruções também não falam de obrigatório nem de opcional.

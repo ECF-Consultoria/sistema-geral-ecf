@@ -379,6 +379,7 @@ export function CartaoDaVariacao({ cartao, retrato, eixos, c, leitura, errosDe, 
                 acao={c.acao ?? null}
                 onEnviar={c.enviarFotos ?? semAcao}
                 onExcluir={c.excluirFoto ?? semAcao}
+                onOrdenar={c.ordenarFotos ?? semAcao}
             />
 
             {confirmando && (

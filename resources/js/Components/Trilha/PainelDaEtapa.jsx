@@ -3,6 +3,7 @@ import { CHAVE_NOVO_PRODUTO, etapaDaTrilha, indiceDaEtapa, itensDaEtapa, todosNa
 import { cn } from '@/lib/utils';
 import CartoesDasOndas from '@/Components/Trilha/CartoesDasOndas';
 import LinhaDoItem from '@/Components/Trilha/LinhaDoItem';
+import PlanejamentoEmLote from '@/Components/Trilha/PlanejamentoEmLote';
 import { Botao, LinkDeAcao, Sobrelinha } from '@/Components/Trilha/Pecas';
 import { plural } from '@/Components/Trilha/formatos';
 
@@ -14,8 +15,8 @@ import { plural } from '@/Components/Trilha/formatos';
 //
 // Na 1ª entrega era SÓ LEITURA: os botões do protótipo viraram links para as
 // telas que já fazem aquilo. Cada link só aparece para quem o recebeu nas props
-// (a porta do cliente não recebe o do Publicador nem o "Abrir o Portal" da
-// equipe; a da equipe não recebe os do Portal do cliente).
+// (a porta do cliente não recebe o "Abrir o Portal" da equipe; a da equipe não
+// recebe os do Portal do cliente).
 //
 // Com a trilha de trabalho (`trabalho`, 2ª entrega): as etapas 3 e 4 mostram os
 // cartões das ondas no lugar da nota "ondas ainda não ligadas" (o "+ Nova onda" só no
@@ -27,11 +28,12 @@ import { plural } from '@/Components/Trilha/formatos';
 // (a gaveta `e:novo`) no "Ver tudo" e na Lista, como a ação principal; os links
 // para as outras telas viram secundários ao lado dele.
 
+// R10 (retorno do 1º teste, 04/11/2026): nenhum painel leva ao editor de fora, nem para o admin — "a trilha é o
+// publicador". As etapas 4 a 6 ficam sem link (o trabalho delas é feito nas gavetas da trilha).
 const LINKS_DO_PAINEL = {
     geral: [
         ['produtos', 'Abrir o cadastro de produtos'],
         ['portal_abrir', 'Abrir o Portal da empresa'],
-        ['publicador', 'Abrir o Publicador'],
     ],
     lista: [
         ['produtos', 'Abrir o cadastro de produtos'],
@@ -42,9 +44,6 @@ const LINKS_DO_PAINEL = {
         ['portal_abrir', 'Abrir o Portal da empresa'],
     ],
     plano: [['portal_abrir', 'Abrir o Portal da empresa']],
-    robo: [['publicador', 'Abrir o Publicador']],
-    revisao: [['publicador', 'Abrir o Publicador']],
-    lanc: [['publicador', 'Abrir o Publicador']],
 };
 
 // O texto de vazio do protótipo, ajustado ao que o sistema faz hoje (ainda não há ondas).
@@ -222,7 +221,7 @@ export function PainelGeral({ dados, visao, links, onAbrir, trabalho = false, po
  * As etapas 2 a 6: cabeçalho da etapa, a regra de "pronto", a nota (quando há) ou
  * os cartões das ondas (etapas 3 e 4 com a trilha de trabalho) e as linhas.
  */
-export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false }) {
+export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, comAprovacao = false, lote = null }) {
     const etapa = etapaDaTrilha(chave, trabalho);
     const comOndas = trabalho && ETAPAS_COM_ONDAS.includes(chave);
     // Com os cartões das ondas, a nota "ondas ainda não ligadas" sai; a da etapa 6 fica.
@@ -247,17 +246,33 @@ export function PainelDaEtapa({ chave, dados, visao, links, onAbrir, trabalho = 
                     </div>
                 </div>
             )}
-            <Linhas
-                entradas={itensDaEtapa(dados, chave)}
-                dados={dados}
-                visao={visao}
-                onAbrir={onAbrir}
-                trabalho={trabalho}
-                podeEditar={podeEditar}
-                comPrevia={comPrevia}
-                comAprovacao={comAprovacao}
-                vazio={vazio}
-            />
+            {/* R12 (04/11/2026): no Planejamento, quem escreve (a página só passa o `lote` a ele) marca e põe em lote. */}
+            {lote && chave === 'plano' ? (
+                <PlanejamentoEmLote
+                    entradas={itensDaEtapa(dados, chave)}
+                    dados={dados}
+                    visao={visao}
+                    onAbrir={onAbrir}
+                    trabalho={trabalho}
+                    podeEditar={podeEditar}
+                    comPrevia={comPrevia}
+                    comAprovacao={comAprovacao}
+                    vazio={vazio}
+                    {...lote}
+                />
+            ) : (
+                <Linhas
+                    entradas={itensDaEtapa(dados, chave)}
+                    dados={dados}
+                    visao={visao}
+                    onAbrir={onAbrir}
+                    trabalho={trabalho}
+                    podeEditar={podeEditar}
+                    comPrevia={comPrevia}
+                    comAprovacao={comAprovacao}
+                    vazio={vazio}
+                />
+            )}
         </MolduraDoPainel>
     );
 }

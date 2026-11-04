@@ -786,15 +786,17 @@ test('pronto para ajustar: [Pedir ajuste ao robô] secundário no rodapé, depoi
     assert.ok(botao, 'o botão');
     assert.ok(!botao.includes('bg-trilha-navy') && !botao.includes('disabled=""') && !botao.includes('aria-describedby'), botao);
     assert.ok(texto(rodape).includes('Pedir ajuste ao robô'));
-    // A ordem: [Ver a oferta] [Abrir no Publicador] [Pedir ajuste ao robô] [Aprovar e publicar] (o primário por último).
-    const ordem = ['data-acao="ver-oferta"', 'data-link="publicador"', 'data-acao="pedir-ajuste"', 'data-acao="aprovar-e-publicar"'].map((m) => rodape.indexOf(m));
+    // A ordem: [Ver a oferta] [Pedir ajuste ao robô] [Aprovar e publicar] (o primário por último). R10 (04/11/2026): o
+    // "Abrir no Publicador" saiu — nem para o admin (a oferta de exemplo ainda traz o endereço velho, e ele não aparece).
+    const ordem = ['data-acao="ver-oferta"', 'data-acao="pedir-ajuste"', 'data-acao="aprovar-e-publicar"'].map((m) => rodape.indexOf(m));
     assert.ok(ordem.every((i, j) => i >= 0 && (j === 0 || i > ordem[j - 1])), JSON.stringify(ordem));
+    assert.ok(!rodape.includes('data-link="publicador"') && !texto(rodape).includes('Publicador'), 'R10: nenhum link do Publicador');
     assert.ok(tag(rodape, 'data-acao="aprovar-e-publicar"').includes('bg-trilha-navy'), 'o primário segue sendo a publicação');
     // A região da situação do ajuste existe sempre (o leitor de tela lê cada troca), vazia antes do pedido.
     assert.match(rodape, /role="status"[^>]*data-situacao-do-ajuste=""/);
     assert.ok(!rodape.includes('data-escolha-do-ajuste'), 'a escolha só abre no clique');
     assert.match(saida, /data-preco-editavel=""/, 'sem ajuste andando, o preço segue editável');
-    assert.equal(texto(rodape).replace('Abrir no Publicador', '').match(PROIBIDO), null);
+    assert.equal(texto(rodape).match(PROIBIDO), null);
     // O clique só ABRE a escolha (o POST é do [Refazer]).
     const fonte = lerSemComentarios('resources/js/Components/Trilha/Revisao/AjusteDoRobo.jsx');
     assert.match(fonte, /data-acao="pedir-ajuste"[\s\S]*?onClick=\{ajuste\.pedir\}/);
@@ -887,7 +889,7 @@ test('andando: "Na fila do robô · …" / "Robô refazendo · …" com o giro; 
         const caixa = pedaco(saida, 'data-caixa', 'preco');
         assert.ok(texto(pedaco(caixa, 'data-preco-so-leitura', '')).includes(TRAVA_DO_PRECO), TRAVA_DO_PRECO);
         assert.ok(!caixa.includes('<input') && !caixa.includes('data-acao="salvar-preco"'));
-        assert.equal(texto(rodape).replace('Abrir no Publicador', '').match(PROIBIDO), null);
+        assert.equal(texto(rodape).match(PROIBIDO), null);
     }
     // O que já terminou no meio do caminho aparece: "Título refeito." enquanto a descrição anda.
     const fazendo = rodapeDe(desenhar({ estado: { ajuste: doAjuste(AJUSTE_FAZENDO) } }));

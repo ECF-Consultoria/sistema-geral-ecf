@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { chaveDeMapear, ofertasDoProduto, CHAVE_NOVO_PRODUTO } from '@/lib/trilha';
 import { avisoDaOndaComecada, categoriaDaGaveta, categoriaTravada, chaveDaVariacao, embalagemMexida } from '@/lib/trilhaCadastro';
+import { seguirAteOAlvo } from '@/lib/trilhaFaltas';
+import PilulaDaFalta from '@/Components/Trilha/PilulaDaFalta';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
-import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
+import { Botao, Caixa, OfertaNaLista, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { avisosEmTexto, skuDoProduto } from '@/Components/Trilha/formatos';
 import { FreteDasVariacoes } from '@/Components/Trilha/Cadastro/CaixaDaEmbalagem';
@@ -50,6 +52,12 @@ import { FICHA_PARADA } from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // editável e com o que a pessoa digitou — nada de só leitura; o [Recarregar]
 // pergunta antes de descartar o que está mexido.
 
+/**
+ * O produto cujo anúncio já está sendo montado (`situacao.no_publicador`): o que ainda segue para ele e o que não. Sem
+ * citar outra tela (R10, 04/11/2026: a trilha é o lugar da publicação).
+ */
+export const AVISO_DO_ANUNCIO_EM_PREPARO = 'O anúncio deste produto já está sendo montado: texto, ficha, custo e embalagem que você mudar seguem para ele; categoria e fotos, não.';
+
 /** A pílula do que falta, lida do servidor. */
 function PilulaDasFaltas({ faltas }) {
     return faltas.length ? (
@@ -81,14 +89,15 @@ function ListaDeAvisos({ avisos }) {
     );
 }
 
-function ListaDeFaltas({ faltas }) {
+/** As faltas; com `onIr` (R11) cada uma é um botão que leva ao campo dela, aqui na gaveta. */
+function ListaDeFaltas({ faltas, onIr = null }) {
     if (!faltas.length) return null;
 
     return (
         <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="O que falta" data-faltas="">
             {faltas.map((falta) => (
                 <li key={falta}>
-                    <Pilula tom="warn">{falta}</Pilula>
+                    <PilulaDaFalta falta={falta} onIr={onIr} />
                 </li>
             ))}
         </ul>
@@ -157,7 +166,7 @@ function AvisoDaVersao({ conflito, onRecarregar, onConfirmar, onCancelar }) {
  * A gaveta desenhada a partir do que o hook sabe — sem pedido nenhum (é o que o teste de render desenha, com o JSON
  * do contrato). `c` é o retorno de `useCadastroDoProduto`.
  */
-export function VistaDoCadastro({ produto, dados, links = null, trabalho = true, c, onAbrir, campoDoNome = null, tituloDoResultado = null, usarEsta = null }) {
+export function VistaDoCadastro({ produto, dados, links = null, trabalho = true, c, onAbrir, campoDoNome = null, tituloDoResultado = null, usarEsta = null, onIrParaFalta = null }) {
     const idDoForm = useId();
     const { retrato, estado } = c;
     const salvo = retrato?.produto ?? {};
@@ -219,7 +228,7 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
                 </div>
                 {r.faltas.length > 0 && (
                     <Caixa titulo="Ainda faltam" extra={<PilulaDasFaltas faltas={r.faltas} />} data-caixa="faltas">
-                        <ListaDeFaltas faltas={r.faltas} />
+                        <ListaDeFaltas faltas={r.faltas} onIr={onIrParaFalta} />
                     </Caixa>
                 )}
             </MioloDaGaveta>
@@ -275,11 +284,6 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
                     {etapa === 'mapa' ? 'Mapear agora' : 'Mapear de novo'}
                 </Botao>
             ),
-            produto?.url_publicador && (
-                <LinkDeAcao key="publicador" href={produto.url_publicador} primario={c.leitura} data-link="publicador">
-                    Abrir no Publicador
-                </LinkDeAcao>
-            ),
             !c.leitura && (
                 <Botao
                     key="salvar"
@@ -328,7 +332,7 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
                     onAbrir={onAbrir}
                     campoDoNome={campoDoNome}
                     usarEsta={usarEsta}
-                    urlPublicador={produto?.url_publicador ?? null}
+                    onIrParaFalta={onIrParaFalta}
                 />
             )}
         </MioloDaGaveta>
@@ -336,7 +340,7 @@ export function VistaDoCadastro({ produto, dados, links = null, trabalho = true,
 }
 
 /** O corpo com o retrato carregado: os avisos, "Onde está", a Lista de produtos (o formulário), a ficha e as ofertas. */
-function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, idDoForm, onAbrir, campoDoNome, urlPublicador, usarEsta = null }) {
+function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, idDoForm, onAbrir, campoDoNome, usarEsta = null, onIrParaFalta = null }) {
     const errosDe = (variacao) => (variacao ? c.erros.porChave[chaveDaVariacao(variacao)] ?? {} : {});
     // Os campos do produto andam na 1ª linha: os erros deles voltam na chave dela.
     const errosDoProduto = errosDe(estado.variacoes[0]);
@@ -380,7 +384,7 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
             )}
             {!c.leitura && situacao.no_publicador && (
                 <AvisoNaGaveta tom="run" data-aviso-do-publicador="">
-                    Este produto já está no Publicador: texto, ficha, custo e embalagem que você mudar seguem para lá; categoria e fotos, não.
+                    {AVISO_DO_ANUNCIO_EM_PREPARO}
                 </AvisoNaGaveta>
             )}
 
@@ -403,7 +407,7 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
             >
                 <fieldset disabled={c.leitura || c.salvando} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
                     <Caixa titulo="Lista de produtos" extra={<PilulaDasFaltas faltas={faltas} />} data-caixa="lista">
-                        <ListaDeFaltas faltas={faltas} />
+                        <ListaDeFaltas faltas={faltas} onIr={onIrParaFalta} />
                         <ListaDeAvisos avisos={situacao.avisos} />
                         <CamposDoProduto
                             produto={estado.produto}
@@ -424,7 +428,6 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
                                     textoAntigo={textoAntigo}
                                     travada={categoriaTravada(retrato)}
                                     leitura={c.leitura}
-                                    urlPublicador={urlPublicador}
                                     erro={errosDoProduto.categoria}
                                     nome={estado.produto.nome}
                                     refDoUsarEsta={usarEsta}
@@ -486,12 +489,14 @@ function CorpoDoCadastro({ retrato, estado, c, dados, trabalho, etapa, faltas, i
  *   onRecarregar?: () => Promise<void>,
  *   recemCriado?: boolean,
  *   onFocoUsado?: () => void,
+ *   alvo?: ?{campo: string, nome?: string, vez: number},
  * }} props  `produto` é o da trilha (as props da página); o da gaveta vem do servidor. `recemCriado`: a gaveta
  *   abriu logo depois do "Criar produto" — o foco vai para o "Usar esta" da sugestão quando ela chegar (§5.2).
+ *   `alvo` (R11): a gaveta abriu pela falta clicada — rola até o campo dela, com foco e destaque (`lib/trilhaFaltas.js`).
  */
 export default function PainelDoCadastro({
     produto, dados, escrita, links = null, trabalho = true, onAbrir, onAvisar = () => {}, onRecarregar = async () => {}, recemCriado = false,
-    onFocoUsado = () => {},
+    onFocoUsado = () => {}, alvo = null,
 }) {
     const c = useCadastroDoProduto({ escrita, produtoId: produto.id, onRecarregar, onAvisar });
     useGuardaDaGaveta(c.guardiao);
@@ -525,6 +530,8 @@ export default function PainelDoCadastro({
     useEffect(() => {
         if (!c.retrato || focouAoAbrir.current) return;
         focouAoAbrir.current = true;
+        // R11: aberta pela falta, o foco vai para o campo dela (o efeito do alvo, abaixo), não para o nome.
+        if (alvo) return;
         const ativo = typeof document !== 'undefined' ? document.activeElement : null;
         const naGaveta = ativo?.closest?.('[role="dialog"]');
         if (!ativo || ativo === document.body || ativo === naGaveta || ativo.matches?.('[data-acao="tentar-de-novo"]')) {
@@ -541,6 +548,25 @@ export default function PainelDoCadastro({
         tinhaResultado.current = !!c.resultado;
     }, [c.resultado]);
 
+    // R11 (04/11/2026): ir ao campo da falta — a que abriu a gaveta (`alvo`, da Lista ou do painel do produto) ou a
+    // clicada aqui dentro. Uma vez por clique (`vez`): o retrato novo de cada "Salvar" não rola a gaveta de novo. A
+    // gaveta abre carregando e a ficha chega depois da categoria: `seguirAteOAlvo` espera o campo aparecer. No resultado
+    // do "Salvar", a falta clicada volta ao formulário antes.
+    const [irPara, setIrPara] = useState(alvo);
+    const irFeito = useRef(null);
+    const pararDeEsperar = useRef(() => {});
+    useEffect(() => () => pararDeEsperar.current(), []);
+    useEffect(() => {
+        if (!irPara || irFeito.current === irPara.vez || !c.retrato || c.resultado) return;
+        irFeito.current = irPara.vez;
+        pararDeEsperar.current();
+        pararDeEsperar.current = seguirAteOAlvo(() => campoDoNome.current?.closest?.('[role="dialog"]') ?? null, irPara);
+    }, [irPara, c.retrato, c.resultado]);
+    const irParaFalta = (destino) => {
+        if (c.resultado) c.continuarDoResultado?.();
+        setIrPara({ ...destino, vez: Date.now() });
+    };
+
     return (
         <VistaDoCadastro
             produto={produto}
@@ -552,6 +578,7 @@ export default function PainelDoCadastro({
             campoDoNome={campoDoNome}
             tituloDoResultado={tituloDoResultado}
             usarEsta={usarEsta}
+            onIrParaFalta={irParaFalta}
         />
     );
 }

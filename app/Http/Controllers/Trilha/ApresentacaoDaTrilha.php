@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Trilha;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\Portal\PortalEquipeService;
-use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Trilha\CadastroNaTrilha;
 use App\Support\Portal\PortalContexto;
 use App\Support\Trilha\AprovacaoDoCliente;
@@ -18,9 +17,9 @@ use App\Support\Trilha\AprovacaoDoCliente;
  *
  * 1. **Acrescenta os links** para as telas que já existem (fora o Mapeamento e o Planejamento da trilha de trabalho,
  *    que gravam pelos endereços de `escrita`, toda ação é um link). Cada link
- *    só sai quando quem olha consegue abri-lo — Publicador só para admin (as rotas `mlb/anuncios` são
- *    `role:admin`), "Abrir o Portal" só para quem `PortalEquipeService::podeEntrar()`. Link que daria 403 é pior
- *    que link nenhum.
+ *    só sai quando quem olha consegue abri-lo — "Abrir o Portal" só para quem `PortalEquipeService::podeEntrar()`.
+ *    Link que daria 403 é pior que link nenhum. Desde o R10 (04/11/2026) nenhum link leva ao Publicador, nem para o
+ *    admin: "a trilha é o publicador".
  * 2. **Tira o que é só da equipe** na porta do cliente: o id e o link do Publicador, o preparo do agente, o MLB
  *    dos anúncios e a lista das sugestões (fica só o total). O cliente não vê o Publicador nem os bastidores do
  *    agente; o MLB, além disso, é o elo com o Mercado Livre que não se expõe por lá.
@@ -105,6 +104,9 @@ class ApresentacaoDaTrilha
         'medidas'                   => null,
         'embalagem'                 => null,
         'fotos_min'                 => 0,
+        // R2 (04/11/2026): a miniatura da coluna "Fotos" da Lista. O serviço manda só os ids; cada porta troca pelo
+        // endereço que ELA serve ({@see capaParaEquipe()}, {@see capaParaCliente()}) — nulo onde a rota não serviria.
+        'capa'                      => null,
         'tem_descricao'             => false,
         'ficha'                     => null,
         'faltas'                    => [],
@@ -146,6 +148,9 @@ class ApresentacaoDaTrilha
         'sem_produto' => false,
         'planejavel'  => false,
         'pode_tirar'  => false,
+        // R4 (04/11/2026): por que o agente parou (a causa) e se a equipe pode pedir de novo. Só a equipe: o cliente
+        // recebe nulo, como o `preparo`.
+        'parada'      => null,
     ];
 
     /** As etapas que contam produtos e as que contam ofertas — a mesma divisão de `contagemPorEtapa()` do front. */
@@ -155,19 +160,19 @@ class ApresentacaoDaTrilha
 
     public function __construct(
         private PortalEquipeService $equipe,
-        private ProgramasPublicadorService $programas,
     ) {}
 
     /**
-     * Porta da EQUIPE (`/trilha/{empresa}`): tudo o que o serviço montou, mais os links para o Portal da empresa
-     * e para o Publicador. A visão "como o cliente vê" da equipe é alternada no navegador, sem vir ao servidor.
+     * Porta da EQUIPE (`/trilha/{empresa}`): tudo o que o serviço montou, mais o link para o Portal da empresa (sem a
+     * trilha de trabalho). A visão "como o cliente vê" da equipe é alternada no navegador, sem vir ao servidor.
+     *
+     * R10 (retorno do 1º teste, 04/11/2026): NENHUM endereço do Publicador sai daqui — nem para o admin ("a trilha é o
+     * publicador"): saíram `links.publicador` (a conta) e `url_publicador` (o editor do produto e da oferta).
      *
      * @param  array{produtos: list<array>, ofertas: list<array>, ondas: list<array>, gerado_em: string}  $trilha
      */
     public function paraEquipe(Company $empresa, array $trilha, User $usuario): array
     {
-        // O mesmo teste do `role:admin` que guarda as rotas do Publicador.
-        $admin = $usuario->isAdmin();
         $podeEntrar = $this->equipe->podeEntrar($usuario, $empresa);
         $trabalho = (bool) ($trilha['trabalho'] ?? false);
         $podeEditar = $trabalho && $podeEntrar;
@@ -191,11 +196,11 @@ class ApresentacaoDaTrilha
                     : null,
                 'planejamento' => null,
                 'produtos'     => null,
-                'publicador'   => $admin ? $this->contaNoPublicador($empresa) : null,
             ],
-            'produtos'      => array_map(fn (array $p) => self::campos($p, self::PRODUTO) + [
+            'produtos'      => array_map(fn (array $p) => array_replace(self::campos($p, self::PRODUTO), [
+                'capa' => $podeEditar ? self::capaParaEquipe($empresa, $p['capa'] ?? null) : null,
+            ]) + [
                 'url_ficha'        => null,
-                'url_publicador'   => $admin ? self::editor($p['pub_produto_id'] ?? null) : null,
                 // 3ª entrega (pergunta 1): o item que já andou deixa o cadastro do produto só para leitura na trilha. Só
                 // nesta porta — o cliente não cadastra pela trilha e não lê a régua do robô.
                 'cadastro_travado' => (bool) ($p['cadastro_travado'] ?? false),
@@ -203,10 +208,7 @@ class ApresentacaoDaTrilha
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
                 'componentes' => self::componentes($o['componentes'] ?? []),
                 'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: true),
-            ]) + [
-                // Na revisão o que a equipe quer é a prévia do anúncio, não o começo do editor.
-                'url_publicador' => $admin ? self::editor($o['pub_produto_id'] ?? null, ($o['etapa'] ?? null) === 'revisao') : null,
-            ], $trilha['ofertas'] ?? []),
+            ]), $trilha['ofertas'] ?? []),
             'ondas'         => array_map(fn (array $o) => self::campos($o, self::ONDA), $trilha['ondas'] ?? []),
             'gerado_em'     => $trilha['gerado_em'] ?? null,
         ];
@@ -226,7 +228,7 @@ class ApresentacaoDaTrilha
      * 4b: `ajuste`, o POST do "Pedir ajuste ao robô" e o GET do estado dele, no mesmo endereço; 4e: `cliente`, o POST do
      * "Mandar ao cliente" — SÓ na loja que aprova com o cliente: sem a chave a forma fica a da 4b).
      *
-     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string, cliente?: string}}
+     * @return array{ondas: string, planejamento: string, produtos: string, categorias: string, planilha: array{modelo: string, previa: string, gravar: string}, mercado_livre: array{anuncios: string, importar: string, estado: string, limpar: string}, revisao: array{previa: string, preco: string, publicar: string, publicacao: string, ajuste: string, cliente?: string}, preparo: string}
      */
     private static function escrita(Company $empresa): array
     {
@@ -264,6 +266,8 @@ class ApresentacaoDaTrilha
                     ? ['cliente' => route('trilha.cliente', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false)]
                     : []),
             ],
+            // R4 (04/11/2026): o [Tentar de novo] da "Preparação automática" (POST), com o item no marcador.
+            'preparo'       => route('trilha.preparo', [...$empresaId, 'item' => self::MARCADOR_DO_ITEM], false),
         ];
     }
 
@@ -303,17 +307,18 @@ class ApresentacaoDaTrilha
                 // no artefato) — os atalhos para o Planejamento e o cadastro de Produtos do Portal saem.
                 'planejamento' => $trabalho ? null : route('portal.auth.estrutura.sugestoes'),
                 'produtos'     => $trabalho ? null : route('portal.auth.estrutura.produtos'),
-                'publicador'   => null,
             ],
             'produtos'      => array_map(fn (array $p) => array_replace(self::campos($p, self::PRODUTO), [
                 'sugestoes_pendentes' => [],
                 'mapeado_por'         => null,
+                'capa'                => self::capaParaCliente($empresa, $p['capa'] ?? null, $sessaoEquipe),
             ]) + [
                 'url_ficha' => isset($p['id']) && ! $trabalho ? route('portal.auth.estrutura.produtos.ficha', ['produto' => (int) $p['id']]) : null,
             ], $trilha['produtos'] ?? []),
             'ofertas'       => array_map(fn (array $o) => array_replace(self::campos($o, self::OFERTA), [
                 'componentes' => self::componentes($o['componentes'] ?? []),
                 'preparo'     => null,
+                'parada'      => null,
                 'anuncios'    => self::anuncios($o['anuncios'] ?? [], comMlb: false),
                 // O cliente acompanha: não tira ninguém da onda.
                 'pode_tirar'  => false,
@@ -434,26 +439,47 @@ class ApresentacaoDaTrilha
         ], $anuncios));
     }
 
-    /** O editor do Publicador para o pub_produto (na Prévia, quando pedido); null sem pub_produto. */
-    private static function editor(mixed $pubProdutoId, bool $previa = false): ?string
+    /**
+     * A capa do produto na porta da EQUIPE (R2, 04/11/2026): a miniatura pela rota da equipe (`trilha.fotos`, a mesma da
+     * galeria do cadastro), relativa. Quem chama só a pede com `pode_editar`: a rota tem a guarda da escrita (as duas
+     * chaves e a régua do Portal da empresa) e devolveria 404/403 — a foto quebrada que motivou o R2.
+     *
+     * @param  mixed  $capa  `{variacao, imagem}` do serviço
+     */
+    private static function capaParaEquipe(Company $empresa, mixed $capa): ?string
     {
-        $id = (int) $pubProdutoId;
-        if ($id <= 0) {
+        [$variacao, $imagem] = self::idsDaCapa($capa);
+        if ($variacao === null) {
             return null;
         }
 
-        return route('mlb.anuncios.publicador.editor', ['produto' => $id]).($previa ? '?etapa=previa' : '');
+        return route('trilha.fotos', ['company' => (int) $empresa->id, 'variacao' => $variacao, 'imagem' => $imagem], false);
     }
 
     /**
-     * A tela da conta no Publicador. A chave é a do `resolver()` (o mesmo da entrada do Publicador): empresa
-     * ligada a um programa (Polos, Incubadora) tem chave canônica `empresa-N`, e a `company-N` só serviria para
-     * ser redirecionada até lá.
+     * A capa na porta do CLIENTE: a rota de foto DELA (`portal.trilha.fotos.ver`, da 4f), relativa e com a empresa da
+     * aba. Só onde essa rota serve: o cliente de verdade com as duas chaves ({@see CadastroNaTrilha::clienteEscreve()}).
+     * No modo equipe do Portal a rota é 404 (não há cliente — desenho da 4f), e a coluna volta a mostrar só a contagem.
+     *
+     * @param  mixed  $capa  `{variacao, imagem}` do serviço
      */
-    private function contaNoPublicador(Company $empresa): ?string
+    private static function capaParaCliente(Company $empresa, mixed $capa, bool $sessaoEquipe): ?string
     {
-        $chave = $this->programas->resolver('company-'.$empresa->id)['chave'] ?? null;
+        [$variacao, $imagem] = self::idsDaCapa($capa);
+        if ($variacao === null || $sessaoEquipe || ! CadastroNaTrilha::clienteEscreve($empresa)) {
+            return null;
+        }
 
-        return $chave !== null ? route('mlb.anuncios.publicador.produtos', ['conta' => $chave]) : null;
+        return route('portal.trilha.fotos.ver', [PortalContexto::PARAMETRO => (int) $empresa->id, 'variacao' => $variacao, 'imagem' => $imagem], false);
     }
+
+    /** @return array{0: ?int, 1: ?int} */
+    private static function idsDaCapa(mixed $capa): array
+    {
+        $variacao = is_array($capa) ? (int) ($capa['variacao'] ?? 0) : 0;
+        $imagem = is_array($capa) ? (int) ($capa['imagem'] ?? 0) : 0;
+
+        return $variacao > 0 && $imagem > 0 ? [$variacao, $imagem] : [null, null];
+    }
+
 }

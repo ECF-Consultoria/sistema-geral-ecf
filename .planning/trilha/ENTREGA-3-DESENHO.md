@@ -1626,3 +1626,32 @@ prompt nenhum; outra empresa → 404; o cliente só vê a prévia do item com el
 `preparo`/`bloqueios`; modo equipe grava `decidido_por_equipe`; `enviado_por` inativo → "falta publicar"; migration
 sobe e desce; matriz de acesso das rotas da equipe e do cliente (allowlist, CSRF, varredura de props). JS:
 `tests/js/trilha-aprovacao.test.js` (equipe e cliente) + o pacote do cliente sem `Cadastro/`/`Revisao/` da equipe.
+
+## 20. Retorno do 1º teste do usuário (04/11/2026, `relatorio_trilho.docx`)
+
+Diagnóstico em produção (só leitura):
+- **"O agente parou: título, descrição"** — causa EXTERNA: desde 04/11 13:57 o Gemini responde **402** (pagamento/
+  crédito da conta Google). Título, descrição, Modelo e imagens usam a MESMA chave (`LLM_API_KEY` vazia →
+  `GEMINI_API_KEY`). Os erros do texto vão para `Log::warning` e o prod está em `LOG_LEVEL=error`: só as imagens
+  (`GeminiImageProvider`) aparecem no log. Os kits ficam "Na fila · espera a oferta simples ficar pronta" porque a
+  simples não fica pronta. **Ação do usuário:** regularizar o pagamento da chave do Gemini.
+- **Publicação "demorada"**: item 10 da fila 4 — criado 11:18:20, iniciado 11:26:02 (7 min 42 s na fila), publicado
+  em 3 s. A fila só é checada a cada minuto (`publicador:fila-publicacao`) e espera o editor do Publicador fechar.
+- **Gemini é o motor de tudo:** texto `gemini-3.5-flash-lite` (reserva `gemini-3.8-flash`; régua `gemini-3.8-flash`),
+  imagens `GeminiImageProvider`.
+
+Itens e decisões (usuário, 04/11 — "robô" vira "agente" para equipe E cliente; o resto com o padrão abaixo):
+| # | Item | Padrão adotado |
+|---|---|---|
+| R1 | Card "recarregue a página" ao subir fotos (gaveta da equipe) | defeito: achar a causa e corrigir |
+| R2 | Coluna FOTOS da Lista sem miniatura (só a contagem) | defeito: corrigir |
+| R3 | Imagens da prévia demoram | defeito: rota da foto sem `itens()` da loja inteira por foto; cache HTTP; miniatura |
+| R4 | "O agente parou" sem dizer como resolver | mensagem com a causa (402 = "a IA está sem crédito: avise o responsável"; demais = "tente de novo") + [Tentar de novo] que refaz só as etapas em erro pelo próprio preparo |
+| R5 | Fila demora a começar | ao agendar pela trilha, disparar a checagem da fila na hora (sem esperar o minuto); manter as travas |
+| R6 | Mover as imagens | arrastar para reordenar (e setas para teclado) por cor; a 1ª é a capa; grava a ordem |
+| R7 | "Outras características" já aberta | aberta por padrão na ficha |
+| R8 | "Não se aplica" | pesquisar se a API do ML diz por atributo quando "não se aplica" vale (ex.: `value_id -1`, tags do atributo, specs técnicas do domínio) e usar essa régua; onde não houver dado, regra explícita documentada |
+| R9 | "robô" → "agente" | em TODA a trilha, equipe e cliente (textos; nomes de código ficam) |
+| R10 | Tirar "Abrir no Publicador" | nenhum link da trilha leva ao Publicador (nem para admin) — "a trilha é o publicador" |
+| R11 | Clicar no que falta e ser guiado | cada pílula de falta ("custo", "título", "fotos (1 de 3)"…) abre a gaveta do produto no campo/caixa certo, com foco e destaque |
+| R12 | Onda em massa | no Planejamento, marcar vários produtos/ofertas e [Pôr na onda …] de uma vez (mesmas regras de pôr um) |

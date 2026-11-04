@@ -59,7 +59,8 @@ class FichaTecnicaPelaIaTest extends TestCase
                     ['id' => 'LINE', 'name' => 'Linha', 'value_type' => 'string', 'tags' => []],
                     ['id' => 'WITH_REMOVABLE_COVER', 'name' => 'Com tecido removível', 'value_type' => 'boolean', 'tags' => [],
                         'values' => [['id' => '242085', 'name' => 'Sim'], ['id' => '242084', 'name' => 'Não']]],
-                    // Escondido: a plataforma nem mostra; no Portal não aceita "Não se aplica".
+                    // Escondido: a plataforma nem mostra no formulário, mas aceita pela API — e "Não se aplica" vale (R8, 04/11/2026:
+                    // a "Largura da cama" numa poltrona, o caso do retorno do usuário).
                     ['id' => 'BED_WIDTH', 'name' => 'Largura da cama', 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
                         'allowed_units' => [['id' => 'm', 'name' => 'm']], 'default_unit' => 'm'],
                 ], 200);
@@ -116,10 +117,11 @@ class FichaTecnicaPelaIaTest extends TestCase
         $r = $this->pedir($empresa, $p)->assertOk();
 
         $sugestoes = collect($r->json('sugestoes'))->keyBy('id');
-        $this->assertEqualsCanonicalizing(['LEGS_MATERIAL', 'MATTRESS_WIDTH'], $sugestoes->keys()->all());
+        $this->assertEqualsCanonicalizing(['LEGS_MATERIAL', 'MATTRESS_WIDTH', 'BED_WIDTH'], $sugestoes->keys()->all());
         $this->assertSame(['Madeira', '2'], [$sugestoes['LEGS_MATERIAL']['valor'], $sugestoes['LEGS_MATERIAL']['valor_id']]);
         $this->assertSame('-1', $sugestoes['MATTRESS_WIDTH']['valor_id'], 'o colchão numa poltrona: não se aplica');
         $this->assertNull($sugestoes['MATTRESS_WIDTH']['valor']);
+        $this->assertSame('-1', $sugestoes['BED_WIDTH']['valor_id'], 'a cama numa poltrona: não se aplica (R8, o escondido aceita)');
         $this->assertSame(6, $r->json('faltavam'), 'Marca e tecido removível estavam preenchidos na tela');
         $this->assertArrayNotHasKey('LINE', $sugestoes->all(), '"DESCONHECIDO" é o "não sei" da IA, nunca um valor');
 
@@ -128,7 +130,7 @@ class FichaTecnicaPelaIaTest extends TestCase
         $catalogo = collect(explode("\n", $this->pedido['catalogo']))->keyBy(fn ($l) => explode(' | ', $l)[0]);
         $this->assertStringEndsWith('[N/A]', $catalogo['MATTRESS_WIDTH']);
         $this->assertStringEndsWith('[N/A]', $catalogo['STYLE']);
-        $this->assertStringNotContainsString('[N/A]', $catalogo['BED_WIDTH'], 'escondido não aceita');
+        $this->assertStringEndsWith('[N/A]', $catalogo['BED_WIDTH'], 'escondido aceita (R8)');
         $this->assertStringNotContainsString('[N/A]', $catalogo['IS_RECLINABLE*'], 'obrigatório não aceita');
         $this->assertArrayNotHasKey('BRAND*', $catalogo->all());
         $this->assertArrayNotHasKey('WITH_REMOVABLE_COVER', $catalogo->all());
@@ -181,7 +183,7 @@ class FichaTecnicaPelaIaTest extends TestCase
         $this->assertSame('-1', $ficha['MATTRESS_WIDTH']->valor_id, 'colchão: não se aplica');
         $this->assertSame('Madeira', $ficha['LEGS_MATERIAL']->valor);
         $this->assertSame('Sim', $ficha['WITH_REMOVABLE_COVER']->valor, 'vazio na ficha salva: a IA preenche');
-        $this->assertFalse($ficha->has('BED_WIDTH'), 'escondido: "não se aplica" descartado');
+        $this->assertSame('-1', $ficha['BED_WIDTH']->valor_id, 'escondido: "não se aplica" vale (R8)');
         $this->assertFalse($ficha->has('IS_RECLINABLE'), 'obrigatório: "não se aplica" descartado');
         $this->assertFalse($ficha->has('STYLE'), 'opção que não existe fica de fora');
         $this->assertSame('ECF', $ficha['BRAND']->valor, 'o que já estava fica');

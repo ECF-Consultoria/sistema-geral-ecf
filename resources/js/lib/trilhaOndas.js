@@ -222,3 +222,77 @@ export function avisosDaOferta(oferta, dados, { cliente = false } = {}) {
 
     return avisos;
 }
+
+// ─── R12 (04/11/2026): pôr VÁRIAS ofertas numa onda de uma vez ──────────────
+//
+// No Planejamento, quem escreve marca as ofertas e as põe todas numa onda. As
+// regras são as de pôr uma (quem decide é o servidor, item a item); a tela só
+// marca, manda e mostra o resultado de cada uma.
+
+/** Até quantas ofertas vão num pedido (o mesmo `OndasDaTrilha::MAXIMO_DO_LOTE` do servidor). */
+export const MAXIMO_DO_LOTE = 100;
+
+/**
+ * As ofertas da lista que podem ser marcadas, na ordem da lista: as planejáveis (`planejavel` do servidor — têm
+ * produto e não andaram). A sem produto e a que já começou ficam sem caixa marcável.
+ *
+ * @param {Array<{tipo: string, item: object}>} entradas  o formato de `itensDaEtapa()`
+ * @returns {string[]}
+ */
+export const marcaveisDoLote = (entradas) => (entradas ?? [])
+    .filter((e) => e?.tipo === 'o' && !e.item?.sem_produto && ehPlanejavel(e.item, null))
+    .map((e) => e.item.id);
+
+/** As marcadas que ainda valem (a recarga tira da lista o que entrou na onda), na ordem da lista. */
+export const marcadasQueValem = (marcadas, marcaveis) => {
+    const conjunto = new Set(marcadas ?? []);
+
+    return (marcaveis ?? []).filter((id) => conjunto.has(id));
+};
+
+/** Marca ou desmarca uma; não passa do máximo. */
+export function alternarMarcacao(marcadas, id, maximo = MAXIMO_DO_LOTE) {
+    const lista = [...(marcadas ?? [])];
+    if (lista.includes(id)) return lista.filter((x) => x !== id);
+
+    return lista.length >= maximo ? lista : [...lista, id];
+}
+
+/**
+ * "Marcar todas desta página": todas as marcáveis, até o máximo (`cortadas` = as que ficaram de fora). Com todas já
+ * marcadas, desmarca.
+ *
+ * @returns {{marcadas: string[], cortadas: number}}
+ */
+export function marcarTodas(marcadas, marcaveis, maximo = MAXIMO_DO_LOTE) {
+    const todas = marcaveis ?? [];
+    const valem = marcadasQueValem(marcadas, todas);
+    const limite = Math.min(todas.length, maximo);
+    if (limite > 0 && valem.length >= limite) return { marcadas: [], cortadas: 0 };
+
+    return { marcadas: todas.slice(0, maximo), cortadas: Math.max(0, todas.length - maximo) };
+}
+
+/** "Pôr 3 ofertas na onda" — o botão diz quantas vão. */
+export const textoDoBotaoDoLote = (n) => (n > 0 ? `Pôr ${n === 1 ? '1 oferta' : `${n} ofertas`} na onda` : 'Pôr na onda');
+
+/**
+ * A resposta do lote para a tela: a mensagem do servidor e os itens separados — os recusados primeiro (são os que
+ * pedem ação), com o motivo do servidor; os que entraram (e quem veio junto); os que já estavam.
+ *
+ * @param {{mensagem?: string, resultados?: Array<{item: string, nome: ?string, situacao: string, motivo: ?string, junto?: string[]}>, avisos?: string[]}} resposta
+ * @param {{ofertas?: Array}} [dados]  para o nome de quem entrou junto
+ */
+export function resumoDoLote(resposta, dados = null) {
+    const nomeDe = (id) => (dados?.ofertas ?? []).find((o) => o.id === id)?.nome ?? id;
+    const resultados = Array.isArray(resposta?.resultados) ? resposta.resultados : [];
+    const comNome = (r) => ({ ...r, nome: r?.nome || nomeDe(r?.item) });
+
+    return {
+        mensagem: String(resposta?.mensagem ?? '').trim() || 'Pronto.',
+        recusadas: resultados.filter((r) => r?.situacao === 'recusado').map((r) => ({ ...comNome(r), motivo: String(r.motivo ?? '').trim() || 'Não pode entrar nesta onda.' })),
+        entraram: resultados.filter((r) => r?.situacao === 'entrou').map((r) => ({ ...comNome(r), junto: (r.junto ?? []).map(nomeDe) })),
+        jaEstavam: resultados.filter((r) => r?.situacao === 'ja_estava').map(comNome),
+        avisos: (resposta?.avisos ?? []).filter(Boolean),
+    };
+}

@@ -1,7 +1,9 @@
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { chaveDeCadastro, chaveDoProduto, etapaDaTrilha } from '@/lib/trilha';
+import { alvoDaColuna, irParaOCadastro, pilulasDasFaltas } from '@/lib/trilhaFaltas';
 import { cn } from '@/lib/utils';
 import { AcoesComNovoProduto, AcoesDoPainel, BotaoNovoProduto, MolduraDoPainel, RegraDePronto, sobrelinhaDaEtapa } from '@/Components/Trilha/PainelDaEtapa';
+import PilulaDaFalta, { ListaDePilulasDasFaltas } from '@/Components/Trilha/PilulaDaFalta';
 import { FOTOS_MINIMAS, avisosEmTexto, fmtCusto, plural, situacaoNaPlanilha, skuDoProduto } from '@/Components/Trilha/formatos';
 
 // ─── Trilha de produtos — etapa 1: a lista de produtos como planilha ────────
@@ -24,6 +26,16 @@ import { FOTOS_MINIMAS, avisosEmTexto, fmtCusto, plural, situacaoNaPlanilha, sku
 // "Pela planilha" do Portal sai. Da F7, o "Pela planilha" da equipe (a planilha
 // por categoria, gaveta `e:planilha`) vem no mesmo quadro `lazy`; da F8, a
 // importação dos anúncios da loja (gaveta `e:ml`) também.
+//
+// Do 1º teste do usuário (04/11/2026):
+// - R2: a coluna "Fotos" mostra a MINIATURA da capa (a 1ª foto da 1ª cor com
+//   foto), com a contagem no canto. Antes ela era o marcador do protótipo — um
+//   quadrado com o número — e nenhum endereço de foto chegava à Lista. O
+//   endereço vem do servidor, já na rota da porta de quem olha (`capa`); sem ele
+//   (ou se a imagem não carregar), volta o quadrado com a contagem.
+// - R11: para quem escreve, cada "falta" da planilha e cada falta da coluna
+//   "Situação" é um botão que abre a gaveta do produto já no campo daquela falta
+//   (`lib/trilhaFaltas.js`). Para o cliente e o produto que já andou, texto.
 
 const COLUNAS = [
     { rotulo: 'Fotos' },
@@ -53,12 +65,61 @@ function CelulaOk({ texto = null }) {
     );
 }
 
-function CelulaFalta({ texto = null }) {
+/**
+ * "falta" numa coluna da planilha. Com `onIr` (quem escreve, R11) o "falta" é um botão que leva ao campo da coluna
+ * (`coluna`: custo, embalagem, descricao, fotos, ficha); sem, o texto de sempre.
+ */
+function CelulaFalta({ texto = null, coluna = null, produto = null, onIr = null }) {
+    const alvo = coluna ? alvoDaColuna(coluna, produto) : null;
+
     return (
         <>
-            <span className="inline-block rounded-md bg-trilha-warn-bg px-[7px] py-px text-[12px] font-semibold text-trilha-warn">falta</span>
+            {onIr && alvo ? (
+                <PilulaDaFalta falta="falta" alvo={alvo} onIr={onIr} acessivel={ROTULO_DA_COLUNA[coluna] ?? coluna} />
+            ) : (
+                <span className="inline-block rounded-md bg-trilha-warn-bg px-[7px] py-px text-[12px] font-semibold text-trilha-warn">falta</span>
+            )}
             {texto && <span className="text-[12.5px] text-trilha-muted"> {texto}</span>}
         </>
+    );
+}
+
+/** O que o leitor de tela diz no "falta" de cada coluna (o botão leva ao campo dela). */
+const ROTULO_DA_COLUNA = { custo: 'custo', embalagem: 'embalagem', descricao: 'descrição', fotos: 'fotos', ficha: 'ficha técnica' };
+
+/**
+ * A coluna "Fotos" (R2): a miniatura da capa com a contagem no canto. Sem capa — ou a imagem que não carregou —, o
+ * quadrado com a contagem de antes (vazio e tracejado quando não há foto nenhuma).
+ */
+function CapaDoProduto({ capa, fotos }) {
+    const [quebrada, setQuebrada] = useState(false);
+    const rotulo = plural(fotos, 'foto', 'fotos');
+
+    if (capa && !quebrada) {
+        return (
+            <span className="relative inline-flex h-10 w-10 flex-none overflow-hidden rounded-lg border border-trilha-line bg-trilha-surface2" data-capa-da-lista="">
+                <img src={capa} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" onError={() => setQuebrada(true)} />
+                <span
+                    aria-label={rotulo}
+                    className="absolute bottom-0.5 right-0.5 rounded bg-trilha-surface/90 px-[3px] font-pub-mono text-[10px] font-semibold leading-tight text-trilha-fg2"
+                >
+                    {fotos}
+                </span>
+            </span>
+        );
+    }
+
+    return (
+        <span
+            aria-label={rotulo}
+            className={cn(
+                'inline-flex h-10 w-10 flex-none items-end justify-end rounded-lg p-[3px] font-pub-mono text-[10px] font-semibold text-trilha-fg2',
+                fotos ? 'bg-gradient-to-br from-trilha-line2 to-trilha-line' : 'border border-dashed border-trilha-line bg-trilha-surface2',
+            )}
+            data-sem-capa=""
+        >
+            {fotos}
+        </span>
     );
 }
 
@@ -78,9 +139,9 @@ function TextoDeMedida({ texto }) {
 }
 
 /** A ficha técnica numa célula: ✓, "falta", "—" (sem categoria, ainda não há ficha) ou "a conferir". */
-function CelulaDaFicha({ ficha }) {
+function CelulaDaFicha({ ficha, produto = null, onIr = null }) {
     if (ficha === 'completa') return <CelulaOk />;
-    if (ficha === 'incompleta') return <CelulaFalta />;
+    if (ficha === 'incompleta') return <CelulaFalta coluna="ficha" produto={produto} onIr={onIr} />;
     if (ficha === 'sem_categoria') {
         return (
             <span className="text-trilha-muted" title="Sem categoria: a ficha técnica aparece quando a categoria é escolhida">
@@ -107,6 +168,9 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
     // O que não segura o produto na Lista (com a trilha de trabalho: "vai por ME1 (transportadora)"): AVISO, nunca
     // "falta" — a barrinha e o "Completo" não mudam por ele.
     const avisos = avisosEmTexto(produto.avisos);
+    // R11: quem escreve vai da falta direto ao campo dela, na gaveta do produto (o travado só se lê: texto).
+    const irPara = irParaOCadastro(onAbrir, produto, podeEditar);
+    const pilulas = pilulasDasFaltas(produto.faltas);
 
     // A linha inteira abre o painel (mouse); o nome é o botão de verdade (teclado e
     // leitor de tela) e é para ele que o foco volta quando o painel fecha.
@@ -115,15 +179,8 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
     return (
         <tr data-produto={produto.id} onClick={abrir} className="cursor-pointer hover:bg-trilha-surface2">
             <td className={TD}>
-                <span
-                    aria-label={plural(fotos, 'foto', 'fotos')}
-                    className={cn(
-                        'inline-flex h-10 w-10 flex-none items-end justify-end rounded-lg p-[3px] font-pub-mono text-[10px] font-semibold text-trilha-fg2',
-                        fotos ? 'bg-gradient-to-br from-trilha-line2 to-trilha-line' : 'border border-dashed border-trilha-line bg-trilha-surface2',
-                    )}
-                >
-                    {fotos}
-                </span>
+                {/* A chave: a capa nova (outra foto virou a 1ª) tenta carregar de novo, mesmo depois de uma que falhou. */}
+                <CapaDoProduto key={produto.capa ?? ''} capa={produto.capa ?? null} fotos={fotos} />
             </td>
             {/* Sem quebra: o SKU partido no hífen ("CRIADO-" / "01") parecia dois códigos. */}
             <td className={cn(TD, 'whitespace-nowrap')}>
@@ -146,7 +203,7 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
             </td>
             {/* Sem `whitespace-nowrap`: a faixa "R$ 290,00 a R$ 310,00" quebra no "a" (dentro de cada valor o
                 espaço já é inquebrável), e a planilha cabe inteira na tela de 1440 px. */}
-            <td className={cn(TD, 'text-right tabular-nums')}>{custo ?? <CelulaFalta />}</td>
+            <td className={cn(TD, 'text-right tabular-nums')}>{custo ?? <CelulaFalta coluna="custo" produto={produto} onIr={irPara} />}</td>
             <td className={TD}>
                 {produto.medidas ? (
                     <TextoDeMedida texto={produto.medidas} />
@@ -157,13 +214,17 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
                     </span>
                 )}
             </td>
-            <td className={TD}>{produto.embalagem ? <TextoDeMedida texto={produto.embalagem} /> : <CelulaFalta />}</td>
-            <td className={TD}>{produto.tem_descricao ? <CelulaOk /> : <CelulaFalta />}</td>
+            <td className={TD}>{produto.embalagem ? <TextoDeMedida texto={produto.embalagem} /> : <CelulaFalta coluna="embalagem" produto={produto} onIr={irPara} />}</td>
+            <td className={TD}>{produto.tem_descricao ? <CelulaOk /> : <CelulaFalta coluna="descricao" produto={produto} onIr={irPara} />}</td>
             <td className={cn(TD, 'whitespace-nowrap')}>
-                {fotos >= FOTOS_MINIMAS ? <CelulaOk texto={plural(fotos, 'foto', 'fotos')} /> : <CelulaFalta texto={`${fotos} de ${FOTOS_MINIMAS}`} />}
+                {fotos >= FOTOS_MINIMAS ? (
+                    <CelulaOk texto={plural(fotos, 'foto', 'fotos')} />
+                ) : (
+                    <CelulaFalta texto={`${fotos} de ${FOTOS_MINIMAS}`} coluna="fotos" produto={produto} onIr={irPara} />
+                )}
             </td>
             <td className={TD}>
-                <CelulaDaFicha ficha={produto.ficha} />
+                <CelulaDaFicha ficha={produto.ficha} produto={produto} onIr={irPara} />
             </td>
             <td className={TD}>
                 {/* Barrinha de largura fixa (como no protótipo): com `flex-1` ela encolhia conforme o texto ao lado. */}
@@ -173,6 +234,8 @@ function LinhaDaPlanilha({ produto, onAbrir, podeEditar = false }) {
                     </span>
                     <span className="whitespace-nowrap text-[12.5px]">{situacao.texto}</span>
                 </div>
+                {/* R11: o que falta, uma pílula por falta (as da ficha numa só) — botões para quem escreve. */}
+                <ListaDePilulasDasFaltas itens={pilulas} onIr={irPara} className="mt-1.5 max-w-[260px] gap-1" data-faltas-da-linha="" />
                 {avisos.length > 0 && (
                     <span className="mt-1 block text-[12px] text-trilha-run" data-aviso-do-produto="">
                         <span className="font-semibold">aviso:</span> {avisos.join(' · ')}

@@ -84,7 +84,8 @@ class TrilhaDaEmpresa
             ->get(['produto_id', 'atributo_id', 'valor', 'valor_id', 'unidade'])
             ->groupBy('produto_id');
 
-        $fotos = self::fotosPorVariacao($empresaId);
+        // A contagem por variação (a régua das fotos) e a capa de cada uma (R2, 04/11/2026) na MESMA consulta.
+        [$fotos, $capas] = self::fotosECapas($empresaId);
         $definicoes = CompletudeDoProduto::definicoesGuardadas($produtos->pluck('categoria_ml_id'));
         // A mesma logística da tela de Produtos: limites da modalidade de envio já lida (só cache).
         $modalidade = ModalidadeDeEnvio::emCache($empresa);
@@ -122,6 +123,10 @@ class TrilhaDaEmpresa
                 'medidas'                   => $c['medidas'],
                 'embalagem'                 => $c['embalagem'],
                 'fotos_min'                 => $c['fotos_min'],
+                // R2 (04/11/2026): a miniatura da coluna "Fotos" da Lista — a 1ª foto da 1ª variação que tem foto. Só os
+                // ids: o endereço depende da porta (a da equipe e a do cliente servem a foto por rotas diferentes) e
+                // quem o monta é `ApresentacaoDaTrilha`.
+                'capa'                      => self::capaDoProduto($p, $capas),
                 'tem_descricao'             => $c['tem_descricao'],
                 'ficha'                     => $c['ficha'],
                 'faltas'                    => $c['faltas'],
@@ -249,6 +254,8 @@ class TrilhaDaEmpresa
                 'alerta'         => (bool) $d['alerta'],
                 'pub_produto_id' => $d['pub_produto_id'],
                 'preparo'        => $d['preparo'],
+                // R4 (04/11/2026): o texto do agente parou — a causa e se dá para pedir de novo (`PreparoNaTrilha`).
+                'parada'         => $d['parada'] ?? null,
                 'produtos'       => self::produtosDoItem($item),
                 'depende_de'     => $item['depende_de'],
             ];
@@ -529,6 +536,8 @@ class TrilhaDaEmpresa
             // começou não devolve ninguém.
             'pode_tirar'     => $trabalho && $onda !== null && ! $onda->comecou($ondas->hoje),
             'pub_produto_id' => $s['pub_produto_id'],
+            // R4 (04/11/2026): por que o agente parou e se a equipe pode pedir de novo — só a equipe recebe.
+            'parada'         => $s['parada'] ?? null,
         ];
     }
 
@@ -584,6 +593,48 @@ class TrilhaDaEmpresa
         }
 
         return $saida;
+    }
+
+    /**
+     * As fotos da empresa numa consulta só: quantas cada variação tem (a régua da Lista, {@see fotosPorVariacao()}) e a
+     * CAPA de cada uma — a de menor `ordem` (0 é a capa; a renumeração ao excluir e a reordenação mantêm isso), no empate
+     * a de menor id. Lê as linhas (id e variação, já nessa ordem) em vez do `count` agrupado: o número de consultas da trilha não
+     * muda (R2, 04/11/2026).
+     *
+     * @return array{0: array<int, int>, 1: array<int, int>} variacao_id → total; variacao_id → id da imagem da capa
+     */
+    private static function fotosECapas(int $empresaId): array
+    {
+        $total = [];
+        $capas = [];
+        $linhas = DB::table('estrutura_produto_variacao_imagens')
+            ->where('company_id', $empresaId)
+            ->orderBy('variacao_id')->orderBy('ordem')->orderBy('id')
+            ->get(['id', 'variacao_id']);
+        foreach ($linhas as $l) {
+            $v = (int) $l->variacao_id;
+            $total[$v] = ($total[$v] ?? 0) + 1;
+            $capas[$v] ??= (int) $l->id;
+        }
+
+        return [$total, $capas];
+    }
+
+    /**
+     * A capa do produto: a da 1ª variação (na ordem do cadastro) que tem foto; null sem foto nenhuma.
+     *
+     * @param  array<int, int>  $capas  {@see fotosECapas()}
+     * @return ?array{variacao: int, imagem: int}
+     */
+    private static function capaDoProduto(EstruturaProduto $produto, array $capas): ?array
+    {
+        foreach ($produto->variacoes as $v) {
+            if (isset($capas[(int) $v->id])) {
+                return ['variacao' => (int) $v->id, 'imagem' => $capas[(int) $v->id]];
+            }
+        }
+
+        return null;
     }
 
     /** Chave de ordem do nome: sem acento e sem caixa ("Ábaco" junto de "abacate"). */

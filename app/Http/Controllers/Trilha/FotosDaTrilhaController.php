@@ -108,6 +108,39 @@ class FotosDaTrilhaController extends Controller
         return response()->json([...$retrato, 'mensagem' => self::mensagem('Foto excluída.', $retrato['situacao'])]);
     }
 
+    /**
+     * Rota 11b (R6, 04/11/2026) — a ordem das fotos da cor: `{ordem: [id, id, …]}` com TODAS as fotos da variação, cada
+     * uma uma vez; a 1ª vira a capa. A ordem da guarda é a do envio: o endereço (404), a forma do corpo (422), a trava do
+     * produto que andou (409) e, sob a variação presa, a lista conferida contra a galeria de AGORA (422 em `ordem` — a
+     * foto que outra aba enviou ou excluiu no meio do caminho não some nem fica de fora em silêncio). Não confere a versão
+     * (F6): as fotos ficam fora dela. Responde o retrato novo da gaveta.
+     */
+    public function ordenar(Request $request, int $company, int $produto, int $variacao): JsonResponse
+    {
+        [$empresa, $alvo] = $this->cadastro->alvo($request->user(), $company, $produto);
+        $v = $this->cadastro->variacao($empresa, $alvo, $variacao);
+
+        $dados = $request->validate([
+            'ordem'   => ['required', 'array', 'min:1', 'max:'.max(1, VariacaoImagensService::maxPorVariacao())],
+            'ordem.*' => ['required', 'integer', 'min:1', 'distinct'],
+        ], [
+            'ordem.required'   => 'Informe a ordem das fotos.',
+            'ordem.array'      => 'Ordem das fotos inválida.',
+            'ordem.min'        => 'Informe a ordem das fotos.',
+            'ordem.max'        => 'Ordem das fotos inválida.',
+            'ordem.*.required' => 'Ordem das fotos inválida.',
+            'ordem.*.integer'  => 'Ordem das fotos inválida.',
+            'ordem.*.min'      => 'Ordem das fotos inválida.',
+            'ordem.*.distinct' => 'Ordem das fotos inválida: a mesma foto apareceu duas vezes.',
+        ]);
+        $this->cadastro->exigirLivre($empresa, $alvo);
+
+        $mudou = $this->cadastro->ordenarFotos($empresa, $alvo, $v, array_map('intval', $dados['ordem']), AtorDoPortal::daEquipe($request->user()));
+        $retrato = $this->cadastro->retrato($empresa, $alvo);
+
+        return response()->json([...$retrato, 'mensagem' => $mudou ? 'Ordem das fotos salva.' : 'A ordem já era esta.']);
+    }
+
     /** O resultado, no padrão das outras escritas do cadastro: completo, ainda na Lista ou só o que foi feito. */
     private static function mensagem(string $feito, array $situacao): string
     {

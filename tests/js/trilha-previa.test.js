@@ -275,8 +275,11 @@ test('fotos: a ordem do anúncio (a capa do Premium é a do robô), `gerada` boo
     assert.equal(capaDoAnuncio(premiumNatural).id, '890');
     assert.equal(capaDoAnuncio(premiumNatural).gerada, true);
     assert.equal(capaDoAnuncio({ fotos: [] }), null);
-    // Sem URL, fora; `gerada` que não é `true` vira falso.
-    assert.deepEqual(fotosDoAnuncio({ fotos: [{ id: 1, url: '' }, { id: 2, url: '/x.jpg', gerada: 1 }, null] }), [{ id: '2', url: '/x.jpg', gerada: false }]);
+    // Sem URL, fora; `gerada` que não é `true` vira falso. R3: sem `miniatura` (a porta do cliente, dado antigo), a grade
+    // usa a própria foto; com ela, a versão pequena.
+    assert.deepEqual(fotosDoAnuncio({ fotos: [{ id: 1, url: '' }, { id: 2, url: '/x.jpg', gerada: 1 }, null] }), [{ id: '2', url: '/x.jpg', miniatura: '/x.jpg', gerada: false }]);
+    assert.equal(fotosDoAnuncio({ fotos: [{ id: 3, url: '/y.jpg', miniatura: ' /y.jpg?miniatura=1 ' }] })[0].miniatura, '/y.jpg?miniatura=1');
+    assert.equal(fotosDoAnuncio({ fotos: [{ id: 3, url: '/y.jpg', miniatura: null }] })[0].miniatura, '/y.jpg');
 
     assert.equal(ROTULO_DA_GERADA, 'gerada pelo robô');
     assert.equal(textoDasGeradas(fotos), '2 das 5 fotos foram geradas pelo robô.');
@@ -410,7 +413,7 @@ test('a prévia pronta (§19.5): Onde está, o cartão do anúncio, o Preço com
         '2 das 5 fotos foram geradas pelo robô.',
         'Preço', 'Clássico', 'ajustado', 'na Precificação: R$ 879,90', 'Premium', 'R$ 989,90', 'igual à Precificação',
         'Situação', 'Pré-pronto · esperando a revisão', 'Preparo do robô:', 'Título · pronto', 'Descrição · pronto', 'Imagens · pronto',
-        'Ver a oferta', 'Abrir no Publicador',
+        'Ver a oferta',
     ]) {
         assert.ok(t.includes(s), `faltou: ${s}`);
     }
@@ -427,8 +430,9 @@ test('a prévia pronta (§19.5): Onde está, o cartão do anúncio, o Preço com
     assert.ok(!saida.includes('data-parcelas') && !saida.includes('data-promocao'));
     // O "ajustado" só no Clássico.
     assert.ok(pedaco(saida, 'data-preco', 'classico').includes('data-ajustado') && !pedaco(saida, 'data-preco', 'premium').includes('data-ajustado'));
-    // O link do Publicador é o que já existia (só o admin o recebe); o "Ver a oferta" volta ao painel dela.
-    assert.match(saida, /href="\/mlb\/anuncios\/publicador\/produtos\/72\/editor\?etapa=previa"[^>]*data-link="publicador"/);
+    // R10 (04/11/2026): nenhum link do Publicador — nem com o endereço velho na oferta de exemplo (`url_publicador`).
+    assert.ok(OFERTA_S2.url_publicador, 'o exemplo ainda traz o endereço');
+    assert.ok(!saida.includes('data-link="publicador"') && !saida.includes('/mlb/anuncios/publicador') && !t.includes('Abrir no Publicador'));
     // Nada do marketplace, do Portal nem do "agente" (D59).
     assert.equal(t.match(PROIBIDO), null);
 });
@@ -451,6 +455,22 @@ test('a galeria: a capa grande, as miniaturas, as do robô com o selo "gerada pe
     assert.ok(tag(galeria, 'data-foto="881"').includes('aria-pressed="true"'), 'a capa é a escolhida ao abrir');
     // As cores com a capa de cada uma.
     assert.match(pedaco(saida, 'data-escolha', 'variante'), /<img src="\/trilha\/459\/ofertas\/s-2\/fotos\/884" alt="" loading="lazy"/);
+});
+
+test('R3: a grade e a bolinha da cor pedem a MINIATURA; só a foto em destaque é a grande', () => {
+    // A prévia da equipe traz `miniatura` em cada foto (o mesmo endereço com `?miniatura=1`).
+    const comMiniatura = {
+        ...PREVIA_DO_ANUNCIO,
+        anuncios: PREVIA_DO_ANUNCIO.anuncios.map((a) => ({ ...a, fotos: a.fotos.map((f) => ({ ...f, miniatura: `${f.url}?miniatura=1` })) })),
+    };
+    const saida = desenharVista({ previa: comMiniatura });
+    const galeria = pedaco(saida, 'data-galeria', '');
+    const grande = pedaco(saida, 'data-foto-grande', '881');
+    assert.match(grande, /<img src="\/trilha\/459\/ofertas\/s-2\/fotos\/881" /, 'a foto em destaque é a inteira');
+    const grade = (galeria.match(/<button[^>]*data-foto="\d+"[\s\S]*?<\/button>/g) ?? []).map((b) => b.match(/<img src="([^"]+)"/)[1]);
+    assert.equal(grade.length, 5);
+    assert.ok(grade.every((src) => src.endsWith('?miniatura=1')), grade.join(' '));
+    assert.match(pedaco(saida, 'data-escolha', 'variante'), /<img src="\/trilha\/459\/ofertas\/s-2\/fotos\/884\?miniatura=1" alt="" loading="lazy"/);
 });
 
 test('o Premium (outra escolha): a capa é a do robô, com o selo; o preço com as parcelas sem juros', () => {
@@ -542,18 +562,19 @@ test('a gaveta de verdade (com o hook): na revisão abre "Abrindo a prévia…";
     assert.match(fonte, /if \(antes\) return undefined;/);
 });
 
-test('o rodapé: "Ver a oferta" abre o painel `o:`; sem o link do Publicador (quem não é admin), só ele', () => {
+test('o rodapé: "Ver a oferta" abre o painel `o:`; nenhum link do Publicador, nem com o endereço na oferta (R10)', () => {
     const abertos = [];
+    // A oferta de exemplo ainda traz `url_publicador` (o servidor deixou de mandar): mesmo assim, só o [Ver a oferta].
+    assert.ok(OFERTA_S2.url_publicador);
     const miolo = M.previa.VistaDaPrevia({ oferta: OFERTA_S2, previa: PREVIA_DO_ANUNCIO, onAbrir: (chave) => abertos.push(chave) });
-    const [verOferta, publicador] = miolo.props.rodape;
+    assert.equal(miolo.props.rodape.length, 1);
+    const [verOferta] = miolo.props.rodape;
     verOferta.props.onClick();
     assert.deepEqual(abertos, ['o:s-2']);
-    assert.equal(publicador.props.href, OFERTA_S2.url_publicador);
-    const semLink = renderToStaticMarkup(h(M.previa.VistaDaPrevia, { oferta: { ...OFERTA_S2, url_publicador: null }, previa: PREVIA_DO_ANUNCIO }));
-    assert.ok(semLink.includes('data-acao="ver-oferta"') && !semLink.includes('data-link="publicador"'));
+    const comLink = renderToStaticMarkup(h(M.previa.VistaDaPrevia, { oferta: OFERTA_S2, previa: PREVIA_DO_ANUNCIO }));
+    assert.ok(comLink.includes('data-acao="ver-oferta"') && !comLink.includes('data-link="publicador"'));
     // (O "Publicador" que sobra no texto é o dono da etapa 5 no "Onde está" — o de `lib/trilha.js`, que já existia.)
-    assert.ok(!texto(semLink).includes('Abrir no Publicador'));
-    assert.equal(M.previa.VistaDaPrevia({ oferta: { ...OFERTA_S2, url_publicador: null }, previa: PREVIA_DO_ANUNCIO }).props.rodape.length, 1);
+    assert.ok(!texto(comLink).includes('Abrir no Publicador') && !comLink.includes('/mlb/anuncios/publicador'));
 });
 
 // ─── A chave `v:` (só para a equipe com `escrita.revisao`) ─────────────────
@@ -648,7 +669,9 @@ test('o "Revisar" da linha em revisão abre `v:` (a linha continua sendo a da of
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
     assert.match(pagina, /const propsDoPainel = \{[^}]*\bcomPrevia\b[^}]*\};/);
     const etapa = lerSemComentarios('resources/js/Components/Trilha/PainelDaEtapa.jsx');
-    assert.equal(etapa.match(/comPrevia=\{comPrevia\}/g)?.length, 3, 'Linhas → LinhaDoItem, PainelGeral → Linhas e PainelDaEtapa → Linhas');
+    assert.equal(etapa.match(/comPrevia=\{comPrevia\}/g)?.length, 4, 'Linhas → LinhaDoItem, PainelGeral → Linhas, PainelDaEtapa → Linhas e (R12) PainelDaEtapa → PlanejamentoEmLote');
+    // R12 (04/11/2026): o Planejamento em lote desenha as mesmas linhas — e passa `comPrevia` adiante.
+    assert.match(lerSemComentarios('resources/js/Components/Trilha/PlanejamentoEmLote.jsx'), /<LinhaDoItem[^>]*comPrevia=\{comPrevia\}/);
     assert.match(etapa, /export function PainelGeral\(\{[^}]*comPrevia = false[^}]*\}\)/);
     assert.match(etapa, /export function PainelDaEtapa\(\{[^}]*comPrevia = false[^}]*\}\)/);
 });
@@ -661,11 +684,13 @@ test('o painel da oferta (`o:`) ganha [Ver prévia]: principal na revisão, secu
     const revisao = daOferta(PROPS_TRABALHO, 's-2');
     assert.ok(botaoPrevia(revisao).includes('bg-trilha-navy'), 'na revisão é a ação principal');
     assert.ok(texto(revisao).includes('Ver prévia'));
-    assert.ok(linkPublicador(revisao) && !linkPublicador(revisao).includes('bg-trilha-navy'), 'o Publicador fica secundário');
+    // R10 (04/11/2026): nenhum link do Publicador no painel da oferta — nem com o endereço velho nas props do exemplo.
+    assert.equal(linkPublicador(revisao), '', 'R10: sem o link do Publicador');
 
     const publicada = daOferta(PROPS_TRABALHO, 's-1');
     assert.ok(botaoPrevia(publicada) && !botaoPrevia(publicada).includes('bg-trilha-navy'), 'publicada: conferência, secundária');
-    assert.ok(linkPublicador(publicada).includes('bg-trilha-navy'));
+    assert.equal(linkPublicador(publicada), '');
+    assert.ok(!texto(publicada).includes('Abrir no Publicador'));
 
     assert.equal(botaoPrevia(daOferta(PROPS_TRABALHO, 's-3')), '', 'com o robô: ainda não');
     assert.equal(botaoPrevia(daOferta(PROPS_TRABALHO, 'c-2-4')), '', 'no planejamento: ainda não');
@@ -679,8 +704,8 @@ test('o painel da oferta (`o:`) ganha [Ver prévia]: principal na revisão, secu
         assert.equal(botaoPrevia(html), '', nome);
         assert.ok(!texto(html).includes('Ver prévia'), nome);
     }
-    // Sem [Ver prévia], o Publicador volta a ser o principal (como antes da 4a).
-    assert.ok(linkPublicador(daOferta(SEM_REVISAO, 's-2')).includes('bg-trilha-navy'));
+    // Sem [Ver prévia], o Publicador também não volta (antes da 4a ele era o principal).
+    assert.equal(linkPublicador(daOferta(SEM_REVISAO, 's-2')), '');
 });
 
 // ─── O `lazy`, o pacote do cliente e as cores ───────────────────────────────
@@ -703,15 +728,17 @@ test('o `lazy` da prévia: na página E no 2º caminho (`CadastroSobDemanda.jsx`
     assert.equal(fallback.match(/Mercado\s+Livre|Portal|Publicador/i), null);
 });
 
-test('a pasta Revisao/: só cores trilha-*, toda foto com `loading="lazy"`, nenhum marketplace, Portal nem "agente" — o Publicador só no link que já existia', () => {
+test('a pasta Revisao/: só cores trilha-*, toda foto com `loading="lazy"`, nenhum marketplace, Portal, "agente" nem Publicador (R10)', () => {
     const pasta = path.resolve(RAIZ, 'resources/js/Components/Trilha/Revisao');
     const arquivos = fs.readdirSync(pasta).map((f) => path.join('resources/js/Components/Trilha/Revisao', f));
     assert.ok(arquivos.length >= 1);
     for (const arquivo of arquivos) {
         const fonte = lerSemComentarios(arquivo);
         assert.equal(fonte.match(/Mercado\s+Livre|Portal|\/portal|\bagente\b/i), null, arquivo);
-        // O link que já existia mora na gaveta; as outras peças da pasta (a caixa do preço, 4c) não citam o Publicador.
-        const doPublicador = path.basename(arquivo) === 'PreviaDoAnuncio.jsx' ? ['Abrir no Publicador'] : [];
+        // R10 (04/11/2026): o "Abrir no Publicador" que morava na gaveta saiu — nenhuma peça da pasta cita o Publicador
+        // nem lê o endereço dele.
+        assert.equal(fonte.match(/url_publicador/), null, arquivo);
+        const doPublicador = [];
         assert.deepEqual([...fonte.matchAll(/[^\n]*Publicador[^\n]*/g)].map((m) => m[0].trim()), doPublicador, arquivo);
         assert.equal(fonte.match(/\btext-white\b|\bbg-white\/|\b(?:bg|text|border)-ecf-|\[#[0-9a-fA-F]{3,8}\]/), null, arquivo);
         const pub = [...fonte.matchAll(/[\w-]*\bpub-[\w-]*/g)].map((m) => m[0]).filter((c) => c !== 'font-pub-mono');

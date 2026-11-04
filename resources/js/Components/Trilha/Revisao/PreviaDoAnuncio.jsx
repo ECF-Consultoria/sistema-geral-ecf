@@ -34,7 +34,7 @@ import {
 import { comTravaDaPublicacao, comTravaDoPreco } from '@/lib/trilhaAjuste';
 import { comTravaDoEnvio, semPublicarDireto } from '@/lib/trilhaAprovacao';
 import { cn } from '@/lib/utils';
-import { Botao, Caixa, LinkDeAcao, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
+import { Botao, Caixa, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
 import { composicao } from '@/Components/Trilha/formatos';
 import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
@@ -82,8 +82,8 @@ import RodapeDoEnvio, { CaixaDaAprovacao, useEnvioAoCliente } from '@/Components
 // Chega SÓ por `lazy` (a página e o 2º caminho em `Pages/Trilha/CadastroSobDemanda.jsx`
 // — learnings §30): o cliente não baixa este JS (na 4e ele ganhou um cartão próprio,
 // enxuto, em `Cliente/AprovarAnuncio.jsx`). Mesmo assim os textos não citam o
-// marketplace nem o "agente" (D59). O único "Publicador" é o link que já existia, que
-// o servidor só manda ao admin.
+// marketplace nem o "agente" (D59). Desde o R10 (04/11/2026) nenhum link leva ao
+// editor de fora: a trilha é onde se revisa e publica.
 
 const BOTAO_DE_ALTERNAR = cn(
     'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold',
@@ -124,7 +124,10 @@ function SeloDaGerada({ className }) {
     );
 }
 
-/** A galeria: a foto escolhida grande (a capa, ao abrir) e as miniaturas — as do robô marcadas em roxo. */
+/**
+ * A galeria: a foto escolhida grande (a capa, ao abrir) e as miniaturas — as do robô marcadas em roxo. R3 (04/11/2026): a
+ * grade usa a versão pequena de cada foto (`miniatura`, quando o servidor a manda); só a foto em destaque é a grande.
+ */
 function Galeria({ fotos, indice, onIndice }) {
     if (!fotos.length) {
         return (
@@ -171,7 +174,7 @@ function Galeria({ fotos, indice, onIndice }) {
                                     i === posicao ? 'border-trilha-run' : foto.gerada ? 'border-trilha-roxo/60' : 'border-transparent hover:border-trilha-line',
                                 )}
                             >
-                                <img src={foto.url} alt="" loading="lazy" className="block aspect-square w-full object-cover" />
+                                <img src={foto.miniatura || foto.url} alt="" loading="lazy" decoding="async" className="block aspect-square w-full object-cover" />
                                 {foto.gerada && (
                                     <span aria-hidden="true" className="absolute inset-x-0 bottom-0 bg-trilha-roxo-bg px-1 text-center text-[10px] font-semibold leading-4 text-trilha-roxo">
                                         robô
@@ -256,7 +259,8 @@ function CaixaDoAnuncio({ previa, inicial = null }) {
                     opcoes={variantes.map((v) => ({
                         valor: v.chave,
                         rotulo: v.rotulo,
-                        capa: capaDoAnuncio(anuncioEscolhido(previa, { tipo: escolha.tipo, variante: v.chave }))?.url ?? null,
+                        // R3: a bolinha da cor é pequena — a miniatura, nunca a foto grande.
+                        capa: capaDoAnuncio(anuncioEscolhido(previa, { tipo: escolha.tipo, variante: v.chave }))?.miniatura ?? null,
                     }))}
                     valor={escolha.variante}
                     onEscolher={(variante) => escolher({ variante })}
@@ -405,20 +409,13 @@ export function VistaDaPrevia({ oferta, previa = null, carregando = false, erro 
         ? { ...precoDaCaixa, estado: { ...precoDaCaixa.estado, leitura: publicar.travaDoPreco } }
         : precoDaCaixa;
 
+    // R10 (retorno do 1º teste, 04/11/2026): "a trilha é o publicador" — nenhum link daqui leva ao editor de lá, nem
+    // para o admin (o servidor também deixou de mandar o endereço).
     let rodape = [
         <Botao key="oferta" data-acao="ver-oferta" onClick={() => onAbrir(chaveDaOferta(oferta))}>
             Ver a oferta
         </Botao>,
     ];
-    // O link que já existia no painel da oferta: o servidor só o manda ao admin (e o "Ver como: Cliente" o tira). Com o
-    // [Aprovar e publicar] (4d) na tela, ele vira secundário.
-    if (oferta?.url_publicador) {
-        rodape.push(
-            <LinkDeAcao key="publicador" href={oferta.url_publicador} primario={!publicar?.acao} data-link="publicador">
-                Abrir no Publicador
-            </LinkDeAcao>,
-        );
-    }
     // 4b: o secundário [Pedir ajuste ao robô], antes do primário da publicação.
     if (ajuste?.acao) rodape.push(<BotaoDoAjuste key="ajuste" ajuste={ajuste} />);
     // 4d: a situação da publicação, o primário e a confirmação dele em volta das ações de sempre.

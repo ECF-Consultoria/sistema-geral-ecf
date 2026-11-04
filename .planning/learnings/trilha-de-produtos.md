@@ -1390,3 +1390,67 @@ teste `AprovacaoDoClienteNaTrilhaTest` (+ a rota da equipe na matriz do `Cadastr
   trabalho.
 - **Modo equipe do Portal recebe `cliente_escrita = {fotos: null, aprovacao: {...}}`** (a ECF aprova pelo cliente →
   `decidido_por_equipe`); fora do modo equipe, só o cliente de verdade.
+
+### Retorno do 1º teste — cadastro (R1, R6, R7, R8), 04/11/2026
+- **R1: nenhuma escrita de foto (enviar, ordem, excluir) muda a versão** — provado com os Jobs do Publicador rodados
+  de verdade (`SincronizarProdutoDoPortalJob`, `PrepararProdutoNoPublicadorJob`). O "Recarregue…" no envio era
+  gravação POR FORA depois de a gaveta abrir (outra aba, Portal, planilha F7, importação F8 — que grava título e ficha
+  pela IA com o produto já na Lista). Desde 04/11: com algo mexido na gaveta, o aviso da F6 continua; sem nada mexido,
+  a gaveta adota o retrato e a versão novos e só anota no rodapé (`versaoDepoisDe(…, {mexido})`). Mudar isso reabre o
+  alarme falso ou deixa um Salvar passar por cima de outra gravação. Para conferir um caso real:
+  `activity_log` (`log_name='portal'`, `subject_id` = produto) entre o abrir e o envio.
+- **R6: a ordem das fotos exige a lista EXATA da galeria** (o Portal ignora ids de fora; a trilha recusa com 422),
+  sob a trava da variação; regrava por `VariacaoImagensService::reordenar`. Fica fora da versão. NÃO chega ao rascunho
+  de produto que já está no Publicador (a sincronização só copia foto para galeria vazia).
+- **R8: régua do "Não se aplica"** (`FichaTecnicaDaCategoria::aceitaNaoSeAplica`) — documentação do ML
+  (developers.mercadolivre.com.br/pt_br/atributos, "Especificar atributos que não aplicam": N/A = `value_id:"-1"`):
+  obrigatório NÃO (o `/items/validate` responde `cause_id 100`); `allow_variations` NÃO (versão es_ar da página);
+  escondido (`hidden`, o grupo "Mais detalhes") SIM — resolve "Largura da cama" (BED_WIDTH) na poltrona; Sim/Não NÃO
+  (regra NOSSA: o "Não" já responde). A API não dá sinal por atributo de onde o N/A faz sentido. Vale para o Portal, a
+  planilha e a IA da importação; DIVERGE do editor do Publicador (`ClassificadorAtributos`, que ainda aceita N/A em
+  Sim/Não e `allow_variations`). Um N/A já gravado nesses campos some na próxima gravação da ficha. Reverte o
+  "escondido sem N/A" de 29/10 (2 testes de unidade antigos voltaram a passar). Próximo passo possível:
+  `technical_specs/input` → `rendering_conditions.visibility_conditions` para esconder campo como o formulário do ML.
+- A documentação do ML dá 403 no WebFetch; curl com User-Agent de navegador funciona.
+- **Python no Windows:** `open(p, 'w')` converte o arquivo inteiro para CRLF — use `newline=''`.
+- **Servir a tela do worktree com outro banco:** `php artisan serve` não repassa variáveis de ambiente; use `php -S`
+  com `server.php` e, no Puppeteer, sirva do disco os pedaços que o build fixou na porta 8251.
+
+### Retorno do 1º teste — prévia, agente parou, fila, sem Publicador (R3, R4, R5, R10), 04/11/2026
+- **R3:** a foto da prévia acha o rascunho pelo mapa item → anúncio que a própria prévia grava em cache por EMPRESA
+  (`trilha:previa:pubs:{empresa}`, 10 min) — a chave TEM de levar a empresa (ids são globais; mapa compartilhado
+  serviria foto de outra loja; há teste). 15 → 6 consultas por foto, sem crescer com o catálogo. 304 sai antes de abrir
+  o disco, mas depois da guarda. Miniatura = a do acervo, só com o sha igual (grava `miniatura_caminho` na 1ª vez).
+  **Pendente:** a foto da porta do cliente (`AprovacaoDoClienteNaTrilha::imagemDoCliente`) ainda lê a loja inteira e
+  não tem 304 nem miniatura.
+- **R4:** a causa da etapa parada é gravada (aditivo: `marcarEtapa(..., ?string $motivo)`), classificada por
+  `App\Support\Publicador\MotivoDaFalhaDaIa` a partir do TEXTO de `AnaliseAnuncioService::mensagemAmigavel` — mudou lá,
+  muda lá (o teste com provedor falso pega). `sem_credito` (402) > `chave` > `limite` > `indisponivel` > … na tela.
+  `GerarPreparoIaJob::failed` ainda marca `erro` sem motivo ("outro"); erros gravados antes do deploy também.
+  **Lacunas:** imagens que falharam 2× deixam o item "O agente parou: imagens" sem ação na trilha (o link para a etapa
+  de imagens do Publicador saiu com o R10); [Tentar de novo] que bate na cota diária volta a "parou" com a causa
+  antiga (só vai ao log).
+- **R5:** depois de `na_fila`, `AndarFilaDePublicacaoJob` (fila `high`) roda `AgendadorDaFila::rodar()` com o MESMO
+  mutex do agendamento `publicador-fila-publicacao` — renomear o agendamento desliga a passada na hora (aviso no log;
+  teste confere). Não passa por cima do `EditorEmUso` (provável causa dos 7 min do 1º teste: abrir o editor do
+  Publicador marca 3 min).
+- **R10:** nenhum link da trilha leva ao Publicador (nem para admin); `links.publicador`/`url_publicador` saíram do
+  servidor. A fixture JS ainda os traz de propósito: os testes provam que a tela os ignora.
+- **Deploy:** jobs novos em `high` e `publicador-ia` (+ `PreparoIaDoRascunhoService` mudou) → `queue:restart`.
+
+### Retorno do 1º teste — Lista e Planejamento (R2, R11, R12), 04/11/2026
+- **R2: a coluna Fotos da Lista era o marcador do protótipo** — um quadrado com o `fotos_min` (contagem da cor com
+  MENOS fotos), sem endereço de foto. A capa agora sai por porta (`capa: {variacao, imagem}` em
+  `TrilhaDaEmpresa::montar`, da mesma leitura da contagem) e cada rota de foto tem a sua guarda (equipe =
+  escrita; cliente = só o cliente de verdade, 404 no modo equipe). A capa vem nula onde a rota recusaria (foto
+  quebrada é pior que a contagem); no modo equipe do Portal a Lista fica sem miniatura (decisão da 4f).
+- **`Storage::fake` divide `storage/framework/testing/disks/` entre phpunit simultâneos:** um processo apaga o disco do
+  outro (404 falso). Rodar sempre com `TEST_TOKEN` próprio (o `scratchpad/bateria.sh` já faz).
+- **R11 depende das âncoras da gaveta** (`data-campo`, `data-galeria`, `data-contador-de-fotos="warn"`,
+  `data-campo-tecnico` + texto do `<label>`, `data-caixa="ficha"`): renomear qualquer uma quebra o clique em
+  silêncio. `trilha-faltas.test.js` desenha a gaveta e procura a âncora de cada falta, lendo os rótulos de falta das
+  fontes PHP — falta nova no servidor sem alvo derruba o teste. O alvo NÃO vai para a URL (F5 reabre no topo).
+- **R12:** o lote usa o MESMO `porNoPlano` do `planejar` de um item; confere as Simples antes dos Combos; desfaz o plano
+  por item (nada parcial); um registro só no histórico e uma soltura só. Endereço derivado (`{escrita.planejamento}/lote`).
+- **Testes de fonte da 4a/4e contam `comPrevia={comPrevia}`/`comAprovacao={comAprovacao}` em `PainelDaEtapa`** (agora 4).
+- Prova de mutação por troca de trecho: o trecho mutado não pode já existir no arquivo nem ser vazio.

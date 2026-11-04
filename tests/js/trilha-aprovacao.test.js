@@ -712,7 +712,9 @@ test('a linha: "Com o cliente" (neutro) para a equipe, que segue abrindo a prév
     const pagina = lerSemComentarios('resources/js/Pages/Trilha/Empresa.jsx');
     assert.match(pagina, /const propsDoPainel = \{[^}]*\bcomAprovacao\b[^}]*\};/);
     const etapa = lerSemComentarios('resources/js/Components/Trilha/PainelDaEtapa.jsx');
-    assert.equal(etapa.match(/comAprovacao=\{comAprovacao\}/g)?.length, 3, 'Linhas → LinhaDoItem, PainelGeral → Linhas e PainelDaEtapa → Linhas');
+    assert.equal(etapa.match(/comAprovacao=\{comAprovacao\}/g)?.length, 4, 'Linhas → LinhaDoItem, PainelGeral → Linhas, PainelDaEtapa → Linhas e (R12) PainelDaEtapa → PlanejamentoEmLote');
+    // R12 (04/11/2026): o Planejamento em lote desenha as mesmas linhas — e passa `comAprovacao` adiante.
+    assert.match(lerSemComentarios('resources/js/Components/Trilha/PlanejamentoEmLote.jsx'), /<LinhaDoItem[^>]*comAprovacao=\{comAprovacao\}/);
 });
 
 test('quem recebe os endereços do cliente: só a porta do CLIENTE (visão nas props), com a trilha de trabalho e os três endereços', () => {
@@ -859,16 +861,17 @@ test('com a chave: o primário vira [Mandar ao cliente] (por último), sem [Apro
     const botao = tag(rodape, 'data-acao="mandar-ao-cliente"');
     assert.ok(botao.includes('bg-trilha-navy') && !botao.includes('disabled=""'), botao);
     assert.ok(!rodape.includes('aprovar-e-publicar'), 'a equipe não publica direto');
-    // A ordem: [Ver a oferta] [Abrir no Publicador] [Pedir ajuste ao robô] [Mandar ao cliente].
-    const ordem = ['data-acao="ver-oferta"', 'data-link="publicador"', 'data-acao="pedir-ajuste"', 'data-acao="mandar-ao-cliente"'].map((m) => rodape.indexOf(m));
+    // A ordem: [Ver a oferta] [Pedir ajuste ao robô] [Mandar ao cliente] (R10, 04/11/2026: sem "Abrir no Publicador").
+    const ordem = ['data-acao="ver-oferta"', 'data-acao="pedir-ajuste"', 'data-acao="mandar-ao-cliente"'].map((m) => rodape.indexOf(m));
     assert.ok(ordem.every((p, i) => p >= 0 && (i === 0 || p > ordem[i - 1])), JSON.stringify(ordem));
+    assert.ok(!rodape.includes('data-link="publicador"'), 'R10: nenhum link do Publicador');
     // A caixa vem logo depois do "Onde está" e antes do anúncio.
     assert.ok(saida.indexOf('data-caixa="onde-esta"') < saida.indexOf('data-caixa="aprovacao-do-cliente"'));
     assert.ok(saida.indexOf('data-caixa="aprovacao-do-cliente"') < saida.indexOf('data-caixa="anuncio"'));
     assert.equal(texto(caixaDaAprovacao(saida)), 'Aprovação do cliente Esta loja aprova os anúncios antes de publicar. Mande a prévia ao cliente: ele aprova (e o anúncio entra na fila de publicação) ou pede ajuste.');
     // O preço continua editável (a equipe ajusta antes de mandar). Nada do marketplace, do Portal nem do agente.
     assert.ok(saida.includes('data-preco-editavel=""'));
-    assert.equal(texto(rodape).replace('Abrir no Publicador', '').match(PROIBIDO), null);
+    assert.equal(texto(rodape).match(PROIBIDO), null);
     assert.equal(texto(caixaDaAprovacao(saida)).match(PROIBIDO), null);
 });
 

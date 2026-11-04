@@ -89,6 +89,10 @@ import {
     textoDoConflito,
     travadoNo409,
     versaoDepoisDe,
+    NOTA_DO_RETRATO_DE_FORA,
+    fotosNaOrdem,
+    ordemMovida,
+    textoDaOrdem,
 } from '../../resources/js/lib/trilhaCadastro.js';
 import { avisosEmTexto } from '../../resources/js/Components/Trilha/formatos.js';
 import { acaoDoItem, comQuemEsta, estaEmAnalise, estaNoAr, etapaDaTrilha } from '../../resources/js/lib/trilha.js';
@@ -655,7 +659,8 @@ test('F2 — "Usar esta" só põe a categoria no ESTADO: fica mexido, e ela vai 
 
     // O 422 da trilha (não anunciável, ou o produto já no Publicador) cai no campo da categoria.
     const recusa = (errors) => ({ isAxiosError: true, response: { status: 422, data: { errors } } });
-    assert.equal(erroDaCategoriaNo422(recusa({ 'linhas.0.categoria_ml_id': ['A categoria já está no Publicador; troque no editor de lá.'] })), 'A categoria já está no Publicador; troque no editor de lá.');
+    const naoMudaMais = 'A categoria já foi usada no anúncio em preparo e não muda mais por aqui. Se estiver errada, peça a troca a quem cuida da publicação deste produto.';
+    assert.equal(erroDaCategoriaNo422(recusa({ 'linhas.0.categoria_ml_id': [naoMudaMais] })), naoMudaMais);
     assert.equal(erroDaCategoriaNo422(recusa({ 'linhas.0.custo': ['Use números.'] })), null);
     assert.equal(erroDaCategoriaNo422({ response: { status: 409, data: { errors: { categoria: ['x'] } } } }), null);
 });
@@ -1340,16 +1345,64 @@ test('F6 — a versão que a gaveta conhece: a escrita CONFERIDA adota a da resp
     const v1 = 'a'.repeat(40);
     const v2 = 'b'.repeat(40);
 
+    const nada = { mudou: false, porFora: false };
     // Linhas, ficha, remover cor: o pedido levou a versão e passou — a resposta é desta gravação.
-    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { conferida: true }), { versao: v2, mudou: false });
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { conferida: true }), { versao: v2, ...nada });
     // Foto e frete não mudam a versão: a mesma, nada a dizer.
-    assert.deepEqual(versaoDepoisDe(v1, { versao: v1 }), { versao: v1, mudou: false });
-    // Foto que volta com OUTRA versão: alguém gravou por fora. A gaveta fica com a dela (o próximo "Salvar" leva o 409) e avisa já.
-    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }), { versao: v1, mudou: true });
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v1 }), { versao: v1, ...nada });
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v1 }, { mexido: false }), { versao: v1, ...nada });
+    // Foto que volta com OUTRA versão e algo MEXIDO na gaveta: alguém gravou por fora. A gaveta fica com a dela (o próximo
+    // "Salvar" leva o 409) e avisa já. Sem dizer o mexido, vale o seguro: avisar.
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { mexido: true }), { versao: v1, mudou: true, porFora: false });
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }), { versao: v1, mudou: true, porFora: false });
     // Sem versão conhecida (o retrato não tinha) ou sem versão na resposta.
-    assert.deepEqual(versaoDepoisDe(null, { versao: v2 }), { versao: v2, mudou: false });
-    assert.deepEqual(versaoDepoisDe(v1, { mensagem: 'ok' }), { versao: v1, mudou: false });
-    assert.deepEqual(versaoDepoisDe(v1, null, { conferida: true }), { versao: v1, mudou: false });
+    assert.deepEqual(versaoDepoisDe(null, { versao: v2 }), { versao: v2, ...nada });
+    assert.deepEqual(versaoDepoisDe(v1, { mensagem: 'ok' }), { versao: v1, ...nada });
+    assert.deepEqual(versaoDepoisDe(v1, null, { conferida: true }), { versao: v1, ...nada });
+});
+
+test('R1 — o "Recarregue…" ao subir fotos: sem nada MEXIDO, a resposta de fora com outra versão vira o retrato de agora, sem aviso', () => {
+    const v1 = 'a'.repeat(40);
+    const v2 = 'b'.repeat(40);
+    // O retorno do 1º teste: a gaveta toda salva, a foto sobe, e a resposta traz a versão de uma gravação feita por fora
+    // depois que a gaveta abriu. Não há nada a perder: a gaveta passa a conhecer a nova (o retrato da resposta já é o de
+    // agora) e só anota no rodapé — nada de "Recarregue…".
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { mexido: false }), { versao: v2, mudou: false, porFora: true });
+    // A escrita conferida segue adotando a sua, mexido ou não.
+    assert.deepEqual(versaoDepoisDe(v1, { versao: v2 }, { conferida: true, mexido: false }), { versao: v2, mudou: false, porFora: false });
+    assert.match(NOTA_DO_RETRATO_DE_FORA, /já mostra o que está salvo agora/);
+    assert.doesNotMatch(NOTA_DO_RETRATO_DE_FORA, /[Rr]ecarregue/);
+});
+
+test('R6 — a ordem das fotos: mover uma foto dá a lista de TODAS; nada muda = sem pedido; a galeria mostra a ordem pedida', () => {
+    const fotos = [{ id: 11 }, { id: 12 }, { id: 13 }];
+    // Para a esquerda, para a direita, para a capa e para o fim.
+    assert.deepEqual(ordemMovida(fotos, 12, 0), [12, 11, 13]);
+    assert.deepEqual(ordemMovida(fotos, 11, 1), [12, 11, 13]);
+    assert.deepEqual(ordemMovida(fotos, 11, 2), [12, 13, 11]);
+    assert.deepEqual(ordemMovida(fotos, 13, 0), [13, 11, 12]);
+    // Fora da faixa vai para a ponta; o mesmo lugar, a foto que não é desta galeria ou a posição torta: nada a pedir.
+    assert.deepEqual(ordemMovida(fotos, 11, 99), [12, 13, 11]);
+    assert.deepEqual(ordemMovida(fotos, 12, -3), [12, 11, 13]);
+    assert.equal(ordemMovida(fotos, 12, 1), null);
+    assert.equal(ordemMovida(fotos, 99, 0), null);
+    assert.equal(ordemMovida(fotos, 12, 0.5), null);
+    assert.equal(ordemMovida([], 1, 0), null);
+    // A lista original não muda.
+    assert.deepEqual(fotos.map((f) => f.id), [11, 12, 13]);
+
+    // A galeria na ordem pedida (os mesmos objetos); a ordem que não é exatamente a desta galeria não vale.
+    const vistas = fotosNaOrdem(fotos, [13, 11, 12]);
+    assert.deepEqual(vistas.map((f) => f.id), [13, 11, 12]);
+    assert.equal(vistas[0], fotos[2]);
+    assert.equal(fotosNaOrdem(fotos, [13, 11]), fotos);
+    assert.equal(fotosNaOrdem(fotos, [13, 11, 99]), fotos);
+    assert.equal(fotosNaOrdem(fotos, [13, 13, 11]), fotos);
+    assert.equal(fotosNaOrdem(fotos, null), fotos);
+
+    // O que a galeria diz: a capa nova merece ser dita.
+    assert.equal(textoDaOrdem(fotos, [12, 11, 13]), 'Ordem salva: a capa mudou.');
+    assert.equal(textoDaOrdem(fotos, [11, 13, 12]), 'Ordem salva.');
 });
 
 test('F6 — o "Salvar" encadeia a versão (linhas → ficha) e, no 409 da versão na ficha, diz que as linhas JÁ gravaram e com qual versão', async () => {

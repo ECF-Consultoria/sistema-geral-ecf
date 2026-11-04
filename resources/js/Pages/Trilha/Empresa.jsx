@@ -169,7 +169,7 @@ function gravarNaUrl(estado) {
  *   sessao_equipe: boolean,
  *   empresa: {id: number, nome: string, logo_url: ?string},
  *   voltar: {url: string, rotulo: string},
- *   links: {portal_abrir: ?string, planejamento: ?string, produtos: ?string, publicador: ?string},
+ *   links: {portal_abrir: ?string, planejamento: ?string, produtos: ?string},
  *   trabalho: boolean,
  *   pode_editar: boolean,
  *   escrita: ?{ondas: string, planejamento: string, produtos: string, categorias?: string,
@@ -304,18 +304,24 @@ export function TelaDaTrilha({
     // Clicar de novo na etapa escolhida volta para "Ver tudo" (null).
     const escolherEtapa = useCallback((chave) => setEtapa((atual) => (chave && atual === chave ? null : chave)), []);
 
-    const abrirItem = useCallback((chave, elemento = null) => {
+    // R11 (04/11/2026): a falta clicada leva à gaveta de cadastro JÁ no campo dela. O alvo fica aqui, fora da URL
+    // (`?abrir=e:12` não muda: um F5 reabre a gaveta no topo e o "voltar" não ganha entrada) — `lib/trilhaFaltas.js`.
+    const [alvoDoCadastro, setAlvoDoCadastro] = useState(null);
+
+    const abrirItem = useCallback((chave, elemento = null, opcoes = null) => {
         // Trocar de item com o painel aberto (da oferta para o produto, p. ex.) mantém a
         // origem do primeiro clique: é para lá que o foco volta quando o painel fechar.
         if (!abertoAgora.current) origem.current = elemento ?? document.activeElement ?? null;
         setVoltaDaOnda(null);
         setPreEscolha(null);
+        setAlvoDoCadastro(opcoes?.alvo ? { ...opcoes.alvo, chave, vez: Date.now() } : null);
         trocarAberto(chave);
     }, [trocarAberto]);
 
     const fechar = useCallback(() => {
         setVoltaDaOnda(null);
         setPreEscolha(null);
+        setAlvoDoCadastro(null);
         trocarAberto(null);
     }, [trocarAberto]);
 
@@ -332,7 +338,10 @@ export function TelaDaTrilha({
         seguir();
     }, []);
     const fecharComGuarda = useCallback(() => passarPelaGuarda(fechar), [passarPelaGuarda, fechar]);
-    const abrirComGuarda = useCallback((chave, elemento = null) => passarPelaGuarda(() => abrirItem(chave, elemento)), [passarPelaGuarda, abrirItem]);
+    const abrirComGuarda = useCallback(
+        (chave, elemento = null, opcoes = null) => passarPelaGuarda(() => abrirItem(chave, elemento, opcoes)),
+        [passarPelaGuarda, abrirItem],
+    );
     const verComoComGuarda = useCallback((valor) => passarPelaGuarda(() => onVerComo(valor)), [passarPelaGuarda, onVerComo]);
 
     // "Abrir na trilha" (Mapa da loja): volta para a aba Trilha, na etapa em que o item
@@ -531,6 +540,7 @@ export function TelaDaTrilha({
                         onAbrir={abrirComGuarda}
                         recemCriado={recemCriado.current === painel.produto.id}
                         onFocoUsado={focoDoRecemCriadoUsado}
+                        alvo={alvoDoCadastro?.chave === aberto ? alvoDoCadastro : null}
                         {...escritaComum}
                     />
                 ) : (
@@ -566,7 +576,14 @@ export function TelaDaTrilha({
                             {etapa === 'lista' && (
                                 <PainelDaLista {...propsDoPainel} comPlanilha={podeEditar && !!escrita?.planilha} comImportacao={podeEditar && !!escrita?.mercado_livre} />
                             )}
-                            {etapa !== null && etapa !== 'lista' && <PainelDaEtapa chave={etapa} {...propsDoPainel} />}
+                            {etapa !== null && etapa !== 'lista' && (
+                                // R12: no Planejamento, quem escreve marca várias ofertas e põe todas numa onda de uma vez.
+                                <PainelDaEtapa
+                                    chave={etapa}
+                                    {...propsDoPainel}
+                                    lote={podeEditar && etapa === 'plano' ? { escrita, onAvisar: avisar, onRecarregar: recarregarTrilha } : null}
+                                />
+                            )}
                         </div>
                     </>
                 )}

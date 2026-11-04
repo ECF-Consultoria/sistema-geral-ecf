@@ -10,6 +10,7 @@ import {
     gravarFicha,
     gravarLinhas,
     mensagemDoErro,
+    ordenarFotos as ordenarFotosNoServidor,
     previaDaExclusao,
 } from '@/lib/trilhaEscrita';
 import { errosDaResposta, idDoElemento } from '@/lib/fichaTecnica';
@@ -20,6 +21,7 @@ import {
     MENSAGEM_DAS_CORES,
     MENSAGEM_DOS_CAMPOS,
     MENSAGEM_SO_DA_FICHA,
+    NOTA_DO_RETRATO_DE_FORA,
     aplicarResposta,
     avisoDaCorNova,
     categoriaTravada,
@@ -90,9 +92,12 @@ import useFichaDaTrilha from '@/Components/Trilha/Cadastro/useFichaDaTrilha';
 // rodapé diz "Este produto mudou depois que você abriu…" com [Recarregar] — que
 // relê o retrato e só descarta o que estava mexido depois de a pessoa confirmar.
 // Nunca vira só leitura por isso (o 409 COM `travado` continua o modo leitura).
-// As fotos e o frete não levam versão (não a mudam): se a resposta deles traz
-// outra, alguém mudou o produto por fora, e a gaveta avisa na hora em vez de
-// adotá-la (adotar deixaria o próximo "Salvar" passar por cima).
+// As fotos (enviar, excluir, a ordem) e o frete não levam versão (não a mudam):
+// se a resposta deles traz outra, alguém mudou o produto por fora. Com algo
+// mexido, a gaveta avisa na hora em vez de adotá-la (adotar deixaria o próximo
+// "Salvar" passar por cima). Sem nada mexido (R1, 04/11/2026) não há o que
+// perder: a gaveta passa a mostrar o retrato de agora e só diz isso no rodapé
+// — antes o envio de foto pedia "Recarregue…" com a gaveta toda salva.
 //
 // E a guarda de saída (§5.12 do desenho): com algo mexido, fechar a gaveta,
 // abrir outro item por dentro, trocar o "Ver como" ou uma visita do Inertia
@@ -277,11 +282,15 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         onAvisar(texto, 'erro');
     }, [onAvisar]);
 
-    /** A versão depois de uma resposta com retrato (`versaoDepoisDe`); a de fora (fotos, frete) que mudou vira o aviso. */
+    /**
+     * A versão depois de uma resposta com retrato (`versaoDepoisDe`). A de fora (fotos, ordem, frete) que mudou só vira o
+     * aviso com algo MEXIDO a perder; sem nada mexido, a gaveta adota o retrato de agora e diz isso no rodapé (R1).
+     */
     const conhecerVersao = useCallback((resposta, { conferida }) => {
-        const { versao: nova, mudou } = versaoDepoisDe(versao.current, resposta, { conferida });
+        const { versao: nova, mudou, porFora } = versaoDepoisDe(versao.current, resposta, { conferida, mexido: !!agora.current.temMudanca });
         versao.current = nova;
         if (mudou) avisarConflito(textoDoConflito(null));
+        else if (porFora && vivo.current) setNota(NOTA_DO_RETRATO_DE_FORA);
     }, [avisarConflito]);
 
     /** O "Salvar". → true quando gravou tudo (o resultado toma o lugar do formulário). */
@@ -501,7 +510,9 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
             // o retrato do último pedido que deu certo vale (F4).
             if (vivo.current && temRetrato(e?.retratoParcial)) {
                 const antigo = agora.current.retrato ?? r0;
-                if (conferida) conhecerVersao(e.retratoParcial, { conferida: true });
+                // A da escrita conferida vale; a de fora (a ordem das fotos que voltou 422 e foi relida) passa pela mesma
+                // régua da resposta de sucesso (R1: sem nada mexido, só a nota).
+                conhecerVersao(e.retratoParcial, { conferida });
                 setRetrato(e.retratoParcial);
                 setEstado((atual) => aplicarResposta(atual, antigo, e.retratoParcial));
                 onRecarregar();
@@ -531,6 +542,29 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
     /** Exclui uma foto (a galeria já pediu a confirmação). */
     const excluirFoto = useCallback(
         (variacaoId, imagemId) => imediata({ tipo: 'foto', variacaoId, imagemId }, () => excluirFotoNoServidor(escrita, produtoId, variacaoId, imagemId)),
+        [imediata, escrita, produtoId],
+    );
+
+    /**
+     * R6: a ordem das fotos da cor (todas as da galeria; a 1ª é a capa). Não leva versão: a ordem fica fora dela. O 422 (a
+     * galeria mudou por fora no meio do caminho) relê o retrato — a galeria volta a ser a de agora — e a falha segue
+     * para a galeria dizer o porquê.
+     */
+    const ordenarFotos = useCallback(
+        (variacaoId, ordem) => imediata({ tipo: 'ordem', variacaoId }, async () => {
+            try {
+                return await ordenarFotosNoServidor(escrita, produtoId, variacaoId, ordem);
+            } catch (e) {
+                if (e?.response?.status === 422) {
+                    try {
+                        e.retratoParcial = await abrirCadastro(escrita, produtoId);
+                    } catch {
+                        // Sem o retrato novo, fica só o aviso: o [Recarregar] da gaveta resolve.
+                    }
+                }
+                throw e;
+            }
+        }),
         [imediata, escrita, produtoId],
     );
 
@@ -893,6 +927,7 @@ export default function useCadastroDoProduto({ escrita, produtoId, onRecarregar 
         acao,
         enviarFotos,
         excluirFoto,
+        ordenarFotos,
         conferirFrete,
         notaDoFrete,
         // F4

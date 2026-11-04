@@ -346,6 +346,125 @@ class FotosNaTrilhaTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    // ═══ A ordem das fotos (R6, 04/11/2026) ═══════════════════════════════════
+
+    public function test_a_ordem_grava_a_1a_vira_a_capa_o_retrato_volta_na_ordem_nova_e_a_versao_nao_muda(): void
+    {
+        [$produto, $v] = $this->produtoNovo();
+        [$a, $b, $c] = array_column($this->enviar($produto, $v, [$this->jpg('a.jpg'), $this->jpg('b.jpg'), $this->jpg('c.jpg')])
+            ->assertOk()->json('variacoes.0.fotos'), 'id');
+        $versao = $this->abrir($produto)->json('versao');
+        $eventos = $this->eventosDaTrilha()->count();
+
+        $r = $this->ordenar($produto, $v, [$c, $a, $b])->assertOk()->json();
+
+        $this->assertSame([$c, $a, $b], array_column($r['variacoes'][0]['fotos'], 'id'), 'o retrato já volta na ordem nova');
+        $this->assertSame([$c => 0, $a => 1, $b => 2], $this->ordemNoBanco($v));
+        $this->assertSame('Ordem das fotos salva.', $r['mensagem']);
+        $this->assertSame($versao, $r['versao'], 'a ordem das fotos fica fora da versão (F6): nenhuma aba velha leva 409 por ela');
+        $this->semPortal($this->ordenar($produto, $v, [$a, $c, $b]));
+        $this->assertSame([$a => 0, $c => 1, $b => 2], $this->ordemNoBanco($v));
+        $ultimo = $this->eventosDaTrilha()->last();
+        $this->assertSame($eventos + 2, $this->eventosDaTrilha()->count());
+        $this->assertSame(['fotos_ordenadas', (int) $v->id, [$a, $c, $b]],
+            [$ultimo->getExtraProperty('passo'), $ultimo->getExtraProperty('variacao_id'), $ultimo->getExtraProperty('ordem')]);
+
+        // A mesma ordem de novo: nada grava e nenhum evento.
+        $this->ordenar($produto, $v, [$a, $c, $b])->assertOk()->assertJsonPath('mensagem', 'A ordem já era esta.');
+        $this->assertSame($eventos + 2, $this->eventosDaTrilha()->count());
+    }
+
+    public function test_a_lista_que_nao_e_a_galeria_de_agora_e_422_e_a_ordem_fica(): void
+    {
+        [$produto, $v] = $this->produtoNovo();
+        [$a, $b, $c] = array_column($this->enviar($produto, $v, [$this->jpg('a.jpg'), $this->jpg('b.jpg'), $this->jpg('c.jpg')])
+            ->assertOk()->json('variacoes.0.fotos'), 'id');
+        $outra = $this->produtoCompleto($this->empresa, 'Vaso Beta', 'VB');
+        $deOutra = $this->capaDa($outra['variacoes'][0]->id)->id;
+        $antes = $this->ordemNoBanco($v);
+        $eventos = $this->eventosDaTrilha()->count();
+
+        // A galeria de agora tem 3: faltando uma (a outra aba enviou), sobrando uma (excluiu) ou com a de outra variação.
+        foreach ([[$c, $a], [$c, $a, $b, 999999], [$c, $a, $deOutra]] as $ordem) {
+            $this->ordenar($produto, $v, $ordem)->assertStatus(422)
+                ->assertJsonPath('errors.ordem.0', \App\Services\Trilha\CadastroNaTrilha::MSG_ORDEM_DAS_FOTOS);
+        }
+        // A forma: vazia, repetida, texto.
+        $this->ordenar($produto, $v, [])->assertStatus(422)->assertJsonValidationErrors('ordem');
+        $this->ordenar($produto, $v, [$c, $c, $a])->assertStatus(422)->assertJsonValidationErrors('ordem.1');
+        $this->actingAs($this->dev)->putJson($this->urlFotos($produto, $v).'/ordem', ['ordem' => 'x'])->assertStatus(422);
+
+        $this->assertSame($antes, $this->ordemNoBanco($v));
+        $this->assertSame($eventos, $this->eventosDaTrilha()->count());
+    }
+
+    public function test_a_ordem_no_produto_travado_e_409_e_de_fora_do_endereco_e_404(): void
+    {
+        $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', ['Azul', 'Verde']);
+        [$azul, $verde] = $p['variacoes'];
+        $idsAzul = array_keys($this->ordemNoBanco($azul));
+        $outra = $this->empresaDaTrilha();
+        $deFora = $this->produtoCompleto($outra, 'Vaso de Fora', 'VX');
+
+        // A lista da Azul na Verde: 422 (não é a galeria dela). A variação e o produto de outra loja: 404 antes de tudo.
+        $this->ordenar($p['produto'], $verde, array_reverse($idsAzul))->assertStatus(422);
+        $this->actingAs($this->dev)->putJson("/trilha/{$this->empresa->id}/produtos/{$p['produto']->id}/variacoes/{$deFora['variacoes'][0]->id}/fotos/ordem",
+            ['ordem' => array_reverse(array_keys($this->ordemNoBanco($deFora['variacoes'][0])))])->assertNotFound();
+        $this->actingAs($this->dev)->putJson("/trilha/{$outra->id}/produtos/{$p['produto']->id}/variacoes/{$azul->id}/fotos/ordem",
+            ['ordem' => array_reverse($idsAzul)])->assertNotFound();
+
+        // O produto que andou (a cor no ar): 409 com a trava, e nada muda.
+        EstruturaAnuncio::create(['oferta_id' => $p['simples'][0]->id, 'tipo' => EstruturaAnuncio::TIPO_CLASSICO,
+            'status' => EstruturaAnuncio::STATUS_ATIVO, 'codigo_mlb' => 'MLB1234567890', 'titulo' => 'Vaso']);
+        $this->ordenar($p['produto'], $azul, array_reverse($idsAzul))->assertStatus(409)->assertJsonPath('travado', true);
+
+        $this->assertSame($idsAzul, array_keys($this->ordemNoBanco($azul)));
+        $this->assertSame(0, $this->eventosDaTrilha()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_a_ordem_nova_do_produto_completo_vai_ao_preparo_como_no_portal(): void
+    {
+        $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA');
+        $v = $p['variacoes'][0];
+
+        $this->ordenar($p['produto'], $v, array_reverse(array_keys($this->ordemNoBanco($v))))->assertOk();
+
+        $this->assertSame(1, $this->jobs(SincronizarProdutoDoPortalJob::class, $p['produto']));
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p['produto']));
+    }
+
+    // ═══ R1 (04/11/2026): o "Recarregue…" ao subir fotos ═════════════════════
+
+    /**
+     * O retorno do 1º teste: "quando faz upload das imagens aparece um card pedindo para recarregar a página". A gaveta
+     * mostra esse aviso quando a resposta de uma escrita NÃO conferida traz uma versão diferente da que ela conhece (F6).
+     * Aqui a prova de que nenhuma escrita de foto muda a versão — enviar (uma cor, depois a que COMPLETA o produto e o leva
+     * ao Publicador), mudar a ordem e excluir: a versão de cada resposta é a do abrir. A diferença, quando aparece, vem de
+     * outra gravação no produto (outra aba, o Portal, a planilha, a importação) — e a tela, sem nada mexido, agora só
+     * adota o retrato de agora (`versaoDepoisDe`, teste JS).
+     */
+    public function test_nenhuma_escrita_de_foto_muda_a_versao_nem_a_que_completa_o_produto(): void
+    {
+        $p = $this->produtoCompleto($this->empresa, 'Vaso Alfa', 'VA', ['Azul', 'Verde']);
+        [$azul, $verde] = $p['variacoes'];
+        EstruturaProdutoVariacaoImagem::query()->where('produto_id', $p['produto']->id)->delete();
+        $aberta = $this->abrir($p['produto'])->json();
+        $this->assertSame('lista', $aberta['situacao']['etapa']);
+
+        $azulEnviada = $this->enviar($p['produto'], $azul, [$this->jpg('a.jpg'), $this->jpg('b.jpg'), $this->jpg('c.jpg')])->assertOk()->json();
+        $this->assertSame($aberta['versao'], $azulEnviada['versao'], 'a 1ª cor');
+        $completa = $this->enviar($p['produto'], $verde, [$this->jpg('d.jpg'), $this->jpg('e.jpg'), $this->jpg('f.jpg')])->assertOk()->json();
+        $this->assertSame(['mapa', $aberta['versao']], [$completa['situacao']['etapa'], $completa['versao']], 'a que completa o produto');
+        $this->assertSame(1, $this->jobs(PrepararProdutoNoPublicadorJob::class, $p['produto']), 'controle: ela levou ao Publicador');
+
+        $ids = array_column($completa['variacoes'][0]['fotos'], 'id');
+        $this->assertSame($aberta['versao'], $this->ordenar($p['produto'], $azul, array_reverse($ids))->assertOk()->json('versao'), 'a ordem');
+        $this->assertSame($aberta['versao'], $this->actingAs($this->dev)->deleteJson($this->urlFotos($p['produto'], $azul)."/{$ids[0]}")
+            ->assertOk()->json('versao'), 'excluir');
+        $this->assertSame($aberta['versao'], $this->abrir($p['produto'])->json('versao'), 'e o abrir de depois');
+    }
+
     // ═══ Frete (rota 13) e o ME1 como aviso (pergunta 3) ════════════════════
 
     public function test_frete_sem_conta_conectada_e_a_estimativa_sem_requisicao_e_o_me1_e_aviso(): void
@@ -459,6 +578,19 @@ class FotosNaTrilhaTest extends TestCase
     private function enviar(EstruturaProduto $produto, EstruturaProdutoVariacao $v, array $arquivos): TestResponse
     {
         return $this->actingAs($this->dev)->post($this->urlFotos($produto, $v), ['imagens' => $arquivos], ['Accept' => 'application/json']);
+    }
+
+    /** R6: `PUT …/fotos/ordem` com a lista de ids. */
+    private function ordenar(EstruturaProduto $produto, EstruturaProdutoVariacao $v, array $ordem): TestResponse
+    {
+        return $this->actingAs($this->dev)->putJson($this->urlFotos($produto, $v).'/ordem', ['ordem' => $ordem]);
+    }
+
+    /** id => ordem das fotos da variação, na ordem do banco. @return array<int, int> */
+    private function ordemNoBanco(EstruturaProdutoVariacao $v): array
+    {
+        return EstruturaProdutoVariacaoImagem::query()->where('variacao_id', $v->id)->orderBy('ordem')->orderBy('id')
+            ->pluck('ordem', 'id')->map(fn ($o) => (int) $o)->all();
     }
 
     private function frete(EstruturaProduto $produto): TestResponse

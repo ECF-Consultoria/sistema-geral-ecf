@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Trilha;
 
+use App\Jobs\Publicador\PublicarRascunhoJob;
+use App\Jobs\Trilha\AndarFilaDePublicacaoJob;
 use App\Jobs\Trilha\PublicarPelaTrilhaJob;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
@@ -29,6 +31,7 @@ use App\Services\Trilha\PrecoNaTrilha;
 use App\Services\Trilha\PublicacaoNaTrilha;
 use App\Services\Trilha\SituacaoDasOfertas;
 use App\Services\Trilha\TrilhaDaEmpresa;
+use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory as FabricaHttp;
@@ -312,6 +315,48 @@ class PublicarNaTrilhaTest extends TestCase
         DB::table('pub_rascunhos')->where('id', $item->rascunho_id)->update(['status' => PubRascunho::PUBLISHED]);
         $this->assertSame($publicado, $this->assertContrato($chave, 'publicado'), 'o mesmo cálculo no GET e na prévia');
         $this->assertSame(['message' => PublicacaoNaTrilha::MSG_PUBLICADO_409], $this->publicar($chave, ['revisao' => $revisao])->assertStatus(409)->json());
+        $this->assertNenhumPostDeItem();
+    }
+
+    /**
+     * R5 (retorno do 1º teste, 04/11/2026): depois de agendar, a fila anda NA HORA — o `AndarFilaDePublicacaoJob` (fila
+     * `high`) roda a MESMA passada do `publicador:fila-publicacao`, e o item começa (`publicando`, com o
+     * `PublicarRascunhoJob` na fila) sem esperar o minuto. Nenhuma trava sai: com o editor do Publicador em uso o item
+     * ESPERA (a checagem do agendador); com a passada do minuto rodando (o mutex do agendamento), o Job volta para a fila
+     * sem andar nada. E nunca um `POST /items` aqui (quem fala com o ML é o Job da publicação, de mentira).
+     */
+    public function test_depois_de_agendar_a_fila_anda_na_hora_sem_pular_as_travas(): void
+    {
+        $chave = $this->item();
+        $this->publicar($chave, ['revisao' => $this->revisao(), 'ciente' => false])->assertStatus(202);
+        Queue::assertNotPushed(AndarFilaDePublicacaoJob::class);
+        $this->assertSame(['na_fila'], $this->rodarOsJobs());
+        Queue::assertPushedOn('high', AndarFilaDePublicacaoJob::class);
+        $item = PubFilaPublicacaoItem::query()->sole();
+        $this->assertSame(PubFilaPublicacaoItem::AGENDADO, $item->status);
+
+        // Trava do agendador: o editor do Publicador aberto — o item espera a próxima passada.
+        EditorEmUso::marcar((int) $this->pub->id);
+        $this->rodarAPassadaNaHora();
+        $this->assertSame(PubFilaPublicacaoItem::AGENDADO, $item->fresh()->status, 'editor em uso: espera');
+        Queue::assertNotPushed(PublicarRascunhoJob::class);
+        Carbon::setTestNow(now()->addMinutes(5));
+
+        // Trava do agendamento: a passada do minuto está rodando — o Job volta para a fila e não anda nada.
+        $evento = AndarFilaDePublicacaoJob::eventoDoMinuto();
+        $this->assertNotNull($evento, 'o agendamento `publicador-fila-publicacao` existe (routes/console.php)');
+        $this->assertTrue($evento->mutex->create($evento));
+        $job = $this->rodarAPassadaNaHora();
+        $job->assertReleased(AndarFilaDePublicacaoJob::ESPERA_S);
+        $this->assertSame(PubFilaPublicacaoItem::AGENDADO, $item->fresh()->status, 'a passada do minuto rodando: nada anda por fora');
+        $evento->mutex->forget($evento);
+
+        // Livre: a passada na hora começa o item — sem o comando de minuto.
+        $this->rodarAPassadaNaHora()->assertNotReleased();
+        $this->assertSame(PubFilaPublicacaoItem::PUBLICANDO, $item->fresh()->status);
+        Queue::assertPushedOn('high', PublicarRascunhoJob::class);
+        $this->assertTrue($evento->mutex->create($evento), 'a passada na hora solta o mutex no fim');
+        $evento->mutex->forget($evento);
         $this->assertNenhumPostDeItem();
     }
 
@@ -694,6 +739,15 @@ class PublicarNaTrilhaTest extends TestCase
         }
 
         return $saida;
+    }
+
+    /** R5: a passada da fila na hora — o `handle` do Job, com a fila de mentira anotando o `release`. */
+    private function rodarAPassadaNaHora(): AndarFilaDePublicacaoJob
+    {
+        $job = (new AndarFilaDePublicacaoJob())->withFakeQueueInteractions();
+        $job->handle(app(\App\Services\Publicador\Fila\AgendadorDaFila::class));
+
+        return $job;
     }
 
     private function item(): string

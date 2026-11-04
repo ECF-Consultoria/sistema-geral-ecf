@@ -100,6 +100,52 @@ class OndasDaTrilhaController extends Controller
         ]);
     }
 
+    /**
+     * R12 (04/11/2026): pôr VÁRIOS itens numa onda de uma vez — `{itens: [...], onda_id}`, até
+     * {@see OndasDaTrilha::MAXIMO_DO_LOTE}. As mesmas regras de pôr um; a resposta é POR ITEM (200 mesmo com recusas):
+     * `resultados[] = {item, nome, situacao: entrou|ja_estava|recusado, motivo, junto}`. A forma do pedido (lista vazia,
+     * chave fora do formato, onda que não é desta loja) continua 422 para o pedido inteiro.
+     */
+    public function planejarEmLote(Request $request, int $company): JsonResponse
+    {
+        $empresa = $this->empresa($request, $company);
+        $dados = $request->validate([
+            'itens'   => ['required', 'array', 'min:1', 'max:'.OndasDaTrilha::MAXIMO_DO_LOTE],
+            'itens.*' => ['required', 'string', 'regex:/^(s-\d{1,18}|c-\d{1,18}-\d{1,3}|o-\d{1,18})$/'],
+            'onda_id' => ['required', 'integer', 'min:1'],
+        ], [
+            'itens.required'  => 'Marque ao menos uma oferta.',
+            'itens.min'       => 'Marque ao menos uma oferta.',
+            'itens.max'       => 'Até '.OndasDaTrilha::MAXIMO_DO_LOTE.' ofertas por vez.',
+            'itens.*.regex'   => 'Oferta inválida.',
+            'onda_id.required' => 'Escolha a onda.',
+        ]);
+
+        $r = $this->ondas->planejarEmLote($empresa, $request->user(), $dados['itens'], (int) $dados['onda_id']);
+        $onda = $r['onda'];
+        $conta = array_count_values(array_column($r['resultados'], 'situacao'));
+        $recusadas = $conta['recusado'] ?? 0;
+        $n = count($r['mudados']);
+        $mensagem = match (true) {
+            $n > 0 => ($n === 1 ? '1 oferta' : "{$n} ofertas")." na {$onda->nome}. "
+                .($onda->comecou() ? 'Ela já começou: o robô foi chamado.' : 'O robô começa em '.OndasDaTrilha::diaCurto($onda->dia()).'.'),
+            $recusadas > 0 => "Nenhuma oferta entrou na {$onda->nome}.",
+            default        => "Nada mudou: já estavam na {$onda->nome}.",
+        };
+        if ($recusadas > 0) {
+            $mensagem .= ' '.($recusadas === 1 ? '1 recusada' : "{$recusadas} recusadas").': veja o motivo de cada uma.';
+        }
+
+        return response()->json([
+            'onda'       => self::onda($onda),
+            'resultados' => $r['resultados'],
+            'entraram'   => $n,
+            'recusadas'  => $recusadas,
+            'avisos'     => $r['avisos'],
+            'mensagem'   => $mensagem,
+        ]);
+    }
+
     /** A empresa, conferida nas duas chaves antes de ser lida e na régua de escrita da equipe. */
     private function empresa(Request $request, int $company): Company
     {
