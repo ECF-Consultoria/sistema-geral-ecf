@@ -556,3 +556,25 @@ nov/26 pela mesma régua do disparo; o link de nov/26 pendente da Ale Peças (72
 foi apagado por duplicar o 750, que o cliente respondeu. O bônus não mudou: ele
 lê a resposta por `completed_at`. Backup em `/tmp/nps_backup_mover_nov_261103_153513.json`
 na VPS.
+
+**Link gerado no FIM do mês para avaliar aquele mês cai no ciclo errado (04/11/2026).**
+Rubens, Nathalia e Danilo geraram links de 27 a 30/10 (pelo conector, sem `mes`)
+para avaliar OUTUBRO. Pela regra eles nasceram em out/26 · ref. set/26: quem
+avalia outubro é a coleta de NOVEMBRO. Não é defeito, é uso fora da régua. Mas o
+efeito no fechamento é pior do que parece. Uma empresa que respondeu em novembro
+um link de out/26 conta DUAS vezes na competência out/26: a resposta entra pelo
+ramo (A), porque o bônus lê `completed_at`, e a nota 1 "sem link" entra pelo ramo
+(D), porque `surveyExistenteNaCompetencia()` procura o survey pelo CICLO (nov/26) e
+não acha. A disjunção "por construção" do `computeNpsMedio()` não cobre o link que
+atravessa o mês. Vale para todo ciclo prorrogado.
+
+Correção em produção, a pedido da gestão: os 80 surveys 648–727 (12 deles espelhos)
+e os grupos 29–33 foram para nov/26 com `month_reference` PREENCHIDO, porque o
+`created_at` é de outubro e sem isso voltariam para out/26. Validade 30/11, mesmos
+tokens, `dedup_key` trocado de `|2026-10|` para `|2026-11|`. Saíram 153 notas 1 de
+out/26, que viraram definitivas em 01/11, antes do `prazoEncerrado()`, e nasceram
+120 provisórias de nov/26. O que NÃO mudou: as 33 respostas dadas em OUTUBRO
+continuam no bônus de set/26 (já consolidado em 31/10) e não entram no de out/26,
+de novo por causa do `completed_at`. Levar essas respostas para out/26 é o item 2 da
+DEV-54 (fase GSD + reconsolidar set/26). Backup em
+`/tmp/nps_backup_out_para_nov_261104_095822.json` na VPS.
