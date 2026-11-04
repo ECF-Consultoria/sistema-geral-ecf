@@ -9,8 +9,10 @@
 // - `POST {escrita.revisao.publicar}` (com `__ITEM__` no lugar do id) com
 //   `{revisao, ciente}` → 202 `{publicacao}`;
 // - `GET {escrita.revisao.publicacao}` → `{publicacao}` ou `{publicacao: null}`;
-// - `publicacao = {situacao, mensagem, avisos: [], mlbs: []}`, com `situacao` ∈
-//   `conferindo | avisos | na_fila | publicando | publicado | recusado | erro`;
+// - `publicacao = {situacao, mensagem, avisos: [], mlbs: [], anuncios: []}`, com
+//   `situacao` ∈ `conferindo | avisos | na_fila | publicando | publicado | recusado | erro`;
+//   `anuncios` (04/11/2026, aditivo — só a porta da equipe recebe) = `[{tipo, mlb, link}]`
+//   dos anúncios criados, no `publicado`: o rodapé os lista como links para o anúncio;
 // - 403 fora da loja liberada (mensagem neutra); 409 da revisão velha com
 //   `revisao_atual` (SEM `travado`, o padrão F6); os outros 409 (fora da revisão,
 //   na fila, publicando, publicado, não pronta) só com `message`; 422 do Premium
@@ -101,6 +103,8 @@ const TRAVA_DO_PRECO = {
 };
 
 const numero = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+/** Só `https://` vira `href` (a mesma régua do `linkDoAnuncio` de `lib/trilha.js`, que esta lib não importa). */
+const linkHttps = (v) => (typeof v === 'string' && /^https:\/\/[^\s]+$/i.test(v.trim()) ? v.trim() : null);
 const textoLimpo = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const lista = (v) => (Array.isArray(v) ? v : []);
 const temChave = (objeto, chave) => Object.prototype.hasOwnProperty.call(objeto, chave);
@@ -130,8 +134,16 @@ export const urlDaPublicacao = (escrita, itemId) => comItem(escrita?.revisao?.pu
 // ─── A publicação ────────────────────────────────────────────────────────────
 
 /**
- * A publicação na forma da tela: `{situacao, mensagem, avisos: string[], mlbs: []}`. Null quando não há (nunca pediu)
- * ou quando a situação não é do contrato — a tela não inventa um estado que não conhece.
+ * Os anúncios criados (`publicacao.anuncios`, só a equipe recebe): `{tipo, mlb, link}`, sem o que não tem MLB; o `link`
+ * só quando é `https://` (senão o MLB segue texto).
+ */
+const anunciosCriados = (anuncios) => lista(anuncios)
+    .filter((a) => a && typeof a === 'object' && textoLimpo(a.mlb))
+    .map((a) => ({ tipo: textoLimpo(a.tipo), mlb: textoLimpo(a.mlb), link: linkHttps(a.link) }));
+
+/**
+ * A publicação na forma da tela: `{situacao, mensagem, avisos: string[], mlbs: [], anuncios: [{tipo, mlb, link}]}`. Null
+ * quando não há (nunca pediu) ou quando a situação não é do contrato — a tela não inventa um estado que não conhece.
  */
 export function normalizarPublicacao(publicacao) {
     if (!publicacao || typeof publicacao !== 'object' || !SITUACOES.includes(publicacao.situacao)) return null;
@@ -141,6 +153,7 @@ export function normalizarPublicacao(publicacao) {
         mensagem: textoLimpo(publicacao.mensagem),
         avisos: textos(publicacao.avisos),
         mlbs: lista(publicacao.mlbs).filter((m) => m !== null && m !== undefined && m !== ''),
+        anuncios: anunciosCriados(publicacao.anuncios),
     };
 }
 
@@ -168,23 +181,26 @@ export const textoDosAnuncios = (quantos) => (quantos > 0 ? `${quantos} ${quanto
 
 /**
  * O que o rodapé mostra da publicação: o título neutro da situação, o tom da pílula, o detalhe (a `mensagem` do
- * servidor, quando diz mais que o título; no publicado, quantos anúncios foram criados), a lista (os avisos da conferência,
- * ou os erros do recusado) com o rótulo dela, e se ainda anda. Null sem publicação.
+ * servidor, quando diz mais que o título), os anúncios criados (no publicado: "Clássico MLB… · Premium MLB…", cada um com
+ * o link para o anúncio — 04/11/2026; o servidor de antes, sem `anuncios`, segue com quantos foram criados no detalhe), a
+ * lista (os avisos da conferência, ou os erros do recusado) com o rótulo dela, e se ainda anda. Null sem publicação.
  *
- * @returns {?{situacao: string, titulo: string, tom: string, detalhe: ?string, lista: string[], rotuloDaLista: ?string, andando: boolean}}
+ * @returns {?{situacao: string, titulo: string, tom: string, detalhe: ?string, anuncios: Array<{tipo: ?string, mlb: string, link: ?string}>, lista: string[], rotuloDaLista: ?string, andando: boolean}}
  */
 export function vistaDaPublicacao(publicacao) {
     const p = normalizarPublicacao(publicacao);
     if (!p) return null;
     const { titulo, tom } = TEXTO_DA_SITUACAO[p.situacao];
+    const anuncios = p.situacao === 'publicado' ? p.anuncios : [];
     let detalhe = dizMais(p.mensagem, titulo) ? p.mensagem : null;
-    if (p.situacao === 'publicado') detalhe = [detalhe, textoDosAnuncios(p.mlbs.length)].filter(Boolean).join(' ') || null;
+    if (p.situacao === 'publicado' && !anuncios.length) detalhe = [detalhe, textoDosAnuncios(p.mlbs.length)].filter(Boolean).join(' ') || null;
 
     return {
         situacao: p.situacao,
         titulo,
         tom,
         detalhe,
+        anuncios,
         lista: p.avisos,
         rotuloDaLista: p.avisos.length ? ROTULO_DA_LISTA[p.situacao] ?? 'Avisos:' : null,
         andando: EM_ANDAMENTO.includes(p.situacao),

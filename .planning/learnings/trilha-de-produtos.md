@@ -1471,3 +1471,20 @@ teste `AprovacaoDoClienteNaTrilhaTest` (+ a rota da equipe na matriz do `Cadastr
   `config/trilha.php`, `routes/*.php`, `Models/TrilhaOnda*` e os documentos de `.planning` ainda dizem "robô".
 - **CRLF:** alguns arquivos da trilha estão em CRLF no worktree e em LF no repositório (`autocrlf=true`); troca em
   massa por bytes para o diff mostrar só as linhas mudadas.
+
+### MLB com link para o anúncio (04/11/2026)
+- **Ordem das fontes do link** (`App\Support\Trilha\LinkDoAnuncio::escolher`): 1) `permalink` de `ml_acervo_itens` pela
+  chave empresa + MLB (o de outra loja não vale); 2) o `permalink` que o Publicador guardou ao criar
+  (`pub_publicacao_itens.avisos.estado.permalink`; na fila `resumo.mlbs[].permalink`) — cobre o recém-publicado que
+  ainda não entrou no acervo (coleta diária 11:35); 3) montado `https://produto.mercadolivre.com.br/MLB-{dígitos}-_JM`
+  (o ML aceita o curto; a robô pede verificação de conta, com o próprio endereço no `go=`). Domínio conferido no
+  servidor (`*.mercadolivre.com.br`, `http`→`https`); na tela só `https://` vira link.
+- **O link segue a régua do MLB:** só na porta da equipe; nulo no cliente e no "Ver como: Cliente". A varredura do
+  `AcessoATrilhaTest` proíbe `mercadolivre.com.br` e os dígitos do MLB na página do cliente.
+- **`publicacao` (4d) tem 5 chaves:** `anuncios: [{tipo, mlb, link}]` vem sempre (vazia fora do publicado); `mlbs`
+  continua. O cliente nunca a vê (`publicacaoDoCliente` só passa `situacao` e `mensagem`). Supera "Publicado mostra
+  só QUANTOS anúncios" da 4d.
+- **`aria-label` sem o nome do canal** ("Abrir o anúncio {tipo} {mlb} (nova aba)"): `Pecas.jsx` e `lib/trilha.js` vão no
+  pacote do cliente, onde a régua proíbe "Mercado Livre".
+- Custo: +1 consulta fixa ao acervo na Lista; +1 na situação publicada da 4d.
+- Python gravando JS por heredoc: `\\b` dentro de template literal pode virar backspace — confira a regex gravada.

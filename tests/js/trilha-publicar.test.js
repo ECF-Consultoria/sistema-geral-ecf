@@ -18,6 +18,7 @@ import {
     PUBLICACAO_COM_ERRO,
     PUBLICACAO_NA_FILA,
     PUBLICACAO_PUBLICADA,
+    PUBLICACAO_PUBLICADA_SEM_LINKS,
     PUBLICACAO_PUBLICANDO,
     PUBLICACAO_RECUSADA,
     PUBLICAR_ACEITO,
@@ -176,6 +177,21 @@ function pedaco(html, atributo, valor) {
     return html.slice(inicio, proximo > 0 ? proximo : undefined);
 }
 
+/** O elemento inteiro: da tag `<nome …>` que contém `marca` até a que a fecha (contando as do mesmo nome aninhadas). */
+function elemento(html, marca, nome = 'span') {
+    const inicio = html.lastIndexOf(`<${nome}`, html.indexOf(marca));
+    assert.ok(html.indexOf(marca) >= 0 && inicio >= 0, marca);
+    const re = new RegExp(`<(/?)${nome}\\b[^>]*>`, 'g');
+    re.lastIndex = inicio;
+    let nivel = 0;
+    for (let m = re.exec(html); m; m = re.exec(html)) {
+        nivel += m[1] ? -1 : 1;
+        if (nivel === 0) return html.slice(inicio, re.lastIndex);
+    }
+
+    return html.slice(inicio);
+}
+
 /** O rodapé da gaveta (o `MioloDaGaveta` o desenha por último). */
 function rodapeDe(html) {
     const inicio = html.lastIndexOf('border-t border-trilha-line px-5 py-3');
@@ -276,13 +292,22 @@ test('as URLs: o id do item no lugar do marcador de `escrita.revisao.publicar`/`
 test('a publicação do contrato (§19.13): as 7 situações; o resto vira "nenhuma"; avisos em texto; o texto neutro de cada uma', () => {
     assert.deepEqual(SITUACOES, ['conferindo', 'avisos', 'na_fila', 'publicando', 'publicado', 'recusado', 'erro']);
     assert.deepEqual(EM_ANDAMENTO, ['conferindo', 'na_fila', 'publicando']);
-    assert.deepEqual(publicacaoDaResposta(PUBLICAR_ACEITO), { situacao: 'conferindo', mensagem: 'Conferindo o anúncio antes de publicar…', avisos: [], mlbs: [] });
+    assert.deepEqual(publicacaoDaResposta(PUBLICAR_ACEITO), { situacao: 'conferindo', mensagem: 'Conferindo o anúncio antes de publicar…', avisos: [], mlbs: [], anuncios: [] });
     assert.deepEqual(daResposta(PUBLICACAO_AVISOS).avisos, ['A foto 3 da cor Mel tem menos de 1.200 px: pode perder o zoom.', 'O título do Premium usa só 3 dos termos mais buscados.']);
     assert.equal(daResposta(PUBLICACAO_PUBLICADA).mlbs.length, 4);
     for (const nada of [SEM_PUBLICACAO, {}, null, { publicacao: { situacao: 'pausado' } }, { publicacao: 'na_fila' }]) {
         assert.equal(publicacaoDaResposta(nada), null, JSON.stringify(nada));
     }
-    assert.deepEqual(normalizarPublicacao({ situacao: 'erro', mensagem: '  ', avisos: ['', null, { texto: 'Um' }, 7], mlbs: [null, '', 'MLB1'] }), { situacao: 'erro', mensagem: null, avisos: ['Um'], mlbs: ['MLB1'] });
+    assert.deepEqual(normalizarPublicacao({ situacao: 'erro', mensagem: '  ', avisos: ['', null, { texto: 'Um' }, 7], mlbs: [null, '', 'MLB1'] }), { situacao: 'erro', mensagem: null, avisos: ['Um'], mlbs: ['MLB1'], anuncios: [] });
+    // `anuncios` (04/11/2026, só a equipe recebe): sem MLB sai; o link só quando é `https://` (o resto vira nulo: segue texto).
+    assert.deepEqual(normalizarPublicacao({ situacao: 'publicado', anuncios: [
+        null, 'MLB9', { tipo: 'Clássico', mlb: '  ' }, { tipo: ' Clássico ', mlb: 'MLB1', link: ' https://produto.mercadolivre.com.br/MLB-1-_JM ' },
+        { tipo: null, mlb: 'MLB2', link: 'javascript:alert(1)' }, { tipo: 'Premium', mlb: 'MLB3', link: 'http://produto.mercadolivre.com.br/MLB-3-_JM' },
+    ] }).anuncios, [
+        { tipo: 'Clássico', mlb: 'MLB1', link: 'https://produto.mercadolivre.com.br/MLB-1-_JM' },
+        { tipo: null, mlb: 'MLB2', link: null },
+        { tipo: 'Premium', mlb: 'MLB3', link: null },
+    ]);
 
     // Os textos do rodapé: os quatro do desenho, e o recusado/erro com a mensagem do servidor como detalhe.
     const titulos = Object.fromEntries([PUBLICAR_ACEITO, PUBLICACAO_AVISOS, PUBLICACAO_NA_FILA, PUBLICACAO_PUBLICANDO, PUBLICACAO_PUBLICADA, PUBLICACAO_RECUSADA, PUBLICACAO_COM_ERRO]
@@ -298,16 +323,25 @@ test('a publicação do contrato (§19.13): as 7 situações; o resto vira "nenh
     });
     assert.deepEqual(vistaDaPublicacao(PUBLICACAO_RECUSADA.publicacao), {
         situacao: 'recusado', titulo: 'A conferência achou erros: nada foi publicado.', tom: 'bad',
-        detalhe: 'A conferência encontrou problemas que impedem publicar. Corrija e tente de novo.',
+        detalhe: 'A conferência encontrou problemas que impedem publicar. Corrija e tente de novo.', anuncios: [],
         lista: ['A categoria pede o campo “Material do assento”.'], rotuloDaLista: 'O que impede de publicar:', andando: false,
     });
     assert.equal(vistaDaPublicacao(PUBLICACAO_COM_ERRO.publicacao).detalhe, 'A publicação não deu certo. Confira o anúncio e tente de novo.');
     assert.deepEqual([vistaDaPublicacao(PUBLICACAO_AVISOS.publicacao).rotuloDaLista, vistaDaPublicacao(PUBLICACAO_AVISOS.publicacao).tom], ['Avisos da conferência:', 'warn']);
+    // Publicado com os anúncios (04/11/2026): a lista "Clássico MLB… · Premium MLB…" toma o lugar do "N anúncios criados".
     assert.deepEqual([vistaDaPublicacao(PUBLICACAO_PUBLICADA.publicacao).detalhe, vistaDaPublicacao(PUBLICACAO_PUBLICADA.publicacao).tom], [
-        'Publicado. Nas primeiras horas o anúncio fica em análise antes de ir à venda. 4 anúncios criados.', 'ok',
+        'Publicado. Nas primeiras horas o anúncio fica em análise antes de ir à venda.', 'ok',
     ]);
-    assert.equal(vistaDaPublicacao({ ...PUBLICACAO_PUBLICADA.publicacao, mensagem: null }).detalhe, '4 anúncios criados.');
+    assert.deepEqual(vistaDaPublicacao(PUBLICACAO_PUBLICADA.publicacao).anuncios, PUBLICACAO_PUBLICADA.publicacao.anuncios);
+    assert.equal(vistaDaPublicacao({ ...PUBLICACAO_PUBLICADA.publicacao, mensagem: null }).detalhe, null);
+    // O servidor de antes (só `mlbs`): quantos foram criados, sem lista.
+    assert.deepEqual([vistaDaPublicacao(PUBLICACAO_PUBLICADA_SEM_LINKS.publicacao).detalhe, vistaDaPublicacao(PUBLICACAO_PUBLICADA_SEM_LINKS.publicacao).anuncios], [
+        'Publicado. Nas primeiras horas o anúncio fica em análise antes de ir à venda. 4 anúncios criados.', [],
+    ]);
+    assert.equal(vistaDaPublicacao({ ...PUBLICACAO_PUBLICADA_SEM_LINKS.publicacao, mensagem: null }).detalhe, '4 anúncios criados.');
     assert.equal(vistaDaPublicacao({ situacao: 'publicado', mensagem: null, mlbs: [] }).detalhe, null);
+    // Fora do publicado a lista não aparece (nem se viesse).
+    assert.deepEqual(vistaDaPublicacao({ ...PUBLICACAO_PUBLICADA.publicacao, situacao: 'erro' }).anuncios, []);
     assert.deepEqual(EM_ANDAMENTO.map((s) => [vistaDaPublicacao({ situacao: s }).andando, vistaDaPublicacao({ situacao: s }).tom]), [[true, 'run'], [true, 'run'], [true, 'run']]);
     // A mensagem que repete o título (a do servidor nas que andam, com ponto ou reticências, ou que começa por ele) não
     // vira detalhe; a que diz mais, vira.
@@ -677,17 +711,34 @@ test('cada situação andando: o texto neutro (com o giro), nenhum primário e a
     }
 });
 
-test('publicado: "Publicado · em análise" com quantos anúncios saíram; sem primário; o preço só leitura', () => {
+test('publicado: "Publicado · em análise" e os anúncios criados como links para o anúncio; sem primário; o preço só leitura', () => {
     const saida = desenhar({ estado: { publicacao: PUBLICACAO_PUBLICADA.publicacao } });
     const rodape = rodapeDe(saida);
     const situacao = pedaco(rodape, 'data-situacao-da-publicacao', 'publicado');
-    assert.ok(texto(situacao).includes('Publicado · em análise') && texto(situacao).includes('4 anúncios criados.'), texto(situacao));
+    assert.ok(texto(situacao).includes('Publicado · em análise'), texto(situacao));
     assert.ok(tag(situacao, 'data-pilula-da-publicacao', 'span').includes('bg-trilha-ok-bg'), 'verde, sem alerta (D59)');
     assert.ok(!situacao.includes('animate-spin'));
     assert.ok(!rodape.includes('aprovar-e-publicar'));
     assert.ok(texto(saida).includes('Este anúncio já foi publicado: o preço não muda mais por aqui.'));
-    // O código do anúncio não aparece (o cartão vai ao cliente na 4e).
-    assert.ok(!saida.includes('MLB5123456781'));
+    // 04/11/2026 ("o MLB já me direcionando para o anúncio"): no lugar do "4 anúncios criados", cada anúncio — o tipo e o
+    // MLB, que abre o anúncio numa aba nova. Este rodapé é só da equipe (o cartão do cliente é `Cliente/AprovarAnuncio`).
+    const anuncios = elemento(situacao, 'data-anuncios-da-publicacao=""');
+    assert.equal(texto(anuncios).trim(), 'Clássico MLB5123456781 · Clássico MLB5123456782 · Premium MLB5123456783 · Premium MLB5123456784');
+    assert.ok(!texto(situacao).includes('anúncios criados'));
+    const links = tags(anuncios, 'data-link-do-anuncio', 'a');
+    assert.equal(links.length, 3, 'o sem link segue texto');
+    for (const [i, { tipo, mlb, link }] of PUBLICACAO_PUBLICADA.publicacao.anuncios.slice(0, 3).entries()) {
+        assert.ok(links[i].includes(`href="${link}"`), links[i]);
+        assert.ok(links[i].includes('target="_blank"') && links[i].includes('rel="noopener noreferrer"'), links[i]);
+        assert.ok(links[i].includes(`aria-label="Abrir o anúncio ${tipo} ${mlb} (nova aba)"`), links[i]);
+    }
+    assert.match(anuncios, /data-link-do-anuncio="MLB5123456781"[^>]*>MLB5123456781<svg[^>]*aria-hidden="true"/, 'o ícone de link externo, escondido do leitor');
+    assert.ok(anuncios.includes('MLB5123456784') && !anuncios.includes('data-link-do-anuncio="MLB5123456784"'));
+    assert.equal(texto(rodape).match(PROIBIDO), null);
+
+    // O servidor de antes (só `mlbs`): quantos foram criados, nenhum código nem link.
+    const antes = rodapeDe(desenhar({ estado: { publicacao: PUBLICACAO_PUBLICADA_SEM_LINKS.publicacao } }));
+    assert.ok(texto(antes).includes('4 anúncios criados.') && !antes.includes('data-anuncios-da-publicacao') && !antes.includes('MLB5123456781'));
 });
 
 test('avisos: a lista da conferência e [Publicar assim mesmo] (o mesmo pedido com `ciente`); o preço continua editável', () => {

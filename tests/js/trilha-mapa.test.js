@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { PROPS_EQUIPE, paraCliente } from './_trilha-exemplo.js';
 import { lerSemComentarios } from './_fonte.js';
-import { COR_DA_ETAPA, chaveDaOferta, chaveDoProduto } from '../../resources/js/lib/trilha.js';
+import { COR_DA_ETAPA, chaveDaOferta, chaveDoProduto, linkDoAnuncio, rotuloDoLinkDoAnuncio } from '../../resources/js/lib/trilha.js';
 import {
     COR_ANTES_DAS_ONDAS,
     COR_DO_ANUNCIO,
@@ -372,6 +372,26 @@ test('posições: caixas da mesma coluna nunca se sobrepõem, em qualquer recort
 
 // ─── Visão do cliente ───────────────────────────────────────────────────────
 
+test('o link do anúncio no mapa: só no nó da equipe, junto com o MLB; a régua do href é `https://`', () => {
+    const equipe = montarGrafo(PROPS_EQUIPE, { visao: 'equipe' });
+    assert.deepEqual([no(equipe, 'm:s-1:0').link, no(equipe, 'm:s-1:0').rotuloDoLink], [
+        'https://produto.mercadolivre.com.br/MLB-3412345678-mesa-de-jantar-jatoba-_JM', 'Abrir o anúncio Clássico MLB3412345678 (nova aba)',
+    ]);
+    assert.deepEqual([no(equipe, 'm:o-40:1').link, no(equipe, 'm:o-40:1').rotuloDoLink], [null, null], 'sem link no dado');
+    for (const g of [montarGrafo(PROPS_EQUIPE, { visao: 'cliente' }), montarGrafo(paraCliente(), { visao: 'cliente' })]) {
+        assert.ok(g.nos.filter((n) => n.tipo === 'anuncio').every((n) => n.link === null && n.rotuloDoLink === null));
+        assert.equal(JSON.stringify([g, posicionar(g)]).match(/mercadolivre|MLB/), null);
+    }
+    // A régua do `href` (lib/trilha.js): só `https://`; o resto segue texto.
+    assert.equal(linkDoAnuncio({ link: ' https://produto.mercadolivre.com.br/MLB-1-_JM ' }), 'https://produto.mercadolivre.com.br/MLB-1-_JM');
+    for (const link of [null, undefined, '', '  ', 'http://produto.mercadolivre.com.br/MLB-1-_JM', 'javascript:alert(1)', '/mlb/1', 'https://com espaço', 7]) {
+        assert.equal(linkDoAnuncio({ link }), null, String(link));
+    }
+    assert.equal(linkDoAnuncio(null), null);
+    assert.equal(rotuloDoLinkDoAnuncio({ tipo: 'Premium', mlb: 'MLB9' }), 'Abrir o anúncio Premium MLB9 (nova aba)');
+    assert.equal(rotuloDoLinkDoAnuncio({ mlb: 'MLB9' }), 'Abrir o anúncio MLB9 (nova aba)');
+});
+
 test('visão do cliente: nenhum MLB no mapa — nem com o dado da equipe ("Ver como: Cliente")', () => {
     const equipe = montarGrafo(PROPS_EQUIPE);
     assert.match(JSON.stringify(equipe), /MLB3412345678/);
@@ -570,9 +590,21 @@ test('painel do mapa: a caixa escolhida, o que está ligado a ela, "Abrir na tri
     const semAbrir = html(h(DetalheDoMapa, painel('equipe', 'p:1', { onAbrir: undefined })));
     assert.ok(!semAbrir.includes('abrir-na-trilha') && semAbrir.includes('limpar-mapa'));
 
+    // 04/11/2026: o anúncio da equipe tem "Abrir o anúncio" — o link para o anúncio publicado, numa aba nova.
+    const anuncioDaEquipe = html(h(DetalheDoMapa, painel('equipe', 'm:s-1:0')));
+    const abrirOAnuncio = anuncioDaEquipe.match(/<a\b[^>]*data-acao="abrir-o-anuncio"[^>]*>/)?.[0] ?? '';
+    assert.ok(abrirOAnuncio.includes('href="https://produto.mercadolivre.com.br/MLB-3412345678-mesa-de-jantar-jatoba-_JM"'), abrirOAnuncio);
+    assert.ok(abrirOAnuncio.includes('target="_blank"') && abrirOAnuncio.includes('rel="noopener noreferrer"'), abrirOAnuncio);
+    assert.ok(abrirOAnuncio.includes('aria-label="Abrir o anúncio Clássico MLB3412345678 (nova aba)"'), abrirOAnuncio);
+    assert.ok(texto(anuncioDaEquipe).includes('Abrir o anúncio') && texto(anuncioDaEquipe).includes('Abrir a oferta na trilha'));
+    // Sem link (o Premium do o-40) e nas outras caixas: sem o botão.
+    assert.ok(!html(h(DetalheDoMapa, painel('equipe', 'm:o-40:1'))).includes('abrir-o-anuncio'));
+    assert.ok(!html(h(DetalheDoMapa, painel('equipe', 'o:s-1'))).includes('abrir-o-anuncio'));
+
     // Cliente: o anúncio escolhido mostra só o tipo e a situação.
     const anuncioDoCliente = html(h(DetalheDoMapa, painel('cliente', 'm:s-1:0')));
     assert.equal(anuncioDoCliente.match(/MLB\d/), null);
+    assert.ok(!anuncioDoCliente.includes('abrir-o-anuncio') && !anuncioDoCliente.includes('mercadolivre'));
     assert.ok(texto(anuncioDoCliente).includes('Clássico · No ar'));
     assert.equal(html(h(DetalheDoMapa, painel('cliente', 'p:1'))).match(/MLB\d/), null);
 });

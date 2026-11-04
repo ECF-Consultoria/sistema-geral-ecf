@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Waves } from 'lucide-react';
+import { ExternalLink, Waves } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     cabecalhosDoMapa,
@@ -442,6 +442,20 @@ export function DetalheDoMapa({ desenho, sel, acesos, onEscolher, onAbrir, onLim
                     >
                         {abrir.rotulo}
                     </button>
+                )}
+                {/* O anúncio publicado (só a equipe recebe o link): abre o anúncio em outra aba. */}
+                {no.tipo === 'anuncio' && no.link && (
+                    <a
+                        href={no.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={no.rotuloDoLink}
+                        data-acao="abrir-o-anuncio"
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-trilha-line bg-trilha-surface px-3 py-[7px] text-[13px] font-semibold text-trilha-fg hover:border-trilha-muted focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run"
+                    >
+                        <ExternalLink size={14} aria-hidden="true" />
+                        Abrir o anúncio
+                    </a>
                 )}
                 <button
                     type="button"

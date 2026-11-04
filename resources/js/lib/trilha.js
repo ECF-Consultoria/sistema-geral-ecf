@@ -322,6 +322,23 @@ export const estaNoAr = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.s
  */
 export const estaEmAnalise = (oferta) => oferta?.etapa === 'lanc' && String(oferta?.status ?? '').startsWith('Em análise');
 
+/**
+ * O link do anúncio publicado (04/11/2026: "o MLB já me direcionando para o anúncio"). Só a porta da EQUIPE o recebe
+ * (`ApresentacaoDaTrilha::anuncios`; na do cliente vem nulo, junto com o MLB). O servidor já confere o domínio; aqui
+ * fica só a régua do `href`: endereço `https://` ou nada — o resto (vazio, `javascript:`, `http:`) segue como texto.
+ */
+export function linkDoAnuncio(anuncio) {
+    const link = typeof anuncio?.link === 'string' ? anuncio.link.trim() : '';
+
+    return /^https:\/\/[^\s]+$/i.test(link) ? link : null;
+}
+
+/**
+ * O nome do link para o leitor de tela: "Abrir o anúncio Clássico MLB5511656741 (nova aba)". Sem o nome do canal de
+ * venda: este arquivo vai no pacote do cliente (a régua "nenhum Mercado Livre fora de Cadastro/").
+ */
+export const rotuloDoLinkDoAnuncio = (anuncio) => `Abrir o anúncio ${[anuncio?.tipo, anuncio?.mlb].filter(Boolean).join(' ')} (nova aba)`;
+
 /** Os estados da aprovação do cliente (4e, §19.16 — `trilha_aprovacoes.estado`). */
 export const ESTADOS_DA_APROVACAO = ['com_cliente', 'ajuste', 'aprovado'];
 

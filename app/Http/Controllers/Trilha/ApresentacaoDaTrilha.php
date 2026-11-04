@@ -21,8 +21,9 @@ use App\Support\Trilha\AprovacaoDoCliente;
  *    Link que daria 403 é pior que link nenhum. Desde o R10 (04/11/2026) nenhum link leva ao Publicador, nem para o
  *    admin: "a trilha é o publicador".
  * 2. **Tira o que é só da equipe** na porta do cliente: o id e o link do Publicador, o preparo do agente, o MLB
- *    dos anúncios e a lista das sugestões (fica só o total). O cliente não vê o Publicador nem os bastidores do
- *    agente; o MLB, além disso, é o elo com o Mercado Livre que não se expõe por lá.
+ *    e o link dos anúncios e a lista das sugestões (fica só o total). O cliente não vê o Publicador nem os bastidores do
+ *    agente; o MLB, além disso, é o elo com o Mercado Livre que não se expõe por lá — e o link do anúncio (04/11/2026)
+ *    leva o MLB dentro: vai junto com ele.
  *
  * ### Por que LISTA de campos, e não "tudo menos"
  * Os campos que saem estão escritos aqui, um a um ({@see self::PRODUTO}, {@see self::OFERTA}, e dentro da oferta
@@ -273,7 +274,7 @@ class ApresentacaoDaTrilha
 
     /**
      * Porta do CLIENTE (`/portal/{empresa}/trilha`): os mesmos itens, SEM o que é só da equipe — nem a chave
-     * `pub_produto_id`/`url_publicador` existe, `preparo` vem nulo, o MLB dos anúncios vem nulo, a lista das
+     * `pub_produto_id`/`url_publicador` existe, `preparo` vem nulo, o MLB e o link dos anúncios vêm nulos, a lista das
      * sugestões vem vazia (fica o total, para o "N sugestões esperando decisão"), as ondas vêm só com id, nome, data e
      * se começou (`ONDA_CLIENTE` — o NOME da onda, que a equipe digita, é visível ao cliente) e nada de escrita. Links só
      * para o próprio Portal.
@@ -424,11 +425,12 @@ class ApresentacaoDaTrilha
     }
 
     /**
-     * Os anúncios só com tipo, MLB e situação. Para o cliente o MLB vai nulo: a chave fica (a tela não precisa
-     * perguntar se ela existe), o número não.
+     * Os anúncios só com tipo, MLB, situação e o link do anúncio no Mercado Livre (04/11/2026, "o MLB já me direcionando
+     * para o anúncio"). Para o cliente o MLB e o link vão nulos: as chaves ficam (a tela não precisa perguntar se elas
+     * existem), o número e o endereço não — o link leva o MLB dentro, então segue a mesma régua dele.
      *
-     * @param  list<array{tipo?: string, mlb?: string, situacao?: ?string}>  $anuncios
-     * @return list<array{tipo: ?string, mlb: ?string, situacao: ?string}>
+     * @param  list<array{tipo?: string, mlb?: string, situacao?: ?string, link?: ?string}>  $anuncios
+     * @return list<array{tipo: ?string, mlb: ?string, situacao: ?string, link: ?string}>
      */
     private static function anuncios(array $anuncios, bool $comMlb): array
     {
@@ -436,6 +438,7 @@ class ApresentacaoDaTrilha
             'tipo'     => $a['tipo'] ?? null,
             'mlb'      => $comMlb ? ($a['mlb'] ?? null) : null,
             'situacao' => $a['situacao'] ?? null,
+            'link'     => $comMlb ? ($a['link'] ?? null) : null,
         ], $anuncios));
     }
 

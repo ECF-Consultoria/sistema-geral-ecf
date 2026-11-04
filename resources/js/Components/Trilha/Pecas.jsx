@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { ETAPAS, ETAPA_POR_CHAVE, chaveDaOferta, etapaDaTrilha, indiceDaEtapa } from '@/lib/trilha';
+import { ChevronDown, ExternalLink } from 'lucide-react';
+import { ETAPAS, ETAPA_POR_CHAVE, chaveDaOferta, etapaDaTrilha, indiceDaEtapa, linkDoAnuncio, rotuloDoLinkDoAnuncio } from '@/lib/trilha';
 import { cn } from '@/lib/utils';
 import { composicao } from '@/Components/Trilha/formatos';
 
@@ -270,6 +270,37 @@ export function OfertaNaLista({ oferta, onAbrir, extra = null }) {
                 {extra && <span className="block [overflow-wrap:anywhere]">{extra}</span>}
             </span>
         </button>
+    );
+}
+
+/**
+ * O código do anúncio (MLB) — só a equipe o vê. Com o `link` do anúncio (04/11/2026, só a porta da equipe o recebe),
+ * vira um link que abre o anúncio publicado em outra aba (`noopener noreferrer`: a aba nova não alcança a trilha), com
+ * o ícone de link externo e o nome completo para o leitor de tela ("Abrir o anúncio Clássico MLB… (nova aba)"). Sem
+ * `link` (ou sem `https://`), segue texto. Sem MLB, nada.
+ */
+export function MlbDoAnuncio({ anuncio, className }) {
+    if (!anuncio?.mlb) return null;
+    const link = linkDoAnuncio(anuncio);
+    if (!link) {
+        return <span className={cn('font-pub-mono text-[12.5px] text-trilha-fg2', className)}>{anuncio.mlb}</span>;
+    }
+
+    return (
+        <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={rotuloDoLinkDoAnuncio(anuncio)}
+            data-link-do-anuncio={anuncio.mlb}
+            className={cn(
+                'inline-flex items-center gap-1 rounded font-pub-mono text-[12.5px] text-trilha-run underline decoration-trilha-run/40 underline-offset-2 hover:decoration-trilha-run focus-visible:[outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-trilha-run',
+                className,
+            )}
+        >
+            {anuncio.mlb}
+            <ExternalLink size={12} aria-hidden="true" className="shrink-0" />
+        </a>
     );
 }
 

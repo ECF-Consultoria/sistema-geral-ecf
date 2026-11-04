@@ -18,6 +18,7 @@ use App\Support\Publicador\IaTrabalhando;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\MotivoDaFalhaDaIa;
 use App\Support\Publicador\SituacaoDoAnuncioMl;
+use App\Support\Trilha\LinkDoAnuncio;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,8 @@ use Illuminate\Support\Facades\DB;
  *   aqui). Recalcular com `EditorRascunhoService::estado()` custa 40–80 ms por rascunho e GRAVA: nunca aqui.
  * - Anúncios de DUAS fontes, unidos sem repetir MLB: os itens `CREATED` das publicações do Publicador (a fase N
  *   nunca é espelhada no Portal) e `estrutura_anuncios` (a régua do Portal: colado, importado, digitado, espelho).
+ * - O `link` de cada anúncio (04/11/2026, só a porta da EQUIPE o recebe): o `permalink` do acervo da empresa, senão o que
+ *   o Publicador leu do ML ao criar, senão o montado pelo MLB ({@see LinkDoAnuncio}).
  *
  * ### Número fixo de consultas
  * `IaTrabalhando::no()` e `CriativosAutomaticosService::situacaoDasImagens()` fazem uma consulta (e uma leitura
@@ -43,7 +46,8 @@ use Illuminate\Support\Facades\DB;
  * constantes privadas de lá (referência em cada uma) — mudou lá, muda aqui.
  *
  * Consultas, qualquer que seja o tamanho do catálogo: produtos do Publicador com as fases (1), rascunhos (1), itens
- * publicados (1), anúncios da régua (1) e kits de imagem (1) — rascunhos, itens e kits só quando há o que ler.
+ * publicados (1), anúncios da régua (1), o `permalink` do acervo para todos os MLBs (1) e kits de imagem (1) —
+ * rascunhos, itens, acervo e kits só quando há o que ler.
  */
 class SituacaoDasOfertas
 {
@@ -138,8 +142,8 @@ class SituacaoDasOfertas
      * @param  array<int, int>  $pubDaOferta  oferta_id → pub
      * @param  array<int, array<int, list<int>>>  $kitsDaBase  pub base → N → kits
      * @param  array<int, PubRascunho>  $rascunhos  pub → rascunho
-     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>  $publicados  rascunho → anúncios
-     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>  $daRegua  oferta → anúncios
+     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>  $publicados  rascunho → anúncios
+     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>  $daRegua  oferta → anúncios
      * @param  array<int, array{status: ?string, criado_em: ?Carbon}>  $kitsDeImagem
      * @param  array<int, true>  $agendados  estrutura_produto_id com o preparo agendado
      * @param  array<int, list<string>>  $refazendo  pub → as partes que o agente está refazendo a pedido da revisão (4b, D60)
@@ -215,14 +219,21 @@ class SituacaoDasOfertas
                 ->all();
         }
 
+        // O link de cada anúncio (só a equipe o recebe): o `permalink` do acervo para TODOS os MLBs numa consulta só.
+        [$publicados, $daRegua] = self::comLinks(
+            self::publicados(array_map(fn (PubRascunho $r) => (int) $r->id, array_values($rascunhos)), now()),
+            self::daRegua($empresaId),
+            $empresaId,
+        );
+
         return new self(
             $pubs,
             $grupoDoProduto,
             $pubDaOferta,
             $kitsDaBase,
             $rascunhos,
-            self::publicados(array_map(fn (PubRascunho $r) => (int) $r->id, array_values($rascunhos)), now()),
-            self::daRegua($empresaId),
+            $publicados,
+            $daRegua,
             self::kitsDeImagem($rascunhos),
             self::agendados($produtoIds),
             now(),
@@ -337,7 +348,7 @@ class SituacaoDasOfertas
      * @param  ?array  $onda  com a trilha de trabalho ligada, o contexto da onda do item
      *                        ({@see \App\Services\Trilha\Ondas\OndasDaEmpresa::contextoDoItem()}); null = 1ª entrega
      * @param  bool  $cadastroIncompleto  algum produto do item tem falta na lista (só lido com `$onda`)
-     * @return array{etapa: string, status: string, alerta: bool, parada: ?array{motivo: string, etapas: list<string>, tentar: bool}, anuncios: list<array{tipo: string, mlb: string, situacao: ?string}>, preparo: ?array, pub_produto_id: ?int, andou: bool}
+     * @return array{etapa: string, status: string, alerta: bool, parada: ?array{motivo: string, etapas: list<string>, tentar: bool}, anuncios: list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>, preparo: ?array, pub_produto_id: ?int, andou: bool}
      */
     public function doItem(array $pubs, array $ofertaIds, bool $esperaSimples, ?array $onda = null, bool $cadastroIncompleto = false): array
     {
@@ -799,7 +810,7 @@ class SituacaoDasOfertas
      *
      * @param  list<int>  $pubIds
      * @param  list<int>  $ofertaIds
-     * @return list<array{tipo: string, mlb: string, situacao: ?string}>
+     * @return list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>
      */
     private function anuncios(array $pubIds, array $ofertaIds): array
     {
@@ -827,8 +838,11 @@ class SituacaoDasOfertas
      * a resposta crua do ML ficam no banco. O `under_review` criado há menos de {@see EM_ANALISE_HORAS} horas sai
      * {@see EM_ANALISE} (D59).
      *
+     * O `link` sai aqui com o `permalink` que o Publicador leu do ML ao criar (`avisos.estado`) — provisório: o do acervo
+     * vence ({@see comLinks()}).
+     *
      * @param  list<int>  $rascunhoIds
-     * @return array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>
+     * @return array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>
      */
     private static function publicados(array $rascunhoIds, Carbon $agora): array
     {
@@ -868,6 +882,7 @@ class SituacaoDasOfertas
                     $emAnalise         => self::EM_ANALISE,
                     default            => self::SITUACAO_CURTA[$situacao['status']] ?? 'Fora do ar',
                 },
+                'link'     => LinkDoAnuncio::doMl($estado['permalink'] ?? null),
             ];
         }
 
@@ -877,7 +892,7 @@ class SituacaoDasOfertas
     /**
      * Os anúncios da régua do Portal que contam ({@see EstruturaAnuncio::conta()}: não inativo e com MLB), por oferta.
      *
-     * @return array<int, list<array{tipo: string, mlb: string, situacao: ?string}>>
+     * @return array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>
      */
     private static function daRegua(int $empresaId): array
     {
@@ -896,10 +911,35 @@ class SituacaoDasOfertas
                 'tipo'     => $tipo,
                 'mlb'      => strtoupper(trim((string) $a->codigo_mlb)),
                 'situacao' => $a->status === EstruturaAnuncio::STATUS_PAUSADO ? 'Pausado' : null,
+                'link'     => null,
             ];
         }
 
         return $saida;
+    }
+
+    /**
+     * O `link` de cada anúncio das duas fontes: o `permalink` do acervo da empresa (UMA consulta para todos os MLBs; nenhuma
+     * sem anúncio), senão o que o Publicador leu do ML ao criar, senão o montado pelo MLB ({@see LinkDoAnuncio::escolher()}).
+     *
+     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>  $publicados
+     * @param  array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>  $daRegua
+     * @return array{0: array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>, 1: array<int, list<array{tipo: string, mlb: string, situacao: ?string, link: ?string}>>}
+     */
+    private static function comLinks(array $publicados, array $daRegua, int $empresaId): array
+    {
+        $mlbs = [];
+        foreach ([$publicados, $daRegua] as $fonte) {
+            foreach ($fonte as $anuncios) {
+                foreach ($anuncios as $a) {
+                    $mlbs[$a['mlb']] = true;
+                }
+            }
+        }
+        $doAcervo = LinkDoAnuncio::doAcervo($empresaId, array_keys($mlbs));
+        $comLink = fn (array $lista) => array_map(fn (array $a) => [...$a, 'link' => LinkDoAnuncio::escolher($a['mlb'], $doAcervo, $a['link'])], $lista);
+
+        return [array_map($comLink, $publicados), array_map($comLink, $daRegua)];
     }
 
     // ═══ Leituras em lote do agente ══════════════════════════════════════════

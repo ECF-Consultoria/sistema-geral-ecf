@@ -141,7 +141,11 @@ export const PROPS_EQUIPE = {
             id: 's-1', tipo: 'Simples', nome: 'Mesa de jantar jatobá 6 lugares', sku: 'CJ-210', skus: ['CJ-210'],
             componentes: [{ produto_id: 1, quantidade: 1, sku: 'CJ-210', nome: 'Mesa de jantar jatobá 6 lugares' }],
             etapa: 'lanc', status: 'No ar · Clássico e Premium', alerta: false,
-            anuncios: [{ tipo: 'Clássico', mlb: 'MLB3412345678', situacao: null }, { tipo: 'Premium', mlb: 'MLB3412345679', situacao: null }],
+            // O link (04/11/2026, só a porta da equipe): o do acervo (com o título) e o montado pelo MLB.
+            anuncios: [
+                { tipo: 'Clássico', mlb: 'MLB3412345678', situacao: null, link: 'https://produto.mercadolivre.com.br/MLB-3412345678-mesa-de-jantar-jatoba-_JM' },
+                { tipo: 'Premium', mlb: 'MLB3412345679', situacao: null, link: 'https://produto.mercadolivre.com.br/MLB-3412345679-_JM' },
+            ],
             preparo: { titulo: 'pronto', modelo: 'pronto', descricao: 'pronto', imagens: 'pronto' },
             onda_id: null, sem_produto: false, url_publicador: '/mlb/anuncios/publicador/produtos/71/editor',
         },
@@ -195,7 +199,7 @@ export const PROPS_EQUIPE = {
             id: 's-10', tipo: 'Simples', nome: 'Espelho redondo moldura de madeira 60 cm', sku: 'CJ-307', skus: ['CJ-307'],
             componentes: [{ produto_id: 10, quantidade: 1, sku: 'CJ-307', nome: 'Espelho redondo moldura de madeira 60 cm' }],
             etapa: 'lanc', status: 'No ar · falta o Premium', alerta: false,
-            anuncios: [{ tipo: 'Clássico', mlb: 'MLB3488800012', situacao: 'Pausado' }],
+            anuncios: [{ tipo: 'Clássico', mlb: 'MLB3488800012', situacao: 'Pausado', link: 'https://produto.mercadolivre.com.br/MLB-3488800012-_JM' }],
             preparo: { titulo: 'pronto', modelo: 'pronto', descricao: 'pronto', imagens: 'pronto' },
             onda_id: null, sem_produto: false, url_publicador: '/mlb/anuncios/publicador/produtos/80/editor',
         },
@@ -210,7 +214,11 @@ export const PROPS_EQUIPE = {
             id: 'o-40', tipo: 'Simples', nome: 'Nicho decorativo hexagonal', sku: 'CJ-303', skus: ['CJ-303'],
             componentes: [{ produto_id: null, quantidade: 1, sku: 'CJ-303', nome: 'Nicho decorativo hexagonal' }],
             etapa: 'lanc', status: 'No ar · Clássico e Premium', alerta: false,
-            anuncios: [{ tipo: 'Clássico', mlb: 'MLB3400011223', situacao: null }, { tipo: 'Premium', mlb: 'MLB3400011224', situacao: null }],
+            // Sem `link` no Premium (o servidor antigo, ou um endereço que não é https): o MLB segue texto.
+            anuncios: [
+                { tipo: 'Clássico', mlb: 'MLB3400011223', situacao: null, link: 'https://produto.mercadolivre.com.br/MLB-3400011223-_JM' },
+                { tipo: 'Premium', mlb: 'MLB3400011224', situacao: null, link: null },
+            ],
             preparo: null, onda_id: null, sem_produto: true, url_publicador: null,
         },
     ],
@@ -242,7 +250,7 @@ export function paraCliente(props = PROPS_EQUIPE) {
         ofertas: props.ofertas.map(({ url_publicador, preparo, ...o }) => ({
             ...o,
             preparo: null,
-            anuncios: (o.anuncios ?? []).map((a) => ({ ...a, mlb: null })),
+            anuncios: (o.anuncios ?? []).map((a) => ({ ...a, mlb: null, link: null })),
         })),
         // As ondas vão ao cliente só com nome, data e se começou (`ApresentacaoDaTrilha::ONDA_CLIENTE`).
         ondas: (props.ondas ?? []).map(({ id, nome, data, comecou }) => ({ id, nome, data, comecou: !!comecou })),
@@ -1062,14 +1070,28 @@ export const PUBLICACAO_NA_FILA = { publicacao: { situacao: 'na_fila', mensagem:
 /** Publicando agora. */
 export const PUBLICACAO_PUBLICANDO = { publicacao: { situacao: 'publicando', mensagem: 'Publicando agora…', avisos: [], mlbs: [] } };
 
-/** Publicado (um anúncio por tipo × cor): "Publicado · em análise" (D59). */
+/**
+ * Publicado (um anúncio por tipo × cor): "Publicado · em análise" (D59). `anuncios` (04/11/2026, só a porta da equipe):
+ * o link de cada anúncio — o do acervo (com o título), os montados pelo MLB e um sem link (segue texto).
+ */
 export const PUBLICACAO_PUBLICADA = {
     publicacao: {
         situacao: 'publicado',
         mensagem: 'Publicado. Nas primeiras horas o anúncio fica em análise antes de ir à venda.',
         avisos: [],
         mlbs: ['MLB5123456781', 'MLB5123456782', 'MLB5123456783', 'MLB5123456784'],
+        anuncios: [
+            { tipo: 'Clássico', mlb: 'MLB5123456781', link: 'https://produto.mercadolivre.com.br/MLB-5123456781-cadeira-jatoba-palhinha-_JM' },
+            { tipo: 'Clássico', mlb: 'MLB5123456782', link: 'https://produto.mercadolivre.com.br/MLB-5123456782-_JM' },
+            { tipo: 'Premium', mlb: 'MLB5123456783', link: 'https://produto.mercadolivre.com.br/MLB-5123456783-_JM' },
+            { tipo: 'Premium', mlb: 'MLB5123456784', link: null },
+        ],
     },
+};
+
+/** O mesmo publicado como o servidor de ANTES de 04/11/2026 mandava: só `mlbs` (o rodapé diz quantos foram criados). */
+export const PUBLICACAO_PUBLICADA_SEM_LINKS = {
+    publicacao: (({ anuncios, ...p }) => p)(PUBLICACAO_PUBLICADA.publicacao),
 };
 
 /** A conferência achou erro (sempre bloqueia): a mensagem e os erros em texto neutro em `avisos`; nada na fila. */

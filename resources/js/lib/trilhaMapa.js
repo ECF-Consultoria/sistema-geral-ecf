@@ -29,13 +29,16 @@
 //   em vez de subir para o topo como no protótipo.
 // - Nenhum nó guarda o objeto original (o protótipo guardava `ref`): o que o
 //   mapa mostra é só o que está no nó, e na visão do cliente nada sobra do MLB.
+// - O nó de anúncio da equipe leva o `link` do anúncio publicado (04/11/2026) e o
+//   nome dele para o leitor de tela: o painel ao lado oferece "Abrir o anúncio".
+//   Na visão do cliente os dois vêm nulos, como o MLB (o link leva o MLB dentro).
 //
 // Funções PURAS — nada de React nem de DOM. Testes: tests/js/trilha-mapa.test.js.
 //
 // ⚠️ Sem classe do Tailwind neste arquivo: o `content` do tailwind.config.js só
 // varre `.jsx`. As cores daqui são `rgb(var(--t-…))`, para `style` no SVG.
 
-import { COR_DA_ETAPA, ETAPA_POR_CHAVE, ORDEM, SIGLA_DO_TIPO, chaveDaOferta, chaveDoProduto, contagemPorEtapa } from './trilha.js';
+import { COR_DA_ETAPA, ETAPA_POR_CHAVE, ORDEM, SIGLA_DO_TIPO, chaveDaOferta, chaveDoProduto, contagemPorEtapa, linkDoAnuncio, rotuloDoLinkDoAnuncio } from './trilha.js';
 import { ondasEmOrdem, quandoDaOnda } from './trilhaOndas.js';
 
 /** Nome curto de cada etapa: faixa do fluxo, legenda do mapa e cartões do índice. */
@@ -315,12 +318,15 @@ export function montarGrafo(dados, { visao = 'equipe', familia = null } = {}) {
             // O MLB só na visão da equipe: no "Ver como: Cliente" o dado ainda o traz.
             const mlb = equipe && a.mlb ? a.mlb : null;
             const sub = mlb ? `${tipo} · ${mlb}` : tipo;
+            // O link do anúncio vai junto com o MLB: só na visão da equipe.
+            const link = mlb ? linkDoAnuncio(a) : null;
+            const rotuloDoLink = link ? rotuloDoLinkDoAnuncio({ tipo, mlb }) : null;
             const situacao = estado === 'ativo' ? 'No ar' : (equipe ? a.situacao : semPlataforma(a.situacao)) || 'Fora do ar';
             const titulo = o.nome || o.sku || 'Oferta sem nome';
             const id = `m:${o.id}:${i}`;
             const cor = COR_DO_ANUNCIO[estado];
 
-            nos.push({ id, tipo: 'anuncio', coluna: colunaDoAnuncio, titulo, sub, situacao, cor, estado, origem, rotulo: `Anúncio ${sub} de ${titulo} · ${situacao}` });
+            nos.push({ id, tipo: 'anuncio', coluna: colunaDoAnuncio, titulo, sub, situacao, cor, estado, origem, rotulo: `Anúncio ${sub} de ${titulo} · ${situacao}`, link, rotuloDoLink });
             ligacoes.push(temOndas ? { de: `w:${ondaDa(o)}`, para: id, cor, via: origem } : { de: origem, para: id, cor });
         });
     }

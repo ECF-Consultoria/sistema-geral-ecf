@@ -419,6 +419,28 @@ test('?abrir=o:…: a oferta com MLB e preparo para a equipe; o cliente vê só 
     const pausado = texto(painelLateral(desenhar(Pagina, PROPS_EQUIPE, '?abrir=o:s-10'), 'o:s-10'));
     assert.ok(pausado.includes('Pausado') && pausado.includes('MLB3488800012'));
 
+    // 04/11/2026 ("o MLB já me direcionando para o anúncio"): na caixa "Anúncios" da equipe o MLB é um link que abre o
+    // anúncio numa aba nova, com o ícone de link externo e o nome completo para o leitor de tela.
+    const caixaDeAnuncios = (html) => html.slice(html.indexOf('data-caixa="anuncios"'), html.indexOf('</section>', html.indexOf('data-caixa="anuncios"')));
+    const linksDe = (html) => (html.match(/<a\b[^>]*data-link-do-anuncio="[^"]*"[^>]*>/g) ?? []);
+    const anunciosS1 = caixaDeAnuncios(s1);
+    const linksS1 = linksDe(anunciosS1);
+    assert.equal(linksS1.length, 2);
+    for (const [i, a] of PROPS_EQUIPE.ofertas.find((o) => o.id === 's-1').anuncios.entries()) {
+        assert.ok(linksS1[i].includes(`href="${a.link}"`) && linksS1[i].includes('target="_blank"') && linksS1[i].includes('rel="noopener noreferrer"'), linksS1[i]);
+        assert.ok(linksS1[i].includes(`aria-label="Abrir o anúncio ${a.tipo} ${a.mlb} (nova aba)"`), linksS1[i]);
+    }
+    assert.match(anunciosS1, /data-link-do-anuncio="MLB3412345678"[^>]*>MLB3412345678<svg[^>]*aria-hidden="true"/, 'o ícone de link externo, escondido do leitor');
+    // Sem `link` (o Premium do o-40), o MLB segue texto.
+    const anunciosO40 = caixaDeAnuncios(painelLateral(desenhar(Pagina, PROPS_EQUIPE, '?abrir=o:o-40'), 'o:o-40'));
+    assert.deepEqual(linksDe(anunciosO40).map((a) => a.match(/data-link-do-anuncio="([^"]*)"/)[1]), ['MLB3400011223']);
+    assert.ok(texto(anunciosO40).includes('MLB3400011224'));
+    // O cliente (e o "Ver como: Cliente"): nem MLB, nem link, nem o endereço do anúncio.
+    for (const [nome, props] of [['porta do cliente', paraCliente()], ['Ver como: Cliente', { ...PROPS_EQUIPE, visao: 'cliente' }]]) {
+        const html = painelLateral(desenhar(Pagina, props, '?abrir=o:s-1'), 'o:s-1');
+        assert.ok(!html.includes('data-link-do-anuncio') && !html.includes('mercadolivre') && !html.includes('MLB'), nome);
+    }
+
     const falhou = texto(painelLateral(desenhar(Pagina, PROPS_EQUIPE, '?abrir=o:s-11'), 'o:s-11'));
     assert.ok(falhou.includes('A publicação falhou') && falhou.includes('Erro'));
 

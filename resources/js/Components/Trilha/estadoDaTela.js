@@ -260,7 +260,8 @@ export function paraVisaoCliente(dados) {
         ofertas: (dados.ofertas ?? []).map(({ url_publicador, ...oferta }) => ({
             ...oferta,
             preparo: null,
-            anuncios: (oferta.anuncios ?? []).map((anuncio) => ({ ...anuncio, mlb: null })),
+            // O MLB e o link do anúncio (que leva o MLB) são da equipe.
+            anuncios: (oferta.anuncios ?? []).map((anuncio) => ({ ...anuncio, mlb: null, link: null })),
         })),
     };
 }

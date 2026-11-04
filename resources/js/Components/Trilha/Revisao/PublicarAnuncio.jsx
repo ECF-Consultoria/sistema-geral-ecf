@@ -25,7 +25,7 @@ import {
     vistaDaPublicacao,
 } from '@/lib/trilhaPublicar';
 import { cn } from '@/lib/utils';
-import { Botao, Pilula } from '@/Components/Trilha/Pecas';
+import { Botao, MlbDoAnuncio, Pilula } from '@/Components/Trilha/Pecas';
 
 // ─── Trilha de produtos — aprovar e publicar pela prévia (4ª entrega, fatia 4d) ──
 //
@@ -42,6 +42,12 @@ import { Botao, Pilula } from '@/Components/Trilha/Pecas';
 // `ciente`); `recusado`/`erro` mostram a mensagem; `publicado` diz "Publicado ·
 // em análise" e recarrega a Lista. Aberta com a publicação andando (a prévia já
 // traz `publicacao`), a gaveta retoma o acompanhamento sozinha.
+//
+// Publicado (04/11/2026, "o MLB já me direcionando para o anúncio"): a situação
+// lista os anúncios criados — "Clássico MLB… ↗ · Premium MLB… ↗" — cada MLB um
+// link que abre o anúncio em outra aba (`publicacao.anuncios`, que só a porta da
+// equipe recebe; o cartão do cliente é o `Cliente/AprovarAnuncio`). Sem
+// `anuncios` (o servidor de antes), segue "N anúncios criados".
 //
 // Os erros do pedido ficam no rodapé: o 409 da revisão velha ("Este anúncio mudou
 // depois que você abriu" + [Recarregar], o padrão F6), os outros 409, o 403 (a loja
@@ -296,6 +302,17 @@ export default function RodapeDaPublicacao({ publicar, children = null }) {
                             {vista.detalhe && (
                                 <span className="text-trilha-fg2 [overflow-wrap:anywhere]" data-detalhe-da-publicacao="">
                                     {vista.detalhe}
+                                </span>
+                            )}
+                            {vista.anuncios?.length > 0 && (
+                                <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-trilha-fg2" data-anuncios-da-publicacao="">
+                                    {vista.anuncios.map((anuncio, i) => (
+                                        <span key={anuncio.mlb} className="inline-flex min-w-0 items-center gap-1">
+                                            {i > 0 && <span aria-hidden="true">·</span>}
+                                            {anuncio.tipo && <b className="font-semibold text-trilha-fg">{anuncio.tipo}</b>}
+                                            <MlbDoAnuncio anuncio={anuncio} />
+                                        </span>
+                                    ))}
                                 </span>
                             )}
                         </>

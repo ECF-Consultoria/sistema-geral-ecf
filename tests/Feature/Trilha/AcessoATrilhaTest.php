@@ -40,6 +40,13 @@ class AcessoATrilhaTest extends TestCase
 
     private const MLB_SEM_PRODUTO = 'MLB3400011223';
 
+    /** Os links dos anúncios (04/11/2026): o do acervo (com o título) e os montados — só a porta da equipe os recebe. */
+    private const LINK_CLASSICO = 'https://produto.mercadolivre.com.br/MLB-3412345678-mesa-de-jantar-jatoba-_JM';
+
+    private const LINK_PREMIUM = 'https://produto.mercadolivre.com.br/MLB-3412345679-_JM';
+
+    private const LINK_SEM_PRODUTO = 'https://produto.mercadolivre.com.br/MLB-3400011223-_JM';
+
     /** As etapas que o dublê devolve: 1 produto na lista, 1 no mapeamento, 1 mapeado; ofertas 1/0/1/2. */
     private const CONTAGEM = ['lista' => 1, 'mapa' => 1, 'plano' => 1, 'robo' => 0, 'revisao' => 1, 'lanc' => 2];
 
@@ -135,10 +142,12 @@ class AcessoATrilhaTest extends TestCase
                 // A equipe vê as sugestões esperando decisão.
                 ->where('produtos.1.sugestoes_pendentes.0', ['fase' => 'combo', 'nome' => 'Combo 2 Racks para TV 1,80 m', 'sku' => 'CJ-213-CB2'])
                 ->where('produtos.1.sugestoes_pendentes_total', 2)
+                // 04/11/2026: o MLB vira link para o anúncio — só nesta porta.
                 ->where('ofertas.2.anuncios', [
-                    ['tipo' => 'Clássico', 'mlb' => self::MLB_CLASSICO, 'situacao' => null],
-                    ['tipo' => 'Premium', 'mlb' => self::MLB_PREMIUM, 'situacao' => null],
+                    ['tipo' => 'Clássico', 'mlb' => self::MLB_CLASSICO, 'situacao' => null, 'link' => self::LINK_CLASSICO],
+                    ['tipo' => 'Premium', 'mlb' => self::MLB_PREMIUM, 'situacao' => null, 'link' => self::LINK_PREMIUM],
                 ])
+                ->where('ofertas.3.anuncios', [['tipo' => 'Clássico', 'mlb' => self::MLB_SEM_PRODUTO, 'situacao' => 'Pausado', 'link' => self::LINK_SEM_PRODUTO]])
                 ->where('ofertas.2.preparo', ['titulo' => 'pronto', 'modelo' => 'pronto', 'descricao' => 'pronto', 'imagens' => 'pronto'])
                 ->where('ondas', [])
                 ->where('gerado_em', '2026-10-30T18:00:00-03:00')
@@ -310,14 +319,14 @@ class AcessoATrilhaTest extends TestCase
                 // A lista das sugestões fica na equipe; o total chega, para o "N esperando decisão".
                 ->where('produtos.1.sugestoes_pendentes', [])
                 ->where('produtos.1.sugestoes_pendentes_total', 2)
-                // Sem preparo do agente e sem MLB; o tipo e a situação dos anúncios ficam.
+                // Sem preparo do agente e sem MLB nem o link do anúncio (que leva o MLB); o tipo e a situação ficam.
                 ->where('ofertas.1.preparo', null)
                 ->where('ofertas.2.preparo', null)
                 ->where('ofertas.2.anuncios', [
-                    ['tipo' => 'Clássico', 'mlb' => null, 'situacao' => null],
-                    ['tipo' => 'Premium', 'mlb' => null, 'situacao' => null],
+                    ['tipo' => 'Clássico', 'mlb' => null, 'situacao' => null, 'link' => null],
+                    ['tipo' => 'Premium', 'mlb' => null, 'situacao' => null, 'link' => null],
                 ])
-                ->where('ofertas.3.anuncios', [['tipo' => 'Clássico', 'mlb' => null, 'situacao' => 'Pausado']])
+                ->where('ofertas.3.anuncios', [['tipo' => 'Clássico', 'mlb' => null, 'situacao' => 'Pausado', 'link' => null]])
                 ->where('ofertas.2.status', 'No ar · Clássico e Premium')
                 ->where('ondas', [])
                 ->where('gerado_em', '2026-10-30T18:00:00-03:00')
@@ -803,8 +812,8 @@ class AcessoATrilhaTest extends TestCase
                     ],
                     'etapa' => 'lanc', 'status' => 'No ar · Clássico e Premium', 'alerta' => false,
                     'anuncios' => [
-                        ['tipo' => 'Clássico', 'mlb' => self::MLB_CLASSICO, 'situacao' => null],
-                        ['tipo' => 'Premium', 'mlb' => self::MLB_PREMIUM, 'situacao' => null],
+                        ['tipo' => 'Clássico', 'mlb' => self::MLB_CLASSICO, 'situacao' => null, 'link' => self::LINK_CLASSICO],
+                        ['tipo' => 'Premium', 'mlb' => self::MLB_PREMIUM, 'situacao' => null, 'link' => self::LINK_PREMIUM],
                     ],
                     'preparo' => ['titulo' => 'pronto', 'modelo' => 'pronto', 'descricao' => 'pronto', 'imagens' => 'pronto'],
                     'onda_id' => null, 'sem_produto' => false, 'pub_produto_id' => 71,
@@ -816,7 +825,7 @@ class AcessoATrilhaTest extends TestCase
                         ['produto_id' => null, 'quantidade' => 1, 'sku' => 'CJ-303', 'nome' => 'Nicho decorativo hexagonal'],
                     ],
                     'etapa' => 'lanc', 'status' => 'No ar · falta o Premium', 'alerta' => false,
-                    'anuncios' => [['tipo' => 'Clássico', 'mlb' => self::MLB_SEM_PRODUTO, 'situacao' => 'Pausado']],
+                    'anuncios' => [['tipo' => 'Clássico', 'mlb' => self::MLB_SEM_PRODUTO, 'situacao' => 'Pausado', 'link' => self::LINK_SEM_PRODUTO]],
                     'preparo' => null, 'onda_id' => null, 'sem_produto' => true, 'pub_produto_id' => null,
                 ],
             ],
@@ -846,6 +855,11 @@ class AcessoATrilhaTest extends TestCase
         foreach ([self::MLB_CLASSICO, self::MLB_PREMIUM, self::MLB_SEM_PRODUTO] as $mlb) {
             $resposta->assertDontSee($mlb, false);
         }
+        // O link do anúncio leva o MLB (com hífen: `MLB-3412345678`) — nem ele, nem o domínio, nem os números saem.
+        foreach ([self::LINK_CLASSICO, self::LINK_PREMIUM, self::LINK_SEM_PRODUTO, 'mercadolivre.com.br', '3412345678', '3412345679', '3400011223'] as $segredo) {
+            $this->assertStringNotContainsString($segredo, $json);
+            $resposta->assertDontSee($segredo, false);
+        }
         foreach ($props['produtos'] as $produto) {
             $this->assertSame([], $produto['sugestoes_pendentes']);
         }
@@ -853,6 +867,7 @@ class AcessoATrilhaTest extends TestCase
             $this->assertNull($oferta['preparo']);
             foreach ($oferta['anuncios'] as $anuncio) {
                 $this->assertNull($anuncio['mlb']);
+                $this->assertNull($anuncio['link']);
             }
         }
 

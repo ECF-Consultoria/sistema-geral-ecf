@@ -15,6 +15,7 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Models\EstruturaProdutoVolume;
 use App\Models\EstruturaSugestaoDescartada;
+use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubProduto;
@@ -458,14 +459,16 @@ class TrilhaDaEmpresaTest extends TestCase
 
         $oferta = $this->oferta($trilha, "s-{$dois['produto']->id}");
         $this->assertSame(['lanc', 'No ar · Clássico e Premium', false], [$oferta['etapa'], $oferta['status'], $oferta['alerta']]);
+        // Sem o anúncio no acervo, o link é o montado pelo MLB (04/11/2026).
         $this->assertSame([
-            ['tipo' => 'Clássico', 'mlb' => 'MLB7000001', 'situacao' => null],
-            ['tipo' => 'Premium', 'mlb' => 'MLB7000002', 'situacao' => null],
+            ['tipo' => 'Clássico', 'mlb' => 'MLB7000001', 'situacao' => null, 'link' => 'https://produto.mercadolivre.com.br/MLB-7000001-_JM'],
+            ['tipo' => 'Premium', 'mlb' => 'MLB7000002', 'situacao' => null, 'link' => 'https://produto.mercadolivre.com.br/MLB-7000002-_JM'],
         ], $oferta['anuncios']);
 
         $oferta = $this->oferta($trilha, "s-{$soClassico['produto']->id}");
         $this->assertSame(['lanc', 'No ar · falta o Premium'], [$oferta['etapa'], $oferta['status']]);
-        $this->assertSame([['tipo' => 'Clássico', 'mlb' => 'MLB7000010', 'situacao' => 'Pausado']], $oferta['anuncios']);
+        $this->assertSame([['tipo' => 'Clássico', 'mlb' => 'MLB7000010', 'situacao' => 'Pausado', 'link' => 'https://produto.mercadolivre.com.br/MLB-7000010-_JM']],
+            $oferta['anuncios']);
     }
 
     public function test_publicador_com_item_criado_poe_no_ar_com_o_mlb_sem_repetir_o_espelho(): void
@@ -488,14 +491,62 @@ class TrilhaDaEmpresaTest extends TestCase
         $oferta = $this->oferta($trilha, "s-{$p['produto']->id}");
         $this->assertSame(['lanc', 'No ar · Clássico e Premium', $pub->id], [$oferta['etapa'], $oferta['status'], $oferta['pub_produto_id']]);
         $this->assertSame([
-            ['tipo' => 'Clássico', 'mlb' => 'MLB8000002', 'situacao' => null],
-            ['tipo' => 'Premium', 'mlb' => 'MLB8000001', 'situacao' => 'Pausado'],
+            ['tipo' => 'Clássico', 'mlb' => 'MLB8000002', 'situacao' => null, 'link' => 'https://produto.mercadolivre.com.br/MLB-8000002-_JM'],
+            ['tipo' => 'Premium', 'mlb' => 'MLB8000001', 'situacao' => 'Pausado', 'link' => 'https://produto.mercadolivre.com.br/MLB-8000001-_JM'],
         ], $oferta['anuncios']);
         $this->assertSame($pub->id, $this->produtoDaTrilha($trilha, $p['produto']->id)['pub_produto_id']);
 
         $oferta = $this->oferta($trilha, "s-{$soPremium['produto']->id}");
         $this->assertSame(['lanc', 'No ar · falta o Clássico'], [$oferta['etapa'], $oferta['status']]);
-        $this->assertSame([['tipo' => 'Premium', 'mlb' => 'MLB8000010', 'situacao' => null]], $oferta['anuncios']);
+        $this->assertSame([['tipo' => 'Premium', 'mlb' => 'MLB8000010', 'situacao' => null, 'link' => 'https://produto.mercadolivre.com.br/MLB-8000010-_JM']],
+            $oferta['anuncios']);
+    }
+
+    /**
+     * 04/11/2026 ("o MLB já me direcionando para o anúncio"): cada anúncio leva o `link` do anúncio no Mercado Livre — o
+     * `permalink` do ACERVO da empresa quando há (a chave é empresa + MLB: o da outra loja não vale), senão o que o
+     * Publicador leu do ML ao criar (`avisos.estado.permalink`), senão o MONTADO pelo MLB. Endereço guardado fora do
+     * `mercadolivre.com.br` (ou que não é http) nunca vira `href`: vale o montado. `http://` vira `https://`.
+     */
+    public function test_o_link_do_anuncio_vem_do_acervo_do_publicador_ou_montado(): void
+    {
+        $empresa = $this->empresa();
+        $outra = $this->empresa();
+        $p = $this->produto($empresa, 'Vaso Com Link', 'VCL');
+        $r = $this->rascunho($this->pubDoGrupo($empresa, $p), PubRascunho::PUBLISHED);
+        // Publicado pelo Publicador: o do acervo vence o que ele leu ao criar; sem acervo, o que ele leu; o resto, montado.
+        $this->publicado($r, 'gold_special', 'MLB5511656741', ['status' => 'active', 'permalink' => 'https://produto.mercadolivre.com.br/MLB-5511656741-lido-ao-criar-_JM']);
+        $this->publicado($r, 'gold_pro', 'MLB5511656763', ['status' => 'active', 'permalink' => 'http://produto.mercadolivre.com.br/MLB-5511656763-lido-ao-criar-_JM']);
+        $this->acervo($empresa, 'MLB5511656741', 'https://produto.mercadolivre.com.br/MLB-5511656741-vaso-com-link-_JM');
+        // O mesmo MLB no acervo de OUTRA loja não vale para esta.
+        $this->acervo($outra, 'MLB5511656763', 'https://produto.mercadolivre.com.br/MLB-5511656763-da-outra-loja-_JM');
+
+        // Da régua do Portal: do acervo; sem acervo, montado; o endereço guardado que não é do ML (ou não é http), montado.
+        $regua = $this->produto($empresa, 'Vaso Da Regua', 'VDR');
+        $this->anuncioDaRegua($regua['simples'][0], 'classico', 'MLB7100001');
+        $this->acervo($empresa, 'MLB7100001', 'http://produto.mercadolivre.com.br/MLB-7100001-vaso-da-regua-_JM');
+        $this->anuncioDaRegua($regua['simples'][0], 'premium', 'MLB7100002');
+        $estranho = $this->produto($empresa, 'Vaso Estranho', 'VES');
+        $this->anuncioDaRegua($estranho['simples'][0], 'classico', 'MLB7100003');
+        $this->acervo($empresa, 'MLB7100003', 'javascript:alert(1)');
+        $this->anuncioDaRegua($estranho['simples'][0], 'premium', 'MLB7100004');
+        $this->acervo($empresa, 'MLB7100004', 'https://mercadolivre.com.br.golpe.test/MLB-7100004');
+
+        $trilha = $this->trilha($empresa);
+        $links = fn (array $produto) => array_column($this->oferta($trilha, "s-{$produto['produto']->id}")['anuncios'], 'link', 'mlb');
+
+        $this->assertSame([
+            'MLB5511656741' => 'https://produto.mercadolivre.com.br/MLB-5511656741-vaso-com-link-_JM',
+            'MLB5511656763' => 'https://produto.mercadolivre.com.br/MLB-5511656763-lido-ao-criar-_JM',
+        ], $links($p));
+        $this->assertSame([
+            'MLB7100001' => 'https://produto.mercadolivre.com.br/MLB-7100001-vaso-da-regua-_JM',
+            'MLB7100002' => 'https://produto.mercadolivre.com.br/MLB-7100002-_JM',
+        ], $links($regua));
+        $this->assertSame([
+            'MLB7100003' => 'https://produto.mercadolivre.com.br/MLB-7100003-_JM',
+            'MLB7100004' => 'https://produto.mercadolivre.com.br/MLB-7100004-_JM',
+        ], $links($estranho));
     }
 
     /**
@@ -762,6 +813,11 @@ class TrilhaDaEmpresaTest extends TestCase
 
         $this->assertSame(count($daPequena), count($daGrande), 'consultas: '.count($daPequena).' × '.count($daGrande));
         $this->assertLessThanOrEqual(40, count($daGrande));
+        // O link de cada anúncio: o acervo é lido UMA vez (nenhuma consulta por anúncio), e os links saem dele.
+        $this->assertCount(1, array_filter($daGrande, fn (string $sql) => str_contains($sql, 'ml_acervo_itens')), 'o acervo, uma consulta só');
+        $links = array_merge(...array_map(fn (array $o) => array_column($o['anuncios'], 'link'), $trilhaGrande['ofertas']));
+        $this->assertCount(12, $links, '6 produtos × (1 publicado + 1 da régua)');
+        $this->assertCount(6, array_filter($links, fn (string $l) => str_ends_with($l, '-peca-_JM')), 'os 6 do acervo');
         foreach ($daGrande as $sql) {
             $this->assertMatchesRegularExpression('/^\s*select\b/i', $sql, "a trilha só lê: {$sql}");
         }
@@ -889,6 +945,12 @@ class TrilhaDaEmpresaTest extends TestCase
         EstruturaAnuncio::create(['oferta_id' => $oferta->id, 'tipo' => $tipo, 'status' => $status, 'codigo_mlb' => $mlb]);
     }
 
+    /** O anúncio no acervo da empresa (`ml_acervo_itens`, a linha do "Meus Anúncios") com o `permalink` que o ML devolveu. */
+    private function acervo(Company $empresa, string $mlb, ?string $permalink): void
+    {
+        MlAcervoItem::create(['company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => 'Anúncio '.$mlb, 'status' => 'active', 'permalink' => $permalink]);
+    }
+
     /** O pub_produto do grupo das cores, como o Sincronizar cria (ancorado na oferta da 1ª cor). */
     private function pubDoGrupo(Company $empresa, array $p): PubProduto
     {
@@ -959,6 +1021,8 @@ class TrilhaDaEmpresaTest extends TestCase
             ]);
             $this->publicado($r, 'gold_special', "MLB{$empresa->id}0{$i}");
             $this->anuncioDaRegua($p['simples'][1], 'premium', "MLB{$empresa->id}9{$i}");
+            // O link do anúncio (04/11/2026): um no acervo, o outro montado — o acervo é lido UMA vez para todos os MLBs.
+            $this->acervo($empresa, "MLB{$empresa->id}0{$i}", "https://produto.mercadolivre.com.br/MLB-{$empresa->id}0{$i}-peca-_JM");
             $anterior = $p;
         }
     }

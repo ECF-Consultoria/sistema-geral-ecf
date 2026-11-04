@@ -10,6 +10,7 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVolume;
+use App\Models\MlAcervoItem;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\PubFilaPublicacaoItem;
@@ -84,7 +85,7 @@ class PublicarNaTrilhaTest extends TestCase
     private const PRETO = 'COLOR=id:52049';
 
     /** As chaves de `publicacao` (§19.13), na ordem. */
-    private const CHAVES = ['situacao', 'mensagem', 'avisos', 'mlbs'];
+    private const CHAVES = ['situacao', 'mensagem', 'avisos', 'mlbs', 'anuncios'];
 
     /** O que não pode aparecer em texto nenhum da publicação (D59 e a régua de 4a) — e o antigo "robô" (R9: é "agente"). */
     private const PROIBIDOS = ['Mercado Livre', 'Publicador', 'Portal', 'robô', 'Robô', '/portal', 'mlb/anuncios'];
@@ -272,7 +273,7 @@ class PublicarNaTrilhaTest extends TestCase
         $resposta = $this->publicar($chave, ['revisao' => $revisao, 'ciente' => false]);
 
         $this->assertAceito($resposta);
-        $this->assertSame(['publicacao' => ['situacao' => 'conferindo', 'mensagem' => PublicacaoNaTrilha::MSG_CONFERINDO, 'avisos' => [], 'mlbs' => []]], $resposta->json());
+        $this->assertSame(['publicacao' => ['situacao' => 'conferindo', 'mensagem' => PublicacaoNaTrilha::MSG_CONFERINDO, 'avisos' => [], 'mlbs' => [], 'anuncios' => []]], $resposta->json());
         Queue::assertPushedOn('high', PublicarPelaTrilhaJob::class, fn (PublicarPelaTrilhaJob $j) => [$j->companyId, $j->item, $j->pubProdutoId, $j->userId, $j->revisao, $j->ciente]
             === [PublicacaoNaTrilha::LOJA, $chave, (int) $this->pub->id, (int) $this->dev->id, $revisao, false]);
         $this->assertSame($resposta->json('publicacao'), $this->assertContrato($chave, 'conferindo'), 'o 202, o GET e a prévia dizem o mesmo');
@@ -289,7 +290,7 @@ class PublicarNaTrilhaTest extends TestCase
         $this->assertSame((int) $this->dev->id, (int) $item->fila->criada_por, 'quem aprovou é o ator das publicações');
         $this->assertNotNull($item->validacao_id, 'a fila guarda a conferência que a trilha fez');
         $this->assertNenhumPostDeItem();
-        $this->assertSame(['situacao' => 'na_fila', 'mensagem' => PublicacaoNaTrilha::MSG_NA_FILA, 'avisos' => [], 'mlbs' => []], $this->assertContrato($chave, 'na_fila'));
+        $this->assertSame(['situacao' => 'na_fila', 'mensagem' => PublicacaoNaTrilha::MSG_NA_FILA, 'avisos' => [], 'mlbs' => [], 'anuncios' => []], $this->assertContrato($chave, 'na_fila'));
         // Na fila: aprovar de novo é 409 (a fila já vai publicar).
         $this->assertSame(['message' => PublicacaoNaTrilha::MSG_NA_FILA_409], $this->publicar($chave, ['revisao' => $revisao])->assertStatus(409)->json());
 
@@ -301,14 +302,34 @@ class PublicarNaTrilhaTest extends TestCase
         $this->assertSame(PublicacaoNaTrilha::MSG_PUBLICANDO, $this->assertContrato($chave, 'publicando')['mensagem']);
 
         // …publicado (a publicação terminou; o agendador ainda não fechou o item): os MLBs, Clássico antes do Premium.
+        // O Premium tem o `permalink` que o Publicador leu do ML ao criar (`avisos.estado`, em http: sai https).
         foreach ([['gold_pro', 'MLB9000002', 1], ['gold_special', 'MLB9000001', 0], ['gold_pro', null, 2]] as [$lt, $mlb, $indice]) {
             PubPublicacaoItem::create(['publicacao_id' => $publicacao->id, 'indice' => $indice, 'listing_type_id' => $lt, 'variante_chave' => '*',
-                'status' => $mlb !== null ? PubPublicacaoItem::CREATED : PubPublicacaoItem::FAILED, 'ml_item_id' => $mlb, 'payload' => [], 'criado_em' => now()]);
+                'status' => $mlb !== null ? PubPublicacaoItem::CREATED : PubPublicacaoItem::FAILED, 'ml_item_id' => $mlb, 'payload' => [], 'criado_em' => now(),
+                'avisos' => $mlb === 'MLB9000002' ? ['estado' => ['status' => 'under_review', 'permalink' => 'http://produto.mercadolivre.com.br/MLB-9000002-lido-ao-criar-_JM']] : null]);
         }
         $publicacao->update(['status' => PubPublicacao::PUBLISHED, 'concluida_em' => now()]);
-        // `mlbs`: lista simples de strings (a tela só conta), Clássico antes do Premium, sem o item que falhou.
-        $publicado = ['situacao' => 'publicado', 'mensagem' => PublicacaoNaTrilha::MSG_PUBLICADO, 'avisos' => [], 'mlbs' => ['MLB9000001', 'MLB9000002']];
+        // O link (04/11/2026): o Clássico do acervo da 459; o Premium, que só está no acervo de OUTRA loja, o lido ao criar.
+        MlAcervoItem::create(['company_id' => $this->empresa->id, 'ml_item_id' => 'MLB9000001', 'status' => 'active',
+            'permalink' => 'https://produto.mercadolivre.com.br/MLB-9000001-cadeira-azul-_JM']);
+        MlAcervoItem::create(['company_id' => Company::factory()->create(['id' => 460])->id, 'ml_item_id' => 'MLB9000002', 'status' => 'active',
+            'permalink' => 'https://produto.mercadolivre.com.br/MLB-9000002-da-outra-loja-_JM']);
+        // `mlbs`: lista simples de strings (a tela só conta), Clássico antes do Premium, sem o item que falhou. `anuncios`
+        // (aditivo): os mesmos, com o tipo e o link do anúncio — só a equipe recebe.
+        $publicado = ['situacao' => 'publicado', 'mensagem' => PublicacaoNaTrilha::MSG_PUBLICADO, 'avisos' => [], 'mlbs' => ['MLB9000001', 'MLB9000002'],
+            'anuncios' => [
+                ['tipo' => 'Clássico', 'mlb' => 'MLB9000001', 'link' => 'https://produto.mercadolivre.com.br/MLB-9000001-cadeira-azul-_JM'],
+                ['tipo' => 'Premium', 'mlb' => 'MLB9000002', 'link' => 'https://produto.mercadolivre.com.br/MLB-9000002-lido-ao-criar-_JM'],
+            ]];
         $this->assertSame($publicado, $this->assertContrato($chave, 'publicado'));
+        // Custo constante: os itens da publicação numa consulta e o acervo para todos os MLBs em outra — nada por anúncio.
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        PublicacaoNaTrilha::situacao($this->rascunho());
+        $sqls = array_column(DB::getQueryLog(), 'query');
+        DB::disableQueryLog();
+        $this->assertSame([1, 1], [count(array_filter($sqls, fn ($q) => str_contains($q, 'ml_acervo_itens'))),
+            count(array_filter($sqls, fn ($q) => str_contains($q, 'from "pub_publicacao_itens"')))], implode("\n", $sqls));
 
         // O agendador fecha o item: segue publicado (os MLBs da publicação de verdade).
         $item->update(['status' => PubFilaPublicacaoItem::PUBLICADO, 'produto_ativo' => null, 'concluido_em' => now()]);
@@ -814,6 +835,16 @@ class PublicarNaTrilhaTest extends TestCase
             $this->assertIsArray($p[$lista]);
             $this->assertTrue(array_is_list($p[$lista]), "{$lista} é lista");
             $this->assertSame([], array_filter($p[$lista], fn ($x) => ! is_string($x)), "{$lista} só de strings");
+        }
+        // `anuncios` (04/11/2026): `{tipo, mlb, link}` dos mesmos MLBs de `mlbs`, na mesma ordem; vazia fora do publicado.
+        $this->assertTrue(array_is_list($p['anuncios']), 'anuncios é lista');
+        $this->assertSame($p['mlbs'], array_column($p['anuncios'], 'mlb'));
+        foreach ($p['anuncios'] as $a) {
+            $this->assertSame(['tipo', 'mlb', 'link'], array_keys($a));
+            $this->assertMatchesRegularExpression('#^https://produto\.mercadolivre\.com\.br/MLB-\d+-#', (string) $a['link']);
+        }
+        if ($p['situacao'] !== 'publicado') {
+            $this->assertSame([], $p['anuncios']);
         }
     }
 

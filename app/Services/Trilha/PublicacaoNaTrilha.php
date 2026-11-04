@@ -22,6 +22,7 @@ use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\Validacao\Problema;
+use App\Support\Trilha\LinkDoAnuncio;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -154,6 +155,9 @@ class PublicacaoNaTrilha
 
     private const TIPO = ['gold_special' => 0, 'gold_pro' => 1];
 
+    /** O nome do tipo do anúncio criado, em `anuncios[].tipo` (o mesmo da Lista: `SituacaoDasOfertas::TIPO_DO_PUBLICADOR`). */
+    private const ROTULO_DO_TIPO = ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'];
+
     public function __construct(
         private PreviaNaTrilha $previa,
         private ConferenciaService $conferencia,
@@ -169,7 +173,7 @@ class PublicacaoNaTrilha
      * devolve a mesma, sem Job novo.
      *
      * @param  array<string, mixed>  $corpo
-     * @return array{publicacao: array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>}}
+     * @return array{publicacao: array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>, anuncios: list<array{tipo: ?string, mlb: string, link: ?string}>}}
      *
      * @throws HttpResponseException 403 (fora da #459) e 409
      * @throws ValidationException 422
@@ -242,7 +246,7 @@ class PublicacaoNaTrilha
      * O `GET …/ofertas/{item}/publicacao`: a mesma guarda até a #459 (404 item, 403 fora dela) e a situação
      * ({@see situacao()}), ou `null` quando a trilha nunca pediu e nada está vivo na fila.
      *
-     * @return array{publicacao: ?array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>}}
+     * @return array{publicacao: ?array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>, anuncios: list<array{tipo: ?string, mlb: string, link: ?string}>}}
      */
     public function acompanhar(Company $empresa, string $chave): array
     {
@@ -464,14 +468,19 @@ class PublicacaoNaTrilha
     // ═══ A situação ══════════════════════════════════════════════════════════
 
     /**
-     * A situação da publicação do anúncio do rascunho, no contrato `{situacao, mensagem, avisos, mlbs}` — a do `GET
-     * …/publicacao` e a do campo `publicacao` da prévia (o mesmo cálculo). Nula: a trilha não pediu (ou o pedido venceu
+     * A situação da publicação do anúncio do rascunho, no contrato `{situacao, mensagem, avisos, mlbs, anuncios}` — a do
+     * `GET …/publicacao` e a do campo `publicacao` da prévia (o mesmo cálculo). Nula: a trilha não pediu (ou o pedido venceu
      * as 6 h) e nada está vivo na fila nem publicando.
+     *
+     * `anuncios` (04/11/2026, aditivo; `mlbs` continua): os anúncios criados `{tipo, mlb, link}` — o link do anúncio no
+     * Mercado Livre ({@see LinkDoAnuncio}) — e lista vazia fora do `publicado`. SÓ a equipe o recebe: a porta do cliente
+     * passa a `publicacao` por {@see AprovacaoDoClienteNaTrilha::publicacaoDoCliente()}, que manda só `situacao` e
+     * `mensagem`.
      *
      * Ordem: o item VIVO na fila vence tudo (é o que vai acontecer); depois o pedido da trilha (do cache) — e, depois de
      * `na_fila`, o item da fila que ele entrou, de verdade; sem pedido, o rascunho publicando agora por outro caminho.
      *
-     * @return array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>}|null
+     * @return array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>, anuncios: list<array{tipo: ?string, mlb: string, link: ?string}>}|null
      */
     public static function situacao(?PubRascunho $r): ?array
     {
@@ -506,7 +515,7 @@ class PublicacaoNaTrilha
         if (in_array($r->status, [PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED], true)) {
             $p = PubPublicacao::query()->where('rascunho_id', $r->id)->latest('id')->first();
 
-            return self::estado(self::PUBLICADO, $r->status === PubRascunho::PUBLISHED ? self::MSG_PUBLICADO : self::MSG_PUBLICADO_EM_PARTE, [], self::mlbs($p, null));
+            return self::publicado($r->status === PubRascunho::PUBLISHED ? self::MSG_PUBLICADO : self::MSG_PUBLICADO_EM_PARTE, self::criados($p, null, $r));
         }
         if ($r->status === PubRascunho::PUBLISHING) {
             return self::estado(self::PUBLICANDO, self::MSG_PUBLICANDO);
@@ -531,17 +540,17 @@ class PublicacaoNaTrilha
             if ($p === null || $p->status === PubPublicacao::RUNNING) {
                 return self::estado(self::PUBLICANDO, self::MSG_PUBLICANDO);
             }
-            $mlbs = self::mlbs($p, null);
+            $criados = self::criados($p, null, $r);
 
             return match (true) {
-                $p->status === PubPublicacao::PUBLISHED => self::estado(self::PUBLICADO, self::MSG_PUBLICADO, [], $mlbs),
-                $mlbs !== []                            => self::estado(self::PUBLICADO, self::MSG_PUBLICADO_EM_PARTE, [], $mlbs),
+                $p->status === PubPublicacao::PUBLISHED => self::publicado(self::MSG_PUBLICADO, $criados),
+                $criados !== []                         => self::publicado(self::MSG_PUBLICADO_EM_PARTE, $criados),
                 default                                 => self::estado(self::ERRO, self::MSG_FALHOU),
             };
         }
         if (in_array($item->status, PubFilaPublicacaoItem::NO_AR, true)) {
-            return self::estado(self::PUBLICADO, $item->status === PubFilaPublicacaoItem::PUBLICADO ? self::MSG_PUBLICADO : self::MSG_PUBLICADO_EM_PARTE,
-                [], self::mlbs($p, $item));
+            return self::publicado($item->status === PubFilaPublicacaoItem::PUBLICADO ? self::MSG_PUBLICADO : self::MSG_PUBLICADO_EM_PARTE,
+                self::criados($p, $item, $r));
         }
 
         $mensagem = match ($item->status) {
@@ -555,32 +564,55 @@ class PublicacaoNaTrilha
     }
 
     /**
-     * Os MLBs criados, Clássico antes do Premium: os itens `CREATED` da publicação; sem ela, os que a fila guardou ao
-     * fechar o item (`resumo.mlbs`).
+     * Os anúncios criados, Clássico antes do Premium: os itens `CREATED` da publicação; sem ela, os que a fila guardou ao
+     * fechar o item (`resumo.mlbs`). Cada um com o tipo e o link ({@see LinkDoAnuncio::escolher()}: o `permalink` do acervo
+     * da empresa do anúncio, senão o que o Publicador leu do ML ao criar, senão o montado). Consultas: os itens (1) e o
+     * acervo para todos os MLBs (1, só com MLB) — nenhuma por anúncio.
      *
-     * @return list<string>
+     * @return list<array{tipo: ?string, mlb: string, link: ?string}>
      */
-    private static function mlbs(?PubPublicacao $p, ?PubFilaPublicacaoItem $item): array
+    private static function criados(?PubPublicacao $p, ?PubFilaPublicacaoItem $item, PubRascunho $r): array
     {
         $linhas = $p !== null
             ? PubPublicacaoItem::query()->where('publicacao_id', $p->id)->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')
-                ->orderBy('indice')->orderBy('id')->get(['ml_item_id', 'listing_type_id'])
-                ->map(fn ($i) => ['ml_item_id' => $i->ml_item_id, 'listing_type_id' => $i->listing_type_id])->all()
+                ->orderBy('indice')->orderBy('id')->get(['ml_item_id', 'listing_type_id', 'avisos'])
+                ->map(fn ($i) => ['ml_item_id' => $i->ml_item_id, 'listing_type_id' => $i->listing_type_id,
+                    'permalink' => is_array($i->avisos) ? ($i->avisos['estado']['permalink'] ?? null) : null])->all()
             : [];
         if ($linhas === [] && $item !== null) {
             $linhas = array_values((array) ($item->resumo['mlbs'] ?? []));
         }
 
-        $saida = [];
+        $porMlb = [];
         foreach ($linhas as $l) {
+            $l = (array) $l;
             $mlb = strtoupper(trim((string) ($l['ml_item_id'] ?? '')));
             if ($mlb !== '') {
-                $saida[$mlb] = self::TIPO[(string) ($l['listing_type_id'] ?? '')] ?? 2;
+                $lt = (string) ($l['listing_type_id'] ?? '');
+                $porMlb[$mlb] = ['ordem' => self::TIPO[$lt] ?? 2, 'tipo' => self::ROTULO_DO_TIPO[$lt] ?? null, 'permalink' => $l['permalink'] ?? null];
             }
         }
-        uksort($saida, fn ($a, $b) => [$saida[$a], $a] <=> [$saida[$b], $b]);
+        uksort($porMlb, fn ($a, $b) => [$porMlb[$a]['ordem'], (string) $a] <=> [$porMlb[$b]['ordem'], (string) $b]);
+        // A empresa do anúncio (`pub_produtos.company_id`, a mesma da D48) por subconsulta: uma consulta só ao acervo.
+        $doAcervo = LinkDoAnuncio::doAcervo(PubProduto::query()->select('company_id')->where('id', (int) $r->produto_id), array_keys($porMlb));
 
-        return array_keys($saida);
+        $saida = [];
+        foreach ($porMlb as $mlb => $a) {
+            $mlb = (string) $mlb;
+            $saida[] = ['tipo' => $a['tipo'], 'mlb' => $mlb, 'link' => LinkDoAnuncio::escolher($mlb, $doAcervo, $a['permalink'])];
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O `publicado` com os anúncios criados: `mlbs` (as strings, como sempre) e `anuncios` (com o tipo e o link).
+     *
+     * @param  list<array{tipo: ?string, mlb: string, link: ?string}>  $criados
+     */
+    private static function publicado(string $mensagem, array $criados): array
+    {
+        return self::estado(self::PUBLICADO, $mensagem, [], array_column($criados, 'mlb'), $criados);
     }
 
     /** A conferência que não liberou: a conta (só local), a que não terminou, e os bloqueios (erros) em texto neutro. */
@@ -652,11 +684,13 @@ class PublicacaoNaTrilha
     /**
      * @param  list<string>  $avisos
      * @param  list<string>  $mlbs
-     * @return array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>}
+     * @param  list<array{tipo: ?string, mlb: string, link: ?string}>  $anuncios  só no `publicado` ({@see publicado()})
+     * @return array{situacao: string, mensagem: string, avisos: list<string>, mlbs: list<string>, anuncios: list<array{tipo: ?string, mlb: string, link: ?string}>}
      */
-    private static function estado(string $situacao, string $mensagem, array $avisos = [], array $mlbs = []): array
+    private static function estado(string $situacao, string $mensagem, array $avisos = [], array $mlbs = [], array $anuncios = []): array
     {
-        return ['situacao' => $situacao, 'mensagem' => $mensagem, 'avisos' => array_values($avisos), 'mlbs' => array_values($mlbs)];
+        return ['situacao' => $situacao, 'mensagem' => $mensagem, 'avisos' => array_values($avisos), 'mlbs' => array_values($mlbs),
+            'anuncios' => array_values($anuncios)];
     }
 
     /**
@@ -669,7 +703,8 @@ class PublicacaoNaTrilha
         $mensagem = trim((string) ($estado['mensagem'] ?? ''));
 
         return self::estado($situacao, $mensagem !== '' ? $mensagem : (self::MENSAGEM[$situacao] ?? self::MSG_NAO_TERMINOU),
-            array_values(array_map('strval', (array) ($estado['avisos'] ?? []))), array_values(array_map('strval', (array) ($estado['mlbs'] ?? []))));
+            array_values(array_map('strval', (array) ($estado['avisos'] ?? []))), array_values(array_map('strval', (array) ($estado['mlbs'] ?? []))),
+            array_values(array_filter((array) ($estado['anuncios'] ?? []), 'is_array')));
     }
 
     private static function gravar(int $pubId, array $estado): void

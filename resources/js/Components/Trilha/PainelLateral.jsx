@@ -4,7 +4,7 @@ import { ETAPA_POR_CHAVE, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, chaveDo
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { mensagemDoErro, tentarPreparoDeNovo } from '@/lib/trilhaEscrita';
 import { cn } from '@/lib/utils';
-import { Botao, Caixa, LinkDeAcao, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
+import { Botao, Caixa, LinkDeAcao, MlbDoAnuncio, OfertaNaLista, OndeEsta, Pilula, SeloDoTipo, Sobrelinha } from '@/Components/Trilha/Pecas';
 import CaixaDaOnda from '@/Components/Trilha/CaixaDaOnda';
 import PilulaDaFalta from '@/Components/Trilha/PilulaDaFalta';
 import { irParaOCadastro } from '@/lib/trilhaFaltas';
@@ -514,7 +514,8 @@ function conteudoDaOferta({ oferta, dados, visao, onAbrir, trabalho, planejament
                             <div key={`${anuncio.tipo}-${anuncio.mlb ?? i}`} className={LINHA_DA_CAIXA}>
                                 <span className="min-w-0 [overflow-wrap:anywhere]">
                                     <b className="font-semibold">{anuncio.tipo}</b>
-                                    {!cliente && anuncio.mlb && <span className="ml-2 font-pub-mono text-[12.5px] text-trilha-fg2">{anuncio.mlb}</span>}
+                                    {/* O MLB é da equipe; com o link (só a porta da equipe o recebe), abre o anúncio em outra aba. */}
+                                    {!cliente && <MlbDoAnuncio anuncio={anuncio} className="ml-2" />}
                                 </span>
                                 <Pilula tom={anuncio.situacao ? 'warn' : 'ok'}>{anuncio.situacao ?? 'No ar'}</Pilula>
                             </div>

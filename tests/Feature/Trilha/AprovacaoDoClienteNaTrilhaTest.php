@@ -10,11 +10,14 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVolume;
+use App\Models\MlAcervoItem;
 use App\Models\MlToken;
 use App\Models\PortalUsuario;
 use App\Models\PubFilaPublicacaoItem;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\TrilhaAprovacao;
 use App\Models\TrilhaOnda;
@@ -49,6 +52,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Mockery\MockInterface;
 use Spatie\Activitylog\Models\Activity;
@@ -640,6 +644,45 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
             $this->assertTrue($this->previa()->json('aprovacao.falta_publicar'), "{$situacao}: a equipe vê que falta publicar");
         }
         $this->assertTextoNeutro($this->previaDoCliente()->json());
+    }
+
+    /**
+     * 04/11/2026 (o MLB vira link para o anúncio, só na equipe): publicado o que o cliente aprovou, a prévia da EQUIPE traz
+     * `publicacao.anuncios` com o link de cada anúncio; a do CLIENTE continua só `{situacao, mensagem}` — nem o MLB, nem o
+     * link, nem o domínio do canal de venda em lugar nenhum da resposta dele.
+     */
+    public function test_publicado_a_equipe_recebe_os_links_e_o_cliente_nenhum_mlb(): void
+    {
+        $revisao = $this->revisao();
+        $this->mandar(['revisao' => $revisao])->assertOk();
+        $this->comoCliente()->postJson($this->urlCliente('aprovar'), ['revisao' => $revisao])->assertOk();
+        $this->assertSame(['na_fila'], $this->rodarOsJobs());
+
+        // A publicação terminou (o agendador ainda não fechou o item): o Clássico no acervo da loja, o Premium montado.
+        $item = PubFilaPublicacaoItem::query()->sole();
+        $publicacao = PubPublicacao::create(['rascunho_id' => $item->rascunho_id, 'revisao' => $revisao, 'modelo_publicacao' => 'user_products',
+            'status' => PubPublicacao::PUBLISHED, 'chave_idempotencia' => (string) Str::uuid(), 'iniciada_em' => now(), 'concluida_em' => now()]);
+        foreach ([['gold_special', 'MLB9300001', 0], ['gold_pro', 'MLB9300002', 1]] as [$lt, $mlb, $indice]) {
+            PubPublicacaoItem::create(['publicacao_id' => $publicacao->id, 'indice' => $indice, 'listing_type_id' => $lt, 'variante_chave' => '*',
+                'status' => PubPublicacaoItem::CREATED, 'ml_item_id' => $mlb, 'payload' => [], 'criado_em' => now()]);
+        }
+        $item->update(['status' => PubFilaPublicacaoItem::PUBLICANDO, 'publicacao_id' => $publicacao->id, 'iniciado_em' => now()]);
+        DB::table('pub_rascunhos')->where('id', $item->rascunho_id)->update(['status' => PubRascunho::PUBLISHING]);
+        MlAcervoItem::create(['company_id' => $this->empresa->id, 'ml_item_id' => 'MLB9300001', 'status' => 'active',
+            'permalink' => 'https://produto.mercadolivre.com.br/MLB-9300001-cadeira-_JM']);
+
+        $this->assertSame([
+            ['tipo' => 'Clássico', 'mlb' => 'MLB9300001', 'link' => 'https://produto.mercadolivre.com.br/MLB-9300001-cadeira-_JM'],
+            ['tipo' => 'Premium', 'mlb' => 'MLB9300002', 'link' => 'https://produto.mercadolivre.com.br/MLB-9300002-_JM'],
+        ], $this->previa()->json('publicacao.anuncios'), 'a equipe recebe os links');
+
+        $doCliente = $this->previaDoCliente();
+        $this->assertSame(['situacao' => 'publicado', 'mensagem' => PublicacaoNaTrilha::MSG_PUBLICADO], $doCliente->json('publicacao'));
+        $json = (string) json_encode($doCliente->json(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        foreach (['MLB9300001', 'MLB9300002', '9300001', '9300002', 'mercadolivre', '_JM'] as $segredo) {
+            $this->assertStringNotContainsString($segredo, $json, "a prévia do cliente leva `{$segredo}`");
+        }
+        $this->assertTextoNeutro($doCliente->json());
     }
 
     /** O item de outra loja, o que não existe e a foto de outro rascunho: 404 (antes do corpo); e o cliente de outra loja não entra. */
