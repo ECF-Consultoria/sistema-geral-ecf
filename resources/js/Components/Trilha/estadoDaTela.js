@@ -17,6 +17,8 @@
 //    mapeou e, das ondas, quem criou. O `url_ficha` e os links do Portal do
 //    cliente não existem na porta da equipe, então a simulação mostra o cliente
 //    sem esses botões — e sem nenhuma escrita (a página tira o `podeEditar`).
+// 3. Da 4ª entrega (4f): a única escrita do cliente, as fotos do produto da
+//    Lista, pelo endereço `cliente_escrita.fotos` (`enderecoDasFotosDoCliente`).
 
 import { ORDEM, acharAberto, acharItem, chaveDoProduto } from '@/lib/trilha';
 
@@ -39,6 +41,22 @@ export const podeEscrever = (props, verComo = 'equipe') => props?.visao !== 'cli
  * porta da equipe). O cliente, o "Ver como: Cliente" e a equipe sem esse endereço (servidor antigo) não abrem o `v:`.
  */
 export const podeVerPrevia = (props, verComo = 'equipe') => podeEscrever(props, verComo) && !!props?.escrita?.revisao?.previa;
+
+/**
+ * A base das fotos que o CLIENTE envia (4ª entrega, 4f — a 1ª escrita da porta dele): `cliente_escrita.fotos`, com o
+ * marcador `__PRODUTO__`. Só na porta do cliente de verdade (`visao` 'cliente' nas PROPS, nunca o "Ver como: Cliente"
+ * da equipe, que tem a gaveta dela) e com a trilha de trabalho; o servidor só a manda assim, e aqui é a mesma regra no
+ * navegador (um endereço que chegasse à porta da equipe por engano não vira botão). Sem ela, null: só a leitura.
+ *
+ * @param {{visao?: string, trabalho?: boolean, cliente_escrita?: ?{fotos?: string}}} props
+ * @returns {?string}
+ */
+export function enderecoDasFotosDoCliente(props) {
+    if (props?.visao !== 'cliente' || !props?.trabalho) return null;
+    const base = props?.cliente_escrita?.fotos;
+
+    return typeof base === 'string' && base.trim() ? base.trim() : null;
+}
 
 /**
  * O painel que a chave aberta mostra, para quem está olhando — null quando não

@@ -88,6 +88,12 @@ use Illuminate\Validation\ValidationException;
  * excluir cor, excluir produto) aceitam a `versao` que a gaveta tinha e, diferente da atual, respondem 409 SEM
  * `travado` ({@see exigirVersao()}) — a tela distingue os dois: o da trava vira só leitura, o da versão pede
  * "Recarregar". Sem `versao` no corpo, segue como antes (compatível com quem não manda).
+ *
+ * ### 4f (04/11/2026) — as fotos enviadas pelo CLIENTE
+ * A 1ª escrita da porta do cliente usa {@see enviarFotos()} e {@see excluirFoto()} como estão, com o ator CLIENTE
+ * (`AtorDoPortal::cliente`), atrás da guarda {@see empresaDoCliente()} (as duas chaves; o vínculo já veio do
+ * `portal.auth`). O que só vale para o cliente — o quadro de fotos e "só enquanto o produto está na Lista" — mora em
+ * {@see FotosDoClienteNaTrilha}.
  */
 class CadastroNaTrilha
 {
@@ -185,7 +191,40 @@ class CadastroNaTrilha
     {
         $empresa = $this->empresa($quem, $company);
 
-        return [$empresa, EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto)];
+        return [$empresa, $this->produto($empresa, $produto)];
+    }
+
+    /**
+     * O produto do ENDEREÇO preso à empresa: o de outra loja é 404, igual ao que não existe (4f: a porta do cliente usa
+     * a mesma régua, com a empresa que o `portal.auth` já conferiu).
+     */
+    public function produto(Company $empresa, int $produto): EstruturaProduto
+    {
+        return EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+    }
+
+    // ─── A porta do CLIENTE (4ª entrega, 4f, 04/11/2026 — desenho §19.15, D57/D58) ───
+
+    /**
+     * O cliente escreve na trilha desta empresa? As MESMAS duas chaves da escrita da equipe ({@see empresa()}):
+     * `trilha.empresas` e `trilha.trabalho.empresas`. É a régua do endereço `cliente_escrita` da página do cliente
+     * ({@see \App\Http\Controllers\Trilha\ApresentacaoDaTrilha::paraCliente()}) e da guarda {@see empresaDoCliente()}.
+     */
+    public static function clienteEscreve(Company|int $empresa): bool
+    {
+        return TrilhaLigada::para($empresa) && TrilhaDeTrabalho::ligada($empresa);
+    }
+
+    /**
+     * A guarda da porta do CLIENTE (D58): a empresa já vem conferida pelo `portal.auth` (o vínculo do cliente com ela)
+     * — aqui só as duas chaves, 404 sem elas (como se a rota não existisse, a mesma resposta da página da trilha fora da
+     * chave). Não há régua de carteira: quem escreve é o próprio cliente da loja.
+     */
+    public function empresaDoCliente(Company $empresa): Company
+    {
+        abort_unless(self::clienteEscreve($empresa), 404);
+
+        return $empresa;
     }
 
     /**
@@ -1106,11 +1145,14 @@ class CadastroNaTrilha
      * Com cor E tamanho, as fotos são da COR e moram numa variação dela — a 1ª que tem foto, senão a 1ª (a régua do
      * `gruposPorCor` da tela e do `comFotosDaCor` do Publicador, com a cor comparada como lá).
      *
-     * @param  list<array>  $linhas  saída de `ProdutoLinhas::paraProdutos`, na ordem das variações
+     * Pública desde a 4f (04/11/2026): o quadro de fotos do CLIENTE ({@see FotosDoClienteNaTrilha::quadro()}) escolhe a
+     * variação de cada cor por aqui — a mesma régua da gaveta da equipe, num lugar só.
+     *
+     * @param  list<array>  $linhas  na ordem das variações, com `id`, `valor` e `eixo_2` (a saída de `ProdutoLinhas::paraProdutos` serve)
      * @param  array<int, list<array>>  $galerias
      * @return array<int, true>
      */
-    private static function donasDaCor(array $linhas, array $galerias): array
+    public static function donasDaCor(array $linhas, array $galerias): array
     {
         $doisEixos = false;
         foreach ($linhas as $l) {

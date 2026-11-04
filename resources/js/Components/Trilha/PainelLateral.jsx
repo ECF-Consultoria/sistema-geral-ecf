@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { Suspense, createContext, lazy, useContext, useEffect, useId, useRef, useState } from 'react';
 import { ETAPA_POR_CHAVE, chaveDaPrevia, chaveDeCadastro, chaveDeMapear, chaveDoProduto, deveFecharNoEsc, ofertasDoProduto, temPrevia } from '@/lib/trilha';
 import { textoDoMapeamento } from '@/lib/trilhaMapeamento';
 import { cn } from '@/lib/utils';
@@ -41,6 +41,15 @@ import { FOTOS_MINIMAS, composicao, fmtCusto, plural, rotuloDaFase, skuDoProduto
 // do agente, sem lista de sugestões, sem link do Publicador e sem nenhuma
 // escrita. A maior parte já chega cortada nas props; o resto é escondido aqui
 // pela `visao` (e o `podeEditar` vem falso da página).
+//
+// A exceção da 4ª entrega (4f): o CLIENTE de verdade, com `cliente_escrita.fotos`,
+// ganha no produto a caixa "Fotos" (envia e exclui enquanto o produto está na
+// Lista). Ela mora em `Cliente/` e chega por `lazy` (o 2º caminho está em
+// `Pages/Trilha/CadastroSobDemanda.jsx`); a confirmação da exclusão toma o rodapé
+// do painel. A equipe e o "Ver como: Cliente" não recebem o endereço: nada muda.
+
+// Só o cliente com `cliente_escrita.fotos` chega a desenhar esta (a página só passa `fotosDoCliente` a ele).
+const FotosDoCliente = lazy(() => import('@/Components/Trilha/Cliente/FotosDoProduto'));
 
 const PREPARO = [
     ['titulo', 'Título'],
@@ -112,7 +121,18 @@ function TextoDaFicha({ produto }) {
     return <span className="text-[12.5px] text-trilha-muted">{categoria}Ainda não conferida: os campos desta categoria não estão guardados no sistema.</span>;
 }
 
-function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, podeEditar }) {
+/** O que a caixa "Fotos" do cliente mostra enquanto o JS dela chega. */
+function AbrindoAsFotos() {
+    return (
+        <Caixa titulo="Fotos" data-caixa="fotos-do-cliente" aria-busy="true">
+            <span className="text-[12.5px] text-trilha-muted" data-abrindo-fotos="">
+                Abrindo as fotos…
+            </span>
+        </Caixa>
+    );
+}
+
+function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, podeEditar, fotosDoCliente = null }) {
     const cliente = visao === 'cliente';
     const faltas = produto.faltas ?? [];
     const ofertas = ofertasDoProduto(dados, produto.id);
@@ -184,6 +204,19 @@ function conteudoDoProduto({ produto, dados, visao, links, onAbrir, trabalho, po
                     </Dado>
                 </dl>
             </Caixa>
+
+            {/* 4f: as fotos que o cliente envia — só o cliente de verdade, com o endereço (a página decide). */}
+            {cliente && fotosDoCliente?.base && (
+                <Suspense fallback={<AbrindoAsFotos />}>
+                    <FotosDoCliente
+                        produto={produto}
+                        base={fotosDoCliente.base}
+                        onRecarregar={fotosDoCliente.onRecarregar}
+                        onAvisar={fotosDoCliente.onAvisar}
+                        onRodape={fotosDoCliente.onRodape}
+                    />
+                </Suspense>
+            )}
 
             <Caixa titulo="Ficha técnica" extra={<Pilula tom={ficha.tom}>{ficha.rotulo}</Pilula>} data-caixa="ficha">
                 <TextoDaFicha produto={produto} />
@@ -608,16 +641,29 @@ export function MioloDaGaveta({ sobrelinha, titulo, sub = null, rodape = null, o
  *   podeEditar?: boolean,
  *   comPrevia?: boolean,
  *   planejamento?: object,
+ *   fotosDoCliente?: ?{base: string, onRecarregar?: () => any, onAvisar?: (texto: string, tipo?: string) => void},
  * }} props  `planejamento`: o que a caixa da onda precisa para gravar (`CaixaDaOnda`). `comPrevia`: a equipe com
- *   `escrita.revisao` — a oferta em revisão ou publicada ganha [Ver prévia] (4a).
+ *   `escrita.revisao` — a oferta em revisão ou publicada ganha [Ver prévia] (4a). `fotosDoCliente`: o cliente de
+ *   verdade com `cliente_escrita.fotos` (4f) — o produto ganha a caixa "Fotos".
  */
-export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, planejamento = null }) {
+export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho = false, podeEditar = false, comPrevia = false, planejamento = null, fotosDoCliente = null }) {
     // Depois de uma gravação na caixa da onda ela fica na tela, mesmo que a oferta deixe de ter onda (o "Tirar da
     // onda" da que já andou ou não tem produto): o resultado continua à vista e o foco tem onde ficar. A chave do
     // painel troca a cada item, e isto começa do zero.
     const [caixaGravou, setCaixaGravou] = useState(false);
+    // 4f: a confirmação da exclusão de uma foto toma o rodapé do painel enquanto está aberta (a caixa a entrega aqui).
+    const [rodapeDasFotos, setRodapeDasFotos] = useState(null);
     const conteudo = entrada.tipo === 'p'
-        ? conteudoDoProduto({ produto: entrada.item, dados, visao, links, onAbrir, trabalho, podeEditar })
+        ? conteudoDoProduto({
+            produto: entrada.item,
+            dados,
+            visao,
+            links,
+            onAbrir,
+            trabalho,
+            podeEditar,
+            fotosDoCliente: fotosDoCliente?.base ? { ...fotosDoCliente, onRodape: setRodapeDasFotos } : null,
+        })
         : conteudoDaOferta({
             oferta: entrada.item,
             dados,
@@ -630,7 +676,7 @@ export function PainelDoItem({ entrada, dados, visao, links, onAbrir, trabalho =
         });
 
     return (
-        <MioloDaGaveta sobrelinha={conteudo.sobrelinha} titulo={conteudo.titulo} sub={conteudo.sub} rodape={conteudo.rodape}>
+        <MioloDaGaveta sobrelinha={conteudo.sobrelinha} titulo={conteudo.titulo} sub={conteudo.sub} rodape={rodapeDasFotos ?? conteudo.rodape}>
             {conteudo.corpo}
         </MioloDaGaveta>
     );

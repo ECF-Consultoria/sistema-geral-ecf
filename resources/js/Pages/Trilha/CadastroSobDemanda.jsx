@@ -1,4 +1,4 @@
-// ─── Trilha de produtos — o 2º caminho até as pastas `Cadastro/` e `Revisao/` (é para o Vite) ──
+// ─── Trilha de produtos — o 2º caminho até as pastas `Cadastro/`, `Revisao/` e `Cliente/` (é para o Vite) ──
 //
 // NÃO é uma tela: nenhum controller manda `Trilha/CadastroSobDemanda`, e nada
 // aqui roda. O arquivo existe para o MANIFEST do Vite (3ª entrega, 03/11/2026).
@@ -19,14 +19,18 @@
 // este), o Rollup não pode supor que as peças da página já estão carregadas e as
 // põe num pedaço próprio — o da página volta a ser só dela.
 //
-// A regra (conferida em tests/js/trilha-empresa-render.test.js): todo `lazy` de
-// fora das pastas `Cadastro/` e `Revisao/` aponta para um pedaço que está aqui
-// também. Apagar este arquivo, ou esquecer um pedaço novo aqui, tira a página do
-// manifest.
+// A regra (conferida em tests/js/trilha-empresa-render.test.js e, para `Cliente/`,
+// em tests/js/trilha-fotos-cliente.test.js): todo `lazy` de fora das pastas aponta
+// para um pedaço que está aqui também. Apagar este arquivo, ou esquecer um pedaço
+// novo aqui, tira a página do manifest.
 //
 // 4ª entrega (4a, 03/11/2026): a pasta `Components/Trilha/Revisao/` (a prévia do
 // anúncio, só da equipe) entra pelo mesmo caminho — o pedaço dela usa as mesmas
 // peças da página (`PainelLateral`, `Pecas`, `trilhaEscrita`).
+//
+// 4f (04/11/2026): a pasta `Components/Trilha/Cliente/` (as fotos que o CLIENTE
+// envia, pedidas por `lazy` dentro do `PainelLateral`) também — o pedaço dela usa
+// `Pecas` e `trilhaEscrita`, como a página.
 
 /** Os pedaços da pasta `Cadastro/` que a trilha carrega sob demanda (os mesmos `lazy` da página e da Lista). */
 export const PEDACOS_DO_CADASTRO = {
@@ -40,6 +44,11 @@ export const PEDACOS_DO_CADASTRO = {
 /** Os pedaços da pasta `Revisao/` (4ª entrega) que a página carrega sob demanda (os mesmos `lazy` dela). */
 export const PEDACOS_DA_REVISAO = {
     PreviaDoAnuncio: () => import('@/Components/Trilha/Revisao/PreviaDoAnuncio'),
+};
+
+/** Os pedaços da pasta `Cliente/` (4f) que o painel do produto carrega sob demanda (o mesmo `lazy` do `PainelLateral`). */
+export const PEDACOS_DO_CLIENTE = {
+    FotosDoProduto: () => import('@/Components/Trilha/Cliente/FotosDoProduto'),
 };
 
 /** Não desenha nada (não é uma tela). */

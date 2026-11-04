@@ -281,16 +281,25 @@ class OndasDaTrilhaTest extends TestCase
         $this->assertSame(0, TrilhaOnda::count());
     }
 
-    public function test_a_porta_do_cliente_nao_tem_rota_de_escrita(): void
+    /**
+     * A porta do cliente só escreve nas FOTOS do produto (4ª entrega, 4f, 04/11/2026 — enviar e excluir, a 1ª escrita
+     * dela): nenhuma outra rota de escrita sob `portal/{empresa}/trilha`. Pelo ENDEREÇO, não pelo nome — as rotas da 4f
+     * se chamam `portal.trilha.fotos.*` (o desenho), e uma conferência por `portal.auth.trilha*` não as veria.
+     */
+    public function test_a_porta_do_cliente_so_escreve_nas_fotos(): void
     {
-        $metodos = [];
+        $escritas = [];
+        $leituras = 0;
         foreach (Route::getRoutes() as $rota) {
-            if (str_starts_with((string) $rota->getName(), 'portal.auth.trilha')) {
-                $metodos = [...$metodos, ...$rota->methods()];
+            if (! str_starts_with($rota->uri(), 'portal/{portalEmpresa}/trilha')) {
+                continue;
             }
+            $metodos = array_values(array_diff($rota->methods(), ['GET', 'HEAD']));
+            $metodos === [] ? $leituras++ : $escritas[(string) $rota->getName()] = $metodos;
         }
-        $this->assertNotSame([], $metodos);
-        $this->assertSame([], array_values(array_diff(array_unique($metodos), ['GET', 'HEAD'])));
+        $this->assertSame(3, $leituras, 'a página, o quadro de fotos e a foto');
+        ksort($escritas);
+        $this->assertSame(['portal.trilha.fotos.enviar' => ['POST'], 'portal.trilha.fotos.excluir' => ['DELETE']], $escritas);
 
         // E cada escrita da equipe tem o seu prefixo de throttle.
         foreach (['trilha.ondas.criar', 'trilha.ondas.editar', 'trilha.ondas.excluir', 'trilha.planejamento'] as $nome) {

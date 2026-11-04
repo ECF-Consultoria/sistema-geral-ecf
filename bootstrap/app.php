@@ -76,10 +76,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // clara no mesmo formato de erro de validação (`errors.imagens`) que a tela já lê.
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {
             // `([0-9]+/)?`: a empresa vai no caminho desde o multi-abas (26/10/2026). A 2ª: o envio de fotos do
-            // cadastro na trilha (3ª entrega, F3, 03/11/2026), com a mesma resposta.
+            // cadastro na trilha (3ª entrega, F3, 03/11/2026), com a mesma resposta. A 3ª: o envio de fotos do CLIENTE
+            // pela trilha (4ª entrega, 4f, 04/11/2026), na porta dele.
             $caminho = $request->decodedPath();
             if ($request->isMethod('POST') && (preg_match('#^portal/([0-9]+/)?estrutura/produtos/variacao/[0-9]+/imagens$#', $caminho) === 1
-                || preg_match('#^trilha/[0-9]+/produtos/[0-9]+/variacoes/[0-9]+/fotos$#', $caminho) === 1)) {
+                || preg_match('#^trilha/[0-9]+/produtos/[0-9]+/variacoes/[0-9]+/fotos$#', $caminho) === 1
+                || preg_match('#^portal/[0-9]+/trilha/produtos/[0-9]+/variacoes/[0-9]+/fotos$#', $caminho) === 1)) {
                 $mensagem = \App\Services\Portal\Estrutura\Produtos\VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
 
                 return response()->json(['message' => $mensagem, 'errors' => ['imagens' => [$mensagem]]], 422);

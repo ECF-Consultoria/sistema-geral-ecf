@@ -1558,3 +1558,71 @@ tamanho → 422; o domínio do cliente deixa a rota passar (allowlist) e o CSRF 
 cliente de verdade (não no "Ver como: Cliente"); a varredura do `AcessoATrilhaTest` (props compartilhadas do cliente
 sem dado da equipe); a rota de foto da equipe não muda. JS: `tests/js/trilha-fotos-cliente.test.js` + teste de que
 o pacote do cliente não importa `Cadastro/` nem `Revisao/`.
+
+### 19.16 4e — aprovação do cliente por loja (contrato)
+Respostas (§19.1): o cliente aprova a PRÉVIA **antes** de publicar; o pedido de ajuste dele é texto para a equipe
+(D52, nunca vai a prompt). Padrões (§19.1): a chave liga pelo `.env` (D53); o cliente só vê a prévia quando o item
+está com ele (D44); no modo equipe do Portal a ECF pode aprovar pelo cliente (`decidido_por_equipe`).
+**Decisão desta fatia (sem pergunta):** com a chave ligada na loja, a equipe NÃO publica direto — o `POST publicar`
+da 4d responde 409 "Esta loja aprova com o cliente: mande a prévia para ele." — senão a aprovação não vale nada. A
+exceção é o item já `aprovado` pelo cliente cujo envio não publicou (D56): aí [Aprovar e publicar] volta para a equipe.
+
+Chave: `config('trilha.aprovacao_cliente.empresas')` (env `TRILHA_APROVACAO_CLIENTE_EMPRESAS`, lista de ids, padrão
+vazio), cruzada com `TrilhaDeTrabalho`. Desligada: tudo como na 4d.
+
+Schema: a tabela NOVA `trilha_aprovacoes` da §19.6 (nenhuma ALTER). Migration com as armadilhas do MariaDB (nomes de
+índice curtos; `nullOnDelete` ⇒ nullable; o `down` dropa as FKs antes da tabela). Estados: `com_cliente | ajuste |
+aprovado` (string). Histórico no `activity_log` (`trilha_aprovacao_enviada`, `_aprovada`, `_ajuste_pedido`, com o ator).
+
+Equipe (URL em `escrita.revisao.cliente`, com `__ITEM__`, só com a chave ligada):
+- `POST /trilha/{company}/ofertas/{item}/cliente` (`trilha.cliente`, 10/min; contador `trilha.revisao.cliente`) — corpo
+  `{revisao}` → 200 a prévia nova com `aprovacao`. Cria/atualiza a linha: `estado=com_cliente`, `rodada+1`,
+  `revisao_enviada` = revisão atual, `enviado_em`, `enviado_por`. Guarda: 404 chaves → 403 → 404 item → 409 (chave
+  desligada; revisão velha SEM `travado`; fora da revisão; na fila/publicando/publicado; ajuste do robô andando; já
+  `com_cliente`) → 422 Premium = Clássico em TODAS as cores (D46).
+- Enquanto `com_cliente`, as escritas da equipe (preço 4c, ajuste 4b) continuam possíveis, mas qualquer uma que suba a
+  revisão faz o envio valer menos: o cliente que aprovar recebe 409 (D55) e a linha volta para a equipe
+  (`estado=ajuste`, `pedido` null, motivo "A equipe mudou o anúncio depois de enviar.").
+
+Cliente (grupo `portal.auth`, prefixo `portal/{pe}`, nomes `portal.trilha.aprovacao.*`; allowlist do domínio do
+cliente; controllers finos em `Trilha\Cliente\*` — D57):
+- `GET  portal/{pe}/trilha/ofertas/{item}/previa` → a prévia na forma da §19.5 SEM `preparo`, `bloqueios`, `ajuste`,
+  `ajustes_restantes_hoje`, `preco.*.da_precificacao` nem `preco.*.minimo`; `publicacao` só com `situacao`/`mensagem`
+  neutras; e `aprovacao: {estado, rodada, enviado_em, pedido}`. Só quando o item está `com_cliente` (ou `ajuste`/
+  `aprovado` desta rodada, para ele acompanhar); senão 404.
+- `GET  portal/{pe}/trilha/ofertas/{item}/fotos/{imagem}` → a foto (só daquele rascunho/empresa).
+- `POST portal/{pe}/trilha/ofertas/{item}/aprovar` `{revisao}` → 200 `{aprovacao, publicacao}`: `estado=aprovado`,
+  `decidido_em`, `decidido_por_cliente` (ou `decidido_por_equipe` no modo equipe) e dispara o MESMO caminho da 4d
+  (`PublicacaoNaTrilha` → `PublicarPelaTrilhaJob`) com o `User` `enviado_por` (D56; a guarda da #459 vale igual). Se
+  `enviado_por` estiver inativo: `aprovado` sem publicar, e a linha da equipe diz "Aprovado pelo cliente · falta
+  publicar". 409: revisão diferente da `revisao_enviada` (D55 — e a linha volta para a equipe); não está `com_cliente`.
+- `POST portal/{pe}/trilha/ofertas/{item}/ajuste` `{revisao, texto}` (texto obrigatório, 1–1000) → 200 `{aprovacao}`:
+  `estado=ajuste`, `pedido`=texto, `decidido_em`. 422 `errors.texto`. O texto NUNCA vai a prompt.
+- A página do cliente recebe `cliente_escrita.aprovacao = {previa, aprovar, ajuste}` (com `__ITEM__`) só para o
+  cliente de verdade com as chaves ligadas.
+
+Lista (status e ação; D59 — nada de "Mercado Livre", "Publicador", "Portal", "agente" para o cliente):
+- `com_cliente`: status "Com o cliente para aprovar"; ação da equipe "Com o cliente"; ação do cliente **"Aprovar"**
+  (abre `v:` na versão dele).
+- `ajuste`: status "O cliente pediu ajuste" (`alerta: true`); a equipe abre a `v:` e vê a caixa "O cliente pediu
+  ajuste" com o texto citado, mais as ferramentas de sempre e [Mandar ao cliente de novo].
+- `aprovado`: segue a publicação ("Aprovado pelo cliente · na fila" etc.; "· falta publicar" no D56).
+- `lib/trilha.js` `ETAPAS`: o dono da etapa 5 deixa de ser "Publicador" (pendência da 4a) — "Equipe ECF".
+
+Tela da equipe (gaveta `v:`): com a chave ligada, o primário vira **[Mandar ao cliente]** (confirmação no rodapé);
+`com_cliente` → caixa "Com o cliente para aprovar desde …" e primário desligado; `ajuste` → caixa "O cliente pediu
+ajuste" com o texto e [Mandar ao cliente de novo]; `aprovado` + falta publicar → [Aprovar e publicar] volta.
+Tela do cliente (gaveta `v:` da porta dele, pasta própria `Components/Trilha/Cliente/`, lazy com 2º caminho): o cartão
+do anúncio (reusar o cartão da 4a SÓ se ele não puxar nada da equipe — senão, versão enxuta própria), "Preço" só
+leitura, e o rodapé [Pedir ajuste] (abre caixa de texto, obrigatório, até 1000) e **[Aprovar anúncio]** (confirmação
+"O anúncio vai ao ar depois da sua aprovação."); depois de aprovar: "Aprovado. A equipe publica em seguida." /
+acompanha a publicação com texto neutro.
+
+Testes 4e: `tests/Feature/Trilha/AprovacaoDoClienteNaTrilhaTest.php` — chave desligada → 4d intacta; chave ligada →
+[Mandar ao cliente] cria a linha `com_cliente` e o `POST publicar` da equipe dá 409; cliente aprova → o Job de
+publicar entra com o `User` `enviado_por` e a guarda da #459 vale (a 460 com a chave ligada continua recusada);
+revisão mudada depois do envio → 409 para o cliente e a linha volta à equipe; ajuste exige texto (422) e não chega a
+prompt nenhum; outra empresa → 404; o cliente só vê a prévia do item com ele, sem `minimo`/`da_precificacao`/
+`preparo`/`bloqueios`; modo equipe grava `decidido_por_equipe`; `enviado_por` inativo → "falta publicar"; migration
+sobe e desce; matriz de acesso das rotas da equipe e do cliente (allowlist, CSRF, varredura de props). JS:
+`tests/js/trilha-aprovacao.test.js` (equipe e cliente) + o pacote do cliente sem `Cadastro/`/`Revisao/` da equipe.

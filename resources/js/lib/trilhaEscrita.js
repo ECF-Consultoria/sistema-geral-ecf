@@ -3,7 +3,11 @@
 // O Mapeamento e o Planejamento (ondas) passaram a ser feitos DENTRO da trilha.
 // As escritas são JSON (como o Planejamento do Portal), pelos endereços que o
 // servidor manda em `escrita` — só para a equipe com escrita (`pode_editar`); o
-// cliente nunca recebe nenhum, e a porta dele não tem rota de escrita.
+// cliente nunca recebe nenhum.
+//
+// A exceção, desde a 4ª entrega (4f): as fotos que o CLIENTE envia, pelo endereço
+// à parte `cliente_escrita.fotos` (só a porta do cliente de verdade o recebe). As
+// chamadas delas, no fim do arquivo, recebem a URL PRONTA da caixa.
 //
 // O axios já vai com o `X-Requested-With` e o `X-CSRF-TOKEN` (resources/js/bootstrap.js,
 // renovado a cada resposta do Inertia em app.jsx). Depois de gravar, a tela
@@ -394,6 +398,39 @@ export async function estadoDoAjuste(url) {
     if (!url) throw new ErroDaTrilha('O acompanhamento do ajuste não está disponível nesta tela: recarregue a página.');
 
     return corpo(await axios.get(url));
+}
+
+// ─── As fotos que o cliente envia (4ª entrega, 4f) ──────────────────────────
+//
+// §19.15 do desenho: a 1ª escrita da porta do CLIENTE. As URLs chegam PRONTAS da caixa (a base
+// `cliente_escrita.fotos` com o id no lugar do marcador, montada por `lib/trilhaFotosCliente.js` — esta lib não a
+// importa: é importada pela página). As três respondem o QUADRO de fotos do produto; o 409 (o produto andou ou saiu
+// da Lista) e o 422 (`errors.imagens`, o 413 também) chegam como erro do axios — quem trata é a caixa.
+
+/** O quadro de fotos do produto (`GET`). → `{produto: {id, nome, editavel, motivo}, cores, limites}`. */
+export async function carregarFotosDoCliente(url) {
+    if (!url) throw new ErroDaTrilha('As fotos não estão disponíveis nesta tela: recarregue a página.');
+
+    return corpo(await axios.get(url));
+}
+
+/**
+ * Envia as fotos de UMA cor (multipart, um `imagens[]` por arquivo, na ordem escolhida). `aoProgredir` recebe o evento
+ * de progresso do envio (o andamento da caixa). → o quadro novo, com `avisos`.
+ */
+export async function enviarFotosDoCliente(url, arquivos, { aoProgredir = null } = {}) {
+    if (!url) throw new ErroDaTrilha('As fotos não podem ser enviadas nesta tela: recarregue a página.');
+    const dados = new FormData();
+    Array.from(arquivos ?? []).forEach((arquivo) => dados.append('imagens[]', arquivo));
+
+    return corpo(await axios.post(url, dados, aoProgredir ? { onUploadProgress: (evento) => aoProgredir(evento) } : {}));
+}
+
+/** Exclui uma foto (`DELETE`). → o quadro novo. */
+export async function excluirFotoDoCliente(url) {
+    if (!url) throw new ErroDaTrilha('A foto não pode ser excluída nesta tela: recarregue a página.');
+
+    return corpo(await axios.delete(url));
 }
 
 // ─── Erros ──────────────────────────────────────────────────────────────────

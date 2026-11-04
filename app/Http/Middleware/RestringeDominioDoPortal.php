@@ -255,6 +255,13 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/variacao/{id}/imagens',
         'portal/estrutura/produtos/variacao/{id}/imagens/ordem',
         'portal/estrutura/produtos/variacao/{id}/imagem/{id}',
+        // 04/11/2026 — Trilha de produtos, 4f: as fotos que o CLIENTE envia enquanto o produto está na Lista (a 1ª
+        // escrita da porta dele). O quadro de fotos do produto, o arquivo da foto, enviar e excluir — uma linha por rota,
+        // cada `{id}` só dígitos e o caminho inteiro. A `/trilha` da equipe continua fora.
+        'portal/trilha/produtos/{id}/fotos',
+        'portal/trilha/fotos/{id}/{id}',
+        'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
+        'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
     ];
 
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */

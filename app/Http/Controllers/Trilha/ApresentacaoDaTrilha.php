@@ -6,6 +6,8 @@ use App\Models\Company;
 use App\Models\User;
 use App\Services\Portal\PortalEquipeService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Trilha\CadastroNaTrilha;
+use App\Support\Portal\PortalContexto;
 
 /**
  * As props da página `Trilha/Empresa` nas duas portas, a partir da saída CRUA de
@@ -49,11 +51,19 @@ use App\Services\Publicador\ProgramasPublicadorService;
  * ### A trilha de trabalho substitui o Portal (decisão do usuário de 03/11/2026; F5 do desenho, D16 e D17)
  * Com `trabalho`, nenhum endereço servido aqui leva ao Portal do cliente: na equipe, `links.portal_abrir` nulo; no
  * cliente, `voltar`, `links.planejamento`, `links.produtos` e `url_ficha` nulos. Sem a chave, tudo como na 1ª entrega.
+ *
+ * ### A 1ª escrita do cliente (4ª entrega, 4f, 04/11/2026)
+ * `cliente_escrita.fotos` — o quadro de fotos do produto na porta do cliente (`/portal/{pe}/trilha/produtos/__PRODUTO__/
+ * fotos`, as rotas da própria trilha sob o prefixo da porta dele, não um link do Portal). Só para o cliente de verdade e
+ * com as duas chaves; na equipe (e no modo equipe do Portal) a chave vem nula. `escrita` continua sendo só da equipe.
  */
 class ApresentacaoDaTrilha
 {
     /** O lugar da chave do item nos endereços de `escrita.revisao` (4a): a tela troca pelo id da linha (`s-12`). */
     public const MARCADOR_DO_ITEM = '__ITEM__';
+
+    /** O lugar do id do produto em `cliente_escrita.fotos` (4f): a tela troca pelo id do produto do painel `p:`. */
+    public const MARCADOR_DO_PRODUTO = '__PRODUTO__';
 
     /** Campos da onda para a EQUIPE. */
     private const ONDA = [
@@ -163,6 +173,9 @@ class ApresentacaoDaTrilha
             'trabalho'      => $trabalho,
             'pode_editar'   => $podeEditar,
             'escrita'       => $podeEditar ? self::escrita($empresa) : null,
+            // 4f: os endereços de escrita do CLIENTE nunca vêm à porta da equipe — nem para o "Ver como: Cliente" (a
+            // equipe tem a gaveta dela). A chave existe nas duas portas para a forma ser uma só.
+            'cliente_escrita' => null,
             'links'         => [
                 // Com a trilha de trabalho a trilha SUBSTITUI o Portal (decisão do usuário de 03/11/2026; F5 do desenho,
                 // D17): nenhum caminho dela leva ao Portal do cliente. Sem a chave, como na 1ª entrega.
@@ -266,6 +279,17 @@ class ApresentacaoDaTrilha
             'trabalho'      => $trabalho,
             'pode_editar'   => false,
             'escrita'       => null,
+            // 4f (desenho §19.15): a 1ª escrita do cliente — as fotos do produto enquanto ele está na Lista. Só com as duas
+            // chaves ({@see CadastroNaTrilha::clienteEscreve()}, a mesma régua da guarda das rotas) e só para o cliente DE
+            // VERDADE: no modo equipe do Portal não vem (as rotas também respondem 404 ali). Relativo, com o marcador do
+            // produto: o GET do quadro de fotos; o envio e a exclusão estão no mesmo prefixo
+            // (`…/produtos/{id}/variacoes/{v}/fotos[/{imagem}]`) e as fotos vêm com a URL pronta no quadro.
+            'cliente_escrita' => ! $sessaoEquipe && CadastroNaTrilha::clienteEscreve($empresa) ? [
+                'fotos' => route('portal.trilha.fotos.quadro', [
+                    PortalContexto::PARAMETRO => (int) $empresa->id,
+                    'produto'                 => self::MARCADOR_DO_PRODUTO,
+                ], false),
+            ] : null,
             'links'         => [
                 'portal_abrir' => null,
                 // Com a trilha de trabalho a equipe cadastra e mapeia na trilha: o cliente acompanha, não decide (como

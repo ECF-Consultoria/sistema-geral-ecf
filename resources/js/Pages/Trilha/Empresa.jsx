@@ -14,6 +14,7 @@ import { CHAVE_NOVA_ONDA, chaveDeCadastro, contagemPorEtapa } from '@/lib/trilha
 import { recarregar } from '@/lib/trilhaEscrita';
 import {
     buscaComEstado,
+    enderecoDasFotosDoCliente,
     estadoComUrl,
     etapaDoItem,
     lerEstadoDaUrl,
@@ -70,6 +71,13 @@ import { fmtGeradoEm } from '@/Components/Trilha/formatos';
 // (`Components/Trilha/Revisao/`, só leitura): o "Revisar" da linha em revisão abre
 // ela, e o painel da oferta ganha [Ver prévia]. Também por `lazy`, com o 2º caminho
 // em `CadastroSobDemanda.jsx` — o cartão do anúncio não vai no pacote do cliente.
+//
+// ### 4ª entrega, fatia 4f (04/11/2026): as fotos que o cliente envia
+// A 1ª escrita da porta do CLIENTE: com `cliente_escrita.fotos` (só o cliente de
+// verdade recebe; nunca a equipe, nem no "Ver como: Cliente"), o painel do produto
+// ganha a caixa "Fotos" (`Components/Trilha/Cliente/`, por `lazy` dentro do
+// `PainelLateral`, com o 2º caminho em `CadastroSobDemanda.jsx`). Depois de enviar
+// ou excluir, a trilha recarrega (as faltas do produto mudam).
 
 const ID_DA_VISTA = 'trilha-vista';
 
@@ -158,6 +166,7 @@ function gravarNaUrl(estado) {
  *     planilha?: {modelo: string, previa: string, gravar: string},
  *     mercado_livre?: {anuncios: string, importar: string, estado: string, limpar: string},
  *     revisao?: {previa: string}},
+ *   cliente_escrita?: ?{fotos: string},
  *   produtos: Array<object>,
  *   ofertas: Array<object>,
  *   ondas: Array<object>,
@@ -185,6 +194,7 @@ export function TelaDaTrilha({
     trabalho = false,
     pode_editar = false,
     escrita = null,
+    cliente_escrita = null,
     produtos = [],
     ofertas = [],
     ondas = [],
@@ -198,6 +208,8 @@ export function TelaDaTrilha({
     const podeEditar = podeEscrever({ visao, trabalho, pode_editar, escrita }, verComo);
     // A prévia do anúncio (4a): quem escreve E recebeu `escrita.revisao.previa`.
     const comPrevia = podeVerPrevia({ visao, trabalho, pode_editar, escrita }, verComo);
+    // As fotos que o cliente envia (4f): só a porta do cliente de verdade, com o endereço do servidor.
+    const baseDasFotos = enderecoDasFotosDoCliente({ visao, trabalho, cliente_escrita });
 
     // Com a trilha de trabalho a trilha substitui o Portal (F5): nenhum atalho para a ficha de lá.
     const dadosDaPorta = useMemo(
@@ -431,6 +443,7 @@ export function TelaDaTrilha({
                 podeEditar={podeEditar}
                 comPrevia={comPrevia}
                 planejamento={{ ...escritaComum, preEscolha, onNovaOnda: podeEditar ? novaOndaDaOferta : null }}
+                fotosDoCliente={baseDasFotos ? { base: baseDasFotos, onRecarregar: recarregarTrilha, onAvisar: avisar } : null}
             />
         );
     } else if (painel?.painel === 'previa') {

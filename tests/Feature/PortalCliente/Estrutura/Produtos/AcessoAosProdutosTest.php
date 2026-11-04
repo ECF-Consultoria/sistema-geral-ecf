@@ -219,6 +219,12 @@ class AcessoAosProdutosTest extends TestCase
                 'portal/estrutura/produtos/variacao/{id}/imagens',
                 'portal/estrutura/produtos/variacao/{id}/imagens/ordem',
                 'portal/estrutura/produtos/variacao/{id}/imagem/{id}',
+                // 04/11/2026: Trilha de produtos, 4f — as fotos que o cliente envia pela trilha (o quadro, a foto, enviar e
+                // excluir). Cobertas em `Trilha/FotosDoClienteNaTrilhaTest`.
+                'portal/trilha/produtos/{id}/fotos',
+                'portal/trilha/fotos/{id}/{id}',
+                'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
+                'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
             ],
             (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID'),
         );

@@ -34,6 +34,10 @@
 // 4d: `ESCRITA.revisao.publicar` e `ESCRITA.revisao.publicacao` (o `POST` e o `GET`,
 // com o marcador) e as respostas de aprovar e publicar (`PUBLICACAO_*`, as prévias
 // com a publicação andando e os erros 403/409/422) — o contrato do §19.13.
+//
+// 4f: `CLIENTE_ESCRITA` (a base das fotos do CLIENTE, com o marcador `__PRODUTO__`),
+// `PROPS_CLIENTE_COM_FOTOS` (a porta do cliente de verdade com ela) e o quadro de
+// fotos (`QUADRO_*`, `CONFLITO_DAS_FOTOS`, `ERROS_DAS_FOTOS`…) — o contrato do §19.15.
 
 export const PROPS_EQUIPE = {
     visao: 'equipe',
@@ -1243,3 +1247,129 @@ export const PREVIA_SEM_ROBO = {
     ajuste: null,
     ajustes_restantes_hoje: 0,
 };
+
+// ═══ 4ª entrega, 4f: as fotos que o CLIENTE envia (o contrato do §19.15) ═════
+
+/** A base das fotos do cliente (`cliente_escrita.fotos`): só a porta do cliente de verdade a recebe. */
+export const CLIENTE_ESCRITA = { fotos: '/portal/459/trilha/produtos/__PRODUTO__/fotos' };
+
+/** A porta do cliente de verdade, com a trilha de trabalho e o endereço das fotos. */
+export const PROPS_CLIENTE_COM_FOTOS = { ...paraCliente(PROPS_TRABALHO), cliente_escrita: CLIENTE_ESCRITA };
+
+/** O quadro LITERAL do §19.15 (a lista de fotos vem curta no desenho; o `faltam` é o do servidor, não a conta). */
+export const QUADRO_DO_CONTRATO = {
+    produto: { id: 91, nome: 'Cadeira Jatobá', editavel: true, motivo: null },
+    cores: [{
+        variacao_id: 301, rotulo: 'Natural', minimo: 3, maximo: 12,
+        fotos: [{ id: 5501, url: '/portal/88/trilha/fotos/301/5501' }], faltam: 1,
+    }],
+    limites: { tamanho_mb: 10, tipos: ['jpg', 'png', 'webp'], por_envio: 12 },
+};
+
+const fotoDoCliente = (variacao, id) => ({ id, url: `/portal/459/trilha/fotos/${variacao}/${id}` });
+
+/** A frase do servidor quando o produto andou ou saiu da Lista (o `motivo` e o 409). */
+export const MOTIVO_DAS_FOTOS = 'Este produto já seguiu para a próxima etapa. Para trocar as fotos, fale com a equipe.';
+
+/**
+ * `GET` das fotos da banqueta (produto 6, na Lista): Natural com 1 foto (faltam 2), Mel completa (3). O quadro é o da
+ * régua das fotos por cor do servidor; a caixa desenha só ele (o `variacoes` da Lista do exemplo não entra).
+ */
+export const QUADRO_DE_FOTOS = {
+    produto: { id: 6, nome: 'Banqueta alta jatobá 75 cm', editavel: true, motivo: null },
+    cores: [
+        { variacao_id: 601, rotulo: 'Natural', minimo: 3, maximo: 12, fotos: [fotoDoCliente(601, 5501)], faltam: 2 },
+        { variacao_id: 602, rotulo: 'Mel', minimo: 3, maximo: 12, fotos: [fotoDoCliente(602, 5511), fotoDoCliente(602, 5512), fotoDoCliente(602, 5513)], faltam: 0 },
+    ],
+    limites: { tamanho_mb: 10, tipos: ['jpg', 'png', 'webp'], por_envio: 12 },
+};
+
+/** `POST …/variacoes/601/fotos` com 2 fotos: o quadro novo (Natural completa; a banqueta segue na Lista pela descrição). */
+export const QUADRO_ENVIADO = {
+    ...QUADRO_DE_FOTOS,
+    cores: [
+        { ...QUADRO_DE_FOTOS.cores[0], fotos: [fotoDoCliente(601, 5501), fotoDoCliente(601, 5502), fotoDoCliente(601, 5503)], faltam: 0 },
+        QUADRO_DE_FOTOS.cores[1],
+    ],
+    avisos: [],
+};
+
+/** Os avisos do envio (`FotosDoClienteNaTrilha::AVISO_SEGUIU` e `AVISO_JA_EM_PREPARO`). */
+export const AVISO_SEGUIU = 'Fotos recebidas. O cadastro ficou completo e o produto seguiu para a próxima etapa.';
+export const AVISO_JA_EM_PREPARO = 'As fotos ficaram guardadas, mas o anúncio deste produto já começou a ser montado: avise a equipe para usar as fotos novas.';
+
+/** O envio que COMPLETOU o produto: ele saiu da Lista — o quadro novo já vem só leitura, com o aviso. */
+export const QUADRO_ENVIADO_SEGUIU = {
+    ...QUADRO_ENVIADO,
+    produto: { ...QUADRO_ENVIADO.produto, editavel: false, motivo: MOTIVO_DAS_FOTOS },
+    avisos: [AVISO_SEGUIU],
+};
+
+/** `DELETE …/variacoes/602/fotos/5512`: o quadro novo (Mel com 2, falta 1). */
+export const QUADRO_DEPOIS_DE_EXCLUIR = {
+    ...QUADRO_DE_FOTOS,
+    cores: [
+        QUADRO_DE_FOTOS.cores[0],
+        { ...QUADRO_DE_FOTOS.cores[1], fotos: [fotoDoCliente(602, 5511), fotoDoCliente(602, 5513)], faltam: 1 },
+    ],
+};
+
+/** A banqueta com Natural no teto (12 fotos): o [Enviar fotos] dela some. */
+export const QUADRO_COR_CHEIA = {
+    ...QUADRO_DE_FOTOS,
+    cores: [
+        { ...QUADRO_DE_FOTOS.cores[0], fotos: Array.from({ length: 12 }, (_, i) => fotoDoCliente(601, 5600 + i)), faltam: 0 },
+        QUADRO_DE_FOTOS.cores[1],
+    ],
+};
+
+/** `GET` das fotos da cadeira (produto 2, já mapeado): só leitura, com o motivo. */
+export const QUADRO_SO_LEITURA = {
+    produto: { id: 2, nome: 'Cadeira jatobá assento palhinha', editavel: false, motivo: MOTIVO_DAS_FOTOS },
+    cores: [
+        { variacao_id: 201, rotulo: 'Natural', minimo: 3, maximo: 12, fotos: [fotoDoCliente(201, 4101), fotoDoCliente(201, 4102), fotoDoCliente(201, 4103), fotoDoCliente(201, 4104)], faltam: 0 },
+        { variacao_id: 202, rotulo: 'Mel', minimo: 3, maximo: 12, fotos: [fotoDoCliente(202, 4111), fotoDoCliente(202, 4112), fotoDoCliente(202, 4113), fotoDoCliente(202, 4114)], faltam: 0 },
+    ],
+    limites: { tamanho_mb: 10, tipos: ['jpg', 'png', 'webp'], por_envio: 12 },
+};
+
+/** 409 do envio ou da exclusão: o produto andou (ou saiu da Lista) — só `{message}`, nada grava. */
+export const CONFLITO_DAS_FOTOS = { message: MOTIVO_DAS_FOTOS };
+
+/** 422 das regras de imagem (`RegrasDoCadastro::mensagensDasImagens`): uma mensagem por arquivo, em `imagens.N`. */
+export const ERROS_DAS_FOTOS = {
+    message: 'A imagem 2 não está num formato aceito. Envie JPG, PNG ou WebP.',
+    errors: {
+        'imagens.1': ['A imagem 2 não está num formato aceito. Envie JPG, PNG ou WebP.'],
+        'imagens.0': ['A imagem 1 passa de 10 MB; tente uma menor.'],
+    },
+};
+
+/** O 413 do `post_max_size`, que o servidor devolve como 422 em `errors.imagens` (`bootstrap/app.php`). */
+export const FOTOS_GRANDES_DEMAIS = {
+    message: 'A imagem é grande demais para enviar; tente uma menor.',
+    errors: { imagens: ['A imagem é grande demais para enviar; tente uma menor.'] },
+};
+
+/**
+ * Cor e tamanho: a foto é da COR e mora na "dona" dela — nem sempre a 1ª variação (aqui o Azul guarda as fotos no
+ * M, `variacao_id` 712, e não no P, 711). O envio e a exclusão vão EXATAMENTE para o `variacao_id` do quadro.
+ */
+export const QUADRO_COR_E_TAMANHO = {
+    produto: { id: 12, nome: 'Camiseta básica algodão', editavel: true, motivo: null },
+    cores: [
+        { variacao_id: 712, rotulo: 'Azul', minimo: 3, maximo: 12, fotos: [fotoDoCliente(712, 7001)], faltam: 2 },
+        { variacao_id: 721, rotulo: 'Preto', minimo: 3, maximo: 12, fotos: [], faltam: 3 },
+    ],
+    limites: { tamanho_mb: 10, tipos: ['jpg', 'png', 'webp'], por_envio: 12 },
+};
+
+/** O produto que não varia: uma galeria só, `rotulo` nulo. */
+export const QUADRO_SEM_COR = {
+    produto: { id: 9, nome: 'Criado-mudo 2 gavetas', editavel: true, motivo: null },
+    cores: [{ variacao_id: 901, rotulo: null, minimo: 3, maximo: 12, fotos: [fotoDoCliente(901, 9001)], faltam: 2 }],
+    limites: { tamanho_mb: 10, tipos: ['jpg', 'png', 'webp'], por_envio: 12 },
+};
+
+/** 403 da escrita vindo do `portal.auth` (a aba é de outra loja): `{message}` em pt-BR. */
+export const SEM_ACESSO_A_EMPRESA = { message: 'Você não tem acesso a esta empresa.' };

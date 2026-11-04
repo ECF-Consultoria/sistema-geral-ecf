@@ -1232,3 +1232,73 @@ são chamados como estão; nenhum prompt mudou.
 - Acompanhamento a cada 3 s com teto de 30 min (`MAX_CONSULTAS`), como a 4d — o adiado (editor do Publicador aberto)
   pode durar ~2 h no servidor.
 - **Git Bash:** `grep -c $'\r'` dentro de laço contou todas as linhas de arquivos em LF — conferir CRLF pelos bytes.
+
+## 41. 4f — fotos do cliente (servidor) (04/11/2026): o que não está escrito no código
+
+Desenho: `ENTREGA-3-DESENHO.md` §19.15 (D57/D58, R9). Serviço `App\Services\Trilha\FotosDoClienteNaTrilha`, controller
+`Trilha\Cliente\FotosDoClienteController`, rotas `portal.trilha.fotos.{quadro,ver,enviar,excluir}` (grupo `portal.auth`
+de `routes/trilha.php`, contadores `trilha.cliente.fotos*`), guarda `CadastroNaTrilha::empresaDoCliente` (+ `clienteEscreve`
+e `produto`), `cliente_escrita.fotos` em `ApresentacaoDaTrilha::paraCliente`, teste `FotosDoClienteNaTrilhaTest`. Nenhuma
+migration; o `enviarFotos`/`excluirFoto` da equipe são chamados como estão, com `AtorDoPortal::cliente`.
+
+- **A 1ª escrita do cliente precisou de cinco lugares fora do controller (R9):** a rota no `portal.auth`; uma linha POR
+  ROTA em `RestringeDominioDoPortal::PERMITIDO_COM_ID` (sem ela, 404 só no domínio do cliente — no localhost passa); a
+  regex do 413 no `bootstrap/app.php`; o CSRF (já valia: `portal/*` não está nas exceções — o teste o liga com
+  `runningUnitTests()` falso); e a varredura do `AcessoATrilhaTest` (`PROPS_DA_PAGINA` ganhou `cliente_escrita`, e a
+  conferência "nenhum `/portal` nas props" passou a aceitar só `/portal/{id}/trilha/…` — os endereços da PRÓPRIA trilha
+  sob o prefixo da porta do cliente, não um link do Portal). E um sexto, de teste: o
+  `PortalCliente/Estrutura/Produtos/AcessoAosProdutosTest` compara o `PERMITIDO_COM_ID` INTEIRO — linha nova na allowlist
+  (a 4e vai pôr as dela) cai lá; acrescente-a ao `assertSame` com a data.
+- **Os nomes `portal.trilha.fotos.*` NÃO começam com `portal.auth.`** (são os do desenho). O `DominioLiberaTodoModuloTest`
+  (que varre o router atrás de rota do Portal sem linha na allowlist) filtra pelo NOME `portal.auth.*` e não as vê; o
+  antigo "a porta do cliente não tem rota de escrita" do `OndasDaTrilhaTest` também filtrava pelo nome e seguiria verde
+  com as escritas novas. Os dois testes da trilha agora varrem pelo ENDEREÇO (`portal/{portalEmpresa}/trilha…`): 5 rotas,
+  2 escritas. Rota nova na porta do cliente derruba os dois de propósito — é decisão, não acidente.
+- **"O cliente de verdade":** no modo equipe do Portal as 4 rotas são 404 e `cliente_escrita` vem nulo (não há
+  `PortalUsuario` para ser o ator; a equipe tem a gaveta dela). O Portal mantém as duas sessões exclusivas (a entrada da
+  equipe derruba o guard `portal`; o login do cliente esquece a `SESSAO_EQUIPE`), mas `PortalContexto::usuario()` lê o
+  guard `portal` mesmo numa sessão de equipe: se as duas coexistissem, `AtorDoPortal::cliente(usuario)` gravaria EM NOME
+  DO CLIENTE o que a equipe fez. Por isso o controller confere `ator()->equipe` além de `usuario() !== null` — o teste
+  monta a sessão com as duas chaves (sem ele, a mutação que tira a conferência passava).
+- **Guards vivos entre pedidos do MESMO teste:** `entrarNoPortal` com OUTRO `PortalUsuario` não troca quem está logado — o
+  guard `portal` devolve o do pedido anterior (em produção cada pedido é um processo novo). Sem `forgetGuards()`, "o
+  cliente da outra loja grava aqui" respondeu 200: um falso alarme de IDOR. Helper `outroCliente()` no teste.
+- **"Na Lista" = `TrilhaDaEmpresa::faltasDoProduto() !== []` (com o ME1 como aviso) E sem a trava do cadastro.** A última
+  foto que completa o produto o tira da Lista NA HORA: a resposta já vem `editavel: false` + o aviso `AVISO_SEGUIU`, e o
+  `prepararSeCabe` o leva ao robô (uma vez, como na equipe). Daí em diante o cliente não exclui — não "descompleta" o
+  produto que o robô pode já estar preparando. O 409 é `{message}` SEM `travado`: a chave mexe na gaveta da EQUIPE.
+- **Ordem da guarda diferente da porta da equipe:** aqui 404 → 409 → 422 (o envio vazio no produto que andou é 409); na
+  equipe a forma (422) vem antes da trava. O 413 do `post_max_size` não respeita ordem nenhuma (o `ValidatePostSize`
+  roda antes da rota): vira 422 até no produto de outra loja — aceito, como na equipe.
+- **`AVISO_JA_EM_PREPARO`:** o produto que voltou à Lista já estando no Publicador (a equipe tirou uma foto) recebe a
+  foto nova só no cadastro — o Sincronizar só copia foto para galeria VAZIA do rascunho (R8). O cliente é avisado para
+  falar com a equipe; nada automático avisa a equipe (não feito).
+- **`CadastroNaTrilha::donasDaCor` virou pública:** o quadro escolhe a variação de cada cor (com cor E tamanho) pela MESMA
+  régua da gaveta da equipe; o teste compara as donas das duas portas lado a lado (a mutação "dona = 1ª variação da cor"
+  cai). A ordem das caixas é a da 1ª aparição da cor, não a da dona. `rotulo` nulo no produto que não varia.
+- **422 sempre em JSON, com `message` = o 1º erro.** O `ValidationException` resume com "(and N more errors)" em INGLÊS —
+  texto que o cliente leria. O controller monta a resposta (também sem `Accept` de JSON: nunca o redirect da sessão);
+  `errors` no formato de sempre (`imagens`, `imagens.N`).
+- **Mutante equivalente (registrado):** tirar o `company_id` da busca do produto no QUADRO não muda a resposta — o
+  `faltasDoProduto` também busca pela empresa e dá 404. Defesa em camadas; o teste de "outra empresa" prova a resposta.
+  14 mutações, 13 derrubam teste, esta é a equivalente.
+- `limites.tipos` junta `jpeg` em `jpg` (a config tem os dois). O throttle do cliente conta por IP (o guard padrão `web`
+  não tem usuário nele). Por POST, a trava (itens da empresa inteira) e as faltas rodam duas vezes (antes e depois do
+  envio) — consultas fixas.
+
+### 4f — fotos do cliente (tela), 04/11/2026
+- **No teste com esbuild, o `import()` do `lazy` só se resolve depois de um giro do laço de eventos:** dois renders
+  seguidos no mesmo teste mostram os dois o fallback; espere um `setTimeout(0)` entre eles.
+- **`Cliente/` é a 3ª pasta que exige o 2º caminho** em `CadastroSobDemanda.jsx` (`PEDACOS_DO_CLIENTE`). O `lazy` mora
+  no `PainelLateral`, então no manifest ele aparece nos `dynamicImports` de `_PainelLateral-…`, não nos da página.
+- **A confirmação da exclusão sobe ao rodapé** como um elemento React guardado no estado do `PainelDoItem`
+  (`rodapeDasFotos`).
+- **A caixa aparece em todo `p:` do cliente com `cliente_escrita.fotos`;** fora da Lista fica só leitura com o
+  `motivo` do servidor. A resposta do POST pode já vir `editavel: false` (a foto completou o produto e ele seguiu) —
+  a caixa vira só leitura na hora e mostra os `avisos` em tom neutro. `variacao_id` de cada cor é a "dona" da cor
+  (nem sempre a 1ª variação): o envio vai exatamente para ela. `cliente_escrita` vem `null` (não ausente) na porta
+  da equipe e no modo equipe.
+- **Pendência da 4e (D59):** o "Onde está" no painel do produto do cliente ainda mostra "Revisão e publicação ·
+  Publicador" (`ETAPAS` em `lib/trilha.js`).
+- Mutação em `trilhaEscrita.js`: há duas linhas `append('imagens[]')` (equipe e cliente) — trocar só a 1ª acerta a da
+  equipe.

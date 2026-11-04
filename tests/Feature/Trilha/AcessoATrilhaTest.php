@@ -55,8 +55,11 @@ class AcessoATrilhaTest extends TestCase
         'onda_id', 'sem_produto', 'planejavel', 'pode_tirar',
     ];
 
-    /** As props da PÁGINA (seção 4 do contrato). O resto é o que o `HandleInertiaRequests` compartilha com toda página. */
-    private const PROPS_DA_PAGINA = ['visao', 'sessao_equipe', 'empresa', 'voltar', 'trabalho', 'pode_editar', 'escrita', 'links', 'produtos', 'ofertas', 'ondas', 'gerado_em'];
+    /**
+     * As props da PÁGINA (seção 4 do contrato; `cliente_escrita` desde a 4f, 04/11/2026). O resto é o que o
+     * `HandleInertiaRequests` compartilha com toda página.
+     */
+    private const PROPS_DA_PAGINA = ['visao', 'sessao_equipe', 'empresa', 'voltar', 'trabalho', 'pode_editar', 'escrita', 'cliente_escrita', 'links', 'produtos', 'ofertas', 'ondas', 'gerado_em'];
 
     /** As compartilhadas que chegam ao cliente COM valor: a infraestrutura da página, nenhuma é dado do sistema interno. */
     private const COMPARTILHADAS_DE_INFRA = ['asset_url', 'csrf_token', 'errors', 'flash'];
@@ -290,6 +293,8 @@ class AcessoATrilhaTest extends TestCase
                 ->component('Trilha/Empresa')
                 ->where('visao', 'cliente')
                 ->where('sessao_equipe', false)
+                // Sem a chave de trabalho o cliente não escreve nada (4f: as fotos só com as duas chaves).
+                ->where('cliente_escrita', null)
                 ->where('empresa', ['id' => $empresa->id, 'nome' => 'Casa Jatobá', 'logo_url' => 'https://exemplo.test/jatoba.png'])
                 ->where('voltar', ['url' => route('portal.auth.inicio'), 'rotulo' => 'Voltar ao portal'])
                 ->where('links', [
@@ -341,6 +346,7 @@ class AcessoATrilhaTest extends TestCase
                 ->component('Trilha/Empresa')
                 ->where('visao', 'cliente')
                 ->where('sessao_equipe', true)
+                ->where('cliente_escrita', null)
                 ->where('links.portal_abrir', null)
                 ->where('links.publicador', null)
                 ->where('produtos.1.sugestoes_pendentes', [])
@@ -406,6 +412,9 @@ class AcessoATrilhaTest extends TestCase
         ], $equipe['escrita']);
         $this->assertSame(['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false, 'criada_por' => 'Rafael',
             'criada_em' => '2026-11-02T10:00:00-03:00'], $equipe['ondas'][0], 'campo novo da onda não chega nem à equipe sem decisão');
+        // 4f: a escrita do CLIENTE nunca vem à porta da equipe (nem para o "Ver como: Cliente", que é do navegador).
+        $this->assertArrayHasKey('cliente_escrita', $equipe);
+        $this->assertNull($equipe['cliente_escrita']);
 
         // Dev que não pode escrever no Portal desta empresa: vê a trilha, sem escrita.
         $semCarteira = User::factory()->create(['role' => 'consultor', 'active' => true]);
@@ -413,12 +422,15 @@ class AcessoATrilhaTest extends TestCase
         $leitor = $this->props($this->actingAs($semCarteira->refresh())->get('/trilha/'.$empresa->id)->assertOk());
         $this->assertFalse($leitor['pode_editar']);
         $this->assertNull($leitor['escrita']);
+        $this->assertNull($leitor['cliente_escrita']);
 
         $resposta = $this->entrarNoPortal($empresa)->get(route('portal.auth.trilha'))->assertOk();
         $cliente = $this->props($resposta);
         $this->assertTrue($cliente['trabalho']);
         $this->assertFalse($cliente['pode_editar']);
         $this->assertNull($cliente['escrita']);
+        // 4f (§19.15): a 1ª escrita do cliente — o quadro de fotos do produto, com o marcador no lugar do id.
+        $this->assertSame(['fotos' => "/portal/{$empresa->id}/trilha/produtos/__PRODUTO__/fotos"], $cliente['cliente_escrita']);
         $this->assertNull($cliente['links']['planejamento']);
         $this->assertSame([['id' => 7, 'nome' => 'Onda 1', 'data' => '2026-11-10', 'comecou' => false]], $cliente['ondas']);
         $resposta->assertDontSee('Rafael', false);
@@ -453,12 +465,16 @@ class AcessoATrilhaTest extends TestCase
             $this->assertNull($produto['url_ficha'], $produto['nome']);
         }
 
-        // A varredura das props DA PÁGINA (as compartilhadas são de toda página): nenhum endereço nem texto do Portal.
+        // A varredura das props DA PÁGINA (as compartilhadas são de toda página): nenhum endereço nem texto do Portal. A
+        // única exceção é a da 4f — os endereços da PRÓPRIA trilha sob o prefixo da porta do cliente
+        // (`/portal/{id}/trilha/…`, `cliente_escrita`), que não levam ao Portal.
+        $this->assertNotNull($cliente['cliente_escrita'], 'a varredura precisa ver a escrita do cliente');
         foreach (['equipe' => $equipe, 'cliente' => $cliente] as $porta => $props) {
             $json = json_encode(array_intersect_key($props, array_flip(self::PROPS_DA_PAGINA)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $this->assertStringNotContainsString('/portal', $json, $porta);
+            $this->assertSame(0, preg_match_all('#/portal(?!/'.$empresa->id.'/trilha/)#', $json), "{$porta}: {$json}");
             $this->assertStringNotContainsStringIgnoringCase('ao portal', $json, $porta);
         }
+        $this->assertStringNotContainsString('/portal', (string) json_encode($equipe['cliente_escrita']), 'nada da porta do cliente na equipe');
     }
 
     public function test_campo_novo_dentro_do_componente_ou_da_onda_nao_chega_ao_cliente(): void
@@ -551,6 +567,14 @@ class AcessoATrilhaTest extends TestCase
 
         $permitido = (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertSame(['portal/trilha'], array_values(array_filter($permitido, fn ($p) => str_contains($p, 'trilha'))));
+        // 4f (04/11/2026): as fotos do cliente — uma linha por rota, com id; nenhuma outra da trilha (linha nova aqui é decisão).
+        $comId = (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID');
+        $this->assertSame([
+            'portal/trilha/produtos/{id}/fotos',
+            'portal/trilha/fotos/{id}/{id}',
+            'portal/trilha/produtos/{id}/variacoes/{id}/fotos',
+            'portal/trilha/produtos/{id}/variacoes/{id}/fotos/{id}',
+        ], array_values(array_filter($comId, fn ($p) => str_contains($p, 'trilha'))));
     }
 
     /** No domínio do cliente a porta da equipe não existe — nem para o Dev logado. No do admin, abre. */

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Trilha\AjusteDaTrilhaController;
 use App\Http\Controllers\Trilha\CadastroDaTrilhaController;
+use App\Http\Controllers\Trilha\Cliente\FotosDoClienteController;
 use App\Http\Controllers\Trilha\FotosDaTrilhaController;
 use App\Http\Controllers\Trilha\MapeamentoDaTrilhaController;
 use App\Http\Controllers\Trilha\MercadoLivreDaTrilhaController;
@@ -30,9 +31,13 @@ use Illuminate\Support\Facades\Route;
 |
 | 2ª entrega (02/11/2026): a porta da EQUIPE ganha as escritas do Mapeamento
 | e do Planejamento (JSON), só para empresa também em `trilha.trabalho.empresas`
-| e para quem pode escrever no Portal dela (os controllers conferem). A porta
-| do CLIENTE continua só leitura: nenhuma rota de escrita no `portal.auth`.
-| Cada escrita tem o seu prefixo de throttle.
+| e para quem pode escrever no Portal dela (os controllers conferem). Cada
+| escrita tem o seu prefixo de throttle.
+|
+| 4ª entrega, 4f (04/11/2026): a porta do CLIENTE ganha a 1ª escrita — as
+| fotos do produto enquanto ele está na Lista (enviar e excluir), nas rotas
+| `portal.trilha.fotos.*`. São as ÚNICAS escritas no `portal.auth` da trilha
+| (o `OndasDaTrilhaTest` confere pelo endereço).
 |
 */
 
@@ -189,4 +194,23 @@ Route::middleware('portal.auth')
     ->group(function () {
         Route::get('/trilha', [PortalTrilhaController::class, 'mostrar'])
             ->middleware('throttle:60,1,trilha')->name('portal.auth.trilha');
+
+        // 4f (desenho §19.15, D57/D58): as fotos que o CLIENTE envia — o quadro de fotos do produto, o arquivo da foto
+        // (só da empresa), enviar (`imagens[]`, multipart) e excluir, só enquanto o produto está na Lista (409 depois).
+        // Controllers finos em `Trilha\Cliente\*`, que leem o `PortalContexto` e chamam os MESMOS serviços da equipe com
+        // o ator CLIENTE. Cada rota com o seu contador (`trilha.cliente.fotos*`) e a sua linha em
+        // `RestringeDominioDoPortal::PERMITIDO_COM_ID`; o 413 do envio grande demais vira 422 `errors.imagens` no
+        // `bootstrap/app.php`. `[0-9]{1,18}`: um id de 19 dígitos estouraria o `int` do controller (500) em vez de 404.
+        Route::where(['produto' => '[0-9]{1,18}', 'variacao' => '[0-9]{1,18}', 'imagem' => '[0-9]{1,18}'])
+            ->name('portal.trilha.fotos.')
+            ->group(function () {
+                Route::get('/trilha/produtos/{produto}/fotos', [FotosDoClienteController::class, 'quadro'])
+                    ->middleware('throttle:120,1,trilha.cliente.fotos')->name('quadro');
+                Route::get('/trilha/fotos/{variacao}/{imagem}', [FotosDoClienteController::class, 'ver'])
+                    ->middleware('throttle:600,1,trilha.cliente.fotos.ver')->name('ver');
+                Route::post('/trilha/produtos/{produto}/variacoes/{variacao}/fotos', [FotosDoClienteController::class, 'enviar'])
+                    ->middleware('throttle:30,1,trilha.cliente.fotos.enviar')->name('enviar');
+                Route::delete('/trilha/produtos/{produto}/variacoes/{variacao}/fotos/{imagem}', [FotosDoClienteController::class, 'excluir'])
+                    ->middleware('throttle:60,1,trilha.cliente.fotos.excluir')->name('excluir');
+            });
     });
