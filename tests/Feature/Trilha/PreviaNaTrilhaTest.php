@@ -18,6 +18,7 @@ use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\DadosEfetivosService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\ImagemAssetService;
+use App\Services\Publicador\PreviaDoAnuncioService;
 use App\Services\Trilha\PreviaNaTrilha;
 use App\Services\Trilha\TrilhaDaEmpresa;
 use App\Support\Publicador\EditorEmUso;
@@ -66,7 +67,11 @@ class PreviaNaTrilhaTest extends TestCase
 
     /** As chaves do contrato (§19.5), na ordem (4b acrescentou `ajuste` e `ajustes_restantes_hoje`, §19.14). */
     private const CHAVES = ['item', 'pronta', 'motivo', 'revisao', 'categoria', 'tipos', 'variantes', 'anuncios', 'descricao',
-        'preco', 'preparo', 'publicacao', 'ajuste', 'ajustes_restantes_hoje', 'aprovacao', 'bloqueios'];
+        'preco', 'preparo', 'publicacao', 'ajuste', 'ajustes_restantes_hoje', 'aprovacao', 'bloqueios', 'eixos', 'vendedor'];
+
+    /** As chaves de cada anúncio: as da 4a + as da página do anúncio (05/11/2026, no FIM). */
+    private const CHAVES_DO_ANUNCIO = ['tipo', 'variante', 'titulo', 'preco', 'promocao', 'parcelas', 'fotos', 'caracteristicas', 'envio',
+        'titulo_completo', 'condicao', 'estoque', 'garantia'];
 
     private EstruturaProduto $p;
 
@@ -155,7 +160,7 @@ class PreviaNaTrilhaTest extends TestCase
 
         $this->assertCount(2, $j['anuncios']);
         [$classico, $premium] = $j['anuncios'];
-        $this->assertSame(['tipo', 'variante', 'titulo', 'preco', 'promocao', 'parcelas', 'fotos', 'caracteristicas', 'envio'], array_keys($classico));
+        $this->assertSame(self::CHAVES_DO_ANUNCIO, array_keys($classico));
         $this->assertSame(['classico', '__single__', 'Cadeira Escritório Giratória Ergonômica'], [$classico['tipo'], $classico['variante'], $classico['titulo']]);
         $this->assertSame(['premium', 'Cadeira Giratória Escritório Ergonômica'], [$premium['tipo'], $premium['titulo']]);
         $this->assertNull($classico['parcelas'], 'só o Premium parcela');
@@ -177,6 +182,47 @@ class PreviaNaTrilhaTest extends TestCase
         }
         // E a URL abre a foto.
         $this->actingAs($this->dev)->get($classico['fotos'][0]['url'])->assertOk();
+    }
+
+    /**
+     * A página do anúncio (a tela cheia "como o comprador vê", 05/11/2026): o título com a variação, a condição, o
+     * estoque e a garantia saem do MESMO plano que a publicação usa; o "Vendido por" é o apelido que a última leitura da
+     * conta guardou no rascunho — sem leitura (ou com a leitura que falhou), nulo, e a página não inventa o nome.
+     */
+    public function test_a_pagina_do_anuncio_sai_do_mesmo_plano_e_o_vendido_por_do_rascunho(): void
+    {
+        $r = $this->rascunhoDo($this->p);
+        $chave = "s-{$this->p->id}";
+        $plano = app(PreviaDoAnuncioService::class)->montar($r->fresh());
+
+        $j = $this->previa($chave)->assertOk()->json();
+        $this->assertTrue($j['pronta']);
+        $this->assertSame(
+            array_map(fn ($a) => [$a['titulo_no_ml'], $a['condicao'], $a['estoque'], $a['garantia']], $plano['anuncios']),
+            array_map(fn ($a) => [$a['titulo_completo'], $a['condicao'], $a['estoque'], $a['garantia']], $j['anuncios']),
+            'o MESMO plano da publicação',
+        );
+        $this->assertSame('Novo', $j['anuncios'][0]['condicao']);
+        $this->assertSame($j['anuncios'][0]['titulo'], $j['anuncios'][0]['titulo_completo'], 'variação única: nada no fim do título');
+        $this->assertSame(array_values(array_map(fn ($e) => $e['nome'], $plano['eixos'])), $j['eixos']);
+
+        // A cópia campo a campo, com cada campo diferente do título e do padrão (a variação única acima não separa
+        // `titulo_completo` de `titulo`, e o plano dela não tem garantia).
+        $this->assertSame(
+            ['titulo_completo' => 'Cadeira Giratória Azul Marinho', 'condicao' => 'Usado', 'estoque' => 7, 'garantia' => 'Garantia de fábrica: 12 meses'],
+            PreviaNaTrilha::daPagina(['titulo' => 'Cadeira Giratória', 'titulo_no_ml' => 'Cadeira Giratória Azul Marinho', 'condicao' => 'Usado', 'estoque' => '7', 'garantia' => 'Garantia de fábrica: 12 meses']),
+        );
+        $this->assertSame(['titulo_completo' => null, 'condicao' => null, 'estoque' => null, 'garantia' => null], PreviaNaTrilha::daPagina(['estoque' => 'muitos']));
+        $this->assertSame(['Cor', 'Tamanho'], PreviaNaTrilha::nomesDosEixos([['chave' => 'COLOR', 'nome' => 'Cor'], ['chave' => 'SIZE', 'nome' => ' Tamanho '], ['chave' => 'X', 'nome' => ''], 'lixo']));
+
+        foreach ([
+            'apelido guardado' => [['nickname' => '  MGSTOREL  ', 'modelo' => 'up'], 'MGSTOREL'],
+            'leitura falhou'   => [['erro' => 'Sem token.'], null],
+            'apelido vazio'    => [['nickname' => '   '], null],
+        ] as $caso => [$conta, $esperado]) {
+            DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode([...(array) $r->fresh()->step_state, 'conta' => $conta])]);
+            $this->assertSame($esperado, $this->previa($chave)->assertOk()->json('vendedor'), $caso);
+        }
     }
 
     public function test_o_combo_e_o_kit_abrem_a_previa_do_rascunho_deles(): void

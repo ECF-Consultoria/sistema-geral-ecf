@@ -36,6 +36,7 @@ import { comTravaDoEnvio, semPublicarDireto } from '@/lib/trilhaAprovacao';
 import { cn } from '@/lib/utils';
 import { Botao, Caixa, OndeEsta, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta } from '@/Components/Trilha/PainelLateral';
+import { BotaoDaPagina } from '@/Components/Trilha/PaginaDoAnuncio';
 import { composicao } from '@/Components/Trilha/formatos';
 import CaixaDoPreco, { ConfirmacaoDoPreco, usePrecoDaPrevia } from '@/Components/Trilha/Revisao/CaixaDoPreco';
 import RodapeDaPublicacao, { usePublicacaoDaPrevia } from '@/Components/Trilha/Revisao/PublicarAnuncio';
@@ -243,6 +244,8 @@ function CaixaDoAnuncio({ previa, inicial = null }) {
 
     return (
         <Caixa titulo="Anúncio" data-caixa="anuncio">
+            {/* 05/11/2026: a página do anúncio igual à do canal, em tela cheia, na escolha desta caixa. */}
+            <BotaoDaPagina previa={previa} escolha={escolha} className="self-start" />
             {tipos.length > 1 && (
                 <Alternar
                     rotulo="Tipo do anúncio"

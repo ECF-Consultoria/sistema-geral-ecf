@@ -902,6 +902,7 @@ export const PREVIA_DO_ANUNCIO = {
             fotos: [fotoDaPrevia('s-2', 881), fotoDaPrevia('s-2', 882), fotoDaPrevia('s-2', 883), fotoDaPrevia('s-2', 890, true), fotoDaPrevia('s-2', 891, true)],
             caracteristicas: fichaDaCadeira('Natural'),
             envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+            titulo_completo: 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar Natural', condicao: 'Novo', estoque: 12, garantia: 'Garantia do vendedor: 3 meses',
         },
         {
             tipo: 'classico', variante: 'v2', titulo: 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar', preco: 899.9,
@@ -909,6 +910,7 @@ export const PREVIA_DO_ANUNCIO = {
             fotos: [fotoDaPrevia('s-2', 884), fotoDaPrevia('s-2', 885), fotoDaPrevia('s-2', 886), fotoDaPrevia('s-2', 892, true)],
             caracteristicas: fichaDaCadeira('Mel'),
             envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+            titulo_completo: 'Cadeira Jatobá Assento Palhinha Madeira Maciça Sala De Jantar Mel', condicao: 'Novo', estoque: 0, garantia: 'Garantia do vendedor: 3 meses',
         },
         {
             tipo: 'premium', variante: 'v1', titulo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar', preco: 989.9, promocao: null,
@@ -916,6 +918,7 @@ export const PREVIA_DO_ANUNCIO = {
             fotos: [fotoDaPrevia('s-2', 890, true), fotoDaPrevia('s-2', 881), fotoDaPrevia('s-2', 882), fotoDaPrevia('s-2', 883), fotoDaPrevia('s-2', 891, true)],
             caracteristicas: fichaDaCadeira('Natural'),
             envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+            titulo_completo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar Natural', condicao: 'Novo', estoque: 12, garantia: 'Garantia do vendedor: 3 meses',
         },
         {
             tipo: 'premium', variante: 'v2', titulo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar', preco: 989.9, promocao: null,
@@ -923,6 +926,7 @@ export const PREVIA_DO_ANUNCIO = {
             fotos: [fotoDaPrevia('s-2', 892, true), fotoDaPrevia('s-2', 884), fotoDaPrevia('s-2', 885), fotoDaPrevia('s-2', 886)],
             caracteristicas: fichaDaCadeira('Mel'),
             envio: { modo: 'me2', frete_gratis: true, retirada: false, aviso: null },
+            titulo_completo: 'Cadeira Jatobá Palhinha Madeira Maciça Para Sala De Jantar Mel', condicao: 'Novo', estoque: 0, garantia: 'Garantia do vendedor: 3 meses',
         },
     ],
     descricao: 'Olá! Que bom ter você na Casa Jatobá.\nCadeira jatobá com assento de palhinha natural.\n\nESPECIFICAÇÕES TÉCNICAS\n• Medidas: 45 × 52 × 92 cm\n• Material: jatobá maciço\n\nCUIDADOS E RECOMENDAÇÕES\n• Limpe com pano seco.',
@@ -934,6 +938,9 @@ export const PREVIA_DO_ANUNCIO = {
     publicacao: null,
     aprovacao: null,
     bloqueios: [],
+    // A página do anúncio (05/11/2026): os nomes da variação e o apelido da loja no "Vendido por".
+    eixos: ['Cor'],
+    vendedor: 'CASAJATOBA',
 };
 
 /**
@@ -955,6 +962,8 @@ export const PREVIA_NAO_PRONTA = {
     publicacao: null,
     aprovacao: null,
     bloqueios: [],
+    eixos: [],
+    vendedor: 'CASAJATOBA',
 };
 
 /** O 409 do item que saiu da revisão depois que a trilha carregou (§19.4: a guarda 409 vem antes do 422). */
@@ -1535,6 +1544,8 @@ export const PREVIA_DO_CLIENTE = {
     },
     publicacao: null,
     aprovacao: APROVACAO_DO_CLIENTE,
+    eixos: PREVIA_COM_PRECO.eixos,
+    vendedor: PREVIA_COM_PRECO.vendedor,
 };
 
 /** `POST {aprovar}` 200 — `{revisao: 37}`: aprovado, e o pedido da 4d entrou (conferindo), com a mensagem neutra. */

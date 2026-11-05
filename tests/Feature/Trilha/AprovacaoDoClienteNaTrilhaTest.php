@@ -100,7 +100,7 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
     private const MARCA = 'QWERTY-PEDIDO-DO-CLIENTE-4E';
 
     /** As chaves da prévia na porta do CLIENTE (§19.16), na ordem. */
-    private const PREVIA_DO_CLIENTE = ['item', 'pronta', 'motivo', 'revisao', 'categoria', 'tipos', 'variantes', 'anuncios', 'descricao', 'preco', 'publicacao', 'aprovacao'];
+    private const PREVIA_DO_CLIENTE = ['item', 'pronta', 'motivo', 'revisao', 'categoria', 'tipos', 'variantes', 'anuncios', 'descricao', 'preco', 'publicacao', 'aprovacao', 'eixos', 'vendedor'];
 
     /** A `aprovacao` da EQUIPE: as do cliente + as que só a equipe lê. */
     private const APROVACAO_DA_EQUIPE = ['estado', 'rodada', 'enviado_em', 'pedido', 'motivo', 'enviado_por', 'decidido_em', 'decidido_por', 'mudou_depois', 'falta_publicar'];
@@ -600,6 +600,9 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $foto = $this->fotoComArquivo();
         $this->comoCliente()->getJson($this->urlCliente('previa'))->assertNotFound();
         $this->comoCliente()->get($this->urlCliente("fotos/{$foto->id}"))->assertNotFound();
+        // O apelido da loja que a última leitura da conta guardou (o "Vendido por" da página do anúncio, 05/11/2026).
+        $r = $this->rascunho();
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode([...(array) $r->step_state, 'conta' => ['nickname' => 'LOJADOCLIENTE']])]);
         $this->mandar(['revisao' => $this->revisao()])->assertOk();
 
         $c = $this->previaDoCliente()->json();
@@ -620,6 +623,11 @@ class AprovacaoDoClienteNaTrilhaTest extends TestCase
         $this->assertSame([$e['revisao'], $e['descricao'], $e['categoria'], $e['tipos'], $e['variantes']], [$c['revisao'], $c['descricao'], $c['categoria'], $c['tipos'], $c['variantes']]);
         $this->assertSame(array_map(fn ($a) => [$a['tipo'], $a['variante'], $a['titulo'], $a['preco']], $e['anuncios']),
             array_map(fn ($a) => [$a['tipo'], $a['variante'], $a['titulo'], $a['preco']], $c['anuncios']));
+        // A página do anúncio (05/11/2026): o cliente vê como o comprador vê — o mesmo título completo, a condição, o
+        // estoque, a garantia, os nomes da variação e o "Vendido por" que a equipe vê (decisão do usuário).
+        $paginaDe = fn (array $j) => [$j['eixos'], $j['vendedor'], array_map(fn ($a) => [$a['titulo_completo'], $a['condicao'], $a['estoque'], $a['garantia']], $j['anuncios'])];
+        $this->assertSame($paginaDe($e), $paginaDe($c));
+        $this->assertSame('LOJADOCLIENTE', $c['vendedor'], 'o "Vendido por" chega ao cliente');
         $this->assertSame([$e['preco']['classico']['valor'], $e['preco']['premium']['valor']], [$c['preco']['classico']['valor'], $c['preco']['premium']['valor']]);
         // As fotos pela porta DELE (a da equipe é `/trilha/…`), e abrem.
         $base = "/portal/{$this->empresa->id}/trilha/ofertas/{$this->item()}/fotos/";

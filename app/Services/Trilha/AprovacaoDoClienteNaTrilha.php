@@ -533,11 +533,19 @@ class AprovacaoDoClienteNaTrilha
                     'retirada'     => (bool) ($a['envio']['retirada'] ?? false),
                     'aviso'        => null,
                 ],
+                // A página do anúncio (05/11/2026): o cliente vê o anúncio como o comprador vê — decisão do usuário.
+                'titulo_completo' => $a['titulo_completo'] ?? null,
+                'condicao'        => $a['condicao'] ?? null,
+                'estoque'         => $a['estoque'] ?? null,
+                'garantia'        => $a['garantia'] ?? null,
             ], (array) $previa['anuncios']),
             'descricao'  => $previa['descricao'],
             'preco'      => $preco,
             'publicacao' => self::publicacaoDoCliente($previa['publicacao'] ?? null, $linha),
             'aprovacao'  => self::doCliente($linha),
+            // A página do anúncio (05/11/2026, no FIM): os nomes da variação e o apelido da loja DELE no "Vendido por".
+            'eixos'      => array_values(array_map('strval', (array) ($previa['eixos'] ?? []))),
+            'vendedor'   => $previa['vendedor'] ?? null,
         ];
     }
 

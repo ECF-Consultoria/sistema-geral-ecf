@@ -1488,3 +1488,33 @@ teste `AprovacaoDoClienteNaTrilhaTest` (+ a rota da equipe na matriz do `Cadastr
   pacote do cliente, onde a régua proíbe "Mercado Livre".
 - Custo: +1 consulta fixa ao acervo na Lista; +1 na situação publicada da 4d.
 - Python gravando JS por heredoc: `\\b` dentro de template literal pode virar backspace — confira a regex gravada.
+
+### Página do anúncio "como o comprador vê", em tela cheia (05/11/2026)
+- **Pedido e decisões do usuário:** a prévia da gaveta estava "ruim"; ele quer a página do item igual à do ML, como a do
+  Publicador. Escolheu TELA CHEIA (a gaveta tem no máx. 560px; a página tem 3 colunas) e o CLIENTE também vê assim
+  ("nesse caso não tem problema"). O botão diz "Ver como o comprador vê" nas duas portas (a régua "nenhum Mercado Livre
+  fora de Cadastro/" continua valendo; trocar o rótulo exige abrir exceção nela).
+- **Peça comum, fora de `Revisao/` e `Cliente/`:** `Components/Trilha/PaginaDoAnuncio.jsx` + `lib/trilhaPaginaDoAnuncio.js`
+  (pura, sem import), usadas pelas duas gavetas. O desenho é CÓPIA do `Publicador/Mesa/AnuncioNoMl.jsx` — a trilha não
+  importa nada do Publicador. O teste do pacote do cliente (`trilha-aprovacao.test.js`) lista os arquivos exatos: os
+  dois novos entraram nele.
+- **Portal obrigatório:** a gaveta tem `trilha-painel-entra` (animação com `transform`), que prende um `fixed` de dentro
+  ao tamanho da gaveta. A tela vai para o `body` por `createPortal`. As cores `trilha-*` ficam em `html[data-trilha-tema]`,
+  então o portal as herda.
+- **Esc e Tab:** a gaveta fecha no Esc por um listener no `document` que respeita `defaultPrevented`. A tela cheia trata
+  o Esc no `onKeyDown` dela (preventDefault + stopPropagation) e fecha só ela. O Tab também para nela, porque a gaveta
+  gira o foco no `onKeyDown` do `aside` e o evento do portal sobe pela árvore do React até lá.
+- **Cores:** a página usa a paleta fixa do canal (`#3483fa`, `#00a650`, `#ebebeb`, `#f5f5f5`, `#fff159`, `#4189e6`) nos
+  dois temas. Ela saiu da varredura "só trilha-*" (`DONO_PROPRIO` em `trilha-empresa-render.test.js`), como o
+  `MapaDaLoja.jsx`, e tem a régua dela em `trilha-pagina-do-anuncio.test.js`. Só a barra de cima usa `trilha-*`.
+- **Contrato (aditivo, no FIM):** a prévia ganhou `eixos` (nomes) e `vendedor` no topo, e `titulo_completo`
+  (`titulo_no_ml`), `condicao`, `estoque` e `garantia` por anúncio (`PreviaNaTrilha::daPagina` / `nomesDosEixos`). A
+  porta do cliente repassa tudo isso. As listas fixas de chaves estão em `PreviaNaTrilhaTest::CHAVES`,
+  `PrecoNaTrilhaTest::CHAVES` (antes de `avisos`) e `AprovacaoDoClienteNaTrilhaTest::PREVIA_DO_CLIENTE`.
+- **"Vendido por" sem chamar o ML:** sai de `step_state.conta.nickname` do rascunho, gravado pelo editor e pelo preparo.
+  Sem leitura da conta, fica nulo e a linha não aparece: o nome do cadastro NÃO é o que o comprador vê.
+  `PreviaDoAnuncioService` é `final` (Mockery não faz dublê), por isso a cópia campo a campo é testada pela função
+  pública `daPagina`.
+- **O que a página NÃO afirma:** o preço é o cheio, porque a promoção da Central é só tentativa (o ML costuma recusar
+  em anúncio novo). Estoque nulo não vira "Sem estoque". Sem selo "gerada pelo agente" na página do comprador (a
+  gaveta continua com ele).

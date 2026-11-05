@@ -1655,3 +1655,20 @@ Itens e decisões (usuário, 04/11 — "robô" vira "agente" para equipe E clien
 | R10 | Tirar "Abrir no Publicador" | nenhum link da trilha leva ao Publicador (nem para admin) — "a trilha é o publicador" |
 | R11 | Clicar no que falta e ser guiado | cada pílula de falta ("custo", "título", "fotos (1 de 3)"…) abre a gaveta do produto no campo/caixa certo, com foco e destaque |
 | R12 | Onda em massa | no Planejamento, marcar vários produtos/ofertas e [Pôr na onda …] de uma vez (mesmas regras de pôr um) |
+
+## 21. Página do anúncio "como o comprador vê" (05/11/2026)
+
+Pedido do usuário depois do 1º teste: a prévia da gaveta não parece o anúncio; ele quer a página do item igual à do
+Mercado Livre, como a do Publicador.
+
+- **Onde:** botão [Ver como o comprador vê] na caixa "Anúncio" das duas gavetas (prévia da equipe e aprovação do
+  cliente). Ele abre em tela cheia, na escolha da caixa (tipo e cor). A barra de cima tem o nome da escolha,
+  Clássico/Premium e [Fechar]. Embaixo fica a página: faixa amarela (só desenho, sem marca), categoria, fotos com as
+  miniaturas, condição, título completo, preço com parcelas (Premium), seletor de variação, destaques da ficha, caixa de
+  compra (frete, estoque, "Vendido por", garantia; botões só desenho), características e descrição.
+- **Quem vê:** equipe e cliente. Decisão do usuário: "cliente também vê igual ML, nesse caso não tem problema".
+- **Dados:** os da prévia (§19.5), o MESMO plano da publicação. Campos novos, aditivos: `eixos` e `vendedor` no topo;
+  `titulo_completo`, `condicao`, `estoque` e `garantia` em cada anúncio. A porta do cliente repassa todos. Nenhuma
+  chamada nova ao ML.
+- **Fora, de propósito:** o preço da promoção da Central (só tentativa depois de publicar), vendas, avaliações, prazo
+  de entrega e perguntas (só existem depois de publicar).

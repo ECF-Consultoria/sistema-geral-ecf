@@ -1353,13 +1353,16 @@ test('o pacote do cliente: a gaveta de aprovar não leva `Cadastro/`, `Revisao/`
 
     const daGaveta = pacoteDe('resources/js/Components/Trilha/Cliente/AprovarAnuncio.jsx');
     assert.deepEqual(daGaveta.filter((f) => DA_EQUIPE.test(f)), []);
-    // Só as peças que a página já usa, mais a gaveta e a lib dela: o pedaço sob demanda é pequeno.
+    // Só as peças que a página já usa, mais a gaveta e a lib dela e a página do anúncio em tela cheia (05/11/2026, a
+    // peça COMUM às duas portas, fora de `Revisao/`, e a lib pura dela): o pedaço sob demanda é pequeno.
     assert.deepEqual(daGaveta.filter((f) => !daPagina.includes(f)).sort(), [
         'resources/js/Components/Trilha/Cliente/AprovarAnuncio.jsx',
+        'resources/js/Components/Trilha/PaginaDoAnuncio.jsx',
         'resources/js/lib/trilhaAprovacao.js',
+        'resources/js/lib/trilhaPaginaDoAnuncio.js',
     ]);
     assert.deepEqual(importsEstaticos(path.resolve(RAIZ, 'resources/js/Components/Trilha/Cliente/AprovarAnuncio.jsx')).sort(), [
-        '@/Components/Trilha/PainelLateral', '@/Components/Trilha/Pecas', '@/lib/trilhaAprovacao', '@/lib/trilhaEscrita', '@/lib/utils', 'lucide-react', 'react',
+        '@/Components/Trilha/PaginaDoAnuncio', '@/Components/Trilha/PainelLateral', '@/Components/Trilha/Pecas', '@/lib/trilhaAprovacao', '@/lib/trilhaEscrita', '@/lib/utils', 'lucide-react', 'react',
     ]);
     // A peça da equipe também não importa `Cadastro/` nem as libs das outras fatias (só a da aprovação, que é comum).
     const daEquipe = importsEstaticos(path.resolve(RAIZ, 'resources/js/Components/Trilha/Revisao/MandarAoCliente.jsx'));

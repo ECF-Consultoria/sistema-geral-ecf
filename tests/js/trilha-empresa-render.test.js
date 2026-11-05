@@ -601,10 +601,12 @@ const PASTA_DO_CADASTRO = path.join(PASTA_DA_TRILHA, 'Cadastro');
 
 test('a tela da trilha usa só as cores trilha-* (nada de text-white, bg-white/…, bg-ecf-*, pub-* nem hex solto)', () => {
     // RECURSIVA (3ª entrega): a pasta `Cadastro/` também — a leitura plana da pasta quebrava com EISDIR.
-    // O MapaDaLoja.jsx tem dono próprio e o teste dele (trilha-mapa.test.js).
+    // O MapaDaLoja.jsx tem dono próprio e o teste dele (trilha-mapa.test.js). A PaginaDoAnuncio.jsx (05/11/2026) é a
+    // página do COMPRADOR, com as cores fixas do canal de propósito: a régua dela é a de trilha-pagina-do-anuncio.test.js.
+    const DONO_PROPRIO = ['MapaDaLoja.jsx', 'PaginaDoAnuncio.jsx'];
     const arquivos = [
         path.resolve(RAIZ, 'resources/js/Pages/Trilha/Empresa.jsx'),
-        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => path.basename(f) !== 'MapaDaLoja.jsx'),
+        ...arquivosDe(PASTA_DA_TRILHA).filter((f) => !DONO_PROPRIO.includes(path.basename(f))),
     ];
     assert.ok(arquivos.length >= 8);
     assert.ok(arquivos.some((f) => f.startsWith(PASTA_DO_CADASTRO + path.sep)), 'a varredura chega na pasta Cadastro/');

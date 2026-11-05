@@ -52,6 +52,7 @@ import {
 } from '@/lib/trilhaAprovacao';
 import { Botao, Caixa, Pilula } from '@/Components/Trilha/Pecas';
 import { MioloDaGaveta, useGuardaDaGaveta } from '@/Components/Trilha/PainelLateral';
+import { BotaoDaPagina } from '@/Components/Trilha/PaginaDoAnuncio';
 
 // ─── Trilha de produtos — o CLIENTE aprova o anúncio (4ª entrega, fatia 4e) ──
 //
@@ -201,6 +202,8 @@ export function CartaoDoAnuncio({ previa, inicial = null }) {
 
     return (
         <Caixa titulo="Anúncio" data-caixa="anuncio">
+            {/* 05/11/2026: o cliente também vê o anúncio como o comprador vê (decisão do usuário), em tela cheia. */}
+            <BotaoDaPagina previa={previa} escolha={escolha} className="self-start" />
             {tipos.length > 1 && (
                 <Alternar
                     rotulo="Tipo do anúncio"

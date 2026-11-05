@@ -38,8 +38,11 @@ use Illuminate\Support\Facades\Log;
  * - **publicacao** (4d): a situação do "Aprovar e publicar" ({@see PublicacaoNaTrilha::situacao()}), em toda resposta —
  *   inclusive fora da revisão (o item publicado mostra o `publicado` com os MLBs enquanto o pedido vale);
  * - **ajuste** (4b): o "Pedir ajuste ao agente" ({@see AjusteDoRoboNaTrilha::situacao()}) e `ajustes_restantes_hoje`.
- *   Fora do contrato e de propósito: o id da categoria, a promoção "sem promoção porque…" (cita o Portal), a garantia,
- *   o estoque e o `titulo_no_ml`.
+ * - **página do anúncio** (05/11/2026, aditivo — a tela cheia "como o comprador vê"): por anúncio, `titulo_completo`
+ *   (o `titulo_no_ml`: o título com os valores da variação no fim), `condicao`, `estoque` e `garantia`; no topo, `eixos`
+ *   (os nomes da variação: "Cor", "Cor" + "Tamanho") e `vendedor` ({@see vendedor()}: o apelido da loja que a última
+ *   leitura da conta guardou no rascunho — nenhuma chamada nova ao canal).
+ *   Fora do contrato e de propósito: o id da categoria e a promoção "sem promoção porque…" (cita o Portal).
  *
  * ### Quando há prévia (D44)
  * Item na etapa `revisao` — e no ar (`lanc`) só se o rascunho foi publicado pelo sistema (a prévia é o plano; o anúncio
@@ -151,6 +154,9 @@ class PreviaNaTrilha
             // {@see AprovacaoDoClienteNaTrilha::daEquipe()}.
             'aprovacao'  => AprovacaoDoClienteNaTrilha::daEquipe($empresa, $r, $publicacao),
             'bloqueios'  => [],
+            // A página do anúncio (05/11/2026, aditivo, no FIM): os nomes da variação e o "Vendido por".
+            'eixos'      => [],
+            'vendedor'   => $r !== null ? self::vendedor($r) : null,
         ];
 
         if (! in_array($item['etapa'], self::ETAPAS_COM_PREVIA, true)) {
@@ -183,6 +189,7 @@ class PreviaNaTrilha
             'tipos'     => $tipos,
             'variantes' => array_map(fn (array $v) => ['chave' => (string) $v['chave'], 'rotulo' => (string) $v['rotulo']], (array) $p['variantes']),
             'descricao' => $p['descricao'],
+            'eixos'     => self::nomesDosEixos((array) ($p['eixos'] ?? [])),
         ];
         if (! $p['pronta']) {
             return [...$saida, 'motivo' => self::motivoNeutro($p, $r)];
@@ -217,6 +224,8 @@ class PreviaNaTrilha
                     'retirada'     => (bool) ($a['envio']['retirada'] ?? false),
                     'aviso'        => null,
                 ],
+                // A página do anúncio (05/11/2026, aditivo, no FIM).
+                ...self::daPagina($a),
             ];
         }
 
@@ -324,6 +333,48 @@ class PreviaNaTrilha
      *
      * @return array{titulo: ?string, descricao: ?string, imagens: ?string}
      */
+    /**
+     * O que a página do anúncio (a tela cheia "como o comprador vê") lê de cada anúncio do plano: o título como o
+     * comprador lê (`titulo_no_ml`: o título com os valores da variação no fim), a condição, o estoque e a garantia.
+     *
+     * @param  array<string, mixed>  $a  um anúncio de {@see PreviaDoAnuncioService::montar()}
+     * @return array{titulo_completo: ?string, condicao: ?string, estoque: ?int, garantia: ?string}
+     */
+    public static function daPagina(array $a): array
+    {
+        return [
+            'titulo_completo' => isset($a['titulo_no_ml']) ? (string) $a['titulo_no_ml'] : null,
+            'condicao'        => isset($a['condicao']) ? (string) $a['condicao'] : null,
+            'estoque'         => isset($a['estoque']) && is_numeric($a['estoque']) ? (int) $a['estoque'] : null,
+            'garantia'        => isset($a['garantia']) ? (string) $a['garantia'] : null,
+        ];
+    }
+
+    /**
+     * Os nomes da variação ("Cor", "Tamanho") a partir dos eixos do plano, aparados e sem o vazio.
+     *
+     * @param  array<int, mixed>  $eixos  os `eixos` de {@see PreviaDoAnuncioService::montar()} (`[{chave, nome}]`)
+     * @return list<string>
+     */
+    public static function nomesDosEixos(array $eixos): array
+    {
+        $nomes = array_map(fn ($e) => trim((string) (is_array($e) ? ($e['nome'] ?? '') : '')), $eixos);
+
+        return array_values(array_filter($nomes, fn (string $nome) => $nome !== ''));
+    }
+
+    /**
+     * O apelido da loja no "Vendido por" da página do anúncio: o que a última leitura da conta guardou no rascunho
+     * (`step_state.conta.nickname`, gravado pelo editor e pelo preparo). Nulo quando a conta ainda não foi lida ou a
+     * leitura falhou — a página então não mostra a linha (o nome do cadastro não é o que o comprador vê).
+     */
+    private static function vendedor(PubRascunho $r): ?string
+    {
+        $apelido = $r->step_state['conta']['nickname'] ?? null;
+
+        return is_string($apelido) && trim($apelido) !== '' ? trim($apelido) : null;
+    }
+
     private static function preparo(?array $doItem): array
     {
         $saida = [];
