@@ -3,11 +3,13 @@
 namespace Tests\Feature\Quick260930;
 
 use App\Models\Company;
+use App\Models\FechamentoSnapshot;
 use App\Models\MlToken;
 use App\Services\AdmanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -39,9 +41,41 @@ class WarmFechamentoFaturamentoTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * 30/09/2026 com AGOSTO já consolidado. Debug fechamento-outubro-fallback:
+     * desde 2026-11-04, sem `--mes`, o comando aquece também o mês anterior
+     * enquanto ele não tiver snapshot — consolidar agosto aqui mantém estes
+     * cenários medindo só o mês corrente, como foram escritos.
+     */
     private function hojeNoDiaDaMedicao(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-30 11:50:00'));
+
+        $this->consolidarCompetencia('2026-08-01');
+    }
+
+    /**
+     * Uma linha em `fechamento_snapshots` já conta como consolidado. A empresa
+     * dona da linha é inativa e sem `cust_id` — nunca é aquecida, não
+     * interfere nas contagens de chamadas.
+     */
+    private function consolidarCompetencia(string $mesReferencia): void
+    {
+        $dona = Company::factory()->create(['active' => false, 'adman_account_id' => null, 'ml_store_id' => null]);
+
+        FechamentoSnapshot::create([
+            'company_id'     => $dona->id,
+            'mes_referencia' => $mesReferencia,
+            'estado'         => FechamentoSnapshot::ESTADO_OK,
+            'origem'         => FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES,
+            'gerado_em'      => Carbon::now(),
+        ]);
+    }
+
+    private function urlTemJanela(string $de, string $ate): \Closure
+    {
+        return fn ($request) => str_contains($request->url(), "dateFrom={$de}")
+            && str_contains($request->url(), "dateTo={$ate}");
     }
 
     private function empresaAdmanDriven(string $custId): Company
@@ -289,10 +323,16 @@ class WarmFechamentoFaturamentoTest extends TestCase
         $this->assertEqualsWithDelta(640_000.00, $this->cacheDaJanelaDaTela('CUST-A'), 0.001);
     }
 
+    /**
+     * Mês CORRENTE no dia 1º não tem dia fechado. Setembro consolidado aqui de
+     * propósito: sem isso o comando aqueceria setembro (o caso da virada,
+     * coberto em `na_virada_sem_snapshot_do_anterior_aquece_os_dois_meses`).
+     */
     #[Test]
     public function no_dia_primeiro_nao_ha_nada_a_aquecer_e_nao_e_erro(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-01 11:50:00'));
+        $this->consolidarCompetencia('2026-09-01');
 
         $this->empresaAdmanDriven('CUST-A');
         $this->fakeApi(1_000.00);
@@ -347,6 +387,151 @@ class WarmFechamentoFaturamentoTest extends TestCase
         Http::assertSentCount(1);
         $this->assertEqualsWithDelta(7_777.00, $this->cacheDaJanelaDaTela('CUST-ALVO'), 0.001);
         $this->assertNull($this->cacheDaJanelaDaTela('CUST-OUTRA'));
+    }
+
+    // ═══ Debug fechamento-outubro-fallback (2026-11-04) ═══
+    // A tela lê SÓ DO CACHE o mês selecionado E o anterior. Na virada para
+    // novembro o warm seguiu aquecendo só novembro, outubro (ainda não
+    // consolidado) ficou frio e a tela inteira caiu na soma diária.
+
+    #[Test]
+    public function na_virada_sem_snapshot_do_anterior_aquece_os_dois_meses(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-04 11:50:00'));
+
+        $this->empresaAdmanDriven('CUST-A');
+        $this->fakeApi(76_204.18);
+
+        $exitCode = $this->artisan('adman:warm-fechamento')->run();
+
+        $this->assertSame(0, $exitCode);
+        Http::assertSentCount(2);
+        Http::assertSent($this->urlTemJanela('2026-10-01', '2026-10-31'));
+        Http::assertSent($this->urlTemJanela('2026-11-01', '2026-11-03'));
+
+        // Reconsulta pelas chaves EXATAS que a tela pede (`janelaDaAdman()`).
+        $adman = app(AdmanService::class);
+        $this->assertEqualsWithDelta(76_204.18, $adman->getCachedGrossBilling('CUST-A', '2026-10-01', '2026-10-31'), 0.001);
+        $this->assertEqualsWithDelta(76_204.18, $adman->getCachedGrossBilling('CUST-A', '2026-11-01', '2026-11-03'), 0.001);
+    }
+
+    #[Test]
+    public function no_dia_primeiro_sem_snapshot_aquece_o_mes_que_acabou_de_fechar(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-01 11:50:00'));
+
+        $this->empresaAdmanDriven('CUST-A');
+        $this->fakeApi(660_142.65);
+
+        $this->artisan('adman:warm-fechamento')->assertExitCode(0);
+
+        // Novembro ainda não tem dia fechado; outubro inteiro sim.
+        Http::assertSentCount(1);
+        $this->assertEqualsWithDelta(
+            660_142.65,
+            app(AdmanService::class)->getCachedGrossBilling('CUST-A', '2026-10-01', '2026-10-31'),
+            0.001,
+        );
+    }
+
+    #[Test]
+    public function com_snapshot_do_anterior_aquece_so_o_mes_corrente(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-04 11:50:00'));
+        $this->consolidarCompetencia('2026-10-01');
+
+        $this->empresaAdmanDriven('CUST-A');
+        $this->fakeApi(1_000.00);
+
+        $this->artisan('adman:warm-fechamento')->assertExitCode(0);
+
+        Http::assertSentCount(1);
+        Http::assertSent($this->urlTemJanela('2026-11-01', '2026-11-03'));
+        $this->assertNull(app(AdmanService::class)->getCachedGrossBilling('CUST-A', '2026-10-01', '2026-10-31'));
+    }
+
+    #[Test]
+    public function mes_explicito_aquece_so_ele_mesmo_sem_snapshot_do_anterior(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-04 11:50:00'));
+
+        $this->empresaAdmanDriven('CUST-A');
+        $this->fakeApi(1_000.00);
+
+        $this->artisan('adman:warm-fechamento', ['--mes' => '2026-11'])->assertExitCode(0);
+
+        Http::assertSentCount(1);
+        Http::assertSent($this->urlTemJanela('2026-11-01', '2026-11-03'));
+        $this->assertNull(app(AdmanService::class)->getCachedGrossBilling('CUST-A', '2026-10-01', '2026-10-31'));
+    }
+
+    #[Test]
+    public function acima_de_10_por_cento_de_fora_grita_no_log_de_erro(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-04 11:50:00'));
+        $this->consolidarCompetencia('2026-10-01');
+
+        $ruins = [];
+        foreach (range(1, 8) as $n) {
+            $this->empresaAdmanDriven("CUST-BOA-{$n}");
+        }
+        $ruins[] = $this->empresaAdmanDriven('CUST-RUIM-1');
+        $ruins[] = $this->empresaAdmanDriven('CUST-RUIM-2');
+
+        Http::fake([
+            '*/performance/CUST-RUIM*' => Http::response(['erro' => 'ops'], 500),
+            '*/performance/*'          => Http::response([
+                'summarizedData' => ['grossBilling' => ['value' => 1_000.00]],
+                'items'          => [],
+            ], 200),
+        ]);
+
+        Log::spy();
+
+        // Contrato de saída intacto: continua SUCCESS.
+        $this->artisan('adman:warm-fechamento')->assertExitCode(0);
+
+        // 2 de 10 = 20% > 10%. ERROR e não warning: produção roda LOG_LEVEL=error.
+        Log::shouldHaveReceived('error')
+            ->withArgs(fn ($mensagem) => str_starts_with($mensagem, '[WarmFechamento]')
+                && str_contains($mensagem, '2026-11')
+                && str_contains($mensagem, '2 de 10')
+                && str_contains($mensagem, (string) $ruins[0]->id)
+                && str_contains($mensagem, (string) $ruins[1]->id))
+            ->once();
+    }
+
+    #[Test]
+    public function ate_10_por_cento_de_fora_nao_grita(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-04 11:50:00'));
+        $this->consolidarCompetencia('2026-10-01');
+
+        foreach (range(1, 9) as $n) {
+            $this->empresaAdmanDriven("CUST-BOA-{$n}");
+        }
+        $this->empresaAdmanDriven('CUST-RUIM-1');
+
+        Http::fake([
+            '*/performance/CUST-RUIM*' => Http::response(['erro' => 'ops'], 500),
+            '*/performance/*'          => Http::response([
+                'summarizedData' => ['grossBilling' => ['value' => 1_000.00]],
+                'items'          => [],
+            ], 200),
+        ]);
+
+        Log::spy();
+
+        $this->artisan('adman:warm-fechamento')->assertExitCode(0);
+
+        // 1 de 10 = exatamente 10%: conta problemática isolada é rotina.
+        // `withArgs(closure)` recebe TODOS os argumentos (mensagem + contexto):
+        // um matcher só da mensagem nunca casaria com a chamada de 2 argumentos
+        // e o `never` passaria vazio por construção.
+        Log::shouldNotHaveReceived(
+            'error',
+            fn ($mensagem) => str_starts_with((string) $mensagem, '[WarmFechamento]'),
+        );
     }
 
     #[Test]

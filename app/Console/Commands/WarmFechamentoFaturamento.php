@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Company;
+use App\Models\FechamentoSnapshot;
 use App\Services\AdmanService;
 use App\Services\Fechamento\FechamentoRollupService;
 use Illuminate\Console\Command;
@@ -37,8 +38,14 @@ use Illuminate\Support\Facades\Log;
  * ⚠️ O MARKETPLACE fica no default 'meli' de `fetchGrossBilling()`, igual ao do
  * rollup, pela mesma razão: o marketplace entra na chave de cache.
  *
+ * Debug fechamento-outubro-fallback (2026-11-04): sem `--mes`, aquece também
+ * o mês ANTERIOR enquanto ele não tiver `FechamentoSnapshot` — a tela lê o
+ * anterior só do cache também, e na virada ele ficava 100% frio até a
+ * consolidação manual (ver `mesesDoAgendamento()`).
+ *
  * Custo por rodada: UMA chamada por empresa que pode usar a Adman (~84 em
- * produção), a 7 s de intervalo → ~10 min. O intervalo é o do `adman:sync`
+ * produção) POR COMPETÊNCIA, a 7 s de intervalo → ~10 min; ~20 min nos dias
+ * entre a virada do mês e a consolidação do anterior. O intervalo é o do `adman:sync`
  * (`AdmanService::ADMAN_RATE_LIMIT_RPM` = 10 rpm → 6 s teóricos + 1 s de folga).
  *
  * ⚠️ NÃO enfileira nada: é trabalho em lote e roda no próprio processo do
@@ -49,16 +56,22 @@ use Illuminate\Support\Facades\Log;
 class WarmFechamentoFaturamento extends Command
 {
     protected $signature = 'adman:warm-fechamento
-        {--mes= : Competência YYYY-MM (default: mês corrente)}
+        {--mes= : Competência YYYY-MM (default: mês corrente + mês anterior enquanto não consolidado)}
         {--company= : Aquece apenas uma empresa (ID) — para conferência manual}';
 
-    protected $description = 'Aquece o total do período da Adman que a tela do fechamento lê no mês em curso. Cache diário — rodar após o adman:sync.';
+    protected $description = 'Aquece o total do período da Adman que a tela do fechamento lê (mês em curso e o anterior ainda não consolidado). Cache diário — rodar após o adman:sync.';
 
     /**
      * Pausa entre chamadas, em microssegundos. 7 s = o mesmo espaçamento do
      * fan-out do `adman:sync` (10 rpm → 6 s teóricos + 1 s de folga).
      */
     private const PAUSA_ENTRE_CHAMADAS = 7_000_000;
+
+    /**
+     * Proporção de empresas sem o número da Adman a partir da qual a rodada
+     * grita no log (`Log::error`) — ver `alertarSeMuitasDeFora()`.
+     */
+    private const LIMITE_PROPORCAO_DE_FORA = 0.10;
 
     public function __construct(
         private AdmanService $adman,
@@ -69,28 +82,15 @@ class WarmFechamentoFaturamento extends Command
 
     public function handle(): int
     {
-        $inicioEm = microtime(true);
-        $mes      = $this->option('mes') ?: Carbon::now()->format('Y-m');
+        $mesExplicito = $this->option('mes');
 
-        if (! preg_match('/^\d{4}-\d{2}$/', $mes)) {
-            $this->error("Competência inválida: \"{$mes}\". Formato esperado: YYYY-MM.");
+        if ($mesExplicito !== null && $mesExplicito !== '' && ! preg_match('/^\d{4}-\d{2}$/', $mesExplicito)) {
+            $this->error("Competência inválida: \"{$mesExplicito}\". Formato esperado: YYYY-MM.");
 
             return self::FAILURE;
         }
 
-        $janela = $this->rollup->janelaDaAdman($mes);
-
-        if ($janela === null) {
-            // Dia 1º do mês: ontem ainda é do mês passado, não existe nenhum dia
-            // fechado na competência. Sair com SUCCESS de propósito — não é
-            // erro, é o calendário.
-            $this->info("[WarmFechamento] {$mes} ainda não tem nenhum dia fechado (a Adman é D-1) — nada a aquecer.");
-
-            return self::SUCCESS;
-        }
-
-        $de  = $janela['inicio']->toDateString();
-        $ate = $janela['fim']->toDateString();
+        $meses = $mesExplicito ? [$mesExplicito] : $this->mesesDoAgendamento();
 
         $empresas = $this->empresasParaAquecer();
 
@@ -100,23 +100,86 @@ class WarmFechamentoFaturamento extends Command
             return self::SUCCESS;
         }
 
+        $houveChamada = false;
+
+        foreach ($meses as $mes) {
+            $houveChamada = $this->aquecerMes($mes, $empresas, $houveChamada) || $houveChamada;
+        }
+
+        // SUCCESS mesmo com empresas de fora: a rodada fez o que podia, e
+        // devolver FAILURE faria o agendador tratar como falha de execução uma
+        // conta Adman problemática — que é problema de cadastro, não do comando.
+        return self::SUCCESS;
+    }
+
+    /**
+     * Debug fechamento-outubro-fallback (2026-11-04) — as competências que a
+     * rodada AGENDADA (sem `--mes`) aquece.
+     *
+     * A tela do fechamento lê SÓ DO CACHE o mês selecionado E o anterior
+     * (quick 260930-njd). Até aqui o aquecimento cobria só o mês corrente: na
+     * virada do mês, o mês que acabou de fechar ficava 100% frio até alguém
+     * consolidar à mão, e a tela caía inteira na soma diária envelhecida
+     * (outubro/2026: 139 de 143 empresas no fallback, soma 1,6%–3,9% abaixo da
+     * Adman).
+     *
+     * Por isso o mês ANTERIOR também é aquecido enquanto não tiver NENHUMA
+     * linha em `fechamento_snapshots` — depois de consolidado a tela lê o
+     * congelado e o aquecimento dele vira chamada à toa. O anterior vem
+     * PRIMEIRO: é o mês que está em conferência para cobrança.
+     *
+     * @return list<string>
+     */
+    private function mesesDoAgendamento(): array
+    {
+        $corrente = Carbon::now()->startOfMonth();
+        $anterior = $corrente->copy()->subMonthNoOverflow();
+
+        $anteriorConsolidado = FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $anterior->toDateString())
+            ->exists();
+
+        return $anteriorConsolidado
+            ? [$corrente->format('Y-m')]
+            : [$anterior->format('Y-m'), $corrente->format('Y-m')];
+    }
+
+    /**
+     * Aquece uma competência. Devolve `true` se fez ao menos uma chamada — para
+     * a pausa de 7 s valer também entre a última empresa de uma competência e a
+     * primeira da seguinte (o limite de 10 rpm não sabe de competência).
+     *
+     * @param  \Illuminate\Support\Collection<int, Company>  $empresas
+     */
+    private function aquecerMes(string $mes, \Illuminate\Support\Collection $empresas, bool $houveChamadaAntes): bool
+    {
+        $inicioEm = microtime(true);
+
+        $janela = $this->rollup->janelaDaAdman($mes);
+
+        if ($janela === null) {
+            // Dia 1º do mês: ontem ainda é do mês passado, não existe nenhum dia
+            // fechado na competência. Não é erro, é o calendário.
+            $this->info("[WarmFechamento] {$mes} ainda não tem nenhum dia fechado (a Adman é D-1) — nada a aquecer.");
+
+            return false;
+        }
+
+        $de  = $janela['inicio']->toDateString();
+        $ate = $janela['fim']->toDateString();
+
         $this->info("[WarmFechamento] {$mes} — janela {$de}..{$ate}, {$empresas->count()} empresa(s), ~".
             (int) ceil(($empresas->count() * 7) / 60).'min.');
 
         $aquecidas    = [];
         $ficaramFora  = [];
+        $idsDeFora    = [];
 
         foreach ($empresas->values() as $i => $company) {
-            if ($i > 0) {
+            if ($i > 0 || $houveChamadaAntes) {
                 $this->pausarEntreChamadas();
             }
 
-            // `fetchGrossBilling()` já engole a exceção, cacheia a sentinela de
-            // erro e devolve `null`. O try/catch é a rede de segurança para
-            // qualquer outra coisa (memória, DNS, timeout fora do cliente HTTP):
-            // erro numa empresa NÃO derruba a rodada, mesmo espírito de
-            // `AdmanService::syncAll()` — e aqui importa mais, porque a empresa
-            // seguinte ainda tem cache para aquecer.
             // O que já estava no cache ANTES de forçar. Guardado porque
             // `fetchGrossBilling()` grava a sentinela de erro quando falha, e
             // uma rodada da tarde que pega um 429 passageiro trocaria um número
@@ -124,6 +187,12 @@ class WarmFechamentoFaturamento extends Command
             // antigo volta — dado de algumas horas atrás é melhor que nenhum.
             $valorAnterior = $this->adman->getCachedGrossBilling((string) $company->cust_id, $de, $ate);
 
+            // `fetchGrossBilling()` já engole a exceção, cacheia a sentinela de
+            // erro e devolve `null`. O try/catch é a rede de segurança para
+            // qualquer outra coisa (memória, DNS, timeout fora do cliente HTTP):
+            // erro numa empresa NÃO derruba a rodada, mesmo espírito de
+            // `AdmanService::syncAll()` — e aqui importa mais, porque a empresa
+            // seguinte ainda tem cache para aquecer.
             try {
                 $valor = $this->adman->fetchGrossBilling(
                     (string) $company->cust_id,
@@ -152,6 +221,7 @@ class WarmFechamentoFaturamento extends Command
                 }
 
                 $ficaramFora[] = "{$company->id} ({$company->name})";
+                $idsDeFora[]   = (int) $company->id;
 
                 continue;
             }
@@ -179,10 +249,41 @@ class WarmFechamentoFaturamento extends Command
             }
         }
 
-        // SUCCESS mesmo com empresas de fora: a rodada fez o que podia, e
-        // devolver FAILURE faria o agendador tratar como falha de execução uma
-        // conta Adman problemática — que é problema de cadastro, não do comando.
-        return self::SUCCESS;
+        $this->alertarSeMuitasDeFora($mes, $empresas->count(), $idsDeFora);
+
+        return true;
+    }
+
+    /**
+     * Debug fechamento-outubro-fallback — alerta quando a rodada deixa MUITAS
+     * empresas sem o número da Adman. Uma ou outra conta problemática é rotina
+     * de cadastro; acima de `LIMITE_PROPORCAO_DE_FORA` é sinal de que a tela do
+     * fechamento vai cair em massa na soma diária (rate limit, Adman fora,
+     * chave errada) e alguém precisa olhar antes de a cobrança sair.
+     *
+     * `Log::error` e não `warning` DE PROPÓSITO: produção roda com
+     * `LOG_LEVEL=error`, e um warning simplesmente não aparece no log.
+     *
+     * @param  list<int>  $idsDeFora
+     */
+    private function alertarSeMuitasDeFora(string $mes, int $total, array $idsDeFora): void
+    {
+        if ($total === 0 || count($idsDeFora) / $total <= self::LIMITE_PROPORCAO_DE_FORA) {
+            return;
+        }
+
+        $primeiros = array_slice($idsDeFora, 0, 10);
+
+        Log::error(sprintf(
+            '[WarmFechamento] Competência %s: %d de %d empresa(s) ficaram SEM o número da Adman (%.0f%%, limite %.0f%%) — '
+            .'a tela do fechamento vai mostrar a soma diária nelas. Primeiros ids: %s',
+            $mes,
+            count($idsDeFora),
+            $total,
+            count($idsDeFora) / $total * 100,
+            self::LIMITE_PROPORCAO_DE_FORA * 100,
+            implode(', ', $primeiros),
+        ), ['competencia' => $mes, 'de_fora' => count($idsDeFora), 'total' => $total, 'ids' => $primeiros]);
     }
 
     /**

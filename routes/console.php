@@ -66,8 +66,16 @@ Schedule::command('adman:reler-dias')
 // revisa dados DURANTE o dia, e a rodada da tarde relê de fato (forceRefresh),
 // repondo o valor da manhã se a releitura falhar.
 //
-// Custo: ~84 chamadas por rodada (1 por empresa que pode ler da Adman), 7s de
-// intervalo → ~10min cada, ~168 chamadas/dia somando as duas.
+// Debug fechamento-outubro-fallback (2026-11-04): sem `--mes` aquece também o
+// mês ANTERIOR enquanto ele não tiver `fechamento_snapshots` — a tela lê o
+// anterior só do cache, e na virada de novembro outubro ficou 100% na soma
+// diária porque ninguém o aquecia.
+//
+// Custo: ~84 chamadas por rodada e por competência (1 por empresa que pode ler
+// da Adman), 7s de intervalo → ~10min cada, ~168 chamadas/dia somando as duas.
+// Entre a virada do mês e a consolidação do anterior o custo DOBRA: ~168
+// chamadas e ~20min por rodada (~336/dia). A rodada das 11:50 termina perto de
+// 12:10 nesses dias — ainda bem antes das 16:00.
 Schedule::command('adman:warm-fechamento')
     ->dailyAt('11:50')
     ->name('warm-fechamento-pos-sync')
